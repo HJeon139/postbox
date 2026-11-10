@@ -2,6 +2,7 @@
 // keeps them and moves them with their text, and only the answer can write a comment as the person.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { formatMessage } from '../server/adapters/guide.mjs';
 import * as limits from '../shared/limits.mjs';
 import { settle, setup, turn } from './blocks-fixture.mjs';
 
@@ -198,4 +199,59 @@ test('#1143: show_block can’t show a review with a comment in the person’s n
   assert.equal(r.ok, false, 'refused');
   assert.match(r.message, /person/);
   assert.equal(s.store.items(s.t.id).filter((i) => i.kind === 'block').length, 0, 'nothing shown');
+});
+
+for (const author of ['You', 'someone']) {
+  test(`#1143: show_block can’t show a review with a comment authored “${author}”, only an agent’s @handle`, async () => {
+    const s = setup();
+    const block = { ...draft, threads: [{ id: 'f1', status: 'open', line: 3, comments: [{ author, text: 'Ship it as is.' }] }] };
+    const r = await turn(s.rt, s.adapter, s.t, (tools) => tools.show_block({ block }), '@critic draft it');
+    assert.equal(r.ok, false, 'refused');
+    assert.match(r.message, /author/);
+  });
+}
+
+test('#1143: show_block shows a review with a comment authored by an agent’s @handle', async () => {
+  const { item } = await shown({ ...draft, threads: [{ id: 'c1', status: 'open', line: 3, comments: [{ author: '@critic', text: 'Mine.' }] }] });
+  assert.equal(item().block.threads[0].comments[0].author, '@critic');
+});
+
+test('#1143: the agent hears to resolve the person’s threads with update_block once it’s handled them', async () => {
+  const { adapter } = await answered([onLast]);
+  const text = formatMessage(adapter.calls.at(-1).message);
+  assert.match(text, /- line 4: Cut it\.\n.*update_block.*status: "resolved"/);
+});
+
+test('#1143: a submit past 200 open threads tells the person to ask the agent, not to resolve some', async () => {
+  const open = Array.from({ length: 200 }, (_, i) => ({ id: `o${i}`, status: 'open', line: 1, comments: [{ author: '@critic', text: 'Open.' }] }));
+  const { rt, t, item } = await shown({ ...draft, threads: open });
+  assert.throws(
+    () => rt.act(t.id, item().id, 'submit', { verdict: 'comment', comments: [{ line: 1, text: 'Hello.' }] }, 1),
+    (e) => e.status === 422 && /200 open threads/.test(e.message) && /Ask @critic to resolve/.test(e.message) && !/resolve some/.test(e.message),
+  );
+  assert.equal(item().answered, false);
+});
+
+test('#1143: the person’s new thread skips an id the agent already gave one of its own', async () => {
+  const mine = { id: 'you-1-1', status: 'open', line: 1, comments: [{ author: '@critic', text: 'Mine.' }] };
+  const { rt, t, item } = await shown({ ...draft, threads: [mine] });
+  rt.act(t.id, item().id, 'submit', { verdict: 'comment', comments: [onLast] }, 1);
+  await settle(rt);
+  assert.deepEqual(
+    item().block.threads.map((x) => [x.id, x.comments[0].author]),
+    [
+      ['you-1-1', '@critic'],
+      ['you-1-2', 'you'],
+    ],
+  );
+});
+
+test('#1143: a submit that replies in a thread the review doesn’t have is refused, and leaves the review waiting', async () => {
+  const { rt, t, item } = await shown();
+  assert.throws(
+    () => rt.act(t.id, item().id, 'submit', { verdict: 'comment', comments: [{ threadId: 'nope', text: 'Agreed.' }] }, 1),
+    (e) => e.status === 422 && /thread “nope”/.test(e.message),
+  );
+  assert.equal(item().answered, false);
+  assert.equal(item().block.threads, undefined);
 });
