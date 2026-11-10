@@ -42,6 +42,7 @@ async function restyledOver(page, run) {
 function holdRoom(on) {
   const t = /** @type {HTMLElement} */ (document.querySelector('#main.transcript'));
   const rules = [...document.styleSheets].flatMap((sheet) => [...sheet.cssRules]);
+  // `--held` is only for the run that fails first, on the code before #1150; once that’s gone, it’s the margin.
   const prop = rules.some((rule) => rule.cssText.includes('var(--held')) ? '--held' : 'margin-bottom';
   if (on) t.style.setProperty(prop, '40px');
   else t.style.removeProperty(prop);
