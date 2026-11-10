@@ -9,6 +9,7 @@
 // here shows in the CLI’s /permissions, and the reverse.
 
 import { BACKEND_NAMES } from '/shared/agent-facts.mjs';
+import { HOOKS_LATER, KEPT_WHY } from '/shared/mode-when.mjs';
 import { decide } from '/shared/permission-match.mjs';
 import { api, client, sessionsOf } from './client.mjs';
 import { fill, h, icon } from './dom.mjs';
@@ -73,9 +74,15 @@ function backendNote(p) {
   return `${intro} Its mode and its Tools decide what it may do.`;
 }
 
-/** What a change of mode says: now, in its running turn too, or from its next turn, and why. */
-function modeSaid(p, name, now, running) {
-  if (now) return `${p.handle} is in ${name} mode now, in its running turn too.`;
+/**
+ * What a change of mode says: now, in its running turn too, or from its next turn, and why: Postbox keeps a running
+ * turn’s mode where its hooks or Run everything would outlast the new one (kept), and some backends can’t change a
+ * running turn. A turn that switched live into a mode with hooks runs without them until it ends (#1030).
+ * @param {any} r  setPermissionMode’s answer
+ */
+function modeSaid(p, name, r, running) {
+  if (r.now.length) return `${p.handle} is in ${name} mode now, in its running turn too${r.hooksLater?.length ? `, ${HOOKS_LATER}` : ''}.`;
+  if (r.kept?.length) return `${p.handle} is in ${name} mode from its next turn, or now if you stop it: ${KEPT_WHY}`;
   if (running) return `${p.handle} is in ${name} mode from its next turn: ${BACKEND_NAMES[p.backend] ?? 'its backend'} can’t change a turn that’s running.`;
   return `${p.handle} is in ${name} mode from its next turn.`;
 }
@@ -220,7 +227,7 @@ export function openPermissions({ threadId = null, sessionId = null, personaId =
               onclick: () =>
                 change(
                   () => api('/api/permissions/mode', { personaId: p.id, mode: id }),
-                  (r) => modeSaid(p, name, r.now.length > 0, view.running.length > 0),
+                  (r) => modeSaid(p, name, r, view.running.length > 0),
                 ),
             },
             name,
