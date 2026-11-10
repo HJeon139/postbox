@@ -11,6 +11,9 @@ import { test } from 'node:test';
 import { AgentSdkAdapter } from '../server/adapters/agent-sdk.mjs';
 import { ClaudeCodeAdapter } from '../server/adapters/claude-code.mjs';
 import { createStreamMapper } from '../server/adapters/claude-stream.mjs';
+import { MESSAGE_FILE } from '../shared/remote-protocol.mjs';
+import { forbidden, remoteCtx, starts } from './claude-code-remote-fixture.mjs';
+import { createFakeDaemon, fixtureLines } from './fake-daemon.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
 const fixture = (name) =>
@@ -154,4 +157,20 @@ test('#1161 another server failing, with Postbox’s connected, isn’t Postbox�
   createStreamMapper(ctx, { now: () => 1000 }).push(init);
   assert.ok(!ctx.calls.activity.some((a) => a.label === 'Postbox’s tools didn’t load'));
   assert.equal(ctx.calls.saved.postboxToolsDown, undefined, 'and nothing is saved for the next turn');
+});
+
+test('#1161 a re-attach after a restart leaves the note for the next real turn, which is told first', async () => {
+  const d = createFakeDaemon({ lines: fixtureLines('block') });
+  d.addTurn('tr-again', { harness: 'claude-code', lines: fixtureLines('block'), exit: { code: 0, signal: null } });
+  const adapter = new ClaudeCodeAdapter({ bin: 'claude', workRoot: tempDir('pb-tools-down-host-'), ...forbidden() });
+  const state = { claudeSessionId: '11111111-1111-4111-8111-111111111111', postboxToolsDown: 'ran' };
+  const attach = remoteCtx(d, { state, remote: { attach: { turn: 'tr-again' } } });
+  await adapter.deliver({}, { kind: 'user', text: 'not sent again' }, attach);
+  assert.equal(starts(d).length, 0, 'an attach starts nothing');
+  assert.equal(attach.calls.saved.postboxToolsDown, undefined, 'the attach doesn’t take the note');
+  const next = remoteCtx(d, { state: { ...state } });
+  await adapter.deliver({}, { kind: 'user', text: 'Try again.' }, next);
+  const message = starts(d)[0].files.find((f) => f.name === MESSAGE_FILE).text;
+  assert.match(message, told, 'the next real turn is told first');
+  assert.equal(next.calls.saved.postboxToolsDown, null, 'and the note is taken there');
 });
