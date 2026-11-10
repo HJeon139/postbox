@@ -67,3 +67,56 @@ test('#1144 submitting forgets the kept drafts', async ({ page }) => {
   await expect(block.getByRole('button', { name: 'Submit review', exact: true }), 'it stays answered').toHaveCount(0);
   expect(await kept(page)).toEqual([]);
 });
+
+/** In Lines: the lines marked as commented on, and the status tag of each thread holding text. */
+const placed = (block, text) =>
+  block.evaluate(
+    (b, want) => ({
+      marked: [...b.querySelectorAll('.rv-doc .marked .g-ln')].map((n) => Number(/\d+$/.exec(n.textContent ?? '')?.[0])),
+      tags: [...b.querySelectorAll('.rv-doc .rv-thread')]
+        .filter((t) => t.textContent?.includes(want))
+        .flatMap((t) => [...t.querySelectorAll('.status-tag')].map((x) => x.textContent ?? '').filter((x) => x !== 'Draft')),
+    }),
+    text,
+  );
+
+/** Leaves the page, has @drafter take cue, and comes back once it’s revised to `revision`. */
+async function awayWhile(page, { thread, itemId, itemOf }, cue, revision) {
+  await page.goto('about:blank');
+  room.app.rt.sendMessage(thread.id, { text: `@drafter ${cue}` });
+  await expect.poll(() => itemOf().revision, { message: `revision ${revision}` }).toBe(revision);
+  await room.idle();
+  await page.goto(`${room.app.origin}/#/t/${thread.id}`);
+  await synced(page, room.app);
+  void itemId;
+}
+
+test('#1144 a draft whose line is gone from a revision made while away is drawn, marked, and can be deleted', async ({ page }) => {
+  const r = await room.withReview(page, 'Shrunk');
+  await drawn(r.block, 'Preview');
+  await commentOn(page, r.block, 'Steps', 'Which script?');
+  // The revision is two lines, with no previous: line 21 is gone.
+  await awayWhile(page, r, 'header only', 2);
+  await r.block.getByRole('radio', { name: 'Lines', exact: true }).click();
+  const draft = r.block.locator('.rv-doc .rv-thread', { hasText: 'Which script?' });
+  await expect(draft, 'drawn, as on a page left open').toHaveCount(1);
+  await expect(draft.getByText(/^Its (line|text) changed$/), 'and marked').toHaveCount(1);
+  await expect(draft.getByRole('button', { name: /delete/i }), 'and it can be deleted').toHaveCount(1);
+});
+
+test('#1144 a draft written on revision 2 follows its line into revision 3, whose previous isn’t revision 2’s text', async ({ page }) => {
+  const r = await room.withReview(page, 'Third');
+  room.app.rt.sendMessage(r.thread.id, { text: '@drafter revise 2' });
+  await expect.poll(() => r.itemOf().revision, { message: 'revision 2' }).toBe(2);
+  await room.idle();
+  await synced(page, room.app);
+  await r.block.getByRole('radio', { name: 'Preview', exact: true }).click();
+  await drawn(r.block, 'Preview');
+  // Line 26, “Revision 2.”, is only in revision 2’s text.
+  await commentOn(page, r.block, 'Revision 2.', 'Name it.');
+  // As #248's agent revises: previous is the first draft, not revision 2’s text.
+  await awayWhile(page, r, 'revise 3', 3);
+  await r.block.getByRole('radio', { name: 'Lines', exact: true }).click();
+  // Its text is gone from revision 3, so it’s marked, as on a page left open; read from the first draft, it was unmarked.
+  await expect.poll(() => placed(r.block, 'Name it.'), { message: 'marked as its text changed' }).toEqual({ marked: [26], tags: ['Its text changed'] });
+});
