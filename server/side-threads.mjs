@@ -76,7 +76,7 @@ export function agentWake(
   rt.recordAgentMessage(target.id, 'from', from.handle, text);
   // The woken agent answers from its session in the conversation (#110). Busy, it takes the wake when its turn ends,
   // from the queue where it was sent, where the person sees it and can cancel it (#228).
-  const waits = rt.turns.has(target.id) || rt.exiting.has(target.id);
+  const waits = rt.busyFor(target.id);
   const wake = wakeEntry(from, target, text, it.id);
   if (waits) updateThread(rt, at, (t) => ({ queue: [...(t.queue ?? []), wake] }));
   else deliverWake(rt, at, wake);

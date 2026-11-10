@@ -1,5 +1,7 @@
 import { agentSkills } from './agent-plugin.mjs';
+import { POSTBOX_SERVER } from './setup.mjs';
 import { POSTBOX_SKILLS, postboxSkillsOn } from './skill-config.mjs';
+import { toolsDown } from './tools-down.mjs';
 
 /**
  * Gives this turn’s app-server Postbox’s skills (agent-plugin.mjs) as an extra skills root, which that process holds
@@ -41,4 +43,29 @@ export async function openCodexThread(ctx, request, { sourceThreadId, fork, cwd,
     ctx.saveState(cleared);
     return { opened: await start(), fresh: true };
   }
+}
+
+// Codex refuses a thread whose required MCP server can’t start (checked with codex-cli 0.167.0, 10 Nov): thread/start
+// answers -32603, “… required MCP servers failed to initialize: postbox: handshaking with MCP server failed: …”, with
+// several hundred characters of transport detail after it, and sends no startupStatus for the server (#1162). Only
+// an entry of that list counts, at its start or after “; ”, not “postbox:” inside another server’s detail.
+// lint-allow regex: its only variable part is POSTBOX_SERVER, a constant (“postbox”).
+const REQUIRED_FAILED = new RegExp(`required MCP servers failed to initialize: (?:[^;]*; )*${POSTBOX_SERVER}:`);
+const SAID_MAX = 400; // of Codex’s error shown in the step, as for Kiro’s (#489): its transport detail runs long
+
+/**
+ * When Codex refused the thread because Postbox’s server didn’t start, a failed step and an error that says so;
+ * any other error as it was.
+ * @param {any} ctx @param {any} err
+ */
+export function codexRefusal(ctx, err) {
+  if (!REQUIRED_FAILED.test(String(err?.message ?? ''))) return err;
+  const said = String(err.message).slice(0, SAID_MAX);
+  toolsDown(ctx, `Codex couldn’t start Postbox’s tool server, which it needs, so it didn’t start the turn. Codex said: “${said}”`, { ran: false });
+  return Object.assign(
+    new Error('Postbox’s tools didn’t load: Codex couldn’t start Postbox’s tool server, so it didn’t start this turn. Retry to try again.'),
+    {
+      cause: err,
+    },
+  );
 }

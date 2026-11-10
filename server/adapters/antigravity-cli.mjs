@@ -56,7 +56,7 @@ import { TOOL_DEFS } from '../../shared/mcp-tools.mjs';
 import { AGY_CAPABILITIES } from './agy-capabilities.mjs';
 import { agyHookCommand, agySupportsHooks, confirmAgyHook, HOOK_SCRIPT } from './agy-hook.mjs';
 import { agyPlugin, agySkillFiles, excludeFile, excludePlugin, PLUGIN_DIR, writeAgyPlugin } from './agy-plugin.mjs';
-import { clip, HEADLESS_NOTE, HOOK_NOTE, LOOKING_NOTE, refusalFollowUp, refusalOf } from './agy-refusals.mjs';
+import { agyStartError, clip, HEADLESS_NOTE, HOOK_NOTE, LOOKING_NOTE, refusalFollowUp, refusalOf } from './agy-refusals.mjs';
 import { AGY_SERVER, ALLOW_POSTBOX, agySettingsFile, allowPostbox } from './agy-settings.mjs';
 import { toolOf } from './agy-tools.mjs';
 import { describeTool } from './claude-stream.mjs';
@@ -184,16 +184,16 @@ export function modeArgs(persona, { hookConfirmed = false } = {}) {
 }
 
 /**
- * What the hook reads from its environment: its MCP server, the mode, the folders it may work in, apart from those
- * the folders it may only read (#338), which only its read branch reads, and the persona’s tools and publishing (#416).
- * @param {{ mcpUrl: string, persona: any, cwd: string, addDirs: string[], readDirs: string[] }} o
+ * What the hook reads from its environment: its MCP server, the mode, the folders it may work in, and the persona’s
+ * tools and publishing (#416). Not the folders it may only read (#338): the hook asks Postbox about a read there, which
+ * answers from the session as it is now, where this is the turn’s start (#1074).
+ * @param {{ mcpUrl: string, persona: any, cwd: string, addDirs: string[] }} o
  */
-export function agyHookVars({ mcpUrl, persona, cwd, addDirs, readDirs }) {
+export function agyHookVars({ mcpUrl, persona, cwd, addDirs }) {
   return {
     POSTBOX_MCP_URL: mcpUrl,
     POSTBOX_AGY_MODE: persona?.permissionMode ?? 'auto',
     POSTBOX_AGY_FOLDERS: JSON.stringify([cwd, ...addDirs]),
-    POSTBOX_AGY_READ: JSON.stringify(readDirs),
     POSTBOX_AGY_TOOLS: JSON.stringify(Array.isArray(persona?.tools) ? persona.tools : []),
     POSTBOX_AGY_PUBLISH: setupOf(persona).canPublish ? '1' : '',
   };
@@ -661,7 +661,7 @@ export class AntigravityCliAdapter {
     const effort = agyEffort(model, effortOf(persona));
     const args = agyArgs({ persona, model, effort, sessionId, prompt, addDirs, hookConfirmed });
     const mapper = createAgyMapper(ctx, { effort, resumed: sessionId, wrote });
-    const hookVars = agyHookVars({ mcpUrl: ctx.mcpUrl, persona, cwd, addDirs, readDirs: ctx.readDirs ?? [] });
+    const hookVars = agyHookVars({ mcpUrl: ctx.mcpUrl, persona, cwd, addDirs });
     const env = hookConfirmed ? { ...this.env, ...hookVars } : this.env;
     return new Promise((resolve, reject) => {
       let child;
@@ -669,7 +669,7 @@ export class AntigravityCliAdapter {
         // Its own process group, so Stop reaches everything it started (#126).
         child = this.spawn(this.bin, args, { cwd, env, stdio: ['ignore', 'pipe', 'pipe'], detached: true });
       } catch (e) {
-        reject(new Error(`Couldn’t start the Antigravity CLI (${this.bin}): ${e.message}`));
+        reject(agyStartError(e, prompt, this.bin));
         return;
       }
       let stderr = '';
@@ -681,15 +681,7 @@ export class AntigravityCliAdapter {
       });
       // SIGINT to the group, then SIGKILL after the grace period (process-group.mjs), as for the other CLIs.
       const stop = stopOnAbort(ctx.signal, () => stopTurn(c, { exited, kill: this.kill, list: this.list }));
-      child.on('error', (e) =>
-        reject(
-          new Error(
-            e.code === 'ENOENT'
-              ? 'The Antigravity CLI isn’t installed, or isn’t on the PATH. Install it, or set POSTBOX_AGY_BIN.'
-              : `The Antigravity CLI couldn’t start: ${e.message}`,
-          ),
-        ),
-      );
+      child.on('error', (e) => reject(agyStartError(e, prompt, this.bin)));
       child.stderr.on('data', (d) => {
         stderr = (stderr + d).slice(-4000);
       });
