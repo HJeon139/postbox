@@ -47,6 +47,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { checkRemoteContext } from './adapter.mjs';
+import { tooLongForArg } from './arg-prompt.mjs';
 import { describeTool, isQuietTool } from './claude-stream.mjs';
 import { agentFolder } from './folder.mjs';
 import { FRESH_START_TEXT, formatMessage, turnGuide } from './guide.mjs';
@@ -399,7 +400,9 @@ export class KiroCliAdapter {
   async run({ ctx, cwd, folders, prompt, guide, sessionId, turn, attach = false }) {
     const persona = ctx.persona;
     const agent = `postbox-${String(persona.handle).replace(/[^a-z0-9_-]/gi, '')}-${randomUUID().slice(0, 8)}`;
-    const args = kiroArgs({ persona, agent, sessionId, prompt, stdin: Boolean(ctx.remote) });
+    // On a host the prompt always goes on stdin; here, too, once it's too long for one argument (#362).
+    const stdin = Boolean(ctx.remote) || tooLongForArg(prompt);
+    const args = kiroArgs({ persona, agent, sessionId, prompt, stdin });
     /** @type {string | null} the agent file on this computer, removed when the turn ends */
     let file = null;
     let spawnFn = this.spawn;
@@ -421,12 +424,13 @@ export class KiroCliAdapter {
         let child;
         try {
           // Its own process group, so Stop reaches everything it started (#126).
-          child = spawnFn(this.bin, args, { cwd, env, stdio: ['ignore', 'pipe', 'pipe'], detached: true });
+          child = spawnFn(this.bin, args, { cwd, env, stdio: [stdin && !ctx.remote ? 'pipe' : 'ignore', 'pipe', 'pipe'], detached: true });
         } catch (e) {
           reject(new Error(`Couldn’t start the Kiro CLI (${this.bin}): ${e.message}`));
           return;
         }
-        if (ctx.remote && !attach) child.stdin.end(prompt);
+        // kiro exiting before it reads the prompt (EPIPE) ends its turn, not Postbox, as claude-code.mjs guards it.
+        if (stdin && !attach) child.stdin.on('error', () => {}).end(prompt);
         let stderr = '';
         const c = child;
         const exited = new Promise((r) => {

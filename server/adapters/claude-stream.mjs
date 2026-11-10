@@ -4,10 +4,12 @@
 
 import { appendGlimpseSource, glimpseOf } from '../../shared/text.mjs';
 import { contentBlocks } from './claude-content.mjs';
+import { commandsOf, postboxServerStatus } from './claude-init.mjs';
 import { replyText } from './claude-reply.mjs';
 import { addTokens, forkOf, resultTokens, sessionTotals, turnCost } from './claude-usage.mjs';
 
 export { describePermission } from './claude-permission.mjs';
+export { commandsOf }; // moved to claude-init.mjs; its importers keep this path
 
 // Postbox’s own UI tools show up in the thread as what they make, so they aren’t listed as activity;
 // nor is Claude Code loading tool definitions. They still name the step on the agent’s ring.
@@ -469,13 +471,13 @@ export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.no
       if (e.subtype === 'init') {
         st.sessionId = e.session_id ?? st.sessionId;
         st.model = e.model ?? st.model;
-        // The MCP servers that loaded, with their status, for the persona sheet (#59), and the model and effort
-        // the turn runs with (#60).
+        // MCP servers with their status, for the persona sheet (#59); the model and effort the turn runs with (#60).
         ctx.reported?.({
           ...(Array.isArray(e.mcp_servers) ? { mcpServers: e.mcp_servers } : {}),
           ...(e.model ? { model: e.model } : {}),
           ...(effort ? { effort } : {}),
         });
+        postboxServerStatus(ctx, e.mcp_servers); // Postbox’s own server failed: shown, and told next turn (#1161)
         // Its skills and commands, for the composer’s / menu (#67).
         if (Array.isArray(e.slash_commands)) ctx.commands?.(commandsOf(e));
         status({ state: 'think', currentStep: 'Thinking' });
@@ -673,21 +675,6 @@ export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.no
       return st.lastUuid ?? null;
     },
   };
-}
-
-/**
- * An init’s skills and commands (#67): `slash_commands` lists both, by name, `skills` says which are skills, and
- * `terminal_slash_commands` are bound to a terminal (recorded: doctor, color, focus, reload-plugins), so they’re left
- * out of other surfaces. Recorded in tests/fixtures/claude-code/permission-subagent.jsonl.
- * @param {any} init @returns {{ name: string, skill?: true }[]}
- */
-export function commandsOf(init) {
-  const strings = (v) => (Array.isArray(v) ? v.filter((x) => typeof x === 'string') : []);
-  const terminal = new Set(strings(init?.terminal_slash_commands));
-  const skills = new Set(strings(init?.skills));
-  return strings(init?.slash_commands)
-    .filter((n) => !terminal.has(n))
-    .map((name) => (skills.has(name) ? { name, skill: true } : { name }));
 }
 
 /** Why a finished stream failed, in words for the person, or null if it didn’t. */

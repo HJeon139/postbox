@@ -73,6 +73,12 @@ export const SENDING = Object.freeze({
 });
 
 /**
+ * The longest prompt, in UTF-8 bytes, Postbox passes as one command-line argument to a backend that has another way in
+ * (#362). Linux refuses one argument past 128 KiB (MAX_ARG_STRLEN) with E2BIG; this leaves room for the rest of the line.
+ */
+export const ARG_PROMPT_MAX = 100_000;
+
+/**
  * How long a remote turn may wait in silence on a background task before it’s stopped as hung (#847). The longest a
  * Claude Code background Bash call may run (its timeout’s maximum, 7,200,000 ms), so Postbox never stops one first.
  */

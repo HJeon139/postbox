@@ -21,6 +21,7 @@ import { listProcesses, stopJobUnder, stopTurn } from './process-group.mjs';
 import { listCommands } from './sdk-commands.mjs';
 import { canUseTool as sdkCanUseTool } from './sdk-permission.mjs';
 import { deniedTools, effortOf, fromContext, HOST_SOURCES, ISOLATED_SOURCES, modelOf, postboxServer, settingsFor, setupOf, writeRules } from './setup.mjs';
+import { takeToolsDown } from './tools-down.mjs';
 
 // Passed explicitly, as for the CLI: an agent set to ask must not inherit a looser mode from your settings.
 const MODES = { auto: 'auto', ask: 'default', acceptEdits: 'acceptEdits', bypass: 'bypassPermissions' };
@@ -180,7 +181,7 @@ export class AgentSdkAdapter {
     // The project’s folder, and the folders the person added for this conversation (#66).
     const addDirs = [...new Set([ctx.project?.folder, ...(ctx.addDirs ?? [])])].filter((d) => d && d !== cwd);
     const turned = turnGuide(message, { persona, session, handles: ctx.handles, room: ctx.room, project: ctx.project, brief: session?.brief });
-    const [guide, prompt] = [turned.guide, formatMessage(turned.message, ctx.pathOf)];
+    const [guide, prompt] = [turned.guide, takeToolsDown(ctx, message) + formatMessage(turned.message, ctx.pathOf)]; // told first, once (#1161)
     const resume = Boolean(ctx.state.sdkSessionId);
     const fork = resume ? null : sdkForkPoint(ctx.state);
     const sessionId = ctx.state.sdkSessionId ?? randomUUID();
