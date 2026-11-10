@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Draft r1, for critic's read and then the person's decisions (“Choices for the person”). Nothing here is built. |
+| **Status** | Draft r2, after critic's first read (two P2s and three P3s on r1), for the person's decisions (“Choices for the person”). Nothing here is built. |
 | **Revises** | `designs/508/design.md`, revision 12: §3 (G1), §5 (Architecture), §6.3, §10 (Browser), §11 (the PF-1 budget), §14 (Rollout, track B) and §18 (Decisions). `designs/508/requirements.md`: §5 (Large rooms) and Storage. `designs/508/storage-design.md`: §6.9 (S2's trigger). Where this file and those differ, this file wins until they are edited to match. |
 | **The target** | Approved by the person on 10 November 2026 (`sprint4/perf-principles-approved.md`; #1155). Every interaction paints within 100 ms, p95, from input to the next paint, in a conversation of a million items, in Firefox and Chromium, on the person's Mac. The page draws what can be seen plus a screen either side, never the whole conversation. |
 | **Not in it** | The doc changes to `intent.md`, `architecture.md`, `engineering-practices.md`, `review-guide.md` and `developing.md` (items 1 to 6 of #1155). Those are one docs PR after this revision is decided. |
@@ -171,11 +171,11 @@ The window's single-reader rule (INV-8) is how this is checked: only the window 
 
 ### 6.2 Item blocks
 
-- **Blocks:** a conversation's items are kept in blocks of consecutive positions. The draft is 4,096 items a block, a tuning value (MS-3).
+- **Blocks:** a conversation's items are kept in blocks of consecutive positions, bounded by bytes, not by count. The draft is 4 MB a block, with the newest block kept small (draft: 256 KB) and sealed into the older blocks as it fills. Both are tuning values (MS-3).
 - **Each block is one file** under the sharded snapshot, written as JSON Lines: a header line `{ v, convId, firstN, lastN, firstAt, lastAt, ids }`, then one line per item.
 - **A block is rewritten only when an item in it changes,** by the same draft, sync and rename as today's snapshot.
-  - Most changes land in the newest block. A patch, revision or move of an old item rewrites its one block.
-  - That makes a snapshot's cost proportional to what changed since the last one (PF-12).
+  - Most changes land in the newest block, which is small, so a streaming reply rewrites at most 256 KB at each snapshot. A patch, revision or move of an old item rewrites its one block.
+  - A snapshot's cost is then proportional to the blocks touched since the last one, each bounded by bytes, not to the conversation (PF-12). By count, 4,096 items at about 7.8 KB would have made the newest block about 32 MB, rewritten for one changed item.
 - **The sharded snapshot (S2), brought forward:**
   - a manifest names the current file for each conversation's header shard, each item block, and each non-item collection (sessions, apps, records, settings);
   - it is renamed into place last, so a crash leaves the old set in use (`storage-design.md` §6.9, the shape agreed then);
@@ -200,7 +200,7 @@ In memory, the server keeps:
 - a read by time is the same search on `firstAt`, since items are appended in time order;
 - a read by id is O(1) to its `n`, then a range read.
 
-**What this changes for code that reads items:** `store.items(threadId)` and `store.pending.items(threadId)`, which return a conversation's whole list today, become range reads. The held-view guard (`tests/store-held-guard.test.mjs`) already lists every reader of `items` and `work` by file and function, in its published, direct and pending tables. That inventory is the work list for this step:
+**What this changes for code that reads items:** `store.items(threadId)` and `store.pending.items(threadId)`, which return a conversation's whole list today, become range reads. The held-view guard (`tests/store-held-guard.test.mjs`) already lists every reader of `items` and `work` by file and function, in its published, direct and pending tables. That inventory is the work list for this step, with two more sources the guard doesn't see: a grep for `state.items` and `s.items` outside the store, and the tools that read `snapshot.json` directly, `tools/bench-snapshot-stall.mjs` and `tools/measure-archive-policies.mjs`, as lead-state found for #1180. The readers:
 - **Readers that need only the newest items:** the turn envelope, the catch-up, endWork's last reply. They read the hot block.
 - **Readers that need one item by id:** `read_message`, blocks, reactions. They read through the index.
 - **Readers that walk the whole room:** room checks, telemetry, `read_conversation`'s paging. They read by range, a block at a time. `read_conversation` keeps its interface (#1155 item 3), and pages through blocks.
@@ -256,10 +256,11 @@ So the read side's server half goes ahead now. It doesn't depend on what the pag
   - start-up.
 - **The sizes:** 1,000, 100,000 and 1,000,000 items on the big-room seed, with reviews, apps and long tool runs in the room's shape.
 - **When it fails:** past 100 ms p95 (PF-1), past about 5,000 elements (PF-10), or past the start-up budget (PF-11, Choice C4).
-- **When it runs:**
-  - the 100,000-item run gates every PR that touches `app/`, `server/store*`, or a reader the held-view guard lists;
-  - the million-item run is nightly (Choice C3, where).
-- **Until the page fetches by range,** the spec gates only opening and the element count above 10,000 items, as #1166 says now.
+- **When it runs, and what gates where,** to match #1166 and #1185 as decided:
+  - **On each PR** that touches `app/`, `server/store*`, or a reader the held-view guard lists: 1,000 and 10,000 items. An every-size run took 21 minutes in #1185, against #1166's ceiling of about 10.
+  - **What gates there:** in CI, only the element count, and only once `main` passes it (#1185 keeps the spec off CI until then). Times gate only on the reference Mac's headed run, never on CI or the build host, whose load swings.
+  - **Nightly:** 100,000 and 1,000,000 items (Choice C3, where).
+  - **When 100,000 moves onto every PR:** once start-up is bounded, at R4, since until then a 100,000-item room doesn't open (#1180).
 - **The probes:** both browsers have Event Timing, `performance.now`, `requestAnimationFrame` and the lag log, so each measure runs in both. Critic's conditions on #1166's r3 stand:
   - a key whose entry outlasts two frame gaps is “not measured”, never a time;
   - the gating Chromium run on the Mac is headed, not the headless shell.
@@ -273,7 +274,7 @@ Each step ships alone, with a spec that fails first on `main` and the full brows
 | R0 | #1075, the window | — | merged, or at its last round |
 | R1 | The docs PR, #1155's items 1 to 6 | this revision decided | the light gate |
 | R2 | The budget spec (#1166), gating opening and elements above 10,000 items | R0 | #1150's and #1151's cases on commits before their fixes |
-| R3 | #1180: the line-based snapshot and replay | — | a state past the string limit snapshots and loads; a segment over the limit replays |
+| R3 | #1180: the line-based snapshot and replay, with C5 decided | — | a state past the string limit snapshots and loads; a segment over the limit replays; `main`'s reader refuses the new file rather than starting empty |
 | R4 | B1a positions everywhere, and B2: the items API, filtered stream, watermarks and generations; `/api/state` without items; needs and open asks from the server | R0 | B2's specs in `design.md` §14; start-up at 30,000 items under the C4 budget |
 | R5 | Viewport rendering on the window: the range rule, heights by id, pinned items in the budget | R4 | the element count and switch time at 100,000 items; PF-3's 13 scroll specs |
 | R6 | Long items windowed: activity steps, reviews, tables | R5 | elements with one 2,000-step tool run in view |
@@ -304,7 +305,7 @@ Each choice below changes what the person sees or what they pay for. Every other
 - (c) Exact heights by measuring every item off screen. The thumb never shifts, but it costs a pass over every item, which the target forbids. Not recommended.
 
 **C3. Where the million-item run happens nightly.** CI runs Chromium only (#670), and a nightly million-item run in both browsers costs runner time.
-- (a) **Recommended.** On the build host, nightly, both browsers, with the results posted to the nightly issue. The reference Mac is checked by hand before each release. No paid runner time.
+- (a) **Recommended.** On the build host, nightly, both browsers, with the results posted to the nightly issue. The reference Mac's headed run, which gates times, is run on each PR that touches what §8 lists, as its Mac check, not on every merge. No paid runner time.
 - (b) In CI, nightly, both browsers. It needs Firefox added to CI and pays runner minutes each night.
 - (c) Weekly instead of nightly, on the build host.
 
@@ -313,15 +314,19 @@ Each choice below changes what the person sees or what they pay for. Every other
 - (b) At most 2 s.
 - (c) Parity with a 1,000-item room, measured on each run, like PF-1's old relative budget.
 
-**C5. Going back to an older Postbox after R7.** The sharded snapshot is a folder an older build can't read.
-- (a) **Recommended.** Accept it. An older build refuses to start, with a clear error, rather than starting empty (`storage-design.md` Q7). A tool rebuilds a whole `snapshot.json` for going back, and the release note says so, with a `BREAKING CHANGE` footer.
-- (b) Also keep writing a whole `snapshot.json` beside the shards. Not possible past V8's string limit, so this works only for rooms under about 68,000 seeded items.
+**C5. Going back to an older Postbox, which first breaks at R3 (#1180), not R7.** #1180 writes `snapshot.json` as lines. An older build reads it with one `JSON.parse` (`server/store-recover.mjs:62` on `main`) and refuses to start, with “Couldn't read the snapshot”. It fails closed: nothing starts empty or is overwritten. Every clone run without `--data` shares `~/.postbox`, so an older clone stops starting the moment #1180 merges. R7's sharded folder is a second break of the same kind. This one is asked now, with R3.
+- (a) **Recommended.** Accept it.
+  - #1180's PR carries a `BREAKING CHANGE` footer and a release note: an older build refuses this folder.
+  - A case shows `main`'s reader refusing the new file rather than starting empty.
+  - A tool rebuilds an old-format `snapshot.json` for going back, and refuses above the string limit (about 68,000 seeded items), since past it no single-string snapshot can exist.
+  - Older clones run with their own `--data` folder.
+- (b) Also keep writing an old-format `snapshot.json` beside the new one, until R7. Not possible past V8's string limit, so it helps only rooms under about 68,000 seeded items, and doubles each snapshot's cost.
 
 ## 11. Tests owed, failing first
 
 | # | Test | Step |
 |---|---|---|
-| T-S1 | A million-item conversation: snapshot, restart and a range read each work, and the snapshot after one new item rewrites one block | R7 |
+| T-S1 | A million-item conversation: snapshot, restart and a range read each work, and the snapshot after one new item rewrites only the newest block, under its byte bound | R7 |
 | T-S2 | Memory at a million items stays under the hot set's bound plus the index, measured and recorded | R7 |
 | T-S3 | Search across a million items answers within 100 ms p95, and a hit far outside the range opens at it | R8 |
 | T-P1 | Mounted elements stay under 5,000 at 1,000,000 items, scrolling from the newest to the oldest | R5 |
