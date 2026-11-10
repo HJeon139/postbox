@@ -78,8 +78,8 @@ test('#179 comments from Preview reach the agent with their line, columns and qu
   await expect
     .poll(() => room.calls.find((m) => m.kind === 'event' && m.event.blockId === blockId)?.event.values.comments, { message: 'the agent gets the comments' })
     .toEqual([
-      { line: 10, col: 11, endLine: 10, endCol: 13, quote: 'low', text: 'Say how low.' },
-      { line: 23, col: 7, endLine: 23, endCol: 9, quote: 'run', text: 'Which script?' },
+      { line: 10, col: 11, endLine: 10, endCol: 13, quote: 'low', text: 'Say how low.', threadId: 'you-1-1' },
+      { line: 23, col: 7, endLine: 23, endCol: 9, quote: 'run', text: 'Which script?', threadId: 'you-1-2' },
     ]);
 });
 

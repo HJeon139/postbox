@@ -169,8 +169,9 @@ test('#179: what the agent reads: line, columns and the quote', () => {
   assert.equal(commentAt({ anchor: 'filters' }), '“filters”');
 });
 
-// Review of #255’s fix: a reviewer who only replied in the person’s thread doesn’t lock it; their words stay.
-test('#133: in the person’s thread a reviewer replied in, the agent adds comments and moves it, but keeps every word', () => {
+// Review of #255’s fix: a reviewer who only replied in the person’s thread doesn’t lock it; their words stay. Since
+// #1143 the person’s thread follows its text as a reviewer’s does, and the agent adds only its own comments.
+test('#133: in the person’s thread a reviewer replied in, the agent adds its own comments, but keeps every word and the place', () => {
   const c1 = {
     id: 'c1',
     line: 1,
@@ -188,5 +189,5 @@ test('#133: in the person’s thread a reviewer replied in, the agent adds comme
     { author: '@researcher', text: 'Cut.' },
   ];
   const out = keepReviewThreads(existing, { content: 'a\nb', threads: [{ ...c1, line: 2, status: 'resolved', comments: sent }] });
-  assert.deepEqual(out.threads, [{ ...c1, line: 2, status: 'resolved', comments: [...c1.comments, sent[2], sent[3]] }]);
+  assert.deepEqual(out.threads, [{ ...c1, status: 'resolved', comments: [...c1.comments, sent[3]] }]);
 });

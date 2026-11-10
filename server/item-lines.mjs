@@ -2,7 +2,7 @@
 // #153), moved out of runtime.mjs. Runtime’s describeItem and topicRootLine call these.
 
 import { READING } from '../shared/limits.mjs';
-import { commentAt } from '../shared/review-comments.mjs';
+import { authorName, commentAt } from '../shared/review-comments.mjs';
 import { appCheckText } from './app-check-status.mjs';
 import { closedText } from './blocks.mjs';
 import { clipText, fenced } from './helpers.mjs';
@@ -31,7 +31,8 @@ function blockContent(it) {
     case 'review':
       if (b.format === 'app') out.push(`It reviews the app ${b.appId}.`);
       else out.push(b.format === 'code' ? `${b.filename ? `${b.filename}:\n` : ''}${fenced(b.content ?? '', b.language)}` : String(b.content ?? ''));
-      for (const th of b.threads ?? []) out.push(`Comments on ${commentAt(th)} (${th.status}):\n${lines(th.comments.map((c) => `${c.author}: ${c.text}`))}`);
+      for (const th of b.threads ?? [])
+        out.push(`Comments on ${commentAt(th)} (${th.status}):\n${lines(th.comments.map((c) => `${authorName(c.author)}: ${c.text}`))}`);
       break;
     case 'card':
       if (b.body) out.push(b.body);
