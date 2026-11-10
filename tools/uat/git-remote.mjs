@@ -78,9 +78,12 @@ function mustGit(args, cwd) {
   if (r.status !== 0) throw new Error(`Couldn’t seed the run’s remote: git ${args.join(' ')} failed: ${(r.stderr || r.error?.message || '').trim()}`);
 }
 
-/** The guard as environment: git reads GIT_CONFIG_KEY_n and GIT_CONFIG_VALUE_n over every config file. */
+/**
+ * The guard as environment: git reads GIT_CONFIG_KEY_n and GIT_CONFIG_VALUE_n over every config file. An inherited
+ * GIT_CONFIG_PARAMETERS is read after them, so a helper named there would run past the guard's empty one: blanked (#1125).
+ */
 export function guardEnv() {
-  const env = { GIT_ALLOW_PROTOCOL: 'file', GIT_CONFIG_COUNT: String(GUARD.length) };
+  const env = { GIT_ALLOW_PROTOCOL: 'file', GIT_CONFIG_PARAMETERS: '', GIT_CONFIG_COUNT: String(GUARD.length) };
   GUARD.forEach(([k, v], i) => {
     env[`GIT_CONFIG_KEY_${i}`] = k;
     env[`GIT_CONFIG_VALUE_${i}`] = v;
