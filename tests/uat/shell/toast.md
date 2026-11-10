@@ -2,7 +2,7 @@
 
 ![Toast](../screenshots/toast.png)
 
-**Where:** Bottom right, after actions and blocking events.
+**Where:** Top right, after actions and blocking events.
 
 ## Why it exists
 
@@ -10,7 +10,8 @@ Confirms what just happened and offers the way back (Undo, Restore, Go) without 
 
 ## Expected functionality
 
-- Appears after a delete (with a countdown and Undo), permission requests and other blocking events from other conversations.
+- Appears in the Notifications region after a delete (with a countdown and Undo), permission requests and other blocking events from other conversations.
+- Ordinary and delete notices use the same top-right stack; on a narrow screen it spans the available width.
 - Has an action button when one applies; disappears on its own; is announced to screen readers.
 
 ## Steps to reproduce
@@ -19,4 +20,4 @@ Confirms what just happened and offers the way back (Undo, Restore, Go) without 
 2. Delete a conversation from its ⋯ menu.
 3. Press Undo in the toast before it disappears.
 
-**Pass if:** The toast appears with its countdown, Undo works, and the conversation is back.
+**Pass if:** The delete notice appears in the same top-right Notifications stack as other notices, its countdown runs, Undo works, and the conversation is back.
