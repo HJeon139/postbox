@@ -294,10 +294,22 @@ test('#1143: a review stored with an author outside the rule still takes the per
 
 test('#1143: a review stored with an author outside the rule can still be revised', async () => {
   const s = await legacy();
-  const r = s.update({ ...draft, content: `${DRAFT}\nMore.` });
+  // Its agent’s own thread, sent back with what it holds now: the old “You” reads as the agent’s.
+  const threads = [
+    {
+      id: 'c1',
+      status: 'resolved',
+      line: 4,
+      comments: [
+        { author: '@critic', text: 'Cut it.' },
+        { author: '@critic', text: 'Done.' },
+      ],
+    },
+  ];
+  const r = s.update({ ...draft, content: `${DRAFT}\nMore.`, threads });
   assert.equal(r.ok, true, r.message);
   assert.deepEqual(
-    s.item().block.threads[0].comments.map((c) => c.author),
-    ['@critic', '@critic'],
+    s.item().block.threads.map((t) => [t.status, t.comments.map((c) => c.author)]),
+    [['resolved', ['@critic', '@critic']]],
   );
 });

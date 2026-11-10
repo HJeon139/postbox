@@ -4,7 +4,7 @@
 // the answer writes the person’s, and only review_block another agent’s.
 
 import { validateBlock } from '../shared/catalog.mjs';
-import { PERSON, personNext, threadsError } from '../shared/review-comments.mjs';
+import { author, PERSON, personNext, threadsError } from '../shared/review-comments.mjs';
 import { httpError } from './helpers.mjs';
 import { keepReviewThreads } from './review-comments.mjs';
 
@@ -109,8 +109,9 @@ function strayReply(it, values) {
  * it’s refused, and nothing is written.
  * @param {any} rt @param {any} it  the review’s item @param {any} event  the answer’s, from buildEvent @param {number} revision
  */
-export function personAnswer(rt, it, event, revision) {
-  if (it.block.type !== 'review') return null;
+export function personAnswer(rt, given, event, revision) {
+  if (given.block.type !== 'review') return null;
+  const it = ownedAuthors(given);
   const stray = strayReply(it, event.values);
   if (stray)
     throw httpError(422, `Your review wasn’t sent: it replies in thread “${stray.threadId}”, which this review doesn’t have. Reload the page and reply again.`);
@@ -146,4 +147,25 @@ export function revisedReview(found, block) {
     reviews: existing === found ? {} : { reviews: existing.reviews },
     note: droppedText(own.dropped, existing.handle),
   };
+}
+
+/**
+ * A review stored before the author rule (#1143) may hold a comment whose author isn’t `you` or an @handle, such as
+ * the demo’s mock writing “You”. Only the block’s own agent could write one, through show_block or update_block
+ * (review_block always wrote its @handle), so each reads as that agent’s: never as the person’s. The item as it is
+ * when every author fits, so a review written since costs one pass over its comments.
+ * @param {any} it  the block item
+ */
+export function ownedAuthors(it) {
+  const fits = (c) => {
+    /** @type {string[]} */
+    const errs = [];
+    author(c.author, 'author', errs);
+    return errs.length === 0;
+  };
+  const threads = it.block.threads ?? [];
+  if (threads.every((t) => t.comments.every(fits))) return it;
+  const own = `@${it.handle}`;
+  const owned = threads.map((t) => ({ ...t, comments: t.comments.map((c) => (fits(c) ? c : { ...c, author: own })) }));
+  return { ...it, block: { ...it.block, threads: owned } };
 }
