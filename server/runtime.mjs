@@ -469,8 +469,9 @@ export class Runtime {
     // And the agent you reply to, as the mentioned ones above.
     const woken = targets.map(({ se }) => this.persona(se.personaId));
     refuseUnregisteredSend(this, woken);
-    // Messages to a busy agent wait in the queue unless you choose Send now.
-    const busy = targets.filter(({ se }) => this.turns.has(se.id));
+    // Messages to a busy agent wait in the queue unless you choose Send now, as for one whose host turn waits to be
+    // attached again after a restart (#1135).
+    const busy = targets.filter(({ se }) => this.turns.has(se.id) || this.remote.awaitsAttach(se.id));
     const q =
       busy.length && !sendNow ? { id: newId('q'), text, attachments, sessionIds: targets.map(({ se }) => se.id), at: Date.now(), seq: arrival() } : null;
     if (q) updateThread(this, threadId, (x) => ({ queue: [...(x.queue ?? []), q] }));

@@ -114,6 +114,16 @@ export class RemoteTurns {
     this.tickTimer?.unref?.();
   }
 
+  /**
+   * Whether a session’s turn on its host, from before a restart, waits for the host’s welcome to be attached again
+   * (#1135). The agent is idle here meanwhile, but a message for it waits in the queue, as for a busy one: a new turn
+   * would run on the host beside the one about to be attached. @param {string} sessionId
+   */
+  awaitsAttach(sessionId) {
+    const turn = this.rt.s.sessions[sessionId]?.remoteTurn?.turn;
+    return Boolean(turn) && this.restoring.get(turn) === sessionId;
+  }
+
   /** Stops the timers and listeners, as Postbox shuts down. Turns go on on their hosts. */
   close() {
     this.closed = true;
