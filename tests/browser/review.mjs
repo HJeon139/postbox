@@ -63,6 +63,9 @@ export async function reviewRoom(name) {
       // A revision that renames the table’s Cost column, leaving its delimiter as it was (#1098).
       if (message.kind === 'user' && message.text.endsWith('rename'))
         ctx.tools.update_block({ block: { ...block, revision: 2, content: DRAFT.replace('| Name | Cost |', '| Name | Price |'), previous: DRAFT } });
+      // A revision that is a table with no body: its header and its delimiter only (#1098).
+      if (message.kind === 'user' && message.text.endsWith('header only'))
+        ctx.tools.update_block({ block: { ...block, revision: 2, content: '| Name | Cost |\n|---|---|' } });
       // As the UAT’s agent revised (#248): with previous, and no revision of its own, which is optional.
       const again = /revise (\d+)$/.exec(message.kind === 'user' ? message.text : '');
       if (message.kind === 'user' && message.text.endsWith('file')) ctx.tools.update_block({ block: { id: block.id, outcome: 'Filed as #418.' } });

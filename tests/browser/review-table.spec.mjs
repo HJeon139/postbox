@@ -95,6 +95,30 @@ for (const width of [375, 1280]) {
   });
 }
 
+// #1098: a table with a header and no body rows numbers its delimiter after the header.
+test('#1098 a table with only a header shows its delimiter’s row after it, numbered 2', async ({ page }) => {
+  const { thread, block, itemOf } = await room.withReview(page, 'Header only');
+  room.app.rt.sendMessage(thread.id, { text: '@drafter header only' });
+  await expect.poll(() => itemOf().revision, { message: 'revision 2' }).toBe(2);
+  await room.idle();
+  await synced(page, room.app);
+  await viewRadio(block, 'Lines').click();
+  const table = block.locator('.md-table');
+  await expect(table).toBeVisible();
+  const rows = await table.locator('tr').evaluateAll((trs) =>
+    trs.map((tr) => ({
+      text: (tr.textContent ?? '').replace(/\s+/g, ' ').trim(),
+      line: /** @type {HTMLElement | null} */ (tr.querySelector('.g-mark'))?.dataset.line ?? null,
+    })),
+  );
+  expect(
+    rows.map((r) => r.line),
+    'the header, then the delimiter',
+  ).toEqual(['1', '2']);
+  expect(rows[1].text, 'the delimiter’s row shows its source').toContain('|---|---|');
+  await expect(block.getByRole('button', { name: 'Comment on line 2', exact: true }), 'and has a comment button').toBeVisible();
+});
+
 // #1098: a renamed header with its delimiter unchanged.
 for (const width of [375, 1280]) {
   test.describe(`renamed, at ${width} px`, () => {

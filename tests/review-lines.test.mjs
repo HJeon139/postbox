@@ -216,3 +216,11 @@ test('#1098 a table says how many of its units head it: one, or two when a diff 
   assert.equal(plain.head, 1);
   assert.equal(renamed.head, 2);
 });
+
+test('#1098 a table with only a header has one unit before its delimiter, which is its own target', () => {
+  const [g] = diff(' | a | b |', ' |---|---|');
+  if (g.type !== 'table') return assert.fail('expected a table group');
+  assert.equal(g.head, 1);
+  assert.equal(g.units.length, 1);
+  assert.equal(g.sep?.key, 2);
+});
