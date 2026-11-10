@@ -45,7 +45,7 @@ test.use({ trace: 'off' });
  * @typedef {{ measure: string, size: number, gates: boolean, verdict: string } & Record<string, any>} Line
  * @typedef {{ load: number, cpu: { idle: number, total: number } }} Since
  * @typedef {{ app: Awaited<ReturnType<typeof startPostbox>>, page: import('@playwright/test').Page, big: { id: string },
- *   small: { id: string }, newest: string, size: number, lines: Line[] }} Room
+ *   small: { id: string }, newest: string, size: number, seedMs: number, lines: Line[] }} Room
  */
 
 /** The machine’s CPU time so far, summed over its cores, for the idle share of a run. */
@@ -98,10 +98,12 @@ async function openRoom(size, browser) {
   const small = app.rt.createThread({ projectId, title: 'A short room', personaIds: [] });
   seedBigRoom(app.store, small.id, { count: 20 });
   const big = app.rt.createThread({ projectId, title: `${size.toLocaleString('en-US')} items`, personaIds: [] });
+  const seeding = Date.now();
   seedBigRoom(app.store, big.id, { count: size, work: true });
+  const seedMs = Date.now() - seeding;
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
   await page.addInitScript(installProbe, { threshold: THRESHOLD_MS, slowMs: SLOW_KEY_MS, slowId: SLOW_KEY_ID });
-  return { app, page, big, small, newest: app.store.items(big.id).at(-1).id, size, lines: [] };
+  return { app, page, big, small, newest: app.store.items(big.id).at(-1).id, size, seedMs, lines: [] };
 }
 
 /** The probes measure this browser: a planted slow key has its entry, and frames show a planted long task. @param {Room} room */
@@ -221,8 +223,15 @@ for (const size of SIZES) {
     /** @type {Room} */
     let room;
     test.beforeAll(async ({ browser, browserName }) => {
+      // Seeding 100,000 items takes about a minute on its own, past the default 30 s for a hook.
+      test.setTimeout(15 * 60_000);
       room = await openRoom(size, browser);
-      test.info().annotations.push({ type: 'run', description: JSON.stringify({ commit: commit(), browser: browserName, version: browser.version(), size }) });
+      test
+        .info()
+        .annotations.push({
+          type: 'run',
+          description: JSON.stringify({ commit: commit(), browser: browserName, version: browser.version(), size, seedMs: room.seedMs }),
+        });
     });
     test.afterAll(async () => {
       await room?.page.close();
