@@ -49,7 +49,7 @@ function refusedMentions(rt, se, turn, handles, length) {
   const n = (k) => k.toLocaleString('en-US');
   const who = handles.map((h) => `@${h}`).join(', ');
   const over = `${n(length)} characters, past the ${n(SENDING.message)} a hand-off can send`;
-  rt.addItem(turn.threadId, { kind: 'voice', text: `@${se.handle}’s mention of ${who} woke no one: its reply has ${over}.` });
+  rt.addItem(turn.threadId, { kind: 'system', variant: 'send-refused', text: `@${se.handle}’s mention of ${who} woke no one: its reply has ${over}.` });
   if (turn.kind === 'notice') return;
   const text = `Your mention of ${who} woke no one: your reply has ${over}, so nothing was sent. Hand off with wake_agent, sending only what each needs.`;
   rt.deliver(se.id, { kind: 'notice', text }, { threadId: turn.threadId });

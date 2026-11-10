@@ -87,7 +87,7 @@ export function postSummary(rt, se, turn, items) {
   if (!turn.summarizeTo || !turn.said.trim()) return;
   const tooLong = tooLongToSend('A summary', turn.said, 'Summarize back again for a shorter one.');
   if (tooLong) {
-    rt.addItem(turn.threadId, { kind: 'voice', text: tooLong.message });
+    rt.addItem(turn.threadId, { kind: 'system', variant: 'send-refused', text: tooLong.message });
     return;
   }
   rt.shareText(turn.summarizeTo, { fromThreadId: turn.threadId, handle: se.handle, text: turn.said, summary: true });
