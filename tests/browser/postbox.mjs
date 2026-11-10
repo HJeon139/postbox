@@ -83,6 +83,17 @@ export async function startPostbox(name, { demo = true, mockOnly = true, prepare
 export const windowWidth = (page) => /** @type {{ width: number }} */ (page.viewportSize()).width;
 
 /**
+ * A phone’s options for test.use, with a viewport beside them. Firefox isn’t asked for isMobile: Playwright doesn’t
+ * support it there, and with it and hasTouch together Firefox’s mouse sends no pointer events, so a drag never starts
+ * (#1187). Chromium keeps it, since it changes what a narrow page measures (windowWidth).
+ */
+export const PHONE = {
+  isMobile: async ({ browserName }, use) => use(browserName !== 'firefox'),
+  hasTouch: true,
+  deviceScaleFactor: 2,
+};
+
+/**
  * Waits until the page has applied the server’s events up to its store’s seq now. A change made on the server
  * reaches the page over its event stream, which nothing orders with the test’s next step (POSTBOX_STREAM_LAG shows it).
  * @param {import('@playwright/test').Page} page  @param {{ store: { state: { seq: number } } }} app

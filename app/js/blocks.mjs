@@ -14,6 +14,7 @@ import { h, icon, plural, timeOf, trusted } from './dom.mjs';
 import { formField } from './form-field.mjs';
 import { startProgressClock, tickProgress } from './progress-clock.mjs';
 import { renderReview } from './review.mjs';
+import { forgetReviewDraft } from './review-draft-store.mjs';
 import { fmtCell } from './table-cells.mjs';
 import { scrollFrame } from './table-scroll.mjs';
 
@@ -92,6 +93,7 @@ async function submit(item, ctx, action, values, setError) {
   try {
     await ctx.act(action, values, s?.revision ?? item.revision ?? 1);
     drafts.delete(item.id);
+    forgetReviewDraft(item.id);
     seen.delete(item.id);
   } catch (e) {
     if (e.code !== 'stale' || !s) return setError(e.message, e.fieldErrors);
