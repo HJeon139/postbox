@@ -74,7 +74,7 @@ const OUTPUT_HEADERS = { 'content-type': 'text/plain; charset=utf-8', 'x-content
 /**
  * @param {{ port?: number, dataDir?: string, fresh?: boolean, demo?: boolean, quiet?: boolean, claudeHome?: string, listen?: boolean,
  *           host?: string, spawnShell?: typeof import('node:child_process').spawn, hosts?: import('./remote/hosts.mjs').HostManager|null,
- *           wake?: Parameters<typeof import('./remote/wake.mjs').watchWake>[1], probes?: Partial<typeof PROBES> }} [opts]
+ *           wake?: Parameters<typeof import('./remote/wake.mjs').watchWake>[1], probes?: Partial<typeof PROBES>, archiveTurns?: boolean }} [opts]
  *   claudeHome: where the person’s Claude Code config is read for the persona sheet’s MCP list (the home folder;
  *   checks pass a temp folder, so they never read the real one)
  *   listen: false builds everything but doesn’t listen, so tests can call the returned handle(req, res) directly
@@ -99,6 +99,7 @@ export async function start({
   hosts: given = undefined,
   wake = undefined,
   probes = undefined,
+  archiveTurns = false,
 } = {}) {
   const origin = `http://127.0.0.1:${port}`;
   process.env.POSTBOX_ORIGIN = origin;
@@ -114,6 +115,7 @@ export async function start({
     versions: { claudeCode: claude, kiroCli: kiro, antigravityCli: agy, codex },
     // The person’s Claude Code user settings live here: the permissions panel reads and writes their rules (#66).
     home: claudeHome,
+    archiveTurns: archiveTurns === true, // the archive pass (#305), off until step 4: only `true` turns it on
   };
   // Kokoro is optional; without it, narration says it isn’t installed.
   const narrator = narrationInstalled() ? new Narrator({ modelsDir: join(dataDir, 'models'), blobs }) : null;
@@ -480,7 +482,7 @@ export async function start({
     if (server.listening) await new Promise((ok) => server.close(ok));
     await store.close(); // flushes, and releases the data folder’s lock for the next Postbox
   }
-  if (listen) await listenServer(server, port, host, close, () => rt.drainAll()); // listening: drain what waited across a restart (#228)
+  if (listen) await listenServer(server, port, host, close, () => listening(rt)); // drain (#228), then archive (#305)
   const remoteOnly = adapters.names().filter((n) => !adapters.runsHere(n));
   if (!quiet)
     console.log(
@@ -502,6 +504,16 @@ async function loadCorpusFiles(store, corpus, blobs) {
   for (const f of Object.values(store.state.files))
     if (f.inCorpus) corpus.addBook(f.id, (await blobs.get(f.sha256)).toString('utf8'), { title: storedName(f.name), author: 'Your file', year: null });
   if (Object.values(store.state.files).some((f) => f.inCorpus)) corpus.reindex();
+}
+
+/**
+ * Once the server listens: what waited across a restart is drained (#228), then every conversation’s older turns are
+ * archived (#305). The archive isn’t awaited, and it never rejects: each pass logs its own failure.
+ * @param {any} rt
+ */
+function listening(rt) {
+  rt.drainAll();
+  rt.turnArchive.all();
 }
 
 // ── HTTP helpers ─────────────────────────────────────────────────────────────────────────
