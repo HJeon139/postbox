@@ -87,6 +87,8 @@ export const HOST_DEFAULTS = Object.freeze(Object.fromEntries(HOST_ENFORCED.map(
 /** The harnesses a host can run, by the adapter’s `name`. */
 export const HARNESSES = Object.freeze(/** @type {const} */ (['claude-code', 'kiro-cli', 'codex']));
 /** @typedef {typeof HARNESSES[number]} Harness */
+/** Why a claude-code start needs its minimum claude (start.need.why, #1084): any remote turn, or the host’s denyPrompts. */
+export const NEED_REASONS = Object.freeze(/** @type {const} */ (['remote', 'denyPrompts']));
 
 /** How a turn’s stdin is fed (the design’s “A turn doesn’t depend on anything staying connected”). */
 export const STDIN_KINDS = Object.freeze(/** @type {const} */ (['file', 'none', 'held']));

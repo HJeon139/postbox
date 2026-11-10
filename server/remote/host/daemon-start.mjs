@@ -6,6 +6,7 @@ import { randomBytes } from 'node:crypto';
 import { promises as fsp } from 'node:fs';
 import { dirname, posix } from 'node:path';
 import { ATTACHMENTS_DIR, DIR_MODE, FILE_MODE, lookedText, socketPathFits, TURN_FILES, validateStartRecord } from '../../../shared/remote-protocol.mjs';
+import { claudeRefusal } from './daemon-claude.mjs';
 import { RUNNER_START_POLL_MS } from './daemon-constants.mjs';
 import { exists, runnerAlive, writeAtomic } from './daemon-files.mjs';
 import { reprobe, turnEnv } from './daemon-login.mjs';
@@ -103,12 +104,17 @@ async function startTurn(d, c, m) {
 }
 
 /**
- * The checks before the turn folder is made: the harness, the socket path, no folder for the turn yet, the Kiro
- * agents folder, the working folder, and start.json’s record. What the launch needs, or nothing once the start failed.
+ * The checks before the turn folder is made: the harness (and a claude’s version), the socket path, no folder for the
+ * turn yet, the Kiro agents folder, the working folder, and start.json’s record. What the launch needs, or nothing once the start failed.
  * @param {Daemon} d @param {any} m @param {FailStart} failStart
  */
 async function checkStart(d, m, failStart) {
   const harness = await findHarness(d, m.harness);
+  if (m.harness === 'claude-code') {
+    // The claude found now, against the bar the start carries and the daemon’s own floor (#1084).
+    const refusal = await claudeRefusal(d, harness, m.need);
+    if (refusal) return failStart(harness?.path ? 'start-failed' : 'no-harness', refusal);
+  }
   if (!harness?.path) return failStart('no-harness', `${m.harness} isn’t installed on this host. The daemon looked in ${lookedText(harness)}.`);
   const node = d.programs?.node.path ?? process.execPath;
   const dir = d.p.turn(m.turn);

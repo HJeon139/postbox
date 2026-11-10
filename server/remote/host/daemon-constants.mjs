@@ -26,6 +26,12 @@ export const PROCESS_CHECK_MS = 5000;
 /** How long a launched runner has to answer on its socket before `start` fails, and how often it’s asked. */
 export const RUNNER_START_MS = 10_000;
 export const RUNNER_START_POLL_MS = 50;
+/**
+ * How long after a re-probe of the login shell starts before a turn whose harness isn’t found may start another, on
+ * the daemon’s monotonic clock (daemon-login.mjs, #1084): a CLI installed since is found, and a host without it starts
+ * at most one login shell per this long, whatever the turn rate.
+ */
+export const REPROBE_GAP_MS = 30_000;
 /** How long an attach waits for the serve it started to answer. */
 export const SERVE_START_MS = 10_000;
 /**
@@ -95,6 +101,7 @@ export const READ_CHUNK = 64 * 1024;
  *   launchRunner?: LaunchRunner, askRunner?: AskRunner, proc?: Proc, writeRunner?: WriteRunner,
  *   findPrograms?: (o: { home: string, settings: Record<string, any>, loginPath?: string[] }) => Promise<import('./programs.mjs').Programs>,
  *   probeLoginPath?: () => Promise<import('./login-path.mjs').LoginPath>,
+ *   readVersion?: (o: { path: string, loginPath?: string[] }) => Promise<{ version: string | null } | { error: string }>,
  *   kill?: (pid: number, signal: NodeJS.Signals) => void, log?: (line: string) => void, onIdle?: () => void,
  *   onRemoved?: () => void, pollMs?: number, stopGraceMs?: number, removeWaitMs?: number, runnerStartMs?: number, sweepMs?: number,
  *   broker?: Broker, shim?: ShimSeam, uid?: number, env?: Record<string, string | undefined> }} DaemonOpts
@@ -103,8 +110,9 @@ export const READ_CHUNK = 64 * 1024;
  * One daemon: its options, defaults filled in, and its state, which createDaemon passes to every function in the
  * daemon-*.mjs modules as `d`.
  * - settings: what the driver’s hello sent, over HOST_DEFAULTS. programs: what the last hello found.
- * - loginPath: what the login shell gave (daemon-login.mjs, #672): asked at the first hello (loginProbe), and once
- *   more when a turn’s harness isn’t found (reprobed).
+ * - loginPath: what the login shell gave (daemon-login.mjs, #672): asked at the first hello (loginProbe), and again
+ *   when a turn’s harness isn’t found (reprobed, while one runs), at most once per REPROBE_GAP_MS from the last one’s
+ *   start (reprobeAt, on mono, #1084).
  * - conns: Postbox connections, said hello or not. driver: the one that drives the daemon.
  * - acked: per turn, how far Postbox has applied out.jsonl; cleanup.mjs keeps it in `.ack`.
  * - dead: turns whose runner was found not to be the one runner.json names: interrupted, whatever a socket says.
@@ -122,7 +130,7 @@ export const READ_CHUNK = 64 * 1024;
  * - brk: the broker (broker.mjs, or the test’s); shimSeam: what serves a shim’s connection.
  * @typedef {Required<Omit<DaemonOpts, 'broker' | 'shim'>> & { p: ReturnType<typeof import('../../../shared/remote-protocol.mjs').hostPaths>,
  *   settings: Record<string, any>, programs: import('./programs.mjs').Programs | null, loginPath: import('./login-path.mjs').LoginPath | null,
- *   loginProbe: Promise<void> | null, reprobed: Promise<void> | null, conns: Set<Conn>, driver: Conn | null, ids: number,
+ *   loginProbe: Promise<void> | null, reprobed: Promise<void> | null, reprobeAt: number | null, conns: Set<Conn>, driver: Conn | null, ids: number,
  *   acked: Map<string, number>, dead: Set<string>, silentSince: Map<string, Silence>, looks: number, answeredLook: Map<string, number>, killTimers: Map<string, any>, shells: Map<string, Map<number, import('./proc.mjs').ToolGroup>>,
  *   stoppedFirst: Set<string>, starting: Map<string, Promise<void>>, problems: Map<string, string>, idleTimer: any, lastActive: number,
  *   closed: boolean, removing: boolean, sweepTimer: any, checks: Promise<void>, checking: Set<any>,

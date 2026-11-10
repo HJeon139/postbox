@@ -16,7 +16,7 @@ import { defaultWriteRunner, writeHeld } from './daemon-write.mjs';
 import { probeLoginPath as defaultProbeLoginPath } from './login-path.mjs';
 import { hostVersion } from './paths.mjs';
 import * as defaultProc from './proc.mjs';
-import { findPrograms as defaultFindPrograms } from './programs.mjs';
+import { findPrograms as defaultFindPrograms, readVersion as defaultReadVersion } from './programs.mjs';
 import { askRunner as defaultAskRunner, launchRunner as defaultLaunchRunner, logindFacts } from './runner-client.mjs';
 
 /** @typedef {import('./daemon-constants.mjs').Daemon} Daemon @typedef {import('./daemon-constants.mjs').DaemonOpts} DaemonOpts */
@@ -42,6 +42,7 @@ export function createDaemon(opts) {
     loginPath: null,
     loginProbe: null,
     reprobed: null,
+    reprobeAt: null,
     conns: new Set(),
     driver: null,
     ids: 0,
@@ -87,6 +88,7 @@ function withDefaults({
   writeRunner = defaultWriteRunner,
   findPrograms = (o) => defaultFindPrograms(o),
   probeLoginPath = () => defaultProbeLoginPath(),
+  readVersion = (o) => defaultReadVersion(o),
   kill = (pid, signal) => process.kill(pid, signal),
   log = (line) => process.stderr.write(`${new Date().toISOString()} ${line}\n`),
   onIdle = () => {},
@@ -115,6 +117,7 @@ function withDefaults({
     writeRunner,
     findPrograms,
     probeLoginPath,
+    readVersion,
     kill,
     log,
     onIdle,

@@ -95,6 +95,26 @@ export function compareVersions(a, b) {
 }
 
 /**
+ * One program’s `--version`: what it printed, its x.y.z if it has one (null if not), or why it failed. It runs with the
+ * login shell’s PATH entries first, since a CLI npm installed runs node from its PATH, within VERSION_TIMEOUT_MS. The
+ * daemon reads a claude’s again at a start whose cached version is too old or unknown (#1084).
+ * @param {{ path: string, env?: NodeJS.ProcessEnv, execFile?: ExecFile, loginPath?: string[] }} o
+ * @returns {Promise<{ version: string | null } | { error: string }>}
+ */
+export function readVersion({ path, env = process.env, execFile = /** @type {ExecFile} */ (/** @type {unknown} */ (nodeExecFile)), loginPath = [] }) {
+  const runEnv = loginPath.length ? { ...env, PATH: mergePath(loginPath, env.PATH) } : env;
+  return new Promise((resolve) => {
+    try {
+      execFile(path, ['--version'], { timeout: VERSION_TIMEOUT_MS, maxBuffer: 64 * 1024, env: runEnv }, (err, stdout) =>
+        resolve(err ? { error: err.message } : { version: versionIn(String(stdout)) }),
+      );
+    } catch (e) {
+      resolve({ error: e.message });
+    }
+  });
+}
+
+/**
  * Finds node and the harnesses.
  * @param {{ home: string, settings: Record<string, any>, env?: NodeJS.ProcessEnv, execFile?: ExecFile,
  *   isExecutable?: (path: string) => Promise<boolean>, listDir?: (dir: string) => Promise<string[]>,
@@ -117,17 +137,7 @@ export async function findPrograms({
 }) {
   /** @type {Problem[]} */
   const problems = [];
-  const runEnv = loginPath.length ? { ...env, PATH: mergePath(loginPath, env.PATH) } : env;
-  const version = (path) =>
-    new Promise((resolve) => {
-      try {
-        execFile(path, ['--version'], { timeout: VERSION_TIMEOUT_MS, maxBuffer: 64 * 1024, env: runEnv }, (err, stdout) =>
-          resolve(err ? { error: err.message } : { version: versionIn(String(stdout)) }),
-        );
-      } catch (e) {
-        resolve({ error: e.message });
-      }
-    });
+  const version = (path) => readVersion({ path, env, execFile, loginPath });
 
   // Node: the configured one, else the one running this daemon.
   let node = { path: execPath, version: nodeVersion };

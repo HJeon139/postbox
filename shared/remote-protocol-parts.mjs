@@ -22,7 +22,7 @@ import {
   unique,
   utf8Bytes,
 } from './remote-protocol-checks.mjs';
-import { ERROR_CODES, HOST_ENFORCED, REMOTE_LIMITS } from './remote-protocol-constants.mjs';
+import { ERROR_CODES, HOST_ENFORCED, NEED_REASONS, REMOTE_LIMITS } from './remote-protocol-constants.mjs';
 import { checkHostSettings } from './remote-settings.mjs';
 
 export function checkArgv(v) {
@@ -68,6 +68,25 @@ export function checkAgentFile(v) {
   if (e) return e;
   const n = utf8Bytes(v.text);
   return n > REMOTE_LIMITS.fileBytes ? `start.agentFile.text is ${n} bytes; the limit is ${REMOTE_LIMITS.fileBytes}.` : '';
+}
+
+/** The longest start.need.min, and its shape: a dotted version of up to four numbers. */
+const NEED_MIN_CHARS = 32;
+const NEED_MIN_RE = /^\d+(\.\d+){0,3}$/;
+
+/**
+ * start.need (#1084): the oldest claude a claude-code start runs on, and why, for the daemon’s check and its words.
+ * @param {unknown} v @param {string} harness  the start’s
+ */
+export function checkNeed(v, harness) {
+  if (harness !== 'claude-code') return `start.need is only for claude-code; this start is for ${clip(harness)}.`;
+  const need = /** @type {any} */ (v);
+  return (
+    fields(need, 'start.need', ['min', 'why']) ||
+    str(need.min, 'start.need.min', NEED_MIN_CHARS) ||
+    (NEED_MIN_RE.test(need.min) ? '' : `start.need.min must be a version such as 2.1.187; got “${clip(need.min)}”.`) ||
+    oneOf(need.why, 'start.need.why', NEED_REASONS)
+  );
 }
 
 export function checkFiles(v) {

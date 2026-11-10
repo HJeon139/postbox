@@ -33,6 +33,7 @@ import {
   checkFiles,
   checkItems,
   checkLoginPath,
+  checkNeed,
   checkRequest,
   checkSettings,
 } from './remote-protocol-parts.mjs';
@@ -48,9 +49,9 @@ export const POSTBOX_CHANNELS = {
       opt(m.instance, (v) => token(v, 'hello.instance')) ||
       opt(m.takeover, (v) => bool(v, 'hello.takeover')) ||
       opt(m.settings, (v) => checkSettings(v)),
-    /** { turn, harness, folder, argv, env, stdin, files, agentFile?, attachments? } */
+    /** { turn, harness, folder, argv, env, stdin, files, agentFile?, attachments?, need? } */
     start: (m) =>
-      fields(m, 'start', ['turn', 'harness', 'folder', 'argv', 'env', 'stdin', 'files'], ['agentFile', 'attachments']) ||
+      fields(m, 'start', ['turn', 'harness', 'folder', 'argv', 'env', 'stdin', 'files'], ['agentFile', 'attachments', 'need']) ||
       turnId(m.turn, 'start.turn') ||
       oneOf(m.harness, 'start.harness', HARNESSES) ||
       hostPath(m.folder, 'start.folder') ||
@@ -62,7 +63,8 @@ export const POSTBOX_CHANNELS = {
         ? `A turn that reads its stdin from a file must send ${MESSAGE_FILE} in start.files.`
         : '') ||
       opt(m.agentFile, (v) => (m.harness === 'kiro-cli' ? checkAgentFile(v) : `start.agentFile is only for kiro-cli; this start is for ${m.harness}.`)) ||
-      opt(m.attachments, (v) => checkAttachments(v)),
+      opt(m.attachments, (v) => checkAttachments(v)) ||
+      opt(m.need, (v) => checkNeed(v, m.harness)),
     /** { turn, home, threads: [{ id, items: SnapshotItem[] }] }: the whole snapshot, replacing any before. */
     snapshot: (m) =>
       fields(m, 'snapshot', ['turn', 'home', 'threads']) ||

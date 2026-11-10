@@ -90,13 +90,14 @@ export { ACK_LINES, ACK_MS } from './process-receive.mjs';
  * `start` as it is (a Kiro CLI custom agent, which the daemon writes into the agents folder of the Kiro home the
  * runner will use, from env’s KIRO_HOME, the host’s own, or ~/.kiro, rather than the turn folder). attachments go in
  * every start as they are (the message’s files, which the daemon writes under the turn folder’s attachments/), so a
- * later call carries them again.
+ * later call carries them again. need goes in a claude-code start as it is: the oldest claude it runs on, which the
+ * daemon checks before it spawns (#1084).
  * @param {{ connection: RemoteConnection, harness: import('../../shared/remote-protocol.mjs').Harness, folder: string,
  *           stdin: StdinKind, env?: Record<string, string>, files?: TurnFile[], agentFile?: AgentFile, turn?: string,
- *           attach?: { from?: number }, attachments?: Attachment[] }} o
+ *           attach?: { from?: number }, attachments?: Attachment[], need?: import('../../shared/remote-claude.mjs').ClaudeNeed }} o
  * @returns {(bin: string, args?: readonly string[], opts?: object) => RemoteProcess}
  */
-export function remoteSpawn({ connection, harness, folder, stdin, env = {}, files = [], agentFile, turn, attach, attachments = [] }) {
+export function remoteSpawn({ connection, harness, folder, stdin, env = {}, files = [], agentFile, turn, attach, attachments = [], need }) {
   let first = turn;
   return (_bin, args = [], _opts) => {
     const id = first ?? randomUUID();
@@ -104,7 +105,8 @@ export function remoteSpawn({ connection, harness, folder, stdin, env = {}, file
     if (attach) return attachRemote(connection, { turn: id, from: attach.from ?? 0, stdin });
     const agent = agentFile ? { agentFile: { ...agentFile } } : {};
     const carried = attachments.length ? { attachments: attachments.map((x) => ({ ...x })) } : {};
-    const start = { harness, folder, argv: [...args], env: { ...env }, stdin, files: [...files], ...agent, ...carried };
+    const needs = need ? { need: { ...need } } : {};
+    const start = { harness, folder, argv: [...args], env: { ...env }, stdin, files: [...files], ...agent, ...carried, ...needs };
     return new RemoteProcess(connection, { turn: id, start });
   };
 }
@@ -123,7 +125,7 @@ export class RemoteProcess extends EventEmitter {
   /**
    * @param {RemoteConnection} connection
    * @param {{ turn: string, start?: { harness: string, folder: string, argv: string[], env: Record<string, string>, stdin: StdinKind,
-   *           files: TurnFile[], agentFile?: AgentFile, attachments?: Attachment[] }, from?: number, stdin?: StdinKind }} o  start for a new turn, or
+   *           files: TurnFile[], agentFile?: AgentFile, attachments?: Attachment[], need?: object }, from?: number, stdin?: StdinKind }} o  start for a new turn, or
    *   from to attach to one
    */
   constructor(connection, { turn, start, from = 0, stdin }) {

@@ -1,11 +1,12 @@
 // The daemon’s login PATH (login-path.mjs, #672, #474): the login shell is asked once per daemon start, at the first
-// hello, and the programs are found on its PATH first. A turn whose harness isn’t found asks it once more, since the
-// person may have installed the CLI since: at most one more time per daemon start, so a host without it doesn’t start
+// hello, and the programs are found on its PATH first. A turn whose harness isn’t found asks it again, since the
+// person may have installed the CLI since: at most once per REPROBE_GAP_MS (#1084), so a host without it doesn’t start
 // a login shell for every turn. Each turn runs with the merged PATH, unless the laptop sends one; when the login shell
 // failed, a turn’s PATH is the daemon’s own, as before.
 
 import { dirname } from 'node:path';
 import { REMOTE_LIMITS } from '../../../shared/remote-protocol.mjs';
+import { REPROBE_GAP_MS } from './daemon-constants.mjs';
 import { mergePath } from './login-path.mjs';
 
 /** @typedef {import('./daemon-constants.mjs').Daemon} Daemon */
@@ -26,19 +27,30 @@ export async function findWithLogin(d) {
 }
 
 /**
- * Asks the login shell once more and finds the programs again, when a turn’s harness wasn’t found. Only the first
- * call per daemon start asks; a later one, or one meanwhile, waits for that one.
+ * Asks the login shell again and finds the programs again, when a turn’s harness wasn’t found. One runs at a time, and
+ * a call meanwhile waits for it. Once it settles, the next may start REPROBE_GAP_MS after it started, on the daemon’s
+ * monotonic clock (#1084): a call inside that gap uses what it found, so a CLI installed since is found, and a host
+ * without it doesn’t start a login shell for every turn.
  * @param {Daemon} d
  */
 export async function reprobe(d) {
-  d.reprobed ??= (async () => {
-    await loginEntries(d);
-    // A re-probe that fails keeps the first probe’s PATH: losing it would lose every CLI found there, for good.
-    const again = await d.probeLoginPath();
-    if (again.ok || !d.loginPath?.ok) d.loginPath = again;
-    await findWithLogin(d);
-  })();
+  const recent = d.reprobeAt !== null && d.mono() - d.reprobeAt < REPROBE_GAP_MS;
+  if (!d.reprobed && !recent) {
+    d.reprobeAt = d.mono();
+    d.reprobed = probeAgain(d).finally(() => {
+      d.reprobed = null;
+    });
+  }
   await d.reprobed;
+}
+
+/** One re-probe: the login shell asked again, then the programs found on its PATH. @param {Daemon} d */
+async function probeAgain(d) {
+  await loginEntries(d);
+  // A re-probe that fails keeps the first probe’s PATH: losing it would lose every CLI found there, for good.
+  const again = await d.probeLoginPath();
+  if (again.ok || !d.loginPath?.ok) d.loginPath = again;
+  await findWithLogin(d);
 }
 
 /** What the welcome says of the login PATH: how many entries and how long, never the entries. @param {Daemon} d */
