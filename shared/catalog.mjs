@@ -6,7 +6,7 @@
 // and a collapsed "Show the raw block" instead.
 
 import { INTENT_CHARS, LIMITS, REVIEW_THREADS_MAX } from './limits.mjs';
-import { ANCHOR, anchorError, threadsError } from './review-comments.mjs';
+import { ANCHOR, anchorError, author, threadsError } from './review-comments.mjs';
 import { bool, id, int, list, num, obj, oneOf, scalar, str, typeName } from './schema.mjs';
 import { isSafeUrl, LOCAL_HTTP } from './urls.mjs';
 
@@ -254,7 +254,7 @@ const SCHEMAS = {
             ...ANCHOR,
             anchor: str({ min: 1, max: 80 }),
             status: oneOf('open', 'resolved'),
-            comments: list(obj({ author: str({ min: 1, max: 64 }), text: str({ min: 1, max: 4000 }) }, ['author', 'text']), { min: 1, max: 50 }),
+            comments: list(obj({ author, text: str({ min: 1, max: 4000 }) }, ['author', 'text']), { min: 1, max: 50 }),
           },
           ['id', 'status', 'comments'],
         ),
