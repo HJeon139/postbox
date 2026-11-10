@@ -17,5 +17,8 @@ export function takeToolsDown(ctx, message) {
   if (message.slash || typeof message.attach === 'string') return '';
   if (!ctx.state?.postboxToolsDown) return '';
   ctx.saveState({ postboxToolsDown: null });
+  // ctx.state is the turn's snapshot, so clear it there too: a retry within the turn, as the Agent SDK's after a lost
+  // session, then doesn't take the note again.
+  ctx.state.postboxToolsDown = null;
   return NOTE;
 }
