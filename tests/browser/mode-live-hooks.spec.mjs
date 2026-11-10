@@ -70,12 +70,24 @@ test.beforeAll(async () => {
       await hold(ctx);
     },
   });
+  // Kiro CLI, which can’t change a running turn’s mode either, and is named as itself (#1094).
+  rt.adapters.register({
+    name: 'kiro-cli',
+    async folderFor() {
+      return work;
+    },
+    async deliver(_session, _message, ctx) {
+      ctx.status({ state: 'tool', currentStep: 'Running the tests' });
+      await hold(ctx);
+    },
+  });
   store.emit('project', { id: 'pr_live', name: 'Live', folder: work });
   for (const [handle, backend, permissionMode] of [
     ['drafter', 'agent-sdk', 'ask'],
     ['keeper', 'agent-sdk', 'auto'],
     ['tightener', 'agent-sdk', 'auto'],
     ['cli', 'claude-code', 'auto'],
+    ['kiro', 'kiro-cli', 'auto'],
   ]) {
     const p = rt.createPersona({ handle, backend, permissionMode, tools: ['shell'] });
     threads[handle] = rt.createThread({ projectId: 'pr_live', title: handle, personaIds: [p.id] }).id;
@@ -186,4 +198,12 @@ test('#1030 Auto to Ask me on the CLI: the panel keeps Claude Code’s reason, a
   await expect
     .soft(choice.locator('.perm-status'))
     .toHaveText('cli uses Accept edits, in every conversation, from its next turn; Claude Code can’t change a turn that’s running.');
+});
+
+test('#1094 /mode on a busy agent of another backend names that backend, not Claude Code', async ({ page }) => {
+  await open(page, 'kiro');
+  const choice = await slashMode(page, 'Accept edits');
+  await expect
+    .soft(choice.locator('.perm-status'))
+    .toHaveText('kiro uses Accept edits, in every conversation, from its next turn; Kiro CLI can’t change a turn that’s running.');
 });
