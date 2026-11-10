@@ -174,3 +174,31 @@ test('#1161 a re-attach after a restart leaves the note for the next real turn, 
   assert.match(message, told, 'the next real turn is told first');
   assert.equal(next.calls.saved.postboxToolsDown, null, 'and the note is taken there');
 });
+
+// A command is the whole prompt (#67), and a re-attach sends the agent nothing (#120): neither can carry the note.
+for (const [what, message] of [
+  ['a slash command', { kind: 'user', text: '/compact', slash: true }],
+  ['a re-attached turn', { kind: 'user', text: '', attach: 'host-turn-1' }],
+]) {
+  test(`#1161 Claude Code: ${what} isn’t prefixed, and the note waits for the next turn`, async () => {
+    const { spawnImpl, runs } = fakeSpawn(() => fineTurn());
+    const adapter = new ClaudeCodeAdapter({ bin: 'claude', workRoot: tempDir('pb-tools-down-work-'), spawnImpl });
+    const ctx = fakeCtx({ state: { postboxToolsDown: true } });
+    await adapter.deliver({}, message, ctx);
+    assert.doesNotMatch(promptOf(runs[0]), /\[Postbox\] In your last turn/, 'the prompt is the command alone');
+    assert.equal(ctx.state.postboxToolsDown, true, 'the note is still owed');
+    await adapter.deliver({}, { kind: 'user', text: 'Try again.' }, ctx);
+    assert.match(promptOf(runs[1]), told, 'the next turn is told first');
+  });
+
+  test(`#1161 the Agent SDK: ${what} isn’t prefixed, and the note waits for the next turn`, async () => {
+    const sdk = fakeSdk(() => fineTurn());
+    const adapter = new AgentSdkAdapter({ sdk, workRoot: tempDir('pb-tools-down-sdk-') });
+    const ctx = fakeCtx({ state: { postboxToolsDown: true } });
+    await adapter.deliver({}, message, ctx);
+    assert.doesNotMatch(String(sdk.calls[0].prompt), /\[Postbox\] In your last turn/, 'the prompt is the command alone');
+    assert.equal(ctx.state.postboxToolsDown, true, 'the note is still owed');
+    await adapter.deliver({}, { kind: 'user', text: 'Try again.' }, ctx);
+    assert.match(String(sdk.calls[1].prompt), told, 'the next turn is told first');
+  });
+}
