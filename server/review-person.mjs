@@ -107,7 +107,7 @@ function strayReply(it, values) {
  * reviews that record them, checked as a whole; and the event the agent hears, each comment with its threadId.
  * null when it isn’t a review, or has no comments. A reply in a thread it doesn’t have, or past the block’s bounds,
  * it’s refused, and nothing is written.
- * @param {any} rt @param {any} it  the review’s item @param {any} event  the answer’s, from buildEvent @param {number} revision
+ * @param {any} rt @param {any} given  the review’s item @param {any} event  the answer’s, from buildEvent @param {number} revision
  */
 export function personAnswer(rt, given, event, revision) {
   if (given.block.type !== 'review') return null;
