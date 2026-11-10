@@ -78,3 +78,29 @@ test('#1143 after a revision that changes one commented line, and a reload, both
     .toEqual({ marked: [5, 12], threads: [['Open'], ['Open']] });
   await expect(block.locator('.review-bar'), 'the bar counts them').toContainText('0 of 2 resolved');
 });
+
+test('#1143 an answered review stored before threads, never revised, shows its comments on their lines after a reload', async ({ page }) => {
+  const r = await room.withReview(page, 'Old answer');
+  await drawn(r.block, 'Preview');
+  // As main stored an answer before #1143: the comments only in the answer, no threads and no person review.
+  const it = r.itemOf();
+  const comments = [
+    { line: 3, text: BOLD },
+    { line: 10, text: LOW },
+  ];
+  room.app.rt.patchItem(r.thread.id, it.id, {
+    block: { ...it.block, threads: undefined },
+    reviews: undefined,
+    answered: true,
+    answer: { action: 'submit', values: { verdict: 'request_changes', comments }, voice: 'Requested changes', at: Date.now(), revision: 1, read: true },
+  });
+  await room.idle();
+  await page.reload();
+  await synced(page, room.app);
+  await expect(r.block.locator('.answered-note')).toBeVisible();
+  await viewRadio(r.block, 'Lines').click();
+  await drawn(r.block, 'Lines');
+  await expect
+    .poll(() => placed(r.block, [BOLD, LOW]), { message: 'each comment on its line, once' })
+    .toEqual({ marked: [3, 10], threads: [['Open'], ['Open']] });
+});
