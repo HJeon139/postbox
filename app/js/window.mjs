@@ -285,6 +285,7 @@ class TranscriptWindow {
       this.indexOf.set(stub.id, at);
       this.entry.ids[at] = stub.id;
       this.heights.retype(at, kindOf(stub));
+      windowShrink.dropMovedIsland(this, at, stub.id);
     }
     return this.added(it);
   }

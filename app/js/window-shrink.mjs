@@ -168,6 +168,22 @@ export function scheduleGrow(w) {
 }
 
 /**
+ * An island moved to the end (item.move): the page’s copy at its old place is now the stub (thread.mjs swaps it in),
+ * which no island is held for. Left in `islands`, it stayed on the page outside the range once focus left it, and a
+ * second stub was drawn when the range reached its place. So it leaves now, gap and all; the stub draws from the
+ * state when the range reaches it. @param {any} w the window @param {number} at its index @param {string} stubId
+ */
+export function dropMovedIsland(w, at, stubId) {
+  if (!w.islands.has(at)) return;
+  w.islands.delete(at);
+  w.gaps.get(at)?.remove();
+  w.gaps.delete(at);
+  w.nodes.get(stubId)?.remove();
+  w.nodes.delete(stubId);
+  w.paintSpacers();
+}
+
+/**
  * Moves the range to item i, for a jump to an item that isn’t on the page: everything mounted leaves (but what has
  * focus, which stays as an island), and the range opens around i, as a conversation opens around its anchor. The
  * jump then scrolls to it.
