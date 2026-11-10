@@ -32,6 +32,10 @@ POSTBOX_STREAM_LAG=300 npx playwright test         # with the server’s events 
 npx playwright test needs-nav --repeat-each=10     # a spec ten times, as CI runs one a pull request adds or edits
 ```
 
+**The budget spec** (`tests/browser/budget.spec.mjs`, #1166, landing with #1185) holds principle 9. On the big-room seed (#1017), with reviews, apps and long tool runs in a real room’s shape, it measures key to paint, a new message, a one-screen scroll, opening a conversation, mounted elements, the longest task and start-up, in Firefox and Chromium, with probes both have (Event Timing, `performance.now`, the lag log). A Chromium-only spec needs a Firefox counterpart. It fails past 100 ms p95, past about 5,000 elements, or past start-up’s 1 s.
+- **On each pull request** that touches `app/`, the store, or a reader the held-view guard lists: 1,000 and 10,000 items. Times gate on the reference Mac’s headed run, as that pull request’s Mac check; CI gates only the element count, once `main` passes it.
+- **Nightly,** on the build host, in both browsers: 100,000 and 1,000,000 items. The 100,000-item run moves onto every pull request once start-up is bounded (`designs/508/1155-revision.md`, §8, R4).
+
 CI runs every spec on each pull request, normally and with the server’s events late, and a spec the pull request adds or changes ten times more with the events late. There are no retries: one failure fails the run. Each pass is split into three shards by spec file (`npx playwright test --shard=1/3`), and the six run at once; the check “Demo in Chrome, with accessibility checks” passes only when all six did. A pull request that changes only docs (Markdown outside `server/personas/`, `designs/` and `LICENSE`) skips the browser specs and the ten-times pass, and that check passes.
 
 ## Node

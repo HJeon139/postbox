@@ -10,7 +10,8 @@ Decided on 21 October 2026, after Stage 2. Each section states the decision, wha
 - **Recovery:** an unterminated tail is cut; a bad line in the middle of a segment refuses to start and names the file, instead of silently dropping everything after it. A gap in the sequence starts, logs the range lost and shows it once.
 - **When a write fails** (a full disk, a read-only folder, EIO), queued commits are rejected and writes close with the cause and Retry. Retry is a reload, the same recovery a restart runs: the old writer is quiesced first, and a durability barrier on a fresh descriptor comes after.
 - **Receipts** are derived from the record events and checkpointed with the snapshot, so they outlive it.
-- **Snapshots** are written in pieces now (the block falls from about 37 ms to about 21 ms on a 13.85 MB copy). Old turns’ work entries and activity steps are about 73% of the file and move out of state before anything is sharded (#305). A snapshot sharded by conversation waits for a stall that still passes 50 ms.
+- **Snapshots** are written as lines (#1194, after #1180: one `JSON.stringify` of the state fails past about 68,000 seeded items), and a segment is replayed line by line, so no size of the state stops a snapshot or a start. An older Postbox refuses such a folder and loses nothing (the person, 10 November). Old turns’ work entries and activity steps leave state for archive files (#305).
+- **At a million items** (principle 9; `designs/508/1155-revision.md`, §6): a conversation’s items live in blocks on disk, bounded by bytes, with a small newest block; the sharded snapshot (S2) is brought forward, without its 50 ms trigger; each conversation has an index by position, time and id, read in O(log n); the server keeps a bounded set of recent and cached blocks in memory; start-up reads headers and indexes, not items. Agents’ paging through `read_conversation` is unchanged.
 - **One writer.** A lock file in the data folder refuses a second Postbox. Revisit when a second process is designed.
 - **A history epoch** made at each load tells a tab on a lost timeline to resync.
 - **Data model unchanged:** key/value and documents, never a relational schema; older shapes lifted on read, never rewritten.
@@ -91,7 +92,17 @@ flowchart LR
 
 ## 3. The front end: plain HTML, CSS and ES modules, no build
 
-**Decided next** (28 October 2026, [#508](https://github.com/HJeon139/postbox/issues/508); built in steps B1 to B3, [#531](https://github.com/HJeon139/postbox/issues/531) to [#533](https://github.com/HJeon139/postbox/issues/533)). The page stops holding every item of every conversation. It holds every conversation’s header and open records, and a contiguous window of items for the conversations it shows, paged from a new items API with a filtered stream. An explicit view state, following the newest item or reading at an anchor, is changed only by the person’s input and re-applied after every change to the DOM. Only the window module reads items. The window’s size is calibrated against a budget the person chose: typing and painting in a large room within 10% of a small one’s. Still no framework and no build step. Detail: `designs/508/design.md`, “Browser”.
+**Decided next** (10 November 2026, principle 9; [#1155](https://github.com/HJeon139/postbox/issues/1155), revising [#508](https://github.com/HJeon139/postbox/issues/508); built in steps R4 to R6 of `designs/508/1155-revision.md`). The page draws only what’s seen:
+- **Viewport rendering:** mounted items are those in view, plus one screen of overscan above and below, about 3 to 10 items. It replaces the 200-item window and is on for every conversation. Pinned items (focus, a dirty review or form, an app with unsent input) stay mounted and count toward the budget.
+- **A page-wide budget** of about 5,000 elements, reported in the lag log (#1145).
+- **Long items are windowed too:** a long tool run, a big review or a long table draws only its visible part.
+- **Heights** are estimated, then measured once and kept by id, so the scrollbar is right without mounting; a far range shows gray placeholders at those heights until it arrives (the person, 10 November).
+- **The page doesn’t hold the conversation:** it fetches items by range (B1a, B2 and B3, [#531](https://github.com/HJeon139/postbox/issues/531) to [#533](https://github.com/HJeon139/postbox/issues/533)). Start-up loads headers, within 1 s p95 at any size. The existing top-bar search sends its query to the server (the person: no new search box), and a hit is a jump.
+- **Work for each event is bounded by what’s on screen:** nothing is rebuilt from every item, and highlights are rebuilt at most once a frame.
+- **No inherited style value changes high in the tree:** register it with `@property { inherits: false }`, or set it on the element that reads it. `--held` (#1150) and `--pane-w` (#1168) are the cases found.
+- **Reads before writes,** once a frame; geometry comes from ResizeObserver entries. App frames load only when seen.
+
+An explicit view state, following the newest item or reading at an anchor, is changed only by the person’s input and re-applied after every change to the DOM. Only the window module reads items. Still no framework and no build step. Detail: `designs/508/1155-revision.md`, §4 and §5.
 
 **Decision.** Keep the shipped app framework-free with no build step, and add type checking and linting as development-only tools, so the app itself still needs nothing but Node to run.
 

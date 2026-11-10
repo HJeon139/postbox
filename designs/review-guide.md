@@ -64,6 +64,26 @@ The integrator’s guide, written from what its reviews of #508’s pull request
 - How: A promise that rejects before any handler is attached counts as unhandled in Node, even if a .then is added later. The server has no unhandledRejection handler, so one brings it down. Attach the handler where the promise is created.
 - Caught while writing #638. The three CLI adapters kept a stop’s promise and only read it when the CLI closed. A failed stop also left its turn waiting forever. The new spec caught it, even though the first fix had looked right.
 
+### Cost at a million items
+
+**Does any handler touch, or rebuild from, every item?**
+
+- How: For each listener and each server reader the PR adds or changes, ask what it costs in a conversation of a million items (`designs/intent.md`, principle 9). A loop over `state.items`, a rebuild from every review or a scan of the work list is O(room), and fails.
+- Caught in #1151: each review drawn rebuilt one highlight from every review’s ranges, 4.8 s of an 11.6 s room switch.
+
+**Does it raise the mounted elements, or mount something off screen?**
+
+- How: Read the budget spec’s element count before and after. A new element per item, or a part of an item drawn while out of view, adds to every room.
+
+**Does it set a style high in the tree, or read geometry after a write?**
+
+- How: Search the PR for `style.setProperty` and custom properties set on an ancestor of the transcript, and for `offsetHeight`, `getBoundingClientRect` or `scrollHeight` read after a DOM write in the same frame.
+- Caught in #1150: `--held` set on the transcript restyled all 614,000 elements in it, 1.2 to 1.5 s, on each new message.
+
+**What did the budget spec measure, before and after, in Firefox?**
+
+- How: Ask for the spec’s lines on the commit before and the head, at the size the PR is about, in Firefox as well as Chromium. A change measured only in Chromium is unmeasured where the person works.
+
 ### The pull request among the others
 
 **Does it conflict with, or duplicate, work that just landed?**

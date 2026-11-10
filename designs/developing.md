@@ -16,6 +16,7 @@ Make simple, minimal changes, and don’t reinvent what already exists. In Postb
 A prompt’s example of a defect is a symptom. Find the pattern and fix the cause, then look for the same class of error everywhere it could be:
 - A bug in one adapter is a question about all of them. Postbox has five real backends (`claude-code`, `agent-sdk`, `kiro-cli`, `antigravity-cli`, `codex`) and the mock, so a refusal that doesn’t reach a card on one is checked on the other five.
 - A defect the end-to-end UAT found is a check waiting to be written. When a check can catch the class, it goes into `tools/uat/checks.mjs`, as `refusal-without-card` and `settings-leak` did.
+- A lag report gets a budget case that fails first, at the size where the lag was felt (`tests/browser/budget.spec.mjs`, #1166). The person isn’t the performance test: a cost found from the person’s profile means the budget spec missed it, and the spec is fixed in the same pull request.
 - A limit fixed in one place is fixed in all of them: the catalog, the event builder, the kit, the agent guide and the MCP tool descriptions all read `shared/limits.mjs` (#50).
 
 ## Proofreading

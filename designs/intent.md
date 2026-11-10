@@ -37,6 +37,7 @@ People who run Postbox may also volunteer telemetry reports to help improve it (
 6. **You stay in charge of your agents.** New personas need your approval and wake chains are capped. What an agent may run is decided by its harness in the mode you set, and Postbox adds no gate of its own on top (principle 8).
 7. **You decide what an agent remembers.** Each agent has one session per conversation, and you choose its memory by where you talk to it: a new conversation starts clean, Compact shortens it, and deleting the conversation ends it. Agents never fork themselves, and nothing from a thread is put in another agent’s context unless that agent chooses to read it or you send it (decided 23 October 2026, #228).
 8. **Agents work together without waiting on you; Postbox shows what they did.** Postbox is permissive and collaborative first. Agents hand work to each other, on this computer, on hosts and across a feature branch, as fast as their harnesses allow, and Postbox makes their work easy to see rather than asking you to approve it. A card, a confirm, a warning or a notice that waits on you, or asks for your attention, earns its place only when it carries a decision only you can make. One that repeats what you already allowed, that the harness already judges, or that guards against a risk no one has seen, is tedium, not safety, and it’s left out. When in doubt, show the action where you can see it, and don’t ask (decided 8 November 2026, after [#852](https://github.com/HJeon139/postbox/issues/852): in one day the person approved about 258 cards and confirms, about 165 of them a kind they had already allowed).
+9. **Fast at any size.** Every interaction paints within 100 ms, p95, from input to the next paint, in a conversation of a million items, in Firefox and Chromium, on the reference Mac. The page draws what can be seen plus a screen either side, never the conversation, and the server answers from indexes, never from a scan. A change that misses this doesn’t ship until it meets it (decided 10 November 2026, after the person’s Firefox profiles of 7 to 9 November: a page of 614,000 elements restyled whole on each new message, #1150; design in `designs/508/1155-revision.md`, #1155).
 
 ## How the app is organized
 
@@ -270,6 +271,7 @@ None right now. Resolved on 21 October 2026: control borders (a stronger border 
 
 What’s checked today:
 
+- The budget spec (`tests/browser/budget.spec.mjs`, #1166, landing with #1185) on the big-room seed: key to paint, a new message, a one-screen scroll, opening a conversation, mounted elements, the longest task and start-up, in Firefox and Chromium (principle 9). Times gate on the reference Mac’s headed run; CI gates the element count once `main` passes it; 100,000 and 1,000,000 items run nightly on the build host (`designs/508/1155-revision.md`, §8).
 - `node tools/contrast.mjs` checks every text, border and status token pair in both modes, including on the app stage.
 - The chart series were validated for color-vision deficiency.
 - Every page is screenshotted at 375 and 1280 px in both modes and reviewed. They’re generated into `screenshots/latest/`, which git ignores, and aren’t committed (designs/developing.md, “Screenshots”); Stage 2 was compared against the approved set when it was committed.
@@ -277,7 +279,7 @@ What’s checked today:
 What isn’t yet, and should be in Stage 2:
 
 - Keyboard order, focus returning to the composer, and screen-reader announcements.
-- Streaming timing, and long sessions with hundreds of messages and several apps.
+- Streaming timing.
 - 200% text zoom, forced-colors mode, and performance with many app frames.
 - Task-based testing: timed tasks done in the demo, such as answering a blocked agent from the sidebar, or finding why a reply failed and retrying it.
 - A review by someone other than the author.
