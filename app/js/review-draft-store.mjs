@@ -1,8 +1,10 @@
 // A review’s draft comments, kept over a reload (#1144), as the composer keeps its text under pb-draft-<threadId> and
 // its files under pb-draft-files-<threadId> (#849). Each review block’s comments and verdict are kept in localStorage
-// with the revision they were written on, under pb-review-draft-<itemId>. A submit forgets them. Only comments the
-// review could send are kept, at most MAX_COMMENTS, so a draft can’t fill the storage; a full one fails quietly.
+// with the revision and the text they were written on, under pb-review-draft-<itemId>. A submit forgets them. Only
+// comments the review could send are kept, at most MAX_COMMENTS, with that text up to LIMITS.longText, so a draft
+// can’t fill the storage; a full one fails quietly.
 
+import { LIMITS } from '/shared/limits.mjs';
 import { commentErrors, MAX_COMMENTS, VERDICTS } from '/shared/review-comments.mjs';
 
 const storageKey = (itemId) => `pb-review-draft-${itemId}`;
@@ -21,7 +23,9 @@ const usable = (c) => !!c && typeof c === 'object' && commentErrors(sendable(c),
  */
 export function keepReviewDraft(itemId, revision, d) {
   const comments = d.comments.filter(usable).slice(0, MAX_COMMENTS);
-  const value = comments.length ? JSON.stringify({ revision, verdict: d.verdict, comments }) : '';
+  // The text they were written on goes with them, so a reload follows them into a revision as an open page does.
+  const on = typeof d.on === 'string' && d.on.length <= LIMITS.longText ? d.on : null;
+  const value = comments.length ? JSON.stringify({ revision, verdict: d.verdict, comments, on }) : '';
   if (last.get(itemId) === value) return;
   last.set(itemId, value);
   try {
@@ -39,9 +43,9 @@ export function forgetReviewDraft(itemId) {
 }
 
 /**
- * A new draft with what was kept for the review put back. At the revision they were written on, the comments go back
- * on their places. At a later one, they follow their lines from previous when it’s the text they were on, as a draft
- * open during the revision does (#123); otherwise they stay where they were, marked moved.
+ * A new draft with what was kept for the review put back, on the text they were written on: renderReview then
+ * follows them from it into the text now, as it does a draft open during a revision (#123), so a reload reads the same
+ * as a page left open. An entry without that text (an app review’s, or a malformed one) keeps its comments as they were.
  * @param {string} itemId @param {any} item  the block item @param {any} d  a new draft for its text
  */
 export function restoreReviewDraft(itemId, item, d) {
@@ -54,10 +58,6 @@ export function restoreReviewDraft(itemId, item, d) {
   if (!kept || !Array.isArray(kept.comments) || item.answered) return d;
   const comments = kept.comments.filter(usable).slice(0, MAX_COMMENTS);
   const verdict = VERDICTS.includes(kept.verdict) ? kept.verdict : d.verdict;
-  const b = item.block;
-  const revision = item.revision ?? 1;
-  if (kept.revision === revision || b.format === 'app') return { ...d, verdict, comments };
-  const onPrevious = kept.revision === revision - 1 && typeof b.previous === 'string';
-  if (onPrevious) return { ...d, verdict, comments, on: b.previous };
-  return { ...d, verdict, comments: comments.map((c) => ({ ...c, moved: true })) };
+  const on = typeof kept.on === 'string' && kept.on.length <= LIMITS.longText ? kept.on : d.on;
+  return { ...d, verdict, comments, on };
 }
