@@ -83,11 +83,10 @@ export function readingsOf(raw, cwd, home) {
 /**
  * Whether a path leads into one of the folders, by its real path, every way it may be read (readingsOf). A ~user path
  * never does: its home could be anywhere, so it asks, as Auto’s routine commands refuse one (agy-auto.mjs, staysIn).
+ * Its .. are read both ways too: as the file system climbs from where a link leads, and as text (resolve), since
+ * whether agy normalizes a path before using it is as unproved as ~ (#1074).
  * @param {string} raw @param {string[]} dirs @param {{ cwd: string, home: string }} where
  */
 export const leadsInto = (raw, dirs, { cwd, home }) =>
   !othersHome(raw) &&
-  readingsOf(raw, cwd, home).every((at) => {
-    const real = realTarget(at, '/');
-    return dirs.some((d) => inside(real, d));
-  });
+  readingsOf(raw, cwd, home).every((at) => [realTarget(at, '/'), realTarget(resolve(at), '/')].every((real) => dirs.some((d) => inside(real, d))));
