@@ -9,7 +9,7 @@ import { ASKING } from '../shared/catalog.mjs';
 import { COLUMN_PX, lintDiagrams, MIN_TEXT_PX, mermaidBlocks } from '../shared/diagram-lint.mjs';
 import { READING } from '../shared/limits.mjs';
 import { formatDuration, glimpseOf, parseMentions } from '../shared/text.mjs';
-import { carriedList, turnLine } from '../shared/work.mjs';
+import { carriedList } from '../shared/work.mjs';
 import { describeTool } from './adapters/claude-stream.mjs';
 import { workFolder } from './adapters/folder.mjs';
 import { listProcesses } from './adapters/process-group.mjs';
@@ -20,6 +20,7 @@ import { retireApp } from './app-retire.mjs';
 import { APP_HOLD_MAX, APP_SEND_LIMIT, APP_SEND_WINDOW_MS } from './app-send-limits.mjs';
 import { appCheck, appEvent, appFile, appQuery, appState, fixEnded, needAppSend, registerApp, resolveAppSend, showApp, updateApp } from './apps.mjs';
 import { restoreArchives } from './archive-lifecycle.mjs';
+import { ArchivePasses } from './archive-runtime.mjs';
 import { askQuestions, QUESTION_TOOL, questionBlocks } from './ask-question.mjs';
 import { showBlock } from './block-show.mjs';
 import { act, answerDelivered, unreadAnswer, updateBlock } from './blocks.mjs';
@@ -70,6 +71,7 @@ import { readMessage } from './read-message.mjs';
 import { addHost, host, removeHost, setProjectHostFolder, updateHost } from './remote/host-admin.mjs';
 import { describeHostInstall, hostStatus, installHost, retryHost, watchHosts } from './remote/host-status.mjs';
 import {
+  drainMovedOff,
   hereFolder,
   localBackends,
   notHere,
@@ -85,7 +87,7 @@ import {
 import { RemoteTurns } from './remote/turns.mjs';
 import { replySegment, stepTaken, wordsSegment } from './reply-segment.mjs';
 import { reviewBlock } from './review-comments.mjs';
-import { cancelWake } from './schedule-tools.mjs';
+import { cancelWake, scheduleWakeTool } from './schedule-tools.mjs';
 import {
   armWake,
   cancelWakeSchedule,
@@ -99,7 +101,7 @@ import {
 } from './scheduled-wakes.mjs';
 import { setSessionRun } from './session-run.mjs';
 import { pendingSessionsIn, tellAgent, updateSession } from './session-write.mjs';
-import { clearSummaryPending, shareText, shareToConversation, summarizeBack, summarizing } from './share-back.mjs';
+import { clearSummaryPending, postSummary, shareText, shareToConversation, summarizeBack, summarizing } from './share-back.mjs';
 import { runShell } from './shell.mjs';
 import {
   agentWake,
@@ -121,6 +123,7 @@ import { firstPromptSection, settleThread, turnContext } from './thread-summary.
 import { updateThread } from './thread-write.mjs';
 import { askForTool, settleToolAsks } from './tool-ask.mjs';
 import { openTopic, startTopic } from './topic-open.mjs';
+import { endedAs, endWork } from './turn-end-work.mjs';
 import { askedAgain, askedOf, replyMarks, wokeOf } from './turn-marks.mjs';
 import { settleStoppedSteps, settleSubagentSteps } from './turn-steps.mjs';
 import { workEvents } from './turn-work.mjs';
@@ -146,7 +149,7 @@ export const DEFAULT_MODEL = 'claude-opus-5-5';
 export class Runtime {
   /**
    * @param {{ store: import('./store.mjs').Store, adapters: import('./adapters/adapter.mjs').AdapterRegistry,
-   *           corpus: import('./corpus.mjs').Corpus, config: { origin: string, imageOrigins: string[], claudeProjectsRoot?: string, versions?: any, lintSettleMs?: number, home?: string, build?: { version?: string } },
+   *           corpus: import('./corpus.mjs').Corpus, config: { origin: string, imageOrigins: string[], archiveTurns?: boolean, claudeProjectsRoot?: string, versions?: any, lintSettleMs?: number, home?: string, build?: { version?: string } },
    *           blobs?: import('./blobs.mjs').Blobs, narrator?: import('./narration/narrator.mjs').Narrator|null,
    *           spawnShell?: typeof import('node:child_process').spawn, signalProcess?: import('./adapters/process-group.mjs').KillFn,
    *           listProcesses?: () => Promise<import('./adapters/process-group.mjs').Proc[]>, ledger?: Ledger,
@@ -200,6 +203,7 @@ export class Runtime {
     // Turns of agents whose persona runs on a remote host (#120): server/remote/turns.mjs.
     this.hosts = hosts ?? null;
     this.remote = new RemoteTurns(this, { hosts: this.hosts });
+    this.turnArchive = new ArchivePasses(this, { enabled: config.archiveTurns === true }); // #305: off until step 4
     // Forks are gone (#228): any left from before are archived, once.
     archiveForks(this);
     // Nothing archives a conversation by itself any more (#320): what idle archiving hid comes back, once.
@@ -469,8 +473,9 @@ export class Runtime {
     // And the agent you reply to, as the mentioned ones above.
     const woken = targets.map(({ se }) => this.persona(se.personaId));
     refuseUnregisteredSend(this, woken);
-    // Messages to a busy agent wait in the queue unless you choose Send now.
-    const busy = targets.filter(({ se }) => this.turns.has(se.id));
+    // Messages to a busy agent wait in the queue unless you choose Send now, as for one whose host turn waits to be
+    // attached again after a restart (#1135).
+    const busy = targets.filter(({ se }) => this.turns.has(se.id) || this.remote.awaitsAttach(se.id));
     const q =
       busy.length && !sendNow ? { id: newId('q'), text, attachments, sessionIds: targets.map(({ se }) => se.id), at: Date.now(), seq: arrival() } : null;
     if (q) updateThread(this, threadId, (x) => ({ queue: [...(x.queue ?? []), q] }));
@@ -522,6 +527,16 @@ export class Runtime {
   /** Once Postbox listens after a restart: what waited in the queues goes now, a wake or a message of yours (#228). */
   drainAll() {
     return queue.drainAll(this);
+  }
+
+  /**
+   * Whether a session can’t take a delivery now, so what’s queued for it waits: a turn running, a stopped one still
+   * exiting (#126), or a host turn from before a restart waiting to be attached again (#1135). The one rule a wake and
+   * a drain read; sendMessage reads it without exiting, which is #1136’s.
+   * @param {string} sessionId
+   */
+  busyFor(sessionId) {
+    return this.turns.has(sessionId) || this.exiting.has(sessionId) || this.remote.awaitsAttach(sessionId);
   }
 
   /**
@@ -727,8 +742,6 @@ export class Runtime {
       rules: { allow: [...(se0.rules?.allow ?? [])], ask: [...(se0.rules?.ask ?? [])], deny: [...(se0.rules?.deny ?? [])] },
       /** Folders the person added for this conversation (#66), passed as --add-dir / additionalDirectories. */
       addDirs: [...(se0.addDirs ?? [])],
-      /** Folders it may only read in this conversation, from Always allow on a read card (#338, read-folders.mjs). */
-      readDirs: [...(se0.readDirs ?? [])],
       /** The adapter says how to name a subagent from its id (a prompt’s agent id), so its prompt names it. */
       subagentNames(fn) {
         turn.subagentName = fn;
@@ -909,21 +922,6 @@ export class Runtime {
     };
   }
 
-  /** The turn’s work is recorded (#132), then its last reply, or its last block, gets the list that leads to it (#195). */
-  endWork(turn, status) {
-    return (
-      this.ledger
-        .endTurn(turn, { status })
-        .then(() => {
-          const line = turn.work ? turnLine(this.ledger.entries(turn.work.convId), turn.id) : null;
-          const last = this.store.pending.items(turn.threadId).findLast((x) => x.turnId === turn.id && (x.kind === 'agent' || (x.kind === 'block' && x.valid)));
-          if (line && last) this.patchItem(turn.threadId, last.id, { work: line, workTurn: turn.id });
-        })
-        // Its callers don’t await it: a ledger that fails here must not become an unhandled rejection.
-        .catch((e) => console.error(`@${turn.work?.se?.handle ?? 'an agent'}’s turn work wasn’t recorded: ${e instanceof Error ? e.message : e}`))
-    );
-  }
-
   endTurn(turn, err) {
     if (turn.closed) return;
     turn.closed = true;
@@ -935,7 +933,7 @@ export class Runtime {
     // How a remote turn ended on its host decides what the person sees: Sign-in needed and Interrupted say so (#120).
     if (turn.remote) err = this.remote.ended(turn, err);
     settleScheduledWake(this, turn, err);
-    this.endWork(turn, !err ? 'done' : err.name === 'AbortError' ? 'stopped' : 'failed');
+    endWork(this, turn, endedAs(err));
     // The turn’s own lines in an attached session’s transcript aren’t terminal activity.
     this.mirrors.get(turn.sessionId)?.tail.skipToEnd();
     const se = this.s.sessions[turn.sessionId];
@@ -952,13 +950,7 @@ export class Runtime {
     if (turn.checkpoint && !err)
       for (const it of items)
         if (it.turnId === turn.id && (it.kind === 'agent' || it.kind === 'block')) this.patchItem(turn.threadId, it.id, { checkpoint: turn.checkpoint });
-    // “Summarize back”: the reply goes to the conversation the topic branched from. The turn’s replies are what
-    // was sent, so they show “Sent to the conversation” and can’t be sent again (#93).
-    if (turn.summarizeTo && !err && turn.said.trim()) {
-      this.shareText(turn.summarizeTo, { fromThreadId: turn.threadId, handle: se.handle, text: turn.said, summary: true });
-      for (const it of items)
-        if (it.turnId === turn.id && it.kind === 'agent' && it.text && !it.sharedAt) this.patchItem(turn.threadId, it.id, { sharedAt: Date.now() });
-    }
+    if (!err) postSummary(this, se, turn, items);
     // Posted or not, the summary isn’t pending any more, so Summarize back works again, unless one waits behind this
     // turn (#225). Any turn ending clears one a restart left behind, too.
     this.clearSummaryPending(turn.threadId, turn);
@@ -1162,7 +1154,7 @@ export class Runtime {
     // here as well would cancel what the agent was told will start again (the integrator’s re-review of #598).
     if (by !== 'shutdown' && by !== 'store') settleScheduledWake(this, turn, { name: 'AbortError' });
     settleStoppedSteps(this, turn);
-    this.endWork(turn, 'stopped');
+    endWork(this, turn, 'stopped');
     // A waiting permission is answered no; the card keeps who stopped it, so its note says the person’s stop withdrew
     // it, or that it expired (tellExpired, #721, #853).
     for (const [id, w] of this.permissionWaits) if (w.sessionId === sessionId) this.settlePermission(id, 'expired', why, {}, { stoppedBy: by });
@@ -1457,6 +1449,8 @@ export class Runtime {
     });
     await Promise.race([Promise.all([...this.exiting.values()].map((x) => x.turn.exited)), late]);
     clearTimeout(timer);
+    // Last: a stopped turn’s end may have queued an archive pass, whose file mustn’t land after the store closes (#305).
+    await this.turnArchive.stop();
   }
 
   /**
@@ -2473,6 +2467,7 @@ export class Runtime {
     this.store.emit('persona', next);
     // A card that asked for a tool now on answers itself, wherever it was turned on (#237).
     if (patch.tools !== undefined) settleToolAsks(this, next);
+    drainMovedOff(this, id);
     return next;
   }
 
@@ -2887,10 +2882,7 @@ export class Runtime {
         });
         return { ok: true, message: 'Proposed. The person decides whether to create it.' };
       },
-      schedule_wake({ in_minutes, note }) {
-        const sc = rt.schedule(sessionId, { inMs: Math.round((+in_minutes || 1) * 60000), note });
-        return { ok: true, message: `You’ll be woken at ${new Date(sc.at).toISOString()}. Its id is ${sc.id}, for cancel_wake.` };
-      },
+      schedule_wake: (args) => scheduleWakeTool(rt, sessionId, args),
       cancel_wake: (args) => cancelWake(rt, sessionId, args),
       wake_agent: (args) => wakeAgent(rt, sessionId, args),
       open_topic: (args) => openTopic(rt, sessionId, args),

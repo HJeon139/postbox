@@ -10,8 +10,16 @@ import { fill, h, icon } from './dom.mjs';
 import { keepFocus, openWork, paneHref } from './ui.mjs';
 
 const SHOWN = 5;
-const STATE = { failed: 'failed', denied: 'refused', stopped: 'stopped', unknown: 'didn’t report how it ended', running: 'running', background: 'running' };
-const GLYPH = { failed: 'failed', denied: 'failed', stopped: 'failed', unknown: 'unknown', running: 'running', background: 'running' };
+const STATE = {
+  failed: 'failed',
+  denied: 'refused',
+  stopped: 'stopped',
+  ended: 'ended',
+  unknown: 'didn’t report how it ended',
+  running: 'running',
+  background: 'running',
+};
+const GLYPH = { failed: 'failed', denied: 'failed', stopped: 'failed', ended: 'done', unknown: 'unknown', running: 'running', background: 'running' };
 const expanded = new Set(); // turns whose whole list you opened, kept across repaints (the last 100)
 
 /** A link into Work that replaces the address, as the pane’s own links do. */

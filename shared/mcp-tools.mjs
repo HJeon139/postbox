@@ -3,7 +3,7 @@
 // (server/remote/host/) serves the same list, so an agent on another host sees exactly these tools and limits.
 // So this file imports only node: modules and shared/, as host code must (#120); tests/host-imports.test.mjs checks it.
 
-import { HOP_LIMIT, limitText as n, PALETTES, READING, REVIEW_IMAGES, SENDING } from './limits.mjs';
+import { HOP_LIMIT, limitText as n, PALETTES, PENDING_WAKES, READING, REVIEW_IMAGES, SENDING } from './limits.mjs';
 import { ASSET_TOOLS } from './mcp-tools-assets.mjs';
 import { REACTIONS } from './reactions.mjs';
 import { COMMENT_MAX, MAX_COMMENTS, QUOTE_MAX, VERDICTS } from './review-comments.mjs';
@@ -143,7 +143,7 @@ export const TOOL_DEFS = [
   },
   {
     name: 'schedule_wake',
-    description: 'Ask to be woken later, with a note to yourself. It says the wake’s id: if you finish its work before then, cancel it with cancel_wake.',
+    description: `Ask to be woken later, with a note to yourself, up to ${PENDING_WAKES} pending at once. It says the wake’s id: if you finish its work before then, cancel it with cancel_wake, which frees its place.`,
     inputSchema: { type: 'object', properties: { in_minutes: { type: 'number' }, note: { type: 'string' } }, required: ['in_minutes'] },
   },
   {

@@ -13,7 +13,7 @@ import { createStreamMapper } from '../server/adapters/claude-stream.mjs';
 import { KiroCliAdapter } from '../server/adapters/kiro-cli.mjs';
 import { evalOf, parsePs, runsCommand, shellGroups, stopTurn } from '../server/adapters/process-group.mjs';
 import { handleMcp } from '../server/mcp.mjs';
-import { exitedGroups, fakeKill, setup, shellRow, slowToExit } from './stop-fixture.mjs';
+import { exitedGroups, fakeKill, STOP_DIR, setup, shellRow, slowToExit } from './stop-fixture.mjs';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const until = async (fn, label) => {
@@ -54,7 +54,7 @@ function fakeCtx(over = {}) {
     abort,
     signal: abort.signal,
     mcpUrl: 'http://127.0.0.1:1/mcp?session=se_1&turn=t1',
-    persona: { handle: 'developer', model: 'claude-opus-5-5', permissionMode: 'auto', folder: '/tmp/pb-test-dev' },
+    persona: { handle: 'developer', model: 'claude-opus-5-5', permissionMode: 'auto', folder: `${STOP_DIR}/dev` },
     project: null,
     handles: ['developer'],
     state: {},
@@ -288,7 +288,7 @@ test('#126: the Kiro CLI starts in its own group too, and Stop signals the group
   const adapter = new KiroCliAdapter({
     bin: 'kiro-cli',
     workRoot: '/tmp/pb-test-work',
-    isolatedHome: '/tmp/pb-test-kiro-home',
+    isolatedHome: `${STOP_DIR}/kiro-home`,
     spawnImpl: /** @type {any} */ (
       (_bin, _args, opts) => {
         spawned.push(opts);
@@ -298,7 +298,7 @@ test('#126: the Kiro CLI starts in its own group too, and Stop signals the group
     kill: k.kill,
     listProcesses: async () => [],
   });
-  const ctx = fakeCtx({ persona: { handle: 'kiro', permissionMode: 'auto', folder: '/tmp/pb-test-kiro', usesHostSetup: false } });
+  const ctx = fakeCtx({ persona: { handle: 'kiro', permissionMode: 'auto', folder: `${STOP_DIR}/kiro`, usesHostSetup: false } });
   const done = adapter.deliver({}, { kind: 'user', text: 'Go' }, ctx);
   for (let i = 0; i < 50 && !spawned.length; i++) await sleep(5);
   assert.equal(spawned[0].detached, true);

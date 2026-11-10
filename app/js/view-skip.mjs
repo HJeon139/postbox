@@ -11,12 +11,29 @@ export const DRAWN = 'contentvisibilityautostatechange';
 export const SKIP_CLASS = 'cv-skip';
 
 /**
- * Lets the browser skip the transcript's items off screen, where it can.
+ * Lets the browser skip the transcript's items off screen, where it can: now, or once the window lets it go.
  * @param {HTMLElement} el  the transcript
  */
 export function skipOffscreen(el) {
   if (typeof CSS === 'undefined' || !CSS.supports('content-visibility', 'auto')) return;
-  el.classList.add(SKIP_CLASS);
+  el.dataset.skip = 'wanted';
+  if (!el.dataset.window) el.classList.add(SKIP_CLASS);
+}
+
+/**
+ * A transcript the window holds (#866, window.mjs) mounts only the items near the view, and must measure them at their
+ * real heights, so skipping is off while it holds it, and on again when it lets go if the transcript wants it,
+ * whichever came first. The one place that decides.
+ * @param {HTMLElement} el  the transcript  @param {boolean} held
+ */
+export function holdSkipping(el, held) {
+  if (held) {
+    el.dataset.window = 'on';
+    el.classList.remove(SKIP_CLASS);
+    return;
+  }
+  delete el.dataset.window;
+  if (el.dataset.skip === 'wanted') el.classList.add(SKIP_CLASS);
 }
 
 /**

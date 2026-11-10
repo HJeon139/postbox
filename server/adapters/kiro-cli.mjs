@@ -47,13 +47,16 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { checkRemoteContext } from './adapter.mjs';
+import { tooLongForArg } from './arg-prompt.mjs';
 import { describeTool, isQuietTool } from './claude-stream.mjs';
 import { agentFolder } from './folder.mjs';
 import { FRESH_START_TEXT, formatMessage, turnGuide } from './guide.mjs';
 import { KIRO_TOOL_RULES, kiroAgent } from './kiro-cli-agent.mjs';
 import { findKiro, kiroModel, postboxModel } from './kiro-cli-models.mjs';
 import { attachmentPaths, KIRO_CAPABILITIES, kiroRemoteSpawn } from './kiro-cli-remote.mjs';
+import { takeToolsDown } from './kiro-display-error.mjs';
 import { kiroError, kiroExitError, overSizeLimit, SIZE_LIMIT_START_TEXT } from './kiro-errors.mjs';
+import { sessionInfo } from './kiro-session-info.mjs';
 import { listProcesses, stopOnAbort, stopTurn } from './process-group.mjs';
 import { effortOf, modelOf, recorderFor, setupOf } from './setup.mjs';
 
@@ -248,17 +251,9 @@ export function createKiroMapper(ctx, { now = Date.now, effort = null } = {}) {
         if (u.status === 'completed' || u.status === 'failed') endTool(u);
         else if (!st.tools.has(u.toolCallId)) startTool(u);
         return;
-      case 'session_info_update': {
-        const k = u._meta?.kiro;
-        if (k?.kind === 'context_usage') contextUsed(k.usagePercentage);
-        else if (k?.kind === 'turn_start') status({ state: 'think', currentStep: 'Thinking' });
-        else if (k?.kind === 'pending_interaction' && k.interactionType === 'tool_approval' && k.toolCallId)
-          st.asked.set(k.toolCallId, String(k.question ?? ''));
-        // lint-allow spelling: Kiro’s value.
-        else if (k?.kind === 'interaction_resolved' && k.outcome === 'cancelled' && st.asked.has(k.toolCallId)) st.refused.add(k.toolCallId);
-        else if (k?.kind === 'steering_inclusion' && Array.isArray(k.steeringDocuments)) st.steering = k.steeringDocuments.map(String);
+      case 'session_info_update':
+        sessionInfo(u._meta?.kiro, st, { ctx, contextUsed, status });
         return;
-      }
       case 'config_option_update': {
         const opt = (Array.isArray(u.configOptions) ? u.configOptions : []).find((o) => o?.id === 'model');
         const model = postboxModel(opt?.currentValue);
@@ -384,7 +379,8 @@ export class KiroCliAdapter {
       );
       return;
     }
-    const first = await this.run({ ctx, cwd, folders, prompt: promptOn(), guide, sessionId: ctx.state.kiroSessionId ?? null, turn: ctx.remote?.turn });
+    const down = takeToolsDown(ctx); // Postbox’s tools didn’t load last turn: told first, once (#489)
+    const first = await this.run({ ctx, cwd, folders, prompt: down + promptOn(), guide, sessionId: ctx.state.kiroSessionId ?? null, turn: ctx.remote?.turn });
     // A session Kiro no longer has (its history was cleared, or the persona moved between your setup and
     // Isolated, which keep sessions in different homes) starts over, once. So does one grown past the request size
     // limit, which would fail every turn that resumes it, Retry included (#544).
@@ -393,7 +389,7 @@ export class KiroCliAdapter {
       const note = `[Postbox] ${first.tooLarge ? SIZE_LIMIT_START_TEXT : FRESH_START_TEXT}\n\n`;
       // On a host, a second host turn, which the runtime persists before nextTurn returns.
       const turn = ctx.remote ? await ctx.remote.nextTurn() : undefined;
-      failOverLimit(ctx, await this.run({ ctx, cwd, folders, prompt: note + promptOn(turn), guide, sessionId: null, turn }));
+      failOverLimit(ctx, await this.run({ ctx, cwd, folders, prompt: note + down + promptOn(turn), guide, sessionId: null, turn }));
     }
   }
 
@@ -404,7 +400,9 @@ export class KiroCliAdapter {
   async run({ ctx, cwd, folders, prompt, guide, sessionId, turn, attach = false }) {
     const persona = ctx.persona;
     const agent = `postbox-${String(persona.handle).replace(/[^a-z0-9_-]/gi, '')}-${randomUUID().slice(0, 8)}`;
-    const args = kiroArgs({ persona, agent, sessionId, prompt, stdin: Boolean(ctx.remote) });
+    // On a host the prompt always goes on stdin; here, too, once it's too long for one argument (#362).
+    const stdin = Boolean(ctx.remote) || tooLongForArg(prompt);
+    const args = kiroArgs({ persona, agent, sessionId, prompt, stdin });
     /** @type {string | null} the agent file on this computer, removed when the turn ends */
     let file = null;
     let spawnFn = this.spawn;
@@ -426,12 +424,13 @@ export class KiroCliAdapter {
         let child;
         try {
           // Its own process group, so Stop reaches everything it started (#126).
-          child = spawnFn(this.bin, args, { cwd, env, stdio: ['ignore', 'pipe', 'pipe'], detached: true });
+          child = spawnFn(this.bin, args, { cwd, env, stdio: [stdin && !ctx.remote ? 'pipe' : 'ignore', 'pipe', 'pipe'], detached: true });
         } catch (e) {
           reject(new Error(`Couldn’t start the Kiro CLI (${this.bin}): ${e.message}`));
           return;
         }
-        if (ctx.remote && !attach) child.stdin.end(prompt);
+        // kiro exiting before it reads the prompt (EPIPE) ends its turn, not Postbox, as claude-code.mjs guards it.
+        if (stdin && !attach) child.stdin.on('error', () => {}).end(prompt);
         let stderr = '';
         const c = child;
         const exited = new Promise((r) => {

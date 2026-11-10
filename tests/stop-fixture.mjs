@@ -4,6 +4,10 @@
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
+import { tempDir } from './temp-dirs.mjs';
+
+/** The stop tests’ project and agent folders go in this temp folder of the test file’s: the adapters make them (#823). */
+export const STOP_DIR = tempDir('pb-stop-');
 
 /** Groups whose fake CLI has exited (fakeChild’s exit), as kill(-pid, 0) sees them. */
 export const exitedGroups = new Set();
@@ -51,7 +55,7 @@ export function setup() {
     signalProcess: k.kill,
     listProcesses: async () => procs,
   });
-  store.emit('project', { id: 'p1', name: 'P', folder: '/tmp' });
+  store.emit('project', { id: 'p1', name: 'P', folder: STOP_DIR });
   const p = rt.createPersona({ handle: 'developer' });
   const t = rt.createThread({ projectId: 'p1', title: 'T', personaIds: [p.id] });
   return { store, rt, adapter, t, se: rt.sessionsIn(t.id)[0], k, procs };

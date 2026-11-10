@@ -311,7 +311,7 @@ pb-ring[role="button"] { cursor: pointer; border-radius: 50%; }
 
 .main { min-width: 0; display: flex; flex-direction: column; position: relative; }
 /* Messages sit at most one line apart. */
-.transcript { flex: 1; padding: 16px 24px calc(8px + var(--held, 0px)); display: flex; flex-direction: column; gap: 12px; }
+.transcript { flex: 1; padding: 16px 24px 8px; display: flex; flex-direction: column; gap: 12px; }
 /* The transcript keeps its own place (mountTranscript): on the newest message, or on what you were reading. The
    browser's own scroll anchoring is off, so every browser behaves the same and only your scrolling moves it. */
 :root:has(.transcript), .sp-body { overflow-anchor: none; }
@@ -802,8 +802,12 @@ html.store-down .sidepanel { padding-bottom: 44px; }
 .what-goes .i { margin-top: 1px; }
 
 /* The right pane: a conversation’s side views, a thread and its Work, alone or split with a divider (pane.mjs).
-   --pane-w is its width, which pane-width.mjs sets, and the handle on its left edge changes (#86). */
+   --pane-w is its width, which pane-width.mjs sets on .app, and the handle on its left edge changes (#86). It isn’t
+   inherited, so a new width restyles .app and the two children that take it, the pane and the conversation column,
+   not every element in the conversation (#1150). A browser without @property inherits it as before. */
+@property --pane-w { syntax: '<length>'; inherits: false; initial-value: 440px; }
 .app { --pane-w: 440px; }
+.rpane, .app > .main { --pane-w: inherit; }
 .rpane { position: fixed; z-index: 25; top: 48px; right: 0; bottom: 0; width: min(var(--pane-w), 100%); background: var(--panel); border-left: 1px solid var(--line);
   display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
 .rpane[hidden] { display: none; }
@@ -933,8 +937,7 @@ html.store-down .sidepanel { padding-bottom: 44px; }
   .ringstrip a[aria-current="page"] { border-color: var(--line); background: var(--panel); color: var(--text); }
   .ringstrip a .badge { position: absolute; top: 0; right: 6px; }
   .ringstrip a span { max-width: 64px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  /* The bottom keeps the room held below the newest message while following, as the wide rule does (#712a). */
-  .transcript { padding: 16px 12px calc(8px + var(--held, 0px)); }
+  .transcript { padding: 16px 12px 8px; }
   .tbl td { padding: 7px 8px; }
   .tbl th button { padding: 8px; }
   .tbl td.act { padding: 4px; }

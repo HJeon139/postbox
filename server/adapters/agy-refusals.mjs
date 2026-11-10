@@ -1,6 +1,8 @@
 // What Postbox tells an Antigravity agent, and the person, about the calls agy refuses headless when the PreToolUse
 // hook isn’t running (server/adapters/antigravity-cli.mjs, “Permissions”).
 
+import { promptTooLong } from './arg-prompt.mjs';
+
 export const clip = (s, n) => {
   const t = String(s ?? '')
     .replace(/\s+/g, ' ')
@@ -39,3 +41,14 @@ const MODE_REFUSES = {
 /** @param {string | undefined} mode the persona’s permission mode */
 export const refusalOf = (mode = 'auto') =>
   `Antigravity asks before this, and can’t ask you from Postbox, so it was refused. ${MODE_REFUSES[/** @type {keyof typeof MODE_REFUSES} */ (mode)] ?? MODE_REFUSES.auto} Run everything allows it.`;
+
+/**
+ * Why agy couldn’t start, for the person. agy takes a prompt only as --print=…, one argument, and how long that can be
+ * differs by operating system (#362, arg-prompt.mjs), so a turn is always tried and E2BIG is the answer.
+ * @param {any} e the spawn’s error @param {string} prompt @param {string} bin
+ */
+export function agyStartError(e, prompt, bin) {
+  if (e.code === 'E2BIG') return new Error(promptTooLong(prompt, 'the Antigravity CLI'), { cause: e });
+  if (e.code === 'ENOENT') return new Error('The Antigravity CLI isn’t installed, or isn’t on the PATH. Install it, or set POSTBOX_AGY_BIN.');
+  return new Error(`Couldn’t start the Antigravity CLI (${bin}): ${e.message}`);
+}

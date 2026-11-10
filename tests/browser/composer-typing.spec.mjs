@@ -42,7 +42,9 @@ async function seeded(page, name, width = 1280) {
 
 const KEYS = 'typing a message';
 
-test('#641: each key typed into the composer costs at most one layout', async ({ page }) => {
+test('#641: each key typed into the composer costs at most one layout', async ({ page, browserName }) => {
+  // The layout count comes from Chromium’s DevTools protocol (newCDPSession), which no other browser has.
+  test.skip(browserName !== 'chromium', 'the layout count needs Chromium’s DevTools protocol');
   const input = await seeded(page, 'counter');
   const cdp = await page.context().newCDPSession(page);
   await cdp.send('Performance.enable');

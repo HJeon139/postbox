@@ -7,6 +7,9 @@ import http from 'node:http';
 import https from 'node:https';
 import { syncBuiltinESMExports } from 'node:module';
 import net from 'node:net';
+import { basename, resolve } from 'node:path';
+import { PREFIX as GATE_PREFIX } from '../tools/gate-tmp.mjs';
+import { installTmpGuard } from './guard-tmp.mjs';
 
 const refuse = (what) => () => {
   throw new Error(`A test tried to ${what}. Tests must not touch the network or start processes; pass a fake instead.`);
@@ -20,3 +23,7 @@ https.request = https.get = refuse('make an HTTPS request');
 for (const fn of ['spawn', 'spawnSync', 'exec', 'execSync', 'execFile', 'execFileSync', 'fork']) childProcess[fn] = refuse(`start a process (${fn})`);
 // Named imports (import { spawn } from 'node:child_process') see the replacements too.
 syncBuiltinESMExports();
+
+// A gate run’s tests write temp files only in its own temp folder (#823).
+const runTemp = process.env.TMPDIR;
+if (runTemp && basename(resolve(runTemp)).startsWith(GATE_PREFIX)) installTmpGuard(runTemp);
