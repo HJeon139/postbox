@@ -114,6 +114,8 @@ test('a commit answered duplicate stops the pass rather than committing the same
   const store = Object.assign(Object.create(s), {
     commit: async () => {
       calls++;
+      // A second call is the bug, and would loop for ever: fail it at once rather than hang the file.
+      if (calls > 1) throw new Error('the pass committed the same turn again');
       return { seq: s.state.seq, duplicate: true };
     },
   });
