@@ -20,6 +20,8 @@ export function memIo(initial = {}) {
     text: (p) => fs.get(p)?.toString('utf8'),
     readNow: read,
     read: async (p) => read(p),
+    realPath: async (p) => p,
+    tempRoot: async () => '/tmp',
     readTail: async (p) => {
       if (!fs.has(p)) throw new Error('ENOENT');
       return { bytes: fs.get(p), cut: false };
