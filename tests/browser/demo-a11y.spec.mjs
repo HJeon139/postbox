@@ -119,7 +119,9 @@ async function axe(page) {
   await page.evaluate(`${AXE};0`);
   return page.evaluate(() =>
     /** @type {any} */ (window).axe
-      .run(document, { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'] }, resultTypes: ['violations'] })
+      // iframes: false, since axe can’t enter an agent app (above). Trying posts to each sandboxed frame with this page’s
+      // origin, which its null origin can’t match, and Firefox logs that as an error the scene would fail on.
+      .run(document, { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'] }, resultTypes: ['violations'], iframes: false })
       .then((/** @type {any} */ r) =>
         r.violations.map((/** @type {any} */ v) => ({
           rule: v.id,
