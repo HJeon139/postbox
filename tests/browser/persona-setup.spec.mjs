@@ -109,12 +109,22 @@ test('the Antigravity CLI’s Auto says it works like Run everything for its too
   const dialog = page.getByRole('dialog', { name: 'New agent' });
   await dialog.getByRole('radiogroup', { name: 'Boilerplate' }).getByRole('radio', { name: 'Gemini', exact: true }).click();
   const field = dialog.locator('.field').filter({ has: page.getByRole('radiogroup', { name: 'Permissions' }) });
-  await field.getByRole('radio', { name: 'Auto', exact: true }).click();
+  await field.getByRole('radio', { name: 'Auto (the harness judges)', exact: true }).click();
   await expect(field.locator('.help')).toHaveText(/^Antigravity’s Auto: agy’s own Auto isn’t available on this account, so Auto works like Run everything/);
   await expect(field.locator('.help')).toContainText('Nothing judges those calls');
   await expect(field.locator('.help')).toContainText('A tool on Postbox’s publishing list is refused unless the agent can publish.');
-  await field.getByRole('radio', { name: 'Accept edits', exact: true }).click();
+  await field.getByRole('radio', { name: 'Run everything', exact: true }).click();
   await expect(field.locator('.help')).not.toContainText('works like Run everything');
+});
+
+// Postbox’s own permission layer is going (designs/rooms-at-scale.md, “The permission layer”): the harness judges,
+// or the agent runs everything.
+test('the sheet offers two permission modes: Auto (the harness judges) and Run everything', async ({ page }) => {
+  await personas(page);
+  await page.locator('.dialog').getByRole('button', { name: 'New agent', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'New agent' });
+  await dialog.getByRole('radiogroup', { name: 'Boilerplate' }).getByRole('radio', { name: 'Gemini', exact: true }).click();
+  await expect(dialog.getByRole('radiogroup', { name: 'Permissions' }).getByRole('radio')).toHaveText(['Auto (the harness judges)', 'Run everything']);
 });
 
 /** The Skills checklist’s row for one skill. */

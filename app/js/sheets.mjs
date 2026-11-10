@@ -17,6 +17,7 @@ import {
   PERMISSIONS,
   selectBackend,
 } from '/shared/agent-facts.mjs';
+
 import { mockMarker } from './agent-facts.mjs';
 import { checkField } from './check-field.mjs';
 import { api, client, sessionsOf, threadsOf } from './client.mjs';
@@ -34,6 +35,15 @@ import { keepFocus, navigate, openDialog, say, toast } from './ui.mjs';
 export { EFFORT_NAMES, MCP_SCOPE, MCP_STATUS, MODELS, modeHelp };
 
 const S = () => client.state;
+/**
+ * The permission modes the sheet offers: the harness judges, or it runs everything. Postbox’s own permission layer is
+ * going (designs/rooms-at-scale.md, “The permission layer”), so Ask me and Accept edits aren’t offered; a persona set
+ * to one shows as Auto, and saving keeps the one picked.
+ */
+const SHEET_MODES = [
+  ['auto', 'Auto (the harness judges)', 'Its harness judges each call in its own Auto mode, and asks you only when it can’t decide.'],
+  ['bypass', 'Run everything', PERMISSIONS.find(([id]) => id === 'bypass')?.[2] ?? ''],
+];
 const toolsInProject = (projectId) =>
   new Set(
     Object.values(S().sessions)
@@ -152,7 +162,7 @@ function backendFields(st, paint, { idp, fixedBackend = false, personaId = null,
   const local = new Set(client.config.adapters ?? ['mock']);
   const available = new Set(BACKENDS.map(([id]) => id).filter((id) => local.has(id) || onHost(id)));
   const real = st.backend !== 'mock';
-  const perm = PERMISSIONS.find(([id]) => id === st.permissionMode) ?? PERMISSIONS[0];
+  const perm = SHEET_MODES.find(([id]) => id === st.permissionMode) ?? SHEET_MODES[0];
   return [
     // A dropdown, as Effort is: four backends side by side wrapped their names onto two lines in a half-width
     // field. One this computer can’t run stays in the list, disabled, so you can see it exists.
@@ -260,7 +270,7 @@ function backendFields(st, paint, { idp, fixedBackend = false, personaId = null,
       ? h(
           'div.field.span',
           h('span.label', 'Permissions'),
-          seg('Permissions', PERMISSIONS, perm[0], (id) => {
+          seg('Permissions', SHEET_MODES, perm[0], (id) => {
             st.permissionMode = id;
             paint();
           }),
@@ -331,10 +341,12 @@ function backendFields(st, paint, { idp, fixedBackend = false, personaId = null,
 
 // What the Tools checklist means on real backends (#5): server/adapters/setup.mjs, TOOL_RULES, and kiro-cli.mjs, KIRO_TOOL_RULES.
 // A backend that can’t turn a tool off for one agent (capabilities.tools: 'none', the Antigravity CLI) only tells it.
-const toolsHelp = (backend) =>
-  capsOf(backend).tools === 'none'
+function toolsHelp(backend) {
+  if (backend === 'codex') return 'In Auto, Web turns network on in Codex’s sandbox. Codex doesn’t turn other tools off for one agent.';
+  return capsOf(backend).tools === 'none'
     ? 'This backend can’t turn a tool off for one agent: an unticked one is only a request, which the agent is told. Its permissions still apply.'
     : 'On Claude Code, the Agent SDK and the Kiro CLI, an unticked tool is turned off. A ticked one still follows its permissions.';
+}
 
 // ── New agent ───────────────────────────────────────────────────────────────────────────
 
@@ -902,7 +914,7 @@ export function openSettings(tab = 'appearance', personaId = null) {
           'New agent',
         ),
       ),
-      h('p.small.dim', 'Edits apply to new sessions. Running sessions keep the version they started with.'),
+      h('p.small.dim', 'An edit applies from each agent’s next turn, in every conversation it’s in. A turn that’s running keeps what it started with.'),
     ];
   };
   const personaForm = (p, back) => {
@@ -932,36 +944,34 @@ export function openSettings(tab = 'appearance', personaId = null) {
       h('div.field', h('label.label', { for: 'pe-d' }, 'What it does'), desc),
       h('div.field', h('label.label', { for: 'pe-i' }, 'Instructions'), ins),
       runBox,
-      run.backend === 'codex'
-        ? h(
-            'p.help',
-            'On Codex, Web is the one tool Postbox reads: in Auto, it turns network on in Codex’s sandbox. It’s in the agent’s quick panel. Codex doesn’t turn other tools off for one agent.',
-          )
-        : h(
-            'div.field',
-            h('span.label', 'Tools'),
-            h(
-              'div.chips',
-              (client.config.knownTools ?? []).map(([id]) =>
-                h(
-                  'button.chip.sm',
-                  {
-                    type: 'button',
-                    'aria-pressed': String(tools.has(id)),
-                    class: tools.has(id) ? 'on' : '',
-                    onclick: (e) => {
-                      if (tools.has(id)) tools.delete(id);
-                      else tools.add(id);
-                      e.currentTarget.classList.toggle('on');
-                      e.currentTarget.setAttribute('aria-pressed', String(tools.has(id)));
-                    },
+      h(
+        'div.field',
+        h('span.label', 'Tools'),
+        h(
+          'div.chips',
+          // On Codex, Web is the one tool Postbox reads, so it’s the one offered.
+          (client.config.knownTools ?? [])
+            .filter(([id]) => run.backend !== 'codex' || id === 'web.fetch')
+            .map(([id]) =>
+              h(
+                'button.chip.sm',
+                {
+                  type: 'button',
+                  'aria-pressed': String(tools.has(id)),
+                  class: tools.has(id) ? 'on' : '',
+                  onclick: (e) => {
+                    if (tools.has(id)) tools.delete(id);
+                    else tools.add(id);
+                    e.currentTarget.classList.toggle('on');
+                    e.currentTarget.setAttribute('aria-pressed', String(tools.has(id)));
                   },
-                  id,
-                ),
+                },
+                id,
               ),
             ),
-            run.backend === 'mock' ? null : h('span.help', toolsHelp(run.backend)),
-          ),
+        ),
+        run.backend === 'mock' ? null : h('span.help', toolsHelp(run.backend)),
+      ),
       // Its rules, folders and MCP servers, with where each comes from (#66), over this sheet.
       p.backend && p.backend !== 'mock'
         ? h(
@@ -1001,20 +1011,8 @@ export function openSettings(tab = 'appearance', personaId = null) {
                 'PATCH',
               )
                 .then(() => {
-                  toast({
-                    title: `Saved ${p.handle}`,
-                    text:
-                      run.backend !== (p.backend ?? 'mock') ||
-                      (run.remote ?? null) !== (p.remote?.hostId ?? null) ||
-                      run.permissionMode !== (p.permissionMode ?? 'auto') ||
-                      run.usesHostSetup !== (p.usesHostSetup !== false) ||
-                      run.canPublish !== (p.canPublish === true) ||
-                      String(run.skillsOff) !== String(p.skillsOff ?? []) ||
-                      String(run.mcpOff) !== String(p.mcpOff ?? []) ||
-                      String([...tools].sort()) !== String([...(p.tools ?? [])].sort())
-                        ? 'Where it runs, its permissions and its tools apply to its conversations from their next turn; other changes apply to new sessions.'
-                        : 'New sessions use this version.',
-                  });
+                  // One rule for every setting (designs/rooms-at-scale.md, “Settings: one scope”).
+                  toast({ title: `Saved ${p.handle}`, text: 'It runs with this from its next turn, in every conversation it’s in.' });
                   back();
                 })
                 // Where it runs changed: the server’s refusal shows under Runs on (#120).
