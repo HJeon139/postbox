@@ -75,6 +75,9 @@ const DIRECT = {
   'tool-ask.mjs': ['settleToolAsks'], // only the thread ids; each thread is read through store.pending
   'view-app/view-app.mjs': ['viewApp'], // the app the agent named, to find its thread and version for the picture (#95)
   'waiting-on-you.mjs': ['waitingOnYou'], // shared with the page, which has only what was broadcast
+  // The archive pass (#305) picks a turn from the published state; its commit function gathers it again from the state
+  // the commit is sequenced on, so any change since stops the commit (I5, I8), and a patch held behind it is dropped.
+  'work-archive.mjs': ['gather', 'gather'],
 };
 
 /** store.pending reads. */
@@ -179,6 +182,8 @@ const LEDGER = {
 const COMMITS = {
   'asset-orphans.mjs': ['sweepAssets'], // the released hashes a load deleted: assetReleases only (#516 S3)
   'assets.mjs': ['writeAsset'], // an asset version: assets, assetRooms and assetReleases only, none of items, work or apps (#516 S3)
+  // turn.archive (#305): touches work and items, so the pending view takes it into account (server/store-held.mjs LISTS).
+  'work-archive.mjs': ['commitTurn'],
 };
 
 test('every published read of items, work and apps in server/ is placed, by file and function', () => {
