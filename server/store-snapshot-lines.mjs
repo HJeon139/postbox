@@ -1,20 +1,33 @@
 // The snapshot as lines (#1180). V8 caps a string at 536,870,888 characters, and a snapshot written as one JSON value
 // had to be built, and read back, as one string: past that size it failed to save, and once its log segment grew past
 // it too, Postbox couldn’t start. Format 2 writes a header line, then one JSON value per line, each small: a map’s
-// entries one by one, and a conversation’s items one by one. A snapshot written before it, one JSON value on one line,
-// still loads. Read by the store (server/store-recover.mjs) and by the tools that read a data folder.
+// entries one by one, and a conversation’s items one by one, then an end line that counts them, so a file cut short at
+// a line boundary is refused rather than loaded as a smaller state. Lines split on the newline byte alone: readline also
+// ends a line at U+2028 and U+2029, which JSON.stringify leaves as they are (critic, on #1194). A snapshot of one JSON
+// value, as Postbox wrote before #1180 and tools/snapshot-for-older.mjs writes, still loads. Read by the store (server/store-recover.mjs) and by the tools that read a data folder.
 
 /** The first line of a format-2 snapshot. */
 export const SNAPSHOT_HEADER = Object.freeze({ postbox: 'snapshot', format: 2 });
 
 /**
  * The state as format-2 lines, without their newlines: the header, then for each key of the state one line for a plain
- * value, or a map’s start and a line per entry, an entry that’s a list as its start and a line per element.
+ * value, or a map’s start and a line per entry, an entry that’s a list as its start and a line per element; last, the
+ * end line, ["end", the count of lines between it and the header].
  * @param {Record<string, any>} state
  * @returns {Generator<string>}
  */
 export function* snapshotLines(state) {
   yield JSON.stringify(SNAPSHOT_HEADER);
+  let count = 0;
+  for (const line of bodyLines(state)) {
+    count++;
+    yield line;
+  }
+  yield JSON.stringify(['end', count]);
+}
+
+/** The lines between the header and the end line. @param {Record<string, any>} state @returns {Generator<string>} */
+function* bodyLines(state) {
   for (const [key, value] of Object.entries(state)) {
     if (Array.isArray(value)) {
       yield JSON.stringify(['A', key]);
@@ -33,19 +46,6 @@ export function* snapshotLines(state) {
   }
 }
 
-/** A first line’s value, or undefined when it isn’t a JSON value on its own, as an old snapshot’s first line may not be. */
-function firstValue(line) {
-  try {
-    return JSON.parse(line);
-  } catch {
-    return undefined;
-  }
-}
-
-/** Whether a first line’s value is format 2’s header. @param {unknown} value */
-const isHeader = (value) =>
-  Boolean(value) && typeof value === 'object' && /** @type {any} */ (value).postbox === SNAPSHOT_HEADER.postbox && /** @type {any} */ (value).format === 2;
-
 /**
  * Reads a snapshot back into a state, line by line, so no line is longer than its largest entry. A snapshot of the
  * old format, one JSON value, is that value. Throws on a line it can’t place, naming it; ENOENT passes through.
@@ -53,24 +53,62 @@ const isHeader = (value) =>
  * @returns {Promise<Record<string, any>>}
  */
 export async function readSnapshotFile(io, path) {
+  // Not format 2’s header and its newline: one JSON value, read whole as before. Postbox writes that while the state
+  // fits the string limit (C5 on #1155), and before #1180 always did; a hand-made one may run across lines.
+  const fh = await io.open(path, 'r');
+  let lines;
+  try {
+    lines = await startsWithHeader(fh);
+  } finally {
+    await fh.close();
+  }
+  if (!lines) return JSON.parse(await io.readFile(path, 'utf8'));
+  const reader = lineReader();
+  let n = 0;
+  for await (const { line, terminated } of fileLines(io, path)) {
+    if (++n === 1) continue;
+    if (!terminated) throw new Error(`line ${n} of the snapshot has no newline: the file was cut short`);
+    reader.take(line, n);
+  }
+  return reader.done();
+}
+
+const HEADER_LINE = Buffer.from(`${JSON.stringify(SNAPSHOT_HEADER)}\n`);
+
+/** Whether the file opens with format 2’s header line, read from its first bytes alone. */
+async function startsWithHeader(fh) {
+  const buf = Buffer.alloc(HEADER_LINE.length);
+  const { bytesRead } = await fh.read(buf, 0, buf.length, 0);
+  return bytesRead === buf.length && buf.equals(HEADER_LINE);
+}
+
+/** How much of a file fileLines reads at a time. */
+const CHUNK = 1 << 20;
+
+/**
+ * A file’s lines, read a chunk at a time rather than as one string (#1180), each with whether a newline ended it. Split
+ * on the newline byte alone, so a line is decoded whole, a character is never cut, and U+2028 and U+2029 stay in their
+ * line. The log’s replay (server/store-replay.mjs) and the snapshot both read through it.
+ * @param {{ open: typeof import('node:fs/promises').open }} io @param {string} path
+ * @returns {AsyncGenerator<{ line: string, terminated: boolean }>}
+ */
+export async function* fileLines(io, path) {
   const fh = await io.open(path, 'r');
   try {
-    /** @type {Record<string, any> | null} */
-    let state = null;
-    let n = 0;
-    for await (const line of fh.readLines({ autoClose: false })) {
-      n++;
-      if (n === 1) {
-        // Not the header: the old format, one JSON value, read whole as before (#1180). That includes one written
-        // across lines, as a hand-made fixture can be; a snapshot Postbox wrote in it was under the string limit.
-        if (!isHeader(firstValue(line))) return JSON.parse(await io.readFile(path, 'utf8'));
-        state = Object.create(null);
-        continue;
+    const buf = Buffer.alloc(CHUNK);
+    let carry = Buffer.alloc(0);
+    for (;;) {
+      const { bytesRead } = await fh.read(buf, 0, CHUNK, null);
+      if (!bytesRead) break;
+      const chunk = Buffer.concat([carry, buf.subarray(0, bytesRead)]);
+      let start = 0;
+      for (let nl = chunk.indexOf(10, start); nl !== -1; nl = chunk.indexOf(10, start)) {
+        yield { line: chunk.toString('utf8', start, nl), terminated: true };
+        start = nl + 1;
       }
-      if (line) place(/** @type {Record<string, any>} */ (state), JSON.parse(line), n);
+      carry = chunk.subarray(start);
     }
-    if (!state) throw new Error('the snapshot is empty');
-    return state;
+    if (carry.length) yield { line: carry.toString('utf8'), terminated: false };
   } finally {
     await fh.close();
   }
@@ -82,14 +120,53 @@ export async function readSnapshotFile(io, path) {
  * @param {string} text @returns {Record<string, any>}
  */
 export function parseSnapshotText(text) {
+  if (!text.startsWith(HEADER_LINE.toString())) return JSON.parse(text); // one JSON value
   const lines = text.split('\n');
-  if (!isHeader(firstValue(lines[0]))) return JSON.parse(text); // the old format, one JSON value
-  const state = Object.create(null);
-  for (let n = 1; n < lines.length; n++) if (lines[n]) place(state, JSON.parse(lines[n]), n + 1);
-  return state;
+  if (lines.at(-1) !== '') throw new Error(`line ${lines.length} of the snapshot has no newline: the file was cut short`);
+  const reader = lineReader();
+  for (let n = 1; n < lines.length - 1; n++) reader.take(lines[n], n + 1);
+  return reader.done();
 }
 
-/** The bytes a snapshot of this state takes on disk. @param {Record<string, any>} state */
+/** Builds a state from format-2 lines after the header, and refuses one that ends before its end line, or runs past it. */
+function lineReader() {
+  const state = Object.create(null);
+  let count = 0;
+  let ended = false;
+  return {
+    /** @param {string} line @param {number} n */
+    take(line, n) {
+      if (ended) throw new Error(`line ${n} of the snapshot comes after its end line`);
+      const entry = JSON.parse(line);
+      if (!Array.isArray(entry) || entry[0] !== 'end') {
+        place(state, entry, n);
+        count++;
+        return;
+      }
+      if (entry[1] !== count) throw new Error(`the snapshot’s end line counts ${entry[1]} lines, and ${count} came before it`);
+      ended = true;
+    },
+    done() {
+      if (!ended) throw new Error('the snapshot ends before its end line: the file was cut short');
+      return state;
+    },
+  };
+}
+
+/**
+ * The state as one JSON value, or null past V8’s string limit, where only lines can hold it: what
+ * tools/snapshot-for-older.mjs writes for a Postbox from before #1180. @param {any} state
+ */
+export function oneValue(state) {
+  try {
+    return JSON.stringify(state);
+  } catch (e) {
+    if (e instanceof RangeError) return null;
+    throw e;
+  }
+}
+
+/** The bytes a snapshot of this state takes on disk, as writeSnapshot writes it. @param {any} state */
 export function snapshotBytes(state) {
   let bytes = 0;
   for (const line of snapshotLines(state)) bytes += Buffer.byteLength(line) + 1;
