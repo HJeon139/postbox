@@ -387,7 +387,7 @@ test('a background command says what became of it after Stop: stopped with its a
   // Later, one ends on its own (Postbox saw its process go) and you stop the other.
   ledger.jobUpdate(job('b'), { state: 'done' });
   ledger.jobUpdate(job('c'), { state: 'stopped', by: 'you' });
-  assert.deepEqual([cmd('b').state, !!cmd('b').leftRunning, cmd('b').keptRunning], ['unknown', false, true], 'its exit isn’t known');
+  assert.deepEqual([cmd('b').state, !!cmd('b').leftRunning, cmd('b').keptRunning], ['ended', false, true], 'it ended, with no exit known (#519)');
   assert.deepEqual([cmd('c').state, cmd('c').stoppedBy], ['stopped', 'you']);
   // An end the CLI reported, with its exit, isn’t overwritten.
   const t2 = { id: 'turn_2', threadId: 'th_1', startedAt: 0 };

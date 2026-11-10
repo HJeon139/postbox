@@ -83,14 +83,26 @@ export async function startPostbox(name, { demo = true, mockOnly = true, prepare
 export const windowWidth = (page) => /** @type {{ width: number }} */ (page.viewportSize()).width;
 
 /**
+ * A phone’s options for test.use, with a viewport beside them. Firefox isn’t asked for isMobile: Playwright doesn’t
+ * support it there, and with it and hasTouch together Firefox’s mouse sends no pointer events, so a drag never starts
+ * (#1187). Chromium keeps it, since it changes what a narrow page measures (windowWidth).
+ */
+export const PHONE = {
+  isMobile: async ({ browserName }, use) => use(browserName !== 'firefox'),
+  hasTouch: true,
+  deviceScaleFactor: 2,
+};
+
+/**
  * Waits until the page has applied the server’s events up to its store’s seq now. A change made on the server
  * reaches the page over its event stream, which nothing orders with the test’s next step (POSTBOX_STREAM_LAG shows it).
  * @param {import('@playwright/test').Page} page  @param {{ store: { state: { seq: number } } }} app
+ * @param {number} [timeout] how long to wait, 5 s unless a spec sends a burst
  */
-export async function synced(page, app) {
+export async function synced(page, app, timeout = 5000) {
   const seq = app.store.state.seq;
   await expect
-    .poll(() => page.evaluate(() => import('/app/js/client.mjs').then(({ client }) => client.seq)), { message: `the page to hear event ${seq}` })
+    .poll(() => page.evaluate(() => import('/app/js/client.mjs').then(({ client }) => client.seq)), { message: `the page to hear event ${seq}`, timeout })
     .toBeGreaterThanOrEqual(seq);
 }
 
@@ -129,6 +141,42 @@ export function failOnPageErrors(test) {
   test.afterEach(() => {
     expect(errors, 'the page threw no exceptions and logged no errors').toEqual([]);
   });
+}
+
+/**
+ * Until a conversation’s transcript shows its newest item, which with the transcript window on (#866) is the end of
+ * the range it mounts, not the whole room. For a spec of a long room as it opens by default.
+ * @param {import('@playwright/test').Page} page @param {{ store: any }} app @param {string} threadId @param {number} [timeout]
+ */
+export async function newestShown(page, app, threadId, timeout = 30_000) {
+  const last = app.store.items(threadId).at(-1).id;
+  await expect(page.locator(`.transcript[data-thread="${threadId}"] > [data-key="${last}"]`)).toBeAttached({ timeout });
+}
+
+/**
+ * The two ways a long room can be open, for a cost counted per item (#866): as it opens by default, with the
+ * transcript window mounting only the items around the view, and whole, where a cost per item shows at its full size.
+ */
+export const ROOM_MODES = /** @type {const} */ (['window on', 'whole room']);
+/** Opens the page’s next room in that mode: call it before the page loads. @param {import('@playwright/test').Page} page @param {(typeof ROOM_MODES)[number]} mode */
+export const openAs = (page, mode) =>
+  page.addInitScript((off) => (off ? localStorage.setItem('pb-window', 'off') : localStorage.removeItem('pb-window')), mode === 'whole room');
+
+/**
+ * Mounts every item of a long conversation, with the transcript window off (#866): for a spec of the path the window
+ * replaces, such as #712a’s skipped items or a cost counted over a whole room. The window is on by default for a room
+ * over its ceiling (window-default.spec.mjs).
+ * @param {import('@playwright/test').TestType<any, any>} test
+ */
+export function wholeRoom(test) {
+  // It runs in every frame, and an app’s sandboxed frame can’t reach localStorage: only the page needs the flag.
+  test.beforeEach(({ context }) =>
+    context.addInitScript(() => {
+      try {
+        localStorage.setItem('pb-window', 'off');
+      } catch {}
+    }),
+  );
 }
 
 /** Until the browser has drawn two more frames. @param {import('@playwright/test').Page} page */

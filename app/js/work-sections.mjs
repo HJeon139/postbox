@@ -9,6 +9,7 @@ import { client } from './client.mjs';
 import { h, icon, plural, timeOf } from './dom.mjs';
 import { navigate, openWork, paneHref, route, setPaneFull } from './ui.mjs';
 import { jumpTo } from './view-jump.mjs';
+import { mountFor } from './window.mjs';
 
 export const dur = (ms) => (ms ? formatDuration(ms) : '');
 /** A host’s name now (it may have been renamed since), else as the ledger kept it (#120). */
@@ -227,7 +228,7 @@ function showItem(conv, p) {
   if (route().full) setPaneFull(null);
   if (p.threadId !== conv) navigate(paneHref(conv, { side: p.threadId, work: route().work }), { replace: true });
   requestAnimationFrame(() => {
-    const el = /** @type {HTMLElement|null} */ (document.querySelector(`.transcript [data-key="${CSS.escape(p.itemId)}"]`));
+    const el = mountFor(p.itemId) ?? /** @type {HTMLElement|null} */ (document.querySelector(`.transcript [data-key="${CSS.escape(p.itemId)}"]`));
     el?.setAttribute('tabindex', '-1');
     if (el) jumpTo(el);
     el?.focus({ preventScroll: true });
