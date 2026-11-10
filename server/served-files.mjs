@@ -2,7 +2,8 @@
 // folders’ static files, and the data folder’s media. safeJoin, mediaFile, TYPES and file moved from server/index.mjs.
 
 import { createHash } from 'node:crypto';
-import { readFile, realpath, stat } from 'node:fs/promises';
+import { constants } from 'node:fs';
+import { lstat, open, realpath } from 'node:fs/promises';
 import { extname, join, normalize, sep } from 'node:path';
 import { gzipSync } from 'node:zlib';
 import { httpError } from './helpers.mjs';
@@ -75,25 +76,63 @@ export const TYPES = {
   '.md': 'text/markdown; charset=utf-8',
 };
 
+/**
+ * How a served file is opened (#362): read-only, without following a link that replaced it after servedFile's check,
+ * which fails with ELOOP (EMLINK on some BSDs), and never waiting on a FIFO swapped in for it. Where a platform has no
+ * O_NOFOLLOW, the check after the open (stillThere) still refuses the swap.
+ */
+const OPEN_FLAGS = constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0);
+
+/**
+ * Whether the file open is still the one servedFile checked at path (#362): path still resolves to itself, so no
+ * folder on it became a link, and names the very file open (device and inode), as agent-files.mjs checks (#780).
+ * @param {import('node:fs').BigIntStats} opened @param {string} path
+ */
+async function stillThere(opened, path) {
+  if ((await realpath(path).catch(() => null)) !== path) return false;
+  const at = await lstat(path, { bigint: true }).catch(() => null);
+  return !!at && at.dev === opened.dev && at.ino === opened.ino;
+}
+
+/**
+ * A served file's open handle and modification time: the file servedFile checked, for the caller to read and close, or a 404:
+ * missing, not a file, or swapped meanwhile for a link, here or on a folder above it (#362).
+ * @param {string} path  servedFile's result
+ */
+async function openedFile(path) {
+  const fh = await open(path, OPEN_FLAGS).catch(() => {
+    throw httpError(404, 'Not found.');
+  });
+  try {
+    const st = await fh.stat({ bigint: true });
+    if (!st.isFile() || !(await stillThere(st, path))) throw httpError(404, 'Not found.');
+    return { fh, mtime: Number(st.mtimeMs) };
+  } catch (e) {
+    await fh.close();
+    throw e;
+  }
+}
+
+/** A served file's cache entry, made from the bytes just read and kept by path and modification time. */
+async function cachedEntry(path, mtime, data) {
+  const type = TYPES[extname(path).toLowerCase()] ?? 'application/octet-stream';
+  const compressible = /^(text\/|application\/json|image\/svg)/.test(type) && data.length > 1024;
+  const entry = { mtime, data, type, etag: `"${createHash('sha1').update(data).digest('base64url')}"`, gz: compressible ? gzipSync(data) : null };
+  staticCache.set(path, entry);
+  return entry;
+}
+
 // Static files carry an ETag, so a reload revalidates cheaply (304) instead of downloading everything,
 // and text is gzipped when the browser accepts it. Both are cached in memory by path and modification time.
 const staticCache = new Map();
 /** @param {import('node:http').ServerResponse} res @param {string} path @param {Record<string, string>} [headers] @param {import('node:http').IncomingMessage|null} [req] */
 export async function file(res, path, headers = {}, req = null) {
-  let st;
-  try {
-    st = await stat(path);
-  } catch {
-    throw httpError(404, 'Not found.');
-  }
-  if (!st.isFile()) throw httpError(404, 'Not found.');
+  const { fh, mtime } = await openedFile(path);
   let entry = staticCache.get(path);
-  if (!entry || entry.mtime !== st.mtimeMs) {
-    const data = await readFile(path);
-    const type = TYPES[extname(path).toLowerCase()] ?? 'application/octet-stream';
-    const compressible = /^(text\/|application\/json|image\/svg)/.test(type) && data.length > 1024;
-    entry = { mtime: st.mtimeMs, data, type, etag: `"${createHash('sha1').update(data).digest('base64url')}"`, gz: compressible ? gzipSync(data) : null };
-    staticCache.set(path, entry);
+  try {
+    if (!entry || entry.mtime !== mtime) entry = await cachedEntry(path, mtime, await fh.readFile());
+  } finally {
+    await fh.close();
   }
   const base = {
     'content-type': entry.type,
