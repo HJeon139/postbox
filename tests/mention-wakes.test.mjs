@@ -64,3 +64,27 @@ test('#362: a reply one character past the limit wakes no one; the conversation 
   assert.equal(posted.hop, undefined, 'no wake went out as it');
   assert.equal(store.state.threads[t.id].hops ?? 0, 0, 'the chain didn’t move');
 });
+
+test('#362: in a topic thread, the refusal line and the notice turn stay in the topic thread', async () => {
+  const { store, rt, adapter, t, alpha } = setup();
+  adapter.next.push(async (c) => c.text('Hi.'));
+  rt.sendMessage(t.id, { text: '@alpha start' });
+  await settle(rt);
+  const { threadId } = rt.startTopic(t.id, store.items(t.id).find((x) => x.kind === 'user').id);
+  // No markup, so no lint notice takes the agent's next turn.
+  adapter.next.push(async (c) => c.text(`@beta ${'x'.repeat(LIMIT)}`));
+  adapter.next.push(async (c) => c.text('Handed off with wake_agent.'));
+  rt.sendMessage(threadId, { text: '@alpha go' });
+  await settle(rt);
+  assert.equal(adapter.calls.filter((c) => c.sessionId === alpha.id).length, 3, 'alpha got its notice turn');
+  const inTopic = store.items(threadId);
+  assert.ok(
+    inTopic.some((x) => x.kind === 'system' && /woke no one/.test(x.text ?? '')),
+    'the line is in the topic thread',
+  );
+  assert.ok(
+    inTopic.some((x) => x.kind === 'agent' && x.text === 'Handed off with wake_agent.'),
+    'the notice turn answered in the topic thread',
+  );
+  assert.ok(!store.items(t.id).some((x) => x.text === 'Handed off with wake_agent.'), 'not in the conversation');
+});
