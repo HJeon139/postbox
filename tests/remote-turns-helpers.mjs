@@ -14,6 +14,9 @@ import { tempDir } from './temp-dirs.mjs';
 
 // The project’s folder, a temp folder of the test file’s: the adapters make agent folders in it (#823).
 const PROJECT_DIR = tempDir('pb-project-');
+// The local adapter's work root: a remote turn shouldn't make folders here, but the permissions panel resolves an
+// agent's folder through it, so it lives in this file's temp folder, not a fixed /tmp path (#823).
+const WORK_ROOT = tempDir('pb-remote-work-');
 
 export const VERSION = '0.10.0';
 export const HOST = 'host.example.com';
@@ -158,7 +161,7 @@ export function rig({
   const f = forbidden();
   const claude = new ClaudeCodeAdapter({
     bin: 'claude',
-    workRoot: '/tmp/pb-remote-never',
+    workRoot: WORK_ROOT,
     spawnImpl: f.spawnImpl,
     kill: f.kill,
     listProcesses: f.listProcesses,
