@@ -83,6 +83,16 @@ test('the frame probe is calibrated only when an idle page runs near 60 frames a
     'a throttled page',
   );
   assert.equal(gapCalibrated([], 160, 150), false, 'no frames at all');
+  // The reference Mac’s display refreshes at 120 Hz: idle frames 8.3 ms apart are a working probe, not a broken one.
+  assert.equal(
+    gapCalibrated(
+      Array.from({ length: 60 }, () => 8.3),
+      151,
+      150,
+    ),
+    true,
+    'a 120 Hz display',
+  );
 });
 
 test('mounted elements pass at the budget and fail past it; a count that was never read is not measured', () => {
