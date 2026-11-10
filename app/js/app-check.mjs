@@ -1,11 +1,13 @@
 // The pre-display check queue for agent-written apps. Hidden frames report three sizes before an app is shown.
 
 import { api, client } from './client.mjs';
+import { theme } from './sandbox-libs.mjs';
 
 const checks = new Map(); // `${appId}:${version}` → { appId, version, results: Map(width → problems), frames, timer, resolve }
 const failed = new Set(); // saves to the server that wait for the connection to reopen before retrying
 // 375 and 1280 px wide, as tall as a check frame, and 1000 × 680, the size a visual is read at, where the frame checks
-// only what shows before any scrolling (#997). A result is keyed by its frame’s width.
+// only what shows before any scrolling (#997). A result is keyed by its frame’s width. Each frame loads at that width,
+// and keeps it, so what an app does at load is what it does there.
 const FRAMES = [{ width: 375 }, { width: 1280 }, { width: 1000, height: 680, view: true }];
 const WIDTHS = FRAMES.map((f) => f.width);
 const NO_CHECK = new URLSearchParams(location.search).has('nocheck');
@@ -43,6 +45,7 @@ function launchFrames(appId, version, check) {
   for (const size of FRAMES) {
     const frame = makeFrame(appId, version, { check: true, ...size });
     check.frames.push(frame);
+    exercise(frame);
     document.body.append(frame);
   }
   check.timer = setTimeout(() => {
@@ -52,6 +55,30 @@ function launchFrames(appId, version, check) {
         check.results.set(width, [{ code: 'no-answer', message: `The app didn’t finish loading within 10 seconds at ${width} px.` }]);
     void finishCheck(appId, version);
   }, 10_000);
+}
+
+/**
+ * A live frame is resized and can hear a theme change in its first second, often before an app’s own setup, such as
+ * `await postbox.load('d3')`, has finished, so a handler that draws then throws (#819). Once the app has loaded, each
+ * check frame is told to fire a resize event (app/kit/kit.js), and hears the other theme and then its own again, all
+ * before the check measures (app/kit/check.js waits 600 ms after the app is ready, then for the layout to hold still).
+ * An error in those handlers is a script-error, as any other is. The frame keeps its width, so what the check measures
+ * and names is that width, and what an app sized at load still fits.
+ * @param {HTMLIFrameElement} frame
+ */
+function exercise(frame) {
+  const send = (m) => frame.contentWindow?.postMessage({ __pb: 1, ...m }, '*');
+  frame.addEventListener(
+    'load',
+    () => {
+      setTimeout(() => {
+        send({ type: 'resize' });
+        send({ type: 'theme', theme: theme() === 'dark' ? 'light' : 'dark' });
+      }, 100);
+      setTimeout(() => send({ type: 'theme', theme: theme() }), 250);
+    },
+    { once: true },
+  );
 }
 
 async function finishCheck(appId, version) {
