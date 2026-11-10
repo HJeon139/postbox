@@ -201,7 +201,8 @@ test('#1143: show_block can’t show a review with a comment in the person’s n
   assert.equal(s.store.items(s.t.id).filter((i) => i.kind === 'block').length, 0, 'nothing shown');
 });
 
-for (const author of ['You', 'someone']) {
+// “@You” would show as “You”: the page shows a handle without its @.
+for (const author of ['You', 'someone', '@You', '@you', '@']) {
   test(`#1143: show_block can’t show a review with a comment authored “${author}”, only an agent’s @handle`, async () => {
     const s = setup();
     const block = { ...draft, threads: [{ id: 'f1', status: 'open', line: 3, comments: [{ author, text: 'Ship it as is.' }] }] };
@@ -220,6 +221,15 @@ test('#1143: the agent hears to resolve the person’s threads with update_block
   const { adapter } = await answered([onLast]);
   const text = formatMessage(adapter.calls.at(-1).message);
   assert.match(text, /- line 4: Cut it\.\n.*update_block.*status: "resolved"/);
+});
+
+test('#1143: only the person’s review event carries their resolve line; another agent’s keeps its own', () => {
+  const values = { verdict: 'comment', comments: [{ line: 1, text: 'x', threadId: 't1' }] };
+  const theirs = formatMessage({ kind: 'event', event: { from: 'critic', blockId: 'plan', action: 'review', values } });
+  assert.match(theirs, /keep each one in the block’s threads\? with status “resolved”/);
+  assert.doesNotMatch(theirs, /only you can resolve it/);
+  const dismissed = formatMessage({ kind: 'event', event: { blockId: 'plan', action: 'dismiss', values: {} } });
+  assert.doesNotMatch(dismissed, /resolve/);
 });
 
 test('#1143: a submit past 200 open threads tells the person to ask the agent, not to resolve some', async () => {
