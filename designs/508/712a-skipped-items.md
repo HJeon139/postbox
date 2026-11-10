@@ -13,7 +13,8 @@ Part of #508's lane: a long room should perform like a small one. #712a is the p
 ## Keeping your place (B1b's view state)
 
 - **Each draw is heard.** An item drawing for the first time changes size, and the view holds its anchor through `follow()`. The view hears that from the transcript's ResizeObserver, and from `contentvisibilityautostatechange` on the transcript, in capture.
-  - **Why the event is needed:** while following, the transcript holds the room below its newest message as bottom padding (`--held`). An item drawing inside that held room changes nothing the observer sees, so the anchor would go stale, and the next resize would apply the stale correction as a scroll. `composer-grow.spec.mjs` "#422: scrolled up" fails without the listener: the message you read moves 27 px.
+  - **Why the event is needed:** while following, the transcript holds the room below its newest message. When this listener came in, that room was bottom padding (`--held`), and an item drawing inside it changed nothing the observer saw, so the anchor would go stale, and the next resize would apply the stale correction as a scroll. `composer-grow.spec.mjs` "#422: scrolled up" fails without the listener: the message you read moves 27 px.
+  - **The held room is the transcript’s own bottom margin since #1150.** A custom property on the transcript, as `--held` was, is inherited by every element in it, so setting or clearing it restyled them all, once per new message: 614,000 elements and 1.2–1.5 s a time in the person’s Firefox profile. A margin of its own restyles only the transcript (`held-restyle-cost.spec.mjs`).
   - **Nothing is observed per item.** Revision 2 observed each drawn item; the draw event alone is enough.
 - **A jump makes its target the anchor.** `jumpTo(el, block)`, in `app/js/view-jump.mjs`:
   - it measures the target with its item drawn;

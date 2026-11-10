@@ -1,7 +1,8 @@
 // While you follow, what comes after the newest message shrinking (the working row going) would pull everything down
-// under your pointer, so the transcript keeps that room below its newest message, as its bottom padding (--held,
-// app/workbench.css; view-state.mjs follow()). The narrow window’s own padding rule set the bottom to 8 px and
-// dropped the held room, so at 767 px or narrower the newest message moved down as what was below it went (#712a).
+// under your pointer, so the transcript keeps that room below its newest message: its own bottom margin since #1150
+// (view-state.mjs follow()), bottom padding read from `--held` before. Then the narrow window’s own padding rule set
+// the bottom to 8 px and dropped the held room, so at 767 px or narrower the newest message moved down as what was
+// below it went (#712a).
 // Here it moved 47 px at 375 and 700 px before the fix. The wide window is transcript.spec.mjs’s #88 case.
 
 import { expect, test } from '@playwright/test';
