@@ -64,7 +64,7 @@ test('#179 selecting text shows a Comment button beside it, which Tab reaches; E
   await page.keyboard.press('Control+Enter');
   await expect(block.locator('.rv-preview'), 'adding it brings focus back to Preview').toBeFocused();
   expect(await page.evaluate(() => getSelection()?.toString()), 'with the text selected again').toBe('really bold');
-  expect(await page.evaluate(() => CSS.highlights.get('rv-quote')?.size ?? 0), 'the comment marks its text').toBeGreaterThanOrEqual(1);
+  await expect.poll(() => page.evaluate(() => CSS.highlights.get('rv-quote')?.size ?? 0), { message: 'the comment marks its text' }).toBeGreaterThanOrEqual(1);
   await expect(block.locator('.rv-preview .rv-thread q.rv-quote'), 'its thread quotes it').toHaveText('really bold');
 });
 
