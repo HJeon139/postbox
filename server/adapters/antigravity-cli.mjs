@@ -56,7 +56,7 @@ import { TOOL_DEFS } from '../../shared/mcp-tools.mjs';
 import { AGY_CAPABILITIES } from './agy-capabilities.mjs';
 import { agyHookCommand, agySupportsHooks, confirmAgyHook, HOOK_SCRIPT } from './agy-hook.mjs';
 import { agyPlugin, agySkillFiles, excludeFile, excludePlugin, PLUGIN_DIR, writeAgyPlugin } from './agy-plugin.mjs';
-import { agyPrompt, clip, HEADLESS_NOTE, HOOK_NOTE, LOOKING_NOTE, refusalFollowUp, refusalOf } from './agy-refusals.mjs';
+import { agyStartError, clip, HEADLESS_NOTE, HOOK_NOTE, LOOKING_NOTE, refusalFollowUp, refusalOf } from './agy-refusals.mjs';
 import { AGY_SERVER, ALLOW_POSTBOX, agySettingsFile, allowPostbox } from './agy-settings.mjs';
 import { toolOf } from './agy-tools.mjs';
 import { describeTool } from './claude-stream.mjs';
@@ -659,7 +659,7 @@ export class AntigravityCliAdapter {
     const persona = ctx.persona;
     const model = agyModel(persona, this.models);
     const effort = agyEffort(model, effortOf(persona));
-    const args = agyArgs({ persona, model, effort, sessionId, prompt: agyPrompt(prompt), addDirs, hookConfirmed });
+    const args = agyArgs({ persona, model, effort, sessionId, prompt, addDirs, hookConfirmed });
     const mapper = createAgyMapper(ctx, { effort, resumed: sessionId, wrote });
     const hookVars = agyHookVars({ mcpUrl: ctx.mcpUrl, persona, cwd, addDirs, readDirs: ctx.readDirs ?? [] });
     const env = hookConfirmed ? { ...this.env, ...hookVars } : this.env;
@@ -669,7 +669,7 @@ export class AntigravityCliAdapter {
         // Its own process group, so Stop reaches everything it started (#126).
         child = this.spawn(this.bin, args, { cwd, env, stdio: ['ignore', 'pipe', 'pipe'], detached: true });
       } catch (e) {
-        reject(new Error(`Couldn’t start the Antigravity CLI (${this.bin}): ${e.message}`));
+        reject(agyStartError(e, prompt, this.bin));
         return;
       }
       let stderr = '';
@@ -681,15 +681,7 @@ export class AntigravityCliAdapter {
       });
       // SIGINT to the group, then SIGKILL after the grace period (process-group.mjs), as for the other CLIs.
       const stop = stopOnAbort(ctx.signal, () => stopTurn(c, { exited, kill: this.kill, list: this.list }));
-      child.on('error', (e) =>
-        reject(
-          new Error(
-            e.code === 'ENOENT'
-              ? 'The Antigravity CLI isn’t installed, or isn’t on the PATH. Install it, or set POSTBOX_AGY_BIN.'
-              : `The Antigravity CLI couldn’t start: ${e.message}`,
-          ),
-        ),
-      );
+      child.on('error', (e) => reject(agyStartError(e, prompt, this.bin)));
       child.stderr.on('data', (d) => {
         stderr = (stderr + d).slice(-4000);
       });

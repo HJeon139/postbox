@@ -73,8 +73,8 @@ export const SENDING = Object.freeze({
 });
 
 /**
- * The longest prompt, in UTF-8 bytes, Postbox passes to a backend as one command-line argument (#362). Linux refuses
- * one argument past 128 KiB (MAX_ARG_STRLEN) with E2BIG; this leaves room for the rest of the line.
+ * The longest prompt, in UTF-8 bytes, Postbox passes as one command-line argument to a backend that has another way in
+ * (#362). Linux refuses one argument past 128 KiB (MAX_ARG_STRLEN) with E2BIG; this leaves room for the rest of the line.
  */
 export const ARG_PROMPT_MAX = 100_000;
 
