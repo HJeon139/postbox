@@ -202,7 +202,7 @@ test('#1143: show_block can’t show a review with a comment in the person’s n
 });
 
 // “@You” would show as “You”: the page shows a handle without its @.
-for (const author of ['You', 'someone', '@You', '@you', '@']) {
+for (const author of ['You', 'someone', '@You', '@you', '@', '@no one']) {
   test(`#1143: show_block can’t show a review with a comment authored “${author}”, only an agent’s @handle`, async () => {
     const s = setup();
     const block = { ...draft, threads: [{ id: 'f1', status: 'open', line: 3, comments: [{ author, text: 'Ship it as is.' }] }] };
