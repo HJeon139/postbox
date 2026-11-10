@@ -195,7 +195,7 @@ test('a conversation whose snapshot and agent both hold a bad folder is refused 
   assert.deepEqual(readdirSync(process.cwd()), cwdBefore, 'nothing is made in the folder Postbox was started from');
 });
 
-test('a conversation whose snapshot holds a valid folder keeps working there after the agent’s folder changes', async () => {
+test('a conversation already going works in the agent’s new folder from its next turn after the folder changes', async () => {
   const { store, rt } = setup();
   for (const [handle, backend] of [
     ['cc', 'claude-code'],
@@ -208,26 +208,25 @@ test('a conversation whose snapshot holds a valid folder keeps working there aft
     const se = rt.sessionsIn(t.id)[0];
     rt.updatePersona(p.id, { folder: later });
     assert.equal(store.state.personas[p.id].folder, later);
-    assert.equal(rt.personaFor(se).folder, started);
-    assert.deepEqual(await rt.commandFolder(t.id), { folder: started, host: null });
-    assert.equal((await rt.panelTarget({ sessionId: se.id })).folder, started);
-    if (backend === 'mock') assert.equal((await turn(rt, t).delivered).folder, started);
+    assert.equal(rt.personaFor(se).folder, later);
+    assert.deepEqual(await rt.commandFolder(t.id), { folder: later, host: null });
+    assert.equal((await rt.panelTarget({ sessionId: se.id })).folder, later);
+    if (backend === 'mock') assert.equal((await turn(rt, t).delivered).folder, later);
   }
 });
 
-test('a conversation whose agent had no folder keeps the project’s after its sheet gets one', async () => {
+test('a conversation whose agent had no folder works in the one its sheet gets, from its next turn', async () => {
   const { store, rt } = setup();
   const later = tempDir('pb-persona-folder-later-');
   const p = rt.createPersona({ handle: 'mo', backend: 'mock' });
   const t = rt.createThread({ projectId: 'p1', title: 'mo', personaIds: [p.id] });
   const se = rt.sessionsIn(t.id)[0];
-  assert.equal(se.personaSnapshot.folder, '');
   rt.updatePersona(p.id, { folder: later });
   assert.equal(store.state.personas[p.id].folder, later);
-  assert.equal(rt.personaFor(se).folder, '');
-  assert.deepEqual(await rt.commandFolder(t.id), { folder: '/srv/project', host: null });
-  assert.equal((await rt.panelTarget({ sessionId: se.id })).folder, '/srv/project');
-  assert.equal((await turn(rt, t).delivered).folder, '');
+  assert.equal(rt.personaFor(se).folder, later);
+  assert.deepEqual(await rt.commandFolder(t.id), { folder: later, host: null });
+  assert.equal((await rt.panelTarget({ sessionId: se.id })).folder, later);
+  assert.equal((await turn(rt, t).delivered).folder, later);
 });
 
 test('a conversation from before snapshots works in its agent’s folder', async () => {

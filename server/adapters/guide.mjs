@@ -43,7 +43,7 @@ export function agentGuide({ persona, session, setup = true }) {
  * the Kiro CLI’s own), or null for a backend that can’t turn a tool off for one agent.
  * room: the other agents in this conversation, with their roles (Runtime.roomOf); handles: every agent in Postbox.
  * @param {{ persona: any, handles: string[], room?: { handle: string, role: string }[], project?: any, brief?: string|null,
- *           session?: { backend?: string, personaSnapshot?: { model?: string, effort?: string }, lastModel?: string, lastEffort?: string }|null,
+ *           session?: { backend?: string, lastModel?: string, lastEffort?: string }|null,
  *           toolRules?: Record<string, string[]>|null, setup?: boolean }} who  setup: false leaves out what Postbox knows
  *           of the session (#131), as agentGuide leaves out the setup check
  */

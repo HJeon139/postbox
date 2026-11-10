@@ -31,7 +31,7 @@ const base = {
   room: [{ handle: 'critic', role: 'Reviews' }],
   project: { name: 'Paint' },
   brief: 'You were asked in by the person.',
-  session: { personaSnapshot: { model: 'claude-opus-5-5', effort: 'high' } },
+  session: {},
 };
 
 test('#515: the system prompt is the same when only the room list, the brief, the session facts or the tools turned off change', () => {
@@ -39,7 +39,7 @@ test('#515: the system prompt is the same when only the room list, the brief, th
   const changes = {
     'the room list': { room: [...base.room, { handle: 'tester', role: 'Tests' }], handles: [...base.handles, 'tester', 'indexer'] },
     'the brief': { brief: 'You were brought in by @critic.' },
-    'the session facts': { session: { lastModel: 'claude-sonnet-5', lastEffort: 'low', personaSnapshot: { model: 'claude-sonnet-5', effort: 'low' } } },
+    'the session facts': { session: { lastModel: 'claude-sonnet-5', lastEffort: 'low' } },
     'the tools turned off': { persona: { ...base.persona, tools: ['web.fetch'] } },
     'the project’s name': { project: { name: 'Paint, renamed' } },
   };

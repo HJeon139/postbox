@@ -1,4 +1,5 @@
-// Existing sessions retain their persona instructions; live permissions can change.
+// One rule for settings (designs/rooms-at-scale.md, “Settings: one scope”): a persona edit reaches a Codex session
+// that’s already going from its next turn, its instructions as much as its permissions.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
@@ -16,7 +17,7 @@ async function deliver(rt, threadId, sessionId) {
   assert.equal(rt.turns.has(sessionId), false);
 }
 
-test('editing a persona between Codex turns preserves the existing session’s pinned instructions', async () => {
+test('editing a persona between Codex turns reaches the existing session from its next turn', async () => {
   const seen = [];
   const adapter = new CodexAdapter({ spawnImpl: () => fakeAppServer(seen) });
   const store = new Store(null);
@@ -35,9 +36,9 @@ test('editing a persona between Codex turns preserves the existing session’s p
   await deliver(rt, thread.id, session.id);
   const first = seen.find((request) => request.method === 'thread/start');
   const resumed = seen.find((request) => request.method === 'thread/resume');
-  assert.equal(resumed.params.developerInstructions, first.params.developerInstructions);
-  assert.match(resumed.params.developerInstructions, /Original pinned instruction\./);
-  assert.doesNotMatch(resumed.params.developerInstructions, /Edited instruction for new sessions\./);
+  assert.match(first.params.developerInstructions, /Original pinned instruction\./);
+  assert.match(resumed.params.developerInstructions, /Edited instruction for new sessions\./);
+  assert.doesNotMatch(resumed.params.developerInstructions, /Original pinned instruction\./);
   assert.equal(seen.filter((request) => request.method === 'turn/start')[1].params.sandboxPolicy.type, 'readOnly');
   const fresh = rt.createThread({ projectId: 'project', title: 'New version', personaIds: [persona.id] });
   await deliver(rt, fresh.id, rt.sessionsIn(fresh.id)[0].id);

@@ -20,7 +20,7 @@ import { MODES } from './run-choice.mjs';
 import { capsOf, modeHelp, openFolderPicker } from './sheets.mjs';
 import { keepFocus, openDialog, say, toast } from './ui.mjs';
 
-export { MODES, openRunChoice } from './run-choice.mjs';
+export { MODES } from './run-choice.mjs';
 
 const S = () => client.state;
 

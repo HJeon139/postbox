@@ -370,28 +370,3 @@ test('#67: the recorded /compact turn compacted the session (Claude Code runs it
   assert.equal(events.at(-1).subtype, 'success');
 });
 
-test('#67: /model and /effort change this conversation’s snapshot, from the next turn, and now where the backend can', async () => {
-  const { rt, t, adapter } = setup();
-  const se = rt.sessionsIn(t.id)[0];
-  assert.deepEqual(await rt.setSessionRun(se.id, { model: 'claude-sonnet-5-5', effort: 'high' }), { ok: true, now: false });
-  rt.sendMessage(t.id, { text: 'go' });
-  await settle(rt);
-  assert.deepEqual([adapter.calls[0].ctx.persona.model, adapter.calls[0].ctx.persona.effort], ['claude-sonnet-5-5', 'high']);
-  await assert.rejects(rt.setSessionRun(se.id, { effort: 'extreme' }), /Effort is one of/);
-  await assert.rejects(rt.setSessionRun(se.id, { model: 'a model; rm -rf' }), /A model is a name/);
-  // A running turn whose backend can change: it says so.
-  let release;
-  const set = [];
-  adapter.next.push(async (c) => {
-    c.control({ setModel: async (m) => set.push(m) > 0 });
-    await new Promise((r) => {
-      release = r;
-    });
-  });
-  rt.sendMessage(t.id, { text: 'again' });
-  await sleep(10);
-  assert.deepEqual(await rt.setSessionRun(se.id, { model: 'claude-opus-5-5' }), { ok: true, now: true });
-  assert.deepEqual(set, ['claude-opus-5-5']);
-  release();
-  await settle(rt);
-});

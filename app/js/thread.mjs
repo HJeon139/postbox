@@ -24,14 +24,14 @@ import { goToItem } from './go-to-item.mjs';
 import { focusComposer, hopBlock } from './hop-card.mjs';
 import { focusUntouched } from './pane-focus.mjs';
 import { denialBlock, permissionBlock, toolAskBlock } from './permission-cards.mjs';
-import { openPermissions, openRunChoice } from './permissions.mjs';
+import { openPermissions } from './permissions.mjs';
 import { reactTo } from './reactions.mjs';
 import { hostOf } from './remote.mjs';
 import { replyLine } from './reply-rings.mjs';
 import { stoppedSaid, stoppedTag } from './reply-stop.mjs';
 import { holdFocus, replaceTranscriptItem } from './rerender-state.mjs';
 import { ringFor, stateWord } from './ring.mjs';
-import { boilerplateDesc, openAttachSession, openFolderPicker, openNewAgent, openRename } from './sheets.mjs';
+import { boilerplateDesc, openAttachSession, openFolderPicker, openNewAgent, openRename, openSettings } from './sheets.mjs';
 import { sideActive, sideLine, sideSig } from './side-line.mjs';
 import { namesSpeaker } from './speaker-line.mjs';
 import { systemLine } from './system-line.mjs';
@@ -958,9 +958,11 @@ export function mountComposer(threadId, { side = false } = {}) {
   /** Postbox’s own commands, which act on Postbox without a turn, for se: the agent named (#405), else target(). */
   const POSTBOX = [
     ['permissions', 'Its mode, rules, folders and MCP servers', (se = target()) => openPermissions({ threadId, sessionId: se?.id })],
-    ['mode', 'Ask me, Auto, Accept edits or Run everything', (se = target()) => openRunChoice('mode', { threadId, sessionId: se?.id })],
-    ['model', 'The model for this conversation', (se = target()) => openRunChoice('model', { threadId, sessionId: se?.id })],
-    ['effort', 'How much it thinks, for this conversation', (se = target()) => openRunChoice('effort', { threadId, sessionId: se?.id })],
+    // A persona’s settings are edited in one place, its sheet (designs/rooms-at-scale.md, “Settings: one scope”):
+    // these open it, and a change applies from the agent’s next turn in every conversation.
+    ['mode', 'Its permission mode, in its persona’s settings', (se = target()) => se && openSettings('personas', se.personaId)],
+    ['model', 'Its model, in its persona’s settings', (se = target()) => se && openSettings('personas', se.personaId)],
+    ['effort', 'Its effort, in its persona’s settings', (se = target()) => se && openSettings('personas', se.personaId)],
     ['add-dir', 'Let it work in another folder', (se) => addDir(se)],
     ['mcp', 'Its MCP servers: status, on or off', (se = target()) => openPermissions({ threadId, sessionId: se?.id, focus: 'mcp' })],
     ['compact', 'Summarize its context to make room', (se) => compact(se)],
@@ -1547,7 +1549,7 @@ export function mountComposer(threadId, { side = false } = {}) {
     const p = se ? S().personas[se.personaId] : null;
     // An agent on a host works in a folder there, so ! runs in the project’s folder here (runtime.mjs, commandFolder).
     if (hostOf(se)) return S().projects[thread()?.projectId]?.folder || null;
-    return se?.personaSnapshot?.folder || p?.folder || S().projects[thread()?.projectId]?.folder || null;
+    return p?.folder || S().projects[thread()?.projectId]?.folder || null;
   }
   /** Stop found background jobs running: the ask shows above the composer, and its first choice takes focus. */
   function askStop(se, ask) {

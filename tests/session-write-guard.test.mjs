@@ -40,7 +40,6 @@ const FROM_PUBLISHED = {
   'permissions-panel.mjs': ['changePermissionFolder', 'changePermissionFolder'], // addDirs: a folder removed, or added
   'remote/turns-shared.mjs': ['updateRemote'], // remoteTurn: a host turn's state
   'runtime.mjs': ['recordJob', 'recordJob', 'rememberDiagrams'], // jobs (a job recorded, kept) and diagramsLinted
-  'session-run.mjs': ['setSessionRun'], // personaSnapshot: a model or effort set for the session
   'side-threads.mjs': ['recordAgentMessage'], // agentMessages: the last messages between two agents
   'thread-summary.mjs': ['threadCatchUp', 'reactionLines'], // seenIn and reactionsTold: catch-up markers per thread
 };

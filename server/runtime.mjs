@@ -30,7 +30,7 @@ import { catchUp, moveMarkers, pointerIfSeen } from './catch-up.mjs';
 import { blockProblems, diagramProblems, formatLint, introducedTerms, lintMessage, personSaid, rawHtmlProblems, termProblems } from './checks.mjs';
 import { addDataset, reloadDatasets } from './datasets.mjs';
 import { emptyReply, endedWithoutReply } from './empty-reply.mjs';
-import { checkedSnapshot, folderOrNone, placedFolder, sessionFolder } from './folder-path.mjs';
+import { folderOrNone, placedFolder, sessionFolder } from './folder-path.mjs';
 import { heldSession } from './held-session.mjs';
 import { clip, clipText, httpError } from './helpers.mjs';
 import { hostTool } from './host-tool.mjs';
@@ -98,7 +98,6 @@ import {
   scheduleWake,
   settleScheduledWake,
 } from './scheduled-wakes.mjs';
-import { setSessionRun } from './session-run.mjs';
 import { pendingSessionsIn, tellAgent, updateSession } from './session-write.mjs';
 import { clearSummaryPending, postSummary, shareText, shareToConversation, summarizeBack, summarizing } from './share-back.mjs';
 import { runShell } from './shell.mjs';
@@ -217,17 +216,15 @@ export class Runtime {
     return this.s.personas[id];
   }
   /**
-   * The persona as this session started with it. Sessions from before snapshots use the current one. Where it
-   * runs and what it may do without asking follow the persona from the next turn, so changing them reaches
-   * conversations that are already going.
+   * The persona a session runs with: the persona as it is now. One rule for every setting (designs/rooms-at-scale.md,
+   * “Settings: one scope”): a turn takes the persona when it starts (turnContext), so every change applies from the
+   * agent’s next turn, in every conversation it’s in, and never to a turn already running.
    */
   personaFor(se) {
     const p = this.persona(se.personaId);
     return (
       p && {
         ...p,
-        ...checkedSnapshot(se.personaSnapshot ?? {}),
-        backend: p.backend,
         permissionMode: p.permissionMode ?? 'auto',
         // Whether it loads your Claude Code setup and may publish outside Postbox are permissions too (#57), and
         // so are the MCP servers it turned off (#59) and its tools, which real backends deny when unticked (#5).
@@ -385,9 +382,8 @@ export class Runtime {
       personaId,
       threadId,
       handle: p.handle,
+      // The persona version its last turn ran with: a turn that starts on a newer one marks when the change took effect.
       personaVersion: p.version ?? 1,
-      // What the agent runs with is fixed when the session starts; editing the persona changes new sessions.
-      personaSnapshot: snapshotOf(p),
       backend: p.backend,
       state: 'idle',
       ctx: null,
@@ -660,6 +656,8 @@ export class Runtime {
       // This turn is the last turn from its start (card-needs.mjs turnsOf), so a restart that cuts it off, or a card
       // released after it leaves the running turns, doesn't count a block from the turn before.
       lastTurnId: turn.id,
+      // The persona changed since its last turn: this turn is the one the change takes effect from.
+      ...settingsFrom(persona, se),
       // A turn that doesn't move on keeps the turns still asking you something, so their refusals and tool requests
       // count until you move on (card-needs.mjs keptTurns). Read before this patch moves lastTurnId on.
       keptTurnIds: turn.movesOn ? [] : keptTurns(this, se),
@@ -1955,11 +1953,6 @@ export class Runtime {
     return { item };
   }
 
-  /** Changes the model or the effort a conversation runs with (/model, /effort): server/session-run.mjs. */
-  setSessionRun(sessionId, change) {
-    return setSessionRun(this, sessionId, change);
-  }
-
   /**
    * The folder a conversation’s `!` commands run in: where the agent that replies there works, as its adapter decides
    * (its own folder, the project’s, or a workspace of its own), else the project’s.
@@ -2848,8 +2841,12 @@ const keepUnsure = (n) => `Postbox couldn’t tell which of ${n} processes is th
 const asHttp = (e) => {
   throw e?.status ? httpError(e.status, e.message) : e;
 };
-const snapshotOf = (p) =>
-  pick(p, ['description', 'instructions', 'model', 'effort', 'permissionMode', 'usesHostSetup', 'canPublish', 'mcpOff', 'folder', 'tools', 'version']);
+/**
+ * When a turn starts on a newer persona than the session’s last turn ran with: the version it runs now, and when that
+ * took effect, which the agent’s quick panel shows. Nothing when the persona didn’t change. @param {any} persona @param {any} se
+ */
+const settingsFrom = (persona, se) =>
+  persona && (persona.version ?? 1) !== (se.personaVersion ?? 1) ? { personaVersion: persona.version ?? 1, settingsAt: Date.now() } : {};
 // Commands in the composer (#67), bounded: an agent’s list for the / menu, a `!command`’s output (its last
 // characters), how often that output reaches the browser, and how much of it the agents read.
 const MAX_COMMANDS = 200;

@@ -1,6 +1,6 @@
 // Commands in the composer (#67), driven with real key presses and clicks:
 // - `/` opens the command menu, by typing and with the Commands button; arrows and Enter pick, Escape closes;
-// - a Postbox command runs without a turn (/mode, /effort, /rename);
+// - a Postbox command runs without a turn (/mode, /model and /effort open the persona sheet; /rename);
 // - an agent’s skill, picked in a room with two agents, fills `/name `, shows its argument hint, and runs as that
 //   agent’s turn;
 // - `!` runs a command in the conversation’s folder and shows its output, exit code and duration; a failing command
@@ -106,34 +106,25 @@ test('#67 the Commands button opens the same menu', async ({ page }) => {
   await expect(composer(page)).toBeFocused();
 });
 
-test('#67 /mode runs without a turn: the choice changes the agent’s mode and says when it applies', async ({ page }) => {
-  const { rt, store } = app;
-  const { t, seA } = await room(page, 'Mode');
+// A persona’s settings are edited in one place, its sheet (designs/rooms-at-scale.md, “Settings: one scope”).
+test('/mode, /model and /effort run without a turn and open the agent’s persona sheet; /rename opens the rename sheet', async ({ page }) => {
+  const { store } = app;
+  const { t, seA } = await room(page, 'Settings');
   const before = turns.length;
-  try {
-    await page.keyboard.type('/mo');
-    await expect(page.locator('#slash-list')).toContainText('/mode');
+  const who = store.state.sessions[store.state.threads[t.id].lastSpeaker ?? seA.id]?.handle ?? 'alpha';
+  for (const command of ['/mode', '/model', '/effort']) {
+    await composer(page).focus();
+    await page.keyboard.type(command);
+    await expect(page.locator('#slash-list')).toContainText(command);
     await page.keyboard.press('Enter');
-    await page.locator('.dialog').getByRole('radiogroup', { name: 'Permission mode' }).getByRole('radio', { name: 'Accept edits', exact: true }).click();
-    await expect(page.locator('.dialog .perm-status')).toContainText('uses Accept edits, in every conversation, from its next turn');
-    const who = store.state.sessions[store.state.threads[t.id].lastSpeaker ?? seA.id]?.personaId ?? alpha.id;
-    expect(store.state.personas[who].permissionMode).toBe('acceptEdits');
-    expect(turns.length, 'no turn').toBe(before);
-    await expect(composer(page), 'the composer is cleared').toHaveValue('');
-  } finally {
-    for (const p of [alpha, beta]) rt.updatePersona(p.id, { permissionMode: 'ask' });
+    const sheet = page.getByRole('dialog', { name: 'Settings' });
+    await expect.soft(sheet.locator('b', { hasText: who }), `${command} opens ${who}’s sheet`).toBeVisible();
+    await expect.soft(sheet.getByRole('button', { name: 'Save' })).toBeVisible();
+    await expect.soft(composer(page), 'the composer is cleared').toHaveValue('');
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.dialog')).toHaveCount(0);
   }
-});
-
-test('#67 /effort sets this conversation’s effort; /rename opens the rename sheet', async ({ page }) => {
-  const { rt, store } = app;
-  const { t } = await room(page, 'Effort');
-  await page.keyboard.type('/effort');
-  await page.keyboard.press('Enter');
-  await page.locator('.dialog').getByRole('radiogroup', { name: 'Effort' }).getByRole('radio', { name: 'High', exact: true }).click();
-  await expect(page.locator('.dialog .perm-status')).toContainText('uses High in this conversation, from its next turn');
-  expect(rt.sessionsIn(t.id).some((se) => store.state.sessions[se.id].personaSnapshot.effort === 'high')).toBe(true);
-  await page.keyboard.press('Escape');
+  expect(turns.length, 'no turn').toBe(before);
   await expect(page.locator('.dialog')).toHaveCount(0);
   await composer(page).focus();
   await page.keyboard.type('/ren');

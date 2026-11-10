@@ -590,7 +590,7 @@ test('attachments resolve to stored files, and project files stay inside the pro
   assert.equal(rt.attachmentPath(t.id, { kind: 'project-file', path: '../etc/passwd' }), null);
 });
 
-test('a session keeps the persona it started with; edits apply to new sessions', async () => {
+test('an edit reaches a session that started before it, from its next turn, as it reaches new ones', async () => {
   const { rt, t, a, adapter } = setup();
   rt.updatePersona(a.id, { instructions: 'Old.' });
   const t2 = rt.createThread({ projectId: 'p1', title: 'T2', personaIds: [a.id] });
@@ -603,7 +603,7 @@ test('a session keeps the persona it started with; edits apply to new sessions',
   const t3 = rt.createThread({ projectId: 'p1', title: 'T3', personaIds: [a.id] });
   rt.sendMessage(t3.id, { text: 'hi' });
   await settle(rt);
-  assert.deepEqual(seen, ['Old.', 'New.']);
+  assert.deepEqual(seen, ['New.', 'New.']);
   assert.ok(t);
 });
 
@@ -1648,9 +1648,6 @@ test('#57: setup choices are in a session’s snapshot, and like permissions the
     [true, false],
     [false, true],
   ]);
-  const t2 = rt.createThread({ projectId: 'p1', title: 'T2', personaIds: [a.id] });
-  const snap = rt.sessionsIn(t2.id)[0].personaSnapshot;
-  assert.deepEqual([snap.usesHostSetup, snap.canPublish], [false, true], 'a new session records what it was created with');
 });
 
 // ── Shared memory in a conversation (issue #1) ─────────────────────────────────────────
@@ -2234,9 +2231,45 @@ test('#60: a persona has an effort next to its model, checked, fixed in a sessio
   adapter.next.push(async (c) => seen.push(c.persona.effort));
   rt.sendMessage(t2.id, { text: 'hi' });
   await settle(rt);
-  assert.deepEqual(seen, ['max'], 'the session runs with the effort it started with, as with the model');
-  assert.equal(rt.sessionsIn(t2.id)[0].personaSnapshot.effort, 'max');
+  assert.deepEqual(seen, ['low'], 'a session runs with its persona’s effort from its next turn, as with every setting');
   assert.ok(t && store);
+});
+
+test('one rule for settings: every persona change applies from the agent’s next turn, in every conversation, and the session says when it took effect', async () => {
+  const { rt, store, t, a, adapter } = setup();
+  const se = rt.sessionsIn(t.id)[0];
+  const other = rt.createThread({ projectId: 'p1', title: 'Other', personaIds: [a.id] });
+  const there = rt.sessionsIn(other.id)[0];
+  /** @type {any[]} */
+  const seen = [];
+  let release = () => {};
+  adapter.next.push(async (c) => {
+    seen.push([c.persona.model, c.persona.effort, c.persona.permissionMode, c.persona.instructions]);
+    await new Promise((r) => (release = () => r(undefined)));
+  });
+  rt.sendMessage(t.id, { text: 'one' });
+  await sleep(10);
+  // Changed while a turn runs: that turn keeps what it started with.
+  const v = rt.updatePersona(a.id, { model: 'claude-sonnet-5-5', effort: 'high', permissionMode: 'bypass', instructions: 'New ones.' }).version;
+  assert.equal(store.state.sessions[se.id].settingsAt, undefined, 'not in effect yet');
+  release();
+  await settle(rt);
+  adapter.next.push(async (c) => seen.push([c.persona.model, c.persona.effort, c.persona.permissionMode, c.persona.instructions]));
+  adapter.next.push(async (c) => seen.push([c.persona.model, c.persona.effort, c.persona.permissionMode, c.persona.instructions]));
+  const before = Date.now();
+  rt.sendMessage(t.id, { text: 'two' });
+  await settle(rt);
+  rt.sendMessage(other.id, { text: 'three' });
+  await settle(rt);
+  assert.deepEqual(seen.slice(1), [
+    ['claude-sonnet-5-5', 'high', 'bypass', 'New ones.'],
+    ['claude-sonnet-5-5', 'high', 'bypass', 'New ones.'],
+  ]);
+  assert.notDeepEqual(seen[0], seen[1], 'the running turn kept what it started with');
+  for (const id of [se.id, there.id]) {
+    assert.equal(store.state.sessions[id].personaVersion, v, 'its turn ran on the new version');
+    assert.ok(store.state.sessions[id].settingsAt >= before, 'and says when it took effect');
+  }
 });
 
 test('#60: the model that answered and the effort a turn ran with are kept on the session', async () => {

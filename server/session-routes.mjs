@@ -1,6 +1,5 @@
 // The routes for one session (an agent in a conversation): Stop, delete, Stop’s question
-// about background jobs and a job’s own Stop (#129), and the composer’s /model and /effort for it (#67); and deleting a
-// persona, which deletes its sessions (#208). Moved out of server/index.mjs, whose route() keeps one line that
+// about background jobs and a job’s own Stop (#129); and deleting a persona, which deletes its sessions (#208). Moved out of server/index.mjs, whose route() keeps one line that
 // calls this.
 
 import { deletePersona } from './persona-delete.mjs';
@@ -28,8 +27,6 @@ export async function sessionRoute(rt, path, method, body) {
   }
   if ((m = path.match(/^\/api\/sessions\/([^/]+)\/jobs\/([^/]+)\/stop$/)) && method === 'POST')
     return done(200, await rt.stopJob(m[1], decodeURIComponent(m[2])));
-  // The composer’s commands (#67): /model and /effort for this conversation, an agent’s skill as its turn, and !.
-  if ((m = path.match(/^\/api\/sessions\/([^/]+)\/run$/)) && method === 'POST') return done(200, await rt.setSessionRun(m[1], body));
   // Deleting a persona (#208, server/persona-delete.mjs), at once.
   if ((m = path.match(/^\/api\/personas\/([^/]+)$/)) && method === 'DELETE') return done(200, { handle: deletePersona(rt, m[1]).handle });
   return null;
