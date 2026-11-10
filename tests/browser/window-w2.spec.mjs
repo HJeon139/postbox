@@ -85,6 +85,37 @@ test('#866 an item with focus stays on the page while you scroll away, and leave
   await expect(item, 'it leaves once nothing holds it').toHaveCount(0);
 });
 
+test('#866 an item kept for its focus and then moved to the end leaves one stub, in its place, never two', async ({ page }) => {
+  await open(page);
+  // An agent posts a new version of an app, or changes a block in place, far up the room while you work in it:
+  // the server moves the item to the end, with a stub in its old place (rt.bringForward).
+  const items = app.store.items(room);
+  const id = items.at(-3).id;
+  const kept = page.locator(`#main > .item[data-key="${id}"]`);
+  await kept.focus();
+  await page.mouse.move(640, 400);
+  for (let round = 0; round < 4; round++) await scrollUp(page, 15);
+  await expect(kept, 'kept on the page for its focus').toHaveCount(1);
+  app.rt.bringForward(room, id, { what: 'block', title: 'Moved while kept' });
+  await synced(page, app);
+  const stub = /** @type {any} */ (app.store.items(room).find((it) => it.kind === 'moved' && it.itemId === id)).id;
+  await page.evaluate(() => /** @type {HTMLElement} */ (document.activeElement)?.blur());
+  await scrollUp(page, 2);
+  const keys = () => page.locator('#main > .item').evaluateAll((ns) => ns.map((n) => /** @type {HTMLElement} */ (n).dataset.key));
+  expect(
+    (await keys()).filter((k) => k === stub),
+    'the stub isn’t left on the page, out of the range',
+  ).toEqual([]);
+  // To the end, past the stub’s place: it’s mounted once, where it belongs.
+  await page.keyboard.press('End');
+  await settled(page);
+  for (let round = 0; round < 2; round++) await scrollUp(page, 3);
+  await settled(page);
+  const all = await keys();
+  expect(all.filter((k) => k === stub).length, 'the stub at most once').toBeLessThanOrEqual(1);
+  expect(new Set(all).size, 'no item twice').toBe(all.length);
+});
+
 test('#866 a room that grows while you follow it stays bounded, with its newest item in view', async ({ page }) => {
   await open(page);
   const burst = `it_grow_${Date.now()}`;
