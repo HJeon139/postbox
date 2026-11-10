@@ -19,30 +19,30 @@ failOnPageErrors(test);
 test.use({ colorScheme: 'light' });
 
 const LOW = 'Say how low.';
-const RUN = 'Which script?';
+const BOLD = 'Too loud.';
 
 /**
- * In Lines, each thread holding text: the line it’s drawn under (the last line number before it), and its status tag.
+ * In Lines: the lines marked as commented on, and each comment’s threads, by their status tag. A thread draws after
+ * the block of lines it’s in (a table, a list), so its line is the one marked.
  * @param {import('@playwright/test').Locator} block @param {string[]} texts
  */
 const placed = (block, texts) =>
-  block.evaluate((b, want) => {
-    const nums = [...b.querySelectorAll('.rv-doc .g-ln')];
-    return want.map((text) => {
-      const at = [...b.querySelectorAll('.rv-doc .rv-thread')].filter((t) => t.textContent?.includes(text));
-      return at.map((t) => {
-        const before = nums.filter((n) => n.compareDocumentPosition(t) & Node.DOCUMENT_POSITION_FOLLOWING);
-        return { line: Number(/\d+$/.exec(before.at(-1)?.textContent ?? '')?.[0]), status: t.querySelector('.status-tag')?.textContent };
-      });
-    });
-  }, texts);
+  block.evaluate(
+    (b, want) => ({
+      marked: [...b.querySelectorAll('.rv-doc .marked .g-ln')].map((n) => Number(/\d+$/.exec(n.textContent ?? '')?.[0])),
+      threads: want.map((text) =>
+        [...b.querySelectorAll('.rv-doc .rv-thread')].filter((t) => t.textContent?.includes(text)).map((t) => t.querySelector('.status-tag')?.textContent),
+      ),
+    }),
+    texts,
+  );
 
-/** The person comments on “low” (line 10) and “run” (line 23), and submits with Request changes. */
+/** The person comments on “really bold” (line 3) and “low” (line 10, a table’s row), and submits with Request changes. */
 async function submitted(page, title) {
   const r = await room.withReview(page, title);
   await drawn(r.block, 'Preview');
+  await commentOn(page, r.block, 'really bold', BOLD);
   await commentOn(page, r.block, 'low', LOW);
-  await commentOn(page, r.block, 'run', RUN);
   await r.block.getByRole('radio', { name: 'Request changes', exact: true }).click();
   await r.block.getByRole('button', { name: 'Submit review', exact: true }).click();
   await expect(r.block.locator('.answered-note')).toBeVisible();
@@ -53,13 +53,13 @@ async function submitted(page, title) {
 test('#1143 right after Submit with Request changes, each comment shows on its line once', async ({ page }) => {
   const { block } = await submitted(page, 'Submitted');
   // In Preview, as the page drew it when the answer came back.
-  for (const text of [LOW, RUN]) await expect.soft(block.locator('.rv-preview .rv-thread', { hasText: text }), `${text} in Preview`).toHaveCount(1);
+  for (const text of [BOLD, LOW]) await expect.soft(block.locator('.rv-preview .rv-thread', { hasText: text }), `${text} in Preview`).toHaveCount(1);
   // And drawn again, in Lines: from what the server holds, with no draft left to stand in for it.
   await viewRadio(block, 'Lines').click();
   await drawn(block, 'Lines');
   await expect
-    .poll(() => placed(block, [LOW, RUN]), { message: 'each comment on its line, once' })
-    .toEqual([[{ line: 10, status: 'Open' }], [{ line: 23, status: 'Open' }]]);
+    .poll(() => placed(block, [BOLD, LOW]), { message: 'each comment on its line, once' })
+    .toEqual({ marked: [3, 10], threads: [['Open'], ['Open']] });
 });
 
 test('#1143 after a revision that changes one commented line, and a reload, both comments show, each on the line its text moved to', async ({ page }) => {
@@ -72,9 +72,9 @@ test('#1143 after a revision that changes one commented line, and a reload, both
   await expect(block.getByRole('button', { name: 'Submit review', exact: true }), 'the revision asks again').toBeVisible();
   await viewRadio(block, 'Lines').click();
   await drawn(block, 'Lines');
-  // Two lines went in above both: “low” is on line 12 now, in its reworded row, and “run” on 25.
+  // Two lines went in above both: “really bold” is on line 5 now, and “low” on 12, in its reworded row.
   await expect
-    .poll(() => placed(block, [LOW, RUN]), { message: 'each comment on its line, once' })
-    .toEqual([[{ line: 12, status: 'Open' }], [{ line: 25, status: 'Open' }]]);
+    .poll(() => placed(block, [BOLD, LOW]), { message: 'each comment on its line, once' })
+    .toEqual({ marked: [5, 12], threads: [['Open'], ['Open']] });
   await expect(block.locator('.review-bar'), 'the bar counts them').toContainText('0 of 2 resolved');
 });
