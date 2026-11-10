@@ -12,6 +12,10 @@ import { AgentSdkAdapter } from '../server/adapters/agent-sdk.mjs';
 import { ClaudeCodeAdapter } from '../server/adapters/claude-code.mjs';
 import { argOf, HOME, remoteCtx, starts } from './claude-code-remote-fixture.mjs';
 import { createFakeDaemon, fixtureLines } from './fake-daemon.mjs';
+import { tempDir } from './temp-dirs.mjs';
+
+// Fixed paths under /tmp outlive the run and collide between users (#823); each is a temp folder of this file’s.
+const PROJECT_DIR = tempDir('pb-test-project-');
 
 const DATA = '/tmp/pb-test-data';
 
@@ -37,7 +41,7 @@ function fakeSpawn() {
 const ctxFor = (persona, project) => ({
   signal: new AbortController().signal,
   mcpUrl: 'http://127.0.0.1:4280/mcp?session=se_1',
-  persona: { model: 'claude-opus-5-5', permissionMode: 'ask', folder: '/tmp/pb-test-project', description: '', instructions: '', ...persona },
+  persona: { model: 'claude-opus-5-5', permissionMode: 'ask', folder: PROJECT_DIR, description: '', instructions: '', ...persona },
   project,
   handles: ['alpha', 'beta'],
   state: {},
@@ -50,7 +54,7 @@ const ctxFor = (persona, project) => ({
 
 const ALPHA = { id: 'pe_alpha', handle: 'alpha' };
 const BETA = { id: 'pe_beta', handle: 'beta', usesHostSetup: false };
-const PROJECT = { id: 'pr_one', folder: '/tmp/pb-test-project' };
+const PROJECT = { id: 'pr_one', folder: PROJECT_DIR };
 const OTHER = { id: 'pr_two', folder: '/tmp/pb-test-other' };
 
 test('#208: two Claude Code personas in one project each get a memory folder of their own, per project, in Postbox’s data folder', async () => {

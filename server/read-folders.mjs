@@ -35,7 +35,8 @@ function offerable(dir, home) {
   if (dir === sep || dir === home) return false;
   if (home.startsWith(dir + sep)) return false;
   const inHome = relative(home, dir);
-  if (inHome.startsWith('..') || isAbsolute(inHome)) return true;
+  // Outside home is .. or ../…, never ..notes, a dot-folder in it (#1074).
+  if (inHome === '..' || inHome.startsWith(`..${sep}`) || isAbsolute(inHome)) return true;
   return !inHome.split(sep)[0].startsWith('.');
 }
 
@@ -54,6 +55,14 @@ function folderOf(input) {
   return isFolder ? target : dirname(target);
 }
 
+/**
+ * Every path a read card names: its file_path, or all of paths when Antigravity’s hook names more than one, as a
+ * grep_search with both Path and SearchPath outside the folders does (agy-hook.mjs, #1074). Allowing the card allows
+ * them all, so each is judged.
+ * @param {any} input @returns {unknown[]}
+ */
+const readPaths = (input) => (Array.isArray(input?.paths) && input.paths.length ? input.paths : [input?.file_path]);
+
 /** Whether a card is one this module answers: a read on this computer by an Antigravity agent. */
 const answersRead = ({ backend, tool, hostId }) => !hostId && READ_FOLDER_BACKENDS.has(String(backend)) && tool === 'Read';
 
@@ -64,11 +73,13 @@ const answersRead = ({ backend, tool, hostId }) => !hostId && READ_FOLDER_BACKEN
  * @returns {{ lines: { text: string, rule: string }[], readDir: string } | null}
  */
 export function readFolderOffer({ backend, tool, input, hostId = null, home }) {
-  if (!answersRead({ backend, tool, hostId })) return null;
+  // One folder’s offer on a card about two paths would allow the other with it.
+  if (!answersRead({ backend, tool, hostId }) || readPaths(input).length !== 1) return null;
   const dir = folderOf(input);
   const realHome = real(home);
   if (!dir || !realHome || !offerable(dir, realHome)) return null;
-  return { lines: [{ text: `Always allow ${dir} for reading files, in this conversation`, rule: dir }], readDir: dir };
+  // The agent’s, not the conversation’s: kept on its session, so another Antigravity agent there asks again (#1074).
+  return { lines: [{ text: `Always allow ${dir} for this agent to read, in this conversation`, rule: dir }], readDir: dir };
 }
 
 /**
@@ -81,11 +92,10 @@ export function inReadFolder(rt, sessionId, { tool, input, hostPrompt = null }) 
   const se = rt.s.sessions[sessionId];
   const backend = se ? rt.persona(se.personaId)?.backend : undefined;
   if (!se?.readDirs?.length || !answersRead({ backend, tool, hostId: hostPrompt?.hostId ?? null })) return false;
-  // Where the read leads, so a link in a saved folder to ~/.ssh isn’t inside it. A saved folder passed the offer’s
+  // Where each read leads, so a link in a saved folder to ~/.ssh isn’t inside it. A saved folder passed the offer’s
   // checks, so it never holds home or a dot-folder in it.
-  const dir = folderOf(input);
-  if (!dir) return false;
-  return se.readDirs.some((/** @type {string} */ saved) => dir === saved || dir.startsWith(saved + sep));
+  const saved = (/** @type {string | null} */ dir) => dir !== null && se.readDirs.some((/** @type {string} */ d) => dir === d || dir.startsWith(d + sep));
+  return readPaths(input).every((file_path) => saved(folderOf({ file_path })));
 }
 
 /**
