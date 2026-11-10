@@ -11,7 +11,7 @@ import { readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { expect, test } from '@playwright/test';
 import { createStreamMapper } from '../../server/adapters/claude-stream.mjs';
-import { failOnPageErrors, startPostbox, synced, windowWidth } from './postbox.mjs';
+import { failOnPageErrors, PHONE, startPostbox, synced, windowWidth } from './postbox.mjs';
 import { SIZES } from './work-pane.mjs';
 
 const AXE = readFileSync(createRequire(import.meta.url).resolve('axe-core/axe.min.js'), 'utf8');
@@ -214,6 +214,6 @@ const CASES = /** @type {const} */ ([
 ]);
 for (const { width, height, phone } of SIZES)
   test.describe(`${width} px`, () => {
-    test.use(phone ? { viewport: { width, height }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 } : { viewport: { width, height } });
+    test.use(phone ? { viewport: { width, height }, ...PHONE } : { viewport: { width, height } });
     for (const [name, run] of CASES) test(`${width} px: ${name}`, ({ page }) => run(page));
   });

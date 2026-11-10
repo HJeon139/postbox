@@ -7,7 +7,7 @@
 
 import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
-import { failOnPageErrors, frames, settled, startPostbox, synced, windowWidth } from './postbox.mjs';
+import { failOnPageErrors, frames, PHONE, settled, startPostbox, synced, windowWidth } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
 let app;
@@ -206,7 +206,7 @@ test('#12 under --demo, every view says so, and it isn’t a live region', async
 });
 
 test.describe('at 375 px', () => {
-  test.use({ viewport: { width: 375, height: 812 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
+  test.use({ viewport: { width: 375, height: 812 }, ...PHONE });
 
   test('#12 at 375 px the banner folds to “Demo”, and its whole sentence is still read', async ({ page }) => {
     await longTitle(async () => {
@@ -300,11 +300,7 @@ for (const theme of /** @type {const} */ (['light', 'dark']))
 for (const theme of /** @type {const} */ (['light', 'dark']))
   for (const width of [1280, 375])
     test.describe(`${width} px, ${theme}`, () => {
-      test.use(
-        width < 768
-          ? { viewport: { width, height: 812 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2, colorScheme: theme }
-          : { viewport: { width, height: 900 }, colorScheme: theme },
-      );
+      test.use(width < 768 ? { viewport: { width, height: 812 }, ...PHONE, colorScheme: theme } : { viewport: { width, height: 900 }, colorScheme: theme });
 
       test(`#72 a room with four agents at ${width} px (${theme}): no overflow, and the facts stay in the conversation’s menu`, async ({ page }) => {
         await open(page, `#/t/${room.id}`);

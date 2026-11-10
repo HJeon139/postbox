@@ -10,7 +10,7 @@ import { createRequire } from 'node:module';
 import { expect, test } from '@playwright/test';
 import { turnLine } from '../../shared/work.mjs';
 import { turnRows } from '../../shared/work-list.mjs';
-import { failOnPageErrors, frames, settled, startPostbox, synced, windowWidth } from './postbox.mjs';
+import { failOnPageErrors, frames, PHONE, settled, startPostbox, synced, windowWidth } from './postbox.mjs';
 
 const AXE = readFileSync(createRequire(import.meta.url).resolve('axe-core/axe.min.js'), 'utf8');
 
@@ -178,7 +178,7 @@ for (const { width, height, phone } of [
   { width: 375, height: 812, phone: true },
 ])
   test.describe(`${width} px`, () => {
-    test.use(phone ? { viewport: { width, height }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 } : { viewport: { width, height } });
+    test.use(phone ? { viewport: { width, height }, ...PHONE } : { viewport: { width, height } });
     for (const [name, run] of CASES) test(`${width} px: ${name}`, ({ page }) => run(page, { width }));
   });
 

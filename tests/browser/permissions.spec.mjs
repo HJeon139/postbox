@@ -12,7 +12,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
 import { codexApproval } from '../../server/adapters/codex.mjs';
-import { allowPageError, failOnPageErrors, startPostbox, synced, windowWidth } from './postbox.mjs';
+import { allowPageError, failOnPageErrors, PHONE, startPostbox, synced, windowWidth } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
 let app;
@@ -440,7 +440,7 @@ test('#74 a page whose token is gone (as after a restart) gets a new one by fetc
 });
 
 test.describe('at 375 px', () => {
-  test.use({ viewport: { width: 375, height: 800 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
+  test.use({ viewport: { width: 375, height: 800 }, ...PHONE });
 
   test('#66 the panel fits a narrow window (375 px) without scrolling sideways', async ({ page }) => {
     await open(page);

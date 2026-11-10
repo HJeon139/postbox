@@ -12,7 +12,7 @@
 import { readFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
 import { createStreamMapper } from '../../server/adapters/claude-stream.mjs';
-import { failOnPageErrors, focused, focusIs, startPostbox, synced } from './postbox.mjs';
+import { failOnPageErrors, focused, focusIs, PHONE, startPostbox, synced } from './postbox.mjs';
 
 // Light, as the old check ran it; the narrow tests below run in both.
 test.use({ colorScheme: 'light' });
@@ -452,7 +452,7 @@ test('End on a subagent’s row, by keyboard, tells its agent and reads “endin
 
 for (const theme of /** @type {const} */ (['light', 'dark']))
   test.describe(`at 375 px (${theme})`, () => {
-    test.use({ viewport: { width: 375, height: 812 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2, colorScheme: theme });
+    test.use({ viewport: { width: 375, height: 812 }, ...PHONE, colorScheme: theme });
 
     test(`at 375 px (${theme}), the top bar fits a long title with no agent rings, and its menu names each agent (#320)`, async ({ page }) => {
       app.rt.renameThread(shelf.id, 'Index every book on the shelf, then check the index against the catalog');

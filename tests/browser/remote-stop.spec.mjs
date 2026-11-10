@@ -9,7 +9,7 @@
 // room of tests/browser/remote-turns.mjs. Moved from tools/check-remote-stop.mjs (#303).
 
 import { expect, test } from '@playwright/test';
-import { allowPageError, failOnPageErrors, synced, windowWidth } from './postbox.mjs';
+import { allowPageError, failOnPageErrors, PHONE, synced, windowWidth } from './postbox.mjs';
 import { axe, overflowing } from './remote-hosts.mjs';
 import { startRemoteTurns } from './remote-turns.mjs';
 
@@ -146,7 +146,7 @@ test('#120 Codex runs only on a host, says what the daemon found, and the server
 });
 
 test.describe('at 375 px', () => {
-  test.use({ viewport: { width: 375, height: 800 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
+  test.use({ viewport: { width: 375, height: 800 }, ...PHONE });
 
   test('#120 at 375 px the states, cards, notes and the sheet fit, and axe finds no violations', async ({ page }) => {
     await test.step('the persona sheet, with Runs on’s error and the server’s refusal', async () => {

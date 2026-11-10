@@ -10,14 +10,14 @@ import { join } from 'node:path';
 import { expect } from '@playwright/test';
 import { describeInstall } from '../../server/remote/install.mjs';
 import { failure } from '../../server/remote/ssh.mjs';
-import { startPostbox, synced, windowWidth } from './postbox.mjs';
+import { PHONE, startPostbox, synced, windowWidth } from './postbox.mjs';
 
 export const VERSION = '0.18.0';
 export const MINUTE = 60_000;
 /** The widths each Hosts test runs at, a phone’s emulated. */
 export const SIZES = [
   { width: 1280, use: { viewport: { width: 1280, height: 900 } } },
-  { width: 375, use: { viewport: { width: 375, height: 812 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 } },
+  { width: 375, use: { viewport: { width: 375, height: 812 }, ...PHONE } },
 ];
 
 const AXE = readFileSync(createRequire(import.meta.url).resolve('axe-core/axe.min.js'), 'utf8');
