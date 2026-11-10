@@ -70,6 +70,7 @@ import { readMessage } from './read-message.mjs';
 import { addHost, host, removeHost, setProjectHostFolder, updateHost } from './remote/host-admin.mjs';
 import { describeHostInstall, hostStatus, installHost, retryHost, watchHosts } from './remote/host-status.mjs';
 import {
+  drainMovedOff,
   hereFolder,
   localBackends,
   notHere,
@@ -2484,6 +2485,7 @@ export class Runtime {
     this.store.emit('persona', next);
     // A card that asked for a tool now on answers itself, wherever it was turned on (#237).
     if (patch.tools !== undefined) settleToolAsks(this, next);
+    drainMovedOff(this, id);
     return next;
   }
 

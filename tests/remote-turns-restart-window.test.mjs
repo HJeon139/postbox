@@ -118,3 +118,20 @@ for (const to of /** @type {const} */ (['here', 'host']))
     await settled(r);
     release();
   });
+
+for (const to of /** @type {const} */ (['here', 'host']))
+  test(`#1135 a message that waited when the agent moved off a silent host goes on the move (${to})`, async () => {
+    const { r, d, release } = heldWelcome('running');
+    await until(() => r.rt.remote.restoring.has('host-turn-1'), 'the turn to wait for its welcome');
+    r.rt.sendMessage(r.t.id, { text: 'before the move' });
+    assert.deepEqual(queued(r), ['before the move']);
+    move(r, to);
+    assert.deepEqual(queued(r), [], 'nothing is left waiting for a host the agent left');
+    await until(() => startedAfterMove(r, d, to), 'the turn where it runs now');
+    if (to === 'host') {
+      assert.match(messageOf(starts(d)[0]), /before the move/);
+      d.end(starts(d)[0].turn);
+    }
+    await settled(r);
+    release();
+  });
