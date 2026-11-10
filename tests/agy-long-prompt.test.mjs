@@ -59,7 +59,10 @@ function adapter() {
 test('#362: a prompt too long for agy’s --print argument fails with a reason, before agy starts', async () => {
   const { a, spawned } = adapter();
   await assert.rejects(a.deliver({}, { kind: 'user', text: `go ${'x'.repeat(120_000)}` }, ctx()), (e) => {
-    assert.match(e.message, /^This message is 1\d\d KB, past the 100 KB the Antigravity CLI can take as its prompt\. Send it in parts/);
+    assert.match(
+      e.message,
+      /^This turn’s prompt came to 1\d\d KB, past the 100 KB the Antigravity CLI can take\. It holds your message, the room’s catch-up and any queued messages: send a shorter message, or point the agent at a file that holds the rest\.$/,
+    );
     return true;
   });
   assert.equal(spawned.length, 0, 'agy never started');

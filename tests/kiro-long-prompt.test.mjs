@@ -68,3 +68,18 @@ test('#362: the limit is 100,000 bytes: at it a prompt is still an argument, one
   assert.equal(tooLongForArg(`${'x'.repeat(99_998)}é`), false, 'é is two bytes: 100,000 in all');
   assert.equal(tooLongForArg(`${'x'.repeat(99_999)}é`), true);
 });
+
+test('#362: kiro exiting before it reads a long prompt’s stdin (EPIPE) fails nothing beyond the turn, and nothing is uncaught', async () => {
+  const root = tempDir('pb-kiro-epipe-');
+  const play = fakeSpawn([{ lines: fixture('first'), code: 0 }], []);
+  const spawnImpl = (bin, args, opts) => {
+    const child = play(bin, args, opts);
+    const input = new PassThrough();
+    // The pipe's other end has gone: the write fails as Node's does then, asynchronously.
+    input.end = () => setImmediate(() => input.emit('error', Object.assign(new Error('write EPIPE'), { code: 'EPIPE' })));
+    Object.assign(child, { stdin: input });
+    return child;
+  };
+  const adapter = new KiroCliAdapter({ workRoot: join(root, 'work'), isolatedHome: join(root, 'home'), spawnImpl: /** @type {any} */ (spawnImpl), env: {} });
+  await adapter.deliver({}, { kind: 'user', text: 'y'.repeat(120_000) }, fakeCtx());
+});
