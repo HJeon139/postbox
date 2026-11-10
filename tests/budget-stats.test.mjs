@@ -3,7 +3,17 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { BUDGET_MS, ELEMENT_BUDGET, elementsVerdict, gapCalibrated, gapVerdict, keyTimes, timedVerdict } from '../tools/budget-stats.mjs';
+import {
+  BUDGET_MS,
+  ELEMENT_BUDGET,
+  elementsVerdict,
+  entriesInOrder,
+  gapCalibrated,
+  gapVerdict,
+  keyTimes,
+  timedVerdict,
+  unpresented,
+} from '../tools/budget-stats.mjs';
 
 test('a key with an entry takes its longest entry, one with none takes the threshold if a frame followed it', () => {
   const keys = [
@@ -79,4 +89,23 @@ test('mounted elements pass at the budget and fail past it; a count that was nev
   assert.equal(elementsVerdict(ELEMENT_BUDGET).verdict, 'pass');
   assert.equal(elementsVerdict(ELEMENT_BUDGET + 1).verdict, 'fail');
   assert.equal(elementsVerdict(null).verdict, 'not measured');
+});
+
+test('a key timed at more than twice the longest frame gap had its frame unpresented, so it can’t be a time', () => {
+  // Frames ran every 20 ms or less, yet the keys read 0.7 to 2 s: the composer’s frames weren’t presented.
+  assert.equal(unpresented([700, 1200, 2000, 16], 20, 16), 3);
+  assert.equal(unpresented([16, 24, 40], 20, 16), 0);
+  // A long task shows in both, so a slow key under it is a time.
+  assert.equal(unpresented([180, 200], 135, 16), 0);
+});
+
+test('entries are in key order up to the planted key: none that started before it arrives after its own', () => {
+  const before = [
+    { name: 'keydown', startTime: 10, duration: 24 },
+    { name: 'keydown', startTime: 60, duration: 30 },
+  ];
+  const planted = { name: 'keydown', startTime: 100, duration: 64 };
+  assert.equal(entriesInOrder([...before, planted], 100), true);
+  assert.equal(entriesInOrder([before[0], planted, before[1]], 100), false, 'a measured key’s entry came after the planted one');
+  assert.equal(entriesInOrder(before, 100), false, 'no planted entry');
 });
