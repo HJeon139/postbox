@@ -51,6 +51,7 @@ export async function openCodexThread(ctx, request, { sourceThreadId, fork, cwd,
 // an entry of that list counts, at its start or after “; ”, not “postbox:” inside another server’s detail.
 // lint-allow regex: its only variable part is POSTBOX_SERVER, a constant (“postbox”).
 const REQUIRED_FAILED = new RegExp(`required MCP servers failed to initialize: (?:[^;]*; )*${POSTBOX_SERVER}:`);
+const SAID_MAX = 400; // of Codex’s error shown in the step, as for Kiro’s (#489): its transport detail runs long
 
 /**
  * When Codex refused the thread because Postbox’s server didn’t start, a failed step and an error that says so;
@@ -59,7 +60,8 @@ const REQUIRED_FAILED = new RegExp(`required MCP servers failed to initialize: (
  */
 export function codexRefusal(ctx, err) {
   if (!REQUIRED_FAILED.test(String(err?.message ?? ''))) return err;
-  toolsDown(ctx, 'Codex couldn’t start Postbox’s tool server, which it needs, so it didn’t start the turn.', { ran: false });
+  const said = String(err.message).slice(0, SAID_MAX);
+  toolsDown(ctx, `Codex couldn’t start Postbox’s tool server, which it needs, so it didn’t start the turn. Codex said: “${said}”`, { ran: false });
   return Object.assign(
     new Error('Postbox’s tools didn’t load: Codex couldn’t start Postbox’s tool server, so it didn’t start this turn. Retry to try again.'),
     {

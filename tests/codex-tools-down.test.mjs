@@ -54,6 +54,19 @@ test('#1162 Codex refusing the thread for Postbox’s server is a failed step, a
   assert.equal(step.state, 'failed');
 });
 
+test('#1162 the failed step gives Codex’s own words as text, bounded', async () => {
+  const ctx = context();
+  const { message } = refused('postbox');
+  const long = { code: -32603, message: `${message} <b>bold</b> ${'x'.repeat(2000)} the very end` };
+  const adapter = new CodexAdapter({ spawnImpl: () => fakeAppServer([], { threadError: () => long }) });
+  await assert.rejects(adapter.deliver({}, { kind: 'user', text: 'Hi.' }, ctx), (e) => !e.message.includes('handshaking'));
+  const { detail } = down(ctx);
+  assert.ok(detail.includes('required MCP servers failed to initialize: postbox: handshaking with MCP server failed'), 'Codex’s reason');
+  assert.ok(detail.includes('<b>bold</b>'), 'as it was sent, with nothing turned into markup');
+  assert.ok(!detail.includes('the very end'), 'cut short');
+  assert.ok(detail.length < 600, `bounded, at ${detail.length} characters`);
+});
+
 test('#1162 another required server failing keeps Codex’s own words, with no Postbox step', async () => {
   const ctx = context();
   const adapter = new CodexAdapter({ spawnImpl: () => fakeAppServer([], { threadError: () => refused('notebook') }) });
