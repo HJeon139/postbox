@@ -151,12 +151,18 @@ export function seedGitRemote(workspace, dir) {
 }
 
 const quoted = (v) => `'${String(v).replaceAll("'", "'\\''")}'`;
-/** What Claude Code sources in the agent’s shell after its profile: the run’s bin first again, and gh with no login. */
+/**
+ * What Claude Code sources in the agent’s shell after its profile: the run’s bin first again, gh with no login, and the
+ * whole git guard again, askpass blanks included, since a profile can set any of it (#1125).
+ */
 const agentEnvFile = (p) =>
   [
     `export PATH=${quoted(p.bin)}:"$PATH"`,
     `export GH_CONFIG_DIR=${quoted(p.ghConfig)} GIT_CONFIG_GLOBAL=${quoted(p.gitconfig)} GIT_CONFIG_NOSYSTEM=1`,
-    `export GH_TOKEN=${NO_TOKEN} GITHUB_TOKEN='' SSH_AUTH_SOCK='' GIT_ALLOW_PROTOCOL=file`,
+    `export GH_TOKEN=${NO_TOKEN} GITHUB_TOKEN='' SSH_AUTH_SOCK='' GIT_ASKPASS='' SSH_ASKPASS=''`,
+    `export ${Object.entries(guardEnv())
+      .map(([k, v]) => `${k}=${quoted(v)}`)
+      .join(' ')}`,
     '',
   ].join('\n');
 
