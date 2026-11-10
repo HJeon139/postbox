@@ -39,14 +39,23 @@ export function keyTimes(keys, entries, threshold) {
 const hasEntry = (start, end = Infinity, entries) => entries.some((e) => e.startTime >= start && e.startTime < end);
 
 /**
- * How many keys were timed at more than twice the longest frame gap around them: their frames weren’t presented, so
- * Event Timing ran each to whatever was presented next. Chromium’s full headless mode did that to the composer, 0.7
- * to 2 s a key while frames ran every 20 ms. A long task holds both back, so a slow key under one is still a time.
- * @param {number[]} values  each key’s time  @param {number | null} longestGap  @param {number} threshold
+ * How many keys had their frame unpresented: an entry that runs on to the next key’s start, or the planted key’s for
+ * the last one, ended at some later input’s paint, not its own. Chromium’s full headless mode did that to the
+ * composer, 0.7 to 2 s a key. A slow key whose frame reaches the screen late, for raster or compositing, but before the
+ * next press is a time, and fails the budget on its own; so is one over the gap between presses but within the
+ * budget, as a 60 ms key typed every 50 ms is, since its frame came in time for the person. (An earlier rule compared
+ * each key to the main thread’s longest frame gap, which voided real 80 ms scrolls at 10,000 items.)
+ * @param {{ at: number }[]} keys  each key’s keydown timeStamp, in order, the planted key last
+ * @param {{ startTime: number, duration: number }[]} entries  @param {number} [budget]
  */
-export function unpresented(values, longestGap, threshold) {
-  const bound = 2 * Math.max(longestGap ?? 0, threshold);
-  return values.filter((v) => v > bound).length;
+export function unpresented(keys, entries, budget = BUDGET_MS) {
+  let held = 0;
+  for (let i = 0; i + 1 < keys.length; i++) {
+    const next = keys[i + 1].at;
+    const mine = entries.filter((e) => e.startTime >= keys[i].at && e.startTime < next);
+    if (mine.some((e) => e.duration > budget && e.startTime + e.duration >= next)) held++;
+  }
+  return held;
 }
 
 /**

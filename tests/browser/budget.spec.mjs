@@ -209,11 +209,12 @@ async function measureKeys(room, { name, keys, warmup, everyMs }) {
   // The planted key ends the run: its entry comes after every measured key’s, and bounds the last one’s.
   const planted = await plantedKey(page);
   const rec = await recorded(page);
-  const { values, unmeasured } = keyTimes(rec.keys.slice(from + warmup, planted + 1), rec.entries, THRESHOLD_MS);
+  const measured = rec.keys.slice(from + warmup, planted + 1);
+  const { values, unmeasured } = keyTimes(measured, rec.entries, THRESHOLD_MS);
   values.pop();
   const gaps = gapVerdict(frames.gaps, frames.lengthMs);
   // A key whose frame wasn’t presented, or a run whose entries came out of order, has no time to give.
-  const held = unpresented(values, gaps.longest, THRESHOLD_MS);
+  const held = unpresented(measured, rec.entries);
   const ordered = entriesInOrder(rec.entries, rec.keys[planted].at);
   const untimed = unmeasured + held + (ordered ? 0 : values.length);
   report(room, name, TIMES_GATE, { ...timedVerdict(values, { unmeasured: untimed }), unmeasured, unpresented: held, ordered }, since);
