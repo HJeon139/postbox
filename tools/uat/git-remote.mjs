@@ -77,11 +77,13 @@ function git(args, cwd) {
 }
 /**
  * A shell line that prints credentials-guarded when git there has no credential helper, askpass or askpass variable left
- * to answer a prompt: the last credential.helper is the guard's empty one, and the rest are empty (#1125). It reads the
- * settings, and runs none of them.
+ * to answer a prompt (#1125). Git reads every credential.helper and credential.<url>.helper in config order, and an
+ * empty one clears those before it, so the last of them all must be the plain key, and its value empty. Not
+ * --get-urlmatch, which names the most specific match, a site's helper, even when the guard has cleared it. It reads
+ * the settings, and runs none of them.
  */
 export const CREDENTIALS_GUARDED =
-  'h=$(git config --get-all credential.helper 2>/dev/null | tail -n 1); a=$(git config --get core.askPass 2>/dev/null); [ -z "$h$a$GIT_ASKPASS$SSH_ASKPASS" ] && echo credentials-guarded';
+  'k=$(git config --name-only --get-regexp \'^credential\\..*helper$\' 2>/dev/null | tail -n 1); h=$(git config --get credential.helper 2>/dev/null); a=$(git config --get core.askPass 2>/dev/null); { [ -z "$k" ] || [ "$k" = credential.helper ]; } && [ -z "$h$a$GIT_ASKPASS$SSH_ASKPASS" ] && echo credentials-guarded';
 
 /** git that must work: a seed step that fails stops the run, naming the step and what git said. */
 function mustGit(args, cwd) {
