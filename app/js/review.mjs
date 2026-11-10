@@ -9,6 +9,7 @@ import { groupReviewLines, rowUnit } from '/shared/review-lines.mjs';
 import { enhanceMarkdown, mountApp } from './apps.mjs';
 import { h, icon, plural, timeOf, trusted } from './dom.mjs';
 import { newReviewDraft, startComment, stopComment } from './review-draft.mjs';
+import { keepReviewDraft, restoreReviewDraft } from './review-draft-store.mjs';
 import { inlineMd, itemWords, words } from './review-inline.mjs';
 import { focusQuote, renderPreview } from './review-preview.mjs';
 import { withDelimiter } from './review-table.mjs';
@@ -21,7 +22,7 @@ import { fullScreen, revisionOf, seg, setView, viewOf } from './review-view.mjs'
 
 export function renderReview(b, item, ctx, kit) {
   const { draft, seen, renderBlock, head, staleNote, submit, errLine, outcomeLine } = kit;
-  const d = draft(item.id, () => newReviewDraft(b.content));
+  const d = draft(item.id, () => restoreReviewDraft(item.id, item, newReviewDraft(b.content)));
   const files = reviewFileKeys(ctx.threadId, item); // its attached images, as Preview resolves them (#780)
   // Draft comments name lines of the text they were written on. If the agent changed it under them (#123), each
   // follows its line into the new text; one whose line changed or went moves to the next line, marked. One on a
@@ -35,6 +36,7 @@ export function renderReview(b, item, ctx, kit) {
     }
     d.on = b.content;
   }
+  if (!item.answered) keepReviewDraft(item.id, item.revision ?? 1, d);
   const rerender = () => {
     const n = renderBlock(item, ctx);
     node.replaceWith(n);

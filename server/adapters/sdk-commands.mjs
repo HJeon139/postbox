@@ -1,6 +1,6 @@
 // The Agent SDK’s commands and skills, for the / menu (#67), read from a running query (server/adapters/agent-sdk.mjs).
 
-import { commandsOf } from './claude-stream.mjs';
+import { commandsOf } from './claude-init.mjs';
 
 /**
  * The SDK’s supportedCommands() (name, description, argumentHint), marked as skills where init says so, and without

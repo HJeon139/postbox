@@ -33,7 +33,7 @@ function fakeCtx(over = {}) {
     abort,
     signal: abort.signal,
     mcpUrl: 'http://127.0.0.1:4280/mcp?session=se_1',
-    persona: { handle: 'coder', model: 'claude-opus-5-5', permissionMode: 'ask', folder: '/tmp/pb-test-coder', description: '', instructions: '' },
+    persona: { handle: 'coder', model: 'claude-opus-5-5', permissionMode: 'ask', folder: tempDir('pb-test-coder-'), description: '', instructions: '' },
     project: null,
     handles: ['coder', 'critic'],
     state: {},
@@ -232,7 +232,7 @@ test('the adapter runs a turn, remembers the Claude Code session, and resumes it
   assert.equal(ctx.calls.saved.claudeSessionId, first);
   assert.equal(ctx.calls.saved.contextWindow, 1_000_000);
   assert.ok(runs[0].args.includes('--session-id'));
-  assert.equal(runs[0].opts.cwd, '/tmp/pb-test-coder');
+  assert.equal(runs[0].opts.cwd, ctx.persona.folder);
   const again = fakeCtx({ state: { ...ctx.calls.saved } });
   await adapter.deliver({}, { kind: 'user', text: 'Again' }, again);
   assert.deepEqual(runs[1].args.slice(runs[1].args.indexOf('--resume'), runs[1].args.indexOf('--resume') + 2), ['--resume', first]);

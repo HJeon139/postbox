@@ -4,6 +4,10 @@ import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { CodexAdapter } from '../server/adapters/codex.mjs';
 import { fakeAppServer } from './codex-fixture.mjs';
+import { tempDir } from './temp-dirs.mjs';
+
+// Fixed paths under /tmp outlive the run and collide between users (#823); each is a temp folder of this file’s.
+const CODEX_DIR = tempDir('postbox-codex-missing-');
 
 const recorded = (name) =>
   readFileSync(new URL(`fixtures/codex-app-server/${name}.jsonl`, import.meta.url), 'utf8')
@@ -23,7 +27,7 @@ function context(state = { codexThreadId: lostId }) {
     state,
     signal: abort.signal,
     persona: { handle: 'coder', backend: 'codex', instructions: 'Pinned persona.', permissionMode: 'auto' },
-    project: { folder: '/tmp/postbox-codex-missing' },
+    project: { folder: CODEX_DIR },
     handles: ['coder'],
     mcpUrl: 'http://127.0.0.1:1/mcp',
     text() {},

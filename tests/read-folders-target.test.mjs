@@ -1,7 +1,7 @@
-// #338: a read card about a folder (Antigravity’s list_dir, grep_search and
-// find_by_name send it as file_path) offers that folder, not the one holding it, so the person isn’t asked about a
-// wider one and a listing just under home gets an offer. And a folder saved with Always allow is read in the same
-// turn with no second card, by the session’s list as it is now, not as the turn started with it.
+// #338: a read card about a folder (Antigravity’s list_dir, grep_search and find_by_name send it as file_path) offers
+// that folder, not the one holding it, so the person isn’t asked about a wider one and a listing just under home gets
+// an offer. And a folder saved with Always allow is read in the same turn with no second card, by the session’s list
+// as it is now, not as the turn started with it.
 
 import assert from 'node:assert/strict';
 import { mkdirSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
@@ -107,4 +107,13 @@ test('#338 a link in a saved folder to a key in ~/.ssh still asks, and offers no
   assert.equal(cards, 1, 'a card, since the file it reads is in ~/.ssh');
   assert.equal(result.allow, false);
   assert.equal(offerFor(link, home), null, 'and no Always allow for ~/.ssh');
+});
+
+test('#1074 a folder in home whose name starts with two dots is a dot-folder, never offered', () => {
+  const { home } = aHome();
+  const dots = join(home, '..notes');
+  mkdirSync(dots);
+  writeFileSync(join(dots, 'a.md'), 'x');
+  assert.equal(offerFor(join(dots, 'a.md'), home), null);
+  assert.equal(offerFor(dots, home), null, 'nor when the card is about the folder itself');
 });

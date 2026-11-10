@@ -6,14 +6,14 @@ import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { CodexAdapter, codexApproval, codexConfigArgs } from '../server/adapters/codex.mjs';
 import { codexMcpApprovalConfig } from '../server/adapters/codex-mcp-policy.mjs';
-import { fakeAppServer } from './codex-fixture.mjs';
+import { CODEX_ROOT, fakeAppServer } from './codex-fixture.mjs';
 
 test('Ask me prompts for raw, plugin, and built-in MCP tools while Postbox tools run directly', async () => {
   assert.ok(codexConfigArgs('http://127.0.0.1:1/mcp').includes('mcp_servers.postbox.default_tools_approval_mode="approve"'));
 
   const seen = [];
   const adapter = new CodexAdapter({
-    workRoot: '/tmp/postbox-codex-test',
+    workRoot: CODEX_ROOT,
     spawnImpl: () =>
       fakeAppServer(seen, {
         mcpServers: ['builder-mcp', 'postbox', { name: 'sample', pluginId: 'sample@test' }, { name: 'codex_apps' }],
@@ -21,7 +21,7 @@ test('Ask me prompts for raw, plugin, and built-in MCP tools while Postbox tools
   });
   const ctx = {
     persona: { handle: 'researcher', model: 'gpt-5.6-terra', effort: 'medium', permissionMode: 'ask' },
-    project: { folder: '/tmp/postbox-codex-test/project' },
+    project: { folder: `${CODEX_ROOT}/project` },
     handles: ['researcher'],
     state: {},
     signal: new AbortController().signal,
@@ -49,12 +49,12 @@ test('Auto sends no MCP setting, so Codex’s own reviewer and policy decide, an
   const permissionMode = 'auto';
   const seen = [];
   const adapter = new CodexAdapter({
-    workRoot: '/tmp/postbox-codex-test',
+    workRoot: CODEX_ROOT,
     spawnImpl: () => fakeAppServer(seen, { mcpServers: ['builder-mcp'] }),
   });
   const ctx = {
     persona: { handle: 'researcher', model: 'gpt-5.6-terra', permissionMode },
-    project: { folder: '/tmp/postbox-codex-test/project' },
+    project: { folder: `${CODEX_ROOT}/project` },
     handles: ['researcher'],
     state: {},
     signal: new AbortController().signal,
@@ -76,12 +76,12 @@ test('Auto sends no MCP setting, so Codex’s own reviewer and policy decide, an
 test('Accept edits prompts for every third-party MCP tool', async () => {
   const seen = [];
   const adapter = new CodexAdapter({
-    workRoot: '/tmp/postbox-codex-test',
+    workRoot: CODEX_ROOT,
     spawnImpl: () => fakeAppServer(seen, { mcpServers: ['builder-mcp'] }),
   });
   const ctx = {
     persona: { handle: 'researcher', model: 'gpt-5.6-terra', permissionMode: 'acceptEdits' },
-    project: { folder: '/tmp/postbox-codex-test/project' },
+    project: { folder: `${CODEX_ROOT}/project` },
     handles: ['researcher'],
     state: {},
     signal: new AbortController().signal,

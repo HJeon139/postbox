@@ -2,6 +2,84 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.58.0 (2026-11-10)
+
+### Features
+
+- **app:** the transcript window is on by default for long conversations (#866)
+- **app:** behind the flag, a jump to an item off the page mounts it first (#866, W3)
+- **app:** behind the flag, the window unmounts what's furthest from the view (#866, W2)
+- **app:** behind a flag, a long conversation mounts only the items around the view (#866, W1)
+
+### Fixes
+
+- **app:** an island follows its redrawn node, and keeps its focus when it rejoins the range (#866)
+- **app:** an island moved to the end leaves no stray stub on the page (#866)
+- **app:** the window grows just after the frame's layout, so a reply arriving forces none (#1047)
+- **app:** a far jump takes the conversation's top from where the spacer sits on the page (#866)
+- **app:** a far jump reads the range from its items, leaves other scrollers their keys (#866)
+- **app:** the window follows a far scroll, Home, End and Jump to latest, and lets go cleanly (#866)
+- **app:** the window tells the view directly, and a rebuild keeps your place and skipping (#866)
+- **app:** the window keeps the browser's skipping off, and tells the view when it scrolls (#866)
+
+## 1.57.1 (2026-11-10)
+
+### Fixes
+
+- **server:** export stillThere for its test, and key the cache on nanoseconds
+- **review:** drop the oldest kept draft before saving a new one (#1144)
+- **work:** a kept background job that ends on its own reads as ended, not unknown (#519)
+- **review:** forget a kept draft once its review is answered, and keep at most 20 (#1144)
+- **server:** read a served file from the handle that was checked
+- **review:** keep the text a review's drafts were written on (#1144)
+- **review:** keep a review's draft comments over a reload (#1144)
+- **permissions:** a read in a readable folder is judged from the pending session (#1074)
+- **adapters:** the agy hook leaves a read in a readable folder to Postbox (#1074)
+
+## 1.57.0 (2026-11-10)
+
+### Features
+
+- **work:** the passes run after each turn and once after start, off until step 4 (#305)
+- **work:** the archive pass moves each agent's older ended turns into archive files (#305)
+
+### Fixes
+
+- **app:** the pane's width isn't inherited, so a new width restyles only its readers (#1150)
+- **uat:** find the newest Undo toast first, as the stack orders it
+- **work:** endedAs sits above endWork's doc comment, not under it (#305)
+- **store:** the pending view applies turn.archive and reads its list back (#305)
+
+## 1.56.1 (2026-11-10)
+
+### Fixes
+
+- **kiro:** show when Postbox's tool server fails to start, and tell the agent next turn (#489)
+- **server:** a refused mention or summary is posted as a system line (#362)
+- **server:** a refused hand-off is posted, and its agent gets one turn to send it
+- **server:** mentions and summaries keep the send limit, and wakes cap at 20
+- **tests:** the remote rig's work root is a temp folder of its own (#823)
+- **adapters:** .git and agy’s settings judge both readings of a path, through realReadings (#1074)
+- **permissions:** /mode names the busy agent's own backend, not Claude Code (#1030)
+- **adapters:** a path’s .. is judged as text too, so a link can’t hide a climb out (#1074)
+- **permissions:** a read card for a path that isn’t text says so, not an empty file_path (#1074)
+- **adapters:** a file call naming a ~user path asks, and is refused where it may be agy’s (#1074)
+- **permissions:** a read card shows each path on a line of its own, tidied and clipped (#1074)
+- **adapters:** Auto’s routine commands judge a path as the hook’s file calls do (#1074)
+- **permissions:** a read card names every outside path, and each must be readable (#1074)
+- **permissions:** a read card's Always allow says the folder is the agent's
+- **permissions:** a folder in home named ..something is a dot-folder, never offered
+- **adapters:** agy hook compares readable folders as Postbox saved them
+- **adapters:** agy reads its own builtin skills and guide with no card
+- **adapters:** agy hook judges a ~ path as the home folder too
+- **adapters:** agy hook judges every path a file call names, not only the first
+- **adapters:** agy hook follows a link before a .. in a path, as the file system does
+- **apps:** load each check frame at its own width, and fire its resize inside the frame
+- **permissions:** say why a running turn keeps its mode, and what its hooks do
+- **apps:** resize each check frame and change its theme while the app loads
+- **tests:** a gate run's tests write temp files only in its own temp folder
+- **tests:** an install test's pause ends at a limit, and runs as root
+
 ## 1.56.0 (2026-11-10)
 
 ### Features

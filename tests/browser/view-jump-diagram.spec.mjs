@@ -5,7 +5,7 @@
 // center. The rest of the jumps: view-jump.spec.mjs.
 
 import { expect, test } from '@playwright/test';
-import { failOnPageErrors, startPostbox } from './postbox.mjs';
+import { failOnPageErrors, startPostbox, wholeRoom } from './postbox.mjs';
 import { COUNT, jump, landed, openRoom, placed, where } from './view-jump-fixture.mjs';
 import { bigRoom } from './view-skipped-fixture.mjs';
 
@@ -23,6 +23,8 @@ test.beforeAll(async () => {
 });
 test.afterAll(async () => app?.stop());
 failOnPageErrors(test);
+// Every item mounted, the window off: this spec is of the whole-room path (postbox.mjs, wholeRoom).
+wholeRoom(test);
 test.beforeEach(() => test.setTimeout(120_000));
 
 for (const block of /** @type {const} */ (['start', 'center'])) {
