@@ -9,7 +9,7 @@ import { existsSync } from 'node:fs';
 import { test } from 'node:test';
 import { shimArgs } from '../server/adapters/adapter.mjs';
 import { AgentSdkAdapter } from '../server/adapters/agent-sdk.mjs';
-import { CLAUDE_CODE_CAPABILITIES, ClaudeCodeAdapter, claudeArgs, remoteClaudeProblem } from '../server/adapters/claude-code.mjs';
+import { CLAUDE_CODE_CAPABILITIES, ClaudeCodeAdapter, claudeArgs } from '../server/adapters/claude-code.mjs';
 import { MockAdapter } from '../server/adapters/mock.mjs';
 import { MESSAGE_FILE } from '../shared/remote-protocol.mjs';
 import { argOf, FOLDER, forbidden, HOME, HOUR, remoteCtx, SHIM, serverOf, starts, until, welcomeWith } from './claude-code-remote-fixture.mjs';
@@ -81,30 +81,32 @@ test('#120: with the host’s denyPrompts on, --permission-prompts none replaces
   assert.deepEqual(serverOf(local), { type: 'http', url: 'http://x/mcp', alwaysLoad: true, timeout: 25 * HOUR });
 });
 
-test('#120: a host whose claude is missing or too old refuses the turn before it starts, saying what it found and where (C3)', async () => {
+test('#1084: a host whose cached welcome has no claude, or an old one, still sends the start, carrying the minimum the host checks', async () => {
   const d = createFakeDaemon({ lines: fixtureLines('block') });
   const adapter = new ClaudeCodeAdapter({ bin: 'claude', workRoot: '/tmp/pb-test-work', ...forbidden() });
-  const refuse = (opts, re) => assert.rejects(adapter.deliver({}, { kind: 'user', text: 'Hi' }, remoteCtx(d, opts)), re);
-  await refuse(
-    { welcome: welcomeWith({ path: null }) },
-    /Claude Code isn’t installed on the host\. It looked in \/home\/user\/\.local\/bin, \/usr\/local\/bin\./,
+  const deliver = (opts) => adapter.deliver({}, { kind: 'user', text: 'Hi' }, remoteCtx(d, opts));
+  await deliver({ welcome: welcomeWith({ path: null }) });
+  await deliver({ welcome: welcomeWith({ version: '2.1.186' }) });
+  await deliver({ welcome: welcomeWith({ version: '2.1.258' }), settings: { denyPrompts: true } });
+  await deliver({ welcome: welcomeWith({ version: 'nightly' }) });
+  // The host decides from the claude it finds now (#1084): the welcome is cached for the life of the connection.
+  assert.deepEqual(
+    starts(d).map((s) => s.need),
+    [
+      { min: '2.1.187', why: 'remote' },
+      { min: '2.1.187', why: 'remote' },
+      { min: '2.1.259', why: 'denyPrompts' },
+      { min: '2.1.187', why: 'remote' },
+    ],
   );
-  await refuse(
-    { welcome: welcomeWith({ version: '2.1.186' }) },
-    /Claude Code 2\.1\.186 at \/home\/user\/\.local\/bin\/claude on the host is older than 2\.1\.187/,
-  );
-  await refuse(
-    { welcome: welcomeWith({ version: '2.1.258' }), settings: { denyPrompts: true } },
-    /2\.1\.258 at \/home\/user\/\.local\/bin\/claude .*older than 2\.1\.259, which turning off permission prompts/,
-  );
-  await refuse(
-    { welcome: welcomeWith({ version: 'nightly' }) },
-    /couldn’t tell the version of Claude Code at \/home\/user\/\.local\/bin\/claude on the host \(it said “nightly”\)/,
-  );
+  assert.equal(starts(d)[0].harness, 'claude-code');
+});
+
+test('#120: a remote turn with no welcome from the daemon yet is still refused before it starts', async () => {
+  const d = createFakeDaemon({ lines: fixtureLines('block') });
+  const adapter = new ClaudeCodeAdapter({ bin: 'claude', workRoot: '/tmp/pb-test-work', ...forbidden() });
+  await assert.rejects(adapter.deliver({}, { kind: 'user', text: 'Hi' }, remoteCtx(d, { welcome: null })), /hasn’t heard from the host’s daemon yet/);
   assert.deepEqual(starts(d), [], 'nothing started on the host');
-  assert.equal(remoteClaudeProblem(welcomeWith({ version: '2.1.187' })), null);
-  assert.equal(remoteClaudeProblem(welcomeWith({ version: '2.1.308.1314' }), { denyPrompts: true }), null);
-  assert.equal(remoteClaudeProblem(welcomeWith({ version: '2.1.259' }), { denyPrompts: false }), null);
 });
 
 test('#120: Stop on a remote turn goes through the daemon, never the local kill or ps; a job to keep is reported stopped, and a job’s own Stop isn’t offered', async () => {

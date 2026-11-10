@@ -12,7 +12,7 @@ import { test } from 'node:test';
 import { mergePath, pathMarkers, probeLoginPath } from '../server/remote/host/login-path.mjs';
 import { findPrograms } from '../server/remote/host/programs.mjs';
 import { lookedText, TURN_FILES, validateMessage } from '../shared/remote-protocol.mjs';
-import { hello, PROGRAMS_FOUND, setup, startMsg } from './remote-daemon-setup.mjs';
+import { fakeClock, hello, PROGRAMS_FOUND, setup, startMsg } from './remote-daemon-setup.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
 const TOKEN = '11111111-2222-4333-8444-555555555555';
@@ -192,9 +192,10 @@ test('#672: a harness missing at its start is looked for again with a fresh logi
   }
 });
 
-test('#672: the login shell is asked again at most once per daemon start', async () => {
+test('#1084: the login shell is asked again at most once per 30 s, so a CLI installed since is found later', async () => {
   let probes = 0;
-  const s = setup({ probeLoginPath: async () => ({ ok: true, entries: [`/try${++probes}`], ms: 1 }), findPrograms: findsLate([]) });
+  const clock = fakeClock();
+  const s = setup({ clock, probeLoginPath: async () => ({ ok: true, entries: [`/try${++probes}`], ms: 1 }), findPrograms: findsLate([]) });
   try {
     const c = await hello(s);
     assert.equal(probes, 1, 'once at the first hello');
@@ -203,9 +204,37 @@ test('#672: the login shell is asked again at most once per daemon start', async
     assert.equal(probes, 2, 'once more at the miss');
     c.send('start', startMsg('t2'));
     assert.equal((await c.msgs.next('error')).code, 'no-harness');
-    assert.equal(probes, 2, 'not a third time');
-    await hello(s, { takeover: true });
+    assert.equal(probes, 2, 'not again within 30 s of the last probe’s start');
+    const later = await hello(s, { takeover: true });
     assert.equal(probes, 2, 'nor at a later hello');
+    await clock.tick(30_000);
+    later.send('start', startMsg('t3'));
+    assert.equal((await later.msgs.next('error')).code, 'no-harness');
+    assert.equal(probes, 3, 'again once 30 s have passed');
+  } finally {
+    s.done();
+  }
+});
+
+test('#1084: a claude installed after a Kiro start re-probed is found by a claude start 30 s later', async () => {
+  let probes = 0;
+  const clock = fakeClock();
+  const s = setup({
+    clock,
+    probeLoginPath: async () => ({ ok: true, entries: ++probes <= 2 ? ['/early/bin'] : ['/early/bin', '/late/bin'], ms: 1 }),
+    findPrograms: findsLate([]),
+  });
+  try {
+    const c = await hello(s);
+    c.send('start', startMsg('t1', { harness: 'kiro-cli' }));
+    assert.equal((await c.msgs.next('error')).code, 'no-harness');
+    assert.equal(probes, 2, 'the Kiro miss asked again, before claude was installed');
+    await clock.tick(30_000);
+    c.send('start', startMsg('t2'));
+    await c.msgs.next('started');
+    assert.equal(probes, 3);
+    const record = JSON.parse(readFileSync(s.p.turn('t2', TURN_FILES.start), 'utf8'));
+    assert.equal(record.program, '/late/bin/claude');
   } finally {
     s.done();
   }

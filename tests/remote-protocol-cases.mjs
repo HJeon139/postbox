@@ -94,6 +94,16 @@ export const CASES = {
         [{ ...start, turn: 'a/b' }, /start\.turn must be a turn ID/],
         [{ ...start, turn: 'x'.repeat(37) }, /start\.turn must be a turn ID/],
         [{ ...start, cwd: '/' }, /“cwd” isn’t a field of start/],
+        // need (#1084): the minimum claude a remote turn runs on, only for claude-code, a short dotted version.
+        [{ ...start, harness: 'codex', need: { min: '2.1.187', why: 'remote' } }, /start\.need is only for claude-code; this start is for codex/],
+        [{ ...start, need: '2.1.187' }, /start\.need must be an object/],
+        [{ ...start, need: { min: '2.1.187' } }, /start\.need needs “why”/],
+        [{ ...start, need: { min: '2.1.187', why: 'remote', at: 1 } }, /“at” isn’t a field of start\.need/],
+        [{ ...start, need: { min: '1'.repeat(33), why: 'remote' } }, /start\.need\.min is 33 characters; the limit is 32/],
+        [{ ...start, need: { min: '2.1.187; rm -rf ~', why: 'remote' } }, /start\.need\.min must be a version such as 2\.1\.187/],
+        [{ ...start, need: { min: '1.2.3.4.5', why: 'remote' } }, /start\.need\.min must be a version such as 2\.1\.187/],
+        [{ ...start, need: { min: 2, why: 'remote' } }, /start\.need\.min must be text/],
+        [{ ...start, need: { min: '2.1.187', why: 'root' } }, /start\.need\.why must be one of remote, denyPrompts/],
       ],
     },
     snapshot: {

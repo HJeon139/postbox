@@ -67,6 +67,17 @@ test('a validator for one type refuses a valid message of another type', () => {
   assert.match(r.ok ? '' : r.error, /must be an object with type “stop”/);
 });
 
+test('#1084: a claude-code start may carry the minimum claude it needs, for either reason', () => {
+  for (const need of [
+    { min: '2.1.187', why: 'remote' },
+    { min: '2.1.259', why: 'denyPrompts' },
+    { min: '3', why: 'remote' },
+  ]) {
+    const r = validateMessage('postbox-to-daemon', { type: 'start', ...start, need });
+    assert.ok(r.ok, r.ok ? '' : r.error);
+  }
+});
+
 test('message() builds a valid message and throws on a refused one, naming the field', () => {
   assert.deepEqual(message('postbox-to-daemon', 'stop', { turn: 't1' }), { type: 'stop', turn: 't1' });
   assert.throws(() => message('postbox-to-daemon', 'stop', { turn: '../t1' }), { name: 'TypeError', message: /stop\.turn must be a turn ID/ });

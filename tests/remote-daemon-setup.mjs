@@ -71,12 +71,13 @@ export function fakeClock(t0 = 1_760_000_000_000) {
  * A daemon over a temp home, with fake runners.
  * @param {{ token?: string | null, same?: boolean, clock?: ReturnType<typeof fakeClock>, onIdle?: () => void, settings?: object, uid?: number, spawn?: any, broker?: any,
  *   log?: (line: string) => void, sameProcess?: (r: any) => boolean | Promise<boolean>, answer?: (turn: string) => boolean, pollMs?: number, stopGraceMs?: number,
- *   env?: Record<string, string>, findPrograms?: (o: any) => Promise<any>, probeLoginPath?: () => Promise<any> }} [o]
+ *   env?: Record<string, string>, findPrograms?: (o: any) => Promise<any>, probeLoginPath?: () => Promise<any>, readVersion?: (o: any) => Promise<any> }} [o]
  *   spawn: the daemon’s own spawn, for the sign-in check (the runners are launchRunner’s, faked here). broker: in place
  *   of the daemon’s own. sameProcess: in place of the fake one that answers `same`, such as proc.mjs’s own over fake facts.
  *   answer: whether the fake runner answers a `who`, in place of its turn being in `alive`. pollMs: the followers’ poll.
  *   findPrograms: in place of the one finding PROGRAMS_FOUND. probeLoginPath: in place of the one whose login shell
- *   fails, so a turn’s PATH is the daemon’s own (#672).
+ *   fails, so a turn’s PATH is the daemon’s own (#672). readVersion: in place of one program’s `--version` read again
+ *   at a start (#1084), which here runs nothing and fails.
  */
 export function setup({
   token = TOKEN,
@@ -94,6 +95,7 @@ export function setup({
   stopGraceMs = 5000,
   findPrograms = async () => structuredClone(PROGRAMS_FOUND),
   probeLoginPath = async () => ({ ok: false, why: 'the test’s host has no login shell' }),
+  readVersion = async () => ({ error: 'the test’s host runs no programs' }),
 } = {}) {
   // A short folder name: a turn’s socket path must fit Linux’s 108 bytes, and macOS’s tmpdir is long.
   const home = hostHome('pbd-');
@@ -140,6 +142,7 @@ export function setup({
     },
     findPrograms,
     probeLoginPath,
+    readVersion,
     kill: (pid, signal) => kills.push([pid, signal]),
     log,
     onIdle,
