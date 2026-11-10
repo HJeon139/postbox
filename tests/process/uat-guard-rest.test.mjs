@@ -6,7 +6,8 @@ import { spawnSync } from 'node:child_process';
 import { chmodSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { gitRemoteEnv, guardEnv, remotePaths, seedGitRemote } from '../../tools/uat/git-remote.mjs';
+import { gitRemoteEnv, guardEnv, preflightRemote, remotePaths, seedGitRemote } from '../../tools/uat/git-remote.mjs';
+import { noGithubEnv, preflightRun } from '../../tools/uat/github-guard.mjs';
 import { tempDir } from '../temp-dirs.mjs';
 
 const SECRET = 'made-up-1125-secret';
@@ -51,3 +52,31 @@ for (const name of ['GIT_ASKPASS', 'SSH_ASKPASS', 'GIT_CONFIG_PARAMETERS']) {
     assert.doesNotMatch(asked(true), /password=/);
   });
 }
+
+/** env without the guard's config entries, as an environment that lost them would be. */
+const withoutGuardConfig = (env) => Object.fromEntries(Object.entries(env).filter(([k]) => !/^GIT_CONFIG_(COUNT|KEY_|VALUE_)/.test(k)));
+const STOPS = /git in the agent’s shell can still hand out a password, so the run stops before any agent turn/;
+
+test('#1125: the preflight stops a run whose git would still run the person’s credential helper', () => {
+  const base = person();
+  writeFileSync(join(base.HOME, '.gitconfig'), `[credential]\n\thelper = "${HELPER}"\n`);
+  const dir = tempDir('postbox-uat-guard-rest-pre-');
+  const env = { ...base, SHELL: '/bin/sh', ...noGithubEnv({ github: null }, dir) };
+  assert.doesNotThrow(() => preflightRun({ seed: null }, dir, dir, env), 'the control: the whole guard passes');
+  assert.match(fill(withoutGuardConfig(env)), new RegExp(`password=${SECRET}`), 'without its config, git hands it out');
+  assert.throws(() => preflightRun({ seed: null }, dir, dir, withoutGuardConfig(env)), STOPS);
+  assert.throws(() => preflightRun({ seed: null }, dir, dir, { ...env, GIT_CONFIG_PARAMETERS: `'credential.helper=${HELPER}'` }), STOPS);
+  assert.throws(() => preflightRun({ seed: null }, dir, dir, { ...env, SSH_ASKPASS: '/bin/true' }), STOPS, 'an askpass variable');
+  const askHome = person().HOME;
+  writeFileSync(join(askHome, '.gitconfig'), '[core]\n\taskPass = /bin/true\n');
+  assert.throws(() => preflightRun({ seed: null }, dir, dir, { ...withoutGuardConfig(env), HOME: askHome }), STOPS, 'a core.askPass');
+});
+
+test('#1125: a git-remote run’s preflight stops one whose agent shell would still answer with an askpass', () => {
+  const { dir, env } = remoteRun({ ...person(), SHELL: '/bin/sh' });
+  const workspace = join(dir, 'workspace');
+  assert.doesNotThrow(() => preflightRemote(workspace, dir, env), 'the control');
+  // Without the env file, the agent's shell keeps what it inherited: here, an askpass.
+  const { CLAUDE_ENV_FILE: _f, ...noFile } = env;
+  assert.throws(() => preflightRemote(workspace, dir, { ...noFile, GIT_ASKPASS: '/bin/true' }), STOPS);
+});
