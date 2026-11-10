@@ -40,6 +40,9 @@ import { threadMenu } from './thread-menu.mjs';
 import { announceStreaming, navigate, openMenu, say, toast } from './ui.mjs';
 import { viewAskBlock } from './view-ask-card.mjs';
 import { mountView } from './view-state.mjs';
+import { welcome } from './welcome.mjs';
+import { createWindow } from './window.mjs';
+import { replaced as replacedNode } from './window-shrink.mjs';
 import { workList } from './work-list.mjs';
 
 export { focusComposer } from './hop-card.mjs';
@@ -118,28 +121,47 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
   const rerender = (id) => {
     const list = itemsOf(threadId);
     const i = placeIn(threadId, id);
-    if (i < 0) return;
+    // An item outside the window isn’t on the page; it draws from the state when it’s mounted.
+    if (i < 0 || (win && !nodes.has(id))) return;
     const old = nodes.get(id);
     // Keep focus, and the caret, inside a block that’s being edited.
     const back = holdFocus();
     const n = render(list[i], list[i - 1]);
     replaceTranscriptItem(old, n, view);
     nodes.set(id, n);
+    if (old && win) replacedNode(win, old, n);
     back();
   };
-  const all = () => {
+  const mountAt = (/** @type {any[]} */ list, /** @type {number} */ i) => {
+    const n = render(list[i], list[i - 1]);
+    nodes.set(list[i].id, n);
+    return n;
+  };
+  const appendNew = (/** @type {any[]} */ list, /** @type {number} */ i) => {
+    const n = el.appendChild(mountAt(list, i));
+    win?.observe(n);
+  };
+  /** @type {ReturnType<typeof createWindow>} */
+  let win = null;
+  /** The items on the page: with a window, only the mounted ones; the rest draw from the state when they mount. */
+  const shown = () => {
+    const list = itemsOf(threadId);
+    if (!win) return list;
+    return [...nodes.keys()].map((id) => list[placeIn(threadId, id)]).filter(Boolean);
+  };
+  const all = (/** @type {string | null} */ anchorKey = was?.anchor?.key ?? null) => {
     el.replaceChildren();
     nodes.clear();
+    win?.destroy();
     const list = itemsOf(threadId);
     if (!list.length && !inPanel) {
-      el.append(welcome(threadId));
+      el.append(welcome(threadId, sendMessage));
       return;
     }
-    list.forEach((it, i) => {
-      const n = render(it, list[i - 1]);
-      nodes.set(it.id, n);
-      el.append(n);
-    });
+    // A long conversation mounts only what’s around you, behind its flag (window.mjs, #866); else every item.
+    win = createWindow({ el, key: `${inPanel}:${threadId}`, list, anchorKey, inPanel, nodes, mount: (i) => mountAt(list, i) });
+    if (win) win.build();
+    else for (let i = 0; i < list.length; i++) el.append(mountAt(list, i));
     hostTurns.paint();
     paintWorking();
   };
@@ -149,7 +171,8 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
   const off = client.on((ch) => {
     if (ch.type === 'load') {
       const back = holdFocus();
-      all();
+      // Rebuilt around where you are now, not where the transcript was when it opened.
+      all(view.keep()?.anchor?.key ?? null);
       view.rebuilt();
       back();
       return;
@@ -160,9 +183,7 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
       // A new message takes the place of any height held below the last one.
       view.release();
       const list = itemsOf(threadId);
-      const n = render(d.item, list[list.length - 2]);
-      nodes.set(d.item.id, n);
-      el.append(n);
+      if (!win || win.added(d.item)) appendNew(list, list.length - 1);
       paintWorking();
       view.grew();
     } else if (ch.type === 'item.move' && d.threadId === threadId) {
@@ -170,17 +191,18 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
       // height a line takes, and what you were reading stays put: if that was the item, the stub holds its place.
       const list = itemsOf(threadId);
       const at = placeIn(threadId, d.stub.id);
-      const stub = render(d.stub, list[at - 1]);
       const back = holdFocus();
-      nodes.get(d.id)?.replaceWith(stub);
-      nodes.set(d.stub.id, stub);
+      if (!win || nodes.has(d.id)) {
+        const stub = render(d.stub, list[at - 1]);
+        nodes.get(d.id)?.replaceWith(stub);
+        nodes.set(d.stub.id, stub);
+      }
+      nodes.delete(d.id);
       view.moved(d.id, d.stub.id);
       // The message after it now follows the stub, so whether it names its speaker can change.
       if (list[at + 1] && list[at + 1].id !== d.id) rerender(list[at + 1].id);
       view.release();
-      const n = render(list[list.length - 1], list[list.length - 2]);
-      nodes.set(d.id, n);
-      el.append(n);
+      if (!win || win.moved(d.stub, list[list.length - 1])) appendNew(list, list.length - 1);
       back();
       paintWorking();
       view.grew();
@@ -197,19 +219,19 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
           pending.clear();
         });
     } else if (ch.type === 'glossary' && (d.threadId === threadId || d.threadId === S().threads[threadId]?.parentId)) {
-      for (const it of itemsOf(threadId)) if (it.kind === 'agent' && usesTerm(it, d.entry, nodes.get(it.id))) updateText(it.id, true);
+      for (const it of shown()) if (it.kind === 'agent' && usesTerm(it, d.entry, nodes.get(it.id))) updateText(it.id, true);
     } else if (ch.type === 'session') {
       // An agent at work here may not be one of this thread’s own (#110): its turn is in it.
       paintWorking();
-      for (const it of itemsOf(threadId))
-        if (it.kind === 'sidelink' && nodes.get(it.id)?.dataset.sideSig !== sideSig(sideActive(it.sideThreadId))) rerender(it.id);
+      for (const it of shown()) if (it.kind === 'sidelink' && nodes.get(it.id)?.dataset.sideSig !== sideSig(sideActive(it.sideThreadId))) rerender(it.id);
     } else if (ch.type === 'app') {
       // Only what changes the frame re-renders it, for an app and an app review alike: a new version, a version picked,
       // the check’s result, or retiring (#193). A review shown while its app was being checked draws the result (#857),
       // and keeps its draft, which lives outside the node. Saved state never re-renders: the running app already has it,
       // and reloading would make it save again.
       const sig = appSig(d);
-      for (const it of itemsOf(threadId)) {
+      // Over the mounted items only (#866, W3): an item off the page draws from the state when it mounts.
+      for (const it of shown()) {
         if (drawnApp(it) !== d.id || nodes.get(it.id)?.dataset.appSig === sig) continue;
         rerender(it.id);
         const fresh = nodes.get(it.id);
@@ -222,7 +244,12 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
   const updateText = (id, force = false) => {
     const it = itemsOf(threadId)[placeIn(threadId, id)]; // undefined when it's gone, as find() gave
     const node = nodes.get(id);
-    if (!it || !node) return;
+    if (!it) return;
+    // A reply the window hasn’t mounted, while you read higher up, is still heard as it streams (#866).
+    if (!node) {
+      if (!force) announceStreaming(it.id, it.text, it.status !== 'streaming', it.handle);
+      return;
+    }
     const box = node.querySelector(':scope > .md');
     if (!box) {
       rerender(id);
@@ -236,10 +263,20 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
   return {
     el,
     settle: view.settle,
-    scrollToEnd: view.scrollToEnd,
+    /**
+     * To the end. If the window has moved away from the newest item (#866), it’s mounted first, and the view goes there
+     * at once: a smooth scroll would cross a blank spacer. @param {boolean} [smooth]
+     */
+    scrollToEnd: (smooth) => {
+      const last = itemsOf(threadId).at(-1);
+      const away = !!win && !!last && win.to < win.total;
+      if (away) win?.reach(last.id);
+      return view.scrollToEnd(smooth && !away);
+    },
     setJump: view.setJump,
     destroy() {
       off();
+      win?.destroy();
       const where = view.keep();
       view.destroy();
       // Once its elements have left the page, its apps are let go (#930). Every view with apps, the side panel’s and
@@ -637,47 +674,6 @@ function proposalBlock(it, ctx, showWho) {
             h('button.btn.ghost', { type: 'button', onclick: () => act('dismiss') }, 'Dismiss'),
           )
         : null,
-    ),
-  );
-}
-
-function welcome(threadId) {
-  const se = sessionsOf(threadId)[0];
-  const p = se && S().personas[se.personaId];
-  if (!se || !p) return h('div.col', h('p.dim', 'No agent is in this conversation yet. @-mention one to bring it in.'));
-  const ring = ringFor(se, 'lg');
-  ring.dataset.session = se.id;
-  return h(
-    'section.col',
-    { style: { display: 'flex', flexDirection: 'column', gap: '18px', padding: '32px 0' } },
-    h('div.row-flex', { style: { gap: '14px' } }, ring, h('div', h('h1.title', `${p.handle} is ready`), h('p.dim', String(p.description ?? '')))),
-    h(
-      'div',
-      { role: 'list', 'aria-label': 'Example prompts', style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '10px' } },
-      (p.examples ?? []).map(([title, sub]) =>
-        h(
-          'button.prompt',
-          {
-            type: 'button',
-            role: 'listitem',
-            style: {
-              all: 'unset',
-              boxSizing: 'border-box',
-              cursor: 'pointer',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '4px',
-              padding: '12px',
-              border: '1px solid var(--line-strong)',
-              borderRadius: '8px',
-              background: 'var(--panel)',
-            },
-            onclick: () => sendMessage(threadId, title),
-          },
-          h('b', title),
-          h('span.small.dim', sub),
-        ),
-      ),
     ),
   );
 }

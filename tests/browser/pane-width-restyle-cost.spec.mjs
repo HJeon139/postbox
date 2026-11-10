@@ -7,7 +7,7 @@
 
 import { expect, test } from '@playwright/test';
 import { WORK } from './pane.mjs';
-import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
+import { failOnPageErrors, startPostbox, synced, wholeRoom } from './postbox.mjs';
 import { bigRoom, still } from './view-skipped-fixture.mjs';
 
 // Tracing is off: Playwright’s trace snapshot walks the page each action, which restyles it too.
@@ -20,6 +20,8 @@ test.beforeAll(async () => {
 });
 test.afterAll(async () => app?.stop());
 failOnPageErrors(test);
+// The cost is counted over a whole room, every item mounted, as on main before the window (#866).
+wholeRoom(test);
 
 /** The elements Chromium restyled while `run` ran, and until the page held still after. */
 async function restyledOver(page, run) {

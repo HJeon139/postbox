@@ -7,7 +7,7 @@ import { writeFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
 import { VIEW_CHECKS } from '../../tools/uat/checks-view.mjs';
 import { sampleSkipped } from '../../tools/uat/skip-probe.mjs';
-import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
+import { failOnPageErrors, startPostbox, synced, wholeRoom } from './postbox.mjs';
 import { bigRoom, still } from './view-skipped-fixture.mjs';
 
 // Tracing is off: its snapshots walk every item with its skipped styles each action (tests/browser/view-skipped.spec.mjs).
@@ -20,6 +20,8 @@ test.beforeAll(async () => {
 });
 test.afterAll(async () => app?.stop());
 failOnPageErrors(test);
+// Every item mounted, the window off: this spec is of the whole-room path (postbox.mjs, wholeRoom).
+wholeRoom(test);
 
 const COUNT = 1200;
 const rowsSkipped = (samples) => VIEW_CHECKS.find((c) => c.id === 'rows-skipped')?.run({ probes: { skipped: samples } });

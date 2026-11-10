@@ -39,7 +39,7 @@ import {
 } from '../shared/work.mjs';
 import { describeTool } from './adapters/claude-stream.mjs';
 import { fileDiff, output, restore } from './ledger-answers.mjs';
-import { commandSeen, commandStarted, folderWatch, turnEnded } from './ledger-commands.mjs';
+import { commandSeen, commandStarted, endedAs, folderWatch, turnEnded } from './ledger-commands.mjs';
 import { clip, gitState, pushed, recordCommit, recordLandedPushes, recordPushes, rootOf, runGit, tracked } from './ledger-git.mjs';
 import { known, memoryBlobs, nodeIo, sameSnap } from './ledger-io.mjs';
 import { hostEdit, hostFolder, hostOf } from './ledger-remote.mjs';
@@ -440,7 +440,7 @@ export class Ledger {
     else if (state && ['running', 'background', 'unknown'].includes(e.state)) {
       this.folders.live.delete(e.id); // it ended: a commit made after it isn’t its (#156)
       this.patch(convId, e.id, {
-        state: state === 'stopped' || state === 'failed' ? state : 'unknown',
+        state: endedAs(state),
         ms: this.now() - (e.startedAt ?? this.now()),
         leftRunning: false,
         ...(by === 'you' ? { stoppedBy: 'you' } : {}),

@@ -8,7 +8,7 @@
 // Moved from tools/check-work-pane.mjs (#303).
 
 import { expect, test } from '@playwright/test';
-import { failOnPageErrors, settled } from './postbox.mjs';
+import { failOnPageErrors, PHONE, settled } from './postbox.mjs';
 import { citationFixes, hash, noSideways, SIZES, THREAD, WORK } from './work-pane.mjs';
 
 /** @type {Awaited<ReturnType<typeof citationFixes>>} */
@@ -286,6 +286,6 @@ const CASES = [
 
 for (const { width, height, phone } of SIZES)
   test.describe(`${width} px`, () => {
-    test.use(phone ? { viewport: { width, height }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 } : { viewport: { width, height } });
+    test.use(phone ? { viewport: { width, height }, ...PHONE } : { viewport: { width, height } });
     for (const [name, run] of CASES) test(`${width} px: ${name}`, ({ page }) => run(page, { width, height, phone }));
   });
