@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { messageOf, restarted, rig, settled, sleep, starts, startUp, until } from './remote-turns-helpers.mjs';
 
-/** The rig after a restart, with the host’s welcome held until release(). @param {'running' | 'missing'} welcome */
+/** The rig after a restart, with the first host’s welcome held until release(). @param {'running' | 'missing'} welcome */
 function heldWelcome(welcome) {
   const { store, d } = restarted({ welcome });
   const r = rig({ store, d });
@@ -16,7 +16,7 @@ function heldWelcome(welcome) {
   });
   const ensure = r.hosts.ensureWelcome;
   r.hosts.ensureWelcome = async (/** @type {string} */ hostId) => {
-    await held;
+    if (hostId === r.host.id) await held;
     return ensure(hostId);
   };
   startUp(r);
@@ -94,3 +94,27 @@ test('#1135 a drain of the thread while the turn waits to be attached leaves its
   d.end(starts(d)[0].turn);
   await settled(r);
 });
+
+/**
+ * Moves the agent off its silent host, as the agent panel does. `to`: this computer, or a second host.
+ * @param {ReturnType<typeof heldWelcome>['r']} r @param {'here' | 'host'} to
+ */
+function move(r, to) {
+  r.rt.updatePersona(r.se().personaId, { remote: to === 'host' ? { hostId: r.rt.addHost({ name: 'other.example.com' }).id } : null });
+}
+
+/** A turn has started where the agent was moved to: the fake daemon’s `start`, or the local spawn the rig refuses. */
+const startedAfterMove = (r, d, /** @type {'here' | 'host'} */ to) => (to === 'host' ? starts(d).length === 1 : r.f.calls.some((c) => c[0] === 'spawn'));
+
+for (const to of /** @type {const} */ (['here', 'host']))
+  test(`#1135 a message after the agent moved off a silent host goes at once (${to})`, async () => {
+    const { r, d, release } = heldWelcome('running');
+    await until(() => r.rt.remote.restoring.has('host-turn-1'), 'the turn to wait for its welcome');
+    move(r, to);
+    r.rt.sendMessage(r.t.id, { text: 'after the move' });
+    assert.deepEqual(queued(r), [], 'the old host’s turn holds nothing back');
+    await until(() => startedAfterMove(r, d, to), 'the turn where it runs now');
+    if (to === 'host') d.end(starts(d)[0].turn);
+    await settled(r);
+    release();
+  });

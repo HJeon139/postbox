@@ -117,11 +117,14 @@ export class RemoteTurns {
   /**
    * Whether a session’s turn on its host, from before a restart, waits for the host’s welcome to be attached again
    * (#1135). The agent is idle here meanwhile, but a message for it waits in the queue, as for a busy one: a new turn
-   * would run on the host beside the one about to be attached. @param {string} sessionId
+   * would run on the host beside the one about to be attached. Only while the agent still runs on that host: once
+   * it’s moved off, that turn can’t be attached (reattach), and a message goes where the agent runs now.
+   * @param {string} sessionId
    */
   awaitsAttach(sessionId) {
-    const turn = this.rt.s.sessions[sessionId]?.remoteTurn?.turn;
-    return Boolean(turn) && this.restoring.get(turn) === sessionId;
+    const se = this.rt.s.sessions[sessionId];
+    const r = se?.remoteTurn;
+    return Boolean(r?.turn) && this.restoring.get(r.turn) === sessionId && hostOf(this.rt.personaFor(se)) === r.hostId;
   }
 
   /** Stops the timers and listeners, as Postbox shuts down. Turns go on on their hosts. */
