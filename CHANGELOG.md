@@ -2,6 +2,20 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.57.0 (2026-11-10)
+
+### Features
+
+- **work:** the passes run after each turn and once after start, off until step 4 (#305)
+- **work:** the archive pass moves each agent's older ended turns into archive files (#305)
+
+### Fixes
+
+- **app:** the pane's width isn't inherited, so a new width restyles only its readers (#1150)
+- **uat:** find the newest Undo toast first, as the stack orders it
+- **work:** endedAs sits above endWork's doc comment, not under it (#305)
+- **store:** the pending view applies turn.archive and reads its list back (#305)
+
 ## 1.56.1 (2026-11-10)
 
 ### Fixes
