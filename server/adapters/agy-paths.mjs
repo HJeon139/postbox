@@ -1,7 +1,7 @@
 // Where an Antigravity file call’s paths lead, for its PreToolUse hook (agy-hook.mjs). Moved from agy-hook.mjs, which
 // is at its size ceiling (designs/architecture.md, “Module and function size”).
 
-import { realpathSync } from 'node:fs';
+import { lstatSync, readlinkSync, realpathSync } from 'node:fs';
 import { dirname, isAbsolute, join, parse, resolve, sep } from 'node:path';
 
 /**
@@ -20,12 +20,28 @@ export function realTarget(rawPath, baseDir = process.cwd()) {
   return cur;
 }
 
-/** A path’s real path, or the path itself when it doesn’t exist (or can’t be read), so it’s judged as written. */
-function realOr(p) {
+/** How many links in a row realOr follows before it gives up, as the kernel’s own limit does for a loop (#1134). */
+const MAX_LINKS = 40;
+
+/**
+ * A path’s real path. One that doesn’t exist yet, as a file about to be written, is kept as written, unless it is a
+ * link whose target doesn’t exist: then it’s where the link leads, since a write through it creates that target, wherever
+ * it points (#1134). A chain of such links is followed to its end; a loop gives up as the outside path “/”, so it asks.
+ * @param {string} p
+ */
+function realOr(p, hops = 0) {
   try {
     return realpathSync(p);
   } catch {
-    return p; // doesn’t exist yet, as a file about to be written: nothing to follow
+    let link;
+    try {
+      link = lstatSync(p).isSymbolicLink() ? readlinkSync(p) : null;
+    } catch {
+      link = null;
+    }
+    if (link === null) return p; // doesn’t exist yet, and isn’t a link: nothing to follow
+    if (hops >= MAX_LINKS) return parse(p).root;
+    return realOr(resolve(realOr(dirname(p), hops + 1), link), hops + 1);
   }
 }
 
