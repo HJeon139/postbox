@@ -119,19 +119,23 @@ test('#120 G10: Stop on a turn whose start never reached a connected link is don
   assert.deepEqual(r.d.stops, []);
 });
 
-test('#120 G10: a turn the host refuses at its start ends done, with at most one stop', async () => {
+test('#120 G10: a turn the host refuses at its start ends done, with its words and one stop', async () => {
   // A host without Claude Code. Since #1084 the laptop no longer refuses from its cached welcome: the start goes,
   // and the host, which looks again, refuses it.
   const r = rig({ daemon: { harnesses: ['codex'] } });
   r.rt.sendMessage(r.t.id, { text: 'hi' });
   await until(() => r.store.items(r.t.id).some((i) => i.kind === 'agent' && i.status === 'failed'), 'the refusal');
   await settled(r);
-  assert.match(r.store.items(r.t.id).find((i) => i.kind === 'agent' && i.status === 'failed').error, /isn’t installed/);
+  // The host’s own words reach the failed reply as they are, not wrapped in another “Claude Code couldn’t run”.
+  assert.match(
+    r.store.items(r.t.id).find((i) => i.kind === 'agent' && i.status === 'failed').error,
+    /^Claude Code isn’t installed on the host\. Install it there, or set claudePath in the host’s settings\.$/,
+  );
   assert.ok(r.se().remoteTurn.turn, 'it had its host turn ID');
   assert.equal(r.se().remoteTurn.state, 'done');
   assert.deepEqual(r.se().remoteTurn.stopping, []);
-  // The host had the start, so one stop may follow, as for any start the host refuses; never more.
-  assert.ok(r.link.sent.filter((m) => m.type === 'stop').length <= 1, 'at most one stop');
+  // The host had the start, so one stop follows, as on main for any start the host refuses (#1084 review).
+  assert.equal(r.link.sent.filter((m) => m.type === 'stop').length, 1, 'one stop');
   assert.equal(r.rt.remote.busyOn(r.host.id), false);
   assert.equal(r.hosts.calls.need.length, r.hosts.calls.release.length, 'every need released');
 });

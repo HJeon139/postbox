@@ -102,6 +102,9 @@ export const CASES = {
         [{ ...start, need: { min: '1'.repeat(33), why: 'remote' } }, /start\.need\.min is 33 characters; the limit is 32/],
         [{ ...start, need: { min: '2.1.187; rm -rf ~', why: 'remote' } }, /start\.need\.min must be a version such as 2\.1\.187/],
         [{ ...start, need: { min: '1.2.3.4.5', why: 'remote' } }, /start\.need\.min must be a version such as 2\.1\.187/],
+        // Three numbers, as olderThan compares: a bare `3` would refuse every claude as of no known version.
+        [{ ...start, need: { min: '3', why: 'remote' } }, /start\.need\.min must be a version such as 2\.1\.187/],
+        [{ ...start, need: { min: '2.1', why: 'remote' } }, /start\.need\.min must be a version such as 2\.1\.187/],
         [{ ...start, need: { min: 2, why: 'remote' } }, /start\.need\.min must be text/],
         [{ ...start, need: { min: '2.1.187', why: 'root' } }, /start\.need\.why must be one of remote, denyPrompts/],
       ],

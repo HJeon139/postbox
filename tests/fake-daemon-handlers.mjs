@@ -2,6 +2,7 @@
 // with each of Postbox’s messages, and the turns’ logs it reads them from. Every function takes the fake’s state
 // first, `d` (FakeState).
 
+import { claudeNeed, claudeProblem } from '../shared/remote-claude.mjs';
 import { encode, HARNESSES, message, PROTOCOL_VERSION, utf8Bytes } from '../shared/remote-protocol.mjs';
 
 /**
@@ -101,7 +102,9 @@ const turnState = (t) => (t.exit ? 'ended' : t.interrupted ? 'interrupted' : 'ru
  */
 export const HANDLERS = {
   start(d, c, m) {
-    if (!d.harnesses.includes(m.harness)) return fail(d, c, 'no-harness', `${m.harness} isn’t installed on this host.`, 'start', m.turn);
+    // As the real daemon refuses a claude-code start it can’t find (#1084), in the laptop’s words.
+    const missing = m.harness === 'claude-code' ? claudeProblem({ path: null }, claudeNeed()) : `${m.harness} isn’t installed on this host.`;
+    if (!d.harnesses.includes(m.harness)) return fail(d, c, 'no-harness', missing, 'start', m.turn);
     if (d.turns.has(m.turn)) return fail(d, c, 'turn-exists', `There’s already a turn ${m.turn} on this host.`, 'start', m.turn);
     const t = makeTurn(d, m.turn, m.harness, m.stdin, d.lines);
     t.start = m;

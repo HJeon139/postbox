@@ -4,12 +4,8 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import {
-  DENY_PROMPTS_MIN as ADAPTER_DENY_MIN,
-  REMOTE_CLAUDE_MIN as ADAPTER_MIN,
-  remoteClaudeProblem as adapterProblem,
-} from '../server/adapters/claude-code.mjs';
-import { claudeNeed, claudeProblem, DENY_PROMPTS_MIN, REMOTE_CLAUDE_MIN, remoteClaudeProblem } from '../shared/remote-claude.mjs';
+import { DENY_PROMPTS_MIN as ADAPTER_DENY_MIN, REMOTE_CLAUDE_MIN as ADAPTER_MIN } from '../server/adapters/claude-code.mjs';
+import { claudeNeed, claudeProblem, DENY_PROMPTS_MIN, NO_WELCOME_YET, REMOTE_CLAUDE_MIN } from '../shared/remote-claude.mjs';
 import { welcomeWith } from './claude-code-remote-fixture.mjs';
 
 const harness = (welcome) => welcome.harnesses[0];
@@ -42,14 +38,8 @@ test('#1084: the need a start carries is the denyPrompts minimum with denyPrompt
   assert.equal(DENY_PROMPTS_MIN, '2.1.259');
 });
 
-test('#1084: the welcome’s wording is the shared one, and the adapter’s old names still give it', () => {
-  assert.equal(adapterProblem, remoteClaudeProblem);
+test('#1084: the adapter’s old names give the shared minimums, and a host not heard from yet has its own words', () => {
   assert.equal(ADAPTER_MIN, REMOTE_CLAUDE_MIN);
   assert.equal(ADAPTER_DENY_MIN, DENY_PROMPTS_MIN);
-  assert.match(remoteClaudeProblem(null) ?? '', /hasn’t heard from the host’s daemon yet/);
-  assert.equal(remoteClaudeProblem(welcomeWith({ version: '2.1.259' }), { denyPrompts: false }), null);
-  assert.equal(
-    remoteClaudeProblem(welcomeWith({ version: '2.1.258' }), { denyPrompts: true }),
-    claudeProblem(harness(welcomeWith({ version: '2.1.258' })), claudeNeed({ denyPrompts: true })),
-  );
+  assert.match(NO_WELCOME_YET, /hasn’t heard from the host’s daemon yet/);
 });

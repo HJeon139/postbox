@@ -71,7 +71,6 @@ test('#1084: a claude-code start may carry the minimum claude it needs, for eith
   for (const need of [
     { min: '2.1.187', why: 'remote' },
     { min: '2.1.259', why: 'denyPrompts' },
-    { min: '3', why: 'remote' },
   ]) {
     const r = validateMessage('postbox-to-daemon', { type: 'start', ...start, need });
     assert.ok(r.ok, r.ok ? '' : r.error);
