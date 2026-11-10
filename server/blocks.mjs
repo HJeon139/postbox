@@ -19,20 +19,29 @@ import { stopRequested } from './write-intent.mjs';
 
 export const CATCH_UP_CHARS = 16000;
 
+/**
+ * The items other than blocks that the person acts in, and what each act does: confirm or cancel a hop, answer a
+ * proposal, a permission or a denial, an app’s send, a tool or view_app ask, or stop an allowed call.
+ * @type {Record<string, (rt: any, threadId: string, itemId: string, action: string, values: any) => any>}
+ */
+const ANSWERED_BY = {
+  hop: (rt, threadId, itemId, action) => rt.resolveHop(threadId, itemId, action === 'confirm'),
+  proposal: (rt, threadId, itemId, action) => rt.resolveProposal(threadId, itemId, action),
+  permission: (rt, threadId, itemId, action, values) => rt.resolvePermission(threadId, itemId, action, values),
+  denial: (rt, threadId, itemId, action) => rt.resolveDenial(threadId, itemId, action),
+  appsend: (rt, threadId, itemId, action) => rt.resolveAppSend(threadId, itemId, action),
+  toolask: (rt, threadId, itemId, action) => resolveToolAsk(rt, threadId, itemId, action),
+  viewask: (rt, threadId, itemId, action) => resolveViewAsk(rt, threadId, itemId, action),
+  allowedcall: (rt, threadId, itemId, action) => stopRequested(rt, threadId, itemId, action),
+};
+
 /** @param {number} [revision]  the revision of the block the person answered, as their page showed it (#123) */
 export function act(rt, threadId, itemId, action, values, revision) {
   const it = rt.store.item(threadId, itemId);
   if (!it) throw httpError(404, 'That block doesn’t exist any more.');
   // A reaction is an act on any message, block or app (#251), and never answers one.
   if (action === REACT) return toggleReaction(rt, threadId, itemId, values?.emoji);
-  if (it.kind === 'hop') return rt.resolveHop(threadId, itemId, action === 'confirm');
-  if (it.kind === 'proposal') return rt.resolveProposal(threadId, itemId, action);
-  if (it.kind === 'permission') return rt.resolvePermission(threadId, itemId, action, values);
-  if (it.kind === 'denial') return rt.resolveDenial(threadId, itemId, action);
-  if (it.kind === 'appsend') return rt.resolveAppSend(threadId, itemId, action);
-  if (it.kind === 'toolask') return resolveToolAsk(rt, threadId, itemId, action);
-  if (it.kind === 'viewask') return resolveViewAsk(rt, threadId, itemId, action);
-  if (it.kind === 'allowedcall') return stopRequested(rt, threadId, itemId, action);
+  if (Object.hasOwn(ANSWERED_BY, it.kind)) return ANSWERED_BY[it.kind](rt, threadId, itemId, action, values);
   if (it.kind !== 'block' || !it.valid) throw httpError(409, 'This block can’t be acted on.');
   if (it.closed?.by === 'agent')
     throw httpError(409, `@${it.closed.handle} withdrew this, so it no longer asks. Only a new block, or an update to it, can ask again.`);
