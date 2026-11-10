@@ -91,13 +91,28 @@ export const droppedText = (n, handle) =>
     : '';
 
 /**
+ * The submitted comment that replies in a thread the review doesn’t have, which only a hand-built answer sends, or
+ * undefined. Only a submit is checked: an answer from before #1143 becomes threads as it is (answerThreads).
+ * @param {any} it  the review’s item @param {any} values  the answer’s
+ */
+function strayReply(it, values) {
+  const ids = new Set((it.block.threads ?? []).map((t) => t.id));
+  return (Array.isArray(values?.comments) ? values.comments : []).find((c) => c.threadId !== undefined && !ids.has(c.threadId));
+}
+
+/**
  * What the person’s answer to a review writes beside it (#1143): the block with their comments as threads, and the
  * reviews that record them, checked as a whole; and the event the agent hears, each comment with its threadId.
- * null when it isn’t a review, or has no comments. Past the block’s bounds it’s refused, and nothing is written.
+ * null when it isn’t a review, or has no comments. A reply in a thread it doesn’t have, or past the block’s bounds,
+ * it’s refused, and nothing is written.
  * @param {any} rt @param {any} it  the review’s item @param {any} event  the answer’s, from buildEvent @param {number} revision
  */
 export function personAnswer(rt, it, event, revision) {
-  const made = it.block.type === 'review' ? personReview(it, event.values, revision) : null;
+  if (it.block.type !== 'review') return null;
+  const stray = strayReply(it, event.values);
+  if (stray)
+    throw httpError(422, `Your review wasn’t sent: it replies in thread “${stray.threadId}”, which this review doesn’t have. Reload the page and reply again.`);
+  const made = personReview(it, event.values, revision);
   if (!made) return null;
   // Past its bounds, said as what the person can do: they can’t resolve a thread or show a block, but its agent can.
   const full = [];
