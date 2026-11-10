@@ -31,10 +31,10 @@ async function open(page) {
 }
 const mounted = (page) => page.locator('#main > .item').count();
 
-/** Scrolls up a view at a time, `steps` times, letting the range move after each. */
-async function scrollUp(page, steps) {
+/** Scrolls up a view at a time, `steps` times, letting the range move after each; down, with `dy` 800. */
+async function scrollUp(page, steps, dy = -800) {
   for (let i = 0; i < steps; i++) {
-    await page.mouse.wheel(0, -800);
+    await page.mouse.wheel(0, dy);
     await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
   }
   await settled(page);
@@ -114,6 +114,53 @@ test('#866 an item kept for its focus and then moved to the end leaves one stub,
   const all = await keys();
   expect(all.filter((k) => k === stub).length, 'the stub at most once').toBeLessThanOrEqual(1);
   expect(new Set(all).size, 'no item twice').toBe(all.length);
+});
+
+/** The keys of the mounted items, in page order. */
+const keysOf = (page) => page.locator('#main > .item').evaluateAll((ns) => ns.map((n) => /** @type {HTMLElement} */ (n).dataset.key));
+
+test('#866 an item kept for its focus and redrawn while you read far up is on the page once, never stray or twice', async ({ page }) => {
+  await open(page);
+  // The integrator’s repro on #1075: the reply you clicked finishes while you read further up, which draws it again
+  // (thread.mjs, rerender) while it’s kept as an island.
+  const id = app.store.items(room).at(-6).id;
+  const kept = page.locator(`#main > .item[data-key="${id}"]`);
+  await kept.focus();
+  await page.mouse.move(640, 400);
+  for (let round = 0; round < 4; round++) await scrollUp(page, 15);
+  await expect(kept, 'kept on the page for its focus').toHaveCount(1);
+  app.store.emit('item.patch', { threadId: room, id, patch: { text: 'Drawn again while kept far below.' } });
+  await synced(page, app);
+  await expect(kept).toContainText('Drawn again while kept far below.');
+  await page.evaluate(() => /** @type {HTMLElement} */ (document.activeElement)?.blur());
+  await scrollUp(page, 2);
+  expect(
+    (await keysOf(page)).filter((k) => k === id),
+    'not left on the page, out of the range, once focus left it',
+  ).toEqual([]);
+  await page.keyboard.press('End');
+  await settled(page);
+  for (let round = 0; round < 2; round++) await scrollUp(page, 3);
+  await settled(page);
+  const all = await keysOf(page);
+  expect(all.filter((k) => k === id).length, 'the item at most once').toBeLessThanOrEqual(1);
+  expect(new Set(all).size, 'no item twice').toBe(all.length);
+});
+
+test('#866 an item kept for its focus keeps it when you scroll far away and back', async ({ page }) => {
+  await open(page);
+  const id = app.store.items(room).at(-9).id;
+  const kept = page.locator(`#main > .item[data-key="${id}"]`);
+  await kept.focus();
+  await page.mouse.move(640, 400);
+  for (let round = 0; round < 4; round++) await scrollUp(page, 15);
+  await expect(kept, 'kept on the page for its focus').toHaveCount(1);
+  // Back down: the range grows over the island and takes it back into its run (window.mjs, mountRun).
+  for (let round = 0; round < 6; round++) await scrollUp(page, 15, 800);
+  const focused = await page.evaluate(
+    () => /** @type {HTMLElement | null} */ (document.activeElement)?.closest('[data-key]')?.getAttribute('data-key') ?? null,
+  );
+  expect(focused, 'focus is still on the item, not on the page').toBe(id);
 });
 
 test('#866 a room that grows while you follow it stays bounded, with its newest item in view', async ({ page }) => {
