@@ -699,8 +699,9 @@ const saveOutbox = () => {
     localStorage.setItem(OUTBOX_KEY, JSON.stringify(outbox));
   } catch {}
 };
+// A fresh connection is when a send is likeliest to work, so it starts the tries again from the quick ones.
 client.on((ch) => {
-  if (ch.type === 'connection' && client.connection === 'open') flushOutbox();
+  if (ch.type === 'connection' && client.connection === 'open') sendOutboxNow({ fresh: true });
 });
 
 // A send can fail while the stream stays open: Firefox doesn’t retry a POST on a keep-alive connection the server
@@ -745,10 +746,14 @@ function outboxWait() {
   if (client.connection !== 'open' || navigator.onLine === false) return 'connection';
   return retries > RETRY_MS.length ? 'slow' : 'soon';
 }
-/** Send now, past the quick tries: the next try goes at once, not when its 30 s are up. */
-function sendOutboxNow() {
+/**
+ * Sends the outbox now, in place of the pending try: Send now, past the quick tries, or a connection that opened,
+ * which also counts the tries from the first (`fresh`).
+ */
+function sendOutboxNow({ fresh = false } = {}) {
   window.clearTimeout(retryTimer);
   retryTimer = 0;
+  if (fresh) retries = 0;
   flushOutbox();
 }
 
