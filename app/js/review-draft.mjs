@@ -28,7 +28,8 @@ export function stopComment(draft) {
 
 /**
  * The person’s draft of a review, kept by item. Once they’ve submitted it, its comments are the block’s threads
- * (#1143), so one its submit hasn’t cleared yet, while the answer comes back, isn’t drawn beside them.
+ * (#1143). Until the answer comes back the draft may still hold them, so it’s emptied then, and they aren’t drawn
+ * twice.
  * @param {any} item @param {string} content @param {(id: string, make: () => any) => any} draft  the blocks’ draft store
  */
 export function reviewDraft(item, content, draft) {
