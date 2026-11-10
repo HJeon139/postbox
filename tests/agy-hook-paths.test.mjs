@@ -112,6 +112,21 @@ test('#1074 a .. after a link climbs from where the link leads, as the file syst
   assert.equal(decide('read_file', { Path: `${notes}/../notes/a.md` }, opts).decision, 'allow', 'a .. with no link is the folder’s own');
 });
 
+test('#1074 a .. after a link inside the workspace asks when its plain reading leaves it, read or write, in every mode', () => {
+  const { home, ws } = aHome();
+  mkdirSync(join(ws, 'x', 'y', 'z'), { recursive: true });
+  symlinkSync(join(ws, 'x', 'y', 'z'), join(ws, 'a'));
+  // The file system reads ws/x/outside.txt, inside; read as text, a/../../ leaves ws. Which agy does is unproved.
+  for (const mode of ['ask', 'acceptEdits', 'auto']) {
+    const opts = { mode, folders: [ws], cwd: ws, home };
+    assert.equal(decide('view_file', { AbsolutePath: `${ws}/a/../../outside.txt` }, opts).decision, 'ask', `${mode}: a read`);
+    assert.equal(decide('write_to_file', { TargetFile: `${ws}/a/../../outside.txt` }, opts).decision, 'ask', `${mode}: a write`);
+    assert.equal(decide('read_file', { Path: 'a/../../secret/key' }, opts).decision, 'ask', `${mode}: a relative read`);
+  }
+  // Both readings inside: still allowed.
+  assert.equal(decide('view_file', { AbsolutePath: `${ws}/a/../inside.txt` }, { mode: 'ask', folders: [ws], cwd: ws, home }).decision, 'allow');
+});
+
 test('#1074 in Auto, a command’s .. after a link climbs from where the link leads, so it isn’t routine', () => {
   const { home, ws, ssh } = aHome();
   symlinkSync(join(ssh, 'sub'), join(ws, 'sublink'));
