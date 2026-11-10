@@ -73,11 +73,13 @@ export function startFrames() {
   requestAnimationFrame(tick);
 }
 
-/** In the page: stops the frame loop, and gives its gaps and how long it ran. */
+/** In the page: stops the frame loop, and gives its gaps, the last one up to now, and how long it ran. */
 export function stopFrames() {
   const loop = /** @type {any} */ (window).__budget.loop;
   loop.on = false;
-  return { gaps: loop.gaps, lengthMs: performance.now() - loop.start };
+  // The time since the last frame is a gap too: a long task that runs to the end of the measure still counts.
+  const end = performance.now();
+  return { gaps: [...loop.gaps, end - loop.last], lengthMs: end - loop.start };
 }
 
 /**

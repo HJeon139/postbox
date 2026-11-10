@@ -107,10 +107,15 @@ async function openRoom(size, browser) {
 }
 
 /** The probes measure this browser: a planted slow key has its entry, and frames show a planted long task. @param {Room} room */
-async function calibrate({ app, page, small }) {
+async function calibrate(room) {
+  const { app, page, small } = room;
+  const since = now();
+  const started = Date.now();
   await page.goto(`${app.origin}/#/t/${small.id}`);
-  await expect(page.locator('#main > .item').last()).toBeVisible({ timeout: 30_000 });
-  await still(page);
+  // The page loads every conversation’s state before it draws one, so its start-up grows with the big room too.
+  await expect(page.locator('#main > .item').last(), `the page to start within ${OPEN_CAP_MS / 1000} s`).toBeVisible({ timeout: OPEN_CAP_MS });
+  report(room, 'start-up', false, { ms: Date.now() - started, verdict: 'reported' }, since);
+  await still(page, 30_000);
   await page.evaluate((id) => document.body.append(Object.assign(document.createElement('button'), { id, textContent: 'Budget probe' })), SLOW_KEY_ID);
   const before = (await recorded(page)).keys.length;
   await page.locator(`#${SLOW_KEY_ID}`).press('a');
@@ -133,13 +138,14 @@ async function calibrate({ app, page, small }) {
 
 /** Opening the room from load, then switching to it from the short room, and the elements it mounts. @param {Room} room */
 async function measureOpening(room) {
-  const { app, page, big, small, newest } = room;
+  const { page, big, small, newest } = room;
   const since = now();
+  // A first switch, not timed: the room has to open within the cap before its switches are measured.
   const started = Date.now();
-  await page.goto(`${app.origin}/#/t/${big.id}`);
+  await page.locator(`.rail a.row[data-thread="${big.id}"]`).click();
   const shown = page.locator(`.transcript[data-thread="${big.id}"] [data-key="${newest}"]`);
   await expect(shown, `the room to open within ${OPEN_CAP_MS / 1000} s`).toBeAttached({ timeout: OPEN_CAP_MS });
-  const startUpMs = Date.now() - started;
+  const firstMs = Date.now() - started;
   await still(page, 30_000);
   const times = [];
   const counts = [];
@@ -152,7 +158,7 @@ async function measureOpening(room) {
     await still(page, 30_000);
     counts.push(await page.evaluate(() => document.getElementsByTagName('*').length));
   }
-  report(room, 'opening', TIMES_GATE, { ...timedVerdict(times), startUpMs }, since);
+  report(room, 'opening', TIMES_GATE, { ...timedVerdict(times), firstMs }, since);
   report(room, 'mounted elements', true, elementsVerdict(Math.max(...counts)), since);
 }
 
@@ -226,12 +232,10 @@ for (const size of SIZES) {
       // Seeding 100,000 items takes about a minute on its own, past the default 30 s for a hook.
       test.setTimeout(15 * 60_000);
       room = await openRoom(size, browser);
-      test
-        .info()
-        .annotations.push({
-          type: 'run',
-          description: JSON.stringify({ commit: commit(), browser: browserName, version: browser.version(), size, seedMs: room.seedMs }),
-        });
+      test.info().annotations.push({
+        type: 'run',
+        description: JSON.stringify({ commit: commit(), browser: browserName, version: browser.version(), size, seedMs: room.seedMs }),
+      });
     });
     test.afterAll(async () => {
       await room?.page.close();
