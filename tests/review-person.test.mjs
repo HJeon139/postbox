@@ -227,7 +227,7 @@ test('#1143: a submit past 200 open threads tells the person to ask the agent, n
   const { rt, t, item } = await shown({ ...draft, threads: open });
   assert.throws(
     () => rt.act(t.id, item().id, 'submit', { verdict: 'comment', comments: [{ line: 1, text: 'Hello.' }] }, 1),
-    (e) => e.status === 422 && /200 open threads/.test(e.message) && /Ask @critic to resolve/.test(e.message) && !/resolve some/.test(e.message),
+    (e) => e.status === 422 && /200 open threads/.test(e.message) && /ask @critic to resolve/.test(e.message) && !/resolve some/.test(e.message),
   );
   assert.equal(item().answered, false);
 });

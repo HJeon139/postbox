@@ -4,7 +4,7 @@
 // the answer writes the person’s, and only review_block another agent’s.
 
 import { validateBlock } from '../shared/catalog.mjs';
-import { PERSON } from '../shared/review-comments.mjs';
+import { PERSON, personNext, threadsError } from '../shared/review-comments.mjs';
 import { httpError } from './helpers.mjs';
 import { keepReviewThreads } from './review-comments.mjs';
 
@@ -99,6 +99,10 @@ export const droppedText = (n, handle) =>
 export function personAnswer(rt, it, event, revision) {
   const made = it.block.type === 'review' ? personReview(it, event.values, revision) : null;
   if (!made) return null;
+  // Past its bounds, said as what the person can do: they can’t resolve a thread or show a block, but its agent can.
+  const full = [];
+  threadsError(made.block.threads, full, personNext(it.handle));
+  if (full.length) throw httpError(422, `Your review wasn’t sent, so it still waits on you. ${full.join(' ')}`);
   const v = validateBlock(made.block, { imageOrigins: rt.config.imageOrigins });
   if (!v.ok)
     throw httpError(
