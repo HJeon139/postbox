@@ -2,6 +2,7 @@
 // failed to start (#1161). The Agent SDK’s init is the same.
 
 import { POSTBOX_SERVER } from './setup.mjs';
+import { toolsDown } from './tools-down.mjs';
 
 /**
  * An init’s skills and commands (#67): `slash_commands` lists both, by name, `skills` says which are skills, and
@@ -25,12 +26,5 @@ export function commandsOf(init) {
 export function postboxServerStatus(ctx, servers) {
   const ours = Array.isArray(servers) ? servers.find((s) => s?.name === POSTBOX_SERVER) : null;
   if (ours?.status !== 'failed') return;
-  ctx.activity?.({
-    id: 'postbox-tools-down',
-    label: 'Postbox’s tools didn’t load',
-    state: 'failed',
-    ms: 0,
-    detail: 'Postbox’s tool server didn’t start for this turn (its status was “failed”), so the turn had none of Postbox’s tools.',
-  });
-  ctx.saveState?.({ postboxToolsDown: true });
+  toolsDown(ctx, 'Postbox’s tool server didn’t start for this turn (its status was “failed”), so the turn had none of Postbox’s tools.');
 }
