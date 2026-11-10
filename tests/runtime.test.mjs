@@ -1991,7 +1991,7 @@ test('#153 a long draft is cut with its id, and read_message gives the whole blo
     assert.equal(r.ok, true, id);
     assert.ok(
       r.message.includes(
-        `${draft}\n\nComments on line 1 (open):\n- @critic: Which flag?\n\nThe person’s review: Request changes · 1 comment\n- line 3: Name the flag.`,
+        `${draft}\n\nComments on line 1 (open):\n- @critic: Which flag?\n\nComments on line 3 (open):\n- You: Name the flag.\n\nThe person’s review: Request changes · 1 comment\n- line 3: Name the flag.`,
       ),
       r.message,
     );

@@ -4,6 +4,7 @@
 // go stale when the text changes, and the quote finds the place again. An app review’s comment names a part of the
 // app, and a reply names its thread. Pure, so the browser, the server and the tests share it.
 
+import { HANDLE, REVIEW_THREADS_BYTES, REVIEW_THREADS_MAX, REVIEW_THREADS_OPEN } from './limits.mjs';
 import { id, int, obj, str } from './schema.mjs';
 
 /** The longest quote a comment keeps; a longer selection is cut to it. */
@@ -13,6 +14,53 @@ export const COMMENT_MAX = 4000;
 /** The most comments one review_block call carries, and the verdicts it can give (server/review-comments.mjs). */
 export const MAX_COMMENTS = 50;
 export const VERDICTS = ['comment', 'approve', 'request_changes'];
+
+/** How the person’s comments are stored in a review’s threads (#1143): only their answer writes it. */
+export const PERSON = 'you';
+/** A comment’s author as people and agents read it: You, or an agent’s @handle. @param {string} author */
+export const authorName = (author) => (author === PERSON ? 'You' : author);
+/**
+ * The catalog’s rule for a review thread comment’s author (#1143): PERSON or an agent’s @handle, so no other name
+ * reads as the person’s, such as “You”, or as no one’s. Only the person’s answer writes PERSON: show_block refuses it.
+ * The page shows a handle without its @, so @you, in any case, would read as the person too.
+ * @type {import('./schema.mjs').Rule}
+ */
+export const author = (v, path, errs) => {
+  const handle = typeof v === 'string' && v[0] === '@' ? v.slice(1) : '';
+  const ok = v === PERSON || (HANDLE.test(handle) && handle.toLowerCase() !== PERSON);
+  if (!ok) errs.push(`${path} must be an agent’s @handle, such as @critic.`);
+};
+
+const ENCODER = new TextEncoder();
+/** What the agent can do about a review past its bounds (threadsError), and what the person can, by the review’s agent. */
+const AGENT_NEXT = { open: 'resolve some, or show a new review block with the text so far.', fresh: 'show a new review block with the text so far.' };
+/** @param {string} handle */
+export const personNext = (handle) => ({
+  open: `ask @${handle} to resolve the ones they’ve handled, or to show a new review block, and comment there.`,
+  fresh: `ask @${handle} to show a new review block with the text so far, and comment there.`,
+});
+
+/**
+ * Adds to errs why a review’s threads are past their bounds (#1143): more than REVIEW_THREADS_OPEN open (only open
+ * ones count, so resolving one frees its place), more than REVIEW_THREADS_MAX in all, or more than
+ * REVIEW_THREADS_BYTES of comment text in UTF-8. One pass over its comments. next says what to do: the agent’s by
+ * default, or personNext for the person, who can’t resolve a thread or show a block.
+ * @param {unknown} threads  a review’s threads, checked as a list by the catalog @param {string[]} errs
+ * @param {{ open: string, fresh: string }} [next]
+ */
+export function threadsError(threads, errs, next = AGENT_NEXT) {
+  if (!Array.isArray(threads)) return;
+  if (threads.length > REVIEW_THREADS_MAX)
+    return errs.push(`A review holds up to ${REVIEW_THREADS_MAX.toLocaleString('en-US')} threads, open and resolved: ${next.fresh}`);
+  let open = 0;
+  let bytes = 0;
+  for (const t of threads) {
+    if (t?.status === 'open') open++;
+    for (const c of Array.isArray(t?.comments) ? t.comments : []) if (typeof c?.text === 'string') bytes += ENCODER.encode(c.text).length;
+  }
+  if (bytes > REVIEW_THREADS_BYTES) errs.push(`A review’s threads hold up to ${REVIEW_THREADS_BYTES / 1024 / 1024} MB of comment text: ${next.fresh}`);
+  if (open > REVIEW_THREADS_OPEN) errs.push(`A review has up to ${REVIEW_THREADS_OPEN} open threads: ${next.open}`);
+}
 
 /**
  * Where a comment is: line alone, or a selection from line, col to endLine, endCol (both 1-based, endCol the column

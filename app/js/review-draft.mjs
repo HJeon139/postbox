@@ -1,5 +1,7 @@
 // The local answer in one review block, and which comment box is open. Kept outside the renderer at its size ceiling.
 
+import { restoreReviewDraft } from './review-draft-store.mjs';
+
 /** The first local answer for a review block. @param {string} content */
 export const newReviewDraft = (content) => ({
   comments: [],
@@ -24,4 +26,16 @@ export function stopComment(draft) {
   draft.composing = null;
   draft.composingText = '';
   draft.composingSelection = null;
+}
+
+/**
+ * The person’s draft of a review, kept by item, and started from what was kept over a reload (#1144). Once they’ve
+ * submitted it, its comments are the block’s threads (#1143). Until the answer comes back the draft may still hold
+ * them, so it’s emptied then, and they aren’t drawn twice.
+ * @param {any} item @param {string} content @param {(id: string, make: () => any) => any} draft  the blocks’ draft store
+ */
+export function reviewDraft(item, content, draft) {
+  const d = draft(item.id, () => restoreReviewDraft(item.id, item, newReviewDraft(content)));
+  if (item.answer?.action === 'submit') d.comments = [];
+  return d;
 }

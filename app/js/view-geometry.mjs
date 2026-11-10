@@ -1,4 +1,5 @@
-// Where a transcript’s view is: its scroll box, how far it is from the end, and the message it reads at (the anchor).
+// Where a transcript’s view is: its scroll box, how far it is from the end, and the message it reads at (the anchor),
+// taken again when the window moves the page (heldBy).
 // Moved from view-state.mjs, which is at its length limit (#866). The View type is view-state.mjs’s.
 
 /** @typedef {import('./view-state.mjs').View} View */
@@ -48,4 +49,17 @@ export function findAnchor(v) {
     if (r.bottom > mid) return last;
   }
   return last;
+}
+
+/**
+ * The window moved the page itself and held what you see in place (window.mjs): the move isn’t yours, so the next
+ * scroll event doesn’t take it for one, and the anchor is taken where it left it. A jump’s target stays the anchor, as
+ * in view-state.mjs’s onScroll. @param {View} v
+ */
+export function heldBy(v) {
+  const s = box(v);
+  if (!s) return;
+  v.lastTop = s.scrollTop;
+  if (v.stuck || v.pinned) return;
+  v.anchor = findAnchor(v);
 }

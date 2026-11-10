@@ -24,6 +24,7 @@ Feedback on long documents needs to be anchored to lines, batched, and followed 
 - A Markdown image (`![alt](address)`) shows as the image, from Postbox’s own media (at `127.0.0.1` or `localhost`) or an origin Postbox allows. One that can’t load, comes from another origin or has no full https address says “This image couldn’t load” in its place, with its alt text (#218).
 - In a diff, an added or removed table row, list item or code line stays in place inside its block, marked added or removed.
 - Comments are drafted, then submitted with a verdict (comment, approve, request changes).
+- Once you submit, each of your comments is a thread on the block, shown as yours (“You”) on its line, once, right away (#1143). The agent hears each one’s thread, and resolves it when it revises. A revision keeps your threads, each following its text to its new line, open or resolved, across a reload. Your comments aren’t counted as a reviewer’s in the review bar.
 - When the agent reports what came of an approved draft (“Filed as #105”), the result shows under your answer, and the review stays answered: nothing asks you to approve it again (#106).
 - While it waits on you, it can be dismissed, and its agent can withdraw it, as a [choice](choice.md) can.
 - A revision shows as a diff against the previous version; resolved threads collapse.
@@ -36,4 +37,4 @@ Feedback on long documents needs to be anchored to lines, batched, and followed 
 3. Choose Lines, and comment on two more lines (one by clicking the line, one with Tab and Enter). Request changes, then read the revised diff.
 4. Open the block full screen and close it with Escape. Reload the page: the block opens in the view you last chose.
 
-**Pass if:** Preview draws the draft whole, your selection comment quotes the text you selected and sits on its line in Lines, and the revision arrives with a diff and your threads marked resolved or open.
+**Pass if:** Preview draws the draft whole, your selection comment quotes the text you selected and sits on its line in Lines, each comment shows once, as “You”, right after you submit, and the revision arrives with a diff and your threads on their lines, marked resolved or open.

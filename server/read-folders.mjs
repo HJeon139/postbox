@@ -1,8 +1,8 @@
 // Folders an agent may read in one conversation, from Always allow on a read card (#338): Antigravity’s workspace for
 // reads, as the person decided on 27 October 2026. They’re kept on the session as readDirs, apart from addDirs, the
-// folders it may work in: Antigravity’s hook reads readDirs only in its read branch, so a readable folder is never one
-// it may edit with no card, and it isn’t passed as --add-dir. Claude Code keeps its own offer (harness first), Codex
-// makes no read cards, and a host card has none, since the list is this computer’s.
+// folders it may work in: only inReadFolder reads readDirs, answering a read card Antigravity’s hook sends with no card,
+// so a readable folder is never one it may edit with no card, and it isn’t passed as --add-dir. Claude Code keeps its
+// own offer (harness first), Codex makes no read cards, and a host card has none, since the list is this computer’s.
 
 import { realpathSync, statSync } from 'node:fs';
 import { dirname, isAbsolute, relative, sep } from 'node:path';
@@ -84,12 +84,13 @@ export function readFolderOffer({ backend, tool, input, hostId = null, home }) {
 
 /**
  * Whether a read card needs no asking, since its folder is in one the conversation saved as readable: by the session as
- * it is now, so a folder allowed earlier in the turn counts at once, where the hook’s list is the turn’s start (#338).
- * O(folders saved), at most MAX_READ_DIRS.
+ * it is now, so a folder allowed or removed earlier in the turn counts at once (#338, #1074). From the pending session:
+ * it decides an allow, so a removal still held behind a commit counts too (#796’s class). O(folders saved), at most
+ * MAX_READ_DIRS.
  * @param {any} rt @param {string} sessionId @param {{ tool: unknown, input?: any, hostPrompt?: { hostId: string } | null }} req
  */
 export function inReadFolder(rt, sessionId, { tool, input, hostPrompt = null }) {
-  const se = rt.s.sessions[sessionId];
+  const se = rt.store.pending.session(sessionId) ?? rt.s.sessions[sessionId];
   const backend = se ? rt.persona(se.personaId)?.backend : undefined;
   if (!se?.readDirs?.length || !answersRead({ backend, tool, hostId: hostPrompt?.hostId ?? null })) return false;
   // Where each read leads, so a link in a saved folder to ~/.ssh isn’t inside it. A saved folder passed the offer’s
@@ -99,8 +100,8 @@ export function inReadFolder(rt, sessionId, { tool, input, hostPrompt = null }) 
 }
 
 /**
- * Saves a readable folder for the conversation, read at once by inReadFolder and by the hook from its next turn, built from the pending session (#796’s class), so
- * a write still held behind a commit isn’t lost. One already listed adds nothing.
+ * Saves a readable folder for the conversation, read at once by inReadFolder, built from the pending session (#796’s
+ * class), so a write still held behind a commit isn’t lost. One already listed adds nothing.
  * @param {any} rt @param {string} sessionId @param {string} dir
  */
 export function addReadFolder(rt, sessionId, dir) {

@@ -62,8 +62,9 @@ export function reviewBlock(rt, sessionId, args) {
  * A review update keeps the threads review_block added that it leaves out, each following its quote, or its line’s
  * text, into the new text. The block’s agent resolves a reviewer’s thread; it can’t drop one, or change what anyone
  * said in it: a thread a reviewer took part in that it sends back keeps its stored comments, takes its status, and
- * gains the update’s new comments after them, except any in another agent’s name. One a reviewer started keeps its
- * place too. So the caller validates the result: kept threads can take it past the catalog’s limit.
+ * gains the update’s new comments after them, except any in another name. One a reviewer or the person
+ * started keeps its place too; the person’s threads are in reviews as well (#1143). So the caller validates the
+ * result: kept threads can take it past the catalog’s limits.
  * @param {any} existing  the block item as it was @param {any} block  the update, validated
  */
 export function keepReviewThreads(existing, block) {
@@ -74,7 +75,8 @@ export function keepReviewThreads(existing, block) {
   const was = moves ? splitLines(existing.block.content) : [];
   const now = moves ? splitLines(block.content) : [];
   const placed = (t) => (moves ? follow(t, block.content, was, now) : t);
-  const agent = (c) => c.author.startsWith('@') && c.author !== `@${existing.handle}`;
+  // Only in its agent’s name: ownComments told it of any other (#1143).
+  const own = (c) => c.author === `@${existing.handle}`;
   const key = (c) => JSON.stringify([c.author, c.text]);
   const sent = (block.threads ?? []).map((t) => {
     const before = stored.get(t.id);
@@ -84,9 +86,10 @@ export function keepReviewThreads(existing, block) {
     const added = t.comments.filter((c) => {
       const n = said.get(key(c)) ?? 0;
       if (n) said.set(key(c), n - 1);
-      return !n && !agent(c);
+      return !n && own(c);
     });
-    const { comments: _, status: __, ...place } = agent(before.comments[0]) ? placed(before) : t;
+    // One started by anyone but the block’s agent (a reviewer, or the person, #1143) follows its text.
+    const { comments: _, status: __, ...place } = !own(before.comments[0]) ? placed(before) : t;
     return { ...place, id: t.id, status: t.status, comments: [...before.comments, ...added] };
   });
   const ids = new Set(sent.map((t) => t.id));

@@ -3,6 +3,7 @@
 // in Preview and in Lines, and an agent’s comment shows its handle (#133). Split out of app/js/review.mjs.
 
 import { renderMarkdown } from '/shared/markdown.mjs';
+import { authorName } from '/shared/review-comments.mjs';
 import { h, icon, plural, trusted } from './dom.mjs';
 import { revisionOf } from './review-view.mjs';
 
@@ -35,8 +36,8 @@ function threadOf(t) {
         'div.c',
         h(
           'span.meta',
-          // An agent’s comment is stored with its handle as @handle; it shows the name alone.
-          h('b', c.author.replace(/^@/, '')),
+          // An agent’s comment is stored with its handle as @handle, and shows the name alone; the person’s shows You.
+          h('b', authorName(c.author).replace(/^@/, '')),
           i === 0 ? h('span.status-tag', { class: resolved ? 'ok' : 'open' }, resolved ? [icon('check', 'i-sm'), 'Resolved'] : 'Open') : null,
           i === 0 ? quoted(t.quote) : null,
         ),
@@ -144,6 +145,8 @@ export function reviewersOf(item, b) {
   /** @type {Map<string, { n: number, verdict?: string, revision: number }>} */
   const by = new Map();
   for (const r of item.reviews ?? []) {
+    // The person’s own review (#1143) is their answer, not a reviewer’s.
+    if (r.person) continue;
     const was = by.get(r.handle);
     by.set(r.handle, { n: (was?.n ?? 0) + r.threads.length, verdict: r.verdict ?? was?.verdict, revision: r.revision });
   }
