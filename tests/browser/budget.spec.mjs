@@ -144,6 +144,8 @@ async function openRoom(size, browser) {
   // One review with a comment on a selection per 100 items, so a room switch builds the review highlight (#1151).
   seedBigRoom(app.store, big.id, { count: size, work: true, reviews: Math.max(1, Math.round(size / 100)) });
   const seedMs = Date.now() - seeding;
+  // Start-up is timed once seeding’s queued writes are done: a snapshot still running held the page back 1.5 s (#1075).
+  await app.store.flush();
   // Inside headless Chromium’s 1280 × 720 window: what lies outside it is never presented, so a key typed in a
   // composer below it gets no Event Timing entry until some other change presents a frame (tools/key-frame-stats.mjs,
   // outsideWindow). At the config’s 900 px the composer sat at 824 px, and every key read as 0.1–0.7 s.
