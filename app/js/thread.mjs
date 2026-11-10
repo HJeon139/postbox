@@ -705,16 +705,20 @@ client.on((ch) => {
 
 // A send can fail while the stream stays open: Firefox doesn’t retry a POST on a keep-alive connection the server
 // has closed, and no reconnect follows to send the outbox (#1126). So, while the stream is open and the browser
-// online, it’s sent again shortly, a few times; past that, or offline, it waits for the connection as before.
+// online, it’s sent again: quickly a few times, then every 30 s, on its own, since sending it needs nothing from the
+// person. Offline, it waits for the connection, which sends it when it’s back.
 const RETRY_MS = [1000, 2000, 4000, 8000];
+const SLOW_RETRY_MS = 30_000;
 let retryTimer = 0;
 let retries = 0;
 function retrySoon() {
-  if (retryTimer || retries >= RETRY_MS.length || client.connection !== 'open' || navigator.onLine === false) return;
+  if (retryTimer || client.connection !== 'open' || navigator.onLine === false) return;
+  const delay = RETRY_MS[retries] ?? SLOW_RETRY_MS;
+  retries++;
   retryTimer = window.setTimeout(() => {
     retryTimer = 0;
     flushOutbox();
-  }, RETRY_MS[retries++]);
+  }, delay);
 }
 
 export async function sendMessage(threadId, text, attachments = [], { sendNow = false } = {}) {
@@ -727,13 +731,25 @@ export async function sendMessage(threadId, text, attachments = [], { sendNow = 
     if (e.offline) {
       outbox.push({ threadId, text, attachments });
       saveOutbox();
+      retrySoon(); // first, so the repaint knows which try comes next
       client.emit({ type: 'outbox' });
-      retrySoon();
       return true;
     }
     toast({ title: 'Your message didn’t send', text: e.message, level: 'blocking' });
     return false;
   }
+}
+
+/** What the outbox waits on: the connection, a quick try, or the slow tries, past the quick ones. */
+function outboxWait() {
+  if (client.connection !== 'open' || navigator.onLine === false) return 'connection';
+  return retries > RETRY_MS.length ? 'slow' : 'soon';
+}
+/** Send now, past the quick tries: the next try goes at once, not when its 30 s are up. */
+function sendOutboxNow() {
+  window.clearTimeout(retryTimer);
+  retryTimer = 0;
+  flushOutbox();
 }
 
 export function flushOutbox() {
@@ -1418,6 +1434,7 @@ export function mountComposer(threadId, { side = false } = {}) {
     paintOfflineQueue(
       queue,
       outbox.filter((x) => x.threadId === threadId),
+      { wait: outboxWait(), sendNow: sendOutboxNow },
     );
     // An ask about a turn that has since ended goes with it.
     for (const id of [...asked.keys()]) if (!busy(S().sessions[id])) asked.delete(id);
