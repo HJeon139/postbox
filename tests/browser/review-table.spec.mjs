@@ -103,6 +103,8 @@ test('#1098 a table with only a header shows its delimiter’s row after it, num
   await room.idle();
   await synced(page, room.app);
   await viewRadio(block, 'Lines').click();
+  // It changed while the page showed it, so Lines offers the change; the numbering is read in the current text.
+  await block.locator('[aria-label="Changes"]').getByRole('radio', { name: 'Current', exact: true }).click();
   const table = block.locator('.md-table');
   await expect(table).toBeVisible();
   const rows = await table.locator('tr').evaluateAll((trs) =>
