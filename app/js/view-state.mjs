@@ -46,12 +46,13 @@ function scrollToEnd(v, smooth = false) {
   seen(v);
 }
 // While stuck, what comes after the newest message shrinking (a working row going, a card answered, the composer)
-// would pull everything down under your pointer. So the transcript keeps that room below its newest message (--held,
-// its bottom padding) until the next message or a new width: not its whole height, which skipped items drawn later
-// would leave as a gap (#712a).
+// would pull everything down under your pointer. So the transcript keeps that room below its newest message (its
+// bottom margin) until the next message or a new width: not its whole height, which skipped items drawn later would
+// leave as a gap (#712a). A margin of its own, not a custom property, which every element in it would inherit and
+// restyle for (#1150).
 /** @param {View} v */
 function release(v) {
-  if (v.el.style.getPropertyValue('--held')) v.el.style.removeProperty('--held');
+  if (v.el.style.marginBottom) v.el.style.removeProperty('margin-bottom');
 }
 // After anything changes size: back to the bottom while stuck, else keep what you were reading in place.
 /** @param {View} v */
@@ -73,8 +74,8 @@ function follow(v) {
     const now = measure(v, s);
     if (now.width !== v.held.width) release(v);
     else if (now.end < v.held.end && Math.abs(now.last - v.held.last) < 1 && v.held.end > s.clientHeight) {
-      const heldNow = Number.parseFloat(v.el.style.getPropertyValue('--held')) || 0;
-      v.el.style.setProperty('--held', `${heldNow + v.held.end - now.end}px`);
+      const heldNow = Number.parseFloat(v.el.style.marginBottom) || 0;
+      v.el.style.marginBottom = `${heldNow + v.held.end - now.end}px`;
     }
     // A smooth jump to the end is on its way there: snapping now would end it in one frame (#712a).
     if (!atEnd(s) && !v.smoothing) s.scrollTop = s.scrollHeight;
