@@ -2,6 +2,15 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.58.2 (2026-11-10)
+
+### Fixes
+
+- **adapters:** a path’s links are counted once for the whole walk (#1134)
+- **adapters:** a link’s target is walked as written, never trimmed (#1134)
+- **adapters:** a dangling link’s target is walked as any path is, through its own links (#1134)
+- **adapters:** a dangling link in a path is followed to its target, not kept as written (#1134)
+
 ## 1.58.1 (2026-11-10)
 
 ### Fixes
