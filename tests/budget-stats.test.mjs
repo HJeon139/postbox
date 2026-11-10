@@ -47,7 +47,7 @@ test('a timed measure gives its sample count beside its p95, so one slow open of
   assert.equal(v.verdict, 'fail');
 });
 
-test('the longest frame gap fails past the budget, and too few frames for the time is not measured', () => {
+test('the longest frame gap fails past the budget, and a loop that didn’t run through the measure is not measured', () => {
   assert.equal(gapVerdict([16, 17, 99], 1000).verdict, 'not measured');
   const enough = Array.from({ length: 60 }, () => 16);
   assert.equal(gapVerdict(enough, 1000).verdict, 'pass');
@@ -55,6 +55,8 @@ test('the longest frame gap fails past the budget, and too few frames for the ti
   assert.equal(slow.verdict, 'fail');
   assert.equal(slow.longest, 140);
   assert.equal(gapVerdict([], 0).verdict, 'not measured');
+  // Few frames, because one task held the page: still watched throughout, so a failure, not unmeasured.
+  assert.equal(gapVerdict([16, 500, 16, 470], 1000).verdict, 'fail');
 });
 
 test('the frame probe is calibrated only when an idle page runs near 60 frames a second and a busy loop shows', () => {
