@@ -9,7 +9,7 @@ import { ASKING } from '../shared/catalog.mjs';
 import { COLUMN_PX, lintDiagrams, MIN_TEXT_PX, mermaidBlocks } from '../shared/diagram-lint.mjs';
 import { READING } from '../shared/limits.mjs';
 import { formatDuration, glimpseOf, parseMentions } from '../shared/text.mjs';
-import { carriedList, turnLine } from '../shared/work.mjs';
+import { carriedList } from '../shared/work.mjs';
 import { describeTool } from './adapters/claude-stream.mjs';
 import { workFolder } from './adapters/folder.mjs';
 import { listProcesses } from './adapters/process-group.mjs';
@@ -20,6 +20,7 @@ import { retireApp } from './app-retire.mjs';
 import { APP_HOLD_MAX, APP_SEND_LIMIT, APP_SEND_WINDOW_MS } from './app-send-limits.mjs';
 import { appCheck, appEvent, appFile, appQuery, appState, fixEnded, needAppSend, registerApp, resolveAppSend, showApp, updateApp } from './apps.mjs';
 import { restoreArchives } from './archive-lifecycle.mjs';
+import { ArchivePasses } from './archive-runtime.mjs';
 import { askQuestions, QUESTION_TOOL, questionBlocks } from './ask-question.mjs';
 import { showBlock } from './block-show.mjs';
 import { act, answerDelivered, unreadAnswer, updateBlock } from './blocks.mjs';
@@ -121,6 +122,7 @@ import { firstPromptSection, settleThread, turnContext } from './thread-summary.
 import { updateThread } from './thread-write.mjs';
 import { askForTool, settleToolAsks } from './tool-ask.mjs';
 import { openTopic, startTopic } from './topic-open.mjs';
+import { endedAs, endWork } from './turn-end-work.mjs';
 import { askedAgain, askedOf, replyMarks, wokeOf } from './turn-marks.mjs';
 import { settleStoppedSteps, settleSubagentSteps } from './turn-steps.mjs';
 import { workEvents } from './turn-work.mjs';
@@ -146,7 +148,7 @@ export const DEFAULT_MODEL = 'claude-opus-5-5';
 export class Runtime {
   /**
    * @param {{ store: import('./store.mjs').Store, adapters: import('./adapters/adapter.mjs').AdapterRegistry,
-   *           corpus: import('./corpus.mjs').Corpus, config: { origin: string, imageOrigins: string[], claudeProjectsRoot?: string, versions?: any, lintSettleMs?: number, home?: string, build?: { version?: string } },
+   *           corpus: import('./corpus.mjs').Corpus, config: { origin: string, imageOrigins: string[], archiveTurns?: boolean, claudeProjectsRoot?: string, versions?: any, lintSettleMs?: number, home?: string, build?: { version?: string } },
    *           blobs?: import('./blobs.mjs').Blobs, narrator?: import('./narration/narrator.mjs').Narrator|null,
    *           spawnShell?: typeof import('node:child_process').spawn, signalProcess?: import('./adapters/process-group.mjs').KillFn,
    *           listProcesses?: () => Promise<import('./adapters/process-group.mjs').Proc[]>, ledger?: Ledger,
@@ -200,6 +202,7 @@ export class Runtime {
     // Turns of agents whose persona runs on a remote host (#120): server/remote/turns.mjs.
     this.hosts = hosts ?? null;
     this.remote = new RemoteTurns(this, { hosts: this.hosts });
+    this.turnArchive = new ArchivePasses(this, { enabled: config.archiveTurns === true }); // #305: off until step 4
     // Forks are gone (#228): any left from before are archived, once.
     archiveForks(this);
     // Nothing archives a conversation by itself any more (#320): what idle archiving hid comes back, once.
@@ -909,21 +912,6 @@ export class Runtime {
     };
   }
 
-  /** The turn’s work is recorded (#132), then its last reply, or its last block, gets the list that leads to it (#195). */
-  endWork(turn, status) {
-    return (
-      this.ledger
-        .endTurn(turn, { status })
-        .then(() => {
-          const line = turn.work ? turnLine(this.ledger.entries(turn.work.convId), turn.id) : null;
-          const last = this.store.pending.items(turn.threadId).findLast((x) => x.turnId === turn.id && (x.kind === 'agent' || (x.kind === 'block' && x.valid)));
-          if (line && last) this.patchItem(turn.threadId, last.id, { work: line, workTurn: turn.id });
-        })
-        // Its callers don’t await it: a ledger that fails here must not become an unhandled rejection.
-        .catch((e) => console.error(`@${turn.work?.se?.handle ?? 'an agent'}’s turn work wasn’t recorded: ${e instanceof Error ? e.message : e}`))
-    );
-  }
-
   endTurn(turn, err) {
     if (turn.closed) return;
     turn.closed = true;
@@ -935,7 +923,7 @@ export class Runtime {
     // How a remote turn ended on its host decides what the person sees: Sign-in needed and Interrupted say so (#120).
     if (turn.remote) err = this.remote.ended(turn, err);
     settleScheduledWake(this, turn, err);
-    this.endWork(turn, !err ? 'done' : err.name === 'AbortError' ? 'stopped' : 'failed');
+    endWork(this, turn, endedAs(err));
     // The turn’s own lines in an attached session’s transcript aren’t terminal activity.
     this.mirrors.get(turn.sessionId)?.tail.skipToEnd();
     const se = this.s.sessions[turn.sessionId];
@@ -1156,7 +1144,7 @@ export class Runtime {
     // here as well would cancel what the agent was told will start again (the integrator’s re-review of #598).
     if (by !== 'shutdown' && by !== 'store') settleScheduledWake(this, turn, { name: 'AbortError' });
     settleStoppedSteps(this, turn);
-    this.endWork(turn, 'stopped');
+    endWork(this, turn, 'stopped');
     // A waiting permission is answered no; the card keeps who stopped it, so its note says the person’s stop withdrew
     // it, or that it expired (tellExpired, #721, #853).
     for (const [id, w] of this.permissionWaits) if (w.sessionId === sessionId) this.settlePermission(id, 'expired', why, {}, { stoppedBy: by });
@@ -1451,6 +1439,8 @@ export class Runtime {
     });
     await Promise.race([Promise.all([...this.exiting.values()].map((x) => x.turn.exited)), late]);
     clearTimeout(timer);
+    // Last: a stopped turn’s end may have queued an archive pass, whose file mustn’t land after the store closes (#305).
+    await this.turnArchive.stop();
   }
 
   /**
