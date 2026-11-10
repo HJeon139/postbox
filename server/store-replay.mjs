@@ -16,6 +16,7 @@
 import { eventsOf } from '../shared/log-lines.mjs';
 import { apply } from '../shared/state.mjs';
 import { noteRejected, opRecord, REJECTED } from './store-reject.mjs';
+import { fileLines } from './store-snapshot-lines.mjs';
 
 /** Replays the segments after the snapshot, in order, leaving the writer at the end of the last. @param {import('./store-recover.mjs').Candidate} store */
 export async function replay(store) {
@@ -29,7 +30,7 @@ async function replaySegment(store, seg, last) {
   let offset = 0;
   let n = -1;
   let torn = -1; // the byte offset of a final line with no newline, cut once the file is closed
-  for await (const { line, terminated } of segmentLines(store.io, path)) {
+  for await (const { line, terminated } of fileLines(store.io, path)) {
     n++;
     if (line.trim()) {
       if (!terminated) {
@@ -53,37 +54,6 @@ async function replaySegment(store, seg, last) {
   if (torn < 0) return;
   await store.io.truncate(path, torn);
   console.warn(`Dropped an incomplete event at the end of ${seg.name} (the server stopped mid-write).`);
-}
-
-/** How much of a segment is read at a time. */
-const CHUNK = 1 << 20;
-
-/**
- * A segment’s lines, read a chunk at a time rather than as one string (#1180), each with whether a newline ended it.
- * Split on the newline byte, so a line is decoded whole and a character is never cut.
- * @param {{ open: typeof import('node:fs/promises').open }} io @param {string} path
- * @returns {AsyncGenerator<{ line: string, terminated: boolean }>}
- */
-async function* segmentLines(io, path) {
-  const fh = await io.open(path, 'r');
-  try {
-    const buf = Buffer.alloc(CHUNK);
-    let carry = Buffer.alloc(0);
-    for (;;) {
-      const { bytesRead } = await fh.read(buf, 0, CHUNK, null);
-      if (!bytesRead) break;
-      const chunk = Buffer.concat([carry, buf.subarray(0, bytesRead)]);
-      let start = 0;
-      for (let nl = chunk.indexOf(10, start); nl !== -1; nl = chunk.indexOf(10, start)) {
-        yield { line: chunk.toString('utf8', start, nl), terminated: true };
-        start = nl + 1;
-      }
-      carry = chunk.subarray(start);
-    }
-    if (carry.length) yield { line: carry.toString('utf8'), terminated: false };
-  } finally {
-    await fh.close();
-  }
 }
 
 /** The error load() rejects with for a damaged line, naming the file, the line and its byte offset. */
