@@ -6,6 +6,7 @@ import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 const snap = (b, size) => ({ exists: true, size, sha256: b.sha256, binary: false });
+const tokensOf = (t) => (t ? (t.input ?? 0) + (t.output ?? 0) + (t.cacheRead ?? 0) + (t.cacheWrite ?? 0) : 0);
 
 /** The turn.archive event’s payload for a turn whose moved entries are `work`, named by `sha256`. */
 export function archiveEvent(convId, turnId, sha256, work, items = []) {
@@ -29,7 +30,7 @@ export function archiveEvent(convId, turnId, sha256, work, items = []) {
       publishes: work.filter((e) => e.kind === 'publish').length,
       steps: 1,
     },
-    effort: { turns: turn ? 1 : 0, ms: turn?.ms ?? 0, toolCalls: turn?.toolCalls ?? 0, costUsd: turn?.costUsd ?? 0, tokens: 0 },
+    effort: { turns: turn ? 1 : 0, ms: turn?.ms ?? 0, toolCalls: turn?.toolCalls ?? 0, costUsd: turn?.costUsd ?? 0, tokens: tokensOf(turn?.tokens) },
     handles: turn ? [turn.handle] : [],
   };
   return { convId, turnId, sha256, summary, items };
@@ -46,7 +47,7 @@ export async function archiveTurn(store, blobs, { convId, turnId, work, activity
 /**
  * A conversation and its topic thread in a started Postbox, with three turns of agent alpha. t1 ran a command, changed
  * a.txt and edited a file on a host; it is archived, with its topic reply’s steps. t2 is hot. t3 and t4 are archived
- * too, and then their files go: t3’s is overwritten (damaged), and t4’s names a file that was never put (missing). t5’s
+ * too, and then their files go: t3’s, of one failed command, is overwritten (damaged), and t4’s names a file that was never put (missing). t5’s
  * file says it is another conversation’s. a.txt’s file entry stays hot, as a file entry has no turn.
  * @param {{ rt: any, store: any }} app @param {string} dir  a folder for a.txt
  */
@@ -81,7 +82,7 @@ export async function seedArchived({ rt, store }, dir) {
     turns: ['t1'],
   };
   const t2 = [turn('t2', 20), { id: 'c2', kind: 'command', turnId: 't2', handle: 'alpha', state: 'done', exit: 0, command: 'pwd', at: 21 }];
-  const t3 = [turn('t3', 30)];
+  const t3 = [turn('t3', 30), { id: 'c3', kind: 'command', turnId: 't3', handle: 'alpha', state: 'failed', exit: 1, command: 'make', at: 31 }];
   const t4 = [turn('t4', 40)];
   const t5 = [turn('t5', 50)];
   for (const entry of [...t1, file, ...t2, ...t3, ...t4, ...t5]) store.emit('work.add', { convId: conv.id, entry });
