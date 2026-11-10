@@ -526,6 +526,16 @@ export class Runtime {
   }
 
   /**
+   * Whether a session can’t take a delivery now, so what’s queued for it waits: a turn running, a stopped one still
+   * exiting (#126), or a host turn from before a restart waiting to be attached again (#1135). The one rule a wake and
+   * a drain read; sendMessage reads it without exiting, which is #1136’s.
+   * @param {string} sessionId
+   */
+  busyFor(sessionId) {
+    return this.turns.has(sessionId) || this.exiting.has(sessionId) || this.remote.awaitsAttach(sessionId);
+  }
+
+  /**
    * Sends what can go from a thread’s queue: every item whose agents are free, in order for each agent, so one waiting
    * for a busy agent holds back nothing for another (#228). wakesOnly: only agents’ wakes, after a failed turn, when
    * your own messages wait for you to see the failure.
