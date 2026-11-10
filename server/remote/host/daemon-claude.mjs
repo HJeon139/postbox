@@ -41,7 +41,7 @@ export async function claudeRefusal(d, h, need) {
   const still = claudeProblem(fresh, bar);
   // The path the hello found may be gone, or hold an old claude while a new one is elsewhere on the PATH: unless the
   // host’s settings name the path, look for it again (reprobe, rate-limited) and judge what that finds (#1084 review).
-  return still;
+  if (!still || d.settings?.claudePath) return still;
   await reprobe(d);
   const again = d.programs?.harnesses.find((x) => x.name === 'claude-code');
   if (!again?.path || again.path === fresh.path) return still;
