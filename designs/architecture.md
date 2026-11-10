@@ -55,7 +55,7 @@ flowchart LR
 ```
 
 - **Writes** are batched and appended in order. A crash can lose at most the last few milliseconds of events. A truncated last line is detected on startup and dropped.
-- **Snapshots** are written to a temporary file and renamed, so a crash mid-write leaves the old snapshot intact. A new log segment starts after each snapshot, and segments the snapshot fully covers are deleted.
+- **Snapshots** are written to a temporary file and renamed, so a crash mid-write leaves the old snapshot intact. A new log segment starts after each snapshot, and segments the snapshot fully covers are deleted. A snapshot is lines, one small JSON value each, so no string holds the whole state ([#1180](https://github.com/HJeon139/postbox/issues/1180)). The write yields between pieces, so emits are held until it ends, as they are behind a commit: the snapshot is one view of the state, and nothing in it is in the next segment too.
 - **Schema.** Events carry plain JSON. If an event’s shape ever changes, the reducer upgrades old events as it reads them (an “upcaster”), so there are no migrations to run.
 - **Stage 2 data** in `store.json` is read once as the first snapshot, then renamed `store.json.migrated`.
 

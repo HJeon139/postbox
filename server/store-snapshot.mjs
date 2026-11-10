@@ -90,7 +90,16 @@ export async function snapshotNow(store) {
  */
 async function takeSnapshot(store) {
   const at = store.state.seq; // the snapshot’s seq: the new segment is named from it, not from a seq advanced meanwhile
-  await writeSnapshot(store);
+  // The lines are made from the live state while the write yields between pieces, so emits are held until it’s done
+  // (store.emit): one applied meanwhile would land in the snapshot after its seq, and again in events-(at+1), and a
+  // restart would apply it twice (#1180). Commits already wait, in the writer’s queue behind this job. Holding costs
+  // no copy of the state, which is what ran Postbox out of memory (#1210).
+  store.snapshotting = true;
+  try {
+    await writeSnapshot(store);
+  } finally {
+    store.snapshotting = false;
+  }
   await syncDir(store);
   if (store.retiring) return; // closing: the rotation and the pruning are left to the next store’s load
   await store.fh?.close();
