@@ -126,6 +126,7 @@ test('#1161 Claude Code: the next turn is told first that Postbox’s tools didn
   assert.doesNotMatch(promptOf(runs[0]), told, 'the turn itself isn’t told anything');
   await adapter.deliver({}, { kind: 'user', text: 'Try again.' }, ctx);
   assert.match(promptOf(runs[1]), told, 'the next turn is told first');
+  assert.match(promptOf(runs[1]), /you had none of Postbox’s tools/, 'worded for a turn that ran without them');
   assert.match(promptOf(runs[1]), /Try again\./, 'then its request');
   await adapter.deliver({}, { kind: 'user', text: 'Once more.' }, ctx);
   assert.doesNotMatch(promptOf(runs[2]), told, 'and only once');

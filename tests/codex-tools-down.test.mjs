@@ -74,6 +74,7 @@ test('#1162 the next Codex turn is told first that Postbox’s tools didn’t lo
   await assert.rejects(adapter.deliver({}, { kind: 'user', text: 'Show a block.' }, ctx));
   await adapter.deliver({}, { kind: 'user', text: 'Try again.' }, ctx);
   assert.match(inputOf(seen[1]), told, 'the next turn is told first');
+  assert.match(inputOf(seen[1]), /the turn didn’t run and you never got its message/, 'worded for a turn that never ran');
   assert.match(inputOf(seen[1]), /Try again\./, 'then its request');
   await adapter.deliver({}, { kind: 'user', text: 'Once more.' }, ctx);
   assert.doesNotMatch(inputOf(seen[2]), told, 'and only once');
