@@ -54,6 +54,7 @@ import { KIRO_TOOL_RULES, kiroAgent } from './kiro-cli-agent.mjs';
 import { findKiro, kiroModel, postboxModel } from './kiro-cli-models.mjs';
 import { attachmentPaths, KIRO_CAPABILITIES, kiroRemoteSpawn } from './kiro-cli-remote.mjs';
 import { kiroError, kiroExitError, overSizeLimit, SIZE_LIMIT_START_TEXT } from './kiro-errors.mjs';
+import { sessionInfo } from './kiro-session-info.mjs';
 import { listProcesses, stopOnAbort, stopTurn } from './process-group.mjs';
 import { effortOf, modelOf, recorderFor, setupOf } from './setup.mjs';
 
@@ -248,17 +249,9 @@ export function createKiroMapper(ctx, { now = Date.now, effort = null } = {}) {
         if (u.status === 'completed' || u.status === 'failed') endTool(u);
         else if (!st.tools.has(u.toolCallId)) startTool(u);
         return;
-      case 'session_info_update': {
-        const k = u._meta?.kiro;
-        if (k?.kind === 'context_usage') contextUsed(k.usagePercentage);
-        else if (k?.kind === 'turn_start') status({ state: 'think', currentStep: 'Thinking' });
-        else if (k?.kind === 'pending_interaction' && k.interactionType === 'tool_approval' && k.toolCallId)
-          st.asked.set(k.toolCallId, String(k.question ?? ''));
-        // lint-allow spelling: Kiro’s value.
-        else if (k?.kind === 'interaction_resolved' && k.outcome === 'cancelled' && st.asked.has(k.toolCallId)) st.refused.add(k.toolCallId);
-        else if (k?.kind === 'steering_inclusion' && Array.isArray(k.steeringDocuments)) st.steering = k.steeringDocuments.map(String);
+      case 'session_info_update':
+        sessionInfo(u._meta?.kiro, st, { contextUsed, status });
         return;
-      }
       case 'config_option_update': {
         const opt = (Array.isArray(u.configOptions) ? u.configOptions : []).find((o) => o?.id === 'model');
         const model = postboxModel(opt?.currentValue);
