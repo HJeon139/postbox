@@ -47,7 +47,7 @@ flowchart TD
 
 **What was decided before:** PF-1 asked that a large room’s key-to-frame p95 be within 10% of a 1× room’s (`requirements.md`, PF-1). Before sprint 4 it was 6.29 and 10.75 times the 1× room’s at 10× (`measurement.md`, “PF-1: a key press to the next frame”). On 2 November the person chose client-side virtualization first, and parked the server window, B2 (#532) and B3 (#533), until a measurement showed virtualization wasn’t enough (`execution-plan.md`, “Where it stands”).
 
-**What changed on 10 November:** the person’s Firefox profiles of 7 to 9 November found a 614,000-element page restyled whole on each new message (#1150), and a room switch spending 4.8 s of 11.6 s rebuilding review highlights (#1151). The person then approved a new target (`sprint4/perf-principles-approved.md`, an asset of the sprint 4 conversation, to be written into the design docs by the docs PR below):
+**What changed on 10 November:** the person’s Firefox profiles of 7 to 9 November found a 614,000-element page restyled whole on each new message (#1150), and a room switch spending 4.8 s of 11.6 s rebuilding review highlights (#1151). The person then approved a new target, recorded with the design revision it calls for in [#1155](https://github.com/HJeon139/postbox/issues/1155):
 - every interaction paints within 100 ms, p95, from input to the next paint, in a conversation of a million items, in Firefox and Chromium;
 - the page draws what can be seen plus a screen either side, about 3 to 10 items, under about 5,000 elements in all;
 - the page doesn’t hold the conversation: it fetches items by range, and search and jump-to go to the server;
@@ -60,7 +60,7 @@ flowchart TD
 - **The window (#1075) still merges first,** as the step toward viewport rendering, and #1150’s and #1151’s fixes are the budget spec’s first cases.
 - **#305’s read side waits** on the same revision, since it decides how much of a conversation stays in memory (#305, sprint 4 hand-off).
 
-**The order the person approved:** #1075 merges; a #508 design revision, which the person decides on; one docs PR under the light gate; then the budget spec as the first code PR.
+**The order the person approved:** #1075 merges; a #508 design revision (#1155), which the person decides on; one docs PR under the light gate; then the budget spec as the first code PR.
 
 Not measured yet: Safari, copies of real rooms, and assistive technology (`measurement.md`, “Not met, and what comes next”).
 
@@ -77,7 +77,7 @@ So nothing remains under #526. It closes as superseded by #630, #711 and #527, a
 
 | Follow-up | Issues | Waits on |
 |---|---|---|
-| The performance target: the #508 design revision, the docs PR, then the budget spec | the revision is still to be filed; its first cases are #1150 (an inherited `--held` restyles the transcript) and #1151 (the review highlight rebuilt per review) | #1075; the person’s decision on the revision |
+| The performance target: the #508 design revision, the docs PR, then the budget spec | [#1155](https://github.com/HJeon139/postbox/issues/1155), the design revision; its first cases are #1150 (an inherited `--held` restyles the transcript) and #1151 (the review highlight rebuilt per review) | #1075; the person’s decision on the revision |
 | The transcript: positions and view state, then the page fetching by range | B1 #531; B2 #532 and B3 #533; the virtualization tracker #712 | the design revision |
 | Delivery records: deliveries decided by the turn’s outcome, then the person’s queue and scheduled wakes | A2 #527, then A3 #528 and A4 #529; Kiro’s failing-turn fixtures #591; the queue-order issues #1146 and #1149 | #591 for Kiro’s part of A2 |
 | Measurement | #821’s next slices after #1145; the tools’ follow-ups #813, #814 and #818 | — |
