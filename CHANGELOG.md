@@ -2,6 +2,12 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.58.5 (2026-11-10)
+
+### Fixes
+
+- **composer:** a reconnect starts the outbox's tries again from the quick ones
+
 ## 1.58.4 (2026-11-10)
 
 ### Fixes
