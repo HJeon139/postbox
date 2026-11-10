@@ -123,7 +123,9 @@ async function axe(page) {
     () =>
       [...document.querySelectorAll('iframe')].filter((f) => {
         const doc = f.contentDocument;
-        return doc !== null && doc.URL !== 'about:blank';
+        // An empty about:blank is a frame not loaded yet; one a script has filled holds content axe would skip.
+        const empty = doc?.URL === 'about:blank' && !doc.body?.children.length;
+        return doc !== null && !empty;
       }).length,
   );
   expect(readable, 'no frame axe could enter is left out of its check').toBe(0);
