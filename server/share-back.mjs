@@ -3,7 +3,7 @@
 // at their next turn; nothing wakes them. Functions take the Runtime first (architecture.md, “What a move may change”).
 
 import { positionOf } from '../shared/item-index.mjs';
-import { clip, httpError } from './helpers.mjs';
+import { clip, httpError, tooLongToSend } from './helpers.mjs';
 import { threadPersona } from './side-threads.mjs';
 import { updateThread } from './thread-write.mjs';
 
@@ -74,6 +74,25 @@ function summaryWriter(rt, t, handle) {
   const chosen = name ? pair.find((x) => x.toLowerCase() === name) : pair.find((x) => x !== t.woke);
   if (name && !chosen) throw httpError(400, `@${clip(name, 40)} isn’t in this side thread. Name ${pair.map((x) => `@${x}`).join(' or ')}.`);
   return rt.personaByHandle(chosen ?? t.woke ?? '');
+}
+
+/**
+ * “Summarize back”, as its turn ends without an error: the reply goes to the conversation the topic branched from. The
+ * turn’s replies are what was sent, so they show “Sent to the conversation” and can’t be sent again (#93). Moved from
+ * server/runtime.mjs, whose endTurn calls it, to keep runtime.mjs under its ceiling. Past SENDING.message it isn’t
+ * posted, as bring_to_conversation’s text isn’t, and the thread says why (#362).
+ * @param {any} rt @param {any} se  the session whose turn ended @param {any} turn @param {readonly any[]} items  the thread’s items
+ */
+export function postSummary(rt, se, turn, items) {
+  if (!turn.summarizeTo || !turn.said.trim()) return;
+  const tooLong = tooLongToSend('A summary', turn.said, 'Summarize back again for a shorter one.');
+  if (tooLong) {
+    rt.addItem(turn.threadId, { kind: 'system', variant: 'send-refused', text: tooLong.message });
+    return;
+  }
+  rt.shareText(turn.summarizeTo, { fromThreadId: turn.threadId, handle: se.handle, text: turn.said, summary: true });
+  for (const it of items)
+    if (it.turnId === turn.id && it.kind === 'agent' && it.text && !it.sharedAt) rt.patchItem(turn.threadId, it.id, { sharedAt: Date.now() });
 }
 
 /** Whether a summarize turn is running or queued in a topic or side thread. */

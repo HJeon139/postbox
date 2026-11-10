@@ -85,7 +85,7 @@ import {
 import { RemoteTurns } from './remote/turns.mjs';
 import { replySegment, stepTaken, wordsSegment } from './reply-segment.mjs';
 import { reviewBlock } from './review-comments.mjs';
-import { cancelWake } from './schedule-tools.mjs';
+import { cancelWake, scheduleWakeTool } from './schedule-tools.mjs';
 import {
   armWake,
   cancelWakeSchedule,
@@ -99,7 +99,7 @@ import {
 } from './scheduled-wakes.mjs';
 import { setSessionRun } from './session-run.mjs';
 import { pendingSessionsIn, tellAgent, updateSession } from './session-write.mjs';
-import { clearSummaryPending, shareText, shareToConversation, summarizeBack, summarizing } from './share-back.mjs';
+import { clearSummaryPending, postSummary, shareText, shareToConversation, summarizeBack, summarizing } from './share-back.mjs';
 import { runShell } from './shell.mjs';
 import {
   agentWake,
@@ -474,8 +474,8 @@ export class Runtime {
     const q =
       busy.length && !sendNow ? { id: newId('q'), text, attachments, sessionIds: targets.map(({ se }) => se.id), at: Date.now(), seq: arrival() } : null;
     if (q) updateThread(this, threadId, (x) => ({ queue: [...(x.queue ?? []), q] }));
-    // Send now is a change of course: background jobs keep running, each with its own Stop (#129).
-    else for (const { se } of busy) this.stop(se.id, { silent: true, jobs: 'keep', sendNow: true });
+    // Send now is a change of course (stopForSendNow), also for one already exiting from a plain Stop (#1040).
+    else if (sendNow) for (const { se } of targets) queue.stopForSendNow(this, se.id);
     const sent = q ? { queued: q } : this.postAndDeliver(threadId, { text, attachments }, targets);
     // A card waiting to wake one of them is stale now (#439), whether this went at once or waits in the queue. It
     // retires after, so the wake you never allowed goes behind your message rather than ahead of it.
@@ -611,6 +611,8 @@ export class Runtime {
       sessionId,
       // The backend it started on: a persona changed mid-turn reaches the next turn, not this one (#220).
       backend: persona?.backend ?? 'mock',
+      // And the mode: the person’s hooks load at its start in some modes only, and stay as they loaded (#806, #1030).
+      mode: persona?.permissionMode ?? 'auto',
       threadId: where,
       promptFirst: firstPromptSection(message, where !== se.threadId),
       segment: null,
@@ -950,13 +952,7 @@ export class Runtime {
     if (turn.checkpoint && !err)
       for (const it of items)
         if (it.turnId === turn.id && (it.kind === 'agent' || it.kind === 'block')) this.patchItem(turn.threadId, it.id, { checkpoint: turn.checkpoint });
-    // “Summarize back”: the reply goes to the conversation the topic branched from. The turn’s replies are what
-    // was sent, so they show “Sent to the conversation” and can’t be sent again (#93).
-    if (turn.summarizeTo && !err && turn.said.trim()) {
-      this.shareText(turn.summarizeTo, { fromThreadId: turn.threadId, handle: se.handle, text: turn.said, summary: true });
-      for (const it of items)
-        if (it.turnId === turn.id && it.kind === 'agent' && it.text && !it.sharedAt) this.patchItem(turn.threadId, it.id, { sharedAt: Date.now() });
-    }
+    if (!err) postSummary(this, se, turn, items);
     // Posted or not, the summary isn’t pending any more, so Summarize back works again, unless one waits behind this
     // turn (#225). Any turn ending clears one a restart left behind, too.
     this.clearSummaryPending(turn.threadId, turn);
@@ -1220,9 +1216,12 @@ export class Runtime {
       }
       return;
     }
-    for (const h of ex.silent ? held : queue.batchPending(this, held, se.threadId))
-      this.deliver(se.id, h.message, { summarizeTo: h.summarizeTo, threadId: h.threadId });
-    if (!held.length && !ex.silent) this.drainQueues(se.id, turn.threadId);
+    // A silent exit (Send now, which sends only your message, and archive, erase, side threads, host admin and the
+    // like) delivers what was held as it is, and the queue waits for that turn’s end. Any other Stop, the person’s, a
+    // store outage’s or a hung host turn’s, gives the first turn its thread’s queue, in arrival order, as a turn’s
+    // normal end does (#733, #1040).
+    if (ex.silent) for (const h of held) this.deliver(se.id, h.message, { summarizeTo: h.summarizeTo, threadId: h.threadId });
+    else this.takePending(se, { pending: held, threadId: turn.threadId }, true);
   }
 
   /**
@@ -2882,10 +2881,7 @@ export class Runtime {
         });
         return { ok: true, message: 'Proposed. The person decides whether to create it.' };
       },
-      schedule_wake({ in_minutes, note }) {
-        const sc = rt.schedule(sessionId, { inMs: Math.round((+in_minutes || 1) * 60000), note });
-        return { ok: true, message: `You’ll be woken at ${new Date(sc.at).toISOString()}. Its id is ${sc.id}, for cancel_wake.` };
-      },
+      schedule_wake: (args) => scheduleWakeTool(rt, sessionId, args),
       cancel_wake: (args) => cancelWake(rt, sessionId, args),
       wake_agent: (args) => wakeAgent(rt, sessionId, args),
       open_topic: (args) => openTopic(rt, sessionId, args),

@@ -9,16 +9,14 @@ const group = (src) => groupReviewLines(rowsOf(src));
 const shape = (groups) =>
   groups.map((g) => `${g.type}${g.depth ? `>${g.depth}` : ''} ${(g.type === 'line' ? [g.unit] : g.units).map((u) => u.key ?? 'x').join(',')}`);
 
-test('a table is one group with a target per row, and the delimiter row has none', () => {
+test('#835 a table is one group with a target per row, and the delimiter row is a target of its own, not hidden', () => {
   const groups = group('## Options\n\n| Option | Cost |\n|---|---|\n| A | low |\n| B | high |\nAfter.');
   assert.deepEqual(shape(groups), ['line 1', 'line 2', 'table 3,5,6', 'line 7']);
   const t = groups[2];
   assert.equal(t.type, 'table');
   if (t.type !== 'table') return;
-  assert.deepEqual(
-    t.hidden.map((r) => r.n),
-    [4],
-  );
+  assert.deepEqual(t.sep?.lines, [4]);
+  assert.deepEqual(t.hidden, []);
   // The source renders as one table, with a <tr> for each target, in order.
   const html = renderMarkdown(t.source);
   assert.equal(html.match(/<tr>/g)?.length, t.units.length);
@@ -122,6 +120,17 @@ test('in a diff, an added or removed table row stays in its table, marked', () =
   if (groups[0].type === 'table') assert.equal(renderMarkdown(groups[0].source).match(/<tr>/g)?.length, 4);
 });
 
+test('#835 in a diff, an unchanged delimiter row stays a target of its own; a changed one is hidden', () => {
+  const [same] = diff(' | a | b |', ' |---|---|', '+| 1 | 2 |');
+  if (same.type !== 'table') return assert.fail('expected a table group');
+  assert.equal(same.sep?.key, 2);
+  assert.deepEqual(same.hidden, []);
+  const [changed] = diff(' | a | b |', '-|---|---|', '+|:---|---|', ' | 1 | 2 |');
+  if (changed.type !== 'table') return assert.fail('expected a table group');
+  assert.equal(changed.sep, null);
+  assert.equal(changed.hidden.length, 2);
+});
+
 test('in a diff, a changed header shows both rows in one table', () => {
   const [g, ...rest] = diff('-| a | b |', '+| a | c |', ' |---|---|', ' | 1 | 2 |');
   assert.equal(rest.length, 0);
@@ -198,4 +207,20 @@ test('in a diff, a changed delimiter or fence marker is kept, so the block can s
     c.hidden.map((r) => r.kind),
     ['del', 'del'],
   );
+});
+
+test('#1098 a table says how many of its units head it: one, or two when a diff renamed the header', () => {
+  const [plain] = diff(' | a | b |', ' |---|---|', ' | 1 | 2 |');
+  const [renamed] = diff('-| a | b |', '+| a | c |', ' |---|---|', ' | 1 | 2 |');
+  if (plain.type !== 'table' || renamed.type !== 'table') return assert.fail('expected table groups');
+  assert.equal(plain.head, 1);
+  assert.equal(renamed.head, 2);
+});
+
+test('#1098 a table with only a header has one unit before its delimiter, which is its own target', () => {
+  const [g] = diff(' | a | b |', ' |---|---|');
+  if (g.type !== 'table') return assert.fail('expected a table group');
+  assert.equal(g.head, 1);
+  assert.equal(g.units.length, 1);
+  assert.equal(g.sep?.key, 2);
 });

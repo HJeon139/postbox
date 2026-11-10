@@ -3,7 +3,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { clip, clipText } from '../server/helpers.mjs';
+import { clip, clipText, echoedId } from '../server/helpers.mjs';
 
 const PAIR = '\u{1F600}';
 
@@ -24,4 +24,12 @@ test('#1052 clip and clipText drop a lone first half already at the cut, and cut
   assert.equal(clipText('ab\uD83Dcd', 4), 'ab…');
   assert.equal(clip('', 4), '');
   assert.equal(clipText('', 4), '');
+});
+
+test('#895 echoedId cuts an id to 40 characters, never inside an emoji’s pair', () => {
+  // The 40th unit is the emoji’s first half: the cut ends before the emoji, not on a lone surrogate.
+  assert.equal(echoedId(`${'a'.repeat(39)}${PAIR}bb`), 'a'.repeat(39));
+  assert.equal(echoedId(`${'a'.repeat(38)}${PAIR}bb`), `${'a'.repeat(38)}${PAIR}`);
+  assert.equal(echoedId('it_short'), 'it_short');
+  assert.equal(echoedId(undefined), '');
 });

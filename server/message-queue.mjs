@@ -41,12 +41,24 @@ export function cancelQueued(rt, threadId, queueId) {
     rt.tellAgent(q.fromSessionId, `The person removed your message (“${clip(q.text, 120)}”) before it was answered. Carry on without it.`);
 }
 
+/**
+ * Send now’s stop: a change of course, so background jobs keep running, each with its own Stop (#129), and the exit is
+ * silent, so the person’s message goes alone and the queue waits for that turn’s end. A plain Stop still exiting has
+ * left turns, so stop() finds nothing to stop: its exit is marked silent here instead (#1040).
+ * @param {any} rt @param {string} sessionId
+ */
+export function stopForSendNow(rt, sessionId) {
+  rt.stop(sessionId, { silent: true, jobs: 'keep', sendNow: true });
+  const ex = rt.exiting.get(sessionId);
+  if (ex) ex.silent = true;
+}
+
 // Send now finds the entry in the pending queue: a turn that ended behind a held commit may have drained it already,
 // while the page still shows it queued, and sending it again would deliver it twice (#1007). Gone, it's refused.
 export function sendQueuedNow(rt, threadId, queueId) {
   const q = queuedIn(rt.store.pending.thread(threadId) ?? {}, queueId);
   updateThread(rt, threadId, (t) => ({ queue: (t.queue ?? []).filter((x) => x.id !== queueId) }));
-  for (const id of q.sessionIds) rt.stop(id, { silent: true, jobs: 'keep', sendNow: true });
+  for (const id of q.sessionIds) stopForSendNow(rt, id);
   if (q.kind === 'wake') return deliverWake(rt, threadId, q);
   return rt.postAndDeliver(
     threadId,

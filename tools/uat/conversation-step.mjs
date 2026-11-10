@@ -24,7 +24,7 @@ function handlesIn(state, threadId) {
 
 /** The newest Undo toast for this conversation’s delete, as an expression. */
 const undoButton = (title) =>
-  byText(`[...document.querySelectorAll('#toasts-bottom .toast')].filter((t) => t.textContent.includes(${js(title)})).at(-1)`, 'button', 'Undo');
+  byText(`[...document.querySelectorAll('#toasts .toast')].filter((t) => t.textContent.includes(${js(title)})).at(-1)`, 'button', 'Undo');
 
 /** Opens a conversation by its rail row, as a person goes back to it. */
 async function openRow({ kit }, threadId, what) {

@@ -215,6 +215,16 @@ test('#874 a backend name from the data is clipped in the reason', async () => {
   check(failedIn(f, f.t.id)[0].error);
 });
 
+test('#874 a backend name from the data loses every character that hides or reorders text, not only Cc and Cf', async () => {
+  const hidden = ['\udc00', '\u3164', '\u034f', '\ufe0f', '\u{e0041}', '\u200b', '\u202e', '\ud800']; // each surrogate alone
+  const f = setup();
+  unregister(f, f.b, `é${hidden.join('')}日"<&`);
+  queued(f);
+  f.rt.drainAll();
+  await settle(f.rt);
+  assert.match(failedIn(f, f.t.id)[0].error, /^@beta’s turn didn’t start: “é日"<&” isn’t available on this computer\./);
+});
+
 test('#874 a handle from the data is clipped in the reason too, and a backend named like an object key isn’t looked up', async () => {
   const f = setup();
   unregister(f, f.b, 'constructor');
@@ -259,4 +269,24 @@ test('#874 a host turn reattached for an unregistered backend is Interrupted onc
   const failed = r.store.items(r.t.id).filter((i) => i.kind === 'agent' && i.status === 'failed');
   assert.equal(failed.length, 1, 'one, for the first');
   assert.equal(failed[0].remote?.state, 'interrupted');
+});
+
+test('#874 moving an agent whose stored backend name hides text shows that name stripped and clipped, here or to a host', () => {
+  const f = setup();
+  unregister(f, f.b, `é\u202e\u{e0041}<b>"&${'x'.repeat(200)}`);
+  const h = f.rt.addHost({ name: 'host.example.com' });
+  for (const remote of [null, { hostId: h.id }]) {
+    assert.throws(
+      () => f.rt.updatePersona(f.b.id, { remote }),
+      (e) => {
+        assert.equal(e.status, 422);
+        const name = e.message.match(/“(.*?)”/s)?.[1] ?? '';
+        assert.ok(name.startsWith('é<b>"&x'), name);
+        assert.ok(name.length <= 40, `${name.length} characters`);
+        assert.doesNotMatch(e.message, /[\u202e\u{e0041}]/u);
+        return true;
+      },
+      JSON.stringify(remote),
+    );
+  }
 });

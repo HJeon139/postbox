@@ -15,6 +15,7 @@ import { readFile } from 'node:fs/promises';
 import { INVISIBLE } from '../shared/invisible.mjs';
 import { HOST_SOURCES, ISOLATED_SOURCES } from './adapters/setup.mjs';
 import { settingsFiles } from './permission-rules.mjs';
+import { KEY_SHAPES } from './telemetry-secrets.mjs';
 
 const MAX_HOOKS = 50; // per file, as read: the rest are counted
 const MAX_TEXT = 200;
@@ -27,50 +28,88 @@ const MAX_TYPE = 20;
 const APPROVING_EVENTS = /** @type {const} */ (['PreToolUse', 'PermissionRequest']);
 
 /**
- * A string as one line of text at most `max` long: a tab or line break (U+2028 and U+2029 too) is a space, another
- * control character or a character that shows as nothing (INVISIBLE, shared/invisible.mjs) the replacement mark, and
- * text past the limit is cut with an ellipsis.
- * @param {unknown} v @param {number} max
+ * A string as one line of text: a tab or line break (U+2028 and U+2029 too) is a space, and another control character
+ * or a character that shows as nothing (INVISIBLE, shared/invisible.mjs) the replacement mark.
+ * @param {string} v
  */
-function shown(v, max) {
-  if (typeof v !== 'string') return '';
-  const one = v
+const marked = (v) =>
+  v
     .replace(/[\t\n\r\u2028\u2029]/g, ' ')
     // biome-ignore lint/suspicious/noControlCharactersInRegex: C0 and C1 control characters are exactly what this marks
     .replace(/[\u0000-\u001f\u007f-\u009f]/g, '\uFFFD')
     .replace(INVISIBLE, '\uFFFD');
-  return one.length > max ? `${one.slice(0, max - 1)}…` : one;
-}
 
-// Credentials in a hook’s text, hidden before it leaves the server (#817): GET /api/permissions carries it to the page.
-// Best effort only: it reads a command as a shell would split words, and a credential under another name, in JSON, or
-// passed some other way still shows. The values it finds become an ellipsis:
+/** Text past `max` cut with an ellipsis. @param {string} v @param {number} max */
+const cut = (v, max) => (v.length > max ? `${v.slice(0, max - 1)}…` : v);
+
+/** A string as one line of text at most `max` long, marked as `marked` does. @param {unknown} v @param {number} max */
+const shown = (v, max) => (typeof v === 'string' ? cut(marked(v), max) : '');
+
+// Credentials in a hook’s text, hidden before it leaves the server (#817, #927): GET /api/permissions carries it to the
+// page. They’re looked for once the text is marked, so a character that shows as nothing, now the replacement mark, can
+// sit in a name. Best effort only: it reads a command as a shell would split words, and a credential under another
+// name, or passed some other way, still shows. The values it finds become an ellipsis:
+// - a URL’s userinfo, a user and password or a token alone (https://…@host),
 // - a name with key, token, secret or password in it, then = (NAME=v, --api-key=v, ?token=v in an address),
 // - a flag named so, then its value after a space (--token v), unless the next word is a flag,
-// - Bearer and the token after it.
+// - a header named so, or Authorization (keeping its scheme), then a colon (X-Api-Key: v, Authorization: Basic v),
+// - a Cookie header’s cookies, to the quote that ends the header, or the end of the text,
+// - a JSON field named so, when its value is a string ("token": "v", or \"token\": \"v\" inside a shell’s quotes),
+// - a query parameter for a signature or a credential under another name (?sig=v, &X-Amz-Credential=v),
+// - Bearer and the token after it,
+// - a token with a known prefix and no name before it (KEY_SHAPES, server/telemetry-secrets.mjs: ghp_, sk-, AKIA…),
+//   and a GitLab token (glpat-).
 // A value is a quoted string (to the end of the text when its quote never closes) or a word ending at a space, a quote
 // or one of & ; | < > ( ) `.
 const VALUE = String.raw`(?:"(?:[^"\\]|\\.)*"?|'[^']*'?|[^\s'"&;|<>()\x60]+)`;
-const NAMED = String.raw`[\w-]*(?:key|token|secret|password)[\w-]*`;
+const WORD = String.raw`[^\s'"&;|<>()\x60]+`;
+const NAMED = String.raw`[\w\uFFFD-]*(?:key|token|secret|password)[\w\uFFFD-]*`;
+const USERINFO = /\b([a-z][\w+.-]*:\/\/)[^\s/?#@'"<>&;|()`]+(?=@)/gi;
 // lint-allow regex: built from VALUE and NAMED, the constants just above.
-const ASSIGNED = new RegExp(String.raw`(?<![\w-])(${NAMED}=)${VALUE}`, 'gi');
+const ASSIGNED = new RegExp(String.raw`(?<![\w\uFFFD-])(${NAMED}=)${VALUE}`, 'gi');
 // lint-allow regex: built from VALUE and NAMED, the constants just above.
-const FLAGGED = new RegExp(String.raw`(?<![\w-])(--?${NAMED}\s+)(?!-)${VALUE}`, 'gi');
+const FLAGGED = new RegExp(String.raw`(?<![\w\uFFFD-])(--?${NAMED}\s+)(?!-)${VALUE}`, 'gi');
+// lint-allow regex: built from VALUE, WORD and NAMED, the constants just above.
+const HEADER = new RegExp(String.raw`(?<![\w\uFFFD-])(${NAMED}:[ \t]*)${VALUE}|\b(authorization:(?:[ \t]+(?:[a-z][\w-]*[ \t]+)?)?)${WORD}`, 'gi');
+const COOKIE = /\b(cookie:[ \t]*)[^'"]+/gi;
+// A quoted Authorization header’s credential, every parameter of it (Digest’s response=, SigV4’s Signature=), to the
+// quote that opened the header, past an escaped one, or to the end of the text when it never closes. Unquoted, HEADER
+// ends it at a word.
+const AUTH_QUOTED = /(["'])((?:[\w-]*-)?authorization:(?:[ \t]+(?:[a-z][\w-]*[ \t]+)?)?)(?:(?!\1)[^\\]|\\.)+/gi;
+// curl’s -u and --user: what follows the user’s colon, quoted (to its closing quote) or not (to the end of the word).
+const USER_QUOTED = /(?<![\w-])((?:-u[ \t]*|--user(?:[ \t]+|=))(["'])[^'":]*:)(?:(?!\2)[^\\]|\\.)+/g;
+const USER_BARE = /(?<![\w-])((?:-u[ \t]*|--user(?:[ \t]+|=))[^\s'":]*:)[^\s'"&;|<>()`]+/g;
+// lint-allow regex: built from NAMED, the constant just above.
+const JSON_FIELD = new RegExp(String.raw`(\\"${NAMED}\\"\s*:\s*\\")[^"\\]*|("${NAMED}"\s*:\s*")(?:[^"\\]|\\.)*`, 'gi');
+const SIGNED = /([?&](?:sig|signature|auth|x-amz-signature|x-amz-credential|x-goog-signature|x-goog-credential)=)[^\s'"&;|<>()`#]+/gi;
 const BEARER = /\b(bearer\s+)[^\s'"&;|<>()`]+/gi;
+const BARE = [...KEY_SHAPES, /\bglpat-[\w-]{20,}/g];
+// The patterns that keep a name, each with its name in its first group or, in another alternative, its second.
+const NAME_PATTERNS = [USERINFO, ASSIGNED, FLAGGED, HEADER, COOKIE, JSON_FIELD, SIGNED, BEARER];
 
 // How much of a text is searched, well past what the panel shows: the name patterns backtrack on a long run of letters,
 // so this bounds the work a hostile settings file can make.
 const MAX_SCAN = 2000;
 
-/** `text`, cut to MAX_SCAN, with the credentials found in it replaced by an ellipsis. @param {string} text */
-const redacted = (text) => text.slice(0, MAX_SCAN).replace(ASSIGNED, '$1…').replace(FLAGGED, '$1…').replace(BEARER, '$1…');
+/** A match’s name, from whichever of its pattern’s alternatives matched, then an ellipsis. */
+const keptName = (_match, name, other) => `${name ?? other}…`;
+
+/** `text`, cut to MAX_SCAN and marked, with the credentials found in it replaced by an ellipsis. @param {string} text */
+function redacted(text) {
+  const quoted = marked(text.slice(0, MAX_SCAN))
+    .replace(AUTH_QUOTED, (_m, quote, name) => `${quote}${name}…`)
+    .replace(USER_QUOTED, (_m, name) => `${name}…`)
+    .replace(USER_BARE, keptName);
+  const kept = NAME_PATTERNS.reduce((s, pattern) => s.replace(pattern, keptName), quoted);
+  return BARE.reduce((s, pattern) => s.replace(pattern, '…'), kept);
+}
 
 /**
  * A hook group’s matcher as the panel shows it, with the credentials found in it hidden. No matcher, or an empty one,
  * matches every tool, as Claude Code reads it.
  * @param {any} group
  */
-const matcherOf = (group) => shown(typeof group.matcher === 'string' ? redacted(group.matcher) : '', MAX_MATCHER) || '*';
+const matcherOf = (group) => (typeof group.matcher === 'string' ? cut(redacted(group.matcher), MAX_MATCHER) : '') || '*';
 
 const isObject = (v) => Boolean(v) && typeof v === 'object' && !Array.isArray(v);
 
@@ -82,7 +121,7 @@ const isObject = (v) => Boolean(v) && typeof v === 'object' && !Array.isArray(v)
 function entry(event, matcher, hook) {
   const type = shown(isObject(hook) && typeof hook.type === 'string' ? hook.type : 'command', MAX_TYPE);
   const text = isObject(hook) ? (hook.command ?? hook.prompt ?? hook.url) : '';
-  return { event, matcher, type, text: shown(typeof text === 'string' ? redacted(text) : text, MAX_TEXT) };
+  return { event, matcher, type, text: typeof text === 'string' ? cut(redacted(text), MAX_TEXT) : '' };
 }
 
 /** Whether an event’s hook groups are in the shape Claude Code reads: a list of objects, each with a list of hooks. */

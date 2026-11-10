@@ -8,6 +8,7 @@ import { backendName } from '../../server/room-unverified.mjs';
 import { budgetNote } from './budget.mjs';
 import { agyTokens, kiroCredits, waitingOnYou } from './checks.mjs';
 import { agentsSpent } from './cost.mjs';
+import { githubSection } from './github-attempts.mjs';
 import { pictureSection } from './picture-choice.mjs';
 import { writeJsonAtomic } from './runs.mjs';
 import { firstPictureSection } from './side-by-side.mjs';
@@ -89,6 +90,7 @@ export async function writeReport({ dir, scenario, issues, findings, timeline, s
       const left = facts.state ? waitingOnYou(facts.state, facts.threads ?? []) : [];
       return left.length ? [`**Left waiting on you:** ${left.map((w) => w.what).join('; ')}.`, ''] : [];
     })(),
+    ...githubSection(facts.streams ?? [], scenario), // an agent that tried to reach GitHub, refused by the run’s guard (#1072)
     // A targeted run says first which fixes it reached, and which it didn’t test.
     ...coverageSection(coverage, { rechecked }),
     ...unverifiedSection(findings),
