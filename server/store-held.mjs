@@ -9,9 +9,10 @@
 // It applies held emits without the commit in front of them, whose events don’t exist until the writer runs its
 // builder, so it is exact only while no commit touches the list read. One does: the archive pass’s turn.archive (#305,
 // server/work-archive.mjs), placed in the guard beside these readers. While it is in flight, a pending read still shows
-// the turn’s entries and activity, with held emits on top; a held work.patch for an entry it moves is dropped at the
-// release (designs/305-archive-turns.md, “One pass”). A held turn.archive, which nothing emits, the view applies. A
-// pending item has no position yet (B1 assigns n at the release), so no pending reader may depend on one.
+// the turn’s moved entries and full activity, with held emits on top, and a held work.patch for a moved entry is
+// dropped at the release (designs/305-archive-turns.md, “One pass”). What the pending readers decide on, the kept
+// entries and the newest turns, isn’t moved, so it reads the same before, during and after (T-16). A pending item has
+// no position yet (B1 assigns n at the release), so no pending reader may depend on one.
 //
 // A view is kept per list, and per collection, and grows as emits are held: while a commit is stuck in its fsync, a
 // streaming reply holds an item.text per chunk and readers run per chunk, so each held event is applied once, not once
@@ -23,15 +24,9 @@ import { apply, patchSession } from '../shared/state.mjs';
 
 /** The lists a pending read covers: the events that change one, the key they name it by, and how an add names its entry. */
 const LISTS = /** @type {const} */ ({
-  items: {
-    events: ['item.add', 'item.patch', 'item.move', 'item.text', 'turn.archive'],
-    names: (/** @type {any} */ d) => threadsNamed(d),
-    added: (/** @type {any} */ d) => d.item?.id,
-  },
-  work: { events: ['work.add', 'work.patch', 'turn.archive'], names: (/** @type {any} */ d) => [d?.convId], added: (/** @type {any} */ d) => d.entry?.id },
+  items: { events: ['item.add', 'item.patch', 'item.move', 'item.text'], key: 'threadId', added: (/** @type {any} */ d) => d.item?.id },
+  work: { events: ['work.add', 'work.patch'], key: 'convId', added: (/** @type {any} */ d) => d.entry?.id },
 });
-/** The threads an items event names: its own, or for a turn.archive (#305) each archived reply’s. O(replies). @param {any} d */
-const threadsNamed = (d) => (Array.isArray(d?.items) ? d.items.map((/** @type {any} */ r) => r?.threadId) : [d?.threadId]);
 /**
  * The collections of whole entities a pending read covers, keyed by id: the event that puts one whole (the reducer
  * replaces it), the event that patches one if it has one, and the `remove` kind that deletes it. An app is read back by
@@ -172,46 +167,23 @@ function pendingList(store, list, key) {
 
 /** Applies to a view the held jobs it hasn’t seen. @param {import('./store.mjs').Store} store @param {any} v @param {PendingList} list @param {string} key */
 function applyHeld(store, v, list, key) {
-  const { events, names } = LISTS[list];
+  const { events, key: by, added } = LISTS[list];
   for (; v.seen < store.heldLog.length; v.seen++) {
     const { held, json } = store.heldLog[v.seen];
-    if (!(/** @type {readonly string[]} */ (events).includes(held.type)) || !names(held.data).includes(key)) continue;
+    if (!(/** @type {readonly string[]} */ (events).includes(held.type)) || held.data?.[by] !== key) continue;
     const { type, data } = JSON.parse(json); // what release() will apply, not the caller’s object, which may have changed
-    ownEntries(v, list, key, type, data);
-    // Every list there, empty but this one’s view: turn.archive reads both work and items.
-    const lists = { items: {}, work: {}, [list]: { [key]: v.entries } };
+    if (type.endsWith('.add')) v.own.add(added(data));
+    else {
+      // The published entry is never touched: the first held event on it takes a copy.
+      const at = positionOf(v.entries, data.id);
+      if (at >= 0 && !v.own.has(data.id)) v.entries[at] = structuredClone(v.entries[at]);
+      v.own.add(data.id);
+    }
     try {
-      apply(lists, type, data);
-      // Read back: turn.archive gives the conversation a new work array rather than changing the old one (#305).
-      v.entries = lists[list][key];
+      apply({ [list]: { [key]: v.entries } }, type, data);
     } catch {
       // The release holds this event as rejected (#609), and by the reducer's contract its throw changed nothing, so
       // the view skips it too: what is pending stays what the release will publish.
     }
   }
-}
-
-/**
- * Makes the view own the entries a held event changes in place, so the published ones are never touched: the first
- * held event on an entry takes a copy. An add owns its new entry. turn.archive changes its replies’ activity in place,
- * and none of the work entries, whose array it replaces. O(entries named).
- * @param {any} v @param {PendingList} list @param {string} key @param {string} type @param {any} data
- */
-function ownEntries(v, list, key, type, data) {
-  if (type.endsWith('.add')) {
-    v.own.add(LISTS[list].added(data));
-    return;
-  }
-  for (const id of changedIds(list, key, type, data)) {
-    const at = positionOf(v.entries, id);
-    if (at >= 0 && !v.own.has(id)) v.entries[at] = structuredClone(v.entries[at]);
-    v.own.add(id);
-  }
-}
-
-/** The ids of the entries of the list a held event changes in place. @param {PendingList} list @param {string} key @param {string} type @param {any} data */
-function changedIds(list, key, type, data) {
-  if (type !== 'turn.archive') return [data.id];
-  if (list === 'work') return [];
-  return (data.items ?? []).filter((/** @type {any} */ r) => r?.threadId === key).map((/** @type {any} */ r) => r.id);
 }
