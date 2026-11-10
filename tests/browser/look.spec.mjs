@@ -7,7 +7,7 @@
 // look-amber.spec.mjs checks selected and on states (#181). Moved from tools/checks/look.mjs (#303).
 
 import { expect, test } from '@playwright/test';
-import { failOnPageErrors, settled, startPostbox, synced } from './postbox.mjs';
+import { failOnPageErrors, PHONE, settled, startPostbox, synced } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
 let app;
@@ -217,6 +217,6 @@ const CASES = [
 
 for (const width of [1280, 375])
   test.describe(`${width} px`, () => {
-    test.use(width < 768 ? { viewport: { width, height: 900 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 } : { viewport: { width, height: 900 } });
+    test.use(width < 768 ? { viewport: { width, height: 900 }, ...PHONE } : { viewport: { width, height: 900 } });
     for (const [name, run] of CASES) test(name(width), ({ page }) => run(page, width));
   });

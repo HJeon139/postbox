@@ -4,7 +4,7 @@
 // from tools/check-transcript-render.mjs (#303).
 
 import { expect, test } from '@playwright/test';
-import { failOnPageErrors, frames, startPostbox, synced, windowWidth } from './postbox.mjs';
+import { failOnPageErrors, frames, PHONE, startPostbox, synced, windowWidth } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
 let app;
@@ -151,7 +151,7 @@ test('#103 a card that closes while it has focus, as the pointer opens another, 
 });
 
 test.describe('at 375 px', () => {
-  test.use({ viewport: { width: 375, height: 812 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
+  test.use({ viewport: { width: 375, height: 812 }, ...PHONE });
 
   test('#103 at 375 px, both cards stay on screen, and nothing scrolls sideways', async ({ page }) => {
     await openNested(page);

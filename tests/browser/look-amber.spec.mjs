@@ -4,7 +4,7 @@
 // Moved from tools/checks/look.mjs (#303).
 
 import { expect, test } from '@playwright/test';
-import { failOnPageErrors, settled, startPostbox, synced } from './postbox.mjs';
+import { failOnPageErrors, PHONE, settled, startPostbox, synced } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
 let app;
@@ -102,7 +102,7 @@ function unmarked(found, where, kinds) {
 
 for (const width of [1280, 375])
   test.describe(`${width} px`, () => {
-    test.use(width < 768 ? { viewport: { width, height: 900 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 } : { viewport: { width, height: 900 } });
+    test.use(width < 768 ? { viewport: { width, height: 900 }, ...PHONE } : { viewport: { width, height: 900 } });
     test(`#181 at ${width} px (dark): selected segments, chosen chips and on toggles are amber outlines, in Postbox, Settings and an app`, async ({ page }) => {
       await page.goto(`${app.origin}/#/t/${t.id}`);
       await synced(page, app);

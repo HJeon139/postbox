@@ -6,7 +6,7 @@
 // until the top bar’s own ResizeObserver runs, before the frame is painted.
 
 import { expect, test } from '@playwright/test';
-import { failOnPageErrors, settled } from './postbox.mjs';
+import { failOnPageErrors, PHONE, settled } from './postbox.mjs';
 import { citationFixes } from './work-pane.mjs';
 
 /** @type {Awaited<ReturnType<typeof citationFixes>>} */
@@ -19,7 +19,7 @@ test.beforeAll(async () => {
 });
 test.afterAll(async () => ctx?.stop());
 failOnPageErrors(test);
-test.use({ viewport: { width: 375, height: 812 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
+test.use({ viewport: { width: 375, height: 812 }, ...PHONE });
 
 test('#866 at 375 px on a phone, opening a side thread beside Work never lays the page out wider than the window', async ({ page }) => {
   await page.addInitScript(() => {

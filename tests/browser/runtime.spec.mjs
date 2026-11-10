@@ -9,7 +9,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
 import { escapeRegExp } from '../../shared/regex.mjs';
-import { failOnPageErrors, startPostbox, synced, windowWidth } from './postbox.mjs';
+import { failOnPageErrors, PHONE, startPostbox, synced, windowWidth } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
 let app;
@@ -168,7 +168,7 @@ test('#59 #60 #5 the new-agent sheet lists your servers, all on, Effort after Mo
 });
 
 test.describe('at 375 px', () => {
-  test.use({ viewport: { width: 375, height: 812 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
+  test.use({ viewport: { width: 375, height: 812 }, ...PHONE });
 
   test('#59 at 375 px the editor, with a long server name, doesn’t scroll sideways', async ({ page }) => {
     const { p } = await persona(page, 'narrow', [{ name: 'plugin:engineering:google calendar and a much longer name', status: 'failed', source: 'plugin' }]);
