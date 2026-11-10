@@ -3,7 +3,6 @@
 // placement passes when it’s made or changed. The runtime (server/runtime.mjs) calls these with itself first.
 
 import { INVISIBLE } from '../../shared/invisible.mjs';
-import { lookedText } from '../../shared/remote-protocol.mjs';
 import { clipText, httpError } from '../helpers.mjs';
 
 /** A harness’s name for the person, and the host setting that names its path (shared/remote-settings.mjs). */
@@ -55,25 +54,8 @@ export function placement(rt, remote, backend) {
       `“${clipName(backend)}” runs only on this computer, so this agent can’t run on ${h.name}. ${can.length ? `Backends here that can run on a host: ${can.join(', ')}.` : 'Claude Code, Kiro CLI and Codex can run on a host, and none of them is on this computer.'}`,
     );
   }
-  checkHarness(rt, h, backend);
+  // Not refused from the host’s cached welcome (#1084): it can be stale, and the turn’s start on the host looks again.
   return { hostId: h.id };
-}
-
-/**
- * The host’s last welcome says which harnesses its daemon found. Not known yet, the turn’s start says.
- * @param {any} rt @param {any} h @param {string} backend
- */
-function checkHarness(rt, h, backend) {
-  const w = rt.hosts?.status(h.id)?.welcome;
-  if (!Array.isArray(w?.harnesses)) return;
-  const found = w.harnesses.find((/** @type {any} */ x) => x?.name === backend);
-  if (found?.path) return;
-  const [label, setting] = HARNESS_LABELS[backend] ?? [backend, 'its path'];
-  const looked = found?.looked?.length ? ` Postbox’s daemon looked in ${lookedText(found)}.` : '';
-  throw httpError(
-    422,
-    `${label} isn’t installed on ${h.name}, so this agent can’t run there.${looked} Install it there, or set ${setting} in the host’s settings.`,
-  );
 }
 
 /**

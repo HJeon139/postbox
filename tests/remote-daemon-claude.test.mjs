@@ -3,8 +3,9 @@
 // finds then, and never spawns one older than REMOTE_CLAUDE_MIN, whatever the start carries.
 
 import assert from 'node:assert/strict';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { test } from 'node:test';
+import { TURN_FILES } from '../shared/remote-protocol.mjs';
 import { hello, PROGRAMS_FOUND, setup, startMsg, until } from './remote-daemon-setup.mjs';
 
 /** A findPrograms whose claude is at `version` (null: none read). */
@@ -174,6 +175,8 @@ test('#1084: a claude the hello found at a path that’s gone since is looked fo
     const answer = await answerTo(c, 't1', { need: NEED_REMOTE });
     assert.equal(answer.type, 'started', answer.message);
     assert.deepEqual(r.asked, ['/home/user/.npm-global/bin/claude'], 'the old path was read once');
+    const record = JSON.parse(readFileSync(s.p.turn('t1', TURN_FILES.start), 'utf8'));
+    assert.equal(record.program, '/home/user/.local/bin/claude', 'the start runs the claude found again');
     assert.ok(finds >= 2, 'the programs were looked for again');
   } finally {
     s.done();

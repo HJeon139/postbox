@@ -39,7 +39,8 @@ export function placeField(st, paint, { idp, hosts, here, name }) {
               'aria-describedby': [`${idp}-where-help`, missing ? `${idp}-where-missing` : '', st.placeError ? `${idp}-where-err` : '']
                 .filter(Boolean)
                 .join(' '),
-              'aria-invalid': missing || st.placeError ? 'true' : null,
+              // Not found when Postbox connected is a note, not an error: the turn’s start looks again (#1084).
+              'aria-invalid': st.placeError ? 'true' : null,
               onchange: (e) => {
                 st.remote = e.target.value || null;
                 st.placeError = null;
@@ -55,10 +56,10 @@ export function placeField(st, paint, { idp, hosts, here, name }) {
     h('span.help', { id: `${idp}-where-help` }, help),
     missing
       ? h(
-          'span.err',
+          'span.help',
           { id: `${idp}-where-missing` },
           icon('warn'),
-          `${name} wasn’t found on ${host.name}${found?.looked?.length ? `: Postbox’s daemon looked in ${found.looked.join(', ')}` : ''}. Install it there, or set its path in the host’s settings.`,
+          `${name} wasn’t found on ${host.name} when Postbox connected${found?.looked?.length ? `: its daemon looked in ${found.looked.join(', ')}` : ''}. It looks again when a turn starts. Install it there, or set its path in the host’s settings.`,
         )
       : null,
     st.placeError ? h('span.err', { role: 'alert', id: `${idp}-where-err` }, icon('warn'), st.placeError) : null,

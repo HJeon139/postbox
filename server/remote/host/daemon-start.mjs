@@ -109,11 +109,13 @@ async function startTurn(d, c, m) {
  * @param {Daemon} d @param {any} m @param {FailStart} failStart
  */
 async function checkStart(d, m, failStart) {
-  const harness = await findHarness(d, m.harness);
+  let harness = await findHarness(d, m.harness);
   if (m.harness === 'claude-code') {
-    // The claude found now, against the bar the start carries and the daemon’s own floor (#1084).
+    // The claude found now, against the bar the start carries and the daemon’s own floor (#1084). It may have looked
+    // again and found another, so the start runs the one d.programs holds now.
     const refusal = await claudeRefusal(d, harness, m.need);
     if (refusal) return failStart(harness?.path ? 'start-failed' : 'no-harness', refusal);
+    harness = d.programs?.harnesses.find((x) => x.name === m.harness) ?? harness;
   }
   if (!harness?.path) return failStart('no-harness', `${m.harness} isn’t installed on this host. The daemon looked in ${lookedText(harness)}.`);
   const node = d.programs?.node.path ?? process.execPath;

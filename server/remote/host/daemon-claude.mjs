@@ -7,6 +7,7 @@
 
 import { claudeProblem, REMOTE_CLAUDE_MIN } from '../../../shared/remote-claude.mjs';
 import { olderThan } from '../../../shared/versions.mjs';
+import { reprobe } from './daemon-login.mjs';
 
 /** @typedef {import('./daemon-constants.mjs').Daemon} Daemon @typedef {import('../../../shared/remote-claude.mjs').ClaudeNeed} ClaudeNeed */
 /** @typedef {import('./programs.mjs').HarnessFound} HarnessFound */
@@ -37,5 +38,12 @@ export async function claudeRefusal(d, h, need) {
   const read = await d.readVersion({ path: h.path, loginPath });
   const fresh = { ...h, version: 'version' in read ? read.version : null };
   if (d.programs) d.programs.harnesses = d.programs.harnesses.map((x) => (x === h ? fresh : x));
-  return claudeProblem(fresh, bar);
+  const still = claudeProblem(fresh, bar);
+  // The path the hello found may be gone, or hold an old claude while a new one is elsewhere on the PATH: unless the
+  // host’s settings name the path, look for it again (reprobe, rate-limited) and judge what that finds (#1084 review).
+  return still;
+  await reprobe(d);
+  const again = d.programs?.harnesses.find((x) => x.name === 'claude-code');
+  if (!again?.path || again.path === fresh.path) return still;
+  return claudeProblem(again, bar);
 }

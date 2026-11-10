@@ -3,13 +3,13 @@
 //   own Stop isn’t offered; the agent’s panel says where it runs, and its Stop says what stops with it;
 // - the composer’s `!` hint says it runs on this computer, not on the host;
 // - the persona sheet’s Runs on offers this computer or a host, only a host for a backend not on this computer, says
-//   what the host’s daemon found, and shows the server’s refusal; Codex’s `auto` reads as Codex’s default;
+//   what the host’s daemon found when it connected, as a note, since the turn’s start looks again (#1084); Codex’s `auto` reads as Codex’s default;
 // - at 375 px the states, cards, notes and the sheet fit.
 // The agents list, the rings and the transcript’s turn states are tests/browser/remote-turns.spec.mjs. On the seeded
 // room of tests/browser/remote-turns.mjs. Moved from tools/check-remote-stop.mjs (#303).
 
 import { expect, test } from '@playwright/test';
-import { allowPageError, failOnPageErrors, synced, windowWidth } from './postbox.mjs';
+import { failOnPageErrors, synced, windowWidth } from './postbox.mjs';
 import { axe, overflowing } from './remote-hosts.mjs';
 import { startRemoteTurns } from './remote-turns.mjs';
 
@@ -48,15 +48,11 @@ async function sheet(page, persona) {
   await page.evaluate((id) => import('/app/js/sheets.mjs').then((m) => m.openSettings('personas', id)), persona.id);
   await expect(where(page), 'Runs on').toBeVisible();
 }
-/** Codex’s sheet, moved to a host whose daemon didn’t find Codex, and saved: the server refuses. */
-async function refused(page) {
+/** Codex’s sheet, moved to a host whose daemon didn’t find Codex when it connected: the note says so (#1084). */
+async function noted(page) {
   await sheet(page, s.cx);
   await where(page).selectOption(s.A.id);
   await expect(page.locator('#pe-where-missing'), 'Codex wasn’t found there').toBeVisible();
-  // The page logs the server’s refusal of the save.
-  allowPageError(page, /status of 422/);
-  await dialog(page).getByRole('button', { name: 'Save', exact: true }).click();
-  await expect(page.locator('#pe-where-err'), 'the server’s refusal').toBeVisible();
 }
 
 test('#120 Stop says first that the host’s background jobs stop with the turn, keeps none, and a job has no Stop of its own', async ({ page }) => {
@@ -143,9 +139,9 @@ test.describe('at 375 px', () => {
   test.use({ viewport: { width: 375, height: 800 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
 
   test('#120 at 375 px the states, cards, notes and the sheet fit, and axe finds no violations', async ({ page }) => {
-    await test.step('the persona sheet, with Runs on’s error and the server’s refusal', async () => {
+    await test.step('the persona sheet, with Runs on’s note that Codex wasn’t found', async () => {
       await open(page, s.solo);
-      await refused(page);
+      await noted(page);
       // Within the sheet, and the sheet within the window: its tabs row wraps at 375 px.
       const spill = await dialog(page).evaluate((d, w) => {
         const box = d.getBoundingClientRect();
