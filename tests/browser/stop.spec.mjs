@@ -13,7 +13,7 @@
 // own for each test. Moved from tools/check-stop.mjs (#303).
 
 import { expect, test } from '@playwright/test';
-import { failOnPageErrors, focusIs, startPostbox, synced } from './postbox.mjs';
+import { failOnPageErrors, focusIs, PHONE, startPostbox, synced } from './postbox.mjs';
 
 const SEND_NOW = { name: /^Send now/ };
 
@@ -275,7 +275,7 @@ const overflowing = (page, selector, width = 375) =>
   );
 
 test.describe('at 375 px', () => {
-  test.use({ viewport: { width: 375, height: 800 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
+  test.use({ viewport: { width: 375, height: 800 }, ...PHONE });
 
   test('#129 #215 at 375 px the ask, the job row and each stopped reply’s tag fit without scrolling sideways', async ({ page }) => {
     const { rt } = app;

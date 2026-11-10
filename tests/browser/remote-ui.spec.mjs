@@ -11,7 +11,7 @@
 import { readFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
 import { createStreamMapper } from '../../server/adapters/claude-stream.mjs';
-import { failOnPageErrors, synced } from './postbox.mjs';
+import { failOnPageErrors, PHONE, synced } from './postbox.mjs';
 import { axe, overflowing, startRemote } from './remote-hosts.mjs';
 
 /** @type {Awaited<ReturnType<typeof startRemote>>['app']} */
@@ -94,7 +94,7 @@ async function clean(page, selector, where) {
 
 for (const width of [1280, 375]) {
   test.describe(`at ${width} px`, () => {
-    if (width < 768) test.use({ viewport: { width, height: 812 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
+    if (width < 768) test.use({ viewport: { width, height: 812 }, ...PHONE });
 
     test(`#120 the agent’s ring says it runs on the host, connected${width > 767 ? ', and so does its row' : ''}`, async ({ page }) => {
       await open(page);

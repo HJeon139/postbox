@@ -63,6 +63,9 @@ export async function reviewRoom(name) {
       // A revision that renames the table’s Cost column, leaving its delimiter as it was (#1098).
       if (message.kind === 'user' && message.text.endsWith('rename'))
         ctx.tools.update_block({ block: { ...block, revision: 2, content: DRAFT.replace('| Name | Cost |', '| Name | Price |'), previous: DRAFT } });
+      // A revision that adds two lines at the top and rewords the table’s row on line 10 (#1143), leaving its “low”.
+      if (message.kind === 'user' && message.text.endsWith('reprice'))
+        ctx.tools.update_block({ block: { ...block, revision: 2, content: `Intro.\n\n${DRAFT.replace('| Alpha | low price |', '| Alpha | a low price |')}` } });
       // A revision that is a table with no body: its header and its delimiter only (#1098).
       if (message.kind === 'user' && message.text.endsWith('header only'))
         ctx.tools.update_block({ block: { ...block, revision: 2, content: '| Name | Cost |\n|---|---|' } });

@@ -9,9 +9,9 @@ import { drawUntilPainted } from './view-skip.mjs';
 /**
  * What a view gives a jump: its scroll box; the page's y where what you can see of it starts and ends, below the top
  * bar in the main pane; halt(), which ends a smooth jump to the end and says whether one ran; and pin(), which makes
- * an item its anchor.
+ * an item its anchor; and held(), which takes the anchor where the view is now, after a move that wasn’t you.
  * @typedef {{ box: () => Element | null, seen: () => { top: number, bottom: number }, halt: () => boolean,
- *   pin: (item: HTMLElement) => void }} Jumpable
+ *   pin: (item: HTMLElement) => void, held: () => void }} Jumpable
  */
 
 /** Each mounted transcript's view, so a jump from anywhere on the page finds the one its target is in. */
@@ -20,6 +20,8 @@ const views = /** @type {WeakMap<Element, Jumpable>} */ (new WeakMap());
 export const register = (el, view) => views.set(el, view);
 /** @param {Element} el */
 export const unregister = (el) => views.delete(el);
+/** The transcript el’s view takes its anchor where it is now, as a move by the page, not by you (window.mjs). */
+export const holdView = (/** @type {Element} */ el) => views.get(el)?.held();
 
 /**
  * Where el should start in the view for that block, or null when it needn't move ('nearest', already in view).

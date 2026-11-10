@@ -4,7 +4,7 @@
 // the control, changes what the panel shows on the server, waits until the page has heard it, then lets go.
 
 import { expect, test } from '@playwright/test';
-import { failOnPageErrors, focusIs, frames, startPostbox, synced } from './postbox.mjs';
+import { failOnPageErrors, focusIs, frames, PHONE, startPostbox, synced } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
 let app;
@@ -79,7 +79,7 @@ const PICKED =
 
 for (const width of [375, 1280]) {
   test.describe(`at ${width} px`, () => {
-    test.use(width === 375 ? { viewport: { width: 375, height: 812 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 } : {});
+    test.use(width === 375 ? { viewport: { width: 375, height: 812 }, ...PHONE } : {});
 
     test(`a press held on Ask me while the panel repaints picks it, at ${width} px`, async ({ page }) => {
       await panelOpen(page);
@@ -188,7 +188,7 @@ test('a panel closed while a press is held paints nothing when it’s let go', a
 });
 
 test.describe('by touch at 375 px', () => {
-  test.use({ viewport: { width: 375, height: 812 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
+  test.use({ viewport: { width: 375, height: 812 }, ...PHONE });
   // The finger below goes through Chromium’s DevTools protocol, which other browsers don’t have.
   test.skip(({ browserName }) => browserName !== 'chromium', 'a held touch needs Chromium’s DevTools protocol');
 

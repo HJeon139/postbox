@@ -69,7 +69,7 @@ test('#297 in one frame: a change, then a finished reply drawn again shorter (it
     const { client } = await import('/app/js/client.mjs');
     const threadId = location.hash.split('/').at(-1);
     // No height held yet, as just after a new item (view-state.mjs release()): the hold would mask the shrink.
-    /** @type {HTMLElement} */ (document.querySelector('#main')).style.removeProperty('--held');
+    /** @type {HTMLElement} */ (document.querySelector('#main')).style.removeProperty('margin-bottom');
     const items = [...document.querySelectorAll('#main > .item')];
     items.at(-2)?.append(document.createTextNode(' x'));
     await Promise.resolve();

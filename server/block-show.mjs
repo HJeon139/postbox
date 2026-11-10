@@ -2,6 +2,7 @@
 // new version of it (updateApp, server/apps.mjs); an id that names another session's app gets a fresh one.
 
 import { validateBlock } from '../shared/catalog.mjs';
+import { PERSON } from '../shared/review-comments.mjs';
 import { appReceipt } from './app-check-status.mjs';
 import { withAppIntent, withIntentNote } from './apps.mjs';
 import { OUTCOME_LATER } from './blocks.mjs';
@@ -23,6 +24,12 @@ export function showBlock(rt, sessionId, { turn, se, threadId, endSegment, tools
   if (block && typeof block === 'object' && Object.hasOwn(block, 'outcome'))
     return { ok: false, message: OUTCOME_LATER(String(block.id ?? 'this block'), 'The block wasn’t shown.') };
   // An app’s intent is never why it’s refused (#995): trimmed and cut as show_app does.
+  // Only the person’s answer writes a comment in their name (#1143), so a review can’t be shown with one.
+  if (block?.type === 'review' && hasPersonComment(block))
+    return {
+      ok: false,
+      message: 'A review can’t be shown with a comment in the person’s name (author “you”): only their answer writes one. The block wasn’t shown.',
+    };
   const saidIntent = block?.type === 'app' ? block.intent : undefined;
   block = withAppIntent(block);
   const v = validateBlock(block, { imageOrigins: rt.config.imageOrigins });
@@ -71,4 +78,10 @@ function blockItem(sessionId, se, turn, block, v) {
   return v.ok
     ? { ...by, valid: true, block: v.block, answered: false, ...wokeOf(turn) }
     : { ...by, valid: false, raw: block, errors: v.errors, reason: v.reason, fallback: v.fallback };
+}
+
+/** Whether a review’s threads hold a comment in the person’s name (#1143). @param {any} block */
+function hasPersonComment(block) {
+  const threads = Array.isArray(block.threads) ? block.threads : [];
+  return threads.some((t) => Array.isArray(t?.comments) && t.comments.some((c) => c?.author === PERSON));
 }

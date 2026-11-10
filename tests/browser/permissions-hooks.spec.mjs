@@ -7,7 +7,7 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
-import { failOnPageErrors, settled, startPostbox, synced, windowWidth } from './postbox.mjs';
+import { failOnPageErrors, PHONE, settled, startPostbox, synced, windowWidth } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
 let app;
@@ -170,7 +170,7 @@ for (const [width, phone] of [
   [1280, false],
 ]) {
   test.describe(`at ${width} px`, () => {
-    test.use(phone ? { viewport: { width, height: 800 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 } : { viewport: { width, height: 900 } });
+    test.use(phone ? { viewport: { width, height: 800 }, ...PHONE } : { viewport: { width, height: 900 } });
 
     test(`#871 the panel names each PermissionRequest hook, with its event, and fits the window (${width} px)`, async ({ page }) => {
       const hooks = await openHooks(page, 'asker');

@@ -73,6 +73,12 @@ export const SENDING = Object.freeze({
 });
 
 /**
+ * The longest prompt, in UTF-8 bytes, Postbox passes as one command-line argument to a backend that has another way in
+ * (#362). Linux refuses one argument past 128 KiB (MAX_ARG_STRLEN) with E2BIG; this leaves room for the rest of the line.
+ */
+export const ARG_PROMPT_MAX = 100_000;
+
+/**
  * How long a remote turn may wait in silence on a background task before it’s stopped as hung (#847). The longest a
  * Claude Code background Bash call may run (its timeout’s maximum, 7,200,000 ms), so Postbox never stops one first.
  */
@@ -129,6 +135,15 @@ export const REVIEW_IMAGES = Object.freeze({
   /** An image’s width or height, in pixels. */
   reviewImageSide: 8192,
 });
+
+/**
+ * A review block’s threads (#1143): at most REVIEW_THREADS_OPEN open at once, so resolving one frees its place, and
+ * REVIEW_THREADS_MAX open and resolved, holding at most REVIEW_THREADS_BYTES of comment text in UTF-8, so one review
+ * can’t carry megabytes into every snapshot. Past either of the last two, a new review block takes the text so far.
+ */
+export const REVIEW_THREADS_OPEN = 200;
+export const REVIEW_THREADS_MAX = 1000;
+export const REVIEW_THREADS_BYTES = 2 * 1024 * 1024;
 
 /** The most characters in the whole-sentence glimpse shown while an agent works (#478). */
 export const GLIMPSE_CHARS = 160;

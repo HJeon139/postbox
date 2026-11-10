@@ -6,7 +6,7 @@
 
 import { expect, test } from '@playwright/test';
 import { failure } from '../../server/remote/ssh.mjs';
-import { failOnPageErrors, synced } from './postbox.mjs';
+import { failOnPageErrors, PHONE, synced } from './postbox.mjs';
 import { axe, overflowing, startRemote } from './remote-hosts.mjs';
 
 /** @type {Awaited<ReturnType<typeof startRemote>>} */
@@ -110,6 +110,6 @@ const phone = async (page) => {
 };
 
 test.describe('at 375 px', () => {
-  test.use({ viewport: { width: 375, height: 812 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
+  test.use({ viewport: { width: 375, height: 812 }, ...PHONE });
   test('#464 at 375 px a turn waiting on a host while Postbox installs there shows no token or path', ({ page }) => phone(page));
 });

@@ -13,7 +13,7 @@
 
 import { expect, test } from '@playwright/test';
 import { escapeRegExp } from '../../shared/regex.mjs';
-import { failOnPageErrors, settled, startPostbox, synced, windowWidth } from './postbox.mjs';
+import { failOnPageErrors, PHONE, settled, startPostbox, synced, windowWidth } from './postbox.mjs';
 import { heldBackend, sideRoom } from './side-threads.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -286,7 +286,7 @@ test('a failed side-thread turn shows on its line with Retry, and the line’s O
 });
 
 test.describe('at 375 px', () => {
-  test.use({ viewport: { width: 375, height: 812 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
+  test.use({ viewport: { width: 375, height: 812 }, ...PHONE });
 
   test('at 375 px, the side-thread line with its agent’s state fits without scrolling sideways', async ({ page }) => {
     const r = room('Narrow');

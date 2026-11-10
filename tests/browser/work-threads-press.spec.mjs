@@ -7,7 +7,7 @@
 
 import { expect, test } from '@playwright/test';
 import { turnLine } from '../../shared/work.mjs';
-import { failOnPageErrors, frames, startPostbox, synced } from './postbox.mjs';
+import { failOnPageErrors, frames, PHONE, startPostbox, synced } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
 let app;
@@ -72,7 +72,7 @@ async function paneAtTurn(page) {
 
 for (const width of [375, 1280]) {
   test.describe(`at ${width} px`, () => {
-    test.use(width === 375 ? { viewport: { width: 375, height: 812 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 } : {});
+    test.use(width === 375 ? { viewport: { width: 375, height: 812 }, ...PHONE } : {});
 
     test(`a press held on Open this turn while the Work list refills opens the turn, at ${width} px`, async ({ page }) => {
       await paneAtTurn(page);
@@ -118,7 +118,7 @@ for (const width of [375, 1280]) {
 // toggle ran, so the press left it open.
 for (const width of [375, 1280]) {
   test.describe(`closing, at ${width} px`, () => {
-    test.use(width === 375 ? { viewport: { width: 375, height: 812 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 } : {});
+    test.use(width === 375 ? { viewport: { width: 375, height: 812 }, ...PHONE } : {});
 
     test(`a press held on an open turn’s row while the Work list refills closes the turn, at ${width} px`, async ({ page }) => {
       await paneAtTurn(page);

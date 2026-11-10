@@ -5,7 +5,7 @@
 // 8 to 10, the delimiter line 9.
 
 import { expect, test } from '@playwright/test';
-import { failOnPageErrors, synced } from './postbox.mjs';
+import { failOnPageErrors, PHONE, synced } from './postbox.mjs';
 import { reviewRoom, viewRadio } from './review.mjs';
 
 /** @type {Awaited<ReturnType<typeof reviewRoom>>} */
@@ -39,7 +39,7 @@ const lineAbove = (thread) =>
 
 for (const width of [375, 1280]) {
   test.describe(`at ${width} px`, () => {
-    test.use(width === 375 ? { viewport: { width: 375, height: 812 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 } : {});
+    test.use(width === 375 ? { viewport: { width: 375, height: 812 }, ...PHONE } : {});
 
     test(`#835 the numbers beside a table run on without a gap, the delimiter’s row with its number and comment button (${width} px)`, async ({ page }) => {
       const { block, table } = await inLines(page, `Numbers ${width}`);
@@ -90,7 +90,7 @@ for (const width of [375, 1280]) {
       await block.getByRole('button', { name: 'Submit review', exact: true }).click();
       await expect
         .poll(() => room.calls.find((m) => m.kind === 'event' && m.event.blockId === blockId)?.event.values.comments, { message: 'the agent gets the comment' })
-        .toEqual([{ line: 9, text: 'Center the cost.' }]);
+        .toEqual([{ line: 9, text: 'Center the cost.', threadId: 'you-1-1' }]);
     });
   });
 }
@@ -122,7 +122,7 @@ test('#1098 a table with only a header shows its delimiter’s row after it, num
 // #1098: a renamed header with its delimiter unchanged.
 for (const width of [375, 1280]) {
   test.describe(`renamed, at ${width} px`, () => {
-    test.use(width === 375 ? { viewport: { width: 375, height: 812 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 } : {});
+    test.use(width === 375 ? { viewport: { width: 375, height: 812 }, ...PHONE } : {});
 
     test(`#1098 a renamed header with its delimiter unchanged: the delimiter comes after the new header, so the numbers read in order (${width} px)`, async ({
       page,

@@ -10,7 +10,7 @@ import { createRequire } from 'node:module';
 import { expect, test } from '@playwright/test';
 import { turnLine } from '../../shared/work.mjs';
 import { turnRows } from '../../shared/work-list.mjs';
-import { failOnPageErrors, frames, settled, startPostbox, synced, windowWidth } from './postbox.mjs';
+import { failOnPageErrors, frames, PHONE, settled, startPostbox, synced, windowWidth } from './postbox.mjs';
 
 const AXE = readFileSync(createRequire(import.meta.url).resolve('axe-core/axe.min.js'), 'utf8');
 
@@ -178,12 +178,14 @@ for (const { width, height, phone } of [
   { width: 375, height: 812, phone: true },
 ])
   test.describe(`${width} px`, () => {
-    test.use(phone ? { viewport: { width, height }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 } : { viewport: { width, height } });
+    test.use(phone ? { viewport: { width, height }, ...PHONE } : { viewport: { width, height } });
     for (const [name, run] of CASES) test(`${width} px: ${name}`, ({ page }) => run(page, { width }));
   });
 
 // Last, since it changes the ledger the tests above read.
-test('1280 px: a row follows the ledger after the turn: a background command that ends, and an app retired, say so', async ({ page }) => {
+test('1280 px: a row follows the ledger after the turn: a background command that ends, is stopped or ends on its own, and an app retired, say so', async ({
+  page,
+}) => {
   const { rt, store } = app;
   await open(page);
   await list(page).locator('.wl-more').click();
@@ -192,6 +194,11 @@ test('1280 px: a row follows the ledger after the turn: a background command tha
   await expect(command).toContainText('didn’t report how it ended');
   rt.ledger.jobUpdate({ threadId: conv.id, toolUseId: bg.toolUseId }, { state: 'stopped', by: 'you' });
   await expect(command, 'the row says stopped').toHaveText(/stopped$/);
+  // #519: kept running when its agent stopped, then ended on its own: it ended, not “didn’t report”.
+  rt.ledger.patch(conv.id, bg.id, { state: 'background', keptRunning: true, leftRunning: true, stoppedBy: null });
+  rt.ledger.jobUpdate({ threadId: conv.id, toolUseId: bg.toolUseId }, { state: 'done' });
+  await expect(command, 'the row says it ended').toHaveText(/ended$/);
+  await expect(command, 'not that it didn’t report how').not.toContainText('didn’t report');
   // An app retired after the turn (#193): its row says so.
   const pub = entries().find((e) => e.kind === 'publish');
   store.emit('app', { ...store.state.apps[pub.blockId], retired: { by: 'researcher', reason: 'Superseded.', replacedBy: null, at: Date.now() } });

@@ -5,8 +5,8 @@
 // plain-text fallback. A block that fails validation is never rendered: the app shows its fallback
 // and a collapsed "Show the raw block" instead.
 
-import { INTENT_CHARS, LIMITS } from './limits.mjs';
-import { ANCHOR, anchorError } from './review-comments.mjs';
+import { INTENT_CHARS, LIMITS, REVIEW_THREADS_MAX } from './limits.mjs';
+import { ANCHOR, anchorError, author, threadsError } from './review-comments.mjs';
 import { bool, id, int, list, num, obj, oneOf, scalar, str, typeName } from './schema.mjs';
 import { isSafeUrl, LOCAL_HTTP } from './urls.mjs';
 
@@ -254,11 +254,11 @@ const SCHEMAS = {
             ...ANCHOR,
             anchor: str({ min: 1, max: 80 }),
             status: oneOf('open', 'resolved'),
-            comments: list(obj({ author: str({ min: 1, max: 64 }), text: str({ min: 1, max: 4000 }) }, ['author', 'text']), { min: 1, max: 50 }),
+            comments: list(obj({ author, text: str({ min: 1, max: 4000 }) }, ['author', 'text']), { min: 1, max: 50 }),
           },
           ['id', 'status', 'comments'],
         ),
-        { max: 200, unique: 'id' },
+        { max: REVIEW_THREADS_MAX, unique: 'id' },
       ),
       outcome: outcome(),
     },
@@ -270,6 +270,7 @@ const SCHEMAS = {
         const why = anchorError(t);
         if (why) errs.push(`threads[${i}]: ${why}`);
       }
+      threadsError(b.threads, errs);
     },
   },
   app: {
