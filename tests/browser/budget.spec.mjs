@@ -18,7 +18,7 @@ import { cpus, loadavg } from 'node:os';
 import { expect, test } from '@playwright/test';
 import { idleFor, paced } from '../../tools/budget-pace.mjs';
 import { busy, installProbe, SLOW_KEY_ID, SLOW_KEY_MS, startFrames, stopFrames, THRESHOLD_MS, untilOpen, untilShown } from '../../tools/budget-probe.mjs';
-import { elementsVerdict, entriesInOrder, gapCalibrated, gapVerdict, keyTimes, timedVerdict, unpresented } from '../../tools/budget-stats.mjs';
+import { BUDGET_MS, elementsVerdict, entriesInOrder, gapCalibrated, gapVerdict, keyTimes, timedVerdict, unpresented } from '../../tools/budget-stats.mjs';
 import { calibrated } from '../../tools/key-frame-stats.mjs';
 import { seedBigRoom } from '../../tools/uat/big-room.mjs';
 import { startPostbox } from './postbox.mjs';
@@ -35,7 +35,10 @@ const OPEN_CAP_MS = 120_000;
  * reported, so a run on a loaded build host doesn’t read as a regression. The element count gates everywhere.
  */
 const TIMES_GATE = !!process.env.POSTBOX_BUDGET_REFERENCE;
-const KEYS = { warmup: 10, measured: 40, everyMs: 50 };
+// Keys are pressed more than the budget apart, still quick typing (a person types about 150 to 250 ms a key): a key
+// whose frame is never presented runs on to the next press, and so over the budget, where unpresented catches it.
+// Pressed 50 ms apart, such a key read about 50 ms, a pass (critic’s read of #1185).
+const KEYS = { warmup: 10, measured: 40, everyMs: 120 };
 const MESSAGES = { count: 20, everyMs: 300 };
 const SCROLLS = { count: 20, everyMs: 150 };
 const OPENS = 5;
@@ -199,6 +202,7 @@ async function measureOpening(room) {
  * @param {Room} room  @param {{ name: string, keys: string[], warmup: number, everyMs: number }} o
  */
 async function measureKeys(room, { name, keys, warmup, everyMs }) {
+  if (everyMs <= BUDGET_MS) throw new Error(`Keys ${everyMs} ms apart would hide an unpresented frame under the ${BUDGET_MS} ms budget.`);
   const { page } = room;
   const since = now();
   const from = (await recorded(page)).keys.length;
