@@ -112,6 +112,10 @@ export function gitRemoteEnv(scenario, dir) {
     GH_CONFIG_DIR: p.ghConfig,
     GH_TOKEN: NO_TOKEN,
     GITHUB_TOKEN: '',
+    // As noGithubEnv does, which a run with `- github: real` doesn't get: a terminal's askpass would answer
+    // `git credential fill` (#1109, #1125). Empty, git asks nothing.
+    GIT_ASKPASS: '',
+    SSH_ASKPASS: '',
     // No ssh agent, so even Postbox’s own push, which keeps SSH_AUTH_SOCK, has no key for an ssh remote. A git-remote
     // run is local only: Postbox reaches a host over ssh.
     SSH_AUTH_SOCK: '',
