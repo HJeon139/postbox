@@ -4,7 +4,7 @@
 
 import { expect, test } from '@playwright/test';
 import { FIRST_DAY_WORD } from '../../tools/uat/big-room.mjs';
-import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
+import { failOnPageErrors, startPostbox, synced, wholeRoom } from './postbox.mjs';
 import { bigRoom, still } from './view-skipped-fixture.mjs';
 
 // Tracing is off: Playwright's trace snapshots walk all 1,000 items with their skipped styles each action, which
@@ -18,6 +18,8 @@ test.beforeAll(async () => {
 });
 test.afterAll(async () => app?.stop());
 failOnPageErrors(test);
+// Every item mounted, the window off: this spec is of the whole-room path (postbox.mjs, wholeRoom).
+wholeRoom(test);
 
 /** Opens a conversation, or a side thread in the panel beside it, and waits for its items to mount and hold still. */
 async function open(page, { conv, side = null, count }, width = 1280) {

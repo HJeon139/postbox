@@ -215,8 +215,9 @@ test('#104 ! in a topic thread says before sending that it won’t run there, an
   await side.click();
   await page.keyboard.type('!gh --help');
   await expect(hint).toContainText('! runs commands only in the conversation’s own composer. Here, this goes to the agent as a message.');
-  // Back to a message, the hint is the thread’s own again.
-  await page.keyboard.press('Home');
+  // Back to a message, the hint is the thread’s own again. The caret goes to the start by setting the selection, not
+  // by a key: Home doesn’t move it in Firefox on macOS, and Ctrl+Left moves a word on Linux and Windows (#1139).
+  await side.evaluate((el) => /** @type {HTMLTextAreaElement} */ (el).setSelectionRange(0, 0));
   await page.keyboard.press('Delete');
   await expect(side).toHaveValue('gh --help');
   await expect(hint).not.toContainText('runs commands only');

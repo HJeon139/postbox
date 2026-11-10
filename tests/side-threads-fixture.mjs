@@ -4,6 +4,10 @@
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { newId, Store } from '../server/store.mjs';
+import { tempDir } from './temp-dirs.mjs';
+
+// The project’s folder, a temp folder of the test file’s: the adapters make agent folders in it (#823).
+const PROJECT_DIR = tempDir('pb-project-');
 
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -36,7 +40,7 @@ export function setup(store = new Store(null)) {
     corpus,
     config: { origin: 'http://127.0.0.1:1', imageOrigins: [], lintSettleMs: 0 },
   });
-  store.emit('project', { id: 'p1', name: 'P', folder: '/tmp' });
+  store.emit('project', { id: 'p1', name: 'P', folder: PROJECT_DIR });
   const a = rt.createPersona({ handle: 'alpha' });
   const b = rt.createPersona({ handle: 'beta' });
   const c = rt.createPersona({ handle: 'gamma' });

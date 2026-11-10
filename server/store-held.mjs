@@ -7,9 +7,12 @@
 // list that held writes have superseded, each call site placed in tests/store-held-guard.test.mjs.
 //
 // It applies held emits without the commit in front of them, whose events don’t exist until the writer runs its
-// builder, so it is exact only while no commit touches the list read: none does today; a commit kind that touches
-// items or work is placed in the guard beside these readers. A pending item has no position yet (B1 assigns n at the
-// release), so no pending reader may depend on one.
+// builder, so it is exact only while no commit touches the list read. One does: the archive pass’s turn.archive (#305,
+// server/work-archive.mjs), placed in the guard beside these readers. While it is in flight, a pending read still shows
+// the turn’s moved entries and full activity, with held emits on top, and a held work.patch for a moved entry is
+// dropped at the release (designs/305-archive-turns.md, “One pass”). What the pending readers decide on, the kept
+// entries and the newest turns, isn’t moved, so it reads the same before, during and after (T-16). A pending item has
+// no position yet (B1 assigns n at the release), so no pending reader may depend on one.
 //
 // A view is kept per list, and per collection, and grows as emits are held: while a commit is stuck in its fsync, a
 // streaming reply holds an item.text per chunk and readers run per chunk, so each held event is applied once, not once
