@@ -263,16 +263,26 @@ function unmark(id) {
   for (const r of marked.get(id) ?? []) quotes?.delete(r);
   marked.delete(id);
 }
+/**
+ * Reviews whose ranges wait to be added. A block is drawn before it’s on the page, and Firefox never paints a range
+ * added while it was off the page (the integrator’s read of #1159), so they’re added a frame later, all at once.
+ */
+const toAdd = new Set();
+function addMarks() {
+  const h = highlight();
+  for (const id of toAdd) for (const r of marked.get(id) ?? []) h.add(r);
+  toAdd.clear();
+}
 /** Marks the text each comment on a selection is on (CSS Custom Highlight; ::highlight(rv-quote) in workbench.css). */
 function mark(id, ranges) {
   if (!canMark()) return;
   // A block is drawn before it’s on the page, so a range off the page may be one about to be: only a long list of
   // them, from reviews no longer shown, is cleared.
   if (marked.size > 50) for (const [k, v] of marked) if (k !== id && !v[0]?.startContainer.isConnected) unmark(k);
-  const h = highlight();
   unmark(id);
   marked.set(id, ranges);
-  for (const r of ranges) h.add(r);
+  toAdd.add(id);
+  if (toAdd.size === 1) requestAnimationFrame(addMarks);
 }
 // Going to another conversation draws it in the same task, so a frame later a range off the page is one from a review
 // no longer shown. Its ranges hold its text, and so its old page: they go then, not only past 50 reviews (#945).
