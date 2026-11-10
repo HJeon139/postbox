@@ -118,7 +118,10 @@ const blur = (page) => page.evaluate(() => /** @type {HTMLElement | null} */ (do
  * @param {import('@playwright/test').Page} page
  */
 async function plantedKey(page) {
-  await page.evaluate((id) => document.body.append(Object.assign(document.createElement('button'), { id, textContent: 'Budget probe' })), SLOW_KEY_ID);
+  // A text field, not a button: Firefox on macOS doesn’t always give a button focus, and without it the planted key
+  // lands in the composer, isn’t held for 60 ms, and its entry never comes (researcher’s Firefox run on ed8edcb5). A
+  // field takes focus everywhere, and the key it types gives its frame something to paint.
+  await page.evaluate((id) => document.body.append(Object.assign(document.createElement('input'), { id, ariaLabel: 'Budget probe' })), SLOW_KEY_ID);
   const index = (await recorded(page)).keys.length;
   await page.locator(`#${SLOW_KEY_ID}`).press('a');
   const reported = async () => {
