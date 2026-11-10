@@ -32,6 +32,8 @@ test.beforeAll(async () => {
     name: 'mock',
     async deliver(_session, message, ctx) {
       if (message.kind === 'user' && message.text.endsWith('reviews')) for (let n = 1; n <= REVIEWS; n++) ctx.tools.show_block({ block: review(n) });
+      if (message.kind === 'user' && message.text.endsWith('revise'))
+        ctx.tools.update_block({ block: { ...review(1), content: `${CONTENT}\n\nOne more line.` } });
     },
   });
   drafter = app.rt.createPersona({ handle: 'drafter' });
@@ -74,4 +76,13 @@ test('#1151 opening a room of eight commented reviews builds the comment highlig
   test.info().annotations.push({ type: 'measured', description: `Highlight built ${counts.built}, set ${counts.set}` });
   expect(counts.built, 'the highlight is built once, not once per review').toBeLessThanOrEqual(1);
   expect(counts.set, 'and set once').toBeLessThanOrEqual(1);
+
+  // A revised review draws again: its old marks leave the highlight, so it still holds one per review.
+  rt.sendMessage(thread.id, { text: '@drafter revise' });
+  await expect.poll(() => rt.turns.size, { message: 'the agent to finish' }).toBe(0);
+  await synced(page, app);
+  await expect(page.locator('.rv-preview .md', { hasText: 'One more line.' }), 'the revision drawn in Preview').toHaveCount(1);
+  await expect
+    .poll(() => page.evaluate(() => CSS.highlights.get('rv-quote')?.size ?? 0), { message: 'one mark per review, not the old ones too' })
+    .toBe(REVIEWS);
 });
