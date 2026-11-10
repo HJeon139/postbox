@@ -65,6 +65,8 @@ const PLACED = {
   'thread-summary.mjs': 5, // an abort; settleThread's quiet wait, through an injected setTimer as lint-delivery's, skips while closed
   'turn-work.mjs': 1, // a permission prompt’s wait for its call’s line (#353): memory only, no store
   'write-intent.mjs': 1, // an abort: no store
+  'archive-runtime.mjs': 2, // a yield between conversations, and the shutdown's ARCHIVE_STOP_MS bound on the passes (#305): no store
+  'work-archive.mjs': 1, // a yield between archived turns, so held emits drain (#305): no store; the pass checks canWrite before each file
 };
 
 /**

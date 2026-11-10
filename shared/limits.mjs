@@ -183,6 +183,8 @@ export const CHAIN_HINT = 6;
 export const chainHintAt = (limit) => Math.min(CHAIN_HINT, limit);
 /** Wakes held on one waiting wake card, delivered or not as the person answers it (#439); past this, they’re refused. */
 export const HELD_WAKES = 20;
+/** Wakes one agent session may have pending with schedule_wake, not yet fired (#362); past this, it’s refused. */
+export const PENDING_WAKES = 20;
 
 /** How long a remote read waits for Postbox before it is answered from the host's snapshot (#582). Kiro gives up a call after 120 s, so the answer has to be there well before. */
 export const REMOTE_READ_TIMEOUT_MS = 100_000;

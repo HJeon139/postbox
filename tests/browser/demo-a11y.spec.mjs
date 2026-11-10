@@ -117,9 +117,23 @@ async function drawn(page) {
 async function axe(page) {
   // Evaluated as the DevTools protocol does, which the page’s policy on scripts doesn’t cover, as a tag it loads would be.
   await page.evaluate(`${AXE};0`);
+  // Every frame on the page must be one axe can’t enter, a sandbox page with an opaque origin, since it runs with
+  // iframes: false below. A frame whose document this page can read, a same-origin one, would drop out of the check.
+  const readable = await page.evaluate(
+    () =>
+      [...document.querySelectorAll('iframe')].filter((f) => {
+        const doc = f.contentDocument;
+        // An empty about:blank is a frame not loaded yet; one a script has filled holds content axe would skip.
+        const empty = doc?.URL === 'about:blank' && !doc.body?.children.length;
+        return doc !== null && !empty;
+      }).length,
+  );
+  expect(readable, 'no frame axe could enter is left out of its check').toBe(0);
   return page.evaluate(() =>
     /** @type {any} */ (window).axe
-      .run(document, { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'] }, resultTypes: ['violations'] })
+      // iframes: false, since axe can’t enter an agent app (above). Trying posts to each sandboxed frame with this page’s
+      // origin, which its null origin can’t match, and Firefox logs that as an error the scene would fail on.
+      .run(document, { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'] }, resultTypes: ['violations'], iframes: false })
       .then((/** @type {any} */ r) =>
         r.violations.map((/** @type {any} */ v) => ({
           rule: v.id,

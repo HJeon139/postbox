@@ -95,7 +95,7 @@ test('#806: switching to Ask me during an Auto turn lists its session as keeping
   });
   rt.sendMessage(t.id, { text: '@alpha run the tests' });
   await sleep(5);
-  assert.deepEqual(await rt.setPermissionMode(a.id, 'acceptEdits'), { ok: true, now: [], later: [alpha.id] });
+  assert.deepEqual(await rt.setPermissionMode(a.id, 'acceptEdits'), { ok: true, now: [], later: [alpha.id], kept: [alpha.id], hooksLater: [] });
   assert.deepEqual(q.modes, [], 'the running turn keeps Auto, so the hooks it loaded and its mode agree until it ends');
   assert.equal(rt.persona(a.id).permissionMode, 'acceptEdits');
   h.release();
@@ -113,7 +113,8 @@ test('#806: switching to Auto during an Ask me turn changes it now, since its ho
   });
   rt.sendMessage(t.id, { text: '@alpha run the tests' });
   await sleep(5);
-  assert.deepEqual(await rt.setPermissionMode(a.id, 'auto'), { ok: true, now: [alpha.id], later: [] });
+  // #1030: it says the turn runs Auto without the hooks it never loaded, which load from its next turn.
+  assert.deepEqual(await rt.setPermissionMode(a.id, 'auto'), { ok: true, now: [alpha.id], later: [], kept: [], hooksLater: [alpha.id] });
   assert.deepEqual(q.modes, ['auto']);
   h.release();
   await settle(rt);
@@ -130,7 +131,7 @@ test('#817: leaving bypass during a bypass turn lists its session as keeping its
   });
   rt.sendMessage(t.id, { text: '@alpha run the tests' });
   await sleep(5);
-  assert.deepEqual(await rt.setPermissionMode(a.id, 'ask'), { ok: true, now: [], later: [alpha.id] });
+  assert.deepEqual(await rt.setPermissionMode(a.id, 'ask'), { ok: true, now: [], later: [alpha.id], kept: [alpha.id], hooksLater: [] });
   assert.deepEqual(q.modes, [], 'the running turn keeps bypass, so its hooks and its mode agree until it ends');
   assert.equal(rt.persona(a.id).permissionMode, 'ask', 'the persona changes at once, for its next turns');
   h.release();

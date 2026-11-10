@@ -109,6 +109,21 @@ test('#847 the stop text quotes the agent’s description as one clipped line, w
   assert.ok(quoted.startsWith('Wait for CI on [a]'), quoted);
 });
 
+test('#847 the stop text drops every character that hides or reorders text, and its cut keeps a pair whole', async () => {
+  const hidden = ['\u{e0041}', '\u3164', '\u061c', '\u034f', '\ufe0f', '\u2028', '\u{e0100}', '\udc00'];
+  const name = `é${hidden.join('x')}"<&${'a'.repeat(59)}😀z`;
+  const { r, clock, turn } = await quietTurn([...waiting, listed([{ task_id: 'b1', description: name }])]);
+  clock.now += QUIET.backgroundMax + MIN;
+  r.rt.remote.checkStalls();
+  await until(() => r.d.stops.includes(turn), 'the stop');
+  await settled(r);
+  const quoted = r.se().currentStep.match(/\((.*)\) ran past/s)[1];
+  for (const c of hidden) assert.ok(!quoted.includes(c), JSON.stringify(c));
+  assert.ok(quoted.startsWith('é x x x x x x x "<&a'), quoted);
+  assert.ok(quoted.isWellFormed(), 'no half of a pair');
+  assert.ok(quoted.length <= 80, `${quoted.length} characters`);
+});
+
 test('#847 after a Postbox restart, the replayed stream lists the task again, so the turn isn’t stopped', async () => {
   const { store, d } = restarted();
   d.append('host-turn-1', listed([{ task_id: 'b1', description: 'Wait for the gate' }]));

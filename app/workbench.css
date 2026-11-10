@@ -524,6 +524,13 @@ details.activity[open] > summary .i-right { transform: rotate(90deg); }
 .block-placeholder { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--dim); padding: 10px 12px; border: 1px dashed var(--line); border-radius: 8px; }
 
 .tbl-wrap { max-height: min(80vh, 560px); overflow: auto; border-top: 1px solid var(--line); }
+/* A table wider than its block fades the side with more columns past it, clear of the scrollbars, with a soft edge in
+   the border color, so the cue shows even where a gap between columns meets the edge (#1000). */
+.tbl-scroll { position: relative; }
+.tbl-scroll::before, .tbl-scroll::after { content: ''; position: absolute; top: 0; bottom: var(--sb-bottom, 0px); width: 32px; z-index: 2; pointer-events: none; opacity: 0; transition: opacity .15s ease-in-out; }
+.tbl-scroll::before { left: 0; background: linear-gradient(to right, var(--line-strong), transparent 3px), linear-gradient(to right, var(--panel) 15%, transparent); }
+.tbl-scroll::after { right: var(--sb-right, 0px); background: linear-gradient(to left, var(--line-strong), transparent 3px), linear-gradient(to left, var(--panel) 15%, transparent); }
+.tbl-scroll.more-left::before, .tbl-scroll.more-right::after { opacity: 1; }
 table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
 .tbl th { position: sticky; top: 0; z-index: 1; background: var(--panel); text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .06em;
   color: var(--dim); font-weight: 600; padding: 0; border-bottom: 1px solid var(--line); white-space: nowrap; }
@@ -635,6 +642,8 @@ iframe.app-iframe:not(.live) { pointer-events: none; }
 .rv-u.mod > .g-abs::before, .rv-u.mod > :first-child > .g-abs::before { content: "±"; position: absolute; left: 6px; color: var(--good); font-weight: 700; }
 .rv-u.del > .g-abs::before, .rv-u.del > :first-child > .g-abs::before { content: "−"; position: absolute; left: 6px; color: var(--alert-ink); font-weight: 700; }
 .rv-thread-row > td { padding: 0; border: 0; }
+/* A table's delimiter row shows its source, dim, as a line of the draft that can take a comment (#835). */
+.rv-doc .md-table td.rv-src { font-family: var(--mono); font-size: 12px; color: var(--dim); padding-top: 2px; padding-bottom: 2px; }
 .md .md-table td.rv-gut { width: 0; padding: 5px 0; border: 0; }
 /* Cells start at the top, level with their row's gutter mark, so a tall row still reads from its first line. */
 .rv-doc .rv-block .md-table th, .rv-doc .rv-block .md-table td { vertical-align: top; }
@@ -775,7 +784,6 @@ html.store-down .sidepanel { padding-bottom: 44px; }
 .menu.versions .mi .grow, .menu.versions .mi .d { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 .toasts { position: fixed; z-index: 60; right: 16px; top: 60px; display: flex; flex-direction: column; gap: 8px; width: 340px; }
-.toasts.bottom { top: auto; bottom: 16px; left: 50%; right: auto; transform: translateX(-50%); width: auto; }
 .toast { display: flex; align-items: center; gap: 10px; padding: 10px 10px 10px 12px; background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 8px; }
 .toast.plain { border-left-width: 1px; }
 .toast .t-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; font-size: 13px; }
@@ -794,8 +802,12 @@ html.store-down .sidepanel { padding-bottom: 44px; }
 .what-goes .i { margin-top: 1px; }
 
 /* The right pane: a conversation’s side views, a thread and its Work, alone or split with a divider (pane.mjs).
-   --pane-w is its width, which pane-width.mjs sets, and the handle on its left edge changes (#86). */
+   --pane-w is its width, which pane-width.mjs sets on .app, and the handle on its left edge changes (#86). It isn’t
+   inherited, so a new width restyles .app and the two children that take it, the pane and the conversation column,
+   not every element in the conversation (#1150). A browser without @property inherits it as before. */
+@property --pane-w { syntax: '<length>'; inherits: false; initial-value: 440px; }
 .app { --pane-w: 440px; }
+.rpane, .app > .main { --pane-w: inherit; }
 .rpane { position: fixed; z-index: 25; top: 48px; right: 0; bottom: 0; width: min(var(--pane-w), 100%); background: var(--panel); border-left: 1px solid var(--line);
   display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
 .rpane[hidden] { display: none; }
@@ -841,11 +853,11 @@ html.store-down .sidepanel { padding-bottom: 44px; }
 .react-btn:hover { border-color: var(--line); background: var(--panel); }
 .react-btn[aria-pressed="true"] { border-color: var(--accent); background: var(--mark); }
 .react-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-/* The button draws its icon and its count itself, so a row is six elements, not eleven: in a long room the rows were
-   most of the page (reactions.mjs). The icons are colored PNGs, kept as they are in forced colors, where a background
-   image can otherwise be dropped. */
-.react-btn::before { content: ""; display: block; flex: none; width: 20px; height: 20px; background: center / 100% no-repeat; forced-color-adjust: none; }
-.react-btn[data-count]::after { content: attr(data-count); font-size: 12px; font-variant-numeric: tabular-nums; color: var(--dim); }
+/* The button draws its icon and its count itself, so a row is six elements, not eleven: in a 300-item room the rows
+   were 42% of the page (reactions.mjs). The icons are colored PNGs, which Chromium and Firefox both paint in forced
+   colors. The count’s alt text is empty: the button’s name already says how many. */
+.react-btn::before { content: ""; display: block; flex: none; width: 20px; height: 20px; background: center / 100% no-repeat; }
+.react-btn[data-count]::after { content: attr(data-count) / ""; font-size: 12px; font-variant-numeric: tabular-nums; color: var(--dim); }
 .react-btn[aria-pressed="true"][data-count]::after { color: var(--text); }
 .react-btn[data-icon="approve"]::before { background-image: url(/media/reactions/reaction-approve-64.png); }
 .react-btn[data-icon="disapprove"]::before { background-image: url(/media/reactions/reaction-disapprove-64.png); }
@@ -939,7 +951,6 @@ html.store-down .sidepanel { padding-bottom: 44px; }
   .rpane { width: 100%; border-left: 0; }
   .has-panel .main { margin-right: 0; }
   .toasts { left: 12px; right: 12px; width: auto; top: 108px; }
-  .toasts.bottom { left: 12px; right: 12px; transform: none; }
   .hovercard { width: calc(100vw - 24px); left: 12px !important; }
   .menu { max-width: calc(100vw - 24px); }
   .mention-menu { width: 100%; }

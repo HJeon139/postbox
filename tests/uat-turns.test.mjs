@@ -252,3 +252,16 @@ test('a card that waits while a parallel call of its turn runs ends the wait, ra
   assert.equal(r.out, null, 'not a turn past the time limit');
   assert.ok(r.took < 5000 + BLOCK_GRACE_MS + 2000, `the tester had the card at ${r.took} ms, not when the run timed out`);
 });
+
+// #980: after the budget stopped the run, its last wait (`settle()`, no hand-back) sat on @developer’s open card, with
+// its session reading `tool`, until the turn limit, so the run never ended. A card waits on the person, so it holds no wait.
+test('the run’s last wait, after a budget stop, isn’t held by a card left open', async (t) => {
+  const d = fakeDriver();
+  const r = await onFakeClock(t, async () => {
+    const out = await settle(ctx(cardThenParallelCall({ cardAt: 0, toolAt: 0 }), { d }));
+    return { out, took: Date.now() };
+  });
+  assert.equal(r.out, null, 'not a turn past the time limit');
+  assert.ok(r.took < 10_000, `the wait ended at ${r.took} ms, not at the 900 s limit`);
+  assert.equal(d.at.stop, null, 'and it pressed no Stop');
+});

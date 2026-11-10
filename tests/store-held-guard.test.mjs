@@ -75,6 +75,9 @@ const DIRECT = {
   'tool-ask.mjs': ['settleToolAsks'], // only the thread ids; each thread is read through store.pending
   'view-app/view-app.mjs': ['viewApp'], // the app the agent named, to find its thread and version for the picture (#95)
   'waiting-on-you.mjs': ['waitingOnYou'], // shared with the page, which has only what was broadcast
+  // The archive pass (#305) picks a turn from the published state; its commit function gathers it again from the state
+  // the commit is sequenced on, so any change since stops the commit (I5, I8), and a patch held behind it is dropped.
+  'work-archive.mjs': ['gather', 'gather'],
 };
 
 /** store.pending reads. */
@@ -114,7 +117,6 @@ const PENDING = {
     'deliver',
     'text',
     'compaction',
-    'endWork',
     'endTurn',
     'endTurn',
     'endTurn',
@@ -158,6 +160,7 @@ const PENDING = {
   // open_topic just opened, held (#796).
   'thread-summary.mjs': ['threadHeader', 'threadCatchUp', 'settleThread'],
   'thread-write.mjs': ['updateThread', 'pendingThreads'], // every write of a thread that exists starts from it (#796)
+  'turn-end-work.mjs': ['endWork'], // the turn’s own reply or block, to carry its line, maybe held behind a commit
   'tool-ask.mjs': ['askForTool', 'settleToolAsks'], // a second ask for the same tool, and the sweep that settles open asks
   'view-app/consent.mjs': ['askToSee'], // an open download card, which decides whether to add another (#95)
   'topic-open.mjs': ['startTopic', 'startTopic', 'conversationOf', 'conversationOf', 'repeatOf'], // one topic per message, the item's thread and I6's check, each maybe held behind a commit (#637)
@@ -171,7 +174,7 @@ const LEDGER = {
   'ledger-remote.mjs': ['hostEdit'], // a host edit the turn is recording
   'ledger-answers.mjs': ['restore'], // restore reads back the entry it just patched
   'ledger.mjs': ['entry', 'commandEnded', 'commandEnded', 'taskEnded', 'jobUpdate', 'endTurn', 'endTurn', 'endTurn', 'recordChange'], // entries the ledger patches as the turn goes
-  'runtime.mjs': ['endWork'], // endWork’s line for the turn
+  'turn-end-work.mjs': ['endWork'], // endWork’s line for the turn
   'thread-summary.mjs': ['summarizeThread'], // the summary’s cost, patched on its entry
   'write-intent.mjs': ['madeBy', 'judged'], // the PRs this conversation made, and the judge’s cost
 };
@@ -180,6 +183,9 @@ const LEDGER = {
 const COMMITS = {
   'asset-orphans.mjs': ['sweepAssets'], // the released hashes a load deleted: assetReleases only (#516 S3)
   'assets.mjs': ['writeAsset'], // an asset version: assets, assetRooms and assetReleases only, none of items, work or apps (#516 S3)
+  // turn.archive (#305): touches work and items. During it a pending read still shows the moved turn; what the pending
+  // readers decide on, the kept entries and the newest turns, isn’t moved (server/store-held.mjs, T-16).
+  'work-archive.mjs': ['commitTurn'],
 };
 
 test('every published read of items, work and apps in server/ is placed, by file and function', () => {

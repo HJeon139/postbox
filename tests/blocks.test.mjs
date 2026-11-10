@@ -185,3 +185,16 @@ test('#216, #228: a turn in a topic thread is the conversation’s own session, 
   assert.match(others.message, /^There’s no block with id theirs to update\./, 'another agent’s block gets the old answer');
   assert.equal(aside.ok, false, 'a block in a side thread is updated from there');
 });
+
+test('#895: update_block’s refusal for a block that isn’t there cuts a 20,000-character id, from withdraw and outcome', async () => {
+  const { rt, adapter, t } = setup();
+  const id = 'b'.repeat(20_000);
+  const [gone, noOutcome] = await turn(rt, adapter, t, (tools) => [
+    tools.update_block({ block: { id, withdraw: 'Stale.' } }),
+    tools.update_block({ block: { id, outcome: 'Filed as #105.' } }),
+  ]);
+  for (const r of [gone, noOutcome]) {
+    assert.equal(r.ok, false);
+    assert.match(r.message, /^There’s no block with id b{40} to update\. Use show_block to add it\.$/);
+  }
+});

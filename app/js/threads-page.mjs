@@ -1,7 +1,7 @@
 // The Threads page: a project's threads, newest first.
 
 import { client, hrefOf, sessionsOf, topicsOf } from './client.mjs';
-import { ago, fill, h, plural } from './dom.mjs';
+import { ago, fill, h, heldPaint, plural } from './dom.mjs';
 import { ringFor } from './ring.mjs';
 import { doing, sideActive } from './side-line.mjs';
 
@@ -14,7 +14,8 @@ const S = () => client.state;
 
 export function mountThreads(projectId) {
   const el = h('main.threads-view', { id: 'main', tabindex: '-1' });
-  const paint = () => {
+  // A press holds the repaint until it ends, so its click lands on the card it started on (#1010).
+  const paint = heldPaint(el, () => {
     const project = S().projects[projectId];
     const rows = [...topicsOf(projectId).map(topicRow), ...sidesOf(projectId).map(sideRow)].sort((a, b) => b.last - a.last);
     fill(
@@ -37,7 +38,7 @@ export function mountThreads(projectId) {
             'No threads yet. To start one, choose Reply in thread under any message in a conversation. When an agent wakes another, their side thread shows here too.',
           ),
     );
-  };
+  });
   paint();
   const off = client.on((ch) => {
     if (['thread', 'session', 'load', 'remove', 'item.patch'].includes(ch.type)) paint();

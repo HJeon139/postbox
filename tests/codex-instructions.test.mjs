@@ -4,11 +4,15 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { CodexAdapter } from '../server/adapters/codex.mjs';
 import { fakeAppServer } from './codex-fixture.mjs';
+import { tempDir } from './temp-dirs.mjs';
+
+// Fixed paths under /tmp outlive the run and collide between users (#823); each is a temp folder of this file’s.
+const CODEX_DIR = tempDir('postbox-codex-instructions-');
 
 function context(state) {
   return {
     persona: { handle: 'coder', backend: 'codex', instructions: 'Keep handoffs readable.', permissionMode: 'auto' },
-    project: { folder: '/tmp/postbox-codex-instructions' },
+    project: { folder: CODEX_DIR },
     handles: ['coder', 'reviewer'],
     state,
     signal: new AbortController().signal,

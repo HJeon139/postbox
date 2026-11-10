@@ -132,7 +132,7 @@ test('#712a: a burst of replies appended while following draws one at a time, no
   const layouts = (await metric('LayoutCount')) - count0;
   const seconds = (await metric('LayoutDuration')) - time0;
   // One drawn at a time: 300 appends take about one layout each (305 measured), where every reply staying drawn took
-  // two (602) and five times the layout time (0983c096).
+  // two (602) and five times the layout time (#712a).
   const seen = `${most} drawn at once, ${layouts} layouts, ${seconds.toFixed(3)} s of layout`;
   expect(most, `replies drawn by force at once: ${seen}`).toBeLessThanOrEqual(1);
   expect(layouts, `Chromium’s LayoutCount for the burst: ${seen}`).toBeLessThan(BURST * 1.5);
