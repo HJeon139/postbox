@@ -13,6 +13,8 @@ const CI = !!process.env.CI;
 export default defineConfig({
   testDir: 'tests/browser',
   testMatch: '**/*.spec.mjs',
+  // The budget spec (#1166) runs on its own, with `npm run budget`: it seeds rooms of up to 100,000 items.
+  grepInvert: process.env.POSTBOX_BUDGET ? undefined : /@budget/,
   // Waits for one of this machine’s heavy-suite slots, so agents’ worktrees don’t all run a suite at once.
   globalSetup: './tests/browser/heavy-slot.mjs',
   outputDir: 'test-results',
