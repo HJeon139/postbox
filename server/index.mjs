@@ -140,9 +140,7 @@ export async function start({
   // Turns that went on on their hosts are attached again, each host’s status is kept for the page, and the hosts
   // reconnect when this computer wakes (#120).
   const stopWake = startHosts(rt, hosts, wake);
-  for (const f of Object.values(store.state.files))
-    if (f.inCorpus) corpus.addBook(f.id, (await blobs.get(f.sha256)).toString('utf8'), { title: storedName(f.name), author: 'Your file', year: null });
-  if (Object.values(store.state.files).some((f) => f.inCorpus)) corpus.reindex();
+  await loadCorpusFiles(store, corpus, blobs);
   // Datasets agents loaded (#47) come back from their projects’ .postbox/datasets/.
   await rt.reloadDatasets();
 
@@ -497,6 +495,13 @@ export async function start({
     handle,
     close,
   };
+}
+
+/** The person’s files added to the corpus, read back from their blobs at start. O(files). */
+async function loadCorpusFiles(store, corpus, blobs) {
+  for (const f of Object.values(store.state.files))
+    if (f.inCorpus) corpus.addBook(f.id, (await blobs.get(f.sha256)).toString('utf8'), { title: storedName(f.name), author: 'Your file', year: null });
+  if (Object.values(store.state.files).some((f) => f.inCorpus)) corpus.reindex();
 }
 
 // ── HTTP helpers ─────────────────────────────────────────────────────────────────────────
