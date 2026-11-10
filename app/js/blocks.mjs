@@ -5,6 +5,7 @@
 import './md-images.mjs';
 import { ASKING } from '/shared/catalog.mjs';
 import { renderMarkdown } from '/shared/markdown.mjs';
+import { answerThreads } from '/shared/review-person-threads.mjs';
 import { onPageOrigin } from '/shared/urls.mjs';
 import { asDrawn, closing } from './block-close.mjs';
 import { fitChoiceOptions } from './choice-layout.mjs';
@@ -550,7 +551,12 @@ const RENDER = {
     return h('div', { 'aria-labelledby': titleId }, hd, codeBox(b));
   },
 
-  review: (b, item, ctx) => renderReview(b, item, ctx, { draft, seen, renderBlock, head, staleNote, submit, errLine, outcomeLine }),
+  // A review answered before #1143 holds the person’s comments only in its answer: drawn as the threads its next
+  // update makes them, read-only here, so nothing is written on a read.
+  review: (_b, item, ctx) => {
+    const shown = answerThreads(item);
+    return renderReview(shown.block, shown, ctx, { draft, seen, renderBlock, head, staleNote, submit, errLine, outcomeLine });
+  },
   app(_b) {
     return h('div', h('div.block-body', h('p.dim', 'Apps appear in their own frame.')));
   },
