@@ -72,6 +72,14 @@ function git(args, cwd) {
   const r = gitRun(args, cwd);
   return r.status === 0 ? r.stdout.trim() : null;
 }
+/**
+ * A shell line that prints credentials-guarded when git there has no credential helper, askpass or askpass variable left
+ * to answer a prompt: the last credential.helper is the guard's empty one, and the rest are empty (#1125). It reads the
+ * settings, and runs none of them.
+ */
+export const CREDENTIALS_GUARDED =
+  'h=$(git config --get-all credential.helper 2>/dev/null | tail -n 1); a=$(git config --get core.askPass 2>/dev/null); [ -z "$h$a$GIT_ASKPASS$SSH_ASKPASS" ] && echo credentials-guarded';
+
 /** git that must work: a seed step that fails stops the run, naming the step and what git said. */
 function mustGit(args, cwd) {
   const r = gitRun(args, cwd);
@@ -183,7 +191,9 @@ export function preflightRemote(workspace, dir, env) {
   if (!/transport 'https' not allowed/.test(probe.stderr ?? ''))
     throw stop(`git in the run isn’t refused an https remote (it said: ${(probe.stderr ?? '').trim().slice(0, 200)})`);
   const shell = env.SHELL || '/bin/sh';
-  const which = spawnSync(shell, ['-lic', '[ -n "$CLAUDE_ENV_FILE" ] && . "$CLAUDE_ENV_FILE"; command -v gh'], { env, encoding: 'utf8', timeout: 20_000 });
+  const script = `[ -n "$CLAUDE_ENV_FILE" ] && . "$CLAUDE_ENV_FILE"; ${CREDENTIALS_GUARDED}; command -v gh`;
+  const which = spawnSync(shell, ['-lic', script], { env, encoding: 'utf8', timeout: 20_000 });
+  if (!/^credentials-guarded$/m.test(which.stdout ?? '')) throw stop('git in the agent’s shell can still hand out a password');
   const gh = (which.stdout ?? '').trim().split('\n').at(-1);
   if (gh !== join(p.bin, 'gh')) throw stop(`gh in the agent’s shell is ${gh || 'missing'}, not the run’s fake (${join(p.bin, 'gh')})`);
 }
