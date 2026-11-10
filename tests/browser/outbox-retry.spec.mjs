@@ -99,7 +99,7 @@ test('#1126 offline, a failed send still waits for the connection, and isn’t s
   releases.get(worker.id)?.();
 });
 
-test('#1126 a send that keeps failing while the stream is open is tried a few times, then waits for the connection', async ({ page }) => {
+test('#1126 a send that keeps failing while the stream is open is tried quickly a few times, then every 30 s, no faster', async ({ page }) => {
   await page.clock.install();
   const { worker } = await busyAgent(page);
   let posts = 0;
@@ -111,9 +111,9 @@ test('#1126 a send that keeps failing while the stream is open is tried a few ti
   await page.locator('#composer-input').fill(`@${worker.handle} never gets through`);
   await page.locator('#composer-input').press('Enter');
   await expect(page.locator('.composer .queued').filter({ hasText: 'never gets through' })).toBeVisible();
-  // Past every retry’s delay, and far past: the first try and four more, then nothing until the connection changes.
+  // The first try and four quick ones by 15 s, then one every 30 s: at 45, 75 and 105 s.
   await page.clock.runFor(120_000);
-  await expect.poll(() => posts).toBe(5);
+  await expect.poll(() => posts).toBe(8);
   await expect(page.locator('.composer .queued').filter({ hasText: 'never gets through' })).toBeVisible();
   await page.unroute('**/api/threads/*/messages');
   releases.get(worker.id)?.();
