@@ -32,7 +32,8 @@ async function room(page, title) {
   const tools = rt.toolsFor(rt.sessionsIn(t.id)[0].id);
   const apps = ['one', 'two'].map((n) => ({ id: `${n}-${t.id}`, title: `App ${n} ${title}` }));
   for (const a of apps) tools.show_app({ id: a.id, title: a.title, code: APP(`${a.title}, version 1`), permissions: [] });
-  for (const a of apps) await expect(frameOf(page, a.title), `${a.title} loads`).toHaveAttribute('data-sized', '1');
+  // Each app is checked before it shows, which takes longer on a loaded machine: setup mustn’t be what fails.
+  for (const a of apps) await expect(frameOf(page, a.title), `${a.title} loads`).toHaveAttribute('data-sized', '1', { timeout: 15_000 });
   return { t, tools, apps };
 }
 
@@ -101,4 +102,22 @@ test('#987 a resync reloads an app whose version changed, at its new version', a
   tools.update_app({ id: first.id, code: APP(`${first.title}, version 2`) });
   await resync(page);
   await expect(frameOf(page, first.title).contentFrame().locator('#words')).toHaveText(`${first.title}, version 2`);
+});
+
+test('#987 a resync draws an item moved while the page was away at its new place, with its stub at the old one', async ({ page }) => {
+  const { t, apps } = await room(page, 'Moved');
+  const [first] = apps;
+  const id = await frameOf(page, first.title).evaluate((f) => /** @type {HTMLElement} */ (f.closest('[data-key]')).dataset.key);
+  // The way an app’s new version or a block that asks again moves its item (#49, #92): a stub takes its old place.
+  expect(app.rt.bringForward(t.id, id, { what: 'app', title: first.title }), 'the item moves').toBe(true);
+  await resync(page);
+  const keys = await page.evaluate(() => [...document.querySelectorAll('.transcript > [data-key]')].map((el) => /** @type {HTMLElement} */ (el).dataset.key));
+  const stub = app.rt.s.items[t.id].find((it) => it.kind === 'moved' && it.itemId === id);
+  expect(
+    keys.filter((k) => k === id),
+    'the item is drawn once',
+  ).toHaveLength(1);
+  expect(keys.at(-1), 'and last').toBe(id);
+  expect(keys, 'its stub takes its old place').toContain(stub?.id);
+  expect(keys.indexOf(stub?.id), 'before the item').toBeLessThan(keys.indexOf(id));
 });
