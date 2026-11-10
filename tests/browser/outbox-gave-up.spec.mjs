@@ -107,3 +107,35 @@ test('offline, a failed send still waits for the connection, with no Send now', 
   await page.context().setOffline(false);
   releases.get(worker.id)?.();
 });
+
+test('a reconnect during the slow tries starts the quick tries again', async ({ page }) => {
+  // critic’s P3 on #1195: the try count carried over a reconnect, so a send that failed on the fresh connection waited
+  // 30 s, though a fresh connection is when a quick try is most likely to work.
+  await page.clock.install();
+  const { worker } = await busyAgent(page);
+  let posts = 0;
+  await page.route(POSTS, (route) => {
+    posts++;
+    return route.abort('connectionreset');
+  });
+  allowPageError(page, /ERR_CONNECTION_RESET|NetworkError|Failed to load resource/, { times: 50 });
+  await page.locator('#composer-input').fill(`@${worker.handle} across a reconnect`);
+  await page.locator('#composer-input').press('Enter');
+  await page.clock.runFor(20_000);
+  await expect(page.locator('.composer .outbox-slow'), 'past the quick tries').toBeVisible();
+  await expect.poll(() => posts).toBe(5);
+
+  // The stream drops and comes back: the reconnect sends the outbox, and that fails too.
+  await page.evaluate(async () => {
+    const m = await import('/app/js/client.mjs');
+    m.client.connection = 'reconnecting';
+    m.client.emit({ type: 'connection' });
+    m.connect();
+  });
+  await expect.poll(() => posts, { message: 'the reconnect sends it' }).toBe(6);
+  await expect(row(page, 'across a reconnect'), 'quick tries again').toContainText('Trying again');
+  await page.clock.runFor(1_500);
+  await expect.poll(() => posts, { message: 'the next try 1 s on, not 30 s' }).toBe(7);
+  await page.unroute(POSTS);
+  releases.get(worker.id)?.();
+});
