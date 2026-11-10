@@ -75,3 +75,22 @@ test('#1135 another agent’s wake while the turn waits to be attached waits in 
   await until(() => starts(d).length === 1, 'the wake’s turn');
   assert.match(messageOf(starts(d)[0]), /a wake in the window/);
 });
+
+test('#1135 a drain of the thread while the turn waits to be attached leaves its message queued', async () => {
+  const { r, d, release } = heldWelcome('running');
+  await until(() => r.rt.remote.restoring.has('host-turn-1'), 'the turn to wait for its welcome');
+  r.rt.sendMessage(r.t.id, { text: 'sent in the window' });
+  // Any drain of the thread, as another agent’s turn ending there runs, reads the agent as busy too.
+  r.rt.drainQueue(r.t.id);
+  await sleep(20);
+  assert.equal(r.rt.turns.has(r.se().id), false, 'no turn starts for it');
+  assert.deepEqual(queued(r), ['sent in the window']);
+  release();
+  await until(() => d.received.some((m) => m.type === 'read' && m.turn === 'host-turn-1'), 'the attach');
+  await sleep(20);
+  assert.equal(starts(d).length, 0, 'attached, and no second turn beside it');
+  d.end('host-turn-1');
+  await until(() => starts(d).length === 1, 'the queued message’s turn');
+  d.end(starts(d)[0].turn);
+  await settled(r);
+});
