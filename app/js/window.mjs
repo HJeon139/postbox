@@ -15,7 +15,7 @@ import { holdSkipping } from './view-skip.mjs';
 import { createHeights } from './window-heights.mjs';
 import { edgeKeys } from './window-keys.mjs';
 import { CEILING, CHUNK, FLOOR, MARGIN } from './window-limits.mjs';
-import { drop, dropBottom, dropTop, fill, gapBefore, leap, paintSpacers, pinned, recenter, rejoin, release, scheduleGrow, shrink } from './window-shrink.mjs';
+import * as windowShrink from './window-shrink.mjs';
 
 const FLAG = 'pb-window';
 // Rough first estimates by kind, in px, from prep-712’s 1,000-item room at 1280 px (median 71 px); a kind’s own
@@ -112,7 +112,7 @@ class TranscriptWindow {
     this.raf = 0;
     this.timer = 0;
     this.sizes = new ResizeObserver((entries) => this.measured(entries));
-    this.scrolled = () => scheduleGrow(this);
+    this.scrolled = () => windowShrink.scheduleGrow(this);
   }
   get total() {
     return this.entry.ids.length;
@@ -128,16 +128,16 @@ class TranscriptWindow {
     return b > a ? this.heights.span(a, b) + (b - a - 1) * this.gap : 0;
   }
   fill(spacer, a, b) {
-    return fill(this, spacer, a, b);
+    return windowShrink.fill(this, spacer, a, b);
   }
   gapBefore(i) {
-    return gapBefore(this, i);
+    return windowShrink.gapBefore(this, i);
   }
   paintSpacers() {
-    return paintSpacers(this);
+    return windowShrink.paintSpacers(this);
   }
   paintBelow() {
-    paintSpacers(this, false);
+    windowShrink.paintSpacers(this, false);
   }
   /**
    * Each mounted item’s height as laid out; its first measurement sets its kind’s estimate. Only the spacer below
@@ -187,13 +187,13 @@ class TranscriptWindow {
     return node;
   }
   rejoin(i) {
-    return rejoin(this, i);
+    return windowShrink.rejoin(this, i);
   }
   pinned(node) {
-    return pinned(node);
+    return windowShrink.pinned(node);
   }
   drop(i) {
-    return drop(this, i);
+    return windowShrink.drop(this, i);
   }
   /** How many items to mount past an edge, going by step: the margin by estimate, at least CHUNK. @param {number} edge @param {number} step */
   runLength(edge, step) {
@@ -212,7 +212,7 @@ class TranscriptWindow {
     if (!this.el.isConnected) return;
     this.release();
     // A scroll far past both edges (the scrollbar dragged, Home, End) moves the range there at once.
-    if (leap(this)) return holdView(this.el);
+    if (windowShrink.leap(this)) return holdView(this.el);
     const reach = this.viewH() * MARGIN;
     if (this.from > 0 && this.above.getBoundingClientRect().bottom > -reach) this.growUp();
     if (this.to < this.total && this.below.getBoundingClientRect().top < this.viewH() + reach) {
@@ -224,16 +224,16 @@ class TranscriptWindow {
     this.shrink();
   }
   release() {
-    return release(this);
+    return windowShrink.release(this);
   }
   shrink() {
-    return shrink(this);
+    return windowShrink.shrink(this);
   }
   dropTop(px) {
-    return dropTop(this, px);
+    return windowShrink.dropTop(this, px);
   }
   dropBottom(px) {
-    return dropBottom(this, px);
+    return windowShrink.dropBottom(this, px);
   }
   /** Mounts a run above the range; the item that was first keeps its place on screen. */
   growUp() {
@@ -301,7 +301,7 @@ class TranscriptWindow {
     const i = this.indexOf.get(id);
     if (i === undefined || !this.el.isConnected) return null;
     // Outside the range, kept or not: an island kept for its focus is reached by moving the range to it.
-    if (i < this.from || i >= this.to) recenter(this, i);
+    if (i < this.from || i >= this.to) windowShrink.recenter(this, i);
     return this.nodes.get(id) ?? null;
   }
   destroy() {
