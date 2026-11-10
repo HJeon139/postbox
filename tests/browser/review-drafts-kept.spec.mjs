@@ -153,3 +153,30 @@ test('#1144 at most 20 review drafts are kept, the oldest dropped first, never t
   const want = ['it_r3', ...Array.from({ length: 19 }, (_, i) => `it_r${i + 4}`)].sort();
   expect(left).toEqual(want);
 });
+
+test('#1144 with storage full at 20 drafts, a new one still saves, since the oldest goes first', async ({ page }) => {
+  await page.goto(`${room.app.origin}/`);
+  await synced(page, room.app);
+  const left = await page.evaluate(async () => {
+    const store = await import('/app/js/review-draft-store.mjs');
+    const drafts = () => Object.keys(localStorage).filter((k) => k.startsWith('pb-review-draft-'));
+    for (const k of drafts()) localStorage.removeItem(k);
+    const draft = (text) => ({ comments: [{ line: 1, text }], verdict: 'comment', on: 'one line' });
+    for (let i = 1; i <= 20; i++) store.keepReviewDraft(`it_f${i}`, 1, draft(`note ${i}`));
+    // Room for 20 drafts and no more, as a full storage leaves.
+    const set = Storage.prototype.setItem;
+    Storage.prototype.setItem = function (k, v) {
+      if (k.startsWith('pb-review-draft-') && !(k in localStorage) && drafts().length >= 20) throw new DOMException('full', 'QuotaExceededError');
+      return set.call(this, k, v);
+    };
+    try {
+      store.keepReviewDraft('it_f21', 1, draft('note 21'));
+    } finally {
+      Storage.prototype.setItem = set;
+    }
+    return drafts().map((k) => k.slice('pb-review-draft-'.length));
+  });
+  expect(left, 'the newest is saved').toContain('it_f21');
+  expect(left, 'the oldest made room').not.toContain('it_f1');
+  expect(left).toHaveLength(20);
+});
