@@ -2,6 +2,26 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.56.0 (2026-11-10)
+
+### Features
+
+- **app:** the page records keys and clicks 500 ms slow in its lag log (#821)
+
+### Fixes
+
+- **shell:** the shared stack never pushes out the notice it just added (#444)
+- **shell:** a live Undo isn't pushed out by an ordinary notice in the shared stack (#444)
+- **blocks:** a resolved thread on an answered review leaves it answered (#901)
+- **shell:** put delete notices in the shared stack
+- **apps:** a send's turn of 5 s starts when it starts, so a slow burst keeps its order (#934)
+- **review:** the delimiter row follows the last header row of a diff (#1098)
+- **app:** an open item a press closes across a held refill stays closed (#1010)
+- **apps:** a send with no answer holds back the next only for its turn of 5 s (#934)
+- **apps:** an app's sends go one after another, so they're stored in the order it sent them (#934)
+- **app:** a press on the Work pane or the Threads page holds its repaint until it ends
+- **review:** number a table's delimiter row in Lines and let it take a comment
+
 ## 1.55.3 (2026-11-09)
 
 ### Fixes
