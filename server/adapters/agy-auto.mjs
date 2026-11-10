@@ -23,7 +23,7 @@
 import { lstatSync } from 'node:fs';
 import { join } from 'node:path';
 import { splitCommand } from '../../shared/command-chains.mjs';
-import { leadsInto, readingsOf, realTarget } from './agy-paths.mjs';
+import { leadsInto, readingsOf, realReadings } from './agy-paths.mjs';
 import { isPublishingTool } from './setup.mjs';
 
 /**
@@ -156,11 +156,11 @@ export const inGit = (p) =>
     .some((s) => s.toLowerCase() === '.git');
 
 /**
- * Whether a path leads into a .git folder, as written or where it leads, every way it may be read (readingsOf): an
- * edit there asks in Auto, by the hook’s edit rules and by a routine command’s alike.
+ * Whether a path leads into a .git folder, as written or where it leads, every way it may be read (readingsOf,
+ * realReadings): an edit there asks in Auto, by the hook’s edit rules and by a routine command’s alike.
  * @param {string} raw @param {string} cwd @param {string} home
  */
-export const intoGit = (raw, cwd, home) => readingsOf(raw, cwd, home).some((at) => inGit(at) || inGit(realTarget(at, '/')));
+export const intoGit = (raw, cwd, home) => readingsOf(raw, cwd, home).some((at) => inGit(at) || realReadings(at).some(inGit));
 
 /**
  * Whether a word, read as a path, stays in the agent’s folders. Every operand and option value is read as one, a grep

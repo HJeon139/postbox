@@ -81,12 +81,22 @@ export function readingsOf(raw, cwd, home) {
 }
 
 /**
- * Whether a path leads into one of the folders, by its real path, every way it may be read (readingsOf). A ~user path
- * never does: its home could be anywhere, so it asks, as Auto’s routine commands refuse one (agy-auto.mjs, staysIn).
- * Its .. are read both ways too: as the file system climbs from where a link leads, and as text (resolve), since
- * whether agy normalizes a path before using it is as unproved as ~ (#1074).
+ * Where one absolute reading of a path really leads, both ways a .. may be read: as the file system climbs from where a
+ * link leads (realTarget), and as text first (resolve), since whether agy normalizes a path before using it is as
+ * unproved as ~ (#1074). Every guard that turns a path into inside, in .git or protected reads both, here.
+ * @param {string} at @returns {string[]}
+ */
+export const realReadings = (at) => [realTarget(at, '/'), realTarget(resolve(at), '/')].filter((r) => r !== null);
+
+/**
+ * Whether a path leads into one of the folders, by its real path, every way it may be read (readingsOf, realReadings).
+ * A ~user path never does: its home could be anywhere, so it asks, as Auto’s routine commands refuse one (agy-auto.mjs,
+ * staysIn).
  * @param {string} raw @param {string[]} dirs @param {{ cwd: string, home: string }} where
  */
 export const leadsInto = (raw, dirs, { cwd, home }) =>
   !othersHome(raw) &&
-  readingsOf(raw, cwd, home).every((at) => [realTarget(at, '/'), realTarget(resolve(at), '/')].every((real) => dirs.some((d) => inside(real, d))));
+  readingsOf(raw, cwd, home).every((at) => {
+    const reals = realReadings(at);
+    return reals.length === 2 && reals.every((real) => dirs.some((d) => inside(real, d)));
+  });

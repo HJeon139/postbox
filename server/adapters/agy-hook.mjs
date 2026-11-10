@@ -16,7 +16,7 @@ import { isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CARD_WAIT_MS } from '../permission-cards.mjs';
 import { autoAllows, intoGit, personaAllows, personaOf, publishingCall } from './agy-auto.mjs';
-import { inside, leadsInto, PATH_FIELDS, pathArgs, readingsOf, realTarget, tidyPath } from './agy-paths.mjs';
+import { inside, leadsInto, PATH_FIELDS, pathArgs, readingsOf, realReadings, realTarget, tidyPath } from './agy-paths.mjs';
 import { POSTBOX_SERVER } from './setup.mjs';
 
 export const HOOK_SCRIPT = fileURLToPath(import.meta.url);
@@ -81,14 +81,15 @@ export function isProtectedPath(rawPath, { cwd = process.cwd(), scriptPath = HOO
 /** Whether one absolute path, as written or where it leads, is one isProtectedPath protects. */
 function protectedAt(at, { scriptPath, home }) {
   const abs = resolve(at).toLowerCase();
-  const real = (realTarget(at, '/') ?? abs).toLowerCase();
+  // Where it really leads, both ways a .. may be read (realReadings): either one protected protects the path.
+  const reals = realReadings(at).map((r) => r.toLowerCase());
   const pluginRe = /(?:^|[\\/])\.agents(?:[\\/]plugins(?:[\\/]|$)|$)/;
-  if (pluginRe.test(abs) || pluginRe.test(real)) return true;
+  if (pluginRe.test(abs) || reals.some((r) => pluginRe.test(r))) return true;
   const realScript = (realTarget(scriptPath, '/') ?? resolve(scriptPath)).toLowerCase();
-  if (abs === resolve(scriptPath).toLowerCase() || real === realScript) return true;
+  if (abs === resolve(scriptPath).toLowerCase() || reals.includes(realScript)) return true;
   const agyDir = resolve(home, '.gemini', 'antigravity-cli');
-  const realAgyDir = realTarget(agyDir, '/') ?? agyDir;
-  return inside(abs, agyDir.toLowerCase()) || inside(real, realAgyDir.toLowerCase());
+  const realAgyDir = (realTarget(agyDir, '/') ?? agyDir).toLowerCase();
+  return inside(abs, agyDir.toLowerCase()) || reals.some((r) => inside(r, realAgyDir));
 }
 
 /**
