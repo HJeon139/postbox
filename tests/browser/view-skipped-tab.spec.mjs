@@ -120,7 +120,7 @@ async function wheel(page, dy) {
 /**
  * The pad’s focused element, read in its own document, and whether that document has focus. Tab moving focus is the
  * first; toBeFocused also needs the second, which on a Mac follows the OS window and read “inactive” with the element
- * focused (researcher’s Mac checks).
+ * focused (Mac checks of #712a).
  */
 async function inPad(frame) {
   const pad = await (await frame.elementHandle())?.contentFrame();
@@ -201,7 +201,7 @@ test('#712a: scrolled away from the app, Tab out of it and on into the skipped i
   });
 });
 
-// critic's P2 on #959: apps.mjs hears every Tab to see if it goes into an app frame. It read the rects of every
+// #712a: apps.mjs hears every Tab to see if it goes into an app frame. It read the rects of every
 // focusable on the page, and over skipped items each read laid that item out: one Tab from the composer in a 1,000-item
 // room took 975 layouts and about 3 s. It looks only as far as the next control now.
 test('#712a: a Tab from the composer in a 1,000-item room lays out a handful of items, not the room', async ({ page, browserName }) => {

@@ -6,16 +6,21 @@
 //   refuses (NO_TOKEN), which gh prefers over the keychain. A variable survives the agent’s login shell, which a wrapper
 //   first on PATH doesn’t: a Mac profile puts Homebrew’s gh back first;
 // - git refused every remote that isn’t a local path (guardEnv), whatever repository it runs in, so a real clone reached
-//   by its absolute path is refused too, and no credential, the keychain’s included, is ever asked for. Local paths
-//   stay allowed, so a local bare repository still takes a push.
+//   by its absolute path is refused too. Local paths stay allowed, so a local bare repository still takes a push;
+// - git with no credential helper and no askpass: the guard empties the helper list the person’s config built, and
+//   blanks GIT_ASKPASS, SSH_ASKPASS and core.askPass, which a terminal such as VS Code’s sets. So `git credential fill`
+//   hands out nothing, the keychain’s included.
 // The runner’s own reading and filing (open-issues.mjs, review.mjs) run in the runner’s environment, not this one, so
 // they keep the person’s login. A `- seed: git-remote` run gets this and more, from gitRemoteEnv.
 // What’s left, so no one reads this as containment: the guard is environment, so an agent set on reaching GitHub can
-// unset it (`env -u GH_TOKEN gh auth token`, `GIT_ALLOW_PROTOCOL=https git push …`). And it reaches only the agents on
-// this computer: one on a `--host` machine has that machine’s gh and git.
+// unset it (`env -u GH_TOKEN gh auth token`, `GIT_ALLOW_PROTOCOL=https git push …`), or skip gh and git: on a Mac,
+// `security find-generic-password` reads the keychain directly, and no git or gh setting covers that. And it reaches
+// only the agents on this computer: one on a `--host` machine has that machine’s gh and git. Postbox’s own push on
+// request (server/push-on-request.mjs) sets its own git and gh config: its credential helper, `gh auth git-credential`,
+// still reads the keychain’s token, in a run that isn’t a git-remote one, whose project has a repository set.
 
 import { spawnSync } from 'node:child_process';
-import { guardEnv, NO_TOKEN, preflightRemote, remotePaths, UNREACHABLE } from './git-remote.mjs';
+import { guardEnv, NO_TOKEN, preflightRemote, remotePaths, tearDownRemote, UNREACHABLE } from './git-remote.mjs';
 
 /**
  * The environment that takes the person’s GitHub away from a run’s Postbox and its agents, or nothing when the scenario
@@ -32,6 +37,10 @@ export function noGithubEnv(scenario, dir) {
     GITHUB_TOKEN: '',
     GH_ENTERPRISE_TOKEN: NO_TOKEN,
     GITHUB_ENTERPRISE_TOKEN: '',
+    // A terminal such as VS Code’s sets these, and git asks them for a password when no helper answers. Empty, git asks
+    // nothing: an empty GIT_ASKPASS also stops git looking at core.askPass and SSH_ASKPASS.
+    GIT_ASKPASS: '',
+    SSH_ASKPASS: '',
   };
 }
 
@@ -57,6 +66,18 @@ function preflightNoGithub(env) {
  * @param {Record<string, string|undefined>} env
  */
 export function preflightRun(scenario, workspace, dir, env) {
-  if (scenario.seed === 'git-remote') preflightRemote(workspace, dir, env);
-  else if (scenario.github !== 'real') preflightNoGithub(env);
+  if (scenario.seed === 'git-remote') {
+    try {
+      preflightRemote(workspace, dir, env);
+    } catch (e) {
+      // The run’s stop doesn’t exist yet, so nothing else would remove the remote this run seeded. The preflight’s reason
+      // is what stops the run: a teardown that fails too only adds that the remote is still there.
+      try {
+        tearDownRemote(dir, () => {});
+      } catch (left) {
+        throw new Error(`${e.message} The run’s remote couldn’t be removed either: ${left.message}`, { cause: e });
+      }
+      throw e;
+    }
+  } else if (scenario.github !== 'real') preflightNoGithub(env);
 }

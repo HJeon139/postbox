@@ -2,6 +2,8 @@
 // (persona.remote = { hostId }). Which backends run here, which can run on a host, and the checks a persona’s
 // placement passes when it’s made or changed. The runtime (server/runtime.mjs) calls these with itself first.
 
+import { INVISIBLE } from '../../shared/invisible.mjs';
+import { lookedText } from '../../shared/remote-protocol.mjs';
 import { clipText, httpError } from '../helpers.mjs';
 
 /** A harness’s name for the person, and the host setting that names its path (shared/remote-settings.mjs). */
@@ -29,7 +31,7 @@ export function runsHere(rt, backend) {
 /** Why a backend can’t run on this computer, and what can. @param {any} rt @param {string} backend */
 export function notHere(rt, backend) {
   const elsewhere = registeredAdapter(rt, { backend })?.capabilities?.remote;
-  return `“${backend}” isn’t available on this computer. Available: ${localBackends(rt).join(', ')}.${elsewhere ? ' It can run on one of your hosts: choose one for this agent.' : ''} See README, “Run real agents”.`;
+  return `“${clipName(backend)}” isn’t available on this computer. Available: ${localBackends(rt).join(', ')}.${elsewhere ? ' It can run on one of your hosts: choose one for this agent.' : ''} See README, “Run real agents”.`;
 }
 
 /**
@@ -44,12 +46,13 @@ export function placement(rt, remote, backend) {
     throw httpError(422, 'Where an agent runs is null, for this computer, or { hostId } for one of your hosts.');
   const h = typeof r.hostId === 'string' && Object.hasOwn(rt.s.hosts ?? {}, r.hostId) ? rt.s.hosts[r.hostId] : null;
   if (!h) throw httpError(422, 'That host doesn’t exist; it may have been removed. Pick one of your hosts, or run the agent on this computer.');
-  if (!rt.adapters.names().includes(backend)) throw httpError(422, `“${backend}” isn’t available in this Postbox, so it can’t run on ${h.name} either.`);
+  if (!rt.adapters.names().includes(backend))
+    throw httpError(422, `“${clipName(backend)}” isn’t available in this Postbox, so it can’t run on ${h.name} either.`);
   if (!rt.adapters.get(backend).capabilities?.remote) {
     const can = rt.adapters.names().filter((n) => rt.adapters.get(n).capabilities?.remote);
     throw httpError(
       422,
-      `“${backend}” runs only on this computer, so this agent can’t run on ${h.name}. ${can.length ? `Backends here that can run on a host: ${can.join(', ')}.` : 'Claude Code, Kiro CLI and Codex can run on a host, and none of them is on this computer.'}`,
+      `“${clipName(backend)}” runs only on this computer, so this agent can’t run on ${h.name}. ${can.length ? `Backends here that can run on a host: ${can.join(', ')}.` : 'Claude Code, Kiro CLI and Codex can run on a host, and none of them is on this computer.'}`,
     );
   }
   checkHarness(rt, h, backend);
@@ -66,7 +69,7 @@ function checkHarness(rt, h, backend) {
   const found = w.harnesses.find((/** @type {any} */ x) => x?.name === backend);
   if (found?.path) return;
   const [label, setting] = HARNESS_LABELS[backend] ?? [backend, 'its path'];
-  const looked = found?.looked?.length ? ` Postbox’s daemon looked in ${found.looked.join(', ')}.` : '';
+  const looked = found?.looked?.length ? ` Postbox’s daemon looked in ${lookedText(found)}.` : '';
   throw httpError(
     422,
     `${label} isn’t installed on ${h.name}, so this agent can’t run there.${looked} Install it there, or set ${setting} in the host’s settings.`,
@@ -87,11 +90,15 @@ export function refuseHere(rt, se, persona) {
 /** The backend a persona’s turn runs on. @param {any} persona @returns {string} */
 const backendOf = (persona) => persona?.backend ?? 'mock';
 
+// A control character or a lone surrogate (Cs, which the u flag reads one at a time), for clipName.
+const NOT_TEXT = /[\p{Cc}\p{Cs}]/gu;
+
 /**
- * A name from the data, for the person (#874): control and format characters stripped, at most 40 characters.
+ * A name from the data, for the person (#874): control characters, lone surrogates and every character that hides or
+ * reorders text (INVISIBLE, shared/invisible.mjs, #1049) stripped, at most 40 characters.
  * @param {unknown} s
  */
-const clipName = (s) => clipText(String(s).replace(/[\p{Cc}\p{Cf}]/gu, ''), 40);
+const clipName = (s) => clipText(String(s).replace(NOT_TEXT, '').replace(INVISIBLE, ''), 40);
 
 /**
  * Why an agent whose backend isn’t registered in this Postbox (#874: `POSTBOX_BACKENDS=mock`, `--demo`, the Agent SDK

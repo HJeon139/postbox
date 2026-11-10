@@ -86,7 +86,7 @@ test('#418 one made only by an agent shows a count; yours stays distinct and rai
   await expect(reaction(page, 'Flag this')).toHaveAttribute('data-count', '2');
   // The button draws the icon before its content and the count after it, so the count is right of the icon.
   const drawn = (which) => reaction(page, 'Flag this').evaluate((el, w) => getComputedStyle(el, w).content, which);
-  expect([await drawn('::before'), await drawn('::after')], 'the icon, then the count').toEqual(['""', '"2"']);
+  expect([await drawn('::before'), await drawn('::after')], 'the icon, then the count').toEqual(['""', '"2" / ""']);
 });
 
 test('who reacted shows in a hover card, on hover and on keyboard focus, and in the button’s name', async ({ page }) => {

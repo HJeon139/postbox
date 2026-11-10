@@ -16,8 +16,7 @@
  * - a uid with no quotes on its key, as YAML (“uid: 501”) and TOML (“uid = 501”) write it, since code and tests name
  *   uids so (a “uid: 1000” option to a function);
  * - an account key before an “=” after anything but a line’s start, white space, “{” or “,”, such as “;”;
- * - a connector a person named after one of claude.ai’s directory connectors;
- * - a connector’s tool ids, “mcp__claude_ai_<name>__<tool>”, where its name shows as surely as in mcp_servers.
+ * - a connector a person named after one of claude.ai’s directory connectors, by its name or its tool ids.
  */
 
 import { joinedDeltas } from './joined-deltas.mjs';
@@ -90,10 +89,33 @@ const CLAUDE_AI_CONNECTOR = /\\?"name\\?"\s*:\s*\\?"claude\.ai ([^"\\]+)\\?"/g;
 
 /**
  * The connectors claude.ai’s directory offers, named alike for every account, as a recorded init lists them
- * (tests/fixtures/claude-code/host-mcp-init.jsonl). A connector a person adds has the name they give it, which may be
- * their own (#661), and no shape tells it from the directory’s, so every other name is flagged.
+ * (tests/fixtures/claude-code/host-mcp-init.jsonl) and the tests name their tools. A connector a person adds has the
+ * name they give it, which may be their own (#661), and no shape tells it from the directory’s, so every other name is
+ * flagged.
  */
-const DIRECTORY_CONNECTORS = new Set(['Claude Docs', 'Gmail', 'Google Calendar', 'Google Drive']);
+const DIRECTORY_CONNECTORS = new Set(['Box', 'Claude Docs', 'Gmail', 'Google Calendar', 'Google Drive', 'Linear', 'Notion', 'Slack']);
+
+// A claude.ai connector’s tool id, “mcp__claude_ai_<name>__<tool>”, or a rule that names its server or all its tools,
+// and what follows the prefix: the connector’s name as Claude Code writes a server’s, each character it can’t hold
+// turned into “_”, so its name shows as surely as in mcp_servers (#905).
+const CONNECTOR_TOOL = /mcp__claude_ai_([A-Za-z0-9_-]+)/g;
+
+// A tool’s own name after its connector’s and “__”: words joined by single “_”, or none, as in a rule for all its
+// tools. A “_” at either end, or a “__”, may hide another name after a directory connector’s.
+const TOOL_NAME = /^(?:[A-Za-z0-9-]+(?:_[A-Za-z0-9-]+)*)?$/;
+
+/** The directory connectors as a tool id writes them. */
+const DIRECTORY_TOOL_PREFIXES = [...DIRECTORY_CONNECTORS].map((name) => name.replaceAll(' ', '_'));
+
+/**
+ * Whether what follows “mcp__claude_ai_” names a directory connector: its server alone, or one of its tools.
+ * @param {string} named
+ */
+function directoryTool(named) {
+  return DIRECTORY_TOOL_PREFIXES.some(
+    (connector) => named === connector || (named.startsWith(`${connector}__`) && TOOL_NAME.test(named.slice(connector.length + 2))),
+  );
+}
 
 // Anthropic API keys and GitHub tokens, at the lengths server/telemetry-secrets.mjs matches, so a placeholder such as
 // “sk-ant-...” or “ghp_xxxx” in prose isn’t one. A Bearer token (RFC 6750’s characters, the scheme in either case) is
@@ -198,6 +220,7 @@ function privateStrings(content) {
     ...valuesOf(content, INSTALLATION_ID, 'installationId', (id) => ALL_ZEROS.test(id.replace(/\s/g, ''))),
     ...matchesOf(content, ACCOUNT_FIELD, 'account field'),
     ...valuesOf(content, CLAUDE_AI_CONNECTOR, 'connector name', (name) => DIRECTORY_CONNECTORS.has(name)),
+    ...valuesOf(content, CONNECTOR_TOOL, 'connector tool id', directoryTool),
     ...matchesOf(content, API_TOKEN, 'token'),
     ...valuesOf(content, UTILIZATION, 'utilization', (value) => ZERO.test(value)),
     ...valuesOf(content, EMAIL, 'email', placeholderEmail),
@@ -231,7 +254,7 @@ const sameLine = (line) => line;
 /**
  * Checks text for leaked personal data or un-sanitized environment paths: home paths with a real user name, temp
  * folders, Claude Code uids and uid fields, a real Codex installation id, account metadata, a claude.ai connector a
- * person named, API keys and tokens, a utilization other than 0, and real email addresses.
+ * person named or its tool ids, API keys and tokens, a utilization other than 0, and real email addresses.
  *
  * Each violation names its kind and its line, “email at line 3”, and never any part of what it found: CI prints them to
  * its log, which is public and kept for 90 days, so a masked address or a token’s first characters would outlast the

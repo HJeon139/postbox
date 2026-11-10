@@ -74,11 +74,12 @@ test('#672: a login PATH is cut at 200 entries and at 16 KB', async () => {
   assert.ok(big.entries.length >= 50, 'cut at the limit, not emptied');
 });
 
-test('#672: a shell that prints no markers, or exits non-zero, fails with a reason', async () => {
+test('#672: a shell that prints no markers, or exits non-zero with none, fails with a reason', async () => {
   const none = await probe(fakeShell(() => 'Welcome!\n/login/bin:/usr/bin\n'));
   assert.equal(none.ok, false);
   assert.ok(!none.ok && none.why.length > 0);
-  const failed = await probe(fakeShell(around('/login/bin'), 1));
+  // A non-zero exit fails only without markers (#1066: an rc’s exit trap can follow a clean PATH).
+  const failed = await probe(fakeShell(() => 'Welcome!\n', 1));
   assert.equal(failed.ok, false);
   assert.ok(!failed.ok && /1/.test(failed.why), !failed.ok ? failed.why : '');
   const noShell = await probeLoginPath({ shell: null, spawnImpl: fakeShell(around('/x')).spawnImpl });

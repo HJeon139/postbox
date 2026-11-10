@@ -8,6 +8,9 @@
 // closed, in its own process group, for at most PROBE_MS; past it the whole group is killed. Its rc files may print
 // anything, so only the text between this probe’s own markers, each with a fresh random token, is read, and only
 // absolute entries without control characters are kept, at most MAX_ENTRIES of them and MAX_BYTES together.
+//
+// csh and tcsh take -l only as their sole flag (tcsh(1)), so `-lic` fails there, and their turns keep the daemon’s own
+// PATH, as before #672 (#1066). Their users can set nodePath and each harness’s path in the host’s settings.
 
 import { spawn as nodeSpawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
@@ -101,7 +104,7 @@ export function probeLoginPath({
   shell = loginShell(),
   spawnImpl = nodeSpawn,
   timeoutMs = PROBE_MS,
-  now = Date.now,
+  now = () => performance.now(),
   newToken = randomUUID,
   kill = (pid, signal) => process.kill(pid, signal),
   env = process.env,
@@ -141,8 +144,11 @@ export function probeLoginPath({
     child.on('error', (e) => settle({ ok: false, why: `${shell} couldn’t start: ${e.message}` }));
     /** @param {number | null} code @param {string | null} signal */
     const ended = (code, signal) => {
-      if (code !== 0) return settle({ ok: false, why: `${shell} exited with ${signal ?? `code ${code}`}.` });
-      settle(readPath(out, token, shell, now() - t0));
+      // The PATH between this probe’s markers is the login shell’s whatever the exit, which an rc’s exit trap may set
+      // (#1066); with no markers, a non-zero exit is the reason.
+      const read = readPath(out, token, shell, now() - t0);
+      if (read.ok || code === 0) return settle(read);
+      settle({ ok: false, why: `${shell} exited with ${signal ?? `code ${code}`}.` });
     };
     child.on('close', ended);
     child.on('exit', (code, signal) => setTimeout(() => ended(code, signal), DRAIN_MS).unref?.());

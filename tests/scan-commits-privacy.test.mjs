@@ -13,7 +13,7 @@ const HOME_PATH = `${HOME}/x`;
 
 /**
  * A git reader over commits given as { sha: diff text }, oldest first, with messages given as { sha: message }, and the
- * paths each adds, copies or renames given as { sha: paths }.
+ * files git lists for each, by status, given as { sha: [{ status, path }] }.
  */
 function fakeGit(history, messages = {}, names = {}) {
   return {
@@ -27,7 +27,7 @@ function fakeGit(history, messages = {}, names = {}) {
 test('a home path a commit adds is reported with its commit and file', () => {
   const sha = 'abcdef1234567890';
   const result = scanCommits('main..HEAD', fakeGit({ [sha]: diff(newFile('notes.md', [`see ${HOME_PATH}`])) }));
-  assert.deepEqual(result.findings, [{ sha, path: 'notes.md', violation: 'home path at line 1' }]);
+  assert.deepEqual(result.findings, [{ sha, path: 'notes.md', place: 1, violation: 'home path at line 1' }]);
   assert.equal(formatFinding(result.findings[0]), 'abcdef1 notes.md: home path at line 1');
 });
 
@@ -37,24 +37,24 @@ const ADDRESS = ['jdoe', 'corp.com'].join('@');
 test('a private name of a file a commit adds is reported, though what the file holds is clean (#785)', () => {
   const sha = 'abcdef1234567890';
   const result = scanCommits('main..HEAD', fakeGit({ [sha]: diff(newFile(`x/${ADDRESS}.txt`, ['nothing private'])) }));
-  assert.deepEqual(result.findings, [{ sha, path: `x/${ADDRESS}.txt`, violation: 'email in the file name' }]);
-  assert.equal(formatFinding(result.findings[0]), 'abcdef1 a file’s name: email in the file name', 'the name isn’t printed');
+  assert.deepEqual(result.findings, [{ sha, path: `x/${ADDRESS}.txt`, place: 1, violation: 'email in the file name' }]);
+  assert.equal(formatFinding(result.findings[0]), 'abcdef1 file 1 of git show --name-only: email in the file name', 'the name isn’t printed');
   const named = `${HOME.slice(1)}/notes.md`;
   const home = scanCommits('main..HEAD', fakeGit({ [sha]: diff(newFile(named, ['nothing private'])) }));
-  assert.deepEqual(home.findings, [{ sha, path: named, violation: 'home path in the file name' }]);
+  assert.deepEqual(home.findings, [{ sha, path: named, place: 1, violation: 'home path in the file name' }]);
 });
 
 test('a private name of a file a commit adds empty, or renames, is reported, though it adds no line (#785)', () => {
   const sha = 'abcdef1234567890';
-  const names = { [sha]: [`x/${ADDRESS}.txt`, 'clean.txt'] };
+  const names = { [sha]: [`x/${ADDRESS}.txt`, 'clean.txt'].map((path) => ({ status: 'A', path })) };
   const result = scanCommits('main..HEAD', fakeGit({ [sha]: '' }, {}, names));
-  assert.deepEqual(result.findings, [{ sha, path: `x/${ADDRESS}.txt`, violation: 'email in the file name' }]);
+  assert.deepEqual(result.findings, [{ sha, path: `x/${ADDRESS}.txt`, place: 1, violation: 'email in the file name' }]);
   assert.deepEqual([result.files, result.lines], [0, 0], 'no file’s text was read');
 });
 
 test('a binary file’s private name is reported, though its bytes are skipped (#785)', () => {
   const result = scanCommits('main..HEAD', fakeGit({ aaaaaaa1: diff(newFile(`${ADDRESS}.png`, ['\0PNG'])) }));
-  assert.deepEqual(result.findings, [{ sha: 'aaaaaaa1', path: `${ADDRESS}.png`, violation: 'email in the file name' }]);
+  assert.deepEqual(result.findings, [{ sha: 'aaaaaaa1', path: `${ADDRESS}.png`, place: 1, violation: 'email in the file name' }]);
   assert.equal(result.binary, 1);
 });
 
@@ -97,7 +97,7 @@ test('a file whose added lines hold a zero byte is skipped as binary, as git wou
 test('a home path in a commit’s message is reported as the message’s', () => {
   const sha = 'abcdef1234567890';
   const result = scanCommits('main..HEAD', fakeGit({ [sha]: '' }, { [sha]: `change\n\nSeen-at: ${HOME_PATH}\n` }));
-  assert.deepEqual(result.findings, [{ sha, path: null, violation: 'home path at line 3' }]);
+  assert.deepEqual(result.findings, [{ sha, path: null, place: null, violation: 'home path at line 3' }]);
   assert.equal(formatFinding(result.findings[0]), 'abcdef1 message: home path at line 3');
 });
 
