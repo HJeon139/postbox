@@ -36,6 +36,28 @@ export function keyTimes(keys, entries, threshold) {
 const hasEntry = (start, end = Infinity, entries) => entries.some((e) => e.startTime >= start && e.startTime < end);
 
 /**
+ * How many keys were timed at more than twice the longest frame gap around them: their frames weren’t presented, so
+ * Event Timing ran each to whatever was presented next. Chromium’s full headless mode did that to the composer, 0.7
+ * to 2 s a key while frames ran every 20 ms. A long task holds both back, so a slow key under one is still a time.
+ * @param {number[]} values  each key’s time  @param {number | null} longestGap  @param {number} threshold
+ */
+export function unpresented(values, longestGap, threshold) {
+  const bound = 2 * Math.max(longestGap ?? 0, threshold);
+  return values.filter((v) => v > bound).length;
+}
+
+/**
+ * Whether the entries are in key order up to the planted key that ends a run: none that started before it arrives
+ * after its own. The run relies on that order to know every measured key’s entry is in once the planted key’s is.
+ * @param {{ startTime: number }[]} entries  in the order they arrived  @param {number} plantedAt  its keydown timeStamp
+ */
+export function entriesInOrder(entries, plantedAt) {
+  const at = entries.findIndex((e) => e.startTime >= plantedAt);
+  if (at < 0) return false;
+  return entries.slice(at).every((e) => e.startTime >= plantedAt);
+}
+
+/**
  * A timed measure’s verdict, with its sample count beside its p95: with 5 samples the p95 is the slowest one.
  * @param {number[]} values  in ms  @param {{ unmeasured?: number, budget?: number }} [o]
  * @returns {ReturnType<typeof summarize> & { verdict: Verdict }}

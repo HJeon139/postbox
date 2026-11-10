@@ -17,7 +17,7 @@ import { cpus, loadavg } from 'node:os';
 import { expect, test } from '@playwright/test';
 import { idleFor, paced } from '../../tools/budget-pace.mjs';
 import { busy, installProbe, SLOW_KEY_ID, SLOW_KEY_MS, startFrames, stopFrames, THRESHOLD_MS, untilOpen, untilShown } from '../../tools/budget-probe.mjs';
-import { elementsVerdict, gapCalibrated, gapVerdict, keyTimes, timedVerdict } from '../../tools/budget-stats.mjs';
+import { elementsVerdict, entriesInOrder, gapCalibrated, gapVerdict, keyTimes, timedVerdict, unpresented } from '../../tools/budget-stats.mjs';
 import { calibrated } from '../../tools/key-frame-stats.mjs';
 import { seedBigRoom } from '../../tools/uat/big-room.mjs';
 import { startPostbox } from './postbox.mjs';
@@ -41,10 +41,17 @@ const TEXT = 'the release train leaves on time ';
 // Tracing is off: Playwright’s trace snapshot walks the page each action, which would be measured too. Chromium runs
 // as its headless shell, as PF-1’s tool does (tools/browser.mjs): its full headless mode, the config’s, presents no
 // frame for a key typed into the composer until something else on the page changes, so Event Timing gave every key
-// the time to that change, 1 to 2 s here, against 24 ms p95 in the shell. Firefox keeps its own.
+// the time to that change, 1 to 2 s here, against 24 ms p95 in the shell. The shell isn’t the person’s Chrome, so the
+// reference Mac’s run, the one whose times gate, sets POSTBOX_BUDGET_HEADED=1 for a headed Chromium. Firefox keeps its
+// own.
+const HEADED = !!process.env.POSTBOX_BUDGET_HEADED;
 test.use({
   trace: 'off',
-  channel: async ({ browserName }, use) => use(browserName === 'chromium' ? 'chromium-headless-shell' : undefined),
+  headless: !HEADED,
+  channel: async ({ browserName }, use) => {
+    if (browserName !== 'chromium') return use(undefined);
+    return use(HEADED ? 'chromium' : 'chromium-headless-shell');
+  },
 });
 
 /**
@@ -200,8 +207,13 @@ async function measureKeys(room, { name, keys, warmup, everyMs }) {
   const rec = await recorded(page);
   const { values, unmeasured } = keyTimes(rec.keys.slice(from + warmup, planted + 1), rec.entries, THRESHOLD_MS);
   values.pop();
-  report(room, name, TIMES_GATE, { ...timedVerdict(values, { unmeasured }), unmeasured }, since);
-  report(room, `longest task, ${name}`, TIMES_GATE, gapVerdict(frames.gaps, frames.lengthMs), since);
+  const gaps = gapVerdict(frames.gaps, frames.lengthMs);
+  // A key whose frame wasn’t presented, or a run whose entries came out of order, has no time to give.
+  const held = unpresented(values, gaps.longest, THRESHOLD_MS);
+  const ordered = entriesInOrder(rec.entries, rec.keys[planted].at);
+  const untimed = unmeasured + held + (ordered ? 0 : values.length);
+  report(room, name, TIMES_GATE, { ...timedVerdict(values, { unmeasured: untimed }), unmeasured, unpresented: held, ordered }, since);
+  report(room, `longest task, ${name}`, TIMES_GATE, gaps, since);
 }
 
 /** Key to paint in the composer. @param {Room} room */
@@ -257,7 +269,7 @@ for (const size of SIZES) {
       room = await openRoom(size, browser);
       test.info().annotations.push({
         type: 'run',
-        description: JSON.stringify({ commit: commit(), browser: browserName, version: browser.version(), size, seedMs: room.seedMs }),
+        description: JSON.stringify({ commit: commit(), browser: browserName, version: browser.version(), headed: HEADED, size, seedMs: room.seedMs }),
       });
     });
     test.afterAll(async () => {
