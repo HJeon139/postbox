@@ -816,12 +816,13 @@ async function criticRevise(ev, a, _mem) {
   if (ev.blockId === 'schema-review') {
     const threads = comments.map((c, i) => {
       const resolvable = !/k1|tune|bm25|parameter/i.test(c.text);
+      // The person’s comment is a thread on the block already (#1143): its threadId names it, and the revision
+      // sends back only the reply, which keepReviewThreads adds after what the person said.
       return {
-        id: `c${i + 1}`,
+        id: c.threadId ?? `c${i + 1}`,
         line: c.line ?? 1,
         status: resolvable ? 'resolved' : 'open',
         comments: [
-          { author: 'You', text: c.text },
           {
             author: '@critic',
             text: resolvable
