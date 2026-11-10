@@ -73,11 +73,13 @@ test('close() during a Retry held at its candidate load waits, and the Retry end
   const dir = await tmp();
   const faults = {};
   let holdRead = null;
+  const base = logDisk(faults);
+  // The candidate load reads a segment by opening it for reading (store-replay.mjs, #1180): that’s where it’s held.
   const io = {
-    ...logDisk(faults),
-    readFile: async (...args) => {
-      if (holdRead && String(args[0]).includes('events-')) await holdRead.wait();
-      return realFs.readFile(...args);
+    ...base,
+    open: async (path, flags, ...rest) => {
+      if (holdRead && String(path).includes('events-') && flags === 'r') await holdRead.wait();
+      return base.open(path, flags, ...rest);
     },
   };
   const a = await new Store(dir, { io }).load();

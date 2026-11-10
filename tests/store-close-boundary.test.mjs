@@ -20,12 +20,15 @@ test('a failed store with no descriptor: close() then reload() at once; the Retr
   let closing = false;
   const readsAfterClose = [];
   const aio = disk({
-    async open(path, ...args) {
-      if (failOpen && /events-\d+\.jsonl$/.test(String(path))) {
+    async open(path, flags, ...args) {
+      const name = String(path).split('/').at(-1);
+      // Recovery reads the snapshot and the segments by opening them to read (#1180), so that’s a read too.
+      if (flags === 'r' && closing && /snapshot|events/.test(name)) readsAfterClose.push(name);
+      if (flags !== 'r' && failOpen && /events-\d+\.jsonl$/.test(String(path))) {
         failOpen = false;
         throw eio('failed opening log');
       }
-      return realFs.open(path, ...args);
+      return realFs.open(path, flags, ...args);
     },
     async readFile(path, ...args) {
       const name = String(path).split('/').at(-1);

@@ -11,6 +11,7 @@ import { test } from 'node:test';
 import { assetBlobs, writeAsset } from '../server/assets.mjs';
 import { openDataFolder } from '../server/data-folder.mjs';
 import { publicState } from '../server/public-state.mjs';
+import { parseSnapshotText } from '../server/store-snapshot-lines.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
 /** The text of each file directly in the data folder whose name matches, joined. */
@@ -87,7 +88,7 @@ test('an asset’s content reaches its blob file, and never the event log, a sna
     if (e.type === 'asset.version') onlyKeys(e.data.version, KEYS.version, 'the log’s version');
   }
   for (const [where, state] of [
-    ['the snapshot', JSON.parse(snapshot).state ?? JSON.parse(snapshot)],
+    ['the snapshot', parseSnapshotText(snapshot)],
     ['/api/state', JSON.parse(api)],
   ])
     for (const asset of Object.values(state.assets ?? {})) {

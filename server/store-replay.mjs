@@ -26,17 +26,16 @@ export async function replay(store) {
 /** @param {import('./store-recover.mjs').Candidate} store @param {{ name: string }} seg @param {boolean} last */
 async function replaySegment(store, seg, last) {
   const path = store.at(seg.name);
-  const text = await store.io.readFile(path, 'utf8');
-  const lines = text.split('\n'); // the text after the final newline: empty when the file ends in one
   let offset = 0;
-  for (let n = 0; n < lines.length; n++) {
-    const line = lines[n];
+  let n = -1;
+  let torn = -1; // the byte offset of a final line with no newline, cut once the file is closed
+  for await (const { line, terminated } of segmentLines(store.io, path)) {
+    n++;
     if (line.trim()) {
-      if (n === lines.length - 1) {
+      if (!terminated) {
         if (!last) throw refusal(seg, n, offset, 'has no newline, so its write never finished, and a later segment follows it');
         if (store.retiring) throw refusal(seg, n, offset, 'is a torn tail, left as it is: the store closed while it was reading'); // never trim another owner’s line
-        await store.io.truncate(path, offset);
-        console.warn(`Dropped an incomplete event at the end of ${seg.name} (the server stopped mid-write).`);
+        torn = offset;
         break;
       }
       let events;
@@ -50,6 +49,40 @@ async function replaySegment(store, seg, last) {
       applyGroup(store, events, seg, n, offset);
     }
     offset += Buffer.byteLength(line) + 1;
+  }
+  if (torn < 0) return;
+  await store.io.truncate(path, torn);
+  console.warn(`Dropped an incomplete event at the end of ${seg.name} (the server stopped mid-write).`);
+}
+
+/** How much of a segment is read at a time. */
+const CHUNK = 1 << 20;
+
+/**
+ * A segment’s lines, read a chunk at a time rather than as one string (#1180), each with whether a newline ended it.
+ * Split on the newline byte, so a line is decoded whole and a character is never cut.
+ * @param {{ open: typeof import('node:fs/promises').open }} io @param {string} path
+ * @returns {AsyncGenerator<{ line: string, terminated: boolean }>}
+ */
+async function* segmentLines(io, path) {
+  const fh = await io.open(path, 'r');
+  try {
+    const buf = Buffer.alloc(CHUNK);
+    let carry = Buffer.alloc(0);
+    for (;;) {
+      const { bytesRead } = await fh.read(buf, 0, CHUNK, null);
+      if (!bytesRead) break;
+      const chunk = Buffer.concat([carry, buf.subarray(0, bytesRead)]);
+      let start = 0;
+      for (let nl = chunk.indexOf(10, start); nl !== -1; nl = chunk.indexOf(10, start)) {
+        yield { line: chunk.toString('utf8', start, nl), terminated: true };
+        start = nl + 1;
+      }
+      carry = chunk.subarray(start);
+    }
+    if (carry.length) yield { line: carry.toString('utf8'), terminated: false };
+  } finally {
+    await fh.close();
   }
 }
 

@@ -18,6 +18,7 @@ import { monitorEventLoopDelay, performance } from 'node:perf_hooks';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { writeSnapshot } from '../server/store-snapshot.mjs';
+import { parseSnapshotText, snapshotBytes, snapshotLines } from '../server/store-snapshot-lines.mjs';
 import { count, loadState, seedRoomFolder, THREAD } from './bench-room.mjs';
 
 export const DEFAULT_STALL_BUDGET_MS = 50;
@@ -104,7 +105,7 @@ function readSnapshotState(snapPath, dataDir) {
   const text = readFileSync(snapPath, 'utf8');
   let state;
   try {
-    state = JSON.parse(text);
+    state = parseSnapshotText(text); // either format (#1180)
   } catch (e) {
     throw new Error(`Could not parse the snapshot at ${snapPath}: ${e.message}. Give it a snapshot.json a Postbox wrote.`);
   }
@@ -158,10 +159,10 @@ export async function measureSnapshotPass(state, scratchDir, opts = {}) {
     timerFiredAt = performance.now();
   }, 0);
 
-  // 1. Synchronous CPU stall (custom sync work or JSON.stringify)
+  // 1. Synchronous CPU stall (custom sync work, or building the snapshot’s lines, as the server does since #1180)
   const tStringify0 = performance.now();
   if (typeof opts.syncWork === 'function') opts.syncWork();
-  const json = JSON.stringify(state);
+  for (const _line of snapshotLines(state));
   const stringifyMs = performance.now() - tStringify0;
 
   // 2. The server’s own snapshot write, which stringifies again, then writes in 1 MB pieces
@@ -177,7 +178,7 @@ export async function measureSnapshotPass(state, scratchDir, opts = {}) {
   delay.disable();
 
   return {
-    bytes: Buffer.byteLength(json),
+    bytes: snapshotBytes(state), // what writeSnapshot writes (#1180)
     stringifyMs,
     writeMs,
     totalWriteMs: stringifyMs + writeMs,
