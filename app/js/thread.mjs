@@ -699,16 +699,32 @@ client.on((ch) => {
   if (ch.type === 'connection' && client.connection === 'open') flushOutbox();
 });
 
+// A send can fail while the stream stays open: Firefox doesn’t retry a POST on a keep-alive connection the server
+// has closed, and no reconnect follows to send the outbox (#1126). So, while the stream is open and the browser
+// online, it’s sent again shortly, a few times; past that, or offline, it waits for the connection as before.
+const RETRY_MS = [1000, 2000, 4000, 8000];
+let retryTimer = 0;
+let retries = 0;
+function retrySoon() {
+  if (retryTimer || retries >= RETRY_MS.length || client.connection !== 'open' || navigator.onLine === false) return;
+  retryTimer = window.setTimeout(() => {
+    retryTimer = 0;
+    flushOutbox();
+  }, RETRY_MS[retries++]);
+}
+
 export async function sendMessage(threadId, text, attachments = [], { sendNow = false } = {}) {
   try {
     const r = await api(`/api/threads/${threadId}/messages`, { text, attachments, sendNow });
     if (r.queued) say('Queued. It sends when the agent finishes.');
+    retries = 0;
     return true;
   } catch (e) {
     if (e.offline) {
       outbox.push({ threadId, text, attachments });
       saveOutbox();
       client.emit({ type: 'outbox' });
+      retrySoon();
       return true;
     }
     toast({ title: 'Your message didn’t send', text: e.message, level: 'blocking' });

@@ -43,8 +43,12 @@ async function cardFor(req) {
   const p = rt.createPersona({ handle: 'coder', backend: 'claude-code', permissionMode: 'ask', tools: ['shell'] });
   const t = rt.createThread({ projectId: 'p1', title: 'T', personaIds: [p.id] });
   rt.sendMessage(t.id, { text: 'go' });
-  await sleep(20);
-  const card = store.items(t.id).find((i) => i.kind === 'permission' && i.status === 'open');
+  // The card opens once the turn has started and asked: poll for it, as answer() polls for the turn's end, rather than
+  // a fixed wait a loaded runner can outlast.
+  const openCard = () => store.items(t.id).find((i) => i.kind === 'permission' && i.status === 'open');
+  for (let i = 0; i < 400 && !openCard(); i++) await sleep(5);
+  const card = openCard();
+  assert.ok(card, 'the permission card opened');
   /** Answers the card with `action`, and says what the call, the card and the conversation got. */
   const answer = async (action, values) => {
     rt.act(t.id, card.id, action, values);

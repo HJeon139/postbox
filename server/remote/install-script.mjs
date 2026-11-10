@@ -19,6 +19,16 @@ const NODE_CHECK = [
   .join('')
   .replaceAll('`', '\\`');
 
+/** The longest a test-only pause waits for its path, in seconds: past any test’s timeout (#824). */
+export const TEST_PAUSE_LIMIT_S = 300;
+
+/**
+ * The script’s `pause <path> <mark>`: with a path, it makes `<path>.<mark>` and waits until the path exists, for at most
+ * `limitS` seconds; with none, it returns at once.
+ */
+export const pauseFunction = (limitS = TEST_PAUSE_LIMIT_S) =>
+  `pause() { [ -n "$1" ] || return 0; : > "$1.$2"; pw=0; until [ -e "$1" ] || [ $pw -ge ${limitS} ]; do sleep 1; pw=$((pw+1)); done; };`;
+
 /**
  * The install script, joined into one line (the top of install.mjs says why). $1 is the version, which installCommand
  * checks. Every path starts with $HOME, which must be absolute, so none can be read as an option, and neither
@@ -58,13 +68,15 @@ const NODE_CHECK = [
  * has taken the lock, making `<path>.held`; with POSTBOX_INSTALL_TEST_BREAK, holding the break lock, between finding
  * the lock stale and removing it, making `<path>.breaking` (tests/integration/remote-install-lock.test.mjs and
  * remote-install-break.test.mjs). sshd passes them only if the host’s own configuration says to, and they can only
- * delay this install.
+ * delay this install, by at most TEST_PAUSE_LIMIT_S: a test that’s killed before it makes the path doesn’t leave the
+ * script waiting forever (#824).
  */
 export const INSTALL_SCRIPT = `
   set -eu;
   umask 077;
   v=$1;
   say() { printf "postbox install: %s\\n" "$1" >&2; };
+  ${pauseFunction()}
   case $HOME in /*) ;; *) say "HOME is not an absolute path"; exit 78;; esac;
   r=$HOME/${REMOTE_DIR};
   d=$r/$v;
@@ -133,13 +145,13 @@ export const INSTALL_SCRIPT = `
   if [ -f ${NODE_PATH_FILE} ]; then mv -f ${NODE_PATH_FILE} "$d/${NODE_PATH_FILE}"; else rm -f "$d/${NODE_PATH_FILE}"; fi;
   echo "present $v"; exit 0; fi;
   cd /;
-  if [ -n "\${POSTBOX_INSTALL_TEST_WAIT:-}" ]; then : > "$POSTBOX_INSTALL_TEST_WAIT.paused"; until [ -e "$POSTBOX_INSTALL_TEST_WAIT" ]; do sleep 1; done; fi;
+  pause "\${POSTBOX_INSTALL_TEST_WAIT:-}" paused;
   mkdir -p "$r/locks";
   chmod 700 "$r/locks";
   if mkdir "$lk" 2>/dev/null; then :;
   elif dead "$lk" && { takeb || { unb; takeb; }; }; then
   hb=1;
-  if dead "$lk"; then if [ -n "\${POSTBOX_INSTALL_TEST_BREAK:-}" ]; then : > "$POSTBOX_INSTALL_TEST_BREAK.breaking"; until [ -e "$POSTBOX_INSTALL_TEST_BREAK" ]; do sleep 1; done; fi; mv "$lk" "$lk.stale.$$" 2>/dev/null || true; rm -rf "$lk.stale.$$"; fi;
+  if dead "$lk"; then pause "\${POSTBOX_INSTALL_TEST_BREAK:-}" breaking; mv "$lk" "$lk.stale.$$" 2>/dev/null || true; rm -rf "$lk.stale.$$"; fi;
   drop "$lk.break";
   hb="";
   mkdir "$lk" 2>/dev/null || starting;
@@ -147,7 +159,7 @@ export const INSTALL_SCRIPT = `
   h=1;
   printf "%s\\n" "$me" > "$lk/.${LOCK_OWNER}.$$";
   mv -f "$lk/.${LOCK_OWNER}.$$" "$lk/${LOCK_OWNER}";
-  if [ -n "\${POSTBOX_INSTALL_TEST_HOLD:-}" ]; then : > "$POSTBOX_INSTALL_TEST_HOLD.held"; until [ -e "$POSTBOX_INSTALL_TEST_HOLD" ]; do sleep 1; done; fi;
+  pause "\${POSTBOX_INSTALL_TEST_HOLD:-}" held;
   if [ -e "$d" ]; then
   if live "$d/daemon.pid"; then busy; fi;
   for f in "$r"/turns/*/runner.json; do if [ -f "$f" ]; then w=$(field version "$f") || busy; if [ "$w" = "$v" ] && live "$f"; then busy; fi; fi; done;

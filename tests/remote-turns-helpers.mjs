@@ -10,6 +10,13 @@ import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
 import { createMessageReader, encode, MESSAGE_FILE, message, PROTOCOL_VERSION, validateMessage } from '../shared/remote-protocol.mjs';
 import { createFakeDaemon, FAKE_TOKEN, FIXTURE_PROMPT } from './fake-daemon.mjs';
+import { tempDir } from './temp-dirs.mjs';
+
+// The project’s folder, a temp folder of the test file’s: the adapters make agent folders in it (#823).
+const PROJECT_DIR = tempDir('pb-project-');
+// The local adapter's work root: a remote turn shouldn't make folders here, but the permissions panel resolves an
+// agent's folder through it, so it lives in this file's temp folder, not a fixed /tmp path (#823).
+const WORK_ROOT = tempDir('pb-remote-work-');
 
 export const VERSION = '0.10.0';
 export const HOST = 'host.example.com';
@@ -154,7 +161,7 @@ export function rig({
   const f = forbidden();
   const claude = new ClaudeCodeAdapter({
     bin: 'claude',
-    workRoot: '/tmp/pb-remote-never',
+    workRoot: WORK_ROOT,
     spawnImpl: f.spawnImpl,
     kill: f.kill,
     listProcesses: f.listProcesses,
@@ -170,7 +177,7 @@ export function rig({
   store.subscribe((ev) => ev.type === 'notify' && notes.push(ev.data));
   let host = Object.values(store.state.hosts)[0];
   if (!host) {
-    store.emit('project', { id: 'p1', name: 'P', folder: '/tmp' });
+    store.emit('project', { id: 'p1', name: 'P', folder: PROJECT_DIR });
     host = rt.addHost({ name: HOST, settings });
     const p = rt.createPersona({ handle: 'coder', backend: 'claude-code' });
     store.emit('persona', { ...rt.persona(p.id), permissionMode: 'ask', remote: { hostId: host.id } });

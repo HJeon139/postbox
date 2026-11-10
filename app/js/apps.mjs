@@ -10,6 +10,7 @@ import { api, client, placeIn } from './client.mjs';
 import { $$, ago, h, icon } from './dom.mjs';
 import { goToItem } from './go-to-item.mjs';
 import { libSource, theme } from './sandbox-libs.mjs';
+import { inOrder } from './send-chain.mjs';
 import { nextTabStop } from './tab-stop.mjs';
 import { openMenu, toast } from './ui.mjs';
 
@@ -104,13 +105,17 @@ addEventListener('message', async (e) => {
         if (refused) return reply(null, refused);
       }
       try {
+        // One after another per app (#934), so the limit counts, and the server stores, in the order the app sent.
         // Without per-frame activation (see SNAPSHOTS), every send waits for you on a card.
-        const r = await api(`/api/apps/${encodeURIComponent(rec.appId)}/event`, {
-          action: m.action,
-          values: m.values,
-          hold: !SNAPSHOTS || overLimit(rec.appId),
+        const r = await inOrder(rec.appId, async () => {
+          const sent = await api(`/api/apps/${encodeURIComponent(rec.appId)}/event`, {
+            action: m.action,
+            values: m.values,
+            hold: !SNAPSHOTS || overLimit(rec.appId),
+          });
+          if (!sent.held) countSent(rec.appId);
+          return sent;
         });
-        if (!r.held) countSent(rec.appId);
         reply(r);
       } catch (err) {
         reply(null, err.message);

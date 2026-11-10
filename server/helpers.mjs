@@ -33,16 +33,26 @@ export function sameToken(want, got) {
 /**
  * What an agent sends another agent or the conversation, refused past SENDING.message rather than cut, so it knows
  * nothing arrived (#351). Null when it’s within the limit.
- * @param {string} what  how the refusal names it @param {string} text
+ * @param {string} what  how the refusal names it @param {string} text @param {string} [next]  what to do instead
  */
-export function tooLongToSend(what, text) {
+export function tooLongToSend(what, text, next = 'Send less.') {
   if (text.length <= SENDING.message) return null;
   const n = (k) => k.toLocaleString('en-US');
-  return { ok: false, message: `${what} is up to ${n(SENDING.message)} characters, and this one has ${n(text.length)}, so nothing was sent. Send less.` };
+  return { ok: false, message: `${what} is up to ${n(SENDING.message)} characters, and this one has ${n(text.length)}, so nothing was sent. ${next}` };
 }
 /** A message waiting in a conversation’s queue, or a 404: an edit, a removal or a Send now of one that isn’t there does nothing (#352). */
 export function queuedIn(t, queueId) {
   const q = (t.queue ?? []).find((x) => x.id === queueId);
   if (!q) throw httpError(404, 'That queued message was already sent or removed.');
   return q;
+}
+
+/**
+ * An archived session can’t hear the person (deliver refuses it), so what they answer or send for it is refused before
+ * anything is recorded, and the block or card still asks once the conversation is restored (#848).
+ * @param {any} rt @param {string} sessionId
+ */
+export function refuseArchived(rt, sessionId) {
+  const se = rt.s.sessions[sessionId];
+  if (se?.archived) throw httpError(409, `@${se.handle}’s session is archived. Restore it first.`);
 }

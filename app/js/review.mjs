@@ -11,6 +11,7 @@ import { h, icon, plural, timeOf, trusted } from './dom.mjs';
 import { newReviewDraft, startComment, stopComment } from './review-draft.mjs';
 import { inlineMd, itemWords, words } from './review-inline.mjs';
 import { focusQuote, renderPreview } from './review-preview.mjs';
+import { withDelimiter } from './review-table.mjs';
 import { reviewersOf, threadBox as threadsFor } from './review-threads.mjs';
 import { fullScreen, revisionOf, seg, setView, viewOf } from './review-view.mjs';
 // ── Review ──────────────────────────────────────────────────────────────────────────────
@@ -213,8 +214,9 @@ export function renderReview(b, item, ctx, kit) {
         els.length === g.units.length && (g.type === 'table' || g.units.every((u, i) => words(els[i].textContent ?? '').startsWith(itemWords(u))));
       if (!matches) return g.rows.map((r) => lineRow(rowUnit(r), g.depth));
       const cols = box.querySelector('tr')?.children.length ?? 1;
-      g.units.forEach((u, i) => {
-        const el = els[i];
+      const [units, rows] = g.type === 'table' ? withDelimiter(box, g, els, cols) : [g.units, els];
+      units.forEach((u, i) => {
+        const el = rows[i];
         el.className = ['rv-u', unitClass(u), onLine(u) ? 'can-c' : ''].join(' ').trim();
         const click = onLine(u, el);
         if (click) el.addEventListener('click', click);

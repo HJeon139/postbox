@@ -2,6 +2,144 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.57.0 (2026-11-10)
+
+### Features
+
+- **work:** the passes run after each turn and once after start, off until step 4 (#305)
+- **work:** the archive pass moves each agent's older ended turns into archive files (#305)
+
+### Fixes
+
+- **app:** the pane's width isn't inherited, so a new width restyles only its readers (#1150)
+- **uat:** find the newest Undo toast first, as the stack orders it
+- **work:** endedAs sits above endWork's doc comment, not under it (#305)
+- **store:** the pending view applies turn.archive and reads its list back (#305)
+
+## 1.56.1 (2026-11-10)
+
+### Fixes
+
+- **kiro:** show when Postbox's tool server fails to start, and tell the agent next turn (#489)
+- **server:** a refused mention or summary is posted as a system line (#362)
+- **server:** a refused hand-off is posted, and its agent gets one turn to send it
+- **server:** mentions and summaries keep the send limit, and wakes cap at 20
+- **tests:** the remote rig's work root is a temp folder of its own (#823)
+- **adapters:** .git and agy’s settings judge both readings of a path, through realReadings (#1074)
+- **permissions:** /mode names the busy agent's own backend, not Claude Code (#1030)
+- **adapters:** a path’s .. is judged as text too, so a link can’t hide a climb out (#1074)
+- **permissions:** a read card for a path that isn’t text says so, not an empty file_path (#1074)
+- **adapters:** a file call naming a ~user path asks, and is refused where it may be agy’s (#1074)
+- **permissions:** a read card shows each path on a line of its own, tidied and clipped (#1074)
+- **adapters:** Auto’s routine commands judge a path as the hook’s file calls do (#1074)
+- **permissions:** a read card names every outside path, and each must be readable (#1074)
+- **permissions:** a read card's Always allow says the folder is the agent's
+- **permissions:** a folder in home named ..something is a dot-folder, never offered
+- **adapters:** agy hook compares readable folders as Postbox saved them
+- **adapters:** agy reads its own builtin skills and guide with no card
+- **adapters:** agy hook judges a ~ path as the home folder too
+- **adapters:** agy hook judges every path a file call names, not only the first
+- **adapters:** agy hook follows a link before a .. in a path, as the file system does
+- **apps:** load each check frame at its own width, and fire its resize inside the frame
+- **permissions:** say why a running turn keeps its mode, and what its hooks do
+- **apps:** resize each check frame and change its theme while the app loads
+- **tests:** a gate run's tests write temp files only in its own temp folder
+- **tests:** an install test's pause ends at a limit, and runs as root
+
+## 1.56.0 (2026-11-10)
+
+### Features
+
+- **app:** the page records keys and clicks 500 ms slow in its lag log (#821)
+
+### Fixes
+
+- **shell:** the shared stack never pushes out the notice it just added (#444)
+- **shell:** a live Undo isn't pushed out by an ordinary notice in the shared stack (#444)
+- **blocks:** a resolved thread on an answered review leaves it answered (#901)
+- **shell:** put delete notices in the shared stack
+- **apps:** a send's turn of 5 s starts when it starts, so a slow burst keeps its order (#934)
+- **review:** the delimiter row follows the last header row of a diff (#1098)
+- **app:** an open item a press closes across a held refill stays closed (#1010)
+- **apps:** a send with no answer holds back the next only for its turn of 5 s (#934)
+- **apps:** an app's sends go one after another, so they're stored in the order it sent them (#934)
+- **app:** a press on the Work pane or the Threads page holds its repaint until it ends
+- **review:** number a table's delimiter row in Lines and let it take a comment
+
+## 1.55.3 (2026-11-09)
+
+### Fixes
+
+- **blocks:** a year or id ends the label, or starts it with no amount after (#1065 round 4)
+- **blocks:** a singular year or id anywhere names the column, and a silent label defers to the id
+- **blocks:** read a year or id column's name past a note or punctuation after it
+- **blocks:** keep separators in an amount column over a year or an id
+
+## 1.55.2 (2026-11-09)
+
+### Fixes
+
+- **composer:** a send that failed while the stream is open is sent again shortly (#1126)
+
+## 1.55.1 (2026-11-09)
+
+### Fixes
+
+- **remote:** a background task's stop text uses the shared invisible set and a whole-pair cut
+
+## 1.55.0 (2026-11-09)
+
+### Features
+
+- **uat:** a run's report names each call to GitHub its guard refused
+
+### Fixes
+
+- **uat:** a call counts as an attempt only when one segment of its command runs gh or git
+- **uat:** the GitHub line reads gh's and git's own wording, and skips a run with no guard
+- **blocks:** a wide table fades the side that has more columns to scroll to
+
+## 1.54.3 (2026-11-09)
+
+### Fixes
+
+- **backends:** clip the backend name in placement's other refusals too
+- **permissions:** an Authorization scheme only after a space, and marks in the lookbehinds
+- **permissions:** hide a quoted Authorization header's every parameter, and curl -u's password
+- **backends:** strip every hiding character from a backend name in a reason
+- **permissions:** the hooks panel hides more credential shapes
+
+## 1.54.2 (2026-11-09)
+
+### Fixes
+
+- **apps:** an app's send in an archived conversation is refused before it's recorded (#848)
+- **blocks:** an answer in an archived conversation is refused before it's recorded (#848)
+
+## 1.54.1 (2026-11-09)
+
+### Fixes
+
+- **queue:** an API Send now marks a plain Stop’s exit silent too, through one stopForSendNow (#1040)
+- **queue:** Send now during a plain Stop’s exit marks the exit silent, so it goes alone (#1040)
+- **queue:** after a Stop, the first turn takes its thread's queued wakes (#1040)
+- **uat:** a teardown that fails after a failed preflight keeps the preflight's reason
+- **uat:** the guard blanks git's askpass, so a terminal's sign-in gives an agent's git no password
+- **server:** echoedId cuts with partEnd, so an echoed id never ends on half a pair (#895)
+- **server:** cut the ids update_block and retire_app echo in their refusals to 40 characters
+- **files:** keep hidesName for the callers that read one character at a time
+- **files:** keep only England's, Scotland's and Wales's flags whole
+- **files:** stored upload names are cleaned where they're read, and tag flags stay whole
+- **blocks:** the reaction count leaves the accessibility tree, and an unproved rule goes (#1068)
+- **tests:** flag connector tool ids, keep recordings' plugins public, print no path from the scan
+- **work:** a ref line's flag takes its own spaces, so a run of spaces splits one way (#1032)
+- **work:** read git push's ref lines with spaces and tabs only, in linear time (#1032)
+- **uat:** the git-remote preflight probes outside the workspace, and a failed one removes the remote
+- **security:** take every default-ignorable code point and line separator into the invisible set
+- **uat:** the guard empties git's credential helpers, so no run's git hands out the person's
+- **blocks:** an app review draws its app's check result as the transcript does (#857)
+- **blocks:** show a number field's range before any submit
+
 ## 1.54.0 (2026-11-09)
 
 ### Features

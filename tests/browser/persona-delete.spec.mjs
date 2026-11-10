@@ -34,7 +34,7 @@ test('Delete… asks first, and Undo keeps the agent and its session', async ({ 
   await expect(ask).toContainText('What it remembered: its own memory, in every project');
   await expect(ask).toContainText('Other agents, and their memory');
   await ask.getByRole('button', { name: 'Delete gamma' }).click();
-  const toast = page.locator('#toasts-bottom .toast', { hasText: 'Deleted gamma' });
+  const toast = page.locator('#toasts .toast', { hasText: 'Deleted gamma' });
   await expect(toast).toBeVisible();
   await expect.poll(() => Boolean(app.store.state.personas[p.id]?.deleting)).toBe(true);
   await toast.getByRole('button', { name: /Undo/ }).click();
@@ -48,7 +48,7 @@ test('once the window has passed, the agent is gone from Settings › Personas',
   const p = await sheet(page, 'delta');
   await page.getByRole('button', { name: 'Delete…' }).click();
   await page.getByRole('alertdialog', { name: 'Delete delta?' }).getByRole('button', { name: 'Delete delta' }).click();
-  await expect(page.locator('#toasts-bottom .toast', { hasText: 'Deleted delta' })).toBeVisible();
+  await expect(page.locator('#toasts .toast', { hasText: 'Deleted delta' })).toBeVisible();
   // The sheet goes back to its list, which leaves it out while it’s being deleted, and after.
   const list = page.locator('.dialog .list-rows');
   await expect(list).toContainText('librarian');

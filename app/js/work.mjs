@@ -14,6 +14,7 @@
 import { fileEffort, fileState, flagged, formatBytes, formatCost, formatTokens, signed, summarize, turnLine } from '/shared/work.mjs';
 import { api, client } from './client.mjs';
 import { fill, h, icon, plural, timeOf } from './dom.mjs';
+import { heldFrame } from './held-frame.mjs';
 import { closeWork, keepFocus, openDialog, openWork, toast } from './ui.mjs';
 import { COMMAND_WORDS, commandsSection, GLYPH } from './work-commands.mjs';
 import { diffView } from './work-diff.mjs';
@@ -54,7 +55,7 @@ export function mountWork(threadId, { turnId = null, at = null, gitWatch = null 
   const unlisten = gitNow.listen(() => {
     git = gitNow.data;
     gitError = gitNow.error;
-    paint();
+    live.held();
   });
   const load = async (key, url, as = 'json') => {
     if (asked.has(key)) return;
@@ -66,7 +67,7 @@ export function mountWork(threadId, { turnId = null, at = null, gitWatch = null 
     } catch (e) {
       loaded.set(key, { error: e.message });
     }
-    paint();
+    live.held();
   };
 
   const paint = () =>
@@ -217,12 +218,14 @@ export function mountWork(threadId, { turnId = null, at = null, gitWatch = null 
 
   /** An item that opens: its summary row, and a body built only when open. */
   function item(id, cls, summaryRow, body) {
+    // What it was built as: a copy rebuilt by a held refill fires its own toggle, which must not undo the press (#1010).
+    const built = opened.has(id);
     const d = h(
       `details.work-item${cls ? `.${cls}` : ''}`,
       {
-        open: opened.has(id),
+        open: built,
         ontoggle: () => {
-          if (d.open === opened.has(id)) return;
+          if (d.open === built) return;
           if (d.open) opened.add(id);
           else opened.delete(id);
           paint();
@@ -391,13 +394,10 @@ export function mountWork(threadId, { turnId = null, at = null, gitWatch = null 
 
   // ── Live ──────────────────────────────────────────────────────────────────────────────
 
-  let frame = 0;
-  const repaint = () => {
-    cancelAnimationFrame(frame);
-    frame = requestAnimationFrame(paint);
-  };
+  // What the server sends waits while a press is down, so its click lands on the button it started on (#1010).
+  const live = heldFrame(el, paint);
   const off = client.on((ch) => {
-    if (ch.type === 'load' || ((ch.type === 'work.add' || ch.type === 'work.patch') && ch.data.convId === threadId)) repaint();
+    if (ch.type === 'load' || ((ch.type === 'work.add' || ch.type === 'work.patch') && ch.data.convId === threadId)) live.soon();
   });
   paint();
   return {
@@ -412,7 +412,7 @@ export function mountWork(threadId, { turnId = null, at = null, gitWatch = null 
       off();
       unlisten();
       if (!gitWatch) gitNow.stop();
-      cancelAnimationFrame(frame);
+      live.cancel();
     },
   };
 }
@@ -459,7 +459,7 @@ export function mountWorkPane(threadId) {
   gitNow.listen(() => {
     git = gitNow.data;
     gitError = gitNow.error;
-    paint();
+    live.held();
   });
   /** Opens Work full screen, at an item or section, or on one turn. */
   const go = (to) => openWork(threadId, { full: true, ...to });
@@ -664,14 +664,15 @@ export function mountWorkPane(threadId) {
       h(
         'div.wc-turns',
         shown.map(({ t, line }) => {
+          const built = openTurns.has(t.id);
           const d = h(
             'details.wc-turn',
             {
               id: `wturn-${t.id}`,
               class: t.id === target ? 'is-target' : '',
-              open: openTurns.has(t.id),
+              open: built,
               ontoggle: () => {
-                if (d.open === openTurns.has(t.id)) return;
+                if (d.open === built) return;
                 if (d.open) openTurns.add(t.id);
                 else openTurns.delete(t.id);
                 paint();
@@ -754,12 +755,10 @@ export function mountWorkPane(threadId) {
       fill(body, review(s), files(s), commands(s), external(s), spend(s), turns(entries, lines));
     });
 
-  let frame = 0;
+  // As in mountWork, what the server sends waits while a press is down (#1010).
+  const live = heldFrame(body, paint);
   const off = client.on((ch) => {
-    if (ch.type === 'load' || ((ch.type === 'work.add' || ch.type === 'work.patch') && ch.data.convId === threadId)) {
-      cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(paint);
-    }
+    if (ch.type === 'load' || ((ch.type === 'work.add' || ch.type === 'work.patch') && ch.data.convId === threadId)) live.soon();
   });
   paint();
   return {
@@ -802,7 +801,7 @@ export function mountWorkPane(threadId) {
       off();
       gitNow.stop();
       full?.view.destroy();
-      cancelAnimationFrame(frame);
+      live.cancel();
     },
   };
 }

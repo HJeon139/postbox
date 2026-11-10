@@ -27,8 +27,11 @@ test.beforeAll(async () => {
         { id: 'pid', label: 'Paper ID', kind: 'number' },
         { id: 'cites', label: 'Citations', kind: 'number' },
         { id: 'score', label: 'Score', kind: 'number' },
+        { id: 'rev', label: 'Revenue per year', kind: 'number' },
+        { id: 'founded', label: 'Year founded', kind: 'number' },
+        { id: 'ye', label: 'Year-end revenue', kind: 'number' },
       ],
-      rows: [{ id: 'r1', cells: { title: 'ReAct', year: 2023, pid: 10427, cites: 12345, score: 0.5 } }],
+      rows: [{ id: 'r1', cells: { title: 'ReAct', year: 2023, pid: 10427, cites: 12345, score: 0.5, rev: 1234567, founded: 1999, ye: 7654321 } }],
     },
   });
 });
@@ -37,9 +40,9 @@ test.afterAll(async () => {
 });
 failOnPageErrors(test);
 
-test('#836 a year and an id show as written; a count keeps its thousands separator', async ({ page }) => {
+test('#836 a year and an id show as written; a count, an amount per year and a year-end amount keep their thousands separators (#844)', async ({ page }) => {
   await page.goto(`${app.origin}/#/t/${t.id}`);
   await synced(page, app);
   const row = page.locator('.transcript table tbody tr').first();
-  await expect(row.locator('td')).toHaveText(['ReAct', '2023', '10427', '12,345', '0.5']);
+  await expect(row.locator('td')).toHaveText(['ReAct', '2023', '10427', '12,345', '0.5', '1,234,567', '1999', '7,654,321']);
 });

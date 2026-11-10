@@ -33,6 +33,7 @@ The person directs agents that edit code, run commands, commit, push and file is
 - **A turn’s list** (in the transcript, #195): under the turn’s last reply, or its last block when it ends with one, once the turn ends. Its line of counts opens the pane at that turn (below). Then a row per file (name, +a −d, New or Deleted), app or block (title and version), commit (hash and message), push, write outside Postbox and command (its description, or the command without the project folder’s `cd`, and how it ended if not well), then one row for what it read (“Read 2 files”). After five rows, **N more** expands in place. Each row opens Work full screen at that item, and Escape comes back to the row. At 375 px a long path is cut in its folder and keeps its file name. A turn that read only has just the Reads row; a turn that did nothing has no list.
 - **A turn’s line** (in the transcript): opens the pane at that turn, beside the thread if one is open, with the turn opened to its files and commands and focus on it. **Open this turn** shows that turn alone, full screen: its changes, commands, commits and spend, with **Show the whole conversation**.
 - **Long lists** (#618): full screen, files, commands, reads and the turns that left nothing lasting each draw 50 at a time: the newest, or the 50 around the item Work opened at. A button on each side draws 50 more (“Show 50 earlier commands · 3,975 not shown”) and puts focus on the first one it drew. Commands that start while the newest are shown join them.
+- A press in the pane or full screen isn’t lost when it updates under it, as it does with each step while an agent works (#1010): while the mouse or Space is down, an update waits, and shows once the press ends, after its click, or 3 s after the press began.
 - It updates live as a turn works. Everything opens and closes by keyboard; the diff, the output and the table scroll on their own, and take focus to scroll. It fits a 375 px window without scrolling sideways.
 
 ## Steps to reproduce
@@ -47,6 +48,7 @@ The person directs agents that edit code, run commands, commit, push and file is
 8. Narrow the window to 375 px and repeat steps 3, 5 and 6.
 9. With a real agent in a git repository you can lose, ask it to edit a file, run a failing command, commit on a new branch and push to a local bare remote (`git init --bare /tmp/remote.git`). Open Work, and compare its files and lines with `git diff --stat` and `git show --stat`.
 10. In a room with a Codex agent and an Antigravity agent, ask each to edit a different file that already exists and to run a command. Open Work.
+11. Run `npx playwright test work-threads-press` (`tests/browser/work-threads-press.spec.mjs`): a press held on **Open this turn**, or on a command full screen, while Work updates.
 
 **Pass if:**
 - The pane lists `notes.md`, `refs.bib` and `cite.mjs` under **To review**, the files by state, “5 commands · 2 failed”, the issue under **Outside Postbox**, and two turns. `refs.bib` opens full screen, already open with its diff, and Escape returns focus to `refs.bib` in the pane.
@@ -63,6 +65,7 @@ The person directs agents that edit code, run commands, commit, push and file is
 - With the real agent, a `sed -i` across three files and `git add -A && git commit -q -m …` in one command list the commit, with its three files (#156). The files under the command are #240’s.
 - In a conversation with more than 50 commands, a turn’s row for an early command opens full screen with that command drawn and focused, and **Show 50 earlier commands** and **Show 50 later commands** each draw 50 more.
 - With the Codex and Antigravity agents: each reply has its line (“1 file +1 −0 · 1 command · …”), and Work lists both files with lines that match `git diff --stat`, both commands as the agents wrote them with their exits, and both agents’ turns.
+- The spec passes: each held press opens what it was on, and the update it held shows after.
 
 ## Related
 

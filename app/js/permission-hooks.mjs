@@ -12,15 +12,21 @@ import { h, icon } from './dom.mjs';
 
 /**
  * What the section says about where the listed hooks run. On a host (#120), the list is this computer’s settings
- * files, and the host’s own aren’t read, so it doesn’t say these won’t run: it says where they’re from.
+ * files, and the host’s own aren’t read, so it doesn’t say these won’t run: it says where they’re from. A running
+ * turn keeps the hooks it loaded when it started, or their absence, until it ends (#806), so where the mode changed
+ * since, it says so (#1030).
  * @param {{ handle: string, permissionMode: string, host?: string|null }} p
+ * @param {string[]} running  the agent’s running turns, by handle  @param {string[]} hooksRunning  those that loaded the hooks
  */
-function runsNote(p) {
+function runsNote(p, running, hooksRunning) {
   if (p.host) return `${p.handle} runs on ${p.host}. These are the hooks in this computer’s settings files; the host’s own settings aren’t shown here.`;
   const name = (PERMISSIONS.find(([id]) => id === p.permissionMode) ?? PERMISSIONS[0])[1];
-  if (asksForWrites(p.permissionMode))
-    return `These don’t run in ${p.handle}’s Postbox turns in ${name} mode. They run in Auto and Run everything, and when you use Claude Code yourself.`;
-  return `In ${name} mode, these run in ${p.handle}’s Postbox turns too. One that allows a call also skips your ask rules, this conversation’s included, as in your terminal.`;
+  if (asksForWrites(p.permissionMode)) {
+    const until = hooksRunning.length ? ' from its next turn: its running turn started with them, and runs them until it ends' : '';
+    return `These don’t run in ${p.handle}’s Postbox turns in ${name} mode${until}. They run in Auto and Run everything, and when you use Claude Code yourself.`;
+  }
+  const from = running.length > hooksRunning.length ? ', from its next turn: its running turn started without them' : '';
+  return `In ${name} mode, these run in ${p.handle}’s Postbox turns too${from}. One that allows a call also skips your ask rules, this conversation’s included, as in your terminal.`;
 }
 
 /**
@@ -37,10 +43,10 @@ function noneNote(hooks) {
 
 /**
  * The hooks section, from permissionsView’s hooks.
- * @param {{ persona: { handle: string, permissionMode: string, usesHostSetup: boolean, host?: string|null }, hooks: any[] }} view
+ * @param {{ persona: { handle: string, permissionMode: string, usesHostSetup: boolean, host?: string|null }, hooks: any[], running?: string[], hooksRunning?: string[] }} view
  * @param {Record<string, string>} sources  the panel’s words for each settings source (“your user settings”)
  */
-export function hooksSection({ persona: p, hooks }, sources) {
+export function hooksSection({ persona: p, hooks, running = [], hooksRunning = [] }, sources) {
   const rows = hooks.flatMap((f) => [
     ...f.hooks.map((x) =>
       h(
@@ -67,7 +73,7 @@ export function hooksSection({ persona: p, hooks }, sources) {
     { id: 'perm-hooks' },
     h('h3.label', {}, 'Hooks before tool calls'),
     found ? h('ul.list-rows', {}, rows) : noneNote(hooks),
-    found || p.host ? h('p.help', {}, runsNote(p)) : null,
+    found || p.host ? h('p.help.perm-hooks-runs', {}, runsNote(p, running, hooksRunning)) : null,
     ...errors,
     p.usesHostSetup ? null : h('p.help', {}, 'It’s isolated, so it doesn’t read the hooks in your user settings.'),
     h(

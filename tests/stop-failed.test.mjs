@@ -8,7 +8,7 @@ import { PassThrough } from 'node:stream';
 import { test } from 'node:test';
 import { ClaudeCodeAdapter } from '../server/adapters/claude-code.mjs';
 import { parsePs } from '../server/adapters/process-group.mjs';
-import { exitedGroups, fakeKill } from './stop-fixture.mjs';
+import { exitedGroups, fakeKill, STOP_DIR } from './stop-fixture.mjs';
 
 const PS = parsePs(readFileSync(new URL('fixtures/claude-code/background-ps.txt', import.meta.url), 'utf8'));
 const CLI = 69116;
@@ -29,7 +29,7 @@ test('#126: a stop whose kept job can’t be reported still ends the turn, once 
   const ctx = {
     signal: abort.signal,
     mcpUrl: 'http://127.0.0.1:1/mcp?session=se_1&turn=t1',
-    persona: { handle: 'developer', model: 'claude-opus-5-5', permissionMode: 'auto', folder: '/tmp/pb-test-dev' },
+    persona: { handle: 'developer', model: 'claude-opus-5-5', permissionMode: 'auto', folder: `${STOP_DIR}/dev` },
     project: null,
     handles: ['developer'],
     state: {},
