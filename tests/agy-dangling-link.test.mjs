@@ -82,3 +82,52 @@ test('#1134 a link target of only spaces names a file, so it’s followed there'
   writeFileSync(join(ws, 'bl'), 'x');
   assert.ok(existsSync(join(home, 'out-blank.txt')), 'the write really lands outside');
 });
+
+/** Writes a chain of n dangling links, first → … → later.txt, inside ws, and returns the first one’s path. */
+function aChain(ws, n) {
+  for (let i = 0; i < n - 1; i++) symlinkSync(`c${i + 1}`, join(ws, `c${i}`));
+  symlinkSync('later.txt', join(ws, `c${n - 1}`));
+  return join(ws, 'c0');
+}
+
+test('#1134 a chain of 39 dangling links inside is allowed, and one of 41 asks', () => {
+  const inside39 = aHome();
+  const opts39 = { mode: 'auto', folders: [inside39.ws], cwd: inside39.ws, home: inside39.home };
+  assert.equal(decide('write_to_file', { TargetFile: aChain(inside39.ws, 39) }, opts39).decision, 'allow', '39 links');
+  const past = aHome();
+  const opts41 = { mode: 'auto', folders: [past.ws], cwd: past.ws, home: past.home };
+  assert.equal(decide('write_to_file', { TargetFile: aChain(past.ws, 41) }, opts41).decision, 'ask', '41 links');
+});
+
+/** Writes l0 → l1/../l1 → … → gone, inside ws: following each link twice, a walk of it doubles at every level. */
+function aDoublingChain(ws, depth) {
+  for (let i = 0; i < depth; i++) symlinkSync(`l${i + 1}/../l${i + 1}`, join(ws, `l${i}`));
+  symlinkSync('gone', join(ws, `l${depth}`));
+  return join(ws, 'l0');
+}
+
+test('#1134 links are counted per path, as the kernel counts them, so one that follows too many asks', () => {
+  const { home, ws } = aHome();
+  // Six levels stay well under the limit on any one branch, and follow more than 100 links in all, past the limit of 40.
+  const target = aDoublingChain(ws, 6);
+  assert.equal(decide('write_to_file', { TargetFile: target }, { mode: 'auto', folders: [ws], cwd: ws, home }).decision, 'ask');
+});
+
+test('#1134 a path planted to double the walk at every level is judged at once', () => {
+  const { home, ws } = aHome();
+  const target = aDoublingChain(ws, 14);
+  const started = performance.now();
+  const { decision } = decide('write_to_file', { TargetFile: target }, { mode: 'auto', folders: [ws], cwd: ws, home });
+  const elapsed = performance.now() - started;
+  // One count for the whole path takes milliseconds here, and one per branch takes about 9 seconds: 5 leaves room for a busy machine.
+  assert.ok(elapsed < 5000, `took ${Math.round(elapsed)} ms`);
+  assert.equal(decision, 'ask');
+});
+
+test('#1134 a path that runs out of links gives up whole, whatever it names after the loop', () => {
+  const { home, ws } = aHome();
+  symlinkSync('loop', join(ws, 'loop'));
+  // The kernel fails all of it. Picked up again from “/”, the rest would read as a file in ws.
+  const target = `${join(ws, 'loop')}${join(ws, 'new.txt')}`;
+  assert.equal(decide('write_to_file', { TargetFile: target }, { mode: 'auto', folders: [ws], cwd: ws, home }).decision, 'ask');
+});

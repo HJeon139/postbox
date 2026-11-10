@@ -11,32 +11,34 @@ import { dirname, isAbsolute, join, parse, resolve, sep } from 'node:path';
  */
 export function realTarget(rawPath, baseDir = process.cwd()) {
   if (typeof rawPath !== 'string' || !rawPath.trim()) return null;
-  return walk(rawPath.trim(), baseDir, 0);
+  return walk(rawPath.trim(), baseDir, { followed: 0 });
 }
 
 /**
  * Walks a path exactly as written, spaces included, since a link’s target is never trimmed by the file system (#1134).
- * @param {string} path @param {string} baseDir @param {number} hops
+ * @param {string} path @param {string} baseDir @param {{ followed: number }} links counted for the whole path
  */
-function walk(path, baseDir, hops) {
-  let cur = realOr(isAbsolute(path) ? parse(path).root : resolve(baseDir), hops);
+function walk(path, baseDir, links) {
+  let cur = realOr(isAbsolute(path) ? parse(path).root : resolve(baseDir), links);
   for (const segment of path.split(sep)) {
+    if (links.followed > MAX_LINKS) break; // gave up: the kernel fails the whole path, so nothing after it counts
     if (!segment || segment === '.') continue;
-    cur = segment === '..' ? dirname(cur) : realOr(join(cur, segment), hops);
+    cur = segment === '..' ? dirname(cur) : realOr(join(cur, segment), links);
   }
   return cur;
 }
 
-/** How many links in a row realOr follows before it gives up, as the kernel’s own limit does for a loop (#1134). */
+/** How many links one path may follow before the walk gives up. Like the kernel’s own limit, it counts the whole path (#1134). */
 const MAX_LINKS = 40;
 
 /**
  * A path’s real path. One that doesn’t exist yet, as a file about to be written, is kept as written, unless it is a
  * link whose target doesn’t exist: then it’s where the link leads, since a write through it creates that target, wherever
- * it points (#1134). A chain of such links is followed to its end; a loop gives up as the outside path “/”, so it asks.
- * @param {string} p @param {number} hops
+ * it points (#1134). A chain of such links is followed to its end; past MAX_LINKS, as a loop goes, it gives up as the
+ * outside path “/”, so it asks.
+ * @param {string} p @param {{ followed: number }} links
  */
-function realOr(p, hops) {
+function realOr(p, links) {
   try {
     return realpathSync(p);
   } catch {
@@ -47,9 +49,10 @@ function realOr(p, hops) {
       link = null;
     }
     if (link === null) return p; // doesn’t exist yet, and isn’t a link: nothing to follow
-    if (hops >= MAX_LINKS) return parse(p).root;
+    links.followed += 1;
+    if (links.followed > MAX_LINKS) return parse(p).root;
     // The target is walked as any path is, so a link on its way is followed too; p’s own folder is already real.
-    return walk(link, dirname(p), hops + 1);
+    return walk(link, dirname(p), links);
   }
 }
 
