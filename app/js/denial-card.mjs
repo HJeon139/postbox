@@ -7,7 +7,8 @@ import { focusComposer } from './hop-card.mjs';
 import { toast } from './ui.mjs';
 
 // Claude Code refused a call without asking you (auto mode’s check, a rule, or the mode). Unlike a permission
-// card nothing is waiting: Allow once or Always allow tells the agent to try again.
+// card nothing is waiting: the agent has the refusal and works around it, so the card shows what happened and never
+// needs you (intent.md, principle 8). Allow once or Always allow, if you choose, tells the agent to try again.
 const DENIAL_DONE = {
   'allowed-once': 'Allowed once. The agent is trying again.',
   'allowed-always': 'Always allowed. The agent is trying again.',
@@ -22,12 +23,13 @@ const DENIAL_WHY = {
 };
 /** Why a host turn’s refusal has no Always allow: Postbox can’t save a rule where its Claude Code reads it (server/permission-cards.mjs, hostAlways). @param {string} by */
 /** Why a refusal has no rule to allow once or always (server/permission-rules.mjs, rulesFor): a * or a chain. */
-const noRuleNote = (why, by) =>
-  why === 'wildcard'
-    ? `Claude Code reads * in a rule as a wildcard, so a rule for this command would also allow commands you haven’t seen, and there’s nothing to allow once or always. To let it run, leave it and ask ${by} to name the files instead of using *.`
-    : why === 'paren'
-      ? `Claude Code would read a ) in this command as the end of its rule, so a rule for it could also allow commands you haven’t seen, and there’s nothing to allow once or always. To let it run, leave it and ask ${by} to run it without the unmatched ).`
-      : `Claude Code checks each part of a chained command (joined by &&, ||, ;, | or &) against its rules on its own, so no one rule can allow this whole line, and there’s nothing to allow once or always. To let it run, leave it and ask ${by} to run the parts as separate commands: a part that’s refused again gets a card of its own.`;
+function noRuleNote(why, by) {
+  if (why === 'wildcard')
+    return `Claude Code reads * in a rule as a wildcard, so a rule for this command would also allow commands you haven’t seen, and there’s nothing to allow once or always. To let it run, ask ${by} to name the files instead of using *.`;
+  if (why === 'paren')
+    return `Claude Code would read a ) in this command as the end of its rule, so a rule for it could also allow commands you haven’t seen, and there’s nothing to allow once or always. To let it run, ask ${by} to run it without the unmatched ).`;
+  return `Claude Code checks each part of a chained command (joined by &&, ||, ;, | or &) against its rules on its own, so no one rule can allow this whole line, and there’s nothing to allow once or always. To let it run, ask ${by} to run the parts as separate commands: a part that’s refused again gets a card of its own.`;
+}
 const onHostNote = (by) =>
   `${by} runs on a host, and Postbox can’t save a rule there, so there’s no Always allow. Allow it once and retry, or add the rule to the agent folder’s .claude/settings.local.json on the host.`;
 export function denialBlock(it, ctx) {
@@ -43,10 +45,9 @@ export function denialBlock(it, ctx) {
   const noRule = !it.rules.once;
   return h(
     'div.col.block',
-    { role: 'group', 'aria-labelledby': titleId, class: open ? '' : 'answered', style: open ? { borderColor: 'var(--accent)' } : {} },
+    { role: 'group', 'aria-labelledby': titleId, class: open ? '' : 'answered' },
     h(
       'div.block-head',
-      open ? h('span.g.g-needs', { 'aria-hidden': 'true' }) : null,
       h('span.title.grow', { id: titleId }, `Refused: ${by} tried to ${it.summary.charAt(0).toLowerCase()}${it.summary.slice(1)}`),
       h('span.kind', 'Refused · ', h('span.tool-name', it.tool)),
     ),
@@ -69,12 +70,12 @@ export function denialBlock(it, ctx) {
               )
             : h('span.answered-note', icon(it.status === 'left' ? 'x' : 'check', 'i-sm'), DENIAL_DONE[it.status] ?? it.status),
     ),
-    open
+    // Nothing to acknowledge: with no rule to offer, the card has no buttons.
+    open && (it.rules.once || it.rules.always)
       ? h(
           'div.block-foot',
           it.rules.once ? h('button.btn', { type: 'button', onclick: () => act('once') }, 'Allow once and retry') : null,
           it.rules.always ? h('button.btn', { type: 'button', onclick: () => act('always') }, `Always allow ${it.rules.alwaysWords}`) : null,
-          h('button.btn.ghost', { type: 'button', onclick: () => act('leave') }, 'Leave it'),
         )
       : null,
   );

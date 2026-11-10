@@ -79,7 +79,7 @@ test('#238 a refused chained command offers no Allow once or Always allow, and r
   const turns = adapter.calls.length;
   for (const action of ['once', 'always'])
     await assert.rejects(rt.act(t.id, card.id, action), { status: 409, message: /checks each part of a chained command on its own/ });
-  assert.equal(store.item(t.id, card.id).status, 'open', 'it stays open, for Leave it');
+  assert.equal(store.item(t.id, card.id).status, 'open', 'it stays open, as what happened');
   assert.deepEqual(store.state.sessions[se.id].allowOnce ?? [], [], 'nothing is passed to the next turn');
   await settle(rt);
   assert.equal(adapter.calls.length, turns, 'the agent isn’t told to try again');
@@ -92,7 +92,7 @@ test('#281 a refused command with a * offers no rule, and says a * is a wildcard
   const card = await refused(rt, adapter, t, 'rm -rf build/*');
   assert.deepEqual(card.rules, { once: null, always: null, alwaysWords: '', why: 'wildcard' });
   for (const action of ['once', 'always']) await assert.rejects(rt.act(t.id, card.id, action), { status: 409, message: /reads \* in a rule as a wildcard/ });
-  assert.equal(store.item(t.id, card.id).status, 'open', 'it stays open, for Leave it');
+  assert.equal(store.item(t.id, card.id).status, 'open', 'it stays open, as what happened');
 });
 
 // #281: the card’s 25-hour expiry can fire while Always allow is writing its rule. The rule must not stay saved for a

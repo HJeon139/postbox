@@ -236,8 +236,9 @@ export async function allowAlways(rt, threadId, it, asked) {
 
 // ── Refusals ───────────────────────────────────────────────────────────────────────
 // Claude Code refuses some calls without asking anyone: auto mode’s classifier, a deny rule, or the mode.
-// Each refusal becomes a card, so the person can allow it once (the agent tries again), always (a rule in
-// the agent folder’s .claude/settings.local.json, shared with the CLI), or leave it.
+// Each refusal becomes a card that shows what happened and never needs the person (designs/developing.md, “Design
+// habits”, 12): the agent has the refusal and works around it. If they choose, they can allow it once (the agent tries
+// again) or always (a rule in the agent folder’s .claude/settings.local.json, shared with the CLI).
 
 export function recordDenial(rt, turn, d) {
   const se = rt.s.sessions[turn.sessionId];
@@ -246,7 +247,7 @@ export function recordDenial(rt, turn, d) {
   // Once per call, and never for a call the person answered on a permission card or as a question (#521).
   if (key && rt.store.pending.items(turn.threadId).some((it) => (it.kind === 'denial' || it.kind === 'permission' || it.question) && it.toolUseId === key))
     return;
-  // On a host, a refusal’s Always would save its rule on this computer: Allow once and Leave stay.
+  // On a host, a refusal’s Always would save its rule on this computer: only Allow once stays.
   const rules = { ...rulesFor(String(d.tool ?? ''), d.input ?? {}), ...(turn.remote ? { always: null } : {}) };
   const detail = d.tool === 'Bash' ? String(d.input?.command ?? '') : JSON.stringify(d.input ?? {}, null, 2);
   rt.addItem(turn.threadId, {
@@ -269,6 +270,15 @@ export function recordDenial(rt, turn, d) {
   rt.closeSegment(turn);
 }
 
+/** Why a refusal has no rule to allow once or always, and what to do instead. @param {string} why */
+function noRuleWhy(why) {
+  if (why === 'wildcard')
+    return 'Claude Code reads * in a rule as a wildcard, so a rule for this command would allow others too. Ask the agent to name the files instead.';
+  if (why === 'paren')
+    return 'Claude Code would read a ) in this command as the end of its rule, so a rule for it could allow others too. Ask the agent to run it without the unmatched ).';
+  return 'Claude Code checks each part of a chained command on its own, so no one rule can allow this call. Ask the agent to run the parts as separate commands.';
+}
+
 export async function resolveDenial(rt, threadId, itemId, action) {
   const it = rt.store.item(threadId, itemId);
   if (it?.kind !== 'denial' || it.status !== 'open') throw httpError(409, 'That refusal was already answered.');
@@ -276,15 +286,7 @@ export async function resolveDenial(rt, threadId, itemId, action) {
   if (action === 'always' && it.remote) throw httpError(409, ON_HOST);
   // A chained command, or one with a *, has no rule that can allow just it (permission-rules.mjs), so neither is
   // offered (#238, #281).
-  if (action !== 'leave' && !it.rules[action])
-    throw httpError(
-      409,
-      it.rules.why === 'wildcard'
-        ? 'Claude Code reads * in a rule as a wildcard, so a rule for this command would allow others too. Leave it, and ask the agent to name the files instead.'
-        : it.rules.why === 'paren'
-          ? 'Claude Code would read a ) in this command as the end of its rule, so a rule for it could allow others too. Leave it, and ask the agent to run it without the unmatched ).'
-          : 'Claude Code checks each part of a chained command on its own, so no one rule can allow this call. Leave it, and ask the agent to run the parts as separate commands.',
-    );
+  if (action !== 'leave' && !it.rules[action]) throw httpError(409, noRuleWhy(it.rules.why));
   const se = rt.s.sessions[it.sessionId];
   const asked = it.who ? `${it.who} (your subagent)` : 'you';
   /** @type {string | null} */

@@ -8,24 +8,24 @@ import { askToWake } from '../server/wake-cards.mjs';
 import { room } from './card-needs-fixture.mjs';
 import { held, oldSide, settle, sleep } from './side-threads-fixture.mjs';
 
-test('after a restart (the runtime knows no turns), answering a refusal falls back to the last turn’s next refusal', async () => {
+test('after a restart (the runtime knows no turns), answering a tool request falls back to the last turn’s next tool request', async () => {
   const r = room();
-  const one = r.denial('one');
+  const one = r.toolAsk('turn_last', 'one');
   await sleep(2);
-  const two = r.denial('two');
-  r.setNeed('denial', one.id);
-  await r.rt.resolveDenial(r.t.id, one.id, 'leave');
-  assert.equal(r.needs()?.itemId, two.id, 'refusal “two”, as main falls back');
+  const two = r.toolAsk('turn_last', 'two');
+  r.setNeed('toolask', one.id);
+  await r.rt.act(r.t.id, one.id, 'off');
+  assert.equal(r.needs()?.itemId, two.id, 'tool request “two”, as main falls back');
 });
 
 test('a session from before lastTurnId: the released card’s own turn counts', async () => {
   const r = room();
   r.rt.updateSession(r.alpha.id, { lastTurnId: undefined });
-  const one = r.denial('one', 'turn_old');
+  const one = r.toolAsk('turn_old', 'one');
   await sleep(2);
-  const two = r.denial('two', 'turn_old');
-  r.setNeed('denial', one.id);
-  await r.rt.resolveDenial(r.t.id, one.id, 'leave');
+  const two = r.toolAsk('turn_old', 'two');
+  r.setNeed('toolask', one.id);
+  await r.rt.act(r.t.id, one.id, 'off');
   assert.equal(r.needs()?.itemId, two.id);
 });
 

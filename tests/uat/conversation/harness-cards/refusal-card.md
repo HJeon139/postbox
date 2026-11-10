@@ -12,13 +12,12 @@ Auto mode’s safety check, a deny rule, or the permission mode can turn a call 
 
 - Names who was refused (the agent, or its subagent by name), the exact command or input, and why.
 - **Allow once and retry:** the next turn runs with that exact call allowed, and the agent is told to try it again exactly as before. A rule that matches a call settles it before auto mode’s safety check sees it, so this works for most of the check’s refusals too (architecture.md, “Permissions”, lists the exceptions).
-- **A chained command** (parts joined by `&&`, `||`, `;`, `|` or `&`, a process substitution `<( )`, or `$(( ))`) has neither Allow once nor Always allow. Claude Code checks each part against its rules on its own, so a rule for the whole line never matches it and the retry was refused again ([#238](https://github.com/HJeon139/postbox/issues/238)). The card says so, and suggests asking the agent to run the parts as separate commands, each of which gets a card of its own if it’s refused again. The card offers only Leave it.
+- **A chained command** (parts joined by `&&`, `||`, `;`, `|` or `&`, a process substitution `<( )`, or `$(( ))`) has neither Allow once nor Always allow. Claude Code checks each part against its rules on its own, so a rule for the whole line never matches it and the retry was refused again ([#238](https://github.com/HJeon139/postbox/issues/238)). The card says so, and suggests asking the agent to run the parts as separate commands, each of which gets a card of its own if it’s refused again. The card has no buttons: there’s nothing to allow, and nothing to acknowledge.
 - **A command substitution** (`$( )` or backquotes), a separator inside `${ }`, and `[[ … && … ]]` don’t chain it: real Claude Code turns ran each on the exact command’s rule ([#309](https://github.com/HJeon139/postbox/issues/309)), so the card offers Allow once, as for Claude Code’s own `git commit -m "$(cat <<'EOF' …)"`.
 - **A command with a `*`** has neither Allow once nor Always allow: Claude Code reads `*` in a rule as a wildcard, so a rule with the command’s own text would allow other commands too ([#281](https://github.com/HJeon139/postbox/issues/281)). The card says so, and suggests asking the agent to name the files.
 - **A program that runs the command or code after it** (`bash -c`, `sh`, `env`, `sudo`, `xargs`, `nohup`, `time`, `nice`, `perl`, `ruby`, `awk`, `ssh` and the like), or one whose second word is a flag (`node -e`, `python3 -c`, `git -c`), gets only its exact text for Always allow, never `Bash(env:*)` or `Bash(node -e:*)`, which would allow any command or code ([#281](https://github.com/HJeon139/postbox/issues/281)).
 - **Always allow …:** adds the rule shown on the card to `.claude/settings.local.json` in the agent’s folder, which your terminal sessions read too, then the agent tries again.
-- **Leave it:** keeps the refusal; the agent isn’t woken.
-- The agent needs you until you answer; its ring in the sidebar goes to the card (#285).
+- The card is information, not an ask: the agent already has the refusal as its call’s result and retries or works around it. It never makes the agent need you, sends no notification, has no Leave it, and its ring doesn’t pulse (designs/developing.md, “Design habits”, 12). Ignoring it leaves the refusal in place.
 - A call you declined on a permission card never gets a refusal card too.
 - The refused step shows in the activity list as refused, pointing to the card.
 
@@ -31,7 +30,7 @@ Auto mode’s safety check, a deny rule, or the permission mode can turn a call 
 5. In step 4, answer Always allow on one card. Check `.claude/settings.local.json`, and run `/permissions` in a terminal in the same folder.
 
 **Pass if:**
-- Every refusal has a card naming the right agent or subagent.
+- Every refusal has a card naming the right agent or subagent, and no agent shows as needing you for it.
 - Allow once makes the agent retry and succeed once.
 - In auto mode, a single command auto mode’s check refused runs after Allow once; a refused `cd <folder> && <command>` has no Allow once, and says why.
 - Always allow writes the rule, and the CLI lists it.

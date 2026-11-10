@@ -39,10 +39,10 @@ test('a block still open stays the need', () => {
 
 test('on a tie, the newer card takes the need, as nextNeed and the turn’s end choose', () => {
   const r = room();
-  const older = r.denial('ls');
-  const newer = r.denial('pwd');
+  const older = r.toolAsk('turn_last', 'ls');
+  const newer = r.toolAsk('turn_last', 'pwd');
   r.rt.patchItem(r.t.id, newer.id, { at: (older.at ?? 0) + 1 });
-  const se = cutOff(r, { kind: 'denial', itemId: older.id, text: 'A step was refused: ls' });
+  const se = cutOff(r, { kind: 'toolask', itemId: older.id, text: '@alpha asks you to turn on ls' });
   assert.equal(se.needs?.itemId, newer.id);
 });
 
@@ -79,10 +79,10 @@ test('a card in a topic of another conversation is never this agent’s need', (
 
 test('on a tie the sweep compares the cards’ times: a newer need nextNeed doesn’t count isn’t replaced by an older card', () => {
   const r = room();
-  const older = r.denial('ls'); // from turn_last: nextNeed counts it
-  const newer = r.denial('pwd', 'turn_other'); // a turn that no longer counts, but its card waits
+  const older = r.toolAsk('turn_last', 'ls'); // from turn_last: nextNeed counts it
+  const newer = r.toolAsk('turn_other', 'pwd'); // a turn that no longer counts, but its card waits
   r.rt.patchItem(r.t.id, newer.id, { at: (older.at ?? 0) + 1 });
-  const se = cutOff(r, { kind: 'denial', itemId: newer.id, text: 'A step was refused: pwd' });
+  const se = cutOff(r, { kind: 'toolask', itemId: newer.id, text: '@alpha asks you to turn on pwd' });
   assert.equal(se.needs?.itemId, newer.id);
 });
 

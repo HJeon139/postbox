@@ -43,7 +43,8 @@ function needOf(rt, se, it, threadId, turnIds, keep) {
   }
   if (it.kind === 'block' && it.valid && ASKING.has(it.block?.type) && !it.answered)
     return { kind: 'block', itemId: it.id, text: it.block.title ?? clip(it.block.prompt ?? it.block.fallback, 120), ...where };
-  if (it.kind === 'denial' && it.status === 'open') return { kind: 'denial', itemId: it.id, text: `A step was refused: ${it.summary}`, ...where };
+  // A refused call (a denial card) is never a need: the agent has the refusal and works around it, and the card shows
+  // what happened (intent.md, principle 8).
   if (it.kind === 'toolask' && it.status === 'open')
     return { kind: 'toolask', itemId: it.id, text: `@${se.handle} asks you to turn on “${it.label}”`, ...where };
   if (it.kind === 'viewask' && it.status === 'open')
@@ -55,13 +56,13 @@ function needOf(rt, se, it, threadId, turnIds, keep) {
  * Which need comes first when several wait, as the turn's end has always chosen: a permission the running turn is
  * blocked on, then a failed turn (its Retry: only its own release clears it, and no card but a permission, which a
  * running turn is blocked on, replaces it; on main a wake request's card did too), then the last turn's asking block,
- * its refusals, its tool request, and last the cards that wait until answered (app sends, wake requests). Within a kind,
+ * its tool request, and last the cards that wait until answered (app sends, wake requests). Within a kind,
  * the newest. It ranks exactly the kinds a need can have, shared/needs.mjs's NEEDS_KINDS (tests/card-needs-kinds.test.mjs).
  */
-export const RANK = Object.freeze({ permission: 0, failed: 1, block: 2, denial: 3, toolask: 4, viewask: 4, appsend: 5, hop: 5 });
+export const RANK = Object.freeze({ permission: 0, failed: 1, block: 2, toolask: 4, viewask: 4, appsend: 5, hop: 5 });
 
 /** The needs tied to a turn: the person moving on clears them (runtime.mjs, the turn's start). The rest wait until answered. */
-export const TURN_TIED = new Set(['failed', 'block', 'denial', 'toolask']);
+export const TURN_TIED = new Set(['failed', 'block', 'toolask']);
 
 /**
  * Which turns' asking blocks, refusals and tool requests count, answered here only. A turn that doesn't move on (another
@@ -111,20 +112,14 @@ export function nextNeed(rt, se, o = {}) {
   const keep = o.keep === undefined ? runningKeep(rt, se) : o.keep;
   /** @type {{ at: number, need: any, it: any } | null} */
   let best = null;
-  let refused = 0;
   for (const threadId of threadsOf(rt, se))
     for (const it of rt.store.pending.items(threadId)) {
       const need = needOf(rt, se, it, threadId, turnIds, keep);
       if (!need) continue;
-      if (need.kind === 'denial') refused++;
       const at = it.at ?? 0;
       if (comesFirst(need, at, best)) best = { at, need, it };
     }
-  // Several refusals are counted, as the turn's end always said.
-  if (best?.need.kind === 'denial' && refused > 1) best.need.text = `${refused} steps were refused: ${best.it.summary}`;
-  // Typed again: TypeScript 7 can narrow it to never after the line above, though a card may have set it.
-  const found = /** @type {{ at: number, need: any, it: any } | null} */ (best);
-  return found?.need ?? null;
+  return best?.need ?? null;
 }
 
 /**

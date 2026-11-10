@@ -1,6 +1,6 @@
 // A turn that doesn't move on keeps every turn's cards that counted when it started (#366; critic's review of #633 at
-// e776d4b0): another agent's wake, a lint pass or an app check isn't the person moving on, so the refusals and tool
-// requests of the turn before still count, mid-turn, at its end and after a restart. And a laptop's permission card
+// e776d4b0): another agent's wake, a lint pass or an app check isn't the person moving on, so the tool requests and
+// asking blocks of the turn before still count, mid-turn, at its end and after a restart. And a laptop's permission card
 // left open across a restart is no longer the need (#721's first gap).
 
 import assert from 'node:assert/strict';
@@ -26,11 +26,11 @@ function restart(r) {
   return rt;
 }
 
-/** Two refusals from `turn_last`, the need on the first, then another agent wakes @alpha and its turn runs on. */
-async function wokenWithTwoRefusals(r) {
-  const d1 = r.denial('ls');
-  const d2 = r.denial('pwd');
-  r.setNeed('denial', d1.id);
+/** Two tool requests from `turn_last`, the need on the first, then another agent wakes @alpha and its turn runs on. */
+async function wokenWithTwoAsks(r) {
+  const d1 = r.toolAsk('turn_last', 'ls');
+  const d2 = r.toolAsk('turn_last', 'pwd');
+  r.setNeed('toolask', d1.id);
   const work = held();
   r.adapter.next.push(work.step);
   r.rt.deliver(r.alpha.id, { kind: 'agent', from: '@beta', text: 'Here are the numbers.' }); // not you moving on
@@ -38,68 +38,71 @@ async function wokenWithTwoRefusals(r) {
   return { d1, d2, work };
 }
 
-test('critic’s probe: after a restart cuts off a wake, answering one refusal moves the need to the next, as on main', async () => {
+test('critic’s probe: after a restart cuts off a wake, answering one tool request moves the need to the next, as on main', async () => {
   const r = room();
-  const { d1, d2 } = await wokenWithTwoRefusals(r);
+  const { d1, d2 } = await wokenWithTwoAsks(r);
   const rt = restart(r);
-  await rt.resolveDenial(r.t.id, d1.id, 'leave');
+  await rt.act(r.t.id, d1.id, 'off');
+  assert.equal(r.store.state.sessions[r.alpha.id].needs?.itemId, d2.id, 'd2 still waits');
+  // Off tells the agent, which takes a turn; d2 still waits once it ends.
+  await settle(rt);
   const se = r.store.state.sessions[r.alpha.id];
-  assert.equal(se.needs?.itemId, d2.id, 'd2 still waits');
+  assert.equal(se.needs?.itemId, d2.id, 'and after the turn the answer started');
   assert.equal(se.state, 'needs');
 });
 
-test('mid-turn: answering one refusal during a wake moves the need to the next, as on main', async () => {
+test('mid-turn: answering one tool request during a wake moves the need to the next, as on main', async () => {
   const r = room();
-  const { d1, d2, work } = await wokenWithTwoRefusals(r);
-  await r.rt.resolveDenial(r.t.id, d1.id, 'leave');
+  const { d1, d2, work } = await wokenWithTwoAsks(r);
+  await r.rt.act(r.t.id, d1.id, 'off');
   assert.equal(r.needs()?.itemId, d2.id, 'mid-turn');
   work.release();
   await settle(r.rt);
   assert.equal(r.needs()?.itemId, d2.id, 'and at the wake’s end');
 });
 
-test('a wake that ends leaves the turn before’s refusals counting', async () => {
+test('a wake that ends leaves the turn before’s tool requests counting', async () => {
   const r = room();
-  const { d1, work } = await wokenWithTwoRefusals(r);
+  const { d1, work } = await wokenWithTwoAsks(r);
   work.release();
   await settle(r.rt);
-  assert.equal(r.needs()?.kind, 'denial', 'the refusals still wait');
-  await r.rt.resolveDenial(r.t.id, d1.id, 'leave');
-  assert.equal(r.needs()?.kind, 'denial', 'answering one leaves the other');
+  assert.equal(r.needs()?.kind, 'toolask', 'the tool requests still wait');
+  await r.rt.act(r.t.id, d1.id, 'off');
+  assert.equal(r.needs()?.kind, 'toolask', 'answering one leaves the other');
 });
 
-test('two wakes in a row: the first wake’s own refusals still count once the second starts and a restart cuts it off', async () => {
+test('two wakes in a row: the first wake’s own tool requests still count once the second starts and a restart cuts it off', async () => {
   const r = room();
   const first = held();
   /** @type {any[]} */
   const mine = [];
   r.adapter.next.push(async (c, _m, se) => {
     const turnId = r.rt.turns.get(se.id).id;
-    mine.push(r.denial('git status', turnId), r.denial('git log', turnId));
+    mine.push(r.toolAsk(turnId, 'git status'), r.toolAsk(turnId, 'git log'));
     await first.step(c);
   });
   r.rt.deliver(r.alpha.id, { kind: 'agent', from: '@beta', text: 'One.' });
   await sleep(5);
   first.release();
   await settle(r.rt);
-  assert.equal(r.needs()?.kind, 'denial');
+  assert.equal(r.needs()?.kind, 'toolask');
   r.adapter.next.push(held().step);
   r.rt.deliver(r.alpha.id, { kind: 'agent', from: '@beta', text: 'Two.' });
   await sleep(5);
   const rt = restart(r);
   const [answered, other] = r.needs()?.itemId === mine[0].id ? mine : [mine[1], mine[0]];
-  await rt.resolveDenial(r.t.id, answered.id, 'leave');
-  assert.equal(r.store.state.sessions[r.alpha.id].needs?.itemId, other.id, 'the first wake’s other refusal');
+  await rt.act(r.t.id, answered.id, 'off');
+  assert.equal(r.store.state.sessions[r.alpha.id].needs?.itemId, other.id, 'the first wake’s other tool request');
 });
 
-test('moving on still clears the turn before’s refusals, after a wake kept them', async () => {
+test('moving on still clears the turn before’s tool requests, after a wake kept them', async () => {
   const r = room();
-  const { work } = await wokenWithTwoRefusals(r);
+  const { work } = await wokenWithTwoAsks(r);
   work.release();
   await settle(r.rt);
   r.rt.sendMessage(r.t.id, { text: '@alpha carry on' }); // you move on
   await settle(r.rt);
-  assert.equal(r.needs(), null, 'refusals you moved past stay quiet (#69)');
+  assert.equal(r.needs(), null, 'tool requests you moved past stay quiet (#69)');
   const se = r.store.state.sessions[r.alpha.id];
   assert.deepEqual(se.keptTurnIds ?? [], [], 'nothing kept after you move on');
 });
@@ -117,16 +120,16 @@ test('#721’s first gap: a laptop’s permission card open across a restart lea
 
 test('a wake keeps only turns still asking you something, so the list doesn’t grow with every wake', async () => {
   const r = room();
-  r.denial('ls', 'turn_old'); // a turn no longer counting: not kept
+  r.toolAsk('turn_old', 'ls'); // a turn no longer counting: not kept
   r.adapter.next.push(async () => {});
   r.rt.deliver(r.alpha.id, { kind: 'agent', from: '@beta', text: 'One.' });
   await settle(r.rt);
   assert.deepEqual(r.store.state.sessions[r.alpha.id].keptTurnIds, [], 'turn_last asked nothing');
-  const d = r.denial('pwd', r.store.state.sessions[r.alpha.id].lastTurnId);
+  const d = r.toolAsk(r.store.state.sessions[r.alpha.id].lastTurnId, 'pwd');
   r.adapter.next.push(async () => {});
   r.rt.deliver(r.alpha.id, { kind: 'agent', from: '@beta', text: 'Two.' });
   await settle(r.rt);
-  assert.deepEqual(r.store.state.sessions[r.alpha.id].keptTurnIds, [d.turnId], 'only the wake that left a refusal open');
+  assert.deepEqual(r.store.state.sessions[r.alpha.id].keptTurnIds, [d.turnId], 'only the wake that left a tool request open');
 });
 
 test('a wake’s end keeps a failed turn’s need and its Retry, where main drops it', async () => {
