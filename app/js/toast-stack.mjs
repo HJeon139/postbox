@@ -15,14 +15,15 @@ export function cleanupToast(element, cleanup) {
 }
 
 /**
- * Put the newest notice first. At four, evict the oldest ordinary notice before an Undo; when all are Undos, evict
- * the oldest Undo so the stack remains bounded.
+ * Put the newest notice first. At four, evict the oldest ordinary notice before an Undo; when the rest are all Undos,
+ * evict the oldest Undo, so the stack remains bounded. The notice just added is never the one evicted: a blocking alert
+ * behind three Undos still shows, and its screen reader announcement isn’t cut off.
  * @param {Element} box @param {Element} element
  */
 export function addToast(box, element) {
   box.prepend(element);
   while (box.children.length > 3) {
-    const oldest = [...box.children].reverse();
-    removeToast(oldest.find((child) => !cleanups.has(child)) ?? oldest[0]);
+    const older = [...box.children].reverse().filter((child) => child !== element);
+    removeToast(older.find((child) => !cleanups.has(child)) ?? older[0]);
   }
 }
