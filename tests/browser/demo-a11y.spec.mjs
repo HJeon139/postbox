@@ -117,6 +117,16 @@ async function drawn(page) {
 async function axe(page) {
   // Evaluated as the DevTools protocol does, which the page’s policy on scripts doesn’t cover, as a tag it loads would be.
   await page.evaluate(`${AXE};0`);
+  // Every frame on the page must be one axe can’t enter, a sandbox page with an opaque origin, since it runs with
+  // iframes: false below. A frame whose document this page can read, a same-origin one, would drop out of the check.
+  const readable = await page.evaluate(
+    () =>
+      [...document.querySelectorAll('iframe')].filter((f) => {
+        const doc = f.contentDocument;
+        return doc !== null && doc.URL !== 'about:blank';
+      }).length,
+  );
+  expect(readable, 'no frame axe could enter is left out of its check').toBe(0);
   return page.evaluate(() =>
     /** @type {any} */ (window).axe
       // iframes: false, since axe can’t enter an agent app (above). Trying posts to each sandboxed frame with this page’s
