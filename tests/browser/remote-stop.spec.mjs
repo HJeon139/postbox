@@ -125,23 +125,17 @@ test('#120 Codex runs only on a host, says what the daemon found, and the server
     await expect.soft(page.locator('.field').filter({ has: page.locator('#pe-m') })).toContainText('auto is Codex’s default');
     expect.soft(await axe(page), 'axe, on the persona sheet').toEqual([]);
   });
-  await test.step('on a host whose daemon didn’t find Codex, it says so before saving, as the select’s own error', async () => {
+  await test.step('on a host whose daemon didn’t find Codex when it connected, it says so, and that a turn looks again', async () => {
     await where(page).selectOption(s.A.id);
     await expect(page.locator('#pe-where-missing')).toHaveText(
-      /^Codex wasn’t found on host\.example\.com: Postbox’s daemon looked in \/home\/user\/\.local\/bin, \/usr\/local\/bin\. Install it there, or set its path in the host’s settings\.$/,
+      /^Codex wasn’t found on host\.example\.com when Postbox connected: its daemon looked in \/home\/user\/\.local\/bin, \/usr\/local\/bin\. It looks again when a turn starts\. Install it there, or set its path in the host’s settings\.$/,
     );
     await expect.soft(where(page)).toHaveAttribute('aria-describedby', 'pe-where-help pe-where-missing');
-    await expect.soft(where(page)).toHaveAttribute('aria-invalid', 'true');
+    await expect.soft(where(page), 'a note, not an error').not.toHaveAttribute('aria-invalid', 'true');
   });
-  await test.step('Save: the server’s refusal shows under Runs on, with focus there, and nothing changes', async () => {
-    allowPageError(page, /status of 422/);
+  await test.step('Save: the agent moves to that host, since its turn’s start looks for Codex again (#1084)', async () => {
     await dialog(page).getByRole('button', { name: 'Save', exact: true }).click();
-    await expect(page.locator('#pe-where-err'), 'the server’s refusal').toHaveText(
-      /^Codex isn’t installed on host\.example\.com, so this agent can’t run there\./,
-    );
-    await expect.soft(where(page)).toHaveAttribute('aria-describedby', 'pe-where-help pe-where-missing pe-where-err');
-    await expect.soft(where(page), 'focus on Runs on').toBeFocused();
-    expect(s.app.rt.persona(s.cx.id).remote.hostId, 'unchanged').toBe(s.B.id);
+    await expect.poll(() => s.app.rt.persona(s.cx.id).remote?.hostId, { message: 'moved' }).toBe(s.A.id);
   });
 });
 

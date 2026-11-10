@@ -156,3 +156,26 @@ test('#1084: a Codex start and a claude at the minimum are unchanged: nothing is
     s.done();
   }
 });
+
+test('#1084: a claude the hello found at a path that’s gone since is looked for again, and the one installed elsewhere runs', async () => {
+  // The hello found an old npm claude; it was removed, and a new one installed in ~/.local/bin.
+  let finds = 0;
+  const findPrograms = async () => {
+    finds++;
+    const found = structuredClone(PROGRAMS_FOUND);
+    const old = { name: 'claude-code', path: '/home/user/.npm-global/bin/claude', version: null, looked: ['/home/user/.npm-global/bin/claude'] };
+    found.harnesses[0] = finds === 1 ? old : { ...found.harnesses[0], version: '2.1.300' };
+    return found;
+  };
+  const r = reads({ error: 'spawn /home/user/.npm-global/bin/claude ENOENT' });
+  const s = setup({ findPrograms, readVersion: r.readVersion, probeLoginPath: async () => ({ ok: true, entries: ['/home/user/.local/bin'], ms: 1 }) });
+  try {
+    const c = await hello(s);
+    const answer = await answerTo(c, 't1', { need: NEED_REMOTE });
+    assert.equal(answer.type, 'started', answer.message);
+    assert.deepEqual(r.asked, ['/home/user/.npm-global/bin/claude'], 'the old path was read once');
+    assert.ok(finds >= 2, 'the programs were looked for again');
+  } finally {
+    s.done();
+  }
+});

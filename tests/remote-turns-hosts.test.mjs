@@ -165,21 +165,15 @@ test('#120: Codex with no CLI on this computer runs on a host that has it, and i
   assert.deepEqual(f.calls, []);
 });
 
-test('#120: a host whose welcome lacks a backend’s harness is refused for it, saying where its daemon looked; one not heard from yet isn’t', async () => {
+test('#120, #1084: an agent placed on a host whose welcome lacks its harness isn’t refused, since the turn’s start looks again', async () => {
   const { hosts, rt, host } = codexOnHostOnly(['claude-code']);
   const status = hosts.status;
   hosts.status = () => ({ state: 'reconnecting', failure: null, welcome: null, lastHeard: null });
   assert.deepEqual(rt.createPersona({ handle: 'early', backend: 'codex', remote: { hostId: host.id } }).remote, { hostId: host.id });
   hosts.status = status;
   await until(() => hosts.theLink.connected, 'the welcome');
-  assert.throws(
-    () => rt.createPersona({ handle: 'late', backend: 'codex', remote: { hostId: host.id } }),
-    (e) =>
-      e.status === 422 &&
-      /^Codex isn’t installed on host\.example\.com, so this agent can’t run there\. Postbox’s daemon looked in \/home\/user\/\.local\/bin, \/usr\/local\/bin\. Install it there, or set codexPath in the host’s settings\.$/.test(
-        e.message,
-      ),
-  );
+  // The welcome is cached for the life of the connection: a CLI installed since is found at the turn’s start.
+  assert.deepEqual(rt.createPersona({ handle: 'late', backend: 'codex', remote: { hostId: host.id } }).remote, { hostId: host.id });
   assert.deepEqual(
     rt.createPersona({ handle: 'claude', backend: 'claude-code', remote: { hostId: host.id } }).remote,
     { hostId: host.id },

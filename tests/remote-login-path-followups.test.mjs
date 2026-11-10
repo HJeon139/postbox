@@ -43,18 +43,14 @@ test('#1066 a probe’s time is on a monotonic clock, so setting the clock back 
   assert.ok(r.ok && r.ms >= 0, JSON.stringify(r));
 });
 
-test('#1066 placement’s refusal for a CLI not found names the folders that came from the login shell', () => {
+test('#1084: placing an agent on a host whose cached welcome has no CLI isn’t refused: the turn’s start looks again', () => {
+  // The welcome is cached for the life of the connection, so a CLI installed since would be refused for good. The
+  // turn’s start on the host finds it, or refuses with the folders it looked in (lookedText, the login shell’s first).
   const welcome = { harnesses: [{ name: 'codex', path: null, looked: ['/opt/tools/bin', '/usr/local/bin'], fromLogin: 1 }] };
   const rt = {
     s: { hosts: { h1: { id: 'h1', name: 'host.example.com' } } },
     adapters: { names: () => ['codex'], get: () => ({ capabilities: { remote: true } }) },
     hosts: { status: () => ({ welcome }) },
   };
-  assert.throws(
-    () => placement(rt, { hostId: 'h1' }, 'codex'),
-    (e) => {
-      assert.match(e.message, /looked in \/opt\/tools\/bin \(from your login shell’s PATH\), then \/usr\/local\/bin\./);
-      return true;
-    },
-  );
+  assert.deepEqual(placement(rt, { hostId: 'h1' }, 'codex'), { hostId: 'h1' });
 });
