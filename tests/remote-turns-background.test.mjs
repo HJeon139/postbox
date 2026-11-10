@@ -124,6 +124,18 @@ test('#847 the stop text drops every character that hides or reorders text, and 
   assert.ok(quoted.length <= 80, `${quoted.length} characters`);
 });
 
+test('#1132: an emoji in a task’s name stays whole in the stop text: its joiner and emoji style are kept', async () => {
+  const name = '👩\u200d💻 builds ❤\ufe0f and 🏳\ufe0f\u200d🌈, a\u200bb\ufe0f';
+  const { r, clock, turn } = await quietTurn([...waiting, listed([{ task_id: 'b1', description: name }])]);
+  clock.now += QUIET.backgroundMax + MIN;
+  r.rt.remote.checkStalls();
+  await until(() => r.d.stops.includes(turn), 'the stop');
+  await settled(r);
+  const quoted = r.se().currentStep.match(/\((.*)\) ran past/s)[1];
+  // Each emoji whole; a zero-width space and a stray emoji style after a letter are still taken out.
+  assert.equal(quoted, '👩\u200d💻 builds ❤\ufe0f and 🏳\ufe0f\u200d🌈, a b');
+});
+
 test('#847 after a Postbox restart, the replayed stream lists the task again, so the turn isn’t stopped', async () => {
   const { store, d } = restarted();
   d.append('host-turn-1', listed([{ task_id: 'b1', description: 'Wait for the gate' }]));
