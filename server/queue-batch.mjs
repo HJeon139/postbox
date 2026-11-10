@@ -2,29 +2,32 @@
 import { positionOf } from '../shared/item-index.mjs';
 
 /**
- * Whether an agent's last reply failed and no turn has run since (#1146, the person's choice): what waits for it in the
- * queues, the person's messages and other agents' wakes alike, is held until the person writes to it or retries the
- * reply. A turn's start ends the hold; one that doesn't move on (a lint pass, an app check) keeps the failed reply as
- * its need, so the hold is back at its end. Dismiss ends it too. From the pending session, as a held commit may hold the
- * failure's own write.
+ * Whether an agent's last reply failed and the person hasn't acted on it since (#1146, the person's choice): what waits
+ * for it in the queues, the person's messages and other agents' wakes alike, is held until the person writes to it,
+ * retries the reply or dismisses it. Writing marks that failure released (releasedFailure), so no later drain holds it
+ * again, whatever turn goes first; a new failure is a new reply, held again. A turn's start ends the hold too; one that
+ * doesn't move on (a lint pass, an app check) keeps the failed reply as its need, so the hold is back at its end. From
+ * the pending session, as a held commit may hold the failure's own write.
  * @param {any} rt @param {string} sessionId
  */
 export function heldAfterFailure(rt, sessionId) {
-  return (rt.store.pending.session(sessionId) ?? rt.s.sessions[sessionId])?.state === 'failed';
+  const se = rt.store.pending.session(sessionId) ?? rt.s.sessions[sessionId];
+  return se?.state === 'failed' && se.releasedFailure !== (se.needs?.itemId ?? null);
 }
 
 /**
- * What can go from a thread's queue, by agent, in order for each. release: an agent held after a failure that the
- * person's message releases now (heldAfterFailure).
- * @param {any} rt @param {any} thread @param {string | null} [release]
+ * What can go from a thread's queue, by agent, in order for each. An agent held after a failure gets nothing
+ * (heldAfterFailure).
+ * @param {any} rt @param {any} thread
  */
-export function readyGroups(rt, thread, release = null) {
+export function readyGroups(rt, thread) {
   const blocked = new Set();
   const groups = new Map();
-  const held = (/** @type {string} */ id) => id !== release && heldAfterFailure(rt, id);
   for (const q of thread.queue ?? []) {
     // An agent being deleted gets nothing in its Undo window: its messages wait for Undo or the purge (#427, R1).
-    const free = !q.sessionIds.some((id) => blocked.has(id) || rt.turns.has(id) || rt.exiting.has(id) || rt.s.sessions[id]?.deleting || held(id));
+    const free = !q.sessionIds.some(
+      (id) => blocked.has(id) || rt.turns.has(id) || rt.exiting.has(id) || rt.s.sessions[id]?.deleting || heldAfterFailure(rt, id),
+    );
     if (!free) {
       for (const id of q.sessionIds) blocked.add(id);
       continue;

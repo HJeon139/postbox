@@ -535,10 +535,9 @@ export class Runtime {
   /**
    * Sends what can go from a thread’s queue: every item whose agents are free, in order for each agent, so one waiting
    * for a busy agent holds back nothing for another (#228), and none for an agent held after a failure (#1146) goes.
-   * release: an agent held after a failure that your message releases now.
    */
-  drainQueue(threadId, release = null) {
-    return queue.drainQueue(this, threadId, release);
+  drainQueue(threadId) {
+    return queue.drainQueue(this, threadId);
   }
 
   // ── Turns ──────────────────────────────────────────────────────────────────────────

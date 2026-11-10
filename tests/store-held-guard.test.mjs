@@ -95,7 +95,9 @@ const PENDING = {
   // The queue a drain takes from and the queued messages a deleted session's release posts: a wake or a message
   // queued behind a held commit is in them (#796). Send now aims at an entry the person sees, but a turn ending behind
   // a held commit may have drained it already, and sending it again would deliver it twice (#1007).
-  'message-queue.mjs': ['sendQueuedNow', 'releaseQueued', 'drainQueue', 'takePending'],
+  // releaseAfterFailure: the failed reply the person's message releases is the session's need, which a held commit may
+  // hold (#1146).
+  'message-queue.mjs': ['sendQueuedNow', 'releaseQueued', 'drainQueue', 'takePending', 'releaseAfterFailure'],
   'permission-cards.mjs': ['recordDenial'], // the same refused call, once
   // Whether an agent is held after a failure, which decides whether what waits for it goes: the failed turn's own
   // write of its state may be held behind a commit (#1146).

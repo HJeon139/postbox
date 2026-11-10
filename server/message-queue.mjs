@@ -98,11 +98,10 @@ export function drainAll(rt) {
   for (const t of Object.values(rt.s.threads)) if (t.queue?.length && !t.deleting) rt.drainQueue(t.id);
 }
 
-/** @param {any} rt @param {string} threadId @param {string | null} [release]  an agent held after a failure, released now */
-export function drainQueue(rt, threadId, release = null) {
+export function drainQueue(rt, threadId) {
   const t = rt.store.pending.thread(threadId);
   if (!t?.queue?.length) return;
-  const groups = readyGroups(rt, t, release);
+  const groups = readyGroups(rt, t);
   for (const batch of takeBatches(rt, threadId, groups)) deliverBatch(rt, threadId, batch.sessionIds, batch.messages);
 }
 
@@ -204,16 +203,14 @@ export function drainQueues(rt, sessionId, threadId) {
 const waitingFor = (rt, sessionId) => pendingThreads(rt).filter((t) => t.queue?.some((q) => q.sessionIds.includes(sessionId)));
 
 /**
- * The person's message to an agent held after a failure, queued in threadId, releases what waited for it (#1146): the
- * other threads' first, so their entries lead its turn and the queue the message is in goes last, with it at the end. A
- * thread that waits behind that turn goes at its end, as after any turn.
+ * The person wrote to an agent held after a failure (#1146): that failure is released, and what waited for it goes in
+ * send order, its own thread first, as after any turn, with the person's message last in it.
  * @param {any} rt @param {string} sessionId @param {string} threadId
  */
 export function releaseAfterFailure(rt, sessionId, threadId) {
-  const ids = waitingFor(rt, sessionId)
-    .map((t) => t.id)
-    .filter((id) => id !== threadId);
-  for (const id of [...ids, threadId]) rt.drainQueue(id, sessionId);
+  const se = rt.store.pending.session(sessionId) ?? rt.s.sessions[sessionId];
+  rt.updateSession(sessionId, { releasedFailure: se?.needs?.itemId ?? null });
+  rt.drainQueues(sessionId, threadId);
 }
 
 export function rememberStoppedMessages(rt, sessionId, message) {
