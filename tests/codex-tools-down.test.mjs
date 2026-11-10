@@ -61,6 +61,15 @@ test('#1162 another required server failing keeps Codex’s own words, with no P
   assert.equal(down(ctx), undefined);
 });
 
+test('#1162 “postbox:” inside another server’s error detail isn’t Postbox’s server failing', async () => {
+  const ctx = context();
+  const message =
+    'error creating thread: Fatal error: Failed to initialize session: required MCP servers failed to initialize: docs: handshaking with MCP server failed: tried the postbox: socket';
+  const adapter = new CodexAdapter({ spawnImpl: () => fakeAppServer([], { threadError: () => ({ code: -32603, message }) }) });
+  await assert.rejects(adapter.deliver({}, { kind: 'user', text: 'Hi.' }, ctx), /tried the postbox: socket/);
+  assert.equal(down(ctx), undefined);
+});
+
 test('#1162 the next Codex turn is told first that Postbox’s tools didn’t load, and only once', async () => {
   const ctx = context();
   let n = 0;
@@ -75,6 +84,7 @@ test('#1162 the next Codex turn is told first that Postbox’s tools didn’t lo
   await adapter.deliver({}, { kind: 'user', text: 'Try again.' }, ctx);
   assert.match(inputOf(seen[1]), told, 'the next turn is told first');
   assert.match(inputOf(seen[1]), /the turn didn’t run and you never got its message/, 'worded for a turn that never ran');
+  assert.match(inputOf(seen[1]), /read_conversation has it/, 'and says where the message is');
   assert.match(inputOf(seen[1]), /Try again\./, 'then its request');
   await adapter.deliver({}, { kind: 'user', text: 'Once more.' }, ctx);
   assert.doesNotMatch(inputOf(seen[2]), told, 'and only once');
