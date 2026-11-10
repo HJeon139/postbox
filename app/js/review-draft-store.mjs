@@ -33,9 +33,10 @@ export function keepReviewDraft(itemId, revision, d) {
   if (last.get(itemId) === value) return;
   last.set(itemId, value);
   try {
+    // The oldest goes first, so a storage full at KEPT_DRAFTS has room for this one.
+    reindex(itemId, !!value);
     if (value) localStorage.setItem(storageKey(itemId), value);
     else localStorage.removeItem(storageKey(itemId));
-    reindex(itemId, !!value);
   } catch {}
 }
 
