@@ -5,6 +5,7 @@
 //   which git applies over any config file, per-protocol settings included, and protocol.allow=never with only file
 //   allowed, from the environment (GIT_CONFIG_COUNT) and again from the workspace’s own .git/config. So an https,
 //   ssh or git:// remote is refused before anything leaves this computer;
+// - git lfs doesn’t read GIT_ALLOW_PROTOCOL, so the git-lfs first on the run’s PATH refuses (#1125);
 // - git reads the run’s own config, not the person’s: GIT_CONFIG_GLOBAL is a file in the run’s folder that holds only a
 //   test identity, and GIT_CONFIG_NOSYSTEM drops the system’s, such as Homebrew’s. So no pushInsteadOf, insteadOf,
 //   include, hook or credential helper of theirs touches an agent’s push;
@@ -23,6 +24,8 @@
 // - undo it: `env -u GIT_ALLOW_PROTOCOL git push …`, `GIT_ALLOW_PROTOCOL=https git push …`, or `env -i`, then
 //   `git -c protocol.allow=always …`. In Ask me or Accept edits that command comes to a card first; in Auto, the
 //   harness decides;
+// - ask for a password past the credential guard on purpose: `git -c credential.helper=… credential fill`, setting
+//   GIT_ASKPASS for one command, `git credential-<helper> get`, or the real git-lfs by its full path;
 // - skip git: with GH_TOKEN unset, a real gh called by its full path still reads the person’s sign-in from the keychain
 //   (`gh auth token`), since HOME and the keyring are theirs, and `curl` with that token reaches GitHub;
 // - a file push can reach a bare repository outside the run’s folder, and nothing refuses `--host` for this seed: the
@@ -72,21 +75,41 @@ function git(args, cwd) {
   const r = gitRun(args, cwd);
   return r.status === 0 ? r.stdout.trim() : null;
 }
+/**
+ * A shell line that prints credentials-guarded when git there has no credential helper, askpass or askpass variable left
+ * to answer a prompt (#1125). Git reads every credential.helper and credential.<url>.helper in config order, and an
+ * empty one clears those before it, so the last of them all must be the plain key, and its value empty. Not
+ * --get-urlmatch, which names the most specific match, a site's helper, even when the guard has cleared it. It reads
+ * the settings, and runs none of them.
+ */
+export const CREDENTIALS_GUARDED =
+  'k=$(git config --name-only --get-regexp \'^credential\\..*helper$\' 2>/dev/null | tail -n 1); h=$(git config --get credential.helper 2>/dev/null); a=$(git config --get core.askPass 2>/dev/null); { [ -z "$k" ] || [ "$k" = credential.helper ]; } && [ -z "$h$a$GIT_ASKPASS$SSH_ASKPASS" ] && echo credentials-guarded';
+
 /** git that must work: a seed step that fails stops the run, naming the step and what git said. */
 function mustGit(args, cwd) {
   const r = gitRun(args, cwd);
   if (r.status !== 0) throw new Error(`Couldn’t seed the run’s remote: git ${args.join(' ')} failed: ${(r.stderr || r.error?.message || '').trim()}`);
 }
 
-/** The guard as environment: git reads GIT_CONFIG_KEY_n and GIT_CONFIG_VALUE_n over every config file. */
+/**
+ * The guard as environment: git reads GIT_CONFIG_KEY_n and GIT_CONFIG_VALUE_n over every config file. An inherited
+ * GIT_CONFIG_PARAMETERS is read after them, so a helper named there would run past the guard's empty one: blanked (#1125).
+ */
 export function guardEnv() {
-  const env = { GIT_ALLOW_PROTOCOL: 'file', GIT_CONFIG_COUNT: String(GUARD.length) };
+  const env = { GIT_ALLOW_PROTOCOL: 'file', GIT_CONFIG_PARAMETERS: '', GIT_CONFIG_COUNT: String(GUARD.length) };
   GUARD.forEach(([k, v], i) => {
     env[`GIT_CONFIG_KEY_${i}`] = k;
     env[`GIT_CONFIG_VALUE_${i}`] = v;
   });
   return env;
 }
+
+// git lfs doesn't read GIT_ALLOW_PROTOCOL: its transfers go to lfs.url over http(s) or ssh, with a .netrc login or the
+// ssh agent (#1125). In a git-remote run, the git-lfs first on PATH refuses, so git's lfs hooks and filters do too.
+const FAKE_GIT_LFS = `#!/bin/sh
+echo "git lfs is off in this UAT run: it would reach a network remote past the run's guard." >&2
+exit 1
+`;
 
 // The fake gh: each call is one JSON line of its arguments, and `gh pr create` answers with a link that goes nowhere.
 const FAKE_GH = `#!/usr/bin/env node
@@ -141,6 +164,8 @@ export function seedGitRemote(workspace, dir) {
   writeFileSync(join(workspace, '.gitignore'), '.claude/\n__pycache__/\n*.pyc\n');
   writeFileSync(join(p.bin, 'gh'), FAKE_GH);
   chmodSync(join(p.bin, 'gh'), 0o755);
+  writeFileSync(join(p.bin, 'git-lfs'), FAKE_GIT_LFS);
+  chmodSync(join(p.bin, 'git-lfs'), 0o755);
   writeFileSync(p.ghCalls, '');
   writeFileSync(p.envFile, agentEnvFile(p));
   // The run’s own global config, in place of the person’s: only an identity for the agents’ commits.
@@ -148,12 +173,18 @@ export function seedGitRemote(workspace, dir) {
 }
 
 const quoted = (v) => `'${String(v).replaceAll("'", "'\\''")}'`;
-/** What Claude Code sources in the agent’s shell after its profile: the run’s bin first again, and gh with no login. */
+/**
+ * What Claude Code sources in the agent’s shell after its profile: the run’s bin first again, gh with no login, and the
+ * whole git guard again, askpass blanks included, since a profile can set any of it (#1125).
+ */
 const agentEnvFile = (p) =>
   [
     `export PATH=${quoted(p.bin)}:"$PATH"`,
     `export GH_CONFIG_DIR=${quoted(p.ghConfig)} GIT_CONFIG_GLOBAL=${quoted(p.gitconfig)} GIT_CONFIG_NOSYSTEM=1`,
-    `export GH_TOKEN=${NO_TOKEN} GITHUB_TOKEN='' SSH_AUTH_SOCK='' GIT_ALLOW_PROTOCOL=file`,
+    `export GH_TOKEN=${NO_TOKEN} GITHUB_TOKEN='' SSH_AUTH_SOCK='' GIT_ASKPASS='' SSH_ASKPASS=''`,
+    `export ${Object.entries(guardEnv())
+      .map(([k, v]) => `${k}=${quoted(v)}`)
+      .join(' ')}`,
     '',
   ].join('\n');
 
@@ -174,7 +205,9 @@ export function preflightRemote(workspace, dir, env) {
   if (!/transport 'https' not allowed/.test(probe.stderr ?? ''))
     throw stop(`git in the run isn’t refused an https remote (it said: ${(probe.stderr ?? '').trim().slice(0, 200)})`);
   const shell = env.SHELL || '/bin/sh';
-  const which = spawnSync(shell, ['-lic', '[ -n "$CLAUDE_ENV_FILE" ] && . "$CLAUDE_ENV_FILE"; command -v gh'], { env, encoding: 'utf8', timeout: 20_000 });
+  const script = `[ -n "$CLAUDE_ENV_FILE" ] && . "$CLAUDE_ENV_FILE"; ${CREDENTIALS_GUARDED}; command -v gh`;
+  const which = spawnSync(shell, ['-lic', script], { env, encoding: 'utf8', timeout: 20_000 });
+  if (!/^credentials-guarded$/m.test(which.stdout ?? '')) throw stop('git in the agent’s shell can still hand out a password');
   const gh = (which.stdout ?? '').trim().split('\n').at(-1);
   if (gh !== join(p.bin, 'gh')) throw stop(`gh in the agent’s shell is ${gh || 'missing'}, not the run’s fake (${join(p.bin, 'gh')})`);
 }
