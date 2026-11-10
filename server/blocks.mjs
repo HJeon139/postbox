@@ -142,18 +142,18 @@ export function updateBlock(rt, sessionId, { block }, { turn, se, threadId, endS
     const kept = validateBlock(v.block, { imageOrigins: rt.config.imageOrigins });
     if (!kept.ok) return { ok: false, message: `The update wasn’t applied: with the reviewers’ threads it leaves out, which stay, ${kept.errors.join(' ')}` };
   }
-  // One that changes only what the person can’t see (its fallback) asks nothing new, so an answered block stays
-  // answered, and an outcome can follow (#286).
+  // One that changes only what the person can’t see (its fallback), or only whether a review’s threads are resolved
+  // (#901), asks nothing new, so an answered block stays answered, and an outcome can follow (#286).
   const { files, newFiles } = reviewImages(v.block, existing, given.files);
   if (existing.answered && !newFiles) {
-    const differ = changedKeys(v.block, existing.block).filter((k) => k !== 'outcome');
-    if (differ.length > 0 && !existing.closed && differ.every((k) => UNSEEN.has(k))) {
+    const differ = unseenAware(v.block, existing.block).filter((k) => k !== 'outcome');
+    if (differ.length > 0 && !existing.closed && differ.every((k) => UNSEEN.has(k) || k === STATUS)) {
       if (differ.length) rt.patchItem(where, existing.id, { block: { ...v.block, outcome: existing.block.outcome }, updatedAt: now });
       // The images are the ones it already holds (no newFiles), so their blobs stay.
       if (given.files) given.held = true;
       return {
         ok: true,
-        message: `${differ.length ? `Updated the ${differ.join(', ')} of ${v.block.id}` : `Nothing in ${v.block.id} changed`}; it stays answered, since nothing the person sees changed. To ask again, change what it asks.`,
+        message: `${differ.length ? `Updated the ${differ.join(', ')} of ${v.block.id}` : `Nothing in ${v.block.id} changed`}; it stays answered, since nothing the person would answer changed. To ask again, change what it asks.`,
       };
     }
   }
@@ -203,7 +203,7 @@ const UNSEEN = new Set(['fallback', 'version']);
  * @param {any} rt @param {string} where @param {any} existing @param {any} block @param {number} now
  */
 function keptWaiting(rt, where, existing, block, now) {
-  const differ = changedKeys(block, existing.block).map((k) => (k === 'threads' && sameThreads(block.threads, existing.block.threads) ? STATUS : k));
+  const differ = unseenAware(block, existing.block);
   if (!differ.every((k) => UNSEEN.has(k) || k === STATUS)) return null;
   if (!differ.length) return { ok: true, message: `Nothing in ${block.id} changed, so it still waits on the person as it was.` };
   rt.patchItem(where, existing.id, { block, updatedAt: now });
@@ -212,6 +212,11 @@ function keptWaiting(rt, where, existing, block, now) {
 const STATUS = 'threads’ status';
 /** Whether two lists of review threads differ only in their status. @param {any[]} [a] @param {any[]} [b] */
 const sameThreads = (a = [], b = []) => JSON.stringify(a.map(({ status, ...t }) => t)) === JSON.stringify(b.map(({ status, ...t }) => t));
+/**
+ * The keys that differ between two blocks, with a change to the threads’ status alone named STATUS, which the person
+ * sees at once and doesn’t answer (#593, #901). @param {Record<string, any>} block @param {Record<string, any>} was
+ */
+const unseenAware = (block, was) => changedKeys(block, was).map((k) => (k === 'threads' && sameThreads(block.threads, was.threads) ? STATUS : k));
 
 /** The keys whose values differ between two blocks. @param {Record<string, any>} a @param {Record<string, any>} b */
 const changedKeys = (a, b) => [...new Set([...Object.keys(a), ...Object.keys(b)])].filter((k) => JSON.stringify(a[k]) !== JSON.stringify(b[k]));
