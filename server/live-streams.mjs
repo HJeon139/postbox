@@ -97,7 +97,9 @@ function eventSender({ store, streams, deliver, headers, events, openOf }) {
   return (/** @type {any} */ ev) => {
     // A rejected event may have changed the state unseen: the headers are counted again, and the page loads them anew.
     if (ev.type === REJECTED) headers.clear();
-    const after = ev.type === REJECTED ? '' : headerFrames(headers.note(ev));
+    const changed = ev.type === REJECTED ? [] : headers.note(ev);
+    // A header is counted from the thread's items: one after an event the page may not see would tell it what changed.
+    const after = Object.hasOwn(events, ev.type) && events[ev.type].public ? headerFrames(changed) : '';
     const epoch = store.epoch; // the history the event belongs to: a send held back past a Retry says nothing (gpt’s finding)
     // An event the store held as rejected (#609): its place, then a resync, since a handler that broke its contract
     // may have changed the state the page can't see.

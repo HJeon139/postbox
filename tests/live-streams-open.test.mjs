@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { liveStreams } from '../server/live-streams.mjs';
 import { pageState } from '../server/page-state.mjs';
-import { apply, emptyState } from '../shared/state.mjs';
+import { apply, EVENTS, emptyState } from '../shared/state.mjs';
 
 /** A store with two conversations, whose events the test sends by hand. */
 function fakeStore() {
@@ -96,6 +96,23 @@ test('a held-back event goes out as it was, not as the store has it by the time 
       .split('\n\n')
       .find((f) => f.startsWith('id: 1\nevent: item.add'));
     assert.equal(JSON.parse(add?.split('data: ')[1] ?? '{}').item.text, '', 'the text comes once, with item.text');
+  } finally {
+    live.stop();
+  }
+});
+
+test('an event the page may not see sends no header frame after its cursor', () => {
+  const { store, emit } = fakeStore();
+  const events = { ...EVENTS, 'item.add': { ...EVENTS['item.add'], public: false } };
+  const live = liveStreams(/** @type {any} */ (store), events);
+  try {
+    const page = open(live, '&open=here');
+    emit(1, 'item.add', { threadId: 'here', item: { id: 'p', kind: 'user', at: 1 } });
+    assert.deepEqual(
+      page.names().filter((n) => n !== 'epoch' && n !== 'status'),
+      ['1:cursor'],
+      'its count and time stay with the server',
+    );
   } finally {
     live.stop();
   }
