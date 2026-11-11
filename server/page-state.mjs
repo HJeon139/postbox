@@ -16,7 +16,9 @@ export function pageState({ store, rt, adapters, origin, demo, real, config, hea
     seq: store.state.seq,
     epoch: store.epoch, // the history the seq counts within; the stream request echoes it (server/live-streams.mjs)
     store: store.status, // whether changes are being saved, and why not (ST-3): the page’s status line
-    state: publicState(store.state), // only its public keys (server/public-state.mjs)
+    // Only its public keys (server/public-state.mjs), and no conversation’s items: the page loads those by range when it
+    // opens a conversation (/api/threads/:id/items, #1155), so opening the page costs the conversations, not their history.
+    state: { ...publicState(store.state), items: {} },
     // Each thread’s header facts (shared/thread-header.mjs, #1155): what the page shows about a thread without its items.
     headers: publicHeaders(headers.all()),
     config: {

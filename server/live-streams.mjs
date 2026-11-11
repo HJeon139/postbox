@@ -44,24 +44,9 @@ export function liveStreams(store, events = EVENTS, { now = Date.now } = {}) {
   const deliver = frameWriter(streams, now);
   // Each thread’s header facts (#1155): /api/state carries them, and each change follows its event as a header frame.
   const headers = threadHeaders(store);
-  // POSTBOX_STREAM_LAG holds every event back that many milliseconds, as a busy computer can. The browser specs run
-  // with it in CI to show they wait for the page to hear a change, not for a fixed time.
-  const lag = Number(process.env.POSTBOX_STREAM_LAG) || 0;
-  store.subscribe((ev) => {
-    // A rejected event may have changed the state unseen: the headers are counted again, and the page loads them anew.
-    if (ev.type === REJECTED) headers.clear();
-    const line = publicFrame(ev, events) + (ev.type === REJECTED ? '' : headerFrames(headers.note(ev)));
-    const epoch = store.epoch; // the history the event belongs to: a send held back past a Retry says nothing (gpt’s finding)
-    // An event the store held as rejected (#609): its place, then a resync, since a handler that broke its contract
-    // may have changed the state the page can't see.
-    const frames = ev.type === REJECTED ? `${line}event: ${STREAM.resync}\ndata: {}\n\n` : line;
-    const send = () => {
-      if (store.epoch !== epoch) return;
-      for (const res of streams) deliver(res, frames);
-    };
-    if (lag > 0) setTimeout(send, lag).unref();
-    else send();
-  });
+  /** The conversations each page’s stream has open (#1155); a tool’s stream names none and gets every item event. */
+  const openOf = new WeakMap();
+  store.subscribe(eventSender({ store, streams, deliver, headers, events, openOf }));
   // The store’s status, unnumbered, each time writes close or reopen, a Retry starts or ends, or a warning changes
   // (#508’s storage design, “When a write fails (ST-3)”): the page shows one status line from it.
   store.onStatus((status) => {
@@ -80,6 +65,8 @@ export function liveStreams(store, events = EVENTS, { now = Date.now } = {}) {
   /** @param {import('node:http').IncomingMessage} req @param {import('node:http').ServerResponse} res @param {URL} url */
   function stream(req, res, url) {
     const { since, lost } = place(req, url, store);
+    const open = openNamed(url);
+    if (open) openOf.set(res, open);
     res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive', 'x-accel-buffering': 'no' });
     // The epoch, then the store’s status, so a page that connects or reconnects while writes are closed sees it even
     // though it missed the frame that closed them (critic’s finding on 1b).
@@ -89,7 +76,7 @@ export function liveStreams(store, events = EVENTS, { now = Date.now } = {}) {
     const backlog = lost ? null : store.since(since);
     // Too far behind, or on a lost timeline: the browser refetches the whole state, then resumes from its seq.
     if (backlog === null) res.write(`event: ${STREAM.resync}\ndata: {}\n\n`);
-    else for (const frame of backlogFrames(backlog, since, events, headers)) deliver(res, frame);
+    else for (const frame of backlogFrames(backlog, since, events, headers, open)) deliver(res, frame);
     streams.add(res);
     req.on('close', () => streams.delete(res));
   }
@@ -98,11 +85,52 @@ export function liveStreams(store, events = EVENTS, { now = Date.now } = {}) {
 }
 
 /**
- * What a page that connects after `since` missed: each event’s public frame, then the headers that changed meanwhile, as
- * they are now. @param {any[]} backlog @param {number} since @param {typeof EVENTS} events @param {ReturnType<typeof threadHeaders>} headers
+ * What the store tells the streams of each event: its frame, as each page’s open conversations let it see the event,
+ * then the header frames it changed.
+ * @param {{ store: any, streams: Set<import('node:http').ServerResponse>, deliver: (res: any, frame: string) => void,
+ *   headers: ReturnType<typeof threadHeaders>, events: typeof EVENTS, openOf: WeakMap<object, Set<string>> }} o
  */
-function backlogFrames(backlog, since, events, headers) {
-  const frames = backlog.map((ev) => publicFrame(ev, events));
+function eventSender({ store, streams, deliver, headers, events, openOf }) {
+  // POSTBOX_STREAM_LAG holds every event back that many milliseconds, as a busy computer can. The browser specs run
+  // with it in CI to show they wait for the page to hear a change, not for a fixed time.
+  const lag = Number(process.env.POSTBOX_STREAM_LAG) || 0;
+  return (/** @type {any} */ ev) => {
+    // A rejected event may have changed the state unseen: the headers are counted again, and the page loads them anew.
+    if (ev.type === REJECTED) headers.clear();
+    const after = ev.type === REJECTED ? '' : headerFrames(headers.note(ev));
+    const epoch = store.epoch; // the history the event belongs to: a send held back past a Retry says nothing (gpt’s finding)
+    // An event the store held as rejected (#609): its place, then a resync, since a handler that broke its contract
+    // may have changed the state the page can't see.
+    const tail = ev.type === REJECTED ? `${after}event: ${STREAM.resync}\ndata: {}\n\n` : after;
+    const full = publicFrame(ev, events) + tail;
+    const send = () => {
+      if (store.epoch !== epoch) return;
+      for (const res of streams) deliver(res, openOf.has(res) ? publicFrame(ev, events, openOf.get(res)) + tail : full);
+    };
+    if (lag > 0) setTimeout(send, lag).unref();
+    else send();
+  };
+}
+
+/** The most conversations one stream can name as open: a pane and a side panel, with room to spare. */
+const MOST_OPEN = 16;
+
+/**
+ * The conversations a page’s stream names as open (?open=a,b), or null for a stream that names none, as a tool’s.
+ * @param {URL} url
+ */
+function openNamed(url) {
+  const named = url.searchParams.get('open');
+  return named === null ? null : new Set(named.split(',').filter(Boolean).slice(0, MOST_OPEN));
+}
+
+/**
+ * What a page that connects after `since` missed: each event’s public frame, then the headers that changed meanwhile, as
+ * they are now. @param {any[]} backlog @param {number} since @param {typeof EVENTS} events
+ * @param {ReturnType<typeof threadHeaders>} headers @param {Set<string> | null} open
+ */
+function backlogFrames(backlog, since, events, headers, open) {
+  const frames = backlog.map((ev) => publicFrame(ev, events, open));
   const changed = headerFrames(headers.changedSince(since));
   return changed ? [...frames, changed] : frames;
 }
