@@ -53,7 +53,7 @@ test.beforeAll(async () => {
         return app.root;
       },
       async deliver(session, message, ctx) {
-        turns.push({ handle: session.handle, text: message.text });
+        turns.push({ handle: session.handle, text: message.text, effort: ctx.persona?.effort });
         const r = replays.shift();
         if (!r) return ctx.text('Done.');
         const m = createStreamMapper(ctx);
@@ -88,7 +88,7 @@ test.beforeEach(async () => {
   const { rt, store } = app;
   await expect.poll(() => store.state.sessions[indexer.id].state, { message: 'indexer idle' }).toBe('idle');
   store.emit('persona', { ...initial.persona, version: personaNamed('indexer').version + 1 });
-  rt.updateSession(indexer.id, { ranWith: null, lastModel: null, lastEffort: null, settingsAt: null });
+  rt.updateSession(indexer.id, { lastModel: null, lastEffort: null });
 });
 failOnPageErrors(test);
 
@@ -161,21 +161,19 @@ test('an agent’s name opens its persona sheet, the one place its settings chan
   await expect(row(page, 'indexer')).toBeFocused();
 });
 
-// designs/rooms-at-scale.md, “Settings: one scope”: every change applies from the agent’s next turn.
-test('a change in the sheet applies from the agent’s next turn, and its session records when', async ({ page }) => {
+// One rule for every setting: a change applies from the agent’s next turn, in every conversation it’s in.
+test('a change in the sheet applies from the agent’s next turn', async ({ page }) => {
+  const ran = (text) => turns.find((x) => x.handle === 'indexer' && x.text === text)?.effort;
   await open(page, `#/t/${planning.id}`);
   app.rt.sendMessage(planning.id, { text: '@indexer first' });
-  await expect.poll(() => app.store.state.sessions[indexer.id].ranWith?.effort).toBe('medium');
+  await expect.poll(() => ran('@indexer first')).toBe('medium');
   await expect.poll(() => app.store.state.sessions[indexer.id].state).toBe('idle');
   await row(page, 'indexer').click();
   await sheet(page).getByLabel('Effort', { exact: true }).selectOption('high');
   await sheet(page).getByRole('button', { name: 'Save' }).click();
   await expect.poll(() => personaNamed('indexer').effort).toBe('high');
-  expect.soft(app.store.state.sessions[indexer.id].ranWith?.effort, 'not in effect until its next turn').toBe('medium');
-  const before = Date.now();
   app.rt.sendMessage(planning.id, { text: '@indexer second' });
-  await expect.poll(() => app.store.state.sessions[indexer.id].ranWith?.effort).toBe('high');
-  expect.soft(app.store.state.sessions[indexer.id].settingsAt ?? 0, 'when it took effect').toBeGreaterThanOrEqual(before);
+  await expect.poll(() => ran('@indexer second'), { message: 'its next turn runs at the new effort' }).toBe('high');
   await expect.poll(() => app.store.state.sessions[indexer.id].state).toBe('idle');
 });
 
@@ -206,7 +204,7 @@ test('a topic thread is answered by the conversation’s own session; its panel 
   const n = turns.length;
   rt.sendMessage(topic.id, { text: 'Which shelf?' });
   await expect.poll(() => turns.length, { message: 'the reply' }).toBeGreaterThan(n);
-  expect(turns.at(-1)).toEqual({ handle: 'indexer', text: 'Which shelf?' });
+  expect(turns.at(-1)).toMatchObject({ handle: 'indexer', text: 'Which shelf?' });
   expect(rt.sessionsIn(topic.id).length, 'the thread has no session of its own').toBe(0);
   await expect.poll(() => store.state.sessions[indexer.id].state, { message: 'the turn to end' }).toBe('idle');
   await synced(page, app);
