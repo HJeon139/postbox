@@ -47,6 +47,7 @@ test('an item or a conversation that isn’t here is a 404 that says so', async 
   assert.equal((await get('/api/threads/room/items?around=nope')).status, 404);
   assert.equal((await get('/api/threads/nowhere/items')).status, 404);
   assert.equal((await get('/api/threads/__proto__/items')).status, 404);
+  assert.equal((await get('/api/threads/%E0/items')).status, 404, 'an id that isn’t valid percent-encoding');
 });
 
 test('search finds items the page hasn’t loaded, with their words, and follows a new one', async () => {

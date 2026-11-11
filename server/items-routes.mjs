@@ -32,6 +32,15 @@ export function rangeOf(list, q) {
   return { start: Math.max(0, end - limit), end };
 }
 
+/** A path's conversation id, decoded; one that isn't valid percent-encoding names no conversation. @param {string} raw */
+function decodedId(raw) {
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    return null;
+  }
+}
+
 /**
  * GET /api/threads/:id/items and /api/threads/:id/search, or null for any other request.
  * @param {{ state: any, epoch: string }} store @param {{ search: (threadId: string, q: string, k: number) => any[] }} search
@@ -40,9 +49,9 @@ export function rangeOf(list, q) {
 export function itemsRoute(store, search, path, method, url) {
   const m = method === 'GET' ? path.match(/^\/api\/threads\/([^/]+)\/(items|search)$/) : null;
   if (!m) return null;
-  const threadId = decodeURIComponent(m[1]);
-  const list = store.state.threads[threadId] ? publicItems(store.state, threadId) : null;
-  if (!list) throw httpError(404, 'That conversation doesn’t exist. It may have been deleted.');
+  const threadId = decodedId(m[1]);
+  const list = threadId !== null && store.state.threads[threadId] ? publicItems(store.state, threadId) : null;
+  if (threadId === null || !list) throw httpError(404, 'That conversation doesn’t exist. It may have been deleted.');
   const as = { seq: store.state.seq, epoch: store.epoch, threadId, total: list.length };
   if (m[2] === 'items') {
     const { start, end } = rangeOf(list, url.searchParams);
