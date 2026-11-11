@@ -54,6 +54,7 @@ import { createInterface } from 'node:readline';
 import { AGY_DEFAULT_MODEL } from '../../shared/agent-facts.mjs';
 import { TOOL_DEFS } from '../../shared/mcp-tools.mjs';
 import { HarnessEvents } from '../harness-events.mjs';
+import { firstSentence } from '../harness-tools.mjs';
 import { describeTool } from '../tool-labels.mjs';
 import { AGY_CAPABILITIES } from './agy-capabilities.mjs';
 import { agyHookCommand, agySupportsHooks, confirmAgyHook, HOOK_SCRIPT } from './agy-hook.mjs';
@@ -258,8 +259,6 @@ export function agyRules({ persona, guide, schemas = null, hooked = false }) {
 }
 
 export { agyPlugin, excludeFile, excludePlugin, PLUGIN_DIR, refusalFollowUp, refusalOf };
-
-const firstSentence = (s, n = 300) => clip(/^[\s\S]*?[.!?](?=\s|$)/.exec(String(s ?? '').trim())?.[0] ?? s, n);
 
 // How agy refuses a call it would ask about, headless (recorded): the step ends in ERROR with “permission check
 // failed for …: user denied permission …”, and the result lists it in denied_actions. The turn still succeeds.
