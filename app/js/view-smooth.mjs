@@ -53,14 +53,14 @@ export function smoothEnded(v, stoppedByYou) {
   const s = box(v);
   if (!v.smoothing || v.dead || !s) return;
   v.smoothing = false;
-  if (atEnd(s)) return;
-  if (!stoppedByYou) s.scrollTop = s.scrollHeight;
-  else {
+  if (!atEnd(s) && !stoppedByYou) s.scrollTop = s.scrollHeight;
+  else if (!atEnd(s)) {
     v.stuck = false;
     v.anchor = findAnchor(v);
     v.lastTop = s.scrollTop;
-    publish(v);
   }
+  // Whichever way, the jump has ended, which is published too (data-view-moving, view-publish.mjs).
+  publish(v);
 }
 /**
  * A jump to an item ends the smooth jump to the end, and says whether one ran: smoothEnded would take the rest of the
