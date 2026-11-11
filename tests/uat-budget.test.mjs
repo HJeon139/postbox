@@ -19,7 +19,7 @@ test('--max-cost is read where it enters, and the cap is split before the run st
   assert.equal(parseMaxCost(undefined), null);
   assert.equal(parseMaxCost('12.5'), 12.5);
   for (const bad of ['', 'ten', '0', '-3']) assert.throws(() => parseMaxCost(bad), /--max-cost takes a number of dollars above 0/);
-  // The tester’s share is its --budget; the verifier and telemetry get theirs; the agents the rest.
+  // The tester’s share is its --budget; the verifier gets its own; the agents the rest.
   const b = runBudget({ cap: 10, testerShare: 2 });
   assert.deepEqual(b.summary()?.shares, { agents: 10 - 2 - AFTER_RUN_USD, tester: 2, afterRun: AFTER_RUN_USD });
   // A cap that can’t hold the tester’s share, the reserve and one agent turn is refused before anything starts.
@@ -141,10 +141,8 @@ test('each verifier call is capped at what’s left of the whole cap, and its co
   await ask({ prompt: 'x' });
   // $5 less the agents’ $1.17 and the tester’s $0.80.
   assert.equal(Math.round(asked[0] * 100) / 100, 2);
-  b.spend('telemetry', 0.01);
-  b.spend('telemetry', null);
   const s = b.summary();
-  assert.deepEqual([s?.spent.verifier, s?.spent.telemetry, s?.spent.total], [0.42, 0.01, 2.4]);
+  assert.deepEqual([s?.spent.verifier, s?.spent.total], [0.42, 2.39]);
   // A call that fails spent too, and is counted: the next call’s cap is what’s left after it.
   const failing = b.verifier(async (args) => {
     asked.push(args.budgetUsd);
@@ -152,7 +150,7 @@ test('each verifier call is capped at what’s left of the whole cap, and its co
   });
   await assert.rejects(failing({}), /maximum budget/);
   await ask({});
-  assert.equal(Math.round(asked[2] * 100) / 100, 1.1);
+  assert.equal(Math.round(asked[2] * 100) / 100, 1.11);
   assert.equal(b.summary()?.spent.verifier, 2.34);
   const broke = runBudget({ cap: 3, testerShare: 0 });
   broke.track({ streams: () => fixture.streams, tester: { spent: 1 } });
@@ -257,7 +255,7 @@ test('a run stopped at its budget still writes its report and findings, saying s
   const md = readFileSync(join(dir, 'report.md'), 'utf8');
   assert.match(
     md,
-    /Budget: \$4\.50 \(--max-cost\), of which it spent \$1\.91: agents \$1\.71 \(@researcher \$1\.14, @critic \$0\.57\), tester \$0\.20, verifier \$0\.00, telemetry \$0\.00\. \*\*It stopped at its budget\*\* before step 20: the agents have spent \$1\.71 of their \$2\.00/,
+    /Budget: \$4\.50 \(--max-cost\), of which it spent \$1\.91: agents \$1\.71 \(@researcher \$1\.14, @critic \$0\.57\), tester \$0\.20, verifier \$0\.00\. \*\*It stopped at its budget\*\* before step 20: the agents have spent \$1\.71 of their \$2\.00/,
   );
   const saved = JSON.parse(readFileSync(join(dir, 'findings.json'), 'utf8'));
   assert.equal(saved.budget.stopped.step, 20);

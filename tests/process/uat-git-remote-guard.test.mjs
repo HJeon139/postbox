@@ -89,8 +89,8 @@ describe('the run checks its guard before any turn', () => {
   test('it passes on the very environment the runner gives Postbox, and so the agent: runEnv’s', () => {
     const r = run();
     const paths = { streams: join(r.dir, 'streams'), kiroStreams: '', agyStreams: '', codexStreams: '' };
-    const scenario = { seed: 'git-remote', gh: 'yes', skills: 'on' };
-    const env = { ...process.env, ...runEnv({ gate: { env: {} }, paths, scenario, dir: r.dir, opt: { telemetry: 'no' }, faults: null }) };
+    const scenario = { seed: 'git-remote', skills: 'on' };
+    const env = { ...process.env, ...runEnv({ gate: { env: {} }, paths, scenario, dir: r.dir, faults: null }) };
     assert.doesNotThrow(() => preflightRemote(r.workspace, r.dir, env));
     assert.equal(env.GIT_CONFIG_GLOBAL, join(r.dir, 'gitconfig'));
   });

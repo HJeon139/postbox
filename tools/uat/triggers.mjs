@@ -17,7 +17,6 @@ import { DELIVERY_TRIGGERS } from './delivery-triggers.mjs';
 import { DISMISS_TRIGGERS } from './dismiss-triggers.mjs';
 import { GIT_PUSH_TRIGGERS } from './gitpush-triggers.mjs';
 import { REVIEW_FIGURE_TRIGGERS } from './review-figures-triggers.mjs';
-import { TELEMETRY_TRIGGERS } from './telemetry-triggers.mjs';
 import { cell as esc } from './trigger-facts.mjs';
 import { HOST_TRIGGERS } from './triggers-host.mjs';
 import { JOB_TRIGGERS } from './triggers-jobs.mjs';
@@ -38,7 +37,6 @@ export const TRIGGERS = {
   ...P0_TRIGGERS,
   ...JOB_TRIGGERS,
   ...HOST_TRIGGERS,
-  ...TELEMETRY_TRIGGERS,
   ...NEEDS_TRIGGERS,
   ...ALLOW_ONCE_TRIGGERS,
   ...GIT_PUSH_TRIGGERS,

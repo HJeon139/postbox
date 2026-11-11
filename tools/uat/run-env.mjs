@@ -4,20 +4,18 @@
 import { gitRemoteEnv } from './git-remote.mjs';
 import { noGithubEnv } from './github-guard.mjs';
 import { chainLimitEnv } from './scenario.mjs';
-import * as tm from './telemetry-run.mjs';
 
 /**
- * @param {{ gate: { env: Record<string, string> }, paths: Record<string, string>, scenario: any, dir: string, opt: any,
+ * @param {{ gate: { env: Record<string, string> }, paths: Record<string, string>, scenario: any, dir: string,
  *   faults: { env: Record<string, string> } | null }} o
  * @returns {Record<string, string>}
  */
-export const runEnv = ({ gate, paths, scenario, dir, opt, faults }) => ({
+export const runEnv = ({ gate, paths, scenario, dir, faults }) => ({
   ...gate.env,
   POSTBOX_CLAUDE_RECORD: paths.streams,
   POSTBOX_KIRO_RECORD: paths.kiroStreams,
   POSTBOX_AGY_RECORD: paths.agyStreams,
   POSTBOX_CODEX_RECORD: paths.codexStreams,
-  ...tm.telemetryEnv(scenario, dir, opt),
   ...skillsEnv(scenario),
   ...chainLimitEnv(scenario), // the scenario’s `- chain-limit:` (#508), for the Postbox this run starts and restarts
   ...noGithubEnv(scenario, dir), // every run’s agents have no gh login and no network git, unless `- github: real` says so

@@ -1,6 +1,6 @@
 // What the checks read of Postbox’s events (server/room-checks.mjs): items as they’re added, patched and moved, and
-// sessions’ states and background jobs. The UAT’s history (tools/uat/history.mjs) and a recorded room’s collector
-// (server/telemetry.mjs) both keep events cut this way, so the checks read the same thing from either.
+// sessions’ states and background jobs. The UAT’s history (tools/uat/history.mjs) keeps events cut this way, from the
+// event stream or the data folder’s log, so the checks read the same thing from either.
 
 import { EVENTS, patchSession } from '../shared/state.mjs';
 
@@ -10,8 +10,7 @@ import { EVENTS, patchSession } from '../shared/state.mjs';
  * did: sessions holds each session as the events so far left it, by id. A patch for a session that isn’t there (a
  * stream that started after the session existed) is dropped, as the reducer drops it, rather than kept as a session
  * built from the patch alone, which blockHistory would misread: seed sessions from the state or a snapshot first.
- * A type the page may not see is never kept: the reports this feeds are shown to the page (designs/architecture.md,
- * “What reaches the browser”).
+ * A type the page may not see is never kept (designs/architecture.md, “What reaches the browser”).
  * @param {number} seq @param {string} type @param {any} data @param {Map<string, any>} [sessions] @param {typeof EVENTS} [events]
  */
 export function keepEvent(seq, type, data, sessions = new Map(), events = EVENTS) {

@@ -1,5 +1,5 @@
-// Deterministic checks the UAT and recorded rooms run alongside the tester. Each finds one defect in `facts`, names
-// its issue, and stays pure so tests can feed it fixtures (designs/telemetry-persona.md, R8).
+// Deterministic checks the UAT runs alongside the tester. Each finds one defect in `facts`, names its issue, and stays
+// pure so tests can feed it fixtures.
 //
 // facts = {
 //   state,           Postbox’s /api/state at the time
@@ -24,7 +24,7 @@
 //                    purpose, so it reaching them isn’t a finding; no check uses it now.
 // }
 //
-// Each check names the inputs it reads (`inputs`), so a recorded room runs only those it has (liveChecks, below).
+// Each check names the inputs it reads (`inputs`), so facts with only some inputs run only those (liveChecks, below).
 
 import { toPlainText } from '../shared/markdown.mjs';
 import { clip } from '../shared/text.mjs';
@@ -36,7 +36,6 @@ import { BACKEND_CHECKS } from './room-checks-backends.mjs';
 import { DELIVERY_CHECKS } from './room-checks-delivery.mjs';
 import { NEEDS_CHECKS } from './room-checks-needs.mjs';
 import { PANEL_CHECKS } from './room-checks-panels.mjs';
-import { TELEMETRY_CHECKS } from './room-checks-telemetry.mjs';
 import { THREAD_CHECKS } from './room-checks-threads.mjs';
 import { claudeSessionOf, toolCalls } from './room-checks-tools.mjs';
 import { VIEW_CHECKS } from './room-checks-view.mjs';
@@ -802,7 +801,6 @@ export const CHECKS = [
   // The Kiro CLI’s and the Antigravity CLI’s (#117, #143): server/room-checks-backends.mjs.
   ...BACKEND_CHECKS,
   ...THREAD_CHECKS,
-  ...TELEMETRY_CHECKS,
   ...NEEDS_CHECKS,
   ...ASK_CHECKS,
   ...VIEW_CHECKS,
@@ -1075,12 +1073,11 @@ export function runChecks(facts, { only = null, checks = CHECKS } = {}) {
     });
 }
 
-// ── A recorded room (designs/telemetry-persona.md, R8) ─────────────────────────────────────────────────
-// A live room has Postbox’s state, its events, the streams it recorded and the agents’ transcripts, but nothing the
-// UAT’s driver reads off the page. A check that needs what it doesn’t have is listed as not run, with what it needed,
-// instead of passing.
+// ── Facts without the page ──────────────────────────────────────────────────────────────────────────
+// Postbox’s state, its events, the streams it recorded and the agents’ transcripts, but nothing the UAT’s driver reads
+// off the page. A check that needs what it doesn’t have is listed as not run, with what it needed, instead of passing.
 
-/** The facts a recorded room has. */
+/** The facts there are without the page. */
 export const LIVE_INPUTS = ['state', 'threads', 'streams', 'kiroStreams', 'agyStreams', 'codexStreams', 'events', 'transcripts'];
 
 /**

@@ -171,7 +171,7 @@ const keptIn = (dir) => join(dir, 'transcripts');
 /**
  * Keeps the transcript lines the checks read in the run folder, for --recheck once the agents’ own transcripts have
  * gone: each agent’s user lines (its prompts, tool results and the lines Claude Code writes itself, as
- * server/room-delivery.mjs’s inputsOf and the telemetry triggers read them), in <dir>/transcripts/<handle>.jsonl.
+ * server/room-delivery.mjs’s inputsOf reads them), in <dir>/transcripts/<handle>.jsonl.
  * Not its replies, which no check reads, nor a line cut short.
  * @param {string} dir  @param {{ handle: string, lines: (string|object)[] }[]} transcripts
  */
@@ -222,8 +222,6 @@ const transcriptOf = (cwd, id) => claudeTranscriptFile(join(homedir(), '.claude'
  */
 export async function readUi(page) {
   return {
-    // The conversation’s header, where recording shows (designs/telemetry-persona.md, R5).
-    recordingBadge: await page.evaluate(`document.querySelector('#recording-badge')?.textContent ?? ''`),
     headerText: await page.evaluate(`document.querySelector('.rail .agents-sec')?.innerText ?? ''`),
     agentRows: await page.evaluate(
       `[...document.querySelectorAll('.agent-rows .agent-btn')].map((b) => (/@([\\w-]+)/.exec(b.textContent) ?? [])[1]).filter(Boolean)`,

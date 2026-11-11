@@ -37,7 +37,7 @@ function agentEnv(scenario, base = personEnv()) {
     dir,
     env: {
       ...base,
-      ...runEnv({ gate: { env: {} }, paths, scenario: { seed: null, gh: 'yes', skills: 'on', ...scenario }, dir, opt: { telemetry: 'no' }, faults: null }),
+      ...runEnv({ gate: { env: {} }, paths, scenario: { seed: null, skills: 'on', ...scenario }, dir, faults: null }),
     },
   };
 }
@@ -183,8 +183,8 @@ describe('the run checks the guard before Postbox starts', () => {
     sh('git', ['init', '-q', '-b', 'main', workspace], personEnv());
     seedGitRemote(workspace, dir);
     const paths = { streams: join(dir, 'streams'), kiroStreams: '', agyStreams: '', codexStreams: '' };
-    const scenario = { seed: 'git-remote', gh: 'yes', skills: 'on' };
-    const env = { ...personEnv(), ...runEnv({ gate: { env: {} }, paths, scenario, dir, opt: { telemetry: 'no' }, faults: null }) };
+    const scenario = { seed: 'git-remote', skills: 'on' };
+    const env = { ...personEnv(), ...runEnv({ gate: { env: {} }, paths, scenario, dir, faults: null }) };
     assert.doesNotThrow(() => preflightRun(scenario, workspace, dir, env));
     assert.equal(env.PATH.split(':')[0], remotePaths(dir).bin);
     const fromFile = sh('/bin/sh', ['-c', `. '${remotePaths(dir).envFile}'; printf %s "$GH_TOKEN"`], { ...env, GH_TOKEN: '' });
