@@ -2494,8 +2494,8 @@ export class Runtime {
       persona,
       folder,
       seen: seenFolder === folder ? servers : servers.filter((s) => s.source !== 'project' && s.source !== 'local'),
-      // The skills that session listed in its / menu (#207): the sheet takes only plugins’, which load in every folder.
-      skills: (seen?.commands ?? []).filter((c) => c.skill).map((c) => c.name),
+      // Its / menu’s skills (#207), stored as { at, list }: the sheet takes only plugins’, which load in every folder.
+      skills: (seen?.commands?.list ?? []).filter((c) => c.skill).map((c) => c.name),
     };
   }
 
