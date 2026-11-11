@@ -64,6 +64,31 @@ export async function runShellCommand(rt, threadId, command) {
     signal: null,
     startedAt,
   });
+  const output = commandOutput(rt, threadId, it.id, note);
+  const run = { stopped: false, stop: () => false, kill: () => false, done: Promise.resolve(), flush: output.flush };
+  rt.shellRuns.set(it.id, run);
+  const handle = runShell({
+    command: line,
+    cwd,
+    ...(rt.spawnShell ? { spawnImpl: rt.spawnShell } : {}),
+    onOutput: output.add,
+    onExit: (exit) => {
+      output.flush({ final: true });
+      rt.shellRuns.delete(it.id);
+      endCommand(rt, threadId, it.id, { run, cut: output.cut(), startedAt, exit });
+    },
+  });
+  Object.assign(run, { stop: handle.stop, kill: handle.kill, done: handle.done });
+  return { item: it };
+}
+
+/**
+ * A running command’s output, bounded: `add` keeps its end, and `flush`, at most every COMMAND_FLUSH_MS, sends it to
+ * the item. Until it passes MAX_COMMAND_OUTPUT only the new text goes, as an agent’s reply streams; past it, each
+ * refresh replaces the whole text, so they’re rare and few, and the final flush always arrives.
+ * @param {any} rt @param {string} threadId @param {string} itemId @param {string} note  the output’s first line
+ */
+function commandOutput(rt, threadId, itemId, note) {
   let out = note; // the end of the output so far, at most twice the bound between flushes
   let sent = note.length; // characters already sent as item.text, before the output was cut
   let cut = false;
@@ -74,10 +99,10 @@ export async function runShellCommand(rt, threadId, command) {
   const flush = ({ final = false } = {}) => {
     if (timer) clearTimeout(timer);
     timer = null;
-    if (!rt.store.pending.item(threadId, it.id)) return;
+    if (!rt.store.pending.item(threadId, itemId)) return;
     if (!cut && out.length <= MAX_COMMAND_OUTPUT) {
       // Only the new text, as the reply of an agent streams.
-      if (out.length > sent) rt.store.emit('item.text', { threadId, id: it.id, text: out.slice(sent) });
+      if (out.length > sent) rt.store.emit('item.text', { threadId, id: itemId, text: out.slice(sent) });
       sent = out.length;
       return;
     }
@@ -88,45 +113,41 @@ export async function runShellCommand(rt, threadId, command) {
     if (!final && (refreshed >= MAX_COMMAND_REFRESHES || now - refreshedAt < COMMAND_REFRESH_MS)) return;
     refreshed++;
     refreshedAt = now;
-    rt.patchItem(threadId, it.id, { text: out, cut: true, ...(refreshed >= MAX_COMMAND_REFRESHES && !final ? { paused: true } : {}) });
+    rt.patchItem(threadId, itemId, { text: out, cut: true, ...(refreshed >= MAX_COMMAND_REFRESHES && !final ? { paused: true } : {}) });
   };
-  const run = { stopped: false, stop: () => false, kill: () => false, done: Promise.resolve(), flush };
-  rt.shellRuns.set(it.id, run);
-  const handle = runShell({
-    command: line,
-    cwd,
-    ...(rt.spawnShell ? { spawnImpl: rt.spawnShell } : {}),
-    onOutput: (text) => {
-      out += text;
-      if (out.length > 2 * MAX_COMMAND_OUTPUT) {
-        out = out.slice(-MAX_COMMAND_OUTPUT);
-        cut = true;
-      }
-      if (!timer) {
-        timer = setTimeout(flush, COMMAND_FLUSH_MS);
-        timer.unref?.();
-      }
-    },
-    onExit: ({ code = null, signal = null, error }) => {
-      flush({ final: true });
-      rt.shellRuns.delete(it.id);
-      // How it ended is written once writes are open: the output chunks are memory-only while closed (I1), but a
-      // status left “running” in the recovered state would never end.
-      whenWritable(rt, () => {
-        if (!rt.store.pending.item(threadId, it.id)) return;
-        rt.patchItem(threadId, it.id, {
-          status: run.stopped ? 'stopped' : error ? 'failed' : code === 0 ? 'done' : 'failed',
-          exitCode: typeof code === 'number' ? code : null,
-          signal: signal ?? null,
-          ms: Date.now() - startedAt,
-          ...(cut ? { paused: false } : {}),
-          ...(run.closing ? { error: 'Postbox stopped it as it shut down.' } : error ? { error: clipText(String(error.message ?? error), 300) } : {}),
-        });
-      });
-    },
+  /** @param {string} text */
+  const add = (text) => {
+    out += text;
+    if (out.length > 2 * MAX_COMMAND_OUTPUT) {
+      out = out.slice(-MAX_COMMAND_OUTPUT);
+      cut = true;
+    }
+    if (!timer) {
+      timer = setTimeout(flush, COMMAND_FLUSH_MS);
+      timer.unref?.();
+    }
+  };
+  return { add, flush, cut: () => cut };
+}
+
+/**
+ * Writes how a command ended, once writes are open: the output chunks are memory-only while closed (I1), but a
+ * status left “running” in the recovered state would never end.
+ * @param {any} rt @param {string} threadId @param {string} itemId
+ * @param {{ run: any, cut: boolean, startedAt: number, exit: { code?: number|null, signal?: string|null, error?: any } }} end
+ */
+function endCommand(rt, threadId, itemId, { run, cut, startedAt, exit: { code = null, signal = null, error } }) {
+  whenWritable(rt, () => {
+    if (!rt.store.pending.item(threadId, itemId)) return;
+    rt.patchItem(threadId, itemId, {
+      status: run.stopped ? 'stopped' : error ? 'failed' : code === 0 ? 'done' : 'failed',
+      exitCode: typeof code === 'number' ? code : null,
+      signal: signal ?? null,
+      ms: Date.now() - startedAt,
+      ...(cut ? { paused: false } : {}),
+      ...(run.closing ? { error: 'Postbox stopped it as it shut down.' } : error ? { error: clipText(String(error.message ?? error), 300) } : {}),
+    });
   });
-  Object.assign(run, { stop: handle.stop, kill: handle.kill, done: handle.done });
-  return { item: it };
 }
 
 /** Sends the output of running commands that’s waiting for its next flush now (tests await rt, not a timer). */

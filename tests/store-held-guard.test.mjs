@@ -139,7 +139,7 @@ const PENDING = {
   'session-lifecycle.mjs': ['deleteSession', 'deleteSession', 'deleteSession'],
   'session-write.mjs': ['updateSession', 'needAt', 'pendingSessionsIn', 'pendingSessionsIn'], // needAt: the need's item's time, maybe added behind a held commit (#1155)
   // A command’s item, maybe deleted behind a held commit, before its output or its end is written.
-  'shell-runs.mjs': ['runShellCommand', 'runShellCommand'],
+  'shell-runs.mjs': ['commandOutput', 'endCommand'],
   'subagent-end.mjs': ['withUrgent'],
   'side-threads.mjs': ['agentWake', 'agentWake', 'agentWake', 'endChain', 'endChain', 'archiveForks', 'bumpSideLink', 'bumpSideLink'],
   // A thread’s apps, removed in a sweep.
