@@ -4,6 +4,7 @@
 // Moved from server/adapters/claude-stream.mjs, which built these for Claude Code alone.
 
 import { glimpseOf } from '../shared/text.mjs';
+import { stepDiff } from './step-diff.mjs';
 import { stepInput, stepOutput } from './step-text.mjs';
 import { describeTool, QUIET } from './tool-labels.mjs';
 
@@ -73,7 +74,10 @@ export class HarnessTools {
     const quiet = QUIET.test(name);
     const label = own || describeTool(name, input);
     this.st.tools.set(id, { name, label, own, input, shown: stepInput(input), who, parent: by?.parent ?? null, started: this.now(), quiet });
-    if (!quiet) this.ctx.activity({ id, label, state: 'running', ...byOf(by), ...inputOf(input), ...(SUBAGENT_TOOLS.has(name) ? { kind: 'agent' } : {}) });
+    const diff = stepDiff(name, input);
+    this.st.tools.get(id).diff = diff.diff;
+    const step = { id, label, state: 'running', ...byOf(by), ...inputOf(input), ...diff };
+    if (!quiet) this.ctx.activity({ ...step, ...(SUBAGENT_TOOLS.has(name) ? { kind: 'agent' } : {}) });
     else if (!who) this.status({ state: 'tool', currentStep: label });
     if (SUBAGENT_TOOLS.has(name)) this.startSubagent(id, input, by);
     if (!who) this.status({ state: 'tool' });
@@ -110,10 +114,13 @@ export class HarnessTools {
     }
     const label = t.own || describeTool(t.name, input);
     const known = stepInput(t.input);
-    if (label !== t.label || (known && known !== t.shown)) {
+    // An edit’s change shows as its input arrives (server/step-diff.mjs).
+    const diff = stepDiff(t.name, t.input);
+    if (label !== t.label || (known && known !== t.shown) || diff.diff !== t.diff) {
       t.label = label;
       t.shown = known;
-      if (!t.quiet) this.ctx.activity({ id, label, state: 'running', ...byOf(t), ...inputOf(t.input) });
+      t.diff = diff.diff;
+      if (!t.quiet) this.ctx.activity({ id, label, state: 'running', ...byOf(t), ...inputOf(t.input), ...diff });
       else if (!t.who) this.status({ currentStep: label });
     }
     const sub = this.st.subagents.get(id);

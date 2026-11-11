@@ -757,6 +757,7 @@ export class Runtime {
         if (!live() || !delta) return;
         const id = wordsSegment(rt, turn, se0);
         turn.said += delta;
+        if (id === turn.first) turn.firstWords = (turn.firstWords ?? 0) + delta.length;
         rt.store.emit('item.text', { threadId: turn.threadId, id, text: delta });
         if (rt.store.pending.session(turn.sessionId)?.state !== 'gen') rt.updateSession(turn.sessionId, { state: 'gen', currentStep: 'Writing a reply' });
       },
@@ -774,13 +775,18 @@ export class Runtime {
         job = /** @type {string|null} */ (null),
         input = null,
         output = null,
+        added = null,
+        deleted = null,
+        diff = null,
       }) {
         if (!live()) return;
         // A lint turn that only calls tools (define_term, say) is quiet: it ends as a one-line note, not a reply.
         if (!turn.first && turn.kind !== 'lint') ensureSegment();
         if (!who) stepTaken(turn);
         const i = turn.steps.findIndex((s) => s.id === id);
-        const step = turnStep({ id: id ?? newId('st'), label, state, ms, who, parent, detail, kind, job, input, output });
+        // A new step of the agent’s own falls after the words its first part has so far (activity-live.mjs).
+        const at = i < 0 && !who ? (turn.firstWords ?? 0) : undefined;
+        const step = turnStep({ id: id ?? newId('st'), label, state, ms, who, parent, detail, kind, job, input, output, at, added, deleted, diff });
         if (i >= 0) turn.steps[i] = { ...turn.steps[i], ...step };
         else turn.steps.push(step);
         if (turn.first) rt.store.emit('item.patch', { threadId: turn.threadId, id: turn.first, activityStep: step });

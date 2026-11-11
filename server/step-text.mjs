@@ -55,9 +55,12 @@ export const stepState = (state) => (STEP_STATES.has(/** @type {string} */ (stat
 
 /**
  * The step a turn keeps, from what its activity was told: each field bounded, and only the ones it has.
- * @param {{ id: string, label: unknown, state: unknown, ms: number|null, who: unknown, parent: unknown, detail: unknown, kind: unknown, job: unknown, input: unknown, output: unknown }} f
+ * at: where the step falls in its reply’s words, their length when it started; added, deleted and diff: an edit’s
+ * change (server/step-diff.mjs).
+ * @param {{ id: string, label: unknown, state: unknown, ms: number|null, who: unknown, parent: unknown, detail: unknown, kind: unknown, job: unknown, input: unknown, output: unknown, at?: unknown, added?: unknown, deleted?: unknown, diff?: unknown }} f
  */
-export function turnStep({ id, label, state, ms, who, parent, detail, kind, job, input, output }) {
+export function turnStep({ id, label, state, ms, who, parent, detail, kind, job, input, output, at, added, deleted, diff }) {
+  const count = (/** @type {unknown} */ n) => typeof n === 'number' && Number.isInteger(n) && n >= 0;
   return {
     id,
     label: String(label).slice(0, 200),
@@ -71,5 +74,8 @@ export function turnStep({ id, label, state, ms, who, parent, detail, kind, job,
     // Its call’s input and the end of what it returned, bounded as the core bounds them.
     ...(input ? { input: stepInput(String(input)) } : {}),
     ...(output ? { output: stepOutput(output) } : {}),
+    ...(count(at) ? { at } : {}),
+    ...(count(added) && count(deleted) ? { added, deleted } : {}),
+    ...(typeof diff === 'string' && diff ? { diff: diff.slice(0, STEP_TEXT.output) } : {}),
   };
 }
