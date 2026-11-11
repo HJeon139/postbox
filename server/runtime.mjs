@@ -89,7 +89,7 @@ import {
   scheduleWake,
   settleScheduledWake,
 } from './scheduled-wakes.mjs';
-import { archive, archiveScope, archiveThread, deleteSession, deleteThread, finishLeftDeletes, restore, restoreThread } from './session-lifecycle.mjs';
+import { archive, archiveThread, deleteSession, deleteThread, finishLeftDeletes, restore, restoreThread } from './session-lifecycle.mjs';
 import { pendingSessionsIn, tellAgent, updateSession } from './session-write.mjs';
 import { clearSummaryPending, postSummary, shareText, shareToConversation, summarizeBack, summarizing } from './share-back.mjs';
 import { runShell } from './shell.mjs';
@@ -2500,9 +2500,6 @@ export class Runtime {
   }
   restore(sessionId) {
     return restore(this, sessionId);
-  }
-  archiveScope(threadId) {
-    return archiveScope(this, threadId);
   }
   archiveThread(threadId) {
     return archiveThread(this, threadId);

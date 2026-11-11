@@ -39,7 +39,7 @@ export function restore(rt, sessionId) {
  * A conversation or room and every thread under it, a side thread a topic thread’s fork woke included: what
  * archiving, restoring or deleting it covers (#101, #320).
  */
-export function archiveScope(rt, threadId) {
+function archiveScope(rt, threadId) {
   const t = rt.thread(threadId);
   if (t.kind === 'topic' || t.kind === 'side') throw httpError(409, 'Archive the conversation it belongs to instead.');
   return [t, ...Object.values(rt.s.threads).filter((x) => x.id !== t.id && rt.lineage(x.id).at(-1) === t.id)];
@@ -51,7 +51,7 @@ export function archiveScope(rt, threadId) {
  * this way, with its conversation (#320): archive() has no route of its own.
  */
 export function archiveThread(rt, threadId) {
-  const threads = rt.archiveScope(threadId);
+  const threads = archiveScope(rt, threadId);
   const ids = threads
     .flatMap((t) => rt.sessionsIn(t.id))
     .filter((se) => !se.archived)
@@ -64,7 +64,7 @@ export function archiveThread(rt, threadId) {
 
 /** Restores every archived session in a conversation and its side and topic threads, and the threads with them. */
 export function restoreThread(rt, threadId) {
-  const threads = rt.archiveScope(threadId);
+  const threads = archiveScope(rt, threadId);
   // A fork retired by #228’s migration stays archived.
   for (const t of threads) for (const se of rt.sessionsIn(t.id)) if (se.archived && !se.retiredFork) rt.restore(se.id);
   for (const t of threads) updateThread(rt, t.id, (x) => (x.archived ? { archived: false } : null));
@@ -90,7 +90,7 @@ export function deleteSession(rt, sessionId) {
   if (t && !others.length) {
     // Its own conversation goes with it, as deleting the conversation does: every thread under it, with its sessions
     // and apps (#320).
-    eraseThreads(rt, t.kind === 'topic' || t.kind === 'side' ? [t.id] : rt.archiveScope(t.id).map((x) => x.id), 'Its session was deleted.', [sessionId]);
+    eraseThreads(rt, t.kind === 'topic' || t.kind === 'side' ? [t.id] : archiveScope(rt, t.id).map((x) => x.id), 'Its session was deleted.', [sessionId]);
   } else if (t) {
     const gone = t.members.filter((id) => !others.includes(id)); // it, and any member whose session is gone; a held join stays
     updateThread(rt, t.id, (x) => ({
@@ -111,7 +111,7 @@ export function deleteSession(rt, sessionId) {
 export function deleteThread(rt, threadId) {
   const t = rt.thread(threadId);
   if (t.kind === 'topic' || t.kind === 'side') throw httpError(409, 'Delete the conversation it belongs to instead.');
-  const scope = rt.archiveScope(threadId);
+  const scope = archiveScope(rt, threadId);
   // A turn of one on a host, waiting to be attached again or to resume, is neither (#120).
   for (const x of scope)
     for (const se of rt.sessionsIn(x.id)) {
