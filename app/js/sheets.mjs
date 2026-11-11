@@ -36,14 +36,15 @@ export { EFFORT_NAMES, MCP_SCOPE, MCP_STATUS, MODELS, modeHelp };
 
 const S = () => client.state;
 /**
- * The permission modes the sheet offers: the harness judges, or it runs everything. Postbox’s own permission layer is
- * going (designs/rooms-at-scale.md, “The permission layer”), so Ask me and Accept edits aren’t offered; a persona set
- * to one shows as Auto, and saving keeps the one picked.
+ * The permission modes the sheet offers: the harness judges, or it runs everything. Postbox’s own permission layer, with
+ * Ask me and Accept edits, is going, so the harness decides and Postbox shows what it did.
  */
 const SHEET_MODES = [
   ['auto', 'Auto (the harness judges)', 'Its harness judges each call in its own Auto mode, and asks you only when it can’t decide.'],
   ['bypass', 'Run everything', PERMISSIONS.find(([id]) => id === 'bypass')?.[2] ?? ''],
 ];
+/** A stored mode as the sheet shows and saves it: Run everything stays, and Ask me or Accept edits is Auto. */
+const sheetMode = (mode) => (mode === 'bypass' ? 'bypass' : 'auto');
 const toolsInProject = (projectId) =>
   new Set(
     Object.values(S().sessions)
@@ -926,7 +927,7 @@ export function openSettings(tab = 'appearance', personaId = null) {
       remote: p.remote?.hostId ?? null,
       placeError: null,
       effort: p.effort ?? client.config.defaultEffort ?? 'medium',
-      permissionMode: p.permissionMode ?? 'auto',
+      permissionMode: sheetMode(p.permissionMode),
       folder: p.folder ?? '',
       usesHostSetup: p.usesHostSetup !== false,
       canPublish: p.canPublish === true,
