@@ -1,5 +1,6 @@
-// Home in a long room opened at its end (#866, #1155): the room's first item painted as soon as on main, though the
-// page holds only the newest range when it opens. Measured from the key to the frame that paints the first item. And
+// Home in a long room opened at its end (#866, #1155): the room's first item painted with the work main does for it,
+// no load and no more layouts, though the page holds only the newest range when it opens; the time from the key to
+// the frame that paints it is recorded. And
 // Home with focus in the transcript, as a click there or the UAT's scroll leaves it, goes to the first item in one
 // press: the browser's own Home went only to the top of what was loaded, a range back each press.
 
@@ -31,29 +32,45 @@ const home = (page, first) =>
     first,
   );
 
-test('#1155 Home in a 10,000-item room paints its first item within main’s time', async ({ page }) => {
+/** Main's layouts for Home in this room, measured with this case on origin/main beside #1155's branch: 2 a press. */
+const MAIN_LAYOUTS = 2;
+
+test('#1155 Home in a 10,000-item room does main’s work: no load, and no more layouts', async ({ page }) => {
   test.setTimeout(120_000);
   const projectId = /** @type {any} */ (Object.values(app.rt.s.projects)[0]).id;
   const room = app.rt.createThread({ projectId, title: '10,000 items', personaIds: [] });
   seedBigRoom(app.store, room.id, { count: 10_000 });
   await page.setViewportSize({ width: 1280, height: 800 });
   const first = app.store.items(room.id)[0].id;
-  const times = [];
+  let loads = 0;
+  page.on('request', (r) => r.url().includes(`/api/threads/${room.id}/items`) && loads++);
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('Performance.enable');
+  const layoutsNow = async () => (await cdp.send('Performance.getMetrics')).metrics.find((m) => m.name === 'LayoutCount')?.value ?? 0;
+  const runs = [];
   for (let i = 0; i < 6; i++) {
     await page.goto(`${app.origin}/?visit=${i}#/t/${room.id}`); // a load of its own each time
     await synced(page, app);
     await newestShown(page, app, room.id);
+    // The room's first items, loaded while the page is idle, are kept before Home is pressed: on a slow runner the
+    // idle moment can come later, and Home before it is the next case's.
+    await expect.poll(() => page.evaluate((id) => import('/app/js/client.mjs').then(({ client }) => !!client.ranges.get(id)?.head), room.id)).toBe(true);
     await settled(page);
     await page.evaluate(() => /** @type {HTMLElement | null} */ (document.activeElement)?.blur());
-    times.push(await home(page, first));
+    const loadsBefore = loads;
+    const layoutsBefore = await layoutsNow();
+    const ms = await home(page, first);
+    runs.push({ ms, loads: loads - loadsBefore, layouts: (await layoutsNow()) - layoutsBefore });
     await expect(page.locator(`#main > [data-key="${first}"]`)).toBeInViewport();
   }
-  const sorted = times.slice(1).sort((a, b) => a - b);
-  const median = sorted[sorted.length >> 1];
-  console.log(`HOME ms ${times.join(', ')}; median of the last five ${median}`);
-  test.info().annotations.push({ type: 'measured', description: `Home, ms: ${times.join(', ')}` });
-  // Main paints it in about 13 ms here (median of five, measured beside this branch): no fetch, one rebuild.
-  expect(median, `ms from Home to the first item painted: ${times.join(', ')}`).toBeLessThanOrEqual(20);
+  console.log(`HOME ${JSON.stringify(runs)}`);
+  // Time is recorded, not asserted: it's the runner's. Here it was 10–14 ms, and 9–14 on main, on the same machine.
+  test.info().annotations.push({ type: 'measured', description: `Home: ${JSON.stringify(runs)}` });
+  expect(
+    runs.map((r) => r.loads),
+    'items loaded by Home: none, as on main',
+  ).toEqual(runs.map(() => 0));
+  for (const r of runs) expect(r.layouts, `layouts for Home: ${JSON.stringify(runs)}`).toBeLessThanOrEqual(MAIN_LAYOUTS);
 });
 
 test('#1155 Home with focus in the transcript goes to the room’s first item in one press', async ({ page }) => {

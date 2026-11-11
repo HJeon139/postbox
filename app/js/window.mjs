@@ -236,16 +236,26 @@ class TranscriptWindow {
     [this.from, this.to] = this.openRange();
     this.el.append(this.above, this.below);
     this.mountRun(this.from, this.to, this.below);
+    // Built on the page (a range landing, #1155), the gap between items is known now: the spacers are right at once.
+    if (this.el.isConnected) this.gap = this.gapOf();
     this.paintSpacers();
     requestAnimationFrame(() => {
       // Torn down before its first frame (a room switch, a resync): nothing to listen for.
       if (!live.has(this)) return;
-      this.gap = Number.parseFloat(getComputedStyle(this.el).rowGap) || 0;
+      const gap = this.gapOf();
       this.budget = budgetFor(this.el); // the rest of the page, now that it’s built around the transcript
-      this.paintSpacers();
+      // Painted again only if the gap moved them, as a layout more for nothing otherwise.
+      if (gap !== this.gap) {
+        this.gap = gap;
+        this.paintSpacers();
+      }
       this.scroller().addEventListener('scroll', this.scrolled, { passive: true });
       this.scrolled();
     });
+  }
+  /** The gap between items, from the transcript's style. */
+  gapOf() {
+    return Number.parseFloat(getComputedStyle(this.el).rowGap) || 0;
   }
   /** A new item at the end: whether to mount it, which it is when the range already reaches the end. @param {any} it */
   added(it) {
