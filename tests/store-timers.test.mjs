@@ -57,8 +57,9 @@ const PLACED = {
   'remote/turns.mjs': 5, // tick: stops a hung host turn (the outage’s stop ended the turns); a sign-in resume’s start is held
   'remote/turns-stops.mjs': 1, // a wait: no store
   'remote/wake.mjs': 2, // an injected setInterval that reconnects hosts after sleep: no store
-  'runtime.mjs': 5, // the stop watchdog (turnExited defers); two Stop grace waits; a `!` command’s output flush (memory-only, I1); the mirror (skips its tick)
+  'runtime.mjs': 3, // the stop watchdog (turnExited defers); the shutdown’s Stop grace wait for turns; the mirror (skips its tick)
   'scheduled-wakes.mjs': 1, // armWake: cleared and re-armed at Retry; the start is held
+  'shell-runs.mjs': 2, // a `!` command’s output flush (memory-only, I1); the shutdown’s Stop grace wait for commands: no store
   'shell.mjs': 1, // SIGKILL after a Stop’s grace: Stop is allowed while closed
   'thread-summary.mjs': 5, // an abort; settleThread's quiet wait, through an injected setTimer as lint-delivery's, skips while closed
   'turn-work.mjs': 1, // a permission prompt’s wait for its call’s line (#353): memory only, no store
