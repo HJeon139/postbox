@@ -2,6 +2,12 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.0.7 (2026-11-11)
+
+### Fixes
+
+- **view:** anchor on the first reply in view when the middle one is skipped
+
 ## 4.0.6 (2026-11-11)
 
 ### Fixes
