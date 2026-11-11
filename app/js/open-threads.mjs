@@ -5,7 +5,7 @@
 
 import { positionOf } from '/shared/item-index.mjs';
 import { client, reopen } from './client.mjs';
-import { atEnd, fetchRange, forget, loading, place, placeHead } from './item-ranges.mjs';
+import { atEnd, fetchRange, forget, loading, place, placeHead, placeTail } from './item-ranges.mjs';
 import { windowOn } from './window-flag.mjs';
 
 /** How many items a load asks for: about what the transcript window mounts as it opens. */
@@ -116,6 +116,17 @@ export async function toFirst(threadId) {
     const anchor = client.state.items[threadId][0]?.id;
     client.emit({ type: 'range', data: { threadId, how: 'replace', anchor } });
   } else await load(threadId, `?first&limit=${PAGE}`, 'replace');
+}
+
+/**
+ * Loads an open conversation’s newest items, for End, in place of the range it holds: the tail kept since Home, when
+ * there's one, with no load, as main, which held every item, did. @param {string} threadId
+ */
+export async function toLast(threadId) {
+  if (!client.open.has(threadId)) return;
+  if (!placeTail(client.state, client.ranges, threadId, client.seq)) return refresh(threadId);
+  const anchor = client.state.items[threadId].at(-1)?.id;
+  client.emit({ type: 'range', data: { threadId, how: 'replace', anchor } });
 }
 
 /** Whether a conversation’s first load has landed, so an empty list means it has no items. @param {string} threadId */

@@ -6,15 +6,26 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { pathToFileURL } from 'node:url';
+import { apply } from '../shared/state.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
 const shared = pathToFileURL(join(import.meta.dirname, '../shared/')).href;
 const src = (await readFile(new URL('../app/js/item-ranges.mjs', import.meta.url), 'utf8')).replaceAll("'/shared/", `'${shared}`);
 const file = join(await tempDir('pb-item-ranges-'), 'item-ranges.mjs');
 await writeFile(file, src);
-const { gate, loading, place, placeHead } = await import(pathToFileURL(file).href);
+const { gate, loading, place, placeHead, placeTail } = await import(pathToFileURL(file).href);
 
 const it = (n, text = `m${n}`) => ({ id: `i${n}`, kind: 'message', text });
+/** An event as the page's client hears it (client.mjs, hear): judged by gate, then applied where it says so. */
+const hear = (
+  /** @type {any} */ state,
+  /** @type {Map<string, any>} */ ranges,
+  /** @type {string} */ type,
+  /** @type {any} */ d,
+  /** @type {number} */ seq,
+) => {
+  if (gate(state, ranges, type, d, seq) === 'apply') apply(state, type, d);
+};
 const items = (from, to) => Array.from({ length: to - from }, (_, k) => it(from + k));
 
 test('a streamed chunk heard after an after-load’s seq, before its answer, reaches the item', () => {
@@ -90,4 +101,23 @@ test('a joined load that doesn’t touch the range isn’t placed, and the lates
     'the range is as it was, with no hole',
   );
   assert.equal(ranges.get('t').start, 80);
+});
+
+test('after Home, the newest range is kept as the tail, follows what the page hears, and End puts it back whole', () => {
+  const state = { items: {} };
+  const ranges = new Map();
+  loading(ranges, 't');
+  place(state, ranges, { threadId: 't', seq: 10, start: 95, total: 100, items: items(95, 100), head: items(0, 5) }, 'replace');
+  assert.equal(placeHead(state, ranges, 't', 10), true, 'Home');
+  hear(state, ranges, 'item.text', { threadId: 't', id: 'i97', text: '+chunk' }, 11);
+  hear(state, ranges, 'item.add', { threadId: 't', item: it(100) }, 12);
+  hear(state, ranges, 'item.patch', { threadId: 't', id: 'i1', patch: { text: 'edited' } }, 13);
+  assert.equal(placeTail(state, ranges, 't', 13), true, 'End');
+  assert.deepEqual(
+    state.items.t.map((x) => `${x.id}:${x.text}`),
+    ['i95:m95', 'i96:m96', 'i97:m97+chunk', 'i98:m98', 'i99:m99', 'i100:m100'],
+  );
+  assert.equal(ranges.get('t').start, 95, 'where the newest six start in 101');
+  assert.equal(placeHead(state, ranges, 't', 13), true, 'Home again, from the head kept by End');
+  assert.equal(state.items.t[1].text, 'edited');
 });

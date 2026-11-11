@@ -124,3 +124,42 @@ test('#1155 Home at once after a 10,000-item room opens does main’s work: no l
   ).toEqual(runs.map(() => 0));
   for (const r of runs) expect(r.layouts, `layouts for Home: ${JSON.stringify(runs)}`).toBeLessThanOrEqual(MAIN_LAYOUTS);
 });
+
+/** Main's layouts for End after Home in this room, measured with this case on origin/main beside #1155's branch. */
+const MAIN_END_LAYOUTS = 1;
+
+test('#1155 End after Home in a 10,000-item room does main’s work: no load, and no more layouts', async ({ page }) => {
+  test.setTimeout(120_000);
+  const projectId = /** @type {any} */ (Object.values(app.rt.s.projects)[0]).id;
+  const room = app.rt.createThread({ projectId, title: '10,000 items, Home then End', personaIds: [] });
+  seedBigRoom(app.store, room.id, { count: 10_000 });
+  await page.setViewportSize({ width: 1280, height: 800 });
+  const items = app.store.items(room.id);
+  const [first, last] = [items[0].id, items.at(-1).id];
+  let loads = 0;
+  page.on('request', (r) => r.url().includes(`/api/threads/${room.id}/items`) && loads++);
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('Performance.enable');
+  const layoutsNow = async () => (await cdp.send('Performance.getMetrics')).metrics.find((m) => m.name === 'LayoutCount')?.value ?? 0;
+  const runs = [];
+  for (let i = 0; i < 4; i++) {
+    await page.goto(`${app.origin}/?end=${i}#/t/${room.id}`);
+    await synced(page, app);
+    await newestShown(page, app, room.id);
+    await settled(page);
+    await page.evaluate(() => /** @type {HTMLElement | null} */ (document.activeElement)?.blur());
+    await home(page, first);
+    await settled(page);
+    const loadsBefore = loads;
+    const layoutsBefore = await layoutsNow();
+    const ms = await press(page, 'End', last);
+    runs.push({ ms, loads: loads - loadsBefore, layouts: (await layoutsNow()) - layoutsBefore });
+  }
+  console.log(`END ${JSON.stringify(runs)}`);
+  test.info().annotations.push({ type: 'measured', description: `End after Home: ${JSON.stringify(runs)}` });
+  expect(
+    runs.map((r) => r.loads),
+    'items loaded by End: none, as on main',
+  ).toEqual(runs.map(() => 0));
+  for (const r of runs) expect(r.layouts, `layouts for End: ${JSON.stringify(runs)}`).toBeLessThanOrEqual(MAIN_END_LAYOUTS);
+});

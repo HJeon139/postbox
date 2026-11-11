@@ -23,7 +23,7 @@ import { failedCallout } from './failed-actions.mjs';
 import { goToItem } from './go-to-item.mjs';
 import { focusComposer, hopBlock } from './hop-card.mjs';
 import { beyondItem } from './item-ranges.mjs';
-import { closeThread, grow, loaded, more, openThread, refresh, toFirst } from './open-threads.mjs';
+import { closeThread, grow, loaded, more, openThread, refresh, toFirst, toLast } from './open-threads.mjs';
 import { focusUntouched } from './pane-focus.mjs';
 import { denialBlock, permissionBlock, toolAskBlock } from './permission-cards.mjs';
 import { openPermissions } from './permissions.mjs';
@@ -168,7 +168,7 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
     const edges = {
       more: (/** @type {'before' | 'after'} */ side) => more(threadId, side),
       grow: (/** @type {'before' | 'after'} */ side) => grow(threadId, side),
-      edge: (/** @type {'before' | 'after'} */ side) => (side === 'before' ? toFirst(threadId) : refresh(threadId)),
+      edge: (/** @type {'before' | 'after'} */ side) => (side === 'before' ? toFirst(threadId) : toLast(threadId)),
     };
     win = createWindow({ el, key: `${inPanel}:${threadId}`, list, anchorKey, inPanel, nodes, edges, mount: (i) => mountAt(list, i) });
     // The item that had focus goes back in, in its range or as an island (window-keep.mjs).
@@ -290,8 +290,8 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
      * at once: a smooth scroll would cross a blank spacer. @param {boolean} [smooth]
      */
     scrollToEnd: (smooth) => {
-      // Holding an older range than the newest (a jump far up), the latest is loaded first, then the view goes there.
-      if (more(threadId, 'after')) return void refresh(threadId).then(() => view.scrollToEnd(false));
+      // Holding an older range than the newest (a jump far up), the latest goes in first (kept since Home, or loaded).
+      if (more(threadId, 'after')) return void toLast(threadId).then(() => view.scrollToEnd(false));
       const last = itemsOf(threadId).at(-1);
       const away = !!win && !!last && win.to < win.total;
       if (away) win?.reach(last.id);

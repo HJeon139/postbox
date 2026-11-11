@@ -12,7 +12,7 @@ import { apply } from '/shared/state.mjs';
 
 /**
  * @typedef {{ type: string, data: any, seq: number, applied: boolean }} Heard
- * @typedef {{ start: number, total: number, seq: number, loads: number, heard: Heard[], beyond?: { items: Record<string, any[]> }, head?: any[] }} Range
+ * @typedef {{ start: number, total: number, seq: number, loads: number, heard: Heard[], beyond?: { items: Record<string, any[]> }, head?: any[], tail?: any[] }} Range
  * @typedef {{ threadId: string, seq: number, start: number, total: number, items: any[], head?: any[] }} Answer
  */
 
@@ -43,6 +43,7 @@ export function gate(state, ranges, type, d, seq) {
   if (r.loads > 0) r.heard.push({ type, data: d, seq, applied: verdict === 'apply' && held });
   keepBeyond(r, type, d, verdict);
   keepHead(r, type, d);
+  keepTail(r, type, d);
   return verdict;
 }
 
@@ -61,15 +62,45 @@ function keepHead(r, type, d) {
 }
 
 /**
+ * The conversation's newest items, kept apart for End once Home has put the head in their place (placeHead): current
+ * from their own events as the range they were, which reached the end, so an add joins them, and a move ends there.
+ * @param {Range} r @param {string} type @param {any} d
+ */
+function keepTail(r, type, d) {
+  if (!r.tail) return;
+  const kept = { items: { [d.threadId]: r.tail } };
+  if (type === 'item.add') apply(kept, type, { ...d, item: structuredClone(d.item) });
+  else if (positionOf(r.tail, d.id) >= 0) apply(kept, type, d);
+}
+
+/**
  * Puts the kept head in place as the range, as a load of the first items would, with no load: says whether it could
- * (there's a head, and no load in flight whose events it would have to wait for).
+ * (there's a head, and no load in flight whose events it would have to wait for). The range it replaces, if it held
+ * the newest items, is kept as the tail, for End.
  * @param {any} state @param {Map<string, Range>} ranges @param {string} threadId @param {number} seq  the page's place
  */
 export function placeHead(state, ranges, threadId, seq) {
   const r = ranges.get(threadId);
   if (!r?.head || r.loads > 0) return false;
+  const list = state.items[threadId] ?? [];
+  const tail = atEnd(list, r) ? list : undefined;
   state.items[threadId] = r.head;
-  Object.assign(r, { start: 0, seq, head: undefined });
+  Object.assign(r, { start: 0, seq, head: undefined, tail });
+  return true;
+}
+
+/**
+ * Puts the kept tail back as the range, with no load, as End: says whether it could. The range it replaces, the first
+ * items, is kept as the head again, for the next Home.
+ * @param {any} state @param {Map<string, Range>} ranges @param {string} threadId @param {number} seq  the page's place
+ */
+export function placeTail(state, ranges, threadId, seq) {
+  const r = ranges.get(threadId);
+  if (!r?.tail || r.loads > 0) return false;
+  const list = state.items[threadId] ?? [];
+  const head = r.start === 0 ? list : r.head;
+  state.items[threadId] = r.tail;
+  Object.assign(r, { start: r.total - r.tail.length, seq, tail: undefined, head, beyond: undefined });
   return true;
 }
 
@@ -171,7 +202,8 @@ export function place(state, ranges, answer, how) {
     state.items[answer.threadId] = [...list, ...answer.items.filter((it) => positionOf(list, it.id) < 0)];
   }
   const again = r.heard.filter((e) => e.seq > answer.seq && (how === 'replace' || !e.applied));
-  if (atEnd(state.items[answer.threadId], r)) r.beyond = undefined;
+  // A range that reaches the end has the newest items itself: what was kept of them apart goes.
+  if (atEnd(state.items[answer.threadId], r)) Object.assign(r, { beyond: undefined, tail: undefined });
   if (!r.loads) r.heard = [];
   return replay(state, r, answer, again, how);
 }
