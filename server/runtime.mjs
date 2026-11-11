@@ -29,7 +29,7 @@ import { keptTurns, nextNeed, noticeNeed, releaseNeed, stateFor, TURN_TIED } fro
 import { catchUp, moveMarkers, pointerIfSeen } from './catch-up.mjs';
 import { blockProblems, diagramProblems, formatLint, introducedTerms, lintMessage, personSaid, rawHtmlProblems, termProblems } from './checks.mjs';
 import { emptyReply, endedWithoutReply } from './empty-reply.mjs';
-import { folderOrNone, sessionFolder } from './folder-path.mjs';
+import { sessionFolder } from './folder-path.mjs';
 import { heldSession } from './held-session.mjs';
 import { clip, clipText, httpError } from './helpers.mjs';
 import { clipItem, describeItem, topicRootLine } from './item-lines.mjs';
@@ -87,6 +87,7 @@ import {
 } from './scheduled-wakes.mjs';
 import { archive, archiveThread, deleteSession, deleteThread, finishLeftDeletes, restore, restoreThread } from './session-lifecycle.mjs';
 import { pendingSessionsIn, tellAgent, updateSession } from './session-write.mjs';
+import { mcpContext } from './setup-context.mjs';
 import { clearSummaryPending, postSummary, shareText, shareToConversation, summarizeBack, summarizing } from './share-back.mjs';
 import { runShell } from './shell.mjs';
 import {
@@ -2353,33 +2354,9 @@ export class Runtime {
     return setProjectHostFolder(this, projectId, hostId, folder);
   }
 
-  /**
-   * What the persona sheet’s MCP list needs (#59), given a persona (or none, for a new agent) and a project: the
-   * folder it works in (its own, else the project’s, else that of its latest conversation), and the MCP servers the
-   * latest init reported. That init comes from one of its sessions, else from any session of a persona that loads
-   * your setup, since claude.ai connectors and plugin servers are the same for all of them.
-   * @param {string|null} personaId @param {string|null} projectId
-   */
+  // What the persona sheet shows of a persona’s setup: server/setup-context.mjs.
   mcpContext(personaId, projectId) {
-    const persona = (personaId && this.persona(personaId)) || null;
-    const latest = (list) => list.filter((se) => se.mcpServers?.at).sort((x, y) => y.mcpServers.at - x.mcpServers.at)[0] ?? null;
-    const own = persona ? Object.values(this.s.sessions).filter((se) => se.personaId === persona.id) : [];
-    const recent = own.sort((x, y) => (y.startedAt ?? 0) - (x.startedAt ?? 0))[0];
-    const project = (projectId && this.s.projects[projectId]) || this.s.projects[this.s.threads[recent?.threadId]?.projectId] || null;
-    const seen =
-      latest(own) ?? latest(Object.values(this.s.sessions).filter((se) => this.persona(se.personaId)?.usesHostSetup !== false && se.backend !== 'mock'));
-    const folder = folderOrNone(persona) || project?.folder || null;
-    // An init from another folder says nothing about that folder’s project and local servers here: keep only the
-    // ones that load everywhere (user, claude.ai, plugins).
-    const seenFolder = seen && (folderOrNone(this.persona(seen.personaId)) || this.s.projects[this.s.threads[seen.threadId]?.projectId]?.folder || null);
-    const servers = seen?.mcpServers.servers ?? [];
-    return {
-      persona,
-      folder,
-      seen: seenFolder === folder ? servers : servers.filter((s) => s.source !== 'project' && s.source !== 'local'),
-      // Its / menu’s skills (#207), stored as { at, list }: the sheet takes only plugins’, which load in every folder.
-      skills: (seen?.commands?.list ?? []).filter((c) => c.skill).map((c) => c.name),
-    };
+    return mcpContext(this, personaId, projectId);
   }
 
   // ── Session lifecycle: server/session-lifecycle.mjs ─────────────────────────────
