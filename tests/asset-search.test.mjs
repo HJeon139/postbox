@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { searchArgs, splitPassages } from '../server/asset-search.mjs';
 import { hostTool } from '../server/host-tool.mjs';
+import { describeItem } from '../server/item-lines.mjs';
 import { Store } from '../server/store.mjs';
 import { assetRoom } from './asset-tools-fixture.mjs';
 import { rig, running, settled, until } from './remote-turns-helpers.mjs';
@@ -123,4 +124,9 @@ test('#516: an agent on a host searches the room’s assets too: search_assets c
   assert.match(found.text, /notes\/letters\.md v1, passage 1 .*\nThe sailor wrote home/);
   r.d.end(turn);
   await settled(r);
+});
+
+test('#516: an older log’s line for a dataset an agent loaded says it was loaded, and no longer how to search it', () => {
+  const line = describeItem(null, { kind: 'system', variant: 'dataset', handle: 'researcher', dataset: 'scifact', records: 5183 });
+  assert.equal(line, '@researcher loaded the dataset “scifact” (5183 records), before Postbox kept data as assets');
 });
