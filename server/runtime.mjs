@@ -53,6 +53,7 @@ import {
   resolvePermission,
   settlePermission,
 } from './permission-cards.mjs';
+import { checkedMode, retireModes, runsAs } from './permission-modes.mjs';
 import { changePermissionFolder, changePermissionRule, latestProject, PERMISSION_MODES, panelTarget, permissionsView } from './permissions-panel.mjs';
 import { checkEffort, checkSetup, handleOf } from './persona-checks.mjs';
 import { arrival } from './queue-batch.mjs';
@@ -196,6 +197,8 @@ export class Runtime {
     restoreArchives(this);
     // After the restore, so a card it brings back stays the person’s to answer (#693).
     closeOrphanCards(this);
+    // Ask me and Accept edits are gone: a persona stored with one runs Auto (permission-modes.mjs).
+    retireModes(this);
   }
 
   get s() {
@@ -217,7 +220,7 @@ export class Runtime {
     return (
       p && {
         ...p,
-        permissionMode: p.permissionMode ?? 'auto',
+        permissionMode: runsAs(p.permissionMode),
         // Whether it loads your Claude Code setup and may publish outside Postbox are permissions too (#57), and
         // so are the MCP servers it turned off (#59) and its tools, which real backends deny when unticked (#5).
         usesHostSetup: p.usesHostSetup !== false,
@@ -374,8 +377,6 @@ export class Runtime {
       personaId,
       threadId,
       handle: p.handle,
-      // The persona version it started with. Every setting follows the persona from the next turn (personaFor).
-      personaVersion: p.version ?? 1,
       backend: p.backend,
       state: 'idle',
       ctx: null,
@@ -716,8 +717,8 @@ export class Runtime {
         turn.subagentName = fn;
       },
       /**
-       * The adapter hands over what it can change while the turn runs, such as { setPermissionMode(mode) }. Each
-       * resolves to true when the change took effect now.
+       * The adapter hands over what it can do while the turn runs, such as { stopJob(job) }, a background job’s own Stop.
+       * Settings aren’t among them: a persona’s change applies from its next turn.
        */
       control(c) {
         turn.control = c;
@@ -2353,7 +2354,7 @@ export class Runtime {
     handle = handleOf(handle);
     if (this.personaByHandle(handle)) throw httpError(409, `@${handle} already exists. Pick another name.`);
     if (!this.adapters.names().includes(backend)) throw httpError(422, notHere(this, backend));
-    if (!PERMISSION_MODES.includes(permissionMode)) throw httpError(422, `Permissions are one of ${PERMISSION_MODES.join(', ')}.`);
+    permissionMode = checkedMode(permissionMode);
     checkEffort(effort);
     checkSetup({ usesHostSetup, canPublish, mcpOff, skillsOff });
     const placed = placement(this, remote, backend);
@@ -2387,8 +2388,7 @@ export class Runtime {
   updatePersona(id, patch) {
     const p = this.persona(id);
     if (!p) throw httpError(404, 'That agent doesn’t exist.');
-    if (patch.permissionMode !== undefined && !PERMISSION_MODES.includes(patch.permissionMode))
-      throw httpError(422, `Permissions are one of ${PERMISSION_MODES.join(', ')}.`);
+    if (patch.permissionMode !== undefined) patch = { ...patch, permissionMode: checkedMode(patch.permissionMode) };
     if (patch.effort !== undefined) checkEffort(patch.effort);
     checkSetup(patch);
     if (patch.mcpOff !== undefined) patch = { ...patch, mcpOff: serverNames(patch.mcpOff) };

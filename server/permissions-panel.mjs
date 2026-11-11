@@ -19,12 +19,8 @@ import { readHooks } from './permission-hooks.mjs';
 import { BEHAVIORS, changeRule, cleanRule, readRules, settingsFiles } from './permission-rules.mjs';
 import { requestAdapter } from './remote/placement.mjs';
 
-/**
- * What a persona may do without asking. auto (the default): Claude Code’s safety classifier approves routine
- * actions and asks you only when it can’t decide. ask: ask before anything risky. acceptEdits: edit files
- * freely, ask before commands. bypass: never ask.
- */
-export const PERMISSION_MODES = ['auto', 'ask', 'acceptEdits', 'bypass'];
+export { PERMISSION_MODES } from './permission-modes.mjs';
+
 // What a conversation keeps for the permissions panel (#66), bounded.
 const MAX_CONVERSATION_RULES = 200;
 const MAX_ADD_DIRS = 20;

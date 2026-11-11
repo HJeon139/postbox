@@ -32,14 +32,14 @@ test('editing a persona between Codex turns reaches the existing session from it
   const thread = rt.createThread({ projectId: 'project', title: 'Pinned', personaIds: [persona.id] });
   const session = rt.sessionsIn(thread.id)[0];
   await deliver(rt, thread.id, session.id);
-  rt.updatePersona(persona.id, { instructions: 'Edited instruction for new sessions.', permissionMode: 'ask' });
+  rt.updatePersona(persona.id, { instructions: 'Edited instruction for new sessions.', permissionMode: 'bypass' });
   await deliver(rt, thread.id, session.id);
   const first = seen.find((request) => request.method === 'thread/start');
   const resumed = seen.find((request) => request.method === 'thread/resume');
   assert.match(first.params.developerInstructions, /Original pinned instruction\./);
   assert.match(resumed.params.developerInstructions, /Edited instruction for new sessions\./);
   assert.doesNotMatch(resumed.params.developerInstructions, /Original pinned instruction\./);
-  assert.equal(seen.filter((request) => request.method === 'turn/start')[1].params.sandboxPolicy.type, 'readOnly');
+  assert.equal(seen.filter((request) => request.method === 'turn/start')[1].params.sandboxPolicy.type, 'dangerFullAccess');
   const fresh = rt.createThread({ projectId: 'project', title: 'New version', personaIds: [persona.id] });
   await deliver(rt, fresh.id, rt.sessionsIn(fresh.id)[0].id);
   const starts = seen.filter((request) => request.method === 'thread/start');

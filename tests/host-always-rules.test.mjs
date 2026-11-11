@@ -121,15 +121,6 @@ test('a kept host rule survives a store reload', async () => {
   await again.close();
 });
 
-test('in Ask me a host card offers Always allow too, and Postbox’s write asks stay next to the kept rule', async () => {
-  const r = rigIn('ask');
-  const card = await answered(r, 'always');
-  assert.equal(card.always.saves, RULE);
-  const start = await oneTurn(r);
-  assert.equal(start.argv[start.argv.indexOf('--permission-mode') + 1], 'manual');
-  assert.deepEqual(settingsOf(start.argv).permissions, { ask: WRITE_TOOLS, allow: [RULE] });
-});
-
 test('in Ask me, a write Always allowed on a host card runs on the next host turn there without a card', async () => {
   // Postbox’s write asks stay next to the kept rule in --settings, and an ask rule beats an allow rule in Claude Code,
   // so the host’s Claude Code still asks: Postbox’s write check has to read the host’s kept rules (writePasses).

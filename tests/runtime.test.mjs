@@ -576,7 +576,8 @@ test('personas keep a permission mode and a model; real backends default to Clau
   const p = rt.createPersona({ handle: 'coder', backend: 'claude-code' });
   assert.equal(p.model, 'claude-opus-5-5');
   assert.equal(p.permissionMode, 'auto', 'auto mode is the default');
-  assert.equal(rt.updatePersona(p.id, { permissionMode: 'acceptEdits' }).permissionMode, 'acceptEdits');
+  assert.equal(rt.updatePersona(p.id, { permissionMode: 'bypass' }).permissionMode, 'bypass');
+  assert.equal(rt.updatePersona(p.id, { permissionMode: 'acceptEdits' }).permissionMode, 'auto', 'a retired mode is Auto');
   assert.throws(() => rt.updatePersona(p.id, { permissionMode: 'yolo' }), /Permissions are one of/);
   assert.throws(() => rt.createPersona({ handle: 'nope', backend: 'agent-sdk' }), /isn’t available on this computer/);
 });
@@ -1595,10 +1596,10 @@ test('a persona’s permission mode reaches its running conversations from their
   adapter.next.push(async (c) => seen.push(c.persona.permissionMode));
   rt.sendMessage(t.id, { text: 'one' });
   await settle(rt);
-  rt.updatePersona(a.id, { permissionMode: 'ask' });
+  rt.updatePersona(a.id, { permissionMode: 'bypass' });
   rt.sendMessage(t.id, { text: 'two' });
   await settle(rt);
-  assert.deepEqual(seen, ['auto', 'ask']);
+  assert.deepEqual(seen, ['auto', 'bypass']);
 });
 
 test('#57: a persona uses your Claude Code setup and can’t publish outside Postbox, unless it’s set otherwise', () => {

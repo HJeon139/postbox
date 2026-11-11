@@ -115,7 +115,7 @@ test('the judge’s no, an error, a timeout and an answer it can’t read all ge
   }
 });
 
-test('#557’s review: the person’s own ask rules, a subagent, Ask me mode and the setting off get the card, and the judge isn’t asked', async () => {
+test('#557’s review: the person’s own ask rules, a subagent and the setting off get the card, and the judge isn’t asked', async () => {
   const s = await setup();
   assert.deepEqual(await asks(s, 'Create a tally ticket for it.', [bash('tally ticket create --title x'), bash('git push', { agentId: 'af66d9ea' })]), [
     false,
@@ -132,7 +132,7 @@ test('#557’s review: the person’s own ask rules, a subagent, Ask me mode and
     assert.deepEqual(await asks(own, 'Open the PR.', [req]), [false], rule);
     assert.equal(own.prompts.length, 0, rule);
   }
-  for (const off of [{ permissionMode: 'ask' }, { allowRequested: false }]) {
+  for (const off of [{ allowRequested: false }]) {
     const o = await setup();
     o.rt.updatePersona(o.p.id, off);
     assert.deepEqual(await asks(o, 'Push it and open the PR.', [CREATE]), [false], JSON.stringify(off));

@@ -223,7 +223,7 @@ test('#66: the panel reads each source’s rules, the persona’s Tools as deny 
   await writeFile(join(folder, '.claude', 'settings.local.json'), '{ not json');
   const v = await rt.permissionsView({ sessionId: se.id });
   assert.equal(v.persona.handle, 'coder');
-  assert.equal(v.persona.permissionMode, 'ask');
+  assert.equal(v.persona.permissionMode, 'auto', 'one made as Ask me runs Auto');
   assert.deepEqual(
     v.files.map((f) => [f.source, f.writable, f.allow, f.deny, Boolean(f.error)]),
     [
