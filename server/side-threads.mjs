@@ -64,7 +64,7 @@ export function agentWake(
   if (!confirmed && (parent.hops ?? 0) >= roomChainLimit(rt, parent.id)) return askToWake(rt, from, parent, p, card);
   const hop = (parent.hops ?? 0) + 1;
   updateThread(rt, parent.id, { hops: hop });
-  // A mention is already the waker’s message there, so the wake’s number in the chain (#114, telemetry) goes on the
+  // A mention is already the waker’s message there, so the wake’s number in the chain (#114) goes on the
   // turn’s first item: it marks the turn, not necessarily the paragraph with the mention. One message can wake several
   // agents, so each wake’s number is kept (wakes); hop stays the first. wake_agent’s message is posted as the waker’s.
   const said = itemId ? rt.store.pending.item(at, itemId) : null;

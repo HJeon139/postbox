@@ -1,10 +1,10 @@
 // The delivery scenario’s triggers (#508, tests/uat/e2e/scenarios/delivery.md, designs/508/testing-strategy.md):
 // wakes held behind a card and released by its answer, a mention past the catch-up cap, an edit while a delivery
 // waited, a turn that failed before any output, and a labeled resend. tools/uat/triggers.mjs adds them to TRIGGERS.
-// Each reads only what `main` records (server/room-delivery.mjs), and names the requirements it serves.
+// Each reads only what `main` records (tools/uat/room-delivery.mjs), and names the requirements it serves.
 
 import { CATCH_UP_ITEMS } from '../../server/catch-up.mjs';
-import { addressed, cardHistory, headOf, holds, inputsOf, labeled, plain, RESEND_LABEL, settledAt, timeAfter, turnsOf } from '../../server/room-delivery.mjs';
+import { addressed, cardHistory, headOf, holds, inputsOf, labeled, plain, RESEND_LABEL, settledAt, timeAfter, turnsOf } from './room-delivery.mjs';
 import { clip, itemsOf } from './trigger-facts.mjs';
 
 const POINTER = /which your last summary gave you in full/;

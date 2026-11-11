@@ -194,7 +194,7 @@ Each one carries the requirement ids it serves, beside today’s `issue` field, 
 | `compaction` | CX-4 | a backend compacted a session’s context (`compact_boundary` on Claude Code) |
 | `window-paged-back`, `jump-outside-window`, `needs-far-back`, `move-from-unloaded`, `search-outside-window`, `switch-conversations` | PF-3 to PF-8 | as named, read from the page’s probes |
 
-**Checks** (in `server/room-checks*.mjs`, which `tools/uat/checks.mjs` runs). Names in plain code already exist on `main`, or come with PR #511 (`thread-request-first`); the rest are new.
+**Checks** (in `tools/uat/room-checks*.mjs`, which `tools/uat/checks.mjs` runs). Names in plain code already exist on `main`, or come with PR #511 (`thread-request-first`); the rest are new.
 
 | Check | Requirements | Looks for |
 |---|---|---|

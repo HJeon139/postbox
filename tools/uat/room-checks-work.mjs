@@ -1,5 +1,5 @@
 // The Work ledger’s checks (#132): what the turns’ streams changed and ran, against what Work shows. Part of
-// server/room-checks.mjs’s CHECKS, outside it at its size ceiling.
+// tools/uat/room-checks.mjs’s CHECKS, outside it at its size ceiling.
 
 import { claudeSessionOf, toolCalls } from './room-checks-tools.mjs';
 

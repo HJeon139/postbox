@@ -1,9 +1,9 @@
 // The check of going to what an agent needs (#285): the runner’s go_to_needs action clicks the top bar’s “Next that
 // needs you” button or an agent’s needs-you ring, and records where focus landed (facts.probes.jumps). Part of
-// server/room-checks.mjs’s CHECKS, kept apart to keep that file to its size.
+// tools/uat/room-checks.mjs’s CHECKS, kept apart to keep that file to its size.
 
-import { conversationOf, needsOrder, whereNeeds } from '../shared/needs.mjs';
-import { escapeRegExp } from '../shared/regex.mjs';
+import { conversationOf, needsOrder, whereNeeds } from '../../shared/needs.mjs';
+import { escapeRegExp } from '../../shared/regex.mjs';
 
 const PLACES = {
   next: 'the “Next that needs you” button',
@@ -79,7 +79,7 @@ export const NEEDS_CHECKS = [
 /**
  * Each time an agent's need fell back to an app card (#366): the app card was its need, a newer need of another kind
  * took its place, and when that was answered the need went back to the same app card, with no gap where it needed
- * nothing. Reads the sessions' needs as the history kept them (server/room-events.mjs).
+ * nothing. Reads the sessions' needs as the history kept them (tools/uat/room-events.mjs).
  * @param {any[]} events
  */
 function appFallbacks(events) {
@@ -150,7 +150,7 @@ export const NEEDS_TRIGGERS = {
   'app-need-fallback': {
     issue: 366,
     says: 'an app card was an agent’s need, a newer need of another kind took it, and once that was answered the need fell back to the same app card',
-    // A history from before sessions' needs were kept (server/room-events.mjs) didn't record them.
+    // A history from before sessions' needs were kept (tools/uat/room-events.mjs) didn't record them.
     recorded: (f) => (f.events ?? []).some((e) => e.type === 'session' && Object.hasOwn(e.data ?? {}, 'needs')),
     run: (f) => appFallbacks(f.events),
   },

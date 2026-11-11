@@ -5,8 +5,8 @@
 
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { keepEvent } from '../../server/room-events.mjs';
 import { parseSnapshotText } from '../../server/store-snapshot-lines.mjs';
+import { keepEvent } from './room-events.mjs';
 
 export { keepEvent };
 

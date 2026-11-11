@@ -83,7 +83,7 @@ export function driver(page, hooks = {}) {
   const inApp = (ctx, expression) => ctx.frame.evaluate(expression).catch(() => undefined);
 
   return {
-    // What records the runner’s inputs, for its other drivers: telemetry’s clicks, and a reload.
+    // What records the runner’s inputs, for its other drivers: a reload.
     input: (/** @type {any} */ e) => hooks.input?.(e),
     clickAt,
     press,

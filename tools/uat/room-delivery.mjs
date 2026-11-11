@@ -7,7 +7,7 @@
 // An item “reached” an agent when an input of its holds the item’s id, or the start of its text, letters and digits
 // only: a catch-up line or a held note reformats the text around it, never the words.
 
-import { parseMentions } from '../shared/text.mjs';
+import { parseMentions } from '../../shared/text.mjs';
 
 /** Letters and digits only, lowercase: the form texts are matched in. */
 export const plain = (s) =>

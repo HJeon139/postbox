@@ -452,7 +452,7 @@ export class KiroCliAdapter {
         child.stderr.on('data', (d) => {
           stderr = (stderr + d).slice(-4000);
         });
-        const record = recorderFor(ctx, this.env.POSTBOX_KIRO_RECORD, 'kiro-cli');
+        const record = recorderFor(ctx, this.env.POSTBOX_KIRO_RECORD);
         createInterface({ input: child.stdout }).on('line', (line) => {
           if (!line.trim()) return;
           record(line);

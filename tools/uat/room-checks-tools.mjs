@@ -1,6 +1,6 @@
 // Tool calls and results read from a room’s recorded Claude Code streams, outside room-checks.mjs at its size ceiling.
 
-import { contentBlocks } from './adapters/claude-content.mjs';
+import { contentBlocks } from '../../server/adapters/claude-content.mjs';
 
 /** Every tool call in a turn’s stream, with its result when the stream has it. @param {any[]} events */
 export function toolCalls(events) {

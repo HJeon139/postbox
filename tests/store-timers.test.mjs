@@ -61,7 +61,6 @@ const PLACED = {
   'runtime.mjs': 9, // the stop watchdog (turnExited defers); two Stop grace waits; a `!` command’s output flush (memory-only, I1); the mirror (skips its tick); del: and delt:, armed in two places each (do nothing while closed; re-armed at Retry)
   'scheduled-wakes.mjs': 1, // armWake: cleared and re-armed at Retry; the start is held
   'shell.mjs': 1, // SIGKILL after a Stop’s grace: Stop is allowed while closed
-  'telemetry.mjs': 1, // sweeps its own folder: no store
   'thread-summary.mjs': 5, // an abort; settleThread's quiet wait, through an injected setTimer as lint-delivery's, skips while closed
   'turn-work.mjs': 1, // a permission prompt’s wait for its call’s line (#353): memory only, no store
   'write-intent.mjs': 1, // an abort: no store

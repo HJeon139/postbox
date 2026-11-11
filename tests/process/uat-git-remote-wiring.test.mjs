@@ -23,7 +23,7 @@ afterEach(() => {
   for (const d of made.splice(0)) rmSync(d, { recursive: true, force: true });
 });
 
-const scenario = { seed: 'git-remote', gh: 'yes', skills: 'on' };
+const scenario = { seed: 'git-remote', skills: 'on' };
 /** A run folder and its workspace, made as the runner makes them, with the environment it gives Postbox. */
 function run() {
   const dir = mkdtempSync(join(tmpdir(), 'postbox-uat-wiring-'));
@@ -31,7 +31,7 @@ function run() {
   const workspace = join(dir, 'workspace');
   makeWorkspace(scenario, { workspace }, dir);
   const paths = { streams: join(dir, 'streams'), kiroStreams: '', agyStreams: '', codexStreams: '' };
-  const env = { ...process.env, ...runEnv({ gate: { env: {} }, paths, scenario, dir, opt: { telemetry: 'no' }, faults: null }) };
+  const env = { ...process.env, ...runEnv({ gate: { env: {} }, paths, scenario, dir, faults: null }) };
   return { dir, workspace, env };
 }
 

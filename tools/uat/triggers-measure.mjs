@@ -7,9 +7,9 @@
 //   and records it in facts.probes.keyFrame. The trigger says only that the measurement ran and its report was
 //   written; the report, not the trigger, judges the numbers.
 
-import { toolCalls } from '../../server/room-checks-tools.mjs';
-import { erasedStreams } from '../../server/room-checks-work.mjs';
 import { deleteWindows } from './checks-assets.mjs';
+import { toolCalls } from './room-checks-tools.mjs';
+import { erasedStreams } from './room-checks-work.mjs';
 
 /**
  * A conversation deleted past its Undo, whose agents’ turns ran Bash calls in Claude Code sessions no session in the

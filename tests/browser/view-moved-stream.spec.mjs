@@ -1,10 +1,10 @@
 // view-moved while a reply streams (#531, B1b-c): the UAT’s view probe (tools/uat/view-probe.mjs) samples a real page
-// each step, and view-moved (server/room-checks-view.mjs) must stay silent while a reply streams into a view that is
+// each step, and view-moved (tools/uat/room-checks-view.mjs) must stay silent while a reply streams into a view that is
 // following the end, or below a view that is reading. A steady stream could hold the gap above 2 px across the probe’s
 // two reads, so the sample would count as settled and drift would fire: this spec is the guard against that.
 
 import { expect, test } from '@playwright/test';
-import { VIEW_CHECKS } from '../../server/room-checks-view.mjs';
+import { VIEW_CHECKS } from '../../tools/uat/room-checks-view.mjs';
 import { recordViews } from '../../tools/uat/view-probe.mjs';
 import { failOnPageErrors, settled, startPostbox } from './postbox.mjs';
 import { holds, open as openIn, room as roomIn } from './view-read-fixture.mjs';

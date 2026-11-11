@@ -7,7 +7,6 @@ import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { createStreamMapper } from '../server/adapters/claude-stream.mjs';
 import { forkOf, sessionTotals, turnCost } from '../server/adapters/claude-usage.mjs';
-import { turnStats } from '../server/telemetry-streams.mjs';
 
 const { results } = JSON.parse(readFileSync(new URL('./fixtures/claude-code/resume-costs.json', import.meta.url), 'utf8'));
 const OWN = [0.003123, 0.002828, 0.002838]; // each turn’s own cost: its total less the one before, to the micro-dollar
@@ -65,17 +64,6 @@ test('#295 a new session subtracts nothing: a first turn, or a fork with a sessi
   const t = sessionTotals(results[2]);
   assert.equal(turnCost(t, null), results[2].total_cost_usd);
   assert.equal(turnCost(t, { ...sessionTotals(results[1]), sessionId: 'another-session' }), results[2].total_cost_usd);
-});
-
-test('#295 telemetry counts each turn’s own cost across a conversation’s turns, and within one with two results', () => {
-  const spent = new Map();
-  const costs = results.map((r) => turnStats([r], 0, spent).costUsd);
-  assert.deepEqual(
-    costs.map((c) => Math.round(c * 1e6) / 1e6),
-    OWN,
-  );
-  // A turn whose CLI reported twice (a background job’s second result) counts its own cost once.
-  assert.equal(Math.round(turnStats([results[1], results[2]], 0, new Map([[results[0].session_id, results[0].total_cost_usd]])).costUsd * 1e6) / 1e6, 0.005666);
 });
 
 // #435's review: two sessions resumed in turn in one folder, and a fork (resume-costs-two-sessions.json, recorded).

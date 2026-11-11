@@ -4,7 +4,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
-import { NEEDS_TRIGGERS } from '../server/room-checks-needs.mjs';
+import { NEEDS_TRIGGERS } from '../tools/uat/room-checks-needs.mjs';
 import { parseScenario } from '../tools/uat/scenario.mjs';
 import { TRIGGERS, unknownTriggers } from '../tools/uat/triggers.mjs';
 import { settle, setup } from './side-threads-fixture.mjs';

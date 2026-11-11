@@ -6,9 +6,9 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
-import { toolCalls } from '../server/room-checks-tools.mjs';
-import { erasedStreams, keptStreams } from '../server/room-checks-work.mjs';
 import { runChecks } from '../tools/uat/checks.mjs';
+import { toolCalls } from '../tools/uat/room-checks-tools.mjs';
+import { erasedStreams, keptStreams } from '../tools/uat/room-checks-work.mjs';
 
 const LIVE = 'c0ffee00-live';
 const GONE = 'dead0000-gone';

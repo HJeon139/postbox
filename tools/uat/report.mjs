@@ -4,15 +4,14 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { backendName } from '../../server/room-unverified.mjs';
 import { budgetNote } from './budget.mjs';
 import { agyTokens, kiroCredits, waitingOnYou } from './checks.mjs';
 import { agentsSpent } from './cost.mjs';
 import { githubSection } from './github-attempts.mjs';
 import { pictureSection } from './picture-choice.mjs';
+import { backendName } from './room-unverified.mjs';
 import { writeJsonAtomic } from './runs.mjs';
 import { firstPictureSection } from './side-by-side.mjs';
-import { countByCheck } from './telemetry-run.mjs';
 import { timingLine } from './timing.mjs';
 import { cell as esc } from './trigger-facts.mjs';
 import { coverageSection } from './triggers.mjs';
@@ -37,7 +36,7 @@ function usageLine(facts, tester) {
 const isNew = (f) => !f.issue && f.verdict !== 'harness' && !f.unverified;
 
 /**
- * The checks this run couldn’t make (server/room-delivery.mjs’s notCheckable): each check, agent and backend whose
+ * The checks this run couldn’t make (tools/uat/room-delivery.mjs’s notCheckable): each check, agent and backend whose
  * inputs it couldn’t read, so a check skipped on Codex, Kiro or Antigravity reads as unverified there, not as a pass.
  * @param {any[]} findings
  * @returns {string[]}  Markdown lines
@@ -59,16 +58,6 @@ export function unverifiedSection(findings) {
     ),
     '',
   ];
-}
-
-/** What findings.json keeps of telemetry: proposals, and unverified check counts with no message text. */
-function telemetryPayload(facts, findings) {
-  const unverified = countByCheck(findings.filter((f) => f.unverified));
-  if (!facts.telemetryOut && (!facts.telemetry || (!unverified.length && !facts.telemetry?.unverified?.length))) return null;
-  return {
-    ...(facts.telemetryOut ?? {}),
-    unverified: unverified.length ? unverified : (facts.telemetry?.unverified ?? []),
-  };
 }
 
 export async function writeReport({ dir, scenario, issues, findings, timeline, started, tester, facts, logLines, coverage = [], rechecked = false }) {
@@ -140,7 +129,6 @@ export async function writeReport({ dir, scenario, issues, findings, timeline, s
   ].join('\n');
   await writeFile(join(dir, 'report.md'), md);
   keepPeopleVerdicts(findings, join(dir, 'findings.json'));
-  const telOut = telemetryPayload(facts, findings);
   writeJsonAtomic(join(dir, 'findings.json'), {
     scenario: scenario.title,
     started,
@@ -150,7 +138,6 @@ export async function writeReport({ dir, scenario, issues, findings, timeline, s
     probes: facts.probes,
     samples: facts.samples,
     coverage,
-    ...(telOut ? { telemetry: telOut } : {}),
     ...(facts.budget ? { budget: facts.budget } : {}),
   });
   if (rechecked) await writeFile(join(dir, 'run.log'), `${readFileSync(join(dir, 'run.log'), 'utf8')}${logLines.join('\n')}\n`);

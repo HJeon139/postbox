@@ -1,12 +1,12 @@
-// The delivery checks on a room read mid-run (#508, server/room-delivery.mjs’s turnsOf): a turn still under way
+// The delivery checks on a room read mid-run (#508, tools/uat/room-delivery.mjs’s turnsOf): a turn still under way
 // hasn’t ended, however long ago its stream’s file was last written, so what it hasn’t done yet isn’t judged. The rooms
 // are hand-built from the shapes UAT runs record (tests/delivery-fixture.mjs says why, and which). Moved from
 // tests/uat-checks-delivery.test.mjs for size.
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { inputsOf, recorded, turnsOf } from '../server/room-delivery.mjs';
 import { runChecks } from '../tools/uat/checks.mjs';
+import { inputsOf, recorded, turnsOf } from '../tools/uat/room-delivery.mjs';
 import { ROUND_TWO, room, T0 } from './delivery-fixture.mjs';
 
 const s = (n) => T0 + n * 1000;

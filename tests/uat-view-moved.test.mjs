@@ -1,12 +1,12 @@
-// #531’s view-moved check (server/room-checks-view.mjs): what you were reading moved, or the view’s mode changed, with
+// #531’s view-moved check (tools/uat/room-checks-view.mjs): what you were reading moved, or the view’s mode changed, with
 // no input of yours or the runner’s between two settled samples of the view probe (tools/uat/view-probe.mjs). It
 // should never fire. Synthetic samples, as the probe records them in facts.probes.views, with the run’s inputs in
 // facts.probes.inputs (B1b-b).
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { runChecks } from '../server/room-checks.mjs';
-import { VIEW_CHECKS } from '../server/room-checks-view.mjs';
+import { runChecks } from '../tools/uat/room-checks.mjs';
+import { VIEW_CHECKS } from '../tools/uat/room-checks-view.mjs';
 
 const T0 = Date.UTC(2026, 10, 4, 9);
 const ORIGIN = T0 - 60_000;

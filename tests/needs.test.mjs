@@ -1,13 +1,13 @@
 // Who needs you and in what order (#285): shared/needs.mjs, which the page’s ⌃J and rings read, and the UAT’s check
-// and triggers of where going to an ask landed (server/room-checks-needs.mjs).
+// and triggers of where going to an ask landed (tools/uat/room-checks-needs.mjs).
 
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
-import { runChecks } from '../server/room-checks.mjs';
-import { NEEDS_CHECKS, NEEDS_TRIGGERS, needsAt } from '../server/room-checks-needs.mjs';
-import { keepEvent } from '../server/room-events.mjs';
 import { conversationOf, NEEDS_KINDS, needsOrder, needsYouNow, whereNeeds } from '../shared/needs.mjs';
+import { runChecks } from '../tools/uat/room-checks.mjs';
+import { NEEDS_CHECKS, NEEDS_TRIGGERS, needsAt } from '../tools/uat/room-checks-needs.mjs';
+import { keepEvent } from '../tools/uat/room-events.mjs';
 import { parseScenario } from '../tools/uat/scenario.mjs';
 import { TRIGGERS, unknownTriggers } from '../tools/uat/triggers.mjs';
 

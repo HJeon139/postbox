@@ -1,7 +1,7 @@
 // Hand-built rooms for the delivery checks and triggers (#508). HAND-BUILT, not recorded: the recorded rooms these
 // checks were first run on (UAT runs of 24 and 28 October 2026) hold the agents’ Claude Code transcripts, which can’t
 // be committed. Every shape here is one those runs recorded, cut to the fields the checks read:
-//   item.add { threadId, item }, item.patch { threadId, id, patch }   Postbox’s events (server/room-events.mjs)
+//   item.add { threadId, item }, item.patch { threadId, id, patch }   Postbox’s events (tools/uat/room-events.mjs)
 //   session { id, seenItem, updatedAt }                                 a session event, as keepEvent keeps it
 //   { handle, started, ended, events }                                  a turn’s raw stream (tools/uat/run-files.mjs);
 //                                                                       its events cut to the init and, when the turn
@@ -50,7 +50,7 @@ export function room() {
   return {
     f,
     /**
-     * An agent in the room, on a backend: its persona (state.personas, as server/room-checks-backends.mjs reads it),
+     * An agent in the room, on a backend: its persona (state.personas, as tools/uat/room-checks-backends.mjs reads it),
      * and its transcript when it runs on Claude Code, the only backend a run records one of (tools/uat/run-files.mjs).
      */
     agent(handle, { backend = 'claude-code' } = {}) {
