@@ -41,3 +41,17 @@ test('an item.patch heard after a before-load’s seq reaches the item the load 
   place(state, ranges, { threadId: 't', seq: 11, start: 0, total: 10, items: items(0, 5) }, 'before');
   assert.equal(state.items.t.find((x) => x.id === 'i2').text, 'edited');
 });
+
+test('a message added after a move, both heard during a replace load, is kept', () => {
+  // Server at answer (seq 10): i0..i4. Then seq 11 moves i1 to the end (stub s1 in its place), seq 12 adds i5.
+  const state = { items: {} };
+  const ranges = new Map();
+  loading(ranges, 't');
+  gate(state, ranges, 'item.move', { threadId: 't', id: 'i1', stub: { id: 's1', kind: 'moved' }, patch: {} }, 11);
+  gate(state, ranges, 'item.add', { threadId: 't', item: it(5) }, 12);
+  place(state, ranges, { threadId: 't', seq: 10, start: 0, total: 5, items: items(0, 5) }, 'replace');
+  assert.deepEqual(
+    state.items.t.map((x) => x.id),
+    ['i0', 's1', 'i2', 'i3', 'i4', 'i1', 'i5'],
+  );
+});

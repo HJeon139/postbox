@@ -74,7 +74,10 @@ function judge(state, r, type, d, seq) {
     r.total++;
     return end ? 'apply' : 'beyond';
   }
-  return type === 'item.move' ? moveIn(list, end, d) : 'apply';
+  if (type !== 'item.move') return 'apply';
+  // A move puts the item last and leaves a stub in its place: the conversation has one more (shared/state.mjs, moveItem).
+  r.total++;
+  return moveIn(list, end, d);
 }
 
 /**
@@ -149,9 +152,12 @@ function replay(state, r, answer, again, how) {
       if (how !== 'before' && r.start + list.length === next && positionOf(list, e.data.item.id) < 0) apply(state, e.type, e.data);
       next++;
     } else if (e.type === 'item.move') {
-      const verdict = moveIn(list, atEnd(list, r), e.data);
+      // A move adds to the conversation's end as an add does, so the place of the next add counts it.
+      if (how === 'replace') r.total++;
+      const verdict = moveIn(list, r.start + list.length === next, e.data);
       if (verdict === 'apply') apply(state, e.type, e.data);
       reload ||= verdict === 'reload';
+      next++;
     } else apply(state, e.type, e.data);
   }
   return reload;
