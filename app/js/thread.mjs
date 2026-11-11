@@ -1526,7 +1526,7 @@ export function mountComposer(threadId, { side = false } = {}) {
   function commandFolder() {
     const se = target();
     const p = se ? S().personas[se.personaId] : null;
-    // An agent on a host works in a folder there, so ! runs in the project’s folder here (runtime.mjs, commandFolder).
+    // An agent on a host works in a folder there, so ! runs in the project’s folder here (server/shell-runs.mjs, commandFolder).
     if (hostOf(se)) return S().projects[thread()?.projectId]?.folder || null;
     return p?.folder || S().projects[thread()?.projectId]?.folder || null;
   }
