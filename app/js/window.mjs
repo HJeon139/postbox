@@ -1,10 +1,11 @@
 // The transcript window, slice W1 (#866; the sprint 4 window note, r2): a long conversation mounts only the items
 // around where you are, with a spacer above and below standing in for the rest at about their height
 // (window-heights.mjs), so opening it builds a bounded number of items however long it is. It grows toward a spacer
-// as you scroll (W1), and past its ceiling unmounts what’s furthest from the view (W2). An item with focus stays
-// mounted where it is, between spacers of its own, until focus leaves it; an item’s open
-// details come back when it’s mounted again. It’s on by default for a conversation over its ceiling (the person’s
-// choice of 8 Nov); find-in-page, select-all and print see only what’s mounted, and search (W4) covers the rest.
+// as you scroll (W1), and past its ceiling of items or its budget of elements (window-cost.mjs, #1155) unmounts what’s
+// furthest from the view (W2). An item with focus stays mounted where it is, between spacers of its own, until focus
+// leaves it; an item’s open details come back when it’s mounted again. It’s on by default for a conversation over its
+// ceiling or its budget (the person’s choice of 8 Nov); find-in-page, select-all and print see only what’s mounted,
+// and search (W4) covers the rest.
 //
 //   localStorage.setItem('pb-window', 'off')    turns it off in this browser
 
@@ -12,7 +13,8 @@ import { h } from './dom.mjs';
 import { restoreDetails } from './rerender-state.mjs';
 import { holdView } from './view-jump.mjs';
 import { holdSkipping } from './view-skip.mjs';
-import { heightsFor, kindOf } from './window-entry.mjs';
+import { budgetFor, elementsOf } from './window-cost.mjs';
+import { elementsIn, heightsFor, kindOf } from './window-entry.mjs';
 import { edgeKeys } from './window-keys.mjs';
 import { CEILING, CHUNK, FLOOR, MARGIN } from './window-limits.mjs';
 import * as windowShrink from './window-shrink.mjs';
@@ -38,7 +40,8 @@ export function windowOn() {
  *   mount: (i: number) => HTMLElement, nodes: Map<string, HTMLElement> }} o
  */
 export function createWindow(o) {
-  if (!windowOn() || o.list.length <= CEILING) return null;
+  // Mounted whole only within both the ceiling of items and the budget of elements (window-cost.mjs).
+  if (!windowOn() || (o.list.length <= CEILING && elementsIn(o.key, o.list) <= budgetFor(o.el))) return null;
   return new TranscriptWindow(o);
 }
 
@@ -82,6 +85,7 @@ class TranscriptWindow {
     this.above = h('div.win-spacer', { 'aria-hidden': 'true', dataset: { spacer: 'above' } });
     this.below = h('div.win-spacer', { 'aria-hidden': 'true', dataset: { spacer: 'below' } });
     this.gap = 0;
+    this.budget = 0; // the elements it may hold, set as its range opens (openRange)
     this.width = 0;
     this.from = 0;
     this.to = 0;
@@ -128,7 +132,9 @@ class TranscriptWindow {
     this.width = width;
     for (const e of entries) {
       const i = this.indexOf.get(/** @type {HTMLElement} */ (e.target).dataset.key ?? '');
-      if (i !== undefined) this.heights.measure(i, e.borderBoxSize?.[0]?.blockSize ?? e.contentRect.height);
+      if (i === undefined) continue;
+      this.heights.measure(i, e.borderBoxSize?.[0]?.blockSize ?? e.contentRect.height);
+      this.counted(i, e.target);
     }
     this.paintBelow();
   }
@@ -141,12 +147,25 @@ class TranscriptWindow {
   openRange(center = this.openCenter()) {
     const total = this.total;
     const reach = this.viewH() * (MARGIN + 0.5);
+    // The rest of the page is counted here, as the range opens, not at each scroll: it walks the whole document.
+    const budget = (this.budget = budgetFor(this.el));
     let a = center;
     let b = center + 1;
-    while (a > 0 && b - a < CEILING && this.heights.span(a, center + 1) < reach) a--;
-    while (b < total && b - a < CEILING && this.heights.span(center, b) < reach) b++;
-    while (a > 0 && b - a < FLOOR) a--;
+    let cost = this.costOf(center);
+    // Within the ceiling of items and the budget of elements, whichever comes first.
+    const fits = (/** @type {number} */ i) => b - a < CEILING && cost + this.costOf(i) <= budget;
+    while (a > 0 && fits(a - 1) && this.heights.span(a, center + 1) < reach) cost += this.costOf(--a);
+    while (b < total && fits(b) && this.heights.span(center, b) < reach) cost += this.costOf(b++);
+    while (a > 0 && b - a < FLOOR && fits(a - 1)) cost += this.costOf(--a);
     return [a, b];
+  }
+  /** Item i’s cost in elements: as counted when it was mounted, else its kind’s estimate (window-cost.mjs). @param {number} i */
+  costOf(i) {
+    return this.entry.costs.of(this.entry.ids[i], this.entry.kinds[i]);
+  }
+  /** Counts mounted item i’s elements. @param {number} i @param {Element} node */
+  counted(i, node) {
+    this.entry.costs.count(this.entry.ids[i], this.entry.kinds[i], elementsOf(node));
   }
   /** Mounts items [a, b) before `before`, in order. @param {number} a @param {number} b @param {Node} before */
   mountRun(a, b, before) {
@@ -159,6 +178,7 @@ class TranscriptWindow {
   /** Item i, rendered from the state, with the details it had open when it left. @param {number} i */
   fresh(i) {
     const node = this.mount(i);
+    this.counted(i, node);
     this.sizes.observe(node);
     restoreDetails(node, this.saved.get(this.entry.ids[i]));
     this.saved.delete(this.entry.ids[i]);
@@ -207,11 +227,11 @@ class TranscriptWindow {
   shrink() {
     return windowShrink.shrink(this);
   }
-  dropTop(px) {
-    return windowShrink.dropTop(this, px);
+  dropTop(px, over) {
+    return windowShrink.dropTop(this, px, over);
   }
-  dropBottom(px) {
-    return windowShrink.dropBottom(this, px);
+  dropBottom(px, over) {
+    return windowShrink.dropBottom(this, px, over);
   }
   /** Mounts a run above the range; the item that was first keeps its place on screen. */
   growUp() {
@@ -239,6 +259,7 @@ class TranscriptWindow {
       // Torn down before its first frame (a room switch, a resync): nothing to listen for.
       if (!live.has(this)) return;
       this.gap = Number.parseFloat(getComputedStyle(this.el).rowGap) || 0;
+      this.budget = budgetFor(this.el); // the rest of the page, now that it’s built around the transcript
       this.paintSpacers();
       this.scroller().addEventListener('scroll', this.scrolled, { passive: true });
       this.scrolled();
@@ -250,6 +271,7 @@ class TranscriptWindow {
     this.indexOf.set(it.id, this.total);
     this.heights.push(kindOf(it));
     this.entry.ids.push(it.id);
+    this.entry.kinds.push(kindOf(it));
     if (atEnd) this.to++;
     else this.paintBelow();
     this.scrolled();
@@ -262,6 +284,7 @@ class TranscriptWindow {
       this.indexOf.delete(it.id);
       this.indexOf.set(stub.id, at);
       this.entry.ids[at] = stub.id;
+      this.entry.kinds[at] = kindOf(stub);
       this.heights.retype(at, kindOf(stub));
       windowShrink.dropMovedIsland(this, at, stub.id);
     }

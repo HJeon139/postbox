@@ -112,26 +112,54 @@ export function release(w) {
 }
 
 /**
+ * How far the range is past its limits: by items, past the ceiling, and by elements, past the budget it opened with
+ * (window-cost.mjs).
+ * @param {any} w the window @returns {{ items: number, elements: number }}
+ */
+function excess(w) {
+  let cost = 0;
+  for (let i = w.from; i < w.to; i++) cost += w.costOf(i);
+  return { items: w.size - CEILING, elements: cost - w.budget };
+}
+
+/**
  * @param {any} w
- * Past the ceiling, unmounts what’s furthest from the view, beyond the margin, by measured heights: from the top if
- * that’s further, holding what you see in place, else from the bottom.
+ * Past the ceiling of items or the budget of elements, unmounts what’s furthest from the view, beyond the margin, by
+ * measured heights: from the top if that’s further, holding what you see in place, else from the bottom.
  */
 export function shrink(w) {
-  if (w.size <= CEILING) return;
+  const over = excess(w);
+  if (over.items <= 0 && over.elements <= 0) return;
   const reach = w.viewH() * MARGIN;
   const first = /** @type {HTMLElement} */ (w.nodes.get(w.entry.ids[w.from]));
   const last = /** @type {HTMLElement} */ (w.nodes.get(w.entry.ids[w.to - 1]));
   const farAbove = -first.getBoundingClientRect().top - reach;
   const farBelow = last.getBoundingClientRect().bottom - w.viewH() - reach;
-  if (farAbove > 0 && farAbove >= farBelow) w.dropTop(farAbove);
-  else if (farBelow > 0) w.dropBottom(farBelow);
+  if (farAbove > 0 && farAbove >= farBelow) w.dropTop(farAbove, over);
+  else if (farBelow > 0) w.dropBottom(farBelow, over);
 }
 
-/** Unmounts from the top up to `px` of items, down to the ceiling. @param {any} w the window @param {number} px */
-export function dropTop(w, px) {
+/**
+ * How many items to unmount from one end, by step from `edge`: until the range is back within both limits, or the next
+ * would cut past `px` of items. @param {any} w the window @param {number} edge @param {number} step @param {number} px
+ * @param {{ items: number, elements: number }} over
+ */
+function dropCount(w, edge, step, px, over) {
   let n = 0;
-  for (let cut = 0; w.size - n > CEILING && cut + w.heights.span(w.from + n, w.from + n + 1) <= px; n++)
-    cut += w.heights.span(w.from + n, w.from + n + 1) + w.gap;
+  let freed = 0;
+  for (let cut = 0; n < over.items || freed < over.elements; n++) {
+    const i = edge + n * step;
+    const h = w.heights.span(i, i + 1);
+    if (n >= w.size - 1 || cut + h > px) break;
+    cut += h + w.gap;
+    freed += w.costOf(i);
+  }
+  return n;
+}
+
+/** Unmounts from the top up to `px` of items, down to the limits. @param {any} w the window @param {number} px @param {{ items: number, elements: number }} over */
+export function dropTop(w, px, over) {
+  const n = dropCount(w, w.from, 1, px, over);
   if (!n) return;
   // Every item dropped was mounted, so measured: the spacer stands in for exactly their height, and nothing moves.
   // view-state holds the anchor through any change in size that’s left (holdAnchor).
@@ -142,10 +170,9 @@ export function dropTop(w, px) {
   w.paintSpacers();
 }
 
-/** Unmounts from the bottom up to `px` of items, down to the ceiling. @param {any} w the window @param {number} px */
-export function dropBottom(w, px) {
-  let n = 0;
-  for (let cut = 0; w.size - n > CEILING && cut + w.heights.span(w.to - n - 1, w.to - n) <= px; n++) cut += w.heights.span(w.to - n - 1, w.to - n) + w.gap;
+/** Unmounts from the bottom up to `px` of items, down to the limits. @param {any} w the window @param {number} px @param {{ items: number, elements: number }} over */
+export function dropBottom(w, px, over) {
+  const n = dropCount(w, w.to - 1, -1, px, over);
   if (!n) return;
   for (let i = w.to - n; i < w.to; i++) w.drop(i);
   w.to -= n;
