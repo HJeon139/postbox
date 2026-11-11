@@ -11,7 +11,7 @@ import { whenWritable } from './store-outage.mjs';
 
 // A `!command`’s output, bounded: the item keeps its last characters, it reaches the browser in flushes, and once cut,
 // its text is refreshed rarely and a limited number of times.
-const MAX_COMMAND_OUTPUT = 64 * 1024;
+export const MAX_COMMAND_OUTPUT = 64 * 1024;
 const COMMAND_FLUSH_MS = 100;
 const COMMAND_REFRESH_MS = 5000;
 const MAX_COMMAND_REFRESHES = 60;
@@ -88,7 +88,7 @@ export async function runShellCommand(rt, threadId, command) {
  * refresh replaces the whole text, so they’re rare and few, and the final flush always arrives.
  * @param {any} rt @param {string} threadId @param {string} itemId @param {string} note  the output’s first line
  */
-function commandOutput(rt, threadId, itemId, note) {
+export function commandOutput(rt, threadId, itemId, note) {
   let out = note; // the end of the output so far, at most twice the bound between flushes
   let sent = note.length; // characters already sent as item.text, before the output was cut
   let cut = false;
@@ -127,7 +127,7 @@ function commandOutput(rt, threadId, itemId, note) {
       timer.unref?.();
     }
   };
-  return { add, flush, cut: () => cut };
+  return { add, flush, cut: () => cut, kept: () => out.length };
 }
 
 /**
