@@ -2,6 +2,27 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 2.0.0 (2026-11-11)
+
+### Breaking changes
+
+- **store:** drop the tool that rewrote a snapshot for a Postbox from before #1180
+- **assets:** replace the corpus and datasets with search over room assets
+- **store:** every snapshot is lines, and a tool rewrites one for a Postbox from before #1180 (#1180)
+
+### Fixes
+
+- **assets:** fence each passage search_assets gives, as read_asset does
+- **app:** an older log's dataset line shows who loaded which, not an empty line
+- **assets:** an older log's dataset line no longer says to search it by books
+- **assets:** rebuild a room's search index when an asset is renamed
+- **telemetry:** leave out tool ids Postbox no longer has from a report
+- **uat:** the verifier is told snapshot.json is lines, not one JSON object (#1180)
+- **store:** a line snapshot's objects are plain, and fileLines joins a long line once (#1180)
+- **store:** emits wait while a snapshot is written, so it's one view of the state (#1180)
+- **store:** a line snapshot splits on the newline byte, and ends with a line that counts it (#1180)
+- **store:** the snapshot is written as lines and read back by line, as the log is (#1180)
+
 ## 1.58.6 (2026-11-11)
 
 ### Fixes
