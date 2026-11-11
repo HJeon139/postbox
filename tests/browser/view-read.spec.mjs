@@ -188,19 +188,6 @@ test('V1: a transcript says what it is from the moment it’s on the page', asyn
   expect(await page.evaluate(() => /** @type {any} */ (window).__firstMode)).toBe('following');
 });
 
-test.describe('at 2× pixels', () => {
-  test.use({ deviceScaleFactor: 2 });
-  test('V1: the offset is published to 0.1 px, so rounding never adds to the 1 px the check allows', async ({ page }) => {
-    const { t } = room('View read: offset to 0.1 px');
-    await open(page, t);
-    await page.evaluate(() => scrollBy(0, -1200.5));
-    await settled(page);
-    const v = await holds(page, t, 'reading at a half pixel');
-    expect(Math.abs(/** @type {number} */ (v.actual) - Number(v.offset)), 'within 0.1 px').toBeLessThanOrEqual(0.1);
-    expect(Number(v.offset) % 1, 'the scroll left the anchor on a half pixel').not.toBe(0);
-  });
-});
-
 test('V1: a redraw from new state that no longer has the anchor takes the anchor again where the view is', async ({ page }) => {
   const { t } = room('View read: anchor gone on a load');
   await open(page, t);

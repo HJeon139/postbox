@@ -6,8 +6,8 @@
 import { browserMoved, inSight, measure } from './view-box.mjs';
 /**
  * @typedef {{ el: HTMLElement, inPanel: boolean, nodes: Map<string, HTMLElement>, unseen: number, stuck: boolean,
- *   anchor: { key: string, at: number } | null, pinned: boolean, smoothing: boolean, dead: boolean, shown: number,
- *   lastTop: number, seenTop: number, heardYou: boolean, held: { end: number, last: number, width: number },
+ *   anchor: { key: string, at: number, shown?: number } | null, pinned: boolean, smoothing: boolean, dead: boolean,
+ *   shown: number, lastTop: number, seenTop: number, heardYou: boolean, held: { end: number, last: number, width: number },
  *   jump: ((n: number) => void) | null, bound: any, size: string, sizes: ResizeObserver, changes: MutationObserver,
  *   changed?: boolean, noted?: number }} View
  */
@@ -25,10 +25,19 @@ function holdAnchor(v) {
   const s = box(v);
   const n = v.anchor && v.nodes.get(v.anchor.key);
   if (!s || !n?.isConnected || !v.anchor) return;
-  const d = n.getBoundingClientRect().top - viewTop(v, s) - v.anchor.at;
-  if (Math.abs(d) < 1) return;
-  s.scrollTop += d;
-  v.lastTop = s.scrollTop;
+  const top = () => n.getBoundingClientRect().top - viewTop(v, s);
+  const d = top() - v.anchor.at;
+  if (Math.abs(d) >= 1) {
+    s.scrollTop += d;
+    v.lastTop = s.scrollTop;
+  }
+  // The browser lands a scroll on a whole pixel, up to half a pixel from a fraction it was aimed at, and a change under
+  // a pixel isn’t held at all. The anchor holds the place it aimed for, so the misses don’t add up while a jump’s target
+  // is pinned (#712), but what’s published is where it is, now: its scroll event, if any, comes a frame later (#1245).
+  // A scroll clamped short at an end publishes the place it aimed for, to go back to once there’s room (#837).
+  const shown = top();
+  v.anchor.shown = Math.abs(shown - v.anchor.at) < 1 ? shown : undefined;
+  publish(v);
 }
 // Smoothly only in the main pane, with motion allowed, and where the browser says when a scroll ends: follow() holds
 // off while it runs, and smoothEnded() goes the rest of the way (#712a).
