@@ -2,19 +2,17 @@
 // limit, queues messages sent mid-reply, handles Stop, tracks what "needs you", and implements the UI
 // tools that agents call (over MCP, or in-process for the mock).
 
-import { createHash, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { homedir } from 'node:os';
-import { basename, resolve, sep } from 'node:path';
+import { resolve, sep } from 'node:path';
 import { ASKING } from '../shared/catalog.mjs';
-import { COLUMN_PX, lintDiagrams, MIN_TEXT_PX, mermaidBlocks } from '../shared/diagram-lint.mjs';
 import { READING } from '../shared/limits.mjs';
 import { formatDuration, glimpseOf, parseMentions } from '../shared/text.mjs';
 import { carriedList } from '../shared/work.mjs';
-import { describeTool } from './adapters/claude-stream.mjs';
 import { workFolder } from './adapters/folder.mjs';
 import { listProcesses } from './adapters/process-group.mjs';
 import { EFFORT_LEVELS } from './adapters/setup.mjs';
-import { contentBlocks, listClaudeSessions, recentHistory, TranscriptTail, typedText } from './adapters/terminal-mirror.mjs';
+import { recordCommands, runAgentCommand } from './agent-commands.mjs';
 import { agentFile, agentFolders, appFiles } from './agent-files.mjs';
 import { retireApp } from './app-retire.mjs';
 import { APP_HOLD_MAX, APP_SEND_LIMIT, APP_SEND_WINDOW_MS } from './app-send-limits.mjs';
@@ -27,15 +25,15 @@ import { act, answerDelivered, unreadAnswer, updateBlock } from './blocks.mjs';
 import { bringToConversation } from './bring.mjs';
 import { keptTurns, nextNeed, noticeNeed, releaseNeed, stateFor, TURN_TIED } from './card-needs.mjs';
 import { catchUp, moveMarkers, pointerIfSeen } from './catch-up.mjs';
-import { blockProblems, diagramProblems, formatLint, introducedTerms, lintMessage, personSaid, rawHtmlProblems, termProblems } from './checks.mjs';
+import { attachClaudeSession, claudeSessions, mirror, pollMirror, rearmMirrors, stopMirrorFor, stopMirrors } from './claude-mirror.mjs';
+import { diagramCheck } from './diagram-check.mjs';
 import { emptyReply, endedWithoutReply } from './empty-reply.mjs';
-import { sessionFolder } from './folder-path.mjs';
 import { heldSession } from './held-session.mjs';
 import { clip, clipText, httpError } from './helpers.mjs';
 import { clipItem, describeItem, topicRootLine } from './item-lines.mjs';
 import { keptGroupsOf, keptJobs, pollKept, stopJob, stopKeptJobs, watchKept } from './kept-jobs.mjs';
 import { Ledger } from './ledger.mjs';
-import { sendLint } from './lint-delivery.mjs';
+import { endLint, foldLint, lint, quietLint } from './lint-delivery.mjs';
 import { wakeMentions } from './mention-wakes.mjs';
 import { sentAttachments } from './message-attachments.mjs';
 import * as queue from './message-queue.mjs';
@@ -60,16 +58,7 @@ import { addReadFolder, readCardAlways } from './read-folders.mjs';
 import { readMessage } from './read-message.mjs';
 import { addHost, host, removeHost, setProjectHostFolder, updateHost } from './remote/host-admin.mjs';
 import { describeHostInstall, hostStatus, installHost, retryHost, watchHosts } from './remote/host-status.mjs';
-import {
-  hereFolder,
-  localBackends,
-  refuseHere,
-  refuseUnregistered,
-  refuseUnregisteredSend,
-  registeredAdapter,
-  requestAdapter,
-  runsHere,
-} from './remote/placement.mjs';
+import { localBackends, refuseHere, refuseUnregistered, refuseUnregisteredSend, registeredAdapter } from './remote/placement.mjs';
 import { RemoteTurns } from './remote/turns.mjs';
 import { replySegment, stepTaken, wordsSegment } from './reply-segment.mjs';
 import { reviewBlock } from './review-comments.mjs';
@@ -89,7 +78,7 @@ import { archive, archiveThread, deleteSession, deleteThread, finishLeftDeletes,
 import { pendingSessionsIn, tellAgent, updateSession } from './session-write.mjs';
 import { mcpContext } from './setup-context.mjs';
 import { clearSummaryPending, postSummary, shareText, shareToConversation, summarizeBack, summarizing } from './share-back.mjs';
-import { runShell } from './shell.mjs';
+import { commandFolder, expireStaleCommands, flushShellOutput, runShellCommand, stopShellCommand, stopShellCommands } from './shell-runs.mjs';
 import {
   agentWake,
   archiveForks,
@@ -109,6 +98,7 @@ import { firstPromptSection, settleThread, turnContext } from './thread-summary.
 import { updateThread } from './thread-write.mjs';
 import { askForTool } from './tool-ask.mjs';
 import { openTopic, startTopic } from './topic-open.mjs';
+import { checkTurn, stallLeftRunning, stallSteps } from './turn-checks.mjs';
 import { endedAs, endWork } from './turn-end-work.mjs';
 import { askedAgain, askedOf, replyMarks, wokeOf } from './turn-marks.mjs';
 import { settleStoppedSteps, settleSubagentSteps } from './turn-steps.mjs';
@@ -1628,201 +1618,37 @@ export class Runtime {
     );
   }
 
-  /** The server’s checks over a finished turn. */
+  // The server’s checks over a finished turn: server/turn-checks.mjs.
+
   checkTurn(turn, se) {
-    const lineage = this.lineage(turn.threadId);
-    const items = lineage.flatMap((id) => this.store.pending.items(id));
-    const apps = Object.values(this.store.pending.apps()).filter((a) => lineage.includes(a.threadId));
-    const problems = termProblems(turn.said, this.glossaryFor(turn.threadId), introducedTerms(items, apps), personSaid(items));
-    // Diagrams too wide or too busy to read at the conversation’s width.
-    const diagrams = lintDiagrams(turn.said);
-    if (diagrams.length)
-      this.rememberDiagrams(
-        se.id,
-        diagrams.map((d) => d.src),
-      );
-    problems.push(...diagramProblems(diagrams), ...rawHtmlProblems(turn.said));
-    // A reply that should have been a block (#63): what this turn showed, and what the person last asked for.
-    const own = this.store.pending.items(turn.threadId);
-    const shown = own.filter((it) => it.kind === 'block' && it.valid && it.turnId === turn.id).map((it) => it.block.type);
-    problems.push(...blockProblems(turn.said, shown, own.findLast((it) => it.kind === 'user')?.text ?? ''));
-    return problems;
+    return checkTurn(this, turn, se);
   }
-
-  /**
-   * A turn that was stopped or failed starts no lint turn, but its progress steps still running show as stalled, as
-   * at a normal end (#58), and the agent hears which at the start of its next turn (#98).
-   * @param {any} turn @param {any} se @param {'stopped' | 'failed' | 'shutdown' | 'hung'} how
-   */
   stallLeftRunning(turn, se, how) {
-    const problems = this.stallSteps(turn, se);
-    if (!problems.length) return;
-    const blocks = problems.map((p) => `- Block “${p.scope.title ?? p.scope.id}” (id ${p.scope.id}): ${p.message}`);
-    this.tellAgent(
-      se.id,
-      `${{ stopped: 'The person stopped your last turn', failed: 'Your last turn failed', shutdown: 'Postbox shut down during your last turn', hung: 'Postbox stopped your last turn, which had no output for too long,' }[how]} while progress steps were running:\n${blocks.join('\n')}`,
-    );
+    return stallLeftRunning(this, turn, se, how);
   }
-
-  /**
-   * Progress steps still running when their agent’s turn ends are marked stalled, and the agent is told to close them.
-   * Not the steps that were running when the person kept its background jobs running, while one runs on (#129): such
-   * a step may follow the job, and they stall when the last one ends (endJob).
-   * @param {{ threadId: string, keepJobs?: Set<string> }} turn
-   */
   stallSteps(turn, se) {
-    const problems = [];
-    const runsOn = turn.keepJobs?.size || (se.jobs ?? []).some((j) => j.kept);
-    const held = new Set(runsOn ? (se.heldSteps?.keys ?? []) : []);
-    for (const it of this.store.pending.items(turn.threadId)) {
-      if (it.kind !== 'block' || !it.valid || it.sessionId !== se.id || it.block.type !== 'progress') continue;
-      const stalls = (s) => s.state === 'running' && !held.has(`${it.id}:${s.id}`);
-      const running = it.block.steps.filter(stalls);
-      if (!running.length) continue;
-      const steps = it.block.steps.map((s) => (stalls(s) ? { ...s, state: 'stalled' } : s));
-      this.patchItem(turn.threadId, it.id, { block: { ...it.block, steps }, stalledAt: Date.now() });
-      const names = running.map((s) => `“${s.label}”`);
-      const one = running.length === 1;
-      problems.push({
-        code: 'steps-left-running',
-        message: `${one ? 'Step' : 'Steps'} ${names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names.at(-1)}` : names[0]} ${one ? 'was' : 'were'} still running when your turn ended, so the person sees ${one ? 'it' : 'them'} as stalled. Close each with update_block, as done or failed.`,
-        scope: { kind: 'block', id: it.block.id, title: it.block.title },
-      });
-    }
-    return problems;
+    return stallSteps(this, turn, se);
   }
 
-  lintEntry(sessionId, turnId) {
-    let e = this.lints.get(turnId);
-    if (!e) {
-      e = { sessionId, kind: null, ended: false, sent: false, problems: [], timer: null, threadId: null };
-      this.lints.set(turnId, e);
-      // Only recent turns can still get a lint turn.
-      for (const [k, old] of this.lints) {
-        if (this.lints.size <= 200) break;
-        clearTimeout(old.timer);
-        this.lints.delete(k);
-      }
-    }
-    return e;
-  }
+  // When checks reach an agent after its turn: server/lint-delivery.mjs.
 
-  /** The turn ended: its lint turn goes once the browser has had a moment to report. */
   endLint(turn, problems) {
-    const e = this.lintEntry(turn.sessionId, turn.id);
-    e.kind = turn.kind;
-    // The lint turn answers where the reply was.
-    e.threadId = turn.threadId;
-    e.ended = true;
-    e.problems.push(...problems);
-    if (e.problems.length) this.sendLint(turn.id);
+    return endLint(this, turn, problems);
   }
-
-  /**
-   * Adds problems to the lint turn of the agent turn they came from. Returns whether the agent will hear of them:
-   * not when they came from a lint turn, or when that turn’s lint turn has already gone.
-   * @param {string} sessionId  @param {string|null|undefined} turnId  @param {import('./checks.mjs').Problem[]} problems
-   */
   lint(sessionId, turnId, problems) {
-    if (!problems.length || !turnId || !this.s.sessions[sessionId]) return false;
-    const live = [...this.turns.values()].find((t) => t.id === turnId);
-    // A turn that isn’t running and has no entry failed, was stopped, ran before a restart or is long gone: its
-    // problems are dropped, so no lint turn lands about an old reply. A lint turn’s own problems are too.
-    if ((!live && !this.lints.has(turnId)) || live?.kind === 'lint') return false;
-    const e = this.lintEntry(sessionId, turnId);
-    if (e.kind === 'lint' || e.sent) return false;
-    e.problems.push(...problems);
-    if (e.ended) this.sendLint(turnId);
-    return true;
+    return lint(this, sessionId, turnId, problems);
   }
-
-  sendLint(turnId) {
-    return sendLint(this, turnId);
-  }
-
-  /**
-   * Another turn starts before a lint turn went (the person wrote during the settle, say): the problems join that
-   * turn, so a lint turn never lands after it, and later reports for the earlier turns are dropped.
-   */
   foldLint(sessionId, message) {
-    const problems = [];
-    for (const e of this.lints.values()) {
-      if (e.sessionId !== sessionId || !e.ended || e.sent) continue;
-      clearTimeout(e.timer);
-      e.timer = null;
-      e.sent = true;
-      problems.push(...e.problems);
-    }
-    // Its own place in the turn (formatMessage, server/adapters/guide.mjs): after the request, before the background.
-    return problems.length ? { ...message, lint: formatLint(lintMessage(problems), { folded: true }) } : message;
+    return foldLint(this, sessionId, message);
   }
-
-  /** A lint turn that wrote nothing shows as one line, such as “@researcher defined “Step 2””. */
   quietLint(turn, se) {
-    // What the browser reports later about this lint turn’s own work is never linted.
-    Object.assign(this.lintEntry(se.id, turn.id), { kind: 'lint', ended: true, sent: true });
-    if (turn.said.trim() || turn.first) return;
-    const defined = [...new Set(turn.defined ?? [])].map((t) => `“${t}”`);
-    const list = defined.length > 1 ? `${defined.slice(0, -1).join(', ')} and ${defined.at(-1)}` : (defined[0] ?? '');
-    const text = defined.length ? `@${se.handle} defined ${list}` : turn.steps.length ? `@${se.handle} acted on Postbox’s check without a reply` : null;
-    if (text) this.addItem(turn.threadId, { kind: 'system', variant: 'lint', handle: se.handle, turnId: turn.id, text, lintReply: true });
+    return quietLint(this, turn, se);
   }
 
-  // The diagram linter estimates from a diagram’s source; the browser measures the real text size after it renders
-  // and reports here what the estimate missed. Either way the agent hears about a diagram once.
+  // Diagram checks from the page: server/diagram-check.mjs.
 
-  rememberDiagrams(sessionId, sources) {
-    const se = this.s.sessions[sessionId];
-    if (!se) return;
-    const hashes = sources.map((s) => createHash('sha256').update(s.trim()).digest('hex').slice(0, 16));
-    this.updateSession(sessionId, { diagramsLinted: [...new Set([...(se.diagramsLinted ?? []), ...hashes])].slice(-50) });
-  }
-
-  /**
-   * The browser drew a diagram: { src, textPx, width } when it measured it, or { src, error: { message, line } }
-   * when Mermaid couldn’t draw it.
-   */
-  diagramCheck(threadId, itemId, { src, textPx, width, error }) {
-    const it = this.store.item(threadId, itemId);
-    if (it?.kind !== 'agent' || it.lintReply || typeof src !== 'string') return { ok: true, sent: false };
-    const se = this.s.sessions[it.sessionId];
-    const failed = error && typeof error === 'object' && typeof error.message === 'string';
-    // Only a measurement at the conversation’s width counts; a narrow panel or phone shrinks every diagram.
-    if (!se || (!failed && (!(textPx < MIN_TEXT_PX) || !(width >= COLUMN_PX * 0.8)))) return { ok: true, sent: false };
-    const hash = createHash('sha256').update(src.trim()).digest('hex').slice(0, 16);
-    if (se.diagramsLinted?.includes(hash)) return { ok: true, sent: false };
-    // Only a diagram the reply has: its position and first lines come from the reply, not from the browser.
-    const block = mermaidBlocks(String(it.text)).find((b) => b.src.trim() === src.trim());
-    if (!block) return { ok: true, sent: false };
-    const excerpt = block.src
-      .split('\n')
-      .slice(0, 3)
-      .map((l) => clipText(l, 120))
-      .join('\n');
-    const scope = { kind: 'diagram', index: block.index, excerpt };
-    let problem;
-    if (failed) {
-      // Mermaid’s message, without its caret line: “Parse error on line 2: … Expecting 'SEMI', got 'ARROW'”.
-      const said = error.message
-        .split('\n')
-        .filter((l) => l.trim() && !/^[-\s]*\^$/.test(l))
-        .join(' ')
-        .slice(0, 400);
-      const line = Number.isInteger(error.line) && error.line > 0 ? ` (line ${Math.min(error.line, 9999)})` : '';
-      problem = {
-        code: 'diagram-error',
-        message: `Mermaid couldn’t draw it, so the person sees an error and its source instead. Mermaid said${line}: “${said}”. Fix the syntax.`,
-        scope,
-      };
-    } else
-      problem = {
-        code: 'text-too-small',
-        message: `In the person’s browser, its text is drawn at ${Math.round(textPx * 10) / 10} px at a width of ${Math.round(width)} px, too small to read. Draw it top to bottom, split it, or shorten its labels.`,
-        scope,
-      };
-    const sent = this.lint(se.id, it.turnId, [problem]);
-    if (sent) this.rememberDiagrams(se.id, [src]);
-    return { ok: true, sent };
+  diagramCheck(threadId, itemId, report) {
+    return diagramCheck(this, threadId, itemId, report);
   }
 
   // ── Permission prompts: server/permission-cards.mjs ──────────────────────────────────
@@ -1881,211 +1707,35 @@ export class Runtime {
     return changePermissionFolder(this, change);
   }
 
-  // ── Commands in the composer (#67) ─────────────────────────────────────────────────
+  // ── Commands in the composer (#67): server/agent-commands.mjs and shell-runs.mjs ──────────
   // `/` runs Postbox’s own commands without a turn, or an agent’s skill or command as its turn; `!` runs a command line
   // as the person, in the conversation’s folder, and the agents read it on their next turn, without being woken.
 
-  /**
-   * Keeps an agent’s skills and commands on its session, bounded, for the / menu: from init (names; terminal-only
-   * ones are already left out) or the SDK’s supportedCommands() (with descriptions and argument hints).
-   * @param {string} sessionId @param {unknown} list
-   */
   recordCommands(sessionId, list) {
-    if (!this.s.sessions[sessionId] || !Array.isArray(list)) return;
-    const seen = new Set();
-    const commands = [];
-    for (const c of list) {
-      const name = typeof c?.name === 'string' ? c.name.replace(/^\//, '').trim() : '';
-      if (!name || name.length > 100 || seen.has(name) || !/^[\w:.@/-]+$/.test(name)) continue;
-      seen.add(name);
-      commands.push({
-        name,
-        ...(typeof c.description === 'string' && c.description.trim() ? { description: clipText(c.description.trim(), 200) } : {}),
-        ...(typeof c.argumentHint === 'string' && c.argumentHint.trim() ? { argumentHint: clipText(c.argumentHint.trim(), 100) } : {}),
-        ...(c.skill === true ? { skill: true } : {}),
-      });
-      if (commands.length >= MAX_COMMANDS) break;
-    }
-    this.updateSession(sessionId, { commands: { at: Date.now(), list: commands } });
+    return recordCommands(this, sessionId, list);
   }
-
-  /**
-   * Runs an agent’s skill or command as its turn: `/name args` is the whole prompt (deliver skips the catch-up, which
-   * waits for the next turn), posted in the conversation as you wrote it. In a room, it addresses that agent.
-   * @param {string} threadId @param {{ sessionId: string, text: string }} req
-   */
-  runAgentCommand(threadId, { sessionId, text }) {
-    this.thread(threadId);
-    const line = String(text ?? '')
-      .trim()
-      .slice(0, 50000);
-    if (!/^\/[\w:.@/-]+/.test(line)) throw httpError(422, 'A skill or command starts with / and its name, such as /review.');
-    const se = this.sessionsIn(threadId).find((x) => x.id === sessionId);
-    if (!se) throw httpError(404, 'That agent isn’t in this conversation.');
-    if (se.archived) throw httpError(409, `@${se.handle}’s session is archived. Restore it first.`);
-    if (this.turns.has(se.id)) throw httpError(409, `@${se.handle} is busy. Stop it, or wait for it to finish, then run the command.`);
-    const item = this.addItem(threadId, { kind: 'user', text: line, attachments: [], command: { sessionId: se.id, handle: se.handle } });
-    updateThread(this, threadId, { hops: 0 });
-    if (this.sessionsIn(threadId).length > 1) this.addItem(threadId, { kind: 'system', variant: 'wake', from: 'you', to: se.handle });
-    this.deliver(se.id, { kind: 'user', text: line, attachments: [], itemId: item.id, slash: true });
-    return { item };
+  runAgentCommand(threadId, req) {
+    return runAgentCommand(this, threadId, req);
   }
-
-  /**
-   * The folder a conversation’s `!` commands run in: where the agent that replies there works, as its adapter decides
-   * (its own folder, the project’s, or a workspace of its own), else the project’s.
-   * `!` runs on this computer even when that agent runs on a host (#67, #120): then it’s the project’s folder here,
-   * else the workspace of its own the agent would have here, never a path on the host, and `host` names the host.
-   * @param {string} threadId @returns {Promise<{ folder: string|null, host: string|null }>}
-   */
-  async commandFolder(threadId) {
-    const t = this.thread(threadId);
-    const members = this.sessionsIn(threadId).filter((x) => !x.archived);
-    const se = members.find((x) => x.id === t.lastSpeaker) ?? members[0];
-    const persona = se ? this.personaFor(se) : null;
-    const project = this.s.projects[t.projectId] ?? null;
-    const adapter = persona ? requestAdapter(this, se.handle, persona) : null;
-    if (persona?.remote?.hostId) return hereFolder(this, persona, project, adapter);
-    return { folder: await workFolder(adapter, persona, project), host: null };
+  commandFolder(threadId) {
+    return commandFolder(this, threadId);
   }
-
-  /**
-   * Runs `!command` (#67) as the person, in the conversation’s folder. Output streams into a command item; the item
-   * ends with the exit code and the duration. The agents read it with what they missed, at the start of their next
-   * turn. What the store keeps is bounded: the item holds the last MAX_COMMAND_OUTPUT characters (it says when
-   * earlier output was cut), and once output passes that, the item is refreshed with its end at most every
-   * COMMAND_REFRESH_MS, and at most MAX_COMMAND_REFRESHES times, then once more when the command ends.
-   * @param {string} threadId @param {string} command
-   */
-  async runShellCommand(threadId, command) {
-    this.thread(threadId);
-    const line = String(command ?? '').trim();
-    if (!line) throw httpError(422, 'Write a command after the !.');
-    if (line.length > 10000) throw httpError(422, 'A command is limited to 10,000 characters.');
-    const { folder: cwd, host } = await this.commandFolder(threadId);
-    if (!cwd) throw httpError(409, 'This conversation has no folder to run commands in. Give the project or the agent a folder first.');
-    // Said once, as the output’s first line, when the agent here runs on a host: you, and the agents, see where it ran.
-    const note = host ? `! commands run on this computer, not on ${host}.\n` : '';
-    const startedAt = Date.now();
-    const it = this.addItem(threadId, {
-      kind: 'command',
-      command: line,
-      cwd,
-      ...(host ? { notOn: host } : {}),
-      status: 'running',
-      text: note,
-      cut: false,
-      exitCode: null,
-      signal: null,
-      startedAt,
-    });
-    let out = note; // the end of the output so far, at most twice the bound between flushes
-    let sent = note.length; // characters already sent as item.text, before the output was cut
-    let cut = false;
-    let refreshed = 0; // refreshes of the item’s text since it was cut
-    let refreshedAt = 0;
-    /** @type {NodeJS.Timeout|null} */
-    let timer = null;
-    const flush = ({ final = false } = {}) => {
-      if (timer) clearTimeout(timer);
-      timer = null;
-      if (!this.store.pending.item(threadId, it.id)) return;
-      if (!cut && out.length <= MAX_COMMAND_OUTPUT) {
-        // Only the new text, as the reply of an agent streams.
-        if (out.length > sent) this.store.emit('item.text', { threadId, id: it.id, text: out.slice(sent) });
-        sent = out.length;
-        return;
-      }
-      cut = true;
-      out = out.slice(-MAX_COMMAND_OUTPUT);
-      // Past the bound, each refresh replaces the whole text, so they’re rare and few; the end always arrives.
-      const now = Date.now();
-      if (!final && (refreshed >= MAX_COMMAND_REFRESHES || now - refreshedAt < COMMAND_REFRESH_MS)) return;
-      refreshed++;
-      refreshedAt = now;
-      this.patchItem(threadId, it.id, { text: out, cut: true, ...(refreshed >= MAX_COMMAND_REFRESHES && !final ? { paused: true } : {}) });
-    };
-    const run = { stopped: false, stop: () => false, kill: () => false, done: Promise.resolve(), flush };
-    this.shellRuns.set(it.id, run);
-    const handle = runShell({
-      command: line,
-      cwd,
-      ...(this.spawnShell ? { spawnImpl: this.spawnShell } : {}),
-      onOutput: (text) => {
-        out += text;
-        if (out.length > 2 * MAX_COMMAND_OUTPUT) {
-          out = out.slice(-MAX_COMMAND_OUTPUT);
-          cut = true;
-        }
-        if (!timer) {
-          timer = setTimeout(flush, COMMAND_FLUSH_MS);
-          timer.unref?.();
-        }
-      },
-      onExit: ({ code = null, signal = null, error }) => {
-        flush({ final: true });
-        this.shellRuns.delete(it.id);
-        // How it ended is written once writes are open: the output chunks are memory-only while closed (I1), but a
-        // status left “running” in the recovered state would never end.
-        whenWritable(this, () => {
-          if (!this.store.pending.item(threadId, it.id)) return;
-          this.patchItem(threadId, it.id, {
-            status: run.stopped ? 'stopped' : error ? 'failed' : code === 0 ? 'done' : 'failed',
-            exitCode: typeof code === 'number' ? code : null,
-            signal: signal ?? null,
-            ms: Date.now() - startedAt,
-            ...(cut ? { paused: false } : {}),
-            ...(run.closing ? { error: 'Postbox stopped it as it shut down.' } : error ? { error: clipText(String(error.message ?? error), 300) } : {}),
-          });
-        });
-      },
-    });
-    Object.assign(run, { stop: handle.stop, kill: handle.kill, done: handle.done });
-    return { item: it };
+  runShellCommand(threadId, command) {
+    return runShellCommand(this, threadId, command);
   }
-
-  /** Sends the output of running commands that’s waiting for its next flush now (tests await this, not a timer). */
   flushShellOutput() {
-    for (const run of this.shellRuns.values()) run.flush();
+    return flushShellOutput(this);
   }
-
-  /** Stop on a running `!command`: SIGINT, then SIGKILL. */
   stopShellCommand(threadId, itemId) {
-    const it = this.store.item(threadId, itemId);
-    const run = this.shellRuns.get(itemId);
-    if (it?.kind !== 'command' || !run) throw httpError(409, 'That command already finished.');
-    run.stopped = true;
-    run.stop();
-    return { ok: true };
+    return stopShellCommand(this, threadId, itemId);
+  }
+  stopShellCommands(opts) {
+    return stopShellCommands(this, opts);
+  }
+  expireStaleCommands() {
+    return expireStaleCommands(this);
   }
 
-  /**
-   * When Postbox shuts down: every running command, in its own process group, would outlive it. Each gets SIGINT,
-   * and SIGKILL if it hasn’t ended within graceMs.
-   * @param {{ graceMs?: number }} [opts]
-   */
-  async stopShellCommands({ graceMs = 2000 } = {}) {
-    const runs = [...this.shellRuns.values()];
-    if (!runs.length) return;
-    for (const run of runs) {
-      run.stopped = true;
-      run.closing = true;
-      run.stop();
-    }
-    /** @type {NodeJS.Timeout|undefined} */
-    let timer;
-    const late = new Promise((r) => {
-      timer = setTimeout(r, graceMs);
-    });
-    await Promise.race([Promise.all(runs.map((r) => r.done)), late]);
-    clearTimeout(timer);
-    for (const run of runs) run.kill();
-  }
-
-  /**
-   * After a restart, nothing Postbox started is running any more, unless Postbox stopped without shutting down (a crash),
-   * which can leave a command running on its own. Either way its output here ends.
-   */
   // ── The work ledger (#132) ─────────────────────────────────────────────────────────
   // What a conversation’s agents changed, ran and published, read by the Work view. A conversation is the one a
   // thread belongs to: its side and topic threads count toward it.
@@ -2121,16 +1771,6 @@ export class Runtime {
     return f;
   }
 
-  expireStaleCommands() {
-    for (const [threadId, items] of Object.entries(this.s.items))
-      for (const it of items)
-        if (it.kind === 'command' && it.status === 'running')
-          this.patchItem(threadId, it.id, {
-            status: 'stopped',
-            error: 'Postbox restarted while it ran. If Postbox didn’t shut down cleanly, it may still be running.',
-          });
-  }
-
   /** Where an attachment can be read on disk: a stored upload, or a file in the project’s folder. */
   attachmentPath(threadId, a) {
     if (a?.kind === 'file' && a.fileId) {
@@ -2146,157 +1786,28 @@ export class Runtime {
     return null;
   }
 
-  // ── Attached Claude Code sessions ──────────────────────────────────────────────────
-  // A session you started in a terminal can join Postbox: it becomes an agent whose folder is the session’s
-  // folder, and Postbox resumes that same Claude Code session when you write to it. What you type in the
-  // terminal is mirrored into the thread, marked “from terminal”. Lines written during Postbox’s own turns are
-  // skipped, so nothing shows twice.
+  // ── Attached Claude Code sessions: server/claude-mirror.mjs ─────────────────────────
 
-  async claudeSessions() {
-    const attached = new Set(
-      Object.values(this.s.sessions)
-        .map((se) => se.backendState?.claudeSessionId)
-        .filter(Boolean),
-    );
-    return (await listClaudeSessions({ root: this.config.claudeProjectsRoot })).map(({ file: _file, ...x }) => ({ ...x, attached: attached.has(x.id) }));
+  claudeSessions() {
+    return claudeSessions(this);
   }
-
-  async attachClaudeSession({ claudeSessionId, projectId, handle }) {
-    if (!runsHere(this, 'claude-code')) throw httpError(422, 'Claude Code isn’t available on this computer, so its sessions can’t be attached.');
-    const cs = (await listClaudeSessions({ root: this.config.claudeProjectsRoot, limit: 500 })).find((x) => x.id === claudeSessionId);
-    if (!cs) throw httpError(404, 'That Claude Code session wasn’t found. It may have been deleted.');
-    if (!cs.cwd) throw httpError(422, 'That session doesn’t say which folder it ran in, so Postbox can’t resume it.');
-    const folder = sessionFolder(cs.cwd);
-    if (Object.values(this.s.sessions).some((se) => se.backendState?.claudeSessionId === claudeSessionId))
-      throw httpError(409, 'That session is already attached.');
-    if (!this.s.projects[projectId]) throw httpError(404, 'That project doesn’t exist.');
-    const base =
-      String(handle || basename(cs.cwd))
-        .toLowerCase()
-        .replace(/[^a-z0-9_-]+/g, '-')
-        .replace(/^[^a-z]+/, '')
-        .slice(0, 20) || 'terminal';
-    let name = base.length >= 2 ? base : `cc-${base}`;
-    for (let n = 2; this.personaByHandle(name); n++) name = `${base.slice(0, 20)}-${n}`;
-    const p = this.createPersona({
-      handle: name,
-      backend: 'claude-code',
-      description: `Attached from Claude Code in ${cs.cwd}`,
-      folder,
-    });
-    const t = this.createThread({ projectId, title: cs.title, personaIds: [p.id] });
-    const se = this.sessionsIn(t.id)[0];
-    this.updateSession(se.id, { backendState: { claudeSessionId, transcript: cs.file, attached: true } });
-    for (const it of recentHistory(cs.file)) {
-      if (it.kind === 'user') this.addItem(t.id, { kind: 'user', text: it.text, via: 'terminal' });
-      else
-        this.addItem(t.id, {
-          kind: 'agent',
-          sessionId: se.id,
-          personaId: p.id,
-          handle: p.handle,
-          text: it.text,
-          status: 'done',
-          via: 'terminal',
-          activity: it.steps.length ? { steps: it.steps.map((s) => ({ ...s, state: s.state === 'running' ? 'done' : s.state })) } : null,
-        });
-    }
-    this.addItem(t.id, { kind: 'system', variant: 'attached', handle: p.handle, folder: cs.cwd });
-    this.mirror(se.id);
-    return { threadId: t.id, personaId: p.id, sessionId: se.id };
+  attachClaudeSession(req) {
+    return attachClaudeSession(this, req);
   }
-
-  /** Starts following an attached session’s transcript. */
   mirror(sessionId) {
-    const se = this.s.sessions[sessionId];
-    const file = se?.backendState?.transcript;
-    if (!file || this.mirrors.has(sessionId)) return;
-    const timer = setInterval(() => this.pollMirror(sessionId), 1500);
-    timer.unref?.();
-    this.mirrors.set(sessionId, { tail: new TranscriptTail(file), timer, agentItem: null, steps: [] });
+    return mirror(this, sessionId);
   }
-
   rearmMirrors() {
-    for (const se of Object.values(this.s.sessions)) if (se.backendState?.attached && !se.archived) this.mirror(se.id);
+    return rearmMirrors(this);
   }
-
   stopMirrors() {
-    for (const m of this.mirrors.values()) clearInterval(m.timer);
-    this.mirrors.clear();
+    return stopMirrors(this);
   }
-
   pollMirror(sessionId) {
-    const m = this.mirrors.get(sessionId);
-    const se = this.s.sessions[sessionId];
-    if (!m) return;
-    if (!se) {
-      clearInterval(m.timer);
-      this.mirrors.delete(sessionId);
-      return;
-    }
-    // While the store is closed the tail isn’t advanced: what was typed waits in the file and is read after Retry,
-    // instead of into memory only, where the reload would discard it (the integrator’s finding on 1b).
-    if (!this.store.writable) return;
-    let entries;
-    try {
-      entries = m.tail.poll();
-    } catch {
-      return; // the file is being rewritten; try again next time
-    }
-    // Lines written during Postbox’s own turn are that turn, already in the thread.
-    if (this.turns.has(sessionId) || !entries.length) return;
-    for (const e of entries) {
-      if (e.isSidechain) continue;
-      const typed = typedText(e);
-      if (typed) {
-        this.addItem(se.threadId, { kind: 'user', text: typed, via: 'terminal' });
-        m.agentItem = null;
-        m.steps = [];
-        this.updateSession(sessionId, { state: 'think', currentStep: 'Working in a terminal', finishedAt: null });
-        continue;
-      }
-      if (e.type === 'assistant') {
-        for (const b of contentBlocks(e.message?.content)) {
-          if (b.type === 'text' && b.text?.trim()) {
-            const it = m.agentItem && this.store.pending.item(se.threadId, m.agentItem);
-            if (it) this.patchItem(se.threadId, it.id, { text: it.text ? `${it.text}\n\n${b.text}` : b.text });
-            else m.agentItem = this.mirrorAgentItem(se, b.text);
-            this.updateSession(sessionId, { state: 'gen', currentStep: 'Writing in a terminal' });
-          }
-          if (b.type === 'tool_use') {
-            m.steps.push({ id: b.id, label: describeTool(b.name, b.input), state: 'running', ms: null });
-            if (!m.agentItem) m.agentItem = this.mirrorAgentItem(se, '');
-            this.patchItem(se.threadId, m.agentItem, { activity: { steps: [...m.steps] } });
-            this.updateSession(sessionId, { state: 'tool', currentStep: m.steps.at(-1).label });
-          }
-        }
-        if (e.message?.stop_reason === 'end_turn') this.updateSession(sessionId, { state: 'idle', currentStep: '', finishedAt: Date.now() });
-      }
-      if (e.type === 'user' && Array.isArray(e.message?.content) && m.agentItem) {
-        let changed = false;
-        for (const b of e.message.content) {
-          const step = b.type === 'tool_result' && m.steps.find((s) => s.id === b.tool_use_id);
-          if (step) {
-            step.state = b.is_error ? 'failed' : 'done';
-            changed = true;
-          }
-        }
-        if (changed) this.patchItem(se.threadId, m.agentItem, { activity: { steps: [...m.steps] } });
-      }
-    }
+    return pollMirror(this, sessionId);
   }
-
-  mirrorAgentItem(se, text) {
-    return this.addItem(se.threadId, {
-      kind: 'agent',
-      sessionId: se.id,
-      personaId: se.personaId,
-      handle: se.handle,
-      text,
-      status: 'done',
-      via: 'terminal',
-      activity: null,
-    }).id;
+  stopMirrorFor(sessionId) {
+    return stopMirrorFor(this, sessionId);
   }
 
   // ── Personas: server/persona-write.mjs ─────────────────────────────────────────────
@@ -2381,12 +1892,6 @@ export class Runtime {
   }
   deleteThread(threadId) {
     return deleteThread(this, threadId);
-  }
-
-  stopMirrorFor(sessionId) {
-    const m = this.mirrors.get(sessionId);
-    if (m) clearInterval(m.timer);
-    this.mirrors.delete(sessionId);
   }
 
   renameThread(threadId, title) {
@@ -2582,12 +2087,5 @@ const keepUnsure = (n) => `Postbox couldn’t tell which of ${n} processes is th
 const asHttp = (e) => {
   throw e?.status ? httpError(e.status, e.message) : e;
 };
-// Commands in the composer (#67), bounded: an agent’s list for the / menu, a `!command`’s output (its last
-// characters), how often that output reaches the browser, and how much of it the agents read.
-const MAX_COMMANDS = 200;
-const MAX_COMMAND_OUTPUT = 64 * 1024;
-const COMMAND_FLUSH_MS = 100;
-const COMMAND_REFRESH_MS = 5000;
-const MAX_COMMAND_REFRESHES = 60;
 
 export { formatDuration };
