@@ -70,8 +70,7 @@ test('#237 Shell turned on in the persona sheet answers the card that asked for 
   await expect.poll(() => store.state.sessions[se.id].needs?.kind, { message: 'the agent to need you' }).toBe('toolask');
   await synced(page, app);
   const turns = heard.filter((m) => m.sessionId === se.id).length;
-  // Its name in the sidebar opens its persona sheet, needing you or not (#320), the one place its settings change
-  // (designs/rooms-at-scale.md, “Settings: one scope”).
+  // Its name in the sidebar opens its persona sheet, needing you or not (#320), the one place its settings change.
   await page.locator('.rail .agent-row .agent-btn', { has: page.locator('b', { hasText: /^shelly$/ }) }).click();
   const sheet = page.getByRole('dialog', { name: 'Settings' });
   await sheet.getByRole('button', { name: 'shell', exact: true }).click();

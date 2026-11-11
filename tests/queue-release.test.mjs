@@ -1,4 +1,4 @@
-// A deleted agent’s queued messages (#427): delete is immediate (designs/rooms-at-scale.md, “Delete”), and at once a
+// A deleted agent’s queued messages (#427): delete is immediate, and at once a
 // message only for it is posted, waking no one and leaving the conversation’s hops alone (R2), and one for others too
 // goes to them now.
 

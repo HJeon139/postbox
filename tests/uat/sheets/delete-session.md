@@ -2,7 +2,7 @@
 
 ![Delete session](../screenshots/delete-session-sheet.png)
 
-**Where:** `@handle /delete` in the composer, or `/delete` for the agent it replies to (#320; designs/rooms-at-scale.md, “Settings: one scope”).
+**Where:** `@handle /delete` in the composer, or `/delete` for the agent it replies to (#320).
 
 ## Why it exists
 
@@ -10,7 +10,7 @@ Removing one agent from a room keeps the room readable.
 
 ## Expected functionality
 
-- In a room, the agent leaves and its messages stay marked “(deleted)”; alone, the conversation goes. It goes at once after the confirm, and the confirm says it can’t be undone (designs/rooms-at-scale.md, “Delete”).
+- In a room, the agent leaves and its messages stay marked “(deleted)”; alone, the conversation goes. It goes at once after the confirm, and the confirm says it can’t be undone.
 - It offers Cancel and Delete session, not Archive instead: an agent’s session is archived only with its conversation (#320).
 
 ## Steps to reproduce

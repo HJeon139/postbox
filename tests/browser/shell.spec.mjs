@@ -67,7 +67,7 @@ test('the top bar has no agent rings: the Agents section has them', async ({ pag
   await expect(page.locator('.rail .agent-row pb-ring')).toHaveCount(1);
 });
 
-test('/delete in the composer opens the agent’s delete confirm (designs/rooms-at-scale.md, “Settings: one scope”)', async ({ page }) => {
+test('/delete in the composer opens the agent’s delete confirm', async ({ page }) => {
   await open(page, `#/t/${threads[0].id}`);
   await deleteCommand(page);
   await expect(page.getByText('Delete shelly’s session?')).toBeVisible();

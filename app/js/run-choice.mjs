@@ -1,6 +1,5 @@
 // The permission modes’ names and words, which the permissions panel (app/js/permissions.mjs, which re-exports them)
-// uses. /mode, /model and /effort open the persona sheet now, the one place a persona’s settings are edited
-// (designs/rooms-at-scale.md, “Settings: one scope”).
+// uses. /mode, /model and /effort open the persona sheet now, the one place a persona’s settings are edited.
 
 // The same names and words as the persona sheet’s Permissions field (sheets.mjs).
 export const MODES = [

@@ -10,7 +10,7 @@ Confirms what just happened and offers a next step (Restore, Go) without a dialo
 
 ## Expected functionality
 
-- Appears in the Notifications region for permission requests and other blocking events from other conversations. A delete has no toast and no Undo: its confirm said what goes (designs/rooms-at-scale.md, “Delete”).
+- Appears in the Notifications region for permission requests and other blocking events from other conversations. A delete has no toast and no Undo: its confirm said what goes.
 - Notices share one top-right stack of at most three, newest first; on a narrow screen it spans the available width.
 - Has an action button when one applies; disappears on its own; is announced to screen readers.
 

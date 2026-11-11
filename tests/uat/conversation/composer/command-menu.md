@@ -11,7 +11,7 @@ The composer should reach what the CLI’s input reaches, without remembering sy
 - **Opening:** typing / at the start of the composer opens the menu, and so does the Commands button, which puts / in the composer. Typing more filters it. ArrowUp and ArrowDown move, Enter or Tab picks, and Escape closes it; focus stays in the composer.
 - **Postbox’s commands** run without a turn, on the agent the composer replies to:
   - `/permissions` opens the [permissions panel](../../shell/permissions-panel.md); `/mcp` opens it at the MCP servers.
-  - `/mode`, `/model` and `/effort` open the agent’s persona sheet, the one place its settings are edited. A change there applies from the agent’s next turn, in every conversation it’s in (designs/rooms-at-scale.md, “Settings: one scope”). There’s no setting for one conversation only.
+  - `/mode`, `/model` and `/effort` open the agent’s persona sheet, the one place its settings are edited. A change there applies from the agent’s next turn, in every conversation it’s in. There’s no setting for one conversation only.
   - `/add-dir` opens the folder picker; the folder is the agent’s from its next turn.
   - `/compact` runs Claude Code’s `/compact` as the agent’s turn (a recorded turn showed it compacts in print mode), and the conversation shows the compaction.
   - `/stop` stops the agents that are working, `/delete` asks once and then deletes the agent’s session in this conversation, and `/rename` opens the rename sheet. There’s no `/archive`: an agent’s session is archived only with its conversation (#320).

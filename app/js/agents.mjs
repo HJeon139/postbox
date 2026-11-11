@@ -1,7 +1,7 @@
 // The agents in a conversation (#105): one row each in the sidebar with its ring, name, state, what it runs with and its
 // open asks. Its name opens its persona sheet, the one place its settings change; what an agent does (Stop, Compact,
-// Delete session) is a command addressed to it in the composer, `@handle /stop` (designs/rooms-at-scale.md, “Settings:
-// one scope”).
+// Delete session) is a command addressed to it in the composer, `@handle /stop`, so settings have one place and one
+// scope.
 //
 // An agent whose turns run on a host (#120) says so in its row: the host, the connection in words, when
 // Postbox last heard from it, and a turn there that’s stopping, lost or waiting to be resumed (app/js/remote.mjs).

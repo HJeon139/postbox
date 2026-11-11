@@ -1,5 +1,5 @@
 // Deleting a persona from its sheet (#208): one confirm says what goes and what stays, then it goes at once, as
-// deleting a session or a conversation does (server/persona-delete.mjs; designs/rooms-at-scale.md, “Delete”).
+// deleting a session or a conversation does (server/persona-delete.mjs).
 
 import { api, client } from './client.mjs';
 import { h, plural } from './dom.mjs';

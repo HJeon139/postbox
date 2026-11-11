@@ -1,7 +1,7 @@
 // The sidebar’s Agents section (#105), driven with real key presses and clicks:
 // - the rows in the sidebar, and a topic thread’s line of who is in it (#228);
-// - an agent’s name opens its persona sheet, and a change there applies from its next turn (designs/rooms-at-scale.md,
-//   “Settings: one scope”); what an agent does is a command to it, `@indexer /compact`, `@indexer /delete`;
+// - an agent’s name opens its persona sheet, and a change there applies from its next turn, in every conversation;
+//   what an agent does is a command to it, `@indexer /compact`, `@indexer /delete`;
 // - the subagents at work in the tree, with their step and not their narration (#476), and the working row, from a
 //   recorded stream (#73), with End on each, by keyboard (#229);
 // - and at 375 px, a top bar with no agent rings whose menu names each agent (#320).

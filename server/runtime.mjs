@@ -208,9 +208,9 @@ export class Runtime {
     return this.s.personas[id];
   }
   /**
-   * The persona a session runs with: the persona as it is now. One rule for every setting (designs/rooms-at-scale.md,
-   * “Settings: one scope”): a turn takes the persona when it starts (turnContext), so every change applies from the
-   * agent’s next turn, in every conversation it’s in, and never to a turn already running.
+   * The persona a session runs with: the persona as it is now. One rule for every setting: a turn takes the persona
+   * when it starts (turnContext), so every change applies from the agent’s next turn, in every conversation it’s in,
+   * and never to a turn already running.
    */
   personaFor(se) {
     const p = this.persona(se.personaId);
@@ -2227,7 +2227,7 @@ export class Runtime {
 
   /**
    * Deletes an older Postbox left pending in its Undo window, which is gone: each finishes now, as a delete does.
-   * Delete is just delete (designs/rooms-at-scale.md, “Delete”).
+   * Delete is just delete.
    */
   finishLeftDeletes() {
     for (const se of Object.values(this.s.sessions)) if (se.deleting && this.s.sessions[se.id]) this.deleteSession(se.id);
@@ -2561,7 +2561,7 @@ export class Runtime {
   /**
    * Deletes a session at once: its turn stops, its wakes and queued messages go, and if it was alone in its conversation,
    * the conversation goes with it. In a room it leaves, and its past messages stay, marked deleted. The persona stays.
-   * There is no Undo window, so nothing is held for it (designs/rooms-at-scale.md, “Delete”; #604, #599).
+   * There is no Undo window, so nothing is held for it (#604, #599).
    */
   deleteSession(sessionId) {
     const se = this.session(sessionId);
@@ -2594,7 +2594,7 @@ export class Runtime {
 
   /**
    * Deletes a whole conversation or room at once: every session in it, its apps, and its topic and side threads. The
-   * personas stay. There is no Undo window (designs/rooms-at-scale.md, “Delete”).
+   * personas stay. There is no Undo window.
    */
   deleteThread(threadId) {
     const t = this.thread(threadId);

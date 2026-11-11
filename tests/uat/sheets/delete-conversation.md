@@ -6,7 +6,7 @@
 
 ## Why it exists
 
-Deleting must say what goes and what stays, once, before it happens. Delete is just delete (designs/rooms-at-scale.md, “Delete”).
+Deleting must say what goes and what stays, once, before it happens. Delete is just delete.
 
 ## Expected functionality
 

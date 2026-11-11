@@ -1,4 +1,4 @@
-// Delete is just delete (designs/rooms-at-scale.md, “Delete”; #604, #599): one confirm says what goes, and after it
+// Delete is just delete (#604, #599): one confirm says what goes, and after it
 // the conversation, the session or the persona is gone at once. There’s no Undo, and nothing waits on a window.
 
 import { expect, test } from '@playwright/test';

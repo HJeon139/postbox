@@ -1,6 +1,6 @@
 // Deleting a persona (#208): its sessions go with it, as deleting each would take them, then the persona, and each
 // backend forgets what it remembered (an adapter’s forget, such as the Claude adapters’ memory folders). It happens at
-// once: there is no Undo window (designs/rooms-at-scale.md, “Delete”). A new persona with the same name starts clean,
+// once: there is no Undo window. A new persona with the same name starts clean,
 // since memory is kept by id.
 
 import { httpError } from './helpers.mjs';

@@ -1,6 +1,5 @@
 // #208, decided 27 October 2026: a persona’s memory is deleted with the persona, as its sessions are; a new persona
-// with the same name starts clean. Delete is just delete, at once, with no Undo window (designs/rooms-at-scale.md,
-// “Delete”). The memory files
+// with the same name starts clean. Delete is just delete, at once, with no Undo window to hold anything for. The memory files
 // here stand in for what Claude Code writes in a persona’s folder: the real two-agent run on 28 October saw it write
 // MEMORY.md and project-codeword.md in <data>/memory/<persona id>/<project id>/ (tests/memory-per-persona.test.mjs).
 

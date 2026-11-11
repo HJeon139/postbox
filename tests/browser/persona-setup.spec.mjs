@@ -117,7 +117,7 @@ test('the Antigravity CLI’s Auto says it works like Run everything for its too
   await expect(field.locator('.help')).not.toContainText('works like Run everything');
 });
 
-// Postbox’s own permission layer is going (designs/rooms-at-scale.md, “The permission layer”): the harness judges,
+// Postbox’s own permission layer is going: the harness judges,
 // or the agent runs everything.
 test('the sheet offers two permission modes: Auto (the harness judges) and Run everything', async ({ page }) => {
   await personas(page);

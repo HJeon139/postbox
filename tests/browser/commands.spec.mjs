@@ -106,7 +106,7 @@ test('#67 the Commands button opens the same menu', async ({ page }) => {
   await expect(composer(page)).toBeFocused();
 });
 
-// A persona’s settings are edited in one place, its sheet (designs/rooms-at-scale.md, “Settings: one scope”).
+// A persona’s settings are edited in one place, its sheet.
 test('/mode, /model and /effort run without a turn and open the agent’s persona sheet; /rename opens the rename sheet', async ({ page }) => {
   const { store } = app;
   const { t, seA } = await room(page, 'Settings');

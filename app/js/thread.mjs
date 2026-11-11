@@ -958,7 +958,7 @@ export function mountComposer(threadId, { side = false } = {}) {
   /** Postbox’s own commands, which act on Postbox without a turn, for se: the agent named (#405), else target(). */
   const POSTBOX = [
     ['permissions', 'Its mode, rules, folders and MCP servers', (se = target()) => openPermissions({ threadId, sessionId: se?.id })],
-    // Its settings are edited in one place, its sheet (designs/rooms-at-scale.md, “Settings: one scope”).
+    // Its settings are edited in one place, its sheet.
     ['mode', 'Its permission mode, in its persona’s settings', (se = target()) => se && openSettings('personas', se.personaId)],
     ['model', 'Its model, in its persona’s settings', (se = target()) => se && openSettings('personas', se.personaId)],
     ['effort', 'Its effort, in its persona’s settings', (se = target()) => se && openSettings('personas', se.personaId)],

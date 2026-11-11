@@ -1012,7 +1012,7 @@ export function openSettings(tab = 'appearance', personaId = null) {
                 'PATCH',
               )
                 .then(() => {
-                  // One rule for every setting (designs/rooms-at-scale.md, “Settings: one scope”).
+                  // One rule for every setting.
                   toast({ title: `Saved ${p.handle}`, text: 'It runs with this from its next turn, in every conversation it’s in.' });
                   back();
                 })

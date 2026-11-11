@@ -40,7 +40,7 @@ for (const models of [['gpt-example'], []]) {
       await expect(row).toContainText('Codex’s default');
       await expect(row).not.toContainText('Opus');
       await row.click();
-      // Its name opens its persona sheet, where Codex’s default is the model `auto` (designs/rooms-at-scale.md, “Settings: one scope”).
+      // Its name opens its persona sheet, where Codex’s default is the model `auto`.
       await expect(page.getByRole('dialog', { name: 'Settings' }).getByLabel('Model', { exact: true })).toHaveValue('auto');
       await page.keyboard.press('Escape');
       app.rt.updateSession(session.id, { lastModel: 'gpt-answered' });
@@ -62,7 +62,7 @@ test('Codex labels an inherited Sonnet setting as its default when no catalog of
   await expect(row).toContainText('Codex’s default');
   await expect(row).not.toContainText('Sonnet');
   await row.click();
-  // Its name opens its persona sheet, where Codex’s default is the model `auto` (designs/rooms-at-scale.md, “Settings: one scope”).
+  // Its name opens its persona sheet, where Codex’s default is the model `auto`.
   await expect(page.getByRole('dialog', { name: 'Settings' }).getByLabel('Model', { exact: true })).toHaveValue('auto');
   await page.keyboard.press('Escape');
   app.rt.updateSession(session.id, { lastModel: 'gpt-answered' });

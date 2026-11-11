@@ -1,4 +1,4 @@
-// One rule for settings (designs/rooms-at-scale.md, “Settings: one scope”): a persona edit reaches a Codex session
+// One rule for settings: a persona edit reaches a Codex session
 // that’s already going from its next turn, its instructions as much as its permissions.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';

@@ -6,7 +6,7 @@
 
 ## Why it exists
 
-Agents are edited in the app, in this one place (designs/rooms-at-scale.md, “Settings: one scope”). Every edit applies from each agent’s next turn, in every conversation it’s in; a turn that’s running keeps what it started with.
+Agents are edited in the app, in this one place. Every edit applies from each agent’s next turn, in every conversation it’s in; a turn that’s running keeps what it started with.
 
 ## Expected functionality
 

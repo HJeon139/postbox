@@ -335,7 +335,7 @@ export async function play({ origin, view = async () => {}, shot = async () => {
     },
   });
 
-  // 12 · An agent that needs you, its persona sheet and /delete (#320; designs/rooms-at-scale.md, “Settings: one scope”)
+  // 12 · An agent that needs you, its persona sheet and /delete (#320)
   const papers = T('Agent memory papers');
   log('@researcher asks which papers to read, so it needs you; its ring pulses in the sidebar.');
   await view(`#/t/${papers.id}`);
