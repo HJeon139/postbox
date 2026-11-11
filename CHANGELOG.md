@@ -2,6 +2,14 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.0.3 (2026-11-11)
+
+### Fixes
+
+- **uat:** fail a run whose Postbox prints an error or a warning, or crashes
+- **uat:** keep what the run's Postbox prints, and its own exits, in the run's facts
+- **server:** the persona sheet's skills read a session's / menu as it's stored
+
 ## 4.0.2 (2026-11-11)
 
 ### Fixes
