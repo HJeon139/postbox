@@ -30,7 +30,7 @@ import { diagramCheck } from './diagram-check.mjs';
 import { emptyReply, endedWithoutReply } from './empty-reply.mjs';
 import { heldSession } from './held-session.mjs';
 import { clip, clipText, httpError } from './helpers.mjs';
-import { clipItem, describeItem, topicRootLine } from './item-lines.mjs';
+import { describeItem, topicRootLine } from './item-lines.mjs';
 import { keptGroupsOf, keptJobs, pollKept, stopJob, stopKeptJobs, watchKept } from './kept-jobs.mjs';
 import { Ledger } from './ledger.mjs';
 import { endLint, foldLint, lint, quietLint } from './lint-delivery.mjs';
@@ -55,7 +55,7 @@ import { createPersona, updatePersona } from './persona-write.mjs';
 import { arrival } from './queue-batch.mjs';
 import { readCapped } from './read-capped.mjs';
 import { addReadFolder, readCardAlways } from './read-folders.mjs';
-import { readMessage } from './read-message.mjs';
+import { readConversation, readLine, readMessage } from './read-message.mjs';
 import { addHost, host, removeHost, setProjectHostFolder, updateHost } from './remote/host-admin.mjs';
 import { describeHostInstall, hostStatus, installHost, retryHost, watchHosts } from './remote/host-status.mjs';
 import { localBackends, refuseHere, refuseUnregistered, refuseUnregisteredSend, registeredAdapter } from './remote/placement.mjs';
@@ -1549,33 +1549,12 @@ export class Runtime {
     return describeItem(this, i, se, n, reader);
   }
 
-  /**
-   * read_conversation: the conversation’s items, newest last, as text, each with its id (for read_message and react). thread: another thread of the same conversation
-   * to read instead, such as a side thread or a topic thread (#121): its id from a catch-up line, a pointer to a fork, or
-   * a link the person shared. Threads of other conversations are refused.
-   */
-  /** @param {any} se @param {{ limit?: number, skip?: number, thread?: unknown }} [args] */
-  readConversation(se, { limit = 50, skip = 0, thread = null } = {}) {
-    const id = typeof thread === 'string' && thread.trim() ? thread.trim().slice(0, 100) : se.threadId;
-    if (!this.conversationThreads(se.threadId).includes(id))
-      throw httpError(404, `There’s no thread ${id} in this conversation. Read one of its own threads: the id is in the catch-up line or the link.`);
-    const items = this.store.items(id).filter((i) => i.kind !== 'system' || i.variant === 'wake');
-    const n = Math.max(1, Math.min(200, Number(limit) || 50));
-    const end = Math.max(0, items.length - Math.max(0, Number(skip) || 0));
-    const slice = items.slice(Math.max(0, end - n), end);
-    const lines = slice.flatMap((i) => (this.readLine(i, se) ? [`[${i.id}] ${this.readLine(i, se)}`] : []));
-    const before = end - slice.length;
-    return `${lines.join('\n\n') || 'The conversation is empty.'}${before ? `\n\n(${before} earlier ${before === 1 ? 'item' : 'items'}; call again with skip: ${items.length - before} to read them.)` : ''}`;
+  readConversation(se, args) {
+    return readConversation(this, se, args);
   }
-
-  /**
-   * An item as read_conversation and read_message give it to `se`, whose own messages say “You”.
-   * @param {any} i @param {any} se @param {number} [n]
-   */
-  readLine(i, se, n = READING.item) {
-    return i.sessionId === se.id && i.kind === 'agent' ? `You (@${se.handle}): ${clipItem(i.text, n, i.id)}` : this.describeItem(i, null, n, se);
+  readLine(i, se, n) {
+    return readLine(this, i, se, n);
   }
-
   readMessage(se, args = {}) {
     return readMessage(this, se, args);
   }
