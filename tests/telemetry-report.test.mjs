@@ -216,3 +216,16 @@ test('acceptance 15: a saved report reopens with its File issue findings, and it
   assert.throws(() => deleteReport(f.rt, f.t.id, id), /no such report|isn’t saved/);
   f.stop();
 });
+
+test('#516: an agent saved with a tool id Postbox no longer has, such as corpus.search, still gets a saved report, without it', async () => {
+  const f = await flaggedRoom();
+  const alpha = f.rt.personaByHandle('alpha');
+  f.store.emit('persona', { ...alpha, tools: ['corpus.search', 'shell', 'corpus.stats'] });
+  const id = await saved(f);
+  const r = JSON.parse(readFileSync(join(f.data, 'telemetry', f.t.id, 'reports', id, 'report.json'), 'utf8'));
+  assert.ok(
+    r.agents.some((a) => a.tools.join() === 'shell'),
+    JSON.stringify(r.agents),
+  );
+  f.stop();
+});
