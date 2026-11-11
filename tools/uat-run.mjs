@@ -48,6 +48,7 @@ import { observe as observeScreen } from './uat/observe.mjs';
 import { openIssues } from './uat/open-issues.mjs';
 import { judgePictures } from './uat/picture-judges.mjs';
 import { portFree, startPostbox } from './uat/postbox.mjs';
+import { writePostboxOutput } from './uat/postbox-output.mjs';
 import { recordInput } from './uat/probes.mjs';
 import { recheck } from './uat/recheck.mjs';
 import { presetFindings } from './uat/regressions.mjs';
@@ -148,12 +149,14 @@ async function main() {
   const run = { log, dir };
   const stop = runStop(run);
   const signals = onStopSignal(stop, { log });
+  const timeline = [];
   const postbox = await startPostbox({
     root: ROOT,
     port,
     data: paths.data,
     env: runEnv({ gate, paths, scenario, dir, faults }),
     log,
+    step: () => timeline.length,
   });
   const { api } = postbox;
   // What happened, in order, from the first event: the checks for #123 need history the state doesn’t keep.
@@ -164,8 +167,7 @@ async function main() {
   Object.assign(run, { hr, history, page, postbox });
   if (hr) followStatuses(hr, history.hostStates);
   const findings = new Map(); // key → finding
-  const timeline = [];
-  const facts = runFacts({ agentModels, agentEffort, page, keyFrameOn: Boolean(keyFrameOut(opt, scenario, dir)), workspace: paths.workspace, hr });
+  const facts = runFacts({ agentModels, agentEffort, page, keyFrameOn: Boolean(keyFrameOut(opt, scenario, dir)), workspace: paths.workspace, hr, postbox });
   run.keep = keeper(dir, facts, paths.workspace);
   let unwatch = () => {};
   try {
@@ -500,6 +502,7 @@ async function main() {
     const coverage = goals.coverage();
     // The history the checks read, for --recheck: Postbox’s own log can lose its first segments to a snapshot.
     await writeFile(join(dir, 'events.jsonl'), facts.events.map((e) => JSON.stringify(e)).join('\n') + (facts.events.length ? '\n' : ''));
+    writePostboxOutput(dir, facts.postboxOutput); // what Postbox printed, as the checks read it, for --recheck
     const all = [...findings.values()];
     presetFindings(all, { root: ROOT, commit: gitInfo(ROOT).commit });
     const verify = opt.verify !== 'no';

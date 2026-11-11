@@ -12,6 +12,7 @@ import { readHosts } from './hosts-run.mjs';
 import { forHosts } from './hosts-scenario.mjs';
 import { recordedPhases } from './phases.mjs';
 import { portFree } from './postbox.mjs';
+import { readPostboxOutput } from './postbox-output.mjs';
 import { newProbes } from './probes.mjs';
 import { presetFindings } from './regressions.mjs';
 import { writeReport } from './report.mjs';
@@ -58,6 +59,8 @@ export function savedFacts(dir, { state, mainId, saved, logs, hostsRec, record }
     store: readStore(join(dir, 'data')),
     remote: remoteFacts(dir),
     console: logs,
+    // What the live run’s Postbox printed, and whether it exited by itself: the recheck’s own Postbox isn’t the one tested.
+    postboxOutput: readPostboxOutput(dir),
     apps: {},
     probes: { ...newProbes(), ...(saved.probes ?? {}) },
     samples: saved.samples ?? [],

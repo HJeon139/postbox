@@ -1,14 +1,16 @@
 // What a UAT run knows as it goes (tools/uat-run.mjs): the state and events it read, the agents’ streams, the page’s
-// console, the probes’ records and, in host mode, its hosts. The checks and triggers read it as facts.
+// console, the probes’ records, what its own Postbox printed and, in host mode, its hosts. The checks and triggers read
+// it as facts.
 
 import { newProbes } from './probes.mjs';
 import { userSetup } from './run-files.mjs';
 
 /**
  * A run’s facts before its first step.
- * @param {{ agentModels: string, agentEffort: string|null, page: { logs: any[] }, keyFrameOn: boolean, workspace: string, hr: any }} o
+ * @param {{ agentModels: string, agentEffort: string|null, page: { logs: any[] }, keyFrameOn: boolean, workspace: string, hr: any,
+ *   postbox: { output: import('./postbox-output.mjs').PostboxOutput } }} o
  */
-export function runFacts({ agentModels, agentEffort, page, keyFrameOn, workspace, hr }) {
+export function runFacts({ agentModels, agentEffort, page, keyFrameOn, workspace, hr, postbox }) {
   return {
     agentModels,
     agentEffort,
@@ -22,6 +24,8 @@ export function runFacts({ agentModels, agentEffort, page, keyFrameOn, workspace
     events: [],
     transcripts: [],
     console: page.logs,
+    // The live record, so each check pass reads what it has printed by then (tools/uat/postbox-output.mjs).
+    postboxOutput: postbox.output,
     apps: {},
     probes: { ...newProbes(), keyFrameOn },
     samples: [],
