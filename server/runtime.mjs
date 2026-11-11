@@ -1035,8 +1035,7 @@ export class Runtime {
       stopAsk: null,
     }));
     noticeNeed(this, se, needs);
-    if (needs && (needs.kind === 'block' || needs.kind === 'denial' || needs.kind === 'toolask'))
-      this.notify('blocking', se, `@${se.handle} needs you`, needs.text, needs.threadId);
+    if (needs && (needs.kind === 'block' || needs.kind === 'toolask')) this.notify('blocking', se, `@${se.handle} needs you`, needs.text, needs.threadId);
     else if (mentionsYou && !viewing) this.notify('info', se, `@${se.handle} mentioned you`, clip(turn.said, 120), turn.threadId);
     else if (turn.said && !viewing) this.notify('info', se, `@${se.handle} finished`, clip(turn.said, 120), turn.threadId);
 

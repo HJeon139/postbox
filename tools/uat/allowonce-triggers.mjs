@@ -136,7 +136,6 @@ export const ALLOW_ONCE_TRIGGERS = {
           const shown = f.ui?.denialCards?.[c.id];
           return (
             shown &&
-            shown.buttons.length > 0 &&
             !shown.buttons.some((b) => /Allow once|Always allow/i.test(b)) &&
             /checks each part of a chained command/.test(shown.text) &&
             /separate commands/.test(shown.text)
@@ -144,7 +143,7 @@ export const ALLOW_ONCE_TRIGGERS = {
         })
         .map((c) => ({
           at: Number.isFinite(c.at) ? c.at : null,
-          evidence: `@${c.handle}’s \`${clip(c.detail, 100)}\` was refused; its card offered only ${f.ui.denialCards[c.id].buttons.map((b) => `“${b}”`).join(', ')}, and said Claude Code checks each part of a chained command on its own.`,
+          evidence: `@${c.handle}’s \`${clip(c.detail, 100)}\` was refused; its card offered ${f.ui.denialCards[c.id].buttons.map((b) => `“${b}”`).join(', ') || 'no button'}, and said Claude Code checks each part of a chained command on its own.`,
         })),
   },
 };

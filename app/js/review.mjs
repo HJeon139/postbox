@@ -1,5 +1,5 @@
 // The review block’s renderer, moved out of app/js/blocks.mjs. blocks.mjs imports this module, so the helpers it
-// shares with the other renderers come in as kit: draft, seen, renderBlock, head, staleNote, submit, errLine and
+// shares with the other renderers come in as kit: draft, seen, renderBlock, head, submit, errLine and
 // outcomeLine.
 
 import { renderMarkdown } from '/shared/markdown.mjs';
@@ -21,7 +21,7 @@ import { fullScreen, revisionOf, seg, setView, viewOf } from './review-view.mjs'
 // verdict. A revision shows as a diff, with each of your comments marked resolved or open.
 
 export function renderReview(b, item, ctx, kit) {
-  const { draft, seen, renderBlock, head, staleNote, submit, errLine, outcomeLine } = kit;
+  const { draft, seen, renderBlock, head, submit, errLine, outcomeLine } = kit;
   const d = reviewDraft(item, b.content, draft);
   const files = reviewFileKeys(ctx.threadId, item); // its attached images, as Preview resolves them (#780)
   // Draft comments name lines of the text they were written on. If the agent changed it under them (#123), each
@@ -54,12 +54,15 @@ export function renderReview(b, item, ctx, kit) {
     /** @type {HTMLElement | null} */ (n.querySelector(`.g-mark[data-line="${CSS.escape(String(key))}"]`))?.focus();
   };
   const done = item.answered;
-  // After an answer refused because the draft changed, the diff is from the text the person saw.
+  // After the agent changed the draft on screen (blocks.mjs, track), the diff is from the text the person first saw,
+  // unless that is exactly the agent’s own previous, whose diff the review offers as it always did. The change alone
+  // never switches Preview to Lines: which view is open stays the person’s.
   const stale = done ? null : (seen.get(item.id)?.stale ?? null);
-  const since = stale && b.format !== 'app' ? String(stale.block.content ?? '') : null;
+  const saw = stale && b.format !== 'app' ? String(stale.block.content ?? '') : null;
+  const since = saw !== null && saw !== b.previous ? saw : null;
   const before = since ?? b.previous;
   const hasDiff = since !== null || !!b.previous;
-  const mode = viewOf(item, b, d, hasDiff);
+  const mode = viewOf(item, b, d, !!b.previous);
   const isDiff = hasDiff && d.view === 'diff' && mode === 'lines';
   const views = [];
   if (b.format === 'markdown')
@@ -325,13 +328,6 @@ export function renderReview(b, item, ctx, kit) {
         err,
       ),
     );
-    const note = staleNote(
-      item,
-      since !== null
-        ? 'This draft changed while you were answering. What changed since you looked is marked above, and your comments are kept. Check them, then submit again.'
-        : 'This changed while you were answering. Your comments are kept: look it over, then submit again.',
-    );
-    if (note) box.lastElementChild?.before(note);
   }
   return node;
 }

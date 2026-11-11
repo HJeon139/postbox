@@ -2,7 +2,9 @@
 // - #237: a card asking for a tool that’s off answers itself when the tool is turned on from the agent’s quick panel,
 //   says it’s on, and the agent carries on.
 // - #238: a refusal card for a chained command offers no Allow once or Always allow, and says why and what to do; one
-//   for a single command still offers both.
+//   for a single command still offers both. None offers Leave it: there’s nothing to acknowledge.
+// - A refused call, an agent’s or a subagent’s, is a card that shows what happened: no ring pulses, nothing counts as
+//   needing you, and no notification asks for you, since the agent works around it (intent.md, principle 8).
 // - #281: one for a command with a * offers neither, and says a * is a wildcard; so does one with a ) that would end
 //   its rule early, saying so; one for env or bash -c offers only its exact text, never Bash(env:*).
 // - #220: a permission card nobody answered for CARD_WAIT_MS says it expired and how long it waited.
@@ -97,19 +99,57 @@ test('#238 a refused chained command offers no Allow once or Always allow, and s
   rt.sendMessage(thread.id, { text: 'And again.' });
   const chained = card(page, 'tried to run the chained tests');
   const single = card(page, 'tried to run the single tests');
-  await expect(chained.locator('.block-foot')).toBeVisible();
+  await expect(chained).toBeVisible();
   await expect(single.locator('.block-foot')).toBeVisible();
   await idle();
   await synced(page, app);
-  await expect(chained.locator('.block-foot button')).toHaveText(['Leave it']);
+  await expect(chained.locator('.block-foot'), 'nothing to allow, and nothing to acknowledge').toHaveCount(0);
   await expect(chained.locator('.block-body')).toContainText(
     /Claude Code checks each part of a chained command \(joined by &&, \|\|, ;, \| or &\) against its rules on its own/,
   );
   await expect(chained.locator('.block-body')).toContainText('ask tester to run the parts as separate commands');
-  await expect(single.locator('.block-foot button')).toHaveText(['Allow once and retry', 'Always allow exactly “python -m pytest -q”', 'Leave it']);
+  await expect(single.locator('.block-foot button')).toHaveText(['Allow once and retry', 'Always allow exactly “python -m pytest -q”']);
   // The UAT runner reads these cards from the page the same way, for the allow-once scenario’s trigger (readUi).
   const facts = { threads: [thread.id], state: rt.s, ui: { denialCards: (await readUi(page)).denialCards } };
   expect(ALLOW_ONCE_TRIGGERS['chained-refusal-no-allow'].run(facts).length, 'the trigger sees the chained card only').toBe(1);
+});
+
+test('a refused call, the agent’s or a subagent’s, shows what happened and never needs you', async ({ page }) => {
+  const { rt, store } = app;
+  const { thread, se, script, idle } = await agent(page, 'refused');
+  const notes = [];
+  const notify = rt.notify.bind(rt);
+  rt.notify = (level, ...rest) => {
+    notes.push(level);
+    return notify(level, ...rest);
+  };
+  script((ctx) => {
+    ctx.denied({ toolUseId: 'tu-own', tool: 'Bash', input: { command: 'rm -rf build' }, label: 'Clear the build', reason: 'A deny rule.', reasonType: 'rule' });
+    ctx.denied({
+      ...{ toolUseId: 'tu-sub', tool: 'WebFetch', input: { url: 'https://example.com' }, label: 'Fetch example.com' },
+      ...{ reason: 'Not allowed in the background.', reasonType: 'asyncAgent', who: 'researcher' },
+    });
+  });
+  rt.sendMessage(thread.id, { text: 'Clean up, and look it up.' });
+  const own = card(page, 'tried to clear the build');
+  const sub = card(page, 'tried to fetch example.com');
+  await expect(own).toBeVisible();
+  await expect(sub).toBeVisible();
+  await idle();
+  await synced(page, app);
+  rt.notify = notify;
+  expect(store.state.sessions[se.id].needs, 'no need').toBe(null);
+  expect(store.state.sessions[se.id].state).toBe('idle');
+  expect(notes, 'no notification asks for you').not.toContain('blocking');
+  for (const c of [own, sub]) {
+    await expect(c.locator('.g-needs'), 'no needs-you glyph').toHaveCount(0);
+    await expect(c.getByRole('button', { name: 'Leave it' }), 'nothing to acknowledge').toHaveCount(0);
+  }
+  await expect(sub.locator('.title')).toContainText('refused’s subagent (researcher)');
+  const rings = page.locator('pb-ring[name="refused"]');
+  await expect(rings.first(), 'its ring is drawn').toBeAttached();
+  expect(await rings.evaluateAll((all) => all.map((r) => r.getAttribute('state'))), 'no ring says it needs you').not.toContain('needs');
+  await expect(page.locator('#next-needs'), 'the top bar says nothing needs you').toHaveText(/Nothing needs you/);
 });
 
 test('#281 a refused command with a * offers no rule and says why; one with env offers only its exact text', async ({ page }) => {
@@ -123,14 +163,14 @@ test('#281 a refused command with a * offers no rule and says why; one with env 
   rt.sendMessage(thread.id, { text: 'And again.' });
   const wild = card(page, 'tried to clear the build');
   const env = card(page, 'tried to run make');
-  await expect(wild.locator('.block-foot')).toBeVisible();
+  await expect(wild).toBeVisible();
   await expect(env.locator('.block-foot')).toBeVisible();
   await idle();
   await synced(page, app);
-  await expect(wild.locator('.block-foot button')).toHaveText(['Leave it']);
+  await expect(wild.locator('.block-foot')).toHaveCount(0);
   await expect(wild.locator('.block-body')).toContainText('Claude Code reads * in a rule as a wildcard');
   await expect(wild.locator('.block-body')).toContainText('ask wild to name the files instead of using *');
-  await expect(env.locator('.block-foot button')).toHaveText(['Allow once and retry', 'Always allow exactly “env CI=1 make test”', 'Leave it']);
+  await expect(env.locator('.block-foot button')).toHaveText(['Allow once and retry', 'Always allow exactly “env CI=1 make test”']);
 });
 
 test('#281 a refused command with a ) that would end its rule early offers no rule, and says why', async ({ page }) => {
@@ -142,10 +182,10 @@ test('#281 a refused command with a ) that would end its rule early offers no ru
   );
   rt.sendMessage(thread.id, { text: 'Echo it.' });
   const paren = card(page, 'tried to echo a paren');
-  await expect(paren.locator('.block-foot')).toBeVisible();
+  await expect(paren).toBeVisible();
   await idle();
   await synced(page, app);
-  await expect(paren.locator('.block-foot button')).toHaveText(['Leave it']);
+  await expect(paren.locator('.block-foot')).toHaveCount(0);
   await expect(paren.locator('.block-body')).toContainText('Claude Code would read a ) in this command as the end of its rule');
   await expect(paren.locator('.block-body')).toContainText('ask paren to run it without the unmatched )');
 });

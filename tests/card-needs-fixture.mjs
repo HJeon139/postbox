@@ -27,27 +27,18 @@ export function room() {
     rt.permissionWaits.set(it.id, { threadId: t.id, sessionId: alpha.id, timer: null, resolve: () => {} });
     return it;
   };
-  const toolAsk = () =>
+  // A tool request: a turn-tied ask, as an asking block is, which the specs answer with Off.
+  const toolAsk = (turnId = 'turn_last', label = 'Shell') =>
     rt.addItem(t.id, {
       kind: 'toolask',
       sessionId: alpha.id,
       personaId: ctx.a.id,
       handle: 'alpha',
-      label: 'Shell',
+      label,
       tool: 'shell',
-      turnId: 'turn_last',
+      turnId,
       status: 'open',
     });
   const hop = () => rt.addItem(t.id, { kind: 'hop', fromSessionId: alpha.id, from: 'alpha', to: 'beta', status: 'open', text: 'please' });
-  const denial = (summary, turnId = 'turn_last') =>
-    rt.addItem(t.id, {
-      kind: 'denial',
-      sessionId: alpha.id,
-      handle: 'alpha',
-      turnId,
-      summary,
-      status: 'open',
-      rules: { once: `Bash(${summary})`, always: 'Bash(*)', alwaysWords: 'anything' },
-    });
-  return { ...ctx, needs, setNeed, appCard, block, permission, toolAsk, hop, denial };
+  return { ...ctx, needs, setNeed, appCard, block, permission, toolAsk, hop };
 }

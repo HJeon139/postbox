@@ -2059,7 +2059,7 @@ test('a proposal’s fields are stored as text, whatever JSON the agent sends', 
   assert.deepEqual(p.tools, ['shell']);
 });
 
-test('a refusal becomes a card; the agent needs you until you answer it', async () => {
+test('a refusal becomes a card that shows what happened; the agent works around it and never needs you for it', async () => {
   const { rt, store, t, adapter } = setup();
   adapter.next.push(async (c) => {
     c.denied({
@@ -2080,11 +2080,12 @@ test('a refusal becomes a card; the agent needs you until you answer it', async 
   assert.equal(cards.length, 1, 'once per tool call');
   assert.equal(cards[0].rules.once, 'Bash(rm copy.txt)');
   const se = rt.sessionsIn(t.id)[0];
-  assert.equal(store.state.sessions[se.id].state, 'needs');
-  assert.equal(store.state.sessions[se.id].needs.kind, 'denial');
+  assert.equal(store.state.sessions[se.id].state, 'idle');
+  assert.equal(store.state.sessions[se.id].needs, null);
+  assert.equal(cards[0].status, 'open', 'Allow once and Always allow stay on offer');
 });
 
-test('Allow once lets the next turn run the exact call, tells the agent, and clears needs-you', async () => {
+test('Allow once lets the next turn run the exact call and tells the agent', async () => {
   const { rt, store, t, adapter } = setup();
   adapter.next.push(async (c) => c.denied({ toolUseId: 'tu1', tool: 'Bash', input: { command: 'rm copy.txt' }, label: 'Delete copy.txt' }));
   rt.sendMessage(t.id, { text: 'clean up' });

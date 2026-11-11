@@ -38,7 +38,6 @@ const ALLOWED = [
   { file: 'apps.mjs', snippet: '.app-retired [aria-haspopup]`)?.focus()', why: 'closing a retired app returns to its own line, where you were' },
   { file: 'apps.mjs', snippet: 'rec.btn.focus()', why: 'the full screen button of the app you just used' },
   { file: 'apps.mjs', snippet: 'to?.focus()', why: 'Tab kept inside a full screen app' },
-  { file: 'blocks.mjs', snippet: ".stale-note'))?.focus()", why: 'the notice beside the button you used, in a block in view' },
   { file: 'blocks.mjs', snippet: '.chip[data-n=', why: 'the option you picked, kept as its block re-renders' },
   { file: 'blocks.mjs', snippet: 'all[(i + dir + all.length) % all.length].focus()', why: 'the arrow keys between options of the block you’re in' },
   { file: 'blocks.mjs', snippet: 'first}`)?.focus()', why: 'the first field with an error, in the form you sent' },

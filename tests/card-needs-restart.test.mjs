@@ -136,10 +136,7 @@ test('a failed turn that showed a block, then asked permission, doesn’t flash 
 /** The need is `kind`'s card from the turn before; @beta wakes @alpha (a turn that doesn't move on), and a restart cuts it off. */
 async function restartDuringWake(r, kind) {
   let need;
-  if (kind === 'denial') {
-    const d = r.denial('rm -rf build');
-    need = { kind, itemId: d.id };
-  } else if (kind === 'toolask') {
+  if (kind === 'toolask') {
     const a = r.toolAsk();
     need = { kind, itemId: a.id };
   } else {
@@ -154,7 +151,7 @@ async function restartDuringWake(r, kind) {
   return need;
 }
 
-for (const kind of ['denial', 'toolask', 'failed'])
+for (const kind of ['toolask', 'failed'])
   test(`a restart during a turn that didn’t move on keeps a ${kind} need from the turn before, as main does`, async () => {
     const r = room();
     const need = await restartDuringWake(r, kind);
@@ -203,4 +200,15 @@ test('after a restart, a block the interrupted turn showed ranks ahead of a wake
   assert.equal(r.needs()?.itemId, h.id, 'the wake request waits through the turn');
   restart(r);
   assert.equal(r.store.state.sessions[r.alpha.id].needs?.kind, 'block');
+});
+
+test('a refusal’s need saved before refusals stopped needing you is settled by a restart, so its ring doesn’t pulse', async () => {
+  const r = room();
+  const d = r.rt.addItem(r.t.id, { kind: 'denial', sessionId: r.alpha.id, handle: 'alpha', turnId: 'turn_last', summary: 'rm -rf build', status: 'open' });
+  r.setNeed('denial', d.id);
+  restart(r);
+  const se = r.store.state.sessions[r.alpha.id];
+  assert.equal(se.needs, null, 'no need for a refused call');
+  assert.equal(se.state, 'idle');
+  assert.equal(r.store.item(r.t.id, d.id).status, 'open', 'the card stays, as what happened');
 });
