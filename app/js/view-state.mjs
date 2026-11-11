@@ -6,7 +6,7 @@
 import { browserMoved, measure } from './view-box.mjs';
 /**
  * @typedef {{ el: HTMLElement, inPanel: boolean, nodes: Map<string, HTMLElement>, unseen: number, stuck: boolean,
- *   anchor: { key: string, at: number, shown?: number } | null, pinned: boolean, smoothing: boolean, dead: boolean,
+ *   anchor: { key: string, at: number, shown?: number, inView?: boolean } | null, pinned: boolean, smoothing: boolean, dead: boolean,
  *   shown: number, lastTop: number, seenTop: number, heardYou: boolean, held: { end: number, last: number, width: number },
  *   jump: ((n: number) => void) | null, bound: any, size: string, sizes: ResizeObserver, changes: MutationObserver,
  *   changed?: boolean, noted?: number }} View
@@ -151,8 +151,9 @@ function onScroll(v) {
   // Reading at the end, the view was put there, by a clamp or by its own hold, not by you: keep the anchor you read at.
   if (v.stuck || atEnd(s)) return;
   if (!moved) holdAnchor(v);
-  // Our own hold after a jump: the target stays the anchor while what’s between it and the middle draws (#712).
-  if (v.pinned) return;
+  // Our own hold after a jump: the target stays the anchor while what’s between it and the middle draws (#712). So
+  // does the first reply in view, taken when the middle was skipped, until you scroll again (findAnchor, #1257).
+  if (v.pinned || (!yours && v.anchor?.inView)) return;
   v.anchor = findAnchor(v);
 }
 /** @param {View} v @param {() => void} scrolled @param {() => void} resized */
