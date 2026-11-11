@@ -53,13 +53,17 @@ const holders = new WeakMap();
 export function drawUntilPainted(item) {
   holders.set(item, (holders.get(item) ?? 0) + 1);
   item.style.contentVisibility = 'visible';
+  // The pending release holds the item weakly: a redraw as a room is left would otherwise keep that room's whole page
+  // alive through the item's parents until two frames have passed (page-leak.spec.mjs, #1246).
+  const ref = new WeakRef(item);
   let done = false;
   const release = () => {
-    if (done) return;
+    const held = ref.deref();
+    if (done || !held) return;
     done = true;
-    const left = /** @type {number} */ (holders.get(item)) - 1;
-    holders.set(item, left);
-    if (!left) item.style.removeProperty('content-visibility');
+    const left = /** @type {number} */ (holders.get(held)) - 1;
+    holders.set(held, left);
+    if (!left) held.style.removeProperty('content-visibility');
   };
   requestAnimationFrame(() => requestAnimationFrame(release));
   return release;
