@@ -18,19 +18,28 @@ import { publicFrame } from './public-state.mjs';
 import { REJECTED } from './store-reject.mjs';
 
 /**
+ * How long a stream’s page may go without reading before the stream is closed (#1210). Every frame for it waits in its
+ * response, on the heap, until the page reads; a tab the browser froze in the background never does. Closed, the page’s
+ * EventSource reconnects when it runs again, with its Last-Event-ID, and gets what it missed, or loads the state again.
+ */
+export const UNREAD_MS = 60_000;
+
+/**
  * Sends the store’s events to every open stream, and a keep-alive every 15 s; stream() opens one for a request to
  * /api/stream.
  * @param {import('./store.mjs').Store} store
  * @param {typeof EVENTS} [events]  the event table, which a spec replaces to show a private type
+ * @param {{ now?: () => number }} [options]  the clock UNREAD_MS is measured on, which a test sets
  * @returns {{
  *   streams: Set<import('node:http').ServerResponse>,
  *   stop: () => void,
  *   stream: (req: import('node:http').IncomingMessage, res: import('node:http').ServerResponse, url: URL) => void,
  * }}
  */
-export function liveStreams(store, events = EVENTS) {
+export function liveStreams(store, events = EVENTS, { now = Date.now } = {}) {
   /** @type {Set<import('node:http').ServerResponse>} */
   const streams = new Set();
+  const deliver = frameWriter(streams, now);
   // POSTBOX_STREAM_LAG holds every event back that many milliseconds, as a busy computer can. The browser specs run
   // with it in CI to show they wait for the page to hear a change, not for a fixed time.
   const lag = Number(process.env.POSTBOX_STREAM_LAG) || 0;
@@ -42,7 +51,7 @@ export function liveStreams(store, events = EVENTS) {
     const frames = ev.type === REJECTED ? `${line}event: ${STREAM.resync}\ndata: {}\n\n` : line;
     const send = () => {
       if (store.epoch !== epoch) return;
-      for (const res of streams) res.write(frames);
+      for (const res of streams) deliver(res, frames);
     };
     if (lag > 0) setTimeout(send, lag).unref();
     else send();
@@ -51,14 +60,14 @@ export function liveStreams(store, events = EVENTS) {
   // (#508’s storage design, “When a write fails (ST-3)”): the page shows one status line from it.
   store.onStatus((status) => {
     const frame = `event: ${STREAM.status}\ndata: ${JSON.stringify(status)}\n\n`;
-    for (const res of streams) res.write(frame);
+    for (const res of streams) deliver(res, frame);
   });
   // Retry installs a new epoch: every open stream is told to load the state again.
   store.onReload(() => {
-    for (const res of streams) res.write(`event: ${STREAM.epoch}\ndata: ${JSON.stringify(store.epoch)}\n\nevent: ${STREAM.resync}\ndata: {}\n\n`);
+    for (const res of streams) deliver(res, `event: ${STREAM.epoch}\ndata: ${JSON.stringify(store.epoch)}\n\nevent: ${STREAM.resync}\ndata: {}\n\n`);
   });
   const keepAlive = setInterval(() => {
-    for (const res of streams) res.write(': keep-alive\n\n');
+    for (const res of streams) deliver(res, ': keep-alive\n\n');
   }, 15000);
 
   /** @param {import('node:http').IncomingMessage} req @param {import('node:http').ServerResponse} res @param {URL} url */
@@ -73,12 +82,34 @@ export function liveStreams(store, events = EVENTS) {
     const backlog = lost ? null : store.since(since);
     // Too far behind, or on a lost timeline: the browser refetches the whole state, then resumes from its seq.
     if (backlog === null) res.write(`event: ${STREAM.resync}\ndata: {}\n\n`);
-    else for (const ev of backlog) res.write(publicFrame(ev, events));
+    else for (const ev of backlog) deliver(res, publicFrame(ev, events));
     streams.add(res);
     req.on('close', () => streams.delete(res));
   }
 
   return { streams, stop: () => clearInterval(keepAlive), stream };
+}
+
+/**
+ * Writes frames to the streams, and closes a stream instead once its page hasn’t read for UNREAD_MS: since its first
+ * write past the buffer’s mark, with no drain after it.
+ * @param {Set<import('node:http').ServerResponse>} streams @param {() => number} now
+ * @returns {(res: import('node:http').ServerResponse, frame: string) => void}
+ */
+function frameWriter(streams, now) {
+  /** When each stream’s page fell behind. */
+  const behindSince = new WeakMap();
+  return (res, frame) => {
+    const since = behindSince.get(res);
+    if (since !== undefined && now() - since >= UNREAD_MS) {
+      streams.delete(res);
+      res.destroy();
+      return;
+    }
+    if (res.write(frame) !== false || since !== undefined) return;
+    behindSince.set(res, now());
+    res.once('drain', () => behindSince.delete(res));
+  };
 }
 
 /**
