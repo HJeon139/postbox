@@ -11,6 +11,7 @@ import { itemOf, positionOf } from '/shared/item-index.mjs';
 import { needsYouNow, whereNeeds } from '/shared/needs.mjs';
 import { apply, ownState, PUBLIC_EVENT_TYPES, STREAM } from '/shared/state.mjs';
 import { fetchRange, gate, loading, place } from './item-ranges.mjs';
+import { windowOn } from './window-flag.mjs';
 
 // The event types the page hears: every public type in shared/state.mjs's table, and the cursor the server sends in
 // place of any other (server/public-state.mjs).
@@ -60,6 +61,17 @@ export async function load() {
 }
 
 /**
+ * What a resync loads of an open conversation: all of it with the window off, which mounts every item; around the
+ * middle of a range short of the newest item, so what you read stays; else the latest.
+ * @param {import('./item-ranges.mjs').Range | undefined} r @param {any[]} list
+ */
+function refillQuery(r, list) {
+  if (!windowOn()) return '?limit=all';
+  const mid = r && r.start + list.length < r.total ? list[list.length >> 1]?.id : null;
+  return mid ? `?around=${encodeURIComponent(mid)}` : '';
+}
+
+/**
  * Loads each open conversation’s items again into a state the page is about to take (a resync): the range it held, or
  * its latest when that held the newest item, so what you read stays and nothing is loaded twice. One that fails, or
  * comes from another history, is loaded fresh by its view.
@@ -69,10 +81,7 @@ async function refill(next, epoch) {
   const ranges = new Map();
   await Promise.all(
     [...client.open.keys()].map(async (id) => {
-      const r = client.ranges.get(id);
-      const list = client.state?.items[id] ?? [];
-      const mid = r && r.start + list.length < r.total ? list[list.length >> 1]?.id : null;
-      const answer = await fetchRange(id, mid ? `?around=${encodeURIComponent(mid)}` : '').catch(() => null);
+      const answer = await fetchRange(id, refillQuery(client.ranges.get(id), client.state?.items[id] ?? [])).catch(() => null);
       if (!answer || (answer.epoch ?? epoch) !== epoch) return;
       loading(ranges, id);
       place(next, ranges, answer, 'replace');
