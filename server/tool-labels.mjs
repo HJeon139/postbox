@@ -64,6 +64,14 @@ export function describeTool(name, input = {}) {
       return `Subagent: ${clip(i.description ?? i.subagent_type ?? 'task', 60)}`;
     case 'TodoWrite':
       return 'Updated the plan';
+    default:
+      return mcpLabel(name, i);
+  }
+}
+
+/** A label for one of Postbox’s own tools, or another MCP server’s, by its name and input. @param {string} name @param {any} i */
+function mcpLabel(name, i) {
+  switch (name) {
     case 'mcp__postbox__search_assets':
       return `Searched the assets for “${clip(i.query, 50)}”`;
     case 'mcp__postbox__show_block':
