@@ -29,7 +29,13 @@ export function client(origin) {
     if (!r.ok) throw new Error(`${method} ${path}: ${data.error ?? r.status}`);
     return data;
   };
-  const state = async () => (await call('/api/state')).state;
+  // /api/state carries no conversation's items (#1155): the tour reads each one whole from its items route.
+  const state = async () => {
+    const s = (await call('/api/state')).state;
+    const ranges = await Promise.all(Object.keys(s.threads).map((id) => call(`/api/threads/${encodeURIComponent(id)}/items?limit=all`)));
+    s.items = Object.fromEntries(ranges.map((r) => [r.threadId, r.items]));
+    return s;
+  };
   const until = async (fn, { timeout = 30000, label = 'the next step' } = {}) => {
     const end = Date.now() + timeout;
     while (Date.now() < end) {
