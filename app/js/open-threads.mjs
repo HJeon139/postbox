@@ -24,9 +24,10 @@ function load(threadId, query, how) {
     // A conversation deleted meanwhile has nothing to load: the server would answer 404.
     if (!client.open.has(threadId) || !client.state.threads[threadId]) return;
     const ranges = client.ranges;
-    loading(ranges, threadId);
+    const range = loading(ranges, threadId);
     const answer = await fetchRange(threadId, query).catch(() => null);
-    if (client.ranges !== ranges || !client.open.has(threadId)) return;
+    // Closed meanwhile, and maybe opened again with a range of its own: this answer is for the range it was asked for.
+    if (client.ranges !== ranges || !client.open.has(threadId) || ranges.get(threadId) !== range) return;
     if (!answer || (answer.epoch ?? client.epoch) !== client.epoch) {
       const r = ranges.get(threadId);
       if (r) r.loads = Math.max(0, r.loads - 1);
