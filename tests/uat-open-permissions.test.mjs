@@ -54,3 +54,13 @@ test('an answered permission, or one in another thread, does not wait', () => {
   state.items.t2 = [{ id: 'px', kind: 'permission', handle: 'critic', status: 'open', summary: 'run a command: x' }];
   assert.deepEqual(waitingOnYou(state, ['t1']), []);
 });
+
+// server/permission-cards.mjs: an answer rewrites the item's status in the same step that ends its wait (settlePermission),
+// and a restart or an ended turn sets "expired" (expireStalePermissions), so only "open" is still waiting.
+test('a permission in any answered or expired state is not handed back', () => {
+  for (const status of ['allowed', 'allowed-once', 'allowed-always', 'denied', 'left', 'expired']) {
+    const state = wf1();
+    state.items.t1[1].status = status;
+    assert.deepEqual(waitingOnYou(state, ['t1']), [], status);
+  }
+});
