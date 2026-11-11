@@ -41,11 +41,17 @@ export function inputLine(input) {
   }
   return parts.join(' · ').slice(0, STEP_TEXT.input);
 }
-/** The end of what a call returned, bounded, for its step. @param {unknown} text */
-const outputTail = (text) =>
-  String(text ?? '')
-    .trim()
-    .slice(-STEP_TEXT.output);
+/**
+ * The end of what a call returned, bounded, for its step. Cut, it starts at a whole line, marked, so no line reads as
+ * if it were whole. @param {unknown} text
+ */
+function outputTail(text) {
+  const t = String(text ?? '').trim();
+  if (t.length <= STEP_TEXT.output) return t;
+  const tail = t.slice(-STEP_TEXT.output);
+  const line = tail.indexOf('\n');
+  return `…${line >= 0 && line < tail.length - 1 ? tail.slice(line + 1) : tail}`;
+}
 /** A step’s input field, when it has one. @param {unknown} input */
 const inputOf = (input) => {
   const line = inputLine(input);
