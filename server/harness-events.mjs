@@ -7,11 +7,12 @@
 //                                          subagent’s own words: a step in its voice, never the reply (#73).
 // - thinking  { text, block?, parent?, whole? }   a piece of a thought; whole, or a thinking_end, makes it a step.
 // - thinking_end { block }
-// - tool_call { id, name, input?, label?, parent?, who?, final? }   a call, named as Claude Code names its tools (Bash, Read, Edit,
-//                                          Write, WebSearch, Agent, mcp__<server>__<tool>); again with its input, and
-//                                          final once that input is whole; label, its harness’s own words for it;
-//                                          who, the subagent it’s from when no call started it. An Agent or Task
-//                                          call starts a subagent.
+// - tool_call { id, name, input?, label?, parent?, who?, final?, work? }   a call, named as Claude Code names its tools (Bash,
+//                                          Read, Edit, Write, WebSearch, Agent, mcp__<server>__<tool>); again with its
+//                                          input, and final once that input is whole; label, its harness’s own words
+//                                          for it; who, the subagent it’s from when no call started it; work: false, the
+//                                          harness’s own housekeeping, which the work ledger never hears. An Agent or
+//                                          Task call starts a subagent.
 // - tool_result { id, isError?, text?, result?, vcsCwd?, background?, refused?, ms?, parent? }   what it returned;
 //                                          background: it may have gone on as a job ({ job, named, outputFile }) or a
 //                                          subagent ({ agent }); refused: its harness refused it, and why.
@@ -72,7 +73,7 @@ export class HarnessEvents {
       tasks: new Map(), // a subagent’s own id → the call that started it
       denied: new Set(),
       jobs: new Map(), // background job id → its call’s id, while it runs
-      used: new Set(), // call ids the work ledger has
+      used: new Set(), // call ids the work ledger has, or never will (work: false)
       state: null,
     };
     this.status = this.status.bind(this);
@@ -136,6 +137,7 @@ export class HarnessEvents {
   /** @param {any} e */
   on_tool_call(e) {
     if (!e.parent && !e.who && !this.st.tools.has(e.id)) this.words.calls += 1;
+    if (e.work === false) this.st.used.add(e.id);
     this.tools.start(e.id, e.name, e.input ?? {}, this.by(e.parent, e.who), e.label);
     if (e.input) this.tools.input(e.id, e.input, e.final === true);
     this.moveSub(e.parent, { state: 'tool', doing: describeTool(e.name, e.input) });

@@ -183,3 +183,15 @@ test('a Kiro turn’s file write and command reach Work, under Claude Code’s n
     ['echo pb-probe-ran'],
   );
 });
+
+test('loading a tool’s schema isn’t work: Antigravity’s reads of its own files and Kiro’s “Tool Load” never reach Work', () => {
+  /** @type {string[]} */
+  const heard = [];
+  const ctx = { state: {}, persona: {}, text() {}, activity() {}, status() {}, reported() {}, toolUse: (/** @type {any} */ u) => heard.push(u.name) };
+  const agy = createAgyMapper(ctx);
+  for (const e of fixture('antigravity-cli/block')) agy.push(e);
+  const kiro = createKiroMapper(ctx);
+  for (const e of fixture('kiro-cli/block')) kiro.push(e);
+  assert.ok(heard.length > 0, 'the turns’ other calls are heard');
+  assert.ok(!heard.includes('ToolSearch'), heard.join(', '));
+});

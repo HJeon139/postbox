@@ -148,7 +148,7 @@ export function createKiroMapper(ctx, { now = Date.now, effort = null } = {}) {
     const { name, input } = toolOf({ ...u, kind: st.kinds.get(u.toolCallId) });
     // v3 loads tool definitions on demand (“Tool Load”), as Claude Code’s ToolSearch does.
     const native = u.title === 'Tool Load' ? 'ToolSearch' : clip(u.title || KINDS[/** @type {keyof typeof KINDS} */ (u.kind)] || 'Using a tool', 80);
-    emit({ kind: 'tool_call', id: u.toolCallId, name: name ?? native, input, final: true });
+    emit({ kind: 'tool_call', id: u.toolCallId, name: name ?? native, input, final: true, ...(native === 'ToolSearch' ? { work: false } : {}) });
   };
   const update = (/** @type {any} */ u) => {
     const kind = u?.sessionUpdate;

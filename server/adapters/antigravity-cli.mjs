@@ -351,7 +351,8 @@ export function createAgyMapper(ctx, { now = Date.now, effort = null, resumed = 
       ms: 0,
     };
     st.tools.set(key(s), t);
-    emit({ kind: 'tool_call', id: t.id, name, input: tool.input, final: true });
+    // agy reading its own files to load a tool’s schema isn’t the agent’s work (agy-tools.mjs).
+    emit({ kind: 'tool_call', id: t.id, name, input: tool.input, final: true, ...(name === 'ToolSearch' ? { work: false } : {}) });
     Object.assign(st, { refusedLast: null, textSinceTool: false, writing: false });
     return t;
   };
