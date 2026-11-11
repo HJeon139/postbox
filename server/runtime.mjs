@@ -104,7 +104,7 @@ import {
   threadPersona,
   wakeAgent,
 } from './side-threads.mjs';
-import { stepInput, stepOutput } from './step-text.mjs';
+import { stepState, turnStep } from './step-text.mjs';
 import { newId } from './store.mjs';
 import { heldTurn, STORE_STOPPED, saveBackendState, watchStore, whenWritable } from './store-outage.mjs';
 import { endSubagent, notUrgent } from './subagent-end.mjs';
@@ -127,9 +127,6 @@ export { PERMISSION_MODES, readCapped };
 
 /** @typedef {import('./agent-files.mjs').AppFile} AppFile */
 
-const STEP_STATES = new Set(['running', 'done', 'failed', 'denied', 'stopped']);
-/** What a step is when it isn’t a tool call (#73): a thought, a subagent’s narration, or a subagent’s own step. */
-const STEP_KINDS = /** @type {Set<unknown>} */ (new Set(['thought', 'said', 'agent']));
 /** The background jobs Postbox keeps on a session, at most. */
 const MAX_JOBS = 50;
 /** How long a stopped turn may hold its session before Postbox lets the next turn start anyway, and says so (#126). */
@@ -783,20 +780,7 @@ export class Runtime {
         if (!turn.first && turn.kind !== 'lint') ensureSegment();
         if (!who) stepTaken(turn);
         const i = turn.steps.findIndex((s) => s.id === id);
-        const step = {
-          id: id ?? newId('st'),
-          label: String(label).slice(0, 200),
-          state: STEP_STATES.has(state) ? state : 'done',
-          ms,
-          ...(who ? { who: String(who).slice(0, 40) } : {}),
-          ...(typeof parent === 'string' && parent ? { parent: parent.slice(0, 100) } : {}),
-          ...(detail ? { detail: String(detail).slice(0, 1200) } : {}),
-          ...(STEP_KINDS.has(kind) ? { kind } : {}),
-          ...(typeof job === 'string' && job ? { job: job.slice(0, 60) } : {}),
-          // Its call’s input and the end of what it returned, bounded as the core bounds them (server/step-text.mjs).
-          ...(input ? { input: stepInput(String(input)) } : {}),
-          ...(output ? { output: stepOutput(output) } : {}),
-        };
+        const step = turnStep({ id: id ?? newId('st'), label, state, ms, who, parent, detail, kind, job, input, output });
         if (i >= 0) turn.steps[i] = { ...turn.steps[i], ...step };
         else turn.steps.push(step);
         if (turn.first) rt.store.emit('item.patch', { threadId: turn.threadId, id: turn.first, activityStep: step });
@@ -1305,7 +1289,7 @@ export class Runtime {
       this.keptPoll = null;
     }
     // A kept job’s step loses what it said while running (keepUnsure); another’s keeps why its CLI said it failed.
-    this.setJobStep(job, { state: STEP_STATES.has(state) ? state : 'done', ms: Date.now() - job.startedAt, ...(detail || job.kept ? { detail } : {}) });
+    this.setJobStep(job, { state: stepState(state), ms: Date.now() - job.startedAt, ...(detail || job.kept ? { detail } : {}) });
     // A job Postbox kept running ended after its CLI had gone, so the agent hears it on its next turn.
     if (job.kept)
       this.tellAgent(
