@@ -9,8 +9,9 @@
 // - tool_call { id, name, input?, parent?, final? }   a call, named as Claude Code names its tools (Bash, Read, Edit,
 //                                          Write, WebSearch, Agent, mcp__<server>__<tool>); again with its input, and
 //                                          final once that input is whole. An Agent or Task call starts a subagent.
-// - tool_result { id, isError?, text?, result?, vcsCwd?, background?, parent? }   what it returned; background: it may
-//                                          have gone on as a job ({ job, named, outputFile }) or a subagent ({ agent }).
+// - tool_result { id, isError?, text?, result?, vcsCwd?, background?, refused?, parent? }   what it returned;
+//                                          background: it may have gone on as a job ({ job, named, outputFile }) or a
+//                                          subagent ({ agent }); refused: its harness refused it, and why.
 // - tool_output { id, text }               a running call’s latest output, such as a command’s.
 // - tool_end  { id?, job?, status, summary?, outputFile? }   a call that went on in the background ended.
 // - refused   { id, tool, input?, agentId?, reason?, reasonType?, fromResult? }   the harness refused a call itself.
@@ -138,7 +139,11 @@ export class HarnessEvents {
     const job = !e.isError && bg?.job && t && !t.done && !SUBAGENT_TOOLS.has(t.name) && (bg.named || t.input?.run_in_background === true);
     if (job) this.tools.startJob(e.id, { job: String(bg.job), outputFile: bg.outputFile ?? null });
     else if (!e.isError && bg?.agent && this.st.subagents.has(e.id)) this.tools.startAsyncAgent(e.id);
-    else this.tools.end(e.id, e.isError === true, e.isError ? (e.text ?? '') : '');
+    else if (e.refused) {
+      // Its harness refused it with no card to answer: the step says why.
+      this.st.denied.add(e.id);
+      this.tools.end(e.id, true, '', { reason: String(e.refused) });
+    } else this.tools.end(e.id, e.isError === true, e.isError ? (e.text ?? '') : '');
     this.ctx.toolResult?.({ id: e.id, isError: e.isError === true, text: e.text ?? '', result: e.result ?? null, vcsCwd: e.vcsCwd ?? null });
     if (!e.parent) this.status({ state: 'think', currentStep: 'Thinking' });
   }
@@ -182,7 +187,10 @@ export class HarnessEvents {
   /** @param {any} e */
   on_context(e) {
     if (e.parent) this.moveSub(e.parent, { ctx: e.percent });
-    else this.status({ ctx: e.percent });
+    else if (e.percent !== this.st.ctx) {
+      this.st.ctx = e.percent;
+      this.status({ ctx: e.percent });
+    }
   }
 
   /** @param {any} e */

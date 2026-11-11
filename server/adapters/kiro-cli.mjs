@@ -46,9 +46,10 @@ import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
+import { HarnessEvents } from '../harness-events.mjs';
+import { clip } from '../harness-tools.mjs';
 import { checkRemoteContext } from './adapter.mjs';
 import { tooLongForArg } from './arg-prompt.mjs';
-import { describeTool, isQuietTool } from './claude-stream.mjs';
 import { agentFolder } from './folder.mjs';
 import { FRESH_START_TEXT, formatMessage, turnGuide } from './guide.mjs';
 import { KIRO_TOOL_RULES, kiroAgent } from './kiro-cli-agent.mjs';
@@ -97,13 +98,6 @@ export function kiroArgs({ persona, agent, sessionId = null, prompt, stdin = fal
 export const kiroHomeFor = (persona, { isolatedHome, env = process.env, home = homedir() }) =>
   setupOf(persona).usesHostSetup ? env.KIRO_HOME || join(home, '.kiro') : isolatedHome;
 
-const clip = (s, n) => {
-  const t = String(s ?? '')
-    .replace(/\s+/g, ' ')
-    .trim();
-  return t.length > n ? `${t.slice(0, n - 1)}…` : t;
-};
-const firstSentence = (s, n = 300) => clip(/^[\s\S]*?[.!?](?=\s|$)/.exec(String(s ?? '').trim())?.[0] ?? s, n);
 const contentText = (content) =>
   (Array.isArray(content) ? content : [])
     .map((c) => (c?.type === 'content' ? c.content : c))
@@ -151,6 +145,7 @@ export function toolOf(u) {
  * @param {any} ctx @param {{ now?: () => number, effort?: string|null }} [opts]
  */
 export function createKiroMapper(ctx, { now = Date.now, effort = null } = {}) {
+  const emit = new HarnessEvents(ctx, { now }).event;
   const st = {
     sessionId: /** @type {string|null} */ (null),
     model: /** @type {string|null} */ (null),
@@ -160,102 +155,52 @@ export function createKiroMapper(ctx, { now = Date.now, effort = null } = {}) {
     asked: new Map(), // toolCallId → what Kiro would have asked (“Write File”, “echo hi”)
     refused: new Set(), // toolCallIds whose ask no one could answer
     steering: /** @type {string[]} */ ([]), // steering files Kiro loaded (steering_inclusion)
-    wrote: false,
+    texts: 0, // the reply’s paragraphs: text after a tool call starts one, as Kiro runs the two together
     afterTool: false,
-    thought: '',
     thoughts: 0,
-    tools: new Map(),
-    state: /** @type {string|null} */ (null),
-    ctx: /** @type {number|null} */ (null),
+    thinking: false,
   };
-  const status = (patch) => {
-    if (patch.state && patch.state === st.state && Object.keys(patch).length === 1) return;
-    if (patch.state) st.state = patch.state;
-    ctx.status(patch);
+  // Kiro reports context use after nearly every event; the ring shows whole percents.
+  const contextUsed = (/** @type {unknown} */ pct) => {
+    if (typeof pct === 'number' && Number.isFinite(pct)) emit({ kind: 'context', percent: Math.min(100, Math.round(pct)) });
   };
-  // Kiro reports context use after nearly every event; the ring shows whole percents, so only a change is passed on.
-  const contextUsed = (pct) => {
-    if (typeof pct !== 'number' || !Number.isFinite(pct)) return;
-    const n = Math.min(100, Math.round(pct));
-    if (n === st.ctx) return;
-    st.ctx = n;
-    status({ ctx: n });
+  const status = (/** @type {any} */ patch) => emit({ kind: 'status', state: patch.state, step: patch.currentStep });
+  const endThought = () => {
+    if (st.thinking) emit({ kind: 'thinking_end', block: `thought-${st.thoughts}` });
+    st.thinking = false;
   };
-  const flushThought = () => {
-    const t = st.thought.trim();
-    st.thought = '';
-    if (!t) return;
-    st.thoughts += 1;
-    ctx.activity({ id: `thought-${st.thoughts}`, label: firstSentence(t, 120), state: 'done', kind: 'thought', detail: clip(t, 1200) });
-  };
-  const startTool = (u) => {
+  const call = (/** @type {any} */ u) => {
     const { name, input } = toolOf(u);
     // v3 loads tool definitions on demand (“Tool Load”), as Claude Code’s ToolSearch does.
-    const quiet = name ? isQuietTool(name) : u.title === 'Tool Load';
-    const label = name ? describeTool(name, input) : clip(u.title || KINDS[u.kind] || 'Using a tool', 80);
-    const t = { label, quiet, started: now(), done: false };
-    st.tools.set(u.toolCallId, t);
-    if (!quiet) ctx.activity({ id: u.toolCallId, label, state: 'running' });
-    status({ state: 'tool', currentStep: label });
+    const native = u.title === 'Tool Load' ? 'ToolSearch' : clip(u.title || KINDS[/** @type {keyof typeof KINDS} */ (u.kind)] || 'Using a tool', 80);
+    emit({ kind: 'tool_call', id: u.toolCallId, name: name ?? native, input, final: true });
     st.afterTool = true;
-    return t;
   };
-  const endTool = (u) => {
-    const t = st.tools.get(u.toolCallId) ?? startTool(u);
-    if (t.done) return;
-    t.done = true;
-    const failed = u.status === 'failed';
-    const why = failed ? (contentText(u.content) || String(u.rawOutput?.message ?? '')).replace(/^Output:\s*/, '') : '';
-    // Refused for want of an answer (an ask no one could take), or by a deny rule, which v3 reports as
-    // _meta.kiro.policyDenial (recorded: “Tool call denied by user's permissions. Rule: deny mcp matching …”).
-    const unanswered = failed && (st.refused.has(u.toolCallId) || REFUSED.test(why));
-    const refused = unanswered || (failed && Boolean(u._meta?.kiro?.policyDenial));
-    const state = refused ? 'denied' : failed ? 'failed' : 'done';
-    // Kiro words a refusal as the person’s answer, but nobody was asked: say what happened instead.
-    const asked = st.asked.get(u.toolCallId);
-    const detail = unanswered
-      ? `Kiro asks before this${asked ? ` (“${clip(asked, 80)}”)` : ''}, and can’t ask you from Postbox, so it was refused.`
-      : refused
-        ? 'Its permissions in Postbox don’t allow this.'
-        : failed && why
-          ? firstSentence(why, 300)
-          : '';
-    if (!t.quiet) ctx.activity({ id: u.toolCallId, label: t.label, state, ms: now() - t.started, ...(detail ? { detail } : {}) });
-  };
-
-  const update = (u) => {
+  const update = (/** @type {any} */ u) => {
     const kind = u?.sessionUpdate;
-    if (kind !== 'agent_thought_chunk') flushThought();
+    if (kind !== 'agent_thought_chunk') endThought();
     switch (kind) {
       case 'agent_message_chunk': {
         const text = u.content?.type === 'text' ? String(u.content.text ?? '') : '';
         if (!text) return;
-        // Text after a tool call is a new paragraph: Kiro runs the two together (its finalText does).
-        if (st.wrote && st.afterTool) ctx.text('\n\n');
+        if (st.afterTool) st.texts += 1;
         st.afterTool = false;
-        st.wrote = true;
-        // Text arrives a few characters at a time: the ring changes once, not with every chunk.
-        if (st.state !== 'gen') status({ state: 'gen', currentStep: 'Writing a reply' });
-        ctx.text(text);
-        return;
+        return emit({ kind: 'text', text, block: `text-${st.texts}` });
       }
       case 'agent_thought_chunk':
-        st.thought += u.content?.type === 'text' ? String(u.content.text ?? '') : '';
-        if (st.state !== 'think') status({ state: 'think', currentStep: 'Thinking' });
-        return;
+        if (!st.thinking) st.thoughts += 1;
+        st.thinking = true;
+        return emit({ kind: 'thinking', text: u.content?.type === 'text' ? String(u.content.text ?? '') : '', block: `thought-${st.thoughts}` });
       case 'tool_call':
-        if (!st.tools.has(u.toolCallId)) startTool(u);
-        if (u.status === 'completed' || u.status === 'failed') endTool(u);
-        return;
       case 'tool_call_update':
-        if (u.status === 'completed' || u.status === 'failed') endTool(u);
-        else if (!st.tools.has(u.toolCallId)) startTool(u);
+        call(u);
+        if (u.status === 'completed' || u.status === 'failed') emit(kiroResult(u, st));
         return;
       case 'session_info_update':
         sessionInfo(u._meta?.kiro, st, { ctx, contextUsed, status });
         return;
       case 'config_option_update': {
-        const opt = (Array.isArray(u.configOptions) ? u.configOptions : []).find((o) => o?.id === 'model');
+        const opt = (Array.isArray(u.configOptions) ? u.configOptions : []).find((/** @type {any} */ o) => o?.id === 'model');
         const model = postboxModel(opt?.currentValue);
         if (model && model !== st.model) {
           st.model = model;
@@ -292,7 +237,7 @@ export function createKiroMapper(ctx, { now = Date.now, effort = null } = {}) {
       if (typeof d.sessionId === 'string' && d.sessionId && !st.sessionId) st.sessionId = d.sessionId;
       switch (e?.type) {
         case 'runStarted':
-          status({ state: 'think', currentStep: 'Thinking' });
+          emit({ kind: 'status', state: 'think', step: 'Thinking' });
           return;
         case 'sessionUpdate':
           update(d.update);
@@ -301,15 +246,17 @@ export function createKiroMapper(ctx, { now = Date.now, effort = null } = {}) {
           contextUsed(d.contextUsagePercentage);
           return;
         case 'runFinished':
-          flushThought();
+          endThought();
           st.finished = d;
+          emit({ kind: 'turn_end', isError: d.status !== 'success' });
           if (d.status !== 'success')
             st.error = `Kiro ended the turn with ${clip(d.status ?? 'no status', 40)}${d.stopReason ? ` (${clip(d.stopReason, 40)})` : ''}.`;
           else if (d.stopReason === 'refusal') st.error = 'The model refused to continue this turn.';
           else if (d.stopReason === 'max_tokens') st.error = 'The reply hit the model’s output limit before it finished.';
           return;
         case 'runError':
-          flushThought();
+          endThought();
+          emit({ kind: 'turn_end', isError: true });
           st.error = `Kiro couldn’t run the turn: ${clip(d.message ?? 'no reason given', 400)}`;
           // A session to resume that Kiro no longer has (recorded: stage init, “Session '<id>' not found”).
           if (/^Session '.*' not found/.test(String(d.message ?? ''))) st.missingSession = true;
@@ -318,6 +265,24 @@ export function createKiroMapper(ctx, { now = Date.now, effort = null } = {}) {
       }
     },
   };
+}
+
+/**
+ * How a call ended: what it returned, or why it failed. One Kiro refused for want of an answer (an ask no one could
+ * take), or by a deny rule, which v3 reports as _meta.kiro.policyDenial (recorded: “Tool call denied by user's
+ * permissions. Rule: deny mcp matching …”), is refused, and says what happened: Kiro words it as the person’s answer,
+ * but nobody was asked. @param {any} u @param {{ refused: Set<string>, asked: Map<string, string> }} st
+ */
+function kiroResult(u, st) {
+  const failed = u.status === 'failed';
+  const why = failed ? (contentText(u.content) || String(u.rawOutput?.message ?? '')).replace(/^Output:\s*/, '') : contentText(u.content);
+  const unanswered = failed && (st.refused.has(u.toolCallId) || REFUSED.test(why));
+  const refused = unanswered || (failed && Boolean(u._meta?.kiro?.policyDenial));
+  const asked = st.asked.get(u.toolCallId);
+  const reason = unanswered
+    ? `Kiro asks before this${asked ? ` (“${clip(asked, 80)}”)` : ''}, and can’t ask you from Postbox, so it was refused.`
+    : 'Its permissions in Postbox don’t allow this.';
+  return { kind: 'tool_result', id: u.toolCallId, isError: failed, text: why, ...(refused ? { refused: reason } : {}) };
 }
 
 /** A run still over the size limit fails with what Kiro said, and its session isn’t kept to resume (#544). */

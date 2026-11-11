@@ -114,8 +114,11 @@ export class HarnessTools {
     this.pushSubagents();
   }
 
-  /** A call ends: its step says how, a subagent’s what it returned. @param {string} id @param {boolean} failed @param {string} [detail] */
-  end(id, failed, detail = '', { stopped = false } = {}) {
+  /**
+   * A call ends: its step says how, a subagent’s what it returned, and one its harness refused why (`reason`).
+   * @param {string} id @param {boolean} failed @param {string} [detail]
+   */
+  end(id, failed, detail = '', { stopped = false, reason = '' } = {}) {
     const t = this.st.tools.get(id);
     if (!t || t.done) return;
     t.done = true;
@@ -123,7 +126,7 @@ export class HarnessTools {
     if (failed && detail) t.error = detail;
     const state = endState(this.st.denied.has(id), failed, stopped);
     const told = failed && detail && state !== 'denied' ? detail : t.summary;
-    const why = told || (t.async ? BACKGROUND_ENDS[/** @type {'done'} */ (state)] : '');
+    const why = reason || told || (t.async ? BACKGROUND_ENDS[/** @type {'done'} */ (state)] : '');
     if (!t.quiet) this.ctx.activity(this.stepOf(id, t, state, why ? { detail: firstSentence(why, 300) } : {}));
     if (this.st.subagents.delete(id)) this.pushSubagents();
   }
