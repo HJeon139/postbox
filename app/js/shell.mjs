@@ -10,16 +10,20 @@ import { busy, client, needsYou, sessionsOf, threadState, threadsOf, topicsOf } 
 import { fill, h, icon, syncList } from './dom.mjs';
 import { installLine } from './install-line.mjs';
 import { nextNeedsYou } from './needs-nav.mjs';
+import { openPalette } from './palette.mjs';
 import { openPermissions } from './permissions.mjs';
 import { projectPlaces } from './places-menu.mjs';
 import { railHidden, railShown, toggleRail } from './rail-collapse.mjs';
 import { ringFor, stateWord } from './ring.mjs';
-import { confirmDeleteThread, openNewAgent, openNewThread, openPalette, openRename, openSettings } from './sheets.mjs';
+import { confirmDeleteThread, openNewAgent, openNewThread, openRename, openSettings } from './sheets.mjs';
 import './store-line.mjs';
 import { liveMembers, topbarSig } from './topbar-sig.mjs';
 import { closeWork, navigate, openMenu, openWork, route } from './ui.mjs';
 
 export { installLine, liveMembers, railHidden, toggleRail };
+
+/** Opens Jump to… (⌘K), with the sheets it offers. */
+export const openJumpTo = () => openPalette({ openNewAgent, openSettings });
 
 const S = () => client.state;
 
@@ -118,7 +122,7 @@ export function topbar({ title = '', threadId = null, projectId = null }) {
             h('span.sr-sm', 'Work'),
           )
         : null,
-      h('button.btn.sm.hide-sm', { type: 'button', onclick: openPalette }, icon('search', 'i-sm'), 'Jump to… ', h('kbd', '⌘K')),
+      h('button.btn.sm.hide-sm', { type: 'button', onclick: openJumpTo }, icon('search', 'i-sm'), 'Jump to… ', h('kbd', '⌘K')),
       h(
         'button.btn.sm',
         {
