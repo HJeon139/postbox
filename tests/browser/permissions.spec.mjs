@@ -50,7 +50,7 @@ test.beforeAll(async () => {
     },
   });
   store.emit('project', { id: 'pr_check', name: 'Check', folder: work });
-  persona = rt.createPersona({ handle: 'coder', backend: 'claude-code', permissionMode: 'ask', tools: ['shell'] });
+  persona = rt.createPersona({ handle: 'coder', backend: 'claude-code', permissionMode: 'auto', tools: ['shell'] });
   thread = rt.createThread({ projectId: 'pr_check', title: 'Permissions check', personaIds: [persona.id] });
 });
 test.afterAll(async () => {
@@ -309,17 +309,19 @@ async function openPanel(page) {
   return page.locator('.dialog');
 }
 
-test('#66 the panel opens from ⋯ › Permissions… with the mode, rules with sources, folders, MCP servers and the effective view', async ({ page }) => {
+test('#66 the panel opens from ⋯ › Permissions… with rules with sources, folders, MCP servers and the effective view', async ({ page }) => {
   await open(page);
   const dialog = await openPanel(page);
   const all = await words(dialog);
   expect(all).toMatch(/coder’s permissions/);
-  await expect(dialog.locator('[role="radiogroup"][aria-label="Mode"] [aria-checked="true"]')).toContainText('Ask me');
+  // The mode is the persona’s, set in its sheet only.
+  await expect(dialog.locator('[role="radiogroup"][aria-label="Mode"]')).toHaveCount(0);
   expect(all).toMatch(/Bash\(rm:\*\) from the project’s shared settings/);
   expect(all).toMatch(/Bash\(git status\) from your user settings/);
   expect(all).toMatch(/Bash\(npm test:\*\) from this folder’s local settings/);
   expect(all).toMatch(/WebFetch, WebSearch, Monitor from the persona’s Tools: web\.fetch is unticked/);
-  expect(all).toMatch(/and \d+ more, from Postbox’s check on writes outside it: tools and gh commands that create, change or delete/);
+  // In Auto the harness decides, so Postbox adds no ask rules of its own for writes outside it.
+  expect(all).not.toMatch(/from Postbox’s check on writes outside it: tools and gh commands/);
   expect(all).toMatch(/Folders.*Where it works/i);
   expect(all).toMatch(/MCP servers/i);
   expect(all).toMatch(/Claude Code has the final say/);
@@ -330,8 +332,9 @@ test('#66 the panel opens from ⋯ › Permissions… with the mode, rules with 
     ['Bash(rm -rf build)', /Refused by the deny rule Bash\(rm:\*\) from the project’s shared settings/],
     ['Bash(npm test -- --ci)', /Runs: the allow rule Bash\(npm test:\*\) from this folder’s local settings/],
     ['WebFetch(https://example.com/x)', /Refused by the deny rule WebFetch from the persona’s Tools/],
-    ['Bash(make)', /No rule covers it, so Ask me mode decides: coder asks you/],
-    ['mcp__github__create_issue', /Asks you: the ask rule mcp__\*__create\* from Postbox’s check on writes outside it/],
+    ['Bash(make)', /No rule covers it, so Auto mode decides: auto mode’s safety check decides/],
+    // In Auto, Postbox adds no ask rule of its own for a write outside it: the harness decides.
+    ['mcp__github__create_issue', /No rule covers it, so Auto mode decides/],
   ]) {
     await call.click();
     await page.keyboard.press('ControlOrMeta+a');
@@ -365,18 +368,6 @@ test('#66 a rule added in the panel is saved where you chose, and shows with its
   await expect(dialog.locator('.list-rows li', { hasText: 'Bash(rm:*)' }), 'the shared rule is listed').toHaveCount(1);
   await expect(dialog.locator('.list-rows li', { hasText: 'Bash(rm:*)' }).locator('button')).toHaveCount(0);
   await expect(dialog.locator('.list-rows li', { hasText: 'Bash(make:*)' }).locator('button[aria-label^="Remove"]')).toHaveCount(1);
-});
-
-test('#66 the mode changes from the panel, and says it applies from the next turn', async ({ page }) => {
-  await open(page);
-  const dialog = await openPanel(page);
-  try {
-    await dialog.locator('[aria-label="Mode"] button', { hasText: 'Accept edits' }).click();
-    await expect(dialog.locator('.perm-status')).toContainText('coder is in Accept edits mode from its next turn');
-    expect(app.store.state.personas[persona.id].permissionMode).toBe('acceptEdits');
-  } finally {
-    app.rt.updatePersona(persona.id, { permissionMode: 'ask' });
-  }
 });
 
 test('#66 a folder added from the panel’s folder picker is listed for this conversation', async ({ page }) => {

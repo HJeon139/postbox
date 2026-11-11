@@ -220,7 +220,7 @@ test('#66: the panel reads each source’s rules, the persona’s Tools as deny 
   await writeFile(join(folder, '.claude', 'settings.local.json'), '{ not json');
   const v = await rt.permissionsView({ sessionId: se.id });
   assert.equal(v.persona.handle, 'coder');
-  assert.equal(v.persona.permissionMode, 'ask');
+  assert.equal(v.persona.permissionMode, 'auto', 'one made as Ask me runs Auto');
   assert.deepEqual(
     v.files.map((f) => [f.source, f.writable, f.allow, f.deny, Boolean(f.error)]),
     [
@@ -285,29 +285,6 @@ test('#66: a folder added for the conversation reaches the next turn; a path tha
   assert.deepEqual(adapter.calls.at(-1).ctx.addDirs, [data]);
   await rt.changePermissionFolder({ sessionId: se.id, path: data, remove: true });
   assert.deepEqual(rt.s.sessions[se.id].addDirs, []);
-});
-
-test('#66: the mode changes the persona, and a running turn too where the backend allows it', async () => {
-  const { rt, t, adapter, p } = await setup();
-  const set = [];
-  let release;
-  adapter.next.push(async (c) => {
-    c.control({ setPermissionMode: async (m) => set.push(m) > 0 });
-    await new Promise((r) => {
-      release = r;
-    });
-  });
-  rt.sendMessage(t.id, { text: 'go' });
-  await sleep(20);
-  const r = await rt.setPermissionMode(p.id, 'acceptEdits');
-  assert.deepEqual(r, { ok: true, now: [rt.sessionsIn(t.id)[0].id], later: [], kept: [], hooksLater: [] });
-  assert.deepEqual(set, ['acceptEdits']);
-  assert.equal(rt.persona(p.id).permissionMode, 'acceptEdits');
-  release();
-  await settle(rt);
-  // No running turn: it applies from the next one, which the persona’s mode decides.
-  assert.deepEqual(await rt.setPermissionMode(p.id, 'ask'), { ok: true, now: [], later: [], kept: [], hooksLater: [] });
-  await assert.rejects(rt.setPermissionMode(p.id, 'yolo'), /Permissions are one of/);
 });
 
 test('#66: rules files are changed atomically, and one that isn’t JSON is never overwritten', async () => {

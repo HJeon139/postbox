@@ -31,15 +31,6 @@ test('a host turn in Auto gets no write ask rule of Postbox’s in its settings'
   await settled(r);
 });
 
-test('a host turn in Ask me still gets every write ask rule', async () => {
-  // Passes on main by design: Ask me keeps Postbox’s write asks.
-  const r = rigIn('ask');
-  const turn = await running(r);
-  assert.deepEqual(askOf(starts(r.d).at(-1)), WRITE_TOOLS);
-  r.d.end(turn);
-  await settled(r);
-});
-
 test('in Auto, the host harness’s own prompt still makes a card', async () => {
   // Passes on main by design: the harness’s own ask keeps its card.
   const r = rigIn('auto');

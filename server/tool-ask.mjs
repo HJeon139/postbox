@@ -86,8 +86,7 @@ function answered(rt, threadId, it, action) {
   const se = rt.s.sessions[it.sessionId];
   if (!se) return { ok: true };
   releaseNeed(rt, se, it.id);
-  // Not in a conversation you’re deleting: the persona changed elsewhere, and a turn there would outlive it.
-  if (!se.archived && !se.deleting && !rt.s.threads[threadId]?.deleting && !rt.s.threads[se.threadId]?.deleting)
+  if (!se.archived)
     rt.deliver(se.id, {
       kind: 'notice',
       text:

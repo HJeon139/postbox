@@ -112,11 +112,11 @@ async function setup(persona = {}) {
   return { rt, store, t, p, next };
 }
 
-test('the permissions panel shows no write ask rules for an Auto persona, and every one for Ask me', async () => {
+test('the permissions panel shows no write ask rules for an Auto persona, nor for one stored as Ask me, which runs Auto', async () => {
   const auto = await setup();
   assert.deepEqual((await auto.rt.permissionsView({ personaId: auto.p.id })).writes.rules, []);
   const ask = await setup({ permissionMode: 'ask' });
-  assert.deepEqual((await ask.rt.permissionsView({ personaId: ask.p.id })).writes.rules, WRITE_TOOLS);
+  assert.deepEqual((await ask.rt.permissionsView({ personaId: ask.p.id })).writes.rules, []);
 });
 
 test('in Auto, a prompt the harness itself sends for a push still makes a card, marked as a write outside', async () => {

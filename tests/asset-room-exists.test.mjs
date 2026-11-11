@@ -49,18 +49,6 @@ test('a write after its conversation is deleted is refused, leaving no room inde
   assert.deepEqual(kept(store.state), [], 'no version keeps the second write’s file');
 });
 
-test('a write while its conversation is being deleted is refused as deleting, saying to write again after Undo; after Undo it’s taken', async (t) => {
-  const { store, write } = room(t);
-  store.emit('thread', { id: 'c1', members: [], deleting: Date.now() + 10_000 });
-  const during = await write({ name: 'a.md', bytes: Buffer.from('one') });
-  assert.deepEqual([during.ok, during.code], [false, 'deleting']);
-  assert.match(during.message, /being deleted.*Undo.*write again/);
-  assert.deepEqual(Object.keys(store.state.assets), [], 'nothing committed');
-  assert.equal(store.state.assetRooms?.c1, undefined, 'no index record');
-  store.emit('thread', { id: 'c1', members: [], deleting: null });
-  assert.equal((await write({ name: 'a.md', bytes: Buffer.from('one') })).ok, true, 'Undo sets deleting to null');
-});
-
 test('a conversation erased between the bytes being stored and the commit: the write is refused, and no room is rebuilt (#723)', async (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'pb-assetroom-'));
   t.after(() => rmSync(dir, { recursive: true, force: true }));

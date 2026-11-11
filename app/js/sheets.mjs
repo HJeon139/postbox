@@ -17,6 +17,7 @@ import {
   PERMISSIONS,
   selectBackend,
 } from '/shared/agent-facts.mjs';
+
 import { mockMarker } from './agent-facts.mjs';
 import { checkField } from './check-field.mjs';
 import { api, client, headerOf, sessionsOf, threadsOf } from './client.mjs';
@@ -29,11 +30,21 @@ import { projectsTab } from './projects-tab.mjs';
 import { placeField, saveRefused } from './sheets-place.mjs';
 import { appearance, connect } from './sheets-settings.mjs';
 import { skillsField } from './skills-field.mjs';
-import { keepFocus, navigate, openDialog, toast, undoToast } from './ui.mjs';
+import { keepFocus, navigate, openDialog, say, toast } from './ui.mjs';
 
 export { EFFORT_NAMES, MCP_SCOPE, MCP_STATUS, MODELS, modeHelp };
 
 const S = () => client.state;
+/**
+ * The permission modes the sheet offers: the harness judges, or it runs everything. Postbox’s own permission layer, with
+ * Ask me and Accept edits, is going, so the harness decides and Postbox shows what it did.
+ */
+const SHEET_MODES = [
+  ['auto', 'Auto (the harness judges)', 'Its harness judges each call in its own Auto mode, and asks you only when it can’t decide.'],
+  ['bypass', 'Run everything', PERMISSIONS.find(([id]) => id === 'bypass')?.[2] ?? ''],
+];
+/** A stored mode as the sheet shows and saves it: Run everything stays, and Ask me or Accept edits is Auto. */
+const sheetMode = (mode) => (mode === 'bypass' ? 'bypass' : 'auto');
 const toolsInProject = (projectId) =>
   new Set(
     Object.values(S().sessions)
@@ -152,7 +163,7 @@ function backendFields(st, paint, { idp, fixedBackend = false, personaId = null,
   const local = new Set(client.config.adapters ?? ['mock']);
   const available = new Set(BACKENDS.map(([id]) => id).filter((id) => local.has(id) || onHost(id)));
   const real = st.backend !== 'mock';
-  const perm = PERMISSIONS.find(([id]) => id === st.permissionMode) ?? PERMISSIONS[0];
+  const perm = SHEET_MODES.find(([id]) => id === st.permissionMode) ?? SHEET_MODES[0];
   return [
     // A dropdown, as Effort is: four backends side by side wrapped their names onto two lines in a half-width
     // field. One this computer can’t run stays in the list, disabled, so you can see it exists.
@@ -260,7 +271,7 @@ function backendFields(st, paint, { idp, fixedBackend = false, personaId = null,
       ? h(
           'div.field.span',
           h('span.label', 'Permissions'),
-          seg('Permissions', PERMISSIONS, perm[0], (id) => {
+          seg('Permissions', SHEET_MODES, perm[0], (id) => {
             st.permissionMode = id;
             paint();
           }),
@@ -331,10 +342,12 @@ function backendFields(st, paint, { idp, fixedBackend = false, personaId = null,
 
 // What the Tools checklist means on real backends (#5): server/adapters/setup.mjs, TOOL_RULES, and kiro-cli.mjs, KIRO_TOOL_RULES.
 // A backend that can’t turn a tool off for one agent (capabilities.tools: 'none', the Antigravity CLI) only tells it.
-const toolsHelp = (backend) =>
-  capsOf(backend).tools === 'none'
+function toolsHelp(backend) {
+  if (backend === 'codex') return 'In Auto, Web turns network on in Codex’s sandbox. Codex doesn’t turn other tools off for one agent.';
+  return capsOf(backend).tools === 'none'
     ? 'This backend can’t turn a tool off for one agent: an unticked one is only a request, which the agent is told. Its permissions still apply.'
     : 'On Claude Code, the Agent SDK and the Kiro CLI, an unticked tool is turned off. A ticked one still follows its permissions.';
+}
 
 // ── New agent ───────────────────────────────────────────────────────────────────────────
 
@@ -470,7 +483,7 @@ export function openNewAgent({ threadId = null, projectId: pid = null, preset = 
       st.backend === 'codex'
         ? h(
             'p.help',
-            'On Codex, Web is the one tool Postbox reads: in Auto, it turns network on in Codex’s sandbox. Turn it on in the agent’s quick panel once the agent is made. Codex doesn’t turn other tools off for one agent.',
+            'On Codex, Web is the one tool Postbox reads: in Auto, it turns network on in Codex’s sandbox. Turn it on in its persona sheet once the agent is made. Codex doesn’t turn other tools off for one agent.',
           )
         : h(
             'fieldset',
@@ -620,7 +633,7 @@ export function openNewAgent({ threadId = null, projectId: pid = null, preset = 
  * it a room; { room: true } starts with that intent and asks for at least two.
  */
 export function openNewThread(projectId, { room = false } = {}) {
-  const personas = Object.values(S().personas).filter((p) => !p.retired && !p.deleting);
+  const personas = Object.values(S().personas).filter((p) => !p.retired);
   const picked = new Set(room ? [] : personas.slice(0, 1).map((p) => p.id));
   const title = h('input.input', { id: 'nt-title', placeholder: room ? 'What will the room work on?' : 'What’s it about?' });
   const list = h('div.chips', { role: 'group', 'aria-label': 'Agents' });
@@ -704,7 +717,7 @@ export function confirmDeleteThread(threadId) {
         h('span.label', 'This stays'),
         h('ul.what-goes', li(true, 'The personas and their other sessions'), li(true, `Files in ${S().projects[t.projectId]?.folder ?? 'the project folder'}`)),
       ),
-      h('p.small.dim', 'You’ll have 10 seconds to undo.'),
+      h('p.small.dim', 'It goes at once. This can’t be undone.'),
     ],
     foot: [
       h('button.btn', { type: 'button', onclick: () => dlg.close() }, 'Cancel'),
@@ -714,14 +727,10 @@ export function confirmDeleteThread(threadId) {
           type: 'button',
           onclick: () =>
             api(`/api/threads/${threadId}`, null, 'DELETE')
-              .then((r) => {
+              .then(() => {
                 dlg.close();
                 navigate(`#/p/${t.projectId}`);
-                undoToast({
-                  text: `Deleted “${t.title}”`,
-                  until: r.until,
-                  onUndo: () => api(`/api/threads/${threadId}/undo-delete`, {}).catch((e) => toast({ title: 'Too late to undo', text: e.message })),
-                });
+                say(`Deleted “${t.title}”`);
               })
               .catch((e) => toast({ title: 'Couldn’t delete it', text: e.message, level: 'blocking' })),
         },
@@ -790,7 +799,7 @@ export function confirmDelete(se) {
           li(true, `Files in ${S().projects[t?.projectId]?.folder ?? 'the project folder'}`),
         ),
       ),
-      h('p.small.dim', 'You’ll have 10 seconds to undo.'),
+      h('p.small.dim', 'It goes at once. This can’t be undone.'),
     ],
     foot: [
       h('button.btn', { type: 'button', onclick: () => dlg.close() }, 'Cancel'),
@@ -801,9 +810,8 @@ export function confirmDelete(se) {
           onclick: async () => {
             dlg.close();
             try {
-              const r = await api(`/api/sessions/${se.id}`, undefined, 'DELETE');
-              const { afterDelete } = await import('./shell.mjs');
-              afterDelete(se, r.until);
+              await api(`/api/sessions/${se.id}`, undefined, 'DELETE');
+              say(`Deleted ${se.handle}’s session`);
               if (location.hash.includes(se.threadId) && !room) (await import('./last-place.mjs')).leave(se.threadId);
             } catch (e) {
               toast({ title: 'Couldn’t delete', text: e.message, level: 'blocking' });
@@ -854,7 +862,7 @@ export function openSettings(tab = 'appearance', personaId = null) {
     fill(panel, ...{ appearance: () => appearance(paint), personas, projects: () => projectsTab(paint), hosts: () => [hostsPanel()], connect }[cur]());
   };
   const personas = () => {
-    const list = Object.values(S().personas).filter((p) => !p.deleting);
+    const list = Object.values(S().personas);
     const editing = personaId && S().personas[personaId];
     // Between the list and a persona’s form, focus goes to the form’s first field, and back to its Edit button.
     if (editing)
@@ -906,7 +914,7 @@ export function openSettings(tab = 'appearance', personaId = null) {
           'New agent',
         ),
       ),
-      h('p.small.dim', 'Edits apply to new sessions. Running sessions keep the version they started with.'),
+      h('p.small.dim', 'An edit applies from each agent’s next turn, in every conversation it’s in. A turn that’s running keeps what it started with.'),
     ];
   };
   const personaForm = (p, back) => {
@@ -918,7 +926,7 @@ export function openSettings(tab = 'appearance', personaId = null) {
       remote: p.remote?.hostId ?? null,
       placeError: null,
       effort: p.effort ?? client.config.defaultEffort ?? 'medium',
-      permissionMode: p.permissionMode ?? 'auto',
+      permissionMode: sheetMode(p.permissionMode),
       folder: p.folder ?? '',
       usesHostSetup: p.usesHostSetup !== false,
       canPublish: p.canPublish === true,
@@ -936,36 +944,34 @@ export function openSettings(tab = 'appearance', personaId = null) {
       h('div.field', h('label.label', { for: 'pe-d' }, 'What it does'), desc),
       h('div.field', h('label.label', { for: 'pe-i' }, 'Instructions'), ins),
       runBox,
-      run.backend === 'codex'
-        ? h(
-            'p.help',
-            'On Codex, Web is the one tool Postbox reads: in Auto, it turns network on in Codex’s sandbox. It’s in the agent’s quick panel. Codex doesn’t turn other tools off for one agent.',
-          )
-        : h(
-            'div.field',
-            h('span.label', 'Tools'),
-            h(
-              'div.chips',
-              (client.config.knownTools ?? []).map(([id]) =>
-                h(
-                  'button.chip.sm',
-                  {
-                    type: 'button',
-                    'aria-pressed': String(tools.has(id)),
-                    class: tools.has(id) ? 'on' : '',
-                    onclick: (e) => {
-                      if (tools.has(id)) tools.delete(id);
-                      else tools.add(id);
-                      e.currentTarget.classList.toggle('on');
-                      e.currentTarget.setAttribute('aria-pressed', String(tools.has(id)));
-                    },
+      h(
+        'div.field',
+        h('span.label', 'Tools'),
+        h(
+          'div.chips',
+          // On Codex, Web is the one tool Postbox reads, so it’s the one offered.
+          (client.config.knownTools ?? [])
+            .filter(([id]) => run.backend !== 'codex' || id === 'web.fetch')
+            .map(([id]) =>
+              h(
+                'button.chip.sm',
+                {
+                  type: 'button',
+                  'aria-pressed': String(tools.has(id)),
+                  class: tools.has(id) ? 'on' : '',
+                  onclick: (e) => {
+                    if (tools.has(id)) tools.delete(id);
+                    else tools.add(id);
+                    e.currentTarget.classList.toggle('on');
+                    e.currentTarget.setAttribute('aria-pressed', String(tools.has(id)));
                   },
-                  id,
-                ),
+                },
+                id,
               ),
             ),
-            run.backend === 'mock' ? null : h('span.help', toolsHelp(run.backend)),
-          ),
+        ),
+        run.backend === 'mock' ? null : h('span.help', toolsHelp(run.backend)),
+      ),
       // Its rules, folders and MCP servers, with where each comes from (#66), over this sheet.
       p.backend && p.backend !== 'mock'
         ? h(
@@ -1005,20 +1011,8 @@ export function openSettings(tab = 'appearance', personaId = null) {
                 'PATCH',
               )
                 .then(() => {
-                  toast({
-                    title: `Saved ${p.handle}`,
-                    text:
-                      run.backend !== (p.backend ?? 'mock') ||
-                      (run.remote ?? null) !== (p.remote?.hostId ?? null) ||
-                      run.permissionMode !== (p.permissionMode ?? 'auto') ||
-                      run.usesHostSetup !== (p.usesHostSetup !== false) ||
-                      run.canPublish !== (p.canPublish === true) ||
-                      String(run.skillsOff) !== String(p.skillsOff ?? []) ||
-                      String(run.mcpOff) !== String(p.mcpOff ?? []) ||
-                      String([...tools].sort()) !== String([...(p.tools ?? [])].sort())
-                        ? 'Where it runs, its permissions and its tools apply to its conversations from their next turn; other changes apply to new sessions.'
-                        : 'New sessions use this version.',
-                  });
+                  // One rule for every setting.
+                  toast({ title: `Saved ${p.handle}`, text: 'It runs with this from its next turn, in every conversation it’s in.' });
                   back();
                 })
                 // Where it runs changed: the server’s refusal shows under Runs on (#120).

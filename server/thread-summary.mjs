@@ -93,7 +93,7 @@ export function threadLines(rt, se, since) {
   const now = rt.s.sessions[se.id] ?? se;
   const told = { ...(now.threadsTold ?? {}) };
   const out = Object.values(rt.s.threads)
-    .filter((t) => (t.kind === 'topic' || t.kind === 'side') && t.parentId === se.threadId && !t.deleting)
+    .filter((t) => (t.kind === 'topic' || t.kind === 'side') && t.parentId === se.threadId)
     .map((t) => ({ t, line: lineOf(rt, t), last: rt.store.items(t.id).findLast(SAID) }))
     .filter(({ t, line, last }) => line && last && last.at > since && last.sessionId !== se.id && !(t.kind === 'side' && line.at > since))
     .filter(({ t, last }) => told[t.id] !== last.id && !readUpTo(rt, now, t.id, last));

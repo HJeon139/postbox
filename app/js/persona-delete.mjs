@@ -1,14 +1,14 @@
-// Deleting a persona from its sheet (#208): what goes and what stays, then 10 seconds to undo, as deleting a session
-// or a conversation gives (server/persona-delete.mjs).
+// Deleting a persona from its sheet (#208): one confirm says what goes and what stays, then it goes at once, as
+// deleting a session or a conversation does (server/persona-delete.mjs).
 
 import { api, client } from './client.mjs';
 import { h, plural } from './dom.mjs';
-import { openDialog, toast, undoToast } from './ui.mjs';
+import { openDialog, say, toast } from './ui.mjs';
 
 const S = () => client.state;
 /**
  * Resolves once the page’s state, as the stream keeps it, satisfies `ok`, or after `ms` if the stream never says, so
- * the sheet always goes back and offers Undo. @param {() => unknown} ok @param {number} [ms]
+ * the sheet always goes back. @param {() => unknown} ok @param {number} [ms]
  */
 const heard = (ok, ms = 3000) =>
   new Promise((done) => {
@@ -23,7 +23,6 @@ const heard = (ok, ms = 3000) =>
       if (ok()) finish();
     });
   });
-
 /**
  * The sheet’s last two buttons: Retire (or Bring back), and Delete, which asks first.
  * @param {any} p  the persona @param {() => void} back  what the sheet does after Save
@@ -52,16 +51,12 @@ export function confirmDeletePersona(p, back) {
           type: 'button',
           onclick: () =>
             api(`/api/personas/${p.id}`, null, 'DELETE')
-              .then(async (r) => {
+              .then(async () => {
                 dlg.close();
                 // The sheet’s list doesn’t follow the stream, so it waits to hear of the delete, then leaves it out.
-                await heard(() => S().personas[p.id]?.deleting);
+                await heard(() => !S().personas[p.id]);
                 back();
-                undoToast({
-                  text: `Deleted ${p.handle}`,
-                  until: r.until,
-                  onUndo: () => api(`/api/personas/${p.id}/undo-delete`, {}).catch((e) => toast({ title: 'Too late to undo', text: e.message })),
-                });
+                say(`Deleted ${p.handle}`);
               })
               .catch((e) => toast({ title: 'Couldn’t delete it', text: e.message, level: 'blocking' })),
         },
@@ -75,7 +70,7 @@ export function confirmDeletePersona(p, back) {
 
 /** What deleting a persona erases and what it keeps, as deleting a session lists them. @param {any} p */
 function whatGoes(p) {
-  const sessions = Object.values(S().sessions).filter((se) => se.personaId === p.id && !se.deleting);
+  const sessions = Object.values(S().sessions).filter((se) => se.personaId === p.id);
   const li = (ok, text) =>
     h('li', h(`span.i.i-${ok ? 'check' : 'x'}.i-sm`, { style: { color: ok ? 'var(--good)' : 'var(--alert-ink)' }, 'aria-hidden': 'true' }), h('span', text));
   return [
@@ -99,6 +94,6 @@ function whatGoes(p) {
         p.remote?.hostId ? li(true, 'Its memory on the host it runs on: Postbox can’t remove a host’s files yet') : null,
       ),
     ),
-    h('p.small.dim', 'You’ll have 10 seconds to undo. A new agent with the same name starts with no memory.'),
+    h('p.small.dim', 'It goes at once. This can’t be undone. A new agent with the same name starts with no memory.'),
   ];
 }

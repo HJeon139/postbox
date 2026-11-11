@@ -1,6 +1,6 @@
 // Going to what an agent needs (#285). Its pulsing ring, wherever it shows (a rail row, the Agents section, beside its
 // messages), goes to its ask, the same way ⌃J and the top bar’s “Next that needs you” do. Only the ring does (#320):
-// a rail row opens its conversation and an agent’s name its quick panel, whether it needs you or not. Each opens the ask’s thread (the side panel for a side or topic
+// a rail row opens its conversation and an agent’s name its persona sheet, whether it needs you or not. Each opens the ask’s thread (the side panel for a side or topic
 // thread), waits for it to be drawn, then scrolls it into view, focuses it, and outlines it for a moment.
 
 import { conversationOf, needsOrder, needsYouNow, whereNeeds } from '/shared/needs.mjs';

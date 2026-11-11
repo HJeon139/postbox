@@ -30,14 +30,6 @@ test('#693 B1: an agent archived by idle archiving, restored at startup, keeps i
   assert.equal(card(f, f.open.id).status, 'open', 'its card is still the person’s to answer');
 });
 
-test('#693 B2: the agent that asked is told its card closed, so it can ask again after a Restore or Undo', () => {
-  const f = heldOnAlphasCard();
-  f.rt.deleteSession(f.alpha.id);
-  f.rt.undoDelete(f.alpha.id);
-  assert.equal(card(f, f.open.id).status, 'closed');
-  assert.match(toldOf(f, f.alpha), /Your request to add @gamma .*was closed: you were removed\. Ask again if you still need it/);
-});
-
 test('#693 B2: an agent held on the card is told even while archived, so it reads the note once restored', () => {
   const f = heldOnAlphasCard();
   f.rt.archive(f.beta.id);
@@ -73,16 +65,4 @@ test('#693 answering a closed card says why it closed, not that it was answered'
   const f = heldOnAlphasCard();
   f.rt.archive(f.alpha.id);
   assert.throws(() => f.rt.resolveHop(f.t.id, f.open.id, true), { status: 409, message: 'That request was closed: @alpha was archived.' });
-});
-
-test('#693 an agent whose own wake is held on its own card gets one note when the card closes', () => {
-  const f = setup();
-  f.rt.createPersona({ handle: 'delta' });
-  f.rt.toolsFor(f.alpha.id).wake_agent({ handle: 'gamma', message: 'Check the numbers.' });
-  const open = f.store.items(f.t.id).find((i) => i.kind === 'hop' && i.status === 'open');
-  assert.equal(f.rt.toolsFor(f.alpha.id).wake_agent({ handle: 'delta', message: 'Draw the chart.' }).held, true);
-  f.rt.deleteSession(f.alpha.id);
-  assert.equal(card(f, open.id).status, 'closed');
-  const notes = (f.store.state.sessions[f.alpha.id].context ?? []).filter((l) => /closed|didn’t go/.test(l));
-  assert.equal(notes.length, 1, notes.join(' | '));
 });

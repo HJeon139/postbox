@@ -32,8 +32,6 @@ const OFF =
 const runs = (handle, mode) =>
   `In ${mode} mode, these run in ${handle}’s Postbox turns too. One that allows a call also skips your ask rules, this conversation’s included, as in your terminal.`;
 const ISOLATED = 'It’s isolated, so it doesn’t read the hooks in your user settings.';
-const dontRun = (handle, mode) =>
-  `These don’t run in ${handle}’s Postbox turns in ${mode} mode. They run in Auto and Run everything, and when you use Claude Code yourself.`;
 
 test.beforeAll(async () => {
   /** @type {Record<string, string>} */
@@ -78,10 +76,10 @@ test.beforeAll(async () => {
   for (const [handle, setup] of [
     ['coder', { permissionMode: 'auto' }],
     ['runner', { permissionMode: 'bypass' }],
-    ['loner', { permissionMode: 'ask', usesHostSetup: false }],
+    ['loner', { permissionMode: 'auto', usesHostSetup: false }],
     ['many', { permissionMode: 'auto', usesHostSetup: false }],
     ['broken', { permissionMode: 'auto', usesHostSetup: false }],
-    ['asker', { permissionMode: 'acceptEdits', usesHostSetup: false }],
+    ['asker', { permissionMode: 'auto', usesHostSetup: false }],
   ]) {
     const persona = rt.createPersona({ handle, backend: 'claude-code', ...setup });
     threads[handle] = rt.createThread({ projectId: 'pr_hooks', title: handle, personaIds: [persona.id] }).id;
@@ -128,10 +126,10 @@ test('#817 in Run everything mode, the panel says the hooks run', async ({ page 
   await expect.soft(hooks.locator('p.help')).toHaveText([runs('runner', 'Run everything'), OFF]);
 });
 
-test('#817 an Isolated agent’s panel lists the project’s hooks only, and in Ask me mode says they don’t run', async ({ page }) => {
+test('#817 an Isolated agent’s panel lists the project’s hooks only, and in Auto says they run', async ({ page }) => {
   const hooks = await openHooks(page, 'loner');
   await expect.soft(hooks.locator('li')).toHaveText([PROJECT_ROW]);
-  await expect.soft(hooks.locator('p.help')).toHaveText([dontRun('loner', 'Ask me'), ISOLATED, OFF]);
+  await expect.soft(hooks.locator('p.help')).toHaveText([runs('loner', 'Auto'), ISOLATED, OFF]);
 });
 
 test('#817 a file with more than 50 hooks lists 50, and says how many more are in it', async ({ page }) => {
@@ -176,7 +174,7 @@ for (const [width, phone] of [
       const hooks = await openHooks(page, 'asker');
       await expect.soft(hooks.locator('li')).toHaveText(ASKS_ROWS);
       await expect.soft(hooks.locator('li').nth(1).getByText('PermissionRequest', { exact: true }), 'the event is named').toBeVisible();
-      await expect.soft(hooks.locator('p.help')).toHaveText([dontRun('asker', 'Accept edits'), ISOLATED, OFF]);
+      await expect.soft(hooks.locator('p.help')).toHaveText([runs('asker', 'Auto'), ISOLATED, OFF]);
       await expect.soft(hooks.getByText('sk-871'), 'the token in the command stays hidden').toHaveCount(0);
       await settled(page);
       const over = await page

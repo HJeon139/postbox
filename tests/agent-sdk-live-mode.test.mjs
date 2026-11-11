@@ -13,7 +13,7 @@ import { PassThrough } from 'node:stream';
 import { test } from 'node:test';
 import { AgentSdkAdapter, liveControl } from '../server/adapters/agent-sdk.mjs';
 import { ClaudeCodeAdapter } from '../server/adapters/claude-code.mjs';
-import { held, settle, setup, sleep } from './side-threads-fixture.mjs';
+import { sleep } from './side-threads-fixture.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
 const until = async (fn, label) => {
@@ -82,60 +82,6 @@ test('#806: once a turn that started in Ask me has switched to Auto, switching b
   assert.equal(await live.setPermissionMode('auto'), true);
   assert.equal(await live.setPermissionMode('ask'), true);
   assert.deepEqual(q.modes, ['auto', 'default']);
-});
-
-test('#806: switching to Ask me during an Auto turn lists its session as keeping its mode, and the persona changes for next turns', async () => {
-  const { rt, adapter, t, a, alpha } = setup();
-  rt.updatePersona(a.id, { permissionMode: 'auto' });
-  const q = query();
-  const h = held();
-  adapter.next.push(async (ctx) => {
-    ctx.control(liveControl(q, ctx.persona.permissionMode));
-    await h.step(ctx);
-  });
-  rt.sendMessage(t.id, { text: '@alpha run the tests' });
-  await sleep(5);
-  assert.deepEqual(await rt.setPermissionMode(a.id, 'acceptEdits'), { ok: true, now: [], later: [alpha.id], kept: [alpha.id], hooksLater: [] });
-  assert.deepEqual(q.modes, [], 'the running turn keeps Auto, so the hooks it loaded and its mode agree until it ends');
-  assert.equal(rt.persona(a.id).permissionMode, 'acceptEdits');
-  h.release();
-  await settle(rt);
-});
-
-test('#806: switching to Auto during an Ask me turn changes it now, since its hooks stay off', async () => {
-  const { rt, adapter, t, a, alpha } = setup();
-  rt.updatePersona(a.id, { permissionMode: 'ask' });
-  const q = query();
-  const h = held();
-  adapter.next.push(async (ctx) => {
-    ctx.control(liveControl(q, ctx.persona.permissionMode));
-    await h.step(ctx);
-  });
-  rt.sendMessage(t.id, { text: '@alpha run the tests' });
-  await sleep(5);
-  // #1030: it says the turn runs Auto without the hooks it never loaded, which load from its next turn.
-  assert.deepEqual(await rt.setPermissionMode(a.id, 'auto'), { ok: true, now: [alpha.id], later: [], kept: [], hooksLater: [alpha.id] });
-  assert.deepEqual(q.modes, ['auto']);
-  h.release();
-  await settle(rt);
-});
-
-test('#817: leaving bypass during a bypass turn lists its session as keeping its mode, not as changed now', async () => {
-  const { rt, adapter, t, a, alpha } = setup();
-  rt.updatePersona(a.id, { permissionMode: 'bypass' });
-  const q = query();
-  const h = held();
-  adapter.next.push(async (ctx) => {
-    ctx.control(liveControl(q, ctx.persona.permissionMode));
-    await h.step(ctx);
-  });
-  rt.sendMessage(t.id, { text: '@alpha run the tests' });
-  await sleep(5);
-  assert.deepEqual(await rt.setPermissionMode(a.id, 'ask'), { ok: true, now: [], later: [alpha.id], kept: [alpha.id], hooksLater: [] });
-  assert.deepEqual(q.modes, [], 'the running turn keeps bypass, so its hooks and its mode agree until it ends');
-  assert.equal(rt.persona(a.id).permissionMode, 'ask', 'the persona changes at once, for its next turns');
-  h.release();
-  await settle(rt);
 });
 
 /** A turn context that keeps what the adapter hands over as its live control. */

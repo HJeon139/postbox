@@ -295,16 +295,11 @@ test('#372: agents wake each other in the conversation, with no side thread or l
   assert.equal(store.state.sessions[alpha.id].agentMessages[0].other, 'beta');
 });
 
-test('deleting a session can be undone within the window', async () => {
+test('deleting a session removes it at once, with no Undo window', async () => {
   const { rt, store, t } = setup();
   const se = rt.sessionsIn(t.id)[0];
-  const { until } = rt.deleteSession(se.id);
-  assert.ok(until > Date.now());
-  assert.ok(store.state.sessions[se.id].deleting);
-  rt.undoDelete(se.id);
-  assert.equal(store.state.sessions[se.id].deleting, null);
-  rt.deleteSession(se.id);
-  rt.purgeSession(se.id);
+  assert.deepEqual(rt.deleteSession(se.id), { handle: se.handle });
+  assert.equal(rt.timers.size, 0, 'nothing waits to finish it');
   assert.equal(store.state.sessions[se.id], undefined);
   assert.equal(store.state.threads[t.id], undefined, 'its own thread goes with it');
 });
@@ -316,7 +311,6 @@ test('deleting an agent in a room keeps its messages, marked deleted', async () 
   await settle(rt);
   const beta = rt.sessionsIn(t.id).find((x) => x.handle === 'beta');
   rt.deleteSession(beta.id);
-  rt.purgeSession(beta.id);
   assert.ok(store.state.threads[t.id]);
   assert.ok(
     store
@@ -578,7 +572,8 @@ test('personas keep a permission mode and a model; real backends default to Clau
   const p = rt.createPersona({ handle: 'coder', backend: 'claude-code' });
   assert.equal(p.model, 'claude-opus-5-5');
   assert.equal(p.permissionMode, 'auto', 'auto mode is the default');
-  assert.equal(rt.updatePersona(p.id, { permissionMode: 'acceptEdits' }).permissionMode, 'acceptEdits');
+  assert.equal(rt.updatePersona(p.id, { permissionMode: 'bypass' }).permissionMode, 'bypass');
+  assert.equal(rt.updatePersona(p.id, { permissionMode: 'acceptEdits' }).permissionMode, 'auto', 'a retired mode is Auto');
   assert.throws(() => rt.updatePersona(p.id, { permissionMode: 'yolo' }), /Permissions are one of/);
   assert.throws(() => rt.createPersona({ handle: 'nope', backend: 'agent-sdk' }), /isn’t available on this computer/);
 });
@@ -592,7 +587,7 @@ test('attachments resolve to stored files, and project files stay inside the pro
   assert.equal(rt.attachmentPath(t.id, { kind: 'project-file', path: '../etc/passwd' }), null);
 });
 
-test('a session keeps the persona it started with; edits apply to new sessions', async () => {
+test('an edit reaches a session that started before it, from its next turn, as it reaches new ones', async () => {
   const { rt, t, a, adapter } = setup();
   rt.updatePersona(a.id, { instructions: 'Old.' });
   const t2 = rt.createThread({ projectId: 'p1', title: 'T2', personaIds: [a.id] });
@@ -605,7 +600,7 @@ test('a session keeps the persona it started with; edits apply to new sessions',
   const t3 = rt.createThread({ projectId: 'p1', title: 'T3', personaIds: [a.id] });
   rt.sendMessage(t3.id, { text: 'hi' });
   await settle(rt);
-  assert.deepEqual(seen, ['Old.', 'New.']);
+  assert.deepEqual(seen, ['New.', 'New.']);
   assert.ok(t);
 });
 
@@ -732,28 +727,22 @@ test('moving a persona from the mock to a real backend gives it the default mode
   assert.throws(() => rt.updatePersona(a.id, { backend: 'nope' }), /isn’t available/);
 });
 
-test('deleting a conversation removes its sessions, apps and threads after the undo window, and can be undone', () => {
+test('deleting a conversation removes its sessions, apps and threads at once', () => {
   const { rt, store, t } = setup();
   const se = rt.sessionsIn(t.id)[0];
-  const r = rt.deleteThread(t.id);
-  assert.ok(r.until > Date.now());
-  assert.ok(store.state.threads[t.id].deleting);
-  rt.undoDeleteThread(t.id);
-  assert.equal(store.state.threads[t.id].deleting, null);
-  rt.deleteThread(t.id);
-  rt.purgeThread(t.id);
+  assert.deepEqual(rt.deleteThread(t.id), { title: t.title });
   assert.equal(store.state.threads[t.id], undefined);
   assert.equal(store.state.sessions[se.id], undefined);
   assert.ok(store.state.personas[se.personaId], 'the persona stays');
-  for (const k of rt.timers.keys()) clearTimeout(rt.timers.get(k));
 });
 
-test('a conversation being deleted takes no new messages', () => {
-  const { rt, store, t } = setup();
+test('a deleted conversation takes no new messages', () => {
+  const { rt, t } = setup();
   rt.deleteThread(t.id);
-  assert.throws(() => rt.sendMessage(t.id, { text: 'still there?' }), /being deleted/);
-  assert.equal(store.items(t.id).length, 0);
-  for (const k of rt.timers.keys()) clearTimeout(rt.timers.get(k));
+  assert.throws(
+    () => rt.sendMessage(t.id, { text: 'still there?' }),
+    (e) => e.status === 404,
+  );
 });
 
 test('a message to an archived agent is refused before anything is posted', () => {
@@ -815,12 +804,11 @@ test('archiving a conversation covers a side thread under a topic thread, and it
   assert.equal(store.state.sessions[deep.id].archived, false);
 });
 
-test('deletions still pending when the server stopped finish after a restart', async () => {
+test('a delete an older Postbox left in its Undo window finishes at start', () => {
   const { rt, store, t } = setup();
   const se = rt.sessionsIn(t.id)[0];
-  store.emit('thread', { ...store.state.threads[t.id], deleting: Date.now() - 1 });
-  rt.rearmDeletions();
-  await sleep(5);
+  store.emit('thread', { ...store.state.threads[t.id], deleting: Date.now() + 5000 });
+  rt.finishLeftDeletes();
   assert.equal(store.state.threads[t.id], undefined);
   assert.equal(store.state.sessions[se.id], undefined);
 });
@@ -1604,10 +1592,10 @@ test('a persona’s permission mode reaches its running conversations from their
   adapter.next.push(async (c) => seen.push(c.persona.permissionMode));
   rt.sendMessage(t.id, { text: 'one' });
   await settle(rt);
-  rt.updatePersona(a.id, { permissionMode: 'ask' });
+  rt.updatePersona(a.id, { permissionMode: 'bypass' });
   rt.sendMessage(t.id, { text: 'two' });
   await settle(rt);
-  assert.deepEqual(seen, ['auto', 'ask']);
+  assert.deepEqual(seen, ['auto', 'bypass']);
 });
 
 test('#57: a persona uses your Claude Code setup and can’t publish outside Postbox, unless it’s set otherwise', () => {
@@ -1657,9 +1645,6 @@ test('#57: setup choices are in a session’s snapshot, and like permissions the
     [true, false],
     [false, true],
   ]);
-  const t2 = rt.createThread({ projectId: 'p1', title: 'T2', personaIds: [a.id] });
-  const snap = rt.sessionsIn(t2.id)[0].personaSnapshot;
-  assert.deepEqual([snap.usesHostSetup, snap.canPublish], [false, true], 'a new session records what it was created with');
 });
 
 // ── Shared memory in a conversation (issue #1) ─────────────────────────────────────────
@@ -2244,9 +2229,40 @@ test('#60: a persona has an effort next to its model, checked, fixed in a sessio
   adapter.next.push(async (c) => seen.push(c.persona.effort));
   rt.sendMessage(t2.id, { text: 'hi' });
   await settle(rt);
-  assert.deepEqual(seen, ['max'], 'the session runs with the effort it started with, as with the model');
-  assert.equal(rt.sessionsIn(t2.id)[0].personaSnapshot.effort, 'max');
+  assert.deepEqual(seen, ['low'], 'a session runs with its persona’s effort from its next turn, as with every setting');
   assert.ok(t && store);
+});
+
+test('one rule for settings: every persona change applies from the agent’s next turn, in every conversation', async () => {
+  const { rt, store, t, a, adapter } = setup();
+  const se = rt.sessionsIn(t.id)[0];
+  const other = rt.createThread({ projectId: 'p1', title: 'Other', personaIds: [a.id] });
+  const there = rt.sessionsIn(other.id)[0];
+  /** @type {any[]} */
+  const seen = [];
+  let release = () => {};
+  adapter.next.push(async (c) => {
+    seen.push([c.persona.model, c.persona.effort, c.persona.permissionMode, c.persona.instructions]);
+    await new Promise((r) => (release = () => r(undefined)));
+  });
+  rt.sendMessage(t.id, { text: 'one' });
+  await sleep(10);
+  // Changed while a turn runs: that turn keeps what it started with.
+  rt.updatePersona(a.id, { model: 'claude-sonnet-5-5', effort: 'high', permissionMode: 'bypass', instructions: 'New ones.' });
+  release();
+  await settle(rt);
+  adapter.next.push(async (c) => seen.push([c.persona.model, c.persona.effort, c.persona.permissionMode, c.persona.instructions]));
+  adapter.next.push(async (c) => seen.push([c.persona.model, c.persona.effort, c.persona.permissionMode, c.persona.instructions]));
+  rt.sendMessage(t.id, { text: 'two' });
+  await settle(rt);
+  rt.sendMessage(other.id, { text: 'three' });
+  await settle(rt);
+  assert.deepEqual(seen.slice(1), [
+    ['claude-sonnet-5-5', 'high', 'bypass', 'New ones.'],
+    ['claude-sonnet-5-5', 'high', 'bypass', 'New ones.'],
+  ]);
+  assert.notDeepEqual(seen[0], seen[1], 'the running turn kept what it started with');
+  assert.ok(store.state.sessions[se.id] && store.state.sessions[there.id]);
 });
 
 test('#60: the model that answered and the effort a turn ran with are kept on the session', async () => {

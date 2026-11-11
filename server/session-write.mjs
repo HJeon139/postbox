@@ -50,5 +50,5 @@ export function tellAgent(rt, sessionId, text) {
  */
 export function pendingSessionsIn(rt, threadId) {
   const { members = [] } = rt.store.pending.thread(threadId) ?? {};
-  return members.map((/** @type {string} */ id) => rt.store.pending.session(id)).filter((/** @type {any} */ x) => x && !x.deleting);
+  return members.map((/** @type {string} */ id) => rt.store.pending.session(id)).filter(Boolean);
 }

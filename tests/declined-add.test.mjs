@@ -89,7 +89,6 @@ test('#693 a later add the person allowed lifts the decline: once that agent is 
   await settle(f.rt);
   const gamma = f.rt.sessionsIn(f.t.id).find((x) => x.handle === 'gamma');
   f.rt.deleteSession(gamma.id);
-  f.rt.purgeSession(gamma.id);
   const r = f.rt.agentWake(f.beta.id, 'gamma', 'Back again?', { itemId: 'it_w', prose: true });
   assert.equal(r.waiting, true, 'the person’s latest answer was yes');
 });
@@ -143,7 +142,6 @@ function removeGamma(f) {
   const gamma = f.rt.sessionsIn(f.t.id).find((x) => x.handle === 'gamma');
   assert.ok(gamma, '@gamma had joined');
   f.rt.deleteSession(gamma.id);
-  f.rt.purgeSession(gamma.id);
 }
 
 /** @beta mentions @gamma in prose once it's gone: whether the person is asked. */
@@ -177,7 +175,6 @@ test('#789 a new agent created into the conversation lifts a decline of its hand
   f.rt.ensureSession(f.rt.lineage(f.t.id).at(-1), p.id, { brief: 'You were just created and added to this thread.' });
   const delta = f.rt.sessionsIn(f.t.id).find((x) => x.handle === 'delta');
   f.rt.deleteSession(delta.id);
-  f.rt.purgeSession(delta.id);
   assert.equal(f.rt.agentWake(f.beta.id, 'delta', 'Delta?', { itemId: 'it_d', prose: true }).waiting, true);
 });
 
@@ -210,7 +207,6 @@ test('#789 the lift holds after a restart, since the mark is in the store', asyn
   const rt = new Runtime({ store: f.store, adapters: f.rt.adapters, config: f.rt.config });
   const gamma = rt.sessionsIn(f.t.id).find((x) => x.handle === 'gamma');
   rt.deleteSession(gamma.id);
-  rt.purgeSession(gamma.id);
   assert.equal(mentionAsks(f, rt), true);
 });
 

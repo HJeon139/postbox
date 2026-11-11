@@ -70,13 +70,6 @@ const story = async (page) => {
     expect.soft(await overflowing(page, '.agent-row .host-turn'), 'it fits the window').toEqual([]);
     expect.soft(await axe(page), 'axe').toEqual([]);
   });
-  await test.step('in the agent’s panel', async () => {
-    await row(page, 'waiter').locator('.agent-btn').click();
-    const panel = page.locator('.dialog.quick');
-    await expect.soft(panel.getByRole('region', { name: 'Where waiter runs' }), 'the panel says it too').toContainText(LINE);
-    await page.keyboard.press('Escape');
-    await expect(panel).toBeHidden();
-  });
   await test.step('once it installed', async () => {
     s.hosts.set(at.host.id, withUpdate('connected', 'installed'));
     await expect(row(page, 'waiter'), 'the line goes').not.toContainText('Installing Postbox');

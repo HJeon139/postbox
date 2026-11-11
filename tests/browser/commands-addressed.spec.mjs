@@ -2,7 +2,7 @@
 // where the other one spoke last:
 // - `@alpha /compact` runs /compact as @alpha’s turn, and nothing goes out as a message;
 // - `@beta /release-notes 2.1` runs @beta’s own command as its turn, with `/release-notes 2.1` as the whole prompt;
-// - `@alpha /mode` opens the mode choice for @alpha, not for the last speaker;
+// - `@alpha /mode` opens @alpha’s persona sheet, not the last speaker’s;
 // - `@alpha /release-notes`, which @alpha doesn’t offer, says so before it’s sent, and goes to @alpha as a message;
 // - `@ghost /compact`, a handle no agent here has, says so too, and goes to the last speaker as a message;
 // - `@alpha /stop` with @alpha idle says “@alpha isn’t working.”
@@ -97,20 +97,14 @@ test('#405 @beta /release-notes 2.1 runs @beta’s own command as its turn, thou
   ).toBe(false);
 });
 
-test('#405 @alpha /mode opens the mode choice for @alpha, not the last speaker', async ({ page }) => {
-  const { rt, store } = app;
+test('#405 @alpha /mode opens @alpha’s persona sheet, not the last speaker’s', async ({ page }) => {
   await room(page, 'Mode', 'beta');
-  try {
-    await page.keyboard.type('@alpha /mode');
-    await expect(hint(page)).toContainText('Enter runs /mode for alpha');
-    await page.keyboard.press('Enter');
-    await page.locator('.dialog').getByRole('radiogroup', { name: 'Permission mode' }).getByRole('radio', { name: 'Accept edits', exact: true }).click();
-    await expect(page.locator('.dialog .perm-status')).toContainText('from its next turn');
-    expect(store.state.personas[alpha.id].permissionMode).toBe('acceptEdits');
-    expect(store.state.personas[beta.id].permissionMode, 'beta is unchanged').toBe('ask');
-  } finally {
-    for (const p of [alpha, beta]) rt.updatePersona(p.id, { permissionMode: 'ask' });
-  }
+  await page.keyboard.type('@alpha /mode');
+  await expect(hint(page)).toContainText('Enter runs /mode for alpha');
+  await page.keyboard.press('Enter');
+  const sheet = page.getByRole('dialog', { name: 'Settings' });
+  await expect(sheet.locator('b', { hasText: 'alpha' })).toBeVisible();
+  await expect(sheet.locator('b', { hasText: 'beta' })).toHaveCount(0);
 });
 
 test('#405 @alpha /release-notes, which @alpha doesn’t offer, says so and goes to @alpha as a message', async ({ page }) => {

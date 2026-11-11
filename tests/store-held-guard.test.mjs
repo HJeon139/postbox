@@ -100,7 +100,6 @@ const PENDING = {
     'addItem',
     'addItem',
     'bringForward',
-    'sendMessage',
     'deliver',
     'deliver',
     'deliver',
@@ -127,10 +126,10 @@ const PENDING = {
     'runShellCommand',
     'runShellCommand',
     'pollMirror',
-    'purgeSession',
-    'purgeSession',
-    'purgeSession',
-  ], // the turn’s own items and apps, a move after a pending read, sweeps that write back, the thread a message, a delivery or a topic reply count goes to, maybe opened or deleting behind a held commit, and the members a purge keeps its room for, maybe joined behind one, and the session a stopped turn's exit settles, its “stopping” maybe held (#796)
+    'deleteSession',
+    'deleteSession',
+    'deleteSession',
+  ], // the turn’s own items and apps, a move after a pending read, sweeps that write back, the thread a message, a delivery or a topic reply count goes to, maybe opened or deleting behind a held commit, and the members a delete keeps its room for, maybe joined behind one, and the session a stopped turn's exit settles, its “stopping” maybe held (#796)
   // The reply with the mention, a side line right after its add, and sweeps of hop cards; the conversation's hop count,
   // the topic the wake answers in, and endChain's hops and queued wakes, each maybe held behind a commit (#796).
   // A session's change and notice diff against the session a held change left (#796's class in sessions).
@@ -143,8 +142,8 @@ const PENDING = {
   'session-write.mjs': ['updateSession', 'needAt', 'pendingSessionsIn', 'pendingSessionsIn'], // needAt: the need's item's time, maybe added behind a held commit (#1155)
   'subagent-end.mjs': ['withUrgent'],
   'side-threads.mjs': ['agentWake', 'agentWake', 'agentWake', 'endChain', 'endChain', 'archiveForks', 'bumpSideLink', 'bumpSideLink'],
-  // A thread’s apps, removed in a sweep; and whether a delivery's conversation is being deleted, as sendMessage reads it (#796).
-  'thread-erase.mjs': ['conversationDeleting', 'eraseThreads'],
+  // A thread’s apps, removed in a sweep.
+  'thread-erase.mjs': ['eraseThreads'],
   // The thread a turn answers in, as deliver chose it from pending, and the topic a turn's end settles: a topic
   // open_topic just opened, held (#796).
   'thread-summary.mjs': ['threadHeader', 'threadCatchUp', 'settleThread'],
