@@ -3,6 +3,7 @@
 
 import { renderMarkdown } from '/shared/markdown.mjs';
 import { resolveCommand } from '/shared/slash-line.mjs';
+import { liveStale } from './activity-live.mjs';
 import { activityParts, paintActivity, stepsOnly } from './activity-paint.mjs';
 import { activityLabel } from './activity-steps.mjs';
 import { mockMarker } from './agent-facts.mjs';
@@ -94,6 +95,8 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
       (row, se) => fillWorkRow(row, se),
     );
     el.append(hostTurns.el, working); // keep them last
+    // A running turn’s steps fit its share of the screen, which changes as agents start and finish (activity-live.mjs).
+    for (const it of shown()) if (liveStale(nodes.get(it.id), it, threadId)) rerender(it.id);
   };
   // Above them, a turn on a host Postbox asked to stop and the host hasn’t confirmed it stopped (#120).
   const hostTurns = hostTurnsList(threadId);
@@ -209,7 +212,7 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
     } else if (ch.type === 'item.patch' && d.threadId === threadId) {
       // A step changes only the reply’s activity list (#573); anything else draws the reply again.
       const it = stepsOnly(d) ? itemsOf(threadId)[placeIn(threadId, d.id)] : null;
-      if (!d.reaction && !(it && paintActivity(nodes.get(d.id), it))) rerender(d.id);
+      if (!d.reaction && !(it && paintActivity(nodes.get(d.id), it, threadId))) rerender(d.id);
     } else if (ch.type === 'item.text' && d.threadId === threadId) {
       pending.add(d.id);
       if (!raf)
@@ -403,7 +406,7 @@ function renderItem(it, prev, ctx) {
       const node = h(
         'div.col.turn',
         showWho ? who(it, ctx) : null,
-        ...activityParts(it),
+        ...activityParts(it, ctx.threadId),
         it.text || it.status === 'streaming' ? h('div.md') : null,
         // What the turn changed, ran and published, under its last reply (#132, #195), leading to Work.
         it.work ? workChip(it, ctx) : null,

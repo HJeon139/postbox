@@ -57,7 +57,7 @@ const inOutput = (/** @type {string|undefined} */ output, /** @type {string} */ 
 };
 
 const GLYPH = { running: 'running', failed: 'failed', denied: 'failed', done: 'done', stopped: 'stalled' };
-function stepRow(s) {
+export function stepRow(s) {
   const dur = h('span.dur', s.ms ? `${(s.ms / 1000).toFixed(1)} s` : '');
   // A subagent’s thought or narration is labeled with its name: it’s its own, never the agent’s (#73).
   const who = s.who ? h('span.step-who', `${s.who}:`) : null;

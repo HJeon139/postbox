@@ -109,7 +109,8 @@ for (const [how, text] of [
     await stopWith(page, how, 'keep', text);
     const r = await lastReply(page);
     expect(r.tag).toMatch(/^Stopped by you at \d\d:\d\d · its background work kept running$/);
-    expect(r.header).toMatch(/^Used 3 tools · 21 s in tools · background work running$/);
+    // The header is the turn’s work record: with a card, the block it showed; with nothing in Work, its steps.
+    expect(r.header).toMatch(text ? /^1 block · [\d.]+ s in all · background work running$/ : /^Used 3 tools · 21 s in tools · background work running$/);
     expect(r.steps).toEqual([`${BG} Running in the background`, WAIT, `${WAIT} Stopped`]);
     await expect(jobStop(page), 'the kept job keeps its row, with its own Stop').toHaveCount(1);
     await jobStop(page).click();

@@ -1,4 +1,4 @@
-// An activity list keeps the open or closed state the person chose while its streaming reply re-renders (#488).
+// An activity list keeps the open or closed state the person chose while its reply re-renders (#488).
 
 import { expect, test } from '@playwright/test';
 import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
@@ -76,29 +76,33 @@ test('#488 an activity list and thought keep the state the person chose while th
   await page.goto(`${app.origin}/#/t/${thread.id}`);
   await synced(page, app);
   app.rt.sendMessage(thread.id, { text: 'Watch activity' });
+  // A running turn shows its steps live (activity-live.mjs); once it ends, they fold into its list.
+  await expect(page.locator('.live-steps'), 'live while the turn runs').toHaveCount(1);
+  addSteps();
+  finish();
+  await expect.poll(() => app.rt.turns.size, { message: 'the first turn to finish' }).toBe(0);
+  await synced(page, app);
 
   const activity = page.locator('details.activity');
   await expect(activity).toHaveCount(1);
-  // A turn still running shows its steps open, as its harness does.
-  await expect(activity, 'open while the turn runs').toHaveAttribute('open', '');
+  await expect(activity, 'a finished turn’s list starts folded').not.toHaveAttribute('open', '');
+  await activity.locator('> summary').click();
   const thought = activity.locator('details.step-text').filter({ hasText: 'Plan the work.' });
   await thought.locator('> summary').click();
-  await expect(activity).toHaveAttribute('open', '');
   await expect(thought).toHaveAttribute('open', '');
 
-  addSteps();
-  await expect
-    .poll(() => app.store.items(thread.id).find((item) => item.kind === 'agent')?.activity?.steps?.length, { message: 'three steps and a thought added' })
-    .toBe(6);
+  const reply = () => /** @type {any} */ (app.store.items(thread.id).find((item) => item.kind === 'agent'));
+  const addStep = (/** @type {string} */ id, /** @type {string} */ label) =>
+    app.rt.patchItem(thread.id, reply().id, { activity: { ...reply().activity, steps: [...reply().activity.steps, { id, label, state: 'done', ms: 10 }] } });
+  addStep('late-1', 'Run the focused test again');
   await synced(page, app);
   await expect(activity, 'the activity list stays open').toHaveAttribute('open', '');
   await expect(thought, 'the thought stays open').toHaveAttribute('open', '');
-  await expect(activity.locator('.step-text', { hasText: 'Run the focused test' }), 'the newest step shows').toBeVisible();
+  await expect(activity.locator('.step-text', { hasText: 'Run the focused test again' }), 'the newest step shows').toBeVisible();
 
   await activity.locator('> summary').click();
   await expect(activity).not.toHaveAttribute('open', '');
-  finish();
-  await expect.poll(() => app.rt.turns.size, { message: 'the first turn to finish' }).toBe(0);
+  addStep('late-2', 'Read the log');
   await synced(page, app);
   await expect(activity, 'closing the activity list survives its next update').not.toHaveAttribute('open', '');
 

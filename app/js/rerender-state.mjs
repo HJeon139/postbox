@@ -11,14 +11,10 @@ function detailsKey(details) {
   return details.matches('details.step-text') && step ? `step:${step}` : null;
 }
 
-/**
- * The open or closed state the person chose. A list open only because its turn runs isn’t their choice: drawn again,
- * it’s open while the turn runs and folded once it ends (activity-paint.mjs). @param {HTMLElement | undefined} root
- */
+/** The open or closed state the person chose. @param {HTMLElement | undefined} root */
 function detailsState(root) {
   const state = new Map();
   for (const details of root?.querySelectorAll('details.raw, details.activity, details.step-text') ?? []) {
-    if (/** @type {HTMLElement} */ (details).dataset.running !== undefined) continue;
     const key = detailsKey(/** @type {HTMLElement} */ (details));
     if (key) state.set(key, /** @type {HTMLDetailsElement} */ (details).open);
   }

@@ -1,32 +1,40 @@
-// A reply’s activity list and its background-job rows, drawn with the reply and painted again in place when one step
-// arrives (#573). A step used to rebuild the whole reply: its Markdown, its node, and a new frame for each diagram in it.
+// A reply’s steps and its background-job rows, drawn with the reply and painted again in place when one step arrives
+// (#573). A step used to rebuild the whole reply: its Markdown, its node, and a new frame for each diagram in it. While
+// the turn runs, its steps show live between its words (activity-live.mjs); once it ends, they fold into its work record.
 
+import { isLive, liveParts } from './activity-live.mjs';
 import { activityLabel, stepTree } from './activity-steps.mjs';
-import { h, icon } from './dom.mjs';
+import { agentMarkdown, markTerms } from './agent-markdown.mjs';
+import { h, icon, trusted } from './dom.mjs';
 import { jobRows, runningNote } from './reply-stop.mjs';
 import { kiroStep } from './thread-host.mjs';
+import { recordWords, workLink } from './work-record.mjs';
 
 /** Each list’s steps, which its first open builds; a live step changes them. */
 const stepsOf = /** @type {WeakMap<HTMLElement, any[]>} */ (new WeakMap());
 
+/** Words of a running turn, drawn between its steps. @param {any} it @param {string} threadId */
+const wordsOf = (it, threadId) => (/** @type {string} */ text) => {
+  const box = h('div.md.live-words', { html: trusted(agentMarkdown({ ...it, text, status: 'done' }, threadId)) });
+  markTerms(box, threadId);
+  return box;
+};
+
 /**
- * The parts of an agent reply its steps decide: a notice, the folded list of steps, and the running jobs’ rows.
- * @param {any} it  the agent item @returns {[any, HTMLElement | null, HTMLElement | null]}
+ * The parts of an agent reply its steps decide: a notice, its steps (live while it runs, else folded under its work
+ * record), and the running jobs’ rows.
+ * @param {any} it  the agent item @param {string} threadId @returns {[any, HTMLElement | null, HTMLElement | null]}
  */
-export function activityParts(it) {
+export function activityParts(it, threadId) {
   const [notice, steps] = kiroStep(it);
+  if (isLive(it, threadId)) return [notice, liveParts({ ...it, activity: { ...it.activity, steps } }, threadId, wordsOf(it, threadId)), jobRows(it, steps)];
   const total = steps.reduce((a, s) => a + (s.ms ?? 0), 0);
+  const fallback = [activityLabel(steps), total ? ` · ${(total / 1000).toFixed(total < 10000 ? 1 : 0)} s in tools` : ''];
   const list = steps.length
     ? foldedList(
-        h(
-          'summary',
-          icon('right', 'i-sm'),
-          activityLabel(steps),
-          total ? ` · ${(total / 1000).toFixed(total < 10000 ? 1 : 0)} s in tools` : '',
-          runningNote(it, steps),
-        ),
+        h('summary', icon('right', 'i-sm'), recordWords(it, threadId, fallback), runningNote(it, steps)),
         steps,
-        it.status === 'streaming',
+        it.turnId ? workLink(it, threadId) : null,
       )
     : null;
   return [notice, list, jobRows(it, steps)];
@@ -36,11 +44,9 @@ export function activityParts(it) {
  * A folded list holds its summary and the steps’ labels as text, not the steps (#1028): most lists are never opened,
  * and in a long room their steps were most of the page’s elements. The text sits in the details, so it’s hidden with
  * them and Find still finds a step, opening them in Chromium. The first open builds the steps, and they stay built.
- * A turn still running shows its steps open, as its harness does (`running`); a finished one is drawn folded, and a
- * redraw keeps a list open only if the person opened it.
- * @param {HTMLElement} summary @param {any[]} steps @param {boolean} [running]
+ * @param {HTMLElement} summary @param {any[]} steps @param {HTMLElement | null} link  to the turn in Work
  */
-function foldedList(summary, steps, running = false) {
+function foldedList(summary, steps, link) {
   const text = h('div.steps-folded', steps.map((s) => s.label).join('\n'));
   const list = h(
     'details.activity',
@@ -50,20 +56,13 @@ function foldedList(summary, steps, running = false) {
       },
     },
     summary,
+    link,
     text,
   );
   // A click or key on the summary builds before the browser opens the list, so no frame shows the text open. Find opens
   // it with no click, and its toggle builds then.
-  summary.addEventListener('click', () => {
-    buildSteps(list);
-    delete list.dataset.running; // opened or closed by the person now, so a redraw keeps it (rerender-state.mjs)
-  });
+  summary.addEventListener('click', () => buildSteps(list));
   stepsOf.set(list, steps);
-  if (running) {
-    buildSteps(list);
-    list.open = true;
-    list.dataset.running = '';
-  }
   return list;
 }
 
@@ -113,12 +112,13 @@ export const stepsOnly = (d) => Boolean(d.activityStep || d.patch?.activity) && 
 
 /**
  * Paints a reply’s activity list and job rows again from its item, leaving the rest of the reply as it is.
- * @param {HTMLElement | undefined} node  the reply as drawn @param {any} it  the agent item
+ * @param {HTMLElement | undefined} node  the reply as drawn @param {any} it  the agent item @param {string} threadId
  * @returns {boolean} false when it couldn’t, and the caller draws the whole reply instead
  */
-export function paintActivity(node, it) {
-  if (!node || it?.kind !== 'agent' || it.status === 'replaced') return false;
-  const [, list, jobs] = activityParts(it);
+export function paintActivity(node, it, threadId) {
+  // A running turn’s steps sit between its words, which a step moves: the reply is drawn again.
+  if (!node || it?.kind !== 'agent' || it.status === 'replaced' || isLive(it, threadId)) return false;
+  const [, list, jobs] = activityParts(it, threadId);
   const oldList = /** @type {HTMLDetailsElement | null} */ (node.querySelector(':scope > details.activity'));
   const oldJobs = node.querySelector(':scope > ul.bg-jobs');
   // A list the reply didn’t have goes before what follows it: the job rows, then the Markdown box. Job rows come only
