@@ -27,7 +27,7 @@ import { bringToConversation } from './bring.mjs';
 import { keptTurns, nextNeed, noticeNeed, releaseNeed, stateFor, TURN_TIED } from './card-needs.mjs';
 import { catchUp, moveMarkers, pointerIfSeen } from './catch-up.mjs';
 import { blockProblems, diagramProblems, formatLint, introducedTerms, lintMessage, personSaid, rawHtmlProblems, termProblems } from './checks.mjs';
-import { attachClaudeSession, claudeSessions, mirror, mirrorAgentItem, pollMirror, rearmMirrors, stopMirrorFor, stopMirrors } from './claude-mirror.mjs';
+import { attachClaudeSession, claudeSessions, mirror, pollMirror, rearmMirrors, stopMirrorFor, stopMirrors } from './claude-mirror.mjs';
 import { emptyReply, endedWithoutReply } from './empty-reply.mjs';
 import { folderOrNone } from './folder-path.mjs';
 import { heldSession } from './held-session.mjs';
@@ -1969,9 +1969,6 @@ export class Runtime {
   }
   pollMirror(sessionId) {
     return pollMirror(this, sessionId);
-  }
-  mirrorAgentItem(se, text) {
-    return mirrorAgentItem(this, se, text);
   }
   stopMirrorFor(sessionId) {
     return stopMirrorFor(this, sessionId);

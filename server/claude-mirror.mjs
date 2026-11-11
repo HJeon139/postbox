@@ -119,12 +119,12 @@ export function pollMirror(rt, sessionId) {
         if (b.type === 'text' && b.text?.trim()) {
           const it = m.agentItem && rt.store.pending.item(se.threadId, m.agentItem);
           if (it) rt.patchItem(se.threadId, it.id, { text: it.text ? `${it.text}\n\n${b.text}` : b.text });
-          else m.agentItem = rt.mirrorAgentItem(se, b.text);
+          else m.agentItem = mirrorAgentItem(rt, se, b.text);
           rt.updateSession(sessionId, { state: 'gen', currentStep: 'Writing in a terminal' });
         }
         if (b.type === 'tool_use') {
           m.steps.push({ id: b.id, label: describeTool(b.name, b.input), state: 'running', ms: null });
-          if (!m.agentItem) m.agentItem = rt.mirrorAgentItem(se, '');
+          if (!m.agentItem) m.agentItem = mirrorAgentItem(rt, se, '');
           rt.patchItem(se.threadId, m.agentItem, { activity: { steps: [...m.steps] } });
           rt.updateSession(sessionId, { state: 'tool', currentStep: m.steps.at(-1).label });
         }
@@ -145,7 +145,7 @@ export function pollMirror(rt, sessionId) {
   }
 }
 
-export function mirrorAgentItem(rt, se, text) {
+function mirrorAgentItem(rt, se, text) {
   return rt.addItem(se.threadId, {
     kind: 'agent',
     sessionId: se.id,
