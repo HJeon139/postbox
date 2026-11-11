@@ -62,3 +62,18 @@ test('a web search gets its query when Codex reports it only at completion', () 
     ],
   );
 });
+
+test('a failed Codex command’s step says why, from what it printed, not only its exit code', () => {
+  const activity = [];
+  const mapper = createCodexMapper({ activity: (event) => activity.push(event), status: () => {}, text: () => {}, state: {} });
+  const item = { id: 'cmd_1', type: 'commandExecution', command: 'python3 wordcount.py missing.txt' };
+  mapper.push({ method: 'item/started', params: { item } });
+  mapper.push({
+    method: 'item/completed',
+    params: { item: { ...item, status: 'failed', exitCode: 1, aggregatedOutput: "Error: File 'missing.txt' not found.\n" } },
+  });
+  const failed = activity.at(-1);
+  assert.equal(failed.state, 'failed');
+  assert.match(failed.detail, /File 'missing\.txt' not found/);
+  assert.match(failed.output, /^Exit code 1\nError: File 'missing\.txt' not found\.$/);
+});

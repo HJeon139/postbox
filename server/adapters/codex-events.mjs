@@ -64,7 +64,9 @@ export function itemCompleted(emit, item, read = readText) {
   const isError = item.status !== 'completed';
   if (item.type === 'commandExecution') {
     const failed = isError || (Number.isInteger(item.exitCode) && item.exitCode !== 0);
-    const text = failed && Number.isInteger(item.exitCode) ? `Exit code ${item.exitCode}` : '';
+    // As Claude Code reports a command: its exit when it failed, then what it printed (stderr included).
+    const out = String(item.aggregatedOutput ?? '');
+    const text = failed && Number.isInteger(item.exitCode) ? `Exit code ${item.exitCode}\n${out}` : out;
     emit({ kind: 'tool_result', id: item.id, isError: failed, text, result: { stdout: String(item.aggregatedOutput ?? '') } });
   } else if (item.type === 'mcpToolCall') emit({ kind: 'tool_result', id: item.id, isError, text: mcpText(item) });
   else if (item.type === 'webSearch') emit({ kind: 'tool_result', id: item.id, isError });
