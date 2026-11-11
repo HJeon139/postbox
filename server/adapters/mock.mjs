@@ -91,10 +91,10 @@ function kit(ctx, session, mem) {
     /** A call Claude Code refuses without asking: the step shows refused, and Postbox draws a card. */
     async refused({ label, tool, input, reason, reasonType, who = null }, ms = 400) {
       const id = `t${++n}`;
-      ctx.activity({ id, label, state: 'running', who });
+      emit({ kind: 'tool_call', id, name: tool, input, label, who, final: true });
       await sleep(ms);
-      ctx.denied({ toolUseId: id, tool, input, label, reason, reasonType, who });
-      ctx.activity({ id, label, state: 'denied', ms, who });
+      emit({ kind: 'refused', id, tool, input, reason, reasonType });
+      emit({ kind: 'tool_result', id, isError: true, text: reason, ms });
     },
     /**
      * Writes a file for real, reporting the call as Claude Code does (the Write tool, with the file’s contents
@@ -873,7 +873,10 @@ async function tidyWorkspace(a) {
   await a.refused({
     label: 'Delete the old exports',
     tool: 'Bash',
-    input: { command: 'rm exports/2026-10-14-full.jsonl exports/2026-10-14-delta.jsonl exports/2026-10-14-log.jsonl' },
+    input: {
+      command: 'rm exports/2026-10-14-full.jsonl exports/2026-10-14-delta.jsonl exports/2026-10-14-log.jsonl',
+      description: 'Delete the old exports',
+    },
     reason: 'Permission to use Bash with command rm exports/2026-10-14-full.jsonl exports/2026-10-14-delta.jsonl exports/2026-10-14-log.jsonl has been denied.',
     reasonType: 'rule',
     who: 'tidier',
