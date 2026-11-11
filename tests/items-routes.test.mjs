@@ -3,6 +3,8 @@
 
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
+import { threadSearch } from '../server/thread-search.mjs';
+import { apply, emptyState } from '../shared/state.mjs';
 import { fakeRequest } from './fake-http.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
@@ -62,4 +64,53 @@ test('search finds items the page hasn’t loaded, with their words, and follows
   app.store.emit('item.add', { threadId: 'room', item: { id: 'late', kind: 'user', text: 'another walrus', at: 300 } });
   const again = await get('/api/threads/room/search?q=walrus');
   assert.deepEqual(again.json.hits.map((/** @type {any} */ h) => h.id).sort(), ['i7', 'late']);
+});
+
+/** A store whose events and reloads the test sends by hand, for the search index alone. */
+function fakeStore() {
+  const state = emptyState();
+  apply(state, 'thread', { id: 't', kind: 'room' });
+  apply(state, 'item.add', { threadId: 't', item: { id: 'a', kind: 'user', text: 'the walrus plan' } });
+  /** @type {(ev: any) => void} */
+  let heard = () => {};
+  /** @type {() => void} */
+  let reloaded = () => {};
+  const store = { state, subscribe: (/** @type {any} */ f) => (heard = f), onReload: (/** @type {any} */ f) => (reloaded = f) };
+  const emit = (/** @type {string} */ type, /** @type {any} */ data) => {
+    apply(store.state, type, data);
+    heard({ type, data });
+  };
+  return { store, emit, reload: () => reloaded() };
+}
+const found = (/** @type {any} */ search, /** @type {string} */ q) => search.search('t', q, 5).map((/** @type {any} */ h) => h.id);
+
+test('a patch rewrites the item’s entry: its new words are found, its old ones aren’t', () => {
+  const { store, emit } = fakeStore();
+  const search = threadSearch(store);
+  assert.deepEqual(found(search, 'walrus'), ['a']);
+  emit('item.patch', { threadId: 't', id: 'a', patch: { text: 'the otter plan' } });
+  assert.deepEqual(found(search, 'otter'), ['a']);
+  assert.deepEqual(found(search, 'walrus'), []);
+});
+
+test('a removed conversation’s index goes with it, so one of the same id is indexed afresh', () => {
+  const { store, emit } = fakeStore();
+  const search = threadSearch(store);
+  assert.deepEqual(found(search, 'walrus'), ['a']);
+  emit('remove', { kind: 'thread', id: 't' });
+  store.state.threads.t = { id: 't', kind: 'room' };
+  store.state.items.t = [{ id: 'b', kind: 'user', text: 'a walrus again' }];
+  assert.deepEqual(found(search, 'walrus'), ['b']);
+});
+
+test('a reload, which replaces the state, drops every index', () => {
+  const { store, reload } = fakeStore();
+  const search = threadSearch(store);
+  assert.deepEqual(found(search, 'walrus'), ['a']);
+  const next = emptyState();
+  apply(next, 'thread', { id: 't', kind: 'room' });
+  apply(next, 'item.add', { threadId: 't', item: { id: 'c', kind: 'user', text: 'a walrus restored' } });
+  store.state = next;
+  reload();
+  assert.deepEqual(found(search, 'walrus'), ['c']);
 });
