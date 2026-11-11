@@ -1,6 +1,6 @@
 // The page's ranges of a conversation's items (app/js/item-ranges.mjs, #1155): the events it hears after a load's seq,
 // before the load's answer lands, reach the items the answer brings, once. The module imports /shared/ as the browser
-// serves it, so it's loaded here from a copy whose imports point at the files.
+// serves it, so it's loaded here from a copy, with the module it imports, whose imports point at the files.
 import assert from 'node:assert/strict';
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -10,9 +10,12 @@ import { apply } from '../shared/state.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
 const shared = pathToFileURL(join(import.meta.dirname, '../shared/')).href;
-const src = (await readFile(new URL('../app/js/item-ranges.mjs', import.meta.url), 'utf8')).replaceAll("'/shared/", `'${shared}`);
-const file = join(await tempDir('pb-item-ranges-'), 'item-ranges.mjs');
-await writeFile(file, src);
+const dir = await tempDir('pb-item-ranges-');
+for (const name of ['item-ranges.mjs', 'kept-items.mjs']) {
+  const src = (await readFile(new URL(`../app/js/${name}`, import.meta.url), 'utf8')).replaceAll("'/shared/", `'${shared}`);
+  await writeFile(join(dir, name), src);
+}
+const file = join(dir, 'item-ranges.mjs');
 const { gate, loading, place, placeAround, placeHead, placeTail } = await import(pathToFileURL(file).href);
 
 const it = (n, text = `m${n}`) => ({ id: `i${n}`, kind: 'message', text });
