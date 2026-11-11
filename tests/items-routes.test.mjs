@@ -3,7 +3,9 @@
 
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
+import { ALL_MOST, rangeOf } from '../server/items-routes.mjs';
 import { threadSearch } from '../server/thread-search.mjs';
+import { MOST_TERMS, SearchIndex } from '../shared/search-index.mjs';
 import { apply, emptyState } from '../shared/state.mjs';
 import { fakeRequest } from './fake-http.mjs';
 import { tempDir } from './temp-dirs.mjs';
@@ -121,4 +123,18 @@ test('a reload, which replaces the state, drops every index', () => {
   store.state = next;
   reload();
   assert.deepEqual(found(search, 'walrus'), ['c']);
+});
+
+test('limit=all gives at most ALL_MOST, the latest, so a huge conversation can’t hold the server', () => {
+  const list = Array.from({ length: ALL_MOST + 5 }, (_, i) => ({ id: `x${i}` }));
+  const { start, end } = rangeOf(list, new URLSearchParams('limit=all'));
+  assert.deepEqual([start, end], [5, ALL_MOST + 5]);
+});
+
+test('a search scores at most MOST_TERMS distinct words of its query', () => {
+  const ix = new SearchIndex();
+  ix.put('a', 'zebra');
+  const words = Array.from({ length: MOST_TERMS }, (_, i) => `word${String.fromCharCode(97 + (i % 26))}${i}`);
+  assert.equal(ix.search(`${words.join(' ')} zebra`).length, 0, 'the word past the cap isn’t scored');
+  assert.equal(ix.search(`${words.slice(1).join(' ')} zebra`).length, 1, 'within the cap it is');
 });

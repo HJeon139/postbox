@@ -11,6 +11,14 @@ import { publicItems } from './public-state.mjs';
 /** How many items a range has when the page asks for none, and the most it can ask for but all of them. */
 export const PAGE = 100;
 export const MOST = 500;
+/**
+ * The most `limit=all` gives, the latest of them: a page with the transcript window off asks for every item, and a
+ * million of them took the event loop most of a second and a 186 MB answer, or failed to fit a string. A conversation
+ * longer than this opens with its window on, loading the rest at its edges (thread.mjs, createWindow).
+ */
+export const ALL_MOST = 20_000;
+/** The longest search the server reads, in characters: each word of it is a pass over the conversation's index. */
+export const QUERY_MOST = 500;
 /** The most search hits, and the most of each hit’s text, that one answer carries. */
 const HITS = 50;
 const HIT_TEXT = 2000;
@@ -21,10 +29,10 @@ const HIT_TEXT = 2000;
  * @param {any[]} list @param {URLSearchParams} q
  */
 export function rangeOf(list, q) {
-  // `all`: the whole conversation, for a page with the transcript window off, which mounts every item. Otherwise a
+  // `all`: the whole conversation, up to ALL_MOST, for a page with the transcript window off. Otherwise a
   // whole number of items: a fractional limit would give fractional places, which slice() reads its own way.
   const all = q.get('limit') === 'all';
-  const limit = all ? Number.POSITIVE_INFINITY : Math.min(MOST, Math.max(1, Math.floor(Number(q.get('limit'))) || PAGE));
+  const limit = all ? ALL_MOST : Math.min(MOST, Math.max(1, Math.floor(Number(q.get('limit'))) || PAGE));
   const total = list.length;
   const anchor = q.get('before') ?? q.get('after') ?? q.get('around');
   if (q.has('first')) return { start: 0, end: Math.min(total, limit) };
@@ -62,7 +70,7 @@ export function itemsRoute(store, search, path, method, url) {
     const { start, end } = rangeOf(list, url.searchParams);
     return { ...as, start, items: list.slice(start, end) };
   }
-  const hits = search.search(threadId, url.searchParams.get('q') ?? '', HITS).map((hit) => {
+  const hits = search.search(threadId, (url.searchParams.get('q') ?? '').slice(0, QUERY_MOST), HITS).map((hit) => {
     const it = list[positionOf(list, hit.id)];
     return { id: hit.id, terms: hit.terms, kind: it?.kind, handle: it?.handle ?? null, text: clipText(searchText(it), HIT_TEXT) };
   });
