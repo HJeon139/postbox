@@ -2,6 +2,13 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.0.2 (2026-11-11)
+
+### Fixes
+
+- **app:** Enter right after typing in Jump to… acts on that query, and a status says what it found
+- **app:** one search in the top bar: Jump to… also finds the open conversation's messages
+
 ## 4.0.1 (2026-11-11)
 
 ### Fixes
