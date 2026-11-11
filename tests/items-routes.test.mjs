@@ -15,7 +15,8 @@ before(async () => {
   const dir = await tempDir('pb-items-');
   app = await start({ port: PORT, dataDir: dir, fresh: true, demo: false, quiet: true, claudeHome: dir, listen: false });
   app.store.emit('thread', { id: 'room', members: [] });
-  for (let i = 0; i < 250; i++)
+  // More than MOST (500), so the cap on a range's length shows.
+  for (let i = 0; i < 600; i++)
     app.store.emit('item.add', { threadId: 'room', item: { id: `i${i}`, kind: 'user', text: i === 7 ? 'the walrus plan' : `message ${i}`, at: i } });
 });
 after(async () => {
@@ -29,16 +30,17 @@ test('with no anchor, the latest page; with before, after or around an item, the
   const latest = await get('/api/threads/room/items');
   assert.equal(latest.status, 200);
   assert.equal(latest.json.items.length, 100);
-  assert.deepEqual([latest.json.start, latest.json.total, latest.json.seq], [150, 250, app.store.state.seq]);
-  assert.equal(ids(latest).at(-1), 'i249');
+  assert.deepEqual([latest.json.start, latest.json.total, latest.json.seq], [500, 600, app.store.state.seq]);
+  assert.equal(ids(latest).at(-1), 'i599');
   const before = await get('/api/threads/room/items?before=i150&limit=20');
   assert.deepEqual([before.json.start, ids(before)[0], ids(before).at(-1)], [130, 'i130', 'i149']);
-  const afterIt = await get('/api/threads/room/items?after=i240&limit=20');
-  assert.deepEqual(ids(afterIt), ['i241', 'i242', 'i243', 'i244', 'i245', 'i246', 'i247', 'i248', 'i249']);
+  const afterIt = await get('/api/threads/room/items?after=i590&limit=20');
+  assert.deepEqual(ids(afterIt), ['i591', 'i592', 'i593', 'i594', 'i595', 'i596', 'i597', 'i598', 'i599']);
   const around = await get('/api/threads/room/items?around=i3&limit=10');
   assert.deepEqual([around.json.start, ids(around).length], [0, 10], 'around the start: as many as asked, from the first');
   const capped = await get('/api/threads/room/items?limit=100000');
-  assert.equal(capped.json.items.length, 250, 'a limit is capped');
+  assert.equal(capped.json.items.length, 500, 'a limit is capped at MOST');
+  assert.deepEqual([capped.json.start, ids(capped).at(-1)], [100, 'i599'], 'the latest 500');
 });
 
 test('an item or a conversation that isn’t here is a 404 that says so', async () => {
