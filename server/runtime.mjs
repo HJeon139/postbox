@@ -89,6 +89,7 @@ import {
   scheduleWake,
   settleScheduledWake,
 } from './scheduled-wakes.mjs';
+import { archive, archiveThread, deleteSession, deleteThread, finishLeftDeletes, restore, restoreThread } from './session-lifecycle.mjs';
 import { pendingSessionsIn, tellAgent, updateSession } from './session-write.mjs';
 import { clearSummaryPending, postSummary, shareText, shareToConversation, summarizeBack, summarizing } from './share-back.mjs';
 import { runShell } from './shell.mjs';
@@ -107,7 +108,6 @@ import {
 import { newId } from './store.mjs';
 import { heldTurn, STORE_STOPPED, saveBackendState, watchStore, whenWritable } from './store-outage.mjs';
 import { endSubagent, notUrgent } from './subagent-end.mjs';
-import { eraseThreads } from './thread-erase.mjs';
 import { firstPromptSection, settleThread, turnContext } from './thread-summary.mjs';
 import { updateThread } from './thread-write.mjs';
 import { askForTool, settleToolAsks } from './tool-ask.mjs';
@@ -2221,15 +2221,6 @@ export class Runtime {
     this.mirrors.set(sessionId, { tail: new TranscriptTail(file), timer, agentItem: null, steps: [] });
   }
 
-  /**
-   * Deletes an older Postbox left pending in its Undo window, which is gone: each finishes now, as a delete does.
-   * Delete is just delete.
-   */
-  finishLeftDeletes() {
-    for (const se of Object.values(this.s.sessions)) if (se.deleting && this.s.sessions[se.id]) this.deleteSession(se.id);
-    for (const t of Object.values(this.s.threads)) if (t.deleting && this.s.threads[t.id]) this.deleteThread(t.id);
-  }
-
   rearmMirrors() {
     for (const se of Object.values(this.s.sessions)) if (se.backendState?.attached && !se.archived) this.mirror(se.id);
   }
@@ -2499,114 +2490,28 @@ export class Runtime {
     };
   }
 
-  // ── Session lifecycle: archive, restore, delete ─────────────────────────────────
+  // ── Session lifecycle: server/session-lifecycle.mjs ─────────────────────────────
 
+  finishLeftDeletes() {
+    return finishLeftDeletes(this);
+  }
   archive(sessionId) {
-    this.stop(sessionId, { silent: true });
-    // A turn on a host waiting to be attached again after a restart, or to resume, isn’t attached or resumed (#120).
-    this.remote.cancel(sessionId);
-    const se = this.session(sessionId);
-    this.updateSession(sessionId, { archived: true, state: 'idle', needs: null, archivedAt: Date.now() });
-    dropWakes(this, se, 'archived');
-    if (this.sessionsIn(se.threadId).every((x) => x.id === sessionId || x.archived)) updateThread(this, se.threadId, { archived: true });
+    return archive(this, sessionId);
   }
-
   restore(sessionId) {
-    const se = this.session(sessionId);
-    if (se.retiredFork) throw httpError(409, 'A fork from before agents had one session per conversation can’t come back: its agent answers there now.');
-    this.updateSession(sessionId, { archived: false, archivedAt: null });
-    updateThread(this, se.threadId, (t) => (t.archived ? { archived: false } : null));
+    return restore(this, sessionId);
   }
-
-  /**
-   * A conversation or room and every thread under it, a side thread a topic thread’s fork woke included: what
-   * archiving, restoring or deleting it covers (#101, #320).
-   */
-  archiveScope(threadId) {
-    const t = this.thread(threadId);
-    if (t.kind === 'topic' || t.kind === 'side') throw httpError(409, 'Archive the conversation it belongs to instead.');
-    return [t, ...Object.values(this.s.threads).filter((x) => x.id !== t.id && this.lineage(x.id).at(-1) === t.id)];
-  }
-
-  /**
-   * Archives a conversation (#101): every session in it, its side and topic threads’ forks too, through archive(),
-   * so each keeps its transcript and its backend session for Restore. It leaves the rail. A session is archived only
-   * this way, with its conversation (#320): archive() has no route of its own.
-   */
   archiveThread(threadId) {
-    const threads = this.archiveScope(threadId);
-    const ids = threads
-      .flatMap((t) => this.sessionsIn(t.id))
-      .filter((se) => !se.archived)
-      .map((se) => se.id);
-    for (const id of ids) this.archive(id);
-    for (const t of threads) updateThread(this, t.id, (x) => (x.archived ? null : { archived: true }));
-    // What it archived: every agent here that wasn’t yet.
-    return ids;
+    return archiveThread(this, threadId);
   }
-
-  /** Restores every archived session in a conversation and its side and topic threads, and the threads with them. */
   restoreThread(threadId) {
-    const threads = this.archiveScope(threadId);
-    // A fork retired by #228’s migration stays archived.
-    for (const t of threads) for (const se of this.sessionsIn(t.id)) if (se.archived && !se.retiredFork) this.restore(se.id);
-    for (const t of threads) updateThread(this, t.id, (x) => (x.archived ? { archived: false } : null));
+    return restoreThread(this, threadId);
   }
-
-  /**
-   * Deletes a session at once: its turn stops, its wakes and queued messages go, and if it was alone in its conversation,
-   * the conversation goes with it. In a room it leaves, and its past messages stay, marked deleted. The persona stays.
-   * There is no Undo window, so nothing is held for it (#604, #599).
-   */
   deleteSession(sessionId) {
-    const se = this.session(sessionId);
-    this.stop(sessionId, { silent: true });
-    // A turn of one on a host, waiting to be attached again or to resume, is neither, as deleting a conversation does.
-    this.remote.cancel(sessionId);
-    dropWakes(this, se, 'removed');
-    // The person’s messages queued for it leave the queue (#427).
-    queue.releaseQueued(this, sessionId);
-    // Background jobs Postbox kept running for it would run on with no record (#129).
-    this.stopKeptJobs([sessionId], 'Its session was deleted.').catch((e) => console.error(`Couldn’t stop a deleted session’s jobs: ${e.message}`));
-    const t = this.store.pending.thread(se.threadId); // a member that joined behind a held commit keeps its room (#796)
-    const others = (t?.members ?? []).filter((id) => id !== sessionId && this.store.pending.session(id));
-    if (t && !others.length) {
-      // Its own conversation goes with it, as deleting the conversation does: every thread under it, with its sessions
-      // and apps (#320).
-      eraseThreads(this, t.kind === 'topic' || t.kind === 'side' ? [t.id] : this.archiveScope(t.id).map((x) => x.id), 'Its session was deleted.', [sessionId]);
-    } else if (t) {
-      const gone = t.members.filter((id) => !others.includes(id)); // it, and any member whose session is gone; a held join stays
-      updateThread(this, t.id, (x) => ({
-        members: x.members.filter((id) => !gone.includes(id)),
-        lastSpeaker: x.lastSpeaker === sessionId ? (others[0] ?? null) : x.lastSpeaker,
-      }));
-      for (const it of this.store.pending.items(t.id)) if (it.sessionId === sessionId) this.patchItem(t.id, it.id, { deletedAgent: true });
-      this.addItem(t.id, { kind: 'system', variant: 'left', to: se.handle });
-    }
-    if (this.s.sessions[sessionId]) this.store.emit('remove', { kind: 'session', id: sessionId });
-    return { handle: se.handle };
+    return deleteSession(this, sessionId);
   }
-
-  /**
-   * Deletes a whole conversation or room at once: every session in it, its apps, and its topic and side threads. The
-   * personas stay. There is no Undo window.
-   */
   deleteThread(threadId) {
-    const t = this.thread(threadId);
-    if (t.kind === 'topic' || t.kind === 'side') throw httpError(409, 'Delete the conversation it belongs to instead.');
-    const scope = this.archiveScope(threadId);
-    // A turn of one on a host, waiting to be attached again or to resume, is neither (#120).
-    for (const x of scope)
-      for (const se of this.sessionsIn(x.id)) {
-        this.stop(se.id, { silent: true });
-        this.remote.cancel(se.id);
-      }
-    eraseThreads(
-      this,
-      scope.map((x) => x.id),
-      'Its conversation was deleted.',
-    );
-    return { title: t.title };
+    return deleteThread(this, threadId);
   }
 
   stopMirrorFor(sessionId) {
