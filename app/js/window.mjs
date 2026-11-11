@@ -15,24 +15,10 @@ import { holdView } from './view-jump.mjs';
 import { holdSkipping } from './view-skip.mjs';
 import { budgetFor, elementsOf } from './window-cost.mjs';
 import { elementsIn, heightsFor, kindOf } from './window-entry.mjs';
+import { windowOn } from './window-flag.mjs';
 import { edgeKeys } from './window-keys.mjs';
 import { CEILING, CHUNK, FLOOR, MARGIN } from './window-limits.mjs';
 import * as windowShrink from './window-shrink.mjs';
-
-const FLAG = 'pb-window';
-
-/**
- * Whether the window is on in this browser: by default, the person’s choice of 8 Nov (#866). The flag set to 'off'
- * mounts every item, as before; a conversation within both the ceiling of items and the budget of elements mounts
- * whole either way (createWindow).
- */
-export function windowOn() {
-  try {
-    return localStorage.getItem(FLAG) !== 'off';
-  } catch {
-    return true;
-  }
-}
 
 /**
  * A window over one transcript, or null when it’s off or the conversation is short enough to mount whole.
