@@ -3,8 +3,9 @@
 // is thinking or writing now. Moved from server/adapters/claude-stream.mjs and claude-reply.mjs, which built these for
 // Claude Code alone, while each other adapter built its own.
 
+import { STEP_TEXT } from '../shared/limits.mjs';
 import { appendGlimpseSource, glimpseOf } from '../shared/text.mjs';
-import { byOf, clip, firstSentence } from './harness-tools.mjs';
+import { byOf, firstSentence } from './harness-tools.mjs';
 
 /**
  * Text without Markdown’s emphasis and code marks, its runs of whitespace as one space, to compare streamed text with a
@@ -76,7 +77,14 @@ export class HarnessText {
     const t = String(text ?? '').trim();
     if (!t) return;
     this.thoughts += 1;
-    this.ctx.activity({ id: `thought-${this.thoughts}`, label: firstSentence(t, 120), state: 'done', kind: 'thought', detail: clip(t, 1200), ...byOf(by) });
+    this.ctx.activity({
+      id: `thought-${this.thoughts}`,
+      label: firstSentence(t, 120),
+      state: 'done',
+      kind: 'thought',
+      detail: t.slice(0, STEP_TEXT.thought),
+      ...byOf(by),
+    });
   }
 
   /** A piece of a thought; a whole one is a step at once. @param {string} text @param {unknown} block @param {boolean} [whole] */
@@ -104,7 +112,14 @@ export class HarnessText {
     const t = String(text ?? '').trim();
     if (!t) return;
     this.narrations += 1;
-    this.ctx.activity({ id: `said-${this.narrations}`, label: firstSentence(t, 200), state: 'done', kind: 'said', detail: clip(t, 1200), ...byOf(by) });
+    this.ctx.activity({
+      id: `said-${this.narrations}`,
+      label: firstSentence(t, 200),
+      state: 'done',
+      kind: 'said',
+      detail: t.slice(0, STEP_TEXT.thought),
+      ...byOf(by),
+    });
   }
 
   /** After a compaction, the reply’s next words start fresh. */

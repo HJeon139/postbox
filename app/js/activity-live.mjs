@@ -1,8 +1,9 @@
-// A running turn’s steps as they happen (designs/rooms-at-scale.md, “Live state”). Its own words sit between its steps,
-// in the order it wrote and ran them. The newest step shows in full, an edit as its small diff and a command with the
-// end of its output; older ones are a line each, “✓ Edited notes.txt +1 −1”. Detail fades with age within a height
-// budget: the visible transcript shared by the agents working in it. Past what fits, older steps are “N earlier steps”,
-// and with eight or more agents working, a turn’s steps are one line: what it’s doing now and how many steps it took.
+// A running turn’s steps as they happen (designs/rooms-at-scale.md, “Live state”). Its own words, and its thoughts
+// whole, sit between its steps in the order it wrote and ran them. The newest step shows in full, an edit as its small
+// diff and a command with the end of its output; older ones are a line each, “✓ Edited notes.txt +1 −1”. Detail fades
+// with age within a height budget: the visible transcript shared by the agents working in it. Past what fits, older
+// steps are “N earlier steps”, and with eight or more agents working, a turn’s steps are one line: what it’s doing now
+// and how many steps it took.
 
 import { stepRow } from './activity-steps.mjs';
 import { busy, itemsOf, sessionsAt } from './client.mjs';
@@ -59,6 +60,8 @@ function linesFor(threadId) {
 
 /** The steps a live turn shows: its own, at the top of its list (a subagent’s show under the step that started it). */
 const ownSteps = (/** @type {any[]} */ steps) => steps.filter((s) => !s.parent && !s.who && s.kind !== 'said');
+/** Its calls, without its thoughts, which show whole between them. @param {any[]} steps */
+const callsOf = (steps) => steps.filter((s) => s.kind !== 'thought');
 
 /** “+12 −3”, its counts green and red, as a finished post’s files show them. @param {any} s */
 const counts = (s) => (typeof s.added === 'number' ? h('span.work-n', h('span.add', `+${s.added}`), ' ', h('span.del', `−${s.deleted ?? 0}`)) : null);
@@ -114,24 +117,25 @@ export function liveParts(it, threadId, words) {
   const steps = ownSteps(it.activity?.steps ?? []);
   if (!steps.length) return null;
   const lines = linesFor(threadId);
-  const newest = steps.at(-1);
+  const calls = callsOf(steps);
+  const newest = calls.at(-1) ?? steps.at(-1);
   // The number of agents at work it was drawn for (liveStale).
   const agents = { dataset: { agents: String(liveAgents(threadId)) } };
   if (lines < 0) {
     const line = lineRow(newest);
-    line.append(h('span.small.dim', `· ${plural(steps.length, 'step')}`));
+    line.append(h('span.small.dim', `· ${plural(calls.length, 'step')}`));
     return h('div.live-steps.crowded', agents, h('ul.steps.live', line));
   }
   const text = String(it.text ?? '');
-  const shownFrom = Math.max(0, steps.length - 1 - lines); // older than this, a step is one of “N earlier steps”
+  const shownFrom = Math.max(0, calls.length - 1 - lines); // older than this, a step is one of “N earlier steps”
   const parts = [];
   let cursor = 0;
   /** @type {any[]} */
   let run = [];
   const flush = () => {
     if (!run.length) return;
-    const earlier = run.filter((s) => steps.indexOf(s) < shownFrom);
-    const shown = run.filter((s) => steps.indexOf(s) >= shownFrom);
+    const earlier = run.filter((s) => calls.indexOf(s) < shownFrom);
+    const shown = run.filter((s) => calls.indexOf(s) >= shownFrom);
     parts.push(
       h(
         'ul.steps.live',
@@ -150,7 +154,11 @@ export function liveParts(it, threadId, words) {
       parts.push(words(text.slice(cursor, at)));
       cursor = at;
     }
-    run.push(s);
+    // A thought shows whole, as its harness shows it, between the calls before and after it.
+    if (s.kind === 'thought') {
+      flush();
+      parts.push(h('div.live-thought', s.detail || s.label));
+    } else run.push(s);
   }
   flush();
   return h('div.live-steps', agents, parts);

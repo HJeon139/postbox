@@ -402,6 +402,7 @@ details.activity[open] > summary .i-right { transform: rotate(90deg); }
 /* A running turn’s steps between its words (activity-live.mjs): the newest in full, older ones a line each. */
 .live-steps { font-size: 12px; color: var(--dim); display: flex; flex-direction: column; gap: 4px; }
 .live-steps > .live-words { color: var(--text); font-size: inherit; }
+.live-steps > .live-thought { color: var(--dim); font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .steps.live { margin-top: 0; }
 .steps li.step-line { align-items: center; }
 .steps li.step-line .mono { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }

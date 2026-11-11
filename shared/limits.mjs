@@ -148,8 +148,11 @@ export const GLIMPSE_CHARS = 160;
 /** The most streamed text inspected to find that glimpse, bounding work on each update (#478). */
 export const GLIMPSE_SOURCE_CHARS = 2000;
 
-/** What a step keeps of its call: its input in a line, and the end of what it returned, in characters. */
-export const STEP_TEXT = Object.freeze({ input: 300, output: 400 });
+/**
+ * What a step keeps, in characters: its call’s input in a line, the end of what it returned, and a thought whole, as the
+ * live view shows it (app/js/activity-live.mjs).
+ */
+export const STEP_TEXT = Object.freeze({ input: 300, output: 400, thought: 8000 });
 
 /**
  * Agent wakes in a row, without you, before the next waits for your Allow: a backstop against agents that never stop,

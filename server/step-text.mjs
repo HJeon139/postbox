@@ -68,7 +68,8 @@ export function turnStep({ id, label, state, ms, who, parent, detail, kind, job,
     ms,
     ...(who ? { who: String(who).slice(0, 40) } : {}),
     ...(typeof parent === 'string' && parent ? { parent: parent.slice(0, 100) } : {}),
-    ...(detail ? { detail: String(detail).slice(0, 1200) } : {}),
+    // A thought is kept whole, up to its own bound; any other detail is a reason or a result’s note.
+    ...(detail ? { detail: String(detail).slice(0, kind === 'thought' ? STEP_TEXT.thought : 1200) } : {}),
     ...(STEP_KINDS.has(kind) ? { kind } : {}),
     ...(typeof job === 'string' && job ? { job: job.slice(0, 60) } : {}),
     // Its call’s input and the end of what it returned, bounded as the core bounds them.

@@ -201,3 +201,23 @@ test('detail fades within each agent’s share of the screen: four agents show a
     await expect.poll(() => app.rt.turns.size).toBe(0);
   });
 });
+
+test('a running turn’s thoughts show whole, paragraphs and all, between its steps', async ({ page }) => {
+  const thought = `${'The sum is wrong because the operator is a minus. '.repeat(30)}\n\nI’ll fix the operator, then run the tests to be sure nothing else depends on the bug.`;
+  const t = room('Whole thoughts', ['thinker']);
+  scripts.set('thinker', async ({ emit, who }) => {
+    emit({ kind: 'thinking', text: thought, block: 'th1' });
+    emit({ kind: 'thinking_end', block: 'th1' });
+    emit({ kind: 'tool_call', id: 'b1', name: 'Bash', input: { command: 'python -m pytest -q' }, final: true });
+    await hold(who, 1);
+  });
+  await page.goto(`${app.origin}/#/t/${t.id}`);
+  await synced(page, app);
+  app.rt.sendMessage(t.id, { text: 'Why is add wrong?' });
+  await expect.poll(() => at('thinker')).toBe(1);
+  const shown = page.locator('.live-steps .live-thought');
+  await expect(shown).toHaveCount(1);
+  expect(await shown.textContent(), 'the whole thought, its paragraph break kept').toBe(thought);
+  go('thinker');
+  await expect.poll(() => app.rt.turns.size).toBe(0);
+});
