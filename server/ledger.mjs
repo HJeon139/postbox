@@ -37,13 +37,13 @@ import {
   READ_TOOLS,
   urlsIn,
 } from '../shared/work.mjs';
-import { describeTool } from './adapters/claude-stream.mjs';
 import { fileDiff, output, restore } from './ledger-answers.mjs';
 import { commandSeen, commandStarted, endedAs, folderWatch, turnEnded } from './ledger-commands.mjs';
 import { clip, gitState, pushed, recordCommit, recordLandedPushes, recordPushes, rootOf, runGit, tracked } from './ledger-git.mjs';
 import { known, memoryBlobs, nodeIo, outputFileAt, sameSnap } from './ledger-io.mjs';
 import { hostEdit, hostFolder, hostOf } from './ledger-remote.mjs';
 import { newId } from './store.mjs';
+import { describeTool } from './tool-labels.mjs';
 
 export { nodeIo };
 

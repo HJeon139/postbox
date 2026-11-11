@@ -4,9 +4,9 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { isQuietTool } from '../server/adapters/claude-stream.mjs';
 import { READ_TOOLS } from '../server/mcp.mjs';
 import { threadCatchUp } from '../server/thread-summary.mjs';
+import { isQuietTool } from '../server/tool-labels.mjs';
 import { TOOL_DEFS } from '../shared/mcp-tools.mjs';
 import { settle, setup } from './side-threads-fixture.mjs';
 import { heldStore } from './stop-reply-fixture.mjs';

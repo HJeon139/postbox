@@ -10,8 +10,6 @@ import { contentBlocks } from './claude-content.mjs';
 import { commandsOf, postboxServerStatus } from './claude-init.mjs';
 import { addTokens, forkOf, resultTokens, sessionTotals, turnCost } from './claude-usage.mjs';
 
-// Moved to server/tool-labels.mjs; its importers keep this path.
-export { describeTool, isQuietTool } from '../tool-labels.mjs';
 export { describePermission } from './claude-permission.mjs';
 export { commandsOf }; // moved to claude-init.mjs; its importers keep this path
 

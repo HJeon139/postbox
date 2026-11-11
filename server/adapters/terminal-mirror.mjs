@@ -10,8 +10,8 @@ import { closeSync, openSync, readSync, statSync } from 'node:fs';
 import { readdir, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { describeTool } from '../tool-labels.mjs';
 import { contentBlocks } from './claude-content.mjs';
-import { describeTool } from './claude-stream.mjs';
 
 export { contentBlocks };
 

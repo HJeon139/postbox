@@ -3,7 +3,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { describeTool, isQuietTool } from '../server/adapters/claude-stream.mjs';
+import { describeTool, isQuietTool } from '../server/tool-labels.mjs';
 import { TOOL_ROUTES } from '../shared/remote-protocol.mjs';
 import { rig, running, settled, until } from './remote-turns-helpers.mjs';
 import { setup, sleep } from './side-threads-fixture.mjs';
