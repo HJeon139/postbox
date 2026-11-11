@@ -138,7 +138,7 @@ const PENDING = {
   // reads its pending members and sessions, so a second mention behind a held commit finds the session the first made.
   // The room’s chain limit, which decides whether a wake waits, maybe set behind a held commit (#1035).
   'room-chain-limit.mjs': ['roomChainLimit'],
-  'session-write.mjs': ['updateSession', 'pendingSessionsIn', 'pendingSessionsIn'],
+  'session-write.mjs': ['updateSession', 'needAt', 'pendingSessionsIn', 'pendingSessionsIn'], // needAt: the need's item's time, maybe added behind a held commit (#1155)
   'subagent-end.mjs': ['withUrgent'],
   'side-threads.mjs': ['agentWake', 'agentWake', 'agentWake', 'endChain', 'endChain', 'archiveForks', 'bumpSideLink', 'bumpSideLink'],
   // A thread’s apps, removed in a sweep; and whether a delivery's conversation is being deleted, as sendMessage reads it (#796).
