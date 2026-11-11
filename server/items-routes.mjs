@@ -16,7 +16,8 @@ const HITS = 50;
 const HIT_TEXT = 2000;
 
 /**
- * Items [start, end) of a list for a request: the latest, or those before, after or around an item.
+ * Items [start, end) of a list for a request: the latest, the first (`first`, for Home), or those before, after or around
+ * an item.
  * @param {any[]} list @param {URLSearchParams} q
  */
 export function rangeOf(list, q) {
@@ -26,6 +27,7 @@ export function rangeOf(list, q) {
   const limit = all ? Number.POSITIVE_INFINITY : Math.min(MOST, Math.max(1, Math.floor(Number(q.get('limit'))) || PAGE));
   const total = list.length;
   const anchor = q.get('before') ?? q.get('after') ?? q.get('around');
+  if (q.has('first')) return { start: 0, end: Math.min(total, limit) };
   if (anchor === null) return { start: Math.max(0, total - limit), end: total };
   const at = positionOf(list, anchor);
   if (at < 0) throw httpError(404, 'That message isn’t in this conversation. Reload the page to see it as it is now.');

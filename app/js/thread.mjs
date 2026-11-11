@@ -23,7 +23,7 @@ import { failedCallout } from './failed-actions.mjs';
 import { goToItem } from './go-to-item.mjs';
 import { focusComposer, hopBlock } from './hop-card.mjs';
 import { beyondItem } from './item-ranges.mjs';
-import { closeThread, grow, loaded, more, openThread, refresh } from './open-threads.mjs';
+import { closeThread, grow, loaded, more, openThread, refresh, toFirst } from './open-threads.mjs';
 import { focusUntouched } from './pane-focus.mjs';
 import { denialBlock, permissionBlock, toolAskBlock } from './permission-cards.mjs';
 import { openPermissions } from './permissions.mjs';
@@ -168,6 +168,7 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
     const edges = {
       more: (/** @type {'before' | 'after'} */ side) => more(threadId, side),
       grow: (/** @type {'before' | 'after'} */ side) => grow(threadId, side),
+      edge: (/** @type {'before' | 'after'} */ side) => (side === 'before' ? toFirst(threadId) : refresh(threadId)),
     };
     win = createWindow({ el, key: `${inPanel}:${threadId}`, list, anchorKey, inPanel, nodes, edges, mount: (i) => mountAt(list, i) });
     // The item that had focus goes back in, in its range or as an island (window-keep.mjs).

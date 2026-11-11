@@ -70,18 +70,15 @@ test('#866 a scroll to the middle of a long room shows items there within two fr
   expect(Math.abs(y - target), `the view at ${Math.round(y)}, dragged to ${Math.round(target)}`).toBeLessThan(target * 0.03);
 });
 
-test('#866 Home in a long room opened at its end shows its first items within two frames, and End its last', async ({ page }) => {
+test('#866 Home in a long room opened at its end shows its first items, and End its last', async ({ page }) => {
   const t = await open(page);
+  // The page holds only the latest items it opened on (#1155): Home loads the first ones, then goes there.
   await page.keyboard.press('Home');
-  await frames(page);
-  await frames(page);
   const first = app.store.items(t.id)[0].id;
-  await expect(page.locator(`#main > .item[data-key="${first}"]`), 'the first item, at the top').toBeInViewport({ timeout: 1000 });
+  await expect(page.locator(`#main > .item[data-key="${first}"]`), 'the first item, at the top').toBeInViewport();
   await page.keyboard.press('End');
-  await frames(page);
-  await frames(page);
   const last = app.store.items(t.id).at(-1).id;
-  await expect(page.locator(`#main > .item[data-key="${last}"]`), 'the newest item, at the end').toBeInViewport({ timeout: 1000 });
+  await expect(page.locator(`#main > .item[data-key="${last}"]`), 'the newest item, at the end').toBeInViewport();
 });
 
 test('#866 Jump to latest from far up a long room lands on the newest item', async ({ page }) => {

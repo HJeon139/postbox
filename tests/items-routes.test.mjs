@@ -42,6 +42,8 @@ test('with no anchor, the latest page; with before, after or around an item, the
   assert.deepEqual([around.json.start, ids(around).length], [0, 10], 'around the start: as many as asked, from the first');
   const fraction = await get('/api/threads/room/items?before=i300&limit=10.6');
   assert.deepEqual([fraction.json.start, ids(fraction).length], [290, 10], 'a fractional limit is floored');
+  const first = await get('/api/threads/room/items?first&limit=20');
+  assert.deepEqual([first.json.start, ids(first)[0], ids(first).at(-1)], [0, 'i0', 'i19'], 'the first, for Home');
   const capped = await get('/api/threads/room/items?limit=100000');
   assert.equal(capped.json.items.length, 500, 'a limit is capped at MOST');
   assert.deepEqual([capped.json.start, ids(capped).at(-1)], [100, 'i599'], 'the latest 500');

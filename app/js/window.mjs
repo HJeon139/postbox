@@ -36,7 +36,10 @@ export function createWindow(o) {
   return new TranscriptWindow(o);
 }
 
-/** @typedef {{ more: (side: 'before' | 'after') => boolean, grow: (side: 'before' | 'after') => void }} Edges */
+/**
+ * @typedef {{ more: (side: 'before' | 'after') => boolean, grow: (side: 'before' | 'after') => void,
+ *   edge: (side: 'before' | 'after') => Promise<unknown> }} Edges
+ */
 
 /** Every window on the page, so a jump to an item can find the one that holds it. @type {Set<TranscriptWindow>} */
 const live = new Set();

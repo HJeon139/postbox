@@ -24,10 +24,17 @@ const pageEdgeKey = (e) =>
   !(lastDown && inOtherScroller(lastDown));
 
 /**
- * The range moves to the first or the newest item, and the view to the top or the end.
- * @param {any} w the window @param {boolean} last
+ * The range moves to the first or the newest item, and the view to the top or the end. Past what the page has loaded
+ * (#1155), the conversation’s first or latest range is loaded first, and the window drawn again with it moves there.
+ * @param {Set<any>} windows @param {any} w the window @param {boolean} last
  */
-function toEdge(w, last) {
+async function toEdge(windows, w, last) {
+  const side = last ? 'after' : 'before';
+  if (w.edges?.more(side)) {
+    await w.edges.edge(side);
+    w = [...windows].find((x) => !x.inPanel);
+    if (!w) return;
+  }
   const id = last ? w.entry.ids.at(-1) : w.entry.ids[0];
   if (id) w.reach(id);
   const box = /** @type {Element} */ (w.inPanel ? w.el.parentElement : document.scrollingElement);
@@ -42,6 +49,6 @@ export function edgeKeys(windows) {
     const w = [...windows].find((x) => !x.inPanel);
     if (!w) return;
     e.preventDefault();
-    toEdge(w, e.key === 'End');
+    void toEdge(windows, w, e.key === 'End');
   });
 }

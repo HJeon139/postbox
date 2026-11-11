@@ -78,6 +78,11 @@ export async function refresh(threadId) {
   if (client.open.has(threadId)) await load(threadId, `?limit=${windowOn() ? PAGE : 'all'}`, 'replace');
 }
 
+/** Loads an open conversation’s first items, for Home, in place of the range it holds. @param {string} threadId */
+export async function toFirst(threadId) {
+  if (client.open.has(threadId)) await load(threadId, `?first&limit=${PAGE}`, 'replace');
+}
+
 /** Whether a conversation’s first load has landed, so an empty list means it has no items. @param {string} threadId */
 export const loaded = (threadId) => Number.isFinite(client.ranges.get(threadId)?.seq ?? Number.POSITIVE_INFINITY);
 
