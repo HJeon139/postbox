@@ -6,9 +6,11 @@
 //                                          subagent’s own words: a step in its voice, never the reply (#73).
 // - thinking  { text, block?, parent?, whole? }   a piece of a thought; whole, or a thinking_end, makes it a step.
 // - thinking_end { block }
-// - tool_call { id, name, input?, parent?, final? }   a call, named as Claude Code names its tools (Bash, Read, Edit,
+// - tool_call { id, name, input?, label?, parent?, who?, final? }   a call, named as Claude Code names its tools (Bash, Read, Edit,
 //                                          Write, WebSearch, Agent, mcp__<server>__<tool>); again with its input, and
-//                                          final once that input is whole. An Agent or Task call starts a subagent.
+//                                          final once that input is whole; label, its harness’s own words for it;
+//                                          who, the subagent it’s from when no call started it. An Agent or Task
+//                                          call starts a subagent.
 // - tool_result { id, isError?, text?, result?, vcsCwd?, background?, refused?, ms?, parent? }   what it returned;
 //                                          background: it may have gone on as a job ({ job, named, outputFile }) or a
 //                                          subagent ({ agent }); refused: its harness refused it, and why.
@@ -96,9 +98,10 @@ export class HarnessEvents {
     return (agentId && this.st.subNames.get(this.st.tasks.get(agentId))) || (toolUseId && this.st.tools.get(toolUseId)?.who) || null;
   }
 
-  /** @param {string|undefined} parent */
-  by(parent) {
-    return parent ? { who: this.st.subNames.get(parent) ?? 'subagent', parent } : null;
+  /** The subagent an event is from: by the call that started it, or by its name alone. @param {string|undefined} parent @param {string} [who] */
+  by(parent, who) {
+    if (parent) return { who: this.st.subNames.get(parent) ?? 'subagent', parent };
+    return who ? { who } : null;
   }
 
   /** A subagent’s entry moves, and the ring hears it. @param {string|undefined} parent @param {any} change */
@@ -131,7 +134,7 @@ export class HarnessEvents {
 
   /** @param {any} e */
   on_tool_call(e) {
-    this.tools.start(e.id, e.name, e.input ?? {}, this.by(e.parent));
+    this.tools.start(e.id, e.name, e.input ?? {}, this.by(e.parent, e.who), e.label);
     if (e.input) this.tools.input(e.id, e.input, e.final === true);
     this.moveSub(e.parent, { state: 'tool', doing: describeTool(e.name, e.input) });
   }

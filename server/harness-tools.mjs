@@ -56,13 +56,16 @@ export class HarnessTools {
     return { id, label: t.label, state, ms: t.ms ?? this.now() - t.started, ...byOf(t), ...extra };
   }
 
-  /** A call starts: its step, unless it shows as what it makes, and a subagent’s entry. @param {string} id @param {string} name @param {any} input @param {any} by */
-  start(id, name, input, by = null) {
+  /**
+   * A call starts: its step, unless it shows as what it makes, and a subagent’s entry. `own`: its harness’s own label.
+   * @param {string} id @param {string} name @param {any} input @param {any} by @param {string} [own]
+   */
+  start(id, name, input, by = null, own = '') {
     if (this.st.tools.has(id)) return;
     const who = by?.who ?? null;
     const quiet = QUIET.test(name);
-    const label = describeTool(name, input);
-    this.st.tools.set(id, { name, label, input, who, parent: by?.parent ?? null, started: this.now(), quiet });
+    const label = own || describeTool(name, input);
+    this.st.tools.set(id, { name, label, own, input, who, parent: by?.parent ?? null, started: this.now(), quiet });
     if (!quiet) this.ctx.activity({ id, label, state: 'running', ...byOf(by), ...(SUBAGENT_TOOLS.has(name) ? { kind: 'agent' } : {}) });
     else if (!who) this.status({ state: 'tool', currentStep: label });
     if (SUBAGENT_TOOLS.has(name)) this.startSubagent(id, input, by);
@@ -98,7 +101,7 @@ export class HarnessTools {
       t.input = input;
       this.used(id, t);
     }
-    const label = describeTool(t.name, input);
+    const label = t.own || describeTool(t.name, input);
     if (label !== t.label) {
       t.label = label;
       if (!t.quiet) this.ctx.activity({ id, label, state: 'running', ...byOf(t) });

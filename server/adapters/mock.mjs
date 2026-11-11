@@ -6,6 +6,7 @@
 
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
+import { HarnessEvents } from '../harness-events.mjs';
 import { brokenMapApp, dashboardApp, explorerApp, layoutApp, walkthroughApp } from '../mock/apps.mjs';
 import { explainer } from './mock-explainer.mjs';
 import { citationFix, fasterParser } from './mock-ledger.mjs';
@@ -54,10 +55,12 @@ function kit(ctx, session, mem) {
     });
   let n = 0;
   mem.ctx ??= session.ctx ?? 4;
+  // Its scripts report through the harness-event contract, as every backend does (server/harness-events.mjs).
+  const emit = new HarnessEvents(ctx).event;
   return {
     sleep,
     async think(ms = 700) {
-      ctx.status({ state: 'think' });
+      emit({ kind: 'status', state: 'think' });
       await sleep(ms);
     },
     async say(text, { cps = 260 } = {}) {
@@ -65,26 +68,25 @@ function kit(ctx, session, mem) {
       const parts = text.match(/\S+\s*|\s+/g) ?? [];
       for (let i = 0; i < parts.length; i += 3) {
         const chunk = parts.slice(i, i + 3).join('');
-        ctx.text(chunk);
+        emit({ kind: 'text', text: chunk, block: 'reply' });
         await sleep((chunk.length / cps) * 1000);
       }
     },
     async tool(label, ms = 500, { fail = false, who = null } = {}) {
       const id = `t${++n}`;
-      ctx.activity({ id, label, state: 'running', who });
+      emit({ kind: 'tool_call', id, name: label, label, who });
       await sleep(ms);
-      ctx.activity({ id, label, state: fail ? 'failed' : 'done', ms, who });
+      emit({ kind: 'tool_result', id, isError: fail, ms });
     },
     /** Thinks out loud, as summarized thinking streams: a glimpse while it runs, then a step in the list. */
     async thinkAloud(text, ms = 900) {
-      ctx.status({ state: 'think', currentStep: 'Thinking' });
+      const block = `th${++n}`;
       const words = text.split(' ');
-      for (let i = 4; i <= words.length; i += 4) {
-        ctx.status({ glimpse: words.slice(0, i).join(' ') });
+      for (let i = 0; i < words.length; i += 4) {
+        emit({ kind: 'thinking', text: `${i ? ' ' : ''}${words.slice(i, i + 4).join(' ')}`, block });
         await sleep(ms / Math.ceil(words.length / 4));
       }
-      ctx.status({ glimpse: text });
-      ctx.activity({ id: `th${++n}`, label: text.replace(/([.!?]).*$/, '$1'), state: 'done', kind: 'thought', detail: text });
+      emit({ kind: 'thinking_end', block });
     },
     /** A call Claude Code refuses without asking: the step shows refused, and Postbox draws a card. */
     async refused({ label, tool, input, reason, reasonType, who = null }, ms = 400) {
@@ -100,39 +102,31 @@ function kit(ctx, session, mem) {
      */
     async write(path, content, { label = `Wrote ${path.replace(/^.*\//, '')}`, who = null, ms = 300 } = {}) {
       const id = `t${++n}`;
-      ctx.activity({ id, label, state: 'running', who });
-      ctx.toolUse?.({ id, name: 'Write', input: { file_path: path, content }, who });
+      emit({ kind: 'tool_call', id, name: 'Write', input: { file_path: path, content }, label, who, final: true });
       const before = await readFile(path, 'utf8').catch(() => null);
       await sleep(ms);
       await mkdir(dirname(path), { recursive: true });
       await writeFile(path, content);
-      ctx.toolResult?.({ id, text: 'ok', result: who ? null : { type: before === null ? 'create' : 'update', originalFile: before } });
-      ctx.activity({ id, label, state: 'done', ms, who });
+      emit({ kind: 'tool_result', id, text: 'ok', result: who ? null : { type: before === null ? 'create' : 'update', originalFile: before }, ms });
     },
     /** A file read, reported as Claude Code reports a Read call, so the work ledger lists it (#195). */
     async read(path, { label = `Read ${path.replace(/^.*\//, '')}`, who = null, ms = 200 } = {}) {
       const id = `t${++n}`;
-      ctx.activity({ id, label, state: 'running', who });
-      ctx.toolUse?.({ id, name: 'Read', input: { file_path: path }, who });
+      emit({ kind: 'tool_call', id, name: 'Read', input: { file_path: path }, label, who, final: true });
       await sleep(ms);
-      ctx.toolResult?.({ id, text: 'ok' });
-      ctx.activity({ id, label, state: 'done', ms, who });
+      emit({ kind: 'tool_result', id, text: 'ok', ms });
     },
     /** A command, as Claude Code reports one. Nothing runs: the output is the script’s. */
     async run(command, { output = '', exit = 0, ms = 500, background = false, label = null, who = null } = {}) {
       const id = `t${++n}`;
       const name = label ?? `Ran ${command.slice(0, 60)}`;
-      ctx.activity({ id, label: name, state: 'running', who });
-      ctx.toolUse?.({ id, name: 'Bash', input: { command, ...(background ? { run_in_background: true } : {}) }, who });
+      emit({ kind: 'tool_call', id, name: 'Bash', input: { command, ...(background ? { run_in_background: true } : {}) }, label: name, who, final: true });
       await sleep(ms);
-      if (exit) ctx.toolResult?.({ id, isError: true, text: `Exit code ${exit}\n${output}`, result: `Error: Exit code ${exit}\n${output}` });
-      else
-        ctx.toolResult?.({
-          id,
-          text: output,
-          result: { stdout: background ? '' : output, stderr: '', interrupted: false, ...(background ? { backgroundTaskId: `b${n}` } : {}) },
-        });
-      ctx.activity({ id, label: name, state: exit ? 'failed' : 'done', ms, who, ...(exit ? { detail: output.split('\n')[0] } : {}) });
+      if (exit) emit({ kind: 'tool_result', id, isError: true, text: `Exit code ${exit}\n${output}`, result: `Error: Exit code ${exit}\n${output}`, ms });
+      else {
+        const result = { stdout: background ? '' : output, stderr: '', interrupted: false, ...(background ? { backgroundTaskId: `b${n}` } : {}) };
+        emit({ kind: 'tool_result', id, text: output, result, ms });
+      }
     },
     folder: ctx.project?.folder ?? null,
     status: (p) => ctx.status(p),
