@@ -6,7 +6,6 @@ import { randomUUID } from 'node:crypto';
 import { homedir } from 'node:os';
 import { resolve, sep } from 'node:path';
 import { ASKING } from '../shared/catalog.mjs';
-import { lintDiagrams } from '../shared/diagram-lint.mjs';
 import { READING } from '../shared/limits.mjs';
 import { formatDuration, glimpseOf, parseMentions } from '../shared/text.mjs';
 import { carriedList } from '../shared/work.mjs';
@@ -26,7 +25,6 @@ import { act, answerDelivered, unreadAnswer, updateBlock } from './blocks.mjs';
 import { bringToConversation } from './bring.mjs';
 import { keptTurns, nextNeed, noticeNeed, releaseNeed, stateFor, TURN_TIED } from './card-needs.mjs';
 import { catchUp, moveMarkers, pointerIfSeen } from './catch-up.mjs';
-import { blockProblems, diagramProblems, introducedTerms, personSaid, rawHtmlProblems, termProblems } from './checks.mjs';
 import { attachClaudeSession, claudeSessions, mirror, pollMirror, rearmMirrors, stopMirrorFor, stopMirrors } from './claude-mirror.mjs';
 import { diagramCheck, rememberDiagrams } from './diagram-check.mjs';
 import { emptyReply, endedWithoutReply } from './empty-reply.mjs';
@@ -100,6 +98,7 @@ import { firstPromptSection, settleThread, turnContext } from './thread-summary.
 import { updateThread } from './thread-write.mjs';
 import { askForTool } from './tool-ask.mjs';
 import { openTopic, startTopic } from './topic-open.mjs';
+import { checkTurn, stallLeftRunning, stallSteps } from './turn-checks.mjs';
 import { endedAs, endWork } from './turn-end-work.mjs';
 import { askedAgain, askedOf, replyMarks, wokeOf } from './turn-marks.mjs';
 import { settleStoppedSteps, settleSubagentSteps } from './turn-steps.mjs';
@@ -1619,68 +1618,16 @@ export class Runtime {
     );
   }
 
-  /** The server’s checks over a finished turn. */
+  // The server’s checks over a finished turn: server/turn-checks.mjs.
+
   checkTurn(turn, se) {
-    const lineage = this.lineage(turn.threadId);
-    const items = lineage.flatMap((id) => this.store.pending.items(id));
-    const apps = Object.values(this.store.pending.apps()).filter((a) => lineage.includes(a.threadId));
-    const problems = termProblems(turn.said, this.glossaryFor(turn.threadId), introducedTerms(items, apps), personSaid(items));
-    // Diagrams too wide or too busy to read at the conversation’s width.
-    const diagrams = lintDiagrams(turn.said);
-    if (diagrams.length)
-      this.rememberDiagrams(
-        se.id,
-        diagrams.map((d) => d.src),
-      );
-    problems.push(...diagramProblems(diagrams), ...rawHtmlProblems(turn.said));
-    // A reply that should have been a block (#63): what this turn showed, and what the person last asked for.
-    const own = this.store.pending.items(turn.threadId);
-    const shown = own.filter((it) => it.kind === 'block' && it.valid && it.turnId === turn.id).map((it) => it.block.type);
-    problems.push(...blockProblems(turn.said, shown, own.findLast((it) => it.kind === 'user')?.text ?? ''));
-    return problems;
+    return checkTurn(this, turn, se);
   }
-
-  /**
-   * A turn that was stopped or failed starts no lint turn, but its progress steps still running show as stalled, as
-   * at a normal end (#58), and the agent hears which at the start of its next turn (#98).
-   * @param {any} turn @param {any} se @param {'stopped' | 'failed' | 'shutdown' | 'hung'} how
-   */
   stallLeftRunning(turn, se, how) {
-    const problems = this.stallSteps(turn, se);
-    if (!problems.length) return;
-    const blocks = problems.map((p) => `- Block “${p.scope.title ?? p.scope.id}” (id ${p.scope.id}): ${p.message}`);
-    this.tellAgent(
-      se.id,
-      `${{ stopped: 'The person stopped your last turn', failed: 'Your last turn failed', shutdown: 'Postbox shut down during your last turn', hung: 'Postbox stopped your last turn, which had no output for too long,' }[how]} while progress steps were running:\n${blocks.join('\n')}`,
-    );
+    return stallLeftRunning(this, turn, se, how);
   }
-
-  /**
-   * Progress steps still running when their agent’s turn ends are marked stalled, and the agent is told to close them.
-   * Not the steps that were running when the person kept its background jobs running, while one runs on (#129): such
-   * a step may follow the job, and they stall when the last one ends (endJob).
-   * @param {{ threadId: string, keepJobs?: Set<string> }} turn
-   */
   stallSteps(turn, se) {
-    const problems = [];
-    const runsOn = turn.keepJobs?.size || (se.jobs ?? []).some((j) => j.kept);
-    const held = new Set(runsOn ? (se.heldSteps?.keys ?? []) : []);
-    for (const it of this.store.pending.items(turn.threadId)) {
-      if (it.kind !== 'block' || !it.valid || it.sessionId !== se.id || it.block.type !== 'progress') continue;
-      const stalls = (s) => s.state === 'running' && !held.has(`${it.id}:${s.id}`);
-      const running = it.block.steps.filter(stalls);
-      if (!running.length) continue;
-      const steps = it.block.steps.map((s) => (stalls(s) ? { ...s, state: 'stalled' } : s));
-      this.patchItem(turn.threadId, it.id, { block: { ...it.block, steps }, stalledAt: Date.now() });
-      const names = running.map((s) => `“${s.label}”`);
-      const one = running.length === 1;
-      problems.push({
-        code: 'steps-left-running',
-        message: `${one ? 'Step' : 'Steps'} ${names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names.at(-1)}` : names[0]} ${one ? 'was' : 'were'} still running when your turn ended, so the person sees ${one ? 'it' : 'them'} as stalled. Close each with update_block, as done or failed.`,
-        scope: { kind: 'block', id: it.block.id, title: it.block.title },
-      });
-    }
-    return problems;
+    return stallSteps(this, turn, se);
   }
 
   // When checks reach an agent after its turn: server/lint-delivery.mjs.
