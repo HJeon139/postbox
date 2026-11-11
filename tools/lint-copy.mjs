@@ -125,7 +125,7 @@ export function checkHtml(text, file) {
 
 if (isEntry(import.meta.url, process.argv[1])) {
   const findings = [];
-  const code = files(ROOT, ['app', 'server', 'shared', 'tools/demo.mjs'], ['.js', '.mjs'], ['app/kit/vendor']);
+  const code = files(ROOT, ['app', 'server', 'shared', 'tools/demo.mjs', 'tools/demo-client.mjs'], ['.js', '.mjs'], ['app/kit/vendor']);
   for (const f of code) findings.push(...checkJs(read(ROOT, f), f));
   for (const f of files(ROOT, ['app/index.html'], ['.html'])) findings.push(...checkHtml(read(ROOT, f), f));
   // The agents’ steering too (#315): each folder’s AGENTS.md is read as the rules for working there.

@@ -4,11 +4,13 @@
 // thread is open.
 // The conversation is as wide as the person’s tab reported (&column=<px>), beside their rail and any open pane; with
 // no report, it sits beside the rail in the page’s own shell, as a person opening Postbox at that size would see it.
-// It marks itself ready once the app’s frame has loaded and sized, and missing when there’s no such app.
+// It marks itself ready once the app’s frame has loaded and sized, and missing when there’s no such app. The page’s
+// state holds no conversation’s items (#1155), so it asks the server for the app’s item first.
 
 import { renderAppItem } from './apps.mjs';
-import { client, itemIn } from './client.mjs';
+import { client } from './client.mjs';
 import { h } from './dom.mjs';
+import { fetchRange } from './item-ranges.mjs';
 
 const params = new URLSearchParams(location.search);
 /** The item to capture, or null on every ordinary page load. */
@@ -16,10 +18,16 @@ export const CAPTURE = params.get('capture');
 /** How long the app may take to load and size before the page says it’s ready anyway: view_app has its own limit. */
 const SETTLE_MS = 12000;
 
+/** The item to capture, from the server, or null when there’s no such item. @param {string} threadId @param {string} id */
+async function captured(threadId, id) {
+  const range = await fetchRange(threadId, `?around=${encodeURIComponent(id)}&limit=1`).catch(() => null);
+  return range?.items.find((it) => it.id === id) ?? null;
+}
+
 /** @param {HTMLElement} root */
-export function mountCapture(root) {
+export async function mountCapture(root) {
   const threadId = params.get('thread') ?? '';
-  const item = CAPTURE ? itemIn(threadId, CAPTURE) : null;
+  const item = CAPTURE ? await captured(threadId, CAPTURE) : null;
   if (!item?.block || !client.state.apps?.[item.block.id]) {
     root.replaceChildren(h('p', { dataset: { capture: 'missing' } }, 'There’s no such app here.'));
     return;

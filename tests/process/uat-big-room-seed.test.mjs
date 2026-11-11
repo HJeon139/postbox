@@ -42,9 +42,12 @@ test('the runner seeds the big room into the conversation the page started, and 
     const opened = [];
     const page = { goto: async (url) => opened.push(url) };
     const note = await openBigRoom({ postbox, data, threadId: 'th_big', scenario: { agents: ['researcher'] }, page, log: (l) => lines.push(l) });
-    const { state } = await postbox.api('/api/state');
-    assert.equal(state.items.th_big.length, 1000, lines.join('\n'));
-    assert.equal(state.items.th_big[0].id, 'it_big0000');
+    // The page loads a room's items by range (#1155): its header counts them, and the route gives the first.
+    const { headers } = await postbox.api('/api/state');
+    assert.equal(headers.th_big.count, 1000, lines.join('\n'));
+    const first = await postbox.api('/api/threads/th_big/items?after=it_big0000&limit=1');
+    assert.equal(first.start, 1);
+    assert.equal(first.items[0].id, 'it_big0001');
     assert.deepEqual(opened, [`${postbox.origin}/#/t/th_big`]);
     assert.match(note, /#\/t\/th_big\?at=it_big0005/);
   } finally {

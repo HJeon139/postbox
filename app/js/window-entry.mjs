@@ -19,7 +19,10 @@ export function heightsFor(key, list) {
   let entry = cache.get(key);
   const matches = entry && entry.ids.length <= list.length && entry.ids.every((/** @type {string} */ id, /** @type {number} */ i) => list[i].id === id);
   if (!matches) {
+    const was = entry;
     entry = { heights: createHeights(SEEDS), costs: new Costs(), ids: /** @type {string[]} */ ([]), kinds: /** @type {string[]} */ ([]) };
+    // Another range of the same conversation: its kinds' heights are still right.
+    if (was) entry.heights.carry(was.heights);
     cache.set(key, entry);
   }
   for (let i = entry.ids.length; i < list.length; i++) {

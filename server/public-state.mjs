@@ -19,9 +19,15 @@ export function publicEvent(event, events = EVENTS) {
   return Object.hasOwn(events, event.type) && events[event.type].public ? event : { seq: event.seq, type: STREAM.cursor, data: {} };
 }
 
-/** One event as a stream frame, built from its public form. @param {{ seq: number, type: string, data?: any }} event @param {typeof EVENTS} [events] */
-export function publicFrame(event, events = EVENTS) {
-  const ev = publicEvent(event, events);
+/**
+ * One event as a stream frame, built from its public form. With `open`, the conversations a page has open (#1155), an
+ * item’s change in any other goes out as a cursor: the page holds no items there, and its header frame says what it
+ * shows. With no `open` (a tool reading the stream), every public event goes out.
+ * @param {{ seq: number, type: string, data?: any }} event @param {typeof EVENTS} [events] @param {Set<string> | null} [open]
+ */
+export function publicFrame(event, events = EVENTS, open = null) {
+  const shut = open && event.type.startsWith('item.') && !open.has(event.data?.threadId);
+  const ev = shut ? { seq: event.seq, type: STREAM.cursor, data: {} } : publicEvent(event, events);
   return `id: ${ev.seq}\nevent: ${ev.type}\ndata: ${JSON.stringify(ev.data)}\n\n`;
 }
 

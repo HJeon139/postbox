@@ -75,7 +75,7 @@ import {
   settleScheduledWake,
 } from './scheduled-wakes.mjs';
 import { archive, archiveThread, deleteSession, deleteThread, finishLeftDeletes, restore, restoreThread } from './session-lifecycle.mjs';
-import { pendingSessionsIn, tellAgent, updateSession } from './session-write.mjs';
+import { pendingSessionsIn, stampNeeds, tellAgent, updateSession } from './session-write.mjs';
 import { mcpContext } from './setup-context.mjs';
 import { clearSummaryPending, postSummary, shareText, shareToConversation, summarizeBack, summarizing } from './share-back.mjs';
 import { commandFolder, expireStaleCommands, flushShellOutput, runShellCommand, stopShellCommand, stopShellCommands } from './shell-runs.mjs';
@@ -180,6 +180,8 @@ export class Runtime {
     closeOrphanCards(this);
     // Ask me and Accept edits are gone: a persona stored with one runs Auto (permission-modes.mjs).
     retireModes(this);
+    // A need from before needsAt gets its item's time, once, so ⌃J orders it without the page holding its items.
+    stampNeeds(this);
   }
 
   get s() {

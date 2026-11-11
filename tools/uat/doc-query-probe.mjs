@@ -14,8 +14,8 @@ export const SCANS = ['querySelector', 'querySelectorAll', 'getElementsByClassNa
 /**
  * Installs the counters once per page load, and samples them. sessionEvents: the `session` events the page’s client
  * has emitted since it loaded. scans: each lookup on the document itself during those emits, by name and selector, up
- * to the first 20, and scanCount, all of them. byId: getElementById calls during them. items: the open conversation’s
- * items in the page’s state. Installing wraps the Document methods and client.emit, which every listener hears through
+ * to the first 20, and scanCount, all of them. byId: getElementById calls during them. items: how many items the open
+ * conversation has, from its header, since the page holds only a range of them (#1155). Installing wraps the Document methods and client.emit, which every listener hears through
  * (app/js/client.mjs); a lookup inside an element, as the listeners now make, isn’t counted.
  * @param {(expr: string) => Promise<any>} ev  the driver’s page.evaluate
  * @returns {Promise<{ origin: number, sessionEvents: number, scanCount: number, scans: string[], byId: number, items: number }>}
@@ -54,7 +54,7 @@ export const sampleDocQueries = (ev) =>
     }
     const p = w.__pbDocQueries;
     const thread = document.querySelector('#main.transcript')?.dataset.thread;
-    const items = (thread && client.state?.items?.[thread]?.length) || 0;
+    const items = (thread && client.headers?.[thread]?.count) || 0;
     return { origin: Math.round(performance.timeOrigin), sessionEvents: p.sessionEvents, scanCount: p.scanCount, scans: [...p.scans], byId: p.byId, items };
   })`);
 

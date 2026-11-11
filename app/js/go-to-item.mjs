@@ -3,15 +3,18 @@
 // thread.mjs and apps.mjs, where each had the same steps. The jump goes through jumpTo, so the item stays where it
 // lands while what's between draws (#712), after the window mounts it if it's off the page (#866).
 
+import { reach } from './open-threads.mjs';
 import { jumpTo } from './view-jump.mjs';
-import { mountFor } from './window.mjs';
+import { mountFor } from './window-live.mjs';
 
 /**
- * Brings the transcript's item into view and focuses its first control, else the item.
+ * Brings the transcript's item into view and focuses its first control, else the item. One the page hasn't loaded is
+ * loaded first, with the range around it (#1155).
  * @param {Event} e  the click, on a control in the transcript @param {string} itemId
  */
-export function goToItem(e, itemId) {
+export async function goToItem(e, itemId) {
   const box = /** @type {HTMLElement} */ (e.currentTarget).closest('.transcript');
+  await reach(/** @type {HTMLElement | null} */ (box)?.dataset.thread, itemId);
   // An item the window holds off the page is mounted first (#866, W3).
   const node = mountFor(itemId) ?? box?.querySelector(`:scope > [data-key="${CSS.escape(itemId)}"]`);
   if (!(node instanceof HTMLElement)) return;

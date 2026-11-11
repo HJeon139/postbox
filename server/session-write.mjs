@@ -36,6 +36,20 @@ function needAt(rt, se, patch) {
   return { needsAt: at === undefined ? undefined : { itemId: need.itemId, at } };
 }
 
+/**
+ * Every session that needs you from before needsAt, given its need's item time once, as the store loads (#1155): the
+ * page orders ⌃J by it and holds no items of a conversation it hasn't opened. A need whose item is gone gets none, and
+ * waitedSince falls back to the session's last change, as before. @param {import('./runtime.mjs').Runtime} rt
+ */
+export function stampNeeds(rt) {
+  for (const id of Object.keys(rt.s.sessions)) {
+    const se = rt.store.pending.session(id);
+    if (!se?.needs?.itemId || se.needsAt?.itemId === se.needs.itemId) continue;
+    const { needsAt } = needAt(rt, se, { needs: se.needs });
+    if (needsAt) rt.store.emit('session.patch', sessionPatch(se, { needsAt }));
+  }
+}
+
 /** Context the agent reads at the start of its next turn, as a Postbox notice. @param {import('./runtime.mjs').Runtime} rt @param {string} sessionId @param {string} text */
 export function tellAgent(rt, sessionId, text) {
   rt.updateSession(sessionId, (se) => ({ context: [...(se.context ?? []), `[Postbox] ${text}`].slice(-20) }));

@@ -15,60 +15,37 @@ import { holdView } from './view-jump.mjs';
 import { holdSkipping } from './view-skip.mjs';
 import { budgetFor, elementsOf } from './window-cost.mjs';
 import { elementsIn, heightsFor, kindOf } from './window-entry.mjs';
-import { edgeKeys } from './window-keys.mjs';
+import { windowOn } from './window-flag.mjs';
 import { CEILING, CHUNK, FLOOR, MARGIN } from './window-limits.mjs';
+import { live } from './window-live.mjs';
 import * as windowShrink from './window-shrink.mjs';
-
-const FLAG = 'pb-window';
-
-/**
- * Whether the window is on in this browser: by default, the person’s choice of 8 Nov (#866). The flag set to 'off'
- * mounts every item, as before; a conversation within both the ceiling of items and the budget of elements mounts
- * whole either way (createWindow).
- */
-export function windowOn() {
-  try {
-    return localStorage.getItem(FLAG) !== 'off';
-  } catch {
-    return true;
-  }
-}
 
 /**
  * A window over one transcript, or null when it’s off or the conversation is short enough to mount whole.
  * mount(i) renders item i, keeps its node in the transcript’s map, and returns it.
+ * edges, for a conversation loaded by range (open-threads.mjs, #1155): whether the server has items past an edge of the
+ * list, and loading them. A conversation with more there gets a window however short its list, to load at its edges.
  * @param {{ el: HTMLElement, key: string, list: any[], anchorKey: string | null, inPanel: boolean,
- *   mount: (i: number) => HTMLElement, nodes: Map<string, HTMLElement> }} o
+ *   mount: (i: number) => HTMLElement, nodes: Map<string, HTMLElement>, edges?: Edges }} o
  */
 export function createWindow(o) {
-  // Mounted whole only within both the ceiling of items and the budget of elements (window-cost.mjs).
-  if (!windowOn() || (o.list.length <= CEILING && elementsIn(o.key, o.list) <= budgetFor(o.el))) return null;
+  // Mounted whole only within both the ceiling of items and the budget of elements (window-cost.mjs), and with nothing
+  // more on the server past either edge.
+  const more = !!o.edges && (o.edges.more('before') || o.edges.more('after'));
+  if (!windowOn() || (o.list.length <= CEILING && !more && elementsIn(o.key, o.list) <= budgetFor(o.el))) return null;
   return new TranscriptWindow(o);
 }
 
-/** Every window on the page, so a jump to an item can find the one that holds it. @type {Set<TranscriptWindow>} */
-const live = new Set();
-edgeKeys(live);
-
 /**
- * The node for an item a window holds, mounting the range around it first if it’s off the page; null when no window
- * holds it (the window is off, or the item isn’t in a long transcript). Every jump to an item asks this before it
- * looks for the item on the page (#866, W3).
- * @param {string} itemId
- * @returns {HTMLElement | null}
+ * @typedef {{ more: (side: 'before' | 'after') => boolean, grow: (side: 'before' | 'after') => void,
+ *   edge: (side: 'before' | 'after') => Promise<unknown> }} Edges
  */
-export function mountFor(itemId) {
-  for (const w of live) {
-    const node = w.reach(itemId);
-    if (node) return node;
-  }
-  return null;
-}
 
 class TranscriptWindow {
   /** @param {Parameters<typeof createWindow>[0]} o */
-  constructor({ el, key, list, anchorKey, inPanel, mount, nodes }) {
+  constructor({ el, key, list, anchorKey, inPanel, mount, nodes, edges }) {
     this.el = el;
+    this.edges = edges ?? null;
     this.nodes = nodes;
     /** Items kept on the page outside the range, by index, and the spacer before each. @type {Map<number, HTMLElement>} */
     this.islands = new Map();
@@ -213,7 +190,11 @@ class TranscriptWindow {
     // A scroll far past both edges (the scrollbar dragged, Home, End) moves the range there at once.
     if (windowShrink.leap(this)) return holdView(this.el);
     const reach = this.viewH() * MARGIN;
-    if (this.from > 0 && this.above.getBoundingClientRect().bottom > -reach) this.growUp();
+    const nearTop = this.above.getBoundingClientRect().bottom > -reach;
+    if (this.from > 0 && nearTop) this.growUp();
+    // Past what’s loaded, the next range from the server; it lands as a rebuild around where you are (thread.mjs).
+    else if (nearTop) this.edges?.grow('before');
+    if (this.to === this.total && this.below.getBoundingClientRect().top < this.viewH() + reach) this.edges?.grow('after');
     if (this.to < this.total && this.below.getBoundingClientRect().top < this.viewH() + reach) {
       const b = this.to + this.runLength(this.to, 1);
       this.mountRun(this.to, b, this.below);
@@ -255,16 +236,26 @@ class TranscriptWindow {
     [this.from, this.to] = this.openRange();
     this.el.append(this.above, this.below);
     this.mountRun(this.from, this.to, this.below);
+    // Built on the page (a range landing, #1155), the gap between items is known now: the spacers are right at once.
+    if (this.el.isConnected) this.gap = this.gapOf();
     this.paintSpacers();
     requestAnimationFrame(() => {
       // Torn down before its first frame (a room switch, a resync): nothing to listen for.
       if (!live.has(this)) return;
-      this.gap = Number.parseFloat(getComputedStyle(this.el).rowGap) || 0;
+      const gap = this.gapOf();
       this.budget = budgetFor(this.el); // the rest of the page, now that it’s built around the transcript
-      this.paintSpacers();
+      // Painted again only if the gap moved them, as a layout more for nothing otherwise.
+      if (gap !== this.gap) {
+        this.gap = gap;
+        this.paintSpacers();
+      }
       this.scroller().addEventListener('scroll', this.scrolled, { passive: true });
       this.scrolled();
     });
+  }
+  /** The gap between items, from the transcript's style. */
+  gapOf() {
+    return Number.parseFloat(getComputedStyle(this.el).rowGap) || 0;
   }
   /** A new item at the end: whether to mount it, which it is when the range already reaches the end. @param {any} it */
   added(it) {
@@ -280,16 +271,22 @@ class TranscriptWindow {
   }
   /** An item moved to the end, its stub in its old place (item.move). @param {any} stub @param {any} it */
   moved(stub, it) {
-    const at = this.indexOf.get(it.id);
-    if (at !== undefined) {
-      this.indexOf.delete(it.id);
-      this.indexOf.set(stub.id, at);
-      this.entry.ids[at] = stub.id;
-      this.entry.kinds[at] = kindOf(stub);
-      this.heights.retype(at, kindOf(stub));
-      windowShrink.dropMovedIsland(this, at, stub.id);
-    }
+    this.restub(stub, it.id);
     return this.added(it);
+  }
+  /**
+   * An item's stub takes its place, the item gone past the end of what's loaded (item-ranges.mjs, #1155).
+   * @param {any} stub @param {string} id
+   */
+  restub(stub, id) {
+    const at = this.indexOf.get(id);
+    if (at === undefined) return;
+    this.indexOf.delete(id);
+    this.indexOf.set(stub.id, at);
+    this.entry.ids[at] = stub.id;
+    this.entry.kinds[at] = kindOf(stub);
+    this.heights.retype(at, kindOf(stub));
+    windowShrink.dropMovedIsland(this, at, stub.id);
   }
   /** Measures a node the transcript mounted at the end itself. @param {Element} node */
   observe(node) {

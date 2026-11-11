@@ -256,7 +256,7 @@ export async function start({
 
     if (path === '/api/state' && req.method === 'GET') return send(res, 200, pageState({ store, rt, adapters, origin, demo, real, config, headers }));
     // A conversation’s items by range, and its search (#1155).
-    const itemsDid = itemsRoute(store, search, path, req.method, url);
+    const itemsDid = itemsRoute(store, search, path, req.method, url, headers);
     if (itemsDid) return send(res, 200, itemsDid);
     // What a persona would load, for its sheet: its MCP servers and skills (server/setup-routes.mjs).
     const setupDid = await setupRoute(rt, path, req.method, url, claudeHome);

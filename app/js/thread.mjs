@@ -22,6 +22,8 @@ import { draftAttachments } from './draft-attachments.mjs';
 import { failedCallout } from './failed-actions.mjs';
 import { goToItem } from './go-to-item.mjs';
 import { focusComposer, hopBlock } from './hop-card.mjs';
+import { beyondItem } from './item-ranges.mjs';
+import { closeThread, grow, loaded, more, openThread, refresh, toFirst, toLast } from './open-threads.mjs';
 import { focusUntouched } from './pane-focus.mjs';
 import { denialBlock, permissionBlock, toolAskBlock } from './permission-cards.mjs';
 import { openPermissions } from './permissions.mjs';
@@ -42,6 +44,8 @@ import { viewAskBlock } from './view-ask-card.mjs';
 import { mountView } from './view-state.mjs';
 import { welcome } from './welcome.mjs';
 import { createWindow } from './window.mjs';
+import { windowOn } from './window-flag.mjs';
+import { focusedItem, keepFocused } from './window-keep.mjs';
 import { replaced as replacedNode } from './window-shrink.mjs';
 import { workList } from './work-list.mjs';
 
@@ -149,31 +153,46 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
     if (!win) return list;
     return [...nodes.keys()].map((id) => list[placeIn(threadId, id)]).filter(Boolean);
   };
-  const all = (/** @type {string | null} */ anchorKey = was?.anchor?.key ?? null) => {
+  const all = (/** @type {string | null} */ anchorKey = was?.anchor?.key ?? null, /** @type {any} */ kept = null) => {
     el.replaceChildren();
     nodes.clear();
     win?.destroy();
     const list = itemsOf(threadId);
-    if (!list.length && !inPanel) {
+    // Until its items are loaded (open-threads.mjs, #1155), a conversation shows nothing rather than its welcome.
+    if (!list.length && !inPanel && loaded(threadId)) {
       el.append(welcome(threadId, sendMessage));
       return;
     }
-    // A long conversation mounts only what’s around you, behind its flag (window.mjs, #866); else every item.
-    win = createWindow({ el, key: `${inPanel}:${threadId}`, list, anchorKey, inPanel, nodes, mount: (i) => mountAt(list, i) });
-    if (win) win.build();
-    else for (let i = 0; i < list.length; i++) el.append(mountAt(list, i));
+    // A long conversation mounts only what’s around you, behind its flag (window.mjs, #866); else every item. One with
+    // more on the server than is loaded has a window too, which loads the next range at its edges.
+    const edges = {
+      more: (/** @type {'before' | 'after'} */ side) => more(threadId, side),
+      grow: (/** @type {'before' | 'after'} */ side) => grow(threadId, side),
+      edge: (/** @type {'before' | 'after'} */ side) => (side === 'before' ? toFirst(threadId) : toLast(threadId)),
+    };
+    win = createWindow({ el, key: `${inPanel}:${threadId}`, list, anchorKey, inPanel, nodes, edges, mount: (i) => mountAt(list, i) });
+    // The item that had focus goes back in, in its range or as an island (window-keep.mjs).
+    if (win) {
+      win.build();
+      keepFocused(win, kept);
+    } else for (let i = 0; i < list.length; i++) el.append(mountAt(list, i));
     hostTurns.paint();
     paintWorking();
   };
+  openThread(threadId);
   all();
   const view = mountView({ el, inPanel, nodes, was });
 
   const off = client.on((ch) => {
-    if (ch.type === 'load') {
+    // A resync that couldn’t load this conversation’s items loads them now, and with the window turned off, all of them.
+    const partial = more(threadId, 'before') || more(threadId, 'after');
+    if (ch.type === 'load' && (!loaded(threadId) || (!windowOn() && partial))) void refresh(threadId);
+    if (ch.type === 'load' || (ch.type === 'range' && ch.data.threadId === threadId)) {
       const back = holdFocus();
-      // Rebuilt around where you are now, not where the transcript was when it opened.
-      all(view.keep()?.anchor?.key ?? null);
-      view.rebuilt();
+      // Rebuilt around where you are now, or the item the range was loaded to go to (Home), with the item that has focus.
+      all(ch.data?.anchor ?? view.keep()?.anchor?.key ?? null, focusedItem(el));
+      // Placed short of the newest item to go to one, the view holds it rather than following the end.
+      view.rebuilt(more(threadId, 'after') ? (ch.data?.anchor ?? null) : null);
       back();
       return;
     }
@@ -185,6 +204,9 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
       const list = itemsOf(threadId);
       if (!win || win.added(d.item)) appendNew(list, list.length - 1);
       paintWorking();
+      view.grew();
+    } else if (ch.type === 'item.beyond' && d.threadId === threadId) {
+      // Added past what’s loaded, while you read higher up (item-ranges.mjs): it counts on the pill.
       view.grew();
     } else if (ch.type === 'item.move' && d.threadId === threadId) {
       // An update brought an app or a block to the newest point (#49, #92). Its stub takes its old place, the same
@@ -202,7 +224,9 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
       // The message after it now follows the stub, so whether it names its speaker can change.
       if (list[at + 1] && list[at + 1].id !== d.id) rerender(list[at + 1].id);
       view.release();
-      if (!win || win.moved(d.stub, list[list.length - 1])) appendNew(list, list.length - 1);
+      // Moved past what's loaded, while you read higher up (item-ranges.mjs): its stub alone; it counts on the pill.
+      if (d.past) win?.restub(d.stub, d.id);
+      else if (!win || win.moved(d.stub, list[list.length - 1])) appendNew(list, list.length - 1);
       back();
       paintWorking();
       view.grew();
@@ -242,7 +266,8 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
   });
 
   const updateText = (id, force = false) => {
-    const it = itemsOf(threadId)[placeIn(threadId, id)]; // undefined when it's gone, as find() gave
+    // undefined when it's gone, as find() gave; one past what's loaded is kept apart (item-ranges.mjs, keepBeyond)
+    const it = itemsOf(threadId)[placeIn(threadId, id)] ?? beyondItem(client.ranges.get(threadId), threadId, id);
     const node = nodes.get(id);
     if (!it) return;
     // A reply the window hasn’t mounted, while you read higher up, is still heard as it streams (#866).
@@ -268,6 +293,8 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
      * at once: a smooth scroll would cross a blank spacer. @param {boolean} [smooth]
      */
     scrollToEnd: (smooth) => {
+      // Holding an older range than the newest (a jump far up), the latest goes in first (kept since Home, or loaded).
+      if (more(threadId, 'after')) return void toLast(threadId).then(() => view.scrollToEnd(false));
       const last = itemsOf(threadId).at(-1);
       const away = !!win && !!last && win.to < win.total;
       if (away) win?.reach(last.id);
@@ -276,6 +303,7 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
     setJump: view.setJump,
     destroy() {
       off();
+      closeThread(threadId);
       win?.destroy();
       const where = view.keep();
       view.destroy();

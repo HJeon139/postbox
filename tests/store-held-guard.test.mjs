@@ -134,7 +134,7 @@ const PENDING = {
   'room-chain-limit.mjs': ['roomChainLimit'],
   // The members a delete keeps its room for, maybe joined behind a held commit (#796).
   'session-lifecycle.mjs': ['deleteSession', 'deleteSession', 'deleteSession'],
-  'session-write.mjs': ['updateSession', 'needAt', 'pendingSessionsIn', 'pendingSessionsIn'], // needAt: the need's item's time, maybe added behind a held commit (#1155)
+  'session-write.mjs': ['updateSession', 'needAt', 'stampNeeds', 'pendingSessionsIn', 'pendingSessionsIn'], // needAt: the need's item's time, maybe added behind a held commit (#1155); stampNeeds: the session it stamps
   // A command’s item, maybe deleted behind a held commit, before its output or its end is written.
   'shell-runs.mjs': ['commandOutput', 'endCommand'],
   'subagent-end.mjs': ['withUrgent'],

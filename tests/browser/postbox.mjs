@@ -145,12 +145,16 @@ export function failOnPageErrors(test) {
 
 /**
  * Until a conversation’s transcript shows its newest item, which with the transcript window on (#866) is the end of
- * the range it mounts, not the whole room. For a spec of a long room as it opens by default.
+ * the range it mounts, not the whole room. For a spec of a long room as it opens by default. It waits by reading the
+ * DOM each frame, not with expect(): a poll of expect() that fails can take an accessibility snapshot of the page,
+ * which lays out every item the browser skips, and a spec that counts the page's nodes or layouts after it counted
+ * Playwright's work instead of Postbox's (#1155, where items arrive a fetch after the transcript opens).
  * @param {import('@playwright/test').Page} page @param {{ store: any }} app @param {string} threadId @param {number} [timeout]
  */
 export async function newestShown(page, app, threadId, timeout = 30_000) {
   const last = app.store.items(threadId).at(-1).id;
-  await expect(page.locator(`.transcript[data-thread="${threadId}"] > [data-key="${last}"]`)).toBeAttached({ timeout });
+  const shown = ([t, k]) => !!document.querySelector(`.transcript[data-thread="${t}"] > [data-key="${k}"]`);
+  await page.waitForFunction(shown, [threadId, last], { polling: 'raf', timeout });
 }
 
 /**

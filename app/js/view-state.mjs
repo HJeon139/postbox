@@ -3,7 +3,7 @@
 // It owns that state for one transcript, holds the anchor through changes in size (#88, #297, #341), and publishes what
 // it is on the transcript as data-view-* (publish, view-publish.mjs). Moved from thread.mjs’s mountTranscript (#531).
 
-import { browserMoved, inSight, measure } from './view-box.mjs';
+import { browserMoved, measure } from './view-box.mjs';
 /**
  * @typedef {{ el: HTMLElement, inPanel: boolean, nodes: Map<string, HTMLElement>, unseen: number, stuck: boolean,
  *   anchor: { key: string, at: number, shown?: number } | null, pinned: boolean, smoothing: boolean, dead: boolean,
@@ -12,13 +12,14 @@ import { browserMoved, inSight, measure } from './view-box.mjs';
  *   changed?: boolean, noted?: number }} View
  */
 import { onlyRemoves } from './view-changes.mjs';
-import { atEnd, box, findAnchor, gapOf, heldBy, viewTop } from './view-geometry.mjs';
+import { atEnd, box, findAnchor, gapOf, viewTop } from './view-geometry.mjs';
 import { register, unregister } from './view-jump.mjs';
+import { jumpable } from './view-jumpable.mjs';
 import { newView } from './view-new.mjs';
 import { countUnseen, PILL_ROOM, seen, showJump } from './view-pill.mjs';
 import { publish } from './view-publish.mjs';
 import { DRAWN, drawNewest, skipOffscreen } from './view-skip.mjs';
-import { halt, landed, smoothEnded, whenSmoothEnds } from './view-smooth.mjs';
+import { landed, smoothEnded, whenSmoothEnds } from './view-smooth.mjs';
 
 /** @param {View} v */
 function holdAnchor(v) {
@@ -67,6 +68,9 @@ function release(v) {
 /** @param {View} v */
 function follow(v) {
   noteEnd(v);
+  // Neither following nor holding a place: drawn again for a jump that hasn't pinned its item yet (rebuilt()), which
+  // places the view itself. Reading where it is now would only lay the page out an extra time (#1155).
+  if (!v.stuck && !v.anchor) return;
   const s = box(v);
   if (!s || v.dead) return;
   // You scrolled up in this frame, before its scroll event: that counts, so don’t pull you back. Unless the move is the
@@ -194,10 +198,18 @@ function settle(v, scrolled, resized) {
 }
 /**
  * After the transcript is drawn again from new state (a load, after a restart or a Retry): an anchor that’s no longer
- * there is taken again where the view is, so what’s published names an item on the page.
- * @param {View} v
+ * there is taken again where the view is, so what’s published names an item on the page. Drawn again short of the
+ * newest item, around one a jump goes to (a range placed for it, open-threads.mjs), the view no longer follows the end,
+ * or a resize before the jump lands pulls it to the bottom first, and holds nothing until the jump pins the item where
+ * it lands: held where the window drew it, it was scrolled there and then to where the jump puts it (#1155).
+ * @param {View} v @param {string | null} [to]
  */
-function rebuilt(v) {
+function rebuilt(v, to = null) {
+  if (to && v.nodes.get(to)?.isConnected) {
+    v.stuck = false;
+    v.anchor = null;
+    return;
+  }
   const kept = v.anchor && v.nodes.get(v.anchor.key)?.isConnected;
   if (!v.stuck && !kept) v.anchor = findAnchor(v);
 }
@@ -241,31 +253,6 @@ function grew(v) {
 }
 
 /**
- * After a jump has put item where it was sent: it’s the anchor, kept until you scroll (#712, view-jump.mjs).
- * @param {View} v @param {HTMLElement} item
- */
-function pin(v, item) {
-  const s = box(v);
-  if (!s || v.dead) return;
-  v.stuck = atEnd(s);
-  v.pinned = !v.stuck;
-  if (v.stuck) v.held = measure(v, s);
-  v.anchor = { key: /** @type {string} */ (item.dataset.key), at: item.getBoundingClientRect().top - viewTop(v, s) };
-  v.lastTop = s.scrollTop;
-  if (gapOf(s) <= PILL_ROOM) seen(v);
-  showJump(v, s);
-  publish(v);
-}
-/** What view-jump.mjs needs of a view. @param {View} v */
-const jumpable = (v) => ({
-  box: () => box(v),
-  seen: () => inSight(v),
-  halt: () => halt(v),
-  pin: (/** @type {HTMLElement} */ item) => pin(v, item),
-  held: () => heldBy(v),
-});
-
-/**
  * The view of one transcript.
  * @param {{ el: HTMLElement, inPanel: boolean, nodes: Map<string, HTMLElement>, was?: { anchor: any, unseen: number } }} o
  */
@@ -302,7 +289,7 @@ export function mountView({ el, inPanel, nodes, was }) {
     settle: () => settle(v, scrolled, resized),
     scrollToEnd: thenPublish((/** @type {boolean} */ smooth) => scrollToEnd(v, smooth)),
     grew: thenPublish(() => grew(v)),
-    rebuilt: thenPublish(() => rebuilt(v)),
+    rebuilt: thenPublish((/** @type {string | null} */ to = null) => rebuilt(v, to)),
     redrawn: () => redrawn(v),
     release: () => release(v),
     setJump: (/** @type {(n: number) => void} */ fn) => (v.jump = fn),

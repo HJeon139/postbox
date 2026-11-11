@@ -5,9 +5,10 @@
 
 import { conversationOf, needsOrder, needsYouNow, whereNeeds } from '/shared/needs.mjs';
 import { client, hrefOf, liveSessions } from './client.mjs';
+import { reach } from './open-threads.mjs';
 import { navigate, route, toast } from './ui.mjs';
 import { jumpTo } from './view-jump.mjs';
-import { mountFor } from './window.mjs';
+import { mountFor } from './window-live.mjs';
 
 const S = () => client.state;
 const frame = () => new Promise((r) => requestAnimationFrame(() => r(undefined)));
@@ -22,9 +23,14 @@ function here() {
 /**
  * Scrolls an item into view, focuses what can be answered in it, and outlines it for a moment. It waits for the item
  * to be drawn, and for its transcript to settle at its end first, so the transcript doesn’t pull it back off screen.
- * @param {string} itemId
+ * An item the page hasn’t loaded is loaded first, with the range around it, in its conversation or the one on screen
+ * (#1155).
+ * @param {string} itemId @param {string | null} [threadId]
  */
-export async function focusItem(itemId) {
+export async function focusItem(itemId, threadId = null) {
+  // With no conversation named, the one on screen: an item the page doesn’t hold elsewhere is in no view to jump in.
+  const r = route();
+  await reach(threadId ?? (r.view === 'thread' ? r.threadId : null), itemId);
   // A window holding the item off the page mounts it first (window.mjs, #866).
   const find = () => mountFor(itemId ?? '') ?? document.querySelector(`[data-key="${CSS.escape(itemId ?? '')}"]`);
   let node = find();
@@ -56,7 +62,7 @@ export function goToNeeds(se) {
   const where = whereNeeds(S(), se);
   last = { sessionId: se.id, where };
   if (here().at !== where) navigate(hrefOf(where));
-  void focusItem(se.needs.itemId);
+  void focusItem(se.needs.itemId, where);
 }
 
 /**
