@@ -44,6 +44,7 @@ import { mountView } from './view-state.mjs';
 import { welcome } from './welcome.mjs';
 import { createWindow } from './window.mjs';
 import { windowOn } from './window-flag.mjs';
+import { focusedItem, keepFocused } from './window-keep.mjs';
 import { replaced as replacedNode } from './window-shrink.mjs';
 import { workList } from './work-list.mjs';
 
@@ -151,7 +152,7 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
     if (!win) return list;
     return [...nodes.keys()].map((id) => list[placeIn(threadId, id)]).filter(Boolean);
   };
-  const all = (/** @type {string | null} */ anchorKey = was?.anchor?.key ?? null) => {
+  const all = (/** @type {string | null} */ anchorKey = was?.anchor?.key ?? null, /** @type {any} */ kept = null) => {
     el.replaceChildren();
     nodes.clear();
     win?.destroy();
@@ -168,8 +169,11 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
       grow: (/** @type {'before' | 'after'} */ side) => grow(threadId, side),
     };
     win = createWindow({ el, key: `${inPanel}:${threadId}`, list, anchorKey, inPanel, nodes, edges, mount: (i) => mountAt(list, i) });
-    if (win) win.build();
-    else for (let i = 0; i < list.length; i++) el.append(mountAt(list, i));
+    // The item that had focus goes back in, in its range or as an island (window-keep.mjs).
+    if (win) {
+      win.build();
+      keepFocused(win, kept);
+    } else for (let i = 0; i < list.length; i++) el.append(mountAt(list, i));
     hostTurns.paint();
     paintWorking();
   };
@@ -183,8 +187,8 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
     if (ch.type === 'load' && (!loaded(threadId) || (!windowOn() && partial))) void refresh(threadId);
     if (ch.type === 'load' || (ch.type === 'range' && ch.data.threadId === threadId)) {
       const back = holdFocus();
-      // Rebuilt around where you are now, not where the transcript was when it opened.
-      all(view.keep()?.anchor?.key ?? null);
+      // Rebuilt around where you are now, not where the transcript was when it opened, with the item that has focus.
+      all(view.keep()?.anchor?.key ?? null, focusedItem(el));
       view.rebuilt();
       back();
       return;
