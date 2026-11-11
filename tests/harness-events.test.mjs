@@ -3,6 +3,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { HarnessEvents } from '../server/harness-events.mjs';
+import { stepOutput } from '../server/step-text.mjs';
 import { STEP_TEXT } from '../shared/limits.mjs';
 
 /** A turn context that records each step. */
@@ -21,7 +22,8 @@ test('a long output keeps its end, from a whole line, marked as cut', () => {
   const { output } = activity.at(-1);
   assert.ok(output.startsWith('…/workspace/project/file-'), 'it starts at a whole line, marked');
   assert.ok(output.endsWith('file-199.json'), 'and keeps the end');
-  assert.ok(output.length <= STEP_TEXT.output + 1);
+  assert.ok(output.length <= STEP_TEXT.output, 'the mark is within the bound');
+  assert.equal(stepOutput(output), output, 'so the runtime’s bound keeps it');
 });
 
 test('a short output is kept whole, unmarked', () => {
@@ -30,4 +32,14 @@ test('a short output is kept whole, unmarked', () => {
   event({ kind: 'tool_call', id: 't1', name: 'Bash', input: { command: 'wc -w a.txt' }, final: true });
   event({ kind: 'tool_result', id: 't1', text: '3 a.txt' });
   assert.equal(activity.at(-1).output, '3 a.txt');
+});
+
+test('one long line, cut, keeps its mark through the runtime’s bound', () => {
+  const { ctx, activity } = fakeCtx();
+  const { event } = new HarnessEvents(ctx, { now: () => 0 });
+  event({ kind: 'tool_call', id: 't1', name: 'Bash', input: { command: 'cat min.js' }, final: true });
+  event({ kind: 'tool_result', id: 't1', text: 'x'.repeat(1000) });
+  const { output } = activity.at(-1);
+  assert.equal(output.length, STEP_TEXT.output);
+  assert.ok(output.startsWith('…'));
 });

@@ -3,8 +3,8 @@
 // subagent’s entry on the agent’s ring. One place for every backend: each adapter only says what its harness did.
 // Moved from server/adapters/claude-stream.mjs, which built these for Claude Code alone.
 
-import { STEP_TEXT } from '../shared/limits.mjs';
 import { glimpseOf } from '../shared/text.mjs';
+import { stepInput, stepOutput } from './step-text.mjs';
 import { describeTool, QUIET } from './tool-labels.mjs';
 
 /** The calls that start a subagent. */
@@ -22,39 +22,9 @@ export const clip = (/** @type {unknown} */ s, /** @type {number} */ n) => {
 export const firstSentence = (/** @type {unknown} */ s, n = 300) => clip(/^[\s\S]*?[.!?](?=\s|$)/.exec(String(s ?? '').trim())?.[0] ?? s, n);
 /** A subagent’s step names it, and nests under the call that started it (#73). @param {any} by */
 export const byOf = (by) => (by?.who ? { who: by.who, ...(by.parent ? { parent: by.parent } : {}) } : {});
-/**
- * A call’s input in one line, bounded, for its step: a string as it is, an object as its fields (`command: npm test`),
- * each value cut short, so a file’s whole contents never ride a step. @param {unknown} input
- */
-export function inputLine(input) {
-  if (typeof input === 'string') return input.slice(0, STEP_TEXT.input);
-  if (!input || typeof input !== 'object') return '';
-  const parts = [];
-  for (const [k, v] of Object.entries(input)) {
-    const value = typeof v === 'string' ? v : JSON.stringify(v);
-    parts.push(
-      `${k}: ${String(value ?? '')
-        .replace(/\s+/g, ' ')
-        .slice(0, 120)}`,
-    );
-    if (parts.join(' · ').length > STEP_TEXT.input) break;
-  }
-  return parts.join(' · ').slice(0, STEP_TEXT.input);
-}
-/**
- * The end of what a call returned, bounded, for its step. Cut, it starts at a whole line, marked, so no line reads as
- * if it were whole. @param {unknown} text
- */
-function outputTail(text) {
-  const t = String(text ?? '').trim();
-  if (t.length <= STEP_TEXT.output) return t;
-  const tail = t.slice(-STEP_TEXT.output);
-  const line = tail.indexOf('\n');
-  return `…${line >= 0 && line < tail.length - 1 ? tail.slice(line + 1) : tail}`;
-}
 /** A step’s input field, when it has one. @param {unknown} input */
 const inputOf = (input) => {
-  const line = inputLine(input);
+  const line = stepInput(input);
   return line ? { input: line } : {};
 };
 
@@ -102,7 +72,7 @@ export class HarnessTools {
     const who = by?.who ?? null;
     const quiet = QUIET.test(name);
     const label = own || describeTool(name, input);
-    this.st.tools.set(id, { name, label, own, input, shown: inputLine(input), who, parent: by?.parent ?? null, started: this.now(), quiet });
+    this.st.tools.set(id, { name, label, own, input, shown: stepInput(input), who, parent: by?.parent ?? null, started: this.now(), quiet });
     if (!quiet) this.ctx.activity({ id, label, state: 'running', ...byOf(by), ...inputOf(input), ...(SUBAGENT_TOOLS.has(name) ? { kind: 'agent' } : {}) });
     else if (!who) this.status({ state: 'tool', currentStep: label });
     if (SUBAGENT_TOOLS.has(name)) this.startSubagent(id, input, by);
@@ -139,7 +109,7 @@ export class HarnessTools {
       this.used(id, t);
     }
     const label = t.own || describeTool(t.name, input);
-    const known = inputLine(t.input);
+    const known = stepInput(t.input);
     if (label !== t.label || (known && known !== t.shown)) {
       t.label = label;
       t.shown = known;
@@ -172,7 +142,7 @@ export class HarnessTools {
     const why = reason || told || (t.async ? BACKGROUND_ENDS[/** @type {'done'} */ (state)] : '');
     // A call the harness refused shows, even one of Postbox’s own: its allow rule is missing.
     const said = reason || (why ? firstSentence(why, 300) : '');
-    const returned = outputTail(output);
+    const returned = stepOutput(output);
     const extra = { ...(said ? { detail: said } : {}), ...(returned ? { output: returned } : {}) };
     if (!t.quiet || reason) this.ctx.activity(this.stepOf(id, t, state, extra));
     if (this.st.subagents.delete(id)) this.pushSubagents();
