@@ -26,6 +26,22 @@ export function publicFrame(event, events = EVENTS) {
 }
 
 /**
+ * A thread’s header facts as a stream frame (shared/thread-header.mjs, #1155), unnumbered: the event before it carries
+ * the seq. A header is read from the thread’s items and its conversation’s, so it goes out only while items are a public
+ * key; were they made private, no header would. Null says the thread was removed.
+ * @param {string} threadId @param {any} header
+ */
+export function publicHeaderFrame(threadId, header) {
+  if (!PUBLIC_STATE_KEYS.includes('items')) return '';
+  return `event: ${STREAM.header}\ndata: ${JSON.stringify({ threadId, header })}\n\n`;
+}
+
+/** Every thread’s header, for /api/state; none while items aren’t public. @param {Record<string, any>} headers */
+export function publicHeaders(headers) {
+  return PUBLIC_STATE_KEYS.includes('items') ? headers : {};
+}
+
+/**
  * A conversation’s items as the page may see them (/api/threads/:id/items and its search, server/items-routes.mjs):
  * the store’s own list while items are a public key, else null. @param {Record<string, any>} state @param {string} threadId
  */

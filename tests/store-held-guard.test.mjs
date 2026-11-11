@@ -60,6 +60,7 @@ const DIRECT = {
   'public-state.mjs': ['publicItems'], // a conversation’s items by range, an HTTP answer to the page (#1155)
   'runtime.mjs': ['expireStaleCommands'], // at startup
   'sandbox-routes.mjs': ['sandboxRoute'], // an app version’s sandbox page: an HTTP answer to the page
+  'thread-headers.mjs': ['itemsOf'], // each thread's header facts, sent to the page (#1155)
   'thread-search.mjs': ['threadSearch'], // a conversation’s search, an HTTP answer to the page (#1155)
   'tool-ask.mjs': ['settleToolAsks'], // only the thread ids; each thread is read through store.pending
   'view-app/view-app.mjs': ['viewApp'], // the app the agent named, to find its thread and version for the picture (#95)
@@ -138,7 +139,7 @@ const PENDING = {
   // reads its pending members and sessions, so a second mention behind a held commit finds the session the first made.
   // The room’s chain limit, which decides whether a wake waits, maybe set behind a held commit (#1035).
   'room-chain-limit.mjs': ['roomChainLimit'],
-  'session-write.mjs': ['updateSession', 'pendingSessionsIn', 'pendingSessionsIn'],
+  'session-write.mjs': ['updateSession', 'needAt', 'pendingSessionsIn', 'pendingSessionsIn'], // needAt: the need's item's time, maybe added behind a held commit (#1155)
   'subagent-end.mjs': ['withUrgent'],
   'side-threads.mjs': ['agentWake', 'agentWake', 'agentWake', 'endChain', 'endChain', 'archiveForks', 'bumpSideLink', 'bumpSideLink'],
   // A thread’s apps, removed in a sweep.

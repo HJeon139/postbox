@@ -15,7 +15,7 @@ import { factsOf, mockMarker } from './agent-facts.mjs';
 import { everyMinute, hostBadge } from './agent-host.mjs';
 import { agentQueueButton } from './agent-queue.mjs';
 import { paintTree, subagentToggle } from './agent-tree.mjs';
-import { client, itemsOf, sessionsOf } from './client.mjs';
+import { client, headerOf, sessionsOf } from './client.mjs';
 import { fill, h, syncList } from './dom.mjs';
 import { openAsksEl } from './open-asks.mjs';
 import { hostLine, hostOf, turnLine } from './remote.mjs';
@@ -64,15 +64,14 @@ export function agentsSection(threadId) {
 export function inThreadLine(threadId) {
   const el = h('p.small.dim');
   const paint = () => {
-    const said = itemsOf(threadId).filter((i) => i.kind === 'agent' && i.handle);
-    const names = [...new Set([S().threads[threadId]?.woke, ...said.map((i) => i.handle)].filter(Boolean))];
+    const names = [...new Set([S().threads[threadId]?.woke, ...headerOf(threadId).speakers].filter(Boolean))];
     const list = names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names.at(-1)}` : names[0];
     const text = list ? `${list} ${names.length > 1 ? 'are' : 'is'} in this thread.` : 'No agent is in this thread yet. @-mention one to bring it in.';
     if (el.textContent !== text) el.textContent = text;
   };
   paint();
   const off = client.on((ch) => {
-    if (['item.add', 'thread', 'load'].includes(ch.type)) paint();
+    if (['header', 'thread', 'load'].includes(ch.type)) paint();
   });
   return { el, destroy: off };
 }

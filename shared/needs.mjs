@@ -25,9 +25,14 @@ export function conversationOf(state, threadId) {
   return t?.id ?? threadId;
 }
 
-/** When an agent started waiting on you: when its ask was posted, or failing that, its session’s last change. */
+/**
+ * When an agent started waiting on you: when its ask was posted, which the session keeps beside its need
+ * (server/session-write.mjs, needsAt), or for a need from before it did, the item’s time where the state holds it, or
+ * failing that, its session’s last change.
+ */
 export function waitedSince(state, se) {
-  const it = itemOf(state.items[whereNeeds(state, se)] ?? [], se.needs?.itemId);
+  if (se.needsAt && se.needsAt.itemId === se.needs?.itemId) return se.needsAt.at;
+  const it = itemOf(state.items?.[whereNeeds(state, se)] ?? [], se.needs?.itemId);
   return it?.at ?? se.updatedAt ?? 0;
 }
 

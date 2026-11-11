@@ -1,7 +1,7 @@
 // Where Postbox opens (#320): the conversation you were last in, for `#/`, and per project, for a project’s link. There’s
 // no overview, so `#/` and the old `#/archived` come here too. Moved from main.mjs.
 
-import { client, itemsOf, sessionsOf, threadsOf } from './client.mjs';
+import { client, headerOf, sessionsOf, threadsOf } from './client.mjs';
 import { h, icon } from './dom.mjs';
 import { openSettings } from './sheets.mjs';
 import { installLine, topbar } from './shell.mjs';
@@ -46,7 +46,7 @@ export function lastIn(projectId) {
   return usable(t) && t.projectId === projectId ? id : null;
 }
 export function latestIn(projectId) {
-  const at = (t) => itemsOf(t.id).at(-1)?.at ?? t.createdAt ?? 0;
+  const at = (t) => headerOf(t.id).lastAt ?? t.createdAt ?? 0;
   return threadsOf(projectId)
     .filter(usable)
     .sort((a, b) => at(b) - at(a))[0]?.id;

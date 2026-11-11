@@ -5,6 +5,7 @@
 // notice appended to the published context dropped the one before it. A field built from the session's own is built
 // in a function of the pending session; tests/session-write-guard.test.mjs places those still built from a published one.
 
+import { itemOf } from '../shared/item-index.mjs';
 import { sessionPatch } from './session-patch.mjs';
 
 /**
@@ -18,7 +19,21 @@ export function updateSession(rt, id, change) {
   const se = rt.store.pending.session(id);
   if (!se) return;
   const patch = typeof change === 'function' ? change(se) : change;
-  rt.store.emit('session.patch', sessionPatch(se, { ...patch, updatedAt: Date.now() }));
+  rt.store.emit('session.patch', sessionPatch(se, { ...patch, ...needAt(rt, se, patch), updatedAt: Date.now() }));
+}
+
+/**
+ * With a new need, the time its item was posted, as needsAt (#1155): ⌃J orders by it (shared/needs.mjs, waitedSince),
+ * and the page holds no items of a conversation it hasn't opened. It names the need's item, so a need written another
+ * way isn't given another's time; a cleared need clears it. Read pending, as the item may have been added behind a commit.
+ * @param {import('./runtime.mjs').Runtime} rt @param {any} se @param {Record<string, any>} patch
+ */
+function needAt(rt, se, patch) {
+  if (!Object.hasOwn(patch, 'needs')) return {};
+  const need = patch.needs;
+  const where = need?.threadId ?? (patch.sideTurn ?? se.sideTurn)?.threadId ?? se.threadId;
+  const at = need?.itemId ? itemOf(rt.store.pending.items(where), need.itemId)?.at : undefined;
+  return { needsAt: at === undefined ? undefined : { itemId: need.itemId, at } };
 }
 
 /** Context the agent reads at the start of its next turn, as a Postbox notice. @param {import('./runtime.mjs').Runtime} rt @param {string} sessionId @param {string} text */

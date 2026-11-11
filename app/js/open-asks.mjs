@@ -1,8 +1,7 @@
 // Open blocks (#69): asking blocks you left open from an earlier turn, shown quietly beside their agent as
 // “1 open review”, a button under an agent’s row.
 
-import { ASKING } from '/shared/catalog.mjs';
-import { client, itemsOf } from './client.mjs';
+import { client, headerOf } from './client.mjs';
 import { h, plural } from './dom.mjs';
 import { WeakElements } from './held-weakly.mjs';
 import { focusItem } from './needs-nav.mjs';
@@ -28,7 +27,8 @@ function askingOf(se) {
       .filter((t) => t.kind === 'side' && t.parentId === se.threadId)
       .map((t) => t.id),
   ];
-  const found = threads.flatMap(itemsOf).filter((it) => it.kind === 'block' && it.sessionId === se.id && it.valid && ASKING.has(it.block.type) && !it.answered);
+  // From each thread’s header (#1155), which the server keeps whatever of its items the page has loaded.
+  const found = threads.flatMap((id) => headerOf(id).asks).filter((ask) => ask.sessionId === se.id);
   asking.set(se.id, found);
   return found;
 }
@@ -36,8 +36,8 @@ function askingOf(se) {
 export function openAsks(se) {
   const open = askingOf(se).filter((it) => it.id !== se.needs?.itemId);
   if (!open.length) return null;
-  const types = new Set(open.map((it) => it.block.type));
-  const [one, many] = types.size === 1 ? ASK_NOUNS[open[0].block.type] : ['request', 'requests'];
+  const types = new Set(open.map((ask) => ask.type));
+  const [one, many] = types.size === 1 ? ASK_NOUNS[open[0].type] : ['request', 'requests'];
   return { text: plural(open.length, `open ${one}`, `open ${many}`), itemId: open[0].id };
 }
 /**
@@ -62,8 +62,8 @@ export function openAsksEl(se, before = undefined) {
 // go of is let go of here too, not kept with its whole old page (#866, held-weakly.mjs).
 const buttons = new WeakElements();
 const KEEP = 32;
-// What can change a session’s open blocks: any item change but streamed text, a removal, a thread, a load.
-const CHANGES_BLOCKS = (/** @type {string} */ type) => (type.startsWith('item.') && type !== 'item.text') || ['remove', 'thread', 'load'].includes(type);
+// What can change a session’s open blocks: a thread’s header, a removal, a thread, a load.
+const CHANGES_BLOCKS = (/** @type {string} */ type) => ['header', 'remove', 'thread', 'load'].includes(type);
 function paintOpenAsks(el) {
   const se = S().sessions[el.dataset.openAsks];
   const ask = se ? openAsks(se) : null;

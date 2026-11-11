@@ -168,7 +168,7 @@ export async function start({
   };
 
   // The pages’ live updates: the store’s events over server-sent events (server/live-streams.mjs).
-  const { streams, stop: stopStreams, stream } = liveStreams(store);
+  const { streams, stop: stopStreams, stream, headers } = liveStreams(store);
   const search = threadSearch(store);
   let offlineUntil = 0;
 
@@ -254,7 +254,7 @@ export async function start({
       return out === null ? raw(res, 202, '') : send(res, 200, out);
     }
 
-    if (path === '/api/state' && req.method === 'GET') return send(res, 200, pageState({ store, rt, adapters, origin, demo, real, config }));
+    if (path === '/api/state' && req.method === 'GET') return send(res, 200, pageState({ store, rt, adapters, origin, demo, real, config, headers }));
     // A conversation’s items by range, and its search (#1155).
     const itemsDid = itemsRoute(store, search, path, req.method, url);
     if (itemsDid) return send(res, 200, itemsDid);
