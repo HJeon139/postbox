@@ -120,10 +120,6 @@ const PENDING = {
     'runningProgress',
     'setJobStep',
     'settleJobs',
-    'checkTurn',
-    'checkTurn',
-    'checkTurn',
-    'stallSteps',
     'runShellCommand',
     'runShellCommand',
     'pollMirror',
@@ -148,6 +144,8 @@ const PENDING = {
   // open_topic just opened, held (#796).
   'thread-summary.mjs': ['threadHeader', 'threadCatchUp', 'settleThread'],
   'thread-write.mjs': ['updateThread', 'pendingThreads'], // every write of a thread that exists starts from it (#796)
+  // A finished turn’s checks: its own block and the terms and apps it introduced, and the progress steps it stalls.
+  'turn-checks.mjs': ['checkTurn', 'checkTurn', 'checkTurn', 'stallSteps'],
   'turn-end-work.mjs': ['endWork'], // the turn’s own reply or block, to carry its line, maybe held behind a commit
   'tool-ask.mjs': ['askForTool', 'settleToolAsks'], // a second ask for the same tool, and the sweep that settles open asks
   'view-app/consent.mjs': ['askToSee'], // an open download card, which decides whether to add another (#95)
