@@ -330,6 +330,7 @@ export function createAgyMapper(ctx, { now = Date.now, effort = null, resumed = 
     texts: 0, // the reply’s paragraphs: text after a tool call starts one
     afterTool: false,
     writing: false,
+    stepUsage: false, // a step reported its context, so the result’s turn total isn’t it
     tools: new Map(), // each step’s call, for refusals agy reports later (deniedAfter)
   };
   const context = (/** @type {any} */ usage) => {
@@ -384,7 +385,10 @@ export function createAgyMapper(ctx, { now = Date.now, effort = null, resumed = 
   };
   const step = (/** @type {any} */ s) => {
     if (s?.step_type === 'tool' || s?.step_type === 'agent_response') Object.assign(st, { went: true, stuck: false });
-    if (s?.usage) context(s.usage);
+    if (s?.usage) {
+      st.stepUsage = true;
+      context(s.usage);
+    }
     switch (s?.step_type) {
       case 'agent_response': {
         const text = typeof s.text_delta === 'string' ? s.text_delta : '';
@@ -463,7 +467,8 @@ export function createAgyMapper(ctx, { now = Date.now, effort = null, resumed = 
           const r = e.result ?? {};
           st.finished = r;
           deniedAfter(r.denied_actions, st, ctx, emit);
-          if (r.usage) context(r.usage);
+          // The result’s usage is the whole turn’s total: the context only when no step reported its own.
+          if (r.usage && !st.stepUsage) context(r.usage);
           emit({ kind: 'turn_end', isError: r.status !== 'SUCCESS' && !(st.went && !st.stuck) });
           if (r.status === 'SUCCESS') return;
           const why = clip(r.error || r.status || 'no reason given', 400);

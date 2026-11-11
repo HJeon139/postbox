@@ -145,3 +145,19 @@ test('Codex mapper emits ctx status from thread/tokenUsage/updated with generate
   });
   assert.ok(statusUpdates.some((x) => x.ctx === null));
 });
+
+test('Antigravity’s ring keeps the last step’s context at the turn’s end, not the whole turn’s total', () => {
+  // The result’s usage adds up every model call in the turn; it’s the context only when no step reported its own.
+  const lines = readFileSync(new URL('./fixtures/antigravity-cli/error-after-reply.jsonl', import.meta.url), 'utf8')
+    .trim()
+    .split('\n')
+    .map((l) => JSON.parse(l));
+  /** @type {any[]} */
+  const updates = [];
+  const ctx = { status: (/** @type {any} */ p) => updates.push(p), activity: () => {}, text: () => {}, persona: { model: 'gemini-4-argon-medium' } };
+  const mapper = createAgyMapper(ctx);
+  for (const e of lines) mapper.push(e);
+  const rings = updates.filter((x) => typeof x.ctx === 'number').map((x) => x.ctx);
+  assert.ok(rings.length > 0, 'the steps reported their context');
+  assert.equal(rings.at(-1), 2, 'the last step’s context, not the turn’s total');
+});
