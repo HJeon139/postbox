@@ -27,7 +27,7 @@ import { act, answerDelivered, unreadAnswer, updateBlock } from './blocks.mjs';
 import { bringToConversation } from './bring.mjs';
 import { keptTurns, nextNeed, noticeNeed, releaseNeed, stateFor, TURN_TIED } from './card-needs.mjs';
 import { catchUp, moveMarkers, pointerIfSeen } from './catch-up.mjs';
-import { blockProblems, diagramProblems, formatLint, introducedTerms, lintMessage, personSaid, rawHtmlProblems, termProblems } from './checks.mjs';
+import { blockProblems, diagramProblems, introducedTerms, personSaid, rawHtmlProblems, termProblems } from './checks.mjs';
 import { diagramCheck, rememberDiagrams } from './diagram-check.mjs';
 import { emptyReply, endedWithoutReply } from './empty-reply.mjs';
 import { folderOrNone, sessionFolder } from './folder-path.mjs';
@@ -36,7 +36,7 @@ import { clip, clipText, httpError } from './helpers.mjs';
 import { clipItem, describeItem, topicRootLine } from './item-lines.mjs';
 import { keptGroupsOf, keptJobs, pollKept, stopJob, stopKeptJobs, watchKept } from './kept-jobs.mjs';
 import { Ledger } from './ledger.mjs';
-import { sendLint } from './lint-delivery.mjs';
+import { endLint, foldLint, lint, lintEntry, quietLint, sendLint } from './lint-delivery.mjs';
 import { wakeMentions } from './mention-wakes.mjs';
 import { sentAttachments } from './message-attachments.mjs';
 import * as queue from './message-queue.mjs';
@@ -1692,80 +1692,25 @@ export class Runtime {
     return problems;
   }
 
+  // When checks reach an agent after its turn: server/lint-delivery.mjs.
+
   lintEntry(sessionId, turnId) {
-    let e = this.lints.get(turnId);
-    if (!e) {
-      e = { sessionId, kind: null, ended: false, sent: false, problems: [], timer: null, threadId: null };
-      this.lints.set(turnId, e);
-      // Only recent turns can still get a lint turn.
-      for (const [k, old] of this.lints) {
-        if (this.lints.size <= 200) break;
-        clearTimeout(old.timer);
-        this.lints.delete(k);
-      }
-    }
-    return e;
+    return lintEntry(this, sessionId, turnId);
   }
-
-  /** The turn ended: its lint turn goes once the browser has had a moment to report. */
   endLint(turn, problems) {
-    const e = this.lintEntry(turn.sessionId, turn.id);
-    e.kind = turn.kind;
-    // The lint turn answers where the reply was.
-    e.threadId = turn.threadId;
-    e.ended = true;
-    e.problems.push(...problems);
-    if (e.problems.length) this.sendLint(turn.id);
+    return endLint(this, turn, problems);
   }
-
-  /**
-   * Adds problems to the lint turn of the agent turn they came from. Returns whether the agent will hear of them:
-   * not when they came from a lint turn, or when that turn’s lint turn has already gone.
-   * @param {string} sessionId  @param {string|null|undefined} turnId  @param {import('./checks.mjs').Problem[]} problems
-   */
   lint(sessionId, turnId, problems) {
-    if (!problems.length || !turnId || !this.s.sessions[sessionId]) return false;
-    const live = [...this.turns.values()].find((t) => t.id === turnId);
-    // A turn that isn’t running and has no entry failed, was stopped, ran before a restart or is long gone: its
-    // problems are dropped, so no lint turn lands about an old reply. A lint turn’s own problems are too.
-    if ((!live && !this.lints.has(turnId)) || live?.kind === 'lint') return false;
-    const e = this.lintEntry(sessionId, turnId);
-    if (e.kind === 'lint' || e.sent) return false;
-    e.problems.push(...problems);
-    if (e.ended) this.sendLint(turnId);
-    return true;
+    return lint(this, sessionId, turnId, problems);
   }
-
   sendLint(turnId) {
     return sendLint(this, turnId);
   }
-
-  /**
-   * Another turn starts before a lint turn went (the person wrote during the settle, say): the problems join that
-   * turn, so a lint turn never lands after it, and later reports for the earlier turns are dropped.
-   */
   foldLint(sessionId, message) {
-    const problems = [];
-    for (const e of this.lints.values()) {
-      if (e.sessionId !== sessionId || !e.ended || e.sent) continue;
-      clearTimeout(e.timer);
-      e.timer = null;
-      e.sent = true;
-      problems.push(...e.problems);
-    }
-    // Its own place in the turn (formatMessage, server/adapters/guide.mjs): after the request, before the background.
-    return problems.length ? { ...message, lint: formatLint(lintMessage(problems), { folded: true }) } : message;
+    return foldLint(this, sessionId, message);
   }
-
-  /** A lint turn that wrote nothing shows as one line, such as “@researcher defined “Step 2””. */
   quietLint(turn, se) {
-    // What the browser reports later about this lint turn’s own work is never linted.
-    Object.assign(this.lintEntry(se.id, turn.id), { kind: 'lint', ended: true, sent: true });
-    if (turn.said.trim() || turn.first) return;
-    const defined = [...new Set(turn.defined ?? [])].map((t) => `“${t}”`);
-    const list = defined.length > 1 ? `${defined.slice(0, -1).join(', ')} and ${defined.at(-1)}` : (defined[0] ?? '');
-    const text = defined.length ? `@${se.handle} defined ${list}` : turn.steps.length ? `@${se.handle} acted on Postbox’s check without a reply` : null;
-    if (text) this.addItem(turn.threadId, { kind: 'system', variant: 'lint', handle: se.handle, turnId: turn.id, text, lintReply: true });
+    return quietLint(this, turn, se);
   }
 
   // Diagram checks from the page: server/diagram-check.mjs.
