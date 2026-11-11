@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { HarnessEvents } from '../server/harness-events.mjs';
-import { stepOutput } from '../server/step-text.mjs';
+import { stepInput, stepOutput } from '../server/step-text.mjs';
 import { STEP_TEXT } from '../shared/limits.mjs';
 
 /** A turn context that records each step. */
@@ -32,6 +32,17 @@ test('a short output is kept whole, unmarked', () => {
   event({ kind: 'tool_call', id: 't1', name: 'Bash', input: { command: 'wc -w a.txt' }, final: true });
   event({ kind: 'tool_result', id: 't1', text: '3 a.txt' });
   assert.equal(activity.at(-1).output, '3 a.txt');
+});
+
+test('a long path in a step’s input is cut in its middle, so its file name stays', () => {
+  const path = `/workspace/projects/${'project-folder/'.repeat(10)}scratchpad/notes-on-the-review.md`;
+  const line = stepInput({ file_path: path });
+  assert.ok(line.endsWith('scratchpad/notes-on-the-review.md'), line);
+  assert.ok(line.startsWith('file_path: /workspace/projects/'), line);
+  assert.ok(line.includes('…'), 'marked as cut');
+  assert.ok(line.length < 140, 'and bounded');
+  const command = stepInput({ command: `echo ${'word '.repeat(60)}` });
+  assert.ok(command.endsWith('…') && command.startsWith('command: echo word'), 'anything else is cut at its end');
 });
 
 test('one long line, cut, keeps its mark through the runtime’s bound', () => {

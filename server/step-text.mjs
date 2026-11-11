@@ -6,9 +6,15 @@ import { STEP_TEXT } from '../shared/limits.mjs';
 
 // The most of one field a step shows, so the next field still fits on the line.
 const FIELD = 120;
-/** A field’s value cut to n, marked. */
+// A path keeps its start and its file name, cut between them.
+const PATH = /^(?:[a-z]+:\/\/|~|\.{0,2}\/|[A-Za-z]:\\)\S*$/;
+
+/** A field’s value cut to n: a path in its middle, so the file name stays; anything else at its end. */
 function cut(/** @type {string} */ s, /** @type {number} */ n) {
-  return s.length <= n ? s : `${s.slice(0, n - 1)}…`;
+  if (s.length <= n) return s;
+  if (!PATH.test(s)) return `${s.slice(0, n - 1)}…`;
+  const tail = Math.ceil((n - 1) * 0.7);
+  return `${s.slice(0, n - 1 - tail)}…${s.slice(-tail)}`;
 }
 
 /**
