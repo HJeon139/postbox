@@ -19,8 +19,8 @@ Projects are switched rarely, so they live in one menu that works from anywhere,
 ## Steps to reproduce
 
 1. Run the demo (`node tools/demo.mjs --port 4180`) and open <http://127.0.0.1:4180/> while it plays; keep the tab open.
-2. From a conversation in “Book corpus”, open the Postbox menu and choose “Agent research”.
-3. Open a conversation there, then go to “Book corpus” and back to “Agent research” through the menu.
+2. From a conversation in “Reading notes”, open the Postbox menu and choose “Agent research”.
+3. Open a conversation there, then go to “Reading notes” and back to “Agent research” through the menu.
 4. Open the menu with the keyboard (Tab to the mark, Enter) and close it with Escape.
 
 **Pass if:** The menu opens and closes by mouse and keyboard. From each project, that project is focused, highlighted, checked and current when the menu opens, and choosing a project opens the conversation you last had there.

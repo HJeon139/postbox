@@ -29,7 +29,7 @@ Where you write to agents; it must say who will answer.
 2. In “Corpus planning”, send several messages while @indexer works. Open its mail button in the Agents section, edit one message, remove another, and use Send now.
 
 **Pass if:** The composer stays its normal height plus one waiting line, whose count opens the queue; the mail count follows the queue; the bounded dialog edits and acts on one message at a time; and queued messages are delivered when @indexer finishes or at once with Send now.
-3. In “Corpus explorer”, drag a PNG screenshot and an SVG from your desktop onto the transcript, and send. Then send a file whose name you gave a right-to-left override (U+202E) before its extension.
+3. In “Asset explorer”, drag a PNG screenshot and an SVG from your desktop onto the transcript, and send. Then send a file whose name you gave a right-to-left override (U+202E) before its extension.
 
 **Pass if:** Both attach to the composer before you send. The PNG shows as a thumbnail with its name and size, and the image doesn’t jump while it loads; Tab to it and press Enter, and the full image opens in a new tab. The SVG shows as a file chip. The renamed file’s chip, in the composer and in the sent message, has “_” where the override was.
 4. Choose Reply in thread under a message, so the topic thread panel opens. Drag a file onto the panel’s replies, then another onto the conversation beside it. Open the panel’s + menu.
