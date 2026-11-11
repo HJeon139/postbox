@@ -22,6 +22,7 @@ import { draftAttachments } from './draft-attachments.mjs';
 import { failedCallout } from './failed-actions.mjs';
 import { goToItem } from './go-to-item.mjs';
 import { focusComposer, hopBlock } from './hop-card.mjs';
+import { beyondItem } from './item-ranges.mjs';
 import { closeThread, grow, loaded, more, openThread, refresh } from './open-threads.mjs';
 import { focusUntouched } from './pane-focus.mjs';
 import { denialBlock, permissionBlock, toolAskBlock } from './permission-cards.mjs';
@@ -202,6 +203,9 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
       if (!win || win.added(d.item)) appendNew(list, list.length - 1);
       paintWorking();
       view.grew();
+    } else if (ch.type === 'item.beyond' && d.threadId === threadId) {
+      // Added past what’s loaded, while you read higher up (item-ranges.mjs): it counts on the pill.
+      view.grew();
     } else if (ch.type === 'item.move' && d.threadId === threadId) {
       // An update brought an app or a block to the newest point (#49, #92). Its stub takes its old place, the same
       // height a line takes, and what you were reading stays put: if that was the item, the stub holds its place.
@@ -258,7 +262,8 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
   });
 
   const updateText = (id, force = false) => {
-    const it = itemsOf(threadId)[placeIn(threadId, id)]; // undefined when it's gone, as find() gave
+    // undefined when it's gone, as find() gave; one past what's loaded is kept apart (item-ranges.mjs, keepBeyond)
+    const it = itemsOf(threadId)[placeIn(threadId, id)] ?? beyondItem(client.ranges.get(threadId), threadId, id);
     const node = nodes.get(id);
     if (!it) return;
     // A reply the window hasn’t mounted, while you read higher up, is still heard as it streams (#866).

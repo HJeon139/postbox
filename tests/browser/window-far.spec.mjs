@@ -1,7 +1,8 @@
 // The transcript window far from the view (#866, critic’s integrator pass on #1075): a scroll that lands well past the
-// range’s edges, a drag of the scrollbar, Home, End or Jump to latest, shows items at once, not a blank spacer while
-// the range walks over; a window torn down before its first frame leaves nothing listening; and a reply that streams
-// in while you read higher up is still announced, though it isn’t mounted.
+// range’s edges, a drag of the scrollbar, Home, End or Jump to latest, shows items at once (past what the page holds,
+// once they’re loaded, #1155), not a blank spacer while the range walks over; a window torn down before its first frame
+// leaves nothing listening; and a reply that streams in while you read higher up is still announced, though it isn’t
+// mounted or loaded.
 
 import { expect, test } from '@playwright/test';
 import { seedBigRoom } from '../../tools/uat/big-room.mjs';
@@ -90,14 +91,9 @@ test('#866 Jump to latest from far up a long room lands on the newest item', asy
   await synced(page, app);
   const jump = page.getByRole('button', { name: /Jump to latest/ });
   await expect(jump).toBeVisible();
-  // In the click’s own task the newest item is on the page, so the scroll lands on it, not on a spacer that the range
-  // then walks over a view at a time.
-  const mountedAtClick = await page.evaluate((id) => {
-    const b = /** @type {HTMLElement} */ ([...document.querySelectorAll('button')].find((n) => n.textContent?.includes('Jump to latest')));
-    b.click();
-    return !!document.querySelector(`#main > .item[data-key="${id}"]`);
-  }, it.id);
-  expect(mountedAtClick, 'the newest item mounted as the jump starts').toBe(true);
+  // Far up, the page holds an older range than the newest (#1155): the jump loads the latest, then goes to the end at
+  // once, rather than scrolling smoothly over spacers the range then walks a view at a time.
+  await jump.click();
   await expect(page.locator(`#main > .item[data-key="${it.id}"]`), 'the newest item').toBeInViewport({ timeout: 5000 });
 });
 

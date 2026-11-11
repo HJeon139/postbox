@@ -7,12 +7,12 @@
 // events the page hears for that conversation are kept, and those after the load’s seq are applied again once it lands,
 // so nothing the page heard meanwhile is lost or applied twice.
 
-import { noteReplaced, positionOf } from '/shared/item-index.mjs';
+import { itemOf, noteReplaced, positionOf } from '/shared/item-index.mjs';
 import { apply } from '/shared/state.mjs';
 
 /**
  * @typedef {{ type: string, data: any, seq: number, applied: boolean }} Heard
- * @typedef {{ start: number, total: number, seq: number, loads: number, heard: Heard[] }} Range
+ * @typedef {{ start: number, total: number, seq: number, loads: number, heard: Heard[], beyond?: { items: Record<string, any[]> } }} Range
  * @typedef {{ threadId: string, seq: number, start: number, total: number, items: any[] }} Answer
  */
 
@@ -28,27 +28,49 @@ export const atEnd = (list, r) => r.start + list.length >= r.total;
 
 /**
  * What the page does with an item event for a conversation: apply it, or not (it’s in a load already, or names an item
- * the range doesn’t hold, which a load will bring as it is then), or load the latest range again (an item moved to an
- * end the range holds, from a place it doesn’t). Keeps the event while a load is in flight.
+ * the range doesn’t hold, which a load will bring as it is then), keep it apart (an item added past the range’s end,
+ * keepBeyond), or load the latest range again (an item moved to an end the range holds, from a place it doesn’t).
+ * Keeps the event while a load is in flight.
  * @param {any} state @param {Map<string, Range>} ranges @param {string} type @param {any} d @param {number} seq
- * @returns {'apply' | 'skip' | 'reload'}
+ * @returns {'apply' | 'skip' | 'reload' | 'beyond'}
  */
 export function gate(state, ranges, type, d, seq) {
   const r = ranges.get(d.threadId);
   if (!r) return 'skip';
   const verdict = judge(state, r, type, d, seq);
   if (r.loads > 0) r.heard.push({ type, data: d, seq, applied: verdict === 'apply' });
+  keepBeyond(r, type, d, verdict);
   return verdict;
 }
 
-/** @param {any} state @param {Range} r @param {string} type @param {any} d @param {number} seq @returns {'apply' | 'skip' | 'reload'} */
+/** How many of the items added past a range’s end it keeps apart: the latest, enough for a reply and what follows it. */
+const BEYOND = 20;
+
+/**
+ * The items added past the range’s end while you read higher up, kept apart from its list (which stays one contiguous
+ * run), and kept current by their own events, so the page counts them as unseen and still voices a reply as it
+ * streams (#866). A load that reaches the end lets them go (place).
+ * @param {Range} r @param {string} type @param {any} d @param {string} verdict
+ */
+function keepBeyond(r, type, d, verdict) {
+  if (verdict === 'beyond') {
+    const kept = ((r.beyond ??= { items: {} }).items[d.threadId] ??= []);
+    kept.push(structuredClone(d.item));
+    if (kept.length > BEYOND) kept.splice(0, kept.length - BEYOND);
+  } else if (r.beyond && type !== 'item.add' && itemOf(r.beyond.items[d.threadId] ?? [], d.id)) apply(r.beyond, type, d);
+}
+
+/** An item added past a conversation’s range, as it is now; undefined when there’s none. @param {Range | undefined} r @param {string} threadId @param {string} id */
+export const beyondItem = (r, threadId, id) => itemOf(r?.beyond?.items[threadId] ?? [], id) ?? undefined;
+
+/** @param {any} state @param {Range} r @param {string} type @param {any} d @param {number} seq @returns {'apply' | 'skip' | 'reload' | 'beyond'} */
 function judge(state, r, type, d, seq) {
   if (seq && seq <= r.seq) return 'skip';
   const list = state.items[d.threadId] ?? [];
   const end = atEnd(list, r);
   if (type === 'item.add') {
     r.total++;
-    return end ? 'apply' : 'skip';
+    return end ? 'apply' : 'beyond';
   }
   return type === 'item.move' ? moveIn(list, end, d) : 'apply';
 }
@@ -103,6 +125,7 @@ export function place(state, ranges, answer, how) {
     state.items[answer.threadId] = [...list, ...answer.items.filter((it) => positionOf(list, it.id) < 0)];
   }
   const again = r.heard.filter((e) => e.seq > answer.seq && (how === 'replace' || !e.applied));
+  if (atEnd(state.items[answer.threadId], r)) r.beyond = undefined;
   if (!r.loads) r.heard = [];
   return replay(state, r, answer, again, how);
 }

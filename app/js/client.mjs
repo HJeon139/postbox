@@ -98,6 +98,7 @@ function hear(t, e) {
   const verdict = t.startsWith('item.') ? gate(client.state, client.ranges, t, data, seq) : 'apply';
   client.seq = seq || client.seq;
   if (verdict === 'reload') client.emit({ type: 'range.stale', data: { threadId: data.threadId } });
+  if (verdict === 'beyond') client.emit({ type: 'item.beyond', data: { threadId: data.threadId, item: data.item } });
   if (verdict !== 'apply') return;
   apply(client.state, t, data);
   // A session’s change comes as only its changed fields (designs/508, “Store events”); listeners hear the whole
