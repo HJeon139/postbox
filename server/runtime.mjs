@@ -13,7 +13,7 @@ import { carriedList } from '../shared/work.mjs';
 import { describeTool } from './adapters/claude-stream.mjs';
 import { workFolder } from './adapters/folder.mjs';
 import { listProcesses } from './adapters/process-group.mjs';
-import { AUTO_MODEL, DEFAULT_EFFORT, DEFAULT_MODEL, EFFORT_LEVELS, POSTBOX_SERVER } from './adapters/setup.mjs';
+import { EFFORT_LEVELS } from './adapters/setup.mjs';
 import { contentBlocks, listClaudeSessions, recentHistory, TranscriptTail, typedText } from './adapters/terminal-mirror.mjs';
 import { agentFile, agentFolders, appFiles } from './agent-files.mjs';
 import { retireApp } from './app-retire.mjs';
@@ -29,7 +29,7 @@ import { keptTurns, nextNeed, noticeNeed, releaseNeed, stateFor, TURN_TIED } fro
 import { catchUp, moveMarkers, pointerIfSeen } from './catch-up.mjs';
 import { blockProblems, diagramProblems, formatLint, introducedTerms, lintMessage, personSaid, rawHtmlProblems, termProblems } from './checks.mjs';
 import { emptyReply, endedWithoutReply } from './empty-reply.mjs';
-import { folderOrNone, placedFolder, sessionFolder } from './folder-path.mjs';
+import { folderOrNone, sessionFolder } from './folder-path.mjs';
 import { heldSession } from './held-session.mjs';
 import { clip, clipText, httpError } from './helpers.mjs';
 import { clipItem, describeItem, topicRootLine } from './item-lines.mjs';
@@ -51,9 +51,9 @@ import {
   resolvePermission,
   settlePermission,
 } from './permission-cards.mjs';
-import { checkedMode, retireModes, runsAs } from './permission-modes.mjs';
+import { retireModes, runsAs } from './permission-modes.mjs';
 import { changePermissionFolder, changePermissionRule, latestProject, PERMISSION_MODES, panelTarget, permissionsView } from './permissions-panel.mjs';
-import { checkEffort, checkSetup, handleOf } from './persona-checks.mjs';
+import { createPersona, defaultModelFor, updatePersona } from './persona-write.mjs';
 import { arrival } from './queue-batch.mjs';
 import { readCapped } from './read-capped.mjs';
 import { addReadFolder, readCardAlways } from './read-folders.mjs';
@@ -61,12 +61,8 @@ import { readMessage } from './read-message.mjs';
 import { addHost, host, removeHost, setProjectHostFolder, updateHost } from './remote/host-admin.mjs';
 import { describeHostInstall, hostStatus, installHost, retryHost, watchHosts } from './remote/host-status.mjs';
 import {
-  drainMovedOff,
   hereFolder,
   localBackends,
-  notHere,
-  placedPatch,
-  placement,
   refuseHere,
   refuseUnregistered,
   refuseUnregisteredSend,
@@ -110,7 +106,7 @@ import { endSubagent, notUrgent } from './subagent-end.mjs';
 import { eraseThreads } from './thread-erase.mjs';
 import { firstPromptSection, settleThread, turnContext } from './thread-summary.mjs';
 import { updateThread } from './thread-write.mjs';
-import { askForTool, settleToolAsks } from './tool-ask.mjs';
+import { askForTool } from './tool-ask.mjs';
 import { openTopic, startTopic } from './topic-open.mjs';
 import { endedAs, endWork } from './turn-end-work.mjs';
 import { askedAgain, askedOf, replyMarks, wokeOf } from './turn-marks.mjs';
@@ -2311,115 +2307,16 @@ export class Runtime {
     }).id;
   }
 
-  // ── Personas ───────────────────────────────────────────────────────────────────────
+  // ── Personas: server/persona-write.mjs ─────────────────────────────────────────────
 
-  /**
-   * The model a persona of this backend gets when it names none: the mock’s, else Claude’s default, unless the backend
-   * offers AUTO_MODEL and not Claude’s default. That’s Codex, which runs none of Claude’s models and always offers
-   * AUTO_MODEL, alone when its CLI gave no list (Codex only on a host, #120): Claude’s default would fail its turn. Kiro
-   * runs Claude’s models, listed or not, and the Antigravity CLI puts its own default in place of Claude’s.
-   * @param {string} backend
-   */
   defaultModelFor(backend) {
-    if (backend === 'mock') return 'mock';
-    const offered = registeredAdapter(this, { backend })?.capabilities?.models ?? null;
-    return offered?.includes(AUTO_MODEL) && !offered.includes(DEFAULT_MODEL) ? AUTO_MODEL : DEFAULT_MODEL;
+    return defaultModelFor(this, backend);
   }
-
-  createPersona({
-    handle,
-    description = '',
-    instructions = '',
-    backend = 'mock',
-    model = this.defaultModelFor(backend),
-    effort = DEFAULT_EFFORT,
-    permissionMode = 'auto',
-    usesHostSetup = true,
-    canPublish = false,
-    mcpOff = [],
-    skillsOff = [],
-    folder = '',
-    tools = [],
-    examples = [],
-    createdBy = null,
-    remote = null,
-  }) {
-    handle = handleOf(handle);
-    if (this.personaByHandle(handle)) throw httpError(409, `@${handle} already exists. Pick another name.`);
-    if (!this.adapters.names().includes(backend)) throw httpError(422, notHere(this, backend));
-    permissionMode = checkedMode(permissionMode);
-    checkEffort(effort);
-    checkSetup({ usesHostSetup, canPublish, mcpOff, skillsOff });
-    const placed = placement(this, remote, backend);
-    if (!placed && !runsHere(this, backend)) throw httpError(422, notHere(this, backend));
-    const p = {
-      id: newId('pe'),
-      handle,
-      description,
-      instructions,
-      model: String(model || this.defaultModelFor(backend)),
-      effort,
-      backend,
-      permissionMode,
-      usesHostSetup,
-      canPublish,
-      mcpOff: serverNames(mcpOff),
-      skillsOff: skillNames(skillsOff),
-      folder: placedFolder(folder, placed),
-      tools: [...new Set(tools)],
-      examples,
-      createdBy,
-      remote: placed,
-      createdAt: Date.now(),
-      version: 1,
-      retired: false,
-    };
-    this.store.emit('persona', p);
-    return p;
+  createPersona(spec) {
+    return createPersona(this, spec);
   }
-
   updatePersona(id, patch) {
-    const p = this.persona(id);
-    if (!p) throw httpError(404, 'That agent doesn’t exist.');
-    if (patch.permissionMode !== undefined) patch = { ...patch, permissionMode: checkedMode(patch.permissionMode) };
-    if (patch.effort !== undefined) checkEffort(patch.effort);
-    checkSetup(patch);
-    if (patch.mcpOff !== undefined) patch = { ...patch, mcpOff: serverNames(patch.mcpOff) };
-    if (patch.skillsOff !== undefined) patch = { ...patch, skillsOff: skillNames(patch.skillsOff) };
-    if (patch.backend !== undefined && !this.adapters.names().includes(patch.backend)) throw httpError(422, notHere(this, patch.backend));
-    // Where it runs (#120), and whether its backend runs here when that’s here.
-    patch = placedPatch(this, id, p, patch);
-    // Its folder is checked for where it runs once the change is made (#990).
-    if (patch.folder !== undefined) patch = { ...patch, folder: placedFolder(patch.folder, patch.remote === undefined ? p.remote : patch.remote) };
-    // A persona moved from the mock to a real model gets that backend’s default model.
-    if (patch.backend && patch.backend !== 'mock' && (patch.model ?? p.model) === 'mock') patch = { ...patch, model: this.defaultModelFor(patch.backend) };
-    const next = {
-      ...p,
-      ...pick(patch, [
-        'description',
-        'instructions',
-        'backend',
-        'model',
-        'effort',
-        'permissionMode',
-        'usesHostSetup',
-        'canPublish',
-        'allowRequested',
-        'mcpOff',
-        'skillsOff',
-        'folder',
-        'tools',
-        'examples',
-        'retired',
-        'remote',
-      ]),
-      version: (p.version ?? 1) + 1,
-    };
-    this.store.emit('persona', next);
-    // A card that asked for a tool now on answers itself, wherever it was turned on (#237).
-    if (patch.tools !== undefined) settleToolAsks(this, next);
-    drainMovedOff(this, id);
-    return next;
+    return updatePersona(this, id, patch);
   }
 
   // ── Remote hosts (#120): server/remote/placement.mjs, host-admin.mjs and host-status.mjs ──────────
@@ -2813,9 +2710,5 @@ const MAX_COMMAND_OUTPUT = 64 * 1024;
 const COMMAND_FLUSH_MS = 100;
 const COMMAND_REFRESH_MS = 5000;
 const MAX_COMMAND_REFRESHES = 60;
-/** Server names, trimmed and without repeats. Postbox’s own server can’t be turned off, so it’s dropped. */
-const serverNames = (list) => [...new Set(list.map((n) => n.trim()))].filter((n) => n !== POSTBOX_SERVER);
-const skillNames = (list) => [...new Set(list.map((n) => n.trim()))];
-const pick = (o, keys) => Object.fromEntries(keys.filter((k) => o[k] !== undefined).map((k) => [k, o[k]]));
 
 export { formatDuration };
