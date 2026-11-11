@@ -1,8 +1,7 @@
-// The UAT’s checks live in tools/uat/room-checks.mjs. A host-mode run (#120) adds its remote rules here
-// (tools/uat/checks-remote.mjs), since they read what only the UAT records (facts.hosts) and server code may not import
-// tools/. So do the asset store’s checks (tools/uat/checks-assets.mjs),
-// which read the store a run left and what its tester did, and the view’s (tools/uat/checks-view.mjs), which read the
-// page’s probes.
+// The UAT’s checks: tools/uat/room-checks.mjs’s, with a host-mode run’s (#120) remote rules wrapped around them
+// (tools/uat/checks-remote.mjs), which read what host mode records (facts.hosts). The asset store’s checks
+// (tools/uat/checks-assets.mjs), which read the store a run left and what its tester did, and the view’s
+// (tools/uat/checks-view.mjs), which read the page’s probes, are added after them.
 
 import { ASSET_STORE_CHECKS } from './checks-assets.mjs';
 import { withRemote } from './checks-remote.mjs';
