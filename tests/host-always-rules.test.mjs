@@ -12,7 +12,6 @@ import { PassThrough } from 'node:stream';
 import { test } from 'node:test';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { ClaudeCodeAdapter } from '../server/adapters/claude-code.mjs';
-import { WRITE_TOOLS } from '../server/adapters/setup.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
 import { callLine, createFakeDaemon, FIXTURE_PROMPT, FIXTURE_PROMPTS, fixtureLines } from './fake-daemon.mjs';

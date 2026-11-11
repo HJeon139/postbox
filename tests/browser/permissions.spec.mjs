@@ -50,7 +50,7 @@ test.beforeAll(async () => {
     },
   });
   store.emit('project', { id: 'pr_check', name: 'Check', folder: work });
-  persona = rt.createPersona({ handle: 'coder', backend: 'claude-code', permissionMode: 'ask', tools: ['shell'] });
+  persona = rt.createPersona({ handle: 'coder', backend: 'claude-code', permissionMode: 'auto', tools: ['shell'] });
   thread = rt.createThread({ projectId: 'pr_check', title: 'Permissions check', personaIds: [persona.id] });
 });
 test.afterAll(async () => {
@@ -320,7 +320,8 @@ test('#66 the panel opens from ⋯ › Permissions… with rules with sources, f
   expect(all).toMatch(/Bash\(git status\) from your user settings/);
   expect(all).toMatch(/Bash\(npm test:\*\) from this folder’s local settings/);
   expect(all).toMatch(/WebFetch, WebSearch, Monitor from the persona’s Tools: web\.fetch is unticked/);
-  expect(all).toMatch(/and \d+ more, from Postbox’s check on writes outside it: tools and gh commands that create, change or delete/);
+  // In Auto the harness decides, so Postbox adds no ask rules of its own for writes outside it.
+  expect(all).not.toMatch(/from Postbox’s check on writes outside it: tools and gh commands/);
   expect(all).toMatch(/Folders.*Where it works/i);
   expect(all).toMatch(/MCP servers/i);
   expect(all).toMatch(/Claude Code has the final say/);
@@ -331,8 +332,9 @@ test('#66 the panel opens from ⋯ › Permissions… with rules with sources, f
     ['Bash(rm -rf build)', /Refused by the deny rule Bash\(rm:\*\) from the project’s shared settings/],
     ['Bash(npm test -- --ci)', /Runs: the allow rule Bash\(npm test:\*\) from this folder’s local settings/],
     ['WebFetch(https://example.com/x)', /Refused by the deny rule WebFetch from the persona’s Tools/],
-    ['Bash(make)', /No rule covers it, so Ask me mode decides: coder asks you/],
-    ['mcp__github__create_issue', /Asks you: the ask rule mcp__\*__create\* from Postbox’s check on writes outside it/],
+    ['Bash(make)', /No rule covers it, so Auto mode decides: auto mode’s safety check decides/],
+    // In Auto, Postbox adds no ask rule of its own for a write outside it: the harness decides.
+    ['mcp__github__create_issue', /No rule covers it, so Auto mode decides/],
   ]) {
     await call.click();
     await page.keyboard.press('ControlOrMeta+a');
