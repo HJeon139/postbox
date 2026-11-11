@@ -1,3 +1,4 @@
+// Moved from server/adapters/claude-reply.mjs.
 // The reply text a Claude turn has written, so a result whose text no event carried can still be posted (#485). A
 // recorded stream (tests/fixtures/claude-code/background-moved.jsonl, cut) has replies only in `result.result`, and a
 // reply Postbox never shows reaches no one.

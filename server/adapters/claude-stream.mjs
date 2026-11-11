@@ -3,10 +3,11 @@
 // compactions. Pure apart from the ctx calls, so recorded streams can test it (tests/claude-stream.test.mjs).
 
 import { appendGlimpseSource, glimpseOf } from '../../shared/text.mjs';
+import { replyText } from '../harness-text.mjs';
+import { askedOf, clip, firstSentence, JOB_STATES, SUBAGENT_TOOLS } from '../harness-tools.mjs';
 import { describeTool, QUIET } from '../tool-labels.mjs';
 import { contentBlocks } from './claude-content.mjs';
 import { commandsOf, postboxServerStatus } from './claude-init.mjs';
-import { replyText } from './claude-reply.mjs';
 import { addTokens, forkOf, resultTokens, sessionTotals, turnCost } from './claude-usage.mjs';
 
 // Moved to server/tool-labels.mjs; its importers keep this path.
@@ -20,7 +21,6 @@ const DECLINED = /^The person didn’t allow/;
 // Default context windows until a turn’s result reports the real one.
 const WINDOWS = /** @type {[RegExp, number][]} */ ([[/^claude-(?:opus|sonnet|fable)-5/, 1_000_000]]);
 export const windowFor = (model, fallback = 200_000) => WINDOWS.find(([re]) => re.test(String(model ?? '')))?.[1] ?? fallback;
-const SUBAGENT_TOOLS = new Set(['Task', 'Agent']);
 // A call that goes on in the background returns at once with the job's id, and the job runs on (#129). Recorded on
 // claude 2.1.296:
 // - Bash with run_in_background: “Command running in background with ID: <id>. Output is being written to: <file>. …”,
@@ -36,16 +36,7 @@ const BACKGROUND_FILE = /Output is being written to: (\S+?)\.?(?=\s|$)/;
 // A subagent started in the background, or one a subagent starts (Claude Code runs those in the background), returns
 // at once too, and works on until its task_notification (subagent-tree.jsonl).
 const ASYNC_AGENT = /^Async agent launched/;
-const JOB_STATES = { completed: 'done', failed: 'failed', stopped: 'stopped', killed: 'stopped' };
 
-const clip = (s, n) => {
-  const t = String(s ?? '')
-    .replace(/\s+/g, ' ')
-    .trim();
-  return t.length > n ? `${t.slice(0, n - 1)}…` : t;
-};
-/** The first sentence of a message, such as a refusal’s reason. */
-const firstSentence = (s, n = 300) => clip(/^[\s\S]*?[.!?](?=\s|$)/.exec(String(s ?? '').trim())?.[0] ?? s, n);
 /** The text of a tool result, for the reason a step failed. */
 const resultText = (content) =>
   typeof content === 'string'
@@ -56,9 +47,6 @@ const resultText = (content) =>
           .map((c) => c.text)
           .join(' ')
       : '';
-
-/** What a subagent was asked to do, in a line: its call’s description, else its prompt’s first sentence. */
-const askedOf = (input) => clip(input?.description || firstSentence(input?.prompt ?? '', 120), 120);
 
 /** The share of the context window a request used, in percent. */
 export function contextPercent(usage, window) {

@@ -230,7 +230,7 @@ test('#485: a slash command that prints nothing, such as /compact, isn’t an em
 
 test('#485: a result that repeats streamed Markdown as plain text isn’t posted again', async () => {
   // Integrator review of PR #536: “**the**” streamed, “the” in the result.
-  const { replyText } = await import('../server/adapters/claude-reply.mjs');
+  const { replyText } = await import('../server/harness-text.mjs');
   let out = '';
   const r = replyText({ text: (d) => (out += d) }, { wroteText: false });
   r.write('**The answer** is `42`, and _here_ is why it holds for every case.');
