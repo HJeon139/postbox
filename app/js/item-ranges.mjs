@@ -13,7 +13,7 @@ import { apply } from '/shared/state.mjs';
 /**
  * @typedef {{ type: string, data: any, seq: number, applied: boolean }} Heard
  * @typedef {{ start: number, total: number, seq: number, loads: number, heard: Heard[], beyond?: { items: Record<string, any[]> }, head?: any[] }} Range
- * @typedef {{ threadId: string, seq: number, start: number, total: number, items: any[] }} Answer
+ * @typedef {{ threadId: string, seq: number, start: number, total: number, items: any[], head?: any[] }} Answer
  */
 
 /** A conversation’s items from the server: the latest, or before, after or around an item. @param {string} threadId @param {string} [query] */
@@ -47,7 +47,7 @@ export function gate(state, ranges, type, d, seq) {
 }
 
 /**
- * The conversation's first items, kept apart for Home (keepFirst), current from their own events: a patch or text
+ * The conversation's first items, kept apart for Home (a load's head, place), current from their own events: a patch or text
  * applies, and a moved item leaves its stub in its place, as off a range's end. An add goes past them.
  * @param {Range} r @param {string} type @param {any} d
  */
@@ -58,19 +58,6 @@ function keepHead(r, type, d) {
     r.head[at] = d.stub;
     noteReplaced(r.head, at);
   } else apply({ items: { [d.threadId]: r.head } }, type, d);
-}
-
-/**
- * Keeps a load of the conversation's first items as its head, with what the page heard after the load's seq.
- * @param {Map<string, Range>} ranges @param {Answer} answer
- */
-export function keepFirst(ranges, answer) {
-  const r = ranges.get(answer.threadId);
-  if (!r) return;
-  r.loads = Math.max(0, r.loads - 1);
-  r.head = answer.items.slice();
-  for (const e of r.heard) if (e.seq > answer.seq) keepHead(r, e.type, e.data);
-  if (!r.loads) r.heard = [];
 }
 
 /**
@@ -171,6 +158,11 @@ export function place(state, ranges, answer, how) {
   if (how === 'replace') {
     state.items[answer.threadId] = answer.items.slice();
     Object.assign(r, { start: answer.start, total: answer.total, seq: answer.seq });
+    // The first items, when they came with it, kept for Home with what was heard after the load's seq.
+    if (answer.head) {
+      r.head = answer.head.slice();
+      for (const e of r.heard) if (e.seq > answer.seq) keepHead(r, e.type, e.data);
+    }
   } else if (how === 'before') {
     const fresh = answer.items.filter((it) => positionOf(list, it.id) < 0);
     state.items[answer.threadId] = [...fresh, ...list];

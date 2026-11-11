@@ -68,7 +68,9 @@ export function itemsRoute(store, search, path, method, url) {
   const as = { seq: store.state.seq, epoch: store.epoch, threadId, total: list.length };
   if (m[2] === 'items') {
     const { start, end } = rangeOf(list, url.searchParams);
-    return { ...as, start, items: list.slice(start, end) };
+    // head=N: a range that doesn't start at the first item comes with the first N, at most MOST, for Home (#1155).
+    const head = Math.min(MOST, Math.max(0, Math.floor(Number(url.searchParams.get('head'))) || 0));
+    return { ...as, start, items: list.slice(start, end), ...(head && start > 0 ? { head: list.slice(0, head) } : {}) };
   }
   const hits = search.search(threadId, (url.searchParams.get('q') ?? '').slice(0, QUERY_MOST), HITS).map((hit) => {
     const it = list[positionOf(list, hit.id)];

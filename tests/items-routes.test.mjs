@@ -48,6 +48,14 @@ test('with no anchor, the latest page; with before, after or around an item, the
   assert.deepEqual([first.json.start, ids(first)[0], ids(first).at(-1)], [0, 'i0', 'i19'], 'the first, for Home');
   const whole = await get('/api/threads/room/items?limit=all');
   assert.deepEqual([whole.json.start, whole.json.items.length], [0, 600], 'all of them, for a page with the window off');
+  const withHead = await get('/api/threads/room/items?limit=20&head=5');
+  assert.deepEqual(
+    withHead.json.head.map((/** @type {any} */ x) => x.id),
+    ['i0', 'i1', 'i2', 'i3', 'i4'],
+    'the first five, for Home',
+  );
+  assert.equal((await get('/api/threads/room/items?first&limit=20&head=5')).json.head, undefined, 'none for a range that starts there');
+  assert.equal((await get('/api/threads/room/items?limit=20&head=100000')).json.head.length, 500, 'at most MOST');
   const capped = await get('/api/threads/room/items?limit=100000');
   assert.equal(capped.json.items.length, 500, 'a limit is capped at MOST');
   assert.deepEqual([capped.json.start, ids(capped).at(-1)], [100, 'i599'], 'the latest 500');
