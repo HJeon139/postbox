@@ -21,6 +21,7 @@ import { openDataFolder } from './data-folder.mjs';
 import { listFolder } from './folders.mjs';
 import { dataFolder } from './home.mjs';
 import { hostsRoute } from './hosts-routes.mjs';
+import { itemsRoute } from './items-routes.mjs';
 import { listen as listenServer } from './listen.mjs';
 import { liveStreams } from './live-streams.mjs';
 import { handleMcp } from './mcp.mjs';
@@ -42,6 +43,7 @@ import { isLoopback } from './shell.mjs';
 import { newId } from './store.mjs';
 import { watchTelemetry } from './telemetry.mjs';
 import { telemetryRoute } from './telemetry-routes.mjs';
+import { threadSearch } from './thread-search.mjs';
 import { uploadName } from './upload-name.mjs';
 import { startViewApp } from './view-app/view-app.mjs';
 import { viewOf } from './view-app/view-of.mjs';
@@ -170,6 +172,7 @@ export async function start({
 
   // The pages’ live updates: the store’s events over server-sent events (server/live-streams.mjs).
   const { streams, stop: stopStreams, stream } = liveStreams(store);
+  const search = threadSearch(store);
   let offlineUntil = 0;
 
   /** @param {import('node:http').IncomingMessage} req @param {import('node:http').ServerResponse} res */
@@ -255,6 +258,9 @@ export async function start({
     }
 
     if (path === '/api/state' && req.method === 'GET') return send(res, 200, pageState({ store, rt, adapters, origin, demo, real, config }));
+    // A conversation’s items by range, and its search (#1155).
+    const itemsDid = itemsRoute(store, search, path, req.method, url);
+    if (itemsDid) return send(res, 200, itemsDid);
     // What a persona would load, for its sheet: its MCP servers and skills (server/setup-routes.mjs).
     const setupDid = await setupRoute(rt, path, req.method, url, claudeHome);
     if (setupDid) return send(res, setupDid.status, setupDid.body);

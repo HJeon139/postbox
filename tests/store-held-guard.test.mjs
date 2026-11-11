@@ -58,6 +58,7 @@ const DIRECT = {
   'ledger-answers.mjs': ['published'], // the Work view’s diff and output, answers to the page
   'ledger.mjs': ['expireStale'], // at startup
   'permission-expiry.mjs': ['expireStalePermissions'], // at startup
+  'public-state.mjs': ['publicItems'], // a conversation’s items by range, an HTTP answer to the page (#1155)
   'room-checks-agy.mjs': ['deniedSteps'], // facts from a recorded run, offline
   'room-checks-backends.mjs': ['BACKEND_CHECKS'], // the same
   'room-checks-asks.mjs': ['droppedAsks', 'needsMismatches'], // the same
@@ -72,6 +73,7 @@ const DIRECT = {
   'sandbox-routes.mjs': ['sandboxRoute'], // an app version’s sandbox page: an HTTP answer to the page
   'telemetry-record.mjs': ['blockRow', 'workOf'], // a run’s record, after it
   'telemetry-report.mjs': ['liveFacts', 'liveFacts'], // the same
+  'thread-search.mjs': ['threadSearch'], // a conversation’s search, an HTTP answer to the page (#1155)
   'tool-ask.mjs': ['settleToolAsks'], // only the thread ids; each thread is read through store.pending
   'view-app/view-app.mjs': ['viewApp'], // the app the agent named, to find its thread and version for the picture (#95)
   'waiting-on-you.mjs': ['waitingOnYou'], // shared with the page, which has only what was broadcast

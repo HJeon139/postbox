@@ -24,3 +24,11 @@ export function publicFrame(event, events = EVENTS) {
   const ev = publicEvent(event, events);
   return `id: ${ev.seq}\nevent: ${ev.type}\ndata: ${JSON.stringify(ev.data)}\n\n`;
 }
+
+/**
+ * A conversation’s items as the page may see them (/api/threads/:id/items and its search, server/items-routes.mjs):
+ * the store’s own list while items are a public key, else null. @param {Record<string, any>} state @param {string} threadId
+ */
+export function publicItems(state, threadId) {
+  return PUBLIC_STATE_KEYS.includes('items') ? (state.items[threadId] ?? []) : null;
+}
