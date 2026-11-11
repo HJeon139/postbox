@@ -44,56 +44,8 @@ export function toolsFor(rt, sessionId, turn = null) {
     retire_app(args) {
       return retireApp(rt, sessionId, args);
     },
-    define_term({ term, definition, key, source }) {
-      if (!term || !definition) return { ok: false, message: 'define_term needs a term and a definition.' };
-      const k =
-        String(key ?? term)
-          .toLowerCase()
-          .replace(/[^a-z0-9]+/g, '-')
-          .replace(/^-|-$/g, '')
-          .slice(0, 64) || 'term';
-      if (turn) (turn.defined ??= []).push(String(term).slice(0, 80));
-      rt.store.emit('glossary', {
-        threadId: threadId(),
-        entry: {
-          key: k,
-          term: String(term).slice(0, 80),
-          definition: String(definition).slice(0, 2000),
-          source: source ? String(source).slice(0, 200) : '',
-          by: se().handle,
-          at: Date.now(),
-        },
-      });
-      const inherited = rt
-        .lineage(threadId())
-        .slice(1)
-        .some((id) => rt.s.glossary[id]?.[k]);
-      return { ok: true, message: inherited ? `Defined “${term}” here, over the conversation’s definition.` : `Defined “${term}”.` };
-    },
-    propose_agent({ handle, description, instructions, tools = [], model = 'mock', backend = 'mock' }) {
-      const mine = new Set(rt.persona(se().personaId)?.tools ?? []);
-      // Agents send JSON: anything that isn’t a string here is coerced, so it can only ever show as text.
-      const str = (v, max) => String(v ?? '').slice(0, max);
-      handle = str(handle, 40);
-      description = str(description, 500);
-      instructions = str(instructions, 20000);
-      tools = (Array.isArray(tools) ? tools : []).filter((t) => typeof t === 'string').slice(0, 40);
-      model = str(model, 80);
-      backend = str(backend, 40);
-      endSegment();
-      rt.addItem(threadId(), {
-        kind: 'proposal',
-        sessionId,
-        handle: se().handle,
-        // Its turn’s, so it shares that turn’s sender line and no other (#135).
-        turnId: turn?.id ?? null,
-        ...wokeOf(turn),
-        status: 'open',
-        proposal: { handle: String(handle).replace(/^@/, ''), description, instructions, tools, model, backend },
-        extraTools: tools.filter((t) => !mine.has(t)),
-      });
-      return { ok: true, message: 'Proposed. The person decides whether to create it.' };
-    },
+    define_term: (args) => defineTerm(rt, { turn, se, threadId }, args),
+    propose_agent: (args) => proposeAgent(rt, sessionId, { turn, se, threadId, endSegment }, args),
     schedule_wake: (args) => scheduleWakeTool(rt, sessionId, args),
     cancel_wake: (args) => cancelWake(rt, sessionId, args),
     wake_agent: (args) => wakeAgent(rt, sessionId, args),
@@ -113,4 +65,68 @@ export function toolsFor(rt, sessionId, turn = null) {
       return askForTool(rt, sessionId, args, endSegment, threadId());
     },
   });
+}
+
+/**
+ * define_term: a term and its definition join the glossary of the thread the turn speaks in, over any its conversation
+ * gave it. A lint turn that only defines terms ends as one line (lint-delivery.mjs, quietLint), so the turn keeps them.
+ * @param {any} rt @param {{ turn: any, se: () => any, threadId: () => string }} at
+ * @param {{ term?: unknown, definition?: unknown, key?: unknown, source?: unknown }} args
+ */
+function defineTerm(rt, { turn, se, threadId }, { term, definition, key, source }) {
+  if (!term || !definition) return { ok: false, message: 'define_term needs a term and a definition.' };
+  const k =
+    String(key ?? term)
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '')
+      .slice(0, 64) || 'term';
+  if (turn) (turn.defined ??= []).push(String(term).slice(0, 80));
+  rt.store.emit('glossary', {
+    threadId: threadId(),
+    entry: {
+      key: k,
+      term: String(term).slice(0, 80),
+      definition: String(definition).slice(0, 2000),
+      source: source ? String(source).slice(0, 200) : '',
+      by: se().handle,
+      at: Date.now(),
+    },
+  });
+  const inherited = rt
+    .lineage(threadId())
+    .slice(1)
+    .some((id) => rt.s.glossary[id]?.[k]);
+  return { ok: true, message: inherited ? `Defined “${term}” here, over the conversation’s definition.` : `Defined “${term}”.` };
+}
+
+/**
+ * propose_agent: a new agent the person may create, shown as a proposal card in the turn, with the tools it asks for
+ * beyond the proposing agent’s own.
+ * @param {any} rt @param {string} sessionId
+ * @param {{ turn: any, se: () => any, threadId: () => string, endSegment: () => void }} at @param {any} args
+ */
+function proposeAgent(rt, sessionId, { turn, se, threadId, endSegment }, { handle, description, instructions, tools = [], model = 'mock', backend = 'mock' }) {
+  const mine = new Set(rt.persona(se().personaId)?.tools ?? []);
+  // Agents send JSON: anything that isn’t a string here is coerced, so it can only ever show as text.
+  const str = (v, max) => String(v ?? '').slice(0, max);
+  handle = str(handle, 40);
+  description = str(description, 500);
+  instructions = str(instructions, 20000);
+  tools = (Array.isArray(tools) ? tools : []).filter((t) => typeof t === 'string').slice(0, 40);
+  model = str(model, 80);
+  backend = str(backend, 40);
+  endSegment();
+  rt.addItem(threadId(), {
+    kind: 'proposal',
+    sessionId,
+    handle: se().handle,
+    // Its turn’s, so it shares that turn’s sender line and no other (#135).
+    turnId: turn?.id ?? null,
+    ...wokeOf(turn),
+    status: 'open',
+    proposal: { handle: String(handle).replace(/^@/, ''), description, instructions, tools, model, backend },
+    extraTools: tools.filter((t) => !mine.has(t)),
+  });
+  return { ok: true, message: 'Proposed. The person decides whether to create it.' };
 }
