@@ -2,6 +2,15 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.58.6 (2026-11-11)
+
+### Fixes
+
+- **server:** a live stream whose page hasn't read for a minute is closed (#1210)
+- **server:** JSON responses go out as bytes, so a slow page doesn't hold the state on the heap
+- **needs:** a refused tool call shows what happened and never needs you
+- **blocks:** show a changed block's notice as the change arrives
+
 ## 1.58.5 (2026-11-10)
 
 ### Fixes
