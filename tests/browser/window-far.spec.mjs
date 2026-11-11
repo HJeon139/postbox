@@ -138,11 +138,11 @@ test('#866 an item kept for its focus stays in its place in the conversation whe
   const t = await open(page);
   const ids = app.store.items(t.id).map((it) => it.id);
   // Focus an item in the middle, then move the range above it and then below it without moving focus, so it’s kept
-  // on the page as an island each time (window.mjs, mountFor).
+  // on the page as an island each time (window-live.mjs, mountFor).
   expect(await page.evaluate((id) => import('/app/js/needs-nav.mjs').then((m) => m.focusItem(id)), ids[1000])).toBe(true);
   await page.evaluate(
     ([up, end]) =>
-      import('/app/js/window.mjs').then(({ mountFor }) => {
+      import('/app/js/window-live.mjs').then(({ mountFor }) => {
         mountFor(up);
         mountFor(end);
       }),

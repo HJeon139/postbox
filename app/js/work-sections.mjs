@@ -10,7 +10,7 @@ import { h, icon, plural, timeOf } from './dom.mjs';
 import { reach } from './open-threads.mjs';
 import { navigate, openWork, paneHref, route, setPaneFull } from './ui.mjs';
 import { jumpTo } from './view-jump.mjs';
-import { mountFor } from './window.mjs';
+import { mountFor } from './window-live.mjs';
 
 export const dur = (ms) => (ms ? formatDuration(ms) : '');
 /** A host’s name now (it may have been renamed since), else as the ledger kept it (#120). */

@@ -5,7 +5,7 @@
 
 import { reach } from './open-threads.mjs';
 import { jumpTo } from './view-jump.mjs';
-import { mountFor } from './window.mjs';
+import { mountFor } from './window-live.mjs';
 
 /**
  * Brings the transcript's item into view and focuses its first control, else the item. One the page hasn't loaded is

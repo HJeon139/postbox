@@ -6,7 +6,7 @@ import { failedActions } from './failed-actions.mjs';
 import { reach } from './open-threads.mjs';
 import { ringFor, stateWord } from './ring.mjs';
 import { jumpTo } from './view-jump.mjs';
-import { mountFor } from './window.mjs';
+import { mountFor } from './window-live.mjs';
 
 export function sideLine(it, ctx) {
   // The agent at work in it, with the ring and state word the sidebar rows use (#121), so the conversation shows

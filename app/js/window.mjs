@@ -16,8 +16,8 @@ import { holdSkipping } from './view-skip.mjs';
 import { budgetFor, elementsOf } from './window-cost.mjs';
 import { elementsIn, heightsFor, kindOf } from './window-entry.mjs';
 import { windowOn } from './window-flag.mjs';
-import { edgeKeys } from './window-keys.mjs';
 import { CEILING, CHUNK, FLOOR, MARGIN } from './window-limits.mjs';
+import { live } from './window-live.mjs';
 import * as windowShrink from './window-shrink.mjs';
 
 /**
@@ -40,25 +40,6 @@ export function createWindow(o) {
  * @typedef {{ more: (side: 'before' | 'after') => boolean, grow: (side: 'before' | 'after') => void,
  *   edge: (side: 'before' | 'after') => Promise<unknown> }} Edges
  */
-
-/** Every window on the page, so a jump to an item can find the one that holds it. @type {Set<TranscriptWindow>} */
-const live = new Set();
-edgeKeys(live);
-
-/**
- * The node for an item a window holds, mounting the range around it first if it’s off the page; null when no window
- * holds it (the window is off, or the item isn’t in a long transcript). Every jump to an item asks this before it
- * looks for the item on the page (#866, W3).
- * @param {string} itemId
- * @returns {HTMLElement | null}
- */
-export function mountFor(itemId) {
-  for (const w of live) {
-    const node = w.reach(itemId);
-    if (node) return node;
-  }
-  return null;
-}
 
 class TranscriptWindow {
   /** @param {Parameters<typeof createWindow>[0]} o */

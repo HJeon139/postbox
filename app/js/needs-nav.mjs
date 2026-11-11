@@ -8,7 +8,7 @@ import { client, hrefOf, liveSessions } from './client.mjs';
 import { reach } from './open-threads.mjs';
 import { navigate, route, toast } from './ui.mjs';
 import { jumpTo } from './view-jump.mjs';
-import { mountFor } from './window.mjs';
+import { mountFor } from './window-live.mjs';
 
 const S = () => client.state;
 const frame = () => new Promise((r) => requestAnimationFrame(() => r(undefined)));
