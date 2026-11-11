@@ -26,3 +26,22 @@ for (const action of ['confirm', 'decline']) {
     await settle(f.rt);
   });
 }
+
+test('Send now on a queued wake returns a body for the route to send, and the wake reaches its agent', async () => {
+  const f = setup();
+  const th = f.store.state.threads[f.t.id];
+  const wake = {
+    id: 'q_w1',
+    kind: 'wake',
+    text: 'Check the numbers.',
+    from: f.alpha.handle,
+    fromSessionId: f.alpha.id,
+    sessionIds: [f.beta.id],
+    at: Date.now(),
+  };
+  f.rt.putThread({ ...th, queue: [wake] });
+  const r = f.rt.sendQueuedNow(f.t.id, 'q_w1');
+  assert.deepEqual(r, { ok: true });
+  assert.deepEqual(f.store.state.threads[f.t.id].queue ?? [], [], 'it left the queue');
+  await settle(f.rt);
+});
