@@ -2,8 +2,7 @@
 // person’s are heard by the agents answering where it is; an agent’s, by the agent whose message it is, and
 // either way at the next turn (server/thread-summary.mjs, reactionLines), never by waking anyone. A reaction lives on
 // its item, with who made it: none for the person, and the agent’s session and handle for an agent. Its event carries
-// what it was, { emoji, on, at, by? }, so the record of each one is the store’s own: telemetry reads 🚩 as a flag,
-// whoever made it, and the rest as feedback (designs/telemetry-persona.md, R9).
+// what it was, { emoji, on, at, by? }, so the record of each one is the store’s own.
 
 import { REACTIONS } from '../shared/reactions.mjs';
 import { httpError } from './helpers.mjs';

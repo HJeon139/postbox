@@ -39,7 +39,6 @@ const PUBLISHED = {
   'scheduled-wakes.mjs': ['prepareScheduledRetry'], // the person’s Retry of a wake line they see
   'share-back.mjs': ['shareToConversation', 'shareToConversation'], // the person’s Share of an item they see
   'store-outage.mjs': ['settleOrphanTurns'], // at a reload, when nothing is held
-  'telemetry-record.mjs': ['collect'], // a run’s record, after it
   'thread-summary.mjs': ['lineOf', 'lineOf', 'threadCatchUp', 'threadLines', 'readUpTo', 'summarizeThread', 'summarizeThread', 'reactionLines'], // prompts and summaries for a later turn
   'tool-ask.mjs': ['resolveToolAsk'], // the person’s answer to an ask they see
   'view-app/consent.mjs': ['resolveViewAsk', 'settleDownloads'], // the person’s answer to the download card they see, and at startup a card a stop cut short, before any write is held (#95)
@@ -69,8 +68,6 @@ const DIRECT = {
   'room-unverified.mjs': ['uncheckedThreads'], // the same
   'runtime.mjs': ['expireStaleCommands'], // at startup
   'sandbox-routes.mjs': ['sandboxRoute'], // an app version’s sandbox page: an HTTP answer to the page
-  'telemetry-record.mjs': ['blockRow', 'workOf'], // a run’s record, after it
-  'telemetry-report.mjs': ['liveFacts', 'liveFacts'], // the same
   'tool-ask.mjs': ['settleToolAsks'], // only the thread ids; each thread is read through store.pending
   'view-app/view-app.mjs': ['viewApp'], // the app the agent named, to find its thread and version for the picture (#95)
   'waiting-on-you.mjs': ['waitingOnYou'], // shared with the page, which has only what was broadcast

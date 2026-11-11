@@ -15,7 +15,7 @@ import { tempDir } from './temp-dirs.mjs';
 
 const PORT = 4991;
 const KEYS = ['constructor', 'toString', '__proto__', 'hasOwnProperty'];
-const ROUTERS = ['server/index.mjs', 'server/session-routes.mjs', 'server/telemetry-routes.mjs'];
+const ROUTERS = ['server/index.mjs', 'server/session-routes.mjs'];
 // The page's beacons: you're looking at a conversation, a diagram measured too small. They answer ok for a thread or an
 // item they don't know, whatever its id, so they're held to writing nothing, not to refusing.
 const BEACONS = ['^\\/api\\/threads\\/([^/]+)\\/view$', '^\\/api\\/threads\\/([^/]+)\\/items\\/([^/]+)\\/diagram$'];
@@ -80,7 +80,7 @@ after(async () => {
 
 test('#352: every route with an id is found, so a route written another way fails here rather than going untried', () => {
   const written = sources().reduce((n, src) => n + (src.match(/path\.match\(\/\^[^\n]*?\(\[\^\/\]\+\)/g) ?? []).length, 0);
-  assert.ok(written >= 40, `the routers have ${written} routes with an id`);
+  assert.ok(written >= 39, `the routers have ${written} routes with an id`);
   assert.equal(routes().length, written);
 });
 

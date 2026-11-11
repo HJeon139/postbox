@@ -685,7 +685,7 @@ export class AntigravityCliAdapter {
       child.stderr.on('data', (d) => {
         stderr = (stderr + d).slice(-4000);
       });
-      const record = recorderFor(ctx, this.env.POSTBOX_AGY_RECORD, 'antigravity-cli');
+      const record = recorderFor(ctx, this.env.POSTBOX_AGY_RECORD);
       createInterface({ input: child.stdout }).on('line', (line) => {
         if (!line.trim()) return;
         record(line);

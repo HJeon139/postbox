@@ -93,7 +93,7 @@ test('the table and its entries are frozen, so a type can’t change its flag at
   for (const [type, entry] of Object.entries(EVENTS)) assert.equal(Object.isFrozen(entry), true, type);
 });
 
-test('telemetry keeps no event of a type the page may not see, since its reports reach the page', () => {
+test('the checks’ history keeps no event of a type the page may not see', () => {
   const ev = { threadId: 't', item: { id: 'i', text: 'x' } };
   assert.deepEqual(keepEvent(1, 'item.add', ev), { seq: 1, type: 'item.add', data: ev });
   const table = { ...EVENTS, 'item.add': { ...EVENTS['item.add'], public: false } };

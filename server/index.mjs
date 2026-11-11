@@ -41,8 +41,6 @@ import { sessionRoute } from './session-routes.mjs';
 import { setupRoute } from './setup-routes.mjs';
 import { isLoopback } from './shell.mjs';
 import { newId } from './store.mjs';
-import { watchTelemetry } from './telemetry.mjs';
-import { telemetryRoute } from './telemetry-routes.mjs';
 import { storedName, uploadName } from './upload-name.mjs';
 import { startViewApp } from './view-app/view-app.mjs';
 import { viewOf } from './view-app/view-of.mjs';
@@ -124,8 +122,6 @@ export async function start({
   const rt = new Runtime({ store, adapters, corpus, config, blobs, narrator, spawnShell, hosts });
   // view_app’s browser, downloaded only after the person agrees (#95; designs/architecture.md, “Agents see their app”).
   startViewApp(rt, { dataDir, origin: () => `http://127.0.0.1:${/** @type {any} */ (server.address())?.port ?? port}` });
-  // Recording conversations for telemetry, and its 30-day sweep (designs/telemetry-persona.md, R7, R11).
-  watchTelemetry(rt);
   const firstReal = ['claude-code', 'agent-sdk', 'kiro-cli', 'antigravity-cli', 'codex'].find((b) => adapters.runsHere(b)) ?? 'mock';
   await seed(rt, { dataDir, booksDir: join(ROOT, 'server', 'corpus', 'books'), backend: firstReal, demo });
   settleInterrupted(rt);
@@ -346,9 +342,6 @@ export async function start({
     // A session’s own actions: Stop, archive, restore, delete, its jobs and its run (server/session-routes.mjs).
     const sessionDid = await sessionRoute(rt, path, req.method, body);
     if (sessionDid) return send(res, sessionDid.status, sessionDid.body);
-    // Telemetry: recording a conversation, and its reports (server/telemetry-routes.mjs).
-    const telemetryDid = await telemetryRoute(rt, path, req.method, body);
-    if (telemetryDid) return send(res, telemetryDid.status, telemetryDid.body);
     if ((m = path.match(/^\/api\/threads\/([^/]+)\/agent-command$/)) && req.method === 'POST') return send(res, 201, rt.runAgentCommand(m[1], body));
     if ((m = path.match(/^\/api\/threads\/([^/]+)\/shell$/)) && req.method === 'POST') {
       shellAllowed(req);
