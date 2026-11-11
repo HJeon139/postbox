@@ -23,7 +23,8 @@ const FLAG = 'pb-window';
 
 /**
  * Whether the window is on in this browser: by default, the person’s choice of 8 Nov (#866). The flag set to 'off'
- * mounts every item, as before; a conversation at or under the ceiling mounts whole either way (createWindow).
+ * mounts every item, as before; a conversation within both the ceiling of items and the budget of elements mounts
+ * whole either way (createWindow).
  */
 export function windowOn() {
   try {
