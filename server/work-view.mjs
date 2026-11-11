@@ -9,28 +9,28 @@ const asHttp = (e) => {
   throw e?.status ? httpError(e.status, e.message) : e;
 };
 
-export function workConversation(rt, threadId) {
+function workConversation(rt, threadId) {
   const t = rt.thread(threadId);
   if (t.kind === 'side' || t.kind === 'topic') throw httpError(404, 'Open the conversation this thread belongs to: its work is there.');
   return t.id;
 }
 /** Where each changed file and commit stands in git now (read-only). */
 export function workGit(rt, threadId) {
-  return rt.ledger.gitState(rt.workConversation(threadId));
+  return rt.ledger.gitState(workConversation(rt, threadId));
 }
 /** @param {string} threadId @param {string} fileId @param {string|null} [changeId] */
 export function workDiff(rt, threadId, fileId, changeId = null) {
-  return rt.ledger.fileDiff(rt.workConversation(threadId), fileId, changeId).catch(asHttp);
+  return rt.ledger.fileDiff(workConversation(rt, threadId), fileId, changeId).catch(asHttp);
 }
 export function workOutput(rt, threadId, entryId) {
-  return rt.ledger.output(rt.workConversation(threadId), entryId).catch(asHttp);
+  return rt.ledger.output(workConversation(rt, threadId), entryId).catch(asHttp);
 }
 /**
  * Puts a file back as it was before the agents first changed it (or removes one they created), and says so in the
  * conversation, so its agents read it on their next turn.
  */
 export async function restoreWork(rt, threadId, fileId) {
-  const convId = rt.workConversation(threadId);
+  const convId = workConversation(rt, threadId);
   const f = await rt.ledger.restore(convId, fileId).catch(asHttp);
   const who = f?.handles?.length ? f.handles.map((h) => `@${h}`).join(', ') : 'the agents';
   rt.addItem(convId, {

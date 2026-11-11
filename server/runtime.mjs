@@ -103,7 +103,7 @@ import { askedAgain, askedOf, replyMarks, wokeOf } from './turn-marks.mjs';
 import { settleStoppedSteps, settleSubagentSteps } from './turn-steps.mjs';
 import { workEvents } from './turn-work.mjs';
 import { closeOrphanCards, liftDecline, retireStale } from './wake-cards.mjs';
-import { restoreWork, workConversation, workDiff, workGit, workOutput } from './work-view.mjs';
+import { restoreWork, workDiff, workGit, workOutput } from './work-view.mjs';
 
 export { AgentFileError } from './agent-files.mjs';
 export { httpError } from './helpers.mjs';
@@ -1740,9 +1740,6 @@ export class Runtime {
 
   // ── The work ledger’s answers to the page (#132): server/work-view.mjs ─────────────
 
-  workConversation(threadId) {
-    return workConversation(this, threadId);
-  }
   workGit(threadId) {
     return workGit(this, threadId);
   }
