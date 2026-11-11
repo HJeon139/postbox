@@ -1,15 +1,15 @@
 // What a room costs the page as its history grows (#1155, #532): the page loads what it draws, so loading the page
 // (bytes, items held, elements) stays flat from 1,000 items to 100,000, where holding every item grew with the room,
-// and going to the room from another costs what it did: two layouts, its newest item painted as soon. The scale
-// targets are 10x to 100x real use, a room of about 28,000 items and up; each size runs on a server of its own, so the
-// page's state carries that room alone.
+// and going back to the room from another costs what it did: two layouts, nothing loaded, its newest item painted as
+// soon. The scale targets are 10x to 100x real use, a room of about 28,000 items and up; each size runs on a server of
+// its own, so the page's state carries that room alone.
 
 import { expect, test } from '@playwright/test';
 import { seedBigRoom } from '../../tools/uat/big-room.mjs';
 import { failOnPageErrors, newestShown, startPostbox, synced } from './postbox.mjs';
 
 const SIZES = [1_000, 10_000, 28_000, 100_000];
-/** @type {Record<number, { bytes: number, held: number, elements: number, switchMs: number, layouts: number }>} */
+/** @type {Record<number, { bytes: number, held: number, elements: number, switchMs: number, layouts: number, switchBytes: number }>} */
 const cost = {};
 
 failOnPageErrors(test);
@@ -63,16 +63,22 @@ for (const count of SIZES)
       const last = app.store.items(room.id).at(-1).id;
       let switchMs = 0;
       let layouts = 0;
+      let switchBytes = 0;
+      const loaded = bytes;
       for (let i = 0; i < 2; i++) {
         await switchTo(page, other.id, app.store.items(other.id).at(-1).id);
         const before = await layoutsNow();
+        const bytesBefore = bytes;
         switchMs = await switchTo(page, room.id, last);
         layouts = (await layoutsNow()) - before;
+        switchBytes = bytes - bytesBefore;
       }
-      cost[count] = { bytes, held, elements, switchMs, layouts };
+      cost[count] = { bytes: loaded, held, elements, switchMs, layouts, switchBytes };
       test.info().annotations.push({ type: 'measured', description: JSON.stringify(cost[count]) });
       console.log(`OPEN ${count} ${JSON.stringify(cost[count])}`);
       expect(layouts, 'layouts going to the room, as many as on main').toBeLessThanOrEqual(2);
+      // Back to a room left a moment ago: it's warm (open-threads.mjs), so nothing is loaded, as on main.
+      expect(switchBytes, 'bytes loaded going back to the room').toBe(0);
     } finally {
       // The page goes first, so its stream doesn't see the server leave.
       await page.close();

@@ -46,37 +46,52 @@ function load(threadId, query, how) {
   return next;
 }
 
-/** Conversations whose last view closed in this task: one drawn again in it (a view rebuilt) keeps its items. */
-const closing = new Set();
+/**
+ * How many conversations whose last view closed stay warm: their range kept, and the stream still sending their item
+ * events, so going back to one is as quick as on main, which held every item, with no load. Past it, the one closed
+ * longest ago lets its items go. A view drawn again in the same task (an agent joining) is one of these too.
+ */
+const WARM = 3;
+/** The warm conversations, the one closed longest ago first. @type {Set<string>} */
+const warm = new Set();
+
+/** Lets a conversation's items, range and loads go, and the stream stop sending its item events. @param {string} threadId */
+function release(threadId) {
+  warm.delete(threadId);
+  client.open.delete(threadId);
+  queues.delete(threadId);
+  forget(client.state, client.ranges, threadId);
+  reopen();
+}
 
 /**
  * A view of the conversation opened: the first loads its items (every one with the transcript window off, which mounts
- * them all), and the stream starts sending its item events. @param {string} threadId
+ * them all), and the stream starts sending its item events; a warm one has them already. @param {string} threadId
  */
 export function openThread(threadId) {
   const views = client.open.get(threadId) ?? 0;
   client.open.set(threadId, views + 1);
-  if (closing.delete(threadId) || views) return;
+  if (warm.delete(threadId) || views) return;
   reopen();
   void load(threadId, `?limit=${windowOn() ? PAGE : 'all'}`, 'replace');
 }
 
 /**
- * A view of the conversation closed: with the last, the page lets go of its items, once the task is over, unless a view
- * opened it again meanwhile, as a view that’s drawn again does. @param {string} threadId
+ * A view of the conversation closed: with the last, it stays warm, and the one closed longest ago past WARM lets its
+ * items go. @param {string} threadId
  */
 export function closeThread(threadId) {
   const views = (client.open.get(threadId) ?? 1) - 1;
-  if (views > 0) return client.open.set(threadId, views);
-  client.open.delete(threadId);
-  closing.add(threadId);
-  queueMicrotask(() => {
-    if (!closing.delete(threadId)) return;
-    queues.delete(threadId);
-    forget(client.state, client.ranges, threadId);
-    reopen();
-  });
+  client.open.set(threadId, views);
+  if (views > 0) return;
+  warm.add(threadId);
+  for (const id of warm) if (warm.size > WARM) release(id);
 }
+
+// A conversation deleted lets its items go at once, warm or not.
+client.on((ch) => {
+  if (ch.type === 'remove' && ch.data?.kind === 'thread' && warm.has(ch.data.id)) release(ch.data.id);
+});
 
 /** Loads an open conversation’s latest items again, in place of the range it holds. @param {string} threadId */
 export async function refresh(threadId) {
