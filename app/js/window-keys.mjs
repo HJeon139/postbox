@@ -1,7 +1,7 @@
 // Home and End over a long conversation (#866). The browser scrolls there smoothly, and the window’s first mount on
 // the way writes the scroll position, which ends that scroll a little way along. So while the page has the keys
-// (focus on nothing in particular, not in a field or on a control), the window takes them itself: the range moves to
-// the first or the newest item, and the view goes there at once.
+// (focus not in a field, a widget of its own or another scroll container), the window takes them itself: the range
+// moves to the first or the newest item, and the view goes there at once.
 
 /** Where the last click or touch was: Home and End belong to the scroll container it was in. @type {Element | null} */
 let lastDown = null;
@@ -16,11 +16,21 @@ function inOtherScroller(el) {
   return false;
 }
 
-/** Whether a key press is the page’s own Home or End, not a field’s, a control’s or another scroll container’s. @param {KeyboardEvent} e */
+/** Where Home and End are the element's own: a field, or a widget that moves its own selection with them. */
+const OWN_KEYS =
+  'input, textarea, select, [contenteditable], [role="listbox"], [role="menu"], [role="menubar"], [role="tablist"], [role="tree"], [role="grid"], [role="slider"], [role="spinbutton"]';
+
+/**
+ * Whether a key press is the page’s own Home or End, not a field’s, a widget’s or another scroll container’s: with
+ * focus on the page, the transcript (a click there, #1155’s UAT) or a button or link, where the browser scrolls the page.
+ * @param {KeyboardEvent} e
+ */
 const pageEdgeKey = (e) =>
   (e.key === 'Home' || e.key === 'End') &&
   !(e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) &&
-  (e.target === document.body || e.target === document.documentElement) &&
+  e.target instanceof Element &&
+  !e.target.closest(OWN_KEYS) &&
+  !inOtherScroller(e.target) &&
   !(lastDown && inOtherScroller(lastDown));
 
 /**
