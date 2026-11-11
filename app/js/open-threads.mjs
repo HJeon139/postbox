@@ -41,6 +41,9 @@ function load(threadId, query, how) {
   return next;
 }
 
+/** Conversations whose last view closed in this task: one drawn again in it (a view rebuilt) keeps its items. */
+const closing = new Set();
+
 /**
  * A view of the conversation opened: the first loads its items (every one with the transcript window off, which mounts
  * them all), and the stream starts sending its item events. @param {string} threadId
@@ -48,19 +51,26 @@ function load(threadId, query, how) {
 export function openThread(threadId) {
   const views = client.open.get(threadId) ?? 0;
   client.open.set(threadId, views + 1);
-  if (views) return;
+  if (closing.delete(threadId) || views) return;
   reopen();
   void load(threadId, `?limit=${windowOn() ? PAGE : 'all'}`, 'replace');
 }
 
-/** A view of the conversation closed: with the last, the page lets go of its items. @param {string} threadId */
+/**
+ * A view of the conversation closed: with the last, the page lets go of its items, once the task is over, unless a view
+ * opened it again meanwhile, as a view that’s drawn again does. @param {string} threadId
+ */
 export function closeThread(threadId) {
   const views = (client.open.get(threadId) ?? 1) - 1;
   if (views > 0) return client.open.set(threadId, views);
   client.open.delete(threadId);
-  queues.delete(threadId);
-  forget(client.state, client.ranges, threadId);
-  reopen();
+  closing.add(threadId);
+  queueMicrotask(() => {
+    if (!closing.delete(threadId)) return;
+    queues.delete(threadId);
+    forget(client.state, client.ranges, threadId);
+    reopen();
+  });
 }
 
 /** Loads an open conversation’s latest items again, in place of the range it holds. @param {string} threadId */
