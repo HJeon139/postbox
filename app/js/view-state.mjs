@@ -3,7 +3,7 @@
 // It owns that state for one transcript, holds the anchor through changes in size (#88, #297, #341), and publishes what
 // it is on the transcript as data-view-* (publish, view-publish.mjs). Moved from thread.mjs’s mountTranscript (#531).
 
-import { browserMoved, inSight, measure } from './view-box.mjs';
+import { browserMoved, measure } from './view-box.mjs';
 /**
  * @typedef {{ el: HTMLElement, inPanel: boolean, nodes: Map<string, HTMLElement>, unseen: number, stuck: boolean,
  *   anchor: { key: string, at: number, shown?: number } | null, pinned: boolean, smoothing: boolean, dead: boolean,
@@ -12,13 +12,14 @@ import { browserMoved, inSight, measure } from './view-box.mjs';
  *   changed?: boolean, noted?: number }} View
  */
 import { onlyRemoves } from './view-changes.mjs';
-import { atEnd, box, findAnchor, gapOf, heldBy, viewTop } from './view-geometry.mjs';
+import { atEnd, box, findAnchor, gapOf, viewTop } from './view-geometry.mjs';
 import { register, unregister } from './view-jump.mjs';
+import { jumpable } from './view-jumpable.mjs';
 import { newView } from './view-new.mjs';
 import { countUnseen, PILL_ROOM, seen, showJump } from './view-pill.mjs';
 import { publish } from './view-publish.mjs';
 import { DRAWN, drawNewest, skipOffscreen } from './view-skip.mjs';
-import { halt, landed, smoothEnded, whenSmoothEnds } from './view-smooth.mjs';
+import { landed, smoothEnded, whenSmoothEnds } from './view-smooth.mjs';
 
 /** @param {View} v */
 function holdAnchor(v) {
@@ -239,31 +240,6 @@ function grew(v) {
   }
   if (!v.stuck) countUnseen(v);
 }
-
-/**
- * After a jump has put item where it was sent: it’s the anchor, kept until you scroll (#712, view-jump.mjs).
- * @param {View} v @param {HTMLElement} item
- */
-function pin(v, item) {
-  const s = box(v);
-  if (!s || v.dead) return;
-  v.stuck = atEnd(s);
-  v.pinned = !v.stuck;
-  if (v.stuck) v.held = measure(v, s);
-  v.anchor = { key: /** @type {string} */ (item.dataset.key), at: item.getBoundingClientRect().top - viewTop(v, s) };
-  v.lastTop = s.scrollTop;
-  if (gapOf(s) <= PILL_ROOM) seen(v);
-  showJump(v, s);
-  publish(v);
-}
-/** What view-jump.mjs needs of a view. @param {View} v */
-const jumpable = (v) => ({
-  box: () => box(v),
-  seen: () => inSight(v),
-  halt: () => halt(v),
-  pin: (/** @type {HTMLElement} */ item) => pin(v, item),
-  held: () => heldBy(v),
-});
 
 /**
  * The view of one transcript.
