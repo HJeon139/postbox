@@ -79,6 +79,16 @@ export async function refresh(threadId) {
   if (client.open.has(threadId)) await load(threadId, `?limit=${windowOn() ? PAGE : 'all'}`, 'replace');
 }
 
+/**
+ * Opens a conversation and resolves once its first load has landed (or failed), for a view that mounts with its items,
+ * as one the page holds already does: drawn empty first and filled a fetch later, it laid out twice and showed nothing
+ * meanwhile (#1155). The caller closes it once the view has opened it too. @param {string} threadId
+ */
+export async function whenLoaded(threadId) {
+  openThread(threadId);
+  await queues.get(threadId);
+}
+
 /** Loads an open conversation’s first items, for Home, in place of the range it holds. @param {string} threadId */
 export async function toFirst(threadId) {
   if (client.open.has(threadId)) await load(threadId, `?first&limit=${PAGE}`, 'replace');

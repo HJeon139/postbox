@@ -11,6 +11,7 @@ import './keys.mjs';
 import { startLagLog } from './lag-log.mjs';
 import { goHome, lastIn, latestIn, remember } from './last-place.mjs';
 import { notify } from './notify-toast.mjs';
+import { closeThread, loaded, whenLoaded } from './open-threads.mjs';
 import { mountPane } from './pane.mjs';
 import { canonical } from './pane-route.mjs';
 import { theme } from './sandbox-libs.mjs';
@@ -27,7 +28,24 @@ let pane = null;
 /** The open conversation’s column beside the rail and any pane, kept so the view report reads its width without a scan. */
 let conversation = null;
 /** @param {{ rebuild?: boolean }} [opts]  rebuild: the whole view, even when only the pane changed */
-function render({ rebuild = false } = {}) {
+/**
+ * A conversation whose items the page hasn't loaded: what shows stays until they're here, then the route renders
+ * again and it opens with them, drawn once (open-threads.mjs, whenLoaded). One whose load failed opens once it's
+ * over, and its view loads it again. Says whether render waits.
+ * @param {any} r @param {boolean} rebuild @param {string | undefined} waited  the conversation render already waited for
+ */
+function heldForItems(r, rebuild, waited) {
+  if (r.view !== 'thread' || r.threadId === waited || !client.state.threads[r.threadId] || loaded(r.threadId)) return false;
+  const id = r.threadId;
+  void whenLoaded(id).then(() => {
+    if (route().threadId === id) render({ rebuild, waited: id });
+    closeThread(id);
+  });
+  return true;
+}
+
+/** @param {{ rebuild?: boolean, waited?: string }} [o] */
+function render({ rebuild = false, waited = undefined } = {}) {
   const r = route();
   const to = canonical(r, current);
   if (to) {
@@ -43,6 +61,7 @@ function render({ rebuild = false } = {}) {
     view(r.threadId);
     return;
   }
+  if (heldForItems(r, rebuild, waited)) return;
   for (const m of mounted) m.destroy?.();
   mounted = [];
   pane = null;
