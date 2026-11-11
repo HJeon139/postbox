@@ -17,15 +17,18 @@ const queues = new Map();
 /**
  * Runs a load for a conversation after the ones before it; places its answer and tells the page, unless the
  * conversation was closed, or the state replaced (a resync, which loads its ranges itself), meanwhile.
- * @param {string} threadId @param {string} query @param {'replace' | 'before' | 'after'} how
+ * The query is read when the load runs, if it's a function: null then loads nothing.
+ * @param {string} threadId @param {string | (() => string | null)} query @param {'replace' | 'before' | 'after'} how
  */
 function load(threadId, query, how) {
   const run = async () => {
     // A conversation deleted meanwhile has nothing to load: the server would answer 404.
     if (!client.open.has(threadId) || !client.state.threads[threadId]) return;
+    const q = typeof query === 'function' ? query() : query;
+    if (q === null) return;
     const ranges = client.ranges;
     const range = loading(ranges, threadId);
-    const answer = await fetchRange(threadId, query).catch(() => null);
+    const answer = await fetchRange(threadId, q).catch(() => null);
     // Closed meanwhile, and maybe opened again with a range of its own: this answer is for the range it was asked for.
     if (client.ranges !== ranges || !client.open.has(threadId) || ranges.get(threadId) !== range) return;
     if (!answer || (answer.epoch ?? client.epoch) !== client.epoch) {
@@ -134,11 +137,20 @@ const growing = new Set();
 /** Loads the next range past an edge of what’s loaded, once at a time per edge. @param {string} threadId @param {'before' | 'after'} side */
 export function grow(threadId, side) {
   const key = `${threadId}\n${side}`;
+  if (growing.has(key) || !edgeQuery(threadId, side)) return;
+  growing.add(key);
+  // The edge is read when the load runs: a load queued before it may replace the range (a reload, Home, a jump).
+  void load(threadId, () => edgeQuery(threadId, side), side).finally(() => growing.delete(key));
+}
+
+/**
+ * The query for the range past an edge of what the page holds now, or null when there's nothing more there.
+ * @param {string} threadId @param {'before' | 'after'} side
+ */
+function edgeQuery(threadId, side) {
   const list = client.state.items[threadId] ?? [];
   const edge = side === 'before' ? list[0] : list.at(-1);
-  if (!edge || growing.has(key) || !more(threadId, side)) return;
-  growing.add(key);
-  void load(threadId, `?${side}=${encodeURIComponent(edge.id)}&limit=${PAGE}`, side).finally(() => growing.delete(key));
+  return edge && more(threadId, side) ? `?${side}=${encodeURIComponent(edge.id)}&limit=${PAGE}` : null;
 }
 
 /**

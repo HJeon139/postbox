@@ -75,3 +75,20 @@ test('the kept head, for Home, follows what the page hears: during its load and 
   );
   assert.equal(ranges.get('t').start, 0);
 });
+
+test('a joined load that doesn’t touch the range isn’t placed, and the latest range is asked for again', () => {
+  // The page holds [80,100); a load asked for the 20 before item 50, from a range it held before a reload.
+  const state = { items: { t: items(80, 100) } };
+  const ranges = new Map();
+  loading(ranges, 't');
+  place(state, ranges, { threadId: 't', seq: 10, start: 80, total: 100, items: items(80, 100) }, 'replace');
+  loading(ranges, 't');
+  const again = place(state, ranges, { threadId: 't', seq: 11, start: 30, total: 100, items: items(30, 50) }, 'before');
+  assert.equal(again, true, 'load the latest again');
+  assert.deepEqual(
+    state.items.t.map((x) => x.id),
+    items(80, 100).map((x) => x.id),
+    'the range is as it was, with no hole',
+  );
+  assert.equal(ranges.get('t').start, 80);
+});

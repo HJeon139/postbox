@@ -151,7 +151,8 @@ export function loading(ranges, threadId) {
  * Puts a load in place: in place of the range ('replace'), or joined to it above ('before') or below ('after'). Then
  * applies again the events heard since the load’s seq that it couldn’t hold: every one, for a replaced range; for a
  * joined one, those not applied to the range it had. A load from another history (an answer as of a seq the page passed
- * on another epoch) is the caller’s to refuse. Says whether to load the latest range again.
+ * on another epoch) is the caller’s to refuse, and a joined one that doesn’t touch the range isn’t placed. Says whether
+ * to load the latest range again.
  * @param {any} state @param {Map<string, Range>} ranges @param {Answer} answer @param {'replace' | 'before' | 'after'} how
  * @returns {boolean}
  */
@@ -160,6 +161,13 @@ export function place(state, ranges, answer, how) {
   if (!r) return false;
   r.loads = Math.max(0, r.loads - 1);
   const list = state.items[answer.threadId] ?? [];
+  // A load past an edge joins only where it touches the range: one asked for an edge the range no longer has (a
+  // replace landed first) would leave a hole in it. The latest range is loaded again instead.
+  const touches = how === 'before' ? answer.start + answer.items.length === r.start : answer.start === r.start + list.length;
+  if (how !== 'replace' && !touches) {
+    if (!r.loads) r.heard = [];
+    return true;
+  }
   if (how === 'replace') {
     state.items[answer.threadId] = answer.items.slice();
     Object.assign(r, { start: answer.start, total: answer.total, seq: answer.seq });
