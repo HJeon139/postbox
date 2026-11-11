@@ -68,8 +68,8 @@ export async function load() {
 function refillQuery(r, list) {
   if (!windowOn()) return '?limit=all';
   const mid = r && r.start + list.length < r.total ? list[list.length >> 1]?.id : null;
-  // With the first items, for Home, as the opening load has them (open-threads.mjs).
-  return mid ? `?around=${encodeURIComponent(mid)}&head=200` : '?head=200';
+  // With the first items, for Home, and those around the open asks, for ⌃J, as the opening load has them (open-threads.mjs).
+  return mid ? `?around=${encodeURIComponent(mid)}&head=200&asks=100` : '?head=200&asks=100';
 }
 
 /**

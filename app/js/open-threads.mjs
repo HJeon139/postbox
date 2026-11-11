@@ -5,11 +5,13 @@
 
 import { positionOf } from '/shared/item-index.mjs';
 import { client, reopen } from './client.mjs';
-import { atEnd, fetchRange, forget, loading, place, placeHead, placeTail } from './item-ranges.mjs';
+import { atEnd, fetchRange, forget, loading, place, placeAround, placeHead, placeTail } from './item-ranges.mjs';
 import { windowOn } from './window-flag.mjs';
 
 /** How many items a load asks for: about what the transcript window mounts as it opens. */
 const PAGE = 200;
+/** How many items are kept around each open ask, for ⌃J and the open-asks link: what the window mounts around one. */
+const AROUND_ASK = 100;
 
 /** @type {Map<string, Promise<unknown>>} */
 const queues = new Map();
@@ -72,8 +74,9 @@ export function openThread(threadId) {
   client.open.set(threadId, views + 1);
   if (warm.delete(threadId) || views) return;
   reopen();
-  // With its first items, if the range doesn't start there: Home is in place before any key can reach it.
-  void load(threadId, windowOn() ? `?limit=${PAGE}&head=${PAGE}` : '?limit=all', 'replace');
+  // With its first items, if the range doesn't start there, and those around its open asks: Home, ⌃J and an agent's
+  // open-asks link are in place before any key or click can reach them.
+  void load(threadId, windowOn() ? `?limit=${PAGE}&head=${PAGE}&asks=${AROUND_ASK}` : '?limit=all', 'replace');
 }
 
 /**
@@ -172,6 +175,11 @@ export async function reach(threadId, itemId) {
   for (const end = Date.now() + 3000; !client.open.has(threadId) && Date.now() < end; ) await new Promise((r) => requestAnimationFrame(r));
   await queues.get(threadId);
   if (held() || !client.open.has(threadId)) return held();
+  // Kept since the conversation opened, around an ask or at an end: placed with no load.
+  if (placeAround(client.state, client.ranges, threadId, itemId, client.seq)) {
+    client.emit({ type: 'range', data: { threadId, how: 'replace', anchor: itemId } });
+    return true;
+  }
   await load(threadId, `?around=${encodeURIComponent(itemId)}&limit=${PAGE}`, 'replace');
   return held();
 }

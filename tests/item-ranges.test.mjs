@@ -13,7 +13,7 @@ const shared = pathToFileURL(join(import.meta.dirname, '../shared/')).href;
 const src = (await readFile(new URL('../app/js/item-ranges.mjs', import.meta.url), 'utf8')).replaceAll("'/shared/", `'${shared}`);
 const file = join(await tempDir('pb-item-ranges-'), 'item-ranges.mjs');
 await writeFile(file, src);
-const { gate, loading, place, placeHead, placeTail } = await import(pathToFileURL(file).href);
+const { gate, loading, place, placeAround, placeHead, placeTail } = await import(pathToFileURL(file).href);
 
 const it = (n, text = `m${n}`) => ({ id: `i${n}`, kind: 'message', text });
 /** An event as the page's client hears it (client.mjs, hear): judged by gate, then applied where it says so. */
@@ -120,4 +120,36 @@ test('after Home, the newest range is kept as the tail, follows what the page he
   assert.equal(ranges.get('t').start, 95, 'where the newest six start in 101');
   assert.equal(placeHead(state, ranges, 't', 13), true, 'Home again, from the head kept by End');
   assert.equal(state.items.t[1].text, 'edited');
+});
+
+test('the items kept around an ask follow what the page hears, and a jump to it puts them in place, the newest kept for End', () => {
+  // The page opens on [95,100) as of seq 10 with [38,43) kept around the ask at 40; a patch to it came at seq 11, before
+  // the answer landed.
+  const state = { items: {} };
+  const ranges = new Map();
+  loading(ranges, 't');
+  gate(state, ranges, 'item.patch', { threadId: 't', id: 'i40', patch: { text: 'answered' } }, 11);
+  place(
+    state,
+    ranges,
+    { threadId: 't', seq: 10, start: 95, total: 100, items: items(95, 100), asks: [{ id: 'i40', start: 38, items: items(38, 43) }] },
+    'replace',
+  );
+  hear(state, ranges, 'item.text', { threadId: 't', id: 'i41', text: '+chunk' }, 12);
+  hear(state, ranges, 'item.add', { threadId: 't', item: it(100) }, 13);
+  assert.equal(placeAround(state, ranges, 't', 'i77', 13), false, 'nothing kept around an item that isn’t near an ask');
+  assert.equal(placeAround(state, ranges, 't', 'i40', 13), true, 'the jump');
+  assert.deepEqual(
+    state.items.t.map((x) => `${x.id}:${x.text}`),
+    ['i38:m38', 'i39:m39', 'i40:answered', 'i41:m41+chunk', 'i42:m42'],
+  );
+  assert.equal(ranges.get('t').start, 38);
+  hear(state, ranges, 'item.patch', { threadId: 't', id: 'i40', patch: { text: 'and again' } }, 14);
+  assert.equal(ranges.get('t').asks[0].items[2].text, 'and again', 'the kept copy follows too, for the next jump');
+  assert.equal(state.items.t[2].text, 'and again', 'and the range, once');
+  assert.equal(placeTail(state, ranges, 't', 14), true, 'End, with no load');
+  assert.deepEqual(
+    state.items.t.map((x) => x.id),
+    ['i95', 'i96', 'i97', 'i98', 'i99', 'i100'],
+  );
 });

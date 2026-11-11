@@ -12,8 +12,9 @@ import { apply } from '/shared/state.mjs';
 
 /**
  * @typedef {{ type: string, data: any, seq: number, applied: boolean }} Heard
- * @typedef {{ start: number, total: number, seq: number, loads: number, heard: Heard[], beyond?: { items: Record<string, any[]> }, head?: any[], tail?: any[] }} Range
- * @typedef {{ threadId: string, seq: number, start: number, total: number, items: any[], head?: any[] }} Answer
+ * @typedef {{ id: string, start: number, items: any[] }} AskRange
+ * @typedef {{ start: number, total: number, seq: number, loads: number, heard: Heard[], beyond?: { items: Record<string, any[]> }, head?: any[], tail?: any[], asks?: AskRange[] }} Range
+ * @typedef {{ threadId: string, seq: number, start: number, total: number, items: any[], head?: any[], asks?: AskRange[] }} Answer
  */
 
 /** A conversation’s items from the server: the latest, or before, after or around an item. @param {string} threadId @param {string} [query] */
@@ -44,6 +45,7 @@ export function gate(state, ranges, type, d, seq) {
   keepBeyond(r, type, d, verdict);
   keepHead(r, type, d);
   keepTail(r, type, d);
+  keepAsks(r, type, d);
   return verdict;
 }
 
@@ -59,6 +61,22 @@ function keepHead(r, type, d) {
     r.head[at] = d.stub;
     noteReplaced(r.head, at);
   } else apply({ items: { [d.threadId]: r.head } }, type, d);
+}
+
+/**
+ * The items around the asks ⌃J and the open-asks link go to (a load's asks, place), current from their own events as
+ * the head is. @param {Range} r @param {string} type @param {any} d
+ */
+function keepAsks(r, type, d) {
+  if (type === 'item.add') return;
+  for (const ask of r.asks ?? []) {
+    const at = positionOf(ask.items, d.id);
+    if (at < 0) continue;
+    if (type === 'item.move') {
+      ask.items[at] = d.stub;
+      noteReplaced(ask.items, at);
+    } else apply({ items: { [d.threadId]: ask.items } }, type, d);
+  }
 }
 
 /**
@@ -83,9 +101,31 @@ export function placeHead(state, ranges, threadId, seq) {
   const r = ranges.get(threadId);
   if (!r?.head || r.loads > 0) return false;
   const list = state.items[threadId] ?? [];
-  const tail = atEnd(list, r) ? list : undefined;
+  const tail = atEnd(list, r) ? list : r.tail;
   state.items[threadId] = r.head;
   Object.assign(r, { start: 0, seq, head: undefined, tail });
+  return true;
+}
+
+/**
+ * Puts the items kept around an item in place as the range, with no load, for a jump to it: the head or the tail when
+ * they hold it, else the range kept around one of the asks. Says whether it could. The range it replaces is kept as the
+ * tail, if it held the newest items, or the head, if it held the first.
+ * @param {any} state @param {Map<string, Range>} ranges @param {string} threadId @param {string} itemId @param {number} seq
+ */
+export function placeAround(state, ranges, threadId, itemId, seq) {
+  const r = ranges.get(threadId);
+  if (!r || r.loads > 0) return false;
+  if (r.head && positionOf(r.head, itemId) >= 0) return placeHead(state, ranges, threadId, seq);
+  if (r.tail && positionOf(r.tail, itemId) >= 0) return placeTail(state, ranges, threadId, seq);
+  const ask = r.asks?.find((a) => positionOf(a.items, itemId) >= 0);
+  if (!ask) return false;
+  const list = state.items[threadId] ?? [];
+  if (atEnd(list, r)) r.tail = list;
+  else if (r.start === 0) r.head = list;
+  // A copy: the kept items stay current from their own events, and the range's from the state's.
+  state.items[threadId] = structuredClone(ask.items);
+  Object.assign(r, { start: ask.start, seq });
   return true;
 }
 
@@ -193,6 +233,11 @@ export function place(state, ranges, answer, how) {
     if (answer.head) {
       r.head = answer.head.slice();
       for (const e of r.heard) if (e.seq > answer.seq) keepHead(r, e.type, e.data);
+    }
+    // And the items around the open asks, likewise.
+    if (answer.asks) {
+      r.asks = answer.asks;
+      for (const e of r.heard) if (e.seq > answer.seq) keepAsks(r, e.type, e.data);
     }
   } else if (how === 'before') {
     const fresh = answer.items.filter((it) => positionOf(list, it.id) < 0);

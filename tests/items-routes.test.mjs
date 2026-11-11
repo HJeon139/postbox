@@ -3,7 +3,7 @@
 
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
-import { ALL_MOST, rangeOf } from '../server/items-routes.mjs';
+import { ALL_MOST, asksIn, rangeOf } from '../server/items-routes.mjs';
 import { threadSearch } from '../server/thread-search.mjs';
 import { MOST_TERMS, SearchIndex } from '../shared/search-index.mjs';
 import { apply, emptyState } from '../shared/state.mjs';
@@ -145,4 +145,37 @@ test('a search scores at most MOST_TERMS distinct words of its query', () => {
   const words = Array.from({ length: MOST_TERMS }, (_, i) => `word${String.fromCharCode(97 + (i % 26))}${i}`);
   assert.equal(ix.search(`${words.join(' ')} zebra`).length, 0, 'the word past the cap isn’t scored');
   assert.equal(ix.search(`${words.slice(1).join(' ')} zebra`).length, 1, 'within the cap it is');
+});
+
+/** An asking block of a session's, open until it's answered. */
+const askOf = (/** @type {number} */ i, /** @type {string} */ sessionId) => ({
+  id: `a${i}`,
+  kind: 'block',
+  sessionId,
+  valid: true,
+  block: { id: `b${i}`, type: 'choice', version: 1, title: 'Which?', fallback: 'Which?', options: [{ id: 'x', label: 'X' }] },
+  at: i,
+});
+
+test('asks=N: the N items around each agent’s need and its first other open ask, not the rest, nor what the answer holds', async () => {
+  // In 300 items, @one asked at 40, 120 and 200 and needs you at 120; @two asked at 260, in the latest range, and needs you there.
+  app.store.emit('thread', { id: 'asking', members: [] });
+  const at = { 40: 'se_one', 120: 'se_one', 200: 'se_one', 260: 'se_two' };
+  for (let i = 0; i < 300; i++)
+    app.store.emit('item.add', { threadId: 'asking', item: at[i] ? askOf(i, at[i]) : { id: `q${i}`, kind: 'user', text: `m${i}`, at: i } });
+  app.store.emit('session', { id: 'se_one', handle: 'one', threadId: 'asking', state: 'needs', needs: { kind: 'block', itemId: 'a120' } });
+  app.store.emit('session', { id: 'se_two', handle: 'two', threadId: 'asking', state: 'needs', needs: { kind: 'block', itemId: 'a260' } });
+  const r = await get('/api/threads/asking/items?limit=100&asks=10');
+  const kept = r.json.asks.map((/** @type {any} */ a) => [a.id, a.start, a.items.length, a.items[5].id]);
+  assert.deepEqual(
+    kept.sort(),
+    [
+      ['a120', 115, 10, 'a120'],
+      ['a40', 35, 10, 'a40'],
+    ],
+    '@one’s need and its first other open ask; not its third, and not @two’s, which the range holds',
+  );
+  assert.equal((await get('/api/threads/asking/items?limit=100')).json.asks, undefined, 'none unless asked for');
+  assert.equal((await get('/api/threads/asking/items?limit=100&asks=10&head=60')).json.asks.length, 1, 'none the head holds');
+  assert.deepEqual([...asksIn(app.store.state, 'asking', [])], ['a120', 'a260'], 'with no open asks, the needs alone');
 });

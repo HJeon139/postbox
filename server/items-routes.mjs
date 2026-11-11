@@ -4,6 +4,7 @@
 // events after them.
 
 import { positionOf } from '../shared/item-index.mjs';
+import { needsYouNow, whereNeeds } from '../shared/needs.mjs';
 import { searchText } from '../shared/search-text.mjs';
 import { clipText, httpError } from './helpers.mjs';
 import { publicItems } from './public-state.mjs';
@@ -55,11 +56,46 @@ function decodedId(raw) {
 }
 
 /**
+ * The asks in a thread an agent's need or its “1 open choice” link goes to: each agent's need here, and the first of its
+ * other open asks, at most two an agent, so what the page keeps of them doesn't grow with how often agents ask.
+ * @param {any} state @param {string} threadId @param {{ id: string, sessionId: string }[]} open  the thread's open asks, in order
+ */
+export function asksIn(state, threadId, open) {
+  const ids = new Set();
+  for (const se of Object.values(state.sessions ?? {})) {
+    if (!se || se.archived) continue;
+    const need = needsYouNow(se) && whereNeeds(state, se) === threadId ? se.needs.itemId : null;
+    if (need) ids.add(need);
+    const other = open.find((ask) => ask.sessionId === se.id && ask.id !== se.needs?.itemId);
+    if (other) ids.add(other.id);
+  }
+  return ids;
+}
+
+/**
+ * The `n` items around each of a thread's asks (asksIn) that [start, end) and the head don't hold: a jump to one, by ⌃J
+ * or an agent's open-asks link, is placed with no load (#1155).
+ * @param {any} state @param {string} threadId @param {any[]} list @param {{ id: string, sessionId: string }[]} open
+ * @param {number} n @param {number} start @param {number} end @param {number} head
+ */
+function asksAround(state, threadId, list, open, n, start, end, head) {
+  const kept = [];
+  for (const id of asksIn(state, threadId, open)) {
+    const at = positionOf(list, id);
+    if (at < 0 || (at >= start && at < end) || at < head) continue;
+    const r = rangeOf(list, new URLSearchParams({ around: id, limit: String(n) }));
+    kept.push({ id, start: r.start, items: list.slice(r.start, r.end) });
+  }
+  return kept;
+}
+
+/**
  * GET /api/threads/:id/items and /api/threads/:id/search, or null for any other request.
  * @param {{ state: any, epoch: string }} store @param {{ search: (threadId: string, q: string, k: number) => any[] }} search
  * @param {string} path @param {string | undefined} method @param {URL} url
+ * @param {{ of: (threadId: string) => { asks: { id: string, sessionId: string }[] } | null }} [headers]  the threads' headers, for `asks`
  */
-export function itemsRoute(store, search, path, method, url) {
+export function itemsRoute(store, search, path, method, url, headers) {
   const m = method === 'GET' ? path.match(/^\/api\/threads\/([^/]+)\/(items|search)$/) : null;
   if (!m) return null;
   const threadId = decodedId(m[1]);
@@ -70,7 +106,17 @@ export function itemsRoute(store, search, path, method, url) {
     const { start, end } = rangeOf(list, url.searchParams);
     // head=N: a range that doesn't start at the first item comes with the first N, at most MOST, for Home (#1155).
     const head = Math.min(MOST, Math.max(0, Math.floor(Number(url.searchParams.get('head'))) || 0));
-    return { ...as, start, items: list.slice(start, end), ...(head && start > 0 ? { head: list.slice(0, head) } : {}) };
+    // asks=N: with the N items around each open ask the answer doesn't hold, at most MOST, for ⌃J and the open-asks link.
+    const n = Math.min(MOST, Math.max(0, Math.floor(Number(url.searchParams.get('asks'))) || 0));
+    const open = n && headers ? (headers.of(threadId)?.asks ?? []) : [];
+    const asks = n ? asksAround(store.state, threadId, list, open, n, start, end, start > 0 ? head : 0) : [];
+    return {
+      ...as,
+      start,
+      items: list.slice(start, end),
+      ...(head && start > 0 ? { head: list.slice(0, head) } : {}),
+      ...(asks.length ? { asks } : {}),
+    };
   }
   const hits = search.search(threadId, (url.searchParams.get('q') ?? '').slice(0, QUERY_MOST), HITS).map((hit) => {
     const it = list[positionOf(list, hit.id)];
