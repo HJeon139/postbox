@@ -110,7 +110,12 @@ function hear(t, e) {
 }
 
 let es = null;
-export function connect() {
+/**
+ * Opens the page's stream, in place of any open one. `quiet`: the page's own reconnect for the conversations it has
+ * open (reopen), which from open to open tells the rest of the page nothing, as the outbox and app checks hear a
+ * connection's return. @param {{ quiet?: boolean }} [o]
+ */
+export function connect({ quiet = false } = {}) {
   es?.close();
   // Item events only for the conversations open here (#1155); every other event, and each thread’s header, for all.
   const open = encodeURIComponent([...client.open.keys()].join(','));
@@ -119,7 +124,7 @@ export function connect() {
     const was = client.connection;
     client.connection = 'open';
     client.attempts = 0;
-    client.emit({ type: 'connection', was });
+    if (!quiet || was !== 'open') client.emit({ type: 'connection', was });
   };
   es.onerror = () => {
     client.attempts++;
@@ -161,7 +166,7 @@ export function reopen() {
   reopening = true;
   queueMicrotask(() => {
     reopening = false;
-    if (es && !resyncing) connect();
+    if (es && !resyncing) connect({ quiet: true });
   });
 }
 
