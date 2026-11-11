@@ -18,7 +18,7 @@ function pageWith(transcripts, { frames = true } = {}) {
   const item = (key, top) => ({ dataset: { key }, getBoundingClientRect: () => ({ top: typeof top === 'function' ? top(frame) : top }) });
   const els = transcripts.map((t) => ({
     id: t.where === 'main' ? 'main' : '',
-    dataset: { thread: t.thread ?? 't_big', viewMode: t.mode, viewAnchor: t.anchor ?? '', viewOffset: t.offset ?? '' },
+    dataset: { thread: t.thread ?? 't_big', viewMode: t.mode, viewAnchor: t.anchor ?? '', viewOffset: t.offset ?? '', viewMoving: t.moving ?? '' },
     children: Object.entries(t.items ?? {}).map(([key, top]) => item(key, top)),
     parentElement: { getBoundingClientRect: () => ({ top: 100 }), scrollHeight: 5000, scrollTop: 4000, clientHeight: 600 },
   }));
@@ -89,6 +89,12 @@ test('the probe marks a sample unsettled when two reads a frame apart differ by 
 test('the probe marks a sample unsettled when no frame came to read it again', async () => {
   const page = pageWith([{ where: 'main', mode: 'reading', anchor: 'it_b', offset: '100', items: { it_b: 100 } }], { frames: false });
   assert.equal((await sampleViews(evIn(page), {}))[0].settled, false);
+});
+
+test('the probe marks a sample unsettled while the view’s jump to the end is still running, though nothing moved yet (#1238)', async () => {
+  const page = (moving) => pageWith([{ where: 'main', mode: 'following', moving, items: { it_a: 10 } }]);
+  assert.equal((await sampleViews(evIn(page('to-end')), {}))[0].settled, false);
+  assert.equal((await sampleViews(evIn(page('')), {}))[0].settled, true);
 });
 
 test('recordViews keeps each sample with its step and time, and gives the next one the last anchor of its transcript', async () => {
