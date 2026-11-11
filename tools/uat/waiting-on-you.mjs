@@ -1,5 +1,5 @@
-// What’s waiting on the person, as the UAT runner and its report show it. Moved from tools/uat/room-checks.mjs, which
-// re-exports it, to keep that file to its size.
+// What’s waiting on the person, as the UAT runner and its report show it. Split out of room-checks.mjs, which re-exports it, to keep
+// that file to its size.
 
 import { ASKING } from '../../shared/catalog.mjs';
 import { clip } from '../../shared/text.mjs';

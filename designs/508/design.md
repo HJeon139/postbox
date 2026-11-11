@@ -422,7 +422,7 @@ Decided (8.5): any change to an item reaches the agents it concerns, as `notify`
 
 - **Two routes to one change make one record** (INV-3). A root author who owns the thread gets the wake only.
 - **MD-3’s cap per sender** covers reactions and amendments, so one busy message can’t flood its author’s catch-up.
-- **🚩 still reaches agents** (person’s decision, 28 October). Intent’s telemetry row says *recording* changes nothing in an agent’s input; it doesn’t hide reactions.
+- **🚩 still reaches agents** (person’s decision, 28 October): nothing hides reactions from them.
 - **Who an edit or verdict concerns** (its author and recipients) is this design’s reading. It needs confirmation.
 
 ## 9. Interfaces
