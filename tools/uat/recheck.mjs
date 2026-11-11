@@ -72,6 +72,36 @@ export function savedFacts(dir, { state, mainId, saved, logs, hostsRec, record }
   };
 }
 
+// What a recomputed check finding keeps from the same finding saved before.
+const CARRIED = [
+  'step',
+  'phase',
+  'filed',
+  'regression',
+  'regressionNote',
+  'regressionComment',
+  'verdict',
+  'verdictBy',
+  'verdictAt',
+  'verdicts',
+  'note',
+  'duplicateOf',
+];
+
+/**
+ * Verdicts and filed issue numbers from earlier reviews carry over to the recomputed findings. A check’s own
+ * preset doesn’t: recheck sets it again (presetFindings), and a match to an issue closed since isn’t preset (#213).
+ * @param {any[]} checks  @param {any[]} savedFindings
+ */
+function carryReviews(checks, savedFindings) {
+  const before = new Map(savedFindings.filter((f) => f.source === 'check').map((f) => [`${f.check}:${f.key}`, f]));
+  for (const c of checks) {
+    const b = before.get(`${c.check}:${c.key}`);
+    // Its step too: the refit counts a finding at the step it was first seen.
+    if (b) for (const [k, v] of Object.entries(withoutPreset(b))) if (CARRIED.includes(k) && v !== undefined) c[k] = v;
+  }
+}
+
 /**
  * Rechecks a finished run. root: Postbox's checkout; opt: the runner's options; review: what verifying and filing
  * need (tools/uat/review.mjs).
@@ -130,28 +160,7 @@ export async function recheck(dir, { root, opt, review }) {
     const live = saved.findings.filter((f) => f.source === 'run' || (f.source === 'check' && LIVE_ONLY.has(f.check))).map(withoutPreset);
     const gh = spawnSync('gh', ['issue', 'list', '--state', 'all', '--limit', '300', '--json', 'number,title'], { cwd: root, encoding: 'utf8' });
     const issues = gh.status === 0 ? JSON.parse(gh.stdout) : [];
-    // Verdicts and filed issue numbers from earlier reviews carry over to the recomputed findings. A check’s own
-    // preset doesn’t: it’s set again below, and a match to an issue closed since isn’t preset (#213).
-    const before = new Map(saved.findings.filter((f) => f.source === 'check').map((f) => [`${f.check}:${f.key}`, f]));
-    const carried = [
-      'step',
-      'phase',
-      'filed',
-      'regression',
-      'regressionNote',
-      'regressionComment',
-      'verdict',
-      'verdictBy',
-      'verdictAt',
-      'verdicts',
-      'note',
-      'duplicateOf',
-    ];
-    for (const c of checks) {
-      const b = before.get(`${c.check}:${c.key}`);
-      // Its step too: the refit counts a finding at the step it was first seen.
-      if (b) for (const [k, v] of Object.entries(withoutPreset(b))) if (carried.includes(k) && v !== undefined) c[k] = v;
-    }
+    carryReviews(checks, saved.findings);
     // Coverage is read again from the whole run: a phase’s triggers either happened in it or didn’t. A gap saved
     // before keeps its verdict if it’s still a gap.
     // A run that started at a later phase (--phase) skipped the ones before it: they aren’t gaps.
