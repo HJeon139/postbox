@@ -4,7 +4,6 @@
 
 import { randomUUID } from 'node:crypto';
 import { homedir } from 'node:os';
-import { resolve, sep } from 'node:path';
 import { ASKING } from '../shared/catalog.mjs';
 import { READING } from '../shared/limits.mjs';
 import { formatDuration, glimpseOf, parseMentions } from '../shared/text.mjs';
@@ -35,7 +34,7 @@ import { keptGroupsOf, keptJobs, pollKept, stopJob, stopKeptJobs, watchKept } fr
 import { Ledger } from './ledger.mjs';
 import { endLint, foldLint, lint, quietLint } from './lint-delivery.mjs';
 import { wakeMentions } from './mention-wakes.mjs';
-import { sentAttachments } from './message-attachments.mjs';
+import { attachmentPath, sentAttachments } from './message-attachments.mjs';
 import * as queue from './message-queue.mjs';
 import { alwaysFor } from './permission-always.mjs';
 import {
@@ -1773,19 +1772,9 @@ export class Runtime {
     return f;
   }
 
-  /** Where an attachment can be read on disk: a stored upload, or a file in the project’s folder. */
+  /** Where an attachment can be read on disk (server/message-attachments.mjs). */
   attachmentPath(threadId, a) {
-    if (a?.kind === 'file' && a.fileId) {
-      const f = this.s.files?.[a.fileId];
-      return f?.sha256 && this.blobs ? this.blobs.pathOf(f.sha256) : null;
-    }
-    if (a?.kind === 'project-file' && a.path) {
-      const folder = this.s.projects[this.s.threads[threadId]?.projectId]?.folder;
-      if (!folder) return null;
-      const full = resolve(folder, String(a.path).replace(/^\/+/, ''));
-      return full === resolve(folder) || full.startsWith(resolve(folder) + sep) ? full : null;
-    }
-    return null;
+    return attachmentPath(this, threadId, a);
   }
 
   // ── Attached Claude Code sessions: server/claude-mirror.mjs ─────────────────────────
