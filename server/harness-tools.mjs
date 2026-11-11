@@ -53,7 +53,7 @@ export class HarnessTools {
 
   /** @param {string} id @param {any} t @param {string} state @param {Record<string, unknown>} [extra] */
   stepOf(id, t, state, extra = {}) {
-    return { id, label: t.label, state, ms: this.now() - t.started, ...byOf(t), ...extra };
+    return { id, label: t.label, state, ms: t.ms ?? this.now() - t.started, ...byOf(t), ...extra };
   }
 
   /** A call starts: its step, unless it shows as what it makes, and a subagent’s entry. @param {string} id @param {string} name @param {any} input @param {any} by */
@@ -118,16 +118,19 @@ export class HarnessTools {
    * A call ends: its step says how, a subagent’s what it returned, and one its harness refused why (`reason`).
    * @param {string} id @param {boolean} failed @param {string} [detail]
    */
-  end(id, failed, detail = '', { stopped = false, reason = '' } = {}) {
+  end(id, failed, detail = '', { stopped = false, reason = '', ms = undefined } = {}) {
     const t = this.st.tools.get(id);
     if (!t || t.done) return;
+    if (ms !== undefined) t.ms = ms;
     t.done = true;
     this.used(id, t);
     if (failed && detail) t.error = detail;
     const state = endState(this.st.denied.has(id), failed, stopped);
     const told = failed && detail && state !== 'denied' ? detail : t.summary;
     const why = reason || told || (t.async ? BACKGROUND_ENDS[/** @type {'done'} */ (state)] : '');
-    if (!t.quiet) this.ctx.activity(this.stepOf(id, t, state, why ? { detail: firstSentence(why, 300) } : {}));
+    // A call the harness refused shows, even one of Postbox’s own: its allow rule is missing.
+    const said = reason || (why ? firstSentence(why, 300) : '');
+    if (!t.quiet || reason) this.ctx.activity(this.stepOf(id, t, state, said ? { detail: said } : {}));
     if (this.st.subagents.delete(id)) this.pushSubagents();
   }
 

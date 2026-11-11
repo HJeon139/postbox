@@ -53,13 +53,14 @@ import { dirname, join, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import { AGY_DEFAULT_MODEL } from '../../shared/agent-facts.mjs';
 import { TOOL_DEFS } from '../../shared/mcp-tools.mjs';
+import { HarnessEvents } from '../harness-events.mjs';
+import { describeTool } from '../tool-labels.mjs';
 import { AGY_CAPABILITIES } from './agy-capabilities.mjs';
 import { agyHookCommand, agySupportsHooks, confirmAgyHook, HOOK_SCRIPT } from './agy-hook.mjs';
 import { agyPlugin, agySkillFiles, excludeFile, excludePlugin, PLUGIN_DIR, writeAgyPlugin } from './agy-plugin.mjs';
 import { agyStartError, clip, HEADLESS_NOTE, HOOK_NOTE, LOOKING_NOTE, refusalFollowUp, refusalOf } from './agy-refusals.mjs';
 import { AGY_SERVER, ALLOW_POSTBOX, agySettingsFile, allowPostbox } from './agy-settings.mjs';
 import { toolOf } from './agy-tools.mjs';
-import { describeTool } from './claude-stream.mjs';
 import { agyContextPercent, agyWindowFor } from './context-usage.mjs';
 import { agentFolder } from './folder.mjs';
 import { FRESH_START_TEXT, formatMessage, turnGuide } from './guide.mjs';
@@ -269,14 +270,13 @@ export const REFUSED = /permission check failed|user denied permission/;
  * The UAT’s checks match refused steps by it (tools/uat/checks.mjs), so two agents’ steps never share one.
  */
 export const stepId = (s) => `agy-${String(s?.conversation_id ?? '').slice(0, 8)}-${s?.step_index}`;
-/** A step’s label: Claude Code’s words for a tool Postbox knows, else agy’s name for it, spaced out. */
-const labelOf = ({ name, input }) =>
-  name.startsWith('mcp__') || Object.keys(input).length || name === 'ToolSearch' ? describeTool(name, input) : clip(name.replace(/_/g, ' '), 80);
+/** A step’s name: Claude Code’s for a tool Postbox knows, else agy’s name for it, spaced out. @param {{ name: string, input: any }} tool */
+const nameOf = ({ name, input }) => (name.startsWith('mcp__') || Object.keys(input).length || name === 'ToolSearch' ? name : clip(name.replace(/_/g, ' '), 80));
 
 // A refusal agy doesn’t mark on its step (recorded: with --mode auto unavailable for the account, the command’s
 // step ended DONE with no output, and only the result’s denied_actions said it was refused). Each one, by its
 // display_name (RunCommand is run_command), is the last step of that tool that ended done with no output.
-const deniedAfter = (actions, st, ctx) => {
+const deniedAfter = (/** @type {unknown} */ actions, /** @type {any} */ st, /** @type {any} */ ctx, /** @type {(e: any) => void} */ emit) => {
   for (const a of Array.isArray(actions) ? actions : []) {
     const name = String(a?.display_name ?? '')
       .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
@@ -285,9 +285,21 @@ const deniedAfter = (actions, st, ctx) => {
     if (!t) continue;
     t.state = 'denied';
     if (t === [...st.tools.values()].at(-1) && !st.textSinceTool) st.refusedLast = t.label;
-    if (!t.quiet) ctx.activity({ id: t.id, label: t.label, state: 'denied', ms: t.ms, detail: refusalOf(ctx.persona?.permissionMode) });
+    emit({ kind: 'tool_result', id: t.id, isError: true, refused: refusalOf(ctx.persona?.permissionMode), ms: t.ms });
   }
 };
+
+/**
+ * Why agy refused a call that ended in ERROR, or '' when it wasn’t a refusal: headless, it can’t ask (refusalOf); a
+ * PreToolUse hook denied it; or it refused one of Postbox’s own tools, whose allow rule in your settings is missing.
+ * @param {string} why @param {boolean} refused @param {boolean} quiet @param {string|undefined} mode
+ */
+function refusalReason(why, refused, quiet, mode) {
+  if (refused && quiet) return `Antigravity refused Postbox’s own tool. Add "${ALLOW_POSTBOX}" to permissions.allow in your agy settings.`;
+  if (refused) return refusalOf(mode);
+  const hookWhy = /^.*denied by (?:pre-tool|PreToolUse) hook:\s*(.*)$/is.exec(why)?.[1];
+  return hookWhy === undefined ? '' : firstSentence(hookWhy || why, 300);
+}
 
 /**
  * Turns agy’s stream-json output into Postbox’s turn context. Every line is { event, … }: init (the conversation,
@@ -298,11 +310,11 @@ const deniedAfter = (actions, st, ctx) => {
  *   resumed: the conversation the turn asked for, if any; wrote: the reply already has text (a follow-up run)
  */
 export function createAgyMapper(ctx, { now = Date.now, effort = null, resumed = null, wrote = false } = {}) {
+  const emit = new HarnessEvents(ctx, { now, wrote }).event;
   const st = {
     sessionId: /** @type {string|null} */ (null),
     model: /** @type {string|null} */ (null),
     contextWindow: agyWindowFor(ctx?.persona?.model),
-    ctx: /** @type {number|null} */ (null),
     finished: /** @type {any} */ (null),
     error: /** @type {string|null} */ (null),
     missingSession: false,
@@ -315,93 +327,74 @@ export function createAgyMapper(ctx, { now = Date.now, effort = null, resumed = 
     // Whether the model got anywhere this turn (a tool step or a reply), and whether the last thing was a failed call.
     went: false,
     stuck: false,
-    afterTool: wrote,
-    tools: new Map(),
-    state: /** @type {string|null} */ (null),
+    texts: 0, // the reply’s paragraphs: text after a tool call starts one
+    afterTool: false,
+    writing: false,
+    tools: new Map(), // each step’s call, for refusals agy reports later (deniedAfter)
   };
-  const status = (patch) => {
-    if (patch.state && patch.state === st.state && Object.keys(patch).length === 1) return;
-    if (patch.state) st.state = patch.state;
-    ctx.status(patch);
+  const context = (/** @type {any} */ usage) => {
+    const pct = usage ? agyContextPercent(usage, st.contextWindow) : null;
+    if (pct !== null) emit({ kind: 'context', percent: pct });
+    else if (!st.contextWindow) emit({ kind: 'context', percent: null });
   };
-  if (!st.contextWindow) status({ ctx: null });
-  const key = (s) => `${s.conversation_id ?? ''}:${s.step_index}`;
-  const startTool = (s) => {
+  if (!st.contextWindow) emit({ kind: 'context', percent: null });
+  const key = (/** @type {any} */ s) => `${s.conversation_id ?? ''}:${s.step_index}`;
+  const startTool = (/** @type {any} */ s) => {
     const tool = toolOf(s);
+    const name = nameOf(tool);
     const t = {
       id: stepId(s),
       name: String(s.tool_name ?? s.tool_info?.name ?? ''),
-      label: labelOf(tool),
+      label: describeTool(name, tool.input),
       quiet: tool.quiet,
-      started: now(),
       done: false,
-      /** @type {string|null} */ state: null,
+      state: '',
       output: false,
       ms: 0,
-      // agy reading its own files isn’t the agent’s work (see AGY_FILE), so the work ledger doesn’t hear of it.
-      work: tool.name !== 'ToolSearch',
     };
     st.tools.set(key(s), t);
-    if (t.work) ctx.toolUse?.({ id: t.id, name: tool.name, input: tool.input });
-    st.refusedLast = null;
-    st.textSinceTool = false;
-    if (!t.quiet) ctx.activity({ id: t.id, label: t.label, state: 'running' });
-    status({ state: 'tool', currentStep: t.label });
-    st.afterTool = true;
+    emit({ kind: 'tool_call', id: t.id, name, input: tool.input, final: true });
+    Object.assign(st, { refusedLast: null, textSinceTool: false, afterTool: true, writing: false });
     return t;
   };
-  const endTool = (s) => {
+  const endTool = (/** @type {any} */ s) => {
     const t = st.tools.get(key(s)) ?? startTool(s);
     if (t.done) return;
     t.done = true;
     const failed = s.state === 'ERROR';
     const why = failed ? String(s.tool_info?.error?.message ?? '') : '';
     const refused = failed && REFUSED.test(why);
-    const hookWhy = failed ? (/^.*denied by (?:pre-tool|PreToolUse) hook:\s*(.*)$/is.exec(why)?.[1] ?? null) : null;
-    const state = refused || hookWhy !== null ? 'denied' : failed ? 'failed' : 'done';
-    const detail = refused ? refusalOf(ctx.persona?.permissionMode) : failed ? firstSentence(hookWhy || why || 'It failed without saying why.', 300) : '';
-    const ms = typeof s.duration_seconds === 'number' ? Math.round(s.duration_seconds * 1000) : now() - t.started;
-    Object.assign(t, { state, ms, output: s.tool_info?.output !== undefined });
-    if (t.work) ctx.toolResult?.(agyResult(t.id, s, failed));
+    const reason = failed ? refusalReason(why, refused, t.quiet, ctx.persona?.permissionMode) : '';
+    t.ms = typeof s.duration_seconds === 'number' ? Math.round(s.duration_seconds * 1000) : 0;
+    t.state = reason ? 'denied' : 'done';
+    if (failed && !reason) t.state = 'failed';
+    t.output = s.tool_info?.output !== undefined;
+    const r = agyResult(t.id, s, failed);
+    const text = failed ? why || 'It failed without saying why.' : r.text;
+    emit({
+      kind: 'tool_result',
+      id: t.id,
+      isError: failed || r.isError,
+      text,
+      result: r.result ?? null,
+      ...(t.ms ? { ms: t.ms } : {}),
+      ...(reason ? { refused: reason } : {}),
+    });
     if (refused) st.refusedLast = t.label;
-    // Postbox’s own tools stay quiet, unless agy refused one: then the allow rule in your settings is missing.
-    const ownRefused = `Antigravity refused Postbox’s own tool. Add "${ALLOW_POSTBOX}" to permissions.allow in your agy settings.`;
-    if (refused && t.quiet) ctx.activity({ id: t.id, label: t.label, state, ms, detail: ownRefused });
-    else if (!t.quiet) ctx.activity({ id: t.id, label: t.label, state, ms, ...(detail ? { detail } : {}) });
-    // The model thinks next, and agy sends nothing until that step is done (recorded: 14 s after read_conversation in
-    // the Gemini room UAT, with the ring still on the tool). So the ring says so now, as Claude Code’s does.
-    status({ state: 'think', currentStep: 'Thinking' });
   };
-  const step = (s) => {
-    if (s?.step_type === 'tool' || s?.step_type === 'agent_response') {
-      st.went = true;
-      st.stuck = false;
-    }
-    if (s?.usage) {
-      const pct = agyContextPercent(s.usage, st.contextWindow);
-      if (pct !== null && pct !== st.ctx) {
-        st.ctx = pct;
-        status({ ctx: pct });
-      } else if (!st.contextWindow) {
-        status({ ctx: null });
-      }
-    }
+  const step = (/** @type {any} */ s) => {
+    if (s?.step_type === 'tool' || s?.step_type === 'agent_response') Object.assign(st, { went: true, stuck: false });
+    if (s?.usage) context(s.usage);
     switch (s?.step_type) {
       case 'agent_response': {
         const text = typeof s.text_delta === 'string' ? s.text_delta : '';
         if (!text) {
-          if (s.state === 'ACTIVE' && st.state !== 'gen') status({ state: 'think', currentStep: 'Thinking' });
+          if (s.state === 'ACTIVE' && !st.writing) emit({ kind: 'status', state: 'think', step: 'Thinking' });
           return;
         }
-        // Text after a tool call is a new paragraph.
-        if (st.wrote && st.afterTool) ctx.text('\n\n');
-        st.afterTool = false;
-        st.wrote = true;
-        st.refusedLast = null;
-        st.textSinceTool = true;
-        if (st.state !== 'gen') status({ state: 'gen', currentStep: 'Writing a reply' });
-        ctx.text(text);
-        return;
+        if (st.afterTool) st.texts += 1;
+        Object.assign(st, { afterTool: false, wrote: true, refusedLast: null, textSinceTool: true, writing: true });
+        return emit({ kind: 'text', text, block: `text-${st.texts}` });
       }
       case 'tool':
         if (s.state === 'DONE' || s.state === 'ERROR') endTool(s);
@@ -410,10 +403,8 @@ export function createAgyMapper(ctx, { now = Date.now, effort = null, resumed = 
       // A model call that failed, which agy retries; the step says nothing more (recorded in the Gemini room UAT:
       // its log had “INTERNAL (code 500)” for each one). Without this the ring said Thinking for minutes.
       case 'error_message':
-        st.retried = true;
-        st.stuck = true;
-        status({ state: 'think', currentStep: 'The model returned an error; Antigravity is retrying' });
-        return;
+        Object.assign(st, { retried: true, stuck: true, writing: false });
+        return emit({ kind: 'status', state: 'think', step: 'The model returned an error; Antigravity is retrying' });
       default:
     }
   };
@@ -458,11 +449,11 @@ export function createAgyMapper(ctx, { now = Date.now, effort = null, resumed = 
           if (model) {
             st.model = model;
             st.contextWindow = agyWindowFor(model);
-            if (!st.contextWindow) status({ ctx: null });
+            if (!st.contextWindow) emit({ kind: 'context', percent: null });
             const ran = effortRun(model, effort);
             ctx.reported?.({ model, ...(ran ? { effort: ran } : {}) });
           }
-          status({ state: 'think', currentStep: 'Thinking' });
+          emit({ kind: 'status', state: 'think', step: 'Thinking' });
           return;
         }
         case 'step_update':
@@ -471,16 +462,9 @@ export function createAgyMapper(ctx, { now = Date.now, effort = null, resumed = 
         case 'result': {
           const r = e.result ?? {};
           st.finished = r;
-          deniedAfter(r.denied_actions, st, ctx);
-          if (st.ctx === null && r.usage) {
-            const pct = agyContextPercent(r.usage, st.contextWindow);
-            if (pct !== null) {
-              st.ctx = pct;
-              status({ ctx: pct });
-            } else if (!st.contextWindow) {
-              status({ ctx: null });
-            }
-          }
+          deniedAfter(r.denied_actions, st, ctx, emit);
+          if (r.usage) context(r.usage);
+          emit({ kind: 'turn_end', isError: r.status !== 'SUCCESS' && !(st.went && !st.stuck) });
           if (r.status === 'SUCCESS') return;
           const why = clip(r.error || r.status || 'no reason given', 400);
           // agy’s ERROR doesn’t say how the turn ended. Recorded in the Gemini room UAT: ERROR after a model call it

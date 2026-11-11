@@ -3,8 +3,6 @@
 // command, and an MCP tool is mcp__<server>__<tool>. Without these, Work showed nothing a Codex or Antigravity agent
 // changed or ran, and their replies had no work line.
 
-import { readFileSync } from 'node:fs';
-
 /**
  * The command inside a shell’s -lc wrapper, which Codex puts around every command it runs (recorded:
  * /bin/zsh -lc 'git status --short'), so Work shows what the agent asked for and reads git and gh in it.

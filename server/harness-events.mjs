@@ -9,7 +9,7 @@
 // - tool_call { id, name, input?, parent?, final? }   a call, named as Claude Code names its tools (Bash, Read, Edit,
 //                                          Write, WebSearch, Agent, mcp__<server>__<tool>); again with its input, and
 //                                          final once that input is whole. An Agent or Task call starts a subagent.
-// - tool_result { id, isError?, text?, result?, vcsCwd?, background?, refused?, parent? }   what it returned;
+// - tool_result { id, isError?, text?, result?, vcsCwd?, background?, refused?, ms?, parent? }   what it returned;
 //                                          background: it may have gone on as a job ({ job, named, outputFile }) or a
 //                                          subagent ({ agent }); refused: its harness refused it, and why.
 // - tool_output { id, text }               a running call’s latest output, such as a command’s.
@@ -55,8 +55,11 @@ export const KINDS = Object.freeze([
 
 /** The translator for one turn. Pure apart from the ctx calls, so recorded streams can test it. */
 export class HarnessEvents {
-  /** @param {any} ctx  the turn context (server/adapters/adapter.mjs) @param {{ now?: () => number }} [opts] */
-  constructor(ctx, { now = Date.now } = {}) {
+  /**
+   * @param {any} ctx  the turn context (server/adapters/adapter.mjs)
+   * @param {{ now?: () => number, wrote?: boolean }} [opts]  wrote: the reply already has text, from a run before this one
+   */
+  constructor(ctx, { now = Date.now, wrote = false } = {}) {
     this.ctx = ctx;
     /** @type {any} */
     this.st = {
@@ -72,6 +75,7 @@ export class HarnessEvents {
     this.status = this.status.bind(this);
     this.tools = new HarnessTools(ctx, this.st, this.status, now);
     this.words = new HarnessText(ctx, this.status, now);
+    this.words.wrote = wrote;
     this.event = this.event.bind(this);
   }
 
@@ -135,6 +139,8 @@ export class HarnessEvents {
   /** What a call returned: it ends, or goes on as a job or a subagent, and the ledger hears it. @param {any} e */
   on_tool_result(e) {
     const t = this.st.tools.get(e.id);
+    // A refusal its harness reports after the call had ended: the step says so now, and nothing else changes.
+    if (t?.done && e.refused) return this.refusedAfter(e.id, t, String(e.refused));
     const bg = e.background;
     const job = !e.isError && bg?.job && t && !t.done && !SUBAGENT_TOOLS.has(t.name) && (bg.named || t.input?.run_in_background === true);
     if (job) this.tools.startJob(e.id, { job: String(bg.job), outputFile: bg.outputFile ?? null });
@@ -142,10 +148,17 @@ export class HarnessEvents {
     else if (e.refused) {
       // Its harness refused it with no card to answer: the step says why.
       this.st.denied.add(e.id);
-      this.tools.end(e.id, true, '', { reason: String(e.refused) });
-    } else this.tools.end(e.id, e.isError === true, e.isError ? (e.text ?? '') : '');
+      this.tools.end(e.id, true, '', { reason: String(e.refused), ms: e.ms });
+    } else this.tools.end(e.id, e.isError === true, e.isError ? (e.text ?? '') : '', { ms: e.ms });
     this.ctx.toolResult?.({ id: e.id, isError: e.isError === true, text: e.text ?? '', result: e.result ?? null, vcsCwd: e.vcsCwd ?? null });
     if (!e.parent) this.status({ state: 'think', currentStep: 'Thinking' });
+  }
+
+  /** @param {string} id @param {any} t @param {string} reason */
+  refusedAfter(id, t, reason) {
+    if (this.st.denied.has(id)) return;
+    this.st.denied.add(id);
+    this.ctx.activity(this.tools.stepOf(id, t, 'denied', { detail: reason }));
   }
 
   /** A running call’s latest output: its step shows the end of it. @param {any} e */
