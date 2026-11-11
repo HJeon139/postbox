@@ -26,7 +26,7 @@ const S = () => client.state;
 
 /**
  * The top bar: the places menu, the path to the open conversation and its two views, and the global actions. The
- * agents, their rings and their quick panels are in the sidebar’s Agents section (#105, #320).
+ * agents and their rings are in the sidebar’s Agents section (#105, #320).
  */
 
 export function topbar({ title = '', threadId = null, projectId = null }) {

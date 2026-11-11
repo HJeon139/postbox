@@ -482,7 +482,7 @@ export function openNewAgent({ threadId = null, projectId: pid = null, preset = 
       st.backend === 'codex'
         ? h(
             'p.help',
-            'On Codex, Web is the one tool Postbox reads: in Auto, it turns network on in Codex’s sandbox. Turn it on in the agent’s quick panel once the agent is made. Codex doesn’t turn other tools off for one agent.',
+            'On Codex, Web is the one tool Postbox reads: in Auto, it turns network on in Codex’s sandbox. Turn it on in its persona sheet once the agent is made. Codex doesn’t turn other tools off for one agent.',
           )
         : h(
             'fieldset',

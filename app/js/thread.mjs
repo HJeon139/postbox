@@ -31,7 +31,7 @@ import { replyLine } from './reply-rings.mjs';
 import { stoppedSaid, stoppedTag } from './reply-stop.mjs';
 import { holdFocus, replaceTranscriptItem } from './rerender-state.mjs';
 import { ringFor, stateWord } from './ring.mjs';
-import { boilerplateDesc, openAttachSession, openFolderPicker, openNewAgent, openRename, openSettings } from './sheets.mjs';
+import { boilerplateDesc, confirmDelete, openAttachSession, openFolderPicker, openNewAgent, openRename, openSettings } from './sheets.mjs';
 import { sideActive, sideLine, sideSig } from './side-line.mjs';
 import { namesSpeaker } from './speaker-line.mjs';
 import { systemLine } from './system-line.mjs';
@@ -958,8 +958,7 @@ export function mountComposer(threadId, { side = false } = {}) {
   /** Postbox’s own commands, which act on Postbox without a turn, for se: the agent named (#405), else target(). */
   const POSTBOX = [
     ['permissions', 'Its mode, rules, folders and MCP servers', (se = target()) => openPermissions({ threadId, sessionId: se?.id })],
-    // A persona’s settings are edited in one place, its sheet (designs/rooms-at-scale.md, “Settings: one scope”):
-    // these open it, and a change applies from the agent’s next turn in every conversation.
+    // Its settings are edited in one place, its sheet (designs/rooms-at-scale.md, “Settings: one scope”).
     ['mode', 'Its permission mode, in its persona’s settings', (se = target()) => se && openSettings('personas', se.personaId)],
     ['model', 'Its model, in its persona’s settings', (se = target()) => se && openSettings('personas', se.personaId)],
     ['effort', 'Its effort, in its persona’s settings', (se = target()) => se && openSettings('personas', se.personaId)],
@@ -967,6 +966,7 @@ export function mountComposer(threadId, { side = false } = {}) {
     ['mcp', 'Its MCP servers: status, on or off', (se = target()) => openPermissions({ threadId, sessionId: se?.id, focus: 'mcp' })],
     ['compact', 'Summarize its context to make room', (se) => compact(se)],
     ['stop', 'Stop the agents that are working', (_se, named) => stopAll(named)],
+    ['delete', 'Delete its session in this conversation', (se = target()) => se && confirmDelete(se)],
     ['rename', 'Rename this conversation', () => openRename(threadId)],
   ];
   const POSTBOX_NAMES = new Set(POSTBOX.map(([n]) => n));

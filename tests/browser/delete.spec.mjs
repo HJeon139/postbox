@@ -41,15 +41,17 @@ test('deleting a conversation: the confirm says what goes and that it can’t be
   await expect.soft(page).not.toHaveURL(new RegExp(`#/t/${t.id}`));
 });
 
-test('deleting a session from the agent’s quick panel removes it at once after its confirm', async ({ page }) => {
+test('deleting a session with @agent /delete removes it at once after its confirm', async ({ page }) => {
   const { p } = withAgent('sesgone');
   const other = app.rt.createPersona({ handle: 'stays' });
   const room = app.rt.createThread({ projectId: projectId(), title: 'Room for a delete', personaIds: [p.id, other.id] });
   const se = app.rt.sessionsIn(room.id).find((x) => x.personaId === p.id);
   await page.goto(`${app.origin}/#/t/${room.id}`);
   await synced(page, app);
-  await page.locator(`#agent-row-${se.id}`).click();
-  await page.locator('.dialog.quick').getByRole('button', { name: 'Delete session…' }).click();
+  await page.locator('#composer-input').focus();
+  await page.keyboard.type('@sesgone /delete');
+  await expect(page.locator('.composer .hint')).toContainText('Enter runs /delete for sesgone');
+  await page.keyboard.press('Enter');
   const ask = page.getByRole('alertdialog', { name: 'Delete sesgone’s session?' });
   await expect.soft(ask).toContainText('This can’t be undone.');
   await ask.getByRole('button', { name: 'Delete session' }).click();

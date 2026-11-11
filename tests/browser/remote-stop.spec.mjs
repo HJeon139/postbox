@@ -75,18 +75,6 @@ test('#120 Stop says first that the host’s background jobs stop with the turn,
   expect(store.state.sessions[s.runner.id].stopAsk ?? null).toBe(null);
 });
 
-test('#120 the agent’s panel says where it runs, and its Stop says what stops with it', async ({ page }) => {
-  await withJob(page, 'Run the job again.');
-  await page.locator('.rail .agent-row .agent-btn').filter({ hasText: 'runner' }).click();
-  const panel = page.locator('.dialog.quick');
-  await expect(panel.locator('.qp-stop-note'), 'the panel’s note').toBeVisible();
-  await expect.soft(panel.getByRole('region', { name: 'Where runner runs' })).toHaveText(/^On host\.example\.com · Connected · last heard from 2 min ago$/);
-  await expect.soft(panel.locator('.qp-stop-note')).toHaveText(/a job on a host stops with its turn\.$/);
-  expect.soft(await axe(page), 'axe, with the panel open').toEqual([]);
-  await panel.locator('.qp-actions').getByRole('button', { name: 'Stop', exact: true }).click();
-  await stopped();
-});
-
 test('#120 the ! hint says it runs on this computer, in the project’s folder, not on the host', async ({ page }) => {
   await open(page, s.dm);
   await page.locator('#composer-input').fill('!ls');

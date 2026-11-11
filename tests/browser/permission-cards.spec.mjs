@@ -1,5 +1,5 @@
 // The cards Postbox draws for permissions, driven with real clicks:
-// - #237: a card asking for a tool that’s off answers itself when the tool is turned on from the agent’s quick panel,
+// - #237: a card asking for a tool that’s off answers itself when the tool is turned on in the agent’s persona sheet,
 //   says it’s on, and the agent carries on.
 // - #238: a refusal card for a chained command offers no Allow once or Always allow, and says why and what to do; one
 //   for a single command still offers both.
@@ -59,7 +59,7 @@ async function agent(page, handle) {
 }
 const card = (page, text) => page.locator('.transcript .block', { hasText: text });
 
-test('#237 Shell turned on from the quick panel answers the card that asked for it, and the agent carries on', async ({ page }) => {
+test('#237 Shell turned on in the persona sheet answers the card that asked for it, and the agent carries on', async ({ page }) => {
   const { rt, store } = app;
   const { persona, thread, se, script, idle } = await agent(page, 'shelly');
   script((ctx) => ctx.tools.ask_for_tool({ tool: 'shell', why: 'To run the tests.' }));
@@ -70,9 +70,12 @@ test('#237 Shell turned on from the quick panel answers the card that asked for 
   await expect.poll(() => store.state.sessions[se.id].needs?.kind, { message: 'the agent to need you' }).toBe('toolask');
   await synced(page, app);
   const turns = heard.filter((m) => m.sessionId === se.id).length;
-  // Its name in the sidebar opens its quick panel, needing you or not (#320), where Shell is a switch for the persona.
+  // Its name in the sidebar opens its persona sheet, needing you or not (#320), the one place its settings change
+  // (designs/rooms-at-scale.md, “Settings: one scope”).
   await page.locator('.rail .agent-row .agent-btn', { has: page.locator('b', { hasText: /^shelly$/ }) }).click();
-  await page.locator('.backdrop .dialog.quick [role=switch][aria-label^="Shell"]').click();
+  const sheet = page.getByRole('dialog', { name: 'Settings' });
+  await sheet.getByRole('button', { name: 'shell', exact: true }).click();
+  await sheet.getByRole('button', { name: 'Save' }).click();
   await expect(ask, 'the card answered').toContainText('Turned on.');
   // textContent: the label is drawn in capitals.
   expect(await ask.locator('.kind').evaluate((k) => k.textContent)).toBe('Turned on · shell');

@@ -656,8 +656,9 @@ export class Runtime {
       // This turn is the last turn from its start (card-needs.mjs turnsOf), so a restart that cuts it off, or a card
       // released after it leaves the running turns, doesn't count a block from the turn before.
       lastTurnId: turn.id,
-      // The persona changed since its last turn: this turn is the one the change takes effect from.
-      ...settingsFrom(persona, se),
+      // What this turn runs with, and, when the persona changed since its last turn, that
+      // this turn is the one the change takes effect from.
+      ...turnSettings(persona, se),
       // A turn that doesn't move on keeps the turns still asking you something, so their refusals and tool requests
       // count until you move on (card-needs.mjs keptTurns). Read before this patch moves lastTurnId on.
       keptTurnIds: turn.movesOn ? [] : keptTurns(this, se),
@@ -2842,11 +2843,23 @@ const asHttp = (e) => {
   throw e?.status ? httpError(e.status, e.message) : e;
 };
 /**
- * When a turn starts on a newer persona than the session’s last turn ran with: the version it runs now, and when that
- * took effect, which the agent’s quick panel shows. Nothing when the persona didn’t change. @param {any} persona @param {any} se
+ * What a turn runs with, as its session records it, so the agent’s state can say what it runs with and when a change
+ * took effect (designs/rooms-at-scale.md, “Settings: one scope”): the backend, the model and effort it was started with, the permission mode and the host. The model and
+ * effort the backend reports come later (lastModel, lastEffort). When the turn starts on a newer persona than the last
+ * one ran with, also the version and when it took effect. @param {any} persona @param {any} se
  */
-const settingsFrom = (persona, se) =>
-  persona && (persona.version ?? 1) !== (se.personaVersion ?? 1) ? { personaVersion: persona.version ?? 1, settingsAt: Date.now() } : {};
+function turnSettings(persona, se) {
+  if (!persona) return {};
+  const ranWith = {
+    backend: persona.backend ?? 'mock',
+    model: persona.model ?? null,
+    effort: persona.effort ?? null,
+    mode: persona.permissionMode ?? 'auto',
+    hostId: persona.remote?.hostId ?? null,
+  };
+  const changed = (persona.version ?? 1) !== (se.personaVersion ?? 1);
+  return { ranWith, ...(changed ? { personaVersion: persona.version ?? 1, settingsAt: Date.now() } : {}) };
+}
 // Commands in the composer (#67), bounded: an agent’s list for the / menu, a `!command`’s output (its last
 // characters), how often that output reaches the browser, and how much of it the agents read.
 const MAX_COMMANDS = 200;

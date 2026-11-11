@@ -4,7 +4,7 @@
 // - Each jump scrolls the ask into view, focuses it and outlines it, far up a long transcript or in the side panel.
 // - Clicking an agent's needs-you ring or row (the rail, the Agents section, the overview, a message, the top bar)
 //   goes to that agent's ask. In a room's rail row, a ring goes to its agent and the rest of the row to the oldest.
-// - While it needs you, an agent's ⋯ in the Agents section still opens its quick panel; an idle agent's row works as before.
+// - While it needs you, an agent's name in the Agents section still opens its persona sheet; an idle agent's row works as before.
 // Moved from tools/checks/needs-nav.mjs (#303).
 
 import { expect, test } from '@playwright/test';
@@ -165,7 +165,7 @@ async function ctrlJ(page) {
 
 const agentRow = (page, h) => page.locator('.rail .agent-row').filter({ has: page.locator('.agent-btn', { hasText: `${h}` }) });
 const railRow = (page, t) => page.locator(`.rail a.row[data-thread="${t.id}"]`);
-const quickPanel = (page) => page.locator('.backdrop .dialog.quick');
+const personaSheet = (page) => page.getByRole('dialog', { name: 'Settings' });
 
 test('the global button counts every agent that needs you, a refused step’s too', async ({ page }) => {
   await open(page, `#/t/${T.room.id}`);
@@ -226,14 +226,13 @@ test('a click that opens a new tab or window, on a rail row whose agent needs yo
   await expect(page, 'the page stayed where it was').toHaveURL(new RegExp(`#/t/${T.refused.id}$`));
 });
 
-test('an agent’s name in the Agents section opens its quick panel, even while it needs you, and there’s no ⋯ (#320)', async ({ page }) => {
+test('an agent’s name in the Agents section opens its persona sheet, even while it needs you, and there’s no ⋯ (#320)', async ({ page }) => {
   await open(page, `#/t/${T.room.id}`);
   await expect(agentRow(page, 'delta').getByRole('button', { name: /^More for/ })).toHaveCount(0);
   await agentRow(page, 'delta').locator('.agent-btn').click();
-  await expect(quickPanel(page)).toBeVisible();
-  await expect(agentRow(page, 'delta').locator('.agent-btn')).toHaveAttribute('aria-expanded', 'true');
+  await expect(personaSheet(page)).toBeVisible();
   await page.keyboard.press('Escape');
-  await expect(quickPanel(page)).toHaveCount(0);
+  await expect(personaSheet(page)).toHaveCount(0);
 });
 
 test('an agent’s ring in the Agents section goes to its ask, by mouse or by keyboard', async ({ page }) => {
@@ -248,10 +247,10 @@ test('an agent’s ring in the Agents section goes to its ask, by mouse or by ke
   await landsOn(page, 'gamma');
 });
 
-test('an idle agent’s row in the Agents section still opens its quick panel', async ({ page }) => {
+test('an idle agent’s row in the Agents section opens its persona sheet', async ({ page }) => {
   await open(page, `#/t/${T.room.id}`);
   await agentRow(page, 'zeta').locator('.agent-btn').click();
-  await expect(quickPanel(page)).toBeVisible();
+  await expect(personaSheet(page)).toBeVisible();
 });
 
 test('a side thread’s agent: its ring in the Agents section opens the side panel at its ask', async ({ page }) => {

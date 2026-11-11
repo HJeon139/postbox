@@ -159,7 +159,7 @@ const GROUPS = [
   ['02-empty', '04-corpus-app', '06-catalog', '05-explainer'],
   ['16-narration', '18-topic-thread', '19-threads', '07-review', '03-thread', '08-wakes'],
   ['09-errors', '10-plus-menu', '11-new-agent', '15-permission', '15b-refusal', '14-charts', '20-diagram-lint'],
-  ['21a-work-chip', '21-work', '21b-work-file', '01-needs-you', '12-agent-panel', '13-delete-confirm'],
+  ['21a-work-chip', '21-work', '21b-work-file', '01-needs-you', '12-agent-settings', '13-delete-confirm'],
 ];
 // Each group’s test has a Postbox to itself, so the groups can run at once, on whichever workers are free.
 test.describe.configure({ mode: 'parallel' });

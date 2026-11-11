@@ -45,15 +45,20 @@ test('nothing links to an overview: not the sidebar, the breadcrumb or the Postb
   await expect(page.locator('.menu').getByText('Overview', { exact: true })).toHaveCount(0);
 });
 
-test('no Archived page or link, and no Archive in an agent’s quick panel', async ({ page }) => {
+test('no Archived page or link', async ({ page }) => {
   await open(page, `#/t/${threads[0].id}`);
   await expect(page.locator('.rail').getByRole('link', { name: /^Archived/ })).toHaveCount(0);
-  await page.locator('.rail .agent-row .agent-btn').first().click();
-  await expect(page.locator('.backdrop .dialog.quick')).toBeVisible();
-  await expect(page.locator('.backdrop .dialog.quick').getByRole('button', { name: 'Archive' })).toHaveCount(0);
   await open(page, '#/archived');
   await expect(page, 'the old address opens a conversation').toHaveURL(/#\/t\//);
 });
+
+/** Runs /delete from the composer, on the agent it replies to. */
+async function deleteCommand(page) {
+  await page.locator('#composer-input').focus();
+  await page.keyboard.type('/delete');
+  await expect(page.locator('#slash-list')).toContainText('/delete');
+  await page.keyboard.press('Enter');
+}
 
 test('the top bar has no agent rings: the Agents section has them', async ({ page }) => {
   await open(page, `#/t/${threads[0].id}`);
@@ -62,10 +67,9 @@ test('the top bar has no agent rings: the Agents section has them', async ({ pag
   await expect(page.locator('.rail .agent-row pb-ring')).toHaveCount(1);
 });
 
-test('Delete session moved from the overview’s card menu to the agent’s quick panel, with its confirmation', async ({ page }) => {
+test('/delete in the composer opens the agent’s delete confirm (designs/rooms-at-scale.md, “Settings: one scope”)', async ({ page }) => {
   await open(page, `#/t/${threads[0].id}`);
-  await page.locator('.rail .agent-row .agent-btn').first().click();
-  await page.locator('.backdrop .dialog.quick').getByRole('button', { name: 'Delete session…' }).click();
+  await deleteCommand(page);
   await expect(page.getByText('Delete shelly’s session?')).toBeVisible();
   // An agent’s session is archived only with its conversation (#320).
   await expect(page.getByRole('button', { name: 'Archive instead' })).toHaveCount(0);
@@ -76,8 +80,7 @@ test('deleting a one-to-one conversation’s only agent leaves the conversation,
   const persona = Object.values(app.store.state.personas).find((p) => p.handle === 'shelly');
   const doomed = app.rt.createThread({ projectId: 'pr_shell', title: 'Doomed', personaIds: [persona.id] });
   await open(page, `#/t/${doomed.id}`);
-  await page.locator('.rail .agent-row .agent-btn').first().click();
-  await page.locator('.backdrop .dialog.quick').getByRole('button', { name: 'Delete session…' }).click();
+  await deleteCommand(page);
   await page.locator('.dialog').getByRole('button', { name: 'Delete session', exact: true }).click();
   await expect(page).toHaveURL(/#\/t\//);
   await expect(page).not.toHaveURL(new RegExp(`#/t/${doomed.id}`));

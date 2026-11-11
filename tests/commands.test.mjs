@@ -369,4 +369,3 @@ test('#67: the recorded /compact turn compacted the session (Claude Code runs it
   assert.equal(boundary.compact_metadata.trigger, 'manual');
   assert.equal(events.at(-1).subtype, 'success');
 });
-
