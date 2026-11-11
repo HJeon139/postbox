@@ -2,8 +2,7 @@
 // Alt+End to move through turns and blocks and back to the composer.
 
 import { nextNeedsYou } from './needs-nav.mjs';
-import { openPalette } from './sheets.mjs';
-import { toggleRail } from './shell.mjs';
+import { openJumpTo, toggleRail } from './shell.mjs';
 import { focusComposer } from './thread.mjs';
 import { jumpTo } from './view-jump.mjs';
 
@@ -22,7 +21,7 @@ document.addEventListener('keydown', (e) => {
   }
   if (mod && e.key.toLowerCase() === 'k') {
     e.preventDefault();
-    openPalette();
+    openJumpTo();
     return;
   }
   // Alt+↑/↓ moves between turns and blocks; Alt+End returns to the composer.
