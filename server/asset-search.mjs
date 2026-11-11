@@ -4,7 +4,7 @@
 // bridge (server/host-tool.mjs), so the room’s data is one store, whoever reads it.
 //
 // A room’s index is built from its assets’ bytes the first time it’s searched, and kept until one of its assets has a
-// new head: the key is every indexed asset’s id and hash. A few rooms are kept, the most recently searched.
+// new head: the key is every indexed asset’s id, version, hash and name. A few rooms are kept, the most recently searched.
 
 import { search as bm25, buildIndex, semanticStub } from '../shared/bm25.mjs';
 import { headOf, roomAssets } from './assets.mjs';
@@ -81,7 +81,8 @@ export function splitPassages(text, { target = 120, max = 180 } = {}) {
  */
 async function roomIndex(rt, blobs, room) {
   const live = textAssets(rt.s, room);
-  const key = live.map(({ asset, head }) => `${asset.id}@${head.sha256}`).join(' ');
+  // A rename keeps the bytes but changes the name and version a hit shows, so both are in the key.
+  const key = JSON.stringify(live.map(({ asset, head }) => [asset.id, head.v, head.sha256, asset.name]));
   const kept = indexes.get(rt) ?? new Map();
   indexes.set(rt, kept);
   const hit = kept.get(room);

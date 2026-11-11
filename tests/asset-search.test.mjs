@@ -57,7 +57,7 @@ test('#516: search_assets finds the room’s text assets by their words, naming 
   assert.match((await B.search_assets({})).message, /needs a query/);
 });
 
-test('#516: a search reads each asset’s newest version, and leaves out deleted ones and other rooms’', async (ctx) => {
+test('#516: a search reads each asset’s newest version and name, and leaves out deleted ones and other rooms’', async (ctx) => {
   const { A, rt, t, as } = await assetRoom(ctx);
   const search = async (query) => (await hostTool(rt, 'assets.search', { query, mode: 'lexical' }, { threadId: t.id })).map((h) => `${h.name} v${h.version}`);
   const { id } = await A.write_asset({ name: 'plan.md', text: 'The first plan is about whales.' });
@@ -65,7 +65,9 @@ test('#516: a search reads each asset’s newest version, and leaves out deleted
   await A.write_asset({ id, base: 1, text: 'The second plan is about herons.' });
   assert.deepEqual(await search('whales'), [], 'the kept index is rebuilt once the head moves');
   assert.deepEqual(await search('herons'), ['plan.md v2']);
-  await A.delete_asset({ id, base: 2 });
+  await A.rename_asset({ id, base: 2, name: 'plans/herons.md' });
+  assert.deepEqual(await search('herons'), ['plans/herons.md v3'], 'a rename keeps the bytes, and the hit names the new name and version');
+  await A.delete_asset({ id, base: 3 });
   assert.deepEqual(await search('herons'), [], 'a deleted asset isn’t searched');
   const other = rt.createThread({ projectId: 'p1', title: 'Other', personaIds: [rt.personaByHandle('alpha').id] });
   const there = as(rt.sessionsIn(other.id)[0]);
