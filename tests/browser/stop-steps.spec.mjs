@@ -7,7 +7,7 @@
 // own for each test. Moved from tools/check-stop-steps.mjs (#303).
 
 import { expect, test } from '@playwright/test';
-import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
+import { failOnPageErrors, openSteps, startPostbox, synced } from './postbox.mjs';
 
 // The reply’s steps as the p0 UAT recorded them at its Stop (Postbox 0.30.1): a background loop with its job, a wait
 // that had finished, and the same wait running when the person pressed Stop.
@@ -79,7 +79,7 @@ const jobStop = (page) => page.locator('.bg-jobs').getByRole('button', { name: `
 /** The last reply’s header and its steps, and the last stopped tag. */
 async function lastReply(page) {
   const d = page.locator('details.activity').last();
-  await d.locator('> summary').click();
+  await openSteps(d);
   const words = async (l) => (await l.allInnerTexts()).map((t) => t.replace(/\s+/g, ' ').trim());
   return {
     header: (await words(d.locator('> summary')))[0],

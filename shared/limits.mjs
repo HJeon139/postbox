@@ -148,6 +148,9 @@ export const GLIMPSE_CHARS = 160;
 /** The most streamed text inspected to find that glimpse, bounding work on each update (#478). */
 export const GLIMPSE_SOURCE_CHARS = 2000;
 
+/** What a step keeps of its call: its input in a line, and the end of what it returned, in characters. */
+export const STEP_TEXT = Object.freeze({ input: 300, output: 400 });
+
 /**
  * Agent wakes in a row, without you, before the next waits for your Allow: a backstop against agents that never stop,
  * until a supervisor agent watches the room (#538). 3 until #320 raised it to 10, 50 since #492, and 1,000 since #1035,

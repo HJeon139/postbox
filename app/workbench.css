@@ -388,6 +388,9 @@ details.activity[open] > summary .i-right { transform: rotate(90deg); }
 .steps .step-text { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 6px; min-width: 0; }
 .steps .step-who { color: var(--dim); }
 .steps .step-note { flex-basis: 100%; color: var(--dim); }
+/* A call’s input and the end of what it returned (app/js/activity-steps.mjs). */
+.steps .step-input, .steps .step-output { flex-basis: 100%; color: var(--dim); font-size: 12px; overflow-wrap: anywhere; }
+.steps .step-output { white-space: pre-wrap; max-height: 6.5em; overflow: hidden; }
 .steps li.denied .step-note { color: var(--alert); }
 .steps li.thought details > summary { cursor: pointer; color: var(--dim); font-style: italic; }
 .steps li.thought details > p { margin: 4px 0 0; color: var(--dim); white-space: pre-wrap; }

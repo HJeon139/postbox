@@ -79,7 +79,8 @@ test('#488 an activity list and thought keep the state the person chose while th
 
   const activity = page.locator('details.activity');
   await expect(activity).toHaveCount(1);
-  await activity.locator('> summary').click();
+  // A turn still running shows its steps open, as its harness does.
+  await expect(activity, 'open while the turn runs').toHaveAttribute('open', '');
   const thought = activity.locator('details.step-text').filter({ hasText: 'Plan the work.' });
   await thought.locator('> summary').click();
   await expect(activity).toHaveAttribute('open', '');
@@ -105,5 +106,5 @@ test('#488 an activity list and thought keep the state the person chose while th
   await expect.poll(() => app.rt.turns.size, { message: 'the second turn to finish' }).toBe(0);
   await synced(page, app);
   await expect(page.locator('details.activity')).toHaveCount(2);
-  await expect(page.locator('details.activity').last(), 'a new reply starts closed').not.toHaveAttribute('open', '');
+  await expect(page.locator('details.activity').last(), 'a new reply shows its steps open, as it ran').toHaveAttribute('open', '');
 });

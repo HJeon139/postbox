@@ -152,7 +152,7 @@ export class HarnessEvents {
       // Its harness refused it with no card to answer: the step says why.
       this.st.denied.add(e.id);
       this.tools.end(e.id, true, '', { reason: String(e.refused), ms: e.ms });
-    } else this.tools.end(e.id, e.isError === true, e.isError ? (e.text ?? '') : '', { ms: e.ms });
+    } else this.tools.end(e.id, e.isError === true, e.isError ? (e.text ?? '') : '', { ms: e.ms, output: e.text });
     this.ctx.toolResult?.({ id: e.id, isError: e.isError === true, text: e.text ?? '', result: e.result ?? null, vcsCwd: e.vcsCwd ?? null });
     if (!e.parent) this.status({ state: 'think', currentStep: 'Thinking' });
   }

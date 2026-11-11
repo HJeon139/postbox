@@ -7,7 +7,7 @@ import { homedir } from 'node:os';
 import { basename, resolve, sep } from 'node:path';
 import { ASKING } from '../shared/catalog.mjs';
 import { COLUMN_PX, lintDiagrams, MIN_TEXT_PX, mermaidBlocks } from '../shared/diagram-lint.mjs';
-import { READING } from '../shared/limits.mjs';
+import { READING, STEP_TEXT } from '../shared/limits.mjs';
 import { formatDuration, glimpseOf, parseMentions } from '../shared/text.mjs';
 import { carriedList } from '../shared/work.mjs';
 import { workFolder } from './adapters/folder.mjs';
@@ -774,6 +774,8 @@ export class Runtime {
         detail = null,
         kind = null,
         job = /** @type {string|null} */ (null),
+        input = null,
+        output = null,
       }) {
         if (!live()) return;
         // A lint turn that only calls tools (define_term, say) is quiet: it ends as a one-line note, not a reply.
@@ -790,6 +792,9 @@ export class Runtime {
           ...(detail ? { detail: String(detail).slice(0, 1200) } : {}),
           ...(STEP_KINDS.has(kind) ? { kind } : {}),
           ...(typeof job === 'string' && job ? { job: job.slice(0, 60) } : {}),
+          // Its call’s input and the end of what it returned (server/harness-tools.mjs), bounded again here.
+          ...(input ? { input: String(input).slice(0, STEP_TEXT.input) } : {}),
+          ...(output ? { output: String(output).slice(-STEP_TEXT.output) } : {}),
         };
         if (i >= 0) turn.steps[i] = { ...turn.steps[i], ...step };
         else turn.steps.push(step);

@@ -75,7 +75,15 @@ function stepRow(s) {
     'li',
     { class: s.state === 'denied' ? 'denied' : '' },
     h(`span.g.g-${GLYPH[s.state] ?? 'done'}`, { role: 'img', 'aria-label': s.state === 'denied' ? 'refused' : s.state }),
-    h('span.step-text', s.who ? h('span.step-who', `${s.who} ·`) : null, h('span.mono', s.label), note ? h('span.step-note', note) : null),
+    h(
+      'span.step-text',
+      s.who ? h('span.step-who', `${s.who} ·`) : null,
+      h('span.mono', s.label),
+      note ? h('span.step-note', note) : null,
+      // What the call was given and the end of what it returned, as its harness reported them (server/harness-tools.mjs).
+      s.input ? h('span.step-input.mono', s.input) : null,
+      s.output ? h('span.step-output.mono', s.output) : null,
+    ),
     dur,
   );
 }

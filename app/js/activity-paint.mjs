@@ -26,6 +26,7 @@ export function activityParts(it) {
           runningNote(it, steps),
         ),
         steps,
+        it.status === 'streaming',
       )
     : null;
   return [notice, list, jobRows(it, steps)];
@@ -35,9 +36,10 @@ export function activityParts(it) {
  * A folded list holds its summary and the steps’ labels as text, not the steps (#1028): most lists are never opened,
  * and in a long room their steps were most of the page’s elements. The text sits in the details, so it’s hidden with
  * them and Find still finds a step, opening them in Chromium. The first open builds the steps, and they stay built.
- * @param {HTMLElement} summary @param {any[]} steps
+ * A turn still running shows its steps open, as its harness does (`running`); a finished one starts folded.
+ * @param {HTMLElement} summary @param {any[]} steps @param {boolean} [running]
  */
-function foldedList(summary, steps) {
+function foldedList(summary, steps, running = false) {
   const text = h('div.steps-folded', steps.map((s) => s.label).join('\n'));
   const list = h(
     'details.activity',
@@ -53,6 +55,10 @@ function foldedList(summary, steps) {
   // it with no click, and its toggle builds then.
   summary.addEventListener('click', () => buildSteps(list));
   stepsOf.set(list, steps);
+  if (running) {
+    buildSteps(list);
+    list.open = true;
+  }
   return list;
 }
 
