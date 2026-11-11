@@ -15,6 +15,7 @@ import { workFolder } from './adapters/folder.mjs';
 import { listProcesses } from './adapters/process-group.mjs';
 import { EFFORT_LEVELS } from './adapters/setup.mjs';
 import { contentBlocks, listClaudeSessions, recentHistory, TranscriptTail, typedText } from './adapters/terminal-mirror.mjs';
+import { recordCommands, runAgentCommand } from './agent-commands.mjs';
 import { agentFile, agentFolders, appFiles } from './agent-files.mjs';
 import { retireApp } from './app-retire.mjs';
 import { APP_HOLD_MAX, APP_SEND_LIMIT, APP_SEND_WINDOW_MS } from './app-send-limits.mjs';
@@ -60,16 +61,7 @@ import { addReadFolder, readCardAlways } from './read-folders.mjs';
 import { readMessage } from './read-message.mjs';
 import { addHost, host, removeHost, setProjectHostFolder, updateHost } from './remote/host-admin.mjs';
 import { describeHostInstall, hostStatus, installHost, retryHost, watchHosts } from './remote/host-status.mjs';
-import {
-  hereFolder,
-  localBackends,
-  refuseHere,
-  refuseUnregistered,
-  refuseUnregisteredSend,
-  registeredAdapter,
-  requestAdapter,
-  runsHere,
-} from './remote/placement.mjs';
+import { localBackends, refuseHere, refuseUnregistered, refuseUnregisteredSend, registeredAdapter, runsHere } from './remote/placement.mjs';
 import { RemoteTurns } from './remote/turns.mjs';
 import { replySegment, stepTaken, wordsSegment } from './reply-segment.mjs';
 import { reviewBlock } from './review-comments.mjs';
@@ -88,7 +80,7 @@ import {
 import { archive, archiveThread, deleteSession, deleteThread, finishLeftDeletes, restore, restoreThread } from './session-lifecycle.mjs';
 import { pendingSessionsIn, tellAgent, updateSession } from './session-write.mjs';
 import { clearSummaryPending, postSummary, shareText, shareToConversation, summarizeBack, summarizing } from './share-back.mjs';
-import { runShell } from './shell.mjs';
+import { commandFolder, expireStaleCommands, flushShellOutput, runShellCommand, stopShellCommand, stopShellCommands } from './shell-runs.mjs';
 import {
   agentWake,
   archiveForks,
@@ -1880,211 +1872,35 @@ export class Runtime {
     return changePermissionFolder(this, change);
   }
 
-  // ── Commands in the composer (#67) ─────────────────────────────────────────────────
+  // ── Commands in the composer (#67): server/agent-commands.mjs and shell-runs.mjs ──────────
   // `/` runs Postbox’s own commands without a turn, or an agent’s skill or command as its turn; `!` runs a command line
   // as the person, in the conversation’s folder, and the agents read it on their next turn, without being woken.
 
-  /**
-   * Keeps an agent’s skills and commands on its session, bounded, for the / menu: from init (names; terminal-only
-   * ones are already left out) or the SDK’s supportedCommands() (with descriptions and argument hints).
-   * @param {string} sessionId @param {unknown} list
-   */
   recordCommands(sessionId, list) {
-    if (!this.s.sessions[sessionId] || !Array.isArray(list)) return;
-    const seen = new Set();
-    const commands = [];
-    for (const c of list) {
-      const name = typeof c?.name === 'string' ? c.name.replace(/^\//, '').trim() : '';
-      if (!name || name.length > 100 || seen.has(name) || !/^[\w:.@/-]+$/.test(name)) continue;
-      seen.add(name);
-      commands.push({
-        name,
-        ...(typeof c.description === 'string' && c.description.trim() ? { description: clipText(c.description.trim(), 200) } : {}),
-        ...(typeof c.argumentHint === 'string' && c.argumentHint.trim() ? { argumentHint: clipText(c.argumentHint.trim(), 100) } : {}),
-        ...(c.skill === true ? { skill: true } : {}),
-      });
-      if (commands.length >= MAX_COMMANDS) break;
-    }
-    this.updateSession(sessionId, { commands: { at: Date.now(), list: commands } });
+    return recordCommands(this, sessionId, list);
   }
-
-  /**
-   * Runs an agent’s skill or command as its turn: `/name args` is the whole prompt (deliver skips the catch-up, which
-   * waits for the next turn), posted in the conversation as you wrote it. In a room, it addresses that agent.
-   * @param {string} threadId @param {{ sessionId: string, text: string }} req
-   */
-  runAgentCommand(threadId, { sessionId, text }) {
-    this.thread(threadId);
-    const line = String(text ?? '')
-      .trim()
-      .slice(0, 50000);
-    if (!/^\/[\w:.@/-]+/.test(line)) throw httpError(422, 'A skill or command starts with / and its name, such as /review.');
-    const se = this.sessionsIn(threadId).find((x) => x.id === sessionId);
-    if (!se) throw httpError(404, 'That agent isn’t in this conversation.');
-    if (se.archived) throw httpError(409, `@${se.handle}’s session is archived. Restore it first.`);
-    if (this.turns.has(se.id)) throw httpError(409, `@${se.handle} is busy. Stop it, or wait for it to finish, then run the command.`);
-    const item = this.addItem(threadId, { kind: 'user', text: line, attachments: [], command: { sessionId: se.id, handle: se.handle } });
-    updateThread(this, threadId, { hops: 0 });
-    if (this.sessionsIn(threadId).length > 1) this.addItem(threadId, { kind: 'system', variant: 'wake', from: 'you', to: se.handle });
-    this.deliver(se.id, { kind: 'user', text: line, attachments: [], itemId: item.id, slash: true });
-    return { item };
+  runAgentCommand(threadId, req) {
+    return runAgentCommand(this, threadId, req);
   }
-
-  /**
-   * The folder a conversation’s `!` commands run in: where the agent that replies there works, as its adapter decides
-   * (its own folder, the project’s, or a workspace of its own), else the project’s.
-   * `!` runs on this computer even when that agent runs on a host (#67, #120): then it’s the project’s folder here,
-   * else the workspace of its own the agent would have here, never a path on the host, and `host` names the host.
-   * @param {string} threadId @returns {Promise<{ folder: string|null, host: string|null }>}
-   */
-  async commandFolder(threadId) {
-    const t = this.thread(threadId);
-    const members = this.sessionsIn(threadId).filter((x) => !x.archived);
-    const se = members.find((x) => x.id === t.lastSpeaker) ?? members[0];
-    const persona = se ? this.personaFor(se) : null;
-    const project = this.s.projects[t.projectId] ?? null;
-    const adapter = persona ? requestAdapter(this, se.handle, persona) : null;
-    if (persona?.remote?.hostId) return hereFolder(this, persona, project, adapter);
-    return { folder: await workFolder(adapter, persona, project), host: null };
+  commandFolder(threadId) {
+    return commandFolder(this, threadId);
   }
-
-  /**
-   * Runs `!command` (#67) as the person, in the conversation’s folder. Output streams into a command item; the item
-   * ends with the exit code and the duration. The agents read it with what they missed, at the start of their next
-   * turn. What the store keeps is bounded: the item holds the last MAX_COMMAND_OUTPUT characters (it says when
-   * earlier output was cut), and once output passes that, the item is refreshed with its end at most every
-   * COMMAND_REFRESH_MS, and at most MAX_COMMAND_REFRESHES times, then once more when the command ends.
-   * @param {string} threadId @param {string} command
-   */
-  async runShellCommand(threadId, command) {
-    this.thread(threadId);
-    const line = String(command ?? '').trim();
-    if (!line) throw httpError(422, 'Write a command after the !.');
-    if (line.length > 10000) throw httpError(422, 'A command is limited to 10,000 characters.');
-    const { folder: cwd, host } = await this.commandFolder(threadId);
-    if (!cwd) throw httpError(409, 'This conversation has no folder to run commands in. Give the project or the agent a folder first.');
-    // Said once, as the output’s first line, when the agent here runs on a host: you, and the agents, see where it ran.
-    const note = host ? `! commands run on this computer, not on ${host}.\n` : '';
-    const startedAt = Date.now();
-    const it = this.addItem(threadId, {
-      kind: 'command',
-      command: line,
-      cwd,
-      ...(host ? { notOn: host } : {}),
-      status: 'running',
-      text: note,
-      cut: false,
-      exitCode: null,
-      signal: null,
-      startedAt,
-    });
-    let out = note; // the end of the output so far, at most twice the bound between flushes
-    let sent = note.length; // characters already sent as item.text, before the output was cut
-    let cut = false;
-    let refreshed = 0; // refreshes of the item’s text since it was cut
-    let refreshedAt = 0;
-    /** @type {NodeJS.Timeout|null} */
-    let timer = null;
-    const flush = ({ final = false } = {}) => {
-      if (timer) clearTimeout(timer);
-      timer = null;
-      if (!this.store.pending.item(threadId, it.id)) return;
-      if (!cut && out.length <= MAX_COMMAND_OUTPUT) {
-        // Only the new text, as the reply of an agent streams.
-        if (out.length > sent) this.store.emit('item.text', { threadId, id: it.id, text: out.slice(sent) });
-        sent = out.length;
-        return;
-      }
-      cut = true;
-      out = out.slice(-MAX_COMMAND_OUTPUT);
-      // Past the bound, each refresh replaces the whole text, so they’re rare and few; the end always arrives.
-      const now = Date.now();
-      if (!final && (refreshed >= MAX_COMMAND_REFRESHES || now - refreshedAt < COMMAND_REFRESH_MS)) return;
-      refreshed++;
-      refreshedAt = now;
-      this.patchItem(threadId, it.id, { text: out, cut: true, ...(refreshed >= MAX_COMMAND_REFRESHES && !final ? { paused: true } : {}) });
-    };
-    const run = { stopped: false, stop: () => false, kill: () => false, done: Promise.resolve(), flush };
-    this.shellRuns.set(it.id, run);
-    const handle = runShell({
-      command: line,
-      cwd,
-      ...(this.spawnShell ? { spawnImpl: this.spawnShell } : {}),
-      onOutput: (text) => {
-        out += text;
-        if (out.length > 2 * MAX_COMMAND_OUTPUT) {
-          out = out.slice(-MAX_COMMAND_OUTPUT);
-          cut = true;
-        }
-        if (!timer) {
-          timer = setTimeout(flush, COMMAND_FLUSH_MS);
-          timer.unref?.();
-        }
-      },
-      onExit: ({ code = null, signal = null, error }) => {
-        flush({ final: true });
-        this.shellRuns.delete(it.id);
-        // How it ended is written once writes are open: the output chunks are memory-only while closed (I1), but a
-        // status left “running” in the recovered state would never end.
-        whenWritable(this, () => {
-          if (!this.store.pending.item(threadId, it.id)) return;
-          this.patchItem(threadId, it.id, {
-            status: run.stopped ? 'stopped' : error ? 'failed' : code === 0 ? 'done' : 'failed',
-            exitCode: typeof code === 'number' ? code : null,
-            signal: signal ?? null,
-            ms: Date.now() - startedAt,
-            ...(cut ? { paused: false } : {}),
-            ...(run.closing ? { error: 'Postbox stopped it as it shut down.' } : error ? { error: clipText(String(error.message ?? error), 300) } : {}),
-          });
-        });
-      },
-    });
-    Object.assign(run, { stop: handle.stop, kill: handle.kill, done: handle.done });
-    return { item: it };
+  runShellCommand(threadId, command) {
+    return runShellCommand(this, threadId, command);
   }
-
-  /** Sends the output of running commands that’s waiting for its next flush now (tests await this, not a timer). */
   flushShellOutput() {
-    for (const run of this.shellRuns.values()) run.flush();
+    return flushShellOutput(this);
   }
-
-  /** Stop on a running `!command`: SIGINT, then SIGKILL. */
   stopShellCommand(threadId, itemId) {
-    const it = this.store.item(threadId, itemId);
-    const run = this.shellRuns.get(itemId);
-    if (it?.kind !== 'command' || !run) throw httpError(409, 'That command already finished.');
-    run.stopped = true;
-    run.stop();
-    return { ok: true };
+    return stopShellCommand(this, threadId, itemId);
+  }
+  stopShellCommands(opts) {
+    return stopShellCommands(this, opts);
+  }
+  expireStaleCommands() {
+    return expireStaleCommands(this);
   }
 
-  /**
-   * When Postbox shuts down: every running command, in its own process group, would outlive it. Each gets SIGINT,
-   * and SIGKILL if it hasn’t ended within graceMs.
-   * @param {{ graceMs?: number }} [opts]
-   */
-  async stopShellCommands({ graceMs = 2000 } = {}) {
-    const runs = [...this.shellRuns.values()];
-    if (!runs.length) return;
-    for (const run of runs) {
-      run.stopped = true;
-      run.closing = true;
-      run.stop();
-    }
-    /** @type {NodeJS.Timeout|undefined} */
-    let timer;
-    const late = new Promise((r) => {
-      timer = setTimeout(r, graceMs);
-    });
-    await Promise.race([Promise.all(runs.map((r) => r.done)), late]);
-    clearTimeout(timer);
-    for (const run of runs) run.kill();
-  }
-
-  /**
-   * After a restart, nothing Postbox started is running any more, unless Postbox stopped without shutting down (a crash),
-   * which can leave a command running on its own. Either way its output here ends.
-   */
   // ── The work ledger (#132) ─────────────────────────────────────────────────────────
   // What a conversation’s agents changed, ran and published, read by the Work view. A conversation is the one a
   // thread belongs to: its side and topic threads count toward it.
@@ -2118,16 +1934,6 @@ export class Runtime {
       text: f?.before?.exists ? `Restored ${f.rel} to how it was before ${who} changed it` : `Removed ${f?.rel}, which ${who} created`,
     });
     return f;
-  }
-
-  expireStaleCommands() {
-    for (const [threadId, items] of Object.entries(this.s.items))
-      for (const it of items)
-        if (it.kind === 'command' && it.status === 'running')
-          this.patchItem(threadId, it.id, {
-            status: 'stopped',
-            error: 'Postbox restarted while it ran. If Postbox didn’t shut down cleanly, it may still be running.',
-          });
   }
 
   /** Where an attachment can be read on disk: a stored upload, or a file in the project’s folder. */
@@ -2605,12 +2411,5 @@ const keepUnsure = (n) => `Postbox couldn’t tell which of ${n} processes is th
 const asHttp = (e) => {
   throw e?.status ? httpError(e.status, e.message) : e;
 };
-// Commands in the composer (#67), bounded: an agent’s list for the / menu, a `!command`’s output (its last
-// characters), how often that output reaches the browser, and how much of it the agents read.
-const MAX_COMMANDS = 200;
-const MAX_COMMAND_OUTPUT = 64 * 1024;
-const COMMAND_FLUSH_MS = 100;
-const COMMAND_REFRESH_MS = 5000;
-const MAX_COMMAND_REFRESHES = 60;
 
 export { formatDuration };
