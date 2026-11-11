@@ -26,7 +26,7 @@ import { act, answerDelivered, unreadAnswer, updateBlock } from './blocks.mjs';
 import { bringToConversation } from './bring.mjs';
 import { keptTurns, nextNeed, noticeNeed, releaseNeed, stateFor, TURN_TIED } from './card-needs.mjs';
 import { catchUp, moveMarkers, pointerIfSeen } from './catch-up.mjs';
-import { diagramCheck, rememberDiagrams } from './diagram-check.mjs';
+import { diagramCheck } from './diagram-check.mjs';
 import { emptyReply, endedWithoutReply } from './empty-reply.mjs';
 import { folderOrNone, sessionFolder } from './folder-path.mjs';
 import { heldSession } from './held-session.mjs';
@@ -34,7 +34,7 @@ import { clip, clipText, httpError } from './helpers.mjs';
 import { clipItem, describeItem, topicRootLine } from './item-lines.mjs';
 import { keptGroupsOf, keptJobs, pollKept, stopJob, stopKeptJobs, watchKept } from './kept-jobs.mjs';
 import { Ledger } from './ledger.mjs';
-import { endLint, foldLint, lint, lintEntry, quietLint, sendLint } from './lint-delivery.mjs';
+import { endLint, foldLint, lint, quietLint } from './lint-delivery.mjs';
 import { wakeMentions } from './mention-wakes.mjs';
 import { sentAttachments } from './message-attachments.mjs';
 import * as queue from './message-queue.mjs';
@@ -1641,17 +1641,11 @@ export class Runtime {
 
   // When checks reach an agent after its turn: server/lint-delivery.mjs.
 
-  lintEntry(sessionId, turnId) {
-    return lintEntry(this, sessionId, turnId);
-  }
   endLint(turn, problems) {
     return endLint(this, turn, problems);
   }
   lint(sessionId, turnId, problems) {
     return lint(this, sessionId, turnId, problems);
-  }
-  sendLint(turnId) {
-    return sendLint(this, turnId);
   }
   foldLint(sessionId, message) {
     return foldLint(this, sessionId, message);
@@ -1662,9 +1656,6 @@ export class Runtime {
 
   // Diagram checks from the page: server/diagram-check.mjs.
 
-  rememberDiagrams(sessionId, sources) {
-    return rememberDiagrams(this, sessionId, sources);
-  }
   diagramCheck(threadId, itemId, report) {
     return diagramCheck(this, threadId, itemId, report);
   }

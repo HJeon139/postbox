@@ -43,7 +43,7 @@ export function sendLint(rt, turnId) {
   entry.timer.unref?.();
 }
 
-export function lintEntry(rt, sessionId, turnId) {
+function lintEntry(rt, sessionId, turnId) {
   let e = rt.lints.get(turnId);
   if (!e) {
     e = { sessionId, kind: null, ended: false, sent: false, problems: [], timer: null, threadId: null };
@@ -60,13 +60,13 @@ export function lintEntry(rt, sessionId, turnId) {
 
 /** The turn ended: its lint turn goes once the browser has had a moment to report. */
 export function endLint(rt, turn, problems) {
-  const e = rt.lintEntry(turn.sessionId, turn.id);
+  const e = lintEntry(rt, turn.sessionId, turn.id);
   e.kind = turn.kind;
   // The lint turn answers where the reply was.
   e.threadId = turn.threadId;
   e.ended = true;
   e.problems.push(...problems);
-  if (e.problems.length) rt.sendLint(turn.id);
+  if (e.problems.length) sendLint(rt, turn.id);
 }
 
 /**
@@ -80,10 +80,10 @@ export function lint(rt, sessionId, turnId, problems) {
   // A turn that isn’t running and has no entry failed, was stopped, ran before a restart or is long gone: its
   // problems are dropped, so no lint turn lands about an old reply. A lint turn’s own problems are too.
   if ((!live && !rt.lints.has(turnId)) || live?.kind === 'lint') return false;
-  const e = rt.lintEntry(sessionId, turnId);
+  const e = lintEntry(rt, sessionId, turnId);
   if (e.kind === 'lint' || e.sent) return false;
   e.problems.push(...problems);
-  if (e.ended) rt.sendLint(turnId);
+  if (e.ended) sendLint(rt, turnId);
   return true;
 }
 
@@ -107,7 +107,7 @@ export function foldLint(rt, sessionId, message) {
 /** A lint turn that wrote nothing shows as one line, such as “@researcher defined “Step 2””. */
 export function quietLint(rt, turn, se) {
   // What the browser reports later about this lint turn’s own work is never linted.
-  Object.assign(rt.lintEntry(se.id, turn.id), { kind: 'lint', ended: true, sent: true });
+  Object.assign(lintEntry(rt, se.id, turn.id), { kind: 'lint', ended: true, sent: true });
   if (turn.said.trim() || turn.first) return;
   const defined = [...new Set(turn.defined ?? [])].map((t) => `“${t}”`);
   const list = defined.length > 1 ? `${defined.slice(0, -1).join(', ')} and ${defined.at(-1)}` : (defined[0] ?? '');
