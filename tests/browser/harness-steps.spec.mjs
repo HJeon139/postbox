@@ -66,6 +66,7 @@ test('a running turn’s steps are open, each with what it was given and what it
     await expect(failed.locator('[aria-label="failed"]')).toBeVisible();
     await expect(failed.locator('.step-input')).toContainText('command: ls nope-missing');
     await expect(failed.locator('.step-output')).toContainText('No such file or directory');
+    await expect(failed.locator('.step-note'), 'why it failed shows once, in its output').toHaveCount(0);
   });
   go();
   await expect.poll(() => app.rt.turns.size, { message: 'the turn to end' }).toBe(0);
