@@ -27,6 +27,8 @@ export function threadSearch(store) {
   });
   store.onReload(() => indexes.clear());
   return {
+    /** A conversation’s index, if it has been searched: for the test that a change rewrites one entry. @param {string} threadId */
+    indexOf: (threadId) => indexes.get(threadId) ?? null,
     /** The best matches in a conversation, best first. @param {string} threadId @param {string} q @param {number} k */
     search(threadId, q, k) {
       let ix = indexes.get(threadId);

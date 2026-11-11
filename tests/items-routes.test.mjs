@@ -61,7 +61,11 @@ test('search finds items the page hasn’t loaded, with their words, and follows
     r.json.hits.map((/** @type {any} */ h) => [h.id, h.kind, h.text]),
     [['i7', 'user', 'the walrus plan']],
   );
+  const own = threadSearch(app.store);
+  own.search('room', 'walrus', 5);
+  const writes = own.indexOf('room')?.writes ?? 0;
   app.store.emit('item.add', { threadId: 'room', item: { id: 'late', kind: 'user', text: 'another walrus', at: 300 } });
+  assert.equal((own.indexOf('room')?.writes ?? 0) - writes, 1, 'one entry written for one new item, not the room’s');
   const again = await get('/api/threads/room/search?q=walrus');
   assert.deepEqual(again.json.hits.map((/** @type {any} */ h) => h.id).sort(), ['i7', 'late']);
 });
