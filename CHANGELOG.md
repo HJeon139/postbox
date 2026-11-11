@@ -2,6 +2,16 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.0.1 (2026-11-11)
+
+### Fixes
+
+- **app:** the element budget doesn't unmount what a scroll just mounted
+- **server:** a session keeps its need's item time, so ⌃J orders without the conversation's items
+- **server:** thread headers update from each event, and a frame goes out only when one changed
+- **app:** the page reads each thread's header facts, not its items, across conversations
+- **app:** the transcript window budgets elements on the page, not only items
+
 ## 4.0.0 (2026-11-11)
 
 ### Breaking changes
