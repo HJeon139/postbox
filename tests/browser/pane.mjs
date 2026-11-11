@@ -1,4 +1,4 @@
-// What the right pane’s specs share (pane-width, pane-handle, telemetry): a Postbox whose demo “Citation fixes” has
+// What the right pane’s specs share (pane-width, pane-handle): a Postbox whose demo “Citation fixes” has
 // replies, an app and a topic thread, a window of a given width with nothing kept from before, and the layout as a
 // person sees it.
 
