@@ -85,6 +85,8 @@ function fullRow(s) {
   const text = row.querySelector('.step-text');
   const n = counts(s);
   if (n) text?.querySelector('.mono')?.after(' ', n);
+  // An edit’s diff says what its input and its “ok” would: its label names the file.
+  if (s.diff) for (const said of text?.querySelectorAll(':scope > .step-input, :scope > .step-output') ?? []) said.remove();
   if (s.diff)
     text?.append(
       h(

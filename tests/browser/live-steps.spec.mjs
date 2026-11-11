@@ -86,6 +86,7 @@ test('the newest step shows in full, an edit as its diff; an older one is a line
     await expect(full).toContainText('Edited calc.py');
     await expect(full.locator('.step-diff .del')).toHaveText('-    return a - b');
     await expect(full.locator('.step-diff .add')).toHaveText('+    return a + b');
+    await expect(full.locator('.step-input, .step-output'), 'the diff says it, not its input again').toHaveCount(0);
     await expect(live.locator('li.step-line', { hasText: 'Read calc.py' }), 'the read before it is one line').toHaveCount(1);
   });
   go('fixer');
