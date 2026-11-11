@@ -1,0 +1,20 @@
+{
+  "lines": [
+    {
+      "stream": "stdout",
+      "text": "Postbox is running at http://127.0.0.1:47819/",
+      "step": null
+    },
+    {
+      "stream": "stdout",
+      "text": "Data: /tmp/pb-rec/data",
+      "step": null
+    },
+    {
+      "stream": "stdout",
+      "text": "Backends: mock, claude-code, agent-sdk, kiro-cli, antigravity-cli, codex (Claude Code 2.1.318) (Kiro CLI 2.34.1) (Antigravity CLI 1.5.5) (Codex 0.167.0)",
+      "step": null
+    }
+  ],
+  "exits": []
+}
