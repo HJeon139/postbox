@@ -22,7 +22,8 @@ import { DECL, placed, sites, withProbes } from './server-sources-fixture.mjs';
 
 /** Every write of a session: updateSession's patch, the put of a new one, and the removal of one. */
 const SESSION_WRITES = {
-  'runtime.mjs': ['putSession', 'putSession', 'ensureSession'], // putSession and its emit, called only by ensureSession for a new session
+  'conversations.mjs': ['ensureSession'], // a new session, through putSession
+  'runtime.mjs': ['putSession', 'putSession'], // putSession and its emit, called only by ensureSession for a new session
   'session-lifecycle.mjs': ['deleteSession'], // a delete's removal
   'session-write.mjs': ['updateSession', 'stampNeeds'], // a session that exists, from store.pending.session; a need's time as the store loads
   'thread-erase.mjs': ['eraseThreads'], // the sessions of the threads a delete erases
