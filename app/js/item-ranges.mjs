@@ -37,8 +37,10 @@ export const atEnd = (list, r) => r.start + list.length >= r.total;
 export function gate(state, ranges, type, d, seq) {
   const r = ranges.get(d.threadId);
   if (!r) return 'skip';
+  // Applied only where the range held its item: one a load in flight brings gets it again when the load lands.
+  const held = type === 'item.add' || positionOf(state.items[d.threadId] ?? [], d.id) >= 0;
   const verdict = judge(state, r, type, d, seq);
-  if (r.loads > 0) r.heard.push({ type, data: d, seq, applied: verdict === 'apply' });
+  if (r.loads > 0) r.heard.push({ type, data: d, seq, applied: verdict === 'apply' && held });
   keepBeyond(r, type, d, verdict);
   return verdict;
 }
