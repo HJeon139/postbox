@@ -213,6 +213,7 @@ export async function recheck(dir, { root, opt, review }) {
     // A run from before run.json gets one, from what its report and streams say.
     const { dir: _d, findings: _f, ...kept2 } = record ?? {};
     writeJsonAtomic(join(dir, 'run.json'), { ...kept2, scenario: name, kind: isTargeted(scenario) ? 'targeted' : 'exploratory', coverage });
+    return findings;
   } finally {
     await page.close().catch(() => {});
     server.kill();

@@ -127,6 +127,8 @@ export function runChecks(facts, { only = null, checks = CHECKS } = {}) {
           title: x.title,
           evidence: x.evidence,
           ...(x.verdict ? { verdict: x.verdict, note: x.note } : {}),
+          // How much it matters when filed (tools/uat/review.mjs): postbox-output’s are critical, and fail the run.
+          ...(x.severity ? { severity: x.severity } : {}),
           ...(x.counts ? { counts: x.counts } : {}),
           // A check it couldn’t make, for an agent on a backend whose inputs it can’t read: the report lists it.
           ...(x.unverified ? { unverified: x.unverified } : {}),

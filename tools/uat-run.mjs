@@ -33,6 +33,7 @@ import { parseArgs } from 'node:util';
 import { launch, sleep } from './browser.mjs';
 import { parseMaxCost, runBudget } from './uat/budget.mjs';
 import { lastCheckPass, MID_TURN, runChecks, waitingOnYou } from './uat/checks.mjs';
+import { failsRun } from './uat/checks-postbox.mjs';
 import { streamResults } from './uat/cost.mjs';
 import { driver, JOBS_ANSWERS } from './uat/driver.mjs';
 import { faultSetup } from './uat/fault-run.mjs';
@@ -536,6 +537,7 @@ async function main() {
       }),
       ...(facts.budget ? { budget: facts.budget } : {}),
     });
+    return all;
   } finally {
     unwatch();
     await stop();
@@ -543,8 +545,14 @@ async function main() {
 }
 
 if (resolve(process.argv[1] ?? '') === fileURLToPath(import.meta.url))
-  (opt.recheck ? recheck(opt.recheck, { root: ROOT, opt, review: REVIEW }) : main()).catch((e) => {
-    console.error(`UAT run failed: ${e.stack ?? e.message}`);
-    // A run stopped by a signal exits as stopped (130, tools/uat/stop.mjs), whatever it failed with meanwhile.
-    process.exit(process.exitCode || 1);
-  });
+  (opt.recheck ? recheck(opt.recheck, { root: ROOT, opt, review: REVIEW }) : main())
+    .then((findings) => {
+      // Postbox printed an error or a warning, or crashed: the run fails, so a script running it sees that without the
+      // report. A run stopped by a signal still exits 130 (tools/uat/stop.mjs).
+      if (failsRun(findings)) process.exitCode ||= 1;
+    })
+    .catch((e) => {
+      console.error(`UAT run failed: ${e.stack ?? e.message}`);
+      // A run stopped by a signal exits as stopped (130, tools/uat/stop.mjs), whatever it failed with meanwhile.
+      process.exit(process.exitCode || 1);
+    });

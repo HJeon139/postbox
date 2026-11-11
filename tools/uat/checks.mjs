@@ -1,17 +1,19 @@
 // The UAT’s checks: tools/uat/room-checks.mjs’s, with a host-mode run’s (#120) remote rules wrapped around them
 // (tools/uat/checks-remote.mjs), which read what host mode records (facts.hosts). The asset store’s checks
 // (tools/uat/checks-assets.mjs), which read the store a run left and what its tester did, and the view’s
-// (tools/uat/checks-view.mjs), which read the page’s probes, are added after them.
+// (tools/uat/checks-view.mjs), which read the page’s probes, are added after them, and last the run’s own Postbox’s
+// output (tools/uat/checks-postbox.mjs), whose findings fail the run.
 
 import { ASSET_STORE_CHECKS } from './checks-assets.mjs';
+import { POSTBOX_OUTPUT_CHECKS } from './checks-postbox.mjs';
 import { withRemote } from './checks-remote.mjs';
 import { VIEW_CHECKS } from './checks-view.mjs';
 import { CHECKS as ROOM_CHECKS, runChecks as runRoomChecks } from './room-checks.mjs';
 
 export * from './room-checks.mjs';
 
-// The checks, the asset store’s and the view’s, with the remote rules for a host-mode run wrapped around them and added after them.
-export const CHECKS = withRemote([...ROOM_CHECKS, ...ASSET_STORE_CHECKS, ...VIEW_CHECKS]);
+// The checks, the asset store’s, the view’s and Postbox’s output’s, with the remote rules for a host-mode run wrapped around them and added after them.
+export const CHECKS = withRemote([...ROOM_CHECKS, ...ASSET_STORE_CHECKS, ...VIEW_CHECKS, ...POSTBOX_OUTPUT_CHECKS]);
 
 /**
  * Runs every check, or only those named, with the remote rules; checks: another list to run instead, as a test passes.
