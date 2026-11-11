@@ -53,7 +53,9 @@ failOnPageErrors(test);
 async function open(page, count, flag) {
   await page.addInitScript((value) => (value === null ? localStorage.removeItem('pb-window') : localStorage.setItem('pb-window', value)), flag);
   await page.goto(`${app.origin}/#/t/${rooms[count]}`);
-  await synced(page, app);
+  // The page loads all three rooms, 1,000 items, before it hears the latest event: under the full suite’s load with
+  // events 300 ms late that took past synced()’s 5 s in CI, as view-skipped-tab.spec.mjs found.
+  await synced(page, app, 15_000);
   await expect(page.locator('#main > .item').last()).toBeVisible();
   await settled(page);
 }
