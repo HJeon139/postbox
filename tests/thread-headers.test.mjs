@@ -37,17 +37,83 @@ test('a header has the thread’s count, last time, speakers, open asks and bloc
   assert.deepEqual(headerOf(s, 'c').asks, [], 'an answered ask isn’t open');
 });
 
-test('a kept header is forgotten by an item change in its thread or its conversation, not by streamed text', () => {
+/** Applies an event to the store’s state and tells the headers, as the store’s subscribers hear it. */
+function emitter(/** @type {any} */ store, /** @type {any} */ headers) {
+  let seq = 0;
+  return (/** @type {string} */ type, /** @type {any} */ data) => {
+    apply(store.state, type, data);
+    return headers.note({ seq: ++seq, type, data }).map((/** @type {any} */ c) => c.threadId);
+  };
+}
+
+test('kept current from each event, every header matches a walk of the thread whole', () => {
   const store = { state: room() };
   const headers = threadHeaders(store);
-  const before = headers.of('c');
-  assert.equal(headers.of('c'), before, 'kept');
-  assert.deepEqual(headers.note({ seq: 1, type: 'item.text', data: { threadId: 'c', id: 'a1', text: 'x' } }), []);
-  apply(store.state, 'item.patch', { threadId: 'c', id: 'u1', patch: { replies: 3 } });
-  assert.deepEqual(headers.note({ seq: 2, type: 'item.patch', data: { threadId: 'c', id: 'u1' } }).sort(), ['c', 'sd', 'tp']);
-  assert.equal(headers.of('tp')?.root?.replies, 3);
-  assert.deepEqual(headers.changedSince(1).sort(), ['c', 'sd', 'tp']);
-  assert.deepEqual(headers.changedSince(2), []);
+  headers.all();
+  const emit = emitter(store, headers);
+  const same = (/** @type {string} */ when) => {
+    for (const id of Object.keys(store.state.threads)) assert.deepEqual(headers.of(id), headerOf(store.state, id), `${id} ${when}`);
+  };
+  same('at first');
+  emit('item.add', { threadId: 'c', item: { id: 'a2', kind: 'agent', handle: 'bo', sessionId: 's2', at: 60 } });
+  emit('item.add', { threadId: 'c', item: { id: 'b3', kind: 'block', sessionId: 's2', valid: true, block: { type: 'choice' }, at: 61 } });
+  same('after adds');
+  emit('item.patch', { threadId: 'c', id: 'b1', patch: { answered: true } });
+  emit('item.patch', { threadId: 'c', id: 'u1', patch: { replies: 5, lastReplyAt: 70 } });
+  emit('item.patch', { threadId: 'c', id: 'l1', patch: { count: 9, lastAt: 71 } });
+  same('after patches');
+  emit('item.move', { threadId: 'c', id: 'b3', stub: { id: 'st1', kind: 'moved', at: 61 }, patch: { at: 80 } });
+  same('after a move');
+  emit('thread', { id: 'tp2', kind: 'topic', parentId: 'c', rootItemId: 'a2', createdAt: 90 });
+  emit('item.add', { threadId: 'tp2', item: { id: 'r1', kind: 'agent', handle: 'ada', at: 91 } });
+  emit('item.patch', { threadId: 'c', id: 'a2', patch: { replies: 1, lastReplyAt: 91 } });
+  emit('thread', { id: 'sd2', kind: 'side', parentId: 'c', createdAt: 92 });
+  emit('item.add', { threadId: 'c', item: { id: 'l2', kind: 'sidelink', sideThreadId: 'sd2', count: 1, at: 93 } });
+  same('after new threads');
+  assert.deepEqual(emit('remove', { kind: 'thread', id: 'sd2' }), ['sd2']);
+  assert.equal(headers.of('sd2'), null);
+});
+
+test('only a header the event changed is sent, and a topic or side thread only when the event names its item', () => {
+  const store = { state: room() };
+  const headers = threadHeaders(store);
+  headers.all();
+  const emit = emitter(store, headers);
+  assert.deepEqual(emit('item.text', { threadId: 'c', id: 'a1', text: 'x' }), [], 'streamed text changes none');
+  assert.deepEqual(emit('item.patch', { threadId: 'c', id: 'a1', patch: { text: 'more words' } }), [], 'a patch that changes no fact');
+  assert.deepEqual(emit('item.add', { threadId: 'c', item: { id: 'u9', kind: 'user', at: 99 } }), ['c'], 'not the topic or side thread');
+  assert.deepEqual(emit('item.patch', { threadId: 'c', id: 'u1', patch: { replies: 3 } }), ['tp'], 'the topic’s root');
+  assert.deepEqual(emit('item.patch', { threadId: 'c', id: 'l1', patch: { count: 5 } }), ['sd'], 'the side thread’s link');
+  assert.deepEqual(
+    headers
+      .changedSince(3)
+      .map((c) => c.threadId)
+      .sort(),
+    ['sd', 'tp'],
+  );
+});
+
+test('clear() counts every header again, and trimming lets go of seqs no stream can still ask for', () => {
+  const store = { state: room(), events: /** @type {{ seq: number }[]} */ ([]) };
+  const headers = threadHeaders(store);
+  headers.all();
+  const emit = emitter(store, headers);
+  emit('item.add', { threadId: 'c', item: { id: 'u9', kind: 'user', at: 99 } });
+  store.state.items.c.push({ id: 'unseen', kind: 'user', at: 100 }); // as a rejected event’s handler might
+  headers.clear();
+  assert.equal(headers.of('c')?.count, 7, 'counted again from the items');
+  assert.deepEqual(headers.changedSince(0), [], 'nothing kept for streams; a rejected event resyncs them');
+  for (let i = 0; i < 1000; i++) emit('item.patch', { threadId: 'c', id: 'b1', patch: { answered: i % 2 === 0 } });
+  store.events = [{ seq: 1000 }];
+  for (let i = 0; i < 1000; i++) emit('item.text', { threadId: 'c', id: 'a1', text: 'x' });
+  assert.deepEqual(
+    headers.changedSince(0).map((c) => c.threadId),
+    ['c'],
+    'a seq still in the store’s backlog stays',
+  );
+  store.events = [{ seq: 5000 }];
+  for (let i = 0; i < 1000; i++) emit('item.text', { threadId: 'c', id: 'a1', text: 'x' });
+  assert.deepEqual(headers.changedSince(0), [], 'one older than the backlog goes');
 });
 
 test('the stream sends a thread’s header after the event that changed it, and the ones a reconnecting page missed', () => {

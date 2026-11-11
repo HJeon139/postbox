@@ -59,6 +59,7 @@ const DIRECT = {
   'permission-expiry.mjs': ['expireStalePermissions'], // at startup
   'runtime.mjs': ['expireStaleCommands'], // at startup
   'sandbox-routes.mjs': ['sandboxRoute'], // an app version’s sandbox page: an HTTP answer to the page
+  'thread-headers.mjs': ['itemsOf'], // each thread's header facts, sent to the page (#1155)
   'tool-ask.mjs': ['settleToolAsks'], // only the thread ids; each thread is read through store.pending
   'view-app/view-app.mjs': ['viewApp'], // the app the agent named, to find its thread and version for the picture (#95)
   // The archive pass (#305) picks a turn from the published state; its commit function gathers it again from the state

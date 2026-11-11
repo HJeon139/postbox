@@ -48,7 +48,9 @@ export function liveStreams(store, events = EVENTS, { now = Date.now } = {}) {
   // with it in CI to show they wait for the page to hear a change, not for a fixed time.
   const lag = Number(process.env.POSTBOX_STREAM_LAG) || 0;
   store.subscribe((ev) => {
-    const line = publicFrame(ev, events) + headerFrames(headers, headers.note(ev));
+    // A rejected event may have changed the state unseen: the headers are counted again, and the page loads them anew.
+    if (ev.type === REJECTED) headers.clear();
+    const line = publicFrame(ev, events) + (ev.type === REJECTED ? '' : headerFrames(headers.note(ev)));
     const epoch = store.epoch; // the history the event belongs to: a send held back past a Retry says nothing (gpt’s finding)
     // An event the store held as rejected (#609): its place, then a resync, since a handler that broke its contract
     // may have changed the state the page can't see.
@@ -101,20 +103,16 @@ export function liveStreams(store, events = EVENTS, { now = Date.now } = {}) {
  */
 function backlogFrames(backlog, since, events, headers) {
   const frames = backlog.map((ev) => publicFrame(ev, events));
-  const changed = headerFrames(headers, headers.changedSince(since));
+  const changed = headerFrames(headers.changedSince(since));
   return changed ? [...frames, changed] : frames;
 }
 
 /**
- * The header frames for these threads: each one’s header as it is now, or null for one that was removed.
- * @param {ReturnType<typeof threadHeaders>} headers @param {string[]} ids
+ * The header frames for these headers: each as it is now, or null for a thread that was removed.
+ * @param {{ threadId: string, header: any }[]} changed
  */
-function headerFrames(headers, ids) {
-  return ids
-    .map((id) => [id, headers.of(id)])
-    .filter(([id, header]) => header || headers.removed(/** @type {string} */ (id)))
-    .map(([id, header]) => publicHeaderFrame(/** @type {string} */ (id), header))
-    .join('');
+function headerFrames(changed) {
+  return changed.map(({ threadId, header }) => publicHeaderFrame(threadId, header)).join('');
 }
 
 /**
