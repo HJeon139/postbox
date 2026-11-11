@@ -271,16 +271,22 @@ class TranscriptWindow {
   }
   /** An item moved to the end, its stub in its old place (item.move). @param {any} stub @param {any} it */
   moved(stub, it) {
-    const at = this.indexOf.get(it.id);
-    if (at !== undefined) {
-      this.indexOf.delete(it.id);
-      this.indexOf.set(stub.id, at);
-      this.entry.ids[at] = stub.id;
-      this.entry.kinds[at] = kindOf(stub);
-      this.heights.retype(at, kindOf(stub));
-      windowShrink.dropMovedIsland(this, at, stub.id);
-    }
+    this.restub(stub, it.id);
     return this.added(it);
+  }
+  /**
+   * An item's stub takes its place, the item gone past the end of what's loaded (item-ranges.mjs, #1155).
+   * @param {any} stub @param {string} id
+   */
+  restub(stub, id) {
+    const at = this.indexOf.get(id);
+    if (at === undefined) return;
+    this.indexOf.delete(id);
+    this.indexOf.set(stub.id, at);
+    this.entry.ids[at] = stub.id;
+    this.entry.kinds[at] = kindOf(stub);
+    this.heights.retype(at, kindOf(stub));
+    windowShrink.dropMovedIsland(this, at, stub.id);
   }
   /** Measures a node the transcript mounted at the end itself. @param {Element} node */
   observe(node) {

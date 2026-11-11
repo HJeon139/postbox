@@ -109,6 +109,8 @@ function hear(t, e) {
   client.seq = seq || client.seq;
   if (verdict === 'reload') client.emit({ type: 'range.stale', data: { threadId: data.threadId } });
   if (verdict === 'beyond') client.emit({ type: 'item.beyond', data: { threadId: data.threadId, item: data.item } });
+  // An item moved past the range's end: the state has its stub in its place, which the transcript draws.
+  if (verdict === 'moved') client.emit({ type: t, data: { ...data, past: true } });
   if (verdict !== 'apply') return;
   apply(client.state, t, data);
   // A session’s change comes as only its changed fields (designs/508, “Store events”); listeners hear the whole

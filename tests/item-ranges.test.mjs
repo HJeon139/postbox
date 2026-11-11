@@ -16,7 +16,7 @@ for (const name of ['item-ranges.mjs', 'kept-items.mjs']) {
   await writeFile(join(dir, name), src);
 }
 const file = join(dir, 'item-ranges.mjs');
-const { gate, loading, place, placeAround, placeHead, placeTail } = await import(pathToFileURL(file).href);
+const { beyondItem, gate, loading, place, placeAround, placeHead, placeTail } = await import(pathToFileURL(file).href);
 
 const it = (n, text = `m${n}`) => ({ id: `i${n}`, kind: 'message', text });
 /** An event as the page's client hears it (client.mjs, hear): judged by gate, then applied where it says so. */
@@ -155,4 +155,43 @@ test('the items kept around an ask follow what the page hears, and a jump to it 
     state.items.t.map((x) => x.id),
     ['i95', 'i96', 'i97', 'i98', 'i99', 'i100'],
   );
+});
+
+test('at Home, an item moved forward from outside the kept tail joins it, so End puts back the newest items as they are', () => {
+  // The page opens on [95,100) with the first five kept; Home puts them in place and keeps [95,100) as the tail. Then
+  // item 3, on the page, moves to the end: its stub stays at 3, and it's the conversation's 101st item.
+  const state = { items: {} };
+  const ranges = new Map();
+  loading(ranges, 't');
+  place(state, ranges, { threadId: 't', seq: 10, start: 95, total: 100, items: items(95, 100), head: items(0, 5) }, 'replace');
+  assert.equal(placeHead(state, ranges, 't', 10), true, 'Home');
+  hear(state, ranges, 'item.move', { threadId: 't', id: 'i3', stub: { id: 's3', kind: 'moved' }, patch: { text: 'updated' } }, 11);
+  assert.equal(placeTail(state, ranges, 't', 11), true, 'End, with no load');
+  assert.deepEqual(
+    state.items.t.map((x) => `${x.id}:${x.text ?? ''}`),
+    ['i95:m95', 'i96:m96', 'i97:m97', 'i98:m98', 'i99:m99', 'i3:updated'],
+  );
+  assert.equal(ranges.get('t').start, 95, 'where the newest six start in 101');
+});
+
+test('at Home, an item the page doesn’t hold moved forward lets the tail go, so End loads the newest items', () => {
+  const state = { items: {} };
+  const ranges = new Map();
+  loading(ranges, 't');
+  place(state, ranges, { threadId: 't', seq: 10, start: 95, total: 100, items: items(95, 100), head: items(0, 5) }, 'replace');
+  assert.equal(placeHead(state, ranges, 't', 10), true, 'Home');
+  hear(state, ranges, 'item.move', { threadId: 't', id: 'i50', stub: { id: 's50', kind: 'moved' }, patch: {} }, 11);
+  assert.equal(placeTail(state, ranges, 't', 11), false, 'no tail to put back: End loads');
+});
+
+test('read at the top, an item moved forward leaves its stub on the page and is kept past the range’s end, as an add is', () => {
+  const state = { items: {} };
+  const ranges = new Map();
+  loading(ranges, 't');
+  place(state, ranges, { threadId: 't', seq: 10, start: 0, total: 100, items: items(0, 5) }, 'replace');
+  const verdict = gate(state, ranges, 'item.move', { threadId: 't', id: 'i3', stub: { id: 's3', kind: 'moved' }, patch: { text: 'updated' } }, 11);
+  assert.equal(verdict, 'moved', 'the page draws the stub, and counts the item past the end');
+  assert.equal(state.items.t[3].id, 's3');
+  assert.equal(beyondItem(ranges.get('t'), 't', 'i3')?.text, 'updated');
+  assert.equal(ranges.get('t').total, 101);
 });

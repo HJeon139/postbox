@@ -163,3 +163,37 @@ test('#1155 End after Home in a 10,000-item room does main’s work: no load, an
   ).toEqual(runs.map(() => 0));
   for (const r of runs) expect(r.layouts, `layouts for End: ${JSON.stringify(runs)}`).toBeLessThanOrEqual(MAIN_END_LAYOUTS);
 });
+
+// An app or block updated while you read at the top moves to the end (bringForward), from the first range or from
+// further up: End puts back the newest items as the server has them, the moved one last, not a range one place off.
+for (const at of [5, 500])
+  test(`#1155 End after Home, with item ${at} moved forward meanwhile, holds the newest items as the server has them`, async ({ page }) => {
+    const projectId = /** @type {any} */ (Object.values(app.rt.s.projects)[0]).id;
+    const room = app.rt.createThread({ projectId, title: `Moved forward from ${at}`, personaIds: [] });
+    seedBigRoom(app.store, room.id, { count: 1000 });
+    await page.goto(`${app.origin}/#/t/${room.id}`);
+    await synced(page, app);
+    await newestShown(page, app, room.id);
+    await settled(page);
+    await page.evaluate(() => /** @type {HTMLElement | null} */ (document.activeElement)?.blur());
+    expect(await home(page, app.store.items(room.id)[0].id), 'Home').toBeGreaterThan(0);
+    await settled(page);
+    const was = app.store.items(room.id)[at].id;
+    app.rt.bringForward(room.id, was, { what: 'app', title: 'Chart' });
+    await synced(page, app);
+    const moved = app.store.items(room.id).at(-1).id;
+    // Read at the top, the move shows as on main: its stub in its place, if that's on the page.
+    if (at < 200) {
+      await expect(page.locator(`#main > [data-key="${app.store.items(room.id)[at].id}"]`), 'the stub in its place').toBeAttached();
+      await expect(page.locator(`#main > [data-key="${was}"]`), 'the item gone from there').toHaveCount(0);
+    }
+    expect(await press(page, 'End', moved), 'End').toBeGreaterThan(0);
+    await settled(page);
+    const held = await page.evaluate(
+      (t) => import('/app/js/client.mjs').then(({ client }) => ({ start: client.ranges.get(t)?.start ?? -1, ids: client.state.items[t].map((x) => x.id) })),
+      room.id,
+    );
+    const server = app.store.items(room.id).map((x) => x.id);
+    expect(held.ids, 'the newest items, as the server has them').toEqual(server.slice(held.start, held.start + held.ids.length));
+    expect(held.ids.at(-1), 'the moved item last').toBe(moved);
+  });

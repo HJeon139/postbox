@@ -9,7 +9,7 @@
 
 import { itemOf, noteReplaced, positionOf } from '/shared/item-index.mjs';
 import { apply } from '/shared/state.mjs';
-import { keepAsks, keepHead, keepTail } from './kept-items.mjs';
+import { heldCopy, keepAsks, keepHead, keepTail } from './kept-items.mjs';
 
 /**
  * @typedef {{ type: string, data: any, seq: number, applied: boolean }} Heard
@@ -31,21 +31,24 @@ export const atEnd = (list, r) => r.start + list.length >= r.total;
 /**
  * What the page does with an item event for a conversation: apply it, or not (it’s in a load already, or names an item
  * the range doesn’t hold, which a load will bring as it is then), keep it apart (an item added past the range’s end,
- * keepBeyond), or load the latest range again (an item moved to an end the range holds, from a place it doesn’t).
- * Keeps the event while a load is in flight.
+ * keepBeyond), draw a moved item's stub where the item was and keep the item apart, as an add (an item moved past
+ * the range's end, 'moved'), or load the latest range again (an item moved to an end the range holds, from a place it
+ * doesn’t). Keeps the event while a load is in flight.
  * @param {any} state @param {Map<string, Range>} ranges @param {string} type @param {any} d @param {number} seq
- * @returns {'apply' | 'skip' | 'reload' | 'beyond'}
+ * @returns {'apply' | 'skip' | 'reload' | 'beyond' | 'moved'}
  */
 export function gate(state, ranges, type, d, seq) {
   const r = ranges.get(d.threadId);
   if (!r) return 'skip';
   // Applied only where the range held its item: one a load in flight brings gets it again when the load lands.
   const held = type === 'item.add' || positionOf(state.items[d.threadId] ?? [], d.id) >= 0;
+  // An item moved to the end, as the page held it before the move puts its stub in its place.
+  const moving = type === 'item.move' ? heldCopy(state, r, d) : undefined;
   const verdict = judge(state, r, type, d, seq);
   if (r.loads > 0) r.heard.push({ type, data: d, seq, applied: verdict === 'apply' && held });
-  keepBeyond(r, type, d, verdict);
+  keepBeyond(r, type, d, verdict, moving);
   keepHead(r, type, d);
-  keepTail(r, type, d);
+  keepTail(r, type, d, moving);
   keepAsks(r, type, d);
   return verdict;
 }
@@ -109,13 +112,16 @@ const BEYOND = 20;
 /**
  * The items added past the range’s end while you read higher up, kept apart from its list (which stays one contiguous
  * run), and kept current by their own events, so the page counts them as unseen and still voices a reply as it
- * streams (#866). A load that reaches the end lets them go (place).
- * @param {Range} r @param {string} type @param {any} d @param {string} verdict
+ * streams (#866). An item moved past the end while you read higher up is one of them too, as the page held it. A load
+ * that reaches the end lets them go (place).
+ * @param {Range} r @param {string} type @param {any} d @param {string} verdict @param {any} [moving]  the moved item
  */
-function keepBeyond(r, type, d, verdict) {
-  if (verdict === 'beyond') {
+function keepBeyond(r, type, d, verdict, moving) {
+  let added = verdict === 'beyond' ? d.item : null;
+  if (verdict === 'moved' && moving) added = { ...moving, ...d.patch };
+  if (added) {
     const kept = ((r.beyond ??= { items: {} }).items[d.threadId] ??= []);
-    kept.push(structuredClone(d.item));
+    kept.push(structuredClone(added));
     if (kept.length > BEYOND) kept.splice(0, kept.length - BEYOND);
   } else if (r.beyond && type !== 'item.add' && itemOf(r.beyond.items[d.threadId] ?? [], d.id)) apply(r.beyond, type, d);
 }
@@ -123,7 +129,7 @@ function keepBeyond(r, type, d, verdict) {
 /** An item added past a conversation’s range, as it is now; undefined when there’s none. @param {Range | undefined} r @param {string} threadId @param {string} id */
 export const beyondItem = (r, threadId, id) => itemOf(r?.beyond?.items[threadId] ?? [], id) ?? undefined;
 
-/** @param {any} state @param {Range} r @param {string} type @param {any} d @param {number} seq @returns {'apply' | 'skip' | 'reload' | 'beyond'} */
+/** @param {any} state @param {Range} r @param {string} type @param {any} d @param {number} seq @returns {'apply' | 'skip' | 'reload' | 'beyond' | 'moved'} */
 function judge(state, r, type, d, seq) {
   if (seq && seq <= r.seq) return 'skip';
   const list = state.items[d.threadId] ?? [];
@@ -140,8 +146,9 @@ function judge(state, r, type, d, seq) {
 
 /**
  * An item moved to the newest point (item.move): applied where the range holds the end and the item; where it holds the
- * end but not the item, the latest range is loaded again; off the end, its stub takes its place and nothing more.
- * @param {any[]} list @param {boolean} end @param {any} d @returns {'apply' | 'skip' | 'reload'}
+ * end but not the item, the latest range is loaded again; off the end, its stub takes its place, and the page draws it
+ * there ('moved').
+ * @param {any[]} list @param {boolean} end @param {any} d @returns {'apply' | 'reload' | 'moved'}
  */
 function moveIn(list, end, d) {
   const at = positionOf(list, d.id);
@@ -150,7 +157,7 @@ function moveIn(list, end, d) {
     list[at] = d.stub;
     noteReplaced(list, at);
   }
-  return 'skip';
+  return 'moved';
 }
 
 /** Starts a load for a conversation: its events are kept until it lands. @param {Map<string, Range>} ranges @param {string} threadId */

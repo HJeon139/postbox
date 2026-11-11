@@ -224,7 +224,9 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
       // The message after it now follows the stub, so whether it names its speaker can change.
       if (list[at + 1] && list[at + 1].id !== d.id) rerender(list[at + 1].id);
       view.release();
-      if (!win || win.moved(d.stub, list[list.length - 1])) appendNew(list, list.length - 1);
+      // Moved past what's loaded, while you read higher up (item-ranges.mjs): its stub alone; it counts on the pill.
+      if (d.past) win?.restub(d.stub, d.id);
+      else if (!win || win.moved(d.stub, list[list.length - 1])) appendNew(list, list.length - 1);
       back();
       paintWorking();
       view.grew();

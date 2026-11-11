@@ -2,7 +2,7 @@
 // once Home has put the first in their place; and those around the asks ⌃J and an agent's open-asks link go to. Each is
 // kept current from the stream's item events as item-ranges.mjs's gate() hears them. Moved from item-ranges.mjs.
 
-import { noteReplaced, positionOf } from '/shared/item-index.mjs';
+import { itemOf, noteReplaced, positionOf } from '/shared/item-index.mjs';
 import { apply } from '/shared/state.mjs';
 
 /** @typedef {import('./item-ranges.mjs').Range} Range */
@@ -38,13 +38,29 @@ export function keepAsks(r, type, d) {
 }
 
 /**
+ * A copy of an item the page holds outside the tail, in its range, its head or around an ask, or undefined.
+ * @param {any} state @param {Range} r @param {any} d
+ */
+export function heldCopy(state, r, d) {
+  for (const list of [state.items[d.threadId] ?? [], r.head ?? [], ...(r.asks ?? []).map((a) => a.items)]) {
+    const it = itemOf(list, d.id);
+    if (it) return structuredClone(it);
+  }
+  return undefined;
+}
+
+/**
  * The conversation's newest items, kept apart for End once Home has put the head in their place (placeHead): current
  * from their own events as the range they were, which reached the end, so an add joins them, and a move ends there.
- * @param {Range} r @param {string} type @param {any} d
+ * An item moved to the end from outside them joins them too, as the page held it (`moving`, heldCopy); one the page
+ * didn't hold lets them go, so End loads the newest items rather than put back a range without the newest (#1155).
+ * @param {Range} r @param {string} type @param {any} d @param {any} [moving]
  */
-export function keepTail(r, type, d) {
+export function keepTail(r, type, d, moving) {
   if (!r.tail) return;
   const kept = { items: { [d.threadId]: r.tail } };
   if (type === 'item.add') apply(kept, type, { ...d, item: structuredClone(d.item) });
   else if (positionOf(r.tail, d.id) >= 0) apply(kept, type, d);
+  else if (type === 'item.move' && moving) r.tail.push(Object.assign(moving, d.patch));
+  else if (type === 'item.move') r.tail = undefined;
 }
