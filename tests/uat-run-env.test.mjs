@@ -9,8 +9,7 @@ import { runEnv } from '../tools/uat/run-env.mjs';
 import { parseScenario } from '../tools/uat/scenario.mjs';
 
 const paths = { streams: '/r/streams', kiroStreams: '/r/streams/kiro', agyStreams: '/r/streams/agy', codexStreams: '/r/streams/codex' };
-const env = (seed, more = {}) =>
-  runEnv({ gate: { env: {} }, paths, scenario: { seed, gh: 'yes', skills: 'on', ...more }, dir: '/r', opt: { telemetry: 'no' }, faults: null });
+const env = (seed, more = {}) => runEnv({ gate: { env: {} }, paths, scenario: { seed, skills: 'on', ...more }, dir: '/r', faults: null });
 
 test('a git-remote run’s Postbox gets the guard, the fake gh first, the agent’s env file and no ssh agent', () => {
   const e = env('git-remote');

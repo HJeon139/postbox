@@ -1,5 +1,5 @@
 // ── The Agents section, the Work ledger and the right pane (#105, #132, #146) ──────────────────────────────
-// Moved out of server/room-checks.mjs, which spreads them into its CHECKS.
+// Moved out of tools/uat/room-checks.mjs, which spreads them into its CHECKS.
 
 /** A model as the panel names it (“Opus 5.5”) and as a stream names it (“claude-opus-5-5”), reduced to compare. */
 const modelKey = (m) =>

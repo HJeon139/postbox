@@ -6,13 +6,11 @@
 
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { test } from 'node:test';
 import { createStreamMapper } from '../server/adapters/claude-stream.mjs';
-import { keepEvent } from '../server/room-events.mjs';
 import { apply, emptyState } from '../shared/state.mjs';
+import { keepEvent } from '../tools/uat/room-events.mjs';
 import { settle, setup } from './side-threads-fixture.mjs';
-import { setup as telemetrySetup, turn } from './telemetry-fixture.mjs';
 
 const fixture = (name) =>
   readFileSync(new URL(`fixtures/claude-code/${name}.jsonl`, import.meta.url), 'utf8')
@@ -75,25 +73,6 @@ test('the checks’ history keeps a session.patch as the whole session it leaves
   assert.deepEqual(kept, { seq: 2, type: 'session', data: { id: 'se_1', state: 'think', finishedAt: null, updatedAt: 2 } });
   const ended = keepEvent(3, 'session.patch', { id: 'se_1', patch: { state: 'idle', finishedAt: 5, updatedAt: 3 } }, sessions);
   assert.deepEqual(ended?.data, { id: 'se_1', state: 'idle', finishedAt: 5, updatedAt: 3 });
-});
-
-test('a recorded room keeps a session’s session.patch as the whole session, so its report reads each turn’s start and end', async () => {
-  const f = telemetrySetup({ record: true });
-  f.adapter.next.push(turn('Done.'));
-  f.rt.sendMessage(f.t.id, { text: '@alpha run the tests' });
-  await settle(f.rt);
-  f.stop();
-  const kept = readFileSync(join(f.data, 'telemetry', f.t.id, 'recording', 'events.jsonl'), 'utf8')
-    .trim()
-    .split('\n')
-    .map((l) => JSON.parse(l))
-    .filter((e) => e.type === 'session' || e.type === 'session.patch');
-  assert.ok(kept.length >= 2, `${kept.length} session events recorded`);
-  assert.ok(
-    kept.every((e) => e.type === 'session'),
-    'each is kept as a session',
-  );
-  assert.ok(kept.some((e) => e.data.state === 'think' && e.data.finishedAt === null) && kept.at(-1).data.finishedAt !== null, 'a turn starting and ending');
 });
 
 test('#508: the checks’ history ignores a session.patch for a session it hasn’t seen whole, rather than building one from the patch', () => {

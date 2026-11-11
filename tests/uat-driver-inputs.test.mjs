@@ -1,6 +1,6 @@
 // What the UAT runner records of the inputs it makes that can move the person’s view (facts.probes.inputs,
 // tools/uat/probes.mjs; #531), and what it keeps: the driver’s shots and its reads of an app keep the view, and a click
-// on an app, a telemetry click and a reload are recorded before they move it. Run against a page that answers each
+// on an app and a reload are recorded before they move it. Run against a page that answers each
 // expression the way the real page would, and notes what reached it.
 
 import assert from 'node:assert/strict';
@@ -10,7 +10,6 @@ import { driver } from '../tools/uat/driver.mjs';
 import { keepView, kept } from '../tools/uat/driver-shots.mjs';
 import { fault } from '../tools/uat/hosts-watch.mjs';
 import { newProbes, recordInput } from '../tools/uat/probes.mjs';
-import { telemetryDriver } from '../tools/uat/telemetry-driver.mjs';
 
 const FOLLOWING = { where: 'main', mode: 'following', anchor: '', offset: null, at: null, gap: 0 };
 const READING = { where: 'main', mode: 'reading', anchor: 'it_a', offset: 40, at: 40, gap: 900 };
@@ -122,24 +121,6 @@ test('an app is brought to the middle of the view to read or click it, since one
   assert.ok(exprs.some((e) => /\.jumpTo\(n, "center"\)/.test(e)));
 });
 
-test('a telemetry click is recorded as a runner click before it scrolls what it clicks into view', async () => {
-  const facts = { probes: newProbes() };
-  const order = [];
-  const page = {
-    evaluate: async (/** @type {string} */ expr) => {
-      if (expr.includes('aria-pressed')) return false;
-      order.push(`${expr.includes('scrollIntoView') ? 'scroll' : 'other'} after ${facts.probes.inputs.length}`);
-      return true;
-    },
-  };
-  await telemetryDriver(page, { input: recorder(facts) }).react('it_a', '🚩');
-  assert.deepEqual(
-    facts.probes.inputs.map((x) => [x.step, x.kind]),
-    [[3, 'runner-click']],
-  );
-  assert.deepEqual(order, ['scroll after 1']);
-});
-
 test('restarting Postbox in a run without hosts records the reload before the page reloads', async () => {
   const facts = { probes: newProbes() };
   const order = [];
@@ -174,7 +155,7 @@ test('restarting Postbox in a host run records the reload before the page reload
   assert.deepEqual(order, ['reload after 1']);
 });
 
-test('the driver hands its input hook on, for telemetry’s clicks and the reloads', () => {
+test('the driver hands its input hook on, for the reloads', () => {
   const facts = { probes: newProbes() };
   driver({}, { input: recorder(facts) }).input({ kind: 'reload' });
   assert.deepEqual(

@@ -7,7 +7,7 @@
 // what Postbox already writes there for a turn. A turn on another computer doesn’t get it: the folder is on this one.
 // A persona leaves out the ones it turned off (skillsOff, skill-config.mjs, postboxSkillsOn), and
 // POSTBOX_AGENT_SKILLS=off leaves them all out for every agent, for a UAT baseline (`- skills: off`,
-// tools/uat/telemetry-run.mjs).
+// tools/uat/run-env.mjs).
 
 import { readdir, readFile } from 'node:fs/promises';
 import { join, relative, sep } from 'node:path';

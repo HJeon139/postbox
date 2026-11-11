@@ -14,8 +14,8 @@
 import { readFile } from 'node:fs/promises';
 import { INVISIBLE } from '../shared/invisible.mjs';
 import { HOST_SOURCES, ISOLATED_SOURCES } from './adapters/setup.mjs';
+import { KEY_SHAPES } from './key-shapes.mjs';
 import { settingsFiles } from './permission-rules.mjs';
-import { KEY_SHAPES } from './telemetry-secrets.mjs';
 
 const MAX_HOOKS = 50; // per file, as read: the rest are counted
 const MAX_TEXT = 200;
@@ -57,7 +57,7 @@ const shown = (v, max) => (typeof v === 'string' ? cut(marked(v), max) : '');
 // - a JSON field named so, when its value is a string ("token": "v", or \"token\": \"v\" inside a shell’s quotes),
 // - a query parameter for a signature or a credential under another name (?sig=v, &X-Amz-Credential=v),
 // - Bearer and the token after it,
-// - a token with a known prefix and no name before it (KEY_SHAPES, server/telemetry-secrets.mjs: ghp_, sk-, AKIA…),
+// - a token with a known prefix and no name before it (KEY_SHAPES, server/key-shapes.mjs: ghp_, sk-, AKIA…),
 //   and a GitLab token (glpat-).
 // A value is a quoted string (to the end of the text when its quote never closes) or a word ending at a space, a quote
 // or one of & ; | < > ( ) `.

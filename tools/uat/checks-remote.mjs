@@ -8,9 +8,9 @@
 // the ledger records there by design: a file an agent changed on a host is an edit step with no diff
 // (server/ledger-remote.mjs), never a file of this computer’s.
 
-import { EDIT_TOOLS, keptStreams } from '../../server/room-checks-work.mjs';
 import { INSTALL_CHECKS } from './host-installs.mjs';
 import { agentTurns, hostIdOf, hostTurnIds, labelOf, localFacts, placeOf, remoteStream, remoteTurns, toolUses } from './remote-facts.mjs';
+import { EDIT_TOOLS, keptStreams } from './room-checks-work.mjs';
 import { HOSTWAKE_CHECKS } from './triggers-hostwakes.mjs';
 
 const NOT_HERE = new Set(['settings-leak', 'mcp-servers-missing', 'mcp-side-channel']);

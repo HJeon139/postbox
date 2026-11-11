@@ -11,7 +11,6 @@ import { openLateThread } from './pane-late-thread.mjs';
 import { mountDivider } from './pane-split.mjs';
 import { mountWidth } from './pane-width.mjs';
 import { mountSidePanel } from './side-panel.mjs';
-import { mountTelemetryView } from './telemetry.mjs';
 import { navigate, paneHref, rememberWork, route, setPaneFull } from './ui.mjs';
 import { mountWorkPane } from './work.mjs';
 
@@ -49,13 +48,12 @@ export function mountPane(convId) {
   // it, and Escape or the icon (now “Exit full screen”) brings it back to the pane, with focus on what opened it, or,
   // where the window has no room for the pane, back to the conversation.
 
-  /** @type {'work' | 'telemetry' | 'thread' | null} */
+  /** @type {'work' | 'thread' | null} */
   let fullKind = null;
   /** What had focus when full screen began, found again by id if the pane repainted it. */
   let opener = null;
-  // Work’s slot holds Work or Telemetry, whichever the address says (R18); work.kind says which.
   const viewOf = (kind) => (kind === 'thread' ? thread?.view : kind && kind === work?.kind ? work : null);
-  const titleOf = (kind) => ({ work: 'wp-title', telemetry: 'tv-title' })[kind] ?? 'sp-title';
+  const titleOf = (kind) => (kind === 'work' ? 'wp-title' : 'sp-title');
 
   const onKey = (e) => {
     const v = viewOf(fullKind);
@@ -80,7 +78,7 @@ export function mountPane(convId) {
     }
   };
 
-  /** @param {'work' | 'telemetry' | 'thread'} kind */
+  /** @param {'work' | 'thread'} kind */
   function enterFull(kind, r) {
     const v = viewOf(kind);
     if (!v) return;
@@ -157,11 +155,11 @@ export function mountPane(convId) {
       } else if (next) el.append(next.el);
       thread = next ? { id: sideId, view: next } : null;
     }
-    // Work, or Telemetry in its place.
+    // Work.
     if ((r.slot ?? null) !== (work?.kind ?? null)) {
       work?.destroy();
       work?.el.remove();
-      work = r.slot ? Object.assign(r.slot === 'telemetry' ? mountTelemetryView(convId) : mountWorkPane(convId), { kind: r.slot }) : null;
+      work = r.slot ? Object.assign(mountWorkPane(convId), { kind: r.slot }) : null;
       if (work) work.fullBtn.onclick = fullToggle(r.slot);
       if (work) width.handle.after(work.el);
       lastTurn = null;

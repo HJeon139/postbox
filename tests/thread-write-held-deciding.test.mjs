@@ -1,15 +1,11 @@
 // #796: more of the reads that decide a thread write, each read pending (store.pending.thread, or a sweep over every
 // pending thread), each pinned by what a published read gets wrong behind a held commit: the queue a purge posts from,
-// the queue a turn's end batches from, a chain's count, the header of a topic just opened, and a recording's fields
-// (designs/508/601-held-view.md, “a read that decides a write reads pending”).
+// the queue a turn's end batches from, a chain's count, and the header of a topic just opened (designs/508/601-held-view.md, “a read that decides a write reads pending”).
 
 import assert from 'node:assert/strict';
-import { join } from 'node:path';
 import { test } from 'node:test';
-import { deleteRecordings, startRecording, stopRecording } from '../server/telemetry.mjs';
 import { held, settle, setup, sleep } from './side-threads-fixture.mjs';
 import { heldStore } from './stop-reply-fixture.mjs';
-import { tempDir } from './temp-dirs.mjs';
 
 /** The side-thread room on a store whose log sync can be held; hold() holds a commit and returns its release. */
 async function heldRoom() {
@@ -119,21 +115,5 @@ test('a turn woken in a topic opened behind a held commit is told it answers the
   assert.ok(call.message.taskContext.includes(`(thread ${topic}).`), call.message.taskContext);
   await release();
   await settle(f.rt);
-  await f.store.close();
-});
-
-test('Stop recording behind a held commit keeps the start that Delete recordings gave the recording behind it', async (t) => {
-  const f = await heldRoom();
-  f.store.emit('project', { id: 'p1', name: 'P', folder: tempDir('pb-held-rec-project-') });
-  f.rt.config.telemetryRoot = join(tempDir('pb-held-rec-data-'), 'telemetry');
-  t.mock.timers.enable({ apis: ['Date'], now: 1_000 });
-  startRecording(f.rt, f.t.id);
-  await f.store.flush();
-  const release = await f.hold();
-  t.mock.timers.setTime(2_000);
-  deleteRecordings(f.rt, f.t.id);
-  stopRecording(f.rt, f.t.id);
-  await release();
-  assert.deepEqual(f.store.state.threads[f.t.id].recording, { on: false, since: 2_000, startedAt: 2_000, stoppedAt: 2_000 });
   await f.store.close();
 });

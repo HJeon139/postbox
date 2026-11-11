@@ -8,7 +8,7 @@
 //   node tools/uat-run.mjs --scenario delivery --phases 1,2   (only those phases: tools/uat/phases.mjs)
 //
 // Real agents and the tester both run on the claude CLI you’re signed in to, so a run costs real usage. --budget caps
-// the tester; --max-cost caps the whole run (agents, tester, verifier and telemetry), stopping it, report and all, before
+// the tester; --max-cost caps the whole run (agents, tester and verifier), stopping it, report and all, before
 // a step or an agent turn could pass the cap (tools/uat/budget.mjs). Without --max-cost the agents are uncapped. A scenario
 // can put agents on another backend (`- backends: critic=kiro-cli:gpt-5.6-terra`); those use that CLI’s sign-in, and
 // the scenario is a compatibility run, which needs --compat, the Antigravity CLI’s included. A backend kept to version
@@ -64,7 +64,6 @@ import { seedAgents } from './uat/seed.mjs';
 import { stepPrompt } from './uat/step-prompt.mjs';
 import { interruptAct, localRestart, STEPS } from './uat/steps.mjs';
 import { onStopSignal, runStop } from './uat/stop.mjs';
-import * as tm from './uat/telemetry-run.mjs';
 import { createTester, systemPrompt, unaddressed } from './uat/tester.mjs';
 import { runTiming } from './uat/timing.mjs';
 import { phaseGoals } from './uat/triggers.mjs';
@@ -105,8 +104,6 @@ const { values: opt } = parseArgs({
     compat: { type: 'boolean', default: false },
     // Host mode’s options (#120, tools/uat/hosts-options.mjs).
     ...HOST_OPTIONS,
-    // Every run records itself and saves one telemetry report (designs/telemetry-persona.md, U4); no opts out.
-    telemetry: { type: 'string', default: 'yes' },
     // With `- seed: big-room`, measure the room and write its report here (#508, tools/uat/key-frame-run.mjs).
     'measure-key-frame': { type: 'string' },
   },
@@ -124,11 +121,11 @@ async function main() {
   const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
   const dir = join(runsRoot({ root: ROOT }), `${stamp}-${name}`);
   const paths = await runPaths(dir);
-  const canaries = makeWorkspace(scenario, paths, dir);
+  makeWorkspace(scenario, paths, dir);
   // A phase’s `- fault:` (#508): Postbox starts with the fault launcher in front of the faulted agent’s CLI.
   const faults = faultSetup({ scenario, root: ROOT, dir, env: process.env });
   // The run’s guards, off the person’s GitHub and `- seed: git-remote`’s (#305), checked on the very environment Postbox and its agents get.
-  preflightRun(scenario, paths.workspace, dir, { ...process.env, ...runEnv({ gate, paths, scenario, dir, opt, faults }) });
+  preflightRun(scenario, paths.workspace, dir, { ...process.env, ...runEnv({ gate, paths, scenario, dir, faults }) });
   const logLines = [];
   const log = (line) => {
     const l = `[${new Date().toLocaleTimeString('en-US', { hour12: false })}] ${line}`;
@@ -155,7 +152,7 @@ async function main() {
     root: ROOT,
     port,
     data: paths.data,
-    env: runEnv({ gate, paths, scenario, dir, opt, faults }),
+    env: runEnv({ gate, paths, scenario, dir, faults }),
     log,
   });
   const { api } = postbox;
@@ -186,7 +183,6 @@ async function main() {
     // `- seed: big-room` (#508): the conversation fills with about 1,000 generated items before the tester arrives.
     scenario.summary += await seededNote(scenario, { postbox, data: paths.data, threadId: mainThread, page, log, opt, dir, facts });
     scenario.summary += await setUpRemote(scenario, { dir, page, threadId: mainThread, log }); // `- seed: git-remote` (#305)
-    const { td, tel } = await tm.startTelemetry(page, { scenario, opt, log, input: d.input });
 
     const tester = createTester({ cwd: dir, model: opt['tester-model'], budgetUsd: Number(opt.budget), log });
     budget.track({ streams: streamResults(paths.streams), tester, log });
@@ -254,8 +250,6 @@ async function main() {
       facts.events = history.events();
       facts.transcripts = readTranscripts(facts, paths.workspace);
       facts.remote = remoteFacts(dir, facts); // `- seed: git-remote`’s pushes, with the ledger’s size beside them (#305)
-      const telOpts = { dir, data: paths.data, workspace: paths.workspace, main: mainThread, canaries, flags: tel.flags, shown: tel.shown };
-      if (tm.telemetryOn(opt)) tm.telemetryFacts(facts, { ...telOpts, startedBeforeTurns: tm.runnerRecords(scenario, opt) });
       Object.assign(facts.ui, await readUi(page));
     };
     const newFindings = (only = null) => {
@@ -335,7 +329,6 @@ async function main() {
         const k = `tester:${f.title.toLowerCase().replace(/\W+/g, '-').slice(0, 60)}`;
         if (!findings.has(k)) {
           findings.set(k, { ...f, source: 'tester', step, phase: ph.title });
-          if (tm.runnerRecords(scenario, opt)) tm.noteFlag(tel.flags, facts.state, facts.threads, f);
           log(`tester ${f.severity} ${f.category}${f.issue ? ` (#${f.issue})` : ''}: ${f.title}`);
         }
       }
@@ -379,8 +372,7 @@ async function main() {
       try {
         const key = a.item ? keys.get(a.item) : null;
         if (a.item && !key) throw new Error(`There’s no item ${a.item}.`);
-        if (a.type === 'telemetry') actionResult = await tm.telemetryAction(td, a, key, tel);
-        else if (Object.hasOwn(STEPS, a.type)) actionResult = await STEPS[a.type]({ d, page, api, keys, facts, step }, a);
+        if (Object.hasOwn(STEPS, a.type)) actionResult = await STEPS[a.type]({ d, page, api, keys, facts, step }, a);
         else if (a.type === 'send') {
           await d.send(a.text ?? '');
           // A message that addresses an agent by name without its @ goes to the last speaker, not to that agent: say
@@ -497,8 +489,6 @@ async function main() {
     }
     await settle();
     unwatch();
-    // After the last step, no agent takes another turn: the runner’s 🚩s and its report (U4).
-    if (tm.runnerRecords(scenario, opt)) await tm.finishTelemetry({ ...tel, td, dir, data: paths.data, main: mainThread, log, findings });
     await refreshFacts();
     if (hr) await endHosts(hr, dir);
     lastCheckPass(findings, newFindings);
@@ -512,8 +502,6 @@ async function main() {
     await writeFile(join(dir, 'events.jsonl'), facts.events.map((e) => JSON.stringify(e)).join('\n') + (facts.events.length ? '\n' : ''));
     const all = [...findings.values()];
     presetFindings(all, { root: ROOT, commit: gitInfo(ROOT).commit });
-    if (facts.telemetry) facts.telemetryOut = { proposals: tm.foldLabels(all, facts.telemetry) };
-    if (facts.telemetry) budget.spend('telemetry', tm.telemetryBlock(facts.telemetry, all).classifier?.costUsd);
     const verify = opt.verify !== 'no';
     const review = { ...REVIEW, dir, scenario, findings: all, timeline, log, verify, file: opt.file !== 'no' };
     const shoot = (label, file) => d.shotItem(keys.get(label), file);
@@ -543,7 +531,6 @@ async function main() {
         facts,
         coverage,
       }),
-      ...(facts.telemetry ? { telemetry: tm.telemetryBlock(facts.telemetry, all) } : {}),
       ...(facts.budget ? { budget: facts.budget } : {}),
     });
   } finally {

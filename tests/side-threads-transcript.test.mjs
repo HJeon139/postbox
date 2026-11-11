@@ -2,10 +2,7 @@
 // add only their messages and the wake limit’s card, with no line per wake (#114), in the conversation itself (#372).
 
 import assert from 'node:assert/strict';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { test } from 'node:test';
-import { collect, tierA } from '../server/telemetry-record.mjs';
 import { held, settle, setup, sleep } from './side-threads-fixture.mjs';
 
 test('#135: a woken turn that opens with a block, or proposes a teammate, says what woke it, and keeps to its own turn', async () => {
@@ -80,17 +77,6 @@ test('#114, #492: two agents mentioning each other in turn go on without a card,
   );
   assert.equal(store.state.threads[t.id].hops, 0, 'and beta’s last answer, which woke no one, ended it');
   assert.equal(Object.values(store.state.threads).filter((x) => x.kind === 'side').length, 0);
-});
-
-test('#114: with no line per wake, a telemetry report still counts the room’s wake chains, from each wake’s message', async () => {
-  const { store, rt, t, alpha, beta } = setup();
-  // Both while the chain runs: once it ends, the next wake starts a chain of its own (#492).
-  rt.agentWake(alpha.id, 'beta', 'Check the totals.');
-  rt.agentWake(beta.id, 'alpha', 'One more gap, please look again.');
-  await settle(rt);
-  const conv = store.state.threads[t.id];
-  const { room } = tierA(rt, collect(rt, conv, join(tmpdir(), 'pb-no-recording'), { history: true }));
-  assert.deepEqual([room.wakeChains, room.longestWakeChain], [1, 2]);
 });
 
 test('#135, #374: both wakes keep their transcript provenance, but only the newer turn’s wake is delivered', async () => {

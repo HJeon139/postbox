@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { runChecks } from '../server/room-checks.mjs';
+import { runChecks } from '../tools/uat/room-checks.mjs';
 
-// The live checks (server/room-checks.mjs) over a turn that ran on a host (#120): Postbox never reads a file there,
+// The live checks (tools/uat/room-checks.mjs) over a turn that ran on a host (#120): Postbox never reads a file there,
 // so the ledger records a host's edit as an edit step (server/ledger-remote.mjs, kind 'edit'), not as a file.
 
 const facts = (work) => ({

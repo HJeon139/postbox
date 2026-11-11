@@ -165,7 +165,7 @@ Each requirement is **decided** by a test that is written first and fails on `ma
 - **Conformance:** recorded turns from each backend, replayed as fixtures through its adapter. Decides what a backend does.
 - **UAT-confirm:** in a real-agent run, the trigger fires (the code path ran) and the check stays silent (no violation recorded).
 
-Trigger and check names in *italics* are proposed and don’t exist yet. The others are already on `main` (`server/room-checks*.mjs`), or come with PR #511 (`thread-request-first`). “Not in rev 6” marks requirements that design revision 6 gives no test.
+Trigger and check names in *italics* are proposed and don’t exist yet. The others are already on `main` (`tools/uat/room-checks*.mjs`), or come with PR #511 (`thread-request-first`). “Not in rev 6” marks requirements that design revision 6 gives no test.
 
 ```mermaid
 flowchart TD

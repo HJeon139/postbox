@@ -117,7 +117,7 @@ function directoryTool(named) {
   );
 }
 
-// Anthropic API keys and GitHub tokens, at the lengths server/telemetry-secrets.mjs matches, so a placeholder such as
+// Anthropic API keys and GitHub tokens, at the lengths server/key-shapes.mjs matches, so a placeholder such as
 // “sk-ant-...” or “ghp_xxxx” in prose isn’t one. A Bearer token (RFC 6750’s characters, the scheme in either case) is
 // 20 characters or more, so “Bearer token” in prose, “<token>” and a shell’s “$TOKEN” aren’t one (#696).
 const API_TOKEN = /\bsk-ant-[A-Za-z0-9_-]{20,}|\bgh[pousr]_[A-Za-z0-9]{30,}\b|\bgithub_pat_[A-Za-z0-9_]{30,}|\b[Bb]earer[ \t]+[A-Za-z0-9._~+/-]{20,}=*/g;

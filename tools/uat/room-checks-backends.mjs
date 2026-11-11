@@ -1,8 +1,8 @@
 // The checks for agents on the Kiro CLI (#117), and what they read of its streams, with the Antigravity CLI’s
-// (#143, release runs) from server/room-checks-agy.mjs. Part of server/room-checks.mjs’s CHECKS, kept apart to keep that file to its size.
+// (#143, release runs) from tools/uat/room-checks-agy.mjs. Part of tools/uat/room-checks.mjs’s CHECKS, kept apart to keep that file to its size.
 
-import { REFUSED, toolOf } from './adapters/kiro-cli.mjs';
-import { POSTBOX_SERVER } from './adapters/setup.mjs';
+import { REFUSED, toolOf } from '../../server/adapters/kiro-cli.mjs';
+import { POSTBOX_SERVER } from '../../server/adapters/setup.mjs';
 import { AGY_CHECKS } from './room-checks-agy.mjs';
 
 export { agyTokens } from './room-checks-agy.mjs';
@@ -171,6 +171,6 @@ export const BACKEND_CHECKS = [
         : [];
     },
   },
-  // The Antigravity CLI’s, in release runs (#143): server/room-checks-agy.mjs.
+  // The Antigravity CLI’s, in release runs (#143): tools/uat/room-checks-agy.mjs.
   ...AGY_CHECKS,
 ];

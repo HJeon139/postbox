@@ -1,7 +1,7 @@
 // The asset store’s UAT checks (tools/uat/checks-assets.mjs): each passes a recorded run as it was, and flags the
 // fault edited into it. The fixture is trimmed from two recorded runs of the assets-room scenario
 // (tests/fixtures/uat-assets/recorded-runs.json says which); the stream and probe records follow the shapes the runner
-// writes (server/room-checks.mjs’s facts, and the conversation action’s probes).
+// writes (tools/uat/room-checks.mjs’s facts, and the conversation action’s probes).
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';

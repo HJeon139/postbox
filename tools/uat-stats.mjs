@@ -4,7 +4,6 @@
 //
 //   node tools/uat-stats.mjs                      the runs folder (POSTBOX_UAT_RUNS, or uat-runs/ in the main checkout)
 //   node tools/uat-stats.mjs --runs a --runs b    other folders, together (a run in two of them counts once)
-//   node tools/uat-stats.mjs --runs ~/.postbox/telemetry   live reports too, toward recurrence only
 
 import { spawnSync } from 'node:child_process';
 import { join, resolve } from 'node:path';
@@ -12,7 +11,6 @@ import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { readRuns, runsRoot } from './uat/runs.mjs';
 import { recurrence, recurrenceTable, report } from './uat/stats.mjs';
-import { telemetryLines, telemetryTotals } from './uat/telemetry-stats.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const { values: opt } = parseArgs({
@@ -38,7 +36,6 @@ console.log(
     '',
     ...recurrenceTable(recurrence(runs, issues)),
     '',
-    ...telemetryLines(telemetryTotals(runs)),
     ...(gh.status === 0 ? [] : ['  (The gh CLI isn’t available or signed in, so issue states and priorities are “?”.)']),
   ].join('\n'),
 );

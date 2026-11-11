@@ -262,7 +262,7 @@ export class CodexAdapter {
       child.once('error', r);
     });
     if (process.env.POSTBOX_CODEX_RECORD) mkdirSync(process.env.POSTBOX_CODEX_RECORD, { recursive: true });
-    const record = recorderFor(ctx, process.env.POSTBOX_CODEX_RECORD, 'codex');
+    const record = recorderFor(ctx, process.env.POSTBOX_CODEX_RECORD);
     let stderr = '';
     child.stderr.on('data', (chunk) => {
       stderr = (stderr + chunk).slice(-4000);

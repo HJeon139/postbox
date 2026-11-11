@@ -1,14 +1,12 @@
 // Agents’ reactions: an agent reacts to any message, block or app in its conversation, its own included, with
 // Postbox’s react tool. Each reactor has their own reaction; the agent whose message it is hears an agent’s at its next
-// turn, and no one else does; none wakes anyone. Telemetry reads an agent’s 🚩 as a flag, with who made it
-// (designs/telemetry-persona.md, R9).
+// turn, and no one else does; none wakes anyone.
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { reactTool } from '../server/reactions.mjs';
 import { TOOL_DEFS } from '../shared/mcp-tools.mjs';
 import { settle, setup } from './side-threads-fixture.mjs';
-import { flaggedRoom, report } from './telemetry-fixture.mjs';
 
 /** A room where alpha has replied to the person once, and the reply. */
 async function replied() {
@@ -83,37 +81,4 @@ test('read_conversation gives each item’s id, which react takes', async () => 
   const id = /\[(it_\w+)\] @alpha: The parser/.exec(read)?.[1];
   assert.equal(id, f.reply.id);
   assert.equal(reactTool(f.rt, f.beta, { id, emoji: '❓' }).ok, true);
-});
-
-test('R9: an agent’s 🚩 is a flag in a telemetry report, with who made it, and is labeled like the person’s', async () => {
-  const f = await flaggedRoom();
-  const beta = f.rt.sessionsIn(f.t.id).find((x) => x.handle === 'beta');
-  reactTool(f.rt, beta, { id: f.reply.id, emoji: '🚩' });
-  const { draft } = await report(f);
-  const flags = draft.report.reactions.filter((r) => r.emoji === '🚩');
-  assert.deepEqual(flags.map((r) => r.by).sort(), ['agent-2', 'person']);
-  assert.ok(flags.every((r) => draft.report.labels.some((l) => l.on === r.ref && l.mast)));
-  f.stop();
-});
-
-// Review of #270: an agent’s flags go first in the classifier’s input, which keeps its last refs when it’s over budget,
-// so agents’ 🚩s never push out the person’s; and a deleted agent’s reaction isn’t credited to another agent.
-test('R3, R9: agents’ flags are trimmed before the person’s, and a deleted agent reacts as agent-0', async () => {
-  const f = await flaggedRoom();
-  const beta = f.rt.sessionsIn(f.t.id).find((x) => x.handle === 'beta');
-  reactTool(f.rt, beta, { id: f.reply.id, emoji: '🚩' });
-  const { draft } = await report(f);
-  const ref = (by) => draft.report.reactions.find((r) => r.emoji === '🚩' && r.by === by).ref;
-  const asked = f.prompts.at(-1).match(/Give one label for each of these refs[^:]*: (.*?)\. A c ref/)[1];
-  assert.ok(asked.indexOf(`${ref('agent-2')} (`) < asked.indexOf(`${ref('person')} (`), asked);
-  delete f.store.state.sessions[beta.id];
-  const again = await report(f);
-  assert.deepEqual(
-    again.draft.report.reactions
-      .filter((r) => r.emoji === '🚩')
-      .map((r) => r.by)
-      .sort(),
-    ['agent-0', 'person'],
-  );
-  f.stop();
 });

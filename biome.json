@@ -491,9 +491,7 @@
         "server/store-outage.mjs",
         "server/store-recover.mjs",
         "server/store-retry.mjs",
-        "server/store-snapshot.mjs",
-        "server/telemetry-sweep.mjs",
-        "server/telemetry.mjs"
+        "server/store-snapshot.mjs"
       ],
       "linter": { "rules": { "suspicious": { "noImportCycles": "off" } } }
     }

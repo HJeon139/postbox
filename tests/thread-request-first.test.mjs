@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { formatMessage } from '../server/adapters/guide.mjs';
-import { THREAD_CHECKS } from '../server/room-checks-threads.mjs';
+import { THREAD_CHECKS } from '../tools/uat/room-checks-threads.mjs';
 import { held, settle, setup } from './side-threads-fixture.mjs';
 
 /** A room with a topic on alpha’s first reply, while beta has not taken a turn. */
