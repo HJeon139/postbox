@@ -53,8 +53,8 @@ function* bodyLines(state) {
  * @returns {Promise<Record<string, any>>}
  */
 export async function readSnapshotFile(io, path) {
-  // Not format 2’s header and its newline: one JSON value, read whole as before. Postbox writes that while the state
-  // fits the string limit (C5 on #1155), and before #1180 always did; a hand-made one may run across lines.
+  // Not format 2’s header and its newline: one JSON value, as a Postbox before #1180 wrote it, read whole; a hand-made
+  // one may run across lines.
   const fh = await io.open(path, 'r');
   let lines;
   try {
