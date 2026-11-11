@@ -17,6 +17,8 @@ const EVENT_TYPES = [STREAM.cursor, ...PUBLIC_EVENT_TYPES];
 
 export const client = {
   state: null,
+  // Each thread’s header facts (shared/thread-header.mjs, #1155), from /api/state and then the stream’s header frames.
+  headers: {},
   config: null,
   seq: 0,
   epoch: '',
@@ -38,8 +40,9 @@ export const client = {
 export async function load() {
   const r = await fetch('/api/state', { cache: 'no-store' });
   if (!r.ok) throw new Error('Postbox’s server didn’t answer. Check that it’s running, then reload.');
-  const { seq, epoch, state, config, store } = await r.json();
+  const { seq, epoch, state, config, store, headers } = await r.json();
   client.state = ownState(state);
+  client.headers = headers ?? {};
   client.config = config;
   client.seq = seq;
   client.epoch = epoch ?? '';
@@ -92,6 +95,13 @@ export function connect() {
     if ((JSON.parse(e.data) ?? '') !== client.epoch) void resync();
   });
   es.addEventListener(STREAM.resync, resync);
+  // A thread’s header, unnumbered: it follows the event that changed it, and null says the thread was removed.
+  es.addEventListener(STREAM.header, (e) => {
+    const { threadId, header } = JSON.parse(e.data);
+    if (header) client.headers[threadId] = header;
+    else delete client.headers[threadId];
+    client.emit({ type: 'header', data: { threadId, header } });
+  });
   // The store’s status, unnumbered: each time it can’t save, or can again (app/js/store-line.mjs).
   es.addEventListener(STREAM.status, (e) => {
     client.store = JSON.parse(e.data);
@@ -192,6 +202,10 @@ export const hrefOf = (threadId) => {
 export const threadLink = (threadId) => new URL(hrefOf(threadId), location.href).href;
 export const sessionsOf = (threadId) => (S().threads[threadId]?.members ?? []).map((id) => S().sessions[id]).filter((x) => x && !x.deleting);
 export const itemsOf = (threadId) => S().items[threadId] ?? [];
+/** @type {import('/shared/thread-header.mjs').ThreadHeader} */
+const NO_HEADER = Object.freeze({ count: 0, lastAt: null, speakers: [], asks: [], blocks: {} });
+/** A thread’s header facts: what the page shows about it without its items (#1155). */
+export const headerOf = (threadId) => client.headers[threadId] ?? NO_HEADER;
 /** The item with this id in a conversation, in O(1) through the store’s index (#712b). */
 export const itemIn = (threadId, id) => itemOf(itemsOf(threadId), id);
 /** Where that item sits in its conversation’s list, or -1, in O(1) (#712b). */

@@ -1,6 +1,6 @@
 // The Threads page: a project's threads, newest first.
 
-import { client, hrefOf, sessionsOf, topicsOf } from './client.mjs';
+import { client, headerOf, hrefOf, sessionsOf, topicsOf } from './client.mjs';
 import { ago, fill, h, heldPaint, plural } from './dom.mjs';
 import { ringFor } from './ring.mjs';
 import { doing, sideActive } from './side-line.mjs';
@@ -41,7 +41,7 @@ export function mountThreads(projectId) {
   });
   paint();
   const off = client.on((ch) => {
-    if (['thread', 'session', 'load', 'remove', 'item.patch'].includes(ch.type)) paint();
+    if (['thread', 'session', 'load', 'remove', 'header'].includes(ch.type)) paint();
   });
   return { el, destroy: off };
 }
@@ -50,9 +50,9 @@ export function mountThreads(projectId) {
 const sidesOf = (projectId) => Object.values(S().threads).filter((t) => t.projectId === projectId && t.kind === 'side' && S().threads[t.parentId]);
 
 function topicRow(t) {
-  const root = (S().items[t.parentId] ?? []).find((x) => x.id === t.rootItemId);
+  const { root, speakers } = headerOf(t.id);
   // Who is in it: the conversation’s agents that answer there from their one session (#228), with the thread’s unread.
-  const handles = new Set([t.woke, ...(S().items[t.id] ?? []).filter((x) => x.kind === 'agent').map((x) => x.handle)]);
+  const handles = new Set([t.woke, ...speakers]);
   const ses = sessionsOf(t.parentId).filter((x) => !x.archived && handles.has(x.handle));
   const who = ses.map((x) => x.handle).join(', ') || 'no agent';
   return {
@@ -67,7 +67,7 @@ function topicRow(t) {
 
 /** A side thread: the pair, the agent at work there or that needs you, how many messages, and when the last came. */
 function sideRow(t) {
-  const link = (S().items[t.parentId] ?? []).find((x) => x.kind === 'sidelink' && x.sideThreadId === t.id);
+  const { link } = headerOf(t.id);
   const at = sideActive(t.id);
   const state = at ? `${at.handle} ${doing(at)}` : 'idle';
   // Its pair’s rings: their sessions in the conversation answer there (#110). Their unread is the conversation’s.

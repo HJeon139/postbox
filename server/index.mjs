@@ -165,7 +165,7 @@ export async function start({
   };
 
   // The pages’ live updates: the store’s events over server-sent events (server/live-streams.mjs).
-  const { streams, stop: stopStreams, stream } = liveStreams(store);
+  const { streams, stop: stopStreams, stream, headers } = liveStreams(store);
   let offlineUntil = 0;
 
   /** @param {import('node:http').IncomingMessage} req @param {import('node:http').ServerResponse} res */
@@ -250,7 +250,7 @@ export async function start({
       return out === null ? raw(res, 202, '') : send(res, 200, out);
     }
 
-    if (path === '/api/state' && req.method === 'GET') return send(res, 200, pageState({ store, rt, adapters, origin, demo, real, config }));
+    if (path === '/api/state' && req.method === 'GET') return send(res, 200, pageState({ store, rt, adapters, origin, demo, real, config, headers }));
     // What a persona would load, for its sheet: its MCP servers and skills (server/setup-routes.mjs).
     const setupDid = await setupRoute(rt, path, req.method, url, claudeHome);
     if (setupDid) return send(res, setupDid.status, setupDid.body);

@@ -14,8 +14,9 @@
 // out as a cursor with its seq. The control frames’ names are shared/state.mjs’s STREAM, which no event type may take.
 
 import { EVENTS, STREAM } from '../shared/state.mjs';
-import { publicFrame } from './public-state.mjs';
+import { publicFrame, publicHeaderFrame } from './public-state.mjs';
 import { REJECTED } from './store-reject.mjs';
+import { threadHeaders } from './thread-headers.mjs';
 
 /**
  * How long a stream’s page may go without reading before the stream is closed (#1210). Every frame for it waits in its
@@ -34,17 +35,20 @@ export const UNREAD_MS = 60_000;
  *   streams: Set<import('node:http').ServerResponse>,
  *   stop: () => void,
  *   stream: (req: import('node:http').IncomingMessage, res: import('node:http').ServerResponse, url: URL) => void,
+ *   headers: ReturnType<typeof threadHeaders>,
  * }}
  */
 export function liveStreams(store, events = EVENTS, { now = Date.now } = {}) {
   /** @type {Set<import('node:http').ServerResponse>} */
   const streams = new Set();
   const deliver = frameWriter(streams, now);
+  // Each thread’s header facts (#1155): /api/state carries them, and each change follows its event as a header frame.
+  const headers = threadHeaders(store);
   // POSTBOX_STREAM_LAG holds every event back that many milliseconds, as a busy computer can. The browser specs run
   // with it in CI to show they wait for the page to hear a change, not for a fixed time.
   const lag = Number(process.env.POSTBOX_STREAM_LAG) || 0;
   store.subscribe((ev) => {
-    const line = publicFrame(ev, events);
+    const line = publicFrame(ev, events) + headerFrames(headers, headers.note(ev));
     const epoch = store.epoch; // the history the event belongs to: a send held back past a Retry says nothing (gpt’s finding)
     // An event the store held as rejected (#609): its place, then a resync, since a handler that broke its contract
     // may have changed the state the page can't see.
@@ -64,6 +68,7 @@ export function liveStreams(store, events = EVENTS, { now = Date.now } = {}) {
   });
   // Retry installs a new epoch: every open stream is told to load the state again.
   store.onReload(() => {
+    headers.clear();
     for (const res of streams) deliver(res, `event: ${STREAM.epoch}\ndata: ${JSON.stringify(store.epoch)}\n\nevent: ${STREAM.resync}\ndata: {}\n\n`);
   });
   const keepAlive = setInterval(() => {
@@ -82,12 +87,34 @@ export function liveStreams(store, events = EVENTS, { now = Date.now } = {}) {
     const backlog = lost ? null : store.since(since);
     // Too far behind, or on a lost timeline: the browser refetches the whole state, then resumes from its seq.
     if (backlog === null) res.write(`event: ${STREAM.resync}\ndata: {}\n\n`);
-    else for (const ev of backlog) deliver(res, publicFrame(ev, events));
+    else for (const frame of backlogFrames(backlog, since, events, headers)) deliver(res, frame);
     streams.add(res);
     req.on('close', () => streams.delete(res));
   }
 
-  return { streams, stop: () => clearInterval(keepAlive), stream };
+  return { streams, stop: () => clearInterval(keepAlive), stream, headers };
+}
+
+/**
+ * What a page that connects after `since` missed: each event’s public frame, then the headers that changed meanwhile, as
+ * they are now. @param {any[]} backlog @param {number} since @param {typeof EVENTS} events @param {ReturnType<typeof threadHeaders>} headers
+ */
+function backlogFrames(backlog, since, events, headers) {
+  const frames = backlog.map((ev) => publicFrame(ev, events));
+  const changed = headerFrames(headers, headers.changedSince(since));
+  return changed ? [...frames, changed] : frames;
+}
+
+/**
+ * The header frames for these threads: each one’s header as it is now, or null for one that was removed.
+ * @param {ReturnType<typeof threadHeaders>} headers @param {string[]} ids
+ */
+function headerFrames(headers, ids) {
+  return ids
+    .map((id) => [id, headers.of(id)])
+    .filter(([id, header]) => header || headers.removed(/** @type {string} */ (id)))
+    .map(([id, header]) => publicHeaderFrame(/** @type {string} */ (id), header))
+    .join('');
 }
 
 /**

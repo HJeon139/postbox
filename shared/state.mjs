@@ -97,7 +97,7 @@ export const PUBLIC_STATE_KEYS = Object.freeze([
 export const PRIVATE_STATE_KEYS = Object.freeze(/** @type {string[]} */ ([]));
 
 /** The names the event stream gives its own frames (server/live-streams.mjs). None is ever an event type. */
-export const STREAM = Object.freeze({ cursor: 'cursor', status: 'status', epoch: 'epoch', resync: 'resync' });
+export const STREAM = Object.freeze({ cursor: 'cursor', status: 'status', epoch: 'epoch', resync: 'resync', header: 'header' });
 export const RESERVED = Object.freeze(Object.values(STREAM));
 
 /** Calls f with the item an event names, if it's there. */

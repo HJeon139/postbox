@@ -61,7 +61,8 @@ async function stream(query, headers = {}) {
     return id ? `${id}:${ev}` : ev;
   };
   return {
-    frames: frames.filter((f) => !f.startsWith('event: epoch') && !f.startsWith('event: status')).map(name), // the status is 1b’s first frame
+    // the status is 1b’s first frame, and a thread’s header follows the events that changed it (#1155)
+    frames: frames.filter((f) => !f.startsWith('event: epoch') && !f.startsWith('event: status') && !f.startsWith('event: header')).map(name),
     epochs: frames.filter((f) => f.startsWith('event: epoch')).map((f) => JSON.parse(f.split('data: ')[1])),
     first: name(frames[0] ?? ''),
   };

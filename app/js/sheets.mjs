@@ -19,7 +19,7 @@ import {
 } from '/shared/agent-facts.mjs';
 import { mockMarker } from './agent-facts.mjs';
 import { checkField } from './check-field.mjs';
-import { api, client, sessionsOf, threadsOf } from './client.mjs';
+import { api, client, headerOf, sessionsOf, threadsOf } from './client.mjs';
 import { ago, fill, h, icon, plural } from './dom.mjs';
 import { goToNew, goWhenThere } from './go-when-there.mjs';
 import { hostsPanel } from './hosts.mjs';
@@ -679,7 +679,7 @@ export function confirmDeleteThread(threadId) {
   const t = S().threads[threadId];
   if (!t) return;
   const ses = sessionsOf(threadId);
-  const items = S().items[threadId] ?? [];
+  const messages = headerOf(threadId).count;
   const apps = Object.values(S().apps).filter((a) => a.threadId === threadId).length;
   const topics = Object.values(S().threads).filter((x) => x.parentId === threadId).length;
   const room = t.kind === 'room';
@@ -695,7 +695,7 @@ export function confirmDeleteThread(threadId) {
         h('span.label', 'This erases'),
         h(
           'ul.what-goes',
-          li(false, `${plural(items.length, 'message')}, ${plural(apps, 'app')} and ${plural(topics, 'topic thread')} off it`),
+          li(false, `${plural(messages, 'message')}, ${plural(apps, 'app')} and ${plural(topics, 'topic thread')} off it`),
           li(false, `The ${plural(ses.length, 'session')} in it, and their context: ${ses.map((x) => x.handle).join(', ') || 'no agents'}`),
         ),
       ),
@@ -754,10 +754,9 @@ export function openRename(threadId) {
 
 export function confirmDelete(se) {
   const t = S().threads[se.threadId];
-  const items = S().items[se.threadId] ?? [];
   const room = sessionsOf(se.threadId).length > 1;
   const apps = Object.values(S().apps).filter((a) => a.sessionId === se.id).length;
-  const blocks = items.filter((i) => i.kind === 'block' && i.sessionId === se.id).length;
+  const blocks = headerOf(se.threadId).blocks[se.id] ?? 0;
   const li = (ok, text) =>
     h('li', h(`span.i.i-${ok ? 'check' : 'x'}.i-sm`, { style: { color: ok ? 'var(--good)' : 'var(--alert-ink)' }, 'aria-hidden': 'true' }), h('span', text));
   const dlg = openDialog({
@@ -776,7 +775,7 @@ export function confirmDelete(se) {
                 li(false, `${plural(apps, 'app')} it wrote`),
               ]
             : [
-                li(false, `The conversation: ${plural(items.length, 'item')}, including ${plural(blocks, 'block')} and ${plural(apps, 'app')}`),
+                li(false, `The conversation: ${plural(headerOf(se.threadId).count, 'item')}, including ${plural(blocks, 'block')} and ${plural(apps, 'app')}`),
                 li(false, `${se.handle}’s context for this session`),
               ],
         ),
