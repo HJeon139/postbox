@@ -2,6 +2,13 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.0.5 (2026-11-11)
+
+### Fixes
+
+- **view:** hold the anchor's place, and publish where it is apart from it
+- **view:** publish where a hold of the anchor landed, not where it aimed
+
 ## 4.0.4 (2026-11-11)
 
 ### Fixes
