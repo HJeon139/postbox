@@ -9,7 +9,6 @@
 // here shows in the CLI’s /permissions, and the reverse.
 
 import { BACKEND_NAMES } from '/shared/agent-facts.mjs';
-import { HOOKS_LATER, KEPT_WHY } from '/shared/mode-when.mjs';
 import { decide } from '/shared/permission-match.mjs';
 import { api, client, sessionsOf } from './client.mjs';
 import { fill, h, icon } from './dom.mjs';
@@ -17,7 +16,7 @@ import { checkField } from './hosts-parts.mjs';
 import { hooksSection } from './permission-hooks.mjs';
 import { mcpSection } from './permission-mcp.mjs';
 import { MODES } from './run-choice.mjs';
-import { capsOf, modeHelp, openFolderPicker } from './sheets.mjs';
+import { capsOf, openFolderPicker } from './sheets.mjs';
 import { keepFocus, openDialog, say, toast } from './ui.mjs';
 
 export { MODES } from './run-choice.mjs';
@@ -72,19 +71,6 @@ function backendNote(p) {
     return `${intro} In Auto its Tools decide what runs with no card, and in Ask me and Accept edits its mode decides what asks first.`;
   if (capsOf(p.backend).tools === 'none') return `${intro} Its mode decides what it may do.`;
   return `${intro} Its mode and its Tools decide what it may do.`;
-}
-
-/**
- * What a change of mode says: now, in its running turn too, or from its next turn, and why: Postbox keeps a running
- * turn’s mode where its hooks or Run everything would outlast the new one (kept), and some backends can’t change a
- * running turn. A turn that switched live into a mode with hooks runs without them until it ends (#1030).
- * @param {any} r  setPermissionMode’s answer
- */
-function modeSaid(p, name, r, running) {
-  if (r.now.length) return `${p.handle} is in ${name} mode now, in its running turn too${r.hooksLater?.length ? `, ${HOOKS_LATER}` : ''}.`;
-  if (r.kept?.length) return `${p.handle} is in ${name} mode from its next turn, or now if you stop it: ${KEPT_WHY}`;
-  if (running) return `${p.handle} is in ${name} mode from its next turn: ${BACKEND_NAMES[p.backend] ?? 'its backend'} can’t change a turn that’s running.`;
-  return `${p.handle} is in ${name} mode from its next turn.`;
 }
 
 /** Which rule decides a call, in words: a deny, ask or allow rule, or, when none covers it, the mode. */
@@ -201,43 +187,12 @@ export function openPermissions({ threadId = null, sessionId = null, personaId =
       view.real ? hostNote(view) : h('p.help', `${p.handle} is a mock agent. Modes, rules and folders apply to Claude Code and Agent SDK agents.`),
       // A backend that doesn’t read Claude Code’s rules or MCP config (the Kiro CLI, #117) shows only what it honors.
       view.real && !view.readsRules ? h('p.help', backendNote(p)) : null,
-      view.real ? modeSection(p) : null,
       view.readsRules ? rulesSection() : null,
       view.real ? folderSection() : null,
       view.real && view.readsRules ? hooksSection(view, SOURCE) : null,
       view.real && view.readsRules ? mcpSection(p, mcp, change) : null,
       view.real && view.readsRules ? effectiveSection(p) : null,
     ];
-  }
-
-  function modeSection(p) {
-    const mode = MODES.find(([id]) => id === p.permissionMode) ?? MODES[0];
-    return section(
-      'Mode',
-      h(
-        'div.seg',
-        { role: 'radiogroup', 'aria-label': 'Mode' },
-        MODES.map(([id, name]) =>
-          h(
-            'button',
-            {
-              type: 'button',
-              role: 'radio',
-              'aria-checked': String(id === mode[0]),
-              onclick: () =>
-                change(
-                  () => api('/api/permissions/mode', { personaId: p.id, mode: id }),
-                  (r) => modeSaid(p, name, r, view.running.length > 0),
-                ),
-            },
-            name,
-          ),
-        ),
-      ),
-      // Some backends read the modes their own way (the Kiro and Antigravity CLIs can’t ask; Codex maps them to its
-      // sandbox), so the modes read as the persona sheet says (#117).
-      h('span.help', `${modeHelp(p.backend, mode)} The mode is ${p.handle}’s, in every conversation.`),
-    );
   }
 
   /** Every rule, by behavior, each with its source and whether Postbox may remove it; forDecide: only those that apply. */

@@ -309,12 +309,13 @@ async function openPanel(page) {
   return page.locator('.dialog');
 }
 
-test('#66 the panel opens from ⋯ › Permissions… with the mode, rules with sources, folders, MCP servers and the effective view', async ({ page }) => {
+test('#66 the panel opens from ⋯ › Permissions… with rules with sources, folders, MCP servers and the effective view', async ({ page }) => {
   await open(page);
   const dialog = await openPanel(page);
   const all = await words(dialog);
   expect(all).toMatch(/coder’s permissions/);
-  await expect(dialog.locator('[role="radiogroup"][aria-label="Mode"] [aria-checked="true"]')).toContainText('Ask me');
+  // The mode is the persona’s, set in its sheet only.
+  await expect(dialog.locator('[role="radiogroup"][aria-label="Mode"]')).toHaveCount(0);
   expect(all).toMatch(/Bash\(rm:\*\) from the project’s shared settings/);
   expect(all).toMatch(/Bash\(git status\) from your user settings/);
   expect(all).toMatch(/Bash\(npm test:\*\) from this folder’s local settings/);
@@ -365,18 +366,6 @@ test('#66 a rule added in the panel is saved where you chose, and shows with its
   await expect(dialog.locator('.list-rows li', { hasText: 'Bash(rm:*)' }), 'the shared rule is listed').toHaveCount(1);
   await expect(dialog.locator('.list-rows li', { hasText: 'Bash(rm:*)' }).locator('button')).toHaveCount(0);
   await expect(dialog.locator('.list-rows li', { hasText: 'Bash(make:*)' }).locator('button[aria-label^="Remove"]')).toHaveCount(1);
-});
-
-test('#66 the mode changes from the panel, and says it applies from the next turn', async ({ page }) => {
-  await open(page);
-  const dialog = await openPanel(page);
-  try {
-    await dialog.locator('[aria-label="Mode"] button', { hasText: 'Accept edits' }).click();
-    await expect(dialog.locator('.perm-status')).toContainText('coder is in Accept edits mode from its next turn');
-    expect(app.store.state.personas[persona.id].permissionMode).toBe('acceptEdits');
-  } finally {
-    app.rt.updatePersona(persona.id, { permissionMode: 'ask' });
-  }
 });
 
 test('#66 a folder added from the panel’s folder picker is listed for this conversation', async ({ page }) => {

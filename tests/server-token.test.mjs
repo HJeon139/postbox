@@ -79,7 +79,6 @@ const WRITE_ROUTES = {
   'DELETE ^\\/api\\/personas\\/([^/]+)$': ['/api/personas/pe_none'],
   'POST /api/permissions/rules': ['/api/permissions/rules'],
   'POST /api/permissions/folders': ['/api/permissions/folders'],
-  'POST /api/permissions/mode': ['/api/permissions/mode'],
   'POST /api/hosts': ['/api/hosts'],
   'PATCH ^\\/api\\/hosts\\/([^/]+)$': ['/api/hosts/ho_none'],
   'DELETE ^\\/api\\/hosts\\/([^/]+)$': ['/api/hosts/ho_none'],

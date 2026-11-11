@@ -10,7 +10,7 @@
 
 import { stat } from 'node:fs/promises';
 import { isAbsolute, resolve } from 'node:path';
-import { asksForWrites, switchesLive } from '../shared/hook-modes.mjs';
+import { asksForWrites } from '../shared/hook-modes.mjs';
 import { workFolder } from './adapters/folder.mjs';
 import { PUBLISHING_TOOLS, setupOf, TOOL_RULES, writeRules } from './adapters/setup.mjs';
 import { httpError } from './helpers.mjs';
@@ -206,46 +206,6 @@ export async function changePermissionFolder(rt, { sessionId, path, remove = fal
     rt.updateSession(se.id, { addDirs: [...dirs, dir] });
   }
   return { ok: true, path: dir, applies: 'next turn' };
-}
-
-/**
- * Sets a persona’s permission mode (intent.md: it reaches running conversations from their next turn). Where the
- * backend can change a running turn (the Agent SDK’s setPermissionMode), its running turns change now too.
- * @param {any} rt @param {string} personaId @param {string} mode
- * @returns {Promise<{ ok: true, now: string[], later: string[], kept: string[], hooksLater: string[] }>}  now: the
- *   sessions whose running turn changed at once; later: those with a turn running that keeps its mode until it ends
- *   (#371), which Stop applies now; kept: those of later that could change but Postbox keeps, since the hooks the
- *   turn loaded, or Run everything, would outlast the new mode’s card (switchesLive, #806), where the rest are kept
- *   by a backend that can’t change a running turn; hooksLater: those of now that started without the person’s hooks
- *   and switched into a mode that runs them, so they run without them until they end (#1030). Sessions, not handles:
- *   a persona has one in each conversation it’s in.
- */
-export async function setPermissionMode(rt, personaId, mode) {
-  const p = rt.persona(personaId);
-  if (!p) throw httpError(404, 'That agent doesn’t exist.');
-  if (!PERMISSION_MODES.includes(mode)) throw httpError(422, `Permissions are one of ${PERMISSION_MODES.join(', ')}.`);
-  if ((p.permissionMode ?? 'auto') !== mode) rt.updatePersona(personaId, { permissionMode: mode });
-  /** @type {string[]} */
-  const now = [];
-  /** @type {string[]} */
-  const later = [];
-  /** @type {string[]} */
-  const kept = [];
-  /** @type {string[]} */
-  const hooksLater = [];
-  for (const se of Object.values(rt.s.sessions)) {
-    const turn = se.personaId === personaId ? rt.turns.get(se.id) : null;
-    if (!turn) continue;
-    const live = typeof turn.control?.setPermissionMode === 'function';
-    if (live && (await turn.control.setPermissionMode(mode))) {
-      now.push(se.id);
-      if (asksForWrites(turn.mode) && !asksForWrites(mode)) hooksLater.push(se.id);
-    } else {
-      later.push(se.id);
-      if (live && !switchesLive(turn.mode, mode)) kept.push(se.id);
-    }
-  }
-  return { ok: true, now, later, kept, hooksLater };
 }
 
 /**

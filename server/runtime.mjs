@@ -53,15 +53,7 @@ import {
   resolvePermission,
   settlePermission,
 } from './permission-cards.mjs';
-import {
-  changePermissionFolder,
-  changePermissionRule,
-  latestProject,
-  PERMISSION_MODES,
-  panelTarget,
-  permissionsView,
-  setPermissionMode,
-} from './permissions-panel.mjs';
+import { changePermissionFolder, changePermissionRule, latestProject, PERMISSION_MODES, panelTarget, permissionsView } from './permissions-panel.mjs';
 import { checkEffort, checkSetup, handleOf } from './persona-checks.mjs';
 import { arrival } from './queue-batch.mjs';
 import { readCapped } from './read-capped.mjs';
@@ -1899,9 +1891,6 @@ export class Runtime {
   }
   changePermissionFolder(change) {
     return changePermissionFolder(this, change);
-  }
-  setPermissionMode(personaId, mode) {
-    return setPermissionMode(this, personaId, mode);
   }
 
   // ── Commands in the composer (#67) ─────────────────────────────────────────────────

@@ -366,7 +366,6 @@ export async function start({
     if ((m = path.match(/^\/api\/personas\/([^/]+)$/)) && req.method === 'PATCH') return send(res, 200, rt.updatePersona(m[1], body));
     if (path === '/api/permissions/rules' && req.method === 'POST') return send(res, 200, await rt.changePermissionRule(body));
     if (path === '/api/permissions/folders' && req.method === 'POST') return send(res, 200, await rt.changePermissionFolder(body));
-    if (path === '/api/permissions/mode' && req.method === 'POST') return send(res, 200, await rt.setPermissionMode(body.personaId, body.mode));
     // Remote hosts (#120): their routes, reads and writes (server/hosts-routes.mjs).
     const hostsDid = await hostsRoute(rt, path, req.method, body);
     if (hostsDid) return send(res, hostsDid.status, hostsDid.body);
