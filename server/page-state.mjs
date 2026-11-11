@@ -2,9 +2,9 @@
 // the store’s status, and the configuration the page reads once.
 
 import { HOP_LIMIT } from '../shared/limits.mjs';
-import { DEFAULT_EFFORT, EFFORT_LEVELS, REAL_BACKEND_TOOLS } from './adapters/setup.mjs';
+import { DEFAULT_EFFORT, DEFAULT_MODEL, EFFORT_LEVELS, REAL_BACKEND_TOOLS } from './adapters/setup.mjs';
 import { publicHeaders, publicState } from './public-state.mjs';
-import { DEFAULT_MODEL, PERMISSION_MODES } from './runtime.mjs';
+import { PERMISSION_MODES } from './runtime.mjs';
 import { KNOWN_TOOLS } from './seed.mjs';
 
 /**

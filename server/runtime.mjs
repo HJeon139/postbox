@@ -13,7 +13,7 @@ import { carriedList } from '../shared/work.mjs';
 import { describeTool } from './adapters/claude-stream.mjs';
 import { workFolder } from './adapters/folder.mjs';
 import { listProcesses } from './adapters/process-group.mjs';
-import { AUTO_MODEL, DEFAULT_EFFORT, EFFORT_LEVELS, POSTBOX_SERVER } from './adapters/setup.mjs';
+import { AUTO_MODEL, DEFAULT_EFFORT, DEFAULT_MODEL, EFFORT_LEVELS, POSTBOX_SERVER } from './adapters/setup.mjs';
 import { contentBlocks, listClaudeSessions, recentHistory, TranscriptTail, typedText } from './adapters/terminal-mirror.mjs';
 import { agentFile, agentFolders, appFiles } from './agent-files.mjs';
 import { retireApp } from './app-retire.mjs';
@@ -132,8 +132,6 @@ const STEP_KINDS = /** @type {Set<unknown>} */ (new Set(['thought', 'said', 'age
 const MAX_JOBS = 50;
 /** How long a stopped turn may hold its session before Postbox lets the next turn start anyway, and says so (#126). */
 const STOP_WATCHDOG_MS = 15000;
-/** The model a real backend uses when a persona doesn’t name one. */
-export const DEFAULT_MODEL = 'claude-opus-5-5';
 export class Runtime {
   /**
    * @param {{ store: import('./store.mjs').Store, adapters: import('./adapters/adapter.mjs').AdapterRegistry,
