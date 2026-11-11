@@ -150,7 +150,7 @@ function endCommand(rt, threadId, itemId, { run, cut, startedAt, exit: { code = 
   });
 }
 
-/** Sends the output of running commands that’s waiting for its next flush now (tests await rt, not a timer). */
+/** Sends the output of running commands that’s waiting for its next flush now (tests await this, not a timer). */
 export function flushShellOutput(rt) {
   for (const run of rt.shellRuns.values()) run.flush();
 }
