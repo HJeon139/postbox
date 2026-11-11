@@ -36,7 +36,8 @@ export function activityParts(it) {
  * A folded list holds its summary and the steps’ labels as text, not the steps (#1028): most lists are never opened,
  * and in a long room their steps were most of the page’s elements. The text sits in the details, so it’s hidden with
  * them and Find still finds a step, opening them in Chromium. The first open builds the steps, and they stay built.
- * A turn still running shows its steps open, as its harness does (`running`); a finished one starts folded.
+ * A turn still running shows its steps open, as its harness does (`running`); a finished one is drawn folded, and a
+ * redraw keeps a list open only if the person opened it.
  * @param {HTMLElement} summary @param {any[]} steps @param {boolean} [running]
  */
 function foldedList(summary, steps, running = false) {
@@ -53,11 +54,15 @@ function foldedList(summary, steps, running = false) {
   );
   // A click or key on the summary builds before the browser opens the list, so no frame shows the text open. Find opens
   // it with no click, and its toggle builds then.
-  summary.addEventListener('click', () => buildSteps(list));
+  summary.addEventListener('click', () => {
+    buildSteps(list);
+    delete list.dataset.running; // opened or closed by the person now, so a redraw keeps it (rerender-state.mjs)
+  });
   stepsOf.set(list, steps);
   if (running) {
     buildSteps(list);
     list.open = true;
+    list.dataset.running = '';
   }
   return list;
 }

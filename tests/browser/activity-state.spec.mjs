@@ -106,5 +106,5 @@ test('#488 an activity list and thought keep the state the person chose while th
   await expect.poll(() => app.rt.turns.size, { message: 'the second turn to finish' }).toBe(0);
   await synced(page, app);
   await expect(page.locator('details.activity')).toHaveCount(2);
-  await expect(page.locator('details.activity').last(), 'a new reply shows its steps open, as it ran').toHaveAttribute('open', '');
+  await expect(page.locator('details.activity').last(), 'a finished reply nobody opened or closed folds its steps').not.toHaveAttribute('open', '');
 });
