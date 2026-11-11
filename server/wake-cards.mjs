@@ -165,7 +165,7 @@ export function resolveHop(rt, threadId, itemId, allow) {
       itemId: it.itemId ?? null,
     });
   settleHeld(rt, it, allow);
-  if (allow) return;
+  if (allow) return { ok: true };
   if (from && !from.archived)
     rt.deliver(
       from.id,
@@ -177,6 +177,7 @@ export function resolveHop(rt, threadId, itemId, allow) {
       },
       { threadId: it.replyIn ?? null },
     );
+  return { ok: true };
 }
 
 /** The wakes held on a card go with it (#439): Allow delivers each as its agent sent it; otherwise each agent is told. */
