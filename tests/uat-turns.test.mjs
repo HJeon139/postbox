@@ -173,3 +173,43 @@ test('the wait after the last step still lets the turn finish: nobody is left to
   });
   assert.ok(took >= 30_000, `waited until the turn ended (${took} ms)`);
 });
+
+// sf-evalgen-wf1 dev10, 11/11 18:31: @builder's permission to edit LEDGER.md came while the tester answered its
+// subagents. The tester had it on screen and moved on, so it was "told", and the wait never handed it back while the
+// builder sat on it until the run's limit. An open permission comes back every PERMISSION_REHAND_MS until it's answered.
+function permissionApi({ openUntil = Infinity, endAt = 600_000 } = {}) {
+  return async () => {
+    const now = Date.now();
+    const se = { id: 's1', handle: 'builder', threadId: 'th_main', state: now < endAt ? 'tool' : 'idle' };
+    const status = now < openUntil ? 'open' : 'allowed';
+    const items = [{ id: 'it_l9ErCMrq', kind: 'permission', handle: 'builder', status, summary: 'edit LEDGER.md' }];
+    return { state: { threads: { th_main: { id: 'th_main', members: ['s1'] } }, sessions: { s1: se }, apps: {}, items: { th_main: items } } };
+  };
+}
+
+test('an open permission the tester was already shown comes back after PERMISSION_REHAND_MS while its agent works', async (t) => {
+  const told = new Set();
+  // The tester saw it during a step: the wait that follows starts with it already told.
+  const first = await onFakeClock(t, async () => {
+    await settle(ctx(permissionApi(), { told, handBack: true }));
+    return Date.now();
+  });
+  assert.ok(first < 15_000, `handed back the first time at ${first} ms`);
+  const again = await onFakeClock(t, async () => {
+    await settle(ctx(permissionApi(), { told, handBack: true }));
+    return Date.now();
+  });
+  assert.equal(turns.PERMISSION_REHAND_MS, 60_000);
+  // Each wait's fake clock starts at 0 again, so the second hand-back comes PERMISSION_REHAND_MS after the first one.
+  assert.ok(again >= first + 60_000 && again < first + 65_000, `handed back again at ${again} ms (first at ${first}), not at the turn's end`);
+});
+
+test('an answered permission is not handed back again', async (t) => {
+  const told = new Set();
+  await onFakeClock(t, () => settle(ctx(permissionApi(), { told, handBack: true })));
+  const took = await onFakeClock(t, async () => {
+    await settle(ctx(permissionApi({ openUntil: 0, endAt: 90_000 }), { told, handBack: true }));
+    return Date.now();
+  });
+  assert.ok(took >= 90_000, `waited for the turn (${took} ms)`);
+});

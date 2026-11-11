@@ -18,6 +18,13 @@ export const STOP_AFTER_MAX_S = WAIT_MAX_S;
  * 10 s on is doing more, and the tester can answer meanwhile. Stop’s question hands back at once: the turn waits on it.
  */
 export const BLOCK_GRACE_MS = 10_000;
+/**
+ * How long an open permission the tester has had may stay unanswered while its agent works before the wait hands it
+ * back again. A permission holds its turn until it's answered, so one the tester saw and moved past would otherwise
+ * hold the run until its limit (sf-evalgen-wf1, 11/11 18:31). A block doesn't hold its turn, so it's handed back once.
+ */
+export const PERMISSION_REHAND_MS = 60_000;
+const handedAt = new WeakMap();
 
 /** What needs the person, by a key that names each once: Stop’s questions about background jobs, then waitingOnYou’s. */
 const asking = (st, ids, sessions) => [
@@ -28,7 +35,7 @@ const asking = (st, ids, sessions) => [
       stop: true,
       what: `Postbox asks whether to stop @${se.handle}’s ${se.stopAsk.jobs > 1 ? 'background jobs' : 'background job'} too`,
     })),
-  ...waitingOnYou(st, ids).map((w) => ({ key: w.itemId ?? w.what, stop: false, what: w.what })),
+  ...waitingOnYou(st, ids).map((w) => ({ key: w.itemId ?? w.what, stop: false, what: w.what, permission: Boolean(w.permission) })),
 ];
 
 /**
@@ -38,14 +45,24 @@ const asking = (st, ids, sessions) => [
  * @param {{ key: string, stop: boolean }[]} asks  @param {{ told: Set<string>, since: Map<string, number>, working: boolean }} o
  */
 function dueAsks(asks, { told, since, working }) {
+  if (!handedAt.has(told)) handedAt.set(told, new Map());
+  const at = handedAt.get(told);
+  const now = Date.now();
   if (!working) {
-    for (const x of asks) told.add(x.key);
+    for (const x of asks) {
+      told.add(x.key);
+      at.set(x.key, now);
+    }
     return [];
   }
-  const now = Date.now();
   for (const x of asks) if (!told.has(x.key) && !since.has(x.key)) since.set(x.key, now);
-  const due = asks.filter((x) => !told.has(x.key) && (x.stop || now - (since.get(x.key) ?? now) >= BLOCK_GRACE_MS));
-  if (due.length) for (const x of asks) told.add(x.key);
+  const stale = (x) => x.permission && told.has(x.key) && now - (at.get(x.key) ?? now) >= PERMISSION_REHAND_MS;
+  const due = asks.filter((x) => (!told.has(x.key) && (x.stop || now - (since.get(x.key) ?? now) >= BLOCK_GRACE_MS)) || stale(x));
+  if (due.length)
+    for (const x of asks) {
+      if (!told.has(x.key) || due.includes(x)) at.set(x.key, now);
+      told.add(x.key);
+    }
   return due;
 }
 

@@ -121,7 +121,7 @@ export function openPermissions(state, threads, known) {
     for (const it of state.items?.[t] ?? [])
       if (it.kind === 'permission' && it.status === 'open' && !known.has(it.id)) {
         const what = `${it.handle ? `@${it.handle} ` : ''}asks to ${String(it.summary ?? it.tool ?? 'use a tool').slice(0, 120)}`;
-        out.push({ itemId: it.id, threadId: t, what });
+        out.push({ itemId: it.id, threadId: t, what, permission: true });
       }
   return out;
 }
