@@ -57,6 +57,6 @@ export function diagramCheck(rt, threadId, itemId, { src, textPx, width, error }
       scope,
     };
   const sent = rt.lint(se.id, it.turnId, [problem]);
-  if (sent) rt.rememberDiagrams(se.id, [src]);
+  if (sent) rememberDiagrams(rt, se.id, [src]);
   return { ok: true, sent };
 }

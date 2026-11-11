@@ -5,6 +5,7 @@
 
 import { lintDiagrams } from '../shared/diagram-lint.mjs';
 import { blockProblems, diagramProblems, introducedTerms, personSaid, rawHtmlProblems, termProblems } from './checks.mjs';
+import { rememberDiagrams } from './diagram-check.mjs';
 
 /** The server’s checks over a finished turn. */
 export function checkTurn(rt, turn, se) {
@@ -15,7 +16,8 @@ export function checkTurn(rt, turn, se) {
   // Diagrams too wide or too busy to read at the conversation’s width.
   const diagrams = lintDiagrams(turn.said);
   if (diagrams.length)
-    rt.rememberDiagrams(
+    rememberDiagrams(
+      rt,
       se.id,
       diagrams.map((d) => d.src),
     );
