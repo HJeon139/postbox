@@ -21,6 +21,18 @@ export function skipOffscreen(el) {
 }
 
 /**
+ * An item drawn again is a new node, which the browser skips until a frame decides it's on screen, and a skipped
+ * item's innerText is empty: copy as text, an assistive tool or a find read nothing from it for that frame (#1246).
+ * So the new node is drawn until it has painted when the one it replaces wasn't skipped, whether the browser drew it
+ * or drawUntilPainted holds it, which the browser says nothing of. One that was skipped stays skipped, so a redraw off
+ * screen lays nothing out. Asked of the old node's first child, as the item itself is the box the rule applies to.
+ * @param {Element | undefined} old  @param {HTMLElement} next
+ */
+export function keepDrawn(old, next) {
+  if (old?.firstElementChild?.checkVisibility({ contentVisibilityAuto: true })) drawUntilPainted(next);
+}
+
+/**
  * A transcript the window holds (#866, window.mjs) mounts only the items near the view, and must measure them at their
  * real heights, so skipping is off while it holds it, and on again when it lets go if the transcript wants it,
  * whichever came first. The one place that decides.
