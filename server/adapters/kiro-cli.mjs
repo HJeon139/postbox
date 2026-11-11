@@ -57,6 +57,7 @@ import { findKiro, kiroModel, postboxModel } from './kiro-cli-models.mjs';
 import { attachmentPaths, KIRO_CAPABILITIES, kiroRemoteSpawn } from './kiro-cli-remote.mjs';
 import { kiroError, kiroExitError, overSizeLimit, SIZE_LIMIT_START_TEXT } from './kiro-errors.mjs';
 import { sessionInfo } from './kiro-session-info.mjs';
+import { KINDS, toolOf } from './kiro-tools.mjs';
 import { listProcesses, stopOnAbort, stopTurn } from './process-group.mjs';
 import { effortOf, modelOf, recorderFor, setupOf } from './setup.mjs';
 
@@ -109,32 +110,6 @@ const contentText = (content) =>
 // turn itself still succeeds, so the stream is the only record. The text is the fallback, and v2’s wording. The
 // UAT’s checks read recorded streams with it too (tools/uat/checks.mjs).
 export const REFUSED = /The user rejected this tool call|permission approval is not supported/;
-// Labels for Kiro’s tool kinds (ACP’s ToolKind), until a title arrives.
-const KINDS = {
-  read: 'Reading a file',
-  edit: 'Editing a file',
-  delete: 'Deleting a file',
-  move: 'Moving a file',
-  search: 'Searching files',
-  execute: 'Running a command',
-  fetch: 'Fetching a page',
-  think: 'Thinking',
-};
-
-/**
- * The tool a call stands for, in Claude Code’s naming where Postbox has words for it: an MCP tool is
- * mcp__<server>__<tool>, so Postbox’s own tools get the same labels and stay quiet. v3 names an MCP call in its
- * input (tool_id “postbox::show_block”) and _meta.kiro.serverName; v2 in _meta.kiro.toolName and mcpServerName.
- */
-export function toolOf(u) {
-  const kiro = u?._meta?.kiro ?? {};
-  const id = typeof u?.rawInput?.tool_id === 'string' ? /^([^:]+)::(.+)$/.exec(u.rawInput.tool_id) : null;
-  const server = id?.[1] ?? kiro.serverName ?? kiro.mcpServerName ?? null;
-  const tool = id?.[2] ?? kiro.toolName ?? null;
-  if (server && tool) return { name: `mcp__${server}__${tool}`, input: id ? (u.rawInput.arguments ?? {}) : (u.rawInput ?? {}) };
-  return { name: null, input: u?.rawInput ?? {} };
-}
-
 /**
  * Turns kiro-cli’s stream-json output into Postbox’s turn context. Every line is { type, data }: runStarted, then
  * sessionUpdate (an ACP session/update: agentclientprotocol.com/protocol/prompt-turn), then runFinished or runError.
