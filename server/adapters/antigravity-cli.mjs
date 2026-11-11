@@ -327,8 +327,6 @@ export function createAgyMapper(ctx, { now = Date.now, effort = null, resumed = 
     // Whether the model got anywhere this turn (a tool step or a reply), and whether the last thing was a failed call.
     went: false,
     stuck: false,
-    texts: 0, // the reply’s paragraphs: text after a tool call starts one
-    afterTool: false,
     writing: false,
     stepUsage: false, // a step reported its context, so the result’s turn total isn’t it
     tools: new Map(), // each step’s call, for refusals agy reports later (deniedAfter)
@@ -355,7 +353,7 @@ export function createAgyMapper(ctx, { now = Date.now, effort = null, resumed = 
     };
     st.tools.set(key(s), t);
     emit({ kind: 'tool_call', id: t.id, name, input: tool.input, final: true });
-    Object.assign(st, { refusedLast: null, textSinceTool: false, afterTool: true, writing: false });
+    Object.assign(st, { refusedLast: null, textSinceTool: false, writing: false });
     return t;
   };
   const endTool = (/** @type {any} */ s) => {
@@ -396,9 +394,8 @@ export function createAgyMapper(ctx, { now = Date.now, effort = null, resumed = 
           if (s.state === 'ACTIVE' && !st.writing) emit({ kind: 'status', state: 'think', step: 'Thinking' });
           return;
         }
-        if (st.afterTool) st.texts += 1;
-        Object.assign(st, { afterTool: false, wrote: true, refusedLast: null, textSinceTool: true, writing: true });
-        return emit({ kind: 'text', text, block: `text-${st.texts}` });
+        Object.assign(st, { wrote: true, refusedLast: null, textSinceTool: true, writing: true });
+        return emit({ kind: 'text', text });
       }
       case 'tool':
         if (s.state === 'DONE' || s.state === 'ERROR') endTool(s);

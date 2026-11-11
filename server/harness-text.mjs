@@ -33,6 +33,7 @@ export class HarnessText {
     this.pending = '';
     this.thoughts = 0;
     this.narrations = 0;
+    this.calls = 0; // the turn’s own tool calls so far: text without a block starts a paragraph after one
     /** @type {Map<unknown, string>} a thought still streaming, by its block */
     this.thinking = new Map();
   }
@@ -56,8 +57,8 @@ export class HarnessText {
   }
 
   /** Words of the reply. A new block starts a paragraph, and the ring’s “writing”. @param {string} text @param {unknown} [block] */
-  write(text, block) {
-    if (block !== undefined && block !== this.block) {
+  write(text, block = `after-call-${this.calls}`) {
+    if (block !== this.block) {
       this.block = block;
       if (this.wrote) this.ctx.text('\n\n');
       this.status({ state: 'gen', currentStep: 'Writing a reply' });

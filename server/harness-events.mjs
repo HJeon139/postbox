@@ -2,7 +2,8 @@
 // its harness’s own stream (Claude Code’s stream-json, Codex’s app server, the Kiro and Antigravity CLIs, the mock’s
 // scripts) and calls event() with these kinds, in its harness’s order:
 //
-// - text      { text, block?, parent? }   words of the reply; a new block starts a new paragraph. With parent, a
+// - text      { text, block?, parent? }   words of the reply; a new block starts a new paragraph, and without
+//                                          blocks, text after a tool call does. With parent, a
 //                                          subagent’s own words: a step in its voice, never the reply (#73).
 // - thinking  { text, block?, parent?, whole? }   a piece of a thought; whole, or a thinking_end, makes it a step.
 // - thinking_end { block }
@@ -134,6 +135,7 @@ export class HarnessEvents {
 
   /** @param {any} e */
   on_tool_call(e) {
+    if (!e.parent && !e.who && !this.st.tools.has(e.id)) this.words.calls += 1;
     this.tools.start(e.id, e.name, e.input ?? {}, this.by(e.parent, e.who), e.label);
     if (e.input) this.tools.input(e.id, e.input, e.final === true);
     this.moveSub(e.parent, { state: 'tool', doing: describeTool(e.name, e.input) });

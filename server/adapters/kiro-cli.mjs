@@ -130,8 +130,6 @@ export function createKiroMapper(ctx, { now = Date.now, effort = null } = {}) {
     refused: new Set(), // toolCallIds whose ask no one could answer
     kinds: new Map(), // toolCallId → its ACP kind (edit, execute, …)
     steering: /** @type {string[]} */ ([]), // steering files Kiro loaded (steering_inclusion)
-    texts: 0, // the reply’s paragraphs: text after a tool call starts one, as Kiro runs the two together
-    afterTool: false,
     thoughts: 0,
     thinking: false,
   };
@@ -151,7 +149,6 @@ export function createKiroMapper(ctx, { now = Date.now, effort = null } = {}) {
     // v3 loads tool definitions on demand (“Tool Load”), as Claude Code’s ToolSearch does.
     const native = u.title === 'Tool Load' ? 'ToolSearch' : clip(u.title || KINDS[/** @type {keyof typeof KINDS} */ (u.kind)] || 'Using a tool', 80);
     emit({ kind: 'tool_call', id: u.toolCallId, name: name ?? native, input, final: true });
-    st.afterTool = true;
   };
   const update = (/** @type {any} */ u) => {
     const kind = u?.sessionUpdate;
@@ -160,9 +157,7 @@ export function createKiroMapper(ctx, { now = Date.now, effort = null } = {}) {
       case 'agent_message_chunk': {
         const text = u.content?.type === 'text' ? String(u.content.text ?? '') : '';
         if (!text) return;
-        if (st.afterTool) st.texts += 1;
-        st.afterTool = false;
-        return emit({ kind: 'text', text, block: `text-${st.texts}` });
+        return emit({ kind: 'text', text });
       }
       case 'agent_thought_chunk':
         if (!st.thinking) st.thoughts += 1;
