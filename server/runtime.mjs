@@ -14,15 +14,12 @@ import { listProcesses } from './adapters/process-group.mjs';
 import { EFFORT_LEVELS } from './adapters/setup.mjs';
 import { recordCommands, runAgentCommand } from './agent-commands.mjs';
 import { agentFile, agentFolders, appFiles } from './agent-files.mjs';
-import { retireApp } from './app-retire.mjs';
 import { APP_HOLD_MAX, APP_SEND_LIMIT, APP_SEND_WINDOW_MS } from './app-send-limits.mjs';
-import { appCheck, appEvent, appFile, appQuery, appState, fixEnded, needAppSend, registerApp, resolveAppSend, showApp, updateApp } from './apps.mjs';
+import { appCheck, appEvent, appFile, appQuery, appState, fixEnded, needAppSend, registerApp, resolveAppSend } from './apps.mjs';
 import { restoreArchives } from './archive-lifecycle.mjs';
 import { ArchivePasses } from './archive-runtime.mjs';
 import { askQuestions, QUESTION_TOOL, questionBlocks } from './ask-question.mjs';
-import { showBlock } from './block-show.mjs';
-import { act, answerDelivered, unreadAnswer, updateBlock } from './blocks.mjs';
-import { bringToConversation } from './bring.mjs';
+import { act, answerDelivered, unreadAnswer } from './blocks.mjs';
 import { keptTurns, nextNeed, noticeNeed, releaseNeed, stateFor, TURN_TIED } from './card-needs.mjs';
 import { catchUp, moveMarkers, pointerIfSeen } from './catch-up.mjs';
 import { attachClaudeSession, claudeSessions, mirror, pollMirror, rearmMirrors, stopMirrorFor, stopMirrors } from './claude-mirror.mjs';
@@ -61,15 +58,12 @@ import { describeHostInstall, hostStatus, installHost, retryHost, watchHosts } f
 import { localBackends, refuseHere, refuseUnregistered, refuseUnregisteredSend, registeredAdapter } from './remote/placement.mjs';
 import { RemoteTurns } from './remote/turns.mjs';
 import { replySegment, stepTaken, wordsSegment } from './reply-segment.mjs';
-import { reviewBlock } from './review-comments.mjs';
-import { cancelWake, scheduleWakeTool } from './schedule-tools.mjs';
 import {
   armWake,
   cancelWakeSchedule,
   dropScheduledWake,
   prepareScheduledRetry,
   rearmWakes,
-  recordedTools,
   recordScheduledTool,
   scheduleWake,
   settleScheduledWake,
@@ -79,30 +73,19 @@ import { pendingSessionsIn, stampNeeds, tellAgent, updateSession } from './sessi
 import { mcpContext } from './setup-context.mjs';
 import { clearSummaryPending, postSummary, shareText, shareToConversation, summarizeBack, summarizing } from './share-back.mjs';
 import { commandFolder, expireStaleCommands, flushShellOutput, runShellCommand, stopShellCommand, stopShellCommands } from './shell-runs.mjs';
-import {
-  agentWake,
-  archiveForks,
-  bumpSideLink,
-  dropWakes,
-  endChain,
-  recordAgentMessage,
-  resolveHop,
-  sideSession,
-  threadPersona,
-  wakeAgent,
-} from './side-threads.mjs';
+import { agentWake, archiveForks, bumpSideLink, dropWakes, endChain, recordAgentMessage, resolveHop, sideSession, threadPersona } from './side-threads.mjs';
 import { newId } from './store.mjs';
 import { heldTurn, STORE_STOPPED, saveBackendState, watchStore, whenWritable } from './store-outage.mjs';
 import { endSubagent, notUrgent } from './subagent-end.mjs';
 import { firstPromptSection, settleThread, turnContext } from './thread-summary.mjs';
 import { updateThread } from './thread-write.mjs';
-import { askForTool } from './tool-ask.mjs';
-import { openTopic, startTopic } from './topic-open.mjs';
+import { startTopic } from './topic-open.mjs';
 import { checkTurn, stallLeftRunning, stallSteps } from './turn-checks.mjs';
 import { endedAs, endWork } from './turn-end-work.mjs';
-import { askedAgain, askedOf, replyMarks, wokeOf } from './turn-marks.mjs';
+import { askedAgain, askedOf, replyMarks } from './turn-marks.mjs';
 import { settleStoppedSteps, settleSubagentSteps } from './turn-steps.mjs';
 import { workEvents } from './turn-work.mjs';
+import { toolsFor } from './ui-tools.mjs';
 import { closeOrphanCards, liftDecline, retireStale } from './wake-cards.mjs';
 
 export { AgentFileError } from './agent-files.mjs';
@@ -1975,104 +1958,11 @@ export class Runtime {
     return Date.now() - (this.viewing.get(threadId) ?? 0) < 20000;
   }
 
-  // ── UI tools (the same set MCP exposes) ────────────────────────────────────────────
+  // ── UI tools (the same set MCP exposes): server/ui-tools.mjs ──────────────────────
 
   /** @param {string} sessionId @param {any} [turn]  the turn the tools act for; null outside a turn */
   toolsFor(sessionId, turn = null) {
-    const rt = this;
-    const se = () => rt.session(sessionId);
-    const endSegment = () => {
-      if (turn) turn.segment = null;
-    };
-    // Where the turn speaks: its session’s thread, or the side thread it answers in (#110).
-    const threadId = () => turn?.threadId ?? se().threadId;
-    return recordedTools(rt, turn, {
-      /** @param {{ block: any }} args @param {{ files?: AppFile[] }} [given]  data files Postbox read for show_app (#54) */
-      show_block(args, given = {}) {
-        return showBlock(rt, sessionId, { turn, se, threadId, endSegment, tools: this }, args, given);
-      },
-      update_block(args, given = {}) {
-        return updateBlock(rt, sessionId, args, { turn, se, threadId, endSegment }, given);
-      },
-      review_block: (args) => reviewBlock(rt, sessionId, args),
-      show_app(args, given = {}) {
-        return showApp(rt, sessionId, this, args, given);
-      },
-      update_app(args, given) {
-        return updateApp(rt, sessionId, turn, threadId, endSegment, args, given);
-      },
-      retire_app(args) {
-        return retireApp(rt, sessionId, args);
-      },
-      define_term({ term, definition, key, source }) {
-        if (!term || !definition) return { ok: false, message: 'define_term needs a term and a definition.' };
-        const k =
-          String(key ?? term)
-            .toLowerCase()
-            .replace(/[^a-z0-9]+/g, '-')
-            .replace(/^-|-$/g, '')
-            .slice(0, 64) || 'term';
-        if (turn) (turn.defined ??= []).push(String(term).slice(0, 80));
-        rt.store.emit('glossary', {
-          threadId: threadId(),
-          entry: {
-            key: k,
-            term: String(term).slice(0, 80),
-            definition: String(definition).slice(0, 2000),
-            source: source ? String(source).slice(0, 200) : '',
-            by: se().handle,
-            at: Date.now(),
-          },
-        });
-        const inherited = rt
-          .lineage(threadId())
-          .slice(1)
-          .some((id) => rt.s.glossary[id]?.[k]);
-        return { ok: true, message: inherited ? `Defined “${term}” here, over the conversation’s definition.` : `Defined “${term}”.` };
-      },
-      propose_agent({ handle, description, instructions, tools = [], model = 'mock', backend = 'mock' }) {
-        const mine = new Set(rt.persona(se().personaId)?.tools ?? []);
-        // Agents send JSON: anything that isn’t a string here is coerced, so it can only ever show as text.
-        const str = (v, max) => String(v ?? '').slice(0, max);
-        handle = str(handle, 40);
-        description = str(description, 500);
-        instructions = str(instructions, 20000);
-        tools = (Array.isArray(tools) ? tools : []).filter((t) => typeof t === 'string').slice(0, 40);
-        model = str(model, 80);
-        backend = str(backend, 40);
-        endSegment();
-        rt.addItem(threadId(), {
-          kind: 'proposal',
-          sessionId,
-          handle: se().handle,
-          // Its turn’s, so it shares that turn’s sender line and no other (#135).
-          turnId: turn?.id ?? null,
-          ...wokeOf(turn),
-          status: 'open',
-          proposal: { handle: String(handle).replace(/^@/, ''), description, instructions, tools, model, backend },
-          extraTools: tools.filter((t) => !mine.has(t)),
-        });
-        return { ok: true, message: 'Proposed. The person decides whether to create it.' };
-      },
-      schedule_wake: (args) => scheduleWakeTool(rt, sessionId, args),
-      cancel_wake: (args) => cancelWake(rt, sessionId, args),
-      wake_agent: (args) => wakeAgent(rt, sessionId, args),
-      open_topic: (args) => openTopic(rt, sessionId, args),
-      bring_to_conversation: (args = {}) => bringToConversation(rt, sessionId, turn, args),
-      read_conversation(args = {}) {
-        try {
-          return { ok: true, message: rt.readConversation(se(), args) };
-        } catch (e) {
-          return { ok: false, message: e.message };
-        }
-      },
-      read_message(args = {}) {
-        return rt.readMessage(se(), args);
-      },
-      ask_for_tool(args = {}) {
-        return askForTool(rt, sessionId, args, endSegment, threadId());
-      },
-    });
+    return toolsFor(this, sessionId, turn);
   }
 }
 
