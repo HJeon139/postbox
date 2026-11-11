@@ -7,7 +7,7 @@ import { homedir } from 'node:os';
 import { resolve, sep } from 'node:path';
 import { ASKING } from '../shared/catalog.mjs';
 import { READING } from '../shared/limits.mjs';
-import { formatDuration, glimpseOf, parseMentions } from '../shared/text.mjs';
+import { formatDuration, glimpseOf } from '../shared/text.mjs';
 import { carriedList } from '../shared/work.mjs';
 import { workFolder } from './adapters/folder.mjs';
 import { listProcesses } from './adapters/process-group.mjs';
@@ -35,7 +35,6 @@ import { keptGroupsOf, keptJobs, pollKept, stopJob, stopKeptJobs, watchKept } fr
 import { Ledger } from './ledger.mjs';
 import { endLint, foldLint, lint, quietLint } from './lint-delivery.mjs';
 import { wakeMentions } from './mention-wakes.mjs';
-import { sentAttachments } from './message-attachments.mjs';
 import * as queue from './message-queue.mjs';
 import { alwaysFor } from './permission-always.mjs';
 import {
@@ -58,7 +57,7 @@ import { addReadFolder, readCardAlways } from './read-folders.mjs';
 import { readMessage } from './read-message.mjs';
 import { addHost, host, removeHost, setProjectHostFolder, updateHost } from './remote/host-admin.mjs';
 import { describeHostInstall, hostStatus, installHost, retryHost, watchHosts } from './remote/host-status.mjs';
-import { localBackends, refuseHere, refuseUnregistered, refuseUnregisteredSend, registeredAdapter } from './remote/placement.mjs';
+import { localBackends, refuseHere, refuseUnregistered, registeredAdapter } from './remote/placement.mjs';
 import { RemoteTurns } from './remote/turns.mjs';
 import { replySegment, stepTaken, wordsSegment } from './reply-segment.mjs';
 import { reviewBlock } from './review-comments.mjs';
@@ -74,23 +73,13 @@ import {
   scheduleWake,
   settleScheduledWake,
 } from './scheduled-wakes.mjs';
+import { sendMessage, threadRefs } from './send-message.mjs';
 import { archive, archiveThread, deleteSession, deleteThread, finishLeftDeletes, restore, restoreThread } from './session-lifecycle.mjs';
 import { pendingSessionsIn, stampNeeds, tellAgent, updateSession } from './session-write.mjs';
 import { mcpContext } from './setup-context.mjs';
 import { clearSummaryPending, postSummary, shareText, shareToConversation, summarizeBack, summarizing } from './share-back.mjs';
 import { commandFolder, expireStaleCommands, flushShellOutput, runShellCommand, stopShellCommand, stopShellCommands } from './shell-runs.mjs';
-import {
-  agentWake,
-  archiveForks,
-  bumpSideLink,
-  dropWakes,
-  endChain,
-  recordAgentMessage,
-  resolveHop,
-  sideSession,
-  threadPersona,
-  wakeAgent,
-} from './side-threads.mjs';
+import { agentWake, archiveForks, bumpSideLink, dropWakes, endChain, recordAgentMessage, resolveHop, sideSession, wakeAgent } from './side-threads.mjs';
 import { newId } from './store.mjs';
 import { heldTurn, STORE_STOPPED, saveBackendState, watchStore, whenWritable } from './store-outage.mjs';
 import { endSubagent, notUrgent } from './subagent-end.mjs';
@@ -103,7 +92,7 @@ import { endedAs, endWork } from './turn-end-work.mjs';
 import { askedAgain, askedOf, replyMarks, wokeOf } from './turn-marks.mjs';
 import { settleStoppedSteps, settleSubagentSteps } from './turn-steps.mjs';
 import { workEvents } from './turn-work.mjs';
-import { closeOrphanCards, liftDecline, retireStale } from './wake-cards.mjs';
+import { closeOrphanCards, liftDecline } from './wake-cards.mjs';
 
 export { AgentFileError } from './agent-files.mjs';
 export { httpError } from './helpers.mjs';
@@ -386,89 +375,18 @@ export class Runtime {
     return se;
   }
 
-  // ── Messages from you ──────────────────────────────────────────────────────────────
+  // ── Messages from you: server/send-message.mjs and message-queue.mjs ──────────────
 
   /** You send a message: @mentions wake agents (joining them to the thread); otherwise the last speaker replies. */
-  sendMessage(threadId, { text = '', attachments = [], sendNow = false } = {}) {
-    const t = this.thread(threadId);
-    text = String(text).slice(0, 50000);
-    attachments = sentAttachments(this, attachments);
-    if (!text.trim() && !attachments.length) throw httpError(400, 'Write a message or attach a file first.');
-    const mentioned = parseMentions(text, this.handles())
-      .map((h) => this.personaByHandle(h))
-      .filter(Boolean);
-    const targets = [];
-    // A side or topic thread is answered by the conversation’s own sessions (#110, #128, #228): an agent you
-    // @-mention there, or the one you reply to, answers from its one session in the conversation, and the reply shows here.
-    // Side threads from before #372 are history: agents talk in the conversation now.
-    if (t.kind === 'side') throw httpError(409, 'Side threads are read-only now. Write in the conversation, where the agents talk.');
-    // Refuse before anything is posted or joined: a turn for an agent whose backend isn’t registered couldn’t start (#874).
-    refuseUnregisteredSend(this, mentioned);
-    const away = t.kind === 'topic';
-    if (away) {
-      for (const p of mentioned) targets.push({ se: this.sideSession(t, p.id, 'you') });
-      if (!targets.length) {
-        // The last speaker’s agent replies, as in a conversation; before anyone has, the agent it started with.
-        const p = threadPersona(this, t);
-        // Refused before sideSession, which would join an agent not yet in the conversation (#874).
-        if (p) refuseUnregisteredSend(this, [p]);
-        const se = p && this.sideSession(t, p.id, 'you');
-        if (!se) throw httpError(409, 'No agent is in this thread. @-mention one to bring it in.');
-        targets.push({ se });
-      }
-    }
-    // Refuse before anything is posted, so a refused message doesn’t also appear in the transcript.
-    const archived = mentioned.map((p) => this.sessionsIn(threadId).find((x) => x.personaId === p.id)).find((x) => x?.archived);
-    if (archived && !away) throw httpError(409, `@${archived.handle}’s session is archived. Restore it first.`);
-    for (const p of away ? [] : mentioned) {
-      const joined = !this.sessionsIn(threadId).some((x) => x.personaId === p.id);
-      targets.push({ se: this.ensureSession(threadId, p.id, { brief: joined ? 'You were @-mentioned into this thread.' : null }) });
-    }
-    if (!targets.length) {
-      const members = this.sessionsIn(threadId).filter((x) => !x.archived);
-      const last = members.find((x) => x.id === t.lastSpeaker) ?? members[0];
-      if (!last) throw httpError(409, 'No agent is in this thread. @-mention one to bring it in.');
-      targets.push({ se: last });
-    }
-    // And the agent you reply to, as the mentioned ones above.
-    const woken = targets.map(({ se }) => this.persona(se.personaId));
-    refuseUnregisteredSend(this, woken);
-    // Messages to a busy agent wait in the queue unless you choose Send now, as for one whose host turn waits to be
-    // attached again after a restart (#1135).
-    const busy = targets.filter(({ se }) => this.turns.has(se.id) || this.remote.awaitsAttach(se.id));
-    const q =
-      busy.length && !sendNow ? { id: newId('q'), text, attachments, sessionIds: targets.map(({ se }) => se.id), at: Date.now(), seq: arrival() } : null;
-    if (q) updateThread(this, threadId, (x) => ({ queue: [...(x.queue ?? []), q] }));
-    // Send now is a change of course (stopForSendNow), also for one already exiting from a plain Stop (#1040).
-    else if (sendNow) for (const { se } of targets) queue.stopForSendNow(this, se.id);
-    const sent = q ? { queued: q } : this.postAndDeliver(threadId, { text, attachments }, targets);
-    // A card waiting to wake one of them is stale now (#439), whether this went at once or waits in the queue. It
-    // retires after, so the wake you never allowed goes behind your message rather than ahead of it.
-    for (const { se } of targets) retireStale(this, threadId, se, 'you wrote to it', { byPerson: true });
-    return sent;
+  sendMessage(threadId, message) {
+    return sendMessage(this, threadId, message);
+  }
+  threadRefs(threadId, text) {
+    return threadRefs(this, threadId, text);
   }
 
   postAndDeliver(threadId, { text, attachments }, targets) {
     return queue.postAndDeliver(this, threadId, { text, attachments }, targets);
-  }
-
-  /**
-   * The threads a message of yours links to (#121), as Copy link or the composer’s # gives them, each with its id and
-   * title so the agent can read it. Only threads of the same conversation: read_conversation reads no others.
-   * @param {string} threadId @param {string} text
-   */
-  threadRefs(threadId, text) {
-    const root = (x) => this.lineage(x).at(-1);
-    const ids = new Set();
-    for (const m of String(text).matchAll(/#\/t\/(th_[A-Za-z0-9]+)(?:\/side\/(th_[A-Za-z0-9]+))?/g)) ids.add(m[2] ?? m[1]);
-    const out = [];
-    for (const id of [...ids].slice(0, 10)) {
-      const t = this.s.threads[id];
-      if (!t || id === threadId || root(id) !== root(threadId)) continue;
-      const what = t.kind === 'side' ? 'side thread' : t.kind === 'topic' ? 'topic thread' : 'conversation';
-      out.push(`[Postbox] The person’s message links to the ${what} “${t.title}” (thread ${id}). Read it with read_conversation with thread: "${id}".`);
-    }
-    return out;
   }
 
   editQueued(threadId, queueId, text) {
