@@ -12,7 +12,7 @@ const shared = pathToFileURL(join(import.meta.dirname, '../shared/')).href;
 const src = (await readFile(new URL('../app/js/item-ranges.mjs', import.meta.url), 'utf8')).replaceAll("'/shared/", `'${shared}`);
 const file = join(await tempDir('pb-item-ranges-'), 'item-ranges.mjs');
 await writeFile(file, src);
-const { gate, loading, place } = await import(pathToFileURL(file).href);
+const { gate, keepFirst, loading, place, placeHead } = await import(pathToFileURL(file).href);
 
 const it = (n, text = `m${n}`) => ({ id: `i${n}`, kind: 'message', text });
 const items = (from, to) => Array.from({ length: to - from }, (_, k) => it(from + k));
@@ -54,4 +54,24 @@ test('a message added after a move, both heard during a replace load, is kept', 
     state.items.t.map((x) => x.id),
     ['i0', 's1', 'i2', 'i3', 'i4', 'i1', 'i5'],
   );
+});
+
+test('the kept head, for Home, follows what the page hears: during its load and after, and goes in place whole', () => {
+  // The page holds [90,100) as of seq 10; the head (items 0..4) loads as of seq 11.
+  const state = { items: { t: items(90, 100) } };
+  const ranges = new Map();
+  loading(ranges, 't');
+  place(state, ranges, { threadId: 't', seq: 10, start: 90, total: 100, items: items(90, 100) }, 'replace');
+  loading(ranges, 't');
+  gate(state, ranges, 'item.patch', { threadId: 't', id: 'i1', patch: { text: 'edited' } }, 12);
+  keepFirst(ranges, { threadId: 't', seq: 11, start: 0, total: 100, items: items(0, 5) });
+  gate(state, ranges, 'item.text', { threadId: 't', id: 'i2', text: '+chunk' }, 13);
+  gate(state, ranges, 'item.move', { threadId: 't', id: 'i3', stub: { id: 's3', kind: 'moved' }, patch: {} }, 14);
+  gate(state, ranges, 'item.add', { threadId: 't', item: it(100) }, 15);
+  assert.equal(placeHead(state, ranges, 't', 15), true);
+  assert.deepEqual(
+    state.items.t.map((x) => `${x.id}:${x.text ?? ''}`),
+    ['i0:m0', 'i1:edited', 'i2:m2+chunk', 's3:', 'i4:m4'],
+  );
+  assert.equal(ranges.get('t').start, 0);
 });

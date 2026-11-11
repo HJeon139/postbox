@@ -5,7 +5,7 @@
 
 import { positionOf } from '/shared/item-index.mjs';
 import { client, reopen } from './client.mjs';
-import { atEnd, fetchRange, forget, loading, place } from './item-ranges.mjs';
+import { atEnd, fetchRange, forget, keepFirst, loading, place, placeHead } from './item-ranges.mjs';
 import { windowOn } from './window-flag.mjs';
 
 /** How many items a load asks for: about what the transcript window mounts as it opens. */
@@ -36,6 +36,7 @@ function load(threadId, query, how) {
     const stale = place(client.state, ranges, answer, how);
     client.emit({ type: 'range', data: { threadId, how } });
     if (stale) void load(threadId, `?limit=${PAGE}`, 'replace');
+    else if (answer.start > 0 && !range.head) idle(() => loadHead(threadId, range));
   };
   const next = (queues.get(threadId) ?? Promise.resolve()).then(run);
   queues.set(threadId, next);
@@ -89,9 +90,32 @@ export async function whenLoaded(threadId) {
   await queues.get(threadId);
 }
 
+/** Runs f once the page is idle, or soon where it can't say. @param {() => void} f */
+const idle = (f) => (typeof requestIdleCallback === 'function' ? requestIdleCallback(f, { timeout: 2000 }) : setTimeout(f, 200));
+
+/**
+ * Loads a conversation's first items while the page is idle, kept apart as the range's head, so Home puts them in place
+ * at once, as main, which held every item, did. One small load per long conversation opened.
+ * @param {string} threadId @param {import('./item-ranges.mjs').Range} range
+ */
+async function loadHead(threadId, range) {
+  const ranges = client.ranges;
+  if (ranges.get(threadId) !== range || range.head || range.start === 0 || !client.open.has(threadId)) return;
+  loading(ranges, threadId);
+  const answer = await fetchRange(threadId, `?first&limit=${PAGE}`).catch(() => null);
+  if (client.ranges !== ranges || ranges.get(threadId) !== range) return;
+  if (answer && (answer.epoch ?? client.epoch) === client.epoch) keepFirst(ranges, answer);
+  else range.loads = Math.max(0, range.loads - 1);
+}
+
 /** Loads an open conversation’s first items, for Home, in place of the range it holds. @param {string} threadId */
 export async function toFirst(threadId) {
-  if (client.open.has(threadId)) await load(threadId, `?first&limit=${PAGE}`, 'replace');
+  if (!client.open.has(threadId)) return;
+  // The head kept since the conversation opened, when there's one: Home with no load.
+  if (placeHead(client.state, client.ranges, threadId, client.seq)) {
+    const anchor = client.state.items[threadId][0]?.id;
+    client.emit({ type: 'range', data: { threadId, how: 'replace', anchor } });
+  } else await load(threadId, `?first&limit=${PAGE}`, 'replace');
 }
 
 /** Whether a conversation’s first load has landed, so an empty list means it has no items. @param {string} threadId */

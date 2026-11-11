@@ -189,8 +189,8 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
     if (ch.type === 'load' && (!loaded(threadId) || (!windowOn() && partial))) void refresh(threadId);
     if (ch.type === 'load' || (ch.type === 'range' && ch.data.threadId === threadId)) {
       const back = holdFocus();
-      // Rebuilt around where you are now, not where the transcript was when it opened, with the item that has focus.
-      all(view.keep()?.anchor?.key ?? null, focusedItem(el));
+      // Rebuilt around where you are now, or the item the range was loaded to go to (Home), with the item that has focus.
+      all(ch.data?.anchor ?? view.keep()?.anchor?.key ?? null, focusedItem(el));
       view.rebuilt();
       back();
       return;

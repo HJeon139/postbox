@@ -12,7 +12,7 @@ import { apply } from '/shared/state.mjs';
 
 /**
  * @typedef {{ type: string, data: any, seq: number, applied: boolean }} Heard
- * @typedef {{ start: number, total: number, seq: number, loads: number, heard: Heard[], beyond?: { items: Record<string, any[]> } }} Range
+ * @typedef {{ start: number, total: number, seq: number, loads: number, heard: Heard[], beyond?: { items: Record<string, any[]> }, head?: any[] }} Range
  * @typedef {{ threadId: string, seq: number, start: number, total: number, items: any[] }} Answer
  */
 
@@ -42,7 +42,48 @@ export function gate(state, ranges, type, d, seq) {
   const verdict = judge(state, r, type, d, seq);
   if (r.loads > 0) r.heard.push({ type, data: d, seq, applied: verdict === 'apply' && held });
   keepBeyond(r, type, d, verdict);
+  keepHead(r, type, d);
   return verdict;
+}
+
+/**
+ * The conversation's first items, kept apart for Home (keepFirst), current from their own events: a patch or text
+ * applies, and a moved item leaves its stub in its place, as off a range's end. An add goes past them.
+ * @param {Range} r @param {string} type @param {any} d
+ */
+function keepHead(r, type, d) {
+  const at = r.head && type !== 'item.add' ? positionOf(r.head, d.id) : -1;
+  if (at < 0 || !r.head) return;
+  if (type === 'item.move') {
+    r.head[at] = d.stub;
+    noteReplaced(r.head, at);
+  } else apply({ items: { [d.threadId]: r.head } }, type, d);
+}
+
+/**
+ * Keeps a load of the conversation's first items as its head, with what the page heard after the load's seq.
+ * @param {Map<string, Range>} ranges @param {Answer} answer
+ */
+export function keepFirst(ranges, answer) {
+  const r = ranges.get(answer.threadId);
+  if (!r) return;
+  r.loads = Math.max(0, r.loads - 1);
+  r.head = answer.items.slice();
+  for (const e of r.heard) if (e.seq > answer.seq) keepHead(r, e.type, e.data);
+  if (!r.loads) r.heard = [];
+}
+
+/**
+ * Puts the kept head in place as the range, as a load of the first items would, with no load: says whether it could
+ * (there's a head, and no load in flight whose events it would have to wait for).
+ * @param {any} state @param {Map<string, Range>} ranges @param {string} threadId @param {number} seq  the page's place
+ */
+export function placeHead(state, ranges, threadId, seq) {
+  const r = ranges.get(threadId);
+  if (!r?.head || r.loads > 0) return false;
+  state.items[threadId] = r.head;
+  Object.assign(r, { start: 0, seq, head: undefined });
+  return true;
 }
 
 /** How many of the items added past a range’s end it keeps apart: the latest, enough for a reply and what follows it. */
