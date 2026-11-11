@@ -73,7 +73,7 @@ test('a recorded turn: a Postbox tool that failed stays quiet, and Kiro’s refu
 
 test('a recorded write Kiro would have asked about: a denied step, though the turn itself succeeds', () => {
   const { ctx, m } = replay('host-write-refused');
-  const write = ctx.calls.activity.filter((a) => a.label === 'Write File');
+  const write = ctx.calls.activity.filter((a) => a.label === 'Wrote out.txt');
   assert.deepEqual(
     write.map((a) => a.state),
     ['running', 'denied'],
@@ -90,7 +90,7 @@ test('a refusal is read from the approval events, not only from Kiro’s wording
     if (u?.sessionUpdate === 'tool_call_update' && u.status === 'failed') u.rawOutput = { message: 'Something else.' };
     m.push(e);
   }
-  assert.equal(ctx.calls.activity.find((a) => a.label === 'Write File' && a.state !== 'running')?.state, 'denied');
+  assert.equal(ctx.calls.activity.find((a) => a.label === 'Wrote out.txt' && a.state !== 'running')?.state, 'denied');
 });
 
 test('a recorded Isolated turn: another server’s call is refused by the deny rule, not worded as an ask; Postbox’s goes through', () => {

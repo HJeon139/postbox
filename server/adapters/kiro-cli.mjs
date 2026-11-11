@@ -128,6 +128,7 @@ export function createKiroMapper(ctx, { now = Date.now, effort = null } = {}) {
     missingSession: false,
     asked: new Map(), // toolCallId → what Kiro would have asked (“Write File”, “echo hi”)
     refused: new Set(), // toolCallIds whose ask no one could answer
+    kinds: new Map(), // toolCallId → its ACP kind (edit, execute, …)
     steering: /** @type {string[]} */ ([]), // steering files Kiro loaded (steering_inclusion)
     texts: 0, // the reply’s paragraphs: text after a tool call starts one, as Kiro runs the two together
     afterTool: false,
@@ -144,7 +145,9 @@ export function createKiroMapper(ctx, { now = Date.now, effort = null } = {}) {
     st.thinking = false;
   };
   const call = (/** @type {any} */ u) => {
-    const { name, input } = toolOf(u);
+    // Only a call’s first update names its kind.
+    if (u.kind) st.kinds.set(u.toolCallId, u.kind);
+    const { name, input } = toolOf({ ...u, kind: st.kinds.get(u.toolCallId) });
     // v3 loads tool definitions on demand (“Tool Load”), as Claude Code’s ToolSearch does.
     const native = u.title === 'Tool Load' ? 'ToolSearch' : clip(u.title || KINDS[/** @type {keyof typeof KINDS} */ (u.kind)] || 'Using a tool', 80);
     emit({ kind: 'tool_call', id: u.toolCallId, name: name ?? native, input, final: true });
