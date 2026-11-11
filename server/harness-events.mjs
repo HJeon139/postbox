@@ -11,6 +11,7 @@
 //                                          final once that input is whole. An Agent or Task call starts a subagent.
 // - tool_result { id, isError?, text?, result?, vcsCwd?, background?, parent? }   what it returned; background: it may
 //                                          have gone on as a job ({ job, named, outputFile }) or a subagent ({ agent }).
+// - tool_output { id, text }               a running call’s latest output, such as a command’s.
 // - tool_end  { id?, job?, status, summary?, outputFile? }   a call that went on in the background ended.
 // - refused   { id, tool, input?, agentId?, reason?, reasonType?, fromResult? }   the harness refused a call itself.
 // - task      { task, id }                 a subagent’s own id (a refusal’s agentId), for the call that started it.
@@ -26,7 +27,7 @@
 // server/adapters/claude-stream.mjs, which built them for Claude Code alone, while each other adapter built its own.
 
 import { HarnessText } from './harness-text.mjs';
-import { firstSentence, HarnessTools, moveSubagent, SUBAGENT_TOOLS } from './harness-tools.mjs';
+import { byOf, firstSentence, HarnessTools, moveSubagent, SUBAGENT_TOOLS } from './harness-tools.mjs';
 import { describeTool } from './tool-labels.mjs';
 
 // How Postbox answers a call the person declined on a permission card: that’s their answer, not a refusal to show again.
@@ -39,6 +40,7 @@ export const KINDS = Object.freeze([
   'thinking_end',
   'tool_call',
   'tool_result',
+  'tool_output',
   'tool_end',
   'refused',
   'task',
@@ -139,6 +141,14 @@ export class HarnessEvents {
     else this.tools.end(e.id, e.isError === true, e.isError ? (e.text ?? '') : '');
     this.ctx.toolResult?.({ id: e.id, isError: e.isError === true, text: e.text ?? '', result: e.result ?? null, vcsCwd: e.vcsCwd ?? null });
     if (!e.parent) this.status({ state: 'think', currentStep: 'Thinking' });
+  }
+
+  /** A running call’s latest output: its step shows the end of it. @param {any} e */
+  on_tool_output(e) {
+    const t = this.st.tools.get(e.id);
+    if (!t || t.done || t.quiet || !e.text) return;
+    t.output = `${t.output ?? ''}${e.text}`.slice(-500);
+    this.ctx.activity({ id: e.id, label: t.label, state: 'running', detail: t.output, ...byOf(t) });
   }
 
   /** A call that went on in the background ended, maybe long after its result (#129). @param {any} e */
