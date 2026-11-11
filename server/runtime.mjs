@@ -4,17 +4,15 @@
 
 import { createHash, randomUUID } from 'node:crypto';
 import { homedir } from 'node:os';
-import { basename, resolve, sep } from 'node:path';
+import { resolve, sep } from 'node:path';
 import { ASKING } from '../shared/catalog.mjs';
 import { COLUMN_PX, lintDiagrams, MIN_TEXT_PX, mermaidBlocks } from '../shared/diagram-lint.mjs';
 import { READING } from '../shared/limits.mjs';
 import { formatDuration, glimpseOf, parseMentions } from '../shared/text.mjs';
 import { carriedList } from '../shared/work.mjs';
-import { describeTool } from './adapters/claude-stream.mjs';
 import { workFolder } from './adapters/folder.mjs';
 import { listProcesses } from './adapters/process-group.mjs';
 import { EFFORT_LEVELS } from './adapters/setup.mjs';
-import { contentBlocks, listClaudeSessions, recentHistory, TranscriptTail, typedText } from './adapters/terminal-mirror.mjs';
 import { recordCommands, runAgentCommand } from './agent-commands.mjs';
 import { agentFile, agentFolders, appFiles } from './agent-files.mjs';
 import { retireApp } from './app-retire.mjs';
@@ -29,8 +27,9 @@ import { bringToConversation } from './bring.mjs';
 import { keptTurns, nextNeed, noticeNeed, releaseNeed, stateFor, TURN_TIED } from './card-needs.mjs';
 import { catchUp, moveMarkers, pointerIfSeen } from './catch-up.mjs';
 import { blockProblems, diagramProblems, formatLint, introducedTerms, lintMessage, personSaid, rawHtmlProblems, termProblems } from './checks.mjs';
+import { attachClaudeSession, claudeSessions, mirror, pollMirror, rearmMirrors, stopMirrorFor, stopMirrors } from './claude-mirror.mjs';
 import { emptyReply, endedWithoutReply } from './empty-reply.mjs';
-import { folderOrNone, sessionFolder } from './folder-path.mjs';
+import { folderOrNone } from './folder-path.mjs';
 import { heldSession } from './held-session.mjs';
 import { clip, clipText, httpError } from './helpers.mjs';
 import { clipItem, describeItem, topicRootLine } from './item-lines.mjs';
@@ -61,7 +60,7 @@ import { addReadFolder, readCardAlways } from './read-folders.mjs';
 import { readMessage } from './read-message.mjs';
 import { addHost, host, removeHost, setProjectHostFolder, updateHost } from './remote/host-admin.mjs';
 import { describeHostInstall, hostStatus, installHost, retryHost, watchHosts } from './remote/host-status.mjs';
-import { localBackends, refuseHere, refuseUnregistered, refuseUnregisteredSend, registeredAdapter, runsHere } from './remote/placement.mjs';
+import { localBackends, refuseHere, refuseUnregistered, refuseUnregisteredSend, registeredAdapter } from './remote/placement.mjs';
 import { RemoteTurns } from './remote/turns.mjs';
 import { replySegment, stepTaken, wordsSegment } from './reply-segment.mjs';
 import { reviewBlock } from './review-comments.mjs';
@@ -1951,157 +1950,28 @@ export class Runtime {
     return null;
   }
 
-  // ── Attached Claude Code sessions ──────────────────────────────────────────────────
-  // A session you started in a terminal can join Postbox: it becomes an agent whose folder is the session’s
-  // folder, and Postbox resumes that same Claude Code session when you write to it. What you type in the
-  // terminal is mirrored into the thread, marked “from terminal”. Lines written during Postbox’s own turns are
-  // skipped, so nothing shows twice.
+  // ── Attached Claude Code sessions: server/claude-mirror.mjs ─────────────────────────
 
-  async claudeSessions() {
-    const attached = new Set(
-      Object.values(this.s.sessions)
-        .map((se) => se.backendState?.claudeSessionId)
-        .filter(Boolean),
-    );
-    return (await listClaudeSessions({ root: this.config.claudeProjectsRoot })).map(({ file: _file, ...x }) => ({ ...x, attached: attached.has(x.id) }));
+  claudeSessions() {
+    return claudeSessions(this);
   }
-
-  async attachClaudeSession({ claudeSessionId, projectId, handle }) {
-    if (!runsHere(this, 'claude-code')) throw httpError(422, 'Claude Code isn’t available on this computer, so its sessions can’t be attached.');
-    const cs = (await listClaudeSessions({ root: this.config.claudeProjectsRoot, limit: 500 })).find((x) => x.id === claudeSessionId);
-    if (!cs) throw httpError(404, 'That Claude Code session wasn’t found. It may have been deleted.');
-    if (!cs.cwd) throw httpError(422, 'That session doesn’t say which folder it ran in, so Postbox can’t resume it.');
-    const folder = sessionFolder(cs.cwd);
-    if (Object.values(this.s.sessions).some((se) => se.backendState?.claudeSessionId === claudeSessionId))
-      throw httpError(409, 'That session is already attached.');
-    if (!this.s.projects[projectId]) throw httpError(404, 'That project doesn’t exist.');
-    const base =
-      String(handle || basename(cs.cwd))
-        .toLowerCase()
-        .replace(/[^a-z0-9_-]+/g, '-')
-        .replace(/^[^a-z]+/, '')
-        .slice(0, 20) || 'terminal';
-    let name = base.length >= 2 ? base : `cc-${base}`;
-    for (let n = 2; this.personaByHandle(name); n++) name = `${base.slice(0, 20)}-${n}`;
-    const p = this.createPersona({
-      handle: name,
-      backend: 'claude-code',
-      description: `Attached from Claude Code in ${cs.cwd}`,
-      folder,
-    });
-    const t = this.createThread({ projectId, title: cs.title, personaIds: [p.id] });
-    const se = this.sessionsIn(t.id)[0];
-    this.updateSession(se.id, { backendState: { claudeSessionId, transcript: cs.file, attached: true } });
-    for (const it of recentHistory(cs.file)) {
-      if (it.kind === 'user') this.addItem(t.id, { kind: 'user', text: it.text, via: 'terminal' });
-      else
-        this.addItem(t.id, {
-          kind: 'agent',
-          sessionId: se.id,
-          personaId: p.id,
-          handle: p.handle,
-          text: it.text,
-          status: 'done',
-          via: 'terminal',
-          activity: it.steps.length ? { steps: it.steps.map((s) => ({ ...s, state: s.state === 'running' ? 'done' : s.state })) } : null,
-        });
-    }
-    this.addItem(t.id, { kind: 'system', variant: 'attached', handle: p.handle, folder: cs.cwd });
-    this.mirror(se.id);
-    return { threadId: t.id, personaId: p.id, sessionId: se.id };
+  attachClaudeSession(req) {
+    return attachClaudeSession(this, req);
   }
-
-  /** Starts following an attached session’s transcript. */
   mirror(sessionId) {
-    const se = this.s.sessions[sessionId];
-    const file = se?.backendState?.transcript;
-    if (!file || this.mirrors.has(sessionId)) return;
-    const timer = setInterval(() => this.pollMirror(sessionId), 1500);
-    timer.unref?.();
-    this.mirrors.set(sessionId, { tail: new TranscriptTail(file), timer, agentItem: null, steps: [] });
+    return mirror(this, sessionId);
   }
-
   rearmMirrors() {
-    for (const se of Object.values(this.s.sessions)) if (se.backendState?.attached && !se.archived) this.mirror(se.id);
+    return rearmMirrors(this);
   }
-
   stopMirrors() {
-    for (const m of this.mirrors.values()) clearInterval(m.timer);
-    this.mirrors.clear();
+    return stopMirrors(this);
   }
-
   pollMirror(sessionId) {
-    const m = this.mirrors.get(sessionId);
-    const se = this.s.sessions[sessionId];
-    if (!m) return;
-    if (!se) {
-      clearInterval(m.timer);
-      this.mirrors.delete(sessionId);
-      return;
-    }
-    // While the store is closed the tail isn’t advanced: what was typed waits in the file and is read after Retry,
-    // instead of into memory only, where the reload would discard it (the integrator’s finding on 1b).
-    if (!this.store.writable) return;
-    let entries;
-    try {
-      entries = m.tail.poll();
-    } catch {
-      return; // the file is being rewritten; try again next time
-    }
-    // Lines written during Postbox’s own turn are that turn, already in the thread.
-    if (this.turns.has(sessionId) || !entries.length) return;
-    for (const e of entries) {
-      if (e.isSidechain) continue;
-      const typed = typedText(e);
-      if (typed) {
-        this.addItem(se.threadId, { kind: 'user', text: typed, via: 'terminal' });
-        m.agentItem = null;
-        m.steps = [];
-        this.updateSession(sessionId, { state: 'think', currentStep: 'Working in a terminal', finishedAt: null });
-        continue;
-      }
-      if (e.type === 'assistant') {
-        for (const b of contentBlocks(e.message?.content)) {
-          if (b.type === 'text' && b.text?.trim()) {
-            const it = m.agentItem && this.store.pending.item(se.threadId, m.agentItem);
-            if (it) this.patchItem(se.threadId, it.id, { text: it.text ? `${it.text}\n\n${b.text}` : b.text });
-            else m.agentItem = this.mirrorAgentItem(se, b.text);
-            this.updateSession(sessionId, { state: 'gen', currentStep: 'Writing in a terminal' });
-          }
-          if (b.type === 'tool_use') {
-            m.steps.push({ id: b.id, label: describeTool(b.name, b.input), state: 'running', ms: null });
-            if (!m.agentItem) m.agentItem = this.mirrorAgentItem(se, '');
-            this.patchItem(se.threadId, m.agentItem, { activity: { steps: [...m.steps] } });
-            this.updateSession(sessionId, { state: 'tool', currentStep: m.steps.at(-1).label });
-          }
-        }
-        if (e.message?.stop_reason === 'end_turn') this.updateSession(sessionId, { state: 'idle', currentStep: '', finishedAt: Date.now() });
-      }
-      if (e.type === 'user' && Array.isArray(e.message?.content) && m.agentItem) {
-        let changed = false;
-        for (const b of e.message.content) {
-          const step = b.type === 'tool_result' && m.steps.find((s) => s.id === b.tool_use_id);
-          if (step) {
-            step.state = b.is_error ? 'failed' : 'done';
-            changed = true;
-          }
-        }
-        if (changed) this.patchItem(se.threadId, m.agentItem, { activity: { steps: [...m.steps] } });
-      }
-    }
+    return pollMirror(this, sessionId);
   }
-
-  mirrorAgentItem(se, text) {
-    return this.addItem(se.threadId, {
-      kind: 'agent',
-      sessionId: se.id,
-      personaId: se.personaId,
-      handle: se.handle,
-      text,
-      status: 'done',
-      via: 'terminal',
-      activity: null,
-    }).id;
+  stopMirrorFor(sessionId) {
+    return stopMirrorFor(this, sessionId);
   }
 
   // ── Personas: server/persona-write.mjs ─────────────────────────────────────────────
@@ -2210,12 +2080,6 @@ export class Runtime {
   }
   deleteThread(threadId) {
     return deleteThread(this, threadId);
-  }
-
-  stopMirrorFor(sessionId) {
-    const m = this.mirrors.get(sessionId);
-    if (m) clearInterval(m.timer);
-    this.mirrors.delete(sessionId);
   }
 
   renameThread(threadId, title) {

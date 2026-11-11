@@ -32,6 +32,7 @@ const PLACED = {
   'adapters/mock.mjs': 1, // the mock’s pacing: no store
   'adapters/process-group.mjs': 4, // SIGKILL after a Stop’s grace: Stop is allowed while closed
   'ask-question.mjs': 1, // a question’s CARD_WAIT_MS, expireWait: gated (#521)
+  'claude-mirror.mjs': 1, // the mirror’s poll of an attached session’s transcript: skips its tick while closed
   'kept-jobs.mjs': 1, // pollKept: skips its tick while closed
   'lint-delivery.mjs': 5, // an injected setTimer before a lint turn: a start, held by heldTurn while closed
   'live-streams.mjs': 2, // sends frames: reads
@@ -57,7 +58,7 @@ const PLACED = {
   'remote/turns.mjs': 5, // tick: stops a hung host turn (the outage’s stop ended the turns); a sign-in resume’s start is held
   'remote/turns-stops.mjs': 1, // a wait: no store
   'remote/wake.mjs': 2, // an injected setInterval that reconnects hosts after sleep: no store
-  'runtime.mjs': 3, // the stop watchdog (turnExited defers); the shutdown’s Stop grace wait for turns; the mirror (skips its tick)
+  'runtime.mjs': 2, // the stop watchdog (turnExited defers); the shutdown’s Stop grace wait for turns
   'scheduled-wakes.mjs': 1, // armWake: cleared and re-armed at Retry; the start is held
   'shell-runs.mjs': 2, // a `!` command’s output flush (memory-only, I1); the shutdown’s Stop grace wait for commands: no store
   'shell.mjs': 1, // SIGKILL after a Stop’s grace: Stop is allowed while closed
@@ -107,7 +108,7 @@ async function sites(dir, rel = '') {
 }
 
 /** Files whose row says the callback is gated: each must carry the rule in its source, so it can’t be dropped silently. */
-const GATED = ['ask-question.mjs', 'kept-jobs.mjs', 'permission-cards.mjs', 'runtime.mjs', 'thread-summary.mjs'];
+const GATED = ['ask-question.mjs', 'claude-mirror.mjs', 'kept-jobs.mjs', 'permission-cards.mjs', 'runtime.mjs', 'thread-summary.mjs'];
 const RULE = /\bstore\.writable\b|\bwhenWritable\(|\bgated\(/;
 
 test('every file whose timers table row says “gated” checks the store, defers through whenWritable or runs through gated()', async () => {
