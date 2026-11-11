@@ -6,28 +6,31 @@
 
 import { writeAll } from './store-commit.mjs';
 import { snapshotFailed, snapshotSucceeded } from './store-retry.mjs';
+import { snapshotLines } from './store-snapshot-lines.mjs';
 
 const PIECE = 1 << 20; // the snapshot’s text goes to the disk in pieces this long
 
 /**
- * Writes the state to snapshot.json atomically: a temporary file, written in 1 MB pieces (one write of the whole text
- * converts it to bytes in one go, which blocked the loop for about half the snapshot’s time, #508’s storage design,
- * “Snapshots and pruning”), fsynced, then renamed over the snapshot. The caller syncs the folder.
+ * Writes the state to snapshot.json atomically: a temporary file, written in pieces of about 1 MB (one write of
+ * the whole text converts it to bytes in one go, which blocked the loop for about half the snapshot’s time, #508’s
+ * storage design, “Snapshots and pruning”), fsynced, then renamed over the snapshot. The caller syncs the folder.
  * @param {{ io: typeof import('node:fs/promises'), at: (name: string) => string, state: any, retiring?: boolean }} store
  */
 export async function writeSnapshot(store) {
   const path = store.at('snapshot.json');
   const tmp = `${path}.${process.pid}.tmp`;
-  const text = JSON.stringify(store.state);
+  // As lines (store-snapshot-lines.mjs, #1180), always: no string holds the whole state, so no size of it fails, and
+  // the write yields every PIECE rather than stopping the server for one JSON.stringify (C5, the person’s choice on
+  // #1155).
   const fh = await store.io.open(tmp, 'w');
   try {
-    for (let at = 0; at < text.length; ) {
-      let end = Math.min(at + PIECE, text.length);
-      const code = text.charCodeAt(end - 1);
-      if (end < text.length && code >= 0xd800 && code <= 0xdbff) end++; // a piece never splits a surrogate pair (gpt’s finding)
-      await writeAll(fh, Buffer.from(text.slice(at, end)), `The snapshot ${tmp}`);
-      at = end;
+    // The text goes out in pieces of PIECE, and a piece never splits a surrogate pair (gpt’s finding).
+    let text = '';
+    for (const line of snapshotLines(store.state)) {
+      text += `${line}\n`;
+      while (text.length >= PIECE) text = await writePiece(fh, text, tmp);
     }
+    while (text.length) text = await writePiece(fh, text, tmp);
     await fh.sync();
   } finally {
     await fh.close();
@@ -37,6 +40,15 @@ export async function writeSnapshot(store) {
     throw Object.assign(new Error('The snapshot was abandoned: the store closed while it was written.'), { code: 'ECLOSED' });
   }
   await store.io.rename(tmp, path);
+}
+
+/** Writes the first PIECE of text, or all of it when shorter, without splitting a surrogate pair; returns the rest. */
+async function writePiece(fh, text, tmp) {
+  let end = Math.min(PIECE, text.length);
+  const code = text.charCodeAt(end - 1);
+  if (end < text.length && code >= 0xd800 && code <= 0xdbff) end++;
+  await writeAll(fh, Buffer.from(text.slice(0, end)), `The snapshot ${tmp}`);
+  return text.slice(end);
 }
 
 /** Makes a rename, or a new segment’s directory entry, durable. @param {{ io: typeof import('node:fs/promises'), dir: string | null }} store */
@@ -73,7 +85,16 @@ export async function snapshotNow(store) {
  */
 async function takeSnapshot(store) {
   const at = store.state.seq; // the snapshot’s seq: the new segment is named from it, not from a seq advanced meanwhile
-  await writeSnapshot(store);
+  // The lines are made from the live state while the write yields between pieces, so emits are held until it’s done
+  // (store.emit): one applied meanwhile would land in the snapshot after its seq, and again in events-(at+1), and a
+  // restart would apply it twice (#1180). Commits already wait, in the writer’s queue behind this job. Holding costs
+  // no copy of the state, which is what ran Postbox out of memory (#1210).
+  store.snapshotting = true;
+  try {
+    await writeSnapshot(store);
+  } finally {
+    store.snapshotting = false;
+  }
   await syncDir(store);
   if (store.retiring) return; // closing: the rotation and the pruning are left to the next store’s load
   await store.fh?.close();

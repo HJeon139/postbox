@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { SNAPSHOT_EVERY, Store } from '../server/store.mjs';
+import { parseSnapshotText } from '../server/store-snapshot-lines.mjs';
 import { apply, emptyState } from '../shared/state.mjs';
 import { seedRoomFolder, THREAD } from '../tools/bench-room.mjs';
 import { checkReplay, checkStream, commandLine, LOG_EVENTS, measureSize, options, pooled, streamChunks, writeLog } from '../tools/bench-server.mjs';
@@ -60,7 +61,7 @@ test('writeLog leaves a snapshot of the room and a log of LOG_EVENTS events afte
     assert.equal(segments.length, 1);
     const lines = readFileSync(join(data, segments[0]), 'utf8').trim().split('\n');
     assert.equal(lines.length, 50);
-    const snap = JSON.parse(readFileSync(join(data, 'snapshot.json'), 'utf8'));
+    const snap = parseSnapshotText(readFileSync(join(data, 'snapshot.json'), 'utf8'));
     assert.equal(snap.items[THREAD].length, 20);
     const store = await new Store(data).load();
     assert.equal(store.sinceSnapshot, 50);

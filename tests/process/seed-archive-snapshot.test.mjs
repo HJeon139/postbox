@@ -9,6 +9,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { parseSnapshotText } from '../../server/store-snapshot-lines.mjs';
 import { tempDir } from '../temp-dirs.mjs';
 
 const ROOT = fileURLToPath(new URL('../..', import.meta.url));
@@ -21,7 +22,7 @@ test('the seeded snapshot is the store’s own, with the room’s work, and the 
   assert.equal(seed.status, 0, seed.stderr);
   const path = join(out, 'snapshot.json');
   assert.ok(existsSync(path), seed.stdout);
-  const state = JSON.parse(readFileSync(path, 'utf8'));
+  const state = parseSnapshotText(readFileSync(path, 'utf8'));
   const [conv] = Object.keys(state.work);
   assert.ok(state.work[conv].some((e) => e.kind === 'command'));
   assert.equal(state.items[conv].length, 300);

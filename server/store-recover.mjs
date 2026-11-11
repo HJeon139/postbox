@@ -11,6 +11,7 @@ import { lockStore, unlockStore } from './store-lock.mjs';
 import { replay } from './store-replay.mjs';
 import { settledWithin } from './store-retry.mjs';
 import { syncDir, writeSnapshot } from './store-snapshot.mjs';
+import { readSnapshotFile } from './store-snapshot-lines.mjs';
 
 /**
  * @typedef {{
@@ -59,7 +60,7 @@ export async function recover(store) {
 async function readSnapshot(c) {
   const snapPath = c.at('snapshot.json');
   try {
-    c.state = ownState({ ...emptyState(), ...JSON.parse(await c.io.readFile(snapPath, 'utf8')) });
+    c.state = ownState({ ...emptyState(), ...(await readSnapshotFile(c.io, snapPath)) }); // line by line (#1180)
   } catch (e) {
     if (e.code !== 'ENOENT') throw new Error(`Couldn’t read the snapshot at ${snapPath}: ${e.message}`);
     const legacy = c.at('store.json');
