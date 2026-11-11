@@ -114,19 +114,21 @@ test('#1155 an agent’s open-asks link to an old block loads the range around i
   await withinBudget(page, 'after the link');
 });
 
-test('#1155 search finds an item the page hasn’t loaded, and Enter loads the range around it', async ({ page }) => {
+test('#1155 search finds an item the page hasn’t loaded, and its hit loads the range around it', async ({ page }) => {
   await open(page);
   const target = items.find((it) => /zephyrine/.test(it.text));
-  await page.locator('#search-button').click();
-  await page.getByRole('combobox', { name: 'Search this conversation' }).fill('zephyrine');
-  await expect(page.getByRole('option').first()).toBeVisible();
-  const id = await page.getByRole('option').first().getAttribute('data-item');
+  // The top bar's one search, Jump to… (#1233): the open conversation's messages come from the server.
+  await page.getByRole('button', { name: /Jump to/ }).click();
+  await page.locator('.dialog.palette').getByRole('combobox').fill('zephyrine');
+  const hit = page.locator('.dialog.palette [data-item]').first();
+  await expect(hit).toBeVisible();
+  const id = await hit.getAttribute('data-item');
   expect(target, 'the room has a first-day item').toBeTruthy();
   expect(
     items.findIndex((it) => it.id === id),
     'a hit far up the room',
   ).toBeLessThan(COUNT - 1000);
-  await page.keyboard.press('Enter');
+  await hit.click();
   await expect(shown(page, /** @type {string} */ (id))).toBeInViewport({ timeout: 10_000 });
   await withinBudget(page, 'after search');
 });
