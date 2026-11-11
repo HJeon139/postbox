@@ -2,6 +2,25 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.0.0 (2026-11-11)
+
+### Breaking changes
+
+- **agents:** an agent's name opens its persona sheet; actions are @agent commands
+- **settings:** every persona change applies from the agent's next turn
+- **delete:** delete is just delete, with no Undo window
+
+### Features
+
+- **settings:** the persona sheet offers Auto (the harness judges) and Run everything
+
+### Fixes
+
+- **permissions:** a persona runs Auto or Run everything, whatever it was stored as
+- **settings:** drop ranWith and settingsAt, which nothing read
+- **permissions:** only the persona sheet changes the mode, and never mid-turn
+- **settings:** the sheet shows and saves Ask me and Accept edits as Auto
+
 ## 3.0.1 (2026-11-11)
 
 ### Fixes
