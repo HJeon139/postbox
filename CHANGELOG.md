@@ -2,6 +2,12 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 3.0.0 (2026-11-11)
+
+### Breaking changes
+
+- telemetry is gone, so nothing here cites it
+
 ## 2.0.0 (2026-11-11)
 
 ### Breaking changes
