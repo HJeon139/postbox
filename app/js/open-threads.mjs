@@ -21,7 +21,8 @@ const queues = new Map();
  */
 function load(threadId, query, how) {
   const run = async () => {
-    if (!client.open.has(threadId)) return;
+    // A conversation deleted meanwhile has nothing to load: the server would answer 404.
+    if (!client.open.has(threadId) || !client.state.threads[threadId]) return;
     const ranges = client.ranges;
     loading(ranges, threadId);
     const answer = await fetchRange(threadId, query).catch(() => null);
