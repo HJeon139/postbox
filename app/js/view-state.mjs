@@ -68,6 +68,9 @@ function release(v) {
 /** @param {View} v */
 function follow(v) {
   noteEnd(v);
+  // Neither following nor holding a place: drawn again for a jump that hasn't pinned its item yet (rebuilt()), which
+  // places the view itself. Reading where it is now would only lay the page out an extra time (#1155).
+  if (!v.stuck && !v.anchor) return;
   const s = box(v);
   if (!s || v.dead) return;
   // You scrolled up in this frame, before its scroll event: that counts, so don’t pull you back. Unless the move is the
@@ -195,10 +198,18 @@ function settle(v, scrolled, resized) {
 }
 /**
  * After the transcript is drawn again from new state (a load, after a restart or a Retry): an anchor that’s no longer
- * there is taken again where the view is, so what’s published names an item on the page.
- * @param {View} v
+ * there is taken again where the view is, so what’s published names an item on the page. Drawn again short of the
+ * newest item, around one a jump goes to (a range placed for it, open-threads.mjs), the view no longer follows the end,
+ * or a resize before the jump lands pulls it to the bottom first, and holds nothing until the jump pins the item where
+ * it lands: held where the window drew it, it was scrolled there and then to where the jump puts it (#1155).
+ * @param {View} v @param {string | null} [to]
  */
-function rebuilt(v) {
+function rebuilt(v, to = null) {
+  if (to && v.nodes.get(to)?.isConnected) {
+    v.stuck = false;
+    v.anchor = null;
+    return;
+  }
   const kept = v.anchor && v.nodes.get(v.anchor.key)?.isConnected;
   if (!v.stuck && !kept) v.anchor = findAnchor(v);
 }
@@ -278,7 +289,7 @@ export function mountView({ el, inPanel, nodes, was }) {
     settle: () => settle(v, scrolled, resized),
     scrollToEnd: thenPublish((/** @type {boolean} */ smooth) => scrollToEnd(v, smooth)),
     grew: thenPublish(() => grew(v)),
-    rebuilt: thenPublish(() => rebuilt(v)),
+    rebuilt: thenPublish((/** @type {string | null} */ to = null) => rebuilt(v, to)),
     redrawn: () => redrawn(v),
     release: () => release(v),
     setJump: (/** @type {(n: number) => void} */ fn) => (v.jump = fn),

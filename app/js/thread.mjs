@@ -191,7 +191,8 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
       const back = holdFocus();
       // Rebuilt around where you are now, or the item the range was loaded to go to (Home), with the item that has focus.
       all(ch.data?.anchor ?? view.keep()?.anchor?.key ?? null, focusedItem(el));
-      view.rebuilt();
+      // Placed short of the newest item to go to one, the view holds it rather than following the end.
+      view.rebuilt(more(threadId, 'after') ? (ch.data?.anchor ?? null) : null);
       back();
       return;
     }
