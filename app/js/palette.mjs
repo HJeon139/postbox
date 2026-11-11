@@ -66,6 +66,38 @@ const field = () =>
     autocomplete: 'off',
   });
 
+/**
+ * The palette's list under its field: its rows, the one chosen, and the keys that move and pick.
+ * @param {HTMLInputElement} input @param {HTMLElement} list @param {HTMLElement} status @param {(x: Row) => void} go
+ */
+function results(input, list, status, go) {
+  /** @type {Row[]} */
+  let rows = [];
+  let sel = 0;
+  const paint = () => {
+    list.replaceChildren(...rows.map((x, i) => option(x, i, i === sel, go)));
+    if (rows.length) input.setAttribute('aria-activedescendant', `p-${sel}`);
+    else input.removeAttribute('aria-activedescendant');
+  };
+  return {
+    /** A query's rows, the first chosen. @param {string} q @param {Row[]} next */
+    set(q, next) {
+      rows = next;
+      sel = 0;
+      status.textContent = found(q, rows.length);
+      paint();
+    },
+    /** @param {KeyboardEvent} e */
+    key(e) {
+      if (!rows.length || !['ArrowDown', 'ArrowUp', 'Enter'].includes(e.key)) return;
+      e.preventDefault();
+      if (e.key === 'Enter') return go(rows[sel]);
+      sel = (sel + (e.key === 'ArrowDown' ? 1 : rows.length - 1)) % rows.length;
+      paint();
+    },
+  };
+}
+
 /** Opens the palette; again while open, goes back to its field. @param {{ openNewAgent: (o: any) => void, openSettings: () => void }} sheets */
 export function openPalette(sheets) {
   const open = /** @type {HTMLInputElement | null} */ (document.querySelector('.dialog.palette input'));
@@ -73,30 +105,19 @@ export function openPalette(sheets) {
   const r = route();
   const threadId = r.view === 'thread' ? r.threadId : null;
   const all = jumps(sheets);
-  const input = field();
+  const input = /** @type {HTMLInputElement} */ (field());
   const list = h('ul.p-list', { id: 'p-list', role: 'listbox', 'aria-label': 'Results' });
   const status = h('p.small.dim.sr-only', { role: 'status' });
-  /** @type {Row[]} */
-  let rows = [];
-  let sel = 0;
-  let queued = 0;
-  const go = (/** @type {Row} */ x) => {
+  const shown = results(input, list, status, (x) => {
     dlg.close();
     x.run();
-  };
-  const paint = () => {
-    list.replaceChildren(...rows.map((x, i) => option(x, i, i === sel, go)));
-    if (rows.length) input.setAttribute('aria-activedescendant', `p-${sel}`);
-    else input.removeAttribute('aria-activedescendant');
-  };
+  });
+  let queued = 0;
   // A query runs at most once a frame while you type: a long conversation’s search isn’t free.
   const run = () => {
     queued = 0;
     const q = input.value.trim();
-    rows = rowsFor(all, threadId, q);
-    sel = 0;
-    status.textContent = found(q, rows.length);
-    paint();
+    shown.set(q, rowsFor(all, threadId, q));
   };
   input.addEventListener('input', () => {
     if (!queued) queued = requestAnimationFrame(run);
@@ -107,11 +128,7 @@ export function openPalette(sheets) {
       cancelAnimationFrame(queued);
       run();
     }
-    if (!rows.length || !['ArrowDown', 'ArrowUp', 'Enter'].includes(e.key)) return;
-    e.preventDefault();
-    if (e.key === 'Enter') return go(rows[sel]);
-    sel = (sel + (e.key === 'ArrowDown' ? 1 : rows.length - 1)) % rows.length;
-    paint();
+    shown.key(e);
   });
   // Another conversation, or Back: a message hit is this room’s, so the palette closes rather than jump into a room you’ve left.
   const left = () => dlg.close();
