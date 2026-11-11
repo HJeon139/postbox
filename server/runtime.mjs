@@ -2,11 +2,11 @@
 // limit, queues messages sent mid-reply, handles Stop, tracks what "needs you", and implements the UI
 // tools that agents call (over MCP, or in-process for the mock).
 
-import { createHash, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { homedir } from 'node:os';
 import { basename, resolve, sep } from 'node:path';
 import { ASKING } from '../shared/catalog.mjs';
-import { COLUMN_PX, lintDiagrams, MIN_TEXT_PX, mermaidBlocks } from '../shared/diagram-lint.mjs';
+import { lintDiagrams } from '../shared/diagram-lint.mjs';
 import { READING } from '../shared/limits.mjs';
 import { formatDuration, glimpseOf, parseMentions } from '../shared/text.mjs';
 import { carriedList } from '../shared/work.mjs';
@@ -28,6 +28,7 @@ import { bringToConversation } from './bring.mjs';
 import { keptTurns, nextNeed, noticeNeed, releaseNeed, stateFor, TURN_TIED } from './card-needs.mjs';
 import { catchUp, moveMarkers, pointerIfSeen } from './catch-up.mjs';
 import { blockProblems, diagramProblems, formatLint, introducedTerms, lintMessage, personSaid, rawHtmlProblems, termProblems } from './checks.mjs';
+import { diagramCheck, rememberDiagrams } from './diagram-check.mjs';
 import { emptyReply, endedWithoutReply } from './empty-reply.mjs';
 import { folderOrNone, sessionFolder } from './folder-path.mjs';
 import { heldSession } from './held-session.mjs';
@@ -1767,61 +1768,13 @@ export class Runtime {
     if (text) this.addItem(turn.threadId, { kind: 'system', variant: 'lint', handle: se.handle, turnId: turn.id, text, lintReply: true });
   }
 
-  // The diagram linter estimates from a diagram’s source; the browser measures the real text size after it renders
-  // and reports here what the estimate missed. Either way the agent hears about a diagram once.
+  // Diagram checks from the page: server/diagram-check.mjs.
 
   rememberDiagrams(sessionId, sources) {
-    const se = this.s.sessions[sessionId];
-    if (!se) return;
-    const hashes = sources.map((s) => createHash('sha256').update(s.trim()).digest('hex').slice(0, 16));
-    this.updateSession(sessionId, { diagramsLinted: [...new Set([...(se.diagramsLinted ?? []), ...hashes])].slice(-50) });
+    return rememberDiagrams(this, sessionId, sources);
   }
-
-  /**
-   * The browser drew a diagram: { src, textPx, width } when it measured it, or { src, error: { message, line } }
-   * when Mermaid couldn’t draw it.
-   */
-  diagramCheck(threadId, itemId, { src, textPx, width, error }) {
-    const it = this.store.item(threadId, itemId);
-    if (it?.kind !== 'agent' || it.lintReply || typeof src !== 'string') return { ok: true, sent: false };
-    const se = this.s.sessions[it.sessionId];
-    const failed = error && typeof error === 'object' && typeof error.message === 'string';
-    // Only a measurement at the conversation’s width counts; a narrow panel or phone shrinks every diagram.
-    if (!se || (!failed && (!(textPx < MIN_TEXT_PX) || !(width >= COLUMN_PX * 0.8)))) return { ok: true, sent: false };
-    const hash = createHash('sha256').update(src.trim()).digest('hex').slice(0, 16);
-    if (se.diagramsLinted?.includes(hash)) return { ok: true, sent: false };
-    // Only a diagram the reply has: its position and first lines come from the reply, not from the browser.
-    const block = mermaidBlocks(String(it.text)).find((b) => b.src.trim() === src.trim());
-    if (!block) return { ok: true, sent: false };
-    const excerpt = block.src
-      .split('\n')
-      .slice(0, 3)
-      .map((l) => clipText(l, 120))
-      .join('\n');
-    const scope = { kind: 'diagram', index: block.index, excerpt };
-    let problem;
-    if (failed) {
-      // Mermaid’s message, without its caret line: “Parse error on line 2: … Expecting 'SEMI', got 'ARROW'”.
-      const said = error.message
-        .split('\n')
-        .filter((l) => l.trim() && !/^[-\s]*\^$/.test(l))
-        .join(' ')
-        .slice(0, 400);
-      const line = Number.isInteger(error.line) && error.line > 0 ? ` (line ${Math.min(error.line, 9999)})` : '';
-      problem = {
-        code: 'diagram-error',
-        message: `Mermaid couldn’t draw it, so the person sees an error and its source instead. Mermaid said${line}: “${said}”. Fix the syntax.`,
-        scope,
-      };
-    } else
-      problem = {
-        code: 'text-too-small',
-        message: `In the person’s browser, its text is drawn at ${Math.round(textPx * 10) / 10} px at a width of ${Math.round(width)} px, too small to read. Draw it top to bottom, split it, or shorten its labels.`,
-        scope,
-      };
-    const sent = this.lint(se.id, it.turnId, [problem]);
-    if (sent) this.rememberDiagrams(se.id, [src]);
-    return { ok: true, sent };
+  diagramCheck(threadId, itemId, report) {
+    return diagramCheck(this, threadId, itemId, report);
   }
 
   // ── Permission prompts: server/permission-cards.mjs ──────────────────────────────────
