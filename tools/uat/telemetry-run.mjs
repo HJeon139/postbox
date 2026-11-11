@@ -16,13 +16,9 @@ export const runnerRecords = (scenario, opt) => opt.telemetry !== 'no' && scenar
 /** Whether the run has telemetry at all, so its checks and its run.json block apply. */
 export const telemetryOn = (opt) => opt.telemetry !== 'no';
 
-/**
- * Postbox’s environment for the run: no gh for `- gh: none`, no skills of Postbox’s own for `- skills: off`, and the
- * classifier’s proposals (R13, UAT only).
- */
+/** Postbox’s environment for the run: no gh for `- gh: none`, and the classifier’s proposals (R13, UAT only). */
 export const telemetryEnv = (scenario, dir, opt) => ({
   ...(scenario.gh === 'none' ? { POSTBOX_GH_BIN: join(dir, 'no-gh') } : {}),
-  ...(scenario.skills === 'off' ? { POSTBOX_AGENT_SKILLS: 'off' } : {}),
   ...(telemetryOn(opt) ? { POSTBOX_TELEMETRY_PROPOSALS: '1' } : {}),
 });
 
