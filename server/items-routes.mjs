@@ -20,7 +20,8 @@ const HIT_TEXT = 2000;
  * @param {any[]} list @param {URLSearchParams} q
  */
 export function rangeOf(list, q) {
-  const limit = Math.min(MOST, Math.max(1, Number(q.get('limit')) || PAGE));
+  // A whole number of items: a fractional limit would give fractional places, which slice() reads its own way.
+  const limit = Math.min(MOST, Math.max(1, Math.floor(Number(q.get('limit'))) || PAGE));
   const total = list.length;
   const anchor = q.get('before') ?? q.get('after') ?? q.get('around');
   if (anchor === null) return { start: Math.max(0, total - limit), end: total };
