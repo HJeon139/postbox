@@ -2,8 +2,8 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { THREAD_CHECKS } from '../server/room-checks-threads.mjs';
 import { firstPromptSection } from '../server/thread-summary.mjs';
+import { THREAD_CHECKS } from '../tools/uat/room-checks-threads.mjs';
 
 const check = THREAD_CHECKS[0];
 const facts = (promptFirst) => ({

@@ -8,9 +8,9 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { liveChecks } from '../server/room-checks.mjs';
 import { runChecks } from '../tools/uat/checks.mjs';
 import { writeReport } from '../tools/uat/report.mjs';
+import { liveChecks } from '../tools/uat/room-checks.mjs';
 import { DRAFT, ROUND_TWO, room, T0 } from './delivery-fixture.mjs';
 
 const s = (n) => T0 + n * 1000;

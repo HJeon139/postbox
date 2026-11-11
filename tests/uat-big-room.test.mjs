@@ -7,10 +7,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { CATCH_UP_ITEMS } from '../server/catch-up.mjs';
-import { liveChecks } from '../server/room-checks.mjs';
 import { Store } from '../server/store.mjs';
 import { parseMentions } from '../shared/text.mjs';
 import { bigRoomItems, FIRST_DAY_WORD, openBigRoom, seedBigRoom, seedBigRoomData } from '../tools/uat/big-room.mjs';
+import { liveChecks } from '../tools/uat/room-checks.mjs';
 import { setup, turn } from './blocks-fixture.mjs';
 
 const MERMAID = /```mermaid\n/;

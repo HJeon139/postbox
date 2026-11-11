@@ -1,4 +1,4 @@
-// marker-before-output (#508, server/room-checks-delivery.mjs): a session’s catch-up marker moved for a turn that then
+// marker-before-output (#508, tools/uat/room-checks-delivery.mjs): a session’s catch-up marker moved for a turn that then
 // produced no output (DL-3). The rooms are hand-built from the shapes UAT runs record (tests/delivery-fixture.mjs says
 // why, and which). Moved from tests/uat-checks-delivery.test.mjs for size.
 

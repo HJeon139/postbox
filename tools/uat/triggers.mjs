@@ -10,13 +10,13 @@
 //   facts.events     the history: sessions’ background jobs and Stop’s question about them (#126)
 //   facts.probes     what the runner saw on the page: a notice that Postbox refused an answer as stale (#123)
 
-import { NEEDS_TRIGGERS } from '../../server/room-checks-needs.mjs';
 import { ALLOW_ONCE_TRIGGERS } from './allowonce-triggers.mjs';
 import { ASK_QUESTION_TRIGGERS } from './ask-question-triggers.mjs';
 import { DELIVERY_TRIGGERS } from './delivery-triggers.mjs';
 import { DISMISS_TRIGGERS } from './dismiss-triggers.mjs';
 import { GIT_PUSH_TRIGGERS } from './gitpush-triggers.mjs';
 import { REVIEW_FIGURE_TRIGGERS } from './review-figures-triggers.mjs';
+import { NEEDS_TRIGGERS } from './room-checks-needs.mjs';
 import { cell as esc } from './trigger-facts.mjs';
 import { HOST_TRIGGERS } from './triggers-host.mjs';
 import { JOB_TRIGGERS } from './triggers-jobs.mjs';

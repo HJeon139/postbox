@@ -4,12 +4,12 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { backendName } from '../../server/room-unverified.mjs';
 import { budgetNote } from './budget.mjs';
 import { agyTokens, kiroCredits, waitingOnYou } from './checks.mjs';
 import { agentsSpent } from './cost.mjs';
 import { githubSection } from './github-attempts.mjs';
 import { pictureSection } from './picture-choice.mjs';
+import { backendName } from './room-unverified.mjs';
 import { writeJsonAtomic } from './runs.mjs';
 import { firstPictureSection } from './side-by-side.mjs';
 import { timingLine } from './timing.mjs';
@@ -36,7 +36,7 @@ function usageLine(facts, tester) {
 const isNew = (f) => !f.issue && f.verdict !== 'harness' && !f.unverified;
 
 /**
- * The checks this run couldn’t make (server/room-delivery.mjs’s notCheckable): each check, agent and backend whose
+ * The checks this run couldn’t make (tools/uat/room-delivery.mjs’s notCheckable): each check, agent and backend whose
  * inputs it couldn’t read, so a check skipped on Codex, Kiro or Antigravity reads as unverified there, not as a pass.
  * @param {any[]} findings
  * @returns {string[]}  Markdown lines

@@ -1,7 +1,7 @@
 // What a check says of what it couldn’t read (#508): an agent with no Claude Code transcript, a turn with no line in
 // it, and which backend each runs on. Not defects: each is kept apart as unverified, so a check skipped on Codex, Kiro
-// or Antigravity never reads as a pass (server/room-checks.mjs’s liveChecks, tools/uat/report.mjs). Moved whole from
-// server/room-delivery.mjs, for size.
+// or Antigravity never reads as a pass (tools/uat/room-checks.mjs’s liveChecks, tools/uat/report.mjs). Moved whole from
+// tools/uat/room-delivery.mjs, for size.
 
 import { MIN_WHOLE, plain } from './room-delivery.mjs';
 

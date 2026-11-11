@@ -171,7 +171,7 @@ const keptIn = (dir) => join(dir, 'transcripts');
 /**
  * Keeps the transcript lines the checks read in the run folder, for --recheck once the agents’ own transcripts have
  * gone: each agent’s user lines (its prompts, tool results and the lines Claude Code writes itself, as
- * server/room-delivery.mjs’s inputsOf reads them), in <dir>/transcripts/<handle>.jsonl.
+ * tools/uat/room-delivery.mjs’s inputsOf reads them), in <dir>/transcripts/<handle>.jsonl.
  * Not its replies, which no check reads, nor a line cut short.
  * @param {string} dir  @param {{ handle: string, lines: (string|object)[] }[]} transcripts
  */

@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { publicEvent, publicFrame, publicState } from '../server/public-state.mjs';
-import { keepEvent } from '../server/room-events.mjs';
 import { apply, EVENTS, emptyState, PRIVATE_STATE_KEYS, PUBLIC_EVENT_TYPES, PUBLIC_STATE_KEYS, RESERVED } from '../shared/state.mjs';
+import { keepEvent } from '../tools/uat/room-events.mjs';
 
 // The event types on main when the table was made, every one public. Adding, removing or hiding a type is a reviewed
 // change to this list (designs/architecture.md, “What reaches the browser”).

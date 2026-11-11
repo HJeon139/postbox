@@ -1,5 +1,5 @@
 // The view’s checks (#712a): what the page drew, from the probes the runner records on it each step before any
-// screenshot (tools/uat/skip-probe.mjs). They live here, not in server/room-checks.mjs, since only the UAT’s page
+// screenshot (tools/uat/skip-probe.mjs). They live here, not in tools/uat/room-checks.mjs, since only the UAT’s page
 // records them: a recorded room has no page, and server code may not import tools/.
 
 /** A room longer than this must have most of its items skipped, as the big-room scenario’s does (#712). */

@@ -1,11 +1,11 @@
 // The checks of what waits on the person (#508, designs/508/testing-strategy.md, “Triggers, checks and seeds to
 // add”): a wake the limit held that went away unanswered and undelivered (#439), and a needs-you ring that disagrees
 // with the asks open in the state. Each reads only what `main` records, and names the requirements it serves beside
-// its issue. Part of server/room-checks.mjs’s CHECKS, kept apart for size.
+// its issue. Part of tools/uat/room-checks.mjs’s CHECKS, kept apart for size.
 
-import { ASKING } from '../shared/catalog.mjs';
-import { needsYouNow } from '../shared/needs.mjs';
-import { clip } from '../shared/text.mjs';
+import { ASKING } from '../../shared/catalog.mjs';
+import { needsYouNow } from '../../shared/needs.mjs';
+import { clip } from '../../shared/text.mjs';
 import { cardHistory, heldKey, holds, inputsOf, recorded, turnsOf } from './room-delivery.mjs';
 import { notCheckableAll, unreadable } from './room-unverified.mjs';
 

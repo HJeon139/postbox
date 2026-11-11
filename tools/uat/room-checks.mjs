@@ -26,10 +26,10 @@
 //
 // Each check names the inputs it reads (`inputs`), so facts with only some inputs run only those (liveChecks, below).
 
-import { toPlainText } from '../shared/markdown.mjs';
-import { clip } from '../shared/text.mjs';
-import { contentBlocks } from './adapters/claude-content.mjs';
-import { deniedTools, isPublishingTool, POSTBOX_SERVER, PUBLISHING_TOOLS } from './adapters/setup.mjs';
+import { contentBlocks } from '../../server/adapters/claude-content.mjs';
+import { deniedTools, isPublishingTool, POSTBOX_SERVER, PUBLISHING_TOOLS } from '../../server/adapters/setup.mjs';
+import { toPlainText } from '../../shared/markdown.mjs';
+import { clip } from '../../shared/text.mjs';
 import { asksInProse, blockUseTally } from './block-use.mjs';
 import { ASK_CHECKS } from './room-checks-asks.mjs';
 import { BACKEND_CHECKS } from './room-checks-backends.mjs';
@@ -43,7 +43,7 @@ import { keptStreams, WORK_CHECKS } from './room-checks-work.mjs';
 
 export { agyTokens, kiroCredits } from './room-checks-backends.mjs';
 
-import { freshInstall } from './seed.mjs';
+import { freshInstall } from '../../server/seed.mjs';
 
 export { callsFor, LONG_TURN_MS, LONG_TURN_TOOLS } from './block-use.mjs';
 export { waitingOnYou } from './waiting-on-you.mjs';
@@ -798,7 +798,7 @@ export const CHECKS = [
         ? [{ title: 'The UI doesn’t show which model an agent runs', evidence: `Agents section: “${clip(f.ui.headerText, 120)}”.` }]
         : [],
   },
-  // The Kiro CLI’s and the Antigravity CLI’s (#117, #143): server/room-checks-backends.mjs.
+  // The Kiro CLI’s and the Antigravity CLI’s (#117, #143): tools/uat/room-checks-backends.mjs.
   ...BACKEND_CHECKS,
   ...THREAD_CHECKS,
   ...NEEDS_CHECKS,

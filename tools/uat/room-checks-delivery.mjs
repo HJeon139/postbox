@@ -1,9 +1,9 @@
 // The delivery checks (#508, designs/508/testing-strategy.md, “Triggers, checks and seeds to add”): a message
 // addressed to an agent that never reached it, one that reached it twice without saying so, and a catch-up marker
-// that moved in a turn that produced nothing. Each reads only what `main` records (server/room-delivery.mjs), and
-// names the requirements it serves beside its issue. Part of server/room-checks.mjs’s CHECKS, kept apart for size.
+// that moved in a turn that produced nothing. Each reads only what `main` records (tools/uat/room-delivery.mjs), and
+// names the requirements it serves beside its issue. Part of tools/uat/room-checks.mjs’s CHECKS, kept apart for size.
 
-import { clip } from '../shared/text.mjs';
+import { clip } from '../../shared/text.mjs';
 import { addressed, headOf, holds, inputsOf, labeled, plain, recorded, tellable, turnsOf } from './room-delivery.mjs';
 import { backendOf, notCheckable, notCheckableAll, notCheckableText, uncheckedThreads, unreadable } from './room-unverified.mjs';
 

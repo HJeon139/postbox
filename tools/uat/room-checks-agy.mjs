@@ -1,7 +1,7 @@
 // The checks for agents on the Antigravity CLI (#143), which runs in release runs only, and what they read of its
-// streams. Part of server/room-checks.mjs’s CHECKS, through server/room-checks-backends.mjs.
+// streams. Part of tools/uat/room-checks.mjs’s CHECKS, through tools/uat/room-checks-backends.mjs.
 
-import { REFUSED as AGY_REFUSED, AGY_SERVER, stepId as agyStepId } from './adapters/antigravity-cli.mjs';
+import { REFUSED as AGY_REFUSED, AGY_SERVER, stepId as agyStepId } from '../../server/adapters/antigravity-cli.mjs';
 
 const clip = (s, n = 240) => {
   const t = String(s ?? '')

@@ -207,7 +207,7 @@ function removeEntity(s, d) {
 /**
  * The session a session.patch leaves, as a new object: the session with the patch’s fields set, and the fields it
  * unsets deleted. The one place that defines what a patch means, so every reader of the log (the reducer, the checks’
- * history in server/room-events.mjs, the UAT runner’s tools/uat/run-files.mjs) reads a patch the same way.
+ * history in tools/uat/room-events.mjs, the UAT runner’s tools/uat/run-files.mjs) reads a patch the same way.
  * @param {Record<string, any>} se  the session as it is
  * @param {{ patch?: Record<string, any>, unset?: string[] }} d  the event’s data
  */

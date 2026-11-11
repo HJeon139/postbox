@@ -1,4 +1,4 @@
-// unlabeled-repeat (#508, server/room-checks-delivery.mjs): the same delivery whole in two of an agent’s prompts, the
+// unlabeled-repeat (#508, tools/uat/room-checks-delivery.mjs): the same delivery whole in two of an agent’s prompts, the
 // later one without a resend label. Each test fires on a room with the defect and stays silent on one without; the
 // rooms are hand-built from the shapes UAT runs record (tests/delivery-fixture.mjs says why, and which). Moved from
 // tests/uat-checks-delivery.test.mjs for size.

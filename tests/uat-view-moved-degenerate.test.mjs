@@ -1,10 +1,10 @@
-// #531’s view-moved check (server/room-checks-view.mjs) on runs where it compared no pair of samples: a count of 0
+// #531’s view-moved check (tools/uat/room-checks-view.mjs) on runs where it compared no pair of samples: a count of 0
 // needs a cause, so each says it checked nothing, rather than passing silently (critic’s pass on #773). Synthetic
 // samples, as tools/uat/view-probe.mjs records them in facts.probes.views.
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { VIEW_CHECKS } from '../server/room-checks-view.mjs';
+import { VIEW_CHECKS } from '../tools/uat/room-checks-view.mjs';
 
 const T0 = Date.UTC(2026, 10, 6, 9);
 const ORIGIN = T0 - 60_000;

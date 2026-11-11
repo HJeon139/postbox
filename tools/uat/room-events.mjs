@@ -1,8 +1,8 @@
-// What the checks read of Postbox’s events (server/room-checks.mjs): items as they’re added, patched and moved, and
+// What the checks read of Postbox’s events (tools/uat/room-checks.mjs): items as they’re added, patched and moved, and
 // sessions’ states and background jobs. The UAT’s history (tools/uat/history.mjs) keeps events cut this way, from the
 // event stream or the data folder’s log, so the checks read the same thing from either.
 
-import { EVENTS, patchSession } from '../shared/state.mjs';
+import { EVENTS, patchSession } from '../../shared/state.mjs';
 
 /**
  * The event, cut to what the checks read, or null for one they don’t (streamed text, apps, glossary…). A session.patch
@@ -39,7 +39,7 @@ export function keepEvent(seq, type, data, sessions = new Map(), events = EVENTS
         ...(Object.hasOwn(data, 'stopAsk') ? { stopAsk: data.stopAsk ? { at: data.stopAsk.at ?? null, jobs: data.stopAsk.jobs ?? null } : null } : {}),
         ...(Array.isArray(data.jobs) ? { jobs: data.jobs.slice(0, 50).map(jobOf) } : {}),
         // Who the agent is and the card it needs you for, when the session has them: app-need-fallback reads the
-        // sequence of a session's needs (server/room-checks-needs.mjs, #366).
+        // sequence of a session's needs (tools/uat/room-checks-needs.mjs, #366).
         ...(typeof data.handle === 'string' ? { handle: data.handle } : {}),
         ...(Object.hasOwn(data, 'needs') ? { needs: needOf(data.needs) } : {}),
         // A turn on a remote host (#120): which host, its turn there, and Postbox’s own turn, for the host-mode checks.

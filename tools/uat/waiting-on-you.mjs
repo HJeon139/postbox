@@ -1,8 +1,8 @@
-// What’s waiting on the person, as the UAT runner and its report show it. Moved from server/room-checks.mjs, which
+// What’s waiting on the person, as the UAT runner and its report show it. Moved from tools/uat/room-checks.mjs, which
 // re-exports it, to keep that file to its size.
 
-import { ASKING } from '../shared/catalog.mjs';
-import { clip } from '../shared/text.mjs';
+import { ASKING } from '../../shared/catalog.mjs';
+import { clip } from '../../shared/text.mjs';
 
 /**
  * What’s waiting on the person in these threads, as the “needs you” count sees it: a block that asks (choice,

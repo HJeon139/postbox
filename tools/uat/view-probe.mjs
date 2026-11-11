@@ -1,6 +1,6 @@
 // The view probe (#531): each step, before any screenshot scrolls the page (tools/uat/observe.mjs), where each mounted
 // transcript’s view is, as app/js/view-state.mjs publishes it (data-view-mode, data-view-anchor, data-view-offset) and
-// as the page measures it. server/room-checks-view.mjs’s view-moved and tools/uat/view-triggers.mjs read it.
+// as the page measures it. tools/uat/room-checks-view.mjs’s view-moved and tools/uat/view-triggers.mjs read it.
 
 import { js } from '../browser.mjs';
 

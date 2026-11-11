@@ -1,12 +1,12 @@
-// The ask checks (#508, server/room-checks-asks.mjs): a wake held on a card that went without an answer and never
+// The ask checks (#508, tools/uat/room-checks-asks.mjs): a wake held on a card that went without an answer and never
 // arrived, and a needs-you ring that disagrees with the open asks. Each fires on a room with its defect and stays
 // silent on one without. The rooms are hand-built from the shapes UAT runs record (tests/delivery-fixture.mjs says
 // why, and which). Moved from tests/uat-checks-delivery.test.mjs for size.
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { headOf } from '../server/room-delivery.mjs';
 import { runChecks } from '../tools/uat/checks.mjs';
+import { headOf } from '../tools/uat/room-delivery.mjs';
 import { archiveAgent, ROOM, ROUND_TWO, removeAgent, room, stopAgent, T0 } from './delivery-fixture.mjs';
 
 const s = (n) => T0 + n * 1000;

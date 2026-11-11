@@ -8,8 +8,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { createStreamMapper } from '../server/adapters/claude-stream.mjs';
-import { keepEvent } from '../server/room-events.mjs';
 import { apply, emptyState } from '../shared/state.mjs';
+import { keepEvent } from '../tools/uat/room-events.mjs';
 import { settle, setup } from './side-threads-fixture.mjs';
 
 const fixture = (name) =>
