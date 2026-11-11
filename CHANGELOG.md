@@ -2,6 +2,14 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 3.0.1 (2026-11-11)
+
+### Fixes
+
+- **server:** a range's limit is a whole number of items
+- **server:** a conversation id that isn't valid percent-encoding answers 404, not 500
+- **server:** a conversation's items by range and its search, for the page to load just in time
+
 ## 3.0.0 (2026-11-11)
 
 ### Breaking changes
