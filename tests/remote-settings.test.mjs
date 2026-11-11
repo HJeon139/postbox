@@ -13,8 +13,7 @@ const HOUR = 60 * MIN;
 
 function runtime(store = new Store(null)) {
   const adapter = { name: 'mock', deliver: async () => {} };
-  const corpus = { search: () => [], read: () => null, stats: () => ({ books: [], passages: 0 }) };
-  return new Runtime({ store, adapters: new AdapterRegistry().register(adapter), corpus, config: { origin: 'http://127.0.0.1:1', imageOrigins: [] } });
+  return new Runtime({ store, adapters: new AdapterRegistry().register(adapter), config: { origin: 'http://127.0.0.1:1', imageOrigins: [] } });
 }
 
 /** Asserts a runtime call throws the HTTP error with that status, and returns its message. */

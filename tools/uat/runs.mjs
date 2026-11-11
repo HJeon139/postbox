@@ -206,13 +206,10 @@ export function readRun(dir, { scenarios } = {}) {
     cost: { agents: agentsUsd, tester: testerUsd, kiroCredits: saved.cost?.kiroCredits ?? rep.kiroCredits ?? null },
     coverage: saved.coverage ?? findings.coverage ?? null,
     findings: Array.isArray(findings.findings) ? findings.findings : [],
-    // Telemetry (designs/telemetry-persona.md, U5): the run’s block, and the classifier’s proposals, never filed.
-    telemetry: saved.telemetry ?? null,
     // The run’s budget (tools/uat/budget.mjs), when it had --max-cost.
     budget: saved.budget ?? null,
     // Where the run’s time went (tools/uat/timing.mjs): only a live run measures it, so a recheck keeps it.
     timing: saved.timing ?? null,
-    proposals: Array.isArray(findings.telemetry?.proposals) ? findings.telemetry.proposals : [],
     // Whether the agent drew first (#983), and its first picture (#995): only a live run
     // or tools/uat-pairs.mjs records them, so a recheck keeps them.
     ...(saved.picture ? { picture: saved.picture } : {}),
@@ -233,9 +230,7 @@ export function readRuns(roots, opts = {}) {
   const unreadable = [];
   for (const root of roots) {
     if (!existsSync(root)) continue;
-    // A Postbox folder’s telemetry/ holds each conversation’s saved reports, each a live run (R20).
-    const live = (name) => (existsSync(join(root, name, 'reports')) ? readdirSync(join(root, name, 'reports')).map((id) => join(name, 'reports', id)) : [name]);
-    for (const name of readdirSync(root).sort().flatMap(live)) {
+    for (const name of readdirSync(root).sort()) {
       const dir = join(root, name);
       if (!statSync(dir).isDirectory() || out.has(name)) continue;
       let r = null;

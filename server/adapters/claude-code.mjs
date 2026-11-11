@@ -81,12 +81,12 @@ export function forkPoint(state) {
 }
 
 /**
- * Reads the CLI’s stream-json from `child` into `mapper`, handing each line to recorderFor (POSTBOX_CLAUDE_RECORD, a
- * recorded room’s telemetry), and saving the session ID when the init event names a new one.
+ * Reads the CLI’s stream-json from `child` into `mapper`, handing each line to recorderFor (POSTBOX_CLAUDE_RECORD), and
+ * saving the session ID when the init event names a new one.
  * @param {any} ctx @param {any} child @param {ReturnType<typeof createStreamMapper>} mapper
  */
 function readStream(ctx, child, mapper) {
-  const record = recorderFor(ctx, process.env.POSTBOX_CLAUDE_RECORD, 'claude-code');
+  const record = recorderFor(ctx, process.env.POSTBOX_CLAUDE_RECORD);
   createInterface({ input: child.stdout }).on('line', (line) => {
     if (!line.trim()) return;
     record(line);

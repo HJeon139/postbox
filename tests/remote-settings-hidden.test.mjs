@@ -60,8 +60,7 @@ test('#991 a path on a host takes an emoji joined with ZWJ and a word joined wit
 test('#991 a host’s project folder with a bidi override is refused with a 422 and isn’t stored', () => {
   const store = new Store(null);
   const adapter = { name: 'mock', deliver: async () => {} };
-  const corpus = { search: () => [], read: () => null, stats: () => ({ books: [], passages: 0 }) };
-  const rt = new Runtime({ store, adapters: new AdapterRegistry().register(adapter), corpus, config: { origin: 'http://127.0.0.1:1', imageOrigins: [] } });
+  const rt = new Runtime({ store, adapters: new AdapterRegistry().register(adapter), config: { origin: 'http://127.0.0.1:1', imageOrigins: [] } });
   store.emit('project', { id: 'p1', name: 'P', folder: '/tmp' });
   const h = rt.addHost({ name: 'devbox' });
   rt.setProjectHostFolder('p1', h.id, '/srv/app');

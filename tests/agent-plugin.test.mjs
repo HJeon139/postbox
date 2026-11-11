@@ -67,7 +67,7 @@ test('a persona turns skills off from its next turn: Postbox’s plugin is left 
   const deliver = async (_se, _m, c) =>
     void seen.push({ plugins: fromContext(c, '/mem').plugins, denied: deniedTools(c.persona), settings: settingsFor(c.persona) });
   const config = { origin: 'http://127.0.0.1:1', imageOrigins: [], lintSettleMs: 0 };
-  const rt = new Runtime({ store, adapters: new AdapterRegistry().register({ name: 'mock', deliver }), corpus: {}, config });
+  const rt = new Runtime({ store, adapters: new AdapterRegistry().register({ name: 'mock', deliver }), config });
   store.emit('project', { id: 'p1', name: 'P', folder: '/tmp' });
   const p = rt.createPersona({ handle: 'drawer' });
   assert.deepEqual(p.skillsOff, [], 'all on by default');

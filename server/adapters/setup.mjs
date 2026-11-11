@@ -310,7 +310,7 @@ export const OUTSIDE_TOOLS = ['SendMessage', 'ListAgents', 'RemoteTrigger', 'Cro
  * - web.fetch (“Fetch web pages”) → WebFetch, and WebSearch: both send the agent’s requests to the web, so a
  *   persona kept off the web is kept off both. Also Monitor, which can open a WebSocket.
  * - agents.outside → OUTSIDE_TOOLS.
- * corpus.*, arxiv.search and narrate.speak are Postbox’s own (its apps’ host tools), with nothing in Claude Code
+ * arxiv.search and narrate.speak are Postbox’s own (narrate.speak an app’s host tool), with nothing in Claude Code
  * to deny. No rule here may match Postbox’s own MCP tools (mcp__postbox__*): deny beats allow.
  */
 export const TOOL_RULES = /** @type {Record<string, string[]>} */ ({
@@ -352,15 +352,7 @@ export function deniedTools(persona) {
 
 // ── Raw streams ─────────────────────────────────────────────────────────────────────────────
 // Each adapter hands every line its backend streams to recorderFor: it goes to POSTBOX_*_RECORD’s folder when that’s set
-// (test fixtures, the UAT), and to the stream taps, which a recorded room’s telemetry registers (server/telemetry.mjs).
-
-/** @type {Map<any, (ctx: any, line: string, backend: string) => void>} by runtime */
-const taps = new Map();
-/** Registers a runtime’s tap; returns what unregisters it. */
-export function setStreamTap(rt, tap) {
-  taps.set(rt, tap);
-  return () => taps.delete(rt);
-}
+// (test fixtures, the UAT).
 
 /** How much of a turn’s raw stream its context keeps, for a reply that ends empty (#485): its last lines, each bounded. */
 const RAW_TAIL = 12;
@@ -400,15 +392,14 @@ export function keepShape(ctx, event) {
 
 /**
  * What one turn writes each raw line to. The last few go in the turn’s ctx.rawTail too, as shapes (keepShape).
- * @param {any} ctx  the turn’s context @param {string|undefined} dir  POSTBOX_*_RECORD @param {string} backend
+ * @param {any} ctx  the turn’s context @param {string|undefined} dir  POSTBOX_*_RECORD
  * @returns {(line: string) => void}
  */
-export function recorderFor(ctx, dir, backend) {
+export function recorderFor(ctx, dir) {
   const file = dir ? join(dir, `${Date.now()}-${ctx.persona.handle}.jsonl`) : null;
   return (line) => {
     if (file) appendFileSync(file, `${line}\n`);
     keepShape(ctx, line);
-    for (const tap of taps.values()) tap(ctx, line, backend);
   };
 }
 

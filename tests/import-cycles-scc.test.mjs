@@ -21,7 +21,6 @@ const CYCLES = [
   ['app/js/permissions.mjs', 'app/js/sheets.mjs'],
   ['server/scheduled-wakes.mjs', 'server/store-outage.mjs'],
   ['server/store-commit.mjs', 'server/store-recover.mjs', 'server/store-retry.mjs', 'server/store-snapshot.mjs'],
-  ['server/telemetry-sweep.mjs', 'server/telemetry.mjs'],
 ];
 
 test('#312 the import cycles are the recorded ones: none new, none grown, none merged', () => {

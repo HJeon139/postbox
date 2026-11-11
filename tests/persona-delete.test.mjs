@@ -22,9 +22,8 @@ async function setup() {
   const data = tempDir('pb-persona-delete-');
   const workRoot = join(data, 'workspaces');
   const store = new Store(null);
-  const corpus = { search: () => [], read: () => null, stats: () => ({ books: [], passages: 0 }) };
   const adapters = new AdapterRegistry().register(new ClaudeCodeAdapter({ bin: 'claude', workRoot }));
-  const rt = new Runtime({ store, adapters, corpus, config: { origin: 'http://127.0.0.1:1', imageOrigins: [], lintSettleMs: 0 } });
+  const rt = new Runtime({ store, adapters, config: { origin: 'http://127.0.0.1:1', imageOrigins: [], lintSettleMs: 0 } });
   const project = { id: 'p1', name: 'P', folder: data };
   store.emit('project', project);
   const alpha = rt.createPersona({ handle: 'alpha', backend: 'claude-code' });

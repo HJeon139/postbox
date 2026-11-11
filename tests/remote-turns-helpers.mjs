@@ -143,8 +143,6 @@ export function forbidden() {
   };
 }
 
-export const corpus = { search: (q) => [{ id: 'b1:1', title: 'Found', text: `about ${q}` }], read: () => null, stats: () => ({ books: [], passages: 0 }) };
-
 /**
  * A runtime with one Claude Code persona on a host, over a fake daemon whose turns run until ended (autoEnd false),
  * and whose prompts come after their call’s line (callLines), as the CLI asks.
@@ -169,7 +167,6 @@ export function rig({
   const rt = new Runtime({
     store,
     adapters: new AdapterRegistry().register(claude),
-    corpus,
     config: { origin: 'http://127.0.0.1:1', imageOrigins: [], lintSettleMs: 0, build: { version: VERSION } },
     hosts,
   });

@@ -14,7 +14,7 @@ const SHA = 'ab'.repeat(32);
 /** The room, with an upload stored under the name the upload route kept for “report” + RLO + “fdp.exe”. */
 function room() {
   const s = setup();
-  s.store.emit('file', { id: 'f1', name: 'report_fdp.exe', type: 'application/x-msdownload', size: 5, sha256: SHA, at: 1, inCorpus: false });
+  s.store.emit('file', { id: 'f1', name: 'report_fdp.exe', type: 'application/x-msdownload', size: 5, sha256: SHA, at: 1 });
   return s;
 }
 const forged = { kind: 'file', fileId: 'f1', name: `report${RLO}fdp.exe`, type: 'application/pdf', size: 1, path: '/etc/passwd' };
@@ -98,7 +98,7 @@ test('#991 a project file is attached by its path, and one whose path holds a bi
 // from the record. It’s cleaned where the message reads it, and the record is left as it was stored.
 test('#1067 a file attachment whose upload was stored under a raw name has it cleaned, in the message and the prompt', async () => {
   const { rt, store, adapter, t, beta } = setup();
-  const old = { id: 'f0', name: `report${RLO}fdp.exe`, type: 'application/x-msdownload', size: 5, sha256: SHA, at: 1, inCorpus: false };
+  const old = { id: 'f0', name: `report${RLO}fdp.exe`, type: 'application/x-msdownload', size: 5, sha256: SHA, at: 1 };
   store.emit('file', old);
   const { item } = rt.sendMessage(t.id, { text: '@beta read this', attachments: [{ kind: 'file', fileId: 'f0' }] });
   assert.deepEqual(store.state.items[t.id].find((i) => i.id === item.id).attachments, [{ ...KEPT, fileId: 'f0' }]);
@@ -145,7 +145,7 @@ const STORED = [
 
 test('#1067 a stored name with a quote, <, &, NUL, lone surrogate or tag character is shown cleaned, and the record kept', async () => {
   const { rt, store, t } = setup();
-  for (const [i, [name]] of STORED.entries()) store.emit('file', { id: `f${i}`, name, type: 'text/plain', size: 1, sha256: SHA, at: 1, inCorpus: false });
+  for (const [i, [name]] of STORED.entries()) store.emit('file', { id: `f${i}`, name, type: 'text/plain', size: 1, sha256: SHA, at: 1 });
   const attachments = STORED.map((_, i) => ({ kind: 'file', fileId: `f${i}` }));
   const { item } = rt.sendMessage(t.id, { text: '@beta read these', attachments });
   const shown = store.state.items[t.id].find((x) => x.id === item.id).attachments.map((a) => a.name);

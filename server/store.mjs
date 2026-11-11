@@ -26,6 +26,9 @@ const RETRY_BOUND_MS = 3000; // how long Retry waits for a write still in flight
 export { newId }; // server/ids.mjs; its callers import it from here
 
 export class Store {
+  /** A snapshot is reading the state: emits are held until it’s written, as behind a commit, so it reads one view (#1180). */
+  snapshotting = false;
+
   /**
    * @param {string|null} dir  the data folder; null keeps everything in memory (tests)
    * @param {{ snapshotEvery?: number, io?: typeof fs, retryBoundMs?: number }} [options]  `io` stands in for
@@ -182,8 +185,8 @@ export class Store {
   }
 
   /**
-   * Applies a change and broadcasts it, unless a commit is queued or in flight: then it’s held, and numbered, applied
-   * and broadcast in its turn once the commit settles. While writes are closed it’s applied and broadcast, not written.
+   * Applies a change and broadcasts it, unless a commit is queued or in flight, or a snapshot is being written: then
+   * it’s held, and numbered, applied and broadcast in its turn once that settles. While writes are closed it’s applied and broadcast, not written.
    */
 
   emit(type, data) {
@@ -195,7 +198,7 @@ export class Store {
       this.warned = true;
       return ev;
     }
-    if (this.waitingCommits || this.held) {
+    if (this.waitingCommits || this.held || this.snapshotting) {
       this.held++;
       const job = { held: ev, json: JSON.stringify(ev) }; // as it is now: the caller may change its object later
       this.queue.push(job);

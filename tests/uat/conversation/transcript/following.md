@@ -20,7 +20,7 @@ In Dispatch mode you glance at a conversation to see what changed. That only wor
 ## Steps to reproduce
 
 1. Run `npx playwright test transcript composer-grow scroll-frame` (`tests/browser/transcript.spec.mjs`, `composer-grow.spec.mjs` and `scroll-frame.spec.mjs`). The transcript spec drives a long room with real wheel and mouse input: streaming, patches, an app growing from 200 to 700 px, the panel and a resize at the bottom; the same changes scrolled up; and the pill. composer-grow types a six-line draft with the keyboard, at 1280 and 375 px and in the thread panel, kept or sent. scroll-frame scrolls up and hands the page a reply in the same moment, which a real reply does only now and then.
-2. Run the demo (`node tools/demo.mjs --port 4180`) and open <http://127.0.0.1:4180/> while it plays. In “Corpus explorer”, stay at the bottom while @librarian streams and its app loads.
+2. Run the demo (`node tools/demo.mjs --port 4180`) and open <http://127.0.0.1:4180/> while it plays. In “Asset explorer”, stay at the bottom while @librarian streams and its app loads.
 3. Scroll up a little while an agent works, wait for two messages, then scroll back down with the wheel.
 4. Open a thread from an older message while scrolled up, then close it.
 5. At the bottom, type a six-line draft with Shift+Enter while an agent replies, then send it.

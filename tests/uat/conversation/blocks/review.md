@@ -28,7 +28,7 @@ Feedback on long documents needs to be anchored to lines, batched, and followed 
 - When the agent reports what came of an approved draft (“Filed as #105”), the result shows under your answer, and the review stays answered: nothing asks you to approve it again (#106).
 - While it waits on you, it can be dismissed, and its agent can withdraw it, as a [choice](choice.md) can.
 - A revision shows as a diff against the previous version; resolved threads collapse.
-- If the agent changes the draft while you’re answering, your submit is refused, your comments are kept, and you see what changed: see [A block that changed while you were answering](changed-while-answering.md).
+- If the agent changes the draft while you’re answering, the block says so as the change arrives, your comments are kept, and Lines marks what changed since you first saw it; your next Submit answers the version on screen: see [A block that changed while you were answering](changed-while-answering.md).
 
 ## Steps to reproduce
 

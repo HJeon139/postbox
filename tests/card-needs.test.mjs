@@ -134,20 +134,14 @@ test('a resolver whose card is not the need leaves the need where it is, even wh
   assert.equal(r.needs()?.itemId, b.id, 'answering a card that is not the need changes nothing');
 });
 
-test('at a turn’s end, an asking block comes before a refusal of the same turn, as on main', async () => {
+test('an open refusal is never a need, alone or beside an asking block (intent.md, principle 8)', async () => {
   const r = room();
-  const b = r.block();
-  r.rt.addItem(r.t.id, { kind: 'denial', sessionId: r.alpha.id, handle: 'alpha', turnId: 'turn_last', summary: 'rm -rf x', status: 'open' });
   const { nextNeed } = await import('../server/card-needs.mjs');
-  assert.equal(nextNeed(r.rt, r.rt.s.sessions[r.alpha.id])?.itemId, b.id, 'the question, not the newer refusal');
-});
-
-test('several open refusals of the last turn are counted in the need’s text, as on main', async () => {
-  const r = room();
   for (const s of ['one', 'two'])
     r.rt.addItem(r.t.id, { kind: 'denial', sessionId: r.alpha.id, handle: 'alpha', turnId: 'turn_last', summary: s, status: 'open' });
-  const { nextNeed } = await import('../server/card-needs.mjs');
-  assert.equal(nextNeed(r.rt, r.rt.s.sessions[r.alpha.id])?.text, '2 steps were refused: two');
+  assert.equal(nextNeed(r.rt, r.rt.s.sessions[r.alpha.id]), null, 'the agent works around a refusal');
+  const b = r.block();
+  assert.equal(nextNeed(r.rt, r.rt.s.sessions[r.alpha.id])?.itemId, b.id, 'the question');
 });
 
 test('within a kind the newest card comes first: two app cards wait, and the newer is the need', async () => {

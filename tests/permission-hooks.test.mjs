@@ -205,11 +205,9 @@ test('#817: the panel’s view lists the hooks of each settings file the agent r
   await writeFile(join(folder, '.claude', 'settings.json'), JSON.stringify(pre(command('Bash', 'project-check'))));
   const store = new Store(null);
   const adapter = { name: 'claude-code', folderFor: async () => folder, deliver: async () => {} };
-  const corpus = { search: () => [], read: () => null, stats: () => ({ books: [], passages: 0 }) };
   const rt = new Runtime({
     store,
     adapters: new AdapterRegistry().register(adapter),
-    corpus,
     config: { origin: 'http://x', imageOrigins: [], lintSettleMs: 0, home },
   });
   store.emit('project', { id: 'p1', name: 'P', folder });
@@ -242,8 +240,7 @@ test('#817: the panel’s view lists no hooks, and doesn’t throw, for a person
     .register({ name: 'claude-code', folderFor: async () => null, deliver })
     .register({ name: 'kiro', capabilities: { permissions: 'none' }, folderFor: async () => folder, deliver })
     .register({ name: 'mock', folderFor: async () => folder, deliver });
-  const corpus = { search: () => [], read: () => null, stats: () => ({ books: [], passages: 0 }) };
-  const rt = new Runtime({ store, adapters, corpus, config: { origin: 'http://x', imageOrigins: [], lintSettleMs: 0, home } });
+  const rt = new Runtime({ store, adapters, config: { origin: 'http://x', imageOrigins: [], lintSettleMs: 0, home } });
   store.emit('project', { id: 'p1', name: 'P', folder });
   for (const backend of ['claude-code', 'kiro', 'mock']) {
     const p = rt.createPersona({ handle: `a-${backend}`, backend, permissionMode: 'auto' });

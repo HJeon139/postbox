@@ -40,11 +40,9 @@ export async function setup({ judged = () => allow('open the PR') } = {}) {
       await (next.shift() ?? (async (c) => c.text('ok')))(ctx);
     },
   };
-  const corpus = { search: () => [], read: () => null, stats: () => ({ books: [], passages: 0 }) };
   const rt = new Runtime({
     store,
     adapters: new AdapterRegistry().register(adapter),
-    corpus,
     config: { origin: 'http://x', imageOrigins: [], lintSettleMs: 0, home: root },
   });
   const prompts = [];

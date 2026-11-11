@@ -20,11 +20,9 @@ export async function assetRoom(ctx, { store = null } = {}) {
   const s = store ?? (await new Store(join(dir, 'data')).load());
   ctx.after(() => s.close());
   const adapter = new ScriptedAdapter();
-  const corpus = { search: () => [], read: () => null, stats: () => ({ books: [], passages: 0 }) };
   const rt = new Runtime({
     store: s,
     adapters: new AdapterRegistry().register(adapter),
-    corpus,
     config: { origin: 'http://127.0.0.1:1', imageOrigins: [], lintSettleMs: 0 },
   });
   s.emit('project', { id: 'p1', name: 'P', folder });

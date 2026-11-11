@@ -44,15 +44,6 @@ const WRITE_ROUTES = {
   'PATCH ^\\/api\\/threads\\/([^/]+)$': ['/api/threads/th_none'],
   'POST ^\\/api\\/threads\\/([^/]+)\\/(archive|restore)$': ['/api/threads/th_none/archive', '/api/threads/th_none/restore'],
   'POST ^\\/api\\/threads\\/([^/]+)\\/messages$': ['/api/threads/th_none/messages'],
-  'POST ^\\/api\\/threads\\/([^/]+)\\/telemetry\\/record$': ['/api/threads/th_none/telemetry/record'],
-  'POST ^\\/api\\/threads\\/([^/]+)\\/telemetry\\/stop$': ['/api/threads/th_none/telemetry/stop'],
-  'POST ^\\/api\\/threads\\/([^/]+)\\/telemetry\\/delete$': ['/api/threads/th_none/telemetry/delete'],
-  'POST ^\\/api\\/threads\\/([^/]+)\\/telemetry\\/reports$': ['/api/threads/th_none/telemetry/reports'],
-  'DELETE ^\\/api\\/threads\\/([^/]+)\\/telemetry\\/reports\\/([^/]+)$': ['/api/threads/th_none/telemetry/reports/rep_none'],
-  'POST ^\\/api\\/threads\\/([^/]+)\\/telemetry\\/reports\\/([^/]+)\\/leave-out$': ['/api/threads/th_none/telemetry/reports/rep_none/leave-out'],
-  'POST ^\\/api\\/threads\\/([^/]+)\\/telemetry\\/reports\\/([^/]+)\\/save$': ['/api/threads/th_none/telemetry/reports/rep_none/save'],
-  'POST ^\\/api\\/threads\\/([^/]+)\\/telemetry\\/reports\\/([^/]+)\\/discard$': ['/api/threads/th_none/telemetry/reports/rep_none/discard'],
-  'POST ^\\/api\\/threads\\/([^/]+)\\/telemetry\\/reports\\/([^/]+)\\/issues\\/([^/]+)$': ['/api/threads/th_none/telemetry/reports/rep_none/issues/x'],
   'POST ^\\/api\\/threads\\/([^/]+)\\/view$': ['/api/threads/th_none/view'],
   'PATCH ^\\/api\\/threads\\/([^/]+)\\/queue\\/([^/]+)$': ['/api/threads/th_none/queue/q_none'],
   'DELETE ^\\/api\\/threads\\/([^/]+)\\/queue\\/([^/]+)$': ['/api/threads/th_none/queue/q_none'],
@@ -89,7 +80,6 @@ const WRITE_ROUTES = {
   'POST /api/projects': ['/api/projects'],
   'PUT ^\\/api\\/projects\\/([^/]+)\\/push-url$': ['/api/projects/pr_none/push-url'],
   'POST /api/files': ['/api/files'],
-  'POST /api/corpus': ['/api/corpus'],
   'POST ^\\/api\\/apps\\/([^/]+)\\/(check|event|state|query)$': [
     '/api/apps/ap_none/check',
     '/api/apps/ap_none/event',
@@ -190,7 +180,7 @@ test('#74: reads need no token, /mcp keeps its own session check, and other site
 });
 
 test('#74: a message sent with the page’s token posts as the person; one without it posts nothing', async () => {
-  const thread = Object.values(app.store.state.threads).find((t) => t.title === 'Corpus explorer');
+  const thread = Object.values(app.store.state.threads).find((t) => t.title === 'Asset explorer');
   const before = app.store.items(thread.id).length;
   const refused = await call({ method: 'POST', path: `/api/threads/${thread.id}/messages`, body: { text: 'from curl' } });
   assert.equal(refused.status, 403);
@@ -203,7 +193,7 @@ test('#74: a message sent with the page’s token posts as the person; one witho
 });
 
 test('#120 L6: Resume after a turn on a host stopped needs the page’s token, and with it reaches resumeRemote', async () => {
-  const thread = Object.values(app.store.state.threads).find((t) => t.title === 'Corpus explorer');
+  const thread = Object.values(app.store.state.threads).find((t) => t.title === 'Asset explorer');
   const [se] = app.rt.sessionsIn(thread.id);
   const path = `/api/sessions/${se.id}/resume`;
   const refused = await call({ method: 'POST', path, body: {} });

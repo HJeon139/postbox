@@ -32,7 +32,7 @@ const sizeOf = (base64) => {
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
 let app;
-/** A project in the spec’s own temp folder, where view_app saves its pictures: the demo’s is the clone’s corpus. */
+/** A project in the spec’s own temp folder, where view_app saves its pictures: the demo’s is in its data folder. */
 async function project() {
   const folder = join(app.root, 'work');
   await mkdir(folder, { recursive: true });

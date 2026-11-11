@@ -61,7 +61,6 @@ test('a run’s record keeps every key the live run writes to run.json, as it wr
       git: () => null,
     }),
     // What tools/uat-run.mjs adds beside runRecord’s keys.
-    telemetry: { report: 'rep_1' },
     budget: { cap: 15 },
   };
   writeFileSync(join(dir, 'run.json'), JSON.stringify(written));

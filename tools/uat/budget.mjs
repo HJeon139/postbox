@@ -1,8 +1,7 @@
-// A run’s budget (#290): --max-cost caps what the whole run spends, in dollars: its agents’ turns, the tester, the
-// verifier and the telemetry report. Without it, only --budget caps the tester, as before.
+// A run’s budget (#290): --max-cost caps what the whole run spends, in dollars: its agents’ turns, the tester and the
+// verifier. Without it, only --budget caps the tester, as before.
 //
-// The cap is split before the run starts. The verifier and the telemetry report get AFTER_RUN_USD, held for after the
-// last step. The tester gets its own --budget. The agents get the rest. Before each tester step, the runner checks
+// The cap is split before the run starts. The verifier gets AFTER_RUN_USD, held for after the last step. The tester gets its own --budget. The agents get the rest. Before each tester step, the runner checks
 // that the step and the agent turn it may start both fit what’s left of their shares. Through the whole run, its watch
 // (tools/uat/turns.mjs, watchBudget) reads the turns’ reported costs every 1.5 s, whatever the run is doing. Once the
 // next step or turn could pass the cap, the run stops: it stops the newest turns at work until the rest fit, and any
@@ -27,7 +26,7 @@ export const AGENT_TURN_USD = 1;
 /** A tester step’s reservation before the first: the least the tester lets one step spend (tools/uat/tester.mjs). */
 export const TESTER_STEP_USD = 0.5;
 /**
- * Held for the verifier and the telemetry report, after the last step. An estimate: no run recorded their cost before
+ * Held for the verifier, after the last step. An estimate: no run recorded its cost before
  * this one (run.json’s budget now does). Each verifier call is also capped at what’s left of the whole cap.
  */
 export const AFTER_RUN_USD = 1;
@@ -71,7 +70,7 @@ export function runBudget({ cap, testerShare, now = () => Date.now() }) {
   const agentsShare = cap - testerShare - AFTER_RUN_USD;
   if (agentsShare < AGENT_TURN_USD)
     throw new Error(
-      `--max-cost ${usd(cap)} leaves the agents ${usd(Math.max(0, agentsShare))} after the tester’s ${usd(testerShare)} (--budget) and ${usd(AFTER_RUN_USD)} for the verifier and telemetry, less than the ${usd(AGENT_TURN_USD)} an agent turn is reserved before one has reported. Raise --max-cost, or lower --budget.`,
+      `--max-cost ${usd(cap)} leaves the agents ${usd(Math.max(0, agentsShare))} after the tester’s ${usd(testerShare)} (--budget) and ${usd(AFTER_RUN_USD)} for the verifier, less than the ${usd(AGENT_TURN_USD)} an agent turn is reserved before one has reported. Raise --max-cost, or lower --budget.`,
     );
   return new RunBudget({ cap, testerShare, agentsShare, now });
 }
@@ -84,7 +83,7 @@ export class RunBudget {
   streams = () => [];
   tester = { spent: 0 };
   log = (/** @type {string} */ _line) => {};
-  after = { verifier: 0, telemetry: 0 };
+  after = { verifier: 0 };
   /** What the verifier calls running now may spend: held from what’s left, so two at once can’t both spend it. */
   verifying = 0;
   /** @type {Set<Promise<unknown>>} the verifier calls running now */
@@ -123,7 +122,7 @@ export class RunBudget {
     const reserve = turns.length ? Math.max(...turns.map((t) => t.usd)) : AGENT_TURN_USD;
     const silent = Math.max(0, streams.filter((s) => !(s.events ?? []).some((e) => e?.type === 'result')).length - working);
     const agents = turns.reduce((a, t) => a + t.usd, 0) + silent * reserve;
-    return { turns, reserve, silent, agents, total: agents + this.tester.spent + this.after.verifier + this.after.telemetry };
+    return { turns, reserve, silent, agents, total: agents + this.tester.spent + this.after.verifier };
   }
 
   /** The run stops here, once: the step it didn’t take, or whose turns it stopped, when, and why. */
@@ -182,7 +181,7 @@ export class RunBudget {
     return working.filter((w) => !this.inFlight?.has(w.id)).map((w) => w.id);
   }
 
-  /** What the verifier or the telemetry report spent. @param {'verifier'|'telemetry'} who  @param {unknown} amount */
+  /** What the verifier spent. @param {'verifier'} who  @param {unknown} amount */
   spend(who, amount) {
     if (typeof amount === 'number' && Number.isFinite(amount) && amount > 0) this.after[who] += amount;
   }
@@ -238,7 +237,6 @@ export class RunBudget {
         unreported: { turns: silent, usd: cents(silent * reserve) },
         tester: cents(this.tester.spent),
         verifier: cents(this.after.verifier),
-        telemetry: cents(this.after.telemetry),
       },
       largest: { turn: turns.length ? cents(reserve) : null, step: this.largestStep ? cents(this.largestStep) : null },
       stopped: this.stopped,
@@ -257,7 +255,7 @@ export function budgetNote(b) {
     ...Object.entries(b.spent.byAgent ?? {}).map(([h, usdOf]) => `@${h} ${usd(usdOf)}`),
     ...(n ? [`${usd(b.spent.unreported.usd)} estimated for ${n === 1 ? 'a turn' : `${n} turns`} stopped before reporting`] : []),
   ];
-  const spentBy = `agents ${usd(b.spent.agents)}${parts.length ? ` (${parts.join(', ')})` : ''}, tester ${usd(b.spent.tester)}, verifier ${usd(b.spent.verifier)}, telemetry ${usd(b.spent.telemetry)}`;
+  const spentBy = `agents ${usd(b.spent.agents)}${parts.length ? ` (${parts.join(', ')})` : ''}, tester ${usd(b.spent.tester)}, verifier ${usd(b.spent.verifier)}`;
   const when = b.stopped?.during ? `while step ${b.stopped.step}’s turns ran` : `before step ${b.stopped?.step}`;
   return ` Budget: ${usd(b.cap)} (--max-cost), of which it spent ${usd(b.spent.total)}: ${spentBy}.${b.stopped ? ` **It stopped at its budget** ${when}: ${b.stopped.why}` : ''}`;
 }

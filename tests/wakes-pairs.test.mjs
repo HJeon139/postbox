@@ -1,13 +1,9 @@
-// What the review of #377 asked for: a message that wakes several agents counts each wake in telemetry, and a turn in
-// an old side thread posts its mentions once. Each pair of agents kept its own count of wakes in a row too, until #492
+// What the review of #377 asked for: a turn in an old side thread posts its mentions once. Each pair of agents kept its own count of wakes in a row too, until #492
 // removed the pair limit (tests/wakes-no-pair-limit.test.mjs).
 
 import assert from 'node:assert/strict';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { test } from 'node:test';
 import { HOP_LIMIT } from '../server/side-threads.mjs';
-import { collect, tierA } from '../server/telemetry-record.mjs';
 import { held, settle, setup, sleep } from './side-threads-fixture.mjs';
 
 /** The fixture’s room with @gamma added: three agents. */
@@ -34,17 +30,6 @@ const oldSide = (rt, t) =>
     createdAt: Date.now(),
     archived: false,
   });
-
-test('#372 a message that wakes two agents counts as one chain with two wakes in telemetry', async () => {
-  const { store, rt, adapter, t } = three();
-  adapter.next.push(async (c) => c.text('@beta @gamma please review the totals.'));
-  rt.sendMessage(t.id, { text: '@alpha get it reviewed' });
-  await settle(rt);
-  const msg = store.items(t.id).find((x) => x.kind === 'agent' && x.handle === 'alpha');
-  assert.deepEqual([msg.hop, msg.wakes], [1, [1, 2]]);
-  const { room } = tierA(rt, collect(rt, store.state.threads[t.id], join(tmpdir(), 'pb-no-recording'), { history: true }));
-  assert.deepEqual([room.wakeChains, room.longestWakeChain], [1, 2]);
-});
 
 test('#372 a turn in an old side thread that mentions two agents posts its message in the conversation once', async () => {
   const { store, rt, adapter, t, alpha } = three();

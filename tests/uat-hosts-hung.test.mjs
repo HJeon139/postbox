@@ -16,7 +16,7 @@ import { facts } from './uat-hosts-facts.mjs';
 const trigger = HOST_TRIGGERS['host-hung-killed'];
 const OLD = '33333333-3333-4333-8333-333333333333';
 const NEW = '44444444-4444-4444-8444-444444444444';
-/** A session event of @researcher’s on host1, as the run’s history keeps it (server/room-events.mjs, keepEvent). */
+/** A session event of @researcher’s on host1, as the run’s history keeps it (tools/uat/room-events.mjs, keepEvent). */
 const ev = (seq, turn, rtTurn, state) => ({ seq, type: 'session', data: { id: 's1', state: 'gen', remoteTurn: { hostId: 'ho_1', turn, rtTurn, state } } });
 const agent = (id, turnId, status, at) => ({ id, kind: 'agent', handle: 'researcher', sessionId: 's1', turnId, status, at });
 

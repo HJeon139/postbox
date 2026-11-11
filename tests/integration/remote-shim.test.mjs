@@ -134,9 +134,9 @@ test('#780 a review block that carries files waits for the daemon’s answer, so
 
 test('an asked tool waits for the daemon’s result, and an error result is isError', async (t) => {
   const { shim, daemon } = await setup(t);
-  const id = shim.tool('corpus_search', { query: 'remote hosts' });
+  const id = shim.tool('search_assets', { query: 'remote hosts' });
   const call = await daemon.next('call');
-  assert.equal(call.name, 'corpus_search');
+  assert.equal(call.name, 'search_assets');
   await sleep(50);
   assert.equal(
     shim.out.find((m) => m.id === id),
@@ -159,9 +159,9 @@ test('an asked tool waits for the daemon’s result, and an error result is isEr
 
 test('an asked tool fails with a clear error when the daemon stays unreachable', async (t) => {
   const { shim } = await setup(t, { startDaemon: false, timings: { unreachable: 100, backoff: 20, backoffMax: 50 } });
-  const res = await shim.response(shim.tool('corpus_search', { query: 'x' }));
+  const res = await shim.response(shim.tool('search_assets', { query: 'x' }));
   assert.equal(res.result.isError, true);
-  assert.match(textOf(res), /daemon on this host isn’t reachable, so corpus_search couldn’t run/);
+  assert.match(textOf(res), /daemon on this host isn’t reachable, so search_assets couldn’t run/);
 });
 
 test('permission_prompt waits for the person, and returns the laptop’s allow and deny shapes', async (t) => {
@@ -231,7 +231,7 @@ test('a prompt the harness cancels gets no answer, and the daemon gets permissio
   await sleep(50);
   assert.equal(shim.out.filter((m) => m.id === id).length, 0);
   // A canceled asked tool, not a prompt, sends no notice.
-  const callId = shim.tool('corpus_search', { query: 'x' });
+  const callId = shim.tool('search_assets', { query: 'x' });
   await daemon.next('call');
   shim.write({ jsonrpc: '2.0', method: cancel, params: { requestId: callId } });
   await sleep(50);

@@ -5,7 +5,7 @@
 // The evidence, all from what the run recorded:
 // - the fault’s own record (facts.hosts.faults): the host and the host turn whose runner it stopped. With no
 //   stop-runner fault there, or one that named no turn, it never fires;
-// - the history’s session events (tools/uat/history.mjs; server/room-events.mjs keeps each one’s remoteTurn as
+// - the history’s session events (tools/uat/history.mjs; tools/uat/room-events.mjs keeps each one’s remoteTurn as
 //   { hostId, turn, rtTurn, state }), in their order (seq): that host turn reads interrupted, the end Postbox gives a
 //   turn whose `ended` had exit null, and never reads running again after (a second `started` for the old turn);
 //   and no other host turn of that session started between the old turn’s first event and that end (a second agent

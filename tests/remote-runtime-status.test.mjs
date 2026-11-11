@@ -62,7 +62,6 @@ test('#120: without a host manager, status from before a restart is cleared and 
   const rt = new Runtime({
     store,
     adapters: new AdapterRegistry().register(mock),
-    corpus: { search: () => [], read: () => null, stats: () => ({ books: [], passages: 0 }) },
     config: { origin: 'http://127.0.0.1:1', imageOrigins: [] },
   });
   const h = rt.addHost({ name: 'host.example.com' });

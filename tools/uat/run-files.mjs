@@ -6,6 +6,7 @@ import { mkdir } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { claudeTranscriptFile } from '../../server/claude-transcript-file.mjs';
+import { parseSnapshotText } from '../../server/store-snapshot-lines.mjs';
 import { patchSession } from '../../shared/state.mjs';
 import { lines } from './history.mjs';
 
@@ -117,7 +118,7 @@ function readLogged(data, out) {
     const snap = join(data, 'snapshot.json');
     const changed = statSync(snap).mtimeMs;
     // snapshot.json is the state as of some sequence number (server/store.mjs), with its sessions at the top level.
-    if (changed !== c.snapshot) for (const se of Object.values(JSON.parse(readFileSync(snap, 'utf8')).sessions ?? {})) take(se);
+    if (changed !== c.snapshot) for (const se of Object.values(parseSnapshotText(readFileSync(snap, 'utf8')).sessions ?? {})) take(se);
     c.snapshot = changed;
   } catch {}
   const segments = readdirSync(data).filter((n) => /^events-\d+\.jsonl$/.test(n));
@@ -171,7 +172,7 @@ const keptIn = (dir) => join(dir, 'transcripts');
 /**
  * Keeps the transcript lines the checks read in the run folder, for --recheck once the agents’ own transcripts have
  * gone: each agent’s user lines (its prompts, tool results and the lines Claude Code writes itself, as
- * server/room-delivery.mjs’s inputsOf and the telemetry triggers read them), in <dir>/transcripts/<handle>.jsonl.
+ * tools/uat/room-delivery.mjs’s inputsOf reads them), in <dir>/transcripts/<handle>.jsonl.
  * Not its replies, which no check reads, nor a line cut short.
  * @param {string} dir  @param {{ handle: string, lines: (string|object)[] }[]} transcripts
  */
@@ -222,8 +223,6 @@ const transcriptOf = (cwd, id) => claudeTranscriptFile(join(homedir(), '.claude'
  */
 export async function readUi(page) {
   return {
-    // The conversation’s header, where recording shows (designs/telemetry-persona.md, R5).
-    recordingBadge: await page.evaluate(`document.querySelector('#recording-badge')?.textContent ?? ''`),
     headerText: await page.evaluate(`document.querySelector('.rail .agents-sec')?.innerText ?? ''`),
     agentRows: await page.evaluate(
       `[...document.querySelectorAll('.agent-rows .agent-btn')].map((b) => (/@([\\w-]+)/.exec(b.textContent) ?? [])[1]).filter(Boolean)`,
@@ -262,5 +261,5 @@ export function readStore(data) {
     .sort((a, b) => Number(a.slice(7, -6)) - Number(b.slice(7, -6)));
   const log = segments.flatMap((n) => lines(readFileSync(join(data, n), 'utf8')));
   const snap = join(data, 'snapshot.json');
-  return { log, snapshot: existsSync(snap) ? JSON.parse(readFileSync(snap, 'utf8')) : null, files };
+  return { log, snapshot: existsSync(snap) ? parseSnapshotText(readFileSync(snap, 'utf8')) : null, files };
 }

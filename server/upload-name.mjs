@@ -38,8 +38,8 @@ function hides(text, c, at) {
 /**
  * Whether one character, read alone, would hide or reorder a name: a control character, a lone surrogate, or one a
  * project’s folder refuses as hidden, except VS16, since alone it can’t tell whether it shows an emoji (ZWNJ and ZWJ
- * pass hiddenInFolder). For a caller that checks a name one character at a time: a dataset’s title
- * (server/datasets.mjs) and the project picker’s marks (server/folders.mjs), from #1052.
+ * pass hiddenInFolder). For a caller that checks a name one character at a time:
+ * the project picker’s marks (server/folders.mjs), from #1052.
  * @param {string} c  one code point, or a lone surrogate
  */
 export const hidesName = (c) => c !== EMOJI_STYLE && (hasControl(c) || hiddenInFolder(c));
@@ -71,7 +71,7 @@ export function uploadName(sent) {
 }
 
 /**
- * A stored upload’s name, as a message or the corpus shows it (#1067). One stored before #991 may hold a character that
+ * A stored upload’s name, as a message shows it (#1067). One stored before #991 may hold a character that
  * hides it, and is shown cleaned as an upload’s is; the record keeps what was stored.
  * @param {string} name
  */

@@ -16,7 +16,6 @@ import { railHidden, railShown, toggleRail } from './rail-collapse.mjs';
 import { ringFor, stateWord } from './ring.mjs';
 import { confirmDeleteThread, openNewAgent, openNewThread, openPalette, openRename, openSettings } from './sheets.mjs';
 import './store-line.mjs';
-import { recordingBadge, telemetryItems } from './telemetry.mjs';
 import { liveMembers, topbarSig } from './topbar-sig.mjs';
 import { closeWork, navigate, openMenu, openWork, route } from './ui.mjs';
 
@@ -85,7 +84,7 @@ export function topbar({ title = '', threadId = null, projectId = null }) {
       'span.crumbs',
       // The crumb above the title (.up) is the first thing the top bar drops for room (#72).
       project ? [icon('right', `i-sm${up}`), h(`a.crumb${up}`, { href: `#/p/${project.id}` }, project.name)] : null,
-      title ? [icon('right', 'i-sm'), h('span.title', title), recordingBadge(t)] : null,
+      title ? [icon('right', 'i-sm'), h('span.title', title)] : null,
     ),
     t
       ? h(
@@ -162,7 +161,6 @@ const TITLE_ROOM = 96;
 /** Drops the fewest parts that let the top bar fit. */
 function fitTopbar(bar) {
   if (!bar.isConnected) return;
-  // The title itself: the recording badge after it, empty while nothing records, has no room to keep.
   const title = bar.querySelector('.crumbs > .title');
   const fits = () => bar.scrollWidth <= bar.clientWidth && (!title || title.clientWidth >= Math.min(title.scrollWidth, TITLE_ROOM));
   let n = 0;
@@ -431,7 +429,6 @@ function conversationMenu(anchor, shown) {
         desc: room ? 'An agent’s mode, rules and folders here' : 'Its mode, rules and folders here',
         run: () => openPermissions({ threadId: t.id }),
       },
-      ...telemetryItems(t),
       'hr',
       ...agentMenuLines(
         sessionsOf(t.id).filter((x) => !x.archived),

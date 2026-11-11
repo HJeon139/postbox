@@ -17,7 +17,6 @@ import { PROBES, registerBackends } from './backends.mjs';
 import { INLINE_TYPES } from './blobs.mjs';
 import { buildInfo } from './build-info.mjs';
 import { dismissFailed } from './card-needs.mjs';
-import { Corpus } from './corpus.mjs';
 import { openDataFolder } from './data-folder.mjs';
 import { listFolder } from './folders.mjs';
 import { dataFolder } from './home.mjs';
@@ -41,9 +40,7 @@ import { sessionRoute } from './session-routes.mjs';
 import { setupRoute } from './setup-routes.mjs';
 import { isLoopback } from './shell.mjs';
 import { newId } from './store.mjs';
-import { watchTelemetry } from './telemetry.mjs';
-import { telemetryRoute } from './telemetry-routes.mjs';
-import { storedName, uploadName } from './upload-name.mjs';
+import { uploadName } from './upload-name.mjs';
 import { startViewApp } from './view-app/view-app.mjs';
 import { viewOf } from './view-app/view-of.mjs';
 
@@ -104,7 +101,6 @@ export async function start({
   const origin = `http://127.0.0.1:${port}`;
   process.env.POSTBOX_ORIGIN = origin;
   const { store, blobs, mediaDir } = await openDataFolder(dataDir, { fresh });
-  const corpus = await new Corpus().loadDir(join(ROOT, 'server', 'corpus', 'books'));
   const adapters = new AdapterRegistry().register(new MockAdapter());
   const { real, claude, kiro, agy, codex } = await registerBackends(adapters, { dataDir, demo, probes });
   const config = {
@@ -121,13 +117,11 @@ export async function start({
   const narrator = narrationInstalled() ? new Narrator({ modelsDir: join(dataDir, 'models'), blobs }) : null;
   // The hosts’ links (#120), made on first use (server/remote/serve.mjs).
   const hosts = hostManagerFor(given, () => rt, dataDir, config.build.version);
-  const rt = new Runtime({ store, adapters, corpus, config, blobs, narrator, spawnShell, hosts });
+  const rt = new Runtime({ store, adapters, config, blobs, narrator, spawnShell, hosts });
   // view_app’s browser, downloaded only after the person agrees (#95; designs/architecture.md, “Agents see their app”).
   startViewApp(rt, { dataDir, origin: () => `http://127.0.0.1:${/** @type {any} */ (server.address())?.port ?? port}` });
-  // Recording conversations for telemetry, and its 30-day sweep (designs/telemetry-persona.md, R7, R11).
-  watchTelemetry(rt);
   const firstReal = ['claude-code', 'agent-sdk', 'kiro-cli', 'antigravity-cli', 'codex'].find((b) => adapters.runsHere(b)) ?? 'mock';
-  await seed(rt, { dataDir, booksDir: join(ROOT, 'server', 'corpus', 'books'), backend: firstReal, demo });
+  await seed(rt, { dataDir, backend: firstReal, demo });
   settleInterrupted(rt);
   for (const [threadId, list] of Object.entries(store.state.items))
     for (const it of list) if (it.status === 'streaming') rt.patchItem(threadId, it.id, { status: 'stopped' });
@@ -143,9 +137,6 @@ export async function start({
   // Turns that went on on their hosts are attached again, each host’s status is kept for the page, and the hosts
   // reconnect when this computer wakes (#120).
   const stopWake = startHosts(rt, hosts, wake);
-  await loadCorpusFiles(store, corpus, blobs);
-  // Datasets agents loaded (#47) come back from their projects’ .postbox/datasets/.
-  await rt.reloadDatasets();
 
   // The page’s token (#74): a secret made at each launch, which a browser gets in a cookie when it loads `/`. Every
   // write needs it, so an agent that uses Postbox’s API with curl, casually or because something told it to, can’t
@@ -260,7 +251,7 @@ export async function start({
       return out === null ? raw(res, 202, '') : send(res, 200, out);
     }
 
-    if (path === '/api/state' && req.method === 'GET') return send(res, 200, pageState({ store, rt, adapters, origin, demo, real, config, corpus }));
+    if (path === '/api/state' && req.method === 'GET') return send(res, 200, pageState({ store, rt, adapters, origin, demo, real, config }));
     // What a persona would load, for its sheet: its MCP servers and skills (server/setup-routes.mjs).
     const setupDid = await setupRoute(rt, path, req.method, url, claudeHome);
     if (setupDid) return send(res, setupDid.status, setupDid.body);
@@ -343,9 +334,6 @@ export async function start({
     // A session’s own actions: Stop, archive, restore, delete, its jobs and its run (server/session-routes.mjs).
     const sessionDid = await sessionRoute(rt, path, req.method, body);
     if (sessionDid) return send(res, sessionDid.status, sessionDid.body);
-    // Telemetry: recording a conversation, and its reports (server/telemetry-routes.mjs).
-    const telemetryDid = await telemetryRoute(rt, path, req.method, body);
-    if (telemetryDid) return send(res, telemetryDid.status, telemetryDid.body);
     if ((m = path.match(/^\/api\/threads\/([^/]+)\/agent-command$/)) && req.method === 'POST') return send(res, 201, rt.runAgentCommand(m[1], body));
     if ((m = path.match(/^\/api\/threads\/([^/]+)\/shell$/)) && req.method === 'POST') {
       shellAllowed(req);
@@ -387,15 +375,6 @@ export async function start({
         'cache-control': 'private, max-age=31536000, immutable',
         ...SAME_ORIGIN_ONLY,
       });
-    }
-    if (path === '/api/corpus' && req.method === 'POST') {
-      const f = store.state.files[body.fileId];
-      if (!f) throw httpError(404, 'That file doesn’t exist.');
-      if (!/^text\/|\.txt$|\.md$/i.test(f.type + ' ' + f.name)) throw httpError(422, 'Only plain-text and Markdown files can be added to the corpus for now.');
-      corpus.addBook(f.id, (await blobs.get(f.sha256)).toString('utf8'), { title: storedName(f.name), author: 'Your file', year: null });
-      corpus.reindex();
-      store.emit('file', { ...f, inCorpus: true });
-      return send(res, 200, { ok: true, corpus: corpus.stats() });
     }
     if ((m = path.match(/^\/api\/apps\/([^/]+)\/(check|event|state|query)$/)) && req.method === 'POST') {
       const id = decodePath(m[1]);
@@ -456,7 +435,6 @@ export async function start({
         .slice(0, 100),
       sha256,
       at: Date.now(),
-      inCorpus: false,
     };
     store.emit('file', f);
     return { id, name, size, type: f.type, sha256 };
@@ -495,13 +473,6 @@ export async function start({
   };
 }
 
-/** The person’s files added to the corpus, read back from their blobs at start. O(files). */
-async function loadCorpusFiles(store, corpus, blobs) {
-  for (const f of Object.values(store.state.files))
-    if (f.inCorpus) corpus.addBook(f.id, (await blobs.get(f.sha256)).toString('utf8'), { title: storedName(f.name), author: 'Your file', year: null });
-  if (Object.values(store.state.files).some((f) => f.inCorpus)) corpus.reindex();
-}
-
 /**
  * Once the server listens: what waited across a restart is drained (#228), then every conversation’s older turns are
  * archived (#305). The archive isn’t awaited, and it never rejects: each pass logs its own failure.
@@ -529,7 +500,9 @@ function raw(res, status, body, headers = {}) {
 }
 function send(res, status, obj) {
   res.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
-  res.end(JSON.stringify(obj));
+  // Bytes, not the string: the socket keeps what it’s given until the page has read it all, and /api/state’s string is
+  // as long as the state, two bytes a character once one is past Latin-1. As bytes it leaves the V8 heap at once (#1210).
+  res.end(Buffer.from(JSON.stringify(obj)));
 }
 
 async function json(req) {

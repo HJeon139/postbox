@@ -1,7 +1,7 @@
 // A UAT run whose folder is reached through a link still finds its agents’ Claude Code transcripts (#932). Claude
 // Code names a project’s transcript folder from the real path of its working folder, so the runner has to resolve the
 // run’s workspace before it builds that name; given the link’s path, it found none, and every delivery check said it
-// couldn’t read what reached the agents. The telemetry report reads the same file through the same helper.
+// couldn’t read what reached the agents.
 
 import assert from 'node:assert/strict';
 import { mkdirSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';

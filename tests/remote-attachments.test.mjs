@@ -108,7 +108,7 @@ async function withUpload(bytes) {
   const dir = tempDir('pb-attach-blobs-');
   r.rt.blobs = new Blobs(dir);
   const { sha256 } = await r.rt.blobs.put(bytes);
-  r.store.emit('file', { id: 'fi_1', name: 'chart (1).png', size: bytes.length, type: 'image/png', sha256, at: 1, inCorpus: false });
+  r.store.emit('file', { id: 'fi_1', name: 'chart (1).png', size: bytes.length, type: 'image/png', sha256, at: 1 });
   const a = { kind: 'file', fileId: 'fi_1', name: 'chart (1).png', type: 'image/png' };
   return { r, a, blob: r.rt.blobs.pathOf(sha256) };
 }

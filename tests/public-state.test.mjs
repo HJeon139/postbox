@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { publicEvent, publicFrame, publicState } from '../server/public-state.mjs';
-import { keepEvent } from '../server/room-events.mjs';
 import { apply, EVENTS, emptyState, PRIVATE_STATE_KEYS, PUBLIC_EVENT_TYPES, PUBLIC_STATE_KEYS, RESERVED } from '../shared/state.mjs';
+import { keepEvent } from '../tools/uat/room-events.mjs';
 
 // The event types on main when the table was made, every one public. Adding, removing or hiding a type is a reviewed
 // change to this list (designs/architecture.md, “What reaches the browser”).
@@ -63,7 +63,7 @@ test('every key of the state is either public or private, never both and never n
   const keys = Object.keys(emptyState());
   assert.deepEqual([...PUBLIC_STATE_KEYS, ...PRIVATE_STATE_KEYS].sort(), [...keys].sort());
   for (const k of PUBLIC_STATE_KEYS) assert.equal(PRIVATE_STATE_KEYS.includes(k), false, k);
-  assert.equal(PUBLIC_STATE_KEYS.length, 20);
+  assert.equal(PUBLIC_STATE_KEYS.length, 19);
 });
 
 test('the public state keeps the public keys, as the store’s own values, and drops any other key', () => {
@@ -93,7 +93,7 @@ test('the table and its entries are frozen, so a type can’t change its flag at
   for (const [type, entry] of Object.entries(EVENTS)) assert.equal(Object.isFrozen(entry), true, type);
 });
 
-test('telemetry keeps no event of a type the page may not see, since its reports reach the page', () => {
+test('the checks’ history keeps no event of a type the page may not see', () => {
   const ev = { threadId: 't', item: { id: 'i', text: 'x' } };
   assert.deepEqual(keepEvent(1, 'item.add', ev), { seq: 1, type: 'item.add', data: ev });
   const table = { ...EVENTS, 'item.add': { ...EVENTS['item.add'], public: false } };

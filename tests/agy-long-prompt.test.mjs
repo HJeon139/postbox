@@ -115,7 +115,6 @@ test('#362: a turn the operating system refused ends failed with the person’s 
   const rt = new Runtime({
     store,
     adapters: new AdapterRegistry().register(adapter),
-    corpus: { search: () => [], read: () => null, stats: () => ({ books: [], passages: 0 }) },
     config: { origin: 'http://127.0.0.1:1', imageOrigins: [], lintSettleMs: 0, home: root },
   });
   store.emit('project', { id: 'p1', name: 'P', folder: root });

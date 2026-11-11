@@ -12,10 +12,10 @@ test('dropUnverified removes the check rows that say a check couldn’t vouch, a
     ['view-moved:view-moved:moved:main:t:1-2', { source: 'check', check: 'view-moved' }],
     ['tester:1', { source: 'tester', title: 'A tester finding' }],
     ['coverage-gap:p1', { source: 'coverage', unverified: null }],
-    ['telemetry:t', { source: 'telemetry', unverified: { check: 'delivery-dropped' } }],
+    ['run:t', { source: 'run', unverified: { check: 'delivery-dropped' } }],
   ]);
   dropUnverified(findings);
-  assert.deepEqual([...findings.keys()], ['view-moved:view-moved:moved:main:t:1-2', 'tester:1', 'coverage-gap:p1', 'telemetry:t']);
+  assert.deepEqual([...findings.keys()], ['view-moved:view-moved:moved:main:t:1-2', 'tester:1', 'coverage-gap:p1', 'run:t']);
 });
 
 test('lastCheckPass drops the early unverified rows before the pass that adds the final ones', () => {

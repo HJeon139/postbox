@@ -1,12 +1,15 @@
 // First-run content. A fresh install gets three generic agents (a researcher, a developer and a critic) and nothing
-// else; --demo gets the book-corpus agents, two projects and a few empty conversations, which the demo, the screenshots
-// and the tests play. Both get the new-agent boilerplates. agents.json in the data folder, if present, seeds the agents
+// else; --demo gets the reading-notes agents, two projects and a few empty conversations, with a few text assets in the
+// asset explorer’s and the indexer’s, which the demo, the screenshots and the tests play. Both get the new-agent boilerplates. agents.json in the data folder, if present, seeds the agents
 // instead, in either mode (see README).
 
 import { readFileSync } from 'node:fs';
-import { mkdir, readFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { cp, mkdir, readdir, readFile } from 'node:fs/promises';
+import { join, relative } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { GEMINI_MODEL } from '../shared/agent-facts.mjs';
+import { blobsOf } from './asset-tools.mjs';
+import { writeAsset } from './assets.mjs';
 import { agentFolderPath } from './folder-path.mjs';
 import { httpError } from './helpers.mjs';
 import { handleOf } from './persona-checks.mjs';
@@ -56,15 +59,15 @@ export function freshInstall() {
   };
 }
 
-/** The demo's agents, which use the book corpus in server/corpus. */
+/** The demo's agents, which work on the reading notes kept as the asset explorer conversation's assets. */
 export const DEMO_PERSONAS = [
   {
     handle: 'librarian',
-    description: 'Explores your books and builds tools to search them.',
-    tools: ['corpus.search', 'corpus.read', 'corpus.stats'],
-    instructions: 'Help the person explore their corpus. Build apps when a tool would explain better than prose.',
+    description: 'Explores your notes and builds tools to search them.',
+    tools: [],
+    instructions: 'Help the person explore the conversation’s assets. Build apps when a tool would explain better than prose.',
     examples: [
-      ['Build me an explorer for my corpus', 'An interactive search across every book'],
+      ['Build me an explorer for these assets', 'An interactive search across every note'],
       ['Show me every kind of block you can send', 'One of each, all live'],
       ['Explain lexical and semantic search', 'With examples from your own books'],
     ],
@@ -72,7 +75,7 @@ export const DEMO_PERSONAS = [
   {
     handle: 'indexer',
     description: 'Builds and maintains the search indexes.',
-    tools: ['corpus.search', 'corpus.read', 'corpus.stats', 'shell'],
+    tools: ['shell'],
     instructions: 'Keep the indexes correct and fast. Report progress as you go.',
     examples: [
       ['Index the shelf', 'Progress, subagents and a compaction'],
@@ -84,7 +87,7 @@ export const DEMO_PERSONAS = [
   {
     handle: 'researcher',
     description: 'Reads papers and explains them with a picture you can change.',
-    tools: ['corpus.search', 'web.fetch', 'arxiv.search', 'narrate.speak'],
+    tools: ['web.fetch', 'arxiv.search', 'narrate.speak'],
     instructions:
       'Cite sources. When you explain visually, use one picture that carries the idea and one control that visibly changes it; a predict-first question is fine if the picture shows first. Add practice or a quiz only when the person asks for it.',
     examples: [
@@ -96,7 +99,7 @@ export const DEMO_PERSONAS = [
   {
     handle: 'critic',
     description: 'Reviews specs, code and layouts line by line.',
-    tools: ['corpus.read'],
+    tools: [],
     instructions: 'Review carefully. Resolve what you fix, and explain what you leave open.',
     examples: [['Review my corpus schema line by line', 'Comment on the spec, then get a revision']],
   },
@@ -138,7 +141,7 @@ export const BOILERPLATES = [
     name: 'Indexer',
     description: 'Builds search indexes',
     instructions: 'Build and maintain search indexes. Report progress as you go.',
-    tools: ['corpus.search', 'corpus.read', 'corpus.stats', 'shell'],
+    tools: ['shell'],
   },
   {
     id: 'bp-gpt',
@@ -162,9 +165,6 @@ export const toBoilerplate = (p) => ({
 });
 
 export const KNOWN_TOOLS = [
-  ['corpus.search', 'Search the corpus'],
-  ['corpus.read', 'Read whole passages'],
-  ['corpus.stats', 'Corpus statistics'],
   ['web.fetch', 'Fetch web pages'],
   ['arxiv.search', 'Search arXiv'],
   ['shell', 'Run commands in the project folder'],
@@ -200,9 +200,9 @@ function checkAgents(personas) {
 
 /**
  * @param {any} rt
- * @param {{ dataDir: string, booksDir: string, backend?: string, demo?: boolean }} opts  backend: what the seeded agents run on
+ * @param {{ dataDir: string, backend?: string, demo?: boolean }} opts  backend: what the seeded agents run on
  */
-export async function seed(rt, { dataDir, booksDir, backend = 'mock', demo = false }) {
+export async function seed(rt, { dataDir, backend = 'mock', demo = false }) {
   const s = rt.store.state;
   if (Object.keys(s.personas).length) {
     if (!BOILERPLATES.every((b) => s.boilerplates[b.id])) {
@@ -230,20 +230,44 @@ export async function seed(rt, { dataDir, booksDir, backend = 'mock', demo = fal
   // The demo's conversations need the demo's agents; agents.json replaces them, and the conversations too.
   if (personas !== DEMO_PERSONAS) return true;
 
+  const notesDir = join(dataDir, 'notes');
   const researchDir = join(dataDir, 'research');
+  // The notes are the project folder’s files too, as a person’s own would be, for the folder picker and path writes.
+  await cp(DEMO_ASSETS, notesDir, { recursive: true, force: false });
   await mkdir(researchDir, { recursive: true });
-  const corpus = { id: newId('pr'), name: 'Book corpus', folder: booksDir };
+  const notes = { id: newId('pr'), name: 'Reading notes', folder: notesDir };
   const research = { id: newId('pr'), name: 'Agent research', folder: researchDir };
-  rt.store.emit('project', corpus);
+  rt.store.emit('project', notes);
   rt.store.emit('project', research);
   const P = (h) => rt.personaByHandle(h).id;
-  rt.createThread({ projectId: corpus.id, title: 'Corpus explorer', personaIds: [P('librarian')] });
-  rt.createThread({ projectId: corpus.id, title: 'Index the shelf', personaIds: [P('indexer')] });
-  rt.createThread({ projectId: corpus.id, title: 'Corpus schema spec', personaIds: [P('critic')] });
-  rt.createThread({ projectId: corpus.id, title: 'Catalog tour', personaIds: [P('librarian')] });
-  rt.createThread({ projectId: corpus.id, title: 'Corpus planning', personaIds: [P('indexer'), P('researcher')] });
+  const explorer = rt.createThread({ projectId: notes.id, title: 'Asset explorer', personaIds: [P('librarian')] });
+  await seedAssets(rt, explorer.id);
+  const shelf = rt.createThread({ projectId: notes.id, title: 'Index the shelf', personaIds: [P('indexer')] });
+  await seedAssets(rt, shelf.id);
+  rt.createThread({ projectId: notes.id, title: 'Corpus schema spec', personaIds: [P('critic')] });
+  rt.createThread({ projectId: notes.id, title: 'Catalog tour', personaIds: [P('librarian')] });
+  rt.createThread({ projectId: notes.id, title: 'Corpus planning', personaIds: [P('indexer'), P('researcher')] });
   rt.createThread({ projectId: research.id, title: 'ReAct, step by step', personaIds: [P('researcher')] });
   rt.createThread({ projectId: research.id, title: 'Agent memory papers', personaIds: [P('researcher')] });
   rt.createThread({ projectId: research.id, title: 'Citation fixes', personaIds: [P('researcher')] });
   return true;
+}
+
+/** The demo’s text assets (server/demo-assets/), published to the asset explorer’s and the shelf’s rooms as @librarian’s. */
+const DEMO_ASSETS = fileURLToPath(new URL('./demo-assets/', import.meta.url));
+
+/**
+ * Publishes the demo’s text assets to a room, each under its path in server/demo-assets/, so the explorer has notes to
+ * search. A Postbox with no data folder keeps no assets, and gets none.
+ * @param {any} rt @param {string} room
+ */
+async function seedAssets(rt, room) {
+  const blobs = blobsOf(rt);
+  if (!blobs) return;
+  const files = (await readdir(DEMO_ASSETS, { recursive: true, withFileTypes: true })).filter((e) => e.isFile());
+  for (const path of files.map((e) => join(e.parentPath, e.name)).sort()) {
+    const req = { kind: 'write', room, name: relative(DEMO_ASSETS, path), bytes: await readFile(path), type: 'text/markdown', author: 'librarian' };
+    const r = await writeAsset(rt.store, blobs, req);
+    if (!r.ok) throw new Error(`Couldn’t seed the demo asset ${req.name}: ${r.message}`);
+  }
 }

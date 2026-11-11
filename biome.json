@@ -19,7 +19,6 @@
       "tools/**",
       "tests/**",
       "playwright.config.mjs",
-      "!server/corpus/books",
       "!.claude",
       "!app/kit/vendor"
     ]
@@ -278,10 +277,6 @@
       }
     },
     {
-      "includes": ["server/corpus.mjs"],
-      "linter": { "rules": { "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 55 } } } } }
-    },
-    {
       "includes": ["server/index.mjs"],
       "linter": {
         "rules": {
@@ -496,9 +491,7 @@
         "server/store-outage.mjs",
         "server/store-recover.mjs",
         "server/store-retry.mjs",
-        "server/store-snapshot.mjs",
-        "server/telemetry-sweep.mjs",
-        "server/telemetry.mjs"
+        "server/store-snapshot.mjs"
       ],
       "linter": { "rules": { "suspicious": { "noImportCycles": "off" } } }
     }

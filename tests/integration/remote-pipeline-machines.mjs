@@ -23,8 +23,6 @@ export const LINUX = process.platform === 'linux';
 export const RUN = `v1-${randomUUID()}`;
 export const TEST = { skip: NO_UNIX, timeout: 90_000 };
 export const BLOCK_ID = 'pick';
-
-export const corpus = { search: () => [], read: () => null, stats: () => ({ books: [], passages: 0 }) };
 export const recorded = (name) =>
   readFileSync(join(FIXTURES, '..', 'claude-code', `${name}.jsonl`), 'utf8')
     .split('\n')

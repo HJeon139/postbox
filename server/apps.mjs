@@ -11,7 +11,7 @@ import { notYours } from './app-retire.mjs';
 import { APP_HOLD_MAX, APP_SEND_LIMIT, APP_SEND_WINDOW_MS } from './app-send-limits.mjs';
 import { offerNeed, releaseNeed } from './card-needs.mjs';
 import { httpError, refuseArchived } from './helpers.mjs';
-import { hostTool } from './host-tool.mjs';
+import { HELD_BY_EVERY_AGENT, hostTool } from './host-tool.mjs';
 import { newId } from './store.mjs';
 
 /** @typedef {import('./agent-files.mjs').AppFile} AppFile */
@@ -200,15 +200,19 @@ export function appState(rt, appId, state) {
   rt.store.emit('app', { ...app, state: JSON.parse(json) });
 }
 
-/** An app asks the host for data. It can use only tools both it and its agent were granted. */
+/**
+ * An app asks the host for data. It can use only tools both it and its agent were granted; every agent holds its
+ * conversation’s assets (HELD_BY_EVERY_AGENT), so an app reads them by naming them in its permissions.
+ */
 export function appQuery(rt, appId, tool, args) {
   const app = rt.s.apps[appId];
   if (!app) throw httpError(404, 'That app doesn’t exist.');
   const se = rt.s.sessions[app.sessionId];
   const persona = se && rt.personaFor(se);
-  const allowed = new Set((app.versions[app.current - 1].permissions ?? []).filter((t) => persona?.tools?.includes(t)));
+  const held = (/** @type {string} */ t) => HELD_BY_EVERY_AGENT.has(t) || persona?.tools?.includes(t);
+  const allowed = new Set((app.versions[app.current - 1].permissions ?? []).filter(held));
   if (!allowed.has(tool)) throw httpError(403, `This app can’t use “${tool}”. It needs the permission, and its agent needs the tool.`);
-  return hostTool(rt, tool, args);
+  return hostTool(rt, tool, args, { threadId: app.threadId });
 }
 
 /**

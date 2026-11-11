@@ -19,8 +19,7 @@ class Quiet {
 
 function setup() {
   const store = new Store(null);
-  const corpus = { search: () => [], read: () => null, stats: () => ({ books: [], passages: 0 }) };
-  const rt = new Runtime({ store, adapters: new AdapterRegistry().register(new Quiet()), corpus, config: { origin: 'http://127.0.0.1:1', imageOrigins: [] } });
+  const rt = new Runtime({ store, adapters: new AdapterRegistry().register(new Quiet()), config: { origin: 'http://127.0.0.1:1', imageOrigins: [] } });
   store.emit('project', { id: 'p1', name: 'P', folder: '/tmp' });
   const a = rt.createPersona({ handle: 'researcher' });
   const t = rt.createThread({ projectId: 'p1', title: 'T', personaIds: [a.id] });

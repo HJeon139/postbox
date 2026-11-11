@@ -1,6 +1,6 @@
 // Going to what an agent needs (#285), with real clicks and keys:
 // - ⌃J goes to the open conversation's agent first, then the one that has waited longest, and pressing again visits
-//   every agent that needs you, a side thread's and a refused step's included.
+//   every agent that needs you, a side thread's and a tool request's included.
 // - Each jump scrolls the ask into view, focuses it and outlines it, far up a long transcript or in the side panel.
 // - Clicking an agent's needs-you ring or row (the rail, the Agents section, the overview, a message, the top bar)
 //   goes to that agent's ask. In a room's rail row, a ring goes to its agent and the rest of the row to the oldest.
@@ -29,7 +29,7 @@ const S = {};
 const T = {};
 const handleOfItem = {};
 
-/** Scripted agents: each asks once, on its first turn, a choice, or a refused step for @epsilon. Later turns just reply. */
+/** Scripted agents: each asks once, on its first turn, a choice, or a tool request for @epsilon. Later turns just reply. */
 function scriptAgents() {
   const asked = new Set();
   app.rt.adapters.register({
@@ -40,8 +40,7 @@ function scriptAgents() {
     async deliver(session, _message, ctx) {
       if (!asked.has(session.handle)) {
         asked.add(session.handle);
-        if (session.handle === 'epsilon')
-          ctx.denied({ toolUseId: 'tu_eps', tool: 'Bash', input: { command: 'rm -rf build' }, label: 'Run rm -rf build', reason: 'A deny rule.' });
+        if (session.handle === 'epsilon') ctx.tools.ask_for_tool({ tool: 'shell', why: 'To clean the build.' });
         else if (session.handle !== 'zeta') ctx.tools.show_block({ block: choice(session.handle) });
       }
       ctx.text('Done.');
@@ -49,7 +48,7 @@ function scriptAgents() {
   });
 }
 
-/** Three conversations: Alpha (@alpha, and @beta, who answers @alpha in a side thread from before #372), Room and Refused. */
+/** Three conversations: Alpha (@alpha, and @beta, who answers @alpha in a side thread from before #372), Room and Tools. */
 function conversations() {
   const { rt, store } = app;
   store.emit('project', { id: 'pr_needs', name: 'Needs', folder: app.root });
@@ -63,11 +62,11 @@ function conversations() {
   });
   rt.addItem(T.alpha.id, { kind: 'sidelink', sideThreadId: T.side.id, from: 'alpha', to: 'beta', count: 0 });
   T.room = rt.createThread({ projectId: 'pr_needs', title: 'Room', personaIds: [gamma, delta, zeta] });
-  T.refused = rt.createThread({ projectId: 'pr_needs', title: 'Refused', personaIds: [epsilon] });
+  T.tools = rt.createThread({ projectId: 'pr_needs', title: 'Tools', personaIds: [epsilon] });
 }
 
 /**
- * The asks, oldest first: @alpha, @gamma, @delta, @beta in a side thread of Alpha, then @epsilon’s refused step, each
+ * The asks, oldest first: @alpha, @gamma, @delta, @beta in a side thread of Alpha, then @epsilon’s tool request, each
  * after the clock has moved on, so their order is the order they were made in. Then @zeta speaks once and stays idle.
  */
 async function ask() {
@@ -88,7 +87,7 @@ async function ask() {
   // @beta’s turn in the side thread, as a wake there started one before #372.
   rt.deliver(sessionOf('beta').id, { kind: 'agent', from: '@alpha', text: 'Which source should I read first?' }, { threadId: T.side.id });
   await next();
-  rt.sendMessage(T.refused.id, { text: '@epsilon clean the build.' });
+  rt.sendMessage(T.tools.id, { text: '@epsilon clean the build.' });
   await next();
   rt.sendMessage(T.room.id, { text: '@zeta anything?' });
   await idle();
@@ -114,7 +113,7 @@ test.beforeAll(async () => {
   expect(
     ['alpha', 'beta', 'gamma', 'delta', 'epsilon'].map((h) => S[h].needs?.kind),
     'every agent but @zeta needs you',
-  ).toEqual(['block', 'block', 'block', 'block', 'denial']);
+  ).toEqual(['block', 'block', 'block', 'block', 'toolask']);
   for (const h of ['alpha', 'beta', 'gamma', 'delta', 'epsilon']) handleOfItem[S[h].needs.itemId] = h;
 });
 
@@ -167,13 +166,13 @@ const agentRow = (page, h) => page.locator('.rail .agent-row').filter({ has: pag
 const railRow = (page, t) => page.locator(`.rail a.row[data-thread="${t.id}"]`);
 const personaSheet = (page) => page.getByRole('dialog', { name: 'Settings' });
 
-test('the global button counts every agent that needs you, a refused step’s too', async ({ page }) => {
+test('the global button counts every agent that needs you, a tool request’s too', async ({ page }) => {
   await open(page, `#/t/${T.room.id}`);
   await expect(page.locator('#next-needs')).toContainText(/\b5 need you/);
 });
 
 test('⌃J visits every agent that needs you, this conversation’s first, then oldest first, each ask on screen, focused and outlined', async ({ page }) => {
-  await open(page, `#/t/${T.refused.id}`);
+  await open(page, `#/t/${T.tools.id}`);
   for (const h of ['epsilon', 'alpha', 'gamma', 'delta', 'beta']) {
     await ctrlJ(page);
     await landsOn(page, h);
@@ -187,27 +186,27 @@ test('⌃J from a conversation whose agent needs you goes to that agent first', 
 });
 
 test('a rail row opens its conversation, even while its agent needs you; its ring goes to the ask (#320)', async ({ page }) => {
-  await open(page, `#/t/${T.refused.id}`);
+  await open(page, `#/t/${T.tools.id}`);
   await railRow(page, T.alpha).locator('.name').click();
   await expect(page).toHaveURL(new RegExp(`#/t/${T.alpha.id}$`));
   await stayedOffTheAsk(page, 'alpha');
-  await open(page, `#/t/${T.refused.id}`);
+  await open(page, `#/t/${T.tools.id}`);
   await railRow(page, T.alpha).locator(`pb-ring[data-session="${S.alpha.id}"]`).click();
   await landsOn(page, 'alpha');
 });
 
 test('a room’s rail row: a ring goes to its agent’s ask, and the rest of the row opens the room', async ({ page }) => {
-  await open(page, `#/t/${T.refused.id}`);
+  await open(page, `#/t/${T.tools.id}`);
   await railRow(page, T.room).locator(`pb-ring[data-session="${S.delta.id}"]`).click();
   await landsOn(page, 'delta');
-  await open(page, `#/t/${T.refused.id}`);
+  await open(page, `#/t/${T.tools.id}`);
   await railRow(page, T.room).locator('.name').click();
   await expect(page).toHaveURL(new RegExp(`#/t/${T.room.id}$`));
   await stayedOffTheAsk(page, 'gamma');
 });
 
 test('a click that opens a new tab or window, on a rail row whose agent needs you, is left to the browser', async ({ page }) => {
-  await open(page, `#/t/${T.refused.id}`);
+  await open(page, `#/t/${T.tools.id}`);
   // A last listener records whether each click was taken, then keeps the browser from opening the tab.
   await page.evaluate(() => {
     window.__taken = [];
@@ -223,7 +222,7 @@ test('a click that opens a new tab or window, on a rail row whose agent needs yo
       .locator('.name')
       .click({ modifiers: [key] });
   expect(await page.evaluate(() => window.__taken), 'no click was taken to the ask').toEqual([false, false]);
-  await expect(page, 'the page stayed where it was').toHaveURL(new RegExp(`#/t/${T.refused.id}$`));
+  await expect(page, 'the page stayed where it was').toHaveURL(new RegExp(`#/t/${T.tools.id}$`));
 });
 
 test('an agent’s name in the Agents section opens its persona sheet, even while it needs you, and there’s no ⋯ (#320)', async ({ page }) => {

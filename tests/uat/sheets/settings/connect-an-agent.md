@@ -10,7 +10,7 @@ Shows which agent backends this Postbox can run, and how they reach Postbox’s 
 
 ## Expected functionality
 
-- Lists the backends available here, and the corpus.
+- Lists the backends available here.
 - Says that Postbox connects each backend it runs, with a token for each turn. There’s no endpoint to connect another agent with a session id alone: since #54, a tool call without the running turn’s token is refused, so a script that knows a session id can’t act as that agent.
 
 ## Steps to reproduce

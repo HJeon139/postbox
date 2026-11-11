@@ -109,30 +109,6 @@ test('#1067 a flag cut at 200 characters has the tag characters left of it repla
   assert.equal(await uploaded(encodeURIComponent(`${'a'.repeat(192)}${ENGLAND}.png`)), `${'a'.repeat(192)}🏴___`);
 });
 
-/** The title the corpus gives a book, as the page’s state and an agent’s search show it. */
-const titleOf = (corpus, id) => corpus.stats().books.find((b) => b.id === id)?.title;
-
-// #1067: a file stored before #991 kept its raw name, and the corpus took a book’s title from it.
-test('#1067 a file added to the corpus under a raw stored name is titled with the name cleaned, then and after a restart', async (t) => {
-  const dir = tempDir('pb-upload-corpus-');
-  const port = PORT + 1;
-  const open = () => start({ port, dataDir: dir, fresh: false, demo: false, quiet: true, claudeHome: dir, listen: false });
-  let pb = await open();
-  t.after(() => pb.close());
-  const at = (r) => fakeRequest(pb.handle, { host: `127.0.0.1:${port}`, ...r });
-  const cookie = (await at({ path: '/', headers: NAVIGATION })).headers['set-cookie'].split(';')[0];
-  const r = await at({ method: 'POST', path: '/api/files', body: 'hello', cookie, headers: { 'x-filename': 'notes.txt', 'content-type': 'text/plain' } });
-  const raw = 'notes\u202etxt.exe.txt';
-  pb.store.emit('file', { ...pb.store.state.files[r.json.id], name: raw });
-  const added = await at({ method: 'POST', path: '/api/corpus', body: { fileId: r.json.id }, cookie });
-  assert.equal(added.status, 200, added.text);
-  assert.equal(titleOf(pb.rt.corpus, r.json.id), 'notes_txt.exe.txt');
-  assert.equal(pb.store.state.files[r.json.id].name, raw, 'the stored record isn’t rewritten');
-  await pb.close();
-  pb = await open();
-  assert.equal(titleOf(pb.rt.corpus, r.json.id), 'notes_txt.exe.txt', 'after a restart');
-});
-
 test('#1067 hidesName still reads one character alone, for #1052’s per-character callers: VS16, ZWJ and ZWNJ pass', () => {
   const hidden = ['\u0000', '\u0085', '\u202e', '\u2066', '\u200b', '\ufeff', '\u3164', '\u034f', '\u{e0041}', '\u{e007f}', '\ud800', '\udc00'];
   for (const c of hidden) assert.equal(hidesName(c), true, JSON.stringify(c));

@@ -26,15 +26,13 @@ class ScriptedAdapter {
 function setup() {
   const store = new Store(null);
   const adapter = new ScriptedAdapter();
-  const corpus = { search: () => [], read: () => null, stats: () => ({ books: [], passages: 0 }) };
   const rt = new Runtime({
     store,
     adapters: new AdapterRegistry().register(adapter),
-    corpus,
     config: { origin: 'http://127.0.0.1:1', imageOrigins: [], lintSettleMs: 0 },
   });
   store.emit('project', { id: 'p1', name: 'P', folder: '/tmp' });
-  const a = rt.createPersona({ handle: 'critic', tools: ['corpus.search'] });
+  const a = rt.createPersona({ handle: 'critic', tools: ['arxiv.search'] });
   return { store, rt, adapter, a };
 }
 const settle = async (rt) => {
@@ -64,7 +62,7 @@ test('Shell turned on from the agent panel answers its open cards in every conve
   const two = await asked(rt, adapter, a, 'Two');
   const card = (x) => store.items(x.t.id).find((i) => i.kind === 'toolask');
   assert.equal(store.state.sessions[one.se.id].needs?.kind, 'toolask');
-  rt.updatePersona(a.id, { tools: ['corpus.search', 'shell'] });
+  rt.updatePersona(a.id, { tools: ['arxiv.search', 'shell'] });
   await settle(rt);
   for (const x of [one, two]) {
     assert.equal(card(x).status, 'on');
@@ -81,7 +79,7 @@ test('the card’s own button still answers it once', async () => {
   const one = await asked(rt, adapter, a, 'One');
   rt.act(one.t.id, store.items(one.t.id).find((i) => i.kind === 'toolask').id, 'on');
   await settle(rt);
-  assert.deepEqual(store.state.personas[a.id].tools, ['corpus.search', 'shell']);
+  assert.deepEqual(store.state.personas[a.id].tools, ['arxiv.search', 'shell']);
   assert.deepEqual(voices(store, one.t), ['Turned on “Run commands in the project folder” for @critic']);
   assert.equal(notices(adapter, one.se).length, 1);
 });
@@ -89,7 +87,7 @@ test('the card’s own button still answers it once', async () => {
 test('a change that doesn’t turn the asked tool on leaves the card open', async () => {
   const { store, rt, adapter, a } = setup();
   const one = await asked(rt, adapter, a, 'One');
-  rt.updatePersona(a.id, { tools: ['corpus.search', 'web.fetch'] });
+  rt.updatePersona(a.id, { tools: ['arxiv.search', 'web.fetch'] });
   rt.updatePersona(a.id, { description: 'Reviews changes.' });
   await settle(rt);
   assert.equal(store.items(one.t.id).find((i) => i.kind === 'toolask').status, 'open');

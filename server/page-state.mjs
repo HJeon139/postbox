@@ -6,13 +6,12 @@ import { DEFAULT_EFFORT, EFFORT_LEVELS, REAL_BACKEND_TOOLS } from './adapters/se
 import { publicState } from './public-state.mjs';
 import { DEFAULT_MODEL, PERMISSION_MODES } from './runtime.mjs';
 import { KNOWN_TOOLS } from './seed.mjs';
-import { recordingOff } from './telemetry.mjs';
 
 /**
  * The answer to GET /api/state.
- * @param {{ store: any, rt: any, adapters: any, origin: string, demo: any, real: any, config: any, corpus: any }} ctx
+ * @param {{ store: any, rt: any, adapters: any, origin: string, demo: any, real: any, config: any }} ctx
  */
-export function pageState({ store, rt, adapters, origin, demo, real, config, corpus }) {
+export function pageState({ store, rt, adapters, origin, demo, real, config }) {
   return {
     seq: store.state.seq,
     epoch: store.epoch, // the history the seq counts within; the stream request echoes it (server/live-streams.mjs)
@@ -37,10 +36,8 @@ export function pageState({ store, rt, adapters, origin, demo, real, config, cor
       demo,
       // Whether Postbox looked for real backends, and the Claude Code it found: if none, the overview says how (#12).
       realBackends: real,
-      recordingOff: recordingOff(rt),
       versions: config.versions,
       build: config.build,
-      corpus: corpus.stats(),
     },
   };
 }

@@ -1,7 +1,7 @@
 // What a restart does with the turns that were running when the server stopped (server/index.mjs).
 
 import { ASKING } from '../shared/catalog.mjs';
-import { challengerWins, nextNeed, stateFor } from './card-needs.mjs';
+import { challengerWins, nextNeed, RANK, stateFor } from './card-needs.mjs';
 
 /**
  * Whether the need's card still waits for you after the restart. A failed turn waits for Retry. A permission waits only
@@ -9,6 +9,8 @@ import { challengerWins, nextNeed, stateFor } from './card-needs.mjs';
  * expireStalePermissions). @param {any} rt @param {any} se @param {any} need
  */
 function stillWaits(rt, se, need) {
+  // A kind Postbox no longer raises (a refused call, since intent.md's principle 8 was applied to it) waits for nothing.
+  if (!Object.hasOwn(RANK, need.kind)) return false;
   const card = cardOf(rt, se, need);
   if (!card) return false;
   // A failed reply the person dismissed (#883) waits for nothing, as needOf says.
@@ -27,8 +29,24 @@ function stillWaits(rt, se, need) {
 export function settleInterrupted(rt) {
   for (const se of Object.values(rt.s.sessions)) {
     // A turn was running: its state says so, or a permission it was blocked on is the need, which only a running turn has.
-    if (!['think', 'gen', 'tool', 'stopping'].includes(se.state) && se.needs?.kind !== 'permission') continue;
+    if (!RUNNING.includes(se.state) && se.needs?.kind !== 'permission') continue;
     rt.updateSession(se.id, { ...settledNeed(rt, se), subagents: [], currentStep: 'Interrupted by a restart', stopAsk: null });
+  }
+  settleRetiredNeeds(rt);
+}
+
+const RUNNING = ['think', 'gen', 'tool', 'stopping'];
+
+/**
+ * A need of a kind Postbox no longer raises, saved before it stopped (a refused call, intent.md's principle 8): an idle
+ * agent's is settled to whatever else waits, so its ring doesn't pulse for nothing. An interrupted turn's was settled
+ * above, since stillWaits drops it. @param {any} rt
+ */
+function settleRetiredNeeds(rt) {
+  for (const id of Object.keys(rt.s.sessions)) {
+    const se = rt.store.pending.session(id);
+    if (!se?.needs || Object.hasOwn(RANK, se.needs.kind) || RUNNING.includes(se.state)) continue;
+    rt.updateSession(id, settledNeed(rt, se));
   }
 }
 

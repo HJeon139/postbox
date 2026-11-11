@@ -46,7 +46,7 @@ test('#228: after a restart, what waited in the queues goes once Postbox is read
   assert.equal(store.state.threads[t.id].queue.length, 1);
   // The server stops with it still queued; the new one sends it once it listens (index.mjs calls drainAll).
   const after = new ScriptedAdapter();
-  const again = new Runtime({ store, adapters: new AdapterRegistry().register(after), corpus: rt.corpus, config: rt.config });
+  const again = new Runtime({ store, adapters: new AdapterRegistry().register(after), config: rt.config });
   again.drainAll();
   await sleep(20);
   assert.deepEqual([after.calls[0].sessionId, after.calls[0].message.text], [beta.id, 'Which editions?']);

@@ -58,7 +58,7 @@ export const REMOTE_LIMITS = Object.freeze({
   snapshotTextChars: 1_000_000,
   snapshotThreads: 64,
   snapshotItems: 20_000,
-  /** A `reply`’s text, such as a corpus search’s results. */
+  /** A `reply`’s text, such as an asset search’s results. */
   replyChars: 1_000_000,
   /** Paths a harness was looked for in. */
   looked: 32,
@@ -122,9 +122,6 @@ export const TOOL_ROUTES = Object.freeze({
   // Whether it may post depends on the thread and who started the turn, which only Postbox knows, so it waits for the answer.
   bring_to_conversation: 'ask',
   ask_for_tool: 'queue',
-  corpus_search: 'ask',
-  // It loads the dataset into Postbox’s corpus and says how it went, so it waits like a search.
-  add_dataset: 'ask',
   // Asks Postbox when attached, answers from the snapshot when not.
   read_conversation: 'read',
   read_message: 'read',
@@ -132,6 +129,7 @@ export const TOOL_ROUTES = Object.freeze({
   // names the version it made or why it was refused, so each waits.
   list_assets: 'ask',
   read_asset: 'ask',
+  search_assets: 'ask',
   write_asset: 'ask',
   rename_asset: 'ask',
   delete_asset: 'ask',

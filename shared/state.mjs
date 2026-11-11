@@ -28,8 +28,6 @@ export function emptyState() {
     glossary: map(),
     apps: map(),
     files: map(),
-    // Datasets agents loaded into the corpus (#47), so they’re loaded again after a restart.
-    datasets: map(),
     schedules: map(),
     // Remote hosts agents can run on (#120), each with its settings (shared/remote-settings.mjs).
     hosts: map(),
@@ -87,7 +85,6 @@ export const PUBLIC_STATE_KEYS = Object.freeze([
   'glossary',
   'apps',
   'files',
-  'datasets',
   'schedules',
   'hosts',
   'hostStatus',
@@ -139,7 +136,9 @@ export const EVENTS = Object.freeze({
   },
   app: { apply: put('apps'), public: true },
   file: { apply: put('files'), public: true },
-  dataset: { apply: (s, d) => ((s.datasets ??= map())[d.id] = d), public: true },
+  // Retired with the corpus (#516): data an agent brings in is a room asset now. An older log still holds these, so
+  // they apply as nothing.
+  dataset: { apply: () => {}, public: true },
   schedule: {
     apply: (s, d) => {
       if (d.removed) delete s.schedules[d.id];
@@ -207,7 +206,7 @@ function removeEntity(s, d) {
 /**
  * The session a session.patch leaves, as a new object: the session with the patch’s fields set, and the fields it
  * unsets deleted. The one place that defines what a patch means, so every reader of the log (the reducer, the checks’
- * history in server/room-events.mjs, the UAT runner’s tools/uat/run-files.mjs) reads a patch the same way.
+ * history in tools/uat/room-events.mjs, the UAT runner’s tools/uat/run-files.mjs) reads a patch the same way.
  * @param {Record<string, any>} se  the session as it is
  * @param {{ patch?: Record<string, any>, unset?: string[] }} d  the event’s data
  */

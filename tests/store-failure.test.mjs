@@ -9,6 +9,7 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { Store } from '../server/store.mjs';
+import { parseSnapshotText } from '../server/store-snapshot-lines.mjs';
 import { disk, handleWith } from './store-jsonl-fixture.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
@@ -97,7 +98,7 @@ test('a snapshot piece never splits a surrogate pair: an emoji across the bounda
   const { writeSnapshot } = await import('../server/store-snapshot.mjs');
   const text = `${'x'.repeat((1 << 20) - '{"text":"'.length - 1)}🌙 and on`;
   await writeSnapshot({ io: realFs, at: (n) => join(dir, n), state: { text } });
-  assert.equal(JSON.parse(await readFile(join(dir, 'snapshot.json'), 'utf8')).text, text);
+  assert.equal(parseSnapshotText(await readFile(join(dir, 'snapshot.json'), 'utf8')).text, text);
 });
 
 test('two commits with one opId queued behind a pending commit: the second gets the first’s seq as a duplicate, written once', async () => {

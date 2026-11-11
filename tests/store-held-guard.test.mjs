@@ -39,7 +39,6 @@ const PUBLISHED = {
   'scheduled-wakes.mjs': ['prepareScheduledRetry'], // the person’s Retry of a wake line they see
   'share-back.mjs': ['shareToConversation', 'shareToConversation'], // the person’s Share of an item they see
   'store-outage.mjs': ['settleOrphanTurns'], // at a reload, when nothing is held
-  'telemetry-record.mjs': ['collect'], // a run’s record, after it
   'thread-summary.mjs': ['lineOf', 'lineOf', 'threadCatchUp', 'threadLines', 'readUpTo', 'summarizeThread', 'summarizeThread', 'reactionLines'], // prompts and summaries for a later turn
   'tool-ask.mjs': ['resolveToolAsk'], // the person’s answer to an ask they see
   'view-app/consent.mjs': ['resolveViewAsk', 'settleDownloads'], // the person’s answer to the download card they see, and at startup a card a stop cut short, before any write is held (#95)
@@ -58,23 +57,10 @@ const DIRECT = {
   'ledger-answers.mjs': ['published'], // the Work view’s diff and output, answers to the page
   'ledger.mjs': ['expireStale'], // at startup
   'permission-expiry.mjs': ['expireStalePermissions'], // at startup
-  'room-checks-agy.mjs': ['deniedSteps'], // facts from a recorded run, offline
-  'room-checks-backends.mjs': ['BACKEND_CHECKS'], // the same
-  'room-checks-asks.mjs': ['droppedAsks', 'needsMismatches'], // the same
-  'room-checks-needs.mjs': ['declinedThenMentioned'], // the same
-  'room-checks-telemetry.mjs': ['fiveWordRuns', 'secretsOf', 'CHECKS'], // the same
-  'room-checks-threads.mjs': ['missingThreadTasks'], // the same
-  'room-checks-work.mjs': ['ledgerEntries'], // the same
-  'room-checks.mjs': ['itemsOf', 'CHECKS', 'CHECKS', 'CHECKS', 'CHECKS', 'CHECKS'], // the same
-  'room-delivery.mjs': ['itemsOf'], // the same
-  'room-unverified.mjs': ['uncheckedThreads'], // the same
   'runtime.mjs': ['expireStaleCommands'], // at startup
   'sandbox-routes.mjs': ['sandboxRoute'], // an app version’s sandbox page: an HTTP answer to the page
-  'telemetry-record.mjs': ['blockRow', 'workOf'], // a run’s record, after it
-  'telemetry-report.mjs': ['liveFacts', 'liveFacts'], // the same
   'tool-ask.mjs': ['settleToolAsks'], // only the thread ids; each thread is read through store.pending
   'view-app/view-app.mjs': ['viewApp'], // the app the agent named, to find its thread and version for the picture (#95)
-  'waiting-on-you.mjs': ['waitingOnYou'], // shared with the page, which has only what was broadcast
   // The archive pass (#305) picks a turn from the published state; its commit function gathers it again from the state
   // the commit is sequenced on, so any change since stops the commit (I5, I8), and a patch held behind it is dropped.
   'work-archive.mjs': ['gather', 'gather'],
@@ -86,7 +72,7 @@ const PENDING = {
   // each decides a write, so a card held behind a commit counts (#366). An offered card and the current need's card
   // (takesNeed): their times, and whether the current one still waits, decide whether the offer takes the need (#711).
   'card-needs.mjs': ['keptTurns', 'nextNeed', 'takesNeed', 'takesNeed', 'releaseNeed', 'notifyOnce'],
-  'restart-sweep.mjs': ['cardOf'], // the need's card: whether it still waits, and its time on a tie, decide the need kept (#366)
+  'restart-sweep.mjs': ['settleRetiredNeeds', 'cardOf'], // the need's card: whether it still waits, and its time on a tie, decide the need kept (#366); a session whose need is of a retired kind, settled
   'app-retire.mjs': ['retireApp', 'retireApp', 'retireApp', 'release'], // retire_app of an app the turn may have just shown, and its sweep of open sends
   'apps.mjs': ['showApp', 'updateApp'], // show_app and update_app of an app the turn may have just shown
   'block-show.mjs': ['showBlock', 'showBlock', 'showBlock', 'shownAgain'], // show_block of an app or a block id the turn may have just shown

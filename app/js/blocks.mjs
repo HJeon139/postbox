@@ -24,27 +24,39 @@ const draft = (id, init) => {
   return drafts.get(id);
 };
 
-// What the person is answering (#123): the revision of each open choice, form, confirm or review as it was when
-// this page first showed it. The answer says which revision it’s for, so one the agent replaced meanwhile is
-// refused instead of landing on text they didn’t see. After a refusal (stale: what they saw before), the revision
-// they answer is the first newer one the page draws, with the notice and diff; a later one is refused again.
-/** @type {Map<string, { revision: number, block: any, after: number | null, stale: { block: any, fresh: boolean } | null }>} */
+// What the person is answering (#123): the revision of each open choice, form, confirm or review the page last drew.
+// The answer says which revision it’s for, so one the agent replaced before the page drew it is refused instead of
+// landing on text they didn’t see. When the page draws a newer revision, it says so at once, with the diff from the
+// text they saw (stale), and their next click answers what’s on screen: a change never costs a click to find out.
+/** @type {Map<string, { revision: number, block: any, stale: { block: any } | null }>} */
 const seen = new Map();
 function track(item) {
   if (!ASKING.has(item.block.type) || item.answered) return void seen.delete(item.id);
   const rev = item.revision ?? 1;
   const s = seen.get(item.id);
-  if (!s) seen.set(item.id, { revision: rev, block: item.block, after: null, stale: null });
-  else if (s.after !== null && rev > s.after) Object.assign(s, { revision: rev, block: item.block, after: null });
+  if (!s) return void seen.set(item.id, { revision: rev, block: item.block, stale: null });
+  if (rev <= s.revision) return;
+  // The diff is from the first version the page showed, however many revisions arrive before the person answers, so a
+  // change in one of them is never hidden by the next. A refusal’s error, from before this version arrived, is moot.
+  Object.assign(s, { revision: rev, block: item.block, stale: { block: s.stale?.block ?? s.block } });
+  const d = drafts.get(item.id);
+  if (d) d.error = null;
 }
-// The notice on a block whose answer was refused because it changed. It’s announced once, when it appears, and has
-// an id so focus on it survives a re-render.
-const staleNote = (item, text) => {
-  const s = seen.get(item.id)?.stale;
-  if (!s) return null;
-  const note = h('div.callout.stale-note', { id: `${item.id}-stale`, role: s.fresh ? 'alert' : null, tabindex: '-1' }, icon('warn'), h('span', text));
-  s.fresh = false;
-  return note;
+// The notice on a block the agent changed after the page showed it. It goes below the block’s buttons, so it never
+// moves one under a pointer, and it never takes focus: it reports what happened, and asks nothing.
+const STALE_TEXT = {
+  choice: 'The agent changed this since you first saw it. Your choice is kept where the new version still has it.',
+  form: 'The agent changed this since you first saw it. Your answers are kept: check them against the new version.',
+  confirm: 'The agent changed this since you first saw it. What it asks you to confirm is the text above.',
+  review: 'The agent changed this draft since you first saw it. Lines marks what changed, and your comments are kept.',
+  // An app review has no lines to mark.
+  reviewApp: 'The agent changed this since you looked. Your comments are kept.',
+};
+const staleNote = (item) => {
+  if (!seen.get(item.id)?.stale || item.answered || item.closed) return null;
+  const b = item.block;
+  const text = STALE_TEXT[b.type === 'review' && b.format === 'app' ? 'reviewApp' : b.type];
+  return h('div.callout.stale-note', { id: `${item.id}-stale`, role: 'status' }, icon('edit'), h('span', text));
 };
 const md = (src, cls = '') => h(`div.md${cls}`, { html: trusted(renderMarkdown(src)) });
 const KIND = {
@@ -71,6 +83,8 @@ export function renderBlock(item, ctx) {
   const r = RENDER[b.type];
   const node = r(b, asDrawn(item), ctx);
   closing(node, item, (setError) => submit(item, ctx, 'dismiss', {}, setError));
+  const note = staleNote(item);
+  if (note) node.append(note);
   node.classList.add('block');
   node.setAttribute('role', 'group');
   node.dataset.blockItem = item.id;
@@ -96,19 +110,8 @@ async function submit(item, ctx, action, values, setError) {
     forgetReviewDraft(item.id);
     seen.delete(item.id);
   } catch (e) {
-    if (e.code !== 'stale' || !s) return setError(e.message, e.fieldErrors);
-    // It changed while they were answering: keep the draft, show what changed, and let them answer again.
-    s.stale = { block: s.block, fresh: true };
-    s.after = s.revision;
-    const d = drafts.get(item.id);
-    if (d && 'view' in d) d.view = 'diff';
-    const live = document.querySelector(`[data-block-item="${CSS.escape(item.id)}"]`);
-    if (!live) return;
-    const next = renderBlock(item, ctx);
-    live.replaceWith(next);
-    // Focus goes to the notice, beside the button they used: pressing it again by reflex can’t answer text they
-    // haven’t read, and Tab goes on to the buttons.
-    /** @type {HTMLElement | null} */ (next.querySelector('.stale-note'))?.focus();
+    // A refusal for a revision the page hasn’t drawn yet says so; the new version, with its notice, replaces it as it arrives.
+    setError(e.message, e.fieldErrors);
   }
 }
 
@@ -207,10 +210,6 @@ const RENDER = {
       );
     }
     if (done) body.append(answeredNote(item), outcomeLine(item) ?? '');
-    else
-      body.append(
-        staleNote(item, 'This changed while you were answering. Your choice is kept where the new version still has it: check it, then send it again.') ?? '',
-      );
     node.append(hd, body);
     if (!done) {
       const n = d.selected.length + (d.otherOn && d.other.trim() ? 1 : d.otherOn ? 1 : 0);
@@ -275,15 +274,7 @@ const RENDER = {
       'div',
       { class: done ? 'answered' : '', 'aria-labelledby': titleId },
       hd,
-      h(
-        'div.block-body',
-        b.prompt ? md(b.prompt) : null,
-        grid,
-        done
-          ? answeredNote(item)
-          : staleNote(item, 'This changed while you were answering. Your answers are kept: check them against the new version, then send again.'),
-        outcomeLine(item),
-      ),
+      h('div.block-body', b.prompt ? md(b.prompt) : null, grid, done ? answeredNote(item) : null, outcomeLine(item)),
     );
     // submit() clears the error (one re-render) before it sets the new one, so replace the copy on screen now.
     const rerender = () => {
@@ -503,7 +494,6 @@ const RENDER = {
               item.answer.action === 'confirm' ? `Confirmed at ${timeOf(item.answer.at)}` : `Not confirmed · ${timeOf(item.answer.at)}`,
             )
           : null,
-        done ? null : staleNote(item, 'This changed while you were answering. Read it again, then answer.'),
         outcomeLine(item),
       ),
     );
@@ -552,7 +542,7 @@ const RENDER = {
     return h('div', { 'aria-labelledby': titleId }, hd, codeBox(b));
   },
 
-  review: (b, item, ctx) => renderReview(b, item, ctx, { draft, seen, renderBlock, head, staleNote, submit, errLine, outcomeLine }),
+  review: (b, item, ctx) => renderReview(b, item, ctx, { draft, seen, renderBlock, head, submit, errLine, outcomeLine }),
   app(_b) {
     return h('div', h('div.block-body', h('p.dim', 'Apps appear in their own frame.')));
   },

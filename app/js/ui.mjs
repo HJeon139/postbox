@@ -22,18 +22,15 @@ export function route() {
   const m = path.match(/^#\/t\/([^/]+)(?:\/side\/([^/]+)|\/(work)(?:\/([^/]+))?)?/);
   if (m) {
     const q = new URLSearchParams(query);
-    // Only a view that’s there can be full screen: Work, Telemetry, or the thread when one is open.
+    // Only a view that’s there can be full screen: Work, or the thread when one is open.
     const f = q.get('full');
-    const full = f === 'work' || f === 'telemetry' || (f === 'thread' && m[2]) ? f : null;
-    const telemetry = full === 'telemetry' || q.has('telemetry');
+    const full = f === 'work' || (f === 'thread' && m[2]) ? f : null;
     return {
       view: 'thread',
       threadId: m[1],
       sideId: m[2] ?? null,
       work: full === 'work' || q.has('work'),
-      // Telemetry swaps in for Work in its slot; Work stays in the address, and comes back when Telemetry closes (R18).
-      telemetry,
-      slot: telemetry ? 'telemetry' : full === 'work' || q.has('work') ? 'work' : null,
+      slot: full === 'work' || q.has('work') ? 'work' : null,
       turn: q.get('turn') || m[4] || null,
       full,
       at: q.get('at') || null,
@@ -54,13 +51,12 @@ export function navigate(hash, { replace = false } = {}) {
  * A conversation’s address with its right pane: a thread (side), and its Work, scrolled to a turn, either view full
  * screen (full: 'work' or 'thread'; true means Work), or full-screen Work with one item open (at).
  * @param {string} threadId
- * @param {{ side?: string|null, work?: boolean, telemetry?: boolean, turn?: string|null, full?: boolean|string|null, at?: string|null }} [pane]
+ * @param {{ side?: string|null, work?: boolean, turn?: string|null, full?: boolean|string|null, at?: string|null }} [pane]
  */
-export function paneHref(threadId, { side = null, work = false, telemetry = false, turn = null, full = null, at = null } = {}) {
+export function paneHref(threadId, { side = null, work = false, turn = null, full = null, at = null } = {}) {
   const f = full === true ? 'work' : full || null;
   const q = [
     work || f === 'work' ? 'work' : '',
-    telemetry || f === 'telemetry' ? 'telemetry' : '',
     turn ? `turn=${encodeURIComponent(turn)}` : '',
     f ? `full=${f}` : '',
     at ? `at=${encodeURIComponent(at)}` : '',
@@ -87,7 +83,7 @@ export function openWork(threadId, { turn = null, full = false, at = null } = {}
 export function closeWork(threadId) {
   const r = route();
   rememberWork(threadId, false);
-  navigate(paneHref(threadId, { side: r.threadId === threadId ? r.sideId : null, telemetry: r.threadId === threadId && r.telemetry }), { replace: true });
+  navigate(paneHref(threadId, { side: r.threadId === threadId ? r.sideId : null }), { replace: true });
 }
 /**
  * Shows a view of the open conversation’s pane full screen (kind 'work' or 'thread'), or brings it back to the pane
@@ -98,7 +94,7 @@ export function closeWork(threadId) {
 export function setPaneFull(kind, { turn = null, at = null } = {}) {
   const r = route();
   if (r.view !== 'thread') return;
-  navigate(paneHref(r.threadId, { side: r.sideId, work: r.work, telemetry: r.telemetry, full: kind, turn, at }), { replace: true });
+  navigate(paneHref(r.threadId, { side: r.sideId, work: r.work, full: kind, turn, at }), { replace: true });
 }
 
 // ── Toasts ──────────────────────────────────────────────────────────────────────────────

@@ -40,7 +40,7 @@ test('#693 after the person declines adding an agent, a prose mention of it rais
 test('#693 the decline holds after a restart, since the card is in the store', async () => {
   const f = await declined();
   const { Runtime } = await import('../server/runtime.mjs');
-  const rt = new Runtime({ store: f.store, adapters: f.rt.adapters, corpus: f.rt.corpus, config: f.rt.config });
+  const rt = new Runtime({ store: f.store, adapters: f.rt.adapters, config: f.rt.config });
   const r = rt.agentWake(f.beta.id, 'gamma', 'From a mention.', { itemId: 'it_x', prose: true });
   assert.equal(r.ok, false);
   assert.equal(r.waiting, undefined, 'not held, and no card');
@@ -204,7 +204,7 @@ test('#789 the lift holds after a restart, since the mark is in the store', asyn
   f.rt.sendMessage(f.t.id, { text: '@gamma please join' });
   await settle(f.rt);
   const { Runtime } = await import('../server/runtime.mjs');
-  const rt = new Runtime({ store: f.store, adapters: f.rt.adapters, corpus: f.rt.corpus, config: f.rt.config });
+  const rt = new Runtime({ store: f.store, adapters: f.rt.adapters, config: f.rt.config });
   const gamma = rt.sessionsIn(f.t.id).find((x) => x.handle === 'gamma');
   rt.deleteSession(gamma.id);
   assert.equal(mentionAsks(f, rt), true);

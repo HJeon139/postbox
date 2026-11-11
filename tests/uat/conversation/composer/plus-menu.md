@@ -10,7 +10,7 @@ Files and agents are added from the conversation, never from a terminal.
 
 ## Expected functionality
 
-- Upload from computer (or drop files), From the project folder, Add to the corpus.
+- Upload from computer (or drop files), From the project folder. There’s no “Add to the corpus”: data agents search is the conversation’s assets (#516).
 - New agent from a boilerplate, Recommend one, Attach a Claude Code session (when Claude Code is available).
 
 ## Steps to reproduce

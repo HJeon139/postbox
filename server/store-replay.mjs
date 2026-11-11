@@ -16,6 +16,7 @@
 import { eventsOf } from '../shared/log-lines.mjs';
 import { apply } from '../shared/state.mjs';
 import { noteRejected, opRecord, REJECTED } from './store-reject.mjs';
+import { fileLines } from './store-snapshot-lines.mjs';
 
 /** Replays the segments after the snapshot, in order, leaving the writer at the end of the last. @param {import('./store-recover.mjs').Candidate} store */
 export async function replay(store) {
@@ -26,17 +27,16 @@ export async function replay(store) {
 /** @param {import('./store-recover.mjs').Candidate} store @param {{ name: string }} seg @param {boolean} last */
 async function replaySegment(store, seg, last) {
   const path = store.at(seg.name);
-  const text = await store.io.readFile(path, 'utf8');
-  const lines = text.split('\n'); // the text after the final newline: empty when the file ends in one
   let offset = 0;
-  for (let n = 0; n < lines.length; n++) {
-    const line = lines[n];
+  let n = -1;
+  let torn = -1; // the byte offset of a final line with no newline, cut once the file is closed
+  for await (const { line, terminated } of fileLines(store.io, path)) {
+    n++;
     if (line.trim()) {
-      if (n === lines.length - 1) {
+      if (!terminated) {
         if (!last) throw refusal(seg, n, offset, 'has no newline, so its write never finished, and a later segment follows it');
         if (store.retiring) throw refusal(seg, n, offset, 'is a torn tail, left as it is: the store closed while it was reading'); // never trim another owner’s line
-        await store.io.truncate(path, offset);
-        console.warn(`Dropped an incomplete event at the end of ${seg.name} (the server stopped mid-write).`);
+        torn = offset;
         break;
       }
       let events;
@@ -51,6 +51,9 @@ async function replaySegment(store, seg, last) {
     }
     offset += Buffer.byteLength(line) + 1;
   }
+  if (torn < 0) return;
+  await store.io.truncate(path, torn);
+  console.warn(`Dropped an incomplete event at the end of ${seg.name} (the server stopped mid-write).`);
 }
 
 /** The error load() rejects with for a damaged line, naming the file, the line and its byte offset. */

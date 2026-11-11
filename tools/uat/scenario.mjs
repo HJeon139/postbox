@@ -118,18 +118,14 @@ export function parseScenario(md) {
     // `- models: persona` keeps each persona’s own model and effort, for scenarios that measure what agents choose
     // (M1’s exit check, #63). Without it, a run puts the agents on the fast model it’s given (--agent-model).
     models: meta.models === 'persona' ? 'persona' : 'run',
-    // Telemetry (designs/telemetry-persona.md, U2): `- seed: canaries` plants the run’s canaries in the workspace,
-    // `- gh: none` starts Postbox with no gh, and `- telemetry: manual` leaves recording to the scenario. `- seed:
-    // fake-env` plants the allow-once scenario’s fake .env, and `- seed: git-remote` a throwaway remote with its guards
-    // (tools/uat/workspace.mjs, tools/uat/git-remote.mjs).
+    // `- seed: fake-env` plants the allow-once scenario’s fake .env, and `- seed: git-remote` a throwaway remote with
+    // its guards (tools/uat/workspace.mjs, tools/uat/git-remote.mjs).
     seed: meta.seed ?? null,
     ...visualMeasure(meta),
     // `- seed-diagrams: 6` (#701): with `- seed: big-room`, that many of its agent replies end in a Mermaid diagram.
     seedDiagrams: seedDiagramsOf(meta['seed-diagrams'], meta.seed),
-    gh: meta.gh === 'none' ? 'none' : 'yes',
     // Every run’s agents are kept off the person’s real GitHub; only `- github: real` hands it to them (github-guard.mjs).
     github: meta.github === 'real' ? 'real' : 'none',
-    telemetry: meta.telemetry === 'manual' ? 'manual' : 'runner',
     summary: lines.filter((l) => l && !l.startsWith('#') && !/^- [\w-]+: /.test(l)).join('\n'),
     steps: count(meta.steps),
     // `- chain-limit: 3` (#508): the chain limit the run’s Postbox enforces (POSTBOX_CHAIN_LIMIT, shared/limits.mjs), so a

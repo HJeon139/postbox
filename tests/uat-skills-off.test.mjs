@@ -5,8 +5,8 @@ import assert from 'node:assert/strict';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
+import { skillsEnv } from '../tools/uat/run-env.mjs';
 import { parseScenario } from '../tools/uat/scenario.mjs';
-import { telemetryEnv } from '../tools/uat/telemetry-run.mjs';
 
 const DIR = join(import.meta.dirname, 'uat', 'e2e', 'scenarios');
 const read = (name) => parseScenario(readFileSync(join(DIR, name), 'utf8'));
@@ -14,10 +14,10 @@ const read = (name) => parseScenario(readFileSync(join(DIR, name), 'utf8'));
 test('`- skills: off` starts Postbox with POSTBOX_AGENT_SKILLS=off, and a scenario without it leaves the skills on', () => {
   const off = read('everyday-subs-base.md');
   assert.equal(off.skills, 'off');
-  assert.equal(telemetryEnv(off, '/run', { telemetry: 'no' }).POSTBOX_AGENT_SKILLS, 'off');
+  assert.equal(skillsEnv(off).POSTBOX_AGENT_SKILLS, 'off');
   const on = read('everyday-subs.md');
   assert.equal(on.skills, 'on');
-  assert.equal('POSTBOX_AGENT_SKILLS' in telemetryEnv(on, '/run', { telemetry: 'no' }), false);
+  assert.equal('POSTBOX_AGENT_SKILLS' in skillsEnv(on), false);
 });
 
 test('every baseline of a run with the skill runs without it, and the run it’s compared with has it', () => {

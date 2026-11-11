@@ -4,8 +4,8 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { addressed } from '../server/room-delivery.mjs';
 import { runChecks } from '../tools/uat/checks.mjs';
+import { addressed } from '../tools/uat/room-delivery.mjs';
 import { hopCards } from '../tools/uat/triggers-hostwakes.mjs';
 import { ROUND_TWO, room, T0 } from './delivery-fixture.mjs';
 

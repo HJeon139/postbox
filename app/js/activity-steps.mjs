@@ -7,7 +7,7 @@ export function activityLabel(all) {
   const steps = all.filter((s) => s.kind !== 'thought' && s.kind !== 'said');
   const thoughts = all.filter((s) => s.kind === 'thought').length;
   const refused = steps.filter((s) => s.state === 'denied').length;
-  const reads = steps.filter((s) => /^(read|grep|arxiv\.fetch|corpus\.read)/.test(s.label)).length;
+  const reads = steps.filter((s) => /^(read|grep|arxiv\.fetch)/.test(s.label)).length;
   const verb = steps.some((s) => s.label.startsWith('grep')) ? 'Searched' : 'Read';
   const used = !steps.length
     ? null

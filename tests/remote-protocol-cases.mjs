@@ -250,7 +250,7 @@ export const CASES = {
       bad: [[{ turn: 't1', permissionWaitMax: 0 }, /welcome\.permissionWaitMax must be from 60000/]],
     },
     result: {
-      ok: { id: 'c1', ok: false, text: 'Postbox isn’t connected, so the corpus can’t be searched now.' },
+      ok: { id: 'c1', ok: false, text: 'Postbox isn’t connected, so the assets can’t be searched now.' },
       bad: [[{ id: 'c1', ok: false }, /needs “text”/]],
     },
     'permission-answer': {

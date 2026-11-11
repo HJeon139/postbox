@@ -163,22 +163,22 @@ test('the seed writes an obviously fake .env, and one in sub, inside the project
 });
 
 const CHAINED_TEXT =
-  'Claude Code checks each part of a chained command (joined by &&, ||, ;, | or &) against its rules on its own, so no one rule can allow this whole line, and there’s nothing to allow once or always. To let it run, leave it and ask @researcher to run the parts as separate commands: a part that’s refused again gets a card of its own.';
+  'Claude Code checks each part of a chained command (joined by &&, ||, ;, | or &) against its rules on its own, so no one rule can allow this whole line, and there’s nothing to allow once or always. To let it run, ask @researcher to run the parts as separate commands: a part that’s refused again gets a card of its own.';
 
 test('the chained trigger needs the card on the page with no Allow once or Always allow, and saying why', () => {
   const c = card(CHAINED, { reasonType: 'subcommandResults' });
   assert.deepEqual(c.rules, { once: null, always: null, alwaysWords: '', why: 'chained' });
   const shown = (buttons, text = CHAINED_TEXT) =>
     facts([c], { ui: { denialCards: { [c.id]: { buttons, text: `${CHAINED}\nWhy: Credential Materialization\n${text}` } } } });
-  assert.equal(T['chained-refusal-no-allow'].run(shown(['Leave it'])).length, 1);
-  assert.match(T['chained-refusal-no-allow'].run(shown(['Leave it']))[0].evidence, /offered only “Leave it”/);
-  assert.deepEqual(T['chained-refusal-no-allow'].run(shown(['Allow once and retry', 'Leave it'])), []);
-  assert.deepEqual(T['chained-refusal-no-allow'].run(shown(['Leave it'], '')), []);
-  // Answered already, so its buttons are gone: not what the person was offered.
-  assert.deepEqual(T['chained-refusal-no-allow'].run(shown([])), []);
+  // An open card with no rule to offer has no buttons: nothing to acknowledge.
+  assert.equal(T['chained-refusal-no-allow'].run(shown([])).length, 1);
+  assert.match(T['chained-refusal-no-allow'].run(shown([]))[0].evidence, /offered no button/);
+  assert.deepEqual(T['chained-refusal-no-allow'].run(shown(['Allow once and retry'])), []);
+  // Answered already, so it no longer says why: not what the person was offered.
+  assert.deepEqual(T['chained-refusal-no-allow'].run(shown([], '')), []);
   // A single command’s card isn’t this, and a run that didn’t read the page can’t tell.
   assert.deepEqual(
-    T['chained-refusal-no-allow'].run(facts([card(SINGLE)], { ui: { denialCards: { [card(SINGLE).id]: { buttons: ['Leave it'], text: CHAINED_TEXT } } } })),
+    T['chained-refusal-no-allow'].run(facts([card(SINGLE)], { ui: { denialCards: { [card(SINGLE).id]: { buttons: [], text: CHAINED_TEXT } } } })),
     [],
   );
   assert.equal(T['chained-refusal-no-allow'].recorded(facts([c])), false);

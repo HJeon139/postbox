@@ -15,7 +15,7 @@ import { ClaudeCodeAdapter } from '../server/adapters/claude-code.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
 import { callLine, createFakeDaemon, FIXTURE_PROMPT, FIXTURE_PROMPTS, fixtureLines } from './fake-daemon.mjs';
-import { corpus, fakeHosts, HOST, rig, running, settled, starts, until, VERSION } from './remote-turns-helpers.mjs';
+import { fakeHosts, HOST, rig, running, settled, starts, until, VERSION } from './remote-turns-helpers.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
 /** A start's --settings, parsed. */
@@ -222,7 +222,6 @@ test('a turn on this computer never gets a rule kept for a host', async () => {
   const rt = new Runtime({
     store,
     adapters: new AdapterRegistry().register(new ClaudeCodeAdapter({ bin: 'claude', workRoot: work, spawnImpl })),
-    corpus,
     config: { origin: 'http://127.0.0.1:1', imageOrigins: [], lintSettleMs: 0, build: { version: VERSION } },
     hosts: fakeHosts(createFakeDaemon({ autoEnd: false })),
   });

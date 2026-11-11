@@ -112,7 +112,6 @@ test('#338 Always allow on the card saves the folder for the conversation, and t
   const rt = new Runtime({
     store,
     adapters: new AdapterRegistry().register(adapter),
-    corpus: { search: () => [], read: () => null, stats: () => ({ books: [], passages: 0 }) },
     config: { origin: 'http://127.0.0.1:1', imageOrigins: [], lintSettleMs: 0, home },
   });
   store.emit('project', { id: 'p1', name: 'P', folder: ws });
@@ -163,7 +162,6 @@ test('#338 the panel lists a readable folder as read only, and Remove takes out 
   const rt = new Runtime({
     store: new Store(null),
     adapters: new AdapterRegistry().register({ name: 'antigravity-cli', capabilities: { permissions: 'none' }, async deliver() {} }),
-    corpus: { search: () => [], read: () => null, stats: () => ({ books: [], passages: 0 }) },
     config: { origin: 'http://127.0.0.1:1', imageOrigins: [], lintSettleMs: 0, home },
   });
   rt.store.emit('project', { id: 'p1', name: 'P', folder: ws });
@@ -187,7 +185,6 @@ test('#338 a conversation keeps up to 20 readable folders; one already listed ad
   const rt = new Runtime({
     store: new Store(null),
     adapters: new AdapterRegistry().register({ name: 'antigravity-cli', capabilities: { permissions: 'none' }, async deliver() {} }),
-    corpus: { search: () => [], read: () => null, stats: () => ({ books: [], passages: 0 }) },
     config: { origin: 'http://127.0.0.1:1', imageOrigins: [], lintSettleMs: 0, home },
   });
   rt.store.emit('project', { id: 'p1', name: 'P', folder: ws });

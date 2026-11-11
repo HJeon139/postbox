@@ -1,13 +1,13 @@
 // Who needs you and in what order (#285): shared/needs.mjs, which the page’s ⌃J and rings read, and the UAT’s check
-// and triggers of where going to an ask landed (server/room-checks-needs.mjs).
+// and triggers of where going to an ask landed (tools/uat/room-checks-needs.mjs).
 
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
-import { runChecks } from '../server/room-checks.mjs';
-import { NEEDS_CHECKS, NEEDS_TRIGGERS, needsAt } from '../server/room-checks-needs.mjs';
-import { keepEvent } from '../server/room-events.mjs';
 import { conversationOf, NEEDS_KINDS, needsOrder, needsYouNow, whereNeeds } from '../shared/needs.mjs';
+import { runChecks } from '../tools/uat/room-checks.mjs';
+import { NEEDS_CHECKS, NEEDS_TRIGGERS, needsAt } from '../tools/uat/room-checks-needs.mjs';
+import { keepEvent } from '../tools/uat/room-events.mjs';
 import { parseScenario } from '../tools/uat/scenario.mjs';
 import { TRIGGERS, unknownTriggers } from '../tools/uat/triggers.mjs';
 
@@ -24,7 +24,7 @@ const state = {
   sessions: {
     a: session('a', 'alpha', 'dm', { kind: 'block', itemId: 'ask-a' }, 900),
     b: session('b', 'beta', 'room', { kind: 'block', itemId: 'ask-b', threadId: 'side' }, 100),
-    c: session('c', 'gamma', 'room', { kind: 'denial', itemId: 'ask-c' }, 50),
+    c: session('c', 'gamma', 'room', { kind: 'hop', itemId: 'ask-c' }, 50),
     d: session('d', 'delta', 'room', { kind: 'toolask', itemId: 'ask-d', threadId: 'topic' }, 20),
     e: session('e', 'eps', 'room', null),
   },
@@ -37,8 +37,9 @@ const state = {
 };
 const all = Object.values(state.sessions);
 
-test('every kind an agent can need you for counts, a refused step, a tool request and view_app’s download ask too', () => {
-  assert.deepEqual(NEEDS_KINDS, ['block', 'failed', 'hop', 'permission', 'appsend', 'denial', 'toolask', 'viewask']);
+test('every kind an agent can need you for counts, a tool request and view_app’s download ask too, and a refused step doesn’t', () => {
+  assert.deepEqual(NEEDS_KINDS, ['block', 'failed', 'hop', 'permission', 'appsend', 'toolask', 'viewask']);
+  assert.equal(needsYouNow({ needs: { kind: 'denial' } }), false, 'the agent works around a refusal');
   assert.equal(needsYouNow(state.sessions.c), true);
   assert.equal(needsYouNow(state.sessions.d), true);
   assert.equal(needsYouNow(state.sessions.e), false);
