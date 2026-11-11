@@ -233,38 +233,6 @@ export const TOOL_DEFS = [
       required: ['tool', 'why'],
     },
   },
-  {
-    name: 'corpus_search',
-    description:
-      'Search the project’s corpus by exact words (BM25) and by meaning (a stub until a real index is connected). books limits it to those book or dataset ids; a dataset is searched only when books names it.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        query: { type: 'string' },
-        mode: { type: 'string', enum: ['both', 'lexical', 'semantic'] },
-        k: { type: 'number' },
-        books: { type: 'array', items: { type: 'string' } },
-      },
-      required: ['query'],
-    },
-  },
-  {
-    name: 'add_dataset',
-    description: `Load a dataset into the corpus now, with no restart: a JSON Lines file of records { id?, text, title? }, one per line, up to ${n('datasetBytes')}, in the project’s .postbox/datasets/ folder (write it there first). Each record becomes a passage, read with corpus.read { id: "<dataset id>:<record id>" }. It’s searched only when a search names it in books, so it doesn’t mix into other agents’ results. Loading the same id again replaces it, and it’s loaded again after a restart.`,
-    inputSchema: {
-      type: 'object',
-      properties: {
-        id: { type: 'string', description: 'The dataset’s id: letters, digits, - and _, such as scifact-abstracts.' },
-        path: { type: 'string', description: 'The file, relative to the project’s .postbox/datasets/.' },
-        title: {
-          type: 'string',
-          description:
-            'The title the corpus lists it under; without one, its id. Plain text, cut past 200 characters, with no control characters or ones that reorder text or show as nothing.',
-        },
-      },
-      required: ['id', 'path'],
-    },
-  },
 ];
 
 /**

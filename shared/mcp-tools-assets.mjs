@@ -32,6 +32,21 @@ export const ASSET_TOOLS = [
     },
   },
   {
+    name: 'search_assets',
+    description:
+      'Search this conversation’s text assets, the newest version of each, by exact words (BM25) and by meaning (a stub until a real index is connected), best first. Each hit is a passage: its asset, version, where in it, and its text. assets keeps the search to those asset ids or names.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string' },
+        mode: { type: 'string', enum: ['both', 'lexical', 'semantic'] },
+        k: { type: 'number', description: 'How many passages, 1 to 50; 12 without it.' },
+        assets: { type: 'array', items: { type: 'string' }, description: 'Asset ids or names to keep to, up to 50.' },
+      },
+      required: ['query'],
+    },
+  },
+  {
     name: 'write_asset',
     description: `Publish a file to this conversation as a new asset (name, no base) or a new version of one (id and base). Send its text, or path to a file in your folder (up to ${bound('assetBytes')}). Names are paths in the conversation, such as notes/plan.md, unique ignoring case. Every version is kept, except that large binaries keep their last ${count(ASSETS.binaryVersionsKept)}; the conversation keeps up to ${bound('roomBytes')} in all. On a remote host, text only.`,
     inputSchema: write(

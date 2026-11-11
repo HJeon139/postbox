@@ -8,7 +8,7 @@ import { connectShim, makeBroker, makeHome, until } from './remote-broker-fixtur
 import { holdingIo, reached } from './remote-settle-io.mjs';
 
 const CALLS = [
-  ['an ask call', 'corpus_search', { query: 'y' }],
+  ['an ask call', 'search_assets', { query: 'y' }],
   ['a queue call', 'define_term', { term: 'x', definition: 'y' }],
   ['a read', 'read_conversation', {}],
 ];

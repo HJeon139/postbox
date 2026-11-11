@@ -76,8 +76,7 @@ const GENERIC = {
   Agent: 'Starting a subagent',
   mcp__postbox__define_term: 'Defining a term',
   mcp__postbox__wake_agent: 'Waking an agent',
-  mcp__postbox__corpus_search: 'Searching the corpus',
-  mcp__postbox__add_dataset: 'Loading a dataset',
+  mcp__postbox__search_assets: 'Searching the assets',
 };
 
 /** A short label for a tool call, in the words the activity list uses. */
@@ -112,10 +111,8 @@ export function describeTool(name, input = {}) {
       return `Subagent: ${clip(i.description ?? i.subagent_type ?? 'task', 60)}`;
     case 'TodoWrite':
       return 'Updated the plan';
-    case 'mcp__postbox__corpus_search':
-      return `Searched the corpus for “${clip(i.query, 50)}”`;
-    case 'mcp__postbox__add_dataset':
-      return `Loaded the dataset ${clip(i.id, 40)}`;
+    case 'mcp__postbox__search_assets':
+      return `Searched the assets for “${clip(i.query, 50)}”`;
     case 'mcp__postbox__show_block':
       return 'Showing a block';
     case 'mcp__postbox__update_block':

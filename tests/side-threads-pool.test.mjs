@@ -121,7 +121,7 @@ test('#228: forks from before are retired once at startup; their thread keeps it
   rt.updateSession(fork.id, { forkOf: { sessionId: alpha.id, itemId: null } });
   rt.addItem(topic.id, { kind: 'agent', sessionId: fork.id, personaId: alpha.personaId, handle: 'alpha', text: 'From the fork.', status: 'done' });
   store.emit('settings', { forksArchived: false });
-  new Runtime({ store, adapters: new AdapterRegistry().register(adapter), corpus: rt.corpus, config: rt.config });
+  new Runtime({ store, adapters: new AdapterRegistry().register(adapter), config: rt.config });
   assert.deepEqual([store.state.sessions[fork.id].archived, store.state.sessions[fork.id].retiredFork], [true, true]);
   assert.equal(store.state.settings.forksArchived, true);
   assert.equal(store.state.threads[topic.id].archived, false);
@@ -129,7 +129,7 @@ test('#228: forks from before are retired once at startup; their thread keeps it
   // It runs once: a session that is a fork later (none should be) isn’t touched by the next start.
   const later = rt.ensureSession(topic.id, rt.sessionsIn(t.id).find((x) => x.handle === 'beta').personaId);
   rt.updateSession(later.id, { forkOf: { sessionId: alpha.id, itemId: null } });
-  new Runtime({ store, adapters: new AdapterRegistry().register(new ScriptedAdapter()), corpus: rt.corpus, config: rt.config });
+  new Runtime({ store, adapters: new AdapterRegistry().register(new ScriptedAdapter()), config: rt.config });
   assert.equal(store.state.sessions[later.id].archived, false);
   rt.archive(later.id);
   // A message in its thread goes to the conversation’s @alpha, there.
@@ -163,7 +163,7 @@ test('#228: the migration takes a fork’s queued messages and open wake card wi
   rt.putThread({ ...store.state.threads[topic.id], queue: [{ id: 'q1', text: 'Saved before a restart', attachments: [], sessionIds: [fork.id], at: 1 }] });
   const card = rt.addItem(topic.id, { kind: 'hop', fromSessionId: fork.id, from: 'alpha', to: 'beta', text: 'Wake?', status: 'open', n: 4 });
   store.emit('settings', { forksArchived: false });
-  new Runtime({ store, adapters: new AdapterRegistry().register(adapter), corpus: rt.corpus, config: rt.config });
+  new Runtime({ store, adapters: new AdapterRegistry().register(adapter), config: rt.config });
   assert.deepEqual(store.state.threads[topic.id].queue, []);
   assert.equal(store.item(topic.id, card.id).status, 'closed', 'closed with no answer from you (#693)');
   // The conversation’s @alpha answers there now; its turn ending drains the thread’s queue, which has nothing for the fork.

@@ -215,7 +215,8 @@ export function describeItem(rt, i, se, n, reader) {
       if (i.variant === 'wake') return `${i.from === 'you' ? 'You' : `@${i.from}`} woke @${i.to}`;
       if (i.variant === 'joined') return `@${i.to} joined`;
       if (i.variant === 'left') return `@${i.to} left`;
-      if (i.variant === 'dataset') return `@${i.handle} loaded the dataset “${i.dataset}” (${i.records} records); search it by naming it in books`;
+      // An older log’s dataset (#47), which #516 retired: there’s no way to search it now, so the line doesn’t give one.
+      if (i.variant === 'dataset') return `@${i.handle} loaded the dataset “${i.dataset}” (${i.records} records), before Postbox kept data as assets`;
       return null;
     case 'sidelink': {
       const gist = i.threadSummary ? `; in short, as a model summarized it: “${i.threadSummary}”` : '';

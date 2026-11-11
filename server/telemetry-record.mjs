@@ -6,7 +6,7 @@
 
 import { existsSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { BACKENDS, bucket, MODELS, OUTCOMES, TOOL_CLASSES } from '../shared/telemetry-vocab.mjs';
+import { BACKENDS, bucket, MODELS, OUTCOMES, TOOL_CLASSES, TOOL_IDS } from '../shared/telemetry-vocab.mjs';
 import { freshInstall } from './seed.mjs';
 import { lostOf, readLines, running } from './telemetry.mjs';
 import { callClass, turnStats } from './telemetry-streams.mjs';
@@ -65,7 +65,8 @@ function agentsOf(rt, sessions) {
       model: MODELS.includes(p.model) ? p.model : 'other',
       effort: p.effort ?? null,
       permissionMode: p.permissionMode ?? 'auto',
-      tools: [...(p.tools ?? [])].sort(),
+      // A persona saved with a tool id Postbox no longer has (corpus.search, #516) keeps it; the report has only known ids.
+      tools: (p.tools ?? []).filter((/** @type {string} */ t) => TOOL_IDS.includes(t)).sort(),
       hostSetup: p.usesHostSetup !== false,
       mcpServers: Array.isArray(se.mcpServers?.servers) ? se.mcpServers.servers.length : 0,
     });

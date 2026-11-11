@@ -70,7 +70,7 @@ test('#874 after a wake failed for an unregistered backend, the next start neith
   fireScheduledWake(f.rt, sc);
   await settle(f.rt);
   const after = new ScriptedAdapter();
-  const rt2 = new Runtime({ store: f.store, adapters: new AdapterRegistry().register(after), corpus: f.rt.corpus, config: f.rt.config });
+  const rt2 = new Runtime({ store: f.store, adapters: new AdapterRegistry().register(after), config: f.rt.config });
   assert.doesNotThrow(() => {
     rt2.rearmSchedules();
     rt2.drainAll();

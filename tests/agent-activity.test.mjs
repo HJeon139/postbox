@@ -276,7 +276,6 @@ test('#189: the agent’s ring keeps its own state and step while its background
         }
       },
     }),
-    corpus: { search: () => [], read: () => null, stats: () => ({ books: [], passages: 0 }) },
     config: { origin: 'http://127.0.0.1:1', imageOrigins: [], lintSettleMs: 0 },
   });
   /** @type {any[]} */

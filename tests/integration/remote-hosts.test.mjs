@@ -127,7 +127,6 @@ test('remove: removing a host deletes ~/.postbox-remote there, and the token her
   rt = new Runtime({
     store,
     adapters: new AdapterRegistry().register({ name: 'mock', deliver: async () => {} }),
-    corpus: { search: () => [], read: () => null, stats: () => ({ books: [], passages: 0 }) },
     config: { origin: 'http://127.0.0.1:1', imageOrigins: [], home: '/nowhere', build: { version: '0.10.0' } },
     hosts: mgr,
   });
@@ -166,7 +165,6 @@ test('remove: a host whose daemon won’t delete ~/.postbox-remote keeps its set
     const rt = new Runtime({
       store: new Store(null),
       adapters: new AdapterRegistry().register({ name: 'mock', deliver: async () => {} }),
-      corpus: { search: () => [], read: () => null, stats: () => ({ books: [], passages: 0 }) },
       config: { origin: 'http://127.0.0.1:1', imageOrigins: [], home: '/nowhere', build: { version: '0.10.0' } },
       hosts: m.mgr,
     });

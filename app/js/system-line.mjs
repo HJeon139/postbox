@@ -1,9 +1,9 @@
 // The lines Postbox adds to a conversation about it, not said by anyone (kind 'system'): a session attached from a
-// terminal, a wake, a compaction with what was kept, a scheduled wake with Cancel, a dataset loaded, an agent that
+// terminal, a wake, a compaction with what was kept, a scheduled wake with Cancel, an older log’s dataset, an agent that
 // joined or left. Moved out of app/js/thread.mjs.
 
 import { renderMarkdown } from '/shared/markdown.mjs';
-import { h, icon, plural, trusted } from './dom.mjs';
+import { h, icon, trusted } from './dom.mjs';
 import { scheduledWakeLine } from './scheduled-wake-line.mjs';
 
 export function systemLine(it, _ctx) {
@@ -72,15 +72,8 @@ export function systemLine(it, _ctx) {
     case 'schedule':
       return scheduledWakeLine(it);
     case 'dataset':
-      // An agent loaded a dataset into the corpus (#47): searched only when a search names it.
-      return h(
-        'div.col.sys-line',
-        icon('books', 'i-sm'),
-        h('b', it.handle),
-        ' loaded the dataset ',
-        h('span.mono', it.dataset),
-        ` · ${plural(it.records, 'record')}, searched only when named`,
-      );
+      // An older log’s dataset an agent loaded (#47), retired for room assets (#516): who loaded which.
+      return h('div.col.sys-line', icon('books', 'i-sm'), h('b', it.handle), ' loaded the dataset ', h('span.mono', it.dataset));
     case 'joined':
       return h('div.col.sys-line', icon('agent', 'i-sm'), h('b', it.to), ' joined');
     case 'left':

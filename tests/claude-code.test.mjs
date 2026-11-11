@@ -430,7 +430,6 @@ async function attachSetup() {
   const rt = new Runtime({
     store,
     adapters: new AdapterRegistry().register(adapter),
-    corpus: { search: () => [], stats: () => ({}) },
     config: { origin: 'http://x', imageOrigins: [], claudeProjectsRoot: root },
   });
   store.emit('project', { id: 'p1', name: 'P', folder: '/work' });

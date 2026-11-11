@@ -21,7 +21,7 @@ Conversations need to be renamed, grown into rooms and deleted without leaving t
 ## Steps to reproduce
 
 1. Run the demo (`node tools/demo.mjs --port 4180`) and open <http://127.0.0.1:4180/> while it plays; keep the tab open.
-2. Open “Corpus explorer”, open ⋯, and try each item, cancelling each sheet.
+2. Open “Asset explorer”, open ⋯, and try each item, cancelling each sheet.
 
 **Pass if:** Each item opens the right sheet, and Cancel leaves everything unchanged. Each agent’s line says what its row in the sidebar’s Agents section says, with full model ids.
 

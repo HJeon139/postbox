@@ -2,7 +2,7 @@
 // Backends, which says how real agents reach Postbox’s tools and what this computer has.
 
 import { api, client } from './client.mjs';
-import { h, plural } from './dom.mjs';
+import { h } from './dom.mjs';
 
 const S = () => client.state;
 
@@ -38,11 +38,5 @@ export const connect = () => [
     'p',
     'Real agents reach Postbox’s UI tools over MCP. Postbox connects each backend it runs, with a token for each turn, so only an agent turn Postbox started can call them.',
   ),
-  h(
-    'dl.facts',
-    h('dt', 'Adapters'),
-    h('dd', client.config.adapters.join(', ')),
-    h('dt', 'Corpus'),
-    h('dd', `${plural(client.config.corpus.passages, 'passage')} in ${plural(client.config.corpus.books.length, 'book')}`),
-  ),
+  h('dl.facts', h('dt', 'Adapters'), h('dd', client.config.adapters.join(', '))),
 ];

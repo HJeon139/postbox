@@ -65,7 +65,6 @@ function setup() {
   const rt = new Runtime({
     store,
     adapters: new AdapterRegistry().register(adapter),
-    corpus: { search: () => [], read: () => null, stats: () => ({ books: [], passages: 0 }) },
     config: { origin: 'http://127.0.0.1:1', imageOrigins: [], lintSettleMs: 0, home: '/nowhere' },
     spawnShell: spawn,
   });
@@ -241,7 +240,7 @@ test('#67: the ! route refuses unless Postbox listens on 127.0.0.1 and the reque
     try {
       const call = (r) => fakeRequest(app.handle, { host: '127.0.0.1:4438', ...r });
       const cookie = (await call({ path: '/', headers: NAVIGATION })).headers['set-cookie'].split(';')[0];
-      const thread = Object.values(app.store.state.threads).find((x) => x.title === 'Corpus explorer');
+      const thread = Object.values(app.store.state.threads).find((x) => x.title === 'Asset explorer');
       const r = await call({ method: 'POST', path: `/api/threads/${thread.id}/shell`, body: { command: 'ls' }, cookie });
       if (host === '127.0.0.1') {
         assert.equal(r.status, 201, r.text);

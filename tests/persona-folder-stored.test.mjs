@@ -26,9 +26,8 @@ const noFolderFor = { name: 'mock', deliver: async (_se, _m, ctx) => ctx.text('o
 function setup() {
   const data = tempDir('pb-persona-folder-stored-');
   const store = new Store(null);
-  const corpus = { search: () => [], read: () => null, stats: () => ({ books: [], passages: 0 }) };
   const adapters = new AdapterRegistry().register(new ClaudeCodeAdapter({ bin: 'claude', workRoot: join(data, 'workspaces') })).register(noFolderFor);
-  const rt = new Runtime({ store, adapters, corpus, config: { origin: 'http://127.0.0.1:1', imageOrigins: [], lintSettleMs: 0 } });
+  const rt = new Runtime({ store, adapters, config: { origin: 'http://127.0.0.1:1', imageOrigins: [], lintSettleMs: 0 } });
   store.emit('project', { id: 'p1', name: 'P', folder: '/srv/project' });
   /** An agent on this backend, in a conversation of its own, whose folder was stored as `server` before #990. */
   const stored = (handle, backend) => {

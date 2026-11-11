@@ -29,11 +29,9 @@ class ScriptedAdapter {
 export function setup() {
   const store = new Store(null);
   const adapter = new ScriptedAdapter();
-  const corpus = { search: () => [], read: () => null, stats: () => ({ books: [], passages: 0 }) };
   const rt = new Runtime({
     store,
     adapters: new AdapterRegistry().register(adapter),
-    corpus,
     config: { origin: 'http://127.0.0.1:1', imageOrigins: [], lintSettleMs: 0 },
   });
   store.emit('project', { id: 'p1', name: 'P', folder: PROJECT_DIR });

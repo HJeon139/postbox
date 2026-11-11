@@ -1,14 +1,14 @@
 // A large app and its data go by file, not by side channel (#54, #47): an app shown from codePath, with a data file
 // from the agent’s folder, reads the file in its sandbox with postbox.file(name); a raw POST to /mcp with only the
-// session id, as a script would send, is refused and shows nothing; a dataset the agent loads from the project’s
-// .postbox/datasets/ shows a line and reaches an app with no restart, but not a search that doesn’t name it; and
-// Settings offers no session-id-only endpoint. The data file reaches the page at 127.0.0.1 and at localhost with
+// session id, as a script would send, is refused and shows nothing; data the agent brings in from its folder is a room
+// asset, which an app searches through the bridge, with no restart (#516); and Settings offers no session-id-only endpoint. The data file reaches the page at 127.0.0.1 and at localhost with
 // Cross-Origin-Resource-Policy: same-origin, which doesn’t block the page’s own load (#820). Moved from
 // tools/checks/app-files.mjs (#303).
 
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
+import { assetTools } from '../../server/asset-tools.mjs';
 import { allowPageError, failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 
 // Reads its data file once it’s shown (not during the check), and keeps what it found in saved state.
@@ -30,14 +30,13 @@ postbox.ready.then(async () => {
 });
 </script>`;
 
-// Reads a record of the dataset by id, and searches it by name and without.
+// Searches the room’s assets for the agent’s claims, kept to them by name, and to another asset.
 const READER = `<p id="out">…</p><script>
 postbox.ready.then(async () => {
-  const one = await postbox.query('corpus.read', { id: 'scifact:c7' });
-  const named = await postbox.query('corpus.search', { query: 'vitamin', books: ['scifact'] });
-  const plain = await postbox.query('corpus.search', { query: 'vitamin' });
-  document.getElementById('out').textContent = one.text;
-  if (!postbox.check) postbox.saveState({ text: one.text, named: named.length, plain: plain.filter((h) => h.book === 'scifact').length });
+  const [hit] = await postbox.query('assets.search', { query: 'vitamin fractures', mode: 'lexical', assets: ['data/claims.md'] });
+  const other = await postbox.query('assets.search', { query: 'vitamin fractures', assets: ['notes.md'] });
+  document.getElementById('out').textContent = hit.text;
+  if (!postbox.check) postbox.saveState({ text: hit.text, id: hit.id, where: hit.where, other: other.length });
 });
 </script>`;
 
@@ -126,26 +125,21 @@ test('#54 a tool call to /mcp with only the session id is refused, and nothing o
   await expect.soft(page.locator('.transcript .appframe'), 'nothing shown').toHaveCount(0);
 });
 
-test('#47 a dataset the agent loads shows a line, and reaches an app with no restart, but not a search that doesn’t name it', async ({ page }) => {
+test('#516 data the agent brings in from its folder is a room asset, which an app searches with no restart', async ({ page }) => {
   const { rt } = app;
-  const { se } = await room(page, 'Datasets');
-  await mkdir(join(folder, '.postbox', 'datasets'), { recursive: true });
-  await writeFile(
-    join(folder, '.postbox', 'datasets', 'scifact.jsonl'),
-    Array.from({ length: 50 }, (_, i) => JSON.stringify({ id: `c${i}`, text: `Claim ${i} about vitamin D and fractures.` })).join('\n'),
-  );
-  const loaded = await rt.toolsFor(se.id).add_dataset({ id: 'scifact', path: 'scifact.jsonl', title: 'SciFact claims' });
-  expect(loaded.ok, loaded.message).toBe(true);
-  await expect(
-    page.locator('.sys-line', { hasText: /librarian loaded the dataset scifact · 50 records, searched only when named/ }),
-    'the conversation says the agent loaded it, and that it’s searched only when named',
-  ).toBeVisible();
-  rt.toolsFor(se.id).show_app({ id: 'reader', title: 'Reader', code: READER, permissions: ['corpus.read', 'corpus.search'] });
+  const { se } = await room(page, 'Assets');
+  await writeFile(join(folder, 'claims.md'), 'Claim 7 is about vitamin D and fractures, in older adults.');
+  const tools = assetTools(rt, se.id, null);
+  const data = await tools.write_asset({ name: 'data/claims.md', path: 'claims.md' });
+  expect(data.ok, data.message).toBe(true);
+  const notes = await tools.write_asset({ name: 'notes.md', text: 'Nothing about that here.' });
+  expect(notes.ok, notes.message).toBe(true);
+  rt.toolsFor(se.id).show_app({ id: 'reader', title: 'Reader', code: READER, permissions: ['assets.search'] });
+  await expect(page.frameLocator('.transcript .appframe iframe').locator('#out')).toHaveText('Claim 7 is about vitamin D and fractures, in older adults.');
   await saved('reader', 'text');
   const rd = rt.s.apps.reader.state;
-  expect.soft(rd.text, 'an app reads the dataset at once, with no restart').toBe('Claim 7 about vitamin D and fractures.');
-  expect.soft(rd.named, 'a search that names it gets it').toBeGreaterThan(0);
-  expect.soft(rd.plain, 'a search that doesn’t name it doesn’t get it').toBe(0);
+  expect.soft([rd.id, rd.where], 'the hit names its asset and passage').toEqual([`${data.id}:1`, 'passage 1']);
+  expect.soft(rd.other, 'a search kept to another asset doesn’t find it').toBe(0);
 });
 
 test('#54 Settings says each turn has a token, and shows no session-id endpoint', async ({ page }) => {

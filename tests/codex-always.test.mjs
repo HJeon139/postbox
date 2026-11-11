@@ -137,11 +137,9 @@ test('#324 Always allow on the card hands Codex’s decision back and writes no 
   await mkdir(folder);
   const store = new Store(null);
   const adapter = new ScriptedCodex(folder);
-  const corpus = { search: () => [], read: () => null, stats: () => ({ books: [], passages: 0 }) };
   const rt = new Runtime({
     store,
     adapters: new AdapterRegistry().register(adapter),
-    corpus,
     config: { origin: 'http://127.0.0.1:1', imageOrigins: [], lintSettleMs: 0, home: root },
   });
   store.emit('project', { id: 'p1', name: 'P', folder });

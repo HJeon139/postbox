@@ -83,7 +83,7 @@ test('a restart inside the Undo window keeps the message queued until the rearme
   rt.deleteSession(alpha.id);
   a.release();
   await settle(rt);
-  const again = new Runtime({ store, adapters: new AdapterRegistry().register(new ScriptedAdapter()), corpus: rt.corpus, config: rt.config });
+  const again = new Runtime({ store, adapters: new AdapterRegistry().register(new ScriptedAdapter()), config: rt.config });
   again.rearmDeletions();
   assert.ok(again.timers.has(`del:${alpha.id}`), 'the purge is armed again');
   assert.equal(store.state.threads[t.id].queue.length, 1);

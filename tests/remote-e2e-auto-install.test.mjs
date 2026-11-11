@@ -19,7 +19,6 @@ import { until, VERSION } from './remote-hosts-fixtures.mjs';
 import { installs, NOT_INSTALLED } from './remote-hosts-update-fixtures.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
-const corpus = { search: () => [], read: () => null, stats: () => ({ books: [], passages: 0 }) };
 const never = () => {
   throw new Error('A remote turn used this computer’s processes.');
 };
@@ -74,7 +73,6 @@ function postbox({ hang = false } = {}) {
   rt = new Runtime({
     store,
     adapters: new AdapterRegistry().register(claude),
-    corpus,
     config: { origin: 'http://127.0.0.1:1', imageOrigins: [], lintSettleMs: 0, build: { version: VERSION } },
     hosts,
   });

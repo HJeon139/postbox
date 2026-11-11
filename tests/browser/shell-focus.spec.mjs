@@ -119,7 +119,7 @@ test('#26 ⋯ › Add an agent… by keyboard, then Escape, returns focus to ⋯
   await expect(dialog(page)).toBeVisible();
   // #4: the sheet says “conversation”, never “thread”.
   await expect(dialog(page)).toContainText('Join this conversation');
-  await expect(dialog(page)).toContainText('New conversation in Book corpus');
+  await expect(dialog(page)).toContainText('New conversation in Reading notes');
   await expect(dialog(page)).not.toContainText(/\bthread\b/i);
   await page.keyboard.press('Escape');
   await focusIs(page, 'button: Actions for Corpus planning');

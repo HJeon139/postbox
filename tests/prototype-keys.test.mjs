@@ -123,7 +123,6 @@ test('#352: the state has only its own records, fresh, reloaded from JSON, and f
       'items',
       'apps',
       'files',
-      'datasets',
       'schedules',
       'glossary',
       'work',

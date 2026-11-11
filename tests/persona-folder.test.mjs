@@ -44,9 +44,8 @@ const FAILURES = [
 function setup() {
   const data = tempDir('pb-persona-folder-');
   const store = new Store(null);
-  const corpus = { search: () => [], read: () => null, stats: () => ({ books: [], passages: 0 }) };
   const adapters = new AdapterRegistry().register(new ClaudeCodeAdapter({ bin: 'claude', workRoot: join(data, 'workspaces') }));
-  const rt = new Runtime({ store, adapters, corpus, config: { origin: 'http://127.0.0.1:1', imageOrigins: [], lintSettleMs: 0 } });
+  const rt = new Runtime({ store, adapters, config: { origin: 'http://127.0.0.1:1', imageOrigins: [], lintSettleMs: 0 } });
   return { data, store, rt };
 }
 
@@ -106,10 +105,7 @@ test('an empty, missing or null folder still means the project’s folder, on ma
 test('an agents.json agent with a relative folder is refused, naming agents.json and the agent, and seeds no agent', async () => {
   const { data, store, rt } = setup();
   await writeFile(join(data, 'agents.json'), JSON.stringify([{ handle: 'alpha', folder: '~/work' }]));
-  await assert.rejects(
-    () => seed(rt, { dataDir: data, booksDir: join(data, 'books'), backend: 'claude-code' }),
-    refusal('~/work', `agents.json: @alpha’s folder: ${RELATIVE}`),
-  );
+  await assert.rejects(() => seed(rt, { dataDir: data, backend: 'claude-code' }), refusal('~/work', `agents.json: @alpha’s folder: ${RELATIVE}`));
   assert.deepEqual(Object.keys(store.state.personas), []);
 });
 
@@ -148,7 +144,7 @@ test('an agents.json whose second agent would be refused seeds neither, and says
     const { data, store, rt } = setup();
     await writeFile(join(data, 'agents.json'), JSON.stringify([{ handle: 'alpha', folder: '/srv/a' }, second]));
     await assert.rejects(
-      () => seed(rt, { dataDir: data, booksDir: join(data, 'books'), backend: 'claude-code' }),
+      () => seed(rt, { dataDir: data, backend: 'claude-code' }),
       (e) => {
         assert.equal(e.status, status, JSON.stringify(second));
         assert.equal(e.message, message);
@@ -262,7 +258,7 @@ test('attaching a Claude Code session that ran in a folder the check refuses say
     const store = new Store(null);
     const adapters = new AdapterRegistry().register(new ClaudeCodeAdapter({ bin: 'claude', workRoot: join(root, 'workspaces') }));
     const config = { origin: 'http://127.0.0.1:1', imageOrigins: [], lintSettleMs: 0, claudeProjectsRoot: root };
-    const rt = new Runtime({ store, adapters, corpus: { search: () => [], stats: () => ({}) }, config });
+    const rt = new Runtime({ store, adapters, config });
     store.emit('project', { id: 'p1', name: 'P', folder: '/work' });
     await assert.rejects(
       () => rt.attachClaudeSession({ claudeSessionId: id, projectId: 'p1' }),

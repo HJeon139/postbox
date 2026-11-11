@@ -22,7 +22,7 @@ The agent’s answer, streamed as it’s written, in Markdown.
 ## Steps to reproduce
 
 1. Run the demo (`node tools/demo.mjs --port 4180`) and open <http://127.0.0.1:4180/> while it plays; keep the tab open.
-2. Watch a reply stream in “Corpus explorer”.
+2. Watch a reply stream in “Asset explorer”.
 3. Run Postbox with real agents (`node server/index.mjs --port 4181 --data /tmp/pb-uat-real --fresh`, with Claude Code installed and signed in) and open <http://127.0.0.1:4181/>. Ask an agent to reply with `<b>hi</b>` and a link, then ask @researcher to explain something step by step and end with an exercise whose answer is hidden. Ask for a numbered list of steps whose labels are bold and name a file in backticks.
 4. Under a reply, click 👍, hover it, then Tab to 🚩 and press Enter. Ask the agent to react to your message with ✅, then add yours to the same message.
 

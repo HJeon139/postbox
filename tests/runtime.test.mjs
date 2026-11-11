@@ -40,15 +40,13 @@ class ScriptedAdapter {
 function setup(config = {}) {
   const store = new Store(null);
   const adapter = new ScriptedAdapter();
-  const corpus = { search: () => [], read: () => null, stats: () => ({ books: [], passages: 0 }) };
   const rt = new Runtime({
     store,
     adapters: new AdapterRegistry().register(adapter),
-    corpus,
     config: { origin: 'http://127.0.0.1:1', imageOrigins: [], lintSettleMs: 0, ...config },
   });
   store.emit('project', { id: 'p1', name: 'P', folder: '/tmp' });
-  const a = rt.createPersona({ handle: 'alpha', tools: ['corpus.search'] });
+  const a = rt.createPersona({ handle: 'alpha', tools: ['arxiv.search'] });
   const b = rt.createPersona({ handle: 'beta' });
   const t = rt.createThread({ projectId: 'p1', title: 'T', personaIds: [a.id] });
   return { store, rt, adapter, t, a, b };
@@ -329,14 +327,14 @@ test('deleting an agent in a room keeps its messages, marked deleted', async () 
   assert.ok(store.items(t.id).some((i) => i.kind === 'system' && i.variant === 'left'));
 });
 
-test('apps can query only tools both they and their agent were granted', async () => {
+test('apps can query only tools both they and their agent were granted; every agent holds its conversation’s assets', async () => {
   const { rt, t, adapter } = setup();
-  adapter.next.push(async (c) => c.tools.show_app({ id: 'ap', title: 'App', code: '<p>hi</p>', permissions: ['corpus.search', 'shell'] }));
+  adapter.next.push(async (c) => c.tools.show_app({ id: 'ap', title: 'App', code: '<p>hi</p>', permissions: ['assets.search', 'shell'] }));
   rt.sendMessage(t.id, { text: 'make an app' });
   await settle(rt);
-  assert.deepEqual(rt.appQuery('ap', 'corpus.search', { query: 'x' }), []);
+  assert.deepEqual(await rt.appQuery('ap', 'assets.search', { query: 'x' }), [], 'a store kept in memory has no assets');
   assert.throws(() => rt.appQuery('ap', 'shell', {}), /can’t use “shell”/);
-  assert.throws(() => rt.appQuery('ap', 'corpus.read', {}), /can’t use “corpus.read”/);
+  assert.throws(() => rt.appQuery('ap', 'assets.list', {}), /can’t use “assets.list”/, 'the app names each one it uses');
 });
 
 test('a failed pre-display check goes back to the agent once; a second failure shows the app with a note', async () => {
@@ -361,8 +359,7 @@ function withApp(store = undefined) {
 }
 function setupWith(store) {
   const adapter = new ScriptedAdapter();
-  const corpus = { search: () => [], read: () => null, stats: () => ({ books: [], passages: 0 }) };
-  const rt = new Runtime({ store, adapters: new AdapterRegistry().register(adapter), corpus, config: { origin: 'http://127.0.0.1:1', imageOrigins: [] } });
+  const rt = new Runtime({ store, adapters: new AdapterRegistry().register(adapter), config: { origin: 'http://127.0.0.1:1', imageOrigins: [] } });
   store.emit('project', { id: 'p1', name: 'P', folder: '/tmp' });
   const a = rt.createPersona({ handle: 'alpha' });
   const t = rt.createThread({ projectId: 'p1', title: 'T', personaIds: [a.id] });
@@ -450,8 +447,7 @@ test('#38: an app’s waiting sends survive a restart, and Allow still sends the
   await first.store.close();
   const store = await new Store(dir).load();
   const adapter = new ScriptedAdapter();
-  const corpus = { search: () => [], read: () => null, stats: () => ({ books: [], passages: 0 }) };
-  const rt = new Runtime({ store, adapters: new AdapterRegistry().register(adapter), corpus, config: { origin: 'http://127.0.0.1:1', imageOrigins: [] } });
+  const rt = new Runtime({ store, adapters: new AdapterRegistry().register(adapter), config: { origin: 'http://127.0.0.1:1', imageOrigins: [] } });
   const card = store.items(first.t.id).find((x) => x.kind === 'appsend');
   assert.equal(card?.status, 'open');
   assert.equal(card.events.length, 1);
@@ -2217,10 +2213,10 @@ test('#5: a persona’s tools, which real backends deny when unticked, follow it
   adapter.next.push(async (c) => seen.push(c.persona.tools));
   rt.sendMessage(t.id, { text: 'one' });
   await settle(rt);
-  rt.updatePersona(a.id, { tools: ['corpus.search', 'shell'] });
+  rt.updatePersona(a.id, { tools: ['arxiv.search', 'shell'] });
   rt.sendMessage(t.id, { text: 'two' });
   await settle(rt);
-  assert.deepEqual(seen, [['corpus.search'], ['corpus.search', 'shell']]);
+  assert.deepEqual(seen, [['arxiv.search'], ['arxiv.search', 'shell']]);
 });
 
 // ── #60: model and effort ────────────────────────────────────────────────────────────────
@@ -2279,7 +2275,7 @@ test('an agent asks for a tool that’s off; the person turns it on from the car
   adapter.next.push(async (c) => {
     first = c.tools.ask_for_tool({ tool: 'shell', why: 'To run gh issue create.' });
     assert.equal(c.tools.ask_for_tool({ tool: 'shell', why: 'again' }).ok, true, 'a second ask points at the open card');
-    assert.match(c.tools.ask_for_tool({ tool: 'corpus.search', why: 'x' }).message, /already on/);
+    assert.match(c.tools.ask_for_tool({ tool: 'arxiv.search', why: 'x' }).message, /already on/);
     assert.match(c.tools.ask_for_tool({ tool: 'rm', why: 'x' }).message, /no tool “rm”/);
   });
   rt.sendMessage(t.id, { text: 'file two issues with gh' });
@@ -2293,7 +2289,7 @@ test('an agent asks for a tool that’s off; the person turns it on from the car
   assert.equal(store.state.sessions[se.id].needs.kind, 'toolask');
   rt.act(t.id, cards[0].id, 'on');
   await settle(rt);
-  assert.deepEqual(store.state.personas[a.id].tools, ['corpus.search', 'shell']);
+  assert.deepEqual(store.state.personas[a.id].tools, ['arxiv.search', 'shell']);
   assert.equal(store.item(t.id, cards[0].id).status, 'on');
   assert.ok(store.items(t.id).some((i) => i.kind === 'voice' && i.text === 'Turned on “Run commands in the project folder” for @alpha'));
   assert.equal(adapter.calls.at(-1).message.kind, 'notice');
@@ -2311,7 +2307,7 @@ test('keeping a tool off leaves the persona as it was and tells the agent to go 
   const card = store.items(t.id).find((i) => i.kind === 'toolask');
   rt.act(t.id, card.id, 'off');
   await settle(rt);
-  assert.deepEqual(store.state.personas[a.id].tools, ['corpus.search']);
+  assert.deepEqual(store.state.personas[a.id].tools, ['arxiv.search']);
   assert.match(adapter.calls.at(-1).message.text, /kept web\.fetch off for you/);
   assert.equal(store.state.sessions[rt.sessionsIn(t.id)[0].id].needs, null);
 });

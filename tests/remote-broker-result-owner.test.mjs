@@ -36,7 +36,7 @@ test('#908 an asked call’s result reaches only the connections of the shim tha
   const h = makeHome();
   try {
     const { k, s, bystander } = await room(h);
-    s.send('call', { id: 'c1', name: 'corpus_search', args: { query: 'q' } });
+    s.send('call', { id: 'c1', name: 'search_assets', args: { query: 'q' } });
     await sentTool(k);
     assert.deepEqual((await k.post('reply', { turn: 't1', id: 'c1', ok: true, text: SECRET })).errors, []);
     assert.equal((await s.next('result', (m) => m.id === 'c1')).text, SECRET);
@@ -105,12 +105,12 @@ test('#908 a connection that sends another shim’s call id again gets none of i
   const h = makeHome();
   try {
     const { k, s, bystander } = await room(h);
-    s.send('call', { id: 'c1', name: 'corpus_search', args: { query: 'q' } });
+    s.send('call', { id: 'c1', name: 'search_assets', args: { query: 'q' } });
     await sentTool(k);
     await k.post('reply', { turn: 't1', id: 'c1', ok: true, text: SECRET });
     await s.next('result', (m) => m.id === 'c1');
     const sent = k.sent.length;
-    const got = await bystander.call('c1', 'corpus_search', { query: 'something else' });
+    const got = await bystander.call('c1', 'search_assets', { query: 'something else' });
     assert.equal(got.ok, false, 'refused');
     assert.ok(!got.text.includes(SECRET), 'with none of the kept text');
     assert.match(got.text, /another connection/);
@@ -118,7 +118,7 @@ test('#908 a connection that sends another shim’s call id again gets none of i
     // The shim that made it, on a new connection, still gets the kept answer.
     const back = connectShim(k.b, 't1');
     await back.next('welcome');
-    assert.equal((await back.call('c1', 'corpus_search', { query: 'q' })).text, SECRET);
+    assert.equal((await back.call('c1', 'search_assets', { query: 'q' })).text, SECRET);
   } finally {
     await h.done();
   }
@@ -130,9 +130,9 @@ test('#908 two shims racing on one call id: the second is refused, not answered'
     // The first call is held while it’s counted against the queue, so the second finds it taken (the 'again' path).
     const hold = holdingIo((c) => c.kind === 'stat');
     const { k, s, bystander } = await room(h, { io: hold.io });
-    s.send('call', { id: 'c1', name: 'corpus_search', args: { query: 'q' } });
+    s.send('call', { id: 'c1', name: 'search_assets', args: { query: 'q' } });
     await reached(hold);
-    bystander.send('call', { id: 'c1', name: 'corpus_search', args: { query: 'q' } });
+    bystander.send('call', { id: 'c1', name: 'search_assets', args: { query: 'q' } });
     await sleep(30);
     hold.release();
     const lost = await bystander.next('result', (m) => m.id === 'c1');
@@ -152,7 +152,7 @@ test('#908 after its shim reconnects, a call’s result reaches the new connecti
   const h = makeHome();
   try {
     const { k, s } = await room(h);
-    s.send('call', { id: 'c1', name: 'corpus_search', args: { query: 'q' } });
+    s.send('call', { id: 'c1', name: 'search_assets', args: { query: 'q' } });
     await sentTool(k);
     s.close();
     const back = connectShim(k.b, 't1');
@@ -168,7 +168,7 @@ test('#908 after a daemon restart a call’s owner is read back: its shim gets t
   const h = makeHome();
   try {
     const { k, s } = await room(h);
-    s.send('call', { id: 'c1', name: 'corpus_search', args: { query: 'q' } });
+    s.send('call', { id: 'c1', name: 'search_assets', args: { query: 'q' } });
     await sentTool(k);
     const path = h.p.turn('t1', TURN_FILES.tools);
     const [call] = lines(path).filter((r) => r.op === 'call');
@@ -185,7 +185,7 @@ test('#908 after a daemon restart a call’s owner is read back: its shim gets t
     assert.equal((await back.next('result', (m) => m.id === 'c1')).text, SECRET, 'live, to its shim');
     await sleep(20);
     assert.deepEqual(results(other), [], 'not to another key');
-    const refused = await other.call('c1', 'corpus_search', { query: 'q' });
+    const refused = await other.call('c1', 'search_assets', { query: 'q' });
     assert.equal(refused.ok, false);
     assert.ok(!refused.text.includes(SECRET), 'nor when it sends the id again');
   } finally {
@@ -199,7 +199,7 @@ test('#908 a call an older daemon wrote down goes to the first shim that sends i
     try {
       h.turn('t1');
       // As an older daemon wrote them: no owner (or one this daemon can’t read); c1’s reply kept, c2 still waiting.
-      const call = (id) => ({ op: 'call', id, name: 'corpus_search', route: 'ask', args: { query: 'q' }, at: 1, ...(owner ? { owner } : {}) });
+      const call = (id) => ({ op: 'call', id, name: 'search_assets', route: 'ask', args: { query: 'q' }, at: 1, ...(owner ? { owner } : {}) });
       const reply = { op: 'reply', id: 'c1', ok: true, text: SECRET, at: 2 };
       writeFileSync(h.p.turn('t1', TURN_FILES.tools), `${[call('c1'), reply, call('c2')].map((r) => JSON.stringify(r)).join('\n')}\n`);
       const k = makeBroker(h);
@@ -213,10 +213,10 @@ test('#908 a call an older daemon wrote down goes to the first shim that sends i
       assert.deepEqual((await k.post('reply', { turn: 't1', id: 'c2', ok: true, text: SECRET })).errors, []);
       await sleep(20);
       assert.deepEqual([...results(other, 'c2'), ...results(s, 'c2')], [], `${owner ?? 'no owner'}: a live answer to an ownerless call reaches nobody`);
-      assert.equal((await s.call('c2', 'corpus_search', { query: 'q' })).text, SECRET, 'until its shim sends it again');
-      assert.equal((await s.call('c1', 'corpus_search', { query: 'q' })).text, SECRET, `${owner ?? 'no owner'}: the first to send it takes it`);
+      assert.equal((await s.call('c2', 'search_assets', { query: 'q' })).text, SECRET, 'until its shim sends it again');
+      assert.equal((await s.call('c1', 'search_assets', { query: 'q' })).text, SECRET, `${owner ?? 'no owner'}: the first to send it takes it`);
       assert.deepEqual(results(other), [], 'a bystander connected before it got nothing');
-      assert.equal((await other.call('c1', 'corpus_search', { query: 'q' })).ok, false, 'then another key is refused');
+      assert.equal((await other.call('c1', 'search_assets', { query: 'q' })).ok, false, 'then another key is refused');
       const took = lines(h.p.turn('t1', TURN_FILES.tools)).filter((r) => r.op === 'owner' && r.id === 'c1');
       assert.deepEqual(
         took.map((r) => r.owner),
@@ -228,12 +228,12 @@ test('#908 a call an older daemon wrote down goes to the first shim that sends i
       await again.b.load([{ turn: 't1', state: 'running' }]);
       const late = connectShim(again.b, 't1', turnToken('t1'), OTHER);
       await late.next('welcome');
-      const no = await late.call('c1', 'corpus_search', { query: 'q' });
+      const no = await late.call('c1', 'search_assets', { query: 'q' });
       assert.equal(no.ok, false, 'another key is refused after the restart');
       assert.ok(!no.text.includes(SECRET));
       const back = connectShim(again.b, 't1');
       await back.next('welcome');
-      assert.equal((await back.call('c1', 'corpus_search', { query: 'q' })).text, SECRET, 'its shim still gets it');
+      assert.equal((await back.call('c1', 'search_assets', { query: 'q' })).text, SECRET, 'its shim still gets it');
     } finally {
       await h.done();
     }
