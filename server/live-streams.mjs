@@ -106,7 +106,8 @@ function eventSender({ store, streams, deliver, headers, events, openOf }) {
     const tail = ev.type === REJECTED ? `${after}event: ${STREAM.resync}\ndata: {}\n\n` : after;
     // Both forms now, as the event is: a send held back would otherwise read the store's objects as they are by then.
     const full = publicFrame(ev, events) + tail;
-    const shut = publicFrame(ev, events, new Set()) + tail; // as a page sees it that hasn't its conversation open
+    // As a page sees it that hasn't the conversation open: differs only for an item's event, so only that is built twice.
+    const shut = ev.type.startsWith('item.') ? publicFrame(ev, events, new Set()) + tail : full;
     const send = () => {
       if (store.epoch !== epoch) return;
       for (const res of streams) {
