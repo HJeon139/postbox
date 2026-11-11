@@ -41,7 +41,6 @@ import { FRESH_START_TEXT, formatMessage, turnGuide } from './guide.mjs';
 import { listProcesses, stopJobUnder, stopOnAbort, stopTurn } from './process-group.mjs';
 import { hostMemoryRoot } from './remote-turn.mjs';
 import { effortOf, fromContext, recorderFor } from './setup.mjs';
-import { takeToolsDown } from './tools-down.mjs';
 
 export { claudeArgs } from './claude-code-args.mjs';
 export { CLAUDE_CODE_CAPABILITIES, DENY_PROMPTS_MIN, REMOTE_CLAUDE_MIN, remoteClaudeProblem } from './claude-code-remote.mjs';
@@ -145,8 +144,7 @@ export class ClaudeCodeAdapter {
     const cwd = remote ? remote.folder : await this.folderFor(persona, ctx.project);
     // On a host, each attachment is its copy in the folder of the host turn the message goes to.
     const turned = turnGuide(message, { persona, session, handles: ctx.handles, room: ctx.room, project: ctx.project, brief: session?.brief });
-    const down = attach ? '' : takeToolsDown(ctx, message); // Postbox’s tools didn’t load last turn: told first, once (#1161)
-    const promptOn = (/** @type {string | null} */ turn) => down + formatMessage(turned.message, attachmentPaths(ctx, turn));
+    const promptOn = (/** @type {string | null} */ turn) => formatMessage(turned.message, attachmentPaths(ctx, turn));
     const guide = remote ? remoteGuide(turned.guide, cwd, ctx.addDirs ?? []) : turned.guide;
     // The project’s folder, and the folders the person added for this conversation (#66). On a host, none: they’re
     // paths on this computer, and the project’s folder there is cwd.

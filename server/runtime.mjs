@@ -10,11 +10,11 @@ import { COLUMN_PX, lintDiagrams, MIN_TEXT_PX, mermaidBlocks } from '../shared/d
 import { READING } from '../shared/limits.mjs';
 import { formatDuration, glimpseOf, parseMentions } from '../shared/text.mjs';
 import { carriedList } from '../shared/work.mjs';
-import { describeTool } from './adapters/claude-stream.mjs';
 import { workFolder } from './adapters/folder.mjs';
 import { listProcesses } from './adapters/process-group.mjs';
 import { AUTO_MODEL, DEFAULT_EFFORT, EFFORT_LEVELS, POSTBOX_SERVER } from './adapters/setup.mjs';
 import { contentBlocks, listClaudeSessions, recentHistory, TranscriptTail, typedText } from './adapters/terminal-mirror.mjs';
+import { toolsDownNote } from './adapters/tools-down.mjs';
 import { agentFile, agentFolders, appFiles } from './agent-files.mjs';
 import { retireApp } from './app-retire.mjs';
 import { APP_HOLD_MAX, APP_SEND_LIMIT, APP_SEND_WINDOW_MS } from './app-send-limits.mjs';
@@ -111,6 +111,7 @@ import { eraseThreads } from './thread-erase.mjs';
 import { firstPromptSection, settleThread, turnContext } from './thread-summary.mjs';
 import { updateThread } from './thread-write.mjs';
 import { askForTool, settleToolAsks } from './tool-ask.mjs';
+import { describeTool } from './tool-labels.mjs';
 import { openTopic, startTopic } from './topic-open.mjs';
 import { endedAs, endWork } from './turn-end-work.mjs';
 import { askedAgain, askedOf, replyMarks, wokeOf } from './turn-marks.mjs';
@@ -570,6 +571,10 @@ export class Runtime {
       message = { ...message, context: [...notUrgent(se.context), ...(message.context ?? [])] };
       this.updateSession(sessionId, (now) => ({ context: (now.context ?? []).filter((/** @type {string} */ x) => !se.context.includes(x)) })); // only what it read
     }
+    // Postbox’s tools didn’t load last turn: told once, whatever the backend (tools-down.mjs).
+    const down = toolsDownNote(se, message);
+    if (down) message = { ...message, context: [down, ...(message.context ?? [])] };
+    if (down) saveBackendState(this, sessionId, { postboxToolsDown: null });
     // Problems the checks found in its last reply, still waiting to go as a lint turn, come with this turn instead, as
     // message.lint: fixes it owes, placed with the request rather than in the background.
     if (message.kind !== 'lint' && !slash) message = this.foldLint(sessionId, message);
