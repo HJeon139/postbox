@@ -45,6 +45,16 @@ function rowsFor(all, threadId, q) {
   return threadId && q ? [...found, ...messageRows(threadId, q)] : found;
 }
 
+/** One row in the list, as an option of the field’s listbox. @param {Row} x @param {number} i @param {boolean} chosen @param {(x: Row) => void} go */
+const option = (x, i, chosen, go) =>
+  h('li', { role: 'option', id: `p-${i}`, 'aria-selected': String(chosen), dataset: x.item ? { item: x.item } : {}, onclick: () => go(x) }, ...x.content);
+
+/** What a query found, said by the status line for a screen reader. @param {string} q @param {number} n */
+function found(q, n) {
+  if (!q) return '';
+  return n ? `${n} found` : 'Nothing found';
+}
+
 /** The field, a combobox over the list. */
 const field = () =>
   h('input.input', {
@@ -65,6 +75,7 @@ export function openPalette(sheets) {
   const all = jumps(sheets);
   const input = field();
   const list = h('ul.p-list', { id: 'p-list', role: 'listbox', 'aria-label': 'Results' });
+  const status = h('p.small.dim.sr-only', { role: 'status' });
   /** @type {Row[]} */
   let rows = [];
   let sel = 0;
@@ -74,27 +85,28 @@ export function openPalette(sheets) {
     x.run();
   };
   const paint = () => {
-    const li = (/** @type {Row} */ x, /** @type {number} */ i) =>
-      h(
-        'li',
-        { role: 'option', id: `p-${i}`, 'aria-selected': String(i === sel), dataset: x.item ? { item: x.item } : {}, onclick: () => go(x) },
-        ...x.content,
-      );
-    list.replaceChildren(...rows.map(li));
+    list.replaceChildren(...rows.map((x, i) => option(x, i, i === sel, go)));
     if (rows.length) input.setAttribute('aria-activedescendant', `p-${sel}`);
     else input.removeAttribute('aria-activedescendant');
   };
   // A query runs at most once a frame while you type: a long conversation’s search isn’t free.
   const run = () => {
     queued = 0;
-    rows = rowsFor(all, threadId, input.value.trim());
+    const q = input.value.trim();
+    rows = rowsFor(all, threadId, q);
     sel = 0;
+    status.textContent = found(q, rows.length);
     paint();
   };
   input.addEventListener('input', () => {
     if (!queued) queued = requestAnimationFrame(run);
   });
   input.addEventListener('keydown', (e) => {
+    // Typed or pasted and Enter at once: the query still waiting for its frame runs first, so a key acts on its rows.
+    if (queued) {
+      cancelAnimationFrame(queued);
+      run();
+    }
     if (!rows.length || !['ArrowDown', 'ArrowUp', 'Enter'].includes(e.key)) return;
     e.preventDefault();
     if (e.key === 'Enter') return go(rows[sel]);
@@ -107,7 +119,7 @@ export function openPalette(sheets) {
   run();
   const dlg = openDialog({
     title: 'Jump to…',
-    body: [input, list],
+    body: [input, status, list],
     size: 'palette',
     initialFocus: () => input,
     onClose: () => removeEventListener('hashchange', left),

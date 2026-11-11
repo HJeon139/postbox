@@ -42,7 +42,7 @@ async function open(page) {
 const dialog = (page) => page.locator('.dialog.palette');
 const field = (page) => dialog(page).getByRole('combobox');
 const openSearch = (page) => page.getByRole('button', { name: /Jump to/ }).click();
-const status = (page) => dialog(page).locator('[data-item]');
+const hits = (page) => dialog(page).locator('[data-item]');
 
 test('#1233 the top bar has one search, Jump to…, and ⌘F stays the browser’s find', async ({ page }) => {
   await open(page);
@@ -76,12 +76,31 @@ test('#1233 the top bar has one search, Jump to…, and ⌘F stays the browser�
   await expect(dialog(page).getByRole('option').first()).toContainText('Another room');
 });
 
+test('#1233 a query typed or pasted and Enter at once acts on that query’s rows, and the status says what it found', async ({ page }) => {
+  await open(page);
+  await openSearch(page);
+  // In one task, as a paste and a quick Enter are: the query’s frame hasn’t come yet when Enter arrives.
+  await field(page).evaluate((el) => {
+    const input = /** @type {HTMLInputElement} */ (el);
+    input.value = 'Another room';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+  });
+  await expect(page).toHaveURL(new RegExp(`#/t/${other}$`));
+  await page.goto(`${app.origin}/#/t/${room}`);
+  await openSearch(page);
+  await field(page).fill('zeppelin');
+  await expect(dialog(page).getByRole('status')).toHaveText(/^\d+ found$/);
+  await field(page).fill('qwxzvb');
+  await expect(dialog(page).getByRole('status')).toHaveText('Nothing found');
+});
+
 test('#866 W4 a word only in an item far up the room finds it, and Enter jumps to it and focuses it', async ({ page }) => {
   await open(page);
   const far = app.store.items(room)[FAR];
   await openSearch(page);
   await field(page).fill('zeppelin');
-  const hit = status(page).first();
+  const hit = hits(page).first();
   await expect(hit).toContainText('zeppelin');
   await expect(hit).toHaveAttribute('data-item', far.id);
   await page.keyboard.press('Enter');
@@ -95,7 +114,7 @@ test('#866 W4 a change to an item shows in search, and a streaming reply is foun
   await open(page);
   await openSearch(page);
   await field(page).fill('quokka');
-  await expect(status(page)).toHaveCount(0);
+  await expect(hits(page)).toHaveCount(0);
   await page.keyboard.press('Escape');
   const se = app.rt.sessionsIn(room)[0];
   const it = app.rt.addItem(room, { kind: 'agent', sessionId: se?.id, handle: 'coder', text: '', status: 'streaming' });
@@ -103,13 +122,13 @@ test('#866 W4 a change to an item shows in search, and a streaming reply is foun
   await synced(page, app);
   await openSearch(page);
   await field(page).fill('quokka');
-  await expect(status(page), 'not while it streams').toHaveCount(0);
+  await expect(hits(page), 'not while it streams').toHaveCount(0);
   await page.keyboard.press('Escape');
   app.rt.patchItem(room, it.id, { status: 'done', text: 'A quokka sighting.' });
   await synced(page, app);
   await openSearch(page);
   await field(page).fill('quokka');
-  await expect(status(page).first()).toHaveAttribute('data-item', it.id);
+  await expect(hits(page).first()).toHaveAttribute('data-item', it.id);
   // Changed again: one entry is rewritten, not the room’s, and the new words are found, the old ones aren’t.
   await page.keyboard.press('Escape');
   const writes = () => page.evaluate((id) => import('/app/js/transcript-search.mjs').then((m) => m.indexFor(id).writes), room);
@@ -119,9 +138,9 @@ test('#866 W4 a change to an item shows in search, and a streaming reply is foun
   expect((await writes()) - before, 'entries written for one patch').toBe(1);
   await openSearch(page);
   await field(page).fill('quokka');
-  await expect(status(page)).toHaveCount(0);
+  await expect(hits(page)).toHaveCount(0);
   await field(page).fill('wombat');
-  await expect(status(page).first()).toHaveAttribute('data-item', it.id);
+  await expect(hits(page).first()).toHaveAttribute('data-item', it.id);
 });
 
 test('#866 W4 an item’s text shows in a hit as text, never as HTML', async ({ page }) => {
@@ -129,7 +148,7 @@ test('#866 W4 an item’s text shows in a hit as text, never as HTML', async ({ 
   await open(page);
   await openSearch(page);
   await field(page).fill('axolotl');
-  const hit = status(page).first();
+  const hit = hits(page).first();
   await expect(hit).toHaveAttribute('data-item', it.id);
   await expect(hit).toContainText('<img src=x');
   await expect(dialog(page).locator('img')).toHaveCount(0);
@@ -141,7 +160,7 @@ test('#866 W4 the palette with message hits has no accessibility problems', asyn
   await open(page);
   await openSearch(page);
   await field(page).fill('zeppelin');
-  await expect(status(page).first()).toBeVisible();
+  await expect(hits(page).first()).toBeVisible();
   expect(await axe(page)).toEqual([]);
 });
 
@@ -149,7 +168,7 @@ test('#866 W4 going to another conversation, or back, closes the palette, so a h
   await open(page);
   await openSearch(page);
   await field(page).fill('zeppelin');
-  await expect(status(page).first()).toBeVisible();
+  await expect(hits(page).first()).toBeVisible();
   await page.evaluate((id) => {
     location.hash = `#/t/${id}`;
   }, other);
