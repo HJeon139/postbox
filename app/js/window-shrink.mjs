@@ -125,12 +125,14 @@ function excess(w) {
 /**
  * @param {any} w
  * Past the ceiling of items or the budget of elements, unmounts what’s furthest from the view, beyond the margin, by
- * measured heights: from the top if that’s further, holding what you see in place, else from the bottom.
+ * measured heights: from the top if that’s further, holding what you see in place, else from the bottom. Past the
+ * budget alone, only what’s beyond twice the margin: a growth mounts about a margin past where it was asked for, and
+ * dropping that again had the next scroll mount it again, over and over, past an item that alone is near the budget.
  */
 export function shrink(w) {
   const over = excess(w);
   if (over.items <= 0 && over.elements <= 0) return;
-  const reach = w.viewH() * MARGIN;
+  const reach = w.viewH() * (over.items > 0 ? MARGIN : 2 * MARGIN);
   const first = /** @type {HTMLElement} */ (w.nodes.get(w.entry.ids[w.from]));
   const last = /** @type {HTMLElement} */ (w.nodes.get(w.entry.ids[w.to - 1]));
   const farAbove = -first.getBoundingClientRect().top - reach;
