@@ -533,7 +533,9 @@ function raw(res, status, body, headers = {}) {
 }
 function send(res, status, obj) {
   res.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
-  res.end(JSON.stringify(obj));
+  // Bytes, not the string: the socket keeps what it’s given until the page has read it all, and /api/state’s string is
+  // as long as the state, two bytes a character once one is past Latin-1. As bytes it leaves the V8 heap at once (#1210).
+  res.end(Buffer.from(JSON.stringify(obj)));
 }
 
 async function json(req) {
