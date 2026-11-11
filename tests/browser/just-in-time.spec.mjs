@@ -135,7 +135,21 @@ test('#1155 search finds an item the page hasn’t loaded, and its hit loads the
 
 test('#1155 a resync loads the headers and the open range again, never the whole history', async ({ page }) => {
   await open(page);
-  await page.evaluate(() => import('/app/js/client.mjs').then(({ load }) => load()));
+  // A real resync: the stream reconnects naming another history's epoch, and the server tells the page to load the
+  // state again, which closes the stream first, loads, and connects again (client.mjs, resync).
+  let rewritten = false;
+  await page.route('**/api/stream*', (route) => {
+    if (rewritten) return route.continue();
+    rewritten = true;
+    const url = new URL(route.request().url());
+    url.searchParams.set('epoch', 'ep_another_history');
+    return route.continue({ url: url.href });
+  });
+  let loads = 0;
+  page.on('request', (r) => r.url().includes('/api/state') && loads++);
+  await page.evaluate(() => import('/app/js/client.mjs').then(({ connect }) => connect()));
+  await expect.poll(() => loads, 'told to resync, the page loads the state again').toBe(1);
+  await synced(page, app);
   await expect(shown(page, items.at(-1).id)).toBeAttached();
   await withinBudget(page, 'after a resync');
 });
