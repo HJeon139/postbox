@@ -104,3 +104,24 @@ export const NEEDS_TRIGGERS = {
         .map((j) => ({ at: j.at ?? null, evidence: `@${j.handle}, from ${PLACES[j.from] ?? j.from}, at step ${j.step}.` })),
   },
 };
+
+// Open permissions, for room-checks.mjs’s waitingOnYou, kept here to keep that file to its size. An open permission waits
+// on the person whatever its session's state says. In sf-evalgen-wf1 (11/11 08:22:55), @builder's own Bash permission
+// stayed open while its background subagent ran; the subagent's tool steps left the session at "tool" with no `needs`,
+// so the run's wait saw a working agent with nothing asking until the run's limit, 49 minutes later.
+
+/**
+ * The open permissions in these threads that `known` (what waitingOnYou already found, by item id) doesn't name.
+ * @param {any} state  @param {string[]} threads  @param {Map<string, unknown>} known
+ * @returns {{ itemId: string, threadId: string, what: string }[]}
+ */
+export function openPermissions(state, threads, known) {
+  const out = [];
+  for (const t of threads)
+    for (const it of state.items?.[t] ?? [])
+      if (it.kind === 'permission' && it.status === 'open' && !known.has(it.id)) {
+        const what = `${it.handle ? `@${it.handle} ` : ''}asks to ${String(it.summary ?? it.tool ?? 'use a tool').slice(0, 120)}`;
+        out.push({ itemId: it.id, threadId: t, what });
+      }
+  return out;
+}

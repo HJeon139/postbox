@@ -34,7 +34,7 @@ import { clip } from '../shared/text.mjs';
 import { deniedTools, isPublishingTool, POSTBOX_SERVER, PUBLISHING_TOOLS } from './adapters/setup.mjs';
 import { asksInProse, blockUseTally } from './block-use.mjs';
 import { BACKEND_CHECKS } from './room-checks-backends.mjs';
-import { NEEDS_CHECKS } from './room-checks-needs.mjs';
+import { NEEDS_CHECKS, openPermissions } from './room-checks-needs.mjs';
 import { TELEMETRY_CHECKS } from './room-checks-telemetry.mjs';
 
 export { agyTokens, kiroCredits } from './room-checks-backends.mjs';
@@ -75,7 +75,7 @@ export function waitingOnYou(state, threads) {
       const key = se.needs.itemId ?? `needs:${se.id}`;
       if (!out.has(key)) out.set(key, { itemId: se.needs.itemId ?? null, threadId: se.threadId ?? t, what: clip(se.needs.text ?? se.needs.kind, 120) });
     }
-  return [...out.values()];
+  return [...out.values(), ...openPermissions(state, threads, out)];
 }
 
 // ── The P0 hotfixes (#108, #123, #125, #126) ───────────────────────────────────────────────────────────
