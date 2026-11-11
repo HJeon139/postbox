@@ -25,6 +25,7 @@ const PUBLISHED = {
   'apps.mjs': ['appEvent', 'resolveAppSend'], // the page’s app events and an app send it answers: what the person sees
   'blocks.mjs': ['act', 'answerDelivered'], // the person’s answer to a block they see
   'card-needs.mjs': ['dismissFailed'], // the person’s Dismiss on a failed reply they see (#883)
+  'diagram-check.mjs': ['diagramCheck'], // the page’s report on a diagram the person sees
   'item-lines.mjs': ['topicRootLine', 'describeItem'], // a read tool and a prompt
   'catch-up.mjs': ['catchUp', 'pointerIfSeen'], // the prompt for a later turn
   'permission-cards.mjs': ['resolvePermission', 'resolveDenial'], // the person’s answer to a card they see
@@ -35,7 +36,7 @@ const PUBLISHED = {
   'remote/turns-snapshot.mjs': ['readable'], // the snapshot sent to a host: it leaves the process
   'review-comments.mjs': ['find'], // review_block on a block shown in the room
   'review-files.mjs': ['findReviewFile'], // a review’s image, as an HTTP answer to the page (#780)
-  'runtime.mjs': ['retry', 'resolveProposal', 'readConversation', 'diagramCheck'], // a person’s action on an item they see, or a read tool
+  'runtime.mjs': ['retry', 'resolveProposal', 'readConversation'], // a person’s action on an item they see, or a read tool
   'scheduled-wakes.mjs': ['prepareScheduledRetry'], // the person’s Retry of a wake line they see
   'share-back.mjs': ['shareToConversation', 'shareToConversation'], // the person’s Share of an item they see
   'shell-runs.mjs': ['stopShellCommand'], // the person’s Stop on a command they see
@@ -121,10 +122,6 @@ const PENDING = {
     'runningProgress',
     'setJobStep',
     'settleJobs',
-    'checkTurn',
-    'checkTurn',
-    'checkTurn',
-    'stallSteps',
   ], // the turn’s own items and apps, a move after a pending read, sweeps that write back, the thread a message, a delivery or a topic reply count goes to, maybe opened or deleting behind a held commit, and the session a stopped turn's exit settles, its “stopping” maybe held (#796)
   // The reply with the mention, a side line right after its add, and sweeps of hop cards; the conversation's hop count,
   // the topic the wake answers in, and endChain's hops and queued wakes, each maybe held behind a commit (#796).
@@ -148,6 +145,8 @@ const PENDING = {
   // open_topic just opened, held (#796).
   'thread-summary.mjs': ['threadHeader', 'threadCatchUp', 'settleThread'],
   'thread-write.mjs': ['updateThread', 'pendingThreads'], // every write of a thread that exists starts from it (#796)
+  // A finished turn’s checks: its own block and the terms and apps it introduced, and the progress steps it stalls.
+  'turn-checks.mjs': ['checkTurn', 'checkTurn', 'checkTurn', 'stallSteps'],
   'turn-end-work.mjs': ['endWork'], // the turn’s own reply or block, to carry its line, maybe held behind a commit
   'tool-ask.mjs': ['askForTool', 'settleToolAsks'], // a second ask for the same tool, and the sweep that settles open asks
   'view-app/consent.mjs': ['askToSee'], // an open download card, which decides whether to add another (#95)

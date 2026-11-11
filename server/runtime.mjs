@@ -2,11 +2,10 @@
 // limit, queues messages sent mid-reply, handles Stop, tracks what "needs you", and implements the UI
 // tools that agents call (over MCP, or in-process for the mock).
 
-import { createHash, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { homedir } from 'node:os';
 import { resolve, sep } from 'node:path';
 import { ASKING } from '../shared/catalog.mjs';
-import { COLUMN_PX, lintDiagrams, MIN_TEXT_PX, mermaidBlocks } from '../shared/diagram-lint.mjs';
 import { READING } from '../shared/limits.mjs';
 import { formatDuration, glimpseOf, parseMentions } from '../shared/text.mjs';
 import { carriedList } from '../shared/work.mjs';
@@ -26,8 +25,8 @@ import { act, answerDelivered, unreadAnswer, updateBlock } from './blocks.mjs';
 import { bringToConversation } from './bring.mjs';
 import { keptTurns, nextNeed, noticeNeed, releaseNeed, stateFor, TURN_TIED } from './card-needs.mjs';
 import { catchUp, moveMarkers, pointerIfSeen } from './catch-up.mjs';
-import { blockProblems, diagramProblems, formatLint, introducedTerms, lintMessage, personSaid, rawHtmlProblems, termProblems } from './checks.mjs';
 import { attachClaudeSession, claudeSessions, mirror, pollMirror, rearmMirrors, stopMirrorFor, stopMirrors } from './claude-mirror.mjs';
+import { diagramCheck } from './diagram-check.mjs';
 import { emptyReply, endedWithoutReply } from './empty-reply.mjs';
 import { folderOrNone } from './folder-path.mjs';
 import { heldSession } from './held-session.mjs';
@@ -35,7 +34,7 @@ import { clip, clipText, httpError } from './helpers.mjs';
 import { clipItem, describeItem, topicRootLine } from './item-lines.mjs';
 import { keptGroupsOf, keptJobs, pollKept, stopJob, stopKeptJobs, watchKept } from './kept-jobs.mjs';
 import { Ledger } from './ledger.mjs';
-import { sendLint } from './lint-delivery.mjs';
+import { endLint, foldLint, lint, quietLint } from './lint-delivery.mjs';
 import { wakeMentions } from './mention-wakes.mjs';
 import { sentAttachments } from './message-attachments.mjs';
 import * as queue from './message-queue.mjs';
@@ -99,6 +98,7 @@ import { firstPromptSection, settleThread, turnContext } from './thread-summary.
 import { updateThread } from './thread-write.mjs';
 import { askForTool } from './tool-ask.mjs';
 import { openTopic, startTopic } from './topic-open.mjs';
+import { checkTurn, stallLeftRunning, stallSteps } from './turn-checks.mjs';
 import { endedAs, endWork } from './turn-end-work.mjs';
 import { askedAgain, askedOf, replyMarks, wokeOf } from './turn-marks.mjs';
 import { settleStoppedSteps, settleSubagentSteps } from './turn-steps.mjs';
@@ -1618,201 +1618,37 @@ export class Runtime {
     );
   }
 
-  /** The server’s checks over a finished turn. */
+  // The server’s checks over a finished turn: server/turn-checks.mjs.
+
   checkTurn(turn, se) {
-    const lineage = this.lineage(turn.threadId);
-    const items = lineage.flatMap((id) => this.store.pending.items(id));
-    const apps = Object.values(this.store.pending.apps()).filter((a) => lineage.includes(a.threadId));
-    const problems = termProblems(turn.said, this.glossaryFor(turn.threadId), introducedTerms(items, apps), personSaid(items));
-    // Diagrams too wide or too busy to read at the conversation’s width.
-    const diagrams = lintDiagrams(turn.said);
-    if (diagrams.length)
-      this.rememberDiagrams(
-        se.id,
-        diagrams.map((d) => d.src),
-      );
-    problems.push(...diagramProblems(diagrams), ...rawHtmlProblems(turn.said));
-    // A reply that should have been a block (#63): what this turn showed, and what the person last asked for.
-    const own = this.store.pending.items(turn.threadId);
-    const shown = own.filter((it) => it.kind === 'block' && it.valid && it.turnId === turn.id).map((it) => it.block.type);
-    problems.push(...blockProblems(turn.said, shown, own.findLast((it) => it.kind === 'user')?.text ?? ''));
-    return problems;
+    return checkTurn(this, turn, se);
   }
-
-  /**
-   * A turn that was stopped or failed starts no lint turn, but its progress steps still running show as stalled, as
-   * at a normal end (#58), and the agent hears which at the start of its next turn (#98).
-   * @param {any} turn @param {any} se @param {'stopped' | 'failed' | 'shutdown' | 'hung'} how
-   */
   stallLeftRunning(turn, se, how) {
-    const problems = this.stallSteps(turn, se);
-    if (!problems.length) return;
-    const blocks = problems.map((p) => `- Block “${p.scope.title ?? p.scope.id}” (id ${p.scope.id}): ${p.message}`);
-    this.tellAgent(
-      se.id,
-      `${{ stopped: 'The person stopped your last turn', failed: 'Your last turn failed', shutdown: 'Postbox shut down during your last turn', hung: 'Postbox stopped your last turn, which had no output for too long,' }[how]} while progress steps were running:\n${blocks.join('\n')}`,
-    );
+    return stallLeftRunning(this, turn, se, how);
   }
-
-  /**
-   * Progress steps still running when their agent’s turn ends are marked stalled, and the agent is told to close them.
-   * Not the steps that were running when the person kept its background jobs running, while one runs on (#129): such
-   * a step may follow the job, and they stall when the last one ends (endJob).
-   * @param {{ threadId: string, keepJobs?: Set<string> }} turn
-   */
   stallSteps(turn, se) {
-    const problems = [];
-    const runsOn = turn.keepJobs?.size || (se.jobs ?? []).some((j) => j.kept);
-    const held = new Set(runsOn ? (se.heldSteps?.keys ?? []) : []);
-    for (const it of this.store.pending.items(turn.threadId)) {
-      if (it.kind !== 'block' || !it.valid || it.sessionId !== se.id || it.block.type !== 'progress') continue;
-      const stalls = (s) => s.state === 'running' && !held.has(`${it.id}:${s.id}`);
-      const running = it.block.steps.filter(stalls);
-      if (!running.length) continue;
-      const steps = it.block.steps.map((s) => (stalls(s) ? { ...s, state: 'stalled' } : s));
-      this.patchItem(turn.threadId, it.id, { block: { ...it.block, steps }, stalledAt: Date.now() });
-      const names = running.map((s) => `“${s.label}”`);
-      const one = running.length === 1;
-      problems.push({
-        code: 'steps-left-running',
-        message: `${one ? 'Step' : 'Steps'} ${names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names.at(-1)}` : names[0]} ${one ? 'was' : 'were'} still running when your turn ended, so the person sees ${one ? 'it' : 'them'} as stalled. Close each with update_block, as done or failed.`,
-        scope: { kind: 'block', id: it.block.id, title: it.block.title },
-      });
-    }
-    return problems;
+    return stallSteps(this, turn, se);
   }
 
-  lintEntry(sessionId, turnId) {
-    let e = this.lints.get(turnId);
-    if (!e) {
-      e = { sessionId, kind: null, ended: false, sent: false, problems: [], timer: null, threadId: null };
-      this.lints.set(turnId, e);
-      // Only recent turns can still get a lint turn.
-      for (const [k, old] of this.lints) {
-        if (this.lints.size <= 200) break;
-        clearTimeout(old.timer);
-        this.lints.delete(k);
-      }
-    }
-    return e;
-  }
+  // When checks reach an agent after its turn: server/lint-delivery.mjs.
 
-  /** The turn ended: its lint turn goes once the browser has had a moment to report. */
   endLint(turn, problems) {
-    const e = this.lintEntry(turn.sessionId, turn.id);
-    e.kind = turn.kind;
-    // The lint turn answers where the reply was.
-    e.threadId = turn.threadId;
-    e.ended = true;
-    e.problems.push(...problems);
-    if (e.problems.length) this.sendLint(turn.id);
+    return endLint(this, turn, problems);
   }
-
-  /**
-   * Adds problems to the lint turn of the agent turn they came from. Returns whether the agent will hear of them:
-   * not when they came from a lint turn, or when that turn’s lint turn has already gone.
-   * @param {string} sessionId  @param {string|null|undefined} turnId  @param {import('./checks.mjs').Problem[]} problems
-   */
   lint(sessionId, turnId, problems) {
-    if (!problems.length || !turnId || !this.s.sessions[sessionId]) return false;
-    const live = [...this.turns.values()].find((t) => t.id === turnId);
-    // A turn that isn’t running and has no entry failed, was stopped, ran before a restart or is long gone: its
-    // problems are dropped, so no lint turn lands about an old reply. A lint turn’s own problems are too.
-    if ((!live && !this.lints.has(turnId)) || live?.kind === 'lint') return false;
-    const e = this.lintEntry(sessionId, turnId);
-    if (e.kind === 'lint' || e.sent) return false;
-    e.problems.push(...problems);
-    if (e.ended) this.sendLint(turnId);
-    return true;
+    return lint(this, sessionId, turnId, problems);
   }
-
-  sendLint(turnId) {
-    return sendLint(this, turnId);
-  }
-
-  /**
-   * Another turn starts before a lint turn went (the person wrote during the settle, say): the problems join that
-   * turn, so a lint turn never lands after it, and later reports for the earlier turns are dropped.
-   */
   foldLint(sessionId, message) {
-    const problems = [];
-    for (const e of this.lints.values()) {
-      if (e.sessionId !== sessionId || !e.ended || e.sent) continue;
-      clearTimeout(e.timer);
-      e.timer = null;
-      e.sent = true;
-      problems.push(...e.problems);
-    }
-    // Its own place in the turn (formatMessage, server/adapters/guide.mjs): after the request, before the background.
-    return problems.length ? { ...message, lint: formatLint(lintMessage(problems), { folded: true }) } : message;
+    return foldLint(this, sessionId, message);
   }
-
-  /** A lint turn that wrote nothing shows as one line, such as “@researcher defined “Step 2””. */
   quietLint(turn, se) {
-    // What the browser reports later about this lint turn’s own work is never linted.
-    Object.assign(this.lintEntry(se.id, turn.id), { kind: 'lint', ended: true, sent: true });
-    if (turn.said.trim() || turn.first) return;
-    const defined = [...new Set(turn.defined ?? [])].map((t) => `“${t}”`);
-    const list = defined.length > 1 ? `${defined.slice(0, -1).join(', ')} and ${defined.at(-1)}` : (defined[0] ?? '');
-    const text = defined.length ? `@${se.handle} defined ${list}` : turn.steps.length ? `@${se.handle} acted on Postbox’s check without a reply` : null;
-    if (text) this.addItem(turn.threadId, { kind: 'system', variant: 'lint', handle: se.handle, turnId: turn.id, text, lintReply: true });
+    return quietLint(this, turn, se);
   }
 
-  // The diagram linter estimates from a diagram’s source; the browser measures the real text size after it renders
-  // and reports here what the estimate missed. Either way the agent hears about a diagram once.
+  // Diagram checks from the page: server/diagram-check.mjs.
 
-  rememberDiagrams(sessionId, sources) {
-    const se = this.s.sessions[sessionId];
-    if (!se) return;
-    const hashes = sources.map((s) => createHash('sha256').update(s.trim()).digest('hex').slice(0, 16));
-    this.updateSession(sessionId, { diagramsLinted: [...new Set([...(se.diagramsLinted ?? []), ...hashes])].slice(-50) });
-  }
-
-  /**
-   * The browser drew a diagram: { src, textPx, width } when it measured it, or { src, error: { message, line } }
-   * when Mermaid couldn’t draw it.
-   */
-  diagramCheck(threadId, itemId, { src, textPx, width, error }) {
-    const it = this.store.item(threadId, itemId);
-    if (it?.kind !== 'agent' || it.lintReply || typeof src !== 'string') return { ok: true, sent: false };
-    const se = this.s.sessions[it.sessionId];
-    const failed = error && typeof error === 'object' && typeof error.message === 'string';
-    // Only a measurement at the conversation’s width counts; a narrow panel or phone shrinks every diagram.
-    if (!se || (!failed && (!(textPx < MIN_TEXT_PX) || !(width >= COLUMN_PX * 0.8)))) return { ok: true, sent: false };
-    const hash = createHash('sha256').update(src.trim()).digest('hex').slice(0, 16);
-    if (se.diagramsLinted?.includes(hash)) return { ok: true, sent: false };
-    // Only a diagram the reply has: its position and first lines come from the reply, not from the browser.
-    const block = mermaidBlocks(String(it.text)).find((b) => b.src.trim() === src.trim());
-    if (!block) return { ok: true, sent: false };
-    const excerpt = block.src
-      .split('\n')
-      .slice(0, 3)
-      .map((l) => clipText(l, 120))
-      .join('\n');
-    const scope = { kind: 'diagram', index: block.index, excerpt };
-    let problem;
-    if (failed) {
-      // Mermaid’s message, without its caret line: “Parse error on line 2: … Expecting 'SEMI', got 'ARROW'”.
-      const said = error.message
-        .split('\n')
-        .filter((l) => l.trim() && !/^[-\s]*\^$/.test(l))
-        .join(' ')
-        .slice(0, 400);
-      const line = Number.isInteger(error.line) && error.line > 0 ? ` (line ${Math.min(error.line, 9999)})` : '';
-      problem = {
-        code: 'diagram-error',
-        message: `Mermaid couldn’t draw it, so the person sees an error and its source instead. Mermaid said${line}: “${said}”. Fix the syntax.`,
-        scope,
-      };
-    } else
-      problem = {
-        code: 'text-too-small',
-        message: `In the person’s browser, its text is drawn at ${Math.round(textPx * 10) / 10} px at a width of ${Math.round(width)} px, too small to read. Draw it top to bottom, split it, or shorten its labels.`,
-        scope,
-      };
-    const sent = this.lint(se.id, it.turnId, [problem]);
-    if (sent) this.rememberDiagrams(se.id, [src]);
-    return { ok: true, sent };
+  diagramCheck(threadId, itemId, report) {
+    return diagramCheck(this, threadId, itemId, report);
   }
 
   // ── Permission prompts: server/permission-cards.mjs ──────────────────────────────────

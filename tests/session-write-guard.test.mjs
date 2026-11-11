@@ -36,11 +36,12 @@ const SESSION_WRITE = /\bputSession\(|\bemit\(\s*['"`]session|\bemit\(\s*['"`]re
  * the pending reads are #623's class (Refs #623).
  */
 const FROM_PUBLISHED = {
+  'diagram-check.mjs': ['rememberDiagrams'], // diagramsLinted
   'kept-jobs.mjs': ['stopJob'], // jobs: a job's stopping mark
   'permission-cards.mjs': ['resolveDenial'], // allowOnce: Allow once on a denial card
   'permissions-panel.mjs': ['changePermissionFolder', 'changePermissionFolder'], // addDirs: a folder removed, or added
   'remote/turns-shared.mjs': ['updateRemote'], // remoteTurn: a host turn's state
-  'runtime.mjs': ['recordJob', 'recordJob', 'rememberDiagrams'], // jobs (a job recorded, kept) and diagramsLinted
+  'runtime.mjs': ['recordJob', 'recordJob'], // jobs (a job recorded, kept)
   'side-threads.mjs': ['recordAgentMessage'], // agentMessages: the last messages between two agents
   'thread-summary.mjs': ['threadCatchUp', 'reactionLines'], // seenIn and reactionsTold: catch-up markers per thread
 };
