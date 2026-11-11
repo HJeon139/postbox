@@ -182,7 +182,7 @@ try {
   await load();
   applyTheme();
   // view_app’s capture page shows one app and nothing else: no stream, no report that a thread is open (#95).
-  if (CAPTURE) mountCapture(root);
+  if (CAPTURE) await mountCapture(root);
   else {
     connect();
     render();
