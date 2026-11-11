@@ -1,6 +1,6 @@
-// Search the conversation (#866, W4): the top bar’s Search button opens it, with no key of its own; ⌘F stays the
-// browser’s own find and ⌘K the palette, and a hit jumps to the item, far up a long room too. Its index is built when search first opens,
-// rewritten one item at a time, and a reply is found once it’s done, not while it streams.
+// One search in the top bar (#1233): Jump to… (⌘K) also finds the open conversation’s messages (#866, W4), and ⌘F
+// stays the browser’s own find. A hit jumps to the item, far up a long room too. Its index is built when the palette
+// first searches, rewritten one item at a time, and a reply is found once it’s done, not while it streams.
 
 import { expect, test } from '@playwright/test';
 import { seedBigRoom } from '../../tools/uat/big-room.mjs';
@@ -39,18 +39,22 @@ async function open(page) {
   await expect(page.locator('#main > .item').last()).toBeVisible();
   await settled(page);
 }
-const dialog = (page) => page.locator('.dialog.search-dialog');
-const field = (page) => dialog(page).getByRole('combobox', { name: 'Search this conversation' });
-const openSearch = (page) => page.getByRole('button', { name: 'Search this conversation' }).click();
+const dialog = (page) => page.locator('.dialog.palette');
+const field = (page) => dialog(page).getByRole('combobox');
+const openSearch = (page) => page.getByRole('button', { name: /Jump to/ }).click();
+const status = (page) => dialog(page).locator('[data-item]');
 
-test('#866 W4 the Search button opens search, and focus goes back to it; ⌘F stays the browser’s, ⌘K the palette', async ({ page }) => {
+test('#1233 the top bar has one search, Jump to…, and ⌘F stays the browser’s find', async ({ page }) => {
   await open(page);
+  const bar = page.locator('.topbar');
+  await expect(bar.getByRole('button', { name: /search/i }), 'no second search button').toHaveCount(0);
+  await expect(bar.locator('.i-search'), 'one search icon in the bar').toHaveCount(1);
   await openSearch(page);
   await expect(field(page)).toBeFocused();
   await page.keyboard.press('Escape');
   await expect(dialog(page)).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Search this conversation' }), 'focus goes back to the button').toBeFocused();
-  // No key opens search, and the browser’s find keys, ⌘F and Firefox’s ⌘⇧F, reach the browser: none is prevented.
+  await expect(page.getByRole('button', { name: /Jump to/ }), 'focus goes back to the button').toBeFocused();
+  // The browser’s find keys, ⌘F and Firefox’s ⌘⇧F, reach the browser: none is prevented.
   const prevented = await page.evaluate(() =>
     [
       { key: 'f', metaKey: true },
@@ -64,10 +68,12 @@ test('#866 W4 the Search button opens search, and focus goes back to it; ⌘F st
   );
   expect(prevented).toEqual([false, false, false]);
   await expect(dialog(page)).toHaveCount(0);
-  // ⌘K is still the palette.
+  // ⌘K opens the same palette, and it still jumps to a conversation by its title, ahead of any message hit.
   await page.locator('#main').focus();
   await page.keyboard.press('Control+K');
-  await expect(page.locator('.dialog.palette:not(.search-dialog) input')).toBeFocused();
+  await expect(field(page)).toBeFocused();
+  await field(page).fill('Another room');
+  await expect(dialog(page).getByRole('option').first()).toContainText('Another room');
 });
 
 test('#866 W4 a word only in an item far up the room finds it, and Enter jumps to it and focuses it', async ({ page }) => {
@@ -75,7 +81,7 @@ test('#866 W4 a word only in an item far up the room finds it, and Enter jumps t
   const far = app.store.items(room)[FAR];
   await openSearch(page);
   await field(page).fill('zeppelin');
-  const hit = dialog(page).getByRole('option').first();
+  const hit = status(page).first();
   await expect(hit).toContainText('zeppelin');
   await expect(hit).toHaveAttribute('data-item', far.id);
   await page.keyboard.press('Enter');
@@ -89,7 +95,7 @@ test('#866 W4 a change to an item shows in search, and a streaming reply is foun
   await open(page);
   await openSearch(page);
   await field(page).fill('quokka');
-  await expect(dialog(page).getByRole('status')).toHaveText('Nothing found');
+  await expect(status(page)).toHaveCount(0);
   await page.keyboard.press('Escape');
   const se = app.rt.sessionsIn(room)[0];
   const it = app.rt.addItem(room, { kind: 'agent', sessionId: se?.id, handle: 'coder', text: '', status: 'streaming' });
@@ -97,13 +103,13 @@ test('#866 W4 a change to an item shows in search, and a streaming reply is foun
   await synced(page, app);
   await openSearch(page);
   await field(page).fill('quokka');
-  await expect(dialog(page).getByRole('status'), 'not while it streams').toHaveText('Nothing found');
+  await expect(status(page), 'not while it streams').toHaveCount(0);
   await page.keyboard.press('Escape');
   app.rt.patchItem(room, it.id, { status: 'done', text: 'A quokka sighting.' });
   await synced(page, app);
   await openSearch(page);
   await field(page).fill('quokka');
-  await expect(dialog(page).getByRole('option').first()).toHaveAttribute('data-item', it.id);
+  await expect(status(page).first()).toHaveAttribute('data-item', it.id);
   // Changed again: one entry is rewritten, not the room’s, and the new words are found, the old ones aren’t.
   await page.keyboard.press('Escape');
   const writes = () => page.evaluate((id) => import('/app/js/transcript-search.mjs').then((m) => m.indexFor(id).writes), room);
@@ -113,9 +119,9 @@ test('#866 W4 a change to an item shows in search, and a streaming reply is foun
   expect((await writes()) - before, 'entries written for one patch').toBe(1);
   await openSearch(page);
   await field(page).fill('quokka');
-  await expect(dialog(page).getByRole('status')).toHaveText('Nothing found');
+  await expect(status(page)).toHaveCount(0);
   await field(page).fill('wombat');
-  await expect(dialog(page).getByRole('option').first()).toHaveAttribute('data-item', it.id);
+  await expect(status(page).first()).toHaveAttribute('data-item', it.id);
 });
 
 test('#866 W4 an item’s text shows in a hit as text, never as HTML', async ({ page }) => {
@@ -123,7 +129,7 @@ test('#866 W4 an item’s text shows in a hit as text, never as HTML', async ({ 
   await open(page);
   await openSearch(page);
   await field(page).fill('axolotl');
-  const hit = dialog(page).getByRole('option').first();
+  const hit = status(page).first();
   await expect(hit).toHaveAttribute('data-item', it.id);
   await expect(hit).toContainText('<img src=x');
   await expect(dialog(page).locator('img')).toHaveCount(0);
@@ -131,19 +137,19 @@ test('#866 W4 an item’s text shows in a hit as text, never as HTML', async ({ 
   await expect(hit.locator('mark')).toHaveText('axolotl');
 });
 
-test('#866 W4 the open search has no accessibility problems', async ({ page }) => {
+test('#866 W4 the palette with message hits has no accessibility problems', async ({ page }) => {
   await open(page);
   await openSearch(page);
   await field(page).fill('zeppelin');
-  await expect(dialog(page).getByRole('option').first()).toBeVisible();
+  await expect(status(page).first()).toBeVisible();
   expect(await axe(page)).toEqual([]);
 });
 
-test('#866 W4 going to another conversation, or back, closes search, so a hit never jumps into the room you left', async ({ page }) => {
+test('#866 W4 going to another conversation, or back, closes the palette, so a hit never jumps into the room you left', async ({ page }) => {
   await open(page);
   await openSearch(page);
   await field(page).fill('zeppelin');
-  await expect(dialog(page).getByRole('option').first()).toBeVisible();
+  await expect(status(page).first()).toBeVisible();
   await page.evaluate((id) => {
     location.hash = `#/t/${id}`;
   }, other);

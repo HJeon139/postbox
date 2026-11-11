@@ -14,7 +14,6 @@ import { notify } from './notify-toast.mjs';
 import { mountPane } from './pane.mjs';
 import { canonical } from './pane-route.mjs';
 import { theme } from './sandbox-libs.mjs';
-import { threadTopbar } from './search-dialog.mjs';
 import { mountEmptyProject, mountRail, mountThreads, railHidden, topbar } from './shell.mjs';
 import { mountComposer, mountTranscript } from './thread.mjs';
 import { refreshTop, topbarChanged } from './topbar-refresh.mjs';
@@ -107,7 +106,7 @@ function render({ rebuild = false } = {}) {
   pane = mountPane(t.id);
   mounted.push(rail, tr, comp, pane);
   conversation = h('div.main', rail.strip, tr.el, comp.el);
-  const shell = h('div.app', { class: railHidden() ? 'rail-hidden' : '' }, threadTopbar(t), rail.el, conversation, pane.el);
+  const shell = h('div.app', { class: railHidden() ? 'rail-hidden' : '' }, topbar({ title: t.title, threadId: t.id }), rail.el, conversation, pane.el);
   root.replaceChildren(shell);
   pane.set(r);
   requestAnimationFrame(() => tr.settle());

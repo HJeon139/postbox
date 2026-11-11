@@ -3,7 +3,6 @@
 
 import { client } from './client.mjs';
 import { holdFocus } from './rerender-state.mjs';
-import { threadTopbar } from './search-dialog.mjs';
 import { topbar } from './shell.mjs';
 import { liveMembers, topbarSig } from './topbar-sig.mjs';
 import { refind } from './ui.mjs';
@@ -41,7 +40,7 @@ export function refreshTop({ root, current, render }) {
       back();
       return;
     }
-    next = threadTopbar(t);
+    next = topbar({ title: t.title, threadId: t.id });
   } else if (current.projectId) next = topbar({ title: current.view === 'threads' ? 'Threads' : '', projectId: current.projectId });
   else next = topbar({});
   // The keyboard stays where it was: focus on a control of the old bar moves to the same control in the new one.
