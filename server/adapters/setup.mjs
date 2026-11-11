@@ -310,7 +310,7 @@ export const OUTSIDE_TOOLS = ['SendMessage', 'ListAgents', 'RemoteTrigger', 'Cro
  * - web.fetch (“Fetch web pages”) → WebFetch, and WebSearch: both send the agent’s requests to the web, so a
  *   persona kept off the web is kept off both. Also Monitor, which can open a WebSocket.
  * - agents.outside → OUTSIDE_TOOLS.
- * corpus.*, arxiv.search and narrate.speak are Postbox’s own (its apps’ host tools), with nothing in Claude Code
+ * arxiv.search and narrate.speak are Postbox’s own (narrate.speak an app’s host tool), with nothing in Claude Code
  * to deny. No rule here may match Postbox’s own MCP tools (mcp__postbox__*): deny beats allow.
  */
 export const TOOL_RULES = /** @type {Record<string, string[]>} */ ({

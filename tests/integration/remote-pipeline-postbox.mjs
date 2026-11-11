@@ -12,7 +12,7 @@ import { Runtime } from '../../server/runtime.mjs';
 import { Store } from '../../server/store.mjs';
 import { TURN_FILES } from '../../shared/remote-protocol.mjs';
 import { until } from './host.mjs';
-import { appliedRuns, BLOCK_ID, corpus, HOST, machine, standins, VERSION } from './remote-pipeline-machines.mjs';
+import { appliedRuns, BLOCK_ID, HOST, machine, standins, VERSION } from './remote-pipeline-machines.mjs';
 
 // ── Postbox ─────────────────────────────────────────────────────────────────────────
 
@@ -56,7 +56,6 @@ export async function postbox(m, postboxes, store = new Store(null)) {
   rt = new Runtime({
     store,
     adapters: new AdapterRegistry().register(claude),
-    corpus,
     config: { origin: 'http://127.0.0.1:1', imageOrigins: [], lintSettleMs: 0, build: { version: VERSION } },
     hosts,
   });

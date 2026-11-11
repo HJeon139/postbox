@@ -150,7 +150,6 @@ export function setup({ store = new Store(null), hosts = new FakeHosts() } = {})
   const rt = new Runtime({
     store,
     adapters: new AdapterRegistry().register(adapter).register(mock),
-    corpus: { search: () => [], read: () => null, stats: () => ({ books: [], passages: 0 }) },
     config: { origin: 'http://127.0.0.1:1', imageOrigins: [], lintSettleMs: 0, home: '/nowhere', build: { version: '0.10.0' } },
     spawnShell: spawn,
     hosts,

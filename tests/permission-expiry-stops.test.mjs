@@ -16,7 +16,7 @@ import { Store } from '../server/store.mjs';
 import { notes, settle, setup } from './permission-expiry-fixture.mjs';
 import { rig, running, settled, until } from './remote-turns-helpers.mjs';
 
-const restart = (f) => new Runtime({ store: f.store, adapters: f.rt.adapters, corpus: f.rt.corpus, config: f.rt.config });
+const restart = (f) => new Runtime({ store: f.store, adapters: f.rt.adapters, config: f.rt.config });
 
 test('#721 a shutdown with a card waiting leaves exactly one note once Postbox starts again', async () => {
   const f = await setup();

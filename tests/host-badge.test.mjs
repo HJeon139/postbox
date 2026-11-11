@@ -47,11 +47,9 @@ test('a short name is trimmed, at most SHORT_MAX characters, and an empty one cl
 
 test('the runtime keeps a host’s short name, keeps it through other changes, and clears it when emptied', () => {
   const adapter = { name: 'mock', deliver: async () => {} };
-  const corpus = { search: () => [], read: () => null, stats: () => ({ books: [], passages: 0 }) };
   const rt = new Runtime({
     store: new Store(null),
     adapters: new AdapterRegistry().register(adapter),
-    corpus,
     config: { origin: 'http://127.0.0.1:1', imageOrigins: [] },
   });
   const h = rt.addHost({ name: 'me@dev-box.corp.example.com', short: ' gpu ' });
@@ -89,11 +87,9 @@ test('#1052 a short name of letters, accents, CJK or punctuation is kept as it i
 });
 
 test('#1052 the runtime refuses a host’s short name with a Hangul filler, and keeps the one it had', () => {
-  const corpus = { search: () => [], read: () => null, stats: () => ({ books: [], passages: 0 }) };
   const rt = new Runtime({
     store: new Store(null),
     adapters: new AdapterRegistry().register({ name: 'mock', deliver: async () => {} }),
-    corpus,
     config: { origin: 'http://127.0.0.1:1', imageOrigins: [] },
   });
   assert.throws(
@@ -117,7 +113,6 @@ test('#1052 a short name stored before it was checked, which the check refuses, 
 });
 
 test('#1052 a host whose short name was stored before the check refused it can still be renamed and change settings', async (t) => {
-  const corpus = { search: () => [], read: () => null, stats: () => ({ books: [], passages: 0 }) };
   const dir = tempDir('host-badge-old-');
   const old = await new Store(dir).load();
   // As an earlier Postbox kept them: VS16, an emoji with it, and a Hangul filler.
@@ -129,7 +124,6 @@ test('#1052 a host whose short name was stored before the check refused it can s
   const rt = new Runtime({
     store,
     adapters: new AdapterRegistry().register({ name: 'mock', deliver: async () => {} }),
-    corpus,
     config: { origin: 'http://127.0.0.1:1', imageOrigins: [] },
   });
   for (const [short, id] of Object.entries(stored)) {

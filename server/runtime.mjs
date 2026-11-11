@@ -28,13 +28,11 @@ import { bringToConversation } from './bring.mjs';
 import { keptTurns, nextNeed, noticeNeed, releaseNeed, stateFor, TURN_TIED } from './card-needs.mjs';
 import { catchUp, moveMarkers, pointerIfSeen } from './catch-up.mjs';
 import { blockProblems, diagramProblems, formatLint, introducedTerms, lintMessage, personSaid, rawHtmlProblems, termProblems } from './checks.mjs';
-import { addDataset, reloadDatasets } from './datasets.mjs';
 import { DELETE_UNDO_MS } from './delete-undo.mjs';
 import { emptyReply, endedWithoutReply } from './empty-reply.mjs';
 import { checkedSnapshot, folderOrNone, placedFolder, sessionFolder } from './folder-path.mjs';
 import { heldSession } from './held-session.mjs';
 import { clip, clipText, httpError } from './helpers.mjs';
-import { hostTool } from './host-tool.mjs';
 import { clipItem, describeItem, topicRootLine } from './item-lines.mjs';
 import { keptGroupsOf, keptJobs, pollKept, stopJob, stopKeptJobs, watchKept } from './kept-jobs.mjs';
 import { Ledger } from './ledger.mjs';
@@ -131,7 +129,6 @@ import { closeOrphanCards, liftDecline, retireStale } from './wake-cards.mjs';
 
 export { AgentFileError } from './agent-files.mjs';
 export { httpError } from './helpers.mjs';
-export { hostTool } from './host-tool.mjs';
 export { HOP_LIMIT } from './side-threads.mjs';
 export { PERMISSION_MODES, readCapped };
 
@@ -149,7 +146,7 @@ export const DEFAULT_MODEL = 'claude-opus-5-5';
 export class Runtime {
   /**
    * @param {{ store: import('./store.mjs').Store, adapters: import('./adapters/adapter.mjs').AdapterRegistry,
-   *           corpus: import('./corpus.mjs').Corpus, config: { origin: string, imageOrigins: string[], archiveTurns?: boolean, claudeProjectsRoot?: string, versions?: any, lintSettleMs?: number, home?: string, build?: { version?: string } },
+   *           config: { origin: string, imageOrigins: string[], archiveTurns?: boolean, claudeProjectsRoot?: string, versions?: any, lintSettleMs?: number, home?: string, build?: { version?: string } },
    *           blobs?: import('./blobs.mjs').Blobs, narrator?: import('./narration/narrator.mjs').Narrator|null,
    *           spawnShell?: typeof import('node:child_process').spawn, signalProcess?: import('./adapters/process-group.mjs').KillFn,
    *           listProcesses?: () => Promise<import('./adapters/process-group.mjs').Proc[]>, ledger?: Ledger,
@@ -160,7 +157,7 @@ export class Runtime {
    *   hosts: the remote hosts’ manager (#120, server/remote/hosts.mjs), which reaches each host’s daemon; without it,
    *   nothing runs on a host. Tests pass a fake.
    */
-  constructor({ store, adapters, corpus, config, blobs, narrator, spawnShell, signalProcess, listProcesses: list, ledger, hosts }) {
+  constructor({ store, adapters, config, blobs, narrator, spawnShell, signalProcess, listProcesses: list, ledger, hosts }) {
     this.store = store;
     // While the store can’t be written, no turn runs or starts, and what would write waits (ST-3, server/store-outage.mjs).
     /** @type {(() => void)[]} */
@@ -171,7 +168,6 @@ export class Runtime {
     this.backendWait = new Map();
     watchStore(this);
     this.adapters = adapters;
-    this.corpus = corpus;
     this.config = config;
     // Where the person’s Claude Code user settings are read and written (#66); tests and checks pass a temp folder.
     this.home = config.home ?? homedir();
@@ -2781,15 +2777,6 @@ export class Runtime {
     return registerApp(this, sessionId, block, itemId, threadId, files);
   }
 
-  // ── Datasets (#47) ─────────────────────────────────────────────────────────────────
-
-  addDataset(sessionId, args) {
-    return addDataset(this, sessionId, args);
-  }
-  reloadDatasets() {
-    return reloadDatasets(this);
-  }
-
   // ── Presence ───────────────────────────────────────────────────────────────────────
 
   view(threadId) {
@@ -2899,12 +2886,6 @@ export class Runtime {
       },
       ask_for_tool(args = {}) {
         return askForTool(rt, sessionId, args, endSegment, threadId());
-      },
-      add_dataset(args) {
-        return rt.addDataset(sessionId, args);
-      },
-      corpus_search(args) {
-        return { ok: true, results: hostTool(rt, 'corpus.search', args) };
       },
     });
   }

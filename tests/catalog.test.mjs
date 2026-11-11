@@ -51,7 +51,7 @@ test('accepts one valid block of every type in the catalog', () => {
     base('image', { src: 'https://www.gutenberg.org/cover.jpg', alt: 'A title page' }),
     base('code', { code: 'const x = 1;', language: 'js' }),
     base('review', { format: 'markdown', content: '# Spec' }),
-    base('app', { code: '<p>Hi</p>', permissions: ['corpus.search'] }),
+    base('app', { code: '<p>Hi</p>', permissions: ['assets.search'] }),
   ];
   assert.equal(blocks.length, Object.keys(CATALOG).length);
   for (const b of blocks) ok(b, { imageOrigins: ['https://www.gutenberg.org'] });

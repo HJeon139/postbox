@@ -4,6 +4,8 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { deniedTools, OUTSIDE_TOOLS } from '../server/adapters/setup.mjs';
+import { roomAssets } from '../server/assets.mjs';
+import { hostTool } from '../server/host-tool.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { BOILERPLATES, DEMO_PERSONAS, freshInstall, seed, toBoilerplate } from '../server/seed.mjs';
 import { Store } from '../server/store.mjs';
@@ -11,17 +13,15 @@ import { tempDir } from './temp-dirs.mjs';
 
 async function seeded({ demo = false, agents = null } = {}) {
   const store = new Store(null);
-  const corpus = { search: () => [], read: () => null, stats: () => ({ books: [], passages: 0 }) };
   // Seeding only checks that the agents' backend exists.
   const rt = new Runtime({
     store,
     adapters: new AdapterRegistry().register({ name: 'claude-code' }),
-    corpus,
     config: { origin: 'http://127.0.0.1:1', imageOrigins: [] },
   });
   const dataDir = tempDir('pb-seed-');
   if (agents) await writeFile(join(dataDir, 'agents.json'), JSON.stringify(agents));
-  await seed(rt, { dataDir, booksDir: join(dataDir, 'books'), backend: 'claude-code', demo });
+  await seed(rt, { dataDir, backend: 'claude-code', demo });
   const s = store.state;
   return {
     agents: Object.values(s.personas).map((p) => `@${p.handle} on ${p.backend}`),
@@ -74,21 +74,19 @@ test('the Gemini boilerplate carries its prompt from server/personas/gemini.md a
 
 test('an existing install without bp-gemini gets the built-in boilerplates in fresh-install order, and a second seed emits nothing', async () => {
   const store = new Store(null);
-  const corpus = { search: () => [], read: () => null, stats: () => ({ books: [], passages: 0 }) };
   const rt = new Runtime({
     store,
     adapters: new AdapterRegistry().register({ name: 'claude-code' }),
-    corpus,
     config: { origin: 'http://127.0.0.1:1', imageOrigins: [] },
   });
   rt.createPersona({ handle: 'researcher', backend: 'claude-code', description: 'Reads.' });
   for (const b of BOILERPLATES.filter((x) => x.id !== 'bp-gemini')) store.emit('boilerplate', b);
   store.emit('boilerplate', { id: 'bp-custom', name: '@custom', description: 'Saved', instructions: '', tools: [] });
   const dataDir = tempDir('pb-seed-upgrade-');
-  assert.equal(await seed(rt, { dataDir, booksDir: join(dataDir, 'books'), backend: 'claude-code' }), false);
+  assert.equal(await seed(rt, { dataDir, backend: 'claude-code' }), false);
   assert.deepEqual(Object.keys(store.state.boilerplates), [...BOILERPLATES.map((b) => b.id), 'bp-custom']);
   const seq = store.state.seq;
-  assert.equal(await seed(rt, { dataDir, booksDir: join(dataDir, 'books'), backend: 'claude-code' }), false);
+  assert.equal(await seed(rt, { dataDir, backend: 'claude-code' }), false);
   assert.equal(store.state.seq, seq);
   const saved = toBoilerplate({ handle: 'gem', description: 'G', instructions: 'I', tools: ['shell'], backend: 'antigravity-cli', model: 'gemini-2.5-pro' });
   assert.equal(saved.backend, 'antigravity-cli');
@@ -111,13 +109,13 @@ test('#5: the fresh-install researcher reads the web, and runs no commands', () 
   assert.ok(denied.includes('Bash'), 'Bash isn’t denied');
 });
 
-test('--demo seeds the book-corpus agents, their projects and conversations', async () => {
+test('--demo seeds the reading-notes agents, their projects and conversations', async () => {
   const demo = await seeded({ demo: true });
   assert.deepEqual(
     demo.agents,
     DEMO_PERSONAS.map((p) => `@${p.handle} on claude-code`),
   );
-  assert.deepEqual(demo.projects, ['Book corpus', 'Agent research']);
+  assert.deepEqual(demo.projects, ['Reading notes', 'Agent research']);
   assert.equal(demo.threads, 8);
   assert.deepEqual(
     demo.boilerplates,
@@ -152,7 +150,7 @@ test('an install with Gemini but no GPT gains GPT in built-in order and a second
   const custom = { id: 'bp-custom', name: 'My saved agent', instructions: 'Keep my instructions.' };
   store.emit('boilerplate', custom);
   const rt = { store };
-  const opts = { dataDir: '/unused', booksDir: '/unused' };
+  const opts = { dataDir: '/unused' };
   assert.equal(await seed(rt, opts), false);
   assert.equal(store.state.boilerplates['bp-gpt'].backend, 'codex');
   assert.deepEqual(Object.keys(store.state.boilerplates), [...BOILERPLATES.map((b) => b.id), custom.id]);
@@ -166,3 +164,28 @@ test('an install with Gemini but no GPT gains GPT in built-in order and a second
   assert.equal(store.state.seq, seq);
   assert.deepEqual(Object.keys(store.state.personas), ['existing']);
 });
+
+test('#516: --demo publishes its notes as the asset explorer’s and the shelf’s assets, which a search finds', async (ctx) => {
+  const store = await new Store(tempDir('pb-seed-assets-')).load();
+  ctx.after(() => store.close());
+  const rt = new Runtime({
+    store,
+    adapters: new AdapterRegistry().register({ name: 'claude-code' }),
+    config: { origin: 'http://127.0.0.1:1', imageOrigins: [] },
+  });
+  await seed(rt, { dataDir: tempDir('pb-seed-'), backend: 'claude-code', demo: true });
+  const threadNamed = (title) => Object.values(store.state.threads).find((t) => t.title === title);
+  const names = (title) => listTextAssetNames(store.state, threadNamed(title).id);
+  const notes = ['notes/harbor-town.md', 'notes/letters-from-the-coast.md', 'notes/pond-journal.md', 'notes/sayings.md'];
+  assert.deepEqual(names('Asset explorer'), notes);
+  assert.deepEqual(names('Index the shelf'), notes);
+  assert.deepEqual(names('Catalog tour'), []);
+  const hits = await hostTool(rt, 'assets.search', { query: 'hope after loss', k: 3 }, { threadId: threadNamed('Asset explorer').id });
+  assert.equal(hits.length, 3);
+});
+
+/** A room’s asset names, sorted. */
+const listTextAssetNames = (state, room) =>
+  roomAssets(state, room)
+    .map((a) => a.name)
+    .sort();

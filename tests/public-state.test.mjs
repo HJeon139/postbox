@@ -63,7 +63,7 @@ test('every key of the state is either public or private, never both and never n
   const keys = Object.keys(emptyState());
   assert.deepEqual([...PUBLIC_STATE_KEYS, ...PRIVATE_STATE_KEYS].sort(), [...keys].sort());
   for (const k of PUBLIC_STATE_KEYS) assert.equal(PRIVATE_STATE_KEYS.includes(k), false, k);
-  assert.equal(PUBLIC_STATE_KEYS.length, 20);
+  assert.equal(PUBLIC_STATE_KEYS.length, 19);
 });
 
 test('the public state keeps the public keys, as the store’s own values, and drops any other key', () => {

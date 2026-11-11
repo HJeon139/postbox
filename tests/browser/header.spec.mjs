@@ -12,7 +12,7 @@ import { failOnPageErrors, frames, PHONE, settled, startPostbox, synced, windowW
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
 let app;
 let room;
-let corpus;
+let notes;
 
 const personaNamed = (handle) => Object.values(app.store.state.personas).find((p) => p.handle === handle);
 const threadNamed = (title) => Object.values(app.store.state.threads).find((t) => t.title === title);
@@ -27,9 +27,9 @@ test.beforeAll(async () => {
   app = await startPostbox('header');
   real('indexer', { backend: 'claude-code', model: 'claude-opus-5-5', effort: 'medium' });
   real('researcher', { backend: 'agent-sdk', model: 'claude-opus-5-5', effort: 'high' });
-  corpus = Object.values(app.store.state.projects).find((p) => p.name === 'Book corpus');
+  notes = Object.values(app.store.state.projects).find((p) => p.name === 'Reading notes');
   room = app.rt.createThread({
-    projectId: corpus.id,
+    projectId: notes.id,
     title: 'Full room',
     personaIds: ['librarian', 'indexer', 'researcher', 'critic'].map((x) => personaNamed(x).id),
   });
@@ -194,7 +194,7 @@ const DEMO = 'Demo mode: scripted agents';
 const demoNote = (page) => page.locator('header.topbar .demo-note');
 
 test('#12 under --demo, every view says so, and it isn’t a live region', async ({ page }) => {
-  for (const hash of [`#/p/${corpus.id}/threads`, `#/t/${room.id}`]) {
+  for (const hash of [`#/p/${notes.id}/threads`, `#/t/${room.id}`]) {
     await open(page, hash);
     await seesText(demoNote(page), DEMO, `the demo banner on ${hash}`);
     expect(await demoNote(page).evaluate((n) => !n.closest('[aria-live], [role=status], [role=alert], [role=log]')), 'the banner isn’t in a live region').toBe(

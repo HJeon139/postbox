@@ -25,11 +25,6 @@ export const toolBody = (t) => ({ turn: t.turn, id: t.id, name: t.name, args: t.
  * @param {Broker} b @param {string} turn @param {string} name @param {Record<string, any>} args @returns {Promise<Prepared>}
  */
 export async function prepare(b, turn, name, args) {
-  if (name === 'add_dataset')
-    return {
-      ok: false,
-      text: 'Loading a dataset isn’t supported yet for an agent on a remote host: add_dataset reads a file on Postbox’s own computer, which this host can’t reach, so nothing was loaded.',
-    };
   let out = args;
   // An app’s files, and a review block’s images (#780), are in the agent’s folder here, which Postbox can’t read.
   const inline = filesReader(name, args);
@@ -210,7 +205,7 @@ export async function call(b, c, turn, m) {
   const known = b.tools.get(k);
   if (known) return answerResend(b, c, known, route, result);
   // The host can’t tell a reconnect of a few seconds from a Postbox that’s closed, so the refusal names both.
-  if (route === 'ask' && !b.attached() && m.name !== 'add_dataset')
+  if (route === 'ask' && !b.attached())
     return result(
       false,
       `Postbox isn’t connected to this host, so ${m.name} can’t run. If it’s reconnecting, try again in a few seconds; if it stays this way, Postbox may be closed.`,

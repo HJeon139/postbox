@@ -21,10 +21,9 @@ const TOO_LONG = 'A folder’s path is at most 4096 characters. Pick a folder wi
 function setup() {
   const data = tempDir('pb-persona-folder-host-');
   const store = new Store(null);
-  const corpus = { search: () => [], read: () => null, stats: () => ({ books: [], passages: 0 }) };
   const adapters = new AdapterRegistry().register(new ClaudeCodeAdapter({ bin: 'claude', workRoot: join(data, 'workspaces') }));
   const config = { origin: 'http://127.0.0.1:1', imageOrigins: [], lintSettleMs: 0 };
-  const rt = new Runtime({ store, adapters, corpus, config, hosts: new FakeHosts() });
+  const rt = new Runtime({ store, adapters, config, hosts: new FakeHosts() });
   const project = join(data, 'project');
   store.emit('project', { id: 'p1', name: 'P', folder: project });
   const host = rt.addHost({ name: 'host.example.com' });

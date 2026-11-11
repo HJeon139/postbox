@@ -37,7 +37,7 @@ export const BACKENDS = ['claude-code', 'agent-sdk', 'kiro-cli', 'antigravity-cl
 export const MODELS = ['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5', 'claude-fable-5-1', 'mock', 'other'];
 export const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
 export const MODES = ['auto', 'ask', 'acceptEdits', 'bypass'];
-export const TOOL_IDS = ['corpus.search', 'corpus.read', 'corpus.stats', 'web.fetch', 'arxiv.search', 'shell', 'narrate.speak', 'agents.outside'];
+export const TOOL_IDS = ['web.fetch', 'arxiv.search', 'shell', 'narrate.speak', 'agents.outside'];
 /** The boilerplates an agent is named for, when both its handle and its instructions are theirs, unchanged. */
 export const BOILERPLATE_IDS = ['researcher', 'developer', 'critic'];
 
@@ -62,10 +62,9 @@ export const POSTBOX_TOOLS = [
   'read_message',
   'permission_prompt',
   'ask_for_tool',
-  'corpus_search',
-  'add_dataset',
   'list_assets',
   'read_asset',
+  'search_assets',
   'write_asset',
   'rename_asset',
   'delete_asset',

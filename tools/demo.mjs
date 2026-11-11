@@ -94,29 +94,29 @@ export async function play({ origin, view = async () => {}, shot = async () => {
   const find = (st, t, pred) => c.items(st, st.threads[t.id]).find(pred);
 
   // 1 · An empty thread
-  const explorer = T('Corpus explorer');
+  const explorer = T('Asset explorer');
   log('Empty thread: a welcome and example prompts.');
   await view(`#/t/${explorer.id}`);
   await shot('02-empty');
 
-  // 2 · An agent-written app: the corpus explorer
-  log('@librarian writes the corpus explorer; Postbox checks it, then shows it.');
-  await send(explorer, 'Build me an explorer for my corpus');
-  await until((st) => st.apps['corpus-explorer']?.check.status === 'passed', { label: 'the explorer to pass its check', timeout: 25000 });
-  const hits = (await call('/api/apps/corpus-explorer/query', { tool: 'corpus.search', args: { query: 'hope after loss', k: 4 } })).result;
-  await call('/api/apps/corpus-explorer/state', {
+  // 2 · An agent-written app: the asset explorer, over the conversation’s seeded notes
+  log('@librarian writes the asset explorer; Postbox checks it, then shows it.');
+  await send(explorer, 'Build me an explorer for these assets');
+  await until((st) => st.apps['asset-explorer']?.check.status === 'passed', { label: 'the explorer to pass its check', timeout: 25000 });
+  const hits = (await call('/api/apps/asset-explorer/query', { tool: 'assets.search', args: { query: 'hope after loss', k: 4 } })).result;
+  await call('/api/apps/asset-explorer/state', {
     state: {
       q: 'hope after loss',
       mode: 'both',
-      picked: Object.fromEntries(hits.slice(0, 3).map((h) => [h.id, { title: h.title, chapter: h.chapter }])),
-      year: '',
+      picked: Object.fromEntries(hits.slice(0, 3).map((h) => [h.id, { name: h.name, where: h.where }])),
+      only: '',
     },
   });
-  await call('/api/apps/corpus-explorer/event', {
+  await call('/api/apps/asset-explorer/event', {
     action: 'use-passages',
-    values: { passages: hits.slice(0, 3).map((h) => h.id), summary: `3 passages · ${[...new Set(hits.slice(0, 3).map((h) => h.title))].join(', ')}` },
+    values: { passages: hits.slice(0, 3).map((h) => h.id), summary: `3 passages · ${[...new Set(hits.slice(0, 3).map((h) => h.name))].join(', ')}` },
   });
-  await settled(explorer, (st) => st.apps['corpus-explorer']?.current === 2 && st.apps['corpus-explorer'].check.status === 'passed', 'v2 of the explorer');
+  await settled(explorer, (st) => st.apps['asset-explorer']?.current === 2 && st.apps['asset-explorer'].check.status === 'passed', 'v2 of the explorer');
   await shot('04-corpus-app');
 
   // 3 · Every catalog block, with one already answered
@@ -296,11 +296,11 @@ export async function play({ origin, view = async () => {}, shot = async () => {
   await settled(tidy);
 
   // 11 · A dashboard that fails its check at phone width, gets fixed, then shows
-  const dash = await call('/api/threads', { projectId: index.projectId, title: 'Corpus dashboard', personaIds: [ix.personaId] });
+  const dash = await call('/api/threads', { projectId: index.projectId, title: 'Asset dashboard', personaIds: [ix.personaId] });
   log('@indexer writes a dashboard; the check finds it too wide for a phone; @indexer fixes it.');
   await view(`#/t/${dash.id}`);
   await send(dash, 'Show me a dashboard');
-  await until((st) => st.apps['corpus-dashboard']?.current === 2 && st.apps['corpus-dashboard'].check.status === 'passed', {
+  await until((st) => st.apps['asset-dashboard']?.current === 2 && st.apps['asset-dashboard'].check.status === 'passed', {
     label: 'the fixed dashboard',
     timeout: 60000,
   });

@@ -56,9 +56,9 @@ test('the write rules catch tools and gh commands that create, change or delete 
     assert.ok(!isWriteCall(tool, {}), tool);
   // Ask beats allow, and Claude Code’s globs can’t leave a server out, so a rule that matches one of Postbox’s own
   // tools makes each call a permission_prompt round trip (Postbox allows it, with no card). A new clash fails here: add
-  // the tool to ROUND_TRIP only if that cost is accepted (#173’s add_dataset matches mcp__*__add_*).
-  // add_dataset (#47), and the asset writes by the person’s choice of names (#516 S3b): a round trip each, with no card.
-  const ROUND_TRIP = ['write_asset', 'rename_asset', 'delete_asset', 'add_dataset'];
+  // the tool to ROUND_TRIP only if that cost is accepted (#173: write_asset matches mcp__*__write_*).
+  // The asset writes, by the person’s choice of names (#516 S3b): a round trip each, with no card.
+  const ROUND_TRIP = ['write_asset', 'rename_asset', 'delete_asset'];
   assert.deepEqual(
     TOOL_DEFS.map((t) => t.name).filter((n) => isWriteCall(`mcp__postbox__${n}`, {})),
     ROUND_TRIP,
@@ -82,15 +82,15 @@ test('a write’s draft is its longest text field, for MCP writes only', () => {
   assert.equal(draftOf('mcp__docs__read_document', { content: 'x' }), null);
 });
 
-test('Postbox’s own tools are never held as writes, even one a write rule matches, such as add_dataset', async () => {
+test('Postbox’s own tools are never held as writes, even one a write rule matches, such as write_asset', async () => {
   const ask = WRITE_TOOLS.map((rule) => ({ rule, source: 'writes', unless: [] }));
-  assert.ok(isWriteCall('mcp__postbox__add_dataset', {}), 'the clash this guards against');
-  for (const name of ['add_dataset', ...TOOL_DEFS.map((t) => t.name)])
+  assert.ok(isWriteCall('mcp__postbox__write_asset', {}), 'the clash this guards against');
+  for (const name of TOOL_DEFS.map((t) => t.name))
     assert.notEqual(decide({ call: `mcp__postbox__${name}`, rules: { deny: [], ask, allow: [] }, mode: 'ask', cwd: '/', home: '/' }).decision, 'ask', name);
   const { rt, store, t, next } = await setup();
   const answers = [];
-  next.push(async (c) => answers.push(await c.askPermission({ tool: 'mcp__postbox__add_dataset', summary: 'use add dataset', input: { name: 'x' } })));
-  rt.sendMessage(t.id, { text: 'Load the dataset.' });
+  next.push(async (c) => answers.push(await c.askPermission({ tool: 'mcp__postbox__write_asset', summary: 'use write asset', input: { name: 'x' } })));
+  rt.sendMessage(t.id, { text: 'Publish the notes.' });
   for (let i = 0; i < 50 && !answers.length; i++) await sleep(5);
   assert.deepEqual(answers[0], { allow: true });
   assert.equal(store.items(t.id).filter((i) => i.kind === 'permission').length, 0, 'no card');
@@ -185,11 +185,9 @@ async function setup(persona = {}) {
       await step(ctx);
     },
   };
-  const corpus = { search: () => [], read: () => null, stats: () => ({ books: [], passages: 0 }) };
   const rt = new Runtime({
     store,
     adapters: new AdapterRegistry().register(adapter),
-    corpus,
     config: { origin: 'http://x', imageOrigins: [], lintSettleMs: 0, home: root },
   });
   store.emit('project', { id: 'p1', name: 'P', folder });

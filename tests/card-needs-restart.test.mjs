@@ -12,11 +12,9 @@ import { held, settle, sleep } from './side-threads-fixture.mjs';
 
 /** A second runtime on the same store, as a restart makes one, with the restart's sweep run. */
 function restart(r) {
-  const corpus = { search: () => [], read: () => null, stats: () => ({ books: [], passages: 0 }) };
   const rt = new Runtime({
     store: r.store,
     adapters: new AdapterRegistry().register(r.adapter),
-    corpus,
     config: { origin: 'http://127.0.0.1:1', imageOrigins: [], lintSettleMs: 0 },
   });
   settleInterrupted(rt);
@@ -170,11 +168,9 @@ test('a restart keeps a host turn’s permission as the need: its card stays ope
   await sleep(5);
   const p = r.permission();
   r.setNeed('permission', p.id);
-  const corpus = { search: () => [], read: () => null, stats: () => ({ books: [], passages: 0 }) };
   const rt = new Runtime({
     store: r.store,
     adapters: new AdapterRegistry().register(r.adapter),
-    corpus,
     config: { origin: 'http://127.0.0.1:1', imageOrigins: [], lintSettleMs: 0 },
   });
   rt.remote.keepsCard = (it) => it.id === p.id; // its host keeps the prompt

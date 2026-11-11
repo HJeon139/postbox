@@ -83,11 +83,6 @@ async function applyTool(rts, live, m) {
     ...assetTools(rts.rt, live.sessionId, live.rt, { onHost: true }),
   };
   const tools = { ...rts.rt.toolsFor(live.sessionId, live.rt), ...recordedTools(rts.rt, live.rt, own) };
-  if (m.name === 'add_dataset')
-    return {
-      ok: false,
-      text: 'add_dataset loads a file on Postbox’s computer, which an agent on a remote host can’t name, so it isn’t available there yet.',
-    };
   if (!Object.hasOwn(tools, m.name)) return { ok: false, text: `There’s no tool called “${m.name}”.` };
   // The one write gate, as for a local turn's call (server/tool-gate.mjs): while the store is closed, a write is refused.
   const closed = closedTo(rts.rt, m.name);

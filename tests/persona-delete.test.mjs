@@ -48,9 +48,8 @@ async function setup() {
   const data = tempDir('pb-persona-delete-');
   const workRoot = join(data, 'workspaces');
   const store = new Store(null);
-  const corpus = { search: () => [], read: () => null, stats: () => ({ books: [], passages: 0 }) };
   const adapters = new AdapterRegistry().register(new ClaudeCodeAdapter({ bin: 'claude', workRoot }));
-  const rt = new Runtime({ store, adapters, corpus, config: { origin: 'http://127.0.0.1:1', imageOrigins: [], lintSettleMs: 0 } });
+  const rt = new Runtime({ store, adapters, config: { origin: 'http://127.0.0.1:1', imageOrigins: [], lintSettleMs: 0 } });
   const project = { id: 'p1', name: 'P', folder: data };
   store.emit('project', project);
   const alpha = rt.createPersona({ handle: 'alpha', backend: 'claude-code' });
@@ -125,7 +124,7 @@ test('#208: a delete still pending when Postbox stopped finishes after a restart
     (e) => e.status === 409 && /being deleted/.test(e.message),
   );
   // A restart: the stored state survives, the timer doesn’t. The window has passed by the time Postbox is back.
-  const rt = new Runtime({ store: s.store, adapters: s.rt.adapters, corpus: s.rt.corpus, config: s.rt.config });
+  const rt = new Runtime({ store: s.store, adapters: s.rt.adapters, config: s.rt.config });
   s.store.emit('persona', { ...s.store.state.personas[s.alpha.id], deleting: Date.now() - 1 });
   rearmPersonaDeletes(rt);
   // Removed last, after its memory (purgePersona), so this waits for the whole delete, however busy the machine.
@@ -149,7 +148,6 @@ test('#208: attaching a terminal session names around a persona still being dele
   const rt = new Runtime({
     store: s.store,
     adapters: s.rt.adapters,
-    corpus: s.rt.corpus,
     config: { ...s.rt.config, claudeProjectsRoot: join(s.data, 'projects') },
   });
   const old = rt.createPersona({ handle: 'site', backend: 'claude-code' });
@@ -223,7 +221,7 @@ test('#208: a purge a restart cut short finishes when Postbox starts again', asy
   await sessionRoute(s.rt, `/api/personas/${s.alpha.id}`, 'DELETE', {});
   // Saved mid-purge: it had started (purging), its window long over, and it never removed the persona.
   s.store.emit('persona', { ...s.store.state.personas[s.alpha.id], deleting: Date.now() - 1, purging: true });
-  const rt = new Runtime({ store: s.store, adapters: s.rt.adapters, corpus: s.rt.corpus, config: s.rt.config });
+  const rt = new Runtime({ store: s.store, adapters: s.rt.adapters, config: s.rt.config });
   rearmPersonaDeletes(rt);
   for (let i = 0; i < 500 && s.store.state.personas[s.alpha.id]; i++) await new Promise((r) => setTimeout(r, 10));
   assert.equal(s.store.state.personas[s.alpha.id], undefined, 'it finished');

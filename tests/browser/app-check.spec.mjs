@@ -52,7 +52,7 @@ const APPS = {
 }</script>`,
   // A tooltip hidden with opacity 0 over the text it explains.
   faded: `<div style="position:relative;padding:12px;color:var(--text)"><p style="margin:0">Hover a bar to see its value.</p><span style="position:absolute;left:12px;top:12px;opacity:0">Value: 42 claims</span></div>`,
-  // A long list that runs under its opaque sticky footer, as the corpus explorer’s does: hidden there, not overlapped.
+  // A long list that runs under its opaque sticky footer, as the asset explorer’s does: hidden there, not overlapped.
   sticky: `<ul style="margin:0;padding:12px;color:var(--text)">${Array.from({ length: 80 }, (_, i) => `<li>Passage ${i + 1}, about hope after loss</li>`).join('')}</ul>
 <div style="position:sticky;bottom:0;background:var(--sunk);color:var(--text);padding:10px 14px">Nothing selected</div>`,
   // #327: a class from Postbox’s shell stylesheet changes the app’s own layout.

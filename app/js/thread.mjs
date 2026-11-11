@@ -828,23 +828,6 @@ export function mountComposer(threadId, { side = false } = {}) {
       file.value = '';
     },
   });
-  const corpusFile = h('input', {
-    type: 'file',
-    accept: '.txt,.md,text/plain,text/markdown',
-    hidden: true,
-    onchange: async () => {
-      for (const f of corpusFile.files) {
-        try {
-          const up = await uploadFile(f);
-          await api('/api/corpus', { fileId: up.id });
-          toast({ title: `Added ${f.name} to the corpus`, text: 'It’s searchable now.' });
-        } catch (e) {
-          toast({ title: `Couldn’t add ${f.name}`, text: e.message, level: 'blocking' });
-        }
-      }
-      corpusFile.value = '';
-    },
-  });
 
   const autosize = () => fitDraft(ta);
   const save = () => {
@@ -918,7 +901,6 @@ export function mountComposer(threadId, { side = false } = {}) {
               focusComposer();
             }),
         },
-        { label: 'Add to the corpus', desc: 'Index a text file for search', icon: 'books', run: () => corpusFile.click() },
         'hr',
         { heading: 'New agent' },
         { label: 'From a boilerplate', desc: boilerplateDesc(), icon: 'agent', run: () => openNewAgent({ threadId }) },
@@ -1379,10 +1361,7 @@ export function mountComposer(threadId, { side = false } = {}) {
     }
   });
 
-  const el = h(
-    'div.composer',
-    h('div.col', status, asks, waiting, queue, menuBox, att, h('div.composer-box', plus, commandsButton, ta, action), hint, file, corpusFile),
-  );
+  const el = h('div.composer', h('div.col', status, asks, waiting, queue, menuBox, att, h('div.composer-box', plus, commandsButton, ta, action), hint, file));
 
   // Drop files: the main composer takes drops anywhere in the window. A side or topic composer takes drops on
   // its own panel (see dropZone below), and stops them there so the main composer doesn’t take them too.

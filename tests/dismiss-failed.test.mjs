@@ -139,11 +139,9 @@ test('#883 Dismiss after the person moved past the turn marks it, with nothing l
 test('#883 a dismissed reply stays dismissed after a restart, and is never the need again', async () => {
   const r = await failedTurn();
   dismissFailed(r.rt, r.t.id, r.failed.id);
-  const corpus = { search: () => [], read: () => null, stats: () => ({ books: [], passages: 0 }) };
   const rt = new Runtime({
     store: r.store,
     adapters: new AdapterRegistry().register(r.adapter),
-    corpus,
     config: { origin: 'http://127.0.0.1:1', imageOrigins: [], lintSettleMs: 0 },
   });
   settleInterrupted(rt);

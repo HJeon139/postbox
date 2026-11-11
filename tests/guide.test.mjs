@@ -191,9 +191,10 @@ test('#971 the guide says a choice is a seg or chips with aria-pressed, not btns
   assert.match(g, /At most one btn primary; ghost only for a minor action in text; links only for reading\./);
 });
 
-test('#995 the guide gives corpus.search’s whole result, author and year included, as apps filter by them', () => {
+test('#995 the guide gives assets.search’s whole result, as apps filter by it, and no corpus is left in it (#516)', () => {
   const line = guideText()
     .split('\n')
-    .find((l) => l.includes('"corpus.search" with'));
-  assert.match(line ?? '', /returns \[\{ id, book, title, author, year, chapter, text, lexical: \{ score, terms \} \| null, semantic: number \| null \}\]/);
+    .find((l) => l.includes('"assets.search" with'));
+  assert.match(line ?? '', /returns passages \[\{ id, asset, name, version, where, text, lexical: \{ score, terms \} \| null, semantic: number \| null \}\]/);
+  assert.doesNotMatch(guideText(), /corpus\.|add_dataset|\.postbox\/datasets/);
 });
