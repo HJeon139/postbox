@@ -14,5 +14,5 @@
     "skipLibCheck": true
   },
   "include": ["shared/**/*.mjs", "server/**/*.mjs", "bin/**/*.mjs"],
-  "exclude": ["node_modules", "server/corpus/books"]
+  "exclude": ["node_modules"]
 }

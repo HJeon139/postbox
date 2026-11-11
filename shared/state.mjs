@@ -28,8 +28,6 @@ export function emptyState() {
     glossary: map(),
     apps: map(),
     files: map(),
-    // Datasets agents loaded into the corpus (#47), so they’re loaded again after a restart.
-    datasets: map(),
     schedules: map(),
     // Remote hosts agents can run on (#120), each with its settings (shared/remote-settings.mjs).
     hosts: map(),
@@ -87,7 +85,6 @@ export const PUBLIC_STATE_KEYS = Object.freeze([
   'glossary',
   'apps',
   'files',
-  'datasets',
   'schedules',
   'hosts',
   'hostStatus',
@@ -139,7 +136,9 @@ export const EVENTS = Object.freeze({
   },
   app: { apply: put('apps'), public: true },
   file: { apply: put('files'), public: true },
-  dataset: { apply: (s, d) => ((s.datasets ??= map())[d.id] = d), public: true },
+  // Retired with the corpus (#516): data an agent brings in is a room asset now. An older log still holds these, so
+  // they apply as nothing.
+  dataset: { apply: () => {}, public: true },
   schedule: {
     apply: (s, d) => {
       if (d.removed) delete s.schedules[d.id];

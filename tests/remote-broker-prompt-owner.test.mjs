@@ -195,7 +195,7 @@ test('#908 a hello with no key is refused, and the connection hears nothing of t
     assert.equal(first.code, 'version');
     assert.match(first.message, /Install Postbox on this host again/);
     assert.ok(keyless.ended, 'and the connection is closed');
-    keyless.send('call', { id: 'c1', name: 'corpus_search', args: { query: 'q' } });
+    keyless.send('call', { id: 'c1', name: 'search_assets', args: { query: 'q' } });
     keyless.send('permission', { id: 'p1', request: REQUEST });
     await k.b.stopping('t1');
     await sleep(20);
@@ -217,10 +217,10 @@ test('#908 no connection hears a shim’s key, or its hash, in anything the daem
     await other.next('welcome');
     // The shim asks and calls; the other sends the same ids again and tries to end the prompt.
     s.send('permission', { id: 'p1', request: REQUEST });
-    s.send('call', { id: 'c1', name: 'corpus_search', args: { query: 'q' } });
+    s.send('call', { id: 'c1', name: 'search_assets', args: { query: 'q' } });
     await until(() => k.sent.length >= 2, 'the prompt and the call at Postbox');
     other.send('permission', { id: 'p1', request: REQUEST });
-    other.send('call', { id: 'c1', name: 'corpus_search', args: { query: 'q' } });
+    other.send('call', { id: 'c1', name: 'search_assets', args: { query: 'q' } });
     other.send('permission-canceled', { id: 'p1', at: 1 });
     await other.next('error', (m) => m.code === 'no-prompt');
     await k.post('answer', { turn: 't1', prompt: 'p1', result: ALLOW });

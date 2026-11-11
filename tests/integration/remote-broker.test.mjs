@@ -177,9 +177,9 @@ test('broker and shim: queued and asked calls, the snapshot’s reading tools, a
     await checkReadingTools(shim, pb);
 
     // An asked call waits for Postbox’s reply.
-    const asked = shim.tool('corpus_search', { query: 'build' });
+    const asked = shim.tool('search_assets', { query: 'build' });
     const search = await pb.msgs.next('tool', 5000);
-    assert.equal(search.name, 'corpus_search');
+    assert.equal(search.name, 'search_assets');
     pb.send('reply', { turn: 't1', id: search.id, ok: true, text: '[{"id":"doc:1"}]' });
     assert.deepEqual(await shim.response(asked), { text: '[{"id":"doc:1"}]', isError: false });
 
@@ -188,7 +188,7 @@ test('broker and shim: queued and asked calls, the snapshot’s reading tools, a
     // Stop: from then on the turn’s calls are refused, and nothing reaches Postbox.
     pb2.send('stop', { turn: 't1' });
     await pb2.msgs.next('ended', 15_000);
-    const late = await shim.response(shim.tool('corpus_search', { query: 'late' }));
+    const late = await shim.response(shim.tool('search_assets', { query: 'late' }));
     assert.equal(late.isError, true);
     assert.match(late.text, /stopped or has ended/);
     assert.equal(pb2.msgs.messages.filter((m) => m.type === 'tool').length, 0, 'the call after Stop didn’t cross');

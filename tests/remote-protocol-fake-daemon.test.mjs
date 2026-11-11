@@ -219,8 +219,8 @@ async function twoTurnsUsingId1() {
   const write = { tool_name: 'Write', input: { file_path: '/home/user/x' } };
   assert.equal(d.prompt('t1', FIXTURE_PROMPT, '1'), '1');
   assert.equal(d.prompt('t2', write, '1'), '1');
-  d.tool('t1', 'corpus_search', { query: 'one' }, '1');
-  d.tool('t2', 'corpus_search', { query: 'two' }, '1');
+  d.tool('t1', 'search_assets', { query: 'one' }, '1');
+  d.tool('t2', 'search_assets', { query: 'two' }, '1');
   return { d, c };
 }
 

@@ -513,7 +513,7 @@ The first two runs, on `main`, caught 14 of the issues already filed from real u
 
 **Not triggered by these scenarios** (the checks watch for them):
 - #46: no diagram failed to draw.
-- #47: the agents embedded their data instead of loading it into the corpus.
+- #47: the agents embedded their data instead of publishing it as assets (#516 replaced the corpus).
 - #52: the apps used the kit’s palettes.
 - #56: no topic thread re-defined a term.
 - #59: no MCP servers were configured on the machine.

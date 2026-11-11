@@ -40,7 +40,6 @@ test('while the store is closed, a writing tool is refused with the cause and a 
 
 test('every tool is classified for the gate: the read set, or the writers; a new tool must be placed', () => {
   const WRITERS = new Set([
-    'add_dataset',
     'ask_for_tool',
     'bring_to_conversation',
     'open_topic',

@@ -53,8 +53,7 @@ function setup(lines = SILENT) {
   const store = new Store(null);
   const spawnImpl = playing(lines);
   const adapters = new AdapterRegistry().register(new ClaudeCodeAdapter({ bin: 'claude', workRoot: `${DIR_485}/workspaces`, spawnImpl }));
-  const corpus = { search: () => [], read: () => null, stats: () => ({ books: [], passages: 0 }) };
-  const rt = new Runtime({ store, adapters, corpus, config: { origin: 'http://127.0.0.1:1', imageOrigins: [], lintSettleMs: 0 } });
+  const rt = new Runtime({ store, adapters, config: { origin: 'http://127.0.0.1:1', imageOrigins: [], lintSettleMs: 0 } });
   store.emit('project', { id: 'p1', name: 'P', folder: DIR_485 });
   const p = rt.createPersona({ handle: 'critic', backend: 'claude-code', folder: DIR_485 });
   const t = rt.createThread({ projectId: 'p1', title: 'Q4 review', personaIds: [p.id] });

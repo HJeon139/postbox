@@ -14,11 +14,9 @@ import { held, settle, sleep } from './side-threads-fixture.mjs';
 
 /** A second runtime on the same store, as a restart makes one: the sweep, then the laptop's cards expire. */
 function restart(r) {
-  const corpus = { search: () => [], read: () => null, stats: () => ({ books: [], passages: 0 }) };
   const rt = new Runtime({
     store: r.store,
     adapters: new AdapterRegistry().register(r.adapter),
-    corpus,
     config: { origin: 'http://127.0.0.1:1', imageOrigins: [], lintSettleMs: 0 },
   });
   settleInterrupted(rt);

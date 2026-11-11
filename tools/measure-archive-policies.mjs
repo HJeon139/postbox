@@ -9,13 +9,14 @@
 // entry, and an archived reply's activity by a count; the skeleton keeps every entry but not its heavy text.
 
 import { readFileSync } from 'node:fs';
+import { parseSnapshotText } from '../server/store-snapshot-lines.mjs';
 
 const path = process.argv[2];
 if (!path) {
   console.error('usage: node tools/measure-archive-policies.mjs snapshot.json');
   process.exit(2);
 }
-const fresh = () => JSON.parse(readFileSync(path, 'utf8'));
+const fresh = () => parseSnapshotText(readFileSync(path, 'utf8')); // either format (#1180)
 const size = (v) => Buffer.byteLength(JSON.stringify(v ?? null));
 const mb = (b) => (b / 1048576).toFixed(2);
 

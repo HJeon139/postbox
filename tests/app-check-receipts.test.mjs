@@ -12,7 +12,6 @@ function setup() {
   const rt = new Runtime({
     store,
     adapters: new AdapterRegistry().register(adapter),
-    corpus: { search: () => [], read: () => null, stats: () => ({ books: [], passages: 0 }) },
     config: { origin: 'http://127.0.0.1:1', imageOrigins: [], lintSettleMs: 0 },
   });
   store.emit('project', { id: 'p', name: 'Project', folder: '/tmp' });

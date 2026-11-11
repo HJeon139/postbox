@@ -74,6 +74,10 @@ test('#1150 following, setting and clearing the room held below the newest messa
   // And a new message is what clears it, as release() does.
   await page.evaluate(holdRoom, true);
   const it = app.rt.addItem(conv.id, { kind: 'user', text: 'A new message, which lets the held room go.' });
-  await expect(page.locator(`[data-key="${it.id}"]`), 'the message to reach the page').toBeAttached({ timeout: 15_000 });
+  // Wait as synced() does, by polling the page's event number. Expect's in-page wait for the item, on a room of about
+  // 15,000 elements on a loaded CI runner, held the page's own handling of the event back 8 to 15 s (#1221): it heard
+  // the event in 0.3 s when the wait polled from outside, the same page and room otherwise.
+  await synced(page, app, 15_000);
+  await expect(page.locator(`[data-key="${it.id}"]`), 'the message to reach the page').toBeAttached({ timeout: 1000 });
   await expect.poll(() => page.evaluate(held), { message: 'the held room to go' }).toBe(false);
 });

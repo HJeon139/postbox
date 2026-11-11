@@ -5,6 +5,7 @@
 
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { parseSnapshotText } from '../../server/store-snapshot-lines.mjs';
 import { keepEvent } from './room-events.mjs';
 
 export { keepEvent };
@@ -123,7 +124,7 @@ export function logged(dir) {
 /** The store’s snapshot in a data folder, or null when there is none or it can’t be read. @param {string} data */
 function snapshotOf(data) {
   try {
-    return JSON.parse(readFileSync(join(data, 'snapshot.json'), 'utf8'));
+    return parseSnapshotText(readFileSync(join(data, 'snapshot.json'), 'utf8'));
   } catch {
     return null; // no snapshot yet: the log starts at the store’s first event
   }

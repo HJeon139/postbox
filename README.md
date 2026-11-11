@@ -2,7 +2,7 @@
 
 A chat room for directing several AI agents at once. You message them, wake them when needed, and each one can reply with software it writes on the spot (an explainer, a data explorer, a review surface) that runs live in the conversation.
 
-![The corpus explorer: an agent-written app running inline, searching six public-domain books](screenshots/app/04-corpus-app-dark-1280.png)
+![The explorer: an agent-written app running inline, searching the conversation’s notes](screenshots/app/04-corpus-app-dark-1280.png)
 
 ## Status
 
@@ -42,13 +42,11 @@ Open <http://127.0.0.1:4173/>. Postbox listens only on this machine. Your conver
 
 One Postbox runs on a data folder at a time: a second one on the same folder refuses to start, and says which process has it.
 
-A project’s own Postbox data, such as the datasets agents load, goes in the project, under `<project>/.postbox/`.
-
 A fresh install starts with three general-purpose agents and no projects or conversations: @researcher finds and cites sources, @developer changes code and verifies it, and @critic reviews code and documents. Their instructions are in [`server/personas/`](server/personas/). Make a project for a folder you work in, start a conversation with any of them, and add agents of your own from **New agent**. They run on Claude Code if it’s installed and signed in (`claude --version` works), and on the mock otherwise. Agents from an earlier run keep their backend; change it under **Personas**, in **Runs on**.
 
 To start with agents of your own instead, put an `agents.json` in the data folder before the first run: an array of personas such as `[{ "handle": "reviewer", "description": "Reviews my drafts.", "instructions": "…" }]`. It replaces the seeded agents, with or without `--demo`.
 
-`--demo` seeds the demo’s book-corpus agents (@librarian, @indexer, @researcher and @critic), two projects and the sample conversations below, and always uses the mock, for the scripted tour. To use the Agent SDK, read aloud and run the development checks, install the optional packages once:
+`--demo` seeds the demo’s reading-notes agents (@librarian, @indexer, @researcher and @critic), two projects and the sample conversations below, with a few short notes as the asset explorer’s and the shelf’s assets ([`server/demo-assets/`](server/demo-assets/)), and always uses the mock, for the scripted tour. To use the Agent SDK, read aloud and run the development checks, install the optional packages once:
 
 ```bash
 npm install
@@ -66,7 +64,7 @@ Things to try in the demo’s conversations (`node server/index.mjs --demo --fre
 
 | Conversation | Ask | You’ll see |
 |---|---|---|
-| Corpus explorer | Build me an explorer for my corpus | An agent-written app searching six books, and a v2 after you send passages |
+| Asset explorer | Build me an explorer for these assets | An agent-written app searching the conversation’s notes through the bridge, and a v2, filtered by asset, after you send passages |
 | Catalog tour | Show me every kind of block you can send | One of each catalog block, all live |
 | ReAct, step by step | Explain ReAct with something I can try · Walk me through ReAct, out loud · then **Reply in thread** under the explainer | Citations with hover cards, a diagram, math, a glossary term and a practice app · slides that follow a local voice · a topic thread with a forked agent, and Summarize back |
 | Corpus schema spec | Review my corpus schema line by line | Markdown, code and app reviews, then a revision shown as a diff |
@@ -178,7 +176,7 @@ Inside the sandbox, the kit ([`app/kit/kit.js`](app/kit/kit.js)) provides:
 | Call | What it does |
 |---|---|
 | `postbox.ready` | Resolves to `{ state, theme, appId }` once Postbox says hello |
-| `postbox.query(tool, args)` | Asks the host for data. It works only for tools in the app’s `permissions` that its agent also holds, such as `corpus.search`, `corpus.read` and `corpus.stats`. |
+| `postbox.query(tool, args)` | Asks the host for data. It works only for tools in the app’s `permissions` that its agent also holds, such as `narrate.speak`. Every agent holds its conversation’s assets, so `assets.search` (the room’s text assets by words and meaning, a passage at a time) and `assets.list` need only the app’s `permissions`. |
 | `postbox.file(name)` | A data file the agent attached to this version with `files`, as text (#54). |
 | `postbox.send(action, values, summary)` | Sends one event to the agent. `summary` is the line you see in your voice. |
 | `postbox.saveState(obj)`, `postbox.restoreState()` | Saved state survives unloading, reloading and new versions |
@@ -288,11 +286,11 @@ The two real adapters share a system prompt that teaches the catalog, the kit an
 - `open_topic`, which opens the topic thread of a message in the agent’s conversation, or finds the one it has, and can post a first message there that wakes up to 16 agents it names; its answer says whether that message was posted, by its id (#637)
 - `bring_to_conversation`, which posts in the main conversation from a topic or side thread, only when you ask for it there (#128)
 - `ask_for_tool`, which asks you on a card to turn on a tool that’s turned off for the agent
-- `corpus_search`, and `add_dataset`, which loads a JSON Lines file from the project’s `.postbox/datasets/` folder into the corpus with no restart. A dataset is searched only when a search names it in `books`, and it’s loaded again after a restart (#47).
 - `read_conversation`, the conversation’s history (each turn already starts with what happened since the agent’s last one). A block comes with what it holds: a review, card or code block’s content, a choice or form’s prompt, options or fields and your answer, an app’s title. Both cut an item at 2,000 characters, saying how much they kept and giving its id.
 - `read_message`, one item in full by that id or a block’s id, 40,000 characters at a time
 - `react`, a reaction on a message, block or app by its id, as you react (#270): the agent whose message it is hears it at its next turn, and calling it again takes it back
-- `list_assets`, `read_asset`, `write_asset`, `rename_asset`, `delete_asset` and `restore_asset`, the files a conversation keeps, where each write is a new version and the earlier ones stay ([`server/asset-tools.mjs`](server/asset-tools.mjs), #516)
+- `list_assets`, `read_asset`, `write_asset`, `rename_asset`, `delete_asset` and `restore_asset`, the files a conversation keeps, where each write is a new version and the earlier ones stay ([`server/asset-tools.mjs`](server/asset-tools.mjs), #516); data an agent brings in goes there too
+- `search_assets`, which searches the conversation’s text assets with BM25 and a stub meaning score, a passage at a time ([`server/asset-search.mjs`](server/asset-search.mjs), #516)
 - `permission_prompt`, which Claude Code calls before a tool that needs your OK
 
 Every tool except `permission_prompt` returns at once. When you answer a block, your answer arrives later as an `event` message.
@@ -420,7 +418,6 @@ Postbox uses [semantic versioning](https://semver.org/), from [Conventional Comm
 - **Remote hosts are Linux only.** Postbox needs a Linux host with `/proc`, and relies on the boot ID there. It uses systemd only when **How turns detach** is left on its default (`detach` is `auto`) and logind kills user processes at logout; “Own session only” works without systemd.
 - **A Kiro agent’s messages on a host can be read by other users there,** since Kiro CLI takes its message as an argument and `/proc` shows every process’s arguments unless it’s mounted with `hidepid=1` or higher; the default is `0` ([proc(5)](https://man7.org/linux/man-pages/man5/proc.5.html)). Postbox doesn’t check the mount, so it warns on every remote Kiro turn.
 - **Files you attach for an agent on a host are limited to 3 MB each and 3.5 MB per message,** since they go to the host with the turn; a message over either is refused before the turn starts. The host’s copy is deleted when the turn ends, so a later turn can’t read it again: attach it again.
-- **`add_dataset` isn’t available to an agent on a host.** It loads a file on this computer, which an agent there can’t name; the agent is told so.
 - **A host you can’t reach can’t be forgotten yet.** Remove waits for the host to confirm it deleted `~/.postbox-remote`, and there’s no “forget it anyway”.
 - **Only Claude Code’s sign-in expiry is recognized on a host.** A Kiro CLI or Codex turn whose sign-in there ran out fails as an ordinary error, not as Sign-in needed with Resume.
 - **`!` commands run on this computer,** even in a conversation whose agent runs on a host.
@@ -429,10 +426,11 @@ Postbox uses [semantic versioning](https://semver.org/), from [Conventional Comm
 
 ```text
 app/          the browser app: index.html, workbench.css (the one stylesheet), js/ modules, kit/ for app sandboxes
-server/       Node server, runtime, store, blobs, MCP, sandbox pages, corpus
+server/       Node server, runtime, store, blobs, assets, MCP, sandbox pages
   adapters/   mock, Claude Code, Agent SDK, the shared guide and stream mapper, the terminal mirror
   narration/  the Kokoro narrator and its worker process
   mock/       the mock agent’s apps
+  demo-assets/ the notes --demo publishes as assets
 shared/       pure modules used by both sides: catalog, Markdown, events, state, BM25, text helpers
 tests/        node:test suites, and fixtures recorded from real Claude Code turns
 tools/        demo, screenshot tools, contrast checker, project lint rules, static server
@@ -441,7 +439,7 @@ mockups/      the approved Stage 1 mockups
 screenshots/  generated pictures (git ignores them, but the README’s)
 ```
 
-Third-party code shipped with the app is limited to the vendored libraries in `app/kit/vendor/` (Mermaid, KaTeX and D3, each with its license). The optional packages (the Agent SDK and Kokoro) and the development tools (Biome, TypeScript and axe-core) install with `npm install` and are never needed to run the mock. The books in `server/corpus/books/` are Project Gutenberg texts, kept with their license headers.
+Third-party code shipped with the app is limited to the vendored libraries in `app/kit/vendor/` (Mermaid, KaTeX and D3, each with its license). The optional packages (the Agent SDK and Kokoro) and the development tools (Biome, TypeScript and axe-core) install with `npm install` and are never needed to run the mock.
 
 ## License
 

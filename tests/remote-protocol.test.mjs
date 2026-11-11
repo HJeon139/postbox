@@ -75,7 +75,7 @@ test('message() builds a valid message and throws on a refused one, naming the f
 test('every Postbox tool has a route on the host, and nothing else does', () => {
   assert.deepEqual(Object.keys(TOOL_ROUTES).sort(), TOOL_DEFS.map((t) => t.name).sort());
   assert.equal(TOOL_ROUTES.permission_prompt, 'host');
-  assert.equal(TOOL_ROUTES.corpus_search, 'ask');
+  assert.equal(TOOL_ROUTES.search_assets, 'ask');
   assert.equal(TOOL_ROUTES.review_block, 'ask');
   assert.equal(TOOL_ROUTES.read_conversation, 'read');
   assert.equal(TOOL_ROUTES.read_message, 'read');

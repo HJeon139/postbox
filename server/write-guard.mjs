@@ -46,8 +46,8 @@ export const isWriteCall = (tool, input) => writeCalls(tool, input).length > 0;
 export async function writePasses(rt, sessionId, { tool, input, hostPrompt = null }) {
   const calls = writeCalls(tool, input);
   if (!calls.length) return false;
-  // Postbox’s own tools only show things in the conversation. A write rule that matches one (add_dataset matches
-  // mcp__*__add_*: Claude Code’s globs can’t leave a server out) costs a permission_prompt round trip, never a card.
+  // Postbox’s own tools only show things in the conversation. A write rule that matches one (write_asset matches
+  // mcp__*__write_*: Claude Code’s globs can’t leave a server out) costs a permission_prompt round trip, never a card.
   if (String(tool).startsWith(`mcp__${POSTBOX_SERVER}__`)) return true;
   const { se, persona, folder } = await rt.panelTarget({ sessionId });
   const { canPublish, usesHostSetup } = setupOf(persona);

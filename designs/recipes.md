@@ -8,12 +8,12 @@ Use one when:
 
 | Recipe | Made of | In the demo |
 |---|---|---|
-| Explorer | an app with `postbox.query('corpus.search')`, saved state, and a send-back action | Corpus explorer |
+| Explorer | an app with `postbox.query('assets.search')` over the conversation’s assets, saved state, and a send-back action | Asset explorer |
 | Explainer | one picture that carries the idea, with one control that changes it, drawn as what the things are or do rather than labeled boxes, around Markdown with citations, math and `define_term`; a predict-first question is fine if it never hides the picture, practice only when the person asks for it | ReAct, step by step: “Explain ReAct” shows the picture; “Explain ReAct with something I can try” shows a practice app |
 | Narrated walkthrough | an app with slides and `postbox.narration()` | ReAct, out loud |
 | Slidev export | a `slides.md` file in the agent’s folder, plus a code block | (needs a real agent) |
 | Line-by-line review | a review block, then `update_block` with `previous` to show the diff | Corpus schema spec |
-| Dashboard | an app with `postbox.charts.*`, each chart with a Table view | Corpus dashboard |
+| Dashboard | an app with `postbox.charts.*`, each chart with a Table view | Asset dashboard |
 | Long job | a progress block with counts, moved on with `update_block`, every step closed, then a summary | Index the shelf |
 
 ## Narrated walkthrough

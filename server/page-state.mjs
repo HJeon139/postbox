@@ -9,9 +9,9 @@ import { KNOWN_TOOLS } from './seed.mjs';
 
 /**
  * The answer to GET /api/state.
- * @param {{ store: any, rt: any, adapters: any, origin: string, demo: any, real: any, config: any, corpus: any }} ctx
+ * @param {{ store: any, rt: any, adapters: any, origin: string, demo: any, real: any, config: any }} ctx
  */
-export function pageState({ store, rt, adapters, origin, demo, real, config, corpus }) {
+export function pageState({ store, rt, adapters, origin, demo, real, config }) {
   return {
     seq: store.state.seq,
     epoch: store.epoch, // the history the seq counts within; the stream request echoes it (server/live-streams.mjs)
@@ -38,7 +38,6 @@ export function pageState({ store, rt, adapters, origin, demo, real, config, cor
       realBackends: real,
       versions: config.versions,
       build: config.build,
-      corpus: corpus.stats(),
     },
   };
 }

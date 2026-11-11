@@ -22,9 +22,9 @@ test('a call or prompt the broker can’t write down isn’t acknowledged: the s
     const queued = await s.call('c1', 'show_block', { block: BLOCK });
     assert.equal(queued.ok, false, 'a queued call that isn’t on disk isn’t acknowledged');
     assert.match(queued.text, /^Postbox’s daemon on this host couldn’t write down show_block, so it wasn’t sent to Postbox: /);
-    const asked = await s.call('c2', 'corpus_search', { query: 'y' });
+    const asked = await s.call('c2', 'search_assets', { query: 'y' });
     assert.equal(asked.ok, false);
-    assert.match(asked.text, /^Postbox’s daemon on this host couldn’t write down corpus_search, so it wasn’t sent to Postbox: /);
+    assert.match(asked.text, /^Postbox’s daemon on this host couldn’t write down search_assets, so it wasn’t sent to Postbox: /);
     s.send('permission', { id: 'p1', request: REQUEST });
     const denied = await s.next('permission-answer');
     assert.equal(denied.result.behavior, 'deny', 'a prompt that isn’t on disk is denied, never left waiting or allowed');
@@ -158,7 +158,7 @@ test('a reply the broker can’t write down doesn’t reach the shim: Postbox he
     const k = makeBroker(h);
     const s = connectShim(k.b, 't1');
     await s.next('welcome');
-    s.send('call', { id: 'c1', name: 'corpus_search', args: { query: 'y' } });
+    s.send('call', { id: 'c1', name: 'search_assets', args: { query: 'y' } });
     assert.equal((await s.call('c2', 'show_block', { block: BLOCK })).ok, true);
     await until(() => k.sent.length === 2, 'the tools');
     // tools.jsonl can’t be appended to from here on: it’s a folder.

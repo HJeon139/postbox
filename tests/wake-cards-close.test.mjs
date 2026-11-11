@@ -21,7 +21,7 @@ function heldOnAlphasCard() {
   return { ...f, open };
 }
 
-const restart = (f) => new Runtime({ store: f.store, adapters: f.rt.adapters, corpus: f.rt.corpus, config: f.rt.config });
+const restart = (f) => new Runtime({ store: f.store, adapters: f.rt.adapters, config: f.rt.config });
 
 for (const [how, act] of [
   ['archived', (f) => f.rt.archive(f.alpha.id)],

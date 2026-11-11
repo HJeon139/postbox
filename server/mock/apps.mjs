@@ -2,7 +2,7 @@
 // agent would send to show_app. Inside the sandbox they use the preloaded kit: Workbench classes and
 // tokens, and window.postbox for the bridge (query, send, saveState, restoreState, anchors, charts).
 
-export const explorerApp = ({ withYears = false } = {}) => `
+export const explorerApp = ({ withAssets = false } = {}) => `
 <style>
   .xp { display: grid; grid-template-columns: 230px minmax(0, 1fr); min-height: 440px; }
   .xp-side { border-right: 1px solid var(--line); padding: 14px; display: flex; flex-direction: column; gap: 16px; background: var(--sunk); }
@@ -35,16 +35,16 @@ export const explorerApp = ({ withYears = false } = {}) => `
     <div class="field"><span class="label" id="m-l">Match</span>
       <div class="xp-chips" role="radiogroup" aria-labelledby="m-l" id="modes"></div></div>
     ${
-      withYears
-        ? `<div class="field"><label class="label" for="yr">Published before</label>
-      <div class="xp-select-wrap"><select class="select" id="yr"><option value="">Any year</option><option value="1820">1820</option><option value="1860">1860</option><option value="1900">1900</option></select><span class="xp-arrow" aria-hidden="true">⌄</span></div></div>`
+      withAssets
+        ? `<div class="field"><label class="label" for="only">Search in</label>
+      <div class="xp-select-wrap"><select class="select" id="only"><option value="">Every asset</option></select><span class="xp-arrow" aria-hidden="true">⌄</span></div></div>`
         : ''
     }
-    <div class="field"><span class="label">Books with matches</span><ul class="books" id="books"></ul></div>
+    <div class="field"><span class="label">Assets with matches</span><ul class="books" id="books"></ul></div>
   </aside>
   <div class="xp-main">
     <form class="xp-search" id="f" role="search">
-      <input class="input" id="q" aria-label="Search the corpus" autocomplete="off">
+      <input class="input" id="q" aria-label="Search the assets" autocomplete="off">
       <button class="btn" type="submit">Search</button>
     </form>
     <div class="xp-status" id="status" role="status"></div>
@@ -53,7 +53,8 @@ export const explorerApp = ({ withYears = false } = {}) => `
   </div>
 </div>
 <script>
-  const S = { q: 'hope after loss', mode: 'both', picked: {}, year: '', results: [] };
+  const S = { q: 'hope after loss', mode: 'both', picked: {}, only: '', results: [] };
+  const keep = () => postbox.saveState({ q: S.q, mode: S.mode, picked: S.picked, only: S.only });
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
   function modes() {
@@ -67,18 +68,17 @@ export const explorerApp = ({ withYears = false } = {}) => `
   }
   function render() {
     modes();
-    let rows = S.results;
-    if (S.year) rows = rows.filter((r) => r.year && r.year < +S.year);
-    const byBook = {};
-    for (const r of rows) byBook[r.title] = (byBook[r.title] || 0) + 1;
-    $('books').innerHTML = Object.entries(byBook).map(([b, n]) => '<li><i>' + esc(b) + '</i><span class="n">' + n + '</span></li>').join('') || '<li class="dim">None yet</li>';
+    const rows = S.results;
+    const byAsset = {};
+    for (const r of rows) byAsset[r.name] = (byAsset[r.name] || 0) + 1;
+    $('books').innerHTML = Object.entries(byAsset).map(([b, n]) => '<li><span class="mono">' + esc(b) + '</span><span class="n">' + n + '</span></li>').join('') || '<li class="dim">None yet</li>';
     $('status').textContent = rows.length + ' passages · semantic scores come from a stub until your index is connected';
     $('hits').innerHTML = rows.length ? rows.map((r, i) => {
       const on = !!S.picked[r.id];
       const pills = (r.lexical ? '<span class="pill">lexical · BM25 ' + r.lexical.score + '</span>' : '') + (r.semantic !== null && r.semantic !== undefined ? '<span class="pill">semantic · ' + r.semantic.toFixed(2) + '</span>' : '');
       return '<li class="hit' + (on ? ' sel' : '') + '" data-anchor="' + (i === 1 ? 'result row 2' : '') + '">' +
-        '<span class="xp-check" role="checkbox" tabindex="0" aria-checked="' + on + '" aria-label="Select passage from ' + esc(r.title) + ', ' + esc(r.chapter) + '" data-id="' + esc(r.id) + '"><span class="xp-box"></span></span>' +
-        '<div><div class="src"><b><i>' + esc(r.title) + '</i></b> · ' + esc(r.chapter) + pills + '</div><p>' + highlight(r.text.length > 420 ? r.text.slice(0, 420) + '…' : r.text, r.lexical && r.lexical.terms) + '</p></div></li>';
+        '<span class="xp-check" role="checkbox" tabindex="0" aria-checked="' + on + '" aria-label="Select passage from ' + esc(r.name) + ', ' + esc(r.where) + '" data-id="' + esc(r.id) + '"><span class="xp-box"></span></span>' +
+        '<div><div class="src"><b class="mono">' + esc(r.name) + '</b> · v' + r.version + ' · ' + esc(r.where) + pills + '</div><p>' + highlight(r.text.length > 420 ? r.text.slice(0, 420) + '…' : r.text, r.lexical && r.lexical.terms) + '</p></div></li>';
     }).join('') : '<li class="empty">No passages match. Try other words, or switch to Semantic.</li>';
     const n = Object.keys(S.picked).length;
     $('count').textContent = n ? n + ' selected' : 'Nothing selected';
@@ -88,38 +88,43 @@ export const explorerApp = ({ withYears = false } = {}) => `
   }
   async function run() {
     $('status').textContent = 'Searching…';
-    try { S.results = await postbox.query('corpus.search', { query: S.q, mode: S.mode, k: 12 }); }
+    try { S.results = await postbox.query('assets.search', { query: S.q, mode: S.mode, k: 12, assets: S.only ? [S.only] : [] }); }
     catch (e) { S.results = []; $('status').textContent = e.message; return; }
     render();
   }
   function toggle(id) {
     const r = S.results.find((x) => x.id === id);
-    if (S.picked[id]) delete S.picked[id]; else S.picked[id] = { title: r.title, chapter: r.chapter };
-    postbox.saveState({ q: S.q, mode: S.mode, picked: S.picked, year: S.year });
+    if (S.picked[id]) delete S.picked[id]; else S.picked[id] = { name: r.name, where: r.where };
+    keep();
     render();
     const el = document.querySelector('[data-id="' + CSS.escape(id) + '"]');
     if (el) el.focus();
   }
   document.addEventListener('click', (e) => {
     const m = e.target.closest('[data-m]');
-    if (m) { S.mode = m.dataset.m; postbox.saveState({ q: S.q, mode: S.mode, picked: S.picked, year: S.year }); run(); return; }
+    if (m) { S.mode = m.dataset.m; keep(); run(); return; }
     const c = e.target.closest('[data-id]');
     if (c) toggle(c.dataset.id);
   });
   document.addEventListener('keydown', (e) => { const c = e.target.closest && e.target.closest('[data-id]'); if (c && (e.key === ' ' || e.key === 'Enter')) { e.preventDefault(); toggle(c.dataset.id); } });
-  $('f').addEventListener('submit', (e) => { e.preventDefault(); S.q = $('q').value; postbox.saveState({ q: S.q, mode: S.mode, picked: S.picked, year: S.year }); run(); });
-  ${withYears ? `$('yr').addEventListener('change', (e) => { S.year = e.target.value; postbox.saveState({ q: S.q, mode: S.mode, picked: S.picked, year: S.year }); render(); });` : ''}
+  $('f').addEventListener('submit', (e) => { e.preventDefault(); S.q = $('q').value; keep(); run(); });
+  ${withAssets ? `$('only').addEventListener('change', (e) => { S.only = e.target.value; keep(); run(); });` : ''}
   $('send').addEventListener('click', () => {
     const picked = Object.entries(S.picked);
-    const books = {};
-    for (const [, p] of picked) books[p.title] = (books[p.title] || 0) + 1;
-    const summary = picked.length + ' passage' + (picked.length === 1 ? '' : 's') + ' · ' + Object.entries(books).map(([b, n]) => b + (n > 1 ? ' (' + n + ')' : '')).join(', ');
+    const names = {};
+    for (const [, p] of picked) names[p.name] = (names[p.name] || 0) + 1;
+    const summary = picked.length + ' passage' + (picked.length === 1 ? '' : 's') + ' · ' + Object.entries(names).map(([b, n]) => b + (n > 1 ? ' (' + n + ')' : '')).join(', ');
     postbox.send('use-passages', { passages: picked.map(([id]) => id) }, summary);
   });
-  postbox.ready.then(({ state }) => {
+  postbox.ready.then(async ({ state }) => {
     if (state) Object.assign(S, state);
     $('q').value = S.q;
-    ${withYears ? `$('yr').value = S.year || '';` : ''}
+    ${
+      withAssets
+        ? `for (const a of await postbox.query('assets.list', {})) $('only').append(new Option(a.name, a.name));
+    $('only').value = S.only || '';`
+        : ''
+    }
     run();
   });
 </script>`;
@@ -188,24 +193,28 @@ export const dashboardApp = ({ fixed = false } = {}) => `
   @media (max-width: 720px) { .dash { grid-template-columns: minmax(0, 1fr); } }
 </style>
 <div class="dash">
-  <section class="card full"><h2>Passages per book</h2><div id="bars"></div></section>
+  <section class="card full"><h2>Passages per asset</h2><div id="bars"></div></section>
   <section class="card"><h2>How passages matched</h2><div id="scatter"></div></section>
   <section class="card"><h2>Themes by book</h2><div id="heat"></div></section>
   <section class="card full dash-wide"><h2>Index runs</h2><div id="table"></div></section>
 </div>
 <script>
   postbox.ready.then(async () => {
-    const stats = await postbox.query('corpus.stats', {});
+    // The conversation’s text assets, or the shelf the indexer last indexed when this conversation has none.
+    const listed = await postbox.query('assets.list', {});
+    const shelf = [['Middlemarch', 1840], ['Persuasion', 712], ['Emma', 1386], ['Moby-Dick', 1652], ['Walden', 803], ['Dubliners', 641]];
+    const assets = listed.length ? listed.map((a) => [a.name, a.passages]) : shelf;
+    const passages = assets.reduce((n, a) => n + a[1], 0);
     postbox.charts.stacked(document.getElementById('bars'), {
-      label: 'Passages per book', categories: stats.books.map((b) => b.title),
-      series: [{ name: 'Passages', values: stats.books.map((b) => b.passages) }], percent: false });
+      label: 'Passages per asset', categories: assets.map((a) => a[0]),
+      series: [{ name: 'Passages', values: assets.map((a) => a[1]) }], percent: false });
     let s = 7; const rnd = () => ((s = (s * 16807) % 2147483647) / 2147483647);
     const pts = (n, x0, x1, y0, y1) => Array.from({ length: n }, () => [x0 + rnd() * (x1 - x0), y0 + rnd() * (y1 - y0)]);
     postbox.charts.scatter(document.getElementById('scatter'), { x: 'BM25 score', y: 'Semantic score', xMax: 10, yMax: 1,
       groups: [{ name: 'Both', points: pts(12, 5, 9, 0.6, 0.85) }, { name: 'Lexical only', points: pts(12, 4, 9, 0.15, 0.45) }, { name: 'Semantic only', points: pts(12, 0.3, 3, 0.55, 0.85) }] });
     postbox.charts.heatmap(document.getElementById('heat'), { rows: ['Middlemarch', 'Persuasion', 'Emma', 'Moby-Dick', 'Walden', 'Dubliners'], cols: ['Grief', 'Hope', 'Money', 'The sea'],
       values: [[64, 51, 88, 4], [38, 72, 41, 47], [12, 33, 52, 2], [41, 18, 22, 118], [9, 44, 61, 31], [83, 15, 27, 6]] });
-    postbox.charts.table(document.getElementById('table'), { columns: ['Run', 'Books', 'Passages', 'Time'], rows: [['Lexical index', 6, stats.passages.toLocaleString('en-US'), '1.2 s'], ['Semantic stub', 6, stats.passages.toLocaleString('en-US'), '0.3 s']] });
+    postbox.charts.table(document.getElementById('table'), { columns: ['Run', 'Books', 'Passages', 'Time'], rows: [['Lexical index', assets.length, passages.toLocaleString('en-US'), '1.2 s'], ['Semantic stub', assets.length, passages.toLocaleString('en-US'), '0.3 s']] });
   });
 </script>`;
 
@@ -215,8 +224,8 @@ export const brokenMapApp = () => `
 <div class="pad" style="padding:14px"><p>Loading the shelf map…</p><div id="map"></div></div>
 <script>
   postbox.ready.then(async () => {
-    const stats = await postbox.query('corpus.stats', {});
-    const rows = stats.rows; // the agent misremembered the shape: it’s stats.books
+    const list = await postbox.query('assets.list', {});
+    const rows = list.rows; // the agent misremembered the shape: it’s the list itself
     document.getElementById('map').textContent = rows.map((r) => r.title).join(', ');
   });
 </script>`;

@@ -1,21 +1,26 @@
-// The host’s tools that apps (through the bridge) and agents can use, if granted: the corpus and narration.
+// The host’s tools that apps can use through the bridge, if granted: the conversation’s assets and narration.
 
+import { listTextAssets, searchAssets } from './asset-search.mjs';
+import { blobsOf } from './asset-tools.mjs';
+import { roomOf } from './assets.mjs';
 import { httpError } from './helpers.mjs';
 
-/** Host tools that apps (through the bridge) and agents can use, if granted. */
-export function hostTool(rt, tool, args = {}) {
+/** The host tools every agent holds: its conversation’s assets, which its asset tools read too. An app still names them. */
+export const HELD_BY_EVERY_AGENT = new Set(['assets.search', 'assets.list']);
+
+/**
+ * Runs a host tool for an app, in its conversation.
+ * @param {any} rt  the Runtime @param {string} tool @param {any} args @param {{ threadId?: string }} [at]  the app’s thread
+ */
+export async function hostTool(rt, tool, args = {}, { threadId } = {}) {
   switch (tool) {
-    case 'corpus.search': {
-      const q = String(args.query ?? '').slice(0, 200);
-      const mode = ['both', 'lexical', 'semantic'].includes(args.mode) ? args.mode : 'both';
-      // k and books come from an agent or an app: 1 to 50 results, and the first 50 book ids (#351).
-      const k = Math.max(1, Math.min(50, Math.floor(+args.k || 12)));
-      return rt.corpus.search(q, { mode, k, books: Array.isArray(args.books) ? args.books.slice(0, 50) : undefined });
+    case 'assets.search':
+    case 'assets.list': {
+      const blobs = blobsOf(rt);
+      if (!blobs || !threadId) return [];
+      const room = roomOf(rt.s.threads, threadId);
+      return tool === 'assets.search' ? searchAssets(rt, blobs, room, args) : listTextAssets(rt, blobs, room);
     }
-    case 'corpus.read':
-      return rt.corpus.read(String(args.id ?? ''));
-    case 'corpus.stats':
-      return rt.corpus.stats();
     case 'narrate.speak':
       if (!rt.narrator) throw httpError(503, 'Narration isn’t installed here. Run npm install to add Kokoro, then restart Postbox.');
       return rt.narrator.speak(args);

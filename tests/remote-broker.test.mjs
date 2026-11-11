@@ -219,7 +219,7 @@ test('update_block is checked with the catalog first; an invalid show_block stil
 
 // ── Asked calls ──
 
-test('an asked call: refused at once with no Postbox, else Postbox’s reply is the result; add_dataset isn’t supported yet', async () => {
+test('an asked call: refused at once with no Postbox, else Postbox’s reply is the result', async () => {
   const h = makeHome();
   try {
     h.turn('t1');
@@ -227,29 +227,25 @@ test('an asked call: refused at once with no Postbox, else Postbox’s reply is 
     const s = connectShim(k.b, 't1');
     await s.next('welcome');
     k.state.attached = false;
-    const away = await s.call('c1', 'corpus_search', { query: 'x' });
+    const away = await s.call('c1', 'search_assets', { query: 'x' });
     assert.equal(away.ok, false);
     // The host can’t tell a reconnect from a closed Postbox, so the refusal covers both and names what to do in each.
     const notConnected = (/** @type {string} */ name) =>
       `Postbox isn’t connected to this host, so ${name} can’t run. If it’s reconnecting, try again in a few seconds; if it stays this way, Postbox may be closed.`;
-    assert.equal(away.text, notConnected('corpus_search'));
+    assert.equal(away.text, notConnected('search_assets'));
     const asset = await s.call('c1b', 'list_assets', {});
     assert.deepEqual({ ok: asset.ok, text: asset.text }, { ok: false, text: notConnected('list_assets') }, 'every asked tool, the asset tools among them');
     assert.equal((await k.hello()).length, 0, 'a refused call isn’t queued');
     k.state.attached = true;
-    s.send('call', { id: 'c2', name: 'corpus_search', args: { query: 'y' } });
+    s.send('call', { id: 'c2', name: 'search_assets', args: { query: 'y' } });
     await until(() => k.sent.length, 'the tool');
-    assert.deepEqual(k.sent[0], { type: 'tool', turn: 't1', id: 'c2', name: 'corpus_search', args: { query: 'y' } });
+    assert.deepEqual(k.sent[0], { type: 'tool', turn: 't1', id: 'c2', name: 'search_assets', args: { query: 'y' } });
     await k.post('reply', { turn: 't1', id: 'c2', ok: true, text: '[{"id":"b:1"}]' });
     assert.deepEqual(await s.next('result', (m) => m.id === 'c2'), { type: 'result', id: 'c2', ok: true, text: '[{"id":"b:1"}]' });
     // A shim that missed it gets it when it asks again.
     const s2 = connectShim(k.b, 't1');
     await s2.next('welcome');
-    assert.equal((await s2.call('c2', 'corpus_search', { query: 'y' })).text, '[{"id":"b:1"}]');
-    assert.equal(k.sent.length, 1);
-    const ds = await s.call('c3', 'add_dataset', { id: 'd', path: 'd.jsonl' });
-    assert.equal(ds.ok, false);
-    assert.match(ds.text, /^Loading a dataset isn’t supported yet for an agent on a remote host/);
+    assert.equal((await s2.call('c2', 'search_assets', { query: 'y' })).text, '[{"id":"b:1"}]');
     assert.equal(k.sent.length, 1);
   } finally {
     await h.done();
@@ -263,7 +259,7 @@ test('an asked call’s answer outlives a daemon restart: the shim resending it 
     const k = makeBroker(h);
     const s = connectShim(k.b, 't1');
     await s.next('welcome');
-    s.send('call', { id: 'c1', name: 'corpus_search', args: { query: 'y' } });
+    s.send('call', { id: 'c1', name: 'search_assets', args: { query: 'y' } });
     await until(() => k.sent.length, 'the tool');
     // The reply comes while the shim is away, then the daemon restarts before it reconnects.
     s.close();
@@ -272,7 +268,7 @@ test('an asked call’s answer outlives a daemon restart: the shim resending it 
     await again.b.load([{ turn: 't1', state: 'running' }]);
     const s2 = connectShim(again.b, 't1');
     await s2.next('welcome');
-    assert.deepEqual(await s2.call('c1', 'corpus_search', { query: 'y' }), { type: 'result', id: 'c1', ok: false, text: 'No book is called “x”.' });
+    assert.deepEqual(await s2.call('c1', 'search_assets', { query: 'y' }), { type: 'result', id: 'c1', ok: false, text: 'No book is called “x”.' });
     assert.deepEqual([again.sent, await again.hello()], [[], []], 'an answered call isn’t sent to Postbox again');
   } finally {
     await h.done();

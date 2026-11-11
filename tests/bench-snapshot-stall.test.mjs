@@ -8,6 +8,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { test } from 'node:test';
+import { snapshotBytes } from '../server/store-snapshot-lines.mjs';
 import { seedRoomFolder } from '../tools/bench-room.mjs';
 import {
   benchCli,
@@ -207,7 +208,7 @@ test('measureSnapshotPass writes through the server’s writeSnapshot: 1 MB piec
   const { io, seen } = recordingIo();
   const state = { version: 1, seq: 1, items: { th_bench: [{ id: 'it_1', text: 'x'.repeat(3.5 * 2 ** 20) }] } };
   const pass = await measureSnapshotPass(state, '/nowhere', { io: /** @type {any} */ (io) });
-  const bytes = Buffer.byteLength(JSON.stringify(state));
+  const bytes = snapshotBytes(state); // the line format’s bytes (#1180)
   assert.equal(pass.bytes, bytes);
   assert.equal(seen.writes.length, 4, 'a 3.5 MB snapshot goes in four pieces');
   for (const n of seen.writes) assert.ok(n <= 2 ** 20, `a piece of ${n} bytes is over 1 MB`);

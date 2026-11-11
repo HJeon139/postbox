@@ -176,10 +176,10 @@ const HANDLERS = {
     }
     const text = m.text ?? m.note ?? '';
     if (has(text, /every (kind of )?block|catalog|tour/)) return catalogTour(a);
-    if (has(text, /explor|search|corpus|passage/)) return corpusExplorer(a, mem);
+    if (has(text, /explor|search|asset|passage/)) return assetExplorer(a, mem);
     await a.think(500);
     await a.say(
-      'I can build you an explorer for your books, walk you through every block I can send, or answer questions about the corpus. Try “Build me an explorer for my corpus”.',
+      'I can build you an explorer for this conversation’s assets, walk you through every block I can send, or answer questions about your notes. Try “Build me an explorer for these assets”.',
     );
   },
 
@@ -220,7 +220,7 @@ const HANDLERS = {
     if (m.kind === 'app-check') return fixApp(m, a);
     if (m.kind === 'event') {
       if (m.event.blockId === 'dupes') {
-        await a.tool('corpus.remove 14 passages', 600);
+        await a.tool('index.remove 14 passages', 600);
         return a.say(
           m.event.action === 'confirm' ? 'Removed the 14 duplicate passages from both indexes. The source files are untouched.' : 'Kept them. Nothing changed.',
         );
@@ -310,31 +310,31 @@ async function defineAll(m, a) {
 
 // ── @librarian ───────────────────────────────────────────────────────────────────────────
 
-async function corpusExplorer(a, mem) {
+async function assetExplorer(a, mem) {
   await a.think(700);
-  await a.tool('corpus.stats', 300);
-  await a.tool('corpus.search “hope after loss”', 400);
+  await a.tool('list_assets', 300);
+  await a.tool('search_assets “hope after loss”', 400);
   await a.say(
-    'Here’s an explorer over all six books in your corpus. It runs two searches at once, **lexical** (BM25, exact words) and **semantic** (meaning, from a stub until your own index is connected), and labels which one found each passage. Tick the passages you want and send them back to me.',
+    'Here’s an explorer over this conversation’s text assets. It runs two searches at once, **lexical** (BM25, exact words) and **semantic** (meaning, from a stub until your own index is connected), and labels which one found each passage. Any asset an agent here writes is searched too. Tick the passages you want and send them back to me.',
   );
   a.t.show_app({
-    id: 'corpus-explorer',
-    title: 'Corpus explorer',
+    id: 'asset-explorer',
+    title: 'Asset explorer',
     code: explorerApp(),
-    permissions: ['corpus.search', 'corpus.stats'],
-    fallback: 'Corpus explorer: an interactive search across your books. Open Postbox to use it.',
+    permissions: ['assets.search', 'assets.list'],
+    fallback: 'Asset explorer: an interactive search across this conversation’s assets. Open Postbox to use it.',
   });
   mem.explorer = 1;
 }
 
 async function librarianEvent(ev, a, _mem) {
-  if (ev.blockId === 'corpus-explorer' && ev.action === 'use-passages') {
+  if (ev.blockId === 'asset-explorer' && ev.action === 'use-passages') {
     await a.think(800);
-    await a.tool(`corpus.read ${ev.values.passages.length} passages`, 500);
+    await a.tool(`read_asset ${ev.values.passages.length} passages`, 500);
     await a.say(
-      'Good picks. Some came from exact matches on your words, and at least one surfaced only through meaning, which suggests the idea runs wider than the vocabulary you searched with.\n\nI’ve added a filter for publication year in **v2**, so you can see whether the theme shifts over the century.',
+      'Good picks. Some came from exact matches on your words, and at least one surfaced only through meaning, which suggests the idea runs wider than the vocabulary you searched with.\n\nI’ve added a filter by asset in **v2**, so you can keep a search to one note.',
     );
-    a.t.update_app({ id: 'corpus-explorer', code: explorerApp({ withYears: true }), summary: 'adds a publication-year filter' });
+    a.t.update_app({ id: 'asset-explorer', code: explorerApp({ withAssets: true }), summary: 'adds a filter by asset' });
     return;
   }
   await a.think(500);
@@ -589,7 +589,7 @@ async function indexShelf(a, _mem) {
     ],
   });
   a.ctxTo(78);
-  for (let b = 12; b <= 14; b++) await a.tool(`corpus.embed batch ${b}`, 700);
+  for (let b = 12; b <= 14; b++) await a.tool(`index.embed batch ${b}`, 700);
   a.compaction({
     kept: 38000,
     total: 180000,
@@ -599,7 +599,7 @@ async function indexShelf(a, _mem) {
   a.ctxTo(30);
   await a.say('Context was getting full, so it was compacted; the divider above shows what I kept. ');
   a.status({ subagents: [{ name: 'embedder', state: 'tool', ctx: 40, doing: 'batch 31 of 31' }] });
-  await a.tool('corpus.embed batch 31', 900);
+  await a.tool('index.embed batch 31', 900);
   a.update(prog(3, { bm25: '6 books, 7,653 passages' }));
   a.status({ subagents: [] });
   await a.tool('write manifest.json', 300);
@@ -658,39 +658,39 @@ async function brokenBlocks(a) {
 async function brokenMap(a, _mem) {
   await a.think(500);
   await a.say('And the shelf map, with the new chapter counts:');
-  a.t.show_app({ id: 'shelf-map', title: 'Shelf map', code: brokenMapApp(), permissions: ['corpus.stats'], fallback: 'Shelf map: books by chapter count.' });
+  a.t.show_app({ id: 'shelf-map', title: 'Shelf map', code: brokenMapApp(), permissions: ['assets.list'], fallback: 'Shelf map: assets by passage count.' });
 }
 
 async function dashboard(a, _mem) {
   await a.think(600);
-  await a.tool('corpus.stats', 300);
-  await a.say('Here’s a dashboard of the corpus, built from the chart kit.');
+  await a.tool('list_assets', 300);
+  await a.say('Here’s a dashboard of the assets, built from the chart kit.');
   a.t.show_app({
-    id: 'corpus-dashboard',
-    title: 'Corpus dashboard',
+    id: 'asset-dashboard',
+    title: 'Asset dashboard',
     code: dashboardApp(),
-    permissions: ['corpus.stats'],
-    fallback: 'Corpus dashboard: passages per book, how passages matched, and themes by book.',
+    permissions: ['assets.list'],
+    fallback: 'Asset dashboard: passages per asset, how passages matched, and themes by book.',
   });
 }
 
 async function fixApp(m, a) {
   await a.think(500);
-  if (m.appId === 'corpus-dashboard') {
-    a.t.update_app({ id: 'corpus-dashboard', code: dashboardApp({ fixed: true }), summary: 'fixes the table overflowing at phone width' });
+  if (m.appId === 'asset-dashboard') {
+    a.t.update_app({ id: 'asset-dashboard', code: dashboardApp({ fixed: true }), summary: 'fixes the table overflowing at phone width' });
   }
 }
 
 async function proposeCiter(a) {
   await a.think(600);
   await a.say(
-    'I can check quotes against the corpus, but some of your notes quote other editions online, and I can’t fetch web pages. This will keep coming up, so I’d suggest a teammate for it:',
+    'I can check quotes against the notes in this conversation, but some of your notes quote other editions online, and I can’t fetch web pages. This will keep coming up, so I’d suggest a teammate for it:',
   );
   a.t.propose_agent({
     handle: 'citer',
-    description: 'Checks every quoted passage against its source, in the corpus or on the web, and flags any that don’t match.',
+    description: 'Checks every quoted passage against its source, in the conversation’s assets or on the web, and flags any that don’t match.',
     instructions: 'Check each quote against its source. Report the exact mismatch and the edition you checked. Don’t rewrite the person’s notes.',
-    tools: ['corpus.search', 'corpus.read', 'web.fetch'],
+    tools: ['web.fetch'],
   });
 }
 
@@ -706,7 +706,7 @@ async function askResearcher(a) {
 }
 
 async function confirmDupes(a) {
-  await a.tool('corpus.find-duplicates', 700);
+  await a.tool('index.find-duplicates', 700);
   await a.say('I found 14 passages that appear twice, from the duplicate *Emma* edition.');
   a.block({
     id: 'dupes',
@@ -785,7 +785,7 @@ async function criticReview(a, _mem) {
     fallback: 'Review of chunk.js: comment in the chat, quoting the line.',
   });
   await a.say('\nAnd the explorer layout I’d propose. Turn on review mode to pin comments to its parts:');
-  a.t.show_app({ id: 'layout-proposal', title: 'Explorer layout', code: layoutApp(), permissions: [], fallback: 'A proposed layout for the corpus explorer.' });
+  a.t.show_app({ id: 'layout-proposal', title: 'Explorer layout', code: layoutApp(), permissions: [], fallback: 'A proposed layout for the asset explorer.' });
   a.block({
     id: 'layout-review',
     type: 'review',

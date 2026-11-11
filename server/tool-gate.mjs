@@ -9,7 +9,7 @@
  * (scheduled-wakes.mjs); calling it isn’t an answer (empty-reply.mjs); and a host’s repeat of it runs it again rather
  * than being answered from a kept, cut copy (remote/turns-tools.mjs). A new read tool joins it here, and only here.
  */
-export const READ_TOOLS = new Set(['read_conversation', 'read_message', 'corpus_search', 'list_assets', 'read_asset']);
+export const READ_TOOLS = new Set(['read_conversation', 'read_message', 'list_assets', 'read_asset', 'search_assets']);
 
 /**
  * The cause to refuse a tool with while the store is closed, or null when it may run.

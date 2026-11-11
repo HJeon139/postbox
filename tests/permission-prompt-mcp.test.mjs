@@ -40,11 +40,9 @@ async function setup({ usesHostSetup = true } = {}) {
   await mkdir(home);
   const store = new Store(null);
   const adapter = new ScriptedClaude(folder);
-  const corpus = { search: () => [], read: () => null, stats: () => ({ books: [], passages: 0 }) };
   const rt = new Runtime({
     store,
     adapters: new AdapterRegistry().register(adapter),
-    corpus,
     config: { origin: 'http://127.0.0.1:1', imageOrigins: [], lintSettleMs: 0, home },
   });
   store.emit('project', { id: 'p1', name: 'P', folder });

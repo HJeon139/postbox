@@ -9,7 +9,7 @@ import { setup } from './side-threads-fixture.mjs';
 
 const card = (f, id) => f.store.item(f.t.id, id);
 const toldOf = (f, se) => (f.store.state.sessions[se.id]?.context ?? []).join(' | ');
-const restart = (f) => new Runtime({ store: f.store, adapters: f.rt.adapters, corpus: f.rt.corpus, config: f.rt.config });
+const restart = (f) => new Runtime({ store: f.store, adapters: f.rt.adapters, config: f.rt.config });
 
 /** @alpha asks to add @gamma, and @beta's wake of @delta is held on that card. */
 function heldOnAlphasCard() {

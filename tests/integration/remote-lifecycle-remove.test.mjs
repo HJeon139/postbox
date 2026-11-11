@@ -46,7 +46,6 @@ test('remove (G2): with a turn running, Runtime.removeHost stops it, the daemon 
   rt = new Runtime({
     store: new Store(null),
     adapters: new AdapterRegistry().register({ name: 'mock', deliver: async () => {} }),
-    corpus: { search: () => [], read: () => null, stats: () => ({ books: [], passages: 0 }) },
     config: { origin: 'http://127.0.0.1:1', imageOrigins: [], home: '/nowhere', build: { version: VERSION } },
     hosts: mgr,
   });

@@ -84,7 +84,6 @@ const WRITE_ROUTES = {
   'POST /api/projects': ['/api/projects'],
   'PUT ^\\/api\\/projects\\/([^/]+)\\/push-url$': ['/api/projects/pr_none/push-url'],
   'POST /api/files': ['/api/files'],
-  'POST /api/corpus': ['/api/corpus'],
   'POST ^\\/api\\/apps\\/([^/]+)\\/(check|event|state|query)$': [
     '/api/apps/ap_none/check',
     '/api/apps/ap_none/event',
@@ -185,7 +184,7 @@ test('#74: reads need no token, /mcp keeps its own session check, and other site
 });
 
 test('#74: a message sent with the page’s token posts as the person; one without it posts nothing', async () => {
-  const thread = Object.values(app.store.state.threads).find((t) => t.title === 'Corpus explorer');
+  const thread = Object.values(app.store.state.threads).find((t) => t.title === 'Asset explorer');
   const before = app.store.items(thread.id).length;
   const refused = await call({ method: 'POST', path: `/api/threads/${thread.id}/messages`, body: { text: 'from curl' } });
   assert.equal(refused.status, 403);
@@ -198,7 +197,7 @@ test('#74: a message sent with the page’s token posts as the person; one witho
 });
 
 test('#120 L6: Resume after a turn on a host stopped needs the page’s token, and with it reaches resumeRemote', async () => {
-  const thread = Object.values(app.store.state.threads).find((t) => t.title === 'Corpus explorer');
+  const thread = Object.values(app.store.state.threads).find((t) => t.title === 'Asset explorer');
   const [se] = app.rt.sessionsIn(thread.id);
   const path = `/api/sessions/${se.id}/resume`;
   const refused = await call({ method: 'POST', path, body: {} });

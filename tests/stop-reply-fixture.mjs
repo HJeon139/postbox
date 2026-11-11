@@ -37,11 +37,9 @@ export async function setup(step, store = new Store(null)) {
   folders.push(folder);
   const adapter = new Scripted(folder);
   adapter.next = step;
-  const corpus = { search: () => [], read: () => null, stats: () => ({ books: [], passages: 0 }) };
   const rt = new Runtime({
     store,
     adapters: new AdapterRegistry().register(adapter),
-    corpus,
     config: { origin: 'http://127.0.0.1:1', imageOrigins: [], lintSettleMs: 0, home: folder },
   });
   store.emit('project', { id: 'p1', name: 'P', folder });

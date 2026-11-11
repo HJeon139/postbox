@@ -39,8 +39,7 @@
 // `tool` carries `code` in place of codePath and `files` as [{ name, base64 }], made only here: a files entry Postbox
 // gets always came from a path the broker read. The agent can change its folder while the broker reads, so each file
 // is opened without following a link at the end of its path, and the file opened is checked to be in the folder
-// before anything is read from it (folderFile). add_dataset reads a file on Postbox’s computer, which a remote agent
-// can’t name, so it’s refused for now with a message that says so.
+// before anything is read from it (folderFile).
 //
 // The snapshot (`snapshot`, then `snapshot-items`) is kept in snapshot.json in the turn folder, 0600, written
 // atomically, or in memory until `start` makes the folder. Its threads come in the order read_message looks through

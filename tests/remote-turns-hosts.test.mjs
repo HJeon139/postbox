@@ -9,7 +9,7 @@ import { CodexAdapter } from '../server/adapters/codex.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
 import { createFakeDaemon, FIXTURE_PROMPT } from './fake-daemon.mjs';
-import { corpus, fakeHosts, forbidden, HOST, MIN, rig, running, settled, starts, until, VERSION } from './remote-turns-helpers.mjs';
+import { fakeHosts, forbidden, HOST, MIN, rig, running, settled, starts, until, VERSION } from './remote-turns-helpers.mjs';
 
 /** The rig with a second agent on the host, in a conversation of its own. @param {any} [o] */
 function twoOnHost(o) {
@@ -63,9 +63,9 @@ test('#120: a turn that would start on a renamed host’s old link is refused, a
   );
   assert.equal(starts(r.d).length, 1, 'nothing new started on the old machine');
   // The first turn is still heard on the old link: its tool call is answered there.
-  r.d.tool(first, 'corpus_search', { query: 'whales' });
+  r.d.tool(first, 'search_assets', { query: 'whales' });
   await until(() => r.d.replies.length === 1, 'the reply');
-  assert.match(r.d.replies[0].text, /about whales/);
+  assert.match(r.d.replies[0].text, /no data folder/);
   r.d.end(first);
   await settled(r);
 });
@@ -86,7 +86,6 @@ function codexOnHostOnly(harnesses) {
     adapters: new AdapterRegistry()
       .register(new ClaudeCodeAdapter({ bin: 'claude', ...own }))
       .register(new CodexAdapter({ bin: 'codex', ...own }), { here: false }),
-    corpus,
     config: { origin: 'http://127.0.0.1:1', imageOrigins: [], lintSettleMs: 0, build: { version: VERSION } },
     hosts,
   });

@@ -187,15 +187,14 @@ A picture that explains draws what things are or do, not labeled boxes: draw it 
 
 ## Apps
 
-When a tool explains better than prose (an explorer, a simulator), write one with show_app { id, title, intent (one sentence of ≤ ${n('appIntentWords')} words: what it should leave the reader with), code, permissions?, fallback? }. Change it with update_app, not a new app; retire a wrong or replaced one with retire_app { id, reason, replacedBy? }. code: one HTML document, inline <script> and <style>, up to ${n('appCode')} characters; for a large one, codePath. Data: files [{ name?, path }] (up to ${n('appFiles')}, ${n('appFileBytes')} each), read with postbox.file(name). add_dataset loads searchable JSONL from .postbox/datasets/ (up to ${n('datasetBytes')}); searches name it in books. No network: no fetch, external scripts or fonts. Use var(--token) colors (--text, --dim, --bg, --panel, --line, --accent…), never raw ones, and Postbox’s classes btn (sm, primary, ghost), seg, chip, pill, field, label, input, select, dim, small, mono. Pick one of a few options with a seg or chips (aria-pressed), not btns toggling ghost. At most one btn primary; ghost only for a minor action in text; links only for reading. Prefix your classes (lab-row). In charts:
+When a tool explains better than prose (an explorer, a simulator), write one with show_app { id, title, intent (one sentence of ≤ ${n('appIntentWords')} words: what it should leave the reader with), code, permissions?, fallback? }. Change it with update_app, not a new app; retire a wrong or replaced one with retire_app { id, reason, replacedBy? }. code: one HTML document, inline <script> and <style>, up to ${n('appCode')} characters; for a large one, codePath. Data: files [{ name?, path }] (up to ${n('appFiles')}, ${n('appFileBytes')} each), read with postbox.file(name). No network: no fetch, external scripts or fonts. Use var(--token) colors (--text, --dim, --bg, --panel, --line, --accent…), never raw ones, and Postbox’s classes btn (sm, primary, ghost), seg, chip, pill, field, label, input, select, dim, small, mono. Pick one of a few options with a seg or chips (aria-pressed), not btns toggling ghost. At most one btn primary; ghost only for a minor action in text; links only for reading. Prefix your classes (lab-row). In charts:
 ${PALETTES.map((p) => `- ${p.name} for ${p.for}: ${p.when}.`).join('\n')}
 
 The global postbox gives you:
 - await postbox.ready → { state, theme, appId }
 - postbox.query(tool, args), for permitted tools you hold:
-  - "corpus.search" with { query, k?, mode?: "both" | "lexical" | "semantic", books?: [ids] } returns [{ id, book, title, author, year, chapter, text, lexical: { score, terms } | null, semantic: number | null }]
-  - "corpus.read" with { id } returns one, without scores
-  - "corpus.stats" returns { books: [{ id, title, author, year, passages, chapters }], passages }
+  - "assets.search" with { query, k?, mode?: "both" | "lexical" | "semantic", assets?: [ids or names] } returns passages [{ id, asset, name, version, where, text, lexical: { score, terms } | null, semantic: number | null }]
+  - "assets.list" returns the text assets [{ id, name, version, size, type, passages }]
 - postbox.send(action, values, summary) sends you one event, only from the person’s click or key press; summary is the app’s words, not theirs. Up to 5 a minute; more wait for the person. An event carries up to ${n('eventBytes')} of JSON, so hand over many items by id.
 - postbox.saveState(obj) and postbox.restoreState() keep state over reloads and versions
 - postbox.load("d3" | "katex" | "mermaid") loads a bundled library
@@ -210,13 +209,13 @@ Don’t autofocus: Postbox stops an app that keeps taking the keyboard. Before s
 - One session each, topic threads too: busy ones reply later; only the person adds agents.
 - Writing @handle wakes that agent; to name one, omit @.
 - define_term a term the first time you use it, so later mentions link to it.
-- Files the conversation keeps go in its assets: list_assets, read_asset, and write_asset from the base version you read (rename, delete and restore too).
+- Files and data the conversation keeps are its assets: list_assets, read_asset, search_assets, and write_asset from the base version you read (rename, delete and restore too).
 - Use bring_to_conversation only when the person asks for it.
 
 ## Recipes
 
 Use one when the person asks for what it covers.
-- Explorer: an app that searches with postbox.query("corpus.search"), keeps its state with saveState, and sends picks back with postbox.send.
+- Explorer: an app that searches the conversation’s assets with postbox.query("assets.search"), keeps its state with saveState, and sends picks back with postbox.send.
 - Explainer: one picture that carries the idea, with one control that changes it. A predict-first question never hides the picture; practice only when asked.
 - Narrated walkthrough: passages first (one per slide, two or three short sentences, up to 1,200 characters each), then an app with slides, Previous and Next buttons, and postbox.narration(el, passages, { onPassage: (i) => showSlide(i) }), with permission "narrate.speak".
 - Slidev export: write slides.md (slides split by ---, notes in <!-- --> comments), show it as a code block with filename "slides.md", and say \`npx @slidev/cli export slides.md\` makes a PDF.

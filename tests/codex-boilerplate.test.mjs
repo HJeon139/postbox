@@ -54,7 +54,6 @@ for (const [models, inherited] of [
     const rt = new Runtime({
       store: new Store(null),
       adapters: new AdapterRegistry().register(adapter),
-      corpus: {},
       config: { home: GPT_DIR },
     });
     const draft = { handle: 'helper' };

@@ -6,6 +6,7 @@ import { mkdir } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { claudeTranscriptFile } from '../../server/claude-transcript-file.mjs';
+import { parseSnapshotText } from '../../server/store-snapshot-lines.mjs';
 import { patchSession } from '../../shared/state.mjs';
 import { lines } from './history.mjs';
 
@@ -117,7 +118,7 @@ function readLogged(data, out) {
     const snap = join(data, 'snapshot.json');
     const changed = statSync(snap).mtimeMs;
     // snapshot.json is the state as of some sequence number (server/store.mjs), with its sessions at the top level.
-    if (changed !== c.snapshot) for (const se of Object.values(JSON.parse(readFileSync(snap, 'utf8')).sessions ?? {})) take(se);
+    if (changed !== c.snapshot) for (const se of Object.values(parseSnapshotText(readFileSync(snap, 'utf8')).sessions ?? {})) take(se);
     c.snapshot = changed;
   } catch {}
   const segments = readdirSync(data).filter((n) => /^events-\d+\.jsonl$/.test(n));
@@ -260,5 +261,5 @@ export function readStore(data) {
     .sort((a, b) => Number(a.slice(7, -6)) - Number(b.slice(7, -6)));
   const log = segments.flatMap((n) => lines(readFileSync(join(data, n), 'utf8')));
   const snap = join(data, 'snapshot.json');
-  return { log, snapshot: existsSync(snap) ? JSON.parse(readFileSync(snap, 'utf8')) : null, files };
+  return { log, snapshot: existsSync(snap) ? parseSnapshotText(readFileSync(snap, 'utf8')) : null, files };
 }

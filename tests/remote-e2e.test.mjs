@@ -31,8 +31,6 @@ const until = async (fn, label, ms = 4000) => {
   }
 };
 
-const corpus = { search: (q) => [{ id: 'b1:1', title: 'Found', text: `about ${q}` }], read: () => null, stats: () => ({ books: [], passages: 0 }) };
-
 /** A local kill, ps and spawn that fail the test if they’re ever called: a remote turn uses none of them. */
 function forbidden() {
   const calls = [];
@@ -66,7 +64,6 @@ function postbox({ store = new Store(null), d = createFakeDaemon({ autoEnd: fals
   rt = new Runtime({
     store,
     adapters: new AdapterRegistry().register(claude),
-    corpus,
     config: { origin: 'http://127.0.0.1:1', imageOrigins: [], lintSettleMs: 0, build: { version: VERSION } },
     hosts,
   });
