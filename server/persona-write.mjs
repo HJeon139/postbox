@@ -23,7 +23,7 @@ const pick = (o, keys) => Object.fromEntries(keys.filter((k) => o[k] !== undefin
  * runs Claude’s models, listed or not, and the Antigravity CLI puts its own default in place of Claude’s.
  * @param {string} backend
  */
-export function defaultModelFor(rt, backend) {
+function defaultModelFor(rt, backend) {
   if (backend === 'mock') return 'mock';
   const offered = registeredAdapter(rt, { backend })?.capabilities?.models ?? null;
   return offered?.includes(AUTO_MODEL) && !offered.includes(DEFAULT_MODEL) ? AUTO_MODEL : DEFAULT_MODEL;
@@ -36,7 +36,7 @@ export function createPersona(
     description = '',
     instructions = '',
     backend = 'mock',
-    model = rt.defaultModelFor(backend),
+    model = defaultModelFor(rt, backend),
     effort = DEFAULT_EFFORT,
     permissionMode = 'auto',
     usesHostSetup = true,
@@ -63,7 +63,7 @@ export function createPersona(
     handle,
     description,
     instructions,
-    model: String(model || rt.defaultModelFor(backend)),
+    model: String(model || defaultModelFor(rt, backend)),
     effort,
     backend,
     permissionMode,
@@ -98,7 +98,7 @@ export function updatePersona(rt, id, patch) {
   // Its folder is checked for where it runs once the change is made (#990).
   if (patch.folder !== undefined) patch = { ...patch, folder: placedFolder(patch.folder, patch.remote === undefined ? p.remote : patch.remote) };
   // A persona moved from the mock to a real model gets that backend’s default model.
-  if (patch.backend && patch.backend !== 'mock' && (patch.model ?? p.model) === 'mock') patch = { ...patch, model: rt.defaultModelFor(patch.backend) };
+  if (patch.backend && patch.backend !== 'mock' && (patch.model ?? p.model) === 'mock') patch = { ...patch, model: defaultModelFor(rt, patch.backend) };
   const next = {
     ...p,
     ...pick(patch, [

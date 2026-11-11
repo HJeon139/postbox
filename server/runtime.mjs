@@ -53,7 +53,7 @@ import {
 } from './permission-cards.mjs';
 import { retireModes, runsAs } from './permission-modes.mjs';
 import { changePermissionFolder, changePermissionRule, latestProject, PERMISSION_MODES, panelTarget, permissionsView } from './permissions-panel.mjs';
-import { createPersona, defaultModelFor, updatePersona } from './persona-write.mjs';
+import { createPersona, updatePersona } from './persona-write.mjs';
 import { arrival } from './queue-batch.mjs';
 import { readCapped } from './read-capped.mjs';
 import { addReadFolder, readCardAlways } from './read-folders.mjs';
@@ -2309,9 +2309,6 @@ export class Runtime {
 
   // ── Personas: server/persona-write.mjs ─────────────────────────────────────────────
 
-  defaultModelFor(backend) {
-    return defaultModelFor(this, backend);
-  }
   createPersona(spec) {
     return createPersona(this, spec);
   }
