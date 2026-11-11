@@ -3,6 +3,7 @@
 import { liveSessions } from './client.mjs';
 import { h, icon, plural } from './dom.mjs';
 import { failedActions } from './failed-actions.mjs';
+import { reach } from './open-threads.mjs';
 import { ringFor, stateWord } from './ring.mjs';
 import { jumpTo } from './view-jump.mjs';
 import { mountFor } from './window.mjs';
@@ -22,7 +23,7 @@ export function sideLine(it, ctx) {
       {
         href: `#/t/${ctx.threadId}/side/${it.sideThreadId}`,
         style: { textDecoration: 'none', borderColor: 'var(--accent)' },
-        onclick: () => card && goToCard(card),
+        onclick: () => card && goToCard(card, 180, at?.needs?.threadId ?? it.sideThreadId),
       },
       at ? ringFor(at, 'xs') : icon('thread', 'i-sm'),
       h('b', it.from),
@@ -36,7 +37,12 @@ export function sideLine(it, ctx) {
 }
 
 /** Once the side thread’s panel has opened, scrolls to the card there and focuses what answers it. */
-function goToCard(itemId, frames = 180) {
+function goToCard(itemId, frames = 180, threadId = null) {
+  // The card’s side thread loads the range around it first, if the page hasn’t loaded it (#1155).
+  if (threadId) {
+    void reach(threadId, itemId).then(() => goToCard(itemId, frames));
+    return;
+  }
   const node = mountFor(itemId) ?? document.querySelector(`.sidepanel [data-key="${CSS.escape(itemId)}"]`);
   if (!node) {
     if (frames) requestAnimationFrame(() => goToCard(itemId, frames - 1));

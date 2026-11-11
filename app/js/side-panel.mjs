@@ -7,6 +7,7 @@ import { inThreadLine } from './agents.mjs';
 import { enhanceMarkdown } from './apps.mjs';
 import { api, client, itemIn, S, threadLink } from './client.mjs';
 import { h, icon, trusted } from './dom.mjs';
+import { fetchRange } from './item-ranges.mjs';
 import { mountComposer, mountTranscript } from './thread.mjs';
 import { navigate, openMenu, say, toast } from './ui.mjs';
 
@@ -22,8 +23,8 @@ export function mountSidePanel(parentId, sideId) {
   const tr = mountTranscript(sideId, { inPanel: true });
   // A side thread from before #372 has no composer: writing there would restart what #372 ended.
   const comp = topic ? mountComposer(sideId, { side: true }) : null;
-  const root = topic ? itemIn(parentId, side.rootItemId) : null;
-  const body = h('div.sp-body', topic ? threadRoot(root) : null, tr.el);
+  const body = h('div.sp-body', tr.el);
+  if (topic) void rootOf(parentId, side.rootItemId).then((root) => body.prepend(threadRoot(root) ?? ''));
   // Who is in a topic thread, in a line: the conversation’s agents, from their one session there (#228).
   const who = topic ? inThreadLine(sideId) : null;
   const summarize = summarizeButton(sideId, parent);
@@ -159,6 +160,17 @@ function copyLink(threadId, topic) {
 }
 
 /** The message a topic thread branched from, at its top. */
+/**
+ * The message a topic thread branched from: from the conversation’s loaded items, else that one item from the server
+ * (#1155); null if it’s gone. @param {string} parentId @param {string} id
+ */
+async function rootOf(parentId, id) {
+  const held = itemIn(parentId, id);
+  if (held) return held;
+  const answer = await fetchRange(parentId, `?around=${encodeURIComponent(id)}&limit=1`).catch(() => null);
+  return answer?.items.find((it) => it.id === id) ?? null;
+}
+
 function threadRoot(root) {
   if (!root) return null;
   const text = root.kind === 'block' ? `${root.block?.title ?? root.block?.type ?? 'A block'}${root.block?.type === 'app' ? ' (app)' : ''}` : (root.text ?? '');

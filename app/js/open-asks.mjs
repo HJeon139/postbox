@@ -28,17 +28,17 @@ function askingOf(se) {
       .map((t) => t.id),
   ];
   // From each thread’s header (#1155), which the server keeps whatever of its items the page has loaded.
-  const found = threads.flatMap((id) => headerOf(id).asks).filter((ask) => ask.sessionId === se.id);
+  const found = threads.flatMap((id) => headerOf(id).asks.map((ask) => ({ ...ask, threadId: id }))).filter((ask) => ask.sessionId === se.id);
   asking.set(se.id, found);
   return found;
 }
-/** @returns {{ text: string, itemId: string } | null} */
+/** @returns {{ text: string, itemId: string, threadId: string } | null} */
 export function openAsks(se) {
   const open = askingOf(se).filter((it) => it.id !== se.needs?.itemId);
   if (!open.length) return null;
   const types = new Set(open.map((ask) => ask.type));
   const [one, many] = types.size === 1 ? ASK_NOUNS[open[0].type] : ['request', 'requests'];
-  return { text: plural(open.length, `open ${one}`, `open ${many}`), itemId: open[0].id };
+  return { text: plural(open.length, `open ${one}`, `open ${many}`), itemId: open[0].id, threadId: open[0].threadId };
 }
 /**
  * “1 open review” for an agent: a button that goes to the block.
@@ -50,7 +50,7 @@ export function openAsksEl(se, before = undefined) {
     dataset: { openAsks: se.id },
     onclick: () => {
       before?.();
-      void focusItem(el.dataset.item ?? '');
+      void focusItem(el.dataset.item ?? '', el.dataset.thread);
     },
   });
   paintOpenAsks(el);
@@ -69,7 +69,7 @@ function paintOpenAsks(el) {
   const ask = se ? openAsks(se) : null;
   el.hidden = !ask;
   if (el.textContent !== (ask?.text ?? '')) el.textContent = ask?.text ?? '';
-  if (ask) el.dataset.item = ask.itemId;
+  if (ask) Object.assign(el.dataset, { item: ask.itemId, thread: ask.threadId });
   if (ask) el.setAttribute('aria-label', `${ask.text} from ${se.handle}: go to it`);
 }
 client.on((ch) => {
