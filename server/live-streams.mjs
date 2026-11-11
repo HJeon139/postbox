@@ -102,10 +102,15 @@ function eventSender({ store, streams, deliver, headers, events, openOf }) {
     // An event the store held as rejected (#609): its place, then a resync, since a handler that broke its contract
     // may have changed the state the page can't see.
     const tail = ev.type === REJECTED ? `${after}event: ${STREAM.resync}\ndata: {}\n\n` : after;
+    // Both forms now, as the event is: a send held back would otherwise read the store's objects as they are by then.
     const full = publicFrame(ev, events) + tail;
+    const shut = publicFrame(ev, events, new Set()) + tail; // as a page sees it that hasn't its conversation open
     const send = () => {
       if (store.epoch !== epoch) return;
-      for (const res of streams) deliver(res, openOf.has(res) ? publicFrame(ev, events, openOf.get(res)) + tail : full);
+      for (const res of streams) {
+        const open = openOf.get(res);
+        deliver(res, !open || open.has(ev.data?.threadId) ? full : shut);
+      }
     };
     if (lag > 0) setTimeout(send, lag).unref();
     else send();

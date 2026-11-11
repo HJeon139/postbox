@@ -76,3 +76,27 @@ test('/api/state carries each thread’s header and no conversation’s items', 
     live.stop();
   }
 });
+
+test('a held-back event goes out as it was, not as the store has it by the time it’s sent', async () => {
+  // POSTBOX_STREAM_LAG holds each send back, as CI's browser run does; the item's text streams in meanwhile.
+  process.env.POSTBOX_STREAM_LAG = '20';
+  const { store, emit } = fakeStore();
+  const live = liveStreams(/** @type {any} */ (store));
+  delete process.env.POSTBOX_STREAM_LAG;
+  try {
+    const frames = [];
+    const res = { writeHead() {}, write: (/** @type {string} */ s) => frames.push(s) };
+    live.stream(/** @type {any} */ ({ headers: {}, on() {} }), /** @type {any} */ (res), new URL('http://x/api/stream?since=0&open=here'));
+    live.streams.add(res);
+    emit(1, 'item.add', { threadId: 'here', item: { id: 'r', kind: 'agent', at: 1, text: '' } });
+    emit(2, 'item.text', { threadId: 'here', id: 'r', text: 'Done.' });
+    await new Promise((r) => setTimeout(r, 60));
+    const add = frames
+      .join('')
+      .split('\n\n')
+      .find((f) => f.startsWith('id: 1\nevent: item.add'));
+    assert.equal(JSON.parse(add?.split('data: ')[1] ?? '{}').item.text, '', 'the text comes once, with item.text');
+  } finally {
+    live.stop();
+  }
+});
