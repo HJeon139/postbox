@@ -4,7 +4,7 @@
 // entries one by one, and a conversation’s items one by one, then an end line that counts them, so a file cut short at
 // a line boundary is refused rather than loaded as a smaller state. Lines split on the newline byte alone: readline also
 // ends a line at U+2028 and U+2029, which JSON.stringify leaves as they are (critic, on #1194). A snapshot of one JSON
-// value, as Postbox wrote before #1180 and tools/snapshot-for-older.mjs writes, still loads. Read by the store (server/store-recover.mjs) and by the tools that read a data folder.
+// value, as Postbox wrote before #1180, still loads. Read by the store (server/store-recover.mjs) and by the tools that read a data folder.
 
 /** The first line of a format-2 snapshot. */
 export const SNAPSHOT_HEADER = Object.freeze({ postbox: 'snapshot', format: 2 });
@@ -156,19 +156,6 @@ function lineReader() {
       return state;
     },
   };
-}
-
-/**
- * The state as one JSON value, or null past V8’s string limit, where only lines can hold it: what
- * tools/snapshot-for-older.mjs writes for a Postbox from before #1180. @param {any} state
- */
-export function oneValue(state) {
-  try {
-    return JSON.stringify(state);
-  } catch (e) {
-    if (e instanceof RangeError) return null;
-    throw e;
-  }
 }
 
 /** The bytes a snapshot of this state takes on disk, as writeSnapshot writes it. @param {any} state */
