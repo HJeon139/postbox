@@ -8,7 +8,7 @@ import { searchText } from '../shared/search-text.mjs';
 import { clipText, httpError } from './helpers.mjs';
 import { publicItems } from './public-state.mjs';
 
-/** How many items a range has when the page asks for none, and the most it can ask for. */
+/** How many items a range has when the page asks for none, and the most it can ask for but all of them. */
 export const PAGE = 100;
 export const MOST = 500;
 /** The most search hits, and the most of each hit’s text, that one answer carries. */
@@ -20,8 +20,10 @@ const HIT_TEXT = 2000;
  * @param {any[]} list @param {URLSearchParams} q
  */
 export function rangeOf(list, q) {
-  // A whole number of items: a fractional limit would give fractional places, which slice() reads its own way.
-  const limit = Math.min(MOST, Math.max(1, Math.floor(Number(q.get('limit'))) || PAGE));
+  // `all`: the whole conversation, for a page with the transcript window off, which mounts every item. Otherwise a
+  // whole number of items: a fractional limit would give fractional places, which slice() reads its own way.
+  const all = q.get('limit') === 'all';
+  const limit = all ? Number.POSITIVE_INFINITY : Math.min(MOST, Math.max(1, Math.floor(Number(q.get('limit'))) || PAGE));
   const total = list.length;
   const anchor = q.get('before') ?? q.get('after') ?? q.get('around');
   if (anchor === null) return { start: Math.max(0, total - limit), end: total };

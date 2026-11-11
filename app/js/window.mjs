@@ -23,14 +23,20 @@ import * as windowShrink from './window-shrink.mjs';
 /**
  * A window over one transcript, or null when it’s off or the conversation is short enough to mount whole.
  * mount(i) renders item i, keeps its node in the transcript’s map, and returns it.
+ * edges, for a conversation loaded by range (open-threads.mjs, #1155): whether the server has items past an edge of the
+ * list, and loading them. A conversation with more there gets a window however short its list, to load at its edges.
  * @param {{ el: HTMLElement, key: string, list: any[], anchorKey: string | null, inPanel: boolean,
- *   mount: (i: number) => HTMLElement, nodes: Map<string, HTMLElement> }} o
+ *   mount: (i: number) => HTMLElement, nodes: Map<string, HTMLElement>, edges?: Edges }} o
  */
 export function createWindow(o) {
-  // Mounted whole only within both the ceiling of items and the budget of elements (window-cost.mjs).
-  if (!windowOn() || (o.list.length <= CEILING && elementsIn(o.key, o.list) <= budgetFor(o.el))) return null;
+  // Mounted whole only within both the ceiling of items and the budget of elements (window-cost.mjs), and with nothing
+  // more on the server past either edge.
+  const more = !!o.edges && (o.edges.more('before') || o.edges.more('after'));
+  if (!windowOn() || (o.list.length <= CEILING && !more && elementsIn(o.key, o.list) <= budgetFor(o.el))) return null;
   return new TranscriptWindow(o);
 }
+
+/** @typedef {{ more: (side: 'before' | 'after') => boolean, grow: (side: 'before' | 'after') => void }} Edges */
 
 /** Every window on the page, so a jump to an item can find the one that holds it. @type {Set<TranscriptWindow>} */
 const live = new Set();
@@ -53,8 +59,9 @@ export function mountFor(itemId) {
 
 class TranscriptWindow {
   /** @param {Parameters<typeof createWindow>[0]} o */
-  constructor({ el, key, list, anchorKey, inPanel, mount, nodes }) {
+  constructor({ el, key, list, anchorKey, inPanel, mount, nodes, edges }) {
     this.el = el;
+    this.edges = edges ?? null;
     this.nodes = nodes;
     /** Items kept on the page outside the range, by index, and the spacer before each. @type {Map<number, HTMLElement>} */
     this.islands = new Map();
@@ -199,7 +206,11 @@ class TranscriptWindow {
     // A scroll far past both edges (the scrollbar dragged, Home, End) moves the range there at once.
     if (windowShrink.leap(this)) return holdView(this.el);
     const reach = this.viewH() * MARGIN;
-    if (this.from > 0 && this.above.getBoundingClientRect().bottom > -reach) this.growUp();
+    const nearTop = this.above.getBoundingClientRect().bottom > -reach;
+    if (this.from > 0 && nearTop) this.growUp();
+    // Past what’s loaded, the next range from the server; it lands as a rebuild around where you are (thread.mjs).
+    else if (nearTop) this.edges?.grow('before');
+    if (this.to === this.total && this.below.getBoundingClientRect().top < this.viewH() + reach) this.edges?.grow('after');
     if (this.to < this.total && this.below.getBoundingClientRect().top < this.viewH() + reach) {
       const b = this.to + this.runLength(this.to, 1);
       this.mountRun(this.to, b, this.below);

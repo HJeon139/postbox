@@ -22,6 +22,7 @@ import { draftAttachments } from './draft-attachments.mjs';
 import { failedCallout } from './failed-actions.mjs';
 import { goToItem } from './go-to-item.mjs';
 import { focusComposer, hopBlock } from './hop-card.mjs';
+import { closeThread, grow, loaded, more, openThread, refresh } from './open-threads.mjs';
 import { focusUntouched } from './pane-focus.mjs';
 import { denialBlock, permissionBlock, toolAskBlock } from './permission-cards.mjs';
 import { openPermissions } from './permissions.mjs';
@@ -42,6 +43,7 @@ import { viewAskBlock } from './view-ask-card.mjs';
 import { mountView } from './view-state.mjs';
 import { welcome } from './welcome.mjs';
 import { createWindow } from './window.mjs';
+import { windowOn } from './window-flag.mjs';
 import { replaced as replacedNode } from './window-shrink.mjs';
 import { workList } from './work-list.mjs';
 
@@ -154,22 +156,32 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
     nodes.clear();
     win?.destroy();
     const list = itemsOf(threadId);
-    if (!list.length && !inPanel) {
+    // Until its items are loaded (open-threads.mjs, #1155), a conversation shows nothing rather than its welcome.
+    if (!list.length && !inPanel && loaded(threadId)) {
       el.append(welcome(threadId, sendMessage));
       return;
     }
-    // A long conversation mounts only what’s around you, behind its flag (window.mjs, #866); else every item.
-    win = createWindow({ el, key: `${inPanel}:${threadId}`, list, anchorKey, inPanel, nodes, mount: (i) => mountAt(list, i) });
+    // A long conversation mounts only what’s around you, behind its flag (window.mjs, #866); else every item. One with
+    // more on the server than is loaded has a window too, which loads the next range at its edges.
+    const edges = {
+      more: (/** @type {'before' | 'after'} */ side) => more(threadId, side),
+      grow: (/** @type {'before' | 'after'} */ side) => grow(threadId, side),
+    };
+    win = createWindow({ el, key: `${inPanel}:${threadId}`, list, anchorKey, inPanel, nodes, edges, mount: (i) => mountAt(list, i) });
     if (win) win.build();
     else for (let i = 0; i < list.length; i++) el.append(mountAt(list, i));
     hostTurns.paint();
     paintWorking();
   };
+  openThread(threadId);
   all();
   const view = mountView({ el, inPanel, nodes, was });
 
   const off = client.on((ch) => {
-    if (ch.type === 'load') {
+    // A resync that couldn’t load this conversation’s items loads them now, and with the window turned off, all of them.
+    const partial = more(threadId, 'before') || more(threadId, 'after');
+    if (ch.type === 'load' && (!loaded(threadId) || (!windowOn() && partial))) void refresh(threadId);
+    if (ch.type === 'load' || (ch.type === 'range' && ch.data.threadId === threadId)) {
       const back = holdFocus();
       // Rebuilt around where you are now, not where the transcript was when it opened.
       all(view.keep()?.anchor?.key ?? null);
@@ -268,6 +280,8 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
      * at once: a smooth scroll would cross a blank spacer. @param {boolean} [smooth]
      */
     scrollToEnd: (smooth) => {
+      // Holding an older range than the newest (a jump far up), the latest is loaded first, then the view goes there.
+      if (more(threadId, 'after')) return void refresh(threadId).then(() => view.scrollToEnd(false));
       const last = itemsOf(threadId).at(-1);
       const away = !!win && !!last && win.to < win.total;
       if (away) win?.reach(last.id);
@@ -276,6 +290,7 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
     setJump: view.setJump,
     destroy() {
       off();
+      closeThread(threadId);
       win?.destroy();
       const where = view.keep();
       view.destroy();

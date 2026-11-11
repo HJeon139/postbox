@@ -1,0 +1,139 @@
+// The items the page holds of each open conversation (#1155): one contiguous range of its list, loaded from the server
+// (/api/threads/:id/items) when the conversation opens and grown as you scroll or jump, never every item of every
+// conversation. Pure: app/js/client.mjs applies the stream’s events through gate(), and app/js/open-threads.mjs loads.
+//
+// A range knows where it starts in the conversation, how many items the conversation has, and the seq its last load
+// was as of: the stream’s events at or before that seq are in the load already. While a load is in flight, the item
+// events the page hears for that conversation are kept, and those after the load’s seq are applied again once it lands,
+// so nothing the page heard meanwhile is lost or applied twice.
+
+import { noteReplaced, positionOf } from '/shared/item-index.mjs';
+import { apply } from '/shared/state.mjs';
+
+/**
+ * @typedef {{ type: string, data: any, seq: number, applied: boolean }} Heard
+ * @typedef {{ start: number, total: number, seq: number, loads: number, heard: Heard[] }} Range
+ * @typedef {{ threadId: string, seq: number, start: number, total: number, items: any[] }} Answer
+ */
+
+/** A conversation’s items from the server: the latest, or before, after or around an item. @param {string} threadId @param {string} [query] */
+export async function fetchRange(threadId, query = '') {
+  const r = await fetch(`/api/threads/${encodeURIComponent(threadId)}/items${query}`, { cache: 'no-store' });
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? 'Postbox couldn’t load this conversation’s messages. Reload the page.');
+  return /** @type {Promise<Answer>} */ (r.json());
+}
+
+/** Whether a range reaches the conversation’s newest item. @param {any[]} list @param {Range} r */
+export const atEnd = (list, r) => r.start + list.length >= r.total;
+
+/**
+ * What the page does with an item event for a conversation: apply it, or not (it’s in a load already, or names an item
+ * the range doesn’t hold, which a load will bring as it is then), or load the latest range again (an item moved to an
+ * end the range holds, from a place it doesn’t). Keeps the event while a load is in flight.
+ * @param {any} state @param {Map<string, Range>} ranges @param {string} type @param {any} d @param {number} seq
+ * @returns {'apply' | 'skip' | 'reload'}
+ */
+export function gate(state, ranges, type, d, seq) {
+  const r = ranges.get(d.threadId);
+  if (!r) return 'skip';
+  const verdict = judge(state, r, type, d, seq);
+  if (r.loads > 0) r.heard.push({ type, data: d, seq, applied: verdict === 'apply' });
+  return verdict;
+}
+
+/** @param {any} state @param {Range} r @param {string} type @param {any} d @param {number} seq @returns {'apply' | 'skip' | 'reload'} */
+function judge(state, r, type, d, seq) {
+  if (seq && seq <= r.seq) return 'skip';
+  const list = state.items[d.threadId] ?? [];
+  const end = atEnd(list, r);
+  if (type === 'item.add') {
+    r.total++;
+    return end ? 'apply' : 'skip';
+  }
+  return type === 'item.move' ? moveIn(list, end, d) : 'apply';
+}
+
+/**
+ * An item moved to the newest point (item.move): applied where the range holds the end and the item; where it holds the
+ * end but not the item, the latest range is loaded again; off the end, its stub takes its place and nothing more.
+ * @param {any[]} list @param {boolean} end @param {any} d @returns {'apply' | 'skip' | 'reload'}
+ */
+function moveIn(list, end, d) {
+  const at = positionOf(list, d.id);
+  if (end) return at < 0 ? 'reload' : 'apply';
+  if (at >= 0) {
+    list[at] = d.stub;
+    noteReplaced(list, at);
+  }
+  return 'skip';
+}
+
+/** Starts a load for a conversation: its events are kept until it lands. @param {Map<string, Range>} ranges @param {string} threadId */
+export function loading(ranges, threadId) {
+  let r = ranges.get(threadId);
+  if (!r) {
+    r = { start: 0, total: 0, seq: Number.POSITIVE_INFINITY, loads: 0, heard: [] };
+    ranges.set(threadId, r);
+  }
+  r.loads++;
+  return r;
+}
+
+/**
+ * Puts a load in place: in place of the range ('replace'), or joined to it above ('before') or below ('after'). Then
+ * applies again the events heard since the load’s seq that it couldn’t hold: every one, for a replaced range; for a
+ * joined one, those not applied to the range it had. A load from another history (an answer as of a seq the page passed
+ * on another epoch) is the caller’s to refuse. Says whether to load the latest range again.
+ * @param {any} state @param {Map<string, Range>} ranges @param {Answer} answer @param {'replace' | 'before' | 'after'} how
+ * @returns {boolean}
+ */
+export function place(state, ranges, answer, how) {
+  const r = ranges.get(answer.threadId);
+  if (!r) return false;
+  r.loads = Math.max(0, r.loads - 1);
+  const list = state.items[answer.threadId] ?? [];
+  if (how === 'replace') {
+    state.items[answer.threadId] = answer.items.slice();
+    Object.assign(r, { start: answer.start, total: answer.total, seq: answer.seq });
+  } else if (how === 'before') {
+    const fresh = answer.items.filter((it) => positionOf(list, it.id) < 0);
+    state.items[answer.threadId] = [...fresh, ...list];
+    r.start -= fresh.length;
+  } else {
+    state.items[answer.threadId] = [...list, ...answer.items.filter((it) => positionOf(list, it.id) < 0)];
+  }
+  const again = r.heard.filter((e) => e.seq > answer.seq && (how === 'replace' || !e.applied));
+  if (!r.loads) r.heard = [];
+  return replay(state, r, answer, again, how);
+}
+
+/**
+ * Applies again what a load couldn’t hold. Each message added after the load’s seq was the conversation’s next in turn,
+ * from the load’s total on, so it’s added where the range reaches that place. Says whether to load the latest range
+ * again (an item moved to an end the range holds, from a place it doesn’t).
+ * @param {any} state @param {Range} r @param {Answer} answer @param {Heard[]} again @param {'replace' | 'before' | 'after'} how
+ * @returns {boolean}
+ */
+function replay(state, r, answer, again, how) {
+  let next = answer.total;
+  let reload = false;
+  for (const e of again) {
+    const list = state.items[answer.threadId];
+    if (e.type === 'item.add') {
+      if (how === 'replace') r.total++;
+      if (how !== 'before' && r.start + list.length === next && positionOf(list, e.data.item.id) < 0) apply(state, e.type, e.data);
+      next++;
+    } else if (e.type === 'item.move') {
+      const verdict = moveIn(list, atEnd(list, r), e.data);
+      if (verdict === 'apply') apply(state, e.type, e.data);
+      reload ||= verdict === 'reload';
+    } else apply(state, e.type, e.data);
+  }
+  return reload;
+}
+
+/** Forgets a conversation the page closed: its items and its range. @param {any} state @param {Map<string, Range>} ranges @param {string} threadId */
+export function forget(state, ranges, threadId) {
+  ranges.delete(threadId);
+  delete state.items[threadId];
+}
