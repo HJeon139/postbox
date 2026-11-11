@@ -39,14 +39,14 @@ test('a setting with a context suffix or a family alias isn’t marked as a diff
   assert.equal(sameModel('claude-sonnet-5-5', 'opus'), false);
   assert.equal(sameModel('claude-sonnet-5-5', 'claude-opus-5-5'), false);
   const persona = { backend: 'claude-code', model: 'claude-opus-5-5[1m]', effort: 'medium' };
-  const f = runsWith({ personaSnapshot: { ...persona }, lastModel: 'claude-opus-5-5' }, persona, config);
+  const f = runsWith({ lastModel: 'claude-opus-5-5' }, persona, config);
   assert.equal(f.modelDiffers, false);
   assert.equal(chipModel(f), 'Opus 5.5');
 });
 
 test('before its first turn, an agent shows the model and effort it’s set to', () => {
   const persona = { backend: 'claude-code', model: 'claude-sonnet-5-5', effort: 'high' };
-  const se = { personaSnapshot: { model: 'claude-sonnet-5-5', effort: 'high' } };
+  const se = {};
   const f = runsWith(se, persona, config);
   assert.deepEqual([f.model, f.answered, f.modelDiffers, f.effort, f.effortDiffers], ['claude-sonnet-5-5', false, false, 'high', false]);
   assert.equal(chipModel(f), 'Sonnet 5.5');
@@ -56,7 +56,7 @@ test('before its first turn, an agent shows the model and effort it’s set to',
 
 test('the model that answered the last turn, marked in words when it isn’t the one set', () => {
   const persona = { backend: 'claude-code', model: 'claude-opus-5-5', effort: 'medium' };
-  const se = { personaSnapshot: { model: 'claude-opus-5-5', effort: 'medium' }, lastModel: 'claude-sonnet-5-5', lastEffort: 'medium' };
+  const se = { lastModel: 'claude-sonnet-5-5', lastEffort: 'medium' };
   const f = runsWith(se, persona, config);
   assert.equal(f.modelDiffers, true);
   assert.equal(chipModel(f), 'Sonnet 5.5, not Opus 5.5');
@@ -68,24 +68,23 @@ test('the model that answered the last turn, marked in words when it isn’t the
 });
 
 test('an effort changed since the last turn says both', () => {
-  const se = { backend: 'agent-sdk', personaSnapshot: { model: 'claude-opus-5-5', effort: 'xhigh' }, lastEffort: 'low' };
-  const f = runsWith(se, { backend: 'agent-sdk' }, config);
+  const se = { backend: 'agent-sdk', lastEffort: 'low' };
+  const f = runsWith(se, { backend: 'agent-sdk', model: 'claude-opus-5-5', effort: 'xhigh' }, config);
   assert.equal(chipEffort(f), 'low effort, set to extra high');
   assert.equal(factsText(f), 'Agent SDK · claude-opus-5-5 · low effort on the last turn, set to extra high');
 });
 
-test('the setting is what the server runs with: the snapshot, then the persona, then the defaults', () => {
-  // A session from before effort existed, of a persona moved from the mock to a real backend.
+test('the setting is what the server runs with: the persona, then the defaults, with no setting of the session’s own', () => {
+  // A session that started on the mock, of a persona moved to a real backend, from before effort existed.
   const persona = { backend: 'claude-code', model: DEFAULT_MODEL };
-  const se = { backend: 'mock', personaSnapshot: { model: 'mock' } };
+  const se = { backend: 'mock', personaSnapshot: { model: 'mock', effort: 'low' } };
   const f = runsWith(se, persona, config);
-  const runs = { ...persona, ...se.personaSnapshot };
   assert.equal(f.mock, false);
-  assert.ok(!f.mock && f.setModel === modelOf(runs) && f.setEffort === effortOf(runs));
+  assert.ok(!f.mock && f.setModel === modelOf(persona) && f.setEffort === effortOf(persona));
 });
 
 test('a mock agent says it runs scripted replies, with no model or effort', () => {
-  const f = runsWith({ backend: 'mock', personaSnapshot: { model: 'mock' } }, { backend: 'mock', model: 'mock' }, config);
+  const f = runsWith({ backend: 'mock' }, { backend: 'mock', model: 'mock' }, config);
   assert.equal(f.mock, true);
   assert.equal(chipModel(f), '');
   assert.equal(chipEffort(f), '');
@@ -120,12 +119,12 @@ test('#208: a Claude Code too old to keep a memory per agent says so in the over
 test('#120 L6: a Codex agent set to auto, or to a Claude model it ignores, reads as Codex’s default, never a Claude model', () => {
   const config = { defaultModel: DEFAULT_MODEL, defaultEffort: DEFAULT_EFFORT };
   for (const model of ['auto', 'claude-opus-5-5']) {
-    const f = runsWith({ personaSnapshot: { model, effort: 'medium' } }, { backend: 'codex' }, config);
+    const f = runsWith({}, { backend: 'codex', model, effort: 'medium' }, config);
     assert.equal(chipModel(f), 'Codex’s default');
     assert.equal(factsText(f), 'Codex · Codex’s default · medium effort');
   }
   // The model that answered is whichever Codex picked, so it isn’t marked as different from the default.
-  const answered = runsWith({ personaSnapshot: { model: 'auto', effort: 'medium' }, lastModel: 'gpt-5.5' }, { backend: 'codex' }, config);
+  const answered = runsWith({ lastModel: 'gpt-5.5' }, { backend: 'codex', model: 'auto', effort: 'medium' }, config);
   assert.equal(answered.modelDiffers, false);
   assert.equal(chipModel(answered), 'gpt-5.5');
   // A model Codex names is shown as it is, and on Claude Code a Claude model keeps its short name.

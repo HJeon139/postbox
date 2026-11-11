@@ -37,7 +37,6 @@ const PLACED = {
   'live-streams.mjs': 2, // sends frames: reads
   'narration/narrator.mjs': 1, // stops the narrator: no store
   'permission-cards.mjs': 1, // expireWait: gated
-  'persona-delete.mjs': 2, // delp: purgePersona does nothing while closed; re-armed at Retry
   'remote/host-admin.mjs': 1, // a wait: no store
   'remote/host-status.mjs': 1, // a microtask after a host event publishes host status: an emit, memory-only while closed like stream text (I1)
   'remote/hosts-links.mjs': 5, // a link’s idle timer and listener microtasks: connections, no store
@@ -58,7 +57,7 @@ const PLACED = {
   'remote/turns.mjs': 5, // tick: stops a hung host turn (the outage’s stop ended the turns); a sign-in resume’s start is held
   'remote/turns-stops.mjs': 1, // a wait: no store
   'remote/wake.mjs': 2, // an injected setInterval that reconnects hosts after sleep: no store
-  'runtime.mjs': 9, // the stop watchdog (turnExited defers); two Stop grace waits; a `!` command’s output flush (memory-only, I1); the mirror (skips its tick); del: and delt:, armed in two places each (do nothing while closed; re-armed at Retry)
+  'runtime.mjs': 5, // the stop watchdog (turnExited defers); two Stop grace waits; a `!` command’s output flush (memory-only, I1); the mirror (skips its tick)
   'scheduled-wakes.mjs': 1, // armWake: cleared and re-armed at Retry; the start is held
   'shell.mjs': 1, // SIGKILL after a Stop’s grace: Stop is allowed while closed
   'thread-summary.mjs': 5, // an abort; settleThread's quiet wait, through an injected setTimer as lint-delivery's, skips while closed
@@ -107,7 +106,7 @@ async function sites(dir, rel = '') {
 }
 
 /** Files whose row says the callback is gated: each must carry the rule in its source, so it can’t be dropped silently. */
-const GATED = ['ask-question.mjs', 'kept-jobs.mjs', 'permission-cards.mjs', 'persona-delete.mjs', 'runtime.mjs', 'thread-summary.mjs'];
+const GATED = ['ask-question.mjs', 'kept-jobs.mjs', 'permission-cards.mjs', 'runtime.mjs', 'thread-summary.mjs'];
 const RULE = /\bstore\.writable\b|\bwhenWritable\(|\bgated\(/;
 
 test('every file whose timers table row says “gated” checks the store, defers through whenWritable or runs through gated()', async () => {

@@ -9,7 +9,7 @@ import { client, needsYou } from './client.mjs';
 const S = () => client.state;
 
 /** A conversation’s agents that are here: neither archived nor being deleted. */
-export const liveMembers = (t) => t.members.filter((id) => S().sessions[id] && !S().sessions[id].archived && !S().sessions[id].deleting).join(',');
+export const liveMembers = (t) => t.members.filter((id) => S().sessions[id] && !S().sessions[id].archived).join(',');
 
 /**
  * What the top bar shows for the view it’s drawn for, as one string.

@@ -108,5 +108,4 @@ test('#120: deleting a conversation stops its turns on a host, its topic threads
   rt.deleteThread(t.id);
   await until(() => adapter.log.includes('stopped:far') && adapter.log.includes('stopped:fork'), 'both stopped');
   assert.equal(rt.turns.size, 0);
-  rt.undoDeleteThread(t.id);
 });

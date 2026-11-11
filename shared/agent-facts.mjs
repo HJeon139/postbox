@@ -1,8 +1,7 @@
 // What an agent runs with, in words: its backend, the model that answered its last turn and the effort (#60).
 // The sidebar’s agent rows (#105), the overview’s cards and the conversation and session menus all say it the same way,
-// so this is plain data and text, with no DOM. A session runs with the model and effort in its snapshot
-// (fixed when it started, or changed by a command), falling back to its persona’s; the server does the same
-// (server/runtime.mjs, personaFor; server/adapters/setup.mjs, modelOf and effortOf).
+// so this is plain data and text, with no DOM. A session runs with its persona’s model and effort from its next turn,
+// as the server does (server/runtime.mjs, personaFor; server/adapters/setup.mjs, modelOf and effortOf).
 import { olderThan } from './versions.mjs';
 
 export const BACKEND_NAMES = {
@@ -129,10 +128,9 @@ export function sameModel(answered, set) {
 export function runsWith(se, persona, config) {
   const backend = String(persona?.backend ?? se?.backend ?? 'mock');
   if (backend === 'mock') return { backend, mock: true };
-  const snap = se?.personaSnapshot ?? {};
-  const named = snap.model ?? persona?.model;
+  const named = persona?.model;
   const setModel = String(named && named !== 'mock' ? named : (config.defaultModel ?? ''));
-  const setEffort = String(snap.effort ?? persona?.effort ?? config.defaultEffort ?? '');
+  const setEffort = String(persona?.effort ?? config.defaultEffort ?? '');
   const last = typeof se?.lastModel === 'string' && se.lastModel ? se.lastModel : null;
   const lastEffort = typeof se?.lastEffort === 'string' && se.lastEffort ? se.lastEffort : null;
   return {

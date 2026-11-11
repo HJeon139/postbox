@@ -5,7 +5,7 @@
 // The first two specs are gpt’s probes. The same real Postbox setup on its own port.
 import assert from 'node:assert/strict';
 import { after, before, beforeEach, test } from 'node:test';
-import { cancelWakeSchedule, fireScheduledWake } from '../server/scheduled-wakes.mjs';
+import { cancelWakeSchedule } from '../server/scheduled-wakes.mjs';
 import { heldTurn } from '../server/store-outage.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
@@ -64,32 +64,6 @@ async function outageAndRetry(se) {
   await rt.store.reload();
 }
 const wakes = (calls, id) => calls.filter((m) => m.scheduledWakeId === id).length;
-
-test('a wake held for a deleting agent’s Undo, across Retry, then Undo: one delivery, not two (gpt’s probe)', async () => {
-  const calls = [];
-  rt.adapters.register({
-    name: 'undo-wake',
-    async deliver(_se, message) {
-      calls.push(message);
-    },
-  });
-  const p = rt.createPersona({ handle: 'undowake', backend: 'undo-wake' });
-  const t = rt.createThread({ projectId: 'p1', title: 'Undo wake', personaIds: [p.id] });
-  const [se] = rt.sessionsIn(t.id);
-  const sc = rt.schedule(se.id, { inMs: 1000, note: 'one wake' });
-  rt.deleteSession(se.id);
-  fireScheduledWake(rt, sc.id); // held for the Undo window, the schedule running
-  await rt.store.flush();
-  assert.equal(rt.heldForUndo.get(se.id)?.length, 1);
-  rt.store.fail(eio());
-  await rt.store.reload(); // the re-arm fires the same wake again at once; it is held again
-  await until(() => !rt.timers.has(sc.id), 'the re-armed wake to fire');
-  rt.undoDelete(se.id);
-  await until(() => wakes(calls, sc.id) >= 1, 'the wake after Undo');
-  await sleep(200);
-  assert.equal(wakes(calls, sc.id), 1, `one delivery after Undo, not ${wakes(calls, sc.id)}`);
-  await rt.store.flush();
-});
 
 test('a manual Retry behind a busy turn, its schedule gone, is delivered once after Retry: it has no other owner (gpt’s probe)', async () => {
   const { se, calls } = await busyAgent('manualgone');

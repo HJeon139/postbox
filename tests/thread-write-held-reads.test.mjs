@@ -76,7 +76,6 @@ test('an agent that joined behind a held commit stays a member when another agen
   await f.store.flush();
   const release = await f.hold();
   const delta = f.rt.ensureSession(f.t.id, d.id);
-  f.rt.purgeSession(f.gamma.id);
   await release();
   assert.deepEqual(f.store.state.threads[f.t.id].members, [f.alpha.id, f.beta.id, delta.id]);
   await f.store.close();
@@ -134,21 +133,6 @@ test('a turn that ends in a topic opened behind a held commit settles the topicâ
   waits[0]();
   for (let i = 0; i < 200 && !prompts.length; i++) await sleep(5);
   assert.equal(prompts.length, 1);
-  await f.store.close();
-});
-
-test('a delivery behind a held commit that deletes its conversation waits for Undo, as your message is refused', async () => {
-  const f = await heldRoom();
-  const release = await f.hold();
-  f.rt.deleteThread(f.t.id);
-  assert.throws(() => f.rt.sendMessage(f.t.id, { text: '@beta still there?' }), { status: 409 });
-  f.rt.deliver(f.beta.id, { kind: 'agent', from: '@alpha', text: 'Still there?' });
-  await release();
-  await settle(f.rt);
-  assert.deepEqual([f.adapter.calls.length, f.rt.heldForUndo.get(f.beta.id)?.length], [0, 1]);
-  f.rt.undoDeleteThread(f.t.id);
-  await settle(f.rt);
-  assert.deepEqual(textsTo(f, 'beta'), [['Still there?']]);
   await f.store.close();
 });
 

@@ -10,7 +10,7 @@ import { refind } from './ui.mjs';
 
 const topSig = new Map();
 export function topbarChanged(se) {
-  const sig = `${se.needs?.kind}|${se.archived}|${se.deleting}`;
+  const sig = `${se.needs?.kind}|${se.archived}`;
   const changed = topSig.get(se.id) !== sig;
   topSig.set(se.id, sig);
   return changed;

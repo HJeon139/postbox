@@ -6,7 +6,6 @@
 // Off unless `config.archiveTurns === true` (server/index.mjs passes it to new Runtime). A pass removes work entries and
 // reply steps from the live state, and the readers that give them back aren’t all in yet; step 4 switches it on.
 
-import { conversationDeleting } from './thread-erase.mjs';
 import { archiveTurns } from './work-archive.mjs';
 
 /** How long shutdown waits for a running pass before going on without it. */
@@ -88,13 +87,12 @@ export class ArchivePasses {
   }
 
   /**
-   * Whether the pass may put another file: the store writable, not shutting down, and the conversation there and not
-   * in its delete’s Undo window. O(1).
+   * Whether the pass may put another file: the store writable, not shutting down, and the conversation there. O(1).
    * @param {string} convId
    */
   canWrite(convId) {
     const { store, s } = this.rt;
-    return store.writable && !this.closing && Boolean(s.threads[convId]) && !conversationDeleting(this.rt, convId);
+    return store.writable && !this.closing && Boolean(s.threads[convId]);
   }
 
   /** One pass. A failure is logged once and not retried: the next turn’s end tries again. @param {string} convId */

@@ -207,16 +207,15 @@ test('3,000 session changes behind a held commit each read the session in far le
   await f.store.close();
 });
 
-test('a conversation whose last agent is purged keeps its room for an agent that joined it behind a held commit', async () => {
+test('a conversation whose last agent is deleted keeps its room for an agent that joined it behind a held commit', async () => {
   const f = await heldRoom();
   const solo = f.rt.createThread({ projectId: 'p1', title: 'Solo', personaIds: [f.c.id] });
   const [gamma] = f.rt.sessionsIn(solo.id);
   const d = f.rt.createPersona({ handle: 'delta' });
-  f.rt.deleteSession(gamma.id);
   await f.store.flush();
   const release = await f.hold();
   const delta = f.rt.ensureSession(solo.id, d.id);
-  f.rt.purgeSession(gamma.id);
+  f.rt.deleteSession(gamma.id);
   await release();
   assert.deepEqual(f.store.state.threads[solo.id]?.members, [delta.id]);
   assert.equal(f.store.state.sessions[delta.id]?.handle, 'delta');

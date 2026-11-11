@@ -176,17 +176,6 @@ test('a put that hangs doesn’t hold shutdown: stop gives up at its bound with 
   assert.match(lines[0], /archive pass was still running after 50 ms/);
 });
 
-test('a conversation in its delete’s Undo window is skipped', async () => {
-  const ctx = await turns(setup(), 3);
-  const { rt, store, t } = ctx;
-  rt.deleteThread(t.id);
-  store.emit('work.add', { convId: t.id, entry: { id: 'w_extra', turnId: 't_extra', kind: 'command', state: 'done', at: Date.now() } });
-  const before = summaries(store, t.id).length;
-  assert.equal(await rt.turnArchive.conversation(t.id), 0);
-  assert.equal(summaries(store, t.id).length, before);
-  rt.undoDeleteThread(t.id);
-});
-
 test('T-22: off by default, a third turn’s end archives nothing and puts no file, and the start pass reads no thread', async () => {
   const { rt, store, t } = plainSetup();
   assert.equal(rt.turnArchive.enabled, false);

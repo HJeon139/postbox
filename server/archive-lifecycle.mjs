@@ -9,7 +9,7 @@
  */
 export function restoreArchives(rt) {
   if (rt.s.settings.archivesRestored) return 0;
-  const conversations = Object.values(rt.s.threads).filter((t) => t.kind !== 'topic' && t.kind !== 'side' && !t.deleting);
+  const conversations = Object.values(rt.s.threads).filter((t) => t.kind !== 'topic' && t.kind !== 'side');
   const hidden = conversations.filter((t) => t.archived || rt.sessionsIn(t.id).some((se) => se.archived && !se.retiredFork));
   for (const t of hidden) rt.restoreThread(t.id);
   rt.store.emit('settings', { archivesRestored: true });

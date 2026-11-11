@@ -15,7 +15,6 @@
 // the reload doesn’t recreate: an entry owned by a timer is dropped at the reload, whose re-arm is its one owner (S1).
 // A restart while the store is closed starts again from what the disk holds, as any restart does.
 
-import { rearmPersonaDeletes } from './persona-delete.mjs';
 import { settledNeed } from './restart-sweep.mjs';
 import { rearmWakes } from './scheduled-wakes.mjs';
 
@@ -43,15 +42,12 @@ export function watchStore(rt) {
   // finding: an old timer fired a wake the recovered state didn’t hold); they are re-armed from what the disk held,
   // as a restart does, with a wake caught running marked interrupted (rearmWakes). This runs before reopened(): the
   // store tells its reload listeners before its status listeners hear writes reopen (server/store-retry.mjs).
-  // Every timer in rt.timers is re-armed, the deletions too (the integrator’s finding on 1b: a purge whose Undo window
-  // ended during the outage had fired, done nothing durable, and left the thread “deleting” with no timer).
+  // Every timer in rt.timers is re-armed.
   rt.store.onReload(() => {
     dropOwned(rt); // before the re-arm: the timers below are now the only owners of what they recreate
     for (const timer of rt.timers.values()) clearTimeout(timer);
     rt.timers.clear();
     rearmWakes(rt);
-    rt.rearmDeletions();
-    rearmPersonaDeletes(rt);
     settleOrphanTurns(rt);
   });
 }
@@ -99,7 +95,7 @@ export function gated(rt, fn, { owner } = {}) {
 /**
  * Runs fn now if the store takes writes, else once it does. first: before what already waits, for a write any later
  * turn depends on, such as a backend’s session id. owner: the timer that would recreate this work from the recovered
- * state (a wake’s schedule id, a purge’s `del:`/`delt:`/`delp:` key); the reload drops owned entries before it re-arms,
+ * state (a wake’s schedule id); the reload drops owned entries before it re-arms,
  * so each unit of work has one owner after Retry (S1, the integrator’s re-review of #598: a wake fired while closed was
  * delivered twice). @param {Runtime} rt @param {() => void} fn @param {{ first?: boolean, owner?: string }} [o]
  */
@@ -125,8 +121,8 @@ function dropsAtReload(rt, message) {
 
 /**
  * Drops the held work a reload recreates from the recovered state (S1): every storeWait entry with an owner, and every
- * held wake message the re-arm owns (dropsAtReload), wherever it waits: a held start (heldTurn), a turn’s pending list, a
- * stopped turn’s exit (the outage’s stop moves the pending list there), and a deleting agent’s Undo hold (#597). Each
+ * held wake message the re-arm owns (dropsAtReload), wherever it waits: a held start (heldTurn), a turn’s pending list, and a
+ * stopped turn’s exit (the outage’s stop moves the pending list there). Each
  * would otherwise deliver the wake a second time beside the re-arm (the integrator’s re-review of #598, and gpt’s read).
  * Every other held message stays: no timer recreates it. @param {Runtime} rt
  */
@@ -138,11 +134,6 @@ function dropOwned(rt) {
   }
   for (const ex of rt.exiting.values()) ex.held = ex.held.filter((h) => !owned(h));
   for (const turn of rt.turns.values()) turn.pending = turn.pending.filter((h) => !owned(h));
-  for (const [sessionId, held] of rt.heldForUndo) {
-    const kept = held.filter(([message]) => !dropsAtReload(rt, message));
-    if (kept.length) rt.heldForUndo.set(sessionId, kept);
-    else rt.heldForUndo.delete(sessionId);
-  }
 }
 
 /**

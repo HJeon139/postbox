@@ -335,24 +335,24 @@ export async function play({ origin, view = async () => {}, shot = async () => {
     },
   });
 
-  // 12 · An agent that needs you, its quick panel and deleting its session (#320: there’s no overview)
+  // 12 · An agent that needs you, its persona sheet and /delete (#320)
   const papers = T('Agent memory papers');
   log('@researcher asks which papers to read, so it needs you; its ring pulses in the sidebar.');
   await view(`#/t/${papers.id}`);
   await send(papers, 'Which agent memory papers should I read?');
   await settled(papers, (st) => Object.values(st.sessions).some((x) => x.threadId === papers.id && x.needs), 'the choice');
   await shot('01-needs-you');
-  /** @param {UI} ui */
-  const panel = async (ui) => {
-    // At 375 px the sidebar is hidden and nothing else opens an agent’s panel, but the panel is shown there too.
-    await ui.activate('.rail .agent-btn', 'researcher');
-    await ui.shows('.dialog.quick');
-  };
-  await shot('12-agent-panel', { prepare: panel });
+  // At 375 px the sidebar is hidden, but its row still opens the persona sheet.
+  await shot('12-agent-settings', {
+    prepare: async (ui) => {
+      await ui.activate('.rail .agent-btn', 'researcher');
+      await ui.shows('.dialog [role=tab][aria-selected=true]', 'Personas');
+    },
+  });
   await shot('13-delete-confirm', {
     prepare: async (ui) => {
-      await panel(ui);
-      await ui.click('.dialog.quick button', 'Delete session');
+      await ui.fill('#composer-input', '/delete');
+      await ui.press('#composer-input', 'Enter');
       await ui.shows('.dialog .what-goes');
     },
   });

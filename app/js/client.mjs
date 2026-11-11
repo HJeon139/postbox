@@ -180,8 +180,7 @@ export async function uploadFile(file) {
 
 export const S = () => client.state;
 /** A project’s conversations: direct messages and rooms. Side threads and topic threads hang off them. */
-export const threadsOf = (projectId) =>
-  Object.values(S().threads).filter((t) => t.projectId === projectId && t.kind !== 'side' && t.kind !== 'topic' && !t.deleting);
+export const threadsOf = (projectId) => Object.values(S().threads).filter((t) => t.projectId === projectId && t.kind !== 'side' && t.kind !== 'topic');
 export const topicsOf = (projectId) => Object.values(S().threads).filter((t) => t.projectId === projectId && t.kind === 'topic' && S().threads[t.parentId]);
 /** Where a thread of any kind opens: a conversation in the main pane, a side or topic thread in the panel beside its conversation. */
 export const hrefOf = (threadId) => {
@@ -190,7 +189,7 @@ export const hrefOf = (threadId) => {
 };
 /** A thread’s whole address, to share (#121): Copy link and the composer’s # give it, and an agent reads its id. */
 export const threadLink = (threadId) => new URL(hrefOf(threadId), location.href).href;
-export const sessionsOf = (threadId) => (S().threads[threadId]?.members ?? []).map((id) => S().sessions[id]).filter((x) => x && !x.deleting);
+export const sessionsOf = (threadId) => (S().threads[threadId]?.members ?? []).map((id) => S().sessions[id]).filter(Boolean);
 export const itemsOf = (threadId) => S().items[threadId] ?? [];
 /** The item with this id in a conversation, in O(1) through the store’s index (#712b). */
 export const itemIn = (threadId, id) => itemOf(itemsOf(threadId), id);
@@ -216,7 +215,7 @@ export const sideSessionsOf = (threadId) =>
 /** The sessions speaking in a thread: its own, and any session whose turn is in it now (a side thread’s, #110). */
 export const sessionsAt = (threadId) => [
   ...sessionsOf(threadId),
-  ...Object.values(S().sessions).filter((se) => se.sideTurn?.threadId === threadId && !se.deleting && !sessionsOf(threadId).includes(se)),
+  ...Object.values(S().sessions).filter((se) => se.sideTurn?.threadId === threadId && !sessionsOf(threadId).includes(se)),
 ];
 /** Where a session needs you, or is at work: the side thread its ask or turn is in, else its own thread. */
 export const whereOf = (se) => whereNeeds(S(), se);
@@ -224,7 +223,7 @@ export const whereOf = (se) => whereNeeds(S(), se);
 export const liveSessions = () =>
   Object.values(S().sessions).filter((se) => {
     const t = S().threads[se.threadId];
-    return !se.archived && !se.deleting && t && !t.deleting && !(t.kind === 'side' && (!S().threads[t.parentId] || S().threads[t.parentId].deleting));
+    return !se.archived && t && !(t.kind === 'side' && !S().threads[t.parentId]);
   });
 // Every kind its ring pulses for: a refused step and a tool it asked for too (#285).
 export const needsYou = () => liveSessions().filter(needsYouNow);

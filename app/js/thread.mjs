@@ -24,14 +24,14 @@ import { goToItem } from './go-to-item.mjs';
 import { focusComposer, hopBlock } from './hop-card.mjs';
 import { focusUntouched } from './pane-focus.mjs';
 import { denialBlock, permissionBlock, toolAskBlock } from './permission-cards.mjs';
-import { openPermissions, openRunChoice } from './permissions.mjs';
+import { openPermissions } from './permissions.mjs';
 import { reactTo } from './reactions.mjs';
 import { hostOf } from './remote.mjs';
 import { replyLine } from './reply-rings.mjs';
 import { stoppedSaid, stoppedTag } from './reply-stop.mjs';
 import { holdFocus, replaceTranscriptItem } from './rerender-state.mjs';
 import { ringFor, stateWord } from './ring.mjs';
-import { boilerplateDesc, openAttachSession, openFolderPicker, openNewAgent, openRename } from './sheets.mjs';
+import { boilerplateDesc, confirmDelete, openAttachSession, openFolderPicker, openNewAgent, openRename, openSettings } from './sheets.mjs';
 import { sideActive, sideLine, sideSig } from './side-line.mjs';
 import { namesSpeaker } from './speaker-line.mjs';
 import { systemLine } from './system-line.mjs';
@@ -940,13 +940,15 @@ export function mountComposer(threadId, { side = false } = {}) {
   /** Postbox’s own commands, which act on Postbox without a turn, for se: the agent named (#405), else target(). */
   const POSTBOX = [
     ['permissions', 'Its mode, rules, folders and MCP servers', (se = target()) => openPermissions({ threadId, sessionId: se?.id })],
-    ['mode', 'Ask me, Auto, Accept edits or Run everything', (se = target()) => openRunChoice('mode', { threadId, sessionId: se?.id })],
-    ['model', 'The model for this conversation', (se = target()) => openRunChoice('model', { threadId, sessionId: se?.id })],
-    ['effort', 'How much it thinks, for this conversation', (se = target()) => openRunChoice('effort', { threadId, sessionId: se?.id })],
+    // Its settings are edited in one place, its sheet.
+    ['mode', 'Its permission mode, in its persona’s settings', (se = target()) => se && openSettings('personas', se.personaId)],
+    ['model', 'Its model, in its persona’s settings', (se = target()) => se && openSettings('personas', se.personaId)],
+    ['effort', 'Its effort, in its persona’s settings', (se = target()) => se && openSettings('personas', se.personaId)],
     ['add-dir', 'Let it work in another folder', (se) => addDir(se)],
     ['mcp', 'Its MCP servers: status, on or off', (se = target()) => openPermissions({ threadId, sessionId: se?.id, focus: 'mcp' })],
     ['compact', 'Summarize its context to make room', (se) => compact(se)],
     ['stop', 'Stop the agents that are working', (_se, named) => stopAll(named)],
+    ['delete', 'Delete its session in this conversation', (se = target()) => se && confirmDelete(se)],
     ['rename', 'Rename this conversation', () => openRename(threadId)],
   ];
   const POSTBOX_NAMES = new Set(POSTBOX.map(([n]) => n));
@@ -1171,7 +1173,7 @@ export function mountComposer(threadId, { side = false } = {}) {
     const t = thread();
     const conv = t?.kind === 'side' || t?.kind === 'topic' ? t.parentId : threadId;
     return Object.values(S().threads)
-      .filter((x) => x.parentId === conv && (x.kind === 'side' || x.kind === 'topic') && x.id !== threadId && !x.deleting)
+      .filter((x) => x.parentId === conv && (x.kind === 'side' || x.kind === 'topic') && x.id !== threadId)
       .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
   }
   function candidates() {
@@ -1182,7 +1184,7 @@ export function mountComposer(threadId, { side = false } = {}) {
         .map((x) => ({ thread: x }));
     const members = new Set(sessionsOf(threadId).map((x) => x.personaId));
     return Object.values(S().personas)
-      .filter((p) => !p.retired && !p.deleting && p.handle.toLowerCase().startsWith(mention.query))
+      .filter((p) => !p.retired && p.handle.toLowerCase().startsWith(mention.query))
       .sort((a, b) => members.has(b.id) - members.has(a.id) || a.handle.localeCompare(b.handle))
       .slice(0, 6)
       .map((p) => ({ p, se: sessionsOf(threadId).find((x) => x.personaId === p.id) }));
@@ -1526,7 +1528,7 @@ export function mountComposer(threadId, { side = false } = {}) {
     const p = se ? S().personas[se.personaId] : null;
     // An agent on a host works in a folder there, so ! runs in the project’s folder here (runtime.mjs, commandFolder).
     if (hostOf(se)) return S().projects[thread()?.projectId]?.folder || null;
-    return se?.personaSnapshot?.folder || p?.folder || S().projects[thread()?.projectId]?.folder || null;
+    return p?.folder || S().projects[thread()?.projectId]?.folder || null;
   }
   /** Stop found background jobs running: the ask shows above the composer, and its first choice takes focus. */
   function askStop(se, ask) {

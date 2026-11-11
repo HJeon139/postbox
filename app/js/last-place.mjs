@@ -10,7 +10,7 @@ import { navigate, setAttention } from './ui.mjs';
 // Conversations you’ve just deleted the last agent of, which go with it (#320): skipped at once, before the page hears
 // that the session is being deleted.
 const gone = new Set();
-const usable = (t) => t && !gone.has(t.id) && !t.archived && !t.deleting && t.kind !== 'side' && t.kind !== 'topic' && sessionsOf(t.id).length > 0;
+const usable = (t) => t && !gone.has(t.id) && !t.archived && t.kind !== 'side' && t.kind !== 'topic' && sessionsOf(t.id).length > 0;
 
 /** Leaves a conversation whose last agent is being deleted, for where `#/` goes, and never opens it again. */
 export function leave(threadId) {

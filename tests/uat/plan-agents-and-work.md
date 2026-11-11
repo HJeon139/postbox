@@ -14,7 +14,7 @@ These changes move the controls you use most. Agent settings leave the top bar f
 | Feature                                                                   | Issue              | Headless check                     | UAT doc and screenshot                                 | Real-agent check (`workroom.md`)                        |
 | ------------------------------------------------------------------------- | ------------------ | ---------------------------------- | ------------------------------------------------------ | ------------------------------------------------------- |
 | The Agents section: one row per agent, with its ring, state and open asks | #105               | `tests/browser/agents.spec.mjs`    | `shell/rail/agents-section.md`; scene `agents-section` | `agents-section-members`                                |
-| The quick panel: model, effort, mode and tools, each with its scope       | #105               | `tests/browser/agents.spec.mjs`    | scene `agent-quick-panel`                              | `quick-panel-takes-effect`; phase 2                     |
+| An agent’s name opens its persona sheet; edits apply from its next turn   | #105               | `tests/browser/agents.spec.mjs`    | scene `12-agent-settings`                              | `quick-panel-takes-effect`; phase 2                     |
 | A slimmer top bar: the title and project in full                          | #105               | `tests/browser/header.spec.mjs`    | `overview.png`, `rail.png`                             | `topbar-title-cut`                                      |
 | A turned-off tool is refused visibly                                      | #104, with #105    | —                                  | —                                                      | `shell-off-silent`; phase 2                             |
 | The Work ledger: files, commands, version control, outside writes, effort | #132, #138         | `tests/work.test.mjs`              | `conversation/work-view.md`                            | `work-files-match-stream`, `work-commands-match-stream` |
@@ -52,7 +52,7 @@ Built on the integration branch, once the Work-pane PR landed. Each check has a 
 - `work-files-match-stream`: every file an agent changed with Edit or Write, per the turn streams, is in the ledger. The ledger’s line counts are covered by `tests/work.test.mjs`, which replays recorded turns; a Bash-made change isn’t seen, which the Work view says.
 - `work-commands-match-stream`: every Bash call in the streams appears as a command, with the exit code and the agent the stream gives.
 - `agents-section-members`: the section lists the conversation’s members, and a topic thread’s section lists the thread’s.
-- `quick-panel-takes-effect`: after the panel changes a model or effort, the agent’s next turn runs with it, per its `init` and its arguments.
+- `quick-panel-takes-effect`: after the persona sheet changes a model or effort, the agent’s next turn runs with it, per its `init` and its arguments.
 - `shell-off-silent` (#104): with Shell off, a Bash attempt shows as a refused step with a reason, and the reply doesn’t claim it ran.
 - `topbar-title-cut`: at 1280 px, with two agents, the title and project aren’t truncated.
 - `pane-split`: with a thread and Work open, both are visible, each with a usable height.

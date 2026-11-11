@@ -11,7 +11,7 @@ import { TOOL_DEFS } from '../shared/mcp-tools.mjs';
 test('#131: the guide says to check a setup before blaming it, and to rerun only what just reads or checks', () => {
   const g = agentGuide({
     persona: { handle: 'developer', backend: 'claude-code' },
-    session: { personaSnapshot: { model: 'claude-opus-5-5', effort: 'medium' } },
+    session: {},
     handles: ['developer'],
   });
   assert.match(g, /Your own model calls work, so don’t ask the person to change their setup or credentials on a hunch/);
@@ -28,7 +28,7 @@ test('#131: the turn says what this session runs on, and not that another comman
   const persona = { handle: 'developer', backend: 'claude-code', model: 'claude-opus-5-5', effort: 'medium' };
   const answered = turnFacts({
     persona,
-    session: { personaSnapshot: { model: 'claude-opus-5-5', effort: 'medium' }, lastModel: 'claude-sonnet-5-5', lastEffort: 'high' },
+    session: { lastModel: 'claude-sonnet-5-5', lastEffort: 'high' },
     handles: ['developer'],
   });
   assert.match(
@@ -36,7 +36,7 @@ test('#131: the turn says what this session runs on, and not that another comman
     /Your last turn ran on Claude Code · claude-sonnet-5-5 · not the model you set: claude-opus-5-5 · high effort on the last turn, set to medium/,
   );
   assert.match(answered, /That’s this session; a command you run may use other settings/);
-  const unrun = turnFacts({ persona, session: { personaSnapshot: { model: persona.model, effort: persona.effort } }, handles: ['developer'] });
+  const unrun = turnFacts({ persona, session: {}, handles: ['developer'] });
   assert.match(unrun, /Postbox has you set to Claude Code · claude-opus-5-5 · medium effort, and hasn’t recorded an answered turn yet/);
 });
 
@@ -150,7 +150,7 @@ test('agy’s rules file for a busy room stays within its 12,000 characters', ()
 // Codex agents drifted to unstructured replies and wake_agent messages with the spaces left out, so they’re told how to
 // write; no other backend was seen doing it, so no other backend’s guide carries it.
 test('a Codex agent’s guide says how to write, including wake_agent messages', () => {
-  const g = agentGuide({ persona: { handle: 'gpt', backend: 'codex' }, session: { personaSnapshot: { model: 'gpt-6.1-sol' } }, handles: ['gpt'] });
+  const g = agentGuide({ persona: { handle: 'gpt', backend: 'codex' }, session: {}, handles: ['gpt'] });
   assert.match(g, /## How you write here\n\nEverything you send is read in the conversation as Markdown, including the message you give wake_agent\./);
   assert.match(g, /a blank line before every list, and a space between all words/);
   for (const backend of ['claude-code', 'agent-sdk', 'kiro-cli', 'antigravity-cli'])
@@ -169,7 +169,7 @@ test('#372 a room’s guide says to @mention an agent only when it must act next
 // An agent ended turns promising results that “will follow”, and nothing woke it when they did: Postbox wakes an agent
 // only for a message, a mention or a wake it scheduled. Codex agents are told so (the habit was Codex’s); other backends aren’t.
 test('a Codex agent’s guide says its turn ends when it replies, to finish a check first, or to schedule_wake', () => {
-  const g = agentGuide({ persona: { handle: 'gpt', backend: 'codex' }, session: { personaSnapshot: { model: 'gpt-6.1-sol' } }, handles: ['gpt'] });
+  const g = agentGuide({ persona: { handle: 'gpt', backend: 'codex' }, session: {}, handles: ['gpt'] });
   assert.match(g, /## When your turn ends\n\nYour turn ends when you reply\./);
   assert.match(g, /don’t end with “results will follow”\. If something must outlive your turn, call schedule_wake/);
   assert.doesNotMatch(agentGuide({ persona: { handle: 'gem' }, handles: ['gem'], setup: false }), /When your turn ends/);

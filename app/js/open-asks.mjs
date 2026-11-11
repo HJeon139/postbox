@@ -1,5 +1,5 @@
 // Open blocks (#69): asking blocks you left open from an earlier turn, shown quietly beside their agent as
-// “1 open review”, a button under an agent’s row and in its quick panel.
+// “1 open review”, a button under an agent’s row.
 
 import { ASKING } from '/shared/catalog.mjs';
 import { client, itemsOf } from './client.mjs';

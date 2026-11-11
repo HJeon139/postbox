@@ -190,7 +190,7 @@ test('F11: erasing a conversation erases its assets and releases their files, wh
   store.emit('thread', { id: 'c1', members: [] });
   store.emit('thread', { id: 't1', parentId: 'c1', kind: 'topic', members: [] });
   const a = await writeAsset(store, f.blobs, req({ name: 'a.md', bytes: text('one') }));
-  const rt = { s: store.state, store, heldForUndo: new Map(), stopKeptJobs: async () => {}, stopMirrorFor: () => {} };
+  const rt = { s: store.state, store, stopKeptJobs: async () => {}, stopMirrorFor: () => {} };
   const heard = [];
   store.subscribe((e) => heard.push(e.type));
   eraseThreads(rt, ['t1'], 'Its session was deleted.');

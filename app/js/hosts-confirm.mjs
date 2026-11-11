@@ -228,7 +228,7 @@ function installWait(host, st) {
  * @param {any} host
  */
 export const confirmRemove = (host) => {
-  const placed = Object.values(S().personas).filter((p) => p.remote?.hostId === host.id && !p.retired && !p.deleting);
+  const placed = Object.values(S().personas).filter((p) => p.remote?.hostId === host.id && !p.retired);
   const folders = Object.values(S().projects).filter((p) => p.hostFolders?.[host.id]).length;
   const st = S().hostStatus?.[host.id] ?? null;
   // No token here (a failure would be the host’s program missing there, which an install fixes).

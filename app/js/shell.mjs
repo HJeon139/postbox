@@ -6,7 +6,7 @@ import { isMock, mockMarker } from './agent-facts.mjs';
 import { agentMenuLines } from './agent-menu-lines.mjs';
 import { agentsSection } from './agents.mjs';
 import { chainLimitDesc, openChainLimit } from './chain-limit.mjs';
-import { api, busy, client, needsYou, sessionsOf, threadState, threadsOf, topicsOf } from './client.mjs';
+import { busy, client, needsYou, sessionsOf, threadState, threadsOf, topicsOf } from './client.mjs';
 import { fill, h, icon, syncList } from './dom.mjs';
 import { installLine } from './install-line.mjs';
 import { nextNeedsYou } from './needs-nav.mjs';
@@ -17,7 +17,7 @@ import { ringFor, stateWord } from './ring.mjs';
 import { confirmDeleteThread, openNewAgent, openNewThread, openPalette, openRename, openSettings } from './sheets.mjs';
 import './store-line.mjs';
 import { liveMembers, topbarSig } from './topbar-sig.mjs';
-import { closeWork, navigate, openMenu, openWork, route, toast, undoToast } from './ui.mjs';
+import { closeWork, navigate, openMenu, openWork, route } from './ui.mjs';
 
 export { installLine, liveMembers, railHidden, toggleRail };
 
@@ -25,7 +25,7 @@ const S = () => client.state;
 
 /**
  * The top bar: the places menu, the path to the open conversation and its two views, and the global actions. The
- * agents, their rings and their quick panels are in the sidebar’s Agents section (#105, #320).
+ * agents and their rings are in the sidebar’s Agents section (#105, #320).
  */
 
 export function topbar({ title = '', threadId = null, projectId = null }) {
@@ -445,14 +445,6 @@ function conversationMenu(anchor, shown) {
     ],
     { label: `Actions for ${t.title}` },
   );
-}
-
-export function afterDelete(se, until) {
-  undoToast({
-    text: `Deleted ${se.handle}’s session “${S().threads[se.threadId]?.title ?? ''}”`,
-    until,
-    onUndo: () => api(`/api/sessions/${se.id}/undo-delete`, {}).catch((e) => toast({ title: 'Too late to undo', text: e.message })),
-  });
 }
 
 export { mountThreads } from './threads-page.mjs';

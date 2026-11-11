@@ -4,7 +4,7 @@
 import { renderMarkdown } from '/shared/markdown.mjs';
 import { spokenSentences } from '/shared/text.mjs';
 import { $, $$, h, icon, trusted } from './dom.mjs';
-import { addToast, cleanupToast, removeToast } from './toast-stack.mjs';
+import { addToast, removeToast } from './toast-stack.mjs';
 import { rememberWork } from './work-memory.mjs';
 
 export { initHoverCards } from './hovercards.mjs';
@@ -124,42 +124,6 @@ export function toast({ title, text = '', ring = null, action = null, level = 'i
   addToast(box, el);
   if (timeout) setTimeout(close, timeout);
   return close;
-}
-
-/** Undo toast with a visible countdown. */
-export function undoToast({ text, until, onUndo }) {
-  // Each deletion keeps its own Undo; the shared stack evicts ordinary notices first.
-  const box = $('#toasts');
-  const bar = h('i', { style: { width: '100%' } });
-  const label = h('span');
-  const el = h(
-    'div.toast.plain',
-    { role: 'status' },
-    icon('trash', 'dim'),
-    h('div.t-body', h('span', text), h('div.countdown', { 'aria-hidden': 'true' }, bar)),
-    h(
-      'button.btn.sm',
-      {
-        onclick: () => {
-          removeToast(el);
-          onUndo();
-        },
-      },
-      'Undo',
-      label,
-    ),
-  );
-  const tick = () => {
-    const left = Math.max(0, until - Date.now());
-    bar.style.width = `${(left / 10000) * 100}%`;
-    label.textContent = ` · ${Math.ceil(left / 1000)} s`;
-    if (!left) removeToast(el);
-  };
-  const t = setInterval(tick, 250);
-  const stop = () => clearInterval(t);
-  cleanupToast(el, stop);
-  addToast(box, el);
-  tick();
 }
 
 // ── Screen-reader announcements ────────────────────────────────────────────────────────

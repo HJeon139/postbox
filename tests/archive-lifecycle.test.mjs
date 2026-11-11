@@ -86,7 +86,6 @@ test('deleting a room deletes every session in it, and in its threads’ threads
   assert.equal(ids.length, 4);
   rt.archive(ids[0]);
   rt.deleteThread(room.id);
-  rt.purgeThread(room.id);
   assert.deepEqual(
     [room, topic, side].filter((t) => store.state.threads[t.id]).map((t) => t.title),
     [],
@@ -115,7 +114,6 @@ test('deleting a conversation’s only agent deletes it as deleting the conversa
   const ids = [dm, topic, side].flatMap((t) => store.state.threads[t.id].members);
   const [own] = store.state.threads[dm.id].members;
   rt.deleteSession(own);
-  rt.purgeSession(own);
   // Before, only the conversation's own side threads went: the topic thread's side thread, its agent and its app stayed.
   assert.deepEqual(
     [dm, topic, side].filter((t) => store.state.threads[t.id]).map((t) => t.title),

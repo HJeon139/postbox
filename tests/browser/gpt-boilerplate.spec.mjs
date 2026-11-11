@@ -40,13 +40,8 @@ for (const models of [['gpt-example'], []]) {
       await expect(row).toContainText('Codex’s default');
       await expect(row).not.toContainText('Opus');
       await row.click();
-      const defaultChoice = page.getByRole('radio', { name: 'Codex’s default', exact: true });
-      await expect(defaultChoice).toBeChecked();
-      const [response] = await Promise.all([
-        page.waitForResponse((response) => response.url().endsWith(`/api/sessions/${session.id}/run`)),
-        defaultChoice.click(),
-      ]);
-      expect(response.status()).toBe(200);
+      // Its name opens its persona sheet, where Codex’s default is the model `auto`.
+      await expect(page.getByRole('dialog', { name: 'Settings' }).getByLabel('Model', { exact: true })).toHaveValue('auto');
       await page.keyboard.press('Escape');
       app.rt.updateSession(session.id, { lastModel: 'gpt-answered' });
       await synced(page, app);
@@ -67,7 +62,8 @@ test('Codex labels an inherited Sonnet setting as its default when no catalog of
   await expect(row).toContainText('Codex’s default');
   await expect(row).not.toContainText('Sonnet');
   await row.click();
-  await expect(page.getByRole('radio', { name: 'Codex’s default', exact: true })).toBeChecked();
+  // Its name opens its persona sheet, where Codex’s default is the model `auto`.
+  await expect(page.getByRole('dialog', { name: 'Settings' }).getByLabel('Model', { exact: true })).toHaveValue('auto');
   await page.keyboard.press('Escape');
   app.rt.updateSession(session.id, { lastModel: 'gpt-answered' });
   await synced(page, app);

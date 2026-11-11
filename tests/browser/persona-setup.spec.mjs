@@ -109,13 +109,36 @@ test('the Antigravity CLI’s Auto says it works like Run everything for its too
   const dialog = page.getByRole('dialog', { name: 'New agent' });
   await dialog.getByRole('radiogroup', { name: 'Boilerplate' }).getByRole('radio', { name: 'Gemini', exact: true }).click();
   const field = dialog.locator('.field').filter({ has: page.getByRole('radiogroup', { name: 'Permissions' }) });
-  await field.getByRole('radio', { name: 'Auto', exact: true }).click();
+  await field.getByRole('radio', { name: 'Auto (the harness judges)', exact: true }).click();
   await expect(field.locator('.help')).toHaveText(/^Antigravity’s Auto: agy’s own Auto isn’t available on this account, so Auto works like Run everything/);
   await expect(field.locator('.help')).toContainText('Nothing judges those calls');
   await expect(field.locator('.help')).toContainText('A tool on Postbox’s publishing list is refused unless the agent can publish.');
-  await field.getByRole('radio', { name: 'Accept edits', exact: true }).click();
+  await field.getByRole('radio', { name: 'Run everything', exact: true }).click();
   await expect(field.locator('.help')).not.toContainText('works like Run everything');
 });
+
+// Postbox’s own permission layer is going: the harness judges,
+// or the agent runs everything.
+test('the sheet offers two permission modes: Auto (the harness judges) and Run everything', async ({ page }) => {
+  await personas(page);
+  await page.locator('.dialog').getByRole('button', { name: 'New agent', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'New agent' });
+  await dialog.getByRole('radiogroup', { name: 'Boilerplate' }).getByRole('radio', { name: 'Gemini', exact: true }).click();
+  await expect(dialog.getByRole('radiogroup', { name: 'Permissions' }).getByRole('radio')).toHaveText(['Auto (the harness judges)', 'Run everything']);
+});
+
+// A persona stored with a mode the sheet no longer offers shows as what it saves as: Auto. Before, the sheet drew Auto
+// checked and Save sent Ask me back, so what it showed wasn’t what ran.
+for (const stored of ['ask', 'acceptEdits'])
+  test(`a persona stored as ${stored} shows Auto in the sheet, and saving it untouched saves Auto`, async ({ page }) => {
+    const persona = app.rt.createPersona({ handle: `was-${stored.toLowerCase()}`, backend: 'claude-code', permissionMode: stored });
+    await personas(page);
+    await page.getByRole('button', { name: `Edit ${persona.handle}`, exact: true }).click();
+    const modes = page.locator('.dialog').getByRole('radiogroup', { name: 'Permissions' });
+    await expect(modes.getByRole('radio', { name: 'Auto (the harness judges)', exact: true })).toHaveAttribute('aria-checked', 'true');
+    await page.locator('.dialog').getByRole('button', { name: 'Save', exact: true }).click();
+    await expect.poll(() => app.store.state.personas[persona.id].permissionMode).toBe('auto');
+  });
 
 /** The Skills checklist’s row for one skill. */
 const skillRow = (page, name) => page.locator('fieldset').filter({ hasText: 'Skills' }).locator(`.check[data-skill="${name}"]`);

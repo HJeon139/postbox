@@ -82,7 +82,7 @@ function autoResume(rts, sessionId) {
   const rt = rts.rt;
   const se = rt.s.sessions[sessionId];
   const r = se?.remoteTurn;
-  if (!r?.resume || se.archived || se.deleting || rt.turns.has(sessionId) || rt.exiting.has(sessionId) || rt.closing) return;
+  if (!r?.resume || se.archived || rt.turns.has(sessionId) || rt.exiting.has(sessionId) || rt.closing) return;
   // Only on the host it stopped on: an agent moved since waits for the person.
   if (hostOf(rt.personaFor(se)) !== r.hostId) return;
   // Nor can one whose backend isn’t registered here: a resume would only fail again (#874, #909).
