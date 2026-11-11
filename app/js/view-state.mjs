@@ -29,6 +29,13 @@ function holdAnchor(v) {
   if (Math.abs(d) < 1) return;
   s.scrollTop += d;
   v.lastTop = s.scrollTop;
+  // The browser lands a scroll on a whole pixel, up to half a pixel from a fraction it was aimed at. The anchor is where
+  // it landed, published now: its scroll event, which took it there before, comes a frame later (#1245). Not a scroll
+  // clamped short at an end, though: that keeps the place it aimed for, to go back to once there’s room (#837).
+  const at = n.getBoundingClientRect().top - viewTop(v, s);
+  if (Math.abs(at - v.anchor.at) >= 1) return;
+  v.anchor = { key: v.anchor.key, at };
+  publish(v);
 }
 // Smoothly only in the main pane, with motion allowed, and where the browser says when a scroll ends: follow() holds
 // off while it runs, and smoothEnded() goes the rest of the way (#712a).
