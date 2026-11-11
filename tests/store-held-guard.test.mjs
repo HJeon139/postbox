@@ -36,9 +36,10 @@ const PUBLISHED = {
   'remote/turns-snapshot.mjs': ['readable'], // the snapshot sent to a host: it leaves the process
   'review-comments.mjs': ['find'], // review_block on a block shown in the room
   'review-files.mjs': ['findReviewFile'], // a review’s image, as an HTTP answer to the page (#780)
-  'runtime.mjs': ['retry', 'resolveProposal', 'readConversation', 'stopShellCommand'], // a person’s action on an item they see, or a read tool
+  'runtime.mjs': ['retry', 'resolveProposal', 'readConversation'], // a person’s action on an item they see, or a read tool
   'scheduled-wakes.mjs': ['prepareScheduledRetry'], // the person’s Retry of a wake line they see
   'share-back.mjs': ['shareToConversation', 'shareToConversation'], // the person’s Share of an item they see
+  'shell-runs.mjs': ['stopShellCommand'], // the person’s Stop on a command they see
   'store-outage.mjs': ['settleOrphanTurns'], // at a reload, when nothing is held
   'thread-summary.mjs': ['lineOf', 'lineOf', 'threadCatchUp', 'threadLines', 'readUpTo', 'summarizeThread', 'summarizeThread', 'reactionLines'], // prompts and summaries for a later turn
   'tool-ask.mjs': ['resolveToolAsk'], // the person’s answer to an ask they see
@@ -59,8 +60,8 @@ const DIRECT = {
   'ledger.mjs': ['expireStale'], // at startup
   'permission-expiry.mjs': ['expireStalePermissions'], // at startup
   'public-state.mjs': ['publicItems'], // a conversation’s items by range, an HTTP answer to the page (#1155)
-  'runtime.mjs': ['expireStaleCommands'], // at startup
   'sandbox-routes.mjs': ['sandboxRoute'], // an app version’s sandbox page: an HTTP answer to the page
+  'shell-runs.mjs': ['expireStaleCommands'], // at startup
   'thread-headers.mjs': ['itemsOf'], // each thread's header facts, sent to the page (#1155)
   'thread-search.mjs': ['threadSearch'], // a conversation’s search, an HTTP answer to the page (#1155)
   'tool-ask.mjs': ['settleToolAsks'], // only the thread ids; each thread is read through store.pending
@@ -76,6 +77,7 @@ const PENDING = {
   // each decides a write, so a card held behind a commit counts (#366). An offered card and the current need's card
   // (takesNeed): their times, and whether the current one still waits, decide whether the offer takes the need (#711).
   'card-needs.mjs': ['keptTurns', 'nextNeed', 'takesNeed', 'takesNeed', 'releaseNeed', 'notifyOnce'],
+  'claude-mirror.mjs': ['pollMirror'], // the mirrored reply a terminal line adds to, maybe held behind a commit
   'restart-sweep.mjs': ['settleRetiredNeeds', 'cardOf'], // the need's card: whether it still waits, and its time on a tie, decide the need kept (#366); a session whose need is of a retired kind, settled
   'app-retire.mjs': ['retireApp', 'retireApp', 'retireApp', 'release'], // retire_app of an app the turn may have just shown, and its sweep of open sends
   'apps.mjs': ['showApp', 'updateApp'], // show_app and update_app of an app the turn may have just shown
@@ -120,9 +122,6 @@ const PENDING = {
     'runningProgress',
     'setJobStep',
     'settleJobs',
-    'runShellCommand',
-    'runShellCommand',
-    'pollMirror',
   ], // the turn’s own items and apps, a move after a pending read, sweeps that write back, the thread a message, a delivery or a topic reply count goes to, maybe opened or deleting behind a held commit, and the session a stopped turn's exit settles, its “stopping” maybe held (#796)
   // The reply with the mention, a side line right after its add, and sweeps of hop cards; the conversation's hop count,
   // the topic the wake answers in, and endChain's hops and queued wakes, each maybe held behind a commit (#796).
@@ -136,6 +135,8 @@ const PENDING = {
   // The members a delete keeps its room for, maybe joined behind a held commit (#796).
   'session-lifecycle.mjs': ['deleteSession', 'deleteSession', 'deleteSession'],
   'session-write.mjs': ['updateSession', 'needAt', 'pendingSessionsIn', 'pendingSessionsIn'], // needAt: the need's item's time, maybe added behind a held commit (#1155)
+  // A command’s item, maybe deleted behind a held commit, before its output or its end is written.
+  'shell-runs.mjs': ['commandOutput', 'endCommand'],
   'subagent-end.mjs': ['withUrgent'],
   'side-threads.mjs': ['agentWake', 'agentWake', 'agentWake', 'endChain', 'endChain', 'archiveForks', 'bumpSideLink', 'bumpSideLink'],
   // A thread’s apps, removed in a sweep.

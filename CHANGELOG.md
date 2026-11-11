@@ -2,6 +2,13 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.0.4 (2026-11-11)
+
+### Fixes
+
+- **uat:** don't count a view sample as settled while its jump to the end runs
+- **view:** say a jump to the end is still running, and wait for it before reading the page
+
 ## 4.0.3 (2026-11-11)
 
 ### Fixes
