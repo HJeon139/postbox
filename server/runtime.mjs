@@ -30,7 +30,7 @@ import { diagramCheck } from './diagram-check.mjs';
 import { emptyReply, endedWithoutReply } from './empty-reply.mjs';
 import { heldSession } from './held-session.mjs';
 import { clip, clipText, httpError } from './helpers.mjs';
-import { clipItem, describeItem, topicRootLine } from './item-lines.mjs';
+import { describeItem, topicRootLine } from './item-lines.mjs';
 import { keptGroupsOf, keptJobs, pollKept, stopJob, stopKeptJobs, watchKept } from './kept-jobs.mjs';
 import { Ledger } from './ledger.mjs';
 import { endLint, foldLint, lint, quietLint } from './lint-delivery.mjs';
@@ -55,7 +55,7 @@ import { createPersona, updatePersona } from './persona-write.mjs';
 import { arrival } from './queue-batch.mjs';
 import { readCapped } from './read-capped.mjs';
 import { addReadFolder, readCardAlways } from './read-folders.mjs';
-import { readMessage } from './read-message.mjs';
+import { readConversation, readLine, readMessage } from './read-message.mjs';
 import { addHost, host, removeHost, setProjectHostFolder, updateHost } from './remote/host-admin.mjs';
 import { describeHostInstall, hostStatus, installHost, retryHost, watchHosts } from './remote/host-status.mjs';
 import { localBackends, refuseHere, refuseUnregistered, refuseUnregisteredSend, registeredAdapter } from './remote/placement.mjs';
@@ -94,6 +94,7 @@ import {
 import { newId } from './store.mjs';
 import { heldTurn, STORE_STOPPED, saveBackendState, watchStore, whenWritable } from './store-outage.mjs';
 import { endSubagent, notUrgent } from './subagent-end.mjs';
+import { conversationThreads, glossaryFor, lineage } from './thread-lineage.mjs';
 import { firstPromptSection, settleThread, turnContext } from './thread-summary.mjs';
 import { updateThread } from './thread-write.mjs';
 import { askForTool } from './tool-ask.mjs';
@@ -1548,35 +1549,26 @@ export class Runtime {
     return describeItem(this, i, se, n, reader);
   }
 
-  /**
-   * read_conversation: the conversation’s items, newest last, as text, each with its id (for read_message and react). thread: another thread of the same conversation
-   * to read instead, such as a side thread or a topic thread (#121): its id from a catch-up line, a pointer to a fork, or
-   * a link the person shared. Threads of other conversations are refused.
-   */
-  /** @param {any} se @param {{ limit?: number, skip?: number, thread?: unknown }} [args] */
-  readConversation(se, { limit = 50, skip = 0, thread = null } = {}) {
-    const id = typeof thread === 'string' && thread.trim() ? thread.trim().slice(0, 100) : se.threadId;
-    if (!this.conversationThreads(se.threadId).includes(id))
-      throw httpError(404, `There’s no thread ${id} in this conversation. Read one of its own threads: the id is in the catch-up line or the link.`);
-    const items = this.store.items(id).filter((i) => i.kind !== 'system' || i.variant === 'wake');
-    const n = Math.max(1, Math.min(200, Number(limit) || 50));
-    const end = Math.max(0, items.length - Math.max(0, Number(skip) || 0));
-    const slice = items.slice(Math.max(0, end - n), end);
-    const lines = slice.flatMap((i) => (this.readLine(i, se) ? [`[${i.id}] ${this.readLine(i, se)}`] : []));
-    const before = end - slice.length;
-    return `${lines.join('\n\n') || 'The conversation is empty.'}${before ? `\n\n(${before} earlier ${before === 1 ? 'item' : 'items'}; call again with skip: ${items.length - before} to read them.)` : ''}`;
+  readConversation(se, args) {
+    return readConversation(this, se, args);
   }
-
-  /**
-   * An item as read_conversation and read_message give it to `se`, whose own messages say “You”.
-   * @param {any} i @param {any} se @param {number} [n]
-   */
-  readLine(i, se, n = READING.item) {
-    return i.sessionId === se.id && i.kind === 'agent' ? `You (@${se.handle}): ${clipItem(i.text, n, i.id)}` : this.describeItem(i, null, n, se);
+  readLine(i, se, n) {
+    return readLine(this, i, se, n);
   }
-
   readMessage(se, args = {}) {
     return readMessage(this, se, args);
+  }
+
+  // ── A thread’s place in its conversation: server/thread-lineage.mjs ─────────────────
+
+  conversationThreads(threadId) {
+    return conversationThreads(this, threadId);
+  }
+  lineage(threadId, thread) {
+    return lineage(this, threadId, thread);
+  }
+  glossaryFor(threadId) {
+    return glossaryFor(this, threadId);
   }
 
   // ── The lint pipeline ──────────────────────────────────────────────────────────────
@@ -1585,40 +1577,6 @@ export class Runtime {
   // it measures (diagrams, the app check) as the reply renders, so the lint turn waits a moment for those. There’s
   // at most one lint turn per agent turn, a lint turn is never linted, and problems from a turn that failed or was
   // stopped are dropped.
-
-  /**
-   * Every thread of a thread’s conversation: its lineage first, then the conversation’s other side and topic threads.
-   * What read_conversation { thread } and read_message may read.
-   * @param {string} threadId
-   */
-  conversationThreads(threadId) {
-    const own = this.lineage(threadId);
-    const root = own.at(-1);
-    const rest = Object.values(this.s.threads)
-      .filter((t) => !own.includes(t.id) && this.lineage(t.id).at(-1) === root)
-      .map((t) => t.id);
-    return [...own, ...rest];
-  }
-
-  /** A thread, then the conversation it branched from, following parentId (a topic or side thread’s is one level), as `thread` reads one. */
-  lineage(threadId, thread = (/** @type {string} */ id) => this.s.threads[id]) {
-    const out = [];
-    for (let id = threadId; id && thread(id) && !out.includes(id) && out.length < 8; id = thread(id).parentId) out.push(id);
-    return out;
-  }
-
-  /**
-   * The terms a thread knows: its own glossary over its parent’s, so a topic thread inherits its conversation’s
-   * terms and its own definition wins. The browser’s glossaryOf (app/js/thread.mjs) merges the same way.
-   */
-  glossaryFor(threadId) {
-    return Object.assign(
-      {},
-      ...this.lineage(threadId)
-        .map((id) => this.s.glossary[id] ?? {})
-        .reverse(),
-    );
-  }
 
   // The server’s checks over a finished turn: server/turn-checks.mjs.
 
