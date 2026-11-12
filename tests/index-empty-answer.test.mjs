@@ -5,6 +5,7 @@
 
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
+import { format } from 'node:util';
 import { fakeRequest, NAVIGATION } from './fake-http.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
@@ -22,11 +23,11 @@ after(async () => {
   await app.close();
 });
 
-/** What console.error printed while fn ran, each call’s arguments joined as the console writes them. */
+/** What console.error printed while fn ran, each call formatted as the console writes it. */
 async function logged(fn) {
   const lines = [];
   const error = console.error;
-  console.error = (...args) => lines.push(args.map((a) => (a instanceof Error ? a.stack : String(a))).join(' '));
+  console.error = (...args) => lines.push(format(...args));
   try {
     return { result: await fn(), lines };
   } finally {
@@ -46,6 +47,20 @@ test('a route whose runtime call answers with nothing gets a 500 that names the 
     assert.match(lines[0], /POST \/api\/threads\/th_1\/queue\/q_1\/send/, 'the log names the route');
     assert.match(lines[0], /answered with nothing/, 'and says what went wrong');
     assert.doesNotMatch(lines[0], /ERR_INVALID_ARG_TYPE/, 'not Buffer’s TypeError');
+  } finally {
+    app.rt.sendQueuedNow = sendQueuedNow;
+  }
+});
+
+test('a path with %s in it is logged as it was asked for, and the error’s stack still follows it', async () => {
+  const cookie = (await call({ path: '/', headers: NAVIGATION })).headers['set-cookie'].split(';')[0];
+  const sendQueuedNow = app.rt.sendQueuedNow;
+  app.rt.sendQueuedNow = () => undefined;
+  try {
+    const { lines } = await logged(() => call({ method: 'POST', path: '/api/threads/%s/queue/%s/send', body: {}, cookie }));
+    assert.equal(lines.length, 1, 'one line in the log');
+    assert.match(lines[0], /POST \/api\/threads\/%s\/queue\/%s\/send:/, 'the path as asked for');
+    assert.match(lines[0], /answered with nothing[^\n]*\n\s+at /, 'and the error with its stack');
   } finally {
     app.rt.sendQueuedNow = sendQueuedNow;
   }

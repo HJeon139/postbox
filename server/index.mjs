@@ -172,8 +172,9 @@ export async function start({
       await route(req, res);
     } catch (e) {
       const status = e.status ?? 500;
-      // With the route, its query left out, so a programming error’s log says which request hit it.
-      if (status === 500) console.error(`Postbox couldn’t answer ${req.method} ${String(req.url).split('?')[0]}:`, e);
+      // With the route, its query left out, so a programming error’s log says which request hit it. The method and path
+      // are arguments, not part of the format string, so a %s in a path can’t take the error’s place.
+      if (status === 500) console.error('Postbox couldn’t answer %s %s:', req.method, String(req.url).split('?')[0], e);
       if (!res.headersSent)
         send(res, status, {
           error: e.userMessage ?? (status === 500 ? 'Something went wrong on the server. Try again; if it keeps happening, check the server log.' : e.message),
