@@ -240,3 +240,30 @@ test('a thought shows while the agent writes it, its text so far, and then whole
   go('ponderer');
   await expect.poll(() => scripted.app.rt.turns.size).toBe(0);
 });
+
+test('a finished turn whose words came after another agent’s post keeps its record with its words, not above that post', async ({ page }) => {
+  await writeFile(join(scripted.app.root, 'calc3.py'), 'x = 1\n');
+  const t = room('Record with its words', ['first', 'second']);
+  scripts.set('first', async ({ emit, who }) => {
+    await edit(emit, 'e1', 'calc3.py', 'x = 1', 'x = 2');
+    await hold(who, 1);
+    emit({ kind: 'text', text: 'Set x to 2.' });
+  });
+  scripts.set('second', async ({ emit }) => emit({ kind: 'text', text: 'Second is here.' }));
+  await page.goto(`${scripted.app.origin}/#/t/${t.id}`);
+  await synced(page, scripted.app);
+  scripted.app.rt.sendMessage(t.id, { text: '@first set x' });
+  await expect.poll(() => at('first')).toBe(1);
+  scripted.app.rt.sendMessage(t.id, { text: '@second say hi' });
+  await expect.poll(() => scripted.app.store.items(t.id).some((it) => it.text === 'Second is here.' && it.status === 'done')).toBe(true);
+  go('first');
+  await expect.poll(() => scripted.app.rt.turns.size).toBe(0);
+  await synced(page, scripted.app);
+  const posts = page.locator('.transcript > [data-key]:visible');
+  const order = await posts.evaluateAll((nodes) => nodes.map((n) => n.textContent ?? ''));
+  const where = (/** @type {string} */ s) => order.findIndex((x) => x.includes(s));
+  expect(where('Second is here.'), order.join('\n---\n')).toBeGreaterThanOrEqual(0);
+  expect(where('1 file +1 −1'), 'the record is in the post with the words').toBe(where('Set x to 2.'));
+  expect(where('Set x to 2.'), 'below the other agent’s post').toBeGreaterThan(where('Second is here.'));
+  await expect(page.locator('details.activity:visible'), 'one record for the turn').toHaveCount(1);
+});

@@ -8,7 +8,7 @@ import { agentMarkdown, markTerms } from './agent-markdown.mjs';
 import { h, icon, trusted } from './dom.mjs';
 import { jobRows, runningNote } from './reply-stop.mjs';
 import { kiroStep } from './thread-host.mjs';
-import { recordWords, workLink } from './work-record.mjs';
+import { recordOf, recordWords, workLink } from './work-record.mjs';
 
 /** Each list’s steps, which its first open builds; a live step changes them. */
 const stepsOf = /** @type {WeakMap<HTMLElement, any[]>} */ (new WeakMap());
@@ -27,20 +27,34 @@ const wordsOf = (it, threadId) => (/** @type {string} */ text) => {
  */
 export function activityParts(it, threadId) {
   const [notice, steps] = kiroStep(it);
-  if (isLive(it, threadId)) {
+  const live = isLive(it, threadId);
+  if (live) {
     const [, own] = kiroStep({ activity: { steps: partSteps(it, threadId) } });
     return [notice, liveParts({ ...it, activity: { ...it.activity, steps: own } }, threadId, wordsOf(it, threadId)), jobRows(it, steps)];
   }
-  const total = steps.reduce((a, s) => a + (s.ms ?? 0), 0);
-  const fallback = [activityLabel(steps), total ? ` · ${(total / 1000).toFixed(total < 10000 ? 1 : 0)} s in tools` : ''];
-  const list = steps.length
+  // The record, on the part it shows with (work-record.mjs, recordOf): this one, or the turn’s first part with words.
+  const of = recordOf(it, threadId);
+  const record = of ? kiroStep(of)[1] : [];
+  const total = record.reduce((a, s) => a + (s.ms ?? 0), 0);
+  const fallback = [activityLabel(record), total ? ` · ${(total / 1000).toFixed(total < 10000 ? 1 : 0)} s in tools` : ''];
+  const list = record.length
     ? foldedList(
-        h('summary', icon('right', 'i-sm'), recordWords(it, threadId, fallback), runningNote(it, steps)),
-        steps,
+        h('summary', icon('right', 'i-sm'), recordWords(it, threadId, fallback), runningNote(of, record)),
+        record,
         it.turnId ? workLink(it, threadId) : null,
       )
     : null;
   return [notice, list, jobRows(it, steps)];
+}
+
+/**
+ * A finished turn’s first part with only steps, whose record shows with the turn’s words below it (recordOf): it shows
+ * nothing. One with a job still running, or that failed or was stopped, still shows. @param {any} it @param {string} threadId
+ */
+export function recordMoved(it, threadId) {
+  if (it?.kind !== 'agent' || it.status !== 'done' || !it.activity?.steps?.length || String(it.text ?? '').trim()) return false;
+  if (it.activity.steps.some((/** @type {any} */ s) => s.job && s.state === 'running') || isLive(it, threadId)) return false;
+  return recordOf(it, threadId) === null;
 }
 
 /**

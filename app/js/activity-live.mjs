@@ -14,6 +14,8 @@ const LINE = 24;
 const FULL = 80;
 // With this many agents working in one conversation, each turn’s steps are one line.
 const CROWD = 8;
+/** How far apart, in items, a turn’s parts are looked for: a long room’s old turns cost no more than a new one’s. */
+export const PARTS_WITHIN = 200;
 const GLYPH = { running: 'running', failed: 'failed', denied: 'failed', done: 'done', stopped: 'stalled' };
 
 /** The sessions at work in a conversation now: busy, with their turn here rather than in a side thread (#110). */
@@ -44,7 +46,11 @@ export function isLive(it, threadId) {
 export function firstPart(it, threadId) {
   if (it.activity || !it.turnId) return it;
   const items = itemsOf(threadId);
-  for (let i = placeIn(threadId, it.id) - 1; i >= 0; i--) if (items[i].kind === 'agent' && items[i].turnId === it.turnId && items[i].activity) return items[i];
+  const from = placeIn(threadId, it.id);
+  for (let i = from - 1; i >= Math.max(0, from - PARTS_WITHIN); i--) {
+    const x = items[i];
+    if (x.kind === 'agent' && x.turnId === it.turnId && x.activity) return x;
+  }
   return null;
 }
 
@@ -63,7 +69,9 @@ export function partSteps(it, threadId) {
  * @param {{ id: string, activityStep?: any }} d  the item.patch's data @param {string} threadId @param {any[]} drawn
  */
 export function laterParts(d, threadId, drawn) {
-  const turnId = d.activityStep?.part ? itemsOf(threadId)[placeIn(threadId, d.id)]?.turnId : null;
+  // Or the turn ended, or a finished turn’s step changed: its record may show on a later part (work-record.mjs).
+  const it = d.activityStep?.part || d.foldSteps || d.activityStep ? itemsOf(threadId)[placeIn(threadId, d.id)] : null;
+  const turnId = it && (d.activityStep?.part || d.foldSteps || !isLive(it, threadId)) ? it.turnId : null;
   return turnId ? drawn.filter((x) => x.id !== d.id && x.kind === 'agent' && x.turnId === turnId).map((x) => x.id) : [];
 }
 
@@ -147,7 +155,8 @@ export function textFrom(it, /** @type {string} */ threadId) {
  */
 export function liveParts(it, threadId, words) {
   const steps = ownSteps(it.activity?.steps ?? []);
-  if (!steps.length) return null;
+  // A part with no steps of its own is marked live all the same, so it’s drawn again when its turn ends (liveStale).
+  if (!steps.length) return h('div.live-steps', { hidden: true });
   const lines = linesFor(threadId);
   const calls = callsOf(steps);
   const newest = calls.at(-1) ?? steps.at(-1);
@@ -202,8 +211,8 @@ export function liveParts(it, threadId, words) {
  * @param {string} threadId
  */
 export function liveStale(node, it, threadId) {
-  if (!node || it?.kind !== 'agent' || !partSteps(it, threadId).length) return false;
-  const drawn = /** @type {HTMLElement | null} */ (node.querySelector(':scope > .live-steps'))?.dataset.agents;
-  if ((drawn !== undefined) !== isLive(it, threadId)) return true;
-  return drawn !== undefined && drawn !== String(liveAgents(threadId));
+  if (!node || it?.kind !== 'agent') return false;
+  const live = /** @type {HTMLElement | null} */ (node.querySelector(':scope > .live-steps'));
+  if (Boolean(live) !== isLive(it, threadId)) return true;
+  return Boolean(live && !live.hidden) && live?.dataset.agents !== String(liveAgents(threadId));
 }

@@ -1,5 +1,6 @@
 // A reply sits in the conversation where its agent wrote it (server/reply-segment.mjs, wordsSegment): a message
-// posted while the agent works comes before the words it writes after it, and the steps stay where the agent began.
+// posted while the agent works comes before the words it writes after it, and once the turn ends, its record sits
+// with them (app/js/work-record.mjs, recordOf).
 // So do words after a tool call, once someone else spoke while it ran.
 
 import { expect, test } from '@playwright/test';
@@ -70,9 +71,13 @@ test('a message posted while the agent works comes before the words it writes af
   const words = order.findIndex((t) => t.includes('Here’s what I found.'));
   expect(posted, 'the message posted meanwhile is shown').toBeGreaterThanOrEqual(0);
   expect(words, 'the words come after it').toBeGreaterThan(posted);
-  const steps = order.findIndex((t) => t.includes('Read the file'));
-  expect(steps, 'the steps stay above it, where the agent began').toBeGreaterThanOrEqual(0);
-  expect(steps).toBeLessThan(posted);
+  // Once the turn ends, its record sits with its words: the part that held only its steps shows nothing.
+  await page.locator(`[data-key] details.activity`).first().locator('> summary').click();
+  const shown = await transcript.locator('> [data-key]:visible').evaluateAll((nodes) => nodes.map((n) => n.textContent ?? ''));
+  expect(
+    shown.findIndex((t) => t.includes('Read the file')),
+    'the record, with the words',
+  ).toBe(shown.findIndex((t) => t.includes('Here’s what I found.')));
 });
 
 test('words after a tool call come after what was said while it ran; the words before it stay put', async ({ page }) => {

@@ -4,7 +4,7 @@
 import { renderMarkdown } from '/shared/markdown.mjs';
 import { resolveCommand } from '/shared/slash-line.mjs';
 import { laterParts, liveStale } from './activity-live.mjs';
-import { activityParts, hasRecord, paintActivity, stepsOnly } from './activity-paint.mjs';
+import { activityParts, hasRecord, paintActivity, recordMoved, stepsOnly } from './activity-paint.mjs';
 import { activityLabel } from './activity-steps.mjs';
 import { mockMarker } from './agent-facts.mjs';
 import { agentMarkdown, handles, markTerms, paintAgentMarkdown, usesTerm } from './agent-markdown.mjs';
@@ -430,8 +430,8 @@ function renderItem(it, prev, ctx) {
       );
     }
     case 'agent': {
-      // Replayed whole from the host after a restart (#120): the replay is the reply, so this part of it shows nothing.
-      if (it.status === 'replaced') return h('div.col.replaced', { hidden: true });
+      // Replayed whole from the host after a restart (#120), or only steps whose record shows with the words: nothing.
+      if (it.status === 'replaced' || recordMoved(it, ctx.threadId)) return h('div.col.replaced', { hidden: true });
       const node = h(
         'div.col.turn',
         showWho ? who(it, ctx) : null,
