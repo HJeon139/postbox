@@ -123,9 +123,11 @@ export async function load(store, { fresh = false } = {}) {
   try {
     // A fresh start empties the folder only once it holds the lock, so a running Postbox’s files are never deleted
     // under it (the integrator’s review of 1a).
+    // The asset folder goes too: its files belong to the state this empties, and left there, the asset pass at load
+    // (server/asset-orphans.mjs) found them unnamed, warned, and kept them for good.
     if (fresh)
       for (const n of await store.io.readdir(store.dir))
-        if (/^(store\.json|snapshot\.json|events-\d+\.jsonl)/.test(n)) await store.io.rm(store.at(n), { force: true });
+        if (/^(store\.json|snapshot\.json|events-\d+\.jsonl)/.test(n) || n === 'assets') await store.io.rm(store.at(n), { force: true, recursive: true });
     install(store, await recover(store));
     // The folder’s entries are made durable once per start: a segment rotated by an earlier run that only ever held
     // emits may never have had its entry synced (the integrator’s review of 1a). A filesystem that can’t sync a
