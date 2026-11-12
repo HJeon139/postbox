@@ -7,6 +7,9 @@ import { client } from '../../tools/demo-client.mjs';
 import { replay, replayTitle, SHOWCASE, story } from '../../tools/demo-showcase.mjs';
 import { startPostbox } from './postbox.mjs';
 
+/** An app id as a CSS attribute value: the recordings’ ids are plain, but quotes and backslashes are escaped. */
+const CSS_ESCAPE = (/** @type {string} */ id) => id.replace(/["\\]/g, '\\$&');
+
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
 let app;
 test.beforeAll(async () => {
@@ -40,6 +43,34 @@ test('each replayed turn is the real turn its rule names, with that turn’s wor
   }
 });
 
+/**
+ * The origin v2’s frame runs at, in the app’s own item (not the review’s copy), or null while it isn’t loaded. The
+ * transcript redraws an item as it scrolls into its window, and the page loads an app’s frame only near the window,
+ * so nothing is held across a redraw: each call finds the item by its app id in the page, scrolls it into view, and
+ * reads the frame afresh from the page’s frames by its v2 source.
+ * @param {import('@playwright/test').Page} page @param {string} appId @param {string} src
+ */
+async function v2Origin(page, appId, src) {
+  const sel = `.app-body[data-app-id="${CSS_ESCAPE(appId)}"]:not(.app-review-wrap .app-body)`;
+  const shown = await page.evaluate(
+    ({ sel, src }) => {
+      const item = [...document.querySelectorAll(sel)].at(-1);
+      item?.scrollIntoView({ block: 'center' });
+      return !!item?.querySelector(`iframe[src*="${src}?"]:not([src*="check"])`);
+    },
+    { sel, src },
+  );
+  if (!shown) return null;
+  const own = (/** @type {string} */ url) => url.includes(`${src}?`) && !/[?&]check/.test(url);
+  return (
+    (await page
+      .frames()
+      .find((f) => own(f.url()))
+      ?.evaluate(() => self.origin)
+      .catch(() => null)) ?? null
+  );
+}
+
 test('every showcase replay plays to v2 with its recorded words, comments and costs, in a sandboxed frame', async ({ page }) => {
   test.setTimeout(240_000);
   const { origin } = app;
@@ -68,17 +99,13 @@ test('every showcase replay plays to v2 with its recorded words, comments and co
     const res = await page.request.get(`${origin}${src}?theme=light`);
     expect(res.headers()['content-security-policy']).toContain('sandbox allow-scripts');
     expect(res.headers()['content-security-policy']).not.toContain('allow-same-origin');
-    // The page shows v2 once its own check has passed it, and loads an app’s frame as it comes near the window: so
-    // wait for that check, bring the app’s own item (not the review’s copy) into view, then read its frame.
+    // The page shows v2 once its own check has passed it, and loads an app’s frame as it comes near the window. The
+    // transcript redraws an item as it scrolls into its window, so no element is held across that: each poll finds
+    // the app’s own item (not the review’s copy) by its app id in the page, scrolls it into view and checks its frame.
     await c.until((s) => s.apps[appId].current === 2 && ['passed', 'note'].includes(s.apps[appId].check.status) && s, {
       label: `${key}’s v2 to pass its check`,
       timeout: 60_000,
     });
-    const item = page.locator('.app-body:not(.app-review-wrap .app-body)').last();
-    await item.scrollIntoViewIfNeeded();
-    const shown = item.locator(`iframe[src*="${src}?"]`);
-    await shown.waitFor({ state: 'attached', timeout: 30_000 });
-    const frame = await (await shown.elementHandle())?.contentFrame();
-    await expect.poll(() => frame?.evaluate(() => self.origin).catch(() => null), { timeout: 15_000 }).toBe('null');
+    await expect.poll(() => v2Origin(page, appId, src), { timeout: 30_000 }).toBe('null');
   }
 });
