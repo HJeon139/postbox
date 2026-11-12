@@ -166,7 +166,7 @@ const named = (model) => /-(low|medium|high)$/.exec(String(model))?.[1] ?? null;
 /** The effort a turn ran at, for the model chip: the one passed, or the one the id names. */
 export const effortRun = (model, passed) => passed ?? named(model);
 
-export { AGY_SERVER, ALLOW_POSTBOX, agyContextPercent, agySettingsFile, agyWindowFor, allowPostbox };
+export { AGY_SERVER, ALLOW_POSTBOX, allowPostbox };
 
 /** The persona’s permission mode as agy’s flags (#370: --dangerously-skip-permissions only once the PreToolUse hook is confirmed). */
 export function modeArgs(persona, { hookConfirmed = false } = {}) {
@@ -256,7 +256,7 @@ export function agyRules({ persona, guide, schemas = null, hooked = false }) {
   return `${[guide, schemas ? toolsNote(schemas) : '', approval, limits].filter(Boolean).join('\n\n')}\n`;
 }
 
-export { agyPlugin, excludeFile, excludePlugin, PLUGIN_DIR, refusalFollowUp, refusalOf };
+export { agyPlugin, excludeFile, excludePlugin, PLUGIN_DIR, refusalFollowUp };
 
 const firstSentence = (s, n = 300) => clip(/^[\s\S]*?[.!?](?=\s|$)/.exec(String(s ?? '').trim())?.[0] ?? s, n);
 

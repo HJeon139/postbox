@@ -44,7 +44,7 @@ import { effortOf, fromContext, recorderFor } from './setup.mjs';
 import { takeToolsDown } from './tools-down.mjs';
 
 export { claudeArgs } from './claude-code-args.mjs';
-export { CLAUDE_CODE_CAPABILITIES, DENY_PROMPTS_MIN, REMOTE_CLAUDE_MIN, remoteClaudeProblem } from './claude-code-remote.mjs';
+export { CLAUDE_CODE_CAPABILITIES, remoteClaudeProblem } from './claude-code-remote.mjs';
 
 /** The claude binary: POSTBOX_CLAUDE_BIN, then the native installer’s location, then the PATH. */
 export function findClaude(env = process.env) {

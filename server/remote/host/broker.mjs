@@ -78,7 +78,7 @@ import { brokerState } from './broker-state.mjs';
 export { CODEX_DECLINE, codexDeclineLine, codexPromptId } from './broker-codex.mjs';
 export { inlineAppFiles } from './broker-files.mjs';
 export { readConversation, readMessage } from './broker-reading.mjs';
-export { CODEX_POLL_MS, STOPPED_TEXT } from './broker-state.mjs';
+export { STOPPED_TEXT } from './broker-state.mjs';
 
 /** The broker's close (createBroker's `close`). @param {import('./broker-state.mjs').Broker} b */
 function closeBroker(b) {

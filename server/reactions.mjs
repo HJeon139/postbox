@@ -7,8 +7,6 @@
 import { REACTIONS } from '../shared/reactions.mjs';
 import { httpError } from './helpers.mjs';
 
-export { REACTIONS };
-
 /** The act that reacts (POST …/items/<id>/act). An agent’s action ids can’t start with @, so none of theirs is this one. */
 export const REACT = '@react';
 const OFFERED = new Set(REACTIONS.map(([e]) => e));

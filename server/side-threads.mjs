@@ -14,7 +14,7 @@ import { askToAdd, askToWake, closeHop, closeOwnCard, dropHeld, retireStale } fr
 export { resolveHop } from './wake-cards.mjs';
 // The server’s default chain limit, 1,000 unless POSTBOX_CHAIN_LIMIT sets another; a room can set its own (#1035), which
 // roomChainLimit reads.
-export { HOP_LIMIT, roomChainLimit };
+export { HOP_LIMIT };
 
 // ── Agents waking agents ───────────────────────────────────────────────────────────
 
