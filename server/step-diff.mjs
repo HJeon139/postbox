@@ -1,7 +1,7 @@
 // The lines an edit changes, for its step: how many it adds and removes, and the first few as a small diff, so the
 // newest step of a running turn shows what it changed, as its harness does (designs/rooms-at-scale.md, “Live state”).
 // Read from the call’s input in Claude Code’s names: Edit’s old_string and new_string, MultiEdit’s edits, and Write’s
-// content, which adds every line.
+// content, which adds every line; or from a unified diff, for a harness that says its change that way (Codex).
 
 import { STEP_TEXT } from '../shared/limits.mjs';
 
@@ -32,18 +32,25 @@ function replacements(name, i) {
   return [];
 }
 
+/** A unified diff’s changed lines, by hunk, without its headers. @param {string} patch */
+function patchChanges(patch) {
+  const lines = linesOf(patch).filter((l) => !/^(?:---|\+\+\+) /.test(l));
+  return [{ removed: lines.filter((l) => l[0] === '-').map((l) => l.slice(1)), added: lines.filter((l) => l[0] === '+').map((l) => l.slice(1)) }];
+}
+
 /**
  * The step fields for an edit’s change: { added, deleted, diff }, or none for a call that changes no lines it says.
- * @param {string} name @param {unknown} input @returns {{ added?: number, deleted?: number, diff?: string }}
+ * @param {string} name @param {unknown} input @param {unknown} [patch]  the change as a unified diff, when its harness says it so
+ * @returns {{ added?: number, deleted?: number, diff?: string }}
  */
-export function stepDiff(name, input) {
+export function stepDiff(name, input, patch) {
   const i = /** @type {any} */ (input ?? {});
   let added = 0;
   let deleted = 0;
   /** @type {string[]} */
   const shown = [];
-  for (const [before, after] of replacements(name, i)) {
-    const c = changed(linesOf(before), linesOf(after));
+  const changes = typeof patch === 'string' ? patchChanges(patch) : replacements(name, i).map(([before, after]) => changed(linesOf(before), linesOf(after)));
+  for (const c of changes) {
     deleted += c.removed.length;
     added += c.added.length;
     for (const [mark, l] of [...c.removed.map((l) => ['-', l]), ...c.added.map((l) => ['+', l])]) {

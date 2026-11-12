@@ -2,8 +2,11 @@
 // a turn’s activity), which the live view draws from (app/js/activity-live.mjs).
 
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
+import { createAgyMapper } from '../server/adapters/antigravity-cli.mjs';
+import { createCodexMapper } from '../server/adapters/codex.mjs';
 import { HarnessEvents } from '../server/harness-events.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { stepDiff } from '../server/step-diff.mjs';
@@ -70,4 +73,47 @@ test('a step of the agent’s own keeps where it fell in the reply’s words, an
   const step = reply.activity.steps.find((/** @type {any} */ s) => s.id === 'e1');
   assert.equal(step.at, 'Reading first.'.length, 'after the words before it');
   assert.deepEqual([step.added, step.deleted, step.diff], [1, 1, '-a\n+b']);
+});
+
+// Recorded turns (tests/fixtures/), replayed through each adapter’s mapper into the contract: a Codex fileChange says
+// each file’s change as a unified diff, which its step shows; Antigravity’s edit_file and write_file say only the path.
+const recorded = (/** @type {string} */ path) =>
+  readFileSync(new URL(`fixtures/${path}.jsonl`, import.meta.url), 'utf8')
+    .trim()
+    .split('\n')
+    .map((l) => JSON.parse(l));
+/** A turn’s context that keeps its steps, the newest of each id last. */
+function stepsCtx() {
+  /** @type {Map<string, any>} */
+  const steps = new Map();
+  const ctx = new Proxy(
+    { activity: (/** @type {any} */ a) => steps.set(a.id, { ...steps.get(a.id), ...a }) },
+    { get: (t, k) => (k in t ? t[/** @type {'activity'} */ (k)] : () => {}) },
+  );
+  return { ctx, steps };
+}
+
+test('a Codex turn’s file changes show their diff and counts on their steps, from the patch its stream carries', () => {
+  const { ctx, steps } = stepsCtx();
+  const m = createCodexMapper(ctx, { read: () => null });
+  for (const e of recorded('codex-app-server/ledger-edits')) m.push(e);
+  const edits = [...steps.values()].filter((s) => /^(Edited|Wrote|Created)/.test(s.label));
+  const by = Object.fromEntries(edits.map((s) => [s.label.split(' ').at(-1), s]));
+  assert.deepEqual(Object.keys(by).sort(), ['NOTES.md', 'calc.py'], edits.map((s) => s.label).join(', '));
+  assert.deepEqual([by['calc.py'].added, by['calc.py'].deleted, by['calc.py'].diff], [1, 1, '-    return a - b\n+    return a + b']);
+  assert.deepEqual([by['NOTES.md'].added, by['NOTES.md'].deleted, by['NOTES.md'].diff], [1, 0, '+Fixed add.']);
+});
+
+test('an Antigravity turn’s edits carry no change in its stream, only the path, so their steps show none', () => {
+  const lines = recorded('antigravity-cli/ledger-edits');
+  const edits = lines.map((e) => e.step_update).filter((s) => s?.tool_name === 'edit_file' || s?.tool_name === 'write_file');
+  assert.equal(edits.length, 4, 'two edits, each started and done');
+  for (const s of edits) assert.deepEqual(Object.keys(s.tool_info), ['name', 'parameters'], 'no output');
+  for (const s of edits) assert.deepEqual(Object.keys(s.tool_info.parameters), ['Path'], 'and the path alone');
+  const { ctx, steps } = stepsCtx();
+  const m = createAgyMapper(ctx, { now: () => 1000 });
+  for (const e of lines) m.push(e);
+  const shown = [...steps.values()].filter((s) => /calc\.py|TODO\.md/.test(s.label) && !/^Read/.test(s.label));
+  assert.equal(shown.length, 2, shown.map((s) => s.label).join(', '));
+  for (const s of shown) assert.equal(s.diff, undefined, `${s.label}: nothing to show`);
 });

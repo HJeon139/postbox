@@ -65,16 +65,17 @@ export class HarnessTools {
   }
 
   /**
-   * A call starts: its step, unless it shows as what it makes, and a subagent’s entry. `own`: its harness’s own label.
-   * @param {string} id @param {string} name @param {any} input @param {any} by @param {string} [own]
+   * A call starts: its step, unless it shows as what it makes, and a subagent’s entry. `own`: its harness’s own label;
+   * `patch`: its change as a unified diff, when its harness says it so.
+   * @param {string} id @param {string} name @param {any} input @param {any} by @param {string} [own] @param {string} [patch]
    */
-  start(id, name, input, by = null, own = '') {
+  start(id, name, input, by = null, own = '', patch = undefined) {
     if (this.st.tools.has(id)) return;
     const who = by?.who ?? null;
     const quiet = QUIET.test(name);
     const label = own || describeTool(name, input);
-    this.st.tools.set(id, { name, label, own, input, shown: stepInput(input), who, parent: by?.parent ?? null, started: this.now(), quiet });
-    const diff = stepDiff(name, input);
+    this.st.tools.set(id, { name, label, own, input, patch, shown: stepInput(input), who, parent: by?.parent ?? null, started: this.now(), quiet });
+    const diff = stepDiff(name, input, patch);
     this.st.tools.get(id).diff = diff.diff;
     const step = { id, label, state: 'running', ...byOf(by), ...inputOf(input), ...diff };
     if (!quiet) this.ctx.activity({ ...step, ...(SUBAGENT_TOOLS.has(name) ? { kind: 'agent' } : {}) });
@@ -115,7 +116,7 @@ export class HarnessTools {
     const label = t.own || describeTool(t.name, input);
     const known = stepInput(t.input);
     // An edit’s change shows as its input arrives (server/step-diff.mjs).
-    const diff = stepDiff(t.name, t.input);
+    const diff = stepDiff(t.name, t.input, t.patch);
     if (label !== t.label || (known && known !== t.shown) || diff.diff !== t.diff) {
       t.label = label;
       t.shown = known;

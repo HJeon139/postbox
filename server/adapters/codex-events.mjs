@@ -50,9 +50,33 @@ export function itemStarted(emit, item) {
   else if (item.type === 'fileChange')
     (item.changes ?? []).forEach((/** @type {any} */ c, /** @type {number} */ i) => {
       if (typeof c?.path === 'string' && c.path)
-        emit({ kind: 'tool_call', id: `${item.id}:${i}`, name: c.kind?.type === 'add' ? 'Write' : 'Edit', input: { file_path: c.path }, final: true });
+        emit({
+          kind: 'tool_call',
+          id: `${item.id}:${i}`,
+          name: c.kind?.type === 'add' ? 'Write' : 'Edit',
+          input: { file_path: c.path },
+          final: true,
+          ...patchOf(c),
+        });
     });
 }
+
+/**
+ * A change’s lines as a unified diff, for its step (server/step-diff.mjs): an update’s diff is one already; a new
+ * file’s is its text, every line added, and a deleted one’s every line removed. @param {any} c  one of a fileChange’s
+ */
+function patchOf(c) {
+  if (typeof c.diff !== 'string' || !c.diff) return {};
+  const mark = WHOLE.get(c.kind?.type);
+  if (!mark) return { patch: c.diff };
+  const lines = c.diff.replace(/\n$/, '').split('\n');
+  return { patch: lines.map((l) => mark + l).join('\n') };
+}
+// A whole file's lines, by the change that makes it: every one added, or every one removed.
+const WHOLE = new Map([
+  ['add', '+'],
+  ['delete', '-'],
+]);
 
 /**
  * What an item returned, when it completes. @param {(e: any) => void} emit @param {any} item
