@@ -50,7 +50,7 @@ test('check: runs hello’s signInCheck as an argument list, with no shell and n
     sp.calls[2].child.emit('error', e);
     assert.deepEqual((({ ok: o, code }) => ({ ok: o, code }))(await c.msgs.next('checked')), { ok: false, code: null }, 'a check that can’t start fails');
   } finally {
-    s.done();
+    await s.done();
   }
 });
 
@@ -74,7 +74,7 @@ test('check: one that runs past SIGN_IN_CHECK_MS is killed and fails; without a 
     assert.equal(none.re, 'check');
     assert.equal(sp.calls.length, 1);
   } finally {
-    s.done();
+    await s.done();
   }
 });
 
@@ -90,6 +90,6 @@ test('#1066 the sign-in check runs with the login shell’s PATH first, so a pro
     call.child.emit('exit', 0, null);
     assert.equal((await c.msgs.next('checked')).ok, true);
   } finally {
-    s.done();
+    await s.done();
   }
 });

@@ -109,7 +109,7 @@ test('#672: a turn’s PATH holds the folder of the Node the daemon runs on, aft
     const record = await startedRecord(s);
     assert.equal(record.env.PATH, '/login/bin:/x/node/22/bin:/usr/bin:/bin');
   } finally {
-    s.done();
+    await s.done();
   }
 });
 
@@ -120,7 +120,7 @@ test('#672: a turn’s PATH is the login shell’s first, then the daemon’s, o
     assert.equal(record.env.PATH, '/login/bin:/usr/bin:/bin');
     assert.equal(record.env.CLAUDE_CODE_ENTRYPOINT, 'postbox', 'the laptop’s variables still go');
   } finally {
-    s.done();
+    await s.done();
   }
 });
 
@@ -130,7 +130,7 @@ test('#672: a PATH the laptop sends still wins over the login shell’s', async 
     const record = await startedRecord(s, { env: { PATH: '/laptop/bin' } });
     assert.equal(record.env.PATH, '/laptop/bin');
   } finally {
-    s.done();
+    await s.done();
   }
 });
 
@@ -140,7 +140,7 @@ test('#672: when the login shell fails, the turn’s PATH isn’t set, as before
     const record = await startedRecord(s);
     assert.equal(Object.hasOwn(record.env, 'PATH'), false);
   } finally {
-    s.done();
+    await s.done();
   }
 });
 
@@ -155,10 +155,10 @@ test('#672: the welcome says how many entries the login PATH had and how long it
     try {
       assert.deepEqual((await hello(failed)).welcome.loginPath, { ok: false, why: 'it timed out after 5 s' });
     } finally {
-      failed.done();
+      await failed.done();
     }
   } finally {
-    s.done();
+    await s.done();
   }
 });
 
@@ -188,7 +188,7 @@ test('#672: a harness missing at its start is looked for again with a fresh logi
     assert.deepEqual(seen.at(-1), ['/early/bin', '/late/bin'], 'the lookup used the fresh login PATH');
     assert.match(record.env.PATH, /^\/early\/bin:\/late\/bin/);
   } finally {
-    s.done();
+    await s.done();
   }
 });
 
@@ -207,7 +207,7 @@ test('#672: the login shell is asked again at most once per daemon start', async
     await hello(s, { takeover: true });
     assert.equal(probes, 2, 'nor at a later hello');
   } finally {
-    s.done();
+    await s.done();
   }
 });
 
@@ -228,7 +228,7 @@ test('#672: a re-probe that fails keeps the first probe’s PATH, so a CLI it fo
     assert.equal(record.program, '/late/bin/claude', 'claude is still found on the first probe’s PATH');
     assert.match(record.env.PATH, /^\/late\/bin/);
   } finally {
-    s.done();
+    await s.done();
   }
 });
 

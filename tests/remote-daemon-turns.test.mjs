@@ -43,7 +43,7 @@ test('start writes the turn folder (0700) and its files (0600), start.json, then
     c.send('start', startMsg('t3', { folder: join(s.home, 'nowhere') }));
     assert.equal((await c.msgs.next('error')).code, 'start-failed');
   } finally {
-    s.done();
+    await s.done();
   }
 });
 
@@ -66,7 +66,7 @@ test('start sends started only once the runner answers, and fails with the runne
       'started came after the runner answered who',
     );
   } finally {
-    s.done();
+    await s.done();
   }
 });
 
@@ -81,7 +81,7 @@ test('the liveness check asks the runner with the token from the daemon’s own 
     assert.equal(ask?.token, TOKEN);
     assert.equal(ask?.path, s.p.turn('t1', TURN_FILES.socket));
   } finally {
-    s.done();
+    await s.done();
   }
 });
 
@@ -129,7 +129,7 @@ test('read sends lines with exact byte offsets from 0 and from a line in the mid
     d.send('read', { turn: 'nope', from: 0 });
     assert.equal((await d.msgs.next('error')).code, 'no-turn');
   } finally {
-    s.done();
+    await s.done();
   }
 });
 
@@ -155,7 +155,7 @@ test('read follows a running turn: appended lines arrive, a last line without \\
     assert.equal((await c.msgs.next('error')).code, 'bad-offset');
     assert.equal(s.daemon.acked.get('t1'), 16);
   } finally {
-    s.done();
+    await s.done();
   }
 });
 
@@ -175,7 +175,7 @@ test('a line over the stream limit is sent cut, with its offsets, and the stream
       ],
     );
   } finally {
-    s.done();
+    await s.done();
   }
 });
 
@@ -191,7 +191,7 @@ test('a turn with no exit.json and no live runner reads as interrupted: ended wi
     assert.equal(lines.length, 1);
     assert.deepEqual(ended, { type: 'ended', turn: 't1', exit: null, size: 8 });
   } finally {
-    s.done();
+    await s.done();
   }
 });
 
@@ -214,7 +214,7 @@ test('scan classifies turn folders: a live runner is running, exit.json is ended
     const c = await hello(s);
     assert.equal(c.welcome.turns.length, 3);
   } finally {
-    s.done();
+    await s.done();
   }
 });
 
@@ -234,6 +234,6 @@ test('write forwards a line to a held stdin’s runner, and refuses a turn whose
     c.send('write', { turn: 't2', line: 'x' });
     assert.equal((await c.msgs.next('error')).code, 'not-held');
   } finally {
-    s.done();
+    await s.done();
   }
 });

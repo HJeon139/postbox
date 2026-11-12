@@ -48,7 +48,7 @@ test('#872 a miss that comes back after a later look’s answer starts no silenc
     assert.equal(s.daemon.silentSince.has('t1'), false, 'no silence after the answer');
     assert.equal(s.logs.filter((l) => /t1.*didn’t answer/.test(l)).length, 0);
   } finally {
-    s.done();
+    await s.done();
   }
 });
 
@@ -61,6 +61,6 @@ test('#872 an answer that comes back after a later look’s miss doesn’t end t
     assert.ok(s.daemon.silentSince.has('t1'), 'the earlier look’s answer is older news');
     assert.equal(s.logs.filter((l) => /t1.*answered again/.test(l)).length, 0);
   } finally {
-    s.done();
+    await s.done();
   }
 });

@@ -34,7 +34,7 @@ test('#120: start writes each attachment, decoded, in the turn folder’s attach
     await c.msgs.next('started');
     assert.equal(existsSync(s.p.turn('t2', ATTACHMENTS_DIR)), false);
   } finally {
-    s.done();
+    await s.done();
   }
 });
 
@@ -49,7 +49,7 @@ test('#120: an ended turn’s attachments go with its other files, and their fol
     assert.equal(existsSync(join(dir, ATTACHMENTS_DIR)), false);
     assert.ok(ls(dir).includes(TURN_FILES.exit), 'the turn’s record stays');
   } finally {
-    s.done();
+    await s.done();
   }
 });
 
@@ -70,6 +70,6 @@ test('#120: an attachments folder that’s a link is unlinked, never followed, a
     assert.deepEqual(ls(join(made, ATTACHMENTS_DIR)), ['unpacked'], 'the file went; the folder waits for logRetention');
     assert.ok(s.logs.some((l) => l.includes(`Couldn’t delete ${join(made, ATTACHMENTS_DIR)}`)));
   } finally {
-    s.done();
+    await s.done();
   }
 });
