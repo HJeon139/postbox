@@ -302,7 +302,7 @@ function wholeButton(it) {
 function thoughtParts(s, lines) {
   const text = String(s.detail || s.label);
   const capped = text.length > lines * LINE_CHARS && !wholeThoughts.has(s.id);
-  const el = h(`div.live-thought${capped ? '.clamped' : ''}`, { style: `--lines: ${lines}` }, text);
+  const el = h(`div.live-thought${capped ? '.clamped' : ''}`, { style: `--lines: ${lines}`, tabindex: '-1', dataset: { focus: `thought-${s.id}` } }, text);
   if (!capped) return [el];
   const more = h(
     'button.thought-more',
@@ -311,6 +311,8 @@ function thoughtParts(s, lines) {
       onclick: () => {
         wholeThoughts.add(s.id);
         el.classList.remove('clamped');
+        // The control goes, so focus goes to what it opened: the thought, whole.
+        el.focus();
         more.remove();
       },
     },

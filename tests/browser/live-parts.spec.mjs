@@ -115,6 +115,7 @@ test('four agents’ running replies fit the screen together: their words, a cap
   await page.getByRole('button', { name: 'Show the whole thought' }).first().focus();
   await page.keyboard.press('Enter');
   await expect(first).not.toHaveClass(/clamped/);
+  await expect(first, 'focus goes to the thought it opened, not the page').toBeFocused();
   for (const w of four) go(w);
   await expect.poll(() => scripted.app.rt.turns.size).toBe(0);
 });
