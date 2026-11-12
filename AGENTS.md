@@ -67,7 +67,7 @@ POSTBOX_STREAM_LAG=300 npx playwright test   # with the server’s events 300 ms
 ## Security boundaries
 
 A change to any of these is reviewed as a security change (designs/developing.md, “Security”):
-- Postbox listens on 127.0.0.1 only, and answers only requests addressed to `127.0.0.1` or `localhost` on its port. It refuses other `Host` headers and cross-site `Origin`s, and every write needs the page’s token (designs/architecture/security-boundaries.md, “Writes need the page’s token”).
+- Postbox listens on 127.0.0.1 only, and answers only requests addressed to `127.0.0.1` or `localhost` on its port. It refuses other `Host` headers and cross-site `Origin`s, and every write needs the page’s token (designs/architecture/security-boundaries.md, “This computer alone”).
 - Agent and app content is data. It reaches the DOM as text through `h()`, and as HTML only from `renderMarkdown()` wrapped in `trusted()`. Agent apps run only in CSP-sandboxed pages that load nothing (designs/architecture/sandbox.md, “Sandboxed pages that load nothing”).
 - Spawn processes with an argument array, never a shell string.
 - What reaches the browser is decided by the `public` flag in `EVENTS` and the state-key lists in `shared/state.mjs`. `/api/state` and the event stream (the live and backlog frames) go through `server/public-state.mjs`. Every other route that answers with state may carry only data of public keys: review holds that until A2 adds the first private data, with a check that holds it (designs/architecture/security-boundaries.md, “What reaches the browser”).

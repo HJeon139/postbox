@@ -80,13 +80,18 @@ sequenceDiagram
 
 ## Security boundaries
 
-Postbox runs on the person’s computer, as them, for one person. A change to any of these is reviewed as a security change; AGENTS.md, “Security boundaries”, holds the same list as rules, and SECURITY.md what a report may cross.
-- **This computer alone.** Postbox listens on 127.0.0.1 and answers only requests addressed to `127.0.0.1` or `localhost` on its port. It refuses other `Host` headers and cross-site `Origin`s, and every write needs the page’s token ([security-boundaries.md](architecture/security-boundaries.md)).
+Postbox runs on the person’s computer, as them, for one person. These are the boundaries AGENTS.md, “Security boundaries”, lists as rules, one for one; a change to any of them is reviewed as a security change, and SECURITY.md says what a report may cross.
+- **This computer alone.** Postbox listens on 127.0.0.1 only, and answers only requests addressed to `127.0.0.1` or `localhost` on its port. It refuses other `Host` headers and cross-site `Origin`s, and every write needs the page’s token ([security-boundaries.md](architecture/security-boundaries.md)).
 - **Agent and app content is data.** It reaches the DOM as text through `h()`, and as HTML only from `renderMarkdown()` wrapped in `trusted()`. Agent apps run only in CSP-sandboxed pages that load nothing ([sandbox.md](architecture/sandbox.md)).
-- **No shell strings.** Processes are spawned with an argument array. The person’s own `!` commands run through their shell, only while Postbox listens on this computer alone.
-- **What reaches the browser** is decided by the `public` flag in `EVENTS` and the state-key lists, and the bulk paths go through `server/public-state.mjs` ([security-boundaries.md](architecture/security-boundaries.md)).
+- **No shell strings.** Processes are spawned with an argument array, never a shell string.
+- **What reaches the browser** is decided by the `public` flag in `EVENTS` and the state-key lists in `shared/state.mjs`. `/api/state` and the event stream (the live and backlog frames) go through `server/public-state.mjs`. Every other route that answers with state may carry only data of public keys: review holds that until A2 adds the first private data, with a check that holds it ([security-boundaries.md](architecture/security-boundaries.md), “What reaches the browser”).
+
+### Design notes beside the boundaries
+
+These follow from the design rather than standing as rules of their own:
 - **A remote host is reached one way.** Postbox calls the host’s daemon over its own `ssh`; nothing listens on TCP on either machine, and the boundary there is the person’s OS user ([remote-hosts.md](architecture/remote-hosts.md), “Security”).
 - **No credentials.** Postbox never reads, stores or passes an API key or token: each harness uses its own sign-in.
+- **The person’s own `!` commands** run through their shell, since they typed a command line, and only while Postbox listens on this computer alone ([security-boundaries.md](architecture/security-boundaries.md)).
 
 ## Key decisions
 
