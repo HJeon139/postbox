@@ -3,7 +3,7 @@
 
 import { renderMarkdown } from '/shared/markdown.mjs';
 import { resolveCommand } from '/shared/slash-line.mjs';
-import { laterParts } from './activity-live.mjs';
+import { laterParts, liveHere } from './activity-live.mjs';
 import { activityParts, drawnStale, hasRecord, paintActivity, paintPatch, recordMoved } from './activity-paint.mjs';
 import { activityLabel } from './activity-steps.mjs';
 import { mockMarker } from './agent-facts.mjs';
@@ -93,10 +93,10 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
       (se) => se.id,
       (se) => {
         const row = h('div.work-row', ringFor(se, 'xs'), h('div.work-text'));
-        fillWorkRow(row, se);
+        fillWorkRow(row, se, threadId);
         return row;
       },
-      (row, se) => fillWorkRow(row, se),
+      (row, se) => fillWorkRow(row, se, threadId),
     );
     el.append(hostTurns.el, working); // keep them last
     // A running turn’s steps fit its share of the screen, which changes as agents start and finish (activity-live.mjs).
@@ -323,13 +323,13 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
   };
 }
 
-function fillWorkRow(row, se) {
+function fillWorkRow(row, se, threadId) {
   ringFor(se, 'xs', row.querySelector('pb-ring'));
   const step = se.state === 'tool' && se.currentStep ? `: ${se.currentStep}` : '';
   fill(
     row.querySelector('.work-text'),
     h('div.work-line', h('b', se.handle), h('span.dim', ` · ${stateWord(se.state).toLowerCase()}${step}`)),
-    se.glimpse ? h('div.glimpse', se.glimpse) : null,
+    se.glimpse && !liveHere(se, threadId) ? h('div.glimpse', se.glimpse) : null, // a live reply shows it as it’s written
     // Each subagent at work, in its own words when it has said something (#73): “reader: Now I’ll read paper 3…”.
     (se.subagents ?? []).map((x) => h('div.work-line.work-sub', h('span', `${x.name}: `), h('span.dim', subagentNow(x)))),
   );

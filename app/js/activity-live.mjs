@@ -40,6 +40,16 @@ export function isLive(it, threadId) {
 }
 
 /**
+ * Whether an agent’s reply here is live, its thoughts and words shown as they’re written, so its working row needn’t
+ * say them again. @param {any} se @param {string} threadId
+ */
+export function liveHere(se, threadId) {
+  const items = itemsOf(threadId);
+  for (let i = items.length - 1; i >= 0; i--) if (items[i].kind === 'agent' && items[i].sessionId === se.id) return isLive(items[i], threadId);
+  return false;
+}
+
+/**
  * A turn’s first part, which keeps all its steps (server/reply-segment.mjs, placeStep): this one, or the nearest above
  * of its turn. @param {any} it @param {string} threadId
  */

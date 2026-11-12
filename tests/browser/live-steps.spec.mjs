@@ -171,6 +171,8 @@ test('a running turn’s thoughts show whole, paragraphs and all, between its st
   await expect(shown).toHaveCount(1);
   expect(await shown.textContent(), 'the whole thought, its paragraph break kept').toBe(thought);
   expect(await shown.evaluate((e) => getComputedStyle(e).fontStyle), 'set apart from the reply’s words').toBe('italic');
+  await expect(page.locator('.work-row', { hasText: 'thinker' }), 'its working row').toHaveCount(1);
+  await expect(page.locator('.work-row .glimpse'), 'which doesn’t say the thought again').toHaveCount(0);
   go('thinker');
   await expect.poll(() => scripted.app.rt.turns.size).toBe(0);
 });
