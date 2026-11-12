@@ -11,7 +11,7 @@
 
 ## Phase 1: Four agents, each with tools to call
 
-In one message, ask @developer to write `wordcount.py`, which prints the number of words in a text file given as its argument, and run it on a short file it makes; ask @alpha to write a test file for it with three cases and run it once `wordcount.py` exists; ask @critic to read `wordcount.py` once it exists and run it on two edge cases of its choosing, one of them a file that doesn’t exist; and ask @researcher to list the files in the project folder and say in two lines what each holds. While they work, look at each running reply, for every backend, not only Claude’s: its words and steps should read in the order they happened, the newest step in full, and the older ones as one line each. The run on a missing file should be a failed step that says why.
+In one message, ask @developer to write `wordcount.py`, which prints the number of words in a text file given as its argument, and run it on a short file it makes; ask @alpha to write a test file for it with three cases and run it once `wordcount.py` exists; ask @critic to read `wordcount.py` once it exists and run it on two edge cases of its choosing, one of them a file that doesn’t exist; and ask @researcher to list the files in the project folder and say in two lines what each holds. Give that message an interrupt `{after: 12, do: look}`, so you see the replies while they run, since the run otherwise waits for the agents before each step. Look at each running reply, for every backend, not only Claude’s: its words and steps should read in the order they happened, the newest step in full, and the older ones as one line each. The run on a missing file should be a failed step that says why.
 
 ## Phase 2: Finished turns, and Work
 
