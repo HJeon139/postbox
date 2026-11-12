@@ -64,9 +64,11 @@ export function makeTurn(p, turn, { out = '{"n":1}\n{"n":2}\n', exit = true, pid
   return dir;
 }
 export const ls = (dir) => readdirSync(dir).sort();
-/** Waits for check() to hold, looking every 10 ms. */
+/** Waits for check() to hold, looking every 10 ms, and once more at the deadline: a process stalled past the deadline
+ * still sees what happened meanwhile. */
 export async function until(check, what, ms = 2000) {
   for (const end = Date.now() + ms; Date.now() < end; await new Promise((r) => setTimeout(r, 10))) if (check()) return;
+  if (check()) return;
   throw new Error(`Timed out waiting for ${what}.`);
 }
 
