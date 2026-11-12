@@ -86,6 +86,8 @@ const PENDING = {
   'blocks.mjs': ['shownBy'], // update_block of a block the turn just showed
   'catch-up.mjs': ['moveMarkers'], // the conversation of a topic an item moved in, maybe opened behind a held commit, whose sessions' markers move (#1041)
   'held-session.mjs': ['heldSession'], // a delivery to a session just made behind a held commit waits until it's published (#796's class in sessions)
+  // A job's end: the list it leaves, whether a kept job still runs to hold the steps, and the steps to stall (#957).
+  'job-records.mjs': ['endJob', 'endJob', 'endJob', 'runningProgress', 'setJobStep', 'settleJobs'],
   'ledger.mjs': ['entries', 'recordPublishes', 'recordPublishes'], // the ledger reads back its own entries; the turn’s blocks and apps
   'lint-delivery.mjs': ['sendLint'], // the apps the turn showed, still being checked
   // The queue a drain takes from and the queued messages a deleted session's release posts: a wake or a message
@@ -100,26 +102,7 @@ const PENDING = {
   'remote/turns-prompts.mjs': ['cardOf', 'permissionCards'], // a host turn’s own cards: the sweep its callers settle, and the calls an attach after a restart holds (#353)
   'remote/turns-resume.mjs': ['reattach'], // the replayed turn’s replies, replaced in a sweep
   'reply-segment.mjs': ['wordsSegment', 'placeStep'], // whether the turn’s open part is still its thread’s last decides where its next words and steps go
-  'runtime.mjs': [
-    'addItem',
-    'addItem',
-    'bringForward',
-    'deliver',
-    'deliver',
-    'deliver',
-    'text',
-    'compaction',
-    'endTurn',
-    'endTurn',
-    'endTurn',
-    // A job's end: the list it leaves, whether a kept job still runs to hold the steps, and the steps to stall (#957).
-    'endJob',
-    'endJob',
-    'endJob',
-    'runningProgress',
-    'setJobStep',
-    'settleJobs',
-  ], // the turn’s own items and apps, a move after a pending read, sweeps that write back, the thread a message, a delivery or a topic reply count goes to, maybe opened or deleting behind a held commit, and the session a stopped turn's exit settles, its “stopping” maybe held (#796)
+  'runtime.mjs': ['addItem', 'addItem', 'bringForward', 'deliver', 'deliver', 'deliver', 'text', 'compaction', 'endTurn', 'endTurn', 'endTurn'], // the turn’s own items and apps, a move after a pending read, sweeps that write back, the thread a message, a delivery or a topic reply count goes to, maybe opened or deleting behind a held commit, and the session a stopped turn's exit settles, its “stopping” maybe held (#796)
   // The reply with the mention, a side line right after its add, and sweeps of hop cards; the conversation's hop count,
   // the topic the wake answers in, and endChain's hops and queued wakes, each maybe held behind a commit (#796).
   // A session's change and notice diff against the session a held change left (#796's class in sessions).

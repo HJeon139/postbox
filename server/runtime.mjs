@@ -28,7 +28,8 @@ import { emptyReply, endedWithoutReply } from './empty-reply.mjs';
 import { heldSession } from './held-session.mjs';
 import { clip, clipText, httpError, retiredError } from './helpers.mjs';
 import { describeItem, topicRootLine } from './item-lines.mjs';
-import { keptGroupsOf, keptJobs, pollKept, stopJob, stopKeptJobs, watchKept } from './kept-jobs.mjs';
+import { endJob, expireStaleJobs, recordJob, runningJobs, runningProgress, setJobStep, settleJobs } from './job-records.mjs';
+import { keptJobs, pollKept, stopJob, stopKeptJobs, watchKept } from './kept-jobs.mjs';
 import { Ledger } from './ledger.mjs';
 import { endLint, foldLint, lint, quietLint } from './lint-delivery.mjs';
 import { wakeMentions } from './mention-wakes.mjs';
@@ -66,7 +67,7 @@ import { mcpContext } from './setup-context.mjs';
 import { clearSummaryPending, postSummary, shareText, shareToConversation, summarizeBack, summarizing } from './share-back.mjs';
 import { commandFolder, expireStaleCommands, flushShellOutput, runShellCommand, stopShellCommand, stopShellCommands } from './shell-runs.mjs';
 import { agentWake, bumpSideLink, endChain, recordAgentMessage, resolveHop, sideSession } from './side-threads.mjs';
-import { stepState, turnStep } from './step-text.mjs';
+import { turnStep } from './step-text.mjs';
 import { newId } from './store.mjs';
 import { heldTurn, saveBackendState, watchStore, whenWritable } from './store-outage.mjs';
 import { notUrgent } from './subagent-end.mjs';
@@ -92,8 +93,6 @@ export { PERMISSION_MODES, readCapped };
 
 /** @typedef {import('./agent-files.mjs').AppFile} AppFile */
 
-/** The background jobs Postbox keeps on a session, at most. */
-const MAX_JOBS = 50;
 export class Runtime {
   /**
    * @param {{ store: import('./store.mjs').Store, adapters: import('./adapters/adapter.mjs').AdapterRegistry,
@@ -910,140 +909,32 @@ export class Runtime {
     return stopTurns(this, opts);
   }
 
-  // ── Background jobs (#129) ─────────────────────────────────────────────────────────
+  // ── Background jobs (#129): server/job-records.mjs and kept-jobs.mjs ───────────────
 
-  /** A turn’s background jobs still running under its CLI (not those Postbox kept running after an earlier Stop). */
   runningJobs(sessionId, turnId) {
-    return (this.s.sessions[sessionId]?.jobs ?? []).filter((j) => j.turnId === turnId && j.state === 'running' && !j.kept);
+    return runningJobs(this, sessionId, turnId);
   }
-
-  /** What the adapter reports about a background job (ctx.job), bounded. */
   recordJob(turn, j) {
-    const se = this.s.sessions[turn.sessionId];
-    if (!se || !j || typeof j.id !== 'string' || !j.id) return;
-    const id = j.id.slice(0, 60);
-    const jobs = se.jobs ?? [];
-    const old = jobs.find((x) => x.id === id);
-    if (!old) {
-      if (j.state !== 'running') return;
-      const job = {
-        id,
-        sessionId: se.id,
-        turnId: turn.id,
-        threadId: turn.threadId,
-        itemId: turn.first,
-        toolUseId: String(j.toolUseId ?? '').slice(0, 100),
-        label: clipText(String(j.label ?? 'Background job'), 200),
-        // Whole, up to a bound: Postbox finds the job’s process by its command.
-        command: String(j.command ?? '').slice(0, 8000),
-        outputFile: typeof j.outputFile === 'string' && j.outputFile ? j.outputFile.slice(0, 1000) : null,
-        startedAt: Date.now(),
-        state: 'running',
-      };
-      // At the bound, the oldest job Postbox didn’t keep goes first: a kept one has no other record.
-      const all = [...jobs, job];
-      const drop = all.length > MAX_JOBS ? all.find((x) => !x.kept) : null;
-      this.updateSession(se.id, { jobs: drop ? all.filter((x) => x !== drop) : all });
-      return;
-    }
-    const groups = j.kept === true ? keptGroupsOf(j) : [];
-    if (groups.length) {
-      turn.keptAny = true;
-      this.updateSession(se.id, { jobs: jobs.map((x) => (x.id === id ? { ...x, kept: true, pgid: groups[0].pgid, groups } : x)) });
-      // Postbox couldn’t tell which of the turn’s processes was the job, so it kept them all (#164): say so.
-      const unsure = groups.length > 1 ? keepUnsure(groups.length) : null;
-      if (unsure) this.setJobStep(old, { detail: unsure });
-      this.ledger.jobUpdate(old, { kept: true });
-      // Its CLI is gone, so nothing would tell the agent: its next turn hears it’s still running, and why it ran on. Claude
-      // Code, resumed, marks a background command it has no end for as stopped, and says so to the agent (#249).
-      // A step that follows it reads as running on (#129): the agent leaves it running, rather than closing it as failed.
-      this.tellAgent(
-        se.id,
-        `Your background job ${id} (\`${clipText(old.command, 200)}\`) is still running: ${turn.stopReason === 'send-now' ? 'a message sent with Send now ended your last turn, but not this job' : 'the person stopped your last turn and kept this job running'}. If your CLI says it was stopped, that’s only because the process that started it has ended: it wasn’t stopped.${unsure ? ` ${unsure}` : ''}${old.outputFile ? ` Its output is in ${old.outputFile}.` : ''} They can stop it from the conversation. If a progress step follows it, leave that step running while the job runs: when it ends, Postbox tells you on your next turn.`,
-      );
-      this.watchKept();
-      return;
-    }
-    if (typeof j.state === 'string' && j.state !== 'running') {
-      const lost = turn.keepJobs.has(id) && !old.kept;
-      this.endJob(se.id, id, old.stopping || lost ? 'stopped' : j.state, lost ? KEEP_LOST : null);
-    }
+    return recordJob(this, turn, j);
   }
-
-  /**
-   * A job ended: it leaves the session’s list, and its step shows how.
-   * @param {string} sessionId @param {string} jobId @param {string} state @param {string|null} [detail]
-   * @param {{ by?: 'you' | null }} [opts]
-   */
-  endJob(sessionId, jobId, state, detail = null, { by = null } = {}) {
-    // Pending, so a job ended or kept behind a held commit is seen (#957).
-    const se = this.store.pending.session(sessionId);
-    const job = se?.jobs?.find((j) => j.id === jobId);
-    if (!se || !job) return;
-    // Work says how it ended too: its turn may have ended thinking it was still running (#164).
-    this.ledger.jobUpdate(job, { state, by });
-    this.updateSession(sessionId, (s) => ({ jobs: (s.jobs ?? []).filter((j) => j.id !== jobId) }));
-    if (this.keptPoll && !this.keptJobs().length) {
-      clearInterval(this.keptPoll);
-      this.keptPoll = null;
-    }
-    // A kept job’s step loses what it said while running (keepUnsure); another’s keeps why its CLI said it failed.
-    this.setJobStep(job, { state: stepState(state), ms: Date.now() - job.startedAt, ...(detail || job.kept ? { detail } : {}) });
-    // A job Postbox kept running ended after its CLI had gone, so the agent hears it on its next turn.
-    if (job.kept)
-      this.tellAgent(
-        sessionId,
-        `Your background job ${job.id} (\`${clipText(job.command, 200)}\`) ${by === 'you' ? 'was stopped by the person' : 'has ended'}.${job.outputFile ? ` Its output is in ${job.outputFile}.` : ''}`,
-      );
-    // The last job kept running has ended: the progress steps held running with it (stop) stall now, as they would have
-    // when its turn ended, or when the turn running now ends (stallSteps).
-    const now = this.store.pending.session(sessionId);
-    const held = now?.heldSteps;
-    if ((job.kept || detail === KEEP_LOST) && held && !(now.jobs ?? []).some((j) => j.kept)) {
-      this.updateSession(sessionId, { heldSteps: null });
-      const problems = this.turns.has(sessionId) ? [] : this.stallSteps({ threadId: held.threadId }, this.store.pending.session(sessionId));
-      if (problems.length)
-        this.tellAgent(
-          sessionId,
-          `Your background job ${job.id} ended while progress steps were running:\n${problems.map((p) => `- Block “${p.scope.title ?? p.scope.id}” (id ${p.scope.id}): ${p.message}`).join('\n')}`,
-        );
-    }
+  endJob(sessionId, jobId, state, detail, opts) {
+    return endJob(this, sessionId, jobId, state, detail, opts);
+  }
+  runningProgress(threadId, sessionId) {
+    return runningProgress(this, threadId, sessionId);
+  }
+  setJobStep(job, patch) {
+    return setJobStep(this, job, patch);
+  }
+  settleJobs(turn) {
+    return settleJobs(this, turn);
+  }
+  expireStaleJobs() {
+    return expireStaleJobs(this);
   }
 
   settleSubagentSteps(turn) {
     return settleSubagentSteps(this, turn);
-  }
-
-  /** The keys (`item:step`) of a session’s progress steps running in a thread. */
-  runningProgress(threadId, sessionId) {
-    return this.store.pending
-      .items(threadId)
-      .filter((it) => it.kind === 'block' && it.valid && it.sessionId === sessionId && it.block.type === 'progress')
-      .flatMap((it) => it.block.steps.filter((s) => s.state === 'running').map((s) => `${it.id}:${s.id}`));
-  }
-
-  /** Changes a job’s step: in its turn while that runs, else in the reply it’s on. */
-  setJobStep(job, patch) {
-    const live = this.turns.get(job.sessionId);
-    const turn = live?.id === job.turnId ? live : null;
-    const steps = turn ? turn.steps : this.store.pending.item(job.threadId, job.itemId)?.activity?.steps;
-    if (!Array.isArray(steps)) return;
-    const next = steps.map((st) => (st.id === job.toolUseId ? { ...st, ...patch } : st));
-    if (turn) turn.steps = next;
-    const step = job.itemId ? next.find((st) => st.id === job.toolUseId) : null;
-    if (step) this.store.emit('item.patch', { threadId: job.threadId, id: job.itemId, activityStep: step });
-  }
-
-  /** Jobs nothing reported the end of went with their CLI (SIGKILL, or a crash), unless Postbox kept them running. */
-  settleJobs(turn) {
-    for (const j of [...(this.s.sessions[turn.sessionId]?.jobs ?? [])])
-      if (j.turnId === turn.id && j.state === 'running' && !j.kept) this.endJob(turn.sessionId, j.id, 'stopped', turn.keepJobs.has(j.id) ? KEEP_LOST : null);
-    // Keep running kept none of them after all (KEEP_LOST): its reply doesn’t say they kept running (#249). One that was
-    // kept counts though it’s been stopped since, from its row.
-    if (turn.stopReason !== 'kept-jobs' || turn.keptAny || this.s.sessions[turn.sessionId]?.jobs?.some((j) => j.turnId === turn.id && j.kept)) return;
-    turn.stopReason = 'stop';
-    for (const it of this.store.pending.items(turn.threadId))
-      if (it.turnId === turn.id && it.stopReason === 'kept-jobs') this.patchItem(turn.threadId, it.id, { stopReason: 'stop' });
   }
 
   /** Context the agent reads at the start of its next turn, as a Postbox notice. */
@@ -1093,13 +984,6 @@ export class Runtime {
     const r = this.remote.resume(sessionId);
     if (!r.ok) throw httpError(409, r.message);
     return { ok: true };
-  }
-
-  /** After a restart, no background job Postbox knew of is its to track any more. */
-  expireStaleJobs() {
-    for (const se of Object.values(this.s.sessions))
-      for (const j of se.jobs ?? [])
-        this.endJob(se.id, j.id, 'stopped', 'Postbox restarted while it ran. If Postbox didn’t shut down cleanly, it may still be running.');
   }
 
   /** Retry a failed reply: sends the same message again, or a promise of that when it’s read back from the store first. */
@@ -1556,9 +1440,5 @@ export class Runtime {
     return toolsFor(this, sessionId, turn);
   }
 }
-// Postbox never kills a job you kept (#164), but one with no process left under its agent couldn’t be kept either.
-const KEEP_LOST = 'Postbox couldn’t find its process to keep it running: it may have ended with the agent, and Postbox can’t show it or stop it.';
-/** What the person and the agent are told when Postbox couldn’t tell which of a turn’s processes a kept job was (#164). */
-const keepUnsure = (n) => `Postbox couldn’t tell which of ${n} processes is this job, so it kept them all running; stopping the job stops them all.`;
 
 export { formatDuration };
