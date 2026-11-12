@@ -14,7 +14,11 @@ import { updateThread } from './thread-write.mjs';
 import { endedAs, endWork } from './turn-end-work.mjs';
 import { askedOf, replyMarks } from './turn-marks.mjs';
 import { foldSteps } from './turn-steps.mjs';
-
+/**
+ * A turn ended, with err when it failed or was stopped: it leaves the running turns, its replies and the session show
+ * how it ended, and what waited for it goes next.
+ * @param {any} rt  the runtime @param {any} turn @param {any} err
+ */
 export function endTurn(rt, turn, err) {
   if (turn.closed) return;
   turn.closed = true;
@@ -36,6 +40,36 @@ export function endTurn(rt, turn, err) {
   const items = rt.store.pending.items(turn.threadId);
   // A turn that ends with no reply is never posted as an empty message (#485, empty-reply.mjs): it fails, saying so.
   if (!err && endedWithoutReply(turn, items)) err = emptyReply(rt, se, turn);
+  settleReplies(rt, se, turn, items, err);
+  if (err && err.name !== 'AbortError') {
+    endFailed(rt, se, turn, err);
+    return;
+  }
+  // An app-check turn that ended without a new version: show the app with a note, or crashed (#964), not wait forever.
+  if (turn.kind === 'app-check') {
+    for (const app of Object.values(rt.store.pending.apps()))
+      if (app.sessionId === se.id && app.check.status === 'fixing') rt.store.emit('app', { ...app, check: { ...app.check, status: fixEnded(app) } });
+  }
+  const { open, viewing, topic } = needsAfter(rt, se, turn, items);
+
+  // The checks: what this turn sent, as problems, which go back to the agent in one lint turn. A lint turn is
+  // never linted again, so this can’t loop; one that only called tools ends as a note instead of a reply.
+  const stalled = rt.stallSteps(turn, se);
+  if (turn.kind === 'lint') rt.quietLint(turn, se);
+  else rt.endLint(turn, [...rt.checkTurn(turn, se), ...stalled]);
+  if (topic && !viewing && (turn.said || open.length)) updateThread(rt, topic, (x) => ({ unread: (x.unread ?? 0) + 1 }));
+  if (turn.threadId !== se.threadId) settleThread(rt, turn.threadId);
+
+  rt.wakeMentions(se, turn, turn.said);
+  rt.takePending(se, turn, true);
+}
+
+/**
+ * The turn's replies show how it ended: its open part and any other still streaming are done or failed, a turn that
+ * went well marks its checkpoint and posts its summary, and a summary pending on its thread is no longer.
+ * @param {any} rt @param {any} se @param {any} turn @param {any[]} items @param {any} err
+ */
+function settleReplies(rt, se, turn, items, err) {
   // The open segment by its id, even while held behind a commit; then any other still streaming in the visible state.
   if (turn.openSegment) rt.patchItem(turn.threadId, turn.openSegment, { status: err ? 'failed' : 'done' });
   for (const it of items)
@@ -49,57 +83,65 @@ export function endTurn(rt, turn, err) {
   // Posted or not, the summary isn’t pending any more, so Summarize back works again, unless one waits behind this
   // turn (#225). Any turn ending clears one a restart left behind, too.
   rt.clearSummaryPending(turn.threadId, turn);
-  if (err && err.name !== 'AbortError') {
-    // Its progress steps still running show as stalled, as at any turn’s end (#98).
-    rt.stallLeftRunning(turn, se, 'failed');
-    const message = err.userMessage ?? err.message ?? 'The agent stopped unexpectedly.';
-    const target =
-      turn.segment ??
-      turn.first ??
-      rt.addItem(turn.threadId, {
-        kind: 'agent',
-        sessionId: se.id,
-        personaId: se.personaId,
-        handle: se.handle,
-        turnId: turn.id,
-        text: '',
-        status: 'failed',
-        ...replyMarks(turn),
-      }).id;
-    rt.patchItem(turn.threadId, target, {
+}
+
+/**
+ * A turn that failed: its reply says so, with Retry; the session needs the person; and the agents it mentioned, and
+ * the wakes that waited for it, still go.
+ * @param {any} rt @param {any} se @param {any} turn @param {any} err
+ */
+function endFailed(rt, se, turn, err) {
+  // Its progress steps still running show as stalled, as at any turn’s end (#98).
+  rt.stallLeftRunning(turn, se, 'failed');
+  const message = err.userMessage ?? err.message ?? 'The agent stopped unexpectedly.';
+  const target =
+    turn.segment ??
+    turn.first ??
+    rt.addItem(turn.threadId, {
+      kind: 'agent',
+      sessionId: se.id,
+      personaId: se.personaId,
+      handle: se.handle,
+      turnId: turn.id,
+      text: '',
       status: 'failed',
-      error: message,
-      retry: turn.retry ?? null,
-      asked: askedOf(turn),
-      ...(err.remote ? { remote: err.remote } : {}),
-      ...(err.rawEnding ? { rawEnding: err.rawEnding } : {}),
-    });
-    rt.updateSession(se.id, {
-      state: 'failed',
-      needs: { kind: 'failed', itemId: target, text: message, ...rt.awayFrom(se, turn.threadId) },
-      sideTurn: null,
-      subagents: [],
-      currentStep: 'Failed',
-      finishedAt: Date.now(),
-      stopAsk: null,
-    });
-    rt.notify('blocking', se, `@${se.handle}’s reply failed`, message, turn.threadId);
-    // Its @-mentions still wake their agents (#485, the person’s choice): what it wrote may be cut off, so they’re told.
-    // Not a host turn that goes on (Interrupted, Sign-in needed, its link lost): it wakes them when it ends.
-    // The item keeps whom they woke, with those the failures before it woke, so no Retry wakes them again.
-    const wakes = turn.said.trim() && !err.remote && se.remoteTurn?.state !== 'lost';
-    const woke = wakes ? rt.wakeMentions(se, turn, `(This reply failed before it finished: ${message} It may be cut off.)\n\n${turn.said}`) : [];
-    if (woke.length || turn.woken.length) rt.patchItem(turn.threadId, target, { wokeOnFailure: [...new Set([...turn.woken, ...woke])] });
-    // A wake that waited for this turn still goes: with no forks, it was promised an answer (#228). Your own
-    // queued messages wait, as before, for you to see the failure.
-    rt.takePending(se, turn, 'wakes');
-    return;
-  }
-  // An app-check turn that ended without a new version: show the app with a note, or crashed (#964), not wait forever.
-  if (turn.kind === 'app-check') {
-    for (const app of Object.values(rt.store.pending.apps()))
-      if (app.sessionId === se.id && app.check.status === 'fixing') rt.store.emit('app', { ...app, check: { ...app.check, status: fixEnded(app) } });
-  }
+      ...replyMarks(turn),
+    }).id;
+  rt.patchItem(turn.threadId, target, {
+    status: 'failed',
+    error: message,
+    retry: turn.retry ?? null,
+    asked: askedOf(turn),
+    ...(err.remote ? { remote: err.remote } : {}),
+    ...(err.rawEnding ? { rawEnding: err.rawEnding } : {}),
+  });
+  rt.updateSession(se.id, {
+    state: 'failed',
+    needs: { kind: 'failed', itemId: target, text: message, ...rt.awayFrom(se, turn.threadId) },
+    sideTurn: null,
+    subagents: [],
+    currentStep: 'Failed',
+    finishedAt: Date.now(),
+    stopAsk: null,
+  });
+  rt.notify('blocking', se, `@${se.handle}’s reply failed`, message, turn.threadId);
+  // Its @-mentions still wake their agents (#485, the person’s choice): what it wrote may be cut off, so they’re told.
+  // Not a host turn that goes on (Interrupted, Sign-in needed, its link lost): it wakes them when it ends.
+  // The item keeps whom they woke, with those the failures before it woke, so no Retry wakes them again.
+  const wakes = turn.said.trim() && !err.remote && se.remoteTurn?.state !== 'lost';
+  const woke = wakes ? rt.wakeMentions(se, turn, `(This reply failed before it finished: ${message} It may be cut off.)\n\n${turn.said}`) : [];
+  if (woke.length || turn.woken.length) rt.patchItem(turn.threadId, target, { wokeOnFailure: [...new Set([...turn.woken, ...woke])] });
+  // A wake that waited for this turn still goes: with no forks, it was promised an answer (#228). Your own
+  // queued messages wait, as before, for you to see the failure.
+  rt.takePending(se, turn, 'wakes');
+}
+
+/**
+ * What the person needs after a turn that went well: this turn's open asks or the block it found waiting, the
+ * session's state and unread count, and a notification. Returns what the checks and wakes after it read.
+ * @param {any} rt @param {any} se @param {any} turn @param {any[]} items
+ */
+function needsAfter(rt, se, turn, items) {
   // Only this turn’s asking blocks make the agent need you. Older ones you left open stay open, and the
   // client shows them quietly (“1 open review”), so moving on clears needs-you (#69). A turn you didn’t start
   // (a lint or app-check pass, another agent’s wake or review) isn’t moving on: the block it was waiting on still counts.
@@ -133,15 +175,5 @@ export function endTurn(rt, turn, err) {
   if (needs && (needs.kind === 'block' || needs.kind === 'toolask')) rt.notify('blocking', se, `@${se.handle} needs you`, needs.text, needs.threadId);
   else if (mentionsYou && !viewing) rt.notify('info', se, `@${se.handle} mentioned you`, clip(turn.said, 120), turn.threadId);
   else if (turn.said && !viewing) rt.notify('info', se, `@${se.handle} finished`, clip(turn.said, 120), turn.threadId);
-
-  // The checks: what this turn sent, as problems, which go back to the agent in one lint turn. A lint turn is
-  // never linted again, so this can’t loop; one that only called tools ends as a note instead of a reply.
-  const stalled = rt.stallSteps(turn, se);
-  if (turn.kind === 'lint') rt.quietLint(turn, se);
-  else rt.endLint(turn, [...rt.checkTurn(turn, se), ...stalled]);
-  if (topic && !viewing && (turn.said || open.length)) updateThread(rt, topic, (x) => ({ unread: (x.unread ?? 0) + 1 }));
-  if (turn.threadId !== se.threadId) settleThread(rt, turn.threadId);
-
-  rt.wakeMentions(se, turn, turn.said);
-  rt.takePending(se, turn, true);
+  return { open, viewing, topic };
 }

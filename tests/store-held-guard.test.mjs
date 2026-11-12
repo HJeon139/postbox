@@ -132,7 +132,7 @@ const PENDING = {
   'turn-context.mjs': ['text', 'compaction'], // a streamed chunk's state check, and a compaction's number, from the session a held write left
   'turn-end-work.mjs': ['endWork'], // the turn’s own reply or block, to carry its line, maybe held behind a commit
   // Stop's session as its own write of heldSteps left it, so Keep running's steps run on behind a held commit (#1042).
-  'turn-finish.mjs': ['endTurn', 'endTurn', 'endTurn'], // a turn’s end: its own items and apps, sweeps that write back, and the thread its reply count goes to, maybe held behind a commit (#796)
+  'turn-finish.mjs': ['endTurn', 'endTurn', 'needsAfter'], // a turn’s end: its own items and apps, sweeps that write back, and the thread its reply count goes to, maybe held behind a commit (#796)
   'turn-stop.mjs': ['stop', 'recordStopped', 'turnExited'],
   'tool-ask.mjs': ['askForTool', 'settleToolAsks'], // a second ask for the same tool, and the sweep that settles open asks
   'unarchive.mjs': ['unarchive'], // what an older Postbox archived: the threads and sessions it rewrites as the store loads
