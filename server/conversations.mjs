@@ -5,7 +5,7 @@
 import { httpError } from './helpers.mjs';
 import { pendingSessionsIn } from './session-write.mjs';
 import { newId } from './store.mjs';
-import { updateThread } from './thread-write.mjs';
+import { threadToWrite, updateThread } from './thread-write.mjs';
 import { liftDecline } from './wake-cards.mjs';
 
 /** @param {any} rt @param {{ projectId: string, title: string, personaIds?: string[], kind?: string, parentId?: string|null }} opts */
@@ -24,7 +24,9 @@ export function createThread(rt, { projectId, title, personaIds = [], kind = 'th
     createdAt: Date.now(),
   });
   for (const pid of personaIds) rt.ensureSession(t.id, pid);
-  return rt.s.threads[t.id];
+  // As written, with its members: behind a held commit the published state doesn’t have it yet, and the route sends
+  // this as its body.
+  return rt.store.pending.thread(t.id);
 }
 
 /** One session per persona per thread. Adding a second agent turns a thread into a room. */
@@ -34,7 +36,8 @@ export function createThread(rt, { projectId, title, personaIds = [], kind = 'th
  *   joined: it joins to answer in a side thread, woken by `by` (a handle, or 'you') in thread `in` (#110)
  */
 export function ensureSession(rt, threadId, personaId, { brief, joined = null } = {}) {
-  rt.thread(threadId);
+  // Read pending: a conversation createThread just wrote may still be held behind a commit.
+  threadToWrite(rt, threadId);
   const existing = pendingSessionsIn(rt, threadId).find((x) => x.personaId === personaId);
   if (existing) return existing;
   const p = rt.persona(personaId);
