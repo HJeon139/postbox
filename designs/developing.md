@@ -106,7 +106,7 @@ A comment like `// refuses here (see wave 2 prompt, step 4)` fails correctness: 
 
 The demo’s screenshots are generated and not committed: a refresh adds a full new copy of every image to history, and the 62 MB it had reached made every clone slower.
 - **To see the current ones,** open the `screenshots` artifact of the latest `check` run on `main` (kept 5 days), or run `node tools/shoot-app.mjs` and read `screenshots/latest/app/`. CI takes them only on `main`: a pull request uploads none.
-- **What is tracked:** the images a doc embeds. `tests/uat/screenshots/` is the UAT docs’ set, and `tools/shoot-uat.mjs` refreshes it, in the reviewing session’s commit. The README’s picture, `screenshots/app/04-corpus-app-dark-1280.png`, is the one tracked image under `screenshots/`. `.gitignore` holds the rest.
+- **What is tracked:** the images a doc embeds. `tests/uat/screenshots/` is the UAT docs’ set, and `tools/shoot-uat.mjs` refreshes it, in the reviewing session’s commit. Nothing under `screenshots/` is tracked: `.gitignore` holds it all.
 - **A doc that embeds a new image** gets an exception in `.gitignore` in the same change. A reviewing session doesn’t commit regenerated folders.
 
 ## JavaScript

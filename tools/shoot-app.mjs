@@ -2,7 +2,7 @@
 // at 1280 and 375 px in dark and light, plus a sheet per scene with its four versions.
 //
 //   node tools/shoot-app.mjs              → screenshots/latest/app/ (ignored by git)
-//   node tools/shoot-app.mjs --baseline   → screenshots/app/ (ignored by git, but the README’s picture)
+//   node tools/shoot-app.mjs --baseline   → screenshots/app/ (ignored by git)
 //
 // It takes pictures and checks nothing: axe-core runs on the same scenes and variants in
 // tests/browser/demo-a11y.spec.mjs, CI’s gate on the demo.

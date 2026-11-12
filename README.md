@@ -2,13 +2,11 @@
 
 A chat room for directing several AI agents at once. You message them, wake them when needed, and each one can reply with software it writes on the spot (an explainer, a data explorer, a review surface) that runs live in the conversation.
 
-![The explorer: an agent-written app running inline, searching the conversation’s notes](screenshots/app/04-corpus-app-dark-1280.png)
-
 ## Status
 
 - **Stage 1, mockups: done.** The design’s reasoning is in [designs/intent.md](designs/intent.md).
 - **Stage 2, the app: done.** It runs offline with a mock agent that can show every block type and every error state.
-- **Stage 3, real agents: done.** Agents run on Claude Code or the Claude Agent SDK, ask before risky tool calls, and can be attached from a terminal session. Agent apps can read aloud with a local voice. Linting, type checks and accessibility checks run in CI. The engineering decisions are in [designs/architecture.md](designs/architecture.md). The practices every change is held to, and the gate, are in [designs/engineering-practices.md](designs/engineering-practices.md).
+- **Stage 3, real agents: done.** Agents run on any of five backends (Claude Code, the Claude Agent SDK, Codex, the Kiro CLI and the Antigravity CLI), on this computer or on a remote host you reach with `ssh`, ask before risky tool calls, and can be attached from a terminal session. Agent apps can read aloud with a local voice. Linting, type checks and accessibility checks run in CI. The engineering decisions are in [designs/architecture.md](designs/architecture.md). The practices every change is held to, and the gate, are in [designs/engineering-practices.md](designs/engineering-practices.md).
 
 ## Run it
 
@@ -32,7 +30,7 @@ npm install -g ./postbox-<version>.tgz
 postbox
 ```
 
-A global install brings the optional packages too (the Agent SDK and Kokoro, several hundred MB); add `--omit=optional` to a project install to leave them out. `postbox --help` lists its flags: `--port`, `--data`, `--fresh`, `--demo` and `--move-data`. The package holds only what runs (`bin/`, `app/`, `server/` and `shared/`), and its build line under **Personas** shows the commit it was packed from. Upgrading or uninstalling it leaves your conversations alone, since they’re in `~/.postbox`, not in the package.
+A global install brings the optional packages too (the Agent SDK and Kokoro, several hundred MB); add `--omit=optional` to a project install to leave them out. `postbox --help` lists its flags: `--port`, `--data`, `--fresh`, `--demo`, `--move-data`, `-v` (`--version`) and `-h` (`--help`). The package holds only what runs (`bin/`, `app/`, `server/`, `shared/` and `agent-plugin/`, the skills Postbox gives its agents) and `CHANGELOG.md`, and its build line under **Personas** shows the commit it was packed from. Upgrading or uninstalling it leaves your conversations alone, since they’re in `~/.postbox`, not in the package.
 
 Open <http://127.0.0.1:4173/>. Postbox listens only on this machine. Your conversations are kept in `~/.postbox` as an event log, so they survive a restart and an upgrade. Set `POSTBOX_HOME` to keep them somewhere else, or pass `--data <folder>` for one run. Add `--fresh` to start over.
 
@@ -66,7 +64,7 @@ Things to try in the demo’s conversations (`node server/index.mjs --demo --fre
 |---|---|---|
 | Asset explorer | Build me an explorer for these assets | An agent-written app searching the conversation’s notes through the bridge, and a v2, filtered by asset, after you send passages |
 | Catalog tour | Show me every kind of block you can send | One of each catalog block, all live |
-| ReAct, step by step | Explain ReAct with something I can try · Walk me through ReAct, out loud · then **Reply in thread** under the explainer | Citations with hover cards, a diagram, math, a glossary term and a practice app · slides that follow a local voice · a topic thread with a forked agent, and Summarize back |
+| ReAct, step by step | Explain ReAct with something I can try · Walk me through ReAct, out loud · then **Reply in thread** under the explainer | Citations with hover cards, a diagram, math, a glossary term and a practice app · slides that follow a local voice · a topic thread, and Summarize back |
 | Corpus schema spec | Review my corpus schema line by line | Markdown, code and app reviews, then a revision shown as a diff |
 | Index the shelf | Index the shelf · Rebuild without the prefaces · Show it as a timeline · Show me the shelf map · Show me a dashboard · Clear the old index cache · Draw the whole indexing pipeline | Progress, subagents and a compaction · a failed reply with Retry · blocks Postbox can’t show · a crashed app · an app that fails its check and gets fixed · a permission card · a diagram too wide to read, flagged by the diagram linter and redrawn |
 | Corpus planning | @indexer check the editions with the researcher, in a loop | Agents waking each other in a side thread until the limit asks you |
@@ -74,9 +72,9 @@ Things to try in the demo’s conversations (`node server/index.mjs --demo --fre
 
 ## Conversations and threads
 
-The **Postbox** menu in the top bar goes to any project, from anywhere, and Postbox opens on the conversation you were last in. In a project, the rail lists its **conversations**: direct messages with one agent, and rooms with several (**+** beside Rooms starts one with two or more agents). Each agent in a conversation has one session, and everything said there is shared: each turn starts with what the agent missed since its last one, so an agent you bring into a room knows what was discussed. ⌘\ hides the sidebar. The **⋯** beside a conversation’s title renames it, adds an agent, or deletes it, with 10 seconds of Undo.
+The **Postbox** menu in the top bar goes to any project, from anywhere, and Postbox opens on the conversation you were last in. In a project, the rail lists its **conversations**: direct messages with one agent, and rooms with several (**+** beside Rooms starts one with two or more agents). Each agent in a conversation has one session, and everything said there is shared: each turn starts with what the agent missed since its last one, so an agent you bring into a room knows what was discussed. ⌘\ hides the sidebar. The **⋯** beside a conversation’s title renames it, adds an agent, or deletes it, at once: there’s no Undo.
 
-Any message can start a **topic thread**, as in Slack: choose **Reply in thread** under it. The thread opens in the panel beside the conversation, and its agent is a fork of the agent’s session at that message. It remembers the conversation up to there, and the conversation never sees the thread. That’s the point: you decide what each agent keeps in its context. To bring something back, choose **Send to conversation** under a reply, or **Summarize back** to have the thread’s agent post a short summary. The conversation’s agents read it at the start of their next turn. The rail’s **Threads** entry lists a project’s topic threads.
+Any message can start a **topic thread**, as in Slack: choose **Reply in thread** under it. The thread opens in the panel beside the conversation. An agent you @-mention there answers from its one session in the conversation, so it remembers both: its prompt leads with the thread’s request as its task, and gives what happened in the room as background. The conversation’s other agents see that the thread exists, with a short summary, and read it only if they choose. To bring something back, choose **Send to conversation** under a reply, or **Summarize back** to have the thread’s agent post a short summary. The conversation’s agents read it at the start of their next turn. The rail’s **Threads** entry lists a project’s topic threads.
 
 ## Work
 
@@ -99,9 +97,11 @@ flowchart LR
   S --> RT[Runtime: threads, sessions, wakes, queue, permissions]
   RT --> AD[Adapters]
   AD --> MOCK[Mock agent]
-  AD --> CC[Claude Code: claude -p]
   AD --> SDK[Claude Agent SDK]
-  CC -->|UI tools and permission prompts| MCP[MCP endpoint /mcp]
+  AD --> CLI[On this computer: Claude Code, Kiro CLI, Antigravity CLI, Codex app-server]
+  AD -->|ssh| RH[On a remote host: daemon and turn runner, with Claude Code, Kiro CLI or Codex]
+  CLI -->|UI tools and permission prompts| MCP[MCP endpoint /mcp]
+  RH -->|UI tools, through the host’s stdio shim| MCP
   SDK -->|UI tools| MCP
   MCP --> RT
   RT --> TM[Terminal mirror: ~/.claude/projects]
@@ -237,7 +237,6 @@ Postbox always passes the mode explicitly, so a default from your own Claude Cod
 
 **The Kiro CLI.** Each turn, Postbox writes a Kiro custom agent with the guide as its prompt, Postbox’s MCP server and the persona’s rules, and removes it when the turn ends ([`server/adapters/kiro-cli.mjs`](server/adapters/kiro-cli.mjs)). What differs from Claude Code:
 - **It can’t ask you.** A headless Kiro run treats every ask as a refusal, so there’s no permission card: a call that would need asking shows as a denied step. Ask me means Kiro’s defaults plus reads in the agent’s folders; Accept edits adds writes there; Auto, since Kiro has no Auto of its own, runs what the agent’s Tools allow, with Shell any command, with Web any search or fetch, any MCP tool that doesn’t publish, and writes in its folders, with nothing judging those calls (#136); in both, writes to the folders’ `.kiro` and `.git` stay refused; Run everything is `--trust-all-tools`, and unticked Tools stay denied. Claude Code rules (the permissions panel, Allow once) don’t apply.
-- **Topic threads start fresh.** Kiro can’t fork a session, so an agent in a topic thread starts with the message the thread is about.
 - **Your setup.** With **Uses your Kiro setup**, it runs with your Kiro home (`KIRO_HOME`, else `~/.kiro`): your steering, skills, settings and MCP servers load, and the turn’s agent file is written to its `agents` folder for the turn. Off, it runs with `kiro-home` in the data folder, and a deny rule turns off every MCP server but Postbox’s, including one a managed install adds to Kiro’s agent files by itself. A `.kiro` folder in the agent’s working folder loads either way.
 - **Models** are Kiro’s (`kiro-cli chat --list-models`), and the model field suggests the ones your sign-in offers, Claude’s and others such as GPT and DeepSeek. Postbox’s names become Kiro’s: `claude-opus-5-5` runs as `claude-opus-5.5`.
 
@@ -247,10 +246,9 @@ Postbox always passes the mode explicitly, so a default from your own Claude Cod
 - **A read outside its folders** asks on a card. Always allow makes that file’s folder readable for that agent in this conversation, listed in the permissions panel as “Read only, in this conversation”: the agent may read there, never edit there with no card. It’s never offered for `/`, your home folder or a dot-folder in it such as `~/.ssh`, nor for an agent on a host (#338).
 - **Tools are a request.** agy reads deny rules only from your own settings, which every agy session shares, so a persona’s unticked Tools can’t be turned off for one agent. The agent is told not to use them.
 - **Always your setup.** agy reads its config from `~/.gemini` and has no setting to move it, so there’s no Isolated mode: your rules, skills, plugins and MCP servers load, as in your terminal.
-- **Topic threads start fresh**, as on the Kiro CLI.
 - **Models** are agy’s (`agy models`): Gemini’s, and others such as Claude and GPT-OSS. A persona that names no model runs `gemini-3.8-flash-high`. Effort is part of some model ids (`gemini-3.8-flash-low`), so it’s passed only to a model that takes it, such as `gemini-3.8-flash` (up to High).
 
-**Codex.** Postbox uses the local `codex app-server` JSON-RPC protocol, with Codex’s own sign-in and configuration; it does not ask for an API key. It adds Postbox’s session-specific MCP endpoint to the Codex server, streams Codex text and tool activity, resumes each saved thread on the next turn, and forks topic threads from a completed-turn checkpoint. Stop sends `turn/interrupt` and then stops the child process if needed. Model suggestions come from app-server’s `model/list` catalog.
+**Codex.** Postbox uses the local `codex app-server` JSON-RPC protocol, with Codex’s own sign-in and configuration; it does not ask for an API key. It adds Postbox’s session-specific MCP endpoint to the Codex server, streams Codex text and tool activity, and resumes each saved thread on the next turn. Stop sends `turn/interrupt` and then stops the child process if needed. Model suggestions come from app-server’s `model/list` catalog.
 
 Codex permission modes map to its sandbox and approval policy: **Ask me** uses read-only; **Auto** uses workspace-write, with network access on for an agent that may fetch the web, and Codex’s own reviewer judges what the sandbox stops; **Accept edits** uses workspace-write with network access off and approvals on request; and **Run everything** uses full access with approvals disabled. Its approval requests appear as Postbox permission cards. Codex doesn’t read Claude Code permission rules, and of the per-agent Tools only Web counts: in Auto it turns network on in Codex’s sandbox. Always allow on a Codex card saves exactly the command prefix or host Codex proposed as a Codex rule, in `rules/default.rules` in your Codex home. A command that matches it runs outside Codex’s sandbox, with no card, in every Codex session on the computer, so the card offers one only for a few programs that read and print (such as `ls`, `cat`, `grep`, `gh pr view` and `gh issue list`), only to an agent with Web, and none on a host’s card. A host is offered only in Auto, for an agent with Web. Codex reads its usual local configuration, including any MCP servers already configured there.
 
@@ -261,7 +259,7 @@ Codex permission modes map to its sandbox and approval policy: **Ask me** uses r
 ```js
 export class MyAdapter {
   name = 'my-backend';                      // a persona’s `backend` picks its adapter
-  capabilities = { fork: false, permissions: 'none' }; // optional: topic threads start fresh; no Claude Code rules
+  capabilities = { permissions: 'none' };   // optional: it doesn’t read Claude Code’s rules
   async deliver(session, message, ctx) {    // one turn; resolve when it ends, throw to fail it
     ctx.status({ state: 'think', ctx: 12 }); // ring state and % of context used
     ctx.activity({ id: 't1', label: 'Read schema.md', state: 'running' });
@@ -274,7 +272,7 @@ export class MyAdapter {
 }
 ```
 
-The two real adapters share a system prompt that teaches the catalog, the kit and the [recipes](designs/recipes.md) ([`server/adapters/guide.mjs`](server/adapters/guide.mjs)), and a mapper from Claude Code’s stream to the turn context ([`server/adapters/claude-stream.mjs`](server/adapters/claude-stream.mjs)).
+Every real adapter shares a system prompt that teaches the catalog, the kit and the [recipes](designs/recipes.md) ([`server/adapters/guide.mjs`](server/adapters/guide.mjs)), and the mapper from a stream’s events to the turn context ([`server/adapters/claude-stream.mjs`](server/adapters/claude-stream.mjs)).
 
 **MCP.** The UI tools are served over JSON-RPC 2.0 at `POST /mcp?session=<session id>&turn=<token>` ([`server/mcp.mjs`](server/mcp.mjs)). Postbox gives each turn it starts its own token, and a tool call without the running turn’s token is refused (#54), so only an agent turn Postbox started can call them, not a script that knows a session id. A large app goes by `codePath`, a file in the agent’s folder, and an app’s data files by `files`, which the app reads with `postbox.file(name)`. The tools:
 - `show_block`, `update_block`, and `review_block`, which comments on another agent’s review block, line by line or on a selection, with a verdict; each comment becomes a thread on the draft, its agent hears them, and the block still waits on you (#133)
@@ -367,16 +365,20 @@ That runs, in order:
   - `lint-tokens`: no raw colors outside the token blocks
   - `lint-dom`: no unsafe HTML or agent-named attributes and styles
   - `lint-copy`: American spelling and curly quotes
+  - `lint-security`: the code rules in [SECURITY.md](SECURITY.md)
+  - `lint-caps`: no change raises a length ceiling in `biome.json`
+  - `lint-ternary`: no new nested ternary on a changed line
 - **Contrast:** every token pair in both modes.
 - **Unit tests** (`npm test`): the `node:test` files in `tests/`. Each loads [`tests/guard.mjs`](tests/guard.mjs) first, which fails any test that touches the network or starts a process.
 - **Integration tests** (`npm run test:integration`): the files in [`tests/integration/`](tests/integration/), which run the remote host’s programs as real local processes over pipes and Unix sockets, never the network. Where a test stands in for ssh, it runs the remote command on this machine with `/bin/sh -c` and a temporary home folder, so nothing touches your own `~/.postbox-remote`. A test that needs Linux (`/proc`, logind) skips elsewhere and says why.
+- **Process tests** (`npm run test:process`): the files in [`tests/process/`](tests/process/), which start real processes, Chromium, `npm` and `git`.
 
 They cover:
 - the block validator, the Markdown renderer and the event builder
 - mentions, finished-sentence announcements, URL checks and BM25 search
 - the store: the event log, crash recovery, snapshots and blobs
-- the runtime: queueing, Stop, failures and Retry, needs-you, the wake limit, side threads, topic threads with forked sessions, delete with undo, app permissions, the check-and-fix loop, permission cards and MCP
-- both real adapters, replaying streams recorded from real Claude Code turns ([`tests/fixtures/claude-code/`](tests/fixtures/claude-code/))
+- the runtime: queueing, Stop, failures and Retry, needs-you, the wake limit, side threads, topic threads, delete, app permissions, the check-and-fix loop, permission cards and MCP
+- every real adapter, replaying streams recorded from real turns ([`tests/fixtures/claude-code/`](tests/fixtures/claude-code/), [`codex-app-server/`](tests/fixtures/codex-app-server/), [`kiro-cli/`](tests/fixtures/kiro-cli/) and [`antigravity-cli/`](tests/fixtures/antigravity-cli/))
 - the work ledger: line counts against git’s, recorded turns that edit, commit, push and run background commands, where git says each change stands, and Restore
 - the diagram linter, against text sizes measured in Chrome
 - attaching and mirroring Claude Code sessions, narration, and the lint rules themselves
@@ -384,9 +386,13 @@ They cover:
 
 Continuous integration ([`.github/workflows/check.yml`](.github/workflows/check.yml)) runs the same check on every pull request, then plays the demo in headless Chrome and runs axe-core on every scene. It also checks that a pull request’s commit messages follow Conventional Commits, and that every change on main is released.
 
+The rest of the gate is in [AGENTS.md](AGENTS.md), “The gate”:
+- **Browser specs** (`npx playwright test`): the Playwright specs in [`tests/browser/`](tests/browser/), each file on a Postbox of its own, run again with `POSTBOX_STREAM_LAG=300`, as CI runs them.
+- **UAT:** the component docs in [`tests/uat/`](tests/uat/), checked by hand against the demo, and the end-to-end scenarios with real agents (`npm run uat`, [tests/uat/e2e/README.md](tests/uat/e2e/README.md)), which cost real usage.
+
 | Command | What it does |
 |---|---|
-| `postbox [--port 4173] [--data <folder>] [--fresh] [--demo]` | The same as `npm start` or `node server/index.mjs` in a clone. Runs Postbox, with its data in `~/.postbox` unless `POSTBOX_HOME` or `--data` says otherwise. A fresh install seeds three agents: @researcher, @developer and @critic. `--demo` seeds the demo’s agents, projects and conversations instead, enables the demo controls and uses the mock only. |
+| `postbox [--port 4173] [--data <folder>] [--fresh] [--demo] [--move-data] [-v]` | The same as `npm start` or `node server/index.mjs` in a clone. Runs Postbox, with its data in `~/.postbox` unless `POSTBOX_HOME` or `--data` says otherwise. A fresh install seeds three agents: @researcher, @developer and @critic. `--demo` seeds the demo’s agents, projects and conversations instead, enables the demo controls and uses the mock only. `--move-data` moves a clone’s `data/` to `~/.postbox` and exits; `-v` prints the version. |
 | `node tools/demo.mjs [--port] [--speed]` | Plays every block and error state on a fresh Postbox |
 | `node tools/shoot-app.mjs [--baseline]` | Plays the demo in headless Chrome and screenshots every scene at 375 and 1280 px in both modes. axe-core checks the same scenes in `tests/browser/demo-a11y.spec.mjs` |
 | `node tools/contrast.mjs [css]` | Checks WCAG contrast for every token pair, in both modes and on the app stage (`app/workbench.css` unless you name another) |
@@ -424,17 +430,26 @@ Postbox uses [semantic versioning](https://semver.org/), from [Conventional Comm
 ## Repository layout
 
 ```text
+bin/          the postbox command
 app/          the browser app: index.html, workbench.css (the one stylesheet), js/ modules, kit/ for app sandboxes
 server/       Node server, runtime, store, blobs, assets, MCP, sandbox pages
-  adapters/   mock, Claude Code, Agent SDK, the shared guide and stream mapper, the terminal mirror
+  adapters/   mock, Claude Code, Agent SDK, Kiro CLI, Antigravity CLI, Codex, the shared guide and stream mapper, the terminal mirror
+  remote/     remote hosts: the ssh link, install, and host/, the daemon and turn runner that run there
+  personas/   the seeded agents’ instructions
+  view-app/   view_app: a picture of an agent’s app, in a pinned headless browser
   narration/  the Kokoro narrator and its worker process
   mock/       the mock agent’s apps
   demo-assets/ the notes --demo publishes as assets
 shared/       pure modules used by both sides: catalog, Markdown, events, state, BM25, text helpers
-tests/        node:test suites, and fixtures recorded from real Claude Code turns
-tools/        demo, screenshot tools, contrast checker, project lint rules, static server
-designs/      product intent, architecture decisions, engineering practices, recipes and work prompts
-screenshots/  generated pictures (git ignores them, but the README’s)
+agent-plugin/ the skills Postbox gives its agents
+tests/        node:test suites, and fixtures recorded from real turns
+  browser/    Playwright specs
+  integration/ the remote host’s programs as real local processes
+  process/    tests that start real processes, npm and git
+  uat/        the UAT docs, and e2e/, the end-to-end scenarios with real agents
+tools/        demo, UAT runner, screenshot tools, contrast checker, project lint rules
+designs/      product intent, architecture decisions, engineering practices and recipes
+screenshots/  generated pictures (git ignores them)
 ```
 
 Third-party code shipped with the app is limited to the vendored libraries in `app/kit/vendor/` (Mermaid, KaTeX and D3, each with its license). The optional packages (the Agent SDK and Kokoro) and the development tools (Biome, TypeScript and axe-core) install with `npm install` and are never needed to run the mock.
