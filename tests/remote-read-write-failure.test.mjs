@@ -52,7 +52,7 @@ test('T24: a live write that fails after the deadline has passed answers the rea
     await s.next('welcome');
 
     const callPromise = s.call('c_t24a', 'read_message', { id: 'item_1' });
-    await until(() => k.sent.some((m) => m.type === 'tool' && m.id === 'c_t24a'), 'tool sent', 250);
+    await until(() => k.sent.some((m) => m.type === 'tool' && m.id === 'c_t24a'), 'tool sent');
 
     const replied = k.post('reply', { turn: 't_t24a', id: 'c_t24a', ok: true, text: 'Live reply' });
     await w.reached;
@@ -87,7 +87,7 @@ test('T24: a live write that fails with the deadline still ahead waits for the d
     await s.next('welcome');
 
     const callPromise = s.call('c_t24b', 'read_message', { id: 'item_1' });
-    await until(() => k.sent.some((m) => m.type === 'tool' && m.id === 'c_t24b'), 'tool sent', 250);
+    await until(() => k.sent.some((m) => m.type === 'tool' && m.id === 'c_t24b'), 'tool sent');
 
     await clock.tick(1000);
     const replied = k.post('reply', { turn: 't_t24b', id: 'c_t24b', ok: true, text: 'Live reply' });
