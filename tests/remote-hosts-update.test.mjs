@@ -1,4 +1,4 @@
-// The automatic install (server/remote/hosts-update.mjs, #464-b2a; designs/464-keep-updated.md): with the person’s
+// The automatic install (server/remote/hosts-update.mjs, #464-b2a; designs/architecture.md, “Keeping a host up to date”): with the person’s
 // standing consent for a host, a 127 from its launcher (this version isn’t there) installs this Postbox’s version once,
 // in the failure’s own tick, and nothing else does. The record’s strict read and “tried” are in
 // remote-hosts-update-record.test.mjs; one install at a time, exit 75, close() and forget() in

@@ -1,4 +1,4 @@
-// Keeping a host’s Postbox up to date (#464-b2b; designs/464-keep-updated.md, “What b2b adds”), in the Hosts tab of
+// Keeping a host’s Postbox up to date (#464-b2b; designs/architecture.md, “Keeping a host up to date”), in the Hosts tab of
 // Settings: the toggle in the host’s editor, which saves at once through PUT /api/hosts/:id/keep-updated and goes back
 // with the server’s message when that fails, and follows the host’s status; and the card’s line for its newest
 // automatic install: installing, installed by itself, or failed with Install… beside it, never a token or a path,
