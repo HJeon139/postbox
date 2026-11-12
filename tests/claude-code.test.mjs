@@ -9,7 +9,7 @@ import { test } from 'node:test';
 import { AgentSdkAdapter, liveControl, sdkOptions } from '../server/adapters/agent-sdk.mjs';
 import { AntigravityCliAdapter } from '../server/adapters/antigravity-cli.mjs';
 import { ClaudeCodeAdapter, claudeArgs, forkPoint } from '../server/adapters/claude-code.mjs';
-import { contextPercent, createStreamMapper, describePermission, describeTool, forkPointMissing, resultError } from '../server/adapters/claude-stream.mjs';
+import { contextPercent, createStreamMapper, describePermission, forkPointMissing, resultError } from '../server/adapters/claude-stream.mjs';
 import { CodexAdapter } from '../server/adapters/codex.mjs';
 import { formatMessage } from '../server/adapters/guide.mjs';
 import { KiroCliAdapter } from '../server/adapters/kiro-cli.mjs';
@@ -144,10 +144,7 @@ test('failures read as sentences', () => {
   assert.equal(resultError({ subtype: 'success', is_error: true, result: 'API Error: overloaded' }), 'API Error: overloaded');
 });
 
-test('labels and permission cards say what a tool does', () => {
-  assert.equal(describeTool('Bash', { command: 'npm test' }), 'Ran npm test');
-  assert.equal(describeTool('Grep', { pattern: 'TODO' }), 'Searched for “TODO”');
-  assert.equal(describeTool('mcp__github__list_issues', { repo: 'x' }), 'list issues (github)');
+test('permission cards say what a tool does', () => {
   assert.deepEqual(describePermission('Bash', { command: 'rm -rf build', description: 'Clean the build' }), {
     summary: 'run a command: Clean the build',
     detail: 'rm -rf build',
@@ -580,8 +577,10 @@ test('summarized thinking shows as a glimpse while it streams, and each thought 
     glimpses.some((g) => /9\.9 is greater than 9\.11/.test(g)),
     JSON.stringify(glimpses),
   );
-  const thoughts = ctx.calls.activity.filter((s) => s.kind === 'thought');
+  // Each thought is one step, shown as it’s written: the newest of each id is the whole thought.
+  const thoughts = [...new Map(ctx.calls.activity.filter((s) => s.kind === 'thought').map((s) => [s.id, s])).values()];
   assert.equal(thoughts.length, 2);
+  assert.ok(thoughts.every((s) => s.state === 'done'));
   assert.match(thoughts[0].label, /^9\.9 is greater than 9\.11/);
   // The subagent’s thinking is a thought of its own, under its name (#73), and moves its ring’s “doing” line, labeled
   // as thinking; its text never joins the reply.

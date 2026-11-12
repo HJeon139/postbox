@@ -5,11 +5,11 @@
 // keeps a method of the same name that delegates here.
 
 import { basename } from 'node:path';
-import { describeTool } from './adapters/claude-stream.mjs';
 import { contentBlocks, listClaudeSessions, recentHistory, TranscriptTail, typedText } from './adapters/terminal-mirror.mjs';
 import { sessionFolder } from './folder-path.mjs';
 import { httpError } from './helpers.mjs';
 import { runsHere } from './remote/placement.mjs';
+import { describeTool } from './tool-labels.mjs';
 
 export async function claudeSessions(rt) {
   const attached = new Set(

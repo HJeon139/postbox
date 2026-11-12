@@ -141,6 +141,45 @@ export function lasting(f) {
 }
 
 /**
+ * Each agent’s effort: its turns, time, tool calls, tokens and spend (priced once a turn of its says what it cost), the
+ * lines it wrote and those its files keep (keptBy: the agent a file’s lines count toward, or null), and its commands,
+ * the most lines first. Moved from summarize.
+ * @param {{ turns: any[], changes: any[], files: any[], commands: any[], keptBy: (f: any) => string | null }} scope
+ */
+function effortByAgent({ turns, changes, files, commands, keptBy }) {
+  const agents = new Map();
+  const agent = (h) => {
+    if (!agents.has(h))
+      agents.set(h, { handle: h, turns: 0, ms: 0, toolCalls: 0, costUsd: 0, tokens: 0, commands: 0, failed: 0, written: 0, writtenDel: 0, ...zero() });
+    return agents.get(h);
+  };
+  for (const t of turns) {
+    const a = agent(t.handle);
+    a.turns += 1;
+    a.ms += t.ms ?? 0;
+    a.toolCalls += t.toolCalls ?? 0;
+    a.costUsd += t.costUsd ?? 0;
+    if (typeof t.costUsd === 'number') a.priced = true;
+    a.tokens += sumTokens(t.tokens);
+  }
+  for (const c of changes) {
+    const a = agent(c.handle);
+    a.written += c.added ?? 0;
+    a.writtenDel += c.deleted ?? 0;
+  }
+  for (const f of files) {
+    const h = keptBy(f);
+    if (h !== null) add(agent(h), f);
+  }
+  for (const c of commands) {
+    const a = agent(c.handle);
+    a.commands += 1;
+    if (c.state === 'failed') a.failed += 1;
+  }
+  return [...agents.values()].sort((a, b) => b.added + b.deleted - (a.added + a.deleted) || b.turns - a.turns);
+}
+
+/**
  * The ledger’s totals, for one conversation’s entries (state.work[conversationId]), optionally for one agent or one
  * turn. git is GET …/work/git’s answer, or null before it arrives.
  * @param {any[]} entries
@@ -173,31 +212,11 @@ export function summarize(entries, { git = null, handle = null, turnId = null } 
 
   // Effort, per agent and in all. Lines a file keeps count toward the agent whose turn changed it last, so the
   // agents’ kept lines add up to the conversation’s.
-  const agents = new Map();
-  const agent = (h) => {
-    if (!agents.has(h))
-      agents.set(h, { handle: h, turns: 0, ms: 0, toolCalls: 0, costUsd: 0, tokens: 0, commands: 0, failed: 0, written: 0, writtenDel: 0, ...zero() });
-    return agents.get(h);
+  const keptBy = (f) => {
+    if (turnId) return f.handle;
+    return !handle || f.lastHandle === handle ? f.lastHandle : null;
   };
-  for (const t of turns) {
-    const a = agent(t.handle);
-    a.turns += 1;
-    a.ms += t.ms ?? 0;
-    a.toolCalls += t.toolCalls ?? 0;
-    a.costUsd += t.costUsd ?? 0;
-    a.tokens += sumTokens(t.tokens);
-  }
-  for (const c of changes) {
-    const a = agent(c.handle);
-    a.written += c.added ?? 0;
-    a.writtenDel += c.deleted ?? 0;
-  }
-  for (const f of files) if (turnId || !handle || f.lastHandle === handle) add(agent(turnId ? f.handle : f.lastHandle), f);
-  for (const c of commands) {
-    const a = agent(c.handle);
-    a.commands += 1;
-    if (c.state === 'failed') a.failed += 1;
-  }
+  const byAgent = effortByAgent({ turns, changes, files, commands, keptBy });
 
   // Turns that tried something (changed a file or ran a command) and left nothing lasting: no change, publish, commit,
   // push or write outside Postbox. A turn whose change a later one put back still has it in its list (#195). An edit
@@ -209,7 +228,7 @@ export function summarize(entries, { git = null, handle = null, turnId = null } 
     files,
     total,
     byState,
-    byAgent: [...agents.values()].sort((a, b) => b.added + b.deleted - (a.added + a.deleted) || b.turns - a.turns),
+    byAgent,
     commands,
     external,
     commits,

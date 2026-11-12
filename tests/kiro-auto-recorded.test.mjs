@@ -33,12 +33,11 @@ test('#136 recorded: without Shell, Kiro offers no shell tool, so there’s no c
 });
 
 test('#136 recorded: an edit of .kiro/settings/mcp.json is refused; an ordinary file in the folder is written', () => {
-  const kiro = 'Write File';
   assert.deepEqual(
     steps('auto-kiro-write').filter(([, state]) => state !== 'running'),
     [
-      [kiro, 'denied'],
-      [kiro, 'done'],
+      ['Wrote mcp.json', 'denied'],
+      ['Wrote notes.md', 'done'],
     ],
   );
 });

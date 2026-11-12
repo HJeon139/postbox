@@ -1,29 +1,21 @@
-// Turns Claude Code’s stream-json output (claude -p --output-format stream-json --include-partial-messages)
-// into Postbox’s turn context: reply text, activity steps, ring state, context use, subagents and
-// compactions. Pure apart from the ctx calls, so recorded streams can test it (tests/claude-stream.test.mjs).
+// Reads Claude Code’s stream-json output (claude -p --output-format stream-json --include-partial-messages), and the
+// Agent SDK’s messages, which are the same events, into the harness-event contract (server/harness-events.mjs): text,
+// thinking, tool calls and results, background work, refusals, context use and the turn’s end. What Postbox builds
+// from them, the reply, the steps, the ledger’s calls and the ring, is built there, for every backend. Pure apart from
+// the ctx calls, so recorded streams can test it.
 
-import { appendGlimpseSource, glimpseOf } from '../../shared/text.mjs';
+import { HarnessEvents } from '../harness-events.mjs';
+import { clip } from '../harness-tools.mjs';
 import { contentBlocks } from './claude-content.mjs';
 import { commandsOf, postboxServerStatus } from './claude-init.mjs';
-import { replyText } from './claude-reply.mjs';
 import { addTokens, forkOf, resultTokens, sessionTotals, turnCost } from './claude-usage.mjs';
 
 export { describePermission } from './claude-permission.mjs';
 export { commandsOf }; // moved to claude-init.mjs; its importers keep this path
 
-// Postbox’s own UI tools show up in the thread as what they make, so they aren’t listed as activity;
-// nor is Claude Code loading tool definitions. They still name the step on the agent’s ring.
-const QUIET =
-  /^(?:mcp__postbox__(?:show_block|update_block|review_block|show_app|update_app|retire_app|define_term|propose_agent|schedule_wake|cancel_wake|wake_agent|open_topic|bring_to_conversation|permission_prompt|read_conversation|read_message|react)|ToolSearch|SubagentHandback)$/;
-/** Whether a tool call shows as what it makes rather than as a step (the Kiro CLI adapter shares this). */
-export const isQuietTool = (name) => QUIET.test(String(name ?? ''));
-// How Postbox answers a call the person declined on a permission card (server/runtime.mjs): that’s their
-// answer, not a refusal to show again.
-const DECLINED = /^The person didn’t allow/;
 // Default context windows until a turn’s result reports the real one.
 const WINDOWS = /** @type {[RegExp, number][]} */ ([[/^claude-(?:opus|sonnet|fable)-5/, 1_000_000]]);
 export const windowFor = (model, fallback = 200_000) => WINDOWS.find(([re]) => re.test(String(model ?? '')))?.[1] ?? fallback;
-const SUBAGENT_TOOLS = new Set(['Task', 'Agent']);
 // A call that goes on in the background returns at once with the job's id, and the job runs on (#129). Recorded on
 // claude 2.1.296:
 // - Bash with run_in_background: “Command running in background with ID: <id>. Output is being written to: <file>. …”,
@@ -39,17 +31,7 @@ const BACKGROUND_FILE = /Output is being written to: (\S+?)\.?(?=\s|$)/;
 // A subagent started in the background, or one a subagent starts (Claude Code runs those in the background), returns
 // at once too, and works on until its task_notification (subagent-tree.jsonl).
 const ASYNC_AGENT = /^Async agent launched/;
-const JOB_STATES = { completed: 'done', failed: 'failed', stopped: 'stopped', killed: 'stopped' };
 
-const clip = (s, n) => {
-  const t = String(s ?? '')
-    .replace(/\s+/g, ' ')
-    .trim();
-  return t.length > n ? `${t.slice(0, n - 1)}…` : t;
-};
-const base = (p) => String(p ?? '').replace(/^.*\//, '');
-/** The first sentence of a message, such as a refusal’s reason. */
-const firstSentence = (s, n = 300) => clip(/^[\s\S]*?[.!?](?=\s|$)/.exec(String(s ?? '').trim())?.[0] ?? s, n);
 /** The text of a tool result, for the reason a step failed. */
 const resultText = (content) =>
   typeof content === 'string'
@@ -61,94 +43,6 @@ const resultText = (content) =>
           .join(' ')
       : '';
 
-const GENERIC = {
-  Bash: 'Running a command',
-  Monitor: 'Starting a watch',
-  Read: 'Reading a file',
-  Write: 'Writing a file',
-  Edit: 'Editing a file',
-  MultiEdit: 'Editing a file',
-  Glob: 'Finding files',
-  Grep: 'Searching files',
-  WebFetch: 'Fetching a page',
-  WebSearch: 'Searching the web',
-  Task: 'Starting a subagent',
-  Agent: 'Starting a subagent',
-  mcp__postbox__define_term: 'Defining a term',
-  mcp__postbox__wake_agent: 'Waking an agent',
-  mcp__postbox__search_assets: 'Searching the assets',
-};
-
-/** A short label for a tool call, in the words the activity list uses. */
-export function describeTool(name, input = {}) {
-  const i = input ?? {};
-  // A tool call’s input streams in after its name, so the first label is the generic one.
-  if (!Object.keys(i).length && GENERIC[name]) return GENERIC[name];
-  switch (name) {
-    case 'Bash':
-      return i.description ? clip(i.description, 80) : `Ran ${clip(i.command, 70)}`;
-    case 'Monitor':
-      return `Watching: ${clip(i.description ?? i.command, 70)}`;
-    case 'Read':
-      return `Read ${base(i.file_path)}`;
-    case 'Write':
-      return `Wrote ${base(i.file_path)}`;
-    case 'Edit':
-    case 'MultiEdit':
-      return `Edited ${base(i.file_path)}`;
-    case 'NotebookEdit':
-      return `Edited ${base(i.notebook_path)}`;
-    case 'Glob':
-      return `Found files matching ${clip(i.pattern, 60)}`;
-    case 'Grep':
-      return `Searched for “${clip(i.pattern, 50)}”`;
-    case 'WebFetch':
-      return `Fetched ${clip(String(i.url ?? '').replace(/^https?:\/\//, ''), 60)}`;
-    case 'WebSearch':
-      return `Searched the web for “${clip(i.query, 50)}”`;
-    case 'Task':
-    case 'Agent':
-      return `Subagent: ${clip(i.description ?? i.subagent_type ?? 'task', 60)}`;
-    case 'TodoWrite':
-      return 'Updated the plan';
-    case 'mcp__postbox__search_assets':
-      return `Searched the assets for “${clip(i.query, 50)}”`;
-    case 'mcp__postbox__show_block':
-      return 'Showing a block';
-    case 'mcp__postbox__update_block':
-      return 'Updating a block';
-    case 'mcp__postbox__show_app':
-      return 'Writing an app';
-    case 'mcp__postbox__update_app':
-      return 'Updating an app';
-    case 'mcp__postbox__define_term':
-      return `Defining “${clip(i.term, 40)}”`;
-    case 'mcp__postbox__propose_agent':
-      return 'Proposing a teammate';
-    case 'mcp__postbox__schedule_wake':
-      return 'Scheduling a wake-up';
-    case 'mcp__postbox__cancel_wake':
-      return 'Canceling a wake-up';
-    case 'mcp__postbox__wake_agent':
-      return `Waking @${clip(String(i.handle ?? '').replace(/^@/, ''), 24)}`;
-    case 'mcp__postbox__permission_prompt':
-      return 'Asking you';
-    case 'mcp__postbox__read_conversation':
-      return 'Reading the conversation';
-    case 'mcp__postbox__read_message':
-      return 'Reading a message in full';
-    case 'ToolSearch':
-      return 'Loading tools';
-    default: {
-      const m = /^mcp__([^_]+(?:_[^_]+)*)__(.+)$/.exec(name);
-      return m ? `${m[2].replace(/_/g, ' ')} (${m[1]})` : name;
-    }
-  }
-}
-
-/** What a subagent was asked to do, in a line: its call’s description, else its prompt’s first sentence. */
-const askedOf = (input) => clip(input?.description || firstSentence(input?.prompt ?? '', 120), 120);
-
 /** The share of the context window a request used, in percent. */
 export function contextPercent(usage, window) {
   if (!usage || !window) return null;
@@ -157,12 +51,14 @@ export function contextPercent(usage, window) {
 }
 
 /**
- * Feeds one stream to a turn context.
+ * Feeds one stream to a turn context: reads Claude Code’s events into the harness-event contract
+ * (server/harness-events.mjs), which builds the reply, the steps, the ledger’s calls and the ring from them.
  * @param {any} ctx  the turn context (see server/adapters/adapter.mjs)
  * @param {{ contextWindow?: number, now?: () => number, effort?: string|null }} [opts]  effort: what the turn was
  *   started with, reported with the model, since the stream doesn’t say
  */
 export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.now, effort = null } = {}) {
+  const events = new HarnessEvents(ctx, { now });
   /** @type {any} */
   const st = {
     sessionId: null,
@@ -171,475 +67,28 @@ export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.no
     model: null,
     answered: null, // the model the last assistant message came from
     contextWindow,
+    effort,
     result: null,
-    wroteText: false, // reply text so far this turn, so separate text blocks get a paragraph break
     streamed: new Set(), // message ids whose text arrived as deltas
-    blocks: new Map(), // content block index → { type, id, name, json }
-    tools: new Map(), // tool_use id → { name, label, input, who, started, quiet }
-    // Task tool_use id → { id, name, state, ctx, asked, doing, thinking, said, since, parent, bg }: asked, what it was
-    // given to do; doing, its step now (a thought when thinking); said, its latest line of narration, and since, whether
-    // its step changed after it; parent, the subagent that started it; bg, whether it works on in the background (#73).
-    subagents: new Map(),
-    subNames: new Map(), // Task tool_use id → its name, kept after it finishes (refusals can arrive later)
-    tasks: new Map(), // subagent task id (a refusal’s agent_id) → its Task tool_use id
-    denied: new Set(), // tool_use ids Claude Code refused
-    jobs: new Map(), // background job id → its Bash tool_use id, while it runs
-    thoughts: 0,
-    narrations: 0,
     thoughtMessages: new Set(), // message ids whose thinking arrived as deltas
-    said: '', // reply text so far this turn, for the glimpse
-    glimpse: '',
-    glimpseAt: 0,
-    state: null,
-    used: new Set(), // tool_use ids whose whole input went to ctx.toolUse
+    blocks: new Map(), // content block index → { type, id, name, json }
     vcsCwd: null, // the folder of the latest commit or push Claude Code reported
     // This process’s usage key: a turn can run more than one process (a fork retried), and each reports its own
     // running totals.
     key: Math.random().toString(36).slice(2),
   };
-  const reply = replyText(ctx, st);
-  const status = (patch) => {
-    if (patch.state && patch.state === st.state && Object.keys(patch).length === 1) return;
-    if (patch.state) st.state = patch.state;
-    ctx.status(patch);
-  };
-  const pushSubagents = () => status({ subagents: [...st.subagents.values()] });
-  // The latest whole sentences of what the agent is thinking or writing, at most a few times a second.
-  const glimpse = (text, { force = false } = {}) => {
-    if (!force && now() - st.glimpseAt < 400) {
-      st.pending = text;
-      return;
-    }
-    const t = glimpseOf(text);
-    st.pending = null;
-    if (!t || t === st.glimpse) return;
-    st.glimpseAt = now();
-    st.glimpse = t;
-    ctx.status({ glimpse: t });
-  };
-  const flushGlimpse = () => {
-    if (st.pending) glimpse(st.pending, { force: true });
-  };
-  // by: the subagent a step is from ({ who: its name, parent: the call that started it }), so the list nests it (#73).
-  /** @typedef {{ who?: string|null, parent?: string|null }|null} By */
-  /** @param {By} [by] */
-  const byOf = (by) => (by?.who ? { who: by.who, ...(by.parent ? { parent: by.parent } : {}) } : {});
-  /** @param {string} text @param {By} [by] */
-  const thought = (text, by = null) => {
-    const t = String(text ?? '').trim();
-    if (!t) return;
-    st.thoughts += 1;
-    ctx.activity({ id: `thought-${st.thoughts}`, label: firstSentence(t, 120), state: 'done', kind: 'thought', detail: clip(t, 1200), ...byOf(by) });
-  };
-  // A subagent’s own text (its narration, such as “Now I’ll write my own probe…”, and its report) is a step in its
-  // voice, never the agent’s reply (#73).
-  /** @param {string} text @param {By} by */
-  const narrate = (text, by) => {
-    const t = String(text ?? '').trim();
-    if (!t) return;
-    st.narrations += 1;
-    ctx.activity({ id: `said-${st.narrations}`, label: firstSentence(t, 200), state: 'done', kind: 'said', detail: clip(t, 1200), ...byOf(by) });
-  };
-
-  /** @param {string} id @param {string} name @param {any} input @param {By} [by] */
-  const startTool = (id, name, input, by = null) => {
-    if (st.tools.has(id)) return;
-    const who = by?.who ?? null;
-    const quiet = QUIET.test(name);
-    const label = describeTool(name, input);
-    st.tools.set(id, { name, label, input, who, parent: by?.parent ?? null, started: now(), quiet });
-    if (!quiet) ctx.activity({ id, label, state: 'running', ...byOf(by), ...(SUBAGENT_TOOLS.has(name) ? { kind: 'agent' } : {}) });
-    else if (!who) status({ state: 'tool', currentStep: label });
-    if (SUBAGENT_TOOLS.has(name)) {
-      const sub = clip(input?.subagent_type ?? input?.description ?? 'subagent', 40);
-      st.subagents.set(id, {
-        id,
-        name: sub,
-        state: 'think',
-        ctx: null, // unknown until its own usage arrives, shown as unavailable rather than 0% (#189)
-        asked: askedOf(input),
-        doing: clip(input?.description, 120),
-        thinking: false,
-        said: '',
-        since: false,
-        parent: by?.parent ?? null,
-        bg: input?.run_in_background === true,
-      });
-      st.subNames.set(id, sub);
-      pushSubagents();
-    }
-    if (!who) status({ state: 'tool' });
-  };
-  // The work ledger (#132) gets each call once, with its whole input, as soon as it’s known: before the tool runs,
-  // so the file it changes can still be read as it was. An assistant message’s input is final, even an empty one.
-  const used = (id, t) => {
-    if (st.used.has(id)) return;
-    st.used.add(id);
-    ctx.toolUse?.({ id, name: t.name, input: t.input ?? {}, who: t.who, ...(t.parent ? { parent: t.parent } : {}) });
-  };
-  const labelTool = (id, input, final = false) => {
-    const t = st.tools.get(id);
-    if (!t) return;
-    if (input && (final || Object.keys(input).length)) {
-      t.input = input;
-      used(id, t);
-    }
-    const label = describeTool(t.name, input);
-    if (label !== t.label) {
-      t.label = label;
-      if (!t.quiet) ctx.activity({ id, label, state: 'running', ...byOf(t) });
-      else if (!t.who) status({ currentStep: label });
-    }
-    const sub = st.subagents.get(id);
-    if (sub && input) {
-      sub.name = clip(input.subagent_type ?? input.description ?? sub.name, 40);
-      sub.asked = askedOf(input) || sub.asked;
-      sub.doing = clip(input.description ?? sub.doing, 120);
-      sub.bg = sub.bg || input.run_in_background === true;
-      st.subNames.set(id, sub.name);
-      pushSubagents();
-    }
-  };
-  const stepOf = (id, t, state, extra = {}) => ({ id, label: t.label, state, ms: now() - t.started, ...byOf(t), ...extra });
-  // stopped: a subagent that worked in the background and was stopped (#73).
-  const endTool = (id, failed, detail = '', { stopped = false } = {}) => {
-    const t = st.tools.get(id);
-    if (!t || t.done) return;
-    t.done = true;
-    used(id, t);
-    if (failed && detail) t.error = detail;
-    const state = st.denied.has(id) ? 'denied' : failed ? 'failed' : stopped ? 'stopped' : 'done';
-    // A subagent’s step ends with what it returned (#73); any other’s with why it failed. One that worked in the
-    // background says how it ended, so its “Working in the background” doesn’t stay.
-    const why =
-      (failed && detail && state !== 'denied' ? detail : t.summary) ||
-      (t.async ? { done: 'Finished in the background', failed: 'Failed in the background', stopped: 'Stopped in the background' }[state] : '');
-    if (!t.quiet) ctx.activity(stepOf(id, t, state, why ? { detail: firstSentence(why, 300) } : {}));
-    if (st.subagents.has(id)) {
-      st.subagents.delete(id);
-      pushSubagents();
-    }
-  };
-
-  // A call that went on in the background (#129): Bash, Monitor, or any whose result names a background id. Its result
-  // only says the job started, so its step stays running, and the runtime records the job. Returns whether it was one.
-  const startJob = (id, text, structured) => {
-    const t = st.tools.get(id);
-    if (!t || t.done || SUBAGENT_TOOLS.has(t.name)) return false;
-    // The result’s own text names its job; tool_use_result is one per message, so it’s only the fallback.
-    const named = BACKGROUND_ID.exec(String(text).trimStart())?.[1];
-    const jobId = String(named ?? structured?.backgroundTaskId ?? structured?.taskId ?? '');
-    if (!jobId || (!named && t.input?.run_in_background !== true)) return false;
-    t.job = jobId;
-    st.jobs.set(jobId, id);
-    if (!t.quiet) ctx.activity({ id, label: t.label, state: 'running', job: jobId, ...byOf(t) });
-    ctx.job?.({
-      id: jobId,
-      toolUseId: id,
-      label: t.label,
-      command: String(t.input?.command ?? ''),
-      outputFile: BACKGROUND_FILE.exec(text)?.[1] ?? null,
-      state: 'running',
-    });
-    return true;
-  };
-  const endJob = (jobId, status, summary) => {
-    const id = st.jobs.get(jobId);
-    st.jobs.delete(jobId);
-    const t = st.tools.get(id);
-    const state = JOB_STATES[/** @type {keyof typeof JOB_STATES} */ (status)] ?? 'done';
-    if (t && !t.done) {
-      t.done = true;
-      if (!t.quiet) ctx.activity(stepOf(id, t, state, { job: jobId, ...(state === 'failed' && summary ? { detail: firstSentence(summary, 300) } : {}) }));
-    }
-    ctx.job?.({ id: jobId, state });
-  };
-  /** The subagent calls still working in the background. */
-  const asyncAgents = () => [...st.tools].filter(([, t]) => t.async && !t.done).map(([id]) => id);
-  /** The agent’s step while background jobs or subagents run on after its reply. */
-  const waiting = (jobs, agents) => {
-    if (jobs.length) status({ state: 'tool', currentStep: jobs.length === 1 ? 'Waiting for a background job' : `Waiting for ${jobs.length} background jobs` });
-    else if (agents.length)
-      status({ state: 'tool', currentStep: agents.length === 1 ? 'Waiting for a background subagent' : `Waiting for ${agents.length} background subagents` });
-  };
-  // A subagent’s task ended: its step says what it returned. One that worked on in the background ends here; another
-  // ends with its tool result, which comes next.
-  const endAgent = (id, status, summary) => {
-    const t = st.tools.get(id);
-    if (!t) return;
-    if (typeof summary === 'string' && summary.trim()) t.summary = summary;
-    const state = JOB_STATES[/** @type {keyof typeof JOB_STATES} */ (status)] ?? 'done';
-    if (t.async) endTool(id, state === 'failed', state === 'failed' ? (summary ?? '') : '', { stopped: state === 'stopped' });
-  };
-  // A subagent that works on in the background (#73): its step and its entry stay until its task ends. Returns whether
-  // the result was one.
-  const startAsyncAgent = (id, text) => {
-    const t = st.tools.get(id);
-    const sub = st.subagents.get(id);
-    if (!t || t.done || !sub || !ASYNC_AGENT.test(text)) return false;
-    t.async = true;
-    sub.bg = true;
-    if (!t.quiet) ctx.activity({ id, label: t.label, state: 'running', detail: 'Working in the background', ...byOf(t) });
-    pushSubagents();
-    return true;
-  };
-
-  // Claude Code refused a call without asking: the auto-mode classifier, a deny rule, or the mode. Reported
-  // as it happens, and again (authoritatively) in the result, so each is passed on once.
-  // Deny rules in settings refuse without the event, so the result’s list is the only record of those, and
-  // the tool’s error is their reason. The list also holds calls the person declined on a permission card:
-  // those are skipped here (and the runtime matches them to their card too).
-  const denial = ({ tool_use_id: id, tool_name: tool, tool_input, agent_id, message, decision_reason, decision_reason_type }, { fromResult = false } = {}) => {
-    if (!id || st.denied.has(id)) return;
-    const t = st.tools.get(id);
-    if (fromResult && DECLINED.test(t?.error ?? '')) return;
-    st.denied.add(id);
-    const input = tool_input ?? t?.input ?? {};
-    const who = agent_id ? (st.subNames.get(st.tasks.get(agent_id)) ?? 'a subagent') : (t?.who ?? null);
-    ctx.denied?.({
-      toolUseId: id,
-      tool,
-      input,
-      label: describeTool(tool, input),
-      reason: firstSentence(message ?? decision_reason ?? t?.error ?? ''),
-      reasonType: decision_reason_type ?? null,
-      who,
-    });
-    if (t?.done && !t.quiet) ctx.activity(stepOf(id, t, 'denied'));
-  };
-
-  // Events from inside a subagent carry the Task call’s id; they move that subagent’s ring, not the agent’s. Its tool
-  // calls, its narration and its thinking are steps in the list too, under its name and nested under that call (#73).
-  const subagentEvent = (parent, e) => {
-    const by = { who: st.subNames.get(parent) ?? 'subagent', parent };
-    if (e.type === 'assistant')
-      for (const b of contentBlocks(e.message?.content))
-        if (b.type === 'tool_use') {
-          startTool(b.id, b.name, b.input, by);
-          labelTool(b.id, b.input, true);
-        } else if (b.type === 'text') narrate(b.text, by);
-        else if (b.type === 'thinking') thought(b.thinking, by);
-    const sub = st.subagents.get(parent);
-    if (!sub) return;
-    const ev = e.event;
-    let changed = false;
-    if (e.type === 'stream_event' && ev?.type === 'message_start') {
-      const pct = contextPercent(ev.message?.usage, st.contextWindow);
-      if (pct !== null) sub.ctx = pct;
-      changed = true;
-    }
-    if (e.type === 'stream_event' && ev?.type === 'content_block_start') {
-      const t = ev.content_block?.type;
-      const next = t === 'thinking' || t === 'redacted_thinking' ? 'think' : t === 'text' ? 'gen' : 'tool';
-      if (t === 'tool_use') doing(sub, describeTool(ev.content_block.name, ev.content_block.input));
-      changed = sub.state !== next || changed;
-      sub.state = next;
-    }
-    if (e.type === 'assistant') {
-      // Its messages arrive whole (recorded: subagent-tree.jsonl), so the last block says what it’s on.
-      const last = contentBlocks(e.message?.content).at(-1)?.type;
-      if (last) sub.state = last === 'thinking' || last === 'redacted_thinking' ? 'think' : last === 'text' ? 'gen' : 'tool';
-      for (const b of contentBlocks(e.message?.content)) {
-        if (b.type === 'tool_use') doing(sub, describeTool(b.name, b.input));
-        else if (b.type === 'thinking' && b.thinking) doing(sub, firstSentence(b.thinking, 120), true);
-        else if (b.type === 'text' && b.text?.trim()) {
-          sub.said = glimpseOf(firstSentence(b.text, 400));
-          sub.since = false;
-        }
-      }
-      changed = true;
-    }
-    if (changed) pushSubagents();
-  };
-  // since: its step changed after its latest narration, so the line says both.
-  const doing = (sub, text, thinking = false) => {
-    if (clip(text, 120) !== sub.doing) sub.since = !!sub.said;
-    sub.doing = clip(text, 120);
-    sub.thinking = thinking;
-  };
-
-  /** Handles one parsed line of the stream. */
+  const emit = events.event;
+  /** Handles one parsed line of the stream. @param {any} e */
   function push(e) {
     if (!e || typeof e !== 'object') return;
     const parent = e.parent_tool_use_id;
-    if (parent && e.type !== 'user') return subagentEvent(parent, e);
-
-    if (e.type === 'system') {
-      if (e.subtype === 'init') {
-        st.sessionId = e.session_id ?? st.sessionId;
-        st.model = e.model ?? st.model;
-        // MCP servers with their status, for the persona sheet (#59); the model and effort the turn runs with (#60).
-        ctx.reported?.({
-          ...(Array.isArray(e.mcp_servers) ? { mcpServers: e.mcp_servers } : {}),
-          ...(e.model ? { model: e.model } : {}),
-          ...(effort ? { effort } : {}),
-        });
-        postboxServerStatus(ctx, e.mcp_servers); // Postbox’s own server failed: shown, and told next turn (#1161)
-        // Its skills and commands, for the composer’s / menu (#67).
-        if (Array.isArray(e.slash_commands)) ctx.commands?.(commandsOf(e));
-        status({ state: 'think', currentStep: 'Thinking' });
-      } else if (e.subtype === 'commands_changed' && Array.isArray(e.commands)) {
-        // The list changed mid-session (skills found as it works): it replaces the one init gave (sdk.d.ts).
-        ctx.commands?.(e.commands);
-      } else if (e.subtype === 'status' && e.status === 'compacting') {
-        status({ currentStep: 'Summarizing the conversation' });
-      } else if (e.subtype === 'permission_denied') {
-        denial(e);
-      } else if (e.subtype === 'task_notification' && (st.jobs.has(e.task_id) || e.tool_use_id)) {
-        // A background command or subagent ended, maybe long after its tool call returned (#129). A job’s step and
-        // state end here, and the work ledger records how the command ended (#132): one event, told to both.
-        if (st.jobs.has(e.task_id)) endJob(e.task_id, e.status, e.summary);
-        else if (st.subagents.has(e.tool_use_id)) endAgent(e.tool_use_id, e.status, e.summary);
-        if (e.tool_use_id)
-          ctx.taskEnded?.({
-            toolUseId: e.tool_use_id,
-            status: String(e.status ?? ''),
-            summary: typeof e.summary === 'string' ? e.summary : '',
-            outputFile: typeof e.output_file === 'string' ? e.output_file : null,
-          });
-      } else if (e.subtype === 'task_started' && e.task_id && e.tool_use_id) {
-        st.tasks.set(e.task_id, e.tool_use_id);
-      } else if (e.subtype === 'task_progress' && e.tool_use_id) {
-        const sub = st.subagents.get(e.tool_use_id);
-        if (sub && e.description) {
-          doing(sub, e.description);
-          pushSubagents();
-          glimpse(`${sub.name}: ${e.description}`);
-        }
-      } else if (e.subtype === 'vcs_state_changed' && typeof e.cwd === 'string') {
-        // A commit or push (recorded: tests/fixtures/claude-code/ledger-push.jsonl); its tool result names the commit.
-        st.vcsCwd = e.cwd;
-      } else if (e.subtype === 'task_summary' && e.detail) {
-        glimpse(e.detail);
-      } else if (e.subtype === 'compact_boundary') {
-        const total = e.compact_metadata?.pre_tokens ?? 0;
-        // How much survives isn’t reported; the next request’s usage shows it, so start from a summary’s worth.
-        const kept = Math.min(total, Math.round(st.contextWindow * 0.05));
-        if (total) ctx.compaction({ kept, total, summary: e.compact_metadata?.summary ?? 'Claude Code summarized the earlier conversation to make room.' });
-        st.wroteText = false;
-      }
-      return;
-    }
-
-    if (e.type === 'stream_event') {
-      const ev = e.event ?? {};
-      if (ev.type === 'message_start') {
-        st.blocks.clear();
-        st.lastUsage = ev.message?.usage ?? st.lastUsage;
-        const pct = contextPercent(ev.message?.usage, st.contextWindow);
-        if (pct !== null) status({ ctx: pct });
-        if (ev.message?.id) st.current = ev.message.id;
-      } else if (ev.type === 'content_block_start') {
-        const b = ev.content_block ?? {};
-        st.blocks.set(ev.index, { type: b.type, id: b.id, name: b.name, json: '', thinking: '' });
-        if (b.type === 'thinking' || b.type === 'redacted_thinking') status({ state: 'think', currentStep: 'Thinking' });
-        else if (b.type === 'text') {
-          if (st.wroteText) ctx.text('\n\n');
-          status({ state: 'gen', currentStep: 'Writing a reply' });
-        } else if (b.type === 'tool_use' || b.type === 'server_tool_use' || b.type === 'mcp_tool_use') startTool(b.id, b.name, b.input);
-      } else if (ev.type === 'content_block_delta') {
-        const d = ev.delta ?? {};
-        const blk = st.blocks.get(ev.index);
-        if (d.type === 'text_delta' && d.text) {
-          if (st.current) st.streamed.add(st.current);
-          reply.write(d.text);
-          st.said = appendGlimpseSource(st.said, d.text);
-          glimpse(st.said);
-        } else if (d.type === 'thinking_delta' && d.thinking && blk) {
-          if (st.current) st.thoughtMessages.add(st.current);
-          blk.thinking += d.thinking;
-          glimpse(blk.thinking);
-        } else if (d.type === 'input_json_delta' && blk) blk.json += d.partial_json ?? '';
-      } else if (ev.type === 'content_block_stop') {
-        const blk = st.blocks.get(ev.index);
-        if (blk?.type === 'thinking') {
-          flushGlimpse();
-          thought(blk.thinking);
-        }
-        if (blk?.id && blk.json) {
-          try {
-            labelTool(blk.id, JSON.parse(blk.json));
-          } catch {
-            // A partial input that doesn’t parse keeps the first label.
-          }
-        }
-      }
-      return;
-    }
-
-    if (e.type === 'assistant') {
-      // The last top-level assistant message is where this turn ends in the transcript: a fork point.
-      if (e.uuid) st.lastUuid = e.uuid;
-      const m = e.message ?? {};
-      // The model that actually answered (#60). Claude Code’s own messages, such as an interruption, say
-      // “<synthetic>”, which isn’t a model.
-      if (typeof m.model === 'string' && m.model && !m.model.startsWith('<') && m.model !== st.answered) {
-        st.answered = m.model;
-        ctx.reported?.({ model: m.model });
-      }
-      for (const b of contentBlocks(m.content)) {
-        if (b.type === 'tool_use' || b.type === 'server_tool_use' || b.type === 'mcp_tool_use') {
-          startTool(b.id, b.name, b.input);
-          labelTool(b.id, b.input, true);
-        } else if (b.type === 'thinking' && b.thinking && !st.thoughtMessages.has(m.id)) {
-          // Without partial messages, thinking arrives whole.
-          thought(b.thinking);
-        } else if (b.type === 'text' && b.text && !st.streamed.has(m.id)) {
-          // Without partial messages, text arrives whole.
-          reply.whole(b.text);
-        }
-      }
-      // A message that calls no tool, while subagents it started work on in the background: it waits on them (#189).
-      if (!contentBlocks(m.content).some((b) => /tool_use$/.test(b.type))) waiting([], asyncAgents());
-      return;
-    }
-
-    if (e.type === 'user') {
-      const results = contentBlocks(e.message?.content).filter((b) => b.type === 'tool_result');
-      for (const b of results) {
-        // A command that went on in the background becomes a job (#129), and a subagent that did works on (#73): the
-        // step stays open until it ends.
-        const job = !b.is_error && (startJob(b.tool_use_id, resultText(b.content), e.tool_use_result) || startAsyncAgent(b.tool_use_id, resultText(b.content)));
-        if (!job) endTool(b.tool_use_id, b.is_error === true, b.is_error ? resultText(b.content) : '');
-        // What the tool returned, for the work ledger (#132). tool_use_result is the tool’s own record (a file’s
-        // contents before an edit, a command’s stdout and exit, a commit), on the event that carries the result.
-        ctx.toolResult?.({
-          id: b.tool_use_id,
-          isError: b.is_error === true,
-          text: resultText(b.content),
-          result: results.length === 1 ? (e.tool_use_result ?? null) : null,
-          vcsCwd: st.vcsCwd,
-        });
-      }
-      if (!parent) status({ state: 'think', currentStep: 'Thinking' });
-      return;
-    }
-
-    if (e.type === 'result') {
-      st.result = reply.fromResult(e); // posting a reply no text event carried (#485)
-      const usage = (st.model && e.modelUsage?.[st.model]) || Object.values(e.modelUsage ?? {})[0];
-      if (usage?.contextWindow && usage.contextWindow !== st.contextWindow) {
-        st.contextWindow = usage.contextWindow;
-        const pct = contextPercent(st.lastUsage, st.contextWindow);
-        if (pct !== null) status({ ctx: pct });
-      }
-      // What this turn has spent so far: the result’s totals run for the session, so less where it stood (#295).
-      st.spent = sessionTotals(e);
-      st.tokens = addTokens(st.tokens ?? null, resultTokens(e));
-      ctx.usage?.({ key: st.key, costUsd: turnCost(st.spent, st.before, st.fork), tokens: st.tokens });
-      // Refusals the stream didn’t report as they happened.
-      for (const d of e.permission_denials ?? []) denial(d, { fromResult: true });
-      // A background job or subagent runs on after the reply: the CLI waits for it, then tells the agent how it went.
-      const agents = asyncAgents();
-      const running = new Set([...st.jobs.values(), ...agents]);
-      // A background subagent’s own calls run on with it, at any depth.
-      const under = (t, n = 0) => !!t?.parent && n < 20 && (running.has(t.parent) || under(st.tools.get(t.parent), n + 1));
-      for (const [id, t] of st.tools) if (!running.has(id) && !under(t)) endTool(id, e.is_error === true);
-      waiting([...st.jobs.keys()], agents);
-      flushGlimpse();
-    }
+    if (parent && e.type !== 'user') return subagentEvent(emit, st, parent, e);
+    if (e.type === 'system') return systemEvent(ctx, emit, st, e);
+    if (e.type === 'stream_event') return streamEvent(emit, st, e.event ?? {});
+    if (e.type === 'assistant') return assistantEvent(ctx, emit, st, e);
+    if (e.type === 'user') return userEvent(emit, st, e, parent);
+    if (e.type === 'result') return resultEvent(ctx, emit, st, e);
   }
-
   return {
     push,
     /**
@@ -649,9 +98,7 @@ export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.no
      * so the call is known by then, with the subagent that made it. Null for the agent’s own calls.
      * @param {{ agentId?: string|null, toolUseId?: string|null }} ids
      */
-    who({ agentId = null, toolUseId = null }) {
-      return (agentId && st.subNames.get(st.tasks.get(agentId))) || (toolUseId && st.tools.get(toolUseId)?.who) || null;
-    },
+    who: (ids) => events.who(ids),
     get sessionId() {
       return st.sessionId;
     },
@@ -672,6 +119,197 @@ export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.no
       return st.lastUuid ?? null;
     },
   };
+}
+
+const isToolBlock = (/** @type {any} */ b) => b?.type === 'tool_use' || b?.type === 'server_tool_use' || b?.type === 'mcp_tool_use';
+
+/** Events from inside a subagent carry the call that started it; its calls, words and thoughts are its own (#73). */
+function subagentEvent(/** @type {Function} */ emit, /** @type {any} */ st, /** @type {string} */ parent, /** @type {any} */ e) {
+  if (e.type === 'assistant') {
+    for (const b of contentBlocks(e.message?.content))
+      if (isToolBlock(b)) emit({ kind: 'tool_call', id: b.id, name: b.name, input: b.input, final: true, parent });
+      else if (b.type === 'text') emit({ kind: 'text', text: b.text, parent });
+      else if (b.type === 'thinking') emit({ kind: 'thinking', text: b.thinking, whole: true, parent });
+    return;
+  }
+  const ev = e.type === 'stream_event' ? e.event : null;
+  if (ev?.type === 'message_start') {
+    const pct = contextPercent(ev.message?.usage, st.contextWindow);
+    if (pct !== null) emit({ kind: 'context', percent: pct, parent });
+  } else if (ev?.type === 'content_block_start') {
+    const b = ev.content_block ?? {};
+    if (b.type === 'thinking' || b.type === 'redacted_thinking') emit({ kind: 'thinking', text: '', parent });
+    else if (b.type === 'text') emit({ kind: 'text', text: '', parent });
+    else if (isToolBlock(b)) emit({ kind: 'tool_call', id: b.id, name: b.name, input: b.input, parent });
+  }
+}
+
+/** The session’s own events: its start, its commands, refusals, background work, a commit and a compaction. */
+function systemEvent(/** @type {any} */ ctx, /** @type {Function} */ emit, /** @type {any} */ st, /** @type {any} */ e) {
+  switch (e.subtype) {
+    case 'init':
+      st.sessionId = e.session_id ?? st.sessionId;
+      st.model = e.model ?? st.model;
+      // MCP servers with their status, for the persona sheet (#59); the model and effort the turn runs with (#60).
+      ctx.reported?.({
+        ...(Array.isArray(e.mcp_servers) ? { mcpServers: e.mcp_servers } : {}),
+        ...(e.model ? { model: e.model } : {}),
+        ...(st.effort ? { effort: st.effort } : {}),
+      });
+      postboxServerStatus(ctx, e.mcp_servers); // Postbox’s own server failed: shown, and told next turn (#1161)
+      if (Array.isArray(e.slash_commands)) ctx.commands?.(commandsOf(e)); // its skills and commands, for the / menu (#67)
+      return emit({ kind: 'status', state: 'think', step: 'Thinking' });
+    case 'commands_changed': // the list changed mid-session: it replaces the one init gave (sdk.d.ts)
+      if (Array.isArray(e.commands)) ctx.commands?.(e.commands);
+      return;
+    case 'status':
+      if (e.status === 'compacting') emit({ kind: 'status', step: 'Summarizing the conversation' });
+      return;
+    case 'permission_denied':
+      return emit({ kind: 'refused', ...refusalOf(e) });
+    case 'task_notification': // a background command or subagent ended, maybe long after its call returned (#129)
+      return emit({
+        kind: 'tool_end',
+        job: e.task_id,
+        id: e.tool_use_id,
+        status: e.status,
+        summary: typeof e.summary === 'string' ? e.summary : '',
+        outputFile: typeof e.output_file === 'string' ? e.output_file : null,
+      });
+    case 'task_started':
+      if (e.task_id && e.tool_use_id) emit({ kind: 'task', task: e.task_id, id: e.tool_use_id });
+      return;
+    case 'task_progress':
+      if (e.tool_use_id && e.description) emit({ kind: 'progress', parent: e.tool_use_id, text: e.description });
+      return;
+    case 'vcs_state_changed': // a commit or push (recorded: ledger-push.jsonl); its tool result names the commit
+      if (typeof e.cwd === 'string') st.vcsCwd = e.cwd;
+      return;
+    case 'task_summary':
+      if (e.detail) emit({ kind: 'progress', text: e.detail });
+      return;
+    case 'compact_boundary': {
+      const total = e.compact_metadata?.pre_tokens ?? 0;
+      // How much survives isn’t reported; the next request’s usage shows it, so start from a summary’s worth.
+      const kept = Math.min(total, Math.round(st.contextWindow * 0.05));
+      return emit({ kind: 'compaction', kept, total, summary: e.compact_metadata?.summary ?? 'Claude Code summarized the earlier conversation to make room.' });
+    }
+  }
+}
+
+/** A refusal, as the stream or the result reports it. @param {any} d */
+const refusalOf = (d) => ({
+  id: d.tool_use_id,
+  tool: d.tool_name,
+  input: d.tool_input,
+  agentId: d.agent_id ?? null,
+  reason: d.message ?? d.decision_reason,
+  reasonType: d.decision_reason_type,
+});
+
+/** Partial messages (--include-partial-messages): text and thinking as they stream, and each call as it starts. */
+function streamEvent(/** @type {Function} */ emit, /** @type {any} */ st, /** @type {any} */ ev) {
+  const block = `${st.current}:${ev.index}`;
+  if (ev.type === 'message_start') {
+    st.blocks.clear();
+    st.lastUsage = ev.message?.usage ?? st.lastUsage;
+    const pct = contextPercent(ev.message?.usage, st.contextWindow);
+    if (pct !== null) emit({ kind: 'context', percent: pct });
+    if (ev.message?.id) st.current = ev.message.id;
+  } else if (ev.type === 'content_block_start') {
+    const b = ev.content_block ?? {};
+    st.blocks.set(ev.index, { type: b.type, id: b.id, name: b.name, json: '' });
+    if (b.type === 'thinking' || b.type === 'redacted_thinking') emit({ kind: 'thinking', text: '', block });
+    else if (b.type === 'text') emit({ kind: 'text', text: '', block });
+    else if (isToolBlock(b)) emit({ kind: 'tool_call', id: b.id, name: b.name, input: b.input });
+  } else if (ev.type === 'content_block_delta') {
+    const d = ev.delta ?? {};
+    const blk = st.blocks.get(ev.index);
+    if (d.type === 'text_delta' && d.text) {
+      if (st.current) st.streamed.add(st.current);
+      emit({ kind: 'text', text: d.text, block });
+    } else if (d.type === 'thinking_delta' && d.thinking && blk) {
+      if (st.current) st.thoughtMessages.add(st.current);
+      emit({ kind: 'thinking', text: d.thinking, block });
+    } else if (d.type === 'input_json_delta' && blk) blk.json += d.partial_json ?? '';
+  } else if (ev.type === 'content_block_stop') blockStop(emit, st.blocks.get(ev.index), block);
+}
+
+/** A block ended: a thought is whole, and a call’s input is known. @param {Function} emit @param {any} blk @param {string} block */
+function blockStop(emit, blk, block) {
+  if (blk?.type === 'thinking') emit({ kind: 'thinking_end', block });
+  if (!blk?.id || !blk.json) return;
+  try {
+    emit({ kind: 'tool_call', id: blk.id, name: blk.name, input: JSON.parse(blk.json) });
+  } catch {
+    // A partial input that doesn’t parse keeps the first label.
+  }
+}
+
+/** A whole assistant message: its calls with their final input, and text and thinking that didn’t stream. */
+function assistantEvent(/** @type {any} */ ctx, /** @type {Function} */ emit, /** @type {any} */ st, /** @type {any} */ e) {
+  // The last top-level assistant message is where this turn ends in the transcript: a fork point.
+  if (e.uuid) st.lastUuid = e.uuid;
+  const m = e.message ?? {};
+  // The model that actually answered (#60). Claude Code’s own messages, such as an interruption, say “<synthetic>”.
+  if (typeof m.model === 'string' && m.model && !m.model.startsWith('<') && m.model !== st.answered) {
+    st.answered = m.model;
+    ctx.reported?.({ model: m.model });
+  }
+  const blocks = contentBlocks(m.content);
+  blocks.forEach((b, i) => {
+    if (isToolBlock(b)) emit({ kind: 'tool_call', id: b.id, name: b.name, input: b.input, final: true });
+    else if (b.type === 'thinking' && b.thinking && !st.thoughtMessages.has(m.id)) emit({ kind: 'thinking', text: b.thinking, whole: true });
+    else if (b.type === 'text' && b.text && !st.streamed.has(m.id)) emit({ kind: 'text', text: b.text, block: `${m.id}:whole:${i}` });
+  });
+  emit({ kind: 'message_end', calledTools: blocks.some(isToolBlock) });
+}
+
+/** Tool results: each call ends, or goes on in the background (#129, #73), and the work ledger hears what it returned. */
+function userEvent(/** @type {Function} */ emit, /** @type {any} */ st, /** @type {any} */ e, /** @type {string|undefined} */ parent) {
+  const results = contentBlocks(e.message?.content).filter((b) => b.type === 'tool_result');
+  for (const b of results) {
+    const text = resultText(b.content);
+    // tool_use_result is the tool’s own record (a file before an edit, a command’s output, a commit), one per message.
+    const result = results.length === 1 ? (e.tool_use_result ?? null) : null;
+    emit({
+      kind: 'tool_result',
+      id: b.tool_use_id,
+      isError: b.is_error === true,
+      text,
+      result,
+      vcsCwd: st.vcsCwd,
+      background: backgroundOf(text, e.tool_use_result),
+      parent,
+    });
+  }
+}
+
+/**
+ * Whether a result says its call went on in the background: a job, named by its text (the fallback is the structured
+ * record, one per message), or a subagent. @param {string} text @param {any} structured
+ */
+function backgroundOf(text, structured) {
+  const named = BACKGROUND_ID.exec(String(text).trimStart())?.[1];
+  const job = String(named ?? structured?.backgroundTaskId ?? structured?.taskId ?? '');
+  return { ...(job ? { job, named: Boolean(named), outputFile: BACKGROUND_FILE.exec(text)?.[1] ?? null } : {}), agent: ASYNC_AGENT.test(text) };
+}
+
+/** The turn’s end: its window, what it spent, refusals the stream didn’t report, and the contract’s turn_end. */
+function resultEvent(/** @type {any} */ ctx, /** @type {Function} */ emit, /** @type {any} */ st, /** @type {any} */ e) {
+  st.result = e;
+  const usage = (st.model && e.modelUsage?.[st.model]) || Object.values(e.modelUsage ?? {})[0];
+  if (usage?.contextWindow && usage.contextWindow !== st.contextWindow) {
+    st.contextWindow = usage.contextWindow;
+    const pct = contextPercent(st.lastUsage, st.contextWindow);
+    if (pct !== null) emit({ kind: 'context', percent: pct });
+  }
+  // What this turn has spent so far: the result’s totals run for the session, so less where it stood (#295).
+  st.spent = sessionTotals(e);
+  st.tokens = addTokens(st.tokens ?? null, resultTokens(e));
+  ctx.usage?.({ key: st.key, costUsd: turnCost(st.spent, st.before, st.fork), tokens: st.tokens });
+  for (const d of e.permission_denials ?? []) emit({ kind: 'refused', ...refusalOf(d), fromResult: true });
+  emit({ kind: 'turn_end', isError: e.is_error === true, text: typeof e.result === 'string' ? e.result : '' });
 }
 
 /** Why a finished stream failed, in words for the person, or null if it didn’t. */

@@ -13,7 +13,7 @@
 // own for each test. Moved from tools/check-stop.mjs (#303).
 
 import { expect, test } from '@playwright/test';
-import { failOnPageErrors, focusIs, PHONE, startPostbox, synced } from './postbox.mjs';
+import { failOnPageErrors, focusIs, openSteps, PHONE, startPostbox, synced } from './postbox.mjs';
 
 const SEND_NOW = { name: /^Send now/ };
 
@@ -235,7 +235,7 @@ test('#167 two kept jobs Postbox couldn’t tell apart: stopping one stops both,
   await expect(page.locator('.bg-jobs li'), 'both job rows').toHaveCount(2);
   await jobStop(page).click();
   await expect(page.locator('.bg-jobs li'), 'both rows go').toHaveCount(0);
-  await page.locator('details.activity > summary').last().click();
+  await openSteps(page.locator('details.activity').last());
   const rows = await page.locator('details.activity').last().locator('.steps li .step-text').allInnerTexts();
   expect(rows.map((t) => t.replace(/\s+/g, ' ').trim())).toEqual([
     'Run the mixed-room UAT scenario live Stopped',

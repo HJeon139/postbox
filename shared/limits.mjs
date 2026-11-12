@@ -149,6 +149,13 @@ export const GLIMPSE_CHARS = 160;
 export const GLIMPSE_SOURCE_CHARS = 2000;
 
 /**
+ * What a step keeps, in characters: its call’s input in a line, the end of what it returned, and a thought whole, as the
+ * live view shows it (app/js/activity-live.mjs); and any other detail, a reason or a result’s note, which is all a
+ * thought keeps once its turn ends (shared/step-fold.mjs).
+ */
+export const STEP_TEXT = Object.freeze({ input: 300, output: 400, thought: 8000, detail: 1200 });
+
+/**
  * Agent wakes in a row, without you, before the next waits for your Allow: a backstop against agents that never stop,
  * until a supervisor agent watches the room (#538). 3 until #320 raised it to 10, 50 since #492, and 1,000 since #1035,
  * after one held wake left every agent in a room waiting about 7.5 hours. It’s the default: each room can set its own

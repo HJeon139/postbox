@@ -1,8 +1,9 @@
 // Postbox’s own MCP server failing to start for a turn (#1161, #1162; #489 for Kiro). The backend reports it its own
 // way: Claude Code’s and the Agent SDK’s init list the server as failed, and the turn runs with none of Postbox’s
-// tools (claude-init.mjs); Codex, for which the server is required, refuses to open the turn (codex-thread.mjs). Either
-// way the person sees a failed step that says so, and the agent hears of it at its next turn, once, since it had no
-// way to tell anyone. The rule lives here.
+// tools (claude-init.mjs); Codex, for which the server is required, refuses to open the turn (codex-thread.mjs); Kiro
+// sends a display_error (kiro-display-error.mjs). Either way the person sees a failed step that says so, and the agent
+// hears of it at its next turn, once, since it had no way to tell anyone (the runtime adds toolsDownNote). The rule
+// lives here, for every backend.
 
 const STEP = { id: 'postbox-tools-down', label: 'Postbox’s tools didn’t load', state: 'failed', ms: 0 };
 
@@ -23,15 +24,15 @@ const NOTE = {
 };
 
 /**
- * The note for this turn when Postbox’s tools didn’t load last turn, cleared so it’s told once; else ''. A command is
- * the whole prompt, since Claude Code runs it only when the prompt is /name and its arguments (#67), and a re-attached
- * turn sends the agent nothing (#120): the note waits for the next turn that can carry it.
- * @param {any} ctx @param {any} message
+ * The note for this turn when Postbox’s tools didn’t load last turn, or ''. The runtime adds it to the turn’s notices,
+ * which every backend gives the agent, and clears it, so it’s told once, whatever the backend (#1161, #1162, #489). A
+ * command is the whole prompt, since Claude Code runs it only when the prompt is /name and its arguments (#67), and a
+ * re-attached turn sends the agent nothing (#120): the note waits for the next turn that can carry it.
+ * @param {any} se  the session @param {any} message
  */
-export function takeToolsDown(ctx, message) {
+export function toolsDownNote(se, message) {
   if (message.slash || typeof message.attach === 'string') return '';
-  const down = ctx.state?.postboxToolsDown;
+  const down = se?.backendState?.postboxToolsDown;
   if (!down) return '';
-  ctx.saveState({ postboxToolsDown: null });
-  return down === 'refused' ? NOTE.refused : NOTE.ran;
+  return (down === 'refused' ? NOTE.refused : NOTE.ran).trim();
 }

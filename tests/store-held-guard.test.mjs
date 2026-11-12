@@ -60,6 +60,7 @@ const DIRECT = {
   'ledger.mjs': ['expireStale'], // at startup
   'permission-expiry.mjs': ['expireStalePermissions'], // at startup
   'public-state.mjs': ['publicItems'], // a conversation’s items by range, an HTTP answer to the page (#1155)
+  'restart-sweep.mjs': ['foldCutOff'], // at startup: the steps of turns a restart cut off
   'sandbox-routes.mjs': ['sandboxRoute'], // an app version’s sandbox page: an HTTP answer to the page
   'shell-runs.mjs': ['expireStaleCommands'], // at startup
   'thread-headers.mjs': ['itemsOf'], // each thread's header facts, sent to the page (#1155)
@@ -98,7 +99,7 @@ const PENDING = {
   'remote/turns-end.mjs': ['stoppedHung'], // the hung host turn’s own replies
   'remote/turns-prompts.mjs': ['cardOf', 'permissionCards'], // a host turn’s own cards: the sweep its callers settle, and the calls an attach after a restart holds (#353)
   'remote/turns-resume.mjs': ['reattach'], // the replayed turn’s replies, replaced in a sweep
-  'reply-segment.mjs': ['wordsSegment'], // whether the turn’s open part is still its thread’s last decides where its next words go
+  'reply-segment.mjs': ['wordsSegment', 'placeStep'], // whether the turn’s open part is still its thread’s last decides where its next words and steps go
   'runtime.mjs': [
     'addItem',
     'addItem',

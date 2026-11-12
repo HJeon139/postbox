@@ -418,3 +418,13 @@ test('the runtime tells Work when Stop keeps a job and when it ends', async () =
   await rt.stopJob(se.id, 'job1');
   assert.deepEqual([cmd().state, cmd().stoppedBy, !!cmd().leftRunning], ['stopped', 'you', false]);
 });
+
+test('an agent whose harness reports no cost has no spend, not $0.00, beside one that does', () => {
+  const s = summarize([
+    { kind: 'turn', id: 't1', handle: 'researcher', ms: 1000, toolCalls: 1, costUsd: 0.01 },
+    { kind: 'turn', id: 't2', handle: 'critic', ms: 1000, toolCalls: 1, costUsd: null },
+  ]);
+  const by = Object.fromEntries(s.byAgent.map((a) => [a.handle, Boolean(a.priced)]));
+  assert.deepEqual(by, { researcher: true, critic: false }, 'priced only where a turn reported its cost');
+  assert.equal(s.effort.priced, true);
+});

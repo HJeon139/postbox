@@ -1,6 +1,8 @@
 // The list under a turn’s last reply (#195): what the turn changed, showed, committed, wrote outside Postbox and ran,
-// then what it read, from the work ledger. Its heading is the turn’s line, which opens Work in the pane at the turn;
-// each row opens Work full screen at its item, and Escape comes back here. After five rows, “N more” expands in place.
+// then what it read, from the work ledger. Its heading is the turn’s line, which opens Work in the pane at the turn,
+// unless the turn’s work record says the line and lists its calls already (activity-paint.mjs): then it lists only what
+// those calls made. Each row opens Work full screen at its item, and Escape comes back here. After five rows, “N more”
+// expands in place.
 
 import { signed, turnLine } from '/shared/work.mjs';
 import { ledgerIndex } from '/shared/work-index.mjs';
@@ -10,6 +12,8 @@ import { fill, h, icon } from './dom.mjs';
 import { keepFocus, openWork, paneHref } from './ui.mjs';
 
 const SHOWN = 5;
+// The rows that are a turn’s calls, which its work record lists as its steps (activity-paint.mjs).
+const CALLS = new Set(['file', 'command', 'reads']);
 const STATE = {
   failed: 'failed',
   denied: 'refused',
@@ -101,14 +105,16 @@ function rowBody(r) {
  * or an app changes (retired), for as long as it’s on the page.
  * @param {any} it  the item the list goes under @param {string} conv  the conversation whose Work it opens
  * @param {(string|null)[]} folders  folders a command’s leading `cd` may name and leave out
+ * @param {boolean} [withLine]  heads it with the turn’s line, which the turn’s work record otherwise says
  */
-export function workList(it, conv, folders) {
+export function workList(it, conv, folders, withLine = true) {
   // The turn whose list it is: an item another turn moved on keeps the list of the turn it ended.
   const turnId = it.workTurn ?? it.turnId;
   const list = h('div.work-list-turn');
   const paint = () => {
     const entries = client.state.work?.[conv] ?? [];
-    const rows = turnRows(entries, turnId, { folders });
+    // Under a turn with a record, the calls it lists (files, commands, reads) aren't listed again: what they made is.
+    const rows = turnRows(entries, turnId, { folders }).filter((r) => withLine || !CALLS.has(r.kind));
     // Worked out with the rows, so it follows the ledger after the turn too; the item’s copy is for an old turn.
     const line = turnLine(entries, turnId) ?? it.work;
     const shown = expanded.has(turnId) || rows.length <= SHOWN ? rows : rows.slice(0, SHOWN);
@@ -128,9 +134,10 @@ export function workList(it, conv, folders) {
         `${rows.length - shown.length} more`,
       ),
     );
+    list.hidden = !withLine && !rows.length;
     fill(
       list,
-      workAt(conv, { turn: turnId }, { class: 'work-chip', 'aria-label': `This turn’s work: ${line}` }, icon('file', 'i-sm'), line),
+      withLine ? workAt(conv, { turn: turnId }, { class: 'work-chip', 'aria-label': `This turn’s work: ${line}` }, icon('file', 'i-sm'), line) : null,
       rows.length ? h('ul.wl-rows', { 'aria-label': 'What this turn did' }, shown.map(row), shown.length < rows.length ? moreRow : null) : null,
     );
   };
