@@ -112,10 +112,6 @@ const PENDING = {
     'endTurn',
     'endTurn',
     'endTurn',
-    // Stop's session as its own write of heldSteps left it, so Keep running's steps run on behind a held commit (#1042).
-    'stop',
-    'recordStopped',
-    'turnExited',
     // A job's end: the list it leaves, whether a kept job still runs to hold the steps, and the steps to stall (#957).
     'endJob',
     'endJob',
@@ -149,6 +145,8 @@ const PENDING = {
   // A finished turn’s checks: its own block and the terms and apps it introduced, and the progress steps it stalls.
   'turn-checks.mjs': ['checkTurn', 'checkTurn', 'checkTurn', 'stallSteps'],
   'turn-end-work.mjs': ['endWork'], // the turn’s own reply or block, to carry its line, maybe held behind a commit
+  // Stop's session as its own write of heldSteps left it, so Keep running's steps run on behind a held commit (#1042).
+  'turn-stop.mjs': ['stop', 'recordStopped', 'turnExited'],
   'tool-ask.mjs': ['askForTool', 'settleToolAsks'], // a second ask for the same tool, and the sweep that settles open asks
   'unarchive.mjs': ['unarchive'], // what an older Postbox archived: the threads and sessions it rewrites as the store loads
   'view-app/consent.mjs': ['askToSee'], // an open download card, which decides whether to add another (#95)
