@@ -1,4 +1,4 @@
-// An automatic install’s life (server/remote/hosts-update.mjs and hosts.mjs’s install(), #464-b2a; designs/architecture.md, “Keeping a host up to date”):
+// An automatic install’s life (server/remote/hosts-update.mjs and hosts.mjs’s install(), #464-b2a; designs/architecture/remote-hosts.md, “Keeping a host up to date”):
 // one install at a time per host, shared with the person’s Install…; exit 75; a
 // failure nobody waits for; close() and forget() while one runs.
 

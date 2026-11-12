@@ -90,7 +90,7 @@ export const HANDLE = /^[a-z][a-z0-9_-]{1,23}$/i;
 export const HANDLE_SHAPE = 'a handle is 2–24 letters, digits, - or _, and starts with a letter, such as “critic”';
 
 /**
- * What a conversation’s asset store holds (#516 S3, designs/architecture.md, “Assets”). A write past one is refused,
+ * What a conversation’s asset store holds (#516 S3, designs/architecture/assets.md, “Assets”). A write past one is refused,
  * naming it. The values marked as drafts are set by the calibration run (#508’s MS-3); the room budget is the person’s
  * draft of 2 November 2026, and the rest have no measured source yet. The asset tools name these when they refuse.
  */

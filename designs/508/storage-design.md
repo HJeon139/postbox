@@ -68,7 +68,7 @@ It replaces the 28 October decision to move onto a bundled Redis 8. That decisio
 **Non-goals**
 - A second writer (ST-2 is deferred until a design needs it).
 - A relational schema, an embedded database, or a native binary.
-- Protection from a process running as the person that sets out to read the data folder (the bar of `architecture.md`, “Writes need the page’s token”). SR-5 keeps the folder and files private.
+- Protection from a process running as the person that sets out to read the data folder (the bar of `designs/architecture/security-boundaries.md`, “Writes need the page’s token”). SR-5 keeps the folder and files private.
 - Guarantees against a drive that reports a flush it has not done. Node’s `fsync` on macOS requests `F_FULLFSYNC` and may fall back; after an `EIO` from `fsync`, no recovery can prove that lines read back are on the disk. The design states these limits and does not promise more.
 
 ## 4. Requirements traceability
@@ -424,4 +424,4 @@ Nothing needs a migration: events, segments and `snapshot.json` keep their forma
 - The stall benchmark and its corrections: #578 (`tools/bench-snapshot-stall.mjs`).
 - The characterization tests (T-27) and the specs of gpt and developer: the 1a branch and its PR.
 - Node on `fsync` and `F_FULLFSYNC`: [libuv `fs.c`](https://github.com/nodejs/node/blob/v24.11.0/deps/uv/src/unix/fs.c#L158-L177); [Apple’s `fsync` man page](https://developer.apple.com/library/archive/documentation/System/Conceptual/ManPages_iPhoneOS/man2/fsync.2.html); [Node `filehandle.write`](https://nodejs.org/api/fs.html#filehandlewritebuffer-offset-length-position) (the actual bytes written must be checked).
-- Related: `architecture.md` “The store”, `design.md`, “What is state, what is in the store, and what reaches the browser”, “Receipts”, “Invariants”, “Failure modes” and “Migration, compatibility and rollback”; `requirements.md` ST-1 to ST-4, SR-5, PF-9, INV-12.
+- Related: `designs/architecture/store.md`, “The store”, `design.md`, “What is state, what is in the store, and what reaches the browser”, “Receipts”, “Invariants”, “Failure modes” and “Migration, compatibility and rollback”; `requirements.md` ST-1 to ST-4, SR-5, PF-9, INV-12.

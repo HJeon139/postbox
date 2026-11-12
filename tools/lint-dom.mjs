@@ -1,6 +1,6 @@
 // lint-dom: the safe-DOM rules from the dynamic UI contract. HTML is only parsed where a comment says
 // where it comes from (the Markdown renderer, which escapes everything, or Postbox’s own templates), and
-// nothing an agent sends is used as code, a style or an attribute name. See designs/architecture.md.
+// nothing an agent sends is used as code, a style or an attribute name. See designs/architecture/code-quality.md, “Code quality”.
 //
 //   node tools/lint-dom.mjs
 

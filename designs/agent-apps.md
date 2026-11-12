@@ -1,6 +1,6 @@
 # Agent apps and the block catalog
 
-What agents send to Postbox: blocks from a fixed catalog, the events the page applies, apps agents write that run sandboxed in the conversation, and narration. The decisions behind them are in [architecture.md](architecture.md).
+What agents send to Postbox: blocks from a fixed catalog, the events the page applies, apps agents write that run sandboxed in the conversation, and narration. The decisions behind them are in [architecture.md](architecture.md) and its children, chiefly [sandbox.md](architecture/sandbox.md) and [narration.md](architecture/narration.md).
 
 ## The block catalog
 

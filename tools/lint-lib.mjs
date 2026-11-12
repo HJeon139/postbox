@@ -1,5 +1,5 @@
 // Shared pieces for Postbox’s own lint scripts (lint-tokens, lint-dom, lint-copy).
-// See designs/architecture.md, “Code quality”.
+// See designs/architecture/code-quality.md, “Code quality”.
 //
 // scan() is a small JavaScript tokenizer: it finds string literals, the text parts of template literals,
 // comments and regular expressions, with their line numbers. It doesn’t parse; it only has to tell

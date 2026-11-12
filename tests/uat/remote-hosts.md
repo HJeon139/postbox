@@ -4,7 +4,7 @@
 
 ## Why it exists
 
-An agent’s turns can run on another machine you reach with `ssh`, while Postbox stays on your computer (#120; README, “Run agents on a remote host”; designs/architecture.md, “Remote hosts”). Only the agent’s process moves, so everything that can go wrong between two machines now can: a sign-in, a host key, a dropped connection, a sleeping laptop, logind ending processes at logout, a harness whose sign-in ran out on the host.
+An agent’s turns can run on another machine you reach with `ssh`, while Postbox stays on your computer (#120; README, “Run agents on a remote host”; designs/architecture/remote-hosts.md, “Remote hosts”). Only the agent’s process moves, so everything that can go wrong between two machines now can: a sign-in, a host key, a dropped connection, a sleeping laptop, logind ending processes at logout, a harness whose sign-in ran out on the host.
 
 `npm run test:integration` runs the whole pipeline with only ssh replaced: the real install script, launcher, daemon, runner and shim, on this computer, against a stand-in harness that replays recorded Claude Code lines. What it can’t show is everything this page checks: real `ssh` and its authentication, a real Linux host’s systemd and logind, the real harnesses, and waits measured in hours. The headless checks (`node tools/check-all.mjs hosts remote`) cover the UI with a scripted host.
 
@@ -192,7 +192,7 @@ Use the Claude Code persona in **Ask me**, placed on the host. Remove is the las
 
 ## 5. Still to confirm
 
-Each row of designs/architecture.md’s “Still to confirm” that a live run settles. These take hours or days, so start them early and let them run alongside the rest. Record each result on #120 (no host names, user names or sign-in details: the repo and its issues are public), with the harness’s version.
+Each row of designs/architecture/remote-hosts.md’s “Still to confirm” that a live run settles. These take hours or days, so start them early and let them run alongside the rest. Record each result on #120 (no host names, user names or sign-in details: the repo and its issues are public), with the harness’s version.
 
 | Question                                                              | How to run it                                                                                                                                                            | Record                                                                                       |
 | --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------- |

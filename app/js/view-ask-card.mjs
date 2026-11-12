@@ -1,5 +1,5 @@
 // The card that asks the person whether Postbox may download the browser view_app renders with (#95;
-// designs/architecture.md, “Agents see their app”). It looks and answers like the tool-request card
+// designs/architecture/view-app.md, “Agents see their app”). It looks and answers like the tool-request card
 // (permission-cards.mjs, toolAskBlock), then says how the download went.
 
 import { api } from './client.mjs';

@@ -4,7 +4,7 @@
 // something else, maybe one of the person’s own files.
 //
 // The streams are the recorded local Claude Code turns in tests/fixtures/claude-code (claude 2.1.309), replayed as
-// if they came from a host: a remote turn’s stream is the same stream-json, carried by the daemon (architecture.md,
+// if they came from a host: a remote turn’s stream is the same stream-json, carried by the daemon (designs/architecture/remote-hosts.md,
 // “The adapters stay; only the process moves”). No recorded remote stream has edits in it yet.
 
 import assert from 'node:assert/strict';

@@ -1,6 +1,6 @@
 // Agents whose turns run on a host (#120): the host an agent is on, its connection in words, when Postbox last heard
 // from it, and how its turn there stands, for the ring’s label, the agents list, the agent’s panel and the transcript.
-// The words for each state are the design’s (architecture.md, “Remote hosts”, “Turn states”) and #120’s Proposal 7
+// The words for each state are the design’s (designs/architecture/remote-hosts.md, “Remote hosts”, “Turn states”) and #120’s Proposal 7
 // (G3): Connected, Reconnecting, Disconnected (working) when a turn runs there while Postbox can’t reach it, and
 // Disconnected (idle). Each is said in words, never by color alone.
 //

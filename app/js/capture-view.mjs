@@ -1,4 +1,4 @@
-// view_app’s capture mode (#95; designs/architecture.md, “Agents see their app”): the page Postbox’s own headless
+// view_app’s capture mode (#95; designs/architecture/view-app.md, “Agents see their app”): the page Postbox’s own headless
 // browser opens with ?capture=<item id>&thread=<thread id>. It shows that one app, as the conversation shows it,
 // inline and as wide as the conversation (thread.mjs), and nothing else: no stream, no composer, no report that a
 // thread is open.

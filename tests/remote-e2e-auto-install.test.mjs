@@ -1,4 +1,4 @@
-// A turn’s start on a host without this Postbox’s version, end to end on the laptop (#464-b2b; designs/architecture.md, “Keeping a host up to date”):
+// A turn’s start on a host without this Postbox’s version, end to end on the laptop (#464-b2b; designs/architecture/remote-hosts.md, “Keeping a host up to date”):
 // a real Runtime and the real host manager, over a fake ssh whose attach exits 127 until the install
 // has run, and then reaches tests/fake-daemon.mjs. With the consent on, the turn waits for the automatic install and
 // starts on the new version, and no failure reaches the thread. Nothing starts a process or opens a connection.

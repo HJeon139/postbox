@@ -1,4 +1,4 @@
-// Postbox’s asset tools (#516 S3b, designs/architecture.md, “Assets”): list_assets, read_asset, search_assets,
+// Postbox’s asset tools (#516 S3b, designs/architecture/assets.md, “Assets”): list_assets, read_asset, search_assets,
 // write_asset, rename_asset, delete_asset and restore_asset. server/mcp.mjs serves them beside the runtime’s tools, and
 // server/remote/turns-tools.mjs to an agent on a host. Every write goes through writeAsset (server/assets.mjs), the one
 // commit path; the reads answer from the published state, as every read tool does. An agent on a host gets them with

@@ -1,7 +1,7 @@
 // Agents waking agents, in the conversation where the person reads (#372): the wake limit, who answers for a persona
 // in a topic thread or an old side thread (its one session in the conversation: no forks, #228), the card that asks to
 // add an agent the conversation doesn’t have, and the lines of side threads from before #372. Functions take the
-// Runtime first (architecture.md, “What a move may change”).
+// Runtime first (designs/architecture/code-size.md, “What a move may change”).
 
 import { HANDLE, HANDLE_SHAPE, HOP_LIMIT } from '../shared/limits.mjs';
 import { clip, retiredError, tooLongToSend } from './helpers.mjs';

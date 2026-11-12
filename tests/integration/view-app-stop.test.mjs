@@ -1,4 +1,4 @@
-// Stopping Postbox closes view_app’s browser (#95; designs/architecture.md, “Agents see their app”), and a card a
+// Stopping Postbox closes view_app’s browser (#95; designs/architecture/view-app.md, “Agents see their app”), and a card a
 // killed Postbox left downloading says so on the next start, instead of downloading for good.
 
 import assert from 'node:assert/strict';

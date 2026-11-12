@@ -1,5 +1,5 @@
 // Postbox’s store: an append-only event log (JSON Lines) plus periodic snapshots, all reads served from memory
-// (designs/architecture.md, “The store”; #508’s storage design). emit() applies, numbers, appends and tells one event
+// (designs/architecture/store.md, “The store”; #508’s storage design). emit() applies, numbers, appends and tells one event
 // at once; commit() writes several as ONE fsynced line and applies them only once the disk has them
 // (server/store-commit.mjs); both number through sequence(). A write that fails closes the store to commits until
 // Retry (server/store-retry.mjs) or a restart. Files: <dir>/snapshot.json, <dir>/events-<from>.jsonl (one event or one

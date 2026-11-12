@@ -1,4 +1,4 @@
-// Where an agent runs (#120; architecture.md, “Remote hosts”): on this computer, or on one of the person’s hosts
+// Where an agent runs (#120; designs/architecture/remote-hosts.md, “Remote hosts”): on this computer, or on one of the person’s hosts
 // (persona.remote = { hostId }). Which backends run here, which can run on a host, and the checks a persona’s
 // placement passes when it’s made or changed. The runtime (server/runtime.mjs) calls these with itself first.
 

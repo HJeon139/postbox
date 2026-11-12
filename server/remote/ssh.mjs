@@ -1,6 +1,6 @@
 // The laptop’s connection to one remote host (#120): the system `ssh`, started by Postbox with fixed options and a
 // fixed remote command, carrying shared/remote-protocol.mjs’s JSON lines over its stdio to the host’s daemon. The design
-// is architecture.md, “Remote hosts”, sections “The SSH connection” and “Security”.
+// is designs/architecture/remote-hosts.md, “Remote hosts”, sections “The SSH connection” and “Security”.
 //
 // - ssh is started from an argument array, never a shell on the laptop. On the host, sshd hands the one command string
 //   to the login shell, so that string is fixed: the code folder for a validated version, then `attach`. Everything

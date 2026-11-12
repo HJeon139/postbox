@@ -1,4 +1,4 @@
-// view_app’s browser (designs/architecture.md, “Agents see their app”): Chromium’s headless shell, the build the pinned
+// view_app’s browser (designs/architecture/view-app.md, “Agents see their app”): Chromium’s headless shell, the build the pinned
 // playwright-core names, downloaded into Postbox’s data folder only after the person agrees (server/view-app/consent.mjs).
 // One browser, started on first use and closed after five idle minutes, as the narrator is. Each capture gets a context
 // of its own that can only GET Postbox, so it can’t write, mark a thread viewed or reach the network.

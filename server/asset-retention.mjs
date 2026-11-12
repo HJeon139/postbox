@@ -1,4 +1,4 @@
-// What an asset version prunes, and what a room’s kept versions weigh (#516 S3, designs/architecture.md, “Assets”). The
+// What an asset version prunes, and what a room’s kept versions weigh (#516 S3, designs/architecture/assets.md, “Assets”). The
 // person’s rule of 2 November 2026: text keeps every version; a large binary keeps its last few; a version is pruned
 // only in the commit of the version that makes it prunable, never at another time and never to make room.
 

@@ -5,7 +5,7 @@
 import { expect } from '@playwright/test';
 import { settled, startPostbox, synced } from './postbox.mjs';
 
-/** The conversation column’s minimum, and its composer’s text box at that width (architecture.md, §14). */
+/** The conversation column’s minimum, and its composer’s text box at that width (designs/architecture/front-end.md, “Room for the conversation”). */
 export const COL_MIN = 640;
 export const BOX_MIN = 430;
 export const WORK = 'aside.workpane';

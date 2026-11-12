@@ -1,4 +1,4 @@
-// The asset folder’s pass at load (#516 S3, designs/architecture.md, “Assets”), after the store holds its folder and has
+// The asset folder’s pass at load (#516 S3, designs/architecture/assets.md, “Assets”), after the store holds its folder and has
 // read the log, before any tool accepts a write. A file is deleted only on positive evidence: a committed prune or
 // erase released its hash (assetReleases), and no version in any room still keeps it. A file nothing names and nothing
 // released (a write that never committed, or metadata an older Postbox dropped) is kept and counted, never deleted:

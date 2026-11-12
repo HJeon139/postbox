@@ -1,4 +1,4 @@
-// The waiting caller (server/remote/hosts-links.mjs’s ensureWelcome, #464-b2b; designs/architecture.md, “Keeping a host up to date”):
+// The waiting caller (server/remote/hosts-links.mjs’s ensureWelcome, #464-b2b; designs/architecture/remote-hosts.md, “Keeping a host up to date”):
 // a caller that hears the 127 while an automatic install runs waits for it, then tries once more from the top,
 // and gets the new welcome, or the installer’s failure; removing Postbox from the host doesn’t wait. ssh is never run:
 // tests/remote-hosts-update-fixtures.mjs’s fake answers.

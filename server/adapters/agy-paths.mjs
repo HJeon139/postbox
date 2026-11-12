@@ -1,5 +1,5 @@
 // Where an Antigravity file call’s paths lead, for its PreToolUse hook (agy-hook.mjs). Moved from agy-hook.mjs, which
-// is at its size ceiling (designs/architecture.md, “Module and function size”).
+// is at its size ceiling (designs/architecture/code-size.md, “Module and function size”).
 
 import { lstatSync, readlinkSync, realpathSync } from 'node:fs';
 import { dirname, isAbsolute, join, parse, resolve, sep } from 'node:path';

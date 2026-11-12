@@ -5,7 +5,7 @@ import { apply, EVENTS, emptyState, PRIVATE_STATE_KEYS, PUBLIC_EVENT_TYPES, PUBL
 import { keepEvent } from '../tools/uat/room-events.mjs';
 
 // The event types on main when the table was made, every one public. Adding, removing or hiding a type is a reviewed
-// change to this list (designs/architecture.md, “What reaches the browser”).
+// change to this list (designs/architecture/security-boundaries.md, “What reaches the browser”).
 const TYPES = [
   'settings',
   'project',

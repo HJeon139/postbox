@@ -1,4 +1,4 @@
-// Search over a room’s text assets (#516, designs/architecture.md, “Assets”): every live text asset’s newest version,
+// Search over a room’s text assets (#516, designs/architecture/assets.md, “Assets”): every live text asset’s newest version,
 // split into passages and indexed with BM25 (shared/bm25.mjs), with the stub’s meaning score beside it. One search
 // serves an agent’s search_assets (server/asset-tools.mjs), here or on a host, and an app’s assets.search through the
 // bridge (server/host-tool.mjs), so the room’s data is one store, whoever reads it.

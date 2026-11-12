@@ -2,7 +2,7 @@
 // SSH channel’s stdio, over the daemon’s Unix socket (the shim) and over each runner’s Unix socket, and the layout of a
 // turn’s folder on the host. Every message is validated where it enters a process, on both machines, by the validators
 // here, so a message that one side builds and the other refuses is a bug in this file, not in either side. The design
-// is architecture.md, “Remote hosts” (sections “The daemon”, “Postbox and the daemon”, “Postbox’s tools on the host”,
+// is designs/architecture/remote-hosts.md, “Remote hosts” (sections “The daemon”, “Postbox and the daemon”, “Postbox’s tools on the host”,
 // “Permission prompts while nobody is connected”, “Files and cleanup”).
 //
 // It ships to the host with the daemon, so it imports only shared/, and like the rest of shared/ it imports no node:
