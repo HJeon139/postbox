@@ -101,6 +101,8 @@ test('a finished turn’s steps fold into its work record at the top of the post
   );
   await record.locator('> summary').click();
   await expect(record.locator('.steps'), 'it opens to the steps').toContainText('Edited calc2.py');
+  const edited = record.locator('.steps li', { hasText: 'Edited calc2.py' });
+  await expect(edited.locator('.work-n'), 'the edit with its counts, as the live view showed it').toHaveText('+1 −1');
   await expect(record.getByRole('link', { name: /Work/ }), 'and to Work').toBeVisible();
   const said = ((await post.textContent()) ?? '').split('1 file +1 −1').length - 1;
   expect(said, 'the turn’s line shows once, in its record, not again over the work list under it').toBe(1);

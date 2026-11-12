@@ -5,7 +5,7 @@
 // steps are “N earlier steps”, and with eight or more agents working, a turn’s steps are one line: what it’s doing now
 // and how many steps it took.
 
-import { stepRow } from './activity-steps.mjs';
+import { stepCounts as counts, stepRow } from './activity-steps.mjs';
 import { busy, itemsOf, placeIn, sessionsAt } from './client.mjs';
 import { h, plural } from './dom.mjs';
 
@@ -151,9 +151,6 @@ const ownSteps = (/** @type {any[]} */ steps) => steps.filter((s) => !s.parent &
 /** Its calls, without its thoughts, which show whole between them. @param {any[]} steps */
 const callsOf = (steps) => steps.filter((s) => s.kind !== 'thought');
 
-/** “+12 −3”, its counts green and red, as a finished post’s files show them. @param {any} s */
-const counts = (s) => (typeof s.added === 'number' ? h('span.work-n', h('span.add', `+${s.added}`), ' ', h('span.del', `−${s.deleted ?? 0}`)) : null);
-
 /** A step’s glyph and what it says to a screen reader: a thought, or its state. @param {any} s */
 function glyphOf(s) {
   if (s.kind === 'thought') return { glyph: 'thought', said: 'thought' };
@@ -171,8 +168,6 @@ function fullRow(s) {
   const row = stepRow(s);
   row.classList.add('step-full');
   const text = row.querySelector('.step-text');
-  const n = counts(s);
-  if (n) text?.querySelector('.mono')?.after(' ', n);
   // An edit’s diff says what its input and its “ok” would: its label names the file.
   if (s.diff) for (const said of text?.querySelectorAll(':scope > .step-input, :scope > .step-output') ?? []) said.remove();
   if (s.diff)

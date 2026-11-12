@@ -57,6 +57,10 @@ const inOutput = (/** @type {string|undefined} */ output, /** @type {string} */ 
 };
 
 const GLYPH = { running: 'running', failed: 'failed', denied: 'failed', done: 'done', stopped: 'stalled' };
+/** An edit’s counts, “+12 −3” in green and red, as Work shows them. @param {any} s */
+export const stepCounts = (s) =>
+  typeof s.added === 'number' ? h('span.work-n', h('span.add', `+${s.added}`), ' ', h('span.del', `−${s.deleted ?? 0}`)) : null;
+
 export function stepRow(s) {
   const dur = h('span.dur', s.ms ? `${(s.ms / 1000).toFixed(1)} s` : '');
   // A subagent’s thought or narration is labeled with its name: it’s its own, never the agent’s (#73).
@@ -91,6 +95,7 @@ export function stepRow(s) {
       'span.step-text',
       s.who ? h('span.step-who', `${s.who} ·`) : null,
       h('span.mono', s.label),
+      stepCounts(s) ? [' ', stepCounts(s)] : null,
       note && !inOutput(s.output, note) ? h('span.step-note', note) : null,
       // What the call was given and the end of what it returned, as its harness reported them (server/harness-tools.mjs),
       // each only where the step doesn’t already say it (its label names the command; its output carries why it failed).
