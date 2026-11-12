@@ -68,12 +68,12 @@ import {
   settleScheduledWake,
 } from './scheduled-wakes.mjs';
 import { sendMessage, threadRefs } from './send-message.mjs';
-import { deleteSession, deleteThread, finishLeftDeletes } from './session-lifecycle.mjs';
+import { deleteSession, deleteThread } from './session-lifecycle.mjs';
 import { pendingSessionsIn, stampNeeds, tellAgent, updateSession } from './session-write.mjs';
 import { mcpContext } from './setup-context.mjs';
 import { clearSummaryPending, postSummary, shareText, shareToConversation, summarizeBack, summarizing } from './share-back.mjs';
 import { commandFolder, expireStaleCommands, flushShellOutput, runShellCommand, stopShellCommand, stopShellCommands } from './shell-runs.mjs';
-import { agentWake, archiveForks, bumpSideLink, dropWakes, endChain, recordAgentMessage, resolveHop, sideSession } from './side-threads.mjs';
+import { agentWake, bumpSideLink, dropWakes, endChain, recordAgentMessage, resolveHop, sideSession } from './side-threads.mjs';
 import { newId } from './store.mjs';
 import { heldTurn, STORE_STOPPED, saveBackendState, watchStore, whenWritable } from './store-outage.mjs';
 import { endSubagent, notUrgent } from './subagent-end.mjs';
@@ -158,8 +158,6 @@ export class Runtime {
     this.hosts = hosts ?? null;
     this.remote = new RemoteTurns(this, { hosts: this.hosts });
     this.turnArchive = new ArchivePasses(this, { enabled: config.archiveTurns === true }); // #305: off until step 4
-    // Forks are gone (#228): any left from before are retired, once.
-    archiveForks(this);
     // Conversations can’t be archived any more: one an older Postbox archived comes back as a live one.
     unarchive(this);
     // After that, so a card of an agent it brings back stays the person’s to answer (#693).
@@ -1663,9 +1661,6 @@ export class Runtime {
 
   // ── Session lifecycle: server/session-lifecycle.mjs ─────────────────────────────
 
-  finishLeftDeletes() {
-    return finishLeftDeletes(this);
-  }
   deleteSession(sessionId) {
     return deleteSession(this, sessionId);
   }

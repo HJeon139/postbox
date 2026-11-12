@@ -47,15 +47,6 @@ test('#693 Stop leaves the card open: the person can still answer it', async () 
   assert.equal(card(f, open.id).status, 'open');
 });
 
-test('#693 retiring forks at startup tells the agent whose wake was held on a fork’s card', async () => {
-  const f = heldOnAlphasCard();
-  f.rt.updateSession(f.alpha.id, { forkOf: { sessionId: f.beta.id, itemId: null } }); // alpha as a fork from before #228
-  f.store.emit('settings', { forksArchived: false });
-  restart(f);
-  assert.notEqual(card(f, f.open.id).status, 'open');
-  assert.match(toldOf(f, f.beta), /Your message to @delta .* didn’t go/);
-});
-
 for (const [state, patch] of [
   ['a retired fork', { retiredFork: true }],
   ['being removed', { deleting: Date.now() + 60_000 }],

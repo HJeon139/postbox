@@ -138,7 +138,7 @@ const PENDING = {
   // A command’s item, maybe deleted behind a held commit, before its output or its end is written.
   'shell-runs.mjs': ['commandOutput', 'endCommand'],
   'subagent-end.mjs': ['withUrgent'],
-  'side-threads.mjs': ['agentWake', 'agentWake', 'agentWake', 'endChain', 'endChain', 'archiveForks', 'bumpSideLink', 'bumpSideLink'],
+  'side-threads.mjs': ['agentWake', 'agentWake', 'agentWake', 'endChain', 'endChain', 'bumpSideLink', 'bumpSideLink'],
   // A thread’s apps, removed in a sweep.
   'thread-erase.mjs': ['eraseThreads'],
   // The thread a turn answers in, as deliver chose it from pending, and the topic a turn's end settles: a topic

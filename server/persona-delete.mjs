@@ -32,11 +32,3 @@ async function forget(rt, p) {
     await adapter.forget(p).catch((/** @type {any} */ e) => console.error(`Postbox couldn’t remove @${p.handle}’s memory (${name}): ${e.message}`));
   }
 }
-
-/**
- * Deletes an older Postbox left pending in its Undo window, which is gone: each finishes now. index.mjs calls this
- * beside rt.finishLeftDeletes(). @param {any} rt
- */
-export function finishLeftPersonaDeletes(rt) {
-  for (const p of Object.values(rt.s.personas)) if (p.deleting) deletePersona(rt, p.id);
-}

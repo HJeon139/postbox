@@ -9,7 +9,7 @@ import { arrival } from './queue-batch.mjs';
 import { roomChainLimit } from './room-chain-limit.mjs';
 import { newId } from './store.mjs';
 import { pendingThreads, updateThread } from './thread-write.mjs';
-import { askToAdd, askToWake, closeHop, closeOwnCard, dropHeld, retireStale } from './wake-cards.mjs';
+import { askToAdd, askToWake, closeOwnCard, dropHeld, retireStale } from './wake-cards.mjs';
 
 export { resolveHop } from './wake-cards.mjs';
 // The server’s default chain limit, 1,000 unless POSTBOX_CHAIN_LIMIT sets another; a room can set its own (#1035), which
@@ -202,35 +202,6 @@ export function threadPersona(rt, t) {
   const last = rt.s.sessions[t.lastSpeaker];
   const first = rt.s.sessions[t.members?.[0]];
   return (last && rt.persona(last.personaId)) ?? rt.personaByHandle(t.woke ?? t.pair?.split('|')[1] ?? '') ?? (first && rt.persona(first.personaId)) ?? null;
-}
-
-/**
- * Forks are gone (#228): each conversation has one session per agent. At startup, every session that is a fork (of a
- * topic thread, or of a busy session), or that lives in a topic or side thread rather than its conversation (a wake or
- * a mention made one there before), is retired, once, for good. Its thread keeps its messages, and a new
- * message there goes to the conversation’s session. Returns how many it retired.
- */
-export function archiveForks(rt) {
-  if (rt.s.settings.forksArchived) return 0;
-  const inThread = (se) => ['topic', 'side'].includes(rt.s.threads[se.threadId]?.kind);
-  const forks = Object.values(rt.s.sessions).filter((x) => (x.forkOf || inThread(x)) && !x.retiredFork && !x.deleting);
-  const gone = new Set(forks.map((x) => x.id));
-  for (const se of forks) {
-    rt.stop(se.id, { silent: true });
-    // A session no message reaches, since its agent answers in the conversation now: retiredFork keeps it out of the rail.
-    rt.updateSession(se.id, { retiredFork: true, state: 'idle', needs: null });
-  }
-  // What waited for them goes with them: a message queued for one, and a wake card one of them is waiting on.
-  for (const t of pendingThreads(rt)) {
-    if (t.queue?.some((q) => q.sessionIds.some((id) => gone.has(id))))
-      updateThread(rt, t.id, (now) => ({
-        queue: now.queue.map((q) => ({ ...q, sessionIds: q.sessionIds.filter((id) => !gone.has(id)) })).filter((q) => q.sessionIds.length),
-      }));
-    for (const it of rt.store.pending.items(t.id))
-      if (it.kind === 'hop' && it.status === 'open' && gone.has(it.fromSessionId)) closeHop(rt, t.id, it, 'retired');
-  }
-  rt.store.emit('settings', { forksArchived: true });
-  return forks.length;
 }
 
 /**

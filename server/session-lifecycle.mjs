@@ -9,15 +9,6 @@ import { eraseThreads } from './thread-erase.mjs';
 import { updateThread } from './thread-write.mjs';
 
 /**
- * Deletes an older Postbox left pending in its Undo window, which is gone: each finishes now, as a delete does.
- * Delete is just delete.
- */
-export function finishLeftDeletes(rt) {
-  for (const se of Object.values(rt.s.sessions)) if (se.deleting && rt.s.sessions[se.id]) rt.deleteSession(se.id);
-  for (const t of Object.values(rt.s.threads)) if (t.deleting && rt.s.threads[t.id]) rt.deleteThread(t.id);
-}
-
-/**
  * A conversation or room and every thread under it, a side thread a topic thread’s fork woke included: what deleting
  * it covers (#320). Its callers refuse a topic or side thread first.
  */

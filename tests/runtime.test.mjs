@@ -765,15 +765,6 @@ test('a wake a retired fork scheduled doesn’t wake it, or stop the server (#22
   assert.equal(store.items(t.id).filter((i) => i.variant === 'wake').length, 0);
 });
 
-test('a delete an older Postbox left in its Undo window finishes at start', () => {
-  const { rt, store, t } = setup();
-  const se = rt.sessionsIn(t.id)[0];
-  store.emit('thread', { ...store.state.threads[t.id], deleting: Date.now() + 5000 });
-  rt.finishLeftDeletes();
-  assert.equal(store.state.threads[t.id], undefined);
-  assert.equal(store.state.sessions[se.id], undefined);
-});
-
 test('a conversation with several agents is a room, and can be renamed', () => {
   const { rt, a, b } = setup();
   const room = rt.createThread({ projectId: 'p1', title: 'Planning', personaIds: [a.id, b.id] });

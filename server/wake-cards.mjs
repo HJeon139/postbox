@@ -76,7 +76,7 @@ export function askToAdd(rt, from, parent, p, wake, { prose = false } = {}) {
 /**
  * Whether the person’s last answer to adding `handle` to the conversation was no (#693), read from its cards, so a
  * restart keeps it: a later Add lifts it, an Allow on a card or the person’s own add (liftDecline, #789). A card
- * retiring forks declined (side-threads.mjs, archiveForks, before #693) isn’t the person’s answer. O(items in the
+ * retiring forks declined (#228’s startup migration, before #693) isn’t the person’s answer. O(items in the
  * conversation), once per mention of an agent it doesn’t have.
  */
 function declinedAdd(rt, conv, handle) {

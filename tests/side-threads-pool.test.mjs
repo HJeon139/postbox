@@ -1,13 +1,11 @@
 // One session per agent per conversation, and no forks (#228). The first two cases replay the manual UAT of 23 October
 // 2026, with @alpha as @builder and @beta as @reviewer: a wake from a topic thread reaches the conversation’s own
 // session, never a new one or a fork, and answers in that thread (#372); a busy one takes it after its turn. A persona the conversation doesn’t have
-// brings a card to the person, and forks from before are retired once, at startup.
+// brings a card to the person.
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { AdapterRegistry } from '../server/adapters/adapter.mjs';
-import { Runtime } from '../server/runtime.mjs';
-import { held, ScriptedAdapter, sessionsOfPersona, settle, setup, sleep } from './side-threads-fixture.mjs';
+import { held, sessionsOfPersona, settle, setup, sleep } from './side-threads-fixture.mjs';
 
 /** A conversation with a reply from @alpha, and a topic thread on it. */
 async function topicOnReply() {
@@ -113,30 +111,6 @@ test('#228: on Decline the waking agent is told, and nothing joins', async () =>
   assert.equal(store.items(t.id).filter((i) => i.kind === 'hop').length, 1, 'no second card');
 });
 
-test('#228: forks from before are retired once at startup; their thread keeps its messages, and a message there goes to the conversation', async () => {
-  const { store, rt, adapter, t, alpha } = await topicOnReply();
-  const topic = Object.values(store.state.threads).find((x) => x.kind === 'topic');
-  // A fork as Postbox made them before #228, with a reply in its thread, and the flag from a store that predates it.
-  const fork = rt.ensureSession(topic.id, alpha.personaId);
-  rt.updateSession(fork.id, { forkOf: { sessionId: alpha.id, itemId: null } });
-  rt.addItem(topic.id, { kind: 'agent', sessionId: fork.id, personaId: alpha.personaId, handle: 'alpha', text: 'From the fork.', status: 'done' });
-  store.emit('settings', { forksArchived: false });
-  new Runtime({ store, adapters: new AdapterRegistry().register(adapter), config: rt.config });
-  assert.deepEqual([store.state.sessions[fork.id].archived, store.state.sessions[fork.id].retiredFork], [undefined, true]);
-  assert.equal(store.state.settings.forksArchived, true);
-  assert.ok(store.items(topic.id).some((i) => i.text === 'From the fork.'));
-  // It runs once: a session that is a fork later (none should be) isn’t touched by the next start.
-  const later = rt.ensureSession(topic.id, rt.sessionsIn(t.id).find((x) => x.handle === 'beta').personaId);
-  rt.updateSession(later.id, { forkOf: { sessionId: alpha.id, itemId: null } });
-  new Runtime({ store, adapters: new AdapterRegistry().register(new ScriptedAdapter()), config: rt.config });
-  assert.equal(store.state.sessions[later.id].retiredFork, undefined);
-  rt.updateSession(later.id, { retiredFork: true });
-  // A message in its thread goes to the conversation’s @alpha, there.
-  rt.sendMessage(topic.id, { text: '@alpha carry on' });
-  await settle(rt);
-  assert.deepEqual([adapter.calls.at(-1).sessionId, adapter.calls.at(-1).thread], [alpha.id, topic.id]);
-});
-
 /** Fails the test on an unhandled rejection, as one would end the server. */
 function noRejections() {
   const seen = [];
@@ -147,24 +121,6 @@ function noRejections() {
     assert.deepEqual(seen.map(String), []);
   };
 }
-
-test('#228: the migration takes a fork’s queued messages and open wake card with it, so nothing is delivered to it later', async () => {
-  const done = noRejections();
-  const { store, rt, adapter, alpha, topic } = await topicOnReply();
-  const fork = rt.ensureSession(topic.id, alpha.personaId);
-  rt.updateSession(fork.id, { forkOf: { sessionId: alpha.id, itemId: null } });
-  rt.putThread({ ...store.state.threads[topic.id], queue: [{ id: 'q1', text: 'Saved before a restart', attachments: [], sessionIds: [fork.id], at: 1 }] });
-  const card = rt.addItem(topic.id, { kind: 'hop', fromSessionId: fork.id, from: 'alpha', to: 'beta', text: 'Wake?', status: 'open', n: 4 });
-  store.emit('settings', { forksArchived: false });
-  new Runtime({ store, adapters: new AdapterRegistry().register(adapter), config: rt.config });
-  assert.deepEqual(store.state.threads[topic.id].queue, []);
-  assert.equal(store.item(topic.id, card.id).status, 'closed', 'closed with no answer from you (#693)');
-  // The conversation’s @alpha answers there now; its turn ending drains the thread’s queue, which has nothing for the fork.
-  rt.sendMessage(topic.id, { text: '@alpha go on' });
-  await settle(rt);
-  assert.equal(adapter.calls.filter((x) => x.sessionId === fork.id).length, 0);
-  done();
-});
 
 test('#228: a reply to an agent deleted meanwhile goes nowhere, without failing', async () => {
   const done = noRejections();
