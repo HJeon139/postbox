@@ -2,6 +2,15 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.0.8 (2026-11-12)
+
+### Fixes
+
+- **view:** keep a redrawn item drawn when the one it replaces was
+- **view:** let go of an item held drawn once it has left the page
+- **server:** Send now on a queued wake returns a body, as the route sends it
+- **server:** answering a wake card returns a body, so the act route doesn't throw
+
 ## 4.0.7 (2026-11-11)
 
 ### Fixes
