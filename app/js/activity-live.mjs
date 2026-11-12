@@ -76,10 +76,23 @@ export function laterParts(d, threadId, drawn) {
 }
 
 /**
+ * Each conversation’s visible height, read once and again only after the window is resized: reading it after a reply
+ * changed forces a layout of the page, once a step. A composer grown by what you type isn’t counted until then.
+ */
+const heights = /** @type {Map<string, number>} */ (new Map());
+addEventListener('resize', () => heights.clear());
+
+/**
  * What the conversation shows at once: its scrolling box, or the window, less the sticky top bar and composer.
  * @param {string} threadId
  */
 function visibleHeight(threadId) {
+  if (!heights.has(threadId)) heights.set(threadId, measureHeight(threadId));
+  return /** @type {number} */ (heights.get(threadId));
+}
+
+/** @param {string} threadId */
+function measureHeight(threadId) {
   const transcript = document.querySelector(`.transcript[data-thread="${CSS.escape(threadId)}"]`);
   let el = transcript?.parentElement;
   while (el && !/auto|scroll/.test(getComputedStyle(el).overflowY)) el = el.parentElement;
@@ -212,13 +225,13 @@ export function liveParts(it, threadId, words, newestId) {
 }
 
 /**
- * Whether a reply was drawn for another moment than now: live, or not, as its turn runs now; and for as many agents at
- * work as now, so its steps fit its share of the screen. @param {HTMLElement | undefined} node @param {any} it
- * @param {string} threadId
+ * Whether a reply was drawn for another moment than now: 'live' when its turn started or stopped running since, and
+ * 'agents' when as many agents aren’t at work now, so its steps no longer fit its share of the screen.
+ * @param {HTMLElement | undefined} node @param {any} it @param {string} threadId @returns {'live' | 'agents' | false}
  */
 export function liveStale(node, it, threadId) {
   if (!node || it?.kind !== 'agent') return false;
   const live = /** @type {HTMLElement | null} */ (node.querySelector(':scope > .live-steps'));
-  if (Boolean(live) !== isLive(it, threadId)) return true;
-  return Boolean(live && !live.hidden) && live?.dataset.agents !== String(liveAgents(threadId));
+  if (Boolean(live) !== isLive(it, threadId)) return 'live';
+  return live && !live.hidden && live.dataset.agents !== String(liveAgents(threadId)) ? 'agents' : false;
 }

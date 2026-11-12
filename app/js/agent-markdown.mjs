@@ -49,6 +49,7 @@ export function paintAgentMarkdown(box, it, threadId) {
   box.querySelector(':scope > .caret')?.remove();
   // While the turn runs, its words before its last step are drawn between its steps (activity-live.mjs).
   const from = textFrom(it, threadId);
+  /** @type {HTMLElement} */ (box).dataset.from = String(from); // where it starts, for a live step’s paint (activity-paint.mjs)
   writeMarkdown(box, agentMarkdown(from ? { ...it, text: String(it.text).slice(from) } : it, threadId));
   markTerms(box, threadId);
   if (it.status === 'streaming') box.append(h('span.caret', { 'aria-hidden': 'true' }));

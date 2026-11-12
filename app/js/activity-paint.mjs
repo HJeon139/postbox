@@ -2,9 +2,10 @@
 // (#573). A step used to rebuild the whole reply: its Markdown, its node, and a new frame for each diagram in it. While
 // the turn runs, its steps show live between its words (activity-live.mjs); once it ends, they fold into its work record.
 
-import { firstPart, isLive, liveParts, newestCall, partSteps } from './activity-live.mjs';
+import { firstPart, isLive, liveParts, liveStale, newestCall, partSteps, textFrom } from './activity-live.mjs';
 import { activityLabel, stepTree } from './activity-steps.mjs';
-import { agentMarkdown, markTerms } from './agent-markdown.mjs';
+import { agentMarkdown, markTerms, paintAgentMarkdown } from './agent-markdown.mjs';
+import { itemsOf, placeIn } from './client.mjs';
 import { h, icon, trusted } from './dom.mjs';
 import { jobRows, runningNote } from './reply-stop.mjs';
 import { kiroStep } from './thread-host.mjs';
@@ -137,14 +138,40 @@ function moveSteps(tree, steps) {
  */
 export const stepsOnly = (d) => Boolean(d.activityStep || d.patch?.activity) && Object.keys(d.patch ?? {}).every((k) => k === 'activity');
 
+/** Whether an item.patch changes only whether a reply is still being written. @param {{ patch?: Record<string, any> }} d */
+const statusOnly = (d) => Boolean(d.patch) && Object.keys(/** @type {object} */ (d.patch)).every((k) => k === 'status');
+
+/**
+ * Paints what an item.patch changed in a reply, and only that, when it can: its steps (paintActivity), or, while its
+ * turn runs, whether this part is still being written, which another part of the reply starting ends.
+ * @param {HTMLElement | undefined} node @param {any} it @param {string} threadId @param {any} d  the patch’s data
+ * @returns {boolean} false when the caller draws the whole reply instead
+ */
+export function paintPatch(node, it, threadId, d) {
+  if (!it || d.reaction) return false;
+  if (stepsOnly(d)) return paintActivity(node, it, threadId);
+  return Boolean(node) && it.kind === 'agent' && statusOnly(d) && isLive(it, threadId) && liveSoon(/** @type {HTMLElement} */ (node), it.id, threadId);
+}
+
+/**
+ * Whether a reply has to be drawn again whole for what it was drawn for (liveStale): when its turn started or stopped
+ * running. When only the number of agents at work changed, its live block is painted again instead.
+ * @param {HTMLElement | undefined} node @param {any} it @param {string} threadId
+ */
+export function drawnStale(node, it, threadId) {
+  const why = liveStale(node, it, threadId);
+  return why === 'live' || (why === 'agents' && !liveSoon(/** @type {HTMLElement} */ (node), it.id, threadId));
+}
+
 /**
  * Paints a reply’s activity list and job rows again from its item, leaving the rest of the reply as it is.
  * @param {HTMLElement | undefined} node  the reply as drawn @param {any} it  the agent item @param {string} threadId
  * @returns {boolean} false when it couldn’t, and the caller draws the whole reply instead
  */
 export function paintActivity(node, it, threadId) {
-  // A running turn’s steps sit between its words, which a step moves: the reply is drawn again.
-  if (!node || it?.kind !== 'agent' || it.status === 'replaced' || isLive(it, threadId)) return false;
+  if (!node || it?.kind !== 'agent' || it.status === 'replaced') return false;
+  // A running turn’s live block is painted again at the next frame, once for all the steps that landed (paintLive).
+  if (isLive(it, threadId)) return liveSoon(node, it.id, threadId);
   const [, list, jobs] = activityParts(it, threadId);
   const oldList = /** @type {HTMLDetailsElement | null} */ (node.querySelector(':scope > details.activity'));
   const oldJobs = node.querySelector(':scope > ul.bg-jobs');
@@ -160,3 +187,60 @@ export function paintActivity(node, it, threadId) {
   else oldJobs?.remove();
   return true;
 }
+
+/** The live replies to paint at the next frame: their nodes, with the thread each is in. */
+const live = /** @type {Map<HTMLElement, { id: string, threadId: string }>} */ (new Map());
+let frame = 0;
+
+/**
+ * Queues a running reply’s live block to paint at the next frame, so a burst of steps paints it once (#573: a step
+ * paints its reply’s steps, not the reply). False when the reply has no live block yet, and is drawn whole instead.
+ * @param {HTMLElement} node @param {string} id @param {string} threadId
+ */
+function liveSoon(node, id, threadId) {
+  if (!node.querySelector(':scope > .live-steps')) return false;
+  live.set(node, { id, threadId });
+  if (!frame)
+    frame = requestAnimationFrame(() => {
+      frame = 0;
+      const queued = [...live];
+      live.clear();
+      for (const [n, q] of queued) if (n.isConnected) paintLive(n, itemsOf(q.threadId)[placeIn(q.threadId, q.id)], q.threadId);
+    });
+  return true;
+}
+
+/**
+ * Paints a running reply’s live block, its job rows, and its Markdown box when a step moved where the box starts, and
+ * nothing else. “N earlier steps” stays open, and its summary keeps focus, as the person left them.
+ * @param {HTMLElement} node @param {any} it @param {string} threadId
+ */
+function paintLive(node, it, threadId) {
+  const old = node.querySelector(':scope > .live-steps');
+  if (!it || !old) return;
+  const [, block, jobs] = activityParts(it, threadId);
+  if (!block) return;
+  const earlier = old.querySelector('details.earlier');
+  const focused = earlier?.querySelector(':scope > summary') === document.activeElement;
+  old.replaceWith(block);
+  const now = block.querySelector('details.earlier');
+  if (earlier?.hasAttribute('open')) now?.setAttribute('open', '');
+  if (focused) /** @type {HTMLElement | null} */ (now?.querySelector(':scope > summary'))?.focus();
+  const oldJobs = node.querySelector(':scope > ul.bg-jobs');
+  if (oldJobs && jobs) oldJobs.replaceWith(jobs);
+  else if (jobs) block.after(jobs);
+  else oldJobs?.remove();
+  const box = /** @type {HTMLElement | null} */ (node.querySelector(':scope > .md'));
+  if (box && box.dataset.from !== String(textFrom(it, threadId))) paintAgentMarkdown(box, it, threadId);
+  // A part another part ended is no longer being written: its caret goes.
+  if (it.status !== 'streaming') box?.querySelector(':scope > .caret')?.remove();
+}
+
+// A resized window changes each running reply’s share of it: their live blocks paint again to the new budget.
+addEventListener('resize', () => {
+  for (const block of document.querySelectorAll('.transcript > [data-key] > .live-steps:not([hidden])')) {
+    const node = /** @type {HTMLElement} */ (block.parentElement);
+    const threadId = /** @type {HTMLElement | null} */ (node.closest('.transcript'))?.dataset.thread;
+    if (threadId && node.dataset.key) liveSoon(node, node.dataset.key, threadId);
+  }
+});

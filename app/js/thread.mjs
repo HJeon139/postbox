@@ -3,8 +3,8 @@
 
 import { renderMarkdown } from '/shared/markdown.mjs';
 import { resolveCommand } from '/shared/slash-line.mjs';
-import { laterParts, liveStale } from './activity-live.mjs';
-import { activityParts, hasRecord, paintActivity, recordMoved, stepsOnly } from './activity-paint.mjs';
+import { laterParts } from './activity-live.mjs';
+import { activityParts, drawnStale, hasRecord, paintActivity, paintPatch, recordMoved } from './activity-paint.mjs';
 import { activityLabel } from './activity-steps.mjs';
 import { mockMarker } from './agent-facts.mjs';
 import { agentMarkdown, handles, markTerms, paintAgentMarkdown, usesTerm } from './agent-markdown.mjs';
@@ -100,7 +100,7 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
     );
     el.append(hostTurns.el, working); // keep them last
     // A running turn’s steps fit its share of the screen, which changes as agents start and finish (activity-live.mjs).
-    for (const it of shown()) if (liveStale(nodes.get(it.id), it, threadId)) rerender(it.id);
+    for (const it of shown()) if (drawnStale(nodes.get(it.id), it, threadId)) rerender(it.id);
   };
   // Above them, a turn on a host Postbox asked to stop and the host hasn’t confirmed it stopped (#120).
   const hostTurns = hostTurnsList(threadId);
@@ -235,9 +235,9 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
       view.grew();
     } else if (ch.type === 'item.patch' && d.threadId === threadId) {
       // A step changes only the reply’s activity list (#573); anything else draws the reply again.
-      const it = stepsOnly(d) ? itemsOf(threadId)[placeIn(threadId, d.id)] : null;
-      if (!d.reaction && !(it && paintActivity(nodes.get(d.id), it, threadId))) rerender(d.id);
-      for (const id of laterParts(d, threadId, shown())) rerender(id);
+      const it = itemsOf(threadId)[placeIn(threadId, d.id)];
+      if (!d.reaction && !paintPatch(nodes.get(d.id), it, threadId, d)) rerender(d.id);
+      for (const id of laterParts(d, threadId, shown())) if (!paintActivity(nodes.get(id), itemsOf(threadId)[placeIn(threadId, id)], threadId)) rerender(id);
     } else if (ch.type === 'item.text' && d.threadId === threadId) {
       pending.add(d.id);
       if (!raf)

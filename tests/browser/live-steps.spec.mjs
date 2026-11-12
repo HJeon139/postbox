@@ -270,3 +270,31 @@ test('a finished turn whose words came after another agent’s post keeps its re
   expect(where('Set x to 2.'), 'below the other agent’s post').toBeGreaterThan(where('Second is here.'));
   await expect(page.locator('details.activity:visible'), 'one record for the turn').toHaveCount(1);
 });
+
+test('a step landing keeps “N earlier steps” open, and its summary focused, as you left them', async ({ page }) => {
+  const t = room('Earlier steps kept', ['busy']);
+  scripts.set('busy', async ({ emit, who }) => {
+    for (let i = 1; i <= 40; i++) {
+      emit({ kind: 'tool_call', id: `s${i}`, name: 'Bash', input: { command: `make part-${i}` }, final: true });
+      emit({ kind: 'tool_result', id: `s${i}`, text: `part ${i} ok` });
+    }
+    await hold(who, 1);
+    emit({ kind: 'tool_call', id: 's41', name: 'Bash', input: { command: 'make part-41' }, final: true });
+    await hold(who, 2);
+  });
+  await page.goto(`${scripted.app.origin}/#/t/${t.id}`);
+  await synced(page, scripted.app);
+  scripted.app.rt.sendMessage(t.id, { text: 'Build it.' });
+  await expect.poll(() => at('busy')).toBe(1);
+  const earlier = page.locator('.live-steps details.earlier');
+  await earlier.locator('> summary').focus();
+  await page.keyboard.press('Enter');
+  await expect(earlier).toHaveAttribute('open', '');
+  go('busy');
+  await expect.poll(() => at('busy')).toBe(2);
+  await expect(page.locator('li.step-full'), 'the step landed').toContainText('make part-41');
+  await expect(earlier, 'still open').toHaveAttribute('open', '');
+  await expect(earlier.locator('> summary'), 'still focused').toBeFocused();
+  go('busy');
+  await expect.poll(() => scripted.app.rt.turns.size).toBe(0);
+});
