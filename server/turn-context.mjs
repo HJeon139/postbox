@@ -10,12 +10,29 @@ import { turnStep } from './step-text.mjs';
 import { newId } from './store.mjs';
 import { saveBackendState } from './store-outage.mjs';
 import { workEvents } from './turn-work.mjs';
-
+/**
+ * What a turn's adapter runs with: what the turn is, its permissions, and the callbacks it reports through.
+ * @param {any} rt  the runtime @param {any} se0  the session as the turn starts @param {any} turn
+ */
 export function adapterContext(rt, se0, turn) {
   const live = () => !turn.closed;
-  const se = () => rt.s.sessions[turn.sessionId];
-  const ensureSegment = () => replySegment(rt, turn, se0);
   const tools = rt.toolsFor(turn.sessionId, turn);
+  return {
+    ...whatTheTurnIs(rt, se0, turn),
+    ...turnHooks(rt, turn, live),
+    ...replyWords(rt, se0, turn, live),
+    ...stepCallback(rt, se0, turn, live),
+    ...reportCallbacks(rt, turn, live),
+    tools,
+  };
+}
+
+/**
+ * The turn's settings: its signal and MCP address, its persona, project, thread and room, the adapter's saved state,
+ * and the permissions the person set for it.
+ * @param {any} rt @param {any} se0 @param {any} turn
+ */
+function whatTheTurnIs(rt, se0, turn) {
   const thread = rt.s.threads[turn.threadId];
   const persona = rt.personaFor(se0);
   return {
@@ -43,6 +60,16 @@ export function adapterContext(rt, se0, turn) {
     rules: { allow: [...(se0.rules?.allow ?? [])], ask: [...(se0.rules?.ask ?? [])], deny: [...(se0.rules?.deny ?? [])] },
     /** Folders the person added for this conversation (#66), passed as --add-dir / additionalDirectories. */
     addDirs: [...(se0.addDirs ?? [])],
+  };
+}
+
+/**
+ * What the adapter hands over or reports about the turn itself: its subagents' names, its own controls, the agent's
+ * commands, background jobs, refused calls, the work ledger's events and its checkpoint.
+ * @param {any} rt @param {any} turn @param {() => boolean} live
+ */
+function turnHooks(rt, turn, live) {
+  return {
     /** The adapter says how to name a subagent from its id (a prompt’s agent id), so its prompt names it. */
     subagentNames(fn) {
       turn.subagentName = fn;
@@ -85,6 +112,17 @@ export function adapterContext(rt, se0, turn) {
     checkpoint(ref) {
       turn.checkpoint = ref;
     },
+  };
+}
+
+/**
+ * The reply's words as they stream, a compaction's note, and the sources the reply cites.
+ * @param {any} rt @param {any} se0 @param {any} turn @param {() => boolean} live
+ */
+function replyWords(rt, se0, turn, live) {
+  const se = () => rt.s.sessions[turn.sessionId];
+  const ensureSegment = () => replySegment(rt, turn, se0);
+  return {
     text(delta) {
       if (!live() || !delta) return;
       const id = wordsSegment(rt, turn, se0);
@@ -93,6 +131,44 @@ export function adapterContext(rt, se0, turn) {
       rt.store.emit('item.text', { threadId: turn.threadId, id, text: delta });
       if (rt.store.pending.session(turn.sessionId)?.state !== 'gen') rt.updateSession(turn.sessionId, { state: 'gen', currentStep: 'Writing a reply' });
     },
+    compaction({ kept, total, summary }) {
+      if (!live()) return;
+      const n = (rt.store.pending.session(turn.sessionId) ?? se()).compactions + 1; // one held behind a commit counts too
+      turn.segment = null;
+      rt.addItem(turn.threadId, {
+        kind: 'system',
+        variant: 'compaction',
+        handle: se0.handle,
+        n,
+        kept,
+        total,
+        summary: String(summary ?? '').slice(0, 20000),
+      });
+      rt.updateSession(turn.sessionId, { compactions: n, ctx: Math.round((kept / total) * 100) });
+    },
+    sources(list) {
+      if (!live()) return;
+      const id = ensureSegment();
+      rt.patchItem(turn.threadId, id, {
+        sources: list.slice(0, 50).map((x) => ({
+          title: String(x.title ?? ''),
+          authors: String(x.authors ?? ''),
+          year: x.year ?? null,
+          url: x.url ?? null,
+          note: x.note ? String(x.note) : '',
+        })),
+      });
+    },
+  };
+}
+
+/**
+ * A step the agent or a subagent takes, as the turn's activity shows it and the session's tool calls count it.
+ * @param {any} rt @param {any} se0 @param {any} turn @param {() => boolean} live
+ */
+function stepCallback(rt, se0, turn, live) {
+  const ensureSegment = () => replySegment(rt, turn, se0);
+  return {
     // who: the subagent that took the step; parent nests it under its starting step; detail holds an error,
     // thought, narration or subagent result; kind names non-tool work; job names its background job (#73, #129).
     activity({
@@ -136,6 +212,15 @@ export function adapterContext(rt, se0, turn) {
         currentStep: own ? step.label : s.currentStep,
       }));
     },
+  };
+}
+
+/**
+ * The agent's status as it works, and what the backend reported about the run: its model, effort and MCP servers.
+ * @param {any} rt @param {any} turn @param {() => boolean} live
+ */
+function reportCallbacks(rt, turn, live) {
+  return {
     status(patch) {
       if (!live()) return;
       const allowed = {};
@@ -160,21 +245,6 @@ export function adapterContext(rt, se0, turn) {
       // A line of what it’s thinking or writing right now; cleared when the turn ends.
       if (typeof patch.glimpse === 'string') allowed.glimpse = glimpseOf(patch.glimpse);
       rt.updateSession(turn.sessionId, allowed);
-    },
-    compaction({ kept, total, summary }) {
-      if (!live()) return;
-      const n = (rt.store.pending.session(turn.sessionId) ?? se()).compactions + 1; // one held behind a commit counts too
-      turn.segment = null;
-      rt.addItem(turn.threadId, {
-        kind: 'system',
-        variant: 'compaction',
-        handle: se0.handle,
-        n,
-        kept,
-        total,
-        summary: String(summary ?? '').slice(0, 20000),
-      });
-      rt.updateSession(turn.sessionId, { compactions: n, ctx: Math.round((kept / total) * 100) });
     },
     /**
      * What the backend reported about the run, kept on the session, bounded:
@@ -205,19 +275,5 @@ export function adapterContext(rt, se0, turn) {
           },
         });
     },
-    sources(list) {
-      if (!live()) return;
-      const id = ensureSegment();
-      rt.patchItem(turn.threadId, id, {
-        sources: list.slice(0, 50).map((x) => ({
-          title: String(x.title ?? ''),
-          authors: String(x.authors ?? ''),
-          year: x.year ?? null,
-          url: x.url ?? null,
-          note: x.note ? String(x.note) : '',
-        })),
-      });
-    },
-    tools,
   };
 }
