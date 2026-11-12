@@ -2,6 +2,7 @@
 // which details are open, and where the keyboard and the caret were (#739).
 
 import { buildSteps } from './activity-paint.mjs';
+import { keepDrawn } from './view-skip.mjs';
 
 /** A stable key for the raw block, activity list, or one expandable thought. @param {HTMLElement} details */
 function detailsKey(details) {
@@ -28,6 +29,7 @@ function detailsState(root) {
  */
 export function replaceTranscriptItem(old, next, view) {
   const state = detailsState(old);
+  keepDrawn(old, next);
   old?.replaceWith(next);
   if (old) view?.redrawn();
   // An activity list opened again is built first, so the thoughts it held expanded are there to expand (#1028).

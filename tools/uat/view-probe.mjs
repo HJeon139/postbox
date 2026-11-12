@@ -14,7 +14,9 @@ const FRAME_WAIT_MS = 200;
  * published (expected) and where that item is (actual), from the view’s top as view-state.mjs measures it, and how far
  * the view is from the end (gap). prev: where the last sample’s anchor of this transcript is now, by its key, when that
  * sample was of the same thread and page load (origin) and the item is still mounted; else null. Read twice, a frame
- * apart: settled when both agree within half a pixel.
+ * apart: settled when both agree within half a pixel, and the view’s smooth jump to the end isn’t still running
+ * (data-view-moving): a slow machine can start that scroll frames after it’s asked for, and a sample taken then reads
+ * following above the end (#1238).
  * @param {(expr: string) => Promise<any>} ev  the driver’s page.evaluate
  * @param {Record<string, { origin: number, thread: string, anchorId: string }>} last  by where, the last sample’s anchor
  */
@@ -59,7 +61,7 @@ export const sampleViews = (ev, last) =>
     });
     return els.map((el, i) => {
       const s = read(el);
-      return { ...s, settled: framed && agree(first[i], s) };
+      return { ...s, settled: framed && agree(first[i], s) && !el.dataset.viewMoving };
     });
   })(${js(last)})`);
 

@@ -76,3 +76,17 @@ test('a stub that takes a moved item’s place changes kind there, and forget() 
   assert.equal(h.span(1, 2), 64, 'the agent kind’s median stays its estimate');
   assert.equal(h.span(0, 1), 20);
 });
+
+test('a list that replaces another of the same conversation keeps its kinds’ estimates, so a spacer keeps its height (#1155)', async () => {
+  const { heightsFor } = await import('../app/js/window-entry.mjs');
+  const items = (/** @type {number} */ from, /** @type {number} */ n) => Array.from({ length: n }, (_, i) => ({ id: `i${from + i}`, kind: 'agent' }));
+  const was = heightsFor('carry', items(9000, 10)).heights;
+  for (let i = 0; i < 10; i++) was.measure(i, 60);
+  // A range placed for a jump, far from the last: none of the same items.
+  const now = heightsFor('carry', items(100, 10)).heights;
+  assert.notEqual(now, was, 'a new list’s own heights');
+  assert.equal(now.estimate('agent'), 60, 'the kind’s estimate, not its seed');
+  now.measure(0, 300);
+  assert.equal(now.estimate('agent'), 60, 'one new measurement doesn’t move a median of ten');
+  assert.equal(now.span(1, 10), 9 * 60, 'what isn’t mounted stands at the same height');
+});

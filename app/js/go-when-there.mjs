@@ -39,3 +39,21 @@ export function goWhenThere(find) {
 
 /** @param {string} threadId  a conversation the API just made */
 export const goToNew = (threadId) => goWhenThere((s) => (s.threads[threadId] ? threadId : null));
+
+/**
+ * Resolves once the page’s state, as the stream keeps it, satisfies `ok`, or after `ms` if the stream never says, so
+ * what waits on it always goes on. @param {() => unknown} ok @param {number} [ms]
+ */
+export const heard = (ok, ms = 3000) =>
+  new Promise((done) => {
+    if (ok()) return done(undefined);
+    const finish = () => {
+      clearTimeout(timer);
+      off();
+      done(undefined);
+    };
+    const timer = setTimeout(finish, ms);
+    const off = client.on(() => {
+      if (ok()) finish();
+    });
+  });

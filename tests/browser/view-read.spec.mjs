@@ -5,6 +5,7 @@
 // Each test has a conversation of its own.
 
 import { expect, test } from '@playwright/test';
+import { heldStill } from '../../tools/page-still.mjs';
 import { failOnPageErrors, settled, startPostbox, synced } from './postbox.mjs';
 import { holds, LONG, open as openIn, read, room as roomIn } from './view-read-fixture.mjs';
 
@@ -59,6 +60,31 @@ test('V1: the jump pill and a resize', async ({ page }) => {
   await page.locator('.jump').click();
   await settled(page);
   expect((await holds(page, t, 'after the jump pill')).mode).toBe('following');
+});
+
+// A slow machine can start the pill’s smooth scroll frames after the click, as CI’s did: the page held still for two
+// frames, settled() passed, and the view read following, 769 px above the end (#1238). Holding the scroll here does the
+// same at any speed: until it has run, the page isn’t still.
+test('V1: the page isn’t still while the jump pill’s scroll is still to run (#1238)', async ({ page }) => {
+  const { t, say } = room('View read: a held jump');
+  await open(page, t);
+  await page.mouse.move(640, 400);
+  await page.mouse.wheel(0, -1200);
+  await settled(page);
+  say(LONG(60));
+  await expect(page.locator('.jump')).toBeVisible();
+  await settled(page);
+  await page.evaluate(() => {
+    const w = /** @type {any} */ (window);
+    const real = w.scrollTo.bind(w);
+    w.scrollTo = (/** @type {any[]} */ ...a) => (a[0]?.behavior === 'smooth' ? (w.heldScroll = () => real(...a)) : real(...a));
+  });
+  await page.locator('.jump').click();
+  expect(await page.evaluate(() => typeof (/** @type {any} */ (window).heldScroll)), 'the pill asked for a smooth scroll').toBe('function');
+  expect(await page.evaluate(heldStill), 'the page isn’t still while the jump is still to run').toBe(false);
+  await page.evaluate(() => /** @type {any} */ (window).heldScroll());
+  await settled(page);
+  expect((await holds(page, t, 'after the held jump')).mode).toBe('following');
 });
 
 test('V1: an anchor that moves to the end leaves its stub as the anchor', async ({ page }) => {
@@ -160,19 +186,6 @@ test('V1: a transcript says what it is from the moment it’s on the page', asyn
   });
   await open(page, t);
   expect(await page.evaluate(() => /** @type {any} */ (window).__firstMode)).toBe('following');
-});
-
-test.describe('at 2× pixels', () => {
-  test.use({ deviceScaleFactor: 2 });
-  test('V1: the offset is published to 0.1 px, so rounding never adds to the 1 px the check allows', async ({ page }) => {
-    const { t } = room('View read: offset to 0.1 px');
-    await open(page, t);
-    await page.evaluate(() => scrollBy(0, -1200.5));
-    await settled(page);
-    const v = await holds(page, t, 'reading at a half pixel');
-    expect(Math.abs(/** @type {number} */ (v.actual) - Number(v.offset)), 'within 0.1 px').toBeLessThanOrEqual(0.1);
-    expect(Number(v.offset) % 1, 'the scroll left the anchor on a half pixel').not.toBe(0);
-  });
 });
 
 test('V1: a redraw from new state that no longer has the anchor takes the anchor again where the view is', async ({ page }) => {

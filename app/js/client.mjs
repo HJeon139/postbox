@@ -10,6 +10,8 @@
 import { itemOf, positionOf } from '/shared/item-index.mjs';
 import { needsYouNow, whereNeeds } from '/shared/needs.mjs';
 import { apply, ownState, PUBLIC_EVENT_TYPES, STREAM } from '/shared/state.mjs';
+import { fetchRange, gate, loading, place } from './item-ranges.mjs';
+import { windowOn } from './window-flag.mjs';
 
 // The event types the page hears: every public type in shared/state.mjs's table, and the cursor the server sends in
 // place of any other (server/public-state.mjs).
@@ -19,6 +21,12 @@ export const client = {
   state: null,
   // Each thread’s header facts (shared/thread-header.mjs, #1155), from /api/state and then the stream’s header frames.
   headers: {},
+  // The conversations the page has open, each with how many views show it, and the range of items it holds of each
+  // (app/js/item-ranges.mjs, app/js/open-threads.mjs). The page holds no other conversation’s items.
+  /** @type {Map<string, number>} */
+  open: new Map(),
+  /** @type {Map<string, import('./item-ranges.mjs').Range>} */
+  ranges: new Map(),
   config: null,
   seq: 0,
   epoch: '',
@@ -41,7 +49,9 @@ export async function load() {
   const r = await fetch('/api/state', { cache: 'no-store' });
   if (!r.ok) throw new Error('Postbox’s server didn’t answer. Check that it’s running, then reload.');
   const { seq, epoch, state, config, store, headers } = await r.json();
-  client.state = ownState(state);
+  const next = ownState(state);
+  await refill(next, epoch);
+  client.state = next;
   client.headers = headers ?? {};
   client.config = config;
   client.seq = seq;
@@ -50,15 +60,83 @@ export async function load() {
   client.emit({ type: 'load' });
 }
 
+/**
+ * What a resync loads of an open conversation: all of it with the window off, which mounts every item; around the
+ * middle of a range short of the newest item, so what you read stays; else the latest.
+ * @param {import('./item-ranges.mjs').Range | undefined} r @param {any[]} list
+ */
+function refillQuery(r, list) {
+  if (!windowOn()) return '?limit=all';
+  const mid = r && r.start + list.length < r.total ? list[list.length >> 1]?.id : null;
+  // With the first items, for Home, and those around the open asks, for ⌃J, as the opening load has them (open-threads.mjs).
+  return mid ? `?around=${encodeURIComponent(mid)}&head=200&asks=100` : '?head=200&asks=100';
+}
+
+/**
+ * Loads each open conversation’s items again into a state the page is about to take (a resync): the range it held, or
+ * its latest when that held the newest item, so what you read stays and nothing is loaded twice. One that fails, or
+ * comes from another history, is loaded fresh by its view.
+ * @param {any} next @param {string} epoch
+ */
+async function refill(next, epoch) {
+  const ranges = new Map();
+  await Promise.all(
+    [...client.open.keys()].map(async (id) => {
+      const answer = await fetchRange(id, refillQuery(client.ranges.get(id), client.state?.items[id] ?? [])).catch(() => null);
+      if (!answer || (answer.epoch ?? epoch) !== epoch) return;
+      loading(ranges, id);
+      place(next, ranges, answer, 'replace');
+    }),
+  );
+  client.ranges = ranges;
+}
+
+/**
+ * One numbered frame from the stream: an event the page applies, or a cursor that only moves its place on.
+ * @param {string} t @param {MessageEvent} e
+ */
+function hear(t, e) {
+  const seq = Number(e.lastEventId);
+  if (seq && seq <= client.seq) return;
+  // A cursor stands for an event the page doesn't see: it moves the page's place on, and nothing else.
+  if (t === STREAM.cursor) {
+    client.seq = seq || client.seq;
+    return;
+  }
+  const data = JSON.parse(e.data);
+  // An item’s change applies only to a range the page holds (app/js/item-ranges.mjs).
+  const verdict = t.startsWith('item.') ? gate(client.state, client.ranges, t, data, seq) : 'apply';
+  client.seq = seq || client.seq;
+  if (verdict === 'reload') client.emit({ type: 'range.stale', data: { threadId: data.threadId } });
+  if (verdict === 'beyond') client.emit({ type: 'item.beyond', data: { threadId: data.threadId, item: data.item } });
+  // An item moved past the range's end: the state has its stub in its place, which the transcript draws.
+  if (verdict === 'moved') client.emit({ type: t, data: { ...data, past: true } });
+  if (verdict !== 'apply') return;
+  apply(client.state, t, data);
+  // A session’s change comes as only its changed fields (designs/508, “Store events”); listeners hear the whole
+  // session, as they did when the server sent it whole.
+  if (t === 'session.patch') {
+    const se = client.state.sessions[data.id];
+    if (se) client.emit({ type: 'session', data: se });
+  } else client.emit({ type: t, data });
+}
+
 let es = null;
-export function connect() {
+/**
+ * Opens the page's stream, in place of any open one. `quiet`: the page's own reconnect for the conversations it has
+ * open (reopen), which from open to open tells the rest of the page nothing, as the outbox and app checks hear a
+ * connection's return. @param {{ quiet?: boolean }} [o]
+ */
+export function connect({ quiet = false } = {}) {
   es?.close();
-  es = new EventSource(`/api/stream?since=${client.seq}&epoch=${encodeURIComponent(client.epoch)}`);
+  // Item events only for the conversations open here (#1155); every other event, and each thread’s header, for all.
+  const open = encodeURIComponent([...client.open.keys()].join(','));
+  es = new EventSource(`/api/stream?since=${client.seq}&epoch=${encodeURIComponent(client.epoch)}&open=${open}`);
   es.onopen = () => {
     const was = client.connection;
     client.connection = 'open';
     client.attempts = 0;
-    client.emit({ type: 'connection', was });
+    if (!quiet || was !== 'open') client.emit({ type: 'connection', was });
   };
   es.onerror = () => {
     client.attempts++;
@@ -67,26 +145,7 @@ export function connect() {
     // EventSource retries by itself, resending Last-Event-ID. If it gave up, start again.
     if (es.readyState === EventSource.CLOSED) setTimeout(connect, Math.min(8000, 1000 * client.attempts));
   };
-  for (const t of EVENT_TYPES) {
-    es.addEventListener(t, (e) => {
-      const seq = Number(e.lastEventId);
-      if (seq && seq <= client.seq) return;
-      // A cursor stands for an event the page doesn't see: it moves the page's place on, and nothing else.
-      if (t === STREAM.cursor) {
-        client.seq = seq || client.seq;
-        return;
-      }
-      const data = JSON.parse(e.data);
-      apply(client.state, t, data);
-      client.seq = seq || client.seq;
-      // A session’s change comes as only its changed fields (designs/508, “Store events”); listeners hear the whole
-      // session, as they did when the server sent it whole.
-      if (t === 'session.patch') {
-        const se = client.state.sessions[data.id];
-        if (se) client.emit({ type: 'session', data: se });
-      } else client.emit({ type: t, data });
-    });
-  }
+  for (const t of EVENT_TYPES) es.addEventListener(t, (e) => hear(t, /** @type {MessageEvent} */ (e)));
   // The epoch the stream runs on, its first frame. The page’s epoch is only ever the one that came with a state it
   // loaded: a frame naming another means the state the page shows is from a history the server no longer runs on, so it
   // loads the state again, as a resync does. Taking the epoch from the frame would, if that load then failed, send the
@@ -106,6 +165,20 @@ export function connect() {
   es.addEventListener(STREAM.status, (e) => {
     client.store = JSON.parse(e.data);
     client.emit({ type: 'store' });
+  });
+}
+
+/**
+ * Opens the stream again with the conversations open now (app/js/open-threads.mjs), at most once a task, so closing one
+ * and opening another reconnects once. Not before the page’s first connect, nor during a resync, which connects itself.
+ */
+let reopening = false;
+export function reopen() {
+  if (reopening) return;
+  reopening = true;
+  queueMicrotask(() => {
+    reopening = false;
+    if (es && !resyncing) connect({ quiet: true });
   });
 }
 

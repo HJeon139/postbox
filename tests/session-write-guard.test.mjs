@@ -22,8 +22,9 @@ import { DECL, placed, sites, withProbes } from './server-sources-fixture.mjs';
 
 /** Every write of a session: updateSession's patch, the put of a new one, and the removal of one. */
 const SESSION_WRITES = {
-  'runtime.mjs': ['putSession', 'putSession', 'ensureSession', 'deleteSession'], // putSession and its emit, called only by ensureSession for a new session; a delete's removal
-  'session-write.mjs': ['updateSession'], // a session that exists, from store.pending.session
+  'runtime.mjs': ['putSession', 'putSession', 'ensureSession'], // putSession and its emit, called only by ensureSession for a new session
+  'session-lifecycle.mjs': ['deleteSession'], // a delete's removal
+  'session-write.mjs': ['updateSession', 'stampNeeds'], // a session that exists, from store.pending.session; a need's time as the store loads
   'thread-erase.mjs': ['eraseThreads'], // the sessions of the threads a delete erases
 };
 const SESSION_WRITE = /\bputSession\(|\bemit\(\s*['"`]session|\bemit\(\s*['"`]remove['"`]\s*,\s*\{\s*kind:\s*['"`]session['"`]/;
@@ -35,11 +36,12 @@ const SESSION_WRITE = /\bputSession\(|\bemit\(\s*['"`]session|\bemit\(\s*['"`]re
  * the pending reads are #623's class (Refs #623).
  */
 const FROM_PUBLISHED = {
+  'diagram-check.mjs': ['rememberDiagrams'], // diagramsLinted
   'kept-jobs.mjs': ['stopJob'], // jobs: a job's stopping mark
   'permission-cards.mjs': ['resolveDenial'], // allowOnce: Allow once on a denial card
   'permissions-panel.mjs': ['changePermissionFolder', 'changePermissionFolder'], // addDirs: a folder removed, or added
   'remote/turns-shared.mjs': ['updateRemote'], // remoteTurn: a host turn's state
-  'runtime.mjs': ['recordJob', 'recordJob', 'rememberDiagrams'], // jobs (a job recorded, kept) and diagramsLinted
+  'runtime.mjs': ['recordJob', 'recordJob'], // jobs (a job recorded, kept)
   'side-threads.mjs': ['recordAgentMessage'], // agentMessages: the last messages between two agents
   'thread-summary.mjs': ['threadCatchUp', 'reactionLines'], // seenIn and reactionsTold: catch-up markers per thread
 };

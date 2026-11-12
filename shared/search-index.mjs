@@ -8,6 +8,9 @@ import { tokenize } from './bm25.mjs';
 
 /** @typedef {{ len: number, tf: Map<string, number> }} Entry */
 
+/** The most distinct words of a query that a search scores. */
+export const MOST_TERMS = 32;
+
 export class SearchIndex {
   constructor() {
     /** @type {Map<string, Entry>} */
@@ -49,7 +52,8 @@ export class SearchIndex {
    * @returns {{ id: string, score: number, terms: string[] }[]}
    */
   search(query, { k = 20, k1 = 1.2, b = 0.75 } = {}) {
-    const q = [...new Set(tokenize(query))];
+    // At most MOST_TERMS words: each is a pass over every entry, and a query of thousands held the server for seconds.
+    const q = [...new Set(tokenize(query))].slice(0, MOST_TERMS);
     const N = this.entries.size;
     if (!q.length || !N) return [];
     const avgdl = this.totalLen / N;

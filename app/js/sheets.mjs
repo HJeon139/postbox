@@ -22,7 +22,7 @@ import { mockMarker } from './agent-facts.mjs';
 import { checkField } from './check-field.mjs';
 import { api, client, headerOf, sessionsOf, threadsOf } from './client.mjs';
 import { ago, fill, h, icon, plural } from './dom.mjs';
-import { goToNew, goWhenThere } from './go-when-there.mjs';
+import { goToNew, goWhenThere, heard } from './go-when-there.mjs';
 import { hostsPanel } from './hosts.mjs';
 import { openPermissions } from './permissions.mjs';
 import { lifeButtons } from './persona-delete.mjs';
@@ -727,8 +727,11 @@ export function confirmDeleteThread(threadId) {
           type: 'button',
           onclick: () =>
             api(`/api/threads/${threadId}`, null, 'DELETE')
-              .then(() => {
+              .then(async () => {
                 dlg.close();
+                // Once the page has heard it's gone: else the project's latest conversation is still this one, and
+                // opening it asks for items the server has erased (#1155).
+                await heard(() => !S().threads[threadId]);
                 navigate(`#/p/${t.projectId}`);
                 say(`Deleted “${t.title}”`);
               })

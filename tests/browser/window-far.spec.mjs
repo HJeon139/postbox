@@ -1,7 +1,8 @@
 // The transcript window far from the view (#866, critic’s integrator pass on #1075): a scroll that lands well past the
-// range’s edges, a drag of the scrollbar, Home, End or Jump to latest, shows items at once, not a blank spacer while
-// the range walks over; a window torn down before its first frame leaves nothing listening; and a reply that streams
-// in while you read higher up is still announced, though it isn’t mounted.
+// range’s edges, a drag of the scrollbar, Home, End or Jump to latest, shows items at once (past what the page holds,
+// once they’re loaded, #1155), not a blank spacer while the range walks over; a window torn down before its first frame
+// leaves nothing listening; and a reply that streams in while you read higher up is still announced, though it isn’t
+// mounted or loaded.
 
 import { expect, test } from '@playwright/test';
 import { seedBigRoom } from '../../tools/uat/big-room.mjs';
@@ -69,18 +70,15 @@ test('#866 a scroll to the middle of a long room shows items there within two fr
   expect(Math.abs(y - target), `the view at ${Math.round(y)}, dragged to ${Math.round(target)}`).toBeLessThan(target * 0.03);
 });
 
-test('#866 Home in a long room opened at its end shows its first items within two frames, and End its last', async ({ page }) => {
+test('#866 Home in a long room opened at its end shows its first items, and End its last', async ({ page }) => {
   const t = await open(page);
+  // The page holds only the latest items it opened on (#1155): Home loads the first ones, then goes there.
   await page.keyboard.press('Home');
-  await frames(page);
-  await frames(page);
   const first = app.store.items(t.id)[0].id;
-  await expect(page.locator(`#main > .item[data-key="${first}"]`), 'the first item, at the top').toBeInViewport({ timeout: 1000 });
+  await expect(page.locator(`#main > .item[data-key="${first}"]`), 'the first item, at the top').toBeInViewport();
   await page.keyboard.press('End');
-  await frames(page);
-  await frames(page);
   const last = app.store.items(t.id).at(-1).id;
-  await expect(page.locator(`#main > .item[data-key="${last}"]`), 'the newest item, at the end').toBeInViewport({ timeout: 1000 });
+  await expect(page.locator(`#main > .item[data-key="${last}"]`), 'the newest item, at the end').toBeInViewport();
 });
 
 test('#866 Jump to latest from far up a long room lands on the newest item', async ({ page }) => {
@@ -90,14 +88,9 @@ test('#866 Jump to latest from far up a long room lands on the newest item', asy
   await synced(page, app);
   const jump = page.getByRole('button', { name: /Jump to latest/ });
   await expect(jump).toBeVisible();
-  // In the click’s own task the newest item is on the page, so the scroll lands on it, not on a spacer that the range
-  // then walks over a view at a time.
-  const mountedAtClick = await page.evaluate((id) => {
-    const b = /** @type {HTMLElement} */ ([...document.querySelectorAll('button')].find((n) => n.textContent?.includes('Jump to latest')));
-    b.click();
-    return !!document.querySelector(`#main > .item[data-key="${id}"]`);
-  }, it.id);
-  expect(mountedAtClick, 'the newest item mounted as the jump starts').toBe(true);
+  // Far up, the page holds an older range than the newest (#1155): the jump loads the latest, then goes to the end at
+  // once, rather than scrolling smoothly over spacers the range then walks a view at a time.
+  await jump.click();
   await expect(page.locator(`#main > .item[data-key="${it.id}"]`), 'the newest item').toBeInViewport({ timeout: 5000 });
 });
 
@@ -145,11 +138,11 @@ test('#866 an item kept for its focus stays in its place in the conversation whe
   const t = await open(page);
   const ids = app.store.items(t.id).map((it) => it.id);
   // Focus an item in the middle, then move the range above it and then below it without moving focus, so it’s kept
-  // on the page as an island each time (window.mjs, mountFor).
+  // on the page as an island each time (window-live.mjs, mountFor).
   expect(await page.evaluate((id) => import('/app/js/needs-nav.mjs').then((m) => m.focusItem(id)), ids[1000])).toBe(true);
   await page.evaluate(
     ([up, end]) =>
-      import('/app/js/window.mjs').then(({ mountFor }) => {
+      import('/app/js/window-live.mjs').then(({ mountFor }) => {
         mountFor(up);
         mountFor(end);
       }),

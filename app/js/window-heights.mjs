@@ -137,6 +137,15 @@ export class Heights {
     if (m?.size) return m.value;
     return this.seeds[k] ?? this.fallback;
   }
+  /**
+   * Takes each kind's measurements so far from another conversation's list's heights, for a list that replaced it
+   * (a range placed for a jump, #1155): a kind's height doesn't depend on which of the conversation's items are loaded,
+   * so the estimates hold where they were, and a spacer standing in for what isn't mounted keeps its height.
+   * @param {Heights} from
+   */
+  carry(from) {
+    for (const [k, entry] of from.kinds) if (entry.median.size) this.kind(k).median = entry.median;
+  }
   /** Adds the next item, of kind k, unmeasured. @param {string} k */
   push(k) {
     this.kind(k);

@@ -3,26 +3,10 @@
 
 import { api, client } from './client.mjs';
 import { h, plural } from './dom.mjs';
+import { heard } from './go-when-there.mjs';
 import { openDialog, say, toast } from './ui.mjs';
 
 const S = () => client.state;
-/**
- * Resolves once the page’s state, as the stream keeps it, satisfies `ok`, or after `ms` if the stream never says, so
- * the sheet always goes back. @param {() => unknown} ok @param {number} [ms]
- */
-const heard = (ok, ms = 3000) =>
-  new Promise((done) => {
-    if (ok()) return done(undefined);
-    const finish = () => {
-      clearTimeout(timer);
-      off();
-      done(undefined);
-    };
-    const timer = setTimeout(finish, ms);
-    const off = client.on(() => {
-      if (ok()) finish();
-    });
-  });
 /**
  * The sheet’s last two buttons: Retire (or Bring back), and Delete, which asks first.
  * @param {any} p  the persona @param {() => void} back  what the sheet does after Save

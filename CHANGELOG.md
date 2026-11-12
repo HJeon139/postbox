@@ -2,6 +2,74 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.0.7 (2026-11-11)
+
+### Fixes
+
+- **view:** anchor on the first reply in view when the middle one is skipped
+
+## 4.0.6 (2026-11-11)
+
+### Fixes
+
+- **ranges:** an item moved forward while you read at the top shows its stub, and End puts it last
+- **ranges:** keep the items around each open ask, so ⌃J and the open-asks link load nothing
+- **window:** a range that replaces another keeps its kinds' height estimates
+- **view:** a rebuild placed short of the end to go to an item stops following the end
+- **app:** End after Home puts the newest range back with no load, as main does
+- **app:** a long room's first range comes with the load that opens it, for Home at any moment
+- **app:** a transcript window built on the page paints its spacers once, and Home does main's work
+- **app:** the three conversations you left last stay warm, so going back loads nothing, as on main
+- **app:** a load past an edge, queued behind a reload, is for the range the page holds when it runs
+- **app:** Home with focus in the transcript goes to the room's first item in one press
+- **app:** Home in a long room is as quick as on main: its first items are kept from when it opened
+- **app:** a conversation the page hasn't loaded opens once its items land, drawn once
+- **app:** a resync with the transcript window off loads each open conversation once, whole
+- **app:** switching conversations reconnects the stream without it reading as a connection change
+- **server:** the stream builds a cursor form only for an item's event, as other events cost on main
+- **server:** an event the page may not see sends no header frame after its cursor
+- **server:** one request to the items route can't hold the server: limit=all and searches are capped
+- **app:** a move counts toward a conversation's length, so an add heard after it is kept
+- **app:** an event heard during a scroll load reaches the item the load brings
+- **app:** a load from an earlier opening of a conversation leaves the newer range as it is
+- **server:** a held-back stream frame says what its event said, not what the store holds by then
+- **app:** deleting a conversation goes to its project once the page has heard it's gone
+- **tools:** the doc-query probe counts the open room's items from its header
+- **app:** Home loads a conversation's first items and End its latest, past what the page holds
+- **app:** a message added past what's loaded counts on the pill and is heard as it streams
+- **app:** an item with focus keeps it when a range lands and the transcript is drawn again
+- **app:** a conversation view drawn again keeps its items and the focus in it
+- **app:** the page loads no items of a conversation deleted while a load waited
+- **tools:** the demo tour reads each conversation's items from its items route
+- **app:** view_app's capture page asks the server for the app's item
+- **server:** a session that needed you before needsAt gets its item's time as the store loads
+- **server:** /api/state has no items, and a page's stream sends item events only for open rooms
+- **app:** search asks the server, so it finds items the page hasn't loaded
+- **app:** a jump to an item the page hasn't loaded loads the range around it first
+- **app:** the page loads a conversation's items when it opens it, and the next range as you scroll
+
+## 4.0.5 (2026-11-11)
+
+### Fixes
+
+- **view:** hold the anchor's place, and publish where it is apart from it
+- **view:** publish where a hold of the anchor landed, not where it aimed
+
+## 4.0.4 (2026-11-11)
+
+### Fixes
+
+- **uat:** don't count a view sample as settled while its jump to the end runs
+- **view:** say a jump to the end is still running, and wait for it before reading the page
+
+## 4.0.3 (2026-11-11)
+
+### Fixes
+
+- **uat:** fail a run whose Postbox prints an error or a warning, or crashes
+- **uat:** keep what the run's Postbox prints, and its own exits, in the run's facts
+- **server:** the persona sheet's skills read a session's / menu as it's stored
+
 ## 4.0.2 (2026-11-11)
 
 ### Fixes

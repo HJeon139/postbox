@@ -1,0 +1,40 @@
+{
+  "lines": [
+    {
+      "stream": "stderr",
+      "text": "TypeError: ((intermediate value) ?? []).filter is not a function",
+      "step": 3
+    },
+    {
+      "stream": "stderr",
+      "text": "    at Runtime.mcpContext (file:///tmp/pb-rec/server/runtime.mjs:3:37)",
+      "step": 3
+    },
+    {
+      "stream": "stderr",
+      "text": "    at handle (file:///tmp/pb-rec/server/index.mjs:2:36)",
+      "step": 3
+    },
+    {
+      "stream": "stderr",
+      "text": "    at file:///tmp/pb-rec/server/index.mjs:4:3",
+      "step": 3
+    },
+    {
+      "stream": "stderr",
+      "text": "    at ModuleJob.run (node:internal/modules/esm/module_job:561:25)",
+      "step": 3
+    },
+    {
+      "stream": "stderr",
+      "text": "    at async node:internal/modules/esm/loader:647:26",
+      "step": 3
+    },
+    {
+      "stream": "stderr",
+      "text": "    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5)",
+      "step": 3
+    }
+  ],
+  "exits": []
+}

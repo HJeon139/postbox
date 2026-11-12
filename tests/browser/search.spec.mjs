@@ -129,13 +129,11 @@ test('#866 W4 a change to an item shows in search, and a streaming reply is foun
   await openSearch(page);
   await field(page).fill('quokka');
   await expect(hits(page).first()).toHaveAttribute('data-item', it.id);
-  // Changed again: one entry is rewritten, not the room’s, and the new words are found, the old ones aren’t.
+  // Changed again: the new words are found, the old ones aren’t. The server’s index rewrites that entry alone
+  // (tests/items-routes.test.mjs).
   await page.keyboard.press('Escape');
-  const writes = () => page.evaluate((id) => import('/app/js/transcript-search.mjs').then((m) => m.indexFor(id).writes), room);
-  const before = await writes();
   app.rt.patchItem(room, it.id, { text: 'A wombat instead.' });
   await synced(page, app);
-  expect((await writes()) - before, 'entries written for one patch').toBe(1);
   await openSearch(page);
   await field(page).fill('quokka');
   await expect(hits(page)).toHaveCount(0);

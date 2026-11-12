@@ -1,0 +1,61 @@
+{
+  "lines": [
+    {
+      "stream": "stderr",
+      "text": "file:///tmp/pb-rec/server/crash.mjs:2",
+      "step": 7
+    },
+    {
+      "stream": "stderr",
+      "text": "  throw new Error('The store’s lock was lost');",
+      "step": 7
+    },
+    {
+      "stream": "stderr",
+      "text": "  ^",
+      "step": 7
+    },
+    {
+      "stream": "stderr",
+      "text": "",
+      "step": 7
+    },
+    {
+      "stream": "stderr",
+      "text": "Error: The store’s lock was lost",
+      "step": 7
+    },
+    {
+      "stream": "stderr",
+      "text": "    at Timeout._onTimeout (file:///tmp/pb-rec/server/crash.mjs:2:9)",
+      "step": 7
+    },
+    {
+      "stream": "stderr",
+      "text": "    at listOnTimeout (node:internal/timers:685:17)",
+      "step": 7
+    },
+    {
+      "stream": "stderr",
+      "text": "    at process.processTimers (node:internal/timers:618:7)",
+      "step": 7
+    },
+    {
+      "stream": "stderr",
+      "text": "",
+      "step": 7
+    },
+    {
+      "stream": "stderr",
+      "text": "Node.js v24.22.1",
+      "step": 7
+    }
+  ],
+  "exits": [
+    {
+      "code": 1,
+      "signal": null,
+      "step": 7
+    }
+  ]
+}

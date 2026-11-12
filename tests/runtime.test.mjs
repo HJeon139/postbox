@@ -4,9 +4,8 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { formatMessage } from '../server/adapters/guide.mjs';
-import { DEFAULT_MODEL as ADAPTERS_DEFAULT_MODEL } from '../server/adapters/setup.mjs';
 import { handleMcp } from '../server/mcp.mjs';
-import { DEFAULT_MODEL, Runtime } from '../server/runtime.mjs';
+import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
 import { updateThread } from '../server/thread-write.mjs';
 import { tempDir } from './temp-dirs.mjs';
@@ -2209,7 +2208,6 @@ test('#5: a persona’s tools, which real backends deny when unticked, follow it
 test('#60: a persona has an effort next to its model, checked, fixed in a session’s snapshot like the model', async () => {
   const { rt, t, a, adapter, store } = setup();
   assert.equal(rt.createPersona({ handle: 'coder' }).effort, 'medium', 'Claude Code’s own default for Opus 5.5');
-  assert.equal(DEFAULT_MODEL, ADAPTERS_DEFAULT_MODEL, 'the runtime and the adapters default to the same model');
   assert.equal(rt.createPersona({ handle: 'deep', effort: 'xhigh' }).effort, 'xhigh');
   for (const bad of ['ultra', '', null, 3]) {
     assert.throws(
