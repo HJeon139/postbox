@@ -27,13 +27,13 @@ function sessionArgs(sessionId, resume, fork) {
  * @param {{ persona: any, sessionId: string, resume: boolean, mcpUrl?: string, guide: string, addDirs?: string[],
  *           fork?: { claudeSessionId: string, uuid?: string }|null, allowOnce?: string[], rules?: { allow?: string[], ask?: string[], deny?: string[] },
  *           server?: Record<string, object>|null, denyPrompts?: boolean, memoryDir?: string|null, plugins?: string[],
- *           hostAllow?: string[] }} turn
+ *           hostAllow?: string[], signIn?: Record<string, unknown> }} turn
  *   rules: the ones the person made for this conversation only (#66), passed every turn. server: Postbox’s server in
  *   place of the HTTP one at mcpUrl (a remote turn’s shim, shimServer). denyPrompts: --permission-prompts none in place
  *   of the prompt tool, so what would be asked is denied (a host’s denyPrompts, D2). memoryDir: the persona’s own memory
  *   folder (#208, setup.mjs’s memoryFolder). plugins: plugin folders to load, Postbox’s own (agent-plugin.mjs).
  *   hostAllow: on a host, the rules the person always allowed for it there (#120, server/host-rules.mjs), sent as allow
- *   rules in --settings, as JSON data.
+ *   rules in --settings, as JSON data. signIn: the person's sign-in keys, for an Isolated persona (setup.mjs agentSignIn).
  */
 export function claudeArgs({
   persona,
@@ -50,13 +50,15 @@ export function claudeArgs({
   memoryDir = null,
   plugins = [],
   hostAllow = [],
+  signIn = {},
 }) {
   const mode = persona.permissionMode in MODES ? persona.permissionMode : 'auto';
   const setup = setupOf(persona);
   const denied = [...deniedTools(persona), ...(rules.deny ?? [])];
   // With the persona’s own memory folder (#208), and ask rules for writes outside Postbox (#112), so each comes to a
   // card first, and the conversation’s own; on a host, the rules the person always allowed there (#120).
-  const asks = withAskRules(settingsFor(persona, memoryDir), [...writeRules(persona), ...(rules.ask ?? [])]);
+  const own = { ...settingsFor(persona, memoryDir), ...(setup.usesHostSetup ? {} : signIn) };
+  const asks = withAskRules(own, [...writeRules(persona), ...(rules.ask ?? [])]);
   const settings = withAllowRules(asks, hostAllow);
   return [
     '-p',

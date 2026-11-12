@@ -15,7 +15,8 @@
 // A persona set to Isolated (usesHostSetup: false) loads the project’s settings only, not the person’s own, and
 // only Postbox’s MCP server: both adapters pass --strict-mcp-config / strictMcpConfig for it.
 
-import { appendFileSync } from 'node:fs';
+import { appendFileSync, readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { asksForWrites } from '../../shared/hook-modes.mjs';
 import { agentPlugins } from './agent-plugin.mjs';
@@ -413,3 +414,24 @@ export function setupOf(persona) {
     mcpOff: Array.isArray(persona?.mcpOff) ? persona.mcpOff.filter((n) => typeof n === 'string' && n && n !== POSTBOX_SERVER) : [],
   };
 }
+
+/**
+ * How the person's Claude Code signs in, for an Isolated agent, when POSTBOX_CLAUDE_SIGN_IN is set (the Loop study
+ * kit): the sign-in keys of their user settings (awsCredentialExport, awsAuthRefresh, apiKeyHelper, modelOverrides), as
+ * tools/uat/tester.mjs keeps them for the tester. Without them an Isolated agent on Bedrock has no credentials. `env` is
+ * never taken: its variables would reach the agent's shell, and with them another Region or profile. Empty when the
+ * variable is unset or the settings can't be read.
+ * @param {{ dir?: string, enabled?: string }} [o]
+ */
+export function agentSignIn({ dir = process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude'), enabled = process.env.POSTBOX_CLAUDE_SIGN_IN } = {}) {
+  if (!enabled) return {};
+  let user;
+  try {
+    user = JSON.parse(readFileSync(join(dir, 'settings.json'), 'utf8'));
+  } catch {
+    return {};
+  }
+  if (!user || typeof user !== 'object') return {};
+  return Object.fromEntries(SIGN_IN_KEYS.filter((k) => user[k] !== undefined).map((k) => [k, user[k]]));
+}
+const SIGN_IN_KEYS = ['awsCredentialExport', 'awsAuthRefresh', 'apiKeyHelper', 'modelOverrides'];

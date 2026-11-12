@@ -40,7 +40,7 @@ import { agentFolder, forgetMemory, memoryRootFor } from './folder.mjs';
 import { FRESH_START_TEXT, formatMessage, turnGuide } from './guide.mjs';
 import { listProcesses, stopJobUnder, stopOnAbort, stopTurn } from './process-group.mjs';
 import { hostMemoryRoot } from './remote-turn.mjs';
-import { effortOf, fromContext, recorderFor } from './setup.mjs';
+import { agentSignIn, effortOf, fromContext, recorderFor } from './setup.mjs';
 import { takeToolsDown } from './tools-down.mjs';
 
 export { claudeArgs } from './claude-code-args.mjs';
@@ -206,7 +206,7 @@ export class ClaudeCodeAdapter {
       addDirs,
       fork,
       ...fromContext(ctx, ctx.remote ? hostMemoryRoot(ctx.remote) : memoryRootFor(this.workRoot)),
-      ...(remote ? { server: remote.server, denyPrompts: ctx.remote.settings?.denyPrompts === true } : {}),
+      ...(remote ? { server: remote.server, denyPrompts: ctx.remote.settings?.denyPrompts === true } : { signIn: agentSignIn() }),
     });
     const mapper = createStreamMapper(ctx, { contextWindow: ctx.state.contextWindow ?? windowFor(ctx.persona.model), effort: effortOf(ctx.persona) });
     // A subagent’s permission prompt arrives at Postbox’s MCP tool with its id; the stream knows its name.
