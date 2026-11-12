@@ -79,7 +79,7 @@ function summaryWriter(rt, t, handle) {
 /**
  * “Summarize back”, as its turn ends without an error: the reply goes to the conversation the topic branched from. The
  * turn’s replies are what was sent, so they show “Sent to the conversation” and can’t be sent again (#93). Moved from
- * server/runtime.mjs, whose endTurn calls it, to keep runtime.mjs under its ceiling. Past SENDING.message it isn’t
+ * server/runtime.mjs to keep it under its ceiling; endTurn (server/turn-finish.mjs) calls it. Past SENDING.message it isn’t
  * posted, as bring_to_conversation’s text isn’t, and the thread says why (#362).
  * @param {any} rt @param {any} se  the session whose turn ended @param {any} turn @param {readonly any[]} items  the thread’s items
  */

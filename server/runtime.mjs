@@ -64,7 +64,6 @@ import { conversationThreads, glossaryFor, lineage } from './thread-lineage.mjs'
 import { updateThread } from './thread-write.mjs';
 import { startTopic } from './topic-open.mjs';
 import { checkTurn, stallLeftRunning, stallSteps } from './turn-checks.mjs';
-import { endTurn } from './turn-finish.mjs';
 import { settleSubagentSteps } from './turn-steps.mjs';
 import { dismissStopAsk, recordStopped, requestStop, stop, stopTurns } from './turn-stop.mjs';
 import { toolsFor } from './ui-tools.mjs';
@@ -349,9 +348,6 @@ export class Runtime {
   }
   retry(threadId, itemId) {
     return retry(this, threadId, itemId);
-  }
-  endTurn(turn, err) {
-    return endTurn(this, turn, err);
   }
 
   /** The wakes a turn's @-mentions make once it ends (server/mention-wakes.mjs). */

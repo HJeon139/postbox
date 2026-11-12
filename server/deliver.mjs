@@ -18,6 +18,7 @@ import { heldTurn, saveBackendState, whenWritable } from './store-outage.mjs';
 import { notUrgent } from './subagent-end.mjs';
 import { firstPromptSection, turnContext } from './thread-summary.mjs';
 import { adapterContext } from './turn-context.mjs';
+import { endTurn } from './turn-finish.mjs';
 import { askedAgain } from './turn-marks.mjs';
 import { turnExited } from './turn-stop.mjs';
 
@@ -217,8 +218,8 @@ function runTurn(rt, se, turn, message, { adapter, persona, hostId }) {
     () => {},
   );
   run.then(
-    () => rt.endTurn(turn, null),
-    (err) => rt.endTurn(turn, err),
+    () => endTurn(rt, turn, null),
+    (err) => endTurn(rt, turn, err),
   );
   // The chain’s count resets once the chain ends (#541). While the store can’t be written, that write waits behind the
   // exit’s own (turnExited), which also waits, so it runs after the session has left exiting and sees the chain ended.
