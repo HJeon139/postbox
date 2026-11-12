@@ -1,4 +1,4 @@
-/* Workbench — warm, dense, calm. One stylesheet for the app, the mockups and the app-sandbox kit.
+/* Workbench — warm, dense, calm. One stylesheet for the app and the app-sandbox kit.
    Dark is the default; [data-theme="light"] swaps every token. theme.js resolves System to one of the two. */
 
 :root {

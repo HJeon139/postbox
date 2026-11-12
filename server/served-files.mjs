@@ -18,7 +18,7 @@ const MEDIA_TYPES = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.avif', 
  */
 export async function servedFile(dir, rel) {
   const asked = safeJoin(dir, rel);
-  // A folder that isn’t there (an installed package ships no mockups/) has nothing in it, and the folder itself is no file.
+  // A folder that isn’t there has nothing in it, and the folder itself is no file.
   const [root, real] = await Promise.all([dir, asked].map((p) => realpath(p).catch(() => null)));
   if (!root || !real || real === root) throw httpError(404, 'Not found.');
   if (!real.startsWith(root + sep)) throw httpError(403, 'That path isn’t allowed.');

@@ -1,4 +1,4 @@
-// #464-b3 (designs/464-keep-updated.md, “What b3 adds”, D4): a host whose ~/.postbox-remote is gone, while this
+// #464-b3 (designs/architecture.md, “Keeping a host up to date”): a host whose ~/.postbox-remote is gone, while this
 // computer still has a token for it, exits 127 and is installed again with a new host token. The install compares
 // the token it found here with the new one before keeping the new one, says tokenChanged, and the record says
 // reinstalled; the token itself is never in the result’s status or the record. tests/remote-hosts-update-fixtures.mjs.

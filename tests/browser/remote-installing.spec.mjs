@@ -1,5 +1,5 @@
-// A turn that waits on a host while Postbox installs its version there by itself (#464-b2b; designs/464-keep-updated.md,
-// “What b2b adds”): the turn’s status line in the agents list and the agent’s panel says “Installing Postbox
+// A turn that waits on a host while Postbox installs its version there by itself (#464-b2b; designs/architecture.md, “Keeping a host up to date”):
+// the turn’s status line in the agents list and the agent’s panel says “Installing Postbox
 // <version> on <host>…”, never a token or a path, and goes once the install has ended. An idle agent on that host
 // says nothing of it. At 1280 px, with axe; at 375 px a phone has no agents list, so only that nothing shows a token
 // or a path. With the fake host manager of tests/browser/remote-hosts.mjs.

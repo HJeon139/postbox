@@ -5,7 +5,7 @@ Part of #712 (#508’s B1): the server’s and the page’s half, beside #712a�
 ## What’s true today that the design rests on
 
 - **An items list only ever grows at its end, or has one entry replaced in place.** The reducer appends on `item.add` (`shared/state.mjs:148`). `item.move` splices a stub, with a new id (`server/runtime.mjs:326`), into the item’s old place, and pushes the item last (`state.mjs:177–183`). Removing a thread deletes its whole list (`:191–196`). Nothing removes a single item, so **positions never shift**.
-- **Outside the reducer, nothing writes to a live list.** `git grep` over `server/`, `shared/` and `app/` finds three other writes, none to a store list: `telemetry-report.mjs:40` writes to its own copy, `broker-snapshot.mjs:67` writes to the host’s snapshot, and `tools/uat/big-room.mjs:118` writes before load. A held view (`server/store-held.mjs:117–118`) replaces an entry with a `structuredClone` with the same id, in its own copy, and then goes through `apply`.
+- **Outside the reducer, nothing writes to a live list.** `git grep` over `server/`, `shared/` and `app/` finds three other writes, none to a store list: `telemetry-report.mjs:40` (since deleted, #1229) writes to its own copy, `broker-snapshot.mjs:67` writes to the host’s snapshot, and `tools/uat/big-room.mjs:118` writes before load. A held view (`server/store-held.mjs:117–118`) replaces an entry with a `structuredClone` with the same id, in its own copy, and then goes through `apply`.
 - **Lists are replaced wholesale** on load (`ownState`, `store-recover.mjs:62`; the page’s `client.mjs:41`), on Retry, and by each held view’s copy (`store-held.mjs:96`).
 
 ## The design
@@ -27,7 +27,7 @@ Part of #712 (#508’s B1): the server’s and the page’s half, beside #712a�
 - **Per call or per flush, server:** `store.item` (`store.mjs:306`, 20 callers), `store-held.mjs:117`, `catch-up.mjs:17`, `:46`, `queue-batch.mjs:30`, `share-back.mjs:20`, `topic-open.mjs:18`, `runtime.mjs` (a shell command’s output flush, every 100 ms, and its exit; a job’s step; the terminal mirror), `side-threads.mjs:63`, `permission-prompt.mjs:29`, `thread-summary.mjs:62`, `shared/needs.mjs:26`.
 - **Left as they are, each with its reason:**
   - `thread-summary.mjs:105`’s `indexOf(item)` is by object;
-  - `room-checks*.mjs` read recorded facts, not the store;
+  - `room-checks*.mjs` (now in `tools/uat/`) read recorded facts, not the store;
   - `broker-reading.mjs:47` reads the host’s snapshot;
   - `runtime.mjs:319` (a move) and `:1022` (each turn’s end, beside a whole-list `filter`, so the index wouldn’t change its cost); `runtime.mjs` is at its size cap;
   - `thread-summary.mjs:106` and `threads-page.mjs:52`, which run per summary or per page, not per event.

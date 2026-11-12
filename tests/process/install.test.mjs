@@ -1,6 +1,6 @@
 // Postbox as an installed npm package (#157, #90):
 // - `npm pack` ships what runs (bin/, app/, server/, shared/, agent-plugin/ and the docs), with the commit it was packed from, and
-//   nothing of data/, uat-runs/, the tests, the tools, the designs, the mockups or the screenshots;
+//   nothing of data/, uat-runs/, the tests, the tools, the designs or the screenshots;
 // - the tarball installs into a temp prefix, and `postbox --help` and `--version` answer;
 // - `postbox --port <port>`, with HOME pointed at a temp folder, serves `/` and the build line (version and commit), and
 //   writes only under HOME/.postbox: not in the package, not in the folder it was started from, nowhere else in HOME.
@@ -127,9 +127,9 @@ test('ships only bin/, app/, server/, shared/, agent-plugin/ and the docs, with 
   for (const must of ['bin/postbox.mjs', 'app/index.html', 'server/index.mjs', 'server/home.mjs', 'app/media/favicon.svg', ...plugin])
     assert.ok(files.includes(must), `the package has ${must}`);
   assert.deepEqual(
-    files.filter((f) => /(^|\/)(data|uat-runs|tests|tools|designs|mockups|screenshots)\//.test(f)),
+    files.filter((f) => /(^|\/)(data|uat-runs|tests|tools|designs|screenshots)\//.test(f)),
     [],
-    'nothing of data/, uat-runs/, tests, tools, designs, mockups or screenshots ships',
+    'nothing of data/, uat-runs/, tests, tools, designs or screenshots ships',
   );
 });
 

@@ -55,8 +55,6 @@ const STATIC = {
   '/app/': join(ROOT, 'app'),
   '/shared/': join(ROOT, 'shared'),
   '/kit/': join(ROOT, 'app', 'kit'),
-  // Only in a clone: an installed package doesn’t ship the mockups.
-  '/mockups/': join(ROOT, 'mockups'),
 };
 // /media/ serves the media that comes with Postbox, then the media agents added to the data folder (#90). It’s the only
 // place an app’s sandbox loads images from (server/sandbox.mjs), and the package’s own folder isn’t the person’s to
