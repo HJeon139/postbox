@@ -1,12 +1,12 @@
-# Asset retention: large binaries pruned, text kept, and a delete’s Undo
+# Asset retention: large binaries pruned, text kept
 
-- persona: An engineer who keeps model checkpoints and their notes as a conversation’s assets, wants old large files pruned but every note kept, and tries deleting a conversation by mistake to see what Undo saves. Writes short messages.
+- persona: An engineer who keeps model checkpoints and their notes as a conversation’s assets, wants old large files pruned but every note kept. Writes short messages.
 - agents: researcher
 - project: Checkpoints
 - conversation: Model files
 - steps: 12
 
-researcher is alone in the room, on Claude Code, with the six asset tools (#516 S3). Each phase confirms rows of #516’s S3 design: the person’s retention rule (text keeps every version; a large binary keeps its last few), the load pass, and what a delete’s Undo keeps. The rows no run can reach are listed in the README, “Assets”.
+researcher is alone in the room, on Claude Code, with the six asset tools (#516 S3). Each phase confirms rows of #516’s S3 design: the person’s retention rule (text keeps every version; a large binary keeps its last few), and the load pass. The rows no run can reach are listed in the README, “Assets”.
 
 ## Phase 1: Large binary versions are pruned
 
@@ -25,11 +25,3 @@ Pass if every version reads back with its own lines. Fail, and file it, if any t
 Restart Postbox (`fault {fault: "restart-postbox"}`, in a local run as in one with hosts). Then ask researcher to read version 1 of `model.bin` again.
 
 Pass if it still says pruned, and the store’s log has one `asset.released` for its hash: the load pass deleted the released file once. Fail, and file it, if the read finds the bytes, or the file is released twice.
-
-## Phase 4: A delete’s Undo keeps every asset
-
-Deleting a conversation stops every agent in it, topic threads included, so no agent can be asked to write during the 10 seconds of Undo: only a write already in flight can meet it, and #688’s refusal for that case, `deleting`, is decided by the deterministic tests (tests/asset-room-exists.test.mjs, tests/asset-tools.test.mjs). This phase confirms the rest.
-
-Delete the conversation and press Undo 3 seconds later (`{conversation: "delete", undo_after: 3}`). Then ask researcher to publish `notes/after-undo.md` with one line, and to list the assets.
-
-Pass if the write publishes, and every asset from before the delete is still listed, with its versions. Fail, and file it, if anything is missing after Undo, or the write is refused.

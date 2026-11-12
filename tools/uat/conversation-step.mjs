@@ -1,7 +1,7 @@
-// The UAT runner’s conversation action (#722 to #725): the tester deletes the conversation that’s open, presses its
-// Undo, starts a second conversation or opens one, through the UI as a person does. Each writes when it happened into
-// facts.probes.conversation, with the deleted conversation’s agents and the end of its Undo window, for
-// turn-in-deleting-conversation (tools/uat/checks-assets.mjs). Also a restart of Postbox in a run without hosts.
+// The UAT runner’s conversation action (#722 to #725): the tester deletes the conversation that’s open, starts a
+// second conversation or opens one, through the UI as a person does. Each writes when it happened into
+// facts.probes.conversation, with the deleted conversation’s agents. A delete is immediate since #1224: there is no
+// Undo. Also a restart of Postbox in a run without hosts.
 // Kept out of tools/uat-run.mjs and tools/uat/driver.mjs, to keep those files to their size.
 
 import { js, sleep } from '../browser.mjs';
@@ -22,30 +22,10 @@ function handlesIn(state, threadId) {
     .map((se) => se.handle);
 }
 
-/** The newest Undo toast for this conversation’s delete, as an expression: `#toasts` holds the newest first. */
-const undoButton = (title) => byText(`[...document.querySelectorAll('#toasts .toast')].find((t) => t.textContent.includes(${js(title)}))`, 'button', 'Undo');
-
 /** Opens a conversation by its rail row, as a person goes back to it. */
 async function openRow({ kit }, threadId, what) {
   await kit.clickAt(`document.querySelector(${js(`.rail a.row[data-thread="${threadId}"]`)})`, what);
   await kit.page.waitFor(`!!document.getElementById('composer-input')`, { label: 'the composer' });
-}
-
-/**
- * Presses Undo on a conversation’s delete, and opens it again.
- * @returns {Promise<string>}
- */
-async function undo({ d, api, facts }, del) {
-  const { kit } = d;
-  if (!(await kit.ev(`!!${undoButton(del.title)}`))) return `There was no Undo for “${del.title}” on screen: its 10 seconds had passed.`;
-  // Its time is taken before the click: the page sends the Undo as the click lands, and the click returns later, so a
-  // turn that starts right after a real Undo would read as started in the window (a recorded rerun, 0.25 s late).
-  const at = Date.now();
-  await kit.clickAt(undoButton(del.title), 'Undo on the delete’s toast');
-  facts.probes.conversation.push({ do: 'undo', at, threadId: del.threadId });
-  for (let i = 0; i < 20 && (await api('/api/state')).state.threads[del.threadId]?.deleting; i++) await sleep(250);
-  await openRow(d, del.threadId, `“${del.title}” in the rail`);
-  return `Pressed Undo ${((at - del.at) / 1000).toFixed(1)} s after the delete, and opened “${del.title}” again.`;
 }
 
 /** The longest a delete waits for its `at`: a phase’s wait, so a time far off is a mistake, not a plan. */
@@ -76,10 +56,9 @@ export async function waitUntil(until, { now = Date.now, wait = sleep } = {}) {
 
 /**
  * Deletes the conversation that’s open, through its menu and the confirm, at `at` if it’s given (the confirm is open
- * and waiting), then presses Undo after undo_after seconds.
+ * and waiting), and waits for it to leave the state: a delete goes at once (#1224).
  */
-async function remove(ctx, a) {
-  const { d, api, facts } = ctx;
+async function remove({ d, api, facts }, a) {
   delayUntil(a.at, Date.now()); // a bad at is refused before anything is clicked
   const threadId = await openThread(d.kit.ev);
   const state = (await api('/api/state')).state;
@@ -92,19 +71,14 @@ async function remove(ctx, a) {
   await waitUntil(Date.now() + atWait);
   await d.kit.clickAt(byText('document.querySelector(".dialog")', 'button.danger', `Delete ${room ? 'room' : 'conversation'}`), 'the confirm’s Delete');
   const at = Date.now();
-  let until = null;
-  for (let i = 0; i < 20 && !until; i++) {
-    until = (await api('/api/state')).state.threads[threadId]?.deleting ?? null;
-    if (!until) await sleep(100);
+  let gone = false;
+  for (let i = 0; i < 20 && !gone; i++) {
+    gone = !(await api('/api/state')).state.threads?.[threadId];
+    if (!gone) await sleep(100);
   }
-  if (!until) throw new Error(`“${t.title}” wasn’t marked as being deleted after its confirm.`);
-  const del = { do: 'delete', at, threadId, title: t.title, handles: handlesIn(state, threadId), until };
-  facts.probes.conversation.push(del);
-  const said = `Deleted “${t.title}” at ${new Date(at).toISOString()}; its Undo runs out ${((until - at) / 1000).toFixed(1)} s from then.${note}`;
-  if (a.undo_after === undefined || a.undo_after === null) return said;
-  const wait = Math.max(0, Number(a.undo_after) || 0) * 1000 - (Date.now() - at);
-  if (wait > 0) await sleep(wait);
-  return `${said} ${await undo(ctx, del)}`;
+  if (!gone) throw new Error(`“${t.title}” was still there 2 seconds after its confirm’s Delete.`);
+  facts.probes.conversation.push({ do: 'delete', at, threadId, title: t.title, handles: handlesIn(state, threadId) });
+  return `Deleted “${t.title}” at ${new Date(at).toISOString()}.${note}`;
 }
 
 /** Starts another conversation in the open one’s project, with these agents, and opens it. */
@@ -131,7 +105,7 @@ async function open({ d, api }, a) {
 }
 
 /**
- * The conversation action, by its `conversation`: delete {undo_after?}, undo, new {agents, title?} or open {title}.
+ * The conversation action, by its `conversation`: delete {at?}, new {agents, title?} or open {title}.
  * @param {{ d: any, api: any, facts: any }} ctx @param {any} a  the tester’s action, or an interrupt’s
  * @returns {Promise<string>}
  */
@@ -141,12 +115,7 @@ export async function conversationStep(ctx, a) {
   if (kind === 'delete') return remove(ctx, a);
   if (kind === 'new') return start(ctx, a);
   if (kind === 'open') return open(ctx, a);
-  if (kind === 'undo') {
-    const del = ctx.facts.probes.conversation.filter((x) => x.do === 'delete').at(-1);
-    if (!del) throw new Error('Nothing was deleted to undo.');
-    return undo(ctx, del);
-  }
-  throw new Error(`A conversation action is delete, undo, new or open, not “${kind}”.`);
+  throw new Error(`A conversation action is delete, new or open, not “${kind}”.`);
 }
 
 /**
