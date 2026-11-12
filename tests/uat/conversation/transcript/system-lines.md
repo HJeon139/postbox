@@ -18,6 +18,6 @@ You can always see who started what: wakes, joins, compactions, side threads, at
 ## Steps to reproduce
 
 1. Run the demo (`node tools/demo.mjs --port 4180`) and open <http://127.0.0.1:4180/> while it plays; keep the tab open.
-2. Open “Corpus planning”; expand the compaction summary; open the side-thread link.
+2. Open “Index planning”; expand the compaction summary; open the side-thread link.
 
 **Pass if:** Each line is present and its control works.

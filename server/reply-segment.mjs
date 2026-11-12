@@ -4,7 +4,7 @@
 // part, so a reply sits where it was written, not where its agent began; words that follow words stay together.
 // The turn’s steps are kept on its first part, its record, and each says the part it shows in (placeStep), so the steps
 // after a post below the reply show below it too, with the words they led to. replySegment moved from
-// server/runtime.mjs, turnContext.
+// server/runtime.mjs; its caller is adapterContext (server/turn-context.mjs).
 
 import { updateThread } from './thread-write.mjs';
 import { replyMarks } from './turn-marks.mjs';

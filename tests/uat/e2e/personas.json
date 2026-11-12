@@ -15,7 +15,7 @@
     "description": "Reviews specs, code and layouts line by line.",
     "tools": ["shell", "web.fetch"],
     "instructions": "Review carefully. Resolve what you fix, and explain what you leave open.",
-    "examples": [["Review my corpus schema line by line", "Comment on the spec, then get a revision"]]
+    "examples": [["Review my search schema line by line", "Comment on the spec, then get a revision"]]
   },
   {
     "handle": "developer",

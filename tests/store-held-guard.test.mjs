@@ -106,7 +106,7 @@ const PENDING = {
   'remote/turns-prompts.mjs': ['cardOf', 'permissionCards'], // a host turn’s own cards: the sweep its callers settle, and the calls an attach after a restart holds (#353)
   'remote/turns-resume.mjs': ['reattach'], // the replayed turn’s replies, replaced in a sweep
   'reply-segment.mjs': ['wordsSegment', 'placeStep'], // whether the turn’s open part is still its thread’s last decides where its next words and steps go
-  'runtime.mjs': ['addItem', 'addItem', 'bringForward', 'text', 'compaction', 'endTurn', 'endTurn', 'endTurn'], // the turn’s own items and apps, a move after a pending read, sweeps that write back, the thread a message, a delivery or a topic reply count goes to, maybe opened or deleting behind a held commit, and the session a stopped turn's exit settles, its “stopping” maybe held (#796)
+  'runtime.mjs': ['addItem', 'addItem', 'bringForward'], // the turn’s own items, a move after a pending read, and the thread a topic reply count goes to, maybe opened or deleting behind a held commit (#796)
   // The reply with the mention, a side line right after its add, and sweeps of hop cards; the conversation's hop count,
   // the topic the wake answers in, and endChain's hops and queued wakes, each maybe held behind a commit (#796).
   // A session's change and notice diff against the session a held change left (#796's class in sessions).
@@ -140,8 +140,10 @@ const PENDING = {
   'thread-write.mjs': ['updateThread', 'threadToWrite', 'pendingThreads'],
   // A finished turn’s checks: its own block and the terms and apps it introduced, and the progress steps it stalls.
   'turn-checks.mjs': ['checkTurn', 'checkTurn', 'checkTurn', 'stallSteps'],
+  'turn-context.mjs': ['text', 'compaction'], // a streamed chunk's state check, and a compaction's number, from the session a held write left
   'turn-end-work.mjs': ['endWork'], // the turn’s own reply or block, to carry its line, maybe held behind a commit
   // Stop's session as its own write of heldSteps left it, so Keep running's steps run on behind a held commit (#1042).
+  'turn-finish.mjs': ['endTurn', 'endTurn', 'needsAfter'], // a turn’s end: its own items and apps, sweeps that write back, and the thread its reply count goes to, maybe held behind a commit (#796)
   'turn-stop.mjs': ['stop', 'recordStopped', 'turnExited'],
   'tool-ask.mjs': ['askForTool', 'settleToolAsks'], // a second ask for the same tool, and the sweep that settles open asks
   'unarchive.mjs': ['unarchive'], // what an older Postbox archived: the threads and sessions it rewrites as the store loads

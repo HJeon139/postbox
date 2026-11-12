@@ -286,7 +286,7 @@ for (const theme of /** @type {const} */ (['light', 'dark']))
     test(`#105 a room with two agents at 1280 px (${theme}): the title and the project show in full, and the agents are in the sidebar, not the top bar (#320)`, async ({
       page,
     }) => {
-      await open(page, `#/t/${threadNamed('Corpus planning').id}`);
+      await open(page, `#/t/${threadNamed('Index planning').id}`);
       const m = await fitted(page, `1280 px, ${theme}`);
       expect(m.overflow, 'the top bar fits').toBe(0);
       expect(m.drop, 'the top bar dropped nothing').toBe('');
