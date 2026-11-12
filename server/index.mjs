@@ -33,7 +33,7 @@ import { settleInterrupted } from './restart-sweep.mjs';
 import { SAME_ORIGIN_ONLY, servedReviewFile } from './review-files.mjs';
 import { patchThread } from './room-chain-limit.mjs';
 import { httpError, Runtime } from './runtime.mjs';
-import { stopTimers } from './runtime-close.mjs';
+import { settleLedger, stopTimers } from './runtime-close.mjs';
 import { sandboxRoute } from './sandbox-routes.mjs';
 import { seed, toBoilerplate } from './seed.mjs';
 import { decodePath, file, mediaPath, servedFile } from './served-files.mjs';
@@ -448,6 +448,7 @@ export async function start({
     await rt.stopShellCommands();
     await rt.stopTurns();
     stopTimers(rt); // what a turn ending as it stopped started
+    await settleLedger(rt); // the stopped turns’ records, before the store closes
     // After the turns, whose Stop goes to their hosts over these links (#120).
     await stopHosts(hosts, stopWake);
     narrator?.stop();

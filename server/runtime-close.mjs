@@ -1,10 +1,14 @@
-// What the runtime still has going as Postbox closes: the timers it started, cleared. A timer that outlived close()
-// fired on a closed store: a lint turn due after a turn delivered there, and logged “@x’s turn waits: Postbox can’t save
-// changes right now” into whatever the process ran next (found by the browser specs’ server-log guard,
-// tests/server-log.mjs). The archive pass, the hosts, the mirrors and the shell commands have stops of their own, which
-// close() calls.
+// What the runtime still has going as Postbox closes: the timers it started, cleared, and the work ledger’s records of
+// the turns that just stopped, waited for. A timer that outlived close() fired on a closed store: a lint turn due after
+// a turn delivered there, and logged “@x’s turn waits: Postbox can’t save changes right now” into whatever the process
+// ran next; and a ledger record that landed after the store closed was dropped (both found by the browser specs’
+// server-log guard, tests/server-log.mjs). The archive pass, the hosts, the mirrors and the shell commands have stops
+// of their own, which close() calls.
 
 import { stopSummaryTimers } from './thread-summary.mjs';
+
+/** How long close() waits for the ledger’s records, so a file read that never answers can’t hold the shutdown. */
+const LEDGER_GRACE_MS = 4000;
 
 /**
  * Clears scheduled wakes, lint turns waiting to settle, stopped turns’ watchdogs, permission cards’ waits, the kept
@@ -24,4 +28,19 @@ export function stopTimers(rt) {
   if (rt.keptPoll) clearInterval(rt.keptPoll);
   rt.keptPoll = null;
   stopSummaryTimers(rt);
+}
+
+/**
+ * Waits, up to LEDGER_GRACE_MS, for the work ledger’s records in flight: a stopped turn’s end reads each file it changed
+ * before it patches the turn’s entry, and a store closed under it drops the patch.
+ * @param {import('./runtime.mjs').Runtime} rt
+ */
+export async function settleLedger(rt) {
+  /** @type {NodeJS.Timeout | undefined} */
+  let timer;
+  const late = new Promise((r) => {
+    timer = setTimeout(r, LEDGER_GRACE_MS);
+  });
+  await Promise.race([rt.ledger.idle(), late]);
+  clearTimeout(timer);
 }

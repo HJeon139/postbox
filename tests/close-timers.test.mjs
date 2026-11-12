@@ -63,3 +63,21 @@ test('a stopped turn’s watchdog, which starts its next turn, doesn’t fire af
   assert.equal(a.rt.watchdogs.size, 0);
   assert.deepEqual(takeServerFailures(), []);
 });
+
+// The work ledger records a turn’s end after the turn stops: it reads each file the turn changed, then patches the
+// turn’s entry. A shutdown stopped the turns and closed the store without waiting for that, so the patch landed on a
+// closed store, which dropped it and logged “An event after the store closed was dropped” (ring-context.spec’s stop).
+test('the work ledger’s record of a turn that just stopped lands before the store closes', async () => {
+  const { a } = await app();
+  a.store.emit('work.add', { convId: 'th_w', entry: { id: 'wk_1', kind: 'turn', status: 'running' } });
+  let patched = false;
+  a.rt.ledger.track(
+    sleep(30).then(() => {
+      a.rt.ledger.patch('th_w', 'wk_1', { status: 'stopped' });
+      patched = true;
+    }),
+  );
+  await a.close();
+  assert.equal(patched, true, 'the record landed before close() returned');
+  assert.deepEqual(takeServerFailures(), [], 'and nothing was dropped or logged');
+});
