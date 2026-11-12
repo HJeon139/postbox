@@ -38,6 +38,10 @@ test.beforeAll(async () => {
     .filter((i) => i.turnId === turn.id)
     .findLast((i) => i.kind === 'agent' || i.kind === 'block');
   rows = turnRows(entries(), turn.id, { folders: [store.state.projects[conv.projectId].folder] });
+  // The whole list, with its line on top, is for a turn with no work record: one whose reply kept no steps. A turn with
+  // a record lists its calls there, and the list under it only what they made (live-steps.spec.mjs).
+  const first = store.items(conv.id).find((i) => i.turnId === turn.id && i.activity);
+  if (first) store.emit('item.patch', { threadId: conv.id, id: first.id, patch: { activity: null } });
 });
 test.afterAll(async () => {
   await app?.stop();
@@ -78,14 +82,12 @@ async function axe(page, sel, where) {
   expect(found, `axe, ${where}`).toEqual([]);
 }
 
-/** the list is under the turn’s last reply only, its line in the turn’s record, its rows in the ledger’s order */
+/** the list is under the turn’s last reply only, its line on top, its rows in the ledger’s order */
 async function placed(page) {
   await open(page);
   await expect(page.locator('.transcript .work-list-turn'), 'no list elsewhere in the turn').toHaveCount(1);
   expect(last.kind, 'the turn ends with its reply').toBe('agent');
-  // The turn’s line is its work record’s, at the top of its first part, and isn’t said again over the list.
-  await expect(page.locator('.transcript .work-record', { hasText: turnLine(entries(), turn.id) })).toHaveCount(1);
-  await expect(list(page).locator('.work-chip')).toHaveCount(0);
+  await expect(list(page).locator('.work-chip')).toHaveText(turnLine(entries(), turn.id));
   await expect(list(page).locator('ul')).toHaveAttribute('aria-label', 'What this turn did');
   expect([...new Set(rows.map((r) => r.kind))], 'files, the app, the issue, the commands, then reads').toEqual([
     'file',
@@ -167,7 +169,7 @@ async function fits(page, { width }) {
 }
 
 const CASES = [
-  ['the list is under the turn’s last reply only, its line in the turn’s record, its rows in the ledger’s order', placed],
+  ['the list is under the turn’s last reply only, its line on top, its rows in the ledger’s order', placed],
   ['“N more” expands in place, with focus on the first row it showed, and the rows match Work', more],
   [
     'each row opens Work full screen at its item, and Escape comes back to the row, where the conversation was (at 375 px, Work stays in the pane, #233)',
