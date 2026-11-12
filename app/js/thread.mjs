@@ -3,7 +3,7 @@
 
 import { renderMarkdown } from '/shared/markdown.mjs';
 import { resolveCommand } from '/shared/slash-line.mjs';
-import { laterParts, liveHere, saysItself } from './activity-live.mjs';
+import { laterParts } from './activity-live.mjs';
 import { activityParts, drawnStale, hasRecord, paintActivity, paintPatch, recordMoved } from './activity-paint.mjs';
 import { activityLabel } from './activity-steps.mjs';
 import { mockMarker } from './agent-facts.mjs';
@@ -49,6 +49,7 @@ import { windowOn } from './window-flag.mjs';
 import { focusedItem, keepFocused } from './window-keep.mjs';
 import { replaced as replacedNode } from './window-shrink.mjs';
 import { workList } from './work-list.mjs';
+import { liveHere, saysItself } from './working-rows.mjs';
 
 export { focusComposer } from './hop-card.mjs';
 

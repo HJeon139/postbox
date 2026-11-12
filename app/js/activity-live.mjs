@@ -23,7 +23,7 @@ const AROUND = 28 + 30;
 // About how many characters of the reply’s words fill a line of the transcript’s column.
 const LINE_CHARS = 95;
 // With this many agents working in one conversation, each turn’s steps are one line.
-const CROWD = 8;
+export const CROWD = 8;
 /** How far apart, in items, a turn’s parts are looked for: a long room’s old turns cost no more than a new one’s. */
 export const PARTS_WITHIN = 200;
 const GLYPH = { running: 'running', failed: 'failed', denied: 'failed', done: 'done', stopped: 'stalled' };
@@ -48,22 +48,6 @@ export function isLive(it, threadId) {
   for (let i = items.length - 1; i >= 0; i--) if (items[i].kind === 'agent' && items[i].sessionId === it.sessionId) return items[i].turnId === it.turnId;
   return false;
 }
-
-/**
- * Whether an agent’s reply here is live, its thoughts and words shown as they’re written, so its working row needn’t
- * say them again. @param {any} se @param {string} threadId
- */
-export function liveHere(se, threadId) {
-  const items = itemsOf(threadId);
-  for (let i = items.length - 1; i >= 0; i--) if (items[i].kind === 'agent' && items[i].sessionId === se.id) return isLive(items[i], threadId);
-  return false;
-}
-
-/**
- * Whether an agent at work needs no working row: crowded, its running reply here is its name, its state, a line of its
- * words and its step, all a working row would say. @param {any} se @param {string} threadId
- */
-export const saysItself = (se, threadId) => liveAgents(threadId) >= CROWD && liveHere(se, threadId);
 
 /**
  * A turn’s first part, which keeps all its steps (server/reply-segment.mjs, placeStep): this one, or the nearest above
