@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import { createAgyMapper } from '../server/adapters/antigravity-cli.mjs';
 import { createCodexMapper } from '../server/adapters/codex.mjs';
 import { createKiroMapper } from '../server/adapters/kiro-cli.mjs';
-import { beforePatch, unwrapShell } from '../server/adapters/work-calls.mjs';
+import { agyResult, beforePatch, unwrapShell } from '../server/adapters/work-calls.mjs';
 import { Ledger } from '../server/ledger.mjs';
 import { Store } from '../server/store.mjs';
 
@@ -194,4 +194,22 @@ test('loading a tool’s schema isn’t work: Antigravity’s reads of its own f
   for (const e of fixture('kiro-cli/block')) kiro.push(e);
   assert.ok(heard.length > 0, 'the turns’ other calls are heard');
   assert.ok(!heard.includes('ToolSearch'), heard.join(', '));
+});
+
+test('an Antigravity command’s exit is read after the times Antigravity 1.5.5 puts before it', () => {
+  // As Antigravity CLI 1.5.5 recorded a run on a missing file, in the harness-mix UAT.
+  const step = {
+    tool_info: {
+      output:
+        'Created At: 2026-11-11T20:52:49-08:00\nCompleted At: 2026-11-11T20:52:50-08:00\nCommand exited with code 1.\n\nCommand output:\nError: File not found: nonexistent.txt\r\n',
+    },
+  };
+  assert.deepEqual(agyResult('t1', step, false), {
+    id: 't1',
+    isError: true,
+    text: 'Exit code 1',
+    result: { stdout: 'Error: File not found: nonexistent.txt\n' },
+  });
+  const ok = { tool_info: { output: 'Created At: 2026-11-11T20:52:49-08:00\nCommand exited with code 0.\n\nCommand output:\nhi\r\n' } };
+  assert.equal(agyResult('t2', ok, false).isError, false);
 });

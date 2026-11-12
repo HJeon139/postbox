@@ -56,12 +56,13 @@ export function beforePatch(after, diff) {
 /**
  * What an Antigravity tool step returned, for ctx.toolResult. A command’s output starts with its exit (recorded:
  * “Command exited with code 0.\n\nCommand output:\n …”, with \r\n line ends), which becomes Claude Code’s “Exit code N”.
+ * Antigravity 1.5.5 puts the command’s times before it (“Created At: …”, “Completed At: …”), which are passed over.
  * @param {string} id @param {any} step agy’s step_update @param {boolean} failed the step ended in ERROR
  */
 export function agyResult(id, step, failed) {
   const raw = String(step?.tool_info?.output ?? '').replace(/\r\n/g, '\n');
   if (failed) return { id, isError: true, text: String(step?.tool_info?.error?.message ?? raw) };
-  const m = /^Command exited with code (-?\d+)\.\n*(?:Command output:\n)?([\s\S]*)$/.exec(raw);
+  const m = /^(?:[A-Z][\w ]*: [^\n]*\n)*Command exited with code (-?\d+)\.\n*(?:Command output:\n)?([\s\S]*)$/.exec(raw);
   if (!m) return { id, isError: false, text: raw };
   const exit = Number(m[1]);
   return { id, isError: exit !== 0, text: exit !== 0 ? `Exit code ${exit}` : '', result: { stdout: m[2] } };
