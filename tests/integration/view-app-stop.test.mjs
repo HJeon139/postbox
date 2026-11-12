@@ -4,12 +4,17 @@
 import assert from 'node:assert/strict';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { test } from 'node:test';
+import { afterEach, test } from 'node:test';
 import { start } from '../../server/index.mjs';
 import { STOPPED } from '../../server/view-app/browser.mjs';
 import { viewOf } from '../../server/view-app/view-of.mjs';
 import { freePort } from '../process/chrome.mjs';
+import { assertNoServerFailures, captureServerLog } from '../server-log.mjs';
 import { tempDir } from '../temp-dirs.mjs';
+
+// The Postboxes it starts run in this process: a test fails on an error one logs (tests/server-log.mjs).
+captureServerLog();
+afterEach(assertNoServerFailures);
 
 test('stop closes view_app’s browser, and the next start settles a card left downloading', async () => {
   const root = tempDir('pb-view-stop-');

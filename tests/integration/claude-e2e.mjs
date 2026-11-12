@@ -32,6 +32,7 @@ import { loadAgentSdk } from '../../server/adapters/agent-sdk.mjs';
 import { findClaude } from '../../server/adapters/claude-code.mjs';
 import { start } from '../../server/index.mjs';
 import { freePort } from '../process/chrome.mjs';
+import { assertNoServerFailures, captureServerLog } from '../server-log.mjs';
 import { removeTempDirs, tempDir } from '../temp-dirs.mjs';
 
 const MODEL = 'claude-haiku-5-5';
@@ -201,8 +202,11 @@ export async function pushTurn(t, backend, mode, hooksIn = 'settings') {
   const f = await fixture(hooksIn);
   t.diagnostic(`model settings copied (names only): ${f.copied.join(', ') || 'none'}`);
   useHome(t, f.home);
+  captureServerLog();
   const app = await start({ port: await freePort(), dataDir: join(f.root, 'data'), fresh: true, quiet: true, claudeHome: f.home });
   t.after(() => app.close());
+  // After the close: the test fails on an error its Postbox logged, in the turn or as it stopped (tests/server-log.mjs).
+  t.after(assertNoServerFailures);
   const { rt, store } = app;
   assert.ok(rt.adapters.runsHere(backend), `${backend} should run here`);
   store.emit('project', { id: 'p_e2e', name: 'E2E', folder: f.work });

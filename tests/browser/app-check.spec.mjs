@@ -12,7 +12,7 @@
 
 import { readFile } from 'node:fs/promises';
 import { expect, test } from '@playwright/test';
-import { startPostbox, synced } from './postbox.mjs';
+import { failOnServerErrors, startPostbox, synced } from './postbox.mjs';
 
 // The “Eight visual forms” gallery (#194), cut down: v1 sets its buttons nowrap in a fixed 230 px column, so their
 // text runs into the demo heading beside it; v2 lets them wrap, in a column that can shrink.
@@ -126,6 +126,8 @@ const APPS = {
 let app;
 /** What the page logged as errors while it checked the apps. */
 const errors = [];
+// Its pages log errors on purpose; its Postbox mustn’t.
+failOnServerErrors(test);
 test.beforeAll(async ({ browser }) => {
   // Mermaid, KaTeX and the kit load on first use, and twenty-three apps are checked at two widths.
   test.setTimeout(120_000);

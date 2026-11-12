@@ -6,7 +6,7 @@
 
 import { expect, test } from '@playwright/test';
 import { frameOf } from './app-pointer.mjs';
-import { startPostbox, synced } from './postbox.mjs';
+import { failOnServerErrors, startPostbox, synced } from './postbox.mjs';
 
 /** An app that shows `body`, throws once it’s shown (not in its check), and saves state after the error. */
 const throwsAfter = (body, error) => `${body}
@@ -27,6 +27,8 @@ const BLANK_CANVAS = throwsAfter('<main style="padding:12px"><canvas width="300"
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
 let app;
+// Its pages log errors on purpose; its Postbox mustn’t.
+failOnServerErrors(test);
 test.beforeAll(async () => {
   app = await startPostbox('app-runtime-error');
 });

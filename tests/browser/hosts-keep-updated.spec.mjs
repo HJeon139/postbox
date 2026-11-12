@@ -8,7 +8,7 @@
 import { expect, test } from '@playwright/test';
 import { failure } from '../../server/remote/ssh.mjs';
 import { audit, card, freshHost, openHosts, SIZES, startHosts, VERSION } from './hosts.mjs';
-import { allowPageError, failOnPageErrors } from './postbox.mjs';
+import { allowPageError, allowServerLog, failOnPageErrors } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startHosts>>['app']} */
 let app;
@@ -85,6 +85,8 @@ async function refused(page) {
   const box = await openToggle(page);
   fake.keepUpdatedError = new Error('EACCES: permission denied');
   allowPageError(page, /status of 500/, { times: 2 });
+  // The fake’s refusal is a 500, which the server logs with its stack, once for each of the two clicks.
+  allowServerLog(/keep-updated: Error: EACCES: permission denied/, { times: 2 });
   await box.click();
   await expect.poll(keepCalls, { message: 'it asked the server' }).toEqual([['setKeepUpdated', id, true]]);
   await expect(box, 'a failed save goes back to off').toHaveAttribute('aria-checked', 'false');
