@@ -10,7 +10,7 @@
 // Real agents and the tester both run on the claude CLI you’re signed in to, so a run costs real usage. --budget caps
 // the tester; --max-cost caps the whole run (agents, tester and verifier), stopping it, report and all, before
 // a step or an agent turn could pass the cap (tools/uat/budget.mjs). Without --max-cost the agents are uncapped. A scenario
-// can put agents on another backend (`- backends: critic=kiro-cli:gpt-5.6-terra`); those use that CLI’s sign-in, and
+// can put agents on another backend (`- backends: critic=kiro-cli:qwen3-coder-next`); those use that CLI’s sign-in, and
 // the scenario is a compatibility run, which needs --compat, the Antigravity CLI’s included. A backend kept to version
 // releases (none today) needs --release (releaseGate), which also counts as --compat:
 //

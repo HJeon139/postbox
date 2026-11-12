@@ -567,7 +567,7 @@ test('a scenario with agents on a backend other than Claude’s is a compatibili
 
 test('a scenario can put agents on another backend, with a model', () => {
   const s = parseScenario(readFileSync(new URL('uat/e2e/scenarios/mixedroom.md', import.meta.url), 'utf8'));
-  assert.deepEqual(s.backends, { critic: { backend: 'kiro-cli', model: 'gpt-5.6-terra' } });
+  assert.deepEqual(s.backends, { critic: { backend: 'kiro-cli', model: 'qwen3-coder-next' } });
   assert.deepEqual(s.agents, ['researcher']);
   assert.deepEqual(parseScenario('# T\n- backends: @a=kiro-cli, b=claude-code:claude-opus-5-5, junk\n').backends, {
     a: { backend: 'kiro-cli', model: null },

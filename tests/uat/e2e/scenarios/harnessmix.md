@@ -2,12 +2,12 @@
 
 - persona: A developer who hands four agents a small task each and wants to see what each one is doing while it works, without asking them. Writes short messages.
 - agents: researcher, critic, developer, alpha
-- backends: critic=codex:gpt-6-luna, developer=antigravity-cli:gemini-3.8-flash-high, alpha=kiro-cli:gpt-5.6-terra
+- backends: critic=codex:gpt-6-luna, developer=antigravity-cli:gemini-3.8-flash-high, alpha=kiro-cli:qwen3-coder-next
 - project: Word counts
 - conversation: Four harnesses at work
 - steps: 10
 
-@researcher runs on Claude Code (Haiku), @critic on Codex with GPT Luna, @developer on the Antigravity CLI with Gemini Flash, and @alpha on the Kiro CLI with GPT Terra. Every adapter reports its harness’s events through one contract (`server/harness-events.mjs`), and Postbox builds each running reply’s live view from it in one place: the agent’s words and thoughts between its steps, the newest step in full and the older ones as a line each; and, once the turn ends, its one-line work record. This run checks that all four read the same way. An edit shows its diff where its harness says the change: Claude Code, Codex and Kiro’s whole-file writes do; Antigravity’s stream names only the file, so its edits show no diff. It’s a compatibility run (`node tools/uat-run.mjs --scenario harnessmix --compat`), and its turns use each CLI’s own sign-in. Keep it short: two phases. Notice anything one harness’s live view shows that another’s doesn’t, or any step that reads as noise.
+@researcher runs on Claude Code (Haiku), @critic on Codex with GPT Luna, @developer on the Antigravity CLI with Gemini Flash, and @alpha on the Kiro CLI with Qwen3 Coder Next. Every adapter reports its harness’s events through one contract (`server/harness-events.mjs`), and Postbox builds each running reply’s live view from it in one place: the agent’s words and thoughts between its steps, the newest step in full and the older ones as a line each; and, once the turn ends, its one-line work record. This run checks that all four read the same way. An edit shows its diff where its harness says the change: Claude Code, Codex and Kiro’s whole-file writes do; Antigravity’s stream names only the file, so its edits show no diff. It’s a compatibility run (`node tools/uat-run.mjs --scenario harnessmix --compat`), and its turns use each CLI’s own sign-in. Keep it short: two phases. Notice anything one harness’s live view shows that another’s doesn’t, or any step that reads as noise.
 
 ## Phase 1: Four agents, each with tools to call
 
