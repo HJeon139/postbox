@@ -41,7 +41,7 @@ What each box holds is under “The main components”; what moves along the arr
 
 **The adapters and backends** (`server/adapters/`). One adapter per backend behind one interface: Claude Code, the Agent SDK, Kiro CLI, Antigravity CLI and Codex, plus the mock agent. Each starts its harness for a turn with everything that shapes the turn passed explicitly, reads the harness’s own stream, and reports it through the harness-event contract, from which Postbox builds the reply, the steps, the work ledger and the ring. See [adapters.md](architecture/adapters.md) and [agent-setup.md](architecture/agent-setup.md).
 
-**Permissions** (`server/permission-*.mjs`). Each persona has a mode, and the harness decides in it; when the harness asks, the call waits on a card in the thread for the person’s answer. Postbox adds no gate of its own on top. See [permissions.md](architecture/permissions.md).
+**Permissions** (`server/permission-*.mjs`). Each persona has a mode, and the harness decides in it; when the harness asks, the call waits on a card in the thread for the person’s answer. In Auto and Run everything Postbox adds no ask rules of its own; in Ask me and Accept edits it adds ask rules for writes outside Postbox (`gh` writes, `git push` and tools named for writing), and turns hooks off so a hook can’t approve past them ([agent-setup.md](architecture/agent-setup.md), “Writes outside Postbox”). See [permissions.md](architecture/permissions.md).
 
 **Remote hosts** (`server/remote/`). An agent’s turns can run on another machine reached with the person’s own `ssh`. Only the agent’s process moves: the adapter stays on the laptop and drives a daemon on the host, which runs each turn detached and serves Postbox’s tools through a stdio shim. Nothing on the host can reach back. See [remote-hosts.md](architecture/remote-hosts.md), and [the person’s guide to hosts](remote-hosts.md).
 
@@ -101,7 +101,7 @@ Each is one line: the decision, why, and where its detail is.
 - **No framework and no build step:** the app needs nothing but Node to run, and its hot paths don’t depend on a framework ([front-end.md](architecture/front-end.md)).
 - **One harness-event contract for every backend:** a behavior fixed once is fixed for all five, and a new backend maps only its stream ([adapters.md](architecture/adapters.md)).
 - **Everything that shapes a turn is passed explicitly:** an agent gets the person’s own setup, with only the overrides Postbox needs ([agent-setup.md](architecture/agent-setup.md)).
-- **The harness decides, in the mode the person set:** Postbox shows what agents did rather than adding a gate of its own ([permissions.md](architecture/permissions.md)).
+- **The harness decides, in the mode the person set:** Postbox shows what agents did, and adds ask rules only for writes outside it, only in Ask me and Accept edits ([permissions.md](architecture/permissions.md), [agent-setup.md](architecture/agent-setup.md)).
 - **One session per agent per conversation:** agents never fork themselves, and the person chooses what an agent remembers by where they talk to it ([shared-memory.md](architecture/shared-memory.md)).
 - **Every agent reads the whole conversation:** an agent woken by a mention answered about a discussion it had never seen ([shared-memory.md](architecture/shared-memory.md)).
 - **Apps are sandboxed by header and load nothing:** the desktop app’s browser pane refuses a frame with the `sandbox` attribute, and a page that needs no requests can’t be broken by one ([sandbox.md](architecture/sandbox.md)).
