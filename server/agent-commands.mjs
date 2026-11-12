@@ -2,7 +2,7 @@
 // and `/name args` run as that agent’s turn. Moved out of server/runtime.mjs; Runtime keeps a method of the same name
 // that delegates here.
 
-import { clipText, httpError } from './helpers.mjs';
+import { clipText, httpError, retiredError } from './helpers.mjs';
 import { updateThread } from './thread-write.mjs';
 
 /** The most skills and commands kept for an agent’s / menu. */
@@ -45,7 +45,7 @@ export function runAgentCommand(rt, threadId, { sessionId, text }) {
   if (!/^\/[\w:.@/-]+/.test(line)) throw httpError(422, 'A skill or command starts with / and its name, such as /review.');
   const se = rt.sessionsIn(threadId).find((x) => x.id === sessionId);
   if (!se) throw httpError(404, 'That agent isn’t in this conversation.');
-  if (se.archived) throw httpError(409, `@${se.handle}’s session is archived. Restore it first.`);
+  if (se.retiredFork) throw retiredError(se);
   if (rt.turns.has(se.id)) throw httpError(409, `@${se.handle} is busy. Stop it, or wait for it to finish, then run the command.`);
   const item = rt.addItem(threadId, { kind: 'user', text: line, attachments: [], command: { sessionId: se.id, handle: se.handle } });
   updateThread(rt, threadId, { hops: 0 });

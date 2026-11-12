@@ -1,5 +1,5 @@
 // Remote hosts in the runtime (#120; tests/remote-runtime.test.mjs says how): `!` staying on this computer for an agent
-// on a host (#67), what a remote turn may post, and archive and delete stopping a conversation’s turns.
+// on a host (#67), what a remote turn may post, and delete stopping a conversation’s turns.
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
@@ -76,24 +76,6 @@ test('#120: a remote turn is told whether its backend asks through permission_pr
 });
 
 // ── Archive and delete stop a conversation’s turns ─────────────────────────────────
-
-test('#120: archiving a conversation stops its turns on a host, the ones in its topic threads too', async () => {
-  const { rt, adapter } = setup();
-  const h = rt.addHost({ name: 'host.example.com' });
-  const far = rt.createPersona({ handle: 'far', backend: 'claude-code', remote: { hostId: h.id } });
-  const fork = rt.createPersona({ handle: 'fork', backend: 'claude-code', remote: { hostId: h.id } });
-  const t = rt.createThread({ projectId: 'p1', title: 'T', personaIds: [far.id] });
-  const side = rt.createThread({ projectId: 'p1', title: 'Side', personaIds: [fork.id], kind: 'topic', parentId: t.id });
-  rt.sendMessage(t.id, { text: 'go' });
-  rt.sendMessage(side.id, { text: 'go' });
-  await until(() => adapter.log.includes('start:far') && adapter.log.includes('start:fork'), 'two turns');
-  // One session per agent per conversation (#228): @fork answers the topic thread from its session in the conversation,
-  // so archiving the conversation’s sessions archives it, and stops both turns.
-  for (const se of rt.sessionsIn(t.id)) rt.archive(se.id);
-  await until(() => adapter.log.includes('stopped:far') && adapter.log.includes('stopped:fork'), 'both stopped');
-  assert.equal(rt.turns.size, 0);
-  assert.equal(rt.s.threads[t.id].archived, true);
-});
 
 test('#120: deleting a conversation stops its turns on a host, its topic threads’ too', async () => {
   const { rt, adapter } = setup();

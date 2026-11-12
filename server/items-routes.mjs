@@ -63,7 +63,7 @@ function decodedId(raw) {
 export function asksIn(state, threadId, open) {
   const ids = new Set();
   for (const se of Object.values(state.sessions ?? {})) {
-    if (!se || se.archived) continue;
+    if (!se || se.retiredFork) continue;
     const need = needsYouNow(se) && whereNeeds(state, se) === threadId ? se.needs.itemId : null;
     if (need) ids.add(need);
     const other = open.find((ask) => ask.sessionId === se.id && ask.id !== se.needs?.itemId);

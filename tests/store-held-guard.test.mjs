@@ -139,7 +139,7 @@ const PENDING = {
   // A command’s item, maybe deleted behind a held commit, before its output or its end is written.
   'shell-runs.mjs': ['commandOutput', 'endCommand'],
   'subagent-end.mjs': ['withUrgent'],
-  'side-threads.mjs': ['agentWake', 'agentWake', 'agentWake', 'endChain', 'endChain', 'archiveForks', 'bumpSideLink', 'bumpSideLink'],
+  'side-threads.mjs': ['agentWake', 'agentWake', 'agentWake', 'endChain', 'endChain', 'bumpSideLink', 'bumpSideLink'],
   // A thread’s apps, removed in a sweep.
   'thread-erase.mjs': ['eraseThreads'],
   // The thread a turn answers in, as deliver chose it from pending, and the topic a turn's end settles: a topic
@@ -150,6 +150,7 @@ const PENDING = {
   'turn-checks.mjs': ['checkTurn', 'checkTurn', 'checkTurn', 'stallSteps'],
   'turn-end-work.mjs': ['endWork'], // the turn’s own reply or block, to carry its line, maybe held behind a commit
   'tool-ask.mjs': ['askForTool', 'settleToolAsks'], // a second ask for the same tool, and the sweep that settles open asks
+  'unarchive.mjs': ['unarchive'], // what an older Postbox archived: the threads and sessions it rewrites as the store loads
   'view-app/consent.mjs': ['askToSee'], // an open download card, which decides whether to add another (#95)
   'topic-open.mjs': ['startTopic', 'startTopic', 'conversationOf', 'conversationOf', 'repeatOf'], // one topic per message, the item's thread and I6's check, each maybe held behind a commit (#637)
   'wake-cards.mjs': ['lastAddAnswer', 'openCard'], // a declined add, so a mention asks no more (#693), and its lift by the person’s add (#789); another wake’s held hop card, so a second isn’t made

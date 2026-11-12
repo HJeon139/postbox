@@ -137,9 +137,9 @@ export function openQueue(sessionId, anchor = null) {
   body.append(list);
   let dialog;
   const paint = () => {
-    // The agent is gone (purged, or its conversation archived): nothing here can be sent to it any more.
+    // The agent is gone (deleted, or a retired fork): nothing here can be sent to it any more.
     const now = S().sessions[sessionId];
-    if (!now || now.archived) return dialog?.close();
+    if (!now || now.retiredFork) return dialog?.close();
     const entries = entriesFor(sessionId);
     const missing = markMissing(list, entries);
     const heading = `${entries.length} queued for ${session.handle}`;
@@ -222,7 +222,7 @@ export function agentQueueButton(session) {
 function waitingIn(threadId) {
   const conv = conversationRoot(S().threads, threadId);
   return Object.values(S().sessions)
-    .filter((se) => se.threadId === conv && !se.archived)
+    .filter((se) => se.threadId === conv && !se.retiredFork)
     .map((se) => ({ se, n: entriesFor(se.id).length }))
     .filter((x) => x.n > 0);
 }

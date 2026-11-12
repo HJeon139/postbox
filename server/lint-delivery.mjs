@@ -36,7 +36,7 @@ export function sendLint(rt, turnId) {
         });
     entry.sent = true;
     const session = rt.s.sessions[entry.sessionId];
-    if (session && !session.archived) rt.deliver(entry.sessionId, lintMessage(entry.problems), { threadId: entry.threadId });
+    if (session && !session.retiredFork) rt.deliver(entry.sessionId, lintMessage(entry.problems), { threadId: entry.threadId });
   };
   if (wait <= 0) return send();
   entry.timer = setTimer(send, wait);

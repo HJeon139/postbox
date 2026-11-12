@@ -19,7 +19,7 @@ function sideRemembered(threadId) {
   try {
     const id = localStorage.getItem(sideKey(threadId));
     const t = id ? client.state.threads[id] : null;
-    return t?.parentId === threadId && !t.archived ? id : null;
+    return t?.parentId === threadId ? id : null;
   } catch {
     return null;
   }

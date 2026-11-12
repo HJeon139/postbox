@@ -16,7 +16,6 @@ import { recordCommands, runAgentCommand } from './agent-commands.mjs';
 import { agentFile, agentFolders, appFiles } from './agent-files.mjs';
 import { APP_HOLD_MAX, APP_SEND_LIMIT, APP_SEND_WINDOW_MS } from './app-send-limits.mjs';
 import { appCheck, appEvent, appFile, appQuery, appState, fixEnded, needAppSend, registerApp, resolveAppSend } from './apps.mjs';
-import { restoreArchives } from './archive-lifecycle.mjs';
 import { ArchivePasses } from './archive-runtime.mjs';
 import { askQuestions, QUESTION_TOOL, questionBlocks } from './ask-question.mjs';
 import { act, answerDelivered, unreadAnswer } from './blocks.mjs';
@@ -27,7 +26,7 @@ import { createThread, ensureSession, renameThread } from './conversations.mjs';
 import { diagramCheck } from './diagram-check.mjs';
 import { emptyReply, endedWithoutReply } from './empty-reply.mjs';
 import { heldSession } from './held-session.mjs';
-import { clip, clipText, httpError } from './helpers.mjs';
+import { clip, clipText, httpError, retiredError } from './helpers.mjs';
 import { describeItem, topicRootLine } from './item-lines.mjs';
 import { keptGroupsOf, keptJobs, pollKept, stopJob, stopKeptJobs, watchKept } from './kept-jobs.mjs';
 import { Ledger } from './ledger.mjs';
@@ -70,12 +69,12 @@ import {
   settleScheduledWake,
 } from './scheduled-wakes.mjs';
 import { sendMessage, threadRefs } from './send-message.mjs';
-import { archive, archiveThread, deleteSession, deleteThread, finishLeftDeletes, restore, restoreThread } from './session-lifecycle.mjs';
+import { deleteSession, deleteThread } from './session-lifecycle.mjs';
 import { pendingSessionsIn, stampNeeds, tellAgent, updateSession } from './session-write.mjs';
 import { mcpContext } from './setup-context.mjs';
 import { clearSummaryPending, postSummary, shareText, shareToConversation, summarizeBack, summarizing } from './share-back.mjs';
 import { commandFolder, expireStaleCommands, flushShellOutput, runShellCommand, stopShellCommand, stopShellCommands } from './shell-runs.mjs';
-import { agentWake, archiveForks, bumpSideLink, dropWakes, endChain, recordAgentMessage, resolveHop, sideSession } from './side-threads.mjs';
+import { agentWake, bumpSideLink, dropWakes, endChain, recordAgentMessage, resolveHop, sideSession } from './side-threads.mjs';
 import { stepState, turnStep } from './step-text.mjs';
 import { newId } from './store.mjs';
 import { heldTurn, STORE_STOPPED, saveBackendState, watchStore, whenWritable } from './store-outage.mjs';
@@ -90,6 +89,7 @@ import { askedAgain, askedOf, replyMarks } from './turn-marks.mjs';
 import { foldSteps, settleStoppedSteps, settleSubagentSteps } from './turn-steps.mjs';
 import { workEvents } from './turn-work.mjs';
 import { toolsFor } from './ui-tools.mjs';
+import { unarchive } from './unarchive.mjs';
 import { closeOrphanCards } from './wake-cards.mjs';
 import { restoreWork, workDiff, workGit, workOutput } from './work-view.mjs';
 
@@ -157,11 +157,9 @@ export class Runtime {
     this.hosts = hosts ?? null;
     this.remote = new RemoteTurns(this, { hosts: this.hosts });
     this.turnArchive = new ArchivePasses(this, { enabled: config.archiveTurns === true }); // #305: off until step 4
-    // Forks are gone (#228): any left from before are archived, once.
-    archiveForks(this);
-    // Nothing archives a conversation by itself any more (#320): what idle archiving hid comes back, once.
-    restoreArchives(this);
-    // After the restore, so a card it brings back stays the person’s to answer (#693).
+    // Conversations can’t be archived any more: one an older Postbox archived comes back as a live one.
+    unarchive(this);
+    // After that, so a card of an agent it brings back stays the person’s to answer (#693).
     closeOrphanCards(this);
     // Ask me and Accept edits are gone: a persona stored with one runs Auto (permission-modes.mjs).
     retireModes(this);
@@ -227,7 +225,7 @@ export class Runtime {
     const conv = t?.parentId && this.s.threads[t.parentId] ? t.parentId : threadId;
     const seen = new Set([se.handle]);
     return this.sessionsIn(conv)
-      .filter((x) => !x.archived && !seen.has(x.handle) && seen.add(x.handle))
+      .filter((x) => !x.retiredFork && !seen.has(x.handle) && seen.add(x.handle))
       .map((x) => ({ handle: x.handle, role: clipText(String(this.persona(x.personaId)?.description ?? ''), 200) }));
   }
   handles() {
@@ -382,7 +380,7 @@ export class Runtime {
     // A session just made behind a held commit: its turn starts once it's published (#796's class in sessions).
     if (heldSession(this, sessionId, () => this.deliver(sessionId, message, { summarizeTo, threadId }))) return;
     const se = this.store.pending.session(sessionId) ?? this.session(sessionId); // a summary's or a notice's write held (#506)
-    if (se.archived) throw httpError(409, `@${se.handle}’s session is archived. Restore it first.`);
+    if (se.retiredFork) throw retiredError(se);
     message = prepareScheduledRetry(this, message, se.threadId);
     // As it was asked, for Retry (askedOf).
     const asked = { message, summarizeTo, threadId };
@@ -1018,14 +1016,14 @@ export class Runtime {
     // From the pending session: Stop's “stopping” may still be held behind a commit as the turn exits (#796).
     const se = this.store.pending.session(turn.sessionId) ?? this.s.sessions[turn.sessionId];
     if (!se) return;
-    // Something else may have set the state meanwhile (archive, an answered card); “Stopping” goes either way.
+    // Something else may have set the state meanwhile (a delete, an answered card); “Stopping” goes either way.
     // A remote turn Postbox stopped because it hung says so instead (#120).
     const hung = se.remoteTurn?.state === 'hung' && se.remoteTurn.rtTurn === turn.id;
     const stoppedBy = turn.stopReason === 'store' ? STORE_STOPPED : hung ? se.remoteTurn.message : 'Stopped by you';
     if (se.state === 'stopping' || se.currentStep === 'Stopping')
       this.updateSession(se.id, { state: se.state === 'stopping' ? 'idle' : se.state, currentStep: stoppedBy, finishedAt: Date.now(), sideTurn: null });
     else if (se.sideTurn) this.updateSession(se.id, { sideTurn: null });
-    const held = se.archived ? [] : ex.held;
+    const held = se.retiredFork ? [] : ex.held;
     // Shutting down: your messages wait in their thread’s queue, which a restart keeps, rather than starting a CLI.
     if (this.closing) {
       for (const h of held.filter((x) => x.message.kind === 'user')) {
@@ -1034,7 +1032,7 @@ export class Runtime {
       }
       return;
     }
-    // A silent exit (Send now, which sends only your message, and archive, erase, side threads, host admin and the
+    // A silent exit (Send now, which sends only your message, and erase, side threads, host admin and the
     // like) delivers what was held as it is, and the queue waits for that turn’s end. Any other Stop, the person’s, a
     // store outage’s or a hung host turn’s, gives the first turn its thread’s queue, in arrival order, as a turn’s
     // normal end does (#733, #1040).
@@ -1669,21 +1667,6 @@ export class Runtime {
 
   // ── Session lifecycle: server/session-lifecycle.mjs ─────────────────────────────
 
-  finishLeftDeletes() {
-    return finishLeftDeletes(this);
-  }
-  archive(sessionId) {
-    return archive(this, sessionId);
-  }
-  restore(sessionId) {
-    return restore(this, sessionId);
-  }
-  archiveThread(threadId) {
-    return archiveThread(this, threadId);
-  }
-  restoreThread(threadId) {
-    return restoreThread(this, threadId);
-  }
   deleteSession(sessionId) {
     return deleteSession(this, sessionId);
   }

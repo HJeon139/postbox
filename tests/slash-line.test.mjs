@@ -21,7 +21,7 @@ test('parseSlashLine reads /name and @handle /name, and nothing else', () => {
 
 const alpha = { id: 'a', handle: 'alpha' };
 const beta = { id: 'b', handle: 'beta' };
-const gone = { id: 'g', handle: 'gone', archived: true };
+const gone = { id: 'g', handle: 'gone', retiredFork: true };
 const offered = { a: ['review'], b: ['release-notes'], g: ['review'] };
 const at = (over = {}) => ({
   members: [alpha, beta, gone],
@@ -48,7 +48,7 @@ test('an agent’s skill or command runs as the named agent’s turn, only if it
     named: beta,
   });
   assert.deepEqual(resolveCommand('@alpha /release-notes', at()), { missing: 'command', name: 'release-notes', named: alpha, handle: 'alpha' });
-  // An archived agent, or one not in the conversation, isn’t named: the line is a message, and the hint says so.
+  // A retired fork, or an agent not in the conversation, isn’t named: the line is a message, and the hint says so.
   assert.deepEqual(resolveCommand('@gone /review', at()), { missing: 'agent', name: 'review', named: null, handle: 'gone' });
   assert.deepEqual(resolveCommand('@ghost /compact', at()), { missing: 'agent', name: 'compact', named: null, handle: 'ghost' });
 });
@@ -56,6 +56,6 @@ test('an agent’s skill or command runs as the named agent’s turn, only if it
 test('without an @handle: the / menu’s pick, then the reply target, then any agent that offers it', () => {
   assert.equal(resolveCommand('/review x', at({ pick: (name) => (name === 'review' ? beta : null) })).se, beta);
   assert.equal(resolveCommand('/review x', at()).se, alpha, 'beta doesn’t offer it, alpha does');
-  assert.equal(resolveCommand('/review', at({ members: [beta, gone] })), null, 'only an archived agent offers it');
+  assert.equal(resolveCommand('/review', at({ members: [beta, gone] })), null, 'only a retired fork offers it');
   assert.equal(resolveCommand('/unknown', at()), null);
 });

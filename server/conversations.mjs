@@ -22,7 +22,6 @@ export function createThread(rt, { projectId, title, personaIds = [], kind = 'th
     hops: 0,
     queue: [],
     createdAt: Date.now(),
-    archived: false,
   });
   for (const pid of personaIds) rt.ensureSession(t.id, pid);
   return rt.s.threads[t.id];
@@ -59,7 +58,6 @@ export function ensureSession(rt, threadId, personaId, { brief, joined = null } 
     unread: 0,
     startedAt: Date.now(),
     finishedAt: null,
-    archived: false,
     brief: brief ?? null,
     // The person never added it, so its row says why it’s here (decided by the person, 23 October 2026).
     ...(joined ? { joinedBy: joined.by, joinedIn: joined.in } : {}),

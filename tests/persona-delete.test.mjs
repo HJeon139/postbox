@@ -12,7 +12,7 @@ import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { ClaudeCodeAdapter } from '../server/adapters/claude-code.mjs';
 import { memoryRootFor } from '../server/adapters/folder.mjs';
 import { memoryFolder } from '../server/adapters/setup.mjs';
-import { deletePersona, finishLeftPersonaDeletes } from '../server/persona-delete.mjs';
+import { deletePersona } from '../server/persona-delete.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { sessionRoute } from '../server/session-routes.mjs';
 import { Store } from '../server/store.mjs';
@@ -79,15 +79,6 @@ test('#208: the delete’s answer waits for no backend: a slow forget runs after
   const release = /** @type {(v?: unknown) => void} */ (await reached);
   release();
   await forgotten;
-});
-
-test('#208: a delete an older Postbox left in its Undo window finishes when Postbox starts', async () => {
-  const s = await setup();
-  await s.remember(s.alpha);
-  s.store.emit('persona', { ...s.store.state.personas[s.alpha.id], deleting: Date.now() + 5000 });
-  finishLeftPersonaDeletes(s.rt);
-  assert.equal(s.store.state.personas[s.alpha.id], undefined);
-  assert.ok(Object.values(s.store.state.sessions).every((se) => se.personaId !== s.alpha.id));
 });
 
 test('#208: deleting a persona that doesn’t exist says so', () => {

@@ -53,11 +53,11 @@ test.beforeAll(async () => {
   const rw = rt.sessionsIn(retiredRoom.id).find((se) => se.handle === 'waker');
   pastLimit(rw);
   rt.sendMessage(retiredRoom.id, { text: '@woken it’s done, thanks' });
-  // A card whose agent you archive closes, with nothing to answer (#693).
+  // A card whose agent you delete closes, with nothing to answer (#693).
   closedRoom = rt.createThread({ projectId: 'pr_wakes', title: 'Closed', personaIds: personas.map((p) => p.id) });
   const cw = rt.sessionsIn(closedRoom.id).find((se) => se.handle === 'waker');
   pastLimit(cw);
-  rt.archive(cw.id);
+  rt.deleteSession(cw.id);
   // A room with nothing set, past the default of 1,000 (#1035): its count set directly, rather than 1,000 wakes.
   defaultRoom = rt.createThread({ projectId: 'pr_wakes', title: 'Default', personaIds: personas.map((p) => p.id) });
   updateThread(rt, defaultRoom.id, { hops: 1000 });
@@ -127,10 +127,10 @@ test('a card whose target you write to closes, and says why (#439)', async ({ pa
   await expect(card.getByRole('button', { name: 'Let waker wake woken' })).toHaveCount(0);
 });
 
-test('a card whose agent you archive closes, says why, and has nothing to answer (#693)', async ({ page }) => {
+test('a card whose agent you delete closes, says why, and has nothing to answer (#693)', async ({ page }) => {
   await page.goto(`${app.origin}/#/t/${closedRoom.id}`);
   await synced(page, app);
   const card = page.locator('.transcript .block').filter({ hasText: 'Let waker wake woken?' });
-  await expect(card).toContainText('Closed: @waker was archived, so nothing went');
+  await expect(card).toContainText('Closed: @waker was removed, so nothing went');
   await expect(card.getByRole('button', { name: 'Let waker wake woken' })).toHaveCount(0);
 });

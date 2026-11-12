@@ -30,7 +30,7 @@ export function parseSlashLine(text) {
 export function resolveCommand(text, { members, reply, pick = () => null, own, has }) {
   const cmd = parseSlashLine(text);
   if (!cmd) return null;
-  const live = members.filter((x) => !x.archived);
+  const live = members.filter((x) => !x.retiredFork);
   const named = cmd.handle ? (live.find((x) => x.handle.toLowerCase() === cmd.handle?.toLowerCase()) ?? null) : null;
   // An @handle that isn’t an agent here, as a typo: a message to the agent the composer replies to, said first.
   if (cmd.handle && !named) return { missing: 'agent', name: cmd.name, named: null, handle: cmd.handle };

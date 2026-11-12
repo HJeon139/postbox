@@ -37,12 +37,11 @@ export function startTopic(rt, threadId, itemId) {
     hops: 0,
     queue: [],
     createdAt: Date.now(),
-    archived: false,
   });
   rt.patchItem(threadId, itemId, { topicId: topic.id, replies: 0 });
   // Who comes along: the agent that wrote the message, or for yours, the agent that answered it.
   const answer = items.slice(idx + 1).find((x) => x.sessionId && (x.kind === 'agent' || x.kind === 'block'));
-  const members = rt.sessionsIn(threadId).filter((x) => !x.archived);
+  const members = rt.sessionsIn(threadId).filter((x) => !x.retiredFork);
   const src =
     (root.sessionId && rt.s.sessions[root.sessionId]) ||
     (answer && rt.s.sessions[answer.sessionId]) ||

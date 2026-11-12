@@ -47,12 +47,14 @@ export function queuedIn(t, queueId) {
   return q;
 }
 
+/** The refusal of a fork #228 retired: no message reaches it, since its agent answers in the conversation now. @param {any} se */
+export const retiredError = (se) => httpError(409, `@${se.handle}’s session here was retired. Write to @${se.handle} in the conversation.`);
+
 /**
- * An archived session can’t hear the person (deliver refuses it), so what they answer or send for it is refused before
- * anything is recorded, and the block or card still asks once the conversation is restored (#848).
- * @param {any} rt @param {string} sessionId
+ * A retired fork can’t hear the person (deliver refuses it), so what they answer or send for it is refused before
+ * anything is recorded (#848). @param {any} rt @param {string} sessionId
  */
-export function refuseArchived(rt, sessionId) {
+export function refuseRetired(rt, sessionId) {
   const se = rt.s.sessions[sessionId];
-  if (se?.archived) throw httpError(409, `@${se.handle}’s session is archived. Restore it first.`);
+  if (se?.retiredFork) throw retiredError(se);
 }

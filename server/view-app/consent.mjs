@@ -106,6 +106,6 @@ function settle(rt, threadId, it, status, notice, reason = null) {
   const se = rt.s.sessions[it.sessionId];
   if (!se) return { ok: true };
   releaseNeed(rt, se, it.id);
-  if (notice && !se.archived) rt.deliver(se.id, { kind: 'notice', text: notice });
+  if (notice && !se.retiredFork) rt.deliver(se.id, { kind: 'notice', text: notice });
   return { ok: true };
 }

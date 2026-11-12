@@ -307,7 +307,7 @@ export async function resolveDenial(rt, threadId, itemId, action) {
   const words = { once: 'Allowed once', always: `Always allowed ${it.rules.alwaysWords}`, leave: 'Left refused' }[action];
   rt.addItem(threadId, { kind: 'voice', text: `${words}: @${it.handle} to ${it.summary}` });
   releaseNeed(rt, se, itemId);
-  if (note && se && !se.archived) rt.deliver(se.id, { kind: 'notice', text: note }, { threadId });
+  if (note && se && !se.retiredFork) rt.deliver(se.id, { kind: 'notice', text: note }, { threadId });
   return { ok: true };
 }
 

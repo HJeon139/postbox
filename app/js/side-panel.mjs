@@ -80,7 +80,7 @@ function summarizeButton(sideId, parent) {
   const pending = () => {
     const ask = S().threads[sideId]?.summaryPending;
     const se = ask && S().sessions[ask.sessionId];
-    const working = !!(se && !se.archived && ['think', 'gen', 'tool', 'needs'].includes(se.state));
+    const working = !!(se && !se.retiredFork && ['think', 'gen', 'tool', 'needs'].includes(se.state));
     if (working) asking = false;
     return asking || working;
   };

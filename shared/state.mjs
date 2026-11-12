@@ -137,9 +137,6 @@ export const EVENTS = Object.freeze({
   },
   app: { apply: put('apps'), public: true },
   file: { apply: put('files'), public: true },
-  // Retired with the corpus (#516): data an agent brings in is a room asset now. An older log still holds these, so
-  // they apply as nothing.
-  dataset: { apply: () => {}, public: true },
   schedule: {
     apply: (s, d) => {
       if (d.removed) delete s.schedules[d.id];

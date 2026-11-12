@@ -86,20 +86,6 @@ test('a member whose session was removed behind a held commit doesn’t stop a n
   await f.store.close();
 });
 
-test('an agent archived behind a held commit is still its persona’s one session in the conversation, as with nothing held', async () => {
-  const f = await heldRoom();
-  const release = await f.hold();
-  f.rt.archive(f.alpha.id);
-  assert.equal(f.rt.ensureSession(f.t.id, f.a.id).id, f.alpha.id);
-  await release();
-  await settle(f.rt);
-  assert.deepEqual(
-    sessionsOfPersona(f.store, f.a.id).map((x) => [x.id === f.alpha.id, Boolean(x.archived)]),
-    [[true, true]],
-  );
-  await f.store.close();
-});
-
 test('a page reloaded behind a held commit loads the published state, with no session for the new agent yet; the release brings one', async () => {
   const f = await heldRoom();
   const seq = f.store.state.seq;

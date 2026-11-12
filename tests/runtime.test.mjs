@@ -744,72 +744,33 @@ test('a deleted conversation takes no new messages', () => {
   );
 });
 
-test('a message to an archived agent is refused before anything is posted', () => {
+test('a message to a retired fork is refused before anything is posted (#228)', () => {
   const { rt, store, a, b } = setup();
   const room = rt.createThread({ projectId: 'p1', title: 'Room', personaIds: [a.id, b.id] });
   const beta = rt.sessionsIn(room.id).find((x) => x.personaId === b.id);
-  rt.archive(beta.id);
-  assert.throws(() => rt.sendMessage(room.id, { text: '@beta hello' }), /archived/);
+  rt.updateSession(beta.id, { retiredFork: true });
+  assert.throws(() => rt.sendMessage(room.id, { text: '@beta hello' }), /was retired/);
   assert.equal(store.items(room.id).length, 0, 'no user line and no wake line');
 });
 
-test('archiving a conversation archives its sessions, its side threads’ forks too, and restore brings them all back (#101)', () => {
-  const { rt, store, a, b } = setup();
-  const room = rt.createThread({ projectId: 'p1', title: 'Room', personaIds: [a.id, b.id] });
-  const side = rt.createThread({ projectId: 'p1', title: 'S', kind: 'side', parentId: room.id, personaIds: [a.id] });
-  rt.addItem(room.id, { kind: 'user', text: 'kept' });
-  const all = [...rt.sessionsIn(room.id), ...rt.sessionsIn(side.id)];
-  assert.equal(all.length, 3);
-  rt.archiveThread(room.id);
-  for (const se of all) assert.equal(store.state.sessions[se.id].archived, true, `@${se.handle} isn’t archived`);
-  assert.equal(store.state.threads[room.id].archived, true);
-  assert.equal(store.state.threads[side.id].archived, true);
-  // Archive keeps the transcript.
-  assert.equal(store.items(room.id)[0].text, 'kept');
-  assert.throws(() => rt.archiveThread(side.id), /conversation it belongs to/);
-  rt.restoreThread(room.id);
-  for (const se of all) assert.equal(store.state.sessions[se.id].archived, false, `@${se.handle} isn’t restored`);
-  assert.equal(store.state.threads[room.id].archived, false);
-  assert.equal(store.state.threads[side.id].archived, false);
+test('deliver refuses a retired fork with a 409, and starts no turn for it (#228)', () => {
+  const { rt, t } = setup();
+  const se = rt.sessionsIn(t.id)[0];
+  rt.updateSession(se.id, { retiredFork: true });
+  assert.throws(() => rt.deliver(se.id, { kind: 'user', text: 'still there?' }, { threadId: t.id }), { status: 409, message: /was retired/ });
+  assert.equal(rt.turns.has(se.id), false);
 });
 
-test('a wake an archived agent scheduled doesn’t wake it, or stop the server (#101)', async () => {
+test('a wake a retired fork scheduled doesn’t wake it, or stop the server (#228)', async () => {
   const { rt, store, t } = setup();
   const se = rt.sessionsIn(t.id)[0];
   const sc = rt.schedule(se.id, { inMs: 60000, note: 'later' });
-  rt.archiveThread(t.id);
+  rt.updateSession(se.id, { retiredFork: true });
   store.emit('schedule', { ...sc, at: Date.now() }); // Due now, as at a startup after it was due, where arming reads it (#466).
   rt.arm(sc);
   await sleep(20);
   assert.equal(Object.keys(store.state.schedules).length, 0);
   assert.equal(store.items(t.id).filter((i) => i.variant === 'wake').length, 0);
-});
-
-test('archiving a conversation covers a side thread under a topic thread, and its toast’s Restore leaves an agent archived before (#101)', () => {
-  const { rt, store, a, b } = setup();
-  const room = rt.createThread({ projectId: 'p1', title: 'Room', personaIds: [a.id, b.id] });
-  const topic = rt.createThread({ projectId: 'p1', title: 'Topic', kind: 'topic', parentId: room.id, personaIds: [a.id] });
-  const side = rt.createThread({ projectId: 'p1', title: 'Side', kind: 'side', parentId: topic.id, personaIds: [b.id] });
-  const before = rt.sessionsIn(room.id).find((x) => x.personaId === b.id);
-  rt.archive(before.id);
-  const ids = rt.archiveThread(room.id);
-  const deep = rt.sessionsIn(side.id)[0];
-  assert.equal(store.state.sessions[deep.id].archived, true);
-  assert.equal(store.state.threads[side.id].archived, true);
-  assert.ok(!ids.includes(before.id), 'it says it archived an agent that was archived already');
-  assert.ok(ids.includes(deep.id));
-  for (const id of ids) rt.restore(id);
-  assert.equal(store.state.sessions[before.id].archived, true);
-  assert.equal(store.state.sessions[deep.id].archived, false);
-});
-
-test('a delete an older Postbox left in its Undo window finishes at start', () => {
-  const { rt, store, t } = setup();
-  const se = rt.sessionsIn(t.id)[0];
-  store.emit('thread', { ...store.state.threads[t.id], deleting: Date.now() + 5000 });
-  rt.finishLeftDeletes();
-  assert.equal(store.state.threads[t.id], undefined);
-  assert.equal(store.state.sessions[se.id], undefined);
 });
 
 test('a conversation with several agents is a room, and can be renamed', () => {

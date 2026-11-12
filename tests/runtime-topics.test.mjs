@@ -82,7 +82,7 @@ test('#81, #228: an agent from outside the conversation @-mentioned in a topic j
   await settle(rt);
   assert.doesNotMatch(context(adapter.calls.at(-1)), /This thread started from/);
   assert.equal(rt.sessionsIn(topic.id).length, 0, 'nothing joined the thread itself');
-  assert.equal(store.state.sessions[gamma.id].archived, false);
+  assert.equal(store.state.sessions[gamma.id].retiredFork, undefined);
 });
 
 test('#228: a turn in a topic thread catches up on what others said there since it last took part', async () => {

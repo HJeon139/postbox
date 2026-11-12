@@ -67,7 +67,7 @@ test('#1155 the Threads page’s topic row counts its replies from the header', 
   const root = app.store.items(a.id)[0];
   const topic = app.rt.putThread({
     ...{ id: `th_topic${rooms}`, projectId, title: 'A topic', kind: 'topic', parentId: a.id, rootItemId: root.id },
-    ...{ members: [], lastSpeaker: null, hops: 0, queue: [], createdAt: Date.now(), archived: false },
+    ...{ members: [], lastSpeaker: null, hops: 0, queue: [], createdAt: Date.now() },
   });
   await openWithout(page, b.id, [a.id, topic.id]);
   await go(page, `#/p/${projectId}/threads`);

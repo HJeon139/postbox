@@ -1,4 +1,4 @@
-// #693: a card closed with no answer from the person (its agent was archived, removed or retired) is settled, as a
+// #693: a card closed with no answer from the person (its agent was removed or retired) is settled, as a
 // declined one is: every agent held on it was told, so the room check doesn't call its wakes dropped once it leaves
 // the state.
 

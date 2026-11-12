@@ -23,22 +23,15 @@ function heldOnAlphasCard() {
 
 const restart = (f) => new Runtime({ store: f.store, adapters: f.rt.adapters, config: f.rt.config });
 
-for (const [how, act] of [
-  ['archived', (f) => f.rt.archive(f.alpha.id)],
-  ['removed', (f) => f.rt.deleteSession(f.alpha.id)],
-])
-  test(`#693 a card whose agent is ${how} closes, and the agent whose wake was held on it is told`, async () => {
-    const f = heldOnAlphasCard();
-    act(f);
-    await settle(f.rt);
-    assert.equal(card(f, f.open.id).status, 'closed');
-    assert.match(
-      toldOf(f, f.beta),
-      new RegExp(`Your message to @delta \\(“Draw the chart.”\\), held on @alpha’s request to add @gamma.*didn’t go: @alpha was ${how}`),
-    );
-    const again = f.rt.toolsFor(f.beta.id).wake_agent({ handle: 'delta', message: 'Draw the chart.' });
-    assert.deepEqual([again.waiting, again.held], [true, undefined], 'the next wake asks the person with a card of its own');
-  });
+test('#693 a card whose agent is removed closes, and the agent whose wake was held on it is told', async () => {
+  const f = heldOnAlphasCard();
+  f.rt.deleteSession(f.alpha.id);
+  await settle(f.rt);
+  assert.equal(card(f, f.open.id).status, 'closed');
+  assert.match(toldOf(f, f.beta), /Your message to @delta \(“Draw the chart.”\), held on @alpha’s request to add @gamma.*didn’t go: @alpha was removed/);
+  const again = f.rt.toolsFor(f.beta.id).wake_agent({ handle: 'delta', message: 'Draw the chart.' });
+  assert.deepEqual([again.waiting, again.held], [true, undefined], 'the next wake asks the person with a card of its own');
+});
 
 test('#693 Stop leaves the card open: the person can still answer it', async () => {
   const f = setup();
@@ -54,18 +47,9 @@ test('#693 Stop leaves the card open: the person can still answer it', async () 
   assert.equal(card(f, open.id).status, 'open');
 });
 
-test('#693 retiring forks at startup tells the agent whose wake was held on a fork’s card', async () => {
+test('#693 the startup sweep closes an open card whose agent is a retired fork, from a room before this fix', () => {
   const f = heldOnAlphasCard();
-  f.rt.updateSession(f.alpha.id, { forkOf: { sessionId: f.beta.id, itemId: null } }); // alpha as a fork from before #228
-  f.store.emit('settings', { forksArchived: false });
-  restart(f);
-  assert.notEqual(card(f, f.open.id).status, 'open');
-  assert.match(toldOf(f, f.beta), /Your message to @delta .* didn’t go/);
-});
-
-test('#693 the startup sweep closes an open card whose agent is archived, from a room before this fix', () => {
-  const f = heldOnAlphasCard();
-  f.store.emit('session', { ...f.store.state.sessions[f.alpha.id], archived: true }); // as an older Postbox left it
+  f.store.emit('session', { ...f.store.state.sessions[f.alpha.id], retiredFork: true }); // as an older Postbox left it
   restart(f);
   assert.equal(card(f, f.open.id).status, 'closed');
   assert.match(toldOf(f, f.beta), /Your message to @delta .* didn’t go/);

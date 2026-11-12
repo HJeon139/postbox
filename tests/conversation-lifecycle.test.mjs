@@ -1,6 +1,6 @@
-// A conversation owns its agents’ sessions (#320): nothing archives a conversation by itself any more, an agent’s
-// session is archived only with its conversation and deleted with it, and what idle archiving (#101) hid comes back,
-// once. The server is started as it is at boot (start({ listen: false })), twice where a restart matters.
+// A conversation owns its agents’ sessions (#320): an agent’s session is deleted with its conversation, and nothing
+// archives one any more. What an older Postbox archived (#101) comes back as the store loads. The server is started as it
+// is at boot (start({ listen: false })), twice where a restart matters.
 
 import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
@@ -31,13 +31,13 @@ async function install() {
   return { dir, app: await boot(dir, true) };
 }
 const conversations = (st) => Object.values(st.threads).filter((t) => t.kind !== 'topic' && t.kind !== 'side');
-/** The archived conversations, by title, and the agents archived on their own, by handle. */
+/** Whatever still says archived: threads by title, sessions by handle. */
 const archived = (st) => [
-  ...conversations(st)
+  ...Object.values(st.threads)
     .filter((t) => t.archived)
     .map((t) => t.title),
   ...Object.values(st.sessions)
-    .filter((se) => se.archived && !se.retiredFork && !st.threads[se.threadId]?.archived)
+    .filter((se) => se.archived)
     .map((se) => `@${se.handle}`),
 ];
 const roomOf = (st) => conversations(st).find((t) => t.members.length > 1);
@@ -52,27 +52,23 @@ test('a conversation left alone for a month is still there after a restart: noth
   assert.deepEqual(archived(app.store.state), []);
 });
 
-test('what idle archiving hid comes back, once: an archived conversation, and an agent archived on its own (#320)', async () => {
+test('a store with an archived conversation and a retired fork loads with the conversation live and the fork retired', async () => {
   let { dir, app } = await install();
   const st = () => app.store.state;
   const dm = conversations(st()).find((t) => t.members.length === 1);
-  const room = roomOf(st());
-  app.rt.archiveThread(dm.id);
-  app.rt.archive(room.members[1]);
-  // As an install from before #320 is: it never ran the restore.
-  app.store.emit('settings', { archivesRestored: false });
-  assert.equal(archived(st()).length, 2);
+  const [a] = Object.values(st().personas);
+  const topic = app.rt.createThread({ projectId: dm.projectId, title: 'Topic', kind: 'topic', parentId: dm.id, personaIds: [a.id] });
+  const [fork] = st().threads[topic.id].members;
+  // As an older Postbox wrote them: a conversation archived with its agents, and a fork #228 retired.
+  app.store.emit('thread', { ...st().threads[dm.id], archived: true });
+  for (const id of st().threads[dm.id].members) app.store.emit('session.patch', { id, patch: { archived: true, archivedAt: 1 } });
+  app.store.emit('session.patch', { id: fork, patch: { archived: true, retiredFork: true, archivedAt: 1 } });
   app = await restart(app, dir);
+  assert.equal(st().threads[dm.id].archived, undefined, 'the conversation is live');
+  for (const se of app.rt.sessionsIn(dm.id)) assert.equal(se.archived, undefined, `@${se.handle} is live`);
+  assert.equal(st().sessions[fork].retiredFork, true, 'the fork stays retired');
+  assert.equal(st().sessions[fork].archived, undefined, 'under its own flag, not archived');
   assert.deepEqual(archived(st()), []);
-  assert.equal(st().settings.archivesRestored, true);
-  // Once: a conversation archived since stays archived across the next restart.
-  app.rt.archiveThread(dm.id);
-  app = await restart(app, dir);
-  assert.deepEqual(archived(st()), [dm.title]);
-  assert.ok(
-    app.rt.sessionsIn(dm.id).every((se) => se.archived),
-    'its agents are archived with it',
-  );
 });
 
 test('deleting a room deletes every session in it, and in its threads’ threads too (#320)', async () => {
@@ -84,7 +80,6 @@ test('deleting a room deletes every session in it, and in its threads’ threads
   const side = rt.createThread({ projectId: room.projectId, title: 'Side', kind: 'side', parentId: topic.id, personaIds: [b.id] });
   const ids = [room, topic, side].flatMap((t) => store.state.threads[t.id].members);
   assert.equal(ids.length, 4);
-  rt.archive(ids[0]);
   rt.deleteThread(room.id);
   assert.deepEqual(
     [room, topic, side].filter((t) => store.state.threads[t.id]).map((t) => t.title),
@@ -126,21 +121,15 @@ test('deleting a conversation’s only agent deletes it as deleting the conversa
   assert.equal(store.state.apps.app_side, undefined);
 });
 
-test('an agent’s session can’t be archived on its own: only its conversation can (#320)', async () => {
+test('there is no route to archive or restore a conversation or an agent', async () => {
   const { app } = await install();
   const call = (r) => fakeRequest(app.handle, { host: new URL(app.origin).host, ...r });
   const cookie = (await call({ path: '/', headers: NAVIGATION })).headers['set-cookie'].split(';')[0];
   const room = roomOf(app.store.state);
   const post = (path) => call({ method: 'POST', path, headers: { cookie, origin: app.origin, 'content-type': 'application/json' }, body: '{}' });
-  for (const what of ['archive', 'restore']) assert.equal((await post(`/api/sessions/${room.members[0]}/${what}`)).status, 404, what);
-  assert.equal((await post(`/api/threads/${room.id}/archive`)).status, 200);
-  assert.ok(
-    app.rt.sessionsIn(room.id).every((se) => se.archived),
-    'its agents are archived with it',
-  );
-  assert.equal((await post(`/api/threads/${room.id}/restore`)).status, 200);
-  assert.ok(
-    app.rt.sessionsIn(room.id).every((se) => !se.archived),
-    'and restored with it',
-  );
+  for (const what of ['archive', 'restore']) {
+    assert.equal((await post(`/api/sessions/${room.members[0]}/${what}`)).status, 404, what);
+    assert.equal((await post(`/api/threads/${room.id}/${what}`)).status, 404, what);
+  }
+  assert.deepEqual(archived(app.store.state), []);
 });

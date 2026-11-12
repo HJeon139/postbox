@@ -38,7 +38,7 @@ export function agentsSection(threadId) {
   const list = h('ul.agent-rows', { 'aria-labelledby': headId });
   const el = h('section.agents-sec', h('div.rail-sec', h('h2.label', { id: headId }, 'Agents')), list);
   const paint = () => {
-    const ses = sessionsOf(threadId).filter((x) => !x.archived);
+    const ses = sessionsOf(threadId).filter((x) => !x.retiredFork);
     el.hidden = !ses.length;
     syncList(
       list,

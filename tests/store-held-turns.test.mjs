@@ -97,7 +97,6 @@ test('a side thread’s line counts a message added there while a commit is held
     hops: 0,
     queue: [],
     createdAt: Date.now(),
-    archived: false,
   });
   env.rt.addItem(env.t.id, { kind: 'sidelink', sideThreadId: side.id, from: 'you', to: 'researcher', count: 0 });
   await h.store.flush();

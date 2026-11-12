@@ -25,7 +25,7 @@ export function nextSpeaker(threadId) {
     const agent = sessionsOf(t.parentId).find((x) => x.handle === handle) ?? Object.values(S().personas).find((p) => p.handle === handle);
     return handle ? { handle, agent, last: !!last } : null;
   }
-  const members = sessionsOf(threadId).filter((x) => !x.archived);
+  const members = sessionsOf(threadId).filter((x) => !x.retiredFork);
   const se = members.find((x) => x.id === t.lastSpeaker) ?? members[0];
   return se ? { handle: se.handle, agent: se, last: se === last } : null;
 }
