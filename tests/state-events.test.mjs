@@ -35,9 +35,6 @@ function switchApply(s, type, d) {
     case 'file':
       s.files[d.id] = d;
       break;
-    case 'dataset':
-      (s.datasets ??= map())[d.id] = d;
-      break;
     case 'schedule':
       if (d.removed) delete s.schedules[d.id];
       else s.schedules[d.id] = d;
@@ -189,23 +186,13 @@ test('the event table applies every type exactly as the switch did', () => {
 // The switch knew only the types on main at 88af074f, so it speaks for those. A type added since has its own reducer
 // tests: the asset events (#516 S3) in tests/state-assets.test.mjs, and turn.archive (#305) in tests/state-archive.test.mjs.
 const ADDED_SINCE = ['asset', 'asset.version', 'asset.erase', 'asset.released', 'turn.archive'];
-// A type retired since applies as nothing, so an older log still loads: dataset went with the corpus (#516).
-const RETIRED = ['dataset'];
-
-test('a retired type applies as nothing, so an older log that holds one still loads', () => {
-  for (const type of RETIRED) {
-    const s = emptyState();
-    apply(s, type, { id: 'd1', records: 2 });
-    assert.deepEqual(s, emptyState(), type);
-  }
-});
 
 test('the cases cover every type the switch knew, so a type of its time needs one', () => {
   const covered = new Set(CASES.map(([, , last]) => last.type));
   assert.deepEqual(
     [...covered].sort(),
     Object.keys(EVENTS)
-      .filter((t) => !ADDED_SINCE.includes(t) && !RETIRED.includes(t))
+      .filter((t) => !ADDED_SINCE.includes(t))
       .sort(),
   );
 });

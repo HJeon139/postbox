@@ -16,7 +16,6 @@ const TYPES = [
   'session.patch',
   'app',
   'file',
-  'dataset',
   'schedule',
   'glossary',
   'item.add',

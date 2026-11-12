@@ -48,7 +48,6 @@ export const VALID = {
   'session.patch': { id: 'se', patch: { handle: 'dev2' }, unset: ['threadId'] },
   app: { id: 'a', title: 'A', versions: [] },
   file: { id: 'f', name: 'f.txt' },
-  dataset: { id: 'd', title: 'D' },
   schedule: { id: 'sc', at: 1 },
   glossary: { threadId: 't', entry: { key: 'k2', term: 'K2', definition: 'a k2' } },
   'item.add': { threadId: 't', item: { id: 'i2', kind: 'user', text: 'b' } },
