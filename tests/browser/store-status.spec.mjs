@@ -7,7 +7,7 @@
 // - a store that never fails shows no line (the negative control).
 
 import { expect, test } from '@playwright/test';
-import { allowPageError, failOnPageErrors, startPostbox, synced } from './postbox.mjs';
+import { allowPageError, allowServerLog, failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
 let app;
@@ -20,6 +20,8 @@ test.afterAll(async () => app?.stop());
 failOnPageErrors(test);
 
 const eio = () => Object.assign(new Error('disk sync refused'), { code: 'EIO' });
+/** The line the server logs once for the write this spec fails (server/store-retry.mjs, fail()). */
+const CAUSE = /^Postbox can’t write its event log \(EIO\): disk sync refused\. Reads go on; changes aren’t saved until Retry or a restart\.$/;
 
 /** A conversation with one agent of its own. @param {string} handle */
 function conversation(handle) {
@@ -36,6 +38,7 @@ test('ST-3: with the store closed, the status line names the cause with Retry, t
   const line = page.getByRole('status').filter({ hasText: 'can’t save changes' });
   await expect(line).toBeHidden();
   await app.store.flush();
+  allowServerLog(CAUSE);
   app.store.fail(eio());
   await expect(line).toBeVisible();
   await expect.soft(line).toContainText('the disk reported an error');
@@ -79,6 +82,9 @@ test('ST-3: a turn running when the write fails stops, and after Retry its reply
   await box.press('Enter');
   await expect(page.getByText('Working on it')).toBeVisible();
   await app.store.flush();
+  // The cause once, and the running turn the closed store stops (server/store-outage.mjs).
+  allowServerLog(CAUSE);
+  allowServerLog(/^@runner’s turn stopped: Postbox can’t save changes right now\.$/);
   app.store.fail(eio());
   const line = page.getByRole('status').filter({ hasText: 'can’t save changes' });
   await expect(line).toBeVisible();

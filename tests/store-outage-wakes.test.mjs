@@ -4,14 +4,19 @@
 // the reload re-arms the same schedule from the recovered state. Unless the reload drops the held copy, the wake is
 // delivered twice: two paid turns where a restart delivers it once. The same real Postbox setup on its own port.
 import assert from 'node:assert/strict';
-import { after, before, beforeEach, test } from 'node:test';
+import { after, afterEach, before, beforeEach, test } from 'node:test';
+import { eio } from './outage-log.mjs';
+import { assertNoServerFailures, captureServerLog } from './server-log.mjs';
 import { tempDir } from './temp-dirs.mjs';
+
+// Its Postbox runs in this process: a test fails on an error or a warning it logs (tests/server-log.mjs).
+captureServerLog();
+afterEach(assertNoServerFailures);
 
 process.env.POSTBOX_BACKENDS = 'mock';
 const { start } = await import('../server/index.mjs');
 
 const PORT = 4446;
-const eio = () => Object.assign(new Error('disk sync refused'), { code: 'EIO' });
 let app;
 let dir;
 let rt;

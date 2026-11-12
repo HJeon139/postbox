@@ -6,9 +6,15 @@
 
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
-import { after, before, beforeEach, test } from 'node:test';
+import { after, afterEach, before, beforeEach, test } from 'node:test';
 import { settleThread } from '../server/thread-summary.mjs';
+import { eio } from './outage-log.mjs';
+import { assertNoServerFailures, captureServerLog } from './server-log.mjs';
 import { tempDir } from './temp-dirs.mjs';
+
+// Its Postbox runs in this process: a test fails on an error or a warning it logs (tests/server-log.mjs).
+captureServerLog();
+afterEach(assertNoServerFailures);
 
 process.env.POSTBOX_BACKENDS = 'mock';
 const { start } = await import('../server/index.mjs');
@@ -21,7 +27,6 @@ const deferred = () => {
 };
 
 const PORT = 4443;
-const eio = () => Object.assign(new Error('disk sync refused'), { code: 'EIO' });
 let app;
 let dir;
 let rt;

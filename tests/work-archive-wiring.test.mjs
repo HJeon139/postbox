@@ -7,10 +7,15 @@
 import assert from 'node:assert/strict';
 import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { test } from 'node:test';
+import { afterEach, test } from 'node:test';
 import { start } from '../server/index.mjs';
+import { assertNoServerFailures, captureServerLog } from './server-log.mjs';
 import { setup as plainSetup, settle, sleep } from './side-threads-fixture.mjs';
 import { tempDir } from './temp-dirs.mjs';
+
+// Its Postbox runs in this process: a test fails on an error or a warning it logs (tests/server-log.mjs).
+captureServerLog();
+afterEach(assertNoServerFailures);
 
 process.env.POSTBOX_BACKENDS = 'mock';
 

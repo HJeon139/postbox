@@ -141,14 +141,14 @@ function expected(page, text) {
 }
 
 /**
- * Fails each test in which its Postbox logged a route’s error, an unhandled rejection, a process warning, a TypeError
- * or ReferenceError, or any stack trace (tests/server-log.mjs), after the test’s own steps. A test that causes one on
- * purpose names it with allowServerLog. A line logged between two tests fails the second.
+ * Fails each test in which its Postbox wrote anything to console.error, console.warn or stderr, or had an unhandled
+ * rejection or a process warning (tests/server-log.mjs), after the test’s own steps. A test that causes one on purpose
+ * names it with allowServerLog. A line logged between two tests fails the second.
  * @param {import('@playwright/test').TestType<any, any>} test
  */
 export function failOnServerErrors(test) {
   test.afterEach(() => {
-    expect(takeServerFailures(), 'Postbox logged no errors, rejections, warnings or stack traces').toEqual([]);
+    expect(takeServerFailures(), 'Postbox logged no errors or warnings the test didn’t expect').toEqual([]);
   });
 }
 
