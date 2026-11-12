@@ -6,7 +6,7 @@
 // and the revision. The recordings live in the repository, not the package, so an installed Postbox has none.
 
 import { readdir, readFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { isAbsolute, relative, resolve, sep } from 'node:path';
 
 const DIR = new URL('../../tools/demo/showcase/', import.meta.url);
 
@@ -68,12 +68,26 @@ async function work(a, steps = []) {
 }
 
 /**
+ * Where a recording’s app file goes in the room’s folder: its name there, or null when the name would leave the
+ * folder (`..`, an absolute path) or names the folder itself. A recording is data, so its name is checked.
+ * @param {string} folder @param {unknown} name
+ */
+export function appPath(folder, name) {
+  if (typeof name !== 'string' || !name) return null;
+  const path = resolve(folder, name);
+  const rel = relative(resolve(folder), path);
+  const outside = !rel || rel === '..' || rel.startsWith(`..${sep}`) || isAbsolute(rel);
+  return outside ? null : path;
+}
+
+/**
  * Writes the app’s file in the room’s project folder, as @builder wrote it in its own, so the Work view shows the
- * file and its diff from v1 to v2. A room with no folder gets none.
+ * file and its diff from v1 to v2. A room with no folder, or a name outside it, gets none.
  * @param {any} a @param {any} story @param {string} code
  */
 async function writeApp(a, story, code) {
-  if (a.folder) await a.write(join(a.folder, story.turns.build.app.file), code);
+  const path = a.folder ? appPath(a.folder, story.turns.build.app.file) : null;
+  if (path) await a.write(path, code);
 }
 
 const PHASES = {
