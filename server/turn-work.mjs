@@ -1,5 +1,5 @@
 // What a turn’s adapter tells the runtime about its tool calls, for the work ledger (#132): part of the turn’s context
-// (runtime.mjs, turnContext), each taken only while the turn is live. The calls are also what a permission prompt may
+// (adapterContext, server/turn-context.mjs), each taken only while the turn is live. The calls are also what a permission prompt may
 // be for (#353, #665): server/prompt-claim.mjs reads them here.
 
 import { recordScheduledTool } from './scheduled-wakes.mjs';

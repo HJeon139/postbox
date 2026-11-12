@@ -1,6 +1,6 @@
 // What a turn's adapter is given (adapterContext): the turn's settings and permissions, and the callbacks through which
 // it reports its words, steps, status, compactions, model and sources as the turn runs. Moved from
-// server/runtime.mjs (#1236), where it was turnContext; Runtime keeps that method, which delegates here.
+// server/runtime.mjs (#1236), where it was turnContext; deliver.mjs's runTurn calls it.
 
 import { glimpseOf } from '../shared/text.mjs';
 import { EFFORT_LEVELS } from './adapters/setup.mjs';

@@ -68,7 +68,6 @@ import { settleThread } from './thread-summary.mjs';
 import { updateThread } from './thread-write.mjs';
 import { startTopic } from './topic-open.mjs';
 import { checkTurn, stallLeftRunning, stallSteps } from './turn-checks.mjs';
-import { adapterContext } from './turn-context.mjs';
 import { endedAs, endWork } from './turn-end-work.mjs';
 import { askedOf, replyMarks } from './turn-marks.mjs';
 import { foldSteps, settleSubagentSteps } from './turn-steps.mjs';
@@ -159,8 +158,8 @@ export class Runtime {
   }
   /**
    * The persona a session runs with: the persona as it is now. One rule for every setting: a turn takes the persona
-   * when it starts (turnContext), so every change applies from the agent’s next turn, in every conversation it’s in,
-   * and never to a turn already running.
+   * when it starts (adapterContext, server/turn-context.mjs), so every change applies from the agent’s next turn, in
+   * every conversation it’s in, and never to a turn already running.
    */
   personaFor(se) {
     const p = this.persona(se.personaId);
@@ -355,9 +354,6 @@ export class Runtime {
   }
   retry(threadId, itemId) {
     return retry(this, threadId, itemId);
-  }
-  turnContext(se0, turn) {
-    return adapterContext(this, se0, turn);
   }
 
   endTurn(turn, err) {
