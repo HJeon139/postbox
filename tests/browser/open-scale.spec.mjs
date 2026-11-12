@@ -2,14 +2,15 @@
 // (bytes, items held, elements) stays flat from 1,000 items to 100,000, where holding every item grew with the room,
 // and going back to the room from another costs what it did: two layouts, nothing loaded, its newest item painted as
 // soon. The scale targets are 10x to 100x real use, a room of about 28,000 items and up; each size runs on a server of
-// its own, so the page's state carries that room alone.
+// its own, so the page's state carries that room alone. The time to the newest item is measured apart, on one server and
+// page holding a short room and a long one, so whatever slows the machine slows both alike (#1271).
 
 import { expect, test } from '@playwright/test';
 import { seedBigRoom } from '../../tools/uat/big-room.mjs';
 import { failOnPageErrors, newestShown, startPostbox, synced } from './postbox.mjs';
 
 const SIZES = [1_000, 10_000, 28_000, 100_000];
-/** @type {Record<number, { bytes: number, held: number, elements: number, switchMs: number, layouts: number, switchBytes: number }>} */
+/** @type {Record<number, { bytes: number, held: number, elements: number, layouts: number, switchBytes: number }>} */
 const cost = {};
 
 failOnPageErrors(test);
@@ -61,7 +62,6 @@ for (const count of SIZES)
       await cdp.send('Performance.enable');
       const layoutsNow = async () => (await cdp.send('Performance.getMetrics')).metrics.find((m) => m.name === 'LayoutCount')?.value ?? 0;
       const last = app.store.items(room.id).at(-1).id;
-      let switchMs = 0;
       let layouts = 0;
       let switchBytes = 0;
       const loaded = bytes;
@@ -69,11 +69,11 @@ for (const count of SIZES)
         await switchTo(page, other.id, app.store.items(other.id).at(-1).id);
         const before = await layoutsNow();
         const bytesBefore = bytes;
-        switchMs = await switchTo(page, room.id, last);
+        await switchTo(page, room.id, last);
         layouts = (await layoutsNow()) - before;
         switchBytes = bytes - bytesBefore;
       }
-      cost[count] = { bytes: loaded, held, elements, switchMs, layouts, switchBytes };
+      cost[count] = { bytes: loaded, held, elements, layouts, switchBytes };
       test.info().annotations.push({ type: 'measured', description: JSON.stringify(cost[count]) });
       console.log(`OPEN ${count} ${JSON.stringify(cost[count])}`);
       expect(layouts, 'layouts going to the room, as many as on main').toBeLessThanOrEqual(2);
@@ -94,5 +94,46 @@ test('#1155 loading the page costs no more for a room 100 times longer', () => {
   expect(big.bytes, `bytes loaded: ${all}`).toBeLessThan(small.bytes * 2);
   expect(big.held, `items held: ${all}`).toBeLessThan(small.held * 2);
   expect(big.elements, `elements: ${all}`).toBeLessThan(small.elements * 2);
-  expect(big.switchMs, `ms to the newest item, going to the room: ${all}`).toBeLessThan(small.switchMs * 2 + 50);
+});
+
+/** The middle one of some times. @param {number[]} ms */
+const median = (ms) => [...ms].sort((a, b) => a - b)[Math.floor(ms.length / 2)];
+
+// One slow reading on a busy runner failed the time bar when each size ran on a server of its own, in a test of its own
+// (#1271): both rooms here share one server and page, and the switches to them take turns, so what slows the machine
+// slows both alike, and the middle of seven readings leaves out a slow one. Work that grows with the room still shows.
+test('#1271 going to a room 100 times longer is as quick as going to a short one', async ({ page }) => {
+  test.setTimeout(300_000);
+  const app = await startPostbox('open-scale-switch');
+  try {
+    const projectId = /** @type {any} */ (Object.values(app.rt.s.projects)[0]).id;
+    const rooms = [SIZES[0], SIZES.at(-1) ?? 0].map((count) => {
+      const room = app.rt.createThread({ projectId, title: `${count} items`, personaIds: [] });
+      seedBigRoom(app.store, room.id, { count });
+      return { count, id: room.id, last: app.store.items(room.id).at(-1).id, ms: /** @type {number[]} */ ([]) };
+    });
+    const other = app.rt.createThread({ projectId, title: 'A short room', personaIds: [] });
+    const elsewhere = app.rt.addItem(other.id, { kind: 'user', text: 'Elsewhere' });
+    await page.goto(`${app.origin}/#/t/${other.id}`);
+    await synced(page, app);
+    // Each room opened once first, so every switch measured goes back to a warm room, as in the tests above.
+    for (const room of rooms) {
+      await switchTo(page, room.id, room.last);
+      await switchTo(page, other.id, elsewhere.id);
+    }
+    for (let i = 0; i < 7; i++)
+      for (const room of rooms) {
+        room.ms.push(await switchTo(page, room.id, room.last));
+        await switchTo(page, other.id, elsewhere.id);
+      }
+    const [small, big] = rooms;
+    const all = JSON.stringify(Object.fromEntries(rooms.map((r) => [r.count, r.ms])));
+    test.info().annotations.push({ type: 'measured', description: all });
+    console.log(`SWITCH ${all}`);
+    // Within a frame or so of twice the short room's time: a 60 Hz frame is 17 ms.
+    expect(median(big.ms), `ms to the newest item, going to the room: ${all}`).toBeLessThan(median(small.ms) * 2 + 17);
+  } finally {
+    await page.close();
+    await app.stop();
+  }
 });
