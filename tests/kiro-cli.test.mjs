@@ -29,11 +29,8 @@ const replay = (name, opts) => {
 test('a recorded turn that shows a block: the reply, no step for Postbox’s tools, the session and the model', () => {
   const { ctx, m } = replay('block');
   assert.equal(ctx.calls.text, 'I showed the “Tea or coffee?” choice, but I couldn’t run `echo hi` because this session doesn’t give me a shell tool.');
-  // Tool Load and show_block are quiet; the thinking before them is one thought.
-  assert.deepEqual(
-    ctx.calls.activity.map((a) => a.kind ?? a.state),
-    ['thought'],
-  );
+  // Tool Load and show_block are quiet; the thinking before them is one thought, shown as it’s written, then whole.
+  assert.deepEqual([...new Set(ctx.calls.activity.map((a) => `${a.kind ?? a.state} ${a.id}`)), ctx.calls.activity.at(-1).state], ['thought thought-1', 'done']);
   assert.match(ctx.calls.activity[0].label, /^I don't actually have a shell/);
   assert.ok(ctx.calls.status.some((s) => s.currentStep === 'Showing a block'));
   assert.ok(ctx.calls.status.some((s) => typeof s.ctx === 'number'));

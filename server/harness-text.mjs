@@ -7,6 +7,9 @@ import { STEP_TEXT } from '../shared/limits.mjs';
 import { appendGlimpseSource, glimpseOf } from '../shared/text.mjs';
 import { byOf, firstSentence } from './harness-tools.mjs';
 
+// The least time between two showings of a thought still being written, in milliseconds.
+const THOUGHT_EVERY = 1000;
+
 /**
  * Text without Markdown’s emphasis and code marks, its runs of whitespace as one space, to compare streamed text with a
  * result’s, which may be plain. @param {string} s
@@ -35,7 +38,7 @@ export class HarnessText {
     this.thoughts = 0;
     this.narrations = 0;
     this.calls = 0; // the turn’s own tool calls so far: text without a block starts a paragraph after one
-    /** @type {Map<unknown, string>} a thought still streaming, by its block */
+    /** @type {Map<unknown, { text: string, id: string | null, at: number }>} a thought still streaming, by its block */
     this.thinking = new Map();
   }
 
@@ -72,38 +75,45 @@ export class HarnessText {
     this.glimpse(this.said);
   }
 
-  /** A thought, as a step in the list. @param {string} text @param {any} [by] */
-  thoughtStep(text, by = null) {
+  /**
+   * A thought, as a step in the list: finished, or running with its text so far. Returns its id, made for a new one.
+   * @param {string} text @param {any} [by] @param {{ id?: string | null, state?: string }} [as]
+   */
+  thoughtStep(text, by = null, { id = null, state = 'done' } = {}) {
     const t = String(text ?? '').trim();
-    if (!t) return;
-    this.thoughts += 1;
-    this.ctx.activity({
-      id: `thought-${this.thoughts}`,
-      label: firstSentence(t, 120),
-      state: 'done',
-      kind: 'thought',
-      detail: t.slice(0, STEP_TEXT.thought),
-      ...byOf(by),
-    });
+    if (!t) return id;
+    const step = id ?? `thought-${++this.thoughts}`;
+    this.ctx.activity({ id: step, label: firstSentence(t, 120), state, kind: 'thought', detail: t.slice(0, STEP_TEXT.thought), ...byOf(by) });
+    return step;
   }
 
-  /** A piece of a thought; a whole one is a step at once. @param {string} text @param {unknown} block @param {boolean} [whole] */
+  /**
+   * A piece of a thought; a whole one is a step at once. A streamed one shows as it’s written: its text so far a second
+   * after it began, and then at most once a second (THOUGHT_EVERY), so a long thought isn’t an event per piece. @param {string} text @param {unknown} block
+   * @param {boolean} [whole]
+   */
   think(text, block, whole = false) {
     if (whole) return this.thoughtStep(text);
-    if (!this.thinking.has(block)) {
-      this.thinking.set(block, '');
+    let t = this.thinking.get(block);
+    if (!t) {
+      t = { text: '', id: null, at: this.now() }; // a thought shorter than THOUGHT_EVERY shows once, whole
+      this.thinking.set(block, t);
       this.status({ state: 'think', currentStep: 'Thinking' });
     }
     if (!text) return;
-    this.thinking.set(block, `${this.thinking.get(block)}${text}`);
-    this.glimpse(/** @type {string} */ (this.thinking.get(block)));
+    t.text += text;
+    this.glimpse(t.text);
+    if (this.now() - t.at < THOUGHT_EVERY) return;
+    t.at = this.now();
+    t.id = this.thoughtStep(t.text, null, { id: t.id, state: 'running' });
   }
 
-  /** A streamed thought ended: it’s a step. @param {unknown} block */
+  /** A streamed thought ended: its step is whole. @param {unknown} block */
   thought(block) {
-    if (!this.thinking.has(block)) return;
+    const t = this.thinking.get(block);
+    if (!t) return;
     this.flush();
-    this.thoughtStep(/** @type {string} */ (this.thinking.get(block)));
+    this.thoughtStep(t.text, null, { id: t.id });
     this.thinking.delete(block);
   }
 

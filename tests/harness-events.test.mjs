@@ -54,3 +54,26 @@ test('one long line, cut, keeps its mark through the runtime’s bound', () => {
   assert.equal(output.length, STEP_TEXT.output);
   assert.ok(output.startsWith('…'));
 });
+
+test('a thought shows while the agent writes it: a running step with its text so far, at most once a second, then whole', () => {
+  const { ctx, activity } = fakeCtx();
+  let t = 0;
+  const { event } = new HarnessEvents(ctx, { now: () => t });
+  const thoughts = () => activity.filter((a) => a.kind === 'thought');
+  event({ kind: 'thinking', text: 'The sum is wrong.', block: 'b1' });
+  assert.equal(thoughts().length, 0, 'not in its first second: a short thought shows once, whole');
+  t = 1100;
+  event({ kind: 'thinking', text: ' It subtracts.', block: 'b1' });
+  assert.deepEqual(
+    thoughts().map((a) => [a.state, a.detail]),
+    [['running', 'The sum is wrong. It subtracts.']],
+    'its text so far, a second on',
+  );
+  t = 1500;
+  event({ kind: 'thinking', text: ' Fix the operator.', block: 'b1' });
+  assert.equal(thoughts().length, 1, 'not again within the second');
+  event({ kind: 'thinking_end', block: 'b1' });
+  const last = thoughts().at(-1);
+  assert.deepEqual([last.state, last.detail], ['done', 'The sum is wrong. It subtracts. Fix the operator.']);
+  assert.equal(new Set(thoughts().map((a) => a.id)).size, 1, 'one step throughout');
+});

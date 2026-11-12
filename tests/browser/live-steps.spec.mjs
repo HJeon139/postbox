@@ -23,6 +23,8 @@ const hold = (/** @type {string} */ who, /** @type {number} */ stage) =>
   });
 const go = (/** @type {string} */ who) => holds.get(who)?.go();
 const at = (/** @type {string} */ who) => holds.get(who)?.stage ?? -1;
+/** How far a script moved its harness's clock on, in milliseconds, so time passes without a wait. */
+let ahead = 0;
 
 test.use({ viewport: { width: 1440, height: 900 } });
 
@@ -34,7 +36,7 @@ test.beforeAll(async () => {
       return app.root;
     },
     async deliver(session, _message, ctx) {
-      const emit = new HarnessEvents(ctx).event;
+      const emit = new HarnessEvents(ctx, { now: () => Date.now() + ahead }).event;
       await scripts.get(session.handle)?.({ emit, who: session.handle });
     },
   });
@@ -266,4 +268,29 @@ test('a post landing below a running reply doesn’t break it: the steps after t
     await expect(record.locator('.steps')).toContainText('Read notes2.txt');
     await expect(record.locator('.steps')).toContainText('wc -l notes2.txt');
   });
+});
+
+test('a thought shows while the agent writes it, its text so far, and then whole', async ({ page }) => {
+  const t = room('A thought as it’s written', ['ponderer']);
+  scripts.set('ponderer', async ({ emit, who }) => {
+    emit({ kind: 'thinking', text: 'The sum is wrong because', block: 'th1' });
+    ahead += 1100; // a thought first shows a second after it began
+    emit({ kind: 'thinking', text: ' the operator is a minus.', block: 'th1' });
+    await hold(who, 1);
+    emit({ kind: 'thinking', text: ' I’ll fix it.', block: 'th1' });
+    emit({ kind: 'thinking_end', block: 'th1' });
+    await hold(who, 2);
+  });
+  await page.goto(`${app.origin}/#/t/${t.id}`);
+  await synced(page, app);
+  app.rt.sendMessage(t.id, { text: 'Why is add wrong?' });
+  await expect.poll(() => at('ponderer')).toBe(1);
+  const shown = page.locator('.live-steps .live-thought');
+  await expect(shown, 'before it ends, its text so far').toHaveText('The sum is wrong because the operator is a minus.');
+  go('ponderer');
+  await expect.poll(() => at('ponderer')).toBe(2);
+  await expect(shown, 'once it ends, whole, in the same place').toHaveText('The sum is wrong because the operator is a minus. I’ll fix it.');
+  await expect(shown).toHaveCount(1);
+  go('ponderer');
+  await expect.poll(() => app.rt.turns.size).toBe(0);
 });
