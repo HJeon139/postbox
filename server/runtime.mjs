@@ -58,27 +58,18 @@ import { describeHostInstall, hostStatus, installHost, retryHost, watchHosts } f
 import { localBackends, refuseHere, refuseUnregistered, registeredAdapter } from './remote/placement.mjs';
 import { RemoteTurns } from './remote/turns.mjs';
 import { placeStep, replySegment, stepTaken, wordsSegment } from './reply-segment.mjs';
-import {
-  armWake,
-  cancelWakeSchedule,
-  dropScheduledWake,
-  prepareScheduledRetry,
-  rearmWakes,
-  recordScheduledTool,
-  scheduleWake,
-  settleScheduledWake,
-} from './scheduled-wakes.mjs';
+import { armWake, cancelWakeSchedule, prepareScheduledRetry, rearmWakes, recordScheduledTool, scheduleWake, settleScheduledWake } from './scheduled-wakes.mjs';
 import { sendMessage, threadRefs } from './send-message.mjs';
 import { deleteSession, deleteThread } from './session-lifecycle.mjs';
 import { pendingSessionsIn, stampNeeds, tellAgent, updateSession } from './session-write.mjs';
 import { mcpContext } from './setup-context.mjs';
 import { clearSummaryPending, postSummary, shareText, shareToConversation, summarizeBack, summarizing } from './share-back.mjs';
 import { commandFolder, expireStaleCommands, flushShellOutput, runShellCommand, stopShellCommand, stopShellCommands } from './shell-runs.mjs';
-import { agentWake, bumpSideLink, dropWakes, endChain, recordAgentMessage, resolveHop, sideSession } from './side-threads.mjs';
+import { agentWake, bumpSideLink, endChain, recordAgentMessage, resolveHop, sideSession } from './side-threads.mjs';
 import { stepState, turnStep } from './step-text.mjs';
 import { newId } from './store.mjs';
-import { heldTurn, STORE_STOPPED, saveBackendState, watchStore, whenWritable } from './store-outage.mjs';
-import { endSubagent, notUrgent } from './subagent-end.mjs';
+import { heldTurn, saveBackendState, watchStore, whenWritable } from './store-outage.mjs';
+import { notUrgent } from './subagent-end.mjs';
 import { conversationThreads, glossaryFor, lineage } from './thread-lineage.mjs';
 import { firstPromptSection, settleThread, turnContext } from './thread-summary.mjs';
 import { updateThread } from './thread-write.mjs';
@@ -86,7 +77,8 @@ import { startTopic } from './topic-open.mjs';
 import { checkTurn, stallLeftRunning, stallSteps } from './turn-checks.mjs';
 import { endedAs, endWork } from './turn-end-work.mjs';
 import { askedAgain, askedOf, replyMarks } from './turn-marks.mjs';
-import { foldSteps, settleStoppedSteps, settleSubagentSteps } from './turn-steps.mjs';
+import { foldSteps, settleSubagentSteps } from './turn-steps.mjs';
+import { dismissStopAsk, recordStopped, requestStop, stop, stopTurns, turnExited } from './turn-stop.mjs';
 import { workEvents } from './turn-work.mjs';
 import { toolsFor } from './ui-tools.mjs';
 import { unarchive } from './unarchive.mjs';
@@ -102,8 +94,6 @@ export { PERMISSION_MODES, readCapped };
 
 /** The background jobs Postbox keeps on a session, at most. */
 const MAX_JOBS = 50;
-/** How long a stopped turn may hold its session before Postbox lets the next turn start anyway, and says so (#126). */
-const STOP_WATCHDOG_MS = 15000;
 export class Runtime {
   /**
    * @param {{ store: import('./store.mjs').Store, adapters: import('./adapters/adapter.mjs').AdapterRegistry,
@@ -899,174 +889,25 @@ export class Runtime {
     return queue.drainQueues(this, sessionId, threadId, wakesOnly);
   }
 
-  /**
-   * Stop ends this agent’s turn and its subagents. Agents it woke keep running. Its process gets SIGINT, then SIGKILL,
-   * and the session shows as stopping until it has exited: its next turn waits for that (#126).
-   * jobs: what happens to the background jobs the turn started (#129): 'stop' them with it, or 'keep' them running,
-   * each with its own Stop.
-   * by: 'shutdown' when Postbox stops it as it shuts down, which the agent hears in those words; 'hung' when a remote
-   * turn had no output for its host’s stallTimeout (#120), with why: what the person sees. sendNow: your message
-   * with Send now stopped it, which its reply says, as it says when you kept its jobs running (#215, #249).
-   * A remote turn’s Stop is always a plain stop: the daemon stops the whole turn, so no job is kept (#120).
-   * @param {string} sessionId
-   * @param {{ silent?: boolean, jobs?: 'stop' | 'keep', by?: 'you' | 'shutdown' | 'hung', why?: string, sendNow?: boolean }} [opts]
-   */
-  stop(sessionId, { silent = false, jobs = 'stop', by = 'you', why, sendNow = false } = {}) {
-    const turn = this.turns.get(sessionId);
-    if (!turn) return false;
-    const keep = jobs === 'keep' && !turn.remote ? this.runningJobs(sessionId, turn.id) : [];
-    turn.keepJobs = new Set(keep.map((j) => j.id));
-    turn.stopReason = sendNow ? 'send-now' : by === 'shutdown' ? null : keep.length ? 'kept-jobs' : 'stop';
-    const ended = { status: 'stopped', stoppedAt: Date.now(), stopReason: turn.stopReason };
-    this.exiting.set(sessionId, { turn, held: [], silent });
-    // The adapter reads which jobs to keep from the reason; anything else only sees that the turn was aborted.
-    turn.abort.abort(Object.assign(new Error('Stopped by you.'), { name: 'AbortError', keepJobs: keep.map((j) => ({ id: j.id, command: j.command })) }));
-    turn.closed = true;
-    this.turns.delete(sessionId);
-    this.recordStopped(turn, ended, { by, why: 'You stopped the agent.' });
-    this.updateSession(sessionId, { state: 'stopping', subagents: [], currentStep: 'Stopping', finishedAt: Date.now(), stopAsk: null });
-    // Progress steps running as you keep its jobs running may follow one of them: they run on with it (#129).
-    if (keep.length) this.updateSession(sessionId, { heldSteps: { threadId: turn.threadId, keys: this.runningProgress(turn.threadId, sessionId) } });
-    // Its progress steps still running show as stalled, as at any turn’s end (#98); you stopped it, so no lint turn.
-    // Pending, so the heldSteps just written holds its steps behind a held commit too (#1042).
-    const se = this.store.pending.session(sessionId);
-    if (se) this.stallLeftRunning(turn, se, by === 'shutdown' ? 'shutdown' : by === 'hung' ? 'hung' : 'stopped');
-    if (turn.remote) this.remote.stopped(turn, { by, why });
-    // A process that never exits mustn’t hold the session for good: after a while, the next turn starts anyway.
-    setTimeout(() => {
-      if (this.exiting.get(sessionId)?.turn !== turn) return;
-      console.error(`@${se?.handle ?? sessionId}’s stopped turn hadn’t ended after ${STOP_WATCHDOG_MS / 1000} s, so its next turn starts anyway.`);
-      this.turnExited(turn);
-    }, STOP_WATCHDOG_MS).unref?.();
-    // A stopped summary (or one queued behind the turn, which goes with it) isn’t coming (#93), in a topic thread too.
-    // A message from another agent, waiting behind the turn, goes with it: it hears at its next turn what it said.
-    this.clearSummaryPending(turn.threadId);
-    for (const p of turn.pending) {
-      if (p.summarizeTo && p.threadId) this.clearSummaryPending(p.threadId);
-      // A shutdown leaves it due, for the restart to bring back (rearmWakes), as it does a scheduled turn of its own.
-      if (by !== 'shutdown') dropScheduledWake(this, p.message);
-      if (se) queue.rememberStoppedMessages(this, sessionId, p.message);
-    }
-    // You stopped it: wakes queued for it go too, and their agents are told (#228). Send now keeps them (silent).
-    if (!silent && se) dropWakes(this, se);
-    return true;
-  }
+  // ── Stopping a turn: server/turn-stop.mjs ──────────────────────────────────────────
 
-  /**
-   * A turn’s adapter is done, which for a real backend means its process has exited. Its background jobs that nothing
-   * reported the end of went with it, and a stopped session takes what waited for it: the messages sent meanwhile,
-   * then the queue.
-   */
-  /**
-   * What every stop of a turn records, whoever stopped it: your Stop, a shutdown, or the store closing (server/store-outage.mjs).
-   * One path, so no way of ending a turn skips a step (gpt’s finding on 1b: a scheduled turn the outage stopped stayed
-   * running). A shutdown leaves a scheduled wake due for the restart (#466); every other stop ends it.
-   * @param {any} turn @param {{ status: string, stoppedAt: number, stopReason: string | null }} ended
-   * @param {{ by: string, why: string }} o  who, and what a waiting permission is told
-   */
-  recordStopped(turn, ended, { by, why }) {
-    const { sessionId } = turn;
-    // Your Stop ends a scheduled wake’s turn for good, so a restart doesn’t run it again; a shutdown leaves it due
-    // (#466). A store outage leaves it too: the reload re-arms it as interrupted, its one owner (S1), so settling it
-    // here as well would cancel what the agent was told will start again (the integrator’s re-review of #598).
-    if (by !== 'shutdown' && by !== 'store') settleScheduledWake(this, turn, { name: 'AbortError' });
-    settleStoppedSteps(this, turn);
-    if (turn.first) foldSteps(this, turn.threadId, turn.first);
-    endWork(this, turn, 'stopped');
-    // A waiting permission is answered no; the card keeps who stopped it, so its note says the person’s stop withdrew
-    // it, or that it expired (tellExpired, #721, #853).
-    for (const [id, w] of this.permissionWaits) if (w.sessionId === sessionId) this.settlePermission(id, 'expired', why, {}, { stoppedBy: by });
-    // The open segment by its id, even while it is held behind a commit (its patch follows it in order); then any
-    // other segment of this turn still streaming in the visible state (#602).
-    let marked = false;
-    if (turn.openSegment) {
-      this.patchItem(turn.threadId, turn.openSegment, ended);
-      marked = true;
-    }
-    for (const it of this.store.pending.items(turn.threadId)) {
-      if (it.turnId === turn.id && it.kind === 'agent' && it.status === 'streaming' && it.id !== turn.openSegment) {
-        this.patchItem(turn.threadId, it.id, ended);
-        marked = true;
-      }
-    }
-    turn.openSegment = null;
-    // The reply always says it was stopped: with no segment still streaming, the stopped reply goes below the last
-    // thing the turn showed (#602), on every path that records a stop, the store’s included.
-    const se = this.s.sessions[sessionId];
-    if (se && !marked)
-      this.addItem(turn.threadId, {
-        kind: 'agent',
-        sessionId,
-        personaId: se.personaId,
-        handle: se.handle,
-        turnId: turn.id,
-        text: '',
-        ...replyMarks(turn),
-        ...ended,
-      });
+  stop(sessionId, opts) {
+    return stop(this, sessionId, opts);
   }
-
+  recordStopped(turn, ended, how) {
+    return recordStopped(this, turn, ended, how);
+  }
   turnExited(turn) {
-    // What the exit writes waits for writes to reopen (ST-3), behind the stop’s own records (server/store-outage.mjs).
-    if (!this.store.writable) return whenWritable(this, () => this.turnExited(turn));
-    this.settleJobs(turn);
-    const ex = this.exiting.get(turn.sessionId);
-    if (ex?.turn !== turn) return;
-    this.exiting.delete(turn.sessionId);
-    // From the pending session: Stop's “stopping” may still be held behind a commit as the turn exits (#796).
-    const se = this.store.pending.session(turn.sessionId) ?? this.s.sessions[turn.sessionId];
-    if (!se) return;
-    // Something else may have set the state meanwhile (a delete, an answered card); “Stopping” goes either way.
-    // A remote turn Postbox stopped because it hung says so instead (#120).
-    const hung = se.remoteTurn?.state === 'hung' && se.remoteTurn.rtTurn === turn.id;
-    const stoppedBy = turn.stopReason === 'store' ? STORE_STOPPED : hung ? se.remoteTurn.message : 'Stopped by you';
-    if (se.state === 'stopping' || se.currentStep === 'Stopping')
-      this.updateSession(se.id, { state: se.state === 'stopping' ? 'idle' : se.state, currentStep: stoppedBy, finishedAt: Date.now(), sideTurn: null });
-    else if (se.sideTurn) this.updateSession(se.id, { sideTurn: null });
-    const held = se.retiredFork ? [] : ex.held;
-    // Shutting down: your messages wait in their thread’s queue, which a restart keeps, rather than starting a CLI.
-    if (this.closing) {
-      for (const h of held.filter((x) => x.message.kind === 'user')) {
-        const q = { id: newId('q'), text: h.message.text ?? '', attachments: h.message.attachments ?? [], sessionIds: [se.id], at: Date.now(), seq: arrival() };
-        updateThread(this, h.threadId ?? se.threadId, (t) => ({ queue: [...(t.queue ?? []), q] }));
-      }
-      return;
-    }
-    // A silent exit (Send now, which sends only your message, and erase, side threads, host admin and the
-    // like) delivers what was held as it is, and the queue waits for that turn’s end. Any other Stop, the person’s, a
-    // store outage’s or a hung host turn’s, gives the first turn its thread’s queue, in arrival order, as a turn’s
-    // normal end does (#733, #1040).
-    if (ex.silent) for (const h of held) this.deliver(se.id, h.message, { summarizeTo: h.summarizeTo, threadId: h.threadId });
-    else this.takePending(se, { pending: held, threadId: turn.threadId }, true);
+    return turnExited(this, turn);
   }
-
-  /**
-   * Stop from the page (#129): with background jobs running, it asks first whether to stop them too, and the ask
-   * shows in the conversation (se.stopAsk) until you answer, dismiss it, or the turn ends.
-   * turnId: the turn the ask was about. An answer to an ask about a turn that has ended since stops nothing.
-   * subagent: End on that subagent’s row instead (#229), which tells the agent to stop it.
-   * @param {string} sessionId @param {{ jobs?: 'stop' | 'keep' | null, turnId?: string | null, subagent?: string | null }} [choice]
-   */
-  requestStop(sessionId, { jobs = null, turnId = null, subagent = null } = {}) {
-    if (subagent) return endSubagent(this, sessionId, String(subagent));
-    const se = this.session(sessionId);
-    const turn = this.turns.get(sessionId);
-    if (!turn) return { stopped: false };
-    if (turnId && turnId !== turn.id) return { stopped: false, ended: true };
-    // A remote turn’s jobs stop with it (#120), so there’s nothing to ask.
-    const running = turn.remote ? [] : this.runningJobs(sessionId, turn.id);
-    if (running.length && jobs !== 'stop' && jobs !== 'keep') {
-      const ask = { jobs: running.length, text: stopAskText(se.handle, running.length), turnId: turn.id };
-      this.updateSession(sessionId, { stopAsk: { ...ask, at: Date.now() } });
-      return { ask };
-    }
-    return { stopped: this.stop(sessionId, { jobs: jobs === 'keep' ? 'keep' : 'stop' }) };
+  requestStop(sessionId, choice) {
+    return requestStop(this, sessionId, choice);
   }
-
-  /** You chose not to stop after all: the ask goes away, and the agent carries on. */
   dismissStopAsk(sessionId) {
-    this.session(sessionId);
-    this.updateSession(sessionId, { stopAsk: null });
+    return dismissStopAsk(this, sessionId);
+  }
+  stopTurns(opts) {
+    return stopTurns(this, opts);
   }
 
   // ── Background jobs (#129) ─────────────────────────────────────────────────────────
@@ -1233,42 +1074,6 @@ export class Runtime {
     const turn = this.turns.get(sessionId);
     if (job && !job.kept && turn?.id === job.turnId && turn.remote) throw httpError(409, `A job on a host stops with its turn. Stop @${se.handle} to stop it.`);
     return stopJob(this, sessionId, jobId);
-  }
-
-  /**
-   * When Postbox shuts down: every turn’s CLI runs in its own process group, and so do the jobs Postbox kept running,
-   * so they’d outlive it. Each is stopped, jobs too, and this waits for the turns’ processes to exit, up to graceMs.
-   * @param {{ graceMs?: number }} [opts]
-   */
-  async stopTurns({ graceMs = 4000 } = {}) {
-    this.closing = true;
-    // A turn on a remote host doesn’t need Postbox: it goes on there, and is attached again after the restart (#120).
-    // A stop that fails is logged, and the others still happen: one turn’s failure mustn’t leave the other turns’ CLIs,
-    // the hosts’ link or the kept jobs running.
-    const failed = (what, e) => console.error(`Postbox couldn’t stop ${what} cleanly as it shut down: ${e.message}`);
-    for (const [id, turn] of [...this.turns]) {
-      if (turn.remote) continue;
-      try {
-        this.stop(id, { silent: true, by: 'shutdown' });
-      } catch (e) {
-        failed(`the turn of session ${id}`, e);
-      }
-    }
-    try {
-      this.remote.close();
-    } catch (e) {
-      failed('the hosts’ link', e);
-    }
-    await this.stopKeptJobs(Object.keys(this.s.sessions), 'Postbox stopped it as it shut down.').catch((e) => failed('the background jobs it kept running', e));
-    /** @type {NodeJS.Timeout|undefined} */
-    let timer;
-    const late = new Promise((r) => {
-      timer = setTimeout(r, graceMs);
-    });
-    await Promise.race([Promise.all([...this.exiting.values()].map((x) => x.turn.exited)), late]);
-    clearTimeout(timer);
-    // Last: a stopped turn’s end may have queued an archive pass, whose file mustn’t land after the store closes (#305).
-    await this.turnArchive.stop();
   }
 
   /**
@@ -1750,11 +1555,6 @@ export class Runtime {
   toolsFor(sessionId, turn = null) {
     return toolsFor(this, sessionId, turn);
   }
-}
-
-/** What Postbox asks when you stop an agent whose background jobs are running (#129). */
-export function stopAskText(handle, n) {
-  return `@${handle} has ${n === 1 ? '1 background job' : `${n} background jobs`} running. Stop ${n === 1 ? 'it' : 'them'} too?`;
 }
 // Postbox never kills a job you kept (#164), but one with no process left under its agent couldn’t be kept either.
 const KEEP_LOST = 'Postbox couldn’t find its process to keep it running: it may have ended with the agent, and Postbox can’t show it or stop it.';

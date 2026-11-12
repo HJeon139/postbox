@@ -6,7 +6,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
-import { stopAskText } from '../server/runtime.mjs';
+import { stopAskText } from '../server/turn-stop.mjs';
 import { JOBS_ANSWERS } from '../tools/uat/driver.mjs';
 import { parseScenario } from '../tools/uat/scenario.mjs';
 import * as turns from '../tools/uat/turns.mjs';

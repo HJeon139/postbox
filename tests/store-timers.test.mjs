@@ -58,11 +58,11 @@ const PLACED = {
   'remote/turns.mjs': 5, // tick: stops a hung host turn (the outage’s stop ended the turns); a sign-in resume’s start is held
   'remote/turns-stops.mjs': 1, // a wait: no store
   'remote/wake.mjs': 2, // an injected setInterval that reconnects hosts after sleep: no store
-  'runtime.mjs': 2, // the stop watchdog (turnExited defers); the shutdown’s Stop grace wait for turns
   'scheduled-wakes.mjs': 1, // armWake: cleared and re-armed at Retry; the start is held
   'shell-runs.mjs': 2, // a `!` command’s output flush (memory-only, I1); the shutdown’s Stop grace wait for commands: no store
   'shell.mjs': 1, // SIGKILL after a Stop’s grace: Stop is allowed while closed
   'thread-summary.mjs': 5, // an abort; settleThread's quiet wait, through an injected setTimer as lint-delivery's, skips while closed
+  'turn-stop.mjs': 2, // the stop watchdog (turnExited defers); the shutdown’s Stop grace wait for turns
   'turn-work.mjs': 1, // a permission prompt’s wait for its call’s line (#353): memory only, no store
   'write-intent.mjs': 1, // an abort: no store
   'archive-runtime.mjs': 2, // a yield between conversations, and the shutdown's ARCHIVE_STOP_MS bound on the passes (#305): no store
@@ -108,7 +108,7 @@ async function sites(dir, rel = '') {
 }
 
 /** Files whose row says the callback is gated: each must carry the rule in its source, so it can’t be dropped silently. */
-const GATED = ['ask-question.mjs', 'claude-mirror.mjs', 'kept-jobs.mjs', 'permission-cards.mjs', 'runtime.mjs', 'thread-summary.mjs'];
+const GATED = ['ask-question.mjs', 'claude-mirror.mjs', 'kept-jobs.mjs', 'permission-cards.mjs', 'thread-summary.mjs', 'turn-stop.mjs'];
 const RULE = /\bstore\.writable\b|\bwhenWritable\(|\bgated\(/;
 
 test('every file whose timers table row says “gated” checks the store, defers through whenWritable or runs through gated()', async () => {
