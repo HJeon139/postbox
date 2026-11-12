@@ -17,6 +17,7 @@ import { newId } from './store.mjs';
 import { heldTurn, saveBackendState, whenWritable } from './store-outage.mjs';
 import { notUrgent } from './subagent-end.mjs';
 import { firstPromptSection, turnContext } from './thread-summary.mjs';
+import { adapterContext } from './turn-context.mjs';
 import { askedAgain } from './turn-marks.mjs';
 import { turnExited } from './turn-stop.mjs';
 
@@ -204,7 +205,7 @@ function atWork(rt, se, turn, message) {
  */
 function runTurn(rt, se, turn, message, { adapter, persona, hostId }) {
   // With the turn’s last raw lines, which each adapter’s recorder keeps (recorderFor), for an empty reply (#485).
-  const ctx = Object.assign(rt.turnContext(se, turn), { rawTail: turn.rawTail });
+  const ctx = Object.assign(adapterContext(rt, se, turn), { rawTail: turn.rawTail });
   // A remote turn has its host’s welcome, its host turn and the conversation’s snapshot before the adapter starts.
   const run = Promise.resolve().then(async () => {
     if (!adapter) refuseUnregistered(se, persona);
