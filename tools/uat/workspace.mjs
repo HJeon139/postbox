@@ -2,7 +2,8 @@
 // scenario’s `- seed:` plants in it (tools/uat/scenario.mjs).
 
 import { spawnSync } from 'node:child_process';
-import { cpSync, statSync } from 'node:fs';
+import { cpSync, readdirSync, readlinkSync, realpathSync, statSync } from 'node:fs';
+import { dirname, isAbsolute, join, resolve, sep } from 'node:path';
 import { seedFakeEnv } from './allowonce-triggers.mjs';
 import { seedFiles } from './fixtures.mjs';
 import { seedGitRemote } from './git-remote.mjs';
@@ -36,5 +37,21 @@ export function seedDir(workspace, src) {
     dir = statSync(src).isDirectory();
   } catch {}
   if (!dir) throw new Error(`Couldn’t seed the workspace from ${src}: it isn’t a folder.`);
-  cpSync(src, workspace, { recursive: true });
+  // Symlinks are copied as written (critic 11/12): by default cpSync makes a relative one absolute, under the seed, and
+  // writes through it would change the shared seed. A link that already resolves into the seed folder is refused.
+  const root = realpathSync(src);
+  for (const link of linksIn(src)) {
+    const target = resolve(dirname(link), readlinkSync(link));
+    if (!isAbsolute(readlinkSync(link)) || !(target === root || target.startsWith(root + sep))) continue;
+    throw new Error(`Couldn’t seed the workspace from ${src}: ${link} points back into the seed folder.`);
+  }
+  cpSync(src, workspace, { recursive: true, verbatimSymlinks: true });
+}
+
+/** Every symlink under a folder, without following any. @param {string} dir @returns {string[]} */
+function linksIn(dir) {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+    const p = join(dir, e.name);
+    return e.isSymbolicLink() ? [p] : e.isDirectory() ? linksIn(p) : [];
+  });
 }
