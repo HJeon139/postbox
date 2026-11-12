@@ -203,6 +203,8 @@ test('a post landing below a running reply doesn’t break it: the steps after t
     expect(where('wc -l notes2.txt'), 'with the words it led to').toBe(where('One line, as you said.'));
     await expect(page.locator('.live-steps', { hasText: 'Read notes2.txt' }), 'the first part shows its step once').toHaveCount(1);
     await expect(page.locator('.live-steps', { hasText: 'wc -l' }), 'and the later step only below').toHaveCount(1);
+    await expect(page.locator('li.step-full'), 'only the turn’s newest step shows in full, not each part’s').toHaveCount(1);
+    await expect(page.locator('li.step-full')).toContainText('wc -l');
   });
   go('noter');
   await expect.poll(() => scripted.app.rt.turns.size).toBe(0);

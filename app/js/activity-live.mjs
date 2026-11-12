@@ -148,22 +148,28 @@ export function textFrom(it, /** @type {string} */ threadId) {
   return Math.min(String(it.text ?? '').length, Math.max(0, ...steps.map((s) => Number(s.at) || 0)));
 }
 
+/** The id of a turn’s newest call, in whichever of its reply’s parts it fell. @param {any} it @param {string} threadId */
+export const newestCall = (it, threadId) => callsOf(ownSteps(firstPart(it, threadId)?.activity?.steps ?? [])).at(-1)?.id;
+
 /**
  * A running turn’s steps between its words: each run of steps with the words written before it, the words after the
- * last step left to the reply’s Markdown box (textFrom). Crowded, one line.
+ * last step left to the reply’s Markdown box (textFrom). Only the turn’s newest call shows in full (`newestId`), so a
+ * reply in parts shows one. Crowded, one line.
  * @param {any} it  the agent item @param {string} threadId @param {(text: string) => HTMLElement} words  draws words
+ * @param {string} [newestId]  the turn’s newest call (newestCall)
  */
-export function liveParts(it, threadId, words) {
+export function liveParts(it, threadId, words, newestId) {
   const steps = ownSteps(it.activity?.steps ?? []);
   // A part with no steps of its own is marked live all the same, so it’s drawn again when its turn ends (liveStale).
   if (!steps.length) return h('div.live-steps', { hidden: true });
   const lines = linesFor(threadId);
   const calls = callsOf(steps);
-  const newest = calls.at(-1) ?? steps.at(-1);
+  const last = calls.at(-1) ?? steps.at(-1);
+  const newest = newestId === undefined || last.id === newestId ? last : null;
   // The number of agents at work it was drawn for (liveStale).
   const agents = { dataset: { agents: String(liveAgents(threadId)) } };
   if (lines < 0) {
-    const line = lineRow(newest);
+    const line = lineRow(last);
     line.append(h('span.small.dim', `· ${plural(calls.length, 'step')}`));
     return h('div.live-steps.crowded', agents, h('ul.steps.live', line));
   }
