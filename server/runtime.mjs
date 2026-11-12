@@ -74,7 +74,7 @@ import { checkTurn, stallLeftRunning, stallSteps } from './turn-checks.mjs';
 import { endedAs, endWork } from './turn-end-work.mjs';
 import { askedOf, replyMarks } from './turn-marks.mjs';
 import { foldSteps, settleSubagentSteps } from './turn-steps.mjs';
-import { dismissStopAsk, recordStopped, requestStop, stop, stopTurns, turnExited } from './turn-stop.mjs';
+import { dismissStopAsk, recordStopped, requestStop, stop, stopTurns } from './turn-stop.mjs';
 import { workEvents } from './turn-work.mjs';
 import { toolsFor } from './ui-tools.mjs';
 import { unarchive } from './unarchive.mjs';
@@ -740,9 +740,6 @@ export class Runtime {
   }
   recordStopped(turn, ended, how) {
     return recordStopped(this, turn, ended, how);
-  }
-  turnExited(turn) {
-    return turnExited(this, turn);
   }
   requestStop(sessionId, choice) {
     return requestStop(this, sessionId, choice);

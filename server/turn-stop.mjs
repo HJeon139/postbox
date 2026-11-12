@@ -56,7 +56,7 @@ export function stop(rt, sessionId, { silent = false, jobs = 'stop', by = 'you',
   setTimeout(() => {
     if (rt.exiting.get(sessionId)?.turn !== turn) return;
     console.error(`@${se?.handle ?? sessionId}’s stopped turn hadn’t ended after ${STOP_WATCHDOG_MS / 1000} s, so its next turn starts anyway.`);
-    rt.turnExited(turn);
+    turnExited(rt, turn);
   }, STOP_WATCHDOG_MS).unref?.();
   // A stopped summary (or one queued behind the turn, which goes with it) isn’t coming (#93), in a topic thread too.
   // A message from another agent, waiting behind the turn, goes with it: it hears at its next turn what it said.
@@ -129,7 +129,7 @@ export function recordStopped(rt, turn, ended, { by, why }) {
  */
 export function turnExited(rt, turn) {
   // What the exit writes waits for writes to reopen (ST-3), behind the stop’s own records (server/store-outage.mjs).
-  if (!rt.store.writable) return whenWritable(rt, () => rt.turnExited(turn));
+  if (!rt.store.writable) return whenWritable(rt, () => turnExited(rt, turn));
   settleJobs(rt, turn);
   const ex = rt.exiting.get(turn.sessionId);
   if (ex?.turn !== turn) return;
