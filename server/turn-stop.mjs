@@ -72,11 +72,6 @@ export function stop(rt, sessionId, { silent = false, jobs = 'stop', by = 'you',
 }
 
 /**
- * A turn’s adapter is done, which for a real backend means its process has exited. Its background jobs that nothing
- * reported the end of went with it, and a stopped session takes what waited for it: the messages sent meanwhile,
- * then the queue.
- */
-/**
  * What every stop of a turn records, whoever stopped it: your Stop, a shutdown, or the store closing (server/store-outage.mjs).
  * One path, so no way of ending a turn skips a step (gpt’s finding on 1b: a scheduled turn the outage stopped stayed
  * running). A shutdown leaves a scheduled wake due for the restart (#466); every other stop ends it.
@@ -126,6 +121,11 @@ export function recordStopped(rt, turn, ended, { by, why }) {
     });
 }
 
+/**
+ * A turn’s adapter is done, which for a real backend means its process has exited. Its background jobs that nothing
+ * reported the end of went with it, and a stopped session takes what waited for it: the messages sent meanwhile,
+ * then the queue.
+ */
 export function turnExited(rt, turn) {
   // What the exit writes waits for writes to reopen (ST-3), behind the stop’s own records (server/store-outage.mjs).
   if (!rt.store.writable) return whenWritable(rt, () => rt.turnExited(turn));
