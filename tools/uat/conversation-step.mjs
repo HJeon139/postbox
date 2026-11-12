@@ -1,7 +1,7 @@
 // The UAT runner’s conversation action (#722 to #725): the tester deletes the conversation that’s open, starts a
 // second conversation or opens one, through the UI as a person does. Each writes when it happened into
-// facts.probes.conversation, with the deleted conversation’s agents. A delete is immediate since #1224: there is no
-// Undo. Also a restart of Postbox in a run without hosts.
+// facts.probes.conversation, with the deleted conversation’s agents, for turn-after-delete (tools/uat/checks-assets.mjs).
+// A delete is immediate since #1224: there is no Undo. Also a restart of Postbox in a run without hosts.
 // Kept out of tools/uat-run.mjs and tools/uat/driver.mjs, to keep those files to their size.
 
 import { js, sleep } from '../browser.mjs';

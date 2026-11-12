@@ -120,6 +120,21 @@ test('#723: a room index or asset left after its conversation is gone is flagged
   assert.match(found({ state: s })['asset-room-orphan'][0].evidence, /keeps asset as_/);
 });
 
+test('#725: a deleted conversation’s turn that runs on past the delete is flagged; one that ends at the delete isn’t', () => {
+  const at = Date.parse('2026-11-03T16:30:00Z');
+  const del = { do: 'delete', at, threadId: room, title: 'Second', handles: ['researcher'] };
+  const turns = (streams, conversation = [del]) =>
+    runChecks({ probes: { conversation }, streams }, { only: ['turn-after-delete'] }).filter((f) => f.check === 'turn-after-delete');
+  const stream = (started, ended, handle = 'researcher') => ({ handle, events: [], started, ended });
+  const ranOn = turns([stream(at - 5000, at + 15_000)]);
+  assert.equal(ranOn.length, 1, 'ran 15 s past the delete');
+  assert.match(ranOn[0].evidence, /@researcher’s turn ran 15\.0 s past the delete of “Second”/);
+  assert.equal(turns([stream(at - 5000, at + 300)]).length, 0, 'stopped by the delete, its last write a moment after');
+  assert.equal(turns([stream(at - 5000, at + 15_000, 'critic')]).length, 0, 'an agent that wasn’t in the deleted conversation');
+  assert.equal(turns([stream(at + 4000, at + 15_000)]).length, 0, 'a turn that started after the delete is another conversation’s');
+  assert.equal(turns([stream(at - 5000, at + 15_000)], []).length, 0, 'no delete');
+});
+
 test('readStore: null for a run with no asset, else the whole log in order, the snapshot and the asset files', async (t) => {
   const { mkdtempSync, mkdirSync, rmSync, writeFileSync } = await import('node:fs');
   const { tmpdir } = await import('node:os');

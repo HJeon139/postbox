@@ -1,7 +1,9 @@
-// The asset store’s checks on a run’s own records (#722, #723): an asset’s content stays in its blob file, and no
-// room index or asset outlives its conversation. They read the store the run left (facts.store: its log, its snapshot
-// and its asset files, readStore in tools/uat/run-files.mjs) and the state. The page’s stream and /api/state are
-// built from the store’s events, so the log, the snapshot and the state cover what the browser could see.
+// The asset store’s checks on a run’s own records (#722, #723, #725): an asset’s content stays in its blob file, no
+// room index or asset outlives its conversation, and no turn of a deleted conversation runs on past its delete. They
+// read the store the run left (facts.store: its log, its snapshot and its asset files, readStore in
+// tools/uat/run-files.mjs), the state, the turns’ streams, and when the tester deleted a conversation
+// (facts.probes.conversation). The page’s stream and /api/state are built from the store’s events, so the log, the
+// snapshot and the state cover what the browser could see.
 
 /** The shortest line of an asset’s text looked for: a shorter one, such as a heading of one word, is everywhere. */
 export const MIN_TEXT = 24;
@@ -156,6 +158,24 @@ export function orphanRooms(state) {
   return [...rooms.map((room) => ({ room, what: 'its room index' })), ...assets.map((a) => ({ room: a.room, what: `asset ${a.id}` }))];
 }
 
+/** Clocks and file times differ by a few milliseconds, and a stopped turn’s last write follows its Stop. */
+const SLACK_MS = 2000;
+
+/**
+ * Turns of a deleted conversation’s agents that ran on past its delete (#725): a delete stops every turn in it at once
+ * (#1224), so a stream that started before the delete and still wrote well after it wasn’t stopped. A turn that started
+ * after the delete is left out: its agent’s handle may run in another conversation. @param {any} facts
+ */
+export function turnsAfterDeletes(facts) {
+  const deletes = (facts.probes?.conversation ?? []).filter((x) => x.do === 'delete' && Number.isFinite(x.at));
+  return deletes.flatMap((del) => {
+    const handles = new Set(del.handles ?? []);
+    return (facts.streams ?? [])
+      .filter((s) => handles.has(s.handle) && s.started < del.at && s.ended > del.at + SLACK_MS)
+      .map((s) => ({ ...del, handle: s.handle, started: s.started, ended: s.ended }));
+  });
+}
+
 const shortSha = (sha) => String(sha).slice(0, 12);
 
 export const ASSET_STORE_CHECKS = [
@@ -187,6 +207,17 @@ export const ASSET_STORE_CHECKS = [
         key: `${o.room}:${o.what}`,
         title: 'An asset room outlives its conversation',
         evidence: `Room ${o.room} has no conversation, but the state keeps ${o.what}.`,
+      })),
+  },
+  {
+    id: 'turn-after-delete',
+    inputs: ['probes', 'streams'],
+    issue: 725,
+    run: (facts) =>
+      turnsAfterDeletes(facts).map((t) => ({
+        key: `${t.threadId}:${t.at}:${t.handle}:${t.started}`,
+        title: 'A turn ran on after its conversation was deleted',
+        evidence: `@${t.handle}’s turn ran ${((t.ended - t.at) / 1000).toFixed(1)} s past the delete of “${t.title ?? t.threadId}” at ${new Date(t.at).toISOString()}: it started at ${new Date(t.started).toISOString()}.`,
       })),
   },
 ];
