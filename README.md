@@ -2,9 +2,9 @@
 
 **Direct a small team of AI agents from one chat, on your own computer.**
 
-![A replay of a real session: asked how Raft survives a leader failure, @builder answers with a live simulator, @critic pins four comments to its parts, v2 lands, and the Work view shows what changed and what it cost](screenshots/readme/highlight.gif)
+![A replay of a real session: asked how Raft survives a leader failure, @builder answers with a live simulator, @critic pins four comments to its parts, v2 lands with the review waiting on you, and the Work view shows what changed and what it cost](screenshots/readme/highlight.gif)
 
-A replay of a real session: @builder (Claude Code, `claude-opus-5-5`) answers one question with a live app, @critic (Codex, `gpt-6.1-sol`) pins comments to its parts, and @builder ships v2, with no word from you. [How it was recorded](tools/demo/showcase/README.md).
+A replay of a real session: you ask once, then @builder (Claude Code, `claude-opus-5-5`) answers with a live app, @critic (Codex, `gpt-6.1-sol`) pins comments to its parts, and @builder ships v2, all without another message from you. The review then waits for you to approve it. [How it was recorded](tools/demo/showcase/README.md).
 
 [Quick start](#quick-start) · [Running Postbox](designs/running.md) · [Real agents](designs/backends.md) · [Remote hosts](designs/remote-hosts.md) · [Agent apps](designs/agent-apps.md)
 
