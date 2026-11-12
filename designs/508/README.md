@@ -9,9 +9,7 @@ flowchart TD
   R["requirements.md: what, and the test that decides each"] --> D["design.md: how"]
   R --> T["testing-strategy.md: UAT scenarios that confirm"]
   T --> D
-  U["room-rules.md: how the agents coordinate"] -.-> D
   E["execution-plan.md: who builds each step, in what order"] --> D
-  U -.-> E
 ```
 
 | Document | What it holds | Status |
@@ -25,7 +23,6 @@ flowchart TD
 | [`712b-item-index.md`](712b-item-index.md) | #712b: one index from an item’s id to its place, kept outside the state in a `WeakMap` keyed by each list, so the reducer and every reader find an item in O(1); its contract, invariants and the readers it serves | Built with #712b |
 | [`a1b-asks.md`](a1b-asks.md) | A1b: one tie rule for the three places that pick which card an agent needs you for, with the rest of A1 moved to A2, and the first private records’ design carried to A2 | Rescoped after review; built in #711 |
 | [`testing-strategy.md`](testing-strategy.md) | The `delivery.md` and `bigroom.md` UAT scenarios, with their triggers, checks, seed and fault launcher. A run confirms; a spec written first decides. | Approved, with names aligned to the requirements |
-| [`room-rules.md`](room-rules.md) | How agents on Claude Code, Codex and Antigravity coordinate on this work, and the bug behind each rule | Approved |
 | [`execution-plan.md`](execution-plan.md) | Who builds, reviews and confirms each step, the waves steps run in, the gates before a merge, and what must be decided before the first step | Revision 2, approved |
 
 **Related issues:** #516 (room assets), #14 (room notes), #521 (`AskUserQuestion` shows as a permission card), #515 (resumed Claude sessions keep their first guide).
