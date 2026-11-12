@@ -49,8 +49,7 @@ export function stop(rt, sessionId, { silent = false, jobs = 'stop', by = 'you',
   // Its progress steps still running show as stalled, as at any turn’s end (#98); you stopped it, so no lint turn.
   // Pending, so the heldSteps just written holds its steps behind a held commit too (#1042).
   const se = rt.store.pending.session(sessionId);
-  // lint-allow ternary: moved as it was from runtime.mjs (#1236); the next commit makes it one ternary
-  if (se) rt.stallLeftRunning(turn, se, by === 'shutdown' ? 'shutdown' : by === 'hung' ? 'hung' : 'stopped');
+  if (se) rt.stallLeftRunning(turn, se, by === 'shutdown' || by === 'hung' ? by : 'stopped');
   if (turn.remote) rt.remote.stopped(turn, { by, why });
   // A process that never exits mustn’t hold the session for good: after a while, the next turn starts anyway.
   setTimeout(() => {
