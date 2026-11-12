@@ -170,7 +170,8 @@ A comment like `// refuses here (see wave 2 prompt, step 4)` fails correctness: 
 
 The demo’s screenshots are generated and not committed: a refresh adds a full new copy of every image to history, and the 62 MB it had reached made every clone slower.
 - **To see the current ones,** open the `screenshots` artifact of the latest `check` run on `main` (kept 5 days), or run `node tools/shoot-app.mjs` and read `screenshots/latest/app/`. CI takes them only on `main`: a pull request uploads none.
-- **What is tracked:** the images a doc embeds. `tests/uat/screenshots/` is the UAT docs’ set, and `tools/shoot-uat.mjs` refreshes it, in the reviewing session’s commit. Nothing under `screenshots/` is tracked: `.gitignore` holds it all.
+- **What is tracked:** the images a doc embeds. `tests/uat/screenshots/` is the UAT docs’ set, and `tools/shoot-uat.mjs` refreshes it, in the reviewing session’s commit. Under `screenshots/`, only the README’s pictures in `screenshots/readme/` are tracked; `.gitignore` holds the rest.
+- **The README’s pictures** show what Postbox does, on the demo’s mock agents, in the light theme. `node tools/readme-gif.mjs` records `highlight.gif` (about 30 seconds, under 6 MB): it starts its own Postbox on a port and a temporary data folder of its own, drives the page with Playwright and converts the kept moments with ffmpeg. The two stills are crops of `tools/shoot-app.mjs`’s light 1280 px scenes: `asset-explorer.png` from `04-corpus-app` (`crop=1010:545:260:665`) and `dashboard.png` from `14-charts` (`crop=1010:755:260:310`). Retake them when the UI they show changes, and look at the frames before you commit: no real paths of your computer, nothing private, and text legible at the README’s width.
 - **A doc that embeds a new image** gets an exception in `.gitignore` in the same change. A reviewing session doesn’t commit regenerated folders.
 
 ## JavaScript

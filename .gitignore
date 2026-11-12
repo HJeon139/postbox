@@ -4,8 +4,9 @@ node_modules
 .env
 .env.*
 # Generated pictures: tools/shoot-app.mjs. CI's artifact on main and a local run give them
-# (designs/developing.md, “Screenshots”).
+# (designs/developing.md, “Screenshots”). Only the README's pictures are tracked.
 screenshots/*
+!screenshots/readme/
 data/
 .claude/
 uat-runs/
