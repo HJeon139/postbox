@@ -34,8 +34,7 @@ Saved searches:
 3. **Follow the project's rules.** The same rules apply to everyone, people and agent sessions alike:
    - `AGENTS.md`, and the `AGENTS.md` in each folder you change: the rules, short, with the design section each comes from. Claude Code, Codex, Kiro and Antigravity read them on their own (#315).
    - `designs/engineering-practices.md`
-   - `designs/developing.md`
-   - `designs/prompts/README.md`: ports, `--data`, length limits, the gate, scope and hand-off
+   - `designs/developing.md`, and its “Rules for every session”: ports, `--data`, length limits, the gate, scope and hand-off
 4. **When it merges,** the issue closes and the claim ends with it. If you stop before then, unassign yourself (`gh issue edit <n> --remove-assignee @me`) and comment where you got to. The maintainer may unassign a stale claim, one with no pull request and no word for a while, and says so in a comment.
 
 ## Get your pull request reviewed

@@ -130,11 +130,8 @@ export function render(out) {
   };
   // The skills every agent here loads, and what they link to (server/adapters/agent-plugin.mjs).
   for (const rel of markdownUnder(PLUGIN, (n) => n.endsWith('.md')).sort()) copy(rel, join('scan', 'agent-plugin', relative(PLUGIN, rel)));
-  const repo = [
-    ...markdownUnder('.', (n) => n === 'AGENTS.md' || n === 'CLAUDE.md' || n === 'SKILL.md').filter((rel) => !rel.startsWith(PLUGIN)),
-    ...markdownUnder('designs/prompts', (n) => n.endsWith('.md')),
-  ];
-  for (const rel of [...new Set(repo)].sort()) copy(rel, join('scan', 'repo', rel));
+  const repo = markdownUnder('.', (n) => n === 'AGENTS.md' || n === 'CLAUDE.md' || n === 'SKILL.md').filter((rel) => !rel.startsWith(PLUGIN));
+  for (const rel of repo.sort()) copy(rel, join('scan', 'repo', rel));
   return relative(ROOT, out) || out;
 }
 

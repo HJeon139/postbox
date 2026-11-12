@@ -509,8 +509,8 @@ flowchart LR
   - A static becomes a module constant, and the class keeps an alias of it (`static APP_HOLD_MAX = APP_HOLD_MAX;`), so a test that reads `Runtime.APP_HOLD_MAX` doesn’t change.
   - A closure that reads its enclosing function’s variables, such as a tool handler inside `toolsFor`, takes them as parameters instead. That’s the one rewrite beyond `this`, and the commit message names each parameter.
   - Module-level helpers and constants the moved code reads move with it, or go to a third module both files import. They’re never imported back from the old file: that’s a circular import, which means a missing module (developing.md, “Modules”).
-  - The move is its own commit, with no other change. A reviewer checks it mechanically, by the recipe in designs/prompts/README.md, “Length limits”: undo the rewrite on the new module and diff it, ignoring whitespace, against the range the commit removed.
-  - When several sessions move code out of one file at once, only the integrator lowers that file’s ceilings, once after each merge, in a commit of its own (designs/prompts/README.md, “Length limits”). One writer means no conflicts in `biome.json`, and a ceiling left loose for a while is safe, since nothing can grow past it.
+  - The move is its own commit, with no other change. A reviewer checks it mechanically, by the recipe in developing.md, “Rules for every session”, its “Length limits”: undo the rewrite on the new module and diff it, ignoring whitespace, against the range the commit removed.
+  - When several sessions move code out of one file at once, only the integrator lowers that file’s ceilings, once after each merge, in a commit of its own (developing.md, “Rules for every session”, its “Length limits”). One writer means no conflicts in `biome.json`, and a ceiling left loose for a while is safe, since nothing can grow past it.
 - Later changes hold the moved code to its carried ceilings, like any other.
 
 **Which module owns which state** in `server/runtime.mjs`’s split (23 October 2026, for [#120](https://github.com/HJeon139/postbox/issues/120)):
