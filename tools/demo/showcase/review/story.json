@@ -1,7 +1,7 @@
 {
   "title": "Review: cap the items route",
   "recorded": "2026-11-12",
-  "note": "A replay of a recorded real session: the agents’ words, apps and review comments as they were, condensed to three turns. Each turn reports the recorded cost of the real turns it stands for.",
+  "note": "A replay of a recorded real session in three of its real turns: @builder’s turn that handed the app to @critic, @critic’s review, and @builder’s first turn after it that made a new version. Each says that turn’s words, shows the version it made, and reports its recorded cost. recordedTurns lists every real turn.",
   "agents": {
     "builder": {
       "harness": "Claude Code 2.1.318",
@@ -16,6 +16,7 @@
   "ask": "@builder 9927123c.patch in this folder is a real commit from Postbox: it caps the items route so that one request can’t hold the server. Turn it into a review surface I can reason with: the diff itself, each hunk readable, beside a model of what each cap does to the worst request (event-loop time and response size against conversation length and query length), with the caps as handles I can drag. Say what you’d question in it.",
   "recordedTurns": [
     {
+      "id": "turn_pNTO2SqN",
       "handle": "builder",
       "costUsd": 0.475065,
       "ms": 86191,
@@ -24,15 +25,28 @@
         "output": 5196,
         "cacheRead": 731645,
         "cacheWrite": 28084
-      }
+      },
+      "versions": [1, 2],
+      "said": [
+        "I’m picking up an earlier draft of this review app that I found in the folder. Next I’ll check it against the diff and fix the layout.",
+        "Side by side now works: the diff is on the left and the model on the right. Next I’ll check Postbox’s browser test and then post the review.",
+        "I’ve put up the review surface. The commit’s diff is on the left, with each hunk numbered and my questions pinned to the lines they’re about. On the right is a model built from the commit’s two measurements, so it shows how numbers scale rather than timing anything new.\n\n**Try these handles:**\n- **Event-loop time chart:** drag the ALL_MOST knee and the conversation line. The limit=all curve goes flat, but the capped search keeps climbing with conversation length: about 330 ms at a million items and 3.3 s at ten million.\n- **Answer size:** switch the mean item length to 50,000 characters. The capped answer then crosses V8’s longest-string limit again, because the cap counts items, not bytes.\n- **Query-length chart:** drag QUERY_MOST and MOST_TERMS to see which of the two limits actually applies to a given query.\n\n**What I’d question in the commit:**\n- **The 186 MB failure doesn’t add up.** At 186 characters an item, a million items is 186 M characters, well under V8’s limit of about 537 M. Which conversation actually failed to fit a string?\n- **MOST_TERMS caps the number of passes over the conversation, not the cost of each one.** Each pass still reads every item, so search time keeps growing with conversation length.\n- **QUERY_MOST rarely binds.** With short adversarial words, MOST_TERMS cuts in first. It can also cut the last word in half.\n- **The comment says “the latest” 20,000, but with `first` you get the earliest 20,000.**\n- **The window hand-off in thread.mjs is untested.** The commit relies on a page that’s missing items turning its transcript window on, and nothing tests that.\n- **Trimming is silent, and several requests at once still add up.** A 33rd word just finds nothing. Each cap limits one request, and simultaneous ones run one after another on the same loop.\n\nI didn’t see the dark theme or the 375 px layout myself, and Postbox’s browser check on the latest version was still pending when I last looked. The light theme at full width looked right.\n\n@critic, please review it."
+      ]
     },
     {
+      "id": "turn_QZSCaJhu",
       "handle": "critic",
       "costUsd": null,
       "ms": 39429,
-      "tokens": null
+      "tokens": null,
+      "versions": [],
+      "said": [
+        "I’ll inspect the app and its HTML, then pin concrete corrections to the review surface.",
+        "Requested changes with five pinned comments. The main issues are that dragging controls rewrites the displayed commit, and several timing and size estimates appear more certain than the measurements support.\n\nThe model also needs to account for item size in timing and distinguish its search calibration point from the selected query."
+      ]
     },
     {
+      "id": "turn_E1UsExG1",
       "handle": "builder",
       "costUsd": 0.036916,
       "ms": 8880,
@@ -41,9 +55,14 @@
         "output": 179,
         "cacheRead": 101962,
         "cacheWrite": 1616
-      }
+      },
+      "versions": [],
+      "said": [
+        "The dashed-line warning was about v1. v2 makes the chart grid lines solid, so only the “before” curves are still dashed, and v2 passed Postbox’s browser check. I didn’t change anything further."
+      ]
     },
     {
+      "id": "turn_nsbxRhol",
       "handle": "builder",
       "costUsd": 0.389773,
       "ms": 71037,
@@ -52,20 +71,27 @@
         "output": 6849,
         "cacheRead": 612125,
         "cacheWrite": 16286
-      }
+      },
+      "versions": [3],
+      "said": [
+        "Now applying all five fixes.",
+        "Version 3 is up and has passed the browser check. Now I’m marking the review comments as resolved.",
+        "Version 3 of the review app is up and passed Postbox’s browser check. All five of critic’s comments are marked resolved on the review block, each with a one-line answer.\n\n- **The diff:** it now always shows the committed values. A cap you drag appears as a struck-through value with a “your proposal” note beside it.\n- **The headline:** it now holds only if limit=all’s cost tracks the items it returns, and the 17 ms readout is labeled a best-case estimate.\n- **Item size:** time per item now scales with item length, an assumption the app states. At 50,000 characters an item, the capped limit=all request takes about 4.6 s.\n- **The measured dots:** they’re labeled as the commit’s measurement runs, and turn hollow when your settings don’t match those runs.\n- **Answer size:** it’s labeled as a modeled average. Q1 now says the string limit could be hit well before 2.9 million items."
+      ]
     }
   ],
   "turns": {
     "build": {
-      "costUsd": 0.512,
-      "ms": 95071,
+      "costUsd": 0.4751,
+      "ms": 86191,
       "tokens": {
-        "input": 40,
-        "output": 5375,
-        "cacheRead": 833607,
-        "cacheWrite": 29700
+        "input": 36,
+        "output": 5196,
+        "cacheRead": 731645,
+        "cacheWrite": 28084
       },
-      "real": 2,
+      "real": 1,
+      "turnId": "turn_pNTO2SqN",
       "say": [
         "I’m picking up an earlier draft of this review app that I found in the folder. Next I’ll check it against the diff and fix the layout.",
         "I’ve put up the review surface. The commit’s diff is on the left, with each hunk numbered and my questions pinned to the lines they’re about. On the right is a model built from the commit’s two measurements, so it shows how numbers scale rather than timing anything new.\n\n**Try these handles:**\n- **Event-loop time chart:** drag the ALL_MOST knee and the conversation line. The limit=all curve goes flat, but the capped search keeps climbing with conversation length: about 330 ms at a million items and 3.3 s at ten million.\n- **Answer size:** switch the mean item length to 50,000 characters. The capped answer then crosses V8’s longest-string limit again, because the cap counts items, not bytes.\n- **Query-length chart:** drag QUERY_MOST and MOST_TERMS to see which of the two limits actually applies to a given query.\n\n**What I’d question in the commit:**\n- **The 186 MB failure doesn’t add up.** At 186 characters an item, a million items is 186 M characters, well under V8’s limit of about 537 M. Which conversation actually failed to fit a string?\n- **MOST_TERMS caps the number of passes over the conversation, not the cost of each one.** Each pass still reads every item, so search time keeps growing with conversation length.\n- **QUERY_MOST rarely binds.** With short adversarial words, MOST_TERMS cuts in first. It can also cut the last word in half.\n- **The comment says “the latest” 20,000, but with `first` you get the earliest 20,000.**\n- **The window hand-off in thread.mjs is untested.** The commit relies on a page that’s missing items turning its transcript window on, and nothing tests that.\n- **Trimming is silent, and several requests at once still add up.** A 33rd word just finds nothing. Each cap limits one request, and simultaneous ones run one after another on the same loop.\n\nI didn’t see the dark theme or the 375 px layout myself, and Postbox’s browser check on the latest version was still pending when I last looked. The light theme at full width looked right.\n\n@critic, please review it."
@@ -85,8 +111,8 @@
         "version": 1,
         "format": "app",
         "appId": "caps-review",
-        "title": "Review: capping the items route (9927123c) — v3",
-        "fallback": "v3 of the caps-review app addresses all five of critic’s comments."
+        "title": "Review: capping the items route (9927123c)",
+        "fallback": "Review of Review: capping the items route (9927123c): comment in the chat."
       }
     },
     "critique": {
@@ -94,6 +120,7 @@
       "ms": 39429,
       "tokens": null,
       "real": 1,
+      "turnId": "turn_QZSCaJhu",
       "blockId": "caps-review-review",
       "verdict": "request_changes",
       "comments": [
@@ -131,6 +158,7 @@
         "cacheWrite": 16286
       },
       "real": 1,
+      "turnId": "turn_nsbxRhol",
       "say": "Version 3 of the review app is up and passed Postbox’s browser check. All five of critic’s comments are marked resolved on the review block, each with a one-line answer.\n\n- **The diff:** it now always shows the committed values. A cap you drag appears as a struck-through value with a “your proposal” note beside it.\n- **The headline:** it now holds only if limit=all’s cost tracks the items it returns, and the 17 ms readout is labeled a best-case estimate.\n- **Item size:** time per item now scales with item length, an assumption the app states. At 50,000 characters an item, the capped limit=all request takes about 4.6 s.\n- **The measured dots:** they’re labeled as the commit’s measurement runs, and turn hollow when your settings don’t match those runs.\n- **Answer size:** it’s labeled as a modeled average. Q1 now says the string limit could be hit well before 2.9 million items.",
       "summary": "Diff stays as committed with proposals annotated; conditional headline; time scales with item length; calibration dots; answer size labeled as modeled.",
       "steps": ["Read model, live literal and readout code", "Read diff builder and label lines", "Apply critic fixes and rebuild app"],
@@ -144,8 +172,8 @@
         "version": 1,
         "format": "app",
         "appId": "caps-review",
-        "title": "Review: capping the items route (9927123c) — v3",
-        "fallback": "v3 of the caps-review app addresses all five of critic’s comments.",
+        "title": "Review: capping the items route (9927123c)",
+        "fallback": "Review of Review: capping the items route (9927123c): comment in the chat.",
         "threads": [
           {
             "id": "critic-1",

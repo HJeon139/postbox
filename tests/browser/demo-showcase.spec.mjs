@@ -14,6 +14,20 @@ test.beforeAll(async () => {
 });
 test.afterAll(() => app?.stop());
 
+test('each replayed turn says the words of the recorded turn whose app version it shows', () => {
+  for (const key of SHOWCASE) {
+    const st = story(key);
+    const turn = (id) => st.recordedTurns.find((t) => t.id === id);
+    const [build, critique, revise] = [st.turns.build, st.turns.critique, st.turns.revise].map((t) => ({ t, real: turn(t.turnId) }));
+    for (const { t, real } of [build, revise]) {
+      const version = t === st.turns.build ? t.app.version : st.turns.revise.app.version;
+      expect(real?.versions, `${key}: the turn that made v${version}`).toContain(version);
+      for (const words of [t.say].flat()) expect(real.said, `${key}: words of the turn that made v${version}`).toContain(words);
+    }
+    expect(critique.real.said).toContain(st.turns.critique.say);
+  }
+});
+
 test('every showcase replay plays to v2 with its recorded words, comments and costs, in a sandboxed frame', async ({ page }) => {
   test.setTimeout(240_000);
   const { origin } = app;

@@ -15,19 +15,19 @@ The person wrote one message in each room, the question below, and nothing after
 
 Every agent worked in a temporary folder outside any git repository, and was told to make no git commits or pushes, no `gh` calls and no network calls.
 
-Each `story.json` keeps the room as it was: the question, the agents’ words, the app’s code at the version @critic reviewed and at the last version, @critic’s comments and verdict, @builder’s answers, and every real turn with its cost and tokens. The replay condenses the room to three turns (the build, the review and the revision), each reporting the recorded cost of the real turns it stands for. Step labels that named a folder on the recording computer are left out.
+Each `story.json` keeps the room as it was: the question, every real turn with its words, the app versions it made, its cost and tokens (`recordedTurns`), and the app’s code at the two versions the replay shows. The replay plays three of those real turns: @builder’s turn that handed the app to @critic, @critic’s review, and @builder’s first turn after it that made a new version. Each says that turn’s words, shows the version that turn made, and reports that turn’s recorded cost; `tests/browser/demo-showcase.spec.mjs` checks that they match. The turns between, such as @builder’s fixes after Postbox’s check, and anything after the revision, are in `recordedTurns` but not replayed. Step labels that named a folder on the recording computer are left out.
 
 ## The recordings
 
 Costs are what Claude Code reported for @builder’s turns. Codex reports no dollar cost for a ChatGPT sign-in, so @critic’s turns show none; they used that plan’s allowance.
 
-| Folder     | Form                                   | The person’s question, in short                                              | App versions replayed | @critic’s comments | Attempts | Cost of the kept run |
-| ---------- | -------------------------------------- | ---------------------------------------------------------------------------- | --------------------- | ------------------ | -------- | -------------------- |
-| `raft`     | A simulation to poke                   | How does Raft stay consistent when the leader dies mid-write?                | v4 → v5               | 4                  | 2        | $1.87                |
-| `elements` | A real-data explorer with linked views | How do the periodic table’s properties relate? All 118 elements, embedded    | v1 → v5               | 8                  | 2        | $1.86                |
-| `capacity` | A decision model                       | How many GPU replicas keep p99 wait under 500 ms at 40 requests a second?    | v5 → v7               | 4                  | 2        | $1.10                |
-| `review`   | A code review surface                  | Review commit 9927123c, which caps the items route, with its caps as handles | v2 → v3               | 5                  | 2        | $0.90                |
-| `deps`     | A network picture                      | Postbox’s own module graph, from `server/` and `app/js/`                     | v9 → v11              | 4                  | 3        | $2.90                |
+| Folder     | Form                                   | The person’s question, in short                                              | App versions replayed | @critic’s comments       | Attempts | Cost of the kept run |
+| ---------- | -------------------------------------- | ---------------------------------------------------------------------------- | --------------------- | ------------------------ | -------- | -------------------- |
+| `raft`     | A simulation to poke                   | How does Raft stay consistent when the leader dies mid-write?                | v4 → v5               | 4                        | 2        | $1.87                |
+| `elements` | A real-data explorer with linked views | How do the periodic table’s properties relate? All 118 elements, embedded    | v1 → v4               | 5 of 8, over two reviews | 2        | $1.86                |
+| `capacity` | A decision model                       | How many GPU replicas keep p99 wait under 500 ms at 40 requests a second?    | v3 → v7               | 4                        | 2        | $1.10                |
+| `review`   | A code review surface                  | Review commit 9927123c, which caps the items route, with its caps as handles | v2 → v3               | 5                        | 2        | $0.90                |
+| `deps`     | A network picture                      | Postbox’s own module graph, from `server/` and `app/js/`                     | v9 → v11              | 4                        | 3        | $2.90                |
 
 The full question is each story’s `ask`. The `review` room’s folder held `git show 9927123c` as a patch file, and the `deps` room’s a copy of this repository’s `server/` and `app/js/` source files.
 
