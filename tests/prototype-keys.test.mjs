@@ -80,8 +80,9 @@ after(async () => {
 
 test('#352: every route with an id is found, so a route written another way fails here rather than going untried', () => {
   const written = sources().reduce((n, src) => n + (src.match(/path\.match\(\/\^[^\n]*?\(\[\^\/\]\+\)/g) ?? []).length, 0);
-  // 35 since #1224 removed the thread and persona undo-delete routes and a session’s /run, and a host’s GET /status went.
-  assert.ok(written >= 35, `the routers have ${written} routes with an id`);
+  // 36 since #1224 removed the thread and persona undo-delete routes and a session’s /run. ROUTERS leaves out
+  // hosts-routes.mjs, so the hosts’ routes aren’t counted here.
+  assert.ok(written >= 36, `the routers have ${written} routes with an id`);
   assert.equal(routes().length, written);
 });
 
