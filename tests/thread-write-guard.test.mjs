@@ -11,7 +11,8 @@ import { DECL, placed, sites, withProbes } from './server-sources-fixture.mjs';
 
 /** Every write of a thread: updateThread, and the two that put a new one. */
 const THREAD_WRITES = {
-  'runtime.mjs': ['putThread', 'putThread', 'createThread'], // putThread and its emit, called only by createThread, for a new thread
+  'conversations.mjs': ['createThread'], // a new thread, through putThread
+  'runtime.mjs': ['putThread', 'putThread'], // putThread and its emit, called only by createThread, for a new thread
   'thread-write.mjs': ['updateThread'], // a thread that exists, from store.pending.thread
   'topic-open.mjs': ['startTopic'], // a new topic
 };

@@ -59,7 +59,11 @@ export function sendQueuedNow(rt, threadId, queueId) {
   const q = queuedIn(rt.store.pending.thread(threadId) ?? {}, queueId);
   updateThread(rt, threadId, (t) => ({ queue: (t.queue ?? []).filter((x) => x.id !== queueId) }));
   for (const id of q.sessionIds) stopForSendNow(rt, id);
-  if (q.kind === 'wake') return deliverWake(rt, threadId, q);
+  // The route sends what this returns, so a wake, which deliverWake answers with nothing, still gets a body.
+  if (q.kind === 'wake') {
+    deliverWake(rt, threadId, q);
+    return { ok: true };
+  }
   return rt.postAndDeliver(
     threadId,
     q,
