@@ -15,7 +15,7 @@ sequenceDiagram
     S->>P: card: download Chromium so agents can see their apps?
     S-->>A: not yet: the person is asked, try again after
   else declined, or the download failed
-    S-->>A: no picture, and why; the text check still stands
+    S-->>A: no picture, and why, and the text check still stands
   else allowed and installed
     S->>B: start on first use, or reuse
     B->>S: GET the Postbox page in capture mode
