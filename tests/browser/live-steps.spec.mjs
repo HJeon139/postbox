@@ -170,6 +170,7 @@ test('a running turn’s thoughts show whole, paragraphs and all, between its st
   const shown = page.locator('.live-steps .live-thought');
   await expect(shown).toHaveCount(1);
   expect(await shown.textContent(), 'the whole thought, its paragraph break kept').toBe(thought);
+  expect(await shown.evaluate((e) => getComputedStyle(e).fontStyle), 'set apart from the reply’s words').toBe('italic');
   go('thinker');
   await expect.poll(() => scripted.app.rt.turns.size).toBe(0);
 });
