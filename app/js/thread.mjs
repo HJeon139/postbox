@@ -3,7 +3,7 @@
 
 import { renderMarkdown } from '/shared/markdown.mjs';
 import { resolveCommand } from '/shared/slash-line.mjs';
-import { laterParts, liveHere } from './activity-live.mjs';
+import { laterParts, liveHere, saysItself } from './activity-live.mjs';
 import { activityParts, drawnStale, hasRecord, paintActivity, paintPatch, recordMoved } from './activity-paint.mjs';
 import { activityLabel } from './activity-steps.mjs';
 import { mockMarker } from './agent-facts.mjs';
@@ -83,9 +83,9 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
   const working = h('div.working.col', { 'aria-hidden': 'true' });
   const paintWorking = () => {
     // The agents whose turn is here: a conversation’s, unless its turn is in a side thread, and in a side thread, any
-    // session answering in it (#110).
+    // session answering in it (#110). Not one whose crowded reply here says what it’s doing already (activity-live.mjs).
     const busy = sessionsAt(threadId).filter(
-      (se) => !se.archived && (se.state === 'think' || se.state === 'tool') && (!se.sideTurn || se.sideTurn.threadId === threadId),
+      (se) => !se.archived && (se.state === 'think' || se.state === 'tool') && (!se.sideTurn || se.sideTurn.threadId === threadId) && !saysItself(se, threadId),
     );
     syncList(
       working,

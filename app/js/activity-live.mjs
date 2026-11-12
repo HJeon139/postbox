@@ -60,6 +60,12 @@ export function liveHere(se, threadId) {
 }
 
 /**
+ * Whether an agent at work needs no working row: crowded, its running reply here is its name, its state, a line of its
+ * words and its step, all a working row would say. @param {any} se @param {string} threadId
+ */
+export const saysItself = (se, threadId) => liveAgents(threadId) >= CROWD && liveHere(se, threadId);
+
+/**
  * A turn’s first part, which keeps all its steps (server/reply-segment.mjs, placeStep): this one, or the nearest above
  * of its turn. @param {any} it @param {string} threadId
  */

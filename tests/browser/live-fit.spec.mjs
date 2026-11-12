@@ -65,6 +65,8 @@ for (const [width, height] of [
           emit({ kind: 'tool_result', id: `${who}-${i}`, text: `step ${i} ok` });
         }
         emit({ kind: 'text', text: ' Now the sums.' });
+        // Held while a step runs, as agents at work are, so each one’s working row would show too.
+        emit({ kind: 'tool_call', id: `${who}-10`, name: 'Bash', input: { command: 'make sums' }, final: true });
         await hold(who, 1);
       });
     const t = room(`Ten at ${width}`, ten);
@@ -76,17 +78,19 @@ for (const [width, height] of [
     await expect(page.locator('.live-steps.crowded'), 'each reply crowded to one line of steps').toHaveCount(10);
     const { used, visible } = await page.evaluate(() => {
       const replies = [...document.querySelectorAll('.transcript > [data-key]')].filter((n) => n.querySelector(':scope > .live-steps'));
+      const rows = [...document.querySelectorAll('.working .work-row')];
       const transcript = document.querySelector('.transcript');
       let el = transcript?.parentElement;
       while (el && !/auto|scroll/.test(getComputedStyle(el).overflowY)) el = el.parentElement;
       const bar = el ? 0 : (document.querySelector('header.topbar')?.getBoundingClientRect().bottom ?? 0);
       const composer = /** @type {HTMLElement | null | undefined} */ (transcript?.parentElement?.querySelector(':scope > .composer'))?.offsetHeight ?? 0;
       return {
-        used: replies.reduce((s, n) => s + n.getBoundingClientRect().height, 0),
+        used: [...replies, ...rows].reduce((s, n) => s + n.getBoundingClientRect().height, 0),
         visible: (el?.clientHeight || innerHeight) - bar - composer,
       };
     });
-    expect(used, `ten running replies, in pixels, against ${Math.round(visible)} px of transcript`).toBeLessThanOrEqual(visible);
+    await expect(page.locator('.live-steps.crowded li.step-line', { hasText: 'make sums' }), 'each running its step').toHaveCount(10);
+    expect(used, `ten running replies and their working rows, in pixels, against ${Math.round(visible)} px of transcript`).toBeLessThanOrEqual(visible);
     // The rest of a crowded reply is a click away.
     const more = page.getByRole('button', { name: 'Show the whole reply' }).first();
     await more.focus();
