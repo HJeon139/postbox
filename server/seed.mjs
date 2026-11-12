@@ -101,7 +101,7 @@ export const DEMO_PERSONAS = [
     description: 'Reviews specs, code and layouts line by line.',
     tools: [],
     instructions: 'Review carefully. Resolve what you fix, and explain what you leave open.',
-    examples: [['Review my corpus schema line by line', 'Comment on the spec, then get a revision']],
+    examples: [['Review my search schema line by line', 'Comment on the spec, then get a revision']],
   },
 ];
 
@@ -244,9 +244,9 @@ export async function seed(rt, { dataDir, backend = 'mock', demo = false }) {
   await seedAssets(rt, explorer.id);
   const shelf = rt.createThread({ projectId: notes.id, title: 'Index the shelf', personaIds: [P('indexer')] });
   await seedAssets(rt, shelf.id);
-  rt.createThread({ projectId: notes.id, title: 'Corpus schema spec', personaIds: [P('critic')] });
+  rt.createThread({ projectId: notes.id, title: 'Search schema spec', personaIds: [P('critic')] });
   rt.createThread({ projectId: notes.id, title: 'Catalog tour', personaIds: [P('librarian')] });
-  rt.createThread({ projectId: notes.id, title: 'Corpus planning', personaIds: [P('indexer'), P('researcher')] });
+  rt.createThread({ projectId: notes.id, title: 'Index planning', personaIds: [P('indexer'), P('researcher')] });
   rt.createThread({ projectId: research.id, title: 'ReAct, step by step', personaIds: [P('researcher')] });
   rt.createThread({ projectId: research.id, title: 'Agent memory papers', personaIds: [P('researcher')] });
   rt.createThread({ projectId: research.id, title: 'Citation fixes', personaIds: [P('researcher')] });

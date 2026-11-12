@@ -19,7 +19,7 @@ One glance tells you who is in a conversation and what they are doing.
 ## Steps to reproduce
 
 1. Run the demo (`node tools/demo.mjs --port 4180`) and open <http://127.0.0.1:4180/> while it plays; keep the tab open.
-2. Watch the “Corpus planning” row while @indexer works in it.
+2. Watch the “Index planning” row while @indexer works in it.
 3. Leave the conversation and let an agent finish; check the unread badge.
 4. Get two agents in a room to ask you something, then open another conversation. Click one agent’s ring in the room’s row, then come back and click the row’s name.
 

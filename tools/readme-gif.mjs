@@ -52,7 +52,7 @@ async function say(page, text) {
 /** The room the GIF shows: @indexer, @researcher and @critic together in the demo’s Reading notes project. */
 async function makeRoom(c) {
   const s = await c.state();
-  const notes = c.thread(s, 'Corpus planning');
+  const notes = c.thread(s, 'Index planning');
   const ids = ['indexer', 'researcher', 'critic'].map((h) => Object.values(s.personas).find((p) => p.handle === h).id);
   return c.call('/api/threads', { projectId: notes.projectId, title: 'Reading notes', personaIds: ids });
 }
@@ -68,7 +68,7 @@ async function scenes(page, c, origin) {
   await keep(async () => {
     await say(page, '@indexer index the shelf');
     await say(page, '@researcher explain ReAct with something I can try');
-    await say(page, '@critic review my corpus schema line by line');
+    await say(page, '@critic review my search schema line by line');
     await sleep(2500);
     await say(page, '@indexer also drop the illustration captions');
     await sleep(6500);

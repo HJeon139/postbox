@@ -26,7 +26,7 @@ Where you write to agents; it must say who will answer.
 ## Steps to reproduce
 
 1. Run the demo (`node tools/demo.mjs --port 4180`) and open <http://127.0.0.1:4180/> while it plays; keep the tab open.
-2. In “Corpus planning”, send several messages while @indexer works. Open its mail button in the Agents section, edit one message, remove another, and use Send now.
+2. In “Index planning”, send several messages while @indexer works. Open its mail button in the Agents section, edit one message, remove another, and use Send now.
 
 **Pass if:** The composer stays its normal height plus one waiting line, whose count opens the queue; the mail count follows the queue; the bounded dialog edits and acts on one message at a time; and queued messages are delivered when @indexer finishes or at once with Send now.
 3. In “Asset explorer”, drag a PNG screenshot and an SVG from your desktop onto the transcript, and send. Then send a file whose name you gave a right-to-left override (U+202E) before its extension.

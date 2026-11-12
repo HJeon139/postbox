@@ -39,7 +39,7 @@ const plus = (page) => page.getByRole('button', { name: 'Add a file or a new age
 
 test('#69 an older open block shows “1 open confirmation”, not needs-you, and goes to the block', async ({ page }) => {
   const { rt, store } = app;
-  const t = threadNamed('Corpus planning');
+  const t = threadNamed('Index planning');
   const se = rt.sessionsIn(t.id).find((x) => x.handle === 'indexer');
   // A block from a turn that has ended, left unanswered.
   rt.toolsFor(se.id, null).show_block({
@@ -62,7 +62,7 @@ test('#69 an older open block shows “1 open confirmation”, not needs-you, an
 
 test('#26 new agent: Space on a Tools checkbox keeps focus on it', async ({ page }) => {
   // From the conversation’s ⋯: the overview’s New agent went with it (#320).
-  await open(page, `#/t/${threadNamed('Corpus planning').id}`);
+  await open(page, `#/t/${threadNamed('Index planning').id}`);
   await actions(page).click();
   await page.getByRole('menuitem', { name: /^Add an agent/ }).click();
   await expect(dialog(page)).toBeVisible();
@@ -79,7 +79,7 @@ test('#26 new agent: Space on a Tools checkbox keeps focus on it', async ({ page
 });
 
 test('#26 new room: Enter on the indexer chip keeps focus on it', async ({ page }) => {
-  await open(page, `#/p/${threadNamed('Corpus planning').projectId}`);
+  await open(page, `#/p/${threadNamed('Index planning').projectId}`);
   await page.getByRole('button', { name: 'New room' }).click();
   await expect(dialog(page)).toBeVisible();
   const chip = page.locator('.d-body .chips button', { hasText: 'indexer' });
@@ -107,7 +107,7 @@ test('#26 settings: Enter on the Projects tab keeps focus on it, and Escape retu
 });
 
 test('#26 ⋯ › Add an agent… by keyboard, then Escape, returns focus to ⋯', async ({ page }) => {
-  await open(page, `#/t/${threadNamed('Corpus planning').id}`);
+  await open(page, `#/t/${threadNamed('Index planning').id}`);
   await actions(page).focus();
   await page.keyboard.press('Enter');
   await focusIs(page, 'menuitem: Rename…');
@@ -122,11 +122,11 @@ test('#26 ⋯ › Add an agent… by keyboard, then Escape, returns focus to ⋯
   await expect(dialog(page)).toContainText('New conversation in Reading notes');
   await expect(dialog(page)).not.toContainText(/\bthread\b/i);
   await page.keyboard.press('Escape');
-  await focusIs(page, 'button: Actions for Corpus planning');
+  await focusIs(page, 'button: Actions for Index planning');
 });
 
 test('#26 the folder picker opens with focus on its first entry, and Escape returns to +', async ({ page }) => {
-  await open(page, `#/t/${threadNamed('Corpus planning').id}`);
+  await open(page, `#/t/${threadNamed('Index planning').id}`);
   await plus(page).focus();
   await page.keyboard.press('Enter');
   await expect(page.locator('.menu')).toBeVisible();
@@ -146,7 +146,7 @@ for (const [name, button] of [
   ['the composer’s +', plus],
 ])
   test(`#29 a second click on ${name} closes its menu`, async ({ page }) => {
-    await open(page, `#/t/${threadNamed('Corpus planning').id}`);
+    await open(page, `#/t/${threadNamed('Index planning').id}`);
     const b = button(page);
     await b.click();
     await expect(page.locator('.menu'), 'the first click opens it').toHaveCount(1);
@@ -160,7 +160,7 @@ for (const [name, button] of [
   });
 
 test('#29 a second click closes a menu even after its button repainted under it', async ({ page }) => {
-  const t = threadNamed('Corpus planning');
+  const t = threadNamed('Index planning');
   await open(page, `#/t/${t.id}`);
   await actions(page).click();
   await expect(page.locator('.menu')).toHaveCount(1);
@@ -174,7 +174,7 @@ test('#29 a second click closes a menu even after its button repainted under it'
     await actions(page).click();
     await expect(page.locator('.menu')).toHaveCount(0);
   } finally {
-    app.rt.renameThread(t.id, 'Corpus planning');
+    app.rt.renameThread(t.id, 'Index planning');
   }
 });
 
@@ -200,7 +200,7 @@ test('#26 ⋯ › Rename… by keyboard returns focus to ⋯ after the top bar r
 // ── Going from one conversation to another ─────────────────────────────────────────────
 
 test('a conversation opened from the sidebar replaces the last one’s transcript, and Back brings that one back, up to date', async ({ page }) => {
-  const [a, b] = [threadNamed('Corpus planning'), threadNamed('Index the shelf')];
+  const [a, b] = [threadNamed('Index planning'), threadNamed('Index the shelf')];
   await open(page, `#/t/${a.id}`);
   await expect(page.locator(`#main[data-thread="${a.id}"]`)).toBeVisible();
   await page.locator(`.rail a.row[data-thread="${b.id}"] .name`).click();

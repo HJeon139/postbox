@@ -777,7 +777,7 @@ test('a conversation with several agents is a room, and can be renamed', () => {
   const { rt, a, b } = setup();
   const room = rt.createThread({ projectId: 'p1', title: 'Planning', personaIds: [a.id, b.id] });
   assert.equal(room.kind, 'room');
-  assert.equal(rt.renameThread(room.id, '  Corpus planning ').title, 'Corpus planning');
+  assert.equal(rt.renameThread(room.id, '  Index planning ').title, 'Index planning');
   assert.throws(() => rt.renameThread(room.id, ' '), /needs a name/);
 });
 

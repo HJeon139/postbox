@@ -21,7 +21,7 @@ Agent-to-agent exchanges stay out of your conversation but remain visible and jo
 ## Steps to reproduce
 
 1. Run the demo (`node tools/demo.mjs --port 4180`) and open <http://127.0.0.1:4180/> while it plays; keep the tab open.
-2. In “Corpus planning”, open the side-thread link.
+2. In “Index planning”, open the side-thread link.
 
 3. Hover a reply in it and choose Send to conversation; then ask one of its agents to post a summary in the main chat.
 
