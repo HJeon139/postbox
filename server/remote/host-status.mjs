@@ -1,4 +1,4 @@
-// A host’s connection as the page sees it, and the person’s actions on it (#120; architecture.md, “Remote hosts”):
+// A host’s connection as the page sees it, and the person’s actions on it (#120; designs/architecture/remote-hosts.md, “Remote hosts”):
 // its status, kept in the state (s.hostStatus, 'host.status' events) as the host manager reports it, installing
 // Postbox’s host program there, and connecting again. The runtime (server/runtime.mjs) calls these with itself first.
 

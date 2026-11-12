@@ -1,5 +1,5 @@
 // Kiro’s tools in Claude Code’s names. Moved from server/adapters/kiro-cli.mjs, which is at its size ceiling
-// (designs/architecture.md, “Module and function size”).
+// (designs/architecture/code-size.md, “Module and function size”).
 
 // Labels for Kiro’s tool kinds (ACP’s ToolKind), until a title arrives.
 export const KINDS = {

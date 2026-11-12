@@ -4,7 +4,7 @@ Setting up a host, what you see while agents work there, and the settings worth 
 
 ## Run agents on a remote host
 
-An agent’s turns can run on another computer you reach with `ssh`, such as a build machine or a cloud desktop, while Postbox stays on this one (#120). Only the agent’s process moves. The conversation, its cards, the store and Postbox’s API stay here, and Postbox drives the host over an `ssh` it starts itself. Nothing on the host reaches back: no port is opened or forwarded on either machine, and nothing there gets a route to Postbox on this computer. Claude Code, Kiro CLI and Codex can run on a host; the Agent SDK and the Antigravity CLI can’t. The design is in [designs/architecture.md](architecture.md), “Remote hosts”.
+An agent’s turns can run on another computer you reach with `ssh`, such as a build machine or a cloud desktop, while Postbox stays on this one (#120). Only the agent’s process moves. The conversation, its cards, the store and Postbox’s API stay here, and Postbox drives the host over an `ssh` it starts itself. Nothing on the host reaches back: no port is opened or forwarded on either machine, and nothing there gets a route to Postbox on this computer. Claude Code, Kiro CLI and Codex can run on a host; the Agent SDK and the Antigravity CLI can’t. The design is in [designs/architecture/remote-hosts.md](architecture/remote-hosts.md), “Remote hosts”.
 
 **What the host needs**
 - **Linux.** Postbox relies on `/proc`, the boot ID and, where logind ends processes at logout, systemd.

@@ -1,4 +1,4 @@
-// view_app (#95; designs/architecture.md, “Agents see their app”) renders a real agent app in the pinned headless
+// view_app (#95; designs/architecture/view-app.md, “Agents see their app”) renders a real agent app in the pinned headless
 // shell, inline in Postbox’s own page in capture mode: its libraries reach it over the bridge, its pending check
 // doesn’t hide it, and the capture reports nothing to Postbox. The size, the conversation’s width beside the rail and
 // any pane, and the theme follow the person’s open tab. A page that tries to write, or to reach another host, during a

@@ -1,4 +1,4 @@
-// view_app (#95; designs/architecture.md, “Agents see their app”): an agent sees its app as the person first sees it.
+// view_app (#95; designs/architecture/view-app.md, “Agents see their app”): an agent sees its app as the person first sees it.
 // Postbox asks the person once before downloading the browser it renders with, keeps their answer across a restart,
 // sends the picture to a backend that sees images, and saves it in the agent’s folder either way. These tests use a
 // fake browser; tests/browser/view-app.spec.mjs renders a real app in the pinned headless shell.

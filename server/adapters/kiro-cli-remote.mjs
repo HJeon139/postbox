@@ -1,4 +1,4 @@
-// The Kiro CLI backend on a remote host (#120, ctx.remote; architecture.md “Remote hosts”): the turn runs through the
+// The Kiro CLI backend on a remote host (#120, ctx.remote; designs/architecture/remote-hosts.md “Remote hosts”): the turn runs through the
 // host’s daemon (server/remote/process.mjs’s remoteSpawn), and the arguments are the same but for where things are:
 // - The agent file goes in `start.agentFile` (its name and text), which the daemon writes into the agents folder of
 //   the Kiro home the runner will use and removes when the turn ends: with your setup, the host’s own (its KIRO_HOME,

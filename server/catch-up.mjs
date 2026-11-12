@@ -1,6 +1,6 @@
 // The catch-up at the start of each turn (issue #1): what happened in a conversation since the agent's last turn, from
 // the person and the other agents, within a cap, and its marker moved to the end. Moved from server/runtime.mjs.
-// Functions take the Runtime first (architecture.md, “What a move may change”).
+// Functions take the Runtime first (designs/architecture/code-size.md, “What a move may change”).
 
 import { positionOf } from '../shared/item-index.mjs';
 import { READING } from '../shared/limits.mjs';

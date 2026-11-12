@@ -1,5 +1,5 @@
 // The headless Chromium the UAT runner and the screenshot tools drive: Playwright’s library on the Chromium build its
-// version pins (designs/architecture.md, “Browser checks on Playwright Test”). Playwright talks to it over a pipe, and
+// version pins (designs/architecture/browser-checks.md, “Browser checks on Playwright Test”). Playwright talks to it over a pipe, and
 // its headless shell exits when that pipe closes, so a script that’s SIGKILLed leaves no browser behind. Chromium’s
 // full headless mode, the one the specs run, doesn’t: with a page open it outlived its killed script, on macOS with
 // Chromium 156, as Chrome on a DevTools port did under tools/cdp.mjs. The callers read and drive the page through

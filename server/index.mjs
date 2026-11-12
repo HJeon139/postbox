@@ -117,7 +117,7 @@ export async function start({
   // The hosts’ links (#120), made on first use (server/remote/serve.mjs).
   const hosts = hostManagerFor(given, () => rt, dataDir, config.build.version);
   const rt = new Runtime({ store, adapters, config, blobs, narrator, spawnShell, hosts });
-  // view_app’s browser, downloaded only after the person agrees (#95; designs/architecture.md, “Agents see their app”).
+  // view_app’s browser, downloaded only after the person agrees (#95; designs/architecture/view-app.md, “Agents see their app”).
   startViewApp(rt, { dataDir, origin: () => `http://127.0.0.1:${/** @type {any} */ (server.address())?.port ?? port}` });
   const firstReal = ['claude-code', 'agent-sdk', 'kiro-cli', 'antigravity-cli', 'codex'].find((b) => adapters.runsHere(b)) ?? 'mock';
   await seed(rt, { dataDir, backend: firstReal, demo });
@@ -149,7 +149,7 @@ export async function start({
   };
   // Only a browser gets it: a navigation, or the page’s own fetch of `/` (its token refresh after a restart), which
   // browsers mark with Fetch Metadata headers. A plain `curl /` sends none, so it gets the page and no cookie. A
-  // process that forges these headers on purpose still can; see designs/architecture.md §13.
+  // process that forges these headers on purpose still can; see designs/architecture/security-boundaries.md, “Writes need the page’s token”.
   const fromBrowser = (req) =>
     req.headers['sec-fetch-mode'] === 'navigate' || req.headers['sec-fetch-site'] === 'same-origin' || req.headers['sec-fetch-site'] === 'none';
 

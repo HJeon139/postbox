@@ -1,4 +1,4 @@
-// The Codex backend on a remote host (#120, ctx.remote; architecture.md “Remote hosts”). The app-server runs on that
+// The Codex backend on a remote host (#120, ctx.remote; designs/architecture/remote-hosts.md “Remote hosts”). The app-server runs on that
 // host through its daemon (server/remote/process.mjs), in ctx.remote.folder, with the shim as Postbox’s server. With
 // ctx.remote.attach, Postbox has restarted and the turn is already running there: it’s replayed from out.jsonl and
 // rebuilt from both logs (createCodexRebuild), and the message isn’t sent again. The host turn is the runtime’s

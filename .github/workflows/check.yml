@@ -1,4 +1,4 @@
-# Runs Postbox’s checks on every pull request and every push to main. See designs/architecture.md, “Code quality”.
+# Runs Postbox’s checks on every pull request and every push to main. See designs/architecture/code-quality.md, “Code quality”.
 name: check
 
 on:

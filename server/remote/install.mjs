@@ -1,4 +1,4 @@
-// Installing Postbox’s host code on a remote host (#120, architecture.md “Remote hosts”, “The daemon” and “Security”),
+// Installing Postbox’s host code on a remote host (#120, designs/architecture/remote-hosts.md “Remote hosts”, “The daemon” and “Security”),
 // from the laptop, over Postbox’s own ssh (ssh.mjs’s options: BatchMode, no shared connection, no agent forwarding).
 //
 // What ships: every file under server/remote/host/ and, transitively, every file they import (only node: modules and

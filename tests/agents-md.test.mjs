@@ -53,7 +53,7 @@ test('no CLAUDE.md beside them: Claude Code reads AGENTS.md only where there is 
     assert.ok(!existsSync(join(ROOT, f)), `${f} would switch AGENTS.md off for Claude Code`);
 });
 
-/** A heading’s words, without the number architecture.md gives its sections. */
+/** A heading’s words, without a leading section number (“1. ”), which a doc may give its sections. */
 const headings = (file) => [...readFileSync(join(ROOT, file), 'utf8').matchAll(/^#{1,4} (?:\d+\. )?(.+)$/gm)].map((m) => m[1].trim());
 
 test('every design section a rule cites exists, by its title', () => {

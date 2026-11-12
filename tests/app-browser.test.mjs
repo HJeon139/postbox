@@ -1,4 +1,4 @@
-// view_app’s browser (#95; designs/architecture.md, “Agents see their app”) can’t hold a tool call or Postbox’s stop
+// view_app’s browser (#95; designs/architecture/view-app.md, “Agents see their app”) can’t hold a tool call or Postbox’s stop
 // for good: a capture past its limit fails and closes the browser, so the next call starts a new one, and stopping
 // Postbox ends a download that’s running and says so. These use a fake playwright-core and a fake installer;
 // tests/browser/view-app.spec.mjs renders in the real headless shell.

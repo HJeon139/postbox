@@ -1,5 +1,5 @@
 // Antigravity’s tools in Claude Code’s names. Moved from server/adapters/antigravity-cli.mjs, which is at its size
-// ceiling (designs/architecture.md, “Module and function size”).
+// ceiling (designs/architecture/code-size.md, “Module and function size”).
 
 import { isQuietTool } from '../tool-labels.mjs';
 import { AGY_SERVER } from './agy-settings.mjs';

@@ -1,5 +1,5 @@
 // Content-addressed file storage for attachments. A file is stored once, under the SHA-256 of its bytes,
-// and the event log keeps only its metadata. See designs/architecture.md, “Attachments”.
+// and the event log keeps only its metadata. See designs/architecture/assets.md, “Attachments”.
 
 import { createHash, randomBytes } from 'node:crypto';
 import { mkdir, open, readFile, rename, stat, unlink } from 'node:fs/promises';

@@ -1,6 +1,6 @@
 // The wakes a turn's @-mentions make once it ends (#225, #372, #485). Moved from server/runtime.mjs, whose
 // wakeMentions calls it, to keep runtime.mjs under its ceiling (#756). Functions take the Runtime first
-// (architecture.md, “What a move may change”).
+// (designs/architecture/code-size.md, “What a move may change”).
 
 import { SENDING } from '../shared/limits.mjs';
 import { parseMentions } from '../shared/text.mjs';
