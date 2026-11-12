@@ -91,7 +91,7 @@ export { PERMISSION_MODES, readCapped };
 export class Runtime {
   /**
    * @param {{ store: import('./store.mjs').Store, adapters: import('./adapters/adapter.mjs').AdapterRegistry,
-   *           config: { origin: string, imageOrigins: string[], archiveTurns?: boolean, claudeProjectsRoot?: string, versions?: any, lintSettleMs?: number, home?: string, build?: { version?: string } },
+   *           config: { origin: string, imageOrigins: string[], archiveTurns?: boolean, claudeProjectsRoot?: string, versions?: any, lintSettleMs?: number, ledgerGraceMs?: number, home?: string, build?: { version?: string } },
    *           blobs?: import('./blobs.mjs').Blobs, narrator?: import('./narration/narrator.mjs').Narrator|null,
    *           spawnShell?: typeof import('node:child_process').spawn, signalProcess?: import('./adapters/process-group.mjs').KillFn,
    *           listProcesses?: () => Promise<import('./adapters/process-group.mjs').Proc[]>, ledger?: Ledger,

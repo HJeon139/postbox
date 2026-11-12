@@ -448,9 +448,10 @@ export async function start({
     await rt.stopShellCommands();
     await rt.stopTurns();
     stopTimers(rt); // what a turn ending as it stopped started
-    await settleLedger(rt); // the stopped turns’ records, before the store closes
     // After the turns, whose Stop goes to their hosts over these links (#120).
     await stopHosts(hosts, stopWake);
+    stopTimers(rt); // what a remote turn ending as its host’s link closed started
+    await settleLedger(rt); // the stopped turns’ records, remote ones too, before the store closes
     narrator?.stop();
     await viewOf(rt).close();
     if (server.listening) await new Promise((ok) => server.close(ok));

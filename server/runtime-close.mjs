@@ -12,8 +12,8 @@ const LEDGER_GRACE_MS = 4000;
 
 /**
  * Clears scheduled wakes, lint turns waiting to settle, stopped turns’ watchdogs, permission cards’ waits, the kept
- * jobs’ poll and summaries waiting to be written. close() calls it before the turns stop and again after, since a
- * turn that ends as it stops can start one.
+ * jobs’ poll and summaries waiting to be written. close() calls it before the turns stop, again after, and once more
+ * after the hosts stop, since a turn that ends as it stops, or as its host’s link closes, can start one.
  * @param {import('./runtime.mjs').Runtime} rt
  */
 export function stopTimers(rt) {
@@ -31,7 +31,7 @@ export function stopTimers(rt) {
 }
 
 /**
- * Waits, up to LEDGER_GRACE_MS, for the work ledger’s records in flight: a stopped turn’s end reads each file it changed
+ * Waits, up to LEDGER_GRACE_MS (config.ledgerGraceMs in a test), for the work ledger’s records in flight: a stopped turn’s end reads each file it changed
  * before it patches the turn’s entry, and a store closed under it drops the patch.
  * @param {import('./runtime.mjs').Runtime} rt
  */
@@ -39,7 +39,7 @@ export async function settleLedger(rt) {
   /** @type {NodeJS.Timeout | undefined} */
   let timer;
   const late = new Promise((r) => {
-    timer = setTimeout(r, LEDGER_GRACE_MS);
+    timer = setTimeout(r, rt.config.ledgerGraceMs ?? LEDGER_GRACE_MS);
   });
   await Promise.race([rt.ledger.idle(), late]);
   clearTimeout(timer);

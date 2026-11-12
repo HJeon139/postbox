@@ -81,3 +81,41 @@ test('the work ledger’s record of a turn that just stopped lands before the st
   assert.equal(patched, true, 'the record landed before close() returned');
   assert.deepEqual(takeServerFailures(), [], 'and nothing was dropped or logged');
 });
+
+// close() stops the hosts after the turns, and a remote turn that ends then can arm a lint or a summary: stopTimers runs
+// once more after the hosts have stopped.
+test('a lint turn armed while the hosts stop isn’t delivered after close()', async () => {
+  const { a, t, se, delivered } = await app();
+  a.rt.config.lintSettleMs = 20;
+  const close = a.rt.hosts.close.bind(a.rt.hosts);
+  a.rt.hosts.close = async () => {
+    a.rt.lints.set('turn_h', {
+      sessionId: se.id,
+      kind: 'turn',
+      ended: true,
+      sent: false,
+      problems: [{ code: 'x', message: 'A problem.', scope: { kind: 'reply' } }],
+      timer: null,
+      threadId: t.id,
+    });
+    sendLint(a.rt, 'turn_h');
+    await close();
+  };
+  await a.close();
+  await sleep(80); // past the lint’s settle time
+  assert.deepEqual(delivered, [], 'nothing was delivered after close');
+  assert.deepEqual(takeServerFailures(), [], 'and nothing was logged');
+});
+
+// A ledger record that never settles, such as a read of a file on a disk that stopped answering, mustn’t hold the
+// shutdown: close() waits its grace for it (LEDGER_GRACE_MS, 4 s; a test sets it shorter), then goes on.
+test('close() waits for a ledger record that never settles at most its grace, then closes', async () => {
+  const { a } = await app();
+  a.rt.config.ledgerGraceMs = 30;
+  a.rt.ledger.track(new Promise(() => {}));
+  const started = Date.now();
+  await a.close();
+  assert.ok(Date.now() - started >= 30, 'it waited for the record');
+  assert.ok(Date.now() - started < 3000, 'and closed once its grace was over, not the default 4 s');
+  assert.deepEqual(takeServerFailures(), []);
+});
