@@ -9,7 +9,6 @@ import { activityLabel } from './activity-steps.mjs';
 import { mockMarker } from './agent-facts.mjs';
 import { agentMarkdown, handles, markTerms, paintAgentMarkdown, usesTerm } from './agent-markdown.mjs';
 import { paintOfflineQueue, paintWaitingLine } from './agent-queue.mjs';
-import { subagentNow } from './agents.mjs';
 import { allowedCallLine } from './allowed-call.mjs';
 import { enhanceMarkdown, releaseApps, renderAppItem, renderAppSendCard } from './apps.mjs';
 import { attChip, fileSize } from './attachment-chip.mjs';
@@ -49,7 +48,7 @@ import { windowOn } from './window-flag.mjs';
 import { focusedItem, keepFocused } from './window-keep.mjs';
 import { replaced as replacedNode } from './window-shrink.mjs';
 import { workList } from './work-list.mjs';
-import { liveHere, saysItself } from './working-rows.mjs';
+import { fillWorkRow, saysItself } from './working-rows.mjs';
 
 export { focusComposer } from './hop-card.mjs';
 
@@ -322,18 +321,6 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
       }
     },
   };
-}
-
-function fillWorkRow(row, se, threadId) {
-  ringFor(se, 'xs', row.querySelector('pb-ring'));
-  const step = se.state === 'tool' && se.currentStep ? `: ${se.currentStep}` : '';
-  fill(
-    row.querySelector('.work-text'),
-    h('div.work-line', h('b', se.handle), h('span.dim', ` · ${stateWord(se.state).toLowerCase()}${step}`)),
-    se.glimpse && !liveHere(se, threadId) ? h('div.glimpse', se.glimpse) : null, // a live reply shows it as it’s written
-    // Each subagent at work, in its own words when it has said something (#73): “reader: Now I’ll read paper 3…”.
-    (se.subagents ?? []).map((x) => h('div.work-line.work-sub', h('span', `${x.name}: `), h('span.dim', subagentNow(x)))),
-  );
 }
 
 const who = (it, { you = false, threadId = '' } = {}) => {
