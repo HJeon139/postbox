@@ -1,0 +1,40 @@
+# Showcase recordings
+
+Five real sessions, recorded once with real agents and replayed by the demo’s mock for free: `node tools/demo.mjs --story showcase`, and the README’s GIF (`tools/readme-gif.mjs`). The mock plays them from `server/adapters/mock-showcase.mjs`; `tests/browser/demo-showcase.spec.mjs` plays each one. None of this folder ships in the npm package.
+
+## How they were made
+
+Each is one room in a Postbox started from this repository (`node server/index.mjs --port <port> --data <a fresh temporary folder>`) on 12 November 2026, with two agents:
+
+| Agent    | Harness                                                    | Model                                               | Permission mode                                          |
+| -------- | ---------------------------------------------------------- | --------------------------------------------------- | -------------------------------------------------------- |
+| @builder | Claude Code 2.1.318                                        | `claude-opus-5-5`, effort medium                    | Auto, with every turn capped at $4 by `--max-budget-usd` |
+| @critic  | Codex 0.167.0 (`codex app-server`, signed in with ChatGPT) | `gpt-6.1-sol`, the first model `model/list` offered | Auto                                                     |
+
+The person wrote one message in each room, the question below, and nothing after it. @builder answered with an app and asked @critic to review it; @critic read the app’s file and pinned comments to its parts with `review_block`; @builder shipped v2 with `update_app` and resolved each comment. A script drove the rooms through Postbox’s own API, with a browser page open on each so the apps were checked before they were shown. `view_app` used the headless Chromium Playwright had already installed on that computer, copied into the data folder, so nothing was downloaded.
+
+Every agent worked in a temporary folder outside any git repository, and was told to make no git commits or pushes, no `gh` calls and no network calls.
+
+Each `story.json` keeps the room as it was: the question, the agents’ words, the app’s code at the version @critic reviewed and at the last version, @critic’s comments and verdict, @builder’s answers, and every real turn with its cost and tokens. The replay condenses the room to three turns (the build, the review and the revision), each reporting the recorded cost of the real turns it stands for. Step labels that named a folder on the recording computer are left out.
+
+## The recordings
+
+Costs are what Claude Code reported for @builder’s turns. Codex reports no dollar cost for a ChatGPT sign-in, so @critic’s turns show none; they used that plan’s allowance.
+
+| Folder     | Form                                   | The person’s question, in short                                              | App versions replayed | @critic’s comments | Attempts | Cost of the kept run |
+| ---------- | -------------------------------------- | ---------------------------------------------------------------------------- | --------------------- | ------------------ | -------- | -------------------- |
+| `raft`     | A simulation to poke                   | How does Raft stay consistent when the leader dies mid-write?                | v4 → v5               | 4                  | 2        | $1.87                |
+| `elements` | A real-data explorer with linked views | How do the periodic table’s properties relate? All 118 elements, embedded    | v1 → v5               | 8                  | 2        | $1.86                |
+| `capacity` | A decision model                       | How many GPU replicas keep p99 wait under 500 ms at 40 requests a second?    | v5 → v7               | 4                  | 2        | $1.10                |
+| `review`   | A code review surface                  | Review commit 9927123c, which caps the items route, with its caps as handles | v2 → v3               | 5                  | 2        | $0.90                |
+| `deps`     | A network picture                      | Postbox’s own module graph, from `server/` and `app/js/`                     | v9 → v11              | 4                  | 3        | $2.90                |
+
+The full question is each story’s `ask`. The `review` room’s folder held `git show 9927123c` as a patch file, and the `deps` room’s a copy of this repository’s `server/` and `app/js/` source files.
+
+## Attempts, and what they cost
+
+- **First attempt, every room: $12.91, discarded.** The fresh data folder already had a `@critic` on Claude Code, so the script’s Codex critic was never made, and both agents ran on Claude Code. The loop worked, but it wasn’t cross-vendor.
+- **Second attempt, every room: $7.44, four kept.** @critic moved to Codex. These rooms ran in the first attempt’s folders, so @builder could read, and built on, its own app file from the first attempt.
+- **`deps`, third attempt: $2.90, kept.** The second attempt’s graph was mostly lists of modules in pills rather than a picture. It ran again in a fresh folder, with a question that asked for one network of every module.
+
+In all, the agents spent $23.25 on Claude Code, under the $40 the owner approved.

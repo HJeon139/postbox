@@ -50,7 +50,7 @@ To watch the demo, which plays every block type and every error state on the moc
 node tools/demo.mjs
 ```
 
-Keep the page open while it plays: agent-written apps are checked in your browser before they’re shown.
+Keep the page open while it plays: agent-written apps are checked in your browser before they’re shown. `node tools/demo.mjs --story showcase` plays the showcase instead: five replays of real sessions recorded with @builder on Claude Code and @critic on Codex, each a question answered with an app, reviewed and revised ([tools/demo/showcase/](../tools/demo/showcase/README.md)).
 
 Things to try in the demo’s conversations (`node server/index.mjs --demo --fresh --data data/demo`, which keeps them apart from your own):
 

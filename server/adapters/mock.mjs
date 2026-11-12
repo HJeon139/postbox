@@ -9,6 +9,7 @@ import { dirname } from 'node:path';
 import { brokenMapApp, dashboardApp, explorerApp, layoutApp, walkthroughApp } from '../mock/apps.mjs';
 import { explainer } from './mock-explainer.mjs';
 import { citationFix, fasterParser } from './mock-ledger.mjs';
+import { replayShowcase } from './mock-showcase.mjs';
 
 // POSTBOX_MOCK_SPEED scales every pause: 1 is a natural pace, 0.2 is fast. It’s read on each pause, so a demo can change it.
 const speed = () => Number(process.env.POSTBOX_MOCK_SPEED ?? 1);
@@ -29,7 +30,8 @@ export class MockAdapter {
     const topic = ctx.thread?.kind === 'topic';
     if (topic && message.kind === 'notice' && /Summarize this topic thread/.test(message.text)) await topicSummary(a);
     else if (topic && message.kind === 'user') await topicReply(a);
-    else await (Object.hasOwn(HANDLERS, session.handle) ? HANDLERS[session.handle] : HANDLERS.default)(message, a, mem, session);
+    else if (!(await replayShowcase(message, a, session, ctx)))
+      await (Object.hasOwn(HANDLERS, session.handle) ? HANDLERS[session.handle] : HANDLERS.default)(message, a, mem, session);
     a.grow(message);
   }
 

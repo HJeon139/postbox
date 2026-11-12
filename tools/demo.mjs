@@ -3,6 +3,7 @@
 //
 //   node tools/demo.mjs            starts a fresh Postbox in demo mode on port 4173 and plays every scene
 //   node tools/demo.mjs --port 4280 --speed 0.4
+//   node tools/demo.mjs --story showcase   plays the replays of real recorded sessions instead (tools/demo-showcase.mjs)
 //
 // Agent apps are checked in the browser before they’re shown, so keep the page open while it plays.
 // tools/shoot-app.mjs screenshots each of these scenes, and tests/browser/demo-a11y.spec.mjs runs axe on each.
@@ -321,8 +322,9 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1
   const origin = `http://127.0.0.1:${port}`;
   console.log(`\nOpen ${origin}/ in a browser and keep it open: apps are checked there before they’re shown.\n`);
   await sleep(4000);
+  const story = arg('story', 'tour') === 'showcase' ? (await import('./demo-showcase.mjs')).playShowcase : play;
   try {
-    await play({
+    await story({
       origin,
       speed: Number(arg('speed', 0.6)),
       view: async (hash) => {
