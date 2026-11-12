@@ -76,6 +76,15 @@ export async function startPostbox(name, { demo = true, mockOnly = true, prepare
 }
 
 /**
+ * Opens a reply’s list of steps unless it’s open already: a turn still running shows its steps open
+ * (app/js/activity-paint.mjs). @param {import('@playwright/test').Locator} list  its details.activity
+ */
+export async function openSteps(list) {
+  if ((await list.getAttribute('open')) === null) await list.locator('> summary').click();
+  await expect(list).toHaveAttribute('open', '');
+}
+
+/**
  * The width of the window the test set. Measure what fits a narrow window against it, not innerWidth: on a phone
  * (isMobile), a page that overflows widens innerWidth to fit, so nothing could stick out of that.
  * @param {import('@playwright/test').Page} page

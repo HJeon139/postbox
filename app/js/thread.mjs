@@ -3,11 +3,11 @@
 
 import { renderMarkdown } from '/shared/markdown.mjs';
 import { resolveCommand } from '/shared/slash-line.mjs';
-import { activityParts, paintActivity, stepsOnly } from './activity-paint.mjs';
+import { laterParts } from './activity-live.mjs';
+import { activityParts, drawnStale, hasRecord, paintActivity, paintPatch, recordMoved } from './activity-paint.mjs';
 import { mockMarker } from './agent-facts.mjs';
 import { agentMarkdown, handles, markTerms, paintAgentMarkdown, usesTerm } from './agent-markdown.mjs';
 import { paintOfflineQueue, paintWaitingLine } from './agent-queue.mjs';
-import { subagentNow } from './agents.mjs';
 import { allowedCallLine } from './allowed-call.mjs';
 import { enhanceMarkdown, releaseApps, renderAppItem, renderAppSendCard } from './apps.mjs';
 import { attChip, fileSize } from './attachment-chip.mjs';
@@ -47,6 +47,7 @@ import { windowOn } from './window-flag.mjs';
 import { focusedItem, keepFocused } from './window-keep.mjs';
 import { replaced as replacedNode } from './window-shrink.mjs';
 import { workList } from './work-list.mjs';
+import { fillWorkRow } from './working-rows.mjs';
 
 export { focusComposer } from './hop-card.mjs';
 
@@ -91,12 +92,14 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
       (se) => se.id,
       (se) => {
         const row = h('div.work-row', ringFor(se, 'xs'), h('div.work-text'));
-        fillWorkRow(row, se);
+        fillWorkRow(row, se, threadId);
         return row;
       },
-      (row, se) => fillWorkRow(row, se),
+      (row, se) => fillWorkRow(row, se, threadId),
     );
     el.append(hostTurns.el, working); // keep them last
+    // A running turn’s steps fit its share of the screen, which changes as agents start and finish (activity-live.mjs).
+    for (const it of shown()) if (drawnStale(nodes.get(it.id), it, threadId)) rerender(it.id);
   };
   // Above them, a turn on a host Postbox asked to stop and the host hasn’t confirmed it stopped (#120).
   const hostTurns = hostTurnsList(threadId);
@@ -231,8 +234,9 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
       view.grew();
     } else if (ch.type === 'item.patch' && d.threadId === threadId) {
       // A step changes only the reply’s activity list (#573); anything else draws the reply again.
-      const it = stepsOnly(d) ? itemsOf(threadId)[placeIn(threadId, d.id)] : null;
-      if (!d.reaction && !(it && paintActivity(nodes.get(d.id), it))) rerender(d.id);
+      const it = itemsOf(threadId)[placeIn(threadId, d.id)];
+      if (!d.reaction && !paintPatch(nodes.get(d.id), it, threadId, d)) rerender(d.id);
+      for (const id of laterParts(d, threadId, shown())) if (!paintActivity(nodes.get(id), itemsOf(threadId)[placeIn(threadId, id)], threadId)) rerender(id);
     } else if (ch.type === 'item.text' && d.threadId === threadId) {
       pending.add(d.id);
       if (!raf)
@@ -316,18 +320,6 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
       }
     },
   };
-}
-
-function fillWorkRow(row, se) {
-  ringFor(se, 'xs', row.querySelector('pb-ring'));
-  const step = se.state === 'tool' && se.currentStep ? `: ${se.currentStep}` : '';
-  fill(
-    row.querySelector('.work-text'),
-    h('div.work-line', h('b', se.handle), h('span.dim', ` · ${stateWord(se.state).toLowerCase()}${step}`)),
-    se.glimpse ? h('div.glimpse', se.glimpse) : null,
-    // Each subagent at work, in its own words when it has said something (#73): “reader: Now I’ll read paper 3…”.
-    (se.subagents ?? []).map((x) => h('div.work-line.work-sub', h('span', `${x.name}: `), h('span.dim', subagentNow(x)))),
-  );
 }
 
 const who = (it, { you = false, threadId = '' } = {}) => {
@@ -425,12 +417,12 @@ function renderItem(it, prev, ctx) {
       );
     }
     case 'agent': {
-      // Replayed whole from the host after a restart (#120): the replay is the reply, so this part of it shows nothing.
-      if (it.status === 'replaced') return h('div.col.replaced', { hidden: true });
+      // Replayed whole from the host after a restart (#120), or only steps whose record shows with the words: nothing.
+      if (it.status === 'replaced' || recordMoved(it, ctx.threadId)) return h('div.col.replaced', { hidden: true });
       const node = h(
         'div.col.turn',
         showWho ? who(it, ctx) : null,
-        ...activityParts(it),
+        ...activityParts(it, ctx.threadId),
         it.text || it.status === 'streaming' ? h('div.md') : null,
         // What the turn changed, ran and published, under its last reply (#132, #195), leading to Work.
         it.work ? workChip(it, ctx) : null,
@@ -546,12 +538,13 @@ function renderItem(it, prev, ctx) {
   }
 }
 
-/** A turn’s line and its list from the work ledger (#132, #195), each leading to the conversation’s Work. */
+/** A turn’s list from the work ledger (#132, #195), leading to Work, headed by its line unless its record says it. */
 function workChip(it, ctx) {
   const t = client.state.threads[ctx.threadId];
   const conv = (t?.kind === 'side' || t?.kind === 'topic') && t.parentId ? t.parentId : ctx.threadId;
   const s = client.state;
-  return workList(it, conv, [s.projects?.[s.threads[conv]?.projectId]?.folder, s.personas?.[s.sessions?.[it.sessionId]?.personaId]?.folder]);
+  const folders = [s.projects?.[s.threads[conv]?.projectId]?.folder, s.personas?.[s.sessions?.[it.sessionId]?.personaId]?.folder];
+  return workList(it, conv, folders, !hasRecord(it, ctx.threadId));
 }
 
 function failureText(msg = 'This reply didn’t finish.') {

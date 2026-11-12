@@ -2,7 +2,7 @@
 
 - persona: A team lead who keeps two pieces of work going in one room and checks each agent answers what it was asked, where it was asked. Writes short messages.
 - agents: alpha, beta
-- backends: beta=kiro-cli:gpt-5.6-terra
+- backends: beta=kiro-cli:qwen3-coder-next
 - project: Thread focus
 - conversation: Two tasks at once
 

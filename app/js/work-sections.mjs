@@ -150,7 +150,7 @@ export function effortSection(s, entries, threadId, win) {
       h('td.num', dur(a.ms) || '—'),
       h('td.num', a.toolCalls.toLocaleString('en-US')),
       h('td.num', a.tokens ? formatTokens(a.tokens) : '—'),
-      h('td.num', priced(a.costUsd, anyPrice)),
+      h('td.num', priced(a.costUsd, total ? anyPrice : a.priced)),
       h('td.num', `+${(a.written ?? 0).toLocaleString('en-US')}`),
       h('td.num', signedEl(a.added, a.deleted)),
     );

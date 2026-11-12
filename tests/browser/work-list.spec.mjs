@@ -38,6 +38,10 @@ test.beforeAll(async () => {
     .filter((i) => i.turnId === turn.id)
     .findLast((i) => i.kind === 'agent' || i.kind === 'block');
   rows = turnRows(entries(), turn.id, { folders: [store.state.projects[conv.projectId].folder] });
+  // The whole list, with its line on top, is for a turn with no work record: one whose reply kept no steps. A turn with
+  // a record lists its calls there, and the list under it only what they made (live-steps.spec.mjs).
+  const first = store.items(conv.id).find((i) => i.turnId === turn.id && i.activity);
+  if (first) store.emit('item.patch', { threadId: conv.id, id: first.id, patch: { activity: null } });
 });
 test.afterAll(async () => {
   await app?.stop();

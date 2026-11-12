@@ -38,8 +38,6 @@ function context() {
 }
 
 const down = (ctx) => ctx.calls.activity.find((a) => a.label === 'Postbox’s tools didn’t load');
-const inputOf = (seen) => seen.find((r) => r.method === 'turn/start')?.params.input[0].text ?? '';
-const told = /^\[Postbox\] In your last turn, Postbox’s tool server didn’t start/;
 
 test('#1162 Codex refusing the thread for Postbox’s server is a failed step, and the reply says so in plain words', async () => {
   const ctx = context();
@@ -82,61 +80,3 @@ test('#1162 “postbox:” inside another server’s error detail isn’t Postbo
   await assert.rejects(adapter.deliver({}, { kind: 'user', text: 'Hi.' }, ctx), /tried the postbox: socket/);
   assert.equal(down(ctx), undefined);
 });
-
-test('#1162 the next Codex turn is told first that Postbox’s tools didn’t load, and only once', async () => {
-  const ctx = context();
-  let n = 0;
-  const seen = [[], [], []];
-  const adapter = new CodexAdapter({
-    spawnImpl: () => {
-      const i = n++;
-      return fakeAppServer(seen[i], { threadError: () => (i === 0 ? refused('postbox') : null) });
-    },
-  });
-  await assert.rejects(adapter.deliver({}, { kind: 'user', text: 'Show a block.' }, ctx));
-  await adapter.deliver({}, { kind: 'user', text: 'Try again.' }, ctx);
-  assert.match(inputOf(seen[1]), told, 'the next turn is told first');
-  assert.match(inputOf(seen[1]), /the turn didn’t run and you never got its message/, 'worded for a turn that never ran');
-  assert.match(inputOf(seen[1]), /read_conversation has it/, 'and says where the message is');
-  assert.match(inputOf(seen[1]), /Try again\./, 'then its request');
-  await adapter.deliver({}, { kind: 'user', text: 'Once more.' }, ctx);
-  assert.doesNotMatch(inputOf(seen[2]), told, 'and only once');
-});
-
-// formatMessage reads message.text only for some kinds, so the note goes in front of what it returns.
-for (const [kind, message] of [
-  ['a person’s message', { kind: 'user', text: 'Try again.' }],
-  ['an agent’s message', { kind: 'agent', from: 'reviewer', text: 'Try again.' }],
-  ['a wake-up', { kind: 'wake', note: 'Try again.' }],
-  ['a block event', { kind: 'event', event: { blockId: 'b1', action: 'submit', values: {} } }],
-  ['a lint turn', { kind: 'lint', text: 'Try again.', problems: [] }],
-  ['an app’s failed check', { kind: 'app-check', appId: 'a1', problems: [] }],
-  ['a notice', { kind: 'notice', text: 'Try again.' }],
-  ['a queue of messages', { kind: 'user', messages: [{ kind: 'user', text: 'Try again.' }] }],
-]) {
-  test(`#1162 ${kind} is told first that Postbox’s tools didn’t load`, async () => {
-    const ctx = context();
-    Object.assign(ctx.state, { postboxToolsDown: 'refused' });
-    const seen = [];
-    const adapter = new CodexAdapter({ spawnImpl: () => fakeAppServer(seen) });
-    await adapter.deliver({}, message, ctx);
-    assert.match(inputOf(seen), told);
-    assert.equal(ctx.state.postboxToolsDown, null, 'and it’s told once');
-  });
-}
-
-// A command is the whole prompt (#67), and a re-attach sends the agent nothing (#120).
-for (const [what, message] of [
-  ['a slash command', { kind: 'user', text: '/review', slash: true }],
-  ['a re-attached turn', { kind: 'user', text: '', attach: 'host-turn-1' }],
-]) {
-  test(`#1162 ${what} isn’t prefixed, and the note waits for the next turn`, async () => {
-    const ctx = context();
-    Object.assign(ctx.state, { postboxToolsDown: 'ran' });
-    const seen = [];
-    const adapter = new CodexAdapter({ spawnImpl: () => fakeAppServer(seen) });
-    await adapter.deliver({}, message, ctx);
-    assert.doesNotMatch(inputOf(seen), /\[Postbox\] In your last turn/);
-    assert.equal(ctx.state.postboxToolsDown, 'ran', 'the note is still owed');
-  });
-}

@@ -567,7 +567,7 @@ test('a scenario with agents on a backend other than Claude’s is a compatibili
 
 test('a scenario can put agents on another backend, with a model', () => {
   const s = parseScenario(readFileSync(new URL('uat/e2e/scenarios/mixedroom.md', import.meta.url), 'utf8'));
-  assert.deepEqual(s.backends, { critic: { backend: 'kiro-cli', model: 'gpt-5.6-terra' } });
+  assert.deepEqual(s.backends, { critic: { backend: 'kiro-cli', model: 'qwen3-coder-next' } });
   assert.deepEqual(s.agents, ['researcher']);
   assert.deepEqual(parseScenario('# T\n- backends: @a=kiro-cli, b=claude-code:claude-opus-5-5, junk\n').backends, {
     a: { backend: 'kiro-cli', model: null },
@@ -1182,7 +1182,7 @@ describe('the P0 hotfixes’ checks fire on the defect as it was reported, and s
     const action = SCHEMA.properties.action.properties;
     assert.ok(action.type.enum.includes('jobs'));
     assert.deepEqual(action.answer.enum, ['stop', 'keep']);
-    assert.deepEqual(action.interrupt.properties.do.enum, ['stop', 'send_now', 'answer', 'fault', 'conversation']);
+    assert.deepEqual(action.interrupt.properties.do.enum, ['stop', 'send_now', 'answer', 'fault', 'conversation', 'look']);
     assert.deepEqual(action.interrupt.required, ['after', 'do']);
     // The decision’s words for the two answers (#126).
     assert.deepEqual(JOBS_ANSWERS, { stop: ['Stop it too', 'Stop them too'], keep: ['Keep running'] });

@@ -4,8 +4,9 @@ import { spawn } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
 import { realpath } from 'node:fs/promises';
 import { createInterface } from 'node:readline';
-import { describeTool, isQuietTool } from './claude-stream.mjs';
+import { HarnessEvents } from '../harness-events.mjs';
 import { codexApproval } from './codex-approval.mjs';
+import { itemCompleted, itemStarted } from './codex-events.mjs';
 import { codexMcpApprovalConfig, postboxMcpApprovalArgs } from './codex-mcp-policy.mjs';
 import { findCodex } from './codex-models.mjs';
 import { networkOn } from './codex-network.mjs';
@@ -16,8 +17,6 @@ import { agentFolder } from './folder.mjs';
 import { FRESH_START_TEXT, formatMessage, turnGuide } from './guide.mjs';
 import { listProcesses, stopTurn } from './process-group.mjs';
 import { AUTO_MODEL, effortOf, POSTBOX_SERVER, recorderFor } from './setup.mjs';
-import { takeToolsDown } from './tools-down.mjs';
-import { codexWork } from './work-calls.mjs';
 
 export { codexModels, codexVersion, findCodex } from './codex-models.mjs';
 export { CODEX_CAPABILITIES, codexRemoteConfigArgs, createCodexRebuild } from './codex-remote.mjs';
@@ -74,88 +73,50 @@ export function codexConfigArgs(mcpUrl) {
 
 const errorText = (x) => x?.error?.message ?? x?.message ?? 'Codex app-server failed.';
 
-/** Translate app-server notifications into Postbox turn events. io.read: a file’s text, for the work ledger (work-calls.mjs). */
+/**
+ * Reads app-server notifications into the harness-event contract (server/harness-events.mjs). io.read: a file’s text,
+ * for what a change replaced (codex-events.mjs).
+ */
 export function createCodexMapper(ctx, io = {}) {
-  const labels = new Map();
-  const work = codexWork(ctx, io);
-  const messageText = new Map();
-  let lastMessageId = null;
-  const writeMessage = (id, text) => {
-    if (lastMessageId !== null && id !== lastMessageId) ctx.text('\n\n');
-    lastMessageId = id;
-    ctx.text(text);
-  };
-  const pushItem = (item, state = 'running') => {
-    if (!item?.id) return;
-    if (item.type === 'commandExecution') {
-      const label = describeTool('Bash', { command: item.command, cwd: item.cwd });
-      labels.set(item.id, label);
-      if (!isQuietTool('Bash')) ctx.activity({ id: item.id, label, state, kind: 'tool' });
-    } else if (item.type === 'mcpToolCall') {
-      const label = `${item.server === POSTBOX_SERVER ? '' : `${item.server}: `}${item.tool}`;
-      labels.set(item.id, label);
-      if (item.server !== POSTBOX_SERVER && !isQuietTool(item.tool)) ctx.activity({ id: item.id, label, state, kind: 'tool' });
-    } else if (item.type === 'fileChange') {
-      const label = `Edit ${
-        item.changes
-          ?.map((x) => x.path)
-          .filter(Boolean)
-          .join(', ') || 'files'
-      }`;
-      labels.set(item.id, label);
-      ctx.activity({ id: item.id, label, state, kind: 'tool' });
-    } else if (item.type === 'reasoning') ctx.status({ state: 'think' });
-    else if (item.type === 'webSearch') {
-      const label = `Search the web${item.query ? `: ${item.query}` : ''}`;
-      labels.set(item.id, label);
-      ctx.activity({ id: item.id, label, state, kind: 'tool' });
-    }
-  };
+  const emit = new HarnessEvents(ctx).event;
+  const streamed = new Set(); // messages whose text arrived as deltas
   const push = (msg) => {
     const p = msg?.params ?? {};
     switch (msg?.method) {
       case 'item/started':
-        pushItem(p.item);
-        work.started(p.item);
+        itemStarted(emit, p.item);
         break;
-      case 'item/completed': {
-        const item = p.item;
-        work.completed(item);
-        if (item?.type === 'agentMessage' && item.text && !messageText.has(item.id)) writeMessage(item.id, item.text);
-        if (item?.type === 'webSearch' && item.query) labels.set(item.id, `Search the web: ${item.query}`);
-        const label = labels.get(item?.id);
-        if (label && !(item?.type === 'mcpToolCall' && item.server === POSTBOX_SERVER))
-          ctx.activity({ id: item.id, label, state: item.status === 'failed' || item.status === 'declined' ? 'denied' : 'done', kind: 'tool' });
+      case 'item/completed':
+        if (p.item?.type === 'agentMessage') {
+          if (p.item.text && !streamed.has(p.item.id)) emit({ kind: 'text', text: p.item.text, block: p.item.id });
+        } else itemCompleted(emit, p.item, io.read);
         break;
-      }
       case 'item/agentMessage/delta':
         if (typeof p.delta === 'string') {
-          messageText.set(p.itemId, `${messageText.get(p.itemId) ?? ''}${p.delta}`);
-          ctx.status({ state: 'gen', currentStep: 'Writing a reply' });
-          writeMessage(p.itemId, p.delta);
+          streamed.add(p.itemId);
+          emit({ kind: 'text', text: p.delta, block: p.itemId });
         }
         break;
-      case 'item/commandExecution/outputDelta': {
-        const id = p.itemId;
-        if (id && labels.has(id)) ctx.activity({ id, label: labels.get(id), state: 'running', detail: String(p.delta ?? '').slice(-500), kind: 'tool' });
+      case 'item/commandExecution/outputDelta':
+        if (p.itemId) emit({ kind: 'tool_output', id: p.itemId, text: String(p.delta ?? '') });
         break;
-      }
       case 'thread/tokenUsage/updated': {
         const u = p.tokenUsage ?? p.token_usage;
-        const win = u?.modelContextWindow ?? u?.model_context_window ?? null;
         const last = u?.last ?? u?.total ?? {};
-        const input = last.inputTokens ?? last.input_tokens ?? 0;
-        const pct = codexContextPercent(input, win);
-        ctx.status({ ctx: pct });
+        emit({
+          kind: 'context',
+          percent: codexContextPercent(last.inputTokens ?? last.input_tokens ?? 0, u?.modelContextWindow ?? u?.model_context_window ?? null),
+        });
         break;
       }
       case 'turn/started':
-        ctx.status({ state: 'think' });
+        emit({ kind: 'status', state: 'think' });
         break;
       case 'turn/completed': {
         const status = p.turn?.status;
         if (p.turn?.model) ctx.reported?.({ model: p.turn.model, effort: p.turn.effort ?? codexEffortOf(ctx.persona) });
         if (p.turn?.id) ctx.checkpoint?.({ turnId: p.turn.id, threadId: ctx.state.codexThreadId });
+        emit({ kind: 'turn_end', isError: status === 'failed' });
         return { completed: true, status };
       }
       case 'error':
@@ -201,7 +162,6 @@ async function startTurn(ctx, request, send, cwd, session, message) {
   const model = codexModelOf(ctx.persona);
   const fork = ctx.state.fork ?? ctx.state.forkFrom;
   const sourceThreadId = fork?.threadId ?? ctx.state.codexThreadId;
-  const down = takeToolsDown(ctx, message); // Postbox’s tools didn’t load last turn: told first, once (#1162)
   const { opened, fresh } = await openCodexThread(ctx, request, { sourceThreadId, fork, cwd, model, openConfig }).catch((e) => {
     throw codexRefusal(ctx, e);
   });
@@ -210,7 +170,7 @@ async function startTurn(ctx, request, send, cwd, session, message) {
   ctx.state.codexThreadId = id;
   ctx.saveState({ codexThreadId: id, fork: null, forkFrom: null });
   const note = `[Postbox] ${FRESH_START_TEXT}\n\n`;
-  const inputText = down + formatMessage(fresh ? { ...turnMessage, text: note + turnMessage.text } : turnMessage, attachmentPaths(ctx, ctx.remote?.turn));
+  const inputText = formatMessage(fresh ? { ...turnMessage, text: note + turnMessage.text } : turnMessage, attachmentPaths(ctx, ctx.remote?.turn));
   const started = await request('turn/start', {
     threadId: id,
     input: [{ type: 'text', text: inputText }],

@@ -7,7 +7,7 @@
 // own for each test. Moved from tools/check-stop-steps.mjs (#303).
 
 import { expect, test } from '@playwright/test';
-import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
+import { failOnPageErrors, openSteps, startPostbox, synced } from './postbox.mjs';
 
 // The reply’s steps as the p0 UAT recorded them at its Stop (Postbox 0.30.1): a background loop with its job, a wait
 // that had finished, and the same wait running when the person pressed Stop.
@@ -79,7 +79,7 @@ const jobStop = (page) => page.locator('.bg-jobs').getByRole('button', { name: `
 /** The last reply’s header and its steps, and the last stopped tag. */
 async function lastReply(page) {
   const d = page.locator('details.activity').last();
-  await d.locator('> summary').click();
+  await openSteps(d);
   const words = async (l) => (await l.allInnerTexts()).map((t) => t.replace(/\s+/g, ' ').trim());
   return {
     header: (await words(d.locator('> summary')))[0],
@@ -109,7 +109,8 @@ for (const [how, text] of [
     await stopWith(page, how, 'keep', text);
     const r = await lastReply(page);
     expect(r.tag).toMatch(/^Stopped by you at \d\d:\d\d · its background work kept running$/);
-    expect(r.header).toMatch(/^Used 3 tools · 21 s in tools · background work running$/);
+    // The header is the turn’s work record: with a card, the block it showed; with nothing in Work, its steps.
+    expect(r.header).toMatch(text ? /^1 block · [\d.]+ s in all · background work running$/ : /^Used 3 tools · 21 s in tools · background work running$/);
     expect(r.steps).toEqual([`${BG} Running in the background`, WAIT, `${WAIT} Stopped`]);
     await expect(jobStop(page), 'the kept job keeps its row, with its own Stop').toHaveCount(1);
     await jobStop(page).click();

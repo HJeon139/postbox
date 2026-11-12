@@ -2,6 +2,16 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.1.0 (2026-11-12)
+
+### Features
+
+- **uat:** add turn-after-delete, the live half of the removed delete check
+
+### Fixes
+
+- **uat:** wait for a deleted conversation to go, not for its undo window
+
 ## 4.0.8 (2026-11-12)
 
 ### Fixes

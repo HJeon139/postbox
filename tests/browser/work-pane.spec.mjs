@@ -187,19 +187,22 @@ async function itemFull(page) {
   await expect.poll(() => focusedId(page)).toBe(id);
 }
 
-/** a reply’s work line opens Work at its turn, beside the thread */
+/** a reply’s work record opens Work at its turn, beside the thread */
 async function workLine(page, { phone }) {
   await open(page, `/side/${topic}?work`);
   await page.locator('#work-close').click();
   await expect(page.locator(WORK)).toHaveCount(0);
   const second = turns[1];
-  const chip = page.locator(`.transcript .work-chip[href*="turn=${second.id}"]`);
-  await expect(chip, 'the second reply’s work line').toBeAttached();
+  const link = `a.work-record-link[href*="turn=${second.id}"]`;
+  const record = page.locator('.transcript details.activity', { has: page.locator(link) });
+  const chip = record.locator(link);
+  await expect(record, 'the second reply’s work record').toBeAttached();
   // At 375 the thread covers the conversation: close it to reach the line, as a person would.
   if (phone) {
     await page.locator(`${THREAD} .sp-head button[aria-label="Close thread"]`).click();
     await expect(page.locator(THREAD)).toHaveCount(0);
   }
+  await record.locator('> summary').click();
   await chip.click();
   const turn = page.locator(`#wturn-${second.id}`);
   await expect(page.locator(`#wturn-${second.id}[open].is-target`), 'the turn, opened').toBeVisible();
@@ -279,7 +282,7 @@ const CASES = [
   ['Work opens beside the open thread, split above it, with a divider that moves by keyboard and mouse', split],
   ['Work goes full screen with the app frames’ icon; Escape and the icon bring it back, with focus on the icon', workFull],
   ['an item in the pane opens full screen at that item', itemFull],
-  ['a reply’s work line opens Work at its turn, beside the thread', workLine],
+  ['a reply’s work record opens Work at its turn, beside the thread', workLine],
   ['a reload restores what was open, and the conversation keeps Work open until it’s closed', reload],
   ['#138’s Work page links open the pane', oldLinks],
 ];

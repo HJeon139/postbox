@@ -31,3 +31,12 @@ export function settleStoppedSteps(rt, turn) {
   turn.steps = turn.steps.map((s) => (open(s) ? { ...s, state: 'stopped' } : s));
   if (turn.first) rt.patchItem(turn.threadId, turn.first, { activity: { steps: [...turn.steps] } });
 }
+
+/**
+ * A turn’s steps fold to what its record keeps (shared/step-fold.mjs), however it ended: it finished (endTurn), it was
+ * stopped (recordStopped), or a restart cut it off (restart-sweep.mjs). One small patch, which the reducer applies.
+ * @param {any} rt @param {string} threadId @param {string} itemId  the turn’s first part, which holds its steps
+ */
+export function foldSteps(rt, threadId, itemId) {
+  rt.store.emit('item.patch', { threadId, id: itemId, foldSteps: true });
+}

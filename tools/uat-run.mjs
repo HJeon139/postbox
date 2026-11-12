@@ -10,7 +10,7 @@
 // Real agents and the tester both run on the claude CLI you’re signed in to, so a run costs real usage. --budget caps
 // the tester; --max-cost caps the whole run (agents, tester and verifier), stopping it, report and all, before
 // a step or an agent turn could pass the cap (tools/uat/budget.mjs). Without --max-cost the agents are uncapped. A scenario
-// can put agents on another backend (`- backends: critic=kiro-cli:gpt-5.6-terra`); those use that CLI’s sign-in, and
+// can put agents on another backend (`- backends: critic=kiro-cli:qwen3-coder-next`); those use that CLI’s sign-in, and
 // the scenario is a compatibility run, which needs --compat, the Antigravity CLI’s included. A backend kept to version
 // releases (none today) needs --release (releaseGate), which also counts as --compat:
 //
@@ -477,7 +477,7 @@ async function main() {
           // Where the turn runs: a reply in a thread, or an answer to a block in the panel, works there.
           const panel = a.type === 'thread' || (key ? await d.inPanel(key) : false);
           // A fault or a conversation action mid-turn is the driver’s answer while the agent works (tools/uat/steps.mjs).
-          const mid = interruptAct(a.interrupt, { fault: hostFault, answer: answerMidTurn, ctx: { d, api, facts } });
+          const mid = interruptAct(a.interrupt, { fault: hostFault, answer: answerMidTurn, ctx: { d, api, facts, shots: paths.shots, step } });
           const said = await timing.time('waits', () =>
             d.interrupt({ ...a.interrupt, do: mid.do }, { panel, onWait: () => midTurnChecks(), answer: mid.answer }),
           );

@@ -11,6 +11,7 @@ import { carriedList } from '../shared/work.mjs';
 import { workFolder } from './adapters/folder.mjs';
 import { listProcesses } from './adapters/process-group.mjs';
 import { EFFORT_LEVELS } from './adapters/setup.mjs';
+import { toolsDownNote } from './adapters/tools-down.mjs';
 import { recordCommands, runAgentCommand } from './agent-commands.mjs';
 import { agentFile, agentFolders, appFiles } from './agent-files.mjs';
 import { APP_HOLD_MAX, APP_SEND_LIMIT, APP_SEND_WINDOW_MS } from './app-send-limits.mjs';
@@ -56,7 +57,7 @@ import { addHost, host, removeHost, setProjectHostFolder, updateHost } from './r
 import { describeHostInstall, hostStatus, installHost, retryHost, watchHosts } from './remote/host-status.mjs';
 import { localBackends, refuseHere, refuseUnregistered, registeredAdapter } from './remote/placement.mjs';
 import { RemoteTurns } from './remote/turns.mjs';
-import { replySegment, stepTaken, wordsSegment } from './reply-segment.mjs';
+import { placeStep, replySegment, stepTaken, wordsSegment } from './reply-segment.mjs';
 import {
   armWake,
   cancelWakeSchedule,
@@ -74,6 +75,7 @@ import { mcpContext } from './setup-context.mjs';
 import { clearSummaryPending, postSummary, shareText, shareToConversation, summarizeBack, summarizing } from './share-back.mjs';
 import { commandFolder, expireStaleCommands, flushShellOutput, runShellCommand, stopShellCommand, stopShellCommands } from './shell-runs.mjs';
 import { agentWake, bumpSideLink, dropWakes, endChain, recordAgentMessage, resolveHop, sideSession } from './side-threads.mjs';
+import { stepState, turnStep } from './step-text.mjs';
 import { newId } from './store.mjs';
 import { heldTurn, STORE_STOPPED, saveBackendState, watchStore, whenWritable } from './store-outage.mjs';
 import { endSubagent, notUrgent } from './subagent-end.mjs';
@@ -84,7 +86,7 @@ import { startTopic } from './topic-open.mjs';
 import { checkTurn, stallLeftRunning, stallSteps } from './turn-checks.mjs';
 import { endedAs, endWork } from './turn-end-work.mjs';
 import { askedAgain, askedOf, replyMarks } from './turn-marks.mjs';
-import { settleStoppedSteps, settleSubagentSteps } from './turn-steps.mjs';
+import { foldSteps, settleStoppedSteps, settleSubagentSteps } from './turn-steps.mjs';
 import { workEvents } from './turn-work.mjs';
 import { toolsFor } from './ui-tools.mjs';
 import { unarchive } from './unarchive.mjs';
@@ -98,9 +100,6 @@ export { PERMISSION_MODES, readCapped };
 
 /** @typedef {import('./agent-files.mjs').AppFile} AppFile */
 
-const STEP_STATES = new Set(['running', 'done', 'failed', 'denied', 'stopped']);
-/** What a step is when it isn’t a tool call (#73): a thought, a subagent’s narration, or a subagent’s own step. */
-const STEP_KINDS = /** @type {Set<unknown>} */ (new Set(['thought', 'said', 'agent']));
 /** The background jobs Postbox keeps on a session, at most. */
 const MAX_JOBS = 50;
 /** How long a stopped turn may hold its session before Postbox lets the next turn start anyway, and says so (#126). */
@@ -417,6 +416,10 @@ export class Runtime {
       message = { ...message, context: [...notUrgent(se.context), ...(message.context ?? [])] };
       this.updateSession(sessionId, (now) => ({ context: (now.context ?? []).filter((/** @type {string} */ x) => !se.context.includes(x)) })); // only what it read
     }
+    // Postbox’s tools didn’t load last turn: told once, whatever the backend (tools-down.mjs).
+    const down = toolsDownNote(se, message);
+    if (down) message = { ...message, context: [down, ...(message.context ?? [])] };
+    if (down) saveBackendState(this, sessionId, { postboxToolsDown: null });
     // Problems the checks found in its last reply, still waiting to go as a lint turn, come with this turn instead, as
     // message.lint: fixes it owes, placed with the request rather than in the background.
     if (message.kind !== 'lint' && !slash) message = this.foldLint(sessionId, message);
@@ -446,6 +449,7 @@ export class Runtime {
       segment: null,
       first: null,
       steps: [],
+      partWords: {}, // each part’s words so far, by its id (reply-segment.mjs, placeStep)
       abort,
       closed: false,
       summarizeTo,
@@ -601,6 +605,7 @@ export class Runtime {
         if (!live() || !delta) return;
         const id = wordsSegment(rt, turn, se0);
         turn.said += delta;
+        turn.partWords[id] = (turn.partWords[id] ?? 0) + delta.length;
         rt.store.emit('item.text', { threadId: turn.threadId, id, text: delta });
         if (rt.store.pending.session(turn.sessionId)?.state !== 'gen') rt.updateSession(turn.sessionId, { state: 'gen', currentStep: 'Writing a reply' });
       },
@@ -616,23 +621,21 @@ export class Runtime {
         detail = null,
         kind = null,
         job = /** @type {string|null} */ (null),
+        input = null,
+        output = null,
+        added = null,
+        deleted = null,
+        diff = null,
       }) {
         if (!live()) return;
         // A lint turn that only calls tools (define_term, say) is quiet: it ends as a one-line note, not a reply.
         if (!turn.first && turn.kind !== 'lint') ensureSegment();
         if (!who) stepTaken(turn);
         const i = turn.steps.findIndex((s) => s.id === id);
-        const step = {
-          id: id ?? newId('st'),
-          label: String(label).slice(0, 200),
-          state: STEP_STATES.has(state) ? state : 'done',
-          ms,
-          ...(who ? { who: String(who).slice(0, 40) } : {}),
-          ...(typeof parent === 'string' && parent ? { parent: parent.slice(0, 100) } : {}),
-          ...(detail ? { detail: String(detail).slice(0, 1200) } : {}),
-          ...(STEP_KINDS.has(kind) ? { kind } : {}),
-          ...(typeof job === 'string' && job ? { job: job.slice(0, 60) } : {}),
-        };
+        const sid = id ?? newId('st');
+        // A new step of the agent’s own shows in the part it writes in now, after that part’s words so far.
+        const place = i < 0 && !who ? placeStep(rt, turn, sid) : {};
+        const step = turnStep({ id: sid, label, state, ms, who, parent, detail, kind, job, input, output, ...place, added, deleted, diff });
         if (i >= 0) turn.steps[i] = { ...turn.steps[i], ...step };
         else turn.steps.push(step);
         if (turn.first) rt.store.emit('item.patch', { threadId: turn.threadId, id: turn.first, activityStep: step });
@@ -743,6 +746,8 @@ export class Runtime {
     for (const [id, w] of this.permissionWaits) if (w.sessionId === turn.sessionId) this.settlePermission(id, 'expired');
     this.turns.delete(turn.sessionId);
     this.settleSubagentSteps(turn);
+    // Its steps fold to what its record keeps: the live view's detail goes with the turn (turn-steps.mjs).
+    if (turn.first) foldSteps(this, turn.threadId, turn.first);
     // How a remote turn ended on its host decides what the person sees: Sign-in needed and Interrupted say so (#120).
     if (turn.remote) err = this.remote.ended(turn, err);
     settleScheduledWake(this, turn, err);
@@ -966,6 +971,7 @@ export class Runtime {
     // here as well would cancel what the agent was told will start again (the integrator’s re-review of #598).
     if (by !== 'shutdown' && by !== 'store') settleScheduledWake(this, turn, { name: 'AbortError' });
     settleStoppedSteps(this, turn);
+    if (turn.first) foldSteps(this, turn.threadId, turn.first);
     endWork(this, turn, 'stopped');
     // A waiting permission is answered no; the card keeps who stopped it, so its note says the person’s stop withdrew
     // it, or that it expired (tellExpired, #721, #853).
@@ -1141,7 +1147,7 @@ export class Runtime {
       this.keptPoll = null;
     }
     // A kept job’s step loses what it said while running (keepUnsure); another’s keeps why its CLI said it failed.
-    this.setJobStep(job, { state: STEP_STATES.has(state) ? state : 'done', ms: Date.now() - job.startedAt, ...(detail || job.kept ? { detail } : {}) });
+    this.setJobStep(job, { state: stepState(state), ms: Date.now() - job.startedAt, ...(detail || job.kept ? { detail } : {}) });
     // A job Postbox kept running ended after its CLI had gone, so the agent hears it on its next turn.
     if (job.kept)
       this.tellAgent(

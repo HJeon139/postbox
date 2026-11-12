@@ -3,7 +3,8 @@ import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { createAgyMapper } from '../server/adapters/antigravity-cli.mjs';
 import { createCodexMapper } from '../server/adapters/codex.mjs';
-import { beforePatch, unwrapShell } from '../server/adapters/work-calls.mjs';
+import { createKiroMapper } from '../server/adapters/kiro-cli.mjs';
+import { agyResult, beforePatch, unwrapShell } from '../server/adapters/work-calls.mjs';
 import { Ledger } from '../server/ledger.mjs';
 import { Store } from '../server/store.mjs';
 
@@ -158,4 +159,57 @@ test('a command Codex wraps in a login shell is shown as the agent wrote it, in 
   assert.equal(commands.length, 3);
   for (const [ran, asked] of commands) assert.equal(unwrapShell(ran), asked);
   assert.equal(unwrapShell('git status'), 'git status', 'a command with no wrapper is kept as it is');
+});
+
+test('a Kiro turn’s file write and command reach Work, under Claude Code’s names for them', async () => {
+  // Recorded Kiro v3 turns: “Write File” of notes.md, and a command, moved into this ledger’s folder.
+  const moved = (/** @type {string} */ name, /** @type {string} */ from) =>
+    fixture(`kiro-cli/${name}`).map((e) => JSON.parse(JSON.stringify(e).replaceAll(from, '/work/project')));
+  const io = memIo({});
+  const { ctx, done } = ledgerTurn(io);
+  const m = createKiroMapper(ctx);
+  for (const e of moved('auto-kiro-write', '/tmp/pb-kiro-auto-noshell-kiro-write-eV4gbd/work')) {
+    if (e.data?.update?.status === 'completed') io.fs.set('/work/project/notes.md', Buffer.from('hi'));
+    m.push(e);
+  }
+  for (const e of fixture('kiro-cli/auto-shell')) m.push(e);
+  const { of } = await done();
+  assert.deepEqual(
+    of('file').map((f) => [f.rel, f.added, f.existed]),
+    [['notes.md', 1, false]],
+  );
+  assert.deepEqual(
+    of('command').map((c) => c.command),
+    ['echo pb-probe-ran'],
+  );
+});
+
+test('loading a tool’s schema isn’t work: Antigravity’s reads of its own files and Kiro’s “Tool Load” never reach Work', () => {
+  /** @type {string[]} */
+  const heard = [];
+  const ctx = { state: {}, persona: {}, text() {}, activity() {}, status() {}, reported() {}, toolUse: (/** @type {any} */ u) => heard.push(u.name) };
+  const agy = createAgyMapper(ctx);
+  for (const e of fixture('antigravity-cli/block')) agy.push(e);
+  const kiro = createKiroMapper(ctx);
+  for (const e of fixture('kiro-cli/block')) kiro.push(e);
+  assert.ok(heard.length > 0, 'the turns’ other calls are heard');
+  assert.ok(!heard.includes('ToolSearch'), heard.join(', '));
+});
+
+test('an Antigravity command’s exit is read after the times Antigravity 1.5.5 puts before it', () => {
+  // As Antigravity CLI 1.5.5 recorded a run on a missing file, in the harness-mix UAT.
+  const step = {
+    tool_info: {
+      output:
+        'Created At: 2026-11-11T20:52:49-08:00\nCompleted At: 2026-11-11T20:52:50-08:00\nCommand exited with code 1.\n\nCommand output:\nError: File not found: nonexistent.txt\r\n',
+    },
+  };
+  assert.deepEqual(agyResult('t1', step, false), {
+    id: 't1',
+    isError: true,
+    text: 'Exit code 1',
+    result: { stdout: 'Error: File not found: nonexistent.txt\n' },
+  });
+  const ok = { tool_info: { output: 'Created At: 2026-11-11T20:52:49-08:00\nCommand exited with code 0.\n\nCommand output:\nhi\r\n' } };
+  assert.equal(agyResult('t2', ok, false).isError, false);
 });

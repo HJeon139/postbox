@@ -2,6 +2,7 @@
 // defined yet. A term’s glossary is its thread’s, over the conversation’s it branched from.
 
 import { renderMarkdown } from '/shared/markdown.mjs';
+import { textFrom } from './activity-live.mjs';
 import { client } from './client.mjs';
 import { h } from './dom.mjs';
 import { writeMarkdown } from './md-patch.mjs';
@@ -46,7 +47,10 @@ export function markTerms(root, threadId) {
  */
 export function paintAgentMarkdown(box, it, threadId) {
   box.querySelector(':scope > .caret')?.remove();
-  writeMarkdown(box, agentMarkdown(it, threadId));
+  // While the turn runs, its words before its last step are drawn between its steps (activity-live.mjs).
+  const from = textFrom(it, threadId);
+  /** @type {HTMLElement} */ (box).dataset.from = String(from); // where it starts, for a live step’s paint (activity-paint.mjs)
+  writeMarkdown(box, agentMarkdown(from ? { ...it, text: String(it.text).slice(from) } : it, threadId));
   markTerms(box, threadId);
   if (it.status === 'streaming') box.append(h('span.caret', { 'aria-hidden': 'true' }));
 }

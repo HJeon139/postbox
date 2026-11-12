@@ -1,7 +1,9 @@
 // What a restart does with the turns that were running when the server stopped (server/index.mjs).
 
 import { ASKING } from '../shared/catalog.mjs';
+import { liveDetail } from '../shared/step-fold.mjs';
 import { challengerWins, nextNeed, RANK, stateFor } from './card-needs.mjs';
+import { foldSteps } from './turn-steps.mjs';
 
 /**
  * Whether the need's card still waits for you after the restart. A failed turn waits for Retry. A permission waits only
@@ -33,6 +35,22 @@ export function settleInterrupted(rt) {
     rt.updateSession(se.id, { ...settledNeed(rt, se), subagents: [], currentStep: 'Interrupted by a restart', stopAsk: null });
   }
   settleRetiredNeeds(rt);
+  foldCutOff(rt);
+}
+
+/**
+ * A turn a restart cut off never ended, so its steps never folded to what its record keeps: they fold now
+ * (turn-steps.mjs). A turn that goes on on its host (#120) keeps its live detail until it ends there.
+ * @param {any} rt
+ */
+function foldCutOff(rt) {
+  const onHost = new Set(
+    Object.values(rt.s.sessions)
+      .filter((se) => se.remoteTurn && se.remoteTurn.state !== 'done' && se.remoteTurn.state !== 'lost')
+      .map((se) => se.remoteTurn.rtTurn),
+  );
+  for (const [threadId, list] of Object.entries(rt.s.items))
+    for (const it of list) if (it.kind === 'agent' && it.activity?.steps?.some(liveDetail) && !onHost.has(it.turnId)) foldSteps(rt, threadId, it.id);
 }
 
 const RUNNING = ['think', 'gen', 'tool', 'stopping'];

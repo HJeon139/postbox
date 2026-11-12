@@ -29,11 +29,8 @@ const replay = (name, opts) => {
 test('a recorded turn that shows a block: the reply, no step for Postbox’s tools, the session and the model', () => {
   const { ctx, m } = replay('block');
   assert.equal(ctx.calls.text, 'I showed the “Tea or coffee?” choice, but I couldn’t run `echo hi` because this session doesn’t give me a shell tool.');
-  // Tool Load and show_block are quiet; the thinking before them is one thought.
-  assert.deepEqual(
-    ctx.calls.activity.map((a) => a.kind ?? a.state),
-    ['thought'],
-  );
+  // Tool Load and show_block are quiet; the thinking before them is one thought, shown as it’s written, then whole.
+  assert.deepEqual([...new Set(ctx.calls.activity.map((a) => `${a.kind ?? a.state} ${a.id}`)), ctx.calls.activity.at(-1).state], ['thought thought-1', 'done']);
   assert.match(ctx.calls.activity[0].label, /^I don't actually have a shell/);
   assert.ok(ctx.calls.status.some((s) => s.currentStep === 'Showing a block'));
   assert.ok(ctx.calls.status.some((s) => typeof s.ctx === 'number'));
@@ -73,7 +70,7 @@ test('a recorded turn: a Postbox tool that failed stays quiet, and Kiro’s refu
 
 test('a recorded write Kiro would have asked about: a denied step, though the turn itself succeeds', () => {
   const { ctx, m } = replay('host-write-refused');
-  const write = ctx.calls.activity.filter((a) => a.label === 'Write File');
+  const write = ctx.calls.activity.filter((a) => a.label === 'Wrote out.txt');
   assert.deepEqual(
     write.map((a) => a.state),
     ['running', 'denied'],
@@ -90,7 +87,7 @@ test('a refusal is read from the approval events, not only from Kiro’s wording
     if (u?.sessionUpdate === 'tool_call_update' && u.status === 'failed') u.rawOutput = { message: 'Something else.' };
     m.push(e);
   }
-  assert.equal(ctx.calls.activity.find((a) => a.label === 'Write File' && a.state !== 'running')?.state, 'denied');
+  assert.equal(ctx.calls.activity.find((a) => a.label === 'Wrote out.txt' && a.state !== 'running')?.state, 'denied');
 });
 
 test('a recorded Isolated turn: another server’s call is refused by the deny rule, not worded as an ask; Postbox’s goes through', () => {

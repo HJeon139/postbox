@@ -3,11 +3,9 @@
 // Postbox’s, the person sees a failed step that says so, and the agent hears of it at its next turn.
 
 import assert from 'node:assert/strict';
-import { join } from 'node:path';
 import { test } from 'node:test';
-import { createKiroMapper, KiroCliAdapter } from '../server/adapters/kiro-cli.mjs';
-import { fakeCtx, fakeSpawn, fixture } from './kiro-cli-fakes.mjs';
-import { tempDir } from './temp-dirs.mjs';
+import { createKiroMapper } from '../server/adapters/kiro-cli.mjs';
+import { fakeCtx, fixture } from './kiro-cli-fakes.mjs';
 
 /** A display_error as kiro-cli 3.1.0 sends it, for the named server. @param {string} server */
 const displayError = (server) => ({
@@ -57,35 +55,4 @@ test('#489 another server failing to start is a failed step too, named for it', 
   assert.ok(step, 'a failed step');
   assert.match(step.label, /github/);
   assert.ok(!ctx.calls.activity.some((a) => a.label === 'Postbox’s tools didn’t load'), 'not worded as Postbox’s');
-});
-
-test('#489 a turn whose Postbox tools didn’t load tells the agent so at its next turn, once', async () => {
-  const root = tempDir('pb-kiro-489-');
-  const seen = [];
-  const adapter = new KiroCliAdapter({
-    workRoot: join(root, 'work'),
-    isolatedHome: join(root, 'home'),
-    spawnImpl: /** @type {any} */ (
-      fakeSpawn(
-        [
-          { lines: withError('postbox'), code: 0 },
-          { lines: fixture('first'), code: 0 },
-          { lines: fixture('first'), code: 0 },
-        ],
-        seen,
-      )
-    ),
-    env: {},
-  });
-  const ctx = fakeCtx();
-  // The runtime keeps what saveState saves for the session’s next turn.
-  ctx.saveState = (p) => Object.assign(ctx.state, p);
-  await adapter.deliver({}, { kind: 'user', text: 'Show a block.' }, ctx);
-  assert.doesNotMatch(seen[0].args.at(-1), /tools didn’t load/, 'the first turn wasn’t told anything');
-  await adapter.deliver({}, { kind: 'user', text: 'Try again.' }, ctx);
-  assert.match(seen[1].args.at(-1), /^\[Postbox\] In your last turn, Kiro couldn’t start Postbox’s tool server/, 'the next turn is told first');
-  assert.match(seen[1].args.at(-1), /MCP server "postbox" failed to connect/);
-  assert.match(seen[1].args.at(-1), /Try again\./, 'then its request');
-  await adapter.deliver({}, { kind: 'user', text: 'Once more.' }, ctx);
-  assert.doesNotMatch(seen[2].args.at(-1), /tools didn’t load|couldn’t start Postbox’s tool server/, 'and only once');
 });

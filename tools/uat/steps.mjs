@@ -4,6 +4,7 @@
 
 import { conversationStep } from './conversation-step.mjs';
 import { goToNeedsStep } from './driver-needs.mjs';
+import { lookStep } from './look-step.mjs';
 import { scrollStep } from './scroll-step.mjs';
 
 export { localRestart } from './conversation-step.mjs';
@@ -12,11 +13,12 @@ export const STEPS = Object.freeze({ go_to_needs: goToNeedsStep, conversation: c
 
 /**
  * What an interrupt does once the agent has worked its seconds: stop and send_now are the driver’s own; a fault, a
- * conversation action (a delete during the turn, #723) and an answer to a block run as the driver’s answer.
+ * conversation action (a delete during the turn, #723), a look at the running turns and an answer to a block run as
+ * the driver’s answer.
  * @param {any} interrupt @param {{ fault: (i: any) => Promise<string>, answer: (i: any) => Promise<string>, ctx: any }} runner
  * @returns {{ do: string, answer: () => Promise<string> }}
  */
 export function interruptAct(interrupt, { fault, answer, ctx }) {
-  const act = { fault: () => fault(interrupt), conversation: () => STEPS.conversation(ctx, interrupt) }[interrupt.do];
+  const act = { fault: () => fault(interrupt), conversation: () => STEPS.conversation(ctx, interrupt), look: () => lookStep(ctx) }[interrupt.do];
   return { do: act ? 'answer' : interrupt.do, answer: act ?? (() => answer(interrupt)) };
 }

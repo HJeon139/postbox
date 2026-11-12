@@ -1,7 +1,7 @@
 // A UAT scenario: a Markdown file with a title, a few “- key: value” settings, a summary, and one
 // “## Phase” section per phase (see tests/uat/e2e/scenarios/).
 //
-// `- backends: critic=kiro-cli:gpt-5.6-terra, researcher=claude-code` puts agents on a backend other than the one a
+// `- backends: critic=kiro-cli:qwen3-coder-next, researcher=claude-code` puts agents on a backend other than the one a
 // fresh install picks, with a model if one follows the colon (#117). Agents it doesn’t name keep the default.
 //
 // A scenario that puts an agent on a backend other than Claude’s (the Kiro CLI today; agy and Codex as they come) is a

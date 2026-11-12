@@ -15,10 +15,14 @@ test('a completed Codex web search closes the running activity step', () => {
   mapper.push({ method: 'item/started', params: { item: { id: 'search_1', type: 'webSearch', query: 'Postbox' } } });
   mapper.push({ method: 'item/completed', params: { item: { id: 'search_1', type: 'webSearch', query: 'Postbox', status: 'completed' } } });
 
-  assert.deepEqual(activity, [
-    { id: 'search_1', label: 'Search the web: Postbox', state: 'running', kind: 'tool' },
-    { id: 'search_1', label: 'Search the web: Postbox', state: 'done', kind: 'tool' },
-  ]);
+  // Labeled as every backend’s web search is (server/tool-labels.mjs).
+  assert.deepEqual(
+    activity.map((a) => [a.id, a.label, a.state]),
+    [
+      ['search_1', 'Searched the web for “Postbox”', 'running'],
+      ['search_1', 'Searched the web for “Postbox”', 'done'],
+    ],
+  );
 });
 
 test('separate Codex agent messages keep a paragraph break in the reply', () => {
@@ -49,8 +53,27 @@ test('a web search gets its query when Codex reports it only at completion', () 
   mapper.push({ method: 'item/started', params: { item: { id: 'search_late', type: 'webSearch' } } });
   mapper.push({ method: 'item/completed', params: { item: { id: 'search_late', type: 'webSearch', query: 'late query', status: 'completed' } } });
 
-  assert.deepEqual(activity, [
-    { id: 'search_late', label: 'Search the web', state: 'running', kind: 'tool' },
-    { id: 'search_late', label: 'Search the web: late query', state: 'done', kind: 'tool' },
-  ]);
+  assert.deepEqual(
+    activity.map((a) => [a.id, a.label, a.state]),
+    [
+      ['search_late', 'Searching the web', 'running'],
+      ['search_late', 'Searched the web for “late query”', 'running'],
+      ['search_late', 'Searched the web for “late query”', 'done'],
+    ],
+  );
+});
+
+test('a failed Codex command’s step says why, from what it printed, not only its exit code', () => {
+  const activity = [];
+  const mapper = createCodexMapper({ activity: (event) => activity.push(event), status: () => {}, text: () => {}, state: {} });
+  const item = { id: 'cmd_1', type: 'commandExecution', command: 'python3 wordcount.py missing.txt' };
+  mapper.push({ method: 'item/started', params: { item } });
+  mapper.push({
+    method: 'item/completed',
+    params: { item: { ...item, status: 'failed', exitCode: 1, aggregatedOutput: "Error: File 'missing.txt' not found.\n" } },
+  });
+  const failed = activity.at(-1);
+  assert.equal(failed.state, 'failed');
+  assert.match(failed.detail, /File 'missing\.txt' not found/);
+  assert.match(failed.output, /^Exit code 1\nError: File 'missing\.txt' not found\.$/);
 });

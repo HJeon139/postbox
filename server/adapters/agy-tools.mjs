@@ -1,7 +1,8 @@
 // Antigravity’s tools in Claude Code’s names. Moved from server/adapters/antigravity-cli.mjs, which is at its size
 // ceiling (designs/architecture.md, “Module and function size”).
+
+import { isQuietTool } from '../tool-labels.mjs';
 import { AGY_SERVER } from './agy-settings.mjs';
-import { isQuietTool } from './claude-stream.mjs';
 import { POSTBOX_SERVER } from './setup.mjs';
 
 // agy keeps its own files under ~/.gemini/antigravity-cli, and the model reads them back: each MCP tool’s schema

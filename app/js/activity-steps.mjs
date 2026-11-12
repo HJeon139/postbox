@@ -44,8 +44,24 @@ export function stepTree(steps) {
 // narration, which open to their whole text. A failed step says why; a refused one says why too when its backend does
 // (the Kiro and Antigravity CLIs refuse headless, with no card: #152), and otherwise points to its card. A subagent’s
 // step says what it returned once it has (#73).
+/** Whether a step’s label already says its input’s first value, as “Ran npm test” says “command: npm test”. */
+const saidBy = (/** @type {string} */ label, /** @type {string} */ input) => {
+  const first = /^[^:]+: (.*?)(?: · |$)/.exec(input)?.[1]?.trim();
+  return Boolean(first) && label.includes(first.slice(0, 60));
+};
+
+/** Whether a step’s output already says its note, whitespace and a cut’s ellipsis aside. */
+const inOutput = (/** @type {string|undefined} */ output, /** @type {string} */ note) => {
+  const flat = (/** @type {string} */ t) => t.replace(/…$/, '').replace(/\s+/g, ' ').trim();
+  return Boolean(output) && flat(String(output)).includes(flat(note));
+};
+
 const GLYPH = { running: 'running', failed: 'failed', denied: 'failed', done: 'done', stopped: 'stalled' };
-function stepRow(s) {
+/** An edit’s counts, “+12 −3” in green and red, as Work shows them. @param {any} s */
+export const stepCounts = (s) =>
+  typeof s.added === 'number' ? h('span.work-n', h('span.add', `+${s.added}`), ' ', h('span.del', `−${s.deleted ?? 0}`)) : null;
+
+export function stepRow(s) {
   const dur = h('span.dur', s.ms ? `${(s.ms / 1000).toFixed(1)} s` : '');
   // A subagent’s thought or narration is labeled with its name: it’s its own, never the agent’s (#73).
   const who = s.who ? h('span.step-who', `${s.who}:`) : null;
@@ -75,7 +91,17 @@ function stepRow(s) {
     'li',
     { class: s.state === 'denied' ? 'denied' : '' },
     h(`span.g.g-${GLYPH[s.state] ?? 'done'}`, { role: 'img', 'aria-label': s.state === 'denied' ? 'refused' : s.state }),
-    h('span.step-text', s.who ? h('span.step-who', `${s.who} ·`) : null, h('span.mono', s.label), note ? h('span.step-note', note) : null),
+    h(
+      'span.step-text',
+      s.who ? h('span.step-who', `${s.who} ·`) : null,
+      h('span.mono', s.label),
+      stepCounts(s) ? [' ', stepCounts(s)] : null,
+      note && !inOutput(s.output, note) ? h('span.step-note', note) : null,
+      // What the call was given and the end of what it returned, as its harness reported them (server/harness-tools.mjs),
+      // each only where the step doesn’t already say it (its label names the command; its output carries why it failed).
+      s.input && !saidBy(s.label, s.input) ? h('span.step-input.mono', s.input) : null,
+      s.output ? h('span.step-output.mono', s.output) : null,
+    ),
     dur,
   );
 }
