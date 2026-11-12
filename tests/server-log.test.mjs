@@ -47,3 +47,21 @@ test('Node’s warning about the test runner’s MockTimers doesn’t fail a tes
     failures.join('\n'),
   );
 });
+
+// The exception is Node’s warning itself, by its name and its line, never a line that only quotes its text. (An unhandled
+// rejection is recorded whatever it says; node:test fails a test on one itself, so it isn’t raised here.)
+test('an error or a warning that only quotes the MockTimers text still fails the test', async () => {
+  const text = 'ExperimentalWarning: The MockTimers API is an experimental feature and might change at any time';
+  console.error(new TypeError(`Cannot read properties of undefined, near ${text}`));
+  process.emitWarning(`The MockTimers API is an experimental feature and might change at any time`, 'DeprecationWarning');
+  await new Promise((r) => setImmediate(r));
+  const failures = takeServerFailures();
+  assert.ok(
+    failures.some((f) => /^console\.error: TypeError: Cannot read properties of undefined, near ExperimentalWarning/.test(f)),
+    `the TypeError fails:\n${failures.join('\n')}`,
+  );
+  assert.ok(
+    failures.some((f) => /^process warning: DeprecationWarning: The MockTimers API/.test(f)),
+    `a warning of another name fails:\n${failures.join('\n')}`,
+  );
+});

@@ -17,14 +17,21 @@ let allowed = [];
 let installed = false;
 
 /**
- * Node’s own warnings about its test runner’s experimental APIs, which the tests use and Postbox doesn’t, each named:
- * Node 22, which CI runs, warns once a process on t.mock.timers, and Node 24 doesn’t (CI run 43295324441). Any other
- * warning, experimental or not, still fails the test.
+ * Node’s own warnings about its test runner’s experimental APIs, which the tests use and Postbox doesn’t, each by its
+ * message: Node 22, which CI runs, warns once a process on t.mock.timers, and Node 24 doesn’t (CI run 43295324441).
+ * Only the warning itself is left out: a process warning named ExperimentalWarning with that message, and the line
+ * Node prints for it. An error, a rejection or another warning that only quotes the text still fails the test.
  */
-const NODE_TEST_RUNNER = [/\bExperimentalWarning: The MockTimers API is an experimental feature\b/];
-/** Records a line, unless it’s one of Node’s test-runner warnings above. @param {Logged} entry */
+const NODE_TEST_RUNNER = ['The MockTimers API is an experimental feature and might change at any time'];
+const escaped = (/** @type {string} */ s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+/** The line Node prints for one of them, with its hint: `(node:123) ExperimentalWarning: …`. */
+const NODE_LINE = new RegExp(
+  `^\\(node:\\d+\\) ExperimentalWarning: (${NODE_TEST_RUNNER.map(escaped).join('|')})\\n?(\\(Use \`node --trace-warnings \\.\\.\\.\` to show where the warning was created\\)\\n?)?$`,
+);
+/** Records a line, unless it’s Node’s print of one of its test-runner warnings above. @param {Logged} entry */
 const record = (entry) => {
-  if (!NODE_TEST_RUNNER.some((p) => p.test(entry.text))) logged.push(entry);
+  if ((entry.kind === 'stderr' || entry.kind.startsWith('console.')) && NODE_LINE.test(entry.text)) return;
+  logged.push(entry);
 };
 
 /**
@@ -56,7 +63,10 @@ export function captureServerLog() {
     }
   );
   process.on('unhandledRejection', (reason) => record({ kind: 'unhandled rejection', text: reason instanceof Error ? String(reason.stack) : inspect(reason) }));
-  process.on('warning', (w) => record({ kind: 'process warning', text: String(w.stack ?? w) }));
+  process.on('warning', (w) => {
+    if (w.name === 'ExperimentalWarning' && NODE_TEST_RUNNER.includes(w.message)) return; // Node’s test runner’s, above
+    record({ kind: 'process warning', text: String(w.stack ?? w) });
+  });
 }
 
 /**
