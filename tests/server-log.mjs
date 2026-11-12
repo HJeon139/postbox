@@ -17,6 +17,17 @@ let allowed = [];
 let installed = false;
 
 /**
+ * Node’s own warnings about its test runner’s experimental APIs, which the tests use and Postbox doesn’t, each named:
+ * Node 22, which CI runs, warns once a process on t.mock.timers, and Node 24 doesn’t (CI run 43295324441). Any other
+ * warning, experimental or not, still fails the test.
+ */
+const NODE_TEST_RUNNER = [/\bExperimentalWarning: The MockTimers API is an experimental feature\b/];
+/** Records a line, unless it’s one of Node’s test-runner warnings above. @param {Logged} entry */
+const record = (entry) => {
+  if (!NODE_TEST_RUNNER.some((p) => p.test(entry.text))) logged.push(entry);
+};
+
+/**
  * From now on, records what this process writes to console.error, console.warn and stderr, its unhandled promise
  * rejections and its process warnings. Each still reaches the output as before. Installed once a process.
  */
@@ -28,7 +39,7 @@ export function captureServerLog() {
   for (const level of /** @type {const} */ (['error', 'warn'])) {
     const write = console[level];
     console[level] = (...args) => {
-      logged.push({ kind: `console.${level}`, text: format(...args) });
+      record({ kind: `console.${level}`, text: format(...args) });
       inConsole = true;
       try {
         write.apply(console, args);
@@ -40,14 +51,12 @@ export function captureServerLog() {
   const write = process.stderr.write;
   process.stderr.write = /** @type {any} */ (
     function (/** @type {any} */ chunk, /** @type {any[]} */ ...rest) {
-      if (!inConsole) logged.push({ kind: 'stderr', text: String(chunk) });
+      if (!inConsole) record({ kind: 'stderr', text: String(chunk) });
       return write.call(this, chunk, ...rest);
     }
   );
-  process.on('unhandledRejection', (reason) =>
-    logged.push({ kind: 'unhandled rejection', text: reason instanceof Error ? String(reason.stack) : inspect(reason) }),
-  );
-  process.on('warning', (w) => logged.push({ kind: 'process warning', text: String(w.stack ?? w) }));
+  process.on('unhandledRejection', (reason) => record({ kind: 'unhandled rejection', text: reason instanceof Error ? String(reason.stack) : inspect(reason) }));
+  process.on('warning', (w) => record({ kind: 'process warning', text: String(w.stack ?? w) }));
 }
 
 /**

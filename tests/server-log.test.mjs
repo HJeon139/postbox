@@ -32,3 +32,18 @@ test('what a test logs is taken once, and a log it names is allowed as many time
   assert.match(failures[1], /^console\.error: TypeError: not expected/);
   assert.deepEqual(takeServerFailures(), [], 'taken once');
 });
+
+// Node 22, which CI runs, warns once a process when a test uses t.mock.timers; Node 24 doesn’t. That warning is Node’s
+// test runner’s, not Postbox’s (CI run 43295324441, conversation-lifecycle.test.mjs). It’s named, so another warning,
+// experimental or not, still fails the test.
+test('Node’s warning about the test runner’s MockTimers doesn’t fail a test, and another ExperimentalWarning does', async () => {
+  process.emitWarning('The MockTimers API is an experimental feature and might change at any time', 'ExperimentalWarning');
+  process.emitWarning('Something else is an experimental feature', 'ExperimentalWarning');
+  await new Promise((r) => setImmediate(r)); // warnings are emitted on the next tick
+  const failures = takeServerFailures();
+  assert.ok(failures.length > 0, 'the other warning fails');
+  assert.ok(
+    failures.every((f) => /Something else is an experimental feature/.test(f)),
+    failures.join('\n'),
+  );
+});
