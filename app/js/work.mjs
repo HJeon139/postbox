@@ -634,7 +634,7 @@ export function mountWorkPane(threadId) {
       agents.length > 1
         ? h(
             'p.small.dim',
-            agents.map((a, i) => [i ? ' · ' : '', `${a.handle} `, e.priced ? formatCost(a.costUsd) : plural(a.turns, 'turn')]),
+            agents.map((a, i) => [i ? ' · ' : '', `${a.handle} `, a.priced ? formatCost(a.costUsd) : plural(a.turns, 'turn')]),
           )
         : null,
       s.idle.turns

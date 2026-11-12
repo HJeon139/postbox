@@ -141,9 +141,9 @@ export function lasting(f) {
 }
 
 /**
- * Each agent’s effort: its turns, time, tool calls, spend and tokens, the lines it wrote and those its files keep
- * (keptBy: the agent a file’s lines count toward, or null for none), and its commands, the most lines first. Moved
- * from summarize.
+ * Each agent’s effort: its turns, time, tool calls, tokens and spend (priced once a turn of its says what it cost), the
+ * lines it wrote and those its files keep (keptBy: the agent a file’s lines count toward, or null), and its commands,
+ * the most lines first. Moved from summarize.
  * @param {{ turns: any[], changes: any[], files: any[], commands: any[], keptBy: (f: any) => string | null }} scope
  */
 function effortByAgent({ turns, changes, files, commands, keptBy }) {
@@ -159,6 +159,7 @@ function effortByAgent({ turns, changes, files, commands, keptBy }) {
     a.ms += t.ms ?? 0;
     a.toolCalls += t.toolCalls ?? 0;
     a.costUsd += t.costUsd ?? 0;
+    if (typeof t.costUsd === 'number') a.priced = true;
     a.tokens += sumTokens(t.tokens);
   }
   for (const c of changes) {
