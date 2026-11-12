@@ -226,7 +226,7 @@ test('#464-b2a: the consent’s route needs the page’s token, takes only { on:
     const on = await call({ method: 'PUT', path, body: { on: true }, cookie });
     assert.equal(on.status, 200, on.text);
     assert.equal(JSON.parse(readFileSync(record, 'utf8')).keepUpdated, true);
-    assert.equal((await call({ path: `/api/hosts/${id}/status` })).json.status.keepUpdated, true, 'the page can draw it');
+    assert.equal((await call({ path: '/api/state' })).json.state.hostStatus[id].keepUpdated, true, 'the page can draw it');
     const { settings } = app.store.state.hosts[id];
     assert.equal(Object.hasOwn(settings, 'keepUpdated'), false, 'not a host setting, which an older Postbox would refuse');
     assert.equal(Object.hasOwn(helloSettings(settings), 'keepUpdated'), false, 'never sent to the host');

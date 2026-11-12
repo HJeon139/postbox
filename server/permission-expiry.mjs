@@ -13,8 +13,8 @@ export const EXPIRED = new Set(['expired', 'ended']);
  * summary and its command, since a summary alone can be as plain as “run a command”. Once per card, even when two
  * paths expire it (the turn’s end, then its host’s word), since the card keeps that it was told. When the person’s Stop
  * or Send now ended the turn (`stoppedBy: 'you'`, archiving or removing it included), the note says so, and that they
- * didn’t refuse it: Claude Code’s own text for the cut-off call reads as a refusal (#853). An agent archived or being
- * removed is told too, as #776’s closeHop tells it: the note waits in its context for a Restore or an Undo.
+ * didn’t refuse it: Claude Code’s own text for the cut-off call reads as a refusal (#853). An agent archived is told
+ * too, as #776’s closeHop tells it: the note waits in its context for a Restore.
  * @param {any} rt @param {string} threadId @param {string} itemId @param {any} [card]  the card, when the caller has it
  */
 export function tellExpired(rt, threadId, itemId, card = undefined) {

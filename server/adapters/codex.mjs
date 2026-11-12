@@ -19,7 +19,7 @@ import { listProcesses, stopTurn } from './process-group.mjs';
 import { AUTO_MODEL, effortOf, POSTBOX_SERVER, recorderFor } from './setup.mjs';
 
 export { codexModels, codexVersion, findCodex } from './codex-models.mjs';
-export { CODEX_CAPABILITIES, codexRemoteConfigArgs, createCodexRebuild, INTERRUPT_REACH_MS, interruptedError } from './codex-remote.mjs';
+export { CODEX_CAPABILITIES, codexRemoteConfigArgs, createCodexRebuild } from './codex-remote.mjs';
 export { codexApproval };
 
 /** A local folder’s real path, or the folder as given if it can’t be resolved: Codex refuses a writable root with a symlink in its path. */

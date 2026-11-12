@@ -1,6 +1,6 @@
 // The conversation action’s and the local restart’s rules that need no page (tools/uat/conversation-step.mjs,
 // tools/uat/steps.mjs). Their clicks were tried against a Postbox of their own through a real page; the run’s
-// records (facts.probes.conversation) are what turn-in-deleting-conversation reads.
+// records are in facts.probes.conversation.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { delayUntil, waitUntil } from '../tools/uat/conversation-step.mjs';
@@ -20,14 +20,14 @@ test('a fault or a conversation action mid-turn is the driver’s answer; stop a
   assert.deepEqual([fault.do, await fault.answer()], ['answer', 'fault kill-ssh']);
   const conv = interruptAct({ do: 'conversation', conversation: 'rename' }, runner);
   assert.equal(conv.do, 'answer');
-  await assert.rejects(conv.answer(), /delete, undo, new or open, not “rename”/, 'it runs the conversation action');
+  await assert.rejects(conv.answer(), /delete, new or open, not “rename”/, 'it runs the conversation action');
   const block = interruptAct({ do: 'answer', item: 'I3' }, runner);
   assert.deepEqual([block.do, await block.answer()], ['answer', 'answer I3']);
   assert.equal(interruptAct({ do: 'stop' }, runner).do, 'stop');
 });
 
 test('the conversation action refuses what it can’t do, saying what it can', async () => {
-  await assert.rejects(STEPS.conversation(ctx(), { conversation: 'undo' }), /Nothing was deleted to undo/);
+  await assert.rejects(STEPS.conversation(ctx(), { conversation: 'undo' }), /delete, new or open, not “undo”/, 'there is no Undo (#1224)');
   await assert.rejects(STEPS.conversation(ctx(), { conversation: 'delete' }), /No conversation is open to delete/);
   await assert.rejects(STEPS.conversation(ctx(), { conversation: 'new', agents: ['researcher'] }), /Open a conversation first/);
   await assert.rejects(STEPS.conversation(ctx(), { conversation: 'open', title: 'Nope' }), /no conversation “Nope”/);
@@ -48,12 +48,12 @@ test('a run without hosts restarts Postbox, and refuses the faults only a host h
 test('the tester has the action, and a delete as an interrupt, and is told how to use both', () => {
   const action = SCHEMA.properties.action.properties;
   assert.ok(action.type.enum.includes('conversation'));
-  assert.deepEqual(action.conversation.enum, ['delete', 'undo', 'new', 'open']);
+  assert.deepEqual(action.conversation.enum, ['delete', 'new', 'open']);
   assert.deepEqual(action.interrupt.properties.conversation.enum, ['delete']);
   const prompt = systemPrompt({ scenario: parseScenario('# T\n'), issues: [] });
-  assert.match(prompt, /- conversation \{conversation, at\?, undo_after\?, agents\?, title\?\}/);
+  assert.match(prompt, /- conversation \{conversation, at\?, agents\?, title\?\}/);
   assert.equal(action.at.type, 'string');
-  assert.match(prompt, /an interrupt \{after, do: conversation, conversation: delete, undo_after\?\}/);
+  assert.match(prompt, /an interrupt \{after, do: conversation, conversation: delete\}/);
   assert.match(prompt, /- fault \{fault: restart-postbox\}: in a run without hosts too/);
 });
 
@@ -85,8 +85,8 @@ test('a delete with at opens its confirm first, and presses Delete no earlier th
   const c = ctx();
   c.d.kit.ev = async () => '#/t/th_1';
   c.d.kit.clickAt = async (_expr, what) => clicks.push({ what, at: Date.now() });
-  // Marked as being deleted once the confirm’s Delete is pressed, as the server does.
-  c.api = async () => ({ state: { threads: { th_1: { ...thread, deleting: clicks.length >= 3 ? Date.now() + 10_000 : null } }, sessions: {}, projects: {} } });
+  // Gone from the state once the confirm’s Delete is pressed, as the server does since #1224: there is no Undo window.
+  c.api = async () => ({ state: { threads: clicks.length >= 3 ? {} : { th_1: thread }, sessions: {}, projects: {} } });
   const at = new Date(Date.now() + 400).toISOString();
   const said = await STEPS.conversation(c, { conversation: 'delete', at });
   assert.deepEqual(
@@ -97,30 +97,7 @@ test('a delete with at opens its confirm first, and presses Delete no earlier th
   assert.ok(clicks[2].at >= Date.parse(at), `Delete pressed ${Date.parse(at) - clicks[2].at} ms before at`);
   assert.match(said, /waited for its at/);
   assert.equal(c.facts.probes.conversation[0].do, 'delete');
-});
-
-test('Undo’s time is taken before its click, so a turn that starts as the click returns isn’t in the window', async () => {
-  // A recorded rerun (assets-delete phase 2, with #727): the wake’s turn came right after Undo, and Undo’s time, taken
-  // after the click returned, was 0.25 s late, so the turn read as started in the window.
-  const clicks = [];
-  const c = ctx();
-  c.d.kit.ev = async () => true;
-  c.d.kit.clickAt = async (_expr, what) => {
-    clicks.push({ what, at: Date.now() });
-    await new Promise((r) => setTimeout(r, 250));
-  };
-  c.d.kit.page = { waitFor: async () => {} };
-  c.api = async () => ({ state: { threads: { th_1: { id: 'th_1', title: 'T', deleting: null } } } });
-  const del = { do: 'delete', at: Date.now() - 3000, threadId: 'th_1', title: 'T', handles: ['researcher'], until: Date.now() + 7000 };
-  c.facts.probes.conversation = [del];
-  await STEPS.conversation(c, { conversation: 'undo' });
-  const undo = c.facts.probes.conversation.find((x) => x.do === 'undo');
-  const pressed = clicks.find((x) => x.what === 'Undo on the delete’s toast').at;
-  assert.ok(undo.at <= pressed, `Undo recorded ${undo.at - pressed} ms after its click began`);
-  // The turn check then counts a turn that starts 0.3 s after that time as after Undo.
-  const { turnsInDeletes } = await import('../tools/uat/checks-assets.mjs');
-  const stream = { handle: 'researcher', events: [], started: undo.at + 300, ended: undo.at + 5000 };
-  assert.deepEqual(turnsInDeletes({ probes: { conversation: c.facts.probes.conversation }, streams: [stream] }), []);
+  assert.equal(c.facts.probes.conversation[0].threadId, 'th_1');
 });
 
 test('waiting for at goes on until the clock reaches it, though a timer fires early', async () => {
@@ -137,25 +114,6 @@ test('waiting for at goes on until the clock reaches it, though a timer fires ea
   waits.length = 0;
   await waitUntil(900, { now: () => clock, wait: early });
   assert.deepEqual(waits, [], 'a time already reached waits for nothing');
-});
-
-test('Undo presses the newest toast for its conversation: the stack puts the newest first (#1142)', async () => {
-  // Two deletes of conversations with the same title leave two Undos; `#toasts` holds the newest first (addToast
-  // prepends), so the newest is the first that matches, not the last.
-  const button = (name) => ({ name, offsetParent: {}, textContent: 'Undo', getAttribute: () => null });
-  const toast = (name) => ({ textContent: 'Deleted “T”. Undo', querySelectorAll: () => [button(name)] });
-  const document = { querySelectorAll: () => [toast('newest'), toast('oldest')] };
-  const pressed = [];
-  const c = ctx();
-  c.d.kit.ev = async () => true;
-  c.d.kit.clickAt = async (expr, what) => {
-    if (what === 'Undo on the delete’s toast') pressed.push(new Function('document', `return ${expr}`)(document)?.name);
-  };
-  c.d.kit.page = { waitFor: async () => {} };
-  c.api = async () => ({ state: { threads: { th_1: { id: 'th_1', title: 'T', deleting: null } } } });
-  c.facts.probes.conversation = [{ do: 'delete', at: Date.now() - 3000, threadId: 'th_1', title: 'T', handles: [], until: Date.now() + 7000 }];
-  await STEPS.conversation(c, { conversation: 'undo' });
-  assert.deepEqual(pressed, ['newest']);
 });
 
 test('a look mid-turn is the driver’s answer: a screenshot and the running replies as text, pressing nothing', async () => {

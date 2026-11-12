@@ -223,15 +223,6 @@ test('toolCalls marks a call Claude Code answered without running it as rejected
   assert.equal(toolCalls(other)[0].rejected, true);
 });
 
-test('a session deleted but still in its Undo window keeps its streams: its Work is still in the state', () => {
-  const DELETING = 'de1e7000-undo';
-  const f = room([turn(DELETING, call('b_undo', 'Bash', { command: 'pytest' }))]);
-  f.state.sessions.s2 = { id: 's2', handle: 'researcher', state: 'idle', deleting: 1000, backendState: { claudeSessionId: DELETING } };
-  const out = found(f, 'work-commands-match-stream');
-  assert.equal(out.length, 1);
-  assert.match(out[0].evidence, /`pytest`/);
-});
-
 test('a purged topic thread’s streams are left out today, though its commands stay in its conversation’s Work', () => {
   // Purging a topic thread removes its sessions; Work is kept by conversation, so the root keeps the topic’s entries.
   const topic = turn('70p1c000-purged', call('b_topic', 'Bash', { command: 'pytest' }));

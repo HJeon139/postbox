@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { mkdirSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { claudeTranscriptFile } from '../server/claude-transcript-file.mjs';
+import { claudeTranscriptFile } from '../tools/uat/claude-transcript-file.mjs';
 import { readTranscripts } from '../tools/uat/run-files.mjs';
 import { tempDir } from './temp-dirs.mjs';
 

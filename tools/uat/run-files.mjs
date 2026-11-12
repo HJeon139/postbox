@@ -5,9 +5,9 @@ import { closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, 
 import { mkdir } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { claudeTranscriptFile } from '../../server/claude-transcript-file.mjs';
 import { parseSnapshotText } from '../../server/store-snapshot-lines.mjs';
 import { patchSession } from '../../shared/state.mjs';
+import { claudeTranscriptFile } from './claude-transcript-file.mjs';
 import { lines } from './history.mjs';
 
 /** The run’s folders, made: Postbox’s data, the workspace, each backend’s recorded streams, and screenshots. @param {string} dir */

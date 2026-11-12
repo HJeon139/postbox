@@ -1,7 +1,7 @@
 // #721, from the integrator’s review at 06bc5b81: only the person’s Stop keeps a waiting card’s agent from hearing its
 // request expired. A shutdown, a hung stop, or a host turn ended for any other reason leaves the note, so after an
 // ordinary restart the agent still learns its request didn’t run. One rule for whom Postbox tells, shared with #776:
-// any agent that still exists, archived or being removed included, so a Restore or an Undo finds the note.
+// any agent that still exists, archived included, so a Restore finds the note.
 
 import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -59,8 +59,8 @@ test('#721 an agent archived while its card waits gets no note: archiving stops 
   assert.equal(notes(f.now()).length, 0);
 });
 
-test('#721 a note for an agent archived or being removed is kept, so a Restore or an Undo finds it', async () => {
-  for (const patch of [{ archived: true }, { deleting: Date.now() + 60_000 }]) {
+test('#721 a note for an agent archived is kept, so a Restore finds it', async () => {
+  for (const patch of [{ archived: true }]) {
     const f = await setup();
     const it = f.rt.addItem(f.t.id, {
       kind: 'permission',

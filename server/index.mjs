@@ -335,7 +335,8 @@ export async function start({
     // Resume, after a turn on a host stopped with Sign-in needed or Interrupted (#120): a 409 says why when there’s
     // nothing to resume.
     if ((m = path.match(/^\/api\/sessions\/([^/]+)\/resume$/)) && req.method === 'POST') return send(res, 200, rt.resumeRemote(m[1]));
-    // A session’s own actions: Stop, archive, restore, delete, its jobs and its run (server/session-routes.mjs).
+    // A session’s own actions: Stop, delete, Stop’s question about its jobs and a job’s Stop; and deleting a persona
+    // (server/session-routes.mjs).
     const sessionDid = await sessionRoute(rt, path, req.method, body);
     if (sessionDid) return send(res, sessionDid.status, sessionDid.body);
     if ((m = path.match(/^\/api\/threads\/([^/]+)\/agent-command$/)) && req.method === 'POST') return send(res, 201, rt.runAgentCommand(m[1], body));

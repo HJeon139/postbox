@@ -135,9 +135,6 @@ export function resolveHop(rt, threadId, itemId, allow) {
   const it = rt.store.item(threadId, itemId);
   if (it?.kind === 'hop' && it.status === 'closed') throw httpError(409, `That request was closed: ${it.closedWhy}.`);
   if (it?.kind !== 'hop' || it.status !== 'open') throw httpError(409, 'That request was already answered.');
-  // Added while its session here is being removed, Undo would leave two of it: wait for the removal to finish (#228).
-  const removing = (rt.s.threads[threadId]?.members ?? []).map((id) => rt.s.sessions[id]).find((x) => x?.deleting && x.handle === it.to);
-  if (it.join && allow && removing) throw httpError(409, `@${it.to} is being removed from this conversation. Undo that, or add it once it’s gone.`);
   rt.patchItem(threadId, itemId, { status: allow ? 'allowed' : 'declined' });
   const voice = it.join
     ? allow
@@ -258,8 +255,8 @@ export function dropHeld(rt, se, how) {
 /**
  * A card that closes with no answer from the person (#693): the agent that asked was archived, removed or retired, so
  * nothing can answer for it. It closes, its agent stops needing the person, and nothing it held goes. Its agent and
- * each agent whose wake was held on it are told at their next turn, as dropHeld tells, archived or being removed
- * included: a Restore or an Undo finds the note, and the card stays closed. The one way every such close goes.
+ * each agent whose wake was held on it are told at their next turn, as dropHeld tells, archived included: a Restore
+ * finds the note, and the card stays closed. The one way every such close goes.
  * @param {any} rt @param {string} conv @param {any} card @param {string} how  what happened to the agent that asked
  */
 export function closeHop(rt, conv, card, how) {
@@ -287,14 +284,14 @@ export function closeOwnCard(rt, se, how) {
 }
 
 /**
- * At startup, an open card whose agent is archived, being removed or gone closes (#693): a room from before the fix,
- * or one whose removal a restart cut short, would hold every wake on it. O(items), once per start.
+ * At startup, an open card whose agent is archived or gone closes (#693): a room from before the fix would hold every
+ * wake on it. O(items), once per start.
  */
 export function closeOrphanCards(rt) {
   for (const t of Object.values(rt.s.threads)) {
     const card = openCard(rt, t);
     const from = card && rt.s.sessions[card.fromSessionId];
-    if (card && (!from || from.archived || from.deleting)) closeHop(rt, t.id, card, 'archived or removed');
+    if (card && (!from || from.archived)) closeHop(rt, t.id, card, 'archived or removed');
   }
 }
 

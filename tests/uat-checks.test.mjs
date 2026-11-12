@@ -286,7 +286,7 @@ const EXIT = ['wikisearch', 'announcement', 'papersurvey', 'longresearch'];
 
 // Scenarios with more than three phases: Codex's four features, and the acceptance scenarios whose phases are a design's
 // steps: #508's delivery (A1 to A4) and big room (B1 to B3, then #701), #516's assets, and #464's, #872's, #827's and #672's remote hosts.
-const LONGER = { codex: 4, delivery: 9, remotehosts: 8, bigroom: 5, 'assets-room': 11, 'assets-retention': 4, 'assets-host': 4, 'assets-delete': 6 };
+const LONGER = { codex: 4, delivery: 9, remotehosts: 8, bigroom: 5, 'assets-room': 11, 'assets-host': 4, 'assets-delete': 4 };
 
 test('the scenarios parse into phases the tester works through', () => {
   const dir = new URL('uat/e2e/scenarios/', import.meta.url);

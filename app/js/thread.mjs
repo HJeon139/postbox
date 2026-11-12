@@ -5,7 +5,6 @@ import { renderMarkdown } from '/shared/markdown.mjs';
 import { resolveCommand } from '/shared/slash-line.mjs';
 import { laterParts } from './activity-live.mjs';
 import { activityParts, drawnStale, hasRecord, paintActivity, paintPatch, recordMoved } from './activity-paint.mjs';
-import { activityLabel } from './activity-steps.mjs';
 import { mockMarker } from './agent-facts.mjs';
 import { agentMarkdown, handles, markTerms, paintAgentMarkdown, usesTerm } from './agent-markdown.mjs';
 import { paintOfflineQueue, paintWaitingLine } from './agent-queue.mjs';
@@ -1622,5 +1621,3 @@ export function mountComposer(threadId, { side = false } = {}) {
     },
   };
 }
-
-export const _test = { renderItem, activityLabel };

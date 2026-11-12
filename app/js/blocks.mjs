@@ -8,7 +8,6 @@ import { renderMarkdown } from '/shared/markdown.mjs';
 import { onPageOrigin } from '/shared/urls.mjs';
 import { asDrawn, closing } from './block-close.mjs';
 import { fitChoiceOptions } from './choice-layout.mjs';
-import { client } from './client.mjs';
 import { codeBox, copyControls, showFilename } from './code-block.mjs';
 import { h, icon, plural, timeOf, trusted } from './dom.mjs';
 import { formField } from './form-field.mjs';
@@ -551,7 +550,3 @@ const RENDER = {
 // ── Progress blocks: times that move ─────────────────────────────────────────────────────
 
 const stateName = (s) => s[0].toUpperCase() + s.slice(1);
-
-export { drafts };
-export const hasDraft = (id) => drafts.has(id);
-export const clientState = () => client.state;
