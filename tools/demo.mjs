@@ -128,10 +128,10 @@ export async function play({ origin, view = async () => {}, shot = async () => {
   await shot('19-threads');
 
   // 5 · Review: comments, a verdict, then a revision shown as a diff
-  const spec = T('Corpus schema spec');
+  const spec = T('Search schema spec');
   log('@critic asks for a review; you comment and request changes; it revises in place.');
   await view(`#/t/${spec.id}`);
-  await send(spec, 'Review my corpus schema line by line');
+  await send(spec, 'Review my search schema line by line');
   s = await settled(
     spec,
     (st) => find(st, spec, (i) => i.valid && i.block.id === 'layout-review') && st.apps['layout-proposal']?.check.status === 'passed',
@@ -150,7 +150,7 @@ export async function play({ origin, view = async () => {}, shot = async () => {
   await shot('07-review');
 
   // 6 · A conversation in progress: two agents, a streaming reply, subagents, a compaction, a queued message
-  const room = T('Corpus planning');
+  const room = T('Index planning');
   log('In a room, @indexer indexes the shelf while @researcher waits; you queue a message.');
   await view(`#/t/${room.id}`);
   await send(room, 'Before we embed anything, @researcher which editions are we indexing?');

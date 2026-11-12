@@ -20,7 +20,7 @@ After a chain of agent wakes without your message, the next waits for your Allow
 ## Steps to reproduce
 
 1. Run the demo (`node tools/demo.mjs --port 4180`) and open <http://127.0.0.1:4180/> while it plays; keep the tab open.
-2. Open “Corpus planning”, open ⋯ › Wake chain limit…, type 0 and press Enter, then type 5 and press Enter.
+2. Open “Index planning”, open ⋯ › Wake chain limit…, type 0 and press Enter, then type 5 and press Enter.
 3. Open it again and choose “Use the default”.
 
 **Pass if:** 0 is refused under the field with the dialog still open; 5 closes the dialog and the menu item then says “5 wakes in a row”; “Use the default” brings back “1,000 wakes in a row, the default”. Focus is on ⋯ after each close.

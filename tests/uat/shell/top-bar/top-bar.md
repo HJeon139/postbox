@@ -26,12 +26,12 @@ It answers “where am I, and what needs me?” from anywhere: the path to the o
 ## Steps to reproduce
 
 1. Run the demo (`node tools/demo.mjs --port 4180`) and open <http://127.0.0.1:4180/> while it plays; keep the tab open.
-2. Open “Corpus planning” (a room) from the rail.
-3. Check the breadcrumbs: Reading notes › Corpus planning, in full, and no agent rings.
+2. Open “Index planning” (a room) from the rail.
+3. Check the breadcrumbs: Reading notes › Index planning, in full, and no agent rings.
 4. Open ⋯: it names both agents, with what each runs with.
 5. Press ⌘\ twice; reload in between and check the rail state persists.
 6. Press ⌃J while two agents in different conversations need you, from a conversation whose agent needs you, then again.
-7. Add two more agents to “Corpus planning” (⋯ › Add an agent…), so it has four. Narrow the window from full width to its narrowest, then widen it again.
+7. Add two more agents to “Index planning” (⋯ › Add an agent…), so it has four. Narrow the window from full width to its narrowest, then widen it again.
 
 **Pass if:** Every item above behaves as described. The demo banner shows on every view. In step 7, the top bar never overflows, the parts drop and come back in the order above, and ⋯ lists each agent’s backend, model, effort and state at every width. `npx playwright test header work-pane needs-nav` passes.
 

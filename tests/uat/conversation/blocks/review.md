@@ -33,7 +33,7 @@ Feedback on long documents needs to be anchored to lines, batched, and followed 
 ## Steps to reproduce
 
 1. Run the demo (`node tools/demo.mjs --port 4180`) and open <http://127.0.0.1:4180/> while it plays; keep the tab open.
-2. In “Corpus schema spec”, read it in Preview, then select a few words and press Comment (or Tab to it and press Enter), and add a comment.
+2. In “Search schema spec”, read it in Preview, then select a few words and press Comment (or Tab to it and press Enter), and add a comment.
 3. Choose Lines, and comment on two more lines (one by clicking the line, one with Tab and Enter). Request changes, then read the revised diff.
 4. Open the block full screen and close it with Escape. Reload the page: the block opens in the view you last chose.
 
