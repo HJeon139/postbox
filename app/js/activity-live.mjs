@@ -9,9 +9,19 @@ import { stepRow } from './activity-steps.mjs';
 import { busy, itemsOf, placeIn, sessionsAt } from './client.mjs';
 import { h, plural } from './dom.mjs';
 
-// Heights the budget counts in, in pixels: one step’s line, and the newest step in full.
+// Heights the budget counts in, in pixels: one step’s line, the newest step in full, a line of a thought capped at up
+// to THOUGHT_LINES and its button, a line of the reply’s words and the space between its paragraphs, and what each agent at work has
+// besides: its reply’s name line and its working row under the transcript.
 const LINE = 24;
 const FULL = 80;
+const THOUGHT_LINES = 3;
+const THOUGHT_LINE = 20;
+const THOUGHT_MORE = 22;
+const WORD_LINE = 21;
+const PARAGRAPH = 10;
+const AROUND = 28 + 30;
+// About how many characters of the reply’s words fill a line of the transcript’s column.
+const LINE_CHARS = 95;
 // With this many agents working in one conversation, each turn’s steps are one line.
 const CROWD = 8;
 /** How far apart, in items, a turn’s parts are looked for: a long room’s old turns cost no more than a new one’s. */
@@ -111,12 +121,29 @@ function measureHeight(threadId) {
   return (el?.clientHeight || window.innerHeight) - bar - composer;
 }
 
-/** How many of a turn’s older steps show as a line each, from its share of the visible transcript. @param {string} threadId */
-function linesFor(threadId) {
+/** About how tall a reply’s words draw. @param {string} text */
+const wordsHeight = (text) =>
+  text
+    .split(/\n\s*\n/)
+    .filter((p) => p.trim())
+    .reduce((sum, p) => sum + Math.ceil(p.length / LINE_CHARS) * WORD_LINE + PARAGRAPH, 0);
+
+/**
+ * How a running reply’s steps fit its share of the visible transcript, once its words and what each agent at work has
+ * besides are counted: { lines, full, thought }. thought: how many lines its newest thought shows, up to THOUGHT_LINES
+ * and 0 for none; full: whether its newest call shows in full; lines: how many of its older steps show as a line each.
+ * With eight agents or more, or when even a line beside its words doesn’t fit, its steps are one line, and no thought.
+ * @param {string} threadId @param {string} text  the reply’s words @param {boolean} thinks  whether it has a thought
+ */
+function fit(threadId, text, thinks) {
   const agents = Math.max(1, liveAgents(threadId));
-  if (agents >= CROWD) return -1;
-  const height = visibleHeight(threadId);
-  return Math.max(0, Math.floor((height / agents - FULL - LINE) / LINE));
+  const room = visibleHeight(threadId) / agents - AROUND - wordsHeight(text);
+  const fits = Math.floor((room - LINE - THOUGHT_MORE) / THOUGHT_LINE);
+  const thought = thinks && agents < CROWD ? Math.max(0, Math.min(THOUGHT_LINES, fits)) : 0;
+  const left = room - (thought ? thought * THOUGHT_LINE + THOUGHT_MORE : 0);
+  if (agents >= CROWD || left < LINE) return { lines: -1, full: false, thought: 0 };
+  if (left < FULL) return { lines: 0, full: false, thought };
+  return { lines: Math.max(0, Math.floor((left - FULL) / LINE)), full: true, thought };
 }
 
 /** The steps a live turn shows: its own, at the top of its list (a subagent’s show under the step that started it). */
@@ -167,7 +194,15 @@ function fullRow(s) {
 export function textFrom(it, /** @type {string} */ threadId) {
   if (!isLive(it, threadId)) return 0;
   const steps = ownSteps(partSteps(it, threadId));
-  if (!steps.length || linesFor(threadId) < 0) return 0;
+  if (
+    !steps.length ||
+    fit(
+      threadId,
+      String(it.text ?? ''),
+      steps.some((s) => s.kind === 'thought'),
+    ).lines < 0
+  )
+    return 0;
   return Math.min(String(it.text ?? '').length, Math.max(0, ...steps.map((s) => Number(s.at) || 0)));
 }
 
@@ -185,19 +220,21 @@ export function liveParts(it, threadId, words, newestId) {
   const steps = ownSteps(it.activity?.steps ?? []);
   // A part with no steps of its own is marked live all the same, so it’s drawn again when its turn ends (liveStale).
   if (!steps.length) return h('div.live-steps', { hidden: true });
-  const lines = linesFor(threadId);
-  const calls = callsOf(steps);
-  const last = calls.at(-1) ?? steps.at(-1);
-  const newest = newestId === undefined || last.id === newestId ? last : null;
+  const text = String(it.text ?? '');
+  // Its newest thought shows, capped; an older one is a line among its steps, which fade into “N earlier steps”.
+  const thinking = steps.findLast((s) => s.kind === 'thought');
+  const { lines, full, thought } = fit(threadId, text, Boolean(thinking));
+  const calls = steps.filter((s) => s !== thinking);
+  const last = callsOf(steps).at(-1) ?? steps.at(-1);
+  const newest = full && (newestId === undefined || last.id === newestId) ? last : null;
   // The number of agents at work it was drawn for (liveStale).
   const agents = { dataset: { agents: String(liveAgents(threadId)) } };
   if (lines < 0) {
     const line = lineRow(last);
-    line.append(h('span.small.dim', `· ${plural(calls.length, 'step')}`));
+    line.append(h('span.small.dim', `· ${plural(callsOf(steps).length, 'step')}`));
     return h('div.live-steps.crowded', agents, h('ul.steps.live', line));
   }
-  const text = String(it.text ?? '');
-  const shownFrom = Math.max(0, calls.length - 1 - lines); // older than this, a step is one of “N earlier steps”
+  const shownFrom = Math.max(0, calls.length - (full ? 1 : 0) - lines); // older than this, a step is one of “N earlier steps”
   const parts = [];
   let cursor = 0;
   /** @type {any[]} */
@@ -224,14 +261,38 @@ export function liveParts(it, threadId, words, newestId) {
       parts.push(words(text.slice(cursor, at)));
       cursor = at;
     }
-    // A thought shows whole, as its harness shows it, between the calls before and after it.
-    if (s.kind === 'thought') {
+    // Its newest thought shows between the calls before and after it, capped at THOUGHT_LINES, whole a click away.
+    if (s === thinking) {
       flush();
-      parts.push(h('div.live-thought', s.detail || s.label));
+      if (thought) parts.push(...thoughtParts(s, thought));
     } else run.push(s);
   }
   flush();
   return h('div.live-steps', agents, parts);
+}
+
+/** The thoughts whose whole text you asked to see, by step id: they stay whole as their reply paints again. */
+const wholeThoughts = new Set();
+
+/** A thought, capped at `lines` with a button to show it whole when it’s longer. @param {any} s @param {number} lines */
+function thoughtParts(s, lines) {
+  const text = String(s.detail || s.label);
+  const capped = text.length > lines * LINE_CHARS && !wholeThoughts.has(s.id);
+  const el = h(`div.live-thought${capped ? '.clamped' : ''}`, { style: `--lines: ${lines}` }, text);
+  if (!capped) return [el];
+  const more = h(
+    'button.thought-more',
+    {
+      type: 'button',
+      onclick: () => {
+        wholeThoughts.add(s.id);
+        el.classList.remove('clamped');
+        more.remove();
+      },
+    },
+    'Show the whole thought',
+  );
+  return [el, more];
 }
 
 /**

@@ -403,6 +403,8 @@ details.activity[open] > summary .i-right { transform: rotate(90deg); }
 .live-steps { font-size: 12px; color: var(--dim); display: flex; flex-direction: column; gap: 4px; }
 .live-steps > .live-words { color: var(--text); font-size: inherit; }
 .live-steps > .live-thought { color: var(--dim); font-size: 13px; font-style: italic; white-space: pre-wrap; overflow-wrap: anywhere; border-left: 2px solid var(--line); padding-left: 10px; }
+.live-steps > .live-thought.clamped { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: var(--lines, 3); line-clamp: var(--lines, 3); overflow: hidden; }
+.live-steps > .thought-more { align-self: flex-start; font-size: 12px; color: var(--dim); background: none; border: 0; padding: 0 0 0 12px; cursor: pointer; text-decoration: underline; }
 .steps.live { margin-top: 0; }
 .steps li.step-line { align-items: center; }
 .steps li.step-line .mono { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
