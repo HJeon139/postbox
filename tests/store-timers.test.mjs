@@ -58,6 +58,7 @@ const PLACED = {
   'remote/turns.mjs': 5, // tick: stops a hung host turn (the outage’s stop ended the turns); a sign-in resume’s start is held
   'remote/turns-stops.mjs': 1, // a wait: no store
   'remote/wake.mjs': 2, // an injected setInterval that reconnects hosts after sleep: no store
+  'runtime-close.mjs': 1, // the shutdown’s bound on its wait for the work ledger’s records: before the store closes
   'scheduled-wakes.mjs': 1, // armWake: cleared and re-armed at Retry; the start is held
   'shell-runs.mjs': 2, // a `!` command’s output flush (memory-only, I1); the shutdown’s Stop grace wait for commands: no store
   'shell.mjs': 1, // SIGKILL after a Stop’s grace: Stop is allowed while closed

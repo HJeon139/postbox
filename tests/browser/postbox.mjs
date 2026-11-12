@@ -10,6 +10,9 @@ import { join } from 'node:path';
 import { expect } from '@playwright/test';
 import { start } from '../../server/index.mjs';
 import { heldStill } from '../../tools/page-still.mjs';
+import { allowServerLog, captureServerLog, takeServerFailures } from '../server-log.mjs';
+
+export { allowServerLog };
 
 /** Whether nothing listens on a port of 127.0.0.1. */
 const free = (port) =>
@@ -43,6 +46,8 @@ async function freePort() {
  */
 export async function startPostbox(name, { demo = true, mockOnly = true, prepare, server } = {}) {
   if (mockOnly) process.env.POSTBOX_BACKENDS = 'mock';
+  // What it logs fails the test it logs in (failOnServerErrors), and what it logs after the file’s last test, its stop.
+  captureServerLog();
   // A bare mkdtemp, not tests/temp-dirs.mjs’s tempDir: this runs in a Playwright worker, which serves many spec
   // files, so a folder removed at its exit would outlive the spec. A start that fails removes it here, and stop()
   // removes it even when the close throws (#921).
@@ -71,6 +76,8 @@ export async function startPostbox(name, { demo = true, mockOnly = true, prepare
       } finally {
         await remove();
       }
+      const late = takeServerFailures();
+      if (late.length) throw new Error(`Postbox logged errors after the file’s last test, or as it stopped:\n${late.join('\n')}`);
     },
   };
 }
@@ -134,10 +141,24 @@ function expected(page, text) {
 }
 
 /**
- * Fails each test whose page threw an exception, or logged an error to the console, after the test's own steps.
+ * Fails each test in which its Postbox wrote anything to console.error, console.warn or stderr, or had an unhandled
+ * rejection or a process warning (tests/server-log.mjs), after the test’s own steps. A test that causes one on purpose
+ * names it with allowServerLog. A line logged between two tests fails the second.
+ * @param {import('@playwright/test').TestType<any, any>} test
+ */
+export function failOnServerErrors(test) {
+  test.afterEach(() => {
+    expect(takeServerFailures(), 'Postbox logged no errors or warnings the test didn’t expect').toEqual([]);
+  });
+}
+
+/**
+ * Fails each test whose page threw an exception, or logged an error to the console, or whose Postbox logged an error
+ * (failOnServerErrors), after the test's own steps.
  * @param {import('@playwright/test').TestType<any, any>} test
  */
 export function failOnPageErrors(test) {
+  failOnServerErrors(test);
   /** @type {string[]} */
   let errors = [];
   test.beforeEach(({ page }) => {

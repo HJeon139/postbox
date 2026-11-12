@@ -6,7 +6,7 @@
 
 import { HOP_LIMIT, isRoomChainLimit, ROOM_CHAIN_LIMIT_TAKES } from '../shared/limits.mjs';
 import { httpError } from './helpers.mjs';
-import { updateThread } from './thread-write.mjs';
+import { threadToWrite, updateThread } from './thread-write.mjs';
 
 /**
  * The chain limit of the room a thread is in: the conversation’s own, else the server’s default. Read pending, as the
@@ -27,8 +27,10 @@ export function roomChainLimit(rt, threadId) {
 export function patchThread(rt, threadId, body) {
   const b = body ?? {};
   if (!Object.hasOwn(b, 'chainLimit')) return rt.renameThread(threadId, b.title);
-  rt.thread(threadId);
+  threadToWrite(rt, threadId);
   if (b.chainLimit !== null && !isRoomChainLimit(b.chainLimit)) throw httpError(422, ROOM_CHAIN_LIMIT_TAKES);
   if (Object.hasOwn(b, 'title')) rt.renameThread(threadId, b.title);
-  return updateThread(rt, rt.lineage(threadId).at(-1), { chainLimit: b.chainLimit });
+  // Its room read pending too: a conversation started behind a held commit isn’t published yet.
+  const room = rt.lineage(threadId, (/** @type {string} */ id) => rt.store.pending.thread(id)).at(-1);
+  return updateThread(rt, room, { chainLimit: b.chainLimit });
 }

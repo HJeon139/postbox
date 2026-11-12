@@ -33,6 +33,7 @@ import { settleInterrupted } from './restart-sweep.mjs';
 import { SAME_ORIGIN_ONLY, servedReviewFile } from './review-files.mjs';
 import { patchThread } from './room-chain-limit.mjs';
 import { httpError, Runtime } from './runtime.mjs';
+import { settleLedger, stopTimers } from './runtime-close.mjs';
 import { sandboxRoute } from './sandbox-routes.mjs';
 import { seed, toBoilerplate } from './seed.mjs';
 import { decodePath, file, mediaPath, servedFile } from './served-files.mjs';
@@ -172,7 +173,9 @@ export async function start({
       await route(req, res);
     } catch (e) {
       const status = e.status ?? 500;
-      if (status === 500) console.error(e);
+      // With the route, its query left out, so a programming error’s log says which request hit it. The method and path
+      // are arguments, not part of the format string, so a %s in a path can’t take the error’s place.
+      if (status === 500) console.error('Postbox couldn’t answer %s %s:', req.method, String(req.url).split('?')[0], e);
       if (!res.headersSent)
         send(res, status, {
           error: e.userMessage ?? (status === 500 ? 'Something went wrong on the server. Try again; if it keeps happening, check the server log.' : e.message),
@@ -438,14 +441,17 @@ export async function start({
   async function close() {
     stopStreams();
     for (const r of streams) r.destroy();
-    for (const t of rt.timers.values()) clearTimeout(t);
+    stopTimers(rt);
     rt.stopMirrors();
     // `!` commands run in their own process groups, so they’d outlive Postbox: SIGINT, then SIGKILL (#67). So do the
     // agents’ CLIs, and the background jobs Postbox kept running (#126, #129).
     await rt.stopShellCommands();
     await rt.stopTurns();
+    stopTimers(rt); // what a turn ending as it stopped started
     // After the turns, whose Stop goes to their hosts over these links (#120).
     await stopHosts(hosts, stopWake);
+    stopTimers(rt); // what a remote turn ending as its host’s link closed started
+    await settleLedger(rt); // the stopped turns’ records, remote ones too, before the store closes
     narrator?.stop();
     await viewOf(rt).close();
     if (server.listening) await new Promise((ok) => server.close(ok));
@@ -494,6 +500,13 @@ function raw(res, status, body, headers = {}) {
   res.end(body);
 }
 function send(res, status, obj) {
+  // Every route answers with a body. One that answers with nothing is a bug in Postbox, refused before the status is
+  // written, so it’s a 500 the page can show and handle() logs with the route, not an empty 200 and a bare TypeError
+  // from Buffer.from (#1247’s class).
+  if (obj === undefined)
+    throw Object.assign(new Error('The route answered with nothing: its runtime call returned undefined, a programming error.'), {
+      userMessage: 'Postbox’s server sent no answer to that, a bug in Postbox. Reload the page to see what changed, and report it.',
+    });
   res.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
   // Bytes, not the string: the socket keeps what it’s given until the page has read it all, and /api/state’s string is
   // as long as the state, two bytes a character once one is past Latin-1. As bytes it leaves the V8 heap at once (#1210).

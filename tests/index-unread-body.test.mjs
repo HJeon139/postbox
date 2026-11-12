@@ -4,8 +4,13 @@
 // 425 MB of heap, and a few slow or frozen tabs, with the snapshot’s own string, ran Postbox out of its 4 GB.
 import assert from 'node:assert/strict';
 import { Readable } from 'node:stream';
-import { after, before, test } from 'node:test';
+import { after, afterEach, before, test } from 'node:test';
+import { assertNoServerFailures, captureServerLog } from './server-log.mjs';
 import { tempDir } from './temp-dirs.mjs';
+
+// Its Postbox runs in this process: a test fails on an error or a warning it logs (tests/server-log.mjs).
+captureServerLog();
+afterEach(assertNoServerFailures);
 
 process.env.POSTBOX_BACKENDS = 'mock';
 const { start } = await import('../server/index.mjs');

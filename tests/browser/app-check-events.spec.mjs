@@ -5,7 +5,7 @@
 // page opened before the tests checks; each test reads what the check found.
 
 import { expect, test } from '@playwright/test';
-import { startPostbox, synced } from './postbox.mjs';
+import { failOnServerErrors, startPostbox, synced } from './postbox.mjs';
 
 // The library “loads” 1.5 s after the app is ready, longer than the check’s events take to arrive.
 const setup = `(async () => {
@@ -80,6 +80,8 @@ const D3_NULL = /script-error: TypeError: (?:.*d3 is null|Cannot read properties
 let app;
 /** What the page threw or logged as errors while it checked the apps, apart from the d3 errors the tests cause. */
 const errors = [];
+// Its pages log errors on purpose; its Postbox mustn’t.
+failOnServerErrors(test);
 test.beforeAll(async ({ browser }) => {
   test.setTimeout(90_000);
   app = await startPostbox('app-check-events');

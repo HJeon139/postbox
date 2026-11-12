@@ -85,7 +85,8 @@ export function createPersona(
 }
 
 export function updatePersona(rt, id, patch) {
-  const p = rt.persona(id);
+  // Pending: an agent made behind a held commit can be changed, and a change held there isn’t written over.
+  const p = rt.store.pending.persona(id);
   if (!p) throw httpError(404, 'That agent doesn’t exist.');
   if (patch.permissionMode !== undefined) patch = { ...patch, permissionMode: checkedMode(patch.permissionMode) };
   if (patch.effort !== undefined) checkEffort(patch.effort);

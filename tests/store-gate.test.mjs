@@ -6,13 +6,13 @@ import assert from 'node:assert/strict';
 import { Readable } from 'node:stream';
 import { after, before, test } from 'node:test';
 import { fakeRequest, NAVIGATION } from './fake-http.mjs';
+import { eio } from './outage-log.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
 process.env.POSTBOX_BACKENDS = 'mock';
 const { start } = await import('../server/index.mjs');
 
 const PORT = 4459;
-const eio = () => Object.assign(new Error('disk sync refused'), { code: 'EIO' });
 let app;
 let dir;
 let cookie;

@@ -79,7 +79,9 @@ const PENDING = {
   // each decides a write, so a card held behind a commit counts (#366). An offered card and the current need's card
   // (takesNeed): their times, and whether the current one still waits, decide whether the offer takes the need (#711).
   'card-needs.mjs': ['keptTurns', 'nextNeed', 'takesNeed', 'takesNeed', 'releaseNeed', 'notifyOnce'],
-  'claude-mirror.mjs': ['pollMirror'], // the mirrored reply a terminal line adds to, maybe held behind a commit
+  // The mirrored reply a terminal line adds to, maybe held behind a commit; and the session attachClaudeSession just
+  // made, whose transcript mirror starts following.
+  'claude-mirror.mjs': ['mirror', 'pollMirror'],
   'deliver.mjs': ['deliver', 'deliver', 'turnMessage'], // the session it starts a turn in, and the thread it answers in, maybe made or held behind a commit (#796)
   'restart-sweep.mjs': ['settleRetiredNeeds', 'cardOf'], // the need's card: whether it still waits, and its time on a tie, decide the need kept (#366); a session whose need is of a retired kind, settled
   'app-retire.mjs': ['retireApp', 'retireApp', 'retireApp', 'release'], // retire_app of an app the turn may have just shown, and its sweep of open sends
@@ -112,21 +114,31 @@ const PENDING = {
   // left, so a stream holds one patch, not one per chunk, a held compaction counts, and a held note is given. A delivery reads its session pending too (runtime.mjs
   // deliver, twice): the last summary's givenMentions and seenItem, and a notice, held, are seen, not given again or lost (#506). Whether a thread has a persona's session already
   // reads its pending members and sessions, so a second mention behind a held commit finds the session the first made.
-  // The room’s chain limit, which decides whether a wake waits, maybe set behind a held commit (#1035).
-  'room-chain-limit.mjs': ['roomChainLimit'],
-  // The members a delete keeps its room for, maybe joined behind a held commit (#796).
-  'session-lifecycle.mjs': ['deleteSession', 'deleteSession', 'deleteSession'],
+  // The conversation createThread just wrote, with the agents it joined: its route’s answer is its own write, which a
+  // held commit keeps out of the published state (#1247’s class). And the agent ensureSession joins, which the same
+  // request may have just made.
+  'conversations.mjs': ['createThread', 'ensureSession'],
+  // The room’s chain limit, which decides whether a wake waits, maybe set behind a held commit (#1035); and the room a
+  // PATCH sets it on, maybe started there.
+  'room-chain-limit.mjs': ['roomChainLimit', 'patchThread'],
+  // The members a delete keeps its room for, maybe joined behind a held commit (#796); the session it deletes, and the
+  // threads a conversation’s delete covers, any of them maybe made there too. Every lookup comes before any change.
+  'session-lifecycle.mjs': ['conversationScope', 'conversationScope', 'deleteSession', 'deleteSession', 'deleteSession', 'deleteSession', 'deleteSession'],
+  // An agent changed or deleted, and a deleted agent’s sessions, any of them maybe made behind a held commit.
+  'persona-write.mjs': ['updatePersona'],
+  'persona-delete.mjs': ['deletePersona', 'deletePersona', 'deletePersona'],
   'session-write.mjs': ['updateSession', 'needAt', 'stampNeeds', 'pendingSessionsIn', 'pendingSessionsIn'], // needAt: the need's item's time, maybe added behind a held commit (#1155); stampNeeds: the session it stamps
   // A command’s item, maybe deleted behind a held commit, before its output or its end is written.
   'shell-runs.mjs': ['commandOutput', 'endCommand'],
   'subagent-end.mjs': ['withUrgent'],
   'side-threads.mjs': ['agentWake', 'agentWake', 'agentWake', 'endChain', 'endChain', 'bumpSideLink', 'bumpSideLink'],
-  // A thread’s apps, removed in a sweep.
-  'thread-erase.mjs': ['eraseThreads'],
+  // A thread’s apps, removed in a sweep; and the threads’ members and sessions it erases, maybe made behind a held commit.
+  'thread-erase.mjs': ['eraseThreads', 'eraseThreads', 'eraseThreads', 'eraseThreads', 'eraseThreads'],
   // The thread a turn answers in, as deliver chose it from pending, and the topic a turn's end settles: a topic
   // open_topic just opened, held (#796).
   'thread-summary.mjs': ['threadHeader', 'threadCatchUp', 'settleThread'],
-  'thread-write.mjs': ['updateThread', 'pendingThreads'], // every write of a thread that exists starts from it (#796)
+  // Every write of a thread that exists starts from it (#796), and threadToWrite refuses one that doesn’t exist there.
+  'thread-write.mjs': ['updateThread', 'threadToWrite', 'pendingThreads'],
   // A finished turn’s checks: its own block and the terms and apps it introduced, and the progress steps it stalls.
   'turn-checks.mjs': ['checkTurn', 'checkTurn', 'checkTurn', 'stallSteps'],
   'turn-context.mjs': ['text', 'compaction'], // a streamed chunk's state check, and a compaction's number, from the session a held write left
