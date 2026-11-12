@@ -4,7 +4,10 @@
 // the name server/upload-name.mjs kept, so a file attachment takes all three from there: a right-to-left override the
 // upload replaced can’t come back in the message, to its chip or to the agents it’s sent to. A record stored before
 // that cleaning keeps its raw name, so it’s cleaned here as it’s read (#1067).
+// Once sent, an attachment is read from disk where attachmentPath finds it: a stored upload, or a file in the project’s
+// folder. attachmentPath moved here out of server/runtime.mjs, which keeps a method of that name that delegates here.
 
+import { resolve, sep } from 'node:path';
 import { httpError } from './helpers.mjs';
 import { shownName, storedName, uploadName } from './upload-name.mjs';
 
@@ -43,4 +46,19 @@ function upload(rt, a) {
     return { kind: 'file', fileId: f.id, name: storedName(f.name), type: f.type, size: f.size };
   }
   return { kind: 'file', fileId: a.fileId, name: uploadName(String(a.name ?? '')) };
+}
+
+/** Where an attachment can be read on disk: a stored upload, or a file in the project’s folder. */
+export function attachmentPath(rt, threadId, a) {
+  if (a?.kind === 'file' && a.fileId) {
+    const f = rt.s.files?.[a.fileId];
+    return f?.sha256 && rt.blobs ? rt.blobs.pathOf(f.sha256) : null;
+  }
+  if (a?.kind === 'project-file' && a.path) {
+    const folder = rt.s.projects[rt.s.threads[threadId]?.projectId]?.folder;
+    if (!folder) return null;
+    const full = resolve(folder, String(a.path).replace(/^\/+/, ''));
+    return full === resolve(folder) || full.startsWith(resolve(folder) + sep) ? full : null;
+  }
+  return null;
 }

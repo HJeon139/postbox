@@ -4,7 +4,6 @@
 
 import { randomUUID } from 'node:crypto';
 import { homedir } from 'node:os';
-import { resolve, sep } from 'node:path';
 import { ASKING } from '../shared/catalog.mjs';
 import { READING } from '../shared/limits.mjs';
 import { formatDuration, glimpseOf } from '../shared/text.mjs';
@@ -14,15 +13,12 @@ import { listProcesses } from './adapters/process-group.mjs';
 import { EFFORT_LEVELS } from './adapters/setup.mjs';
 import { recordCommands, runAgentCommand } from './agent-commands.mjs';
 import { agentFile, agentFolders, appFiles } from './agent-files.mjs';
-import { retireApp } from './app-retire.mjs';
 import { APP_HOLD_MAX, APP_SEND_LIMIT, APP_SEND_WINDOW_MS } from './app-send-limits.mjs';
-import { appCheck, appEvent, appFile, appQuery, appState, fixEnded, needAppSend, registerApp, resolveAppSend, showApp, updateApp } from './apps.mjs';
+import { appCheck, appEvent, appFile, appQuery, appState, fixEnded, needAppSend, registerApp, resolveAppSend } from './apps.mjs';
 import { restoreArchives } from './archive-lifecycle.mjs';
 import { ArchivePasses } from './archive-runtime.mjs';
 import { askQuestions, QUESTION_TOOL, questionBlocks } from './ask-question.mjs';
-import { showBlock } from './block-show.mjs';
-import { act, answerDelivered, unreadAnswer, updateBlock } from './blocks.mjs';
-import { bringToConversation } from './bring.mjs';
+import { act, answerDelivered, unreadAnswer } from './blocks.mjs';
 import { keptTurns, nextNeed, noticeNeed, releaseNeed, stateFor, TURN_TIED } from './card-needs.mjs';
 import { catchUp, moveMarkers, pointerIfSeen } from './catch-up.mjs';
 import { attachClaudeSession, claudeSessions, mirror, pollMirror, rearmMirrors, stopMirrorFor, stopMirrors } from './claude-mirror.mjs';
@@ -30,11 +26,12 @@ import { diagramCheck } from './diagram-check.mjs';
 import { emptyReply, endedWithoutReply } from './empty-reply.mjs';
 import { heldSession } from './held-session.mjs';
 import { clip, clipText, httpError } from './helpers.mjs';
-import { clipItem, describeItem, topicRootLine } from './item-lines.mjs';
+import { describeItem, topicRootLine } from './item-lines.mjs';
 import { keptGroupsOf, keptJobs, pollKept, stopJob, stopKeptJobs, watchKept } from './kept-jobs.mjs';
 import { Ledger } from './ledger.mjs';
 import { endLint, foldLint, lint, quietLint } from './lint-delivery.mjs';
 import { wakeMentions } from './mention-wakes.mjs';
+import { attachmentPath } from './message-attachments.mjs';
 import * as queue from './message-queue.mjs';
 import { alwaysFor } from './permission-always.mjs';
 import {
@@ -54,21 +51,18 @@ import { createPersona, updatePersona } from './persona-write.mjs';
 import { arrival } from './queue-batch.mjs';
 import { readCapped } from './read-capped.mjs';
 import { addReadFolder, readCardAlways } from './read-folders.mjs';
-import { readMessage } from './read-message.mjs';
+import { readConversation, readLine, readMessage } from './read-message.mjs';
 import { addHost, host, removeHost, setProjectHostFolder, updateHost } from './remote/host-admin.mjs';
 import { describeHostInstall, hostStatus, installHost, retryHost, watchHosts } from './remote/host-status.mjs';
 import { localBackends, refuseHere, refuseUnregistered, registeredAdapter } from './remote/placement.mjs';
 import { RemoteTurns } from './remote/turns.mjs';
 import { replySegment, stepTaken, wordsSegment } from './reply-segment.mjs';
-import { reviewBlock } from './review-comments.mjs';
-import { cancelWake, scheduleWakeTool } from './schedule-tools.mjs';
 import {
   armWake,
   cancelWakeSchedule,
   dropScheduledWake,
   prepareScheduledRetry,
   rearmWakes,
-  recordedTools,
   recordScheduledTool,
   scheduleWake,
   settleScheduledWake,
@@ -79,20 +73,22 @@ import { pendingSessionsIn, stampNeeds, tellAgent, updateSession } from './sessi
 import { mcpContext } from './setup-context.mjs';
 import { clearSummaryPending, postSummary, shareText, shareToConversation, summarizeBack, summarizing } from './share-back.mjs';
 import { commandFolder, expireStaleCommands, flushShellOutput, runShellCommand, stopShellCommand, stopShellCommands } from './shell-runs.mjs';
-import { agentWake, archiveForks, bumpSideLink, dropWakes, endChain, recordAgentMessage, resolveHop, sideSession, wakeAgent } from './side-threads.mjs';
+import { agentWake, archiveForks, bumpSideLink, dropWakes, endChain, recordAgentMessage, resolveHop, sideSession } from './side-threads.mjs';
 import { newId } from './store.mjs';
 import { heldTurn, STORE_STOPPED, saveBackendState, watchStore, whenWritable } from './store-outage.mjs';
 import { endSubagent, notUrgent } from './subagent-end.mjs';
+import { conversationThreads, glossaryFor, lineage } from './thread-lineage.mjs';
 import { firstPromptSection, settleThread, turnContext } from './thread-summary.mjs';
 import { updateThread } from './thread-write.mjs';
-import { askForTool } from './tool-ask.mjs';
-import { openTopic, startTopic } from './topic-open.mjs';
+import { startTopic } from './topic-open.mjs';
 import { checkTurn, stallLeftRunning, stallSteps } from './turn-checks.mjs';
 import { endedAs, endWork } from './turn-end-work.mjs';
-import { askedAgain, askedOf, replyMarks, wokeOf } from './turn-marks.mjs';
+import { askedAgain, askedOf, replyMarks } from './turn-marks.mjs';
 import { settleStoppedSteps, settleSubagentSteps } from './turn-steps.mjs';
 import { workEvents } from './turn-work.mjs';
+import { toolsFor } from './ui-tools.mjs';
 import { closeOrphanCards, liftDecline } from './wake-cards.mjs';
+import { restoreWork, workDiff, workGit, workOutput } from './work-view.mjs';
 
 export { AgentFileError } from './agent-files.mjs';
 export { httpError } from './helpers.mjs';
@@ -1466,35 +1462,26 @@ export class Runtime {
     return describeItem(this, i, se, n, reader);
   }
 
-  /**
-   * read_conversation: the conversation’s items, newest last, as text, each with its id (for read_message and react). thread: another thread of the same conversation
-   * to read instead, such as a side thread or a topic thread (#121): its id from a catch-up line, a pointer to a fork, or
-   * a link the person shared. Threads of other conversations are refused.
-   */
-  /** @param {any} se @param {{ limit?: number, skip?: number, thread?: unknown }} [args] */
-  readConversation(se, { limit = 50, skip = 0, thread = null } = {}) {
-    const id = typeof thread === 'string' && thread.trim() ? thread.trim().slice(0, 100) : se.threadId;
-    if (!this.conversationThreads(se.threadId).includes(id))
-      throw httpError(404, `There’s no thread ${id} in this conversation. Read one of its own threads: the id is in the catch-up line or the link.`);
-    const items = this.store.items(id).filter((i) => i.kind !== 'system' || i.variant === 'wake');
-    const n = Math.max(1, Math.min(200, Number(limit) || 50));
-    const end = Math.max(0, items.length - Math.max(0, Number(skip) || 0));
-    const slice = items.slice(Math.max(0, end - n), end);
-    const lines = slice.flatMap((i) => (this.readLine(i, se) ? [`[${i.id}] ${this.readLine(i, se)}`] : []));
-    const before = end - slice.length;
-    return `${lines.join('\n\n') || 'The conversation is empty.'}${before ? `\n\n(${before} earlier ${before === 1 ? 'item' : 'items'}; call again with skip: ${items.length - before} to read them.)` : ''}`;
+  readConversation(se, args) {
+    return readConversation(this, se, args);
   }
-
-  /**
-   * An item as read_conversation and read_message give it to `se`, whose own messages say “You”.
-   * @param {any} i @param {any} se @param {number} [n]
-   */
-  readLine(i, se, n = READING.item) {
-    return i.sessionId === se.id && i.kind === 'agent' ? `You (@${se.handle}): ${clipItem(i.text, n, i.id)}` : this.describeItem(i, null, n, se);
+  readLine(i, se, n) {
+    return readLine(this, i, se, n);
   }
-
   readMessage(se, args = {}) {
     return readMessage(this, se, args);
+  }
+
+  // ── A thread’s place in its conversation: server/thread-lineage.mjs ─────────────────
+
+  conversationThreads(threadId) {
+    return conversationThreads(this, threadId);
+  }
+  lineage(threadId, thread) {
+    return lineage(this, threadId, thread);
+  }
+  glossaryFor(threadId) {
+    return glossaryFor(this, threadId);
   }
 
   // ── The lint pipeline ──────────────────────────────────────────────────────────────
@@ -1503,40 +1490,6 @@ export class Runtime {
   // it measures (diagrams, the app check) as the reply renders, so the lint turn waits a moment for those. There’s
   // at most one lint turn per agent turn, a lint turn is never linted, and problems from a turn that failed or was
   // stopped are dropped.
-
-  /**
-   * Every thread of a thread’s conversation: its lineage first, then the conversation’s other side and topic threads.
-   * What read_conversation { thread } and read_message may read.
-   * @param {string} threadId
-   */
-  conversationThreads(threadId) {
-    const own = this.lineage(threadId);
-    const root = own.at(-1);
-    const rest = Object.values(this.s.threads)
-      .filter((t) => !own.includes(t.id) && this.lineage(t.id).at(-1) === root)
-      .map((t) => t.id);
-    return [...own, ...rest];
-  }
-
-  /** A thread, then the conversation it branched from, following parentId (a topic or side thread’s is one level), as `thread` reads one. */
-  lineage(threadId, thread = (/** @type {string} */ id) => this.s.threads[id]) {
-    const out = [];
-    for (let id = threadId; id && thread(id) && !out.includes(id) && out.length < 8; id = thread(id).parentId) out.push(id);
-    return out;
-  }
-
-  /**
-   * The terms a thread knows: its own glossary over its parent’s, so a topic thread inherits its conversation’s
-   * terms and its own definition wins. The browser’s glossaryOf (app/js/thread.mjs) merges the same way.
-   */
-  glossaryFor(threadId) {
-    return Object.assign(
-      {},
-      ...this.lineage(threadId)
-        .map((id) => this.s.glossary[id] ?? {})
-        .reverse(),
-    );
-  }
 
   // The server’s checks over a finished turn: server/turn-checks.mjs.
 
@@ -1656,54 +1609,24 @@ export class Runtime {
     return expireStaleCommands(this);
   }
 
-  // ── The work ledger (#132) ─────────────────────────────────────────────────────────
-  // What a conversation’s agents changed, ran and published, read by the Work view. A conversation is the one a
-  // thread belongs to: its side and topic threads count toward it.
+  // ── The work ledger’s answers to the page (#132): server/work-view.mjs ─────────────
 
-  workConversation(threadId) {
-    const t = this.thread(threadId);
-    if (t.kind === 'side' || t.kind === 'topic') throw httpError(404, 'Open the conversation this thread belongs to: its work is there.');
-    return t.id;
-  }
-  /** Where each changed file and commit stands in git now (read-only). */
   workGit(threadId) {
-    return this.ledger.gitState(this.workConversation(threadId));
+    return workGit(this, threadId);
   }
-  /** @param {string} threadId @param {string} fileId @param {string|null} [changeId] */
-  workDiff(threadId, fileId, changeId = null) {
-    return this.ledger.fileDiff(this.workConversation(threadId), fileId, changeId).catch(asHttp);
+  workDiff(threadId, fileId, changeId) {
+    return workDiff(this, threadId, fileId, changeId);
   }
   workOutput(threadId, entryId) {
-    return this.ledger.output(this.workConversation(threadId), entryId).catch(asHttp);
+    return workOutput(this, threadId, entryId);
   }
-  /**
-   * Puts a file back as it was before the agents first changed it (or removes one they created), and says so in the
-   * conversation, so its agents read it on their next turn.
-   */
-  async restoreWork(threadId, fileId) {
-    const convId = this.workConversation(threadId);
-    const f = await this.ledger.restore(convId, fileId).catch(asHttp);
-    const who = f?.handles?.length ? f.handles.map((h) => `@${h}`).join(', ') : 'the agents';
-    this.addItem(convId, {
-      kind: 'voice',
-      text: f?.before?.exists ? `Restored ${f.rel} to how it was before ${who} changed it` : `Removed ${f?.rel}, which ${who} created`,
-    });
-    return f;
+  restoreWork(threadId, fileId) {
+    return restoreWork(this, threadId, fileId);
   }
 
-  /** Where an attachment can be read on disk: a stored upload, or a file in the project’s folder. */
+  /** Where an attachment can be read on disk (server/message-attachments.mjs). */
   attachmentPath(threadId, a) {
-    if (a?.kind === 'file' && a.fileId) {
-      const f = this.s.files?.[a.fileId];
-      return f?.sha256 && this.blobs ? this.blobs.pathOf(f.sha256) : null;
-    }
-    if (a?.kind === 'project-file' && a.path) {
-      const folder = this.s.projects[this.s.threads[threadId]?.projectId]?.folder;
-      if (!folder) return null;
-      const full = resolve(folder, String(a.path).replace(/^\/+/, ''));
-      return full === resolve(folder) || full.startsWith(resolve(folder) + sep) ? full : null;
-    }
-    return null;
+    return attachmentPath(this, threadId, a);
   }
 
   // ── Attached Claude Code sessions: server/claude-mirror.mjs ─────────────────────────
@@ -1893,104 +1816,11 @@ export class Runtime {
     return Date.now() - (this.viewing.get(threadId) ?? 0) < 20000;
   }
 
-  // ── UI tools (the same set MCP exposes) ────────────────────────────────────────────
+  // ── UI tools (the same set MCP exposes): server/ui-tools.mjs ──────────────────────
 
   /** @param {string} sessionId @param {any} [turn]  the turn the tools act for; null outside a turn */
   toolsFor(sessionId, turn = null) {
-    const rt = this;
-    const se = () => rt.session(sessionId);
-    const endSegment = () => {
-      if (turn) turn.segment = null;
-    };
-    // Where the turn speaks: its session’s thread, or the side thread it answers in (#110).
-    const threadId = () => turn?.threadId ?? se().threadId;
-    return recordedTools(rt, turn, {
-      /** @param {{ block: any }} args @param {{ files?: AppFile[] }} [given]  data files Postbox read for show_app (#54) */
-      show_block(args, given = {}) {
-        return showBlock(rt, sessionId, { turn, se, threadId, endSegment, tools: this }, args, given);
-      },
-      update_block(args, given = {}) {
-        return updateBlock(rt, sessionId, args, { turn, se, threadId, endSegment }, given);
-      },
-      review_block: (args) => reviewBlock(rt, sessionId, args),
-      show_app(args, given = {}) {
-        return showApp(rt, sessionId, this, args, given);
-      },
-      update_app(args, given) {
-        return updateApp(rt, sessionId, turn, threadId, endSegment, args, given);
-      },
-      retire_app(args) {
-        return retireApp(rt, sessionId, args);
-      },
-      define_term({ term, definition, key, source }) {
-        if (!term || !definition) return { ok: false, message: 'define_term needs a term and a definition.' };
-        const k =
-          String(key ?? term)
-            .toLowerCase()
-            .replace(/[^a-z0-9]+/g, '-')
-            .replace(/^-|-$/g, '')
-            .slice(0, 64) || 'term';
-        if (turn) (turn.defined ??= []).push(String(term).slice(0, 80));
-        rt.store.emit('glossary', {
-          threadId: threadId(),
-          entry: {
-            key: k,
-            term: String(term).slice(0, 80),
-            definition: String(definition).slice(0, 2000),
-            source: source ? String(source).slice(0, 200) : '',
-            by: se().handle,
-            at: Date.now(),
-          },
-        });
-        const inherited = rt
-          .lineage(threadId())
-          .slice(1)
-          .some((id) => rt.s.glossary[id]?.[k]);
-        return { ok: true, message: inherited ? `Defined “${term}” here, over the conversation’s definition.` : `Defined “${term}”.` };
-      },
-      propose_agent({ handle, description, instructions, tools = [], model = 'mock', backend = 'mock' }) {
-        const mine = new Set(rt.persona(se().personaId)?.tools ?? []);
-        // Agents send JSON: anything that isn’t a string here is coerced, so it can only ever show as text.
-        const str = (v, max) => String(v ?? '').slice(0, max);
-        handle = str(handle, 40);
-        description = str(description, 500);
-        instructions = str(instructions, 20000);
-        tools = (Array.isArray(tools) ? tools : []).filter((t) => typeof t === 'string').slice(0, 40);
-        model = str(model, 80);
-        backend = str(backend, 40);
-        endSegment();
-        rt.addItem(threadId(), {
-          kind: 'proposal',
-          sessionId,
-          handle: se().handle,
-          // Its turn’s, so it shares that turn’s sender line and no other (#135).
-          turnId: turn?.id ?? null,
-          ...wokeOf(turn),
-          status: 'open',
-          proposal: { handle: String(handle).replace(/^@/, ''), description, instructions, tools, model, backend },
-          extraTools: tools.filter((t) => !mine.has(t)),
-        });
-        return { ok: true, message: 'Proposed. The person decides whether to create it.' };
-      },
-      schedule_wake: (args) => scheduleWakeTool(rt, sessionId, args),
-      cancel_wake: (args) => cancelWake(rt, sessionId, args),
-      wake_agent: (args) => wakeAgent(rt, sessionId, args),
-      open_topic: (args) => openTopic(rt, sessionId, args),
-      bring_to_conversation: (args = {}) => bringToConversation(rt, sessionId, turn, args),
-      read_conversation(args = {}) {
-        try {
-          return { ok: true, message: rt.readConversation(se(), args) };
-        } catch (e) {
-          return { ok: false, message: e.message };
-        }
-      },
-      read_message(args = {}) {
-        return rt.readMessage(se(), args);
-      },
-      ask_for_tool(args = {}) {
-        return askForTool(rt, sessionId, args, endSegment, threadId());
-      },
-    });
+    return toolsFor(this, sessionId, turn);
   }
 }
 
@@ -2002,10 +1832,5 @@ export function stopAskText(handle, n) {
 const KEEP_LOST = 'Postbox couldn’t find its process to keep it running: it may have ended with the agent, and Postbox can’t show it or stop it.';
 /** What the person and the agent are told when Postbox couldn’t tell which of a turn’s processes a kept job was (#164). */
 const keepUnsure = (n) => `Postbox couldn’t tell which of ${n} processes is this job, so it kept them all running; stopping the job stops them all.`;
-
-/** An error the ledger raised with a status, as the API answers it. */
-const asHttp = (e) => {
-  throw e?.status ? httpError(e.status, e.message) : e;
-};
 
 export { formatDuration };
