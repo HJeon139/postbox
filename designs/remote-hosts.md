@@ -35,7 +35,7 @@ An agent’s turns can run on another computer you reach with `ssh`, such as a b
 - **A Postbox restart** doesn’t stop a remote turn. The new Postbox finds it running and replays it from the start, replacing the partial reply.
 - **The Work view** records the commands, commits, pushes and effort a remote turn’s stream shows. Files on a host aren’t recorded, and it says so.
 - **`!` commands** run on this computer, not the host, and their output says so.
-- **Kiro CLI** takes its message as a command-line argument, so each remote Kiro turn shows a step saying other users on the host can read it, and a message over 128 KiB is refused before the turn starts.
+- **Kiro CLI** gets its message on stdin on a host, not as an argument, so other users there can’t read it in the process list, and no limit on one argument applies.
 
 **The settings worth knowing.** Each host’s **Edit settings** has the full list, with ranges.
 
