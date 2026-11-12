@@ -2,13 +2,25 @@
 
 import { createMessageReader } from '../shared/remote-protocol.mjs';
 
+/** How long next() waits for a reply to a message: the daemon answers in a few ms, so 2 s runs out only when it’s broken. */
+export const REPLY_MS = 2000;
+
+/**
+ * How long next('started') waits: before it says `started`, the daemon writes the turn folder and polls until the
+ * runner answers (daemon-start.mjs’s runnerUp). With the remote test files run ten at once, that took up to 1.5 s, and
+ * over 2 s in 2 runs of 30 (#1289). It waits for a start that must come, not to show none did, so a long deadline
+ * costs time only when the daemon is broken.
+ */
+export const DAEMON_START_MS = 10_000;
+
 /**
  * Postbox’s side of the fake: reads the daemon’s messages from a stream, validated.
  * @param {import('node:stream').Readable} stream
  * @returns {{ messages: any[], errors: any[], next: (type: string, timeoutMs?: number) => Promise<any>, ended: Promise<void> }}
  *   next(type) resolves with the first message of that type not already taken by an earlier next(), and rejects if
- *   none comes within timeoutMs (2 s by default), naming what did come. At the deadline it looks once more, after the
- *   event loop has read what the stream already holds: a process stalled past the deadline still sees what came meanwhile.
+ *   none comes within timeoutMs (DAEMON_START_MS for `started`, else REPLY_MS), naming what did come. At the deadline
+ *   it looks once more, after the event loop has read what the stream already holds: a process stalled past the
+ *   deadline still sees what came meanwhile.
  */
 export function readMessages(stream) {
   const messages = [];
@@ -44,7 +56,7 @@ export function readMessages(stream) {
     messages,
     errors,
     ended,
-    next(type, timeoutMs = 2000) {
+    next(type, timeoutMs = type === 'started' ? DAEMON_START_MS : REPLY_MS) {
       return new Promise((resolve, reject) => {
         // setImmediate runs after the event loop’s poll phase, so the stream’s pending data is read and offered first.
         const timer = setTimeout(
