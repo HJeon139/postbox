@@ -36,7 +36,7 @@ export function heldSession(rt, sessionId, start) {
     const each = waits.get(sessionId) ?? [];
     waits.delete(sessionId);
     for (const again of each) {
-      // Inside a promise's callback: a throw here (the session archived or gone meanwhile) would be an unhandled
+      // Inside a promise's callback: a throw here (the session gone meanwhile) would be an unhandled
       // rejection, which ends Postbox.
       try {
         again();

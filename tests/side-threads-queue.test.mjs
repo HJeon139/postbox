@@ -5,7 +5,6 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { archiveForks } from '../server/side-threads.mjs';
 import { held, settle, setup, sleep } from './side-threads-fixture.mjs';
 
 /** A conversation with a topic thread on @alpha’s reply. */
@@ -101,7 +100,7 @@ test('#228: in a topic thread from before, whose fork never spoke, a message goe
   const { store, rt, adapter, t, alpha, topic } = await withTopic();
   // As before #228: the thread’s fork, retired at startup, and neither who it started with nor a last speaker.
   const fork = rt.ensureSession(topic.id, alpha.personaId);
-  rt.updateSession(fork.id, { forkOf: { sessionId: alpha.id, itemId: null }, archived: true, retiredFork: true });
+  rt.updateSession(fork.id, { forkOf: { sessionId: alpha.id, itemId: null }, retiredFork: true });
   rt.putThread({ ...store.state.threads[topic.id], woke: undefined, lastSpeaker: null });
   rt.sendMessage(topic.id, { text: 'Still there?' });
   await settle(rt);
@@ -159,7 +158,7 @@ test('#228, #372: an @-mention from a turn in a topic thread wakes the agent the
   );
 });
 
-test('#228: a wake for an agent that’s archived, or that you remove from the queue, goes, and its agent is told', async () => {
+test('#228: a wake for an agent that’s deleted, or that you remove from the queue, goes, and its agent is told', async () => {
   const { store, rt, adapter, t, alpha, beta } = setup();
   const h = held();
   adapter.next.push(h.step);
@@ -169,9 +168,9 @@ test('#228: a wake for an agent that’s archived, or that you remove from the q
   rt.agentWake(alpha.id, 'beta', 'Second question.');
   rt.cancelQueued(t.id, store.state.threads[t.id].queue[1].id);
   assert.match(store.state.sessions[alpha.id].context.at(-1), /The person removed your message \(“Second question\.”\) before it was answered/);
-  rt.archive(beta.id);
+  rt.deleteSession(beta.id);
   assert.deepEqual(store.state.threads[t.id].queue, []);
-  assert.match(store.state.sessions[alpha.id].context.at(-1), /@beta was archived before it answered your message \(“First question\.”\)/);
+  assert.match(store.state.sessions[alpha.id].context.at(-1), /@beta was removed before it answered your message \(“First question\.”\)/);
   h.release();
   await settle(rt);
 });
@@ -198,17 +197,4 @@ test('#228: a wake waiting for a busy agent doesn’t hold back a message behind
   assert.ok(rt.turns.has(beta.id), '@beta is still at work');
   b.release();
   await settle(rt);
-});
-
-test('#228: the migration retires a fork that was already archived, so Restore doesn’t bring it back', async () => {
-  const { store, rt, t, alpha, topic } = await withTopic();
-  const fork = rt.ensureSession(topic.id, alpha.personaId);
-  rt.updateSession(fork.id, { forkOf: { sessionId: alpha.id, itemId: null }, archived: true, archivedAt: 1 });
-  store.emit('settings', { forksArchived: false });
-  archiveForks(rt);
-  assert.deepEqual([store.state.sessions[fork.id].retiredFork, store.state.sessions[fork.id].archivedAt], [true, 1]);
-  rt.archiveThread(t.id);
-  rt.restoreThread(t.id);
-  assert.equal(store.state.sessions[fork.id].archived, true);
-  assert.ok(rt.sessionsIn(t.id).every((x) => !x.archived));
 });

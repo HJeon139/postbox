@@ -41,15 +41,15 @@ export function askToWake(rt, from, parent, p, wake) {
 
 /**
  * An agent wakes a persona the conversation doesn’t have (#228): only the person adds one, so a card asks them. Allow
- * adds it, with a note, and delivers the wake; Decline tells the agent (resolveHop). One whose session here is
- * archived needs the person to restore it. After the person declines adding it here, a prose mention asks no more
+ * adds it, with a note, and delivers the wake; Decline tells the agent (resolveHop). One whose session here was
+ * retired can’t be woken. After the person declines adding it here, a prose mention asks no more
  * (#693): wake_agent still does, since it’s a deliberate ask.
  * @param {any} rt @param {any} from @param {any} parent @param {any} p @param {any} wake
  * @param {{ prose?: boolean }} [opts]  prose: the wake is an @-mention in a turn’s reply
  */
 export function askToAdd(rt, from, parent, p, wake, { prose = false } = {}) {
   if (rt.sessionsIn(parent.id).some((x) => x.personaId === p.id))
-    return { ok: false, message: `@${p.handle}’s session in this conversation is archived, so it can’t be woken. Ask the person to restore it.` };
+    return { ok: false, message: `@${p.handle}’s session in this conversation was retired, so it can’t be woken.` };
   if (prose && declinedAdd(rt, parent.id, p.handle))
     return { ok: false, message: `the person chose not to add @${p.handle} to this conversation. Carry on without it, or ask the person.` };
   const open = openCard(rt, parent);
@@ -166,7 +166,7 @@ export function resolveHop(rt, threadId, itemId, allow) {
     });
   settleHeld(rt, it, allow);
   if (allow) return { ok: true };
-  if (from && !from.archived)
+  if (from && !from.retiredFork)
     rt.deliver(
       from.id,
       {
@@ -188,7 +188,7 @@ function settleHeld(rt, card, allow) {
       continue;
     }
     const se = rt.s.sessions[w.fromSessionId];
-    if (se && !se.archived)
+    if (se && !se.retiredFork)
       rt.deliver(
         se.id,
         {
@@ -228,16 +228,16 @@ export function retireStale(rt, threadId, target, why, { byPerson = false } = {}
   for (const w of [own, ...(card.held ?? [])]) sendHeld(rt, card, w, byPerson);
 }
 
-/** A held wake goes on as its agent sent it; one that can’t go (its target was archived meanwhile) tells its agent why. */
+/** A held wake goes on as its agent sent it; one that can’t go (its target was removed meanwhile) tells its agent why. */
 function sendHeld(rt, card, w, confirmed) {
   const r = rt.agentWake(w.fromSessionId, w.to, w.text, { confirmed, replyIn: w.replyIn, fromTurnId: w.fromTurnId, itemId: w.itemId });
   const se = rt.s.sessions[w.fromSessionId];
-  if (!r.ok && !r.waiting && se && !se.archived)
+  if (!r.ok && !r.waiting && se && !se.retiredFork)
     rt.tellAgent(se.id, `Your message to @${w.to} (“${clip(w.text, 120)}”), held on ${cardName(card)}, didn’t go: ${r.message}`);
 }
 
 /**
- * Stopping, archiving or removing an agent reaches the wakes held for it too (#439), as dropWakes does for queued
+ * Stopping or removing an agent reaches the wakes held for it too (#439), as dropWakes does for queued
  * ones: a held wake mustn’t undo a Stop when the card is allowed. Each one’s agent is told at its next turn.
  * @param {any} rt @param {any} se  the agent @param {string} how  what happened to it
  */
@@ -248,7 +248,7 @@ export function dropHeld(rt, se, how) {
   if (!mine.length) return;
   rt.patchItem(conv, card.id, { held: card.held.filter((w) => !mine.includes(w)) });
   for (const w of mine)
-    if (rt.s.sessions[w.fromSessionId] && !rt.s.sessions[w.fromSessionId].archived && w.fromSessionId !== se.id)
+    if (rt.s.sessions[w.fromSessionId] && !rt.s.sessions[w.fromSessionId].retiredFork && w.fromSessionId !== se.id)
       rt.tellAgent(
         w.fromSessionId,
         `@${se.handle} was ${how} before your message held for it (“${clip(w.text, 120)}”) went, so it won’t go. Wake it again if you still need it.`,
@@ -256,10 +256,10 @@ export function dropHeld(rt, se, how) {
 }
 
 /**
- * A card that closes with no answer from the person (#693): the agent that asked was archived, removed or retired, so
+ * A card that closes with no answer from the person (#693): the agent that asked was removed or retired, so
  * nothing can answer for it. It closes, its agent stops needing the person, and nothing it held goes. Its agent and
- * each agent whose wake was held on it are told at their next turn, as dropHeld tells, archived or being removed
- * included: a Restore or an Undo finds the note, and the card stays closed. The one way every such close goes.
+ * each agent whose wake was held on it are told at their next turn, as dropHeld tells, being removed
+ * included, and the card stays closed. The one way every such close goes.
  * @param {any} rt @param {string} conv @param {any} card @param {string} how  what happened to the agent that asked
  */
 export function closeHop(rt, conv, card, how) {
@@ -279,7 +279,7 @@ export function closeHop(rt, conv, card, how) {
   }
 }
 
-/** The agent that asked is archived or removed (#693): its open card closes. O(items in its conversation). */
+/** The agent that asked is removed (#693): its open card closes. O(items in its conversation). */
 export function closeOwnCard(rt, se, how) {
   const conv = rt.lineage(se.threadId).at(-1);
   const card = openCard(rt, { id: conv });
@@ -287,14 +287,14 @@ export function closeOwnCard(rt, se, how) {
 }
 
 /**
- * At startup, an open card whose agent is archived, being removed or gone closes (#693): a room from before the fix,
+ * At startup, an open card whose agent is retired, being removed or gone closes (#693): a room from before the fix,
  * or one whose removal a restart cut short, would hold every wake on it. O(items), once per start.
  */
 export function closeOrphanCards(rt) {
   for (const t of Object.values(rt.s.threads)) {
     const card = openCard(rt, t);
     const from = card && rt.s.sessions[card.fromSessionId];
-    if (card && (!from || from.archived || from.deleting)) closeHop(rt, t.id, card, 'archived or removed');
+    if (card && (!from || from.retiredFork || from.deleting)) closeHop(rt, t.id, card, 'retired or removed');
   }
 }
 

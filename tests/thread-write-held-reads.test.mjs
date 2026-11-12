@@ -53,12 +53,12 @@ function topicOn(f) {
 
 const textsTo = (f, handle) => f.adapter.calls.filter((c) => c.handle === handle).map((c) => (c.message.messages ?? [c.message]).map((m) => m.text));
 
-test('a wake queued behind a held commit leaves the queue when its agent is archived meanwhile', async () => {
+test('a wake queued behind a held commit leaves the queue when its agent is deleted meanwhile', async () => {
   const f = await heldRoom();
   const b = await busyBeta(f);
   const release = await f.hold();
   f.rt.agentWake(f.alpha.id, 'beta', 'First.');
-  f.rt.archive(f.beta.id);
+  f.rt.deleteSession(f.beta.id);
   await release();
   b.release();
   await settle(f.rt);
@@ -134,14 +134,6 @@ test('a turn that ends in a topic opened behind a held commit settles the topicâ
   for (let i = 0; i < 200 && !prompts.length; i++) await sleep(5);
   assert.equal(prompts.length, 1);
   await f.store.close();
-});
-
-test('archiving one agent leaves its conversation open, and archiving the last archives it', async () => {
-  const f = setup();
-  f.rt.archive(f.alpha.id);
-  assert.equal(f.store.state.threads[f.t.id].archived, false);
-  f.rt.archive(f.beta.id);
-  assert.equal(f.store.state.threads[f.t.id].archived, true);
 });
 
 test('a sweep over every pending thread sees each held write of a thread, read after read', async () => {

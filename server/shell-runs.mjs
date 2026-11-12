@@ -25,7 +25,7 @@ const MAX_COMMAND_REFRESHES = 60;
  */
 export async function commandFolder(rt, threadId) {
   const t = rt.thread(threadId);
-  const members = rt.sessionsIn(threadId).filter((x) => !x.archived);
+  const members = rt.sessionsIn(threadId).filter((x) => !x.retiredFork);
   const se = members.find((x) => x.id === t.lastSpeaker) ?? members[0];
   const persona = se ? rt.personaFor(se) : null;
   const project = rt.s.projects[t.projectId] ?? null;

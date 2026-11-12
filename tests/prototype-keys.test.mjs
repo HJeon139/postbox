@@ -80,8 +80,8 @@ after(async () => {
 
 test('#352: every route with an id is found, so a route written another way fails here rather than going untried', () => {
   const written = sources().reduce((n, src) => n + (src.match(/path\.match\(\/\^[^\n]*?\(\[\^\/\]\+\)/g) ?? []).length, 0);
-  // 36 since #1224 removed the thread and persona undo-delete routes and a session’s /run.
-  assert.ok(written >= 36, `the routers have ${written} routes with an id`);
+  // 35 since the conversation archive’s archive and restore route went.
+  assert.ok(written >= 35, `the routers have ${written} routes with an id`);
   assert.equal(routes().length, written);
 });
 

@@ -4,7 +4,7 @@
 // server/runtime.mjs; Runtime keeps a method of each name that delegates here.
 
 import { parseMentions } from '../shared/text.mjs';
-import { httpError } from './helpers.mjs';
+import { httpError, retiredError } from './helpers.mjs';
 import { sentAttachments } from './message-attachments.mjs';
 import * as queue from './message-queue.mjs';
 import { arrival } from './queue-batch.mjs';
@@ -66,7 +66,7 @@ export function threadRefs(rt, threadId, text) {
 /**
  * Who a message of yours goes to: in a topic thread, the agents you @-mention, else the agent it answers with, from
  * their one session in the conversation; elsewhere, the agents you @-mention, joined if they weren’t here, else the
- * last speaker. Refuses before anything is posted: an archived agent you mention, no agent at all, or an agent whose
+ * last speaker. Refuses before anything is posted: a retired fork of an agent you mention, no agent at all, or an agent whose
  * backend isn’t registered here.
  * @param {any} rt @param {any} t  the thread @param {any[]} mentioned  the personas you @-mentioned
  * @returns {{ se: any }[]}
@@ -88,14 +88,14 @@ function targetsOf(rt, t, mentioned) {
     }
   }
   // Refuse before anything is posted, so a refused message doesn’t also appear in the transcript.
-  const archived = mentioned.map((p) => rt.sessionsIn(threadId).find((x) => x.personaId === p.id)).find((x) => x?.archived);
-  if (archived && !away) throw httpError(409, `@${archived.handle}’s session is archived. Restore it first.`);
+  const retired = mentioned.map((p) => rt.sessionsIn(threadId).find((x) => x.personaId === p.id)).find((x) => x?.retiredFork);
+  if (retired && !away) throw retiredError(retired);
   for (const p of away ? [] : mentioned) {
     const joined = !rt.sessionsIn(threadId).some((x) => x.personaId === p.id);
     targets.push({ se: rt.ensureSession(threadId, p.id, { brief: joined ? 'You were @-mentioned into this thread.' : null }) });
   }
   if (!targets.length) {
-    const members = rt.sessionsIn(threadId).filter((x) => !x.archived);
+    const members = rt.sessionsIn(threadId).filter((x) => !x.retiredFork);
     const last = members.find((x) => x.id === t.lastSpeaker) ?? members[0];
     if (!last) throw httpError(409, 'No agent is in this thread. @-mention one to bring it in.');
     targets.push({ se: last });

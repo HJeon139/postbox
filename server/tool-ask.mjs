@@ -86,7 +86,7 @@ function answered(rt, threadId, it, action) {
   const se = rt.s.sessions[it.sessionId];
   if (!se) return { ok: true };
   releaseNeed(rt, se, it.id);
-  if (!se.archived)
+  if (!se.retiredFork)
     rt.deliver(se.id, {
       kind: 'notice',
       text:

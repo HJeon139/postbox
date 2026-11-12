@@ -217,7 +217,7 @@ test('an agent that wakes one from outside the conversation brings a card; Add j
   await expect(row(page, 'indexer')).not.toContainText('Joined when');
   // The mock @critic’s reply can ask something, which would count as needing you after this test.
   await expect.poll(() => rt.turns.has(r.sessionIn('critic').id), { message: 'critic’s turn to end' }).toBe(false);
-  rt.archive(r.sessionIn('critic').id);
+  rt.deleteSession(r.sessionIn('critic').id);
 });
 
 test('the Threads page lists side threads beside topic threads, with their pair, state, count and last activity (#124)', async ({ page }) => {

@@ -110,7 +110,6 @@ test('#372 a side thread from before reads only, and a turn there hands off in t
     hops: 0,
     queue: [],
     createdAt: Date.now(),
-    archived: false,
   });
   assert.throws(() => rt.sendMessage(old.id, { text: 'hello' }), /read-only/);
   // A turn of alpha’s still running in it, from before the change, mentions beta twice in a row.

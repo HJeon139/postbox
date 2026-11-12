@@ -23,22 +23,15 @@ function heldOnAlphasCard() {
 
 const restart = (f) => new Runtime({ store: f.store, adapters: f.rt.adapters, config: f.rt.config });
 
-for (const [how, act] of [
-  ['archived', (f) => f.rt.archive(f.alpha.id)],
-  ['removed', (f) => f.rt.deleteSession(f.alpha.id)],
-])
-  test(`#693 a card whose agent is ${how} closes, and the agent whose wake was held on it is told`, async () => {
-    const f = heldOnAlphasCard();
-    act(f);
-    await settle(f.rt);
-    assert.equal(card(f, f.open.id).status, 'closed');
-    assert.match(
-      toldOf(f, f.beta),
-      new RegExp(`Your message to @delta \\(“Draw the chart.”\\), held on @alpha’s request to add @gamma.*didn’t go: @alpha was ${how}`),
-    );
-    const again = f.rt.toolsFor(f.beta.id).wake_agent({ handle: 'delta', message: 'Draw the chart.' });
-    assert.deepEqual([again.waiting, again.held], [true, undefined], 'the next wake asks the person with a card of its own');
-  });
+test('#693 a card whose agent is removed closes, and the agent whose wake was held on it is told', async () => {
+  const f = heldOnAlphasCard();
+  f.rt.deleteSession(f.alpha.id);
+  await settle(f.rt);
+  assert.equal(card(f, f.open.id).status, 'closed');
+  assert.match(toldOf(f, f.beta), /Your message to @delta \(“Draw the chart.”\), held on @alpha’s request to add @gamma.*didn’t go: @alpha was removed/);
+  const again = f.rt.toolsFor(f.beta.id).wake_agent({ handle: 'delta', message: 'Draw the chart.' });
+  assert.deepEqual([again.waiting, again.held], [true, undefined], 'the next wake asks the person with a card of its own');
+});
 
 test('#693 Stop leaves the card open: the person can still answer it', async () => {
   const f = setup();
@@ -64,7 +57,7 @@ test('#693 retiring forks at startup tells the agent whose wake was held on a fo
 });
 
 for (const [state, patch] of [
-  ['archived', { archived: true }],
+  ['a retired fork', { retiredFork: true }],
   ['being removed', { deleting: Date.now() + 60_000 }],
 ])
   test(`#693 the startup sweep closes an open card whose agent is ${state}, from a room before this fix`, () => {

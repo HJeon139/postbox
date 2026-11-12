@@ -149,6 +149,7 @@ const PENDING = {
   'turn-checks.mjs': ['checkTurn', 'checkTurn', 'checkTurn', 'stallSteps'],
   'turn-end-work.mjs': ['endWork'], // the turn’s own reply or block, to carry its line, maybe held behind a commit
   'tool-ask.mjs': ['askForTool', 'settleToolAsks'], // a second ask for the same tool, and the sweep that settles open asks
+  'unarchive.mjs': ['unarchive'], // what an older Postbox archived: the threads and sessions it rewrites as the store loads
   'view-app/consent.mjs': ['askToSee'], // an open download card, which decides whether to add another (#95)
   'topic-open.mjs': ['startTopic', 'startTopic', 'conversationOf', 'conversationOf', 'repeatOf'], // one topic per message, the item's thread and I6's check, each maybe held behind a commit (#637)
   'wake-cards.mjs': ['lastAddAnswer', 'openCard'], // a declined add, so a mention asks no more (#693), and its lift by the person’s add (#789); another wake’s held hop card, so a second isn’t made

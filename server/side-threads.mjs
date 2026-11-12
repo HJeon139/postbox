@@ -4,7 +4,7 @@
 // Runtime first (architecture.md, “What a move may change”).
 
 import { HANDLE, HANDLE_SHAPE, HOP_LIMIT } from '../shared/limits.mjs';
-import { clip, httpError, tooLongToSend } from './helpers.mjs';
+import { clip, retiredError, tooLongToSend } from './helpers.mjs';
 import { arrival } from './queue-batch.mjs';
 import { roomChainLimit } from './room-chain-limit.mjs';
 import { newId } from './store.mjs';
@@ -43,12 +43,12 @@ export function agentWake(
   const from = rt.s.sessions[fromSessionId];
   const p = rt.personaByHandle(handle);
   if (!from || !p) return { ok: false, message: `There’s no agent called @${handle}.` };
-  // Archived, it can’t be answered: a reply would have nowhere to go.
-  if (from.archived) return { ok: false, message: 'Your session is archived, so it can’t wake anyone.' };
+  // Retired, it can’t be answered: a reply would have nowhere to go.
+  if (from.retiredFork) return { ok: false, message: 'Your session was retired, so it can’t wake anyone.' };
   // The conversation: every session lives in one. A fork from before #228 wakes from the conversation it came from.
   // Read pending, as every thread this decides on: its hop count decides the limit, behind a held commit too (#796).
   const parent = rt.store.pending.thread(rt.lineage(from.threadId).at(-1));
-  const target = rt.sessionsIn(parent.id).find((x) => x.personaId === p.id && !x.archived);
+  const target = rt.sessionsIn(parent.id).find((x) => x.personaId === p.id && !x.retiredFork);
   if (target?.id === from.id) return { ok: false, message: `@${p.handle} is you: just carry on.` };
   // Where the waker speaks now: a topic thread it’s in, else the conversation. Agents talk where the person reads,
   // never in a side thread of their own (#372); a turn still in an old side thread hands off in the conversation.
@@ -108,15 +108,15 @@ const replyInOf = (rt, se) => {
 
 /**
  * A wake reaches its agent: at once, or from the queue of the thread it was sent in (drainQueue, Send now). One whose agent was
- * archived meanwhile isn’t delivered, and the waker hears so at its next turn.
+ * removed meanwhile isn’t delivered, and the waker hears so at its next turn.
  * @param {any} rt @param {string} threadId  where the wake was sent @param {any} q  the wake
  */
 export function deliverWake(rt, threadId, q) {
   const target = rt.s.sessions[q.sessionIds[0]];
   const from = rt.s.sessions[q.fromSessionId];
-  const live = from && !from.archived && !from.deleting ? from : null;
-  if (!target || target.archived || target.deleting) {
-    const why = target?.deleting ? 'removed' : 'archived';
+  const live = from && !from.retiredFork && !from.deleting ? from : null;
+  if (!target || target.retiredFork || target.deleting) {
+    const why = target?.retiredFork ? 'retired' : 'removed';
     if (live) rt.tellAgent(live.id, `Your message to @${target?.handle ?? 'an agent'} (“${clip(q.text, 120)}”) wasn’t delivered: its session was ${why}.`);
     return;
   }
@@ -142,13 +142,13 @@ export function endChain(rt, threadId) {
 }
 
 /**
- * The person stopped an agent, or archived it (#228): wakes queued for it are dropped, since a queued wake mustn’t undo
+ * The person stopped an agent, or removed it (#228): wakes queued for it are dropped, since a queued wake mustn’t undo
  * a Stop, and each waker hears at its next turn that its message went unanswered.
  * @param {any} rt @param {any} se  the agent @param {string} [how]  what happened to it
  */
 export function dropWakes(rt, se, how = 'stopped') {
   dropHeld(rt, se, how);
-  // Archived or removed, it can't answer for its own card; stopped, it can, and the person still may (#693).
+  // Removed, it can't answer for its own card; stopped, it can, and the person still may (#693).
   if (how !== 'stopped') closeOwnCard(rt, se, how);
   for (const t of pendingThreads(rt)) {
     const mine = (t.queue ?? []).filter((q) => q.kind === 'wake' && q.sessionIds.includes(se.id));
@@ -156,7 +156,7 @@ export function dropWakes(rt, se, how = 'stopped') {
     const gone = new Set(mine.map((q) => q.id));
     updateThread(rt, t.id, (now) => ({ queue: (now.queue ?? []).filter((q) => !gone.has(q.id)) }));
     for (const q of mine)
-      if (rt.s.sessions[q.fromSessionId] && !rt.s.sessions[q.fromSessionId].archived && q.fromSessionId !== se.id)
+      if (rt.s.sessions[q.fromSessionId] && !rt.s.sessions[q.fromSessionId].retiredFork && q.fromSessionId !== se.id)
         rt.tellAgent(q.fromSessionId, `@${se.handle} was ${how} before it answered your message (“${clip(q.text, 120)}”). Wake it again if you still need it.`);
   }
 }
@@ -182,7 +182,7 @@ export function wakeAgent(rt, sessionId, { handle, message }) {
 export function sideSession(rt, side, personaId, by) {
   const conv = rt.lineage(side.id).at(-1);
   const had = rt.sessionsIn(conv).find((x) => x.personaId === personaId);
-  if (had?.archived) throw httpError(409, `@${had.handle}’s session is archived. Restore it first.`);
+  if (had?.retiredFork) throw retiredError(had);
   const where = side.kind === 'topic' ? 'a topic thread' : 'a side thread';
   return (
     had ??
@@ -207,7 +207,7 @@ export function threadPersona(rt, t) {
 /**
  * Forks are gone (#228): each conversation has one session per agent. At startup, every session that is a fork (of a
  * topic thread, or of a busy session), or that lives in a topic or side thread rather than its conversation (a wake or
- * a mention made one there before), is retired, once: archived for good. Its thread keeps its messages, and a new
+ * a mention made one there before), is retired, once, for good. Its thread keeps its messages, and a new
  * message there goes to the conversation’s session. Returns how many it retired.
  */
 export function archiveForks(rt) {
@@ -217,9 +217,8 @@ export function archiveForks(rt) {
   const gone = new Set(forks.map((x) => x.id));
   for (const se of forks) {
     rt.stop(se.id, { silent: true });
-    // Retired, not just archived: restored, it would be a session no message reaches, since its agent answers in the
-    // conversation now. So Archived doesn’t list it, and Restore leaves it. One already archived keeps when it was.
-    rt.updateSession(se.id, { archived: true, retiredFork: true, state: 'idle', needs: null, archivedAt: se.archivedAt ?? Date.now() });
+    // A session no message reaches, since its agent answers in the conversation now: retiredFork keeps it out of the rail.
+    rt.updateSession(se.id, { retiredFork: true, state: 'idle', needs: null });
   }
   // What waited for them goes with them: a message queued for one, and a wake card one of them is waiting on.
   for (const t of pendingThreads(rt)) {

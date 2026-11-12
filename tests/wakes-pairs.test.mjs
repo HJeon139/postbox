@@ -28,7 +28,6 @@ const oldSide = (rt, t) =>
     hops: 0,
     queue: [],
     createdAt: Date.now(),
-    archived: false,
   });
 
 test('#372 a turn in an old side thread that mentions two agents posts its message in the conversation once', async () => {

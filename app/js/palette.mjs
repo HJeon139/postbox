@@ -20,7 +20,7 @@ const row = (name, label, sub, run) => ({
 
 /** Everything the palette jumps to, with the text a query matches. @param {{ openNewAgent: (o: any) => void, openSettings: () => void }} sheets */
 function jumps({ openNewAgent, openSettings }) {
-  const threads = Object.values(S().threads).filter((t) => t.kind !== 'side' && !t.archived);
+  const threads = Object.values(S().threads).filter((t) => t.kind !== 'side');
   const rows = [
     ...threads.map((t) => {
       const sub = `${S().projects[t.projectId]?.name} · ${sessionsOf(t.id)

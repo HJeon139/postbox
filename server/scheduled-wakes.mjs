@@ -48,8 +48,8 @@ export function fireScheduledWake(rt, schedule) {
   const running = { ...sc, running: true };
   rt.store.emit('schedule', running);
   if (sc.itemId) rt.patchItem(sc.threadId, sc.itemId, { status: 'running' });
-  // An archived agent isn’t woken: deliver() would refuse it, here outside any request (#101).
-  if (!rt.s.sessions[sc.sessionId] || rt.s.sessions[sc.sessionId].archived) return finishSchedule(rt, running, 'canceled');
+  // A retired fork isn’t woken: deliver() would refuse it, here outside any request (#228).
+  if (!rt.s.sessions[sc.sessionId] || rt.s.sessions[sc.sessionId].retiredFork) return finishSchedule(rt, running, 'canceled');
   if (!sc.attempt) rt.addItem(sc.threadId, { kind: 'system', variant: 'wake', from: sc.handle, to: sc.handle, scheduled: true });
   rt.deliver(sc.sessionId, { kind: 'wake', note: sc.recoveryNote ?? sc.note, scheduledWakeId: sc.id });
 }

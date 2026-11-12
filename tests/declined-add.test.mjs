@@ -96,7 +96,7 @@ test('#693 a later add the person allowed lifts the decline: once that agent is 
 test('#693 a card retiring forks declined isn’t the person’s decline', async () => {
   const f = setup();
   f.rt.addItem(f.t.id, { kind: 'hop', join: true, fromSessionId: 'se_fork', from: 'alpha', to: 'gamma', text: 'x', status: 'declined' });
-  f.store.emit('session', { id: 'se_fork', personaId: f.a.id, handle: 'alpha', threadId: f.t.id, archived: true, retiredFork: true });
+  f.store.emit('session', { id: 'se_fork', personaId: f.a.id, handle: 'alpha', threadId: f.t.id, retiredFork: true });
   const r = f.rt.agentWake(f.beta.id, 'gamma', 'Over to gamma.', { itemId: 'it_v', prose: true });
   assert.equal(r.waiting, true);
 });
@@ -117,10 +117,10 @@ test('#693 a declined wake-limit card for an agent isn’t a declined add', asyn
   assert.equal(r.waiting, true);
 });
 
-test('#693 a card closed because its agent was archived isn’t a decline: a later mention asks the person', async () => {
+test('#693 a card closed because its agent was removed isn’t a decline: a later mention asks the person', async () => {
   const f = setup();
   f.rt.toolsFor(f.alpha.id).wake_agent({ handle: 'gamma', message: 'Check the numbers.' });
-  f.rt.archive(f.alpha.id);
+  f.rt.deleteSession(f.alpha.id);
   assert.equal(addCards(f)[0].status, 'closed');
   await says(f, f.beta, 'Then @gamma can take a look.');
   assert.equal(addCards(f).filter((c) => c.status === 'open').length, 1, 'a new card asks');

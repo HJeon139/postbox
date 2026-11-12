@@ -207,16 +207,15 @@ test('#120 G10: removing a host gives up a turn still waiting to be attached aft
   assert.equal(r.rt.turns.size, 0);
 });
 
-test('#120: archiving a conversation gives up its turn still waiting to be attached after a restart', async () => {
+test('#120: deleting a conversation gives up its turn still waiting to be attached after a restart', async () => {
   const { r, d, open } = waitingAttach();
   await until(() => r.link.connected, 'the link');
-  r.rt.archive(r.se().id);
+  r.rt.deleteThread(r.t.id);
   await until(() => d.stops.includes('host-turn-1'), 'the stop on the host');
   open();
   await sleep(20);
   assert.equal(reads(d, 'host-turn-1').length, 0, 'never attached');
   assert.equal(r.rt.turns.size, 0);
-  assert.equal(r.se().remoteTurn.state, 'done');
 });
 
 test('#120 G10: removing a host drops an Interrupted turn’s resume: nothing starts when the host is back', async () => {

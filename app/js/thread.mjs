@@ -84,7 +84,7 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
     // The agents whose turn is here: a conversation’s, unless its turn is in a side thread, and in a side thread, any
     // session answering in it (#110).
     const busy = sessionsAt(threadId).filter(
-      (se) => !se.archived && (se.state === 'think' || se.state === 'tool') && (!se.sideTurn || se.sideTurn.threadId === threadId),
+      (se) => !se.retiredFork && (se.state === 'think' || se.state === 'tool') && (!se.sideTurn || se.sideTurn.threadId === threadId),
     );
     syncList(
       working,
@@ -961,7 +961,7 @@ export function mountComposer(threadId, { side = false } = {}) {
   // ── / and ! (#67) ──
   /** The agent / and ! act for by default: the one the composer replies to. */
   const target = () => {
-    const members = sessionsOf(threadId).filter((x) => !x.archived);
+    const members = sessionsOf(threadId).filter((x) => !x.retiredFork);
     return members.find((x) => x.id === thread()?.lastSpeaker) ?? members[0] ?? null;
   };
   const isMock = (se) => S().personas[se?.personaId]?.backend === 'mock';
@@ -1023,7 +1023,7 @@ export function mountComposer(threadId, { side = false } = {}) {
     const q = slash?.query ?? '';
     const match = (name) => name.toLowerCase().includes(q);
     const groups = [{ label: 'Postbox', options: POSTBOX.filter(([n]) => match(n)).map(([name, desc, run]) => ({ name, desc, run })) }];
-    for (const se of sessionsOf(threadId).filter((x) => !x.archived)) {
+    for (const se of sessionsOf(threadId).filter((x) => !x.retiredFork)) {
       const { list, earlier } = agentCommands(se);
       const options = list
         .filter((c) => !POSTBOX_NAMES.has(c.name) && match(c.name))
@@ -1249,15 +1249,7 @@ export function mountComposer(threadId, { side = false } = {}) {
                   },
                 },
                 ring,
-                h(
-                  'span.grow',
-                  p.handle,
-                  mockMarker(se ?? p),
-                  h(
-                    'span.d',
-                    se?.archived ? 'Archived · restore it to wake it' : se ? `Here · ${stateWord(se.state).toLowerCase()}` : 'Not here · joins when woken',
-                  ),
-                ),
+                h('span.grow', p.handle, mockMarker(se ?? p), h('span.d', se ? `Here · ${stateWord(se.state).toLowerCase()}` : 'Not here · joins when woken')),
                 i === mention.index ? h('span.k', 'Enter') : null,
               );
             }),
@@ -1434,11 +1426,7 @@ export function mountComposer(threadId, { side = false } = {}) {
     action.setAttribute('aria-label', b ? `Stop ${b.handle}’s reply` : 'Send');
     const note = describeStop(action, b, threadId);
     const last = S().sessions[t.lastSpeaker];
-    const members = sessionsOf(threadId).filter((x) => !x.archived);
-    // Every agent here is archived: the conversation is read-only until you restore one.
-    const archived = !topic && !side && !members.length ? sessionsOf(threadId) : [];
-    ta.disabled = archived.length > 0;
-    action.disabled = archived.length > 0;
+    const members = sessionsOf(threadId).filter((x) => !x.retiredFork);
     ta.placeholder = placeholderFor({ topic, side, members, last });
     paintWaitingLine(waiting, threadId);
     paintOfflineQueue(
@@ -1457,38 +1445,19 @@ export function mountComposer(threadId, { side = false } = {}) {
     const offline = client.connection !== 'open';
     fill(
       status,
-      archived.length
+      offline
         ? h(
             'div.sys',
             { style: { marginBottom: '6px' } },
             h(
               'span.pill',
-              { role: 'status' },
-              `Archived: read-only. `,
-              // Its agents are archived with it, and come back with it (#320).
-              h(
-                'button.btn.sm',
-                {
-                  type: 'button',
-                  onclick: () => api(`/api/threads/${threadId}/restore`, {}).catch((e) => toast({ title: 'Couldn’t restore', text: e.message })),
-                },
-                'Restore conversation',
-              ),
+              { role: 'status', style: { borderColor: 'var(--accent)' } },
+              h('span.g.g-running', { 'aria-hidden': 'true' }),
+              h('b', 'Reconnecting…'),
+              ` attempt ${client.attempts} · nothing is lost; replies pick up where they stopped`,
             ),
           )
-        : offline
-          ? h(
-              'div.sys',
-              { style: { marginBottom: '6px' } },
-              h(
-                'span.pill',
-                { role: 'status', style: { borderColor: 'var(--accent)' } },
-                h('span.g.g-running', { 'aria-hidden': 'true' }),
-                h('b', 'Reconnecting…'),
-                ` attempt ${client.attempts} · nothing is lost; replies pick up where they stopped`,
-              ),
-            )
-          : stopNoteEl(note, threadId),
+        : stopNoteEl(note, threadId),
     );
     // What Enter will do with a / or ! line (#67).
     const line = ta.value.trimStart();

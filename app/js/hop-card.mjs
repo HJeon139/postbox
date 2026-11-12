@@ -63,7 +63,7 @@ function heldLine(held) {
 function answeredNote(it) {
   if (it.status === 'retired')
     return `Closed: ${it.to} got a turn another way (${it.retiredWhy ?? 'before you answered'}), so its message went on, or asks again`;
-  // Its agent was archived, removed or retired, so no answer was needed (#693).
+  // Its agent was removed or retired, so no answer was needed (#693).
   if (it.status === 'closed') return `Closed: ${it.closedWhy ?? 'its agent left'}, so nothing went`;
   if (it.status === 'allowed') return it.join ? 'Added' : 'Allowed';
   return it.join ? 'Not added' : 'Not allowed';

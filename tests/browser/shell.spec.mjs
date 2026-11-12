@@ -71,7 +71,7 @@ test('/delete in the composer opens the agent’s delete confirm', async ({ page
   await open(page, `#/t/${threads[0].id}`);
   await deleteCommand(page);
   await expect(page.getByText('Delete shelly’s session?')).toBeVisible();
-  // An agent’s session is archived only with its conversation (#320).
+  // Nothing archives an agent’s session any more (#320).
   await expect(page.getByRole('button', { name: 'Archive instead' })).toHaveCount(0);
   await page.keyboard.press('Escape');
 });
@@ -94,14 +94,20 @@ test('nothing archives a conversation by itself: Settings has no idle archiving 
   await expect(page.locator('.dialog').getByText(/Archive idle/)).toHaveCount(0);
 });
 
-test('an archived conversation comes back whole, with all its agents, from one Restore (#320)', async ({ page }) => {
-  const room = app.rt.createThread({ projectId: 'pr_shell', title: 'Archived room', personaIds: Object.values(app.store.state.personas).map((p) => p.id) });
-  app.rt.archiveThread(room.id);
-  await open(page, `#/t/${room.id}`);
-  await expect(page.getByRole('button', { name: /^Restore @/ })).toHaveCount(0);
-  await page.getByRole('button', { name: 'Restore conversation' }).click();
-  await expect.poll(() => app.rt.sessionsIn(room.id).map((se) => se.archived)).toEqual(app.rt.sessionsIn(room.id).map(() => false));
-  await expect(page.locator('#composer-input')).toBeEnabled();
+test('a conversation an older Postbox archived opens like any other: no banner, and it takes a message', async ({ page }) => {
+  const shelly = Object.values(app.store.state.personas).find((p) => p.handle === 'shelly');
+  const t = app.rt.createThread({ projectId: 'pr_shell', title: 'From before', personaIds: [shelly.id] });
+  // As an older Postbox left it (#320): the conversation and its agent archived.
+  app.store.emit('thread', { ...app.store.state.threads[t.id], archived: true });
+  for (const id of app.store.state.threads[t.id].members) app.store.emit('session.patch', { id, patch: { archived: true } });
+  await open(page, `#/t/${t.id}`);
+  await expect(page.getByText(/Archived/)).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /^Restore/ })).toHaveCount(0);
+  const composer = page.locator('#composer-input');
+  await expect(composer).toBeEnabled();
+  await composer.fill('Still there?');
+  await composer.press('Enter');
+  await expect.poll(() => app.store.items(t.id).some((i) => i.kind === 'user' && i.text === 'Still there?')).toBe(true);
 });
 
 test('an agent’s state changing doesn’t rebuild the conversation: a draft and its focus stay (#320)', async ({ page }) => {

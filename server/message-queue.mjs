@@ -37,7 +37,7 @@ export function cancelQueued(rt, threadId, queueId) {
   const q = queuedIn(rt.thread(threadId), queueId);
   updateThread(rt, threadId, (t) => ({ queue: (t.queue ?? []).filter((x) => x.id !== queueId) }));
   // A wake you removed: its agent was told it would be answered, so it hears it won’t be (#228).
-  if (q?.kind === 'wake' && rt.s.sessions[q.fromSessionId] && !rt.s.sessions[q.fromSessionId].archived)
+  if (q?.kind === 'wake' && rt.s.sessions[q.fromSessionId] && !rt.s.sessions[q.fromSessionId].retiredFork)
     rt.tellAgent(q.fromSessionId, `The person removed your message (“${clip(q.text, 120)}”) before it was answered. Carry on without it.`);
 }
 
@@ -67,7 +67,7 @@ export function sendQueuedNow(rt, threadId, queueId) {
   return rt.postAndDeliver(
     threadId,
     q,
-    q.sessionIds.map((id) => ({ se: rt.s.sessions[id] })).filter((x) => x.se && !x.se.archived),
+    q.sessionIds.map((id) => ({ se: rt.s.sessions[id] })).filter((x) => x.se && !x.se.retiredFork),
   );
 }
 
@@ -125,7 +125,7 @@ function queuedMessages(rt, threadId, entries, cache = new Map()) {
       return [cache.get(q)];
     }
     const target = rt.s.sessions[q.sessionIds[0]];
-    if (!target || target.archived || target.deleting) {
+    if (!target || target.retiredFork || target.deleting) {
       deliverWake(rt, threadId, q);
       return [];
     }
@@ -139,7 +139,7 @@ function deliverBatch(rt, threadId, sessionIds, messages) {
   const message = combineMessages(messages);
   for (const id of sessionIds) {
     const se = rt.s.sessions[id];
-    if (se && !se.archived && !se.deleting) rt.deliver(id, message, { threadId });
+    if (se && !se.retiredFork && !se.deleting) rt.deliver(id, message, { threadId });
   }
 }
 

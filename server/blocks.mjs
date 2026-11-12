@@ -8,7 +8,7 @@ import { buildEvent } from '../shared/events.mjs';
 import { LIMITS } from '../shared/limits.mjs';
 import { answerQuestion, lateAnswer, waitingQuestion } from './ask-question.mjs';
 import { releaseNeed } from './card-needs.mjs';
-import { clip, clipText, echoedId, httpError, refuseArchived } from './helpers.mjs';
+import { clip, clipText, echoedId, httpError, refuseRetired } from './helpers.mjs';
 import { stampSteps } from './progress-steps.mjs';
 import { REACT, toggleReaction } from './reactions.mjs';
 import { revisedFiles } from './review-files.mjs';
@@ -64,7 +64,7 @@ export function act(rt, threadId, itemId, action, values, revision) {
   const dismissed = locks && action === 'dismiss';
   const r = dismissed ? dismissal(it.block, current) : buildEvent(it.block, action, values, { revision: current });
   if (!r.ok) throw Object.assign(httpError(422, r.error), { fieldErrors: r.fieldErrors });
-  refuseArchived(rt, it.sessionId);
+  refuseRetired(rt, it.sessionId);
   // A review’s comments become the person’s threads on it, in the one write that records the answer (#1143).
   const theirs = locks && !dismissed ? personAnswer(rt, it, r.event, current) : null;
   const ev = theirs?.event ?? r.event;

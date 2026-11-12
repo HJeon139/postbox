@@ -58,7 +58,7 @@ function conversations() {
   // Since #372 a wake makes no side thread, so Alpha’s is built as one was before it.
   T.side = rt.putThread({
     ...{ id: 'th_needsside', projectId: 'pr_needs', title: 'alpha ↔ beta', kind: 'side', parentId: T.alpha.id, pair: 'alpha|beta', woke: 'beta' },
-    ...{ members: [], lastSpeaker: null, hops: 0, queue: [], createdAt: Date.now(), archived: false },
+    ...{ members: [], lastSpeaker: null, hops: 0, queue: [], createdAt: Date.now() },
   });
   rt.addItem(T.alpha.id, { kind: 'sidelink', sideThreadId: T.side.id, from: 'alpha', to: 'beta', count: 0 });
   T.room = rt.createThread({ projectId: 'pr_needs', title: 'Room', personaIds: [gamma, delta, zeta] });
@@ -77,7 +77,7 @@ async function ask() {
     const now = Date.now();
     await expect.poll(() => Date.now()).toBeGreaterThan(now);
   };
-  const sessionOf = (handle) => Object.values(store.state.sessions).find((x) => x.handle === handle && !x.archived);
+  const sessionOf = (handle) => Object.values(store.state.sessions).find((x) => x.handle === handle);
   rt.sendMessage(T.alpha.id, { text: '@alpha where do we start?' });
   await next();
   rt.sendMessage(T.room.id, { text: '@gamma where do we start?' });

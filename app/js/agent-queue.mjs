@@ -150,9 +150,9 @@ export function openQueue(sessionId, anchor = null) {
   body.append(leavingNote, list);
   let dialog;
   const paint = () => {
-    // The agent is gone (purged, or its conversation archived): nothing here can be sent to it any more.
+    // The agent is gone (deleted, or a retired fork): nothing here can be sent to it any more.
     const now = S().sessions[sessionId];
-    if (!now || now.archived) return dialog?.close();
+    if (!now || now.retiredFork) return dialog?.close();
     const leaving = paintLeaving(leavingNote, now);
     const entries = entriesFor(sessionId);
     const missing = markMissing(list, entries);
@@ -238,7 +238,7 @@ function waitingIn(threadId) {
   return (
     Object.values(S().sessions)
       // One being deleted still counts: its messages wait for Undo or the purge, and stay visible meanwhile (R1).
-      .filter((se) => se.threadId === conv && !se.archived)
+      .filter((se) => se.threadId === conv && !se.retiredFork)
       .map((se) => ({ se, n: entriesFor(se.id).length }))
       .filter((x) => x.n > 0)
   );

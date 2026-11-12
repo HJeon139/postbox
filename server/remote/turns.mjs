@@ -38,7 +38,7 @@
 // - A turn attached again, or resumed, is delivered as a notice, but ends as the turn it continues would have: its
 //   kind, thread, summary target, sender line and request for Retry are kept with it (se.remoteTurn.origin, written
 //   when it starts), and checked when they’re read back (turns-origin.mjs).
-// - A turn Postbox asked its host to stop (Stop, archive, delete, removing the host, or one that ended here with its
+// - A turn Postbox asked its host to stop (Stop, delete, removing the host, or one that ended here with its
 //   runner maybe still there) may run on until the daemon says it’s over: its `ended`, a no-turn answer to the stop, or
 //   a welcome that doesn’t list it running. Until then it’s kept on the session (remoteTurn.stopping, so a restart asks
 //   again), the host is needed, so its link reconnects, and the stop goes again at each welcome. A turn given up

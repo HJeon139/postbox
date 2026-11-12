@@ -149,7 +149,7 @@ test('#712 the side thread’s line goes to its card in the panel and makes it t
   const [se] = rt.sessionsIn(t.id);
   const side = rt.putThread({
     ...{ id: `th_side${t.id.slice(3)}`, projectId: t.projectId, title: '@researcher ↔ @researcher', kind: 'side', parentId: t.id },
-    ...{ pair: 'researcher|researcher', woke: 'researcher', members: [], lastSpeaker: null, hops: 0, queue: [], createdAt: Date.now(), archived: false },
+    ...{ pair: 'researcher|researcher', woke: 'researcher', members: [], lastSpeaker: null, hops: 0, queue: [], createdAt: Date.now() },
   });
   rt.addItem(t.id, { kind: 'sidelink', sideThreadId: side.id, from: 'researcher', to: 'researcher', count: 0 });
   const sayThere = (/** @type {string} */ text) =>

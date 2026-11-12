@@ -116,14 +116,14 @@ test('#120, #151: Retry after a resumed turn fails sends a request over 32,000 c
   }
 });
 
-test('#120, #151: archiving the agent while Retry reads its kept request leaves the reply failed, and starts nothing', async () => {
+test('#120, #151: the agent retired while Retry reads its kept request leaves the reply failed, and starts nothing', async () => {
   const r = rig();
   const dir = mkdtempSync(join(tmpdir(), 'pb-origin-'));
   try {
     r.rt.blobs = new Blobs(dir);
     r.rt.sendMessage(r.t.id, { text: LONG });
     const { failed, threadId } = await failedResume(r);
-    // The read waits until the agent is archived, as it might on a slow --data folder.
+    // The read waits until the agent is retired, as it might on a slow --data folder.
     const get = r.rt.blobs.get.bind(r.rt.blobs);
     /** @type {() => void} */
     let release = () => {};
@@ -133,13 +133,13 @@ test('#120, #151: archiving the agent while Retry reads its kept request leaves 
       return get(sha);
     };
     const retried = r.rt.retry(threadId, failed.id);
-    r.rt.archive(r.se().id);
+    r.rt.updateSession(r.se().id, { retiredFork: true });
     const needs = r.se().needs;
     release();
-    await assert.rejects(retried, { status: 409, message: /session is archived\. Restore it first\./ });
+    await assert.rejects(retried, { status: 409, message: /session here was retired/ });
     await sleep(20);
-    assert.equal(r.store.item(threadId, failed.id).status, 'failed', 'still failed, for Retry once it’s restored');
-    assert.deepEqual(r.se().needs, needs, 'what it needs is as the archive left it');
+    assert.equal(r.store.item(threadId, failed.id).status, 'failed', 'still failed');
+    assert.deepEqual(r.se().needs, needs, 'what it needs is as it was');
     assert.equal(starts(r.d).length, 1, 'nothing started on the host');
     assert.equal(r.rt.turns.size, 0, 'no turn here either');
   } finally {
@@ -207,7 +207,7 @@ test('#120: a turn on a host keeps a small request inline, a large one in the st
     assert.equal(readRef(v), null);
   // Retry refuses a lost one at once; one kept inline, or with nothing kept, sends as before.
   const asked = (/** @type {any} */ a) => askedOf({ kind: 'user', asked: { summarizeTo: null, ...a } });
-  const here = { s: { sessions: { s1: { id: 's1', handle: 'coder', archived: false } } } };
+  const here = { s: { sessions: { s1: { id: 's1', handle: 'coder' } } } };
   assert.deepEqual(asked({ message: null, lost: true }), { lost: true, summarizeTo: null });
   assert.throws(() => askedAgain(here, 't', { sessionId: 's1', asked: asked({ lost: true }) }, () => assert.fail('sent')), {
     status: 409,

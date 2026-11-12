@@ -76,7 +76,7 @@ export function mirror(rt, sessionId) {
 }
 
 export function rearmMirrors(rt) {
-  for (const se of Object.values(rt.s.sessions)) if (se.backendState?.attached && !se.archived) rt.mirror(se.id);
+  for (const se of Object.values(rt.s.sessions)) if (se.backendState?.attached && !se.retiredFork) rt.mirror(se.id);
 }
 
 export function stopMirrors(rt) {

@@ -225,7 +225,7 @@ export function mountRail(threadId, { projectId: pid = null, view = 'thread' } =
   const paintRail = () => {
     const t = threadId ? S().threads[threadId] : null;
     const projectId = t?.projectId ?? pid ?? Object.keys(S().projects)[0];
-    const threads = threadsOf(projectId).filter((x) => !x.archived);
+    const threads = threadsOf(projectId);
     const others = Object.values(S().projects).filter((p) => p.id !== projectId);
     const otherNeeds = others.map((p) => [p, needsYou().filter((se) => S().threads[se.threadId]?.projectId === p.id).length]).filter(([, n]) => n);
     fill(
@@ -349,7 +349,7 @@ function threadsRow(projectId, active) {
 }
 
 function rings(t) {
-  const ses = sessionsOf(t.id).filter((x) => !x.archived);
+  const ses = sessionsOf(t.id).filter((x) => !x.retiredFork);
   const make = (se, size) => {
     const r = ringFor(se, size);
     r.dataset.session = se.id;
@@ -374,7 +374,7 @@ function row(t, active) {
 }
 
 function updateRow(n, t, active, fresh = false) {
-  const ses = sessionsOf(t.id).filter((x) => !x.archived);
+  const ses = sessionsOf(t.id).filter((x) => !x.retiredFork);
   // Its state counts its side threads (#121): an agent at work in one shows here, and says where.
   const lead = threadState(t);
   const main = lead && ses.includes(lead) ? lead : (ses[0] ?? lead);
@@ -400,7 +400,7 @@ function updateRow(n, t, active, fresh = false) {
 }
 
 function stripItem(x, active) {
-  const ses = sessionsOf(x.id).filter((s) => !s.archived);
+  const ses = sessionsOf(x.id).filter((s) => !s.retiredFork);
   const unread = ses.reduce((a, s) => a + (s.unread ?? 0), 0);
   return h(
     'a',
@@ -412,7 +412,7 @@ function stripItem(x, active) {
 }
 
 function conversationMenu(anchor, shown) {
-  // The top bar may be older than the thread: archived since, say.
+  // The top bar may be older than the thread: renamed since, say.
   const t = S().threads[shown.id] ?? shown;
   const room = t.kind === 'room';
   openMenu(
@@ -435,7 +435,7 @@ function conversationMenu(anchor, shown) {
       },
       'hr',
       ...agentMenuLines(
-        sessionsOf(t.id).filter((x) => !x.archived),
+        sessionsOf(t.id).filter((x) => !x.retiredFork),
         (personaId) => openSettings('personas', personaId),
         anchor,
       ),

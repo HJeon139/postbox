@@ -56,7 +56,7 @@ export function room() {
     agent(handle, { backend = 'claude-code' } = {}) {
       const id = `se_${handle}`;
       f.state.personas[`pe_${handle}`] = { id: `pe_${handle}`, handle, backend };
-      f.state.sessions[id] = { id, handle, personaId: `pe_${handle}`, threadId: ROOM, state: 'idle', needs: null, archived: false };
+      f.state.sessions[id] = { id, handle, personaId: `pe_${handle}`, threadId: ROOM, state: 'idle', needs: null };
       f.state.threads[ROOM].members.push(id);
       if (backend === 'claude-code') f.transcripts.push({ handle, lines: [] });
       return id;

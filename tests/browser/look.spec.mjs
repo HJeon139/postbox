@@ -78,7 +78,7 @@ function composerRoom() {
   // A side thread as agentWake made one before #372, without starting a turn.
   side = rt.putThread({
     ...{ id: 'th_lookside', projectId: project.id, title: '@critic ↔ @researcher', kind: 'side', parentId: room.id, pair: 'critic|researcher' },
-    ...{ woke: 'researcher', members: [], lastSpeaker: null, hops: 0, queue: [], createdAt: Date.now(), archived: false },
+    ...{ woke: 'researcher', members: [], lastSpeaker: null, hops: 0, queue: [], createdAt: Date.now() },
   });
   rt.addItem(side.id, {
     kind: 'agent',

@@ -2,7 +2,7 @@
 // (#135), and the lint mark. A turn continued on a host (#120) carries what the turn it continues was asked
 // (server/remote/turns-origin.mjs), so it reads as that turn did.
 
-import { httpError } from './helpers.mjs';
+import { httpError, retiredError } from './helpers.mjs';
 import { keptMessage, readRef } from './remote/turns-origin.mjs';
 
 /**
@@ -33,13 +33,13 @@ const lostError = () =>
  * @param {(asked: { message: any, summarizeTo: string|null }) => void} sendNow
  */
 export function askedAgain(rt, threadId, it, sendNow) {
-  // Checked before send marks the reply retried: a session archived (or gone) while a kept request was read would
+  // Checked before send marks the reply retried: a session retired (or gone) while a kept request was read would
   // otherwise use up the Retry with no turn started, since deliver refuses it only after.
   const send = (/** @type {any} */ asked) => {
     const sessions = rt.s?.sessions ?? {};
     const se = Object.hasOwn(sessions, it.sessionId) ? sessions[it.sessionId] : null;
     if (!se) throw httpError(409, 'The agent this reply was from isn’t in the conversation any more, so Retry can’t send it again.');
-    if (se.archived) throw httpError(409, `@${se.handle}’s session is archived. Restore it first.`);
+    if (se.retiredFork) throw retiredError(se);
     return sendNow(asked);
   };
   const a = it.asked;

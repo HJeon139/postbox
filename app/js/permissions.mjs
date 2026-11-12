@@ -103,7 +103,7 @@ function hostNote({ persona: p, readsRules }) {
  */
 export function openPermissions({ threadId = null, sessionId = null, personaId = null, projectId = null, focus = null } = {}) {
   const t = threadId ? S().threads[threadId] : sessionId ? S().threads[S().sessions[sessionId]?.threadId] : null;
-  const agents = t ? sessionsOf(t.id).filter((x) => !x.archived) : [];
+  const agents = t ? sessionsOf(t.id).filter((x) => !x.retiredFork) : [];
   let current = sessionId ?? (t ? (S().sessions[t.lastSpeaker]?.id ?? agents[0]?.id) : null) ?? null;
   /** @type {any} */
   let view = null;

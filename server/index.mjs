@@ -300,12 +300,6 @@ export async function start({
     if (path === '/api/threads' && req.method === 'POST') return send(res, 201, rt.createThread(body));
     if ((m = path.match(/^\/api\/threads\/([^/]+)$/)) && req.method === 'DELETE') return send(res, 200, rt.deleteThread(m[1]));
     if ((m = path.match(/^\/api\/threads\/([^/]+)$/)) && req.method === 'PATCH') return send(res, 200, patchThread(rt, m[1], body));
-    // A whole conversation, with its side and topic threads (#101).
-    if ((m = path.match(/^\/api\/threads\/([^/]+)\/(archive|restore)$/)) && req.method === 'POST') {
-      if (m[2] === 'archive') return send(res, 200, { ok: true, archived: rt.archiveThread(m[1]) });
-      rt.restoreThread(m[1]);
-      return send(res, 200, { ok: true });
-    }
     if ((m = path.match(/^\/api\/threads\/([^/]+)\/messages$/)) && req.method === 'POST') return send(res, 201, rt.sendMessage(m[1], body));
     if ((m = path.match(/^\/api\/threads\/([^/]+)\/view$/)) && req.method === 'POST') {
       rt.view(m[1]);
@@ -337,7 +331,7 @@ export async function start({
     // Resume, after a turn on a host stopped with Sign-in needed or Interrupted (#120): a 409 says why when there’s
     // nothing to resume.
     if ((m = path.match(/^\/api\/sessions\/([^/]+)\/resume$/)) && req.method === 'POST') return send(res, 200, rt.resumeRemote(m[1]));
-    // A session’s own actions: Stop, archive, restore, delete, its jobs and its run (server/session-routes.mjs).
+    // A session’s own actions: Stop, delete, its jobs and its run (server/session-routes.mjs).
     const sessionDid = await sessionRoute(rt, path, req.method, body);
     if (sessionDid) return send(res, sessionDid.status, sessionDid.body);
     if ((m = path.match(/^\/api\/threads\/([^/]+)\/agent-command$/)) && req.method === 'POST') return send(res, 201, rt.runAgentCommand(m[1], body));

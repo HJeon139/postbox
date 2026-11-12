@@ -84,7 +84,7 @@ test('#67 typing / opens the menu: Postbox’s commands, then each agent’s, gr
   await expect(page.locator('#slash-list')).toBeVisible();
   const all = await words(page.locator('#slash-list'));
   expect(all).toMatch(/POSTBOX.*\/permissions.*\/mode.*\/model.*\/effort.*\/add-dir.*\/mcp.*\/compact.*\/stop.*\/rename/i);
-  // A session is archived only with its conversation (#320).
+  // Nothing archives a session any more (#320).
   expect(all).not.toMatch(/\/archive/);
   expect(all).toMatch(/alpha’s skills and commands \/review <file> Review a file/i);
   expect(all).toMatch(/beta’s skills and commands \/release-notes \[version\] Draft release notes/i);

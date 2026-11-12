@@ -84,7 +84,6 @@ export function oldSide({ rt, t, alpha, beta }, texts = ['Which editions?', 'The
     hops: 0,
     queue: [],
     createdAt: Date.now(),
-    archived: false,
   });
   rt.addItem(t.id, { kind: 'sidelink', sideThreadId: side.id, from: 'alpha', to: 'beta', count: 0 });
   texts.forEach((text, i) => {
