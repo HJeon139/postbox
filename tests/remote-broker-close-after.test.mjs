@@ -27,10 +27,10 @@ test('a call stopped in its queue check across the close writes no call record a
     await reached(hold); // in queueFull's stat: admitted, holding no claim and no append
     await k.b.close();
     hold.release();
-    await sleep(50);
+    const result = await until(() => s.got.find((m) => m.type === 'result' && m.id === 'c1'), 'the shim to hear about c1');
     assert.deepEqual(journal(h, turn), [], 'no call record after the close');
     assert.ok(!k.sent.some((m) => m.type === 'tool'), 'nothing went to Postbox');
-    assert.equal(s.got.find((m) => m.type === 'result' && m.id === 'c1')?.ok, false, 'and the shim is told it was not taken');
+    assert.equal(result.ok, false, 'and the shim is told it was not taken');
   } finally {
     await h.done();
   }
@@ -46,10 +46,10 @@ test('a prompt after the close writes no prompt record and goes nowhere', async 
     await s.next('welcome');
     await k.b.close();
     s.send('permission', { id: 'p1', request: REQUEST });
-    await sleep(50);
+    const answer = await until(() => s.got.find((m) => m.type === 'permission-answer' && m.id === 'p1'), 'the shim to hear an answer to p1');
     assert.ok(!existsSync(h.p.turn(turn, TURN_FILES.prompts)), 'no prompt record after the close');
     assert.ok(!k.sent.some((m) => m.type === 'prompt'), 'nothing went to Postbox');
-    assert.equal(s.got.find((m) => m.type === 'permission-answer' && m.id === 'p1')?.result.behavior, 'deny', 'and it is denied, never left waiting');
+    assert.equal(answer.result.behavior, 'deny', 'and it is denied, never left waiting');
   } finally {
     await h.done();
   }
