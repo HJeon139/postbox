@@ -6,7 +6,7 @@ Part of [the architecture](../architecture.md).
 
 ```mermaid
 flowchart LR
-  S[Claude Code stream] --> M[stream mapper]
+  S[a harness’s stream] --> M[its adapter, through the harness-event contract]
   M -->|"toolUse: whole input, before it runs"| L[ledger]
   M -->|"toolResult: tool_use_result"| L
   M -->|"taskEnded, usage"| L
@@ -43,4 +43,8 @@ flowchart LR
 
 **What it doesn’t see yet.** A file a command changes (a formatter, a script, `sed -i`) isn’t listed: only the file tools name files. Comparing `git status` and `git diff --numstat` as a command starts and ends was tried in #226 and set aside. Git answers for the start about 10–30 ms after Postbox hears of the command, and a quick `sed` can finish sooner. #240 takes the snapshot before the command runs, through Claude Code’s PreToolUse hook. A background command still running when its process ends is shown as having said nothing about how it ended (#129). Artifacts (recordings, reports, screenshots) and servers or ports a command started aren’t picked out yet.
 
-**Revisit when** the CLI reports files a command changed (then use that, in place of #195’s git comparison), or when the Agent SDK’s results stop carrying `tool_use_result`.
+## Where it shows
+
+Work is one of the conversation’s side views in the right pane ([front-end.md](front-end.md), “The right pane”): a compact form beside the conversation (`mountWorkPane`) and a full form over the window (`mountWork`). Both forms read the same ledger through `summarize()` and ask git through the same endpoint; the compact form adds nothing to the store.
+
+**Revisit when** the CLI reports files a command changed (then use that, in place of #240’s snapshot), or when the Agent SDK’s results stop carrying `tool_use_result`.

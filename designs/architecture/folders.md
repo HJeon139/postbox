@@ -9,9 +9,10 @@ Part of [the architecture](../architecture.md).
 - `tests/` has 596 test files and 54 helpers and fixtures at its root, and `tests/browser/` 192 specs and 17 helpers.
 - Name prefixes stand in for folders: `store-*`, `permission-*`, `ledger-*`, `thread-*` and `turn-*` in `server/`, and `view-*`, `window-*`, `work-*`, `hosts-*`, `review-*` and `pane-*` in `app/js/`. A reader finds a concern by guessing its prefix, and a concern whose modules don’t share one (the store’s `ids`, `blobs` and `home`) is found by reading headers.
 
-“Module and function size”, above, keeps each file to one concern. This keeps each folder to one.
+[code-size.md](code-size.md) keeps each file to one concern. This keeps each folder to one.
 
-**The rule**
+## The rule
+
 - **A folder owns one concern you can name**, in a few words, as a module does. It holds roughly 5 to 25 modules. There’s no `misc`, `utils` or `helpers` folder: a helper lives with the concern that uses it, or in `shared/` when both sides do.
 - **A module lives in the folder of the concern it serves.** A route lives with its concern (`server/sessions/routes.mjs`), not in a routes folder. The root of a tree holds only its entry point: `server/index.mjs` and `app/js/main.mjs`.
 - **A folder’s `AGENTS.md` holds that concern’s rules,** when it has rules of its own, such as the store’s write path or the host code’s limits. The tree’s `AGENTS.md` keeps the rules for the whole tree.
@@ -23,9 +24,10 @@ Part of [the architecture](../architecture.md).
   - when the bare name would say nothing alone (`index`, `main`, `shared`, `lib`): `server/remote/turns/turns-shared.mjs`, `tools/lint/lint-lib.mjs`, `server/remote/host/daemon/daemon-main.mjs`.
 - **A folder’s main module keeps its name,** as `server/store/store.mjs` and `app/js/work/work.mjs`, never `index.mjs`, so a search or an editor tab names the concern.
 
-**The map**
+## The map
 
-Every module under `server/` (its root and subfolders), `app/js/`, `shared/` and the root of `tools/`, with the folder it moves to. It was generated from `git ls-files` on bb48dd76, and checked: each of its 570 modules appears exactly once, no two land on one path, and no dropped prefix leaves a name a folder already has. The pull request that added this section gives the command. Modules a row lists by path come from that subfolder; the rest come from the tree’s root. Italic names are new: wave 2 of #1236’s split of `server/runtime.mjs`, which hasn’t merged, and the four pieces of `server/helpers.mjs`.
+
+Every module under `server/` (its root and subfolders), `app/js/`, `shared/` and the root of `tools/`, with the folder it moves to. It was generated from `git ls-files` on bb48dd76, and checked: each of its 570 modules appears exactly once, no two land on one path, and no dropped prefix leaves a name a folder already has. The pull request that added this section gives the command. Modules a row lists by path come from that subfolder; the rest come from the tree’s root. Italic names are new: the four pieces of `server/helpers.mjs`. Wave 2 of #1236’s split of `server/runtime.mjs` has merged since bb48dd76, so its five modules are listed by their names on `main`.
 
 Out of scope here: `tools/uat/` (128 modules) and `tools/tally/` keep their place for now, and `app/kit/`, `bin/` and `agent-plugin/` don’t move. `tools/uat/` is past 25 modules and needs a map of its own.
 
@@ -60,7 +62,8 @@ flowchart LR
 
 `turns/` sits in the middle because `server/runtime.mjs` does; #1236’s split moves its concerns out, and its edges thin as they go. Imports between folders may run both ways (`turns/` and `threads/` import each other), which is fine: `tools/import-cycles.mjs` counts cycles between modules, and folders don’t change them.
 
-**`server/`**
+### `server/`
+
 
 | Folder | Modules | What it owns | Its modules: where each is now, relative to the tree, → its new name |
 |---|---|---|---|
@@ -70,7 +73,7 @@ flowchart LR
 | `server/threads/` | 17 + 2 new | Conversations, topic and side threads, and what an agent reads of them. | `conversations`, `thread-erase` → `erase`, `thread-headers` → `headers`, `thread-lineage` → `lineage`, `thread-search` → `search`, `thread-summary` → `summary`, `thread-write` → `write`, `summary-model`, `topic-open`, `bring`, `share-back`, `item-lines`, `read-message`, `items-routes`, `reactions`, `shell`, `shell-runs`, *clip* (from `helpers`), *retired* (from `helpers`) |
 | `server/sessions/` | 5 | An agent’s session in a conversation: its writes, its lifecycle and its routes. | `session-lifecycle` → `lifecycle`, `session-patch` → `patch`, `session-write` → `write`, `session-routes` → `routes`, `held-session` |
 | `server/wakes/` | 12 + 1 new | Who answers and when: messages you send, queues, mentions, wake limits, scheduled wakes and catch-ups. | `send-message`, `message-attachments`, `message-queue`, `queue-batch`, `mention-wakes`, `newer-waiting`, `side-threads`, `wake-cards`, `room-chain-limit`, `scheduled-wakes`, `catch-up`, `catch-up-keep`, *sending* (from `helpers`) |
-| `server/turns/` | 11 + 5 new | The runtime and one turn’s life: starting it, its steps, its jobs, stopping and ending it. | `runtime`, `turn-marks` → `marks`, `turn-steps` → `steps`, `empty-reply`, `reply-segment`, `subagent-end`, `kept-jobs`, `restart-sweep`, `step-diff`, `step-text`, `tool-labels`, *deliver* (planned, #1236), *context* (planned, #1236), *stop* (planned, #1236), *finish* (planned, #1236), *job-records* (planned, #1236) |
+| `server/turns/` | 16 | The runtime and one turn’s life: starting it, its steps, its jobs, stopping and ending it. | `runtime`, `turn-marks` → `marks`, `turn-steps` → `steps`, `empty-reply`, `reply-segment`, `subagent-end`, `kept-jobs`, `restart-sweep`, `step-diff`, `step-text`, `tool-labels`, `deliver`, `turn-context` → `context`, `turn-stop` → `stop`, `turn-finish` → `finish`, `job-records` |
 | `server/checks/` | 6 | The checks on what an agent sends, and when their findings reach it. | `checks`, `diagram-check`, `image-check`, `lint`, `lint-delivery`, `turn-checks` |
 | `server/ledger/` | 11 | The work ledger: what each turn changed, ran and published, its git reading, and its archive of old turns. | `ledger`, `ledger-answers` → `answers`, `ledger-commands` → `commands`, `ledger-git` → `git`, `ledger-io` → `io`, `ledger-remote`, `work-view` → `view`, `work-archive` → `archive`, `archive-runtime`, `turn-work`, `turn-end-work` |
 | `server/blocks/` | 8 | Blocks and cards the person acts in, and agents’ updates and reviews of them. | `blocks`, `block-show` → `show`, `progress-steps`, `review-comments`, `review-files`, `review-person`, `ask-question`, `card-needs` |
@@ -97,7 +100,8 @@ flowchart LR
 | `server/remote/host/broker/` | 13 | The daemon’s broker: each turn’s tool calls, prompts and snapshot. | `remote/host/broker`, `remote/host/broker-codex`, `remote/host/broker-files` → `files`, `remote/host/broker-offline` → `offline`, `remote/host/broker-postbox` → `postbox`, `remote/host/broker-prompts` → `prompts`, `remote/host/broker-reading` → `reading`, `remote/host/broker-records` → `records`, `remote/host/broker-replay` → `replay`, `remote/host/broker-shim` → `shim`, `remote/host/broker-snapshot` → `snapshot`, `remote/host/broker-state` → `state`, `remote/host/broker-tools` |
 | (split) | 1 | Four concerns in one file, so its pieces go to the folders that use them, as new modules. | `helpers` → *http-error*, *clip*, *retired*, *sending* |
 
-**`app/js/`**
+### `app/js/`
+
 
 | Folder | Modules | What it owns | Its modules: where each is now, relative to the tree, → its new name |
 |---|---|---|---|
@@ -120,7 +124,8 @@ flowchart LR
 | `app/js/hosts/` | 11 | Remote hosts in Settings, and an agent on a host. | `hosts`, `hosts-confirm` → `confirm`, `hosts-editor` → `editor`, `hosts-fields` → `fields`, `hosts-parts` → `parts`, `hosts-settings` → `settings`, `hosts-short` → `short`, `hosts-status` → `status`, `keep-updated`, `agent-host`, `remote` |
 | `app/js/sheets/` | 7 | Dialogs: new agent, new conversation, persona and Settings tabs. | `sheets`, `sheets-place` → `place`, `sheets-settings` → `settings`, `check-field`, `skills-field`, `persona-delete`, `projects-tab` |
 
-**`shared/`**
+### `shared/`
+
 
 | Folder | Modules | What it owns | Its modules: where each is now, relative to the tree, → its new name |
 |---|---|---|---|
@@ -132,7 +137,8 @@ flowchart LR
 | `shared/agents/` | 9 | What agents run with and are limited by: tools, permission matching, CLI versions, limits. | `agent-facts`, `mcp-tools`, `mcp-tools-assets`, `permission-match`, `command-chains`, `hook-modes`, `cli-version`, `versions`, `limits` |
 | `shared/remote/` | 11 | The laptop–host protocol and a host’s settings. | `remote-protocol` → `protocol`, `remote-protocol-channels-host` → `protocol-channels-host`, `remote-protocol-channels-postbox` → `protocol-channels-postbox`, `remote-protocol-checks` → `protocol-checks`, `remote-protocol-constants` → `protocol-constants`, `remote-protocol-files` → `protocol-files`, `remote-protocol-framing` → `protocol-framing`, `remote-protocol-messages` → `protocol-messages`, `remote-protocol-parts` → `protocol-parts`, `remote-settings` → `settings`, `host-badge` |
 
-**`tools/`**
+### `tools/`
+
 
 | Folder | Modules | What it owns | Its modules: where each is now, relative to the tree, → its new name |
 |---|---|---|---|
@@ -143,7 +149,9 @@ flowchart LR
 | `tools/demo/` | 9 | The demo and the pictures made from it: the headless browser, screenshots, the README GIF, icons. | `demo`, `demo-client` → `client`, `demo-ui` → `ui`, `browser`, `page-still`, `readme-gif`, `shoot-app`, `shoot-uat`, `rim-reactions` |
 | `tools/uat/` | 4 | The UAT runner’s commands, beside the modules already in tools/uat/. | `uat-run`, `uat-pairs`, `uat-stats`, `uat-verdict` |
 
-**Open questions for the review.** Where the map had to choose, it took the first option; each is a one-line change to it.
+## Open questions for the review
+
+Where the map had to choose, it took the first option; each is a one-line change to it.
 - `tools/uat-run.mjs`, `uat-pairs`, `uat-stats` and `uat-verdict`: into `tools/uat/`, keeping their prefix (`tools/uat/stats.mjs` exists), or stay at the root of `tools/` as the commands people type, which AGENTS.md and the UAT docs name.
 - `server/runtime.mjs`: in `turns/`, beside the turn it runs, or a `runtime/` folder of its own until #1236 has moved its concerns out.
 - `server/read-capped.mjs` (a read that stops past a size): `apps/`, beside `agent-files.mjs`, which uses it, or `store/`.
@@ -154,14 +162,18 @@ flowchart LR
 - `shared/files.mjs` (the file types shown inline): `markdown/`, or `blocks/`.
 - The host code (`server/remote/host/`) splits into `daemon/` and `broker/`. Its bundle ships every file under that folder at its path, so the split changes the layout a host installs; a host keeps each version’s code apart, so it is a new version, not a migration. Leaving the host code whole would also be defensible.
 
-**Tests.** Tests mirror the code’s folders: `tests/server/store/commit.test.mjs` tests `server/store/commit.mjs`.
+## Tests
+
+Tests mirror the code’s folders: `tests/server/store/commit.test.mjs` tests `server/store/commit.mjs`.
 - Why not flat per area: a module and its tests are then one path apart, so a reader and a review find them without a search; a flat `tests/server/` would hold over 400 files, the same problem one level down.
 - A test file is named as its module is, and drops the same prefix: `tests/store-commit-retry.test.mjs` becomes `tests/server/store/commit-retry.test.mjs`. A test of more than one module goes with the concern it tests; a test of the whole server over HTTP goes in `tests/server/`.
 - A helper or fixture goes with the tests that use it. Those every tree uses (`guard.mjs`, `guard-tmp.mjs`, `temp-dirs.mjs`, `png.mjs`) stay at the root of `tests/`, and so do `tests/integration/`, `tests/process/`, `tests/uat/` and `tests/fixtures/`.
-- `npm test` runs `tests/*.test.mjs` today, so a nested test would run nowhere and pass. The tests’ pull request changes the glob to `tests/{server,app,shared,tools}/**/*.test.mjs`, and `test:coverage`’s with it, and checks the summary’s `tests` count is the same before and after. The notes on that glob in “Module and function size”, above, developing.md, “Tests”, and tests/AGENTS.md change in the same pull request.
+- `npm test` runs `tests/*.test.mjs` today, so a nested test would run nowhere and pass. The tests’ pull request changes the glob to `tests/{server,app,shared,tools}/**/*.test.mjs`, and `test:coverage`’s with it, and checks the summary’s `tests` count is the same before and after. The notes on that glob in [code-size.md](code-size.md), developing.md, “Tests”, and tests/AGENTS.md change in the same pull request.
 - **Browser specs** move into folders named for the `app/js/` folder of the view each drives: `tests/browser/view/jump.spec.mjs`, `tests/browser/work/…`. A helper only one folder’s specs use moves with them; the rest (`postbox.mjs`, `pane.mjs` and the other shared helpers) stay at the root of `tests/browser/`. Playwright’s `testMatch` is `**/*.spec.mjs` and `tools/repeat-specs.mjs`’s `isSpec` already accepts subfolders, so neither changes.
 
-**What changes with a move.** Every place that names a module by its path, counted on bb48dd76 by grep (the pull request that added this section has the script). The imports themselves are the bulk: 5,014 lines in 1,462 files.
+## What changes with a move
+
+Every place that names a module by its path, counted on bb48dd76 by grep (the pull request that added this section has the script). The imports themselves are the bulk: 5,014 lines in 1,462 files.
 
 | Place | On main | What a move changes |
 |---|---|---|
@@ -181,8 +193,9 @@ flowchart LR
 | Code comments | 1,066 lines in 466 files | Rewritten by the same map. |
 | Code that names a module in a string | 43 lines in 26 files: a spawned script, a read source, a worker’s path | Rewritten, and each is run by a test. |
 
-**The move plan**
-- **It starts after #1236’s wave 2 merges,** so the turn’s modules move once, to `server/turns/`, and no open split of `server/runtime.mjs` has to follow them. Before it, `tools/lint-caps.mjs` learns to follow renames.
+## The move plan
+
+- **It starts once the person approves this map:** #1236’s wave 2 has merged, so the turn’s modules move once, to `server/turns/`. Before it, `tools/lint-caps.mjs` learns to follow renames.
 - **One tree per pull request:** `server/`, then `app/js/`, then `shared/` and the root of `tools/`, then `tests/`.
 - **Each is pure:** `git mv`, then a scripted rewrite of import paths and of the path-keyed lists above, with no other change. The script is the map, and the pull request carries it, so a reviewer runs it on the base and diffs the result with the head. Code, comments and names don’t change beyond the paths; `server/helpers.mjs`’s split is a commit of its own after the moves.
 - **Each is proven** by `npm run check`, both Playwright runs (plain, and with `POSTBOX_STREAM_LAG=300`), and `npm pack --dry-run` shipping the same files as on the base, moved by the map and nothing else.

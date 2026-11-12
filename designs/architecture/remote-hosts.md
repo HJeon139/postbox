@@ -1,6 +1,6 @@
 # Remote hosts
 
-Part of [the architecture](../architecture.md).
+Part of [the architecture](../architecture.md). How an agent’s turns run on another machine: the daemon, its protocol, the shim, turn states and the security of the link. Setting up a host, and what the person sees, is in [designs/remote-hosts.md](../remote-hosts.md); the live checklist is [tests/uat/remote-hosts.md](../../tests/uat/remote-hosts.md).
 
 **Status:** built, for [#120](https://github.com/HJeon139/postbox/issues/120), and run end to end with only `ssh` replaced (“What the tests show”, below). What only a real host can show is in “Still to confirm”. It condenses [the design](https://github.com/HJeon139/postbox/issues/120#issuecomment-6371251024), corrected by [the check against the official docs](https://github.com/HJeon139/postbox/issues/120#issuecomment-6371712349), and rests on [probes on real hosts](https://github.com/HJeon139/postbox/issues/120#issuecomment-6368886246). Where a number is still being measured, “Still to confirm” below says so.
 
@@ -22,7 +22,8 @@ flowchart TD
 - **A runner per turn** owns the harness’s process, keeps its output in a file, and records how it ended. It doesn’t need the daemon.
 - **The shim** is Postbox’s MCP server on the host, over stdio, one per turn.
 
-**The adapters stay; only the process moves.**
+## The adapters stay; only the process moves
+
 - **A remote process** takes `spawn`’s place: an object with the same `stdin`, `stdout`, `kill` and exit events, backed by the daemon. The stream mappers don’t change, and the adapters build their arguments as they do today, except where they name Postbox’s server or a folder.
 - **It has no local process ID.** `stopTurn` and `signalGroup` in [`server/adapters/process-group.mjs`](../../server/adapters/process-group.mjs) signal `-child.pid` and read the laptop’s `ps`, and a host’s process ID there would stop an unrelated local process group. So a remote process leaves `pid` unset and marks itself remote, its `kill` sends the daemon’s `stop`, and `stopTurn` has a remote branch that never calls the local `kill` or `ps`.
 - **Only chosen variables move.** The harness gets the daemon’s environment on the host plus the variables the adapter sets on purpose, which its `capabilities.remote` names (such as `KIRO_HOME`), never the laptop’s environment.
@@ -37,19 +38,23 @@ flowchart TD
 | | Claude Code | Kiro CLI | Codex |
 |---|---|---|---|
 | Process per turn | `claude -p`, stream-json | `kiro-cli chat --output-format stream-json` | `codex app-server --listen stdio://`, JSON-RPC |
-| stdin | A file: one message, then end of file | None: the message is the last argument, after `--` | Held: a pipe the runner keeps open until `turn/completed` |
+| stdin | A file: one message, then end of file | A file: the message, with `--no-interactive` | Held: a pipe the runner keeps open until `turn/completed` |
 | Postbox’s server | `--mcp-config`, as `stdio` | The custom agent file’s `mcpServers` | `-c mcp_servers.postbox.*` |
 | Permission prompts | The shim’s `permission_prompt` | None headless ([#136](https://github.com/HJeon139/postbox/issues/136)) | JSON-RPC requests, answered on stdin |
 | Resume | `--resume <session>` | `--resume-id <session>` | `thread/resume` |
 | Sign of work while quiet | `tool_progress` every 30 s | An open `tool_call`; stdout is silent | The model’s checks on a background command, about every 5 min |
 | Sign-in error | `authentication_failed` | Not recorded | Not recorded |
 
-**A turn doesn’t depend on anything staying connected.** The daemon starts each turn as a runner in its own session (`spawn` with `detached: true`, which makes the child “the leader of a new process group and session”, per [Node’s `child_process`](https://nodejs.org/docs/latest-v22.x/api/child_process.html); a new session “has no controlling terminal”, per [setsid(2)](https://man7.org/linux/man-pages/man2/setsid.2.html)). The runner starts the harness from the adapter’s argument list, never a command string, appends its stdout to `out.jsonl` and its stderr to `err.log`, and writes `exit.json` (code, signal, time) when it exits. It also listens on a Unix socket in the turn folder, which answers liveness checks with its turn ID and, for Codex, takes the lines for the held stdin, appending each to `in.jsonl`. The daemon can restart or crash and the SSH connection can drop while a turn runs.
+## A turn doesn’t depend on anything staying connected
+
+The daemon starts each turn as a runner in its own session (`spawn` with `detached: true`, which makes the child “the leader of a new process group and session”, per [Node’s `child_process`](https://nodejs.org/docs/latest-v22.x/api/child_process.html); a new session “has no controlling terminal”, per [setsid(2)](https://man7.org/linux/man-pages/man2/setsid.2.html)). The runner starts the harness from the adapter’s argument list, never a command string, appends its stdout to `out.jsonl` and its stderr to `err.log`, and writes `exit.json` (code, signal, time) when it exits. It also listens on a Unix socket in the turn folder, which answers liveness checks with its turn ID and, for Codex, takes the lines for the held stdin, appending each to `in.jsonl`. The daemon can restart or crash and the SSH connection can drop while a turn runs.
 - **Where logind kills at logout** (`KillUserProcesses=yes`, the upstream default per [logind.conf(5)](https://www.freedesktop.org/software/systemd/man/latest/logind.conf.html)), the runner also goes into a systemd user scope (`systemd-run --user --scope`). Without lingering, that scope still ends at the last logout: “After the user logs out of the last session, `user@.service` and all services underneath it are terminated” ([systemd-run(1)](https://www.freedesktop.org/software/systemd/man/latest/systemd-run.html)). So the daemon checks for lingering and, without it, says turns end with the person’s last session and how to turn it on. [loginctl(1)](https://www.freedesktop.org/software/systemd/man/latest/loginctl.html) doesn’t list `Linger` as a `show-user` property, so the command is checked on a real host first.
 - **Kiro’s message goes on stdin.** Kiro CLI 2.34.x reads a non-interactive message from stdin, including with `--resume-id`, so a remote turn writes it to the turn’s temporary stdin file instead of putting it in the process arguments. This removes the 128 KiB per-argument limit and keeps other users on the host from reading the message in `/proc/<pid>/cmdline`.
 - **No cap on a turn in flight.** A turn ends when it finishes, when the person stops it, or when it’s judged hung.
 
-**The daemon.** A small Node program in `~/.postbox-remote/<version>/`, run as the SSH user, never as root.
+## The daemon
+
+A small Node program in `~/.postbox-remote/<version>/`, run as the SSH user, never as root.
 - **Started by Postbox, never by login scripts.** The command line is fixed (`ssh <host> ~/.postbox-remote/<version>/server/remote/host/host attach`), and everything else goes as JSON on stdin, so the login shell never parses a prompt, a path or a setting. `host` is a `/bin/sh` launcher, not a Node script, because a non-interactive `ssh` often skips the profile that puts nvm’s or mise’s `node` on `PATH`: it takes the first Node 22 or later from the host’s `nodePath` (written at install as `node-path`), `PATH`, nvm, mise, Volta, `/usr/local/bin` and `/usr/bin`, and with none it answers with the `no-node` error, naming where it looked.
 - **One daemon per version.** Each `host attach` is only a relay between the SSH channel and the daemon’s Unix socket: the daemon outlives the attach, and sshd keeps a session open while the channel’s output is open, so a daemon holding it would keep Postbox’s `ssh` open after it dropped. With no daemon answering, the attach takes the version’s start lock and starts `host serve` detached, which logs to `daemon.log` in the version’s folder and holds `daemon.pid` (its process ID, boot ID and start time) for its life. The start lock is `~/.postbox-remote/locks/<version>.lock`, outside the version’s folder, because the installer holds the same lock while it checks and replaces that folder, which it renames into place. It holds its owner’s record and is broken only once that owner is gone, never for its age alone.
 - **Finding programs.** It looks for `node` (22 or later), `claude`, `kiro-cli` and `codex` in the configured paths, then the usual per-user install folders, and reports what it found and where it looked. It also reports `claude`’s version: the MCP timeout behavior below depends on it, and the repo pins only the Agent SDK.
@@ -58,7 +63,9 @@ flowchart TD
 - **Restart from disk.** It scans the turn folders: `exit.json` is finished, a turn that `turnRunning` finds running is running, and one that’s neither is interrupted. A turn is running if its runner’s socket answers with its turn’s ID, or, while it doesn’t, if `runner.json` still names a live process of this boot and the silence is shorter than `RUNNER_SILENT_MAX_MS` (60 s, on the daemon’s monotonic clock), so a runner stopped or starved for a moment isn’t ended while its agent still runs ([#738](https://github.com/HJeon139/postbox/issues/738)). At the ceiling its group and its tool shells’ groups are sent SIGKILL, as Stop’s, and the turn ends as interrupted once its process is gone, so the laptop resumes it alone; one still there `KILL_WAIT_MS` (5 s) later ends anyway, with `unkilled: true` on `ended` and on its turn in the scan’s `welcome`, and the laptop leaves its resume to the person ([#872](https://github.com/HJeon139/postbox/issues/872)). During a silence a process check stands for `PROCESS_CHECK_MS` (5 s), since on macOS each one runs `sysctl` and `ps` and holds up the daemon; the ceiling’s decision takes a fresh one. The silence’s start is kept in the turn folder (`silence.json`: the runner’s PID, the boot ID and the wall-clock time), so a daemon restarted on the same boot, with the same runner, goes on from it, and one restarted again and again still reaches the ceiling; on another boot it starts over. The follower uses the same rule, and ends a turn at its second miss in a row, or at once if Stop found its process gone. It signals a process group only when the recorded process ID, boot ID and start time all still match, since a process ID alone can belong to another process after a reboot. A process that has exited and waits only to be reaped (state `Z` in `/proc/<pid>/stat`) counts as gone: in a container whose first process doesn’t reap, a killed daemon stays a zombie for good, and counting it as alive would stop a new one from ever starting.
 - **Version skew.** A new Postbox installs its version beside the old one, and the old daemon retires when its turns are done. `hello` carries the protocol’s version, an integer (3), not Postbox’s package version, which names the code folder; a mismatch is the `version` error, and the person is told to install this Postbox’s version. The remote read contract ([#530](https://github.com/HJeon139/postbox/issues/530)) raised the protocol to 3, one version at a time, so a host on protocol 2 is unavailable from Postbox’s update until the host updates; a host the person opted in to gets the new version by itself (“Keeping a host up to date”, below).
 
-**Postbox and the daemon** speak JSON lines over the SSH channel’s stdio. No socket is forwarded and no port opened on either machine.
+## Postbox and the daemon
+
+Postbox and the daemon speak JSON lines over the SSH channel’s stdio. No socket is forwarded and no port opened on either machine.
 
 | From Postbox | Does |
 |---|---|
@@ -76,11 +83,15 @@ flowchart TD
 
 The daemon sends back stream lines with their offsets, turn endings, queued tool calls and waiting prompts. A line’s offset is its identity, so on reconnect Postbox asks for everything after the last one it applied, and applies each once.
 
-**Stop sends SIGINT.** “To end the turn instead, send SIGINT”; SIGTERM exits with code 143 and records no result for the turn ([headless](https://code.claude.com/docs/en/headless)). The shim is stopped the way the MCP spec stops a stdio server: close its input, then SIGTERM, then SIGKILL ([lifecycle](https://modelcontextprotocol.io/specification/2025-06-18/basic/lifecycle)). Two Claude Code Stop features are declined for remote turns in the first version:
+## Stop sends SIGINT
+
+“To end the turn instead, send SIGINT”; SIGTERM exits with code 143 and records no result for the turn ([headless](https://code.claude.com/docs/en/headless)). The shim is stopped the way the MCP spec stops a stdio server: close its input, then SIGTERM, then SIGKILL ([lifecycle](https://modelcontextprotocol.io/specification/2025-06-18/basic/lifecycle)). Two Claude Code Stop features are declined for remote turns in the first version:
 - **Keeping background jobs on Stop** ([#164](https://github.com/HJeon139/postbox/issues/164), `keepJobs`) isn’t offered: a remote turn’s Stop is always a plain stop, and the Stop control says the host’s background jobs stop with the turn, before you stop. If `keepJobs` reaches the adapter for a remote turn anyway, it reports each job as stopped, not kept.
 - **A background job’s own Stop** (`stopJobUnder`) isn’t offered for a remote turn.
 
-**Postbox’s tools on the host: a stdio shim.** One stdio MCP server, `postbox`, a script the daemon ships. It serves exactly the laptop’s tools and limits, speaks JSON to the daemon over a Unix socket in a `0700` folder, and carries the turn’s token, so a call from a stopped turn is refused, as on the laptop ([#126](https://github.com/HJeon139/postbox/issues/126)). Host code imports only `node:` modules and `shared/`, because it ships without the server.
+## Postbox’s tools on the host: a stdio shim
+
+One stdio MCP server, `postbox`, a script the daemon ships. It serves exactly the laptop’s tools and limits, speaks JSON to the daemon over a Unix socket in a `0700` folder, and carries the turn’s token, so a call from a stopped turn is refused, as on the laptop ([#126](https://github.com/HJeon139/postbox/issues/126)). Host code imports only `node:` modules and `shared/`, because it ships without the server.
 - **Why stdio.** HTTP MCP over a Unix socket didn’t load in Claude Code in any form the probes tried, and a TCP port is ruled out (below). All three harnesses loaded a stdio shim.
 - **`server/discover`** gets “method not found”, so Kiro CLI falls back to `initialize` at once.
 - **UI tools return once the host has taken them.** The daemon validates each with `shared/catalog.mjs`, records it and queues it, so a block shown while the laptop sleeps appears on reconnect. The call waits only for the daemon, not for Postbox: a refusal on the host returns as the tool’s error, and Postbox tells the agent of its own refusal at its next turn (#827). `schedule_wake`, `cancel_wake` and `wake_agent` don’t: each waits for Postbox’s answer (`ask`), since a scheduled wake’s answer carries the id `cancel_wake` takes (#458), and Postbox may send a wake, hold it on a card or refuse it, and only its answer says which (#439).
@@ -91,14 +102,17 @@ The daemon sends back stream lines with their offsets, turn endings, queued tool
 - **A call’s result goes only to the shim that made it, and only that shim can end its prompt** ([#908](https://github.com/HJeon139/postbox/issues/908)). Each call records its shim’s key hash, in `tools.jsonl` too, and its result, live or read from the snapshot, goes to each connection with that key, so a shim that reconnected gets it without asking again; another key sending its ID is refused with none of it. A call an older daemon wrote down goes to the first shim that sends it again, and that take is written down. An expiry or cancel notice from another key gets exactly the reply an unknown ID gets, and changes nothing, nor does one for a prompt the person already answered. A hello with no key is refused (`version`): a shim reaches only its own version’s daemon, so only older code or a client hiding which shim it is sends one. Call IDs are random, as prompt IDs are, so none can be guessed and claimed first.
 - **Resumes pass it again.** `--mcp-config` and `--settings` aren’t restored on `--resume` ([sessions](https://code.claude.com/docs/en/sessions)), so every turn passes them, as the local adapter already does.
 
-**Permission prompts while nobody is connected.** A prompt never auto-approves because nobody is connected. The host enforces `permissionWaitMax`, since the laptop may be asleep when it runs out: the shim (Claude Code) or the daemon through the held stdin (Codex) denies, and records the expiry, which the card shows on reconnect. Kiro CLI refuses headless and has nothing to wait on.
+## Permission prompts while nobody is connected
+
+A prompt never auto-approves because nobody is connected. The host enforces `permissionWaitMax`, since the laptop may be asleep when it runs out: the shim (Claude Code) or the daemon through the held stdin (Codex) denies, and records the expiry, which the card shows on reconnect. Kiro CLI refuses headless and has nothing to wait on.
 - **Claude Code: the per-server `timeout` is the mechanism.** By the [MCP docs](https://code.claude.com/docs/en/mcp), it “is a hard wall-clock limit per tool call, and progress notifications from the server don’t extend it”, and a value of at least 1000 ms also sets a floor under the idle window. The idle window is 5 minutes for HTTP servers and 30 minutes for stdio, adjustable with `CLAUDE_CODE_MCP_TOOL_IDLE_TIMEOUT` from v2.1.187; the default wall-clock limit is about 28 hours ([environment variables](https://code.claude.com/docs/en/env-vars)). An HTTP server also has a per-request timer to its first response byte, 60 seconds unless the server’s `timeout` or `MCP_TIMEOUT` is greater (MCP docs, “Time limits on MCP tool calls”). The shim is stdio, so that timer doesn’t apply to it. So the shim’s `timeout` is `permissionWaitMax` plus a margin, and the adapter refuses a `claude` older than that behavior needs, naming the version it found.
 - **Progress is a backup** for the idle window: a notification every 60 seconds while a prompt waits, with a `progress` value that increases every time, as the [MCP spec](https://modelcontextprotocol.io/specification/2025-06-18/basic/utilities/progress) requires.
 - **Codex** writes its approval requests to stdout, so they’re in `out.jsonl` when Postbox reconnects, and the answer goes through the held stdin. The app-server sent nothing while a probe waited 45 minutes.
 - **The control channel stays in reserve, undocumented.** `--permission-prompt-tool stdio` (a `can_use_tool` request on stdout, the answer on stdin) passed a 45-minute wait, but the [CLI reference](https://code.claude.com/docs/en/cli-reference) documents the flag only as taking an MCP tool name, so it could change in any release. It’s used only if the 24-hour wait over the shim fails.
 - **The laptop first.** Postbox’s own HTTP server set no `timeout` and sends no progress, so a card left unanswered failed for local Claude Code CLI agents. A repro with Claude Code 2.1.308 measured the cut-off at 60 seconds, the per-request timer above, not the 5-minute idle window: the agent got “The operation timed out”. Postbox now sets the server’s `timeout` to 25 hours in `--mcp-config`, which raises both limits.
 
-**Turn states.**
+## Turn states
+
 
 ```mermaid
 flowchart TD
@@ -126,23 +140,28 @@ flowchart TD
 - **Resuming says why.** A resume after Sign-in needed or Interrupted starts with a line telling the agent its last turn stopped and why; without it, a resumed agent assumed the new message had interrupted it.
 - **Sign-in stays the host’s.** Postbox never moves a credential. An expired Claude Code sign-in ends the turn at its next model request with `error: authentication_failed`. An optional per-host `signInCheck` command warns before a turn that would outlive the sign-in.
 
-**The SSH connection.** Postbox starts its own `ssh` with `-o BatchMode=yes -o ControlPath=none -o ForwardAgent=no -o ServerAliveInterval=15 -o ServerAliveCountMax=3`, and `-o ClearAllForwardings=yes -o ForwardX11=no -o ForwardX11Trusted=no -o PermitLocalCommand=no -o Tunnel=no -o StrictHostKeyChecking=yes` (`HARDENING` in `server/remote/ssh-args.mjs`). The person’s `~/.ssh/config` supplies the rest (`ProxyJump`, certificates, known hosts), since command-line options take precedence ([ssh_config(5)](https://man.openbsd.org/ssh_config)).
+## The SSH connection
+
+Postbox starts its own `ssh` with `-o BatchMode=yes -o ControlPath=none -o ForwardAgent=no -o ServerAliveInterval=15 -o ServerAliveCountMax=3`, and `-o ClearAllForwardings=yes -o ForwardX11=no -o ForwardX11Trusted=no -o PermitLocalCommand=no -o Tunnel=no -o StrictHostKeyChecking=yes` (`HARDENING` in `server/remote/ssh-args.mjs`). The person’s `~/.ssh/config` supplies the rest (`ProxyJump`, certificates, known hosts), since command-line options take precedence ([ssh_config(5)](https://man.openbsd.org/ssh_config)).
 - **Nothing from the config opens a way back.** A `RemoteForward` to Postbox’s port, a `LocalForward` or `DynamicForward` listener, X11, a `LocalCommand` or a tunnel would each break “One way only” and “No new listeners” (below), so the command line turns them off, and `ClearAllForwardings` drops the config’s forwards. A host key must be known and unchanged even where the config says `StrictHostKeyChecking no`, which BatchMode alone doesn’t stop, since the hello hands over the daemon’s token.
 - **Its own connection,** because on a multiplexed connection the leader’s port forwards stay open and its host key was checked as it was opened; the session still sends its own agent and X11 choices (openssh-portable’s `mux.c`). `ControlPath none` turns sharing off.
 - **It never asks.** `BatchMode=yes` turns off password and host-key prompts, so `ssh` fails instead of waiting forever. Postbox tells a sign-in failure (“Sign in to <host>”, with the command to run in a terminal) from a host key it doesn’t know (the command to connect once and check the key).
 - **Keepalives of 15 s × 3** drop a dead connection “after approximately 45 seconds” (same source). Postbox reconnects with backoff while a remote turn runs or a prompt waits.
 - **`!` commands stay local** ([#67](https://github.com/HJeon139/postbox/issues/67)), in the project’s folder on the laptop, and their output says they didn’t run on the host.
 
-**Security.**
+## Security
+
 - **No new listeners,** on Postbox’s own connection (`dedicatedConnection`, the default). Nothing listens on TCP on either machine. The only sockets are the daemon’s and the runners’ Unix sockets, in `0700` folders, created `0600`.
-- **One way only,** likewise. Postbox calls the daemon; nothing on the host gets a route to Postbox’s API on the laptop, so there’s no reverse forward to `127.0.0.1:4173`, and “Writes need the page’s token” still holds. With `dedicatedConnection` off, the session shares the person’s multiplexed connection, whose port forwards stay open (above): that mode gives up these two guarantees, by the person’s choice, and the setting’s help says so.
+- **One way only,** likewise. Postbox calls the daemon; nothing on the host gets a route to Postbox’s API on the laptop, so there’s no reverse forward to `127.0.0.1:4173`, and the page’s token still holds ([security-boundaries.md](security-boundaries.md), “Writes need the page’s token”). With `dedicatedConnection` off, the session shares the person’s multiplexed connection, whose port forwards stay open (above): that mode gives up these two guarantees, by the person’s choice, and the setting’s help says so.
 - **A token per daemon,** required on every connection from Postbox and the runners, and **a token per turn** for its shims: the daemon writes it in the turn’s folder as the turn starts, and takes no other from a shim, so one turn’s shim can’t speak for another’s.
 - **The boundary is the host’s OS user.** The socket and file modes (`0700` folders, `0600` files, and the launcher `0700`) limit access to the user Postbox signs in as. Within that, the token keeps out accidental connections and other users’ processes, but not another process already running as the same user, which can read `~/.postbox-remote/token` as easily as the daemon can.
 - **The laptop’s environment and credentials stay,** and agent forwarding is off by default. Turned on, it copies no private key, but while Postbox is connected any process running as the person on the host, the agent and its commands included, can use the laptop’s ssh agent to sign in elsewhere ([ssh_config(5)](https://man.openbsd.org/ssh_config): “Agent forwarding should be enabled with caution”).
 - **No shell strings.** The SSH command line is fixed, argument lists and files go as JSON, and the runner starts the harness without a shell.
-- **What the host keeps:** each turn’s message, attachments, conversation snapshot and logs, in a `0700` folder of `0600` files. A Kiro message is still visible through its arguments (above).
+- **What the host keeps:** each turn’s message, attachments, conversation snapshot and logs, in a `0700` folder of `0600` files.
 
-**Keeping a host up to date** ([#464](https://github.com/HJeon139/postbox/issues/464)). Postbox always runs its own version’s launcher on the host, so after the person upgrades Postbox a host has only the older version, and the next attach exits 127, `not-installed`, which doesn’t retry. A host the person opted in to gets this Postbox’s version by itself, once per version, and connects again; nothing installs on any other host. Turns started under the old version, and a fallback for hosts without the consent (#732), are their own issues.
+## Keeping a host up to date
+
+From [#464](https://github.com/HJeon139/postbox/issues/464). Postbox always runs its own version’s launcher on the host, so after the person upgrades Postbox a host has only the older version, and the next attach exits 127, `not-installed`, which doesn’t retry. A host the person opted in to gets this Postbox’s version by itself, once per version, and connects again; nothing installs on any other host. Turns started under the old version, and a fallback for hosts without the consent (#732), are their own issues.
 
 ```mermaid
 flowchart TB
@@ -163,9 +182,13 @@ flowchart TB
 - **Who can start one.** Only the page changes the consent: its route needs the page’s token, and no MCP tool edits hosts. The consent is kept only on this computer and never sent to the host (`helloSettings` builds only from the settings). The server starts an install only from an ssh exit status it saw itself, but anything with a shell on the host, an agent there included, can cause one: removing `~/.postbox-remote/<version>` makes the next attach exit 127, and removing `~/.postbox-remote` causes a reinstall with a new token. That harm is bounded: only this Postbox’s own checked code, at most once per version, and something with a shell there can already do far more.
 - **Closing and removing.** Closing Postbox aborts every install and leaves its record `started`, so the next Postbox doesn’t try that version again by itself. Remove waits for an install under way, and `forget()` drops the host’s record with its token.
 
-**Files and cleanup.** An idle agent holds no process; the next turn resumes the harness’s session. A turn’s logs are deleted once it has ended and Postbox has acknowledged all of it, after `logRetention` regardless, and at a size cap. The message, its attachments, the snapshot and a Kiro agent file go when the turn ends. Each harness’s own sessions stay; a Claude Code transcript past `cleanupPeriodDays` (30 days by default, per [sessions](https://code.claude.com/docs/en/sessions)) makes the next turn start over once and say so. “Remove Postbox from host” stops the daemon and its turns and deletes `~/.postbox-remote`, and only then does the laptop forget the host and its token; until the host confirms, the removal is refused and both stay, so it can be tried again. Deleting a conversation stops its remote turns.
+## Files and cleanup
 
-**Settings,** per host:
+An idle agent holds no process; the next turn resumes the harness’s session. A turn’s logs are deleted once it has ended and Postbox has acknowledged all of it, after `logRetention` regardless, and at a size cap. The message, its attachments, the snapshot and a Kiro agent file go when the turn ends. Each harness’s own sessions stay; a Claude Code transcript past `cleanupPeriodDays` (30 days by default, per [sessions](https://code.claude.com/docs/en/sessions)) makes the next turn start over once and say so. “Remove Postbox from host” stops the daemon and its turns and deletes `~/.postbox-remote`, and only then does the laptop forget the host and its token; until the host confirms, the removal is refused and both stay, so it can be tried again. Deleting a conversation stops its remote turns.
+
+## Settings
+
+Per host:
 
 | Setting | Default | Change it when |
 |---|---|---|
@@ -181,7 +204,9 @@ flowchart TB
 | `signInCheck` | none | The host’s sign-in expires on a schedule |
 | `denyPrompts` | off | Turns run unattended: Claude Code denies what it would ask about (`--permission-prompts none`) instead of waiting |
 
-**What the tests show.** `npm run test:integration`, the last step of `npm run check`, runs the host’s programs as real processes in a temporary home folder, over pipes and Unix sockets, never the network. Where a test stands in for `ssh`, it runs the remote command with `/bin/sh -c`, as sshd hands it to the login shell.
+## What the tests show
+
+`npm run test:integration`, the last step of `npm run check`, runs the host’s programs as real processes in a temporary home folder, over pipes and Unix sockets, never the network. Where a test stands in for `ssh`, it runs the remote command with `/bin/sh -c`, as sshd hands it to the login shell.
 - **`remote-pipeline`:** a Claude Code turn through the real runtime, host manager, adapter and link, the installed launcher, daemon, runner and shim, with a stand-in harness that replays recorded Claude Code lines. The turn streams, shows a block, asks and is allowed. It survives an `ssh` drop, a killed daemon and a Postbox restart, with no line applied twice, checked line for line against what the stand-in wrote. Stop ends it with SIGINT and leaves no process; a prompt nobody answers expires on the host; and SIGKILL to the runner’s group shows Interrupted, then resumes on its own. It also runs in a container with no init, where a killed daemon stays a zombie.
 - **`remote-lifecycle`:** the install and a first welcome; the idle exit, after which nothing of Postbox’s runs on the host; Remove with a turn running, after which `~/.postbox-remote` is gone and only then the laptop’s token; and no TCP listener on either side during a turn.
 - **`remote-install`:** the install script and the launcher with real `sh` and `tar`: modes, checksums, a reinstall that’s present or replaced, symbolic links refused, Node found on `node-path`, `PATH` or nvm, and the start lock between installs and attaches, including a dead owner’s and one held past both stale times.
@@ -189,12 +214,14 @@ flowchart TB
 
 Tests that need `/proc` or logind skip on macOS and say why; CI runs them on Linux. None of this shows real `ssh` authentication, logind at a real logout, the real harnesses, or waits of hours. Those are the live checklist, [tests/uat/remote-hosts.md](../../tests/uat/remote-hosts.md), and the table below.
 
-**What it rests on**
+## What it rests on
+
 - **Probes on real hosts.** A process in its own session with its stdio on files survived every kind of drop tried; a plain background job died of SIGPIPE or SIGHUP, and a user scope alone died of SIGHUP with a pty attached. A Claude Code turn whose stdout was a dead SSH pipe still finished, but its stream was lost, so output goes to a file. A Codex app-server and a Kiro CLI turn each ran four quiet 10-minute steps after their SSH session closed. A 24-hour Claude Code turn of quiet steps had missed nothing at 15 hours.
 - **The docs check.** It made the MCP `timeout` the primary mechanism and progress the backup, put the keepalive drop at about 45 seconds, added the host’s Claude Code version check and SIGINT for Stop, and left the control channel in reserve as undocumented.
 - **Postbox stays local** ([intent.md](../intent.md), “Scope and order”), so the page token, the store and `!` commands keep their assumptions.
 
-**Still to confirm**
+## Still to confirm
+
 
 | Question | Could change |
 |---|---|
@@ -207,9 +234,9 @@ Tests that need `/proc` or logind skip on macOS and say why; CI runs them on Lin
 | Does the laptop’s HTTP `permission_prompt` hold a card for 24 hours with the new `timeout`? A repro held it past 8 minutes, where it had failed at 60 seconds without one | Nothing, if it passes |
 | Does a session resume after the harness updates itself between turns? | How Postbox reports a session that can’t resume |
 | Does a user-scope runner end at the last logout without lingering? The docs say it ends. `loginctl show-user` printed `Linger=yes` and `Linger=no` on the probe hosts, and the daemon reads that | Whether Postbox only warns, or needs lingering for remote turns |
-| Can Kiro CLI read its message from stdin or a file? | Whether its message stays visible to other users on the host |
 
-**Open questions**
+## Open questions
+
 
 | Question | Status |
 |---|---|
@@ -217,12 +244,13 @@ Tests that need `/proc` or logind skip on macOS and say why; CI runs them on Lin
 | 2. **Auto-resume?** After Sign-in needed or Interrupted, should Postbox resume on its own once the host is back, or always wait for the person? `CLAUDE_CODE_RESUME_INTERRUPTED_TURN=1` would make a resumed Claude Code session continue the cut-off turn ([environment variables](https://code.claude.com/docs/en/env-vars)) | Decided 23 October 2026: after Interrupted it resumes on its own once the host is back, except when its process there may still run, so a resume would run beside it, and it waits for the person (`resume.unkilled`): one killed that didn’t stop (#872), or one left to end on its own after a restart while its host listed it running or unkilled ([#909](https://github.com/HJeon139/postbox/issues/909)); after Sign-in needed only when the host’s `signInCheck` passes, and with no `signInCheck` (the default) it waits for the person. A resumed Claude Code turn continues the cut-off turn (`CLAUDE_CODE_RESUME_INTERRUPTED_TURN=1`). A turn whose agent’s backend isn’t registered in this Postbox doesn’t resume until it is (#909) |
 | 3. **Unattended runs?** Offer `--permission-prompts none` (Claude Code v2.1.259 or later, [CLI reference](https://code.claude.com/docs/en/cli-reference)), which denies prompts instead of waiting? | Decided 23 October 2026: a per-host setting, `denyPrompts`, off by default |
 
-**Revisit when**
+## Revisit when
+
 - Claude Code supports HTTP MCP over a Unix socket (then the shim can go), or its permission control channel is documented and the better path.
 - The 24-hour wait over the shim fails; then the control channel replaces it.
-- Kiro CLI can ask over ACP headless ([#136](https://github.com/HJeon139/postbox/issues/136)), or read its message from stdin or a file.
+- Kiro CLI can ask over ACP headless ([#136](https://github.com/HJeon139/postbox/issues/136)).
 - Antigravity CLI can be tested on a host.
 - People want the work ledger and Restore for files on a host. Then the daemon reads those files for the ledger.
 - People want to keep a remote turn’s background jobs on Stop, or stop one job. Then route `keepJobs` and `stopJobUnder` to the daemon.
 - A host has no Node 22, and people want Postbox to bring one. That needs a decided source and checksum check first.
-- People need Postbox itself on the host, served to the browser over a tunnel. That changes the assumptions in “Writes need the page’s token”, and is out of scope here.
+- People need Postbox itself on the host, served to the browser over a tunnel. That changes the assumptions in [security-boundaries.md](security-boundaries.md), “Writes need the page’s token”, and is out of scope here.

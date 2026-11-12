@@ -1,11 +1,6 @@
 # A conversation is shared memory
 
-Part of [the architecture](../architecture.md).
-
-**Decided next** (28 October 2026, [#508](https://github.com/HJeon139/postbox/issues/508); built in Now, [#524](https://github.com/HJeon139/postbox/issues/524), and A2, [#527](https://github.com/HJeon139/postbox/issues/527)).
-- **The turn envelope:** each turn opens with the request it answers and where the reply goes, then what has changed in the room, then the deliveries addressed to the agent, then background, labeled as such. The system prompt holds only what is fixed for a persona, so a resumed session never runs on an old guide (#515).
-- **Deliveries are records:** what was addressed to an agent is a record per recipient, not inferred from a marker. A delivery counts only once the turn carrying it produced output; a turn that fails first sends it again, labeled as a resend, at most three times, after which it waits on the person as an ask. The marker moves only with output.
-- **This section’s revisit line changes:** rooms longer than the caps are handled by a count and a `read_conversation` cursor for what was left out, not by summaries.
+Part of [the architecture](../architecture.md). What each agent in a conversation reads of it, and how a topic thread’s agent answers.
 
 **Decision.** Every agent in a conversation can read all of it.
 - **A marker per session:** each session records the last item it was given (`seenItem`).
@@ -21,33 +16,37 @@ Part of [the architecture](../architecture.md).
 
 **What it rests on.** Issue #1: in a room, an agent woken by an @-mention saw only that message, and answered confidently about a discussion it had never seen. The catch-up costs nothing when nothing was missed, as in a direct message where the agent is woken by every message; it replaces the separate path shares from topic threads used to take.
 
-**Revisit when** rooms get long enough that 40 items is too little. Then summarize older stretches instead of dropping them.
+**Revisit when** rooms get long enough that 40 items is too little. #508 decided how: a count and a `read_conversation` cursor for what was left out, not summaries.
 
-## Topic threads: forked sessions at checkpoints
+## Delivering a turn
 
-**Decision.** A topic thread is a thread of kind `topic` whose `parentId` is its conversation and whose `rootItemId` is the message it started from. Each agent in it runs a new session that forks the conversation’s session at that message.
+From [#508](https://github.com/HJeon139/postbox/issues/508) (`designs/508/design.md`, “Delivering a turn”).
+- **The turn envelope,** built ([#524](https://github.com/HJeon139/postbox/issues/524), `tests/guide-envelope.test.mjs`): each turn opens with the request it answers and where the reply goes, then what has changed in the room, then the deliveries addressed to the agent, then background, labeled as such. The system prompt holds only what is fixed for a persona, so a resumed session never runs on an old guide (#515).
+- **Deliveries as records,** not built yet (#508’s A2, [#527](https://github.com/HJeon139/postbox/issues/527)): what was addressed to an agent becomes a record per recipient, not inferred from a marker. A delivery counts only once the turn carrying it produced output; a turn that fails first sends it again, labeled as a resend, at most three times, after which it waits on the person as an ask. The marker moves only with output.
+
+## Topic threads: one session per agent
+
+**Decision** ([#228](https://github.com/HJeon139/postbox/issues/228)). A topic thread is a thread of kind `topic` whose `parentId` is its conversation and whose `rootItemId` is the message it started from (`server/topic-open.mjs`). The person opens one with Reply in thread, and an agent with `open_topic` (#637). An agent never forks itself (intent.md, principle 7): an agent mentioned there answers from its one session in the conversation, so it remembers both. Its turn leads with the thread’s request as its task, with what happened in the room as background (`server/deliver.mjs`). The conversation’s other agents see each thread with something new as a line, with a summary of about 20 tokens one cheap model call writes once the thread settles, and read it only if they choose (`server/thread-summary.mjs`).
 
 ```mermaid
 sequenceDiagram
-  participant C as Conversation session
+  participant P as You
   participant R as Runtime
-  participant T as Topic thread session
-  C->>R: turn ends, checkpoint { claudeSessionId, uuid of its last message }
-  R->>R: stamp the turn’s messages with the checkpoint
-  Note over R: You choose Reply in thread on a message
-  R->>T: new session, fork = the last checkpoint at or before that message
-  T->>T: first turn: claude --resume conv --fork-session --resume-session-at uuid
-  T-->>R: its own session id, kept for later turns
-  Note over R: Send to conversation / Summarize back
-  R->>C: the text waits as context for the conversation's next turn
+  participant S as The agent’s one session
+  participant O as The conversation’s other agents
+  P->>R: Reply in thread on a message, and mention the agent
+  R->>S: next turn: the thread’s request leads, the room is background
+  S-->>R: reply, posted in the topic thread
+  R->>O: a line for the thread, with its summary, on their next turn
+  Note over P,R: Send to conversation, or Summarize back
+  R->>O: the text waits as context for their next turn
 ```
 
 **What it rests on**
-- **Checkpoints, not copies.** Every adapter reports where its turn ended in its own transcript (`ctx.checkpoint`): Claude Code and the Agent SDK give the last assistant message’s uuid, and the mock gives its session. The runtime stamps each message of the turn with it, so any message knows its fork point. Postbox never copies or edits a transcript.
-- **Verified live.** A session told “apple”, then “banana”, then forked at the first reply, remembered only “apple”, under a new session id. The original still remembered both. The CLI’s `--resume-session-at` is undocumented in `--help`; the Agent SDK documents it as `resumeSessionAt` with `forkSession`.
-- **Your message as the root.** For a message you wrote, the fork point is the agent’s last finished turn before it, and the message itself opens the thread as context. An agent that joined the conversation after the root starts fresh; replies from before checkpoints were kept fall back to the session’s latest point.
-- **A branch point that’s gone falls back to the latest point, once** ([#61](https://github.com/HJeon139/postbox/issues/61)). When the checkpoint’s message is no longer on the conversation’s chain, Claude Code fails the fork with `No message found with message.uuid of: …` (in `result.errors`). Both adapters then save the fork without its uuid, so no later turn goes back to it. They run the turn again from the conversation’s latest message, with a note to the agent that it couldn’t start where it branched. Nothing from the failed run is kept: no session id, no checkpoint. Every failed turn shows Claude Code’s own reasons, bounded, rather than only “hit an error”.
-- **Bringing things back costs no turn.** Shared text is queued as context on each of the conversation’s sessions and prepended to the next message they get, so the main agent reads it when it next works rather than being woken by it.
+- **Forks multiplied agents.** Each agent in a topic thread used to run a new session forked from the conversation’s at that message, so a thread grew its own pool of agents, and forks of forks, instead of using the project’s (#228). The person decided on 23 October 2026 that each agent has one session per conversation, and you choose its memory by where you talk to it (intent.md, principle 7).
+- **Nothing from a thread enters another agent’s context unless it reads it or you send it.** The line and its summary are what the others get; `read_message` and `read_conversation` take the thread’s id.
+- **Bringing things back costs no turn.** Shared text is queued as context on each of the conversation’s sessions and prepended to the next message they get, so the main agent reads it when it next works rather than being woken by it (`server/share-back.mjs`).
 - **No nesting.** A topic thread can’t start another one, as in Slack; a reply that deserves its own branch can be sent to the conversation and branched from there.
+- **Forks from before #228 are retired.** Each keeps only `retiredFork`, which keeps it out of the rail; no message reaches it, and nothing wakes it (`server/unarchive.mjs`, `server/side-threads.mjs`).
 
-**Revisit when** the Claude Code CLI documents or drops `--resume-session-at`. The Agent SDK path documents it and could take over the Claude Code backend’s forks.
+**What’s left of forking.** The adapters still record where each turn ended in their own transcript (`ctx.checkpoint`: Claude Code and the Agent SDK give the last assistant message’s uuid, Codex its turn, the mock its session), and the runtime stamps the turn’s messages with it (`server/turn-finish.mjs`). The Claude Code, Agent SDK and Codex adapters can still start a session from a fork point (`--fork-session --resume-session-at`, `resumeSessionAt` with `forkSession`, `thread/fork`), and fall back once to the latest point when the branch point is gone (#61), but nothing in the runtime sets one now.

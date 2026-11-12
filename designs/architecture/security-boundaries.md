@@ -1,6 +1,10 @@
 # Security boundaries: the page’s token and what reaches the browser
 
-Part of [the architecture](../architecture.md).
+Part of [the architecture](../architecture.md). Who Postbox answers, and what the page may see. AGENTS.md, “Security boundaries”, lists the rules that come from these, and SECURITY.md, “What Postbox defends”, what a report may cross.
+
+## This computer alone
+
+**Decision.** Postbox listens on 127.0.0.1 only, and answers only requests addressed to `127.0.0.1:<port>` or `localhost:<port>`: any other `Host` gets 421, which keeps out DNS rebinding. A write whose `Origin` is another site’s gets 403. Both checks run before any route, in `server/index.mjs`, and before the page’s token is checked.
 
 ## Writes need the page’s token
 
@@ -38,7 +42,7 @@ sequenceDiagram
 
 ## What reaches the browser
 
-**Decision** (1 November 2026, from the integrator’s review of #608). What the page may see is decided once, in `shared/state.mjs`: each event type’s entry in `EVENTS` says whether it is `public`, and each state key is in `PUBLIC_STATE_KEYS` or `PRIVATE_STATE_KEYS`. `server/public-state.mjs` applies that to the state and the event stream: `/api/state` (`server/page-state.mjs`), and the live and backlog frames (`server/live-streams.mjs`). An event the page may not see goes out as a `cursor` that keeps only its seq, so the page stays in step. Every other route that answers with state does so with a piece of it directly: the routes that create or change an entity, `PUT /api/settings`, the permissions view (`GET /api/permissions`), and the Work view’s answers, which read the store’s items and sessions directly. Such an answer may carry only data of public keys. Review holds that rule today, while every key is public; A2, which adds the first private data, adds a check that holds it before that data exists (A1b adds none: `designs/508/a1b-asks.md`).
+**Decision** (1 November 2026, from the integrator’s review of #608). What the page may see is decided once, in `shared/state.mjs`: each event type’s entry in `EVENTS` says whether it is `public`, and each state key is in `PUBLIC_STATE_KEYS` or `PRIVATE_STATE_KEYS`. `server/public-state.mjs` applies that to the state and the event stream: `/api/state` (`server/page-state.mjs`), a conversation’s items by range (`server/items-routes.mjs`, through `publicItems`, #1155), and the live and backlog frames (`server/live-streams.mjs`). An event the page may not see goes out as a `cursor` that keeps only its seq, so the page stays in step. Every other route that answers with state does so with a piece of it directly: the routes that create or change an entity, `PUT /api/settings`, the permissions view (`GET /api/permissions`), and the Work view’s answers, which read the store’s items and sessions directly. Such an answer may carry only data of public keys. Review holds that rule today, while every key is public; A2, which adds the first private data, adds a check that holds it before that data exists (A1b adds none: `designs/508/a1b-asks.md`).
 
 ```mermaid
 flowchart TD
@@ -53,8 +57,8 @@ flowchart TD
 - **It fails closed.** A type with no entry, or one that isn’t public, reaches the page only as a cursor, and a state key not listed as public isn’t sent. A spec fails when a key of `emptyState()` is in neither list, or in both.
 - **The store keeps the raw history.** The log, snapshots and the remote hosts’ subscribers read the store directly.
 - **Only the bulk paths are projected.** They send the whole state and every event. The other routes answer with one entity or report each, so the rule for them is about what they may carry, not a second projection.
-- **The stream’s own frame names are reserved.** `STREAM` in `shared/state.mjs` holds `cursor`, `status`, `epoch` and `resync`, and none of them may be an event type.
+- **The stream’s own frame names are reserved.** `STREAM` in `shared/state.mjs` holds `cursor`, `status`, `epoch`, `resync` and `header`, and none of them may be an event type.
 
 **When to revisit**
 - A remote host gets a snapshot built from the store’s state. Nothing is private yet. When A2 adds private data, its design says whether a host gets `publicState` or a projection of its own.
-- A route that answers with state, today’s or a new one such as B2’s paged items fetch or A2’s headers, carries only data of public keys. Before A2’s first private data, that rule gets a check, not only review.
+- A route that answers with state, today’s or a new one such as A2’s headers, carries only data of public keys. Before A2’s first private data, that rule gets a check, not only review.
