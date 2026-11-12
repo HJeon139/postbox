@@ -57,7 +57,7 @@ test.afterAll(async () => {
 });
 failOnPageErrors(test);
 
-test('a running turn’s newest step shows what it was given and what it returned; the finished list keeps each', async ({ page }) => {
+test('a running turn’s newest step shows what it was given and what it returned; the finished list keeps its steps, not that', async ({ page }) => {
   await page.goto(`${app.origin}/#/t/${thread.id}`);
   await synced(page, app);
   app.rt.sendMessage(thread.id, { text: 'Make the ledger edits.' });
@@ -75,11 +75,13 @@ test('a running turn’s newest step shows what it was given and what it returne
   go();
   await expect.poll(() => app.rt.turns.size, { message: 'the turn to end' }).toBe(0);
   await synced(page, app);
-  await test.step('the finished list keeps each step’s input and the end of its output', async () => {
+  await test.step('the finished list keeps each step and why one failed, not the live view’s input and output', async () => {
     const list = page.locator('details.activity').last();
     await list.locator('> summary').click();
     const read = list.locator('.steps > li').filter({ has: page.locator('.mono', { hasText: 'Read notes.txt' }) });
-    await expect(read.locator('.step-input')).toHaveText('file_path: /workspace/rec/notes.txt');
-    await expect(read.locator('.step-output')).toContainText('3\tgamma');
+    await expect(read).toHaveCount(1);
+    await expect(list.locator('.step-input, .step-output'), 'the live view’s detail went with the turn').toHaveCount(0);
+    const failed = list.locator('.steps > li').filter({ has: page.locator('.mono', { hasText: 'List a missing path' }) });
+    await expect(failed).toContainText('No such file or directory');
   });
 });

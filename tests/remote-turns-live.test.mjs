@@ -6,13 +6,13 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { rig, running, settled } from './remote-turns-helpers.mjs';
+import { rig, running, settled, until } from './remote-turns-helpers.mjs';
 
 test('#120 a host turn’s steps carry their input, output and place in the words, as the contract builds them here', async () => {
   const r = rig();
   const turn = await running(r);
-  r.d.end(turn);
-  await settled(r);
+  // While it runs: the live view's detail goes with the turn (shared/step-fold.mjs).
+  await until(() => r.store.items(r.t.id).some((i) => i.activity?.steps?.some((s) => s.output)), 'the command’s output');
   const parts = r.store.items(r.t.id).filter((i) => i.kind === 'agent');
   const first = parts.find((i) => i.activity);
   assert.ok(first, `a part with steps: ${JSON.stringify(parts.map((p) => p.text))}`);
@@ -23,5 +23,14 @@ test('#120 a host turn’s steps carry their input, output and place in the word
   assert.equal(bash.output, 'hello', 'the end of what it printed');
   assert.equal(typeof bash.at, 'number', 'where it fell in the reply’s words');
   assert.ok(bash.at <= first.text.length);
-  assert.match(parts.map((p) => p.text).join(''), /hello\.txt/, 'and the words after it');
+  r.d.end(turn);
+  await settled(r);
+  assert.match(
+    r.store
+      .items(r.t.id)
+      .map((p) => p.text ?? '')
+      .join(''),
+    /hello\.txt/,
+    'and the words after it',
+  );
 });

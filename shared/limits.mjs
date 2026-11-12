@@ -150,9 +150,10 @@ export const GLIMPSE_SOURCE_CHARS = 2000;
 
 /**
  * What a step keeps, in characters: its call’s input in a line, the end of what it returned, and a thought whole, as the
- * live view shows it (app/js/activity-live.mjs).
+ * live view shows it (app/js/activity-live.mjs); and any other detail, a reason or a result’s note, which is all a
+ * thought keeps once its turn ends (shared/step-fold.mjs).
  */
-export const STEP_TEXT = Object.freeze({ input: 300, output: 400, thought: 8000 });
+export const STEP_TEXT = Object.freeze({ input: 300, output: 400, thought: 8000, detail: 1200 });
 
 /**
  * Agent wakes in a row, without you, before the next waits for your Allow: a backstop against agents that never stop,

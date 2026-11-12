@@ -5,6 +5,7 @@ import { itemOf, noteReplaced, positionOf } from './item-index.mjs';
 import { applyTurnArchive } from './state-archive.mjs';
 import { ASSET_EVENTS, ownAssetRooms } from './state-assets.mjs';
 import { putHost, putHostStatus } from './state-hosts.mjs';
+import { foldedStep } from './step-fold.mjs';
 
 /**
  * Records by id with nothing but their own keys (#352). An id comes from a request, a tool call or an agent, and in a
@@ -216,8 +217,12 @@ export function patchSession(se, d) {
   return next;
 }
 
-/** Apply an ordinary item patch, or one activity step without repeating its accumulated list (#452). */
+/**
+ * Apply an ordinary item patch, or one activity step without repeating its accumulated list (#452), or fold a finished
+ * turn's steps to what it keeps (shared/step-fold.mjs).
+ */
 function applyItemPatch(item, data) {
+  if (data.foldSteps && item.activity?.steps) item.activity = { ...item.activity, steps: item.activity.steps.map(foldedStep) };
   if (data.activityStep) {
     const steps = (item.activity ??= { steps: [] }).steps;
     const index = steps.findIndex((step) => step.id === data.activityStep.id);

@@ -748,6 +748,8 @@ export class Runtime {
     for (const [id, w] of this.permissionWaits) if (w.sessionId === turn.sessionId) this.settlePermission(id, 'expired');
     this.turns.delete(turn.sessionId);
     this.settleSubagentSteps(turn);
+    // Its steps fold to what its record keeps: the live view's detail goes with the turn (shared/step-fold.mjs).
+    if (turn.first) this.store.emit('item.patch', { threadId: turn.threadId, id: turn.first, foldSteps: true });
     // How a remote turn ended on its host decides what the person sees: Sign-in needed and Interrupted say so (#120).
     if (turn.remote) err = this.remote.ended(turn, err);
     settleScheduledWake(this, turn, err);

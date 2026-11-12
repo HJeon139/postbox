@@ -43,19 +43,24 @@ test('a long edit’s diff shows its first whole lines, each cut short, within t
   );
 });
 
-test('a step of the agent’s own keeps where it fell in the reply’s words, and an edit’s change', async () => {
+/** A runtime whose one agent runs `script` through the contract, held at `hold` until the test lets it go. */
+function scripted(/** @type {(emit: any, hold: () => Promise<void>) => Promise<void>} */ script) {
   const store = new Store(null);
+  let go = () => {};
+  let waiting = false;
+  const held = new Promise((r) => {
+    go = () => r(undefined);
+  });
   const adapter = {
     name: 'mock',
     async folderFor() {
       return null;
     },
     async deliver(/** @type {any} */ _se, /** @type {any} */ _m, /** @type {any} */ ctx) {
-      const emit = new HarnessEvents(ctx).event;
-      emit({ kind: 'text', text: 'Reading first.' });
-      emit({ kind: 'tool_call', id: 'e1', name: 'Edit', input: { file_path: '/tmp/a.txt', old_string: 'a', new_string: 'b' }, final: true });
-      emit({ kind: 'tool_result', id: 'e1', text: 'ok' });
-      emit({ kind: 'text', text: 'Done.' });
+      await script(new HarnessEvents(ctx).event, () => {
+        waiting = true;
+        return held;
+      });
     },
   };
   const rt = new Runtime({
@@ -67,12 +72,61 @@ test('a step of the agent’s own keeps where it fell in the reply’s words, an
   store.emit('project', { id: 'p1', name: 'P', folder: '/tmp' });
   const p = rt.createPersona({ handle: 'dev' });
   const t = rt.createThread({ projectId: 'p1', title: 'T', personaIds: [p.id] });
-  rt.sendMessage(t.id, { text: 'Go.' });
-  for (let i = 0; i < 200 && rt.turns.size; i++) await new Promise((r) => setTimeout(r, 5));
-  const reply = store.items(t.id).find((x) => x.kind === 'agent');
-  const step = reply.activity.steps.find((/** @type {any} */ s) => s.id === 'e1');
+  const wait = async (/** @type {() => boolean} */ ok) => {
+    for (let i = 0; i < 400 && !ok(); i++) await new Promise((r) => setTimeout(r, 5));
+  };
+  return {
+    reply: () => store.items(t.id).find((x) => x.kind === 'agent'),
+    async held() {
+      rt.sendMessage(t.id, { text: 'Go.' });
+      await wait(() => waiting);
+    },
+    async ended() {
+      go();
+      await wait(() => !rt.turns.size);
+    },
+  };
+}
+
+const edit = { file_path: '/tmp/a.txt', old_string: 'a', new_string: 'b' };
+
+test('a step of the agent’s own keeps where it fell in the reply’s words, and an edit’s change, while its turn runs', async () => {
+  const run = scripted(async (emit, hold) => {
+    emit({ kind: 'text', text: 'Reading first.' });
+    emit({ kind: 'tool_call', id: 'e1', name: 'Edit', input: edit, final: true });
+    emit({ kind: 'tool_result', id: 'e1', text: 'ok' });
+    emit({ kind: 'text', text: 'Done.' });
+    await hold();
+  });
+  await run.held();
+  const step = run.reply().activity.steps.find((/** @type {any} */ s) => s.id === 'e1');
   assert.equal(step.at, 'Reading first.'.length, 'after the words before it');
   assert.deepEqual([step.added, step.deleted, step.diff], [1, 1, '-a\n+b']);
+  await run.ended();
+});
+
+test('a finished turn keeps what its record shows of each step, not the live view’s input, output and diff', async () => {
+  const thought = 'Why it fails. '.repeat(200).trim();
+  const run = scripted(async (emit, hold) => {
+    emit({ kind: 'thinking', text: thought, block: 'th1' });
+    emit({ kind: 'thinking_end', block: 'th1' });
+    emit({ kind: 'tool_call', id: 'e1', name: 'Edit', input: edit, final: true });
+    emit({ kind: 'tool_result', id: 'e1', text: 'ok' });
+    emit({ kind: 'tool_call', id: 'b1', name: 'Bash', input: { command: 'false' }, final: true });
+    emit({ kind: 'tool_result', id: 'b1', text: 'it failed', isError: true });
+    emit({ kind: 'text', text: 'Done.' });
+    await hold();
+  });
+  await run.held();
+  const live = run.reply().activity.steps;
+  assert.equal(live.find((/** @type {any} */ s) => s.kind === 'thought').detail.length, thought.length, 'whole while it runs');
+  await run.ended();
+  const kept = run.reply().activity.steps;
+  for (const s of kept) for (const k of ['input', 'output', 'diff', 'at', 'part']) assert.equal(s[k], undefined, `${s.label}: no ${k}`);
+  const by = Object.fromEntries(kept.map((/** @type {any} */ s) => [s.id ?? s.kind, s]));
+  assert.deepEqual([by.e1.label, by.e1.state, by.e1.added, by.e1.deleted], ['Edited a.txt', 'done', 1, 1], 'its label, state and counts');
+  assert.equal(by.b1.state, 'failed');
+  assert.equal(kept.find((/** @type {any} */ s) => s.kind === 'thought').detail.length, STEP_TEXT.detail, 'a thought as long as other detail');
 });
 
 // Recorded turns (tests/fixtures/), replayed through each adapter’s mapper into the contract: a Codex fileChange says
