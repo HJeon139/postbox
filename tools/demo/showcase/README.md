@@ -6,10 +6,10 @@ Five real sessions, recorded once with real agents and replayed by the demo’s 
 
 Each is one room in a Postbox started from this repository (`node server/index.mjs --port <port> --data <a fresh temporary folder>`) on 12 November 2026, with two agents:
 
-| Agent | Harness | Model | Permission mode |
-| -------- | ---------------------------------------------------------- | --------------------------------------------------- | -------------------------------------------------------- | --- |
-| @builder | Claude Code 2.1.318 | `claude-opus-5-5`, effort medium | Auto, with every turn capped at $4 by `--max-budget-usd` |
-| @critic | Codex 0.167.0 (`codex app-server`, signed in with ChatGPT) | `gpt-6.1-sol`, the first model `model/list` offered | Auto |
+| Agent    | Harness                                                    | Model                                               | Permission mode                                          |
+| -------- | ---------------------------------------------------------- | --------------------------------------------------- | -------------------------------------------------------- |
+| @builder | Claude Code 2.1.318                                        | `claude-opus-5-5`, effort medium                    | Auto, with every turn capped at $4 by `--max-budget-usd` |
+| @critic  | Codex 0.167.0 (`codex app-server`, signed in with ChatGPT) | `gpt-6.1-sol`, the first model `model/list` offered | Auto                                                     |
 
 The person wrote one message in each room, the question below, and nothing after it. @builder answered with an app and asked @critic to review it; @critic read the app’s file and pinned comments to its parts with `review_block`; @builder shipped v2 with `update_app` and resolved each comment. A script drove the rooms through Postbox’s own API, with a browser page open on each so the apps were checked before they were shown. `view_app` used the headless Chromium Playwright had already installed on that computer, copied into the data folder, so nothing was downloaded.
 
