@@ -4,7 +4,7 @@ Part of [the architecture](../architecture.md). Who Postbox answers, and what th
 
 ## This computer alone
 
-**Decision.** Postbox listens on 127.0.0.1 only, and answers only requests addressed to `127.0.0.1:<port>` or `localhost:<port>`: any other `Host` gets 421, which keeps out DNS rebinding. A write whose `Origin` is another site’s gets 403. Both checks run before any route, in `server/index.mjs`, and before the page’s token is checked.
+**Decision.** Postbox listens on 127.0.0.1 only, and answers only requests addressed to `127.0.0.1:<port>` or `localhost:<port>`: any other `Host` gets 421, which keeps out DNS rebinding. A write whose `Origin` is another origin’s gets 403, another port on this computer included, though the browser counts that as the same site. Both checks run before any route, in `server/index.mjs`, and before the page’s token is checked.
 
 ## Writes need the page’s token
 
