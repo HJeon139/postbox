@@ -2,16 +2,13 @@
 // limit, queues messages sent mid-reply, handles Stop, tracks what "needs you", and implements the UI
 // tools that agents call (over MCP, or in-process for the mock).
 
-import { randomUUID } from 'node:crypto';
 import { homedir } from 'node:os';
 import { ASKING } from '../shared/catalog.mjs';
 import { READING } from '../shared/limits.mjs';
 import { formatDuration, glimpseOf } from '../shared/text.mjs';
 import { carriedList } from '../shared/work.mjs';
-import { workFolder } from './adapters/folder.mjs';
 import { listProcesses } from './adapters/process-group.mjs';
 import { EFFORT_LEVELS } from './adapters/setup.mjs';
-import { toolsDownNote } from './adapters/tools-down.mjs';
 import { recordCommands, runAgentCommand } from './agent-commands.mjs';
 import { agentFile, agentFolders, appFiles } from './agent-files.mjs';
 import { APP_HOLD_MAX, APP_SEND_LIMIT, APP_SEND_WINDOW_MS } from './app-send-limits.mjs';
@@ -19,14 +16,14 @@ import { appCheck, appEvent, appFile, appQuery, appState, fixEnded, needAppSend,
 import { ArchivePasses } from './archive-runtime.mjs';
 import { askQuestions, QUESTION_TOOL, questionBlocks } from './ask-question.mjs';
 import { act, answerDelivered, unreadAnswer } from './blocks.mjs';
-import { keptTurns, nextNeed, noticeNeed, releaseNeed, stateFor, TURN_TIED } from './card-needs.mjs';
-import { catchUp, moveMarkers, pointerIfSeen } from './catch-up.mjs';
+import { nextNeed, noticeNeed, stateFor } from './card-needs.mjs';
+import { catchUp, moveMarkers } from './catch-up.mjs';
 import { attachClaudeSession, claudeSessions, mirror, pollMirror, rearmMirrors, stopMirrorFor, stopMirrors } from './claude-mirror.mjs';
 import { createThread, ensureSession, renameThread } from './conversations.mjs';
+import { deliver, retry } from './deliver.mjs';
 import { diagramCheck } from './diagram-check.mjs';
 import { emptyReply, endedWithoutReply } from './empty-reply.mjs';
-import { heldSession } from './held-session.mjs';
-import { clip, clipText, httpError, retiredError } from './helpers.mjs';
+import { clip, clipText, httpError } from './helpers.mjs';
 import { describeItem, topicRootLine } from './item-lines.mjs';
 import { endJob, expireStaleJobs, recordJob } from './job-records.mjs';
 import { keptJobs, pollKept, stopJob, stopKeptJobs, watchKept } from './kept-jobs.mjs';
@@ -50,34 +47,32 @@ import {
 import { retireModes, runsAs } from './permission-modes.mjs';
 import { changePermissionFolder, changePermissionRule, latestProject, PERMISSION_MODES, panelTarget, permissionsView } from './permissions-panel.mjs';
 import { createPersona, updatePersona } from './persona-write.mjs';
-import { arrival } from './queue-batch.mjs';
 import { readCapped } from './read-capped.mjs';
 import { addReadFolder, readCardAlways } from './read-folders.mjs';
 import { readConversation, readLine, readMessage } from './read-message.mjs';
 import { addHost, host, removeHost, setProjectHostFolder, updateHost } from './remote/host-admin.mjs';
 import { describeHostInstall, hostStatus, installHost, retryHost, watchHosts } from './remote/host-status.mjs';
-import { localBackends, refuseHere, refuseUnregistered, registeredAdapter } from './remote/placement.mjs';
+import { localBackends } from './remote/placement.mjs';
 import { RemoteTurns } from './remote/turns.mjs';
 import { placeStep, replySegment, stepTaken, wordsSegment } from './reply-segment.mjs';
-import { armWake, cancelWakeSchedule, prepareScheduledRetry, rearmWakes, recordScheduledTool, scheduleWake, settleScheduledWake } from './scheduled-wakes.mjs';
+import { armWake, cancelWakeSchedule, rearmWakes, recordScheduledTool, scheduleWake, settleScheduledWake } from './scheduled-wakes.mjs';
 import { sendMessage, threadRefs } from './send-message.mjs';
 import { deleteSession, deleteThread } from './session-lifecycle.mjs';
 import { pendingSessionsIn, stampNeeds, tellAgent, updateSession } from './session-write.mjs';
 import { mcpContext } from './setup-context.mjs';
 import { clearSummaryPending, postSummary, shareText, shareToConversation, summarizeBack, summarizing } from './share-back.mjs';
 import { commandFolder, expireStaleCommands, flushShellOutput, runShellCommand, stopShellCommand, stopShellCommands } from './shell-runs.mjs';
-import { agentWake, bumpSideLink, endChain, recordAgentMessage, resolveHop, sideSession } from './side-threads.mjs';
+import { agentWake, bumpSideLink, recordAgentMessage, resolveHop, sideSession } from './side-threads.mjs';
 import { turnStep } from './step-text.mjs';
 import { newId } from './store.mjs';
-import { heldTurn, saveBackendState, watchStore, whenWritable } from './store-outage.mjs';
-import { notUrgent } from './subagent-end.mjs';
+import { saveBackendState, watchStore } from './store-outage.mjs';
 import { conversationThreads, glossaryFor, lineage } from './thread-lineage.mjs';
-import { firstPromptSection, settleThread, turnContext } from './thread-summary.mjs';
+import { settleThread } from './thread-summary.mjs';
 import { updateThread } from './thread-write.mjs';
 import { startTopic } from './topic-open.mjs';
 import { checkTurn, stallLeftRunning, stallSteps } from './turn-checks.mjs';
 import { endedAs, endWork } from './turn-end-work.mjs';
-import { askedAgain, askedOf, replyMarks } from './turn-marks.mjs';
+import { askedOf, replyMarks } from './turn-marks.mjs';
 import { foldSteps, settleSubagentSteps } from './turn-steps.mjs';
 import { dismissStopAsk, recordStopped, requestStop, stop, stopTurns, turnExited } from './turn-stop.mjs';
 import { workEvents } from './turn-work.mjs';
@@ -356,163 +351,13 @@ export class Runtime {
     return queue.drainQueue(this, threadId, wakesOnly);
   }
 
-  // ── Turns ──────────────────────────────────────────────────────────────────────────
+  // ── Turns: server/deliver.mjs, turn-stop.mjs and job-records.mjs ────────────────────
 
-  /**
-   * Runs one agent turn through its adapter.
-   * threadId: where the turn speaks, when that isn’t the session’s own thread: a conversation session answers in a side
-   * thread (#110), so one persona has one memory per conversation.
-   * @param {string} sessionId @param {any} message
-   * @param {{ summarizeTo?: string|null, threadId?: string|null }} [opts]
-   */
-  deliver(sessionId, message, { summarizeTo = null, threadId = null } = {}) {
-    // A session just made behind a held commit: its turn starts once it's published (#796's class in sessions).
-    if (heldSession(this, sessionId, () => this.deliver(sessionId, message, { summarizeTo, threadId }))) return;
-    const se = this.store.pending.session(sessionId) ?? this.session(sessionId); // a summary's or a notice's write held (#506)
-    if (se.retiredFork) throw retiredError(se);
-    message = prepareScheduledRetry(this, message, se.threadId);
-    // As it was asked, for Retry (askedOf).
-    const asked = { message, summarizeTo, threadId };
-    // The store can’t be written: the turn starts once it can (ST-3).
-    if (heldTurn(this, sessionId, () => this.deliver(sessionId, asked.message, { summarizeTo, threadId }), message)) return;
-    if (this.turns.has(sessionId)) {
-      // Agent-to-agent messages and events wait for the current turn to end.
-      const t = this.turns.get(sessionId);
-      t.pending.push({ message: { ...message, at: message.at ?? Date.now(), seq: message.seq ?? arrival() }, summarizeTo, threadId });
-      return;
-    }
-    // A stopped turn’s process is still exiting: the next turn waits for it, so a session never runs two (#126). An answer
-    // held here isn’t read yet: it’s read when the turn it starts begins.
-    const exiting = this.exiting.get(sessionId);
-    if (exiting) {
-      exiting.held.push({ message: { ...message, at: message.at ?? Date.now(), seq: message.seq ?? arrival() }, summarizeTo, threadId });
-      return;
-    }
-    // Shutting down: a new CLI would outlive Postbox. A message you sent waits in the queue (turnExited).
-    if (this.closing) return;
-    const where = threadId && threadId !== se.threadId && this.store.pending.thread(threadId) ? threadId : se.threadId;
-    this.answerDelivered(where, message);
-    // A skill or command (#67) is the whole prompt, since Claude Code runs it only when the prompt starts with /name:
-    // the context below waits for the agent’s next turn instead. So does a remote turn attached again after a restart
-    // (#120, message.attach): it sends the agent nothing, and replays what the host has.
-    const slash = message.slash === true || typeof message.attach === 'string';
-    // A queued mention its last room summary already gave it comes as a pointer there, never as a thread’s direct task (#484, #504).
-    if (where === se.threadId) message = pointerIfSeen(this, se, message);
-    // Postbox’s notices that waited for this agent’s next turn (tellAgent: what became of its earlier messages) lead the
-    // background; the brief isn’t context, it goes with the room’s facts (turnFacts).
-    if (se.context?.length && !slash) {
-      // Not an urgent note to stop a subagent (#229): its turn ended, and the subagent with it.
-      message = { ...message, context: [...notUrgent(se.context), ...(message.context ?? [])] };
-      this.updateSession(sessionId, (now) => ({ context: (now.context ?? []).filter((/** @type {string} */ x) => !se.context.includes(x)) })); // only what it read
-    }
-    // Postbox’s tools didn’t load last turn: told once, whatever the backend (tools-down.mjs).
-    const down = toolsDownNote(se, message);
-    if (down) message = { ...message, context: [down, ...(message.context ?? [])] };
-    if (down) saveBackendState(this, sessionId, { postboxToolsDown: null });
-    // Problems the checks found in its last reply, still waiting to go as a lint turn, come with this turn instead, as
-    // message.lint: fixes it owes, placed with the request rather than in the background.
-    if (message.kind !== 'lint' && !slash) message = this.foldLint(sessionId, message);
-    // A topic or side thread’s request leads; its room catch-up is background. A room turn keeps the existing order.
-    message = turnContext(this, this.store.pending.session(sessionId) ?? this.s.sessions[sessionId], where, message, slash);
-    const persona = this.persona(se.personaId);
-    const adapter = registeredAdapter(this, persona);
-    const abort = new AbortController();
-    const turn = {
-      id: newId('turn'),
-      kind: message.kind,
-      // Whether this is the person moving on (#69): their message or an event of theirs, not another agent’s review (#133).
-      movesOn: message.kind === 'user' || (message.kind === 'event' && !message.event?.from),
-      from:
-        message.kind === 'agent'
-          ? String(message.from ?? '')
-              .replace(/^@/, '')
-              .toLowerCase()
-          : null,
-      sessionId,
-      // The backend it started on: a persona changed mid-turn reaches the next turn, not this one (#220).
-      backend: persona?.backend ?? 'mock',
-      // And the mode: the person’s hooks load at its start in some modes only, and stay as they loaded (#806, #1030).
-      mode: persona?.permissionMode ?? 'auto',
-      threadId: where,
-      promptFirst: firstPromptSection(message, where !== se.threadId),
-      segment: null,
-      first: null,
-      steps: [],
-      partWords: {}, // each part’s words so far, by its id (reply-segment.mjs, placeStep)
-      abort,
-      closed: false,
-      summarizeTo,
-      checkpoint: null,
-      pending: [],
-      said: '',
-      rawTail: [],
-      // A skill or command, or a host turn attached again: it may end with nothing to say, as /compact does (#485).
-      slash,
-      // Agents the failed reply this retries already woke: its mentions don’t wake them again (#485).
-      woken: Array.isArray(message.woken) ? message.woken : [],
-      startedAt: Date.now(),
-      // This turn’s own MCP token: a call that carries another turn’s, such as a stopped one’s, is refused (#126).
-      token: randomUUID(),
-      /** @type {Promise<void>} resolves once the adapter is done, which for a real backend is when its process has exited */
-      exited: Promise.resolve(),
-      /** @type {Set<string>} background jobs Stop was asked to keep running (#129) */
-      keepJobs: new Set(),
-      asked,
-    };
-    this.turns.set(sessionId, turn);
-    // A persona on a remote host (#120): the turn is remote from here on (server/remote/turns.mjs).
-    const hostId = adapter ? this.remote.hostOf(persona) : null;
-    if (hostId) this.remote.begin(turn, hostId, adapter);
-    // The work ledger (#132) follows the turn’s tool calls. A change outside the project’s folder and the agent’s is
-    // flagged; the adapter knows the agent’s folder. A remote agent’s folder is on its host, never made here.
-    const project = this.s.projects[this.s.threads[se.threadId]?.projectId] ?? null;
-    this.ledger.startTurn(turn, {
-      se,
-      folder: hostId ? null : workFolder(adapter, persona, project),
-      projectFolder: project?.folder ?? null,
-    });
-    // Rules the person allowed once (from a refusal card) apply to this turn only.
-    turn.allowOnce = se.allowOnce ?? [];
-    this.updateSession(sessionId, {
-      allowOnce: [],
-      endingSubagents: [],
-      glimpse: '',
-      // Where the turn is, when it’s in a side thread (#121): the conversation shows the agent at work there.
-      sideTurn: where === se.threadId ? null : { threadId: where, by: message.kind === 'agent' ? turn.from : message.kind === 'user' ? 'you' : null },
-      state: 'think',
-      // Moving on clears a need tied to a turn; the cards that wait until answered stay (card-needs.mjs RANK).
-      needs: turn.movesOn && TURN_TIED.has(se.needs?.kind) ? null : se.needs,
-      // This turn is the last turn from its start (card-needs.mjs turnsOf), so a restart that cuts it off, or a card
-      // released after it leaves the running turns, doesn't count a block from the turn before.
-      lastTurnId: turn.id,
-      // A turn that doesn't move on keeps the turns still asking you something, so their refusals and tool requests
-      // count until you move on (card-needs.mjs keptTurns). Read before this patch moves lastTurnId on.
-      keptTurnIds: turn.movesOn ? [] : keptTurns(this, se),
-      // A turn that doesn't move on keeps the block it found waiting (#69): it counts mid-turn, at the turn's end and
-      // after a restart (card-needs.mjs `keep`), even if a permission takes the need meanwhile. In the store, as above.
-      keptId: !turn.movesOn && se.needs?.kind === 'block' ? se.needs.itemId : null,
-      currentStep: 'Thinking',
-      finishedAt: null,
-    });
-    // With the turn’s last raw lines, which each adapter’s recorder keeps (recorderFor), for an empty reply (#485).
-    const ctx = Object.assign(this.turnContext(se, turn), { rawTail: turn.rawTail });
-    // A remote turn has its host’s welcome, its host turn and the conversation’s snapshot before the adapter starts.
-    const run = Promise.resolve().then(async () => {
-      if (!adapter) refuseUnregistered(se, persona);
-      if (!hostId) refuseHere(this, se, persona);
-      return adapter.deliver(this.s.sessions[sessionId], hostId ? await this.remote.prepare(turn, ctx, message) : message, ctx);
-    });
-    turn.exited = run.then(
-      () => {},
-      () => {},
-    );
-    run.then(
-      () => this.endTurn(turn, null),
-      (err) => this.endTurn(turn, err),
-    );
-    // The chain’s count resets once the chain ends (#541). While the store can’t be written, that write waits behind the
-    // exit’s own (turnExited), which also waits, so it runs after the session has left exiting and sees the chain ended.
-    void turn.exited.then(() => this.turnExited(turn)).then(() => whenWritable(this, () => endChain(this, turn.threadId)));
+  deliver(sessionId, message, opts) {
+    return deliver(this, sessionId, message, opts);
+  }
+  retry(threadId, itemId) {
+    return retry(this, threadId, itemId);
   }
 
   turnContext(se0, turn) {
@@ -972,20 +817,6 @@ export class Runtime {
     const r = this.remote.resume(sessionId);
     if (!r.ok) throw httpError(409, r.message);
     return { ok: true };
-  }
-
-  /** Retry a failed reply: sends the same message again, or a promise of that when it’s read back from the store first. */
-  retry(threadId, itemId) {
-    const it = this.store.item(threadId, itemId);
-    if (it?.status !== 'failed') throw httpError(409, 'Only a failed reply can be retried.');
-    // What it was asked (turn-marks.mjs): refused, with nothing sent, when it was kept and can’t be read back exactly.
-    return askedAgain(this, threadId, it, (asked) => {
-      this.patchItem(threadId, itemId, { status: 'retried' });
-      // Only the cards that wait until answered can take the need: the failed turn's own asks would flash until the
-      // retried turn starts, and that turn's end decides them.
-      releaseNeed(this, this.s.sessions[it.sessionId], itemId, undefined, { turnIds: [] });
-      this.deliver(it.sessionId, { ...asked.message, retry: true, woken: it.wokeOnFailure ?? [] }, { summarizeTo: asked.summarizeTo, threadId });
-    });
   }
 
   // ── Agents waking agents ───────────────────────────────────────────────────────────
