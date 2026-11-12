@@ -56,11 +56,17 @@ test('every showcase replay plays to v2 with its recorded words, comments and co
     const res = await page.request.get(`${origin}${src}?theme=light`);
     expect(res.headers()['content-security-policy']).toContain('sandbox allow-scripts');
     expect(res.headers()['content-security-policy']).not.toContain('allow-same-origin');
-    await expect
-      .poll(async () => {
-        const frame = page.frames().find((f) => f.url().includes(src) && !f.url().includes('check'));
-        return frame ? frame.evaluate(() => self.origin).catch(() => null) : null;
-      })
-      .toBe('null');
+    // The page shows v2 once its own check has passed it, and loads an app’s frame as it comes near the window: so
+    // wait for that check, bring the app’s own item (not the review’s copy) into view, then read its frame.
+    await c.until((s) => s.apps[appId].current === 2 && ['passed', 'note'].includes(s.apps[appId].check.status) && s, {
+      label: `${key}’s v2 to pass its check`,
+      timeout: 60_000,
+    });
+    const item = page.locator('.app-body:not(.app-review-wrap .app-body)').last();
+    await item.scrollIntoViewIfNeeded();
+    const shown = item.locator(`iframe[src*="${src}?"]`);
+    await shown.waitFor({ state: 'attached', timeout: 30_000 });
+    const frame = await (await shown.elementHandle())?.contentFrame();
+    await expect.poll(() => frame?.evaluate(() => self.origin).catch(() => null), { timeout: 15_000 }).toBe('null');
   }
 });
