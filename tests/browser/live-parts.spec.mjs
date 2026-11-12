@@ -117,3 +117,24 @@ test('four agents’ running replies fit the screen together: their words, a cap
   for (const w of four) go(w);
   await expect.poll(() => scripted.app.rt.turns.size).toBe(0);
 });
+
+test('a resized window paints the running replies to their new share, with no step needed', async ({ page }) => {
+  const t = room('Resized', ['tall']);
+  scripts.set('tall', async ({ emit, who }) => {
+    for (let i = 1; i <= 30; i++) {
+      emit({ kind: 'tool_call', id: `r${i}`, name: 'Bash', input: { command: `make part-${i}` }, final: true });
+      emit({ kind: 'tool_result', id: `r${i}`, text: `part ${i} ok` });
+    }
+    await hold(who, 1);
+  });
+  await page.goto(`${scripted.app.origin}/#/t/${t.id}`);
+  await synced(page, scripted.app);
+  scripted.app.rt.sendMessage(t.id, { text: 'Build it.' });
+  await expect.poll(() => at('tall')).toBe(1);
+  const lines = page.locator('.live-steps ul.steps.live > li.step-line');
+  const before = await lines.count();
+  await page.setViewportSize({ width: 1440, height: 500 });
+  await expect.poll(() => lines.count(), { message: 'fewer lines fit the shorter window' }).toBeLessThan(before);
+  go('tall');
+  await expect.poll(() => scripted.app.rt.turns.size).toBe(0);
+});
