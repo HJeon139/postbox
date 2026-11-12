@@ -79,7 +79,7 @@ Inventory read against `main` at `48f20ccd` (`rg` for `turns.has/get` in `server
 | Site / caller family | Current meaning | Policy in background-wait |
 |---|---|---|
 | `runtime.mjs`, send/deliver, pending batching, queue drain | Busy session and process ownership are one turn | Admit record references through the live execution; do not create a second process; preserve explicit next-turn eligibility |
-| `runtime.mjs`, `endTurn` / `turnExited`, endWork, chains | Model and process settlement share one boundary | Use the settlement split above; end model work at result, execution cleanup at exit |
+| `turn-finish.mjs` `endTurn` / `turn-stop.mjs` `turnExited`, endWork, chains | Model and process settlement share one boundary | Use the settlement split above; end model work at result, execution cleanup at exit |
 | `runtime.mjs`, slash command and model/effort controls | Busy refuses slash; control belongs to turn | A parity-verified slash command uses an ordered input to the existing execution; otherwise refuse visibly as unavailable during background work. Model/effort changes require the execution’s tested control; never spawn a replacement process |
 | `runtime.mjs`, Stop / requestStop / job stopping; `kept-jobs.mjs` | Turn map locates process and job controller | Look up execution/task owner even with no model turn; preserve the person’s jobs choice and stale-turn fencing |
 | `runtime.mjs`, delete/archive/purge; `persona-delete.mjs` | Delivery and process retirement overlap | Deleting admits no input under #597’s hold/refusal policy; Undo/purge arbitration is record-backed, and retirement uses the execution registry |

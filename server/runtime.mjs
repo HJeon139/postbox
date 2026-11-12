@@ -3,7 +3,6 @@
 // tools that agents call (over MCP, or in-process for the mock).
 
 import { homedir } from 'node:os';
-import { ASKING } from '../shared/catalog.mjs';
 import { READING } from '../shared/limits.mjs';
 import { formatDuration } from '../shared/text.mjs';
 import { carriedList } from '../shared/work.mjs';
@@ -11,18 +10,16 @@ import { listProcesses } from './adapters/process-group.mjs';
 import { recordCommands, runAgentCommand } from './agent-commands.mjs';
 import { agentFile, agentFolders, appFiles } from './agent-files.mjs';
 import { APP_HOLD_MAX, APP_SEND_LIMIT, APP_SEND_WINDOW_MS } from './app-send-limits.mjs';
-import { appCheck, appEvent, appFile, appQuery, appState, fixEnded, needAppSend, registerApp, resolveAppSend } from './apps.mjs';
+import { appCheck, appEvent, appFile, appQuery, appState, needAppSend, registerApp, resolveAppSend } from './apps.mjs';
 import { ArchivePasses } from './archive-runtime.mjs';
 import { askQuestions, QUESTION_TOOL, questionBlocks } from './ask-question.mjs';
 import { act, answerDelivered, unreadAnswer } from './blocks.mjs';
-import { nextNeed, noticeNeed, stateFor } from './card-needs.mjs';
 import { catchUp, moveMarkers } from './catch-up.mjs';
 import { attachClaudeSession, claudeSessions, mirror, pollMirror, rearmMirrors, stopMirrorFor, stopMirrors } from './claude-mirror.mjs';
 import { createThread, ensureSession, renameThread } from './conversations.mjs';
 import { deliver, retry } from './deliver.mjs';
 import { diagramCheck } from './diagram-check.mjs';
-import { emptyReply, endedWithoutReply } from './empty-reply.mjs';
-import { clip, clipText, httpError } from './helpers.mjs';
+import { clipText, httpError } from './helpers.mjs';
 import { describeItem, topicRootLine } from './item-lines.mjs';
 import { endJob, expireStaleJobs, recordJob } from './job-records.mjs';
 import { keptJobs, pollKept, stopJob, stopKeptJobs, watchKept } from './kept-jobs.mjs';
@@ -53,24 +50,21 @@ import { addHost, host, removeHost, setProjectHostFolder, updateHost } from './r
 import { describeHostInstall, hostStatus, installHost, retryHost, watchHosts } from './remote/host-status.mjs';
 import { localBackends } from './remote/placement.mjs';
 import { RemoteTurns } from './remote/turns.mjs';
-import { armWake, cancelWakeSchedule, rearmWakes, scheduleWake, settleScheduledWake } from './scheduled-wakes.mjs';
+import { armWake, cancelWakeSchedule, rearmWakes, scheduleWake } from './scheduled-wakes.mjs';
 import { sendMessage, threadRefs } from './send-message.mjs';
 import { deleteSession, deleteThread } from './session-lifecycle.mjs';
 import { pendingSessionsIn, stampNeeds, tellAgent, updateSession } from './session-write.mjs';
 import { mcpContext } from './setup-context.mjs';
-import { clearSummaryPending, postSummary, shareText, shareToConversation, summarizeBack, summarizing } from './share-back.mjs';
+import { clearSummaryPending, shareText, shareToConversation, summarizeBack, summarizing } from './share-back.mjs';
 import { commandFolder, expireStaleCommands, flushShellOutput, runShellCommand, stopShellCommand, stopShellCommands } from './shell-runs.mjs';
 import { agentWake, bumpSideLink, recordAgentMessage, resolveHop, sideSession } from './side-threads.mjs';
 import { newId } from './store.mjs';
 import { watchStore } from './store-outage.mjs';
 import { conversationThreads, glossaryFor, lineage } from './thread-lineage.mjs';
-import { settleThread } from './thread-summary.mjs';
 import { updateThread } from './thread-write.mjs';
 import { startTopic } from './topic-open.mjs';
 import { checkTurn, stallLeftRunning, stallSteps } from './turn-checks.mjs';
-import { endedAs, endWork } from './turn-end-work.mjs';
-import { askedOf, replyMarks } from './turn-marks.mjs';
-import { foldSteps, settleSubagentSteps } from './turn-steps.mjs';
+import { settleSubagentSteps } from './turn-steps.mjs';
 import { dismissStopAsk, recordStopped, requestStop, stop, stopTurns } from './turn-stop.mjs';
 import { toolsFor } from './ui-tools.mjs';
 import { unarchive } from './unarchive.mjs';
@@ -354,137 +348,6 @@ export class Runtime {
   }
   retry(threadId, itemId) {
     return retry(this, threadId, itemId);
-  }
-
-  endTurn(turn, err) {
-    if (turn.closed) return;
-    turn.closed = true;
-    // Its permissions expire while it still counts as running, so their release counts no card tied to a turn: the
-    // turn's end, below, decides those.
-    for (const [id, w] of this.permissionWaits) if (w.sessionId === turn.sessionId) this.settlePermission(id, 'expired');
-    this.turns.delete(turn.sessionId);
-    this.settleSubagentSteps(turn);
-    // Its steps fold to what its record keeps: the live view's detail goes with the turn (turn-steps.mjs).
-    if (turn.first) foldSteps(this, turn.threadId, turn.first);
-    // How a remote turn ended on its host decides what the person sees: Sign-in needed and Interrupted say so (#120).
-    if (turn.remote) err = this.remote.ended(turn, err);
-    settleScheduledWake(this, turn, err);
-    endWork(this, turn, endedAs(err));
-    // The turn’s own lines in an attached session’s transcript aren’t terminal activity.
-    this.mirrors.get(turn.sessionId)?.tail.skipToEnd();
-    const se = this.s.sessions[turn.sessionId];
-    if (!se) return;
-    const items = this.store.pending.items(turn.threadId);
-    // A turn that ends with no reply is never posted as an empty message (#485, empty-reply.mjs): it fails, saying so.
-    if (!err && endedWithoutReply(turn, items)) err = emptyReply(this, se, turn);
-    // The open segment by its id, even while held behind a commit; then any other still streaming in the visible state.
-    if (turn.openSegment) this.patchItem(turn.threadId, turn.openSegment, { status: err ? 'failed' : 'done' });
-    for (const it of items)
-      if (it.turnId === turn.id && it.kind === 'agent' && it.status === 'streaming' && it.id !== turn.openSegment)
-        this.patchItem(turn.threadId, it.id, { status: err ? 'failed' : 'done' });
-    turn.openSegment = null;
-    if (turn.checkpoint && !err)
-      for (const it of items)
-        if (it.turnId === turn.id && (it.kind === 'agent' || it.kind === 'block')) this.patchItem(turn.threadId, it.id, { checkpoint: turn.checkpoint });
-    if (!err) postSummary(this, se, turn, items);
-    // Posted or not, the summary isn’t pending any more, so Summarize back works again, unless one waits behind this
-    // turn (#225). Any turn ending clears one a restart left behind, too.
-    this.clearSummaryPending(turn.threadId, turn);
-    if (err && err.name !== 'AbortError') {
-      // Its progress steps still running show as stalled, as at any turn’s end (#98).
-      this.stallLeftRunning(turn, se, 'failed');
-      const message = err.userMessage ?? err.message ?? 'The agent stopped unexpectedly.';
-      const target =
-        turn.segment ??
-        turn.first ??
-        this.addItem(turn.threadId, {
-          kind: 'agent',
-          sessionId: se.id,
-          personaId: se.personaId,
-          handle: se.handle,
-          turnId: turn.id,
-          text: '',
-          status: 'failed',
-          ...replyMarks(turn),
-        }).id;
-      this.patchItem(turn.threadId, target, {
-        status: 'failed',
-        error: message,
-        retry: turn.retry ?? null,
-        asked: askedOf(turn),
-        ...(err.remote ? { remote: err.remote } : {}),
-        ...(err.rawEnding ? { rawEnding: err.rawEnding } : {}),
-      });
-      this.updateSession(se.id, {
-        state: 'failed',
-        needs: { kind: 'failed', itemId: target, text: message, ...this.awayFrom(se, turn.threadId) },
-        sideTurn: null,
-        subagents: [],
-        currentStep: 'Failed',
-        finishedAt: Date.now(),
-        stopAsk: null,
-      });
-      this.notify('blocking', se, `@${se.handle}’s reply failed`, message, turn.threadId);
-      // Its @-mentions still wake their agents (#485, the person’s choice): what it wrote may be cut off, so they’re told.
-      // Not a host turn that goes on (Interrupted, Sign-in needed, its link lost): it wakes them when it ends.
-      // The item keeps whom they woke, with those the failures before it woke, so no Retry wakes them again.
-      const wakes = turn.said.trim() && !err.remote && se.remoteTurn?.state !== 'lost';
-      const woke = wakes ? this.wakeMentions(se, turn, `(This reply failed before it finished: ${message} It may be cut off.)\n\n${turn.said}`) : [];
-      if (woke.length || turn.woken.length) this.patchItem(turn.threadId, target, { wokeOnFailure: [...new Set([...turn.woken, ...woke])] });
-      // A wake that waited for this turn still goes: with no forks, it was promised an answer (#228). Your own
-      // queued messages wait, as before, for you to see the failure.
-      this.takePending(se, turn, 'wakes');
-      return;
-    }
-    // An app-check turn that ended without a new version: show the app with a note, or crashed (#964), not wait forever.
-    if (turn.kind === 'app-check') {
-      for (const app of Object.values(this.store.pending.apps()))
-        if (app.sessionId === se.id && app.check.status === 'fixing') this.store.emit('app', { ...app, check: { ...app.check, status: fixEnded(app) } });
-    }
-    // Only this turn’s asking blocks make the agent need you. Older ones you left open stay open, and the
-    // client shows them quietly (“1 open review”), so moving on clears needs-you (#69). A turn you didn’t start
-    // (a lint or app-check pass, another agent’s wake or review) isn’t moving on: the block it was waiting on still counts.
-    const open = items.filter(
-      (it) => it.kind === 'block' && it.turnId === turn.id && it.sessionId === se.id && it.valid && ASKING.has(it.block.type) && !it.answered,
-    );
-    const waiting = se.keptId ? items.find((it) => it.id === se.keptId) : null;
-    if (!open.length && waiting && !waiting.answered) open.push(waiting);
-    const last = [...items].reverse().find((it) => it.kind === 'agent' && it.sessionId === se.id && it.text);
-    const viewing = this.isViewing(turn.threadId);
-    const topic = turn.threadId !== se.threadId && this.store.pending.thread(turn.threadId)?.kind === 'topic' ? turn.threadId : null;
-    // The newest card that still waits (card-needs.mjs): this turn's asks, the kept turns' (a failed reply's Retry
-    // among them), and the cards that wait until answered.
-    const needs = nextNeed(this, se, { turnIds: [turn.id, ...(se.keptTurnIds ?? [])], keep: waiting?.id ?? null });
-    const mentionsYou = /(^|\W)@you\b/i.test(turn.said);
-    this.updateSession(se.id, (se) => ({
-      state: stateFor(needs),
-      needs,
-      sideTurn: null,
-      glimpse: '',
-      subagents: [],
-      currentStep: needs ? 'Waiting for you' : `Idle since ${new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}`,
-      lastMessage: last ? clip(last.text) : se.lastMessage,
-      finishedAt: Date.now(),
-      // A reply in a topic thread counts on the thread, not the conversation it answers from (#228). The count is the
-      // pending session's (se, here): behind a held commit, the published one lost the increment of a turn before.
-      unread: topic ? se.unread : viewing ? 0 : se.unread + (turn.said || open.length ? 1 : 0),
-      stopAsk: null,
-    }));
-    noticeNeed(this, se, needs);
-    if (needs && (needs.kind === 'block' || needs.kind === 'toolask')) this.notify('blocking', se, `@${se.handle} needs you`, needs.text, needs.threadId);
-    else if (mentionsYou && !viewing) this.notify('info', se, `@${se.handle} mentioned you`, clip(turn.said, 120), turn.threadId);
-    else if (turn.said && !viewing) this.notify('info', se, `@${se.handle} finished`, clip(turn.said, 120), turn.threadId);
-
-    // The checks: what this turn sent, as problems, which go back to the agent in one lint turn. A lint turn is
-    // never linted again, so this can’t loop; one that only called tools ends as a note instead of a reply.
-    const stalled = this.stallSteps(turn, se);
-    if (turn.kind === 'lint') this.quietLint(turn, se);
-    else this.endLint(turn, [...this.checkTurn(turn, se), ...stalled]);
-    if (topic && !viewing && (turn.said || open.length)) updateThread(this, topic, (x) => ({ unread: (x.unread ?? 0) + 1 }));
-    if (turn.threadId !== se.threadId) settleThread(this, turn.threadId);
-
-    this.wakeMentions(se, turn, turn.said);
-    this.takePending(se, turn, true);
   }
 
   /** The wakes a turn's @-mentions make once it ends (server/mention-wakes.mjs). */
