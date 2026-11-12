@@ -1,6 +1,6 @@
 # Design intent
 
-This document records why Postbox looks and behaves the way it does. It’s the reasoning behind the mockups in [`mockups/`](../mockups/), worked out in design reviews before any app code was written. When a later change conflicts with something here, update this document in the same change, so the reasoning stays current.
+This document records why Postbox looks and behaves the way it does. It’s the reasoning behind its design, worked out in design reviews and the Stage 1 mockups before any app code was written. When a later change conflicts with something here, update this document in the same change, so the reasoning stays current.
 
 ## Purpose
 
@@ -213,7 +213,7 @@ sequenceDiagram
 | State is shown by motion, not icons | Generating: the arc turns once and rests. Thinking: a short bulge of thickness runs along a still arc. Calling tools: a dot crosses the free part of the ring and back. Needs you: an amber pulse. Every motion eases in and out, then rests. |
 | Charts follow fixed mark specs, with a table view on every chart | The kit makes correct charts the default for agents. |
 
-All colors are defined as tokens on `:root` in [`mockups/workbench.css`](../mockups/workbench.css), with their contrast ratios on the [palette page](../mockups/00-palette.html). Every text pair passes WCAG 2.1 AA in both modes, and the chart series pass a color-vision-deficiency check.
+All colors are defined as tokens on `:root` in [`app/workbench.css`](../app/workbench.css), and `tools/contrast.mjs` checks their contrast ratios in `npm run check`. Every text pair passes WCAG 2.1 AA in both modes, and the chart series pass a color-vision-deficiency check.
 
 ### Accessibility and keyboard
 

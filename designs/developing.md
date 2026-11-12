@@ -18,6 +18,70 @@ A prompt’s example of a defect is a symptom. Find the pattern and fix the caus
 - A defect the end-to-end UAT found is a check waiting to be written. When a check can catch the class, it goes into `tools/uat/checks.mjs`, as `refusal-without-card` and `settings-leak` did.
 - A limit fixed in one place is fixed in all of them: the catalog, the event builder, the kit, the agent guide and the MCP tool descriptions all read `shared/limits.mjs` (#50).
 
+## Rules for every session
+
+The root `AGENTS.md` carries these rules, short, for any agent working in the repo, prompted or not (#315). A change to a rule here changes it there too, in the same commit.
+
+**Ports and data.** Give every server you start a port and a `--data` folder of your own, such as one in your scratchpad: without `--data`, Postbox uses `~/.postbox`, which every clone, worktree and installed copy shares (#90). Chromium needs no port: Playwright and `tools/browser.mjs` drive it over a pipe. Never touch the preview on 4173, another tool’s server on 4320, the clone’s `data/`, or `~/.postbox` (“Running the gate”).
+
+**Length limits** (architecture.md, “Module and function size”). Biome fails any file or function past its default length (`biome.json`), and a file already past it can shrink but not grow. So:
+- **Make room first.** When your change would grow a file at its ceiling, such as `server/runtime.mjs`, `server/ledger.mjs` or `app/js/thread.mjs`, first move the concern your task names into a module of its own, as its own commit, with no other change.
+- **What the move may change** (architecture.md, “What a move may change”):
+  - A method becomes a function that takes the instance first: `rt` for `Runtime`, `ledger` for `Ledger`. `this` becomes that parameter, and nothing else in its body changes.
+  - The class keeps a one-line method that delegates to it (`agentWake(...a) { return agentWake(this, ...a); }`), so callers and tests don’t change.
+  - A static becomes a module constant, and the class keeps an alias (`static APP_HOLD_MAX = APP_HOLD_MAX;`), since tests read `Runtime.APP_HOLD_MAX`.
+  - A closure inside another function, such as a tool handler in `toolsFor`, takes the variables it read as parameters, and the commit message names them.
+  - Module-level helpers and constants the moved code reads move with it, or go to a third module both files import. Never import them back from the old file: that’s a circular import.
+- **Check the move before you commit it.** Use a folder of your own, since sessions run at once:
+
+  ```bash
+  d=$(mktemp -d)
+  # Undo the rewrite: rt (or ledger) back to this. Skip this step for a closure such as update_block,
+  # whose original already says rt (toolsFor has const rt = this): diff that one directly.
+  perl -pe 's/\brt\b/this/g' server/<new module>.mjs > "$d/undone.mjs"       # for a Ledger move: s/\bledger\b/this/g
+  git show HEAD:server/runtime.mjs | sed -n '<first>,<last>p' > "$d/removed.mjs"
+  diff -w "$d/removed.mjs" "$d/undone.mjs"                                   # left: the delegators, imports and parameter lists
+  ```
+
+  `diff -w` ignores the change of indent from inside the class to the top level. Biome may rewrap a line after the dedent, so check any line it rewrapped by eye.
+- **A moved concern comes in under the default.** A new module gets no override in `biome.json`: split moved code past the default in the same pull request, after the move commit. Don’t edit the override of the file you moved from: the integrator lowers it after each merge.
+- **New code fits the defaults** in `biome.json`. Never raise a ceiling for it.
+- **Tests too.** A new test for a test file at its ceiling goes in `tests/<module>-<concern>.test.mjs`, which must end in `.test.mjs`, or `npm test` never runs it.
+
+**Files.** In a file another session may be changing too, change only the function or block your task names, so the merges stay small. Never reformat code you didn’t change. A move is how you make room (“Length limits”, above).
+
+**Branches.**
+- Branch from `main` at the start, and stay based on it. Run `npm run hooks` in your worktree before your first commit, so each commit runs the project lints (#508).
+- Don’t rebase onto another session’s branch.
+- One commit per issue, as a Conventional Commit (`feat(scope): …`, `fix(scope): …`, `type!: …` for a breaking change; see engineering-practices.md, “Commits and versions”), with `Fixes #n` on its own line, ending with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>` when an agent wrote it. CI releases each merge to main (`.github/workflows/release.yml`).
+
+**Gate.** Before you hand off, these pass in your worktree:
+- `npm run check`
+- `npx playwright test`, and again with `POSTBOX_STREAM_LAG=300`: every browser spec in `tests/browser/`, each file on a Postbox of its own. The lag holds the server’s events back 300 ms, so a spec that reads the page before it has heard a change fails here rather than now and then on main (#174). A change you can see in the UI adds or extends a spec, as the root `AGENTS.md` and engineering-practices.md, “The gate”, say.
+- `npx playwright test <your specs> --repeat-each=10`, with the lag, for each spec you add or change, as CI runs it.
+
+Then an adversarial review subagent goes through your diff against the practices doc, and you fix what it confirms, under the scope rule below.
+
+**Scope.** Fix any bug the review finds in your own change. Anything that adds scope (a new behavior, a new check, a wider fix, more test matrix) needs both of these before you take it on:
+- **Evidence:** a repro, a measurement, a UAT result, an issue, or the person’s own request. A guess that something might happen isn’t evidence.
+- **Intent:** why it serves [intent.md](intent.md): one person directing two to four agents on their own computer, who work together without waiting on the person, with the loop right before the looks.
+
+If it costs more than it gives back to that intent, decline it. Put it under “Declined” in the pull request with the reason, or file a follow-up issue that carries its evidence. Two examples:
+- **Accepted:** showing what subagents say and think. The person was waiting, the screen looked idle, and a subagent was busy. The evidence was a UAT run, and it’s a gap in the loop.
+- **Declined:** phone-only polish (touch, phone sheets, phone screenshots). Postbox runs on localhost on your own computer, so it doesn’t run on a phone. The 375 px checks stay only because narrow windows and the thread panel squeeze the column the same way. Update the text of the UAT docs your change affects (`tests/uat/`). Don’t refresh their screenshots.
+
+**End-to-end UAT is Claude only.** A scenario that puts an agent on another backend (the Kiro CLI, the Antigravity CLI or Codex) is a compatibility run: `tools/uat-run.mjs` refuses it without `--compat`, and it runs only when a task asks for it, with a model that backend offers (for Kiro, one that `kiro-cli chat --list-models` lists).
+
+**The screenshot tools and the end-to-end UAT** (`tools/shoot-app.mjs`, `tools/shoot-uat.mjs`, `tools/uat-run.mjs`) run only when the task asks for them, or in the reviewing session. That session runs them on the merged UI: the demo screenshots (not committed), with axe over every scene; the UAT doc screenshots; and the end-to-end scenarios. It reports findings per pull request, including accessibility violations, and commits the refreshed UAT doc screenshots (`tests/uat/screenshots/`) and nothing else under `screenshots/` (“Screenshots”).
+
+**Hand off.**
+1. Push your branch and open a pull request against `main` with `gh pr create`. Don’t merge it: the integrator does (CONTRIBUTING.md).
+2. Write the body as “The pull request’s body”, below, says, and end it with “🤖 Generated with [Claude Code](https://claude.com/claude-code)” when an agent wrote it.
+3. Mark it ready for review with the `ready for integrator` label, or a comment saying so if you can’t set labels (CONTRIBUTING.md).
+4. Fix what the review reports on the same branch, with new commits.
+
+**When a task’s prompt is wrong** (a file name, a function, a flag), follow the code, and say so in the pull request.
+
 ## Proofreading
 
 Review your own change from one level above the one that made it: an engineer’s code gets a senior engineer’s review, and a senior engineer’s design gets a principal’s. **Apply the standards of the language and the platform, not generic ones**, which is what the sections below exist to supply. “Is this idiomatic?” isn’t a finding until it names the idiom, and “add a test” isn’t one until it names the behavior the test would pin.
@@ -62,7 +126,7 @@ A comment like `// refuses here (see wave 2 prompt, step 4)` fails correctness: 
 
 | Rule | Checked by |
 |---|---|
-| Lint and formatting in `app/js`, `app/kit/kit.js`, `app/kit/check.js`, `app/kit/check-layout.js`, `app/kit/diagram.js`, `app/theme.js`, `server`, `shared`, `tools` and `tests` | Biome, with warnings as errors. `app/workbench.css`, `app/index.html` and `mockups/` aren’t in its `includes` |
+| Lint and formatting in `app/js`, `app/kit/kit.js`, `app/kit/check.js`, `app/kit/check-layout.js`, `app/kit/diagram.js`, `app/theme.js`, `server`, `shared`, `tools` and `tests` | Biome, with warnings as errors. `app/workbench.css` and `app/index.html` aren’t in its `includes` |
 | No new nested ternary on a line a change adds (#685) | `tools/lint-ternary.mjs`, which runs Biome’s `style/noNestedTernary` on the changed files and at the base, and fails a hit whose trimmed text has more copies now than the change had there. So a pure move, a reindent or a split passes, even out of a deleted file, and a copy fails (#752). The gap is accepted: deleting a hit in one file and adding the same text in another changed file passes, as a move. The rule isn’t on in `biome.json` yet, since `main` still has hits; those stay until they’re fixed. A real exception carries `lint-allow ternary: <reason>` on the line lint-ternary names or the line above; it takes no `lint-allow-file`, and a `biome-ignore` for the rule fails Biome as unused (#753). Like `lint-caps`, it compares with the merge base of HEAD with `origin/main` and `upstream/main`, whichever is newer, so a fork’s stale `origin/main` doesn’t blame a change for upstream’s code; nothing is fetched, and a failure names the base and suggests `git fetch` (#786) |
 | The length of each file and function, with a ceiling for each file that was already past it | Biome, and `tools/lint-caps.mjs` for a ceiling raised in `biome.json` (architecture.md, “Module and function size”). Lowering a ceiling after a file shrinks is a review finding |
 | Types in `shared/` and `server/` | `tsc -p jsconfig.json`. `app/js/`, `tools/` and `tests/` aren’t type-checked at all, and `noImplicitAny` is off, so an untyped parameter is silently `any` |
@@ -95,7 +159,7 @@ A comment like `// refuses here (see wave 2 prompt, step 4)` fails correctness: 
 
 **Stop what you start, by its process ID, and check it’s gone.** A command that starts something in the background (a load generator, a server, a watcher) keeps each one’s ID (`yes > /dev/null & pids+=($!)`), stops those (`kill "${pids[@]}"`), and checks nothing is left (`pgrep -x yes` prints nothing) before it reports. Never stop them by job number (`kill %1`): what a job number means depends on the shell and its job control, and a miss is silent. On November 6, 2026 a loop that loaded the CPU to reproduce a flaky test (#867) ran `(yes & yes & yes & yes & sleep 3; kill %1 %2 %3 %4) &` in zsh, 20 times. One of each four ran on, 20 in all, for a day and a half on 17 of 18 cores until the person noticed. In zsh, `(sleep 302 & sleep 303 & sleep 1; kill %1 %2) &` still leaves `sleep 303` running, with no error. Stop only what you started: never `pkill` or `killall` by name, which ends other sessions’ processes too.
 
-**The screenshot tools and the end-to-end UAT belong to the reviewing session** (`tools/shoot-app.mjs`, `tools/shoot-uat.mjs`, `tools/uat-run.mjs`). It runs them once per wave on the merged UI, as [prompts/README.md](prompts/README.md), “Rules for every session”, says. Only the UAT doc screenshots are committed (“Screenshots”, below).
+**The screenshot tools and the end-to-end UAT belong to the reviewing session** (`tools/shoot-app.mjs`, `tools/shoot-uat.mjs`, `tools/uat-run.mjs`). It runs them on the merged UI, as “Rules for every session” says. Only the UAT doc screenshots are committed (“Screenshots”, below).
 
 **A check that passes needs a negative control before it counts.**
 - A type check that reports nothing on a new file under `app/js/` checked nothing: that folder isn’t in `jsconfig.json`’s `include`.
@@ -106,7 +170,8 @@ A comment like `// refuses here (see wave 2 prompt, step 4)` fails correctness: 
 
 The demo’s screenshots are generated and not committed: a refresh adds a full new copy of every image to history, and the 62 MB it had reached made every clone slower.
 - **To see the current ones,** open the `screenshots` artifact of the latest `check` run on `main` (kept 5 days), or run `node tools/shoot-app.mjs` and read `screenshots/latest/app/`. CI takes them only on `main`: a pull request uploads none.
-- **What is tracked:** the images a doc embeds. `tests/uat/screenshots/` is the UAT docs’ set, and `tools/shoot-uat.mjs` refreshes it, in the reviewing session’s commit. The README’s picture, `screenshots/app/04-corpus-app-dark-1280.png`, is the one tracked image under `screenshots/`. `.gitignore` holds the rest.
+- **What is tracked:** the images a doc embeds. `tests/uat/screenshots/` is the UAT docs’ set, and `tools/shoot-uat.mjs` refreshes it, in the reviewing session’s commit. Under `screenshots/`, only the README’s pictures in `screenshots/readme/` are tracked; `.gitignore` holds the rest.
+- **The README’s pictures** show what Postbox does, on the demo’s mock agents, in the light theme. `node tools/readme-gif.mjs` records `highlight.gif` (about 30 seconds, under 6 MB): it starts its own Postbox on a port and a temporary data folder of its own, drives the page with Playwright and converts the kept moments with ffmpeg. The two stills are crops of `tools/shoot-app.mjs`’s light 1280 px scenes: `asset-explorer.png` from `04-corpus-app` (`crop=1010:545:260:665`) and `dashboard.png` from `14-charts` (`crop=1010:755:260:310`). Retake them when the UI they show changes, and look at the frames before you commit: no real paths of your computer, nothing private, and text legible at the README’s width.
 - **A doc that embeds a new image** gets an exception in `.gitignore` in the same change. A reviewing session doesn’t commit regenerated folders.
 
 ## JavaScript
@@ -161,7 +226,7 @@ Postbox is plain ES modules (`.mjs`), with JSDoc types, no build step and no fra
 
 **A circular import means a missing module.** The shared value belongs in a third module that neither imports back, which is usually `shared/`. Biome’s `noImportCycles` fails a new one, and `tests/import-cycles-scc.test.mjs` holds the cycles still there (#312) to its recorded list, which only shrinks.
 
-**Each test file is named for what it tests**: `tests/store.test.mjs` for `server/store.mjs`, so a reader finds a module’s tests on the first guess. When a module’s test file is at its length ceiling, new tests go in `tests/<module>-<concern>.test.mjs`, such as `tests/runtime-jobs.test.mjs`, so a search for `runtime` still finds them (architecture.md, “Module and function size”). Every test file ends in `.test.mjs`, or `npm test` never runs it.
+**Each test file is named for what it tests**: `tests/store.test.mjs` for `server/store.mjs`, so a reader finds a module’s tests on the first guess. When a module’s test file is at its length ceiling, new tests go in `tests/<module>-<concern>.test.mjs`, such as `tests/runtime-topics.test.mjs`, so a search for `runtime` still finds them (architecture.md, “Module and function size”). Every test file ends in `.test.mjs`, or `npm test` never runs it.
 
 **`app/kit/vendor/` is never edited.** Mermaid, KaTeX and D3 are vendored with their licenses. A fix to one is an upgrade of the whole file.
 
@@ -238,7 +303,7 @@ engineering-practices.md, “Tests”, covers speed, recorded fixtures, a failin
 
 **Use `node:test` and `node:assert/strict`, and nothing else.** No test framework is a dependency, and `--experimental-test-coverage` is Node’s own ([node:test][node-test]).
 
-**Add a test when the task covers it.** A new behavior, check or test matrix the issue didn’t ask for is added scope, and needs evidence and intent first (prompts/README.md, “Scope”).
+**Add a test when the task covers it.** A new behavior, check or test matrix the issue didn’t ask for is added scope, and needs evidence and intent first (“Rules for every session”, its “Scope”).
 
 ## What ships is what to optimize for
 
@@ -263,13 +328,13 @@ Each habit comes from a defect that cost a fix in Postbox or in an earlier servi
 7. **Publish whole or not at all, and refuse on ambiguity.** Never expose a partial file, record or message: write a draft, sync it, then publish it with an atomic step (a rename, a hard link; [`fs.rename`][node-fs-rename], [`fs.link`][node-fs-link], [`filehandle.sync`][node-fs-sync]). Never reclaim, delete or overwrite on a guess, an age or an empty file; refuse and say why. The data-folder lock failed review three times in 1a for creating a file and filling it afterwards, and for reclaiming a mutex by age; text sliced by code units splits a surrogate pair ([MDN][mdn-string-utf16]) (`designs/508/storage-design.md`, “The data-folder lock”).
 8. **One failure policy.** Every failure that applies enters the same policy, and the test covers every entry point and the shared outcome. The policy need not restore state: 1a deliberately leaves optimistic memory in place and closes the store to commits, and a snapshot failure has its own policy. Fixing the commit failure left the flush failure open in the same file, because there were two ways to fail and no test that both reached the policy. One funnel alone does not prove every entry reaches it.
 9. **A check that can fail, for the stated reason.** A validator or conformance check (a no-output detector, a lint rule) is shown rejecting the input it should reject. A regression spec is shown failing on the baseline code with the test harness in place, on the assertion it names; an import error, a missing helper or an arbitrary red file does not count. A characterization test that records today’s behavior may pass on both versions, is named so, and does not assert a model’s wording. Stateful code gets the failure cases and interleavings its invariants imply, forced by a latch at the operation boundary rather than a sleep that assumes the writer got there. An ordinary assertion does not need a second test.
-10. **Fix a defect you find, within the scope rule.** A bug in your own change is always yours. A defect you find in files you own, with evidence, is cheapest to fix in the session that found it. One outside them, or one that adds scope, is filed as an issue that carries its evidence, never left unsaid (prompts/README.md, “Scope”). “That was already broken” identifies a defect and leaves it there.
+10. **Fix a defect you find, within the scope rule.** A bug in your own change is always yours. A defect you find in files you own, with evidence, is cheapest to fix in the session that found it. One outside them, or one that adds scope, is filed as an issue that carries its evidence, never left unsaid (“Rules for every session”, its “Scope”). “That was already broken” identifies a defect and leaves it there.
 11. **Nothing waits on the person unless only they can decide it.** A new card, confirm, warning, notice or limit that stops an agent or asks for the person’s attention needs evidence of a decision only they can make, and a reason the harness’s own check isn’t enough (intent.md, principle 8). A card that repeats what they already allowed, or a check against a risk no one has seen, is tedium: show what the agent did instead, where the person can see it. Postbox’s own write cards in auto were removed for this on 7 November 2026, after about 258 cards and confirms in one day ([#852](https://github.com/HJeon139/postbox/issues/852)).
 12. **No unactionable alarms.** “Needs you”, a blocking notification, a focus move and a button that only acknowledges are each a claim that the person must act. Make none for something they can’t act on: a tool call the agent can retry or work around (a refusal, a failure), a change an agent already made, or a step Postbox already took. Show it where it happened, as a step, a card or a note that asks nothing. A notice about something that changed appears when it changes, never on the click that was meant for something else, and never where it moves a button under the pointer or takes focus. Two cases taught this on 10 November 2026: a refused call pulsed “needs you” until the person pressed Leave it, and a block an agent updated cost a click that only revealed a notice saying it had changed.
 
 ## Progress in living documents
 
-Several of Postbox’s documents answer “where are we?”: [prompts/README.md](prompts/README.md) (waves and what’s merged), architecture.md’s “Where it stands”, intent.md’s “Quality bar”, and each UAT report’s coverage table. They answer it in prose, in tables and in diagrams, and a mark on one surface but not the others makes the document disagree with itself.
+Several of Postbox’s documents answer “where are we?”: architecture.md’s “Where it stands”, intent.md’s “Quality bar”, and each UAT report’s coverage table. They answer it in prose, in tables and in diagrams, and a mark on one surface but not the others makes the document disagree with itself.
 
 1. **Never mark done what doesn’t exist.** Check first: the pull request is merged, the command exits 0, the screenshot is committed. A reader trusts a mark over a sentence.
 2. **Update the diagram in the same edit as the prose.** A Mermaid diagram is part of the document.
@@ -339,7 +404,7 @@ One line carries the only fact a reader can’t get from the code:
 
 ## Commits and pull requests
 
-engineering-practices.md, “Commits and versions”, holds the Conventional Commits rules and the release flow. prompts/README.md, “Rules for every session”, holds the branch, gate and hand-off steps. In short, and what a review checks:
+engineering-practices.md, “Commits and versions”, holds the Conventional Commits rules and the release flow. “Rules for every session”, above, holds the branch, gate and hand-off steps. In short, and what a review checks:
 
 **One commit per issue, with a body that says why.** `fix(stop): never kill a background job you chose to keep running` names the type, the scope and the change for the person. The body says why, ends with `Fixes #NN` (one per line, so each closes) and, when an agent wrote the change, `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
 

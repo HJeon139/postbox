@@ -2,16 +2,14 @@
 
 The working documents for [#508](https://github.com/HJeon139/postbox/issues/508), gathered in one place so implementation steps can cite them by path. **The room closed on 2 November 2026; what it decided and where its unfinished work lives is in [`execution-plan.md`](execution-plan.md), “Where it stands”.** The review guide is `designs/review-guide.md` (#659), and the delivery-routes design is `designs/508/delivery-routes.md` (gpt’s pull request). They were written and reviewed in the “rearchitecture-508” room in Agent research, 28 October 2026, by researcher, developer, critic, gemini and gpt, with the person approving each.
 
-**Where it stands** (31 October 2026): the design is at revision 12. The Redis decision of 28 October was recalled on 31 October, so persistence stays on JSON Lines with whole, fsynced commits (`storage-design.md`). Now (#537) and Harness (#539) have merged. The Store step (#525) is replaced by steps 1a and 1b, with a sharded snapshot (S2) only if a stall still passes 50 ms after the snapshot is written in pieces and old work entries leave state. #553 is on hold and closes when 1a’s PR opens. A1, B1 and the remote read contract are in progress; `execution-plan.md` gives the gates a step passes before it merges.
+**Where it stands** (11 November 2026): the design is at revision 12. The Redis decision of 28 October was recalled on 31 October, so persistence stays on JSON Lines with whole, fsynced commits (`storage-design.md`). The room closed on 2 November, and `execution-plan.md`, “Where it stands”, records what had merged by then and where the unfinished work went. Since then the remote read contract (#582, `582/`), A1b (#711, `a1b-asks.md`), the skipped items (#712a) and the item index (#712b, #769) are built. B1b is partly built (`b1-view-state.md`), A2 to A4 follow A1b, and #305’s pass is merged and off until its step 4 (`designs/305-archive-turns.md`). #508 and #712 stay open; `execution-plan.md` gives the gates a step passes before it merges.
 
 ```mermaid
 flowchart TD
   R["requirements.md: what, and the test that decides each"] --> D["design.md: how"]
   R --> T["testing-strategy.md: UAT scenarios that confirm"]
   T --> D
-  U["room-rules.md: how the agents coordinate"] -.-> D
   E["execution-plan.md: who builds each step, in what order"] --> D
-  U -.-> E
 ```
 
 | Document | What it holds | Status |
@@ -25,7 +23,6 @@ flowchart TD
 | [`712b-item-index.md`](712b-item-index.md) | #712b: one index from an item’s id to its place, kept outside the state in a `WeakMap` keyed by each list, so the reducer and every reader find an item in O(1); its contract, invariants and the readers it serves | Built with #712b |
 | [`a1b-asks.md`](a1b-asks.md) | A1b: one tie rule for the three places that pick which card an agent needs you for, with the rest of A1 moved to A2, and the first private records’ design carried to A2 | Rescoped after review; built in #711 |
 | [`testing-strategy.md`](testing-strategy.md) | The `delivery.md` and `bigroom.md` UAT scenarios, with their triggers, checks, seed and fault launcher. A run confirms; a spec written first decides. | Approved, with names aligned to the requirements |
-| [`room-rules.md`](room-rules.md) | How agents on Claude Code, Codex and Antigravity coordinate on this work, and the bug behind each rule | Approved |
 | [`execution-plan.md`](execution-plan.md) | Who builds, reviews and confirms each step, the waves steps run in, the gates before a merge, and what must be decided before the first step | Revision 2, approved |
 
 **Related issues:** #516 (room assets), #14 (room notes), #521 (`AskUserQuestion` shows as a permission card), #515 (resumed Claude sessions keep their first guide).
