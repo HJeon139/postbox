@@ -121,6 +121,8 @@ export function parseScenario(md) {
     // `- seed: fake-env` plants the allow-once scenario’s fake .env, and `- seed: git-remote` a throwaway remote with
     // its guards (tools/uat/workspace.mjs, tools/uat/git-remote.mjs).
     seed: meta.seed ?? null,
+    // `- personas: /abs/path.json` (the Loop study kit) seeds the agents from that file (tools/uat/seed.mjs).
+    personas: meta.personas?.trim() || null,
     ...visualMeasure(meta),
     // `- seed-diagrams: 6` (#701): with `- seed: big-room`, that many of its agent replies end in a Mermaid diagram.
     seedDiagrams: seedDiagramsOf(meta['seed-diagrams'], meta.seed),

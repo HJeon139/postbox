@@ -2,6 +2,7 @@
 // scenario’s `- seed:` plants in it (tools/uat/scenario.mjs).
 
 import { spawnSync } from 'node:child_process';
+import { cpSync, statSync } from 'node:fs';
 import { seedFakeEnv } from './allowonce-triggers.mjs';
 import { seedFiles } from './fixtures.mjs';
 import { seedGitRemote } from './git-remote.mjs';
@@ -18,7 +19,22 @@ export function makeWorkspace(scenario, paths, dir) {
   if (scenario.seed === 'fake-env') seedFakeEnv(paths.workspace);
   if (scenario.seed === 'git-remote') seedGitRemote(paths.workspace, dir);
   if (scenario.files) seedFiles(paths.workspace, scenario.files);
+  if (scenario.seed?.startsWith('dir:')) seedDir(paths.workspace, scenario.seed.slice(4));
   // After the seeds, so the excludes join any settings one planted. The run’s folder is the tester’s.
   hideSteeringAbove(paths.workspace);
   hideSteeringAbove(dir);
+}
+
+/**
+ * `- seed: dir:<path>` (the Loop study kit): the folder's contents, dotfiles included, become the project folder. A path
+ * that isn't a folder stops the run rather than starting it with an empty workspace.
+ * @param {string} workspace @param {string} src
+ */
+export function seedDir(workspace, src) {
+  let dir = false;
+  try {
+    dir = statSync(src).isDirectory();
+  } catch {}
+  if (!dir) throw new Error(`Couldn’t seed the workspace from ${src}: it isn’t a folder.`);
+  cpSync(src, workspace, { recursive: true });
 }
