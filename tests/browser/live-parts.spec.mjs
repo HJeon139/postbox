@@ -131,6 +131,8 @@ test('a resized window paints the running replies to their new share, with no st
   await synced(page, scripted.app);
   scripted.app.rt.sendMessage(t.id, { text: 'Build it.' });
   await expect.poll(() => at('tall')).toBe(1);
+  await synced(page, scripted.app);
+  await expect(page.locator('.live-steps li.step-full'), 'the page has drawn the steps').toContainText('make part-30');
   const lines = page.locator('.live-steps ul.steps.live > li.step-line');
   const before = await lines.count();
   await page.setViewportSize({ width: 1440, height: 500 });
