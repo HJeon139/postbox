@@ -753,6 +753,14 @@ test('a message to a retired fork is refused before anything is posted (#228)', 
   assert.equal(store.items(room.id).length, 0, 'no user line and no wake line');
 });
 
+test('deliver refuses a retired fork with a 409, and starts no turn for it (#228)', () => {
+  const { rt, t } = setup();
+  const se = rt.sessionsIn(t.id)[0];
+  rt.updateSession(se.id, { retiredFork: true });
+  assert.throws(() => rt.deliver(se.id, { kind: 'user', text: 'still there?' }, { threadId: t.id }), { status: 409, message: /was retired/ });
+  assert.equal(rt.turns.has(se.id), false);
+});
+
 test('a wake a retired fork scheduled doesn’t wake it, or stop the server (#228)', async () => {
   const { rt, store, t } = setup();
   const se = rt.sessionsIn(t.id)[0];
