@@ -33,6 +33,7 @@ import { settleInterrupted } from './restart-sweep.mjs';
 import { SAME_ORIGIN_ONLY, servedReviewFile } from './review-files.mjs';
 import { patchThread } from './room-chain-limit.mjs';
 import { httpError, Runtime } from './runtime.mjs';
+import { stopTimers } from './runtime-close.mjs';
 import { sandboxRoute } from './sandbox-routes.mjs';
 import { seed, toBoilerplate } from './seed.mjs';
 import { decodePath, file, mediaPath, servedFile } from './served-files.mjs';
@@ -440,12 +441,13 @@ export async function start({
   async function close() {
     stopStreams();
     for (const r of streams) r.destroy();
-    for (const t of rt.timers.values()) clearTimeout(t);
+    stopTimers(rt);
     rt.stopMirrors();
     // `!` commands run in their own process groups, so they’d outlive Postbox: SIGINT, then SIGKILL (#67). So do the
     // agents’ CLIs, and the background jobs Postbox kept running (#126, #129).
     await rt.stopShellCommands();
     await rt.stopTurns();
+    stopTimers(rt); // what a turn ending as it stopped started
     // After the turns, whose Stop goes to their hosts over these links (#120).
     await stopHosts(hosts, stopWake);
     narrator?.stop();

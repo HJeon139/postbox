@@ -154,6 +154,12 @@ export function summarizerOf(rt, threadId) {
 /** Timers per runtime: one per thread, so a burst of replies makes one call. */
 const timers = new WeakMap();
 
+/** Clears every summary waiting to be written, as Postbox closes (server/runtime-close.mjs). @param {any} rt */
+export function stopSummaryTimers(rt) {
+  for (const timer of timers.get(rt)?.values() ?? []) clearTimeout(timer);
+  timers.get(rt)?.clear();
+}
+
 /**
  * A turn ended in a topic or side thread: once the thread has been quiet for a while, its summary is written. Each new
  * reply starts the wait again. The wait is rt.config.setTimer's when a test gives one, as a lint's is (lint-delivery.mjs).

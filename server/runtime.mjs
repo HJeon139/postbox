@@ -148,6 +148,7 @@ export class Runtime {
     this.keptPoll = null; // checks on the background jobs Postbox kept running (#129)
     this.viewing = new Map(); // threadId → last time a browser said it was open
     this.timers = new Map(); // scheduleId → timeout
+    this.watchdogs = new Set(); // stopped turns’ watchdogs, cleared by close (server/runtime-close.mjs)
     this.lints = new Map(); // agent turn id → its lint turn, gathering: { sessionId, kind, ended, sent, problems, timer }
     this.spawnShell = spawnShell ?? undefined;
     this.shellRuns = new Map(); // command item id → { stop, kill, done, flush, stopped, closing }
@@ -933,11 +934,14 @@ export class Runtime {
     if (se) this.stallLeftRunning(turn, se, by === 'shutdown' ? 'shutdown' : by === 'hung' ? 'hung' : 'stopped');
     if (turn.remote) this.remote.stopped(turn, { by, why });
     // A process that never exits mustn’t hold the session for good: after a while, the next turn starts anyway.
-    setTimeout(() => {
+    const watchdog = setTimeout(() => {
+      this.watchdogs.delete(watchdog);
       if (this.exiting.get(sessionId)?.turn !== turn) return;
       console.error(`@${se?.handle ?? sessionId}’s stopped turn hadn’t ended after ${STOP_WATCHDOG_MS / 1000} s, so its next turn starts anyway.`);
       this.turnExited(turn);
-    }, STOP_WATCHDOG_MS).unref?.();
+    }, STOP_WATCHDOG_MS);
+    watchdog.unref?.();
+    this.watchdogs.add(watchdog);
     // A stopped summary (or one queued behind the turn, which goes with it) isn’t coming (#93), in a topic thread too.
     // A message from another agent, waiting behind the turn, goes with it: it hears at its next turn what it said.
     this.clearSummaryPending(turn.threadId);
