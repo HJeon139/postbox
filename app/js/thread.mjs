@@ -4,7 +4,7 @@
 import { renderMarkdown } from '/shared/markdown.mjs';
 import { resolveCommand } from '/shared/slash-line.mjs';
 import { laterParts, liveStale } from './activity-live.mjs';
-import { activityParts, paintActivity, stepsOnly } from './activity-paint.mjs';
+import { activityParts, hasRecord, paintActivity, stepsOnly } from './activity-paint.mjs';
 import { activityLabel } from './activity-steps.mjs';
 import { mockMarker } from './agent-facts.mjs';
 import { agentMarkdown, handles, markTerms, paintAgentMarkdown, usesTerm } from './agent-markdown.mjs';
@@ -551,12 +551,13 @@ function renderItem(it, prev, ctx) {
   }
 }
 
-/** A turn’s line and its list from the work ledger (#132, #195), each leading to the conversation’s Work. */
+/** A turn’s list from the work ledger (#132, #195), leading to Work, headed by its line unless its record says it. */
 function workChip(it, ctx) {
   const t = client.state.threads[ctx.threadId];
   const conv = (t?.kind === 'side' || t?.kind === 'topic') && t.parentId ? t.parentId : ctx.threadId;
   const s = client.state;
-  return workList(it, conv, [s.projects?.[s.threads[conv]?.projectId]?.folder, s.personas?.[s.sessions?.[it.sessionId]?.personaId]?.folder]);
+  const folders = [s.projects?.[s.threads[conv]?.projectId]?.folder, s.personas?.[s.sessions?.[it.sessionId]?.personaId]?.folder];
+  return workList(it, conv, folders, !hasRecord(it, ctx.threadId));
 }
 
 function failureText(msg = 'This reply didn’t finish.') {

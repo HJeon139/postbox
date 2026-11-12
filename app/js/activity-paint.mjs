@@ -2,7 +2,7 @@
 // (#573). A step used to rebuild the whole reply: its Markdown, its node, and a new frame for each diagram in it. While
 // the turn runs, its steps show live between its words (activity-live.mjs); once it ends, they fold into its work record.
 
-import { isLive, liveParts, partSteps } from './activity-live.mjs';
+import { firstPart, isLive, liveParts, partSteps } from './activity-live.mjs';
 import { activityLabel, stepTree } from './activity-steps.mjs';
 import { agentMarkdown, markTerms } from './agent-markdown.mjs';
 import { h, icon, trusted } from './dom.mjs';
@@ -42,6 +42,15 @@ export function activityParts(it, threadId) {
     : null;
   return [notice, list, jobRows(it, steps)];
 }
+
+/**
+ * Whether a finished turn’s work record says its line: its first part, which holds it, has steps. The work list under
+ * the turn’s last item then leaves its own copy of the line out. @param {any} it  an item of the turn @param {string} threadId
+ */
+export const hasRecord = (it, threadId) => {
+  const first = firstPart(it, threadId);
+  return Boolean(first?.activity && kiroStep(first)[1].length);
+};
 
 /**
  * A folded list holds its summary and the steps’ labels as text, not the steps (#1028): most lists are never opened,

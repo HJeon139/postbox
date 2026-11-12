@@ -152,6 +152,9 @@ test('a finished turn’s steps fold into its work record at the top of the post
   await record.locator('> summary').click();
   await expect(record.locator('.steps'), 'it opens to the steps').toContainText('Edited calc2.py');
   await expect(record.getByRole('link', { name: /Work/ }), 'and to Work').toBeVisible();
+  const said = ((await post.textContent()) ?? '').split('1 file +1 −1').length - 1;
+  expect(said, 'the turn’s line shows once, in its record, not again over the work list under it').toBe(1);
+  await expect(post.locator('.work-list-turn .wl-row'), 'the work list keeps its rows').not.toHaveCount(0);
 });
 
 test('detail fades within each agent’s share of the screen: four agents show a few lines each, eight a line each', async ({ page }) => {

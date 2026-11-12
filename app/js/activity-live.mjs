@@ -41,7 +41,7 @@ export function isLive(it, threadId) {
  * A turn’s first part, which keeps all its steps (server/reply-segment.mjs, placeStep): this one, or the nearest above
  * of its turn. @param {any} it @param {string} threadId
  */
-function firstPart(it, threadId) {
+export function firstPart(it, threadId) {
   if (it.activity || !it.turnId) return it;
   const items = itemsOf(threadId);
   for (let i = placeIn(threadId, it.id) - 1; i >= 0; i--) if (items[i].kind === 'agent' && items[i].turnId === it.turnId && items[i].activity) return items[i];
