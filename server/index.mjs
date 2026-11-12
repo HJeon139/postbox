@@ -172,7 +172,8 @@ export async function start({
       await route(req, res);
     } catch (e) {
       const status = e.status ?? 500;
-      if (status === 500) console.error(e);
+      // With the route, its query left out, so a programming error’s log says which request hit it.
+      if (status === 500) console.error(`Postbox couldn’t answer ${req.method} ${String(req.url).split('?')[0]}:`, e);
       if (!res.headersSent)
         send(res, status, {
           error: e.userMessage ?? (status === 500 ? 'Something went wrong on the server. Try again; if it keeps happening, check the server log.' : e.message),
@@ -494,6 +495,13 @@ function raw(res, status, body, headers = {}) {
   res.end(body);
 }
 function send(res, status, obj) {
+  // Every route answers with a body. One that answers with nothing is a bug in Postbox, refused before the status is
+  // written, so it’s a 500 the page can show and handle() logs with the route, not an empty 200 and a bare TypeError
+  // from Buffer.from (#1247’s class).
+  if (obj === undefined)
+    throw Object.assign(new Error('The route answered with nothing: its runtime call returned undefined, a programming error.'), {
+      userMessage: 'Postbox’s server sent no answer to that, a bug in Postbox. Reload the page to see what changed, and report it.',
+    });
   res.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
   // Bytes, not the string: the socket keeps what it’s given until the page has read it all, and /api/state’s string is
   // as long as the state, two bytes a character once one is past Latin-1. As bytes it leaves the V8 heap at once (#1210).
