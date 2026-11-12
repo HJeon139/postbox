@@ -30,5 +30,7 @@ export function patchThread(rt, threadId, body) {
   threadToWrite(rt, threadId);
   if (b.chainLimit !== null && !isRoomChainLimit(b.chainLimit)) throw httpError(422, ROOM_CHAIN_LIMIT_TAKES);
   if (Object.hasOwn(b, 'title')) rt.renameThread(threadId, b.title);
-  return updateThread(rt, rt.lineage(threadId).at(-1), { chainLimit: b.chainLimit });
+  // Its room read pending too: a conversation started behind a held commit isn’t published yet.
+  const room = rt.lineage(threadId, (/** @type {string} */ id) => rt.store.pending.thread(id)).at(-1);
+  return updateThread(rt, room, { chainLimit: b.chainLimit });
 }

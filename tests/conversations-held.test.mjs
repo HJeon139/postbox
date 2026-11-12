@@ -224,3 +224,20 @@ test('a delete it refuses stops no turn and leaves every session', async () => {
   assert.equal(result.sessions, result.before, 'and no session was deleted');
   await store.close();
 });
+
+// patchThread checks the thread pending, then found its room with rt.lineage, which reads the published state: for a
+// conversation started behind a held commit that’s nothing, so the chain limit went nowhere and the route answered
+// with nothing.
+test('setting the chain limit of a conversation started behind a held commit sets it on that conversation', async () => {
+  const { result, store } = await whileHeld(({ rt }) => {
+    const room = rt.createThread({ projectId: 'p1', title: 'New room' });
+    try {
+      return patchThread(rt, room.id, { chainLimit: 5 });
+    } catch (e) {
+      return e;
+    }
+  });
+  assert.equal(result?.chainLimit, 5, `set: ${result?.message ?? JSON.stringify(result)}`);
+  assert.equal(store.state.threads[result.id].chainLimit, 5, 'on the conversation');
+  await store.close();
+});

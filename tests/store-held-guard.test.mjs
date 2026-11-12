@@ -118,8 +118,9 @@ const PENDING = {
   // held commit keeps out of the published state (#1247’s class). And the agent ensureSession joins, which the same
   // request may have just made.
   'conversations.mjs': ['createThread', 'ensureSession'],
-  // The room’s chain limit, which decides whether a wake waits, maybe set behind a held commit (#1035).
-  'room-chain-limit.mjs': ['roomChainLimit'],
+  // The room’s chain limit, which decides whether a wake waits, maybe set behind a held commit (#1035); and the room a
+  // PATCH sets it on, maybe started there.
+  'room-chain-limit.mjs': ['roomChainLimit', 'patchThread'],
   // The members a delete keeps its room for, maybe joined behind a held commit (#796); the session it deletes, and the
   // threads a conversation’s delete covers, any of them maybe made there too. Every lookup comes before any change.
   'session-lifecycle.mjs': ['conversationScope', 'conversationScope', 'deleteSession', 'deleteSession', 'deleteSession', 'deleteSession', 'deleteSession'],
