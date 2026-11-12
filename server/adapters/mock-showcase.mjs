@@ -5,7 +5,7 @@
 // shows their recorded apps and comments, and reports each turn’s recorded cost, in three turns: the build, the review
 // and the revision. The recordings live in the repository, not the package, so an installed Postbox has none.
 
-import { existsSync, lstatSync, realpathSync } from 'node:fs';
+import { existsSync, lstatSync, realpathSync, statSync } from 'node:fs';
 import { readdir, readFile } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 
@@ -69,9 +69,9 @@ async function work(a, steps = []) {
 }
 
 /**
- * Where a recording’s app file goes in the room’s folder: its real path there, or null when it would land outside
- * the folder (`..`, an absolute path, or a symbolic link out of it), names the folder itself, or sits in a folder that
- * doesn’t exist. Links are resolved on the folder, on the file’s own folder and on the file when it exists, so what’s
+ * Where a recording’s app file goes in the room’s folder: its path there, or null when it would land outside
+ * the folder (`..`, an absolute path, or a symbolic link out of it), names the folder itself or another folder, or sits in a
+ * folder that doesn’t exist. Links are resolved on the folder, on the file’s own folder and on the file when it exists, so what’s
  * checked is where the write would really go. A recording is data, so its name is checked.
  * @param {string} folder @param {unknown} name
  */
@@ -87,7 +87,10 @@ export function appPath(folder, name) {
   // A link whose target doesn't exist yet would be followed by the write, wherever it points.
   if (!existsSync(path) && lstatSync(path, { throwIfNoEntry: false })?.isSymbolicLink()) return null;
   const real = existsSync(path) ? realpathSync(path) : join(realpathSync(dirname(path)), basename(path));
-  return inside(real) ? real : null;
+  // A folder isn't a file to write; and the path given back is the one under the room's folder as the room names it,
+  // so the Work view counts the file as the project's.
+  if (!inside(real) || statSync(real, { throwIfNoEntry: false })?.isDirectory()) return null;
+  return resolve(folder, relative(root, real));
 }
 
 /**
