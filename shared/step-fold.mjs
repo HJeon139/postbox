@@ -15,3 +15,6 @@ export function foldedStep(s) {
   if (typeof kept.detail === 'string' && kept.detail.length > STEP_TEXT.detail) kept.detail = kept.detail.slice(0, STEP_TEXT.detail);
   return kept;
 }
+
+/** Whether a step still holds the live view’s detail: its turn ended without folding it. @param {Record<string, any>} s */
+export const liveDetail = (s) => LIVE.some((k) => s[k] !== undefined) || (typeof s.detail === 'string' && s.detail.length > STEP_TEXT.detail);

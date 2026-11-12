@@ -60,6 +60,7 @@ const DIRECT = {
   'ledger.mjs': ['expireStale'], // at startup
   'permission-expiry.mjs': ['expireStalePermissions'], // at startup
   'public-state.mjs': ['publicItems'], // a conversation’s items by range, an HTTP answer to the page (#1155)
+  'restart-sweep.mjs': ['foldCutOff'], // at startup: the steps of turns a restart cut off
   'sandbox-routes.mjs': ['sandboxRoute'], // an app version’s sandbox page: an HTTP answer to the page
   'shell-runs.mjs': ['expireStaleCommands'], // at startup
   'thread-headers.mjs': ['itemsOf'], // each thread's header facts, sent to the page (#1155)

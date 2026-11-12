@@ -87,7 +87,7 @@ import { startTopic } from './topic-open.mjs';
 import { checkTurn, stallLeftRunning, stallSteps } from './turn-checks.mjs';
 import { endedAs, endWork } from './turn-end-work.mjs';
 import { askedAgain, askedOf, replyMarks } from './turn-marks.mjs';
-import { settleStoppedSteps, settleSubagentSteps } from './turn-steps.mjs';
+import { foldSteps, settleStoppedSteps, settleSubagentSteps } from './turn-steps.mjs';
 import { workEvents } from './turn-work.mjs';
 import { toolsFor } from './ui-tools.mjs';
 import { closeOrphanCards } from './wake-cards.mjs';
@@ -748,8 +748,8 @@ export class Runtime {
     for (const [id, w] of this.permissionWaits) if (w.sessionId === turn.sessionId) this.settlePermission(id, 'expired');
     this.turns.delete(turn.sessionId);
     this.settleSubagentSteps(turn);
-    // Its steps fold to what its record keeps: the live view's detail goes with the turn (shared/step-fold.mjs).
-    if (turn.first) this.store.emit('item.patch', { threadId: turn.threadId, id: turn.first, foldSteps: true });
+    // Its steps fold to what its record keeps: the live view's detail goes with the turn (turn-steps.mjs).
+    if (turn.first) foldSteps(this, turn.threadId, turn.first);
     // How a remote turn ended on its host decides what the person sees: Sign-in needed and Interrupted say so (#120).
     if (turn.remote) err = this.remote.ended(turn, err);
     settleScheduledWake(this, turn, err);
@@ -973,6 +973,7 @@ export class Runtime {
     // here as well would cancel what the agent was told will start again (the integrator’s re-review of #598).
     if (by !== 'shutdown' && by !== 'store') settleScheduledWake(this, turn, { name: 'AbortError' });
     settleStoppedSteps(this, turn);
+    if (turn.first) foldSteps(this, turn.threadId, turn.first);
     endWork(this, turn, 'stopped');
     // A waiting permission is answered no; the card keeps who stopped it, so its note says the person’s stop withdrew
     // it, or that it expired (tellExpired, #721, #853).
