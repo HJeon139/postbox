@@ -183,3 +183,31 @@ test('a subagent’s step between two chunks doesn’t split the agent’s words
     'a subagent’s step isn’t the agent’s own, so it’s no boundary',
   );
 });
+
+test('a step taken after a post below the reply shows in the part its words start below the post; the first part keeps every step', async () => {
+  const f = setup();
+  let go = () => {};
+  const posted = new Promise((r) => {
+    go = r;
+  });
+  f.adapter.next.push(async (ctx) => {
+    ctx.text('Let me look.');
+    ctx.activity({ id: 'read', label: 'Read answer.txt', state: 'done', ms: 5 });
+    await posted;
+    ctx.activity({ id: 'count', label: 'Ran wc -l answer.txt', state: 'done', ms: 5 });
+    ctx.text('One line.');
+    ctx.activity({ id: 'check', label: 'Ran cat answer.txt', state: 'done', ms: 5 });
+  });
+  f.rt.sendMessage(f.t.id, { text: '@alpha how long is it?' });
+  await until(() => agentItems(f).some((it) => it.text === 'Let me look.'));
+  f.rt.addItem(f.t.id, { kind: 'user', text: 'It’s short.' });
+  go();
+  await settle(f.rt);
+
+  const [first, later] = agentItems(f);
+  assert.equal(later?.text, 'One line.', 'the words after the post are a part of their own');
+  const part = Object.fromEntries(first.activity.steps.map((s) => [s.id, s.part ?? first.id]));
+  assert.deepEqual(part, { read: first.id, count: later.id, check: later.id }, 'each step shows in the part it fell in; the first keeps them all');
+  const at = Object.fromEntries(first.activity.steps.map((s) => [s.id, s.at]));
+  assert.deepEqual(at, { read: 'Let me look.'.length, count: 0, check: 'One line.'.length }, 'each after its part’s words so far');
+});

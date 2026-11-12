@@ -3,7 +3,7 @@
 
 import { renderMarkdown } from '/shared/markdown.mjs';
 import { resolveCommand } from '/shared/slash-line.mjs';
-import { liveStale } from './activity-live.mjs';
+import { laterParts, liveStale } from './activity-live.mjs';
 import { activityParts, paintActivity, stepsOnly } from './activity-paint.mjs';
 import { activityLabel } from './activity-steps.mjs';
 import { mockMarker } from './agent-facts.mjs';
@@ -237,6 +237,7 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
       // A step changes only the reply’s activity list (#573); anything else draws the reply again.
       const it = stepsOnly(d) ? itemsOf(threadId)[placeIn(threadId, d.id)] : null;
       if (!d.reaction && !(it && paintActivity(nodes.get(d.id), it, threadId))) rerender(d.id);
+      for (const id of laterParts(d, threadId, shown())) rerender(id);
     } else if (ch.type === 'item.text' && d.threadId === threadId) {
       pending.add(d.id);
       if (!raf)

@@ -222,3 +222,45 @@ test('a running turn’s thoughts show whole, paragraphs and all, between its st
   go('thinker');
   await expect.poll(() => app.rt.turns.size).toBe(0);
 });
+
+test('a post landing below a running reply doesn’t break it: the steps after the post go with the words after it', async ({ page }) => {
+  await writeFile(join(app.root, 'notes2.txt'), 'alpha\n');
+  const t = room('A post below', ['noter']);
+  scripts.set('noter', async ({ emit, who }) => {
+    emit({ kind: 'text', text: 'Reading the notes.' });
+    emit({ kind: 'tool_call', id: 'r1', name: 'Read', input: { file_path: join(app.root, 'notes2.txt') }, final: true });
+    emit({ kind: 'tool_result', id: 'r1', text: 'alpha' });
+    await hold(who, 1);
+    emit({ kind: 'tool_call', id: 'b1', name: 'Bash', input: { command: 'wc -l notes2.txt' }, final: true });
+    emit({ kind: 'tool_result', id: 'b1', text: '1 notes2.txt' });
+    emit({ kind: 'text', text: 'One line, as you said.' });
+    await hold(who, 2);
+  });
+  await page.goto(`${app.origin}/#/t/${t.id}`);
+  await synced(page, app);
+  app.rt.sendMessage(t.id, { text: 'Count the notes.' });
+  await expect.poll(() => at('noter')).toBe(1);
+  app.rt.addItem(t.id, { kind: 'user', text: 'It should be one line.' });
+  go('noter');
+  await expect.poll(() => at('noter')).toBe(2);
+  await synced(page, app);
+  const order = await page.locator('.transcript > [data-key]').evaluateAll((nodes) => nodes.map((n) => n.textContent ?? ''));
+  const where = (/** @type {string} */ s) => order.findIndex((x) => x.includes(s));
+  await test.step('while it runs, each part shows its own steps, in the order they happened', async () => {
+    expect(where('Read notes2.txt'), order.join('\n---\n')).toBeLessThan(where('It should be one line.'));
+    expect(where('wc -l notes2.txt'), 'the step after the post shows below it').toBeGreaterThan(where('It should be one line.'));
+    expect(where('wc -l notes2.txt'), 'with the words it led to').toBe(where('One line, as you said.'));
+    await expect(page.locator('.live-steps', { hasText: 'Read notes2.txt' }), 'the first part shows its step once').toHaveCount(1);
+    await expect(page.locator('.live-steps', { hasText: 'wc -l' }), 'and the later step only below').toHaveCount(1);
+  });
+  go('noter');
+  await expect.poll(() => app.rt.turns.size).toBe(0);
+  await synced(page, app);
+  await test.step('once it ends, the turn’s record at its top holds every step', async () => {
+    await expect(page.locator('details.activity')).toHaveCount(1);
+    const record = page.locator('details.activity');
+    await record.locator('> summary').click();
+    await expect(record.locator('.steps')).toContainText('Read notes2.txt');
+    await expect(record.locator('.steps')).toContainText('wc -l notes2.txt');
+  });
+});

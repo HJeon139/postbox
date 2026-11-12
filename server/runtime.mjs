@@ -58,7 +58,7 @@ import { addHost, host, removeHost, setProjectHostFolder, updateHost } from './r
 import { describeHostInstall, hostStatus, installHost, retryHost, watchHosts } from './remote/host-status.mjs';
 import { localBackends, refuseHere, refuseUnregistered, registeredAdapter } from './remote/placement.mjs';
 import { RemoteTurns } from './remote/turns.mjs';
-import { replySegment, stepTaken, wordsSegment } from './reply-segment.mjs';
+import { placeStep, replySegment, stepTaken, wordsSegment } from './reply-segment.mjs';
 import {
   armWake,
   cancelWakeSchedule,
@@ -451,6 +451,7 @@ export class Runtime {
       segment: null,
       first: null,
       steps: [],
+      partWords: {}, // each part’s words so far, by its id (reply-segment.mjs, placeStep)
       abort,
       closed: false,
       summarizeTo,
@@ -606,7 +607,7 @@ export class Runtime {
         if (!live() || !delta) return;
         const id = wordsSegment(rt, turn, se0);
         turn.said += delta;
-        if (id === turn.first) turn.firstWords = (turn.firstWords ?? 0) + delta.length;
+        turn.partWords[id] = (turn.partWords[id] ?? 0) + delta.length;
         rt.store.emit('item.text', { threadId: turn.threadId, id, text: delta });
         if (rt.store.pending.session(turn.sessionId)?.state !== 'gen') rt.updateSession(turn.sessionId, { state: 'gen', currentStep: 'Writing a reply' });
       },
@@ -633,9 +634,10 @@ export class Runtime {
         if (!turn.first && turn.kind !== 'lint') ensureSegment();
         if (!who) stepTaken(turn);
         const i = turn.steps.findIndex((s) => s.id === id);
-        // A new step of the agent’s own falls after the words its first part has so far (activity-live.mjs).
-        const at = i < 0 && !who ? (turn.firstWords ?? 0) : undefined;
-        const step = turnStep({ id: id ?? newId('st'), label, state, ms, who, parent, detail, kind, job, input, output, at, added, deleted, diff });
+        const sid = id ?? newId('st');
+        // A new step of the agent’s own shows in the part it writes in now, after that part’s words so far.
+        const place = i < 0 && !who ? placeStep(rt, turn, sid) : {};
+        const step = turnStep({ id: sid, label, state, ms, who, parent, detail, kind, job, input, output, ...place, added, deleted, diff });
         if (i >= 0) turn.steps[i] = { ...turn.steps[i], ...step };
         else turn.steps.push(step);
         if (turn.first) rt.store.emit('item.patch', { threadId: turn.threadId, id: turn.first, activityStep: step });

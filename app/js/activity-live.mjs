@@ -6,7 +6,7 @@
 // and how many steps it took.
 
 import { stepRow } from './activity-steps.mjs';
-import { busy, itemsOf, sessionsAt } from './client.mjs';
+import { busy, itemsOf, placeIn, sessionsAt } from './client.mjs';
 import { h, plural } from './dom.mjs';
 
 // Heights the budget counts in, in pixels: one step’s line, and the newest step in full.
@@ -25,7 +25,7 @@ export const liveAgents = (threadId) => atWork(threadId).length;
 
 /**
  * Whether a reply’s turn still runs: it’s still being written, or its agent is at work here and this is its newest
- * turn. A turn’s steps stay on its first part, which ends early when anything is posted below it (reply-segment.mjs).
+ * turn. A part ends early when anything is posted below it (reply-segment.mjs), and shows its steps while the turn runs.
  * @param {any} it @param {string} threadId
  */
 export function isLive(it, threadId) {
@@ -35,6 +35,36 @@ export function isLive(it, threadId) {
   const items = itemsOf(threadId);
   for (let i = items.length - 1; i >= 0; i--) if (items[i].kind === 'agent' && items[i].sessionId === it.sessionId) return items[i].turnId === it.turnId;
   return false;
+}
+
+/**
+ * A turn’s first part, which keeps all its steps (server/reply-segment.mjs, placeStep): this one, or the nearest above
+ * of its turn. @param {any} it @param {string} threadId
+ */
+function firstPart(it, threadId) {
+  if (it.activity || !it.turnId) return it;
+  const items = itemsOf(threadId);
+  for (let i = placeIn(threadId, it.id) - 1; i >= 0; i--) if (items[i].kind === 'agent' && items[i].turnId === it.turnId && items[i].activity) return items[i];
+  return null;
+}
+
+/**
+ * The steps a part of a reply shows while its turn runs: the ones that fell in it. A post below the reply puts the
+ * steps after it in a later part, with the words they led to. @param {any} it @param {string} threadId
+ */
+export function partSteps(it, threadId) {
+  const first = firstPart(it, threadId);
+  return (first?.activity?.steps ?? []).filter((/** @type {any} */ s) => (s.part ?? first.id) === it.id);
+}
+
+/**
+ * The drawn parts of a reply that a step patch on its first part draws again: all its later ones, when the step shows
+ * in one of them or moves to one from the part before (server/reply-segment.mjs, placeStep).
+ * @param {{ id: string, activityStep?: any }} d  the item.patch's data @param {string} threadId @param {any[]} drawn
+ */
+export function laterParts(d, threadId, drawn) {
+  const turnId = d.activityStep?.part ? itemsOf(threadId)[placeIn(threadId, d.id)]?.turnId : null;
+  return turnId ? drawn.filter((x) => x.id !== d.id && x.kind === 'agent' && x.turnId === turnId).map((x) => x.id) : [];
 }
 
 /**
@@ -105,7 +135,7 @@ function fullRow(s) {
  */
 export function textFrom(it, /** @type {string} */ threadId) {
   if (!isLive(it, threadId)) return 0;
-  const steps = ownSteps(it.activity?.steps ?? []);
+  const steps = ownSteps(partSteps(it, threadId));
   if (!steps.length || linesFor(threadId) < 0) return 0;
   return Math.min(String(it.text ?? '').length, Math.max(0, ...steps.map((s) => Number(s.at) || 0)));
 }
@@ -172,7 +202,7 @@ export function liveParts(it, threadId, words) {
  * @param {string} threadId
  */
 export function liveStale(node, it, threadId) {
-  if (!node || it?.kind !== 'agent' || !it.activity?.steps?.length) return false;
+  if (!node || it?.kind !== 'agent' || !partSteps(it, threadId).length) return false;
   const drawn = /** @type {HTMLElement | null} */ (node.querySelector(':scope > .live-steps'))?.dataset.agents;
   if ((drawn !== undefined) !== isLive(it, threadId)) return true;
   return drawn !== undefined && drawn !== String(liveAgents(threadId));

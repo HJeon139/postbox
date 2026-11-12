@@ -55,11 +55,11 @@ export const stepState = (state) => (STEP_STATES.has(/** @type {string} */ (stat
 
 /**
  * The step a turn keeps, from what its activity was told: each field bounded, and only the ones it has.
- * at: where the step falls in its reply’s words, their length when it started; added, deleted and diff: an edit’s
- * change (server/step-diff.mjs).
- * @param {{ id: string, label: unknown, state: unknown, ms: number|null, who: unknown, parent: unknown, detail: unknown, kind: unknown, job: unknown, input: unknown, output: unknown, at?: unknown, added?: unknown, deleted?: unknown, diff?: unknown }} f
+ * part: the reply’s part it shows in, and at: where in that part’s words, their length when it started; added,
+ * deleted and diff: an edit’s change (server/step-diff.mjs).
+ * @param {{ id: string, label: unknown, state: unknown, ms: number|null, who: unknown, parent: unknown, detail: unknown, kind: unknown, job: unknown, input: unknown, output: unknown, part?: unknown, at?: unknown, added?: unknown, deleted?: unknown, diff?: unknown }} f
  */
-export function turnStep({ id, label, state, ms, who, parent, detail, kind, job, input, output, at, added, deleted, diff }) {
+export function turnStep({ id, label, state, ms, who, parent, detail, kind, job, input, output, part, at, added, deleted, diff }) {
   const count = (/** @type {unknown} */ n) => typeof n === 'number' && Number.isInteger(n) && n >= 0;
   return {
     id,
@@ -75,6 +75,8 @@ export function turnStep({ id, label, state, ms, who, parent, detail, kind, job,
     // Its call’s input and the end of what it returned, bounded as the core bounds them.
     ...(input ? { input: stepInput(String(input)) } : {}),
     ...(output ? { output: stepOutput(output) } : {}),
+    // The reply’s part it shows in, when not the first (server/reply-segment.mjs, placeStep), and where in that part’s words.
+    ...(typeof part === 'string' && part ? { part: part.slice(0, 100) } : {}),
     ...(count(at) ? { at } : {}),
     ...(count(added) && count(deleted) ? { added, deleted } : {}),
     ...(typeof diff === 'string' && diff ? { diff: diff.slice(0, STEP_TEXT.output) } : {}),

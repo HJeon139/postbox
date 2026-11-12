@@ -2,7 +2,7 @@
 // (#573). A step used to rebuild the whole reply: its Markdown, its node, and a new frame for each diagram in it. While
 // the turn runs, its steps show live between its words (activity-live.mjs); once it ends, they fold into its work record.
 
-import { isLive, liveParts } from './activity-live.mjs';
+import { isLive, liveParts, partSteps } from './activity-live.mjs';
 import { activityLabel, stepTree } from './activity-steps.mjs';
 import { agentMarkdown, markTerms } from './agent-markdown.mjs';
 import { h, icon, trusted } from './dom.mjs';
@@ -27,7 +27,10 @@ const wordsOf = (it, threadId) => (/** @type {string} */ text) => {
  */
 export function activityParts(it, threadId) {
   const [notice, steps] = kiroStep(it);
-  if (isLive(it, threadId)) return [notice, liveParts({ ...it, activity: { ...it.activity, steps } }, threadId, wordsOf(it, threadId)), jobRows(it, steps)];
+  if (isLive(it, threadId)) {
+    const [, own] = kiroStep({ activity: { steps: partSteps(it, threadId) } });
+    return [notice, liveParts({ ...it, activity: { ...it.activity, steps: own } }, threadId, wordsOf(it, threadId)), jobRows(it, steps)];
+  }
   const total = steps.reduce((a, s) => a + (s.ms ?? 0), 0);
   const fallback = [activityLabel(steps), total ? ` · ${(total / 1000).toFixed(total < 10000 ? 1 : 0)} s in tools` : ''];
   const list = steps.length
