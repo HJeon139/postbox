@@ -173,3 +173,54 @@ test('deleting an agent made and joined behind a held commit deletes it and its 
   );
   await store.close();
 });
+
+// Deleting an agent whose conversation was started behind a held commit: deleteSession read that conversation’s
+// threads from the published state (conversationScope) and refused it as deleted, after it had already stopped the
+// session’s turn, dropped its wakes and released its queue, so the agent and its session stayed, half deleted.
+test('deleting an agent whose conversation started behind a held commit deletes the agent, its session and the conversation', async () => {
+  const { env, result, store } = await whileHeld(({ rt }) => {
+    const p = rt.createPersona({ handle: 'solo', backend: 'claude-code' });
+    const room = rt.createThread({ projectId: 'p1', title: 'Solo', personaIds: [p.id] });
+    try {
+      return { handle: deletePersona(rt, p.id).handle, id: p.id, room: room.id };
+    } catch (e) {
+      return e;
+    }
+  });
+  assert.equal(result?.handle, 'solo', `deleted: ${result?.message ?? ''}`);
+  assert.equal(store.state.personas[result.id], undefined, 'the agent is gone');
+  assert.deepEqual(
+    Object.values(store.state.sessions).filter((se) => se.handle === 'solo'),
+    [],
+    'so is its session',
+  );
+  assert.equal(store.state.threads[result.room], undefined, 'and its conversation, which it was alone in');
+  assert.ok(env.rt.s.threads[env.t.id], 'the other conversation stays');
+  await store.close();
+});
+
+// A delete looks everything up before it changes anything, so one it refuses leaves nothing half done.
+test('a delete it refuses stops no turn and leaves every session', async () => {
+  const { result, store } = await whileHeld(({ rt, t }) => {
+    const before = Object.keys(rt.store.pending.sessions()).length;
+    const stopped = [];
+    const stop = rt.stop.bind(rt);
+    rt.stop = (...args) => {
+      stopped.push(args[0]);
+      return stop(...args);
+    };
+    const topic = rt.putThread({ id: 'th_topic', projectId: 'p1', title: 'A topic', kind: 'topic', parentId: t.id, members: [], queue: [] });
+    const refused = [];
+    for (const del of [() => rt.deleteThread('th_gone'), () => rt.deleteThread(topic.id)])
+      try {
+        del();
+      } catch (e) {
+        refused.push(e.status);
+      }
+    return { refused, stopped, sessions: Object.keys(rt.store.pending.sessions()).length, before };
+  });
+  assert.deepEqual(result.refused, [404, 409], 'both were refused');
+  assert.deepEqual(result.stopped, [], 'no turn was stopped');
+  assert.equal(result.sessions, result.before, 'and no session was deleted');
+  await store.close();
+});
