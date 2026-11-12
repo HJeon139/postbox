@@ -23,7 +23,7 @@ The person needs to see what each agent runs with, from wherever they are. The c
 ## Steps to reproduce
 
 1. Run the demo (`node tools/demo.mjs --port 4180`) and open <http://127.0.0.1:4180/> while it plays; keep the tab open.
-2. Open “Corpus planning”. Check the Agents section above Direct messages.
+2. Open “Index planning”. Check the Agents section above Direct messages.
 3. Click @indexer’s name: its persona sheet opens. Change its effort, save, and send @indexer a message: that turn runs at the new effort.
 4. Tab to a row, press Enter, and press Escape: focus is back on the row.
 5. Send `@indexer /compact`, then `@indexer /delete` and Cancel.

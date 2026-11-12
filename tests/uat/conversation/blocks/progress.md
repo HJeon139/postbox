@@ -20,7 +20,7 @@ Shows where a long job is without new messages.
 ## Steps to reproduce
 
 1. Run the demo (`node tools/demo.mjs --port 4180`) and open <http://127.0.0.1:4180/> while it plays; keep the tab open.
-2. Watch “Index the shelf” in “Corpus planning”.
+2. Watch “Index the shelf” in “Index planning”.
 
 3. For counts, live times and a stalled step, run `npx playwright test feedback` (`tests/browser/feedback.spec.mjs`) (with `SHOTS=<folder>` for screenshots).
 

@@ -43,7 +43,8 @@ The rest of the gate is in [AGENTS.md](../AGENTS.md), “The gate”:
 | Command | What it does |
 |---|---|
 | `postbox [--port 4173] [--data <folder>] [--fresh] [--demo] [--move-data] [-v]` | The same as `npm start` or `node server/index.mjs` in a clone. Runs Postbox, with its data in `~/.postbox` unless `POSTBOX_HOME` or `--data` says otherwise. A fresh install seeds three agents: @researcher, @developer and @critic. `--demo` seeds the demo’s agents, projects and conversations instead, enables the demo controls and uses the mock only. `--move-data` moves a clone’s `data/` to `~/.postbox` and exits; `-v` prints the version. |
-| `node tools/demo.mjs [--port] [--speed]` | Plays every block and error state on a fresh Postbox |
+| `node tools/demo.mjs [--port] [--speed] [--story showcase]` | Plays every block and error state on a fresh Postbox; `--story showcase` plays the replays of real recorded sessions in `tools/demo/showcase/` instead |
+| `node tools/readme-gif.mjs [--port] [--keep]` | Records the README’s GIF and its two stills from the showcase’s replays (needs ffmpeg) |
 | `node tools/shoot-app.mjs [--baseline]` | Plays the demo in headless Chrome and screenshots every scene at 375 and 1280 px in both modes. axe-core checks the same scenes in `tests/browser/demo-a11y.spec.mjs` |
 | `node tools/contrast.mjs [css]` | Checks WCAG contrast for every token pair, in both modes and on the app stage (`app/workbench.css` unless you name another) |
 | `npm run format` | Applies Biome’s formatting and safe fixes |

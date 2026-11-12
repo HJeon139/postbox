@@ -2,7 +2,9 @@
 
 **Direct a small team of AI agents from one chat, on your own computer.**
 
-![Three agents at work in one room: indexing, explaining and reviewing at once, then the Work view of what they changed](screenshots/readme/highlight.gif)
+![A replay of a real session: asked how Raft survives a leader failure, @builder answers with a live simulator, @critic pins four comments to its parts, v2 lands with the review waiting on you, and the Work view shows what changed and what it cost](screenshots/readme/highlight.gif)
+
+A replay of a real session: you ask once, then @builder (Claude Code, `claude-opus-5-5`) answers with a live app, @critic (Codex, `gpt-6.1-sol`) pins comments to its parts, and @builder ships v2, all without another message from you. The review then waits for you to approve it. [How it was recorded](tools/demo/showcase/README.md).
 
 [Quick start](#quick-start) · [Running Postbox](designs/running.md) · [Real agents](designs/backends.md) · [Remote hosts](designs/remote-hosts.md) · [Agent apps](designs/agent-apps.md)
 
@@ -15,11 +17,11 @@
 - **Your agents, your harnesses.** Agents run on Claude Code, the Claude Agent SDK, Codex, the Kiro CLI or the Antigravity CLI, with the sign-in you already have. Postbox never asks for an API key.
 - **Start work on a host, come back when it’s done.** An agent’s turns can run on a machine you reach with `ssh` while Postbox stays here, and keep running when your laptop sleeps.
 
-An agent-written explorer over a conversation’s notes, and a dashboard built from the chart kit:
+Two more apps from the recorded sessions, each @builder’s v2 after @critic’s review: Postbox’s own module graph, computed from its imports, and a GPU capacity plan you can drive:
 
-![An agent-written asset explorer: a search for “hope after loss” with three passages, each labeled with how it matched](screenshots/readme/asset-explorer.png)
+![Postbox’s module dependency graph: 487 modules as nodes sized by how many import them, grouped in clusters, with the import cycles drawn as arrows](screenshots/readme/module-graph.png)
 
-![An agent-written dashboard: passages per asset, a scatter of how passages matched, and a heat map of themes by book](screenshots/readme/dashboard.png)
+![A capacity plan: sliders for traffic, service time, burstiness and replicas; p99 wait against utilization, and p99 wait against replica count with each replica’s hourly cost](screenshots/readme/capacity-plan.png)
 
 ## Quick start
 

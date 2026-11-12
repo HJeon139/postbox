@@ -27,7 +27,7 @@ const turns = [];
  * @type {{ lines: any[], pause: number, go: () => void, wait: Promise<void>, held: boolean }[]}
  */
 const replays = [];
-/** The demo’s conversations, @indexer’s session in Corpus planning, the topic thread from its reply, and how it began. */
+/** The demo’s conversations, @indexer’s session in Index planning, the topic thread from its reply, and how it began. */
 let planning;
 let shelf;
 let indexer;
@@ -63,7 +63,7 @@ test.beforeAll(async () => {
         for (const e of r.lines.slice(r.pause)) m.push(e);
       },
     });
-  planning = threadNamed('Corpus planning');
+  planning = threadNamed('Index planning');
   shelf = threadNamed('Index the shelf');
   indexer = sessionIn(planning, 'indexer');
   // A topic thread from a reply of @indexer’s, answered there by its one session in the conversation (#228).

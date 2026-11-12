@@ -29,7 +29,7 @@ let planning;
 let indexer;
 test.beforeAll(async () => {
   app = await startPostbox('agent-subagents');
-  planning = Object.values(app.store.state.threads).find((t) => t.title === 'Corpus planning');
+  planning = Object.values(app.store.state.threads).find((t) => t.title === 'Index planning');
   indexer = app.rt.sessionsIn(planning.id).find((x) => x.handle === 'indexer');
   app.rt.adapters.register({
     name: 'claude-code',
