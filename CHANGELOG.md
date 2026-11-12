@@ -2,6 +2,32 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.3.1 (2026-11-12)
+
+### Fixes
+
+- **server:** a chain limit set on a conversation started behind a held commit lands on it
+- **server:** a delete looks everything up, pending, before it changes anything
+- **tests:** the fake daemon reader waits 10 s for a turn to start
+- **tests:** the cleanup and broker daemon tests wait for the close before removing the home
+- **tests:** the Codex restart test waits for the first broker's close
+- **tests:** the daemon tests' done() waits for the close before it removes the home
+- **tests:** the fake daemon reader waits 2 s and looks once more at its deadline
+- **tests:** the broker close-after tests wait for the shim's answer, not 50 ms
+- **server:** close() clears timers again after the hosts stop, and its ledger wait is tested
+- **server:** changing or deleting an agent made behind a held commit works
+- **tests:** other polling waits look once more before they give up
+- **tests:** the remote read tests wait the default 2 s for a socket round trip
+- **tests:** until() looks once more at its deadline before it throws
+- **server:** the work ledger's records of stopped turns land before the store closes
+- **server:** a closed Postbox starts no turn: close() clears every timer the runtime started
+- **server:** a fresh start empties the asset folder too
+- **server:** a 500's log line takes the request's path as an argument
+- **server:** an agent joining behind a held commit is found, and attach follows it
+- **server:** a route that answers with nothing gets a 500 that names it
+- **server:** renaming a conversation deleted behind a held commit is refused
+- **server:** a conversation started behind a held commit returns its thread
+
 ## 4.3.0 (2026-11-12)
 
 ### Features
