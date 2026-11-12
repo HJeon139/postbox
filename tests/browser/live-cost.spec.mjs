@@ -8,9 +8,9 @@ import { setTimeout as pace } from 'node:timers/promises';
 import { expect, test } from '@playwright/test';
 import { failOnPageErrors, frames, startPostbox, synced } from './postbox.mjs';
 
-// Main’s layouts a step for this stream, at 6× throttle, its last paint counted: 2.70, 2.73 and 2.75 in three runs
-// on f6ac0e7b.
-const MAIN = 2.75;
+// Main’s layouts a step for this stream, at 6× throttle, its last paint counted: 108 to 113 for 44 steps in six runs
+// on f6ac0e7b, 2.45 to 2.57.
+const MAIN = 2.57;
 const AGENTS = ['ana', 'ben', 'cal', 'dee'];
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -34,7 +34,10 @@ test.beforeAll(async () => {
   app.store.emit('project', { id: 'pr_live', name: 'Live', folder: app.root });
   app.rt.adapters.register({
     name: 'mock',
-    async deliver(/** @type {any} */ session, /** @type {any} */ _m, /** @type {any} */ ctx) {
+    async deliver(/** @type {any} */ session, /** @type {any} */ message, /** @type {any} */ ctx) {
+      // Postbox’s lint turn after each reply isn’t the agent’s work: it would run the whole stream again, as soon as
+      // it settles, so a slow page would count two turns of steps where a fast one counted one (CI run 43176907674).
+      if (message.kind === 'lint') return;
       ctx.text('Fixing the citation script.');
       for (const [i, label] of CALLS.entries()) {
         const id = `${session.handle}-${i}`;
@@ -68,7 +71,8 @@ test('four agents’ steps cost the page no more layout a step than main', async
   await page.waitForFunction(
     (n) => !document.querySelector('.transcript .caret') && (document.querySelector('.transcript')?.textContent?.match(/Done\./g) ?? []).length === n,
     AGENTS.length,
-    { timeout: 120_000 },
+    // Polled on a timer: on frames, it’s checked only as often as a slowed page draws.
+    { timeout: 120_000, polling: 100 },
   );
   await frames(page);
   const after = await layouts();

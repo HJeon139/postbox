@@ -9,6 +9,9 @@ import { synced } from './postbox.mjs';
 const scripted = scriptedRoom(test, 'live-fit');
 const { scripts, hold, go, at, room } = scripted;
 
+// How long the page may take to hear a burst of the agents’ events: a slow runner heard 492 of ten agents’ 1,341 in
+// synced’s usual 5 s (CI run 43176907674).
+const BURST = 30_000;
 const PARAGRAPH = 'The answer goes on in one paragraph with many words to fill the lines of the reply here. ';
 
 for (const agents of [1, 3])
@@ -34,11 +37,11 @@ for (const agents of [1, 3])
     await synced(page, scripted.app);
     for (const who of handles) scripted.app.rt.sendMessage(t.id, { text: `@${who} explain` });
     await expect.poll(() => handles.every((w) => at(w) === 1)).toBe(true);
-    await synced(page, scripted.app);
+    await synced(page, scripted.app, BURST);
     await expect(page.locator('.live-steps', { hasText: 'make s3' }), 'the steps are drawn first').toHaveCount(agents);
     for (const who of handles) go(who);
     await expect.poll(() => handles.every((w) => at(w) === 2)).toBe(true);
-    await synced(page, scripted.app);
+    await synced(page, scripted.app, BURST);
     for (const who of handles) {
       await expect(page.locator('.transcript'), 'the long answer is drawn').toContainText(`The end from ${who}.`);
       const intro = page.locator('.transcript').getByText(`Intro from ${who}.`).filter({ visible: true });
@@ -74,7 +77,7 @@ for (const [width, height] of [
     await synced(page, scripted.app);
     for (const who of ten) scripted.app.rt.sendMessage(t.id, { text: `@${who} fix the sums` });
     await expect.poll(() => ten.every((w) => at(w) === 1), { timeout: 30_000 }).toBe(true);
-    await synced(page, scripted.app);
+    await synced(page, scripted.app, BURST);
     await expect(page.locator('.live-steps.crowded'), 'each reply crowded to one line of steps').toHaveCount(10);
     const { used, visible } = await page.evaluate(() => {
       const replies = [...document.querySelectorAll('.transcript > [data-key]')].filter((n) => n.querySelector(':scope > .live-steps'));
@@ -126,7 +129,7 @@ test('a crowded agent keeps its working row while its running reply is off scree
   for (let i = 0; i < 40; i++) scripted.app.rt.addItem(t.id, { kind: 'user', text: `A post in the room, number ${i + 1}.` });
   for (const who of ten.slice(1)) scripted.app.rt.sendMessage(t.id, { text: `@${who} go` });
   await expect.poll(() => ten.every((w) => at(w) === 1)).toBe(true);
-  await synced(page, scripted.app);
+  await synced(page, scripted.app, BURST);
   await expect(page.locator('.live-steps.crowded'), 'each reply crowded').toHaveCount(10);
   const row = (/** @type {string} */ who) => page.locator('.working .work-row').filter({ has: page.locator('b', { hasText: new RegExp(`^${who}$`) }) });
   await expect(row('ma'), 'the agent whose reply is off screen keeps its row').toBeVisible();

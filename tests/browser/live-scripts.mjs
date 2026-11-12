@@ -52,7 +52,10 @@ export function scriptedRoom(test, name) {
       async folderFor() {
         return live.app.root;
       },
-      async deliver(/** @type {any} */ session, /** @type {any} */ _message, /** @type {any} */ ctx) {
+      async deliver(/** @type {any} */ session, /** @type {any} */ message, /** @type {any} */ ctx) {
+        // Postbox’s lint turn after each reply isn’t the agent’s work: running the script again for it would double
+        // what a spec counts, by how slowly the page catches up (CI run 43176907674).
+        if (message.kind === 'lint') return;
         const emit = new HarnessEvents(ctx, { now: () => Date.now() + live.ahead }).event;
         await live.scripts.get(session.handle)?.({ emit, who: session.handle });
       },
