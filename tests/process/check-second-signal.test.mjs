@@ -17,23 +17,27 @@ import { tempDir } from '../temp-dirs.mjs';
 const CHECK = fileURLToPath(new URL('../../tools/check.mjs', import.meta.url));
 const HEAVY_LOCK = new URL('../../tools/heavy-lock.mjs', import.meta.url).href;
 
-/** Whether pid has exited within ms; a killed process can stay a zombie for a moment before it’s reaped. */
+/** Whether pid has exited within ms, looking once more at the deadline; a killed process can stay a zombie for a
+ * moment before it’s reaped. */
 async function goneWithin(/** @type {number} */ pid, /** @type {number} */ ms) {
-  for (const end = Date.now() + ms; Date.now() < end; await sleep(50)) {
+  const gone = () => {
     try {
       process.kill(pid, 0);
+      return false;
     } catch {
       return true;
     }
-  }
-  return false;
+  };
+  for (const end = Date.now() + ms; Date.now() < end; await sleep(50)) if (gone()) return true;
+  return gone();
 }
 
-/** The text in file once it’s been written, within ms. @param {string} file @param {number} ms */
+/** The text in file once it’s been written, within ms, looking once more at the deadline. @param {string} file @param {number} ms */
 async function readWithin(file, ms) {
   for (const end = Date.now() + ms; Date.now() < end; await sleep(50)) {
     if (existsSync(file)) return readFileSync(file, 'utf8');
   }
+  if (existsSync(file)) return readFileSync(file, 'utf8');
   throw new Error(`Nothing was written to ${file} within ${ms} ms.`);
 }
 
