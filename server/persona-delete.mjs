@@ -11,11 +11,12 @@ import { httpError } from './helpers.mjs';
  * @returns {{ handle: string, forgotten: Promise<void> }}  forgotten settles once every backend has forgotten it
  */
 export function deletePersona(rt, id) {
-  const p = rt.persona(id);
+  // Pending, the agent and its sessions: either may have been made behind a held commit.
+  const p = rt.store.pending.persona(id);
   if (!p) throw httpError(404, 'That agent doesn’t exist.');
-  for (const { id: sid } of Object.values(rt.s.sessions).filter((se) => se.personaId === id)) {
+  for (const { id: sid } of Object.values(rt.store.pending.sessions()).filter((se) => se.personaId === id)) {
     // Read again each time: deleting one can erase others, as its conversation goes with it, side threads too.
-    if (rt.s.sessions[sid]) rt.deleteSession(sid);
+    if (rt.store.pending.session(sid)) rt.deleteSession(sid);
   }
   rt.store.emit('remove', { kind: 'persona', id });
   return { handle: p.handle, forgotten: forget(rt, p) };

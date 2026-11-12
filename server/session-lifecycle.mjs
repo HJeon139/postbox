@@ -23,7 +23,9 @@ function conversationScope(rt, threadId) {
  * There is no Undo window, so nothing is held for it (#604, #599).
  */
 export function deleteSession(rt, sessionId) {
-  const se = rt.session(sessionId);
+  // Pending: a session made behind a held commit is deleted too, not refused as gone.
+  const se = rt.store.pending.session(sessionId);
+  if (!se) throw httpError(404, 'That session doesn’t exist. It may have been deleted.');
   rt.stop(sessionId, { silent: true });
   // A turn of one on a host, waiting to be attached again or to resume, is neither, as deleting a conversation does.
   rt.remote.cancel(sessionId);
@@ -47,7 +49,7 @@ export function deleteSession(rt, sessionId) {
     for (const it of rt.store.pending.items(t.id)) if (it.sessionId === sessionId) rt.patchItem(t.id, it.id, { deletedAgent: true });
     rt.addItem(t.id, { kind: 'system', variant: 'left', to: se.handle });
   }
-  if (rt.s.sessions[sessionId]) rt.store.emit('remove', { kind: 'session', id: sessionId });
+  if (rt.store.pending.session(sessionId)) rt.store.emit('remove', { kind: 'session', id: sessionId });
   return { handle: se.handle };
 }
 

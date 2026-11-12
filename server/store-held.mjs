@@ -55,13 +55,14 @@ const ENTITIES = /** @type {const} */ ({
  *   thread: (id: string) => Entry | undefined,
  *   threads: () => Readonly<Record<string, Entry>>,
  *   session: (id: string) => Entry | undefined,
+ *   sessions: () => Readonly<Record<string, Entry>>,
  *   persona: (id: string) => Entry | undefined,
  * }} PendingReads
  */
 
 /**
  * The pending reads of a store: one per list in LISTS; for apps and threads, one entity by id and the whole
- * collection; and one session, or one persona, by id.
+ * collection; every session, or one by id; and one persona by id.
  * @param {import('./store.mjs').Store} store @returns {PendingReads}
  */
 export function pendingReads(store) {
@@ -73,6 +74,7 @@ export function pendingReads(store) {
   reads.thread = (/** @type {string} */ id) => pendingEntity(store, 'threads', id);
   reads.threads = () => pendingCollection(store, 'threads');
   reads.session = (/** @type {string} */ id) => pendingEntity(store, 'sessions', id);
+  reads.sessions = () => pendingCollection(store, 'sessions');
   reads.persona = (/** @type {string} */ id) => pendingEntity(store, 'personas', id);
   return /** @type {PendingReads} */ (reads);
 }

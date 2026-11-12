@@ -120,8 +120,12 @@ const PENDING = {
   'conversations.mjs': ['createThread', 'ensureSession'],
   // The room’s chain limit, which decides whether a wake waits, maybe set behind a held commit (#1035).
   'room-chain-limit.mjs': ['roomChainLimit'],
-  // The members a delete keeps its room for, maybe joined behind a held commit (#796).
-  'session-lifecycle.mjs': ['deleteSession', 'deleteSession', 'deleteSession'],
+  // The members a delete keeps its room for, maybe joined behind a held commit (#796); and the session it deletes, which
+  // may have been made there too.
+  'session-lifecycle.mjs': ['deleteSession', 'deleteSession', 'deleteSession', 'deleteSession', 'deleteSession'],
+  // An agent changed or deleted, and a deleted agent’s sessions, any of them maybe made behind a held commit.
+  'persona-write.mjs': ['updatePersona'],
+  'persona-delete.mjs': ['deletePersona', 'deletePersona', 'deletePersona'],
   'session-write.mjs': ['updateSession', 'needAt', 'stampNeeds', 'pendingSessionsIn', 'pendingSessionsIn'], // needAt: the need's item's time, maybe added behind a held commit (#1155); stampNeeds: the session it stamps
   // A command’s item, maybe deleted behind a held commit, before its output or its end is written.
   'shell-runs.mjs': ['commandOutput', 'endCommand'],

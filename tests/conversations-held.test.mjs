@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
+import { deletePersona } from '../server/persona-delete.mjs';
 import { patchThread } from '../server/room-chain-limit.mjs';
 import { heldStore, setup } from './stop-reply-fixture.mjs';
 import { tempDir } from './temp-dirs.mjs';
@@ -129,5 +130,46 @@ test('attaching a Claude Code session behind a held commit attaches it and follo
   assert.equal(store.state.sessions[result.sessionId].backendState.claudeSessionId, id, 'its session records what it follows');
   assert.ok(env.rt.mirrors.has(result.sessionId), 'and its transcript is followed');
   env.rt.stopMirrors();
+  await store.close();
+});
+
+// PATCH and DELETE /api/personas/:id read the persona, and DELETE its sessions, from the published state, so either
+// on an agent made behind a held commit answered “That agent doesn’t exist”.
+test('changing an agent made behind a held commit changes it, not a 404', async () => {
+  const { result, store } = await whileHeld(({ rt }) => {
+    const p = rt.createPersona({ handle: 'fresh', backend: 'claude-code' });
+    try {
+      return rt.updatePersona(p.id, { description: 'Reads the numbers' });
+    } catch (e) {
+      return e;
+    }
+  });
+  assert.equal(result?.description, 'Reads the numbers', `changed: ${result?.message ?? ''}`);
+  assert.equal(store.state.personas[result.id].description, 'Reads the numbers', 'and it was written');
+  await store.close();
+});
+
+test('deleting an agent made and joined behind a held commit deletes it and its session, not a 404', async () => {
+  const { env, result, store } = await whileHeld(({ rt, t }) => {
+    const p = rt.createPersona({ handle: 'brief', backend: 'claude-code' });
+    rt.ensureSession(t.id, p.id);
+    try {
+      return { handle: deletePersona(rt, p.id).handle, id: p.id };
+    } catch (e) {
+      return e;
+    }
+  });
+  assert.equal(result?.handle, 'brief', `deleted: ${result?.message ?? ''}`);
+  assert.equal(store.state.personas[result.id], undefined, 'the agent is gone');
+  assert.deepEqual(
+    env.rt.sessionsIn(env.t.id).filter((se) => se.handle === 'brief'),
+    [],
+    'and so is its session',
+  );
+  assert.deepEqual(
+    Object.values(store.state.sessions).filter((se) => se.handle === 'brief'),
+    [],
+    'nowhere',
+  );
   await store.close();
 });
