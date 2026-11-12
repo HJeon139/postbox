@@ -3,6 +3,7 @@
 // PassThrough streams, as tests/remote-daemon.test.mjs drives it.
 
 import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { createCleanup } from '../server/remote/host/cleanup.mjs';
@@ -143,9 +144,10 @@ export function daemonSetup({ home = hostHome('pbd-'), onRemoved = () => {}, env
     removeWaitMs: 100,
   });
   const connect = () => connectTo(daemon);
-  const done = () => {
-    daemon.close();
-    rmSync(home, { recursive: true, force: true });
+  /** Closes the daemon and waits for its close, then removes the home, as tests/remote-daemon-setup.mjs’s done() (#426). */
+  const done = async () => {
+    await daemon.close();
+    await rm(home, { recursive: true, force: true, maxRetries: 10, retryDelay: 20 });
   };
   return { home, p, alive, kills, daemon, connect, done, env };
 }

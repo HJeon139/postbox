@@ -22,7 +22,7 @@ test('daemon: an ack survives a restart; once the turn has ended and is acked wh
     c.send('ack', { turn: 't1', upTo: 8 });
     // Until the ack is on disk, not a fixed 30 ms: under load the daemon hadn’t written it yet (gpt’s gate run).
     for (let i = 0; i < 200 && (await s.daemon.cleanup.readAck('t1')) !== 8; i++) await new Promise((r) => setTimeout(r, 10));
-    s.daemon.close();
+    await s.daemon.close();
     // A new daemon over the same home: the ack is on disk.
     const t = daemonSetup({ home: s.home });
     for (const x of s.alive) t.alive.add(x);
@@ -47,10 +47,10 @@ test('daemon: an ack survives a restart; once the turn has ended and is acked wh
         'welcome gives the acked size for a turn whose log went',
       );
     } finally {
-      t.daemon.close();
+      await t.daemon.close();
     }
   } finally {
-    s.done();
+    await s.done();
   }
 });
 
@@ -82,8 +82,8 @@ test('daemon: start writes start.agentFile into the Kiro home the runner will us
     assert.equal(statSync(join(isolated, 'agents')).mode & 0o777, 0o700);
     assert.ok(!existsSync(join(own, 'agents', 'pb-2.json')));
   } finally {
-    s.done();
-    t.done();
+    await s.done();
+    await t.done();
   }
 });
 
@@ -119,7 +119,7 @@ test('daemon: an agent file never replaces one that’s there, and start.env’s
     assert.deepEqual(readdirSync(outside), [], 'nothing was written outside');
     assert.ok(!existsSync(join(s.home, '.kiro', 'agents', 'pb.json')));
   } finally {
-    s.done();
+    await s.done();
   }
 });
 
@@ -138,7 +138,7 @@ test('daemon: remove stops the running turns, waits for them, deletes ~/.postbox
     assert.ok(existsSync(join(s.home, 'keep.txt')));
     await until(() => removed, 'the daemon to exit');
   } finally {
-    s.done();
+    await s.done();
   }
 });
 
@@ -168,7 +168,7 @@ test('daemon: remove refuses while a runner is still alive after Stop: no remove
     assert.ok(!existsSync(s.p.root));
     await until(() => removed, 'the daemon to exit');
   } finally {
-    s.done();
+    await s.done();
   }
 });
 
@@ -197,7 +197,7 @@ test('daemon: remove waits for a start under way on another connection, then sto
     assert.ok(!existsSync(s.p.root), '~/.postbox-remote is gone');
     await until(() => removed, 'the daemon to exit');
   } finally {
-    s.done();
+    await s.done();
   }
 });
 
@@ -213,7 +213,7 @@ test('daemon: remove refuses a ~/.postbox-remote that resolves outside the home 
     assert.equal(err.re, 'remove');
     assert.match(err.message, /won’t delete/);
     assert.ok(existsSync(join(outside, 'token')));
-    s.daemon.close();
+    await s.daemon.close();
   } finally {
     rmSync(home, { recursive: true, force: true });
     rmSync(outside, { recursive: true, force: true });
