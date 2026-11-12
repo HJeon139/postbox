@@ -406,6 +406,8 @@ details.activity[open] > summary .i-right { transform: rotate(90deg); }
 .live-steps > .live-thought.clamped { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: var(--lines, 3); line-clamp: var(--lines, 3); overflow: hidden; }
 /* Crowded (eight agents or more): a running reply is its name line, a line of its newest words and a line of its steps. */
 .turn:has(> .live-steps.crowded) { gap: 0; }
+/* Two crowded running replies in a row sit 2 px apart, not the transcript’s 12. */
+.transcript > :has(> .live-steps.crowded) + :has(> .live-steps.crowded) { margin-top: -10px; }
 .live-steps.crowded ul.steps, .live-steps.crowded li { margin: 0; padding-top: 0; padding-bottom: 0; min-height: 0; line-height: 20px; }
 .turn:has(> .live-steps.crowded:not(.whole)) > .md { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 1; line-clamp: 1; overflow: hidden; }
 .turn:has(> .live-steps.crowded:not(.whole)) > .md > * { margin: 0; }

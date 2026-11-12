@@ -85,11 +85,17 @@ for (const [width, height] of [
       const bar = el ? 0 : (document.querySelector('header.topbar')?.getBoundingClientRect().bottom ?? 0);
       const composer = /** @type {HTMLElement | null | undefined} */ (transcript?.parentElement?.querySelector(':scope > .composer'))?.offsetHeight ?? 0;
       return {
-        used: [...replies, ...rows].reduce((s, n) => s + n.getBoundingClientRect().height, 0),
+        // From the first running reply’s top to the last one’s bottom, the space between them included, and the rows.
+        used:
+          (replies.at(-1)?.getBoundingClientRect().bottom ?? 0) -
+          (replies[0]?.getBoundingClientRect().top ?? 0) +
+          rows.reduce((s, n) => s + n.getBoundingClientRect().height, 0),
         visible: (el?.clientHeight || innerHeight) - bar - composer,
       };
     });
     await expect(page.locator('.live-steps.crowded li.step-line', { hasText: 'make sums' }), 'each running its step').toHaveCount(10);
+    // An agent’s working row hides once its reply is seen in view, which leaves room for the next: they settle to none.
+    await expect(page.locator('.working .work-row:visible'), 'no working row repeats a reply in view').toHaveCount(0);
     expect(used, `ten running replies and their working rows, in pixels, against ${Math.round(visible)} px of transcript`).toBeLessThanOrEqual(visible);
     // The rest of a crowded reply is a click away.
     const more = page.getByRole('button', { name: 'Show the whole reply' }).first();
@@ -101,3 +107,35 @@ for (const [width, height] of [
     for (const w of ten) go(w);
     await expect.poll(() => scripted.app.rt.turns.size).toBe(0);
   });
+
+test('a crowded agent keeps its working row while its running reply is off screen, and loses it while the reply is in view', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const ten = ['ma', 'na', 'oa', 'pa', 'qa', 'ra', 'sa', 'ta', 'ua', 'va'];
+  for (const who of ten)
+    scripts.set(who, async ({ emit }) => {
+      emit({ kind: 'text', text: `Working on it, from ${who}.` });
+      emit({ kind: 'tool_call', id: `${who}-1`, name: 'Bash', input: { command: 'make sums' }, final: true });
+      await hold(who, 1);
+    });
+  const t = room('One off screen', ten);
+  await page.goto(`${scripted.app.origin}/#/t/${t.id}`);
+  await synced(page, scripted.app);
+  // The first agent’s reply, then forty posts under it, then the other nine agents’ replies below them.
+  scripted.app.rt.sendMessage(t.id, { text: '@ma go' });
+  await expect.poll(() => at('ma')).toBe(1);
+  for (let i = 0; i < 40; i++) scripted.app.rt.addItem(t.id, { kind: 'user', text: `A post in the room, number ${i + 1}.` });
+  for (const who of ten.slice(1)) scripted.app.rt.sendMessage(t.id, { text: `@${who} go` });
+  await expect.poll(() => ten.every((w) => at(w) === 1)).toBe(true);
+  await synced(page, scripted.app);
+  await expect(page.locator('.live-steps.crowded'), 'each reply crowded').toHaveCount(10);
+  const row = (/** @type {string} */ who) => page.locator('.working .work-row').filter({ has: page.locator('b', { hasText: new RegExp(`^${who}$`) }) });
+  await expect(row('ma'), 'the agent whose reply is off screen keeps its row').toBeVisible();
+  await expect(row('va'), 'an agent whose reply is in view has none').toBeHidden();
+  const reply = page.locator('.transcript > [data-key]', { hasText: 'Working on it, from ma.' });
+  await reply.scrollIntoViewIfNeeded();
+  await expect(row('ma'), 'its reply scrolled into view: no row').toBeHidden();
+  await page.locator('.transcript > [data-key]', { hasText: 'Working on it, from va.' }).scrollIntoViewIfNeeded();
+  await expect(row('ma'), 'and out of view again: its row is back').toBeVisible();
+  for (const w of ten) go(w);
+  await expect.poll(() => scripted.app.rt.turns.size).toBe(0);
+});

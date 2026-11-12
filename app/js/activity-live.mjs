@@ -8,6 +8,7 @@
 import { stepCounts as counts, stepRow } from './activity-steps.mjs';
 import { busy, itemsOf, placeIn, sessionsAt } from './client.mjs';
 import { h, plural } from './dom.mjs';
+import { watchCrowded } from './live-in-view.mjs';
 
 // Heights the budget counts in, in pixels: one step’s line, the newest step in full, a line of a thought capped at up
 // to THOUGHT_LINES and its button, a line of the reply’s words and the space between its paragraphs, and what each agent at work has
@@ -222,7 +223,9 @@ export function liveParts(it, threadId, words, newestId) {
   if (lines < 0) {
     const line = lineRow(last);
     line.append(h('span.small.dim', `· ${plural(callsOf(steps).length, 'step')}`));
-    return h(`div.live-steps.crowded${wholeReplies.has(it.id) ? '.whole' : ''}`, agents, h('ul.steps.live', line), wholeButton(it));
+    const block = h(`div.live-steps.crowded${wholeReplies.has(it.id) ? '.whole' : ''}`, agents, h('ul.steps.live', line), wholeButton(it));
+    watchCrowded(block, it.sessionId);
+    return block;
   }
   const shownFrom = Math.max(0, calls.length - (full ? 1 : 0) - lines); // older than this, a step is one of “N earlier steps”
   const parts = [];

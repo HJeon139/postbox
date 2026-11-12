@@ -48,7 +48,7 @@ import { windowOn } from './window-flag.mjs';
 import { focusedItem, keepFocused } from './window-keep.mjs';
 import { replaced as replacedNode } from './window-shrink.mjs';
 import { workList } from './work-list.mjs';
-import { fillWorkRow, saysItself } from './working-rows.mjs';
+import { fillWorkRow } from './working-rows.mjs';
 
 export { focusComposer } from './hop-card.mjs';
 
@@ -83,9 +83,9 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
   const working = h('div.working.col', { 'aria-hidden': 'true' });
   const paintWorking = () => {
     // The agents whose turn is here: a conversation’s, unless its turn is in a side thread, and in a side thread, any
-    // session answering in it (#110). Not one whose crowded reply here says what it’s doing already (activity-live.mjs).
+    // session answering in it (#110).
     const busy = sessionsAt(threadId).filter(
-      (se) => !se.archived && (se.state === 'think' || se.state === 'tool') && (!se.sideTurn || se.sideTurn.threadId === threadId) && !saysItself(se, threadId),
+      (se) => !se.archived && (se.state === 'think' || se.state === 'tool') && (!se.sideTurn || se.sideTurn.threadId === threadId),
     );
     syncList(
       working,
