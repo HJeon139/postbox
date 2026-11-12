@@ -153,7 +153,7 @@ test('a job Keep running lost, behind Stop’s held write, stalls its held steps
   const f = await heldRoom();
   const se = await keptJobs(f, ['bg1'], { kept: false, heldSteps: false });
   const release = await f.hold();
-  // What stop({ jobs: 'keep' }) writes, held, then the job it couldn't keep ends (server/runtime.mjs, KEEP_LOST).
+  // What stop({ jobs: 'keep' }) writes, held, then the job it couldn't keep ends (server/job-records.mjs, KEEP_LOST).
   f.rt.updateSession(se.id, { heldSteps: { threadId: f.t.id, keys: ['it_p:s'] } });
   const lost = 'Postbox couldn’t find its process to keep it running: it may have ended with the agent, and Postbox can’t show it or stop it.';
   f.rt.endJob(se.id, 'bg1', 'stopped', lost);
