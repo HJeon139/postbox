@@ -23,12 +23,12 @@ const STOP_WINDOW = 60;
  * stops it (#439), archives it or removes it (#228); sendHeld reports a retired card’s wake to a target archived
  * meanwhile as not sent. The events keep no reason on the patch, and no notice, so the reason is read from around it:
  * the target’s empty stopped item or its session going to stopping within STOP_WINDOW events before the patch; its
- * session archived or deleting in the state; or no session of its handle in the state, or a “left” line after the patch.
+ * session archived in the state; or no session of its handle in the state, or a “left” line after the patch.
  * @param {any} f  @param {{ to: string }} w  @param {number|null} seq  the held patch’s seq, when one took it off
  */
 function byDesign(f, w, seq) {
   const sessions = Object.values(f.state?.sessions ?? {}).filter((se) => se?.handle === w.to);
-  if (!sessions.length || sessions.every((se) => se.archived || se.deleting)) return true;
+  if (!sessions.length || sessions.every((se) => se.archived)) return true;
   const ids = new Set(sessions.map((se) => se.id));
   return (f.events ?? []).some(
     (e) =>

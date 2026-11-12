@@ -57,7 +57,7 @@ function buildRow(row, entry) {
 }
 
 /** Puts a row’s text and names up to date without replacing its nodes. An editing row keeps its editor. */
-function fillRow(row, entry, at, of, leaving) {
+function fillRow(row, entry, at, of) {
   row._entry = entry;
   row._at = at;
   row._of = of;
@@ -75,8 +75,6 @@ function fillRow(row, entry, at, of, leaving) {
   label('send', `Send now: ${which}`);
   label('edit', `Edit ${which}`);
   label('remove', `Remove queued ${which}`);
-  const send = row.querySelector('[data-action="send"]');
-  if (send) send.disabled = leaving;
 }
 
 function editQueuedMessage(row, target) {
@@ -130,30 +128,18 @@ function refocusSlot(list, slot) {
   /** @type {HTMLElement | null} */ (row.querySelector(`[data-action="${slot.action}"]`) ?? row.querySelector('button'))?.focus();
 }
 
-/** The dialog’s note while its agent is being deleted; whether it is. */
-function paintLeaving(note, se) {
-  const leaving = Boolean(se.deleting);
-  const text = leaving ? `${se.handle} is being deleted. Undo keeps these queued; otherwise they’re posted to the conversation.` : '';
-  if (note.textContent !== text) note.textContent = text;
-  note.hidden = !leaving;
-  return leaving;
-}
-
 export function openQueue(sessionId, anchor = null) {
   const session = S().sessions[sessionId];
   if (!session) return;
   const title = h('span');
-  // Announced, not only shown: the agent is being deleted, and what happens to these messages (R1).
-  const leavingNote = h('p.small.agent-queue-leaving', { role: 'status' });
   const body = h('div.agent-queue-dialog');
   const list = h('ul.agent-queue-list');
-  body.append(leavingNote, list);
+  body.append(list);
   let dialog;
   const paint = () => {
     // The agent is gone (purged, or its conversation archived): nothing here can be sent to it any more.
     const now = S().sessions[sessionId];
     if (!now || now.archived) return dialog?.close();
-    const leaving = paintLeaving(leavingNote, now);
     const entries = entriesFor(sessionId);
     const missing = markMissing(list, entries);
     const heading = `${entries.length} queued for ${session.handle}`;
@@ -171,7 +157,7 @@ export function openQueue(sessionId, anchor = null) {
       (entry) => queuedMessageRow(entry, paint),
       () => {},
     );
-    for (const [i, row] of [...list.children].entries()) fillRow(row, all[i] ?? row._entry, i + 1, all.length, leaving);
+    for (const [i, row] of [...list.children].entries()) fillRow(row, all[i] ?? row._entry, i + 1, all.length);
     refocusSlot(list, slot);
   };
   paint();
@@ -235,13 +221,10 @@ export function agentQueueButton(session) {
 /** The conversation’s agents with something queued for them, and how many each. */
 function waitingIn(threadId) {
   const conv = conversationRoot(S().threads, threadId);
-  return (
-    Object.values(S().sessions)
-      // One being deleted still counts: its messages wait for Undo or the purge, and stay visible meanwhile (R1).
-      .filter((se) => se.threadId === conv && !se.archived)
-      .map((se) => ({ se, n: entriesFor(se.id).length }))
-      .filter((x) => x.n > 0)
-  );
+  return Object.values(S().sessions)
+    .filter((se) => se.threadId === conv && !se.archived)
+    .map((se) => ({ se, n: entriesFor(se.id).length }))
+    .filter((x) => x.n > 0);
 }
 
 /**

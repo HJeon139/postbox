@@ -114,10 +114,9 @@ const replyInOf = (rt, se) => {
 export function deliverWake(rt, threadId, q) {
   const target = rt.s.sessions[q.sessionIds[0]];
   const from = rt.s.sessions[q.fromSessionId];
-  const live = from && !from.archived && !from.deleting ? from : null;
-  if (!target || target.archived || target.deleting) {
-    const why = target?.deleting ? 'removed' : 'archived';
-    if (live) rt.tellAgent(live.id, `Your message to @${target?.handle ?? 'an agent'} (“${clip(q.text, 120)}”) wasn’t delivered: its session was ${why}.`);
+  const live = from && !from.archived ? from : null;
+  if (!target || target.archived) {
+    if (live) rt.tellAgent(live.id, `Your message to @${target?.handle ?? 'an agent'} (“${clip(q.text, 120)}”) wasn’t delivered: its session was archived.`);
     return;
   }
   // No reply-back (#372): the reply posts where the wake was, and wakes the waker only if it @-mentions it.

@@ -1,7 +1,7 @@
 // Each held wake message has one owner after Retry, decided by the recovered state (S1; gpt’s and critic’s reads of
-// #598 at e0a1a4a3). A wake waits in four places: a held start (heldTurn), a turn’s pending list, a stopped turn’s exit,
-// and a deleting agent’s Undo hold (#597). The re-arm owns an automatic wake, and a manual Retry whose schedule the
-// recovered state still holds; a manual Retry whose schedule is gone has no other owner, and is the person’s own action.
+// #598 at e0a1a4a3). A wake waits in three places: a held start (heldTurn), a turn’s pending list, and a stopped turn’s
+// exit. The re-arm owns an automatic wake, and a manual Retry whose schedule the recovered state still holds; a manual
+// Retry whose schedule is gone has no other owner, and is the person’s own action.
 // The first two specs are gpt’s probes. The same real Postbox setup on its own port.
 import assert from 'node:assert/strict';
 import { after, before, beforeEach, test } from 'node:test';

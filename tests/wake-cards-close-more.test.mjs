@@ -1,5 +1,5 @@
 // #693, from the pre-review packet at c577d51e: the startup sweep runs after idle archives are restored; a close tells
-// the agent that asked, and agents held on it even while archived or being removed, so a Restore or Undo finds the note;
+// the agent that asked, and agents held on it even while archived, so a Restore finds the note;
 // a closed card counts as settled; and the requester's need goes with the card.
 
 import assert from 'node:assert/strict';
@@ -42,7 +42,7 @@ test('#693 B2: an agent held on the card is told even while archived, so it read
 test('#693 the requester’s need goes with its closed card', () => {
   const f = heldOnAlphasCard();
   assert.equal(f.store.state.sessions[f.alpha.id].needs?.itemId, f.open.id);
-  f.store.emit('session', { ...f.store.state.sessions[f.alpha.id], deleting: Date.now() + 60_000 });
+  f.store.emit('session', { ...f.store.state.sessions[f.alpha.id], archived: true }); // as an older Postbox left it
   restart(f);
   assert.equal(f.store.state.sessions[f.alpha.id].needs, null);
 });
@@ -56,7 +56,7 @@ test('#693 the sweep closes a card whose agent’s session is gone altogether', 
 
 test('#693 the sweep’s note says the agent was archived or removed, not that it left a conversation it’s still in', () => {
   const f = heldOnAlphasCard();
-  f.store.emit('session', { ...f.store.state.sessions[f.alpha.id], deleting: Date.now() + 60_000 });
+  f.store.emit('session', { ...f.store.state.sessions[f.alpha.id], archived: true }); // as an older Postbox left it
   restart(f);
   assert.match(toldOf(f, f.beta), /didn’t go: @alpha was archived or removed/);
 });

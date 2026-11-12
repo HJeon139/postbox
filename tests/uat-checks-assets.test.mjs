@@ -1,7 +1,6 @@
 // The asset store’s UAT checks (tools/uat/checks-assets.mjs): each passes a recorded run as it was, and flags the
 // fault edited into it. The fixture is trimmed from two recorded runs of the assets-room scenario
-// (tests/fixtures/uat-assets/recorded-runs.json says which); the stream and probe records follow the shapes the runner
-// writes (tools/uat/room-checks.mjs’s facts, and the conversation action’s probes).
+// (tests/fixtures/uat-assets/recorded-runs.json says which).
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
@@ -21,9 +20,9 @@ function stateOf(log, extra = []) {
 
 /** The asset checks’ findings on these facts, by check. */
 function found(facts) {
-  const ids = ['asset-content-in-store', 'asset-room-orphan', 'turn-in-deleting-conversation'];
+  const ids = ['asset-content-in-store', 'asset-room-orphan'];
   const out = Object.fromEntries(ids.map((id) => [id, []]));
-  for (const f of runChecks({ probes: {}, streams: [], ...facts }, { only: ids })) out[f.check].push(f);
+  for (const f of runChecks({ probes: {}, ...facts }, { only: ids })) out[f.check].push(f);
   return out;
 }
 
@@ -36,11 +35,11 @@ function facts(edit = (log) => log) {
 const head = recorded.log.find((e) => e.type === 'asset.version');
 const room = recorded.log.find((e) => e.type === 'asset').data.room;
 
-test('the recorded run passes all three asset checks as it was', () => {
+test('the recorded run passes both asset checks as it was', () => {
   const f = found(facts());
   assert.deepEqual(
     Object.values(f).map((x) => x.length),
-    [0, 0, 0],
+    [0, 0],
   );
   assert.ok(recorded.files.length >= 3 && recorded.log.some((e) => e.type === 'asset.version'), 'it has asset files and versions to check');
 });
@@ -109,33 +108,16 @@ test('#722: a short asset is looked for in no form, since its forms are everywhe
   assert.equal(found({ store, state: emptyState() })['asset-content-in-store'].length, 0);
 });
 
-test('#723: a room index or asset left after its conversation is gone is flagged; a conversation in its Undo window isn’t', () => {
+test('#723: a room index or asset left after its conversation is gone is flagged', () => {
   const removed = { type: 'remove', data: { kind: 'thread', id: room } };
   const erase = { type: 'asset.erase', data: { room, at: 1 } };
   const left = found({ state: stateOf(recorded.log, [removed]) })['asset-room-orphan'];
   assert.deepEqual(left.map((x) => x.evidence).sort(), [`Room ${room} has no conversation, but the state keeps its room index.`]);
   assert.equal(found({ state: stateOf(recorded.log, [erase, removed]) })['asset-room-orphan'].length, 0, 'erased, then removed');
-  const thread = stateOf(recorded.log).threads[room];
-  const deleting = { type: 'thread', data: { ...thread, deleting: Date.now() + 10_000 } };
-  assert.equal(found({ state: stateOf(recorded.log, [deleting]) })['asset-room-orphan'].length, 0, 'Undo brings them back');
   // An asset whose room index was dropped, but which is still there.
   const s = stateOf(recorded.log, [removed]);
   delete s.assetRooms[room];
   assert.match(found({ state: s })['asset-room-orphan'][0].evidence, /keeps asset as_/);
-});
-
-test('#725: a turn that starts in a delete’s window, or runs on after its purge, is flagged; one stopped at the delete isn’t', () => {
-  const at = Date.parse('2026-11-03T16:30:00Z');
-  const del = { do: 'delete', at, until: at + 10_000, threadId: room, handles: ['researcher'] };
-  const turns = (streams, conversation = [del]) => found({ probes: { conversation }, streams })['turn-in-deleting-conversation'];
-  const stream = (started, ended, handle = 'researcher') => ({ handle, events: [], started, ended });
-  assert.equal(turns([stream(at - 5000, at + 300)]).length, 0, 'stopped by the delete');
-  assert.match(turns([stream(at + 4000, at + 6000)])[0].evidence, /started in the window/);
-  assert.match(turns([stream(at - 5000, at + 15_000)])[0].evidence, /ran on after the purge/);
-  assert.equal(turns([stream(at + 4000, at + 6000, 'critic')]).length, 0, 'another conversation’s agent');
-  const undo = { do: 'undo', at: at + 3000, threadId: room };
-  assert.equal(turns([stream(at + 4000, at + 6000)], [del, undo]).length, 0, 'after Undo');
-  assert.equal(turns([stream(at - 5000, at + 15_000)], [del, undo]).length, 0, 'no purge after Undo');
 });
 
 test('readStore: null for a run with no asset, else the whole log in order, the snapshot and the asset files', async (t) => {
