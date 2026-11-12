@@ -2,6 +2,50 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.2.0 (2026-11-12)
+
+### Features
+
+- **server:** a thought shows while the agent writes it, its text so far, then whole
+- **app:** a running turn's thoughts show whole between its steps
+- **app:** a running turn's steps show live between its words, and fold into its work record
+- **server:** a step keeps an edit's change and where it fell in the reply's words
+- a running turn's steps show open, with each call's input and output
+
+### Fixes
+
+- **app:** a crowded agent's working row shows while its running reply is off screen
+- **app:** a crowded room's agents have no working row, which their replies already say
+- **app:** "Show the whole thought" leaves focus on the thought it opened
+- **app:** a long answer doesn't draw words twice, and ten agents' running replies fit
+- **app:** an opened work record's edits show their counts, as the live view's lines did
+- **app:** running replies fit the screen, their words, thoughts and working rows counted
+- **app:** the list under a finished post doesn't repeat the calls its work record lists
+- **app:** an agent's working row doesn't say again the thought its live reply shows
+- **app:** a running turn's step paints its live block, not the whole reply
+- **server:** a stopped turn's steps fold, and so do those of a turn a restart cut off
+- **uat:** agents-section-members reads the Agents section's rows by their names again
+- **app:** Work shows no spend for an agent whose harness reports none, not $0.00
+- **server:** a step's input leaves out what its label already says
+- **adapters:** a failed Antigravity command reads as failed, after the times 1.5.5 adds
+- **app:** a running turn's thoughts are set apart from its words, in italic beside a rule
+- **app:** only a running turn's newest call shows in full, in whichever part of its reply it fell
+- **app:** a finished turn's record sits with its words, not above other agents' posts
+- **server:** a finished turn's steps fold to what its record keeps
+- **adapters:** a Codex edit shows its diff and counts, from the patch its stream carries
+- **app:** a finished turn's line shows once, in its work record
+- a post below a running reply no longer breaks its steps from its words
+- **app:** the newest edit shows its diff, not its input and its "ok" again
+- **app:** a finished turn's steps fold unless the person opened them
+- **adapters:** Antigravity's and Kiro's tool-schema loads stay out of Work
+- **server:** a long path in a step's input is cut in its middle, keeping the file name
+- **server:** a step's input and output are bounded in one place, keeping the cut mark
+- **adapters:** Kiro's file writes, edits and commands reach Work
+- **adapters:** Antigravity's ring keeps the last step's context when the turn ends
+- **app:** a step says its command and why it failed once each
+- **server:** a step's output, cut to its end, starts at a whole line and says it was cut
+- **adapters:** a failed Codex command says why, from what it printed
+
 ## 4.1.0 (2026-11-12)
 
 ### Features
