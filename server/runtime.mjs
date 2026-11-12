@@ -28,7 +28,7 @@ import { emptyReply, endedWithoutReply } from './empty-reply.mjs';
 import { heldSession } from './held-session.mjs';
 import { clip, clipText, httpError, retiredError } from './helpers.mjs';
 import { describeItem, topicRootLine } from './item-lines.mjs';
-import { endJob, expireStaleJobs, recordJob, runningJobs, runningProgress, setJobStep, settleJobs } from './job-records.mjs';
+import { endJob, expireStaleJobs, recordJob } from './job-records.mjs';
 import { keptJobs, pollKept, stopJob, stopKeptJobs, watchKept } from './kept-jobs.mjs';
 import { Ledger } from './ledger.mjs';
 import { endLint, foldLint, lint, quietLint } from './lint-delivery.mjs';
@@ -911,23 +911,11 @@ export class Runtime {
 
   // ── Background jobs (#129): server/job-records.mjs and kept-jobs.mjs ───────────────
 
-  runningJobs(sessionId, turnId) {
-    return runningJobs(this, sessionId, turnId);
-  }
   recordJob(turn, j) {
     return recordJob(this, turn, j);
   }
   endJob(sessionId, jobId, state, detail, opts) {
     return endJob(this, sessionId, jobId, state, detail, opts);
-  }
-  runningProgress(threadId, sessionId) {
-    return runningProgress(this, threadId, sessionId);
-  }
-  setJobStep(job, patch) {
-    return setJobStep(this, job, patch);
-  }
-  settleJobs(turn) {
-    return settleJobs(this, turn);
   }
   expireStaleJobs() {
     return expireStaleJobs(this);

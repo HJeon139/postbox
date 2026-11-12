@@ -2,6 +2,7 @@
 // the session's next turn start (#126), and stopping every turn as Postbox shuts down. Moved from server/runtime.mjs
 // (#1236); Runtime keeps a method of each name its callers use, and each function here takes the runtime first.
 
+import { runningJobs, runningProgress, settleJobs } from './job-records.mjs';
 import * as queue from './message-queue.mjs';
 import { arrival } from './queue-batch.mjs';
 import { dropScheduledWake, settleScheduledWake } from './scheduled-wakes.mjs';
@@ -33,7 +34,7 @@ const STOP_WATCHDOG_MS = 15000;
 export function stop(rt, sessionId, { silent = false, jobs = 'stop', by = 'you', why, sendNow = false } = {}) {
   const turn = rt.turns.get(sessionId);
   if (!turn) return false;
-  const keep = jobs === 'keep' && !turn.remote ? rt.runningJobs(sessionId, turn.id) : [];
+  const keep = jobs === 'keep' && !turn.remote ? runningJobs(rt, sessionId, turn.id) : [];
   turn.keepJobs = new Set(keep.map((j) => j.id));
   turn.stopReason = sendNow ? 'send-now' : by === 'shutdown' ? null : keep.length ? 'kept-jobs' : 'stop';
   const ended = { status: 'stopped', stoppedAt: Date.now(), stopReason: turn.stopReason };
@@ -45,7 +46,7 @@ export function stop(rt, sessionId, { silent = false, jobs = 'stop', by = 'you',
   rt.recordStopped(turn, ended, { by, why: 'You stopped the agent.' });
   rt.updateSession(sessionId, { state: 'stopping', subagents: [], currentStep: 'Stopping', finishedAt: Date.now(), stopAsk: null });
   // Progress steps running as you keep its jobs running may follow one of them: they run on with it (#129).
-  if (keep.length) rt.updateSession(sessionId, { heldSteps: { threadId: turn.threadId, keys: rt.runningProgress(turn.threadId, sessionId) } });
+  if (keep.length) rt.updateSession(sessionId, { heldSteps: { threadId: turn.threadId, keys: runningProgress(rt, turn.threadId, sessionId) } });
   // Its progress steps still running show as stalled, as at any turn’s end (#98); you stopped it, so no lint turn.
   // Pending, so the heldSteps just written holds its steps behind a held commit too (#1042).
   const se = rt.store.pending.session(sessionId);
@@ -129,7 +130,7 @@ export function recordStopped(rt, turn, ended, { by, why }) {
 export function turnExited(rt, turn) {
   // What the exit writes waits for writes to reopen (ST-3), behind the stop’s own records (server/store-outage.mjs).
   if (!rt.store.writable) return whenWritable(rt, () => rt.turnExited(turn));
-  rt.settleJobs(turn);
+  settleJobs(rt, turn);
   const ex = rt.exiting.get(turn.sessionId);
   if (ex?.turn !== turn) return;
   rt.exiting.delete(turn.sessionId);
@@ -175,7 +176,7 @@ export function requestStop(rt, sessionId, { jobs = null, turnId = null, subagen
   if (!turn) return { stopped: false };
   if (turnId && turnId !== turn.id) return { stopped: false, ended: true };
   // A remote turn’s jobs stop with it (#120), so there’s nothing to ask.
-  const running = turn.remote ? [] : rt.runningJobs(sessionId, turn.id);
+  const running = turn.remote ? [] : runningJobs(rt, sessionId, turn.id);
   if (running.length && jobs !== 'stop' && jobs !== 'keep') {
     const ask = { jobs: running.length, text: stopAskText(se.handle, running.length), turnId: turn.id };
     rt.updateSession(sessionId, { stopAsk: { ...ask, at: Date.now() } });

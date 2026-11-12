@@ -53,7 +53,7 @@ export function recordJob(rt, turn, j) {
     rt.updateSession(se.id, { jobs: jobs.map((x) => (x.id === id ? { ...x, kept: true, pgid: groups[0].pgid, groups } : x)) });
     // Postbox couldn’t tell which of the turn’s processes was the job, so it kept them all (#164): say so.
     const unsure = groups.length > 1 ? keepUnsure(groups.length) : null;
-    if (unsure) rt.setJobStep(old, { detail: unsure });
+    if (unsure) setJobStep(rt, old, { detail: unsure });
     rt.ledger.jobUpdate(old, { kept: true });
     // Its CLI is gone, so nothing would tell the agent: its next turn hears it’s still running, and why it ran on. Claude
     // Code, resumed, marks a background command it has no end for as stopped, and says so to the agent (#249).
@@ -67,7 +67,7 @@ export function recordJob(rt, turn, j) {
   }
   if (typeof j.state === 'string' && j.state !== 'running') {
     const lost = turn.keepJobs.has(id) && !old.kept;
-    rt.endJob(se.id, id, old.stopping || lost ? 'stopped' : j.state, lost ? KEEP_LOST : null);
+    endJob(rt, se.id, id, old.stopping || lost ? 'stopped' : j.state, lost ? KEEP_LOST : null);
   }
 }
 
@@ -90,7 +90,7 @@ export function endJob(rt, sessionId, jobId, state, detail = null, { by = null }
     rt.keptPoll = null;
   }
   // A kept job’s step loses what it said while running (keepUnsure); another’s keeps why its CLI said it failed.
-  rt.setJobStep(job, { state: stepState(state), ms: Date.now() - job.startedAt, ...(detail || job.kept ? { detail } : {}) });
+  setJobStep(rt, job, { state: stepState(state), ms: Date.now() - job.startedAt, ...(detail || job.kept ? { detail } : {}) });
   // A job Postbox kept running ended after its CLI had gone, so the agent hears it on its next turn.
   if (job.kept)
     rt.tellAgent(
@@ -135,7 +135,7 @@ export function setJobStep(rt, job, patch) {
 /** Jobs nothing reported the end of went with their CLI (SIGKILL, or a crash), unless Postbox kept them running. */
 export function settleJobs(rt, turn) {
   for (const j of [...(rt.s.sessions[turn.sessionId]?.jobs ?? [])])
-    if (j.turnId === turn.id && j.state === 'running' && !j.kept) rt.endJob(turn.sessionId, j.id, 'stopped', turn.keepJobs.has(j.id) ? KEEP_LOST : null);
+    if (j.turnId === turn.id && j.state === 'running' && !j.kept) endJob(rt, turn.sessionId, j.id, 'stopped', turn.keepJobs.has(j.id) ? KEEP_LOST : null);
   // Keep running kept none of them after all (KEEP_LOST): its reply doesn’t say they kept running (#249). One that was
   // kept counts though it’s been stopped since, from its row.
   if (turn.stopReason !== 'kept-jobs' || turn.keptAny || rt.s.sessions[turn.sessionId]?.jobs?.some((j) => j.turnId === turn.id && j.kept)) return;
@@ -148,5 +148,5 @@ export function settleJobs(rt, turn) {
 export function expireStaleJobs(rt) {
   for (const se of Object.values(rt.s.sessions))
     for (const j of se.jobs ?? [])
-      rt.endJob(se.id, j.id, 'stopped', 'Postbox restarted while it ran. If Postbox didn’t shut down cleanly, it may still be running.');
+      endJob(rt, se.id, j.id, 'stopped', 'Postbox restarted while it ran. If Postbox didn’t shut down cleanly, it may still be running.');
 }
