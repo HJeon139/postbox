@@ -22,6 +22,7 @@ import { act, answerDelivered, unreadAnswer } from './blocks.mjs';
 import { keptTurns, nextNeed, noticeNeed, releaseNeed, stateFor, TURN_TIED } from './card-needs.mjs';
 import { catchUp, moveMarkers, pointerIfSeen } from './catch-up.mjs';
 import { attachClaudeSession, claudeSessions, mirror, pollMirror, rearmMirrors, stopMirrorFor, stopMirrors } from './claude-mirror.mjs';
+import { createThread, ensureSession, renameThread } from './conversations.mjs';
 import { diagramCheck } from './diagram-check.mjs';
 import { emptyReply, endedWithoutReply } from './empty-reply.mjs';
 import { heldSession } from './held-session.mjs';
@@ -87,7 +88,7 @@ import { askedAgain, askedOf, replyMarks } from './turn-marks.mjs';
 import { settleStoppedSteps, settleSubagentSteps } from './turn-steps.mjs';
 import { workEvents } from './turn-work.mjs';
 import { toolsFor } from './ui-tools.mjs';
-import { closeOrphanCards, liftDecline } from './wake-cards.mjs';
+import { closeOrphanCards } from './wake-cards.mjs';
 import { restoreWork, workDiff, workGit, workOutput } from './work-view.mjs';
 
 export { AgentFileError } from './agent-files.mjs';
@@ -306,69 +307,16 @@ export class Runtime {
     this.store.emit('notify', { level, sessionId: se.id, threadId: threadId ?? se.threadId, handle: se.handle, title, text });
   }
 
-  // ── Projects, threads, sessions ────────────────────────────────────────────────────
+  // ── A conversation’s own record: server/conversations.mjs ─────────────────────────
 
-  /** @param {{ projectId: string, title: string, personaIds?: string[], kind?: string, parentId?: string|null }} opts */
-  createThread({ projectId, title, personaIds = [], kind = 'thread', parentId = null }) {
-    if (!this.s.projects[projectId]) throw httpError(404, 'That project doesn’t exist.');
-    const t = this.putThread({
-      id: newId('th'),
-      projectId,
-      title: title || 'New conversation',
-      kind,
-      parentId,
-      members: [],
-      lastSpeaker: null,
-      hops: 0,
-      queue: [],
-      createdAt: Date.now(),
-      archived: false,
-    });
-    for (const pid of personaIds) this.ensureSession(t.id, pid);
-    return this.s.threads[t.id];
+  createThread(opts) {
+    return createThread(this, opts);
   }
-
-  /** One session per persona per thread. Adding a second agent turns a thread into a room. */
-  /**
-   * @param {string} threadId @param {string} personaId
-   * @param {{ brief?: string|null, joined?: { by: string, in: string } | null }} [opts]
-   *   joined: it joins to answer in a side thread, woken by `by` (a handle, or 'you') in thread `in` (#110)
-   */
-  ensureSession(threadId, personaId, { brief, joined = null } = {}) {
-    this.thread(threadId);
-    const existing = pendingSessionsIn(this, threadId).find((x) => x.personaId === personaId);
-    if (existing) return existing;
-    const p = this.persona(personaId);
-    if (!p) throw httpError(404, 'That agent doesn’t exist.');
-    const se = this.putSession({
-      id: newId('se'),
-      personaId,
-      threadId,
-      handle: p.handle,
-      backend: p.backend,
-      state: 'idle',
-      ctx: null,
-      subagents: [],
-      compactions: 0,
-      toolCount: 0,
-      toolCalls: [],
-      currentStep: '',
-      lastMessage: '',
-      agentMessages: [],
-      needs: null,
-      unread: 0,
-      startedAt: Date.now(),
-      finishedAt: null,
-      archived: false,
-      brief: brief ?? null,
-      // The person never added it, so its row says why it’s here (decided by the person, 23 October 2026).
-      ...(joined ? { joinedBy: joined.by, joinedIn: joined.in } : {}),
-      // Nothing given yet: its first turn starts with the conversation so far (see catchUp).
-      seenItem: null,
-    });
-    updateThread(this, threadId, (x) => ({ members: [...x.members, se.id], kind: x.kind === 'thread' && x.members.length > 0 ? 'room' : x.kind }));
-    liftDecline(this, threadId, p.handle); // the person added it: a decline of adding it here no longer holds (#789)
-    return se;
+  ensureSession(threadId, personaId, opts) {
+    return ensureSession(this, threadId, personaId, opts);
+  }
+  renameThread(threadId, title) {
+    return renameThread(this, threadId, title);
   }
 
   // ── Messages from you: server/send-message.mjs and message-queue.mjs ──────────────
@@ -1735,15 +1683,6 @@ export class Runtime {
   }
   deleteThread(threadId) {
     return deleteThread(this, threadId);
-  }
-
-  renameThread(threadId, title) {
-    this.thread(threadId);
-    const name = String(title ?? '')
-      .trim()
-      .slice(0, 120);
-    if (!name) throw httpError(422, 'A conversation needs a name.');
-    return updateThread(this, threadId, { title: name });
   }
 
   // ── Scheduled wake-ups ─────────────────────────────────────────────────────────────
