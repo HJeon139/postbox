@@ -77,3 +77,15 @@ test('a thought shows while the agent writes it: a running step with its text so
   assert.deepEqual([last.state, last.detail], ['done', 'The sum is wrong. It subtracts. Fix the operator.']);
   assert.equal(new Set(thoughts().map((a) => a.id)).size, 1, 'one step throughout');
 });
+
+test('a step’s input leaves out what its label already says, such as a command’s description', () => {
+  const { ctx, activity } = fakeCtx();
+  const { event } = new HarnessEvents(ctx, { now: () => 0 });
+  event({ kind: 'tool_call', id: 't1', name: 'Bash', input: { command: 'head -n 5 *.md', description: 'Preview each project file' }, final: true });
+  const step = activity.at(-1);
+  assert.equal(step.label, 'Preview each project file');
+  assert.equal(step.input, 'command: head -n 5 *.md', 'the description is the label, said once');
+  const long = 'Preview the opening lines of every file in the project folder, each one of the nine, to say what it holds';
+  event({ kind: 'tool_call', id: 't2', name: 'Bash', input: { command: 'head *', description: long }, final: true });
+  assert.equal(activity.at(-1).input, 'command: head *', 'also when the label is the description cut short');
+});

@@ -23,9 +23,9 @@ export const clip = (/** @type {unknown} */ s, /** @type {number} */ n) => {
 export const firstSentence = (/** @type {unknown} */ s, n = 300) => clip(/^[\s\S]*?[.!?](?=\s|$)/.exec(String(s ?? '').trim())?.[0] ?? s, n);
 /** A subagent’s step names it, and nests under the call that started it (#73). @param {any} by */
 export const byOf = (by) => (by?.who ? { who: by.who, ...(by.parent ? { parent: by.parent } : {}) } : {});
-/** A step’s input field, when it has one. @param {unknown} input */
-const inputOf = (input) => {
-  const line = stepInput(input);
+/** A step’s input field, when it has one, without what its label says. @param {unknown} input @param {string} label */
+const inputOf = (input, label) => {
+  const line = stepInput(input, label);
   return line ? { input: line } : {};
 };
 
@@ -74,10 +74,10 @@ export class HarnessTools {
     const who = by?.who ?? null;
     const quiet = QUIET.test(name);
     const label = own || describeTool(name, input);
-    this.st.tools.set(id, { name, label, own, input, patch, shown: stepInput(input), who, parent: by?.parent ?? null, started: this.now(), quiet });
+    this.st.tools.set(id, { name, label, own, input, patch, shown: stepInput(input, label), who, parent: by?.parent ?? null, started: this.now(), quiet });
     const diff = stepDiff(name, input, patch);
     this.st.tools.get(id).diff = diff.diff;
-    const step = { id, label, state: 'running', ...byOf(by), ...inputOf(input), ...diff };
+    const step = { id, label, state: 'running', ...byOf(by), ...inputOf(input, label), ...diff };
     if (!quiet) this.ctx.activity({ ...step, ...(SUBAGENT_TOOLS.has(name) ? { kind: 'agent' } : {}) });
     else if (!who) this.status({ state: 'tool', currentStep: label });
     if (SUBAGENT_TOOLS.has(name)) this.startSubagent(id, input, by);
@@ -114,14 +114,14 @@ export class HarnessTools {
       this.used(id, t);
     }
     const label = t.own || describeTool(t.name, input);
-    const known = stepInput(t.input);
+    const known = stepInput(t.input, label);
     // An edit’s change shows as its input arrives (server/step-diff.mjs).
     const diff = stepDiff(t.name, t.input, t.patch);
     if (label !== t.label || (known && known !== t.shown) || diff.diff !== t.diff) {
       t.label = label;
       t.shown = known;
       t.diff = diff.diff;
-      if (!t.quiet) this.ctx.activity({ id, label, state: 'running', ...byOf(t), ...inputOf(t.input), ...diff });
+      if (!t.quiet) this.ctx.activity({ id, label, state: 'running', ...byOf(t), ...inputOf(t.input, label), ...diff });
       else if (!t.who) this.status({ currentStep: label });
     }
     const sub = this.st.subagents.get(id);

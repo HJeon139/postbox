@@ -20,14 +20,17 @@ function cut(/** @type {string} */ s, /** @type {number} */ n) {
 
 /**
  * A call’s input in one line, for its step: a string as it is, an object as its fields (`command: npm test`), each
- * value cut short, so a file’s whole contents never ride a step. @param {unknown} input
+ * value cut short, so a file’s whole contents never ride a step. @param {unknown} input @param {string} [label]  the step’s
  */
-export function stepInput(input) {
+export function stepInput(input, label = '') {
   if (typeof input === 'string') return cut(input, STEP_TEXT.input);
   if (!input || typeof input !== 'object') return '';
+  // A field the step’s label already says, whole or cut short, such as a command’s description, isn’t said again.
+  const said = String(label).replace(/…$/, '');
   const parts = [];
   for (const [k, v] of Object.entries(input)) {
     const value = String((typeof v === 'string' ? v : JSON.stringify(v)) ?? '').replace(/\s+/g, ' ');
+    if (said && typeof v === 'string' && value.startsWith(said) && (value === said || label.endsWith('…'))) continue;
     parts.push(`${k}: ${cut(value, FIELD)}`);
     if (parts.join(' · ').length > STEP_TEXT.input) break;
   }
