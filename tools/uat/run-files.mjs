@@ -224,9 +224,8 @@ const transcriptOf = (cwd, id) => claudeTranscriptFile(join(homedir(), '.claude'
 export async function readUi(page) {
   return {
     headerText: await page.evaluate(`document.querySelector('.rail .agents-sec')?.innerText ?? ''`),
-    agentRows: await page.evaluate(
-      `[...document.querySelectorAll('.agent-rows .agent-btn')].map((b) => (/@([\\w-]+)/.exec(b.textContent) ?? [])[1]).filter(Boolean)`,
-    ),
+    // Each row’s handle, which its name shows in bold, without an @.
+    agentRows: await page.evaluate(`[...document.querySelectorAll('.agent-rows .agent-btn .name b')].map((b) => b.textContent.trim()).filter(Boolean)`),
     topbarCut: await page.evaluate(
       `innerWidth >= 1200 && [...document.querySelectorAll('header.topbar .title, header.topbar .crumb')].some((n) => n.scrollWidth > n.clientWidth + 1)`,
     ),
