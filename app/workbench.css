@@ -404,6 +404,13 @@ details.activity[open] > summary .i-right { transform: rotate(90deg); }
 .live-steps > .live-words { color: var(--text); font-size: inherit; }
 .live-steps > .live-thought { color: var(--dim); font-size: 13px; font-style: italic; white-space: pre-wrap; overflow-wrap: anywhere; border-left: 2px solid var(--line); padding-left: 10px; }
 .live-steps > .live-thought.clamped { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: var(--lines, 3); line-clamp: var(--lines, 3); overflow: hidden; }
+/* Crowded (eight agents or more): a running reply is its name line, a line of its newest words and a line of its steps. */
+.turn:has(> .live-steps.crowded) { gap: 0; }
+.live-steps.crowded ul.steps, .live-steps.crowded li { margin: 0; padding-top: 0; padding-bottom: 0; min-height: 0; line-height: 20px; }
+.turn:has(> .live-steps.crowded:not(.whole)) > .md { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 1; line-clamp: 1; overflow: hidden; }
+.turn:has(> .live-steps.crowded:not(.whole)) > .md > * { margin: 0; }
+.live-steps.crowded { flex-direction: row; align-items: baseline; gap: 8px; }
+.live-steps > .reply-more { font-size: 12px; color: var(--dim); background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline; white-space: nowrap; }
 .live-steps > .thought-more { align-self: flex-start; font-size: 12px; color: var(--dim); background: none; border: 0; padding: 0 0 0 12px; cursor: pointer; text-decoration: underline; }
 .steps.live { margin-top: 0; }
 .steps li.step-line { align-items: center; }

@@ -132,7 +132,8 @@ const wordsHeight = (text) =>
  * How a running reply’s steps fit its share of the visible transcript, once its words and what each agent at work has
  * besides are counted: { lines, full, thought }. thought: how many lines its newest thought shows, up to THOUGHT_LINES
  * and 0 for none; full: whether its newest call shows in full; lines: how many of its older steps show as a line each.
- * With eight agents or more, or when even a line beside its words doesn’t fit, its steps are one line, and no thought.
+ * With eight agents or more, its steps are one line and its words one line (crowded): only the number of agents
+ * decides that, not its words, so a long answer never moves words between the live block and the reply’s box.
  * @param {string} threadId @param {string} text  the reply’s words @param {boolean} thinks  whether it has a thought
  */
 function fit(threadId, text, thinks) {
@@ -141,7 +142,7 @@ function fit(threadId, text, thinks) {
   const fits = Math.floor((room - LINE - THOUGHT_MORE) / THOUGHT_LINE);
   const thought = thinks && agents < CROWD ? Math.max(0, Math.min(THOUGHT_LINES, fits)) : 0;
   const left = room - (thought ? thought * THOUGHT_LINE + THOUGHT_MORE : 0);
-  if (agents >= CROWD || left < LINE) return { lines: -1, full: false, thought: 0 };
+  if (agents >= CROWD) return { lines: -1, full: false, thought: 0 };
   if (left < FULL) return { lines: 0, full: false, thought };
   return { lines: Math.max(0, Math.floor((left - FULL) / LINE)), full: true, thought };
 }
@@ -188,17 +189,21 @@ function fullRow(s) {
  */
 export function textFrom(it, /** @type {string} */ threadId) {
   if (!isLive(it, threadId)) return 0;
+  const text = String(it.text ?? '');
+  // Crowded, the box shows the newest of the words, a line of them, unless you asked for the whole reply.
+  if (liveAgents(threadId) >= CROWD) return wholeReplies.has(it.id) ? 0 : tailFrom(text);
   const steps = ownSteps(partSteps(it, threadId));
-  if (
-    !steps.length ||
-    fit(
-      threadId,
-      String(it.text ?? ''),
-      steps.some((s) => s.kind === 'thought'),
-    ).lines < 0
-  )
-    return 0;
-  return Math.min(String(it.text ?? '').length, Math.max(0, ...steps.map((s) => Number(s.at) || 0)));
+  if (!steps.length) return 0;
+  return Math.min(text.length, Math.max(0, ...steps.map((s) => Number(s.at) || 0)));
+}
+
+/** Where a line of a reply’s newest words starts: its last paragraph’s last line or so, at a word. @param {string} text */
+function tailFrom(text) {
+  const end = text.trimEnd().length;
+  const from = Math.max(text.lastIndexOf('\n', end - 1) + 1, end - LINE_CHARS);
+  if (from <= 0) return 0;
+  const space = text.indexOf(' ', from);
+  return text[from - 1] === '\n' || space < 0 || space >= end ? from : space + 1;
 }
 
 /** The id of a turn’s newest call, in whichever of its reply’s parts it fell. @param {any} it @param {string} threadId */
@@ -227,7 +232,7 @@ export function liveParts(it, threadId, words, newestId) {
   if (lines < 0) {
     const line = lineRow(last);
     line.append(h('span.small.dim', `· ${plural(callsOf(steps).length, 'step')}`));
-    return h('div.live-steps.crowded', agents, h('ul.steps.live', line));
+    return h(`div.live-steps.crowded${wholeReplies.has(it.id) ? '.whole' : ''}`, agents, h('ul.steps.live', line), wholeButton(it));
   }
   const shownFrom = Math.max(0, calls.length - (full ? 1 : 0) - lines); // older than this, a step is one of “N earlier steps”
   const parts = [];
@@ -268,6 +273,30 @@ export function liveParts(it, threadId, words, newestId) {
 
 /** The thoughts whose whole text you asked to see, by step id: they stay whole as their reply paints again. */
 const wholeThoughts = new Set();
+/** The crowded replies whose whole words you asked to see, by item id (textFrom). */
+const wholeReplies = new Set();
+
+/**
+ * A crowded reply’s control for the rest of its words, which its box shows a line of. It asks for the reply to be
+ * painted again (activity-paint.mjs, the live-repaint event), and keeps focus, as it’s drawn again in its place.
+ * @param {any} it
+ */
+function wholeButton(it) {
+  const whole = wholeReplies.has(it.id);
+  return h(
+    'button.reply-more',
+    {
+      type: 'button',
+      dataset: { focus: `reply-${it.id}` },
+      onclick: (/** @type {MouseEvent} */ e) => {
+        if (whole) wholeReplies.delete(it.id);
+        else wholeReplies.add(it.id);
+        e.currentTarget?.dispatchEvent(new Event('live-repaint', { bubbles: true }));
+      },
+    },
+    whole ? 'Show less of the reply' : 'Show the whole reply',
+  );
+}
 
 /** A thought, capped at `lines` with a button to show it whole when it’s longer. @param {any} s @param {number} lines */
 function thoughtParts(s, lines) {

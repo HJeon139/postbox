@@ -112,7 +112,8 @@ test('four agents’ running replies fit the screen together: their words, a cap
   expect(used, 'the four replies and their working rows, in pixels').toBeLessThanOrEqual(820);
   const first = page.locator('.live-steps .live-thought').first();
   expect(await first.textContent(), 'the whole thought is there, shown in part').toBe(thought);
-  await page.getByRole('button', { name: 'Show the whole thought' }).first().click();
+  await page.getByRole('button', { name: 'Show the whole thought' }).first().focus();
+  await page.keyboard.press('Enter');
   await expect(first).not.toHaveClass(/clamped/);
   for (const w of four) go(w);
   await expect.poll(() => scripted.app.rt.turns.size).toBe(0);

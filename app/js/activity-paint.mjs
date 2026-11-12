@@ -221,11 +221,15 @@ function paintLive(node, it, threadId) {
   const [, block, jobs] = activityParts(it, threadId);
   if (!block) return;
   const earlier = old.querySelector('details.earlier');
-  const focused = earlier?.querySelector(':scope > summary') === document.activeElement;
+  // Focus stays where you left it: on “N earlier steps”, or on a control or a thought that says which it is (data-focus).
+  const active = /** @type {HTMLElement | null} */ (document.activeElement);
+  const focused = earlier?.querySelector(':scope > summary') === active;
+  const focusKey = old.contains(active) ? active?.dataset.focus : undefined;
   old.replaceWith(block);
   const now = block.querySelector('details.earlier');
   if (earlier?.hasAttribute('open')) now?.setAttribute('open', '');
   if (focused) /** @type {HTMLElement | null} */ (now?.querySelector(':scope > summary'))?.focus();
+  if (focusKey) /** @type {HTMLElement | null} */ (block.querySelector(`[data-focus="${CSS.escape(focusKey)}"]`))?.focus();
   const oldJobs = node.querySelector(':scope > ul.bg-jobs');
   if (oldJobs && jobs) oldJobs.replaceWith(jobs);
   else if (jobs) block.after(jobs);
@@ -235,6 +239,13 @@ function paintLive(node, it, threadId) {
   // A part another part ended is no longer being written: its caret goes.
   if (it.status !== 'streaming') box?.querySelector(':scope > .caret')?.remove();
 }
+
+// A crowded reply’s “Show the whole reply” asks for it to be painted again (activity-live.mjs, wholeButton).
+addEventListener('live-repaint', (e) => {
+  const node = /** @type {HTMLElement | null} */ (/** @type {HTMLElement} */ (e.target).closest('.transcript > [data-key]'));
+  const threadId = /** @type {HTMLElement | null} */ (node?.closest('.transcript'))?.dataset.thread;
+  if (node && threadId && node.dataset.key) liveSoon(node, node.dataset.key, threadId);
+});
 
 // A resized window changes each running reply’s share of it: their live blocks paint again to the new budget.
 addEventListener('resize', () => {
