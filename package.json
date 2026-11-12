@@ -34,7 +34,6 @@
     "check": "node tools/check.mjs",
     "signoff:checks": "node tools/signoff-checks.mjs",
     "signoff:cited-commits": "node tools/cited-commits.mjs",
-    "shoot:mockups": "node tools/shoot.mjs",
     "shoot:app": "node tools/shoot-app.mjs",
     "uat": "node tools/uat-run.mjs",
     "lint:commits": "node tools/lint-commits.mjs",

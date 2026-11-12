@@ -1,5 +1,5 @@
 // Screenshots the real app: plays the demo (tools/demo.mjs) in headless Chromium and captures every scene
-// at 1280 and 375 px in dark and light, plus a sheet per scene that puts the approved mockup beside the app.
+// at 1280 and 375 px in dark and light, plus a sheet per scene with its four versions.
 //
 //   node tools/shoot-app.mjs              → screenshots/latest/app/ (ignored by git)
 //   node tools/shoot-app.mjs --baseline   → screenshots/app/ (ignored by git, but the README’s picture)
@@ -7,7 +7,7 @@
 // It takes pictures and checks nothing: axe-core runs on the same scenes and variants in
 // tests/browser/demo-a11y.spec.mjs, CI’s gate on the demo.
 
-import { access, mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -119,21 +119,13 @@ try {
   process.exitCode = 1;
 }
 
-// Sheets: the approved mockup beside the app (1280, dark), then the app’s four versions.
-const exists = (p) =>
-  access(p).then(
-    () => true,
-    () => false,
-  );
+// Sheets: the app’s four versions of each scene.
 for (const name of shots) {
-  const mock = join(ROOT, 'screenshots', `${name}-dark-1280.png`);
-  const _rel = (p) => p.replace(OUT + '/', '../');
   const html = `<!doctype html><meta charset="utf-8"><style>body{margin:0;background:#8a8178;font:13px system-ui;color:#111;padding:20px}
     .r{display:flex;gap:20px;align-items:flex-start;margin-bottom:24px} figure{margin:0} figcaption{font-weight:600;margin:0 0 6px} img{display:block;border:1px solid #0003}
     .d img{width:640px} .m img{width:300px}</style>
     <h1 style="margin:0 0 14px;font-size:18px">${name}</h1>
-    <div class="r">${(await exists(mock)) ? `<figure class="d"><figcaption>Approved mockup · 1280 · dark</figcaption><img src="${'file://' + mock}"></figure>` : ''}
-      <figure class="d"><figcaption>App · 1280 · dark</figcaption><img src="../${name}-dark-1280.png"></figure></div>
+    <div class="r"><figure class="d"><figcaption>App · 1280 · dark</figcaption><img src="../${name}-dark-1280.png"></figure></div>
     <div class="r"><figure class="d"><figcaption>App · 1280 · light</figcaption><img src="../${name}-light-1280.png"></figure>
       <figure class="m"><figcaption>App · 375 · dark</figcaption><img src="../${name}-dark-375.png"></figure>
       <figure class="m"><figcaption>App · 375 · light</figcaption><img src="../${name}-light-375.png"></figure></div>`;

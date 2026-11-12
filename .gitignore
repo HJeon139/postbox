@@ -3,7 +3,7 @@ node_modules
 *.log
 .env
 .env.*
-# Generated pictures: tools/shoot-app.mjs, tools/shoot.mjs. Only the image the README embeds is tracked; CI's
+# Generated pictures: tools/shoot-app.mjs. Only the image the README embeds is tracked; CI's
 # artifact on main and a local run give the rest (designs/developing.md, “Screenshots”).
 screenshots/*
 !screenshots/app/

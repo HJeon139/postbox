@@ -6,7 +6,7 @@ A chat room for directing several AI agents at once. You message them, wake them
 
 ## Status
 
-- **Stage 1, mockups: done.** The approved design is in [`mockups/`](mockups/), and the reasoning is in [designs/intent.md](designs/intent.md).
+- **Stage 1, mockups: done.** The design’s reasoning is in [designs/intent.md](designs/intent.md).
 - **Stage 2, the app: done.** It runs offline with a mock agent that can show every block type and every error state.
 - **Stage 3, real agents: done.** Agents run on Claude Code or the Claude Agent SDK, ask before risky tool calls, and can be attached from a terminal session. Agent apps can read aloud with a local voice. Linting, type checks and accessibility checks run in CI. The engineering decisions are in [designs/architecture.md](designs/architecture.md). The practices every change is held to, and the gate, are in [designs/engineering-practices.md](designs/engineering-practices.md).
 
@@ -389,7 +389,6 @@ Continuous integration ([`.github/workflows/check.yml`](.github/workflows/check.
 | `postbox [--port 4173] [--data <folder>] [--fresh] [--demo]` | The same as `npm start` or `node server/index.mjs` in a clone. Runs Postbox, with its data in `~/.postbox` unless `POSTBOX_HOME` or `--data` says otherwise. A fresh install seeds three agents: @researcher, @developer and @critic. `--demo` seeds the demo’s agents, projects and conversations instead, enables the demo controls and uses the mock only. |
 | `node tools/demo.mjs [--port] [--speed]` | Plays every block and error state on a fresh Postbox |
 | `node tools/shoot-app.mjs [--baseline]` | Plays the demo in headless Chrome and screenshots every scene at 375 and 1280 px in both modes. axe-core checks the same scenes in `tests/browser/demo-a11y.spec.mjs` |
-| `node tools/shoot.mjs [--baseline]` | Screenshots the static mockups |
 | `node tools/contrast.mjs [css]` | Checks WCAG contrast for every token pair, in both modes and on the app stage (`app/workbench.css` unless you name another) |
 | `npm run format` | Applies Biome’s formatting and safe fixes |
 | `npm run test:integration` | Runs only the integration tests in `tests/integration/` |
@@ -435,7 +434,6 @@ shared/       pure modules used by both sides: catalog, Markdown, events, state,
 tests/        node:test suites, and fixtures recorded from real Claude Code turns
 tools/        demo, screenshot tools, contrast checker, project lint rules, static server
 designs/      product intent, architecture decisions, engineering practices, recipes and work prompts
-mockups/      the approved Stage 1 mockups
 screenshots/  generated pictures (git ignores them, but the README’s)
 ```
 
