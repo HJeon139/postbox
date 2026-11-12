@@ -40,7 +40,8 @@ export function ensureSession(rt, threadId, personaId, { brief, joined = null } 
   threadToWrite(rt, threadId);
   const existing = pendingSessionsIn(rt, threadId).find((x) => x.personaId === personaId);
   if (existing) return existing;
-  const p = rt.persona(personaId);
+  // Pending too: an agent the request just made may be held behind a commit with the thread.
+  const p = rt.store.pending.persona(personaId);
   if (!p) throw httpError(404, 'That agent doesn’t exist.');
   const se = rt.putSession({
     id: newId('se'),

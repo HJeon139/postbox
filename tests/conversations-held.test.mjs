@@ -4,11 +4,14 @@
 // thread in the published state too and refused it as deleted. Both read the thread as written, from store.pending.
 
 import assert from 'node:assert/strict';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { test } from 'node:test';
 import { patchThread } from '../server/room-chain-limit.mjs';
 import { heldStore, setup } from './stop-reply-fixture.mjs';
+import { tempDir } from './temp-dirs.mjs';
 
-/** A runtime on a store whose next commit is held, with fn run while it is. */
+/** A runtime on a store whose next commit is held, with fn run, and awaited, while it is. */
 async function whileHeld(fn) {
   const h = await heldStore();
   const env = await setup(async () => {}, h.store);
@@ -18,7 +21,7 @@ async function whileHeld(fn) {
   await h.atSync; // the commit is in flight: emits from now on are held behind it
   let result;
   try {
-    result = fn(env);
+    result = await fn(env);
   } finally {
     h.release();
     await commit;
@@ -69,3 +72,62 @@ for (const [what, body] of [
     await store.close();
   });
 }
+
+// POST /api/personas with join: the persona createPersona just wrote is held too, so ensureSession, which looked it up
+// in the published state, refused it as “That agent doesn’t exist” after it was made. The route does what these do.
+test('a new agent joining a conversation behind a held commit joins it, not a 404 after it was made', async () => {
+  const { env, result, store } = await whileHeld(({ rt, t }) => {
+    const p = rt.createPersona({ handle: 'helper', backend: 'claude-code' });
+    try {
+      return rt.ensureSession(rt.lineage(t.id).at(-1), p.id, { brief: 'You were just created and added to this thread.' });
+    } catch (e) {
+      return e;
+    }
+  });
+  assert.equal(result?.handle, 'helper', `joined: ${result?.message ?? ''}`);
+  assert.ok(
+    env.rt.sessionsIn(env.t.id).some((se) => se.handle === 'helper'),
+    'its session is in the conversation',
+  );
+  await store.close();
+});
+
+test('a new agent starting a conversation in a project behind a held commit starts it with the agent', async () => {
+  const { env, result, store } = await whileHeld(({ rt }) => {
+    const p = rt.createPersona({ handle: 'starter', backend: 'claude-code' });
+    try {
+      return rt.createThread({ projectId: 'p1', title: 'With @starter', personaIds: [p.id] });
+    } catch (e) {
+      return e;
+    }
+  });
+  assert.equal(result?.members?.length, 1, `started: ${result?.message ?? ''}`);
+  assert.deepEqual(
+    env.rt.sessionsIn(result.id).map((se) => se.handle),
+    ['starter'],
+  );
+  await store.close();
+});
+
+// POST /api/claude-sessions/attach: createThread joins the persona it just made, and attachClaudeSession reads the
+// session that made from the published state, undefined behind a held commit, so it threw a TypeError on its id.
+test('attaching a Claude Code session behind a held commit attaches it and follows its transcript', async () => {
+  const root = tempDir('pb-attach-held-');
+  const id = '11111111-2222-3333-4444-555555555555';
+  mkdirSync(join(root, '-work-site'));
+  const typed = { type: 'user', turnOrigin: 'human', cwd: '/work/site', message: { role: 'user', content: 'Fix the header' } };
+  writeFileSync(join(root, '-work-site', `${id}.jsonl`), `${JSON.stringify(typed)}\n`);
+  const { env, result, store } = await whileHeld(async ({ rt }) => {
+    rt.config.claudeProjectsRoot = root;
+    try {
+      return await rt.attachClaudeSession({ claudeSessionId: id, projectId: 'p1' });
+    } catch (e) {
+      return e;
+    }
+  });
+  assert.ok(result?.sessionId, `attached: ${result?.message ?? ''}`);
+  assert.equal(store.state.sessions[result.sessionId].backendState.claudeSessionId, id, 'its session records what it follows');
+  assert.ok(env.rt.mirrors.has(result.sessionId), 'and its transcript is followed');
+  env.rt.stopMirrors();
+  await store.close();
+});

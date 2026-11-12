@@ -78,7 +78,9 @@ const PENDING = {
   // each decides a write, so a card held behind a commit counts (#366). An offered card and the current need's card
   // (takesNeed): their times, and whether the current one still waits, decide whether the offer takes the need (#711).
   'card-needs.mjs': ['keptTurns', 'nextNeed', 'takesNeed', 'takesNeed', 'releaseNeed', 'notifyOnce'],
-  'claude-mirror.mjs': ['pollMirror'], // the mirrored reply a terminal line adds to, maybe held behind a commit
+  // The mirrored reply a terminal line adds to, maybe held behind a commit; and the session attachClaudeSession just
+  // made, whose transcript mirror starts following.
+  'claude-mirror.mjs': ['mirror', 'pollMirror'],
   'restart-sweep.mjs': ['settleRetiredNeeds', 'cardOf'], // the need's card: whether it still waits, and its time on a tie, decide the need kept (#366); a session whose need is of a retired kind, settled
   'app-retire.mjs': ['retireApp', 'retireApp', 'retireApp', 'release'], // retire_app of an app the turn may have just shown, and its sweep of open sends
   'apps.mjs': ['showApp', 'updateApp'], // show_app and update_app of an app the turn may have just shown
@@ -132,8 +134,9 @@ const PENDING = {
   // deliver, twice): the last summary's givenMentions and seenItem, and a notice, held, are seen, not given again or lost (#506). Whether a thread has a persona's session already
   // reads its pending members and sessions, so a second mention behind a held commit finds the session the first made.
   // The conversation createThread just wrote, with the agents it joined: its route’s answer is its own write, which a
-  // held commit keeps out of the published state (#1247’s class).
-  'conversations.mjs': ['createThread'],
+  // held commit keeps out of the published state (#1247’s class). And the agent ensureSession joins, which the same
+  // request may have just made.
+  'conversations.mjs': ['createThread', 'ensureSession'],
   // The room’s chain limit, which decides whether a wake waits, maybe set behind a held commit (#1035).
   'room-chain-limit.mjs': ['roomChainLimit'],
   // The members a delete keeps its room for, maybe joined behind a held commit (#796).
