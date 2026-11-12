@@ -17,7 +17,7 @@
 // Whether a file is uncommitted, committed or pushed is asked of git when the Work view opens: read-only commands,
 // without git’s optional locks, so an agent’s own git never waits on Postbox.
 //
-// A turn on a remote host (#120; architecture.md, “Remote hosts”) is recorded from its stream only. Its files are on
+// A turn on a remote host (#120; designs/architecture/remote-hosts.md, “Remote hosts”) is recorded from its stream only. Its files are on
 // the host, and a path there may name a different file here, or one of the person’s own: so the ledger never reads,
 // diffs or restores a file for it, and never runs git or reads a command’s output file for it either. An edit is
 // kept as a step (kind 'edit': the file, the host, how many edits) with no copy and no lines; commands, branches,

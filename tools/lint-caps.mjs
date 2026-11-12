@@ -1,4 +1,4 @@
-// Checks that no change loosens a length limit (designs/architecture.md, “Module and function size: a ceiling that
+// Checks that no change loosens a length limit (designs/architecture/code-size.md, “Module and function size: a ceiling that
 // only comes down”). It fails closed: biome.json is compared with its copy at the merge base with main, and every
 // difference fails unless it is one of the few known to be safe:
 // - a length rule's maxLines lowered, at the same level and with its other options unchanged;
@@ -251,7 +251,7 @@ if (isEntry(import.meta.url, process.argv[1])) {
   for (const p of problems) console.log(`✖ ${p}`);
   if (problems.length) {
     console.log(
-      `\nlint-caps: ${problems.length} problem${problems.length === 1 ? '' : 's'}. A length limit only comes down: move a concern into a module of its own instead (designs/architecture.md, “Module and function size: a ceiling that only comes down”).`,
+      `\nlint-caps: ${problems.length} problem${problems.length === 1 ? '' : 's'}. A length limit only comes down: move a concern into a module of its own instead (designs/architecture/code-size.md, “Module and function size: a ceiling that only comes down”).`,
     );
     console.log(comparedWith(at, refs, process.env));
     process.exitCode = 1;

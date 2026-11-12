@@ -4,12 +4,12 @@ How to review a change to Postbox, and the JavaScript, Node, agent-backend, brow
 
 This page sits beside three others, and repeats none of them:
 - [engineering-practices.md](engineering-practices.md) is the gate and the per-tool rules (Node, Biome, TypeScript, the Agent SDK, the DOM, axe, Kokoro, tests, commits). Where a rule is already there, this page links to it.
-- [architecture.md](architecture.md) records each engineering decision, what it rests on, and when to revisit it.
+- [architecture.md](architecture.md) is the high-level design, and its child documents in [architecture/](architecture/) record each engineering decision, what it rests on, and when to revisit it.
 - [intent.md](intent.md) records the product decisions, and its “Writing” section governs every word this page asks you to write: plain American English, sentence case, curly quotes.
 
 **No section here states a lint level.** `biome.json`, `jsconfig.json` and `package.json` are the authority, and a second copy goes stale silently. This page says what a green `npm run check` still lets through. Every external claim links to a source at the end, and each link there was fetched, not remembered.
 
-Make simple, minimal changes, and don’t reinvent what already exists. In Postbox that means what Node and the browser ship (`node:test`, `node:crypto`, `AbortSignal.timeout`, `structuredClone`) and the helpers the repo already has (`h()` in `app/js/dom.mjs`, `shared/limits.mjs`, `tests/browser/postbox.mjs`), because a new runtime dependency needs a decision recorded in architecture.md first.
+Make simple, minimal changes, and don’t reinvent what already exists. In Postbox that means what Node and the browser ship (`node:test`, `node:crypto`, `AbortSignal.timeout`, `structuredClone`) and the helpers the repo already has (`h()` in `app/js/dom.mjs`, `shared/limits.mjs`, `tests/browser/postbox.mjs`), because a new runtime dependency needs a decision recorded in a child of architecture.md first.
 
 ## Responding to a prompt
 
@@ -24,9 +24,9 @@ The root `AGENTS.md` carries these rules, short, for any agent working in the re
 
 **Ports and data.** Give every server you start a port and a `--data` folder of your own, such as one in your scratchpad: without `--data`, Postbox uses `~/.postbox`, which every clone, worktree and installed copy shares (#90). Chromium needs no port: Playwright and `tools/browser.mjs` drive it over a pipe. Never touch the preview on 4173, another tool’s server on 4320, the clone’s `data/`, or `~/.postbox` (“Running the gate”).
 
-**Length limits** (architecture.md, “Module and function size”). Biome fails any file or function past its default length (`biome.json`), and a file already past it can shrink but not grow. So:
+**Length limits** (architecture/code-size.md, “Module and function size”). Biome fails any file or function past its default length (`biome.json`), and a file already past it can shrink but not grow. So:
 - **Make room first.** When your change would grow a file at its ceiling, such as `server/runtime.mjs`, `server/ledger.mjs` or `app/js/thread.mjs`, first move the concern your task names into a module of its own, as its own commit, with no other change.
-- **What the move may change** (architecture.md, “What a move may change”):
+- **What the move may change** (architecture/code-size.md, “What a move may change”):
   - A method becomes a function that takes the instance first: `rt` for `Runtime`, `ledger` for `Ledger`. `this` becomes that parameter, and nothing else in its body changes.
   - The class keeps a one-line method that delegates to it (`agentWake(...a) { return agentWake(this, ...a); }`), so callers and tests don’t change.
   - A static becomes a module constant, and the class keeps an alias (`static APP_HOLD_MAX = APP_HOLD_MAX;`), since tests read `Runtime.APP_HOLD_MAX`.
@@ -87,11 +87,11 @@ If it costs more than it gives back to that intent, decline it. Put it under “
 Review your own change from one level above the one that made it: an engineer’s code gets a senior engineer’s review, and a senior engineer’s design gets a principal’s. **Apply the standards of the language and the platform, not generic ones**, which is what the sections below exist to supply. “Is this idiomatic?” isn’t a finding until it names the idiom, and “add a test” isn’t one until it names the behavior the test would pin.
 
 Organize the critique on three criteria, in this order:
-1. **Correctness.** Does it work, and does it do what the issue asked? **Is every factual claim sourced?** A claim with no link, no fixture and no measurement is hearsay, so check that each link resolves, not just that it’s there. Does it name something that means nothing outside the session that wrote it? Does it hold up at the sizes Postbox is built for: the 20,000 events `server/store.mjs` keeps in memory (`KEEP_EVENTS`), and a table over the 1,000 rows above which architecture.md virtualizes?
-2. **Consistency.** With intent.md and architecture.md, with the code around it, and with itself.
+1. **Correctness.** Does it work, and does it do what the issue asked? **Is every factual claim sourced?** A claim with no link, no fixture and no measurement is hearsay, so check that each link resolves, not just that it’s there. Does it name something that means nothing outside the session that wrote it? Does it hold up at the sizes Postbox is built for: the 20,000 events `server/store.mjs` keeps in memory (`KEEP_EVENTS`), and a table over the 1,000 rows above which architecture/front-end.md plans to virtualize?
+2. **Consistency.** With intent.md and architecture.md and its children, with the code around it, and with itself.
 3. **Reasoning.** Can a reader get the intent and the behavior without a deep dive?
 
-A comment like `// refuses here (see wave 2 prompt, step 4)` fails correctness: the prompt is rewritten every wave. Postbox’s comments point at what lasts: an issue number (`#126`), or a design section by its title (`designs/architecture.md, “The store”`), never by its number, since sections get renumbered. **The defect is a comment the reader can’t understand without following the link, not a comment that links.** Where a comment’s meaning rests on a line of code or a doc, link it with a GitHub permalink pinned to a commit and a line range (`/blob/<sha>/path#L10-L20`).
+A comment like `// refuses here (see wave 2 prompt, step 4)` fails correctness: the prompt is rewritten every wave. Postbox’s comments point at what lasts: an issue number (`#126`), or a design section by its title (`designs/architecture/store.md, “The store”`), never by its number, since sections get renumbered. **The defect is a comment the reader can’t understand without following the link, not a comment that links.** Where a comment’s meaning rests on a line of code or a doc, link it with a GitHub permalink pinned to a commit and a line range (`/blob/<sha>/path#L10-L20`).
 
 ### Degenerate values are a defect until explained
 
@@ -101,7 +101,7 @@ A comment like `// refuses here (see wave 2 prompt, step 4)` fails correctness: 
 |---|---|
 | A count that’s exactly 0, or a run that found nothing | The thing was never exercised: no test file matched the glob, no spec matched the name given to `npx playwright test`, the scenario never reached the phase |
 | `--pass-with-no-tests` passing, or a spec’s test that finished with no `expect` | Nothing ran: no spec changed, or a step returned before its assertions |
-| “Accessibility (axe-core): no violations” on a scene that rendered blank | axe checked an empty frame. Headless Chrome once passed every app while the Claude desktop app’s pane showed them blank (architecture.md, “Sandboxed pages that load nothing”) |
+| “Accessibility (axe-core): no violations” on a scene that rendered blank | axe checked an empty frame. Headless Chrome once passed every app while the Claude desktop app’s pane showed them blank (architecture/sandbox.md, “Sandboxed pages that load nothing”) |
 | A work ledger row with 0 lines, or a turn that cost $0.00 | The file tool’s result carried no `tool_use_result` (a subagent’s edit), or the turn’s last `result` was never read |
 | Every agent in a report on the same model and effort | The runner’s default (`claude-haiku-5-5`, low) replaced the personas’ own, which is right for an integration pass and wrong for a measurement scenario |
 | Screenshots that are identical across scenes or themes | The page never changed state, or the theme toggle never applied |
@@ -128,7 +128,7 @@ A comment like `// refuses here (see wave 2 prompt, step 4)` fails correctness: 
 |---|---|
 | Lint and formatting in `app/js`, `app/kit/kit.js`, `app/kit/check.js`, `app/kit/check-layout.js`, `app/kit/diagram.js`, `app/theme.js`, `server`, `shared`, `tools` and `tests` | Biome, with warnings as errors. `app/workbench.css` and `app/index.html` aren’t in its `includes` |
 | No new nested ternary on a line a change adds (#685) | `tools/lint-ternary.mjs`, which runs Biome’s `style/noNestedTernary` on the changed files and at the base, and fails a hit whose trimmed text has more copies now than the change had there. So a pure move, a reindent or a split passes, even out of a deleted file, and a copy fails (#752). The gap is accepted: deleting a hit in one file and adding the same text in another changed file passes, as a move. The rule isn’t on in `biome.json` yet, since `main` still has hits; those stay until they’re fixed. A real exception carries `lint-allow ternary: <reason>` on the line lint-ternary names or the line above; it takes no `lint-allow-file`, and a `biome-ignore` for the rule fails Biome as unused (#753). Like `lint-caps`, it compares with the merge base of HEAD with `origin/main` and `upstream/main`, whichever is newer, so a fork’s stale `origin/main` doesn’t blame a change for upstream’s code; nothing is fetched, and a failure names the base and suggests `git fetch` (#786) |
-| The length of each file and function, with a ceiling for each file that was already past it | Biome, and `tools/lint-caps.mjs` for a ceiling raised in `biome.json` (architecture.md, “Module and function size”). Lowering a ceiling after a file shrinks is a review finding |
+| The length of each file and function, with a ceiling for each file that was already past it | Biome, and `tools/lint-caps.mjs` for a ceiling raised in `biome.json` (architecture/code-size.md, “Module and function size”). Lowering a ceiling after a file shrinks is a review finding |
 | Types in `shared/` and `server/` | `tsc -p jsconfig.json`. `app/js/`, `tools/` and `tests/` aren’t type-checked at all, and `noImplicitAny` is off, so an untyped parameter is silently `any` |
 | No raw colors outside the token blocks | `lint-tokens`, in CSS and JavaScript |
 | No `innerHTML` without a named source; no attribute or style names chosen at run time | `lint-dom` |
@@ -136,7 +136,7 @@ A comment like `// refuses here (see wave 2 prompt, step 4)` fails correctness: 
 | Every color pair in both themes, and on the app stage | `check:contrast` |
 | Unit tests, with no network and no processes | `node:test` with `tests/guard.mjs` (`npm test`) |
 | The remote host’s programs as real processes: local child processes and Unix sockets only, never the network | `node:test` over `tests/integration/` (`npm run test:integration`), after `npm test` in `npm run check` |
-| Line coverage of the pure modules (the 90% target in architecture.md) | Nothing. `npm run test:coverage` reports it and fails on no threshold |
+| Line coverage of the pure modules (the 90% target in architecture/code-quality.md) | Nothing. `npm run test:coverage` reports it and fails on no threshold |
 | Browser behavior | `npx playwright test`, normally and with `POSTBOX_STREAM_LAG=300`, in CI’s browser-specs jobs, three shards a pass, not in `npm run check` |
 | No axe violations in any demo scene | `tests/browser/demo-a11y.spec.mjs`, with the other specs in CI’s browser-specs jobs |
 | Conventional Commits | `tools/lint-commits.mjs` on a pull request in CI; the local hook only after `npm run hooks` |
@@ -171,12 +171,12 @@ A comment like `// refuses here (see wave 2 prompt, step 4)` fails correctness: 
 The demo’s screenshots are generated and not committed: a refresh adds a full new copy of every image to history, and the 62 MB it had reached made every clone slower.
 - **To see the current ones,** open the `screenshots` artifact of the latest `check` run on `main` (kept 5 days), or run `node tools/shoot-app.mjs` and read `screenshots/latest/app/`. CI takes them only on `main`: a pull request uploads none.
 - **What is tracked:** the images a doc embeds. `tests/uat/screenshots/` is the UAT docs’ set, and `tools/shoot-uat.mjs` refreshes it, in the reviewing session’s commit. Under `screenshots/`, only the README’s pictures in `screenshots/readme/` are tracked; `.gitignore` holds the rest.
-- **The README’s pictures** show what Postbox does, on the demo’s mock agents, in the light theme. `node tools/readme-gif.mjs` records `highlight.gif` (about 30 seconds, under 6 MB): it starts its own Postbox on a port and a temporary data folder of its own, drives the page with Playwright and converts the kept moments with ffmpeg. The two stills are crops of `tools/shoot-app.mjs`’s light 1280 px scenes: `asset-explorer.png` from `04-corpus-app` (`crop=1010:545:260:665`) and `dashboard.png` from `14-charts` (`crop=1010:755:260:310`). Retake them when the UI they show changes, and look at the frames before you commit: no real paths of your computer, nothing private, and text legible at the README’s width.
+- **The README’s pictures** show what Postbox does, in the light theme, from the showcase’s replays of real recorded sessions (`tools/demo/showcase/`, whose README says how each was recorded, with which harness and model, and what it cost). `node tools/readme-gif.mjs` records `highlight.gif` (about 30 seconds, under 6 MB) and the two stills: it starts its own Postbox on a port and a temporary data folder of its own, plays the replays on the demo’s mock, drives the page with Playwright and converts the kept moments with ffmpeg. The stills, `module-graph.png` and `capacity-plan.png`, are the `deps` and `capacity` replays’ v2 apps, cropped to the app. Retake them when the UI they show changes, and look at the frames before you commit: no real paths of your computer, nothing private, and text legible at the README’s width.
 - **A doc that embeds a new image** gets an exception in `.gitignore` in the same change. A reviewing session doesn’t commit regenerated folders.
 
 ## JavaScript
 
-Postbox is plain ES modules (`.mjs`), with JSDoc types, no build step and no framework (architecture.md, “The front end”). engineering-practices.md, “Node” and “TypeScript”, already covers imports, dependencies, spawning, timers, atomic writes, bounds, `any` and `Object.hasOwn`.
+Postbox is plain ES modules (`.mjs`), with JSDoc types, no build step and no framework (architecture/front-end.md, “The front end”). engineering-practices.md, “Node” and “TypeScript”, already covers imports, dependencies, spawning, timers, atomic writes, bounds, `any` and `Object.hasOwn`.
 
 ### Errors
 
@@ -216,25 +216,25 @@ Postbox is plain ES modules (`.mjs`), with JSDoc types, no build step and no fra
 - A `lint-allow` or `lint-allow-file` without a reason. The tools require one, so an empty reason means the reason is being dodged. `lint-ternary` takes only the line-level `lint-allow ternary: <reason>` (#753).
 - Turning a rule off in `biome.json`, or loosening `jsconfig.json`, in the same change that tripped it.
 - Removing a path from Biome’s `includes` or `jsconfig.json`’s `include`, or adding one to an exclude, so the file stops being read.
-- Raising a file’s ceiling in `biome.json`’s overrides, or adding one over the default, including for a new module that holds moved code (architecture.md, “Module and function size”). `tools/lint-caps.mjs` fails both.
+- Raising a file’s ceiling in `biome.json`’s overrides, or adding one over the default, including for a new module that holds moved code (architecture/code-size.md, “Module and function size”). `tools/lint-caps.mjs` fails both.
 
 **A real exception is narrow and says why.** `shared/urls.mjs` is the model: `// biome-ignore lint/suspicious/noControlCharactersInRegex: control characters in a URL are exactly what this rejects`. It names the rule, sits on the one line, and tells the next reader whether it still applies. A rule turned off project-wide goes in `biome.json` with the reason in the commit (engineering-practices.md, “Biome”).
 
 ### Modules
 
-**One concern per module, small enough to read in one sitting** (architecture.md, “The front end”). Biome fails a file or function past its default length. Files already past it, such as `server/runtime.mjs` and `app/js/thread.mjs`, have a ceiling at their size on 23 October 2026, so they can shrink and can’t grow (architecture.md, “Module and function size”). A change that adds a concern to one of them moves it into its own module, and a change that shrinks one lowers its ceiling to the new size.
+**One concern per module, small enough to read in one sitting** (architecture/front-end.md, “The front end”). Biome fails a file or function past its default length. Files already past it, such as `server/runtime.mjs` and `app/js/thread.mjs`, have a ceiling at their size on 23 October 2026, so they can shrink and can’t grow (architecture/code-size.md, “Module and function size”). A change that adds a concern to one of them moves it into its own module, and a change that shrinks one lowers its ceiling to the new size.
 
 **A circular import means a missing module.** The shared value belongs in a third module that neither imports back, which is usually `shared/`. Biome’s `noImportCycles` fails a new one, and `tests/import-cycles-scc.test.mjs` holds the cycles still there (#312) to its recorded list, which only shrinks.
 
-**Each test file is named for what it tests**: `tests/store.test.mjs` for `server/store.mjs`, so a reader finds a module’s tests on the first guess. When a module’s test file is at its length ceiling, new tests go in `tests/<module>-<concern>.test.mjs`, such as `tests/runtime-topics.test.mjs`, so a search for `runtime` still finds them (architecture.md, “Module and function size”). Every test file ends in `.test.mjs`, or `npm test` never runs it.
+**Each test file is named for what it tests**: `tests/store.test.mjs` for `server/store.mjs`, so a reader finds a module’s tests on the first guess. When a module’s test file is at its length ceiling, new tests go in `tests/<module>-<concern>.test.mjs`, such as `tests/runtime-topics.test.mjs`, so a search for `runtime` still finds them (architecture/code-size.md, “Module and function size”). Every test file ends in `.test.mjs`, or `npm test` never runs it.
 
 **`app/kit/vendor/` is never edited.** Mermaid, KaTeX and D3 are vendored with their licenses. A fix to one is an upgrade of the whole file.
 
 ## Async in Node and the browser
 
-**Never block the event loop** ([Node’s guide][node-event-loop]). The server streams every agent’s reply through one loop, so a synchronous read of a big file, or a long computation, stalls every conversation at once. That’s why the store appends and snapshots asynchronously (architecture.md, “The store”).
+**Never block the event loop** ([Node’s guide][node-event-loop]). The server streams every agent’s reply through one loop, so a synchronous read of a big file, or a long computation, stalls every conversation at once. That’s why the store appends and snapshots asynchronously (architecture/store.md, “The store”).
 - Bounded work that waits on I/O: use the `node:fs/promises` and `async` forms.
-- A synchronous call is a deliberate exception and says why. The ledger reads a file synchronously the moment a tool call’s input is known, to win the race with the tool (architecture.md, “The work ledger”).
+- A synchronous call is a deliberate exception and says why. The ledger reads a file synchronously the moment a tool call’s input is known, to win the race with the tool (architecture/work-ledger.md, “The work ledger”).
 - Heavy or native work runs in its own process. Kokoro runs in a child process, never in the server (engineering-practices.md, “Narration”).
 
 **Every promise is awaited, returned or handled.** Since Node 15, an unhandled rejection is raised as an uncaught exception and ends the process ([`--unhandled-rejections`][node-unhandled]). A fire-and-forget call gets a `.catch` that reports what failed. The timeout that rejected after the race was won (`tools/cdp.mjs`, d11c333) is the shape to look for.
@@ -245,7 +245,7 @@ Postbox is plain ES modules (`.mjs`), with JSDoc types, no build step and no fra
 
 **A child process has three ways to end, and code handles all of them:** `error` (it never started), `exit` (it ended; its output may still be arriving) and `close` (its output is done). A turn ends on `close`, and a stopped turn on `exit` too, since a background job can hold the output open after its CLI is gone (`server/adapters/claude-code.mjs`, #126).
 
-**In the browser, batch to the frame.** A streaming reply re-renders its Markdown once per animation frame, not once per text event. A live update resumes from the last sequence number it saw, so a reconnect loses and repeats nothing (architecture.md, “The store”).
+**In the browser, batch to the frame.** A streaming reply re-renders its Markdown once per animation frame, not once per text event. A live update resumes from the last sequence number it saw, so a reconnect loses and repeats nothing (architecture/store.md, “The store”).
 
 ## Agent backends
 
@@ -259,13 +259,13 @@ engineering-practices.md, “Building on Claude Code and the Agent SDK”, holds
 
 **Branch on structured fields.** A stream gives `type`, `subtype`, `permission_denials`, `tool_use_result`, `task_notification` and exit codes. Where it gives only text (a failed command’s result starts “Exit code N”), the parse is pinned by a recorded fixture, so a change in the text fails a test instead of a turn.
 
-**Wait for the terminal event, and name it.** A turn isn’t over at the first `result`: a background command’s `task_notification` can arrive after it (architecture.md, “The work ledger”). Code that decides a turn is done names the events that end it and treats an unexpected one as a stop, not a retry.
+**Wait for the terminal event, and name it.** A turn isn’t over at the first `result`: a background command’s `task_notification` can arrive after it (architecture/work-ledger.md, “The work ledger”). Code that decides a turn is done names the events that end it and treats an unexpected one as a stop, not a retry.
 
-**A real turn confirms what the docs promise.** The output-style override, the denied publishing tools and a turned-off MCP server were each confirmed by reading a real `init` event (architecture.md, “Real agents”). A change to what reaches a turn is confirmed the same way, and the pull request says what the `init` showed.
+**A real turn confirms what the docs promise.** The output-style override, the denied publishing tools and a turned-off MCP server were each confirmed by reading a real `init` event (architecture/adapters.md, “Real agents”). A change to what reaches a turn is confirmed the same way, and the pull request says what the `init` showed.
 
 ## Security
 
-Postbox runs on your computer, as you, for one person. Its safety rests on a few boundaries, and a change that touches one of them is reviewed as a security change. Before any change to what Postbox listens on, who it answers, or what a page may load, read architecture.md, “Writes need the page’s token” and “Sandboxed pages that load nothing”, and its “Revisit when” lines.
+Postbox runs on your computer, as you, for one person. Its safety rests on a few boundaries, and a change that touches one of them is reviewed as a security change. Before any change to what Postbox listens on, who it answers, or what a page may load, read architecture/security-boundaries.md, “Writes need the page’s token”, and architecture/sandbox.md, “Sandboxed pages that load nothing”, and their “Revisit when” lines.
 
 **It answers this computer alone.** The server listens on 127.0.0.1, refuses a `Host` other than `127.0.0.1:<port>` or `localhost:<port>` (DNS rebinding) and a cross-site `Origin`, and every write needs the page’s token, compared in constant time (#74). `!` commands also refuse unless Postbox listens on loopback and the request came from this computer (#67). A change to the listen address is a change to all of these.
 
@@ -322,7 +322,7 @@ Each habit comes from a defect that cost a fix in Postbox or in an earlier servi
 1. **No speculative surface.** Don’t add a block field, an event field, an MCP tool parameter or a persona option that nothing reads yet. Whatever an agent can send gets validated and limited, and a field “for later” is something to validate now and migrate later. Add it when the feature lands.
 2. **Fail loud over silent defaults.** A fallback that hides missing wiring turns a configuration bug into wrong behavior nobody sees. Postbox once let your own `effortLevel` and output style decide every agent turn (#57, #60); now both are always passed. Personas from before the `agents.outside` option existed are denied it, not granted it.
 3. **Know whose settings you’re reading.** Anything that depends on the person’s setup (their Claude Code settings, MCP servers, global CLAUDE.md, home folder) is read on purpose, in one place, and a persona can opt out of it (Isolated). Tests never read the real one.
-4. **Walk the whole chain in a new environment, and claim only the level of evidence you tested.** Receiver evidence has three levels: the protocol accepted the field, the model-facing artifact recorded it (for a fork, count the parent history the backend references), and the model behaved as told. A fake server accepting a payload shows the first only; #584 shows the second, and Markdown obedience stays unverified. For a new backend, a new browser or a new listen address, trace the turn, the permissions, the stream and the rendering end to end before saying it works. Headless Chrome passed every sandboxed app while the desktop app’s pane refused them all (architecture.md, “Sandboxed pages that load nothing”).
+4. **Walk the whole chain in a new environment, and claim only the level of evidence you tested.** Receiver evidence has three levels: the protocol accepted the field, the model-facing artifact recorded it (for a fork, count the parent history the backend references), and the model behaved as told. A fake server accepting a payload shows the first only; #584 shows the second, and Markdown obedience stays unverified. For a new backend, a new browser or a new listen address, trace the turn, the permissions, the stream and the rendering end to end before saying it works. Headless Chrome passed every sandboxed app while the desktop app’s pane refused them all (architecture/sandbox.md, “Sandboxed pages that load nothing”).
 5. **A test asserts what its name claims.** A test named for order asserts order. Every contract that lands (a limit, an MCP tool, a setting passed to a turn, a catalog block) lands with the test that pins it, as the test that fails when a limit is missing from the guide does.
 6. **Check a dependency’s behavior before relying on it.** Read the documentation, the SDK’s shipped `sdk.d.ts`, or a real turn, and use the mechanism it gives. `noImplicitAny` is off and the optional SDK may not be installed, so `tsc` won’t tell you a call matches.
 7. **Publish whole or not at all, and refuse on ambiguity.** Never expose a partial file, record or message: write a draft, sync it, then publish it with an atomic step (a rename, a hard link; [`fs.rename`][node-fs-rename], [`fs.link`][node-fs-link], [`filehandle.sync`][node-fs-sync]). Never reclaim, delete or overwrite on a guess, an age or an empty file; refuse and say why. The data-folder lock failed review three times in 1a for creating a file and filling it afterwards, and for reclaiming a mutex by age; text sliced by code units splits a surrogate pair ([MDN][mdn-string-utf16]) (`designs/508/storage-design.md`, “The data-folder lock”).
@@ -334,7 +334,7 @@ Each habit comes from a defect that cost a fix in Postbox or in an earlier servi
 
 ## Progress in living documents
 
-Several of Postbox’s documents answer “where are we?”: architecture.md’s “Where it stands”, intent.md’s “Quality bar”, and each UAT report’s coverage table. They answer it in prose, in tables and in diagrams, and a mark on one surface but not the others makes the document disagree with itself.
+Several of Postbox’s documents answer “where are we?”: architecture/code-quality.md’s “Where it stands”, intent.md’s “Quality bar”, and each UAT report’s coverage table. They answer it in prose, in tables and in diagrams, and a mark on one surface but not the others makes the document disagree with itself.
 
 1. **Never mark done what doesn’t exist.** Check first: the pull request is merged, the command exits 0, the screenshot is committed. A reader trusts a mark over a sentence.
 2. **Update the diagram in the same edit as the prose.** A Mermaid diagram is part of the document.
@@ -350,14 +350,14 @@ State partial progress as partial: one of three pull requests merged isn’t a w
 
 | Shape | The figure that carries it |
 |---|---|
-| A flow between parts: a request, a turn, a stream | A Mermaid `sequenceDiagram` or `flowchart`, as architecture.md does for the page token and the ledger |
+| A flow between parts: a request, a turn, a stream | A Mermaid `sequenceDiagram` or `flowchart`, as architecture/security-boundaries.md and architecture/work-ledger.md do for the page token and the ledger |
 | A quantity against a scale: render time against thread length, defects found against run length | The measure against the scale, with log axes where the claim is separation |
 | A threshold: diagram text under 10 px, contrast under 4.5:1 | The measured values with the threshold as a line |
 | A comparison across more than about three cells: backends, scenarios, runs | Grouped bars or small multiples |
 
 A single number, a pass or a fail, and a two-row comparison don’t get a figure. Neither does an invariant: a figure of a flat line invites a reader to look for a slope.
 
-**Draw diagrams in Mermaid, and hold them to the bar agents are held to.** About five boxes side by side, top-to-bottom chains, short labels, and lists as text, not inside boxes (`shared/diagram-lint.mjs`, architecture.md, “Diagram legibility”). Avoid `<br/>` and numbered lists inside nodes.
+**Draw diagrams in Mermaid, and hold them to the bar agents are held to.** About five boxes side by side, top-to-bottom chains, short labels, and lists as text, not inside boxes (`shared/diagram-lint.mjs`, architecture/diagram-legibility.md, “Diagram legibility”). Avoid `<br/>` and numbered lists inside nodes.
 
 **A chart or screenshot is generated, never edited.** It comes from a committed script that reads the artifact (`tools/uat-stats.mjs` for UAT runs, `tools/shoot-app.mjs` and `tools/shoot-uat.mjs` for screenshots), and it’s regenerated when the artifact changes. Screenshots are generated into `screenshots/latest/` and aren’t committed, except the images a doc embeds (“Screenshots”, above).
 
@@ -365,7 +365,7 @@ A single number, a pass or a fail, and a two-row comparison don’t get a figure
 
 ## Code comments
 
-**A JSDoc comment and a `//` comment answer different questions.** JSDoc states the interface: what the function does, its parameters and what it returns. A `//` comment states a *why* the code can’t state itself, and nothing else. Design rationale belongs in neither: it goes in architecture.md, as a decision, what it rests on, and when to revisit it.
+**A JSDoc comment and a `//` comment answer different questions.** JSDoc states the interface: what the function does, its parameters and what it returns. A `//` comment states a *why* the code can’t state itself, and nothing else. Design rationale belongs in neither: it goes in a child of architecture.md, as a decision, what it rests on, and when to revisit it.
 
 **Start each module with what it is and the rule it keeps.** Postbox’s modules open that way: `server/store.mjs` says it’s an append-only log with an in-memory projection, says how a reconnecting browser loses nothing, and names its design section. A header that restates the file name tells the reader nothing.
 

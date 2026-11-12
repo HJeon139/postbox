@@ -40,6 +40,9 @@ const ENTITIES = /** @type {const} */ ({
   // A session just made, or changed, behind a held commit: its writes diff against it, and its turn waits for it to be
   // published (#796's class in sessions, server/session-write.mjs).
   sessions: { event: 'session', removed: 'session', patched: 'session.patch' },
+  // A persona just made behind a held commit, which a session joining it reads (POST /api/personas with join, and an
+  // attached Claude Code session, #1247’s class).
+  personas: { event: 'persona', removed: 'persona', patched: null },
 });
 /** @typedef {keyof typeof LISTS} PendingList */
 /** @typedef {keyof typeof ENTITIES} PendingCollection */
@@ -52,12 +55,14 @@ const ENTITIES = /** @type {const} */ ({
  *   thread: (id: string) => Entry | undefined,
  *   threads: () => Readonly<Record<string, Entry>>,
  *   session: (id: string) => Entry | undefined,
+ *   sessions: () => Readonly<Record<string, Entry>>,
+ *   persona: (id: string) => Entry | undefined,
  * }} PendingReads
  */
 
 /**
  * The pending reads of a store: one per list in LISTS; for apps and threads, one entity by id and the whole
- * collection; and one session by id.
+ * collection; every session, or one by id; and one persona by id.
  * @param {import('./store.mjs').Store} store @returns {PendingReads}
  */
 export function pendingReads(store) {
@@ -69,6 +74,8 @@ export function pendingReads(store) {
   reads.thread = (/** @type {string} */ id) => pendingEntity(store, 'threads', id);
   reads.threads = () => pendingCollection(store, 'threads');
   reads.session = (/** @type {string} */ id) => pendingEntity(store, 'sessions', id);
+  reads.sessions = () => pendingCollection(store, 'sessions');
+  reads.persona = (/** @type {string} */ id) => pendingEntity(store, 'personas', id);
   return /** @type {PendingReads} */ (reads);
 }
 

@@ -72,7 +72,7 @@ test('resending an already-answered read while detached returns kept live answer
 
     // 1. Attached read call answered by Postbox.
     const callPromise = s.call('c_live', 'read_message', { id: 'item_1' });
-    await until(() => k.sent.some((m) => m.type === 'tool' && m.id === 'c_live'), 'tool sent to Postbox', 250);
+    await until(() => k.sent.some((m) => m.type === 'tool' && m.id === 'c_live'), 'tool sent to Postbox');
     await k.post('reply', { turn: 't_s1', id: 'c_live', ok: true, text: 'Live Postbox answer' });
     const liveRes = await callPromise;
     assert.equal(liveRes.text, 'Live Postbox answer');
@@ -108,7 +108,7 @@ test('connected read_message asks Postbox rather than reading locally', async ()
     await s.next('welcome');
 
     const callPromise = s.call('c1', 'read_message', { id: 'item_1' });
-    await until(() => k.sent.some((m) => m.type === 'tool' && m.name === 'read_message'), 'read_message forwarded to Postbox', 250);
+    await until(() => k.sent.some((m) => m.type === 'tool' && m.name === 'read_message'), 'read_message forwarded to Postbox');
     const sentTool = k.sent.find((m) => m.type === 'tool' && m.name === 'read_message');
     assert.deepEqual(sentTool.args, { id: 'item_1' });
 
@@ -133,7 +133,7 @@ test('connected read_conversation queries Postbox and reaches items earlier than
     await s.next('welcome');
 
     const callPromise = s.call('c2', 'read_conversation', { skip: 50, limit: 10 });
-    await until(() => k.sent.some((m) => m.type === 'tool' && m.name === 'read_conversation'), 'read_conversation forwarded to Postbox', 250);
+    await until(() => k.sent.some((m) => m.type === 'tool' && m.name === 'read_conversation'), 'read_conversation forwarded to Postbox');
     const sentTool = k.sent.find((m) => m.type === 'tool' && m.name === 'read_conversation');
     assert.deepEqual(sentTool.args, { skip: 50, limit: 10 });
 
@@ -204,7 +204,7 @@ test('late reply: read sent to Postbox, link drops, shim resends offline, and re
 
     // 1. Shim sends read call while attached; broker forwards to Postbox.
     s.send('call', { id: 'call_late', name: 'read_message', args: { id: 'item_1' } });
-    await until(() => k.sent.some((m) => m.type === 'tool' && m.id === 'call_late'), 'tool sent to Postbox', 250);
+    await until(() => k.sent.some((m) => m.type === 'tool' && m.id === 'call_late'), 'tool sent to Postbox');
 
     // 2. Link drops before Postbox replies.
     k.state.attached = false;
@@ -244,7 +244,7 @@ test('pending read when link drops without resend answers when link reconnects',
 
     // 1. Shim calls while attached.
     const callPromise = s.call('call_pend', 'read_message', { id: 'item_1' });
-    await until(() => k.sent.some((m) => m.type === 'tool' && m.id === 'call_pend'), 'tool sent to Postbox', 250);
+    await until(() => k.sent.some((m) => m.type === 'tool' && m.id === 'call_pend'), 'tool sent to Postbox');
 
     // 2. Link drops; shim does not resend, stays waiting on socket.
     k.state.attached = false;

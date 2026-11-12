@@ -5,7 +5,7 @@
 | **Status** | Approved, revision 12: revision 11.2, with the Redis decision of 28 October recalled by the person on 31 October 2026 (“Storage”, §18). Persistence stays on JSON Lines, with one-line commits. Now and Harness have merged; the Store step is replaced by steps 1a, 1b and, on a budget, S2. |
 | **Date** | 28 October 2026 |
 | **Supersedes** | The design in #508’s description (“the approved design”), where this document differs. Its research and evidence still stand, and are cited by change number. |
-| **Amends** | `designs/architecture.md`: “The store” (the store: JSON Lines with one-line commits, a sharded snapshot when the budget is exceeded, and a data-folder lock), “The front end” (the front end) and “A conversation is shared memory” (shared memory); `designs/intent.md` rows listed in “Rollout” |
+| **Amends** | `designs/architecture/store.md`, “The store” (the store: JSON Lines with one-line commits, a sharded snapshot when the budget is exceeded, and a data-folder lock), `designs/architecture/front-end.md`, “The front end” (the front end) and `designs/architecture/shared-memory.md`, “A conversation is shared memory” (shared memory); `designs/intent.md` rows listed in “Rollout” |
 | **Requirements** | The requirements comment on #508, revision 4.1 (comment 6482761957; ids DL, MD, AT, SW, PF, CX, MS). Its section “Acceptance, test first” names the test that decides each requirement. |
 | **Acceptance scenarios** | Critic’s `testing-strategy.md` (approved in the room): `tests/uat/e2e/scenarios/delivery.md` and `bigroom.md`, with the triggers, checks, seed and launcher they need |
 | **Reviews answered** | Integrator: comments 6481111995 and 6481619141. Critic: 6481670784, and critic’s seven findings on revision 3 in the room. Researcher’s findings on revision 3 in the room. Gemini’s nine implementation comments on revision 4 (threads gemini-1 to gemini-9). GPT’s principal-engineer review of revision 5 (threads gpt-10 to gpt-20). Critic’s request to make the UAT scenarios each step’s definition of done. Researcher’s backlog check: the prompt is saved before output on Codex and Antigravity. The room assets requirements (#516), reconciled in “Extension points for room assets” as extension points, not as scope. GPT’s storage review of revision 9 (threads gpt-21 to gpt-28). The person’s storage interview of 28 October, eight decisions, which chose a bundled Redis 8 over SQLite (“Storage”). |
@@ -85,8 +85,8 @@ flowchart TD
 |---|---|
 | No new runtime dependencies. No npm package and no native binary is added. | `designs/engineering-practices.md`, “Keep runtime dependencies at zero” (PF-9) |
 | A key/value or document model, never a relational schema with migrations | The person, 28 October: an earlier Postbox on SQLite hit schema and migration problems between versions that stopped rapid change on existing installs |
-| One process and one person today; more than one is likely within a year, so nothing may assume a single writer | `designs/architecture.md`, “The store” and “Remote hosts”; the person, 28 October |
-| Same reducer on server and browser | `designs/architecture.md`, “The store” |
+| One process and one person today; more than one is likely within a year, so nothing may assume a single writer | `designs/architecture/store.md`, “The store”, and `designs/architecture/remote-hosts.md`, “Remote hosts”; the person, 28 October |
+| Same reducer on server and browser | `designs/architecture/store.md`, “The store” |
 | Five backends, local and remote: Claude Code, Agent SDK, Kiro, Codex, Antigravity | DL-8 |
 | Nothing enters an agent’s context unless it reads it or the person sends it | Intent principle 7 (CX-1) |
 | Tuning values are measured, not picked | Person’s decision, 28 October (MS-3, proposed) |
@@ -199,7 +199,7 @@ The same lookups are served in memory: each thread’s items are a list kept sor
 
 | Data | In `store.state` | In `/api/state` | In the store |
 |---|---|---|---|
-| Open records (`waiting`, `sent`, `open`) | Yes | No: private (architecture.md, “What reaches the browser”). The page gets a cursor for their events, and from A2 small reviewed headers | In the snapshot, and as events in the log |
+| Open records (`waiting`, `sent`, `open`) | Yes | No: private (designs/architecture/security-boundaries.md, “What reaches the browser”). The page gets a cursor for their events, and from A2 small reviewed headers | In the snapshot, and as events in the log |
 | Closed records | No | No | Only as the events that opened and closed them, and as receipts |
 | Receipts (“Receipts”) | No | No | Derived by the reducer from the record events; checkpointed with the snapshot; server-only, bounded |
 | Items | Yes | No: the items API serves pages | In the snapshot (a shard per conversation, from step S2), and as events |
@@ -440,7 +440,7 @@ Decided (8.5): any change to an item reaches the agents it concerns, as `notify`
 
 `thread.queue`, `schedules` and `se.context` stop being written once steps A3, A4 and A2 ship. Their events still replay from old logs at startup (“Migration, compatibility and rollback”). Every event is a line in the log, and the browser’s stream and `Last-Event-ID` are unchanged.
 
-**Reserved for #516:** `asset` (an asset header: id, name, type, author, scope, versions `[{ v, hash, base, author, at }]`) and `asset.version` (one more version, written by `commit` with the base version checked inside the writer’s serialization). The reducer keeps headers in `state.assets`, a map by id like `state.apps`; content lives in the blob store by hash (`architecture.md`, “The store”, Attachments), never in the log. Neither event is emitted by this design.
+**Reserved for #516:** `asset` (an asset header: id, name, type, author, scope, versions `[{ v, hash, base, author, at }]`) and `asset.version` (one more version, written by `commit` with the base version checked inside the writer’s serialization). The reducer keeps headers in `state.assets`, a map by id like `state.apps`; content lives in the blob store by hash (`designs/architecture/assets.md`, “Attachments”), never in the log. Neither event is emitted by this design.
 
 **Host protocol.** A host’s kept reply becomes `{ note, text }`: the note in full, and the rest cut at `KEPT_REPLY_CHARS` (step A2).
 
@@ -632,10 +632,10 @@ Every step keeps the full browser suite green and passes the size check (INV-7).
 
 | File | Section or row | Change |
 |---|---|---|
-| `architecture.md` | The store | Persistence stays on JSON Lines. A commit is written whole and fsynced; what leaves the process waits for the sync; receipts are derived and checkpointed with the snapshot; a bad line in the middle of a segment refuses to start; Retry is a reload; a data-folder lock refuses a second Postbox; the snapshot is written in pieces, and sharded by conversation only if a stall still passes 50 ms. The event model and reducer stay. `commit` is the atomic write for lifecycle transitions; `emit` stays optimistic for streamed text. The browser’s state stops being a full projection: headers and open records everywhere, items per window. |
+| `architecture/store.md` | The store | Persistence stays on JSON Lines. A commit is written whole and fsynced; what leaves the process waits for the sync; receipts are derived and checkpointed with the snapshot; a bad line in the middle of a segment refuses to start; Retry is a reload; a data-folder lock refuses a second Postbox; the snapshot is written in pieces, and sharded by conversation only if a stall still passes 50 ms. The event model and reducer stay. `commit` is the atomic write for lifecycle transitions; `emit` stays optimistic for streamed text. The browser’s state stops being a full projection: headers and open records everywhere, items per window. |
 | `engineering-practices.md` | “Keep runtime dependencies at zero” | No change: the 28 October exception for a Redis binary is withdrawn. |
-| `architecture.md` | The front end | The transcript is a window with an explicit view state. |
-| `architecture.md` | A conversation is shared memory | The marker moves on output; deliveries are records; the revisit line becomes “count and cursor”. |
+| `architecture/front-end.md` | The front end | The transcript is a window with an explicit view state. |
+| `architecture/shared-memory.md` | A conversation is shared memory | The marker moves on output; deliveries are records; the revisit line becomes “count and cursor”. |
 | `intent.md` | Attention, “Only one wake waits for your confirm at a time” | Several can wait (A1). |
 | `intent.md` | Attention, `wake_agent` | Changes when #481 ships, not in this design. |
 | `intent.md` | Not in scope, “Search across threads” | Moves into scope when the search issue ships. |

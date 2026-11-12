@@ -1,4 +1,4 @@
-// A turn’s runner on a remote host (#120; architecture.md, “Remote hosts”, “A turn doesn’t depend on anything staying
+// A turn’s runner on a remote host (#120; designs/architecture/remote-hosts.md, “Remote hosts”, “A turn doesn’t depend on anything staying
 // connected”). The daemon writes the turn folder and start.json, then runs `<node> runner.mjs <turn>` detached, so the
 // runner leads its own session and process group, with no terminal and no stdio. The runner starts the harness from
 // start.json’s program and argument list, never a shell, with its stdout appended to out.jsonl and its stderr to

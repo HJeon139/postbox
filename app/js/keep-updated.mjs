@@ -1,4 +1,4 @@
-// Keeping a host’s Postbox up to date (#464-b2b; designs/architecture.md, “Keeping a host up to date”): which state of the
+// Keeping a host’s Postbox up to date (#464-b2b; designs/architecture/remote-hosts.md, “Keeping a host up to date”): which state of the
 // host’s newest automatic install the page says, from the host’s status (server/remote/host-status.mjs, updateOf).
 // The host’s card (hosts-status.mjs) and a turn’s status line (remote.mjs) read it. Nothing here touches the DOM.
 

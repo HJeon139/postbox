@@ -61,7 +61,8 @@ export function startRunner(h, turn = TURN) {
   return { pid: /** @type {number} */ (child.pid), done };
 }
 
-/** check()’s first truthy value, looked at every 20 ms, within ms. */
+/** check()’s first truthy value, looked at every 20 ms, within ms, and once more at the deadline: a process stalled
+ * past the deadline still sees what happened meanwhile. */
 export async function until(check, what, ms = 10_000) {
   const end = Date.now() + ms;
   while (Date.now() < end) {
@@ -69,6 +70,8 @@ export async function until(check, what, ms = 10_000) {
     if (v) return v;
     await sleep(20);
   }
+  const v = await check();
+  if (v) return v;
   throw new Error(`Timed out waiting for ${what}.`);
 }
 

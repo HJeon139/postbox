@@ -28,7 +28,7 @@ test('#738 a wall clock set an hour ahead during a silence doesn’t end a live 
     await s.clock.tick(1);
     assert.equal((await c.msgs.next('ended')).exit, null);
   } finally {
-    s.done();
+    await s.done();
   }
 });
 
@@ -46,7 +46,7 @@ test('#738 a wall clock set an hour back during a silence doesn’t keep a live 
     assert.equal((await c.msgs.next('ended')).exit, null, 'ended at 60 s of monotonic time');
     assert.equal((await s.daemon.scan())[0].state, 'interrupted');
   } finally {
-    s.done();
+    await s.done();
   }
 });
 
@@ -68,7 +68,7 @@ test('#738 one dropped `who` doesn’t end a turn whose runner.json is invalid: 
     assert.equal(drops, 0, 'the one answer was dropped');
     assert.deepEqual(s.ended(c), [], 'one miss, then an answer');
   } finally {
-    s.done();
+    await s.done();
   }
 });
 
@@ -82,7 +82,7 @@ test('#738 a turn found dead ends at the follower’s next look, not one later',
     c.send('stop', { turn: 't1' });
     assert.equal((await c.msgs.next('ended')).exit, null);
   } finally {
-    s.done();
+    await s.done();
   }
 });
 
@@ -139,7 +139,7 @@ test('#738 a silence is forgotten each way it ends: an answer, the process gone,
       await end(t);
       assert.deepEqual([...t.s.daemon.silentSince.keys()], [], `forgotten after: ${name}`);
     } finally {
-      t.s.done();
+      await t.s.done();
     }
   }
 });
@@ -169,6 +169,6 @@ test('#738 two dropped `who` in a row end a turn whose runner.json is invalid', 
     assert.equal(s.ended(c).length, 1, 'ended at the second miss');
     assert.equal(s.ended(c)[0].exit, null);
   } finally {
-    s.done();
+    await s.done();
   }
 });

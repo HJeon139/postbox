@@ -15,7 +15,8 @@ export const VERSION = '0.10.0';
 export const BOOT = '0f1e2d3c-4b5a-4968-8776-655443322110';
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-/** check()’s first truthy value, looked at every 5 ms, within ms. */
+/** check()’s first truthy value, looked at every 5 ms, within ms, and once more at the deadline: a process stalled
+ * past the deadline still sees what happened meanwhile. */
 export async function until(check, what, ms = 2000) {
   const end = Date.now() + ms;
   while (Date.now() < end) {
@@ -23,6 +24,8 @@ export async function until(check, what, ms = 2000) {
     if (v) return v;
     await sleep(5);
   }
+  const v = await check();
+  if (v) return v;
   throw new Error(`Timed out waiting for ${what}.`);
 }
 

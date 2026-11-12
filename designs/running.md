@@ -50,7 +50,7 @@ To watch the demo, which plays every block type and every error state on the moc
 node tools/demo.mjs
 ```
 
-Keep the page open while it plays: agent-written apps are checked in your browser before they’re shown.
+Keep the page open while it plays: agent-written apps are checked in your browser before they’re shown. `node tools/demo.mjs --story showcase` plays the showcase instead: five replays of real sessions recorded with @builder on Claude Code and @critic on Codex, each a question answered with an app, reviewed and revised ([tools/demo/showcase/](../tools/demo/showcase/README.md)).
 
 Things to try in the demo’s conversations (`node server/index.mjs --demo --fresh --data data/demo`, which keeps them apart from your own):
 
@@ -59,9 +59,9 @@ Things to try in the demo’s conversations (`node server/index.mjs --demo --fre
 | Asset explorer | Build me an explorer for these assets | An agent-written app searching the conversation’s notes through the bridge, and a v2, filtered by asset, after you send passages |
 | Catalog tour | Show me every kind of block you can send | One of each catalog block, all live |
 | ReAct, step by step | Explain ReAct with something I can try · Walk me through ReAct, out loud · then **Reply in thread** under the explainer | Citations with hover cards, a diagram, math, a glossary term and a practice app · slides that follow a local voice · a topic thread, and Summarize back |
-| Corpus schema spec | Review my corpus schema line by line | Markdown, code and app reviews, then a revision shown as a diff |
+| Search schema spec | Review my search schema line by line | Markdown, code and app reviews, then a revision shown as a diff |
 | Index the shelf | Index the shelf · Rebuild without the prefaces · Show it as a timeline · Show me the shelf map · Show me a dashboard · Clear the old index cache · Draw the whole indexing pipeline | Progress, subagents and a compaction · a failed reply with Retry · blocks Postbox can’t show · a crashed app · an app that fails its check and gets fixed · a permission card · a diagram too wide to read, flagged by the diagram linter and redrawn |
-| Corpus planning | @indexer check the editions with the researcher, in a loop | Agents waking each other in a side thread until the limit asks you |
+| Index planning | @indexer check the editions with the researcher, in a loop | Agents waking each other in a side thread until the limit asks you |
 | Citation fixes | Fix the citation script · then Try a faster parser · then **Work** in the top bar, and its full-screen icon | Every file the agent changed with its diff and a copy from before, flagged changes, the commands as they ran, an issue it filed, and a turn that left nothing lasting |
 
 ## Versions

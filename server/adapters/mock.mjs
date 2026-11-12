@@ -10,6 +10,7 @@ import { HarnessEvents } from '../harness-events.mjs';
 import { brokenMapApp, dashboardApp, explorerApp, layoutApp, walkthroughApp } from '../mock/apps.mjs';
 import { explainer } from './mock-explainer.mjs';
 import { citationFix, fasterParser } from './mock-ledger.mjs';
+import { replayShowcase } from './mock-showcase.mjs';
 
 // POSTBOX_MOCK_SPEED scales every pause: 1 is a natural pace, 0.2 is fast. It’s read on each pause, so a demo can change it.
 const speed = () => Number(process.env.POSTBOX_MOCK_SPEED ?? 1);
@@ -30,7 +31,8 @@ export class MockAdapter {
     const topic = ctx.thread?.kind === 'topic';
     if (topic && message.kind === 'notice' && /Summarize this topic thread/.test(message.text)) await topicSummary(a);
     else if (topic && message.kind === 'user') await topicReply(a);
-    else await (Object.hasOwn(HANDLERS, session.handle) ? HANDLERS[session.handle] : HANDLERS.default)(message, a, mem, session);
+    else if (!(await replayShowcase(message, a, session, ctx)))
+      await (Object.hasOwn(HANDLERS, session.handle) ? HANDLERS[session.handle] : HANDLERS.default)(message, a, mem, session);
     a.grow(message);
   }
 
@@ -272,7 +274,7 @@ const HANDLERS = {
     if (cut && has(text, /\b(?:wrote|reply|draft|message)\b/)) return criticReadsInFull(a, cut);
     if (has(text, /review|spec|schema|layout/)) return criticReview(a, mem);
     await a.think(400);
-    await a.say('Send me a spec, some code or a layout and I’ll review it with you line by line. Try “Review my corpus schema”.');
+    await a.say('Send me a spec, some code or a layout and I’ll review it with you line by line. Try “Review my search schema”.');
   },
 
   async default(m, a) {
@@ -716,7 +718,7 @@ async function confirmDupes(a) {
 
 // ── @critic ──────────────────────────────────────────────────────────────────────────────
 
-const SCHEMA_V1 = `# Corpus schema
+const SCHEMA_V1 = `# Search schema
 
 ## Passages
 Each passage keeps its \`book_id\`, chapter and character offsets.
@@ -730,7 +732,7 @@ Page numbers are stored for each passage.
 ## Search
 Lexical search uses BM25 with default parameters.`;
 
-const SCHEMA_V2 = `# Corpus schema
+const SCHEMA_V2 = `# Search schema
 
 ## Passages
 Each passage keeps its \`book_id\`, chapter and character offsets.

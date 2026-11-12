@@ -4,7 +4,8 @@
 // tests/integration/remote-broker.test.mjs.
 
 import assert from 'node:assert/strict';
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { test } from 'node:test';
@@ -62,7 +63,7 @@ test('the daemon: a shim on its socket reaches the broker, Stop refuses the turn
     assert.equal((await msgs.next('written')).upTo, 10);
     assert.deepEqual(writes, ['{"id":1,"result":{"decision":"accept"}}']);
   } finally {
-    daemon.close();
-    rmSync(home, { recursive: true, force: true });
+    await daemon.close();
+    await rm(home, { recursive: true, force: true, maxRetries: 10, retryDelay: 20 });
   }
 });

@@ -24,7 +24,7 @@ It runs, in order:
 - `node tools/shoot-uat.mjs`: it refreshes the UAT doc screenshots, which are committed because the docs embed them.
 - The end-to-end UAT ([tests/uat/e2e](../tests/uat/e2e/README.md)), which runs real agents and costs real usage.
 
-The browser half of the gate is the specs. A change that’s visible in the UI also gets a browser spec from whoever writes it: Playwright Test, in `tests/browser/*.spec.mjs` (architecture.md, “Browser checks on Playwright Test”, #303). Each spec file starts its own Postbox with `startPostbox()` from `tests/browser/postbox.mjs` and calls `failOnPageErrors(test)`. It waits with web-first assertions or `expect.poll`, never for a fixed time: Biome’s `no-fixed-waits` rule fails `npm run check` on `page.waitForTimeout` or `setTimeout` in a spec.
+The browser half of the gate is the specs. A change that’s visible in the UI also gets a browser spec from whoever writes it: Playwright Test, in `tests/browser/*.spec.mjs` (architecture/browser-checks.md, “Browser checks on Playwright Test”, #303). Each spec file starts its own Postbox with `startPostbox()` from `tests/browser/postbox.mjs` and calls `failOnPageErrors(test)`. It waits with web-first assertions or `expect.poll`, never for a fixed time: Biome’s `no-fixed-waits` rule fails `npm run check` on `page.waitForTimeout` or `setTimeout` in a spec.
 
 ```bash
 npx playwright test                               # every spec

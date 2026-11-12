@@ -1,6 +1,6 @@
 # Visual explainer skill
 
-The skill [#207](https://github.com/HJeon139/postbox/issues/207) proposed bundling with Postbox: how an agent explains an idea with a picture, and how a reviewer judges whether the picture works. It is in the [Agent Skills](https://agentskills.io/specification) format. Postbox ships it in its own plugin, [`agent-plugin`](../../../agent-plugin), which every agent on this computer loads by default, Claude Code’s and the Agent SDK’s as `postbox:visual-explainer`, and Antigravity, Kiro and Codex agents through what Postbox writes for their turns ([architecture](../../architecture.md), “Postbox’s own skills”). This folder keeps what agents must not see: the starter briefs, which hold each test’s intended idea and traps.
+The skill [#207](https://github.com/HJeon139/postbox/issues/207) proposed bundling with Postbox: how an agent explains an idea with a picture, and how a reviewer judges whether the picture works. It is in the [Agent Skills](https://agentskills.io/specification) format. Postbox ships it in its own plugin, [`agent-plugin`](../../../agent-plugin), which every agent on this computer loads by default, Claude Code’s and the Agent SDK’s as `postbox:visual-explainer`, and Antigravity, Kiro and Codex agents through what Postbox writes for their turns ([architecture/agent-setup.md](../../architecture/agent-setup.md), “Postbox’s own skills”). This folder keeps what agents must not see: the starter briefs, which hold each test’s intended idea and traps.
 
 | File | What it holds |
 |---|---|

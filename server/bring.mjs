@@ -1,5 +1,5 @@
 // bring_to_conversation (#128): an agent in a side or topic thread posts in the main conversation, when the person
-// asked it to there. Moved from server/side-threads.mjs; functions take the Runtime first (architecture.md, “What a
+// asked it to there. Moved from server/side-threads.mjs; functions take the Runtime first (designs/architecture/code-size.md, “What a
 // move may change”).
 
 import { tooLongToSend } from './helpers.mjs';

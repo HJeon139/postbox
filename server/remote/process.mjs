@@ -1,4 +1,4 @@
-// A turn on a remote host, in spawn’s shape (#120, architecture.md “The adapters stay; only the process moves”). The
+// A turn on a remote host, in spawn’s shape (#120, designs/architecture/remote-hosts.md “The adapters stay; only the process moves”). The
 // adapters take a spawn function as spawnImpl; remoteSpawn returns one whose child is backed by the host’s daemon
 // over a connection, so the stream mappers and the adapters’ stdin, stdout, stderr and exit handling don’t change.
 //

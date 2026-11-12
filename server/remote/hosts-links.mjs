@@ -194,7 +194,7 @@ export function release(m, id, why) {
 /**
  * The host’s welcome, connecting first if need be. A failure while an install of this Postbox runs there (m.updating,
  * hosts-update.mjs) waits for that install, then tries once more from the top; an install that fails throws its own
- * failure, with its next step, unless it was busy (#464-b2b; designs/architecture.md, “Keeping a host up to date”).
+ * failure, with its next step, unless it was busy (#464-b2b; designs/architecture/remote-hosts.md, “Keeping a host up to date”).
  * Removing Postbox from the host waits for the install before it gets here (removeFromHost). signal: the caller’s
  * Stop, which ends its wait at once, with signal.reason; the install goes on.
  * @param {Manager} m @param {string} id @param {{ signal?: AbortSignal }} [o]

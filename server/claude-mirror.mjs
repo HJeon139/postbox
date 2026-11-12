@@ -9,6 +9,7 @@ import { contentBlocks, listClaudeSessions, recentHistory, TranscriptTail, typed
 import { sessionFolder } from './folder-path.mjs';
 import { httpError } from './helpers.mjs';
 import { runsHere } from './remote/placement.mjs';
+import { pendingSessionsIn } from './session-write.mjs';
 import { describeTool } from './tool-labels.mjs';
 
 export async function claudeSessions(rt) {
@@ -44,7 +45,8 @@ export async function attachClaudeSession(rt, { claudeSessionId, projectId, hand
     folder,
   });
   const t = rt.createThread({ projectId, title: cs.title, personaIds: [p.id] });
-  const se = rt.sessionsIn(t.id)[0];
+  // The session createThread just made, which a held commit may keep out of the published state.
+  const se = pendingSessionsIn(rt, t.id)[0];
   rt.updateSession(se.id, { backendState: { claudeSessionId, transcript: cs.file, attached: true } });
   for (const it of recentHistory(cs.file)) {
     if (it.kind === 'user') rt.addItem(t.id, { kind: 'user', text: it.text, via: 'terminal' });
@@ -67,7 +69,8 @@ export async function attachClaudeSession(rt, { claudeSessionId, projectId, hand
 
 /** Starts following an attached session’s transcript. */
 export function mirror(rt, sessionId) {
-  const se = rt.s.sessions[sessionId];
+  // Pending: attachClaudeSession starts it on a session it just wrote, maybe held behind a commit.
+  const se = rt.store.pending.session(sessionId);
   const file = se?.backendState?.transcript;
   if (!file || rt.mirrors.has(sessionId)) return;
   const timer = setInterval(() => rt.pollMirror(sessionId), 1500);

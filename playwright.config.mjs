@@ -1,4 +1,4 @@
-// The headless browser checks, on Playwright Test (#303, designs/architecture.md, “Browser checks on Playwright
+// The headless browser checks, on Playwright Test (#303, designs/architecture/browser-checks.md, “Browser checks on Playwright
 // Test”). Each spec file starts its own Postbox (tests/browser/postbox.mjs); its tests run in order, each in a fresh
 // browser context. Files run in parallel, one per worker.
 //

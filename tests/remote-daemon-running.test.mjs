@@ -22,7 +22,7 @@ test('#738 row 1: a live runner that misses `who` for a while is not reported en
     assert.deepEqual(s.ended(c), [], 'no ended while the runner process is alive');
     assert.deepEqual(s.kills, []);
   } finally {
-    s.done();
+    await s.done();
   }
 });
 
@@ -41,7 +41,7 @@ test('#738 row 1: an answer clears the silence, so a second stall counts from it
     await s.looks(3, c);
     assert.deepEqual(s.ended(c), [], '50 s of silence, twice, is under the ceiling each time');
   } finally {
-    s.done();
+    await s.done();
   }
 });
 
@@ -54,7 +54,7 @@ test('#738 row 2: scan during a short stall reads the turn as running, not inter
     s.alive.delete('t1');
     assert.equal((await s.daemon.scan()).find((t) => t.turn === 't1')?.state, 'running');
   } finally {
-    s.done();
+    await s.done();
   }
 });
 
@@ -76,7 +76,7 @@ test('#738 row 3: a live runner silent for the ceiling is killed then and ends, 
     assert.equal(s.logs.filter((l) => /t1.*hasn’t answered as its runner for 60 s/.test(l)).length, 1, 'the ceiling, logged once');
     assert.deepEqual(s.kills, [[-4001, 'SIGKILL']], 'killed at the ceiling (#872)');
   } finally {
-    s.done();
+    await s.done();
   }
 });
 
@@ -94,7 +94,7 @@ test('#738 row 4: a runner hung for good with a tool call open ends at the ceili
     assert.equal(ended.exit, null);
     assert.ok(c.msgs.messages.some((m) => m.type === 'line' && m.text === '{"type":"tool_use"}'));
   } finally {
-    s.done();
+    await s.done();
   }
 });
 
@@ -106,7 +106,7 @@ test('#738 row 5: a runner that died without exit.json ends with exit null', asy
     assert.equal((await c.msgs.next('ended')).exit, null);
     assert.equal((await s.daemon.scan())[0].state, 'interrupted');
   } finally {
-    s.done();
+    await s.done();
   }
 });
 
@@ -120,7 +120,7 @@ test('#738 row 6: a runner that’s a zombie ends: sameProcess is false for it',
     await s.clock.tick(PROCESS_CHECK_MS);
     assert.equal((await c.msgs.next('ended')).exit, null);
   } finally {
-    s.done();
+    await s.done();
   }
 });
 
@@ -131,7 +131,7 @@ test('#738 row 7: a runner whose PID another process now has ends', async () => 
     s.alive.delete('t1');
     assert.equal((await c.msgs.next('ended')).exit, null);
   } finally {
-    s.done();
+    await s.done();
   }
 });
 
@@ -142,7 +142,7 @@ test('#738 row 8: a runner from another boot ends', async () => {
     s.alive.delete('t1');
     assert.equal((await c.msgs.next('ended')).exit, null);
   } finally {
-    s.done();
+    await s.done();
   }
 });
 
@@ -156,7 +156,7 @@ test('#738 row 9: a silent runner with no valid runner.json ends after two misse
     await rm(s.p.turn('t1', TURN_FILES.runner));
     assert.equal((await s.daemon.scan())[0].state, 'interrupted');
   } finally {
-    s.done();
+    await s.done();
   }
 });
 
@@ -171,7 +171,7 @@ test('#738 row 10: exit.json written during a silence ends the turn with its exi
     assert.deepEqual((await c.msgs.next('ended')).exit, exit);
     assert.equal(s.ended(c).length, 1);
   } finally {
-    s.done();
+    await s.done();
   }
 });
 
@@ -184,7 +184,7 @@ test('#738 row 11: a stop that finds runner.json’s process gone ends the turn,
     assert.ok(s.alive.has('t1'), 'its socket still answers');
     assert.equal((await s.daemon.scan())[0].state, 'interrupted');
   } finally {
-    s.done();
+    await s.done();
   }
 });
 
@@ -200,7 +200,7 @@ test('#738 row 12: after a daemon restart, a stall counts from the new daemon’
     assert.deepEqual(s.kills, [[-777, 'SIGKILL']]);
     assert.equal((await s.daemon.scan())[0].state, 'interrupted');
   } finally {
-    s.done();
+    await s.done();
   }
 });
 
@@ -216,7 +216,7 @@ test('#738 row 13: a runner that doesn’t answer as its runner is a miss, the p
     assert.deepEqual(s.ended(c), []);
     assert.equal(s.logs.filter((l) => /t1.*didn’t answer as its runner/.test(l)).length, 1, 'one line for the silence, not one per look');
   } finally {
-    s.done();
+    await s.done();
   }
 });
 
@@ -232,7 +232,7 @@ test('#738 the follower and the scan share a turn’s silence: one the scan bega
     c.send('read', { turn: 't1', from: 0 });
     assert.equal((await c.msgs.next('ended')).exit, null);
   } finally {
-    s.done();
+    await s.done();
   }
 });
 
@@ -253,6 +253,6 @@ test('#738 a silence’s end is logged: answered again with its length, or the p
     assert.equal((await c.msgs.next('ended')).exit, null);
     assert.equal(s.logs.filter((l) => /t1.*is gone/.test(l)).length, 1);
   } finally {
-    s.done();
+    await s.done();
   }
 });

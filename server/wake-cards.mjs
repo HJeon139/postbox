@@ -1,7 +1,7 @@
 // The wake cards (#108, #228): a wake past the limit, or of an agent the conversation doesn’t have, waits for the
 // person’s Allow on a card in the conversation, and resolveHop settles it. One card waits at a time: a wake that needs
 // another while it does is held on it, and settled with it (#439). Moved from server/side-threads.mjs, whose agentWake
-// raises them. Functions take the Runtime first (architecture.md, “What a move may change”).
+// raises them. Functions take the Runtime first (designs/architecture/code-size.md, “What a move may change”).
 
 import { HELD_WAKES } from '../shared/limits.mjs';
 import { offerNeed, releaseNeed } from './card-needs.mjs';

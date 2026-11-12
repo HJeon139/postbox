@@ -1,4 +1,4 @@
-// Helpers that the runtime and the modules moved out of it share (architecture.md, “What a move may change”).
+// Helpers that the runtime and the modules moved out of it share (designs/architecture/code-size.md, “What a move may change”).
 
 import { timingSafeEqual } from 'node:crypto';
 import { SENDING } from '../shared/limits.mjs';

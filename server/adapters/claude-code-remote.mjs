@@ -1,4 +1,4 @@
-// The Claude Code backend on a remote host (#120, ctx.remote; architecture.md “Remote hosts”): the same arguments run
+// The Claude Code backend on a remote host (#120, ctx.remote; designs/architecture/remote-hosts.md “Remote hosts”): the same arguments run
 // there through the host’s daemon (server/remote/process.mjs), with these differences:
 // - Postbox’s server is the host’s stdio shim: { type: stdio, command: <host node>, args: [<shim.mjs>, <turn>],
 //   timeout: the host’s permissionWaitMax plus an hour, alwaysLoad }, passed on every turn, resumes too (C1, C6).

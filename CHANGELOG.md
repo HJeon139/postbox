@@ -2,6 +2,17 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.3.0 (2026-11-12)
+
+### Features
+
+- **demo:** replay five real recorded sessions as the demo's showcase story
+
+### Fixes
+
+- **demo:** the showcase spec reads v2's frame without holding an element across a redraw
+- **demo:** the replay writes its app file under the room's folder as named, and never a folder
+
 ## 4.2.0 (2026-11-12)
 
 ### Features

@@ -1,5 +1,5 @@
 // The right pane’s width beside the conversation (#197, #7, #86). The conversation column keeps a minimum, at which a
-// reply’s text and the composer stay usable (architecture.md §14). To keep it, the rail hides first, while the pane
+// reply’s text and the composer stay usable (designs/architecture/front-end.md, “Room for the conversation”). To keep it, the rail hides first, while the pane
 // is open; then the pane gives up width; and where even the pane’s own minimum doesn’t fit, its view opens full
 // screen instead (pane.mjs). What’s open stays in the address, so a wider window puts the pane back beside the
 // conversation. A handle on the pane’s left edge changes its width within the same rule, and the width is kept in
@@ -8,7 +8,7 @@
 import { h } from './dom.mjs';
 import { railHidden, setRailAuto } from './rail-collapse.mjs';
 
-/** The conversation column’s narrowest, with its padding (architecture.md §14). */
+/** The conversation column’s narrowest, with its padding (designs/architecture/front-end.md, “Room for the conversation”). */
 export const COL_MIN = 640;
 /** The pane’s narrowest, and its width until it’s resized. */
 export const PANE_MIN = 320;

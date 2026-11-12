@@ -1,4 +1,4 @@
-// The person’s hosts (#120; architecture.md, “Remote hosts”): adding one, renaming it or changing its settings,
+// The person’s hosts (#120; designs/architecture/remote-hosts.md, “Remote hosts”): adding one, renaming it or changing its settings,
 // removing it, and a project’s folder on one. The hosts are in the state (s.hosts, 'host' events); the runtime
 // (server/runtime.mjs) calls these with itself first, and its host manager (rt.hosts) reaches each host’s daemon.
 

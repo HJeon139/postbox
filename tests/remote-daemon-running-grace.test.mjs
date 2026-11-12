@@ -37,6 +37,6 @@ test('#975 a Stop 2 s before the ceiling, with a grace longer than KILL_WAIT_MS,
       [-PID, 'SIGKILL'],
     ]);
   } finally {
-    s.done();
+    await s.done();
   }
 });

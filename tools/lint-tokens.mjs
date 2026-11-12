@@ -1,5 +1,5 @@
 // lint-tokens: no raw colors outside the token blocks. Colors are defined once, on :root in workbench.css
-// (and its dark and stage variants), and everything else uses var(--token). See designs/architecture.md.
+// (and its dark and stage variants), and everything else uses var(--token). See designs/architecture/code-quality.md, “Code quality”.
 //
 //   node tools/lint-tokens.mjs
 

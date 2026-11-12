@@ -1,4 +1,4 @@
-// view_app { appId }: a picture of an agent’s app, as the person first sees it (#95; designs/architecture.md, “Agents
+// view_app { appId }: a picture of an agent’s app, as the person first sees it (#95; designs/architecture/view-app.md, “Agents
 // see their app”). Postbox renders the app inline in its own page, in a pinned headless browser the person agreed to
 // download (consent.mjs), at the size of the person’s Postbox window, or 1000 × 680 with no tab open. The picture goes
 // to the agent as an image when its backend takes one, and is saved in its folder either way.

@@ -432,13 +432,15 @@ test('#38: Don’t allow drops the waiting sends; the browser can ask for a hold
   assert.throws(() => rt.appEvent('spam', 'nope nope', {}), /short id/, 'values are still checked at the boundary');
 });
 
-test('#38: an app’s waiting sends survive a restart, and Allow still sends them', async () => {
+test('#38: an app’s waiting sends survive a restart, and Allow still sends them', async (t) => {
   const dir = tempDir('pb-appsend-');
   const first = withApp(await new Store(dir).load());
   for (let i = 0; i <= LIMIT; i++) first.rt.appEvent('spam', 'ok', { summary: `#${i}` }, { now: 10 + i });
   await settle(first.rt);
   await first.store.close();
   const store = await new Store(dir).load();
+  // Closed, so its log file isn’t left for garbage collection to close: Node 22 warns DEP0137 then.
+  t.after(() => store.close());
   const adapter = new ScriptedAdapter();
   const rt = new Runtime({ store, adapters: new AdapterRegistry().register(adapter), config: { origin: 'http://127.0.0.1:1', imageOrigins: [] } });
   const card = store.items(first.t.id).find((x) => x.kind === 'appsend');
@@ -777,7 +779,7 @@ test('a conversation with several agents is a room, and can be renamed', () => {
   const { rt, a, b } = setup();
   const room = rt.createThread({ projectId: 'p1', title: 'Planning', personaIds: [a.id, b.id] });
   assert.equal(room.kind, 'room');
-  assert.equal(rt.renameThread(room.id, '  Corpus planning ').title, 'Corpus planning');
+  assert.equal(rt.renameThread(room.id, '  Index planning ').title, 'Index planning');
   assert.throws(() => rt.renameThread(room.id, ' '), /needs a name/);
 });
 

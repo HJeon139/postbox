@@ -1,5 +1,5 @@
 # Refuses a pull request that adds or changes a dependency with a known vulnerability, moderate or worse, whether it
-# ships or is only used to develop Postbox. See designs/architecture.md, “Code quality”. It compares GitHub’s
+# ships or is only used to develop Postbox. See designs/architecture/code-quality.md, “Code quality”. It compares GitHub’s
 # dependency graph of the base and the head, so it checks out and runs nothing from the pull request.
 name: dependency-review
 

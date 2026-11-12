@@ -3,6 +3,7 @@
 //
 //   node tools/demo.mjs            starts a fresh Postbox in demo mode on port 4173 and plays every scene
 //   node tools/demo.mjs --port 4280 --speed 0.4
+//   node tools/demo.mjs --story showcase   plays the replays of real recorded sessions instead (tools/demo-showcase.mjs)
 //
 // Agent apps are checked in the browser before they’re shown, so keep the page open while it plays.
 // tools/shoot-app.mjs screenshots each of these scenes, and tests/browser/demo-a11y.spec.mjs runs axe on each.
@@ -128,10 +129,10 @@ export async function play({ origin, view = async () => {}, shot = async () => {
   await shot('19-threads');
 
   // 5 · Review: comments, a verdict, then a revision shown as a diff
-  const spec = T('Corpus schema spec');
+  const spec = T('Search schema spec');
   log('@critic asks for a review; you comment and request changes; it revises in place.');
   await view(`#/t/${spec.id}`);
-  await send(spec, 'Review my corpus schema line by line');
+  await send(spec, 'Review my search schema line by line');
   s = await settled(
     spec,
     (st) => find(st, spec, (i) => i.valid && i.block.id === 'layout-review') && st.apps['layout-proposal']?.check.status === 'passed',
@@ -150,7 +151,7 @@ export async function play({ origin, view = async () => {}, shot = async () => {
   await shot('07-review');
 
   // 6 · A conversation in progress: two agents, a streaming reply, subagents, a compaction, a queued message
-  const room = T('Corpus planning');
+  const room = T('Index planning');
   log('In a room, @indexer indexes the shelf while @researcher waits; you queue a message.');
   await view(`#/t/${room.id}`);
   await send(room, 'Before we embed anything, @researcher which editions are we indexing?');
@@ -321,8 +322,9 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1
   const origin = `http://127.0.0.1:${port}`;
   console.log(`\nOpen ${origin}/ in a browser and keep it open: apps are checked there before they’re shown.\n`);
   await sleep(4000);
+  const story = arg('story', 'tour') === 'showcase' ? (await import('./demo-showcase.mjs')).playShowcase : play;
   try {
-    await play({
+    await story({
       origin,
       speed: Number(arg('speed', 0.6)),
       view: async (hash) => {

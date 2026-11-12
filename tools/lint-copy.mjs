@@ -1,7 +1,7 @@
 // lint-copy: the writing rules that a machine can check. American spelling everywhere we write (strings,
 // comments, the design docs), curly quotes and apostrophes in what people read in the app, and one word
 // for conversations and another for threads.
-// See designs/intent.md, “Writing”, and designs/architecture.md.
+// See designs/intent.md, “Writing”, and designs/architecture/code-quality.md, “Code quality”.
 //
 //   node tools/lint-copy.mjs
 

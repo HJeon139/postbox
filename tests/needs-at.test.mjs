@@ -4,10 +4,15 @@
 // store loads.
 
 import assert from 'node:assert/strict';
-import { after, before, test } from 'node:test';
+import { after, afterEach, before, test } from 'node:test';
 import { sessionPatch } from '../server/session-patch.mjs';
 import { waitedSince } from '../shared/needs.mjs';
+import { assertNoServerFailures, captureServerLog } from './server-log.mjs';
 import { tempDir } from './temp-dirs.mjs';
+
+// Its Postbox runs in this process: a test fails on an error or a warning it logs (tests/server-log.mjs).
+captureServerLog();
+afterEach(assertNoServerFailures);
 
 process.env.POSTBOX_BACKENDS = 'mock';
 const { start } = await import('../server/index.mjs');

@@ -1,5 +1,5 @@
 // A remote turn’s life on the laptop (#120, the plan’s L5): what the runtime does for an agent whose persona runs on
-// a host (persona.remote.hostId), between its adapter and the host’s daemon. The design is architecture.md, “Remote
+// a host (persona.remote.hostId), between its adapter and the host’s daemon. The design is designs/architecture/remote-hosts.md, “Remote
 // hosts” (“Turn states”, “Permission prompts while nobody is connected”, “Postbox’s tools on the host”); D2 decided
 // when a turn resumes on its own. server/runtime.mjs calls it from deliver, its turn context, endTurn, stop and the
 // permission cards, and owns everything else.

@@ -17,16 +17,19 @@ import { tempDir } from '../temp-dirs.mjs';
 const CHECK = fileURLToPath(new URL('../../tools/check.mjs', import.meta.url));
 const skip = process.platform === 'win32' && 'needs process groups';
 
-/** Whether pid has exited within ms; a killed process can stay a zombie for a moment before it’s reaped. */
+/** Whether pid has exited within ms, looking once more at the deadline; a killed process can stay a zombie for a
+ * moment before it’s reaped. */
 async function goneWithin(/** @type {number} */ pid, /** @type {number} */ ms) {
-  for (const end = Date.now() + ms; Date.now() < end; await sleep(50)) {
+  const gone = () => {
     try {
       process.kill(pid, 0);
+      return false;
     } catch {
       return true;
     }
-  }
-  return false;
+  };
+  for (const end = Date.now() + ms; Date.now() < end; await sleep(50)) if (gone()) return true;
+  return gone();
 }
 
 /**
@@ -59,11 +62,11 @@ function startCheck(t, stage, script, files) {
     });
   });
   const logged = () => readFileSync(log, 'utf8');
+  const startedPid = () => Number(/^started (\d+)/.exec(logged())?.[1]);
   const started = (async () => {
-    for (const end = Date.now() + 15_000; Date.now() < end; await sleep(50)) {
-      const pid = Number(/^started (\d+)/.exec(logged())?.[1]);
-      if (pid) return pid;
-    }
+    for (const end = Date.now() + 15_000; Date.now() < end; await sleep(50)) if (startedPid()) return startedPid();
+    // One more look at the deadline, so a stall past it doesn’t miss a start that happened meanwhile.
+    if (startedPid()) return startedPid();
     throw new Error(`The stage didn’t start within 15 s:\n${out}`);
   })();
   // Whatever fails, nothing this test started outlives it.

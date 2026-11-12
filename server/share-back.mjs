@@ -1,6 +1,6 @@
 // What comes back from a topic or side thread to its conversation (#93, #128): Send to conversation on a message, and
 // Summarize back, which asks the thread’s agent for a summary and posts it there. The conversation’s agents read it
-// at their next turn; nothing wakes them. Functions take the Runtime first (architecture.md, “What a move may change”).
+// at their next turn; nothing wakes them. Functions take the Runtime first (designs/architecture/code-size.md, “What a move may change”).
 
 import { positionOf } from '../shared/item-index.mjs';
 import { clip, httpError, tooLongToSend } from './helpers.mjs';

@@ -5,6 +5,8 @@
 // the `thread` event has always carried it, so the reducer, A2’s conversion and the page see no new shape.
 // tests/thread-write-guard.test.mjs places every thread write, so a new one goes through here.
 
+import { httpError } from './helpers.mjs';
+
 /**
  * Writes one thread: its pending state with `change` applied. `change` is the fields to set, or a function of the
  * pending thread that returns them, or null to write nothing, so a field read to decide the write is read pending
@@ -20,6 +22,18 @@ export function updateThread(rt, id, change) {
   const next = { ...t, ...patch };
   rt.store.emit('thread', next);
   return next;
+}
+
+/**
+ * The thread a write is about to change, as memory will hold it, or a 404 when it doesn’t exist there: one just started
+ * behind a held commit isn’t published yet, and one just deleted still is (#796’s class). A route that sends what the
+ * write returns then answers with the thread, or this refusal, never with nothing.
+ * @param {import('./runtime.mjs').Runtime} rt @param {string} id
+ */
+export function threadToWrite(rt, id) {
+  const t = rt.store.pending.thread(id);
+  if (!t) throw httpError(404, 'That thread doesn’t exist. It may have been deleted.');
+  return t;
 }
 
 /** Every thread, as memory will hold them once what is held is released: for a sweep whose finds decide writes. */

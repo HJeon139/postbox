@@ -1,4 +1,4 @@
-// A turn that waits on a host while Postbox installs its version there by itself (#464-b2b; designs/architecture.md, “Keeping a host up to date”):
+// A turn that waits on a host while Postbox installs its version there by itself (#464-b2b; designs/architecture/remote-hosts.md, “Keeping a host up to date”):
 // the turn’s status line in the agents list and the agent’s panel says “Installing Postbox
 // <version> on <host>…”, never a token or a path, and goes once the install has ended. An idle agent on that host
 // says nothing of it. At 1280 px, with axe; at 375 px a phone has no agents list, so only that nothing shows a token

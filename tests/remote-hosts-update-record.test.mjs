@@ -1,4 +1,4 @@
-// The record of automatic installs (server/remote/hosts-update.mjs, #464-b2a; designs/architecture.md, “Keeping a host up to date”):
+// The record of automatic installs (server/remote/hosts-update.mjs, #464-b2a; designs/architecture/remote-hosts.md, “Keeping a host up to date”):
 // `<data>/remote-installs/<host id>`, `{ keepUpdated, installs: [{ version, at, outcome }] }`, newest
 // first, read fail-closed, written before the install starts, and “tried” per version since the last other version.
 

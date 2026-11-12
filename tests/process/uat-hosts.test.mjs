@@ -10,13 +10,17 @@
 
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
-import { after, before, test } from 'node:test';
+import { after, afterEach, before, test } from 'node:test';
 import { start } from '../../server/index.mjs';
 import { describeInstall } from '../../server/remote/install.mjs';
+import { assertNoServerFailures, captureServerLog } from '../server-log.mjs';
 import { tempDir } from '../temp-dirs.mjs';
 import { chromiumMissing, freePort } from './chrome.mjs';
 
 const skip = await chromiumMissing();
+// Its Postbox runs in this process: a step fails on an error it logs (tests/server-log.mjs).
+captureServerLog();
+afterEach(assertNoServerFailures);
 const VERSION = '0.24.0';
 const WELCOME = {
   version: VERSION,

@@ -1,5 +1,5 @@
 // The daemon’s broker (#120): what the daemon does for each turn’s shim, and for Codex’s approval requests, between
-// the agent on the host and Postbox on the laptop. The design is architecture.md, “Remote hosts”, “Postbox’s tools on
+// the agent on the host and Postbox on the laptop. The design is designs/architecture/remote-hosts.md, “Remote hosts”, “Postbox’s tools on
 // the host” and “Permission prompts while nobody is connected”; the messages are shared/remote-protocol.mjs’s
 // shim-to-daemon, daemon-to-shim, and the tool, prompt, prompt-expired, reply, answer, snapshot and snapshot-items
 // messages between Postbox and the daemon. daemon.mjs hands it each shim connection and those Postbox messages.

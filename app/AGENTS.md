@@ -1,6 +1,6 @@
 # The client: app/
 
-Plain ES modules in `app/js/`, no framework and no build (designs/architecture.md, “The front end”). The page imports `shared/` as `/shared/…`. The root `AGENTS.md` applies here too.
+Plain ES modules in `app/js/`, no framework and no build (designs/architecture/front-end.md, “The front end”). The page imports `shared/` as `/shared/…`. The root `AGENTS.md` applies here too.
 
 ## The DOM and agent content
 

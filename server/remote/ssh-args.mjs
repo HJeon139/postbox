@@ -19,7 +19,7 @@ export function remoteCommand(version) {
 /**
  * The options every connection gets, whatever ~/.ssh/config says for the host (sshArgs), since “the first specified
  * value will be used” and the command line comes first (ssh_config(5)). Postbox calls the daemon one way only, and
- * nothing listens on TCP (architecture.md, “Remote hosts”), so a config’s RemoteForward back to Postbox’s port, a
+ * nothing listens on TCP (designs/architecture/remote-hosts.md, “Remote hosts”), so a config’s RemoteForward back to Postbox’s port, a
  * LocalForward or DynamicForward listener here, X11 with this computer’s display, a LocalCommand or a tunnel device
  * would each break that: ClearAllForwardings drops the forwards “from the configuration files and command line”.
  * StrictHostKeyChecking=yes refuses a host key that isn’t already known, or has changed, even where a config says

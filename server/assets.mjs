@@ -1,4 +1,4 @@
-// A conversation’s assets (#516 S3, designs/architecture.md, “Assets”): files agents publish to their room, each a list
+// A conversation’s assets (#516 S3, designs/architecture/assets.md, “Assets”): files agents publish to their room, each a list
 // of versions whose bytes are kept once, by SHA-256, in a blob folder of their own (assets/ under the data folder).
 // Every write goes through one function commit (server/store-commit.mjs): on the applied state it checks the base, the
 // name, the bounds and the budget, and writes the version with what it prunes as one fsynced line, so a version exists

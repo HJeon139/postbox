@@ -1,6 +1,6 @@
 # The server and the agent backends: server/
 
-Node with zero runtime dependencies. The store is an event log with snapshots (designs/architecture.md, “The store”). The root `AGENTS.md` applies here too.
+Node with zero runtime dependencies. The store is an event log with snapshots (designs/architecture/store.md, “The store”). The root `AGENTS.md` applies here too.
 
 ## Node
 
@@ -34,8 +34,8 @@ These come from designs/developing.md, “Agent backends”, and designs/enginee
 
 ## Security
 
-These come from designs/developing.md, “Security”, and designs/architecture.md, “Writes need the page’s token”:
+These come from designs/developing.md, “Security”, and designs/architecture/security-boundaries.md, “Writes need the page’s token”:
 - The request gate in `server/index.mjs` refuses other `Host` headers (DNS rebinding) and cross-site `Origin`s, and needs the page’s token for every write. `/mcp` needs the running turn’s token. `!` commands need loopback.
 - Validate every input at the boundary, and refuse rather than normalize. Resolve a path with `realpath`, and refuse it outside its folder.
 - Use `node:crypto`: `randomBytes` for tokens, and `sameToken()` (`server/helpers.mjs`) to compare them, as SECURITY.md and `lint-security` require.
-- `runtime.mjs` is at its ceiling. A new concern goes in a module of its own, as a function that takes `rt` first, with a one-line delegator left in the class (designs/architecture.md, “Module and function size”).
+- `runtime.mjs` is at its ceiling. A new concern goes in a module of its own, as a function that takes `rt` first, with a one-line delegator left in the class (designs/architecture/code-size.md, “Module and function size”).

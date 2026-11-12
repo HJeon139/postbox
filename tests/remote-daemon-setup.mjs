@@ -3,7 +3,8 @@
 // turn folders as a runner leaves them; and `host attach` over a fake socket.
 
 import assert from 'node:assert/strict';
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { rm } from 'node:fs/promises';
 import { Duplex, PassThrough } from 'node:stream';
 import { createDaemon, main } from '../server/remote/host/daemon.mjs';
 import { hostVersion } from '../server/remote/host/paths.mjs';
@@ -150,9 +151,13 @@ export function setup({
     ...(broker ? { broker } : {}),
   });
   const connect = () => connectTo(daemon);
-  const done = () => {
-    daemon.close();
-    rmSync(home, { recursive: true, force: true });
+  /**
+   * Closes the daemon and waits for its close, which settles the broker’s writes, then removes the home. The daemon’s
+   * own writes aren’t in that close yet (#426), so the removal retries while one lands in a folder it is emptying.
+   */
+  const done = async () => {
+    await daemon.close();
+    await rm(home, { recursive: true, force: true, maxRetries: 10, retryDelay: 20 });
   };
   return { home, p, daemon, alive, launches, kills, writes, asks, connect, done, state, groupLookups };
 }

@@ -8,7 +8,7 @@ Browser checks are Playwright specs in `tests/browser/`: see `tests/AGENTS.md`, 
 
 ## Lints
 
-`tools/lint-*.mjs` run in `npm run check`. A new rule comes with a case in `tests/lint.test.mjs` that it flags. An exception carries `lint-allow <rule>: <reason>` on its line (designs/architecture.md, “Code quality”). `lint-ternary` takes only that line-level form, `lint-allow ternary: <reason>`, and no `lint-allow-file` (#753).
+`tools/lint-*.mjs` run in `npm run check`. A new rule comes with a case in `tests/lint.test.mjs` that it flags. An exception carries `lint-allow <rule>: <reason>` on its line (designs/architecture/code-quality.md, “Code quality”). `lint-ternary` takes only that line-level form, `lint-allow ternary: <reason>`, and no `lint-allow-file` (#753).
 
 ## The UAT runner and the screenshot tools
 

@@ -53,11 +53,15 @@ export function stop(rt, sessionId, { silent = false, jobs = 'stop', by = 'you',
   if (se) rt.stallLeftRunning(turn, se, by === 'shutdown' || by === 'hung' ? by : 'stopped');
   if (turn.remote) rt.remote.stopped(turn, { by, why });
   // A process that never exits mustn’t hold the session for good: after a while, the next turn starts anyway.
-  setTimeout(() => {
+  // Kept in rt.watchdogs, so close() clears it (server/runtime-close.mjs).
+  const watchdog = setTimeout(() => {
+    rt.watchdogs.delete(watchdog);
     if (rt.exiting.get(sessionId)?.turn !== turn) return;
     console.error(`@${se?.handle ?? sessionId}’s stopped turn hadn’t ended after ${STOP_WATCHDOG_MS / 1000} s, so its next turn starts anyway.`);
     turnExited(rt, turn);
-  }, STOP_WATCHDOG_MS).unref?.();
+  }, STOP_WATCHDOG_MS);
+  watchdog.unref?.();
+  rt.watchdogs.add(watchdog);
   // A stopped summary (or one queued behind the turn, which goes with it) isn’t coming (#93), in a topic thread too.
   // A message from another agent, waiting behind the turn, goes with it: it hears at its next turn what it said.
   rt.clearSummaryPending(turn.threadId);

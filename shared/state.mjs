@@ -69,7 +69,7 @@ export function ownState(s) {
 }
 
 /**
- * Which keys of the state reach the page (designs/architecture.md, “What reaches the browser”). Every key of
+ * Which keys of the state reach the page (designs/architecture/security-boundaries.md, “What reaches the browser”). Every key of
  * emptyState() is in exactly one list (tests/public-state.test.mjs): a new collection reaches the page only by being
  * listed as public, and can’t vanish from it unseen.
  */

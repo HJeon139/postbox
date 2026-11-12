@@ -1,6 +1,13 @@
-// A request through Postbox’s router without a network: start({ listen: false }) returns the handler.
+// A request through Postbox’s router without a network: start({ listen: false }) returns the handler. A file that
+// calls routes this way runs its Postbox in its own process, so each of its tests fails on what that Postbox logs as an
+// error or a warning, unless the test names it with allowServerLog (tests/server-log.mjs).
 
 import { Readable } from 'node:stream';
+import { afterEach } from 'node:test';
+import { assertNoServerFailures, captureServerLog } from './server-log.mjs';
+
+captureServerLog();
+afterEach(assertNoServerFailures);
 
 /**
  * One request through the router, as Node’s server would make it.

@@ -19,7 +19,7 @@ A test that must run a real process (npm, git, an installed postbox) goes in `te
 
 ## Browser specs
 
-Browser checks are Playwright Test specs in `tests/browser/*.spec.mjs` (designs/architecture.md, “Browser checks on Playwright Test”, #303):
+Browser checks are Playwright Test specs in `tests/browser/*.spec.mjs` (designs/architecture/browser-checks.md, “Browser checks on Playwright Test”, #303):
 - Each spec file starts its own Postbox in `beforeAll` with `startPostbox()` from `tests/browser/postbox.mjs`, stops it in `afterAll`, and calls `failOnPageErrors(test)`. Wait for the page to hear the server with `synced(page, app)`.
 - Wait with web-first assertions (`expect(locator)…`), `expect.poll` or `expect(…).toPass`, never for a fixed time. The `no-fixed-waits` Biome rule fails `page.waitForTimeout` and `setTimeout` in a spec.
 - Find elements by role or name where the page gives one, else by the attribute the code sets (`data-key`, `data-session`). A locator that matches two elements is a question to answer, not to work around with `.first()`.

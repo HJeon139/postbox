@@ -4,7 +4,7 @@
 // offers them: bring_to_conversation only with --bring, and permission_prompt only without --no-prompt, whose call
 // then gets NOT_YOUR_PROMPT at once), reads JSON-RPC from stdin and writes it to stdout, one message per line (MCP
 // 2025-06-18, “Transports”, stdio), and logs only to stderr. Each tool call crosses to the daemon over its Unix socket in the shim-to-daemon
-// messages of shared/remote-protocol.mjs; the design is architecture.md, “Remote hosts”, “Postbox’s tools on the host”
+// messages of shared/remote-protocol.mjs; the design is designs/architecture/remote-hosts.md, “Remote hosts”, “Postbox’s tools on the host”
 // and “Permission prompts while nobody is connected”.
 //
 // - The turn’s own token comes from its folder (TURN_FILES.shimToken, which the daemon writes as the turn starts),
