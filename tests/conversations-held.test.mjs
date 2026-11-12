@@ -5,6 +5,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { patchThread } from '../server/room-chain-limit.mjs';
 import { heldStore, setup } from './stop-reply-fixture.mjs';
 
 /** A runtime on a store whose next commit is held, with fn run while it is. */
@@ -48,3 +49,23 @@ test('starting a conversation with an agent while a commit is held joins the age
   );
   await store.close();
 });
+
+// PATCH /api/threads/:id sends what patchThread returns. A conversation deleted while a commit is held is still in the
+// published state, so it passed rt.thread, but updateThread found no thread to write and returned undefined.
+for (const [what, body] of [
+  ['renaming', { title: 'Renamed' }],
+  ['setting the chain limit of', { chainLimit: 5 }],
+]) {
+  test(`${what} a conversation deleted behind a held commit is refused as deleted, not answered with nothing`, async () => {
+    const { result, store } = await whileHeld(({ rt, t }) => {
+      rt.deleteThread(t.id);
+      try {
+        return patchThread(rt, t.id, body);
+      } catch (e) {
+        return e;
+      }
+    });
+    assert.equal(result?.status, 404, `refused: ${result?.message ?? JSON.stringify(result)}`);
+    await store.close();
+  });
+}

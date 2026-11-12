@@ -73,7 +73,7 @@ export function ensureSession(rt, threadId, personaId, { brief, joined = null } 
 }
 
 export function renameThread(rt, threadId, title) {
-  rt.thread(threadId);
+  threadToWrite(rt, threadId);
   const name = String(title ?? '')
     .trim()
     .slice(0, 120);
