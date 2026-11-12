@@ -32,7 +32,7 @@ async function codexRestarted(h, clock, k, out, wait) {
   await appendFile(out, '{"id":11,"method":"item/commandExecution/requestApproval","params":{}}\n');
   await clock.tick(1000);
   await clock.tick(30_000);
-  k.b.close();
+  await k.b.close();
   const again = makeBroker(h, { now: clock.now, timers: clock.timers, codexPollMs: 1000, settings: () => ({ ...HOST_DEFAULTS, permissionWaitMax: wait }) });
   await again.b.load([{ turn: 'cx', state: 'running' }]);
   assert.deepEqual(again.writes, [], 'requests 7 and e9 were declined already, and 11 is new');
