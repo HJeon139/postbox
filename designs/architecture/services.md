@@ -88,14 +88,15 @@ The list refines the starting point from the data:
 
 - **Owns:** the listeners for in-process signals. It calls them synchronously, in the order the root registered them, and a listener’s throw reaches the emitter, as a direct call’s does today. Nothing is persisted.
 - **Interface:** `emit(signal, data)`, `on(signal, fn)`.
-- **Signals:** `persona.updated` (Personas, after a write: tool asks settle, and the queue of an agent moved off a host drains), `session.joined` (Sessions: a declined add lifts), `item.added` (Threads: a side thread’s line counts the message), `app.retired` (Apps: its send card’s need releases).
+- **Signals:** `persona.updated` (Personas, after a write), `session.joined` (Sessions: a declined add lifts), `item.added` (Threads: a side thread’s line counts the message), `item.moved` (Threads, from `bringForward`: Memory moves its read markers to the stub), `app.retired` (Apps: its send card’s need releases).
+- **`persona.updated`’s listeners, in this order:** host turns clear Running’s awaiting-attach entries for that persona’s sessions no longer on their host; tool asks settle (`settleToolAsks`); the queue of an agent moved off a host drains (`drainMovedOff`). Today `busyFor` computes awaiting attach from the persona as it is after the write, so a drain right after it already sees the agent free; clearing first keeps that. If the queue drained first, a moved agent’s messages would stay held.
 - **Depends on:** nothing.
 
 ### Running
 
-- **Owns:** the live turn per session, the stopped turns still exiting, a host turn waiting to be attached again after a restart, and `closing`. Invariants: at most one live turn per session; a busy session (running, exiting or awaiting attach) starts no new turn; once `closing` is set, nothing starts.
-- **Interface:** `turnOf(sessionId)`, `busy(sessionId)`, `all()`, `closing`. Only Turns writes it: `begin(turn)`, `exit(sessionId, entry)`, `end(sessionId)`, `close()`. Until Turns is redone, `Runtime` keeps `turns` and `exiting` as getters onto Running’s maps, so waiting code is unchanged.
-- **Depends on:** nothing.
+- **Owns:** the live turn per session, the stopped turns still exiting, the sessions whose host turn waits to be attached again after a restart (#1135), with the host each waits on, and `closing`. Invariants: at most one live turn per session; a busy session (running, exiting or awaiting attach) starts no new turn; once `closing` is set, nothing starts.
+- **Interface:** `turnOf(sessionId)`, `busy(sessionId)`, `all()`, `closing`. Only Turns writes it: `begin(turn)`, `exit(sessionId, entry)`, `end(sessionId)`, `awaitAttach(sessionId, hostId)`, `attached(sessionId)`, `close()`. Until Turns is redone, `Runtime` keeps `turns` and `exiting` as getters onto Running’s maps, so waiting code is unchanged.
+- **Depends on:** nothing. Today `busyFor` (`runtime.mjs`) asks `RemoteTurns.awaitsAttach`, which reads the session and `hostOf(personaFor(se))` (`remote/turns.mjs`): computed that way, `busy()` would need Store and Personas, a cycle with Placement. So Running keeps the awaiting sessions as a set instead: `RemoteTurns` writes it wherever it sets or deletes `restoring` today (`turns-restore`, `turns-end`, `turns-start`, `turns-resume`), and the first `persona.updated` listener clears an entry whose persona moved off that host.
 
 ### Placement
 
@@ -106,7 +107,7 @@ The list refines the starting point from the data:
 ### Threads
 
 - **Owns:** conversations, topic and side threads, their items, and presence (`viewing`). Invariants: an item has one live copy (`bringForward` leaves a stub); a topic’s reply count follows each message; a thread’s lineage ends at its conversation.
-- **Interface:** `get(id)`, `create(opts)` (from `conversations.mjs`), `patch(id, patch)`, `addItem`, `patchItem`, `bringForward`, `lineage(id)`, `conversationThreads(id)`, `glossaryFor(id)`, `notify(level, …)`, `view(id)`, `isViewing(id)`, `toggleReaction`. Signal: `item.added`.
+- **Interface:** `get(id)`, `create(opts)` (from `conversations.mjs`), `patch(id, patch)`, `addItem`, `patchItem`, `bringForward`, `lineage(id)`, `conversationThreads(id)`, `glossaryFor(id)`, `notify(level, …)`, `view(id)`, `isViewing(id)`, `toggleReaction`. Signals: `item.added`, `item.moved`. Clearing the sessions’ unread counts when a thread is viewed is Sessions’ (`markRead`); the facade’s `view()` calls both.
 - **Depends on:** Store, Bus.
 
 ### Personas
@@ -118,7 +119,7 @@ The list refines the starting point from the data:
 ### Sessions
 
 - **Owns:** sessions: one per agent per conversation (#228), their unread counts, notices for the next turn (`tellAgent`), and the commands each agent offers (`recordCommands`, from `agent-commands.mjs`). Needs stay with asks.
-- **Interface:** `get(id)`, `in(threadId)`, `ensure(threadId, personaId, opts)`, `update(id, patch)`, `tell(id, text)`, `roomOf(threadId, se)`, `awayFrom(se, threadId)`, `recordCommands(id, list)`, `remove(id)`. Signal: `session.joined`.
+- **Interface:** `get(id)`, `in(threadId)`, `ensure(threadId, personaId, opts)`, `update(id, patch)`, `tell(id, text)`, `roomOf(threadId, se)`, `awayFrom(se, threadId)`, `recordCommands(id, list)`, `markRead(threadId)`, `remove(id)`. Signal: `session.joined`.
 - **Depends on:** Store, Bus, Threads, Personas.
 
 ### Assets
@@ -233,7 +234,7 @@ Built in this order, each service’s dependencies already exist: Store, Bus, Ru
 
 ### How each dependency on waiting code breaks
 
-`svc-check.mjs` lists every dependency each of these services has today, through `rt.x` or an imported function that takes `rt`, and checks it against the graph above or a break below. On 2259cebe it finds none unaccounted for.
+`svc-check.mjs` lists every dependency each of these services has today, through `rt.x`, an imported function that takes `rt`, or the body of a `Runtime` method the service takes over (62 of them, such as `busyFor` and `addItem`), and checks it against the graph above or a break below. On 2259cebe it finds none unaccounted for.
 
 | Where, today | How it breaks |
 |---|---|
@@ -241,6 +242,9 @@ Built in this order, each service’s dependencies already exist: Store, Bus, Ru
 | `remote/placement.mjs`’s `drainMovedOff` calls `rt.drainQueues` and reads `rt.remote` | it leaves Placement for the `persona.updated` listener |
 | `conversations.mjs`’s `ensureSession` calls `liftDecline` (`wake-cards.mjs`) | `session.joined`; wake cards listen |
 | `Runtime.addItem` calls `bumpSideLink` (`side-threads.mjs`) | `item.added`; side threads listen |
+| `Runtime.busyFor` calls `remote.awaitsAttach`, which reads the session and its persona’s host | Running keeps the awaiting sessions; `RemoteTurns` writes them, and the first `persona.updated` listener clears them |
+| `Runtime.bringForward` calls `moveMarkers` (`catch-up.mjs`) | `item.moved`; Memory moves its markers |
+| `Runtime.view` clears the sessions’ unread counts | the facade’s `view()`: `Threads.view`, then `Sessions.markRead` |
 | `app-retire.mjs` calls `releaseNeed` (`card-needs.mjs`) | `app.retired`; asks listen |
 | `apps.mjs`’s `needAppSend` and `resolveAppSend` call `offerNeed` and `releaseNeed` | they stay with asks; `apps.mjs` splits |
 | `lint-delivery.mjs`, `apps.mjs` and `review-comments.mjs` call `rt.deliver` | the `send` port |
@@ -268,13 +272,18 @@ flowchart TD
   C --> D[Turns: settle subagent steps, fold steps, a host turn’s ending may set err]
   D --> E[Delivery: settle the scheduled wake, with err]
   E --> F[Work: endWork]
-  F --> G[Turns: mirror, empty reply may set err, settle reply segments]
+  F --> G0[Turns: skip the mirror’s tail to the end]
+  G0 --> S{session still there?}
+  S -->|no| Z[stop]
+  S -->|yes| G[Turns: an empty reply may set err, settle reply segments]
   G --> H[Delivery: post the summary when ok, clear the pending summary]
-  H --> I{err?}
+  H --> I{err, and not an AbortError?}
   I -->|failed| J[Checks: stalled steps]
   J --> K[Turns: failed reply, the session fails, notify]
-  K --> L[Delivery: wake mentions with the failure, then take pending wakes only]
-  I -->|ok| M[Apps: an app-check turn’s fix ends]
+  K --> L[Delivery: wake mentions with the failure]
+  L --> L2[Turns: mark whom the failure woke, wokeOnFailure]
+  L2 --> L3[Delivery: take pending wakes only]
+  I -->|no: ok, or stopped by an AbortError| M[Apps: an app-check turn’s fix ends]
   M --> N[Asks: the next need, session state, unread and notification]
   N --> O[Checks: stalled steps, then lint or quiet lint]
   O --> P[Threads: a topic’s unread]
@@ -282,7 +291,7 @@ flowchart TD
   Q --> R[Delivery: wake mentions, then take pending]
 ```
 
-So the steps are: `ending` before Running lets the turn go (B), `settled` with the final host `err` (E, F), `replied` (H), `failed` (J to L), and `ended` (M to R), whose listeners run in that order and share `open`, `viewing` and `topic`. Stopping a turn (`turn-stop.mjs`) gets its own steps, `stopping` and `exited`, in the same way.
+So the steps are: `ending` before Running lets the turn go (B), `settled` with the final host `err` (E, F), `replied` (H), `failed` (J to L3, with Turns’ `wokeOnFailure` patch between the wakes and the take), and `ended` (M to R), whose listeners run in that order and share `open`, `viewing` and `topic`. Stopping a turn (`turn-stop.mjs`) gets its own steps, `stopping` and `exited`, in the same way.
 
 **`card.opened` must be synchronous.** When a card opens, `permission-cards.mjs` (line 96) closes the turn’s reply segment before `offerNeed`, so the reply goes on below the card and the need points at a settled segment. When asks raise `card.opened` and Turns closes the segment in a listener, the bus must call it synchronously, before `offerNeed`; the bus above does.
 
@@ -366,8 +375,8 @@ Each service gets `tests/<folder>/<service>.test.mjs` (designs/architecture/fold
 Smallest and least tangled first. Until a dependency is redone, a service takes it as a narrow function bound to `Runtime` (for example `busy: (id) => rt.busyFor(id)`), and the step that redoes that dependency swaps in the service. `svc-check.mjs`, rerun, shows each step’s progress and any new dependency on waiting code.
 
 0. **The fixture** (`tests/arrange.mjs`), and the browser specs and arrange tests moved onto it. No server change.
-1. **Placement, the pilot.** One module that uses 5 members once `drainMovedOff` leaves, no state, two dependencies (Store, and Running through `rt.busyFor` until step 2), and stateless queries that fakes test easily. 12 modules call it. Personas was the first choice, but after counting imports it needs Placement and Bus first. Delivery, the most tangled, waits for rooms at scale. The pilot’s pull request reports what the step cost and which tests it deleted, so the person can judge the approach before the next one.
-2. **Running.** Its maps move in; `Runtime` keeps getters for waiting code.
+1. **Placement, the pilot.** One module that uses 5 members once `drainMovedOff` leaves, no state, two dependencies (Store, and Running through `rt.busyFor` until step 2), and stateless queries that fakes test easily. 12 modules call it. Until step 2, its `busy` binding to `rt.busyFor` still reaches the waiting `RemoteTurns` (`awaitsAttach`), so the pilot isn’t yet free of waiting code; step 2 removes that. Personas was the first choice, but after counting imports it needs Placement and Bus first. Delivery, the most tangled, waits for rooms at scale. The pilot’s pull request reports what the step cost and which tests it deleted, so the person can judge the approach before the next one.
+2. **Running.** Its maps move in, with the awaiting-attach set that `RemoteTurns` writes and the first `persona.updated` listener clears (until step 4 adds that signal, `updatePersona` clears it directly, before `settleToolAsks`); `Runtime` keeps getters for waiting code.
 3. **Threads**, with Bus and `item.added`.
 4. **Personas**, with `persona.updated`.
 5. **Sessions**, with `session.joined`.
