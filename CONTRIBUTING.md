@@ -76,5 +76,3 @@ Saved searches:
 - [Ready for the integrator](https://github.com/HJeon139/postbox/pulls?q=is%3Apr+is%3Aopen+label%3A%22ready+for+integrator%22) uses `is:pr is:open label:"ready for integrator"`.
 - [Changes requested](https://github.com/HJeon139/postbox/pulls?q=is%3Apr+is%3Aopen+label%3A%22changes+requested%22) uses `is:pr is:open label:"changes requested"`.
 - [Approved, waiting on CI](https://github.com/HJeon139/postbox/pulls?q=is%3Apr+is%3Aopen+label%3A%22integrator+approved%22) uses `is:pr is:open label:"integrator approved"`.
-
-The wave plan, with which issues are grouped into which session and in what order, is in `designs/prompts/README.md`. The maintainer's triage comments are on #64.
