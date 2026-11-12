@@ -80,7 +80,7 @@ const PENDING = {
   // (takesNeed): their times, and whether the current one still waits, decide whether the offer takes the need (#711).
   'card-needs.mjs': ['keptTurns', 'nextNeed', 'takesNeed', 'takesNeed', 'releaseNeed', 'notifyOnce'],
   'claude-mirror.mjs': ['pollMirror'], // the mirrored reply a terminal line adds to, maybe held behind a commit
-  'deliver.mjs': ['deliver', 'deliver', 'deliver'], // the session it starts a turn in, and the thread it answers in, maybe made or held behind a commit (#796)
+  'deliver.mjs': ['deliver', 'deliver', 'turnMessage'], // the session it starts a turn in, and the thread it answers in, maybe made or held behind a commit (#796)
   'restart-sweep.mjs': ['settleRetiredNeeds', 'cardOf'], // the need's card: whether it still waits, and its time on a tie, decide the need kept (#366); a session whose need is of a retired kind, settled
   'app-retire.mjs': ['retireApp', 'retireApp', 'retireApp', 'release'], // retire_app of an app the turn may have just shown, and its sweep of open sends
   'apps.mjs': ['showApp', 'updateApp'], // show_app and update_app of an app the turn may have just shown

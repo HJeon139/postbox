@@ -37,27 +37,64 @@ export function deliver(rt, sessionId, message, { summarizeTo = null, threadId =
   const asked = { message, summarizeTo, threadId };
   // The store can’t be written: the turn starts once it can (ST-3).
   if (heldTurn(rt, sessionId, () => rt.deliver(sessionId, asked.message, { summarizeTo, threadId }), message)) return;
-  if (rt.turns.has(sessionId)) {
-    // Agent-to-agent messages and events wait for the current turn to end.
-    const t = rt.turns.get(sessionId);
-    t.pending.push({ message: { ...message, at: message.at ?? Date.now(), seq: message.seq ?? arrival() }, summarizeTo, threadId });
-    return;
-  }
-  // A stopped turn’s process is still exiting: the next turn waits for it, so a session never runs two (#126). An answer
-  // held here isn’t read yet: it’s read when the turn it starts begins.
-  const exiting = rt.exiting.get(sessionId);
-  if (exiting) {
-    exiting.held.push({ message: { ...message, at: message.at ?? Date.now(), seq: message.seq ?? arrival() }, summarizeTo, threadId });
-    return;
-  }
-  // Shutting down: a new CLI would outlive Postbox. A message you sent waits in the queue (turnExited).
-  if (rt.closing) return;
+  if (waitsBehind(rt, sessionId, message, { summarizeTo, threadId })) return;
   const where = threadId && threadId !== se.threadId && rt.store.pending.thread(threadId) ? threadId : se.threadId;
   rt.answerDelivered(where, message);
   // A skill or command (#67) is the whole prompt, since Claude Code runs it only when the prompt starts with /name:
   // the context below waits for the agent’s next turn instead. So does a remote turn attached again after a restart
   // (#120, message.attach): it sends the agent nothing, and replays what the host has.
   const slash = message.slash === true || typeof message.attach === 'string';
+  message = turnMessage(rt, se, message, where, slash);
+  const persona = rt.persona(se.personaId);
+  const adapter = registeredAdapter(rt, persona);
+  const turn = newTurn(se, message, persona, { where, slash, summarizeTo, asked });
+  rt.turns.set(sessionId, turn);
+  // A persona on a remote host (#120): the turn is remote from here on (server/remote/turns.mjs).
+  const hostId = adapter ? rt.remote.hostOf(persona) : null;
+  if (hostId) rt.remote.begin(turn, hostId, adapter);
+  // The work ledger (#132) follows the turn’s tool calls. A change outside the project’s folder and the agent’s is
+  // flagged; the adapter knows the agent’s folder. A remote agent’s folder is on its host, never made here.
+  const project = rt.s.projects[rt.s.threads[se.threadId]?.projectId] ?? null;
+  rt.ledger.startTurn(turn, {
+    se,
+    folder: hostId ? null : workFolder(adapter, persona, project),
+    projectFolder: project?.folder ?? null,
+  });
+  atWork(rt, se, turn, message);
+  runTurn(rt, se, turn, message, { adapter, persona, hostId });
+}
+
+/**
+ * A turn already running, or a stopped one still exiting, takes the message to start after it; while Postbox shuts
+ * down, none starts. True when the message waits, or goes nowhere, instead of starting a turn now.
+ * @param {any} rt @param {string} sessionId @param {any} message
+ * @param {{ summarizeTo: string|null, threadId: string|null }} opts
+ */
+function waitsBehind(rt, sessionId, message, { summarizeTo, threadId }) {
+  if (rt.turns.has(sessionId)) {
+    // Agent-to-agent messages and events wait for the current turn to end.
+    const t = rt.turns.get(sessionId);
+    t.pending.push({ message: { ...message, at: message.at ?? Date.now(), seq: message.seq ?? arrival() }, summarizeTo, threadId });
+    return true;
+  }
+  // A stopped turn’s process is still exiting: the next turn waits for it, so a session never runs two (#126). An answer
+  // held here isn’t read yet: it’s read when the turn it starts begins.
+  const exiting = rt.exiting.get(sessionId);
+  if (exiting) {
+    exiting.held.push({ message: { ...message, at: message.at ?? Date.now(), seq: message.seq ?? arrival() }, summarizeTo, threadId });
+    return true;
+  }
+  // Shutting down: a new CLI would outlive Postbox. A message you sent waits in the queue (turnExited).
+  return Boolean(rt.closing);
+}
+
+/**
+ * The message as the turn reads it: a pointer for a mention it already read, Postbox’s waiting notices, a note that
+ * its tools didn’t load, the lint it owes, and its thread’s context.
+ * @param {any} rt @param {any} se @param {any} message @param {string} where @param {boolean} slash
+ */
+function turnMessage(rt, se, message, where, slash) {
+  const sessionId = se.id;
   // A queued mention its last room summary already gave it comes as a pointer there, never as a thread’s direct task (#484, #504).
   if (where === se.threadId) message = pointerIfSeen(rt, se, message);
   // Postbox’s notices that waited for this agent’s next turn (tellAgent: what became of its earlier messages) lead the
@@ -75,11 +112,16 @@ export function deliver(rt, sessionId, message, { summarizeTo = null, threadId =
   // message.lint: fixes it owes, placed with the request rather than in the background.
   if (message.kind !== 'lint' && !slash) message = rt.foldLint(sessionId, message);
   // A topic or side thread’s request leads; its room catch-up is background. A room turn keeps the existing order.
-  message = turnContext(rt, rt.store.pending.session(sessionId) ?? rt.s.sessions[sessionId], where, message, slash);
-  const persona = rt.persona(se.personaId);
-  const adapter = registeredAdapter(rt, persona);
-  const abort = new AbortController();
-  const turn = {
+  return turnContext(rt, rt.store.pending.session(sessionId) ?? rt.s.sessions[sessionId], where, message, slash);
+}
+
+/**
+ * A new turn’s record, before it runs.
+ * @param {any} se @param {any} message @param {any} persona
+ * @param {{ where: string, slash: boolean, summarizeTo: string|null, asked: any }} opts
+ */
+function newTurn(se, message, persona, { where, slash, summarizeTo, asked }) {
+  return {
     id: newId('turn'),
     kind: message.kind,
     // Whether this is the person moving on (#69): their message or an event of theirs, not another agent’s review (#133).
@@ -90,7 +132,7 @@ export function deliver(rt, sessionId, message, { summarizeTo = null, threadId =
             .replace(/^@/, '')
             .toLowerCase()
         : null,
-    sessionId,
+    sessionId: se.id,
     // The backend it started on: a persona changed mid-turn reaches the next turn, not this one (#220).
     backend: persona?.backend ?? 'mock',
     // And the mode: the person’s hooks load at its start in some modes only, and stay as they loaded (#806, #1030).
@@ -101,7 +143,7 @@ export function deliver(rt, sessionId, message, { summarizeTo = null, threadId =
     first: null,
     steps: [],
     partWords: {}, // each part’s words so far, by its id (reply-segment.mjs, placeStep)
-    abort,
+    abort: new AbortController(),
     closed: false,
     summarizeTo,
     checkpoint: null,
@@ -121,21 +163,17 @@ export function deliver(rt, sessionId, message, { summarizeTo = null, threadId =
     keepJobs: new Set(),
     asked,
   };
-  rt.turns.set(sessionId, turn);
-  // A persona on a remote host (#120): the turn is remote from here on (server/remote/turns.mjs).
-  const hostId = adapter ? rt.remote.hostOf(persona) : null;
-  if (hostId) rt.remote.begin(turn, hostId, adapter);
-  // The work ledger (#132) follows the turn’s tool calls. A change outside the project’s folder and the agent’s is
-  // flagged; the adapter knows the agent’s folder. A remote agent’s folder is on its host, never made here.
-  const project = rt.s.projects[rt.s.threads[se.threadId]?.projectId] ?? null;
-  rt.ledger.startTurn(turn, {
-    se,
-    folder: hostId ? null : workFolder(adapter, persona, project),
-    projectFolder: project?.folder ?? null,
-  });
+}
+
+/**
+ * The session shows the agent at work on the turn, which takes the rules the person allowed once.
+ * @param {any} rt @param {any} se @param {any} turn @param {any} message
+ */
+function atWork(rt, se, turn, message) {
+  const where = turn.threadId;
   // Rules the person allowed once (from a refusal card) apply to this turn only.
   turn.allowOnce = se.allowOnce ?? [];
-  rt.updateSession(sessionId, {
+  rt.updateSession(se.id, {
     allowOnce: [],
     endingSubagents: [],
     glimpse: '',
@@ -156,13 +194,21 @@ export function deliver(rt, sessionId, message, { summarizeTo = null, threadId =
     currentStep: 'Thinking',
     finishedAt: null,
   });
+}
+
+/**
+ * The adapter runs the turn; it ends through endTurn, and its exit lets the session’s next turn start.
+ * @param {any} rt @param {any} se @param {any} turn @param {any} message
+ * @param {{ adapter: any, persona: any, hostId: string|null }} how
+ */
+function runTurn(rt, se, turn, message, { adapter, persona, hostId }) {
   // With the turn’s last raw lines, which each adapter’s recorder keeps (recorderFor), for an empty reply (#485).
   const ctx = Object.assign(rt.turnContext(se, turn), { rawTail: turn.rawTail });
   // A remote turn has its host’s welcome, its host turn and the conversation’s snapshot before the adapter starts.
   const run = Promise.resolve().then(async () => {
     if (!adapter) refuseUnregistered(se, persona);
     if (!hostId) refuseHere(rt, se, persona);
-    return adapter.deliver(rt.s.sessions[sessionId], hostId ? await rt.remote.prepare(turn, ctx, message) : message, ctx);
+    return adapter.deliver(rt.s.sessions[turn.sessionId], hostId ? await rt.remote.prepare(turn, ctx, message) : message, ctx);
   });
   turn.exited = run.then(
     () => {},
