@@ -72,10 +72,10 @@ export function sendQueuedNow(rt, threadId, queueId) {
 }
 
 /**
- * A deleted session is purged, its Undo window over (design-597-release-1, R1): the person’s messages queued only for
- * it are posted to their thread, waking no one, so none waits invisibly for an agent that won’t come back (#427). One
- * addressed to others too just drops it, and the queue drains, so an idle co-recipient gets it now. Agents’ wakes
- * went at delete, with dropWakes (side-threads.mjs), which tells their senders.
+ * A deleted session goes at once (#604): the person’s messages queued only for it are posted to their thread, waking
+ * no one, so none waits invisibly for an agent that won’t come back (#427). One addressed to others too just drops
+ * it, and the queue drains, so an idle co-recipient gets it now. Agents’ wakes went at delete, with dropWakes
+ * (side-threads.mjs), which tells their senders.
  */
 export function releaseQueued(rt, sessionId) {
   for (const t of pendingThreads(rt)) {
@@ -99,7 +99,7 @@ export function releaseQueued(rt, sessionId) {
 }
 
 export function drainAll(rt) {
-  for (const t of Object.values(rt.s.threads)) if (t.queue?.length && !t.deleting) rt.drainQueue(t.id);
+  for (const t of Object.values(rt.s.threads)) if (t.queue?.length) rt.drainQueue(t.id);
 }
 
 export function drainQueue(rt, threadId, wakesOnly = false) {
@@ -125,7 +125,7 @@ function queuedMessages(rt, threadId, entries, cache = new Map()) {
       return [cache.get(q)];
     }
     const target = rt.s.sessions[q.sessionIds[0]];
-    if (!target || target.archived || target.deleting) {
+    if (!target || target.archived) {
       deliverWake(rt, threadId, q);
       return [];
     }
@@ -139,7 +139,7 @@ function deliverBatch(rt, threadId, sessionIds, messages) {
   const message = combineMessages(messages);
   for (const id of sessionIds) {
     const se = rt.s.sessions[id];
-    if (se && !se.archived && !se.deleting) rt.deliver(id, message, { threadId });
+    if (se && !se.archived) rt.deliver(id, message, { threadId });
   }
 }
 
@@ -169,8 +169,8 @@ export function takePending(rt, se, turn, drain) {
 }
 
 /**
- * The rest of what waited, when its first group started no turn (#733): each takes deliver's held path, in order (an
- * Undo window, writes closed, a session behind a held commit), as the first did. Shutting down, deliver holds nothing,
+ * The rest of what waited, when its first group started no turn (#733): each takes deliver's held path, in order
+ * (writes closed, a session behind a held commit), as the first did. Shutting down, deliver holds nothing,
  * the first group included, so the drop of all of them is logged.
  */
 function holdRest(rt, se, next, groups) {

@@ -169,7 +169,7 @@ export function ringFor(se, size = 'sm', el = null) {
   };
   el.holding = true;
   set('name', se.handle);
-  set('state', se.deleting ? 'idle' : (se.state ?? 'idle'));
+  set('state', se.state ?? 'idle');
   set('ctx', se.ctx != null ? String(se.ctx) : 'unknown');
   set('subs', subsAttr(se.subagents));
   set('size', size);

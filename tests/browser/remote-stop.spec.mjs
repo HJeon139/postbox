@@ -152,9 +152,7 @@ test.describe('at 375 px', () => {
     });
     await test.step('the room’s turn states, cards and notes', async () => {
       await open(page, s.room, page.locator(`.transcript [data-key="${s.items.signin.id}"] .host-callout`));
-      expect
-        .soft(await overflowing(page, '.host-callout, .host-callout button, .host-notice, .stopped-tag, .host-turn, .block.answered, .cmd-where'))
-        .toEqual([]);
+      expect.soft(await overflowing(page, '.host-callout, .host-callout button, .stopped-tag, .host-turn, .block.answered, .cmd-where')).toEqual([]);
       expect.soft(await axe(page), 'axe, in the room').toEqual([]);
     });
     await test.step('Stop’s note and the job row', async () => {

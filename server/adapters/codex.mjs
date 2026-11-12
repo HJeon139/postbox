@@ -20,7 +20,7 @@ import { takeToolsDown } from './tools-down.mjs';
 import { codexWork } from './work-calls.mjs';
 
 export { codexModels, codexVersion, findCodex } from './codex-models.mjs';
-export { CODEX_CAPABILITIES, codexRemoteConfigArgs, createCodexRebuild, INTERRUPT_REACH_MS, interruptedError } from './codex-remote.mjs';
+export { CODEX_CAPABILITIES, codexRemoteConfigArgs, createCodexRebuild } from './codex-remote.mjs';
 export { codexApproval };
 
 /** A local folder’s real path, or the folder as given if it can’t be resolved: Codex refuses a writable root with a symlink in its path. */

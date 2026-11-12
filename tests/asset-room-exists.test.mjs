@@ -1,6 +1,6 @@
 // An asset write succeeds only for a conversation that still exists (#516 S3): its room is the conversation’s root
-// thread, so a write to a room with no thread is refused as `no-conversation`, saying it was deleted (#724), one to a
-// conversation being deleted as `deleting`, and neither leaves a room index or a kept file behind.
+// thread, so a write to a room with no thread is refused as `no-conversation`, saying it was deleted (#724), and leaves
+// no room index or kept file behind.
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';

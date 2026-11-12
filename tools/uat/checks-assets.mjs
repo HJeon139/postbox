@@ -1,9 +1,9 @@
 // The asset store’s checks on a run’s own records (#722, #723, #725): an asset’s content stays in its blob file, no
-// room index or asset outlives its conversation, and no turn runs in a conversation being deleted. They read the
-// store the run left (facts.store: its log, its snapshot and its asset files, readStore in tools/uat/run-files.mjs), the state,
-// the turns’ streams, and when the tester deleted or restored a conversation (facts.probes.conversation). The page’s
-// stream and /api/state are built from the store’s events, so the log, the snapshot and the state cover what the
-// browser could see.
+// room index or asset outlives its conversation, and no turn of a deleted conversation runs on past its delete. They
+// read the store the run left (facts.store: its log, its snapshot and its asset files, readStore in
+// tools/uat/run-files.mjs), the state, the turns’ streams, and when the tester deleted a conversation
+// (facts.probes.conversation). The page’s stream and /api/state are built from the store’s events, so the log, the
+// snapshot and the state cover what the browser could see.
 
 /** The shortest line of an asset’s text looked for: a shorter one, such as a heading of one word, is everywhere. */
 export const MIN_TEXT = 24;
@@ -147,7 +147,7 @@ export function strayKeys(state) {
 
 /**
  * Rooms and assets that outlive their conversation: an `assetRooms` key or an asset whose room has no thread in the
- * state (#723). A conversation still being deleted keeps its assets, since Undo brings them back.
+ * state (#723).
  * @param {any} state
  */
 export function orphanRooms(state) {
@@ -158,38 +158,21 @@ export function orphanRooms(state) {
   return [...rooms.map((room) => ({ room, what: 'its room index' })), ...assets.map((a) => ({ room: a.room, what: `asset ${a.id}` }))];
 }
 
-/** Clocks and file times differ by a few milliseconds, and a stream’s last write follows its turn’s end. */
+/** Clocks and file times differ by a few milliseconds, and a stopped turn’s last write follows its Stop. */
 const SLACK_MS = 2000;
 
 /**
- * The windows in which a conversation was being deleted, from what the tester did: each delete, to its Undo or to
- * its purge, at the `deleting` time the state gave it. @param {any[]} done  facts.probes.conversation:
- * [{ do, at, threadId, handles, until }]
+ * Turns of a deleted conversation’s agents that ran on past its delete (#725): a delete stops every turn in it at once
+ * (#1224), so a stream that started before the delete and still wrote well after it wasn’t stopped. A turn that started
+ * after the delete is left out: its agent’s handle may run in another conversation. @param {any} facts
  */
-export function deleteWindows(done = []) {
-  return done
-    .filter((x) => x.do === 'delete' && Number.isFinite(x.until))
-    .map((del) => {
-      const undo = done.find((x) => x.do === 'undo' && x.threadId === del.threadId && x.at > del.at && x.at <= del.until);
-      return { ...del, until: undo?.at ?? del.until, purged: !undo };
-    });
-}
-
-/**
- * Turns that ran while their conversation was being deleted (#725): one whose stream started inside a delete’s
- * window, or, when no Undo came, one still writing after the purge. @param {any} facts
- */
-export function turnsInDeletes(facts) {
-  return deleteWindows(facts.probes?.conversation).flatMap((w) => {
-    const handles = new Set(w.handles ?? []);
+export function turnsAfterDeletes(facts) {
+  const deletes = (facts.probes?.conversation ?? []).filter((x) => x.do === 'delete' && Number.isFinite(x.at));
+  return deletes.flatMap((del) => {
+    const handles = new Set(del.handles ?? []);
     return (facts.streams ?? [])
-      .filter((s) => handles.has(s.handle))
-      .flatMap((s) => {
-        if (s.started > w.at + SLACK_MS && s.started < w.until) return [{ ...w, handle: s.handle, started: s.started, why: 'started in the window' }];
-        if (w.purged && s.started < w.until && s.ended > w.until + SLACK_MS)
-          return [{ ...w, handle: s.handle, started: s.started, why: 'ran on after the purge' }];
-        return [];
-      });
+      .filter((s) => handles.has(s.handle) && s.started < del.at && s.ended > del.at + SLACK_MS)
+      .map((s) => ({ ...del, handle: s.handle, started: s.started, ended: s.ended }));
   });
 }
 
@@ -227,14 +210,14 @@ export const ASSET_STORE_CHECKS = [
       })),
   },
   {
-    id: 'turn-in-deleting-conversation',
+    id: 'turn-after-delete',
     inputs: ['probes', 'streams'],
     issue: 725,
     run: (facts) =>
-      turnsInDeletes(facts).map((t) => ({
+      turnsAfterDeletes(facts).map((t) => ({
         key: `${t.threadId}:${t.at}:${t.handle}:${t.started}`,
-        title: 'A turn ran in a conversation being deleted',
-        evidence: `@${t.handle}’s turn ${t.why}: the conversation was deleted at ${new Date(t.at).toISOString()}, and the turn started at ${new Date(t.started).toISOString()}.`,
+        title: 'A turn ran on after its conversation was deleted',
+        evidence: `@${t.handle}’s turn ran ${((t.ended - t.at) / 1000).toFixed(1)} s past the delete of “${t.title ?? t.threadId}” at ${new Date(t.at).toISOString()}: it started at ${new Date(t.started).toISOString()}.`,
       })),
   },
 ];

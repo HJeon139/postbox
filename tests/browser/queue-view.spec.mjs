@@ -147,6 +147,9 @@ test('V6: deleting its agent closes the dialog at once, posts what was queued, a
   app.rt.sendMessage(thread.id, { text: `@${sessions[0].handle} about to go` });
   await synced(page, app);
   const dialog = await openMail(page, sessions[0]);
+  // A delete goes at once (#1224): the dialog keeps no note about a delete in progress, nor an Undo that doesn’t exist.
+  await expect(dialog.locator('[role=status]')).toHaveCount(0);
+  await expect(dialog).not.toContainText('Undo');
   app.rt.deleteSession(sessions[0].id);
   await synced(page, app);
   await settled(page);

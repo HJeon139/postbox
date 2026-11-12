@@ -20,7 +20,7 @@ const PLACES = {
 export function needsAt(state, hash) {
   const m = /^#\/t\/([^/]+)/.exec(String(hash ?? ''));
   const here = m && state.threads[m[1]] ? conversationOf(state, m[1]) : null;
-  const live = Object.values(state.sessions ?? {}).filter((se) => !se.archived && !se.deleting && state.threads[se.threadId]);
+  const live = Object.values(state.sessions ?? {}).filter((se) => !se.archived && state.threads[se.threadId]);
   return {
     here,
     needing: needsOrder(state, live, here).map((se) => {
