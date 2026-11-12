@@ -8,8 +8,9 @@ import { setTimeout as pace } from 'node:timers/promises';
 import { expect, test } from '@playwright/test';
 import { failOnPageErrors, frames, startPostbox, synced } from './postbox.mjs';
 
-// Main’s layouts a step for this stream, at 6× throttle: 2.64, 2.64 and 2.66 in three runs on f6ac0e7b.
-const MAIN = 2.66;
+// Main’s layouts a step for this stream, at 6× throttle, its last paint counted: 2.70, 2.73 and 2.75 in three runs
+// on f6ac0e7b.
+const MAIN = 2.75;
 const AGENTS = ['ana', 'ben', 'cal', 'dee'];
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -63,9 +64,12 @@ test('four agents’ steps cost the page no more layout a step than main', async
   const layouts = async () => (await cdp.send('Performance.getMetrics')).metrics.find((m) => m.name === 'LayoutCount')?.value ?? 0;
   const before = await layouts();
   for (const who of AGENTS) app.rt.sendMessage(t.id, { text: `@${who} fix the citation script` });
-  // The turns end on the server; the page has drawn every step once it has heard all of it.
-  await expect.poll(() => app.rt.turns.size === 0 && AGENTS.every((w) => app.store.items(t.id).some((x) => x.handle === w)), { timeout: 120_000 }).toBe(true);
-  await synced(page, app);
+  // The page’s last paint, on main and here: each reply’s last words drawn, and no caret left, its turn over.
+  await page.waitForFunction(
+    (n) => !document.querySelector('.transcript .caret') && (document.querySelector('.transcript')?.textContent?.match(/Done\./g) ?? []).length === n,
+    AGENTS.length,
+    { timeout: 120_000 },
+  );
   await frames(page);
   const after = await layouts();
   await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
