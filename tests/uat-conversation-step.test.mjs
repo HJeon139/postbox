@@ -157,3 +157,25 @@ test('Undo presses the newest toast for its conversation: the stack puts the new
   await STEPS.conversation(c, { conversation: 'undo' });
   assert.deepEqual(pressed, ['newest']);
 });
+
+test('a look mid-turn is the driver’s answer: a screenshot and the running replies as text, pressing nothing', async () => {
+  /** @type {string[]} */
+  const shot = [];
+  const page = [
+    { live: false, text: '@developer write wordcount.py' },
+    { live: true, text: 'developer\nWriting the script.\n✓ Wrote wordcount.py +12 −0' },
+    { live: false, text: 'Keep the output to one number.' },
+  ];
+  const shotScreen = async (/** @type {string} */ f) => {
+    shot.push(f);
+    return f;
+  };
+  const c = { ...ctx(), d: { kit: { ev: async () => page }, shotScreen }, shots: '/runs/r/shots', step: 3 };
+  const look = interruptAct({ do: 'look' }, { fault: async () => '', answer: async () => '', ctx: c });
+  assert.equal(look.do, 'answer');
+  const said = await look.answer();
+  assert.deepEqual(shot, ['/runs/r/shots/look-3.png']);
+  assert.match(said, /look-3\.png/);
+  assert.match(said, /Running: developer\nWriting the script\.\n✓ Wrote wordcount\.py \+12 −0/);
+  assert.ok(said.indexOf('wordcount.py\n') < said.indexOf('Keep the output'), 'in the order the conversation shows them');
+});

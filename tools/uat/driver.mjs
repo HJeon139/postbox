@@ -159,8 +159,8 @@ export function driver(page, hooks = {}) {
         else await typeInto(control, String(value), `the field “${field}”`);
       }
       for (const option of choose) await clickAt(byText(ITEM(key), 'button.chip, [role=radio], [role=checkbox], label', option), `the option “${option}”`);
-      // A control may be a link, such as a reply’s work line (“2 files +112 −0”), which opens the Work pane.
-      if (button) await clickAt(byText(ITEM(key), 'button, a[href], [role=button]', button), `the button “${button}”`);
+      // A control may be a link, such as Work’s links, or a summary, such as a turn’s work record (“2 files +112 −0”).
+      if (button) await clickAt(byText(ITEM(key), 'button, a[href], [role=button], summary', button), `the button “${button}”`);
     },
 
     review(key, opts) {

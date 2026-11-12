@@ -477,7 +477,7 @@ async function main() {
           // Where the turn runs: a reply in a thread, or an answer to a block in the panel, works there.
           const panel = a.type === 'thread' || (key ? await d.inPanel(key) : false);
           // A fault or a conversation action mid-turn is the driver’s answer while the agent works (tools/uat/steps.mjs).
-          const mid = interruptAct(a.interrupt, { fault: hostFault, answer: answerMidTurn, ctx: { d, api, facts } });
+          const mid = interruptAct(a.interrupt, { fault: hostFault, answer: answerMidTurn, ctx: { d, api, facts, shots: paths.shots, step } });
           const said = await timing.time('waits', () =>
             d.interrupt({ ...a.interrupt, do: mid.do }, { panel, onWait: () => midTurnChecks(), answer: mid.answer }),
           );

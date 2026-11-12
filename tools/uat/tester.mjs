@@ -170,7 +170,7 @@ export const SCHEMA = {
           description: 'send, thread, act, review: act while the turn this starts is running.',
           properties: {
             after: { type: 'integer', description: 'Seconds to let the agent work first.' },
-            do: { enum: ['stop', 'send_now', 'answer', 'fault', 'conversation'] },
+            do: { enum: ['stop', 'send_now', 'answer', 'fault', 'conversation', 'look'] },
             conversation: { enum: ['delete'], description: 'conversation: delete the conversation while its agent works.' },
             undo_after: { type: 'integer', description: 'conversation: press Undo this many seconds after the delete.' },
             jobs: { enum: ['stop', 'keep'], description: 'stop: how to answer if Postbox asks whether to stop background jobs too.' },
@@ -242,7 +242,7 @@ Then choose one action:
 
 Each step also lists what’s waiting on you: blocks that ask you something, review drafts, wake requests, permission cards, failed turns to retry. Answer them before you move to the next phase or finish, as a person clearing “needs you” would: an agent that asked is stuck until you do. If one isn’t on screen, open the thread it’s in.
 
-The run waits for the agents to finish before each step, or until something needs you while one works, such as Stop’s question about background jobs: answer it, or wait, before you give an interrupt. To act while a turn is running, give send, thread, act or review an interrupt {after, do, jobs?, text?}: once an agent is working, the run lets it work for after seconds, then does it. do is stop, to press Stop (if Postbox asks whether to stop its background jobs too, jobs answers: stop or keep); send_now, to write text and press Send now on it; or answer, to answer the block item while the agent works, as review (verdict, comments) or act (choose, button) would. Answer a draft that way while its agent is revising it, as a person reading along would.
+The run waits for the agents to finish before each step, or until something needs you while one works, such as Stop’s question about background jobs: answer it, or wait, before you give an interrupt. To act while a turn is running, give send, thread, act or review an interrupt {after, do, jobs?, text?}: once an agent is working, the run lets it work for after seconds, then does it. do is stop, to press Stop (if Postbox asks whether to stop its background jobs too, jobs answers: stop or keep); send_now, to write text and press Send now on it; look, to see the running replies as they are then, a screenshot and their text, pressing nothing; or answer, to answer the block item while the agent works, as review (verdict, comments) or act (choose, button) would. Answer a draft that way while its agent is revising it, as a person reading along would.
 
 Scenario: ${scenario.title}
 ${scenario.summary}${judgePrompt(scenario)}`;
