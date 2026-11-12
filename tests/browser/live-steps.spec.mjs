@@ -74,6 +74,8 @@ test('a turn’s own words sit between its steps, in the order it wrote and ran 
     text,
   ).toBe(true);
   expect(order, 'each in the order it happened').toEqual([...order].sort((a, b) => a - b));
+  for (const words of ['Reading the notes first.', 'One line; adding a second.'])
+    expect(text.split(words).length - 1, `“${words}” drawn once, between the steps or in the reply, not both`).toBe(1);
   go('writer');
   await expect.poll(() => scripted.app.rt.turns.size).toBe(0);
 });
