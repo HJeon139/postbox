@@ -23,7 +23,7 @@ async function restartedAfter(ms) {
   // The new daemon’s home has the old one’s turn folders, as a restart over the same home leaves them.
   const s = silentSetup({ clock: fakeClock(old.clock.now()) });
   cpSync(old.p.turns, s.p.turns, { recursive: true });
-  old.done();
+  await old.done();
   return s;
 }
 
@@ -38,7 +38,7 @@ test('#872 a daemon restarted mid-silence on the same boot kills the runner at 6
     await s.daemon.scan();
     assert.deepEqual(s.kills, [[-PID, 'SIGKILL']], 'at 60 s since the silence began, under the old daemon');
   } finally {
-    s.done();
+    await s.done();
   }
 });
 
@@ -54,6 +54,6 @@ test('#872 a daemon on another boot starts a silence over, whatever the turn fol
     await s.daemon.scan();
     assert.deepEqual(s.kills, [[-PID, 'SIGKILL']]);
   } finally {
-    s.done();
+    await s.done();
   }
 });

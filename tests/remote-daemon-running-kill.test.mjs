@@ -44,7 +44,7 @@ test('#872 a runner silent past the ceiling has its group and tool shells killed
     assert.deepEqual([found.state, Object.hasOwn(found, 'unkilled')], ['interrupted', false], 'the scan says it was killed too');
     assert.equal(s.kills.length, 3, 'killed once');
   } finally {
-    s.done();
+    await s.done();
   }
 });
 
@@ -68,7 +68,7 @@ test('#872 a runner that won’t die at the ceiling’s SIGKILL ends KILL_WAIT_M
     assert.equal(found.state, 'interrupted');
     assert.equal(found.unkilled, true);
   } finally {
-    s.done();
+    await s.done();
   }
 });
 
@@ -83,7 +83,7 @@ test('#872 a runner that answers just before the ceiling isn’t killed', async 
     assert.deepEqual(s.kills, []);
     assert.deepEqual(s.ended(c), []);
   } finally {
-    s.done();
+    await s.done();
   }
 });
 
@@ -99,7 +99,7 @@ test('#872 a runner whose PID isn’t its process any more by the kill isn’t s
     assert.equal(ended.exit, null);
     assert.deepEqual(s.kills, []);
   } finally {
-    s.done();
+    await s.done();
   }
 });
 
@@ -120,6 +120,6 @@ test('#872 a Stop during the silence and the ceiling don’t both kill: Stop’s
       [-PID, 'SIGKILL'],
     ]);
   } finally {
-    s.done();
+    await s.done();
   }
 });

@@ -39,7 +39,7 @@ test('idle: exits after idleTimeout with nobody attached and no turn running, an
     await clock.tick(1);
     assert.equal(idled, 1);
   } finally {
-    s.done();
+    await s.done();
   }
 });
 
@@ -61,7 +61,7 @@ test('idle: POSTBOX_DAEMON_TIMINGS can shorten idleTimeout, for the integration 
       await clock.tick(1);
       assert.equal(idled, 1, `${JSON.stringify(given)}: idle after ${idle} ms`);
     } finally {
-      s.done();
+      await s.done();
     }
   }
 });
@@ -88,7 +88,7 @@ test('the socket: a relayed Postbox is served, and a shim goes to the broker, wh
     // A turn it didn’t start has no token of its own, and the host’s isn’t a shim’s (#120), so it’s refused there.
     assert.match(got.join(''), /"type":"error","code":"bad-token".*turn t1’s, in its folder on this host/);
   } finally {
-    s.done();
+    await s.done();
   }
 });
 

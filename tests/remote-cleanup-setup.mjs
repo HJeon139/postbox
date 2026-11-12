@@ -3,6 +3,7 @@
 // PassThrough streams, as tests/remote-daemon.test.mjs drives it.
 
 import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { createCleanup } from '../server/remote/host/cleanup.mjs';
@@ -64,9 +65,11 @@ export function makeTurn(p, turn, { out = '{"n":1}\n{"n":2}\n', exit = true, pid
   return dir;
 }
 export const ls = (dir) => readdirSync(dir).sort();
-/** Waits for check() to hold, looking every 10 ms. */
+/** Waits for check() to hold, looking every 10 ms, and once more at the deadline: a process stalled past the deadline
+ * still sees what happened meanwhile. */
 export async function until(check, what, ms = 2000) {
   for (const end = Date.now() + ms; Date.now() < end; await new Promise((r) => setTimeout(r, 10))) if (check()) return;
+  if (check()) return;
   throw new Error(`Timed out waiting for ${what}.`);
 }
 
@@ -141,9 +144,10 @@ export function daemonSetup({ home = hostHome('pbd-'), onRemoved = () => {}, env
     removeWaitMs: 100,
   });
   const connect = () => connectTo(daemon);
-  const done = () => {
-    daemon.close();
-    rmSync(home, { recursive: true, force: true });
+  /** Closes the daemon and waits for its close, then removes the home, as tests/remote-daemon-setup.mjs’s done() (#426). */
+  const done = async () => {
+    await daemon.close();
+    await rm(home, { recursive: true, force: true, maxRetries: 10, retryDelay: 20 });
   };
   return { home, p, alive, kills, daemon, connect, done, env };
 }

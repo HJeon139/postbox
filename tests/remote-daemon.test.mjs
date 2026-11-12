@@ -50,7 +50,7 @@ test('hello: a wrong version or token is refused, nothing is served before hello
     c.input.write('{"type":"nope"}\n');
     assert.equal((await c.msgs.next('error')).code, 'bad-message');
   } finally {
-    s.done();
+    await s.done();
   }
 });
 
@@ -102,7 +102,7 @@ test('handshake: a version 1 Postbox’s hello is refused with `version` before 
     assert.deepEqual(s.launches, [], 'no runner was launched');
     assert.ok(!existsSync(s.p.turn('t1')), 'no turn folder was made');
   } finally {
-    s.done();
+    await s.done();
   }
 });
 
@@ -121,7 +121,7 @@ test('start() makes a missing token: 32 random bytes as hex, 0600, in a 0700 fol
     c.send('hello', { version: PROTOCOL_VERSION, token });
     await c.msgs.next('welcome');
   } finally {
-    s.done();
+    await s.done();
   }
 });
 
@@ -133,7 +133,7 @@ test('start() sets an existing token that others can read back to 0600, and keep
     assert.equal(statSync(s.p.token).mode & 0o777, 0o600);
     assert.equal(readFileSync(s.p.token, 'utf8'), TOKEN);
   } finally {
-    s.done();
+    await s.done();
   }
 });
 
@@ -143,7 +143,7 @@ test('start() refuses a token that isn’t a regular file of this user’s, and 
     await assert.rejects(other.daemon.start(), /token isn’t a file of this user’s \(it’s owned by user \d+\).*Remove it and reinstall Postbox/);
     assert.equal(statSync(other.p.token).mode & 0o777, 0o600, 'nothing was changed');
   } finally {
-    other.done();
+    await other.done();
   }
   const link = setup();
   try {
@@ -153,7 +153,7 @@ test('start() refuses a token that isn’t a regular file of this user’s, and 
     symlinkSync(real, link.p.token);
     await assert.rejects(link.daemon.start(), /it isn’t a regular file\).*Remove it and reinstall Postbox/);
   } finally {
-    link.done();
+    await link.done();
   }
 });
 
@@ -173,7 +173,7 @@ test('one writer: a second Postbox is busy unless it takes over, and the one it 
     c.send('hello', { version: PROTOCOL_VERSION, token: TOKEN });
     assert.equal((await c.msgs.next('error')).code, 'busy');
   } finally {
-    s.done();
+    await s.done();
   }
 });
 
@@ -196,7 +196,7 @@ test('#120 the same Postbox back after its ssh died replaces its own connection 
     third.send('hello', { version: PROTOCOL_VERSION, token: TOKEN, instance: 'c'.repeat(32) });
     assert.equal((await third.msgs.next('error')).code, 'busy');
   } finally {
-    s.done();
+    await s.done();
   }
 });
 
@@ -216,7 +216,7 @@ test('the first welcome warns that turns end at logout where logind kills them a
     s.state.logind = { killUserProcesses: true, linger: true };
     assert.deepEqual((await hello(s, { takeover: true })).welcome.problems, []);
   } finally {
-    s.done();
+    await s.done();
   }
 });
 
@@ -236,6 +236,6 @@ test('no lingering warning where logind leaves processes at logout, says nothing
     assert.deepEqual(await problems({ settings: { detach: 'setsid' } }), []);
     assert.equal(s.state.logindAsks, asks);
   } finally {
-    s.done();
+    await s.done();
   }
 });

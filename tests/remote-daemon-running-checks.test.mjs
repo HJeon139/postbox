@@ -20,6 +20,6 @@ test('#872 a runner silent for 10 s has its process checked about every 5 s, not
     assert.deepEqual(s.ended(c), []);
     assert.ok(s.sameCalls.n <= 3, `${s.sameCalls.n} process checks over 32 looks in 10 s`);
   } finally {
-    s.done();
+    await s.done();
   }
 });

@@ -20,11 +20,12 @@ async function freeHighPort() {
   throw new Error('No free port between 47001 and 60000 after 100 tries.');
 }
 
-/** The pid the stand-in wrote, once it has, within ms. @param {string} file @param {number} ms */
+/** The pid the stand-in wrote, once it has, within ms, looking once more at the deadline. @param {string} file @param {number} ms */
 async function pidIn(file, ms) {
   for (const end = Date.now() + ms; Date.now() < end; await sleep(50)) {
     if (existsSync(file)) return Number(readFileSync(file, 'utf8'));
   }
+  if (existsSync(file)) return Number(readFileSync(file, 'utf8'));
   throw new Error(`The stand-in server wrote no pid to ${file} within ${ms} ms.`);
 }
 

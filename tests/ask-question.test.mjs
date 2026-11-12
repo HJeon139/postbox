@@ -23,6 +23,7 @@ const until = async (fn, what) => {
     if (fn()) return;
     await new Promise((r) => setTimeout(r, 5));
   }
+  if (fn()) return; // one more look after the last wait
   assert.fail(`Timed out waiting for ${what}`);
 };
 

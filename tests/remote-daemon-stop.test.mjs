@@ -30,7 +30,7 @@ test('stop: SIGINT to the group, then SIGKILL after the grace period, while runn
     const ended = await c.msgs.next('ended');
     assert.equal(ended.exit.signal, 'SIGKILL');
   } finally {
-    s.done();
+    await s.done();
   }
 });
 
@@ -51,7 +51,7 @@ test('stop: no SIGKILL once the harness has exited after SIGINT', async () => {
     assert.equal(s.kills.length, 1);
     assert.equal(c.msgs.messages.filter((m) => m.type === 'ended').length, 1, 'ended once per read');
   } finally {
-    s.done();
+    await s.done();
   }
 });
 
@@ -68,7 +68,7 @@ test('stop never signals when runner.json no longer names the runner: the turn i
     await clock.tick(60_000);
     assert.deepEqual(s.kills, []);
   } finally {
-    s.done();
+    await s.done();
   }
 });
 
@@ -99,7 +99,7 @@ test('stop: the SIGKILL also goes to each tool shell’s group recorded at SIGIN
     ]);
     assert.equal((await c.msgs.next('ended')).exit.signal, 'SIGKILL');
   } finally {
-    s.done();
+    await s.done();
   }
 });
 
@@ -121,7 +121,7 @@ test('stop: when the host’s processes can’t be listed, the SIGKILL still rea
       [-pid, 'SIGKILL'],
     ]);
   } finally {
-    s.done();
+    await s.done();
   }
 });
 
@@ -155,7 +155,7 @@ test('#120 G10: a stop for a turn the daemon doesn’t have refuses its start fr
     c.send('start', startMsg('t2'));
     await c.msgs.next('started');
   } finally {
-    s.done();
+    await s.done();
   }
 });
 
@@ -177,7 +177,7 @@ test('#120 G10: a stop that comes, on another connection, while a start is under
     assert.equal(s.launches.length, 0, 'no runner');
     assert.equal(existsSync(s.p.turn('t1')), false, 'no turn folder');
   } finally {
-    s.done();
+    await s.done();
   }
 });
 
@@ -198,6 +198,6 @@ test('#120 G10: a stop that comes, on another connection, while a launched runne
     assert.deepEqual(s.kills, [[-pid, 'SIGINT']]);
     assert.equal(b.msgs.messages.filter((m) => m.type === 'error').length, 0);
   } finally {
-    s.done();
+    await s.done();
   }
 });
