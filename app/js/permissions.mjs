@@ -19,8 +19,6 @@ import { MODES } from './run-choice.mjs';
 import { capsOf, openFolderPicker } from './sheets.mjs';
 import { keepFocus, openDialog, say, toast } from './ui.mjs';
 
-export { MODES } from './run-choice.mjs';
-
 const S = () => client.state;
 
 /** What a folder in the panel is to the agent: where it works, the project’s, read only (#338), or where it came from. */

@@ -1,7 +1,7 @@
 // #721, from the integrator’s review at 06bc5b81: only the person’s Stop keeps a waiting card’s agent from hearing its
 // request expired. A shutdown, a hung stop, or a host turn ended for any other reason leaves the note, so after an
 // ordinary restart the agent still learns its request didn’t run. One rule for whom Postbox tells, shared with #776:
-// any agent that still exists, one being removed included.
+// any agent that still exists, a retired fork included.
 
 import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -51,8 +51,8 @@ test('#721 a host turn stopped for a reason that isn’t the person’s Stop tel
   assert.equal(notes(r.se()).length, 1, JSON.stringify(r.se().context));
 });
 
-test('#721 a note for an agent being removed is kept', async () => {
-  for (const patch of [{ deleting: Date.now() + 60_000 }]) {
+test('#721 a note for a retired fork is kept', async () => {
+  for (const patch of [{ retiredFork: true }]) {
     const f = await setup();
     const it = f.rt.addItem(f.t.id, {
       kind: 'permission',

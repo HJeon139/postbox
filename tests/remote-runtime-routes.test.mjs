@@ -73,8 +73,6 @@ test('#120: the page adds a host, sets a project’s folder on it, installs, ret
 
   fake.statuses.set(id, { state: 'connected', failure: null, welcome: null, lastHeard: 5 });
   fake.emit('status', id, fake.statuses.get(id));
-  const connected = { state: 'connected', failure: null, welcome: null, lastHeard: 5, keepUpdated: false, update: null };
-  assert.deepEqual((await call({ path: `/api/hosts/${id}/status` })).json.status, connected);
   const state = await call({ path: '/api/state' });
   assert.equal(state.json.state.hosts[id].name, 'host.example.com');
   assert.equal(state.json.state.hostStatus[id].state, 'connected');
@@ -82,7 +80,7 @@ test('#120: the page adds a host, sets a project’s folder on it, installs, ret
   const removed = await call({ method: 'DELETE', path: `/api/hosts/${id}`, cookie });
   assert.deepEqual(removed.json, { ok: true, stopped: 0 });
   assert.deepEqual(fake.calls.at(-1), ['forget', id]);
-  assert.equal((await call({ path: `/api/hosts/${id}/status` })).status, 404);
+  assert.equal((await call({ path: '/api/state' })).json.state.hosts[id], undefined);
 });
 
 test('#120 L6: a failed install reaches the page with its message and next step, and a host with no token here, or renamed while busy, is a 409', async () => {

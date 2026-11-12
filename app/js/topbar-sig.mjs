@@ -8,7 +8,7 @@ import { client, needsYou } from './client.mjs';
 
 const S = () => client.state;
 
-/** A conversation’s agents that are here: not a retired fork (#228). */
+/** A conversation’s agents that are here: in the state, and not a retired fork (#228). */
 export const liveMembers = (t) => t.members.filter((id) => S().sessions[id] && !S().sessions[id].retiredFork).join(',');
 
 /**

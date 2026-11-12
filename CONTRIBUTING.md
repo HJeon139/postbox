@@ -34,8 +34,7 @@ Saved searches:
 3. **Follow the project's rules.** The same rules apply to everyone, people and agent sessions alike:
    - `AGENTS.md`, and the `AGENTS.md` in each folder you change: the rules, short, with the design section each comes from. Claude Code, Codex, Kiro and Antigravity read them on their own (#315).
    - `designs/engineering-practices.md`
-   - `designs/developing.md`
-   - `designs/prompts/README.md`: ports, `--data`, length limits, the gate, scope and hand-off
+   - `designs/developing.md`, and its “Rules for every session”: ports, `--data`, length limits, the gate, scope and hand-off
 4. **When it merges,** the issue closes and the claim ends with it. If you stop before then, unassign yourself (`gh issue edit <n> --remove-assignee @me`) and comment where you got to. The maintainer may unassign a stale claim, one with no pull request and no word for a while, and says so in a comment.
 
 ## Get your pull request reviewed
@@ -76,5 +75,3 @@ Saved searches:
 - [Ready for the integrator](https://github.com/HJeon139/postbox/pulls?q=is%3Apr+is%3Aopen+label%3A%22ready+for+integrator%22) uses `is:pr is:open label:"ready for integrator"`.
 - [Changes requested](https://github.com/HJeon139/postbox/pulls?q=is%3Apr+is%3Aopen+label%3A%22changes+requested%22) uses `is:pr is:open label:"changes requested"`.
 - [Approved, waiting on CI](https://github.com/HJeon139/postbox/pulls?q=is%3Apr+is%3Aopen+label%3A%22integrator+approved%22) uses `is:pr is:open label:"integrator approved"`.
-
-The wave plan, with which issues are grouped into which session and in what order, is in `designs/prompts/README.md`. The maintainer's triage comments are on #64.

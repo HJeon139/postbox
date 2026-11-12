@@ -1,5 +1,5 @@
 // Remote hosts in the runtime (#120; tests/remote-runtime.test.mjs says how): `!` staying on this computer for an agent
-// on a host (#67), what a remote turn may post, and archive and delete stopping a conversation’s turns.
+// on a host (#67), what a remote turn may post, and delete stopping a conversation’s turns.
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';

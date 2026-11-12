@@ -50,7 +50,7 @@ import { classifyExit, failure, SshFailure } from './ssh.mjs';
 
 export { bundle, hostFiles, MANIFEST, NODE_PATH_FILE, ROOT, ustar } from './install-bundle.mjs';
 export { INSTALL_SCRIPT, installArgs, installCommand, tokenCommand } from './install-script.mjs';
-export { forgetToken, readToken, TOKEN_RE, TOKENS_DIR, tokenFile } from './install-token.mjs';
+export { forgetToken, readToken, TOKEN_RE, tokenFile } from './install-token.mjs';
 
 /** How long one install run may take before its ssh is stopped. */
 export const INSTALL_TIMEOUT = 5 * 60 * 1000;

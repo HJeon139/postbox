@@ -133,7 +133,7 @@ export function archiveAgent(r, handle, at) {
   r.f.events.push({ seq: (r.f.events.at(-1)?.seq ?? 0) + 1, type: 'session', data: { id: `se_${handle}`, state: 'idle', finishedAt: at, updatedAt: at } });
 }
 
-/** The person removes an agent, and the undo window passes: its session goes from the state, and a “left” line is added. @param {ReturnType<typeof room>} r */
+/** The person removes an agent: its session goes from the state, and a “left” line is added. @param {ReturnType<typeof room>} r */
 export function removeAgent(r, handle, at) {
   delete r.f.state.sessions[`se_${handle}`];
   r.f.state.threads[ROOM].members = r.f.state.threads[ROOM].members.filter((id) => id !== `se_${handle}`);

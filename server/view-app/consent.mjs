@@ -15,9 +15,6 @@ import { viewOf } from './view-of.mjs';
 /** How long “Not now” stands before view_app asks again. */
 export const DECLINE_MS = 7 * 24 * 60 * 60 * 1000;
 
-/** What the card says about the download, which `browser-install` sizes on this computer (about 200 MB on macOS). */
-export const ASK = 'Download Chromium (about 200 MB on disk) so agents can see their apps?';
-
 /** The answer kept in `dir`; a “Not now” older than a week counts as no answer. @param {string} dir @returns {Answer} */
 export function answerIn(dir, now = Date.now()) {
   try {

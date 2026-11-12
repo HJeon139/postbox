@@ -1,7 +1,6 @@
 // The shell: the top bar, the rail (conversations and rooms with rings, and the open conversation’s agents), the phone
 // ring strip, the places menu, and a project with no conversation yet. There’s no overview (#320): Postbox opens one.
 
-import { renderMarkdown, toPlainText } from '/shared/markdown.mjs';
 import { isMock, mockMarker } from './agent-facts.mjs';
 import { agentMenuLines } from './agent-menu-lines.mjs';
 import { agentsSection } from './agents.mjs';
@@ -20,7 +19,7 @@ import './store-line.mjs';
 import { liveMembers, topbarSig } from './topbar-sig.mjs';
 import { closeWork, navigate, openMenu, openWork, route } from './ui.mjs';
 
-export { installLine, liveMembers, railHidden, toggleRail };
+export { installLine, railHidden, toggleRail };
 
 /** Opens Jump to… (⌘K), with the sheets it offers. */
 export const openJumpTo = () => openPalette({ openNewAgent, openSettings });
@@ -452,7 +451,6 @@ function conversationMenu(anchor, shown) {
 }
 
 export { mountThreads } from './threads-page.mjs';
-export { renderMarkdown, toPlainText };
 
 /** A project with no conversations yet. */
 export function mountEmptyProject(projectId) {

@@ -6,8 +6,8 @@ These docs hold the reasons. `AGENTS.md` files hold the rules that come from the
 
 - `intent.md`: the product decisions, and its “Writing” section, which governs every word in the repo.
 - `architecture.md`: each engineering decision, numbered, as a decision, what it rests on, and when to revisit it. A new dependency or a new boundary is decided here before its code lands.
-- `engineering-practices.md` and `developing.md`: the gate, and what a review checks that the gate can’t.
-- `prompts/`: one prompt per session’s work, and `prompts/README.md`, “Rules for every session”.
+- `running.md`, `conversations.md`, `backends.md`, `remote-hosts.md`, `agent-apps.md` and `tests-and-tools.md`: one topic each, in the detail the README leaves out.
+- `engineering-practices.md` and `developing.md`: the gate, and what a review checks that the gate can’t. `developing.md`, “Rules for every session”, holds the rules every session follows.
 
 ## Writing a design doc
 

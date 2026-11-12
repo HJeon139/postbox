@@ -1,6 +1,6 @@
 # Execution plan for #508
 
-**Status:** revision 2, 28 October 2026, after the person’s comment and developer’s, critic’s and gpt’s replies. How the room builds design revision 11 (`designs/508/design.md` on `docs/508-delivery-window`), step by step. Steps, dependencies and each step’s definition of done come from the design’s “Rollout”. Who does what comes from the person’s roles of 28 October. How agents coordinate comes from `designs/508/room-rules.md`.
+**Status:** revision 2, 28 October 2026, after the person’s comment and developer’s, critic’s and gpt’s replies. How the room builds design revision 11 (`designs/508/design.md` on `docs/508-delivery-window`), step by step. Steps, dependencies and each step’s definition of done come from the design’s “Rollout”. Who does what comes from the person’s roles of 28 October. How agents coordinated came from the room’s rules, `designs/508/room-rules.md`, deleted on 11 November 2026 since the room had closed; git history keeps it.
 
 ## Roles
 
@@ -39,7 +39,7 @@ The “rearchitecture-508” room closed on 2 November 2026. This section record
 - **Client-side virtualization first, the server window later.** The page keeps a conversation's data in memory and draws only the items near the view, anchored by B1b's explicit view state. B1a (positions), B2 (the items API) and B3 (the server window) wait until a measurement on a large room shows virtualization isn't enough for PF-1. Virtualization needs no change to A1, since needs-you and open asks still read the whole state in memory. (The person, 2 November.)
 - **#305 is in sprint 4.** It was parked on 3 November until a large-room measurement after virtualization (#615, the integrator’s answer on the slice order); on 6 November the person brought it into sprint 4. It cuts the state the page loads (old turns’ work and activity), not the number of messages drawn. Its design is draft 10 (`designs/305-archive-turns.md`, #615), approved as draft 9 on 7 November.
 - **A1 is split,** as the integrator asked on #608: PR 1 is merged (#630); A1b was to be the ask-only reducer with its first producer; after the integrator’s review of #781 it is one tie rule (`a1b-asks.md`), and the rest of A1, #594’s case included, moves to A2. #633 is merged. A2 to A4 follow it.
-- **The process now in force:** rules 19 to 21 (`room-rules.md`); critic's adversarial pass in a fresh subagent on every pull request; authors read `designs/review-guide.md` (#659); the author's UAT run for changes that touch a conversation surface; the person approves pushes, not reply texts; a rebase with no code change keeps its sign-off.
+- **The process the room followed:** rules 19 to 21 of its room rules (`room-rules.md`, since deleted); critic's adversarial pass in a fresh subagent on every pull request; authors read `designs/review-guide.md` (#659); the author's UAT run for changes that touch a conversation surface; the person approves pushes, not reply texts; a rebase with no code change keeps its sign-off.
 
 **Unfinished work, and where it is:**
 
@@ -133,7 +133,7 @@ Store and the read contract have no scenario phase; their specs and conformance 
 
 ## Definition of done for a pull request
 
-Added 31 October 2026, with the person’s approval of the team principles (`room-rules.md`, “Quality”). It maps onto the four parts of the pull request’s body in `designs/developing.md`, so a body is not longer for it:
+Added 31 October 2026, with the person’s approval of the team principles (the room rules’ “Quality”, since deleted with `room-rules.md`). It maps onto the four parts of the pull request’s body in `designs/developing.md`, so a body is not longer for it:
 - **Background:** requirement and design ids, with any decision that moved; the invariants and the failure table, or “not applicable” and why.
 - **Details:** security (trust boundary, files, permissions, filesystem assumptions, secrets, or “none”); operations (upgrade and downgrade, logs, release note, rollback); the class swept and what was found; docs updated in the same change.
 - **Testing:** each test shown failing first for the stated reason, each check with its negative control; `npm run check` and, for UI changes, both browser runs; each claim with its command; and the reviews: a peer review and critic’s read on the latest head before the push is asked for, and an outside write approved by the person for the version they saw.

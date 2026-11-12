@@ -32,7 +32,7 @@ test('#693 B1: an agent an older Postbox archived, live again at startup, keeps 
 test('#693 the requester’s need goes with its closed card', () => {
   const f = heldOnAlphasCard();
   assert.equal(f.store.state.sessions[f.alpha.id].needs?.itemId, f.open.id);
-  f.store.emit('session', { ...f.store.state.sessions[f.alpha.id], deleting: Date.now() + 60_000 });
+  f.store.emit('session', { ...f.store.state.sessions[f.alpha.id], retiredFork: true }); // a fork #228 retired
   restart(f);
   assert.equal(f.store.state.sessions[f.alpha.id].needs, null);
 });
@@ -46,7 +46,7 @@ test('#693 the sweep closes a card whose agent’s session is gone altogether', 
 
 test('#693 the sweep’s note says the agent was retired or removed, not that it left a conversation it’s still in', () => {
   const f = heldOnAlphasCard();
-  f.store.emit('session', { ...f.store.state.sessions[f.alpha.id], deleting: Date.now() + 60_000 });
+  f.store.emit('session', { ...f.store.state.sessions[f.alpha.id], retiredFork: true }); // a fork #228 retired
   restart(f);
   assert.match(toldOf(f, f.beta), /didn’t go: @alpha was retired or removed/);
 });

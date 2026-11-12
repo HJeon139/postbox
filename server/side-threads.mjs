@@ -14,7 +14,7 @@ import { askToAdd, askToWake, closeOwnCard, dropHeld, retireStale } from './wake
 export { resolveHop } from './wake-cards.mjs';
 // The server’s default chain limit, 1,000 unless POSTBOX_CHAIN_LIMIT sets another; a room can set its own (#1035), which
 // roomChainLimit reads.
-export { HOP_LIMIT, roomChainLimit };
+export { HOP_LIMIT };
 
 // ── Agents waking agents ───────────────────────────────────────────────────────────
 
@@ -114,9 +114,9 @@ const replyInOf = (rt, se) => {
 export function deliverWake(rt, threadId, q) {
   const target = rt.s.sessions[q.sessionIds[0]];
   const from = rt.s.sessions[q.fromSessionId];
-  const live = from && !from.retiredFork && !from.deleting ? from : null;
-  if (!target || target.retiredFork || target.deleting) {
-    const why = target?.retiredFork ? 'retired' : 'removed';
+  const live = from && !from.retiredFork ? from : null;
+  if (!target || target.retiredFork) {
+    const why = target ? 'retired' : 'removed';
     if (live) rt.tellAgent(live.id, `Your message to @${target?.handle ?? 'an agent'} (“${clip(q.text, 120)}”) wasn’t delivered: its session was ${why}.`);
     return;
   }

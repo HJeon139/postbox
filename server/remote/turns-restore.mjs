@@ -1,6 +1,6 @@
 // After a Postbox restart, and when Postbox gives up on a turn on a host (#120, server/remote/turns.mjs, the header):
 // a turn that was running is attached again once the host’s welcome lists it, its cards stay open, and the stops
-// asked before the restart are asked again; archive, delete and removing the host give up on what waits to attach
+// asked before the restart are asked again; delete and removing the host give up on what waits to attach
 // or to resume.
 
 import { registeredAdapter } from './placement.mjs';

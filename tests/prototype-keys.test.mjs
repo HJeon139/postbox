@@ -80,7 +80,8 @@ after(async () => {
 
 test('#352: every route with an id is found, so a route written another way fails here rather than going untried', () => {
   const written = sources().reduce((n, src) => n + (src.match(/path\.match\(\/\^[^\n]*?\(\[\^\/\]\+\)/g) ?? []).length, 0);
-  // 35 since the conversation archive’s archive and restore route went.
+  // 35 since the conversation archive’s route went, the one match for both /archive and /restore. ROUTERS leaves
+  // out hosts-routes.mjs, so the hosts’ routes aren’t counted here.
   assert.ok(written >= 35, `the routers have ${written} routes with an id`);
   assert.equal(routes().length, written);
 });

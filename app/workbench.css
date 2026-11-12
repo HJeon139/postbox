@@ -1,4 +1,4 @@
-/* Workbench — warm, dense, calm. One stylesheet for the app, the mockups and the app-sandbox kit.
+/* Workbench — warm, dense, calm. One stylesheet for the app and the app-sandbox kit.
    Dark is the default; [data-theme="light"] swaps every token. theme.js resolves System to one of the two. */
 
 :root {
@@ -204,8 +204,6 @@ pre { max-width: 100%; }
 /* The running glyph turns, so a live step looks different from a stalled one; it holds still with reduced motion. */
 .g-running { animation: pb-turn 2.4s infinite; }
 .g-running { color: var(--accent); --m: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><circle cx='8' cy='8' r='6.2' fill='none' stroke='black' stroke-width='1.6' opacity='.35'/><path d='M8 1.8a6.2 6.2 0 0 1 6.2 6.2' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round'/></svg>"); }
-.st-think { color: var(--st-think); } .st-gen { color: var(--st-gen); } .st-tool { color: var(--st-tool); }
-.st-idle { color: var(--st-idle); } .st-needs { color: var(--accent); } .st-failed { color: var(--alert-ink); }
 
 /* ───────── Rings ───────── */
 
@@ -281,12 +279,10 @@ pb-ring[role="button"] { cursor: pointer; border-radius: 50%; }
 .brand:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .crumbs .crumb { color: var(--dim); text-decoration: none; white-space: nowrap; }
 .crumbs .crumb:hover { color: var(--text); text-decoration: underline; text-underline-offset: 2px; }
-.only-sm { display: none !important; }
 .topbar > .grow { flex: 1; }
 
 .rail { position: sticky; top: 48px; height: calc(100vh - 48px); overflow: auto; border-right: 1px solid var(--line);
   padding: 10px 8px 16px; display: flex; flex-direction: column; gap: 2px; background: var(--bg); }
-.rail-proj { display: flex; align-items: center; gap: 8px; padding: 6px 8px 10px; }
 .rail-sec { padding: 12px 8px 4px; display: flex; align-items: center; justify-content: space-between; }
 .rail a.row, .rail .row { display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 6px 8px; border-radius: 6px;
   color: var(--text); text-decoration: none; border: 1px solid transparent; }
@@ -341,7 +337,6 @@ pb-ring[role="button"] { cursor: pointer; border-radius: 50%; }
 .turn.me { align-items: flex-end; }
 .me-card { max-width: 82%; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
 .turn.me .who { justify-content: flex-end; }
-.from-terminal { font-size: 11px; color: var(--dim); border: 1px solid var(--line); border-radius: 999px; padding: 0 7px; }
 
 .md { display: flex; flex-direction: column; gap: 10px; }
 .md p, .md li { max-width: 72ch; }
@@ -454,7 +449,6 @@ details.activity[open] > summary .i-right { transform: rotate(90deg); }
 .btn[disabled], .chip[disabled] { opacity: .5; cursor: not-allowed; }
 /* An answered choice is a record: the option chosen stays at full strength, and only the others are dimmed (#873). */
 .chip[disabled].on { opacity: 1; }
-.btn.is-hover { border-color: var(--accent); }
 
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .chips.measuring .chip { flex: none; width: max-content; max-width: none; white-space: nowrap; }
@@ -520,7 +514,6 @@ details.activity[open] > summary .i-right { transform: rotate(90deg); }
 .outcome > .md > :first-child { margin-top: 0; }
 .outcome > .md > :last-child { margin-bottom: 0; }
 .block.pending { background: transparent; border-style: dashed; }
-.block-placeholder { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--dim); padding: 10px 12px; border: 1px dashed var(--line); border-radius: 8px; }
 
 .tbl-wrap { max-height: min(80vh, 560px); overflow: auto; border-top: 1px solid var(--line); }
 /* A table wider than its block fades the side with more columns past it, clear of the scrollbars, with a soft edge in
@@ -753,8 +746,6 @@ html.store-down .sidepanel { padding-bottom: 44px; }
 .bg-jobs .job-host { flex: 0 1 auto; max-width: 50%; text-align: right; }
 /* Turns on a host (#120): a Kiro turn’s notice that its message can be read there, a hung turn’s note, and a stop
    the host hasn’t confirmed. Quiet: none of them is a control, so none is amber. */
-.callout.host-notice { border-left-color: var(--line-strong); }
-.callout.host-notice .i { color: var(--dim); }
 .stopped-tag.hung-note { height: auto; min-height: 18px; white-space: normal; }
 .host-turns { display: flex; flex-direction: column; gap: 6px; }
 .host-turn { display: flex; align-items: flex-start; gap: 8px; color: var(--dim); }
@@ -927,7 +918,6 @@ html.store-down .sidepanel { padding-bottom: 44px; }
   .rail { display: none; }
   .topbar { padding: 0 8px; gap: 8px; }
   .hide-sm { display: none !important; }
-  .only-sm { display: inline-flex !important; }
   .sr-sm { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   .ringstrip { display: flex; gap: 4px; overflow-x: auto; padding: 8px 12px; border-bottom: 1px solid var(--line); position: sticky; top: 48px; z-index: 18; background: var(--bg); }
   .ringstrip a { display: flex; flex-direction: column; align-items: center; gap: 3px; min-width: 64px; padding: 4px 4px 2px; border-radius: 6px; font-size: 11px; color: var(--dim); text-decoration: none; border: 1px solid transparent; position: relative; }
@@ -963,7 +953,6 @@ html.store-down .sidepanel { padding-bottom: 44px; }
 }
 
 /* Room for an open composer menu, so it doesn't cover the last message in a screenshot of that state. */
-.menu-room { flex: none; }
 
 /* Toasts sit left of an open side panel on wide screens. */
 @media (min-width: 768px) { .has-panel .toasts { right: calc(var(--pane-w) + 16px); } }
@@ -1050,9 +1039,7 @@ html.pb-sandbox .label, html.pb-sandbox .tbl th, html.pb-sandbox kbd { font-size
 .list-rows { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; }
 .list-rows li { display: flex; align-items: center; gap: 10px; padding: 8px 4px; border-bottom: 1px solid var(--line); }
 .empty-note { color: var(--dim); font-size: 13px; padding: 12px 0; }
-.offline-chip { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--dim); }
 .outbox { display: flex; flex-direction: column; gap: 4px; }
-.drop-hint { position: absolute; inset: 0; z-index: 30; display: grid; place-items: center; background: var(--overlay); border: 2px dashed var(--accent); border-radius: 8px; font-weight: 600; }
 .menu button.mi { all: unset; box-sizing: border-box; display: flex; align-items: center; gap: 10px; padding: 7px 8px; border-radius: 6px; cursor: pointer; border: 1px solid transparent; width: 100%; color: var(--text); }
 .menu button.mi:hover, .menu button.mi.active, .menu button.mi:focus-visible { border-color: var(--accent); background: var(--sunk); outline: none; }
 .menu .mi .i, .menu .mi pb-ring { flex: none; }
@@ -1096,7 +1083,6 @@ iframe.app-iframe { display: block; width: 100%; border: 0; background: var(--st
 .cmd-button .cmd-glyph { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-weight: 700; font-size: 15px; line-height: 1; }
 .slash-menu { max-height: min(50vh, 420px); overflow: auto; }
 .slash-menu .mi .mono { font-size: 12.5px; }
-.seg-wrap { flex-wrap: wrap; }
 .cmd-line { overflow-wrap: anywhere; white-space: pre-wrap; }
 .cmd-block .block-head .kind { text-transform: none; letter-spacing: 0; overflow-wrap: anywhere; }
 .cmd-out { max-height: 320px; overflow: auto; margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }

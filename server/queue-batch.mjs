@@ -7,9 +7,8 @@ export function readyGroups(rt, thread, wakesOnly) {
   const groups = new Map();
   for (const q of thread.queue ?? []) {
     if (wakesOnly && q.kind !== 'wake') continue;
-    // A busy agent (busyFor) takes nothing yet, and one being deleted gets nothing in its Undo window: its messages
-    // wait for Undo or the purge (#427, R1).
-    const free = !q.sessionIds.some((id) => blocked.has(id) || rt.busyFor(id) || rt.s.sessions[id]?.deleting);
+    // A busy agent (busyFor) takes nothing yet (#427).
+    const free = !q.sessionIds.some((id) => blocked.has(id) || rt.busyFor(id));
     if (!free) {
       for (const id of q.sessionIds) blocked.add(id);
       continue;

@@ -47,17 +47,13 @@ test('#693 Stop leaves the card open: the person can still answer it', async () 
   assert.equal(card(f, open.id).status, 'open');
 });
 
-for (const [state, patch] of [
-  ['a retired fork', { retiredFork: true }],
-  ['being removed', { deleting: Date.now() + 60_000 }],
-])
-  test(`#693 the startup sweep closes an open card whose agent is ${state}, from a room before this fix`, () => {
-    const f = heldOnAlphasCard();
-    f.store.emit('session', { ...f.store.state.sessions[f.alpha.id], ...patch }); // as an older Postbox left it
-    restart(f);
-    assert.equal(card(f, f.open.id).status, 'closed');
-    assert.match(toldOf(f, f.beta), /Your message to @delta .* didn’t go/);
-  });
+test('#693 the startup sweep closes an open card whose agent is a retired fork, from a room before this fix', () => {
+  const f = heldOnAlphasCard();
+  f.store.emit('session', { ...f.store.state.sessions[f.alpha.id], retiredFork: true }); // as an older Postbox left it
+  restart(f);
+  assert.equal(card(f, f.open.id).status, 'closed');
+  assert.match(toldOf(f, f.beta), /Your message to @delta .* didn’t go/);
+});
 
 test('#693 the startup sweep leaves a card whose agent is still here', () => {
   const f = heldOnAlphasCard();
