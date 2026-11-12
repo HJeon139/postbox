@@ -21,6 +21,18 @@ export function skipOffscreen(el) {
 }
 
 /**
+ * An item drawn again is a new node, which the browser skips until a frame decides it's on screen, and a skipped
+ * item's innerText is empty: copy as text, an assistive tool or a find read nothing from it for that frame (#1246).
+ * So the new node is drawn until it has painted when the one it replaces wasn't skipped, whether the browser drew it
+ * or drawUntilPainted holds it, which the browser says nothing of. One that was skipped stays skipped, so a redraw off
+ * screen lays nothing out. Asked of the old node's first child, as the item itself is the box the rule applies to.
+ * @param {Element | undefined} old  @param {HTMLElement} next
+ */
+export function keepDrawn(old, next) {
+  if (old?.firstElementChild?.checkVisibility({ contentVisibilityAuto: true })) drawUntilPainted(next);
+}
+
+/**
  * A transcript the window holds (#866, window.mjs) mounts only the items near the view, and must measure them at their
  * real heights, so skipping is off while it holds it, and on again when it lets go if the transcript wants it,
  * whichever came first. The one place that decides.
@@ -53,13 +65,17 @@ const holders = new WeakMap();
 export function drawUntilPainted(item) {
   holders.set(item, (holders.get(item) ?? 0) + 1);
   item.style.contentVisibility = 'visible';
+  // The pending release holds the item weakly: a redraw as a room is left would otherwise keep that room's whole page
+  // alive through the item's parents until two frames have passed (page-leak.spec.mjs, #1246).
+  const ref = new WeakRef(item);
   let done = false;
   const release = () => {
-    if (done) return;
+    const held = ref.deref();
+    if (done || !held) return;
     done = true;
-    const left = /** @type {number} */ (holders.get(item)) - 1;
-    holders.set(item, left);
-    if (!left) item.style.removeProperty('content-visibility');
+    const left = /** @type {number} */ (holders.get(held)) - 1;
+    holders.set(held, left);
+    if (!left) held.style.removeProperty('content-visibility');
   };
   requestAnimationFrame(() => requestAnimationFrame(release));
   return release;
