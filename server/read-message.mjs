@@ -1,8 +1,12 @@
-// Reading one conversation item, with the same scope and pagination as the conversation history.
+// Reading a conversation as an agent: read_conversation’s page of items, newest last, and read_message’s one item in
+// full, with the same scope (any thread of the conversation) and pagination. readConversation and readLine moved here
+// out of server/runtime.mjs, which keeps a method of each name that delegates here.
+import { READING } from '../shared/limits.mjs';
 import { fenceFor, partOf } from '../shared/text-parts.mjs';
 import { appCheckText, appVersionText } from './app-check-status.mjs';
 import { appOf } from './apps.mjs';
-import { clipText } from './helpers.mjs';
+import { clipText, httpError } from './helpers.mjs';
+import { clipItem } from './item-lines.mjs';
 
 const count = (n) => n.toLocaleString('en-US');
 
@@ -66,4 +70,31 @@ function readApp(rt, se, it, app, { from = 0, version }) {
   const fence = fenceFor(p.part);
   const body = `${head}\n\n${about}\n\n${fence}html\n${p.part}\n${fence}`;
   return { ok: true, message: p.whole ? body : `${body}\n\n${p.footer}` };
+}
+
+/**
+ * read_conversation: the conversation’s items, newest last, as text, each with its id (for read_message and react). thread: another thread of the same conversation
+ * to read instead, such as a side thread or a topic thread (#121): its id from a catch-up line, a pointer to a fork, or
+ * a link the person shared. Threads of other conversations are refused.
+ */
+/** @param {any} rt @param {any} se @param {{ limit?: number, skip?: number, thread?: unknown }} [args] */
+export function readConversation(rt, se, { limit = 50, skip = 0, thread = null } = {}) {
+  const id = typeof thread === 'string' && thread.trim() ? thread.trim().slice(0, 100) : se.threadId;
+  if (!rt.conversationThreads(se.threadId).includes(id))
+    throw httpError(404, `There’s no thread ${id} in this conversation. Read one of its own threads: the id is in the catch-up line or the link.`);
+  const items = rt.store.items(id).filter((i) => i.kind !== 'system' || i.variant === 'wake');
+  const n = Math.max(1, Math.min(200, Number(limit) || 50));
+  const end = Math.max(0, items.length - Math.max(0, Number(skip) || 0));
+  const slice = items.slice(Math.max(0, end - n), end);
+  const lines = slice.flatMap((i) => (rt.readLine(i, se) ? [`[${i.id}] ${rt.readLine(i, se)}`] : []));
+  const before = end - slice.length;
+  return `${lines.join('\n\n') || 'The conversation is empty.'}${before ? `\n\n(${before} earlier ${before === 1 ? 'item' : 'items'}; call again with skip: ${items.length - before} to read them.)` : ''}`;
+}
+
+/**
+ * An item as read_conversation and read_message give it to `se`, whose own messages say “You”.
+ * @param {any} i @param {any} se @param {number} [n]
+ */
+export function readLine(rt, i, se, n = READING.item) {
+  return i.sessionId === se.id && i.kind === 'agent' ? `You (@${se.handle}): ${clipItem(i.text, n, i.id)}` : rt.describeItem(i, null, n, se);
 }
