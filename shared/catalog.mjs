@@ -5,6 +5,7 @@
 // plain-text fallback. An agent’s block that fails validation is refused, and never shown (#1319). One this app
 // can’t read but a newer host’s catalog took shows its fallback and a collapsed "Show the raw block" instead.
 
+import { appFontErrors } from './app-fonts.mjs';
 import { option, options } from './catalog-options.mjs';
 import { INTENT_CHARS, LIMITS, REVIEW_THREADS_MAX } from './limits.mjs';
 import { ANCHOR, anchorError, author, threadsError } from './review-comments.mjs';
@@ -255,6 +256,7 @@ export const SCHEMAS = {
       permissions: list(str({ min: 1, max: 64, pattern: /^[a-z][a-z0-9_.]*$/, label: 'tool name' }), { max: 12 }),
     },
     required: ['code'],
+    check: (b, errs) => appFontErrors(b.code, errs),
   },
 };
 
