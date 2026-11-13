@@ -11,7 +11,6 @@ import { editedInput, MAX_EDIT_INPUT, MAX_REASON } from './permission-edit.mjs';
 import { closeCard, dismissPermission } from './permission-expiry.mjs';
 import { addAllowRule, rulesFor, takeBackRule } from './permission-rules.mjs';
 import { inReadFolder } from './read-folders.mjs';
-import { requestAdapter } from './remote/placement.mjs';
 import { gated } from './store-outage.mjs';
 import { draftOf, isWriteCall, whereOf } from './write-guard.mjs';
 import { settledCall } from './write-intent.mjs';
@@ -214,7 +213,7 @@ export async function allowAlways(rt, threadId, it, asked) {
   if (it.always.saves) {
     const se = rt.s.sessions[it.sessionId];
     const persona = se && rt.personaFor(se);
-    const adapter = persona && requestAdapter(rt, se.handle, persona);
+    const adapter = persona && rt.placement.requestAdapter(se.handle, persona);
     if (!adapter?.folderFor || !rt.readsRules(persona.backend)) throw httpError(409, 'Only Claude Code and Agent SDK agents read permission rules.');
     // A card that expired, or whose turn ended, saves nothing: check before the write, and take the rule out again
     // if it ended while the file was written (#281).
@@ -293,7 +292,7 @@ export async function resolveDenial(rt, threadId, itemId, action) {
   let note = null;
   if (action === 'always') {
     const persona = se && rt.personaFor(se);
-    const adapter = persona && requestAdapter(rt, se.handle, persona);
+    const adapter = persona && rt.placement.requestAdapter(se.handle, persona);
     if (!adapter?.folderFor || !rt.readsRules(persona.backend)) throw httpError(409, 'Only Claude Code and Agent SDK agents read permission rules.');
     const folder = await adapter.folderFor(persona, rt.s.projects[rt.s.threads[threadId]?.projectId]);
     const { file } = await addAllowRule(folder, it.rules.always);

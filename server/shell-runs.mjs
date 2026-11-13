@@ -5,7 +5,6 @@
 
 import { workFolder } from './adapters/folder.mjs';
 import { clipText, httpError } from './helpers.mjs';
-import { hereFolder, requestAdapter } from './remote/placement.mjs';
 import { runShell } from './shell.mjs';
 import { whenWritable } from './store-outage.mjs';
 
@@ -29,8 +28,8 @@ export async function commandFolder(rt, threadId) {
   const se = members.find((x) => x.id === t.lastSpeaker) ?? members[0];
   const persona = se ? rt.personaFor(se) : null;
   const project = rt.s.projects[t.projectId] ?? null;
-  const adapter = persona ? requestAdapter(rt, se.handle, persona) : null;
-  if (persona?.remote?.hostId) return hereFolder(rt, persona, project, adapter);
+  const adapter = persona ? rt.placement.requestAdapter(se.handle, persona) : null;
+  if (persona?.remote?.hostId) return rt.placement.hereFolder(persona, project, adapter);
   return { folder: await workFolder(adapter, persona, project), host: null };
 }
 

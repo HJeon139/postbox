@@ -5,7 +5,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { AdapterRegistry } from '../server/adapters/adapter.mjs';
+import * as arrange from './arrange.mjs';
 import { restarted, rig, settled, sleep, startUp, until } from './remote-turns-helpers.mjs';
 
 /**
@@ -17,7 +17,7 @@ async function gaveUp({ backend, moved = false, welcome = /** @type {'missing' |
   const { store, d } = restarted({ welcome });
   const r = rig({ store, d });
   if (moved) r.store.emit('persona', { ...r.rt.persona(r.se().personaId), remote: null });
-  if (!backend) r.rt.adapters = new AdapterRegistry();
+  if (!backend) arrange.withoutAdapters(r.rt);
   startUp(r);
   await until(() => r.se().remoteTurn?.state === 'interrupted', 'Interrupted');
   await settled(r);
@@ -53,7 +53,7 @@ test('#965 a restart with the backend registered again clears the mark; one with
     first.d.drop();
     first.d.connect();
     const again = rig({ store: first.store, d: first.d });
-    if (!backend) again.rt.adapters = new AdapterRegistry();
+    if (!backend) arrange.withoutAdapters(again.rt);
     startUp(again);
     await sleep(20);
     assert.equal(Boolean(again.se().remoteTurn.resume?.noBackend), !backend, backend ? 'registered again' : 'still missing');

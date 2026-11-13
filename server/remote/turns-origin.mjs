@@ -18,7 +18,7 @@
 // continues as an ordinary turn, as one from before it did.
 
 import { HANDLE } from '../../shared/limits.mjs';
-import { hostOf } from './turns-shared.mjs';
+import { hostOf } from './placement.mjs';
 
 /** The message kinds a turn is asked with (server/adapters/adapter.mjs). */
 const KINDS = new Set(['user', 'agent', 'event', 'wake', 'lint', 'app-check', 'notice']);

@@ -8,7 +8,6 @@ import { httpError, retiredError } from './helpers.mjs';
 import { sentAttachments } from './message-attachments.mjs';
 import * as queue from './message-queue.mjs';
 import { arrival } from './queue-batch.mjs';
-import { refuseUnregisteredSend } from './remote/placement.mjs';
 import { threadPersona } from './side-threads.mjs';
 import { newId } from './store.mjs';
 import { updateThread } from './thread-write.mjs';
@@ -28,7 +27,7 @@ export function sendMessage(rt, threadId, { text = '', attachments = [], sendNow
   // Side threads from before #372 are history: agents talk in the conversation now.
   if (t.kind === 'side') throw httpError(409, 'Side threads are read-only now. Write in the conversation, where the agents talk.');
   // Refuse before anything is posted or joined: a turn for an agent whose backend isn’t registered couldn’t start (#874).
-  refuseUnregisteredSend(rt, mentioned);
+  rt.placement.refuseUnregisteredSend(mentioned);
   const targets = targetsOf(rt, t, mentioned);
   // Messages to a busy agent wait in the queue unless you choose Send now, as for one whose host turn waits to be
   // attached again after a restart (#1135).
@@ -81,7 +80,7 @@ function targetsOf(rt, t, mentioned) {
       // The last speaker’s agent replies, as in a conversation; before anyone has, the agent it started with.
       const p = threadPersona(rt, t);
       // Refused before sideSession, which would join an agent not yet in the conversation (#874).
-      if (p) refuseUnregisteredSend(rt, [p]);
+      if (p) rt.placement.refuseUnregisteredSend([p]);
       const se = p && rt.sideSession(t, p.id, 'you');
       if (!se) throw httpError(409, 'No agent is in this thread. @-mention one to bring it in.');
       targets.push({ se });
@@ -102,6 +101,6 @@ function targetsOf(rt, t, mentioned) {
   }
   // And the agent you reply to, as the mentioned ones above.
   const woken = targets.map(({ se }) => rt.persona(se.personaId));
-  refuseUnregisteredSend(rt, woken);
+  rt.placement.refuseUnregisteredSend(woken);
   return targets;
 }

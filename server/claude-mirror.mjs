@@ -8,7 +8,6 @@ import { basename } from 'node:path';
 import { contentBlocks, listClaudeSessions, recentHistory, TranscriptTail, typedText } from './adapters/terminal-mirror.mjs';
 import { sessionFolder } from './folder-path.mjs';
 import { httpError } from './helpers.mjs';
-import { runsHere } from './remote/placement.mjs';
 import { pendingSessionsIn } from './session-write.mjs';
 import { describeTool } from './tool-labels.mjs';
 
@@ -22,7 +21,7 @@ export async function claudeSessions(rt) {
 }
 
 export async function attachClaudeSession(rt, { claudeSessionId, projectId, handle }) {
-  if (!runsHere(rt, 'claude-code')) throw httpError(422, 'Claude Code isn’t available on this computer, so its sessions can’t be attached.');
+  if (!rt.placement.runsHere('claude-code')) throw httpError(422, 'Claude Code isn’t available on this computer, so its sessions can’t be attached.');
   const cs = (await listClaudeSessions({ root: rt.config.claudeProjectsRoot, limit: 500 })).find((x) => x.id === claudeSessionId);
   if (!cs) throw httpError(404, 'That Claude Code session wasn’t found. It may have been deleted.');
   if (!cs.cwd) throw httpError(422, 'That session doesn’t say which folder it ran in, so Postbox can’t resume it.');

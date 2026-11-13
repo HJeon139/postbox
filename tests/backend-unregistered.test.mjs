@@ -5,10 +5,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
-import { notHere } from '../server/remote/placement.mjs';
 import { reattach } from '../server/remote/turns-resume.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { fireScheduledWake } from '../server/scheduled-wakes.mjs';
+import * as arrange from './arrange.mjs';
 import { restarted, rig, startUp, until } from './remote-turns-helpers.mjs';
 import { ScriptedAdapter, settle, setup } from './side-threads-fixture.mjs';
 
@@ -164,7 +164,7 @@ test('#874 Retry after the backend is registered delivers the message once', asy
 
 test('#874 an agent on a host whose backend isn’t registered fails here with the reason, asking nothing of the host', async () => {
   const r = rig();
-  r.rt.adapters = new AdapterRegistry();
+  arrange.withoutAdapters(r.rt);
   const se = r.se();
   const ensured = r.hosts.calls.ensure;
   assert.doesNotThrow(() => r.rt.deliver(se.id, { kind: 'user', text: 'hello' }));
@@ -185,7 +185,7 @@ test('#874 an agent whose backend is registered for hosts only still gets refuse
   f.rt.drainAll();
   await settle(f.rt);
   const [failed] = failedIn(f, f.t.id);
-  assert.equal(failed.error, `@beta’s turn didn’t start: ${notHere(f.rt, 'claude-code')}`);
+  assert.equal(failed.error, `@beta’s turn didn’t start: ${arrange.notHere(f.rt, 'claude-code')}`);
   assert.match(failed.error, /^@beta’s turn didn’t start: “claude-code” isn’t available on this computer\. Available:/);
 });
 
@@ -258,7 +258,7 @@ test('#874 a summary for an agent whose backend isn’t registered fails with Re
 test('#874 a host turn reattached for an unregistered backend is Interrupted once, not a crash', async () => {
   const { store, d } = restarted();
   const r = rig({ store, d });
-  r.rt.adapters = new AdapterRegistry();
+  arrange.withoutAdapters(r.rt);
   startUp(r);
   await until(() => r.store.items(r.t.id).some((i) => i.kind === 'agent' && i.status === 'failed'), 'the failed reply');
   await until(() => !r.rt.turns.size && !r.rt.exiting.size, 'the turn to end');

@@ -10,6 +10,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { failure as sshFailure } from '../server/remote/ssh.mjs';
 import { Store } from '../server/store.mjs';
+import * as arrange from './arrange.mjs';
 import { refused, setup, until } from './remote-runtime-helpers.mjs';
 
 // ── Where a persona runs ─────────────────────────────────────────────────────────────
@@ -85,6 +86,27 @@ test('#120: a persona isn’t moved between this computer and a host in the midd
   for (const se of rt.sessionsIn(t.id)) rt.stop(se.id, { silent: true });
   await until(() => !rt.exiting.size, 'the stop');
   assert.deepEqual(rt.updatePersona(p.id, { remote: { hostId: h.id } }).remote, { hostId: h.id });
+});
+
+// Runtime binds Placement’s midTurn to the turns and to the stopped ones still exiting (designs/architecture/services.md,
+// “Placement”): Placement’s own tests take midTurn as given, so this one holds the binding’s exiting half.
+test('#120: a persona isn’t moved while its stopped turn is still exiting', async () => {
+  const { rt, adapter } = setup();
+  const h = rt.addHost({ name: 'host.example.com' });
+  const p = rt.createPersona({ handle: 'dev', backend: 'claude-code' });
+  const t = rt.createThread({ projectId: 'p1', title: 'T', personaIds: [p.id] });
+  adapter.hang.add('dev');
+  rt.sendMessage(t.id, { text: 'go' });
+  await until(() => adapter.log.includes('start:dev'), 'the turn');
+  const se = arrange.agentIn(rt, t.id, 'dev');
+  arrange.stopTurn(rt, se.id, { silent: true });
+  await until(() => adapter.log.includes('stopped:dev'), 'the stop');
+  assert.ok(!arrange.running(rt, se.id) && arrange.exiting(rt, se.id), 'stopped, and still exiting');
+  assert.match(
+    refused(() => rt.updatePersona(p.id, { remote: { hostId: h.id } }), 409),
+    /@dev is in the middle of a turn/,
+  );
+  assert.equal(rt.persona(p.id).remote, null, 'not moved');
 });
 
 // ── Removing a host (G10) ───────────────────────────────────────────────────────────

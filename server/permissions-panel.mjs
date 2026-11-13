@@ -17,7 +17,6 @@ import { httpError } from './helpers.mjs';
 import { changeHostRule, hostRuleList } from './host-rules.mjs';
 import { readHooks } from './permission-hooks.mjs';
 import { BEHAVIORS, changeRule, cleanRule, readRules, settingsFiles } from './permission-rules.mjs';
-import { requestAdapter } from './remote/placement.mjs';
 
 export { PERMISSION_MODES } from './permission-modes.mjs';
 
@@ -34,7 +33,7 @@ export async function panelTarget(rt, { sessionId = null, personaId = null, proj
   const persona = se ? rt.personaFor(se) : personaId ? rt.persona(personaId) : null;
   if (!persona) throw httpError(404, 'That agent doesn’t exist.');
   const project = rt.s.projects[se ? rt.s.threads[se.threadId]?.projectId : (projectId ?? '')] ?? rt.latestProject(persona.id) ?? null;
-  const adapter = requestAdapter(rt, persona.handle, persona);
+  const adapter = rt.placement.requestAdapter(persona.handle, persona);
   const folder = await workFolder(adapter, persona, project);
   return { se, persona, project, folder };
 }

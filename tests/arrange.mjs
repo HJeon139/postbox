@@ -186,6 +186,24 @@ export const withAdapter = (rt, adapter, opts) => rt.adapters.register(/** @type
 /** Unregisters a backend. @param {Runtime} rt @param {string} name */
 export const withoutAdapter = (rt, name) => rt.adapters.adapters.delete(name);
 
+/**
+ * Unregisters every backend, as a Postbox started without any, in the registry the server holds: Runtime and
+ * Placement share it, so it changes in place, never by a new one. Returns a function that registers them again, each
+ * where it ran. @param {Runtime} rt
+ */
+export function withoutAdapters(rt) {
+  const registry = rt.adapters;
+  const was = [...registry.adapters.values()].map((a) => ({ adapter: a, here: !registry.hostOnly.has(a.name) }));
+  registry.adapters.clear();
+  registry.hostOnly.clear();
+  return () => {
+    for (const { adapter, here } of was) registry.register(adapter, { here });
+  };
+}
+
+/** Why a backend can’t run on this computer, as a turn or a request for it is refused. @param {Runtime} rt @param {string} backend */
+export const notHere = (rt, backend) => rt.placement.notHere(backend);
+
 /** The backend registered under a name. @param {Runtime} rt @param {string} name */
 export const adapter = (rt, name) => rt.adapters.get(name);
 

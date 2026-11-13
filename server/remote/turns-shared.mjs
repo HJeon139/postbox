@@ -63,12 +63,6 @@ export function whyLine(why, host) {
     : `[Postbox] Your last turn on ${host} was interrupted before it finished: its process on the host ended without a result, as when the host restarts. It wasn’t this message that stopped it.`;
 }
 
-/** The host a persona runs on, or null for this computer. @param {any} persona */
-export function hostOf(persona) {
-  const id = persona?.remote?.hostId;
-  return typeof id === 'string' && id ? id : null;
-}
-
 /** @param {RemoteTurns} rts @param {string} sessionId @param {Record<string, any>} patch */
 export function updateRemote(rts, sessionId, patch) {
   const se = rts.rt.s.sessions[sessionId];

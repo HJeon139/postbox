@@ -51,12 +51,13 @@
 //   written and never confirmed (no `started` or turn-exists; remoteTurn.stopping’s `unconfirmed`), says nothing yet:
 //   the stop goes again, and its answer decides.
 
+import { hostOf } from './placement.mjs';
 import { ended, stopped } from './turns-end.mjs';
 import { onConnected, onHostMessage } from './turns-messages.mjs';
 import { ask } from './turns-prompts.mjs';
 import { cancel, keepsCard, restore } from './turns-restore.mjs';
 import { checkStalls, onHostStatus, resume, tick } from './turns-resume.mjs';
-import { hostOf, ON_HOST, TICK_MS } from './turns-shared.mjs';
+import { ON_HOST, TICK_MS } from './turns-shared.mjs';
 import { flushSnapshots, onStoreEvent } from './turns-snapshot.mjs';
 import { begin, prepare } from './turns-start.mjs';
 import { busyOn, confirmStops } from './turns-stops.mjs';
@@ -136,11 +137,6 @@ export class RemoteTurns {
     this.hosts?.off?.('status', this.onStatus);
     for (const h of this.needed.values()) h.off();
     this.needed.clear();
-  }
-
-  /** The host a persona runs on, or null for this computer. @param {any} persona */
-  hostOf(persona) {
-    return hostOf(persona);
   }
 
   /** Sessions with a turn on a host, running or being attached again (for removeHost). @param {string} hostId */
