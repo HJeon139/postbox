@@ -27,6 +27,8 @@
 //   ctx.tools.*                             the same tools MCP exposes (see server/tools.mjs)
 //   ctx.signal                              aborted when you press Stop; stop work promptly
 //   ctx.mcpUrl                              where a real agent connects for the UI tools
+//   ctx.readFiles                           the stored paths of the files attached to the message, which the agent
+//                                           may read and only read (attached-files.mjs, #1307); none on a host
 //   ctx.remote                              set when the turn runs on a remote host (#120), and then ctx.mcpUrl is
 //                                           never used: { link, welcome, settings, folder, version, turn, nextTurn,
 //                                           attach?, resumeInterrupted?, bring?, asksByPrompt?, attachments?, allow? }

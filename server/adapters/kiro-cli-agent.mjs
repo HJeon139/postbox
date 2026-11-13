@@ -36,10 +36,11 @@ const spellings = (dir) => {
 /**
  * The agent’s permission rules. Their order doesn’t matter: in Kiro, deny beats ask beats allow, whatever the scope
  * a rule comes from (kiro.dev/docs/permissions), so a deny here holds against an allow in your own rules.
- * @param {{ persona: any, folders: string[], resolve?: boolean }} turn  folders: where the agent works, and the folders
- *   it may also use; resolve: also name each as resolved here (false for a host’s folders, which aren’t on this disk)
+ * @param {{ persona: any, folders: string[], reads?: string[], resolve?: boolean }} turn  folders: where the agent works,
+ *   and the folders it may also use; reads: files it may read and nothing more, those attached to the turn’s message
+ *   (attached-files.mjs, #1307); resolve: also name each as resolved here (false for a host’s, which aren’t on this disk)
  */
-export function kiroRules({ persona, folders, resolve = true }) {
+export function kiroRules({ persona, folders, reads = [], resolve = true }) {
   const { canPublish, usesHostSetup, mcpOff } = setupOf(persona);
   const has = new Set(Array.isArray(persona?.tools) ? persona.tools : []);
   const dirs = [...new Set(folders.filter(Boolean).flatMap(resolve ? spellings : (d) => [d]))];
@@ -48,6 +49,9 @@ export function kiroRules({ persona, folders, resolve = true }) {
     { capability: 'mcp', match: [`${POSTBOX_SERVER}/*`], effect: 'allow' },
   ];
   if (dirs.length) rules.push({ capability: 'fs_read', match: dirs, effect: 'allow' });
+  // Read only: a headless Kiro can’t ask, so without this the agent couldn’t open what the person attached.
+  const files = [...new Set(reads.filter(Boolean).flatMap(resolve ? spellings : (f) => [f]))];
+  if (files.length) rules.push({ capability: 'fs_read', match: files, effect: 'allow' });
   const mode = persona?.permissionMode ?? 'auto';
   if ((mode === 'acceptEdits' || mode === 'auto') && dirs.length) {
     rules.push({ capability: 'fs_write', match: dirs, effect: 'allow' });
@@ -97,12 +101,12 @@ const ISOLATED_NOTE =
 
 /**
  * The custom agent for one turn. Pure, so the tests can check it.
- * @param {{ name: string, persona: any, mcpUrl?: string, shim?: { command: string, args: string[] }, guide: string, folders: string[], skills?: string | null }} turn
+ * @param {{ name: string, persona: any, mcpUrl?: string, shim?: { command: string, args: string[] }, guide: string, folders: string[], reads?: string[], skills?: string | null }} turn
  *   shim: on a remote host, Postbox’s server is the host’s stdio shim, run as this command, in place of mcpUrl; the
  *   folders are then the host’s. skills: the folder of Postbox’s skills (agentSkills in agent-plugin.mjs), or null for
  *   none; a turn on a host has none, since the folder is on this computer
  */
-export function kiroAgent({ name, persona, mcpUrl = '', shim, guide, folders, skills = shim ? null : agentSkills() }) {
+export function kiroAgent({ name, persona, mcpUrl = '', shim, guide, folders, reads = [], skills = shim ? null : agentSkills() }) {
   const { usesHostSetup } = setupOf(persona);
   return {
     name,
@@ -113,7 +117,7 @@ export function kiroAgent({ name, persona, mcpUrl = '', shim, guide, folders, sk
     includeMcpJson: usesHostSetup,
     // A local server is a command and its arguments (kiro.dev/docs/custom-agents/configuration-reference).
     mcpServers: { [POSTBOX_SERVER]: shim ? { command: shim.command, args: [...shim.args] } : { type: 'http', url: mcpUrl } },
-    permissions: { rules: kiroRules({ persona, folders, resolve: !shim }) },
+    permissions: { rules: kiroRules({ persona, folders, reads, resolve: !shim }) },
     // Postbox’s skills, as a skill resource (kiro.dev/docs/custom-agents/configuration-reference), which loads a
     // skill’s description and its body only when it’s used. Checked with kiro-cli 2.34.1: visual-explainer was listed
     // among the session’s skills before the model ran, and the defaults an agent with no resources gets (AGENTS.md, the

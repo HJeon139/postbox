@@ -3,6 +3,7 @@
 // server/runtime.mjs (#1236); Runtime keeps a method of each name, and each function here takes the runtime first.
 
 import { randomUUID } from 'node:crypto';
+import { attachedFiles } from './adapters/attached-files.mjs';
 import { workFolder } from './adapters/folder.mjs';
 import { toolsDownNote } from './adapters/tools-down.mjs';
 import { keptTurns, releaseNeed, TURN_TIED } from './card-needs.mjs';
@@ -206,7 +207,9 @@ function atWork(rt, se, turn, message) {
  */
 function runTurn(rt, se, turn, message, { adapter, persona, hostId }) {
   // With the turn’s last raw lines, which each adapter’s recorder keeps (recorderFor), for an empty reply (#485).
-  const ctx = Object.assign(adapterContext(rt, se, turn), { rawTail: turn.rawTail });
+  // And the files attached to its message, which its agent may read (#1307): a host turn reads its own copies of them.
+  const base = adapterContext(rt, se, turn);
+  const ctx = Object.assign(base, { rawTail: turn.rawTail, readFiles: hostId ? [] : attachedFiles(message, base.pathOf) });
   // A remote turn has its host’s welcome, its host turn and the conversation’s snapshot before the adapter starts.
   const run = Promise.resolve().then(async () => {
     if (!adapter) refuseUnregistered(se, persona);

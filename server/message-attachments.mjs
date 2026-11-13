@@ -8,6 +8,7 @@
 // folder. attachmentPath moved here out of server/runtime.mjs, which keeps a method of that name that delegates here.
 
 import { resolve, sep } from 'node:path';
+import { extensionOf } from './attachment-extension.mjs';
 import { httpError } from './helpers.mjs';
 import { shownName, storedName, uploadName } from './upload-name.mjs';
 
@@ -52,7 +53,8 @@ function upload(rt, a) {
 export function attachmentPath(rt, threadId, a) {
   if (a?.kind === 'file' && a.fileId) {
     const f = rt.s.files?.[a.fileId];
-    return f?.sha256 && rt.blobs ? rt.blobs.pathOf(f.sha256) : null;
+    // At a path with its extension, which some backends read a file by (#1307).
+    return f?.sha256 && rt.blobs ? rt.blobs.typedPathOf(f.sha256, extensionOf(f)) : null;
   }
   if (a?.kind === 'project-file' && a.path) {
     const folder = rt.s.projects[rt.s.threads[threadId]?.projectId]?.folder;

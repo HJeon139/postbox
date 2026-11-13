@@ -12,6 +12,7 @@
 
 import { ALLOW_ONCE_TRIGGERS } from './allowonce-triggers.mjs';
 import { ASK_QUESTION_TRIGGERS } from './ask-question-triggers.mjs';
+import { ATTACH_IMAGE_TRIGGERS } from './attach-image-triggers.mjs';
 import { DELIVERY_TRIGGERS } from './delivery-triggers.mjs';
 import { DISMISS_TRIGGERS } from './dismiss-triggers.mjs';
 import { GIT_PUSH_TRIGGERS } from './gitpush-triggers.mjs';
@@ -47,6 +48,7 @@ export const TRIGGERS = {
   ...REVIEW_FIGURE_TRIGGERS,
   ...DISMISS_TRIGGERS,
   ...ASK_QUESTION_TRIGGERS,
+  ...ATTACH_IMAGE_TRIGGERS,
 };
 
 /**

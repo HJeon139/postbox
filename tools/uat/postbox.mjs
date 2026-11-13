@@ -10,6 +10,7 @@ import { createServer } from 'node:net';
 import { join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { outputRecorder } from './postbox-output.mjs';
+import { withItems } from './state-items.mjs';
 import { untilGone } from './until-gone.mjs';
 
 /** Whether nothing listens on this port here. @param {number} port */
@@ -85,9 +86,14 @@ export async function startPostbox({ root, port, data, env, log, tries = 80, ste
   process.once('exit', () => {
     if (pb.exited === null) pb.server?.kill('SIGTERM');
   });
-  const api = async (p) => {
+  const get = async (p) => {
     if (pb.exited !== null) throw new Error(`Postbox exited (code ${pb.exited}); see run.log.`);
     return (await fetch(pb.origin + p)).json();
+  };
+  // The state with its items, which /api/state no longer carries (#1155): the checks and triggers read them there.
+  const api = async (p) => {
+    const body = await get(p);
+    return p === '/api/state' && body?.state ? { ...body, state: await withItems(body.state, get) } : body;
   };
   const stop = async () => {
     pb.stopping = true;

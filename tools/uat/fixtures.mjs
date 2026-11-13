@@ -8,6 +8,16 @@ import { cpSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 
 export const FIXTURES = join(import.meta.dirname, '..', '..', 'tests', 'uat', 'e2e', 'fixtures');
+/** Files the tester attaches with attach_file, kept out of the workspace so an agent sees one only as an attachment. */
+export const ATTACHMENTS = join(import.meta.dirname, '..', '..', 'tests', 'uat', 'e2e', 'attachments');
+
+/** The path of a file in ATTACHMENTS by its name; any other name is refused. @param {unknown} name */
+export function attachmentFile(name, root = ATTACHMENTS) {
+  const file = String(name ?? '').trim();
+  if (!/^[a-z0-9-]+\.[a-z0-9]+$/i.test(file) || !existsSync(join(root, file)))
+    throw new Error(`attach_file names a file in tests/uat/e2e/attachments/, and there’s no “${file}”.`);
+  return join(root, file);
+}
 
 /** The fixture a scenario names, or null; a name with no folder is refused, not run without its files. @param {string|undefined} spec */
 export function filesOf(spec, root = FIXTURES) {
