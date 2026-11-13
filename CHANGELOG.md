@@ -2,6 +2,12 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.5.1 (2026-11-13)
+
+### Fixes
+
+- **view:** keep following when replies land as the composer's room is released
+
 ## 4.5.0 (2026-11-13)
 
 ### Features
