@@ -189,8 +189,8 @@ test('#67 the next turn reads what ran, with its output', async ({ page }) => {
   app.rt.sendMessage(t.id, { text: '@alpha what did that print?' });
   await expect.poll(() => turns.some((x) => x.sessionId === seA.id && x.message.text?.includes('what did that print')), { message: 'alpha’s turn' }).toBe(true);
   const context = turns.find((x) => x.sessionId === seA.id && x.message.text?.includes('what did that print')).message.context.join('\n');
-  expect(context).toMatch(/You ran `cat hello\.txt && pwd` in .* \(it exited with 0\)\. Output:\n```\nhello from the folder/);
-  expect(context).toMatch(/You ran `echo oops >&2; exit 3` in .* \(it exited with 3\)/);
+  expect(context).toMatch(/The person ran `cat hello\.txt && pwd` in .* \(it exited with 0\)\. Output:\n```\nhello from the folder/);
+  expect(context).toMatch(/The person ran `echo oops >&2; exit 3` in .* \(it exited with 3\)/);
 });
 
 test('#104 ! in a topic thread says before sending that it won’t run there, and goes as a message', async ({ page }) => {

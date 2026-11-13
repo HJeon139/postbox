@@ -466,7 +466,7 @@ test('#51: agents read an app’s send as what Postbox counted, with the app’s
   // Another agent reads the line, and the summary marked as the app’s.
   assert.match(
     rt.catchUp(store.state.sessions[other.id]),
-    /You: Sent from Spam: send_pairs · pairs: 2 items · 15 bytes\nThe app’s own summary, not the person’s words: “Sending 1,258 pairs”/,
+    /The person: Sent from Spam: send_pairs · pairs: 2 items · 15 bytes\nThe app’s own summary, not the person’s words: “Sending 1,258 pairs”/,
   );
 });
 
@@ -488,7 +488,7 @@ test('#51: agents read an app’s send as what Postbox counted, with the app’s
   // Another agent reads the line, and the summary marked as the app’s.
   assert.match(
     rt.catchUp(store.state.sessions[other.id]),
-    /You: Sent from Spam: send_pairs · pairs: 2 items · 15 bytes\nThe app’s own summary, not the person’s words: “Sending 1,258 pairs”/,
+    /The person: Sent from Spam: send_pairs · pairs: 2 items · 15 bytes\nThe app’s own summary, not the person’s words: “Sending 1,258 pairs”/,
   );
 });
 
@@ -632,7 +632,7 @@ test('#111: sharing a topic reply keeps the question it answers', async () => {
   rt.shareToConversation(threadId, reply.id);
   const shared = store.items(t.id).at(-1);
   assert.deepEqual({ question: shared.question, text: shared.text }, { question: 'Offsets or pages?', text: 'Use chapter offsets.' });
-  assert.match(rt.describeItem(shared), /You asked: “Offsets or pages\?” Use chapter offsets\./);
+  assert.match(rt.describeItem(shared), /The person asked: “Offsets or pages\?” Use chapter offsets\./);
   assert.equal(adapter.calls.length, calls, 'sharing costs no turn');
   assert.throws(() => rt.shareToConversation(threadId, reply.id), /already in the conversation/);
   rt.sendMessage(t.id, { text: 'Carry on' });
@@ -1624,7 +1624,7 @@ test('issue #1: an agent mentioned into a room gets the exchange it wasn’t wok
   assert.equal(b.message.text, '@beta what did alpha say about the editions?');
   const ctx = b.message.context[0];
   assert.match(ctx, /^\[Postbox\] What happened in this room since your last turn:/);
-  assert.match(ctx, /You: Which edition of Emma should we index\?/);
+  assert.match(ctx, /The person, to @alpha: Which edition of Emma should we index\?/);
   assert.match(ctx, /@alpha: The editions differ in chapter 12\./);
   assert.ok(!ctx.includes('what did alpha say'), 'the message itself isn’t repeated as context');
 });
@@ -1639,7 +1639,7 @@ test('each agent catches up only on what it missed, and never on its own replies
   rt.sendMessage(t.id, { text: '@beta and you?' });
   await settle(rt);
   const ctx = adapter.calls.at(-1).message.context?.[0] ?? '';
-  assert.match(ctx, /You: @alpha status\?/);
+  assert.match(ctx, /The person, to @alpha: @alpha status\?/);
   assert.match(ctx, /@alpha: Alpha here\./);
   assert.ok(!ctx.includes('@beta hi'), 'beta already had that');
   assert.ok(!/@beta: /.test(ctx), 'its own replies aren’t played back');
@@ -1660,7 +1660,7 @@ test('a long history is capped, says so, and read_conversation has the rest', as
   assert.match(ctx, /the last 40; 20 earlier items are left out: 20 messages from the person, and read_conversation with skip: 40 has them/);
   assert.ok(ctx.includes('message 59') && !ctx.includes('message 19\n'));
   const r = rt.toolsFor(se.id).read_conversation({ limit: 5, skip: 0 });
-  assert.match(r.message, /You: message 59/);
+  assert.match(r.message, /The person: message 59/);
   assert.match(r.message, /call again with skip: 5/);
   assert.match(rt.readConversation(se, { limit: 2, skip: 58 }).message ?? rt.readConversation(se, { limit: 2, skip: 58 }), /message 1/);
 });
@@ -1702,8 +1702,11 @@ test('#109 read_conversation cuts the same way, the agent’s own messages too, 
   const { rt, t, a, reply, se } = await longReplyReviewed();
   const total = LONG_REPLY.length.toLocaleString('en-US');
   const theirs = rt.toolsFor(se.id).read_conversation({}).message;
-  assert.match(theirs, new RegExp(`^\\[it_\\w+\\] You: Write up the findings\\n\\n\\[${reply.id}\\] @alpha: Finding 1`));
-  assert.match(theirs, new RegExp(`2,000 of ${total} characters; read_message \\{ id: "${reply.id}" \\} has the rest\\)\\n\\n\\[it_\\w+\\] You: @beta review`));
+  assert.match(theirs, new RegExp(`^\\[it_\\w+\\] The person, to @alpha: Write up the findings\\n\\n\\[${reply.id}\\] @alpha: Finding 1`));
+  assert.match(
+    theirs,
+    new RegExp(`2,000 of ${total} characters; read_message \\{ id: "${reply.id}" \\} has the rest\\)\\n\\n\\[it_\\w+\\] The person, to @beta: @beta review`),
+  );
   const alpha = rt.sessionsIn(t.id).find((x) => x.personaId === a.id);
   assert.ok(
     rt
@@ -1935,7 +1938,7 @@ test('#153 a long draft is cut with its id, and read_message gives the whole blo
     assert.equal(r.ok, true, id);
     assert.ok(
       r.message.includes(
-        `${draft}\n\nComments on line 1 (open):\n- @critic: Which flag?\n\nComments on line 3 (open):\n- You: Name the flag.\n\nThe person’s review: Request changes · 1 comment\n- line 3: Name the flag.`,
+        `${draft}\n\nComments on line 1 (open):\n- @critic: Which flag?\n\nComments on line 3 (open):\n- The person: Name the flag.\n\nThe person’s review: Request changes · 1 comment\n- line 3: Name the flag.`,
       ),
       r.message,
     );

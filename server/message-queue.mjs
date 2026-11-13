@@ -5,13 +5,25 @@ import { deliverWake } from './side-threads.mjs';
 import { pendingThreads, updateThread } from './thread-write.mjs';
 
 export function postAndDeliver(rt, threadId, { text, attachments }, targets) {
-  const { item, message } = postUserMessage(rt, threadId, { text, attachments });
+  const to = targets.map(({ se }) => se.handle);
+  const { item, message } = postUserMessage(rt, threadId, { text, attachments }, to);
   for (const { se } of targets) rt.deliver(se.id, message, { threadId });
   return { item };
 }
 
-function postUserMessage(rt, threadId, q) {
-  const item = rt.addItem(threadId, { kind: 'user', text: q.text, attachments: q.attachments });
+/**
+ * The handles of the agents a queued message of the person’s goes to, which its item keeps.
+ * @param {any} rt @param {string[]} sessionIds
+ */
+const handlesOf = (rt, sessionIds) => sessionIds.map((id) => rt.s.sessions[id]?.handle).filter(Boolean);
+
+/**
+ * Posts the person’s message with who it goes to (to: handles), so another agent reading it later sees it wasn’t
+ * addressed to them, and builds the message its agents are delivered.
+ * @param {any} rt @param {string} threadId @param {any} q @param {string[]} to
+ */
+function postUserMessage(rt, threadId, q, to) {
+  const item = rt.addItem(threadId, { kind: 'user', text: q.text, attachments: q.attachments, to });
   const conv = rt.lineage(threadId).at(-1);
   updateThread(rt, conv, { hops: 0 });
   const refs = rt.threadRefs(threadId, q.text);
@@ -88,7 +100,7 @@ export function releaseQueued(rt, sessionId) {
       const rest = (/** @type {any} */ x) => updateThread(rt, t.id, (now) => ({ queue: now.queue.map(x).filter(Boolean) }));
       if (q.sessionIds.length === 1) {
         // R2: the person’s text as it was, without a turn’s side effects: no hops reset, no context, no wake.
-        rt.addItem(t.id, { kind: 'user', text: q.text, attachments: q.attachments });
+        rt.addItem(t.id, { kind: 'user', text: q.text, attachments: q.attachments, to: handlesOf(rt, q.sessionIds) });
         rest((x) => (x.id === id ? null : x));
       } else {
         rest((x) => (x.id === id ? { ...x, sessionIds: x.sessionIds.filter((s) => s !== sessionId) } : x));
@@ -121,7 +133,7 @@ function takeBatches(rt, threadId, groups) {
 function queuedMessages(rt, threadId, entries, cache = new Map()) {
   return entries.flatMap((q) => {
     if (q.kind !== 'wake') {
-      if (!cache.has(q)) cache.set(q, { ...postUserMessage(rt, threadId, q).message, seq: q.seq });
+      if (!cache.has(q)) cache.set(q, { ...postUserMessage(rt, threadId, q, handlesOf(rt, q.sessionIds)).message, seq: q.seq });
       return [cache.get(q)];
     }
     const target = rt.s.sessions[q.sessionIds[0]];

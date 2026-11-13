@@ -83,7 +83,7 @@ test('#49: a session that last saw the app reads on from the stub, so nothing af
   const stub = store.items(t.id)[0];
   assert.equal(store.state.sessions[other.id].seenItem, stub.id);
   const caught = rt.catchUp(store.state.sessions[other.id]);
-  assert.match(caught, /You: Make it blue\./);
+  assert.match(caught, /The person: Make it blue\./);
   assert.match(caught, /@alpha showed an app “A”/);
 });
 

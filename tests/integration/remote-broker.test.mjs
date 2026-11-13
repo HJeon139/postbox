@@ -135,8 +135,8 @@ async function checkReadingTools(shim, pb) {
   const readConv = shim.tool('read_conversation', {});
   const convTool = await pb.msgs.next('tool', 5000);
   assert.equal(convTool.name, 'read_conversation');
-  pb.send('reply', { turn: 't1', id: convTool.id, ok: true, text: '[i1] You: fix the build' });
-  assert.deepEqual(await shim.response(readConv), { text: '[i1] You: fix the build', isError: false });
+  pb.send('reply', { turn: 't1', id: convTool.id, ok: true, text: '[i1] The person, to @coder: fix the build' });
+  assert.deepEqual(await shim.response(readConv), { text: '[i1] The person, to @coder: fix the build', isError: false });
 
   const readMsg = shim.tool('read_message', { id: 'nope' });
   const msgTool = await pb.msgs.next('tool', 5000);
@@ -153,7 +153,11 @@ test('broker and shim: queued and asked calls, the snapshot’s reading tools, a
   let shim = null;
   try {
     const pb = await s.postbox();
-    pb.send('snapshot', { turn: 't1', home: 'th', threads: [{ id: 'th', items: [{ id: 'i1', line: 'You: fix the build', text: 'You: fix the build' }] }] });
+    pb.send('snapshot', {
+      turn: 't1',
+      home: 'th',
+      threads: [{ id: 'th', items: [{ id: 'i1', line: 'The person, to @coder: fix the build', text: 'The person, to @coder: fix the build' }] }],
+    });
     pb.send('start', {
       turn: 't1',
       harness: 'claude-code',

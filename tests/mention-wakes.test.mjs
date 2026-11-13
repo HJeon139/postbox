@@ -51,7 +51,7 @@ test('#362: a reply one character past the limit wakes no one; the conversation 
   assert.match(notice, /wake_agent/);
   const lines = store.items(t.id).filter((x) => /woke no one/.test(x.text ?? ''));
   assert.equal(lines.length, 2, 'a line for each refused hand-off, so the person sees why beta never started');
-  // Postbox's lines, never the person's: beta would read a voice line as `You: …`, words the person never said.
+  // Postbox's lines, never the person's: beta would read a voice line as `The person: …`, words the person never said.
   assert.deepEqual(
     lines.map((x) => `${x.kind}/${x.variant}`),
     ['system/send-refused', 'system/send-refused'],

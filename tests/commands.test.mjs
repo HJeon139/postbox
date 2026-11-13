@@ -207,7 +207,7 @@ test('#67: a command reaches every agent on its next turn, with its output, and 
   rt.sendMessage(t.id, { text: '@beta what failed?' });
   await settle(rt);
   const said = adapter.calls[0].message.context.join('\n');
-  assert.match(said, /You ran `npm test` in \/work\/project \(it exited with 1\)\. Output:\n```\n1 failing\n\n```/);
+  assert.match(said, /The person ran `npm test` in \/work\/project \(it exited with 1\)\. Output:\n```\n1 failing\n\n```/);
   assert.ok(store.items(t.id).some((i) => i.kind === 'command'));
 });
 
@@ -281,7 +281,7 @@ test('#67: an agent’s skill runs as that agent’s turn, as the whole prompt, 
   // What beta missed comes with its next ordinary turn.
   rt.sendMessage(t.id, { text: '@beta thanks' });
   await settle(rt);
-  assert.match(adapter.calls.at(-1).message.context.join('\n'), /You: hello/);
+  assert.match(adapter.calls.at(-1).message.context.join('\n'), /The person, to @alpha: hello/);
   assert.throws(() => rt.runAgentCommand(t.id, { sessionId: beta.id, text: 'review' }), /starts with \//);
   assert.throws(() => rt.runAgentCommand(t.id, { sessionId: 'se_none', text: '/x' }), /isn’t in this conversation/);
 });
