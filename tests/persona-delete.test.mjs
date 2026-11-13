@@ -18,6 +18,12 @@ import { sessionRoute } from '../server/session-routes.mjs';
 import { Store } from '../server/store.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
+/** Waits for check() to hold, looking every 10 ms within ms, and once more at the deadline, so a stall past it still sees the change. */
+async function until(check, what, ms = 10_000) {
+  for (const end = Date.now() + ms; Date.now() < end; await new Promise((r) => setTimeout(r, 10))) if (check()) return;
+  assert.ok(check(), `Timed out waiting for ${what}.`);
+}
+
 async function setup() {
   const data = tempDir('pb-persona-delete-');
   const workRoot = join(data, 'workspaces');
@@ -41,7 +47,7 @@ async function setup() {
 
 test('#208: deleting a persona takes it, its sessions and its own memory at once, and nobody else’s', async () => {
   const s = await setup();
-  const alphaDir = await s.remember(s.alpha);
+  await s.remember(s.alpha);
   const betaDir = await s.remember(s.beta);
   const own = Object.values(s.store.state.sessions).filter((se) => se.personaId === s.alpha.id);
   assert.ok(own.length);
@@ -57,9 +63,10 @@ test('#208: deleting a persona takes it, its sessions and its own memory at once
     s.rt.sessionsIn(s.t.id).some((se) => se.personaId === s.beta.id),
     'the room keeps its other agent',
   );
-  // Its memory goes as each backend forgets it, just after.
-  for (let i = 0; i < 500 && existsSync(alphaDir); i++) await new Promise((r) => setTimeout(r, 10));
-  assert.equal(existsSync(join(memoryRootFor(s.workRoot), s.alpha.id)), false, 'its memory is gone');
+  // Its memory goes as each backend forgets it, just after. The route doesn’t hand back that promise, so this waits
+  // for the persona’s whole memory folder, not the folder remember() wrote inside it: a recursive rm takes that first.
+  const alphaMemory = join(memoryRootFor(s.workRoot), s.alpha.id);
+  await until(() => !existsSync(alphaMemory), 'its memory to go');
   assert.ok(existsSync(join(betaDir, 'MEMORY.md')), 'another persona’s memory stays');
   // The name is free at once, and a new persona with it starts clean: memory is kept by id.
   const again = s.rt.createPersona({ handle: 'alpha', backend: 'claude-code' });
