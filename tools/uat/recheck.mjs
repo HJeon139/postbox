@@ -20,6 +20,7 @@ import { reviewFindings } from './review.mjs';
 import { readStore, readStreams, transcriptsFor, userSetup } from './run-files.mjs';
 import { readRun, runsRoot, writeJsonAtomic } from './runs.mjs';
 import { isTargeted, parseScenario, phaseCap } from './scenario.mjs';
+import { withItems } from './state-items.mjs';
 import { gapFinding, phaseGoals } from './triggers.mjs';
 import { withoutPreset } from './verdicts.mjs';
 
@@ -139,7 +140,8 @@ export async function recheck(dir, { root, opt, review }) {
         await sleep(250);
       }
     }
-    const state = (await (await fetch(`${origin}/api/state`)).json()).state;
+    const get = async (/** @type {string} */ p) => (await fetch(origin + p)).json();
+    const state = await withItems((await get('/api/state')).state, get);
     const main = Object.values(state.threads).find((t) => t.title === scenario.conversation && t.kind !== 'topic');
     if (!main) throw new Error(`No conversation called “${scenario.conversation}” in that run.`);
     await page.size(1440, 1000, { theme: 'light' });
