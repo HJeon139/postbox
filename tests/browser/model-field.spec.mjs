@@ -1,6 +1,7 @@
 // The Model field asks the backend’s own harness for its models when the sheet opens (server/model-lists.mjs), so
 // Postbox assumes no list of its own, and whatever the person types goes to the harness as its --model.
 import { expect, test } from '@playwright/test';
+import { AGY_CAPABILITIES, AGY_DEFAULT_MODEL } from '../../server/adapters/antigravity-cli.mjs';
 import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 
@@ -14,10 +15,10 @@ test.afterAll(async () => {
 failOnPageErrors(test);
 
 /** A backend whose harness answers each listing with listed, counting the asks. */
-function backend(name, listed) {
+function backend(name, listed, capabilities = {}) {
   const fake = {
     name,
-    capabilities: {},
+    capabilities,
     asked: 0,
     async listModels() {
       fake.asked++;
@@ -75,4 +76,25 @@ test('when the harness can’t list its models, the field says so and still take
   await sheet.getByRole('button', { name: 'Create agent', exact: true }).click();
   await expect(page.getByRole('dialog')).toBeHidden();
   await expect.poll(() => arrange.persona(app.rt, 'typed-model')?.model).toBe('claude-typed-1');
+});
+
+test('#390 a new agent starts on its backend’s own default: Gemini’s on Antigravity, even after a Claude model it lists, and Codex’s', async ({ page }) => {
+  backend('claude-code', ['claude-opus-6']);
+  // As agy lists them once it has run: a Claude model first, and Gemini’s default after it.
+  const agyListed = ['claude-sonnet-4-6', 'gemini-2.5-pro', AGY_DEFAULT_MODEL];
+  backend('antigravity-cli', agyListed, { ...AGY_CAPABILITIES, models: agyListed });
+  backend('codex', ['gpt-6.1-sol', 'auto'], { models: ['gpt-6.1-sol', 'auto'] });
+  const sheet = await openNewAgent(page);
+  const model = sheet.getByLabel('Model', { exact: true });
+  await test.step('Antigravity starts on Gemini’s default, not the Claude model it lists first', async () => {
+    await sheet.getByLabel('Backend', { exact: true }).selectOption('antigravity-cli');
+    await expect.poll(() => suggested(sheet)).toEqual(agyListed);
+    await expect(model).toHaveValue(AGY_DEFAULT_MODEL);
+  });
+  await test.step('Codex starts on auto, shown as Codex’s default, not the first model it lists', async () => {
+    await sheet.getByLabel('Backend', { exact: true }).selectOption('codex');
+    await expect.poll(() => suggested(sheet)).toEqual(['gpt-6.1-sol', 'auto']);
+    await expect(model).toHaveValue('auto');
+    await expect.soft(sheet.locator('datalist option[value="auto"]')).toHaveAttribute('label', 'Codex’s default');
+  });
 });
