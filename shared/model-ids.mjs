@@ -1,8 +1,11 @@
 // Model ids as each harness lists them, in Postbox’s spelling: pure, so the laptop’s adapters and a host’s daemon
 // (server/remote/host/harness-models.mjs) read a listing the same way.
 
-/** A model id as the CLI takes it in --model: claude-opus-5-5, or one with a context suffix such as claude-opus-5-5[1m]. */
-const MODEL_ID = /^[\w.:[\]-]{1,80}$/;
+/**
+ * A model id as the CLI takes it in --model: claude-opus-5-5, or one with a context suffix such as claude-opus-5-5[1m].
+ * It starts with a letter, a digit or _, never -, so no listing can put an option where --model’s value goes.
+ */
+const MODEL_ID = /^\w[\w.:[\]-]{0,79}$/;
 /** The most model ids one listing gives. */
 export const MAX_MODELS = 60;
 /** Whether v is a model id a listing may give. @param {unknown} v */
@@ -33,7 +36,7 @@ export function kiroModelIds(json) {
   try {
     const list = JSON.parse(json)?.models;
     if (!Array.isArray(list)) return [];
-    const ids = list.map((m) => m?.model_id).filter((id) => typeof id === 'string' && /^[\w.:-]{1,80}$/.test(id));
+    const ids = list.map((m) => m?.model_id).filter(isModelId);
     return [...new Set(ids.map((id) => postboxModel(id) ?? id))].slice(0, MAX_MODELS);
   } catch {
     return [];

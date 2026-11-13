@@ -225,6 +225,7 @@ export const CASES = {
     listed: {
       ok: { harness: 'codex', models: ['gpt-6.1-sol', 'gpt-5.6-terra'] },
       bad: [
+        [{ harness: 'codex', models: ['--dangerously-bypass-approvals-and-sandbox'] }, /listed\.models\[0\] must be a model ID/],
         [{ harness: 'codex', models: ['a b'] }, /listed\.models\[0\] must be a model ID/],
         [{ harness: 'codex', models: ['gpt-6', 'gpt-6'] }, /names the model “gpt-6” twice/],
         [{ harness: 'codex', models: Array.from({ length: 61 }, (_, i) => `m-${i}`) }, /listed\.models has 61 entries; the limit is 60/],

@@ -4,7 +4,7 @@
 
 import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
-import { claudeModelIds, kiroModelIds, MAX_MODELS } from '../../../shared/model-ids.mjs';
+import { claudeModelIds, isModelId, kiroModelIds, MAX_MODELS } from '../../../shared/model-ids.mjs';
 import { stopProbe } from './probe-stop.mjs';
 
 /** How long a listing may take before it counts as failed. */
@@ -119,7 +119,7 @@ export async function codexModels(bin, { spawnImpl = spawn } = {}) {
         child.stdin.write(`${JSON.stringify({ id: ++id, method: 'model/list', params: { limit: 100, includeHidden: false } })}\n`);
       } else if (msg.id === 2) {
         clearTimeout(timer);
-        const models = (msg.result?.data ?? []).map((m) => m?.id ?? m?.model).filter((m) => typeof m === 'string' && /^[\w.-]{1,80}$/.test(m));
+        const models = (msg.result?.data ?? []).map((m) => m?.id ?? m?.model).filter(isModelId);
         finish([...new Set(models)].slice(0, MAX_MODELS));
       }
     });
