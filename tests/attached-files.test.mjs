@@ -4,7 +4,7 @@
 // Auto classifier let it (UAT runs attachimage and attachimage-compat, 13 November 2026).
 
 import assert from 'node:assert/strict';
-import { readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { lstatSync, mkdirSync, readFileSync, realpathSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { decideAgyTool } from '../server/adapters/agy-hook.mjs';
@@ -90,4 +90,42 @@ test('#1307 an upload with no known type keeps its name’s extension, and one w
 test('#1307 a host’s copy of an attached image takes its type’s extension when its name has none', () => {
   assert.equal(hostName({ kind: 'file', name: 'image', type: 'image/png' }, 0), '1-image.png');
   assert.equal(hostName({ kind: 'file', name: 'chart.png', type: 'image/png' }, 1), '2-chart.png');
+});
+
+/** A store with one blob, and the path its typed .png link would take. */
+async function storeWithBlob() {
+  const blobs = new Blobs(tempDir('pb-typed-'));
+  const { sha256 } = await blobs.put(Buffer.from('the real bytes'));
+  mkdirSync(join(blobs.dir, 'typed'), { recursive: true });
+  return { blobs, sha256, typed: join(blobs.dir, 'typed', `${sha256}.png`) };
+}
+
+test('#1307 a symlink planted at a typed path is replaced by a link to the blob, never followed', async () => {
+  const { blobs, sha256, typed } = await storeWithBlob();
+  const other = join(blobs.dir, 'elsewhere.txt');
+  writeFileSync(other, 'not the blob');
+  symlinkSync(other, typed);
+  const path = blobs.typedPathOf(sha256, '.png');
+  const kept = path === typed ? lstatSync(path) : null;
+  assert.ok(!kept?.isSymbolicLink(), 'a symlink is never handed to an agent');
+  assert.deepEqual(readFileSync(path), Buffer.from('the real bytes'));
+  assert.deepEqual(readFileSync(other), Buffer.from('not the blob'), 'the planted target is left as it was');
+});
+
+test('#1307 a stale file at a typed path, not the blob’s own inode, is replaced by a link to the blob', async () => {
+  const { blobs, sha256, typed } = await storeWithBlob();
+  writeFileSync(typed, 'an old short copy');
+  const path = blobs.typedPathOf(sha256, '.png');
+  assert.deepEqual(readFileSync(path), Buffer.from('the real bytes'));
+  const blob = statSync(blobs.pathOf(sha256));
+  const got = statSync(path);
+  assert.deepEqual([got.ino, got.dev], [blob.ino, blob.dev]);
+});
+
+test('#1307 a typed link already made for the blob is kept as it is', async () => {
+  const { blobs, sha256, typed } = await storeWithBlob();
+  assert.equal(blobs.typedPathOf(sha256, '.png'), typed);
+  const first = statSync(typed).ino;
+  assert.equal(blobs.typedPathOf(sha256, '.png'), typed);
+  assert.equal(statSync(typed).ino, first);
 });
