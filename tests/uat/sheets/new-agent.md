@@ -2,7 +2,7 @@
 
 ![New agent sheet](../screenshots/new-agent-sheet.png)
 
-**Where:** + › From a boilerplate, or the conversation’s ⋯ › Add an agent….
+**Where:** + › From a boilerplate, the conversation’s ⋯ › Add an agent…, or Settings › Personas, New agent or a “Start from a boilerplate” chip.
 
 ## Why it exists
 

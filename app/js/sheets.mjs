@@ -19,6 +19,7 @@ import {
 } from '/shared/agent-facts.mjs';
 
 import { mockMarker } from './agent-facts.mjs';
+import { boilerplateRow } from './boilerplate-row.mjs';
 import { checkField } from './check-field.mjs';
 import { api, client, headerOf, sessionsOf, threadsOf } from './client.mjs';
 import { ago, fill, h, icon, plural } from './dom.mjs';
@@ -419,12 +420,15 @@ function newAgentChoices({ preset, bps, threadId }) {
   return st;
 }
 
-export function openNewAgent({ threadId = null, projectId: pid = null, preset = null, onCreated = null } = {}) {
+/** The New agent sheet; boilerplateId starts it on that boilerplate, as Settings › Personas’ row does. */
+export function openNewAgent({ threadId = null, projectId: pid = null, preset = null, boilerplateId = null, onCreated = null } = {}) {
   const t = threadId ? S().threads[threadId] : null;
   const projectId = t?.projectId ?? pid ?? Object.keys(S().projects)[0];
   const projectName = S().projects[projectId]?.name;
   const bps = Object.values(S().boilerplates);
   const st = newAgentChoices({ preset, bps, threadId });
+  const chosen = bps.find((b) => b.id === boilerplateId);
+  if (chosen) applyBoilerplate(st, chosen, client.config);
   const have = toolsInProject(projectId);
   const body = h('div', { style: { display: 'flex', flexDirection: 'column', gap: '12px' } });
   // Each change repaints the sheet; focus stays on the control you used (#26).
@@ -908,6 +912,7 @@ export function openSettings(tab = 'appearance', personaId = null) {
           ),
         ),
       ),
+      boilerplateRow({ openNewAgent, closeSettings: () => dlg.close() }),
       h(
         'div.row-flex',
         h(
