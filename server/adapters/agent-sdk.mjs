@@ -106,6 +106,20 @@ export function sdkForkPoint(state) {
   return from ? { sdkSessionId: from } : null;
 }
 
+/**
+ * What a turn’s init message tells its session: the skills and commands with their descriptions and argument hints
+ * (#67), once the session is up, where init’s list (names only, from the stream mapper) stands if the SDK can’t say;
+ * and the SDK’s session id, kept for the next turn to resume.
+ * @param {any} q  the running query @param {any} m  its init message @param {any} ctx
+ */
+function noteInit(q, m, ctx) {
+  listCommands(q, m, ctx);
+  if (m.session_id && m.session_id !== ctx.state.sdkSessionId) {
+    ctx.saveState({ sdkSessionId: m.session_id, fork: null });
+    ctx.state.sdkSessionId = m.session_id;
+  }
+}
+
 export class AgentSdkAdapter {
   name = 'agent-sdk';
   // It asks through canUseTool (sdk-permission.mjs), never through permission_prompt (#220).
@@ -210,13 +224,7 @@ export class AgentSdkAdapter {
       ctx.control?.({ ...liveControl(q, persona.permissionMode ?? 'auto'), stopJob: (job) => stopJobUnder(child, job, procs) });
       for await (const m of q) {
         mapper.push(m);
-        // The skills and commands with their descriptions and argument hints (#67), once the session is up; init’s
-        // list (names only, from the stream mapper) stands if the SDK can’t say.
-        if (m.type === 'system' && m.subtype === 'init') listCommands(q, m, ctx);
-        if (m.type === 'system' && m.subtype === 'init' && m.session_id && m.session_id !== ctx.state.sdkSessionId) {
-          ctx.saveState({ sdkSessionId: m.session_id, fork: null });
-          ctx.state.sdkSessionId = m.session_id;
-        }
+        if (m.type === 'system' && m.subtype === 'init') noteInit(q, m, ctx);
       }
     } catch (e) {
       if (ctx.signal.aborted) return;
