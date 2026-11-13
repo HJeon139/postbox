@@ -92,6 +92,10 @@ function follow(v) {
     }
     // A smooth jump to the end is on its way there: snapping now would end it in one frame (#712a).
     if (!atEnd(s) && !v.smoothing) s.scrollTop = s.scrollHeight;
+    // Still following, at the end: where the view is now is the transcript’s, whatever moved it, a clamp to a shorter
+    // page included. Left to the frame’s one note (changed()), a clamp it skipped read as you scrolling up once the
+    // page grew again before the scroll event: two replies in one busy frame unstuck the view (#360).
+    if (atEnd(s)) v.lastTop = s.scrollTop;
     v.held = measure(v, s);
   } else {
     heard(v, s);
