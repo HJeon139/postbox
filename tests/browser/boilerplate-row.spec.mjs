@@ -1,8 +1,9 @@
 // Settings › Personas shows the boilerplates, so a fresh install can find Gemini and GPT without opening New agent
 // first: one chip each, in the sheet’s order, opens the New agent sheet with that boilerplate chosen, and focus comes
-// back to the chip when the sheet closes. A boilerplate whose backend isn’t here is unavailable, with its reason, as in
-// the sheet: this fresh install runs the mock, with an Antigravity CLI stand-in and no Codex. The New agent sheet
-// starts on Blank, and on a fresh install, which has no project, its subtitle says so instead of “undefined”.
+// back to the chip when the sheet closes. Blank has no chip, since New agent beside the row starts on it. A boilerplate
+// whose backend isn’t here is unavailable, with its reason, as in the sheet: this fresh install runs the mock, with an
+// Antigravity CLI stand-in and no Codex. The New agent sheet starts on Blank, whose description is only a placeholder,
+// and on a fresh install, which has no project, its subtitle says so instead of “undefined”.
 
 import { expect, test } from '@playwright/test';
 import { AGY_CAPABILITIES } from '../../server/adapters/antigravity-cli.mjs';
@@ -32,12 +33,15 @@ async function personas(page) {
   return settings;
 }
 
-test('Settings › Personas lists every boilerplate, and a chip opens New agent with it chosen', async ({ page }) => {
+test('Settings › Personas lists every boilerplate but Blank, and a chip opens New agent with it chosen', async ({ page }) => {
   const settings = await personas(page);
   const row = settings.getByRole('group', { name: 'Start from a boilerplate' });
-  await test.step('one chip per boilerplate, in the sheet’s order, with a missing backend’s reason', async () => {
-    const names = Object.values(app.store.state.boilerplates).map((b) => (b.backend === 'codex' ? `${b.name} (Codex not on this computer)` : b.name));
+  await test.step('one chip per boilerplate but Blank, in the sheet’s order, with a missing backend’s reason', async () => {
+    const names = Object.values(app.store.state.boilerplates)
+      .filter((b) => b.id !== 'bp-blank')
+      .map((b) => (b.backend === 'codex' ? `${b.name} (Codex not on this computer)` : b.name));
     await expect.soft(row.getByRole('button')).toHaveText(names);
+    await expect.soft(row.getByRole('button', { name: 'Blank' }), 'New agent beside the row starts on Blank').toHaveCount(0);
     await expect.soft(row.getByRole('button', { name: 'GPT (Codex not on this computer)' })).toBeDisabled();
     await expect.soft(row.getByRole('button', { name: 'Gemini', exact: true })).toBeEnabled();
   });
