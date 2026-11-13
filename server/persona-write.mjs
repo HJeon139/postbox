@@ -7,7 +7,7 @@ import { placedFolder } from './folder-path.mjs';
 import { httpError } from './helpers.mjs';
 import { checkedMode } from './permission-modes.mjs';
 import { checkEffort, checkSetup, handleOf } from './persona-checks.mjs';
-import { drainMovedOff, notHere, placedPatch, placement, registeredAdapter, runsHere } from './remote/placement.mjs';
+import { notHere, placedPatch, placement, registeredAdapter, runsHere } from './remote/placement.mjs';
 import { newId } from './store.mjs';
 import { settleToolAsks } from './tool-ask.mjs';
 
@@ -127,4 +127,14 @@ export function updatePersona(rt, id, patch) {
   if (patch.tools !== undefined) settleToolAsks(rt, next);
   drainMovedOff(rt, id);
   return next;
+}
+
+/**
+ * An agent’s place may have changed: what waited in the queue for a host turn to be attached goes now if it moved off
+ * that host, since that host may never answer and nothing else would drain it (#1135). An agent still there is busy,
+ * and its messages keep waiting. @param {any} rt @param {string} personaId
+ */
+function drainMovedOff(rt, personaId) {
+  for (const se of Object.values(rt.s.sessions))
+    if (se.personaId === personaId && rt.remote.restoring.get(se.remoteTurn?.turn) === se.id) rt.drainQueues(se.id, se.threadId);
 }
