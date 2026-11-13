@@ -8,12 +8,10 @@ import {
   codexDefault,
   EFFORT_NAMES,
   effortNamedBy,
-  GEMINI_MODEL,
   MCP_SCOPE,
   MCP_STATUS,
   MODELS,
   modeHelp,
-  modelName,
   PERMISSIONS,
   selectBackend,
 } from '/shared/agent-facts.mjs';
@@ -25,6 +23,7 @@ import { api, client, headerOf, sessionsOf, threadsOf } from './client.mjs';
 import { ago, fill, h, icon, plural } from './dom.mjs';
 import { goToNew, goWhenThere, heard } from './go-when-there.mjs';
 import { hostsPanel } from './hosts.mjs';
+import { capsOf, modelField, modelsFor } from './model-field.mjs';
 import { openPermissions } from './permissions.mjs';
 import { lifeButtons } from './persona-delete.mjs';
 import { projectsTab } from './projects-tab.mjs';
@@ -33,7 +32,7 @@ import { appearance, connect } from './sheets-settings.mjs';
 import { skillsField } from './skills-field.mjs';
 import { keepFocus, navigate, openDialog, say, toast } from './ui.mjs';
 
-export { EFFORT_NAMES, MCP_SCOPE, MCP_STATUS, MODELS, modeHelp };
+export { capsOf, EFFORT_NAMES, MCP_SCOPE, MCP_STATUS, MODELS, modeHelp, modelsFor };
 
 const S = () => client.state;
 /**
@@ -53,10 +52,6 @@ const toolsInProject = (projectId) =>
       .flatMap((se) => S().personas[se.personaId]?.tools ?? []),
   );
 
-/** What a backend can do (server/adapters/adapter.mjs, capabilities), as /api/state serves it (#117). */
-export const capsOf = (backend) => client.config.backends?.[backend] ?? {};
-/** The models to suggest for a backend: the ones it reported, else Gemini’s on Antigravity or Claude’s. */
-export const modelsFor = (backend) => capsOf(backend).models ?? (backend === 'antigravity-cli' ? [GEMINI_MODEL] : MODELS);
 export const defaultBackend = () => BACKENDS.map(([id]) => id).find((id) => (client.config.adapters ?? []).includes(id)) ?? 'mock';
 
 function seg(label, options, value, onPick) {
@@ -205,37 +200,7 @@ function backendFields(st, paint, { idp, fixedBackend = false, personaId = null,
     real && capsOf(st.backend).remote && (hosts.length || !local.has(st.backend))
       ? placeField(st, paint, { idp, hosts, here: local.has(st.backend), name: BACKENDS.find(([id]) => id === st.backend)?.[1] ?? st.backend })
       : null,
-    real
-      ? h(
-          'div.field',
-          h('label.label', { for: `${idp}-m` }, 'Model'),
-          h('input.input.mono', {
-            id: `${idp}-m`,
-            value: st.model,
-            list: `${idp}-models`,
-            spellcheck: 'false',
-            oninput: (e) => {
-              st.model = e.target.value.trim();
-            },
-            // A model that names its effort runs at it, so Effort follows (the Gemini room UAT: Medium beside
-            // gemini-3.8-flash-high read as a contradiction).
-            onchange: () => {
-              const named = effortNamedBy(st.backend, st.model);
-              if (named && named !== st.effort) {
-                st.effort = named;
-                paint();
-              }
-            },
-          }),
-          h(
-            'datalist',
-            { id: `${idp}-models` },
-            modelsFor(st.backend).map((m) => h('option', { value: m, label: codexDefault(st.backend, m) ? modelName(st.backend, m) : null })),
-          ),
-          // Codex picks its own model for `auto`: it isn’t one of Claude’s.
-          st.backend === 'codex' ? h('span.help', 'auto is Codex’s default: the model your Codex configuration picks.') : null,
-        )
-      : null,
+    real ? modelField(st, paint, { idp }) : null,
     // Next to the model, and always passed with it, so your own settings don’t decide it (#60).
     real
       ? h(
