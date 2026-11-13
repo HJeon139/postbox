@@ -8,6 +8,7 @@ import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
 import { validateBlock } from '../shared/catalog.mjs';
 import { buildEvent } from '../shared/events.mjs';
+import * as arrange from './arrange.mjs';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -39,11 +40,11 @@ function setup() {
   const researcher = rt.createPersona({ handle: 'researcher' });
   const critic = rt.createPersona({ handle: 'critic' });
   const t = rt.createThread({ projectId: 'p1', title: 'T', personaIds: [researcher.id, critic.id] });
-  const [mine, theirs] = ['researcher', 'critic'].map((h) => rt.sessionsIn(t.id).find((s) => s.handle === h));
+  const [mine, theirs] = ['researcher', 'critic'].map((h) => arrange.agentIn(rt, t.id, h));
   return { store, rt, adapter, t, mine, theirs };
 }
 const settle = async (rt) => {
-  for (let i = 0; i < 100 && rt.turns.size; i++) await sleep(5);
+  for (let i = 0; i < 100 && arrange.liveTurns(rt); i++) await sleep(5);
   await sleep(5);
 };
 

@@ -3,6 +3,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import * as arrange from './arrange.mjs';
 import { settle, setup } from './side-threads-fixture.mjs';
 
 /** A room where alpha has replied once, and the reply to react to. */
@@ -41,7 +42,7 @@ test('#251: a reaction is added, and clicking it again takes it back', async () 
     ['🚩'],
   );
   assert.throws(() => react(f, f.reply, '🎉'), /React with one of/);
-  const line = f.rt.addItem(f.t.id, { kind: 'system', variant: 'joined', to: 'beta' });
+  const line = arrange.post(f.rt, f.t.id, { kind: 'system', variant: 'joined', to: 'beta' });
   assert.throws(() => react(f, line, '👍'), /a message, a block or an app/);
 });
 
@@ -67,7 +68,7 @@ test('#251: a reaction taken back before the agent’s turn isn’t told, and on
   react(f, f.reply, '❓');
   const [[, heard]] = await nextTurns(f, '@alpha go on');
   assert.doesNotMatch(heard, /reacted/);
-  const se = f.rt.sessionsIn(f.t.id).find((x) => x.handle === 'alpha');
+  const se = arrange.agentIn(f.rt, f.t.id, 'alpha');
   f.rt
     .toolsFor(se.id)
     .show_block({ block: { id: 'pick', type: 'choice', version: 1, fallback: 'Pick one', prompt: 'Which?', options: [{ id: 'a', label: 'A' }] } });
@@ -107,7 +108,7 @@ test('#251: a reaction in a topic thread reaches the agent answering there, and 
 
 test('#251: an agent’s card action named react stays the card’s, and the event records what the reaction was', async () => {
   const f = await replied();
-  const se = f.rt.sessionsIn(f.t.id).find((x) => x.handle === 'alpha');
+  const se = arrange.agentIn(f.rt, f.t.id, 'alpha');
   f.rt.toolsFor(se.id).show_block({ block: { id: 'c', type: 'card', version: 1, fallback: 'A card', actions: [{ id: 'react', label: 'React' }] } });
   const card = f.store.items(f.t.id).find((x) => x.kind === 'block');
   const r = await f.rt.act(f.t.id, card.id, 'react', {});
@@ -129,19 +130,19 @@ test('#251: an agent’s card action named react stays the card’s, and the eve
 
 test('#251: a reply still being written, or a deleted agent’s, takes no reaction; one in the same millisecond is still told', async () => {
   const f = await replied();
-  f.rt.patchItem(f.t.id, f.reply.id, { status: 'streaming' });
+  arrange.setItem(f.rt, f.t.id, f.reply.id, { status: 'streaming' });
   assert.throws(() => react(f, f.reply, '👍'), /still being written/);
-  f.rt.patchItem(f.t.id, f.reply.id, { status: 'done', deletedAgent: true });
+  arrange.setItem(f.rt, f.t.id, f.reply.id, { status: 'done', deletedAgent: true });
   assert.throws(() => react(f, f.reply, '👍'), /was deleted/);
-  f.rt.patchItem(f.t.id, f.reply.id, { deletedAgent: false });
+  arrange.setItem(f.rt, f.t.id, f.reply.id, { deletedAgent: false });
   // The marker is the newest reaction told, not the time of the catch-up: one at the same millisecond is told next.
-  const se = f.rt.sessionsIn(f.t.id).find((x) => x.handle === 'alpha');
+  const se = arrange.agentIn(f.rt, f.t.id, 'alpha');
   const at = Date.now() + 60_000;
-  f.rt.patchItem(f.t.id, f.reply.id, { reactions: [{ emoji: '👍', at }] });
-  f.rt.updateSession(se.id, { reactionsTold: { [f.t.id]: { at: at - 1, keys: [] } } });
+  arrange.setItem(f.rt, f.t.id, f.reply.id, { reactions: [{ emoji: '👍', at }] });
+  arrange.setSession(f.rt, se.id, { reactionsTold: { [f.t.id]: { at: at - 1, keys: [] } } });
   const [[, first]] = await nextTurns(f, '@alpha one');
   assert.match(first, /reacted 👍/);
-  f.rt.patchItem(f.t.id, f.reply.id, {
+  arrange.setItem(f.rt, f.t.id, f.reply.id, {
     reactions: [
       { emoji: '👍', at },
       { emoji: '✅', at },

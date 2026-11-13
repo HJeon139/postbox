@@ -20,6 +20,7 @@ import { createStreamMapper } from '../server/adapters/claude-stream.mjs';
 import { parsePs, stopJobUnder } from '../server/adapters/process-group.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
+import * as arrange from './arrange.mjs';
 
 const fixture = (name) =>
   readFileSync(new URL(`fixtures/claude-code/${name}.jsonl`, import.meta.url), 'utf8')
@@ -283,7 +284,7 @@ test('#189: the agent’s ring keeps its own state and step while its background
   store.emit('project', { id: 'p1', name: 'P', folder: '/tmp' });
   const p = rt.createPersona({ handle: 'developer' });
   const t = rt.createThread({ projectId: 'p1', title: 'T', personaIds: [p.id] });
-  const se = rt.sessionsIn(t.id)[0];
+  const se = arrange.agentIn(rt, t.id);
   rt.sendMessage(t.id, { text: 'start a background subagent' });
   for (let i = 0; i < 200 && seen.length < lines.length; i++) await new Promise((r) => setTimeout(r, 5));
   assert.equal(seen.length, lines.length);

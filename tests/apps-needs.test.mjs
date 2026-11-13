@@ -6,6 +6,7 @@ import { test } from 'node:test';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
+import * as arrange from './arrange.mjs';
 
 /** An adapter whose turns wait until the test lets each one end. */
 class HeldAdapter {
@@ -33,13 +34,13 @@ function withApp() {
   });
   store.emit('project', { id: 'p1', name: 'P', folder: '/tmp' });
   const t = rt.createThread({ projectId: 'p1', title: 'T', personaIds: [rt.createPersona({ handle: 'alpha' }).id] });
-  const se = rt.sessionsIn(t.id)[0];
+  const se = arrange.agentIn(rt, t.id);
   rt.toolsFor(se.id).show_app({ id: 'spam', title: 'Spam', code: '<p>x</p>', permissions: [] });
   return { store, rt, adapter, t, se };
 }
 /** Lets every turn waiting in the adapter end, until none is left running. */
 async function endTurns(rt, adapter) {
-  for (let i = 0; i < 50 && (rt.turns.size || adapter.waiting.length); i++) {
+  for (let i = 0; i < 50 && (arrange.liveTurns(rt) || adapter.waiting.length); i++) {
     for (const end of adapter.waiting.splice(0)) end();
     await ticks(1);
   }
@@ -53,7 +54,7 @@ test('#38 a turn that ends after an app’s card came leaves the agent needing y
   const { rt, store, adapter, t, se } = withApp();
   // A send that goes through starts a turn for its event; the next is held on a card while that turn runs.
   rt.appEvent('spam', 'ok', { summary: 'First' }, { now: 1 });
-  assert.equal(rt.turns.size, 1);
+  assert.equal(arrange.liveTurns(rt), 1);
   rt.appEvent('spam', 'ok', { summary: 'Held' }, { hold: true, now: 2 });
   assert.equal(store.state.sessions[se.id].needs?.kind, 'appsend');
   await endTurns(rt, adapter);

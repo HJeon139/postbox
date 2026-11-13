@@ -7,6 +7,7 @@ import { test } from 'node:test';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
+import * as arrange from './arrange.mjs';
 
 const told = /^\[Postbox\] In your last turn, Postbox’s tool server didn’t start/;
 /** The note among a turn’s notices, or ''. @param {any} message */
@@ -36,13 +37,13 @@ function room() {
   store.emit('project', { id: 'p1', name: 'P', folder: '/tmp' });
   const p = rt.createPersona({ handle: 'developer' });
   const t = rt.createThread({ projectId: 'p1', title: 'T', personaIds: [p.id] });
-  const se = rt.sessionsIn(t.id)[0];
+  const se = arrange.agentIn(rt, t.id);
   const turn = async (/** @type {string} */ text) => {
     rt.sendMessage(t.id, { text });
-    for (let i = 0; i < 200 && (rt.turns.size || rt.exiting?.size); i++) await new Promise((r) => setTimeout(r, 5));
+    for (let i = 0; i < 200 && (arrange.liveTurns(rt) || arrange.exitingTurns(rt)); i++) await new Promise((r) => setTimeout(r, 5));
   };
   const down = (/** @type {string|null} */ how) =>
-    rt.updateSession(se.id, { backendState: { ...store.state.sessions[se.id].backendState, postboxToolsDown: how } });
+    arrange.setSession(rt, se.id, { backendState: { ...store.state.sessions[se.id].backendState, postboxToolsDown: how } });
   return { rt, store, se, sent, turn, down, t };
 }
 
@@ -67,7 +68,7 @@ test('a slash command doesn’t carry the note, which waits for the next turn', 
   const r = room();
   r.down('ran');
   r.rt.runAgentCommand(r.t.id, { sessionId: r.se.id, text: '/compact' });
-  for (let i = 0; i < 200 && r.rt.turns.size; i++) await new Promise((res) => setTimeout(res, 5));
+  for (let i = 0; i < 200 && arrange.liveTurns(r.rt); i++) await new Promise((res) => setTimeout(res, 5));
   assert.equal(noteIn(r.sent[0]), '', 'a command is the whole prompt');
   assert.equal(r.store.state.sessions[r.se.id].backendState.postboxToolsDown, 'ran', 'the note is still owed');
   await r.turn('Try again.');

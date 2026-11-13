@@ -9,6 +9,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { keptRef, revisedFiles, servedReviewFile } from '../server/review-files.mjs';
 import { REVIEW_IMAGES } from '../shared/limits.mjs';
+import * as arrange from './arrange.mjs';
 import { png, reviewBlock, setup } from './review-files-fixture.mjs';
 
 /** The bytes the route would serve for this file, or null. */
@@ -147,7 +148,7 @@ test('#780 an answered review whose update changes only its files asks again', a
   await f.call('show_block', reviewBlock('fig', [{ path: 'figs/today.png' }]));
   const it = f.review('fig');
   const before = it.files[0].sha256;
-  f.rt.patchItem(f.t.id, it.id, { answered: true, answer: { action: 'submit', values: { verdict: 'approve' }, read: true, revision: 1 } });
+  arrange.setItem(f.rt, f.t.id, it.id, { answered: true, answer: { action: 'submit', values: { verdict: 'approve' }, read: true, revision: 1 } });
   await writeFile(join(f.folder, 'figs/today.png'), png(8, 8));
   // Its fallback changes too, which alone wouldn’t ask again (#286): the new figure must still reach the person.
   const next = reviewBlock('fig', [{ path: 'figs/today.png' }]);

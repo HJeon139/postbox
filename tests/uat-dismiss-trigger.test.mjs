@@ -7,6 +7,7 @@ import { test } from 'node:test';
 import { dismissFailed } from '../server/card-needs.mjs';
 import { parseScenario } from '../tools/uat/scenario.mjs';
 import { TRIGGERS, unknownTriggers } from '../tools/uat/triggers.mjs';
+import * as arrange from './arrange.mjs';
 import { room } from './card-needs-fixture.mjs';
 import { settle } from './side-threads-fixture.mjs';
 
@@ -34,17 +35,17 @@ test('#883 failed-reply-dismissed fires once a failed reply is dismissed, with i
 
 test('#883 failed-reply-dismissed doesn’t fire for a failed reply that was only retried, or a dismissed card that isn’t a reply', async () => {
   const r = await failed();
-  r.rt.patchItem(r.t.id, r.it.id, { status: 'retried' });
-  r.rt.addItem(r.t.id, { kind: 'permission', sessionId: r.alpha.id, status: 'expired', dismissed: true, summary: 'run ls' });
+  arrange.setItem(r.rt, r.t.id, r.it.id, { status: 'retried' });
+  arrange.post(r.rt, r.t.id, { kind: 'permission', sessionId: r.alpha.id, status: 'expired', dismissed: true, summary: 'run ls' });
   // A failed command line carrying the field isn't a reply the person dismissed.
-  r.rt.addItem(r.t.id, { kind: 'command', sessionId: r.alpha.id, status: 'failed', dismissed: true, command: 'ls' });
+  arrange.post(r.rt, r.t.id, { kind: 'command', sessionId: r.alpha.id, status: 'failed', dismissed: true, command: 'ls' });
   assert.deepEqual(fired(r), []);
 });
 
 test('#883 a reply dismissed and then retried still counts: it was dismissed first', async () => {
   const r = await failed();
   dismissFailed(r.rt, r.t.id, r.it.id);
-  r.rt.patchItem(r.t.id, r.it.id, { status: 'retried' });
+  arrange.setItem(r.rt, r.t.id, r.it.id, { status: 'retried' });
   const [hit] = fired(r);
   assert.match(hit?.evidence ?? '', /dismissed: .*, then retried\.$/);
 });

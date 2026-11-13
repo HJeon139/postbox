@@ -7,6 +7,7 @@ import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
 import { TOOL_DEFS } from '../shared/mcp-tools.mjs';
+import * as arrange from './arrange.mjs';
 
 class Quiet {
   name = 'mock';
@@ -27,7 +28,7 @@ function setup() {
   const a = rt.createPersona({ handle: 'researcher' });
   const b = rt.createPersona({ handle: 'critic' });
   const t = rt.createThread({ projectId: 'p1', title: 'T', personaIds: [a.id, b.id] });
-  const [se, other] = rt.sessionsIn(t.id);
+  const [se, other] = arrange.sessionsIn(rt, t.id);
   return { store, rt, t, se, other, tools: rt.toolsFor(se.id), theirs: rt.toolsFor(other.id) };
 }
 const order = (store, t) => store.items(t.id).map((i) => (i.kind === 'block' ? i.block.id : i.kind));
@@ -36,9 +37,9 @@ test('#193: a retired app stays where it is, names who retired it and why, and l
   const { store, rt, t, se, tools, theirs } = setup();
   tools.show_app({ id: 'lab', title: 'Practice lab', code: '<p>1</p>' });
   tools.update_app({ id: 'lab', code: '<p>2</p>', summary: 'more exercises' });
-  rt.addItem(t.id, { kind: 'user', text: 'Can we see the whole map?' });
+  arrange.post(rt, t.id, { kind: 'user', text: 'Can we see the whole map?' });
   theirs.show_app({ id: 'critic-metro', title: 'Metro map', code: '<svg></svg>' });
-  rt.addItem(t.id, { kind: 'agent', sessionId: se.id, handle: se.handle, text: 'The map replaces the lab.', status: 'done' });
+  arrange.post(rt, t.id, { kind: 'agent', sessionId: se.id, handle: se.handle, text: 'The map replaces the lab.', status: 'done' });
   const before = order(store, t);
   const r = tools.retire_app({ id: 'lab', reason: 'The metro map covers the same ground.', replacedBy: 'critic-metro' });
   assert.equal(r.ok, true, r.message);
@@ -76,7 +77,7 @@ test('#193: only the agent that showed an app can retire it, and replacedBy must
 test('#193: a new version brings a retired app back, at the newest point', () => {
   const { store, rt, t, tools } = setup();
   tools.show_app({ id: 'lab', title: 'Practice lab', code: '<p>1</p>' });
-  rt.addItem(t.id, { kind: 'user', text: 'Later.' });
+  arrange.post(rt, t.id, { kind: 'user', text: 'Later.' });
   tools.retire_app({ id: 'lab', reason: 'Not needed.' });
   const r = tools.update_app({ id: 'lab', code: '<p>2</p>' });
   assert.equal(r.ok, true);
