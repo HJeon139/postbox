@@ -12,9 +12,12 @@ const started = () => encode(message('daemon-to-postbox', 'started', { turn: 't_
 test('next finds a message that comes in the same turn of the event loop as its deadline', async () => {
   const stream = new PassThrough();
   const msgs = readMessages(stream);
-  const waiting = msgs.next('started', 20);
-  // Due at the same moment as next()’s deadline, and run just after it.
-  setTimeout(() => stream.write(started()), 20);
+  const waiting = msgs.next('started', 1);
+  // The write is queued just after next()’s deadline, with the same delay. Node runs the timers that are due in one
+  // phase, in the order they were queued, so once both are due the deadline fires and the message comes right after.
+  setTimeout(() => stream.write(started()), 1);
+  // Holds the event loop until both are due, however slow the machine: the next turn runs them together.
+  for (const end = Date.now() + 5; Date.now() < end; );
   assert.deepEqual(await waiting, { type: 'started', turn: 't_1' });
 });
 
