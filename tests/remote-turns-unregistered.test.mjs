@@ -6,7 +6,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { AdapterRegistry } from '../server/adapters/adapter.mjs';
+import * as arrange from './arrange.mjs';
 import { restarted, rig, settled, sleep, starts, startUp, until } from './remote-turns-helpers.mjs';
 
 const WHY =
@@ -25,7 +25,7 @@ const quiet = async (r) => {
 
 /**
  * A Postbox restarted during @coder’s turn on the host, with no backend registered for it now (#874), after the
- * startup’s attempt to attach it. `registered` is the registry it had, to put back.
+ * startup’s attempt to attach it. `registered` registers its backends again.
  * @param {{ signIn?: any, saved?: object, welcome?: 'running' | 'ended' | 'unkilled' | 'missing', moved?: boolean }} [o] `saved` patches the
  * session’s saved remoteTurn before the startup; `moved` puts the agent on this computer since
  */
@@ -39,8 +39,7 @@ async function unregisteredRestart({
   const r = rig({ store, d, signIn });
   if (saved) r.rt.updateSession(r.se().id, { remoteTurn: { ...r.se().remoteTurn, ...saved } });
   if (moved) r.store.emit('persona', { ...r.rt.persona(r.se().personaId), remote: null });
-  const registered = r.rt.adapters;
-  r.rt.adapters = new AdapterRegistry();
+  const registered = arrange.withoutAdapters(r.rt);
   startUp(r);
   if (!saved) await until(() => failed(r).length > 0, 'a failed item');
   await quiet(r);
@@ -112,7 +111,7 @@ test('#909 a turn the host lists interrupted, its process there unkilled (#872),
   const { r, d, registered } = await unregisteredRestart({ welcome: 'unkilled' });
   assert.equal(r.se().remoteTurn.state, 'interrupted');
   assert.equal(r.se().remoteTurn.resume?.unkilled, true, 'its process may still run there');
-  r.rt.adapters = registered;
+  registered();
   back(r);
   await quiet(r);
   assert.equal(starts(d).length, 0, 'not resumed beside a process that may still run');
@@ -122,7 +121,7 @@ test('#909 a turn the host listed as ended doesn’t wait for the person, and re
   const { r, d, registered } = await unregisteredRestart({ welcome: 'ended' });
   assert.equal(r.se().remoteTurn.state, 'interrupted');
   assert.ok(!r.se().remoteTurn.resume?.unkilled, 'nothing runs there to wait on');
-  r.rt.adapters = registered;
+  registered();
   back(r);
   await until(() => starts(d).length === 1, 'the resume');
   assert.equal(r.se().remoteTurn.autoResumes, 1);
@@ -134,7 +133,7 @@ test('#909 once the backend is registered again, a turn the host had no record o
   const { r, d, registered } = await unregisteredRestart({ welcome: 'missing' });
   assert.equal(r.se().remoteTurn.state, 'interrupted');
   assert.ok(!r.se().remoteTurn.resume?.unkilled, 'nothing runs there to wait on');
-  r.rt.adapters = registered;
+  registered();
   back(r);
   await until(() => starts(d).length === 1, 'the resume');
   assert.equal(starts(d)[0].env.CLAUDE_CODE_RESUME_INTERRUPTED_TURN, '1');

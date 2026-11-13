@@ -5,7 +5,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { AdapterRegistry } from '../server/adapters/adapter.mjs';
+import * as arrange from './arrange.mjs';
 import { FIXTURE_PROMPT } from './fake-daemon.mjs';
 import { restarted, rig, running, settled, startUp, until } from './remote-turns-helpers.mjs';
 
@@ -58,7 +58,7 @@ for (const why of ['moved', 'unregistered'])
     const { store, d } = restarted();
     const r = rig({ store, d });
     if (why === 'moved') r.store.emit('persona', { ...r.rt.persona(r.se().personaId), remote: null });
-    else r.rt.adapters = new AdapterRegistry();
+    else arrange.withoutAdapters(r.rt);
     startUp(r);
     await until(() => r.se().remoteTurn?.state === 'interrupted', 'Interrupted');
     assert.equal(cards(r)[0].status, 'expired');

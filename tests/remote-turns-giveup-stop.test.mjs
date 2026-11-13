@@ -6,7 +6,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { AdapterRegistry } from '../server/adapters/adapter.mjs';
+import * as arrange from './arrange.mjs';
 import { HANDLERS } from './fake-daemon-handlers.mjs';
 import { restarted, rig, settled, sleep, starts, startUp, until } from './remote-turns-helpers.mjs';
 
@@ -37,7 +37,7 @@ async function gaveUp({ why, welcome = 'running', to = 'here' }) {
   const r = rig({ store, d });
   const remote = to === 'host' ? { hostId: r.rt.addHost({ name: 'other.example.com' }).id } : null;
   if (why === 'moved') r.store.emit('persona', { ...r.rt.persona(r.se().personaId), remote });
-  else r.rt.adapters = new AdapterRegistry();
+  else arrange.withoutAdapters(r.rt);
   startUp(r);
   await until(() => r.se().remoteTurn?.state === 'interrupted', 'Interrupted');
   await settled(r);
@@ -89,7 +89,7 @@ test('#965 the stop is asked again after a restart before the host confirmed it'
   d.drop();
   d.connect();
   const again = rig({ store: r.store, d });
-  again.rt.adapters = new AdapterRegistry();
+  arrange.withoutAdapters(again.rt);
   startUp(again);
   await until(() => d.stops.length === 2, 'asked again');
   assert.deepEqual(d.stops, ['host-turn-1', 'host-turn-1']);
