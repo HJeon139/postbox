@@ -4,7 +4,7 @@
 
 import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
-import { claudeModelIds, kiroModelIds } from '../../../shared/model-ids.mjs';
+import { claudeModelIds, kiroModelIds, MAX_MODELS } from '../../../shared/model-ids.mjs';
 import { stopProbe } from './probe-stop.mjs';
 
 /** How long a listing may take before it counts as failed. */
@@ -120,7 +120,7 @@ export async function codexModels(bin, { spawnImpl = spawn } = {}) {
       } else if (msg.id === 2) {
         clearTimeout(timer);
         const models = (msg.result?.data ?? []).map((m) => m?.id ?? m?.model).filter((m) => typeof m === 'string' && /^[\w.-]{1,80}$/.test(m));
-        finish([...new Set(models)].slice(0, 60));
+        finish([...new Set(models)].slice(0, MAX_MODELS));
       }
     });
     child.on('error', () => {

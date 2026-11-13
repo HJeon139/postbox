@@ -7,7 +7,6 @@ import { AntigravityCliAdapter, agyVersion, findAgy } from './adapters/antigravi
 import { ClaudeCodeAdapter, claudeVersion, findClaude } from './adapters/claude-code.mjs';
 import { CodexAdapter, codexVersion, findCodex } from './adapters/codex.mjs';
 import { findKiro, KiroCliAdapter, kiroVersion } from './adapters/kiro-cli.mjs';
-import { ModelLists } from './model-lists.mjs';
 
 /**
  * How Postbox looks for each real backend’s CLI on this computer: its version, or null when it isn’t here. Tests pass
@@ -23,8 +22,7 @@ export const PROBES = {
 
 /**
  * Registers the real backends with the adapters, moved from server/index.mjs’s start, which passes what it read.
- * Returns whether Postbox looked for them (real), the version of each CLI it found here, and their model lists, each
- * offering the last list its harness gave.
+ * Returns whether Postbox looked for them (real), and the version of each CLI it found here.
  * @param {import('./adapters/adapter.mjs').AdapterRegistry} adapters
  * @param {{ dataDir: string, demo: boolean, probes?: Partial<typeof PROBES> }} opts
  */
@@ -47,7 +45,5 @@ export async function registerBackends(adapters, { dataDir, demo, probes }) {
   if (agy) adapters.register(new AntigravityCliAdapter({ workRoot, version: agy }));
   const codex = real ? await look.codex() : null;
   if (real) adapters.register(new CodexAdapter({ workRoot }), { here: !!codex });
-  const models = new ModelLists(adapters, { file: join(dataDir, 'model-lists.json') });
-  models.seed();
-  return { real, claude, kiro, agy, codex, models };
+  return { real, claude, kiro, agy, codex };
 }

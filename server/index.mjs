@@ -25,9 +25,11 @@ import { itemsRoute } from './items-routes.mjs';
 import { listen as listenServer } from './listen.mjs';
 import { liveStreams } from './live-streams.mjs';
 import { handleMcp } from './mcp.mjs';
+import { ModelLists } from './model-lists.mjs';
 import { Narrator, narrationInstalled } from './narration/narrator.mjs';
 import { pageState } from './page-state.mjs';
 import { createProject, setPushUrl } from './projects.mjs';
+import { hostModels } from './remote/hosts-models.mjs';
 import { hostManagerFor, startHosts, stopHosts } from './remote/serve.mjs';
 import { settleInterrupted } from './restart-sweep.mjs';
 import { SAME_ORIGIN_ONLY, servedReviewFile } from './review-files.mjs';
@@ -102,7 +104,7 @@ export async function start({
   process.env.POSTBOX_ORIGIN = origin;
   const { store, blobs, mediaDir } = await openDataFolder(dataDir, { fresh });
   const adapters = new AdapterRegistry().register(new MockAdapter());
-  const { real, claude, kiro, agy, codex, models } = await registerBackends(adapters, { dataDir, demo, probes });
+  const { real, claude, kiro, agy, codex } = await registerBackends(adapters, { dataDir, demo, probes });
   const config = {
     origin,
     // Which build this is, shown under Personas in the sidebar.
@@ -117,6 +119,9 @@ export async function start({
   const narrator = narrationInstalled() ? new Narrator({ modelsDir: join(dataDir, 'models'), blobs }) : null;
   // The hosts’ links (#120), made on first use (server/remote/serve.mjs).
   const hosts = hostManagerFor(given, () => rt, dataDir, config.build.version);
+  // Each backend’s models, from its harness here or on a host, each offering the last list it gave (#1302, #1304).
+  const models = new ModelLists(adapters, { file: join(dataDir, 'model-lists.json'), listOnHost: (hostId, backend) => hostModels(hosts, hostId, backend) });
+  models.seed();
   const rt = new Runtime({ store, adapters, config, blobs, narrator, spawnShell, hosts });
   // view_app’s browser, downloaded only after the person agrees (#95; designs/architecture/view-app.md, “Agents see their app”).
   startViewApp(rt, { dataDir, origin: () => `http://127.0.0.1:${/** @type {any} */ (server.address())?.port ?? port}` });
@@ -298,9 +303,10 @@ export async function start({
     if ((m = path.match(/^\/api\/threads\/([^/]+)$/)) && req.method === 'DELETE') return send(res, 200, rt.deleteThread(m[1]));
     if ((m = path.match(/^\/api\/threads\/([^/]+)$/)) && req.method === 'PATCH') return send(res, 200, patchThread(rt, m[1], body));
     if ((m = path.match(/^\/api\/threads\/([^/]+)\/messages$/)) && req.method === 'POST') return send(res, 201, rt.sendMessage(m[1], body));
-    // A backend’s models, asked of its harness when a model field opens (server/model-lists.mjs). A POST, so the
-    // page’s token gates the process it starts.
-    if ((m = path.match(/^\/api\/backends\/([^/]+)\/models$/)) && req.method === 'POST') return send(res, 200, await models.list(decodePath(m[1])));
+    // A backend’s models, asked of its harness when a model field opens, here or on body.hostId’s host
+    // (server/model-lists.mjs). A POST, so the page’s token gates the process it starts.
+    if ((m = path.match(/^\/api\/backends\/([^/]+)\/models$/)) && req.method === 'POST')
+      return send(res, 200, await models.list(decodePath(m[1]), body?.hostId ?? null));
     if ((m = path.match(/^\/api\/threads\/([^/]+)\/view$/)) && req.method === 'POST') {
       rt.view(m[1]);
       viewOf(rt).noteWindow(body);

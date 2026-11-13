@@ -3,6 +3,10 @@
 
 /** A model id as the CLI takes it in --model: claude-opus-5-5, or one with a context suffix such as claude-opus-5-5[1m]. */
 const MODEL_ID = /^[\w.:[\]-]{1,80}$/;
+/** The most model ids one listing gives. */
+export const MAX_MODELS = 60;
+/** Whether v is a model id a listing may give. @param {unknown} v */
+export const isModelId = (v) => typeof v === 'string' && MODEL_ID.test(v);
 
 /**
  * The ids in the CLI’s model rows (the SDK’s ModelInfo), in its order, once each and bounded. An alias row
@@ -12,8 +16,8 @@ const MODEL_ID = /^[\w.:[\]-]{1,80}$/;
  */
 export function claudeModelIds(rows) {
   if (!Array.isArray(rows)) return [];
-  const ids = rows.map((m) => m?.resolvedModel ?? m?.value).filter((id) => typeof id === 'string' && MODEL_ID.test(id));
-  return [...new Set(ids)].slice(0, 60);
+  const ids = rows.map((m) => m?.resolvedModel ?? m?.value).filter(isModelId);
+  return [...new Set(ids)].slice(0, MAX_MODELS);
 }
 
 /**
@@ -30,7 +34,7 @@ export function kiroModelIds(json) {
     const list = JSON.parse(json)?.models;
     if (!Array.isArray(list)) return [];
     const ids = list.map((m) => m?.model_id).filter((id) => typeof id === 'string' && /^[\w.:-]{1,80}$/.test(id));
-    return [...new Set(ids.map((id) => postboxModel(id) ?? id))].slice(0, 60);
+    return [...new Set(ids.map((id) => postboxModel(id) ?? id))].slice(0, MAX_MODELS);
   } catch {
     return [];
   }

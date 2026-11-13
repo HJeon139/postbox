@@ -125,9 +125,13 @@ export class ClaudeCodeAdapter {
     this.list = list;
   }
 
-  /** The models its harness offers, for the model field (server/model-lists.mjs). Empty if it can’t list. */
-  listModels() {
-    return claudeModels(this.bin, { spawnImpl: this.spawn });
+  /**
+   * The models its harness offers, for the model field (server/model-lists.mjs). Empty if it can’t list. listed: what
+   * its CLI lists, by default this computer’s; for an agent on a host, the host’s (server/remote/hosts-models.mjs).
+   * @param {() => Promise<string[]>} [listed]
+   */
+  listModels(listed = () => claudeModels(this.bin, { spawnImpl: this.spawn })) {
+    return listed();
   }
 
   /** The folder the agent works in, by the rule every backend shares (folder.mjs). */

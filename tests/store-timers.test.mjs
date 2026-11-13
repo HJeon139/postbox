@@ -41,6 +41,7 @@ const PLACED = {
   'permission-cards.mjs': 1, // expireWait: gated
   'remote/host-admin.mjs': 1, // a wait: no store
   'remote/host-status.mjs': 1, // a microtask after a host event publishes host status: an emit, memory-only while closed like stream text (I1)
+  'remote/hosts-models.mjs': 3, // the wait for a host’s model list: a connection, no store
   'remote/hosts-links.mjs': 5, // a link’s idle timer and listener microtasks: connections, no store
   'remote/hosts-requests.mjs': 2, // request timeouts on a host link: no store
   'remote/hosts-status.mjs': 1, // a host’s heard-from timer: connection status, no store
