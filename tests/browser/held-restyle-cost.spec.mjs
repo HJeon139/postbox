@@ -9,6 +9,7 @@
 // on the fix, which would hide what the hold costs. That a new message does clear the hold is checked on its own.
 
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, startPostbox, synced, wholeRoom } from './postbox.mjs';
 import { bigRoom, still } from './view-skipped-fixture.mjs';
 
@@ -73,7 +74,7 @@ test('#1150 following, setting and clearing the room held below the newest messa
   expect.soft(clearing, `elements restyled clearing it, of ${total}`).toBeLessThan(200);
   // And a new message is what clears it, as release() does.
   await page.evaluate(holdRoom, true);
-  const it = app.rt.addItem(conv.id, { kind: 'user', text: 'A new message, which lets the held room go.' });
+  const it = arrange.post(app.rt, conv.id, { kind: 'user', text: 'A new message, which lets the held room go.' });
   // Wait as synced() does, by polling the page's event number. Expect's in-page wait for the item, on a room of about
   // 15,000 elements on a loaded CI runner, held the page's own handling of the event back 8 to 15 s (#1221): it heard
   // the event in 0.3 s when the wait polled from outside, the same page and room otherwise.

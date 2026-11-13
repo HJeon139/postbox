@@ -5,6 +5,7 @@
 // page opened before the tests checks; each test reads what the check found.
 
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { failOnServerErrors, startPostbox, synced } from './postbox.mjs';
 
 // The library “loads” 1.5 s after the app is ready, longer than the check’s events take to arrive.
@@ -87,13 +88,13 @@ test.beforeAll(async ({ browser }) => {
   app = await startPostbox('app-check-events');
   const { rt } = app;
   // The agent hears a failed check and doesn’t answer, so each app keeps what its first check found.
-  rt.adapters.register({ name: 'mock', async deliver() {} });
+  arrange.withAdapter(rt, { name: 'mock', async deliver() {} });
   const t = rt.createThread({
-    projectId: Object.values(rt.s.projects)[0].id,
+    projectId: Object.values(rt.store.state.projects)[0].id,
     title: 'App check events',
     personaIds: [rt.createPersona({ handle: 'drawer' }).id],
   });
-  const tools = rt.toolsFor(rt.sessionsIn(t.id)[0].id);
+  const tools = rt.toolsFor(arrange.agentIn(rt, t.id).id);
   for (const [id, code] of Object.entries(APPS)) tools.show_app({ id, title: id, code });
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 }, colorScheme: 'dark' });
   page.on('pageerror', (e) => {
@@ -103,7 +104,7 @@ test.beforeAll(async ({ browser }) => {
   await page.goto(`${app.origin}/#/t/${t.id}`);
   await synced(page, app);
   await expect
-    .poll(() => Object.keys(APPS).filter((id) => rt.s.apps[id].check.status === 'pending'), { message: 'every app checked', timeout: 75_000 })
+    .poll(() => Object.keys(APPS).filter((id) => rt.store.state.apps[id].check.status === 'pending'), { message: 'every app checked', timeout: 75_000 })
     .toEqual([]);
   await page.close();
 });
@@ -111,12 +112,12 @@ test.afterAll(async () => {
   await app?.stop();
 });
 
-const found = (id) => app.rt.s.apps[id].check.problems ?? [];
+const found = (id) => app.rt.store.state.apps[id].check.problems ?? [];
 const says = (id) =>
   found(id)
     .map((p) => `${p.code}: ${p.message}`)
     .join('\n') || 'no problems';
-const passed = (id) => app.rt.s.apps[id].check.status === 'passed';
+const passed = (id) => app.rt.store.state.apps[id].check.status === 'passed';
 
 test('the page threw no exceptions and logged no errors, apart from the errors the apps throw, while it checked the apps', () => {
   expect(errors).toEqual([]);

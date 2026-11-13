@@ -8,6 +8,7 @@
 // glossary-cards.spec.mjs checks nested glossary cards (#103). Moved from tools/check-transcript-render.mjs (#303).
 
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, frames, startPostbox, synced } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -19,7 +20,7 @@ const T = {};
 test.beforeAll(async () => {
   app = await startPostbox('transcript-render');
   const { rt } = app;
-  const project = Object.values(rt.s.projects)[0];
+  const project = Object.values(rt.store.state.projects)[0];
   persona = rt.createPersona({ handle: 'analyst' });
   shared(project);
 });
@@ -33,9 +34,9 @@ test.use({ colorScheme: 'light' });
 function shared(project) {
   const { rt } = app;
   const thread = rt.createThread({ projectId: project.id, title: 'Render checks', personaIds: [persona.id] });
-  const se = rt.sessionsIn(thread.id)[0];
+  const se = arrange.agentIn(rt, thread.id);
   rt.toolsFor(se.id).define_term({ term: 'macro-F1', definition: 'The mean of the F1 score of each label, so a rare label counts as much as a common one.' });
-  const said = rt.addItem(thread.id, {
+  const said = arrange.post(rt, thread.id, {
     kind: 'agent',
     sessionId: se.id,
     personaId: se.personaId,
@@ -60,9 +61,9 @@ function shared(project) {
     '  claims[Claims] --> abstracts[Abstracts]',
     '```',
   ];
-  T.summary = rt.shareText(thread.id, { fromThreadId: topic, handle: 'analyst', summary: true, text: text.join('\n') });
+  T.summary = arrange.shareText(rt, thread.id, { fromThreadId: topic, handle: 'analyst', summary: true, text: text.join('\n') });
   // A reply that keeps its question (#111): one whose fence would have swallowed the answer, were they one text.
-  T.answered = rt.shareText(thread.id, {
+  T.answered = arrange.shareText(rt, thread.id, {
     fromThreadId: topic,
     handle: 'analyst',
     text: 'Use chapter offsets.',
@@ -107,28 +108,29 @@ test('#99 a shared summary draws its math and its Mermaid diagram, and links the
 
 test('#466 the schedule line shows a pending retry and when automatic retries stop', async ({ page }) => {
   const { rt, store } = app;
-  const room = rt.createThread({ projectId: Object.values(rt.s.projects)[0].id, title: 'Retry line', personaIds: [persona.id] });
-  const se = rt.sessionsIn(room.id)[0];
-  const sc = rt.schedule(se.id, { inMs: 60_000, note: 'Check the run.' });
-  rt.patchItem(room.id, sc.itemId, { status: 'pending', retryAttempt: 3, at: Date.now() + 30_000 });
+  const room = rt.createThread({ projectId: Object.values(rt.store.state.projects)[0].id, title: 'Retry line', personaIds: [persona.id] });
+  const se = arrange.agentIn(rt, room.id);
+  const sc = arrange.schedule(rt, se.id, { inMs: 60_000, note: 'Check the run.' });
+  arrange.setItem(rt, room.id, sc.itemId, { status: 'pending', retryAttempt: 3, at: Date.now() + 30_000 });
   await open(page, `#/t/${room.id}`);
   const line = page.locator(`[data-key="${sc.itemId}"]`);
   await expect(line).toContainText(/will retry its scheduled wake.*network error · attempt 3/);
   await expect(line.getByRole('button', { name: 'Cancel' })).toBeVisible();
 
-  rt.patchItem(room.id, sc.itemId, { status: 'done', retryAttempt: 3 });
+  arrange.setItem(rt, room.id, sc.itemId, { status: 'done', retryAttempt: 3 });
   await synced(page, app);
   await expect(line).toContainText(/woke itself/);
   await expect(line).not.toContainText(/will retry/);
-  rt.patchItem(room.id, sc.itemId, { status: 'canceled', retryAttempt: 3 });
+  arrange.setItem(rt, room.id, sc.itemId, { status: 'canceled', retryAttempt: 3 });
   await synced(page, app);
   await expect(line).toContainText(/won’t wake itself \(canceled\)/);
   await expect(line).not.toContainText(/will retry/);
 
-  clearTimeout(rt.timers.get(sc.id));
-  rt.timers.delete(sc.id);
+  // The wake is due in 60 s: left armed, it would start an analyst turn in a later test of this file.
+  arrange.cancelScheduledTimer(rt, sc.id);
+  expect(arrange.scheduledTimer(rt, sc.id), 'no timer is left to fire the wake').toBe(false);
   store.emit('schedule', { id: sc.id, removed: true });
-  rt.patchItem(room.id, sc.itemId, { status: 'pending', retryStopped: true });
+  arrange.setItem(rt, room.id, sc.itemId, { status: 'pending', retryStopped: true });
   await synced(page, app);
   await expect(line).toContainText(/stopped retrying.*after an hour of network errors/);
   await expect(line.getByRole('button', { name: 'Cancel' })).toHaveCount(0);
@@ -154,7 +156,7 @@ async function scheduledWake(page, room, an, idle) {
   // As the timer delivers it ({ kind: 'wake', note }, server/adapters/adapter.mjs).
   const replies = () => store.items(room.id).filter((x) => x.kind === 'agent' && x.handle === 'analyst').length;
   const had = replies();
-  rt.schedule(an.id, { inMs: 1000, note: 'Look at the totals again.' });
+  arrange.schedule(rt, an.id, { inMs: 1000, note: 'Look at the totals again.' });
   await expect.poll(replies, { message: 'the scheduled turn' }).toBeGreaterThan(had);
   await idle();
   await synced(page, app);
@@ -170,19 +172,19 @@ test('#135 a later turn of the same agent has its own sender line with its time 
   // answered it, and the second message showed with no sender line. Here @analyst wakes @reviewer, which answers in the
   // conversation (#372), and @reviewer’s @-mention wakes @analyst again.
   const room = rt.createThread({
-    projectId: Object.values(rt.s.projects)[0].id,
+    projectId: Object.values(rt.store.state.projects)[0].id,
     title: 'Turn checks',
     personaIds: [persona.id, rt.createPersona({ handle: 'reviewer' }).id],
   });
-  const an = rt.sessionsIn(room.id).find((x) => x.handle === 'analyst');
-  const idle = () => expect.poll(() => rt.turns.size + rt.exiting.size, { message: 'the agents to finish', timeout: 20_000 }).toBe(0);
-  rt.agentWake(an.id, 'reviewer', 'Check revision 3.');
+  const an = arrange.agentIn(rt, room.id, 'analyst');
+  const idle = () => expect.poll(() => arrange.liveTurns(rt) + arrange.exitingTurns(rt), { message: 'the agents to finish', timeout: 20_000 }).toBe(0);
+  arrange.wake(rt, an.id, 'reviewer', 'Check revision 3.');
   await idle();
-  rt.deliver(an.id, { kind: 'agent', from: '@reviewer', text: '@analyst revision 3 has one arithmetic gap.' });
+  arrange.deliver(rt, an.id, { kind: 'agent', from: '@reviewer', text: '@analyst revision 3 has one arithmetic gap.' });
   await idle();
   // One turn of two items, as a reply split by a block is: they keep one sender line.
   for (const text of ['Part one.', 'Part two.'])
-    rt.addItem(room.id, { kind: 'agent', sessionId: an.id, personaId: an.personaId, handle: 'analyst', turnId: 'turn_135', text, status: 'done' });
+    arrange.post(rt, room.id, { kind: 'agent', sessionId: an.id, personaId: an.personaId, handle: 'analyst', turnId: 'turn_135', text, status: 'done' });
   await open(page, `#/t/${room.id}`);
   await test.step('the next turn has its own sender line, its time and what woke it; one turn’s two items share one', async () => {
     await expect.poll(async () => (await senders(page, room.id)).length).toBeGreaterThanOrEqual(4);
@@ -194,7 +196,7 @@ test('#135 a later turn of the same agent has its own sender line with its time 
   await test.step('two wakes from two turns each have a sender line in the conversation, and one turn’s two share it', async () => {
     // As agentWake records them while @reviewer was busy, in the conversation since #372: each says the turn it came from.
     for (const [n, text] of ['Check the totals.', 'And the dates, please.', 'And the names.'].entries())
-      rt.addItem(room.id, {
+      arrange.post(rt, room.id, {
         kind: 'agent',
         sessionId: an.id,
         personaId: an.personaId,

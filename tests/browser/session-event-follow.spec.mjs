@@ -3,6 +3,7 @@
 // replaced, and nothing painted off the page after switching conversations back and forth.
 
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, frames, startPostbox, synced } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -21,12 +22,12 @@ function room(replies = 2, filler = 0) {
   const { rt } = app;
   const p = rt.createPersona({ handle: `follow${++n}` });
   const t = rt.createThread({ projectId: 'pr_follow', title: `Follow ${n}`, personaIds: [p.id] });
-  const se = rt.sessionsIn(t.id)[0];
+  const se = arrange.agentIn(rt, t.id);
   rt.toolsFor(se.id).show_block({ block: confirm('c1') });
-  for (let i = 0; i < filler; i++) rt.addItem(t.id, { kind: 'user', text: `Filler ${i}.` });
+  for (let i = 0; i < filler; i++) arrange.post(rt, t.id, { kind: 'user', text: `Filler ${i}.` });
   for (let i = 0; i < replies; i++) {
-    rt.addItem(t.id, { kind: 'user', text: `Question ${i}?` });
-    rt.addItem(t.id, {
+    arrange.post(rt, t.id, { kind: 'user', text: `Question ${i}?` });
+    arrange.post(rt, t.id, {
       kind: 'agent',
       sessionId: se.id,
       personaId: se.personaId,
@@ -40,7 +41,7 @@ function room(replies = 2, filler = 0) {
 }
 /** A session event, heard and drawn. */
 async function sessionEvent(page, se, patch) {
-  app.rt.updateSession(se.id, patch);
+  arrange.setSession(app.rt, se.id, patch);
   await synced(page, app);
   await frames(page);
 }
@@ -61,17 +62,25 @@ test('#564-b1 the open-asks button follows the need, a block asked again, and a 
   await sessionEvent(page, se, { needs: null });
   await expect(button(page, se)).toHaveText('1 open confirmation');
   const side = rt.createThread({ projectId: 'pr_follow', title: 'Side', kind: 'side', parentId: t.id });
-  rt.addItem(side.id, { kind: 'block', sessionId: se.id, personaId: se.personaId, handle: se.handle, valid: true, block: confirm('c2'), answered: false });
+  arrange.post(rt, side.id, {
+    kind: 'block',
+    sessionId: se.id,
+    personaId: se.personaId,
+    handle: se.handle,
+    valid: true,
+    block: confirm('c2'),
+    answered: false,
+  });
   await sessionEvent(page, se, { state: 'think' });
   await expect(button(page, se), 'a side thread’s open block counts').toHaveText('2 open confirmations');
   store.emit('remove', { kind: 'thread', id: side.id });
   await sessionEvent(page, se, { state: 'tool' });
   await expect(button(page, se), 'its side thread gone, it doesn’t').toHaveText('1 open confirmation');
-  rt.patchItem(t.id, c1.id, { answered: true, answer: { action: 'confirm', values: {}, read: true } });
+  arrange.setItem(rt, t.id, c1.id, { answered: true, answer: { action: 'confirm', values: {}, read: true } });
   await sessionEvent(page, se, { state: 'gen' });
   await expect(button(page, se), 'answered').toBeHidden();
-  rt.addItem(t.id, { kind: 'user', text: 'Later.' });
-  rt.bringForward(t.id, c1.id, { what: 'block', title: 'c1' }, { answered: false, answer: null, revision: 2 });
+  arrange.post(rt, t.id, { kind: 'user', text: 'Later.' });
+  arrange.moveToEnd(rt, t.id, c1.id, { what: 'block', title: 'c1' }, { answered: false, answer: null, revision: 2 });
   await sessionEvent(page, se, { state: 'idle' });
   await expect(button(page, se), 'asked again, by a move').toHaveText('1 open confirmation');
 });
@@ -81,9 +90,17 @@ test('#564-b1 when the latest reply is replaced, the reply before it follows the
   const { t, se } = room(2);
   await open(page, t);
   const prev = store.state.items[t.id].filter((x) => x.kind === 'agent').at(-1);
-  const r = rt.addItem(t.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text: 'New.', status: 'done', turnId: 'tu_new' });
+  const r = arrange.post(rt, t.id, {
+    kind: 'agent',
+    sessionId: se.id,
+    personaId: se.personaId,
+    handle: se.handle,
+    text: 'New.',
+    status: 'done',
+    turnId: 'tu_new',
+  });
   await sessionEvent(page, se, { state: 'idle' });
-  rt.patchItem(t.id, r.id, { status: 'replaced', text: '' });
+  arrange.setItem(rt, t.id, r.id, { status: 'replaced', text: '' });
   for (const state of ['think', 'tool', 'gen']) await sessionEvent(page, se, { state });
   const ring = page.locator(`#main [data-key="${prev.id}"] .who pb-ring[data-session="${se.id}"]`);
   await expect(ring, 'the reply before the replaced one follows').toHaveAttribute('state', 'gen');

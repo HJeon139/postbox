@@ -2,6 +2,7 @@
 // each store event a repaint listens to (a session, a thread, a full load) leaves focus on that same node. One helper,
 // run over every view that repaints, so a new view adds one line. Plus Edit’s Cancel and Save, and Escape in the editor.
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, settled, startPostbox, synced } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -11,7 +12,7 @@ const releases = new Map();
 let count = 0;
 test.beforeAll(async () => {
   app = await startPostbox('queue-focus');
-  app.rt.adapters.register({
+  arrange.withAdapter(app.rt, {
     name: 'claude-code',
     folderFor: async () => app.root,
     async deliver(session, _message, ctx) {
@@ -35,7 +36,7 @@ async function room(page) {
   const n = ++count;
   const p = app.rt.createPersona({ handle: `focus${n}`, backend: 'claude-code' });
   const thread = app.rt.createThread({ projectId: Object.keys(app.store.state.projects)[0], title: `Queue focus ${n}`, personaIds: [p.id] });
-  const [se] = app.rt.sessionsIn(thread.id);
+  const [se] = arrange.sessionsIn(app.rt, thread.id);
   app.rt.sendMessage(thread.id, { text: `@${se.handle} start the long job` });
   await expect.poll(() => releases.has(se.id)).toBe(true);
   app.rt.sendMessage(thread.id, { text: `@${se.handle} first follow-up` });
@@ -53,8 +54,8 @@ const mailButton = (page, se) =>
 
 /** The store events a repaint listens to, each sent while something is focused. */
 const pokes = {
-  session: async (_page, { se }) => app.rt.updateSession(se.id, { focusProbe: Date.now() }),
-  thread: async (_page, { thread }) => app.rt.putThread({ ...app.store.state.threads[thread.id] }),
+  session: async (_page, { se }) => arrange.setSession(app.rt, se.id, { focusProbe: Date.now() }),
+  thread: async (_page, { thread }) => arrange.putThread(app.rt, { ...app.store.state.threads[thread.id] }),
   load: async (page) => page.evaluate(async () => (await import('/app/js/client.mjs')).client.emit({ type: 'load' })),
 };
 

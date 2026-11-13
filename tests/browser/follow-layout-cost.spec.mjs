@@ -17,7 +17,7 @@ let app;
 let room = '';
 test.beforeAll(async () => {
   app = await startPostbox('follow-layout-cost');
-  const projectId = Object.values(app.rt.s.projects)[0].id;
+  const projectId = Object.values(app.rt.store.state.projects)[0].id;
   room = app.rt.createThread({ projectId, title: 'Followed', personaIds: [] }).id;
   for (let i = 0; i < 60; i++) app.store.emit('item.add', { threadId: room, item: { id: `it_f${i}`, at: Date.now(), kind: 'user', text: `Line ${i}` } });
 });

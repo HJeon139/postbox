@@ -3,7 +3,7 @@
 // is in the column, so its actions bar sat at the transcript’s left edge, about 350 px left of the line at 1280 px.
 
 import { expect, test } from '@playwright/test';
-import { toggleReaction } from '../../server/reactions.mjs';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 
 const APP = '<main style="padding:12px"><p>The lab</p></main>';
@@ -21,13 +21,13 @@ let n = 0;
 async function seeded(page, width) {
   await page.setViewportSize({ width, height: 900 });
   const { rt } = app;
-  const projectId = Object.values(rt.s.projects)[0].id;
-  const t = rt.createThread({ projectId, title: `Retired actions ${++n}`, personaIds: [rt.personaByHandle('researcher').id] });
-  const tools = rt.toolsFor(rt.sessionsIn(t.id)[0].id);
+  const projectId = Object.values(rt.store.state.projects)[0].id;
+  const t = rt.createThread({ projectId, title: `Retired actions ${++n}`, personaIds: [arrange.persona(rt, 'researcher').id] });
+  const tools = rt.toolsFor(arrange.agentIn(rt, t.id).id);
   const id = `lab${n}`;
   tools.show_app({ id, title: 'Practice lab', code: APP });
-  const itemId = rt.s.apps[id].itemId;
-  toggleReaction(rt, t.id, itemId, '👍');
+  const itemId = rt.store.state.apps[id].itemId;
+  arrange.react(rt, t.id, itemId, '👍');
   rt.startTopic(t.id, itemId);
   tools.show_block({ block: { id: `note${n}`, type: 'card', version: 1, title: 'A note', fallback: 'A note', body: 'Something after the app.' } });
   await page.goto(`${app.origin}/#/t/${t.id}`);

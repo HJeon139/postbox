@@ -10,6 +10,7 @@
 // At 1280 and 375 px. Each test has a conversation of its own. Moved from tools/checks/focus-clear.mjs (#303).
 
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, frames, startPostbox, synced } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -29,11 +30,11 @@ const LONG = Array.from({ length: 6 }, (_, i) => `Shelf note ${i + 1}: the 1874 
 function conversation() {
   const { rt, store } = app;
   const project = Object.values(store.state.projects)[0];
-  const t = rt.createThread({ projectId: project.id, title: 'Focus at the foot', personaIds: [rt.personaByHandle('librarian').id] });
-  const se = rt.sessionsIn(t.id)[0];
-  const reply = (text) => rt.addItem(t.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text, status: 'done' });
+  const t = rt.createThread({ projectId: project.id, title: 'Focus at the foot', personaIds: [arrange.persona(rt, 'librarian').id] });
+  const se = arrange.agentIn(rt, t.id);
+  const reply = (text) => arrange.post(rt, t.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text, status: 'done' });
   for (let i = 1; i <= 12; i++) {
-    rt.addItem(t.id, { kind: 'user', text: `Question ${i}: which shelf holds the 1874 Middlemarch?` });
+    arrange.post(rt, t.id, { kind: 'user', text: `Question ${i}: which shelf holds the 1874 Middlemarch?` });
     reply(`Answer ${i}: the third shelf, by the window.`);
   }
   reply(LONG.join('\n\n'));

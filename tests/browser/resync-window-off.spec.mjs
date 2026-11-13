@@ -2,6 +2,7 @@
 // held, the default page of it, and the transcript then saw a partial room and loaded it all again.
 
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, newestShown, startPostbox, synced, wholeRoom } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -14,9 +15,9 @@ failOnPageErrors(test);
 wholeRoom(test);
 
 test('#1155 a resync with the window off loads the open conversation once, whole', async ({ page }) => {
-  const projectId = /** @type {any} */ (Object.values(app.rt.s.projects)[0]).id;
+  const projectId = /** @type {any} */ (Object.values(app.rt.store.state.projects)[0]).id;
   const room = app.rt.createThread({ projectId, title: 'A room of 300', personaIds: [] });
-  for (let i = 0; i < 300; i++) app.rt.addItem(room.id, { kind: 'user', text: `Message ${i}` });
+  for (let i = 0; i < 300; i++) arrange.post(app.rt, room.id, { kind: 'user', text: `Message ${i}` });
   await page.goto(`${app.origin}/#/t/${room.id}`);
   await synced(page, app);
   await newestShown(page, app, room.id);

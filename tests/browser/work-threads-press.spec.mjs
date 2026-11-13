@@ -7,6 +7,7 @@
 
 import { expect, test } from '@playwright/test';
 import { turnLine } from '../../shared/work.mjs';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, frames, PHONE, startPostbox, synced } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -24,12 +25,12 @@ test.beforeAll(async () => {
   app = await startPostbox('work-threads-press');
   const { rt, store } = app;
   conv = Object.values(store.state.threads).find((t) => t.title === 'Citation fixes');
-  se = rt.sessionsIn(conv.id)[0];
+  se = arrange.agentIn(rt, conv.id);
   // A turn of work with one command, as the ledger records it (server/ledger.mjs).
   const at = Date.now() - 60_000;
   const base = { turnId: TURN, threadId: conv.id, sessionId: se.id, handle: se.handle, at };
-  rt.ledger.add(conv.id, { ...base, kind: 'turn', id: TURN, startedAt: at, status: 'done', toolCalls: 1, ms: 4000 });
-  rt.ledger.add(conv.id, {
+  arrange.addWork(rt, conv.id, { ...base, kind: 'turn', id: TURN, startedAt: at, status: 'done', toolCalls: 1, ms: 4000 });
+  arrange.addWork(rt, conv.id, {
     ...base,
     kind: 'command',
     id: COMMAND,
@@ -40,7 +41,7 @@ test.beforeAll(async () => {
     exit: 0,
     ms: 900,
   });
-  const root = store.items(conv.id).find((i) => i.kind === 'agent') ?? rt.addItem(conv.id, { kind: 'agent', handle: se.handle, text: 'Done.' });
+  const root = store.items(conv.id).find((i) => i.kind === 'agent') ?? arrange.post(rt, conv.id, { kind: 'agent', handle: se.handle, text: 'Done.' });
   topic = rt.startTopic(conv.id, root.id).threadId;
 });
 test.afterAll(async () => {
@@ -51,14 +52,14 @@ failOnPageErrors(test);
 let n = 0;
 /** Refills the Work pane: a patch to the turn’s work, heard by the page and drawn. Returns its new line. */
 async function refillWork(page) {
-  app.rt.ledger.patch(conv.id, TURN, { ms: 4000 + ++n * 1000 });
+  arrange.patchWork(app.rt, conv.id, TURN, { ms: 4000 + ++n * 1000 });
   await synced(page, app);
   await frames(page);
   return turnLine(app.store.state.work[conv.id], TURN);
 }
 /** Refills the Threads page: a change to a session of the conversation, heard by the page. */
 async function refillThreads(page) {
-  app.rt.updateSession(se.id, { ctx: ++n });
+  arrange.setSession(app.rt, se.id, { ctx: ++n });
   await synced(page, app);
   await frames(page);
 }

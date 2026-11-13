@@ -10,6 +10,7 @@
 // An app in the transcript moving under a resting pointer is #38’s, in app-send.spec.mjs.
 
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { frameOf } from './app-pointer.mjs';
 import { failOnPageErrors, frames, settled, startPostbox, synced } from './postbox.mjs';
 
@@ -38,20 +39,20 @@ test.beforeEach(async ({ page }) => {
 /** A room of its own, open in the page, with @librarian to show apps. */
 async function room(page, title) {
   const { rt } = app;
-  const t = rt.createThread({ projectId: Object.values(rt.s.projects)[0].id, title, personaIds: [rt.personaByHandle('librarian').id] });
-  const tools = rt.toolsFor(rt.sessionsIn(t.id)[0].id);
+  const t = rt.createThread({ projectId: Object.values(rt.store.state.projects)[0].id, title, personaIds: [arrange.persona(rt, 'librarian').id] });
+  const tools = rt.toolsFor(arrange.agentIn(rt, t.id).id);
   await page.goto(`${app.origin}/#/t/${t.id}`);
   await synced(page, app);
   const lines = async (n, what) => {
     for (let i = 1; i <= n; i++)
-      rt.addItem(t.id, { kind: 'user', text: `${what} ${i}: a line to give the page some length, long enough to wrap in a narrow window.` });
+      arrange.post(rt, t.id, { kind: 'user', text: `${what} ${i}: a line to give the page some length, long enough to wrap in a narrow window.` });
     await synced(page, app);
   };
   /** Shows an app named for this room, and waits for it to pass its check and load. */
   const show = async (title) => {
     const id = `${title.toLowerCase().replace(/\W+/g, '-')}-${t.id}`;
     tools.show_app({ id, title, code: TALL, permissions: [] });
-    await expect.poll(() => rt.s.apps[id]?.check.status, { message: `${title} to pass its check` }).toMatch(/^(passed|note)$/);
+    await expect.poll(() => rt.store.state.apps[id]?.check.status, { message: `${title} to pass its check` }).toMatch(/^(passed|note)$/);
     await expect(frameOf(page, title), `${title} to load`).toHaveAttribute('data-sized', '1');
     return id;
   };

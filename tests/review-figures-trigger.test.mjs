@@ -10,12 +10,13 @@ import { test } from 'node:test';
 import { onTool } from '../server/remote/turns-tools.mjs';
 import { parseScenario } from '../tools/uat/scenario.mjs';
 import { TRIGGERS, unknownTriggers } from '../tools/uat/triggers.mjs';
+import * as arrange from './arrange.mjs';
 import { png, reviewBlock, setup } from './review-files-fixture.mjs';
 
 const HOSTS = { hosts: [{ label: 'host1', id: 'host_1' }], placement: { alpha: 'host1' } };
 const factsOf = (f, hosts) => ({
   threads: [f.t.id],
-  state: { items: { [f.t.id]: f.store.items(f.t.id) }, sessions: f.rt.s.sessions },
+  state: { items: { [f.t.id]: f.store.items(f.t.id) }, sessions: f.rt.store.state.sessions },
   ...(hosts ? { hosts } : {}),
 });
 const local = (facts) => TRIGGERS['review-figures-shown'].run(facts);
@@ -35,8 +36,8 @@ async function withFigures() {
 /** Shows a block from a host, as server/remote/turns.mjs applies the daemon's call, in a turn Postbox recorded as remote. */
 async function fromHost(f, name, args) {
   return f.during(async () => {
-    const live = f.rt.turns.get(f.se.id);
-    f.rt.updateSession(f.se.id, { remoteTurn: { hostId: 'host_1', turn: 't_host', rtTurn: live.id, state: 'running' } });
+    const live = arrange.liveTurn(f.rt, f.se.id);
+    arrange.setSession(f.rt, f.se.id, { remoteTurn: { hostId: 'host_1', turn: 't_host', rtTurn: live.id, state: 'running' } });
     const replies = [];
     const link = { send: (m) => replies.push(m) > 0 };
     const rts = { rt: f.rt, byTurn: new Map([['t_host', { sessionId: f.se.id, rt: live }]]), needed: new Map([['host_1', { link }]]) };

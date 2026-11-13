@@ -4,6 +4,7 @@
 // queue badge, with the composer saying it waited for a connection that was open. It is now sent again shortly.
 
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { allowPageError, failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -14,7 +15,7 @@ const holds = new Set();
 
 test.beforeAll(async () => {
   app = await startPostbox('outbox-retry');
-  app.rt.adapters.register({
+  arrange.withAdapter(app.rt, {
     name: 'claude-code',
     folderFor: async () => app.root,
     async deliver(session, _message, ctx) {
@@ -40,7 +41,7 @@ async function busyAgent(page) {
   const n = ++count;
   const persona = app.rt.createPersona({ handle: `worker-${n}`, backend: 'claude-code' });
   const thread = app.rt.createThread({ projectId: Object.keys(app.store.state.projects)[0], title: `Outbox ${n}`, personaIds: [persona.id] });
-  const [worker] = app.rt.sessionsIn(thread.id);
+  const [worker] = arrange.sessionsIn(app.rt, thread.id);
   await page.goto(`${app.origin}/#/t/${thread.id}`);
   await synced(page, app);
   holds.add(worker.id);
@@ -65,7 +66,7 @@ test('#1126 a send whose POST fails while the stream is open is sent again, and 
   await expect.poll(tried, { message: 'the first POST failed' }).toBeGreaterThan(0);
   expect(await page.evaluate(async () => (await import('/app/js/client.mjs')).client.connection), 'the stream stays open').toBe('open');
   await expect
-    .poll(() => (app.rt.s.threads[thread.id].queue ?? []).map((q) => q.text), { message: 'the message reaches the agent’s queue', timeout: 15000 })
+    .poll(() => (app.rt.thread(thread.id).queue ?? []).map((q) => q.text), { message: 'the message reaches the agent’s queue', timeout: 15000 })
     .toEqual([`@${worker.handle} sent while one POST fails`]);
   const badge = page
     .locator('.agent-row')
@@ -95,7 +96,7 @@ test('#1126 offline, a failed send still waits for the connection, and isn’t s
   await page.context().setOffline(false);
   await page.evaluate(async () => (await import('/app/js/client.mjs')).connect());
   await synced(page, app);
-  await expect.poll(() => (app.rt.s.threads[thread.id].queue ?? []).length).toBe(1);
+  await expect.poll(() => (app.rt.thread(thread.id).queue ?? []).length).toBe(1);
   releases.get(worker.id)?.();
 });
 

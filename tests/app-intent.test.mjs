@@ -8,6 +8,7 @@ import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
 import { INTENT_CHARS } from '../shared/limits.mjs';
 import { TOOL_DEFS } from '../shared/mcp-tools.mjs';
+import * as arrange from './arrange.mjs';
 
 class Quiet {
   name = 'mock';
@@ -23,7 +24,7 @@ function setup() {
   store.emit('project', { id: 'p1', name: 'P', folder: '/tmp' });
   const a = rt.createPersona({ handle: 'researcher' });
   const t = rt.createThread({ projectId: 'p1', title: 'T', personaIds: [a.id] });
-  const [se] = rt.sessionsIn(t.id);
+  const [se] = arrange.sessionsIn(rt, t.id);
   return { store, tools: rt.toolsFor(se.id) };
 }
 const intents = (store, id) => store.state.apps[id].versions.map((v) => v.intent);

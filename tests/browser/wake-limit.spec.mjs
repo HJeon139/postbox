@@ -3,8 +3,8 @@
 // The pair limit between two agents (#372) is gone since #492 (tests/browser/wake-chain.spec.mjs).
 
 import { expect, test } from '@playwright/test';
-import { updateThread } from '../../server/thread-write.mjs';
 import { DEFAULT_HOP_LIMIT } from '../../shared/limits.mjs';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -30,49 +30,49 @@ test.beforeAll(async () => {
   store.emit('project', { id: 'pr_wakes', name: 'Wakes', folder: app.root });
   const personas = ['waker', 'woken'].map((handle) => rt.createPersona({ handle, backend: 'mock', permissionMode: 'auto', tools: [] }));
   room = rt.createThread({ projectId: 'pr_wakes', title: 'Wakes', personaIds: personas.map((p) => p.id) });
-  const waker = rt.sessionsIn(room.id).find((se) => se.handle === 'waker');
+  const waker = arrange.agentIn(rt, room.id, 'waker');
   /**
    * The room’s limit of 3 (#1035), then 3 wakes of woken, allowed so the mock agents' answers don't reach the limit
    * first, then one past it.
    */
   const pastLimit = (se) => {
-    updateThread(rt, se.threadId, { chainLimit: 3 });
-    for (let i = 0; i < 3; i++) rt.agentWake(se.id, 'woken', `check ${i + 1}`, { confirmed: true });
-    rt.agentWake(se.id, 'woken', 'check 4');
+    arrange.setThread(rt, se.threadId, { chainLimit: 3 });
+    for (let i = 0; i < 3; i++) arrange.wake(rt, se.id, 'woken', `check ${i + 1}`, { confirmed: true });
+    arrange.wake(rt, se.id, 'woken', 'check 4');
   };
-  const wakerIn = (t) => rt.sessionsIn(t.id).find((se) => se.handle === 'waker');
+  const wakerIn = (t) => arrange.agentIn(rt, t.id, 'waker');
   pastLimit(waker);
   // A card waits, and a third agent's hand-off that needs one of its own is held on it (#439).
   const other = rt.createPersona({ handle: 'other', backend: 'mock', permissionMode: 'auto', tools: [] });
   heldRoom = rt.createThread({ projectId: 'pr_wakes', title: 'Held', personaIds: [...personas, other].map((p) => p.id) });
-  const [hw, hx] = ['waker', 'other'].map((h) => rt.sessionsIn(heldRoom.id).find((se) => se.handle === h));
+  const [hw, hx] = ['waker', 'other'].map((h) => arrange.agentIn(rt, heldRoom.id, h));
   pastLimit(hw);
-  rt.agentWake(hx.id, 'waker', 'count the lines in work/');
+  arrange.wake(rt, hx.id, 'waker', 'count the lines in work/');
   // A card whose target you then write to closes, retired (#439).
   retiredRoom = rt.createThread({ projectId: 'pr_wakes', title: 'Retired', personaIds: personas.map((p) => p.id) });
-  const rw = rt.sessionsIn(retiredRoom.id).find((se) => se.handle === 'waker');
+  const rw = arrange.agentIn(rt, retiredRoom.id, 'waker');
   pastLimit(rw);
   rt.sendMessage(retiredRoom.id, { text: '@woken it’s done, thanks' });
   // A card whose agent you delete closes, with nothing to answer (#693).
   closedRoom = rt.createThread({ projectId: 'pr_wakes', title: 'Closed', personaIds: personas.map((p) => p.id) });
-  const cw = rt.sessionsIn(closedRoom.id).find((se) => se.handle === 'waker');
+  const cw = arrange.agentIn(rt, closedRoom.id, 'waker');
   pastLimit(cw);
   rt.deleteSession(cw.id);
   // A room with nothing set, past the default of 1,000 (#1035): its count set directly, rather than 1,000 wakes.
   defaultRoom = rt.createThread({ projectId: 'pr_wakes', title: 'Default', personaIds: personas.map((p) => p.id) });
-  updateThread(rt, defaultRoom.id, { hops: 1000 });
-  rt.agentWake(wakerIn(defaultRoom).id, 'woken', 'check 1,001');
+  arrange.setThread(rt, defaultRoom.id, { hops: 1000 });
+  arrange.wake(rt, wakerIn(defaultRoom).id, 'woken', 'check 1,001');
   // At 20 wakes the room is set to 5, so the next asks: its card says 5, not the 20 its number would give (#1035).
   midRoom = rt.createThread({ projectId: 'pr_wakes', title: 'Mid-chain', personaIds: personas.map((p) => p.id) });
   oldCardRoom = rt.createThread({ projectId: 'pr_wakes', title: 'Old card', personaIds: personas.map((p) => p.id) });
   for (const t of [midRoom, oldCardRoom]) {
-    updateThread(rt, t.id, { hops: 20, chainLimit: 5 });
-    rt.agentWake(wakerIn(t).id, 'woken', 'check 21');
+    arrange.setThread(rt, t.id, { hops: 20, chainLimit: 5 });
+    arrange.wake(rt, wakerIn(t).id, 'woken', 'check 21');
   }
   // A card raised before #1035 kept no limit: it says the one before its number, as it always did. Without a card,
   // the test says so on its assertion.
   const old = store.items(oldCardRoom.id).find((x) => x.kind === 'hop');
-  if (old) rt.patchItem(oldCardRoom.id, old.id, { limit: undefined });
+  if (old) arrange.setItem(rt, oldCardRoom.id, old.id, { limit: undefined });
 });
 test.afterAll(async () => {
   await app?.stop();

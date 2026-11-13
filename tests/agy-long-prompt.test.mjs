@@ -12,6 +12,7 @@ import { AntigravityCliAdapter } from '../server/adapters/antigravity-cli.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
 import { agyTurnLines, tooLongMessage, turnContext } from './agy-long-prompt-fixture.mjs';
+import * as arrange from './arrange.mjs';
 import { settle } from './side-threads-fixture.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
@@ -120,7 +121,7 @@ test('#362: a turn the operating system refused ends failed with the person’s 
   store.emit('project', { id: 'p1', name: 'P', folder: root });
   const p = rt.createPersona({ handle: 'gem', backend: 'antigravity-cli', permissionMode: 'bypass' });
   const t = rt.createThread({ projectId: 'p1', title: 'T', personaIds: [p.id] });
-  const [se] = rt.sessionsIn(t.id);
+  const [se] = arrange.sessionsIn(rt, t.id);
   rt.sendMessage(t.id, { text: `@gem ${'x'.repeat(40_000)}` });
   rt.sendMessage(t.id, { text: '@gem and this, next' });
   assert.equal(store.state.threads[t.id].queue?.length, 1, 'the second message waits for the first turn');

@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { formatMessage } from '../server/adapters/guide.mjs';
 import * as limits from '../shared/limits.mjs';
+import * as arrange from './arrange.mjs';
 import { settle, setup, turn } from './blocks-fixture.mjs';
 
 const DRAFT = ['# Plan', '', 'We: the quoted text, then more.', 'Last line.'].join('\n');
@@ -172,7 +173,7 @@ test('#1143: an answered review from before threads gets its answer’s comments
   const { rt, t, item, update } = await answered([ranged, onLast]);
   // As an answer was stored before #1143: its comments only in the answer.
   const { threads: _, ...block } = item().block;
-  rt.patchItem(t.id, item().id, { block, reviews: undefined });
+  arrange.setItem(rt, t.id, item().id, { block, reviews: undefined });
   assert.equal(item().block.threads, undefined);
   const r = update({ ...draft, revision: 2, content: `Top.\n${DRAFT}` });
   assert.equal(r.ok, true, r.message);

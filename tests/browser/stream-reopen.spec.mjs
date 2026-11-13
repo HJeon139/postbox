@@ -3,6 +3,7 @@
 // reconnect, it sent the outbox again, reset the app checks' retries and repainted every composer, on every switch.
 
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -14,11 +15,11 @@ test.afterAll(async () => app?.stop());
 failOnPageErrors(test);
 
 test('#1155 switching conversations reconnects the stream without a connection change', async ({ page }) => {
-  const projectId = /** @type {any} */ (Object.values(app.rt.s.projects)[0]).id;
+  const projectId = /** @type {any} */ (Object.values(app.rt.store.state.projects)[0]).id;
   const a = app.rt.createThread({ projectId, title: 'Room A', personaIds: [] });
   const b = app.rt.createThread({ projectId, title: 'Room B', personaIds: [] });
-  app.rt.addItem(a.id, { kind: 'user', text: 'In A' });
-  app.rt.addItem(b.id, { kind: 'user', text: 'In B' });
+  arrange.post(app.rt, a.id, { kind: 'user', text: 'In A' });
+  arrange.post(app.rt, b.id, { kind: 'user', text: 'In B' });
   let streams = 0;
   page.on('request', (r) => r.url().includes('/api/stream') && streams++);
   await page.goto(`${app.origin}/#/t/${a.id}`);

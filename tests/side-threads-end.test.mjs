@@ -5,6 +5,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { handleMcp } from '../server/mcp.mjs';
+import * as arrange from './arrange.mjs';
 import { settle, setup, sleep } from './side-threads-fixture.mjs';
 
 /** @alpha’s turn with a subagent at work, held until release(). */
@@ -24,13 +25,13 @@ function withSubagent() {
   return { ...ctx, release: () => release() };
 }
 const call = (rt, se, name, args) =>
-  handleMcp(rt, se.id, { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }, rt.turns.get(se.id)?.token ?? null);
+  handleMcp(rt, se.id, { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }, arrange.turnToken(rt, se.id));
 
 test('#229: End marks the subagent ending, and the agent hears it on its next Postbox tool result in the turn, once', async () => {
   const { store, rt, adapter, t, alpha, release } = withSubagent();
   await sleep(5);
   assert.deepEqual(rt.requestStop(alpha.id, { subagent: 'toolu_reader' }), { ending: true });
-  assert.ok(rt.turns.has(alpha.id), 'the turn goes on: only the agent can stop one subagent');
+  assert.ok(arrange.running(rt, alpha.id), 'the turn goes on: only the agent can stop one subagent');
   assert.deepEqual(store.state.sessions[alpha.id].endingSubagents, ['toolu_reader']);
   const r = await call(rt, alpha, 'define_term', { term: 'Word', definition: 'A run of letters.' });
   const text = r.result.content[0].text;
@@ -54,7 +55,7 @@ test('#229: with no Postbox tool call before the turn ends, the note isn’t giv
   await sleep(5);
   rt.requestStop(alpha.id, { subagent: 'toolu_reader' });
   assert.deepEqual(rt.requestStop(alpha.id, { subagent: 'toolu_reader' }), { ending: true }, 'a second press changes nothing');
-  assert.equal(rt.s.sessions[alpha.id].context.filter((x) => x.includes('URGENT')).length, 1);
+  assert.equal(rt.session(alpha.id).context.filter((x) => x.includes('URGENT')).length, 1);
   release();
   await settle(rt);
   assert.throws(() => rt.requestStop(alpha.id, { subagent: 'toolu_reader' }), /That subagent has already ended/);

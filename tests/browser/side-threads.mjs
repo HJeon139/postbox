@@ -4,6 +4,7 @@
 // its turns. Since #372 a wake never makes a side thread: the ones these specs open are history, built directly.
 
 import { expect } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 
 /**
  * Registers the fake backend on a spec’s Postbox and moves @indexer and @researcher to it. turns lists every turn it
@@ -17,7 +18,7 @@ export function heldBackend(app) {
   /** @type {Map<string, (ctx: any) => any>} */
   const scripts = new Map();
   const releases = new Map();
-  rt.adapters.register({
+  arrange.withAdapter(rt, {
     name: 'claude-code',
     async folderFor() {
       return app.root;
@@ -58,9 +59,9 @@ export function sideRoom(app, title) {
     title,
     personaIds: [personaNamed('indexer').id, personaNamed('researcher').id],
   });
-  const sessionIn = (handle) => rt.sessionsIn(room.id).find((x) => x.handle === handle);
+  const sessionIn = (handle) => arrange.agentIn(rt, room.id, handle);
   const [indexer, researcher] = [sessionIn('indexer'), sessionIn('researcher')];
-  const ids = () => rt.sessionsIn(room.id).map((x) => x.id);
+  const ids = () => arrange.sessionsIn(rt, room.id).map((x) => x.id);
   return {
     room,
     indexer,
@@ -69,26 +70,34 @@ export function sideRoom(app, title) {
     sideOf: () => Object.values(store.state.threads).find((t) => t.kind === 'side' && t.parentId === room.id),
     /** @indexer ↔ @researcher, with @indexer’s message in it and its line in the conversation. */
     oldSide(text = 'Which editions differ?') {
-      const side = rt.putThread({
+      const side = arrange.putThread(rt, {
         ...{ id: `th_side${room.id.slice(3)}`, projectId: room.projectId, title: 'indexer ↔ researcher', kind: 'side', parentId: room.id },
         ...{ pair: 'indexer|researcher', woke: 'researcher', members: [], lastSpeaker: null, hops: 0, queue: [], createdAt: Date.now() },
       });
-      rt.addItem(room.id, { kind: 'sidelink', sideThreadId: side.id, from: 'indexer', to: 'researcher', count: 0 });
-      rt.addItem(side.id, { kind: 'agent', sessionId: indexer.id, personaId: indexer.personaId, handle: 'indexer', text, status: 'done', hop: 1 });
+      arrange.post(rt, room.id, { kind: 'sidelink', sideThreadId: side.id, from: 'indexer', to: 'researcher', count: 0 });
+      arrange.post(rt, side.id, { kind: 'agent', sessionId: indexer.id, personaId: indexer.personaId, handle: 'indexer', text, status: 'done', hop: 1 });
       return store.state.threads[side.id];
     },
     /** A turn of the session in the side thread, woken there by @from, as deliverWake started one before #372. */
     runIn(side, sessionId, text, from = 'indexer') {
-      rt.deliver(sessionId, { kind: 'agent', from: `@${from}`, text }, { threadId: side.id });
+      arrange.deliver(rt, sessionId, { kind: 'agent', from: `@${from}`, text }, { threadId: side.id });
     },
     busy: (id) => ['think', 'gen', 'tool', 'needs'].includes(store.state.sessions[id]?.state),
     wake(from, handle, text) {
-      rt.putThread({ ...store.state.threads[room.id], hops: 0 });
-      return rt.agentWake(from, handle, text);
+      arrange.putThread(rt, { ...store.state.threads[room.id], hops: 0 });
+      return arrange.wake(rt, from, handle, text);
     },
-    idle: () => expect.poll(() => ids().some((id) => rt.turns.has(id) || rt.exiting.has(id)), { message: 'the room’s agents to finish' }).toBe(false),
+    idle: () =>
+      expect.poll(() => ids().some((id) => arrange.running(rt, id) || arrange.exiting(rt, id)), { message: 'the room’s agents to finish' }).toBe(false),
     stop() {
-      for (const id of ids()) if (rt.turns.has(id)) rt.stop(id);
+      for (const id of ids()) if (arrange.running(rt, id)) arrange.stopTurn(rt, id);
     },
   };
 }
+
+/** An agent’s row in the sidebar, the li around its button. @param {import('@playwright/test').Page} page @param {string} handle */
+export const row = (page, handle) => page.locator('.rail .agent-row').filter({ has: page.locator('.agent-btn b', { hasText: new RegExp(`^${handle}$`) }) });
+/** Each element’s text, its white space collapsed. @param {import('@playwright/test').Locator} locator */
+export const words = async (locator) => (await locator.allInnerTexts()).map((t) => t.replace(/\s+/g, ' ').trim());
+/** A side thread’s line in its conversation. @param {import('@playwright/test').Page} page */
+export const sideLine = (page) => page.locator('#main .pill', { hasText: 'asked' });

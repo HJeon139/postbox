@@ -3,6 +3,7 @@
 // a table that fits shows no fade. The scroll region is a named tab stop, so a keyboard can scroll it too.
 
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, focusIs, settled, startPostbox, synced } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -37,8 +38,8 @@ test.beforeAll(async () => {
   app = await startPostbox('table-scroll-cue');
   const { rt, store } = app;
   const project = Object.values(store.state.projects)[0];
-  t = rt.createThread({ projectId: project.id, title: 'Book shelf', personaIds: [rt.personaByHandle('librarian').id] });
-  const tools = rt.toolsFor(rt.sessionsIn(t.id)[0].id);
+  t = rt.createThread({ projectId: project.id, title: 'Book shelf', personaIds: [arrange.persona(rt, 'librarian').id] });
+  const tools = rt.toolsFor(arrange.agentIn(rt, t.id).id);
   tools.show_block({ block: wide });
   tools.show_block({ block: narrow });
 });

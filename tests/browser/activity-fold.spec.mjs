@@ -4,6 +4,7 @@
 // with the steps’ labels as text, so Find still finds them; its first open builds the list, and it stays built.
 
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, focusIs, openAs, startPostbox } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -46,13 +47,13 @@ async function seeded(page, count = 3) {
   const { rt, store } = app;
   const p = rt.createPersona({ handle: `folder${++rooms}` });
   const t = rt.createThread({ projectId: 'pr_fold', title: `Fold ${rooms}`, personaIds: [p.id] });
-  const se = rt.sessionsIn(t.id)[0];
+  const se = arrange.agentIn(rt, t.id);
   let last = '';
   for (let i = 0; i < count; i++) {
-    if (i % 3 === 0) rt.addItem(t.id, { kind: 'user', text: `Message ${i}: carry on.`, status: 'done' });
+    if (i % 3 === 0) arrange.post(rt, t.id, { kind: 'user', text: `Message ${i}: carry on.`, status: 'done' });
     else {
       const reply = { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, status: 'done' };
-      last = rt.addItem(t.id, { ...reply, text: `Reply ${i} says what it found.`, activity: { steps: steps(i) } }).id;
+      last = arrange.post(rt, t.id, { ...reply, text: `Reply ${i} says what it found.`, activity: { steps: steps(i) } }).id;
     }
   }
   await page.goto(`${app.origin}/#/t/${t.id}`);

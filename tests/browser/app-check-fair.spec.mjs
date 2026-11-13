@@ -8,6 +8,7 @@
 //   their names inside), nor is a backing the color of the page behind a label, nor a legend’s frame.
 
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 
 failOnPageErrors(test);
@@ -107,15 +108,19 @@ test.beforeAll(async ({ browser }) => {
   app = await startPostbox('app-check-fair');
   const { rt } = app;
   // The agent hears a failed check and doesn’t answer, so each app keeps what its first check found.
-  rt.adapters.register({ name: 'mock', async deliver() {} });
-  const t = rt.createThread({ projectId: Object.values(rt.s.projects)[0].id, title: 'Fair', personaIds: [rt.createPersona({ handle: 'drawer' }).id] });
-  const tools = rt.toolsFor(rt.sessionsIn(t.id)[0].id);
+  arrange.withAdapter(rt, { name: 'mock', async deliver() {} });
+  const t = rt.createThread({
+    projectId: Object.values(rt.store.state.projects)[0].id,
+    title: 'Fair',
+    personaIds: [rt.createPersona({ handle: 'drawer' }).id],
+  });
+  const tools = rt.toolsFor(arrange.agentIn(rt, t.id).id);
   for (const [id, code] of Object.entries(APPS)) tools.show_app({ id, title: id, code });
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 }, colorScheme: 'light' });
   await page.goto(`${app.origin}/#/t/${t.id}`);
   await synced(page, app);
   await expect
-    .poll(() => Object.keys(APPS).filter((id) => rt.s.apps[id].check.status === 'pending'), { message: 'every app checked', timeout: 90_000 })
+    .poll(() => Object.keys(APPS).filter((id) => rt.store.state.apps[id].check.status === 'pending'), { message: 'every app checked', timeout: 90_000 })
     .toEqual([]);
   await page.close();
 });
@@ -123,7 +128,7 @@ test.afterAll(async () => {
   await app?.stop();
 });
 
-const check = (id) => app.rt.s.apps[id].check;
+const check = (id) => app.rt.store.state.apps[id].check;
 const says = (id) => (check(id).problems ?? []).map((p) => `${p.code}: ${p.message}`).join('\n') || 'no problems';
 
 for (const [id, what] of [

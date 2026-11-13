@@ -4,6 +4,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import * as arrange from './arrange.mjs';
 import { settle, setup } from './side-threads-fixture.mjs';
 
 /** A turn that takes a step, waits for the test, then writes. */
@@ -32,7 +33,7 @@ test('words written after another message start a new part at the end; the steps
   f.adapter.next.push(turn.step);
   f.rt.sendMessage(f.t.id, { text: '@alpha look at the file' });
   await until(() => agentItems(f).length === 1);
-  const posted = f.rt.addItem(f.t.id, { kind: 'user', text: 'While you look: it’s the second one.' });
+  const posted = arrange.post(f.rt, f.t.id, { kind: 'user', text: 'While you look: it’s the second one.' });
   turn.go();
   await settle(f.rt);
 
@@ -207,7 +208,7 @@ test('a step taken after a post below the reply shows in the part its words star
   });
   f.rt.sendMessage(f.t.id, { text: '@alpha how long is it?' });
   await until(() => agentItems(f).some((it) => it.text === 'Let me look.'));
-  f.rt.addItem(f.t.id, { kind: 'user', text: 'It’s short.' });
+  arrange.post(f.rt, f.t.id, { kind: 'user', text: 'It’s short.' });
   go();
   await until(() => checked);
 

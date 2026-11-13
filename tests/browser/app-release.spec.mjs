@@ -12,6 +12,7 @@
 //   count of live iframes after a switch isn’t a spec: a heap’s timing isn’t the page’s. The PR measures it.)
 
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { frameOf } from './app-pointer.mjs';
 import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 
@@ -65,12 +66,12 @@ test.beforeEach(async ({ page }) => {
 /** A room with n apps from @librarian, and a room with none to switch to. */
 async function rooms(width, n) {
   const { rt } = app;
-  const projectId = Object.values(rt.s.projects)[0].id;
-  const librarian = rt.personaByHandle('librarian').id;
+  const projectId = Object.values(rt.store.state.projects)[0].id;
+  const librarian = arrange.persona(rt, 'librarian').id;
   const apps = rt.createThread({ projectId, title: `Apps ${width}`, personaIds: [librarian] });
   const other = rt.createThread({ projectId, title: `Elsewhere ${width}`, personaIds: [] });
-  rt.addItem(other.id, { kind: 'user', text: 'Nothing to see here.' });
-  const tools = rt.toolsFor(rt.sessionsIn(apps.id)[0].id);
+  arrange.post(rt, other.id, { kind: 'user', text: 'Nothing to see here.' });
+  const tools = rt.toolsFor(arrange.agentIn(rt, apps.id).id);
   const titles = Array.from({ length: n }, (_, i) => `App ${i + 1} at ${width}`);
   return { apps, other, tools, titles };
 }
@@ -80,7 +81,7 @@ async function showAll(page, tools, titles, threadId) {
   for (const title of titles) {
     const id = `${title.replace(/\W+/g, '-')}-${threadId}`;
     tools.show_app({ id, title, code: CODE, permissions: [] });
-    await expect.poll(() => app.rt.s.apps[id]?.check.status, { message: `${title} to pass its check` }).toMatch(/^(passed|note)$/);
+    await expect.poll(() => app.rt.store.state.apps[id]?.check.status, { message: `${title} to pass its check` }).toMatch(/^(passed|note)$/);
     await expect(frameOf(page, title), `${title} to load`).toHaveAttribute('data-sized', '1');
   }
 }
@@ -129,11 +130,11 @@ for (const width of [375, 1280])
 
     test('#930 closing the side panel leaves no observer watching its app’s body', async ({ page }) => {
       const { rt } = app;
-      const projectId = Object.values(rt.s.projects)[0].id;
+      const projectId = Object.values(rt.store.state.projects)[0].id;
       const t = rt.createThread({ projectId, title: `Side ${width}`, personaIds: [] });
-      rt.addItem(t.id, { kind: 'user', text: 'The conversation.' });
-      const side = rt.createThread({ projectId, title: `A side ${width}`, kind: 'side', parentId: t.id, personaIds: [rt.personaByHandle('librarian').id] });
-      const tools = rt.toolsFor(rt.sessionsIn(side.id)[0].id);
+      arrange.post(rt, t.id, { kind: 'user', text: 'The conversation.' });
+      const side = rt.createThread({ projectId, title: `A side ${width}`, kind: 'side', parentId: t.id, personaIds: [arrange.persona(rt, 'librarian').id] });
+      const tools = rt.toolsFor(arrange.agentIn(rt, side.id).id);
       await page.goto(`${app.origin}/#/t/${t.id}/side/${side.id}`);
       await synced(page, app);
       const title = `In the side ${width}`;

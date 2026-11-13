@@ -12,6 +12,7 @@
 import { readFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
 import { createStreamMapper } from '../../server/adapters/claude-stream.mjs';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 
 const RECORDED = readFileSync(new URL('../fixtures/claude-code/thinking-subagent.jsonl', import.meta.url), 'utf8')
@@ -30,8 +31,8 @@ let indexer;
 test.beforeAll(async () => {
   app = await startPostbox('agent-subagents');
   planning = Object.values(app.store.state.threads).find((t) => t.title === 'Index planning');
-  indexer = app.rt.sessionsIn(planning.id).find((x) => x.handle === 'indexer');
-  app.rt.adapters.register({
+  indexer = arrange.agentIn(app.rt, planning.id, 'indexer');
+  arrange.withAdapter(app.rt, {
     name: 'claude-code',
     async folderFor() {
       return app.root;
@@ -65,7 +66,7 @@ const THREE = ['a', 'b', 'c'].map((n, i) => ({
 }));
 
 async function atWork(page, { open = false } = {}) {
-  app.rt.updateSession(indexer.id, { state: 'tool', subagents: THREE });
+  arrange.setSession(app.rt, indexer.id, { state: 'tool', subagents: THREE });
   await page.goto(`${app.origin}/#/t/${planning.id}`);
   await synced(page, app);
   if (open) await page.locator('.rail').getByRole('button', { name: 'Show indexer’s 3 subagents' }).click();
@@ -73,7 +74,7 @@ async function atWork(page, { open = false } = {}) {
 /** How many subagent rings a ring draws: its `subs` attribute holds one entry each (app/js/ring.mjs, subsAttr). */
 const subRings = (ring) => ring.evaluate((el) => (el.getAttribute('subs') ?? '').split(',').filter(Boolean).length);
 const indexerRow = (page) => page.locator('.rail .agent-row').filter({ has: page.locator('.agent-btn b', { hasText: /^indexer$/ }) });
-test.afterEach(() => app.rt.updateSession(indexer.id, { state: 'idle', subagents: [] }));
+test.afterEach(() => arrange.setSession(app.rt, indexer.id, { state: 'idle', subagents: [] }));
 
 /**
  * Every ring on screen that shows a “+N”: the box of the label’s text, of the rings it draws, and of what comes after
@@ -140,7 +141,7 @@ test('#476: a thinking subagent’s row says “Thinking”, and its thought and
   await expect(row.locator('.agent-sub.subagent .sub-now')).toHaveText('Thinking');
   await expect(row).not.toContainText('straightforward question');
   go();
-  await expect.poll(() => app.rt.sessionsIn(t.id)[0].state, { message: 'the turn to end' }).toBe('idle');
+  await expect.poll(() => arrange.agentIn(app.rt, t.id).state, { message: 'the turn to end' }).toBe('idle');
   await synced(page, app);
   // The record keeps both: the subagent’s thought, and what it said.
   const list = page.locator('.turn details.activity').last();
@@ -182,7 +183,7 @@ for (const theme of /** @type {const} */ (['light', 'dark']))
         await expect(row.locator('.agent-sub.subagent')).toHaveCount(0);
         // Remembered for the agent while the page stays: a change to the session doesn’t close it again.
         await page.keyboard.press('Enter');
-        app.rt.updateSession(indexer.id, { ctx: 40 });
+        arrange.setSession(app.rt, indexer.id, { ctx: 40 });
         await synced(page, app);
         await expect(row.locator('.agent-sub.subagent')).toHaveCount(3);
       });

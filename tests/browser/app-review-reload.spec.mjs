@@ -9,6 +9,7 @@
 // the app’s hello heard and no size sent.
 
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, settled, startPostbox, synced } from './postbox.mjs';
 
 const TALL = '<main style="padding:12px"><button id="b" type="button" style="display:block;width:100%;height:160px">Big</button></main>';
@@ -22,14 +23,18 @@ failOnPageErrors(test);
 
 test('#930 an app above an open app review still loads after a reload', async ({ page }) => {
   const { rt } = app;
-  const t = rt.createThread({ projectId: Object.values(rt.s.projects)[0].id, title: 'Review reload', personaIds: [rt.personaByHandle('librarian').id] });
-  const tools = rt.toolsFor(rt.sessionsIn(t.id)[0].id);
+  const t = rt.createThread({
+    projectId: Object.values(rt.store.state.projects)[0].id,
+    title: 'Review reload',
+    personaIds: [arrange.persona(rt, 'librarian').id],
+  });
+  const tools = rt.toolsFor(arrange.agentIn(rt, t.id).id);
   await page.goto(`${app.origin}/#/t/${t.id}`);
   await synced(page, app);
   const show = async (title) => {
     const id = `${title.toLowerCase()}-${t.id}`;
     tools.show_app({ id, title, code: TALL, permissions: [] });
-    await expect.poll(() => rt.s.apps[id]?.check.status).toMatch(/^(passed|note)$/);
+    await expect.poll(() => rt.store.state.apps[id]?.check.status).toMatch(/^(passed|note)$/);
     return id;
   };
   await show('Above');

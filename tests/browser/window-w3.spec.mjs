@@ -17,7 +17,7 @@ const JUST_OVER = 300;
 let small = '';
 test.beforeAll(async () => {
   app = await startPostbox('window-w3');
-  const projectId = Object.values(app.rt.s.projects)[0].id;
+  const projectId = Object.values(app.rt.store.state.projects)[0].id;
   room = app.rt.createThread({ projectId, title: `${COUNT} items`, personaIds: [] }).id;
   seedBigRoom(app.store, room, { count: COUNT });
   small = app.rt.createThread({ projectId, title: `${JUST_OVER} items`, personaIds: [] }).id;

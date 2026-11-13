@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, settled, startPostbox, synced } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -18,9 +19,9 @@ function room(title) {
   const { rt, store } = app;
   const persona = rt.createPersona({ handle: `worker-${title}` });
   const thread = rt.createThread({ projectId: Object.values(store.state.projects)[0].id, title, personaIds: [persona.id] });
-  const session = rt.sessionsIn(thread.id)[0];
+  const session = arrange.agentIn(rt, thread.id);
   for (let i = 1; i <= 30; i++)
-    rt.addItem(thread.id, {
+    arrange.post(rt, thread.id, {
       kind: 'agent',
       sessionId: session.id,
       personaId: session.personaId,
@@ -39,7 +40,7 @@ for (const width of [1280, 375])
     await synced(page, app);
     await settled(page);
 
-    rt.updateSession(session.id, { state: 'think', currentStep: 'Thinking', glimpse: LATEST });
+    arrange.setSession(rt, session.id, { state: 'think', currentStep: 'Thinking', glimpse: LATEST });
     await synced(page, app);
     const glimpse = page.locator('.working .glimpse');
     await expect(glimpse).toHaveText(LATEST);
@@ -60,13 +61,13 @@ for (const width of [1280, 375])
     expect(first.height / first.lineHeight, 'at most three lines').toBeLessThanOrEqual(3.05);
     await expect.poll(() => page.evaluate(() => Math.round(document.scrollingElement.scrollHeight - scrollY - innerHeight))).toBeLessThanOrEqual(2);
 
-    rt.updateSession(session.id, { glimpse: LATEST });
+    arrange.setSession(rt, session.id, { glimpse: LATEST });
     await synced(page, app);
     await expect(glimpse).toHaveText(first.text);
     await settled(page);
     await expect(glimpse, 'the row keeps its height when the bounded glimpse is unchanged').toHaveCSS('height', `${first.height}px`);
 
-    rt.updateSession(session.id, { glimpse: CHANGED });
+    arrange.setSession(rt, session.id, { glimpse: CHANGED });
     await synced(page, app);
     await expect(glimpse).toHaveText(CHANGED);
     await settled(page);

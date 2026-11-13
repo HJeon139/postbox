@@ -3,6 +3,7 @@
 // without changing radio, multiple-choice, number-key, focus or Other behavior.
 
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, settled, startPostbox, synced } from './postbox.mjs';
 
 const block = (id, options, extra = {}) => ({ id, type: 'choice', version: 1, fallback: id, options, ...extra });
@@ -24,7 +25,7 @@ let app;
 let drafter;
 test.beforeAll(async () => {
   app = await startPostbox('choice-panels');
-  app.rt.adapters.register({
+  arrange.withAdapter(app.rt, {
     name: 'mock',
     async deliver(_session, message, ctx) {
       if (message.kind !== 'user') return;
@@ -41,9 +42,9 @@ failOnPageErrors(test);
 async function choices(page, width, title) {
   await page.setViewportSize({ width, height: 800 });
   const { rt } = app;
-  const thread = rt.createThread({ projectId: Object.values(rt.s.projects)[0].id, title, personaIds: [drafter.id] });
+  const thread = rt.createThread({ projectId: Object.values(rt.store.state.projects)[0].id, title, personaIds: [drafter.id] });
   rt.sendMessage(thread.id, { text: 'Show the choices' });
-  await expect.poll(() => rt.turns.size === 0 && rt.store.items(thread.id).filter((i) => i.kind === 'block').length === 3).toBe(true);
+  await expect.poll(() => arrange.liveTurns(rt) === 0 && rt.store.items(thread.id).filter((i) => i.kind === 'block').length === 3).toBe(true);
   await page.goto(`${app.origin}/#/t/${thread.id}`);
   await synced(page, app);
   const item = (id) => rt.store.items(thread.id).find((i) => i.kind === 'block' && i.block.id === id);

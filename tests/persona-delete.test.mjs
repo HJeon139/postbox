@@ -16,6 +16,7 @@ import { deletePersona } from '../server/persona-delete.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { sessionRoute } from '../server/session-routes.mjs';
 import { Store } from '../server/store.mjs';
+import * as arrange from './arrange.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
 async function setup() {
@@ -52,9 +53,9 @@ test('#208: deleting a persona takes it, its sessions and its own memory at once
     own.every((se) => !s.store.state.sessions[se.id]),
     'its sessions are gone at once',
   );
-  assert.equal(s.rt.personaByHandle('alpha'), undefined, 'a mention no longer reaches it');
+  assert.equal(arrange.persona(s.rt, 'alpha'), undefined, 'a mention no longer reaches it');
   assert.ok(
-    s.rt.sessionsIn(s.t.id).some((se) => se.personaId === s.beta.id),
+    arrange.sessionsIn(s.rt, s.t.id).some((se) => se.personaId === s.beta.id),
     'the room keeps its other agent',
   );
   // Its memory goes as each backend forgets it, just after.
@@ -73,7 +74,7 @@ test('#208: the delete’s answer waits for no backend: a slow forget runs after
   let entered = () => {};
   const reached = new Promise((r) => (entered = r));
   const slow = { name: 'slow', deliver: async () => {}, forget: () => new Promise((r) => entered(r)) };
-  s.rt.adapters.register(slow);
+  arrange.withAdapter(s.rt, slow);
   const { forgotten } = deletePersona(s.rt, s.alpha.id);
   assert.equal(s.store.state.personas[s.alpha.id], undefined, 'gone before any backend forgets it');
   const release = /** @type {(v?: unknown) => void} */ (await reached);

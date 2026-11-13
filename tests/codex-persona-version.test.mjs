@@ -6,15 +6,16 @@ import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { CodexAdapter } from '../server/adapters/codex.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
+import * as arrange from './arrange.mjs';
 import { CODEX_ROOT, fakeAppServer } from './codex-fixture.mjs';
 
 async function deliver(rt, threadId, sessionId) {
   rt.sendMessage(threadId, { text: 'Report the result.' });
-  const turn = rt.turns.get(sessionId);
+  const turn = arrange.liveTurn(rt, sessionId);
   assert.ok(turn, 'the runtime started the actual adapter path');
   await turn.exited;
   await new Promise(setImmediate);
-  assert.equal(rt.turns.has(sessionId), false);
+  assert.equal(arrange.running(rt, sessionId), false);
 }
 
 test('editing a persona between Codex turns reaches the existing session from its next turn', async () => {
@@ -29,7 +30,7 @@ test('editing a persona between Codex turns reaches the existing session from it
   store.emit('project', { id: 'project', name: 'Test', folder: CODEX_ROOT });
   const persona = rt.createPersona({ handle: 'coder', backend: 'codex', instructions: 'Original pinned instruction.' });
   const thread = rt.createThread({ projectId: 'project', title: 'Pinned', personaIds: [persona.id] });
-  const session = rt.sessionsIn(thread.id)[0];
+  const session = arrange.agentIn(rt, thread.id);
   await deliver(rt, thread.id, session.id);
   rt.updatePersona(persona.id, { instructions: 'Edited instruction for new sessions.', permissionMode: 'bypass' });
   await deliver(rt, thread.id, session.id);
@@ -40,7 +41,7 @@ test('editing a persona between Codex turns reaches the existing session from it
   assert.doesNotMatch(resumed.params.developerInstructions, /Original pinned instruction\./);
   assert.equal(seen.filter((request) => request.method === 'turn/start')[1].params.sandboxPolicy.type, 'dangerFullAccess');
   const fresh = rt.createThread({ projectId: 'project', title: 'New version', personaIds: [persona.id] });
-  await deliver(rt, fresh.id, rt.sessionsIn(fresh.id)[0].id);
+  await deliver(rt, fresh.id, arrange.agentIn(rt, fresh.id).id);
   const starts = seen.filter((request) => request.method === 'thread/start');
   assert.match(starts[1].params.developerInstructions, /Edited instruction for new sessions\./);
 });

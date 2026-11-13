@@ -12,6 +12,7 @@
 
 import { readFile } from 'node:fs/promises';
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { failOnServerErrors, startPostbox, synced } from './postbox.mjs';
 
 // The “Eight visual forms” gallery (#194), cut down: v1 sets its buttons nowrap in a fixed 230 px column, so their
@@ -134,9 +135,13 @@ test.beforeAll(async ({ browser }) => {
   app = await startPostbox('app-check');
   const { rt } = app;
   // The agent hears a failed check and doesn’t answer, so each app keeps what its first check found.
-  rt.adapters.register({ name: 'mock', async deliver() {} });
-  const t = rt.createThread({ projectId: Object.values(rt.s.projects)[0].id, title: 'App check', personaIds: [rt.createPersona({ handle: 'drawer' }).id] });
-  const tools = rt.toolsFor(rt.sessionsIn(t.id)[0].id);
+  arrange.withAdapter(rt, { name: 'mock', async deliver() {} });
+  const t = rt.createThread({
+    projectId: Object.values(rt.store.state.projects)[0].id,
+    title: 'App check',
+    personaIds: [rt.createPersona({ handle: 'drawer' }).id],
+  });
+  const tools = rt.toolsFor(arrange.agentIn(rt, t.id).id);
   for (const [id, code] of Object.entries(APPS)) tools.show_app({ id, title: id, code });
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 }, colorScheme: 'dark' });
   page.on('pageerror', (e) => {
@@ -147,7 +152,7 @@ test.beforeAll(async ({ browser }) => {
   await page.goto(`${app.origin}/#/t/${t.id}`);
   await synced(page, app);
   await expect
-    .poll(() => Object.keys(APPS).filter((id) => rt.s.apps[id].check.status === 'pending'), { message: 'every app checked', timeout: 90_000 })
+    .poll(() => Object.keys(APPS).filter((id) => rt.store.state.apps[id].check.status === 'pending'), { message: 'every app checked', timeout: 90_000 })
     .toEqual([]);
   await page.close();
 });
@@ -155,15 +160,15 @@ test.afterAll(async () => {
   await app?.stop();
 });
 
-const found = (id) => app.rt.s.apps[id].check.problems ?? [];
+const found = (id) => app.rt.store.state.apps[id].check.problems ?? [];
 const codes = (id) => found(id).map((p) => p.code);
 const says = (id) =>
   found(id)
     .map((p) => `${p.code}: ${p.message}`)
     .join('\n') || 'no problems';
 /** A negative assertion counts only for a check that finished: a frame that never answered reports nothing either. */
-const finished = (id) => app.rt.s.apps[id].check.status !== 'pending' && !codes(id).some((c) => c === 'no-answer' || c === 'check-error');
-const clean = (id) => finished(id) && app.rt.s.apps[id].check.status === 'passed';
+const finished = (id) => app.rt.store.state.apps[id].check.status !== 'pending' && !codes(id).some((c) => c === 'no-answer' || c === 'check-error');
+const clean = (id) => finished(id) && app.rt.store.state.apps[id].check.status === 'passed';
 
 test('the page threw no exceptions and logged no errors while it checked the apps', () => {
   expect(errors).toEqual([]);

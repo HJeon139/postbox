@@ -4,6 +4,7 @@
 // kept: each review adds and removes only its own ranges.
 
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 
 const REVIEWS = 8;
@@ -43,7 +44,7 @@ async function painted(page, n) {
 
 /** Opens another conversation, once the page has heard of it, and waits for the reviews to leave the page. */
 async function switchAway(page) {
-  const other = app.rt.createThread({ projectId: Object.values(app.rt.s.projects)[0].id, title: 'Elsewhere', personaIds: [drafter.id] });
+  const other = app.rt.createThread({ projectId: Object.values(app.rt.store.state.projects)[0].id, title: 'Elsewhere', personaIds: [drafter.id] });
   await synced(page, app);
   await page.goto(`${app.origin}/#/t/${other.id}`);
   await expect(page.locator('.rv-preview .md'), 'the other conversation drawn').toHaveCount(0);
@@ -55,7 +56,7 @@ let app;
 let drafter;
 test.beforeAll(async () => {
   app = await startPostbox('review-highlight-cost');
-  app.rt.adapters.register({
+  arrange.withAdapter(app.rt, {
     name: 'mock',
     async deliver(_session, message, ctx) {
       if (message.kind === 'user' && message.text.endsWith('reviews')) for (let n = 1; n <= REVIEWS; n++) ctx.tools.show_block({ block: review(n) });
@@ -90,10 +91,10 @@ test('#1151 opening a room of eight commented reviews builds the comment highlig
     };
   });
   const { rt, store } = app;
-  const thread = rt.createThread({ projectId: Object.values(rt.s.projects)[0].id, title: 'Many reviews', personaIds: [drafter.id] });
+  const thread = rt.createThread({ projectId: Object.values(rt.store.state.projects)[0].id, title: 'Many reviews', personaIds: [drafter.id] });
   rt.sendMessage(thread.id, { text: '@drafter reviews' });
   await expect.poll(() => store.items(thread.id).filter((i) => i.kind === 'block').length, { message: 'the reviews' }).toBe(REVIEWS);
-  await expect.poll(() => rt.turns.size, { message: 'the agent to finish' }).toBe(0);
+  await expect.poll(() => arrange.liveTurns(rt), { message: 'the agent to finish' }).toBe(0);
 
   await page.goto(`${app.origin}/#/t/${thread.id}`);
   await synced(page, app);
@@ -108,7 +109,7 @@ test('#1151 opening a room of eight commented reviews builds the comment highlig
 
   // A revised review draws again: its old marks leave the highlight, so it still holds one per review.
   rt.sendMessage(thread.id, { text: '@drafter revise' });
-  await expect.poll(() => rt.turns.size, { message: 'the agent to finish' }).toBe(0);
+  await expect.poll(() => arrange.liveTurns(rt), { message: 'the agent to finish' }).toBe(0);
   await synced(page, app);
   await expect(page.locator('.rv-preview .md', { hasText: 'One more line.' }), 'the revision drawn in Preview').toHaveCount(1);
   await expect

@@ -3,6 +3,7 @@
 // end. Taking the anchor (#88) used to read one per reply above the middle of the view.
 
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, newestShown, openAs, ROOM_MODES, settled, startPostbox, synced } from './postbox.mjs';
 
 // Tracing is off: Playwright's trace snapshots walk every node of the page each action, and on a room of 1,000 items
@@ -27,9 +28,16 @@ async function seeded(page, name) {
   const { rt } = app;
   const p = rt.createPersona({ handle: name });
   const t = rt.createThread({ projectId: 'pr_scroll', title: `Scroll ${name}`, personaIds: [p.id] });
-  const se = rt.sessionsIn(t.id)[0];
+  const se = arrange.agentIn(rt, t.id);
   for (let i = 0; i < REPLIES; i++)
-    rt.addItem(t.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text: `Reply ${i} says one short thing.`, status: 'done' });
+    arrange.post(rt, t.id, {
+      kind: 'agent',
+      sessionId: se.id,
+      personaId: se.personaId,
+      handle: se.handle,
+      text: `Reply ${i} says one short thing.`,
+      status: 'done',
+    });
   await page.addInitScript(countRects);
   await page.goto(`${app.origin}/#/t/${t.id}`);
   await synced(page, app);

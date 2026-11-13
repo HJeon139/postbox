@@ -5,7 +5,7 @@
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { expect, test } from '@playwright/test';
-import { toggleReaction } from '../../server/reactions.mjs';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -23,8 +23,8 @@ test.beforeAll(async () => {
   store.emit('project', { id: 'pr_react', name: 'Reactions', folder: app.root });
   const persona = rt.createPersona({ handle: 'judge', backend: 'mock', permissionMode: 'auto', tools: [] });
   thread = rt.createThread({ projectId: 'pr_react', title: 'Reactions', personaIds: [persona.id] });
-  critic = rt.sessionsIn(thread.id)[0];
-  message = rt.addItem(thread.id, {
+  critic = arrange.agentIn(rt, thread.id);
+  message = arrange.post(rt, thread.id, {
     kind: 'agent',
     sessionId: critic.id,
     personaId: persona.id,
@@ -43,7 +43,7 @@ const item = (page) => page.locator(`.transcript > [data-key="${message.id}"]`);
 const reaction = (page, name) => item(page).getByRole('button', { name: new RegExp(`^${name}\\b`) });
 /** The agent’s own reaction, as its react tool makes one. */
 async function criticReacts(page, emoji) {
-  toggleReaction(app.rt, thread.id, message.id, emoji, { id: critic.id, handle: 'judge' });
+  arrange.react(app.rt, thread.id, message.id, emoji, { id: critic.id, handle: 'judge' });
   await synced(page, app);
 }
 /** Takes back every reaction, so each case starts from none. */
@@ -125,7 +125,7 @@ test('reacting to an app doesn’t draw its frame again (#251)', async ({ page }
   const tools = app.rt.toolsFor(critic.id);
   tools.show_app({ id: 'tally', title: 'Tally', code: '<main style="padding:12px"><p>Tally</p></main>' });
   await synced(page, app);
-  const appItem = page.locator(`.transcript > [data-key="${app.rt.s.apps.tally.itemId}"]`);
+  const appItem = page.locator(`.transcript > [data-key="${app.rt.store.state.apps.tally.itemId}"]`);
   await expect(appItem.locator('iframe.app-iframe')).toBeAttached({ timeout: 15_000 });
   await appItem.locator('iframe.app-iframe').evaluate((f) => {
     f.dataset.mark = 'same';

@@ -10,6 +10,7 @@
 // On the seeded room of tests/browser/remote-turns.mjs. Moved from tools/check-remote-turns.mjs (#303).
 
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, synced } from './postbox.mjs';
 import { axe } from './remote-hosts.mjs';
 import { HUNG, startRemoteTurns, UNREGISTERED } from './remote-turns.mjs';
@@ -112,15 +113,15 @@ test('#120 the turn states read in words in the transcript: Sign-in needed and I
 // saved it (the server now saves only resume.unkilled for it).
 test('#965 an unregistered agent’s turn that may still run on the host says it waits for you, not that it resumes', async ({ page }) => {
   const { rt } = s.app;
-  const before = rt.s.sessions[s.ses.porter.id].remoteTurn;
-  rt.updateSession(s.ses.porter.id, { remoteTurn: { ...before, resume: { why: 'interrupted', at: before.resume.at, unkilled: true, noBackend: true } } });
+  const before = rt.session(s.ses.porter.id).remoteTurn;
+  arrange.setSession(rt, s.ses.porter.id, { remoteTurn: { ...before, resume: { why: 'interrupted', at: before.resume.at, unkilled: true, noBackend: true } } });
   try {
     await open(page);
     const alert = item(page, s.items.unregistered).getByRole('alert');
     await expect.soft(alert).toContainText(`${UNREGISTERED}. It may still be running on host.example.com, so it waits for you.`);
     await expect.soft(alert).not.toContainText('resumes on its own');
   } finally {
-    rt.updateSession(s.ses.porter.id, { remoteTurn: before });
+    arrange.setSession(rt, s.ses.porter.id, { remoteTurn: before });
   }
 });
 
@@ -177,6 +178,6 @@ test('#120 Resume calls the runtime’s resume, which starts with why the last t
     .toMatch(/^\[Postbox\] Your last turn on host\.example\.com stopped before it finished, because the sign-in on that host had run out\./);
   expect.soft(d.text).toMatch(/The person asked you to resume/);
   await expect(resume, 'Resume goes').toHaveCount(0);
-  await expect.poll(() => rt.turns.has(s.ses.coder.id), { message: 'the turn to end' }).toBe(false);
+  await expect.poll(() => arrange.running(rt, s.ses.coder.id), { message: 'the turn to end' }).toBe(false);
   expect(store.state.sessions[s.ses.coder.id].remoteTurn.state).toBe('done');
 });

@@ -5,6 +5,7 @@
 // when a sent line landed under the app just before the click.
 
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 import { bigRoom, still } from './view-skipped-fixture.mjs';
 
@@ -24,7 +25,7 @@ const TALL = Array.from({ length: 24 }, (_, i) => `Line ${i + 1} of a long reply
 test('#712a: a reply appended while following scrolls to the end once, at its real height', async ({ page }) => {
   const { rt, store } = app;
   const t = bigRoom(app, 'Following as a reply lands', 60);
-  const [se] = rt.sessionsIn(t.id);
+  const [se] = arrange.sessionsIn(rt, t.id);
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto(`${app.origin}/#/t/${t.id}`);
   await synced(page, app);
@@ -41,7 +42,7 @@ test('#712a: a reply appended while following scrolls to the end once, at its re
     };
     requestAnimationFrame(tick);
   });
-  const reply = rt.addItem(t.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text: TALL, status: 'done' });
+  const reply = arrange.post(rt, t.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text: TALL, status: 'done' });
   await expect(page.locator(`[data-key="${reply.id}"]`)).toBeInViewport();
   await expect.poll(() => page.evaluate(() => /** @type {any} */ (window).__tops.length), { timeout: 10_000 }).toBeGreaterThanOrEqual(90);
   const tops = await page.evaluate(() => /** @type {number[]} */ (/** @type {any} */ (window).__tops));
@@ -54,13 +55,13 @@ test('#712a: a reply appended while following scrolls to the end once, at its re
 test('#712a: once painted and skipped again, the appended reply keeps its real height, so a later scroll holds', async ({ page }) => {
   const { rt, store } = app;
   const t = bigRoom(app, 'The reply goes off screen', 60);
-  const [se] = rt.sessionsIn(t.id);
+  const [se] = arrange.sessionsIn(rt, t.id);
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto(`${app.origin}/#/t/${t.id}`);
   await synced(page, app);
   await expect(page.locator(`.transcript[data-thread="${t.id}"] > .item`)).toHaveCount(store.items(t.id).length);
   await still(page);
-  const reply = rt.addItem(t.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text: TALL, status: 'done' });
+  const reply = arrange.post(rt, t.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text: TALL, status: 'done' });
   const node = page.locator(`[data-key="${reply.id}"]`);
   await expect(node).toBeInViewport();
   await still(page);
@@ -76,7 +77,7 @@ test('#712a: once painted and skipped again, the appended reply keeps its real h
 test('#712a: a reply appended while reading higher up stays skipped, and the view doesn’t move', async ({ page }) => {
   const { rt, store } = app;
   const t = bigRoom(app, 'Reading as a reply lands', 60);
-  const [se] = rt.sessionsIn(t.id);
+  const [se] = arrange.sessionsIn(rt, t.id);
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto(`${app.origin}/#/t/${t.id}`);
   await synced(page, app);
@@ -88,7 +89,7 @@ test('#712a: a reply appended while reading higher up stays skipped, and the vie
   const tr = page.locator(`.transcript[data-thread="${t.id}"]`);
   await expect(tr).toHaveAttribute('data-view-mode', 'reading');
   const before = await page.evaluate(() => scrollY);
-  const reply = rt.addItem(t.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text: TALL, status: 'done' });
+  const reply = arrange.post(rt, t.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text: TALL, status: 'done' });
   const node = page.locator(`[data-key="${reply.id}"]`);
   await expect(node).toHaveCount(1);
   await still(page);
@@ -103,7 +104,7 @@ test('#712a: a burst of replies appended while following draws one at a time, no
   test.skip(browserName !== 'chromium', 'the layout count comes from Chromium’s DevTools protocol');
   const { rt, store } = app;
   const t = bigRoom(app, 'A burst lands while following', 60);
-  const [se] = rt.sessionsIn(t.id);
+  const [se] = arrange.sessionsIn(rt, t.id);
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto(`${app.origin}/#/t/${t.id}`);
   await synced(page, app);
@@ -125,7 +126,7 @@ test('#712a: a burst of replies appended while following draws one at a time, no
   const BURST = 300;
   const [count0, time0] = [await metric('LayoutCount'), await metric('LayoutDuration')];
   for (let i = 0; i < BURST; i++)
-    rt.addItem(t.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text: `Burst reply ${i}.`, status: 'done' });
+    arrange.post(rt, t.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text: `Burst reply ${i}.`, status: 'done' });
   await synced(page, app);
   await still(page);
   const most = await page.evaluate(() => /** @type {any} */ (window).__forced.most);

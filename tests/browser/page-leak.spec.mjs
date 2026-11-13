@@ -6,6 +6,7 @@
 
 import { expect, test } from '@playwright/test';
 import { seedBigRoom } from '../../tools/uat/big-room.mjs';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, newestShown, openAs, ROOM_MODES, startPostbox, synced } from './postbox.mjs';
 
 test.use({ colorScheme: 'light', trace: 'off' });
@@ -31,15 +32,15 @@ failOnPageErrors(test);
 function rooms({ diagrams = 0, review = false } = {}) {
   const { rt, store } = app;
   const projectId = /** @type {any} */ (Object.values(store.state.projects)[0]).id;
-  const personas = ['ada', 'bo', 'cy'].map((handle) => rt.personaByHandle(handle) ?? rt.createPersona({ handle }));
+  const personas = ['ada', 'bo', 'cy'].map((handle) => arrange.persona(rt, handle) ?? rt.createPersona({ handle }));
   const long = rt.createThread({ projectId, title: 'A long room', personaIds: personas.map((p) => p.id) });
   const short = rt.createThread({ projectId, title: 'A short room', personaIds: personas.map((p) => p.id) });
-  const sessions = Object.fromEntries(rt.sessionsIn(long.id).map((se) => [se.handle, { sessionId: se.id, personaId: se.personaId }]));
+  const sessions = Object.fromEntries(arrange.sessionsIn(rt, long.id).map((se) => [se.handle, { sessionId: se.id, personaId: se.personaId }]));
   // The big room’s replies are from researcher, critic and developer: give each one of these agents’ sessions.
   const [a, b, c] = Object.values(sessions);
   seedBigRoom(store, long.id, { count: ITEMS, diagrams }, { researcher: a, critic: b, developer: c });
   if (review) {
-    const [author, reader] = rt.sessionsIn(long.id);
+    const [author, reader] = arrange.sessionsIn(rt, long.id);
     const content = '# A draft\n\nIts price is low, and its plan is short.\n';
     rt.toolsFor(author.id).show_block({
       block: { id: 'draft', type: 'review', version: 1, title: 'A draft', fallback: 'A draft', format: 'markdown', content },
@@ -49,8 +50,15 @@ function rooms({ diagrams = 0, review = false } = {}) {
       .review_block({ blockId: 'draft', comments: [{ line: 3, col: 14, endLine: 3, endCol: 16, quote: 'low', text: 'How low?' }] });
     if (!said.ok) throw new Error(`The reader couldn’t comment: ${said.message}`);
   }
-  for (const se of rt.sessionsIn(short.id))
-    rt.addItem(short.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text: `A reply from ${se.handle}.`, status: 'done' });
+  for (const se of arrange.sessionsIn(rt, short.id))
+    arrange.post(rt, short.id, {
+      kind: 'agent',
+      sessionId: se.id,
+      personaId: se.personaId,
+      handle: se.handle,
+      text: `A reply from ${se.handle}.`,
+      status: 'done',
+    });
   return { long, short };
 }
 

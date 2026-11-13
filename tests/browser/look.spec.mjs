@@ -7,6 +7,7 @@
 // look-amber.spec.mjs checks selected and on states (#181). Moved from tools/checks/look.mjs (#303).
 
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, PHONE, settled, startPostbox, synced } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -22,17 +23,17 @@ let asked;
 /** The conversation with @librarian’s lines and table, and a topic thread from its reply. */
 function conversation() {
   const { rt, store } = app;
-  const persona = (handle) => rt.personaByHandle(handle);
+  const persona = (handle) => arrange.persona(rt, handle);
   const project = Object.values(store.state.projects)[0];
   t = rt.createThread({ projectId: project.id, title: 'Look checks', personaIds: [persona('librarian').id] });
-  se = rt.sessionsIn(t.id)[0];
+  se = arrange.agentIn(rt, t.id);
   const tools = rt.toolsFor(se.id);
   // #199: a line in your voice that wraps, and a system line, a pill on one line, that wraps at a narrow width.
-  rt.addItem(t.id, {
+  arrange.post(rt, t.id, {
     kind: 'voice',
     text: 'Sent: form · What should happen to the visual-explainer walkthrough from my last turn? Retire it (I’ll replace it with a one-line note)',
   });
-  rt.addItem(t.id, { kind: 'system', variant: 'compaction', handle: 'librarian', n: 2, kept: 41000, total: 182000, summary: 'Kept the index plan.' });
+  arrange.post(rt, t.id, { kind: 'system', variant: 'compaction', handle: 'librarian', n: 2, kept: 41000, total: 182000, summary: 'Kept the index plan.' });
   // #182: a table with a row action, and a topic thread from a reply.
   tools.show_block({
     block: {
@@ -52,20 +53,27 @@ function conversation() {
       rowAction: { id: 'open', label: 'Open' },
     },
   });
-  const said = rt.addItem(t.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text: 'I found 16 passages.', status: 'done' });
+  const said = arrange.post(rt, t.id, {
+    kind: 'agent',
+    sessionId: se.id,
+    personaId: se.personaId,
+    handle: se.handle,
+    text: 'I found 16 passages.',
+    status: 'done',
+  });
   asked = rt.startTopic(t.id, said.id).threadId;
 }
 
 /** The room with a long conversation, a two-line hint, a topic thread and a side thread. */
 function composerRoom() {
   const { rt, store } = app;
-  const persona = (handle) => rt.personaByHandle(handle);
+  const persona = (handle) => arrange.persona(rt, handle);
   const project = Object.values(store.state.projects)[0];
   // #116: a room whose conversation hint is two lines (“Replying to @researcher”), a topic thread and a side thread.
   room = rt.createThread({ projectId: project.id, title: 'Composer heights', personaIds: [persona('researcher').id, persona('critic').id] });
-  const [researcher, critic] = rt.sessionsIn(room.id);
-  for (let i = 1; i <= 30; i++) rt.addItem(room.id, { kind: 'user', text: `Question ${i}: what does the observation step add?` });
-  const root = rt.addItem(room.id, {
+  const [researcher, critic] = arrange.sessionsIn(rt, room.id);
+  for (let i = 1; i <= 30; i++) arrange.post(rt, room.id, { kind: 'user', text: `Question ${i}: what does the observation step add?` });
+  const root = arrange.post(rt, room.id, {
     kind: 'agent',
     sessionId: researcher.id,
     personaId: researcher.personaId,
@@ -73,14 +81,14 @@ function composerRoom() {
     text: 'The observation grounds the plan.',
     status: 'done',
   });
-  rt.putThread({ ...store.state.threads[room.id], lastSpeaker: researcher.id });
+  arrange.putThread(rt, { ...store.state.threads[room.id], lastSpeaker: researcher.id });
   topic = rt.startTopic(room.id, root.id).threadId;
   // A side thread as agentWake made one before #372, without starting a turn.
-  side = rt.putThread({
+  side = arrange.putThread(rt, {
     ...{ id: 'th_lookside', projectId: project.id, title: '@critic ↔ @researcher', kind: 'side', parentId: room.id, pair: 'critic|researcher' },
     ...{ woke: 'researcher', members: [], lastSpeaker: null, hops: 0, queue: [], createdAt: Date.now() },
   });
-  rt.addItem(side.id, {
+  arrange.post(rt, side.id, {
     kind: 'agent',
     sessionId: critic.id,
     personaId: critic.personaId,
@@ -159,11 +167,11 @@ async function composersLineUp(page) {
 /** #182 at each width: every text button has a border or the inline-action underline, in a conversation and its thread panel */
 async function buttonsLookLikeControls(page) {
   // With the agent needing you, as its reply’s buttons show then; put back after, so the other tests don’t see it.
-  app.rt.updateSession(se.id, { state: 'needs', needs: { kind: 'block', text: 'Which mode should the search use?' } });
+  arrange.setSession(app.rt, se.id, { state: 'needs', needs: { kind: 'block', text: 'Which mode should the search use?' } });
   try {
     await bareButtons(page);
   } finally {
-    app.rt.updateSession(se.id, { state: 'idle', needs: null });
+    arrange.setSession(app.rt, se.id, { state: 'idle', needs: null });
   }
 }
 /** The #182 checks, on the conversation and its topic thread. */

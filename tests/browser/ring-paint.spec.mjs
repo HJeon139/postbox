@@ -7,6 +7,7 @@
 // 40% of its context): thinking, as #463 measured, and generating and calling tools, the other two working states.
 
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -24,9 +25,10 @@ async function seeded(page, handle) {
   const { rt } = app;
   const p = rt.createPersona({ handle });
   const t = rt.createThread({ projectId: 'pr_paint', title: `Paint ${handle}`, personaIds: [p.id] });
-  const se = rt.sessionsIn(t.id)[0];
+  const se = arrange.agentIn(rt, t.id);
   for (let i = 0; i < 60; i++)
-    rt.addItem(
+    arrange.post(
+      rt,
       t.id,
       i % 2 ? { kind: 'agent', handle, sessionId: se.id, text: `Reply ${i}. `.repeat(20) } : { kind: 'user', text: `Message ${i}. `.repeat(20) },
     );
@@ -37,7 +39,7 @@ async function seeded(page, handle) {
 
 /** Marks the session working in state, as #463 measured it, and waits for its ring in the Agents section to say so. */
 async function working(page, se, state = 'think') {
-  app.rt.updateSession(se.id, { state, ctx: 40, currentStep: 'Working', finishedAt: null });
+  arrange.setSession(app.rt, se.id, { state, ctx: 40, currentStep: 'Working', finishedAt: null });
   await synced(page, app);
   const ring = page.locator(`.agents-sec pb-ring[data-session="${se.id}"][state="${state}"]`);
   await expect(ring).toHaveCount(1);
@@ -91,7 +93,7 @@ for (const state of ['think', 'gen', 'tool'])
     // One paint in 20 frames leaves room for a caret or a clock; a ring that repaints each frame makes it one per frame.
     expect.soft(main, `the transcript was painted ${main} times in ${frames} frames`).toBeLessThan(frames / 20);
     expect.soft(paints.length, `the page was painted ${paints.length} times in ${frames} frames`).toBeLessThan(frames / 20);
-    app.rt.updateSession(se.id, { state: 'idle' });
+    arrange.setSession(app.rt, se.id, { state: 'idle' });
   });
 
 test('#463: a thinking ring still moves, with one animation of transform and opacity', async ({ page }) => {
@@ -114,7 +116,7 @@ test('#463: a thinking ring still moves, with one animation of transform and opa
         'it animates only transform and opacity',
       )
       .toEqual([]);
-  app.rt.updateSession(se.id, { state: 'idle' });
+  arrange.setSession(app.rt, se.id, { state: 'idle' });
 });
 
 test('#463: with reduced motion, every ring holds still, a thinking one included', async ({ page }) => {
@@ -123,5 +125,5 @@ test('#463: with reduced motion, every ring holds still, a thinking one included
   await working(page, se);
   const running = await page.evaluate(() => [...document.querySelectorAll('pb-ring')].reduce((n, el) => n + el.getAnimations({ subtree: true }).length, 0));
   expect(running, 'no ring animates').toBe(0);
-  app.rt.updateSession(se.id, { state: 'idle' });
+  arrange.setSession(app.rt, se.id, { state: 'idle' });
 });

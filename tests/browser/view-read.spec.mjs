@@ -6,6 +6,7 @@
 
 import { expect, test } from '@playwright/test';
 import { heldStill } from '../../tools/page-still.mjs';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, settled, startPostbox, synced } from './postbox.mjs';
 import { holds, LONG, open as openIn, read, room as roomIn } from './view-read-fixture.mjs';
 
@@ -94,7 +95,7 @@ test('V1: an anchor that moves to the end leaves its stub as the anchor', async 
   await page.mouse.wheel(0, -1200);
   await settled(page);
   const before = await holds(page, t, 'reading');
-  app.rt.bringForward(t.id, before.anchor, { what: 'block', title: 'Moved' });
+  arrange.moveToEnd(app.rt, t.id, before.anchor, { what: 'block', title: 'Moved' });
   const stubId = app.store.state.items[t.id].find((it) => it.kind === 'moved' && it.itemId === before.anchor)?.id;
   await expect(page.locator(`[data-key="${stubId}"]`), 'the stub is drawn, with the events late too').toBeAttached();
   await settled(page);
@@ -213,10 +214,10 @@ test('V1: a redraw from new state that no longer has the anchor takes the anchor
 test('V1 in the side panel: its own transcript publishes too', async ({ page }) => {
   const { t } = room('View read: panel');
   const { rt } = app;
-  const side = rt.createThread({ projectId: t.projectId, title: 'A topic', kind: 'side', parentId: t.id, personaIds: [rt.personaByHandle('researcher').id] });
-  const [se] = rt.sessionsIn(side.id);
+  const side = rt.createThread({ projectId: t.projectId, title: 'A topic', kind: 'side', parentId: t.id, personaIds: [arrange.persona(rt, 'researcher').id] });
+  const [se] = arrange.sessionsIn(rt, side.id);
   for (let i = 1; i <= 20; i++)
-    rt.addItem(side.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text: LONG(i), status: 'done' });
+    arrange.post(rt, side.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text: LONG(i), status: 'done' });
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto(`${app.origin}/#/t/${t.id}/side/${side.id}`);
   await synced(page, app);

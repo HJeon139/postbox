@@ -11,6 +11,7 @@
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -29,7 +30,7 @@ test.beforeAll(async () => {
     },
   });
   const { rt, store } = app;
-  rt.adapters.register({
+  arrange.withAdapter(rt, {
     name: 'claude-code',
     async folderFor() {
       return work;
@@ -53,10 +54,10 @@ test.use({ colorScheme: 'light' });
 async function room(page, title, last) {
   const { rt, store } = app;
   const t = rt.createThread({ projectId: 'pr_addr', title, personaIds: [alpha.id, beta.id] });
-  const [seA, seB] = rt.sessionsIn(t.id);
-  rt.recordCommands(seA.id, [{ name: 'review', description: 'Review a file', argumentHint: '<file>', skill: true }, { name: 'compact' }]);
-  rt.recordCommands(seB.id, [{ name: 'release-notes', description: 'Draft release notes', argumentHint: '[version]' }]);
-  rt.putThread({ ...store.state.threads[t.id], lastSpeaker: (last === 'alpha' ? seA : seB).id });
+  const [seA, seB] = arrange.sessionsIn(rt, t.id);
+  arrange.offerCommands(rt, seA.id, [{ name: 'review', description: 'Review a file', argumentHint: '<file>', skill: true }, { name: 'compact' }]);
+  arrange.offerCommands(rt, seB.id, [{ name: 'release-notes', description: 'Draft release notes', argumentHint: '[version]' }]);
+  arrange.putThread(rt, { ...store.state.threads[t.id], lastSpeaker: (last === 'alpha' ? seA : seB).id });
   await page.goto(`${app.origin}/#/t/${t.id}`);
   await synced(page, app);
   await page.locator('#composer-input').focus();

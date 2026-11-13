@@ -10,6 +10,7 @@ import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { readHookFile, readHooks } from '../server/permission-hooks.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
+import * as arrange from './arrange.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
 /** A settings file holding `content` (a string as written, anything else as JSON). */
@@ -212,7 +213,7 @@ test('#817: the panel’s view lists the hooks of each settings file the agent r
   });
   store.emit('project', { id: 'p1', name: 'P', folder });
   const p = rt.createPersona({ handle: 'coder', backend: 'claude-code', permissionMode: 'auto' });
-  const se = rt.sessionsIn(rt.createThread({ projectId: 'p1', title: 'T', personaIds: [p.id] }).id)[0];
+  const se = arrange.agentIn(rt, rt.createThread({ projectId: 'p1', title: 'T', personaIds: [p.id] }).id);
   const hooks = async () => (await rt.permissionsView({ sessionId: se.id })).hooks.map((f) => [f.source, f.hooks.map((x) => x.text)]);
   assert.deepEqual(await hooks(), [
     ['user', ['user-check']],
@@ -244,7 +245,7 @@ test('#817: the panel’s view lists no hooks, and doesn’t throw, for a person
   store.emit('project', { id: 'p1', name: 'P', folder });
   for (const backend of ['claude-code', 'kiro', 'mock']) {
     const p = rt.createPersona({ handle: `a-${backend}`, backend, permissionMode: 'auto' });
-    const se = rt.sessionsIn(rt.createThread({ projectId: 'p1', title: 'T', personaIds: [p.id] }).id)[0];
+    const se = arrange.agentIn(rt, rt.createThread({ projectId: 'p1', title: 'T', personaIds: [p.id] }).id);
     assert.deepEqual((await rt.permissionsView({ sessionId: se.id })).hooks, [], backend);
   }
 });

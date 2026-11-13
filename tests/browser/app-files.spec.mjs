@@ -8,7 +8,7 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
-import { assetTools } from '../../server/asset-tools.mjs';
+import * as arrange from '../arrange.mjs';
 import { allowPageError, failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 
 // Reads its data file once it’s shown (not during the check), and keeps what it found in saved state.
@@ -49,7 +49,7 @@ test.beforeAll(async () => {
   const { rt, store } = app;
   folder = join(app.root, 'agent-folder');
   await mkdir(folder);
-  projectId = Object.values(rt.s.projects)[0].id;
+  projectId = Object.values(rt.store.state.projects)[0].id;
   store.emit('project', { ...rt.s.projects[projectId], folder });
   await writeFile(join(folder, 'explorer.html'), APP);
   await writeFile(join(folder, 'pairs.json'), JSON.stringify(Array.from({ length: 1258 }, (_, i) => ({ claim: `claim ${i}` }))));
@@ -63,15 +63,15 @@ test.use({ viewport: { width: 1280, height: 900 }, colorScheme: 'dark' });
 /** A conversation of its own with the librarian, open in the page at origin; its id and the librarian’s session. */
 async function room(page, title, origin = app.origin) {
   const { rt } = app;
-  const t = rt.createThread({ projectId, title, personaIds: [rt.personaByHandle('librarian').id] });
-  const [se] = rt.sessionsIn(t.id);
+  const t = rt.createThread({ projectId, title, personaIds: [arrange.persona(rt, 'librarian').id] });
+  const [se] = arrange.sessionsIn(rt, t.id);
   await page.goto(`${origin}/#/t/${t.id}`);
   await synced(page, app);
   return { t, se };
 }
 /** An app’s saved state, once it has saved what it found. */
 const saved = (id, key) =>
-  expect.poll(() => app.rt.s.apps[id]?.state?.[key], { message: `the app “${id}” to save what it found`, timeout: 15_000 }).toBeTruthy();
+  expect.poll(() => app.rt.store.state.apps[id]?.state?.[key], { message: `the app “${id}” to save what it found`, timeout: 15_000 }).toBeTruthy();
 
 for (const host of ['127.0.0.1', 'localhost'])
   test(`#54 #820 at ${host}, an app shown from codePath reads its data file in the sandbox, with CORP that doesn’t block it, and a file it doesn’t carry rejects`, async ({
@@ -87,12 +87,12 @@ for (const host of ['127.0.0.1', 'localhost'])
       if (r.url().includes(`/api/apps/${id}/files/pairs.json`)) answers.push({ status: r.status(), corp: r.headers()['cross-origin-resource-policy'] });
     });
     const { se } = await room(page, `Files at ${host}`, app.origin.replace('127.0.0.1', host));
-    const { args, files } = await rt.appFiles(se.id, { id, title: 'Pair explorer', codePath: 'explorer.html', files: [{ path: 'pairs.json' }] });
+    const { args, files } = await arrange.appFiles(rt, se.id, { id, title: 'Pair explorer', codePath: 'explorer.html', files: [{ path: 'pairs.json' }] });
     const shown = rt.toolsFor(se.id).show_app(args, { files });
     expect(shown.ok, shown.message).toBe(true);
     await expect(page.frameLocator('.transcript .appframe iframe').locator('#out')).toHaveText('1258 pairs, the first about claim 0');
     await saved(id, 'missing');
-    const st = rt.s.apps[id].state;
+    const st = rt.store.state.apps[id].state;
     expect.soft([st.read, st.first], 'the app read its data file').toEqual([1258, 'claim 0']);
     expect.soft(st.missing, 'a file the version doesn’t carry rejects, and says so').toMatch(/has no file “missing\.json”/);
     expect.soft(answers.length, 'the data file came from its route').toBeGreaterThanOrEqual(1);
@@ -121,7 +121,7 @@ test('#54 a tool call to /mcp with only the session id is refused, and nothing o
   expect.soft(r.error?.message, 'refused, and says why').toMatch(/only from an agent turn it started/);
   await synced(page, app);
   expect.soft(store.items(t.id).length, 'nothing of it reaches the conversation').toBe(before);
-  expect.soft(rt.s.apps.side, 'no app').toBeUndefined();
+  expect.soft(rt.store.state.apps.side, 'no app').toBeUndefined();
   await expect.soft(page.locator('.transcript .appframe'), 'nothing shown').toHaveCount(0);
 });
 
@@ -129,7 +129,7 @@ test('#516 data the agent brings in from its folder is a room asset, which an ap
   const { rt } = app;
   const { se } = await room(page, 'Assets');
   await writeFile(join(folder, 'claims.md'), 'Claim 7 is about vitamin D and fractures, in older adults.');
-  const tools = assetTools(rt, se.id, null);
+  const tools = arrange.assetTools(rt, se.id, null);
   const data = await tools.write_asset({ name: 'data/claims.md', path: 'claims.md' });
   expect(data.ok, data.message).toBe(true);
   const notes = await tools.write_asset({ name: 'notes.md', text: 'Nothing about that here.' });
@@ -137,7 +137,7 @@ test('#516 data the agent brings in from its folder is a room asset, which an ap
   rt.toolsFor(se.id).show_app({ id: 'reader', title: 'Reader', code: READER, permissions: ['assets.search'] });
   await expect(page.frameLocator('.transcript .appframe iframe').locator('#out')).toHaveText('Claim 7 is about vitamin D and fractures, in older adults.');
   await saved('reader', 'text');
-  const rd = rt.s.apps.reader.state;
+  const rd = rt.store.state.apps.reader.state;
   expect.soft([rd.id, rd.where], 'the hit names its asset and passage').toEqual([`${data.id}:1`, 'passage 1']);
   expect.soft(rd.other, 'a search kept to another asset doesn’t find it').toBe(0);
 });

@@ -3,6 +3,7 @@
 // “Thread”. A room of its own (tests/browser/side-threads.mjs).
 
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 import { heldBackend, sideRoom } from './side-threads.mjs';
 
@@ -22,7 +23,7 @@ failOnPageErrors(test);
 test('a topic an agent opened with open_topic opens in the panel from its reply count (#720)', async ({ page }) => {
   const { rt, store } = app;
   const r = sideRoom(app, 'Opened by an agent');
-  const root = rt.addItem(r.room.id, { kind: 'user', text: 'Which editions differ?', status: 'done' });
+  const root = arrange.post(rt, r.room.id, { kind: 'user', text: 'Which editions differ?', status: 'done' });
   held.scripts.set(r.researcher.id, (ctx) => {
     ctx.tools.open_topic({ itemId: root.id, message: 'The 1908 edition drops two chapters.' });
     ctx.text('Answered in a topic thread.');

@@ -7,6 +7,7 @@
 // On the demo’s conversations. Moved from tools/check-shell.mjs (#303).
 
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, focused, focusIs, startPostbox, synced } from './postbox.mjs';
 
 // Light, as the old check ran it.
@@ -40,7 +41,7 @@ const plus = (page) => page.getByRole('button', { name: 'Add a file or a new age
 test('#69 an older open block shows “1 open confirmation”, not needs-you, and goes to the block', async ({ page }) => {
   const { rt, store } = app;
   const t = threadNamed('Index planning');
-  const se = rt.sessionsIn(t.id).find((x) => x.handle === 'indexer');
+  const se = arrange.agentIn(rt, t.id, 'indexer');
   // A block from a turn that has ended, left unanswered.
   rt.toolsFor(se.id, null).show_block({
     block: { id: 'old-ask', type: 'confirm', version: 1, fallback: 'x', statement: 'Rename them?', confirmLabel: 'Rename' },
@@ -168,13 +169,13 @@ test('#29 a second click closes a menu even after its button repainted under it'
     b.dataset.first = 'yes';
   });
   // A rename repaints the top bar, which rebuilds its ⋯ button.
-  app.rt.renameThread(t.id, `${t.title} (renamed)`);
+  arrange.renameThread(app.rt, t.id, `${t.title} (renamed)`);
   try {
     await expect(page.locator('header.topbar button[data-first]'), 'the top bar repainted').toHaveCount(0);
     await actions(page).click();
     await expect(page.locator('.menu')).toHaveCount(0);
   } finally {
-    app.rt.renameThread(t.id, 'Index planning');
+    arrange.renameThread(app.rt, t.id, 'Index planning');
   }
 });
 
@@ -193,7 +194,7 @@ test('#26 ⋯ › Rename… by keyboard returns focus to ⋯ after the top bar r
     await expect(page.getByRole('button', { name: 'Actions for Index the shelf (2)' })).toBeVisible();
     await focusIs(page, 'button: Actions for Index the shelf (2)');
   } finally {
-    app.rt.renameThread(t.id, 'Index the shelf');
+    arrange.renameThread(app.rt, t.id, 'Index the shelf');
   }
 });
 
@@ -208,7 +209,7 @@ test('a conversation opened from the sidebar replaces the last one’s transcrip
   await expect(page.locator(`#main[data-thread="${b.id}"]`)).toBeVisible();
   await expect(page.locator(`.transcript[data-thread="${a.id}"]`), 'the last transcript went').toHaveCount(0);
   // The first conversation’s transcript stopped listening when it went: what comes to it doesn’t land here.
-  app.rt.addItem(a.id, { kind: 'user', text: 'While you were away' });
+  arrange.post(app.rt, a.id, { kind: 'user', text: 'While you were away' });
   await synced(page, app);
   await expect(page.locator('#main')).not.toContainText('While you were away');
   await page.goBack();

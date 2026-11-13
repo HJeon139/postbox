@@ -4,6 +4,7 @@
 // sessions as server/remote/turns.mjs keeps them, with the replies and cards they leave. Moved from
 // tools/remote-turns-kit.mjs (#303).
 
+import * as arrange from '../arrange.mjs';
 import { startRemote } from './remote-hosts.mjs';
 
 const MIN = 60_000;
@@ -33,9 +34,9 @@ const WELCOME = {
  */
 function scripted(app, delivered) {
   const { rt } = app;
-  rt.adapters.register({
+  arrange.withAdapter(rt, {
     name: 'claude-code',
-    capabilities: rt.adapters.get('claude-code').capabilities,
+    capabilities: arrange.capabilitiesOf(rt, 'claude-code'),
     async folderFor() {
       return app.root;
     },
@@ -98,7 +99,7 @@ function places(app, hosts, now) {
 function turnStates(app, { A, B, room }, ses, now) {
   const { rt } = app;
   const remoteTurn = (se, hostId, rtTurn, patch) =>
-    rt.updateSession(se.id, {
+    arrange.setSession(rt, se.id, {
       remoteTurn: {
         hostId,
         turn: `ht_${rtTurn}`,
@@ -113,7 +114,7 @@ function turnStates(app, { A, B, room }, ses, now) {
       },
     });
   const reply = (se, turnId, patch) =>
-    rt.addItem(room.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, turnId, text: '', status: 'done', ...patch });
+    arrange.post(rt, room.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, turnId, text: '', status: 'done', ...patch });
   remoteTurn(ses.coder, A.id, 'tu_signin', { state: 'signin', resume: { why: 'signin', at: now }, autoResumes: 0 });
   const signin = reply(ses.coder, 'tu_signin', {
     status: 'failed',
@@ -159,7 +160,7 @@ function turnStates(app, { A, B, room }, ses, now) {
  */
 function unkilledTurn(app, { A, room }, ses, now) {
   const { rt } = app;
-  rt.updateSession(ses.keeper.id, {
+  arrange.setSession(rt, ses.keeper.id, {
     remoteTurn: {
       hostId: A.id,
       turn: 'ht_tu_unkilled',
@@ -172,7 +173,7 @@ function unkilledTurn(app, { A, room }, ses, now) {
       autoResumes: 0,
     },
   });
-  const unkilled = rt.addItem(room.id, {
+  const unkilled = arrange.post(rt, room.id, {
     kind: 'agent',
     sessionId: ses.keeper.id,
     personaId: ses.keeper.personaId,
@@ -193,7 +194,7 @@ function unkilledTurn(app, { A, room }, ses, now) {
  */
 function unregisteredTurn(app, { A, room }, ses, now) {
   const { rt } = app;
-  rt.updateSession(ses.porter.id, {
+  arrange.setSession(rt, ses.porter.id, {
     remoteTurn: {
       hostId: A.id,
       turn: 'ht_tu_unreg',
@@ -207,7 +208,7 @@ function unregisteredTurn(app, { A, room }, ses, now) {
       autoResumes: 0,
     },
   });
-  const unregistered = rt.addItem(room.id, {
+  const unregistered = arrange.post(rt, room.id, {
     kind: 'agent',
     sessionId: ses.porter.id,
     personaId: ses.porter.personaId,
@@ -228,7 +229,7 @@ function unregisteredTurn(app, { A, room }, ses, now) {
 function cards(app, { A, room }, ses, now) {
   const { rt } = app;
   const card = (status, extra) =>
-    rt.addItem(room.id, {
+    arrange.post(rt, room.id, {
       kind: 'permission',
       sessionId: ses.coder.id,
       handle: 'coder',
@@ -244,7 +245,7 @@ function cards(app, { A, room }, ses, now) {
   card('expired', { noAnswer: true });
   card('canceled');
   card('ended');
-  const command = rt.addItem(room.id, {
+  const command = arrange.post(rt, room.id, {
     kind: 'command',
     command: 'git status',
     cwd: app.root,
@@ -270,8 +271,8 @@ export async function startRemoteTurns(name) {
   scripted(app, delivered);
   const now = Date.now();
   const at = places(app, hosts, now);
-  const ses = Object.fromEntries(app.rt.sessionsIn(at.room.id).map((se) => [se.handle, se]));
-  const [runner] = app.rt.sessionsIn(at.dm.id);
+  const ses = Object.fromEntries(arrange.sessionsIn(app.rt, at.room.id).map((se) => [se.handle, se]));
+  const [runner] = arrange.sessionsIn(app.rt, at.dm.id);
   const items = { ...turnStates(app, at, ses, now), ...unregisteredTurn(app, at, ses, now), ...unkilledTurn(app, at, ses, now), ...cards(app, at, ses, now) };
   return { app, hosts, delivered, ...at, ses, runner, items };
 }

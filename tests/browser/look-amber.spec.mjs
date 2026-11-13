@@ -4,6 +4,7 @@
 // Moved from tools/checks/look.mjs (#303).
 
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, PHONE, settled, startPostbox, synced } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -15,8 +16,8 @@ test.beforeAll(async () => {
   app = await startPostbox('look-amber');
   const { rt, store } = app;
   const project = Object.values(store.state.projects)[0];
-  t = rt.createThread({ projectId: project.id, title: 'Look checks', personaIds: [rt.personaByHandle('librarian').id] });
-  const tools = rt.toolsFor(rt.sessionsIn(t.id)[0].id);
+  t = rt.createThread({ projectId: project.id, title: 'Look checks', personaIds: [arrange.persona(rt, 'librarian').id] });
+  const tools = rt.toolsFor(arrange.agentIn(rt, t.id).id);
   // #181: a toggle that’s on, chips to choose, and an app with a selected segment of the kit.
   tools.show_block({
     block: {

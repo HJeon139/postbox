@@ -7,6 +7,7 @@
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { after, before, test } from 'node:test';
+import * as arrange from './arrange.mjs';
 import { fakeRequest, NAVIGATION } from './fake-http.mjs';
 import { eio } from './outage-log.mjs';
 import { tempDir } from './temp-dirs.mjs';
@@ -57,15 +58,15 @@ function scripted() {
 test('ST-3: a turn running when a write fails stops with the store named, nothing starts until Retry, then what waited runs in order', async () => {
   const { rt, store } = app;
   const agent = scripted();
-  rt.adapters.register(agent);
+  arrange.withAdapter(rt, agent);
   const projectId = 'pr_outage';
   store.emit('project', { id: projectId, name: 'Outage', folder: dir });
   const p = rt.createPersona({ handle: 'builder', backend: 'mock' });
   const t = rt.createThread({ projectId, title: 'Outage', personaIds: [p.id] });
-  const se = rt.sessionsIn(t.id)[0];
+  const se = arrange.agentIn(rt, t.id);
   rt.sendMessage(t.id, { text: 'Build it' });
-  await until(() => agent.calls.length === 1 && rt.turns.has(se.id), 'the turn to start');
-  const turn = rt.turns.get(se.id);
+  await until(() => agent.calls.length === 1 && arrange.running(rt, se.id), 'the turn to start');
+  const turn = arrange.liveTurn(rt, se.id);
   await store.flush();
   const cookie = (await call({ path: '/', headers: NAVIGATION })).headers['set-cookie'].split(';')[0];
 
@@ -74,12 +75,12 @@ test('ST-3: a turn running when a write fails stops with the store named, nothin
   assert.equal(store.writable, false);
   // The backend’s stream goes on: a line comes after the failure, in a listener, as readline delivers it.
   assert.doesNotThrow(() => agent.stream.emit('line', 'cs_after_outage'), 'a save from a stream listener doesn’t throw out of it');
-  await until(() => !rt.turns.has(se.id), 'the running turn to stop');
+  await until(() => !arrange.running(rt, se.id), 'the running turn to stop');
   assert.equal(turn.abort.signal.aborted, true, 'the agent was told to stop');
   assert.match(String(turn.abort.signal.reason?.message), /save changes/, 'the stop names the store');
 
   // No turn starts while writes are closed: a wake for the agent waits, and a message of yours is refused, naming why.
-  rt.deliver(se.id, { kind: 'agent', from: '@someone', text: 'Are you there?' });
+  arrange.deliver(rt, se.id, { kind: 'agent', from: '@someone', text: 'Are you there?' });
   assert.equal(agent.calls.length, 1, 'no turn started while the store is closed');
   const refused = await call({ method: 'POST', path: `/api/threads/${t.id}/messages`, cookie, body: { text: 'Hello?' } });
   assert.equal(refused.status, 503, 'a write is refused with 503, not a server error');
@@ -100,7 +101,7 @@ test('ST-3: a turn running when a write fails stops with the store named, nothin
   assert.equal(stopped?.status, 'stopped', 'the stopped turn’s reply is marked stopped');
   assert.equal(stopped?.stopReason, 'store', 'and says the store stopped it');
   assert.equal(store.state.sessions[se.id].backendState?.claudeSessionId, 'cs_after_outage', 'the session id it couldn’t save then is saved now');
-  rt.stop(se.id, { silent: true });
+  arrange.stopTurn(rt, se.id, { silent: true });
   await store.flush();
   const b = await call({ path: '/api/state' });
   assert.equal(b.json.store.writable, true);
@@ -108,13 +109,13 @@ test('ST-3: a turn running when a write fails stops with the store named, nothin
 
 test('T-32: a scheduled wake armed before the failure runs only after Retry has installed the recovered state', async () => {
   const { rt, store } = app;
-  const agent = rt.adapters.get('mock');
+  const agent = arrange.adapter(rt, 'mock');
   const before = agent.calls.length;
   const p = rt.createPersona({ handle: 'waker', backend: 'mock' });
   const t = rt.createThread({ projectId: 'pr_outage', title: 'Wake', personaIds: [p.id] });
-  const se = rt.sessionsIn(t.id)[0];
+  const se = arrange.agentIn(rt, t.id);
   await store.flush();
-  const sc = rt.schedule(se.id, { inMs: 1000, note: 'later' });
+  const sc = arrange.schedule(rt, se.id, { inMs: 1000, note: 'later' });
   assert.ok(sc.id);
   // Armed before the failure means on disk before it: an unsynced schedule is not in the recovered state, and only the
   // stale held start used to deliver it (the integrator’s re-review of #598).
@@ -123,13 +124,13 @@ test('T-32: a scheduled wake armed before the failure runs only after Retry has 
   // The timer fires while the store is closed: the wake’s turn waits, it does not start.
   await new Promise((r) => setTimeout(r, 1300));
   assert.equal(agent.calls.length, before, 'no turn started from the old timer while closed');
-  assert.equal(rt.turns.has(se.id), false);
+  assert.equal(arrange.running(rt, se.id), false);
   const cookie = (await call({ path: '/', headers: NAVIGATION })).headers['set-cookie'].split(';')[0];
   assert.equal((await call({ method: 'POST', path: '/api/store/retry', cookie })).status, 200);
-  await until(() => agent.calls.length === before + 1 && rt.turns.has(se.id), 'the wake’s turn to start after the install');
+  await until(() => agent.calls.length === before + 1 && arrange.running(rt, se.id), 'the wake’s turn to start after the install');
   assert.ok(store.writable, 'and only once writes were open again');
-  rt.stop(se.id, { silent: true });
-  await until(() => !rt.turns.has(se.id) && !rt.exiting.has(se.id), 'the turn to stop and anything held behind it to end');
+  arrange.stopTurn(rt, se.id, { silent: true });
+  await until(() => !arrange.running(rt, se.id) && !arrange.exiting(rt, se.id), 'the turn to stop and anything held behind it to end');
   await new Promise((r) => setTimeout(r, 100));
   assert.equal(agent.calls.length, before + 1, 'one delivery for one wake: nothing followed it');
   await store.flush();
@@ -137,31 +138,31 @@ test('T-32: a scheduled wake armed before the failure runs only after Retry has 
 
 test('a scheduled wake’s turn stopped by the outage has one owner after Retry: the re-arm runs it again as interrupted, once (the integrator’s re-review)', async () => {
   const { rt, store } = app;
-  const agent = rt.adapters.get('mock');
+  const agent = arrange.adapter(rt, 'mock');
   const p = rt.createPersona({ handle: 'sleeper', backend: 'mock' });
   const t = rt.createThread({ projectId: 'pr_outage', title: 'Sleep', personaIds: [p.id] });
-  const se = rt.sessionsIn(t.id)[0];
+  const se = arrange.agentIn(rt, t.id);
   await store.flush();
-  const sc = rt.schedule(se.id, { inMs: 1000, note: 'now' });
-  await until(() => rt.turns.has(se.id), 'the wake’s turn to start');
-  assert.equal(rt.s.schedules[sc.id]?.running, true);
+  const sc = arrange.schedule(rt, se.id, { inMs: 1000, note: 'now' });
+  await until(() => arrange.running(rt, se.id), 'the wake’s turn to start');
+  assert.equal(rt.store.state.schedules[sc.id]?.running, true);
   await store.flush();
   const before = agent.calls.length;
   store.fail(eio());
-  await until(() => !rt.turns.has(se.id), 'the turn to stop');
+  await until(() => !arrange.running(rt, se.id), 'the turn to stop');
   const cookie = (await call({ path: '/', headers: NAVIGATION })).headers['set-cookie'].split(';')[0];
   assert.equal((await call({ method: 'POST', path: '/api/store/retry', cookie })).status, 200);
   // The stop’s record doesn’t settle the wake as well (two owners would cancel it): the re-arm finds it running on
   // disk, marks it interrupted and runs it again, as a restart does and as the agent was told.
-  await until(() => agent.calls.length === before + 1 && rt.turns.has(se.id), 'the wake to run again after Retry');
+  await until(() => agent.calls.length === before + 1 && arrange.running(rt, se.id), 'the wake to run again after Retry');
   assert.equal(agent.calls.at(-1).message.scheduledWakeId, sc.id, 'the same wake, re-armed (an interrupted note is added only when its tools had started)');
   const stopped = store.items(t.id).find((it) => it.kind === 'agent' && it.sessionId === se.id && it.stopReason === 'store');
   assert.ok(stopped, 'the first reply says the store stopped it');
-  rt.stop(se.id, { silent: true }); // your Stop ends it for good
-  await until(() => !rt.turns.has(se.id) && !rt.exiting.has(se.id), 'the second turn to end');
+  arrange.stopTurn(rt, se.id, { silent: true }); // your Stop ends it for good
+  await until(() => !arrange.running(rt, se.id) && !arrange.exiting(rt, se.id), 'the second turn to end');
   await new Promise((r) => setTimeout(r, 100));
   assert.equal(agent.calls.length, before + 1, 'it ran again once, not twice');
-  assert.equal(rt.timers.has(sc.id), false, 'no timer left after your Stop');
+  assert.equal(arrange.scheduledTimer(rt, sc.id), false, 'no timer left after your Stop');
   agent.calls.length = 0;
   await store.flush();
 });
@@ -205,11 +206,11 @@ function heldSync(store) {
 
 test('while Retry reconciles, the router, the tools’ gate and a turn start stay closed; they open once the reconciling commit has landed', async () => {
   const { rt, store } = app;
-  const agent = rt.adapters.get('mock');
+  const agent = arrange.adapter(rt, 'mock');
   const before = agent.calls.length;
   const p = rt.createPersona({ handle: 'waiter', backend: 'mock' });
   const t = rt.createThread({ projectId: 'pr_outage', title: 'Reconcile', personaIds: [p.id] });
-  const se = rt.sessionsIn(t.id)[0];
+  const se = arrange.agentIn(rt, t.id);
   await store.flush();
   const cookie = (await call({ path: '/', headers: NAVIGATION })).headers['set-cookie'].split(';')[0];
   store.fail(eio());
@@ -227,7 +228,7 @@ test('while Retry reconciles, the router, the tools’ gate and a turn start sta
   const refused = await call({ method: 'POST', path: `/api/threads/${t.id}/messages`, cookie, body: { text: 'Hello?' } });
   assert.equal(refused.status, 503, 'a router write is refused while reconciling');
   assert.equal(store.writable, false, 'the tools’ gate reads the same flag');
-  rt.deliver(se.id, { kind: 'agent', from: '@someone', text: 'Are you there?' });
+  arrange.deliver(rt, se.id, { kind: 'agent', from: '@someone', text: 'Are you there?' });
   await new Promise((r) => setTimeout(r, 30));
   assert.equal(agent.calls.length, before, 'no turn started while reconciling');
   held.release();
@@ -237,7 +238,7 @@ test('while Retry reconciles, the router, the tools’ gate and a turn start sta
   await until(() => agent.calls.length === before + 1, 'the waiting turn to start once writes opened');
   assert.equal((await call({ method: 'POST', path: `/api/threads/${t.id}/messages`, cookie, body: { text: 'Hello again' } })).status, 201);
   off();
-  rt.stop(se.id, { silent: true });
-  await until(() => !rt.turns.has(se.id), 'the turn to stop');
+  arrange.stopTurn(rt, se.id, { silent: true });
+  await until(() => !arrange.running(rt, se.id), 'the turn to stop');
   await store.flush();
 });

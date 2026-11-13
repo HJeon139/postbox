@@ -6,6 +6,7 @@
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -38,10 +39,10 @@ test.beforeAll(async () => {
   });
   const { rt, store } = app;
   // No model here: a confirm that shows the exact command needs none, and a judge that was asked would fail the spec.
-  rt.judge = async () => {
+  arrange.withJudge(rt, async () => {
     throw new Error('The judge was asked.');
-  };
-  rt.adapters.register({
+  });
+  arrange.withAdapter(rt, {
     name: 'claude-code',
     async folderFor() {
       return work;
@@ -61,7 +62,7 @@ test.afterAll(async () => {
 });
 failOnPageErrors(test);
 
-const idle = () => expect.poll(() => app.rt.turns.size, { message: 'the agent’s turn to end' }).toBe(0);
+const idle = () => expect.poll(() => arrange.liveTurns(app.rt), { message: 'the agent’s turn to end' }).toBe(0);
 const permissionCards = () => app.store.items(thread.id).filter((i) => i.kind === 'permission');
 
 test('#296 a write the confirm shows word for word runs without a card; Stop brings the card back; the panel turns it off', async ({ page }) => {
@@ -171,7 +172,7 @@ test('#562 a push the person confirmed is Postbox’s own, to the repository the
   const REPO = 'https://github.com/HJeon139/postbox.git';
   const PUSH = 'git push -u origin feat/now';
   const made = [];
-  rt.pushes = fakePushes(made);
+  arrange.withPushes(rt, fakePushes(made));
   await page.goto(`${app.origin}/#/t/${thread.id}`);
   await synced(page, app);
 
@@ -210,5 +211,5 @@ test('#562 a push the person confirmed is Postbox’s own, to the repository the
     expect.soft(permissionCards(), 'no card').toHaveLength(before);
     await idle();
   });
-  delete rt.pushes;
+  arrange.withPushes(rt, undefined);
 });

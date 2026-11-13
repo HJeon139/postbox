@@ -1,6 +1,7 @@
 // Scheduling and persistence around the pre-display app check (#37, #336).
 
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { allowPageError, failOnPageErrors, frames, settled, startPostbox, synced } from './postbox.mjs';
 
 const PLAIN = `<main style="padding:12px;color:var(--text)"><h2>Corpus summary</h2><p>Twelve books.</p></main>`;
@@ -10,7 +11,7 @@ let drawer;
 
 test.beforeAll(async () => {
   app = await startPostbox('app-check-scheduling');
-  app.rt.adapters.register({ name: 'mock', async deliver() {} });
+  arrange.withAdapter(app.rt, { name: 'mock', async deliver() {} });
   drawer = app.rt.createPersona({ handle: 'drawer' });
 });
 test.afterAll(async () => {
@@ -21,12 +22,12 @@ failOnPageErrors(test);
 function room(title) {
   const { rt, store } = app;
   const thread = rt.createThread({ projectId: Object.values(store.state.projects)[0].id, title, personaIds: [drawer.id] });
-  return { rt, store, thread, session: rt.sessionsIn(thread.id)[0] };
+  return { rt, store, thread, session: arrange.agentIn(rt, thread.id) };
 }
 
 test('#336 an open page checks an app in a topic thread nobody opened', async ({ page }) => {
   const { rt, thread, session } = room('Unopened topic app');
-  const root = rt.addItem(thread.id, {
+  const root = arrange.post(rt, thread.id, {
     kind: 'agent',
     sessionId: session.id,
     personaId: session.personaId,
@@ -38,7 +39,7 @@ test('#336 an open page checks an app in a topic thread nobody opened', async ({
   await page.goto(`${app.origin}/#/t/${thread.id}`);
   await synced(page, app);
   rt.toolsFor(session.id, /** @type {any} */ ({ threadId })).show_app({ id: 'unopened-topic', title: 'Unopened topic', code: PLAIN });
-  await expect.poll(() => rt.s.apps['unopened-topic'].check.status, { timeout: 30_000 }).toBe('passed');
+  await expect.poll(() => rt.store.state.apps['unopened-topic'].check.status, { timeout: 30_000 }).toBe('passed');
   await expect(page.locator('iframe[title="Unopened topic"]')).toHaveCount(0);
 });
 
@@ -48,11 +49,11 @@ test('#37 an off-screen app pauses while the next app is checked', async ({ page
   tools.show_app({ id: 'offscreen-app', title: 'Off-screen app', code: PLAIN });
   await page.goto(`${app.origin}/#/t/${thread.id}`);
   await synced(page, app);
-  await expect.poll(() => rt.s.apps['offscreen-app'].check.status, { timeout: 30_000 }).toBe('passed');
+  await expect.poll(() => rt.store.state.apps['offscreen-app'].check.status, { timeout: 30_000 }).toBe('passed');
   const offscreen = page.locator('iframe.app-iframe[title="Off-screen app"]');
   await expect(offscreen).toBeAttached();
   for (let i = 0; i < 20; i++)
-    rt.addItem(thread.id, {
+    arrange.post(rt, thread.id, {
       kind: 'agent',
       sessionId: session.id,
       personaId: session.personaId,
@@ -66,7 +67,7 @@ test('#37 an off-screen app pauses while the next app is checked', async ({ page
   tools.show_app({ id: 'after-offscreen', title: 'After off-screen', code: PLAIN });
   await expect(page.locator('iframe.check-frame[title="Checking After off-screen"]')).toHaveCount(3);
   await expect(offscreen).toHaveCount(0);
-  await expect.poll(() => rt.s.apps['after-offscreen'].check.status, { timeout: 30_000 }).toBe('passed');
+  await expect.poll(() => rt.store.state.apps['after-offscreen'].check.status, { timeout: 30_000 }).toBe('passed');
 });
 
 test('#37 a visible app keeps running through another conversation’s check without a click', async ({ page }) => {
@@ -79,7 +80,7 @@ test('#37 a visible app keeps running through another conversation’s check wit
   });
   await page.goto(`${app.origin}/#/t/${visibleRoom.thread.id}`);
   await synced(page, app);
-  await expect.poll(() => visibleRoom.rt.s.apps['visible-counter'].check.status, { timeout: 30_000 }).toBe('passed');
+  await expect.poll(() => visibleRoom.rt.store.state.apps['visible-counter'].check.status, { timeout: 30_000 }).toBe('passed');
   const iframe = page.locator('iframe.app-iframe[title="Visible counter"]');
   const handle = await iframe.elementHandle();
   const frame = await handle?.contentFrame();
@@ -93,7 +94,7 @@ test('#37 a visible app keeps running through another conversation’s check wit
   await expect(page.locator('iframe.check-frame[title="Checking Other counter app"]')).toHaveCount(3);
   expect(await handle.evaluate((node) => node.isConnected), 'the same visible frame stays mounted').toBe(true);
   await expect.poll(async () => Number(await counter.textContent())).toBeGreaterThan(before);
-  await expect.poll(() => otherRoom.rt.s.apps['other-counter-app'].check.status, { timeout: 30_000 }).toBe('passed');
+  await expect.poll(() => otherRoom.rt.store.state.apps['other-counter-app'].check.status, { timeout: 30_000 }).toBe('passed');
 });
 
 test('#37 a check leaves the app the person is using mounted', async ({ page }) => {
@@ -102,7 +103,7 @@ test('#37 a check leaves the app the person is using mounted', async ({ page }) 
   tools.show_app({ id: 'active-app', title: 'Active app', code: '<label>Draft <input id="draft"></label>' });
   await page.goto(`${app.origin}/#/t/${thread.id}`);
   await synced(page, app);
-  await expect.poll(() => rt.s.apps['active-app'].check.status, { timeout: 30_000 }).toBe('passed');
+  await expect.poll(() => rt.store.state.apps['active-app'].check.status, { timeout: 30_000 }).toBe('passed');
   const active = page.locator('iframe.app-iframe[title="Active app"]');
   await page.locator('.app-body[data-app-id="active-app"]').hover();
   await active.contentFrame().locator('#draft').fill('unsaved words');
@@ -111,7 +112,7 @@ test('#37 a check leaves the app the person is using mounted', async ({ page }) 
   await expect(page.locator('iframe.check-frame[title="Checking Checking next"]')).toHaveCount(3);
   await expect(active).toBeAttached();
   await expect(active.contentFrame().locator('#draft')).toHaveValue('unsaved words');
-  await expect.poll(() => rt.s.apps['checking-next'].check.status, { timeout: 30_000 }).toBe('passed');
+  await expect.poll(() => rt.store.state.apps['checking-next'].check.status, { timeout: 30_000 }).toBe('passed');
 });
 
 test('#37 an app the person used keeps unsaved state while another conversation checks an app', async ({ page }) => {
@@ -121,7 +122,7 @@ test('#37 an app the person used keeps unsaved state while another conversation 
   visibleTools.show_app({ id: 'visible-app', title: 'Visible app', code: '<label>Draft <input id="visible-draft"></label>' });
   await page.goto(`${app.origin}/#/t/${visibleRoom.thread.id}`);
   await synced(page, app);
-  await expect.poll(() => visibleRoom.rt.s.apps['visible-app'].check.status, { timeout: 30_000 }).toBe('passed');
+  await expect.poll(() => visibleRoom.rt.store.state.apps['visible-app'].check.status, { timeout: 30_000 }).toBe('passed');
   const visible = page.locator('iframe.app-iframe[title="Visible app"]');
   await page.locator('.app-body[data-app-id="visible-app"]').hover();
   await visible.contentFrame().locator('#visible-draft').fill('keep this draft');
@@ -132,7 +133,7 @@ test('#37 an app the person used keeps unsaved state while another conversation 
   await expect(page.locator('iframe.check-frame[title="Checking Other app"]')).toHaveCount(3);
   await expect(visible, 'the visible frame is not torn down').toBeAttached();
   await expect(visible.contentFrame().locator('#visible-draft')).toHaveValue('keep this draft');
-  await expect.poll(() => otherRoom.rt.s.apps['other-app'].check.status, { timeout: 30_000 }).toBe('passed');
+  await expect.poll(() => otherRoom.rt.store.state.apps['other-app'].check.status, { timeout: 30_000 }).toBe('passed');
 });
 
 test('one tab queues one app-check lock request and waits without another store event', async ({ page }) => {
@@ -141,11 +142,11 @@ test('one tab queues one app-check lock request and waits without another store 
   tools.show_app({ id: 'lock-base', title: 'Lock base', code: PLAIN });
   await page.goto(`${app.origin}/#/t/${thread.id}`);
   await synced(page, app);
-  await expect.poll(() => rt.s.apps['lock-base'].check.status, { timeout: 30_000 }).toBe('passed');
+  await expect.poll(() => rt.store.state.apps['lock-base'].check.status, { timeout: 30_000 }).toBe('passed');
   const lockBase = page.locator('iframe.app-iframe[title="Lock base"]');
   await expect(lockBase).toBeAttached();
   for (let i = 0; i < 12; i++)
-    rt.addItem(thread.id, {
+    arrange.post(rt, thread.id, {
       kind: 'agent',
       sessionId: session.id,
       personaId: session.personaId,
@@ -175,9 +176,9 @@ test('one tab queues one app-check lock request and waits without another store 
   for (let i = 1; i <= 3; i++) rt.appState('lock-base', { update: i });
   await synced(page, app);
   await frames(page);
-  expect(rt.s.apps['lock-queued'].check.status).toBe('pending');
+  expect(rt.store.state.apps['lock-queued'].check.status).toBe('pending');
   await page.evaluate(() => window.__releaseAppCheckLock());
-  await expect.poll(() => rt.s.apps['lock-queued'].check.status, { timeout: 30_000 }).toBe('passed');
+  await expect.poll(() => rt.store.state.apps['lock-queued'].check.status, { timeout: 30_000 }).toBe('passed');
   await page.evaluate(() => navigator.locks.request('postbox-app-check', () => {}));
   expect(reloads, 'the paused app reloads once after the one queued request').toBe(1);
 });
@@ -191,13 +192,13 @@ test('a hidden tab leaves a pending app for a visible tab to check', async ({ pa
   await synced(page, app);
   await frames(page);
   await expect(page.locator('iframe.check-frame[title="Checking Hidden tab app"]')).toHaveCount(0);
-  expect(rt.s.apps['hidden-tab-app'].check.status).toBe('pending');
+  expect(rt.store.state.apps['hidden-tab-app'].check.status).toBe('pending');
 
   const visiblePage = await page.context().newPage();
   try {
     await visiblePage.goto(`${app.origin}/#/t/${thread.id}`);
     await synced(visiblePage, app);
-    await expect.poll(() => rt.s.apps['hidden-tab-app'].check.status, { timeout: 30_000 }).toBe('passed');
+    await expect.poll(() => rt.store.state.apps['hidden-tab-app'].check.status, { timeout: 30_000 }).toBe('passed');
   } finally {
     await visiblePage.close();
   }
@@ -236,6 +237,6 @@ test('a failed app-check save is tried again without rerunning the check', async
   await page.goto(`${app.origin}/#/t/${thread.id}`);
   await synced(page, app);
   rt.toolsFor(session.id).show_app({ id: 'retry-save', title: 'Retry save', code: PLAIN });
-  await expect.poll(() => rt.s.apps['retry-save'].check.status, { timeout: 30_000 }).toBe('passed');
+  await expect.poll(() => rt.store.state.apps['retry-save'].check.status, { timeout: 30_000 }).toBe('passed');
   expect(saves).toBe(2);
 });

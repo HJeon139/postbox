@@ -25,5 +25,5 @@ test('the runner reads each agent’s row in the Agents section, so agents-secti
   const ui = await readUi(page);
   expect(ui.agentRows.sort()).toEqual(['checker', 'reader']);
   const check = PANEL_CHECKS.find((c) => c.id === 'agents-section-members');
-  expect(check?.run({ ui, state: app.rt.s, threads: [t.id] })).toEqual([]);
+  expect(check?.run({ ui, state: app.rt.store.state, threads: [t.id] })).toEqual([]);
 });

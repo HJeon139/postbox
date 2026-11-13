@@ -10,6 +10,7 @@ import { test } from 'node:test';
 import { createStreamMapper } from '../server/adapters/claude-stream.mjs';
 import { apply, emptyState } from '../shared/state.mjs';
 import { keepEvent } from '../tools/uat/room-events.mjs';
+import * as arrange from './arrange.mjs';
 import { settle, setup } from './side-threads-fixture.mjs';
 
 const fixture = (name) =>
@@ -34,7 +35,7 @@ test('the shared reducer merges a session.patch into its session, and drops the 
 test('updateSession emits a session.patch with only the changed fields, not the whole session', () => {
   const { store, rt, alpha } = setup();
   const from = store.state.seq;
-  rt.updateSession(alpha.id, { state: 'think', currentStep: 'Thinking', handle: alpha.handle });
+  arrange.setSession(rt, alpha.id, { state: 'think', currentStep: 'Thinking', handle: alpha.handle });
   const [ev, ...rest] = linesSince(store, from);
   assert.equal(rest.length, 0);
   assert.equal(ev.type, 'session.patch');
@@ -44,7 +45,7 @@ test('updateSession emits a session.patch with only the changed fields, not the 
   assert.equal(store.state.sessions[alpha.id].state, 'think');
   assert.equal(store.state.sessions[alpha.id].handle, alpha.handle);
   // A field set to undefined is gone from the session, as it was when the whole session went as JSON.
-  rt.updateSession(alpha.id, { currentStep: undefined });
+  arrange.setSession(rt, alpha.id, { currentStep: undefined });
   assert.equal(Object.hasOwn(store.state.sessions[alpha.id], 'currentStep'), false);
   assert.deepEqual(linesSince(store, from).at(-1).data.unset, ['currentStep']);
 });

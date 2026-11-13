@@ -4,6 +4,7 @@
 // One story, in steps that build on each other; each finding is soft, so a run reports all of them.
 
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 
 const APP = (label) => `<main style="padding:12px"><p>${label}</p><button class="btn" type="button">Try it</button></main>`;
@@ -21,18 +22,21 @@ failOnPageErrors(test);
 /** What every step reads: the page, the runtime, the two agents’ tools, and helpers for an app's item in the transcript. */
 async function seed(page) {
   const { rt, store } = app;
-  const projectId = Object.values(rt.s.projects)[0].id;
-  const t = rt.createThread({ projectId, title: 'Retire check', personaIds: [rt.personaByHandle('researcher').id, rt.personaByHandle('critic').id] });
-  const [mine, theirs] = rt.sessionsIn(t.id).map((se) => rt.toolsFor(se.id));
-  const item = (id) => page.locator(`.transcript > [data-key="${rt.s.apps[id].itemId}"]`);
+  const projectId = Object.values(rt.store.state.projects)[0].id;
+  const t = rt.createThread({ projectId, title: 'Retire check', personaIds: [arrange.persona(rt, 'researcher').id, arrange.persona(rt, 'critic').id] });
+  const [mine, theirs] = arrange.sessionsIn(rt, t.id).map((se) => rt.toolsFor(se.id));
+  const item = (id) => page.locator(`.transcript > [data-key="${rt.store.state.apps[id].itemId}"]`);
   const checked = (...ids) =>
     expect
-      .poll(() => ids.every((id) => rt.s.apps[id].check.status === 'passed'), { message: `${ids.join(' and ')} to pass their checks`, timeout: 15_000 })
+      .poll(() => ids.every((id) => rt.store.state.apps[id].check.status === 'passed'), {
+        message: `${ids.join(' and ')} to pass their checks`,
+        timeout: 15_000,
+      })
       .toBe(true);
   await page.goto(app.origin);
   mine.show_app({ id: 'lab', title: 'Practice lab', code: APP('Lab v1') });
   mine.update_app({ id: 'lab', code: APP('Lab v2'), summary: 'more exercises' });
-  for (let i = 0; i < 12; i++) rt.addItem(t.id, { kind: 'user', text: `Message ${i}, so the map is off screen from the lab.` });
+  for (let i = 0; i < 12; i++) arrange.post(rt, t.id, { kind: 'user', text: `Message ${i}, so the map is off screen from the lab.` });
   theirs.show_app({ id: 'metro', title: 'Metro map', code: APP('The map') });
   await synced(page, app);
   await page.goto(`${app.origin}/#/t/${t.id}`);
@@ -113,7 +117,7 @@ async function early({ page, rt, mine, item }) {
   await synced(page, app);
   await expect(item('early').locator('.app-retired')).toBeVisible();
   await expect(page.locator('iframe.check-frame[title="Checking Early draft"]'), 'no check frame for the early draft').toHaveCount(0);
-  expect.soft(rt.s.apps.early.check.status, 'its check never ran').toBe('pending');
+  expect.soft(rt.store.state.apps.early.check.status, 'its check never ran').toBe('pending');
   await expect.soft(item('early').locator('iframe')).toHaveCount(0);
   await page.reload();
   await expect
@@ -125,7 +129,7 @@ async function early({ page, rt, mine, item }) {
 async function comesBack({ page, rt, store, t, mine, item, checked }) {
   const u = mine.update_app({ id: 'lab', code: APP('Lab v3'), summary: 'the route in the lab' });
   expect
-    .soft(u.ok && store.items(t.id).at(-1).id === rt.s.apps.lab.itemId, `update_app brings a retired app back at the newest point: ${u.message}`)
+    .soft(u.ok && store.items(t.id).at(-1).id === rt.store.state.apps.lab.itemId, `update_app brings a retired app back at the newest point: ${u.message}`)
     .toBe(true);
   await synced(page, app);
   await checked('lab');

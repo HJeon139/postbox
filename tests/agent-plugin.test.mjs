@@ -15,6 +15,7 @@ import { deniedTools, fromContext, settingsFor } from '../server/adapters/setup.
 import { POSTBOX_SKILLS } from '../server/adapters/skill-config.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
+import * as arrange from './arrange.mjs';
 
 const ctx = (over = {}) => ({ persona: { id: 'p1', handle: 'coder', model: 'mock' }, project: { id: 'pr1' }, ...over });
 /** Each plugin folder Claude Code is given, from its arguments. @param {string[]} args */
@@ -88,7 +89,7 @@ test('a persona turns skills off from its next turn: Postbox’s plugin is left 
   const turn = async () => {
     const before = seen.length;
     rt.sendMessage(t.id, { text: 'draw it' });
-    for (let i = 0; i < 100 && (rt.turns.size || seen.length === before); i++) await new Promise((r) => setTimeout(r, 5));
+    for (let i = 0; i < 100 && (arrange.liveTurns(rt) || seen.length === before); i++) await new Promise((r) => setTimeout(r, 5));
   };
   await turn();
   const off = [...POSTBOX_SKILLS, 'grill-me', 'design:design-critique'];

@@ -17,6 +17,7 @@
 // frame holding the sandbox page and its first message heard, and without the header every refused case does too.
 
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { allowPageError, failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -45,11 +46,11 @@ const at = (host, p = port) => `http://${host}:${p}`;
 function room(id) {
   const { rt } = app;
   const thread = rt.createThread({ projectId: 'pr_frames', title: `Frames ${id}`, personaIds: [drawer.id] });
-  const session = rt.sessionsIn(thread.id)[0];
+  const session = arrange.agentIn(rt, thread.id);
   const tools = rt.toolsFor(session.id);
   tools.show_app({ id, title: `App ${id}`, code: `<main style="padding:12px"><h2>Drawn ${id}</h2></main>` });
   const diagram = `\`\`\`mermaid\ngraph TD\n  A${id} --> B${id}\n\`\`\``;
-  rt.addItem(thread.id, {
+  arrange.post(rt, thread.id, {
     kind: 'agent',
     sessionId: session.id,
     personaId: session.personaId,
@@ -77,7 +78,7 @@ for (const host of ['127.0.0.1', 'localhost'])
     const { thread, tools } = room(id);
     await page.goto(`${at(host)}/#/t/${thread.id}`);
     await synced(page, app);
-    await expect.poll(() => app.rt.s.apps[id].check.status, { message: 'the page checked the app in its frame', timeout: 30_000 }).toBe('passed');
+    await expect.poll(() => app.rt.store.state.apps[id].check.status, { message: 'the page checked the app in its frame', timeout: 30_000 }).toBe('passed');
     // Shown once the check has passed, as tests/browser/app-review-reload.spec.mjs does: a review shown while its app
     // is being checked keeps saying so here after the check passes.
     tools.show_block({ block: { id: `rv-app-${id}`, type: 'review', version: 1, title: 'The app', fallback: 'Review the app.', format: 'app', appId: id } });

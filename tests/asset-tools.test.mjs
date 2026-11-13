@@ -10,6 +10,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { Store } from '../server/store.mjs';
 import { ASSETS, READING } from '../shared/limits.mjs';
+import * as arrange from './arrange.mjs';
 import { assetRoom, contentOf, readsOn } from './asset-tools-fixture.mjs';
 
 const idOf = (/** @type {string} */ msg) => /asset (as_\w+)/.exec(msg)?.[1];
@@ -60,7 +61,7 @@ test('#516 S3b: write_asset refuses what it can’t make sense of, before anythi
     assert.equal(r.ok, false, JSON.stringify(args));
     assert.match(r.message, why, JSON.stringify(args));
   }
-  assert.deepEqual(Object.keys(rt.s.assets), [id], 'nothing else was made');
+  assert.deepEqual(Object.keys(rt.store.state.assets), [id], 'nothing else was made');
   const long = await A.read_asset({ id: `as_${'x'.repeat(10_000)}` });
   assert.ok(long.message.length < 300, 'an id an agent sent is clipped where an answer names it');
   assert.match((await A.read_asset({ id: '__proto__' })).message, /There’s no asset __proto__/);
@@ -206,14 +207,14 @@ test('#516 S3b: list_assets pages the room’s assets by name, ignoring case, an
 test('#516 S3b: topic and side threads share their conversation’s assets, and another conversation can’t read them', async (ctx) => {
   const { rt, A, as, alpha, t } = await assetRoom(ctx);
   const { id } = await A.write_asset({ name: 'shared.md', text: 'one room' });
-  const root = rt.addItem(t.id, { kind: 'user', text: 'Start a topic' });
+  const root = arrange.post(rt, t.id, { kind: 'user', text: 'Start a topic' });
   const topic = rt.startTopic(t.id, root.id).threadId;
   assert.match((await as(alpha, { threadId: topic }).list_assets({})).message, /shared\.md/);
   // A side thread’s session is its own, in its own thread: the room is still the conversation’s.
   const side = rt.createThread({ projectId: 'p1', title: 'Side', kind: 'side', parentId: t.id, personaIds: [alpha.personaId] });
-  assert.match((await as(rt.sessionsIn(side.id)[0]).list_assets({})).message, /shared\.md/);
+  assert.match((await as(arrange.agentIn(rt, side.id)).list_assets({})).message, /shared\.md/);
   const other = rt.createThread({ projectId: 'p1', title: 'Other', personaIds: [alpha.personaId] });
-  const there = as(rt.sessionsIn(other.id)[0]);
+  const there = as(arrange.agentIn(rt, other.id));
   assert.match((await there.read_asset({ id })).message, /There’s no asset as_\w+ in this conversation/);
   assert.match((await there.write_asset({ id, base: 1, text: 'x' })).message, /no asset/);
   assert.equal(idOf((await there.write_asset({ name: 'shared.md', text: 'two' })).message) !== id, true, 'the name is free in another room');

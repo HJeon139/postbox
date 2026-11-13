@@ -4,6 +4,7 @@
 // show, and the error after a bad submit stays as it was.
 
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { allowPageError, failOnPageErrors, startPostbox, synced, windowWidth } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -30,9 +31,9 @@ for (const width of [375, 1280]) {
     for (const c of cases) {
       test(`#822 a number field with ${c.what} shows “${c.hint}” before any submit, and is described by it`, async ({ page }) => {
         const { rt } = app;
-        const project = Object.values(rt.s.projects)[0];
-        const thread = rt.createThread({ projectId: project.id, title: `Length ${++n}`, personaIds: [rt.personaByHandle('librarian').id] });
-        const tools = rt.toolsFor(rt.sessionsIn(thread.id)[0].id);
+        const project = Object.values(rt.store.state.projects)[0];
+        const thread = rt.createThread({ projectId: project.id, title: `Length ${++n}`, personaIds: [arrange.persona(rt, 'librarian').id] });
+        const tools = rt.toolsFor(arrange.agentIn(rt, thread.id).id);
         const field = { id: 'words', label: 'Rough length you want', kind: 'number', ...c.range, help: 'Words, roughly.', placeholder: '600' };
         tools.show_block({ block: { id: 'length', type: 'form', version: 1, title: 'The essay', fallback: 'How long?', fields: [field] } });
         await page.goto(`${app.origin}/#/t/${thread.id}`);

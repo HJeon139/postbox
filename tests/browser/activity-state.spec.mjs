@@ -1,6 +1,7 @@
 // An activity list keeps the open or closed state the person chose while its reply re-renders (#488).
 
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -19,7 +20,7 @@ test.beforeAll(async () => {
     finish = resolve;
   });
   app = await startPostbox('activity-state');
-  app.rt.adapters.register({
+  arrange.withAdapter(app.rt, {
     name: 'mock',
     async deliver(_session, message, ctx) {
       if (message.text === 'New reply') {
@@ -55,7 +56,7 @@ test.use({ colorScheme: 'light' });
 test('#488 an invalid block’s raw details keep the state the person chose when the item updates', async ({ page }) => {
   await page.goto(`${app.origin}/#/t/${thread.id}`);
   await synced(page, app);
-  const session = app.rt.sessionsIn(thread.id)[0];
+  const session = arrange.agentIn(app.rt, thread.id);
   const shown = app.rt.toolsFor(session.id).show_block({
     block: { id: 'invalid-state', type: 'timeline', version: 1, title: 'Unknown block', fallback: 'Plain-text fallback.' },
   });
@@ -67,7 +68,7 @@ test('#488 an invalid block’s raw details keep the state the person chose when
   await raw.locator('> summary').click();
   await expect(raw).toHaveAttribute('open', '');
 
-  app.rt.patchItem(thread.id, item.id, { errors: [...item.errors, 'A second validation error.'] });
+  arrange.setItem(app.rt, thread.id, item.id, { errors: [...item.errors, 'A second validation error.'] });
   await synced(page, app);
   await expect(raw, 'the raw block stays open when its item is rebuilt').toHaveAttribute('open', '');
 });
@@ -80,7 +81,7 @@ test('#488 an activity list and thought keep the state the person chose while th
   await expect(page.locator('.live-steps'), 'live while the turn runs').toHaveCount(1);
   addSteps();
   finish();
-  await expect.poll(() => app.rt.turns.size, { message: 'the first turn to finish' }).toBe(0);
+  await expect.poll(() => arrange.liveTurns(app.rt), { message: 'the first turn to finish' }).toBe(0);
   await synced(page, app);
 
   const activity = page.locator('details.activity');
@@ -93,7 +94,9 @@ test('#488 an activity list and thought keep the state the person chose while th
 
   const reply = () => /** @type {any} */ (app.store.items(thread.id).find((item) => item.kind === 'agent'));
   const addStep = (/** @type {string} */ id, /** @type {string} */ label) =>
-    app.rt.patchItem(thread.id, reply().id, { activity: { ...reply().activity, steps: [...reply().activity.steps, { id, label, state: 'done', ms: 10 }] } });
+    arrange.setItem(app.rt, thread.id, reply().id, {
+      activity: { ...reply().activity, steps: [...reply().activity.steps, { id, label, state: 'done', ms: 10 }] },
+    });
   addStep('late-1', 'Run the focused test again');
   await synced(page, app);
   await expect(activity, 'the activity list stays open').toHaveAttribute('open', '');
@@ -107,7 +110,7 @@ test('#488 an activity list and thought keep the state the person chose while th
   await expect(activity, 'closing the activity list survives its next update').not.toHaveAttribute('open', '');
 
   app.rt.sendMessage(thread.id, { text: 'New reply' });
-  await expect.poll(() => app.rt.turns.size, { message: 'the second turn to finish' }).toBe(0);
+  await expect.poll(() => arrange.liveTurns(app.rt), { message: 'the second turn to finish' }).toBe(0);
   await synced(page, app);
   await expect(page.locator('details.activity')).toHaveCount(2);
   await expect(page.locator('details.activity').last(), 'a finished reply nobody opened or closed folds its steps').not.toHaveAttribute('open', '');

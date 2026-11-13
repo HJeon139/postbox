@@ -4,6 +4,7 @@
 // So do words after a tool call, once someone else spoke while it ran.
 
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -23,7 +24,7 @@ test.beforeAll(async () => {
     looked = resolve;
   });
   app = await startPostbox('reply-order');
-  app.rt.adapters.register({
+  arrange.withAdapter(app.rt, {
     name: 'mock',
     async deliver(session, _message, ctx) {
       if (session.handle === 'greeter') return ctx.text('Hi.');
@@ -60,7 +61,7 @@ test('a message posted while the agent works comes before the words it writes af
   await synced(page, app);
   app.rt.sendMessage(thread.id, { text: '@reader look at the file' });
   await expect.poll(() => app.store.items(thread.id).filter((it) => it.kind === 'agent').length, { message: 'the reply’s first part' }).toBe(1);
-  app.rt.addItem(thread.id, { kind: 'user', text: 'While you look: it’s the second one.' });
+  arrange.post(app.rt, thread.id, { kind: 'user', text: 'While you look: it’s the second one.' });
   write();
   await expect.poll(() => app.store.items(thread.id).find((it) => it.kind === 'agent' && it.text)?.status, { message: 'the words, done' }).toBe('done');
   await synced(page, app);

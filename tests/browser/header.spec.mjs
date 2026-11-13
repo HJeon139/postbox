@@ -7,6 +7,7 @@
 
 import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, frames, PHONE, settled, startPostbox, synced, windowWidth } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -16,7 +17,7 @@ let notes;
 
 const personaNamed = (handle) => Object.values(app.store.state.personas).find((p) => p.handle === handle);
 const threadNamed = (title) => Object.values(app.store.state.threads).find((t) => t.title === title);
-const sessionOf = (handle) => app.rt.sessionsIn(room.id).find((se) => se.handle === handle);
+const sessionOf = (handle) => arrange.agentIn(app.rt, room.id, handle);
 /**
  * Real backends aren’t registered here (POSTBOX_BACKENDS=mock), so a persona is moved in the store, as an edit in the
  * persona sheet would on a computer with Claude Code. Sessions started after take that snapshot.
@@ -34,7 +35,7 @@ test.beforeAll(async () => {
     personaIds: ['librarian', 'indexer', 'researcher', 'critic'].map((x) => personaNamed(x).id),
   });
   // @indexer’s last turn was answered by another model than the one set (a router, or the person’s own settings).
-  app.rt.updateSession(sessionOf('indexer').id, { lastModel: 'claude-sonnet-5-5', lastEffort: 'medium' });
+  arrange.setSession(app.rt, sessionOf('indexer').id, { lastModel: 'claude-sonnet-5-5', lastEffort: 'medium' });
 });
 test.afterAll(async () => {
   await app?.stop();
@@ -67,11 +68,11 @@ const openMenu = async (page) => {
 /** Runs fn with the room under a long title, so a narrow window is short of room: a short title fits at 375 px. */
 async function longTitle(fn) {
   const was = app.store.state.threads[room.id].title;
-  app.rt.putThread({ ...app.store.state.threads[room.id], title: 'A long room title that needs the room the project takes' });
+  arrange.putThread(app.rt, { ...app.store.state.threads[room.id], title: 'A long room title that needs the room the project takes' });
   try {
     await fn();
   } finally {
-    app.rt.putThread({ ...app.store.state.threads[room.id], title: was });
+    arrange.putThread(app.rt, { ...app.store.state.threads[room.id], title: was });
   }
 }
 
@@ -90,12 +91,12 @@ test('#60 a new last model reaches the row without a reload', async ({ page }) =
   const { rt } = app;
   await open(page, `#/t/${room.id}`);
   try {
-    rt.updateSession(sessionOf('researcher').id, { lastModel: 'claude-opus-5-5', lastEffort: 'high' });
+    arrange.setSession(rt, sessionOf('researcher').id, { lastModel: 'claude-opus-5-5', lastEffort: 'high' });
     await expect(row(page, 'researcher')).toContainText('Opus 5.5 · high effort');
-    rt.updateSession(sessionOf('researcher').id, { lastModel: 'claude-haiku-5-5' });
+    arrange.setSession(rt, sessionOf('researcher').id, { lastModel: 'claude-haiku-5-5' });
     await expect(row(page, 'researcher'), 'the changed model in the row').toContainText('Haiku 5.5, not Opus 5.5');
   } finally {
-    rt.updateSession(sessionOf('researcher').id, { lastModel: 'claude-opus-5-5' });
+    arrange.setSession(rt, sessionOf('researcher').id, { lastModel: 'claude-opus-5-5' });
   }
 });
 
@@ -123,7 +124,7 @@ test('#12 a mock agent is marked in its agent row, rail row and speaker line, an
   // A reply each from @critic (mock) and @indexer (Claude Code), so both have speaker lines.
   for (const handle of ['critic', 'indexer']) {
     const se = sessionOf(handle);
-    app.rt.addItem(room.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle, text: `A reply from @${handle}.`, status: 'done' });
+    arrange.post(app.rt, room.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle, text: `A reply from @${handle}.`, status: 'done' });
   }
   await open(page, `#/t/${room.id}`);
   await markedMock(row(page, 'critic'), 'the agent row says “mock”');
@@ -173,7 +174,7 @@ test('#12 the menus and the Personas list mark mock agents', async ({ page }) =>
 });
 
 test('#12 the composer marks a mock agent in “Replying to” and in the @ menu', async ({ page }) => {
-  app.rt.putThread({ ...app.store.state.threads[room.id], lastSpeaker: sessionOf('critic').id });
+  arrange.putThread(app.rt, { ...app.store.state.threads[room.id], lastSpeaker: sessionOf('critic').id });
   await open(page, `#/t/${room.id}`);
   await expect(page.locator('.composer .hint'), 'the hint marks critic').toContainText('Replying to critic mock (last speaker)');
   await page.locator('#composer-input').click();
@@ -241,7 +242,7 @@ test('#12 without --demo there’s no banner, and with Claude Code missing, a fr
     const line = page.locator('.install-note');
     await expect(line, 'an install line on the page').toBeVisible();
     // The Agent SDK loads without Claude Code when it’s installed (npm install), so say what agents run on.
-    const sdk = fresh.rt.adapters.names().includes('agent-sdk');
+    const sdk = arrange.adapterNames(fresh.rt).includes('agent-sdk');
     await expect(line).toContainText(sdk ? 'so agents run on the Agent SDK or the mock until it is.' : 'so agents run on the mock until it is');
     await expect(line).toContainText('install Claude Code so claude --version works, or set POSTBOX_CLAUDE_BIN to where it is, then restart Postbox');
   } finally {
@@ -335,12 +336,12 @@ test.describe('1280 px', () => {
     // “· calling tools” is longer than “· idle”; it’s in the sidebar, so the top bar stays as it was.
     const all = ['librarian', 'indexer', 'researcher', 'critic'];
     try {
-      for (const handle of all) rt.updateSession(sessionOf(handle).id, { state: 'tool', currentStep: 'Working' });
+      for (const handle of all) arrange.setSession(rt, sessionOf(handle).id, { state: 'tool', currentStep: 'Working' });
       await expect(row(page, 'indexer'), 'the row says “calling tools”').toContainText(/^indexer · calling tools/);
       const busy = await fitted(page, 'busy');
       expect([busy.overflow, busy.drop, busy.title]).toEqual([0, '', wide.title]);
     } finally {
-      for (const handle of all) rt.updateSession(sessionOf(handle).id, { state: 'idle', currentStep: '' });
+      for (const handle of all) arrange.setSession(rt, sessionOf(handle).id, { state: 'idle', currentStep: '' });
     }
     await expect(row(page, 'indexer')).toContainText(/^indexer · idle/);
     // Narrow, with a title that needs the room, it drops in order, and wide again, it brings everything back.

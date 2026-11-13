@@ -3,6 +3,7 @@
 // that far down the view, within 1 px.
 
 import { expect } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { settled, synced } from './postbox.mjs';
 
 export const LONG = (/** @type {number} */ n) =>
@@ -12,12 +13,12 @@ export const LONG = (/** @type {number} */ n) =>
 export function room(app, title) {
   const { rt, store } = app;
   const project = /** @type {any} */ (Object.values(store.state.projects)[0]);
-  const t = rt.createThread({ projectId: project.id, title, personaIds: [rt.personaByHandle('researcher').id] });
-  const [se] = rt.sessionsIn(t.id);
+  const t = rt.createThread({ projectId: project.id, title, personaIds: [arrange.persona(rt, 'researcher').id] });
+  const [se] = arrange.sessionsIn(rt, t.id);
   const say = (/** @type {string} */ text) =>
-    rt.addItem(t.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text, status: 'done' });
+    arrange.post(rt, t.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text, status: 'done' });
   for (let i = 1; i <= 30; i++) {
-    if (i % 3 === 1) rt.addItem(t.id, { kind: 'user', text: `Question ${i}?` });
+    if (i % 3 === 1) arrange.post(rt, t.id, { kind: 'user', text: `Question ${i}?` });
     else say(LONG(i));
   }
   return { t, say };

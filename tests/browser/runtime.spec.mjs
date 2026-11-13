@@ -9,6 +9,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
 import { escapeRegExp } from '../../shared/regex.mjs';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, PHONE, startPostbox, synced, windowWidth } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -27,7 +28,7 @@ test.beforeAll(async () => {
     },
   });
   // A stand-in for the Claude Code backend: it never runs a turn here, it only makes the real fields show.
-  app.rt.adapters.register({ name: 'claude-code', deliver: async () => {} });
+  arrange.withAdapter(app.rt, { name: 'claude-code', deliver: async () => {} });
 });
 test.afterAll(async () => {
   await app?.stop();
@@ -49,7 +50,7 @@ async function persona(page, handle, servers = undefined) {
     { name: 'search', status: 'needs-auth', source: 'user' },
     { name: 'claude.ai Google Drive', status: 'connected', source: 'claudeai' },
   ];
-  rt.updateSession(rt.sessionsIn(t.id)[0].id, { backend: 'claude-code', mcpServers: { at: Date.now(), servers: reported } });
+  arrange.setSession(rt, arrange.agentIn(rt, t.id).id, { backend: 'claude-code', mcpServers: { at: Date.now(), servers: reported } });
   await page.goto(`${app.origin}/`);
   await synced(page, app);
   return { p, projectId };

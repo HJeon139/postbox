@@ -7,6 +7,7 @@
 // - a store that never fails shows no line (the negative control).
 
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { allowPageError, allowServerLog, failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -27,12 +28,12 @@ const CAUSE = /^Postbox can’t write its event log \(EIO\): disk sync refused\.
 function conversation(handle) {
   const p = app.rt.createPersona({ handle });
   const t = app.rt.createThread({ projectId: 'pr_store', title: `With @${handle}`, personaIds: [p.id] });
-  return { t, se: app.rt.sessionsIn(t.id)[0] };
+  return { t, se: arrange.agentIn(app.rt, t.id) };
 }
 
 test('ST-3: with the store closed, the status line names the cause with Retry, the page reads, and Retry brings it back', async ({ page }) => {
   const { t } = conversation('reader');
-  app.rt.addItem(t.id, { kind: 'user', text: 'An earlier message' });
+  arrange.post(app.rt, t.id, { kind: 'user', text: 'An earlier message' });
   await page.goto(`${app.origin}/#/t/${t.id}`);
   await synced(page, app);
   const line = page.getByRole('status').filter({ hasText: 'can’t save changes' });
@@ -67,7 +68,7 @@ test('ST-3: a turn running when the write fails stops, and after Retry its reply
   const { t, se } = conversation('runner');
   /** @type {AbortSignal | null} */
   let signal = null;
-  app.rt.adapters.register({
+  arrange.withAdapter(app.rt, {
     name: 'mock',
     async deliver(_s, _m, /** @type {any} */ ctx) {
       signal = ctx.signal;
@@ -89,7 +90,7 @@ test('ST-3: a turn running when the write fails stops, and after Retry its reply
   const line = page.getByRole('status').filter({ hasText: 'can’t save changes' });
   await expect(line).toBeVisible();
   await expect.poll(() => /** @type {any} */ (signal)?.aborted, { message: 'the agent to be told to stop' }).toBe(true);
-  expect(app.rt.turns.has(se.id)).toBe(false);
+  expect(arrange.running(app.rt, se.id)).toBe(false);
   await line.getByRole('button', { name: 'Retry' }).click();
   await expect(line).toBeHidden({ timeout: 15_000 });
   await expect(page.getByText(/Postbox couldn’t save changes/)).toBeVisible();
@@ -97,7 +98,7 @@ test('ST-3: a turn running when the write fails stops, and after Retry its reply
 
 test('a store that never fails shows no status line', async ({ page }) => {
   const { t } = conversation('quiet');
-  app.rt.addItem(t.id, { kind: 'user', text: 'All is well' });
+  arrange.post(app.rt, t.id, { kind: 'user', text: 'All is well' });
   await page.goto(`${app.origin}/#/t/${t.id}`);
   await synced(page, app);
   await expect(page.getByText('All is well')).toBeVisible();

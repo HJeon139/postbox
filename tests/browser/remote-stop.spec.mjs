@@ -9,6 +9,7 @@
 // room of tests/browser/remote-turns.mjs. Moved from tools/check-remote-stop.mjs (#303).
 
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { allowPageError, failOnPageErrors, PHONE, synced, windowWidth } from './postbox.mjs';
 import { axe, overflowing } from './remote-hosts.mjs';
 import { startRemoteTurns } from './remote-turns.mjs';
@@ -42,7 +43,7 @@ async function withJob(page, text) {
   await expect(jobRow(page), 'the background job row').toBeVisible();
   await expect(page.locator('.stop-note'), 'the note before Stop').toBeVisible();
 }
-const stopped = () => expect.poll(() => s.app.rt.turns.has(s.runner.id), { message: 'the turn to stop' }).toBe(false);
+const stopped = () => expect.poll(() => arrange.running(s.app.rt, s.runner.id), { message: 'the turn to stop' }).toBe(false);
 /** A persona’s sheet, open on its Runs on. */
 async function sheet(page, persona) {
   await page.evaluate((id) => import('/app/js/sheets.mjs').then((m) => m.openSettings('personas', id)), persona.id);
@@ -159,7 +160,7 @@ test.describe('at 375 px', () => {
       await withJob(page, 'Run the job once more.');
       expect.soft(await overflowing(page, '.stop-note, .bg-jobs li, .job-host')).toEqual([]);
       expect.soft(await axe(page), 'axe, with the note').toEqual([]);
-      s.app.rt.stop(s.runner.id);
+      arrange.stopTurn(s.app.rt, s.runner.id);
       await stopped();
     });
   });

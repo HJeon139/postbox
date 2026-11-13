@@ -5,6 +5,7 @@
 
 import { expect, test } from '@playwright/test';
 import { seedBigRoom } from '../../tools/uat/big-room.mjs';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, settled, startPostbox, synced } from './postbox.mjs';
 
 // The window’s ceiling (window-limits.mjs): a room at or under it mounts whole.
@@ -27,14 +28,14 @@ let app;
 const rooms = {};
 test.beforeAll(async () => {
   app = await startPostbox('window-default');
-  const projectId = Object.values(app.rt.s.projects)[0].id;
+  const projectId = Object.values(app.rt.store.state.projects)[0].id;
   for (const count of [SHORT, OFF, LONG]) {
     const t = app.rt.createThread({ projectId, title: `${count} items`, personaIds: [] });
     seedBigRoom(app.store, t.id, { count });
     rooms[count] = t.id;
   }
-  const t = app.rt.createThread({ projectId, title: 'Tables', personaIds: [app.rt.personaByHandle('librarian').id] });
-  const se = app.rt.sessionsIn(t.id)[0];
+  const t = app.rt.createThread({ projectId, title: 'Tables', personaIds: [arrange.persona(app.rt, 'librarian').id] });
+  const se = arrange.agentIn(app.rt, t.id);
   const columns = ['a', 'b', 'c', 'd'].map((id) => ({ id, label: id.toUpperCase() }));
   const rows = Array.from({ length: 10 }, (_, r) => ({ id: `r${r}`, cells: Object.fromEntries(columns.map((c) => [c.id, `${c.id}${r}`])) }));
   for (let i = 0; i < TABLES; i++) {

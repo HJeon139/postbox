@@ -10,7 +10,7 @@ import { readFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { expect, test } from '@playwright/test';
-import { createStreamMapper } from '../../server/adapters/claude-stream.mjs';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, PHONE, startPostbox, synced, windowWidth } from './postbox.mjs';
 import { SIZES } from './work-pane.mjs';
 
@@ -33,26 +33,15 @@ async function hostTurn(se, project, name) {
   const turn = { id: `turn_remote_${turnIds.length + 1}`, threadId: conv.id, startedAt: Date.now(), remote: { hostId: host.id } };
   turnIds.push(turn.id);
   // What the runtime keeps on the session for a host turn: its folder on the host. The turn is over (done).
-  rt.updateSession(se.id, { remoteTurn: { hostId: host.id, turn: `host-${turn.id}`, rtTurn: turn.id, folder: '/workspace/rec', state: 'done' } });
-  const ledger = rt.ledger;
-  ledger.startTurn(turn, { se: store.state.sessions[se.id], folder: null, projectFolder: project.folder ?? null });
-  const m = createStreamMapper(
-    {
-      text() {},
-      activity() {},
-      status() {},
-      compaction() {},
-      toolUse: (u) => ledger.toolUse(turn, u),
-      toolResult: (r) => ledger.toolResult(turn, r),
-      taskEnded: (x) => ledger.taskEnded(turn, x),
-      usage: (u) => ledger.usage(turn, u),
-    },
-    { now: () => Date.now() },
-  );
+  arrange.setSession(rt, se.id, { remoteTurn: { hostId: host.id, turn: `host-${turn.id}`, rtTurn: turn.id, folder: '/workspace/rec', state: 'done' } });
+  const start = { se: store.state.sessions[se.id], folder: null, projectFolder: project.folder ?? null };
   const lines = (await readFile(new URL(`../fixtures/claude-code/${name}.jsonl`, import.meta.url), 'utf8')).trim().split('\n');
-  for (const l of lines) m.push(JSON.parse(l));
-  await ledger.endTurn(turn, { status: 'done' });
-  await ledger.idle();
+  await arrange.recordTurn(
+    rt,
+    turn,
+    start,
+    lines.map((l) => JSON.parse(l)),
+  );
 }
 
 test.beforeAll(async () => {
@@ -62,7 +51,7 @@ test.beforeAll(async () => {
   const project = Object.values(store.state.projects)[0];
   const persona = rt.createPersona({ handle: 'builder' });
   conv = rt.createThread({ projectId: project.id, title: 'Remote build', personaIds: [persona.id] });
-  const se = rt.sessionsIn(conv.id).find((x) => x.personaId === persona.id);
+  const se = arrange.sessionsIn(rt, conv.id).find((x) => x.personaId === persona.id);
   for (const name of ['ledger-edits', 'ledger-push']) await hostTurn(se, project, name);
   edits = app.store.state.work[conv.id].filter((e) => e.kind === 'edit');
 });

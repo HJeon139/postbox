@@ -7,6 +7,7 @@ import { test } from 'node:test';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
+import * as arrange from './arrange.mjs';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -36,7 +37,7 @@ function setup() {
   return { store, rt, adapter, a };
 }
 const settle = async (rt) => {
-  for (let i = 0; i < 100 && rt.turns.size; i++) await sleep(5);
+  for (let i = 0; i < 100 && arrange.liveTurns(rt); i++) await sleep(5);
   await sleep(5);
 };
 /** A conversation whose agent asked for shell and ended its turn, so the card is open and the agent needs you. */
@@ -47,7 +48,7 @@ async function asked(rt, adapter, a, title) {
   });
   rt.sendMessage(t.id, { text: 'run the tests' });
   await settle(rt);
-  return { t, se: rt.sessionsIn(t.id)[0] };
+  return { t, se: arrange.agentIn(rt, t.id) };
 }
 const voices = (store, t) =>
   store

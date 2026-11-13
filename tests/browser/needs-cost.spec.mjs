@@ -12,6 +12,7 @@
 // as when the sidebar repaints between the transcript's icons.
 
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, newestShown, settled, startPostbox, synced } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -45,9 +46,9 @@ const choice = (id) => ({
  * which its “1 open choice” link goes to. Resolves the room, its agent's session and the two asks' ids.
  */
 function roomWithAsks(title, count = 10_000) {
-  const projectId = /** @type {any} */ (Object.values(app.rt.s.projects)[0]).id;
-  const room = app.rt.createThread({ projectId, title, personaIds: [app.rt.personaByHandle('researcher').id] });
-  const se = app.rt.sessionsIn(room.id)[0];
+  const projectId = /** @type {any} */ (Object.values(app.rt.store.state.projects)[0]).id;
+  const room = app.rt.createThread({ projectId, title, personaIds: [arrange.persona(app.rt, 'researcher').id] });
+  const se = arrange.agentIn(app.rt, room.id);
   const key = `${room.id.slice(-6)}`;
   const asks = { need: `it_need_${key}`, open: `it_open_${key}` };
   /** @type {Record<number, string>} */
@@ -59,7 +60,7 @@ function roomWithAsks(title, count = 10_000) {
       : { id, kind: i % 3 ? 'agent' : 'user', handle: i % 3 ? 'researcher' : undefined, text: `Item ${i} of the release log; nothing here needs anyone.` };
     app.store.emit('item.add', { threadId: room.id, item: { ...item, at: Date.now() - (count - i) * 1000 } });
   }
-  app.rt.updateSession(se.id, { state: 'needs', needs: { kind: 'block', itemId: asks.need, text: 'Which source first?' } });
+  arrange.setSession(app.rt, se.id, { state: 'needs', needs: { kind: 'block', itemId: asks.need, text: 'Which source first?' } });
   return { room, se, asks };
 }
 

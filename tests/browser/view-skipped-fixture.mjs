@@ -3,6 +3,7 @@
 
 import { expect } from '@playwright/test';
 import { seedBigRoom } from '../../tools/uat/big-room.mjs';
+import * as arrange from '../arrange.mjs';
 
 /**
  * A generated room of `count` items, seeded into the running store: into `into` when given, else a new conversation.
@@ -12,8 +13,8 @@ import { seedBigRoom } from '../../tools/uat/big-room.mjs';
 export function bigRoom(app, title, count = 1000, into = null, opts = {}) {
   const { rt, store } = app;
   const project = /** @type {any} */ (Object.values(store.state.projects)[0]);
-  const t = into ?? rt.createThread({ projectId: project.id, title, personaIds: [rt.personaByHandle('researcher').id] });
-  const [se] = rt.sessionsIn(t.id);
+  const t = into ?? rt.createThread({ projectId: project.id, title, personaIds: [arrange.persona(rt, 'researcher').id] });
+  const [se] = arrange.sessionsIn(rt, t.id);
   seedBigRoom(store, t.id, { ...opts, count }, { researcher: { sessionId: se.id, personaId: se.personaId } });
   return t;
 }

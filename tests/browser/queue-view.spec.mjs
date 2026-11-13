@@ -2,6 +2,7 @@
 // capped, a waiting line near the composer keeps the queue visible, Remove buttons have distinct names, and the
 // agent’s dialog is modal, labelled, and gives focus back somewhere that exists.
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { allowPageError, failOnPageErrors, settled, startPostbox, synced } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -11,7 +12,7 @@ const releases = new Map();
 let count = 0;
 test.beforeAll(async () => {
   app = await startPostbox('queue-view');
-  app.rt.adapters.register({
+  arrange.withAdapter(app.rt, {
     name: 'claude-code',
     folderFor: async () => app.root,
     async deliver(session, _message, ctx) {
@@ -35,7 +36,7 @@ async function busyRoom(page, agents = 1) {
   const n = ++count;
   const personas = Array.from({ length: agents }, (_, i) => app.rt.createPersona({ handle: `mailee${i + 1}-${n}`, backend: 'claude-code' }));
   const thread = app.rt.createThread({ projectId: Object.keys(app.store.state.projects)[0], title: `Queue view ${n}`, personaIds: personas.map((p) => p.id) });
-  const sessions = app.rt.sessionsIn(thread.id);
+  const sessions = arrange.sessionsIn(app.rt, thread.id);
   for (const se of sessions) app.rt.sendMessage(thread.id, { text: `@${se.handle} start the long job` });
   await expect.poll(() => sessions.every((se) => releases.has(se.id))).toBe(true);
   await page.setViewportSize({ width: 1280, height: 800 });

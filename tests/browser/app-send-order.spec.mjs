@@ -3,11 +3,12 @@
 // sends an app’s events one after another; a failed one doesn’t hold back the rest.
 
 import { expect, test } from '@playwright/test';
-import { Runtime } from '../../server/runtime.mjs';
+import { APP_SEND_LIMIT } from '../../server/app-send-limits.mjs';
+import * as arrange from '../arrange.mjs';
 import { clickApp, frameOf } from './app-pointer.mjs';
 import { allowPageError, failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 
-const N = Runtime.APP_SEND_LIMIT;
+const N = APP_SEND_LIMIT;
 // One click sends N events at once, none awaited, as an app that reports several steps might.
 const BURST = `<main style="padding:12px"><button id="go" class="btn" type="button" style="display:block;width:100%;height:120px">Send all</button></main>
 <script>
@@ -45,13 +46,13 @@ async function burstApp(page, name) {
     if (how === 'continue') return route.continue();
     return route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'The server failed this one.' }) });
   });
-  const t = rt.createThread({ projectId: Object.values(rt.s.projects)[0].id, title: name, personaIds: [rt.personaByHandle('librarian').id] });
-  const se = rt.sessionsIn(t.id)[0];
+  const t = rt.createThread({ projectId: Object.values(rt.store.state.projects)[0].id, title: name, personaIds: [arrange.persona(rt, 'librarian').id] });
+  const se = arrange.agentIn(rt, t.id);
   await page.goto(`${app.origin}/#/t/${t.id}`);
   await synced(page, app);
   const id = `burst-${t.id}`;
   rt.toolsFor(se.id).show_app({ id, title: name, code: BURST, permissions: [] });
-  await expect.poll(() => rt.s.apps[id]?.check.status, { message: 'the app to pass its check' }).toMatch(/^(passed|note)$/);
+  await expect.poll(() => rt.store.state.apps[id]?.check.status, { message: 'the app to pass its check' }).toMatch(/^(passed|note)$/);
   await expect(frameOf(page, name), 'the app to load').toHaveAttribute('data-sized', '1');
   const steps = () =>
     store
@@ -61,7 +62,7 @@ async function burstApp(page, name) {
   /** Clicks, waits until the page has taken all N sends, and until any it posted beside the held one are stored. */
   const click = async () => {
     await clickApp(page, name);
-    await expect.poll(() => rt.s.apps[id]?.state?.queued, { message: 'the page took every send' }).toBe(N);
+    await expect.poll(() => rt.store.state.apps[id]?.state?.queued, { message: 'the page took every send' }).toBe(N);
     if (held.requests > 1) await expect.poll(() => steps().length, { message: 'the sends posted beside the held one' }).toBe(N - 1);
   };
   return { steps, click, held };

@@ -13,6 +13,7 @@ import { Store } from '../server/store.mjs';
 import { draftOf, isWriteCall, whereOf } from '../server/write-guard.mjs';
 import { TOOL_DEFS } from '../shared/mcp-tools.mjs';
 import { decide } from '../shared/permission-match.mjs';
+import * as arrange from './arrange.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -217,7 +218,7 @@ test('a write outside Postbox waits on a card that shows its draft; Always allow
   assert.match(card.detail, /"content": "\(the draft above\)"/);
   assert.equal(card.always.saves, 'mcp__docs__create_document');
   await rt.act(t.id, card.id, 'always', {});
-  for (let i = 0; i < 50 && rt.turns.size; i++) await sleep(5);
+  for (let i = 0; i < 50 && arrange.liveTurns(rt); i++) await sleep(5);
   assert.equal(answers[0].allow, true);
   // Claude Code still asks (ask beats allow), and Postbox lets it through without a card.
   next.push(async (c) => answers.push(await c.askPermission(create)));
@@ -244,7 +245,7 @@ test('a write the persona may publish runs without a card; one with only its ser
   server.rt.sendMessage(server.t.id, { text: 'Create it.' });
   // The same fixed wait as above, the same fix: until the call is waiting on its card. Only then does counting the
   // cards say there is one: a duplicate posted a moment later would show by then (critic’s read).
-  for (let i = 0; i < 200 && !(server.store.items(server.t.id).some((i) => i.kind === 'permission') && server.rt.permissionWaits.size === 1); i++)
+  for (let i = 0; i < 200 && !(server.store.items(server.t.id).some((i) => i.kind === 'permission') && arrange.permissionWaits(server.rt) === 1); i++)
     await sleep(10);
   assert.equal(server.store.items(server.t.id).filter((i) => i.kind === 'permission' && i.outside).length, 1);
 });

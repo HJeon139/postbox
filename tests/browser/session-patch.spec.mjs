@@ -4,6 +4,7 @@
 // thread, shell, open asks…) keeps working unchanged.
 
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -20,7 +21,7 @@ test('a session.patch reaches the page’s listeners as a whole-session change, 
   const { rt } = app;
   const p = rt.createPersona({ handle: 'patcher' });
   const t = rt.createThread({ projectId: 'pr_patch', title: 'Patches', personaIds: [p.id] });
-  const se = rt.sessionsIn(t.id)[0];
+  const se = arrange.agentIn(rt, t.id);
   await page.goto(`${app.origin}/#/t/${t.id}`);
   await synced(page, app);
   // What the page’s listeners hear, as the modules in app/js listen.
@@ -32,7 +33,7 @@ test('a session.patch reaches the page’s listeners as a whole-session change, 
       });
     }),
   );
-  rt.updateSession(se.id, { state: 'think', currentStep: 'Thinking', ctx: 40 });
+  arrange.setSession(rt, se.id, { state: 'think', currentStep: 'Thinking', ctx: 40 });
   await synced(page, app);
   const heard = await page.evaluate(() => /** @type {any} */ (window).heard);
   expect
@@ -44,7 +45,7 @@ test('a session.patch reaches the page’s listeners as a whole-session change, 
   expect.soft(heard[0]?.data, 'carrying the whole session').toMatchObject({ id: se.id, threadId: t.id, handle: 'patcher', state: 'think', ctx: 40 });
   // The Agents section repaints from it, as before.
   await expect.soft(page.locator(`.agents-sec pb-ring[data-session="${se.id}"]`)).toHaveAttribute('state', 'think');
-  rt.updateSession(se.id, { state: 'idle', currentStep: undefined });
+  arrange.setSession(rt, se.id, { state: 'idle', currentStep: undefined });
   await synced(page, app);
   await expect.soft(page.locator(`.agents-sec pb-ring[data-session="${se.id}"]`)).toHaveAttribute('state', 'idle');
   const last = await page.evaluate(() => /** @type {any} */ (window).heard.at(-1).data);

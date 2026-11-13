@@ -6,6 +6,7 @@
 // them go (holdTopics, below); POSTBOX_STREAM_LAG makes it happen by itself, some of the time.
 
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { heldCount, holdTopics, release } from './hold-threads.mjs';
 import { failOnPageErrors, keptListeners, startPostbox, synced } from './postbox.mjs';
 import { sideRoom } from './side-threads.mjs';
@@ -32,7 +33,7 @@ const focusIsOn = (page, id) => expect.poll(() => page.evaluate(() => document.a
 /** A room of its own with one message from @indexer and no thread on it, open in the page. */
 async function openRoom(page, title) {
   const r = sideRoom(app, title);
-  const message = app.rt.addItem(r.room.id, {
+  const message = arrange.post(app.rt, r.room.id, {
     ...{ kind: 'agent', sessionId: r.indexer.id, personaId: r.indexer.personaId, handle: 'indexer' },
     ...{ text: 'The 1908 edition drops two chapters.', status: 'done' },
   });
@@ -86,7 +87,7 @@ test('a room that redraws meanwhile still gets the panel, with focus in its comp
   const r = await openRoom(page, 'Reply late redraw');
   const topicId = await replyInThread(page, r);
   await heard(page);
-  app.rt.addItem(r.room.id, {
+  arrange.post(app.rt, r.room.id, {
     ...{ kind: 'agent', sessionId: r.researcher.id, personaId: r.researcher.personaId, handle: 'researcher' },
     ...{ text: 'And the 1912 one adds a preface.', status: 'done' },
   });
@@ -182,7 +183,7 @@ test('a thread already open that changes doesn’t take focus', async ({ page })
   await expect.poll(() => page.evaluate(() => /** @type {any} */ (window).focusTimersRun), { message: 'that timer, run' }).toBe(1);
   await page.evaluate(() => /** @type {HTMLElement} */ (document.activeElement).blur());
   await focusIsOff(page);
-  app.rt.renameThread(topicId, 'The 1908 edition');
+  arrange.renameThread(app.rt, topicId, 'The 1908 edition');
   const renamed = () => page.evaluate((id) => import('/app/js/client.mjs').then(({ client }) => client.state.threads[id]?.title), topicId);
   await expect.poll(renamed).toBe('The 1908 edition');
   await focusIsOff(page);
@@ -190,7 +191,7 @@ test('a thread already open that changes doesn’t take focus', async ({ page })
 
 test('a thread’s address opens its panel on a fresh load', async ({ page }) => {
   const r = sideRoom(app, 'Reply reload');
-  const message = app.rt.addItem(r.room.id, {
+  const message = arrange.post(app.rt, r.room.id, {
     ...{ kind: 'agent', sessionId: r.indexer.id, personaId: r.indexer.personaId, handle: 'indexer' },
     ...{ text: 'The 1908 edition drops two chapters.', status: 'done' },
   });

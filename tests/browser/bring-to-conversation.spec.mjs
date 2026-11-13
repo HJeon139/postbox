@@ -3,6 +3,7 @@
 // ask in a topic thread. A room of its own (tests/browser/side-threads.mjs).
 
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 import { heldBackend, sideRoom } from './side-threads.mjs';
 
@@ -24,7 +25,7 @@ const words = async (locator) => (await locator.allInnerTexts()).map((t) => t.re
 test('an agent the person asked in a topic thread posts in the conversation with bring_to_conversation (#128)', async ({ page }) => {
   const { rt, store } = app;
   const r = sideRoom(app, 'Brought');
-  const root = rt.addItem(r.room.id, {
+  const root = arrange.post(rt, r.room.id, {
     kind: 'agent',
     sessionId: r.researcher.id,
     personaId: r.researcher.personaId,

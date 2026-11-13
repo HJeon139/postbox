@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { reactTool } from '../server/reactions.mjs';
 import { TOOL_DEFS } from '../shared/mcp-tools.mjs';
+import * as arrange from './arrange.mjs';
 import { settle, setup } from './side-threads-fixture.mjs';
 
 /** A room where alpha has replied to the person once, and the reply. */
@@ -16,8 +17,8 @@ async function replied() {
   await settle(f.rt);
   const reply = f.store.items(f.t.id).find((x) => x.kind === 'agent');
   const question = f.store.items(f.t.id).find((x) => x.kind === 'user');
-  const alpha = f.rt.sessionsIn(f.t.id).find((x) => x.handle === 'alpha');
-  const beta = f.rt.sessionsIn(f.t.id).find((x) => x.handle === 'beta');
+  const alpha = arrange.agentIn(f.rt, f.t.id, 'alpha');
+  const beta = arrange.agentIn(f.rt, f.t.id, 'beta');
   return { ...f, reply, question, alpha, beta };
 }
 /** What each agent’s next turn starts with. */
@@ -44,7 +45,7 @@ test('agents react with the react tool, which every agent has, to any message: t
   );
   assert.equal(reactTool(f.rt, f.beta, { id: f.reply.id, emoji: '🎉' }).ok, false);
   assert.match(reactTool(f.rt, f.beta, { id: 'it_nowhere', emoji: '👍' }).message, /no item/);
-  assert.equal(f.rt.turns.size, 0, 'a reaction wakes no one');
+  assert.equal(arrange.liveTurns(f.rt), 0, 'a reaction wakes no one');
 });
 
 test('each reactor has their own: the person taking back their 👍 leaves an agent’s, and an agent’s again takes back only its own', async () => {
