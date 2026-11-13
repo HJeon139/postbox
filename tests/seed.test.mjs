@@ -225,6 +225,46 @@ test('#516: --demo publishes its notes as the asset explorer’s and the shelf�
   assert.equal(hits.length, 3);
 });
 
+test('the Indexer boilerplate is no longer built in, and an install that holds it keeps it as a saved one', async () => {
+  assert.equal(
+    BOILERPLATES.some((b) => b.id === 'bp-indexer'),
+    false,
+  );
+  const store = new Store(null);
+  store.emit('persona', { id: 'existing', handle: 'existing' });
+  const indexer = {
+    id: 'bp-indexer',
+    name: 'Indexer',
+    description: 'Builds search indexes',
+    instructions: 'Build and maintain search indexes.',
+    tools: ['shell'],
+  };
+  for (const b of BOILERPLATES.filter((x) => x.id !== 'bp-gpt')) store.emit('boilerplate', b);
+  store.emit('boilerplate', indexer);
+  assert.equal(await seed({ store }, { dataDir: '/unused' }), false);
+  assert.deepEqual(Object.keys(store.state.boilerplates), [...BOILERPLATES.map((b) => b.id), 'bp-indexer']);
+  assert.deepEqual(store.state.boilerplates['bp-indexer'], indexer);
+});
+
+test('an install whose built-in boilerplate is out of date gets the current one, and keeps its saved ones', async () => {
+  const store = new Store(null);
+  store.emit('persona', { id: 'existing', handle: 'existing' });
+  for (const b of BOILERPLATES) store.emit('boilerplate', b.id === 'bp-blank' ? { ...b, description: 'Write it yourself' } : b);
+  const custom = { id: 'bp-custom', name: 'My saved agent', instructions: 'Keep my instructions.' };
+  store.emit('boilerplate', custom);
+  assert.equal(await seed({ store }, { dataDir: '/unused' }), false);
+  assert.deepEqual(
+    store.state.boilerplates['bp-blank'],
+    BOILERPLATES.find((b) => b.id === 'bp-blank'),
+  );
+  assert.equal(store.state.boilerplates['bp-blank'].description, '');
+  assert.deepEqual(Object.keys(store.state.boilerplates), [...BOILERPLATES.map((b) => b.id), custom.id]);
+  assert.deepEqual(store.state.boilerplates[custom.id], custom);
+  const seq = store.state.seq;
+  assert.equal(await seed({ store }, { dataDir: '/unused' }), false);
+  assert.equal(store.state.seq, seq);
+});
+
 /** A room’s asset names, sorted. */
 const listTextAssetNames = (state, room) =>
   roomAssets(state, room)

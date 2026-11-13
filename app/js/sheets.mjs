@@ -19,6 +19,7 @@ import {
 } from '/shared/agent-facts.mjs';
 
 import { mockMarker } from './agent-facts.mjs';
+import { boilerplateRow } from './boilerplate-row.mjs';
 import { checkField } from './check-field.mjs';
 import { api, client, headerOf, sessionsOf, threadsOf } from './client.mjs';
 import { ago, fill, h, icon, plural } from './dom.mjs';
@@ -387,16 +388,17 @@ function boilerplateChips(bps, st, paint) {
 }
 
 /**
- * What the new agent sheet starts with: the preset’s or the second boilerplate’s words and tools, and the first
- * backend this computer runs, with a model and effort it takes.
+ * What the new agent sheet starts with: the preset’s words and tools, else Blank’s, and the first backend this
+ * computer runs, with a model and effort it takes.
  */
 function newAgentChoices({ preset, bps, threadId }) {
+  const blank = bps.find((b) => b.id === 'bp-blank');
   const st = {
-    bp: preset ? null : (bps[1]?.id ?? bps[0]?.id),
+    bp: preset ? null : (blank?.id ?? null),
     handle: preset?.handle ?? '',
-    instructions: preset?.instructions ?? bps[1]?.instructions ?? '',
-    description: preset?.description ?? bps[1]?.description ?? '',
-    tools: new Set(preset?.tools ?? bps[1]?.tools ?? []),
+    instructions: preset?.instructions ?? blank?.instructions ?? '',
+    description: preset?.description ?? blank?.description ?? '',
+    tools: new Set(preset?.tools ?? blank?.tools ?? []),
     where: threadId ? 'join' : 'new',
     backend: defaultBackend(),
     model: client.config.defaultModel ?? 'claude-opus-5-5',
@@ -418,11 +420,15 @@ function newAgentChoices({ preset, bps, threadId }) {
   return st;
 }
 
-export function openNewAgent({ threadId = null, projectId: pid = null, preset = null, onCreated = null } = {}) {
+/** The New agent sheet; boilerplateId starts it on that boilerplate, as Settings › Personas’ row does. */
+export function openNewAgent({ threadId = null, projectId: pid = null, preset = null, boilerplateId = null, onCreated = null } = {}) {
   const t = threadId ? S().threads[threadId] : null;
   const projectId = t?.projectId ?? pid ?? Object.keys(S().projects)[0];
+  const projectName = S().projects[projectId]?.name;
   const bps = Object.values(S().boilerplates);
   const st = newAgentChoices({ preset, bps, threadId });
+  const chosen = bps.find((b) => b.id === boilerplateId);
+  if (chosen) applyBoilerplate(st, chosen, client.config);
   const have = toolsInProject(projectId);
   const body = h('div', { style: { display: 'flex', flexDirection: 'column', gap: '12px' } });
   // Each change repaints the sheet; focus stays on the control you used (#26).
@@ -459,6 +465,7 @@ export function openNewAgent({ threadId = null, projectId: pid = null, preset = 
           h('input.input', {
             id: 'na-d',
             value: st.description,
+            placeholder: 'Write it yourself',
             oninput: (e) => {
               st.description = e.target.value;
             },
@@ -525,22 +532,25 @@ export function openNewAgent({ threadId = null, projectId: pid = null, preset = 
             ),
             st.backend === 'mock' ? null : h('span.help', toolsHelp(st.backend)),
           ),
-      h(
-        'div.field',
-        h('span.label', 'Where it works'),
-        h(
-          'div',
-          { role: 'radiogroup', 'aria-label': 'Where it works', style: { display: 'flex', flexDirection: 'column', gap: '8px' } },
-          threadId
-            ? whereOpt(
-                'join',
-                `Join this ${t.kind === 'topic' ? 'topic thread' : t.kind === 'side' ? 'side thread' : 'conversation'}`,
-                `${t.kind === 'thread' ? `“${t.title}” becomes a room` : `It joins ${t.kind === 'room' ? 'the room ' : ''}“${t.title}”`}. It gets the recent messages and a short brief.`,
-              )
-            : null,
-          whereOpt('new', `New conversation in ${S().projects[projectId]?.name}`, 'Starts fresh. @ it from anywhere to bring it in.'),
-        ),
-      ),
+      // With no project and no conversation (a fresh install), there’s nowhere to choose.
+      threadId || projectName
+        ? h(
+            'div.field',
+            h('span.label', 'Where it works'),
+            h(
+              'div',
+              { role: 'radiogroup', 'aria-label': 'Where it works', style: { display: 'flex', flexDirection: 'column', gap: '8px' } },
+              threadId
+                ? whereOpt(
+                    'join',
+                    `Join this ${t.kind === 'topic' ? 'topic thread' : t.kind === 'side' ? 'side thread' : 'conversation'}`,
+                    `${t.kind === 'thread' ? `“${t.title}” becomes a room` : `It joins ${t.kind === 'room' ? 'the room ' : ''}“${t.title}”`}. It gets the recent messages and a short brief.`,
+                  )
+                : null,
+              projectName ? whereOpt('new', `New conversation in ${projectName}`, 'Starts fresh. @ it from anywhere to bring it in.') : null,
+            ),
+          )
+        : null,
       st.error ? h('span.err', { role: 'alert' }, icon('warn'), st.error) : null,
     );
   };
@@ -614,7 +624,8 @@ export function openNewAgent({ threadId = null, projectId: pid = null, preset = 
   );
   const dlg = openDialog({
     title: preset ? `Edit ${preset.handle} before creating it` : 'New agent',
-    sub: `Starts a new session in ${S().projects[projectId]?.name}. You can edit it later under Personas.`,
+    // A fresh install has no project yet, so there’s no session to start.
+    sub: `${projectName ? `Starts a new session in ${projectName}.` : 'Create a project to start a session with it.'} You can edit it later under Personas.`,
     size: 'lg',
     body,
     foot: [
@@ -902,6 +913,7 @@ export function openSettings(tab = 'appearance', personaId = null) {
           ),
         ),
       ),
+      boilerplateRow({ openNewAgent, closeSettings: () => dlg.close() }),
       h(
         'div.row-flex',
         h(

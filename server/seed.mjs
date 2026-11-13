@@ -7,6 +7,7 @@ import { readFileSync } from 'node:fs';
 import { cp, mkdir, readdir, readFile } from 'node:fs/promises';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { isDeepStrictEqual } from 'node:util';
 import { GEMINI_MODEL } from '../shared/agent-facts.mjs';
 import { blobsOf } from './asset-tools.mjs';
 import { writeAsset } from './assets.mjs';
@@ -137,13 +138,6 @@ export const BOILERPLATES = [
     model: GEMINI_MODEL,
   },
   {
-    id: 'bp-indexer',
-    name: 'Indexer',
-    description: 'Builds search indexes',
-    instructions: 'Build and maintain search indexes. Report progress as you go.',
-    tools: ['shell'],
-  },
-  {
     id: 'bp-gpt',
     name: 'GPT',
     description: 'Helps with questions, writing and code using Codex',
@@ -161,7 +155,8 @@ export const BOILERPLATES = [
     // developers’ work and it asks them for the check that proves an increment (#690).
     tools: ['web.fetch'],
   },
-  { id: 'bp-blank', name: 'Blank', description: 'Write it yourself', instructions: '', tools: [] },
+  // No description: the New agent sheet shows “Write it yourself” as a placeholder, so nothing is saved unless typed.
+  { id: 'bp-blank', name: 'Blank', description: '', instructions: '', tools: [] },
 ];
 
 export const toBoilerplate = (p) => ({
@@ -214,7 +209,8 @@ function checkAgents(personas) {
 export async function seed(rt, { dataDir, backend = 'mock', demo = false }) {
   const s = rt.store.state;
   if (Object.keys(s.personas).length) {
-    if (!BOILERPLATES.every((b) => s.boilerplates[b.id])) {
+    // A built-in that's missing, or stored from an older version, is put back as it is now; saved ones follow it.
+    if (!BOILERPLATES.every((b) => isDeepStrictEqual(s.boilerplates[b.id], b))) {
       const custom = Object.values(s.boilerplates).filter((b) => !BOILERPLATES.some((x) => x.id === b.id));
       for (const b of [...BOILERPLATES, ...custom]) rt.store.emit('boilerplate', b);
     }
