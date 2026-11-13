@@ -7,6 +7,7 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, PHONE, settled, startPostbox, synced, windowWidth } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -63,7 +64,7 @@ test.beforeAll(async () => {
     },
   });
   const { rt, store } = app;
-  rt.adapters.register({
+  arrange.withAdapter(rt, {
     name: 'claude-code',
     async folderFor(persona) {
       return folders[persona.handle] ?? folders.work;

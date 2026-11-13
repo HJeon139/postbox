@@ -12,6 +12,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
 import { codexApproval } from '../../server/adapters/codex.mjs';
+import * as arrange from '../arrange.mjs';
 import { allowPageError, failOnPageErrors, PHONE, startPostbox, synced, windowWidth } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -38,7 +39,7 @@ test.beforeAll(async () => {
   });
   const { rt, store } = app;
   // A Claude Code agent whose turns this spec scripts: it asks permission, the way the CLI’s prompt tool does.
-  rt.adapters.register({
+  arrange.withAdapter(rt, {
     name: 'claude-code',
     async folderFor() {
       return work;
@@ -69,7 +70,7 @@ async function open(page) {
 /** What a reader sees in an element: its innerText, a flex row’s items as separate words. */
 const words = async (locator) => (await locator.allInnerTexts()).join(' ').replace(/\s+/g, ' ').trim();
 const focused = (page) => page.evaluate(() => document.activeElement?.id || document.activeElement?.textContent?.trim().slice(0, 40) || '');
-const idle = () => expect.poll(() => app.rt.turns.size, { message: 'the agent’s turn to end' }).toBe(0);
+const idle = () => expect.poll(() => arrange.liveTurns(app.rt), { message: 'the agent’s turn to end' }).toBe(0);
 
 const card = (page, summary) => page.locator('.transcript .block', { hasText: summary });
 const footButton = (c, name) => c.locator('.block-foot').getByRole('button', { name, exact: true });
@@ -362,7 +363,7 @@ test('#66 a rule added in the panel is saved where you chose, and shows with its
   await page.keyboard.insertText('npx prettier:*');
   await page.locator('.perm-add').getByRole('button', { name: 'Add rule' }).click();
   await expect(dialog, 'the new rule').toContainText(/Bash\(npx prettier:\*\)\s*from this conversation/);
-  const se = rt.sessionsIn(thread.id)[0];
+  const se = arrange.agentIn(rt, thread.id);
   expect(store.state.sessions[se.id].rules.allow).toEqual(['Bash(npx prettier:*)']);
   // The project’s shared file has no Remove; a local one does.
   await expect(dialog.locator('.list-rows li', { hasText: 'Bash(rm:*)' }), 'the shared rule is listed').toHaveCount(1);
@@ -376,7 +377,7 @@ test('#66 a folder added from the panel’s folder picker is listed for this con
   await dialog.getByRole('button', { name: 'Add folder…' }).click();
   await page.locator('.dialog').getByRole('button', { name: 'Add data', exact: true }).click();
   await expect(page.locator('.dialog', { hasText: 'Permissions' }).first(), 'the added folder').toContainText('From this conversation');
-  const se = app.rt.sessionsIn(thread.id)[0];
+  const se = arrange.agentIn(app.rt, thread.id);
   expect(app.store.state.sessions[se.id].addDirs).toEqual([join(work, 'data')]);
   // Choosing closes only the picker, not the panel it was opened over.
   await expect(page.locator('.backdrop')).toHaveCount(1);

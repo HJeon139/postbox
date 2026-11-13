@@ -5,6 +5,7 @@
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -23,7 +24,7 @@ test.beforeAll(async () => {
     },
   });
   const { rt, store } = app;
-  rt.adapters.register({
+  arrange.withAdapter(rt, {
     name: 'claude-code',
     async folderFor() {
       return work;
@@ -96,9 +97,9 @@ test('#120 the panel lists rules Postbox keeps for each host, removes one, and o
 
 test('#120 a host card’s Always allow says Postbox keeps the rule for that host', async ({ page }) => {
   const { rt } = app;
-  const se = rt.sessionsIn(thread.id)[0];
+  const se = arrange.agentIn(rt, thread.id);
   const input = { command: 'make lint' };
-  rt.addItem(thread.id, {
+  arrange.post(rt, thread.id, {
     kind: 'permission',
     sessionId: se.id,
     handle: 'coder',
@@ -106,7 +107,7 @@ test('#120 a host card’s Always allow says Postbox keeps the rule for that hos
     summary: 'run make lint',
     detail: 'make lint',
     input,
-    always: rt.alwaysFor(se, { tool: 'Bash', input, suggestions: null, suppressAlways: false, hostId: host.id }),
+    always: arrange.alwaysFor(rt, se, { tool: 'Bash', input, suggestions: null, suppressAlways: false, hostId: host.id }),
     remote: { hostId: host.id, turn: 'ht_card', prompt: 'p_card' },
     status: 'open',
   });
