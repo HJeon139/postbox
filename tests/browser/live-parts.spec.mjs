@@ -75,10 +75,12 @@ test('a finished turn whose words came after another agent’s post keeps its re
   await expect.poll(() => arrange.liveTurns(scripted.app.rt)).toBe(0);
   await synced(page, scripted.app);
   const posts = page.locator('.transcript > [data-key]:visible');
+  // The record reaches the post once the ledger has read the file the turn changed, after the turn ends (#1309).
+  await expect(posts.filter({ hasText: 'Set x to 2.' }), 'the record is in the post with the words').toContainText('1 file +1 −1');
   const order = await posts.evaluateAll((nodes) => nodes.map((n) => n.textContent ?? ''));
   const where = (/** @type {string} */ s) => order.findIndex((x) => x.includes(s));
   expect(where('Second is here.'), order.join('\n---\n')).toBeGreaterThanOrEqual(0);
-  expect(where('1 file +1 −1'), 'the record is in the post with the words').toBe(where('Set x to 2.'));
+  expect(where('1 file +1 −1'), 'and in no other post').toBe(where('Set x to 2.'));
   expect(where('Set x to 2.'), 'below the other agent’s post').toBeGreaterThan(where('Second is here.'));
   await expect(page.locator('details.activity:visible'), 'one record for the turn').toHaveCount(1);
 });
