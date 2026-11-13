@@ -1,6 +1,7 @@
 // Stopping a CLI Postbox asked something and no longer waits on: a `--version` probe or a model listing that ran
 // out of time, or a listing that has answered. SIGTERM first, then SIGKILL if it hasn’t closed after a short grace,
-// as Stop does for a turn (process-group.mjs), so a CLI that traps SIGTERM isn’t left running.
+// as Stop does for a turn (server/adapters/process-group.mjs), so a CLI that traps SIGTERM isn’t left running.
+// Here, so a host’s daemon can stop its own listings the same way (install-bundle.mjs).
 
 /** How long a probe has to close after SIGTERM before it gets SIGKILL. */
 export const PROBE_GRACE_MS = 2000;

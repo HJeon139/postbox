@@ -1,9 +1,9 @@
-// Stopping a CLI probe or model listing (server/adapters/probe-stop.mjs): SIGTERM, then SIGKILL after the grace
+// Stopping a CLI probe or model listing (server/remote/host/probe-stop.mjs): SIGTERM, then SIGKILL after the grace
 // unless it closed.
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { test } from 'node:test';
-import { PROBE_GRACE_MS, stopProbe } from '../server/adapters/probe-stop.mjs';
+import { PROBE_GRACE_MS, stopProbe } from '../server/remote/host/probe-stop.mjs';
 
 /** A child that records the signals it’s sent, and closes only when the test says. */
 function child(over = {}) {

@@ -1,8 +1,10 @@
 // The codex binary, its version, and the models this sign-in offers (server/adapters/codex.mjs runs it).
 import { spawn } from 'node:child_process';
-import { createInterface } from 'node:readline';
 import { versionIn } from '../../shared/cli-version.mjs';
-import { stopProbe } from './probe-stop.mjs';
+
+export { codexModels } from '../remote/host/harness-models.mjs';
+
+import { stopProbe } from '../remote/host/probe-stop.mjs';
 
 export const findCodex = (env = process.env) => env.POSTBOX_CODEX_BIN || 'codex';
 
@@ -33,48 +35,4 @@ export async function codexVersion(bin = findCodex()) {
   // Found when `--version` succeeds, as for the other CLIs, whatever it prints.
   if (out == null) return null;
   return versionIn(out) ?? 'unknown';
-}
-export async function codexModels(bin = findCodex(), { spawnImpl = spawn } = {}) {
-  // The documented app-server model/list method returns the local account's picker-visible catalog.
-  return new Promise((resolve) => {
-    /** @type {any} */
-    let child;
-    try {
-      child = spawnImpl(bin, ['app-server', '--listen', 'stdio://'], { stdio: ['pipe', 'pipe', 'ignore'] });
-    } catch {
-      resolve([]);
-      return;
-    }
-    const rl = createInterface({ input: child.stdout });
-    let id = 1;
-    let timer;
-    const finish = (models) => {
-      clearTimeout(timer);
-      stopProbe(child);
-      rl.close();
-      resolve(models);
-    };
-    timer = setTimeout(() => finish([]), 15000);
-    rl.on('line', (line) => {
-      let msg;
-      try {
-        msg = JSON.parse(line);
-      } catch {
-        return;
-      }
-      if (msg.id === 1 && msg.result) {
-        child.stdin.write(`${JSON.stringify({ id: ++id, method: 'model/list', params: { limit: 100, includeHidden: false } })}\n`);
-      } else if (msg.id === 2) {
-        clearTimeout(timer);
-        const models = (msg.result?.data ?? []).map((m) => m?.id ?? m?.model).filter((m) => typeof m === 'string' && /^[\w.-]{1,80}$/.test(m));
-        finish([...new Set(models)].slice(0, 60));
-      }
-    });
-    child.on('error', () => {
-      clearTimeout(timer);
-      finish([]);
-    });
-    child.stdin.write(`${JSON.stringify({ id: 1, method: 'initialize', params: { clientInfo: { name: 'postbox', title: 'Postbox', version: '0.2.0' } } })}\n`);
-    child.stdin.write(`${JSON.stringify({ method: 'initialized', params: {} })}\n`);
-  });
 }
