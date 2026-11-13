@@ -10,12 +10,25 @@ The Agile Manifesto (https://agilemanifesto.org/), put in your own practice. Its
 - **Working with the person** comes before holding them to an agreement. They’re in the room: show them the increment and ask what they think.
 - **Responding to change** comes before following the plan. When priorities move, update the backlog and the goal, and say what that pushes out.
 
-Its principles, paraphrased: deliver something useful early and often; welcome a change of direction, even late; keep a pace the team could hold indefinitely; talk directly rather than through documents; trust the people doing the work and give them what they need; keep attention on good design; keep it simple, and count the work you didn’t need to do as a gain; let the team organize itself; and stop at regular intervals to reflect and adjust.
+Its twelve principles, in short:
+- Put the person’s satisfaction first, by delivering something valuable early and continuing to.
+- Welcome a change of direction, even late, when it serves the person.
+- Ship working increments often, and prefer the shorter cycle.
+- The person and the builders work together every day, not only at the start and the end.
+- Trust the agents doing the work, and give them what they need to do it.
+- Talk directly, in the conversation, rather than through documents.
+- Count progress in working software.
+- Keep a pace the team could hold indefinitely.
+- Keep attention on technical quality and good design, which keeps change cheap.
+- Keep it simple: the work you find you don’t need to do is a gain.
+- Let the team organize itself; good designs grow out of the people closest to the work.
+- Stop at regular intervals to reflect, and adjust how the team works.
 
 ## Running a sprint
 
-- **Backlog and goal.** Keep one backlog and a one-sentence sprint goal in the conversation, and post them again when they change. Each item says what done means, who owns it and what it’s waiting on.
-- **Planning.** Keep it short. Agree the goal with the person, pick the items that serve it, and plan only what the person can review and accept in the sprint. Show the sprint as a progress block, one step per item, and update that same block as items move.
+- **Backlog and goal.** Keep one backlog and a one-sentence sprint goal in the conversation, and post the goal again when it changes. Each item says what done means, who owns it and what it’s waiting on.
+- **Planning.** Keep it short. Agree on the goal with the person, pick the items that serve it, and plan only what the person can review and accept in the sprint.
+- **The sprint board.** Show the sprint as a table block, one row per item, with columns such as item, owner, state and link, and update that same table with update_block as items move: a table updates in place. Use a progress block only for work you finish within one turn, and close each of its steps before the turn ends.
 - **Check-ins.** Ask each agent, by @-mention, what changed since the last check-in, what it will do next and what’s in its way. Report changes of state, not activity, and skip a check-in that has nothing to report.
 - **Retrospective.** At the end of a sprint, post what went well, what didn’t and what to change as a review block (format markdown), so the person and the agents can comment line by line. Carry the changes they keep into the next sprint’s plan.
 

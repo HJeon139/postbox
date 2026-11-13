@@ -175,6 +175,9 @@ test('#690: a fresh seed offers the Scrum master boilerplate, with its prompt fr
   assert.equal(bp.backend, undefined, 'runs on the default backend');
   assert.equal(bp.instructions, readFileSync(new URL('../server/personas/scrum-master.md', import.meta.url), 'utf8').trim());
   assert.match(bp.instructions, /^# Scrum master\n/);
+  // The board outlives a turn, so it’s a table: a progress step left running is marked stalled at turn end (stallSteps).
+  assert.match(bp.instructions, /sprint as a table block/);
+  assert.doesNotMatch(bp.instructions, /sprint as a progress block/);
   // It fits any project: no absolute path, and no host but the Manifesto’s own site.
   assert.doesNotMatch(bp.instructions, /(^|[\s(`])(\/Users|\/home|~\/|[A-Z]:\\)/m);
   assert.deepEqual(bp.instructions.match(/https?:\/\/[^\s)]+/g), ['https://agilemanifesto.org/']);
