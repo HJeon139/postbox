@@ -19,7 +19,10 @@ import { fail, reload } from './store-retry.mjs';
 
 export { emptyState };
 
-const KEEP_EVENTS = 20000; // events kept in memory for reconnecting browsers
+const KEEP_EVENTS = 20000; // events kept in memory for reconnecting browsers, at least
+// The backlog is trimmed back to KEEP_EVENTS once it’s this many longer, not at every event: a splice of its start moves
+// every event kept, so trimming at each emit made one about 100 times dearer past 20,000 (tests/store-commit-scale.test.mjs).
+const TRIM_EVERY = 5000;
 export const SNAPSHOT_EVERY = 5000; // events between snapshots
 const RETRY_BOUND_MS = 3000; // how long Retry waits for a write still in flight
 
@@ -176,7 +179,7 @@ export class Store {
     this.state.seq = ev.seq;
     this.ahead--;
     if (kept) this.events.push({ seq: ev.seq, line: kept });
-    if (this.events.length > KEEP_EVENTS) this.events.splice(0, this.events.length - KEEP_EVENTS);
+    if (this.events.length >= KEEP_EVENTS + TRIM_EVERY) this.events.splice(0, this.events.length - KEEP_EVENTS);
     return { line, heard, error };
   }
 
