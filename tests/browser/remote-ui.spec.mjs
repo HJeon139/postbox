@@ -11,6 +11,7 @@
 import { readFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
 import { createStreamMapper } from '../../server/adapters/claude-stream.mjs';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, PHONE, synced } from './postbox.mjs';
 import { axe, overflowing, startRemote } from './remote-hosts.mjs';
 
@@ -33,8 +34,8 @@ async function hostTurn(se, i, name) {
   const { rt, store } = app;
   const turn = { id: `turn_remote_${i + 1}`, threadId: conv.id, startedAt: Date.now(), remote: { hostId: host.id } };
   // What the runtime keeps on the session for a host turn: its folder on the host. The turn is over (done).
-  rt.updateSession(se.id, { remoteTurn: { hostId: host.id, turn: `host-${turn.id}`, rtTurn: turn.id, folder: '/workspace/rec', state: 'done' } });
-  const ledger = rt.ledger;
+  arrange.setSession(rt, se.id, { remoteTurn: { hostId: host.id, turn: `host-${turn.id}`, rtTurn: turn.id, folder: '/workspace/rec', state: 'done' } });
+  const ledger = arrange.ledger(rt);
   ledger.startTurn(turn, { se: store.state.sessions[se.id], folder: null, projectFolder: app.root });
   const m = createStreamMapper(
     {
@@ -72,7 +73,7 @@ test.beforeAll(async () => {
   store.emit('project', { id: 'pr_remote', name: 'Remote', folder: app.root });
   persona = rt.createPersona({ handle: 'builder', backend: 'claude-code', remote: { hostId: host.id } });
   conv = rt.createThread({ projectId: 'pr_remote', title: 'Remote build', personaIds: [persona.id] });
-  const se = rt.sessionsIn(conv.id).find((x) => x.personaId === persona.id);
+  const se = arrange.sessionsIn(rt, conv.id).find((x) => x.personaId === persona.id);
   for (const [i, name] of ['ledger-edits', 'ledger-push'].entries()) await hostTurn(se, i, name);
 });
 test.afterAll(async () => {

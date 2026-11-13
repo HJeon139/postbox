@@ -2,6 +2,7 @@
 // of work and a topic thread long enough to scroll, the pane’s addresses, and the checks every pane test makes.
 
 import { expect } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { startPostbox, synced } from './postbox.mjs';
 
 export const WORK = 'aside.workpane';
@@ -34,7 +35,7 @@ export async function citationFixes(name) {
   const topic = rt.startTopic(conv.id, root.id).threadId;
   // Long enough to scroll, in the pane and full screen.
   for (let i = 0; i < 24; i++)
-    rt.addItem(topic, {
+    arrange.post(rt, topic, {
       kind: 'user',
       text: `Side question ${i + 1}: ${'a longer line that wraps across the panel and reads at the column width, '.repeat(3)}`,
     });

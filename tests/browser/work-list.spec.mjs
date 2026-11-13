@@ -10,6 +10,7 @@ import { createRequire } from 'node:module';
 import { expect, test } from '@playwright/test';
 import { turnLine } from '../../shared/work.mjs';
 import { turnRows } from '../../shared/work-list.mjs';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, frames, PHONE, settled, startPostbox, synced, windowWidth } from './postbox.mjs';
 
 const AXE = readFileSync(createRequire(import.meta.url).resolve('axe-core/axe.min.js'), 'utf8');
@@ -31,7 +32,7 @@ test.beforeAll(async () => {
   conv = Object.values(store.state.threads).find((t) => t.title === 'Citation fixes');
   rt.sendMessage(conv.id, { text: 'Fix the citation script' });
   await expect.poll(() => store.items(conv.id).some((i) => i.work), { message: 'the turn’s list', timeout: 60_000 }).toBe(true);
-  await expect.poll(() => rt.turns.size, { message: 'the turn to end', timeout: 60_000 }).toBe(0);
+  await expect.poll(() => arrange.liveTurns(rt), { message: 'the turn to end', timeout: 60_000 }).toBe(0);
   turn = entries().find((e) => e.kind === 'turn');
   last = store
     .items(conv.id)
@@ -196,11 +197,11 @@ test('1280 px: a row follows the ledger after the turn: a background command tha
   const bg = entries().find((e) => e.kind === 'command' && e.background);
   const command = page.locator(`#wl-${turn.id}-${bg.id}`);
   await expect(command).toContainText('didn’t report how it ended');
-  rt.ledger.jobUpdate({ threadId: conv.id, toolUseId: bg.toolUseId }, { state: 'stopped', by: 'you' });
+  arrange.ledger(rt).jobUpdate({ threadId: conv.id, toolUseId: bg.toolUseId }, { state: 'stopped', by: 'you' });
   await expect(command, 'the row says stopped').toHaveText(/stopped$/);
   // #519: kept running when its agent stopped, then ended on its own: it ended, not “didn’t report”.
-  rt.ledger.patch(conv.id, bg.id, { state: 'background', keptRunning: true, leftRunning: true, stoppedBy: null });
-  rt.ledger.jobUpdate({ threadId: conv.id, toolUseId: bg.toolUseId }, { state: 'done' });
+  arrange.ledger(rt).patch(conv.id, bg.id, { state: 'background', keptRunning: true, leftRunning: true, stoppedBy: null });
+  arrange.ledger(rt).jobUpdate({ threadId: conv.id, toolUseId: bg.toolUseId }, { state: 'done' });
   await expect(command, 'the row says it ended').toHaveText(/ended$/);
   await expect(command, 'not that it didn’t report how').not.toContainText('didn’t report');
   // An app retired after the turn (#193): its row says so.
