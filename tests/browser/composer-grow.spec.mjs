@@ -191,6 +191,52 @@ test('#360: at the end, a composer that shrinks as a draft is sent leaves the vi
   await expect(page.locator('.jump'), 'no Jump to latest: the view still follows').toBeHidden();
 });
 
+/**
+ * In one frame, as a busy page hears them: the agent’s thinking row goes, then its short reply comes, then another. The
+ * first reply releases the room the composer left, and the view is clamped up to the shorter page; the second makes the
+ * page longer again before the frame’s scroll event. The frame’s one note was already taken by the row going.
+ * @param {import('@playwright/test').Page} page @param {string} threadId @param {string} sessionId
+ */
+const twoRepliesInAFrame = (page, threadId, sessionId) =>
+  page.evaluate(
+    async ({ threadId, sessionId }) => {
+      const { client } = await import('/app/js/client.mjs');
+      const { apply } = await import('/shared/state.mjs');
+      apply(client.state, 'session.patch', { id: sessionId, state: 'gen' });
+      client.emit({ type: 'session', data: client.state.sessions[sessionId] });
+      for (const [id, text] of [
+        ['it_shortReply', 'A short reply.'],
+        ['it_nextReply', 'The next reply, which comes in the same frame.'],
+      ]) {
+        await Promise.resolve();
+        const item = { id, kind: 'agent', handle: 'researcher', sessionId, text, status: 'done', at: Date.now() };
+        apply(client.state, 'item.add', { threadId, item });
+        client.emit({ type: 'item.add', data: { threadId, item } });
+      }
+    },
+    { threadId, sessionId },
+  );
+
+test('#360: at the end, replies that come in the frame the composer’s room is released are followed', async ({ page }) => {
+  const { t, se } = room('Shrink, then two replies');
+  await open(page, t, 1280);
+  arrange.setSession(app.rt, se.id, { state: 'think' });
+  await expect(page.locator('#main .working .work-row')).toHaveCount(1);
+  await sixLines(page);
+  await page.evaluate(async () => {
+    const { fitDraft } = await import('/app/js/composer-size.mjs');
+    const ta = /** @type {HTMLTextAreaElement} */ (document.querySelector('#composer-input'));
+    ta.value = '';
+    fitDraft(ta);
+  });
+  await settled(page);
+  expect(await page.locator('#main').evaluate((m) => m.style.marginBottom), 'the room the composer left is held').not.toBe('');
+  await twoRepliesInAFrame(page, t.id, se.id);
+  await settled(page);
+  expect(await clearance(page), 'the newest reply ends above the composer').toBeGreaterThanOrEqual(0);
+  await expect(page.locator('.jump'), 'no Jump to latest: the view still follows').toBeHidden();
+});
+
 test('#360 in the thread panel: a composer that shrinks as a draft is sent leaves the panel following the next reply', async ({ page }) => {
   const { rt } = app;
   const { t, se } = room('Shrink in the panel');
