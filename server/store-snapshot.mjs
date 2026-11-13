@@ -14,7 +14,7 @@ const PIECE = 1 << 20; // the snapshot’s text goes to the disk in pieces this 
  * Writes the state to snapshot.json atomically: a temporary file, written in pieces of about 1 MB (one write of
  * the whole text converts it to bytes in one go, which blocked the loop for about half the snapshot’s time, #508’s
  * storage design, “Snapshots and pruning”), fsynced, then renamed over the snapshot. The caller syncs the folder.
- * @param {{ io: typeof import('node:fs/promises'), at: (name: string) => string, state: any, retiring?: boolean }} store
+ * @param {{ io: typeof import('node:fs/promises'), at: (name: string) => string, state: any, retiring?: boolean, progress?: number }} store
  */
 export async function writeSnapshot(store) {
   const path = store.at('snapshot.json');
@@ -29,14 +29,15 @@ export async function writeSnapshot(store) {
     for (const line of snapshotLines(store.state)) {
       text += `${line}\n`;
       if (text.length < PIECE) continue;
-      while (text.length >= PIECE) text = await writePiece(fh, text, tmp);
+      while (text.length >= PIECE) text = await writePiece(store, fh, text, tmp);
       // close() began: the file is removed below, so the rest isn’t written. A 1M-item store’s snapshot held the close
       // for about 1.5 s of its 3 s bound writing pieces it then threw away.
       if (store.retiring) break;
     }
     if (!store.retiring) {
-      while (text.length) text = await writePiece(fh, text, tmp);
+      while (text.length) text = await writePiece(store, fh, text, tmp);
       await fh.sync();
+      store.progress = (store.progress ?? 0) + 1;
     }
   } finally {
     await fh.close();
@@ -48,12 +49,16 @@ export async function writeSnapshot(store) {
   await store.io.rename(tmp, path);
 }
 
-/** Writes the first PIECE of text, or all of it when shorter, without splitting a surrogate pair; returns the rest. */
-async function writePiece(fh, text, tmp) {
+/**
+ * Writes the first PIECE of text, or all of it when shorter, without splitting a surrogate pair; returns the rest. Each
+ * piece written is progress, which close() waits on (#1314). @param {{ progress?: number }} store
+ */
+async function writePiece(store, fh, text, tmp) {
   let end = Math.min(PIECE, text.length);
   const code = text.charCodeAt(end - 1);
   if (end < text.length && code >= 0xd800 && code <= 0xdbff) end++;
   await writeAll(fh, Buffer.from(text.slice(0, end)), `The snapshot ${tmp}`);
+  store.progress = (store.progress ?? 0) + 1;
   return text.slice(end);
 }
 

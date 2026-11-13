@@ -51,14 +51,17 @@ async function append(store, text, gen, sync, through) {
   const fh = await handle(store);
   if (store.generation !== gen) throw fenced();
   await writeAll(fh, Buffer.from(text), `The event log ${store.segment}`);
+  store.progress++;
   if (store.generation !== gen) throw fenced();
   if (through > store.writtenThrough) store.writtenThrough = through;
   if (!sync) return;
   await fh.sync();
+  store.progress++;
   if (store.generation !== gen) throw fenced();
   store.savedThrough = store.writtenThrough;
   if (store.freshSegment) {
     await syncDir(store);
+    store.progress++;
     if (store.generation !== gen) throw fenced();
     store.freshSegment = false;
   }
@@ -217,6 +220,7 @@ export async function run(store, gen) {
       store.queue.shift();
       await (store.fh ? store.fh.sync() : Promise.resolve()).then(
         () => {
+          store.progress++;
           store.savedThrough = store.writtenThrough;
           job.flush.resolve();
         },

@@ -161,3 +161,28 @@ test('close() begun before a reconciliation times out waits for the listener the
   assert.ok(b.state.threads.t1);
   await b.close();
 });
+
+test('a slow disk that keeps answering: close() waits past its bound while each write lands, and closes with every event durable (#1314)', async () => {
+  // The bound is “no progress for retryBoundMs”, not retryBoundMs in all: a writer pass of eight writes of 60 ms each
+  // runs well past a 100 ms bound, yet every write is the disk answering.
+  const dir = await tmp();
+  const faults = {};
+  const a = await new Store(dir, { io: logDisk(faults), retryBoundMs: 100 }).load();
+  faults.write = async (handle, ...args) => {
+    await new Promise((r) => setTimeout(r, 60));
+    return handle.write(...args);
+  };
+  const commits = [];
+  for (let i = 0; i < 4; i++) {
+    a.emit('thread', { id: `e${i}`, members: [] });
+    commits.push(a.commit([thread(`c${i}`)], { opId: `c${i}` }));
+  }
+  const t0 = Date.now();
+  await a.close();
+  assert.ok(Date.now() - t0 > 100, 'the pass ran past the bound');
+  await Promise.all(commits);
+  assert.equal(a.lock, null, 'released');
+  const b = await new Store(dir).load();
+  assert.deepEqual(Object.keys(b.state.threads).sort(), ['c0', 'c1', 'c2', 'c3', 'e0', 'e1', 'e2', 'e3']);
+  await b.close();
+});

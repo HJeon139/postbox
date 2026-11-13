@@ -32,6 +32,8 @@ export { newId }; // server/ids.mjs; its callers import it from here
 export class Store {
   /** A snapshot is reading the state: emits are held until it’s written, as behind a commit, so it reads one view (#1180). */
   snapshotting = false;
+  /** Counts the writer’s steps the disk has finished: close() waits while it moves, and gives up when it stops (#1314). */
+  progress = 0;
 
   /**
    * @param {string|null} dir  the data folder; null keeps everything in memory (tests)

@@ -145,7 +145,8 @@ export async function load(store, { fresh = false } = {}) {
 /**
  * Waits for what is under way: a Retry, a writer pass, a reconciliation an earlier Retry detached. Re-read after each
  * wait, since a Retry that times out meanwhile hands its still-running listener to lateReconcile after the first
- * reading (gpt’s finding on 1b); ends when a reading shows nothing new. Whether all of it settled within the bound.
+ * reading (gpt’s finding on 1b); ends when a reading shows nothing new. Whether all of it settled before the bound
+ * passed with no progress.
  * @param {import('./store.mjs').Store} store
  */
 async function drained(store) {
@@ -155,7 +156,21 @@ async function drained(store) {
     const fresh = now.filter((p) => !seen.has(p));
     if (!fresh.length) return true;
     seen = new Set([...seen, ...fresh]);
-    if (!(await settledWithin(Promise.all(fresh.map((p) => p.catch(() => {}))), store.retryBoundMs))) return false;
+    if (!(await settledWhileProgressing(store, Promise.all(fresh.map((p) => p.catch(() => {})))))) return false;
+  }
+}
+
+/**
+ * Whether a promise settles before the writer goes the bound without finishing a step. A slow disk that keeps answering
+ * is waited for, however long its writes take in all; one that stops answering is given up on within the bound
+ * (#1314: a 100,000-item store’s writer pass ran past 3 s in all while it worked).
+ * @param {import('./store.mjs').Store} store @param {Promise<unknown>} promise
+ */
+async function settledWhileProgressing(store, promise) {
+  for (;;) {
+    const at = store.progress;
+    if (await settledWithin(promise, store.retryBoundMs)) return true;
+    if (store.progress === at) return false;
   }
 }
 
@@ -188,7 +203,7 @@ export async function close(store) {
       () => null,
       (e) => e,
     );
-    quiet = await settledWithin(flushed, store.retryBoundMs);
+    quiet = await settledWhileProgressing(store, flushed);
     if (quiet) failed = await flushed;
   }
   store.closed = true;
@@ -196,7 +211,7 @@ export async function close(store) {
   if (!quiet || failed) {
     const why = failed
       ? `its last sync failed (${failed.code ?? 'error'}): ${(failed.cause ?? failed).message}, so the log may not be durable`
-      : `a write or Retry is still in flight after ${store.retryBoundMs} ms and the disk isn’t answering`;
+      : `a write or Retry has made no progress for ${store.retryBoundMs} ms and the disk isn’t answering`;
     store.cause = Object.assign(
       new Error(`The store can’t close: ${why}. Stop the process; its lock on the folder goes with it, and the next start takes the folder over.`),
       {
