@@ -1,4 +1,5 @@
-// The New agent sheet on a fresh install, which has no project: its subtitle says so instead of “undefined”.
+// The New agent sheet starts on Blank, and on a fresh install, which has no project, its subtitle says so instead of
+// “undefined”.
 
 import { expect, test } from '@playwright/test';
 import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
@@ -26,11 +27,13 @@ async function personas(page) {
   return settings;
 }
 
-test('New agent on a fresh install says no project holds its session yet', async ({ page }) => {
+test('New agent on a fresh install starts on Blank, and says no project holds its session yet', async ({ page }) => {
   const settings = await personas(page);
   await settings.getByRole('button', { name: 'New agent' }).click();
   const sheet = page.getByRole('dialog', { name: 'New agent' });
   await expect(sheet).toBeVisible();
+  await expect.soft(sheet.getByRole('radiogroup', { name: 'Boilerplate' }).getByRole('radio', { name: 'Blank' })).toHaveAttribute('aria-checked', 'true');
+  await expect.soft(sheet.getByLabel('Instructions')).toHaveValue('');
   await expect.soft(sheet, 'no project to name').not.toContainText('undefined');
   await expect.soft(sheet).toContainText('Create a project to start a session with it.');
 });

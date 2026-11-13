@@ -387,16 +387,17 @@ function boilerplateChips(bps, st, paint) {
 }
 
 /**
- * What the new agent sheet starts with: the preset’s or the second boilerplate’s words and tools, and the first
- * backend this computer runs, with a model and effort it takes.
+ * What the new agent sheet starts with: the preset’s words and tools, else Blank’s, and the first backend this
+ * computer runs, with a model and effort it takes.
  */
 function newAgentChoices({ preset, bps, threadId }) {
+  const blank = bps.find((b) => b.id === 'bp-blank');
   const st = {
-    bp: preset ? null : (bps[1]?.id ?? bps[0]?.id),
+    bp: preset ? null : (blank?.id ?? null),
     handle: preset?.handle ?? '',
-    instructions: preset?.instructions ?? bps[1]?.instructions ?? '',
-    description: preset?.description ?? bps[1]?.description ?? '',
-    tools: new Set(preset?.tools ?? bps[1]?.tools ?? []),
+    instructions: preset?.instructions ?? blank?.instructions ?? '',
+    description: preset?.description ?? blank?.description ?? '',
+    tools: new Set(preset?.tools ?? blank?.tools ?? []),
     where: threadId ? 'join' : 'new',
     backend: defaultBackend(),
     model: client.config.defaultModel ?? 'claude-opus-5-5',
