@@ -3,7 +3,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { AGY_DEFAULT_MODEL } from '../server/adapters/antigravity-cli.mjs';
+import { AGY_CAPABILITIES, AGY_DEFAULT_MODEL } from '../server/adapters/antigravity-cli.mjs';
 import { DEFAULT_EFFORT, DEFAULT_MODEL, effortOf, modelOf } from '../server/adapters/setup.mjs';
 import { BOILERPLATES } from '../server/seed.mjs';
 import {
@@ -149,7 +149,7 @@ test('picking the Gemini boilerplate prefers its model when offered, then the fi
   applyBoilerplate(st, gemini, { ...config, adapters, backends: { 'antigravity-cli': { models: ['gpt-oss-120b-medium'] } } });
   assert.deepEqual([st.backend, st.model, st.effort], ['antigravity-cli', GEMINI_MODEL, 'high']);
   // Switching back to a generic boilerplate restores the default backend, model and effort.
-  applyBoilerplate(st, critic, { ...config, adapters, backends: { 'antigravity-cli': {} } });
+  applyBoilerplate(st, critic, { ...config, adapters, backends: { 'antigravity-cli': AGY_CAPABILITIES } });
   assert.deepEqual([st.bp, st.backend, st.model, st.effort], ['bp-critic', 'claude-code', DEFAULT_MODEL, DEFAULT_EFFORT]);
 });
 
@@ -162,7 +162,7 @@ test('unavailable backend boilerplates are disabled with a reason, and switching
   assert.equal(st.backend, 'claude-code');
   assert.equal(st.model, DEFAULT_MODEL);
   // Picking Gemini and then switching Runs on to Claude Code by hand resets both model and effort.
-  const cfg = { ...config, adapters: ['claude-code', 'antigravity-cli', 'kiro-cli', 'mock'], backends: { 'antigravity-cli': {} } };
+  const cfg = { ...config, adapters: ['claude-code', 'antigravity-cli', 'kiro-cli', 'mock'], backends: { 'antigravity-cli': AGY_CAPABILITIES } };
   applyBoilerplate(st, gemini, cfg);
   assert.deepEqual([st.backend, st.model, st.effort], ['antigravity-cli', GEMINI_MODEL, 'high']);
   selectBackend(st, 'claude-code', cfg);

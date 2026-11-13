@@ -2,14 +2,14 @@
 // suggestions are asked of the backend’s own harness when the field opens (POST /api/backends/:id/models, see
 // server/model-lists.mjs), and whatever the person types goes to the harness as its --model.
 
-import { BACKENDS, codexDefault, effortNamedBy, GEMINI_MODEL, modelDefault, modelName } from '/shared/agent-facts.mjs';
+import { BACKENDS, codexDefault, effortNamedBy, modelDefault, modelName } from '/shared/agent-facts.mjs';
 import { api, client } from './client.mjs';
 import { h } from './dom.mjs';
 
 /** What a backend can do (server/adapters/adapter.mjs, capabilities), as /api/state serves it (#117). */
 export const capsOf = (backend) => client.config.backends?.[backend] ?? {};
-/** The models to suggest for a backend: the last its harness listed, else Gemini’s on Antigravity, else none. */
-export const modelsFor = (backend) => capsOf(backend).models ?? (backend === 'antigravity-cli' ? [GEMINI_MODEL] : []);
+/** The models to suggest for a backend: the last its harness listed, else its preferred model (Antigravity’s Gemini), else none. */
+export const modelsFor = (backend) => capsOf(backend).models ?? (capsOf(backend).preferModel ? [capsOf(backend).preferModel.id] : []);
 
 /**
  * Asks the backend’s harness for its models, once per backend while the sheet is open, and paints when it answers.
