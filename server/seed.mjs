@@ -137,13 +137,6 @@ export const BOILERPLATES = [
     model: GEMINI_MODEL,
   },
   {
-    id: 'bp-indexer',
-    name: 'Indexer',
-    description: 'Builds search indexes',
-    instructions: 'Build and maintain search indexes. Report progress as you go.',
-    tools: ['shell'],
-  },
-  {
     id: 'bp-gpt',
     name: 'GPT',
     description: 'Helps with questions, writing and code using Codex',
