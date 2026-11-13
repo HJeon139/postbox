@@ -44,6 +44,9 @@ export function watchStore(rt) {
   // store tells its reload listeners before its status listeners hear writes reopen (server/store-retry.mjs).
   // Every timer in rt.timers is re-armed.
   rt.store.onReload(() => {
+    // Whether a session waits for its host turn to be attached follows where its agent runs in the state installed
+    // (#1135): a move Retry dropped is undone, so the queues reopened() drains read it right.
+    rt.remote.noteAllAttach();
     dropOwned(rt); // before the re-arm: the timers below are now the only owners of what they recreate
     for (const timer of rt.timers.values()) clearTimeout(timer);
     rt.timers.clear();

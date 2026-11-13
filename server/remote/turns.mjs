@@ -133,6 +133,14 @@ export class RemoteTurns {
     else this.rt.running.attached(sessionId);
   }
 
+  /**
+   * Notes again every session whose turn waits to be attached, or did: Retry installed another state, which may put an
+   * agent back where a dropped move took it from (store-outage.mjs, watchStore).
+   */
+  noteAllAttach() {
+    for (const id of new Set([...this.restoring.values(), ...this.rt.running.awaiting.keys()])) this.noteAttach(id);
+  }
+
   /** Stops the timers and listeners, as Postbox shuts down. Turns go on on their hosts. */
   close() {
     this.closed = true;
