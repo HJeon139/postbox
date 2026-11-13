@@ -4,7 +4,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
-import { APP_FONTS } from '../shared/app-fonts.mjs';
+import { APP_FONTS, FACE_ALIASES } from '../shared/app-fonts.mjs';
 import { validateBlock } from '../shared/catalog.mjs';
 import { setup, turn } from './blocks-fixture.mjs';
 
@@ -52,6 +52,22 @@ test('#1322 an app that leaves the font to Postbox, or names Postbox’s own, is
     assert.deepEqual(refused(code), [], code);
 });
 
+test('#1322 another name for a face in Postbox’s stacks is Postbox’s font, as recorded agents write it', () => {
+  // The raft and review showcases’ apps (tools/demo/showcase/), from real agents: SFMono-Regular is SF Mono’s
+  // PostScript name, and BlinkMacSystemFont is Chrome’s name for the system face.
+  assert.deepEqual(refused('<style>code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }</style>'), []);
+  assert.deepEqual(refused('<style>body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; }</style>'), []);
+});
+
+test('#1322 every showcase app, recorded from real agents, passes the font rule', () => {
+  for (const key of ['raft', 'elements', 'capacity', 'review', 'deps']) {
+    const story = readFileSync(new URL(`../tools/demo/showcase/${key}/story.json`, import.meta.url), 'utf8');
+    const codes = [...story.matchAll(/"code":\s*("(?:[^"\\]|\\.)*")/g)].map((m) => JSON.parse(m[1]));
+    assert.ok(codes.length >= 2, `${key} has its apps`);
+    for (const code of codes) assert.deepEqual(refused(code), [], key);
+  }
+});
+
 test('#1322 the fonts an app may name are the ones workbench.css gives it, and no others', () => {
   const css = readFileSync(new URL('../app/workbench.css', import.meta.url), 'utf8');
   const stack = (re) =>
@@ -66,7 +82,8 @@ test('#1322 the fonts an app may name are the ones workbench.css gives it, and n
       );
   const body = stack(/body \{[^}]*font: 14px\/1\.4 ([^;]+);/);
   const mono = stack(/code, pre, kbd, \.mono \{ font-family: ([^;]+);/);
-  const families = [...APP_FONTS].filter((f) => !['inherit', 'initial', 'unset', 'revert'].includes(f));
+  const families = [...APP_FONTS].filter((f) => !['inherit', 'initial', 'unset', 'revert'].includes(f) && !Object.hasOwn(FACE_ALIASES, f));
+  for (const face of Object.values(FACE_ALIASES)) assert.ok(families.includes(face), `${face} is in a stack`);
   assert.deepEqual(families.sort(), [...new Set([...body, ...mono])].sort());
 });
 
