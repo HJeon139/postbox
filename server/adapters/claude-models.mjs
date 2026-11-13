@@ -39,7 +39,11 @@ export function claudeModels(bin, { spawnImpl = spawn } = {}) {
       return;
     }
     const lines = createInterface({ input: child.stdout });
+    let done = false;
+    // Once: stopping the CLI closes it, and its close comes back here.
     const finish = (/** @type {string[]} */ models) => {
+      if (done) return;
+      done = true;
       clearTimeout(timer);
       lines.close();
       child.kill('SIGTERM');
