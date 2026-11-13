@@ -9,6 +9,7 @@
 // Postbox spawns the CLI for the SDK (its spawnClaudeCodeProcess option, sdk.d.ts) in a process group of its own, so
 // Stop reaches everything it started, as for the Claude Code backend, and a turn ends only once the CLI has exited
 // (#126): server/adapters/process-group.mjs.
+// POSTBOX_SDK_RECORD=<folder> saves each turn’s messages there, one JSON line each, as the other backends record theirs (#1315).
 
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
@@ -21,7 +22,19 @@ import { FRESH_START_TEXT, formatMessage, turnGuide } from './guide.mjs';
 import { listProcesses, stopJobUnder, stopTurn } from './process-group.mjs';
 import { listCommands } from './sdk-commands.mjs';
 import { canUseTool as sdkCanUseTool } from './sdk-permission.mjs';
-import { deniedTools, effortOf, fromContext, HOST_SOURCES, ISOLATED_SOURCES, modelOf, postboxServer, settingsFor, setupOf, writeRules } from './setup.mjs';
+import {
+  deniedTools,
+  effortOf,
+  fromContext,
+  HOST_SOURCES,
+  ISOLATED_SOURCES,
+  modelOf,
+  postboxServer,
+  recorderFor,
+  settingsFor,
+  setupOf,
+  writeRules,
+} from './setup.mjs';
 
 /** Loads the SDK, or returns null when it isn’t installed. */
 export async function loadAgentSdk() {
@@ -199,6 +212,7 @@ export class AgentSdkAdapter {
     const canUseTool = (toolName, input, opts) => sdkCanUseTool(ctx, toolName, input, opts);
 
     const mapper = createStreamMapper(ctx, { contextWindow: ctx.state.contextWindow ?? windowFor(persona.model), effort: effortOf(persona) });
+    const record = recorderFor(ctx, process.env.POSTBOX_SDK_RECORD);
     ctx.subagentNames?.((ids) => mapper.who(ids));
     const options = {
       ...sdkOptions({
@@ -223,6 +237,7 @@ export class AgentSdkAdapter {
       // A background job’s own Stop, while the CLI waits for it.
       ctx.control?.({ ...liveControl(q, persona.permissionMode ?? 'auto'), stopJob: (job) => stopJobUnder(child, job, procs) });
       for await (const m of q) {
+        record(JSON.stringify(m));
         mapper.push(m);
         if (m.type === 'system' && m.subtype === 'init') noteInit(q, m, ctx);
       }

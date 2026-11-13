@@ -56,6 +56,7 @@ export function savedFacts(dir, { state, mainId, saved, logs, hostsRec, record }
     kiroStreams: readStreams(join(dir, 'streams', 'kiro')),
     agyStreams: readStreams(join(dir, 'streams', 'agy')),
     codexStreams: readStreams(join(dir, 'streams', 'codex')),
+    sdkStreams: readStreams(join(dir, 'streams', 'sdk')),
     events: readHistory(dir),
     store: readStore(join(dir, 'data')),
     remote: remoteFacts(dir),

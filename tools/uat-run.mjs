@@ -251,6 +251,7 @@ async function main() {
       facts.kiroStreams = readStreams(paths.kiroStreams);
       facts.agyStreams = readStreams(paths.agyStreams);
       facts.codexStreams = readStreams(paths.codexStreams);
+      facts.sdkStreams = readStreams(paths.sdkStreams);
       facts.events = history.events();
       facts.transcripts = readTranscripts(facts, paths.workspace);
       facts.remote = remoteFacts(dir, facts); // `- seed: git-remote`’s pushes, with the ledger’s size beside them (#305)

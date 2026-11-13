@@ -19,6 +19,7 @@ export async function runPaths(dir) {
     kiroStreams: join(dir, 'streams', 'kiro'),
     agyStreams: join(dir, 'streams', 'agy'),
     codexStreams: join(dir, 'streams', 'codex'),
+    sdkStreams: join(dir, 'streams', 'sdk'),
     shots: join(dir, 'shots'),
   };
   for (const p of Object.values(paths)) await mkdir(p, { recursive: true });
@@ -42,7 +43,8 @@ export function userSetup(workspace) {
 }
 
 /** Each agent turn’s raw stream, as recorded by the Claude Code adapter (POSTBOX_CLAUDE_RECORD), by the Kiro CLI
- * adapter (POSTBOX_KIRO_RECORD) in streams/kiro/, or by the Antigravity CLI adapter (POSTBOX_AGY_RECORD) in streams/agy/.
+ * adapter (POSTBOX_KIRO_RECORD) in streams/kiro/, by the Antigravity CLI adapter (POSTBOX_AGY_RECORD) in streams/agy/,
+ * by Codex’s (POSTBOX_CODEX_RECORD) in streams/codex/, or by the Agent SDK’s (POSTBOX_SDK_RECORD) in streams/sdk/.
  * A file is named for when its turn’s process started, and its last write is when that process last said anything (#126). */
 export function readStreams(folder) {
   if (!existsSync(folder)) return [];
