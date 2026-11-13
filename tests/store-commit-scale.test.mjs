@@ -13,7 +13,7 @@ import { tempDir } from './temp-dirs.mjs';
 
 const LINES = 100_000;
 
-test('close() during the snapshot ahead of 100,000 queued lines writes them all and closes within its bound', async () => {
+test('close() during the snapshot ahead of 100,000 queued lines writes them all, never holding the event loop for a second', async () => {
   const dir = await tempDir('pb-scale-');
   // The first emit starts the writer’s loop; the rest queue behind it, and the snapshot they make due runs first.
   let snapshotStarted = () => {};
@@ -30,6 +30,15 @@ test('close() during the snapshot ahead of 100,000 queued lines writes them all 
   };
   const store = await new Store(dir, { io, retryBoundMs: 1000 }).load();
   for (let i = 0; i < LINES; i++) store.emit('thread', { id: `th_${i}`, members: [] });
+  // The writer’s pass is timed by the longest the event loop goes unanswered, not by close()’s bound, which waits while
+  // the disk keeps finishing steps: one shift per line held the loop for seconds here, and close() still ended clean.
+  let longest = 0;
+  let last = performance.now();
+  const beat = setInterval(() => {
+    const now = performance.now();
+    longest = Math.max(longest, now - last);
+    last = now;
+  }, 10);
   await started;
   const errors = [];
   const logged = console.error;
@@ -38,8 +47,10 @@ test('close() during the snapshot ahead of 100,000 queued lines writes them all 
     await store.close();
   } finally {
     console.error = logged;
+    clearInterval(beat);
   }
   assert.deepEqual(errors, [], 'close() logged nothing');
+  assert.ok(longest < 1000, `the event loop went ${Math.round(longest)} ms unanswered while the lines were written`);
   assert.equal(store.writtenThrough, store.state.seq, 'every queued line reached the log');
   assert.equal(store.lock, null, 'the folder’s lock is released');
 });
