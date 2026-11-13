@@ -2,7 +2,7 @@
 // (shared/remote-protocol.mjs). server/model-lists.mjs calls it when the Model field opens for an agent that runs
 // there. It uses only the host manager’s own methods (hosts.mjs), and keeps the host connected while it waits.
 
-import { message } from '../../shared/remote-protocol.mjs';
+import { message, refusesType } from '../../shared/remote-protocol.mjs';
 import { LIST_TIMEOUT_MS } from './host/harness-models.mjs';
 
 /** How long Postbox waits for `listed` once `models` is sent: the host’s own listing limit, plus the round trip. */
@@ -10,8 +10,8 @@ export const LISTED_WAIT_MS = LIST_TIMEOUT_MS + 30_000;
 
 /**
  * Why a host gave no list: it couldn’t be reached; its daemon is older than `models`, so installing this version
- * there would let it list; or it answered without one (its CLI isn’t there, or couldn’t list).
- * @typedef {'unreachable' | 'outdated' | 'not-listed'} NotListed
+ * there would let it list; its welcome found no CLI for the harness; or the CLI listed none, or couldn’t list.
+ * @typedef {'unreachable' | 'outdated' | 'no-cli' | 'not-listed'} NotListed
  */
 
 /**
@@ -25,12 +25,16 @@ export async function hostModels(hosts, hostId, harness, { setTimer = (fn, ms) =
   const why = Symbol('model list');
   hosts.need(hostId, why);
   try {
+    let welcome;
     try {
-      await hosts.ensureWelcome(hostId);
+      welcome = await hosts.ensureWelcome(hostId);
     } catch (e) {
       if (e?.code === 'no-host') throw e;
       throw notListed('unreachable', `Postbox couldn’t reach the host: ${e?.message ?? e}`);
     }
+    // The daemon answers a harness it didn’t find with no models; the welcome already says so (#1318).
+    if (!welcome?.harnesses?.some((/** @type {any} */ x) => x.name === harness && x.path))
+      throw notListed('no-cli', `The host has no ${harness} that Postbox found.`);
     const listed = await new Promise((resolve, reject) => {
       const l = hosts.link(hostId);
       let timer = null;
@@ -43,10 +47,10 @@ export async function hostModels(hosts, hostId, harness, { setTimer = (fn, ms) =
       };
       const onMessage = (msg) => {
         if (msg.type === 'listed' && msg.harness === harness) done(resolve, msg.models);
-        // A daemon from before `models` refuses the line as a message it doesn’t know, naming no request
-        // (tests/fixtures/remote/models-before-1312.json). One that has `models` refuses it naming it, as while it’s
-        // being removed.
-        else if (msg.type === 'error' && msg.code === 'bad-message' && !msg.re) done(reject, notListed('outdated', msg.message));
+        // A daemon from before `models` refuses the line as a message it doesn’t carry, naming no request
+        // (tests/fixtures/remote/models-before-1312.json); another refusal isn’t that (#1318). One that has `models`
+        // refuses it naming it, as while it’s being removed.
+        else if (refusesType(msg, 'models')) done(reject, notListed('outdated', msg.message));
         else if (msg.type === 'error' && msg.re === 'models') done(reject, notListed('not-listed', msg.message));
       };
       const onState = () => !l.connected && done(reject, notListed('unreachable', 'The connection closed before the host listed its models.'));

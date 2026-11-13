@@ -31,10 +31,24 @@ export function validateMessage(channel, value) {
   if (!types) return { ok: false, error: `There’s no channel “${clip(channel)}”.` };
   if (!isObj(value)) return { ok: false, error: 'A message must be a JSON object.' };
   const type = /** @type {any} */ (value).type;
-  if (typeof type !== 'string' || !Object.hasOwn(types, type))
-    return { ok: false, error: `“${clip(type)}” isn’t a message on this channel; it carries ${Object.keys(types).join(', ')}.` };
+  if (typeof type !== 'string' || !Object.hasOwn(types, type)) return { ok: false, error: `${notCarried(type)} it carries ${Object.keys(types).join(', ')}.` };
   return run(type, value, () => types[type](value));
 }
+
+/**
+ * How a channel refuses a type it doesn’t carry. Daemons already installed on hosts say it word for word, so it
+ * doesn’t change: refusesType reads it.
+ * @param {unknown} type
+ */
+const notCarried = (type) => `“${clip(type)}” isn’t a message on this channel;`;
+
+/**
+ * Whether msg is a daemon’s refusal of a message type it doesn’t carry: one from before that type answers it with a
+ * `bad-message` error that has no `re`, as it can’t read the type it refused (#1304).
+ * @param {any} msg @param {string} type
+ */
+export const refusesType = (msg, type) =>
+  msg?.type === 'error' && msg.code === 'bad-message' && msg.re === undefined && typeof msg.message === 'string' && msg.message.startsWith(notCarried(type));
 
 /**
  * One validator per message: VALIDATORS[channel][type](value).

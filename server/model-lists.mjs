@@ -11,6 +11,8 @@ import { httpError } from './helpers.mjs';
 const FRESH_MS = 60_000;
 
 /** @typedef {import('./remote/hosts-models.mjs').NotListed} NotListed */
+/** Each reason a host gives no list (hosts-models.mjs); any other failure is not-listed. */
+const WHY = ['unreachable', 'outdated', 'no-cli', 'not-listed'];
 
 export class ModelLists {
   /**
@@ -111,7 +113,7 @@ export class ModelLists {
           },
           (e) => {
             if (e?.code === 'no-host') throw httpError(404, 'That host isn’t one Postbox has. Pick another under Runs on.');
-            return { why: /** @type {NotListed} */ (e?.code === 'unreachable' || e?.code === 'outdated' ? e.code : 'not-listed') };
+            return { why: /** @type {NotListed} */ (WHY.includes(e?.code) ? e.code : 'not-listed') };
           },
         )
         .finally(() => this.hostAsking.delete(key));

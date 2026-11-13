@@ -18,21 +18,25 @@ failOnPageErrors(test);
 
 /**
  * A host whose daemon answers `models` with reply(harness), and a Codex persona placed on it. Each test has its own,
- * so no list is cached from another.
- * @param {string} name @param {(harness: string) => any} reply
+ * so no list is cached from another. codexPath: where the host’s welcome finds Codex once the agent is placed there,
+ * null for nowhere, as when it’s gone from the host since.
+ * @param {string} name @param {(harness: string) => any} reply @param {{ codexPath?: string | null }} [o]
  */
-function hostWith(name, reply) {
+function hostWith(name, reply, { codexPath = '/home/user/.local/bin/codex' } = {}) {
   const { rt } = started.app;
   const host = rt.addHost({ name });
-  const welcome = {
+  /** @param {string | null} path */
+  const welcome = (path) => ({
     version: '0.18.0',
     home: '/home/user',
     node: { version: '22.12.0', path: '/usr/bin/node' },
-    harnesses: [{ name: 'codex', path: '/home/user/.local/bin/codex', version: '0.50.0' }],
+    harnesses: [{ name: 'codex', path, version: path ? '0.50.0' : null, looked: ['/home/user/.local/bin/codex'] }],
     problems: [],
     turns: [],
-  };
-  started.hosts.set(host.id, { state: 'connected', failure: null, welcome, lastHeard: Date.now(), name });
+  });
+  /** @param {string | null} path */
+  const connected = (path) => started.hosts.set(host.id, { state: 'connected', failure: null, welcome: welcome(path), lastHeard: Date.now(), name });
+  connected('/home/user/.local/bin/codex');
   const link = started.hosts.link(host.id);
   const asked = [];
   link.send = (msg) => {
@@ -43,6 +47,7 @@ function hostWith(name, reply) {
     return true;
   };
   const persona = rt.createPersona({ handle: `on-${name.split('.')[0]}`, backend: 'codex', remote: { hostId: host.id } });
+  connected(codexPath);
   return { host, persona, asked };
 }
 
@@ -84,5 +89,15 @@ test('a host whose CLI lists nothing says so, without asking to install Postbox 
   const sheet = await openPersona(page, persona);
   const help = sheet.locator('[data-model-help]');
   await expect(help).toHaveText(/^Codex on bare\.example\.com didn’t list its models\. Type the model you want/);
+  await expect.soft(help).not.toContainText('install');
+});
+
+test('a host without the CLI says it wasn’t found there, not that Postbox there is older', async ({ page }) => {
+  const { persona } = hostWith('nocli.example.com', (harness) => ({ type: 'listed', harness, models: [] }), { codexPath: null });
+  const sheet = await openPersona(page, persona);
+  const help = sheet.locator('[data-model-help]');
+  await expect(help).toHaveText(
+    'Codex wasn’t found on nocli.example.com, so it couldn’t list its models. Type the model you want: it goes to Codex there as --model.',
+  );
   await expect.soft(help).not.toContainText('install');
 });

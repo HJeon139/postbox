@@ -65,6 +65,7 @@ function listHelp(st) {
   const WHY = {
     unreachable: `Postbox couldn’t reach ${host} to list ${name}’s models`,
     outdated: `Postbox on ${host} is older than this one and can’t list models; install this version there under Settings, Hosts`,
+    'no-cli': `${name} wasn’t found on ${host}, so it couldn’t list its models`,
   };
   const why = WHY[list.why] ?? `${name} on ${host} didn’t list its models`;
   return list.models.length
