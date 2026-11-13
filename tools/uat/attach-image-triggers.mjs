@@ -26,4 +26,27 @@ export const ATTACH_IMAGE_TRIGGERS = {
       });
     },
   },
+  // The compatibility run’s (tests/uat/e2e/scenarios/attachimage-compat.md): each backend opens images its own way.
+  'attached-image-read-by-each': {
+    issue: 1307,
+    says: 'the person attached a PNG, and every agent in the conversation replied after it naming what the picture shows',
+    recorded: (f) => !!f.state,
+    run: (f) => {
+      const items = itemsOf(f);
+      return items.flatMap((it, i) => {
+        if (!sentPicture(it)) return [];
+        const handles = Object.values(f.state.sessions ?? {})
+          .filter((se) => se?.threadId === it.threadId && !se.archived)
+          .map((se) => se.handle);
+        const named = (h) =>
+          items
+            .slice(i + 1)
+            .find((x) => x.kind === 'agent' && x.threadId === it.threadId && x.handle === h && SHOWN.every((re) => re.test(String(x.text ?? ''))));
+        const replies = handles.map(named);
+        if (!handles.length || replies.some((r) => !r)) return [];
+        const last = Math.max(...replies.map((r) => (Number.isFinite(r.at) ? r.at : 0)));
+        return [{ at: last || null, evidence: `${handles.map((h) => `@${h}`).join(', ')} each named the triangle and KIWI.` }];
+      });
+    },
+  },
 };

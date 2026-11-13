@@ -30,8 +30,27 @@ test('attached-image-read doesn’t fire when the agent says it can’t see the 
   assert.deepEqual(fired(await sent('I can’t open picture.png: it reads as binary, not an image.')), []);
 });
 
-test('the attachimage scenario names only triggers that exist', () => {
-  const scenario = parseScenario(readFileSync(new URL('uat/e2e/scenarios/attachimage.md', import.meta.url), 'utf8'));
-  assert.deepEqual(unknownTriggers(scenario), []);
-  assert.deepEqual(scenario.phases[0].triggers, ['attached-image-read']);
+const byEach = (r) =>
+  TRIGGERS['attached-image-read-by-each'].run({ threads: [r.t.id], state: { sessions: r.store.state.sessions, items: { [r.t.id]: r.store.items(r.t.id) } } });
+
+test('attached-image-read-by-each waits for every agent in the conversation to name the picture', async () => {
+  const r = await sent('An orange triangle with the word KIWI in it.');
+  assert.deepEqual(byEach(r), [], 'only @alpha has answered, and @beta is in the room too');
+  r.adapter.next.push(async (c) => c.text('A triangle, orange, with KIWI written on it.'));
+  r.rt.sendMessage(r.t.id, { text: '@beta and you?' });
+  await settle(r.rt);
+  const [hit, ...rest] = byEach(r);
+  assert.deepEqual(rest, []);
+  assert.equal(hit.evidence, '@alpha, @beta each named the triangle and KIWI.');
 });
+
+for (const [name, trigger] of [
+  ['attachimage', 'attached-image-read'],
+  ['attachimage-compat', 'attached-image-read-by-each'],
+]) {
+  test(`the ${name} scenario names only triggers that exist`, () => {
+    const scenario = parseScenario(readFileSync(new URL(`uat/e2e/scenarios/${name}.md`, import.meta.url), 'utf8'));
+    assert.deepEqual(unknownTriggers(scenario), []);
+    assert.deepEqual(scenario.phases[0].triggers, [trigger]);
+  });
+}
