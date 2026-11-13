@@ -15,7 +15,7 @@ A targeted scenario for #1319, Claude Code only, with @developer on this compute
 - triggers: app-refused-then-shown
 - steps: 5
 
-Ask @developer to show a small app with show_app: a line chart of these weekly sales, Monday 12, Tuesday 9, Wednesday 15, Thursday 7, Friday 18, as dots joined by a line. Tell it to test Postbox’s checks first: its first show_app call must list one permission that isn’t a tool name, “Read Files”, with a space and capitals. Once Postbox refuses it, it should fix the call from what the refusal says, and show the app again with the same id. Then say whether you saw a broken card, raw JSON or fallback text at any point, and how many copies of the chart are in the conversation.
+Ask @developer to show a small app with show_app, under an id it chooses: a line chart of these weekly sales, Monday 12, Tuesday 9, Wednesday 15, Thursday 7, Friday 18, as dots joined by a line. Tell it to test Postbox’s checks first: its first show_app call must list one permission that isn’t a tool name, “Read Files”, with a space and capitals. Once Postbox refuses it, it should fix the call from what the refusal says, and show the app again with the same id. Then say whether you saw a broken card, raw JSON or fallback text at any point, and how many copies of the chart are in the conversation.
 
 ## Phase 2: A form with string options, then fixed
 

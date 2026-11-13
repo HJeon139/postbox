@@ -51,8 +51,8 @@ test('#1319 a malformed app refused, then shown fixed, fires app-refused-then-sh
     ['show_app', { ...APP, permissions: [] }],
   ]);
   const [fired] = TRIGGERS['app-refused-then-shown'].run(facts);
-  assert.match(fired?.evidence ?? '', /@critic’s show_app was refused \(“permissions\[0\] isn’t a valid tool name\./);
-  assert.match(fired.evidence, /then its show_app was taken: “Shown app sales/);
+  assert.match(fired?.evidence ?? '', /@critic’s show_app of sales was refused \(“permissions\[0\] isn’t a valid tool name\./);
+  assert.match(fired.evidence, /then its show_app of sales was taken: “Shown app sales/);
   assert.deepEqual(TRIGGERS['block-refused-then-shown'].run(facts), [], 'an app isn’t a block here');
   assert.deepEqual(CHECK.run(facts), []);
 });
@@ -66,6 +66,20 @@ test('#1319 a form with string options refused, then shown fixed, fires block-re
   assert.match(fired?.evidence ?? '', /fallback is required\./);
   assert.match(fired.evidence, /“Shown block promote\.”/);
   assert.deepEqual(TRIGGERS['app-refused-then-shown'].run(facts), []);
+});
+
+test('#1319 a refusal followed by another block or app taken under a new id fires nothing', async () => {
+  // As agents did before #1319: the broken one left behind, a fresh id shown beside it. That isn’t the refused one fixed.
+  const apps = await room([
+    ['show_app', { ...APP, permissions: ['Read Files'] }],
+    ['show_app', { ...APP, id: 'sales-2', permissions: [] }],
+  ]);
+  assert.deepEqual(TRIGGERS['app-refused-then-shown'].run(apps.facts), []);
+  const blocks = await room([
+    ['show_block', { block: form(['Monday', 'Friday']) }],
+    ['show_block', { block: { ...form(OPTIONS, 'Which day?'), id: 'promote-2' } }],
+  ]);
+  assert.deepEqual(TRIGGERS['block-refused-then-shown'].run(blocks.facts), []);
 });
 
 test('#1319 a refusal the agent never fixed fires nothing', async () => {
