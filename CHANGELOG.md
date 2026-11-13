@@ -2,6 +2,19 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.6.1 (2026-11-13)
+
+### Fixes
+
+- **running:** note awaiting attach again when Retry installs the state
+- **attachments:** keep a typed path only when it is the blob's own hard link
+- **attachments:** give agents an attached file's path with its extension
+- **adapters:** let every agent read the files attached to its message, with no card
+- **uat:** read each conversation's items, which /api/state no longer carries
+- **tests:** the failed-stop test waits for the spawn and the kill, not fixed times
+- **running:** every awaiting-attach note reads the session and persona as written
+- **running:** begin no longer refuses a session awaiting attach
+
 ## 4.6.0 (2026-11-13)
 
 ### Features
