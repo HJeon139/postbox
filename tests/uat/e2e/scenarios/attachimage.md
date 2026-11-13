@@ -16,3 +16,10 @@ A targeted scenario for #1307, Claude Code only, with @researcher on this comput
 - steps: 3
 
 Attach `picture.png` with `attach_file` and ask @researcher, in one message, what the picture shows: its shape, its color and any word in it. Don’t say what’s in it yourself. Then say whether @researcher’s reply names what the picture really shows, whether it said it couldn’t open or see the file, and whether a permission card about reading it appeared.
+
+## Phase 2: The picture again, in a later message
+
+- triggers: attached-image-read-again
+- steps: 3
+
+Attach `picture.png` again with `attach_file`, in a new message, and ask @researcher where in the picture the word sits. A later message’s file is a new upload, so the agent has to open it again. Say whether its reply names what the picture shows, and whether it said it couldn’t open the file this time.

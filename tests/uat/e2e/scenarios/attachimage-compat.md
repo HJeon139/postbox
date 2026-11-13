@@ -17,3 +17,10 @@ The compatibility run of [attachimage](attachimage.md) (#1307): @researcher on C
 - steps: 4
 
 Attach `picture.png` with `attach_file` and ask all five agents in one message, by name (@researcher, @critic, @developer, @alpha and @beta), what the picture shows: its shape, its color and any word in it. Don’t say what’s in it yourself. Once they’ve answered, say for each agent whether its reply names what the picture really shows, and whether it said it couldn’t open or see the file.
+
+## Phase 2: The picture again, to the Kiro and Antigravity agents
+
+- triggers: attached-image-read-again
+- steps: 3
+
+Attach `picture.png` again with `attach_file`, in a new message, and ask @alpha and @developer where in the picture the word sits. Kiro can’t ask you for permission from Postbox, and Antigravity asks before reading outside its folders, so these two show most plainly whether each can open the file. Say for each whether its reply names what the picture shows, and whether a permission card appeared.

@@ -44,13 +44,31 @@ test('attached-image-read-by-each waits for every agent in the conversation to n
   assert.equal(hit.evidence, '@alpha, @beta each named the triangle and KIWI.');
 });
 
-for (const [name, trigger] of [
-  ['attachimage', 'attached-image-read'],
-  ['attachimage-compat', 'attached-image-read-by-each'],
+test('attached-image-read-again fires only once a second picture gets its own reply naming it', async () => {
+  const r = await sent('An orange triangle with the word KIWI in it.');
+  const again = () => TRIGGERS['attached-image-read-again'].run({ threads: [r.t.id], state: { items: { [r.t.id]: r.store.items(r.t.id) } } });
+  r.adapter.next.push(async (c) => c.text('I can’t open this one.'));
+  r.rt.sendMessage(r.t.id, { text: '@alpha and this one?', attachments: [{ kind: 'file', fileId: 'fi_pic' }] });
+  await settle(r.rt);
+  assert.deepEqual(again(), [], 'the first reply named the first picture, not the second');
+  r.adapter.next.push(async (c) => c.text('Same picture: a triangle with KIWI.'));
+  r.rt.sendMessage(r.t.id, { text: '@alpha try again' });
+  await settle(r.rt);
+  const [hit, ...rest] = again();
+  assert.deepEqual(rest, []);
+  assert.equal(hit.evidence, 'Picture 2: @alpha said: “Same picture: a triangle with KIWI.”');
+});
+
+for (const [name, triggers] of [
+  ['attachimage', ['attached-image-read', 'attached-image-read-again']],
+  ['attachimage-compat', ['attached-image-read-by-each', 'attached-image-read-again']],
 ]) {
-  test(`the ${name} scenario names only triggers that exist`, () => {
+  test(`the ${name} scenario names only triggers that exist, one phase each`, () => {
     const scenario = parseScenario(readFileSync(new URL(`uat/e2e/scenarios/${name}.md`, import.meta.url), 'utf8'));
     assert.deepEqual(unknownTriggers(scenario), []);
-    assert.deepEqual(scenario.phases[0].triggers, [trigger]);
+    assert.deepEqual(
+      scenario.phases.map((p) => p.triggers),
+      triggers.map((t) => [t]),
+    );
   });
 }
