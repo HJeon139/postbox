@@ -14,24 +14,32 @@ const showsApp = (c) => c.name === 'show_app' || (c.name === 'show_block' && c.i
 /** Whether a call shows a block that isn’t an app. @param {{ name: string, input: any }} c */
 const showsBlock = (c) => c.name === 'show_block' && c.input?.block?.type !== 'app';
 
+/** The id a call shows its app or block under, or undefined when it gave none. @param {{ name: string, input: any }} c */
+const idOf = (c) => {
+  const id = c.name === 'show_app' ? c.input?.id : c.input?.block?.id;
+  return typeof id === 'string' ? id : undefined;
+};
+
 /** Whether the room holds a block Postbox should have refused (the broken-block-card check’s). @param {any} f */
 const brokenCard = (f) => itemsUnderTest(f).some((it) => it.kind === 'block' && it.valid === false && it.reason === 'invalid');
 
 /**
- * Each refusal of a call of this kind that the same agent followed with one Postbox took.
+ * Each refusal of a call of this kind that the same agent followed with one Postbox took under the same id: the
+ * refused one fixed, not another shown beside it under a new id, as agents did before #1319.
  * @param {any} f @param {(c: any) => boolean} kind
  */
 function refusedThenShown(f, kind) {
   if (brokenCard(f)) return [];
   const calls = postboxCalls(f.streams).filter(kind);
   return calls.flatMap((c, i) => {
-    if (!c.error || !REFUSED.test(c.text)) return [];
-    const fixed = calls.slice(i + 1).find((x) => x.handle === c.handle && !x.error);
+    const id = idOf(c);
+    if (!c.error || !REFUSED.test(c.text) || id === undefined) return [];
+    const fixed = calls.slice(i + 1).find((x) => x.handle === c.handle && idOf(x) === id && !x.error);
     if (!fixed) return [];
     return [
       {
         at: fixed.at,
-        evidence: `@${c.handle}’s ${c.name} was refused (“${clip(c.text.replace(REFUSED, ''), 120)}”), then its ${fixed.name} was taken: “${clip(fixed.text, 80)}”. No broken card is in the room.`,
+        evidence: `@${c.handle}’s ${c.name} of ${id} was refused (“${clip(c.text.replace(REFUSED, ''), 120)}”), then its ${fixed.name} of ${id} was taken: “${clip(fixed.text, 80)}”. No broken card is in the room.`,
       },
     ];
   });
