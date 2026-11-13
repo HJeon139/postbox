@@ -11,7 +11,7 @@ import { browserMoved, measure } from './view-box.mjs';
  *   jump: ((n: number) => void) | null, bound: any, size: string, sizes: ResizeObserver, changes: MutationObserver,
  *   changed?: boolean, noted?: number }} View
  */
-import { onlyRemoves } from './view-changes.mjs';
+import { changed, noteEnd, redrawn } from './view-changes.mjs';
 import { atEnd, box, findAnchor, gapOf, viewTop } from './view-geometry.mjs';
 import { register, unregister } from './view-jump.mjs';
 import { jumpable } from './view-jumpable.mjs';
@@ -217,33 +217,6 @@ function rebuilt(v, to = null) {
   }
   const kept = v.anchor && v.nodes.get(v.anchor.key)?.isConnected;
   if (!v.stuck && !kept) v.anchor = findAnchor(v);
-}
-/** After a change in the transcript, while stuck: where the view is, if it’s at the page’s new end (#297). @param {View} v */
-function noteEnd(v) {
-  const s = v.changed ? box(v) : null;
-  v.changed = false;
-  if (s && v.stuck && !v.dead && atEnd(s)) v.lastTop = Math.min(v.lastTop, s.scrollTop);
-}
-/**
- * A change in the transcript: the note is taken now, at most once a frame, and else by follow() after the frame’s
- * layout. One read per batch forced a layout of the whole page per batch: 823 in one 72 s freeze (#866). A batch that
- * only removes is noted at once whatever the frame (view-changes.mjs).
- * @param {View} v @param {MutationRecord[]} records
- */
-function changed(v, records) {
-  v.changed = true;
-  if (v.noted && !onlyRemoves(records)) return;
-  v.noted ||= requestAnimationFrame(() => (v.noted = 0));
-  noteEnd(v);
-}
-/**
- * An item drawn again whole, as a finished reply is: it may come out shorter, and the page may grow back before the
- * frame (#297), so the note is taken now, while it’s short. Once per redraw, not per streamed delta (#903).
- * @param {View} v
- */
-function redrawn(v) {
-  v.changed = true;
-  noteEnd(v);
 }
 // What arrived counts as unseen when the view isn’t on the newest message, including when follow() finds you
 // scrolled up in this frame, before its scroll event told the transcript (#341).
