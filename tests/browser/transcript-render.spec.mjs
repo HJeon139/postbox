@@ -126,6 +126,9 @@ test('#466 the schedule line shows a pending retry and when automatic retries st
   await expect(line).toContainText(/won’t wake itself \(canceled\)/);
   await expect(line).not.toContainText(/will retry/);
 
+  // The wake is due in 60 s: left armed, it would start an analyst turn in a later test of this file.
+  arrange.cancelScheduledTimer(rt, sc.id);
+  expect(arrange.scheduledTimer(rt, sc.id), 'no timer is left to fire the wake').toBe(false);
   store.emit('schedule', { id: sc.id, removed: true });
   arrange.setItem(rt, room.id, sc.itemId, { status: 'pending', retryStopped: true });
   await synced(page, app);
