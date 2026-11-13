@@ -75,6 +75,8 @@ export const turnGuide = (message, who) => ({ guide: agentGuide(who), message: {
  * Who else is in this conversation and what each does, with how to share the work. It comes from the room, not from
  * a persona’s prompt, so any team works this way: two agents on one task did it twice from different decisions (#121),
  * and role-based agent teams do better with explicit handoffs than with role names alone (MetaGPT, arXiv 2308.00352).
+ * Agents acted on the person’s message to another agent when they read it in their catch-up, so the catch-up is
+ * named as context, and a message to another agent as that agent’s.
  * @param {{ handle: string, role: string }[]} room
  */
 export function roomText(room) {
@@ -84,7 +86,7 @@ export function roomText(room) {
 
 ${who}
 
-Each agent here has a part. Take the part of a request that’s yours, and leave another agent’s part to it, so no task is done twice. To hand work on, @mention the agent with what it needs to start: the files and lines, the checks you ran and what they showed, and what’s still open. @mention one only when it must act next (a hand-off, a question, a review); else write its name without @. Before redoing something, read what the others already did here.`;
+Each agent here has a part. Your task is this turn’s request and anything that @-mentions you; the catch-up is context. A message the person sent to another agent is that agent’s, unless it asks for you too. Of a request, take the part that’s yours and leave another agent’s part to it, so no task is done twice. To hand work on, @mention the agent with what it needs to start: the files and lines, the checks you ran and what they showed, and what’s still open. @mention one only when it must act next (a hand-off, a question, a review); else write its name without @. Before redoing something, read what the others already did here.`;
 }
 
 /**

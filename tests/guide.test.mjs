@@ -116,13 +116,16 @@ test('the room tells an agent who else is in the conversation and what each does
   ];
   const g = turnFacts({ persona: { handle: 'developer' }, handles: ['researcher', 'developer', 'critic', 'indexer'], room });
   assert.match(g, /## In this conversation\n\n- @researcher: Finds and reads sources\.\n- @critic: Reviews code and documents\./);
-  assert.match(g, /Take the part of a request that’s yours/);
+  assert.match(g, /Of a request, take the part that’s yours/);
+  // The catch-up is context: a message the person sent to another agent is that agent’s to answer.
+  assert.match(g, /Your task is this turn’s request and anything that @-mentions you; the catch-up is context\./);
+  assert.match(g, /A message the person sent to another agent is that agent’s, unless it asks for you too\./);
   assert.match(g, /To hand work on, @mention the agent with what it needs to start/);
   // Agents elsewhere in Postbox are listed apart, without the ones already here.
   assert.match(g, /Other agents in Postbox: @indexer\./);
   // Alone in its conversation, an agent gets no team section, only who it could bring in.
   const alone = turnFacts({ persona: { handle: 'developer' }, handles: ['developer', 'critic'] });
-  assert.doesNotMatch(alone, /In this conversation|Take the part/);
+  assert.doesNotMatch(alone, /In this conversation|take the part/);
   assert.match(alone, /Agents in Postbox: @critic\. Mention one with @handle/);
   // The persona’s own prompt names no other agent: the team comes from the room.
   for (const p of freshInstall().personas) assert.doesNotMatch(p.instructions, /@(?:researcher|developer|critic)\b/, p.handle);
