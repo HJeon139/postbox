@@ -3,7 +3,8 @@
 // array’s start in place, each shift moves every job behind it, so the pass grew with the square of the queue and held
 // the event loop for seconds; a close() during the snapshot ahead of those lines outlasted its bound and failed with
 // “The store can’t close” on CI. A healthy store this size closes within the bound, and the 1M-item rooms the scale
-// targets need a pass that grows with the queue, not its square.
+// targets need a pass that grows with the queue, not its square. The store’s other long lists, the held emits and the
+// backlog kept for since(), are held to the same: each costs the same per event at 100,000 as at 10,000.
 import assert from 'node:assert/strict';
 import { performance } from 'node:perf_hooks';
 import { test } from 'node:test';
@@ -41,6 +42,50 @@ test('close() during the snapshot ahead of 100,000 queued lines writes them all 
   assert.deepEqual(errors, [], 'close() logged nothing');
   assert.equal(store.writtenThrough, store.state.seq, 'every queued line reached the log');
   assert.equal(store.lock, null, 'the folder’s lock is released');
+});
+
+test('releasing 100,000 emits held behind a commit costs each about what releasing 10,000 does', async () => {
+  // release() took each job off the held log with Array.shift(), which moved every job behind it: 25,000 held emits
+  // took 0.3 s to release, 100,000 took 3.5 s, and a long outage’s streamed chunks pile up there.
+  /** The mean cost of releasing `count` emits held behind one commit. @param {number} count */
+  const releaseCost = async (count) => {
+    const dir = await tempDir('pb-held-');
+    const fs = await import('node:fs/promises');
+    let open = () => {};
+    const gate = new Promise((r) => {
+      open = () => r(undefined);
+    });
+    let hold = false;
+    const io = {
+      ...fs,
+      async open(path, flags) {
+        const fh = await fs.open(path, flags);
+        const sync = fh.sync.bind(fh);
+        fh.sync = async () => {
+          if (hold) await gate;
+          return sync();
+        };
+        return fh;
+      },
+    };
+    const store = await new Store(dir, { io, snapshotEvery: 1e9 }).load();
+    hold = true;
+    const committed = store.commit([{ type: 'thread', data: { id: 'th_c', members: [] } }]);
+    for (let i = 0; i < count; i++) store.emit('thread', { id: `th_${i}`, members: [] });
+    assert.equal(store.held, count, 'every emit is held behind the commit');
+    const started = performance.now();
+    hold = false;
+    open();
+    await committed;
+    await store.flush();
+    const cost = (performance.now() - started) / count;
+    assert.equal(store.writtenThrough, count + 1, 'every held emit reached the log');
+    await store.close();
+    return cost;
+  };
+  const small = await releaseCost(10_000);
+  const large = await releaseCost(LINES);
+  assert.ok(large < small * 5, `a release among 100,000 cost ${(large / small).toFixed(1)} times one among 10,000`);
 });
 
 test('an emit past the 20,000 events kept for since() costs about what one before it does', () => {

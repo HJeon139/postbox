@@ -7,6 +7,7 @@
 
 import { join } from 'node:path';
 import { emptyState, ownState } from '../shared/state.mjs';
+import { Fifo } from './fifo.mjs';
 import { lockStore, unlockStore } from './store-lock.mjs';
 import { replay } from './store-replay.mjs';
 import { settledWithin } from './store-retry.mjs';
@@ -99,7 +100,7 @@ export function install(store, c) {
   store.freshSegment = c.freshSegment;
   store.ahead = 0;
   store.held = 0;
-  store.heldLog = []; // with held and the queue, so no pending read sees a job of the old history
+  store.heldLog = new Fifo(); // with held and the queue, so no pending read sees a job of the old history
   store.views.clear();
   store.waitingCommits = 0;
   store.queue = [];
