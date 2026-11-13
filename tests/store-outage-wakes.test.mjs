@@ -5,6 +5,7 @@
 // delivered twice: two paid turns where a restart delivers it once. The same real Postbox setup on its own port.
 import assert from 'node:assert/strict';
 import { after, afterEach, before, beforeEach, test } from 'node:test';
+import * as arrange from './arrange.mjs';
 import { eio } from './outage-log.mjs';
 import { assertNoServerFailures, captureServerLog } from './server-log.mjs';
 import { tempDir } from './temp-dirs.mjs';
@@ -43,7 +44,7 @@ const until = async (pred, what) => {
 
 test('a wake queued behind a busy turn when the outage hits is delivered once after Retry (the integrator’s wake-queued)', async () => {
   const calls = [];
-  rt.adapters.register({
+  arrange.withAdapter(rt, {
     name: 'busy-wake',
     async deliver(_se, message, ctx) {
       calls.push(message);
@@ -55,19 +56,19 @@ test('a wake queued behind a busy turn when the outage hits is delivered once af
   });
   const p = rt.createPersona({ handle: 'busywaker', backend: 'busy-wake' });
   const t = rt.createThread({ projectId: 'p1', title: 'Busy', personaIds: [p.id] });
-  const [se] = rt.sessionsIn(t.id);
+  const [se] = arrange.sessionsIn(rt, t.id);
   await rt.store.flush();
   rt.sendMessage(t.id, { text: '@busywaker work' });
-  await until(() => calls.length === 1 && rt.turns.has(se.id), 'the busy turn');
-  const sc = rt.schedule(se.id, { inMs: 30, note: 'queued' }); // a wake waits at least 1 s
-  await until(() => rt.s.schedules[sc.id]?.running, 'the wake to fire and wait behind the busy turn');
+  await until(() => calls.length === 1 && arrange.running(rt, se.id), 'the busy turn');
+  const sc = arrange.schedule(rt, se.id, { inMs: 30, note: 'queued' }); // a wake waits at least 1 s
+  await until(() => rt.store.state.schedules[sc.id]?.running, 'the wake to fire and wait behind the busy turn');
   assert.equal(calls.length, 1, 'the wake is queued, not delivered');
   await rt.store.flush(); // the schedule is running on disk
   rt.store.fail(eio()); // the outage stops the busy turn; its queued wake moves into the exit’s held list
-  await until(() => !rt.turns.has(se.id), 'the busy turn to stop');
+  await until(() => !arrange.running(rt, se.id), 'the busy turn to stop');
   await rt.store.reload(); // the re-arm finds the schedule running and re-arms it as due
   await until(() => calls.some((m) => m.scheduledWakeId === sc.id), 'the wake after Retry');
-  await until(() => !rt.turns.has(se.id) && !rt.exiting.has(se.id), 'every turn and anything held behind it to end');
+  await until(() => !arrange.running(rt, se.id) && !arrange.exiting(rt, se.id), 'every turn and anything held behind it to end');
   await sleep(150);
   const wakes = calls.filter((m) => m.scheduledWakeId === sc.id).length;
   assert.equal(wakes, 1, `one delivery for one wake, not ${wakes}`);
@@ -75,7 +76,7 @@ test('a wake queued behind a busy turn when the outage hits is delivered once af
 });
 
 test('a second outage during the drain after Retry leaves no session mid-turn with no turn: the next reload resets it, as a restart does (the integrator’s outage-in-drain)', async () => {
-  rt.adapters.register({
+  arrange.withAdapter(rt, {
     name: 'drain-busy',
     async deliver(_se, _message, ctx) {
       await new Promise((r) => ctx.signal.addEventListener('abort', () => r(undefined), { once: true }));
@@ -83,13 +84,13 @@ test('a second outage during the drain after Retry leaves no session mid-turn wi
   });
   const p = rt.createPersona({ handle: 'draincase', backend: 'drain-busy' });
   const t = rt.createThread({ projectId: 'p1', title: 'Drain', personaIds: [p.id] });
-  const [se] = rt.sessionsIn(t.id);
+  const [se] = arrange.sessionsIn(rt, t.id);
   await rt.store.flush();
   rt.sendMessage(t.id, { text: '@draincase work' });
-  await until(() => rt.turns.has(se.id) && ['think', 'gen', 'tool'].includes(rt.s.sessions[se.id].state), 'the turn running');
+  await until(() => arrange.running(rt, se.id) && ['think', 'gen', 'tool'].includes(rt.session(se.id).state), 'the turn running');
   await rt.store.flush(); // the session is mid-turn on disk
   rt.store.fail(eio());
-  await until(() => !rt.turns.has(se.id), 'the outage to stop the turn');
+  await until(() => !arrange.running(rt, se.id), 'the outage to stop the turn');
   // The first Retry reopens, and the drain’s writes are lost to a second failure at once.
   const off = rt.store.onStatus((st) => {
     if (st.writable) {
@@ -99,19 +100,19 @@ test('a second outage during the drain after Retry leaves no session mid-turn wi
   });
   await rt.store.reload();
   assert.equal(rt.store.writable, false, 'the second outage closed writes again');
-  await until(() => !rt.exiting.has(se.id), 'the stopped turn to exit');
+  await until(() => !arrange.exiting(rt, se.id), 'the stopped turn to exit');
   await rt.store.reload(); // the second Retry
   await until(() => rt.store.writable, 'writes open');
   await sleep(50);
-  const state = rt.s.sessions[se.id].state;
+  const state = rt.session(se.id).state;
   assert.ok(!['think', 'gen', 'tool', 'stopping'].includes(state), `not left mid-turn with no turn: ${state}`);
-  assert.ok(!rt.turns.has(se.id));
+  assert.ok(!arrange.running(rt, se.id));
   await rt.store.flush();
 });
 
 test('a second outage inside the drain, while the stop’s own record writes, leaves no session mid-turn after the next Retry (gpt’s probe)', async () => {
   const calls = [];
-  rt.adapters.register({
+  arrange.withAdapter(rt, {
     name: 'drain-record',
     async deliver(_se, message, ctx) {
       calls.push(message);
@@ -120,13 +121,13 @@ test('a second outage inside the drain, while the stop’s own record writes, le
   });
   const p = rt.createPersona({ handle: 'drainrecord', backend: 'drain-record' });
   const t = rt.createThread({ projectId: 'p1', title: 'Drain record', personaIds: [p.id] });
-  const [se] = rt.sessionsIn(t.id);
+  const [se] = arrange.sessionsIn(rt, t.id);
   await rt.store.flush();
   rt.sendMessage(t.id, { text: '@drainrecord work' });
-  await until(() => calls.length === 1 && rt.turns.has(se.id), 'the busy turn');
+  await until(() => calls.length === 1 && arrange.running(rt, se.id), 'the busy turn');
   await rt.store.flush(); // the session is mid-turn on disk
   rt.store.fail(eio());
-  await until(() => !rt.turns.has(se.id), 'the outage to stop the turn');
+  await until(() => !arrange.running(rt, se.id), 'the outage to stop the turn');
   const recordStopped = rt.recordStopped;
   rt.recordStopped = function (...a) {
     rt.recordStopped = recordStopped; // once
@@ -136,9 +137,9 @@ test('a second outage inside the drain, while the stop’s own record writes, le
   await rt.store.reload(); // Retry 1 drains the stop’s record into a closed store
   assert.equal(rt.store.writable, false);
   await rt.store.reload(); // Retry 2: the record is gone from what waits; the exit still waits
-  await until(() => !rt.exiting.has(se.id), 'the exit to run');
+  await until(() => !arrange.exiting(rt, se.id), 'the exit to run');
   await sleep(50);
-  const { state, currentStep } = rt.s.sessions[se.id];
+  const { state, currentStep } = rt.store.state.sessions[se.id];
   assert.deepEqual({ state, currentStep }, { state: 'idle', currentStep: 'Stopped: Postbox couldn’t save changes' });
   assert.ok(!rt.store.items(t.id).some((i) => i.sessionId === se.id && i.status === 'streaming'), 'no reply left streaming');
   await rt.store.flush();

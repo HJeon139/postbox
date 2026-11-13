@@ -4,6 +4,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import * as arrange from './arrange.mjs';
 import { rig, running, settled, until } from './remote-turns-helpers.mjs';
 
 const topics = (store) => Object.values(store.state.threads).filter((t) => t.kind === 'topic');
@@ -27,7 +28,7 @@ test('when the store fails, a host’s turn is stopped at once, so its later cal
   const turn = await running(r);
   const mine = r.store.items(r.t.id).find((i) => i.kind === 'user');
   r.store.fail(Object.assign(new Error('disk sync refused'), { code: 'EIO' })); // as a failed write does: status listeners hear it
-  assert.equal(r.rt.turns.has(r.se().id), false, 'the outage stopped the turn (server/store-outage.mjs)');
+  assert.equal(arrange.running(r.rt, r.se().id), false, 'the outage stopped the turn (server/store-outage.mjs)');
   assert.ok(
     r.d.received.some((m) => m.type === 'stop' && m.turn === turn),
     'and told the host',

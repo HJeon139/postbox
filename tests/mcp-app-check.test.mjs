@@ -2,6 +2,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { handleMcp } from '../server/mcp.mjs';
+import * as arrange from './arrange.mjs';
 import { settle, setup } from './side-threads-fixture.mjs';
 
 test('#337 MCP save receipts and later reads name the same version’s browser check', async () => {
@@ -13,7 +14,7 @@ test('#337 MCP save receipts and later reads name the same version’s browser c
         rt,
         alpha.id,
         { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } },
-        rt.turns.get(alpha.id).token,
+        arrange.liveTurn(rt, alpha.id).token,
       );
       assert.equal(reply.result.isError, false, JSON.stringify(reply));
       return reply.result.content[0].text;
@@ -33,5 +34,5 @@ test('#337 MCP save receipts and later reads name the same version’s browser c
   await settle(rt);
   assert.equal(completed, true, 'the active turn exercised every tool reply assertion');
   assert.equal(adapter.calls.length, 1);
-  assert.equal(rt.s.apps.lab.current, 2);
+  assert.equal(rt.store.state.apps.lab.current, 2);
 });

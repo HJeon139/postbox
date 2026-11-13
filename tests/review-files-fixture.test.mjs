@@ -6,6 +6,7 @@ import { test } from 'node:test';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
+import * as arrange from './arrange.mjs';
 import { duringTurn } from './review-files-fixture.mjs';
 
 /** An adapter that runs each turn’s step. */
@@ -53,5 +54,5 @@ test('#779 a step that fails rejects with its own error, rather than hanging the
 test('#779 the helper gives the result only once the turn has ended', async () => {
   const { rt, adapter, t } = setup();
   await duringTurn(rt, adapter, t.id, async () => 'done');
-  assert.equal(rt.turns.size, 0);
+  assert.equal(arrange.liveTurns(rt), 0);
 });

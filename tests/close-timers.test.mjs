@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { sendLint } from '../server/lint-delivery.mjs';
+import * as arrange from './arrange.mjs';
 import { captureServerLog, takeServerFailures } from './server-log.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
@@ -21,7 +22,7 @@ async function app() {
   a.store.emit('project', { id: 'p1', name: 'P', folder: dir });
   const p = a.rt.createPersona({ handle: 'linted', backend: 'mock' });
   const t = a.rt.createThread({ projectId: 'p1', title: 'T', personaIds: [p.id] });
-  const se = a.rt.sessionsIn(t.id)[0];
+  const se = arrange.agentIn(a.rt, t.id);
   const delivered = [];
   const deliver = a.rt.deliver.bind(a.rt);
   a.rt.deliver = (...args) => {
@@ -33,8 +34,8 @@ async function app() {
 
 test('a lint turn due just after close() isn’t delivered, and nothing is logged', async () => {
   const { a, t, se, delivered } = await app();
-  a.rt.config.lintSettleMs = 20;
-  a.rt.lints.set('turn_1', {
+  arrange.config(a.rt).lintSettleMs = 20;
+  arrange.lints(a.rt).set('turn_1', {
     sessionId: se.id,
     kind: 'turn',
     ended: true,
@@ -54,13 +55,13 @@ test('a stopped turn’s watchdog, which starts its next turn, doesn’t fire af
   const { a } = await app();
   let fired = false;
   try {
-    a.rt.watchdogs.add(setTimeout(() => (fired = true), 20).unref());
+    arrange.watchdogs(a.rt).add(setTimeout(() => (fired = true), 20).unref());
   } finally {
     await a.close();
   }
   await sleep(60);
   assert.equal(fired, false, 'close cleared it');
-  assert.equal(a.rt.watchdogs.size, 0);
+  assert.equal(arrange.watchdogs(a.rt).size, 0);
   assert.deepEqual(takeServerFailures(), []);
 });
 
@@ -71,9 +72,9 @@ test('the work ledger’s record of a turn that just stopped lands before the st
   const { a } = await app();
   a.store.emit('work.add', { convId: 'th_w', entry: { id: 'wk_1', kind: 'turn', status: 'running' } });
   let patched = false;
-  a.rt.ledger.track(
+  arrange.ledger(a.rt).track(
     sleep(30).then(() => {
-      a.rt.ledger.patch('th_w', 'wk_1', { status: 'stopped' });
+      arrange.ledger(a.rt).patch('th_w', 'wk_1', { status: 'stopped' });
       patched = true;
     }),
   );
@@ -86,10 +87,10 @@ test('the work ledger’s record of a turn that just stopped lands before the st
 // once more after the hosts have stopped.
 test('a lint turn armed while the hosts stop isn’t delivered after close()', async () => {
   const { a, t, se, delivered } = await app();
-  a.rt.config.lintSettleMs = 20;
-  const close = a.rt.hosts.close.bind(a.rt.hosts);
-  a.rt.hosts.close = async () => {
-    a.rt.lints.set('turn_h', {
+  arrange.config(a.rt).lintSettleMs = 20;
+  const close = arrange.hosts(a.rt).close.bind(arrange.hosts(a.rt));
+  arrange.hosts(a.rt).close = async () => {
+    arrange.lints(a.rt).set('turn_h', {
       sessionId: se.id,
       kind: 'turn',
       ended: true,
@@ -111,8 +112,8 @@ test('a lint turn armed while the hosts stop isn’t delivered after close()', a
 // shutdown: close() waits its grace for it (LEDGER_GRACE_MS, 4 s; a test sets it shorter), then goes on.
 test('close() waits for a ledger record that never settles at most its grace, then closes', async () => {
   const { a } = await app();
-  a.rt.config.ledgerGraceMs = 30;
-  a.rt.ledger.track(new Promise(() => {}));
+  arrange.config(a.rt).ledgerGraceMs = 30;
+  arrange.ledger(a.rt).track(new Promise(() => {}));
   const started = Date.now();
   await a.close();
   assert.ok(Date.now() - started >= 30, 'it waited for the record');

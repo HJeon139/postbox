@@ -16,6 +16,7 @@ import { tokenFile } from '../server/remote/install.mjs';
 import { settleInterrupted } from '../server/restart-sweep.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
+import * as arrange from './arrange.mjs';
 import { createFakeDaemon, FAKE_TOKEN, FIXTURE_PROMPT, fixtureLines } from './fake-daemon.mjs';
 import { fakeSsh } from './fake-ssh.mjs';
 import { tempDir } from './temp-dirs.mjs';
@@ -60,7 +61,7 @@ function postbox({ store = new Store(null), d = createFakeDaemon({ autoEnd: fals
   });
   /** @type {Runtime} */
   let rt;
-  const hosts = createHostManager({ getHost: (id) => rt.s.hosts?.[id] ?? null, dataDir, version: VERSION, spawn: ssh.spawn, delay: () => 5 });
+  const hosts = createHostManager({ getHost: (id) => rt.store.state.hosts?.[id] ?? null, dataDir, version: VERSION, spawn: ssh.spawn, delay: () => 5 });
   rt = new Runtime({
     store,
     adapters: new AdapterRegistry().register(claude),
@@ -82,7 +83,7 @@ function postbox({ store = new Store(null), d = createFakeDaemon({ autoEnd: fals
     await rt.stopTurns({ graceMs: 50 });
     hosts.close();
   };
-  return { rt, store, d, ssh, hosts, host, t, f, dataDir, se: () => rt.sessionsIn(t.id)[0], done };
+  return { rt, store, d, ssh, hosts, host, t, f, dataDir, se: () => arrange.agentIn(rt, t.id), done };
 }
 
 const starts = (d) => d.received.filter((m) => m.type === 'start');
@@ -102,7 +103,7 @@ async function running(p, text = 'hi') {
 }
 /** Until the turn’s whole stream so far is applied: the remote process has acked all of it. */
 const applied = (p, turn) => until(() => p.d.turns.get(turn).acked === (p.d.turns.get(turn).out.at(-1)?.next ?? 0), 'the stream to be applied');
-const settled = (p) => until(() => !p.rt.turns.size && !p.rt.exiting.size, 'the turn to end');
+const settled = (p) => until(() => !arrange.liveTurns(p.rt) && !arrange.exitingTurns(p.rt), 'the turn to end');
 
 test('#120 e2e: a remote Claude Code turn streams the host’s lines, shows its block, asks through a card, and ends Done', async () => {
   const p = postbox();
@@ -160,7 +161,7 @@ async function inOneGo() {
 function startUp(p, store) {
   settleInterrupted(p.rt);
   for (const [threadId, list] of Object.entries(store.state.items))
-    for (const it of list) if (it.status === 'streaming') p.rt.patchItem(threadId, it.id, { status: 'stopped' });
+    for (const it of list) if (it.status === 'streaming') arrange.setItem(p.rt, threadId, it.id, { status: 'stopped' });
   p.rt.expireStalePermissions();
   p.rt.restoreRemoteTurns();
   p.rt.watchHosts();

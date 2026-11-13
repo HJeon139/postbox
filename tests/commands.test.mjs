@@ -16,6 +16,7 @@ import { listCommands } from '../server/adapters/sdk-commands.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { isLoopback, runShell } from '../server/shell.mjs';
 import { Store } from '../server/store.mjs';
+import * as arrange from './arrange.mjs';
 import { fakeRequest, NAVIGATION } from './fake-http.mjs';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -75,7 +76,7 @@ function setup() {
   return { store, rt, adapter, children, t, a, b };
 }
 const settle = async (rt) => {
-  for (let i = 0; i < 100 && rt.turns.size; i++) await sleep(5);
+  for (let i = 0; i < 100 && arrange.liveTurns(rt); i++) await sleep(5);
   await sleep(5);
 };
 const commandItem = (store, t) => store.items(t.id).find((i) => i.kind === 'command');
@@ -158,7 +159,7 @@ test('#67: when Postbox shuts down, every running command gets SIGINT, then SIGK
   await tick();
   assert.deepEqual(children[0].signals, ['SIGINT']);
   assert.deepEqual(children[1].signals, ['SIGINT', 'SIGKILL']);
-  assert.equal(rt.shellRuns.size, 0);
+  assert.equal(arrange.shellRuns(rt), 0);
   const items = store.items(t.id).filter((i) => i.kind === 'command');
   assert.deepEqual(
     items.map((i) => [i.status, i.error]),
@@ -202,7 +203,7 @@ test('#67: a command reaches every agent on its next turn, with its output, and 
   children[0].exit(1);
   await tick();
   assert.equal(adapter.calls.length, 0, 'running a command wakes no agent');
-  assert.equal(rt.s.sessions[rt.sessionsIn(t.id)[0].id].state, 'idle');
+  assert.equal(rt.session(arrange.agentIn(rt, t.id).id).state, 'idle');
   rt.sendMessage(t.id, { text: '@beta what failed?' });
   await settle(rt);
   const said = adapter.calls[0].message.context.join('\n');
@@ -218,7 +219,7 @@ test('#67: no command, or a long one, is refused', async () => {
 
 test('#67: after a restart a running command is marked stopped, saying it may still be running', () => {
   const { rt, store, t } = setup();
-  rt.addItem(t.id, { kind: 'command', command: 'sleep 9', cwd: '/', status: 'running', text: '' });
+  arrange.post(rt, t.id, { kind: 'command', command: 'sleep 9', cwd: '/', status: 'running', text: '' });
   rt.expireStaleCommands();
   assert.equal(commandItem(store, t).status, 'stopped');
   assert.match(commandItem(store, t).error, /may still be running/);
@@ -268,7 +269,7 @@ test('#67: an agent’s skill runs as that agent’s turn, as the whole prompt, 
   const { rt, store, t, adapter, b } = setup();
   rt.sendMessage(t.id, { text: 'hello' });
   await settle(rt);
-  const beta = rt.sessionsIn(t.id).find((x) => x.personaId === b.id);
+  const beta = arrange.sessionsIn(rt, t.id).find((x) => x.personaId === b.id);
   rt.runAgentCommand(t.id, { sessionId: beta.id, text: '/review src/a.js' });
   await settle(rt);
   const call = adapter.calls.at(-1);
@@ -296,7 +297,7 @@ test('#67: an agent that’s working can’t take a command until it finishes', 
   );
   rt.sendMessage(t.id, { text: 'go' });
   await sleep(10);
-  const se = rt.sessionsIn(t.id)[0];
+  const se = arrange.agentIn(rt, t.id);
   assert.throws(() => rt.runAgentCommand(t.id, { sessionId: se.id, text: '/compact' }), /busy/);
   release();
   await settle(rt);
@@ -328,7 +329,7 @@ test('#67: an init’s skills and commands are kept per session, without the ter
   });
   rt.sendMessage(t.id, { text: 'go' });
   await settle(rt);
-  const se = store.state.sessions[rt.sessionsIn(t.id)[0].id];
+  const se = store.state.sessions[arrange.agentIn(rt, t.id).id];
   assert.equal(se.commands.list.length, 1);
   assert.equal(se.commands.list[0].name, 'ok');
   assert.equal(se.commands.list[0].description.length, 200);

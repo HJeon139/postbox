@@ -9,6 +9,7 @@ import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, test } from 'node:test';
 import { start } from '../server/index.mjs';
+import * as arrange from './arrange.mjs';
 import { assertNoServerFailures, captureServerLog } from './server-log.mjs';
 import { setup as plainSetup, settle, sleep } from './side-threads-fixture.mjs';
 import { tempDir } from './temp-dirs.mjs';
@@ -22,7 +23,7 @@ process.env.POSTBOX_BACKENDS = 'mock';
 /** A runtime with the passes on, as config.archiveTurns would turn them on. */
 function setup() {
   const ctx = plainSetup();
-  ctx.rt.turnArchive.enabled = true;
+  arrange.turnArchive(ctx.rt).enabled = true;
   return ctx;
 }
 
@@ -32,7 +33,7 @@ async function turns(ctx, n, from = 1) {
     ctx.rt.sendMessage(ctx.t.id, { text: `@alpha turn ${k}` });
     await settle(ctx.rt);
   }
-  await ctx.rt.turnArchive.idle(ctx.t.id);
+  await arrange.turnArchive(ctx.rt).idle(ctx.t.id);
   return ctx;
 }
 const summaries = (/** @type {any} */ store, /** @type {string} */ convId) =>
@@ -85,14 +86,14 @@ test('with the store closed to writes, the pass puts nothing and logs nothing', 
   const ctx = await turns(setup(), 2);
   const { rt, store, t } = ctx;
   let puts = 0;
-  const put = rt.ledger.blobs.put.bind(rt.ledger.blobs);
-  rt.ledger.blobs.put = (/** @type {Buffer} */ b) => {
+  const put = arrange.ledger(rt).blobs.put.bind(arrange.ledger(rt).blobs);
+  arrange.ledger(rt).blobs.put = (/** @type {Buffer} */ b) => {
     puts++;
     return put(b);
   };
   store.writable = false;
   const lines = await logged(async () => {
-    assert.equal(await rt.turnArchive.conversation(t.id), 0);
+    assert.equal(await arrange.turnArchive(rt).conversation(t.id), 0);
   });
   store.writable = true;
   assert.equal(puts, 0);
@@ -102,11 +103,15 @@ test('with the store closed to writes, the pass puts nothing and logs nothing', 
 test('back-to-back passes for one conversation join one chain and archive each turn once', async () => {
   const ctx = setup();
   const { rt, store, t } = ctx;
-  const enabled = rt.turnArchive.enabled;
-  rt.turnArchive.enabled = false; // four turns hot, then three passes at once
+  const enabled = arrange.turnArchive(rt).enabled;
+  arrange.turnArchive(rt).enabled = false; // four turns hot, then three passes at once
   await turns(ctx, 4);
-  rt.turnArchive.enabled = enabled;
-  const runs = await Promise.all([rt.turnArchive.conversation(t.id), rt.turnArchive.conversation(t.id), rt.turnArchive.conversation(t.id)]);
+  arrange.turnArchive(rt).enabled = enabled;
+  const runs = await Promise.all([
+    arrange.turnArchive(rt).conversation(t.id),
+    arrange.turnArchive(rt).conversation(t.id),
+    arrange.turnArchive(rt).conversation(t.id),
+  ]);
   assert.deepEqual(runs, [2, 0, 0], 'the first archives both; the others, queued behind it, find nothing');
   assert.equal(new Set(summaries(store, t.id).map((/** @type {any} */ e) => e.turnId)).size, 2);
 });
@@ -117,7 +122,7 @@ test('after start, all() archives every conversation’s older turns, one conver
   for (const c of convs)
     for (const [k, turnId] of ['t1', 't2', 't3'].entries())
       store.emit('work.add', { convId: c.id, entry: { id: `w_${c.id}_${turnId}`, turnId, kind: 'command', command: 'ls', state: 'done', at: k + 1 } });
-  await rt.turnArchive.all();
+  await arrange.turnArchive(rt).all();
   for (const c of convs)
     assert.deepEqual(
       summaries(store, c.id).map((/** @type {any} */ e) => e.turnId),
@@ -131,7 +136,7 @@ test('the pass after start yields between chunks, so what waits on the event loo
     store.emit('work.add', { convId: t.id, entry: { id: `w${k}`, turnId: `t${k}`, kind: 'command', command: 'ls', state: 'done', at: k } });
   let seen = -1;
   setImmediate(() => (seen = summaries(store, t.id).length));
-  await rt.turnArchive.all();
+  await arrange.turnArchive(rt).all();
   assert.equal(summaries(store, t.id).length, 43);
   assert.ok(seen > 0 && seen < 43, `an immediate ran mid-pass, at ${seen} archived`);
 });
@@ -140,12 +145,12 @@ test('the pass after start yields between chunks, so what waits on the event loo
 async function heldPut() {
   const ctx = await turns(setup(), 2);
   const { rt, t } = ctx;
-  const put = rt.ledger.blobs.put.bind(rt.ledger.blobs);
+  const put = arrange.ledger(rt).blobs.put.bind(arrange.ledger(rt).blobs);
   /** @type {(v?: any) => void} */
   let release = () => {};
   const gate = new Promise((r) => (release = r));
   let puts = 0;
-  rt.ledger.blobs.put = async (/** @type {Buffer} */ b) => {
+  arrange.ledger(rt).blobs.put = async (/** @type {Buffer} */ b) => {
     puts++;
     await gate;
     return put(b);
@@ -159,12 +164,12 @@ test('shutdown ends the chains before the store closes: no put after, and nothin
   const { rt, store, release, puts } = await heldPut();
   assert.equal(puts(), 1, 'a pass is holding at its put');
   const lines = await logged(async () => {
-    const stopping = rt.turnArchive.stop();
+    const stopping = arrange.turnArchive(rt).stop();
     release();
     await stopping;
     const before = puts();
     await store.close();
-    assert.equal(await rt.turnArchive.conversation(Object.keys(store.state.threads)[0]), 0);
+    assert.equal(await arrange.turnArchive(rt).conversation(Object.keys(store.state.threads)[0]), 0);
     await sleep(10);
     assert.equal(puts(), before, 'nothing is put after the store closed');
   });
@@ -175,7 +180,7 @@ test('a put that hangs doesn’t hold shutdown: stop gives up at its bound with 
   const { rt, puts } = await heldPut();
   assert.equal(puts(), 1);
   const started = Date.now();
-  const lines = await logged(() => rt.turnArchive.stop(50));
+  const lines = await logged(() => arrange.turnArchive(rt).stop(50));
   assert.ok(Date.now() - started < 1000, 'shutdown went on');
   assert.equal(lines.length, 1);
   assert.match(lines[0], /archive pass was still running after 50 ms/);
@@ -183,24 +188,24 @@ test('a put that hangs doesn’t hold shutdown: stop gives up at its bound with 
 
 test('T-22: off by default, a third turn’s end archives nothing and puts no file, and the start pass reads no thread', async () => {
   const { rt, store, t } = plainSetup();
-  assert.equal(rt.turnArchive.enabled, false);
+  assert.equal(arrange.turnArchive(rt).enabled, false);
   let puts = 0;
-  const put = rt.ledger.blobs.put.bind(rt.ledger.blobs);
-  rt.ledger.blobs.put = (/** @type {Buffer} */ b) => {
+  const put = arrange.ledger(rt).blobs.put.bind(arrange.ledger(rt).blobs);
+  arrange.ledger(rt).blobs.put = (/** @type {Buffer} */ b) => {
     puts++;
     return put(b);
   };
   await turns({ rt, t }, 3);
   let reads = 0;
-  const threads = rt.s.threads;
-  Object.defineProperty(rt.s, 'threads', {
+  const threads = rt.store.state.threads;
+  Object.defineProperty(rt.store.state, 'threads', {
     get: () => {
       reads++;
       return threads;
     },
     configurable: true,
   });
-  await rt.turnArchive.all();
+  await arrange.turnArchive(rt).all();
   assert.equal(reads, 0, 'it returned before reading a thread');
   assert.equal(summaries(store, t.id).length, 0);
   assert.equal(puts, 0);
@@ -216,8 +221,8 @@ test('T-22: start({ archiveTurns: true }) turns the passes on through the runtim
     const dir = tempDir('pb-archive-switch-');
     const app = await start({ port: 0, dataDir: join(dir, 'data'), fresh: true, quiet: true, claudeHome: dir, listen: false, archiveTurns: given });
     try {
-      assert.equal(app.rt.config.archiveTurns, on, `archiveTurns: ${given}`);
-      assert.equal(app.rt.turnArchive.enabled, on, `archiveTurns: ${given}`);
+      assert.equal(arrange.config(app.rt).archiveTurns, on, `archiveTurns: ${given}`);
+      assert.equal(arrange.turnArchive(app.rt).enabled, on, `archiveTurns: ${given}`);
     } finally {
       await app.close();
     }

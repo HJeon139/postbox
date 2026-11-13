@@ -12,6 +12,7 @@ import { Runtime } from '../server/runtime.mjs';
 import { stepDiff } from '../server/step-diff.mjs';
 import { Store } from '../server/store.mjs';
 import { STEP_TEXT } from '../shared/limits.mjs';
+import * as arrange from './arrange.mjs';
 
 test('an Edit’s change is the lines it replaced and the lines it wrote, without the lines they share', () => {
   const d = stepDiff('Edit', { file_path: 'calc.py', old_string: 'def add(a, b):\n    return a - b\n', new_string: 'def add(a, b):\n    return a + b\n' });
@@ -83,7 +84,7 @@ function scripted(/** @type {(emit: any, hold: () => Promise<void>) => Promise<v
     },
     async ended() {
       go();
-      await wait(() => !rt.turns.size);
+      await wait(() => !arrange.liveTurns(rt));
     },
   };
 }

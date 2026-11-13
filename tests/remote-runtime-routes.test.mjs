@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { after, before, test } from 'node:test';
 import { tokenFile } from '../server/remote/install.mjs';
 import { SshFailure, failure as sshFailure } from '../server/remote/ssh.mjs';
+import * as arrange from './arrange.mjs';
 import { fakeRequest, NAVIGATION } from './fake-http.mjs';
 import { FakeHosts, fakeClock, refused } from './remote-runtime-helpers.mjs';
 import { tempDir } from './temp-dirs.mjs';
@@ -158,7 +159,7 @@ test('#120 D2: the server wakes its hosts when this computer wakes', async () =>
 test('#120: left out, the server makes the real host manager, keeping tokens in its data folder, and closes it at close', async () => {
   const own = tempDir('pb-hosts-own-');
   const server = await start({ port: PORT + 1, dataDir: own, fresh: true, demo: true, quiet: true, claudeHome: own, listen: false });
-  const hosts = server.rt.hosts;
+  const hosts = arrange.hosts(server.rt);
   assert.equal(typeof hosts?.refresh, 'function', 'server/remote/hosts.mjs’s manager');
   const h = server.rt.addHost({ name: 'host.example.com' });
   assert.equal(server.rt.hostStatus(h.id).state, 'not-installed', 'no token in its data folder yet');
@@ -214,15 +215,15 @@ test('#120: an adapter a check registers after start runs on this computer, even
   // As the browser checks start it: demo, with POSTBOX_BACKENDS=mock, then a scripted Claude Code put in.
   const server = await start({ port: PORT + 3, dataDir: own, fresh: true, demo: true, quiet: true, claudeHome: own, listen: false, hosts: null });
   try {
-    server.rt.adapters.register({ name: 'claude-code', deliver: async () => {} });
+    arrange.withAdapter(server.rt, { name: 'claude-code', deliver: async () => {} });
     assert.equal(server.rt.createPersona({ handle: 'scripted', backend: 'claude-code' }).backend, 'claude-code');
     // A host-only backend replaced by a scripted one runs here too; registered again as host-only, it doesn’t.
-    server.rt.adapters.register({ name: 'codex', capabilities: { remote: true }, deliver: async () => {} }, { here: false });
+    arrange.withAdapter(server.rt, { name: 'codex', capabilities: { remote: true }, deliver: async () => {} }, { here: false });
     assert.match(
       refused(() => server.rt.createPersona({ handle: 'near', backend: 'codex' })),
       /^“codex” isn’t available on this computer\./,
     );
-    server.rt.adapters.register({ name: 'codex', deliver: async () => {} });
+    arrange.withAdapter(server.rt, { name: 'codex', deliver: async () => {} });
     assert.equal(server.rt.createPersona({ handle: 'near', backend: 'codex' }).backend, 'codex');
     const state = await fakeRequest(server.handle, { host: `127.0.0.1:${PORT + 3}`, path: '/api/state' });
     assert.deepEqual(state.json.config.adapters, ['mock', 'claude-code', 'codex']);

@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import { after, afterEach, before, beforeEach, test } from 'node:test';
 import { cancelWakeSchedule } from '../server/scheduled-wakes.mjs';
 import { heldTurn } from '../server/store-outage.mjs';
+import * as arrange from './arrange.mjs';
 import { eio } from './outage-log.mjs';
 import { assertNoServerFailures, captureServerLog } from './server-log.mjs';
 import { tempDir } from './temp-dirs.mjs';
@@ -46,7 +47,7 @@ const until = async (pred, what) => {
 /** An agent whose first turn stays busy until the outage stops it; the calls it got. */
 async function busyAgent(handle) {
   const calls = [];
-  rt.adapters.register({
+  arrange.withAdapter(rt, {
     name: `busy-${handle}`,
     async deliver(_se, message, ctx) {
       calls.push(message);
@@ -55,25 +56,25 @@ async function busyAgent(handle) {
   });
   const p = rt.createPersona({ handle, backend: `busy-${handle}` });
   const t = rt.createThread({ projectId: 'p1', title: handle, personaIds: [p.id] });
-  const [se] = rt.sessionsIn(t.id);
+  const [se] = arrange.sessionsIn(rt, t.id);
   await rt.store.flush();
   rt.sendMessage(t.id, { text: `@${handle} work` });
-  await until(() => calls.length === 1 && rt.turns.has(se.id), 'the busy turn');
+  await until(() => calls.length === 1 && arrange.running(rt, se.id), 'the busy turn');
   return { se, calls };
 }
 /** The outage stops the busy turn, and Retry runs to the end. */
 async function outageAndRetry(se) {
   await rt.store.flush();
   rt.store.fail(eio());
-  await until(() => !rt.turns.has(se.id), 'the outage to stop the turn');
+  await until(() => !arrange.running(rt, se.id), 'the outage to stop the turn');
   await rt.store.reload();
 }
 const wakes = (calls, id) => calls.filter((m) => m.scheduledWakeId === id).length;
 
 test('a manual Retry behind a busy turn, its schedule gone, is delivered once after Retry: it has no other owner (gpt’s probe)', async () => {
   const { se, calls } = await busyAgent('manualgone');
-  rt.deliver(se.id, { kind: 'wake', scheduledWakeId: 'sc_finished', retry: true, note: 'you asked to retry' });
-  assert.equal(rt.turns.get(se.id).pending.length, 1);
+  arrange.deliver(rt, se.id, { kind: 'wake', scheduledWakeId: 'sc_finished', retry: true, note: 'you asked to retry' });
+  assert.equal(arrange.liveTurn(rt, se.id).pending.length, 1);
   await outageAndRetry(se);
   await until(() => wakes(calls, 'sc_finished') >= 1, 'the person’s Retry to be delivered');
   await sleep(200);
@@ -83,9 +84,9 @@ test('a manual Retry behind a busy turn, its schedule gone, is delivered once af
 
 test('a manual Retry behind a busy turn, its schedule still there, is delivered once after Retry, by the re-arm', async () => {
   const { se, calls } = await busyAgent('manualhere');
-  const sc = rt.schedule(se.id, { inMs: 60_000, note: 'later' });
-  rt.deliver(se.id, { kind: 'wake', scheduledWakeId: sc.id, retry: true, note: 'you asked to retry' }); // takes it from the timer
-  assert.equal(rt.s.schedules[sc.id]?.running, true);
+  const sc = arrange.schedule(rt, se.id, { inMs: 60_000, note: 'later' });
+  arrange.deliver(rt, se.id, { kind: 'wake', scheduledWakeId: sc.id, retry: true, note: 'you asked to retry' }); // takes it from the timer
+  assert.equal(rt.store.state.schedules[sc.id]?.running, true);
   await outageAndRetry(se); // the re-arm finds it running and runs it again
   await until(() => wakes(calls, sc.id) >= 1, 'the wake after Retry');
   await sleep(300);
@@ -95,11 +96,11 @@ test('a manual Retry behind a busy turn, its schedule still there, is delivered 
 
 test('an automatic wake behind a busy turn whose schedule was canceled is not delivered after Retry', async () => {
   const { se, calls } = await busyAgent('autogone');
-  const sc = rt.schedule(se.id, { inMs: 30, note: 'canceled' });
-  await until(() => rt.s.schedules[sc.id]?.running, 'the wake to fire and wait behind the busy turn');
+  const sc = arrange.schedule(rt, se.id, { inMs: 30, note: 'canceled' });
+  await until(() => rt.store.state.schedules[sc.id]?.running, 'the wake to fire and wait behind the busy turn');
   cancelWakeSchedule(rt, sc.id); // the recovered state holds no schedule
   await outageAndRetry(se);
-  await until(() => !rt.turns.has(se.id) && !rt.exiting.has(se.id), 'every turn to end');
+  await until(() => !arrange.running(rt, se.id) && !arrange.exiting(rt, se.id), 'every turn to end');
   await sleep(300);
   assert.equal(wakes(calls, sc.id), 0);
   await rt.store.flush();
@@ -108,7 +109,7 @@ test('an automatic wake behind a busy turn whose schedule was canceled is not de
 test('a held start keeps the person’s Retry whose schedule is gone, and drops a wake the re-arm owns', async () => {
   const p = rt.createPersona({ handle: 'heldstart' });
   const t = rt.createThread({ projectId: 'p1', title: 'Held start', personaIds: [p.id] });
-  const [se] = rt.sessionsIn(t.id);
+  const [se] = arrange.sessionsIn(rt, t.id);
   await rt.store.flush();
   rt.store.fail(eio());
   const ran = [];
