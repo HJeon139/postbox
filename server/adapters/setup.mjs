@@ -19,6 +19,7 @@ import { appendFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { asksForWrites } from '../../shared/hook-modes.mjs';
 import { agentPlugins } from './agent-plugin.mjs';
+import { readRules } from './attached-files.mjs';
 import { postboxSkillsOn, skillDenies, skillOverrides } from './skill-config.mjs';
 /**
  * Setting sources, as `--setting-sources` and the SDK’s `settingSources` spell them. The permissions panel reads the
@@ -138,12 +139,13 @@ const part = (v) => String(v).replace(/[^\w-]/g, '_');
 
 /**
  * What both Claude adapters pass from a turn’s context: the rules the person allowed once or for this conversation
- * (#66), or always for this persona on its host (#120), the persona’s own memory folder under `memoryRoot` (#208), and
+ * (#66), with reading the files attached to the turn’s message (#1307), or always for this persona on its host (#120), the persona’s own memory folder under `memoryRoot` (#208), and
  * Postbox’s plugin, with its skills, for a turn on this computer: a host doesn’t have its folder (agent-plugin.mjs).
  * @param {any} ctx @param {string} memoryRoot
  */
 export const fromContext = (ctx, memoryRoot) => ({
-  allowOnce: ctx.allowOnce ?? [],
+  // With a read rule for each file attached to the turn’s message (attached-files.mjs, #1307).
+  allowOnce: [...(ctx.allowOnce ?? []), ...readRules(ctx.readFiles ?? [])],
   rules: ctx.rules ?? {},
   // A host turn’s, which Postbox keeps for that host (#120, server/host-rules.mjs); a turn here has none.
   hostAllow: ctx.remote?.allow ?? [],

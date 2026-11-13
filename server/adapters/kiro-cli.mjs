@@ -356,7 +356,7 @@ export class KiroCliAdapter {
       const home = kiroHomeFor(persona, { isolatedHome: this.isolatedHome, env: this.env });
       file = join(home, 'agents', `${agent}.json`);
       await mkdir(join(home, 'agents'), { recursive: true });
-      await writeFile(file, JSON.stringify(kiroAgent({ name: agent, persona, mcpUrl: ctx.mcpUrl, guide, folders }), null, 2));
+      await writeFile(file, JSON.stringify(kiroAgent({ name: agent, persona, mcpUrl: ctx.mcpUrl, guide, folders, reads: ctx.readFiles ?? [] }), null, 2));
       env = { ...this.env, ...(setupOf(persona).usesHostSetup ? {} : { KIRO_HOME: home }) };
     }
     const mapper = createKiroMapper(ctx, { effort: effortOf(persona) });
