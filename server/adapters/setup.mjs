@@ -144,7 +144,7 @@ const part = (v) => String(v).replace(/[^\w-]/g, '_');
  * @param {any} ctx @param {string} memoryRoot
  */
 export const fromContext = (ctx, memoryRoot) => ({
-  // With a read rule for each file attached to the turn’s message (attached-files.mjs, #1307).
+  // The agent may also read each file attached to the message it’s answering (attached-files.mjs, #1307).
   allowOnce: [...(ctx.allowOnce ?? []), ...readRules(ctx.readFiles ?? [])],
   rules: ctx.rules ?? {},
   // A host turn’s, which Postbox keeps for that host (#120, server/host-rules.mjs); a turn here has none.

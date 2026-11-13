@@ -154,13 +154,6 @@ function decideWrite(name, args, { mode, roots, cwd, scriptPath, home }) {
   return { decision: 'ask', toolName: name.startsWith('write') ? 'Write' : 'Edit', input: { file_path: tidyPath(String(asks ?? paths[0])) } };
 }
 
-/**
- * A read: with no card when every path it names leads into the agent’s folders or agy’s own (#1074), else a card about
- * the first that doesn’t, naming in paths every one that doesn’t when there are more, so allowing it allows what the
- * card shows (read-folders.mjs’s readPaths). A read in a folder saved as readable asks too: Postbox answers it with no
- * card from the session as it is now (inReadFolder), where the hook’s environment is the turn’s start, so a folder
- * removed mid-turn would still be read (#1074).
- */
 /** The attached files a read may name with no card, each as it really is. @param {unknown} reads @param {string} cwd */
 const readable = (reads, cwd) =>
   /** @type {string[]} */ (
@@ -170,6 +163,13 @@ const readable = (reads, cwd) =>
       .filter(Boolean)
   );
 
+/**
+ * A read: with no card when every path it names leads into the agent’s folders or agy’s own (#1074), else a card about
+ * the first that doesn’t, naming in paths every one that doesn’t when there are more, so allowing it allows what the
+ * card shows (read-folders.mjs’s readPaths). A read in a folder saved as readable asks too: Postbox answers it with no
+ * card from the session as it is now (inReadFolder), where the hook’s environment is the turn’s start, so a folder
+ * removed mid-turn would still be read (#1074).
+ */
 function decideRead(args, { roots, cwd, home }) {
   const paths = pathArgs(args);
   if (!paths.length || paths.some((p) => typeof p !== 'string')) return { decision: 'ask', toolName: 'Read', input: { file_path: '' } };
