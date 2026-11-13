@@ -194,10 +194,10 @@ function stopForStore(rt, sessionId) {
   if (!turn) return;
   turn.stopReason = 'store';
   // What waited behind it goes once it has exited and writes are open again, as after any Stop.
-  rt.exiting.set(sessionId, { turn, held: turn.pending.splice(0), silent: false });
+  rt.running.exit(sessionId, { turn, held: turn.pending.splice(0), silent: false });
   turn.abort.abort(Object.assign(new Error(WHY), { name: 'AbortError' }));
   turn.closed = true;
-  rt.turns.delete(sessionId);
+  rt.running.end(sessionId);
   console.error(`@${rt.s.sessions[sessionId]?.handle ?? sessionId}’s turn stopped: Postbox can’t save changes right now.`);
   rt.storeWait.push(Object.assign(() => recordStop(rt, turn), { stopOf: sessionId })); // settleOrphanTurns reads stopOf
 }

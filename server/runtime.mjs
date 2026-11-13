@@ -50,6 +50,7 @@ import { addHost, host, removeHost, setProjectHostFolder, updateHost } from './r
 import { describeHostInstall, hostStatus, installHost, retryHost, watchHosts } from './remote/host-status.mjs';
 import { Placement } from './remote/placement.mjs';
 import { RemoteTurns } from './remote/turns.mjs';
+import { Running } from './running.mjs';
 import { armWake, cancelWakeSchedule, rearmWakes, scheduleWake } from './scheduled-wakes.mjs';
 import { sendMessage, threadRefs } from './send-message.mjs';
 import { deleteSession, deleteThread } from './session-lifecycle.mjs';
@@ -112,12 +113,11 @@ export class Runtime {
     // A permission card’s item id, or an AskUserQuestion block’s (`question`, server/ask-question.mjs) → its call’s wait.
     this.permissionWaits = new Map(); // item id → { resolve, threadId, sessionId, timer, question? }
     this.mirrors = new Map(); // attached session id → { tail, timer, agentItem, steps }
-    this.turns = new Map(); // sessionId → live turn
-    // sessionId → a stopped turn whose process hasn’t exited yet, and what waits for it: { turn, held, silent } (#126)
-    this.exiting = new Map();
+    // The live turn per session, the stopped ones still exiting (#126), the host turns waiting to be attached again
+    // (#1135), and whether Postbox is shutting down (designs/architecture/services.md, “Running”).
+    this.running = new Running();
     this.signalProcess = signalProcess ?? process.kill;
     this.listProcesses = list ?? listProcesses;
-    this.closing = false; // Postbox is shutting down: no new turn starts (#126)
     /** @type {NodeJS.Timeout|null} */
     this.keptPoll = null; // checks on the background jobs Postbox kept running (#129)
     this.viewing = new Map(); // threadId → last time a browser said it was open
@@ -130,11 +130,11 @@ export class Runtime {
     this.ledger = ledger ?? new Ledger({ store, blobs: this.blobs, home: this.home });
     // Turns of agents whose persona runs on a remote host (#120): server/remote/turns.mjs.
     this.hosts = hosts ?? null;
-    // Where each agent runs (designs/architecture/services.md, “Placement”). Until Running is a service, whether a
-    // session is mid-turn is read from the turns and the stopped ones still exiting.
+    // Where each agent runs (designs/architecture/services.md, “Placement”). Moving an agent waits for a turn running
+    // or still exiting, not for a host turn waiting to be attached (#1135), so it reads Running’s midTurn, not busy.
     this.placement = new Placement({
       store,
-      midTurn: (sessionId) => this.turns.has(sessionId) || this.exiting.has(sessionId),
+      midTurn: (sessionId) => this.running.midTurn(sessionId),
       adapters,
       hosts: this.hosts,
     });
@@ -152,6 +152,24 @@ export class Runtime {
 
   get s() {
     return this.store.state;
+  }
+
+  // Running’s maps and its closing flag, for the code that waits for rooms at scale and still reads them through the
+  // runtime (designs/architecture/services.md, “Running”). Writes go through this.running.
+
+  /** sessionId → live turn */
+  get turns() {
+    return this.running.turns;
+  }
+
+  /** sessionId → a stopped turn whose process hasn’t exited yet, and what waits for it: { turn, held, silent } (#126) */
+  get exiting() {
+    return this.running.exiting;
+  }
+
+  /** Postbox is shutting down: no new turn starts (#126). */
+  get closing() {
+    return this.running.closing;
   }
 
   // ── Lookups ────────────────────────────────────────────────────────────────────────

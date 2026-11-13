@@ -75,30 +75,33 @@ export const shareText = (rt, threadId, opts) => rt.shareText(threadId, opts);
 // ── Turns ────────────────────────────────────────────────────────────────────────────
 
 /** The turn running for a session, if one is. @param {Runtime} rt @param {string} sessionId */
-export const liveTurn = (rt, sessionId) => rt.turns.get(sessionId);
+export const liveTurn = (rt, sessionId) => rt.running.turnOf(sessionId);
 
 /** The token of the turn running for a session, which its MCP calls carry, or null when none runs. @param {Runtime} rt @param {string} sessionId */
-export const turnToken = (rt, sessionId) => rt.turns.get(sessionId)?.token ?? null;
+export const turnToken = (rt, sessionId) => rt.running.turnOf(sessionId)?.token ?? null;
 
 /** Ends the turn running for a session as its agent’s process ending would: aborts it. @param {Runtime} rt @param {string} sessionId */
 export function abortTurn(rt, sessionId) {
-  /** @type {any} */ (rt.turns.get(sessionId)).abort.abort();
+  /** @type {any} */ (rt.running.turnOf(sessionId)).abort.abort();
 }
 
 /** How many messages wait for the turn running for a session. @param {Runtime} rt @param {string} sessionId */
-export const heldMessages = (rt, sessionId) => /** @type {any} */ (rt.turns.get(sessionId)).pending.length;
+export const heldMessages = (rt, sessionId) => /** @type {any} */ (rt.running.turnOf(sessionId)).pending.length;
 
 /** Whether a turn is running for a session. @param {Runtime} rt @param {string} sessionId */
-export const running = (rt, sessionId) => rt.turns.has(sessionId);
+export const running = (rt, sessionId) => Boolean(rt.running.turnOf(sessionId));
 
 /** How many turns are running. @param {Runtime} rt */
-export const liveTurns = (rt) => rt.turns.size;
+export const liveTurns = (rt) => rt.running.all().length;
 
 /** Whether a session’s stopped turn is still exiting. @param {Runtime} rt @param {string} sessionId */
-export const exiting = (rt, sessionId) => rt.exiting.has(sessionId);
+export const exiting = (rt, sessionId) => Boolean(rt.running.exitOf(sessionId));
 
 /** How many stopped turns are still exiting. @param {Runtime} rt */
-export const exitingTurns = (rt) => rt.exiting.size;
+export const exitingTurns = (rt) => rt.running.exiting.size;
+
+/** Postbox starts shutting down, as stopTurns marks it first: no new turn starts. @param {Runtime} rt */
+export const shuttingDown = (rt) => rt.running.close();
 
 /** Gives an agent a message, starting its turn or queueing it. @param {Runtime} rt @param {string} sessionId @param {object} message @param {object} [opts] */
 export const deliver = (rt, sessionId, message, opts) => rt.deliver(sessionId, message, opts);

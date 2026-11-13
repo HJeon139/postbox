@@ -38,11 +38,11 @@ export function stop(rt, sessionId, { silent = false, jobs = 'stop', by = 'you',
   turn.keepJobs = new Set(keep.map((j) => j.id));
   turn.stopReason = sendNow ? 'send-now' : by === 'shutdown' ? null : keep.length ? 'kept-jobs' : 'stop';
   const ended = { status: 'stopped', stoppedAt: Date.now(), stopReason: turn.stopReason };
-  rt.exiting.set(sessionId, { turn, held: [], silent });
+  rt.running.exit(sessionId, { turn, held: [], silent });
   // The adapter reads which jobs to keep from the reason; anything else only sees that the turn was aborted.
   turn.abort.abort(Object.assign(new Error('Stopped by you.'), { name: 'AbortError', keepJobs: keep.map((j) => ({ id: j.id, command: j.command })) }));
   turn.closed = true;
-  rt.turns.delete(sessionId);
+  rt.running.end(sessionId);
   rt.recordStopped(turn, ended, { by, why: 'You stopped the agent.' });
   rt.updateSession(sessionId, { state: 'stopping', subagents: [], currentStep: 'Stopping', finishedAt: Date.now(), stopAsk: null });
   // Progress steps running as you keep its jobs running may follow one of them: they run on with it (#129).
@@ -137,7 +137,7 @@ export function turnExited(rt, turn) {
   settleJobs(rt, turn);
   const ex = rt.exiting.get(turn.sessionId);
   if (ex?.turn !== turn) return;
-  rt.exiting.delete(turn.sessionId);
+  rt.running.exited(turn.sessionId);
   // From the pending session: Stop's “stopping” may still be held behind a commit as the turn exits (#796).
   const se = rt.store.pending.session(turn.sessionId) ?? rt.s.sessions[turn.sessionId];
   if (!se) return;
@@ -202,7 +202,7 @@ export function dismissStopAsk(rt, sessionId) {
  * @param {{ graceMs?: number }} [opts]
  */
 export async function stopTurns(rt, { graceMs = 4000 } = {}) {
-  rt.closing = true;
+  rt.running.close();
   // A turn on a remote host doesn’t need Postbox: it goes on there, and is attached again after the restart (#120).
   // A stop that fails is logged, and the others still happen: one turn’s failure mustn’t leave the other turns’ CLIs,
   // the hosts’ link or the kept jobs running.

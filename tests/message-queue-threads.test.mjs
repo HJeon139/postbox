@@ -2,6 +2,7 @@
 // turn's own thread folds into it, in arrival order, and nothing that waited is dropped when that turn can't start.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import * as arrange from './arrange.mjs';
 import { held, settle, setup } from './side-threads-fixture.mjs';
 
 /** The busy agent's turns after its first: the thread each ran in, and the texts its prompt held. */
@@ -142,7 +143,7 @@ test('Postbox shutting down as the turn ends: what waited in another thread is l
   f.rt.deliver(f.beta.id, { kind: 'agent', from: '@gamma', text: 'Pending in conversation.' });
   f.rt.deliver(f.beta.id, { kind: 'agent', from: '@gamma', text: 'Pending in topic.' }, { threadId: f.topic });
   const warn = t.mock.method(console, 'warn', () => {});
-  f.rt.closing = true; // what stopTurns sets first; a turn it didn't stop, such as a remote one, still ends
+  arrange.shuttingDown(f.rt); // what stopTurns sets first; a turn it didn't stop, such as a remote one, still ends
   f.busy.release();
   await settle(f.rt);
   assert.deepEqual(turnsAfterFirst(f), [], 'no turn starts while shutting down');
@@ -157,7 +158,7 @@ test('Postbox shutting down as the turn ends, with one delivery waiting: that on
   const f = busyWithTopic();
   f.rt.deliver(f.beta.id, { kind: 'agent', from: '@gamma', text: 'Pending in conversation.' });
   const warn = t.mock.method(console, 'warn', () => {});
-  f.rt.closing = true;
+  arrange.shuttingDown(f.rt);
   f.busy.release();
   await settle(f.rt);
   assert.deepEqual(turnsAfterFirst(f), [], 'no turn starts while shutting down');

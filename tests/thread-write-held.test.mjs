@@ -5,7 +5,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { Store } from '../server/store.mjs';
-import { updateThread } from '../server/thread-write.mjs';
+import * as arrange from './arrange.mjs';
 import { held, settle, setup, sleep } from './side-threads-fixture.mjs';
 import { heldStore } from './stop-reply-fixture.mjs';
 
@@ -69,7 +69,7 @@ test('a room’s limit set behind a held commit holds: its sixth wake in a row r
   const f = await heldRoom();
   const b = await busyBeta(f);
   const release = await f.hold();
-  updateThread(f.rt, f.t.id, { chainLimit: 5 });
+  arrange.setThread(f.rt, f.t.id, { chainLimit: 5 });
   const answers = [];
   for (let i = 0; i <= 5; i++) answers.push(f.rt.agentWake(f.alpha.id, 'beta', `Hand-off ${i + 1}.`));
   assert.equal(answers.filter((r) => r.ok).length, 5);
@@ -260,9 +260,9 @@ test('your messages re-queued as Postbox shuts down behind a held commit all wai
   f.rt.sendMessage(f.t.id, { text: '@beta one' });
   f.rt.sendMessage(f.t.id, { text: '@beta two' });
   const release = await f.hold();
-  f.rt.closing = true;
+  arrange.shuttingDown(f.rt);
   b.release();
-  for (let i = 0; i < 200 && f.rt.exiting.size; i++) await sleep(5);
+  for (let i = 0; i < 200 && arrange.exitingTurns(f.rt); i++) await sleep(5);
   assert.deepEqual(
     queueOf(f).map((q) => q.text),
     ['@beta one', '@beta two'],
