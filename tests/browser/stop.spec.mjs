@@ -14,6 +14,7 @@
 
 import { expect, test } from '@playwright/test';
 import { failOnPageErrors, focusIs, openSteps, PHONE, startPostbox, synced } from './postbox.mjs';
+import { ask, choice, jobStop, keepRunning, stopButton } from './stop-ask.mjs';
 
 const SEND_NOW = { name: /^Send now/ };
 
@@ -100,12 +101,6 @@ async function withJob(page, title, text = 'Run the UAT job, please.') {
   const idle = () => expect.poll(state, { message: 'the agent’s process to exit' }).toBe('idle');
   return { room, se, state, step, lastTag, idle };
 }
-const stopButton = (page) => page.locator('.composer').getByRole('button', { name: 'Stop developer’s reply', exact: true });
-const ask = (page) => page.locator('.stop-ask');
-const choice = (page, name) => ask(page).getByRole('button', { name, exact: true });
-const UAT = 'Run the mixed-room UAT scenario live';
-/** A background job’s own Stop, by the job’s label. */
-const jobStop = (page, label = UAT) => page.locator('.bg-jobs').getByRole('button', { name: `Stop the background job “${label}”`, exact: true });
 const words = async (locator) => (await locator.allInnerTexts()).join(' ').replace(/\s+/g, ' ').trim();
 const color = (page, v) =>
   page.evaluate((value) => {
@@ -122,13 +117,6 @@ const color = (page, v) =>
  * included, still shows.
  */
 const sentSince = (before) => signals.slice(before).flatMap(([pid, sig]) => (pid === -4242 && sig === 'SIGKILL' ? [] : [`${pid} ${sig}`]));
-/** Stops the agent and keeps its jobs running, from the ask’s second choice, and waits for its process to exit. */
-async function keepRunning(page, idle) {
-  await stopButton(page).click();
-  await expect(ask(page)).toBeVisible();
-  await choice(page, 'Keep running').click();
-  await idle();
-}
 
 test('#129 a background job shows under its reply, running, with its own Stop', async ({ page }) => {
   await withJob(page, 'Shown');
