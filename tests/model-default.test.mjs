@@ -10,8 +10,9 @@ import { AGY_CAPABILITIES, AntigravityCliAdapter, agyModel } from '../server/ada
 import { CodexAdapter } from '../server/adapters/codex.mjs';
 import { DEFAULT_MODEL } from '../server/adapters/setup.mjs';
 import { Runtime } from '../server/runtime.mjs';
+import { BOILERPLATES } from '../server/seed.mjs';
 import { Store } from '../server/store.mjs';
-import { AGY_DEFAULT_MODEL, modelDefault, selectBackend } from '../shared/agent-facts.mjs';
+import { AGY_DEFAULT_MODEL, applyBoilerplate, modelDefault, selectBackend } from '../shared/agent-facts.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
 /** The page’s config with one backend’s capabilities, as /api/state serves them. */
@@ -52,4 +53,17 @@ test('#390 the server’s Antigravity persona with no model gets the same model 
 
 test('#390 an Antigravity turn on Claude’s default runs the same model', () => {
   assert.equal(agyModel({ model: DEFAULT_MODEL }, ['claude-sonnet-4-6', 'gemini-4-argon-medium']), 'gemini-4-argon-medium');
+});
+
+test('#390 the built-in GPT and Gemini boilerplates start on the model a new agent of their backend starts on', () => {
+  const bp = (id) => BOILERPLATES.find((b) => b.id === id);
+  const opened = (b, cfg) => {
+    const st = { backend: 'claude-code', model: DEFAULT_MODEL, effort: 'medium' };
+    applyBoilerplate(st, b, { ...cfg, adapters: Object.keys(cfg.backends) });
+    return st.model;
+  };
+  const codex = config('codex', { models: ['gpt-6.1-sol', 'auto'] });
+  assert.equal(opened(bp('bp-gpt'), codex), modelDefault('codex', codex), 'Codex’s default, auto');
+  const agy = AGY(['claude-sonnet-4-6', 'gemini-4-argon-medium']);
+  assert.equal(opened(bp('bp-gemini'), agy), modelDefault('antigravity-cli', agy));
 });

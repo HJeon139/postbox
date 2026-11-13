@@ -249,7 +249,7 @@ export function selectBackend(st, id, config = {}) {
 /**
  * Applies a boilerplate to the new-agent sheet’s state. A boilerplate that names a backend (such as Gemini on
  * the Antigravity CLI) selects that backend when it’s available on this computer, and prefers the boilerplate’s
- * model when offered, then the first gemini-* model for Antigravity or first reported model for Codex, then the boilerplate’s model. Picking a
+ * model when offered, then the model a new agent of that backend starts on, then the boilerplate’s model. Picking a
  * generic boilerplate after a backend-bound one restores the default backend, model and effort.
  * @param {any} st @param {any} b @param {any} [config]
  */
@@ -266,7 +266,8 @@ export function applyBoilerplate(st, b, config = {}) {
     st.backend = b.backend;
     const offered = config?.backends?.[b.backend]?.models;
     const list = Array.isArray(offered) ? offered : [];
-    const preferred = b.backend === 'codex' ? list[0] : list.find((m) => /^gemini-/.test(m));
+    // The model a new agent of this backend starts on, once it has listed any (modelDefault, #390).
+    const preferred = list.length ? modelDefault(b.backend, config) : undefined;
     st.model = (b.model && list.includes(b.model) ? b.model : preferred) ?? b.model ?? config?.defaultModel;
     st.modelDefaulted = false;
     st.effort = effortNamedBy(st.backend, st.model) ?? config?.defaultEffort ?? 'medium';
