@@ -421,6 +421,7 @@ function newAgentChoices({ preset, bps, threadId }) {
 export function openNewAgent({ threadId = null, projectId: pid = null, preset = null, onCreated = null } = {}) {
   const t = threadId ? S().threads[threadId] : null;
   const projectId = t?.projectId ?? pid ?? Object.keys(S().projects)[0];
+  const projectName = S().projects[projectId]?.name;
   const bps = Object.values(S().boilerplates);
   const st = newAgentChoices({ preset, bps, threadId });
   const have = toolsInProject(projectId);
@@ -525,22 +526,25 @@ export function openNewAgent({ threadId = null, projectId: pid = null, preset = 
             ),
             st.backend === 'mock' ? null : h('span.help', toolsHelp(st.backend)),
           ),
-      h(
-        'div.field',
-        h('span.label', 'Where it works'),
-        h(
-          'div',
-          { role: 'radiogroup', 'aria-label': 'Where it works', style: { display: 'flex', flexDirection: 'column', gap: '8px' } },
-          threadId
-            ? whereOpt(
-                'join',
-                `Join this ${t.kind === 'topic' ? 'topic thread' : t.kind === 'side' ? 'side thread' : 'conversation'}`,
-                `${t.kind === 'thread' ? `“${t.title}” becomes a room` : `It joins ${t.kind === 'room' ? 'the room ' : ''}“${t.title}”`}. It gets the recent messages and a short brief.`,
-              )
-            : null,
-          whereOpt('new', `New conversation in ${S().projects[projectId]?.name}`, 'Starts fresh. @ it from anywhere to bring it in.'),
-        ),
-      ),
+      // With no project and no conversation (a fresh install), there’s nowhere to choose.
+      threadId || projectName
+        ? h(
+            'div.field',
+            h('span.label', 'Where it works'),
+            h(
+              'div',
+              { role: 'radiogroup', 'aria-label': 'Where it works', style: { display: 'flex', flexDirection: 'column', gap: '8px' } },
+              threadId
+                ? whereOpt(
+                    'join',
+                    `Join this ${t.kind === 'topic' ? 'topic thread' : t.kind === 'side' ? 'side thread' : 'conversation'}`,
+                    `${t.kind === 'thread' ? `“${t.title}” becomes a room` : `It joins ${t.kind === 'room' ? 'the room ' : ''}“${t.title}”`}. It gets the recent messages and a short brief.`,
+                  )
+                : null,
+              projectName ? whereOpt('new', `New conversation in ${projectName}`, 'Starts fresh. @ it from anywhere to bring it in.') : null,
+            ),
+          )
+        : null,
       st.error ? h('span.err', { role: 'alert' }, icon('warn'), st.error) : null,
     );
   };
@@ -614,7 +618,8 @@ export function openNewAgent({ threadId = null, projectId: pid = null, preset = 
   );
   const dlg = openDialog({
     title: preset ? `Edit ${preset.handle} before creating it` : 'New agent',
-    sub: `Starts a new session in ${S().projects[projectId]?.name}. You can edit it later under Personas.`,
+    // A fresh install has no project yet, so there’s no session to start.
+    sub: `${projectName ? `Starts a new session in ${projectName}.` : 'Create a project to start a session with it.'} You can edit it later under Personas.`,
     size: 'lg',
     body,
     foot: [
