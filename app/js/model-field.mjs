@@ -62,10 +62,11 @@ function listHelp(st) {
   }
   const host = client.state.hosts?.[st.remote]?.name ?? 'the host';
   if (list === null) return `Asking ${name} on ${host} for its models…`;
-  const why =
-    list.why === 'unreachable'
-      ? `Postbox couldn’t reach ${host} to list ${name}’s models`
-      : `${name} on ${host} didn’t list its models; if Postbox there is older than this one, install this version under Settings, Hosts`;
+  const WHY = {
+    unreachable: `Postbox couldn’t reach ${host} to list ${name}’s models`,
+    outdated: `Postbox on ${host} is older than this one and can’t list models; install this version there under Settings, Hosts`,
+  };
+  const why = WHY[list.why] ?? `${name} on ${host} didn’t list its models`;
   return list.models.length
     ? `${why}. These are the ones it listed last, and any model you type goes to it as --model.`
     : `${why}. Type the model you want: it goes to ${name} there as --model.`;

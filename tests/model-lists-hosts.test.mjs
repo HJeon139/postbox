@@ -81,8 +81,13 @@ test('a host that can’t be reached answers its last list, saying so', async ()
   assert.deepEqual(await lists.list('kiro-cli', 'ho_1'), { models: ['host-1'], fresh: false, why: 'unreachable' });
 });
 
-test('a host that answers without a list, such as one whose daemon is older, is not-listed', async () => {
-  const { lists } = setup({ onHost: async () => Promise.reject(Object.assign(new Error('This daemon doesn’t handle models yet.'), { code: 'not-listed' })) });
+test('a host whose daemon is older than `models` answers its last list, saying it’s outdated', async () => {
+  const { lists } = setup({ onHost: async () => Promise.reject(Object.assign(new Error('“models” isn’t a message on this channel'), { code: 'outdated' })) });
+  assert.deepEqual(await lists.list('kiro-cli', 'ho_1'), { models: [], fresh: false, why: 'outdated' });
+});
+
+test('a host whose CLI listed none is not-listed, not outdated', async () => {
+  const { lists } = setup({ onHost: async () => Promise.reject(Object.assign(new Error('The host’s CLI listed no models.'), { code: 'not-listed' })) });
   assert.deepEqual(await lists.list('kiro-cli', 'ho_1'), { models: [], fresh: false, why: 'not-listed' });
 });
 

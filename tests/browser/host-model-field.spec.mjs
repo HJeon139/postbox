@@ -1,6 +1,7 @@
 // The Model field of an agent that runs on a host suggests what the host’s own CLI lists (#1304): the persona sheet
 // asks the host’s daemon (`models`, answered by `listed`), not this computer. With a fake host manager
 // (tests/browser/remote-hosts.mjs) whose link answers as a daemon does; Codex is only on the host here.
+import { readFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
 import { failOnPageErrors, synced } from './postbox.mjs';
 import { startRemote } from './remote-hosts.mjs';
@@ -61,12 +62,27 @@ test('an agent on a host suggests what the host’s CLI lists, with Codex’s au
   await expect.soft(sheet.locator('[data-model-help]')).toHaveCount(0);
 });
 
-test('a host whose Postbox is older than model lists says so in the field', async ({ page }) => {
-  const { persona } = hostWith('old.example.com', () => ({ type: 'error', code: 'internal', re: 'models', message: 'This daemon doesn’t handle models yet.' }));
+// What a daemon from before `models` answers it, recorded from main’s daemon at 5b0ef806.
+const BEFORE_MODELS = JSON.parse(readFileSync(new URL('../fixtures/remote/models-before-1312.json', import.meta.url), 'utf8'));
+
+test('a host whose Postbox is older than model lists says so in the field, at once', async ({ page }) => {
+  const { persona } = hostWith('old.example.com', () => BEFORE_MODELS);
   const sheet = await openPersona(page, persona);
   const help = sheet.locator('[data-model-help]');
+  // Well inside the 45 s Postbox would wait for an answer that isn’t coming.
   await expect(help).toHaveText(
-    /Codex on old\.example\.com didn’t list its models; if Postbox there is older than this one, install this version under Settings, Hosts\./,
+    /^Postbox on old\.example\.com is older than this one and can’t list models; install this version there under Settings, Hosts\./,
+    {
+      timeout: 5000,
+    },
   );
-  await expect.soft(sheet.getByLabel('Model', { exact: true })).toHaveAccessibleDescription(/didn’t list its models/);
+  await expect.soft(sheet.getByLabel('Model', { exact: true })).toHaveAccessibleDescription(/is older than this one/);
+});
+
+test('a host whose CLI lists nothing says so, without asking to install Postbox there', async ({ page }) => {
+  const { persona } = hostWith('bare.example.com', (harness) => ({ type: 'listed', harness, models: [] }));
+  const sheet = await openPersona(page, persona);
+  const help = sheet.locator('[data-model-help]');
+  await expect(help).toHaveText(/^Codex on bare\.example\.com didn’t list its models\. Type the model you want/);
+  await expect.soft(help).not.toContainText('install');
 });

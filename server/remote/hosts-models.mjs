@@ -9,9 +9,9 @@ import { LIST_TIMEOUT_MS } from './host/harness-models.mjs';
 export const LISTED_WAIT_MS = LIST_TIMEOUT_MS + 30_000;
 
 /**
- * Why a host gave no list: it couldn’t be reached, or it answered without one (its CLI isn’t there, or couldn’t
- * list, or its daemon is older than `models`).
- * @typedef {'unreachable' | 'not-listed'} NotListed
+ * Why a host gave no list: it couldn’t be reached; its daemon is older than `models`, so installing this version
+ * there would let it list; or it answered without one (its CLI isn’t there, or couldn’t list).
+ * @typedef {'unreachable' | 'outdated' | 'not-listed'} NotListed
  */
 
 /**
@@ -43,7 +43,10 @@ export async function hostModels(hosts, hostId, harness, { setTimer = (fn, ms) =
       };
       const onMessage = (msg) => {
         if (msg.type === 'listed' && msg.harness === harness) done(resolve, msg.models);
-        // A daemon from before `models` refuses it: it can’t list.
+        // A daemon from before `models` refuses the line as a message it doesn’t know, naming no request
+        // (tests/fixtures/remote/models-before-1312.json). One that has `models` refuses it naming it, as while it’s
+        // being removed.
+        else if (msg.type === 'error' && msg.code === 'bad-message' && !msg.re) done(reject, notListed('outdated', msg.message));
         else if (msg.type === 'error' && msg.re === 'models') done(reject, notListed('not-listed', msg.message));
       };
       const onState = () => !l.connected && done(reject, notListed('unreachable', 'The connection closed before the host listed its models.'));

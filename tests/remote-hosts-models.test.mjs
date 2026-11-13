@@ -2,6 +2,7 @@
 // kept connected while it waits, and why it gave none when it didn’t.
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
+import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { hostModels, LISTED_WAIT_MS } from '../server/remote/hosts-models.mjs';
 
@@ -59,8 +60,20 @@ test('a host Postbox doesn’t have keeps the manager’s no-host', async () => 
   await assert.rejects(hostModels(h, 'ho_x', 'codex'), (e) => e.code === 'no-host');
 });
 
-test('a daemon from before `models` refuses it: that’s not-listed', async () => {
-  const h = fakeHosts({ answer: () => ({ type: 'error', code: 'internal', re: 'models', message: 'This daemon doesn’t handle models yet.' }) });
+// What a daemon from before `models` answers it, recorded from main’s daemon at 5b0ef806: it refuses the line as a
+// message it doesn’t know, naming no request.
+const BEFORE_MODELS = JSON.parse(readFileSync(new URL('./fixtures/remote/models-before-1312.json', import.meta.url), 'utf8'));
+
+test('a daemon from before `models` is outdated, at once, not after the wait', async () => {
+  const h = fakeHosts({ answer: () => BEFORE_MODELS });
+  const timers = [];
+  const asking = hostModels(h, 'ho_1', 'kiro-cli', { setTimer: (fn, ms) => timers.push({ fn, ms }), clearTimer: () => {} });
+  await assert.rejects(asking, (e) => e.code === 'outdated');
+  assert.equal(timers.length, 1, 'its timer was set, and never needed');
+});
+
+test('a daemon that has `models` but refuses it now, such as one being removed, is not-listed', async () => {
+  const h = fakeHosts({ answer: () => ({ type: 'error', code: 'internal', re: 'models', message: 'Postbox is being removed from this host.' }) });
   await assert.rejects(hostModels(h, 'ho_1', 'kiro-cli'), (e) => e.code === 'not-listed');
 });
 
