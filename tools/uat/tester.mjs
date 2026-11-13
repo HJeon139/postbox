@@ -103,6 +103,7 @@ export const SCHEMA = {
             'settings',
             'app_click',
             'attach_screenshot',
+            'attach_file',
             'full_screen',
             'jobs',
             'wait',
@@ -120,8 +121,9 @@ export const SCHEMA = {
             'done',
           ],
         },
-        text: { type: 'string', description: 'send, send_then_stop, thread, thread_reply, attach_screenshot: the message to write.' },
+        text: { type: 'string', description: 'send, send_then_stop, thread, thread_reply, attach_screenshot, attach_file: the message to write.' },
         item: { type: 'string', description: 'thread, act, app_click, attach_screenshot, full_screen: the item label, such as I7.' },
+        file: { type: 'string', description: 'attach_file: the file’s name in tests/uat/e2e/attachments/, as the scenario names it.' },
         fills: { type: 'array', items: { type: 'object', properties: { field: { type: 'string' }, value: { type: 'string' } }, required: ['field', 'value'] } },
         choose: { type: 'array', items: { type: 'string' } },
         button: { type: 'string' },
@@ -231,6 +233,7 @@ Then choose one action:
 - restore {target}: in Work full screen, restore (or remove) that file, and confirm.
 - app_click {item, target}: click something inside that app by its visible text.
 - attach_screenshot {item, text}: attach a screenshot of that item, and send it with your message.
+- attach_file {file, text}: attach a file the scenario names, from tests/uat/e2e/attachments/, and send it with your message.
 - full_screen {item}: press that app’s Expand button.
 - jobs {answer}: answer Postbox’s question about an agent’s background jobs, when it’s on screen: stop (“Stop it too”) or keep (“Keep running”).
 - wait {seconds}: when an agent is still working (at most ${TESTER_WAIT_S}, or the longest wait the phase asks for, up to ${WAIT_MAX_S}). It ends early once no agent is working, unless the phase asks for that wait.

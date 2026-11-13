@@ -37,6 +37,7 @@ import { failsRun } from './uat/checks-postbox.mjs';
 import { streamResults } from './uat/cost.mjs';
 import { driver, JOBS_ANSWERS } from './uat/driver.mjs';
 import { faultSetup } from './uat/fault-run.mjs';
+import { attachmentFile } from './uat/fixtures.mjs';
 import { remoteFacts, setUpRemote } from './uat/git-remote.mjs';
 import { preflightRun } from './uat/github-guard.mjs';
 import { followEvents } from './uat/history.mjs';
@@ -461,8 +462,8 @@ async function main() {
           if (p)
             actionResult = `The app frame went from ${p.before.w}×${p.before.h} to ${p.after.w}×${p.after.h}, in a ${p.viewport?.w ?? '?'}×${p.viewport?.h ?? '?'} window.`;
           else actionError = 'That item has no app.';
-        } else if (a.type === 'attach_screenshot') {
-          const file = await d.shotItem(key, join(paths.shots, `attach-${step}.png`));
+        } else if (a.type === 'attach_screenshot' || a.type === 'attach_file') {
+          const file = a.type === 'attach_file' ? attachmentFile(a.file) : await d.shotItem(key, join(paths.shots, `attach-${step}.png`));
           await d.attach(file);
           await d.send(a.text ?? 'What’s this?');
           await sleep(1500);
