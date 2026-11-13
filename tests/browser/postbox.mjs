@@ -9,6 +9,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect } from '@playwright/test';
 import { start } from '../../server/index.mjs';
+import { drained } from '../../server/store-recover.mjs';
 import { heldStill } from '../../tools/page-still.mjs';
 import { allowServerLog, captureServerLog, takeServerFailures } from '../server-log.mjs';
 
@@ -34,6 +35,9 @@ async function freePort() {
   }
   throw new Error('Couldn’t find a free port for Postbox.');
 }
+
+/** How long a spec’s stop() waits for the store’s writes under way before it closes (#1314). */
+const STOP_SETTLE_MS = 60_000;
 
 /**
  * Starts a fresh Postbox for one spec file. stop() closes it and removes its data. Its temp folder is also the home
@@ -72,6 +76,10 @@ export async function startPostbox(name, { demo = true, mockOnly = true, prepare
     root,
     async stop() {
       try {
+        // The store’s writes under way settle first: a big room’s last snapshot on a busy runner can take longer than
+        // the 3 s close() gives one before it calls the disk unanswering (#1314). A write still going after a minute is
+        // close()’s to report.
+        await drained(started.store, STOP_SETTLE_MS);
         await started.close();
       } finally {
         await remove();

@@ -264,3 +264,13 @@ export function onNotify(rt, fn) {
     rt.notify = notify;
   };
 }
+
+/**
+ * A writer pass that takes ms to finish, as a snapshot of a big room does on a busy runner’s disk (#1314): the store’s
+ * close waits for one under way (server/store-recover.mjs, drained). @param {Runtime} rt @param {number} ms
+ */
+export function slowWriterPass(rt, ms) {
+  const store = /** @type {any} */ (rt.store);
+  const before = store.running;
+  store.running = new Promise((resolve) => setTimeout(resolve, ms)).then(() => before);
+}

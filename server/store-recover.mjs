@@ -144,17 +144,18 @@ export async function load(store, { fresh = false } = {}) {
 /**
  * Waits for what is under way: a Retry, a writer pass, a reconciliation an earlier Retry detached. Re-read after each
  * wait, since a Retry that times out meanwhile hands its still-running listener to lateReconcile after the first
- * reading (gpt’s finding on 1b); ends when a reading shows nothing new. Whether all of it settled within the bound.
- * @param {import('./store.mjs').Store} store
+ * reading (gpt’s finding on 1b); ends when a reading shows nothing new. Whether all of it settled within the bound,
+ * the store’s own unless given: the browser specs’ stop() waits longer before it closes (#1314).
+ * @param {import('./store.mjs').Store} store @param {number} [boundMs]
  */
-async function drained(store) {
+export async function drained(store, boundMs = store.retryBoundMs) {
   let seen = new Set();
   for (;;) {
     const now = [store.retrying, store.running, store.lateReconcile].filter(Boolean);
     const fresh = now.filter((p) => !seen.has(p));
     if (!fresh.length) return true;
     seen = new Set([...seen, ...fresh]);
-    if (!(await settledWithin(Promise.all(fresh.map((p) => p.catch(() => {}))), store.retryBoundMs))) return false;
+    if (!(await settledWithin(Promise.all(fresh.map((p) => p.catch(() => {}))), boundMs))) return false;
   }
 }
 
