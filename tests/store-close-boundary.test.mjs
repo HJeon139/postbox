@@ -162,6 +162,23 @@ test('close() begun before a reconciliation times out waits for the listener the
   await b.close();
 });
 
+test('one write lands, then the disk hangs: close() gives up the bound after that write, not a whole window later', async () => {
+  // Progress was checked only at the end of each window, so a write landing early in one bought a whole new window:
+  // a hang right after it took two to three times the bound to fail (the integrator’s review of #1324).
+  const dir = await tmp();
+  const faults = {};
+  const a = await new Store(dir, { io: logDisk(faults), retryBoundMs: 400 }).load();
+  let writes = 0;
+  faults.write = (handle, ...args) => (++writes === 1 ? handle.write(...args) : new Promise(() => {})); // then nothing answers
+  a.emit('thread', { id: 'e0', members: [] });
+  a.commit([thread('c0')], { opId: 'c0' }).catch(() => {}); // rejected as the store gives up
+  const t0 = Date.now();
+  await assert.rejects(a.close(), /can’t close.*isn’t answering/);
+  const took = Date.now() - t0;
+  assert.equal(writes, 2, 'the first write landed, and the second hung');
+  assert.ok(took < 650, `close() gave up after ${took} ms, against a 400 ms bound`);
+});
+
 test('a slow disk that keeps answering: close() waits past its bound while each write lands, and closes with every event durable (#1314)', async () => {
   // The bound is “no progress for retryBoundMs”, not retryBoundMs in all: a writer pass of eight writes of 60 ms each
   // runs well past a 100 ms bound, yet every write is the disk answering.

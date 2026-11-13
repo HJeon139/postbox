@@ -170,10 +170,13 @@ async function drained(store) {
  * @param {import('./store.mjs').Store} store @param {Promise<unknown>} promise
  */
 async function settledWhileProgressing(store, promise) {
+  const began = Date.now();
   for (;;) {
-    const at = store.progress;
-    if (await settledWithin(promise, store.retryBoundMs)) return true;
-    if (store.progress === at) return false;
+    // The bound runs from the later of the wait’s start and the last step: a step that lands early in a wait doesn’t
+    // buy a whole new window, so a hang right after it fails within the bound (the integrator’s review of #1324).
+    const left = Math.max(began, store.steppedAt) + store.retryBoundMs - Date.now();
+    if (left <= 0) return false;
+    if (await settledWithin(promise, left)) return true;
   }
 }
 
