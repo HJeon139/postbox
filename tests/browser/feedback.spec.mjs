@@ -150,8 +150,8 @@ test('#46 a diagram Mermaid can’t draw comes back to the agent once as a lint 
   const figure = page.locator('figure.diagram');
   await expect(figure.locator('iframe')).toHaveAttribute('data-failed', '1');
   await expect(figure.getByRole('button', { name: 'Show source' })).toBeVisible();
-  const frame = await (await figure.locator('iframe').elementHandle())?.contentFrame();
-  await expect(frame?.locator('.err') ?? page.locator('nothing'), 'the frame says it couldn’t be drawn').toContainText('couldn’t be drawn');
+  const frame = figure.locator('iframe').contentFrame();
+  await expect(frame.locator('.err'), 'the frame says it couldn’t be drawn').toContainText('couldn’t be drawn');
   // Once the lint turn has ended, and the page has drawn what came after it, no second one comes.
   await idle();
   await synced(page, app);

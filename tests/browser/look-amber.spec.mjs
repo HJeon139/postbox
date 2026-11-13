@@ -54,10 +54,11 @@ test.use({ colorScheme: 'dark' });
 
 /**
  * In the page or an app’s frame: every element of a control (a button, a radio, a switch, a checkbox) bigger than a
- * glyph whose background is amber; and, for each selected or on control, the colors that mark it.
+ * glyph whose background is amber; and, for each selected or on control, the colors that mark it. sel: a selector, or
+ * the element itself.
  */
-const amberIn = (sel) => {
-  const root = /** @type {Element} */ (document.querySelector(sel));
+const amberIn = (/** @type {string | Element} */ sel) => {
+  const root = /** @type {Element} */ (typeof sel === 'string' ? document.querySelector(sel) : sel);
   const probe = (v) => {
     const p = document.createElement('span');
     p.style.background = v;
@@ -113,11 +114,9 @@ for (const width of [1280, 375])
       await settled(page);
       const bad = unmarked(await page.evaluate(amberIn, 'body'), 'the conversation', ['toggle', 'chip']);
       // The app runs in a frame of its own, in its own process.
-      const handle = await page.locator('.appframe iframe.app-iframe').elementHandle();
-      const frame = await handle?.contentFrame();
-      if (!frame) throw new Error('The app’s frame has no document to read');
+      const frame = page.locator('.appframe iframe.app-iframe').contentFrame();
       await expect(frame.locator('.seg')).toBeVisible();
-      bad.push(...unmarked(await frame.evaluate(amberIn, 'body'), 'the app', ['seg']));
+      bad.push(...unmarked(await frame.locator('body').evaluate(amberIn), 'the app', ['seg']));
       await page.locator('header.topbar').getByRole('button', { name: 'Settings', exact: true }).click();
       await expect(page.locator('.dialog .seg button[aria-checked=true]').first()).toBeVisible();
       bad.push(...unmarked(await page.evaluate(amberIn, '.dialog'), 'Settings', ['seg']));
