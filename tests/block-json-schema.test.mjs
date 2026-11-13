@@ -97,6 +97,71 @@ test('#1319 property: what the catalog refuses for its shape, the schema refuses
   }
 });
 
+/**
+ * Each bound the schema states on a value the block holds, anywhere in it: a block with the value exactly at the bound
+ * (at) and one just past it (past). Lists recurse into their first item, objects into each field they hold.
+ * @param {any} schema @param {any} value @param {(v: any) => any} put  the whole block with value replaced
+ * @param {string} path @returns {{ path: string, bound: string, at?: any, past?: any }[]}
+ */
+function bounds(schema, value, put, path) {
+  const out = [];
+  const probe = (bound, at, past) =>
+    out.push({ path, bound, ...(at === undefined ? {} : { at: put(at) }), ...(past === undefined ? {} : { past: put(past) }) });
+  if (typeof value === 'string') {
+    if (schema.maxLength !== undefined) probe('maxLength', 'a'.repeat(schema.maxLength), 'a'.repeat(schema.maxLength + 1));
+    if (schema.minLength) probe('minLength', 'a'.repeat(schema.minLength), 'a'.repeat(schema.minLength - 1));
+  }
+  if (Number.isInteger(value)) {
+    if (schema.maximum !== undefined) probe('maximum', schema.maximum, schema.maximum + 1);
+    if (schema.minimum !== undefined) probe('minimum', schema.minimum, schema.minimum - 1);
+  }
+  if (Array.isArray(value) && value.length) {
+    const fill = (n) => Array.from({ length: n }, () => structuredClone(value[0]));
+    if (schema.maxItems !== undefined) probe('maxItems', fill(schema.maxItems), fill(schema.maxItems + 1));
+    if (schema.minItems) probe('minItems', fill(schema.minItems), fill(schema.minItems - 1));
+    if (schema.items) out.push(...bounds(schema.items, value[0], (v) => put([v, ...value.slice(1)]), `${path}[0]`));
+  }
+  if (value && typeof value === 'object' && !Array.isArray(value) && schema.properties)
+    for (const [k, v] of Object.entries(value))
+      if (schema.properties[k]) out.push(...bounds(schema.properties[k], v, (x) => put({ ...value, [k]: x }), `${path}.${k}`));
+  return out;
+}
+
+test('#1319 property: at each bound the schema states, the catalog agrees, so a schema looser than the catalog fails', () => {
+  const probed = new Set();
+  for (const type of TYPES) {
+    const schema = typeSchema(type);
+    const blocks = [BLOCK_EXAMPLES[type], ...Array.from({ length: 30 }, (_, i) => sample(schema, rng(i * 13 + type.length)))];
+    for (const block of blocks)
+      for (const b of bounds(schema, block, (v) => v, type)) {
+        probed.add(`${b.path}.${b.bound}`);
+        // At the bound, a block the schema takes (a pattern can still refuse it) is one the catalog takes.
+        if (b.at !== undefined && check(schema, b.at).length === 0) {
+          const v = validateBlock(b.at, { origins: 'later' });
+          const stray = v.ok ? [] : v.errors.filter((e) => !ACROSS.some((re) => re.test(e)));
+          assert.deepEqual(stray, [], `${b.path} at its ${b.bound}`);
+        }
+        if (b.past !== undefined) {
+          assert.notDeepEqual(check(schema, b.past), [], `the schema refuses ${b.path} past its ${b.bound}`);
+          assert.equal(validateBlock(b.past, { origins: 'later' }).ok, false, `the catalog refuses ${b.path} past its ${b.bound}`);
+        }
+      }
+  }
+  // Not a degenerate run: the common fields, nested ones, and each kind of bound were probed.
+  for (const p of [
+    'choice.fallback.maxLength',
+    'choice.title.maxLength',
+    'choice.options.maxItems',
+    'choice.options[0].label.maxLength',
+    'form.fields[0].id.maxLength',
+    'table.rows.maxItems',
+    'progress.steps[0].progress.done.minimum',
+    'choice.version.maximum',
+  ])
+    assert.ok(probed.has(p), `${p} was probed`);
+  assert.ok(probed.size > 100, `${probed.size} bounds probed`);
+});
+
 test('#1319 each type’s example, which a refusal shows, passes the catalog and the schema', () => {
   assert.deepEqual(Object.keys(BLOCK_EXAMPLES).sort(), [...TYPES].sort());
   for (const [type, block] of Object.entries(BLOCK_EXAMPLES)) {
