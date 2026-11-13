@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -163,6 +164,43 @@ test('an install with Gemini but no GPT gains GPT in built-in order and a second
   assert.equal(await seed(rt, opts), false);
   assert.equal(store.state.seq, seq);
   assert.deepEqual(Object.keys(store.state.personas), ['existing']);
+});
+
+test('#690: a fresh seed offers the Scrum master boilerplate, with its prompt from server/personas/scrum-master.md, and no agent', async () => {
+  const fresh = await seeded();
+  assert.ok(fresh.boilerplates.includes('bp-scrum-master'), 'bp-scrum-master is seeded');
+  assert.deepEqual(fresh.agents, ['@researcher on claude-code', '@developer on claude-code', '@critic on claude-code']);
+  const bp = BOILERPLATES.find((b) => b.id === 'bp-scrum-master');
+  assert.equal(bp?.name, 'Scrum master');
+  assert.equal(bp.backend, undefined, 'runs on the default backend');
+  assert.equal(bp.instructions, readFileSync(new URL('../server/personas/scrum-master.md', import.meta.url), 'utf8').trim());
+  assert.match(bp.instructions, /^# Scrum master\n/);
+  // It fits any project: no absolute path, and no host but the Manifesto’s own site.
+  assert.doesNotMatch(bp.instructions, /(^|[\s(`])(\/Users|\/home|~\/|[A-Z]:\\)/m);
+  assert.deepEqual(bp.instructions.match(/https?:\/\/[^\s)]+/g), ['https://agilemanifesto.org/']);
+});
+
+test('#690: an existing install with every other built-in boilerplate gains Scrum master on start, and a second seed emits nothing', async () => {
+  assert.ok(
+    BOILERPLATES.some((b) => b.id === 'bp-scrum-master'),
+    'bp-scrum-master is a built-in boilerplate',
+  );
+  const store = new Store(null);
+  store.emit('persona', { id: 'existing', handle: 'existing' });
+  for (const b of BOILERPLATES.filter((b) => b.id !== 'bp-scrum-master')) store.emit('boilerplate', b);
+  const rt = { store };
+  assert.equal(await seed(rt, { dataDir: '/unused' }), false);
+  assert.deepEqual(
+    store.state.boilerplates['bp-scrum-master'],
+    BOILERPLATES.find((b) => b.id === 'bp-scrum-master'),
+  );
+  assert.deepEqual(
+    Object.keys(store.state.boilerplates),
+    BOILERPLATES.map((b) => b.id),
+  );
+  const seq = store.state.seq;
+  assert.equal(await seed(rt, { dataDir: '/unused' }), false);
+  assert.equal(store.state.seq, seq);
 });
 
 test('#516: --demo publishes its notes as the asset explorer’s and the shelf’s assets, which a search finds', async (ctx) => {

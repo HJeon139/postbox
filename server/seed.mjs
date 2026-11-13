@@ -152,6 +152,15 @@ export const BOILERPLATES = [
     instructions: prompt('gpt'),
     tools: ['shell', 'web.fetch'],
   },
+  {
+    id: 'bp-scrum-master',
+    name: 'Scrum master',
+    description: 'Runs sprints by the Agile Manifesto: backlog, check-ins and retros',
+    instructions: prompt('scrum-master'),
+    // The web, to open the issues, pull requests and pages the team links; no commands, since the building is the
+    // developers’ work and it asks them for the check that proves an increment (#690).
+    tools: ['web.fetch'],
+  },
   { id: 'bp-blank', name: 'Blank', description: 'Write it yourself', instructions: '', tools: [] },
 ];
 
