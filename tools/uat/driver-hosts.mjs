@@ -174,10 +174,11 @@ export async function placePersona(kit, handle, hostId) {
   for (let i = 0; i < 40; i++) {
     const err = await kit.ev(`document.getElementById('pe-where-err')?.textContent ?? null`);
     if (err) throw new Error(`@${handle} couldn’t be placed: ${err}`);
-    if (!(await kit.ev(`!!document.getElementById('pe-where')`))) break;
+    if (!(await kit.ev(`!!document.getElementById('pe-where')`))) return closeAll(kit);
     await sleep(250);
   }
-  await closeAll(kit);
+  // Still open: Save didn’t take, and closing it now would drop the change without a word (#1320).
+  throw new Error(`@${handle}’s editor is still open after Save, 10 s on: the change wasn’t saved.`);
 }
 
 /**

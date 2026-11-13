@@ -24,9 +24,32 @@ export function pointer(page, ev, runnerClick) {
     })()`);
     if (!r) throw new Error(`Couldn’t find ${what} on screen.`);
     await sleep(120);
+    const at = await heldStill(findExpr, r);
     for (const type of ['mouseMoved', 'mousePressed', 'mouseReleased'])
-      await page.send('Input.dispatchMouseEvent', { type, x: r.x, y: r.y, button: 'left', clickCount: 1 });
+      await page.send('Input.dispatchMouseEvent', { type, x: at.x, y: at.y, button: 'left', clickCount: 1 });
     await sleep(250);
+  }
+
+  /**
+   * Where an element’s center is once it holds still: measured again until two readings agree, up to five times. A
+   * list or a note that answered during the pause can move it, as the Model field’s help moved Save 16.8 px (#1320),
+   * and a person aims at where it is, not where it was. Gone meanwhile: where it was.
+   * @param {string} findExpr @param {{ x: number, y: number }} was
+   */
+  async function heldStill(findExpr, was) {
+    const where = () =>
+      ev(
+        `(() => { const el = ${findExpr}; if (!el) return null; const b = el.getBoundingClientRect(); return { x: b.left + b.width / 2, y: b.top + b.height / 2 }; })()`,
+      );
+    let last = was;
+    for (let i = 0; i < 5; i++) {
+      const now = await where();
+      if (!now) return last;
+      if (now.x === last.x && now.y === last.y) return now;
+      last = now;
+      await sleep(60);
+    }
+    return last;
   }
   return { clickAt };
 }
