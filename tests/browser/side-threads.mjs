@@ -92,3 +92,10 @@ export function sideRoom(app, title) {
     },
   };
 }
+
+/** An agent’s row in the sidebar, the li around its button. @param {import('@playwright/test').Page} page @param {string} handle */
+export const row = (page, handle) => page.locator('.rail .agent-row').filter({ has: page.locator('.agent-btn b', { hasText: new RegExp(`^${handle}$`) }) });
+/** Each element’s text, its white space collapsed. @param {import('@playwright/test').Locator} locator */
+export const words = async (locator) => (await locator.allInnerTexts()).map((t) => t.replace(/\s+/g, ' ').trim());
+/** A side thread’s line in its conversation. @param {import('@playwright/test').Page} page */
+export const sideLine = (page) => page.locator('#main .pill', { hasText: 'asked' });

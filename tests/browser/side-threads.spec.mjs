@@ -14,7 +14,7 @@
 import { expect, test } from '@playwright/test';
 import { escapeRegExp } from '../../shared/regex.mjs';
 import { failOnPageErrors, PHONE, settled, startPostbox, synced, windowWidth } from './postbox.mjs';
-import { heldBackend, sideRoom } from './side-threads.mjs';
+import { heldBackend, row, sideLine, sideRoom, words } from './side-threads.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
 let app;
@@ -54,10 +54,6 @@ async function open(page, hash) {
   await synced(page, app);
   await expect(page.locator('header.topbar')).toBeVisible();
 }
-/** An agent’s row in the sidebar, the li around its button. */
-const row = (page, handle) => page.locator('.rail .agent-row').filter({ has: page.locator('.agent-btn b', { hasText: new RegExp(`^${handle}$`) }) });
-const words = async (locator) => (await locator.allInnerTexts()).map((t) => t.replace(/\s+/g, ' ').trim());
-const sideLine = (page) => page.locator('#main .pill', { hasText: 'asked' });
 
 test('a turn still running in a side thread from before #372 shows in its conversation: its agent tree, the side-thread line and the row', async ({ page }) => {
   const { store } = app;
