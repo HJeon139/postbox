@@ -465,6 +465,7 @@ export function openNewAgent({ threadId = null, projectId: pid = null, preset = 
           h('input.input', {
             id: 'na-d',
             value: st.description,
+            placeholder: 'Write it yourself',
             oninput: (e) => {
               st.description = e.target.value;
             },

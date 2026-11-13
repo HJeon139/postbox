@@ -79,4 +79,15 @@ test('New agent on a fresh install starts on Blank, and says no project holds it
   await expect.soft(sheet.getByLabel('Instructions')).toHaveValue('');
   await expect.soft(sheet, 'no project to name').not.toContainText('undefined');
   await expect.soft(sheet).toContainText('Create a project to start a session with it.');
+  await test.step('Blank’s “What it does” is only a placeholder, so an agent made with just a name has no description', async () => {
+    await expect.soft(sheet.getByLabel('What it does')).toHaveValue('');
+    await expect.soft(sheet.getByLabel('What it does')).toHaveAttribute('placeholder', 'Write it yourself');
+    // CI repeats the spec on one server, so each run names its own agent.
+    const handle = `blank-${Math.random().toString(36).slice(2, 8)}`;
+    await sheet.getByLabel('Name').fill(handle);
+    await sheet.getByRole('button', { name: 'Create agent' }).click();
+    await expect(sheet).toBeHidden();
+    await expect.poll(() => app.rt.personaByHandle(handle)?.handle).toBe(handle);
+    expect.soft(app.rt.personaByHandle(handle)?.description).toBe('');
+  });
 });
