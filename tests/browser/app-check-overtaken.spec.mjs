@@ -4,6 +4,7 @@
 // twice the 2.3 s one check takes, and failed follow.spec on CI.
 
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 
 const PLAIN = (v) => `<main style="padding:12px;color:var(--text)"><h2>Corpus summary ${v}</h2><p>Twelve books.</p></main>`;
@@ -13,7 +14,7 @@ let drawer;
 
 test.beforeAll(async () => {
   app = await startPostbox('app-check-overtaken');
-  app.rt.adapters.register({ name: 'mock', async deliver() {} });
+  arrange.withAdapter(app.rt, { name: 'mock', async deliver() {} });
   drawer = app.rt.createPersona({ handle: 'drawer' });
 });
 test.afterAll(async () => {
@@ -32,7 +33,7 @@ async function room(page, title) {
   });
   await page.goto(`${app.origin}/#/t/${thread.id}`);
   await synced(page, app);
-  return { rt, tools: rt.toolsFor(rt.sessionsIn(thread.id)[0].id), posted };
+  return { rt, tools: rt.toolsFor(arrange.agentIn(rt, thread.id).id), posted };
 }
 
 test('a new version during the old one’s check is checked at once, and the old one posts nothing', async ({ page }) => {
@@ -41,7 +42,7 @@ test('a new version during the old one’s check is checked at once, and the old
   await expect(page.locator('iframe.check-frame[title="Checking Overtaken"]'), 'v1’s check is running').toHaveCount(3);
   const t0 = Date.now();
   tools.update_app({ id: 'overtaken', code: PLAIN('v2') });
-  await expect.poll(() => rt.s.apps.overtaken.check.status, { intervals: [50], timeout: 15_000 }).toBe('passed');
+  await expect.poll(() => rt.store.state.apps.overtaken.check.status, { intervals: [50], timeout: 15_000 }).toBe('passed');
   const took = Date.now() - t0;
   // One check takes about 2.3 s (600 ms, 800 ms of a still layout, then 900 ms between text measures); waiting behind
   // v1’s first took about 4.6 s. 3.5 s sits between them, with room for the 300 ms lag CI adds and a loaded runner.
@@ -58,7 +59,7 @@ test('an app retired during its check posts nothing, and the next app’s check 
   expect(tools.retire_app({ id: 'retiring', reason: 'Another app covers it.' }).ok).toBe(true);
   await expect(page.locator('iframe.check-frame[title="Checking Retiring"]'), 'its check frames are gone').toHaveCount(0);
   tools.show_app({ id: 'after-retired', title: 'After retired', code: PLAIN('v1') });
-  await expect.poll(() => rt.s.apps['after-retired'].check.status, { timeout: 15_000 }).toBe('passed');
+  await expect.poll(() => rt.store.state.apps['after-retired'].check.status, { timeout: 15_000 }).toBe('passed');
   await expect.poll(() => posted, { message: 'only the next app’s result was posted' }).toEqual(['after-retired:1']);
 });
 
@@ -70,5 +71,5 @@ test('a version checked again after a drop is checked, not skipped', async ({ pa
   tools.retire_app({ id: 'returns', reason: 'For now.' });
   await expect(page.locator('iframe.check-frame[title="Checking Returns"]')).toHaveCount(0);
   tools.update_app({ id: 'returns', code: PLAIN('v2') });
-  await expect.poll(() => rt.s.apps.returns.check.status, { timeout: 15_000 }).toBe('passed');
+  await expect.poll(() => rt.store.state.apps.returns.check.status, { timeout: 15_000 }).toBe('passed');
 });

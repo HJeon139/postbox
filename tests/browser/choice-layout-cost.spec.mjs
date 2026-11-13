@@ -4,6 +4,7 @@
 // opening a room with many choices takes about as many as opening one with a few.
 
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, settled, startPostbox, synced } from './postbox.mjs';
 
 // Tracing is off: Playwright’s trace snapshot walks the page each action, and an item the transcript skips (#712a) is
@@ -22,7 +23,7 @@ let app;
 let drafter;
 test.beforeAll(async () => {
   app = await startPostbox('choice-layout-cost');
-  app.rt.adapters.register({
+  arrange.withAdapter(app.rt, {
     name: 'mock',
     async deliver(_session, message, ctx) {
       if (message.kind !== 'user') return;
@@ -38,9 +39,9 @@ failOnPageErrors(test);
 /** A conversation with `n` choice blocks waiting. @param {number} n */
 async function roomWith(n) {
   const { rt } = app;
-  const thread = rt.createThread({ projectId: Object.values(rt.s.projects)[0].id, title: `${n} choices`, personaIds: [drafter.id] });
+  const thread = rt.createThread({ projectId: Object.values(rt.store.state.projects)[0].id, title: `${n} choices`, personaIds: [drafter.id] });
   rt.sendMessage(thread.id, { text: String(n) });
-  await expect.poll(() => rt.turns.size === 0 && rt.store.items(thread.id).filter((i) => i.kind === 'block').length === n).toBe(true);
+  await expect.poll(() => arrange.liveTurns(rt) === 0 && rt.store.items(thread.id).filter((i) => i.kind === 'block').length === n).toBe(true);
   return thread.id;
 }
 

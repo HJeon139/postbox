@@ -4,6 +4,7 @@
 // both widths, since the contrast lint sees token pairs, not which element sits on which.
 
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -14,8 +15,8 @@ test.beforeAll(async () => {
   app = await startPostbox('option-description-contrast');
   const { rt, store } = app;
   const project = Object.values(store.state.projects)[0];
-  t = rt.createThread({ projectId: project.id, title: 'Index plan', personaIds: [rt.personaByHandle('librarian').id] });
-  const tools = rt.toolsFor(rt.sessionsIn(t.id)[0].id);
+  t = rt.createThread({ projectId: project.id, title: 'Index plan', personaIds: [arrange.persona(rt, 'librarian').id] });
+  const tools = rt.toolsFor(arrange.agentIn(rt, t.id).id);
   const options = [
     { id: 'keep', label: 'Keep it', description: 'Leaves the index as it is.' },
     { id: 'rebuild', label: 'Rebuild', description: 'Takes about ten minutes.' },

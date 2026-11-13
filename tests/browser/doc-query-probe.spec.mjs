@@ -6,6 +6,7 @@ import { writeFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
 import { sampleDocQueries } from '../../tools/uat/doc-query-probe.mjs';
 import { VIEW_TRIGGERS } from '../../tools/uat/view-triggers.mjs';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, frames, startPostbox, synced } from './postbox.mjs';
 
 // No trace: its snapshots walk the whole page around each action, which a 1,000-item room makes slow.
@@ -27,10 +28,10 @@ test('#564-b1 the probe hears session events in a 1,000-item room, and session-s
   const { rt } = app;
   const p = rt.createPersona({ handle: 'prober' });
   const t = rt.createThread({ projectId: 'pr_probe', title: 'Probe', personaIds: [p.id] });
-  const se = rt.sessionsIn(t.id)[0];
+  const se = arrange.agentIn(rt, t.id);
   rt.toolsFor(se.id).show_block({ block: confirm });
   for (let i = 0; i < 999; i++)
-    rt.addItem(t.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text: `Reply ${i}.`, status: 'done' });
+    arrange.post(rt, t.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text: `Reply ${i}.`, status: 'done' });
   await page.goto(`${app.origin}/#/t/${t.id}`);
   await expect(page.locator('#main .item').first()).toBeAttached({ timeout: 90_000 });
   await synced(page, app);
@@ -38,9 +39,9 @@ test('#564-b1 the probe hears session events in a 1,000-item room, and session-s
   const samples = [{ step: 1, at: Date.now(), ...(await sampleDocQueries(ev)) }];
   expect(samples[0], 'installed: nothing counted yet').toMatchObject({ sessionEvents: 0, scanCount: 0, items: 1000 });
   for (const [i, state] of ['think', 'tool', 'gen', 'idle', 'think', 'idle'].entries()) {
-    rt.updateSession(se.id, { state });
+    arrange.setSession(rt, se.id, { state });
     // An event of another kind between them, which the probe mustn't count as a session event.
-    if (i === 2) rt.addItem(t.id, { kind: 'user', text: 'Between.' });
+    if (i === 2) arrange.post(rt, t.id, { kind: 'user', text: 'Between.' });
     await synced(page, app);
     await frames(page);
     if (i % 2) samples.push({ step: samples.length + 1, at: Date.now(), ...(await sampleDocQueries(ev)) });

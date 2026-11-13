@@ -10,9 +10,8 @@ import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
 import { AppBrowser } from '../../server/view-app/browser.mjs';
 import { answerIn } from '../../server/view-app/consent.mjs';
-import { viewApp } from '../../server/view-app/view-app.mjs';
-import { viewOf } from '../../server/view-app/view-of.mjs';
 import { SCANS } from '../../tools/uat/doc-query-probe.mjs';
+import * as arrange from '../arrange.mjs';
 import { playwrightBrowsers } from '../fixtures/playwright-browsers.mjs';
 import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 
@@ -36,13 +35,13 @@ let app;
 async function project() {
   const folder = join(app.root, 'work');
   await mkdir(folder, { recursive: true });
-  if (!app.rt.s.projects.pv) app.store.emit('project', { id: 'pv', name: 'View app', folder });
+  if (!app.rt.store.state.projects.pv) app.store.emit('project', { id: 'pv', name: 'View app', folder });
   return 'pv';
 }
 test.beforeAll(async () => {
   app = await startPostbox('view-app');
   // The headless shell the specs already installed stands in for Postbox’s own download, and the person agreed.
-  const dir = viewOf(app.rt).dir;
+  const dir = arrange.viewOf(app.rt).dir;
   const shell = new AppBrowser({ dir: playwrightBrowsers() });
   test.skip(shell.status() !== 'ready', 'Playwright’s headless shell isn’t installed');
   await mkdir(dir, { recursive: true });
@@ -60,8 +59,8 @@ test('an agent sees its D3 app rendered inline before its check has run, and the
   test.setTimeout(90_000);
   const { rt } = app;
   const projectId = await project();
-  const t = rt.createThread({ projectId, title: 'View check', personaIds: [rt.personaByHandle('researcher').id] });
-  const se = rt.sessionsIn(t.id)[0];
+  const t = rt.createThread({ projectId, title: 'View check', personaIds: [arrange.persona(rt, 'researcher').id] });
+  const se = arrange.agentIn(rt, t.id);
   const shown = rt.toolsFor(se.id).show_app({ title: 'Price and orders', code: CHART });
   const viewed = [];
   const view = rt.view.bind(rt);
@@ -70,7 +69,7 @@ test('an agent sees its D3 app rendered inline before its check has run, and the
     view(id);
   };
   try {
-    const r = await viewApp(rt, se.id, { appId: shown.appId }, { threadId: () => t.id, endSegment() {}, images: true });
+    const r = await arrange.viewApp(rt, se.id, { appId: shown.appId }, { threadId: () => t.id, endSegment() {}, images: true });
     expect.soft(r.ok, r.message).toBe(true);
     expect.soft(r.message).toMatch(/inline in the conversation, in a 1000 × 680 window, light theme/);
     const png = sizeOf(r.image.data);
@@ -78,7 +77,7 @@ test('an agent sees its D3 app rendered inline before its check has run, and the
     // At 1000 px, beside the rail, the app fills the conversation, with its header: 1000 − 248 − 48 px of padding.
     expect.soft(png.width).toBe(704);
     expect.soft(png.height).toBeGreaterThan(240);
-    expect.soft(rt.s.apps[shown.appId].check.status, 'nobody checked it: no tab was open').toBe('pending');
+    expect.soft(rt.store.state.apps[shown.appId].check.status, 'nobody checked it: no tab was open').toBe('pending');
     expect.soft(viewed, 'the capture page never reported a thread as viewed').toEqual([]);
   } finally {
     rt.view = view;
@@ -93,12 +92,12 @@ test('the capture uses the size and theme the person’s open Postbox tab report
   await page.goto(`${app.origin}/`);
   await synced(page, app);
   const projectId = await project();
-  const t = rt.createThread({ projectId, title: 'Window check', personaIds: [rt.personaByHandle('researcher').id] });
-  const se = rt.sessionsIn(t.id)[0];
+  const t = rt.createThread({ projectId, title: 'Window check', personaIds: [arrange.persona(rt, 'researcher').id] });
+  const se = arrange.agentIn(rt, t.id);
   const shown = rt.toolsFor(se.id).show_app({ title: 'Window', code: '<p style="padding:12px">Sized to your window.</p>' });
   await page.goto(`${app.origin}/#/t/${t.id}`);
-  await expect.poll(() => viewOf(rt).windowNow(), { timeout: 15_000 }).toMatchObject({ width: 1280, height: 800, theme: 'dark' });
-  const r = await viewApp(rt, se.id, { appId: shown.appId }, { threadId: () => t.id, endSegment() {}, images: false });
+  await expect.poll(() => arrange.viewOf(rt).windowNow(), { timeout: 15_000 }).toMatchObject({ width: 1280, height: 800, theme: 'dark' });
+  const r = await arrange.viewApp(rt, se.id, { appId: shown.appId }, { threadId: () => t.id, endSegment() {}, images: false });
   expect.soft(r.ok, r.message).toBe(true);
   expect.soft(r.message).toMatch(/in a 1280 × 800 window, dark theme/);
   expect.soft(r.image, 'this backend gets the saved file’s path instead').toBeNull();
@@ -121,13 +120,13 @@ test('the tab’s report of its window reads the conversation’s width without 
   // The report runs every 10 s while a conversation is open, so its cost mustn’t grow with the page (#564-b1).
   const { rt } = app;
   const projectId = await project();
-  const t = rt.createThread({ projectId, title: 'Report check', personaIds: [rt.personaByHandle('researcher').id] });
+  const t = rt.createThread({ projectId, title: 'Report check', personaIds: [arrange.persona(rt, 'researcher').id] });
   await page.setViewportSize({ width: 1000, height: 680 });
   await page.goto(`${app.origin}/#/t/${t.id}`);
   await synced(page, app);
   // The conversation beside the rail at 1000 px: 1000 − 248. The app in it is 704, after the transcript’s padding.
-  await expect.poll(() => viewOf(rt).windowNow().column, { timeout: 15_000 }).toBe(752);
-  viewOf(rt).window = null;
+  await expect.poll(() => arrange.viewOf(rt).windowNow().column, { timeout: 15_000 }).toBe(752);
+  arrange.viewOf(rt).window = null;
   const queries = await page.evaluate(async (names) => {
     const seen = [];
     const real = names.map((name) => [name, Document.prototype[name]]);
@@ -142,15 +141,15 @@ test('the tab’s report of its window reads the conversation’s width without 
     return seen;
   }, SCANS);
   expect.soft(queries, 'whole-document queries in one view report').toEqual([]);
-  await expect.poll(() => viewOf(rt).windowNow().column, { timeout: 15_000 }).toBe(752);
+  await expect.poll(() => arrange.viewOf(rt).windowNow().column, { timeout: 15_000 }).toBe(752);
 });
 
 test('a capture shows the app with its check’s note, as the person sees it, and the app itself while its check is pending', async ({ page }) => {
   test.setTimeout(60_000);
   const { rt, store } = app;
   const projectId = await project();
-  const t = rt.createThread({ projectId, title: 'Note check', personaIds: [rt.personaByHandle('researcher').id] });
-  const se = rt.sessionsIn(t.id)[0];
+  const t = rt.createThread({ projectId, title: 'Note check', personaIds: [arrange.persona(rt, 'researcher').id] });
+  const se = arrange.agentIn(rt, t.id);
   const shown = rt.toolsFor(se.id).show_app({ title: 'Noted', code: '<p style="padding:12px">Small print.</p>' });
   const item = rt.store.items(t.id).find((x) => x.block?.id === shown.appId);
   const capture = `${app.origin}/?nocheck&capture=${item.id}&thread=${t.id}`;
@@ -168,8 +167,8 @@ test('the picture is as wide as the app the person sees, beside the rail by defa
   test.setTimeout(120_000);
   const { rt } = app;
   const projectId = await project();
-  const t = rt.createThread({ projectId, title: 'Width check', personaIds: [rt.personaByHandle('researcher').id] });
-  const se = rt.sessionsIn(t.id)[0];
+  const t = rt.createThread({ projectId, title: 'Width check', personaIds: [arrange.persona(rt, 'researcher').id] });
+  const se = arrange.agentIn(rt, t.id);
   const shown = rt.toolsFor(se.id).show_app({ title: 'Width', code: '<p style="padding:12px">As wide as yours.</p>' });
   const ctx = { threadId: () => t.id, endSegment() {}, images: true };
   /** The app’s width in the person’s page, and in view_app’s picture, once the tab has reported this window. */
@@ -179,9 +178,9 @@ test('the picture is as wide as the app the person sees, beside the rail by defa
     await synced(page, app);
     const frame = page.locator('.transcript .appframe').first();
     await expect(frame).toBeVisible();
-    await expect.poll(() => viewOf(rt).windowNow().width, { timeout: 15_000 }).toBe(width);
+    await expect.poll(() => arrange.viewOf(rt).windowNow().width, { timeout: 15_000 }).toBe(width);
     const seen = Math.round((await frame.boundingBox())?.width ?? 0);
-    const r = await viewApp(rt, se.id, { appId: shown.appId }, ctx);
+    const r = await arrange.viewApp(rt, se.id, { appId: shown.appId }, ctx);
     expect(r.ok, r.message).toBe(true);
     return { seen, sent: sizeOf(r.image.data).width };
   };
@@ -192,8 +191,8 @@ test('the picture is as wide as the app the person sees, beside the rail by defa
   expect.soft(pane.sent, 'beside the open Work pane, at 1280 × 800').toBe(pane.seen);
   // With no tab’s report, the page lays the conversation out beside the rail at 1000 × 680, as the person above saw it.
   await page.goto('about:blank');
-  viewOf(rt).window = null;
-  const r = await viewApp(rt, se.id, { appId: shown.appId }, ctx);
+  arrange.viewOf(rt).window = null;
+  const r = await arrange.viewApp(rt, se.id, { appId: shown.appId }, ctx);
   expect.soft(sizeOf(r.image.data).width, 'no tab open: 1000 × 680 beside the rail').toBe(laptop.seen);
 });
 
@@ -239,14 +238,14 @@ test('a capture lets through only GETs to its own origin', async () => {
 test('a person who hasn’t answered sees the download card, and Not now is kept and shown on it', async ({ page }) => {
   test.setTimeout(60_000);
   const { rt } = app;
-  const consent = join(viewOf(rt).dir, 'consent.json');
+  const consent = join(arrange.viewOf(rt).dir, 'consent.json');
   await rm(consent, { force: true });
   try {
     const projectId = await project();
-    const t = rt.createThread({ projectId, title: 'Ask check', personaIds: [rt.personaByHandle('researcher').id] });
-    const se = rt.sessionsIn(t.id)[0];
+    const t = rt.createThread({ projectId, title: 'Ask check', personaIds: [arrange.persona(rt, 'researcher').id] });
+    const se = arrange.agentIn(rt, t.id);
     const shown = rt.toolsFor(se.id).show_app({ title: 'Asked', code: '<p>Not yet seen.</p>' });
-    const r = await viewApp(rt, se.id, { appId: shown.appId }, { threadId: () => t.id, endSegment() {}, images: true });
+    const r = await arrange.viewApp(rt, se.id, { appId: shown.appId }, { threadId: () => t.id, endSegment() {}, images: true });
     expect.soft(r.waiting, r.message).toBe(true);
     await page.goto(`${app.origin}/#/t/${t.id}`);
     await synced(page, app);
@@ -254,8 +253,8 @@ test('a person who hasn’t answered sees the download card, and Not now is kept
     await expect(card).toContainText('Download Chromium (about 200 MB on disk) so agents can see their apps?');
     await card.getByRole('button', { name: 'Not now' }).click();
     await expect(card).toContainText('Not downloaded. Agents can’t see their apps.');
-    expect.soft(answerIn(viewOf(rt).dir)).toBe('declined');
-    const again = await viewApp(rt, se.id, { appId: shown.appId }, { threadId: () => t.id, endSegment() {}, images: true });
+    expect.soft(answerIn(arrange.viewOf(rt).dir)).toBe('declined');
+    const again = await arrange.viewApp(rt, se.id, { appId: shown.appId }, { threadId: () => t.id, endSegment() {}, images: true });
     expect.soft(again.message).toMatch(/chose not to download the browser/);
   } finally {
     await writeFile(consent, JSON.stringify({ answer: 'allowed', at: Date.now() }));

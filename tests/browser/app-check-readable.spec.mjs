@@ -7,6 +7,7 @@
 
 import { readFile } from 'node:fs/promises';
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 
 failOnPageErrors(test);
@@ -103,20 +104,24 @@ test.beforeAll(async ({ browser }) => {
   app = await startPostbox('app-check-readable');
   const { rt } = app;
   // The agent hears a failed check and doesn’t answer, so each app keeps what its first check found.
-  rt.adapters.register({
+  arrange.withAdapter(rt, {
     name: 'mock',
     async deliver(_s, message) {
       if (message.kind === 'app-check') sent[message.appId] = message.problems;
     },
   });
-  const t = rt.createThread({ projectId: Object.values(rt.s.projects)[0].id, title: 'Readable', personaIds: [rt.createPersona({ handle: 'drawer' }).id] });
-  const tools = rt.toolsFor(rt.sessionsIn(t.id)[0].id);
+  const t = rt.createThread({
+    projectId: Object.values(rt.store.state.projects)[0].id,
+    title: 'Readable',
+    personaIds: [rt.createPersona({ handle: 'drawer' }).id],
+  });
+  const tools = rt.toolsFor(arrange.agentIn(rt, t.id).id);
   for (const [id, code] of Object.entries(APPS)) tools.show_app({ id, title: id, code });
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 }, colorScheme: 'dark' });
   await page.goto(`${app.origin}/#/t/${t.id}`);
   await synced(page, app);
   await expect
-    .poll(() => Object.keys(APPS).filter((id) => rt.s.apps[id].check.status === 'pending'), { message: 'every app checked', timeout: 90_000 })
+    .poll(() => Object.keys(APPS).filter((id) => rt.store.state.apps[id].check.status === 'pending'), { message: 'every app checked', timeout: 90_000 })
     .toEqual([]);
   await page.close();
 });
@@ -124,7 +129,7 @@ test.afterAll(async () => {
   await app?.stop();
 });
 
-const check = (id) => app.rt.s.apps[id].check;
+const check = (id) => app.rt.store.state.apps[id].check;
 const says = (id) => (check(id).problems ?? []).map((p) => `${p.code}: ${p.message}`).join('\n') || 'no problems';
 /**
  * The messages of one code the agent was sent, once: the check held the version back for the agent to fix. (Its mock

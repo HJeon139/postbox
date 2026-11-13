@@ -7,6 +7,7 @@
 import { expect, test } from '@playwright/test';
 import { sampleDiagrams } from '../../tools/uat/diagram-probe.mjs';
 import { VIEW_TRIGGERS } from '../../tools/uat/view-triggers.mjs';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -29,11 +30,11 @@ test('#695: diagrams out of view don’t load, and one scrolled to draws', async
   const { rt } = app;
   const p = rt.createPersona({ handle: 'drawer' });
   const t = rt.createThread({ projectId: 'pr_lazy', title: 'Diagrams far apart', personaIds: [p.id] });
-  const se = rt.sessionsIn(t.id)[0];
+  const se = arrange.agentIn(rt, t.id);
   /** @type {string[]} */
   const ids = [];
   for (let i = 0; i < 30; i++)
-    ids.push(rt.addItem(t.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text: text(i), status: 'done' }).id);
+    ids.push(arrange.post(rt, t.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text: text(i), status: 'done' }).id);
   let loads = 0;
   page.on('request', (r) => {
     if (new URL(r.url()).pathname === '/sandbox/mermaid') loads++;

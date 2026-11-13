@@ -2,6 +2,7 @@
 // column named for a year or an id shows its whole numbers as written.
 
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -12,8 +13,8 @@ test.beforeAll(async () => {
   app = await startPostbox('table-numbers');
   const { rt, store } = app;
   const project = Object.values(store.state.projects)[0];
-  t = rt.createThread({ projectId: project.id, title: 'Paper survey', personaIds: [rt.personaByHandle('librarian').id] });
-  const se = rt.sessionsIn(t.id)[0];
+  t = rt.createThread({ projectId: project.id, title: 'Paper survey', personaIds: [arrange.persona(rt, 'librarian').id] });
+  const se = arrange.agentIn(rt, t.id);
   rt.toolsFor(se.id).show_block({
     block: {
       id: 'papers',

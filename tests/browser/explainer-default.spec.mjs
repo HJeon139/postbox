@@ -3,6 +3,7 @@
 // 6 November 2026 found agents building quizzes nobody asked for.
 
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -25,20 +26,20 @@ test.setTimeout(60_000);
 /** A conversation of its own with @researcher, open in the page, that has been sent `text`. */
 async function ask(page, title, text) {
   const { rt } = app;
-  const t = rt.createThread({ projectId: Object.values(rt.s.projects)[0].id, title, personaIds: [rt.personaByHandle('researcher').id] });
+  const t = rt.createThread({ projectId: Object.values(rt.store.state.projects)[0].id, title, personaIds: [arrange.persona(rt, 'researcher').id] });
   await page.goto(`${app.origin}/#/t/${t.id}`);
   await synced(page, app);
   rt.sendMessage(t.id, { text });
   return t;
 }
 const appsIn = (t) =>
-  Object.values(app.rt.s.apps)
+  Object.values(app.rt.store.state.apps)
     .filter((a) => a.threadId === t.id)
     .map((a) => a.id);
 
 test('asked to explain, the researcher shows one picture with a control that changes it, and no practice app', async ({ page }) => {
   const t = await ask(page, 'Explain only', 'Explain ReAct');
-  await expect.poll(() => app.rt.s.apps['react-context']?.check.status, { timeout: 30_000 }).toBe('passed');
+  await expect.poll(() => app.rt.store.state.apps['react-context']?.check.status, { timeout: 30_000 }).toBe('passed');
   expect(appsIn(t), 'the only app in the conversation').toEqual(['react-context']);
   await expect(page.locator('#main'), 'a predict-first question, with no answer given').toContainText('Guess, then drag it to 8.');
 

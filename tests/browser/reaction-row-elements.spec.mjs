@@ -5,7 +5,7 @@
 // colors too, checked by what is painted rather than by a property (#1068).
 
 import { expect, test } from '@playwright/test';
-import { toggleReaction } from '../../server/reactions.mjs';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -23,8 +23,8 @@ test.beforeAll(async () => {
   store.emit('project', { id: 'pr_rre', name: 'Reaction row', folder: app.root });
   const persona = rt.createPersona({ handle: 'judge', backend: 'mock', permissionMode: 'auto', tools: [] });
   thread = rt.createThread({ projectId: 'pr_rre', title: 'Reaction row', personaIds: [persona.id] });
-  critic = rt.sessionsIn(thread.id)[0];
-  message = rt.addItem(thread.id, {
+  critic = arrange.agentIn(rt, thread.id);
+  message = arrange.post(rt, thread.id, {
     kind: 'agent',
     sessionId: critic.id,
     personaId: persona.id,
@@ -71,7 +71,7 @@ for (const width of [375, 1280])
       const good = button(page, 'Good');
       expect(await pseudo(good, '::before', 'background-image'), 'the icon').toMatch(/reaction-approve/);
       expect(await pseudo(good, '::before', 'width'), 'the icon’s box, the theme’s own').toMatch(/^(20|22\.5)px$/);
-      toggleReaction(app.rt, thread.id, message.id, '🚩', { id: critic.id, handle: 'judge' });
+      arrange.react(app.rt, thread.id, message.id, '🚩', { id: critic.id, handle: 'judge' });
       await synced(page, app);
       const flag = button(page, 'Flag this');
       await expect(flag).toHaveAttribute('data-count', '1');
@@ -80,7 +80,7 @@ for (const width of [375, 1280])
     });
 
     test('a count from another is painted beside the icon, and kept out of what a screen reader reads', async ({ page }) => {
-      toggleReaction(app.rt, thread.id, message.id, '🚩', { id: critic.id, handle: 'judge' });
+      arrange.react(app.rt, thread.id, message.id, '🚩', { id: critic.id, handle: 'judge' });
       await synced(page, app);
       const flag = button(page, 'Flag this');
       await expect(flag).toHaveAttribute('data-count', '1');
