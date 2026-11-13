@@ -2,6 +2,23 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.5.0 (2026-11-13)
+
+### Features
+
+- **settings:** list the boilerplates under Settings › Personas
+
+### Fixes
+
+- **settings:** leave Blank out of the boilerplate row
+- **seed:** give the Blank boilerplate no description, so none is saved
+- **tests:** the #208 persona delete test waits for the memory folder it checks
+- **tests:** the until() tests move a mock clock instead of stalling
+- **tests:** the fake daemon reader's deadline test holds however slow the runner
+- **sheets:** start the New agent sheet on Blank
+- **sheets:** say a fresh install has no project, not “undefined”, in New agent
+- **seed:** drop the Indexer boilerplate left from the demo's corpus
+
 ## 4.4.0 (2026-11-13)
 
 ### Features
