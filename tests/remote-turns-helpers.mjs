@@ -201,9 +201,11 @@ export const settled = async (r) => {
   await sleep(5);
 };
 
-/** A store whose session had a turn running on the host when Postbox stopped, and a card open for its prompt. */
-export function restarted({ welcome = /** @type {'running' | 'ended' | 'missing' | 'interrupted' | 'unkilled'} */ ('running') } = {}) {
-  const store = new Store(null);
+/**
+ * A store whose session had a turn running on the host when Postbox stopped, and a card open for its prompt. `store`:
+ * one on disk, for a test that fails a write and retries.
+ */
+export function restarted({ welcome = /** @type {'running' | 'ended' | 'missing' | 'interrupted' | 'unkilled'} */ ('running'), store = new Store(null) } = {}) {
   const d = createFakeDaemon({ autoEnd: false });
   const first = rig({ store, d });
   first.rt.remote.close();
