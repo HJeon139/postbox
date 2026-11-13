@@ -15,14 +15,16 @@ const FRESH_MS = 60_000;
 export class ModelLists {
   /**
    * @param {import('./adapters/adapter.mjs').AdapterRegistry} adapters
-   * @param {{ file: string, now?: () => number, listOnHost?: (hostId: string, backend: string) => Promise<string[]> }} opts
-   *   file: where the last lists are kept; listOnHost: what a host’s CLI lists (server/remote/hosts-models.mjs)
+   * @param {{ file: string, now?: () => number, listOnHost?: (hostId: string, backend: string) => Promise<string[]>,
+   *   hostIds?: () => string[] }} opts  file: where the last lists are kept; listOnHost: what a host’s CLI lists
+   *   (server/remote/hosts-models.mjs); hostIds: the hosts Postbox has, so a deleted one’s lists are forgotten
    */
-  constructor(adapters, { file, now = Date.now, listOnHost }) {
+  constructor(adapters, { file, now = Date.now, listOnHost, hostIds }) {
     this.adapters = adapters;
     this.file = file;
     this.now = now;
     this.listOnHost = listOnHost;
+    this.hostIds = hostIds;
     /** @type {Map<string, number>} when each host’s harness last listed, by `backend@hostId` */
     this.hostListedAt = new Map();
     /** @type {Map<string, Promise<{ models?: string[], why?: NotListed }>>} each host’s listing under way */
@@ -51,6 +53,10 @@ export class ModelLists {
     if (hostId !== null && (typeof hostId !== 'string' || !/^[\w-]{1,64}$/.test(hostId)))
       throw httpError(400, 'hostId must be a host’s ID, or null for this computer.');
     const adapter = this.adapters.get(backend);
+    if (hostId !== null && this.hostIds && !this.hostIds().includes(hostId)) {
+      for (const key of this.hostListedAt.keys()) if (key.endsWith(`@${hostId}`)) this.hostListedAt.delete(key);
+      throw httpError(404, 'That host isn’t one Postbox has. Pick another under Runs on.');
+    }
     if (hostId !== null) return this.#onHost(adapter, backend, hostId);
     const last = () => adapter.capabilities?.models ?? [];
     // One that runs only on a host has no CLI here to ask.
@@ -128,6 +134,9 @@ export class ModelLists {
   #keep(key, models) {
     try {
       const kept = { ...this.#kept(), [key]: models };
+      // A deleted host’s lists go: no sheet can ask for them again.
+      const hosts = this.hostIds?.();
+      if (hosts) for (const k of Object.keys(kept)) if (k.includes('@') && !hosts.includes(k.slice(k.indexOf('@') + 1))) delete kept[k];
       const tmp = `${this.file}.${process.pid}.tmp`;
       writeFileSync(tmp, `${JSON.stringify(kept)}\n`);
       renameSync(tmp, this.file);

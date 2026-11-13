@@ -24,14 +24,14 @@ function remoteAdapter(name, local = ['here-1']) {
   };
 }
 
-function setup({ adapter = remoteAdapter('kiro-cli'), onHost = async () => ['host-1', 'host-2'], now = () => 0 } = {}) {
+function setup({ adapter = remoteAdapter('kiro-cli'), onHost = async () => ['host-1', 'host-2'], now = () => 0, hostIds } = {}) {
   const file = join(tempDir('pb-host-models-'), 'model-lists.json');
   const calls = [];
   const listOnHost = (hostId, backend) => {
     calls.push([hostId, backend]);
     return onHost(hostId, backend);
   };
-  const lists = new ModelLists(new AdapterRegistry().register(adapter, { here: false }), { file, now, listOnHost });
+  const lists = new ModelLists(new AdapterRegistry().register(adapter, { here: false }), { file, now, listOnHost, hostIds });
   return { file, adapter, calls, lists };
 }
 
@@ -89,6 +89,19 @@ test('a host whose daemon is older than `models` answers its last list, saying i
 test('a host whose CLI listed none is not-listed, not outdated', async () => {
   const { lists } = setup({ onHost: async () => Promise.reject(Object.assign(new Error('The host’s CLI listed no models.'), { code: 'not-listed' })) });
   assert.deepEqual(await lists.list('kiro-cli', 'ho_1'), { models: [], fresh: false, why: 'not-listed' });
+});
+
+test('a deleted host’s lists are forgotten: its cached list doesn’t answer, and the kept one goes at the next keep', async () => {
+  const hosts = ['ho_1', 'ho_2'];
+  let t = 0;
+  const { file, lists } = setup({ hostIds: () => hosts, now: () => t });
+  await lists.list('kiro-cli', 'ho_1');
+  await lists.list('kiro-cli', 'ho_2');
+  hosts.splice(0, 1);
+  await assert.rejects(lists.list('kiro-cli', 'ho_1'), (e) => e.status === 404, 'not its cached list, fresh');
+  t = 61_000;
+  await lists.list('kiro-cli', 'ho_2');
+  assert.deepEqual(Object.keys(JSON.parse(readFileSync(file, 'utf8'))), ['kiro-cli@ho_2']);
 });
 
 test('a host Postbox doesn’t have is a 404; a hostId that isn’t one is a 400; neither is asked', async () => {

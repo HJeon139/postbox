@@ -120,7 +120,11 @@ export async function start({
   // The hosts’ links (#120), made on first use (server/remote/serve.mjs).
   const hosts = hostManagerFor(given, () => rt, dataDir, config.build.version);
   // Each backend’s models, from its harness here or on a host, each offering the last list it gave (#1302, #1304).
-  const models = new ModelLists(adapters, { file: join(dataDir, 'model-lists.json'), listOnHost: (hostId, backend) => hostModels(hosts, hostId, backend) });
+  const models = new ModelLists(adapters, {
+    file: join(dataDir, 'model-lists.json'),
+    listOnHost: (hostId, backend) => hostModels(hosts, hostId, backend),
+    hostIds: () => Object.keys(rt.s.hosts ?? {}),
+  });
   models.seed();
   const rt = new Runtime({ store, adapters, config, blobs, narrator, spawnShell, hosts });
   // view_app’s browser, downloaded only after the person agrees (#95; designs/architecture/view-app.md, “Agents see their app”).
