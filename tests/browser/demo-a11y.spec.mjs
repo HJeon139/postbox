@@ -216,7 +216,7 @@ async function checkGroup(page, browser, app, scenes) {
   const shown = [];
   let hash = '#/';
   let loads = 0;
-  const errorsHash = () => `#/t/${Object.values(app.rt.s.threads).find((t) => t.title === 'Index the shelf')?.id}`;
+  const errorsHash = () => `#/t/${Object.values(app.rt.store.state.threads).find((t) => t.title === 'Index the shelf')?.id}`;
   const errors = errorsOf(page, () => hash === errorsHash());
   await play({
     origin: app.origin,

@@ -4,6 +4,7 @@
 // caret at the end. An agent joining also took focus from the composer, which the rebuild remounts.
 
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, frames, startPostbox, synced } from './postbox.mjs';
 
 const OTHER = 'A bucket name';
@@ -29,7 +30,7 @@ let helper;
 let joiner;
 test.beforeAll(async () => {
   app = await startPostbox('redraw-focus');
-  app.rt.adapters.register({ name: 'mock', async deliver() {} });
+  arrange.withAdapter(app.rt, { name: 'mock', async deliver() {} });
   asker = app.rt.createPersona({ handle: 'asker' });
   helper = app.rt.createPersona({ handle: 'helper' });
   joiner = app.rt.createPersona({ handle: 'joiner' });
@@ -42,8 +43,8 @@ let n = 0;
 async function typing(page, width, before) {
   await page.setViewportSize({ width, height: 800 });
   const { rt } = app;
-  const thread = rt.createThread({ projectId: Object.values(rt.s.projects)[0].id, title: `Focus ${++n}`, personaIds: [asker.id, helper.id] });
-  const toolsOf = (pid) => rt.toolsFor(rt.sessionsIn(thread.id).find((s) => s.personaId === pid).id);
+  const thread = rt.createThread({ projectId: Object.values(rt.store.state.projects)[0].id, title: `Focus ${++n}`, personaIds: [asker.id, helper.id] });
+  const toolsOf = (pid) => rt.toolsFor(arrange.sessionsIn(rt, thread.id).find((s) => s.personaId === pid).id);
   await page.goto(`${app.origin}/#/t/${thread.id}`);
   await synced(page, app);
   toolsOf(asker.id).show_block({ block: choice('Name the bucket.') });
@@ -135,8 +136,8 @@ test('#739 control: a check that can tell a lost focus', async ({ page }) => {
 
 test('#739 a field that comes back as a date input gets focus back without a caret, and nothing throws', async ({ page }) => {
   const { rt } = app;
-  const thread = rt.createThread({ projectId: Object.values(rt.s.projects)[0].id, title: `Focus ${++n}`, personaIds: [asker.id] });
-  const tools = rt.toolsFor(rt.sessionsIn(thread.id)[0].id);
+  const thread = rt.createThread({ projectId: Object.values(rt.store.state.projects)[0].id, title: `Focus ${++n}`, personaIds: [asker.id] });
+  const tools = rt.toolsFor(arrange.agentIn(rt, thread.id).id);
   const form = (kind) => ({ id: 'when', type: 'form', version: 1, fallback: 'When?', fields: [{ id: 'day', label: 'Which day?', kind }] });
   await page.goto(`${app.origin}/#/t/${thread.id}`);
   await synced(page, app);

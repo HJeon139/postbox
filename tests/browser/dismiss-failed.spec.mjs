@@ -4,6 +4,7 @@
 // POSTBOX_STREAM_LAG.
 
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 import { heldBackend } from './side-threads.mjs';
 
@@ -26,8 +27,8 @@ const ERROR = 'API Error: Request rejected (429). Too many tokens, please wait b
 async function failedRoom(title) {
   const { rt, store } = app;
   const researcher = Object.values(store.state.personas).find((p) => p.handle === 'researcher');
-  const t = rt.createThread({ projectId: Object.values(rt.s.projects)[0].id, title, personaIds: [researcher.id] });
-  const [se] = rt.sessionsIn(t.id);
+  const t = rt.createThread({ projectId: Object.values(rt.store.state.projects)[0].id, title, personaIds: [researcher.id] });
+  const [se] = arrange.sessionsIn(rt, t.id);
   held.scripts.set(se.id, async () => {
     throw new Error(ERROR);
   });

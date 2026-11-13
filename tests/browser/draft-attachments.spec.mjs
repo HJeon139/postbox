@@ -8,6 +8,7 @@
 // page’s address, as following a link in the rail is. Each test has conversations of its own.
 
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { allowPageError, failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -23,14 +24,14 @@ test.afterAll(async () => {
 failOnPageErrors(test);
 
 /** A conversation with @librarian, in the first project or the one named. */
-function conversation(title, projectId = Object.values(app.rt.s.projects)[0].id) {
+function conversation(title, projectId = Object.values(app.rt.store.state.projects)[0].id) {
   const { rt } = app;
-  return rt.createThread({ projectId, title, personaIds: [rt.personaByHandle('librarian').id] });
+  return rt.createThread({ projectId, title, personaIds: [arrange.persona(rt, 'librarian').id] });
 }
 /** A topic thread of its own, from a message of yours in a new conversation. */
 function topicThread(title) {
   const t = conversation(title);
-  const root = app.rt.addItem(t.id, { kind: 'user', text: 'Start a thread from here.' });
+  const root = arrange.post(app.rt, t.id, { kind: 'user', text: 'Start a thread from here.' });
   return { t, side: app.rt.startTopic(t.id, root.id).threadId };
 }
 /** Goes to a page of the app as a link in the rail does, without reloading it. */

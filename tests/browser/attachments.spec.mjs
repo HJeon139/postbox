@@ -12,6 +12,7 @@
 
 import { expect, test } from '@playwright/test';
 import { escapeRegExp } from '../../shared/regex.mjs';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -28,8 +29,8 @@ test.use({ colorScheme: 'light' });
 /** A conversation of its own with @librarian, and a message of yours to start a topic thread from. */
 function conversation(title) {
   const { rt } = app;
-  const t = rt.createThread({ projectId: Object.values(rt.s.projects)[0].id, title, personaIds: [rt.personaByHandle('librarian').id] });
-  const root = rt.addItem(t.id, { kind: 'user', text: 'Start a thread from here.' });
+  const t = rt.createThread({ projectId: Object.values(rt.store.state.projects)[0].id, title, personaIds: [arrange.persona(rt, 'librarian').id] });
+  const root = arrange.post(rt, t.id, { kind: 'user', text: 'Start a thread from here.' });
   return { t, topic: () => rt.startTopic(t.id, root.id).threadId };
 }
 /** Builds a file in the page and drops it on the element at the middle of what the selector finds. */

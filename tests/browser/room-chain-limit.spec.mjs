@@ -4,6 +4,7 @@
 // menu’s button when the dialog closes.
 
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { allowPageError, failOnPageErrors, focusIs, startPostbox, synced } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -45,9 +46,9 @@ function controls(page, room) {
 
 /** Six wakes at once, as a chain runs, so no turn’s end starts the count again (#492): the sixth past the room’s 5. */
 function sixWakes(room) {
-  const waker = app.rt.sessionsIn(room.id).find((se) => se.handle === 'waker');
-  for (let i = 0; i < 5; i++) app.rt.agentWake(waker.id, 'woken', `check ${i + 1}`, { confirmed: true });
-  app.rt.agentWake(waker.id, 'woken', 'the sixth');
+  const waker = arrange.agentIn(app.rt, room.id, 'waker');
+  for (let i = 0; i < 5; i++) arrange.wake(app.rt, waker.id, 'woken', `check ${i + 1}`, { confirmed: true });
+  arrange.wake(app.rt, waker.id, 'woken', 'the sixth');
 }
 
 for (const width of [1280, 375])

@@ -9,6 +9,7 @@
 // On the demo’s mock agents, each case in a conversation of its own. Moved from tools/check-contract.mjs (#303).
 
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 
 // One click tries a hand-off of 1,258 pairs with their text (too large), then the same pairs by id.
@@ -38,10 +39,10 @@ test.use({ colorScheme: 'light' });
 /** A conversation of its own with these demo agents, open in the page. */
 async function conversation(page, title, handles) {
   const { rt } = app;
-  const t = rt.createThread({ projectId: Object.values(rt.s.projects)[0].id, title, personaIds: handles.map((h) => rt.personaByHandle(h).id) });
+  const t = rt.createThread({ projectId: Object.values(rt.store.state.projects)[0].id, title, personaIds: handles.map((h) => arrange.persona(rt, h).id) });
   await page.goto(`${app.origin}/#/t/${t.id}`);
   await synced(page, app);
-  const sessionOf = (handle) => rt.sessionsIn(t.id).find((x) => x.handle === handle);
+  const sessionOf = (handle) => arrange.agentIn(rt, t.id, handle);
   return { t, sessionOf };
 }
 
@@ -52,7 +53,7 @@ test('#50 a send over the event limit rejects inside the app, naming the limit a
   const { t, sessionOf } = await conversation(page, 'Hand-off', ['librarian']);
   const id = `handoff-${t.id}`;
   rt.toolsFor(sessionOf('librarian').id).show_app({ id, title: 'Hand-off', code: HANDOFF, permissions: [] });
-  await expect.poll(() => rt.s.apps[id]?.check.status, { message: 'the app to pass its check' }).toMatch(/^(passed|note)$/);
+  await expect.poll(() => rt.store.state.apps[id]?.check.status, { message: 'the app to pass its check' }).toMatch(/^(passed|note)$/);
   const frame = page.locator('iframe.app-iframe[title="Hand-off"]');
   await expect(frame).toHaveAttribute('data-sized', '1');
   // A frame takes no pointer events until the page sees the pointer over it (#38).
@@ -61,8 +62,8 @@ test('#50 a send over the event limit rejects inside the app, naming the limit a
   await page.mouse.move(box.x + box.width / 2, box.y + 50);
   await expect(frame).toHaveClass(/\blive\b/);
   await page.frameLocator('iframe.app-iframe[title="Hand-off"]').locator('#go').click();
-  await expect.poll(() => rt.s.apps[id].state?.ids, { message: 'the app to record what its sends returned' }).toBeTruthy();
-  const st = rt.s.apps[id].state;
+  await expect.poll(() => rt.store.state.apps[id].state?.ids, { message: 'the app to record what its sends returned' }).toBeTruthy();
+  const st = rt.store.state.apps[id].state;
   expect
     .soft(st.full, 'it rejects inside the app, naming the limit')
     .toMatch(/^refused: postbox\.send: .*larger than the 64 KB one event can carry, so nothing was sent/);
@@ -121,7 +122,7 @@ test('#94 an outcome on an answered confirm shows as a Markdown line under the a
   await expect.soft(node).toHaveClass(/\banswered\b/);
   await expect.soft(node.locator('button'), 'no buttons to press again').toHaveCount(0);
   await expect.soft(node.locator('.title'), 'the question the person answered stays as they saw it').toHaveText('Delete the video frames?');
-  expect.soft(rt.s.sessions[se.id].needs, 'the agent doesn’t need the person').toBeFalsy();
+  expect.soft(rt.session(se.id).needs, 'the agent doesn’t need the person').toBeFalsy();
   await expect.soft(node.locator('.g-needs'), 'no needs-you mark').toHaveCount(0);
 });
 
@@ -131,7 +132,7 @@ test('#109 asked to review another agent’s reply of over 5,000 characters, @cr
   const LAST = 'Last, the conclusion holds only for adults over 60.';
   const long = `${Array.from({ length: 24 }, (_, i) => `Finding ${i + 1}: the claim in section ${i + 1} rests on one study, and its sample is small. `.repeat(3)).join('\n\n')}\n\n${LAST}`;
   expect(long.length > 5000 && long.indexOf(LAST) > 2000, 'its last paragraph is past the cut').toBe(true);
-  rt.addItem(t.id, { kind: 'agent', sessionId: sessionOf('researcher').id, handle: 'researcher', text: long, status: 'done' });
+  arrange.post(rt, t.id, { kind: 'agent', sessionId: sessionOf('researcher').id, handle: 'researcher', text: long, status: 'done' });
   rt.sendMessage(t.id, { text: '@critic review what researcher wrote' });
   // What @critic said, as the server has it: the case is about what it read, not how the page draws it.
   const replied = () => store.items(t.id).find((x) => x.kind === 'agent' && x.handle === 'critic' && x.status === 'done')?.text;

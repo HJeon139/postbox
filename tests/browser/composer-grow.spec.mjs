@@ -5,6 +5,7 @@
 // then measures once.
 
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, frames, settled, startPostbox, synced } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -23,11 +24,11 @@ const LONG = (n) => `Reply ${n}. The observation is the only outside evidence in
 function room(title) {
   const { rt, store } = app;
   const project = Object.values(store.state.projects)[0];
-  const t = rt.createThread({ projectId: project.id, title, personaIds: [rt.personaByHandle('researcher').id] });
-  const [se] = rt.sessionsIn(t.id);
+  const t = rt.createThread({ projectId: project.id, title, personaIds: [arrange.persona(rt, 'researcher').id] });
+  const [se] = arrange.sessionsIn(rt, t.id);
   for (let i = 1; i <= 24; i++) {
-    if (i % 3 === 1) rt.addItem(t.id, { kind: 'user', text: `Question ${i}?` });
-    else rt.addItem(t.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text: LONG(i), status: 'done' });
+    if (i % 3 === 1) arrange.post(rt, t.id, { kind: 'user', text: `Question ${i}?` });
+    else arrange.post(rt, t.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text: LONG(i), status: 'done' });
   }
   return { t, se };
 }
@@ -35,12 +36,12 @@ function room(title) {
 /** Streams a reply a few words a frame, ends it, and waits for the page to draw its end. */
 async function stream(page, t, se, text) {
   const { rt, store } = app;
-  const it = rt.addItem(t.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text: '', status: 'streaming' });
+  const it = arrange.post(rt, t.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text: '', status: 'streaming' });
   for (const chunk of text.match(/\S+\s*/g) ?? []) {
     store.emit('item.text', { threadId: t.id, id: it.id, text: chunk });
     await frames(page);
   }
-  rt.patchItem(t.id, it.id, { status: 'done' });
+  arrange.setItem(rt, t.id, it.id, { status: 'done' });
   await expect(page.locator(`[data-key="${it.id}"] .caret`)).toHaveCount(0);
   await settled(page);
   return it;
@@ -131,7 +132,7 @@ test('#422 in the thread panel: a six-line draft keeps the panel’s newest mess
   const root = rt.store.items(t.id).find((i) => i.kind === 'agent');
   const { threadId } = rt.startTopic(t.id, root.id);
   for (let i = 1; i <= 30; i++)
-    rt.addItem(threadId, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text: LONG(i), status: 'done' });
+    arrange.post(rt, threadId, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text: LONG(i), status: 'done' });
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto(`${app.origin}/#/t/${t.id}/side/${threadId}`);
   await synced(page, app);
@@ -196,7 +197,7 @@ test('#360 in the thread panel: a composer that shrinks as a draft is sent leave
   const root = rt.store.items(t.id).find((i) => i.kind === 'agent');
   const { threadId } = rt.startTopic(t.id, root.id);
   for (let i = 1; i <= 30; i++)
-    rt.addItem(threadId, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text: LONG(i), status: 'done' });
+    arrange.post(rt, threadId, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text: LONG(i), status: 'done' });
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto(`${app.origin}/#/t/${t.id}/side/${threadId}`);
   await synced(page, app);

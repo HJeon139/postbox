@@ -9,6 +9,7 @@
 // tools/checks/composer-address.mjs (#303).
 
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, focusIs, startPostbox, synced } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -28,10 +29,10 @@ async function room(page, title) {
   const t = rt.createThread({
     projectId: Object.keys(store.state.projects)[0],
     title,
-    personaIds: ['critic', 'researcher'].map((h) => rt.personaByHandle(h).id),
+    personaIds: ['critic', 'researcher'].map((h) => arrange.persona(rt, h).id),
   });
-  const researcher = rt.sessionsIn(t.id).find((x) => x.handle === 'researcher');
-  const said = rt.addItem(t.id, {
+  const researcher = arrange.agentIn(rt, t.id, 'researcher');
+  const said = arrange.post(rt, t.id, {
     kind: 'agent',
     sessionId: researcher.id,
     personaId: researcher.personaId,
@@ -39,7 +40,7 @@ async function room(page, title) {
     text: 'Revision 3 is up.',
     status: 'done',
   });
-  rt.putThread({ ...store.state.threads[t.id], lastSpeaker: researcher.id });
+  arrange.putThread(rt, { ...store.state.threads[t.id], lastSpeaker: researcher.id });
   await page.goto(`${app.origin}/#/t/${t.id}`);
   await synced(page, app);
   await expect(page.locator('#composer-input')).toBeVisible();
@@ -70,7 +71,7 @@ test('#134 by keyboard: the suggestion is announced, keeps focus while the page 
   await expect(page.locator('#live'), 'announced').toHaveText(/^Did you mean @critic\?/);
   await hint(page, 'composer-input').locator('.did-you-mean').focus();
   // Anything an agent does repaints the composer.
-  app.rt.updateSession(researcher.id, { currentStep: 'Reading revision 3' });
+  arrange.setSession(app.rt, researcher.id, { currentStep: 'Reading revision 3' });
   await synced(page, app);
   await focusIs(page, /did you mean @critic/i);
   await page.keyboard.press('Enter');

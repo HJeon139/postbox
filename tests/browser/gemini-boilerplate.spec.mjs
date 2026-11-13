@@ -4,6 +4,7 @@
 
 import { expect, test } from '@playwright/test';
 import { AGY_CAPABILITIES } from '../../server/adapters/antigravity-cli.mjs';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -11,8 +12,8 @@ let app;
 
 test.beforeAll(async () => {
   app = await startPostbox('gemini-bp');
-  app.rt.adapters.register({ name: 'claude-code', deliver: async () => {} });
-  app.rt.adapters.register({
+  arrange.withAdapter(app.rt, { name: 'claude-code', deliver: async () => {} });
+  arrange.withAdapter(app.rt, {
     name: 'antigravity-cli',
     capabilities: { ...AGY_CAPABILITIES, models: ['claude-sonnet-4-6', 'gemini-2.5-pro'] },
     deliver: async () => {},
@@ -65,8 +66,8 @@ test('the Gemini boilerplate presets the Antigravity CLI, its first Gemini model
     await dialog.getByLabel('Name').fill(handle);
     await dialog.getByRole('button', { name: 'Create agent' }).click();
     await expect(dialog).toBeHidden();
-    await expect.poll(() => app.rt.personaByHandle(handle)?.backend).toBe('antigravity-cli');
-    const created = app.rt.personaByHandle(handle);
+    await expect.poll(() => arrange.persona(app.rt, handle)?.backend).toBe('antigravity-cli');
+    const created = arrange.persona(app.rt, handle);
     expect.soft(created?.model).toBe('gemini-2.5-pro');
     expect.soft(created?.tools).toEqual(['shell', 'web.fetch']);
     expect.soft(created?.instructions).toMatch(/^# Gemini\n/);
@@ -75,7 +76,7 @@ test('the Gemini boilerplate presets the Antigravity CLI, its first Gemini model
 
 test('without the Antigravity CLI, the Gemini boilerplate chip is disabled with its reason', async ({ page }) => {
   const threadId = Object.keys(app.store.state.threads)[0];
-  app.rt.adapters.adapters.delete('antigravity-cli');
+  arrange.withoutAdapter(app.rt, 'antigravity-cli');
   try {
     await page.goto(`${app.origin}/#/t/${threadId}`);
     await synced(page, app);
@@ -86,7 +87,7 @@ test('without the Antigravity CLI, the Gemini boilerplate chip is disabled with 
     await expect.soft(chip).toBeDisabled();
     await dlg.getByRole('button', { name: 'Cancel' }).click();
   } finally {
-    app.rt.adapters.register({
+    arrange.withAdapter(app.rt, {
       name: 'antigravity-cli',
       capabilities: { ...AGY_CAPABILITIES, models: ['claude-sonnet-4-6', 'gemini-2.5-pro'] },
       deliver: async () => {},

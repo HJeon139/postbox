@@ -12,6 +12,7 @@ import { shots } from '../../tools/uat/driver-shots.mjs';
 import { observe } from '../../tools/uat/observe.mjs';
 import { newProbes, recordInput } from '../../tools/uat/probes.mjs';
 import { STEPS } from '../../tools/uat/steps.mjs';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, frames, settled, startPostbox } from './postbox.mjs';
 import { holds, LONG, open as openIn, read, room as roomIn } from './view-read-fixture.mjs';
 
@@ -64,13 +65,13 @@ const windowSize = (/** @type {any} */ page) => page.evaluate(() => [innerWidth,
 /** The shot’s wait for the page to draw, during which a reply streams in, a few words a frame. */
 const streamIn = (/** @type {any} */ page, /** @type {any} */ t) => async () => {
   const { rt, store } = app;
-  const [se] = rt.sessionsIn(t.id);
-  const it = rt.addItem(t.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text: '', status: 'streaming' });
+  const [se] = arrange.sessionsIn(rt, t.id);
+  const it = arrange.post(rt, t.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text: '', status: 'streaming' });
   for (const word of `${LONG(80)} ${LONG(81)} ${LONG(82)}`.match(/\S+\s*/g) ?? []) {
     store.emit('item.text', { threadId: t.id, id: it.id, text: word });
     await frames(page);
   }
-  rt.patchItem(t.id, it.id, { status: 'done' });
+  arrange.setItem(rt, t.id, it.id, { status: 'done' });
   await expect(page.locator(`[data-key="${it.id}"]`)).toContainText('Reply 82');
   // Done adds the reply's actions. With the events late, that can land after the restore, and the view doesn't hear a
   // reply that grows inside the height it holds while following: filed apart, it's the page's, not the runner's.
@@ -146,12 +147,12 @@ test('scroll up reaches the page as PageUp from the composer: focusing the conve
 /** A long room with an app far above its end, open, its check passed, and the runner’s driver, recording its inputs. */
 async function appRoom(page, title) {
   const { t, say } = roomIn(app, title);
-  const [se] = app.rt.sessionsIn(t.id);
+  const [se] = arrange.sessionsIn(app.rt, t.id);
   app.rt.toolsFor(se.id).show_app({ id: `app-${t.id}`, title: 'Tally', code: '<p>Inside the app: 3 votes</p>' });
   for (let i = 31; i <= 60; i++) say(LONG(i));
   await openIn(app, page, t);
   // The page runs the app’s check.
-  await expect.poll(() => app.rt.s.apps[`app-${t.id}`]?.check?.status, { timeout: 30_000 }).toBe('passed');
+  await expect.poll(() => app.rt.store.state.apps[`app-${t.id}`]?.check?.status, { timeout: 30_000 }).toBe('passed');
   await settled(page);
   const facts = { probes: newProbes(), apps: /** @type {Record<string, any>} */ ({}), threads: [], state: app.store.state };
   const d = driver(await runnerPage(page), {

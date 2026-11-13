@@ -3,6 +3,7 @@
 
 import { expect, test } from '@playwright/test';
 import { CHAIN_HINT } from '../../shared/limits.mjs';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -20,9 +21,9 @@ test.beforeAll(async () => {
   // The count as the server keeps it (agentWake, server/side-threads.mjs); tests/wakes-no-pair-limit.test.mjs shows the
   // wakes themselves going past the old pair limit. Mock agents would answer each other and run it on.
   room = rt.createThread({ projectId: 'pr_chain', title: 'Chain', personaIds: personas.map((p) => p.id) });
-  rt.putThread({ ...store.state.threads[room.id], hops: CHAIN_HINT });
+  arrange.putThread(rt, { ...store.state.threads[room.id], hops: CHAIN_HINT });
   quiet = rt.createThread({ projectId: 'pr_chain', title: 'Quiet', personaIds: personas.map((p) => p.id) });
-  rt.putThread({ ...store.state.threads[quiet.id], hops: CHAIN_HINT - 1 });
+  arrange.putThread(rt, { ...store.state.threads[quiet.id], hops: CHAIN_HINT - 1 });
 });
 test.afterAll(async () => {
   await app?.stop();
