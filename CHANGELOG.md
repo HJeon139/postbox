@@ -2,6 +2,22 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.6.0 (2026-11-13)
+
+### Features
+
+- **models:** list each backend's models from its own harness
+
+### Fixes
+
+- **models:** answer the list when keeping it fails
+- **models:** refuse a model that starts with -
+- **models:** kill a CLI probe that outlives SIGTERM
+- **models:** run no hooks when Claude Code lists its models
+- **deps:** update hono and @hono/node-server to their patched versions
+- **models:** count a harness that throws as one that couldn't list
+- **models:** end a Claude Code model listing once
+
 ## 4.5.1 (2026-11-13)
 
 ### Fixes
