@@ -181,6 +181,11 @@ test('requestAdapter refuses a request about a persona whose backend isn’t reg
   );
 });
 
+test('requestAdapter gives a backend registered for hosts only its adapter, since it is registered', () => {
+  const p = rig({ here: ['mock'], hostOnly: ['codex'] });
+  assert.equal(p.requestAdapter('coder', { backend: 'codex' })?.name, 'codex');
+});
+
 test('refuseHere fails a turn here whose backend is registered for hosts only, for the person to read', () => {
   const p = rig({ here: ['mock'], hostOnly: ['codex'] });
   assert.doesNotThrow(() => p.refuseHere({ handle: 'coder' }, { backend: 'mock' }));
@@ -203,6 +208,11 @@ test('refuseUnregisteredSend refuses a message that would wake an agent whose ba
     ),
     '@b’s turn didn’t start: Codex isn’t available on this computer. Install it and restart Postbox, or change this agent’s backend.',
   );
+});
+
+test('refuseUnregisteredSend lets a message wake an agent whose backend is registered for hosts only', () => {
+  const p = rig({ here: ['mock'], hostOnly: ['codex'] });
+  assert.doesNotThrow(() => p.refuseUnregisteredSend([{ handle: 'far', backend: 'codex', remote: { hostId: 'h1' } }]));
 });
 
 // ── Hosts ────────────────────────────────────────────────────────────────────────────
