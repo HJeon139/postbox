@@ -2,6 +2,16 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.4.0 (2026-11-13)
+
+### Features
+
+- **seed:** add a scrum master boilerplate grounded in the agile manifesto
+
+### Fixes
+
+- **personas:** keep the scrum master's sprint board in a table block
+
 ## 4.3.1 (2026-11-12)
 
 ### Fixes
