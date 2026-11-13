@@ -190,12 +190,18 @@ export const adapter = (rt, name) => rt.adapters.get(name);
 export const adapterNames = (rt) => rt.adapters.names();
 
 /**
- * Fakes the processes Postbox lists and signals, to stop a turn’s or a kept job’s process tree without one.
- * @param {Runtime} rt @param {{ list?: () => Promise<object[]>, signal?: (pid: number, sig: string) => boolean }} fakes
+ * Fakes the processes Postbox lists and signals, to stop a turn’s or a kept job’s process tree without one. Returns a
+ * function that puts back what it replaced.
+ * @param {Runtime} rt @param {{ list?: () => Promise<object[]>, signal?: (pid: number, sig: string) => any }} fakes
  */
 export function withProcesses(rt, { list, signal }) {
+  const was = { list: rt.listProcesses, signal: rt.signalProcess };
   if (list) rt.listProcesses = /** @type {any} */ (list);
   if (signal) rt.signalProcess = /** @type {any} */ (signal);
+  return () => {
+    if (list) rt.listProcesses = was.list;
+    if (signal) rt.signalProcess = was.signal;
+  };
 }
 
 /**
