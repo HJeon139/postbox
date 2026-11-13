@@ -2,6 +2,7 @@
 import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import { versionIn } from '../../shared/cli-version.mjs';
+import { stopProbe } from './probe-stop.mjs';
 
 export const findCodex = (env = process.env) => env.POSTBOX_CODEX_BIN || 'codex';
 
@@ -16,7 +17,7 @@ function probe(bin, args, timeout = 8000) {
       resolve(null);
       return;
     }
-    const timer = setTimeout(() => child.kill(), timeout);
+    const timer = setTimeout(() => stopProbe(child), timeout);
     child.stdout.on('data', (chunk) => {
       out = (out + chunk).slice(-300_000);
     });
@@ -49,7 +50,7 @@ export async function codexModels(bin = findCodex(), { spawnImpl = spawn } = {})
     let timer;
     const finish = (models) => {
       clearTimeout(timer);
-      child.kill('SIGTERM');
+      stopProbe(child);
       rl.close();
       resolve(models);
     };

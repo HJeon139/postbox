@@ -39,6 +39,7 @@ import { claudeModels } from './claude-models.mjs';
 import { createStreamMapper, forkPointMissing, resultError, windowFor } from './claude-stream.mjs';
 import { agentFolder, forgetMemory, memoryRootFor } from './folder.mjs';
 import { FRESH_START_TEXT, formatMessage, turnGuide } from './guide.mjs';
+import { stopProbe } from './probe-stop.mjs';
 import { listProcesses, stopJobUnder, stopOnAbort, stopTurn } from './process-group.mjs';
 import { hostMemoryRoot } from './remote-turn.mjs';
 import { effortOf, fromContext, recorderFor } from './setup.mjs';
@@ -58,7 +59,7 @@ export function claudeVersion(bin = findClaude()) {
   return new Promise((resolve) => {
     let out = '';
     const p = spawn(bin, ['--version'], { stdio: ['ignore', 'pipe', 'ignore'] });
-    const timer = setTimeout(() => p.kill(), 8000);
+    const timer = setTimeout(() => stopProbe(p), 8000);
     p.stdout.on('data', (d) => {
       out += d;
     });

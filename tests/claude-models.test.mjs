@@ -103,3 +103,19 @@ test('claudeModels turns hooks off for the listing, so none of the person’s Se
   assert.ok(at >= 0, 'settings of its own, over the person’s');
   assert.deepEqual(JSON.parse(seen[0].args[at + 1]), { disableAllHooks: true });
 });
+
+test('a CLI that traps SIGTERM when its listing runs out of time gets SIGKILL after the grace', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const kills = [];
+  const spawnImpl = () => {
+    const child = Object.assign(new EventEmitter(), { stdin: new PassThrough(), stdout: new PassThrough() });
+    child.kill = (signal) => kills.push(signal) && true; // never closes: it traps SIGTERM
+    return child;
+  };
+  const listing = claudeModels('claude', { spawnImpl: /** @type {any} */ (spawnImpl), timeoutMs: 1000, graceMs: 500 });
+  t.mock.timers.tick(1000);
+  assert.deepEqual(await listing, []);
+  assert.deepEqual(kills, ['SIGTERM']);
+  t.mock.timers.tick(500);
+  assert.deepEqual(kills, ['SIGTERM', 'SIGKILL']);
+});

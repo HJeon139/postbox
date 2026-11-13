@@ -65,6 +65,7 @@ import { toolOf } from './agy-tools.mjs';
 import { agyContextPercent, agyWindowFor } from './context-usage.mjs';
 import { agentFolder } from './folder.mjs';
 import { FRESH_START_TEXT, formatMessage, turnGuide } from './guide.mjs';
+import { stopProbe } from './probe-stop.mjs';
 import { listProcesses, stopOnAbort, stopTurn } from './process-group.mjs';
 import { DEFAULT_MODEL, EFFORT_LEVELS, effortOf, modelOf, recorderFor, setupOf, TOOL_WORDS, toolsOff } from './setup.mjs';
 import { agyResult } from './work-calls.mjs';
@@ -83,7 +84,7 @@ export function agyVersion(bin = findAgy()) {
     } catch {
       return resolve(null); // a path that can’t be a binary (ENOTDIR) throws rather than emitting an error
     }
-    const timer = setTimeout(() => p.kill(), 8000);
+    const timer = setTimeout(() => stopProbe(p), 8000);
     p.stdout.on('data', (d) => {
       out += d;
     });
@@ -110,7 +111,7 @@ export function agyModels(bin = findAgy(), { spawnImpl = spawn } = {}) {
     } catch {
       return resolve([]);
     }
-    const timer = setTimeout(() => p.kill(), 15000);
+    const timer = setTimeout(() => stopProbe(p), 15000);
     p.stdout.on('data', (d) => {
       out = (out + d).slice(-200_000);
     });

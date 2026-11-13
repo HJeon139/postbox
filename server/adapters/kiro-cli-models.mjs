@@ -2,6 +2,7 @@
 
 import { spawn } from 'node:child_process';
 import { versionIn } from '../../shared/cli-version.mjs';
+import { stopProbe } from './probe-stop.mjs';
 
 /** The kiro-cli binary: POSTBOX_KIRO_BIN, then the PATH. */
 export const findKiro = (env = process.env) => env.POSTBOX_KIRO_BIN || 'kiro-cli';
@@ -11,7 +12,7 @@ export function kiroVersion(bin = findKiro()) {
   return new Promise((resolve) => {
     let out = '';
     const p = spawn(bin, ['--version'], { stdio: ['ignore', 'pipe', 'ignore'] });
-    const timer = setTimeout(() => p.kill(), 8000);
+    const timer = setTimeout(() => stopProbe(p), 8000);
     p.stdout.on('data', (d) => {
       out += d;
     });
@@ -41,7 +42,7 @@ export function kiroModels(bin = findKiro(), { spawnImpl = spawn } = {}) {
   return new Promise((resolve) => {
     let out = '';
     const p = spawnImpl(bin, ['chat', '--list-models', '--format', 'json'], { stdio: ['ignore', 'pipe', 'ignore'] });
-    const timer = setTimeout(() => p.kill(), 15000);
+    const timer = setTimeout(() => stopProbe(p), 15000);
     p.stdout.on('data', (d) => {
       out = (out + d).slice(-200_000);
     });

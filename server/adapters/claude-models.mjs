@@ -3,6 +3,7 @@
 
 import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
+import { stopProbe } from './probe-stop.mjs';
 
 /** How long a listing may take before it counts as failed. */
 const LIST_TIMEOUT_MS = 15_000;
@@ -28,12 +29,13 @@ export function modelIdsOf(rows) {
 const LISTING_SETTINGS = JSON.stringify({ disableAllHooks: true });
 
 /**
- * Claude Code’s models: `claude -p` in stream-json, asked with an initialize request and nothing else, then stopped.
- * Empty if it fails.
- * @param {string} bin @param {{ spawnImpl?: typeof spawn }} [opts]
+ * Claude Code’s models: `claude -p` in stream-json, asked with an initialize request and nothing else, then stopped
+ * (stopProbe). Empty if it fails.
+ * @param {string} bin @param {{ spawnImpl?: typeof spawn, timeoutMs?: number, graceMs?: number }} [opts]
+ *   timeoutMs: how long it may take; graceMs: how long it has to close after SIGTERM
  * @returns {Promise<string[]>}
  */
-export function claudeModels(bin, { spawnImpl = spawn } = {}) {
+export function claudeModels(bin, { spawnImpl = spawn, timeoutMs = LIST_TIMEOUT_MS, graceMs } = {}) {
   return new Promise((resolve) => {
     const args = ['-p', '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose', '--no-session-persistence'];
     args.push('--settings', LISTING_SETTINGS);
@@ -53,10 +55,10 @@ export function claudeModels(bin, { spawnImpl = spawn } = {}) {
       done = true;
       clearTimeout(timer);
       lines.close();
-      child.kill('SIGTERM');
+      stopProbe(child, graceMs);
       resolve(models);
     };
-    const timer = setTimeout(() => finish([]), LIST_TIMEOUT_MS);
+    const timer = setTimeout(() => finish([]), timeoutMs);
     timer.unref?.();
     lines.on('line', (line) => {
       let msg;
