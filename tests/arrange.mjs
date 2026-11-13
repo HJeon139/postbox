@@ -105,12 +105,6 @@ export const scheduledTimers = (rt) => rt.timers.size;
 /** Whether a scheduled wake waits on its timer. @param {Runtime} rt @param {string} scheduleId */
 export const scheduledTimer = (rt, scheduleId) => rt.timers.has(scheduleId);
 
-/** Keeps a scheduled wake from firing: clears its timer, and the wake stays as it was. @param {Runtime} rt @param {string} scheduleId */
-export function holdScheduled(rt, scheduleId) {
-  clearTimeout(rt.timers.get(scheduleId));
-  rt.timers.delete(scheduleId);
-}
-
 /**
  * Holds a turn on a host as stopping, so a remove or update of that host waits for it, until the returned function
  * lets it go. @param {Runtime} rt @param {string} turnId @param {object} entry

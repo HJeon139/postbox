@@ -126,7 +126,6 @@ test('#466 the schedule line shows a pending retry and when automatic retries st
   await expect(line).toContainText(/won’t wake itself \(canceled\)/);
   await expect(line).not.toContainText(/will retry/);
 
-  arrange.holdScheduled(rt, sc.id);
   store.emit('schedule', { id: sc.id, removed: true });
   arrange.setItem(rt, room.id, sc.itemId, { status: 'pending', retryStopped: true });
   await synced(page, app);
