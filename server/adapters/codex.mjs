@@ -147,7 +147,7 @@ async function answerRequest(ctx, host, send, msg) {
 
 /**
  * Opens the turn’s Codex thread (a fork at the saved point, a resume, or a new one), saves it, and starts the turn.
- * Returns turn/start’s answer, and the model it named.
+ * Returns turn/start’s answer, and the model it runs: the one it named, else the one Codex opened the thread with.
  * @param {any} ctx @param {(method: string, params?: any) => Promise<any>} request @param {(payload: any) => void} send
  * @param {string} cwd @param {any} session @param {any} message
  */
@@ -179,7 +179,8 @@ async function startTurn(ctx, request, send, cwd, session, message) {
     cwd,
     ...permissions,
   });
-  return { started, model };
+  // A persona on Codex’s default names none: the model Codex opened the thread with is the one that runs (#1315).
+  return { started, model: model ?? opened?.model ?? null };
 }
 
 export class CodexAdapter {
