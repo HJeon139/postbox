@@ -21,6 +21,7 @@ A test that must run a real process (npm, git, an installed postbox) goes in `te
 
 Browser checks are Playwright Test specs in `tests/browser/*.spec.mjs` (designs/architecture/browser-checks.md, “Browser checks on Playwright Test”, #303):
 - Each spec file starts its own Postbox in `beforeAll` with `startPostbox()` from `tests/browser/postbox.mjs`, stops it in `afterAll`, and calls `failOnPageErrors(test)`. Wait for the page to hear the server with `synced(page, app)`.
+- Act through the runtime’s facade (the routes’ methods, `store`, `thread`, `session`, `persona` and `toolsFor`). Arrange a room, read a live turn or fake a backend past it only through a helper of `tests/arrange.mjs`, adding one there when none fits, so the step that redoes a concern changes the fixture and no spec. Unit tests that arrange a room do the same (designs/architecture/services.md, “The fixture: arranging without the facade”).
 - Wait with web-first assertions (`expect(locator)…`), `expect.poll` or `expect(…).toPass`, never for a fixed time. The `no-fixed-waits` Biome rule fails `page.waitForTimeout` and `setTimeout` in a spec.
 - Find elements by role or name where the page gives one, else by the attribute the code sets (`data-key`, `data-session`). A locator that matches two elements is a question to answer, not to work around with `.first()`.
 - Click and type as a person does, through Playwright. Never `element.click()` in the page: it skips the mouse, and a real bug hid behind one (#307).
