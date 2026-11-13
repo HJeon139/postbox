@@ -1,6 +1,7 @@
 // The Gemini boilerplate in the new-agent sheet: picking it selects the Antigravity CLI backend, its first reported
 // Gemini model (or gemini-3.8-flash-high when none was reported), its prompt and its tools; picking a generic
-// boilerplate restores the default backend and model; creating the agent stores the Gemini persona.
+// boilerplate restores the default backend and model; creating the agent stores the Gemini persona. The Scrum master
+// boilerplate (#690) stays on the default backend with its own prompt and the web.
 
 import { expect, test } from '@playwright/test';
 import { AGY_CAPABILITIES } from '../../server/adapters/antigravity-cli.mjs';
@@ -72,6 +73,28 @@ test('the Gemini boilerplate presets the Antigravity CLI, its first Gemini model
     expect.soft(created?.tools).toEqual(['shell', 'web.fetch']);
     expect.soft(created?.instructions).toMatch(/^# Gemini\n/);
   });
+});
+
+test('#690: the Scrum master boilerplate is offered in New agent and creates a persona on the default backend', async ({ page }) => {
+  await page.goto(`${app.origin}/#/t/${Object.keys(app.store.state.threads)[0]}`);
+  await synced(page, app);
+  await page.getByRole('button', { name: 'Add a file or a new agent' }).click();
+  const menu = page.getByRole('menuitem', { name: /From a boilerplate/ });
+  await expect.soft(menu).toContainText('Scrum master');
+  await menu.click();
+  const dialog = page.getByRole('dialog', { name: 'New agent' });
+  const chip = dialog.getByRole('radiogroup', { name: 'Boilerplate' }).getByRole('radio', { name: 'Scrum master', exact: true });
+  await chip.click();
+  await expect.soft(chip).toHaveAttribute('aria-checked', 'true');
+  await expect.soft(dialog.getByLabel('Backend')).toHaveValue('claude-code');
+  await expect.soft(dialog.getByLabel('What it does')).toHaveValue(/Agile Manifesto/);
+  await expect.soft(dialog.getByLabel('Instructions')).toHaveValue(/^# Scrum master\n/);
+  await dialog.getByLabel('Name').fill('scrum');
+  await dialog.getByRole('button', { name: 'Create agent' }).click();
+  await expect(dialog).toBeHidden();
+  await expect.poll(() => app.rt.personaByHandle('scrum')?.backend).toBe('claude-code');
+  expect.soft(app.rt.personaByHandle('scrum')?.tools).toEqual(['web.fetch']);
+  expect.soft(app.rt.personaByHandle('scrum')?.instructions).toMatch(/^# Scrum master\n/);
 });
 
 test('without the Antigravity CLI, the Gemini boilerplate chip is disabled with its reason', async ({ page }) => {
