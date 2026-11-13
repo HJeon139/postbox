@@ -52,7 +52,10 @@ export async function replay(c, key, { view = async (/** @type {string} */ _hash
     (s) => {
       const review = c.items(s, s.threads[thread.id]).find((i) => i.block?.id === st.turns.critique.blockId);
       const resolved = review?.block.threads?.length && review.block.threads.every((t) => t.status === 'resolved');
-      return s.apps[st.turns.build.app.id]?.current === 2 && resolved && c.idle(s, s.threads[thread.id]);
+      // The room reads idle as each turn ends, but the turn’s work, with its cost, is recorded after that, once the
+      // ledger has read the files the turn changed (server/ledger.mjs endTurn): the end waits for both (#1309).
+      const recorded = (s.work?.[thread.id] ?? []).every((e) => e.kind !== 'turn' || e.status !== 'running');
+      return s.apps[st.turns.build.app.id]?.current === 2 && resolved && c.idle(s, s.threads[thread.id]) && recorded;
     },
     { label: `the ${key} replay’s v2`, timeout: 120000 },
   );
