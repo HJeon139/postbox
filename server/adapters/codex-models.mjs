@@ -2,6 +2,7 @@
 import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import { versionIn } from '../../shared/cli-version.mjs';
+import { stopProbe } from './probe-stop.mjs';
 
 export const findCodex = (env = process.env) => env.POSTBOX_CODEX_BIN || 'codex';
 
@@ -16,7 +17,7 @@ function probe(bin, args, timeout = 8000) {
       resolve(null);
       return;
     }
-    const timer = setTimeout(() => child.kill(), timeout);
+    const timer = setTimeout(() => stopProbe(child), timeout);
     child.stdout.on('data', (chunk) => {
       out = (out + chunk).slice(-300_000);
     });
@@ -33,13 +34,13 @@ export async function codexVersion(bin = findCodex()) {
   if (out == null) return null;
   return versionIn(out) ?? 'unknown';
 }
-export async function codexModels(bin = findCodex()) {
+export async function codexModels(bin = findCodex(), { spawnImpl = spawn } = {}) {
   // The documented app-server model/list method returns the local account's picker-visible catalog.
   return new Promise((resolve) => {
     /** @type {any} */
     let child;
     try {
-      child = spawn(bin, ['app-server', '--listen', 'stdio://'], { stdio: ['pipe', 'pipe', 'ignore'] });
+      child = spawnImpl(bin, ['app-server', '--listen', 'stdio://'], { stdio: ['pipe', 'pipe', 'ignore'] });
     } catch {
       resolve([]);
       return;
@@ -49,7 +50,7 @@ export async function codexModels(bin = findCodex()) {
     let timer;
     const finish = (models) => {
       clearTimeout(timer);
-      child.kill('SIGTERM');
+      stopProbe(child);
       rl.close();
       resolve(models);
     };

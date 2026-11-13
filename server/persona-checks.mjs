@@ -25,6 +25,15 @@ export function checkEffort(effort) {
   if (!EFFORT_LEVELS.includes(effort)) throw httpError(422, `Effort is one of ${EFFORT_LEVELS.join(', ')}.`);
 }
 /**
+ * A model the person typed goes to the harness as its --model, listed or not (#1302). One that starts with - would be
+ * read as one of the harness’s options, on every backend, so it’s refused.
+ * @param {unknown} model
+ */
+export function checkModel(model) {
+  if (String(model).startsWith('-'))
+    throw httpError(422, 'A model can’t start with -, since its harness would read it as an option. Type the model’s ID, such as claude-opus-5-5.');
+}
+/**
  * A persona’s name as it’s stored: without a leading @ and the spaces around it. One that HANDLE refuses is refused here, so
  * createPersona and agents.json’s check before seeding read a name the same way (#990).
  * @param {unknown} handle

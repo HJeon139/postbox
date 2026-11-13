@@ -14,6 +14,7 @@ import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { switchesLive } from '../../shared/hook-modes.mjs';
 import { withAskRules } from '../permission-rules.mjs';
+import { sdkModels } from './claude-models.mjs';
 import { createStreamMapper, forkPointMissing, resultError, windowFor } from './claude-stream.mjs';
 import { agentFolder, memoryRootFor } from './folder.mjs';
 import { FRESH_START_TEXT, formatMessage, turnGuide } from './guide.mjs';
@@ -167,6 +168,11 @@ export class AgentSdkAdapter {
     this.spawn = spawnImpl;
     this.kill = kill;
     this.list = list;
+  }
+
+  /** The models its harness offers, for the model field (server/model-lists.mjs). Empty if it can’t list. */
+  listModels() {
+    return sdkModels(this.sdk);
   }
 
   /** The folder the agent works in, by the rule every backend shares (folder.mjs). */

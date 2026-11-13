@@ -26,10 +26,12 @@ const PLACED = {
   'adapters/agy-hook.mjs': 1, // a request’s socket timeout: no store
   'adapters/antigravity-cli.mjs': 2, // kills a CLI probe: no store
   'adapters/claude-code.mjs': 1, // kills a CLI probe: no store
+  'adapters/claude-models.mjs': 3, // ends a model listing that took too long: no store
   'adapters/codex-models.mjs': 2, // kills a CLI probe: no store
   'adapters/codex-remote.mjs': 1, // an interrupt’s reach: no store
   'adapters/kiro-cli-models.mjs': 2, // kills a CLI probe: no store
   'adapters/mock.mjs': 1, // the mock’s pacing: no store
+  'adapters/probe-stop.mjs': 1, // SIGKILL for a probe that outlived SIGTERM’s grace: no store
   'adapters/process-group.mjs': 4, // SIGKILL after a Stop’s grace: Stop is allowed while closed
   'ask-question.mjs': 1, // a question’s CARD_WAIT_MS, expireWait: gated (#521)
   'claude-mirror.mjs': 1, // the mirror’s poll of an attached session’s transcript: skips its tick while closed

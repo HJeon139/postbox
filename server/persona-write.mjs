@@ -6,7 +6,7 @@ import { AUTO_MODEL, DEFAULT_EFFORT, DEFAULT_MODEL, POSTBOX_SERVER } from './ada
 import { placedFolder } from './folder-path.mjs';
 import { httpError } from './helpers.mjs';
 import { checkedMode } from './permission-modes.mjs';
-import { checkEffort, checkSetup, handleOf } from './persona-checks.mjs';
+import { checkEffort, checkModel, checkSetup, handleOf } from './persona-checks.mjs';
 import { newId } from './store.mjs';
 import { settleToolAsks } from './tool-ask.mjs';
 
@@ -16,16 +16,18 @@ const skillNames = (list) => [...new Set(list.map((n) => n.trim()))];
 const pick = (o, keys) => Object.fromEntries(keys.filter((k) => o[k] !== undefined).map((k) => [k, o[k]]));
 
 /**
- * The model a persona of this backend gets when it names none: the mock’s, else Claude’s default, unless the backend
- * offers AUTO_MODEL and not Claude’s default. That’s Codex, which runs none of Claude’s models and always offers
- * AUTO_MODEL, alone when its CLI gave no list (Codex only on a host, #120): Claude’s default would fail its turn. Kiro
- * runs Claude’s models, listed or not, and the Antigravity CLI puts its own default in place of Claude’s.
+ * The model a persona of this backend gets when it names none: the mock’s, else Claude’s default while the backend
+ * offers it, or offers no list yet. A backend that lists models without it gets AUTO_MODEL when it offers that: Codex,
+ * which runs none of Claude’s models and always offers AUTO_MODEL, alone when its CLI gave no list (Codex only on a
+ * host, #120). Otherwise it gets the first model its harness listed (server/model-lists.mjs), so a Claude Code whose
+ * models moved on never gets one it doesn’t run. The Antigravity CLI puts its own default in place of Claude’s.
  * @param {string} backend
  */
 function defaultModelFor(rt, backend) {
   if (backend === 'mock') return 'mock';
-  const offered = rt.placement.registeredAdapter({ backend })?.capabilities?.models ?? null;
-  return offered?.includes(AUTO_MODEL) && !offered.includes(DEFAULT_MODEL) ? AUTO_MODEL : DEFAULT_MODEL;
+  const offered = rt.placement.registeredAdapter({ backend })?.capabilities?.models ?? [];
+  if (!offered.length || offered.includes(DEFAULT_MODEL)) return DEFAULT_MODEL;
+  return offered.includes(AUTO_MODEL) ? AUTO_MODEL : offered[0];
 }
 
 export function createPersona(
@@ -54,6 +56,7 @@ export function createPersona(
   if (!rt.adapters.names().includes(backend)) throw httpError(422, rt.placement.notHere(backend));
   permissionMode = checkedMode(permissionMode);
   checkEffort(effort);
+  checkModel(model);
   checkSetup({ usesHostSetup, canPublish, mcpOff, skillsOff });
   const placed = rt.placement.placement(remote, backend);
   if (!placed && !rt.placement.runsHere(backend)) throw httpError(422, rt.placement.notHere(backend));
@@ -89,6 +92,7 @@ export function updatePersona(rt, id, patch) {
   if (!p) throw httpError(404, 'That agent doesn’t exist.');
   if (patch.permissionMode !== undefined) patch = { ...patch, permissionMode: checkedMode(patch.permissionMode) };
   if (patch.effort !== undefined) checkEffort(patch.effort);
+  if (patch.model !== undefined) checkModel(patch.model);
   checkSetup(patch);
   if (patch.mcpOff !== undefined) patch = { ...patch, mcpOff: serverNames(patch.mcpOff) };
   if (patch.skillsOff !== undefined) patch = { ...patch, skillsOff: skillNames(patch.skillsOff) };

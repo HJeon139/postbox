@@ -35,9 +35,11 @@ import { createInterface } from 'node:readline';
 import { versionIn } from '../../shared/cli-version.mjs';
 import { claudeArgs } from './claude-code-args.mjs';
 import { attachmentPaths, CLAUDE_CODE_CAPABILITIES, checkRemoteClaude, hostTurns, remoteGuide, remoteSaid, remoteTurn } from './claude-code-remote.mjs';
+import { claudeModels } from './claude-models.mjs';
 import { createStreamMapper, forkPointMissing, resultError, windowFor } from './claude-stream.mjs';
 import { agentFolder, forgetMemory, memoryRootFor } from './folder.mjs';
 import { FRESH_START_TEXT, formatMessage, turnGuide } from './guide.mjs';
+import { stopProbe } from './probe-stop.mjs';
 import { listProcesses, stopJobUnder, stopOnAbort, stopTurn } from './process-group.mjs';
 import { hostMemoryRoot } from './remote-turn.mjs';
 import { effortOf, fromContext, recorderFor } from './setup.mjs';
@@ -57,7 +59,7 @@ export function claudeVersion(bin = findClaude()) {
   return new Promise((resolve) => {
     let out = '';
     const p = spawn(bin, ['--version'], { stdio: ['ignore', 'pipe', 'ignore'] });
-    const timer = setTimeout(() => p.kill(), 8000);
+    const timer = setTimeout(() => stopProbe(p), 8000);
     p.stdout.on('data', (d) => {
       out += d;
     });
@@ -121,6 +123,11 @@ export class ClaudeCodeAdapter {
     this.spawn = spawnImpl;
     this.kill = kill;
     this.list = list;
+  }
+
+  /** The models its harness offers, for the model field (server/model-lists.mjs). Empty if it can’t list. */
+  listModels() {
+    return claudeModels(this.bin, { spawnImpl: this.spawn });
   }
 
   /** The folder the agent works in, by the rule every backend shares (folder.mjs). */

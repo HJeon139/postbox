@@ -53,7 +53,7 @@ import { tooLongForArg } from './arg-prompt.mjs';
 import { agentFolder } from './folder.mjs';
 import { FRESH_START_TEXT, formatMessage, turnGuide } from './guide.mjs';
 import { KIRO_TOOL_RULES, kiroAgent } from './kiro-cli-agent.mjs';
-import { findKiro, kiroModel, postboxModel } from './kiro-cli-models.mjs';
+import { findKiro, kiroModel, kiroModels, postboxModel } from './kiro-cli-models.mjs';
 import { attachmentPaths, KIRO_CAPABILITIES, kiroRemoteSpawn } from './kiro-cli-remote.mjs';
 import { kiroError, kiroExitError, overSizeLimit, SIZE_LIMIT_START_TEXT } from './kiro-errors.mjs';
 import { sessionInfo } from './kiro-session-info.mjs';
@@ -270,7 +270,7 @@ export class KiroCliAdapter {
   /**
    * @param {{ bin?: string, workRoot: string, isolatedHome: string, models?: string[], spawnImpl?: typeof spawn, env?: NodeJS.ProcessEnv,
    *           kill?: import('./process-group.mjs').KillFn, listProcesses?: () => Promise<import('./process-group.mjs').Proc[]> }} opts
-   *   models: what kiroModels found, offered in the model field; kill and listProcesses: how Stop signals and finds
+   *   models: a list to offer before Kiro is asked (server/model-lists.mjs); kill and listProcesses: how Stop signals and finds
    *   processes, which tests fake
    */
   constructor({
@@ -291,6 +291,11 @@ export class KiroCliAdapter {
     this.isolatedHome = isolatedHome;
     this.spawn = spawnImpl;
     this.env = env;
+  }
+
+  /** The models its harness offers, for the model field (server/model-lists.mjs). Empty if it can’t list. */
+  listModels() {
+    return kiroModels(this.bin, { spawnImpl: this.spawn });
   }
 
   /** The folder the agent works in, by the rule every backend shares (folder.mjs). */

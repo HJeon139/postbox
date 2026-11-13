@@ -3,29 +3,28 @@
 
 import { join } from 'node:path';
 import { AgentSdkAdapter, loadAgentSdk } from './adapters/agent-sdk.mjs';
-import { AntigravityCliAdapter, agyModels, agyVersion, findAgy } from './adapters/antigravity-cli.mjs';
+import { AntigravityCliAdapter, agyVersion, findAgy } from './adapters/antigravity-cli.mjs';
 import { ClaudeCodeAdapter, claudeVersion, findClaude } from './adapters/claude-code.mjs';
-import { CodexAdapter, codexModels, codexVersion, findCodex } from './adapters/codex.mjs';
-import { findKiro, KiroCliAdapter, kiroModels, kiroVersion } from './adapters/kiro-cli.mjs';
+import { CodexAdapter, codexVersion, findCodex } from './adapters/codex.mjs';
+import { findKiro, KiroCliAdapter, kiroVersion } from './adapters/kiro-cli.mjs';
+import { ModelLists } from './model-lists.mjs';
 
 /**
- * How Postbox looks for each real backend’s CLI on this computer: its version, or null when it isn’t here, and the
- * models some of them list. Tests pass fakes for some (start’s probes, #120).
+ * How Postbox looks for each real backend’s CLI on this computer: its version, or null when it isn’t here. Tests pass
+ * fakes for some (start’s probes, #120). Their models are asked when a model field opens (server/model-lists.mjs).
  */
 export const PROBES = {
   claude: () => claudeVersion(findClaude()),
   sdk: () => loadAgentSdk(),
   kiro: () => kiroVersion(findKiro()),
-  kiroModels: () => kiroModels(findKiro()),
   agy: () => agyVersion(findAgy()),
-  agyModels: () => agyModels(findAgy()),
   codex: () => codexVersion(findCodex()),
-  codexModels: () => codexModels(findCodex()),
 };
 
 /**
  * Registers the real backends with the adapters, moved from server/index.mjs’s start, which passes what it read.
- * Returns whether Postbox looked for them (real), and the version of each CLI it found here.
+ * Returns whether Postbox looked for them (real), the version of each CLI it found here, and their model lists, each
+ * offering the last list its harness gave.
  * @param {import('./adapters/adapter.mjs').AdapterRegistry} adapters
  * @param {{ dataDir: string, demo: boolean, probes?: Partial<typeof PROBES> }} opts
  */
@@ -42,14 +41,13 @@ export async function registerBackends(adapters, { dataDir, demo, probes }) {
   if (sdk) adapters.register(new AgentSdkAdapter({ sdk, workRoot }));
   // An Isolated Kiro persona runs with a Kiro home of Postbox’s own (#117), next to the workspaces.
   const kiro = real ? await look.kiro() : null;
-  if (real)
-    adapters.register(new KiroCliAdapter({ workRoot, isolatedHome: join(dataDir, 'kiro-home'), models: kiro ? await look.kiroModels() : [] }), {
-      here: !!kiro,
-    });
+  if (real) adapters.register(new KiroCliAdapter({ workRoot, isolatedHome: join(dataDir, 'kiro-home') }), { here: !!kiro });
   // The Antigravity CLI brings Gemini models (#143). It always runs with your own agy setup: see its adapter.
   const agy = real ? await look.agy() : null;
-  if (agy) adapters.register(new AntigravityCliAdapter({ workRoot, models: await look.agyModels(), version: agy }));
+  if (agy) adapters.register(new AntigravityCliAdapter({ workRoot, version: agy }));
   const codex = real ? await look.codex() : null;
-  if (real) adapters.register(new CodexAdapter({ workRoot, models: codex ? await look.codexModels() : [] }), { here: !!codex });
-  return { real, claude, kiro, agy, codex };
+  if (real) adapters.register(new CodexAdapter({ workRoot }), { here: !!codex });
+  const models = new ModelLists(adapters, { file: join(dataDir, 'model-lists.json') });
+  models.seed();
+  return { real, claude, kiro, agy, codex, models };
 }

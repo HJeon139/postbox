@@ -102,7 +102,7 @@ export async function start({
   process.env.POSTBOX_ORIGIN = origin;
   const { store, blobs, mediaDir } = await openDataFolder(dataDir, { fresh });
   const adapters = new AdapterRegistry().register(new MockAdapter());
-  const { real, claude, kiro, agy, codex } = await registerBackends(adapters, { dataDir, demo, probes });
+  const { real, claude, kiro, agy, codex, models } = await registerBackends(adapters, { dataDir, demo, probes });
   const config = {
     origin,
     // Which build this is, shown under Personas in the sidebar.
@@ -298,6 +298,9 @@ export async function start({
     if ((m = path.match(/^\/api\/threads\/([^/]+)$/)) && req.method === 'DELETE') return send(res, 200, rt.deleteThread(m[1]));
     if ((m = path.match(/^\/api\/threads\/([^/]+)$/)) && req.method === 'PATCH') return send(res, 200, patchThread(rt, m[1], body));
     if ((m = path.match(/^\/api\/threads\/([^/]+)\/messages$/)) && req.method === 'POST') return send(res, 201, rt.sendMessage(m[1], body));
+    // A backend’s models, asked of its harness when a model field opens (server/model-lists.mjs). A POST, so the
+    // page’s token gates the process it starts.
+    if ((m = path.match(/^\/api\/backends\/([^/]+)\/models$/)) && req.method === 'POST') return send(res, 200, await models.list(decodePath(m[1])));
     if ((m = path.match(/^\/api\/threads\/([^/]+)\/view$/)) && req.method === 'POST') {
       rt.view(m[1]);
       viewOf(rt).noteWindow(body);

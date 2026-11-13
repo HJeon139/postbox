@@ -24,7 +24,6 @@ export const BACKENDS = [
   ['codex', 'Codex', 'Runs the Codex app-server with your local Codex sign-in and configuration.'],
   ['mock', 'Mock agent', 'Scripted replies for trying Postbox out.'],
 ];
-export const MODELS = ['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5', 'claude-fable-5-1'];
 /** The model an Antigravity CLI persona runs when it names none, and when the CLI didn’t report its list (#143). */
 export const AGY_DEFAULT_MODEL = 'gemini-3.8-flash-high';
 export const GEMINI_MODEL = AGY_DEFAULT_MODEL;
@@ -193,16 +192,21 @@ export function boilerplateUnavailable(b, config = {}) {
   return `${BACKEND_NAMES[b.backend] ?? b.backend} not on this computer`;
 }
 
-/** The models a backend is known to offer, or null when the backend didn’t report a catalog. */
-const offeredBy = (id, config) =>
-  config?.backends?.[id]?.models ?? (id === 'claude-code' || id === 'agent-sdk' ? MODELS : id === 'antigravity-cli' ? [GEMINI_MODEL] : null);
+/**
+ * The models a backend offers: the last its harness listed (server/model-lists.mjs), or null before it has listed any.
+ * Antigravity’s default stands in for its list until then.
+ */
+const offeredBy = (id, config) => config?.backends?.[id]?.models ?? (id === 'antigravity-cli' ? [GEMINI_MODEL] : null);
 
-/** The default model for a backend when switching to it from an incompatible model. */
-const defaultFor = (id, config) => {
+/**
+ * The model a backend starts with: Postbox’s default while the backend offers it or has listed nothing, else the
+ * first model its harness listed. Antigravity’s default stands in for Claude’s until agy lists its models.
+ * @param {string} id @param {any} [config]
+ */
+export const modelDefault = (id, config) => {
   const offered = offeredBy(id, config);
-  if (id === 'claude-code' || id === 'agent-sdk') return config?.defaultModel ?? MODELS[0];
-  if (Array.isArray(offered) && offered.length) return offered[0];
-  return id === 'antigravity-cli' ? GEMINI_MODEL : (config?.defaultModel ?? MODELS[0]);
+  if (Array.isArray(offered) && offered.length) return offered.includes(config?.defaultModel) ? config.defaultModel : offered[0];
+  return config?.defaultModel;
 };
 
 /**
@@ -214,12 +218,12 @@ export function selectBackend(st, id, config = {}) {
   st.bpFromBackend = false;
   st.backend = id;
   const offered = offeredBy(id, config);
-  const prevOffered = prev === 'antigravity-cli' ? offeredBy(prev, config) : null;
-  const incompatible = Array.isArray(offered)
-    ? !offered.includes(st.model)
-    : Boolean(prev && prev !== id && Array.isArray(prevOffered) && prevOffered.includes(st.model));
+  // A backend that hasn’t listed its models yet keeps the model, unless it came from the previous backend’s list.
+  const prevOffered = prev && prev !== id ? offeredBy(prev, config) : null;
+  const incompatible = Array.isArray(offered) ? !offered.includes(st.model) : Boolean(Array.isArray(prevOffered) && prevOffered.includes(st.model));
   if (id !== 'mock' && (!st.model || st.model === 'mock' || incompatible)) {
-    st.model = defaultFor(id, config);
+    st.model = modelDefault(id, config);
+    st.modelDefaulted = true;
     st.effort = effortNamedBy(id, st.model) ?? config?.defaultEffort ?? 'medium';
   } else {
     st.effort = effortNamedBy(id, st.model) ?? st.effort;
@@ -247,7 +251,8 @@ export function applyBoilerplate(st, b, config = {}) {
     const offered = config?.backends?.[b.backend]?.models;
     const list = Array.isArray(offered) ? offered : [];
     const preferred = b.backend === 'codex' ? list[0] : list.find((m) => /^gemini-/.test(m));
-    st.model = (b.model && list.includes(b.model) ? b.model : preferred) ?? b.model ?? config?.defaultModel ?? MODELS[0];
+    st.model = (b.model && list.includes(b.model) ? b.model : preferred) ?? b.model ?? config?.defaultModel;
+    st.modelDefaulted = false;
     st.effort = effortNamedBy(st.backend, st.model) ?? config?.defaultEffort ?? 'medium';
   } else if (prevFromBp) {
     const def = BACKENDS.map(([id]) => id).find((id) => adapters.includes(id)) ?? 'mock';

@@ -8,7 +8,7 @@ import { HarnessEvents } from '../harness-events.mjs';
 import { codexApproval } from './codex-approval.mjs';
 import { itemCompleted, itemStarted } from './codex-events.mjs';
 import { codexMcpApprovalConfig, postboxMcpApprovalArgs } from './codex-mcp-policy.mjs';
-import { findCodex } from './codex-models.mjs';
+import { codexModels, findCodex } from './codex-models.mjs';
 import { networkOn } from './codex-network.mjs';
 import { attachmentPaths, CODEX_CAPABILITIES, createCodexHost, interruptReached, pickUp, remoteEnd, spawnRemoteCodex } from './codex-remote.mjs';
 import { codexRefusal, openCodexThread } from './codex-thread.mjs';
@@ -186,9 +186,9 @@ export class CodexAdapter {
   name = 'codex';
   /**
    * @param {{ bin?: string, workRoot?: string, models?: string[], spawnImpl?: typeof spawn, kill?: typeof process.kill,
-   *           listProcesses?: typeof listProcesses }} opts  models: what codexModels found here; AUTO_MODEL is offered
-   *   after them, and alone when there are none (Codex only on a host, #120), so the model field never falls back to
-   *   Claude’s models, which Codex doesn’t run
+   *           listProcesses?: typeof listProcesses }} opts  models: a list to offer before Codex is asked
+   *   (server/model-lists.mjs); AUTO_MODEL is offered after them, and alone when there are none (Codex only on a host,
+   *   #120), so the model field never falls back to Claude’s models, which Codex doesn’t run
    */
   constructor({ bin = findCodex(), workRoot = process.cwd(), models = [], spawnImpl = spawn, kill = process.kill, listProcesses: list = listProcesses } = {}) {
     this.bin = bin;
@@ -198,6 +198,12 @@ export class CodexAdapter {
     this.spawn = spawnImpl;
     this.capabilities = { ...CODEX_CAPABILITIES, models: [...new Set([...models, AUTO_MODEL])] };
   }
+  /** The models its harness offers, for the model field (server/model-lists.mjs). Empty if it can’t list. */
+  listModels() {
+    // AUTO_MODEL stays beside what Codex lists, as the constructor offers it.
+    return codexModels(this.bin, { spawnImpl: this.spawn }).then((listed) => (listed.length ? [...new Set([...listed, AUTO_MODEL])] : []));
+  }
+
   /** The folder the agent works in, by the rule every backend shares (folder.mjs). */
   folderFor(persona, project) {
     return agentFolder(persona, project, this.workRoot);
