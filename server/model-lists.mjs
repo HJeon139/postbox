@@ -63,10 +63,15 @@ export class ModelLists {
   #listed(adapter, backend, models) {
     this.listedAt.set(adapter, this.now());
     adapter.capabilities = { ...adapter.capabilities, models };
-    const kept = { ...this.#kept(), [backend]: models };
-    const tmp = `${this.file}.${process.pid}.tmp`;
-    writeFileSync(tmp, `${JSON.stringify(kept)}\n`);
-    renameSync(tmp, this.file);
+    // Keeping it is for a restart: a write that fails is logged, and the answer still has the list.
+    try {
+      const kept = { ...this.#kept(), [backend]: models };
+      const tmp = `${this.file}.${process.pid}.tmp`;
+      writeFileSync(tmp, `${JSON.stringify(kept)}\n`);
+      renameSync(tmp, this.file);
+    } catch (e) {
+      console.error(`Postbox couldn’t keep ${backend}’s models in ${this.file}: ${e instanceof Error ? e.message : e}. They’re listed again after a restart.`);
+    }
   }
 
   /** What the backend offers: the page and the server read capabilities.models (adapter.mjs). */

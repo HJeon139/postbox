@@ -105,3 +105,13 @@ test('a kept entry that isn’t a list of models is ignored at start', async () 
   assert.equal(kiro.capabilities.models, undefined);
   assert.deepEqual(codex.capabilities.models, ['gpt-5.6']);
 });
+
+test('a list that can’t be kept is still answered, and the failure is logged', async (t) => {
+  const logged = t.mock.method(console, 'error', () => {});
+  const adapter = lister('kiro-cli', [['m-1']]);
+  const file = join(tempDir('pb-models-'), 'missing-folder', 'model-lists.json');
+  const lists = new ModelLists(new AdapterRegistry().register(adapter), { file });
+  assert.deepEqual(await lists.list('kiro-cli'), { models: ['m-1'], fresh: true });
+  assert.equal(logged.mock.callCount(), 1);
+  assert.match(String(logged.mock.calls[0].arguments[0]), /couldn’t keep kiro-cli’s models/);
+});
