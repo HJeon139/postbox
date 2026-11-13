@@ -51,8 +51,7 @@ export function deliver(rt, sessionId, message, { summarizeTo = null, threadId =
   const persona = rt.persona(se.personaId);
   const adapter = rt.placement.registeredAdapter(persona);
   const turn = newTurn(se, message, persona, { where, slash, summarizeTo, asked });
-  // A host turn attached again after a restart is the one turn a session waiting for its attach begins (#1135).
-  rt.running.begin(turn, { attach: typeof message.attach === 'string' });
+  rt.running.begin(turn);
   // A persona on a remote host (#120): the turn is remote from here on (server/remote/turns.mjs).
   const hostId = adapter ? rt.placement.hostOf(persona) : null;
   if (hostId) rt.remote.begin(turn, hostId, adapter);

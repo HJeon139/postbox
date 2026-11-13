@@ -170,9 +170,10 @@ for (const [what, send] of Object.entries(unqueued))
     const { r, d, release } = heldWelcome('running');
     await until(() => r.rt.remote.restoring.has('host-turn-1'), 'the turn to wait for its welcome');
     send(r);
+    assert.ok(arrange.liveTurn(r.rt, r.se().id), 'its turn started, and waits for the host’s welcome too');
+    release();
     await until(() => starts(d).length === 1, 'its turn on the host');
     assert.match(messageOf(starts(d)[0]), /in the window/);
     d.end(starts(d)[0].turn);
     await settled(r);
-    release();
   });

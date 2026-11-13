@@ -1,7 +1,7 @@
 // Running’s interface (designs/architecture/services.md, “Running”): the live turn per session, the stopped turns still
 // exiting (#126), the sessions whose host turn waits to be attached again after a restart (#1135), and whether Postbox
-// is closing. Its invariants: at most one live turn per session; a busy session (running, exiting or awaiting attach)
-// starts no new turn; once closing, nothing starts. Turns are small plain objects; it never builds Runtime.
+// is closing. Its invariants: at most one live turn per session; none starts while the session’s stopped turn is still
+// exiting; once closing, nothing starts. Turns are small plain objects; it never builds Runtime.
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
@@ -112,14 +112,12 @@ test('no turn begins for a session whose stopped turn is still exiting', () => {
   assert.equal(running.turnOf('se_1'), undefined);
 });
 
-test('no turn begins for a session awaiting attach, except the attach itself', () => {
+test('a turn may begin for a session awaiting attach: what skips the queue still starts one, as before (#1135)', () => {
   const running = new Running();
   running.awaitAttach('se_1', 'h1');
-  assert.throws(() => running.begin(turn('se_1')), /waits to be attached/);
-  assert.equal(running.turnOf('se_1'), undefined);
-  const attach = turn('se_1', 'turn-attach');
-  running.begin(attach, { attach: true });
-  assert.equal(running.turnOf('se_1'), attach);
+  const t = turn('se_1');
+  running.begin(t);
+  assert.equal(running.turnOf('se_1'), t);
 });
 
 test('once closing, no turn begins, and closing stays set', () => {
