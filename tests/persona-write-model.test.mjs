@@ -36,3 +36,14 @@ test('a model the persona names is kept, listed or not', () => {
   const rt = setup(['claude-opus-6']);
   assert.equal(rt.createPersona({ handle: 'alpha', backend: 'claude-code', model: 'my-gateway/claude-custom' }).model, 'my-gateway/claude-custom');
 });
+
+test('a model that starts with - is refused, made or changed, so no harness reads it as an option', () => {
+  const rt = setup(null);
+  const refused = (e) => e.status === 422 && /can’t start with -/.test(e.message);
+  for (const backend of ['claude-code', 'codex'])
+    assert.throws(() => rt.createPersona({ handle: `dash-${backend}`, backend, model: '--dangerously-skip-permissions' }), refused);
+  assert.equal(rt.personaByHandle('dash-claude-code'), undefined);
+  const p = rt.createPersona({ handle: 'alpha', backend: 'claude-code', model: 'claude-opus-5-5' });
+  assert.throws(() => rt.updatePersona(p.id, { model: '-p' }), refused);
+  assert.equal(rt.personaByHandle('alpha').model, 'claude-opus-5-5');
+});

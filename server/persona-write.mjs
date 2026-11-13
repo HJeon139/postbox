@@ -6,7 +6,7 @@ import { AUTO_MODEL, DEFAULT_EFFORT, DEFAULT_MODEL, POSTBOX_SERVER } from './ada
 import { placedFolder } from './folder-path.mjs';
 import { httpError } from './helpers.mjs';
 import { checkedMode } from './permission-modes.mjs';
-import { checkEffort, checkSetup, handleOf } from './persona-checks.mjs';
+import { checkEffort, checkModel, checkSetup, handleOf } from './persona-checks.mjs';
 import { newId } from './store.mjs';
 import { settleToolAsks } from './tool-ask.mjs';
 
@@ -56,6 +56,7 @@ export function createPersona(
   if (!rt.adapters.names().includes(backend)) throw httpError(422, rt.placement.notHere(backend));
   permissionMode = checkedMode(permissionMode);
   checkEffort(effort);
+  checkModel(model);
   checkSetup({ usesHostSetup, canPublish, mcpOff, skillsOff });
   const placed = rt.placement.placement(remote, backend);
   if (!placed && !rt.placement.runsHere(backend)) throw httpError(422, rt.placement.notHere(backend));
@@ -91,6 +92,7 @@ export function updatePersona(rt, id, patch) {
   if (!p) throw httpError(404, 'That agent doesn’t exist.');
   if (patch.permissionMode !== undefined) patch = { ...patch, permissionMode: checkedMode(patch.permissionMode) };
   if (patch.effort !== undefined) checkEffort(patch.effort);
+  if (patch.model !== undefined) checkModel(patch.model);
   checkSetup(patch);
   if (patch.mcpOff !== undefined) patch = { ...patch, mcpOff: serverNames(patch.mcpOff) };
   if (patch.skillsOff !== undefined) patch = { ...patch, skillsOff: skillNames(patch.skillsOff) };
