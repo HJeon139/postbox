@@ -2,6 +2,7 @@
 // and the event log keeps only its metadata. See designs/architecture/assets.md, “Attachments”.
 
 import { createHash, randomBytes } from 'node:crypto';
+import { linkSync, mkdirSync } from 'node:fs';
 import { mkdir, open, readFile, rename, stat, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 
@@ -22,6 +23,25 @@ export class Blobs {
   pathOf(sha256) {
     if (!/^[a-f0-9]{64}$/.test(sha256)) throw new Error('Not a SHA-256 hash.');
     return join(this.dir, sha256.slice(0, 2), sha256.slice(2));
+  }
+
+  /**
+   * The blob at a path ending in `ext`, for an agent whose backend reads a file by its extension (#1307): a hard link
+   * in the store’s typed folder, made once, so it’s the same bytes and takes no more space. With no extension, or when
+   * the link can’t be made, its own path. Sync, as attachmentPath is (server/message-attachments.mjs).
+   * @param {string} sha256 @param {string} ext  such as .png
+   */
+  typedPathOf(sha256, ext) {
+    const blob = this.pathOf(sha256);
+    if (!/^\.[A-Za-z0-9]{1,12}$/.test(ext)) return blob;
+    const typed = join(this.dir, 'typed', sha256 + ext);
+    try {
+      mkdirSync(join(this.dir, 'typed'), { recursive: true, mode: 0o700 });
+      linkSync(blob, typed);
+    } catch (e) {
+      if (/** @type {any} */ (e).code !== 'EEXIST') return blob;
+    }
+    return typed;
   }
 
   /**

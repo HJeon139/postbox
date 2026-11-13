@@ -581,9 +581,10 @@ test('personas keep a permission mode and a model; real backends default to Clau
 
 test('attachments resolve to stored files, and project files stay inside the project folder', () => {
   const { rt, store, t } = setup();
-  rt.blobs = { pathOf: (sha) => `/data/blobs/${sha.slice(0, 2)}/${sha}` };
+  rt.blobs = { typedPathOf: (sha, ext) => `/data/blobs/typed/${sha}${ext}` };
   store.emit('file', { id: 'fi1', name: 'a.png', sha256: 'ab12' });
-  assert.equal(rt.attachmentPath(t.id, { kind: 'file', fileId: 'fi1' }), '/data/blobs/ab/ab12');
+  // At the path with its extension (#1307).
+  assert.equal(rt.attachmentPath(t.id, { kind: 'file', fileId: 'fi1' }), '/data/blobs/typed/ab12.png');
   assert.equal(rt.attachmentPath(t.id, { kind: 'project-file', path: 'notes/x.md' }), '/tmp/notes/x.md');
   assert.equal(rt.attachmentPath(t.id, { kind: 'project-file', path: '../etc/passwd' }), null);
 });
