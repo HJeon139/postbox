@@ -3,6 +3,7 @@
 // left off screen, and it's skipped again: a diagram there would never load.
 
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, settled, startPostbox, synced } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -22,10 +23,10 @@ test('a jump to a diagram at the end of a tall skipped reply far above draws it,
   const { rt } = app;
   const p = rt.createPersona({ handle: 'drawer' });
   const t = rt.createThread({ projectId: 'pr_inner', title: 'A diagram far up', personaIds: [p.id] });
-  const se = rt.sessionsIn(t.id)[0];
+  const se = arrange.agentIn(rt, t.id);
   const ids = [];
   for (let i = 0; i < 30; i++)
-    ids.push(rt.addItem(t.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text: text(i), status: 'done' }).id);
+    ids.push(arrange.post(rt, t.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text: text(i), status: 'done' }).id);
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto(`${app.origin}/#/t/${t.id}`);
   await synced(page, app);

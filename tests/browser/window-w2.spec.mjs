@@ -5,6 +5,7 @@
 
 import { expect, test } from '@playwright/test';
 import { seedBigRoom } from '../../tools/uat/big-room.mjs';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, settled, startPostbox, synced } from './postbox.mjs';
 
 const COUNT = 3000;
@@ -15,7 +16,7 @@ let app;
 let room = '';
 test.beforeAll(async () => {
   app = await startPostbox('window-w2');
-  const projectId = Object.values(app.rt.s.projects)[0].id;
+  const projectId = Object.values(app.rt.store.state.projects)[0].id;
   room = app.rt.createThread({ projectId, title: `${COUNT} items`, personaIds: [] }).id;
   seedBigRoom(app.store, room, { count: COUNT });
 });
@@ -96,7 +97,7 @@ test('#866 an item kept for its focus and then moved to the end leaves one stub,
   await page.mouse.move(640, 400);
   for (let round = 0; round < 4; round++) await scrollUp(page, 15);
   await expect(kept, 'kept on the page for its focus').toHaveCount(1);
-  app.rt.bringForward(room, id, { what: 'block', title: 'Moved while kept' });
+  arrange.moveToEnd(app.rt, room, id, { what: 'block', title: 'Moved while kept' });
   await synced(page, app);
   const stub = /** @type {any} */ (app.store.items(room).find((it) => it.kind === 'moved' && it.itemId === id)).id;
   await page.evaluate(() => /** @type {HTMLElement} */ (document.activeElement)?.blur());

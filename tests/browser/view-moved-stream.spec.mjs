@@ -6,6 +6,7 @@
 import { expect, test } from '@playwright/test';
 import { VIEW_CHECKS } from '../../tools/uat/room-checks-view.mjs';
 import { recordViews } from '../../tools/uat/view-probe.mjs';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, settled, startPostbox } from './postbox.mjs';
 import { holds, open as openIn, room as roomIn } from './view-read-fixture.mjs';
 
@@ -30,7 +31,7 @@ const WORDS = 'The plan stays grounded while the agent reads each result in turn
  */
 async function streamWhileSampling(page, t, se) {
   const { rt, store } = app;
-  const it = rt.addItem(t.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text: '', status: 'streaming' });
+  const it = arrange.post(rt, t.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text: '', status: 'streaming' });
   const facts = { probes: { inputs: [] } };
   const ev = (/** @type {string} */ expr) => page.evaluate(expr);
   let w = 0;
@@ -49,7 +50,7 @@ for (const width of [1280, 375]) {
     const { t } = roomIn(app, `Stream following ${width}`);
     await openIn(app, page, t, width);
     expect((await holds(page, t, 'mounted')).mode).toBe('following');
-    const facts = await streamWhileSampling(page, t, app.rt.sessionsIn(t.id)[0]);
+    const facts = await streamWhileSampling(page, t, arrange.agentIn(app.rt, t.id));
     const views = /** @type {any[]} */ (facts.probes.views ?? []);
     expect(views.length, 'the probe read the page each step').toBeGreaterThanOrEqual(8);
     expect(views.filter((s) => s.settled).length, 'some samples settled, so the check compared them').toBeGreaterThan(1);
@@ -63,7 +64,7 @@ for (const width of [1280, 375]) {
     await page.mouse.wheel(0, -1200);
     await settled(page);
     expect((await holds(page, t, 'after a wheel up')).mode).toBe('reading');
-    const facts = await streamWhileSampling(page, t, app.rt.sessionsIn(t.id)[0]);
+    const facts = await streamWhileSampling(page, t, arrange.agentIn(app.rt, t.id));
     const views = /** @type {any[]} */ (facts.probes.views ?? []);
     expect(views.filter((s) => s.settled).length, 'some samples settled, so the check compared them').toBeGreaterThan(1);
     expect(viewMoved.run(facts)).toEqual([]);

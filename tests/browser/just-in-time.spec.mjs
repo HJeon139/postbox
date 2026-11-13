@@ -6,6 +6,7 @@
 
 import { expect, test } from '@playwright/test';
 import { bigRoomItems, seedBigRoom } from '../../tools/uat/big-room.mjs';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, settled, startPostbox, synced } from './postbox.mjs';
 
 const COUNT = 10_000;
@@ -25,10 +26,10 @@ const ASK = { id: 'it_jitask', kind: 'block', handle: 'researcher', turnId: null
 const BLOCK = { id: 'jit-ask', type: 'confirm', version: 1, fallback: 'Ship it?', statement: 'Ship the old plan?', confirmLabel: 'Ship' };
 test.beforeAll(async () => {
   app = await startPostbox('just-in-time');
-  const projectId = Object.values(app.rt.s.projects)[0].id;
-  const t = app.rt.createThread({ projectId, title: `${COUNT} items`, personaIds: [app.rt.personaByHandle('researcher').id] });
+  const projectId = Object.values(app.rt.store.state.projects)[0].id;
+  const t = app.rt.createThread({ projectId, title: `${COUNT} items`, personaIds: [arrange.persona(app.rt, 'researcher').id] });
   room = t.id;
-  sessionId = app.rt.sessionsIn(room)[0].id;
+  sessionId = arrange.agentIn(app.rt, room).id;
   bigRoomItems({ count: COUNT }).items.forEach((item, i) => {
     if (i === 40) app.store.emit('item.add', { threadId: room, item: { ...ASK, sessionId, block: BLOCK, at: item.at } });
     app.store.emit('item.add', { threadId: room, item });
@@ -93,7 +94,7 @@ test('#1155 scrolling up past what’s loaded loads the range above, and keeps w
 });
 
 test('#1155 ⌃J to an ask far up the room loads the range around it and jumps there', async ({ page }) => {
-  app.rt.updateSession(sessionId, { state: 'needs', needs: { kind: 'block', itemId: ASK.id, text: 'Ship the old plan?' } });
+  arrange.setSession(app.rt, sessionId, { state: 'needs', needs: { kind: 'block', itemId: ASK.id, text: 'Ship the old plan?' } });
   try {
     await open(page);
     await expect(shown(page, ASK.id), 'not loaded at first').toHaveCount(0);
@@ -102,7 +103,7 @@ test('#1155 ⌃J to an ask far up the room loads the range around it and jumps t
     await expect(shown(page, ASK.id)).toBeInViewport({ timeout: 10_000 });
     await withinBudget(page, 'after ⌃J');
   } finally {
-    app.rt.updateSession(sessionId, { state: 'idle', needs: null });
+    arrange.setSession(app.rt, sessionId, { state: 'idle', needs: null });
   }
 });
 

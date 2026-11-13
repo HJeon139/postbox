@@ -6,6 +6,7 @@
 // may come from anywhere else in Postbox’s own code during the burst.
 
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, frames, newestShown, openAs, ROOM_MODES, settled, startPostbox, synced } from './postbox.mjs';
 
 // Tracing is off: Playwright’s trace snapshot walks the page each action, which Chromium counts as layouts too.
@@ -29,8 +30,8 @@ failOnPageErrors(test);
 async function bigRoom(page, title) {
   const { rt } = app;
   const project = Object.values(app.store.state.projects)[0];
-  const t = rt.createThread({ projectId: project.id, title, personaIds: [rt.personaByHandle('critic').id] });
-  const [se] = rt.sessionsIn(t.id);
+  const t = rt.createThread({ projectId: project.id, title, personaIds: [arrange.persona(rt, 'critic').id] });
+  const [se] = arrange.sessionsIn(rt, t.id);
   for (let i = 0; i < ITEMS; i++)
     app.store.emit('item.add', { threadId: t.id, item: { id: `it_g${title.length}_${i}`, at: Date.now(), kind: 'user', text: `Line ${i}` } });
   await page.goto(`${app.origin}/#/t/${t.id}`);
@@ -77,7 +78,7 @@ for (const mode of ROOM_MODES)
     await expect(page.locator('#main')).toHaveAttribute('data-view-mode', 'reading');
     const { layouts, forced } = await forcedOver(page, async () => {
       for (let i = 0; i < BURST; i++) {
-        app.rt.addItem(t.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text: `Reply ${i}`, status: 'done' });
+        arrange.post(app.rt, t.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text: `Reply ${i}`, status: 'done' });
         await frames(page);
       }
       await synced(page, app);
@@ -108,7 +109,7 @@ for (const mode of ROOM_MODES)
     await openAs(page, mode);
     const { t, se } = await bigRoom(page, `Following, ${mode}`);
     await expect(page.locator('#main')).toHaveAttribute('data-view-mode', 'following');
-    const it = app.rt.addItem(t.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text: '', status: 'streaming' });
+    const it = arrange.post(app.rt, t.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text: '', status: 'streaming' });
     await expect(page.locator(`[data-key="${it.id}"]`), 'the reply to reach the page').toBeAttached({ timeout: 15_000 });
     await settled(page);
     const { forced } = await forcedOver(page, async () => {

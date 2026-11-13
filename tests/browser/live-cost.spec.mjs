@@ -6,6 +6,7 @@
 
 import { setTimeout as pace } from 'node:timers/promises';
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, frames, startPostbox, synced } from './postbox.mjs';
 
 // Main’s layouts a step for this stream, at 6× throttle, its last paint counted: 108 to 113 for 44 steps in six runs
@@ -32,7 +33,7 @@ const CALLS = [
 test.beforeAll(async () => {
   app = await startPostbox('live-cost', { demo: false });
   app.store.emit('project', { id: 'pr_live', name: 'Live', folder: app.root });
-  app.rt.adapters.register({
+  arrange.withAdapter(app.rt, {
     name: 'mock',
     async deliver(/** @type {any} */ session, /** @type {any} */ message, /** @type {any} */ ctx) {
       // Postbox’s lint turn after each reply isn’t the agent’s work: it would run the whole stream again, as soon as

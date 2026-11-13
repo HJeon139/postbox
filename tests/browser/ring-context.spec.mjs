@@ -8,6 +8,7 @@
 import { readFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
 import { createStreamMapper } from '../../server/adapters/claude-stream.mjs';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -25,7 +26,7 @@ let held = false;
 test.beforeAll(async () => {
   app = await startPostbox('ring-context');
   const { rt, store } = app;
-  rt.adapters.register({
+  arrange.withAdapter(rt, {
     name: 'claude-code',
     async folderFor() {
       return app.root;
@@ -58,7 +59,7 @@ test('#189 a subagent with no reported context says so, and its activity still s
   rt.sendMessage(t.id, { text: 'Count the words, with a subagent.' });
   await expect.poll(() => held, { message: 'the replay to reach its pause' }).toBe(true);
   await synced(page, app);
-  const se = rt.sessionsIn(t.id)[0];
+  const se = arrange.agentIn(rt, t.id);
   expect(
     app.store.state.sessions[se.id].subagents.map((s) => s.ctx),
     'the server keeps it unknown',

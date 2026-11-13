@@ -6,6 +6,7 @@
 // style and script counters are recorded beside them.
 
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, frames, startPostbox, synced } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -26,10 +27,10 @@ async function seeded(page, name) {
   const { rt } = app;
   const p = rt.createPersona({ handle: name });
   const t = rt.createThread({ projectId: 'pr_steps', title: `Steps ${name}`, personaIds: [p.id] });
-  const se = rt.sessionsIn(t.id)[0];
+  const se = arrange.agentIn(rt, t.id);
   let last = '';
   for (let i = 0; i < 100; i++)
-    last = rt.addItem(t.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text: text(i), status: 'done' }).id;
+    last = arrange.post(rt, t.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text: text(i), status: 'done' }).id;
   await page.addInitScript(countWork);
   await page.goto(`${app.origin}/#/t/${t.id}`);
   await synced(page, app);

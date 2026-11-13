@@ -5,6 +5,7 @@
 // (view-skipped-tab.spec.mjs under lag, #1246).
 
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, settled, startPostbox, wholeRoom } from './postbox.mjs';
 import { holds, open, room } from './view-read-fixture.mjs';
 
@@ -29,7 +30,7 @@ test('#1257: scrolled into skipped items, a long reply drawing below what’s at
   const { t, say } = room(app, 'Scrolled into skipped items');
   const before = app.store.state.items[t.id].at(-1);
   say(TALL);
-  for (let i = 0; i < 40; i++) app.rt.addItem(t.id, { kind: 'user', text: `Note ${i} after the long reply.` });
+  for (let i = 0; i < 40; i++) arrange.post(app.rt, t.id, { kind: 'user', text: `Note ${i} after the long reply.` });
   await open(app, page, t);
   const target = page.locator(`#main.transcript > [data-key="${before.id}"]`);
   // The long reply was never on screen: it's at its estimate until a scroll brings it near.

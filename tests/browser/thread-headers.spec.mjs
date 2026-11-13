@@ -5,6 +5,7 @@
 // follows the header frame. Read from the page’s own items, each would miss the change.
 
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -20,14 +21,14 @@ let rooms = 0;
 function rooms2() {
   const { rt, store } = app;
   const projectId = /** @type {any} */ (Object.values(store.state.projects)[0]).id;
-  const researcher = rt.personaByHandle('researcher').id;
+  const researcher = arrange.persona(rt, 'researcher').id;
   const a = rt.createThread({ projectId, title: `Headers A ${++rooms}`, personaIds: [researcher] });
   // A's messages a minute old, B's half a minute: until A changes, B is the later of the two, by a clear margin.
   const now = Date.now();
-  for (let i = 0; i < 5; i++) rt.addItem(a.id, { kind: 'user', text: `Message ${i}`, at: now - 60_000 + i });
+  for (let i = 0; i < 5; i++) arrange.post(rt, a.id, { kind: 'user', text: `Message ${i}`, at: now - 60_000 + i });
   const b = rt.createThread({ projectId, title: `Headers B ${rooms}`, personaIds: [researcher] });
-  rt.addItem(b.id, { kind: 'user', text: 'Elsewhere', at: now - 30_000 });
-  return { projectId, a, b, sa: rt.sessionsIn(a.id)[0] };
+  arrange.post(rt, b.id, { kind: 'user', text: 'Elsewhere', at: now - 30_000 });
+  return { projectId, a, b, sa: arrange.agentIn(rt, a.id) };
 }
 
 /** Opens the page on a conversation, then has it let go of the named conversations’ items. */
@@ -53,7 +54,7 @@ test('#1155 a project opens on the conversation with the latest activity, from i
   await openWithout(page, b.id, [a.id, b.id]);
   // An app brought to the newest point in A, which the page doesn’t hold: only A’s header says A is latest now.
   const first = app.store.items(a.id)[0];
-  app.rt.bringForward(a.id, first.id, { what: 'block', title: 'Message 0' });
+  arrange.moveToEnd(app.rt, a.id, first.id, { what: 'block', title: 'Message 0' });
   await synced(page, app);
   await page.evaluate((p) => {
     localStorage.removeItem(`pb-last-${p}`);
@@ -65,7 +66,7 @@ test('#1155 a project opens on the conversation with the latest activity, from i
 test('#1155 the Threads page’s topic row counts its replies from the header', async ({ page }) => {
   const { projectId, a, b } = rooms2();
   const root = app.store.items(a.id)[0];
-  const topic = app.rt.putThread({
+  const topic = arrange.putThread(app.rt, {
     ...{ id: `th_topic${rooms}`, projectId, title: 'A topic', kind: 'topic', parentId: a.id, rootItemId: root.id },
     ...{ members: [], lastSpeaker: null, hops: 0, queue: [], createdAt: Date.now() },
   });
@@ -73,15 +74,15 @@ test('#1155 the Threads page’s topic row counts its replies from the header', 
   await go(page, `#/p/${projectId}/threads`);
   const card = page.locator('.thread-card', { hasText: 'A topic' });
   await expect(card).toContainText('0 replies');
-  app.rt.patchItem(a.id, root.id, { replies: 3, lastReplyAt: Date.now() });
+  arrange.setItem(app.rt, a.id, root.id, { replies: 3, lastReplyAt: Date.now() });
   await expect(card).toContainText('3 replies');
 });
 
 test('#1155 an agent’s open asks count the asks in its conversation’s header', async ({ page }) => {
   const { a, b, sa } = rooms2();
-  app.rt.addItem(a.id, { kind: 'block', sessionId: sa.id, handle: sa.handle, valid: true, answered: false, block: confirm('h-old') });
+  arrange.post(app.rt, a.id, { kind: 'block', sessionId: sa.id, handle: sa.handle, valid: true, answered: false, block: confirm('h-old') });
   await openWithout(page, b.id, [a.id]);
-  app.rt.addItem(a.id, { kind: 'block', sessionId: sa.id, handle: sa.handle, valid: true, answered: false, block: confirm('h-new') });
+  arrange.post(app.rt, a.id, { kind: 'block', sessionId: sa.id, handle: sa.handle, valid: true, answered: false, block: confirm('h-new') });
   await synced(page, app);
   const asks = () =>
     page.evaluate(
@@ -95,7 +96,7 @@ test('#1155 an agent’s open asks count the asks in its conversation’s header
 test('#1155 deleting a conversation counts its messages from its header', async ({ page }) => {
   const { a, b } = rooms2();
   await openWithout(page, b.id, [a.id]);
-  app.rt.addItem(a.id, { kind: 'user', text: 'One more' });
+  arrange.post(app.rt, a.id, { kind: 'user', text: 'One more' });
   await synced(page, app);
   await page.evaluate((id) => import('/app/js/sheets.mjs').then((m) => m.confirmDeleteThread(id)), a.id);
   await expect(page.getByRole('alertdialog')).toContainText('6 messages');

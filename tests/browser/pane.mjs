@@ -3,6 +3,7 @@
 // person sees it.
 
 import { expect } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { settled, startPostbox, synced } from './postbox.mjs';
 
 /** The conversation column’s minimum, and its composer’s text box at that width (designs/architecture/front-end.md, “Room for the conversation”). */
@@ -20,10 +21,10 @@ export async function paneRoom(name) {
   const app = await startPostbox(name);
   const { rt, store } = app;
   const c = Object.values(store.state.threads).find((t) => t.title === 'Citation fixes');
-  const [se] = rt.sessionsIn(c.id);
-  const say = (text) => rt.addItem(c.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text, status: 'done' });
+  const [se] = arrange.sessionsIn(rt, c.id);
+  const say = (text) => arrange.post(rt, c.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text, status: 'done' });
   for (let i = 1; i <= 4; i++) {
-    rt.addItem(c.id, { kind: 'user', text: `Question ${i}: which citations does the script still miss?` });
+    arrange.post(rt, c.id, { kind: 'user', text: `Question ${i}: which citations does the script still miss?` });
     say(`Answer ${i}: ${'The parser drops entries whose year sits in a note field, so the list comes up short. '.repeat(3)}`);
   }
   rt.toolsFor(se.id).show_app({

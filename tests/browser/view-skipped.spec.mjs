@@ -4,6 +4,7 @@
 
 import { expect, test } from '@playwright/test';
 import { FIRST_DAY_WORD } from '../../tools/uat/big-room.mjs';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, startPostbox, synced, wholeRoom } from './postbox.mjs';
 import { bigRoom, still } from './view-skipped-fixture.mjs';
 
@@ -57,14 +58,14 @@ for (const [width, estimate] of [
 function sideRoom(title) {
   const { rt, store } = app;
   const project = /** @type {any} */ (Object.values(store.state.projects)[0]);
-  const conv = rt.createThread({ projectId: project.id, title, personaIds: [rt.personaByHandle('researcher').id] });
-  rt.addItem(conv.id, { kind: 'user', text: 'A short conversation, with its long topic beside it.' });
+  const conv = rt.createThread({ projectId: project.id, title, personaIds: [arrange.persona(rt, 'researcher').id] });
+  arrange.post(rt, conv.id, { kind: 'user', text: 'A short conversation, with its long topic beside it.' });
   const side = rt.createThread({
     projectId: conv.projectId,
     title: 'A topic',
     kind: 'side',
     parentId: conv.id,
-    personaIds: [rt.personaByHandle('researcher').id],
+    personaIds: [arrange.persona(rt, 'researcher').id],
   });
   bigRoom(app, title, 1000, side);
   return { conv, side };

@@ -13,6 +13,7 @@
 
 import { expect, test } from '@playwright/test';
 import { escapeRegExp } from '../../shared/regex.mjs';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, PHONE, settled, startPostbox, synced, windowWidth } from './postbox.mjs';
 import { heldBackend, row, sideLine, sideRoom, words } from './side-threads.mjs';
 
@@ -142,7 +143,7 @@ test('/stop in the conversation stops its agents in side threads, and not a topi
     .poll(() => r.busy(r.researcher.id) && !!store.state.sessions[r.researcher.id].sideTurn, { message: '@researcher at work in the side thread' })
     .toBe(true);
   // A topic thread off the conversation has a turn running: its agent answers there from its one session (#228).
-  const root = rt.addItem(r.room.id, {
+  const root = arrange.post(rt, r.room.id, {
     kind: 'agent',
     sessionId: r.indexer.id,
     personaId: r.indexer.personaId,
@@ -212,7 +213,7 @@ test('an agent that wakes one from outside the conversation brings a card; Add j
   // The agents the person added say nothing of the kind.
   await expect(row(page, 'indexer')).not.toContainText('Joined when');
   // The mock @critic’s reply can ask something, which would count as needing you after this test.
-  await expect.poll(() => rt.turns.has(r.sessionIn('critic').id), { message: 'critic’s turn to end' }).toBe(false);
+  await expect.poll(() => arrange.running(rt, r.sessionIn('critic').id), { message: 'critic’s turn to end' }).toBe(false);
   rt.deleteSession(r.sessionIn('critic').id);
 });
 
@@ -220,7 +221,7 @@ test('the Threads page lists side threads beside topic threads, with their pair,
   const { rt, store } = app;
   const r = room('Listed');
   const side = await withSide(r);
-  const root = rt.addItem(r.room.id, {
+  const root = arrange.post(rt, r.room.id, {
     kind: 'agent',
     sessionId: r.indexer.id,
     personaId: r.indexer.personaId,

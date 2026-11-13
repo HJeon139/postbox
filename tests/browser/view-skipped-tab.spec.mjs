@@ -8,6 +8,7 @@
 // The view keeps saying what the page shows throughout.
 
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { frameOf } from './app-pointer.mjs';
 import { failOnPageErrors, startPostbox, synced, wholeRoom } from './postbox.mjs';
 import { holds } from './view-read-fixture.mjs';
@@ -38,15 +39,15 @@ const TALL = Array.from({ length: 80 }, (_, i) => `Paragraph ${i + 1} of the lon
 async function room(page, title) {
   const { rt, store } = app;
   const t = bigRoom(app, title, 500);
-  const [se] = rt.sessionsIn(t.id);
+  const [se] = arrange.sessionsIn(rt, t.id);
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto(app.origin);
   await synced(page, app);
   const id = `pad-${t.id}`;
   rt.toolsFor(se.id).show_app({ id, title: 'Pad', code: PAD, permissions: [] });
-  await expect.poll(() => rt.s.apps[id]?.check.status, { message: 'the pad to pass its check', timeout: 15_000 }).toMatch(/^(passed|note)$/);
-  const tall = rt.addItem(t.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text: TALL, status: 'done' });
-  for (let i = 0; i < 500; i++) rt.addItem(t.id, { kind: 'user', text: `Note ${i} after the pad.` });
+  await expect.poll(() => rt.store.state.apps[id]?.check.status, { message: 'the pad to pass its check', timeout: 15_000 }).toMatch(/^(passed|note)$/);
+  const tall = arrange.post(rt, t.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text: TALL, status: 'done' });
+  for (let i = 0; i < 500; i++) arrange.post(rt, t.id, { kind: 'user', text: `Note ${i} after the pad.` });
   await page.goto(`${app.origin}/#/t/${t.id}`);
   // A page opening on a thousand items under the full suite’s load can take longer than synced()’s 5 s to hear them.
   const seq = store.state.seq;
@@ -66,7 +67,7 @@ async function room(page, title) {
   await frame.evaluate((n) => n.scrollIntoView({ block: 'start' }));
   await still(page);
   const item = (/** @type {string} */ key) => page.locator(`.transcript > [data-key="${key}"]`);
-  return { t, frame, inside: frame.contentFrame().locator('#go'), appItem: item(rt.s.apps[id].itemId), tallItem: item(tall.id) };
+  return { t, frame, inside: frame.contentFrame().locator('#go'), appItem: item(rt.store.state.apps[id].itemId), tallItem: item(tall.id) };
 }
 
 /**
