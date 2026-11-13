@@ -42,6 +42,8 @@ test('Settings › Personas lists every boilerplate but Blank, and a chip opens 
       .map((b) => (b.backend === 'codex' ? `${b.name} (Codex not on this computer)` : b.name));
     await expect.soft(row.getByRole('button')).toHaveText(names);
     await expect.soft(row.getByRole('button', { name: 'Blank' }), 'New agent beside the row starts on Blank').toHaveCount(0);
+    await expect.soft(row.getByRole('button', { name: 'Scrum master' })).toBeEnabled();
+    await expect.soft(row.getByRole('button', { name: 'Indexer' })).toHaveCount(0);
     await expect.soft(row.getByRole('button', { name: 'GPT (Codex not on this computer)' })).toBeDisabled();
     await expect.soft(row.getByRole('button', { name: 'Gemini', exact: true })).toBeEnabled();
   });
