@@ -95,3 +95,11 @@ test('sdkModels is empty when the SDK can’t list', async () => {
   const sdk = { query: () => ({ supportedModels: async () => Promise.reject(new Error('not signed in')), close: () => {} }) };
   assert.deepEqual(await sdkModels(sdk), []);
 });
+
+test('claudeModels turns hooks off for the listing, so none of the person’s SessionStart hooks run', async () => {
+  const seen = [];
+  await claudeModels('claude', { spawnImpl: /** @type {any} */ (fakeClaude(ANSWER, seen)) });
+  const at = seen[0].args.indexOf('--settings');
+  assert.ok(at >= 0, 'settings of its own, over the person’s');
+  assert.deepEqual(JSON.parse(seen[0].args[at + 1]), { disableAllHooks: true });
+});

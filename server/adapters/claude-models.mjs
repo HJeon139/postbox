@@ -22,6 +22,12 @@ export function modelIdsOf(rows) {
 }
 
 /**
+ * Settings for a listing, passed with --settings over the person’s own: no hooks run, so a listing never runs their
+ * SessionStart hooks, up to once a minute for each open sheet. Hooks an organization manages still run.
+ */
+const LISTING_SETTINGS = JSON.stringify({ disableAllHooks: true });
+
+/**
  * Claude Code’s models: `claude -p` in stream-json, asked with an initialize request and nothing else, then stopped.
  * Empty if it fails.
  * @param {string} bin @param {{ spawnImpl?: typeof spawn }} [opts]
@@ -30,6 +36,7 @@ export function modelIdsOf(rows) {
 export function claudeModels(bin, { spawnImpl = spawn } = {}) {
   return new Promise((resolve) => {
     const args = ['-p', '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose', '--no-session-persistence'];
+    args.push('--settings', LISTING_SETTINGS);
     /** @type {any} */
     let child;
     try {
