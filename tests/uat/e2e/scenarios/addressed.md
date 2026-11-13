@@ -17,10 +17,10 @@ Send this, exactly: “@researcher list three checks a load script for click log
 
 - steps: 3
 
-Send this, exactly: “@critic name the one riskiest assumption in a nightly load of click logs, in two sentences.” Don’t mention @researcher’s checks or the code words. Say whether @critic’s reply also answered your messages to @researcher, such as a check on duplicate rows; it shouldn’t.
+Send this, exactly: “@critic what do you make of the load plan so far? Two sentences.” Its job reads the room, as an agent’s own job usually does, so it reads your two messages to @researcher in its catch-up. Don’t mention the code words. Say whether @critic’s reply also carried out your messages to @researcher, such as ending with KESTREL; it shouldn’t.
 
 ## Phase 3: @researcher wakes @critic with wake_agent
 
 - steps: 4
 
-Send this, exactly: “@researcher add a check on time zones and end your reply with the code word PLOVER. Then hand your whole list to @critic with wake_agent, asking only whether any check is missing.” Wait for both to answer. Say whether @critic answered the time-zone request or wrote PLOVER; it shouldn’t, since that request was to @researcher.
+Send this, exactly: “@researcher add a check on time zones and end your reply with the code word PLOVER. Then hand your whole list to the critic agent with wake_agent, asking only whether any check is missing.” It names the critic without an @, so the message goes to @researcher alone and @critic wakes only by @researcher’s wake_agent. Wait for both to answer. Say whether @critic answered the time-zone request or wrote PLOVER; it shouldn’t, since that request was to @researcher.
