@@ -28,10 +28,16 @@ export async function writeSnapshot(store) {
     let text = '';
     for (const line of snapshotLines(store.state)) {
       text += `${line}\n`;
+      if (text.length < PIECE) continue;
       while (text.length >= PIECE) text = await writePiece(fh, text, tmp);
+      // close() began: the file is removed below, so the rest isn’t written. A 1M-item store’s snapshot held the close
+      // for about 1.5 s of its 3 s bound writing pieces it then threw away.
+      if (store.retiring) break;
     }
-    while (text.length) text = await writePiece(fh, text, tmp);
-    await fh.sync();
+    if (!store.retiring) {
+      while (text.length) text = await writePiece(fh, text, tmp);
+      await fh.sync();
+    }
   } finally {
     await fh.close();
   }

@@ -8,7 +8,7 @@ import { readdir } from 'node:fs/promises';
 import { test } from 'node:test';
 import { Store } from '../server/store.mjs';
 import { run } from '../server/store-commit.mjs';
-import { disk, logDisk } from './store-jsonl-fixture.mjs';
+import { disk, handleWith, logDisk } from './store-jsonl-fixture.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
 const tmp = () => tempDir('pb-close-');
@@ -121,4 +121,34 @@ test('a descriptor that fails to close doesn’t leave the lock behind', async (
   const b = await new Store(dir).load(); // not refused
   assert.ok(b.state.threads.a1);
   await b.close();
+});
+
+test('a snapshot under way when close() begins stops at its next piece, rather than writing the rest it will throw away', async () => {
+  // A close() during the snapshot of a large state waited for every piece of a file it then removed: about 1.5 s of
+  // the close of a 1,000,000-item store, against its 3 s bound.
+  const dir = await tmp();
+  let pieces = 0;
+  let closing = /** @type {Promise<void> | null} */ (null);
+  const io = disk({
+    async open(path, flags, mode) {
+      const handle = await disk().open(path, flags, mode);
+      if (!String(path).includes('snapshot.json.')) return handle;
+      return handleWith(handle, {
+        write: async (...args) => {
+          pieces++;
+          closing ??= a.close(); // the close begins as the snapshot’s first piece goes to the disk
+          return handle.write(...args);
+        },
+      });
+    },
+  });
+  const a = await new Store(dir, { io }).load();
+  // About 4 MB of state: four pieces or more.
+  for (let i = 0; i < 400; i++) a.emit('thread', { id: `t${i}`, members: [], title: 'x'.repeat(10_000) });
+  await a.flush();
+  await assert.rejects(a.snapshot(), /abandoned/);
+  await closing;
+  assert.equal(pieces, 1, 'no piece is written after the close began');
+  const names = (await readdir(dir)).filter((n) => n.startsWith('snapshot'));
+  assert.deepEqual(names, [], 'the abandoned file is removed');
 });
