@@ -7,6 +7,7 @@
 
 import { expect, test } from '@playwright/test';
 import { AGY_CAPABILITIES } from '../../server/adapters/antigravity-cli.mjs';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, focusIs, startPostbox, synced } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -14,7 +15,7 @@ let app;
 
 test.beforeAll(async () => {
   app = await startPostbox('boilerplate-row', { demo: false });
-  app.rt.adapters.register({ name: 'antigravity-cli', capabilities: { ...AGY_CAPABILITIES, models: ['gemini-2.5-pro'] }, deliver: async () => {} });
+  arrange.withAdapter(app.rt, { name: 'antigravity-cli', capabilities: { ...AGY_CAPABILITIES, models: ['gemini-2.5-pro'] }, deliver: async () => {} });
 });
 
 test.afterAll(async () => {
@@ -72,7 +73,7 @@ test('Settings › Personas lists every boilerplate but Blank, and a chip opens 
     await sheet.getByRole('button', { name: 'Create agent' }).click();
     await expect(sheet).toBeHidden();
     await expect.soft(settings).toBeHidden();
-    await expect.poll(() => app.rt.personaByHandle(handle)?.backend).toBe('antigravity-cli');
+    await expect.poll(() => arrange.persona(app.rt, handle)?.backend).toBe('antigravity-cli');
   });
 });
 
@@ -93,7 +94,7 @@ test('New agent on a fresh install starts on Blank, and says no project holds it
     await sheet.getByLabel('Name').fill(handle);
     await sheet.getByRole('button', { name: 'Create agent' }).click();
     await expect(sheet).toBeHidden();
-    await expect.poll(() => app.rt.personaByHandle(handle)?.handle).toBe(handle);
-    expect.soft(app.rt.personaByHandle(handle)?.description).toBe('');
+    await expect.poll(() => arrange.persona(app.rt, handle)?.handle).toBe(handle);
+    expect.soft(arrange.persona(app.rt, handle)?.description).toBe('');
   });
 });
