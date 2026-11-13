@@ -12,8 +12,8 @@
 
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { switchesLive } from '../../shared/hook-modes.mjs';
 import { withAskRules } from '../permission-rules.mjs';
+import { liveControl, MODES } from './agent-sdk-live.mjs';
 import { sdkModels } from './claude-models.mjs';
 import { createStreamMapper, forkPointMissing, resultError, windowFor } from './claude-stream.mjs';
 import { agentFolder, memoryRootFor } from './folder.mjs';
@@ -22,9 +22,6 @@ import { listProcesses, stopJobUnder, stopTurn } from './process-group.mjs';
 import { listCommands } from './sdk-commands.mjs';
 import { canUseTool as sdkCanUseTool } from './sdk-permission.mjs';
 import { deniedTools, effortOf, fromContext, HOST_SOURCES, ISOLATED_SOURCES, modelOf, postboxServer, settingsFor, setupOf, writeRules } from './setup.mjs';
-
-// Passed explicitly, as for the CLI: an agent set to ask must not inherit a looser mode from your settings.
-const MODES = { auto: 'auto', ask: 'default', acceptEdits: 'acceptEdits', bypass: 'bypassPermissions' };
 
 /** Loads the SDK, or returns null when it isn’t installed. */
 export async function loadAgentSdk() {
@@ -99,49 +96,6 @@ export function sdkOptions({
     permissionMode: MODES[mode],
     ...(mode === 'bypass' ? { allowDangerouslySkipPermissions: true } : { canUseTool }),
     abortController,
-  };
-}
-
-/**
- * What the person can change while a turn runs: the permission mode (#66), the model and the effort (#67), with the
- * running query’s setPermissionMode, setModel and applyFlagSettings({ effortLevel }). The SDK documents them for
- * streaming input only, and Postbox sends a turn’s prompt as one string, so each change is tried, and resolves to
- * whether it took effect now; if not, it applies from the next turn, since all three are passed with every turn. A turn
- * that loaded the person’s hooks keeps its mode rather than switch into one that turns them off (switchesLive, #806).
- * @param {any} q  the running query  @param {string} [started]  the Postbox mode the turn started in
- */
-export function liveControl(q, started = 'auto') {
-  return {
-    /** @param {string} mode  one of Postbox’s modes */
-    async setPermissionMode(mode) {
-      if (!switchesLive(started, mode) || typeof q?.setPermissionMode !== 'function' || !Object.hasOwn(MODES, mode)) return false;
-      try {
-        await q.setPermissionMode(MODES[/** @type {keyof typeof MODES} */ (mode)]);
-        return true;
-      } catch {
-        return false;
-      }
-    },
-    /** @param {string} model */
-    async setModel(model) {
-      if (typeof q?.setModel !== 'function') return false;
-      try {
-        await q.setModel(model);
-        return true;
-      } catch {
-        return false;
-      }
-    },
-    /** @param {string} effort  one of EFFORT_LEVELS */
-    async setEffort(effort) {
-      if (typeof q?.applyFlagSettings !== 'function') return false;
-      try {
-        await q.applyFlagSettings({ effortLevel: effort });
-        return true;
-      } catch {
-        return false;
-      }
-    },
   };
 }
 
