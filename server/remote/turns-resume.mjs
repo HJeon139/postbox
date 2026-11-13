@@ -4,7 +4,7 @@
 // host’s welcome lists it.
 
 import { defaultHostSettings } from '../../shared/remote-settings.mjs';
-import { hostOf, registeredAdapter, unregisteredWhy } from './placement.mjs';
+import { hostOf, unregisteredWhy } from './placement.mjs';
 import { backgroundStopText, waitingOnBackground } from './turns-background.mjs';
 import { releaseHost } from './turns-need.mjs';
 import { continuing } from './turns-origin.mjs';
@@ -86,7 +86,7 @@ function autoResume(rts, sessionId) {
   // Only on the host it stopped on: an agent moved since waits for the person.
   if (hostOf(rt.personaFor(se)) !== r.hostId) return;
   // Nor can one whose backend isn’t registered here: a resume would only fail again (#874, #909).
-  if (!registeredAdapter(rt, rt.personaFor(se))) return;
+  if (!rt.placement.registeredAdapter(rt.personaFor(se))) return;
   // Nor while that host hasn’t confirmed a stop Postbox asked of it for this session (#965).
   if (stopWaitsOn(r, r.hostId)) return;
   // An interruption that keeps coming back waits for the person after a few resumes, and so does one whose process
@@ -138,7 +138,7 @@ export async function reattach(rts, sessionId) {
   // #909): it waits for the person, and the host is asked to stop a turn still there.
   const persona = rt.personaFor(now);
   const moved = hostOf(persona) !== r.hostId;
-  const unregistered = !registeredAdapter(rt, persona);
+  const unregistered = !rt.placement.registeredAdapter(persona);
   if (!listed || moved || unregistered) {
     rts.restoring.delete(r.turn);
     rts.early.delete(r.turn);

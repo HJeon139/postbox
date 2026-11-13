@@ -201,6 +201,9 @@ export function withoutAdapters(rt) {
   };
 }
 
+/** Why a backend can’t run on this computer, as a turn or a request for it is refused. @param {Runtime} rt @param {string} backend */
+export const notHere = (rt, backend) => rt.placement.notHere(backend);
+
 /** The backend registered under a name. @param {Runtime} rt @param {string} name */
 export const adapter = (rt, name) => rt.adapters.get(name);
 

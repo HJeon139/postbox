@@ -10,7 +10,7 @@ import { pointerIfSeen } from './catch-up.mjs';
 import { heldSession } from './held-session.mjs';
 import { httpError, retiredError } from './helpers.mjs';
 import { arrival } from './queue-batch.mjs';
-import { refuseHere, refuseUnregistered, registeredAdapter } from './remote/placement.mjs';
+import { refuseUnregistered } from './remote/placement.mjs';
 import { prepareScheduledRetry } from './scheduled-wakes.mjs';
 import { endChain } from './side-threads.mjs';
 import { newId } from './store.mjs';
@@ -49,11 +49,11 @@ export function deliver(rt, sessionId, message, { summarizeTo = null, threadId =
   const slash = message.slash === true || typeof message.attach === 'string';
   message = turnMessage(rt, se, message, where, slash);
   const persona = rt.persona(se.personaId);
-  const adapter = registeredAdapter(rt, persona);
+  const adapter = rt.placement.registeredAdapter(persona);
   const turn = newTurn(se, message, persona, { where, slash, summarizeTo, asked });
   rt.turns.set(sessionId, turn);
   // A persona on a remote host (#120): the turn is remote from here on (server/remote/turns.mjs).
-  const hostId = adapter ? rt.remote.hostOf(persona) : null;
+  const hostId = adapter ? rt.placement.hostOf(persona) : null;
   if (hostId) rt.remote.begin(turn, hostId, adapter);
   // The work ledger (#132) follows the turn’s tool calls. A change outside the project’s folder and the agent’s is
   // flagged; the adapter knows the agent’s folder. A remote agent’s folder is on its host, never made here.
@@ -210,7 +210,7 @@ function runTurn(rt, se, turn, message, { adapter, persona, hostId }) {
   // A remote turn has its host’s welcome, its host turn and the conversation’s snapshot before the adapter starts.
   const run = Promise.resolve().then(async () => {
     if (!adapter) refuseUnregistered(se, persona);
-    if (!hostId) refuseHere(rt, se, persona);
+    if (!hostId) rt.placement.refuseHere(se, persona);
     return adapter.deliver(rt.s.sessions[turn.sessionId], hostId ? await rt.remote.prepare(turn, ctx, message) : message, ctx);
   });
   turn.exited = run.then(

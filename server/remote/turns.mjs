@@ -139,11 +139,6 @@ export class RemoteTurns {
     this.needed.clear();
   }
 
-  /** The host a persona runs on, or null for this computer. @param {any} persona */
-  hostOf(persona) {
-    return hostOf(persona);
-  }
-
   /** Sessions with a turn on a host, running or being attached again (for removeHost). @param {string} hostId */
   sessionsOn(hostId) {
     return Object.values(this.rt.s.sessions)

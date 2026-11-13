@@ -5,7 +5,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
-import { notHere } from '../server/remote/placement.mjs';
 import { reattach } from '../server/remote/turns-resume.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { fireScheduledWake } from '../server/scheduled-wakes.mjs';
@@ -186,7 +185,7 @@ test('#874 an agent whose backend is registered for hosts only still gets refuse
   f.rt.drainAll();
   await settle(f.rt);
   const [failed] = failedIn(f, f.t.id);
-  assert.equal(failed.error, `@beta’s turn didn’t start: ${notHere(f.rt, 'claude-code')}`);
+  assert.equal(failed.error, `@beta’s turn didn’t start: ${arrange.notHere(f.rt, 'claude-code')}`);
   assert.match(failed.error, /^@beta’s turn didn’t start: “claude-code” isn’t available on this computer\. Available:/);
 });
 

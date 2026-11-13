@@ -132,7 +132,7 @@ function answerText(b, a) {
  */
 function attachedText(rt, list, reader) {
   if (!list?.length) return '';
-  const remote = Boolean(reader && rt.remote?.hostOf(rt.personaFor(reader)));
+  const remote = Boolean(reader && rt.placement?.hostOf(rt.personaFor(reader)));
   const names = list.map((a) => {
     const name = a.name ?? a.path;
     const where = reader && !remote ? rt.attachmentPath(reader.threadId, a) : null;

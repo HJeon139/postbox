@@ -7,7 +7,6 @@ import { placedFolder } from './folder-path.mjs';
 import { httpError } from './helpers.mjs';
 import { checkedMode } from './permission-modes.mjs';
 import { checkEffort, checkSetup, handleOf } from './persona-checks.mjs';
-import { notHere, placedPatch, placement, registeredAdapter, runsHere } from './remote/placement.mjs';
 import { newId } from './store.mjs';
 import { settleToolAsks } from './tool-ask.mjs';
 
@@ -25,7 +24,7 @@ const pick = (o, keys) => Object.fromEntries(keys.filter((k) => o[k] !== undefin
  */
 function defaultModelFor(rt, backend) {
   if (backend === 'mock') return 'mock';
-  const offered = registeredAdapter(rt, { backend })?.capabilities?.models ?? null;
+  const offered = rt.placement.registeredAdapter({ backend })?.capabilities?.models ?? null;
   return offered?.includes(AUTO_MODEL) && !offered.includes(DEFAULT_MODEL) ? AUTO_MODEL : DEFAULT_MODEL;
 }
 
@@ -52,12 +51,12 @@ export function createPersona(
 ) {
   handle = handleOf(handle);
   if (rt.personaByHandle(handle)) throw httpError(409, `@${handle} already exists. Pick another name.`);
-  if (!rt.adapters.names().includes(backend)) throw httpError(422, notHere(rt, backend));
+  if (!rt.adapters.names().includes(backend)) throw httpError(422, rt.placement.notHere(backend));
   permissionMode = checkedMode(permissionMode);
   checkEffort(effort);
   checkSetup({ usesHostSetup, canPublish, mcpOff, skillsOff });
-  const placed = placement(rt, remote, backend);
-  if (!placed && !runsHere(rt, backend)) throw httpError(422, notHere(rt, backend));
+  const placed = rt.placement.placement(remote, backend);
+  if (!placed && !rt.placement.runsHere(backend)) throw httpError(422, rt.placement.notHere(backend));
   const p = {
     id: newId('pe'),
     handle,
@@ -93,9 +92,9 @@ export function updatePersona(rt, id, patch) {
   checkSetup(patch);
   if (patch.mcpOff !== undefined) patch = { ...patch, mcpOff: serverNames(patch.mcpOff) };
   if (patch.skillsOff !== undefined) patch = { ...patch, skillsOff: skillNames(patch.skillsOff) };
-  if (patch.backend !== undefined && !rt.adapters.names().includes(patch.backend)) throw httpError(422, notHere(rt, patch.backend));
+  if (patch.backend !== undefined && !rt.adapters.names().includes(patch.backend)) throw httpError(422, rt.placement.notHere(patch.backend));
   // Where it runs (#120), and whether its backend runs here when that’s here.
-  patch = placedPatch(rt, id, p, patch);
+  patch = rt.placement.placedPatch(id, p, patch);
   // Its folder is checked for where it runs once the change is made (#990).
   if (patch.folder !== undefined) patch = { ...patch, folder: placedFolder(patch.folder, patch.remote === undefined ? p.remote : patch.remote) };
   // A persona moved from the mock to a real model gets that backend’s default model.

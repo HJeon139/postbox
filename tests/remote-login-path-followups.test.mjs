@@ -9,7 +9,7 @@ import { EventEmitter } from 'node:events';
 import { PassThrough } from 'node:stream';
 import { test } from 'node:test';
 import { pathMarkers, probeLoginPath } from '../server/remote/host/login-path.mjs';
-import { placement } from '../server/remote/placement.mjs';
+import { Placement } from '../server/remote/placement.mjs';
 
 const TOKEN = '11111111-2222-4333-8444-555555555555';
 
@@ -45,13 +45,14 @@ test('#1066 a probe’s time is on a monotonic clock, so setting the clock back 
 
 test('#1066 placement’s refusal for a CLI not found names the folders that came from the login shell', () => {
   const welcome = { harnesses: [{ name: 'codex', path: null, looked: ['/opt/tools/bin', '/usr/local/bin'], fromLogin: 1 }] };
-  const rt = {
-    s: { hosts: { h1: { id: 'h1', name: 'host.example.com' } } },
-    adapters: { names: () => ['codex'], get: () => ({ capabilities: { remote: true } }) },
+  const placed = new Placement({
+    store: { state: { hosts: { h1: { id: 'h1', name: 'host.example.com' } }, sessions: {} } },
+    midTurn: () => false,
+    adapters: /** @type {any} */ ({ names: () => ['codex'], get: () => ({ capabilities: { remote: true } }) }),
     hosts: { status: () => ({ welcome }) },
-  };
+  });
   assert.throws(
-    () => placement(rt, { hostId: 'h1' }, 'codex'),
+    () => placed.placement({ hostId: 'h1' }, 'codex'),
     (e) => {
       assert.match(e.message, /looked in \/opt\/tools\/bin \(from your login shell’s PATH\), then \/usr\/local\/bin\./);
       return true;

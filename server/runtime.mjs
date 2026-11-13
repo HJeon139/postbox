@@ -48,7 +48,7 @@ import { addReadFolder, readCardAlways } from './read-folders.mjs';
 import { readConversation, readLine, readMessage } from './read-message.mjs';
 import { addHost, host, removeHost, setProjectHostFolder, updateHost } from './remote/host-admin.mjs';
 import { describeHostInstall, hostStatus, installHost, retryHost, watchHosts } from './remote/host-status.mjs';
-import { localBackends } from './remote/placement.mjs';
+import { Placement } from './remote/placement.mjs';
 import { RemoteTurns } from './remote/turns.mjs';
 import { armWake, cancelWakeSchedule, rearmWakes, scheduleWake } from './scheduled-wakes.mjs';
 import { sendMessage, threadRefs } from './send-message.mjs';
@@ -130,6 +130,14 @@ export class Runtime {
     this.ledger = ledger ?? new Ledger({ store, blobs: this.blobs, home: this.home });
     // Turns of agents whose persona runs on a remote host (#120): server/remote/turns.mjs.
     this.hosts = hosts ?? null;
+    // Where each agent runs (designs/architecture/services.md, “Placement”). Until Running is a service, whether a
+    // session is mid-turn is read from the turns and the stopped ones still exiting.
+    this.placement = new Placement({
+      store,
+      midTurn: (sessionId) => this.turns.has(sessionId) || this.exiting.has(sessionId),
+      adapters,
+      hosts: this.hosts,
+    });
     this.remote = new RemoteTurns(this, { hosts: this.hosts });
     this.turnArchive = new ArchivePasses(this, { enabled: config.archiveTurns === true }); // #305: off until step 4
     // Conversations can’t be archived any more: one an older Postbox archived comes back as a live one.
@@ -770,7 +778,7 @@ export class Runtime {
   // ── Remote hosts (#120): server/remote/placement.mjs, host-admin.mjs and host-status.mjs ──────────
 
   localBackends() {
-    return localBackends(this);
+    return this.placement.localBackends();
   }
 
   host(id) {
