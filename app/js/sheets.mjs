@@ -10,8 +10,8 @@ import {
   effortNamedBy,
   MCP_SCOPE,
   MCP_STATUS,
-  MODELS,
   modeHelp,
+  modelDefault,
   PERMISSIONS,
   selectBackend,
 } from '/shared/agent-facts.mjs';
@@ -32,7 +32,7 @@ import { appearance, connect } from './sheets-settings.mjs';
 import { skillsField } from './skills-field.mjs';
 import { keepFocus, navigate, openDialog, say, toast } from './ui.mjs';
 
-export { capsOf, EFFORT_NAMES, MCP_SCOPE, MCP_STATUS, MODELS, modeHelp, modelsFor };
+export { capsOf, EFFORT_NAMES, MCP_SCOPE, MCP_STATUS, modeHelp, modelsFor };
 
 const S = () => client.state;
 /**
@@ -366,7 +366,9 @@ function newAgentChoices({ preset, bps, threadId }) {
     tools: new Set(preset?.tools ?? blank?.tools ?? []),
     where: threadId ? 'join' : 'new',
     backend: defaultBackend(),
-    model: client.config.defaultModel ?? 'claude-opus-5-5',
+    // Postbox’s pick until the person types one, so it follows the models the harness lists (model-field.mjs).
+    model: modelDefault(defaultBackend(), client.config),
+    modelDefaulted: true,
     effort: client.config.defaultEffort ?? 'medium',
     permissionMode: 'auto',
     usesHostSetup: true,
@@ -379,8 +381,6 @@ function newAgentChoices({ preset, bps, threadId }) {
     saveBp: false,
     error: null,
   };
-  if ((st.backend === 'codex' || st.backend === 'antigravity-cli') && !modelsFor(st.backend).includes(st.model) && modelsFor(st.backend).length)
-    st.model = modelsFor(st.backend)[0];
   st.effort = effortNamedBy(st.backend, st.model) ?? st.effort;
   return st;
 }

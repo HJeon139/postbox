@@ -16,16 +16,18 @@ const skillNames = (list) => [...new Set(list.map((n) => n.trim()))];
 const pick = (o, keys) => Object.fromEntries(keys.filter((k) => o[k] !== undefined).map((k) => [k, o[k]]));
 
 /**
- * The model a persona of this backend gets when it names none: the mock’s, else Claude’s default, unless the backend
- * offers AUTO_MODEL and not Claude’s default. That’s Codex, which runs none of Claude’s models and always offers
- * AUTO_MODEL, alone when its CLI gave no list (Codex only on a host, #120): Claude’s default would fail its turn. Kiro
- * runs Claude’s models, listed or not, and the Antigravity CLI puts its own default in place of Claude’s.
+ * The model a persona of this backend gets when it names none: the mock’s, else Claude’s default while the backend
+ * offers it, or offers no list yet. A backend that lists models without it gets AUTO_MODEL when it offers that: Codex,
+ * which runs none of Claude’s models and always offers AUTO_MODEL, alone when its CLI gave no list (Codex only on a
+ * host, #120). Otherwise it gets the first model its harness listed (server/model-lists.mjs), so a Claude Code whose
+ * models moved on never gets one it doesn’t run. The Antigravity CLI puts its own default in place of Claude’s.
  * @param {string} backend
  */
 function defaultModelFor(rt, backend) {
   if (backend === 'mock') return 'mock';
-  const offered = rt.placement.registeredAdapter({ backend })?.capabilities?.models ?? null;
-  return offered?.includes(AUTO_MODEL) && !offered.includes(DEFAULT_MODEL) ? AUTO_MODEL : DEFAULT_MODEL;
+  const offered = rt.placement.registeredAdapter({ backend })?.capabilities?.models ?? [];
+  if (!offered.length || offered.includes(DEFAULT_MODEL)) return DEFAULT_MODEL;
+  return offered.includes(AUTO_MODEL) ? AUTO_MODEL : offered[0];
 }
 
 export function createPersona(

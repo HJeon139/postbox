@@ -17,7 +17,7 @@ A persona runs on one of five backends. Pick one in the new-agent sheet, under *
 
 Postbox never reads, stores or asks for an API key. The Claude backends use Claude Code’s own sign-in, or `ANTHROPIC_API_KEY` if your environment already sets it; the Kiro CLI uses its own sign-in, or `KIRO_API_KEY`; the Antigravity CLI uses its own sign-in. Postbox starts each backend only if it can run here; the server’s first lines list the ones it found. `POSTBOX_BACKENDS=mock` turns the real ones off.
 
-**Model.** New agents use `claude-opus-5-5`. Any model name Claude Code accepts works; change it per persona under **Personas**.
+**Model.** Postbox keeps no list of models of its own. When a sheet with a **Model** field opens, Postbox asks that backend’s own harness which models it offers, and the field suggests them ([`server/model-lists.mjs`](../server/model-lists.mjs)): Claude Code answers an `initialize` request, the Agent SDK its `supportedModels()`, and the others their own list commands below. None of these runs a model. A list is used for a minute, and the last one each backend gave is kept in the data folder, so after a restart, or when the harness can’t list just then, the field suggests that one and says so. A backend that runs only on a host isn’t asked. New agents start on `claude-opus-5-5` while the backend lists it, or hasn’t listed yet, and otherwise on the first model it lists. The field takes any model you type, listed or not, and passes it to the harness as `--model`. Only switching backend changes it: to the new backend’s default, when that backend doesn’t offer it. Change it per persona under **Personas**.
 
 **Permissions.** Each persona has one of four modes:
 

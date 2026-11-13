@@ -26,6 +26,7 @@ const PLACED = {
   'adapters/agy-hook.mjs': 1, // a request’s socket timeout: no store
   'adapters/antigravity-cli.mjs': 2, // kills a CLI probe: no store
   'adapters/claude-code.mjs': 1, // kills a CLI probe: no store
+  'adapters/claude-models.mjs': 3, // ends a model listing that took too long: no store
   'adapters/codex-models.mjs': 2, // kills a CLI probe: no store
   'adapters/codex-remote.mjs': 1, // an interrupt’s reach: no store
   'adapters/kiro-cli-models.mjs': 2, // kills a CLI probe: no store

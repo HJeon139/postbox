@@ -43,6 +43,7 @@ const WRITE_ROUTES = {
   'DELETE ^\\/api\\/threads\\/([^/]+)$': ['/api/threads/th_none'],
   'PATCH ^\\/api\\/threads\\/([^/]+)$': ['/api/threads/th_none'],
   'POST ^\\/api\\/threads\\/([^/]+)\\/messages$': ['/api/threads/th_none/messages'],
+  'POST ^\\/api\\/backends\\/([^/]+)\\/models$': ['/api/backends/mock/models'],
   'POST ^\\/api\\/threads\\/([^/]+)\\/view$': ['/api/threads/th_none/view'],
   'PATCH ^\\/api\\/threads\\/([^/]+)\\/queue\\/([^/]+)$': ['/api/threads/th_none/queue/q_none'],
   'DELETE ^\\/api\\/threads\\/([^/]+)\\/queue\\/([^/]+)$': ['/api/threads/th_none/queue/q_none'],

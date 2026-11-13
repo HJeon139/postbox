@@ -13,7 +13,9 @@ let app;
 
 test.beforeAll(async () => {
   app = await startPostbox('gemini-bp');
-  arrange.withAdapter(app.rt, { name: 'claude-code', deliver: async () => {} });
+  // Claude Code’s models come from its harness (server/model-lists.mjs): here, as it lists them, kept from a listing.
+  const claudeModels = ['claude-opus-5-5', 'claude-sonnet-5-5'];
+  arrange.withAdapter(app.rt, { name: 'claude-code', capabilities: { models: claudeModels }, listModels: async () => claudeModels, deliver: async () => {} });
   arrange.withAdapter(app.rt, {
     name: 'antigravity-cli',
     capabilities: { ...AGY_CAPABILITIES, models: ['claude-sonnet-4-6', 'gemini-2.5-pro'] },

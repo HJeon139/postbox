@@ -560,7 +560,6 @@ export class AntigravityCliAdapter {
     this.kill = kill;
     this.list = list;
     this.capabilities = { ...AGY_CAPABILITIES, ...(models.length ? { models } : {}) };
-    this.models = models;
     this.version = version;
     this.hookScript = hookScript;
     this.bin = bin;
@@ -573,6 +572,11 @@ export class AntigravityCliAdapter {
     this.allowed = null;
     /** @type {Set<string>} */
     this.excluded = new Set();
+  }
+
+  /** The models its harness offers, for the model field (server/model-lists.mjs). Empty if it can’t list. */
+  listModels() {
+    return agyModels(this.bin);
   }
 
   /** The folder the agent works in, by the rule every backend shares (folder.mjs). */
@@ -643,7 +647,7 @@ export class AntigravityCliAdapter {
    */
   run({ ctx, cwd, addDirs, prompt, sessionId, wrote = false, hookConfirmed = false }) {
     const persona = ctx.persona;
-    const model = agyModel(persona, this.models);
+    const model = agyModel(persona, this.capabilities.models);
     const effort = agyEffort(model, effortOf(persona));
     const args = agyArgs({ persona, model, effort, sessionId, prompt, addDirs, hookConfirmed });
     const mapper = createAgyMapper(ctx, { effort, resumed: sessionId, wrote });

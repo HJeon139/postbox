@@ -35,6 +35,7 @@ import { createInterface } from 'node:readline';
 import { versionIn } from '../../shared/cli-version.mjs';
 import { claudeArgs } from './claude-code-args.mjs';
 import { attachmentPaths, CLAUDE_CODE_CAPABILITIES, checkRemoteClaude, hostTurns, remoteGuide, remoteSaid, remoteTurn } from './claude-code-remote.mjs';
+import { claudeModels } from './claude-models.mjs';
 import { createStreamMapper, forkPointMissing, resultError, windowFor } from './claude-stream.mjs';
 import { agentFolder, forgetMemory, memoryRootFor } from './folder.mjs';
 import { FRESH_START_TEXT, formatMessage, turnGuide } from './guide.mjs';
@@ -121,6 +122,11 @@ export class ClaudeCodeAdapter {
     this.spawn = spawnImpl;
     this.kill = kill;
     this.list = list;
+  }
+
+  /** The models its harness offers, for the model field (server/model-lists.mjs). Empty if it can’t list. */
+  listModels() {
+    return claudeModels(this.bin, { spawnImpl: this.spawn });
   }
 
   /** The folder the agent works in, by the rule every backend shares (folder.mjs). */
