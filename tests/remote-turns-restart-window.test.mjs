@@ -4,6 +4,8 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { fireScheduledWake } from '../server/scheduled-wakes.mjs';
+import * as arrange from './arrange.mjs';
 import { messageOf, restarted, rig, settled, sleep, starts, startUp, until } from './remote-turns-helpers.mjs';
 
 /** The rig after a restart, with the first host’s welcome held until release(). @param {'running' | 'missing'} welcome */
@@ -155,3 +157,22 @@ test('#1135 a message after the agent moved off a silent host and back waits for
   d.end(starts(d)[0].turn);
   await settled(r);
 });
+
+// What reaches deliver without the queue in the window is delivered: a turn starts on the host beside the one about
+// to be attached, a gap #1135 leaves open, but nothing is lost or thrown (#1303’s review).
+const unqueued = {
+  'Send now': (r) => r.rt.sendMessage(r.t.id, { text: 'in the window', sendNow: true }),
+  'a direct delivery': (r) => arrange.deliver(r.rt, r.se().id, { kind: 'notice', text: 'in the window' }),
+  'a scheduled wake that comes due': (r) => fireScheduledWake(r.rt, arrange.schedule(r.rt, r.se().id, { inMs: 1000, note: 'in the window' }).id),
+};
+for (const [what, send] of Object.entries(unqueued))
+  test(`#1135 ${what} while the turn waits to be attached is delivered, not lost`, async () => {
+    const { r, d, release } = heldWelcome('running');
+    await until(() => r.rt.remote.restoring.has('host-turn-1'), 'the turn to wait for its welcome');
+    send(r);
+    await until(() => starts(d).length === 1, 'its turn on the host');
+    assert.match(messageOf(starts(d)[0]), /in the window/);
+    d.end(starts(d)[0].turn);
+    await settled(r);
+    release();
+  });
