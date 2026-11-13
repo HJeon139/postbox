@@ -196,7 +196,7 @@ test('two shims of a turn sending at once can’t pass the limit on calls waitin
   }
 });
 
-test('update_block is checked with the catalog first; an invalid show_block still goes, since the laptop shows its fallback', async () => {
+test('update_block and show_block are checked with the catalog first; a valid show_block goes (#1319)', async () => {
   const h = makeHome();
   try {
     h.turn('t1');
@@ -207,7 +207,9 @@ test('update_block is checked with the catalog first; an invalid show_block stil
     assert.equal(bad.ok, false);
     assert.match(bad.text, /^The update was invalid and wasn’t applied: /);
     assert.match(k.logs.join('\n'), /update_block \(c1\) was refused/);
-    assert.equal((await s.call('c2', 'show_block', { block: { type: 'nope' } })).ok, true);
+    assert.equal((await s.call('c3', 'show_block', { block: { type: 'nope' } })).ok, false);
+    const card = { id: 'c', type: 'card', version: 1, fallback: 'Done.' };
+    assert.equal((await s.call('c2', 'show_block', { block: card })).ok, true);
     assert.deepEqual(
       k.sent.map((m) => m.id),
       ['c2'],

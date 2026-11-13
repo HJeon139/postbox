@@ -2,7 +2,7 @@
 // Moved out of catalog.mjs.
 
 import { LIMITS } from './limits.mjs';
-import { id, list, obj, str } from './schema.mjs';
+import { described, id, jsonOf, list, obj, str } from './schema.mjs';
 
 // An option may say more under its label (#838): agents gave options a description, and the whole block was refused.
 export const option = () => obj({ id: id(), label: str({ min: 1, max: 120 }), description: str({ min: 1, max: LIMITS.optionDescription }) }, ['id', 'label']);
@@ -12,7 +12,9 @@ const allStrings = (v) => Array.isArray(v) && v.length > 0 && v.every((o) => typ
  * A choice’s or a select’s options. Options that are all strings, an easy guess, get one error that shows an option’s
  * shape, from the first, rather than one for each (#455). @param {number} max @returns {import('./schema.mjs').Rule}
  */
-export const options = (max) => (v, path, errs) => {
+export const options = (max) => described(optionsRule(max), jsonOf(list(option(), { min: 1, max })));
+/** options’ check. @param {number} max @returns {import('./schema.mjs').Rule} */
+const optionsRule = (max) => (v, path, errs) => {
   if (!allStrings(v)) return list(option(), { min: 1, max, unique: 'id' })(v, path, errs);
   // The example has to be a valid option itself: from the first label that gives an id, else the first that isn’t
   // empty, with “one” as its id (#951).

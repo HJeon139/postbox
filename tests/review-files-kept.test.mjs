@@ -11,15 +11,16 @@ import { png, reviewBlock, setup } from './review-files-fixture.mjs';
 const reviewFile = async (...a) => (await servedReviewFile(...a))?.bytes ?? null;
 const blobsIn = async (f) => (await readdir(join(f.root, 'blobs'), { recursive: true }).catch(() => [])).filter((p) => /[0-9a-f]{62}$/.test(p)).sort();
 
-test('#828 an invalid show_block’s item carries no files, so its fallback names no image the route can’t serve', async () => {
+test('#828 #1319 an invalid show_block is refused with no item, and keeps none of its images', async () => {
   const f = await setup();
   await writeFile(join(f.folder, 'figs/today.png'), png(4, 3));
   const invalid = reviewBlock('bad', [{ path: 'figs/today.png' }]);
   invalid.block.format = 'nope';
   assert.equal((await f.call('show_block', invalid)).isError, true);
-  const item = f.store.items(f.t.id).find((i) => i.kind === 'block' && i.raw?.id === 'bad');
-  assert.ok(item, 'the invalid show is still an item, with its fallback');
-  assert.equal(item.files, undefined);
+  assert.equal(
+    f.store.items(f.t.id).find((i) => i.kind === 'block'),
+    undefined,
+  );
   assert.deepEqual(await blobsIn(f), []);
 });
 

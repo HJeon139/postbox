@@ -2,13 +2,13 @@
 // Pure and dependency-free, so the server, the browser and the tests share it.
 //
 // A block is JSON naming one component. Every block has id, type, version, an optional title and a
-// plain-text fallback. A block that fails validation is never rendered: the app shows its fallback
-// and a collapsed "Show the raw block" instead.
+// plain-text fallback. An agent’s block that fails validation is refused, and never shown (#1319). One this app
+// can’t read but a newer host’s catalog took shows its fallback and a collapsed "Show the raw block" instead.
 
 import { option, options } from './catalog-options.mjs';
 import { INTENT_CHARS, LIMITS, REVIEW_THREADS_MAX } from './limits.mjs';
 import { ANCHOR, anchorError, author, threadsError } from './review-comments.mjs';
-import { bool, id, int, list, num, obj, oneOf, scalar, str, typeName } from './schema.mjs';
+import { bool, described, id, int, jsonOf, list, num, obj, oneOf, scalar, str, typeName } from './schema.mjs';
 import { isSafeUrl, LOCAL_HTTP } from './urls.mjs';
 
 /** The newest version of each component this app can render. */
@@ -50,12 +50,13 @@ const outcome = () => str({ min: 1, max: LIMITS.outcome });
 
 // ── Component schemas ───────────────────────────────────────────────────────────────────
 
-const COMMON = { id: id(), type: str(), version: int({ min: 1, max: 999 }), title: str({ max: 200 }), fallback: str({ min: 1, max: LIMITS.fallback }) };
-const COMMON_REQUIRED = ['id', 'type', 'version', 'fallback'];
+export const COMMON = { id: id(), type: str(), version: int({ min: 1, max: 999 }), title: str({ max: 200 }), fallback: str({ min: 1, max: LIMITS.fallback }) };
+export const COMMON_REQUIRED = ['id', 'type', 'version', 'fallback'];
 // Retired fields stay valid so an update to a stored block doesn’t invalidate what an older agent showed.
 const RETIRED = { choice: { display: oneOf('chips', 'buttons') } };
 
-const SCHEMAS = {
+/** Each component’s fields, its required ones, and its checks across fields; block-json-schema.mjs reads them too. */
+export const SCHEMAS = {
   choice: {
     fields: {
       prompt: str({ max: LIMITS.prompt }),
@@ -113,10 +114,13 @@ const SCHEMAS = {
         obj(
           {
             id: id(),
-            cells: (v, p, e) => {
-              if (v === null || typeof v !== 'object' || Array.isArray(v)) return e.push(`${p} must be an object.`);
-              for (const [k, c] of Object.entries(v)) scalar()(c, `${p}.${k}`, e);
-            },
+            cells: described(
+              (v, p, e) => {
+                if (v === null || typeof v !== 'object' || Array.isArray(v)) return e.push(`${p} must be an object.`);
+                for (const [k, c] of Object.entries(v)) scalar()(c, `${p}.${k}`, e);
+              },
+              { type: 'object', additionalProperties: jsonOf(scalar()) },
+            ),
           },
           ['id', 'cells'],
         ),

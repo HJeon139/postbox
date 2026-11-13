@@ -2,7 +2,7 @@
 // down and sent to Postbox once it’s checked and its files are read as the laptop would; and Postbox’s reply to it.
 // broker.mjs’s header says what’s written down when.
 
-import { hostUpdateRefusal } from '../../../shared/block-updates.mjs';
+import { hostBlockRefusal } from '../../../shared/block-updates.mjs';
 import { validateBlock } from '../../../shared/catalog.mjs';
 import { carriesBlockFiles, encodedBytes, REMOTE_LIMITS, TURN_FILES, toolRoute } from '../../../shared/remote-protocol.mjs';
 import { filesReader, withoutFiles } from './broker-files.mjs';
@@ -35,14 +35,14 @@ export async function prepare(b, turn, name, args) {
     if (!r.ok) return r;
     out = r.args;
   }
-  // Only what the laptop would refuse outright is refused here; an invalid show_block or show_app still goes, since
-  // the laptop shows its fallback text (server/runtime.mjs’s show_block). An outcome or a withdraw isn’t a block, and
-  // Postbox checks it against the block it names (server/blocks.mjs, #854).
+  // Only what the laptop would refuse outright is refused here: an invalid block (#1319), by this host’s catalog. An
+  // outcome or a withdraw isn’t a block, and Postbox checks it against the block it names (server/blocks.mjs, #854).
   // A review’s files aren’t the catalog’s: Postbox takes them off the block before it validates it.
   const update = carriesBlockFiles(name, out) ? withoutFiles(out.block) : out.block;
-  const refused = name === 'update_block' ? hostUpdateRefusal(update) : null;
+  const refused = hostBlockRefusal(name, update);
   if (refused) return { ok: false, text: refused };
-  if (name === 'update_app' && typeof out.code === 'string') {
+  // An app the laptop would refuse, shown or updated, is refused here too, so the agent hears it in the call (#1319).
+  if ((name === 'update_app' || name === 'show_app') && typeof out.code === 'string') {
     const v = validateBlock({
       id: out.id,
       type: 'app',
@@ -51,7 +51,7 @@ export async function prepare(b, turn, name, args) {
       code: out.code,
       ...(out.permissions ? { permissions: out.permissions } : {}),
     });
-    if (!v.ok) return { ok: false, text: `The update was invalid: ${v.errors.join(' ')}` };
+    if (!v.ok) return { ok: false, text: `${name === 'show_app' ? 'The app wasn’t shown' : 'The update was invalid'}: ${v.errors.join(' ')}` };
   }
   const size = encodedBytes({ type: 'tool', turn, id: 'x'.repeat(128), name, args: out });
   if (size > REMOTE_LIMITS.lineBytes)

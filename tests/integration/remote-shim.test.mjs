@@ -84,7 +84,7 @@ test('server/discover and any other unknown method get method not found (-32601)
 test('a queued tool’s call reaches the daemon, and returns once the daemon has taken it', async (t) => {
   const { shim, daemon } = await setup(t);
   await daemon.connected();
-  const id = shim.tool('show_block', { block: { id: 'pick', type: 'choice', version: 1, fallback: 'Pick one' } });
+  const id = shim.tool('show_block', { block: { id: 'pick', type: 'choice', version: 1, fallback: 'Pick one', options: [{ id: 'a', label: 'A' }] } });
   const call = await daemon.next('call');
   assert.equal(call.name, 'show_block');
   assert.equal(call.args.block.id, 'pick');
