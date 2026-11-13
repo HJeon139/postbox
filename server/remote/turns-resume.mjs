@@ -141,6 +141,7 @@ export async function reattach(rts, sessionId) {
   const unregistered = !rt.placement.registeredAdapter(persona);
   if (!listed || moved || unregistered) {
     rts.restoring.delete(r.turn);
+    rts.noteAttach(sessionId);
     rts.early.delete(r.turn);
     // One the host lists as running, or interrupted with its process unkilled (#872), may still run there, moved or
     // not: the host is asked to stop it, and stays needed until the daemon confirms it (askStop). Asked before the

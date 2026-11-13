@@ -185,6 +185,7 @@ function attachTo(rts, live, se, turn, attach, remote) {
   replaying(live);
   remote.attach = { turn: attach };
   if (rts.restoring.delete(attach)) releaseHost(rts, live.hostId);
+  rts.noteAttach(se.id);
   updateRemote(rts, se.id, { state: 'running', rtTurn: turn.id, at: rts.now() });
   // Before the prompts that came meanwhile: a card shown before the restart still holds its call.
   claimShown(rts, live, attach);

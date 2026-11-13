@@ -31,7 +31,7 @@ export function sendMessage(rt, threadId, { text = '', attachments = [], sendNow
   const targets = targetsOf(rt, t, mentioned);
   // Messages to a busy agent wait in the queue unless you choose Send now, as for one whose host turn waits to be
   // attached again after a restart (#1135).
-  const busy = targets.filter(({ se }) => rt.turns.has(se.id) || rt.remote.awaitsAttach(se.id));
+  const busy = targets.filter(({ se }) => rt.running.turnOf(se.id) || rt.running.awaitsAttach(se.id));
   const q = busy.length && !sendNow ? { id: newId('q'), text, attachments, sessionIds: targets.map(({ se }) => se.id), at: Date.now(), seq: arrival() } : null;
   if (q) updateThread(rt, threadId, (x) => ({ queue: [...(x.queue ?? []), q] }));
   // Send now is a change of course (stopForSendNow), also for one already exiting from a plain Stop (#1040).

@@ -122,6 +122,9 @@ export function updatePersona(rt, id, patch) {
     version: (p.version ?? 1) + 1,
   };
   rt.store.emit('persona', next);
+  // Whether its sessions wait for a host turn to be attached again follows where it runs now (#1135), before anything
+  // below reads busy. Personas raises persona.updated for this from step 4 (designs/architecture/services.md, “Bus”).
+  for (const se of Object.values(rt.s.sessions)) if (se.personaId === id) rt.remote.noteAttach(se.id, next);
   // A card that asked for a tool now on answers itself, wherever it was turned on (#237).
   if (patch.tools !== undefined) settleToolAsks(rt, next);
   drainMovedOff(rt, id);

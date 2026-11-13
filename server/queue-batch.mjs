@@ -7,8 +7,8 @@ export function readyGroups(rt, thread, wakesOnly) {
   const groups = new Map();
   for (const q of thread.queue ?? []) {
     if (wakesOnly && q.kind !== 'wake') continue;
-    // A busy agent (busyFor) takes nothing yet (#427).
-    const free = !q.sessionIds.some((id) => blocked.has(id) || rt.busyFor(id));
+    // A busy agent (Running’s busy) takes nothing yet (#427).
+    const free = !q.sessionIds.some((id) => blocked.has(id) || rt.running.busy(id));
     if (!free) {
       for (const id of q.sessionIds) blocked.add(id);
       continue;
