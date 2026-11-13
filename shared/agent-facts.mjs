@@ -200,11 +200,11 @@ const offeredBy = (id, config) => config?.backends?.[id]?.models ?? (id === 'ant
 
 /**
  * The model a backend starts with: Postbox’s default while the backend offers it or has listed nothing, else the
- * first model its harness listed. Antigravity’s default stands in for Claude’s until agy lists its models.
- * @param {string} id @param {any} [config]
+ * first model its harness listed. Antigravity’s default stands in for Claude’s until agy lists its models. offered:
+ * the list to pick from, when it isn’t this computer’s, such as a host’s (#1304).
+ * @param {string} id @param {any} [config] @param {string[] | null} [offered]
  */
-export const modelDefault = (id, config) => {
-  const offered = offeredBy(id, config);
+export const modelDefault = (id, config, offered = offeredBy(id, config)) => {
   if (Array.isArray(offered) && offered.length) return offered.includes(config?.defaultModel) ? config.defaultModel : offered[0];
   return config?.defaultModel;
 };

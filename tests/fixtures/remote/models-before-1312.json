@@ -1,0 +1,5 @@
+{
+  "type": "error",
+  "code": "bad-message",
+  "message": "“models” isn’t a message on this channel; it carries hello, start, snapshot, snapshot-items, read, write, answer, reply, stop, ack, remove, check."
+}
