@@ -125,8 +125,9 @@ const PENDING = {
   // The members a delete keeps its room for, maybe joined behind a held commit (#796); the session it deletes, and the
   // threads a conversation’s delete covers, any of them maybe made there too. Every lookup comes before any change.
   'session-lifecycle.mjs': ['conversationScope', 'conversationScope', 'deleteSession', 'deleteSession', 'deleteSession', 'deleteSession', 'deleteSession'],
-  // An agent changed or deleted, and a deleted agent’s sessions, any of them maybe made behind a held commit.
-  'persona-write.mjs': ['updatePersona'],
+  // An agent changed or deleted, and a deleted agent’s sessions, any of them maybe made behind a held commit; and an
+  // agent’s sessions whose last report a backend switch drops (#1315).
+  'persona-write.mjs': ['updatePersona', 'updatePersona'],
   'persona-delete.mjs': ['deletePersona', 'deletePersona', 'deletePersona'],
   'session-write.mjs': ['updateSession', 'needAt', 'stampNeeds', 'pendingSessionsIn', 'pendingSessionsIn'], // needAt: the need's item's time, maybe added behind a held commit (#1155); stampNeeds: the session it stamps
   // A command’s item, maybe deleted behind a held commit, before its output or its end is written.

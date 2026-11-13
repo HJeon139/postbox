@@ -10,7 +10,7 @@ The person needs to see what each agent runs with, from wherever they are. The c
 
 ## Expected functionality
 
-- One row per agent: its ring, `@handle` (“mock” after it on the mock), its state in words (“· idle”, “· calling tools”), and on a second line the model that answered its last turn and the effort (“Sonnet 5.5, not Opus 5.5 · medium effort”). A mock agent has no second line. Each part follows the agent live.
+- One row per agent: its ring, `@handle` (“mock” after it on the mock), its state in words (“· idle”, “· calling tools”), and on a second line the model that answered its last turn and the effort (“Sonnet 5.5, not Opus 5.5 · medium effort”). Switched to another backend, it shows the new setting until that backend reports its own, never the old backend’s model (#1315: Kiro on its router reports none, and its row kept saying “Opus 5.5, not auto”). A mock agent has no second line. Each part follows the agent live.
 - An agent with blocks left open from earlier turns shows a quiet “1 open review” button under its row, which scrolls to the block and focuses it (#69).
 - While an agent needs you, its ring goes to what it needs: its ask is scrolled into view, focused and outlined for a moment, in the side panel when it asked in a side or topic thread (#285). The ring is then a button of its own, “Go to what @handle needs”, one Tab stop before the name. Its name still opens its persona sheet (#320).
 - Clicking an agent’s name, or Enter on it, opens Settings › Personas on its persona, the one place its settings change. Every change there applies from its next turn, in every conversation it’s in; a turn that’s running keeps what it started with. Escape closes it and returns focus to the row.
@@ -24,7 +24,7 @@ The person needs to see what each agent runs with, from wherever they are. The c
 
 1. Run the demo (`node tools/demo.mjs --port 4180`) and open <http://127.0.0.1:4180/> while it plays; keep the tab open.
 2. Open “Index planning”. Check the Agents section above Direct messages.
-3. Click @indexer’s name: its persona sheet opens. Change its effort, save, and send @indexer a message: that turn runs at the new effort.
+3. Click @indexer’s name: its persona sheet opens. Change its effort, save, and send @indexer a message: that turn runs at the new effort. Then switch its Backend to the Agent SDK with another model and effort, and save: its row names the new model and effort, with no “not”.
 4. Tab to a row, press Enter, and press Escape: focus is back on the row.
 5. Send `@indexer /compact`, then `@indexer /delete` and Cancel.
 6. Under an agent reply, choose Reply in thread, and ask something there. The conversation’s own agent answers; the thread’s panel names it in a line, and the sidebar lists no new agent.
@@ -33,7 +33,7 @@ The person needs to see what each agent runs with, from wherever they are. The c
 9. With a real agent, ask it to use a subagent that starts its own subagent, and watch the tree under its row while they work. Tab to one’s End and press Enter: it reads “ending”, and the agent stops it.
 10. Run `npx playwright test agents side-threads` (`tests/browser/agents.spec.mjs` and `side-threads.spec.mjs`).
 
-**Pass if:** An agent’s name opens its persona sheet, a change there reaches its next turn, and `@handle /compact` and `/delete` act on that agent; the row works by keyboard and fits at 375 and 1280 px; an agent at work in a side or topic thread shows under its row with a Stop, and nothing else lists agents; each subagent at work shows under it with what it was asked and what it’s doing now, nested by who started it, with an End the agent obeys; and the checks pass.
+**Pass if:** An agent’s name opens its persona sheet, a change there reaches its next turn, a backend switch leaves no other backend’s model on its row, and `@handle /compact` and `/delete` act on that agent; the row works by keyboard and fits at 375 and 1280 px; an agent at work in a side or topic thread shows under its row with a Stop, and nothing else lists agents; each subagent at work shows under it with what it was asked and what it’s doing now, nested by who started it, with an End the agent obeys; and the checks pass.
 
 ## Related
 

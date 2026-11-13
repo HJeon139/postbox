@@ -129,6 +129,11 @@ export function updatePersona(rt, id, patch) {
   // Whether its sessions wait for a host turn to be attached again follows where it runs now (#1135), before anything
   // below reads busy. Personas raises persona.updated for this from step 4 (designs/architecture/services.md, “Bus”).
   for (const se of Object.values(rt.s.sessions)) if (se.personaId === id) rt.remote.noteAttach(se.id);
+  // On another backend, what the old one reported of its last turn is no one’s: the row shows the setting until the new
+  // backend reports its own. Kiro on its router reports neither, and its row said “Opus 5.5, not auto” for good (#1315).
+  if (next.backend !== p.backend)
+    for (const pending of Object.values(rt.store.pending.sessions()))
+      if (pending.personaId === id && (pending.lastModel || pending.lastEffort)) rt.updateSession(pending.id, { lastModel: null, lastEffort: null });
   // A card that asked for a tool now on answers itself, wherever it was turned on (#237).
   if (patch.tools !== undefined) settleToolAsks(rt, next);
   drainMovedOff(rt, id);
