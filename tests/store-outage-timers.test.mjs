@@ -67,11 +67,10 @@ test('a mirrored terminal’s poll is skipped while the store is closed, so what
   arrange.setSession(rt, se.id, { backendState: { ...(se.backendState ?? {}), attached: true, transcript: join(dir, 'transcript.jsonl') } });
   rt.mirror(se.id);
   await rt.store.flush();
-  const m = arrange.mirrorOf(rt, se.id);
-  assert.ok(m, 'the mirror is armed');
+  assert.ok(arrange.mirrored(rt, se.id), 'the mirror is armed');
   let polls = 0;
   const typed = [{ type: 'user', message: { content: 'typed in the terminal' } }];
-  m.tail = { poll: () => (++polls === 1 ? typed : []) };
+  arrange.withMirrorTail(rt, se.id, { poll: () => (++polls === 1 ? typed : []) });
   rt.store.fail(eio());
   rt.pollMirror(se.id);
   assert.equal(polls, 0, 'the tail is not advanced while closed: the line waits in the file');
@@ -132,7 +131,7 @@ test('a thread settled while the store is closed makes no summarizer call; one s
     calls++;
     return { text: 'Summary', costUsd: 0 };
   });
-  arrange.config(rt).summaryDelayMs = 1;
+  arrange.withDelays(rt, { summaryDelayMs: 1 });
   await rt.store.flush();
   rt.store.fail(eio());
   settleThread(rt, topicId);
@@ -167,7 +166,7 @@ test('a callback held across an outage and Retry applies nothing to the old hist
     await call.promise;
     return { text: 'Late summary', costUsd: 0 };
   });
-  arrange.config(rt).summaryDelayMs = 1;
+  arrange.withDelays(rt, { summaryDelayMs: 1 });
   const poll = rt.pollKept();
   settleThread(rt, topicId);
   await sleep(20); // each is now past its entry check, awaiting

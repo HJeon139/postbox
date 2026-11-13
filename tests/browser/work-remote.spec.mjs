@@ -10,7 +10,6 @@ import { readFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { expect, test } from '@playwright/test';
-import { createStreamMapper } from '../../server/adapters/claude-stream.mjs';
 import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, PHONE, startPostbox, synced, windowWidth } from './postbox.mjs';
 import { SIZES } from './work-pane.mjs';
@@ -35,25 +34,14 @@ async function hostTurn(se, project, name) {
   turnIds.push(turn.id);
   // What the runtime keeps on the session for a host turn: its folder on the host. The turn is over (done).
   arrange.setSession(rt, se.id, { remoteTurn: { hostId: host.id, turn: `host-${turn.id}`, rtTurn: turn.id, folder: '/workspace/rec', state: 'done' } });
-  const ledger = arrange.ledger(rt);
-  ledger.startTurn(turn, { se: store.state.sessions[se.id], folder: null, projectFolder: project.folder ?? null });
-  const m = createStreamMapper(
-    {
-      text() {},
-      activity() {},
-      status() {},
-      compaction() {},
-      toolUse: (u) => ledger.toolUse(turn, u),
-      toolResult: (r) => ledger.toolResult(turn, r),
-      taskEnded: (x) => ledger.taskEnded(turn, x),
-      usage: (u) => ledger.usage(turn, u),
-    },
-    { now: () => Date.now() },
-  );
+  const start = { se: store.state.sessions[se.id], folder: null, projectFolder: project.folder ?? null };
   const lines = (await readFile(new URL(`../fixtures/claude-code/${name}.jsonl`, import.meta.url), 'utf8')).trim().split('\n');
-  for (const l of lines) m.push(JSON.parse(l));
-  await ledger.endTurn(turn, { status: 'done' });
-  await ledger.idle();
+  await arrange.recordTurn(
+    rt,
+    turn,
+    start,
+    lines.map((l) => JSON.parse(l)),
+  );
 }
 
 test.beforeAll(async () => {

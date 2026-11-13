@@ -74,7 +74,7 @@ const wakes = (calls, id) => calls.filter((m) => m.scheduledWakeId === id).lengt
 test('a manual Retry behind a busy turn, its schedule gone, is delivered once after Retry: it has no other owner (gpt’s probe)', async () => {
   const { se, calls } = await busyAgent('manualgone');
   arrange.deliver(rt, se.id, { kind: 'wake', scheduledWakeId: 'sc_finished', retry: true, note: 'you asked to retry' });
-  assert.equal(arrange.liveTurn(rt, se.id).pending.length, 1);
+  assert.equal(arrange.heldMessages(rt, se.id), 1);
   await outageAndRetry(se);
   await until(() => wakes(calls, 'sc_finished') >= 1, 'the person’s Retry to be delivered');
   await sleep(200);

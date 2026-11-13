@@ -29,8 +29,8 @@ test.beforeAll(async () => {
   // A turn of work with one command, as the ledger records it (server/ledger.mjs).
   const at = Date.now() - 60_000;
   const base = { turnId: TURN, threadId: conv.id, sessionId: se.id, handle: se.handle, at };
-  arrange.ledger(rt).add(conv.id, { ...base, kind: 'turn', id: TURN, startedAt: at, status: 'done', toolCalls: 1, ms: 4000 });
-  arrange.ledger(rt).add(conv.id, {
+  arrange.addWork(rt, conv.id, { ...base, kind: 'turn', id: TURN, startedAt: at, status: 'done', toolCalls: 1, ms: 4000 });
+  arrange.addWork(rt, conv.id, {
     ...base,
     kind: 'command',
     id: COMMAND,
@@ -52,7 +52,7 @@ failOnPageErrors(test);
 let n = 0;
 /** Refills the Work pane: a patch to the turn’s work, heard by the page and drawn. Returns its new line. */
 async function refillWork(page) {
-  arrange.ledger(app.rt).patch(conv.id, TURN, { ms: 4000 + ++n * 1000 });
+  arrange.patchWork(app.rt, conv.id, TURN, { ms: 4000 + ++n * 1000 });
   await synced(page, app);
   await frames(page);
   return turnLine(app.store.state.work[conv.id], TURN);

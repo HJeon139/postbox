@@ -21,7 +21,7 @@ test('Send now on an entry a turn ending behind a held commit already drained do
   h.hold();
   const commit = h.store.commit([{ type: 'settings', data: { theme: 'system' } }]);
   await h.atSync; // the commit is in flight: emits from now on are held behind it
-  arrange.liveTurn(env.rt, env.se.id).abort.abort(); // the first turn ends, and its drain takes the queued message
+  arrange.abortTurn(env.rt, env.se.id); // the first turn ends, and its drain takes the queued message
   await until(() => turns === 2, 'the drained message’s turn to start');
   assert.deepEqual(
     h.store.pending.thread(env.t.id).queue.map((q) => q.id),
@@ -46,7 +46,7 @@ test('Send now on an entry a turn ending behind a held commit already drained do
   const posted = h.store.items(env.t.id).filter((i) => i.kind === 'user' && i.text === 'second');
   assert.equal(posted.length, 1, 'the message is posted once');
   assert.equal(refused?.status, 404, 'Send now says the message was already sent');
-  arrange.liveTurn(env.rt, env.se.id)?.abort.abort();
+  if (arrange.running(env.rt, env.se.id)) arrange.abortTurn(env.rt, env.se.id);
   await until(() => !arrange.liveTurns(env.rt), 'the last turn to end');
   await h.store.close();
 });

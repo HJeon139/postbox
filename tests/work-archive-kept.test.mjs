@@ -4,7 +4,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { archiveTurns, kept } from '../server/work-archive.mjs';
+import { kept } from '../server/work-archive.mjs';
 import * as arrange from './arrange.mjs';
 import { allow, asks, bash, setup } from './requested-setup.mjs';
 import { addTurn, archived, C, pass, room, summaries, who } from './work-archive-fixture.mjs';
@@ -58,7 +58,7 @@ async function commentRuns({ create, archive }) {
     s.store.emit('work.add', { convId: s.t.id, entry: { id: `c_${turnId}`, kind: 'command', turnId, ...by, command: 'ls', state: 'done', at: k } });
   }
   if (create) s.store.emit('work.add', { convId: s.t.id, entry: { ...create, turnId: 't_old', ...by, at: 0 } });
-  if (archive) await archiveTurns({ store: s.store, blobs: arrange.ledger(s.rt).blobs, convId: s.t.id, running: new Set() });
+  if (archive) await arrange.archiveOldTurns(s.rt, s.t.id);
   const turnsArchived = s.store.state.work[s.t.id].filter((e) => e.kind === 'turn-archive').map((e) => e.turnId);
   const [allowed] = await asks(s, 'Please comment on the PR you opened that CI is green.', [bash('gh pr comment 537 --body "CI is green."')]);
   return { allowed, turnsArchived };

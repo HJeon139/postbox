@@ -41,7 +41,7 @@ const settle = async (rt) => {
   for (let i = 0; i < 100 && arrange.liveTurns(rt); i++) await sleep(5);
   await sleep(5);
 };
-const rpc = (rt, se, method, params) => handleMcp(rt, se.id, { jsonrpc: '2.0', id: 1, method, params }, arrange.liveTurn(rt, se.id)?.token ?? null);
+const rpc = (rt, se, method, params) => handleMcp(rt, se.id, { jsonrpc: '2.0', id: 1, method, params }, arrange.turnToken(rt, se.id));
 const PROMPT = { name: 'permission_prompt', arguments: { tool_name: 'Bash', input: { command: 'rm -rf build' }, tool_use_id: 'tu1' } };
 
 for (const [label, backend, capabilities] of [

@@ -41,7 +41,7 @@ async function project() {
 test.beforeAll(async () => {
   app = await startPostbox('view-app');
   // The headless shell the specs already installed stands in for Postbox’s own download, and the person agreed.
-  const dir = arrange.viewOf(app.rt).dir;
+  const dir = arrange.viewDir(app.rt);
   const shell = new AppBrowser({ dir: playwrightBrowsers() });
   test.skip(shell.status() !== 'ready', 'Playwright’s headless shell isn’t installed');
   await mkdir(dir, { recursive: true });
@@ -96,7 +96,7 @@ test('the capture uses the size and theme the person’s open Postbox tab report
   const se = arrange.agentIn(rt, t.id);
   const shown = rt.toolsFor(se.id).show_app({ title: 'Window', code: '<p style="padding:12px">Sized to your window.</p>' });
   await page.goto(`${app.origin}/#/t/${t.id}`);
-  await expect.poll(() => arrange.viewOf(rt).windowNow(), { timeout: 15_000 }).toMatchObject({ width: 1280, height: 800, theme: 'dark' });
+  await expect.poll(() => arrange.viewWindow(rt), { timeout: 15_000 }).toMatchObject({ width: 1280, height: 800, theme: 'dark' });
   const r = await arrange.viewApp(rt, se.id, { appId: shown.appId }, { threadId: () => t.id, endSegment() {}, images: false });
   expect.soft(r.ok, r.message).toBe(true);
   expect.soft(r.message).toMatch(/in a 1280 × 800 window, dark theme/);
@@ -125,8 +125,8 @@ test('the tab’s report of its window reads the conversation’s width without 
   await page.goto(`${app.origin}/#/t/${t.id}`);
   await synced(page, app);
   // The conversation beside the rail at 1000 px: 1000 − 248. The app in it is 704, after the transcript’s padding.
-  await expect.poll(() => arrange.viewOf(rt).windowNow().column, { timeout: 15_000 }).toBe(752);
-  arrange.viewOf(rt).window = null;
+  await expect.poll(() => arrange.viewWindow(rt).column, { timeout: 15_000 }).toBe(752);
+  arrange.forgetViewWindow(rt);
   const queries = await page.evaluate(async (names) => {
     const seen = [];
     const real = names.map((name) => [name, Document.prototype[name]]);
@@ -141,7 +141,7 @@ test('the tab’s report of its window reads the conversation’s width without 
     return seen;
   }, SCANS);
   expect.soft(queries, 'whole-document queries in one view report').toEqual([]);
-  await expect.poll(() => arrange.viewOf(rt).windowNow().column, { timeout: 15_000 }).toBe(752);
+  await expect.poll(() => arrange.viewWindow(rt).column, { timeout: 15_000 }).toBe(752);
 });
 
 test('a capture shows the app with its check’s note, as the person sees it, and the app itself while its check is pending', async ({ page }) => {
@@ -178,7 +178,7 @@ test('the picture is as wide as the app the person sees, beside the rail by defa
     await synced(page, app);
     const frame = page.locator('.transcript .appframe').first();
     await expect(frame).toBeVisible();
-    await expect.poll(() => arrange.viewOf(rt).windowNow().width, { timeout: 15_000 }).toBe(width);
+    await expect.poll(() => arrange.viewWindow(rt).width, { timeout: 15_000 }).toBe(width);
     const seen = Math.round((await frame.boundingBox())?.width ?? 0);
     const r = await arrange.viewApp(rt, se.id, { appId: shown.appId }, ctx);
     expect(r.ok, r.message).toBe(true);
@@ -191,7 +191,7 @@ test('the picture is as wide as the app the person sees, beside the rail by defa
   expect.soft(pane.sent, 'beside the open Work pane, at 1280 × 800').toBe(pane.seen);
   // With no tab’s report, the page lays the conversation out beside the rail at 1000 × 680, as the person above saw it.
   await page.goto('about:blank');
-  arrange.viewOf(rt).window = null;
+  arrange.forgetViewWindow(rt);
   const r = await arrange.viewApp(rt, se.id, { appId: shown.appId }, ctx);
   expect.soft(sizeOf(r.image.data).width, 'no tab open: 1000 × 680 beside the rail').toBe(laptop.seen);
 });
@@ -238,7 +238,7 @@ test('a capture lets through only GETs to its own origin', async () => {
 test('a person who hasn’t answered sees the download card, and Not now is kept and shown on it', async ({ page }) => {
   test.setTimeout(60_000);
   const { rt } = app;
-  const consent = join(arrange.viewOf(rt).dir, 'consent.json');
+  const consent = join(arrange.viewDir(rt), 'consent.json');
   await rm(consent, { force: true });
   try {
     const projectId = await project();
@@ -253,7 +253,7 @@ test('a person who hasn’t answered sees the download card, and Not now is kept
     await expect(card).toContainText('Download Chromium (about 200 MB on disk) so agents can see their apps?');
     await card.getByRole('button', { name: 'Not now' }).click();
     await expect(card).toContainText('Not downloaded. Agents can’t see their apps.');
-    expect.soft(answerIn(arrange.viewOf(rt).dir)).toBe('declined');
+    expect.soft(answerIn(arrange.viewDir(rt))).toBe('declined');
     const again = await arrange.viewApp(rt, se.id, { appId: shown.appId }, { threadId: () => t.id, endSegment() {}, images: true });
     expect.soft(again.message).toMatch(/chose not to download the browser/);
   } finally {

@@ -14,7 +14,7 @@ test('#337 MCP save receipts and later reads name the same version’s browser c
         rt,
         alpha.id,
         { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } },
-        arrange.liveTurn(rt, alpha.id).token,
+        arrange.turnToken(rt, alpha.id),
       );
       assert.equal(reply.result.isError, false, JSON.stringify(reply));
       return reply.result.content[0].text;

@@ -92,7 +92,7 @@ test('#66: MCP permission_prompt names the stream’s subagent, and answers with
   const { rt, store, t, adapter, se, folder } = await setup();
   const replies = [];
   // The turn’s own token, as Claude Code sends it (#54).
-  const token = () => arrange.liveTurn(rt, se.id)?.token ?? null;
+  const token = () => arrange.turnToken(rt, se.id);
   const ask = (args) => handleMcp(rt, se.id, { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'permission_prompt', arguments: args } }, token());
   // The prompt’s own suggestions never reach the card (#353): the CLI sends none, and a copy of its prompt could.
   const suggestions = [{ type: 'addRules', rules: [{ toolName: 'Read', ruleContent: '//data/**' }], behavior: 'allow', destination: 'localSettings' }];

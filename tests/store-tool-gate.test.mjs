@@ -18,7 +18,7 @@ test('while the store is closed, a writing tool is refused with the cause and a 
   adapter.next.push(async () => held);
   rt.sendMessage(t.id, { text: '@alpha wait' });
   await sleep(5);
-  const token = arrange.liveTurn(rt, alpha.id).token;
+  const token = arrange.turnToken(rt, alpha.id);
   const call = (name, args) => handleMcp(rt, alpha.id, { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }, token);
   // The gate itself: writes closed without the runtime’s stop (which fail() triggers and the outage spec covers), so the
   // turn is still running and its call reaches the tool entry.

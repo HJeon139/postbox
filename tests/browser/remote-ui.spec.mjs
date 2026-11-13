@@ -10,7 +10,6 @@
 
 import { readFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
-import { createStreamMapper } from '../../server/adapters/claude-stream.mjs';
 import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, PHONE, synced } from './postbox.mjs';
 import { axe, overflowing, startRemote } from './remote-hosts.mjs';
@@ -35,24 +34,7 @@ async function hostTurn(se, i, name) {
   const turn = { id: `turn_remote_${i + 1}`, threadId: conv.id, startedAt: Date.now(), remote: { hostId: host.id } };
   // What the runtime keeps on the session for a host turn: its folder on the host. The turn is over (done).
   arrange.setSession(rt, se.id, { remoteTurn: { hostId: host.id, turn: `host-${turn.id}`, rtTurn: turn.id, folder: '/workspace/rec', state: 'done' } });
-  const ledger = arrange.ledger(rt);
-  ledger.startTurn(turn, { se: store.state.sessions[se.id], folder: null, projectFolder: app.root });
-  const m = createStreamMapper(
-    {
-      text() {},
-      activity() {},
-      status() {},
-      compaction() {},
-      toolUse: (u) => ledger.toolUse(turn, u),
-      toolResult: (r) => ledger.toolResult(turn, r),
-      taskEnded: (x) => ledger.taskEnded(turn, x),
-      usage: (u) => ledger.usage(turn, u),
-    },
-    { now: () => Date.now() },
-  );
-  for (const e of fixture(name)) m.push(e);
-  await ledger.endTurn(turn, { status: 'done' });
-  await ledger.idle();
+  await arrange.recordTurn(rt, turn, { se: store.state.sessions[se.id], folder: null, projectFolder: app.root }, fixture(name));
 }
 
 test.beforeAll(async () => {

@@ -10,7 +10,9 @@ import { toggleReaction } from '../server/reactions.mjs';
 import { blockFiles as blockFilesOf } from '../server/review-files.mjs';
 import { updateThread } from '../server/thread-write.mjs';
 import { viewApp as viewAppOf } from '../server/view-app/view-app.mjs';
-import { viewOf as viewOfApp } from '../server/view-app/view-of.mjs';
+import { viewOf } from '../server/view-app/view-of.mjs';
+
+export * from './arrange-work.mjs';
 
 /** @typedef {import('../server/runtime.mjs').Runtime} Runtime */
 
@@ -75,6 +77,17 @@ export const shareText = (rt, threadId, opts) => rt.shareText(threadId, opts);
 /** The turn running for a session, if one is. @param {Runtime} rt @param {string} sessionId */
 export const liveTurn = (rt, sessionId) => rt.turns.get(sessionId);
 
+/** The token of the turn running for a session, which its MCP calls carry, or null when none runs. @param {Runtime} rt @param {string} sessionId */
+export const turnToken = (rt, sessionId) => rt.turns.get(sessionId)?.token ?? null;
+
+/** Ends the turn running for a session as its agent’s process ending would: aborts it. @param {Runtime} rt @param {string} sessionId */
+export function abortTurn(rt, sessionId) {
+  /** @type {any} */ (rt.turns.get(sessionId)).abort.abort();
+}
+
+/** How many messages wait for the turn running for a session. @param {Runtime} rt @param {string} sessionId */
+export const heldMessages = (rt, sessionId) => /** @type {any} */ (rt.turns.get(sessionId)).pending.length;
+
 /** Whether a turn is running for a session. @param {Runtime} rt @param {string} sessionId */
 export const running = (rt, sessionId) => rt.turns.has(sessionId);
 
@@ -120,31 +133,13 @@ export const permissionWaits = (rt) => rt.permissionWaits.size;
 /** How many of the person’s ! commands are running. @param {Runtime} rt */
 export const shellRuns = (rt) => rt.shellRuns.size;
 
-/** The mirror that follows a session’s Claude Code transcript, if one does. @param {Runtime} rt @param {string} sessionId */
-export const mirrorOf = (rt, sessionId) => rt.mirrors.get(sessionId);
+/** Whether a mirror follows a session’s Claude Code transcript. @param {Runtime} rt @param {string} sessionId */
+export const mirrored = (rt, sessionId) => rt.mirrors.has(sessionId);
 
-// ── What the server holds ────────────────────────────────────────────────────────────
-
-/** The work ledger, to add or change work records. @param {Runtime} rt */
-export const ledger = (rt) => rt.ledger;
-
-/** The archive of old turns (#305). @param {Runtime} rt */
-export const turnArchive = (rt) => rt.turnArchive;
-
-/** The blob store that holds uploads and files. @param {Runtime} rt */
-export const blobs = (rt) => rt.blobs;
-
-/** The remote hosts’ manager. @param {Runtime} rt */
-export const hosts = (rt) => rt.hosts;
-
-/** The server’s settings, such as its delays, to read or shorten. @param {Runtime} rt */
-export const config = (rt) => rt.config;
-
-/** The lint entries waiting per agent turn. @param {Runtime} rt */
-export const lints = (rt) => rt.lints;
-
-/** The watchdogs of stopped turns. @param {Runtime} rt */
-export const watchdogs = (rt) => rt.watchdogs;
+/** Gives a session’s mirror a fake tail of its transcript, whose poll returns the lines typed since the last. @param {Runtime} rt @param {string} sessionId @param {{ poll: () => object[] }} tail */
+export function withMirrorTail(rt, sessionId, tail) {
+  /** @type {any} */ (rt.mirrors.get(sessionId)).tail = tail;
+}
 
 // ── Permissions, apps and files ──────────────────────────────────────────────────────
 
@@ -163,8 +158,16 @@ export const blockFiles = (rt, sessionId, name, args) => blockFilesOf(rt, sessio
 /** An agent’s asset tools. @param {Runtime} rt @param {string} sessionId @param {any} turn @param {object} [opts] */
 export const assetTools = (rt, sessionId, turn, opts) => assetToolsOf(rt, sessionId, turn, opts);
 
-/** The browser that views agents’ apps. @param {Runtime} rt */
-export const viewOf = (rt) => viewOfApp(rt);
+/** The folder where view_app keeps its browser and the person’s answer about downloading it. @param {Runtime} rt */
+export const viewDir = (rt) => viewOf(rt).dir;
+
+/** The window size and theme the page last reported to view_app, as it lays an app out. @param {Runtime} rt */
+export const viewWindow = (rt) => viewOf(rt).windowNow();
+
+/** Forgets the window the page reported, as when no tab is open. @param {Runtime} rt */
+export function forgetViewWindow(rt) {
+  viewOf(rt).window = null;
+}
 
 /** An agent views an app, as its view tool does. @param {Runtime} rt @param {string} sessionId @param {object} args @param {object} ctx */
 export const viewApp = (rt, sessionId, args, ctx) => viewAppOf(rt, sessionId, args, ctx);
@@ -179,6 +182,9 @@ export const withoutAdapter = (rt, name) => rt.adapters.adapters.delete(name);
 
 /** The backend registered under a name. @param {Runtime} rt @param {string} name */
 export const adapter = (rt, name) => rt.adapters.get(name);
+
+/** What a registered backend can do. @param {Runtime} rt @param {string} name */
+export const capabilitiesOf = (rt, name) => rt.adapters.get(name).capabilities;
 
 /** The names of the backends registered. @param {Runtime} rt */
 export const adapterNames = (rt) => rt.adapters.names();

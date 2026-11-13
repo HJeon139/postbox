@@ -36,7 +36,7 @@ function scripted(app, delivered) {
   const { rt } = app;
   arrange.withAdapter(rt, {
     name: 'claude-code',
-    capabilities: arrange.adapter(rt, 'claude-code').capabilities,
+    capabilities: arrange.capabilitiesOf(rt, 'claude-code'),
     async folderFor() {
       return app.root;
     },

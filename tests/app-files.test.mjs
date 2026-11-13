@@ -116,7 +116,7 @@ test('#54: data files are stored with the version, read back by name, and carrie
 
 test('#54: a call can’t attach a file Postbox stored for someone else, or more files than the limit', async () => {
   const { rt, folder, call } = await setup();
-  const { sha256 } = await arrange.blobs(rt).put(Buffer.from('the person’s upload'));
+  const { sha256 } = await arrange.storeBlob(rt, Buffer.from('the person’s upload'));
   const r = await call('show_app', { id: 'ex', title: 'E', code: '<p>x</p>', files: [{ name: 'stolen', sha256, size: 19 }] });
   assert.equal(r.isError, true);
   assert.match(r.text, /needs a path/);

@@ -13,18 +13,17 @@ const blobsIn = async (f) => (await readdir(join(f.root, 'blobs'), { recursive: 
 
 test('#825 a put that fails at a later file settles the earlier staged ones, so none is left', async () => {
   const f = await setup();
-  const put = arrange.blobs(f.rt).put.bind(arrange.blobs(f.rt));
   let n = 0;
-  arrange.blobs(f.rt).put = async (buf, opts) => {
+  arrange.onBlobPut(f.rt, async (put, buf, opts) => {
     n += 1;
     if (n === 2) throw Object.assign(new Error('no space left on device'), { code: 'ENOSPC' });
     return put(buf, opts);
-  };
+  });
   const files = { 'a.png': png(4, 3), 'b.png': png(5, 3) };
   const read = async (x) => files[x.path];
   await assert.rejects(storeReviewFiles(f.rt, [{ path: 'a.png' }, { path: 'b.png' }], read), /no space left/);
   assert.deepEqual(await blobsIn(f), [], 'the first file’s staged blob is removed');
-  assert.equal(arrange.blobs(f.rt).held.size, 0, 'and nothing still holds it');
+  assert.equal(arrange.heldBlobs(f.rt), 0, 'and nothing still holds it');
 });
 
 test('#825 a review item whose blob is gone from the store gets null, so the route answers its same 404', async () => {
@@ -32,7 +31,7 @@ test('#825 a review item whose blob is gone from the store gets null, so the rou
   await writeFile(join(f.folder, 'figs/today.png'), png(4, 3));
   assert.equal((await f.call('show_block', reviewBlock('fig', [{ path: 'figs/today.png' }]))).isError, false);
   const [kept] = f.review('fig').files;
-  await rm(arrange.blobs(f.rt).pathOf(kept.sha256));
+  await rm(arrange.blobPath(f.rt, kept.sha256));
   assert.equal(await servedReviewFile(f.rt, f.t.id, f.review('fig').id, 'today.png', kept.sha256), null);
 });
 
@@ -70,6 +69,6 @@ test('#825 a damaged blob is still an error, not passed off as a missing one', a
   await writeFile(join(f.folder, 'figs/today.png'), png(4, 3));
   await f.call('show_block', reviewBlock('fig', [{ path: 'figs/today.png' }]));
   const [kept] = f.review('fig').files;
-  await writeFile(arrange.blobs(f.rt).pathOf(kept.sha256), 'not the bytes it was stored as');
+  await writeFile(arrange.blobPath(f.rt, kept.sha256), 'not the bytes it was stored as');
   await assert.rejects(servedReviewFile(f.rt, f.t.id, f.review('fig').id, 'today.png', kept.sha256), /damaged/);
 });

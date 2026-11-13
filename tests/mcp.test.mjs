@@ -15,7 +15,7 @@ test('#351: a tool call is refused unless its token is the running turn’s exac
   adapter.next.push(async () => held);
   rt.sendMessage(t.id, { text: '@alpha wait' });
   await sleep(5);
-  const token = arrange.liveTurn(rt, alpha.id).token;
+  const token = arrange.turnToken(rt, alpha.id);
   const define = (turn) =>
     handleMcp(rt, alpha.id, { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'define_term', arguments: { term: 'W', definition: 'D' } } }, turn);
   // One character off, one short, one long, and the same length in characters but not in bytes.

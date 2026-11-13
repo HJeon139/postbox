@@ -34,8 +34,8 @@ async function app() {
 
 test('a lint turn due just after close() isn’t delivered, and nothing is logged', async () => {
   const { a, t, se, delivered } = await app();
-  arrange.config(a.rt).lintSettleMs = 20;
-  arrange.lints(a.rt).set('turn_1', {
+  arrange.withDelays(a.rt, { lintSettleMs: 20 });
+  arrange.armLint(a.rt, 'turn_1', {
     sessionId: se.id,
     kind: 'turn',
     ended: true,
@@ -55,13 +55,13 @@ test('a stopped turn’s watchdog, which starts its next turn, doesn’t fire af
   const { a } = await app();
   let fired = false;
   try {
-    arrange.watchdogs(a.rt).add(setTimeout(() => (fired = true), 20).unref());
+    arrange.addWatchdog(a.rt, setTimeout(() => (fired = true), 20).unref());
   } finally {
     await a.close();
   }
   await sleep(60);
   assert.equal(fired, false, 'close cleared it');
-  assert.equal(arrange.watchdogs(a.rt).size, 0);
+  assert.equal(arrange.watchdogCount(a.rt), 0);
   assert.deepEqual(takeServerFailures(), []);
 });
 
@@ -72,9 +72,10 @@ test('the work ledger’s record of a turn that just stopped lands before the st
   const { a } = await app();
   a.store.emit('work.add', { convId: 'th_w', entry: { id: 'wk_1', kind: 'turn', status: 'running' } });
   let patched = false;
-  arrange.ledger(a.rt).track(
+  arrange.trackWork(
+    a.rt,
     sleep(30).then(() => {
-      arrange.ledger(a.rt).patch('th_w', 'wk_1', { status: 'stopped' });
+      arrange.patchWork(a.rt, 'th_w', 'wk_1', { status: 'stopped' });
       patched = true;
     }),
   );
@@ -87,10 +88,9 @@ test('the work ledger’s record of a turn that just stopped lands before the st
 // once more after the hosts have stopped.
 test('a lint turn armed while the hosts stop isn’t delivered after close()', async () => {
   const { a, t, se, delivered } = await app();
-  arrange.config(a.rt).lintSettleMs = 20;
-  const close = arrange.hosts(a.rt).close.bind(arrange.hosts(a.rt));
-  arrange.hosts(a.rt).close = async () => {
-    arrange.lints(a.rt).set('turn_h', {
+  arrange.withDelays(a.rt, { lintSettleMs: 20 });
+  arrange.onHostsClose(a.rt, () => {
+    arrange.armLint(a.rt, 'turn_h', {
       sessionId: se.id,
       kind: 'turn',
       ended: true,
@@ -100,8 +100,7 @@ test('a lint turn armed while the hosts stop isn’t delivered after close()', a
       threadId: t.id,
     });
     sendLint(a.rt, 'turn_h');
-    await close();
-  };
+  });
   await a.close();
   await sleep(80); // past the lint’s settle time
   assert.deepEqual(delivered, [], 'nothing was delivered after close');
@@ -112,8 +111,8 @@ test('a lint turn armed while the hosts stop isn’t delivered after close()', a
 // shutdown: close() waits its grace for it (LEDGER_GRACE_MS, 4 s; a test sets it shorter), then goes on.
 test('close() waits for a ledger record that never settles at most its grace, then closes', async () => {
   const { a } = await app();
-  arrange.config(a.rt).ledgerGraceMs = 30;
-  arrange.ledger(a.rt).track(new Promise(() => {}));
+  arrange.withDelays(a.rt, { ledgerGraceMs: 30 });
+  arrange.trackWork(a.rt, new Promise(() => {}));
   const started = Date.now();
   await a.close();
   assert.ok(Date.now() - started >= 30, 'it waited for the record');

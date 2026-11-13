@@ -197,11 +197,11 @@ test('1280 px: a row follows the ledger after the turn: a background command tha
   const bg = entries().find((e) => e.kind === 'command' && e.background);
   const command = page.locator(`#wl-${turn.id}-${bg.id}`);
   await expect(command).toContainText('didn’t report how it ended');
-  arrange.ledger(rt).jobUpdate({ threadId: conv.id, toolUseId: bg.toolUseId }, { state: 'stopped', by: 'you' });
+  arrange.updateJob(rt, { threadId: conv.id, toolUseId: bg.toolUseId }, { state: 'stopped', by: 'you' });
   await expect(command, 'the row says stopped').toHaveText(/stopped$/);
   // #519: kept running when its agent stopped, then ended on its own: it ended, not “didn’t report”.
-  arrange.ledger(rt).patch(conv.id, bg.id, { state: 'background', keptRunning: true, leftRunning: true, stoppedBy: null });
-  arrange.ledger(rt).jobUpdate({ threadId: conv.id, toolUseId: bg.toolUseId }, { state: 'done' });
+  arrange.patchWork(rt, conv.id, bg.id, { state: 'background', keptRunning: true, leftRunning: true, stoppedBy: null });
+  arrange.updateJob(rt, { threadId: conv.id, toolUseId: bg.toolUseId }, { state: 'done' });
   await expect(command, 'the row says it ended').toHaveText(/ended$/);
   await expect(command, 'not that it didn’t report how').not.toContainText('didn’t report');
   // An app retired after the turn (#193): its row says so.

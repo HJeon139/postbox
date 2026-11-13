@@ -25,7 +25,7 @@ function withSubagent() {
   return { ...ctx, release: () => release() };
 }
 const call = (rt, se, name, args) =>
-  handleMcp(rt, se.id, { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }, arrange.liveTurn(rt, se.id)?.token ?? null);
+  handleMcp(rt, se.id, { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }, arrange.turnToken(rt, se.id));
 
 test('#229: End marks the subagent ending, and the agent hears it on its next Postbox tool result in the turn, once', async () => {
   const { store, rt, adapter, t, alpha, release } = withSubagent();
