@@ -152,3 +152,37 @@ test('a snapshot under way when close() begins stops at its next piece, rather t
   const names = (await readdir(dir)).filter((n) => n.startsWith('snapshot'));
   assert.deepEqual(names, [], 'the abandoned file is removed');
 });
+
+test('emits held behind a slow snapshot when close() begins, as a stopping turn’s records are, reach the log before the lock goes', async () => {
+  // Each snapshot piece takes 60 ms against a 100 ms bound. close() used to give up on the pass in all, and the records
+  // held behind the snapshot were then released into a closed store and written nowhere.
+  const dir = await tmp();
+  let closing = /** @type {Promise<void> | null} */ (null);
+  const io = disk({
+    async open(path, flags, mode) {
+      const handle = await disk().open(path, flags, mode);
+      if (!String(path).includes('snapshot.json.')) return handle;
+      return handleWith(handle, {
+        write: async (...args) => {
+          if (!closing) {
+            // As Postbox stops: settleLedger’s records are emitted, held behind the snapshot, then the store closes.
+            a.emit('thread', { id: 'stop-record-1', members: [] });
+            a.emit('thread', { id: 'stop-record-2', members: [] });
+            closing = a.close();
+          }
+          await new Promise((r) => setTimeout(r, 60));
+          return handle.write(...args);
+        },
+      });
+    },
+  });
+  const a = await new Store(dir, { io, retryBoundMs: 100 }).load();
+  for (let i = 0; i < 400; i++) a.emit('thread', { id: `t${i}`, members: [], title: 'x'.repeat(10_000) }); // pieces
+  await a.flush();
+  await assert.rejects(a.snapshot(), /abandoned/);
+  await closing;
+  assert.equal(a.held, 0, 'nothing is left held');
+  const b = await new Store(dir).load();
+  assert.ok(b.state.threads['stop-record-1'] && b.state.threads['stop-record-2'], 'both records are on disk');
+  await b.close();
+});
