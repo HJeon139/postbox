@@ -135,3 +135,23 @@ for (const to of /** @type {const} */ (['here', 'host']))
     await settled(r);
     release();
   });
+
+// Whether the agent waits follows where it runs now (#1135): moved back onto the silent host before its welcome, it
+// waits for the attach again, and the attach still goes.
+test('#1135 a message after the agent moved off a silent host and back waits for the attach again', async () => {
+  const { r, d, release } = heldWelcome('running');
+  await until(() => r.rt.remote.restoring.has('host-turn-1'), 'the turn to wait for its welcome');
+  move(r, 'here');
+  r.rt.updatePersona(r.se().personaId, { remote: { hostId: r.host.id } });
+  r.rt.sendMessage(r.t.id, { text: 'after moving back' });
+  await sleep(20);
+  assert.equal(starts(d).length, 0, 'no second turn on the host');
+  assert.deepEqual(queued(r), ['after moving back'], 'it waits in the queue for the attach');
+  release();
+  await until(() => d.received.some((m) => m.type === 'read' && m.turn === 'host-turn-1'), 'the attach');
+  d.end('host-turn-1');
+  await until(() => starts(d).length === 1, 'the queued message’s turn');
+  assert.match(messageOf(starts(d)[0]), /after moving back/);
+  d.end(starts(d)[0].turn);
+  await settled(r);
+});
