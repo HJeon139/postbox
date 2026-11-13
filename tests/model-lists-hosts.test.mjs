@@ -86,6 +86,11 @@ test('a host whose daemon is older than `models` answers its last list, saying i
   assert.deepEqual(await lists.list('kiro-cli', 'ho_1'), { models: [], fresh: false, why: 'outdated' });
 });
 
+test('a host without the harness’s CLI answers its last list, saying the CLI wasn’t found', async () => {
+  const { lists } = setup({ onHost: async () => Promise.reject(Object.assign(new Error('The host has no kiro-cli that Postbox found.'), { code: 'no-cli' })) });
+  assert.deepEqual(await lists.list('kiro-cli', 'ho_1'), { models: [], fresh: false, why: 'no-cli' });
+});
+
 test('a host whose CLI listed none is not-listed, not outdated', async () => {
   const { lists } = setup({ onHost: async () => Promise.reject(Object.assign(new Error('The host’s CLI listed no models.'), { code: 'not-listed' })) });
   assert.deepEqual(await lists.list('kiro-cli', 'ho_1'), { models: [], fresh: false, why: 'not-listed' });

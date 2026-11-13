@@ -6,11 +6,20 @@ import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { hostModels, LISTED_WAIT_MS } from '../server/remote/hosts-models.mjs';
 
+/** A welcome whose host has each harness. */
+const WELCOME = {
+  harnesses: [
+    { name: 'claude-code', path: '/home/user/.local/bin/claude' },
+    { name: 'kiro-cli', path: '/home/user/.local/bin/kiro-cli' },
+    { name: 'codex', path: '/home/user/.local/bin/codex' },
+  ],
+};
+
 /**
  * A host manager (hosts.mjs) with one link. answer(msg) is what the daemon sends back for each message Postbox
  * sends; channel is the link, with what was sent, and needs the need and release calls.
  */
-function fakeHosts({ answer = () => null, welcome = async () => ({}), send = true } = {}) {
+function fakeHosts({ answer = () => null, welcome = async () => WELCOME, send = true } = {}) {
   const channel = Object.assign(new EventEmitter(), { connected: true, sent: [] });
   channel.send = (msg) => {
     channel.sent.push(msg);
@@ -70,6 +79,25 @@ test('a daemon from before `models` is outdated, at once, not after the wait', a
   const asking = hostModels(h, 'ho_1', 'kiro-cli', { setTimer: (fn, ms) => timers.push({ fn, ms }), clearTimer: () => {} });
   await assert.rejects(asking, (e) => e.code === 'outdated');
   assert.equal(timers.length, 1, 'its timer was set, and never needed');
+});
+
+test('a bad-message about something else isn’t taken for a daemon from before `models`', async () => {
+  const h = fakeHosts();
+  const asking = hostModels(h, 'ho_1', 'codex');
+  await new Promise((r) => setImmediate(r));
+  // As the daemon refuses a line of another type it doesn’t carry, or a field it doesn’t know, naming no request.
+  h.channel.emit('message', { ...BEFORE_MODELS, message: BEFORE_MODELS.message.replace('“models”', '“modelz”') });
+  h.channel.emit('message', { type: 'error', code: 'bad-message', message: '“x” isn’t a field of models.' });
+  h.channel.emit('message', { type: 'listed', harness: 'codex', models: ['gpt-6'] });
+  assert.deepEqual(await asking, ['gpt-6']);
+});
+
+test('a host whose welcome found no CLI for the harness is no-cli, and isn’t asked', async () => {
+  const welcome = { harnesses: WELCOME.harnesses.map((x) => (x.name === 'codex' ? { ...x, path: null } : x)) };
+  // As the daemon answers a harness it didn’t find (daemon-models.mjs).
+  const h = fakeHosts({ welcome: async () => welcome, answer: (m) => ({ type: 'listed', harness: m.harness, models: [] }) });
+  await assert.rejects(hostModels(h, 'ho_1', 'codex'), (e) => e.code === 'no-cli');
+  assert.deepEqual(h.channel.sent, [], 'nothing is sent for a CLI the host doesn’t have');
 });
 
 test('a daemon that has `models` but refuses it now, such as one being removed, is not-listed', async () => {
