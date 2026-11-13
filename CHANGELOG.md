@@ -2,6 +2,18 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.7.0 (2026-11-13)
+
+### Features
+
+- **remote:** list an agent's models from its host's own CLI
+
+### Fixes
+
+- **models:** forget a deleted host's model lists
+- **remote:** say a host's Postbox is older only when it is, and at once
+- **models:** drop a listed model id that starts with -
+
 ## 4.6.1 (2026-11-13)
 
 ### Fixes
