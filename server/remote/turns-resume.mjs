@@ -4,12 +4,12 @@
 // host’s welcome lists it.
 
 import { defaultHostSettings } from '../../shared/remote-settings.mjs';
-import { registeredAdapter, unregisteredWhy } from './placement.mjs';
+import { hostOf, registeredAdapter, unregisteredWhy } from './placement.mjs';
 import { backgroundStopText, waitingOnBackground } from './turns-background.mjs';
 import { releaseHost } from './turns-need.mjs';
 import { continuing } from './turns-origin.mjs';
 import { endOrphanCards } from './turns-prompts.mjs';
-import { AUTO_RESUMES, clock, hostOf, isBack, ON_HOST, SIGN_IN_RECHECK_MS, updateRemote } from './turns-shared.mjs';
+import { AUTO_RESUMES, clock, isBack, ON_HOST, SIGN_IN_RECHECK_MS, updateRemote } from './turns-shared.mjs';
 import { askStop } from './turns-stops.mjs';
 
 /** @typedef {import('./turns.mjs').RemoteTurns} RemoteTurns */

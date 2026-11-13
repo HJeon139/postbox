@@ -2,9 +2,10 @@
 // on until the daemon says it’s over, so the stop is kept on the session, the host is needed, and the stop goes again
 // at each welcome. Removing a host waits for these (confirmStops), and renaming one refuses while any is left (busyOn).
 
+import { hostOf } from './placement.mjs';
 import { linkOf, listen, needHost, releaseHost } from './turns-need.mjs';
 import { openCards } from './turns-prompts.mjs';
-import { hostOf, ON_HOST, send, updateRemote } from './turns-shared.mjs';
+import { ON_HOST, send, updateRemote } from './turns-shared.mjs';
 
 /** @typedef {import('./turns.mjs').RemoteTurns} RemoteTurns */
 /** @typedef {import('./turns-shared.mjs').Stop} Stop */

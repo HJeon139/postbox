@@ -87,6 +87,12 @@ export function refuseHere(rt, se, persona) {
   throw Object.assign(new Error(text), { userMessage: text });
 }
 
+/** The host a persona runs on, or null for this computer. @param {any} persona */
+export function hostOf(persona) {
+  const id = persona?.remote?.hostId;
+  return typeof id === 'string' && id ? id : null;
+}
+
 /** The backend a persona’s turn runs on. @param {any} persona @returns {string} */
 const backendOf = (persona) => persona?.backend ?? 'mock';
 
