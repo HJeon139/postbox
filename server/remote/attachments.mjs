@@ -9,6 +9,7 @@
 import { readFile, stat } from 'node:fs/promises';
 import { basename } from 'node:path';
 import { REMOTE_LIMITS } from '../../shared/remote-protocol.mjs';
+import { extensionOf } from '../attachment-extension.mjs';
 
 /**
  * One attachment as a remote turn carries it: `of` is the message’s attachment object itself, which formatMessage’s
@@ -35,8 +36,10 @@ export function hostName(a, i) {
     basename(shownName(a))
       .replace(/[^A-Za-z0-9._-]+/g, '_')
       .replace(/\.{2,}/g, '.') || 'file';
-  const ext = /\.[A-Za-z0-9]{1,12}$/.exec(clean)?.[0] ?? '';
-  const stem = clean.slice(0, clean.length - ext.length).slice(0, 64 - prefix.length - ext.length);
+  const own = /\.[A-Za-z0-9]{1,12}$/.exec(clean)?.[0] ?? '';
+  // An image’s type names its extension when its name has none, as here (server/attachment-extension.mjs, #1307).
+  const ext = own || (a?.kind === 'file' ? extensionOf(a) : '');
+  const stem = clean.slice(0, clean.length - own.length).slice(0, 64 - prefix.length - ext.length);
   return `${prefix}${stem}${ext}`.replace(/\.{2,}/g, '.');
 }
 

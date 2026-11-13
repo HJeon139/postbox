@@ -55,6 +55,7 @@ import { AGY_DEFAULT_MODEL, modelDefault } from '../../shared/agent-facts.mjs';
 import { TOOL_DEFS } from '../../shared/mcp-tools.mjs';
 import { HarnessEvents } from '../harness-events.mjs';
 import { firstSentence } from '../harness-tools.mjs';
+import { stopProbe } from '../remote/host/probe-stop.mjs';
 import { describeTool } from '../tool-labels.mjs';
 import { AGY_CAPABILITIES } from './agy-capabilities.mjs';
 import { agyHookCommand, agySupportsHooks, confirmAgyHook, HOOK_SCRIPT } from './agy-hook.mjs';
@@ -65,7 +66,6 @@ import { toolOf } from './agy-tools.mjs';
 import { agyContextPercent, agyWindowFor } from './context-usage.mjs';
 import { agentFolder } from './folder.mjs';
 import { FRESH_START_TEXT, formatMessage, turnGuide } from './guide.mjs';
-import { stopProbe } from './probe-stop.mjs';
 import { listProcesses, stopOnAbort, stopTurn } from './process-group.mjs';
 import { DEFAULT_MODEL, EFFORT_LEVELS, effortOf, modelOf, recorderFor, setupOf, TOOL_WORDS, toolsOff } from './setup.mjs';
 import { agyResult } from './work-calls.mjs';
@@ -190,14 +190,16 @@ export function modeArgs(persona, { hookConfirmed = false } = {}) {
 /**
  * What the hook reads from its environment: its MCP server, the mode, the folders it may work in, and the persona’s
  * tools and publishing (#416). Not the folders it may only read (#338): the hook asks Postbox about a read there, which
- * answers from the session as it is now, where this is the turn’s start (#1074).
- * @param {{ mcpUrl: string, persona: any, cwd: string, addDirs: string[] }} o
+ * answers from the session as it is now, where this is the turn’s start (#1074). And the files attached to the turn’s
+ * message, which it may read with no card (attached-files.mjs, #1307).
+ * @param {{ mcpUrl: string, persona: any, cwd: string, addDirs: string[], reads?: string[] }} o
  */
-export function agyHookVars({ mcpUrl, persona, cwd, addDirs }) {
+export function agyHookVars({ mcpUrl, persona, cwd, addDirs, reads = [] }) {
   return {
     POSTBOX_MCP_URL: mcpUrl,
     POSTBOX_AGY_MODE: persona?.permissionMode ?? 'auto',
     POSTBOX_AGY_FOLDERS: JSON.stringify([cwd, ...addDirs]),
+    POSTBOX_AGY_READS: JSON.stringify(reads),
     POSTBOX_AGY_TOOLS: JSON.stringify(Array.isArray(persona?.tools) ? persona.tools : []),
     POSTBOX_AGY_PUBLISH: setupOf(persona).canPublish ? '1' : '',
   };
@@ -653,7 +655,7 @@ export class AntigravityCliAdapter {
     const effort = agyEffort(model, effortOf(persona));
     const args = agyArgs({ persona, model, effort, sessionId, prompt, addDirs, hookConfirmed });
     const mapper = createAgyMapper(ctx, { effort, resumed: sessionId, wrote });
-    const hookVars = agyHookVars({ mcpUrl: ctx.mcpUrl, persona, cwd, addDirs });
+    const hookVars = agyHookVars({ mcpUrl: ctx.mcpUrl, persona, cwd, addDirs, reads: ctx.readFiles ?? [] });
     const env = hookConfirmed ? { ...this.env, ...hookVars } : this.env;
     return new Promise((resolve, reject) => {
       let child;

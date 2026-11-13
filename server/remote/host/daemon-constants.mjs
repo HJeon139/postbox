@@ -118,7 +118,8 @@ export const READ_CHUNK = 64 * 1024;
  * - problems: problems found since the start, beside programs’ (lingering, rechecked at each hello; the log cap), for
  *   each welcome.
  * - removing: set once `remove` starts: nothing new starts after it.
- * - checks: the sign-in checks’ queue. checking: the signInCheck processes running, so close() can end them.
+ * - checks: the sign-in checks’ queue. checking: the signInCheck and model listing processes running, so close() can
+ *   end them.
  * - brk: the broker (broker.mjs, or the test’s); shimSeam: what serves a shim’s connection.
  * @typedef {Required<Omit<DaemonOpts, 'broker' | 'shim'>> & { p: ReturnType<typeof import('../../../shared/remote-protocol.mjs').hostPaths>,
  *   settings: Record<string, any>, programs: import('./programs.mjs').Programs | null, loginPath: import('./login-path.mjs').LoginPath | null,

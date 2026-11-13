@@ -89,8 +89,12 @@ test('every showcase replay plays to v2 with its recorded words, comments and co
     expect(items.some((i) => i.kind === 'agent' && i.text?.includes(st.turns.revise.say.slice(0, 120)))).toBe(true);
     const review = items.find((i) => i.block?.id === st.turns.critique.blockId);
     expect(review.block.threads.map((t) => t.comments[0])).toEqual(st.turns.critique.comments.map((x) => ({ author: '@critic', text: x.text })));
-    // The Work view’s turns carry the recorded costs: Claude Code’s in dollars, Codex’s as none.
-    const costs = state.work[thread.id].filter((e) => e.kind === 'turn').map((e) => e.costUsd ?? null);
+    // The Work view’s turns carry the recorded costs: Claude Code’s in dollars, Codex’s as none. The replayed turns
+    // are the room’s first three; the page’s check of v2 can hand @builder a turn of its own after them (#1309).
+    const costs = state.work[thread.id]
+      .filter((e) => e.kind === 'turn')
+      .slice(0, 3)
+      .map((e) => e.costUsd ?? null);
     expect(costs).toEqual([st.turns.build.costUsd, st.turns.critique.costUsd, st.turns.revise.costUsd]);
     // v2 is what the frame shows, sandboxed: served with the sandbox policy, at an opaque origin.
     const appId = st.turns.build.app.id;

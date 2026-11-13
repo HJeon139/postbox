@@ -27,6 +27,8 @@
 //   ctx.tools.*                             the same tools MCP exposes (see server/tools.mjs)
 //   ctx.signal                              aborted when you press Stop; stop work promptly
 //   ctx.mcpUrl                              where a real agent connects for the UI tools
+//   ctx.readFiles                           the stored paths of the files attached to the message, which the agent
+//                                           may read and only read (attached-files.mjs, #1307); none on a host
 //   ctx.remote                              set when the turn runs on a remote host (#120), and then ctx.mcpUrl is
 //                                           never used: { link, welcome, settings, folder, version, turn, nextTurn,
 //                                           attach?, resumeInterrupted?, bring?, asksByPrompt?, attachments?, allow? }
@@ -60,7 +62,8 @@
 //   capabilities.permissions: 'none'  it doesn’t read Claude Code’s permission rules or MCP config, so the panel and
 //                                     the persona sheet hide them
 //   capabilities.models: [ids]        the models it offers, the last its harness listed, suggested in the model field;
-//                                     listModels() asks the harness again (server/model-lists.mjs)
+//                                     listModels() asks the harness again (server/model-lists.mjs), and one that can
+//                                     run on a host takes listModels(listed), listed giving what the host’s CLI lists
 //   capabilities.tools: 'none'        it can’t turn a tool off for one agent, so the Tools help says so (#143)
 //   capabilities.isolation: false     it always loads your own setup, so the sheet has no Isolated switch (#143)
 //   capabilities.images: true         its agent sees an image in a tool’s result, so view_app sends the picture itself;

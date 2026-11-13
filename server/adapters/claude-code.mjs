@@ -33,13 +33,13 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { versionIn } from '../../shared/cli-version.mjs';
+import { stopProbe } from '../remote/host/probe-stop.mjs';
 import { claudeArgs } from './claude-code-args.mjs';
 import { attachmentPaths, CLAUDE_CODE_CAPABILITIES, checkRemoteClaude, hostTurns, remoteGuide, remoteSaid, remoteTurn } from './claude-code-remote.mjs';
 import { claudeModels } from './claude-models.mjs';
 import { createStreamMapper, forkPointMissing, resultError, windowFor } from './claude-stream.mjs';
 import { agentFolder, forgetMemory, memoryRootFor } from './folder.mjs';
 import { FRESH_START_TEXT, formatMessage, turnGuide } from './guide.mjs';
-import { stopProbe } from './probe-stop.mjs';
 import { listProcesses, stopJobUnder, stopOnAbort, stopTurn } from './process-group.mjs';
 import { hostMemoryRoot } from './remote-turn.mjs';
 import { effortOf, fromContext, recorderFor } from './setup.mjs';
@@ -125,9 +125,13 @@ export class ClaudeCodeAdapter {
     this.list = list;
   }
 
-  /** The models its harness offers, for the model field (server/model-lists.mjs). Empty if it can’t list. */
-  listModels() {
-    return claudeModels(this.bin, { spawnImpl: this.spawn });
+  /**
+   * The models its harness offers, for the model field (server/model-lists.mjs). Empty if it can’t list. listed: what
+   * its CLI lists, by default this computer’s; for an agent on a host, the host’s (server/remote/hosts-models.mjs).
+   * @param {() => Promise<string[]>} [listed]
+   */
+  listModels(listed = () => claudeModels(this.bin, { spawnImpl: this.spawn })) {
+    return listed();
   }
 
   /** The folder the agent works in, by the rule every backend shares (folder.mjs). */

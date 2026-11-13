@@ -116,16 +116,29 @@ export class RemoteTurns {
   }
 
   /**
-   * Whether a session’s turn on its host, from before a restart, waits for the host’s welcome to be attached again
-   * (#1135). The agent is idle here meanwhile, but a message for it waits in the queue, as for a busy one: a new turn
-   * would run on the host beside the one about to be attached. Only while the agent still runs on that host: once
-   * it’s moved off, that turn can’t be attached (reattach), and a message goes where the agent runs now.
+   * Tells Running whether a session’s turn on its host, from before a restart or after its link gave up, waits for the
+   * host’s welcome to be attached again (#1135). The agent is idle here meanwhile, but a message for it waits in the
+   * queue, as for a busy one: a new turn would run on the host beside the one about to be attached. Only while the
+   * agent still runs on that host: once it’s moved off, that turn can’t be attached (reattach), and a message goes
+   * where the agent runs now; moved back before the attach, it waits again. Called wherever `restoring` changes, and
+   * when the agent’s persona is written (persona-write.mjs). It reads the session and the persona as written, held
+   * behind a commit or not, so every caller sees a move the moment updatePersona makes it.
    * @param {string} sessionId
    */
-  awaitsAttach(sessionId) {
-    const se = this.rt.s.sessions[sessionId];
+  noteAttach(sessionId) {
+    const se = this.rt.store.pending.session(sessionId);
     const r = se?.remoteTurn;
-    return Boolean(r?.turn) && this.restoring.get(r.turn) === sessionId && hostOf(this.rt.personaFor(se)) === r.hostId;
+    const waits = Boolean(r?.turn) && this.restoring.get(r.turn) === sessionId && hostOf(this.rt.store.pending.persona(se.personaId)) === r.hostId;
+    if (waits) this.rt.running.awaitAttach(sessionId, r.hostId);
+    else this.rt.running.attached(sessionId);
+  }
+
+  /**
+   * Notes again every session whose turn waits to be attached, or did: Retry installed another state, which may put an
+   * agent back where a dropped move took it from (store-outage.mjs, watchStore).
+   */
+  noteAllAttach() {
+    for (const id of new Set([...this.restoring.values(), ...this.rt.running.awaiting.keys()])) this.noteAttach(id);
   }
 
   /** Stops the timers and listeners, as Postbox shuts down. Turns go on on their hosts. */

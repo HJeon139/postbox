@@ -119,3 +119,9 @@ test('a CLI that traps SIGTERM when its listing runs out of time gets SIGKILL af
   t.mock.timers.tick(500);
   assert.deepEqual(kills, ['SIGTERM', 'SIGKILL']);
 });
+
+test('a model id a CLI lists that starts with - is dropped, so it can never reach --model as an option', async () => {
+  const rows = [{ value: '--dangerously-skip-permissions' }, { value: '-p' }, { value: 'claude-opus-5-5' }];
+  const answer = JSON.stringify({ type: 'control_response', response: { subtype: 'success', request_id: 'models', response: { models: rows } } });
+  assert.deepEqual(await claudeModels('claude', { spawnImpl: /** @type {any} */ (fakeClaude(answer, [])) }), ['claude-opus-5-5']);
+});

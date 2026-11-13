@@ -214,7 +214,7 @@ const offeredBy = (id, config) => {
  * 4. The first model it lists.
  * Before the backend has listed any: its preferred model, else Postbox’s default.
  * @param {string} id @param {any} [config]  the page’s config, or the server’s with the backend’s capabilities
- * @param {string[] | null} [offered]  the list to pick from, when it isn’t config’s
+ * @param {string[] | null} [offered]  the list to pick from, when it isn’t this computer’s, such as a host’s (#1304)
  */
 export const modelDefault = (id, config, offered = config?.backends?.[id]?.models ?? null) => {
   const prefer = config?.backends?.[id]?.preferModel;

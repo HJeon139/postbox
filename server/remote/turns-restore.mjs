@@ -32,6 +32,7 @@ export function restore(rts) {
         continue;
       }
       rts.restoring.set(r.turn, se.id);
+      rts.noteAttach(se.id);
       needHost(rts, r.hostId);
       void reattach(rts, se.id);
     } else if (r.state === 'interrupted' && r.resume) {
@@ -67,6 +68,7 @@ export function cancel(rts, sessionId) {
   const pending = rts.restoring.get(r.turn) === sessionId;
   if (pending) {
     rts.restoring.delete(r.turn);
+    rts.noteAttach(sessionId);
     rts.early.delete(r.turn);
   }
   const onHost = pending || ON_HOST.has(r.state);

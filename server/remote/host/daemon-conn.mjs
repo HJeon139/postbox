@@ -4,6 +4,7 @@
 import { createLineReader, encode, parseLine, validateMessage } from '../../../shared/remote-protocol.mjs';
 import { check } from './daemon-check.mjs';
 import { hello } from './daemon-hello.mjs';
+import { models } from './daemon-models.mjs';
 import { ack, read } from './daemon-read.mjs';
 import { remove } from './daemon-remove.mjs';
 import { fail, send } from './daemon-reply.mjs';
@@ -86,6 +87,7 @@ const handlers = {
   ack: (d, c, m) => ack(d, c, m),
   remove: (d, c) => remove(d, c),
   check: (d, c) => check(d, c),
+  models: (d, c, m) => models(d, c, m),
 };
 
 /** @param {Daemon} d @param {Conn} c @param {any} m */

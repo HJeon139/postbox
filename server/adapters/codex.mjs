@@ -198,10 +198,14 @@ export class CodexAdapter {
     this.spawn = spawnImpl;
     this.capabilities = { ...CODEX_CAPABILITIES, models: [...new Set([...models, AUTO_MODEL])] };
   }
-  /** The models its harness offers, for the model field (server/model-lists.mjs). Empty if it can’t list. */
-  listModels() {
+  /**
+   * The models its harness offers, for the model field (server/model-lists.mjs). Empty if it can’t list. listed: what
+   * its CLI lists, by default this computer’s; for an agent on a host, the host’s (server/remote/hosts-models.mjs).
+   * @param {() => Promise<string[]>} [listed]
+   */
+  listModels(listed = () => codexModels(this.bin, { spawnImpl: this.spawn })) {
     // AUTO_MODEL stays beside what Codex lists, as the constructor offers it.
-    return codexModels(this.bin, { spawnImpl: this.spawn }).then((listed) => (listed.length ? [...new Set([...listed, AUTO_MODEL])] : []));
+    return listed().then((ids) => (ids.length ? [...new Set([...ids, AUTO_MODEL])] : []));
   }
 
   /** The folder the agent works in, by the rule every backend shares (folder.mjs). */

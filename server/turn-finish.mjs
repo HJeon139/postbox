@@ -25,7 +25,7 @@ export function endTurn(rt, turn, err) {
   // Its permissions expire while it still counts as running, so their release counts no card tied to a turn: the
   // turn's end, below, decides those.
   for (const [id, w] of rt.permissionWaits) if (w.sessionId === turn.sessionId) rt.settlePermission(id, 'expired');
-  rt.turns.delete(turn.sessionId);
+  rt.running.end(turn.sessionId);
   rt.settleSubagentSteps(turn);
   // Its steps fold to what its record keeps: the live view's detail goes with the turn (turn-steps.mjs).
   if (turn.first) foldSteps(rt, turn.threadId, turn.first);
