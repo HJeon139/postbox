@@ -5,6 +5,7 @@
 // The apps throw on purpose, so these tests don’t fail on page errors.
 
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { frameOf } from './app-pointer.mjs';
 import { failOnServerErrors, startPostbox, synced } from './postbox.mjs';
 
@@ -39,13 +40,13 @@ test.afterAll(async () => {
 /** A conversation of its own with @librarian, open in the page, where it shows one app once its check is done. */
 async function shown(page, title, code) {
   const { rt } = app;
-  const t = rt.createThread({ projectId: Object.values(rt.s.projects)[0].id, title, personaIds: [rt.personaByHandle('librarian').id] });
-  const se = rt.sessionsIn(t.id)[0];
+  const t = rt.createThread({ projectId: Object.values(rt.store.state.projects)[0].id, title, personaIds: [arrange.persona(rt, 'librarian').id] });
+  const se = arrange.agentIn(rt, t.id);
   await page.goto(`${app.origin}/#/t/${t.id}`);
   await synced(page, app);
   const id = `${title.toLowerCase().replace(/\W+/g, '-')}-${t.id}`;
   rt.toolsFor(se.id).show_app({ id, title, code, permissions: [] });
-  await expect.poll(() => rt.s.apps[id]?.check.status, { message: `${title} to pass its check` }).toMatch(/^(passed|note)$/);
+  await expect.poll(() => rt.store.state.apps[id]?.check.status, { message: `${title} to pass its check` }).toMatch(/^(passed|note)$/);
   return id;
 }
 
@@ -58,7 +59,7 @@ test('#964 an app that drew keeps running after a script error, with the error n
   await expect(strip.getByRole('button', { name: 'Ask librarian to fix it' })).toBeVisible();
   await expect(page.getByText('Weekly orders stopped working')).toHaveCount(0);
   await expect(frameOf(page, 'Weekly orders')).toBeVisible();
-  await expect.poll(() => app.rt.s.apps[id]?.state?.after, { message: 'the app to run on after its error' }).toBe(true);
+  await expect.poll(() => app.rt.store.state.apps[id]?.state?.after, { message: 'the app to run on after its error' }).toBe(true);
 
   await test.step('Reload app loads it again, without the strip until it throws again', async () => {
     await strip.getByRole('button', { name: 'Reload app' }).click();

@@ -6,7 +6,7 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
-import { blockFiles } from '../../server/review-files.mjs';
+import * as arrange from '../arrange.mjs';
 import { png } from '../png.mjs';
 import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 import { viewRadio } from './review.mjs';
@@ -21,7 +21,7 @@ test.beforeAll(async () => {
   const { rt, store } = app;
   const folder = join(app.root, 'agent-folder');
   await mkdir(join(folder, 'figs'), { recursive: true });
-  projectId = Object.values(rt.s.projects)[0].id;
+  projectId = Object.values(rt.store.state.projects)[0].id;
   store.emit('project', { ...rt.s.projects[projectId], folder });
   await writeFile(join(folder, 'figs/today.png'), png(120, 80, 0, 0x30));
   await writeFile(join(folder, 'figs/trend.png'), png(60, 40, 0, 0xc0));
@@ -35,10 +35,12 @@ test.use({ viewport: { width: 1280, height: 900 }, colorScheme: 'light' });
 /** The librarian shows #780’s draft, with its two figures, as a tool call over MCP would (blockFiles, then show_block). */
 async function showFigures(title, content = CONTENT) {
   const { rt } = app;
-  const t = rt.createThread({ projectId, title, personaIds: [rt.personaByHandle('librarian').id] });
-  const [se] = rt.sessionsIn(t.id);
+  const t = rt.createThread({ projectId, title, personaIds: [arrange.persona(rt, 'librarian').id] });
+  const [se] = arrange.sessionsIn(rt, t.id);
   const block = { id: 'figures', type: 'review', version: 1, format: 'markdown', fallback: 'A draft with two figures', content };
-  const { args, files } = await blockFiles(rt, se.id, 'show_block', { block: { ...block, files: [{ path: 'figs/today.png' }, { path: 'figs/trend.png' }] } });
+  const { args, files } = await arrange.blockFiles(rt, se.id, 'show_block', {
+    block: { ...block, files: [{ path: 'figs/today.png' }, { path: 'figs/trend.png' }] },
+  });
   const shown = rt.toolsFor(se.id).show_block(args, { files });
   expect(shown.ok, shown.message).toBe(true);
   const item = rt.store.items(t.id).find((i) => i.kind === 'block' && i.block.id === 'figures');
@@ -115,10 +117,10 @@ test.describe('at 375 px', () => {
     const { rt } = app;
     const folder = join(app.root, 'agent-folder');
     await writeFile(join(folder, 'figs/wide.png'), png(1600, 400, 0, 0x60));
-    const t = rt.createThread({ projectId, title: 'A wide figure', personaIds: [rt.personaByHandle('librarian').id] });
-    const [se] = rt.sessionsIn(t.id);
+    const t = rt.createThread({ projectId, title: 'A wide figure', personaIds: [arrange.persona(rt, 'librarian').id] });
+    const [se] = arrange.sessionsIn(rt, t.id);
     const block = { id: 'wide', type: 'review', version: 1, format: 'markdown', fallback: 'A wide figure', content: '![Wide](figs/wide.png)' };
-    const { args, files } = await blockFiles(rt, se.id, 'show_block', { block: { ...block, files: [{ path: 'figs/wide.png' }] } });
+    const { args, files } = await arrange.blockFiles(rt, se.id, 'show_block', { block: { ...block, files: [{ path: 'figs/wide.png' }] } });
     expect(rt.toolsFor(se.id).show_block(args, { files }).ok).toBe(true);
     const item = rt.store.items(t.id).find((i) => i.kind === 'block' && i.block.id === 'wide');
     await page.goto(`${app.origin}/#/t/${t.id}`);

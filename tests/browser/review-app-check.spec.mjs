@@ -4,6 +4,7 @@
 // the review is always drawn while the check is pending. At 375 and 1280 px.
 
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 
 const PLAIN = (text) => `<main style="padding:12px;color:var(--text)"><h2>${text}</h2><p>Twelve books.</p></main>`;
@@ -14,7 +15,7 @@ let app;
 let drawer;
 test.beforeAll(async () => {
   app = await startPostbox('review-app-check');
-  app.rt.adapters.register({ name: 'mock', async deliver() {} });
+  arrange.withAdapter(app.rt, { name: 'mock', async deliver() {} });
   drawer = app.rt.createPersona({ handle: 'drawer' });
 });
 test.afterAll(async () => {
@@ -34,7 +35,7 @@ async function appAndReview(page, title, id, code) {
   await page.route('**/api/apps/*/check', (route) => (holding ? held.push(route) : route.continue()));
   await page.goto(`${app.origin}/#/t/${thread.id}`);
   await synced(page, app);
-  const tools = rt.toolsFor(rt.sessionsIn(thread.id)[0].id);
+  const tools = rt.toolsFor(arrange.agentIn(rt, thread.id).id);
   tools.show_app({ id, title, code, permissions: [] });
   tools.show_block({ block: { id: `rv-${id}`, type: 'review', version: 1, fallback: 'Review the app', format: 'app', appId: id } });
   const reviewItem = store.items(thread.id).find((i) => i.kind === 'block' && i.block.id === `rv-${id}`);
@@ -47,7 +48,7 @@ async function appAndReview(page, title, id, code) {
     holding = false;
     for (const route of held.splice(0)) await route.continue();
   };
-  return { review, shown, release, status: () => rt.s.apps[id].check.status };
+  return { review, shown, release, status: () => rt.store.state.apps[id].check.status };
 }
 
 for (const width of [375, 1280])

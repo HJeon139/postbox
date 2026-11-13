@@ -9,6 +9,7 @@ import { test } from 'node:test';
 import { claimPrompt, REFUSED } from '../server/prompt-claim.mjs';
 import { REQUESTED_MAX } from '../server/write-intent.mjs';
 import { PROMPT_CALL_WAIT_MS } from '../shared/limits.mjs';
+import * as arrange from './arrange.mjs';
 import { answerNow, askedAfter, feed, flush, openCard, PROMPTS, prompt, pushEvent, refusals, STREAM, settled, turn } from './prompt-setup.mjs';
 import { CREATE, cards, lines, setup } from './requested-setup.mjs';
 
@@ -46,7 +47,7 @@ test('#353 whether a subagent made the call is the stream’s word, not the prom
   const claims = [];
   const sub = STREAM[askedAfter(PROMPTS[1].tool_use_id) - 1].parent_tool_use_id;
   await turn(s, async (c) => {
-    const se = s.rt.sessionsIn(s.t.id)[0];
+    const se = arrange.agentIn(s.rt, s.t.id);
     feed(c, 0, askedAfter(PROMPTS[0].tool_use_id));
     claims.push(await claimPrompt(s.rt, se.id, { ...PROMPTS[0], agent_id: 'task-not-a-subagent' }));
     feed(c, askedAfter(PROMPTS[0].tool_use_id), askedAfter(PROMPTS[1].tool_use_id));

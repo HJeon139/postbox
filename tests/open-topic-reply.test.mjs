@@ -5,6 +5,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import * as arrange from './arrange.mjs';
 import { settle, setup } from './side-threads-fixture.mjs';
 
 /** The conversation with alpha’s settled reply, and a way to run one turn of an agent’s that calls open_topic on it. */
@@ -94,7 +95,14 @@ test('#651 an open with a different text posts it: only the same text is a repea
 test('#651 once the opener has spoken there since, the same text posts again: only its newest message counts', async () => {
   const f = await conversation();
   const one = await f.open({ message: 'A' });
-  f.rt.addItem(one.threadId, { kind: 'agent', sessionId: f.alpha.id, personaId: f.alpha.personaId, handle: 'alpha', text: 'Something else.', status: 'done' });
+  arrange.post(f.rt, one.threadId, {
+    kind: 'agent',
+    sessionId: f.alpha.id,
+    personaId: f.alpha.personaId,
+    handle: 'alpha',
+    text: 'Something else.',
+    status: 'done',
+  });
   const two = await f.open({ message: 'A' });
   assert.equal(f.copies(one.threadId, 'A').length, 2);
   assert.equal(two.posted, true);

@@ -7,6 +7,7 @@
 // thread events arrive, and Chromium counts the layout work they cost.
 
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, frames, newestShown, openAs, ROOM_MODES, settled, startPostbox, synced } from './postbox.mjs';
 
 // No DOM snapshots in the trace: Playwright snapshots the whole page around each action, each poll of synced() too,
@@ -50,15 +51,15 @@ async function seeded(page) {
   const a = rt.createPersona({ handle: `maker${n}` });
   const b = rt.createPersona({ handle: `checker${n}` });
   const t = rt.createThread({ projectId: 'pr_live', title: 'Long room', personaIds: [a.id, b.id] });
-  const [sa, sb] = rt.sessionsIn(t.id);
+  const [sa, sb] = arrange.sessionsIn(rt, t.id);
   for (let i = 0; i < ITEMS; i++) {
     const se = i % 4 === 1 ? sa : sb;
     const turnId = `tu_${i}`;
-    if (i % 4 === 0) rt.addItem(t.id, { kind: 'user', text: `Message ${i}: carry on with the next part.`, status: 'done' });
+    if (i % 4 === 0) arrange.post(rt, t.id, { kind: 'user', text: `Message ${i}: carry on with the next part.`, status: 'done' });
     else if (i % 150 === 3) {
       rt.toolsFor(se.id).show_block({ block: confirm(i) });
     } else {
-      const id = rt.addItem(t.id, {
+      const id = arrange.post(rt, t.id, {
         kind: 'agent',
         sessionId: se.id,
         personaId: se.personaId,
@@ -147,15 +148,15 @@ async function perEvent(page, n, send) {
 test('#622: a ring whose agent changes state and context at once builds its SVG once', async ({ page }) => {
   const p = app.rt.createPersona({ handle: 'once' });
   const t = app.rt.createThread({ projectId: 'pr_live', title: 'Once', personaIds: [p.id] });
-  const se = app.rt.sessionsIn(t.id)[0];
-  app.rt.addItem(t.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text: 'One reply.', status: 'done' });
+  const se = arrange.agentIn(app.rt, t.id);
+  arrange.post(app.rt, t.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text: 'One reply.', status: 'done' });
   await page.addInitScript(countWork);
   await page.goto(`${app.origin}/#/t/${t.id}`);
   await synced(page, app);
   const ring = page.locator(`.transcript .who pb-ring[data-session="${se.id}"]`);
   await expect(ring).toHaveAttribute('state', 'idle');
   const was = await page.evaluate(() => /** @type {any} */ (window).__work.stills);
-  app.rt.updateSession(se.id, { state: 'think', ctx: 40, subagents: [{ name: 'reader', state: 'tool', ctx: 10 }] });
+  arrange.setSession(app.rt, se.id, { state: 'think', ctx: 40, subagents: [{ name: 'reader', state: 'tool', ctx: 10 }] });
   await expect(ring).toHaveAttribute('state', 'think');
   await frames(page);
   const built = (await page.evaluate(() => /** @type {any} */ (window).__work.stills)) - was;
@@ -165,9 +166,9 @@ test('#622: a ring whose agent changes state and context at once builds its SVG 
 test('#622: the ring beside an earlier reply says only whose it is, after a redraw and a reload too', async ({ page }) => {
   const p = app.rt.createPersona({ handle: 'earlier' });
   const t = app.rt.createThread({ projectId: 'pr_live', title: 'Earlier', personaIds: [p.id] });
-  const se = app.rt.sessionsIn(t.id)[0];
+  const se = arrange.agentIn(app.rt, t.id);
   const reply = (n) =>
-    app.rt.addItem(t.id, {
+    arrange.post(app.rt, t.id, {
       kind: 'agent',
       sessionId: se.id,
       personaId: se.personaId,
@@ -178,7 +179,7 @@ test('#622: the ring beside an earlier reply says only whose it is, after a redr
     });
   const first = reply(1);
   reply(2);
-  app.rt.updateSession(se.id, { state: 'needs', ctx: 40 });
+  arrange.setSession(app.rt, se.id, { state: 'needs', ctx: 40 });
   await page.goto(`${app.origin}/#/t/${t.id}`);
   await synced(page, app);
   const rings = page.locator(`.transcript .who pb-ring[data-session="${se.id}"]`);
@@ -189,12 +190,12 @@ test('#622: the ring beside an earlier reply says only whose it is, after a redr
     await expect(rings.first(), when).not.toHaveAttribute('role', 'button');
   };
   await earlierSaysOnlyWhose('on the first draw');
-  app.rt.updateSession(se.id, { ctx: 80 });
+  arrange.setSession(app.rt, se.id, { ctx: 80 });
   app.store.emit('item.patch', { threadId: t.id, id: first.id, patch: { text: 'Reply 1, edited.' } });
   await synced(page, app);
   await expect(label(rings.last())).toHaveAttribute('aria-label', 'earlier: Needs you, 80% of context used');
   await expect(label(rings.first()), 'after the earlier reply is drawn again').toHaveAttribute('aria-label', 'earlier');
-  app.rt.updateSession(se.id, { ctx: 40 });
+  arrange.setSession(app.rt, se.id, { ctx: 40 });
   await page.reload();
   await synced(page, app);
   await earlierSaysOnlyWhose('after a reload');
@@ -203,14 +204,14 @@ test('#622: the ring beside an earlier reply says only whose it is, after a redr
 test('#622: the ring and the words that follow an agent sit on one line, in a turn of two parts and after a block moves', async ({ page }) => {
   const p = app.rt.createPersona({ handle: 'oneline' });
   const t = app.rt.createThread({ projectId: 'pr_live', title: 'One line', personaIds: [p.id] });
-  const se = app.rt.sessionsIn(t.id)[0];
+  const se = arrange.agentIn(app.rt, t.id);
   const reply = (turnId, text) =>
-    app.rt.addItem(t.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, turnId, text, status: 'done' });
+    arrange.post(app.rt, t.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, turnId, text, status: 'done' });
   app.rt.toolsFor(se.id).show_block({ block: confirm(1) });
-  app.rt.addItem(t.id, { kind: 'user', text: 'Carry on.', status: 'done' });
+  arrange.post(app.rt, t.id, { kind: 'user', text: 'Carry on.', status: 'done' });
   const first = reply('tu_o1', 'The first part of a turn.');
   reply('tu_o1', 'Its second part, under the same line.');
-  app.rt.updateSession(se.id, { state: 'needs', ctx: 30 });
+  arrange.setSession(app.rt, se.id, { state: 'needs', ctx: 30 });
   await page.goto(`${app.origin}/#/t/${t.id}`);
   await synced(page, app);
   // Each speaker line of the agent: its message, whether its ring follows, and its words.
@@ -226,12 +227,12 @@ test('#622: the ring and the words that follow an agent sit on one line, in a tu
   await expect.poll(following, { message: 'in a turn of two parts, its first part’s line' }).toEqual([{ item: first.id, ring: 'needs', words: '· needs you' }]);
   const block = app.store.items(t.id).find((x) => x.kind === 'block');
   // After your message, so the block names its speaker where it lands.
-  app.rt.addItem(t.id, { kind: 'user', text: 'And the block?', status: 'done' });
-  app.rt.bringForward(t.id, block.id, { what: 'block', title: 'Ship step 1' });
+  arrange.post(app.rt, t.id, { kind: 'user', text: 'And the block?', status: 'done' });
+  arrange.moveToEnd(app.rt, t.id, block.id, { what: 'block', title: 'Ship step 1' });
   await expect
     .poll(following, { message: 'once the block moves, its line, before any session change' })
     .toEqual([{ item: block.id, ring: 'needs', words: '· needs you' }]);
-  app.rt.updateSession(se.id, { state: 'tool' });
+  arrange.setSession(app.rt, se.id, { state: 'tool' });
   await expect.poll(following, { message: 'and after one' }).toEqual([{ item: block.id, ring: 'tool', words: '· calling tools' }]);
 });
 
@@ -241,13 +242,13 @@ for (const mode of ROOM_MODES)
     test.setTimeout(180_000);
     const { t, sa } = await seeded(page);
     const STATES = ['think', 'tool', 'gen', 'needs'];
-    const session = await perEvent(page, 8, (i) => app.rt.updateSession(sa.id, { state: STATES[i % 4], ctx: 20 + i, currentStep: `Step ${i}` }));
+    const session = await perEvent(page, 8, (i) => arrange.setSession(app.rt, sa.id, { state: STATES[i % 4], ctx: 20 + i, currentStep: `Step ${i}` }));
     test.info().annotations.push({ type: 'measured', description: `per session event: ${JSON.stringify(session)}` });
     expect.soft(session.rings, `ring SVGs built per session event, in the whole page, not one per reply (${JSON.stringify(session)})`).toBeLessThanOrEqual(20);
     expect.soft(session.activity, 'activity lists taken out per session event').toBe(0);
     // The ring beside the maker’s latest reply follows it; the 249 beside its earlier replies rest, as the words beside
     // its name show only on the latest.
-    app.rt.updateSession(sa.id, { state: 'think', ctx: 33 });
+    arrange.setSession(app.rt, sa.id, { state: 'think', ctx: 33 });
     const rings = page.locator(`.transcript[data-thread="${t.id}"] .who pb-ring[data-session="${sa.id}"]`);
     await expect.soft(rings.last()).toHaveAttribute('state', 'think');
     await expect.soft(rings.last()).toHaveAttribute('ctx', '33');
@@ -271,17 +272,17 @@ for (const mode of ROOM_MODES)
     await openAs(page, mode);
     test.setTimeout(180_000);
     const { t, sa, sb } = await seeded(page);
-    const session = await perEvent(page, 6, (i) => app.rt.updateSession(sa.id, { state: i % 2 ? 'tool' : 'think', ctx: 20 + i }));
+    const session = await perEvent(page, 6, (i) => arrange.setSession(app.rt, sa.id, { state: i % 2 ? 'tool' : 'think', ctx: 20 + i }));
     test.info().annotations.push({ type: 'measured', description: `per session event: ${JSON.stringify(session)}` });
     expect.soft(session.words, 'status words looked up per session event').toBeLessThanOrEqual(10);
     // The words still follow: on the maker’s latest reply only, and gone once it rests; the checker’s beside its own.
     const words = (se) => page.locator(`.transcript[data-thread="${t.id}"] .who-state[data-session="${se.id}"]`);
-    app.rt.updateSession(sa.id, { state: 'think' });
-    app.rt.updateSession(sb.id, { state: 'tool' });
+    arrange.setSession(app.rt, sa.id, { state: 'think' });
+    arrange.setSession(app.rt, sb.id, { state: 'tool' });
     await expect.soft(words(sa).last()).toHaveText('· thinking');
     await expect.soft(words(sb).last()).toHaveText('· calling tools');
     expect.soft(await words(sa).evaluateAll((ws) => ws.filter((w) => w.textContent).length), 'words showing for the maker').toBe(1);
-    app.rt.updateSession(sa.id, { state: 'idle' });
+    arrange.setSession(app.rt, sa.id, { state: 'idle' });
     await expect.soft(words(sa).last()).toHaveText('');
     await expect.soft(words(sb).last()).toHaveText('· calling tools');
   });

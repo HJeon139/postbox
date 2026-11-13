@@ -6,6 +6,7 @@
 // clamped at the start or end of the page. Each test has a conversation of its own.
 
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, settled, startPostbox } from './postbox.mjs';
 import { holds, LONG, open as openIn, room as roomIn } from './view-read-fixture.mjs';
 
@@ -32,8 +33,9 @@ const more = (say, n = 15, from = 100) => {
 };
 /** No agent but the one named needs the person, so ⌃J and the side line go to its card. @param {string} sessionId */
 function onlyNeeds(sessionId, needs) {
-  for (const se of Object.values(app.store.state.sessions)) if (se.needs && se.id !== sessionId) app.rt.updateSession(se.id, { needs: null, state: 'idle' });
-  app.rt.updateSession(sessionId, { state: 'needs', needs });
+  for (const se of Object.values(app.store.state.sessions))
+    if (se.needs && se.id !== sessionId) arrange.setSession(app.rt, se.id, { needs: null, state: 'idle' });
+  arrange.setSession(app.rt, sessionId, { state: 'needs', needs });
 }
 
 /**
@@ -88,7 +90,7 @@ async function landed(page, threadId, target, itemKey, block) {
 test('#712 Go to it on a moved app’s stub makes the app the anchor, centered', async ({ page }) => {
   const { rt, store } = app;
   const { t, say } = room('Jump: Go to it');
-  const [se] = rt.sessionsIn(t.id);
+  const [se] = arrange.sessionsIn(rt, t.id);
   const tools = rt.toolsFor(se.id);
   tools.show_app({ id: 'jump-moved', title: 'Pair explorer', code: APP('v1'), permissions: [] });
   more(say, 20);
@@ -109,7 +111,7 @@ test('#712 Go to it on a moved app’s stub makes the app the anchor, centered',
 test('#712 a retired app’s link to its replacement makes the replacement the anchor, centered', async ({ page }) => {
   const { rt, store } = app;
   const { t, say } = room('Jump: retired app');
-  const [se] = rt.sessionsIn(t.id);
+  const [se] = arrange.sessionsIn(rt, t.id);
   const tools = rt.toolsFor(se.id);
   tools.show_app({ id: 'jump-old', title: 'Practice lab', code: APP('Lab'), permissions: [] });
   more(say, 20);
@@ -128,7 +130,7 @@ test('#712 a retired app’s link to its replacement makes the replacement the a
 test('#712 ⌃J to a card in the middle of the room makes it the anchor, centered', async ({ page }) => {
   const { rt, store } = app;
   const { t, say } = room('Jump: ⌃J');
-  const [se] = rt.sessionsIn(t.id);
+  const [se] = arrange.sessionsIn(rt, t.id);
   rt.toolsFor(se.id).show_block({
     block: { id: 'jump-ask', type: 'confirm', version: 1, fallback: 'Clear it?', statement: 'Clear the frames?', confirmLabel: 'Clear' },
   });
@@ -146,17 +148,17 @@ test('#712 ⌃J to a card in the middle of the room makes it the anchor, centere
 test('#712 the side thread’s line goes to its card in the panel and makes it the anchor there, centered', async ({ page }) => {
   const { rt } = app;
   const { t } = room('Jump: side line');
-  const [se] = rt.sessionsIn(t.id);
-  const side = rt.putThread({
+  const [se] = arrange.sessionsIn(rt, t.id);
+  const side = arrange.putThread(rt, {
     ...{ id: `th_side${t.id.slice(3)}`, projectId: t.projectId, title: '@researcher ↔ @researcher', kind: 'side', parentId: t.id },
     ...{ pair: 'researcher|researcher', woke: 'researcher', members: [], lastSpeaker: null, hops: 0, queue: [], createdAt: Date.now() },
   });
-  rt.addItem(t.id, { kind: 'sidelink', sideThreadId: side.id, from: 'researcher', to: 'researcher', count: 0 });
+  arrange.post(rt, t.id, { kind: 'sidelink', sideThreadId: side.id, from: 'researcher', to: 'researcher', count: 0 });
   const sayThere = (/** @type {string} */ text) =>
-    rt.addItem(side.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text, status: 'done' });
+    arrange.post(rt, side.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text, status: 'done' });
   more(sayThere, 30);
   const block = { id: 'jump-side-ask', type: 'confirm', version: 1, fallback: 'Index it?', statement: 'Index the shelf?', confirmLabel: 'Index' };
-  const card = rt.addItem(side.id, { kind: 'block', sessionId: se.id, handle: se.handle, turnId: null, valid: true, block, answered: false });
+  const card = arrange.post(rt, side.id, { kind: 'block', sessionId: se.id, handle: se.handle, turnId: null, valid: true, block, answered: false });
   more(sayThere, 15, 300);
   onlyNeeds(se.id, { kind: 'block', itemId: card.id, threadId: side.id, text: 'Index the shelf?' });
   await open(page, t);
@@ -170,7 +172,7 @@ test('#712 Show in sources makes the cited reply the anchor, with its source cen
   const { t, say } = room('Jump: Show in sources');
   const body = Array.from({ length: 14 }, (_, i) => LONG(200 + i)).join('\n\n');
   const cited = say(`ReAct grounds each step in what it observed [1].\n\n${body}`);
-  rt.patchItem(t.id, cited.id, { sources: [{ title: 'ReAct', authors: 'Yao, Zhao', year: 2023, url: 'https://arxiv.org/abs/2210.03629' }] });
+  arrange.setItem(rt, t.id, cited.id, { sources: [{ title: 'ReAct', authors: 'Yao, Zhao', year: 2023, url: 'https://arxiv.org/abs/2210.03629' }] });
   more(say, 15);
   await open(page, t);
   await page.locator(`[data-key="${cited.id}"] a.cite`).click();

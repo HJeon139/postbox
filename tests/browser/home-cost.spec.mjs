@@ -6,6 +6,7 @@
 
 import { expect, test } from '@playwright/test';
 import { seedBigRoom } from '../../tools/uat/big-room.mjs';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, newestShown, settled, startPostbox, synced } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -40,7 +41,7 @@ const MAIN_LAYOUTS = 2;
 
 test('#1155 Home in a 10,000-item room does main’s work: no load, and no more layouts', async ({ page }) => {
   test.setTimeout(120_000);
-  const projectId = /** @type {any} */ (Object.values(app.rt.s.projects)[0]).id;
+  const projectId = /** @type {any} */ (Object.values(app.rt.store.state.projects)[0]).id;
   const room = app.rt.createThread({ projectId, title: '10,000 items', personaIds: [] });
   seedBigRoom(app.store, room.id, { count: 10_000 });
   await page.setViewportSize({ width: 1280, height: 800 });
@@ -77,7 +78,7 @@ test('#1155 Home in a 10,000-item room does main’s work: no load, and no more 
 });
 
 test('#1155 Home with focus in the transcript goes to the room’s first item in one press', async ({ page }) => {
-  const projectId = /** @type {any} */ (Object.values(app.rt.s.projects)[0]).id;
+  const projectId = /** @type {any} */ (Object.values(app.rt.store.state.projects)[0]).id;
   const room = app.rt.createThread({ projectId, title: '3,000 items', personaIds: [] });
   seedBigRoom(app.store, room.id, { count: 3000 });
   await page.goto(`${app.origin}/#/t/${room.id}`);
@@ -91,7 +92,7 @@ test('#1155 Home with focus in the transcript goes to the room’s first item in
 
 test('#1155 Home at once after a 10,000-item room opens does main’s work: no load, and no more layouts', async ({ page }) => {
   test.setTimeout(120_000);
-  const projectId = /** @type {any} */ (Object.values(app.rt.s.projects)[0]).id;
+  const projectId = /** @type {any} */ (Object.values(app.rt.store.state.projects)[0]).id;
   const room = app.rt.createThread({ projectId, title: '10,000 items, Home at once', personaIds: [] });
   seedBigRoom(app.store, room.id, { count: 10_000 });
   await page.setViewportSize({ width: 1280, height: 800 });
@@ -130,7 +131,7 @@ const MAIN_END_LAYOUTS = 1;
 
 test('#1155 End after Home in a 10,000-item room does main’s work: no load, and no more layouts', async ({ page }) => {
   test.setTimeout(120_000);
-  const projectId = /** @type {any} */ (Object.values(app.rt.s.projects)[0]).id;
+  const projectId = /** @type {any} */ (Object.values(app.rt.store.state.projects)[0]).id;
   const room = app.rt.createThread({ projectId, title: '10,000 items, Home then End', personaIds: [] });
   seedBigRoom(app.store, room.id, { count: 10_000 });
   await page.setViewportSize({ width: 1280, height: 800 });
@@ -168,7 +169,7 @@ test('#1155 End after Home in a 10,000-item room does main’s work: no load, an
 // further up: End puts back the newest items as the server has them, the moved one last, not a range one place off.
 for (const at of [5, 500])
   test(`#1155 End after Home, with item ${at} moved forward meanwhile, holds the newest items as the server has them`, async ({ page }) => {
-    const projectId = /** @type {any} */ (Object.values(app.rt.s.projects)[0]).id;
+    const projectId = /** @type {any} */ (Object.values(app.rt.store.state.projects)[0]).id;
     const room = app.rt.createThread({ projectId, title: `Moved forward from ${at}`, personaIds: [] });
     seedBigRoom(app.store, room.id, { count: 1000 });
     await page.goto(`${app.origin}/#/t/${room.id}`);
@@ -179,7 +180,7 @@ for (const at of [5, 500])
     expect(await home(page, app.store.items(room.id)[0].id), 'Home').toBeGreaterThan(0);
     await settled(page);
     const was = app.store.items(room.id)[at].id;
-    app.rt.bringForward(room.id, was, { what: 'app', title: 'Chart' });
+    arrange.moveToEnd(app.rt, room.id, was, { what: 'app', title: 'Chart' });
     await synced(page, app);
     const moved = app.store.items(room.id).at(-1).id;
     // Read at the top, the move shows as on main: its stub in its place, if that's on the page.

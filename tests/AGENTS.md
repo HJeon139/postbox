@@ -21,6 +21,7 @@ A test that must run a real process (npm, git, an installed postbox) goes in `te
 
 Browser checks are Playwright Test specs in `tests/browser/*.spec.mjs` (designs/architecture/browser-checks.md, “Browser checks on Playwright Test”, #303):
 - Each spec file starts its own Postbox in `beforeAll` with `startPostbox()` from `tests/browser/postbox.mjs`, stops it in `afterAll`, and calls `failOnPageErrors(test)`. Wait for the page to hear the server with `synced(page, app)`.
+- Act through the runtime’s facade (the routes’ methods, `store`, `thread`, `session`, `persona` and `toolsFor`). Arrange a room, read a live turn or fake a backend past it only through a helper of `tests/arrange.mjs`, adding one there when none fits, so the step that redoes a concern changes the fixture and no spec. Unit tests that arrange a room do the same, with one exception: a unit test may call the function under test with `rt`, until the step that redoes its concern rewrites it against the service (designs/architecture/services.md, “The fixture: arranging without the facade”).
 - Wait with web-first assertions (`expect(locator)…`), `expect.poll` or `expect(…).toPass`, never for a fixed time. The `no-fixed-waits` Biome rule fails `page.waitForTimeout` and `setTimeout` in a spec.
 - Find elements by role or name where the page gives one, else by the attribute the code sets (`data-key`, `data-session`). A locator that matches two elements is a question to answer, not to work around with `.first()`.
 - Click and type as a person does, through Playwright. Never `element.click()` in the page: it skips the mouse, and a real bug hid behind one (#307).
@@ -28,7 +29,7 @@ Browser checks are Playwright Test specs in `tests/browser/*.spec.mjs` (designs/
 - Measure what fits a narrow window against `windowWidth(page)`, never `innerWidth`. On a phone (`isMobile`), a page that overflows widens `innerWidth` to fit, so a check against it can’t fail. Settings’ tabs ran past a 375 px window behind one.
 - A test that holds what were separate checks makes its expects soft (`expect.soft`), so each reports whichever fails first.
 - Tests that don’t depend on each other stay independent; a story whose steps build on each other is one test with `test.step`s and `expect.soft`.
-- Show a new spec failing on the code without its fix. CI runs a spec a pull request adds or edits ten times, with the events late. A later push repeats only the specs it changed or brought in, where the job passed on the push before; where it failed, was canceled or skipped, every one again (`tools/repeat-specs.mjs`).
+- Show a new spec failing on the code without its fix. CI runs every spec twice, once with the events late, with no retries.
 
 ## UAT docs
 

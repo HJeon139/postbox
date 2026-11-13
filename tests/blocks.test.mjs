@@ -2,12 +2,13 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { formatMessage } from '../server/adapters/guide.mjs';
+import * as arrange from './arrange.mjs';
 import { choice, review, settle, setup, turn } from './blocks-fixture.mjs';
 
 test('#106: an agent withdraws a block that asks, with a reason: it reads as closed and stops needing you at once', async () => {
   const { rt, store, t, adapter } = setup();
   await turn(rt, adapter, t, (tools) => tools.show_block({ block: choice }));
-  const se = rt.sessionsIn(t.id)[0];
+  const se = arrange.agentIn(rt, t.id);
   const item = store.items(t.id).find((i) => i.kind === 'block');
   assert.equal(store.state.sessions[se.id].needs?.itemId, item.id);
 
@@ -86,7 +87,7 @@ test('#106: a withdrawal needs a reason and a block that asks, and waits for an 
 test('#106: an approved review takes an outcome, so a filed draft says so without asking again', async () => {
   const { rt, store, t, adapter } = setup();
   await turn(rt, adapter, t, (tools) => tools.show_block({ block: review }));
-  const se = rt.sessionsIn(t.id)[0];
+  const se = arrange.agentIn(rt, t.id);
   const item = store.items(t.id).find((i) => i.kind === 'block');
   rt.act(t.id, item.id, 'submit', { verdict: 'approve', comments: [] });
   await settle(rt);
@@ -122,7 +123,7 @@ test('#106: an update over a dismissal the agent hasn’t read says they dismiss
 test('#106: the person dismisses a block that asks: it closes, stops needing them, and the agent hears “dismiss”', async () => {
   const { rt, store, t, adapter } = setup();
   await turn(rt, adapter, t, (tools) => tools.show_block({ block: choice }));
-  const se = rt.sessionsIn(t.id)[0];
+  const se = arrange.agentIn(rt, t.id);
   const item = store.items(t.id).find((i) => i.kind === 'block');
   adapter.next.push(async (c) => c.text('Understood.'));
   const r = rt.act(t.id, item.id, 'dismiss', {}, 1);
@@ -161,10 +162,19 @@ test('#216, #228: a turn in a topic thread is the conversation’s own session, 
   const reply = store.items(t.id).find((i) => i.kind === 'agent' && i.text === 'Done.');
   const { threadId } = rt.startTopic(t.id, reply.id);
   // Another agent’s block in the conversation, and one this agent showed in a side thread there, answering another.
-  const se = rt.sessionsIn(t.id)[0];
-  rt.addItem(t.id, { kind: 'block', sessionId: 'se_other', handle: 'other', valid: true, block: { ...table, id: 'theirs' }, answered: false });
-  const side = rt.putThread({ id: 'th_side', projectId: 'p1', title: '@other ↔ @critic', kind: 'side', parentId: t.id, members: [], queue: [], hops: 0 });
-  rt.addItem(side.id, { kind: 'block', sessionId: se.id, handle: 'critic', valid: true, block: { ...table, id: 'aside' }, answered: false });
+  const se = arrange.agentIn(rt, t.id);
+  arrange.post(rt, t.id, { kind: 'block', sessionId: 'se_other', handle: 'other', valid: true, block: { ...table, id: 'theirs' }, answered: false });
+  const side = arrange.putThread(rt, {
+    id: 'th_side',
+    projectId: 'p1',
+    title: '@other ↔ @critic',
+    kind: 'side',
+    parentId: t.id,
+    members: [],
+    queue: [],
+    hops: 0,
+  });
+  arrange.post(rt, side.id, { kind: 'block', sessionId: se.id, handle: 'critic', valid: true, block: { ...table, id: 'aside' }, answered: false });
   let fixed;
   let missing;
   let others;

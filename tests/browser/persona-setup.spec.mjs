@@ -13,6 +13,7 @@ import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
 import { AGY_CAPABILITIES } from '../../server/adapters/antigravity-cli.mjs';
 import { CLAUDE_CODE_CAPABILITIES } from '../../server/adapters/claude-code.mjs';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, focusIs, startPostbox, synced } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -24,8 +25,8 @@ test.beforeAll(async () => {
     await writeFile(join(root, '.claude', 'skills', 'grill', 'SKILL.md'), '---\nname: grill-me\ndescription: Asks hard questions.\n---\n');
   };
   app = await startPostbox('persona-setup', { prepare });
-  app.rt.adapters.register({ name: 'claude-code', capabilities: CLAUDE_CODE_CAPABILITIES, deliver: async () => {} });
-  app.rt.adapters.register({
+  arrange.withAdapter(app.rt, { name: 'claude-code', capabilities: CLAUDE_CODE_CAPABILITIES, deliver: async () => {} });
+  arrange.withAdapter(app.rt, {
     name: 'antigravity-cli',
     capabilities: { ...AGY_CAPABILITIES, models: ['gemini-2.5-pro', 'gemini-3.8-flash-high'] },
     deliver: async () => {},

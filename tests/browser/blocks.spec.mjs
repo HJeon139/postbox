@@ -11,6 +11,7 @@
 // tools/check-blocks.mjs (#303).
 
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { allowPageError, failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 
 const choice = (id, title) => ({
@@ -58,7 +59,7 @@ const calls = [];
 let drafter;
 test.beforeAll(async () => {
   app = await startPostbox('blocks');
-  app.rt.adapters.register({
+  arrange.withAdapter(app.rt, {
     name: 'mock',
     async deliver(_session, message, ctx) {
       calls.push(message);
@@ -79,11 +80,13 @@ test.use({ colorScheme: 'light' });
  */
 async function conversation(page, title, ask, origin = app.origin) {
   const { rt } = app;
-  const thread = rt.createThread({ projectId: Object.values(rt.s.projects)[0].id, title, personaIds: [drafter.id] });
-  const se = rt.sessionsIn(thread.id)[0];
+  const thread = rt.createThread({ projectId: Object.values(rt.store.state.projects)[0].id, title, personaIds: [drafter.id] });
+  const se = arrange.agentIn(rt, thread.id);
   const itemOf = (id) => rt.store.items(thread.id).find((i) => i.kind === 'block' && i.block.id === id);
   rt.sendMessage(thread.id, { text: ask });
-  await expect.poll(() => rt.turns.size === 0 && rt.store.items(thread.id).some((i) => i.kind === 'block'), { message: `drafter to show ${ask}` }).toBe(true);
+  await expect
+    .poll(() => arrange.liveTurns(rt) === 0 && rt.store.items(thread.id).some((i) => i.kind === 'block'), { message: `drafter to show ${ask}` })
+    .toBe(true);
   await page.goto(`${origin}/#/t/${thread.id}`);
   await synced(page, app);
   const block = (id) => page.locator(`[data-block-item="${itemOf(id)?.id}"]`);

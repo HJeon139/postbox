@@ -3,6 +3,7 @@
 // screen. From agents on a scripted backend (tests/browser/live-scripts.mjs).
 
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { scriptedRoom } from './live-scripts.mjs';
 import { synced } from './postbox.mjs';
 
@@ -48,7 +49,7 @@ for (const agents of [1, 3])
       await expect(intro, `“Intro from ${who}.” once, while the turn runs`).toHaveCount(1);
     }
     for (const who of handles) go(who);
-    await expect.poll(() => scripted.app.rt.turns.size).toBe(0);
+    await expect.poll(() => arrange.liveTurns(scripted.app.rt)).toBe(0);
   });
 
 for (const [width, height] of [
@@ -108,7 +109,7 @@ for (const [width, height] of [
     await expect(page.getByRole('button', { name: 'Show less of the reply' }), 'and back to a line of them').toHaveCount(1);
     expect(await page.evaluate(() => document.activeElement?.tagName), 'focus stays on the control').toBe('BUTTON');
     for (const w of ten) go(w);
-    await expect.poll(() => scripted.app.rt.turns.size).toBe(0);
+    await expect.poll(() => arrange.liveTurns(scripted.app.rt)).toBe(0);
   });
 
 test('a crowded agent keeps its working row while its running reply is off screen, and loses it while the reply is in view', async ({ page }) => {
@@ -126,7 +127,7 @@ test('a crowded agent keeps its working row while its running reply is off scree
   // The first agent’s reply, then forty posts under it, then the other nine agents’ replies below them.
   scripted.app.rt.sendMessage(t.id, { text: '@ma go' });
   await expect.poll(() => at('ma')).toBe(1);
-  for (let i = 0; i < 40; i++) scripted.app.rt.addItem(t.id, { kind: 'user', text: `A post in the room, number ${i + 1}.` });
+  for (let i = 0; i < 40; i++) arrange.post(scripted.app.rt, t.id, { kind: 'user', text: `A post in the room, number ${i + 1}.` });
   for (const who of ten.slice(1)) scripted.app.rt.sendMessage(t.id, { text: `@${who} go` });
   await expect.poll(() => ten.every((w) => at(w) === 1)).toBe(true);
   await synced(page, scripted.app, BURST);
@@ -140,5 +141,5 @@ test('a crowded agent keeps its working row while its running reply is off scree
   await page.locator('.transcript > [data-key]', { hasText: 'Working on it, from va.' }).scrollIntoViewIfNeeded();
   await expect(row('ma'), 'and out of view again: its row is back').toBeVisible();
   for (const w of ten) go(w);
-  await expect.poll(() => scripted.app.rt.turns.size).toBe(0);
+  await expect.poll(() => arrange.liveTurns(scripted.app.rt)).toBe(0);
 });

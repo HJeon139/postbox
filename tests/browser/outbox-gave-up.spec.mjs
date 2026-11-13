@@ -4,6 +4,7 @@
 // hasn’t confirmed it, and Send now. Offline, it still waits for the connection.
 
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { allowPageError, failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -14,7 +15,7 @@ const holds = new Set();
 
 test.beforeAll(async () => {
   app = await startPostbox('outbox-gave-up');
-  app.rt.adapters.register({
+  arrange.withAdapter(app.rt, {
     name: 'claude-code',
     folderFor: async () => app.root,
     async deliver(session, _message, ctx) {
@@ -40,7 +41,7 @@ async function busyAgent(page) {
   const n = ++count;
   const persona = app.rt.createPersona({ handle: `worker-${n}`, backend: 'claude-code' });
   const thread = app.rt.createThread({ projectId: Object.keys(app.store.state.projects)[0], title: `Gave up ${n}`, personaIds: [persona.id] });
-  const [worker] = app.rt.sessionsIn(thread.id);
+  const [worker] = arrange.sessionsIn(app.rt, thread.id);
   await page.goto(`${app.origin}/#/t/${thread.id}`);
   await synced(page, app);
   holds.add(worker.id);
@@ -86,7 +87,7 @@ test('a send that keeps failing with the stream open is tried every 30 s on its 
   await page.unroute(POSTS);
   await page.clock.runFor(30_000);
   await expect
-    .poll(() => (app.rt.s.threads[thread.id].queue ?? []).map((q) => q.text), { message: 'the next try sends it' })
+    .poll(() => (app.rt.thread(thread.id).queue ?? []).map((q) => q.text), { message: 'the next try sends it' })
     .toEqual([`@${worker.handle} never gets through`]);
   await expect(row(page, 'never gets through')).toHaveCount(0);
   await expect(slow).toHaveCount(0);

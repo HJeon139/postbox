@@ -10,6 +10,7 @@ import { Runtime } from '../server/runtime.mjs';
 import { BOILERPLATES } from '../server/seed.mjs';
 import { Store } from '../server/store.mjs';
 import { applyBoilerplate, modelName, runsWith, shortModel } from '../shared/agent-facts.mjs';
+import * as arrange from './arrange.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
 // Fixed paths under /tmp outlive the run and collide between users (#823); each is a temp folder of this file’s.
@@ -66,7 +67,7 @@ for (const [models, inherited] of [
     rt.store.emit('project', { id: 'project', name: 'Project', folder: GPT_DIR });
     const thread = rt.createThread({ projectId: 'project', title: 'GPT', personaIds: [persona.id] });
     const session = rt.ensureSession(thread.id, persona.id);
-    const snapshot = rt.personaFor(session);
+    const snapshot = arrange.personaFor(rt, session);
     await adapter.deliver(
       session,
       { kind: 'user', text: 'Say hello.' },

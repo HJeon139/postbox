@@ -2,6 +2,7 @@
 // with a diagram and math on cue, and revises it on cue, and the review block as a person sees it.
 
 import { expect } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { startPostbox, synced } from './postbox.mjs';
 
 // Line numbers matter: the selection below is on line 3, and the table row on line 10.
@@ -52,7 +53,7 @@ export async function reviewRoom(name) {
   /** @type {any[]} */
   const calls = [];
   // The agent: shows the review on cue, and revises it on cue.
-  app.rt.adapters.register({
+  arrange.withAdapter(app.rt, {
     name: 'mock',
     async deliver(session, message, ctx) {
       calls.push(message);
@@ -77,11 +78,11 @@ export async function reviewRoom(name) {
   });
   const drafter = app.rt.createPersona({ handle: 'drafter' });
   const reader = app.rt.createPersona({ handle: 'reader' });
-  const idle = () => expect.poll(() => app.rt.turns.size, { message: 'the agents to finish' }).toBe(0);
+  const idle = () => expect.poll(() => arrange.liveTurns(app.rt), { message: 'the agents to finish' }).toBe(0);
   /** @param {import('@playwright/test').Page} page  @param {string} title */
   async function withReview(page, title) {
     const { rt, store } = app;
-    const thread = rt.createThread({ projectId: Object.values(rt.s.projects)[0].id, title, personaIds: [drafter.id, reader.id] });
+    const thread = rt.createThread({ projectId: Object.values(rt.store.state.projects)[0].id, title, personaIds: [drafter.id, reader.id] });
     const blockId = review(thread.id).id;
     const itemOf = () => store.items(thread.id).find((i) => i.kind === 'block' && i.block.id === blockId);
     await page.goto(`${app.origin}/#/t/${thread.id}`);
@@ -91,7 +92,7 @@ export async function reviewRoom(name) {
     await synced(page, app);
     const block = page.locator(`[data-block-item="${itemOf().id}"]`);
     await expect(block).toBeVisible();
-    const sessionOf = (handle) => rt.sessionsIn(thread.id).find((x) => x.handle === handle);
+    const sessionOf = (handle) => arrange.agentIn(rt, thread.id, handle);
     return { thread, block, blockId, itemOf, sessionOf };
   }
   return { app, calls, idle, withReview };

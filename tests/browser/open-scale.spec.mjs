@@ -7,6 +7,7 @@
 
 import { expect, test } from '@playwright/test';
 import { seedBigRoom } from '../../tools/uat/big-room.mjs';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, newestShown, startPostbox, synced } from './postbox.mjs';
 
 const SIZES = [1_000, 10_000, 28_000, 100_000];
@@ -39,11 +40,11 @@ for (const count of SIZES)
     test.setTimeout(300_000);
     const app = await startPostbox(`open-scale-${count}`);
     try {
-      const projectId = /** @type {any} */ (Object.values(app.rt.s.projects)[0]).id;
+      const projectId = /** @type {any} */ (Object.values(app.rt.store.state.projects)[0]).id;
       const room = app.rt.createThread({ projectId, title: `${count} items`, personaIds: [] });
       const other = app.rt.createThread({ projectId, title: 'A short room', personaIds: [] });
       seedBigRoom(app.store, room.id, { count });
-      app.rt.addItem(other.id, { kind: 'user', text: 'Elsewhere' });
+      arrange.post(app.rt, other.id, { kind: 'user', text: 'Elsewhere' });
       let bytes = 0;
       page.on('response', async (r) => {
         if (!/\/api\/(state|threads\/[^/]+\/items)/.test(r.url())) return;
@@ -106,14 +107,14 @@ test('#1271 going to a room 100 times longer is as quick as going to a short one
   test.setTimeout(300_000);
   const app = await startPostbox('open-scale-switch');
   try {
-    const projectId = /** @type {any} */ (Object.values(app.rt.s.projects)[0]).id;
+    const projectId = /** @type {any} */ (Object.values(app.rt.store.state.projects)[0]).id;
     const rooms = [SIZES[0], SIZES.at(-1) ?? 0].map((count) => {
       const room = app.rt.createThread({ projectId, title: `${count} items`, personaIds: [] });
       seedBigRoom(app.store, room.id, { count });
       return { count, id: room.id, last: app.store.items(room.id).at(-1).id, ms: /** @type {number[]} */ ([]) };
     });
     const other = app.rt.createThread({ projectId, title: 'A short room', personaIds: [] });
-    const elsewhere = app.rt.addItem(other.id, { kind: 'user', text: 'Elsewhere' });
+    const elsewhere = arrange.post(app.rt, other.id, { kind: 'user', text: 'Elsewhere' });
     await page.goto(`${app.origin}/#/t/${other.id}`);
     await synced(page, app);
     // Each room opened once first, so every switch measured goes back to a warm room, as in the tests above.

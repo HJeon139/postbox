@@ -7,6 +7,7 @@
 // own for each test. Moved from tools/check-stop-steps.mjs (#303).
 
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, openSteps, startPostbox, synced } from './postbox.mjs';
 
 // The reply’s steps as the p0 UAT recorded them at its Stop (Postbox 0.30.1): a background loop with its job, a wait
@@ -21,10 +22,12 @@ test.beforeAll(async () => {
   app = await startPostbox('stop-steps');
   const { rt, store } = app;
   // The job’s process group: nothing is signaled, and ps shows its shell, so a kept job stays the job’s.
-  rt.signalProcess = () => true;
-  rt.listProcesses = async () => [{ pid: 4242, ppid: 1, pgid: 4242, command: "/bin/zsh -c source snapshot.sh && eval 'sh heartbeat.sh' < /dev/null" }];
+  arrange.withProcesses(rt, {
+    signal: () => true,
+    list: async () => [{ pid: 4242, ppid: 1, pgid: 4242, command: "/bin/zsh -c source snapshot.sh && eval 'sh heartbeat.sh' < /dev/null" }],
+  });
   let n = 0;
-  rt.adapters.register({
+  arrange.withAdapter(rt, {
     name: 'claude-code',
     async folderFor() {
       return app.root;
@@ -61,7 +64,7 @@ test.use({ colorScheme: 'light' });
 async function stopWith(page, title, choice, text = 'Start a background loop that appends the time to heartbeat-2.log, and check it every 20 seconds.') {
   const { rt, store } = app;
   const room = rt.createThread({ projectId: 'pr_steps', title, personaIds: [dev.id] });
-  const [se] = rt.sessionsIn(room.id);
+  const [se] = arrange.sessionsIn(rt, room.id);
   await page.goto(`${app.origin}/#/t/${room.id}`);
   await synced(page, app);
   rt.sendMessage(room.id, { text });

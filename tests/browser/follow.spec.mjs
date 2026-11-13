@@ -4,6 +4,7 @@
 // place. ⌃J reaches a block that moved. Each test has a room of its own. Moved from tools/checks/follow.mjs (#303).
 
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, frames, settled, startPostbox, synced } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -28,10 +29,10 @@ function room(title, appId, after = 14) {
   const t = rt.createThread({
     projectId: Object.values(store.state.projects)[0].id,
     title,
-    personaIds: [rt.personaByHandle('researcher').id, rt.personaByHandle('critic').id],
+    personaIds: [arrange.persona(rt, 'researcher').id, arrange.persona(rt, 'critic').id],
   });
-  const [researcher, critic] = rt.sessionsIn(t.id);
-  const say = (se, text) => rt.addItem(t.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text, status: 'done' });
+  const [researcher, critic] = arrange.sessionsIn(rt, t.id);
+  const say = (se, text) => arrange.post(rt, t.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text, status: 'done' });
   for (let i = 1; i <= 4; i++) say(i % 2 ? critic : researcher, LONG(i));
   const tools = rt.toolsFor(critic.id);
   tools.show_app({ id: appId, title: 'Pair explorer', code: APP('v1'), permissions: [] });
@@ -88,7 +89,7 @@ test('#49 at the bottom: a new version shows at the newest point, in view, with 
   await open(page, `#/t/${t.id}`);
   expect(await gap(page), 'opens at the bottom').toBeLessThanOrEqual(2);
   expect(await inView(page, item.id), 'the app starts out of view, above').toBe(false);
-  app.rt.addItem(t.id, { kind: 'user', text: 'The graph overlaps. Can you fix it?' });
+  arrange.post(app.rt, t.id, { kind: 'user', text: 'The graph overlaps. Can you fix it?' });
   tools.update_app({ id: 'follow-bottom', code: APP('v2'), summary: 'each group laid out on its own' });
   // v2’s check is recorded as passed, so its frame loads at once: this spec is about where the new version shows, and
   // the check itself is app-check’s to test. Waiting for a real one took more than 5 s on CI’s runner.
@@ -145,8 +146,8 @@ function topicWithApp() {
   const root = store.items(t.id).find((i) => i.kind === 'agent');
   const { threadId } = rt.startTopic(t.id, root.id);
   // Its one session answers in the thread (#228), so the app shows there.
-  const se = rt.sessionsIn(t.id)[0];
-  const say = (n) => rt.addItem(threadId, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text: LONG(n), status: 'done' });
+  const se = arrange.agentIn(rt, t.id);
+  const say = (n) => arrange.post(rt, threadId, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text: LONG(n), status: 'done' });
   rt.toolsFor(se.id, /** @type {any} */ ({ threadId })).show_app({ id: 'follow-panel', title: 'Panel explorer', code: APP('v1'), permissions: [] });
   const item = store.items(threadId).find((i) => i.kind === 'block' && i.block.id === 'follow-panel');
   for (let i = 0; i < 16; i++) say(300 + i);
@@ -219,16 +220,16 @@ test('#92 a confirm that asks again shows at the bottom with a stub, ⌃J goes t
   const item = store.items(t.id).at(-1);
   rt.act(t.id, item.id, 'confirm', {}, 1);
   // The answer wakes @critic, a mock agent: let that turn end first, so its reply lands before the update.
-  await expect.poll(() => rt.turns.has(critic.id) || rt.exiting.has(critic.id), { message: '@critic’s turn to end' }).toBe(false);
-  rt.patchItem(t.id, item.id, { answer: { ...store.item(t.id, item.id).answer, read: true } });
+  await expect.poll(() => arrange.running(rt, critic.id) || arrange.exiting(rt, critic.id), { message: '@critic’s turn to end' }).toBe(false);
+  arrange.setItem(rt, t.id, item.id, { answer: { ...store.item(t.id, item.id).answer, read: true } });
   for (let i = 0; i < 14; i++) say(critic, LONG(200 + i));
   await open(page, `#/t/${t.id}`);
   expect(await inView(page, item.id), 'the answered confirm is out of view, above').toBe(false);
   tools.update_block({ block: block({ title: 'Video frames deleted', statement: 'Deleted. Anything else to clear?', confirmLabel: 'OK' }) });
   // Once updated, it’s the one agent that needs you, as #69 leaves it when a turn ends on a block that asks again. ⌃J
   // goes to the next agent that needs you, so none other does.
-  for (const se of Object.values(store.state.sessions)) if (se.needs && se.id !== critic.id) rt.updateSession(se.id, { needs: null, state: 'idle' });
-  rt.updateSession(critic.id, { state: 'needs', needs: { kind: 'block', itemId: item.id, text: 'Video frames deleted' } });
+  for (const se of Object.values(store.state.sessions)) if (se.needs && se.id !== critic.id) arrange.setSession(rt, se.id, { needs: null, state: 'idle' });
+  arrange.setSession(rt, critic.id, { state: 'needs', needs: { kind: 'block', itemId: item.id, text: 'Video frames deleted' } });
   const stub = await stubOf(page, t, item.id);
   expect(await gap(page), 'the view stays at the bottom').toBeLessThanOrEqual(2);
   expect(await inView(page, item.id), 'the confirm is in view without scrolling').toBe(true);
@@ -256,8 +257,8 @@ test('#410 ⌃J brings a block into view when something grows between its scroll
     block: { id: 'grown-ask', type: 'confirm', version: 1, fallback: 'Clear it?', statement: 'Clear the frames?', confirmLabel: 'Clear' },
   });
   const ask = store.items(t.id).at(-1);
-  for (const se of Object.values(store.state.sessions)) if (se.needs && se.id !== critic.id) rt.updateSession(se.id, { needs: null, state: 'idle' });
-  rt.updateSession(critic.id, { state: 'needs', needs: { kind: 'block', itemId: ask.id, text: 'Clear the frames?' } });
+  for (const se of Object.values(store.state.sessions)) if (se.needs && se.id !== critic.id) arrange.setSession(rt, se.id, { needs: null, state: 'idle' });
+  arrange.setSession(rt, critic.id, { state: 'needs', needs: { kind: 'block', itemId: ask.id, text: 'Clear the frames?' } });
   await open(page, `#/t/${t.id}`);
   await wheel(page, -2000);
   expect(await inView(page, ask.id), 'scrolled away from the block').toBe(false);

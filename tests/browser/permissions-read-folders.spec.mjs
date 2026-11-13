@@ -4,6 +4,7 @@
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -19,7 +20,7 @@ test.beforeAll(async () => {
     },
   });
   const { rt, store } = app;
-  rt.adapters.register({
+  arrange.withAdapter(rt, {
     name: 'antigravity-cli',
     capabilities: { permissions: 'none' },
     async folderFor() {
@@ -39,9 +40,9 @@ test.afterAll(async () => {
 failOnPageErrors(test);
 
 test('#338 a folder made readable from a read card is listed as read only, and Remove takes it out', async ({ page }) => {
-  const se = app.rt.sessionsIn(thread.id)[0];
+  const se = arrange.agentIn(app.rt, thread.id);
   const notes = join(work, 'notes');
-  app.rt.updateSession(se.id, { readDirs: [notes], addDirs: [notes] });
+  arrange.setSession(app.rt, se.id, { readDirs: [notes], addDirs: [notes] });
   await page.goto(`${app.origin}/#/t/${thread.id}`);
   await synced(page, app);
   await page.locator('header.topbar button[aria-label^="Actions for"]').click();

@@ -6,6 +6,7 @@ import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
 import { summarize, turnLine } from '../shared/work.mjs';
 import { commandLabel, turnRows } from '../shared/work-list.mjs';
+import * as arrange from './arrange.mjs';
 import { fakeRepo, ledgerIn } from './fake-repo.mjs';
 
 const ROOT = '/work/uat-project';
@@ -115,7 +116,7 @@ test('an app a later turn updates moves on without the list of the turn that sho
   store.emit('project', { id: 'p1', name: 'P', folder: '/proj' });
   const t = rt.createThread({ projectId: 'p1', title: 'T', personaIds: [rt.createPersona({ handle: 'dev' }).id] });
   const settle = async () => {
-    for (let i = 0; i < 100 && rt.turns.size; i++) await new Promise((r) => setTimeout(r, 5));
+    for (let i = 0; i < 100 && arrange.liveTurns(rt); i++) await new Promise((r) => setTimeout(r, 5));
     await ledger.idle();
     await new Promise((r) => setTimeout(r, 5));
   };

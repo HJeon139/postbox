@@ -3,6 +3,7 @@
 // and apps of its own. Moved from tools/checks/app-fullscreen.mjs (#303).
 
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, focusIs, frames, settled, startPostbox, synced } from './postbox.mjs';
 
 // Counts its loads in saved state, so a reload shows up as a second load, and saves which version loaded.
@@ -38,11 +39,11 @@ test.use({ colorScheme: 'dark' });
 /** A conversation of its own with @librarian, open in the page; show() has it show an app and waits for it to load. */
 async function conversation(page, title) {
   const { rt } = app;
-  const t = rt.createThread({ projectId: Object.values(rt.s.projects)[0].id, title, personaIds: [rt.personaByHandle('librarian').id] });
-  const tools = rt.toolsFor(rt.sessionsIn(t.id)[0].id);
+  const t = rt.createThread({ projectId: Object.values(rt.store.state.projects)[0].id, title, personaIds: [arrange.persona(rt, 'librarian').id] });
+  const tools = rt.toolsFor(arrange.agentIn(rt, t.id).id);
   await page.goto(`${app.origin}/#/t/${t.id}`);
   await synced(page, app);
-  const checked = (id) => expect.poll(() => rt.s.apps[id]?.check.status, { message: `${id} to pass its check` }).toMatch(/^(passed|note)$/);
+  const checked = (id) => expect.poll(() => rt.store.state.apps[id]?.check.status, { message: `${id} to pass its check` }).toMatch(/^(passed|note)$/);
   /** Shows an app, named for this conversation, and waits for its frame to load. Returns its id. */
   const show = async (key, appTitle, code) => {
     const id = `${key}-${t.id}`;
@@ -86,15 +87,15 @@ async function twoVersions(page, title) {
   c.tools.show_app({ id, title: 'Full', code: APP('Version one'), permissions: [] });
   await c.checked(id);
   c.tools.update_app({ id, code: APP('Version two') });
-  await expect.poll(() => rt.s.apps[id].current, { message: 'v2' }).toBe(2);
+  await expect.poll(() => rt.store.state.apps[id].current, { message: 'v2' }).toBe(2);
   await c.checked(id);
   const box = boxOf(page, 'Full');
   await expect(box.locator('iframe.app-iframe')).toHaveAttribute('data-sized', '1');
   // Version one’s frame can load and save before version two reaches the page: wait for version two’s own load.
-  await expect.poll(() => rt.s.apps[id]?.state?.label, { message: 'version two to save its load' }).toBe('Version two');
+  await expect.poll(() => rt.store.state.apps[id]?.state?.label, { message: 'version two to save its load' }).toBe('Version two');
   await box.scrollIntoViewIfNeeded();
   await settled(page);
-  return { ...c, id, box, loads: () => rt.s.apps[id]?.state?.loads ?? 0 };
+  return { ...c, id, box, loads: () => rt.store.state.apps[id]?.state?.loads ?? 0 };
 }
 
 test('#45 full screen fills the window, with the version menu above it, and Escape brings it back, focus on the button', async ({ page }) => {

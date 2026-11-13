@@ -4,6 +4,7 @@
 // each item now mounts at most twice.
 
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, frames, settled, startPostbox, synced } from './postbox.mjs';
 
 const ITEMS = 300;
@@ -17,9 +18,9 @@ let app;
 let threadId = '';
 test.beforeAll(async () => {
   app = await startPostbox('window-budget-churn');
-  const projectId = Object.values(app.rt.s.projects)[0].id;
-  const t = app.rt.createThread({ projectId, title: 'Tall tables', personaIds: [app.rt.personaByHandle('librarian').id] });
-  const se = app.rt.sessionsIn(t.id)[0];
+  const projectId = Object.values(app.rt.store.state.projects)[0].id;
+  const t = app.rt.createThread({ projectId, title: 'Tall tables', personaIds: [arrange.persona(app.rt, 'librarian').id] });
+  const se = arrange.agentIn(app.rt, t.id);
   const columns = [
     { id: 'a', label: 'Name' },
     { id: 'b', label: 'Count', kind: 'number' },

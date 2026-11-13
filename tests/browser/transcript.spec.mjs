@@ -9,7 +9,9 @@
 // Moved from tools/check-transcript.mjs (#303).
 
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { allowPageError, failOnPageErrors, frames, settled, startPostbox, synced, watchWrites } from './postbox.mjs';
+import { atTheEnd, gap, panelGap, reading, topOf, wheel } from './view-position.mjs';
 
 test.use({ colorScheme: 'light' });
 
@@ -30,12 +32,12 @@ const LONG = (n) =>
 function room(title, count = 24) {
   const { rt, store } = app;
   const project = Object.values(store.state.projects)[0];
-  const t = rt.createThread({ projectId: project.id, title, personaIds: [rt.personaByHandle('researcher').id, rt.personaByHandle('critic').id] });
-  const [researcher, critic] = rt.sessionsIn(t.id);
+  const t = rt.createThread({ projectId: project.id, title, personaIds: [arrange.persona(rt, 'researcher').id, arrange.persona(rt, 'critic').id] });
+  const [researcher, critic] = arrange.sessionsIn(rt, t.id);
   const say = (se, text, extra = {}) =>
-    rt.addItem(t.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text, status: 'done', ...extra });
+    arrange.post(rt, t.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text, status: 'done', ...extra });
   for (let i = 1; i <= count; i++) {
-    if (i % 3 === 1) rt.addItem(t.id, { kind: 'user', text: `Question ${i}: what does the observation step add?` });
+    if (i % 3 === 1) arrange.post(rt, t.id, { kind: 'user', text: `Question ${i}: what does the observation step add?` });
     else say(i % 2 ? critic : researcher, LONG(i));
   }
   return { t, researcher, critic, say };
@@ -44,12 +46,12 @@ function room(title, count = 24) {
 /** Streams a reply a few words a frame, the way an agent does, ends it, and waits for the page to draw its end. */
 async function stream(page, t, se, text) {
   const { rt, store } = app;
-  const it = rt.addItem(t.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text: '', status: 'streaming' });
+  const it = arrange.post(rt, t.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text: '', status: 'streaming' });
   for (const chunk of text.match(/\S+\s*/g)) {
     store.emit('item.text', { threadId: t.id, id: it.id, text: chunk });
     await frames(page);
   }
-  rt.patchItem(t.id, it.id, { status: 'done' });
+  arrange.setItem(rt, t.id, it.id, { status: 'done' });
   const item = page.locator(`[data-key="${it.id}"]`);
   await expect(item.locator('.md'), 'the streamed reply finished on the page').toContainText(text.trim().slice(-24));
   await expect(item.locator('.caret')).toHaveCount(0);
@@ -70,33 +72,6 @@ const frameOf = (page, key) => page.locator(`[data-key="${key}"] iframe:not(.che
 /** Waits for an app’s frame to have grown to 700 px. */
 const grown = (page, key) =>
   expect.poll(() => frameOf(page, key).evaluate((f) => f.getBoundingClientRect().height), { message: 'the app to grow to 700 px' }).toBeGreaterThanOrEqual(690);
-
-/** How far the view is from the end of the conversation, and of the panel. */
-const gap = (page) => page.evaluate(() => Math.round(document.scrollingElement.scrollHeight - scrollY - innerHeight));
-const panelGap = (page) =>
-  page.evaluate(() => {
-    const b = document.querySelector('.sp-body');
-    return b ? Math.round(b.scrollHeight - b.scrollTop - b.clientHeight) : null;
-  });
-/** Once the page holds still, that the view is at the end. */
-async function atTheEnd(page, what) {
-  await settled(page);
-  expect(await gap(page), what).toBeLessThanOrEqual(2);
-}
-/** The message at the middle of the view, and where it starts; the same message must stay put. */
-const reading = (page) =>
-  page.evaluate(() => {
-    const n = /** @type {HTMLElement | undefined} */ (document.elementFromPoint(760, innerHeight / 2)?.closest('.item'));
-    return n ? { key: n.dataset.key ?? '', top: Math.round(n.getBoundingClientRect().top) } : null;
-  });
-const topOf = (page, key) => page.locator(`[data-key="${key}"]`).evaluate((n) => Math.round(n.getBoundingClientRect().top));
-
-/** Turns the mouse wheel over the middle of the transcript, as a trackpad or mouse does, and waits for the scroll to end. */
-async function wheel(page, deltaY) {
-  await page.mouse.move(760, 400);
-  await page.mouse.wheel(0, deltaY);
-  await settled(page);
-}
 
 /** Opens a conversation, and waits for its transcript to draw and hold still. */
 async function open(page, t) {
@@ -132,12 +107,12 @@ test('#88 at the bottom: streaming, a patch, a new item and the working row keep
   await stream(page, t, researcher, `${LONG(90)} ${LONG(91)} ${LONG(92)}`);
   await atTheEnd(page, 'after streaming');
   const last = store.items(t.id).at(-1);
-  rt.patchItem(t.id, last.id, { activity: { steps: [{ id: 's1', label: 'grep observation', state: 'done', ms: 400 }] } });
-  rt.patchItem(t.id, last.id, { sources: [{ title: 'ReAct', authors: 'Yao, Zhao', year: 2023, url: 'https://arxiv.org/abs/2210.03629' }] });
+  arrange.setItem(rt, t.id, last.id, { activity: { steps: [{ id: 's1', label: 'grep observation', state: 'done', ms: 400 }] } });
+  arrange.setItem(rt, t.id, last.id, { sources: [{ title: 'ReAct', authors: 'Yao, Zhao', year: 2023, url: 'https://arxiv.org/abs/2210.03629' }] });
   await expect(page.locator(`[data-key="${last.id}"] .activity`)).toBeAttached();
   await expect(page.locator(`[data-key="${last.id}"] .sources`)).toBeAttached();
   await atTheEnd(page, 'after an item patch grew the reply');
-  rt.updateSession(critic.id, { state: 'tool', currentStep: 'Searched the web for ReAct ablations', glimpse: 'Checking whether the ablation holds.' });
+  arrange.setSession(rt, critic.id, { state: 'tool', currentStep: 'Searched the web for ReAct ablations', glimpse: 'Checking whether the ablation holds.' });
   await expect(page.locator('.working .work-row')).toBeVisible();
   await atTheEnd(page, 'after the working row appeared');
 });
@@ -146,7 +121,7 @@ test('#88 at the bottom: an app growing from 200 to 700 px leaves the view at th
   const { rt } = app;
   const { t, critic } = room('An app grows');
   await open(page, t);
-  rt.addItem(t.id, { kind: 'user', text: 'Show me the gallery.' });
+  arrange.post(rt, t.id, { kind: 'user', text: 'Show me the gallery.' });
   rt.toolsFor(critic.id).show_app(growingApp('gallery', 'Gallery', 2500));
   const key = appItem(t, 'gallery');
   await expect(frameOf(page, key)).toBeAttached();
@@ -165,13 +140,13 @@ test('#88 and #356 (CI’s `late` pass): opening and closing the thread panel le
   const { rt, store } = app;
   const { t, researcher } = room('Panel at the bottom');
   rt.toolsFor(researcher.id).show_app(growingApp('explainer', 'Explainer', 800));
-  for (let i = 0; i < 3; i++) rt.addItem(t.id, { kind: 'user', text: `After the app ${i}` });
+  for (let i = 0; i < 3; i++) arrange.post(rt, t.id, { kind: 'user', text: `After the app ${i}` });
   await open(page, t);
   const key = appItem(t, 'explainer');
   await grown(page, key);
   const root = store.items(t.id).find((i) => i.kind === 'agent');
   const { threadId } = rt.startTopic(t.id, root.id);
-  for (let i = 0; i < 12; i++) rt.addItem(threadId, { kind: 'user', text: LONG(200 + i) });
+  for (let i = 0; i < 12; i++) arrange.post(rt, threadId, { kind: 'user', text: LONG(200 + i) });
   await panel(page, t, threadId);
   // The app frame stays (only the pane changes), and keeps its height in the narrower column.
   await grown(page, key);
@@ -195,7 +170,7 @@ test('#88 at the bottom: a card that needs you stays still while what follows it
   const { rt, store } = app;
   const { t, researcher, critic } = room('A card at the bottom');
   await open(page, t);
-  rt.updateSession(critic.id, { state: 'tool', currentStep: 'Searched the web', glimpse: 'Reading the first result.' });
+  arrange.setSession(rt, critic.id, { state: 'tool', currentStep: 'Searched the web', glimpse: 'Reading the first result.' });
   rt.toolsFor(researcher.id).show_block({
     block: {
       id: 'go',
@@ -215,14 +190,14 @@ test('#88 at the bottom: a card that needs you stays still while what follows it
   const y = () => button.evaluate((b) => Math.round(b.getBoundingClientRect().top));
   const before = await y();
   // The working row goes: the page would get shorter and pull the card down.
-  rt.updateSession(critic.id, { state: 'idle', currentStep: '', glimpse: '' });
+  arrange.setSession(rt, critic.id, { state: 'idle', currentStep: '', glimpse: '' });
   await expect(page.locator('.working .work-row')).toHaveCount(0);
   await settled(page);
   expect(await y(), 'the card’s button stayed where it was').toBe(before);
   // Scrolled up while messages arrive, the pill shows; scrolling back down hides it, and nothing moves after that.
   await wheel(page, -600);
   await frames(page);
-  const late = [0, 1].map((i) => rt.addItem(t.id, { kind: 'user', text: `While you were up ${i}` }));
+  const late = [0, 1].map((i) => arrange.post(rt, t.id, { kind: 'user', text: `While you were up ${i}` }));
   await expect(page.locator(`[data-key="${late[1].id}"]`)).toBeAttached();
   await settled(page);
   for (let i = 0; i < 6 && (await gap(page)) > 2; i++) await wheel(page, 400);
@@ -255,12 +230,12 @@ test('#88 scrolled up: streaming, patches, new items, an app growing above, the 
   const still = async (what) => expect(Math.abs((await topOf(page, at.key)) - at.top), `${what} moved the message you were reading`).toBeLessThanOrEqual(1);
   await stream(page, t, researcher, `${LONG(400)} ${LONG(401)}`);
   await still('streaming');
-  await expect(page.locator(`[data-key="${rt.addItem(t.id, { kind: 'user', text: 'A new question below.' }).id}"]`)).toBeAttached();
+  await expect(page.locator(`[data-key="${arrange.post(rt, t.id, { kind: 'user', text: 'A new question below.' }).id}"]`)).toBeAttached();
   await settled(page);
   await still('a new item');
   // A message above the one you’re reading grows (a patch re-renders it).
   const above = store.items(t.id).filter((i) => i.kind === 'agent')[2];
-  rt.patchItem(t.id, above.id, { text: `${above.text}\n\n${LONG(500)}\n\n${LONG(501)}` });
+  arrange.setItem(rt, t.id, above.id, { text: `${above.text}\n\n${LONG(500)}\n\n${LONG(501)}` });
   await expect(page.locator(`[data-key="${above.id}"]`)).toContainText('Message 501');
   await settled(page);
   await still('a patch above');
@@ -299,7 +274,7 @@ test('#91 the pill counts what arrives while you’re scrolled up, and goes once
   const pill = page.locator('.jump');
   /** Each new user message, once it’s on the page and the page has settled. */
   const arrive = async (text) => {
-    const it = rt.addItem(t.id, { kind: 'user', text });
+    const it = arrange.post(rt, t.id, { kind: 'user', text });
     await expect(page.locator(`[data-key="${it.id}"]`)).toBeAttached();
     await settled(page);
   };
@@ -321,7 +296,7 @@ test('#91 the pill counts what arrives while you’re scrolled up, and goes once
   await expect(pill).toHaveText(/1 new/);
   // With an agent working, the pill shows only while the working row is further down than the pill, and it goes once
   // you’re within that distance of the end, so it never sits over the row.
-  rt.updateSession(critic.id, { state: 'tool', currentStep: 'Searched the web', glimpse: 'Reading the first result.' });
+  arrange.setSession(rt, critic.id, { state: 'tool', currentStep: 'Searched the web', glimpse: 'Reading the first result.' });
   await expect(page.locator('.working .work-row')).toBeVisible();
   await settled(page);
   const clear = await page.evaluate(() => {
@@ -343,8 +318,8 @@ test('#83 the working row lines up with the message column, with and without the
   const { t, researcher, critic } = room('Working rows');
   await open(page, t);
   const step = `Searched the web for ${'ReAct observation ablations and the follow-up papers that cite them, '.repeat(6)}`;
-  rt.updateSession(researcher.id, { state: 'tool', currentStep: step, glimpse: 'Reading the third result.' });
-  rt.updateSession(critic.id, { state: 'think', glimpse: 'Is the ablation fair?' });
+  arrange.setSession(rt, researcher.id, { state: 'tool', currentStep: step, glimpse: 'Reading the third result.' });
+  arrange.setSession(rt, critic.id, { state: 'think', glimpse: 'Is the ablation fair?' });
   await expect(page.locator('.working .work-row')).toHaveCount(2);
   await settled(page);
   const measure = () =>
@@ -418,7 +393,7 @@ test('#93 Send to conversation clicked twice posts once', async ({ page }) => {
   const { threadId } = rt.startTopic(t.id, root.id);
   // Its one session answers in the thread (#228).
   const { id: sessionId, personaId, handle } = researcher;
-  const reply = rt.addItem(threadId, { kind: 'agent', sessionId, personaId, handle, text: 'Offsets, not pages.', status: 'done' });
+  const reply = arrange.post(rt, threadId, { kind: 'agent', sessionId, personaId, handle, text: 'Offsets, not pages.', status: 'done' });
   await open(page, t);
   await panel(page, t, threadId);
   // A second write would be refused a moment after the first: wait for every one before looking for its error.

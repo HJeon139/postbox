@@ -6,6 +6,7 @@
 import { readFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
 import { createStreamMapper } from '../../server/adapters/claude-stream.mjs';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -32,7 +33,7 @@ let held = false;
 test.beforeAll(async () => {
   app = await startPostbox('harness-steps');
   const { rt, store } = app;
-  rt.adapters.register({
+  arrange.withAdapter(rt, {
     name: 'claude-code',
     async folderFor() {
       return app.root;
@@ -73,7 +74,7 @@ test('a running turn’s newest step shows what it was given and what it returne
     await expect(live.locator('li.step-line', { hasText: 'Read notes.txt' }), 'an older step is a line').toHaveCount(1);
   });
   go();
-  await expect.poll(() => app.rt.turns.size, { message: 'the turn to end' }).toBe(0);
+  await expect.poll(() => arrange.liveTurns(app.rt), { message: 'the turn to end' }).toBe(0);
   await synced(page, app);
   await test.step('the finished list keeps each step and why one failed, not the live view’s input and output', async () => {
     const list = page.locator('details.activity').last();

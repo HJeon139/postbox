@@ -13,6 +13,7 @@
 import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
 import { formatMessage } from '../../server/adapters/guide.mjs';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, frames, startPostbox, synced } from './postbox.mjs';
 
 const BROKEN = 'flowchart LR\n  A[Read] -->> B[Index]';
@@ -83,7 +84,7 @@ const calls = [];
 let drawer;
 test.beforeAll(async () => {
   app = await startPostbox('feedback');
-  app.rt.adapters.register({
+  arrange.withAdapter(app.rt, {
     name: 'mock',
     async deliver(session, message, ctx) {
       calls.push({ ...message, threadId: session.threadId });
@@ -103,12 +104,12 @@ test.use({ colorScheme: 'light' });
 /** A conversation of its own with @drawer, open in the page, sent that message. lints() are its lint turns. */
 async function conversation(page, title, text) {
   const { rt } = app;
-  const thread = rt.createThread({ projectId: Object.values(rt.s.projects)[0].id, title, personaIds: [drawer.id] });
+  const thread = rt.createThread({ projectId: Object.values(rt.store.state.projects)[0].id, title, personaIds: [drawer.id] });
   await page.goto(`${app.origin}/#/t/${thread.id}`);
   await synced(page, app);
   rt.sendMessage(thread.id, { text });
   const lints = () => calls.filter((m) => m.kind === 'lint' && m.threadId === thread.id);
-  const idle = () => expect.poll(() => rt.turns.has(rt.sessionsIn(thread.id)[0].id), { message: 'the agent to finish' }).toBe(false);
+  const idle = () => expect.poll(() => arrange.running(rt, arrange.agentIn(rt, thread.id).id), { message: 'the agent to finish' }).toBe(false);
   return { thread, lints, idle };
 }
 
@@ -165,10 +166,10 @@ test('#53 apps too small to read, or showing only an error, are shown with notes
   const { rt } = app;
   const { thread, lints, idle } = await conversation(page, 'Apps', 'apps');
   const id = (key) => `${key}-${thread.id}`;
-  const st = (key) => rt.s.apps[id(key)]?.check ?? {};
+  const st = (key) => rt.store.state.apps[id(key)]?.check ?? {};
   const codes = (key) => (st(key).problems ?? []).map((p) => p.code);
   await expect
-    .poll(() => Object.keys(APPS).every((k) => rt.s.apps[id(k)] && st(k).status !== 'pending'), {
+    .poll(() => Object.keys(APPS).every((k) => rt.store.state.apps[id(k)] && st(k).status !== 'pending'), {
       message: 'the browser to check all three apps',
       timeout: 30_000,
     })

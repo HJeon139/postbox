@@ -2,6 +2,7 @@
 // agent rings in the top bar, which the sidebar’s Agents section has. `#/` opens a conversation instead.
 
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -117,10 +118,10 @@ test('an agent’s state changing doesn’t rebuild the conversation: a draft an
   await composer.evaluate((n) => {
     n.dataset.marked = 'yes';
   });
-  const se = app.rt.sessionsIn(threads[0].id)[0];
-  app.rt.updateSession(se.id, { state: 'think', currentStep: 'Thinking' });
+  const se = arrange.agentIn(app.rt, threads[0].id);
+  arrange.setSession(app.rt, se.id, { state: 'think', currentStep: 'Thinking' });
   await synced(page, app);
-  app.rt.updateSession(se.id, { state: 'idle', currentStep: '' });
+  arrange.setSession(app.rt, se.id, { state: 'idle', currentStep: '' });
   await synced(page, app);
   await expect(page.locator('#composer-input'), 'the same composer, not a new one').toHaveAttribute('data-marked', 'yes');
   await expect(page.locator('#composer-input')).toHaveValue('A draft that must survive');

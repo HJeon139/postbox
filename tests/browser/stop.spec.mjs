@@ -13,7 +13,9 @@
 // own for each test. Moved from tools/check-stop.mjs (#303).
 
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, focusIs, openSteps, PHONE, startPostbox, synced } from './postbox.mjs';
+import { ask, choice, jobStop, keepRunning, stopButton } from './stop-ask.mjs';
 
 const SEND_NOW = { name: /^Send now/ };
 
@@ -35,14 +37,16 @@ const PROCS = [
 test.beforeAll(async () => {
   app = await startPostbox('stop');
   const { rt, store } = app;
-  rt.signalProcess = (pid, sig) => {
-    if (sig !== 0) signals.push([pid, sig]);
-    return true;
-  };
-  rt.listProcesses = async () => PROCS;
+  arrange.withProcesses(rt, {
+    signal: (pid, sig) => {
+      if (sig !== 0) signals.push([pid, sig]);
+      return true;
+    },
+    list: async () => PROCS,
+  });
   // A Claude Code agent that starts a background job, then works until it’s stopped.
   let n = 0;
-  rt.adapters.register({
+  arrange.withAdapter(rt, {
     name: 'claude-code',
     async folderFor() {
       return app.root;
@@ -82,7 +86,7 @@ test.use({ colorScheme: 'light' });
 async function withJob(page, title, text = 'Run the UAT job, please.') {
   const { rt, store } = app;
   const room = rt.createThread({ projectId: 'pr_stop', title, personaIds: [dev.id] });
-  const [se] = rt.sessionsIn(room.id);
+  const [se] = arrange.sessionsIn(rt, room.id);
   await page.goto(`${app.origin}/#/t/${room.id}`);
   await synced(page, app);
   rt.sendMessage(room.id, { text });
@@ -100,12 +104,6 @@ async function withJob(page, title, text = 'Run the UAT job, please.') {
   const idle = () => expect.poll(state, { message: 'the agent’s process to exit' }).toBe('idle');
   return { room, se, state, step, lastTag, idle };
 }
-const stopButton = (page) => page.locator('.composer').getByRole('button', { name: 'Stop developer’s reply', exact: true });
-const ask = (page) => page.locator('.stop-ask');
-const choice = (page, name) => ask(page).getByRole('button', { name, exact: true });
-const UAT = 'Run the mixed-room UAT scenario live';
-/** A background job’s own Stop, by the job’s label. */
-const jobStop = (page, label = UAT) => page.locator('.bg-jobs').getByRole('button', { name: `Stop the background job “${label}”`, exact: true });
 const words = async (locator) => (await locator.allInnerTexts()).join(' ').replace(/\s+/g, ' ').trim();
 const color = (page, v) =>
   page.evaluate((value) => {
@@ -122,13 +120,6 @@ const color = (page, v) =>
  * included, still shows.
  */
 const sentSince = (before) => signals.slice(before).flatMap(([pid, sig]) => (pid === -4242 && sig === 'SIGKILL' ? [] : [`${pid} ${sig}`]));
-/** Stops the agent and keeps its jobs running, from the ask’s second choice, and waits for its process to exit. */
-async function keepRunning(page, idle) {
-  await stopButton(page).click();
-  await expect(ask(page)).toBeVisible();
-  await choice(page, 'Keep running').click();
-  await idle();
-}
 
 test('#129 a background job shows under its reply, running, with its own Stop', async ({ page }) => {
   await withJob(page, 'Shown');
@@ -146,7 +137,7 @@ test('#129 Stop asks first, with focus on its first choice; Escape leaves the ag
   await expect(ask(page)).toBeVisible();
   expect(await words(ask(page))).toMatch(/^@developer has 1 background job running\. Stop it too\? Stop it too Keep running$/);
   await focusIs(page, 'button: Stop it too');
-  expect(rt.turns.has(se.id), 'nothing stopped yet').toBe(true);
+  expect(arrange.running(rt, se.id), 'nothing stopped yet').toBe(true);
   // Amber only on the interactive control: the row’s edge is a token line, the first choice’s the accent.
   const row = await ask(page).evaluate((n) => getComputedStyle(n).borderTopColor);
   const first = await ask(page)
@@ -160,7 +151,7 @@ test('#129 Stop asks first, with focus on its first choice; Escape leaves the ag
   await expect.poll(() => store.state.sessions[se.id].stopAsk, { message: 'the server to clear the ask' }).toBe(null);
   await expect(ask(page)).toHaveCount(0);
   await expect(stopButton(page), 'focus back on Stop').toBeFocused();
-  expect(rt.turns.has(se.id), 'the agent carries on').toBe(true);
+  expect(arrange.running(rt, se.id), 'the agent carries on').toBe(true);
 });
 
 test('#126 #129 Keep running, by keyboard: the agent reads stopping until it exits, and the job stays listed with its Stop', async ({ page }) => {
@@ -296,7 +287,7 @@ test.describe('at 375 px', () => {
     expect(await overflowing(page, '.bg-jobs li, .stopped-tag'), 'the job rows and the tags').toEqual([]);
     rt.sendMessage(room.id, { text: 'Run the UAT job a third time.' }); // Then a third job, and Stop’s ask.
     await expect(page.locator('.bg-jobs li'), 'the third job’s row').toHaveCount(3);
-    await expect.poll(() => rt.turns.has(se.id), { message: 'the third turn' }).toBe(true);
+    await expect.poll(() => arrange.running(rt, se.id), { message: 'the third turn' }).toBe(true);
     await stopButton(page).click();
     await expect(ask(page)).toBeVisible();
     expect(await overflowing(page, '.stop-ask, .stop-ask button, .bg-jobs li, .stopped-tag'), 'the ask, beside them').toEqual([]);

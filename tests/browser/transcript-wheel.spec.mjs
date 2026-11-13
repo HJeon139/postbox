@@ -3,6 +3,7 @@
 // the view and pull it back to the end (#297). Each test has a conversation of its own.
 
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, settled, startPostbox, synced } from './postbox.mjs';
 
 test.use({ colorScheme: 'light' });
@@ -24,12 +25,12 @@ const LONG = (n) =>
 function room(title) {
   const { rt, store } = app;
   const project = Object.values(store.state.projects)[0];
-  const t = rt.createThread({ projectId: project.id, title, personaIds: [rt.personaByHandle('researcher').id, rt.personaByHandle('critic').id] });
-  const [researcher, critic] = rt.sessionsIn(t.id);
+  const t = rt.createThread({ projectId: project.id, title, personaIds: [arrange.persona(rt, 'researcher').id, arrange.persona(rt, 'critic').id] });
+  const [researcher, critic] = arrange.sessionsIn(rt, t.id);
   for (let i = 1; i <= 24; i++) {
     const se = i % 2 ? critic : researcher;
-    if (i % 3 === 1) rt.addItem(t.id, { kind: 'user', text: `Question ${i}: what does the observation step add?` });
-    else rt.addItem(t.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text: LONG(i), status: 'done' });
+    if (i % 3 === 1) arrange.post(rt, t.id, { kind: 'user', text: `Question ${i}: what does the observation step add?` });
+    else arrange.post(rt, t.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text: LONG(i), status: 'done' });
   }
   return { t, researcher };
 }
@@ -50,7 +51,7 @@ async function open(page, t) {
  */
 function streamOn(page, t, se) {
   const { rt, store } = app;
-  const it = rt.addItem(t.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text: '', status: 'streaming' });
+  const it = arrange.post(rt, t.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text: '', status: 'streaming' });
   let on = true;
   const words =
     Array.from({ length: 30 }, (_, i) => LONG(600 + i))
@@ -61,10 +62,10 @@ function streamOn(page, t, se) {
       store.emit('item.text', { threadId: t.id, id: it.id, text: words[i] });
       // A message from someone else now and then: unlike the reply’s text, which the page draws in its next animation
       // frame, the page adds it as soon as it hears it, so it can land between a wheel turn and its scroll event.
-      if (i % 4 === 3) rt.addItem(t.id, { kind: 'user', text: `Meanwhile ${i}` });
+      if (i % 4 === 3) arrange.post(rt, t.id, { kind: 'user', text: `Meanwhile ${i}` });
       await page.evaluate(() => new Promise((r) => requestAnimationFrame(r)));
     }
-    rt.patchItem(t.id, it.id, { status: 'done' });
+    arrange.setItem(rt, t.id, it.id, { status: 'done' });
   })();
   return async () => {
     on = false;

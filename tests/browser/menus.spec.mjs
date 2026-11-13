@@ -4,6 +4,7 @@
 // Moved from tools/checks/menus.mjs (#303).
 
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, frames, startPostbox, synced } from './postbox.mjs';
 
 const APP = (n) => `<main style="padding:12px"><p>Version ${n}</p></main>`;
@@ -19,7 +20,7 @@ test.beforeAll(async () => {
   const project = Object.values(store.state.projects)[0];
   const librarian = Object.values(store.state.personas).find((p) => p.handle === 'librarian');
   threadId = rt.createThread({ projectId: project.id, title: 'Many versions', personaIds: [librarian.id] }).id;
-  const tools = rt.toolsFor(rt.sessionsIn(threadId)[0].id);
+  const tools = rt.toolsFor(arrange.agentIn(rt, threadId).id);
   tools.show_app({ id: 'many', title: 'Pair explorer', code: APP(1), permissions: [] });
   for (let n = 2; n <= 30; n++) tools.update_app({ id: 'many', code: APP(n), summary: SUMMARY(n) });
   expect(store.state.apps.many.current).toBe(30);

@@ -2,6 +2,7 @@
 // you looked”, and Submit goes through. A real change shows its notice and that diff as it arrives, with no click. From critic’s repro probe (cases 1, 2 and A).
 
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 
 const V1 = ['# Draft issue', '', 'Steps to reproduce:', '1. Open a review.', '2. Answer it.'].join('\n');
@@ -23,7 +24,7 @@ let app;
 let drafter;
 test.beforeAll(async () => {
   app = await startPostbox('review-unseen');
-  app.rt.adapters.register({
+  arrange.withAdapter(app.rt, {
     name: 'mock',
     async deliver(_session, message, ctx) {
       if (message.text === 'review') ctx.tools.show_block({ block: review(V1) });
@@ -39,7 +40,7 @@ failOnPageErrors(test);
 /** Shows the review, applies the update, answers Approve, and returns what the block showed of the update before Submit. */
 async function answerAfter(page, title, update) {
   const { rt } = app;
-  const t = rt.createThread({ projectId: Object.values(rt.s.projects)[0].id, title, personaIds: [drafter.id] });
+  const t = rt.createThread({ projectId: Object.values(rt.store.state.projects)[0].id, title, personaIds: [drafter.id] });
   await page.goto(`${app.origin}/#/t/${t.id}`);
   await synced(page, app);
   rt.sendMessage(t.id, { text: 'review' });
@@ -47,11 +48,11 @@ async function answerAfter(page, title, update) {
   await expect.poll(() => !!itemOf(), { message: 'the block' }).toBe(true);
   const block = page.locator(`[data-block-item="${itemOf().id}"]`);
   await expect(block).toBeVisible();
-  await expect.poll(() => rt.turns.size, { message: 'the agent to finish' }).toBe(0);
+  await expect.poll(() => arrange.liveTurns(rt), { message: 'the agent to finish' }).toBe(0);
   // The person reads it line by line, as in the repro, so a diff would show there.
   await block.getByRole('radiogroup', { name: 'View' }).getByRole('radio', { name: 'Lines', exact: true }).click();
   await expect(block.locator('.g-mark[data-line="5"]')).toBeAttached();
-  const r = rt.toolsFor(rt.sessionsIn(t.id)[0].id).update_block({ block: update });
+  const r = rt.toolsFor(arrange.agentIn(rt, t.id).id).update_block({ block: update });
   expect(r.ok, r.message).toBe(true);
   await synced(page, app);
   // What the block shows of the change as it arrives, before any click (#123).

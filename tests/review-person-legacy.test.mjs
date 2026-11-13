@@ -3,6 +3,7 @@
 // review-person.test.mjs, at its size ceiling.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import * as arrange from './arrange.mjs';
 import { settle, setup, turn } from './blocks-fixture.mjs';
 
 const DRAFT = ['# Plan', '', 'We: the quoted text, then more.', 'Last line.'].join('\n');
@@ -32,7 +33,7 @@ async function legacy() {
       ],
     },
   ];
-  s.rt.patchItem(s.t.id, s.item().id, { block: { ...s.item().block, threads } });
+  arrange.setItem(s.rt, s.t.id, s.item().id, { block: { ...s.item().block, threads } });
   return s;
 }
 

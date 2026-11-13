@@ -10,11 +10,12 @@
 // Moved from tools/checks/app-send.mjs (#303).
 
 import { expect, test } from '@playwright/test';
-import { Runtime } from '../../server/runtime.mjs';
+import { APP_SEND_LIMIT } from '../../server/app-send-limits.mjs';
+import * as arrange from '../arrange.mjs';
 import { clickApp, frameOf } from './app-pointer.mjs';
 import { allowPageError, failOnPageErrors, frames, settled, startPostbox, synced, watchWrites } from './postbox.mjs';
 
-const LIMIT = Runtime.APP_SEND_LIMIT;
+const LIMIT = APP_SEND_LIMIT;
 
 const SPAM = `<main style="padding:12px"><button id="go" class="btn" type="button" style="display:block;width:100%;height:96px">Send one</button><p id="out">Ready</p></main>
 <script>
@@ -79,8 +80,8 @@ test.use({ colorScheme: 'dark' });
  */
 async function conversation(page, name) {
   const { rt, store } = app;
-  const t = rt.createThread({ projectId: Object.values(rt.s.projects)[0].id, title: name, personaIds: [rt.personaByHandle('librarian').id] });
-  const se = rt.sessionsIn(t.id)[0];
+  const t = rt.createThread({ projectId: Object.values(rt.store.state.projects)[0].id, title: name, personaIds: [arrange.persona(rt, 'librarian').id] });
+  const se = arrange.agentIn(rt, t.id);
   const tools = rt.toolsFor(se.id);
   await page.goto(`${app.origin}/#/t/${t.id}`);
   await synced(page, app);
@@ -88,12 +89,12 @@ async function conversation(page, name) {
   const show = async (key, title, code, { load = true } = {}) => {
     ids[key] = `${key}-${t.id}`;
     tools.show_app({ id: ids[key], title, code, permissions: [] });
-    await expect.poll(() => rt.s.apps[ids[key]]?.check.status, { message: `${title} to pass its check` }).toMatch(/^(passed|note)$/);
+    await expect.poll(() => rt.store.state.apps[ids[key]]?.check.status, { message: `${title} to pass its check` }).toMatch(/^(passed|note)$/);
     if (load) await expect(frameOf(page, title), `${title} to load`).toHaveAttribute('data-sized', '1');
     return ids[key];
   };
   const voices = (key) => store.items(t.id).filter((x) => x.kind === 'voice' && x.appId === ids[key]);
-  const state = (key) => rt.s.apps[ids[key]]?.state ?? {};
+  const state = (key) => rt.store.state.apps[ids[key]]?.state ?? {};
   return { t, se, show, voices, state };
 }
 
@@ -152,7 +153,7 @@ test('#38 Spam: refused on load; a click, a key press and Tab then Enter each se
     await expect(page.locator('.appsend')).toContainText(`Clicked #${LIMIT + 1}`);
     expect(voices('spam').length, `only ${LIMIT} went straight through`).toBe(LIMIT);
     // This passes before a turn’s end could drop the need, so tests/apps-needs.test.mjs is what guards that (#38).
-    await expect.poll(() => rt.s.sessions[se.id].needs?.kind, { message: 'a waiting card makes the agent need you, like a permission card' }).toBe('appsend');
+    await expect.poll(() => rt.session(se.id).needs?.kind, { message: 'a waiting card makes the agent need you, like a permission card' }).toBe('appsend');
   });
 
   await test.step('Allow, double-clicked, sends what was waiting once, with no error, and clears needs-you', async () => {
@@ -164,7 +165,7 @@ test('#38 Spam: refused on load; a click, a key press and Tab then Enter each se
     await writes.answered();
     await synced(page, app);
     await expect(page.locator('.toast', { hasText: 'didn’t go through' }), 'no error').toHaveCount(0);
-    expect(rt.s.sessions[se.id].needs?.kind, 'answering the card clears needs-you').not.toBe('appsend');
+    expect(rt.session(se.id).needs?.kind, 'answering the card clears needs-you').not.toBe('appsend');
     expect(voices('spam').filter((x) => x.quote === `Clicked #${LIMIT + 1}`).length, 'sent once').toBe(1);
   });
 });
@@ -246,7 +247,7 @@ for (const how of ['scrolls', 'moves (content above it changes)'])
     const { t, show, state } = await conversation(page, `Still ${how}`);
     // Messages above it and an app and messages below it, so the page can scroll it into the middle of the window.
     const lines = (n, what) => {
-      for (let i = 1; i <= n; i++) app.rt.addItem(t.id, { kind: 'user', text: `${what} ${i}: a line to give the page some length.` });
+      for (let i = 1; i <= n; i++) arrange.post(app.rt, t.id, { kind: 'user', text: `${what} ${i}: a line to give the page some length.` });
     };
     lines(12, 'Before');
     await show('still', 'Still', STILL);

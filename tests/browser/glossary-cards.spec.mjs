@@ -4,6 +4,7 @@
 // from tools/check-transcript-render.mjs (#303).
 
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, frames, PHONE, startPostbox, synced, windowWidth } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -16,7 +17,7 @@ test.beforeAll(async () => {
   app = await startPostbox('glossary-cards');
   const { rt } = app;
   persona = rt.createPersona({ handle: 'analyst' });
-  nested(Object.values(rt.s.projects)[0]);
+  nested(Object.values(rt.store.state.projects)[0]);
 });
 test.afterAll(async () => {
   await app?.stop();
@@ -31,7 +32,7 @@ test.use({ colorScheme: 'light' });
 function nested(project) {
   const { rt } = app;
   T.nested = rt.createThread({ projectId: project.id, title: 'Nested glossary', personaIds: [persona.id] });
-  const ns = rt.sessionsIn(T.nested.id)[0];
+  const ns = arrange.agentIn(rt, T.nested.id);
   const define = rt.toolsFor(ns.id).define_term;
   define({ term: 'U', definition: 'The utility of a claim: U is the sum over its labels, such as U:13.' });
   define({ term: 'U:13', definition: 'The utility of label 13, one term of U.' });
@@ -42,7 +43,14 @@ function nested(project) {
   ])
     define({ term, definition: `Leads on to ${next}.` });
   define({ term: 'delta', definition: 'The last one.' });
-  rt.addItem(T.nested.id, { kind: 'agent', sessionId: ns.id, personaId: ns.personaId, handle: ns.handle, text: 'Rank by U. Start at alpha.', status: 'done' });
+  arrange.post(rt, T.nested.id, {
+    kind: 'agent',
+    sessionId: ns.id,
+    personaId: ns.personaId,
+    handle: ns.handle,
+    text: 'Rank by U. Start at alpha.',
+    status: 'done',
+  });
 }
 
 async function open(page, hash) {

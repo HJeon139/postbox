@@ -9,6 +9,7 @@
 import { expect, test } from '@playwright/test';
 import { classifyExit, failure } from '../../server/remote/ssh.mjs';
 import { escapeRegExp } from '../../shared/regex.mjs';
+import * as arrange from '../arrange.mjs';
 import { audit, card, freshHost, MINUTE, openHosts, SIZES, startHosts } from './hosts.mjs';
 import { allowPageError, failOnPageErrors } from './postbox.mjs';
 
@@ -221,7 +222,7 @@ async function removeAsks(page, confirm) {
 async function refusedForTurn(page, id, se, confirm) {
   // A turn there that can’t be stopped: this computer has no token to reach the host with.
   fake.noToken.add(id);
-  app.rt.remote.stopping.set('tu_check', /** @type {any} */ ({ hostId: id, sessionId: se?.id ?? '', waiters: [] }));
+  const letGo = arrange.stoppingOnHost(app.rt, 'tu_check', { hostId: id, sessionId: se?.id ?? '', waiters: [] });
   allowPageError(page, /status of 409/);
   try {
     await confirm.getByRole('button', { name: `Remove Postbox from ${NAME}` }).click();
@@ -233,7 +234,7 @@ async function refusedForTurn(page, id, se, confirm) {
     await expect.soft(confirm.getByRole('button', { name: 'Try again' }), 'and the confirm offers to try again').toBeVisible();
     await audit(page, 'a refused removal');
   } finally {
-    app.rt.remote.stopping.delete('tu_check');
+    letGo();
     fake.noToken.delete(id);
   }
 }

@@ -1,6 +1,7 @@
 // The smooth jump spec’s setup (view-skipped-smooth.spec.mjs), moved out at that file’s size limit.
 
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { synced } from './postbox.mjs';
 import { bigRoom, still } from './view-skipped-fixture.mjs';
 
@@ -27,7 +28,7 @@ export async function readingAtTop(app, page, title) {
   // The setup alone can take most of a minute on CI’s delayed shard, waiting for the reply below.
   test.setTimeout(90_000);
   const conv = bigRoom(app, title);
-  const [se] = app.rt.sessionsIn(conv.id);
+  const [se] = arrange.sessionsIn(app.rt, conv.id);
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto(`${app.origin}/#/t/${conv.id}`);
   await synced(page, app);
@@ -43,7 +44,7 @@ export async function readingAtTop(app, page, title) {
   await expect.poll(mode, { message: 'the view to read at the top', timeout: 15_000 }).toBe('reading');
   await expect.poll(() => page.evaluate(heldAtTop), { message: 'the view to hold at the top for 30 frames', timeout: 15_000 }).toBe(true);
   await still(page);
-  const reply = app.rt.addItem(conv.id, {
+  const reply = arrange.post(app.rt, conv.id, {
     kind: 'agent',
     sessionId: se.id,
     personaId: se.personaId,

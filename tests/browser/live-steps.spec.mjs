@@ -4,6 +4,7 @@
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { scriptedRoom } from './live-scripts.mjs';
 import { synced } from './postbox.mjs';
 
@@ -46,7 +47,7 @@ test('the newest step shows in full, an edit as its diff; an older one is a line
     await expect(line.locator('.work-n .del')).toHaveText('−1');
   });
   go('fixer');
-  await expect.poll(() => scripted.app.rt.turns.size).toBe(0);
+  await expect.poll(() => arrange.liveTurns(scripted.app.rt)).toBe(0);
 });
 
 test('a turn’s own words sit between its steps, in the order it wrote and ran them', async ({ page }) => {
@@ -77,7 +78,7 @@ test('a turn’s own words sit between its steps, in the order it wrote and ran 
   for (const words of ['Reading the notes first.', 'One line; adding a second.'])
     expect(text.split(words).length - 1, `“${words}” drawn once, between the steps or in the reply, not both`).toBe(1);
   go('writer');
-  await expect.poll(() => scripted.app.rt.turns.size).toBe(0);
+  await expect.poll(() => arrange.liveTurns(scripted.app.rt)).toBe(0);
 });
 
 test('a finished turn’s steps fold into its work record at the top of the post, which opens to them and to Work', async ({ page }) => {
@@ -90,7 +91,7 @@ test('a finished turn’s steps fold into its work record at the top of the post
   await page.goto(`${scripted.app.origin}/#/t/${t.id}`);
   await synced(page, scripted.app);
   scripted.app.rt.sendMessage(t.id, { text: 'Set x.' });
-  await expect.poll(() => scripted.app.rt.turns.size).toBe(0);
+  await expect.poll(() => arrange.liveTurns(scripted.app.rt)).toBe(0);
   await synced(page, scripted.app);
   const post = page.locator('.turn', { hasText: 'Set x to 2.' });
   const record = post.locator('details.activity');
@@ -142,7 +143,7 @@ test('detail fades within each agent’s share of the screen: four agents show a
       expect((await b.boundingBox())?.height ?? 0, 'within its share of 760 px').toBeLessThanOrEqual(200);
     }
     for (const w of four) go(w);
-    await expect.poll(() => scripted.app.rt.turns.size).toBe(0);
+    await expect.poll(() => arrange.liveTurns(scripted.app.rt)).toBe(0);
   });
   await test.step('eight agents: one line each, what it’s doing and its step count', async () => {
     await show(eight);
@@ -154,7 +155,7 @@ test('detail fades within each agent’s share of the screen: four agents show a
       await expect(b.locator('li.step-full')).toHaveCount(0);
     }
     for (const w of eight) go(w);
-    await expect.poll(() => scripted.app.rt.turns.size).toBe(0);
+    await expect.poll(() => arrange.liveTurns(scripted.app.rt)).toBe(0);
   });
 });
 
@@ -178,7 +179,7 @@ test('a running turn’s thoughts show whole, paragraphs and all, between its st
   await expect(page.locator('.work-row', { hasText: 'thinker' }), 'its working row').toHaveCount(1);
   await expect(page.locator('.work-row .glimpse'), 'which doesn’t say the thought again').toHaveCount(0);
   go('thinker');
-  await expect.poll(() => scripted.app.rt.turns.size).toBe(0);
+  await expect.poll(() => arrange.liveTurns(scripted.app.rt)).toBe(0);
 });
 
 test('a thought shows while the agent writes it, its text so far, and then whole', async ({ page }) => {
@@ -203,7 +204,7 @@ test('a thought shows while the agent writes it, its text so far, and then whole
   await expect(shown, 'once it ends, whole, in the same place').toHaveText('The sum is wrong because the operator is a minus. I’ll fix it.');
   await expect(shown).toHaveCount(1);
   go('ponderer');
-  await expect.poll(() => scripted.app.rt.turns.size).toBe(0);
+  await expect.poll(() => arrange.liveTurns(scripted.app.rt)).toBe(0);
 });
 
 test('a step landing keeps “N earlier steps” open, and its summary focused, as you left them', async ({ page }) => {
@@ -231,5 +232,5 @@ test('a step landing keeps “N earlier steps” open, and its summary focused, 
   await expect(earlier, 'still open').toHaveAttribute('open', '');
   await expect(earlier.locator('> summary'), 'still focused').toBeFocused();
   go('busy');
-  await expect.poll(() => scripted.app.rt.turns.size).toBe(0);
+  await expect.poll(() => arrange.liveTurns(scripted.app.rt)).toBe(0);
 });

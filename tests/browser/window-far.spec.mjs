@@ -6,6 +6,7 @@
 
 import { expect, test } from '@playwright/test';
 import { seedBigRoom } from '../../tools/uat/big-room.mjs';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, frames, settled, startPostbox, synced } from './postbox.mjs';
 
 const COUNT = 2000;
@@ -20,7 +21,7 @@ failOnPageErrors(test);
 
 /** A room of COUNT items, open at its end, with the window on as a long room opens by default. */
 async function open(page) {
-  const projectId = /** @type {any} */ (Object.values(app.rt.s.projects)[0]).id;
+  const projectId = /** @type {any} */ (Object.values(app.rt.store.state.projects)[0]).id;
   const t = app.rt.createThread({ projectId, title: `${COUNT} items`, personaIds: [] });
   seedBigRoom(app.store, t.id, { count: COUNT });
   await page.goto(`${app.origin}/#/t/${t.id}`);
@@ -84,7 +85,7 @@ test('#866 Home in a long room opened at its end shows its first items, and End 
 test('#866 Jump to latest from far up a long room lands on the newest item', async ({ page }) => {
   const t = await open(page);
   await farUp(page, t);
-  const it = app.rt.addItem(t.id, { kind: 'user', text: 'A message while you read far up.' });
+  const it = arrange.post(app.rt, t.id, { kind: 'user', text: 'A message while you read far up.' });
   await synced(page, app);
   const jump = page.getByRole('button', { name: /Jump to latest/ });
   await expect(jump).toBeVisible();
@@ -123,7 +124,7 @@ test('#866 a reply streaming in while you read far up is announced, though the w
     /** @type {any} */ (window).said = said;
     new MutationObserver(() => live.textContent && said.push(live.textContent)).observe(live, { childList: true, characterData: true, subtree: true });
   });
-  const it = app.rt.addItem(t.id, { kind: 'agent', handle: 'researcher', text: '', status: 'streaming' });
+  const it = arrange.post(app.rt, t.id, { kind: 'agent', handle: 'researcher', text: '', status: 'streaming' });
   for (const chunk of ['The build passed ', 'on both Node versions. ', 'Now the browser runs. ']) {
     app.store.emit('item.text', { threadId: t.id, id: it.id, text: chunk });
     await frames(page);

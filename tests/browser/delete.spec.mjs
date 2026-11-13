@@ -2,6 +2,7 @@
 // the conversation, the session or the persona is gone at once. There’s no Undo, and nothing waits on a window.
 
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -20,7 +21,7 @@ const projectId = () => Object.keys(app.store.state.projects)[0];
 function withAgent(handle) {
   const p = app.rt.createPersona({ handle, description: 'Checks deleting' });
   const t = app.rt.createThread({ projectId: projectId(), title: `With ${handle}`, personaIds: [p.id] });
-  return { p, t, se: app.rt.sessionsIn(t.id)[0] };
+  return { p, t, se: arrange.agentIn(app.rt, t.id) };
 }
 
 test('deleting a conversation: the confirm says what goes and that it can’t be undone, and it’s gone at once', async ({ page }) => {
@@ -37,7 +38,7 @@ test('deleting a conversation: the confirm says what goes and that it can’t be
   expect.soft(app.store.state.threads[t.id], 'the conversation is gone').toBeUndefined();
   expect.soft(app.store.state.sessions[se.id], 'its session too').toBeUndefined();
   expect.soft(app.store.state.personas[p.id], 'the persona stays').toBeTruthy();
-  expect.soft(app.rt.timers.size, 'no timer waits to finish it').toBe(0);
+  expect.soft(arrange.scheduledTimers(app.rt), 'no timer waits to finish it').toBe(0);
   await expect.soft(page).not.toHaveURL(new RegExp(`#/t/${t.id}`));
 });
 
@@ -45,7 +46,7 @@ test('deleting a session with @agent /delete removes it at once after its confir
   const { p } = withAgent('sesgone');
   const other = app.rt.createPersona({ handle: 'stays' });
   const room = app.rt.createThread({ projectId: projectId(), title: 'Room for a delete', personaIds: [p.id, other.id] });
-  const se = app.rt.sessionsIn(room.id).find((x) => x.personaId === p.id);
+  const se = arrange.sessionsIn(app.rt, room.id).find((x) => x.personaId === p.id);
   await page.goto(`${app.origin}/#/t/${room.id}`);
   await synced(page, app);
   await page.locator('#composer-input').focus();

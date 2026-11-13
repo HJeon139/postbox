@@ -7,6 +7,7 @@
 
 import { expect, test } from '@playwright/test';
 import { driver } from '../../tools/uat/driver.mjs';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 import { sideRoom } from './side-threads.mjs';
 
@@ -31,7 +32,7 @@ async function runnerPage(page) {
 
 /** @researcher’s message in a thread. */
 const says = (/** @type {any} */ r, /** @type {string} */ threadId, /** @type {string} */ text) =>
-  app.rt.addItem(threadId, { kind: 'agent', sessionId: r.researcher.id, personaId: r.researcher.personaId, handle: 'researcher', text, status: 'done' });
+  arrange.post(app.rt, threadId, { kind: 'agent', sessionId: r.researcher.id, personaId: r.researcher.personaId, handle: 'researcher', text, status: 'done' });
 async function open(page, r) {
   await page.goto(`${app.origin}/#/t/${r.room.id}`);
   await synced(page, app);

@@ -8,6 +8,7 @@
 // Moved from tools/checks/needs-nav.mjs (#303).
 
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 
 const choice = (handle) => ({
@@ -32,7 +33,7 @@ const handleOfItem = {};
 /** Scripted agents: each asks once, on its first turn, a choice, or a tool request for @epsilon. Later turns just reply. */
 function scriptAgents() {
   const asked = new Set();
-  app.rt.adapters.register({
+  arrange.withAdapter(app.rt, {
     name: 'claude-code',
     async folderFor() {
       return app.root;
@@ -56,11 +57,11 @@ function conversations() {
   const [alpha, beta, gamma, delta, epsilon, zeta] = ['alpha', 'beta', 'gamma', 'delta', 'epsilon', 'zeta'].map(persona);
   T.alpha = rt.createThread({ projectId: 'pr_needs', title: 'Alpha', personaIds: [alpha, beta] });
   // Since #372 a wake makes no side thread, so Alpha’s is built as one was before it.
-  T.side = rt.putThread({
+  T.side = arrange.putThread(rt, {
     ...{ id: 'th_needsside', projectId: 'pr_needs', title: 'alpha ↔ beta', kind: 'side', parentId: T.alpha.id, pair: 'alpha|beta', woke: 'beta' },
     ...{ members: [], lastSpeaker: null, hops: 0, queue: [], createdAt: Date.now() },
   });
-  rt.addItem(T.alpha.id, { kind: 'sidelink', sideThreadId: T.side.id, from: 'alpha', to: 'beta', count: 0 });
+  arrange.post(rt, T.alpha.id, { kind: 'sidelink', sideThreadId: T.side.id, from: 'alpha', to: 'beta', count: 0 });
   T.room = rt.createThread({ projectId: 'pr_needs', title: 'Room', personaIds: [gamma, delta, zeta] });
   T.tools = rt.createThread({ projectId: 'pr_needs', title: 'Tools', personaIds: [epsilon] });
 }
@@ -71,7 +72,7 @@ function conversations() {
  */
 async function ask() {
   const { rt, store } = app;
-  const idle = () => expect.poll(() => rt.turns.size + rt.exiting.size, { message: 'the agents to finish' }).toBe(0);
+  const idle = () => expect.poll(() => arrange.liveTurns(rt) + arrange.exitingTurns(rt), { message: 'the agents to finish' }).toBe(0);
   const next = async () => {
     await idle();
     const now = Date.now();
@@ -85,7 +86,7 @@ async function ask() {
   rt.sendMessage(T.room.id, { text: '@delta and you?' });
   await next();
   // @beta’s turn in the side thread, as a wake there started one before #372.
-  rt.deliver(sessionOf('beta').id, { kind: 'agent', from: '@alpha', text: 'Which source should I read first?' }, { threadId: T.side.id });
+  arrange.deliver(rt, sessionOf('beta').id, { kind: 'agent', from: '@alpha', text: 'Which source should I read first?' }, { threadId: T.side.id });
   await next();
   rt.sendMessage(T.tools.id, { text: '@epsilon clean the build.' });
   await next();
@@ -101,7 +102,7 @@ test.beforeAll(async () => {
   await ask();
   // A long run of @delta’s notes after the asks, so the room's asks are far up its transcript.
   for (let i = 0; i < 30; i++)
-    app.rt.addItem(T.room.id, {
+    arrange.post(app.rt, T.room.id, {
       kind: 'agent',
       sessionId: S.delta.id,
       personaId: S.delta.personaId,

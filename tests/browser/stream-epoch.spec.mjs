@@ -5,6 +5,7 @@
 // as a page from before a restart would send it.
 
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -39,7 +40,7 @@ test('the page names the epoch /api/state gave it when its stream connects', asy
 
 test('a page whose stream names another epoch is told to resync, loads the state again and goes on with the store’s epoch', async ({ page }) => {
   const t = conversation('writer', 'Resynced');
-  app.rt.addItem(t.id, { kind: 'user', text: 'A message the store keeps' });
+  arrange.post(app.rt, t.id, { kind: 'user', text: 'A message the store keeps' });
   // The page’s first stream request names an epoch from another history, as a page back from before a restart does.
   let rewritten = 0;
   await page.route('**/api/stream*', (route) => {
@@ -58,6 +59,6 @@ test('a page whose stream names another epoch is told to resync, loads the state
   await expect(page.getByText('A message the store keeps')).toBeVisible();
   expect((await clientOf(page)).epoch).toBe(app.store.epoch);
   // And it hears what comes next.
-  app.rt.addItem(t.id, { kind: 'user', text: 'A message after the resync' });
+  arrange.post(app.rt, t.id, { kind: 'user', text: 'A message after the resync' });
   await expect(page.getByText('A message after the resync')).toBeVisible();
 });

@@ -9,6 +9,7 @@
 
 import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 
 const V1 = ['# Draft issue', '', 'Steps to reproduce:', '1. Open a review.', '2. Answer it.'].join('\n');
@@ -38,7 +39,7 @@ let drafter;
 test.beforeAll(async () => {
   app = await startPostbox('answers');
   // The agent: shows a block on cue, and records every message Postbox sends it.
-  app.rt.adapters.register({
+  arrange.withAdapter(app.rt, {
     name: 'mock',
     async deliver(session, message, ctx) {
       calls.push({ ...message, threadId: session.threadId });
@@ -57,7 +58,7 @@ test.use({ colorScheme: 'light' });
 /** A conversation of its own, open in the page, where the agent shows what it’s asked for. */
 async function conversation(page, title, ask, id) {
   const { rt } = app;
-  const thread = rt.createThread({ projectId: Object.values(rt.s.projects)[0].id, title, personaIds: [drafter.id] });
+  const thread = rt.createThread({ projectId: Object.values(rt.store.state.projects)[0].id, title, personaIds: [drafter.id] });
   await page.goto(`${app.origin}/#/t/${thread.id}`);
   await synced(page, app);
   rt.sendMessage(thread.id, { text: ask });
@@ -66,7 +67,7 @@ async function conversation(page, title, ask, id) {
   const block = page.locator(`[data-block-item="${itemOf().id}"]`);
   await expect(block).toBeVisible();
   const events = () => calls.filter((m) => m.kind === 'event' && m.threadId === thread.id);
-  return { thread, itemOf, block, events, tools: rt.toolsFor(rt.sessionsIn(thread.id)[0].id) };
+  return { thread, itemOf, block, events, tools: rt.toolsFor(arrange.agentIn(rt, thread.id).id) };
 }
 const button = (block, label) => block.getByRole('button', { name: label, exact: true });
 /** The notice is below the block’s buttons, so it moves none of them, and it isn’t focused. */

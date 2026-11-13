@@ -58,7 +58,6 @@ The root `AGENTS.md` carries these rules, short, for any agent working in the re
 **Gate.** Before you hand off, these pass in your worktree:
 - `npm run check`
 - `npx playwright test`, and again with `POSTBOX_STREAM_LAG=300`: every browser spec in `tests/browser/`, each file on a Postbox of its own. The lag holds the server’s events back 300 ms, so a spec that reads the page before it has heard a change fails here rather than now and then on main (#174). A change you can see in the UI adds or extends a spec, as the root `AGENTS.md` and engineering-practices.md, “The gate”, say.
-- `npx playwright test <your specs> --repeat-each=10`, with the lag, for each spec you add or change, as CI runs it.
 
 Then an adversarial review subagent goes through your diff against the practices doc, and you fix what it confirms, under the scope rule below.
 

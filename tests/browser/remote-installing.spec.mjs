@@ -6,6 +6,7 @@
 
 import { expect, test } from '@playwright/test';
 import { failure } from '../../server/remote/ssh.mjs';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, PHONE, synced } from './postbox.mjs';
 import { axe, overflowing, startRemote } from './remote-hosts.mjs';
 
@@ -45,15 +46,15 @@ const withUpdate = (state, outcome) => ({
   keepUpdated: true,
   update: { version: VERSION, at: Date.now(), outcome, token: TOKEN, path: '/home/user/.postbox-remote' },
 });
-const sessionOf = (persona) => s.app.rt.sessionsIn(at.room.id).find((se) => se.personaId === persona.id);
+const sessionOf = (persona) => arrange.sessionsIn(s.app.rt, at.room.id).find((se) => se.personaId === persona.id);
 /** An agent’s row in the sidebar’s Agents. */
 const row = (page, handle) => page.locator('.rail .agent-row').filter({ has: page.locator('.agent-btn b', { hasText: new RegExp(`^${handle}$`) }) });
 
 /** Opens the room with @waiter at work, its turn waiting on the host. @param {import('@playwright/test').Page} page */
 async function open(page) {
   s.hosts.set(at.host.id, withUpdate('failed', 'started'));
-  s.app.rt.updateSession(sessionOf(at.waiting).id, { state: 'think', currentStep: 'Thinking' });
-  s.app.rt.updateSession(sessionOf(at.idle).id, { state: 'idle' });
+  arrange.setSession(s.app.rt, sessionOf(at.waiting).id, { state: 'think', currentStep: 'Thinking' });
+  arrange.setSession(s.app.rt, sessionOf(at.idle).id, { state: 'idle' });
   await page.goto(`${s.app.origin}/#/t/${at.room.id}`);
   await synced(page, s.app);
 }

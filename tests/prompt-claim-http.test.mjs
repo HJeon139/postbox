@@ -9,6 +9,7 @@ import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { REFUSED } from '../server/prompt-claim.mjs';
+import * as arrange from './arrange.mjs';
 import { fakeRequest } from './fake-http.mjs';
 import { askedAfter, feed, PROMPTS } from './prompt-setup.mjs';
 import { tempDir } from './temp-dirs.mjs';
@@ -32,7 +33,7 @@ test('#353 a permission_prompt replayed to /mcp with the turn’s token raises n
   const { app, folder } = await server(t);
   /** @type {any[]} */
   const next = [];
-  app.rt.adapters.register({ name: 'claude-code', folderFor: async () => folder, deliver: async (_s, _m, ctx) => next.shift()(ctx) });
+  arrange.withAdapter(app.rt, { name: 'claude-code', folderFor: async () => folder, deliver: async (_s, _m, ctx) => next.shift()(ctx) });
   app.store.emit('project', { id: 'p-replay', name: 'Replay', folder });
   const p = app.rt.createPersona({ handle: 'coder', backend: 'claude-code', permissionMode: 'ask', tools: ['shell'] });
   const th = app.rt.createThread({ projectId: 'p-replay', title: 'Replay', personaIds: [p.id] });
@@ -72,8 +73,8 @@ test('#353 a permission_prompt replayed to /mcp with the turn’s token raises n
   const failed = await done;
   if (failed) throw failed;
   // The turn ends after the adapter returns: its last writes land before the asserts and the teardown.
-  for (let i = 0; i < 1000 && app.rt.turns.size; i++) await new Promise((r) => setTimeout(r, 5));
-  assert.equal(app.rt.turns.size, 0, 'the turn ended');
+  for (let i = 0; i < 1000 && arrange.liveTurns(app.rt); i++) await new Promise((r) => setTimeout(r, 5));
+  assert.equal(arrange.liveTurns(app.rt), 0, 'the turn ended');
   assert.deepEqual(answers[0], { behavior: 'deny', message: REFUSED.differs });
   assert.equal(answers[1].behavior, 'allow', 'the CLI’s own prompt still asks, and is answered');
   assert.equal(cards().length, 1, 'only the real call’s card');

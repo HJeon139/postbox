@@ -3,6 +3,7 @@
 // not once per turn list, and full-screen Work draws the newest of its 1,800 commands and the one it opened at.
 
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, newestShown, settled, startPostbox, synced } from './postbox.mjs';
 
 // Tracing is off: the trace's snapshot lays out each item the transcript skips (#712a) at every action. With it on, the
@@ -23,7 +24,7 @@ test.beforeAll(async () => {
   store.emit('project', { id: 'pr_cost', name: 'Cost', folder: app.root });
   const p = rt.createPersona({ handle: 'builder' });
   conv = rt.createThread({ projectId: 'pr_cost', title: 'A long day', personaIds: [p.id] }).id;
-  const se = rt.sessionsIn(conv)[0];
+  const se = arrange.agentIn(rt, conv);
   const base = { threadId: conv, sessionId: se.id, handle: se.handle };
   const add = (entry) => store.emit('work.add', { convId: conv, entry: { ...base, at: 1, ...entry } });
   for (let f = 0; f < 30; f++)
@@ -45,7 +46,7 @@ test.beforeAll(async () => {
     for (let c = 0; c < COMMANDS; c++)
       add({ kind: 'command', id: `wc_${t}_${c}`, turnId, command: `npm test -- part ${c}`, startedAt: 1, state: 'done', exit: 0 });
     add({ kind: 'read', id: `wg_${t}`, turnId, tool: 'Read', what: 'README.md' });
-    rt.addItem(conv, {
+    arrange.post(rt, conv, {
       kind: 'agent',
       sessionId: se.id,
       personaId: se.personaId,

@@ -21,7 +21,7 @@ let app;
 const rooms = {};
 test.beforeAll(async () => {
   app = await startPostbox('window-w1');
-  const projectId = Object.values(app.rt.s.projects)[0].id;
+  const projectId = Object.values(app.rt.store.state.projects)[0].id;
   for (const count of [OFF, SMALL, LARGE]) {
     const t = app.rt.createThread({ projectId, title: `${count} items`, personaIds: [] });
     seedBigRoom(app.store, t.id, { count });

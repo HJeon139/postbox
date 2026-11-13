@@ -5,6 +5,7 @@
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -20,7 +21,7 @@ test.beforeAll(async () => {
     },
   });
   const { rt, store } = app;
-  rt.adapters.register({
+  arrange.withAdapter(rt, {
     name: 'antigravity-cli',
     capabilities: { permissions: 'none', tools: 'none' },
     async folderFor() {

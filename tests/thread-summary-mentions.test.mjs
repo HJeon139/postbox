@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { threadCatchUp } from '../server/thread-summary.mjs';
 import { READING } from '../shared/limits.mjs';
+import * as arrange from './arrange.mjs';
 import { settle, setup } from './side-threads-fixture.mjs';
 
 /** A topic thread on alpha’s reply in the conversation, and a way for beta to post there. */
@@ -16,7 +17,8 @@ async function topic() {
   await settle(f.rt);
   const reply = f.store.items(f.t.id).find((i) => i.kind === 'agent');
   const { threadId } = f.rt.startTopic(f.t.id, reply.id);
-  const say = (text) => f.rt.addItem(threadId, { kind: 'agent', sessionId: f.beta.id, personaId: f.beta.personaId, handle: 'beta', text, status: 'done' });
+  const say = (text) =>
+    arrange.post(f.rt, threadId, { kind: 'agent', sessionId: f.beta.id, personaId: f.beta.personaId, handle: 'beta', text, status: 'done' });
   const catchUp = () => threadCatchUp(f.rt, f.store.state.sessions[f.alpha.id], threadId) ?? '';
   return { say, catchUp };
 }

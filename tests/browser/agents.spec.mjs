@@ -12,6 +12,7 @@
 import { readFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
 import { createStreamMapper } from '../../server/adapters/claude-stream.mjs';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, PHONE, startPostbox, synced } from './postbox.mjs';
 
 // Light, as the old check ran it; the narrow tests below run in both.
@@ -36,7 +37,7 @@ let initial;
 
 const personaNamed = (handle) => Object.values(app.store.state.personas).find((p) => p.handle === handle);
 const threadNamed = (title) => Object.values(app.store.state.threads).find((t) => t.title === title);
-const sessionIn = (t, handle) => app.rt.sessionsIn(t.id).find((x) => x.handle === handle);
+const sessionIn = (t, handle) => arrange.agentIn(app.rt, t.id, handle);
 /**
  * Real backends aren’t registered here (POSTBOX_BACKENDS=mock), so a persona is changed in the store, as an edit in the
  * persona sheet would on a computer with Claude Code.
@@ -47,7 +48,7 @@ test.beforeAll(async () => {
   app = await startPostbox('agents');
   const { rt, store } = app;
   for (const name of ['claude-code', 'agent-sdk'])
-    rt.adapters.register({
+    arrange.withAdapter(rt, {
       name,
       async folderFor() {
         return app.root;
@@ -67,7 +68,7 @@ test.beforeAll(async () => {
   shelf = threadNamed('Index the shelf');
   indexer = sessionIn(planning, 'indexer');
   // A topic thread from a reply of @indexer’s, answered there by its one session in the conversation (#228).
-  const root = rt.addItem(planning.id, {
+  const root = arrange.post(rt, planning.id, {
     kind: 'agent',
     sessionId: indexer.id,
     personaId: indexer.personaId,
@@ -88,7 +89,7 @@ test.beforeEach(async () => {
   const { rt, store } = app;
   await expect.poll(() => store.state.sessions[indexer.id].state, { message: 'indexer idle' }).toBe('idle');
   store.emit('persona', { ...initial.persona, version: personaNamed('indexer').version + 1 });
-  rt.updateSession(indexer.id, { lastModel: null, lastEffort: null });
+  arrange.setSession(rt, indexer.id, { lastModel: null, lastEffort: null });
 });
 failOnPageErrors(test);
 
@@ -205,10 +206,12 @@ test('a topic thread is answered by the conversation’s own session; its panel 
   rt.sendMessage(topic.id, { text: 'Which shelf?' });
   await expect.poll(() => turns.length, { message: 'the reply' }).toBeGreaterThan(n);
   expect(turns.at(-1)).toMatchObject({ handle: 'indexer', text: 'Which shelf?' });
-  expect(rt.sessionsIn(topic.id).length, 'the thread has no session of its own').toBe(0);
+  expect(arrange.sessionsIn(rt, topic.id).length, 'the thread has no session of its own').toBe(0);
   await expect.poll(() => store.state.sessions[indexer.id].state, { message: 'the turn to end' }).toBe('idle');
   await synced(page, app);
-  await expect(page.locator('.rail .agent-row'), 'a row for each of the conversation’s agents, and no other').toHaveCount(rt.sessionsIn(planning.id).length);
+  await expect(page.locator('.rail .agent-row'), 'a row for each of the conversation’s agents, and no other').toHaveCount(
+    arrange.sessionsIn(rt, planning.id).length,
+  );
 });
 
 // ── Subagents (#73) ─────────────────────────────────────────────────────────────────────
@@ -293,7 +296,7 @@ for (const theme of /** @type {const} */ (['light', 'dark']))
     test.use({ viewport: { width: 375, height: 812 }, ...PHONE, colorScheme: theme });
 
     test(`at 375 px (${theme}), the top bar fits a long title with no agent rings, and its menu names each agent (#320)`, async ({ page }) => {
-      app.rt.renameThread(shelf.id, 'Index every book on the shelf, then check the index against the catalog');
+      arrange.renameThread(app.rt, shelf.id, 'Index every book on the shelf, then check the index against the catalog');
       try {
         await open(page, `#/t/${shelf.id}`);
         expect(await page.locator('header.topbar').evaluate((t) => t.scrollWidth <= t.clientWidth), 'the top bar fits').toBe(true);
@@ -302,7 +305,7 @@ for (const theme of /** @type {const} */ (['light', 'dark']))
         await page.locator('header.topbar #conversation-actions').click();
         await expect(page.locator('.menu button.mi', { hasText: 'indexer' }), 'the menu names indexer').toBeVisible();
       } finally {
-        app.rt.renameThread(shelf.id, 'Index the shelf');
+        arrange.renameThread(app.rt, shelf.id, 'Index the shelf');
       }
     });
   });

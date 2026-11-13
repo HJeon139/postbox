@@ -9,6 +9,7 @@ import { mkdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
 import { escapeRegExp } from '../../shared/regex.mjs';
+import * as arrange from '../arrange.mjs';
 import { allowPageError, failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -38,7 +39,7 @@ test.beforeAll(async () => {
   await symlink(join(root, 'docs'), join(root, 'docs-link'));
   const { rt, store } = app;
   store.emit('project', { id: 'pr-links', name: 'Linked files', folder: root });
-  threadId = rt.createThread({ projectId: 'pr-links', title: 'Links', personaIds: [rt.personaByHandle('librarian').id] }).id;
+  threadId = rt.createThread({ projectId: 'pr-links', title: 'Links', personaIds: [arrange.persona(rt, 'librarian').id] }).id;
 });
 test.afterAll(async () => {
   await app?.stop();

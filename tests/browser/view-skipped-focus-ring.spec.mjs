@@ -4,6 +4,7 @@
 // item is captured with the button focused and not: the ring shows there only if it isn’t clipped.
 
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, settled, startPostbox, synced } from './postbox.mjs';
 
 test.use({ colorScheme: 'light' });
@@ -19,10 +20,10 @@ failOnPageErrors(test);
 test('#712a a reaction button flush with its item’s bottom keeps its whole focus ring', async ({ page }) => {
   const { rt } = app;
   const project = Object.values(app.store.state.projects)[0];
-  const t = rt.createThread({ projectId: project.id, title: 'Focus ring', personaIds: [rt.personaByHandle('critic').id] });
-  const [se] = rt.sessionsIn(t.id);
-  const reply = rt.addItem(t.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text: 'A reply.', status: 'done' });
-  rt.addItem(t.id, { kind: 'user', text: 'A message after it.' });
+  const t = rt.createThread({ projectId: project.id, title: 'Focus ring', personaIds: [arrange.persona(rt, 'critic').id] });
+  const [se] = arrange.sessionsIn(rt, t.id);
+  const reply = arrange.post(rt, t.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text: 'A reply.', status: 'done' });
+  arrange.post(rt, t.id, { kind: 'user', text: 'A message after it.' });
   await page.goto(`${app.origin}/#/t/${t.id}`);
   await synced(page, app);
   await settled(page);

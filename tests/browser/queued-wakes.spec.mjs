@@ -1,5 +1,6 @@
 // Queued messages retain individual controls but start one combined turn when their agent is free (#374).
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 
 let app;
@@ -9,7 +10,7 @@ const releases = new Map();
 let count = 0;
 test.beforeAll(async () => {
   app = await startPostbox('queued-wakes');
-  app.rt.adapters.register({
+  arrange.withAdapter(app.rt, {
     name: 'claude-code',
     folderFor: async () => app.root,
     async deliver(session, message, ctx) {
@@ -38,7 +39,7 @@ function room() {
     title: `Queued wakes ${n}`,
     personaIds: personas.map((p) => p.id),
   });
-  const [worker, ...senders] = app.rt.sessionsIn(thread.id);
+  const [worker, ...senders] = arrange.sessionsIn(app.rt, thread.id);
   holds.add(worker.id);
   return { thread, worker, senders };
 }
@@ -65,11 +66,11 @@ const openQueue = async (page, r) => {
   return dialog;
 };
 const turnsFor = (r) => calls.filter((call) => call.sessionId === r.worker.id);
-const idle = (r) => expect.poll(() => app.rt.turns.has(r.worker.id) || app.rt.exiting.has(r.worker.id)).toBe(false);
+const idle = (r) => expect.poll(() => arrange.running(app.rt, r.worker.id) || arrange.exiting(app.rt, r.worker.id)).toBe(false);
 
 test('three individual queued wakes become one reply when the agent finishes', async ({ page }) => {
   const r = await busyRoom(page);
-  for (const [index, sender] of r.senders.entries()) app.rt.agentWake(sender.id, r.worker.handle, `Question ${index + 1}`);
+  for (const [index, sender] of r.senders.entries()) arrange.wake(app.rt, sender.id, r.worker.handle, `Question ${index + 1}`);
   await synced(page, app);
   await expect(mail(page, r)).toHaveAccessibleName(`3 messages queued for ${r.worker.handle}`);
   await expect(page.locator('.composer .queued')).toHaveCount(0);
@@ -89,7 +90,7 @@ test('three individual queued wakes become one reply when the agent finishes', a
 test('Remove and Send now still act on one queued item at a time', async ({ page }) => {
   const r = await busyRoom(page);
   for (const [index, text] of ['Remove only this', 'Send only this now', 'Leave this queued'].entries())
-    app.rt.agentWake(r.senders[index].id, r.worker.handle, text);
+    arrange.wake(app.rt, r.senders[index].id, r.worker.handle, text);
   await synced(page, app);
   await openQueue(page, r);
   await queued(page, 'Remove only this')
@@ -111,9 +112,9 @@ test('Remove and Send now still act on one queued item at a time', async ({ page
 
 test('a newer request replaces an older queued wake when the batch starts', async ({ page }) => {
   const r = await busyRoom(page);
-  app.rt.agentWake(r.senders[0].id, r.worker.handle, 'Review the old revision');
-  app.rt.agentWake(r.senders[0].id, r.worker.handle, 'Review the current revision');
-  app.rt.agentWake(r.senders[1].id, r.worker.handle, 'Check the tests too');
+  arrange.wake(app.rt, r.senders[0].id, r.worker.handle, 'Review the old revision');
+  arrange.wake(app.rt, r.senders[0].id, r.worker.handle, 'Review the current revision');
+  arrange.wake(app.rt, r.senders[1].id, r.worker.handle, 'Check the tests too');
   await synced(page, app);
   await expect(mail(page, r)).toHaveAccessibleName(`3 messages queued for ${r.worker.handle}`);
   releases.get(r.worker.id)();
@@ -127,8 +128,8 @@ test('a newer request replaces an older queued wake when the batch starts', asyn
 test('an unaddressed newer post reaches the waiting target exactly once', async ({ page }) => {
   const r = await busyRoom(page);
   const sender = r.senders[0];
-  app.rt.agentWake(sender.id, r.worker.handle, 'Review the older context');
-  const newer = app.rt.addItem(r.thread.id, {
+  arrange.wake(app.rt, sender.id, r.worker.handle, 'Review the older context');
+  const newer = arrange.post(app.rt, r.thread.id, {
     kind: 'agent',
     sessionId: sender.id,
     handle: sender.handle,
@@ -188,7 +189,7 @@ test('#427 an edit stays visible if its message leaves the queue', async ({ page
   app.rt.sendMessage(r.thread.id, { text: `@${r.worker.handle} Another queued message` });
   await synced(page, app);
   const dialog = await openQueue(page, r);
-  const removed = app.rt.s.threads[r.thread.id].queue.find((q) => q.text.endsWith('Keep this draft'));
+  const removed = app.rt.thread(r.thread.id).queue.find((q) => q.text.endsWith('Keep this draft'));
   const row = queued(page, `@${r.worker.handle} Keep this draft`);
   await row.getByRole('button', { name: /^Edit message/ }).click();
   const unsaved = dialog.getByRole('textbox', { name: 'Edit the queued message' });

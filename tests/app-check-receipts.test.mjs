@@ -5,6 +5,7 @@ import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { onStoreEvent, snapshotOf } from '../server/remote/turns-snapshot.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
+import * as arrange from './arrange.mjs';
 
 function setup() {
   const store = new Store(null);
@@ -17,7 +18,7 @@ function setup() {
   store.emit('project', { id: 'p', name: 'Project', folder: '/tmp' });
   const persona = rt.createPersona({ handle: 'author' });
   const thread = rt.createThread({ projectId: 'p', title: 'Apps', personaIds: [persona.id] });
-  const [session] = rt.sessionsIn(thread.id);
+  const [session] = arrange.sessionsIn(rt, thread.id);
   return { rt, session, tools: rt.toolsFor(session.id) };
 }
 
@@ -38,8 +39,8 @@ test('#337 a late second tab cannot overwrite the first browser check', () => {
   assert.equal(rt.appCheck('lab', { version: 1, problems: [{ code: 'class-collision', message: 'Rename .app.' }] }).status, 'fixing');
 
   assert.deepEqual(rt.appCheck('lab', { version: 1, problems: [] }), { ignored: true });
-  assert.equal(rt.s.apps.lab.check.status, 'fixing');
-  assert.deepEqual(rt.s.apps.lab.check.problems, [{ code: 'class-collision', message: 'Rename .app.' }]);
+  assert.equal(rt.store.state.apps.lab.check.status, 'fixing');
+  assert.deepEqual(rt.store.state.apps.lab.check.problems, [{ code: 'class-collision', message: 'Rename .app.' }]);
 });
 
 test('#337 an agent can read the current version’s recorded check without triggering one', () => {
@@ -74,7 +75,7 @@ test('#337 an app check read stays inside the reader’s conversation', () => {
   const first = tools.show_app({ id: 'private-lab', title: 'Private lab', code: '<p>First</p>' });
   const persona = rt.createPersona({ handle: 'outsider' });
   const thread = rt.createThread({ projectId: 'p', title: 'Other conversation', personaIds: [persona.id] });
-  const [outside] = rt.sessionsIn(thread.id);
+  const [outside] = arrange.sessionsIn(rt, thread.id);
   assert.equal(rt.toolsFor(outside.id).read_message({ id: 'private-lab' }).ok, false);
   assert.equal(rt.toolsFor(outside.id).read_message({ id: first.itemId }).ok, false);
 });
@@ -90,7 +91,7 @@ test('#337 a browser check refreshes the reading snapshot for remote turns too',
   };
   assert.match(snapshotOf(rts, session).threads[0].items.find((i) => i.id === receipt.itemId).text, /v1[\s\S]*pending/);
   rt.appCheck('lab', { version: 1, problems: [] });
-  onStoreEvent(rts, { type: 'app', data: rt.s.apps.lab });
+  onStoreEvent(rts, { type: 'app', data: rt.store.state.apps.lab });
   assert.equal(rts.dirty.get(session.id).items.get(session.threadId).has(receipt.itemId), true);
   assert.match(snapshotOf(rts, session).threads[0].items.find((i) => i.id === receipt.itemId).text, /v1[\s\S]*passed/);
 });

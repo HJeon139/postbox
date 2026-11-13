@@ -11,6 +11,7 @@
 // the draft (tests/browser/review.mjs). Moved from tools/check-review.mjs (#303).
 
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, focused, frames, settled, synced, windowWidth } from './postbox.mjs';
 import { commentOn, drawn, review, reviewRoom, shown, viewRadio } from './review.mjs';
 
@@ -51,7 +52,7 @@ test('#486 Preview fills a wide review while conversation prose keeps its readin
     comments: [{ line: 1, text }],
   });
   expect(reviewed.ok, reviewed.message).toBe(true);
-  rt.addItem(thread.id, { kind: 'user', text });
+  arrange.post(rt, thread.id, { kind: 'user', text });
   await synced(page, room.app);
 
   const widths = async () =>
@@ -177,7 +178,7 @@ test('#248 an outcome recorded on an approved review isn’t a revision: it stil
   await synced(page, room.app);
   await expect(block.locator('.outcome')).toHaveText('Filed as #418.');
   expect(itemOf().revision ?? 1, 'recording the outcome did not raise the revision').toBe(1);
-  rt.patchItem(thread.id, itemOf().id, { revision: 2 }); // Older Postbox versions counted the outcome as a revision.
+  arrange.setItem(rt, thread.id, itemOf().id, { revision: 2 }); // Older Postbox versions counted the outcome as a revision.
   await synced(page, room.app);
   await expect(block.locator('.block-head .small.dim').filter({ hasText: /^v\d+$/ })).toHaveText('v1');
 });

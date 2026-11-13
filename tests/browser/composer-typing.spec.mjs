@@ -5,6 +5,7 @@
 // composer still grows with the draft and shrinks when it’s cleared.
 
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, settled, startPostbox, synced } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -27,9 +28,9 @@ async function seeded(page, name, width = 1280) {
   const { rt } = app;
   const p = rt.createPersona({ handle: name });
   const t = rt.createThread({ projectId: 'pr_typing', title: `Typing ${name}`, personaIds: [p.id] });
-  const se = rt.sessionsIn(t.id)[0];
+  const se = arrange.agentIn(rt, t.id);
   for (let i = 0; i < 200; i++)
-    rt.addItem(t.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text: TEXT.repeat(4), status: 'done' });
+    arrange.post(rt, t.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text: TEXT.repeat(4), status: 'done' });
   await page.setViewportSize({ width, height: 800 });
   await page.goto(`${app.origin}/#/t/${t.id}`);
   await synced(page, app);

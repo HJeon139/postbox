@@ -4,6 +4,7 @@
 
 import { expect, test } from '@playwright/test';
 import { seedBigRoom } from '../../tools/uat/big-room.mjs';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, settled, startPostbox, synced } from './postbox.mjs';
 import { axe } from './remote-hosts.mjs';
 
@@ -23,7 +24,7 @@ let room = '';
 let other = '';
 test.beforeAll(async () => {
   app = await startPostbox('search');
-  const projectId = Object.values(app.rt.s.projects)[0].id;
+  const projectId = Object.values(app.rt.store.state.projects)[0].id;
   room = app.rt.createThread({ projectId, title: `${COUNT} items`, personaIds: [] }).id;
   other = app.rt.createThread({ projectId, title: 'Another room', personaIds: [] }).id;
   seedBigRoom(app.store, room, { count: COUNT });
@@ -116,15 +117,15 @@ test('#866 W4 a change to an item shows in search, and a streaming reply is foun
   await field(page).fill('quokka');
   await expect(hits(page)).toHaveCount(0);
   await page.keyboard.press('Escape');
-  const se = app.rt.sessionsIn(room)[0];
-  const it = app.rt.addItem(room, { kind: 'agent', sessionId: se?.id, handle: 'coder', text: '', status: 'streaming' });
+  const se = arrange.agentIn(app.rt, room);
+  const it = arrange.post(app.rt, room, { kind: 'agent', sessionId: se?.id, handle: 'coder', text: '', status: 'streaming' });
   for (const w of ['A ', 'quokka ', 'sighting.']) app.store.emit('item.text', { threadId: room, id: it.id, text: w });
   await synced(page, app);
   await openSearch(page);
   await field(page).fill('quokka');
   await expect(hits(page), 'not while it streams').toHaveCount(0);
   await page.keyboard.press('Escape');
-  app.rt.patchItem(room, it.id, { status: 'done', text: 'A quokka sighting.' });
+  arrange.setItem(app.rt, room, it.id, { status: 'done', text: 'A quokka sighting.' });
   await synced(page, app);
   await openSearch(page);
   await field(page).fill('quokka');
@@ -132,7 +133,7 @@ test('#866 W4 a change to an item shows in search, and a streaming reply is foun
   // Changed again: the new words are found, the old ones aren’t. The server’s index rewrites that entry alone
   // (tests/items-routes.test.mjs).
   await page.keyboard.press('Escape');
-  app.rt.patchItem(room, it.id, { text: 'A wombat instead.' });
+  arrange.setItem(app.rt, room, it.id, { text: 'A wombat instead.' });
   await synced(page, app);
   await openSearch(page);
   await field(page).fill('quokka');
@@ -142,7 +143,7 @@ test('#866 W4 a change to an item shows in search, and a streaming reply is foun
 });
 
 test('#866 W4 an item’s text shows in a hit as text, never as HTML', async ({ page }) => {
-  const it = app.rt.addItem(room, { kind: 'user', text: 'markup <img src=x onerror="window.__pwned=1"> axolotl', status: 'done' });
+  const it = arrange.post(app.rt, room, { kind: 'user', text: 'markup <img src=x onerror="window.__pwned=1"> axolotl', status: 'done' });
   await open(page);
   await openSearch(page);
   await field(page).fill('axolotl');

@@ -4,6 +4,7 @@
 
 import { expect, test } from '@playwright/test';
 import { seedBigRoom } from '../../tools/uat/big-room.mjs';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, newestShown, settled, startPostbox, synced } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -15,7 +16,7 @@ test.afterAll(async () => app?.stop());
 failOnPageErrors(test);
 
 test('#1155 an app moved forward while you scroll back leaves the loaded range one run of the room', async ({ page }) => {
-  const projectId = /** @type {any} */ (Object.values(app.rt.s.projects)[0]).id;
+  const projectId = /** @type {any} */ (Object.values(app.rt.store.state.projects)[0]).id;
   const room = app.rt.createThread({ projectId, title: 'A long room', personaIds: [] }).id;
   seedBigRoom(app.store, room, { count: 1000 });
   await page.goto(`${app.origin}/#/t/${room}`);
@@ -33,7 +34,7 @@ test('#1155 an app moved forward while you scroll back leaves the loaded range o
     await route.fulfill({ response: res });
   });
   // An app far back in the room is updated, which moves it to the newest point (runtime.bringForward).
-  app.rt.bringForward(room, app.store.items(room)[10].id, { what: 'app', title: 'Chart' });
+  arrange.moveToEnd(app.rt, room, app.store.items(room)[10].id, { what: 'app', title: 'Chart' });
   await expect.poll(() => held).toBe(true);
   // Meanwhile the window asks for the range before what's loaded, as a scroll to its top does.
   await page.evaluate((t) => import('/app/js/open-threads.mjs').then((m) => m.grow(t, 'before')), room);

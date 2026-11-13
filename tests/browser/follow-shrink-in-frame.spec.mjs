@@ -4,6 +4,7 @@
 // frame (#866), and at once for a batch that only removes; a redraw that removes and adds is left to the frame’s note.
 
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, settled, startPostbox, synced } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -11,7 +12,7 @@ let app;
 let room = '';
 test.beforeAll(async () => {
   app = await startPostbox('follow-shrink-in-frame');
-  const projectId = Object.values(app.rt.s.projects)[0].id;
+  const projectId = Object.values(app.rt.store.state.projects)[0].id;
   room = app.rt.createThread({ projectId, title: 'Followed', personaIds: [] }).id;
   for (let i = 0; i < 60; i++) app.store.emit('item.add', { threadId: room, item: { id: `it_s${i}`, at: Date.now(), kind: 'user', text: `Line ${i}` } });
 });
@@ -58,9 +59,9 @@ test('#297 in one frame: a change, then a shrink that a forced layout sees, then
 test('#297 in one frame: a change, then a finished reply drawn again shorter (item.patch to done), then the page growing, leaves the view following', async ({
   page,
 }) => {
-  const se = app.rt.sessionsIn(room)[0];
+  const se = arrange.agentIn(app.rt, room);
   const long = Array.from({ length: 40 }, (_, i) => `Line ${i} of the streamed reply.`).join('\n\n');
-  const it = app.rt.addItem(room, { kind: 'agent', sessionId: se?.id, handle: se?.handle ?? 'coder', text: long, status: 'streaming' });
+  const it = arrange.post(app.rt, room, { kind: 'agent', sessionId: se?.id, handle: se?.handle ?? 'coder', text: long, status: 'streaming' });
   await page.goto(`${app.origin}/#/t/${room}`);
   await synced(page, app);
   await settled(page);

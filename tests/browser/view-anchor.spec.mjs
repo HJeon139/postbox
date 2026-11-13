@@ -3,6 +3,7 @@
 // Each test has a conversation of its own.
 
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, settled, startPostbox } from './postbox.mjs';
 import { holds, LONG, open as openIn, room as roomIn } from './view-read-fixture.mjs';
 
@@ -72,9 +73,9 @@ test('V1: content above grows twice before the correction’s scroll event, and 
 test('V1: a tall item ending just above the view and one across the middle: the anchor is the one across the middle', async ({ page }) => {
   const { rt, store } = app;
   const project = Object.values(store.state.projects)[0];
-  const t = rt.createThread({ projectId: project.id, title: 'View read: tall above', personaIds: [rt.personaByHandle('researcher').id] });
-  const [se] = rt.sessionsIn(t.id);
-  const say = (text) => rt.addItem(t.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text, status: 'done' });
+  const t = rt.createThread({ projectId: project.id, title: 'View read: tall above', personaIds: [arrange.persona(rt, 'researcher').id] });
+  const [se] = arrange.sessionsIn(rt, t.id);
+  const say = (text) => arrange.post(rt, t.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text, status: 'done' });
   for (let i = 1; i <= 6; i++) say(LONG(i));
   const tall = say(Array.from({ length: 40 }, (_, i) => LONG(100 + i)).join('\n\n')).id;
   const across = say(Array.from({ length: 8 }, (_, i) => LONG(200 + i)).join('\n\n')).id;

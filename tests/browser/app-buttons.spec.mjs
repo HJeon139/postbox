@@ -4,6 +4,7 @@
 // - draws .btn.primary filled with --on and labeled in --on-ink, at 4.5:1 or more, unlike the plain button beside it.
 
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { frameOf } from './app-pointer.mjs';
 import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 
@@ -42,15 +43,15 @@ for (const theme of /** @type {const} */ (['light', 'dark']))
     test(`#971 (${theme}) an app’s .btn.primary is filled with --on, readable, and outranks a plain .btn; .primary is a kit class`, async ({ page }) => {
       const { rt } = app;
       const title = `Buttons ${theme}`;
-      const t = rt.createThread({ projectId: Object.values(rt.s.projects)[0].id, title, personaIds: [rt.personaByHandle('librarian').id] });
-      const tools = rt.toolsFor(rt.sessionsIn(t.id)[0].id);
+      const t = rt.createThread({ projectId: Object.values(rt.store.state.projects)[0].id, title, personaIds: [arrange.persona(rt, 'librarian').id] });
+      const tools = rt.toolsFor(arrange.agentIn(rt, t.id).id);
       const id = `buttons-${t.id}`;
       await page.goto(`${app.origin}/#/t/${t.id}`);
       await synced(page, app);
       tools.show_app({ id, title, code: APP, permissions: [] });
-      await expect.poll(() => rt.s.apps[id]?.check.status, { message: 'the app’s check to finish' }).not.toBe('pending');
-      const says = () => JSON.stringify(rt.s.apps[id].check.problems ?? []);
-      expect.soft(rt.s.apps[id].check.status, says()).toBe('passed');
+      await expect.poll(() => rt.store.state.apps[id]?.check.status, { message: 'the app’s check to finish' }).not.toBe('pending');
+      const says = () => JSON.stringify(rt.store.state.apps[id].check.problems ?? []);
+      expect.soft(rt.store.state.apps[id].check.status, says()).toBe('passed');
       await expect(frameOf(page, title), 'the app to load').toHaveAttribute('data-sized', '1');
 
       const frame = frameOf(page, title).contentFrame();

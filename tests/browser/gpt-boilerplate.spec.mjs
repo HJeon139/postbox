@@ -1,5 +1,6 @@
 // GPT selection survives agent creation with a reported model or the Codex backend default.
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 
 let app;
@@ -13,7 +14,7 @@ failOnPageErrors(test);
 
 for (const models of [['gpt-example'], []]) {
   test(`the GPT boilerplate creates a Codex persona with ${models.length ? 'its reported model' : 'the backend default'}`, async ({ page }) => {
-    app.rt.adapters.register({ name: 'codex', capabilities: { models }, deliver: async () => {} });
+    arrange.withAdapter(app.rt, { name: 'codex', capabilities: { models }, deliver: async () => {} });
     await page.goto(`${app.origin}/#/t/${Object.keys(app.store.state.threads)[0]}`);
     await synced(page, app);
     await page.getByRole('button', { name: 'Add a file or a new agent' }).click();
@@ -30,9 +31,9 @@ for (const models of [['gpt-example'], []]) {
     await page.getByLabel('Name', { exact: true }).fill(handle);
     await page.getByRole('button', { name: 'Create agent', exact: true }).click();
     await expect(page.getByRole('dialog')).toBeHidden();
-    await expect.poll(() => app.rt.personaByHandle(handle)?.backend).toBe('codex');
-    if (models.length) expect(app.rt.personaByHandle(handle)?.model).toBe(models[0]);
-    expect(app.rt.personaByHandle(handle)?.instructions).toBe('Help me review code.');
+    await expect.poll(() => arrange.persona(app.rt, handle)?.backend).toBe('codex');
+    if (models.length) expect(arrange.persona(app.rt, handle)?.model).toBe(models[0]);
+    expect(arrange.persona(app.rt, handle)?.instructions).toBe('Help me review code.');
     if (!models.length) {
       const session = Object.values(app.store.state.sessions).find((session) => session.handle === handle);
       const row = page.locator(`#agent-row-${session.id}`);
@@ -42,7 +43,7 @@ for (const models of [['gpt-example'], []]) {
       // Its name opens its persona sheet, where Codex’s default is the model `auto`.
       await expect(page.getByRole('dialog', { name: 'Settings' }).getByLabel('Model', { exact: true })).toHaveValue('auto');
       await page.keyboard.press('Escape');
-      app.rt.updateSession(session.id, { lastModel: 'gpt-answered' });
+      arrange.setSession(app.rt, session.id, { lastModel: 'gpt-answered' });
       await synced(page, app);
       await expect(row).toContainText('gpt-answered');
       await expect(row).not.toContainText('not ');
@@ -51,10 +52,10 @@ for (const models of [['gpt-example'], []]) {
 }
 
 test('Codex labels an inherited Sonnet setting as its default when no catalog offers it', async ({ page }) => {
-  app.rt.adapters.register({ name: 'codex', capabilities: { models: [] }, deliver: async () => {} });
+  arrange.withAdapter(app.rt, { name: 'codex', capabilities: { models: [] }, deliver: async () => {} });
   const persona = app.rt.createPersona({ handle: 'inherited-sonnet', backend: 'codex', model: 'claude-sonnet-5-5' });
   const thread = app.rt.createThread({ projectId: Object.keys(app.store.state.projects)[0], title: 'Inherited model', personaIds: [persona.id] });
-  const session = app.rt.sessionsIn(thread.id)[0];
+  const session = arrange.agentIn(app.rt, thread.id);
   await page.goto(`${app.origin}/#/t/${thread.id}`);
   await synced(page, app);
   const row = page.locator(`#agent-row-${session.id}`);
@@ -64,7 +65,7 @@ test('Codex labels an inherited Sonnet setting as its default when no catalog of
   // Its name opens its persona sheet, where Codex’s default is the model `auto`.
   await expect(page.getByRole('dialog', { name: 'Settings' }).getByLabel('Model', { exact: true })).toHaveValue('auto');
   await page.keyboard.press('Escape');
-  app.rt.updateSession(session.id, { lastModel: 'gpt-answered' });
+  arrange.setSession(app.rt, session.id, { lastModel: 'gpt-answered' });
   await synced(page, app);
   await expect(row).toContainText('gpt-answered');
   await expect(row).not.toContainText('not ');

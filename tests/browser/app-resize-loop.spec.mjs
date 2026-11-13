@@ -5,6 +5,7 @@
 // script error is still reported.
 
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { frameOf } from './app-pointer.mjs';
 import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 
@@ -42,13 +43,13 @@ test.afterAll(async () => {
 /** A conversation of its own with @librarian, open in the page, where it shows one app that passes its check. */
 async function shown(page, title, code) {
   const { rt } = app;
-  const t = rt.createThread({ projectId: Object.values(rt.s.projects)[0].id, title, personaIds: [rt.personaByHandle('librarian').id] });
-  const se = rt.sessionsIn(t.id)[0];
+  const t = rt.createThread({ projectId: Object.values(rt.store.state.projects)[0].id, title, personaIds: [arrange.persona(rt, 'librarian').id] });
+  const se = arrange.agentIn(rt, t.id);
   await page.goto(`${app.origin}/#/t/${t.id}`);
   await synced(page, app);
   const id = `${title.toLowerCase().replace(/\W+/g, '-')}-${t.id}`;
   rt.toolsFor(se.id).show_app({ id, title, code, permissions: [] });
-  await expect.poll(() => rt.s.apps[id]?.check.status, { message: `${title} to pass its check` }).toMatch(/^(passed|note)$/);
+  await expect.poll(() => rt.store.state.apps[id]?.check.status, { message: `${title} to pass its check` }).toMatch(/^(passed|note)$/);
   return id;
 }
 
@@ -57,9 +58,9 @@ test.describe('the warning', () => {
   test('#960 an app that raises the ResizeObserver loop warning keeps running, and isn’t shown as stopped', async ({ page }) => {
     const id = await shown(page, 'Grows itself', LOOPS);
     await expect(frameOf(page, 'Grows itself'), 'the app to load').toHaveAttribute('data-sized', '1');
-    await expect.poll(() => app.rt.s.apps[id]?.state?.done, { message: 'the app to say what it saw' }).toBe(true);
+    await expect.poll(() => app.rt.store.state.apps[id]?.state?.done, { message: 'the app to say what it saw' }).toBe(true);
     // Not degenerate: the warning fired in the shown frame, as an error event with no error object.
-    expect(app.rt.s.apps[id].state.seen).toContainEqual({ message: expect.stringMatching(/^ResizeObserver loop/), error: false });
+    expect(app.rt.store.state.apps[id].state.seen).toContainEqual({ message: expect.stringMatching(/^ResizeObserver loop/), error: false });
     // Not reported at all: neither the card nor, for an app that drew, the error strip under it (#964).
     await expect(page.getByText('Grows itself stopped working')).toHaveCount(0);
     await expect(page.locator('.app-error')).toBeHidden();

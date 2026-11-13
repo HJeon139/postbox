@@ -5,6 +5,7 @@
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { scriptedRoom } from './live-scripts.mjs';
 import { synced } from './postbox.mjs';
 
@@ -28,7 +29,7 @@ test('a post landing below a running reply doesn’t break it: the steps after t
   await synced(page, scripted.app);
   scripted.app.rt.sendMessage(t.id, { text: 'Count the notes.' });
   await expect.poll(() => at('noter')).toBe(1);
-  scripted.app.rt.addItem(t.id, { kind: 'user', text: 'It should be one line.' });
+  arrange.post(scripted.app.rt, t.id, { kind: 'user', text: 'It should be one line.' });
   go('noter');
   await expect.poll(() => at('noter')).toBe(2);
   await synced(page, scripted.app);
@@ -44,7 +45,7 @@ test('a post landing below a running reply doesn’t break it: the steps after t
     await expect(page.locator('li.step-full')).toContainText('wc -l');
   });
   go('noter');
-  await expect.poll(() => scripted.app.rt.turns.size).toBe(0);
+  await expect.poll(() => arrange.liveTurns(scripted.app.rt)).toBe(0);
   await synced(page, scripted.app);
   await test.step('once it ends, the turn’s record at its top holds every step', async () => {
     await expect(page.locator('details.activity')).toHaveCount(1);
@@ -71,7 +72,7 @@ test('a finished turn whose words came after another agent’s post keeps its re
   scripted.app.rt.sendMessage(t.id, { text: '@second say hi' });
   await expect.poll(() => scripted.app.store.items(t.id).some((it) => it.text === 'Second is here.' && it.status === 'done')).toBe(true);
   go('first');
-  await expect.poll(() => scripted.app.rt.turns.size).toBe(0);
+  await expect.poll(() => arrange.liveTurns(scripted.app.rt)).toBe(0);
   await synced(page, scripted.app);
   const posts = page.locator('.transcript > [data-key]:visible');
   const order = await posts.evaluateAll((nodes) => nodes.map((n) => n.textContent ?? ''));
@@ -117,7 +118,7 @@ test('four agents’ running replies fit the screen together: their words, a cap
   await expect(first).not.toHaveClass(/clamped/);
   await expect(first, 'focus goes to the thought it opened, not the page').toBeFocused();
   for (const w of four) go(w);
-  await expect.poll(() => scripted.app.rt.turns.size).toBe(0);
+  await expect.poll(() => arrange.liveTurns(scripted.app.rt)).toBe(0);
 });
 
 test('a resized window paints the running replies to their new share, with no step needed', async ({ page }) => {
@@ -140,5 +141,5 @@ test('a resized window paints the running replies to their new share, with no st
   await page.setViewportSize({ width: 1440, height: 500 });
   await expect.poll(() => lines.count(), { message: 'fewer lines fit the shorter window' }).toBeLessThan(before);
   go('tall');
-  await expect.poll(() => scripted.app.rt.turns.size).toBe(0);
+  await expect.poll(() => arrange.liveTurns(scripted.app.rt)).toBe(0);
 });

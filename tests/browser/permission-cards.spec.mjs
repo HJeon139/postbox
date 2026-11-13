@@ -14,9 +14,9 @@
 // tools/checks/permission-cards.mjs (#303).
 
 import { expect, test } from '@playwright/test';
-import { expireWait } from '../../server/permission-cards.mjs';
 import { ALLOW_ONCE_TRIGGERS } from '../../tools/uat/allowonce-triggers.mjs';
 import { readUi } from '../../tools/uat/run-files.mjs';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -27,7 +27,7 @@ const heard = [];
 test.beforeAll(async () => {
   app = await startPostbox('permission-cards');
   const { rt, store } = app;
-  rt.adapters.register({
+  arrange.withAdapter(rt, {
     name: 'claude-code',
     async folderFor() {
       return app.root;
@@ -52,11 +52,11 @@ async function agent(page, handle) {
   const { rt } = app;
   const persona = rt.createPersona({ handle, backend: 'claude-code', permissionMode: 'auto', tools: [] });
   const thread = rt.createThread({ projectId: 'pr_cards', title: `Cards for ${handle}`, personaIds: [persona.id] });
-  const se = rt.sessionsIn(thread.id)[0];
+  const se = arrange.agentIn(rt, thread.id);
   scripts.set(se.id, []);
   await page.goto(`${app.origin}/#/t/${thread.id}`);
   await synced(page, app);
-  const idle = () => expect.poll(() => rt.turns.has(se.id), { message: 'the agent’s turn to end' }).toBe(false);
+  const idle = () => expect.poll(() => arrange.running(rt, se.id), { message: 'the agent’s turn to end' }).toBe(false);
   return { persona, thread, se, script: (step) => scripts.get(se.id).push(step), idle };
 }
 const card = (page, text) => page.locator('.transcript .block', { hasText: text });
@@ -112,7 +112,7 @@ test('#238 a refused chained command offers no Allow once or Always allow, and s
   await expect(chained.locator('.block-body')).toContainText('ask tester to run the parts as separate commands');
   await expect(single.locator('.block-foot button')).toHaveText(['Allow once and retry', 'Always allow exactly “python -m pytest -q”']);
   // The UAT runner reads these cards from the page the same way, for the allow-once scenario’s trigger (readUi).
-  const facts = { threads: [thread.id], state: rt.s, ui: { denialCards: (await readUi(page)).denialCards } };
+  const facts = { threads: [thread.id], state: rt.store.state, ui: { denialCards: (await readUi(page)).denialCards } };
   expect(ALLOW_ONCE_TRIGGERS['chained-refusal-no-allow'].run(facts).length, 'the trigger sees the chained card only').toBe(1);
 });
 
@@ -120,11 +120,7 @@ test('a refused call, the agent’s or a subagent’s, shows what happened and n
   const { rt, store } = app;
   const { thread, se, script, idle } = await agent(page, 'refused');
   const notes = [];
-  const notify = rt.notify.bind(rt);
-  rt.notify = (level, ...rest) => {
-    notes.push(level);
-    return notify(level, ...rest);
-  };
+  const stopHearing = arrange.onNotify(rt, (level) => notes.push(level));
   script((ctx) => {
     ctx.denied({ toolUseId: 'tu-own', tool: 'Bash', input: { command: 'rm -rf build' }, label: 'Clear the build', reason: 'A deny rule.', reasonType: 'rule' });
     ctx.denied({
@@ -139,7 +135,7 @@ test('a refused call, the agent’s or a subagent’s, shows what happened and n
   await expect(sub).toBeVisible();
   await idle();
   await synced(page, app);
-  rt.notify = notify;
+  stopHearing();
   expect(store.state.sessions[se.id].needs, 'no need').toBe(null);
   expect(store.state.sessions[se.id].state).toBe('idle');
   expect(notes, 'no notification asks for you').not.toContain('blocking');
@@ -204,7 +200,7 @@ test('#220 a permission card nobody answered for 25 hours says it expired, and h
   await expect(ask.locator('.block-foot')).toBeVisible();
   const open = store.items(thread.id).find((i) => i.kind === 'permission' && i.status === 'open');
   // What the card’s timer does at CARD_WAIT_MS; the server’s tests run that timer on an injected clock.
-  expireWait(rt, open.id);
+  arrange.expireWait(rt, open.id);
   await expect(ask.locator('.answered-note')).toHaveText('Expired: nobody answered within 25 hours');
   await expect(ask.locator('.block-foot'), 'nothing is left to answer').toHaveCount(0);
   await expect.poll(() => answers.length, { message: 'the answer to reach the agent' }).toBe(1);
@@ -216,10 +212,10 @@ test('#721 an expired card that still needs you offers Dismiss, which clears the
   const { rt, store } = app;
   const { thread, se } = await agent(page, 'stale');
   const base = { kind: 'permission', sessionId: se.id, handle: 'stale', tool: 'Bash', status: 'expired' };
-  rt.addItem(thread.id, { ...base, summary: 'run git status', detail: 'git status' });
-  const stuck = rt.addItem(thread.id, { ...base, summary: 'run git push', detail: 'git push' });
+  arrange.post(rt, thread.id, { ...base, summary: 'run git status', detail: 'git status' });
+  const stuck = arrange.post(rt, thread.id, { ...base, summary: 'run git push', detail: 'git push' });
   // The need a restart leaves on the card it expired (#633 fixes that path; Dismiss is the backstop).
-  rt.updateSession(se.id, { state: 'needs', needs: { kind: 'permission', itemId: stuck.id, text: '@stale asks to run git push' } });
+  arrange.setSession(rt, se.id, { state: 'needs', needs: { kind: 'permission', itemId: stuck.id, text: '@stale asks to run git push' } });
   await page.reload();
   await synced(page, app);
   const ring = page.getByRole('button', { name: /Go to what stale needs/ });

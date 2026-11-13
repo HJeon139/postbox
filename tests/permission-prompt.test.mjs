@@ -10,6 +10,7 @@ import { KIRO_CAPABILITIES } from '../server/adapters/kiro-cli.mjs';
 import { handleMcp } from '../server/mcp.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
+import * as arrange from './arrange.mjs';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -34,13 +35,13 @@ function setup(backend, capabilities) {
   store.emit('project', { id: 'p1', name: 'P', folder: '/tmp' });
   const p = rt.createPersona({ handle: 'researcher', backend, tools: ['shell'] });
   const t = rt.createThread({ projectId: 'p1', title: 'T', personaIds: [p.id] });
-  return { store, rt, adapter, t, se: rt.sessionsIn(t.id)[0] };
+  return { store, rt, adapter, t, se: arrange.agentIn(rt, t.id) };
 }
 const settle = async (rt) => {
-  for (let i = 0; i < 100 && rt.turns.size; i++) await sleep(5);
+  for (let i = 0; i < 100 && arrange.liveTurns(rt); i++) await sleep(5);
   await sleep(5);
 };
-const rpc = (rt, se, method, params) => handleMcp(rt, se.id, { jsonrpc: '2.0', id: 1, method, params }, rt.turns.get(se.id)?.token ?? null);
+const rpc = (rt, se, method, params) => handleMcp(rt, se.id, { jsonrpc: '2.0', id: 1, method, params }, arrange.turnToken(rt, se.id));
 const PROMPT = { name: 'permission_prompt', arguments: { tool_name: 'Bash', input: { command: 'rm -rf build' }, tool_use_id: 'tu1' } };
 
 for (const [label, backend, capabilities] of [
@@ -68,7 +69,7 @@ for (const [label, backend, capabilities] of [
 
 test('#220 a Claude Code agent is offered permission_prompt and asks through it, even once its persona moves mid-turn', async () => {
   const { store, rt, adapter, t, se } = setup('claude-code', undefined);
-  rt.adapters.register(scripted('agent-sdk', { promptTool: false }));
+  arrange.withAdapter(rt, scripted('agent-sdk', { promptTool: false }));
   /** @type {any} */
   let listed = null;
   /** @type {Promise<any>|null} */

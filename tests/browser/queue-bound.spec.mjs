@@ -3,6 +3,7 @@
 // most 25% of the viewport at 375 and 1280 px). On main every queued message is a full-width row in the sticky
 // composer, about 59 px each, so ten of them take 85% of an 800 px window (the UAT table in #427).
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, settled, startPostbox, synced } from './postbox.mjs';
 
 /** The most of the window the composer may take, queue included. */
@@ -15,7 +16,7 @@ const releases = new Map();
 let count = 0;
 test.beforeAll(async () => {
   app = await startPostbox('queue-bound');
-  app.rt.adapters.register({
+  arrange.withAdapter(app.rt, {
     name: 'claude-code',
     folderFor: async () => app.root,
     // Every agent's first turn holds until the test ends, so whatever the person sends it next waits in the queue.
@@ -39,10 +40,10 @@ async function busyRoom(agents) {
   const n = ++count;
   const personas = Array.from({ length: agents }, (_, i) => app.rt.createPersona({ handle: `worker${i + 1}-${n}`, backend: 'claude-code' }));
   const thread = app.rt.createThread({ projectId: Object.keys(app.store.state.projects)[0], title: `Queue bound ${n}`, personaIds: personas.map((p) => p.id) });
-  const sessions = app.rt.sessionsIn(thread.id);
+  const sessions = arrange.sessionsIn(app.rt, thread.id);
   for (const se of sessions) app.rt.sendMessage(thread.id, { text: `@${se.handle} start the long job` });
   await expect.poll(() => sessions.every((se) => releases.has(se.id))).toBe(true);
-  for (let i = 1; i <= 12; i++) app.rt.addItem(thread.id, { kind: 'user', text: `Earlier message ${i}, so the conversation is long enough to scroll.` });
+  for (let i = 1; i <= 12; i++) arrange.post(app.rt, thread.id, { kind: 'user', text: `Earlier message ${i}, so the conversation is long enough to scroll.` });
   return { thread, sessions };
 }
 

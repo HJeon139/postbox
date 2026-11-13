@@ -5,6 +5,7 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { HarnessEvents } from '../../server/harness-events.mjs';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, startPostbox } from './postbox.mjs';
 
 /**
@@ -47,7 +48,7 @@ export function scriptedRoom(test, name) {
   test.use({ viewport: { width: 1440, height: 900 } });
   test.beforeAll(async () => {
     live.app = await startPostbox(name);
-    live.app.rt.adapters.register({
+    arrange.withAdapter(live.app.rt, {
       name: 'claude-code',
       async folderFor() {
         return live.app.root;
