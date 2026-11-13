@@ -8,8 +8,14 @@
 // what it can’t read, such as a family held in a variable, rather than refuse an app for it.
 
 /**
- * The families an app may name: workbench.css’s body and mono stacks (tests/app-fonts.test.mjs reads them there), and
- * the keywords that keep what the app inherits. Lower case, without quotes.
+ * Other names for faces in those stacks, by the name the stack uses. Agents write them in the usual system stacks,
+ * as the showcase’s recorded apps do (tools/demo/showcase/): they’re the same faces, not fonts of their own.
+ */
+export const FACE_ALIASES = Object.freeze({ 'sfmono-regular': 'sf mono', blinkmacsystemfont: '-apple-system' });
+
+/**
+ * The families an app may name: workbench.css’s body and mono stacks (tests/app-fonts.test.mjs reads them there),
+ * FACE_ALIASES, and the keywords that keep what the app inherits. Lower case, without quotes.
  */
 export const APP_FONTS = new Set([
   'inherit',
@@ -25,6 +31,7 @@ export const APP_FONTS = new Set([
   'menlo',
   'consolas',
   'monospace',
+  ...Object.keys(FACE_ALIASES),
 ]);
 
 // Where a family list is written: CSS’s font-family or SVG’s attribute (to the end of the declaration, or the
