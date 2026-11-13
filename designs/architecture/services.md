@@ -1,6 +1,6 @@
 # Concerns as services
 
-**Status:** a proposal, 12 November 2026, for the person to approve before any code moves. Step 0, the test fixture, and step 1, Placement, are built (“Where it stands”). Numbers are from `main` at 2259cebe. The scripts that produced them are in the pull request that added this document; the last of them, `svc-check.mjs`, checks the design against the code.
+**Status:** a proposal, 12 November 2026, for the person to approve before any code moves. Step 0, the test fixture, step 1, Placement, and step 2, Running, are built (“Where it stands”). Numbers are from `main` at 2259cebe. The scripts that produced them are in the pull request that added this document; the last of them, `svc-check.mjs`, checks the design against the code.
 
 ## Why
 
@@ -89,14 +89,14 @@ The list refines the starting point from the data:
 - **Owns:** the listeners for in-process signals. It calls them synchronously, in the order the root registered them, and a listener’s throw reaches the emitter, as a direct call’s does today. Nothing is persisted.
 - **Interface:** `emit(signal, data)`, `on(signal, fn)`.
 - **Signals:** `persona.updated` (Personas, after a write), `session.joined` (Sessions: a declined add lifts), `item.added` (Threads: a side thread’s line counts the message), `item.moved` (Threads, from `bringForward`: Memory moves its read markers to the stub), `app.retired` (Apps: its send card’s need releases).
-- **`persona.updated`’s listeners, in this order:** host turns clear Running’s awaiting-attach entries for that persona’s sessions no longer on their host; tool asks settle (`settleToolAsks`); the queue of an agent moved off a host drains (`drainMovedOff`). Today `busyFor` computes awaiting attach from the persona as it is after the write, so a drain right after it already sees the agent free; clearing first keeps that. If the queue drained first, a moved agent’s messages would stay held.
+- **`persona.updated`’s listeners, in this order:** host turns set Running’s awaiting-attach entries for that persona’s sessions from where it runs now (`RemoteTurns.noteAttach`): one moved off its host is cleared, and one moved back before the attach waits again; tool asks settle (`settleToolAsks`); the queue of an agent moved off a host drains (`drainMovedOff`). Today `busyFor` computes awaiting attach from the persona as it is after the write, so a drain right after it already sees the agent free; clearing first keeps that. If the queue drained first, a moved agent’s messages would stay held.
 - **Depends on:** nothing.
 
 ### Running
 
 - **Owns:** the live turn per session, the stopped turns still exiting, the sessions whose host turn waits to be attached again after a restart (#1135), with the host each waits on, and `closing`. Invariants: at most one live turn per session; a busy session (running, exiting or awaiting attach) starts no new turn; once `closing` is set, nothing starts.
-- **Interface:** `turnOf(sessionId)`, `busy(sessionId)`, `all()`, `closing`. Only Turns writes it: `begin(turn)`, `exit(sessionId, entry)`, `end(sessionId)`, `awaitAttach(sessionId, hostId)`, `attached(sessionId)`, `close()`. Until Turns is redone, `Runtime` keeps `turns` and `exiting` as getters onto Running’s maps, so waiting code is unchanged.
-- **Depends on:** nothing. Today `busyFor` (`runtime.mjs`) asks `RemoteTurns.awaitsAttach`, which reads the session and `hostOf(personaFor(se))` (`remote/turns.mjs`): computed that way, `busy()` would need Store and Personas, a cycle with Placement. So Running keeps the awaiting sessions as a set instead: `RemoteTurns` writes it wherever it sets or deletes `restoring` today (`turns-restore`, `turns-end`, `turns-start`, `turns-resume`), and the first `persona.updated` listener clears an entry whose persona moved off that host.
+- **Interface:** `turnOf(sessionId)`, `exitOf(sessionId)`, `midTurn(sessionId)`, `awaitsAttach(sessionId)`, `busy(sessionId)`, `all()`, `closing`. `midTurn` is a turn running or one still exiting, which Placement reads; `busy` adds awaiting attach, which the queue and the side threads read; `sendMessage` reads `turnOf` and `awaitsAttach`, without exiting (#1136). Only Turns writes it: `begin(turn, { attach })`, `exit(sessionId, entry)`, `end(sessionId)`, `exited(sessionId)`, `awaitAttach(sessionId, hostId)`, `attached(sessionId)`, `close()`. `exit` records a stopped turn as exiting while it’s still live, and `end` lets it go after its abort, so what the abort runs still finds it live, as before; `exited` is its process gone. `begin` throws for a write that breaks an invariant; the attach of a host turn waiting to be attached is the one turn a session awaiting attach may begin. Until Turns is redone, `Runtime` keeps `turns`, `exiting` and `closing` as getters onto Running’s, so waiting code reads them unchanged.
+- **Depends on:** nothing. Before step 2, `busyFor` (`runtime.mjs`) asked `RemoteTurns.awaitsAttach`, which read the session and `hostOf(personaFor(se))` (`remote/turns.mjs`): computed that way, `busy()` would need Store and Personas, a cycle with Placement. So Running keeps the awaiting sessions, with the host each waits on, instead: `RemoteTurns.noteAttach` computes what `awaitsAttach` did and writes it, wherever `restoring` is set or deleted (`turns-restore`, `turns-end`, `turns-start`, `turns-resume`), and the first `persona.updated` listener calls it for the persona’s sessions. It re-adds an entry as well as clearing one: an agent moved off a silent host and back before its welcome waits for the attach again, as it did when this was read live.
 
 ### Placement
 
@@ -243,7 +243,7 @@ Built in this order, each service’s dependencies already exist: Store, Bus, Ru
 | `remote/placement.mjs`’s `drainMovedOff` calls `rt.drainQueues` and reads `rt.remote` | it leaves Placement for the `persona.updated` listener |
 | `conversations.mjs`’s `ensureSession` calls `liftDecline` (`wake-cards.mjs`) | `session.joined`; wake cards listen |
 | `Runtime.addItem` calls `bumpSideLink` (`side-threads.mjs`) | `item.added`; side threads listen |
-| `Runtime.busyFor` calls `remote.awaitsAttach`, which reads the session and its persona’s host | Running keeps the awaiting sessions; `RemoteTurns` writes them, and the first `persona.updated` listener clears them |
+| `Runtime.busyFor` calls `remote.awaitsAttach`, which reads the session and its persona’s host | Running keeps the awaiting sessions; `RemoteTurns` writes them, and the first `persona.updated` listener sets them from where the agent runs now (done in step 2: `busyFor` is gone) |
 | `Runtime.bringForward` calls `moveMarkers` (`catch-up.mjs`) | `item.moved`; Memory moves its markers |
 | `Runtime.view` clears the sessions’ unread counts | the facade’s `view()`: `Threads.view`, then `Sessions.markRead` |
 | `app-retire.mjs` calls `releaseNeed` (`card-needs.mjs`) | `app.retired`; asks listen |
@@ -377,7 +377,7 @@ Smallest and least tangled first. Until a dependency is redone, a service takes 
 
 0. **The fixture** (`tests/arrange.mjs`), and the browser specs and arrange tests moved onto it. No server change.
 1. **Placement, the pilot.** One module that uses 5 members once `drainMovedOff` leaves, no state, two dependencies (Store, and Running through a `midTurn` function bound to `rt.turns` and `rt.exiting` until step 2), and stateless queries that fakes test easily. 12 modules call it. Personas was the first choice, but after counting imports it needs Placement and Bus first. Delivery, the most tangled, waits for rooms at scale. The pilot’s pull request reports what the step cost and which tests it deleted, so the person can judge the approach before the next one.
-2. **Running.** Its maps move in, with the awaiting-attach set that `RemoteTurns` writes and the first `persona.updated` listener clears (until step 4 adds that signal, `updatePersona` clears it directly, before `settleToolAsks`); `Runtime` keeps getters for waiting code.
+2. **Running.** Its maps move in, with the awaiting-attach set that `RemoteTurns` writes and the first `persona.updated` listener sets (until step 4 adds that signal, `updatePersona` sets it directly, before `settleToolAsks`); `Runtime` keeps getters for waiting code.
 3. **Threads**, with Bus and `item.added`.
 4. **Personas**, with `persona.updated`.
 5. **Sessions**, with `session.joined`.
@@ -423,7 +423,12 @@ Each step is its own pull request, and is done when:
   - Placement needs “mid-turn” from Running, not `busy()` (“Placement”, above).
   - Runtime and Placement share one adapter registry, so a test can no longer stand for a Postbox without a backend by replacing `rt.adapters`: five tests did, and now call the fixture’s `withoutAdapters`, which empties the registry in place.
   - `svc-check.mjs` reads only modules that reach `rt`, so it lost sight of Placement once it stopped taking `rt`. It now also scans each service module that doesn’t, for `rt.` and for imports of functions that take `rt`.
-- **Next:** step 2, Running. It gives Placement a mid-turn check beside `busy()`.
+- **Done:** step 2, Running. `server/running.mjs` is a class with no dependencies, which `Runtime`’s constructor builds; its interface tests are `tests/running.test.mjs`. Every write to the live turns, the exiting ones and `closing` goes through it (`deliver`, `turn-stop`, `turn-finish`, `store-outage`); `Runtime` keeps `turns`, `exiting` and `closing` as getters for waiting code, and `busyFor` is gone. Placement’s `midTurn` reads Running’s. The fixture’s turn helpers read Running, and `shuttingDown` replaces assigning `rt.closing`. What step 2 found:
+  - Running needs two more queries than the interface listed: `midTurn`, the narrow check Placement needs (step 1), and `awaitsAttach`, which `sendMessage` reads without exiting (#1136). It also needs `exitOf` and a writer for a stopped turn’s exit, `exited`.
+  - Stop sets the exiting entry before the turn’s abort, and lets the live turn go after it, so a permission card the abort expires still counts the turn as running. So `exit` doesn’t remove the live turn; `end` does.
+  - A cleared awaiting-attach entry has to come back: on `main`, an agent moved off its silent host and back before the welcome waits for the attach again, and the attach goes (`tests/remote-turns-restart-window.test.mjs`). So the listener recomputes what `awaitsAttach` did, from the persona as written, instead of only clearing.
+  - `deliver` never checked awaiting attach; the queue and wakes hold a message for such a session. `begin` now refuses any turn but the attach for one, which no test or spec reaches.
+- **Next:** step 3, Threads, with Bus and `item.added`.
 
 ## Appendix: every module’s members
 
