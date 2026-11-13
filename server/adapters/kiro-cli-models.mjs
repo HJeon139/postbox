@@ -37,10 +37,10 @@ export const postboxModel = (id) => (!id || id === 'auto' ? null : String(id).re
  * `kiro-cli chat --list-models --format json` ({ models: [{ model_id }] }), which runs no model. Empty if it fails.
  * @returns {Promise<string[]>}
  */
-export function kiroModels(bin = findKiro()) {
+export function kiroModels(bin = findKiro(), { spawnImpl = spawn } = {}) {
   return new Promise((resolve) => {
     let out = '';
-    const p = spawn(bin, ['chat', '--list-models', '--format', 'json'], { stdio: ['ignore', 'pipe', 'ignore'] });
+    const p = spawnImpl(bin, ['chat', '--list-models', '--format', 'json'], { stdio: ['ignore', 'pipe', 'ignore'] });
     const timer = setTimeout(() => p.kill(), 15000);
     p.stdout.on('data', (d) => {
       out = (out + d).slice(-200_000);

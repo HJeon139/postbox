@@ -186,9 +186,9 @@ export class CodexAdapter {
   name = 'codex';
   /**
    * @param {{ bin?: string, workRoot?: string, models?: string[], spawnImpl?: typeof spawn, kill?: typeof process.kill,
-   *           listProcesses?: typeof listProcesses }} opts  models: what codexModels found here; AUTO_MODEL is offered
-   *   after them, and alone when there are none (Codex only on a host, #120), so the model field never falls back to
-   *   Claude’s models, which Codex doesn’t run
+   *           listProcesses?: typeof listProcesses }} opts  models: a list to offer before Codex is asked
+   *   (server/model-lists.mjs); AUTO_MODEL is offered after them, and alone when there are none (Codex only on a host,
+   *   #120), so the model field never falls back to Claude’s models, which Codex doesn’t run
    */
   constructor({ bin = findCodex(), workRoot = process.cwd(), models = [], spawnImpl = spawn, kill = process.kill, listProcesses: list = listProcesses } = {}) {
     this.bin = bin;
@@ -201,7 +201,7 @@ export class CodexAdapter {
   /** The models its harness offers, for the model field (server/model-lists.mjs). Empty if it can’t list. */
   listModels() {
     // AUTO_MODEL stays beside what Codex lists, as the constructor offers it.
-    return codexModels(this.bin).then((listed) => (listed.length ? [...new Set([...listed, AUTO_MODEL])] : []));
+    return codexModels(this.bin, { spawnImpl: this.spawn }).then((listed) => (listed.length ? [...new Set([...listed, AUTO_MODEL])] : []));
   }
 
   /** The folder the agent works in, by the rule every backend shares (folder.mjs). */

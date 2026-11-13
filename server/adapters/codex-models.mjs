@@ -33,13 +33,13 @@ export async function codexVersion(bin = findCodex()) {
   if (out == null) return null;
   return versionIn(out) ?? 'unknown';
 }
-export async function codexModels(bin = findCodex()) {
+export async function codexModels(bin = findCodex(), { spawnImpl = spawn } = {}) {
   // The documented app-server model/list method returns the local account's picker-visible catalog.
   return new Promise((resolve) => {
     /** @type {any} */
     let child;
     try {
-      child = spawn(bin, ['app-server', '--listen', 'stdio://'], { stdio: ['pipe', 'pipe', 'ignore'] });
+      child = spawnImpl(bin, ['app-server', '--listen', 'stdio://'], { stdio: ['pipe', 'pipe', 'ignore'] });
     } catch {
       resolve([]);
       return;

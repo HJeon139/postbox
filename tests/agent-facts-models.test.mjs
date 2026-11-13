@@ -46,3 +46,10 @@ test('a model from the previous backend’s list doesn’t carry over to one tha
   facts.selectBackend(st, 'kiro-cli', config);
   assert.equal(st.model, DEFAULT_MODEL);
 });
+
+test('a boilerplate’s model isn’t Postbox’s pick, so a list arriving afterwards leaves it', () => {
+  const st = { backend: 'claude-code', model: DEFAULT_MODEL, effort: 'medium', modelDefaulted: true, tools: new Set() };
+  const gpt = { id: 'bp-gpt', backend: 'codex', model: 'gpt-5.6', tools: [] };
+  facts.applyBoilerplate(st, gpt, listed('codex', ['gpt-6', 'gpt-5.6']));
+  assert.deepEqual([st.model, st.modelDefaulted], ['gpt-5.6', false]);
+});

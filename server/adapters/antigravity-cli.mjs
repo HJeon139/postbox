@@ -100,13 +100,13 @@ export function agyVersion(bin = findAgy()) {
  * GPT-OSS). Read from `agy models`, which runs no model. Empty if it fails.
  * @returns {Promise<string[]>}
  */
-export function agyModels(bin = findAgy()) {
+export function agyModels(bin = findAgy(), { spawnImpl = spawn } = {}) {
   return new Promise((resolve) => {
     let out = '';
     /** @type {import('node:child_process').ChildProcessByStdio<null, import('node:stream').Readable, null>} */
     let p;
     try {
-      p = spawn(bin, ['models'], { stdio: ['ignore', 'pipe', 'ignore'] });
+      p = spawnImpl(bin, ['models'], { stdio: ['ignore', 'pipe', 'ignore'] });
     } catch {
       return resolve([]);
     }
@@ -140,7 +140,7 @@ export { AGY_CAPABILITIES, AGY_DEFAULT_MODEL };
 /**
  * The model to pass. A persona that names none gets Postbox’s default, Claude’s, which agy doesn’t offer: that
  * becomes Gemini’s. A model the persona named is passed as it is, and agy says if it doesn’t know it.
- * @param {any} persona @param {string[]} [offered]  what agyModels found
+ * @param {any} persona @param {string[]} [offered]  the models agy last listed
  */
 export function agyModel(persona, offered = []) {
   const model = modelOf(persona);
@@ -543,7 +543,7 @@ export class AntigravityCliAdapter {
   /**
    * @param {{ bin?: string, workRoot: string, models?: string[], version?: string|null, hookScript?: string, settingsFile?: string,
    *           spawnImpl?: typeof spawn, env?: NodeJS.ProcessEnv, kill?: typeof process.kill, listProcesses?: typeof listProcesses }} opts
-   *   models: what agyModels found, offered in the model field; settingsFile: your agy settings
+   *   models: a list to offer before agy is asked (server/model-lists.mjs); settingsFile: your agy settings
    */
   constructor({
     bin = findAgy(),
@@ -576,7 +576,7 @@ export class AntigravityCliAdapter {
 
   /** The models its harness offers, for the model field (server/model-lists.mjs). Empty if it can’t list. */
   listModels() {
-    return agyModels(this.bin);
+    return agyModels(this.bin, { spawnImpl: this.spawn });
   }
 
   /** The folder the agent works in, by the rule every backend shares (folder.mjs). */

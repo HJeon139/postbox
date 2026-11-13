@@ -59,7 +59,8 @@
 //   capabilities.fork: false          a topic thread’s agent starts fresh, with the thread’s root message (#81)
 //   capabilities.permissions: 'none'  it doesn’t read Claude Code’s permission rules or MCP config, so the panel and
 //                                     the persona sheet hide them
-//   capabilities.models: [ids]        the models it offers, suggested in the model field instead of Claude’s
+//   capabilities.models: [ids]        the models it offers, the last its harness listed, suggested in the model field;
+//                                     listModels() asks the harness again (server/model-lists.mjs)
 //   capabilities.tools: 'none'        it can’t turn a tool off for one agent, so the Tools help says so (#143)
 //   capabilities.isolation: false     it always loads your own setup, so the sheet has no Isolated switch (#143)
 //   capabilities.images: true         its agent sees an image in a tool’s result, so view_app sends the picture itself;
