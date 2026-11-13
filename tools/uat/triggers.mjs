@@ -18,6 +18,7 @@ import { DISMISS_TRIGGERS } from './dismiss-triggers.mjs';
 import { GIT_PUSH_TRIGGERS } from './gitpush-triggers.mjs';
 import { REVIEW_FIGURE_TRIGGERS } from './review-figures-triggers.mjs';
 import { NEEDS_TRIGGERS } from './room-checks-needs.mjs';
+import { SWITCH_TRIGGERS } from './switch-triggers.mjs';
 import { cell as esc } from './trigger-facts.mjs';
 import { HOST_TRIGGERS } from './triggers-host.mjs';
 import { JOB_TRIGGERS } from './triggers-jobs.mjs';
@@ -49,6 +50,7 @@ export const TRIGGERS = {
   ...DISMISS_TRIGGERS,
   ...ASK_QUESTION_TRIGGERS,
   ...ATTACH_IMAGE_TRIGGERS,
+  ...SWITCH_TRIGGERS,
 };
 
 /**

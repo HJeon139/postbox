@@ -30,16 +30,21 @@
 import { MAX_HOP_LIMIT } from '../../shared/limits.mjs';
 import { filesOf } from './fixtures.mjs';
 import { expectsOf } from './picture-choice.mjs';
+import { switchedTo } from './switch-triggers.mjs';
 import { judgeOf } from './visual-judge.mjs';
 
 /** The backends that run Claude. Every other one makes a scenario a compatibility run. */
 export const CLAUDE_BACKENDS = new Set(['claude-code', 'agent-sdk']);
 
 /**
- * The backends other than Claude’s that a scenario puts agents on: empty for a regular scenario.
- * @param {{ backends: Record<string, { backend: string }> }} scenario
+ * The backends other than Claude’s that a scenario puts agents on, at the start or by switching one there in a phase
+ * (#1315): empty for a regular scenario.
+ * @param {{ backends: Record<string, { backend: string }>, phases?: { triggers?: string[] }[] }} scenario
  */
-export const compatBackends = (scenario) => [...new Set(Object.values(scenario.backends).map((b) => b.backend))].filter((b) => !CLAUDE_BACKENDS.has(b));
+export const compatBackends = (scenario) =>
+  [...new Set([...Object.values(scenario.backends).map((b) => b.backend), ...switchedTo({ phases: scenario.phases ?? [] })])].filter(
+    (b) => !CLAUDE_BACKENDS.has(b),
+  );
 
 /** @returns {Record<string, { backend: string, model: string|null }>} */
 function backendsOf(spec) {

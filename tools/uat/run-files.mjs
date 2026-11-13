@@ -228,6 +228,10 @@ export async function readUi(page) {
     headerText: await page.evaluate(`document.querySelector('.rail .agents-sec')?.innerText ?? ''`),
     // Each row’s handle, which its name shows in bold, without an @.
     agentRows: await page.evaluate(`[...document.querySelectorAll('.agent-rows .agent-btn .name b')].map((b) => b.textContent.trim()).filter(Boolean)`),
+    // Each row’s whole line by its handle, with its model and effort (#1315: tools/uat/switch-facts.mjs).
+    agentLines: await page.evaluate(
+      `Object.fromEntries([...document.querySelectorAll('.agent-rows .agent-btn')].map((b) => [b.querySelector('.name b')?.textContent.trim() ?? '', b.innerText.replace(/\\s+/g, ' ').trim()]).filter(([h]) => h))`,
+    ),
     topbarCut: await page.evaluate(
       `innerWidth >= 1200 && [...document.querySelectorAll('header.topbar .title, header.topbar .crumb')].some((n) => n.scrollWidth > n.clientWidth + 1)`,
     ),
