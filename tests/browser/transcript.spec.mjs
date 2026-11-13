@@ -10,6 +10,7 @@
 
 import { expect, test } from '@playwright/test';
 import { allowPageError, failOnPageErrors, frames, settled, startPostbox, synced, watchWrites } from './postbox.mjs';
+import { atTheEnd, gap, panelGap, reading, topOf, wheel } from './view-position.mjs';
 
 test.use({ colorScheme: 'light' });
 
@@ -70,33 +71,6 @@ const frameOf = (page, key) => page.locator(`[data-key="${key}"] iframe:not(.che
 /** Waits for an app’s frame to have grown to 700 px. */
 const grown = (page, key) =>
   expect.poll(() => frameOf(page, key).evaluate((f) => f.getBoundingClientRect().height), { message: 'the app to grow to 700 px' }).toBeGreaterThanOrEqual(690);
-
-/** How far the view is from the end of the conversation, and of the panel. */
-const gap = (page) => page.evaluate(() => Math.round(document.scrollingElement.scrollHeight - scrollY - innerHeight));
-const panelGap = (page) =>
-  page.evaluate(() => {
-    const b = document.querySelector('.sp-body');
-    return b ? Math.round(b.scrollHeight - b.scrollTop - b.clientHeight) : null;
-  });
-/** Once the page holds still, that the view is at the end. */
-async function atTheEnd(page, what) {
-  await settled(page);
-  expect(await gap(page), what).toBeLessThanOrEqual(2);
-}
-/** The message at the middle of the view, and where it starts; the same message must stay put. */
-const reading = (page) =>
-  page.evaluate(() => {
-    const n = /** @type {HTMLElement | undefined} */ (document.elementFromPoint(760, innerHeight / 2)?.closest('.item'));
-    return n ? { key: n.dataset.key ?? '', top: Math.round(n.getBoundingClientRect().top) } : null;
-  });
-const topOf = (page, key) => page.locator(`[data-key="${key}"]`).evaluate((n) => Math.round(n.getBoundingClientRect().top));
-
-/** Turns the mouse wheel over the middle of the transcript, as a trackpad or mouse does, and waits for the scroll to end. */
-async function wheel(page, deltaY) {
-  await page.mouse.move(760, 400);
-  await page.mouse.wheel(0, deltaY);
-  await settled(page);
-}
 
 /** Opens a conversation, and waits for its transcript to draw and hold still. */
 async function open(page, t) {
