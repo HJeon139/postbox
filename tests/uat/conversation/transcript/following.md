@@ -11,6 +11,7 @@ In Dispatch mode you glance at a conversation to see what changed. That only wor
 - **At the bottom, you stay at the bottom** through anything that changes the transcript: a reply streaming, an item updated in place (its activity, sources, a block answered), a working row coming or going, an app frame growing after it loads, the thread panel opening or closing, and a window resize. The panel’s own transcript does the same.
 - **Typing doesn’t push the newest message away.** At the bottom, in the conversation or the thread panel, a draft that grows to several lines keeps the newest message above the composer, and the reply you’re waiting for is still followed, whether you keep the draft or send it and the composer shrinks back (#422, #360).
 - **Scrolled up, nothing moves you.** Only your own scrolling up (wheel, trackpad, keys or dragging the scrollbar, even over an app) leaves the bottom. After that, new messages, streaming, an item or app above you growing, a resize, and opening or closing the panel all leave the message you’re reading where it is.
+- **What you read or point at holds still** (#1326). Scrolled up, the line at the middle of the view, or under the pointer when it’s over the conversation, stays within a pixel while agents stream above it, a review above moves to the end, an app above or between grows, or a picture above it in the same reply loads. At the bottom, a new reply still scrolls in, but not while a click is on its way: once the pointer has moved onto a button, a link or an app, or pressed, that holds until the click is done, then the view goes on to the newest message.
 - **Jump to latest · N new** appears only while you’re scrolled up and new messages arrive below. It counts them, including one that arrives in the very moment you scroll up (#341), and it goes, with its count, as soon as you reach the bottom by any means: the pill, the wheel, End, or dragging.
 - **The pill scrolls smoothly**, with motion allowed, all the way to the end, even over a long room whose older messages draw for the first time on the way down: no snap partway, and it ends following (#712a). Turning the wheel during it stops it where it is, and you’re reading there.
 - The pill floats just above the composer and takes no room, so showing or hiding it never moves the page. It shows only while the end is further below than the pill’s own height, so it never sits over the working rows or the end of the last message.
@@ -24,6 +25,7 @@ In Dispatch mode you glance at a conversation to see what changed. That only wor
 3. Scroll up a little while an agent works, wait for two messages, then scroll back down with the wheel.
 4. Open a thread from an older message while scrolled up, then close it.
 5. At the bottom, type a six-line draft with Shift+Enter while an agent replies, then send it.
+6. Run `npx playwright test hold-still` (`tests/browser/hold-still.spec.mjs`): reading mid-room while a reply streams above, a review moves to the end, an app grows and a picture loads; a choice’s button under the pointer while an app above it grows; and at the bottom, a choice’s button while replies arrive and between pressing and letting go. With real agents, the end-to-end [hold still scenario](../../e2e/scenarios/holdstill.md).
 
 **Pass if:**
 - At the bottom, the newest message never drifts out of view, and a card’s buttons don’t move when the working row below it goes away.
@@ -31,6 +33,7 @@ In Dispatch mode you glance at a conversation to see what changed. That only wor
 - The pill shows the right count, and disappears the moment you reach the bottom without clicking it.
 - In a long room, scrolled to the top, the pill glides to the newest message without jumping, and a wheel turn during the glide leaves you where it stopped (`tests/browser/view-skipped-smooth.spec.mjs`).
 - With the draft growing and after sending it, the newest message and the agent’s reply stay above the composer.
+- Nothing you read or point at moves while agents work, and a click lands on what you aimed at.
 
 ## Related
 

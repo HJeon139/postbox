@@ -65,7 +65,7 @@ function firstInView(v, s) {
   return null;
 }
 /** Whether the browser is skipping an item’s content: laid out at an estimate it hasn’t drawn (view-skip.mjs). */
-const skipped = (/** @type {HTMLElement} */ n) => !!n.firstElementChild && !n.firstElementChild.checkVisibility({ contentVisibilityAuto: true });
+export const skipped = (/** @type {HTMLElement} */ n) => !!n.firstElementChild && !n.firstElementChild.checkVisibility({ contentVisibilityAuto: true });
 /**
  * The anchor: the reply across the middle. A scroll into skipped items (the browser’s own, as scrollIntoView, focus and
  * find do) lands where their estimates put things, and the reply across the middle is then skipped too, at a place the
@@ -93,6 +93,8 @@ export function heldBy(v) {
   const s = box(v);
   if (!s) return;
   v.lastTop = s.scrollTop;
+  // What view-hold.mjs held moved with the page: it’s taken again once the view next holds its place.
+  v.hold = null;
   if (v.stuck || v.pinned) return;
   v.anchor = findAnchor(v);
 }
