@@ -105,6 +105,7 @@ const PENDING = {
   'remote/turns-end.mjs': ['stoppedHung'], // the hung host turn’s own replies
   'remote/turns-prompts.mjs': ['cardOf', 'permissionCards'], // a host turn’s own cards: the sweep its callers settle, and the calls an attach after a restart holds (#353)
   'remote/turns-resume.mjs': ['reattach'], // the replayed turn’s replies, replaced in a sweep
+  'remote/turns.mjs': ['noteAttach', 'noteAttach'], // the session and the persona: whether it awaits attach, which decides a delivery’s wait, with the persona as written (#1135)
   'reply-segment.mjs': ['wordsSegment', 'placeStep'], // whether the turn’s open part is still its thread’s last decides where its next words and steps go
   'runtime.mjs': ['addItem', 'addItem', 'bringForward'], // the turn’s own items, a move after a pending read, and the thread a topic reply count goes to, maybe opened or deleting behind a held commit (#796)
   // The reply with the mention, a side line right after its add, and sweeps of hop cards; the conversation's hop count,

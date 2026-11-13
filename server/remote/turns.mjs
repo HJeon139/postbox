@@ -121,13 +121,14 @@ export class RemoteTurns {
    * queue, as for a busy one: a new turn would run on the host beside the one about to be attached. Only while the
    * agent still runs on that host: once it’s moved off, that turn can’t be attached (reattach), and a message goes
    * where the agent runs now; moved back before the attach, it waits again. Called wherever `restoring` changes, and
-   * when the agent’s persona is written (persona-write.mjs), with the persona as written.
-   * @param {string} sessionId @param {any} [persona]
+   * when the agent’s persona is written (persona-write.mjs). It reads the session and the persona as written, held
+   * behind a commit or not, so every caller sees a move the moment updatePersona makes it.
+   * @param {string} sessionId
    */
-  noteAttach(sessionId, persona) {
-    const se = this.rt.s.sessions[sessionId];
+  noteAttach(sessionId) {
+    const se = this.rt.store.pending.session(sessionId);
     const r = se?.remoteTurn;
-    const waits = Boolean(r?.turn) && this.restoring.get(r.turn) === sessionId && hostOf(persona ?? this.rt.personaFor(se)) === r.hostId;
+    const waits = Boolean(r?.turn) && this.restoring.get(r.turn) === sessionId && hostOf(this.rt.store.pending.persona(se.personaId)) === r.hostId;
     if (waits) this.rt.running.awaitAttach(sessionId, r.hostId);
     else this.rt.running.attached(sessionId);
   }
