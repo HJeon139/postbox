@@ -44,6 +44,9 @@ export function watchStore(rt) {
   // store tells its reload listeners before its status listeners hear writes reopen (server/store-retry.mjs).
   // Every timer in rt.timers is re-armed.
   rt.store.onReload(() => {
+    // Whether a session waits for its host turn to be attached follows where its agent runs in the state installed
+    // (#1135): a move Retry dropped is undone, so the queues reopened() drains read it right.
+    rt.remote.noteAllAttach();
     dropOwned(rt); // before the re-arm: the timers below are now the only owners of what they recreate
     for (const timer of rt.timers.values()) clearTimeout(timer);
     rt.timers.clear();
@@ -194,10 +197,10 @@ function stopForStore(rt, sessionId) {
   if (!turn) return;
   turn.stopReason = 'store';
   // What waited behind it goes once it has exited and writes are open again, as after any Stop.
-  rt.exiting.set(sessionId, { turn, held: turn.pending.splice(0), silent: false });
+  rt.running.exit(sessionId, { turn, held: turn.pending.splice(0), silent: false });
   turn.abort.abort(Object.assign(new Error(WHY), { name: 'AbortError' }));
   turn.closed = true;
-  rt.turns.delete(sessionId);
+  rt.running.end(sessionId);
   console.error(`@${rt.s.sessions[sessionId]?.handle ?? sessionId}’s turn stopped: Postbox can’t save changes right now.`);
   rt.storeWait.push(Object.assign(() => recordStop(rt, turn), { stopOf: sessionId })); // settleOrphanTurns reads stopOf
 }

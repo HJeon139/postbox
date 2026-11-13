@@ -14,20 +14,15 @@ const PS = parsePs(readFileSync(new URL('fixtures/claude-code/background-ps.txt'
 const CLI = 69116;
 const JOB = { id: 'bm2939coh', command: "sleep 170; echo 'pbx C'" };
 
-test('#126: a stop whose kept job can’t be reported still ends the turn, once the CLI has exited, and says why', async (t) => {
-  const child = Object.assign(new EventEmitter(), { pid: CLI, stdout: new PassThrough(), stderr: new PassThrough(), stdin: new PassThrough() });
-  child.kill = () => true;
-  const k = fakeKill();
-  const adapter = new ClaudeCodeAdapter({
-    bin: 'claude',
-    workRoot: '/tmp/pb-test-work',
-    spawnImpl: /** @type {any} */ (() => child),
-    kill: k.kill,
-    listProcesses: async () => PS,
-  });
-  const abort = new AbortController();
-  const ctx = {
-    signal: abort.signal,
+/** Waits for check() to hold, looking every 5 ms, however slow the runner: the test’s own timeout bounds it. */
+async function until(check) {
+  while (!check()) await new Promise((r) => setTimeout(r, 5));
+}
+
+/** A turn’s context whose store refuses the kept job’s record. @param {AbortSignal} signal */
+function refusingCtx(signal) {
+  return {
+    signal,
     mcpUrl: 'http://127.0.0.1:1/mcp?session=se_1&turn=t1',
     persona: { handle: 'developer', model: 'claude-opus-5-5', permissionMode: 'auto', folder: `${STOP_DIR}/dev` },
     project: null,
@@ -45,20 +40,43 @@ test('#126: a stop whose kept job can’t be reported still ends the turn, once 
       throw new Error('the store refused the write');
     },
   };
+}
+
+// A turn that never ends fails on this test’s timeout, not on a wall-clock budget a slow runner can miss.
+test('#126: a stop whose kept job can’t be reported still ends the turn, once the CLI has exited, and says why', { timeout: 30_000 }, async (t) => {
+  let spawned = false;
+  const child = Object.assign(new EventEmitter(), { pid: CLI, stdout: new PassThrough(), stderr: new PassThrough(), stdin: new PassThrough() });
+  child.kill = () => true;
+  const k = fakeKill();
+  const adapter = new ClaudeCodeAdapter({
+    bin: 'claude',
+    workRoot: '/tmp/pb-test-work',
+    spawnImpl: /** @type {any} */ (
+      () => {
+        spawned = true;
+        return child;
+      }
+    ),
+    kill: k.kill,
+    listProcesses: async () => PS,
+  });
+  const abort = new AbortController();
+  const ctx = refusingCtx(abort.signal);
   const logged = t.mock.method(console, 'error', () => {});
   const ended = adapter.deliver({}, { kind: 'user', text: 'Go' }, ctx).then(
     () => 'ended',
     (e) => `failed: ${e.message}`,
   );
-  await new Promise((r) => setTimeout(r, 20));
+  await until(() => spawned);
   abort.abort({ keepJobs: [JOB] });
-  await new Promise((r) => setTimeout(r, 20));
+  // The stop has killed the CLI’s group (the kept job’s is spared), and waits for the CLI to exit.
+  await until(() => k.sent.some(([pid]) => pid === -CLI));
   exitedGroups.add(-CLI);
   child.stdout.end();
   child.emit('exit', null, 'SIGKILL');
   setImmediate(() => child.emit('close', null));
-  const outcome = await Promise.race([ended, new Promise((r) => setTimeout(() => r('still stopping after 2 s'), 2000))]);
-  assert.notEqual(outcome, 'still stopping after 2 s');
+  // Ended, or failed with the store’s refusal: either way it’s over, not left stopping.
+  assert.match(await ended, /^(ended|failed: )/);
   assert.ok(
     logged.mock.calls.some((c) => String(c.arguments[0]).includes('the store refused the write')),
     'the failed stop says why',

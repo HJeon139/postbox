@@ -66,6 +66,7 @@ function endedHow(rts, live, se, err) {
     // The link gave up with the turn still on the host, as far as Postbox knows: it’s attached again once the host is back.
     updateRemote(rts, se.id, { state: 'lost', at: rts.now() });
     rts.restoring.set(se.remoteTurn.turn, se.id);
+    rts.noteAttach(se.id);
     needHost(rts, live.hostId);
     return err;
   }

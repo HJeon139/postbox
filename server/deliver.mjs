@@ -52,7 +52,7 @@ export function deliver(rt, sessionId, message, { summarizeTo = null, threadId =
   const persona = rt.persona(se.personaId);
   const adapter = rt.placement.registeredAdapter(persona);
   const turn = newTurn(se, message, persona, { where, slash, summarizeTo, asked });
-  rt.turns.set(sessionId, turn);
+  rt.running.begin(turn);
   // A persona on a remote host (#120): the turn is remote from here on (server/remote/turns.mjs).
   const hostId = adapter ? rt.placement.hostOf(persona) : null;
   if (hostId) rt.remote.begin(turn, hostId, adapter);
