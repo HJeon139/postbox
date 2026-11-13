@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
@@ -88,4 +88,20 @@ test('a backend Postbox doesn’t have is a 404, and nothing is asked', async ()
   await assert.rejects(lists.list('nope'), (e) => e.status === 404 && /isn’t one Postbox runs/.test(e.message));
   await assert.rejects(lists.list('__proto__'), (e) => e.status === 404);
   assert.equal(adapter.asked, 0);
+});
+
+test('a harness that throws instead of answering counts as one that couldn’t list', async () => {
+  const { adapter, lists } = setup({ capabilities: { models: ['m-0'] } });
+  adapter.listModels = async () => Promise.reject(new Error('kiro-cli crashed'));
+  assert.deepEqual(await lists.list('kiro-cli'), { models: ['m-0'], fresh: false });
+});
+
+test('a kept entry that isn’t a list of models is ignored at start', async () => {
+  const { file } = setup();
+  writeFileSync(file, JSON.stringify({ 'kiro-cli': 'm-1', codex: ['gpt-5.6'] }));
+  const kiro = lister('kiro-cli', []);
+  const codex = lister('codex', []);
+  new ModelLists(new AdapterRegistry().register(kiro).register(codex), { file }).seed();
+  assert.equal(kiro.capabilities.models, undefined);
+  assert.deepEqual(codex.capabilities.models, ['gpt-5.6']);
 });

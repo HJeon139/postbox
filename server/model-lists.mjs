@@ -45,7 +45,10 @@ export class ModelLists {
     if (at !== undefined && this.now() - at < FRESH_MS) return { models: last(), fresh: true };
     let asking = this.asking.get(adapter);
     if (!asking) {
-      asking = Promise.resolve(adapter.listModels())
+      asking = Promise.resolve()
+        .then(() => adapter.listModels())
+        // A harness that throws instead of answering couldn’t list, as one that answers nothing: the field says so.
+        .catch(() => [])
         .then((/** @type {string[]} */ models) => {
           if (models.length) this.#listed(adapter, backend, models);
           return models;
