@@ -59,9 +59,8 @@ export class FakeHosts extends EventEmitter {
 }
 
 const none = async () => null;
-const nothing = async () => [];
 /** Claude Code is on this computer; Kiro CLI, Codex and the rest aren’t, so they can run only on a host. */
-const PROBES = { claude: async () => '2.1.300', sdk: none, kiro: none, kiroModels: nothing, agy: none, agyModels: nothing, codex: none, codexModels: nothing };
+const PROBES = { claude: async () => '2.1.300', sdk: none, kiro: none, agy: none, codex: none };
 
 /**
  * Starts a fresh Postbox without the demo, with a fake host manager and fake probes, for one spec file.

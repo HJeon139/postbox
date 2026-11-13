@@ -175,17 +175,13 @@ test('#120: left out, the server makes the real host manager, keeping tokens in 
 test('#120: Claude Code, Kiro CLI and Codex are listed without their CLI here, marked not local, and this computer’s list leaves them out', async () => {
   const own = tempDir('pb-hosts-probes-');
   const none = async () => null;
-  const nothing = async () => [];
   // Only Claude Code is on this computer; nothing is probed for real.
   const probes = {
     claude: async () => '2.1.296',
     sdk: none,
     kiro: none,
-    kiroModels: nothing,
     agy: none,
-    agyModels: nothing,
     codex: none,
-    codexModels: nothing,
   };
   const server = await start({ port: PORT + 2, dataDir: own, fresh: true, quiet: true, claudeHome: own, listen: false, hosts: new FakeHosts(), probes });
   try {
