@@ -1,0 +1,254 @@
+// #1322: an agent’s app takes Postbox’s own type. The catalog refuses app code that applies a font outside Postbox’s
+// stacks and the generic families (shared/app-fonts.mjs), so show_app, update_app and show_block refuse it before
+// anything is shown. Only the fonts it applies count: CSS in <style> and style attributes, SVG’s font-family, and
+// script that sets a font. Text it only shows, in <pre>, <code> or a string, never does.
+
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { test } from 'node:test';
+import { Worker } from 'node:worker_threads';
+import { FACE_ALIASES, STACK_FONTS } from '../shared/app-fonts.mjs';
+import { validateBlock } from '../shared/catalog.mjs';
+import { LIMITS } from '../shared/limits.mjs';
+import { TOOL_DEFS } from '../shared/mcp-tools.mjs';
+import { setup, turn } from './blocks-fixture.mjs';
+
+/** A template literal’s placeholder, as an app’s script writes one: ${name}. @param {string} name */
+const hole = (name) => `\${${name}}`;
+const app = (code) => validateBlock({ id: 'chart', type: 'app', version: 1, fallback: 'A chart.', code });
+const refused = (code) => {
+  const v = app(code);
+  return v.ok ? [] : v.errors;
+};
+const TEXT_STACK = 'system-ui, -apple-system, "Segoe UI", sans-serif';
+const MONO_STACK = 'ui-monospace, "SF Mono", Menlo, Consolas, monospace';
+
+test('#1322 an app that applies its own font is refused, however it applies it', () => {
+  const cases = {
+    '<style>@font-face { font-family: Brand; src: url(data:font/woff2;base64,AA) }</style>': /@font-face/,
+    '<style>body { font-family: Georgia, serif; }</style>': /“Georgia”/,
+    '<style>h1 { font-family: "Times New Roman"; }</style>': /“Times New Roman”/,
+    '<style>p { font: italic 700 14px/1.4 Garamond, serif; }</style>': /“Garamond”/,
+    '<p style="font-family: Courier New, monospace">Hi</p>': /“Courier New”/,
+    "<p style='font: 12px Futura'>Hi</p>": /“Futura”/,
+    '<svg><text font-family="Comic Sans MS">Hi</text></svg>': /“Comic Sans MS”/,
+    '<script>el.style.fontFamily = "Papyrus";</script>': /“Papyrus”/,
+    "<script>ctx.font = '12px Helvetica';</script>": /“Helvetica”/,
+    [`<script>ctx.font = \`bold ${hole('size')}px Arial\`;</script>`]: /“Arial”/,
+    "<script>d3.select('svg').attr('font-family', 'Impact');</script>": /“Impact”/,
+    "<script>t.setAttribute('font-family', 'Verdana');</script>": /“Verdana”/,
+  };
+  for (const [code, why] of Object.entries(cases)) {
+    const errors = refused(code);
+    assert.equal(errors.length, 1, code);
+    assert.match(errors[0], why, code);
+  }
+});
+
+test('#1322 the refusal names the stacks an app may use, so the agent can fix it in one try', () => {
+  const [error] = refused('<style>body { font-family: Georgia; }</style>');
+  assert.ok(error.includes(TEXT_STACK), error);
+  assert.ok(error.includes(MONO_STACK), error);
+  assert.match(error, /a generic family such as serif/);
+});
+
+test('#1322 show_app’s description says the rule before the agent writes code', () => {
+  const show = TOOL_DEFS.find((t) => t.name === 'show_app');
+  assert.ok(show.description.includes(TEXT_STACK), show.description);
+  assert.ok(show.description.includes(MONO_STACK), show.description);
+  assert.match(show.description, /generic famil/);
+});
+
+test('#1322 false positives: text an app only shows is never read as a font it applies', () => {
+  for (const code of [
+    // A CSS lesson, shown in <pre> and <code>.
+    '<pre>p { font-family: Georgia, serif; }</pre>',
+    '<p>Set <code>font: 12px Garamond</code> on the heading.</p>',
+    '<pre>&lt;p style="font-family: Georgia"&gt;</pre>',
+    // A string a script shows, not one it applies.
+    "<script>out.textContent = 'body { font-family: Georgia; }';</script>",
+    '<script>const tip = `Try font-family: Futura`; note.textContent = tip;</script>',
+    // A comment in a stylesheet.
+    '<style>/* was font-family: Georgia */ p { color: var(--text); }</style>',
+  ])
+    assert.deepEqual(refused(code), [], code);
+});
+
+test('#1322 false positives: generic families are allowed, serif among them', () => {
+  for (const family of [
+    'serif',
+    'sans-serif',
+    'monospace',
+    'cursive',
+    'fantasy',
+    'system-ui',
+    'ui-serif',
+    'ui-sans-serif',
+    'ui-monospace',
+    'ui-rounded',
+    'math',
+    'emoji',
+    'fangsong',
+  ])
+    assert.deepEqual(refused(`<style>blockquote { font-family: ${family}; }</style>`), [], family);
+  assert.deepEqual(refused('<p style="font: italic 16px/1.5 serif">A quote.</p>'), []);
+  assert.deepEqual(refused("<script>ctx.font = '11px serif';</script>"), []);
+});
+
+test('#1322 an app that leaves the font to Postbox, or names Postbox’s own, is taken', () => {
+  for (const code of [
+    '<p>Plain</p>',
+    '<style>p { font-size: 13px; font-weight: 600; font-style: italic; }</style>',
+    '<style>body { font-family: inherit; } code { font-family: var(--mono); }</style>',
+    `<style>body { font: inherit; } small { font: 12px/1.3 ${TEXT_STACK}; }</style>`,
+    `<style>pre { font-family: ${MONO_STACK}; }</style>`,
+    `<script>ctx.font = '12px sans-serif'; ctx.font = \`600 ${hole('s')}px system-ui\`;</script>`,
+    '<svg><text font-family="monospace" font-size="10">x</text></svg>',
+    // A family held in a variable can’t be read, so it’s left alone rather than refused.
+    '<script>el.style.fontFamily = family;</script>',
+  ])
+    assert.deepEqual(refused(code), [], code);
+});
+
+test('#1322 another name for a face in Postbox’s stacks is Postbox’s font, as recorded agents write it', () => {
+  // The raft and review showcases’ apps (tools/demo/showcase/), from real agents: SFMono-Regular is SF Mono’s
+  // PostScript name, and BlinkMacSystemFont is Chrome’s name for the system face.
+  assert.deepEqual(refused('<style>code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }</style>'), []);
+  assert.deepEqual(refused('<style>body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; }</style>'), []);
+});
+
+test('#1322 every showcase app, recorded from real agents, passes the font rule unmodified', () => {
+  for (const key of ['raft', 'elements', 'capacity', 'review', 'deps']) {
+    const story = readFileSync(new URL(`../tools/demo/showcase/${key}/story.json`, import.meta.url), 'utf8');
+    const codes = [...story.matchAll(/"code":\s*("(?:[^"\\]|\\.)*")/g)].map((m) => JSON.parse(m[1]));
+    assert.ok(codes.length >= 2, `${key} has its apps`);
+    for (const code of codes) assert.deepEqual(refused(code), [], key);
+  }
+});
+
+test('#1322 the stacks an app may name are the ones workbench.css gives it, and no others', () => {
+  const css = readFileSync(new URL('../app/workbench.css', import.meta.url), 'utf8');
+  const stack = (re) =>
+    re
+      .exec(css)[1]
+      .split(',')
+      .map((f) =>
+        f
+          .trim()
+          .replace(/^["']|["']$/g, '')
+          .toLowerCase(),
+      );
+  const body = stack(/body \{[^}]*font: 14px\/1\.4 ([^;]+);/);
+  const mono = stack(/code, pre, kbd, \.mono \{ font-family: ([^;]+);/);
+  assert.deepEqual([...STACK_FONTS].sort(), [...new Set([...body, ...mono])].sort());
+  for (const face of Object.values(FACE_ALIASES)) assert.ok(STACK_FONTS.has(face), `${face} is in a stack`);
+});
+
+test('#1322 show_app refuses an app with its own font, and nothing is shown', async () => {
+  const { rt, store, t, adapter } = setup();
+  const r = await turn(rt, adapter, t, (tools) =>
+    tools.show_app({ id: 'chart', title: 'Chart', code: '<style>body { font-family: Georgia; }</style><p>Hi</p>' }),
+  );
+  assert.equal(r.ok, false);
+  assert.match(r.message, /^The block wasn’t shown: code applies a font Postbox doesn’t use, “Georgia”/);
+  assert.deepEqual(
+    store.items(t.id).filter((i) => i.kind === 'block'),
+    [],
+  );
+});
+
+/**
+ * How long appFontErrors takes on code, in ms, measured in a worker that’s stopped after 3 s, so a scan that runs
+ * away fails the test rather than hanging it. The worker has about the main thread’s stack, where the server runs
+ * the scan, and an error it throws is the test’s failure. @param {string} code @returns {Promise<number | Error>}
+ */
+function timed(code) {
+  const url = new URL('../shared/app-fonts.mjs', import.meta.url).href;
+  const body = `const { parentPort, workerData } = require('node:worker_threads');
+import(workerData.url).then(({ appFontErrors }) => {
+  const start = performance.now();
+  appFontErrors(workerData.code, []);
+  parentPort.postMessage(performance.now() - start);
+});`;
+  return new Promise((resolve) => {
+    const w = new Worker(body, { eval: true, workerData: { code, url }, resourceLimits: { stackSizeMb: 1 } });
+    w.once('error', (e) => {
+      clearTimeout(stop);
+      resolve(e);
+    });
+    const stop = setTimeout(() => {
+      void w.terminate();
+      resolve(Number.POSITIVE_INFINITY);
+    }, 3000);
+    w.once('message', (ms) => {
+      clearTimeout(stop);
+      void w.terminate();
+      resolve(ms);
+    });
+  });
+}
+
+/** Code at the app limit: prefix, then unit repeated to fill it. @param {string} unit */
+const fill = (unit, prefix = '') => prefix + unit.repeat(Math.floor((LIMITS.appCode - prefix.length) / unit.length));
+
+test('#1322 the scan is linear: no app at the size limit holds the server up', async () => {
+  // validateBlock runs it on the server, synchronously, so a slow scan freezes Postbox for everyone. Each input
+  // is one that backtracked or rescanned before: an unclosed tag of quoted values with spaces, unclosed
+  // <style>, <script> and comments, and setters with no closing quote.
+  const inputs = {
+    'an unclosed tag of quoted values with spaces': fill(' b="x y z"', '<a'),
+    'a truncated SVG text tag': fill(' font-family="a b"', '<svg><text'),
+    'an unclosed quote in a style attribute': fill(' style="font:', '<p'),
+    'unclosed <style> tags': fill('<style>'),
+    'unclosed <script> tags': fill('<script>'),
+    'unclosed HTML comments': fill('<!--'),
+    'unclosed CSS comments': fill('/*', '<style>'),
+    'font-family declarations': fill('font-family:', '<style>'),
+    'font shorthands': fill('font: 12px ', '<style>'),
+    'fontFamily setters with no closing quote': fill("fontFamily='", '<script>'),
+    'canvas fonts with no closing quote': fill('.font = `', '<script>'),
+    'font-family attrs with no value': fill("'font-family', ", '<script>'),
+    'closed tags, each with a style': fill('<p style="font-family: inherit">x</p>'),
+    // One tag with as many attributes as fit: spread into a call, they overflowed the stack (#1332’s review).
+    'one tag of bare attributes': `${fill(' b', '<a')}`.slice(0, LIMITS.appCode - 1) + '>',
+  };
+  for (const [what, code] of Object.entries(inputs)) {
+    assert.ok(code.length > LIMITS.appCode - 20 && code.length <= LIMITS.appCode, what);
+    const ms = await timed(code);
+    if (ms instanceof Error) assert.fail(`${what}: ${ms.message}`);
+    // A linear scan takes about 10 ms here at the limit and 110 ms in a cold worker on CI’s runner; the scans it
+    // replaced took 2.7 s on 222 characters and 4.8 s on 280 KB, so 1 s holds the line without timing the runner.
+    assert.ok(ms < 1000, `${what}: ${Number.isFinite(ms) ? `${Math.round(ms)} ms` : 'stopped after 3 s'}`);
+  }
+});
+
+test('#1322 false positives: comments and a script’s strings are never read as fonts it applies', () => {
+  for (const code of [
+    `<script>out.textContent = "set fontFamily: 'Georgia'";</script>`,
+    "<script>// el.style.fontFamily='Georgia'\nlet x = 1;</script>",
+    "<script>/* ctx.font = '12px Georgia' */ let x = 1;</script>",
+    '<!-- <div style="font-family:Georgia"> -->',
+    '<!-- <style>p { font-family: Georgia }</style> -->',
+  ])
+    assert.deepEqual(refused(code), [], code);
+});
+
+test('#1322 the platform fallbacks common stacks end with may follow an allowed family, and emoji fonts anywhere', () => {
+  for (const code of [
+    '<style>body { font-family: system-ui, Roboto, Helvetica, Arial, sans-serif; }</style>',
+    '<style>body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji"; }</style>',
+    '<style>code { font-family: ui-monospace, SFMono-Regular, "Liberation Mono", "Courier New", monospace; }</style>',
+    '<span style="font-family: \'Noto Color Emoji\'">🎉</span>',
+  ])
+    assert.deepEqual(refused(code), [], code);
+  // A fallback first is the font the app asks for, and any other name after an allowed one is still its own font.
+  assert.match(refused('<style>body { font-family: Arial, sans-serif; }</style>')[0] ?? '', /“Arial”/);
+  assert.match(refused('<style>body { font-family: -apple-system, Georgia, serif; }</style>')[0] ?? '', /“Georgia”/);
+});
+
+test('#1322 one tag with as many attributes as the limit holds is read, not a crash', () => {
+  // About 200,000 attributes: a call spread over them throws RangeError, which validateBlock would pass up.
+  const tag = `${'<a'}${' b'.repeat(299_000)} style="font-family: Georgia">`;
+  assert.ok(tag.length <= LIMITS.appCode);
+  assert.match(refused(tag)[0] ?? '', /“Georgia”/);
+});
