@@ -4,7 +4,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { hostUpdateRefusal } from '../shared/block-updates.mjs';
+import { hostShowRefusal, hostUpdateRefusal } from '../shared/block-updates.mjs';
 import { connectShim, makeBroker, makeHome } from './remote-broker-fixtures.mjs';
 
 test('#854 an outcome or a withdraw update_block from a host is queued for Postbox, as the laptop takes it', async () => {
@@ -64,6 +64,49 @@ test('#827 the daemon refuses an invalid update_block in the same words as the s
     const r = await s.call('c1', 'update_block', { block });
     assert.equal(r.ok, false);
     assert.equal(r.text, hostUpdateRefusal(block));
+  } finally {
+    await h.done();
+  }
+});
+
+test('#1319 the daemon refuses an invalid show_block in the same words as the shim, and sends a valid one', async () => {
+  const h = makeHome();
+  try {
+    h.turn('t1');
+    const k = makeBroker(h);
+    const s = connectShim(k.b, 't1');
+    await s.next('welcome');
+    const block = { id: 'pick', type: 'confirm', version: 1, fallback: 'Push?' };
+    const r = await s.call('c1', 'show_block', { block });
+    assert.equal(r.ok, false);
+    assert.equal(r.text, hostShowRefusal(block));
+    assert.match(r.text, /statement is required\./);
+    const fixed = { ...block, statement: 'Push main?', confirmLabel: 'Push' };
+    assert.equal((await s.call('c2', 'show_block', { block: fixed })).ok, true);
+    assert.deepEqual(
+      k.sent.map((m) => m.id),
+      ['c2'],
+    );
+  } finally {
+    await h.done();
+  }
+});
+
+test('#1319 the daemon refuses a show_app whose app the laptop would refuse, as it does an update_app', async () => {
+  const h = makeHome();
+  try {
+    h.turn('t1');
+    const k = makeBroker(h);
+    const s = connectShim(k.b, 't1');
+    await s.next('welcome');
+    const r = await s.call('c1', 'show_app', { id: 'chart', title: 'Chart', code: '<p>Hi</p>', permissions: ['Not A Tool'] });
+    assert.equal(r.ok, false);
+    assert.match(r.text, /^The app wasn’t shown: permissions\[0\] isn’t a valid tool name\./);
+    assert.equal((await s.call('c2', 'show_app', { id: 'chart', title: 'Chart', code: '<p>Hi</p>' })).ok, true);
+    assert.deepEqual(
+      k.sent.map((m) => m.id),
+      ['c2'],
+    );
   } finally {
     await h.done();
   }

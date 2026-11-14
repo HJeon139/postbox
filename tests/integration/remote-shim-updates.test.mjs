@@ -50,3 +50,26 @@ test('#854 an update_block carrying a review’s files isn’t checked in the ca
   const call = await daemon.next('call');
   assert.deepEqual(call.args.block, block, 'sent to the daemon, not refused for its files');
 });
+
+test('#1319 an invalid show_block is refused in the call, as an update is; a valid one, and an app whose intent is long, are sent', async (t) => {
+  const { shim, daemon } = await setup(t);
+  await daemon.connected();
+  const refused = await shim.response(shim.tool('show_block', { block: { id: 'pick', type: 'choice', version: 1, options: ['Yes', 'No'] } }));
+  assert.equal(refused.result.isError, true);
+  assert.match(textOf(refused), /^The block wasn’t shown: .*fallback is required\..*A choice block looks like this: \{/);
+  // Postbox trims an app’s intent rather than refusing it (#995), so the host doesn’t refuse it either.
+  const app = { id: 'chart', type: 'app', version: 1, fallback: 'A chart', code: '<p>Hi</p>', intent: 'word '.repeat(400) };
+  const choice = { id: 'pick', type: 'choice', version: 1, fallback: 'Yes or no?', options: [{ id: 'yes', label: 'Yes' }] };
+  const calls = [];
+  for (const block of [choice, app]) {
+    const id = shim.tool('show_block', { block });
+    const call = await daemon.next('call', calls.length);
+    calls.push(call);
+    daemon.send('result', { id: call.id, ok: true, text: 'Queued for Postbox.' });
+    assert.equal((await shim.response(id)).result.isError, undefined);
+  }
+  assert.deepEqual(
+    calls.map((c) => c.args.block.id),
+    ['pick', 'chart'],
+  );
+});

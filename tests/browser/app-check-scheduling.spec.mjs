@@ -82,10 +82,10 @@ test('#37 a visible app keeps running through another conversation’s check wit
   await synced(page, app);
   await expect.poll(() => visibleRoom.rt.store.state.apps['visible-counter'].check.status, { timeout: 30_000 }).toBe('passed');
   const iframe = page.locator('iframe.app-iframe[title="Visible counter"]');
+  // The handle is for checking the same iframe stays mounted; the counter is read through a locator that finds it.
   const handle = await iframe.elementHandle();
-  const frame = await handle?.contentFrame();
-  if (!handle || !frame) throw new Error('The visible counter has no frame to test.');
-  const counter = frame.locator('#counter');
+  if (!handle) throw new Error('The visible counter has no frame to test.');
+  const counter = iframe.contentFrame().locator('#counter');
   await expect.poll(async () => Number(await counter.textContent())).toBeGreaterThan(0);
   const before = Number(await counter.textContent());
   await page.mouse.move(1, 1);

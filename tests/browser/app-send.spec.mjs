@@ -176,9 +176,10 @@ test('#38 Grabber: a frame you aren’t pointing at can’t keep focus it moves 
   await show('still', 'Still', STILL);
   const grabber = await show('grabber', 'Grabber', GRABBER);
   // In the app’s own frame, as no person could: Grabber starts grabbing now.
-  const inGrabber = await (await frameOf(page, 'Grabber').elementHandle())?.contentFrame();
-  if (!inGrabber) throw new Error('Grabber’s frame has no document to start it in');
-  await inGrabber.evaluate(() => /** @type {any} */ (window).go());
+  await frameOf(page, 'Grabber')
+    .contentFrame()
+    .locator(':root')
+    .evaluate(() => /** @type {any} */ (window).go());
   // Grabber’s next try: it sends right after it moves focus into itself, every 200 ms, until Postbox stops it.
   const nextTry = () =>
     page.evaluate(

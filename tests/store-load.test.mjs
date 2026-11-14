@@ -5,7 +5,7 @@
 // and the next write starts on a line of its own (tests/store-jsonl-recovery.test.mjs cuts a commit at every byte).
 
 import assert from 'node:assert/strict';
-import { readFile, stat, writeFile } from 'node:fs/promises';
+import { readdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { Store } from '../server/store.mjs';
@@ -50,4 +50,24 @@ test('a last line without its newline never finished: it’s dropped, and the ne
   assert.equal(b.state.seq, 2);
   assert.deepEqual(Object.keys(b.state.threads).sort(), ['t1', 't3']);
   await b.close();
+});
+
+test('load() removes a snapshot’s temporary file a stopped Postbox left, and keeps the snapshot and the log', async () => {
+  // A process stopped mid-snapshot leaves snapshot.json.<pid>.tmp, up to about 190 MB at 1,000,000 items, and nothing
+  // else removes it. The store holds the folder’s lock by then, so no other writer’s file is in progress there.
+  const dir = await tmp();
+  const seed = await new Store(dir).load();
+  seed.emit('thread', { id: 't1', members: [] });
+  await seed.snapshot();
+  seed.emit('thread', { id: 't2', members: [] });
+  await seed.close();
+  await writeFile(join(dir, 'snapshot.json.4242.tmp'), '{"postbox":"snapshot","format":2}\n');
+  const store = await new Store(dir).load();
+  assert.deepEqual(Object.keys(store.state.threads).sort(), ['t1', 't2']);
+  assert.deepEqual(
+    (await readdir(dir)).filter((n) => n.startsWith('snapshot')),
+    ['snapshot.json'],
+    'the temporary file is gone',
+  );
+  await store.close();
 });

@@ -98,8 +98,8 @@ for (const host of ['127.0.0.1', 'localhost'])
 
 /**
  * Opens a page at `pageOrigin` that the test serves, frames `src` in it, and waits for the frame’s load event. Gives
- * back the frame as Playwright sees it, the statuses the server answered `src` with, and the messages the page has
- * heard from the frame.
+ * back the URL the frame holds as Playwright sees it, read again at each call, the statuses the server answered `src`
+ * with, and the messages the page has heard from the frame.
  * @param {import('@playwright/test').Page} page @param {string} pageOrigin @param {string} src
  */
 async function frameFrom(page, pageOrigin, src) {
@@ -122,9 +122,8 @@ async function frameFrom(page, pageOrigin, src) {
       }),
     src,
   );
-  const frame = await (await page.locator('iframe').elementHandle())?.contentFrame();
-  if (!frame) throw new Error(`No frame for ${src}`);
-  return { frame, answered, heard: () => page.evaluate(() => /** @type {any} */ (window).heard) };
+  const url = () => page.mainFrame().childFrames()[0]?.url() ?? null;
+  return { url, answered, heard: () => page.evaluate(() => /** @type {any} */ (window).heard) };
 }
 
 const PATHS = [
@@ -140,9 +139,9 @@ test.describe('#992: framed from outside Postbox’s page', () => {
     for (const [kind, path, first] of PATHS)
       test(`a page at Postbox’s own origin, ${host}, runs ${kind} it frames, so a refusal below is the header’s`, async ({ page }) => {
         const src = at(host) + path;
-        const { frame, answered, heard } = await frameFrom(page, at(host), src);
+        const { url, answered, heard } = await frameFrom(page, at(host), src);
         expect(answered, 'the server answered it').toEqual([200]);
-        expect(frame.url(), 'the frame holds the sandbox page').toBe(src);
+        await expect.poll(url, { message: 'the frame holds the sandbox page' }).toBe(src);
         await expect.poll(heard, { message: 'its script ran and posted its first message' }).toContainEqual(expect.stringMatching(first));
       });
 
@@ -157,11 +156,11 @@ test.describe('#992: framed from outside Postbox’s page', () => {
       test(`${c.name}: ${kind} never runs`, async ({ page, browserName }) => {
         // Firefox reports the refusal on the framing page’s console; Chromium doesn’t, to Playwright.
         allowPageError(page, /frame-ancestors/);
-        const { frame, answered, heard } = await frameFrom(page, c.page(), c.sandbox() + path);
+        const { url, answered, heard } = await frameFrom(page, c.page(), c.sandbox() + path);
         expect(answered, 'the browser asked for the sandbox page and got it, so what refused it was its header').toEqual([200]);
-        expect(frame.url(), 'the frame holds the browser’s error page, not the sandbox page').toBe(
-          browserName === 'firefox' ? '' : 'chrome-error://chromewebdata/',
-        );
+        await expect
+          .poll(url, { message: 'the frame holds the browser’s error page, not the sandbox page' })
+          .toBe(browserName === 'firefox' ? '' : 'chrome-error://chromewebdata/');
         expect.soft(await heard(), 'and nothing came from it').toEqual([]);
       });
 });

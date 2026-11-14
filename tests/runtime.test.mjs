@@ -200,7 +200,7 @@ test('a turn you didn’t start keeps the agent needing you for the block it jus
   assert.equal(store.state.sessions[se.id].state, 'needs');
 });
 
-test('an invalid block is stored with its fallback, never rendered as given', async () => {
+test('#1319 an agent’s invalid block is refused, and nothing is stored or rendered', async () => {
   const { rt, store, t, adapter } = setup();
   let result;
   adapter.next.push(async (c) => {
@@ -208,10 +208,12 @@ test('an invalid block is stored with its fallback, never rendered as given', as
   });
   rt.sendMessage(t.id, { text: 'go' });
   await settle(rt);
-  const b = store.items(t.id).find((i) => i.kind === 'block');
-  assert.equal(b.valid, false);
-  assert.equal(b.fallback, 'Plain version');
+  assert.equal(
+    store.items(t.id).find((i) => i.kind === 'block'),
+    undefined,
+  );
   assert.equal(result.ok, false);
+  assert.match(result.message, /^The block wasn’t shown: Unknown type “timeline”/);
 });
 
 test('after the room’s chain limit of agent wakes in a row, the next one waits for your confirm', async () => {

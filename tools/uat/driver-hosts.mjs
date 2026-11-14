@@ -160,7 +160,7 @@ export async function install(kit, id) {
 
 /**
  * Settings › Personas › Edit @handle › Runs on: a host’s id, or null for this computer; then Save. Throws with the
- * refusal under Runs on.
+ * refusal under Runs on, or when the editor doesn’t close.
  * @param {any} kit @param {string} handle @param {string|null} hostId
  */
 export async function placePersona(kit, handle, hostId) {
@@ -170,14 +170,18 @@ export async function placePersona(kit, handle, hostId) {
   await kit.clickAt(`document.querySelector(${js(`.dialog [aria-label="Edit ${handle}"]`)})`, `Edit ${handle}`);
   await until(kit, `document.getElementById('pe-where')`, `Runs on in @${handle}’s editor`);
   await pick(kit, '#pe-where', hostId ?? '');
+  // Runs on changes where the Model field asks for its models (#1304), and the answer changes the field’s help, which
+  // moves Save. Landing between the click’s aim and the click, it made the click miss: wait for the answer first.
+  await until(kit, `!/^Asking /.test(document.getElementById('pe-m-help')?.textContent ?? '')`, `the models for @${handle}`, 120_000);
   await kit.clickAt(byText(TOP, 'button.send', 'Save'), 'Save');
   for (let i = 0; i < 40; i++) {
     const err = await kit.ev(`document.getElementById('pe-where-err')?.textContent ?? null`);
     if (err) throw new Error(`@${handle} couldn’t be placed: ${err}`);
-    if (!(await kit.ev(`!!document.getElementById('pe-where')`))) break;
+    if (!(await kit.ev(`!!document.getElementById('pe-where')`))) return closeAll(kit);
     await sleep(250);
   }
-  await closeAll(kit);
+  // Still open: Save didn’t take, and closing it now would drop the change without a word (#1320).
+  throw new Error(`@${handle}’s editor is still open after Save, 10 s on: the change wasn’t saved.`);
 }
 
 /**

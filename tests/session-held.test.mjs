@@ -163,7 +163,7 @@ test('an urgent note given on a tool result behind a held commit keeps a notice 
 
 test('a reply streamed behind a held commit holds one session change for its state, not one per chunk', async () => {
   const f = await heldRoom();
-  const patches = () => f.store.heldLog.filter((j) => j.held.type === 'session.patch' && j.held.data.id === f.alpha.id);
+  const patches = () => [...f.store.heldLog].filter((j) => j.held.type === 'session.patch' && j.held.data.id === f.alpha.id);
   /** @type {any[][]} */
   const during = [];
   let streamed = () => {};

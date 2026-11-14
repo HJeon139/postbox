@@ -3,14 +3,14 @@
 // server/model-lists.mjs): this computer’s, or, for an agent that runs on a host, the host’s (#1304). Whatever the
 // person types goes to the harness as its --model.
 
-import { BACKENDS, codexDefault, effortNamedBy, GEMINI_MODEL, modelDefault, modelName } from '/shared/agent-facts.mjs';
+import { BACKENDS, codexDefault, effortNamedBy, modelDefault, modelName } from '/shared/agent-facts.mjs';
 import { api, client } from './client.mjs';
 import { h } from './dom.mjs';
 
 /** What a backend can do (server/adapters/adapter.mjs, capabilities), as /api/state serves it (#117). */
 export const capsOf = (backend) => client.config.backends?.[backend] ?? {};
-/** The models to suggest for a backend: the last its harness listed, else Gemini’s on Antigravity, else none. */
-export const modelsFor = (backend) => capsOf(backend).models ?? (backend === 'antigravity-cli' ? [GEMINI_MODEL] : []);
+/** The models to suggest for a backend: the last its harness listed, else its preferred model (Antigravity’s Gemini), else none. */
+export const modelsFor = (backend) => capsOf(backend).models ?? (capsOf(backend).preferModel ? [capsOf(backend).preferModel.id] : []);
 
 /** Where the suggestions come from: the backend here, or on the host the agent runs on (st.remote). */
 const sourceOf = (st) => (st.remote ? `${st.backend}@${st.remote}` : st.backend);
@@ -49,28 +49,60 @@ function askModels(st, paint) {
   );
 }
 
-/** What the field says about where its suggestions came from, or null when the harness listed them just now. */
+/**
+ * What the field can say about where its suggestions came from, for the current backend and host: each message, and
+ * the one it says now, or null when the harness listed them just now.
+ * @returns {{ shown: string | null, all: string[] }}
+ */
 function listHelp(st) {
   const name = BACKENDS.find(([id]) => id === st.backend)?.[1] ?? st.backend;
   const list = st.modelLists?.[sourceOf(st)];
-  if (list === undefined || list?.fresh) return null;
+  /** One message for each answer: listed none, or listed some before. @param {string} why */
+  const either = (why, some, none) => ({ some: `${why}${some}`, none: `${why}${none}` });
+  /** @type {Record<string, { some: string, none: string }>} */
+  let answers;
+  let asking;
   if (!st.remote) {
-    if (list === null) return `Asking ${name} for its models…`;
-    return list.models.length
-      ? `${name} didn’t list its models just now, so these are the ones it listed last. Any model you type goes to it as --model.`
-      : `${name} didn’t list its models, so type the one you want: it goes to ${name} as --model.`;
+    asking = `Asking ${name} for its models…`;
+    answers = {
+      'not-listed': {
+        some: `${name} didn’t list its models just now, so these are the ones it listed last. Any model you type goes to it as --model.`,
+        none: `${name} didn’t list its models, so type the one you want: it goes to ${name} as --model.`,
+      },
+    };
+  } else {
+    const host = client.state.hosts?.[st.remote]?.name ?? 'the host';
+    asking = `Asking ${name} on ${host} for its models…`;
+    const some = '. These are the ones it listed last, and any model you type goes to it as --model.';
+    const none = `. Type the model you want: it goes to ${name} there as --model.`;
+    answers = {
+      unreachable: either(`Postbox couldn’t reach ${host} to list ${name}’s models`, some, none),
+      outdated: either(`Postbox on ${host} is older than this one and can’t list models; install this version there under Settings, Hosts`, some, none),
+      'no-cli': either(`${name} wasn’t found on ${host}, so it couldn’t list its models`, some, none),
+      'not-listed': either(`${name} on ${host} didn’t list its models`, some, none),
+    };
   }
-  const host = client.state.hosts?.[st.remote]?.name ?? 'the host';
-  if (list === null) return `Asking ${name} on ${host} for its models…`;
-  const WHY = {
-    unreachable: `Postbox couldn’t reach ${host} to list ${name}’s models`,
-    outdated: `Postbox on ${host} is older than this one and can’t list models; install this version there under Settings, Hosts`,
-    'no-cli': `${name} wasn’t found on ${host}, so it couldn’t list its models`,
-  };
-  const why = WHY[list.why] ?? `${name} on ${host} didn’t list its models`;
-  return list.models.length
-    ? `${why}. These are the ones it listed last, and any model you type goes to it as --model.`
-    : `${why}. Type the model you want: it goes to ${name} there as --model.`;
+  const all = [asking, ...Object.values(answers).flatMap((a) => [a.some, a.none])];
+  if (list === undefined || list?.fresh) return { shown: null, all };
+  if (list === null) return { shown: asking, all };
+  const answer = (Object.hasOwn(answers, list.why ?? '') ? answers[list.why] : null) ?? answers['not-listed'];
+  return { shown: list.models.length ? answer.some : answer.none, all };
+}
+
+/**
+ * The help under the field, in one place whose height never changes with the answer (#1327): every message it could
+ * show for this backend and host sits in the same grid cell, only the one it says now showing, so the cell is as tall
+ * as the tallest and the answer coming in moves nothing below it, Save included. Choosing another backend or host may
+ * resize it, with the person’s own click.
+ * @param {{ shown: string | null, all: string[] }} help @param {string} idp
+ */
+function helpSlot(help, idp) {
+  return h(
+    'span.help.held-help',
+    help.all.map((text) =>
+      text === help.shown ? h('span', { id: `${idp}-m-help`, 'data-model-help': '' }, text) : h('span', { 'aria-hidden': 'true' }, text),
+    ),
+  );
 }
 
 /**
@@ -80,6 +112,7 @@ function listHelp(st) {
 export function modelField(st, paint, { idp }) {
   askModels(st, paint);
   const help = listHelp(st);
+  const real = capsOf(st.backend).local || st.remote;
   return h(
     'div.field',
     h('label.label', { for: `${idp}-m` }, 'Model'),
@@ -88,7 +121,7 @@ export function modelField(st, paint, { idp }) {
       value: st.model,
       list: `${idp}-models`,
       spellcheck: 'false',
-      'aria-describedby': help ? `${idp}-m-help` : null,
+      'aria-describedby': help.shown ? `${idp}-m-help` : null,
       oninput: (e) => {
         st.model = e.target.value.trim();
         st.modelDefaulted = false;
@@ -108,7 +141,7 @@ export function modelField(st, paint, { idp }) {
       { id: `${idp}-models` },
       suggested(st).map((m) => h('option', { value: m, label: codexDefault(st.backend, m) ? modelName(st.backend, m) : null })),
     ),
-    help ? h('span.help', { id: `${idp}-m-help`, 'data-model-help': '' }, help) : null,
+    real ? helpSlot(help, idp) : null,
     // Codex picks its own model for `auto`: it isn’t one of Claude’s.
     st.backend === 'codex' ? h('span.help', 'auto is Codex’s default: the model your Codex configuration picks.') : null,
   );
