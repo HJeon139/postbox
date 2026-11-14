@@ -248,9 +248,10 @@ export function selectBackend(st, id, config = {}) {
 
 /**
  * Applies a boilerplate to the new-agent sheet’s state. A boilerplate that names a backend (such as Gemini on
- * the Antigravity CLI) selects that backend when it’s available on this computer, and prefers the boilerplate’s
- * model when offered, then the model a new agent of that backend starts on, then the boilerplate’s model. Picking a
- * generic boilerplate after a backend-bound one restores the default backend, model and effort.
+ * the Antigravity CLI) selects that backend when it’s available on this computer. One the person saved starts on its
+ * own model, listed or not (#1305). Postbox’s own (builtIn) start on theirs when the backend offers it, else on the
+ * model a new agent of that backend starts on, else on the boilerplate’s model. Picking a generic boilerplate after a
+ * backend-bound one restores the default backend, model and effort.
  * @param {any} st @param {any} b @param {any} [config]
  */
 export function applyBoilerplate(st, b, config = {}) {
@@ -268,7 +269,10 @@ export function applyBoilerplate(st, b, config = {}) {
     const list = Array.isArray(offered) ? offered : [];
     // The model a new agent of this backend starts on, once it has listed any (modelDefault, #390).
     const preferred = list.length ? modelDefault(b.backend, config) : undefined;
-    st.model = (b.model && list.includes(b.model) ? b.model : preferred) ?? b.model ?? config?.defaultModel;
+    // A boilerplate the person saved keeps its model, listed or not, as a typed one does (#1305). Postbox’s own
+    // (builtIn) name a model Postbox picked, so they fall back to one the backend lists.
+    const keep = Boolean(b.model) && (!b.builtIn || list.includes(b.model));
+    st.model = (keep ? b.model : preferred) ?? b.model ?? config?.defaultModel;
     st.modelDefaulted = false;
     st.effort = effortNamedBy(st.backend, st.model) ?? config?.defaultEffort ?? 'medium';
   } else if (prevFromBp) {
