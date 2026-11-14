@@ -34,7 +34,8 @@ export function keptRef(path) {
 export async function storeReviewFiles(assets, wanted, read) {
   if (!Array.isArray(wanted)) throw new AgentFileError('files is a list: [{ name?, path }].');
   if (wanted.length > LIMITS.appFiles) throw new AgentFileError(`A review carries up to ${LIMITS.appFiles} files.`);
-  if (!assets.blobs) throw new AgentFileError('This Postbox can’t store files.');
+  const { blobs } = assets;
+  if (!blobs) throw new AgentFileError('This Postbox can’t store files.');
   // Every file is read and checked before any is stored, so a call refused at its last file leaves no blob behind.
   /** @type {{ name: string, path: unknown, buf: Buffer, info: { type: string, width: number, height: number } }[]} */
   const checked = [];
@@ -56,16 +57,16 @@ export async function storeReviewFiles(assets, wanted, read) {
   const puts = [];
   try {
     for (const { name, path, buf, info } of checked) {
-      const { sha256, size, fresh } = await assets.blobs.put(buf, { staged: true });
+      const { sha256, size, fresh } = await blobs.put(buf, { staged: true });
       puts.push({ sha256, fresh });
       stored.push({ name, ref: keptRef(path), sha256, size, ...info });
     }
   } catch (e) {
     // A put that failed settled its own hold (Blobs.put); the ones before it are released here, so none is left.
-    await assets.blobs.settle(puts, false);
+    await blobs.settle(puts, false);
     throw e;
   }
-  return { files: stored, settle: (keep) => assets.blobs.settle(puts, keep) };
+  return { files: stored, settle: (keep) => blobs.settle(puts, keep) };
 }
 
 /** An image’s type and size by its bytes (imageInfo), refused in the agent’s words with its name. @param {string} name @param {Buffer} buf */
