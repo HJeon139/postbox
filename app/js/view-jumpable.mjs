@@ -1,5 +1,5 @@
 // What view-jump.mjs needs of a transcript's view, and the pin a jump leaves where it landed (#712). Moved from
-// view-state.mjs, unchanged.
+// view-state.mjs.
 
 import { inSight, measure } from './view-box.mjs';
 import { atEnd, box, gapOf, heldBy, viewTop } from './view-geometry.mjs';
@@ -18,6 +18,8 @@ function pin(v, item) {
   if (!s || v.dead) return;
   v.stuck = atEnd(s);
   v.pinned = !v.stuck;
+  // What the pointer held stays where the jump left it, not where it was (view-hold.mjs).
+  v.hold = null;
   if (v.stuck) v.held = measure(v, s);
   v.anchor = { key: /** @type {string} */ (item.dataset.key), at: item.getBoundingClientRect().top - viewTop(v, s) };
   v.lastTop = s.scrollTop;

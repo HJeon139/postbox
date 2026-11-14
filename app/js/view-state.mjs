@@ -3,22 +3,25 @@
 // It owns that state for one transcript, holds the anchor through changes in size (#88, #297, #341), and publishes what
 // it is on the transcript as data-view-* (publish, view-publish.mjs). Moved from thread.mjs’s mountTranscript (#531).
 
+import { bind, unbind } from './view-bind.mjs';
 import { browserMoved, measure } from './view-box.mjs';
+/** @typedef {import('./view-hold.mjs').Hold} Hold */
 /**
  * @typedef {{ el: HTMLElement, inPanel: boolean, nodes: Map<string, HTMLElement>, unseen: number, stuck: boolean,
  *   anchor: { key: string, at: number, shown?: number, inView?: boolean } | null, pinned: boolean, smoothing: boolean, dead: boolean,
  *   shown: number, lastTop: number, seenTop: number, heardYou: boolean, held: { end: number, last: number, width: number },
  *   jump: ((n: number) => void) | null, bound: any, size: string, sizes: ResizeObserver, changes: MutationObserver,
- *   changed?: boolean, noted?: number }} View
+ *   changed?: boolean, noted?: number, hold?: Hold | null, unpoint?: () => void }} View
  */
-import { onlyRemoves } from './view-changes.mjs';
+import { changed, noteEnd, redrawn } from './view-changes.mjs';
 import { atEnd, box, findAnchor, gapOf, viewTop } from './view-geometry.mjs';
+import { heldNode, holdNode, takeHold } from './view-hold.mjs';
 import { register, unregister } from './view-jump.mjs';
 import { jumpable } from './view-jumpable.mjs';
 import { newView } from './view-new.mjs';
 import { countUnseen, PILL_ROOM, seen, showJump } from './view-pill.mjs';
 import { publish } from './view-publish.mjs';
-import { DRAWN, drawNewest, skipOffscreen } from './view-skip.mjs';
+import { drawNewest, skipOffscreen } from './view-skip.mjs';
 import { landed, smoothEnded, whenSmoothEnds } from './view-smooth.mjs';
 
 /** @param {View} v */
@@ -27,11 +30,21 @@ function holdAnchor(v) {
   const n = v.anchor && v.nodes.get(v.anchor.key);
   if (!s || !n?.isConnected || !v.anchor) return;
   const top = () => n.getBoundingClientRect().top - viewTop(v, s);
+  // The element at the pointer or the middle holds first, and the anchor is where that left it: a picture loading
+  // above it in the same reply moves the reply, not what you read (view-hold.mjs).
+  const held = heldNode(v);
+  if (held && holdNode(v, held, s)) {
+    const at = top();
+    v.anchor = { ...v.anchor, at, shown: at };
+    publish(v);
+    return;
+  }
   const d = top() - v.anchor.at;
   if (Math.abs(d) >= 1) {
     s.scrollTop += d;
     v.lastTop = s.scrollTop;
   }
+  takeHold(v);
   // The browser lands a scroll on a whole pixel, up to half a pixel from a fraction it was aimed at, and a change under
   // a pixel isn’t held at all. The anchor holds the place it aimed for, so the misses don’t add up while a jump’s target
   // is pinned (#712), but what’s published is where it is, now: its scroll event, if any, comes a frame later (#1245).
@@ -46,6 +59,7 @@ function holdAnchor(v) {
 function scrollToEnd(v, smooth = false) {
   v.stuck = true;
   v.pinned = false;
+  v.hold = null;
   const s = box(v);
   v.smoothing = !!s && smooth && !v.inPanel && 'onscrollend' in window && !atEnd(s);
   if (v.smoothing && matchMedia('(prefers-reduced-motion: reduce)').matches) v.smoothing = false;
@@ -82,8 +96,12 @@ function follow(v) {
     v.anchor = findAnchor(v);
     // The anchor is taken where the view now is, so that scroll is heard: heard() below mustn’t take it in again.
     v.lastTop = s.scrollTop;
+    takeHold(v);
   }
-  if (v.stuck) {
+  // Following, with the pointer on something you could click, or a click started: that holds, and the end waits.
+  const pointedAt = v.stuck ? heldNode(v) : null;
+  if (pointedAt && holdNode(v, pointedAt, s)) v.held = measure(v, s);
+  else if (v.stuck) {
     const now = measure(v, s);
     if (now.width !== v.held.width) release(v);
     else if (now.end < v.held.end && Math.abs(now.last - v.held.last) < 1 && v.held.end > s.clientHeight) {
@@ -119,6 +137,10 @@ function heard(v, s) {
   // shrank, never you: a scroll up doesn’t reach the end (onScroll’s rule). The anchor holds (#712a).
   if (unheard < 0 && atEnd(s)) return;
   v.anchor = { key: v.anchor.key, at: v.anchor.at - unheard };
+  if (v.hold) {
+    v.hold.at -= unheard;
+    v.hold.itemAt -= unheard;
+  }
   v.lastTop = s.scrollTop;
   // Its event then looks like the transcript’s own scroll: onScroll still counts it as one the transcript didn’t make.
   v.heardYou = true;
@@ -152,6 +174,9 @@ function onScroll(v) {
   v.seenTop = s.scrollTop;
   v.size = sizeOf(s);
   if (yours) v.pinned = false;
+  // Following, after your scroll, what the pointer is on is where the view is now. The view’s own scrolls keep the
+  // place the hold aims for, so the browser’s rounding of each doesn’t add up (view-hold.mjs).
+  if (v.stuck && yours) takeHold(v);
   // Reading at the end, the view was put there, by a clamp or by its own hold, not by you: keep the anchor you read at.
   if (v.stuck || atEnd(s)) return;
   if (!moved) holdAnchor(v);
@@ -159,28 +184,7 @@ function onScroll(v) {
   // does the first reply in view, taken when the middle was skipped, until you scroll again (findAnchor, #1257).
   if (v.pinned || (!yours && v.anchor?.inView)) return;
   v.anchor = findAnchor(v);
-}
-/** @param {View} v @param {() => void} scrolled @param {() => void} resized */
-function bind(v, scrolled, resized) {
-  const s = box(v);
-  if (v.bound || !s || !v.el.isConnected) return;
-  v.bound = v.inPanel ? s : window;
-  v.bound.addEventListener('scroll', scrolled, { passive: true });
-  addEventListener('resize', resized);
-  v.sizes.observe(v.el);
-  // An item's first draw can grow inside the height held while stuck, unseen by v.sizes (view-skip.mjs, DRAWN).
-  v.el.addEventListener(DRAWN, resized, true);
-  // What’s around it changing moves the end too: the composer, the panel’s height, the thread’s root above. A shrink
-  // there clamps the view like one in the transcript, so its changes are noted the same way (#360). The panel’s
-  // composer isn’t beside the transcript: it’s in the panel’s foot, under the scroll box.
-  const parent = v.el.parentElement;
-  const around = parent ? [...parent.children].filter((n) => n !== v.el) : [];
-  const foot = v.inPanel ? v.el.closest('.sidepanel')?.querySelector('.sp-foot') : null;
-  if (parent) v.sizes.observe(parent);
-  for (const n of foot ? [...around, foot] : around) {
-    v.sizes.observe(n);
-    v.changes.observe(n, { childList: true, subtree: true, attributes: true, attributeFilter: ['style'] });
-  }
+  if (yours) takeHold(v);
 }
 /**
  * Once the transcript is on the page: to the newest message, or back where you were before a rebuild.
@@ -189,7 +193,10 @@ function bind(v, scrolled, resized) {
 function settle(v, scrolled, resized) {
   // A rebuild can replace this transcript before the frame it was to settle in.
   if (v.dead) return;
-  bind(v, scrolled, resized);
+  bind(v, scrolled, resized, () => {
+    pointed(v);
+    publish(v);
+  });
   const s = box(v);
   if (v.stuck) scrollToEnd(v);
   else holdAnchor(v);
@@ -210,6 +217,7 @@ function settle(v, scrolled, resized) {
  * @param {View} v @param {string | null} [to]
  */
 function rebuilt(v, to = null) {
+  v.hold = null;
   if (to && v.nodes.get(to)?.isConnected) {
     v.stuck = false;
     v.anchor = null;
@@ -218,32 +226,22 @@ function rebuilt(v, to = null) {
   const kept = v.anchor && v.nodes.get(v.anchor.key)?.isConnected;
   if (!v.stuck && !kept) v.anchor = findAnchor(v);
 }
-/** After a change in the transcript, while stuck: where the view is, if it’s at the page’s new end (#297). @param {View} v */
-function noteEnd(v) {
-  const s = v.changed ? box(v) : null;
-  v.changed = false;
-  if (s && v.stuck && !v.dead && atEnd(s)) v.lastTop = Math.min(v.lastTop, s.scrollTop);
-}
 /**
- * A change in the transcript: the note is taken now, at most once a frame, and else by follow() after the frame’s
- * layout. One read per batch forced a layout of the whole page per batch: 823 in one 72 s freeze (#866). A batch that
- * only removes is noted at once whatever the frame (view-changes.mjs).
- * @param {View} v @param {MutationRecord[]} records
- */
-function changed(v, records) {
-  v.changed = true;
-  if (v.noted && !onlyRemoves(records)) return;
-  v.noted ||= requestAnimationFrame(() => (v.noted = 0));
-  noteEnd(v);
-}
-/**
- * An item drawn again whole, as a finished reply is: it may come out shorter, and the page may grow back before the
- * frame (#297), so the note is taken now, while it’s short. Once per redraw, not per streamed delta (#903).
+ * The pointer moved, pressed or let go (view-hold.mjs): what changed since the last frame holds first, then the hold
+ * is taken where the pointer is now. Following, with nothing left to hold, the view goes on to the end it waited for.
  * @param {View} v
  */
-function redrawn(v) {
-  v.changed = true;
-  noteEnd(v);
+function pointed(v) {
+  const s = box(v);
+  if (!s || v.dead || !v.bound) return;
+  if (!v.stuck) {
+    if (v.anchor) holdAnchor(v);
+    takeHold(v);
+    return;
+  }
+  if (v.hold) follow(v);
+  takeHold(v);
+  if (!v.hold && !atEnd(s) && !v.smoothing) follow(v);
 }
 // What arrived counts as unseen when the view isn’t on the newest message, including when follow() finds you
 // scrolled up in this frame, before its scroll event told the transcript (#341).
@@ -254,7 +252,8 @@ function grew(v) {
     drawNewest(v.el);
     follow(v);
   }
-  if (!v.stuck) countUnseen(v);
+  // Held short of the end for a click on its way, it counts too: a hold never hides what arrives (view-hold.mjs).
+  if (!v.stuck || v.hold) countUnseen(v);
 }
 
 /**
@@ -310,11 +309,7 @@ export function mountView({ el, inPanel, nodes, was }) {
     destroy() {
       v.dead = true;
       unregister(el);
-      v.sizes.disconnect();
-      v.changes.disconnect();
-      v.bound?.removeEventListener('scroll', scrolled);
-      el.removeEventListener(DRAWN, resized, true);
-      removeEventListener('resize', resized);
+      unbind(v, scrolled, resized);
     },
   };
 }

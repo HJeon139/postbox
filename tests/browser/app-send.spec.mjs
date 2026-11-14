@@ -255,9 +255,11 @@ for (const how of ['scrolls', 'moves (content above it changes)'])
     await show('filler', 'Filler', '<main style="height:600px;padding:12px"><p>Below</p></main>');
     lines(12, 'After');
     await synced(page, app);
-    const SHIFT = 120;
-    const f = frameOf(page, 'Still');
     const moving = how === 'scrolls';
+    // What’s under a resting pointer holds still while content around it changes (#1326), so the app comes under the
+    // pointer only when what the pointer rests on goes: there, a spacer twice as tall as the scroll’s shift.
+    const SHIFT = moving ? 120 : 240;
+    const f = frameOf(page, 'Still');
     // The app’s place, then the page or what’s above it moved by SHIFT, so the app is SHIFT px away from where it will
     // come to rest under the pointer. Content changing above is just below the middle of the window: Postbox holds
     // still the message you read there (#88), so the app moves only when it’s below that.
@@ -272,7 +274,8 @@ for (const how of ['scrolls', 'moves (content above it changes)'])
     );
     await settled(page);
     const b = await f.boundingBox();
-    const rest = { x: b.x + b.width / 2, y: b.y + 60 - SHIFT };
+    const spacer = moving ? null : await page.locator('#pb-spacer').boundingBox();
+    const rest = { x: b.x + b.width / 2, y: spacer ? spacer.y + spacer.height / 2 : b.y + 60 - SHIFT };
     await page.mouse.move(rest.x, rest.y);
     await frames(page);
     await expect(f, 'over the page, not the app, to begin with').not.toHaveClass(/\blive\b/);
@@ -292,14 +295,8 @@ for (const how of ['scrolls', 'moves (content above it changes)'])
     await page.mouse.down();
     await page.mouse.up();
     await expect.poll(() => state('still').clicks ?? 0, { message: 'the click to reach the app' }).toBe(clicks + 1);
-    // And away again: back as it was.
-    await f.evaluate(
-      (n, { scrolls, shift }) => {
-        if (scrolls) scrollBy(0, -shift);
-        else n.closest('[data-key]')?.before(Object.assign(document.createElement('div'), { id: 'pb-spacer', style: `height:${shift}px` }));
-      },
-      { scrolls: moving, shift: SHIFT },
-    );
+    // And away again, by a scroll: content added above no longer moves it from under the resting pointer (#1326).
+    await page.evaluate((shift) => scrollBy(0, -shift), SHIFT);
     await settled(page);
     await expect(f, 'no longer live once it moved away from the resting pointer').not.toHaveClass(/\blive\b/);
   });
