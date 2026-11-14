@@ -43,7 +43,7 @@ export function endedWithoutReply(turn, items) {
  * @param {any} rt @param {any} se @param {any} turn
  */
 export function emptyReply(rt, se, turn) {
-  rt.tellAgent(
+  rt.sessions.tell(
     se.id,
     'Your last turn in this conversation ended without a reply: nothing you wrote reached it, so no one read your answer. If you meant to report something, say it again now.',
   );

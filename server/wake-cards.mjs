@@ -47,7 +47,7 @@ export function askToWake(rt, from, parent, p, wake) {
  * @param {{ prose?: boolean }} [opts]  prose: the wake is an @-mention in a turn’s reply
  */
 export function askToAdd(rt, from, parent, p, wake, { prose = false } = {}) {
-  if (rt.sessionsIn(parent.id).some((x) => x.personaId === p.id))
+  if (rt.sessions.in(parent.id).some((x) => x.personaId === p.id))
     return { ok: false, message: `@${p.handle}’s session in this conversation was retired, so it can’t be woken.` };
   if (prose && declinedAdd(rt, parent.id, p.handle))
     return { ok: false, message: `the person chose not to add @${p.handle} to this conversation. Carry on without it, or ask the person.` };
@@ -121,13 +121,13 @@ function holdOnCard(rt, card, parent, from, p, wake) {
     held: [...held, { fromSessionId: from.id, from: from.handle, to: p.handle, text, replyIn, fromTurnId, itemId, at: Date.now() }],
   });
   const message = `Postbox is holding your message to @${p.handle}: ${cardName(card)} is waiting for the person. It goes to @${p.handle} when they allow that, so don’t send it again; if they don’t, you’ll be told.`;
-  if (itemId) rt.tellAgent(from.id, `Your mention of @${p.handle} is held. ${message}`);
+  if (itemId) rt.sessions.tell(from.id, `Your mention of @${p.handle} is held. ${message}`);
   return { ok: false, waiting: true, held: true, message };
 }
 
 /** The agent asking needs the person, at the card in the conversation (#121). */
 function needsCard(rt, from, parent, it, text) {
-  offerNeed(rt, from, { kind: 'hop', itemId: it.id, text, ...rt.awayFrom(from, parent.id) }, rt.turns.has(from.id) ? from.state : 'needs');
+  offerNeed(rt, from, { kind: 'hop', itemId: it.id, text, ...rt.sessions.awayFrom(from, parent.id) }, rt.turns.has(from.id) ? from.state : 'needs');
 }
 
 export function resolveHop(rt, threadId, itemId, allow) {
@@ -229,7 +229,7 @@ function sendHeld(rt, card, w, confirmed) {
   const r = rt.agentWake(w.fromSessionId, w.to, w.text, { confirmed, replyIn: w.replyIn, fromTurnId: w.fromTurnId, itemId: w.itemId });
   const se = rt.s.sessions[w.fromSessionId];
   if (!r.ok && !r.waiting && se && !se.retiredFork)
-    rt.tellAgent(se.id, `Your message to @${w.to} (“${clip(w.text, 120)}”), held on ${cardName(card)}, didn’t go: ${r.message}`);
+    rt.sessions.tell(se.id, `Your message to @${w.to} (“${clip(w.text, 120)}”), held on ${cardName(card)}, didn’t go: ${r.message}`);
 }
 
 /**
@@ -245,7 +245,7 @@ export function dropHeld(rt, se, how) {
   rt.threads.patchItem(conv, card.id, { held: card.held.filter((w) => !mine.includes(w)) });
   for (const w of mine)
     if (rt.s.sessions[w.fromSessionId] && !rt.s.sessions[w.fromSessionId].retiredFork && w.fromSessionId !== se.id)
-      rt.tellAgent(
+      rt.sessions.tell(
         w.fromSessionId,
         `@${se.handle} was ${how} before your message held for it (“${clip(w.text, 120)}”) went, so it won’t go. Wake it again if you still need it.`,
       );
@@ -264,11 +264,14 @@ export function closeHop(rt, conv, card, how) {
   const asker = rt.s.sessions[card.fromSessionId];
   releaseNeed(rt, asker, card.id);
   if (asker)
-    rt.tellAgent(asker.id, `${cardName(card).replace(`@${card.from}’s request`, 'Your request')} was closed: you were ${how}. Ask again if you still need it.`);
+    rt.sessions.tell(
+      asker.id,
+      `${cardName(card).replace(`@${card.from}’s request`, 'Your request')} was closed: you were ${how}. Ask again if you still need it.`,
+    );
   for (const w of card.held ?? []) {
     // The agent that asked has its note above, which covers its own wakes held here.
     if (!rt.s.sessions[w.fromSessionId] || w.fromSessionId === card.fromSessionId) continue;
-    rt.tellAgent(
+    rt.sessions.tell(
       w.fromSessionId,
       `Your message to @${w.to} (“${clip(w.text, 120)}”), held on ${cardName(card)}, didn’t go: ${why}. Send it again if you still need it.`,
     );

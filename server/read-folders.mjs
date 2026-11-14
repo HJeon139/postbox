@@ -105,7 +105,7 @@ export function inReadFolder(rt, sessionId, { tool, input, hostPrompt = null }) 
  * @param {any} rt @param {string} sessionId @param {string} dir
  */
 export function addReadFolder(rt, sessionId, dir) {
-  rt.updateSession(sessionId, (/** @type {any} */ se) => {
+  rt.sessions.update(sessionId, (/** @type {any} */ se) => {
     const dirs = se.readDirs ?? [];
     if (dirs.includes(dir)) return {};
     if (dirs.length >= MAX_READ_DIRS) throw httpError(422, `A conversation can have up to ${MAX_READ_DIRS} readable folders.`);

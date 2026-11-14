@@ -136,8 +136,8 @@ test('#120 G10: removing a host stops its turns first, then forgets its link and
   );
   assert.equal(rt.s.hosts[h.id], undefined);
   assert.deepEqual(rt.s.projects.p1.hostFolders, {});
-  const running = rt
-    .sessionsIn(t.id)
+  const running = arrange
+    .sessionsIn(rt, t.id)
     .filter((se) => rt.turns.has(se.id))
     .map((se) => se.handle);
   assert.deepEqual(running.sort(), ['elsewhere', 'near'], 'turns on this computer and other hosts run on');

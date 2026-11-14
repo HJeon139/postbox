@@ -42,7 +42,7 @@ function whatTheTurnIs(rt, se0, turn) {
     project: rt.s.projects[thread?.projectId] ?? null,
     thread: { id: turn.threadId, title: thread?.title ?? '', kind: thread?.kind ?? 'thread' },
     handles: rt.personas.handles(),
-    room: rt.roomOf(turn.threadId, se0),
+    room: rt.sessions.roomOf(turn.threadId, se0),
     /** What the adapter saved for this session last time, such as its own session id. */
     state: { ...(se0.backendState ?? {}) },
     saveState: (patch) => saveBackendState(rt, turn.sessionId, patch),
@@ -86,7 +86,7 @@ function turnHooks(rt, turn, live) {
      * and argument hints): [{ name, description?, argumentHint?, skill? }]. Kept on the session for the / menu.
      */
     commands(list) {
-      if (live()) rt.recordCommands(turn.sessionId, list);
+      if (live()) rt.sessions.recordCommands(turn.sessionId, list);
     },
     /**
      * A background job the agent started (#129): { id, toolUseId, label, command, outputFile, state: 'running' }, then
@@ -129,7 +129,7 @@ function replyWords(rt, se0, turn, live) {
       turn.said += delta;
       turn.partWords[id] = (turn.partWords[id] ?? 0) + delta.length;
       rt.store.emit('item.text', { threadId: turn.threadId, id, text: delta });
-      if (rt.store.pending.session(turn.sessionId)?.state !== 'gen') rt.updateSession(turn.sessionId, { state: 'gen', currentStep: 'Writing a reply' });
+      if (rt.store.pending.session(turn.sessionId)?.state !== 'gen') rt.sessions.update(turn.sessionId, { state: 'gen', currentStep: 'Writing a reply' });
     },
     compaction({ kept, total, summary }) {
       if (!live()) return;
@@ -144,7 +144,7 @@ function replyWords(rt, se0, turn, live) {
         total,
         summary: String(summary ?? '').slice(0, 20000),
       });
-      rt.updateSession(turn.sessionId, { compactions: n, ctx: Math.round((kept / total) * 100) });
+      rt.sessions.update(turn.sessionId, { compactions: n, ctx: Math.round((kept / total) * 100) });
     },
     sources(list) {
       if (!live()) return;
@@ -205,7 +205,7 @@ function stepCallback(rt, se0, turn, live) {
       // A subagent’s step is its own: it moves its arc, not the agent’s state or step (#189).
       const own = state === 'running' && !(i >= 0 ? turn.steps[i] : step).who;
       // From the pending session: behind a held commit each call still counts, and the list keeps each (#796's class).
-      rt.updateSession(turn.sessionId, (s) => ({
+      rt.sessions.update(turn.sessionId, (s) => ({
         state: own ? 'tool' : s.state,
         toolCalls: [{ name: step.label, state: step.state, ms: step.ms }, ...s.toolCalls.filter((c) => c.name !== step.label)].slice(0, 5),
         toolCount: s.toolCount + (i >= 0 ? 0 : 1),
@@ -244,7 +244,7 @@ function reportCallbacks(rt, turn, live) {
       if (typeof patch.currentStep === 'string') allowed.currentStep = patch.currentStep.slice(0, 200);
       // A line of what it’s thinking or writing right now; cleared when the turn ends.
       if (typeof patch.glimpse === 'string') allowed.glimpse = glimpseOf(patch.glimpse);
-      rt.updateSession(turn.sessionId, allowed);
+      rt.sessions.update(turn.sessionId, allowed);
     },
     /**
      * What the backend reported about the run, kept on the session, bounded:
@@ -259,9 +259,9 @@ function reportCallbacks(rt, turn, live) {
       const patch = {};
       if (typeof r.model === 'string' && r.model.trim()) patch.lastModel = r.model.trim().slice(0, 100);
       if (EFFORT_LEVELS.includes(r.effort)) patch.lastEffort = r.effort;
-      if (Object.keys(patch).length) rt.updateSession(turn.sessionId, patch);
+      if (Object.keys(patch).length) rt.sessions.update(turn.sessionId, patch);
       if (Array.isArray(r.mcpServers))
-        rt.updateSession(turn.sessionId, {
+        rt.sessions.update(turn.sessionId, {
           mcpServers: {
             at: Date.now(),
             servers: r.mcpServers

@@ -47,7 +47,7 @@ export function agentWake(
   // The conversation: every session lives in one. A fork from before #228 wakes from the conversation it came from.
   // Read pending, as every thread this decides on: its hop count decides the limit, behind a held commit too (#796).
   const parent = rt.store.pending.thread(rt.threads.lineage(from.threadId).at(-1));
-  const target = rt.sessionsIn(parent.id).find((x) => x.personaId === p.id && !x.retiredFork);
+  const target = rt.sessions.in(parent.id).find((x) => x.personaId === p.id && !x.retiredFork);
   if (target?.id === from.id) return { ok: false, message: `@${p.handle} is you: just carry on.` };
   // Where the waker speaks now: a topic thread it’s in, else the conversation. Agents talk where the person reads,
   // never in a side thread of their own (#372); a turn still in an old side thread hands off in the conversation.
@@ -94,8 +94,8 @@ function wakeEntry(from, target, text, itemId) {
 /** An agent whose turn runs in a side thread from before #372 is told, once, that hand-offs happen in the conversation. */
 function sideThreadsGone(rt, se) {
   if (se.toldSideThreadsGone) return;
-  rt.updateSession(se.id, { toldSideThreadsGone: true });
-  rt.tellAgent(se.id, 'Side threads are gone: agents hand off in the conversation now, where the person reads (#372). This side thread gets no new wakes.');
+  rt.sessions.update(se.id, { toldSideThreadsGone: true });
+  rt.sessions.tell(se.id, 'Side threads are gone: agents hand off in the conversation now, where the person reads (#372). This side thread gets no new wakes.');
 }
 
 /** The thread a session’s turn speaks in now, when that isn’t its own (a topic or side thread); else null. */
@@ -115,7 +115,7 @@ export function deliverWake(rt, threadId, q) {
   const live = from && !from.retiredFork ? from : null;
   if (!target || target.retiredFork) {
     const why = target ? 'retired' : 'removed';
-    if (live) rt.tellAgent(live.id, `Your message to @${target?.handle ?? 'an agent'} (“${clip(q.text, 120)}”) wasn’t delivered: its session was ${why}.`);
+    if (live) rt.sessions.tell(live.id, `Your message to @${target?.handle ?? 'an agent'} (“${clip(q.text, 120)}”) wasn’t delivered: its session was ${why}.`);
     return;
   }
   // No reply-back (#372): the reply posts where the wake was, and wakes the waker only if it @-mentions it.
@@ -132,7 +132,7 @@ export function deliverWake(rt, threadId, q) {
 export function endChain(rt, threadId) {
   const conv = rt.threads.lineage(threadId).at(-1);
   if (!rt.store.pending.thread(conv)?.hops) return;
-  if (rt.sessionsIn(conv).some((se) => rt.turns.has(se.id) || rt.exiting.has(se.id))) return;
+  if (rt.sessions.in(conv).some((se) => rt.turns.has(se.id) || rt.exiting.has(se.id))) return;
   const threads = rt.threads.pending().filter((t) => rt.threads.lineage(t.id).at(-1) === conv);
   if (threads.some((t) => (t.queue ?? []).some((q) => q.kind === 'wake'))) return;
   if (rt.store.pending.items(conv).some((x) => x.kind === 'hop' && x.status === 'open')) return;
@@ -155,7 +155,10 @@ export function dropWakes(rt, se, how = 'stopped') {
     rt.threads.patch(t.id, (now) => ({ queue: (now.queue ?? []).filter((q) => !gone.has(q.id)) }));
     for (const q of mine)
       if (rt.s.sessions[q.fromSessionId] && !rt.s.sessions[q.fromSessionId].retiredFork && q.fromSessionId !== se.id)
-        rt.tellAgent(q.fromSessionId, `@${se.handle} was ${how} before it answered your message (“${clip(q.text, 120)}”). Wake it again if you still need it.`);
+        rt.sessions.tell(
+          q.fromSessionId,
+          `@${se.handle} was ${how} before it answered your message (“${clip(q.text, 120)}”). Wake it again if you still need it.`,
+        );
   }
 }
 
@@ -179,7 +182,7 @@ export function wakeAgent(rt, sessionId, { handle, message }) {
  */
 export function sideSession(rt, side, personaId, by) {
   const conv = rt.threads.lineage(side.id).at(-1);
-  const had = rt.sessionsIn(conv).find((x) => x.personaId === personaId);
+  const had = rt.sessions.in(conv).find((x) => x.personaId === personaId);
   if (had?.retiredFork) throw retiredError(had);
   const where = side.kind === 'topic' ? 'a topic thread' : 'a side thread';
   return (
@@ -220,5 +223,5 @@ export function bumpSideLink(rt, sideThreadId) {
 export function recordAgentMessage(rt, sessionId, dir, other, text) {
   const se = rt.s.sessions[sessionId];
   if (!se) return;
-  rt.updateSession(sessionId, { agentMessages: [{ dir, other, text: clip(text, 120), at: Date.now() }, ...se.agentMessages].slice(0, 6) });
+  rt.sessions.update(sessionId, { agentMessages: [{ dir, other, text: clip(text, 120), at: Date.now() }, ...se.agentMessages].slice(0, 6) });
 }

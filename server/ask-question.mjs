@@ -133,7 +133,7 @@ function askOne(rt, sessionId, block, toolUseId) {
     toolUseId: toolUseId ? String(toolUseId) : null,
   });
   rt.closeSegment(turn);
-  offerNeed(rt, se, { kind: 'block', itemId: it.id, text: block.title ?? block.prompt, ...rt.awayFrom(se, turn.threadId) }, 'needs');
+  offerNeed(rt, se, { kind: 'block', itemId: it.id, text: block.title ?? block.prompt, ...rt.sessions.awayFrom(se, turn.threadId) }, 'needs');
   rt.threads.notify('blocking', se, `@${se.handle} asks you`, block.prompt, turn.threadId);
   return new Promise((resolve) => {
     // As a card’s (permission-cards.mjs, expireWait), but without its “ask again”: the question stays open.

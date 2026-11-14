@@ -93,7 +93,7 @@ export function askPerson(
   });
   // The text so far is finished; the reply continues below the card.
   rt.closeSegment(turn);
-  offerNeed(rt, se, { kind: 'permission', itemId: it.id, text: `@${se.handle} asks to ${it.summary}`, ...rt.awayFrom(se, turn.threadId) }, 'needs');
+  offerNeed(rt, se, { kind: 'permission', itemId: it.id, text: `@${se.handle} asks to ${it.summary}`, ...rt.sessions.awayFrom(se, turn.threadId) }, 'needs');
   rt.threads.notify('blocking', se, `@${se.handle} asks permission`, `To ${it.summary}.`, turn.threadId);
   return new Promise((resolve) => {
     // A host prompt’s card expires when its host says so (permissionWaitMax, `prompt-expired`, #120): the host’s
@@ -298,7 +298,7 @@ export async function resolveDenial(rt, threadId, itemId, action) {
     const { file } = await addAllowRule(folder, it.rules.always);
     note = `[Postbox] The person now always allows \`${it.rules.always}\` (saved in ${file}). The step ${asked} tried, ${it.summary}, was refused before: try it again, then carry on.`;
   } else if (action === 'once') {
-    if (se) rt.updateSession(se.id, { allowOnce: [...(se.allowOnce ?? []), it.rules.once] });
+    if (se) rt.sessions.update(se.id, { allowOnce: [...(se.allowOnce ?? []), it.rules.once] });
     note = `[Postbox] The person allowed \`${it.rules.once}\` for your next turn only. The step ${asked} tried, ${it.summary}, was refused before: try it again exactly as before, since the allow covers only that exact call, then carry on.`;
   }
   const status = { once: 'allowed-once', always: 'allowed-always', leave: 'left' }[action];

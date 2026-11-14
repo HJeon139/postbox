@@ -8,7 +8,6 @@ import { basename } from 'node:path';
 import { contentBlocks, listClaudeSessions, recentHistory, TranscriptTail, typedText } from './adapters/terminal-mirror.mjs';
 import { sessionFolder } from './folder-path.mjs';
 import { httpError } from './helpers.mjs';
-import { pendingSessionsIn } from './sessions.mjs';
 import { describeTool } from './tool-labels.mjs';
 
 export async function claudeSessions(rt) {
@@ -45,8 +44,8 @@ export async function attachClaudeSession(rt, { claudeSessionId, projectId, hand
   });
   const t = rt.createThread({ projectId, title: cs.title, personaIds: [p.id] });
   // The session createThread just made, which a held commit may keep out of the published state.
-  const se = pendingSessionsIn(rt, t.id)[0];
-  rt.updateSession(se.id, { backendState: { claudeSessionId, transcript: cs.file, attached: true } });
+  const se = rt.sessions.pendingIn(t.id)[0];
+  rt.sessions.update(se.id, { backendState: { claudeSessionId, transcript: cs.file, attached: true } });
   for (const it of recentHistory(cs.file)) {
     if (it.kind === 'user') rt.threads.addItem(t.id, { kind: 'user', text: it.text, via: 'terminal', to: [se.handle] });
     else
@@ -113,7 +112,7 @@ export function pollMirror(rt, sessionId) {
       rt.threads.addItem(se.threadId, { kind: 'user', text: typed, via: 'terminal', to: [se.handle] });
       m.agentItem = null;
       m.steps = [];
-      rt.updateSession(sessionId, { state: 'think', currentStep: 'Working in a terminal', finishedAt: null });
+      rt.sessions.update(sessionId, { state: 'think', currentStep: 'Working in a terminal', finishedAt: null });
       continue;
     }
     if (e.type === 'assistant') {
@@ -122,16 +121,16 @@ export function pollMirror(rt, sessionId) {
           const it = m.agentItem && rt.store.pending.item(se.threadId, m.agentItem);
           if (it) rt.threads.patchItem(se.threadId, it.id, { text: it.text ? `${it.text}\n\n${b.text}` : b.text });
           else m.agentItem = mirrorAgentItem(rt, se, b.text);
-          rt.updateSession(sessionId, { state: 'gen', currentStep: 'Writing in a terminal' });
+          rt.sessions.update(sessionId, { state: 'gen', currentStep: 'Writing in a terminal' });
         }
         if (b.type === 'tool_use') {
           m.steps.push({ id: b.id, label: describeTool(b.name, b.input), state: 'running', ms: null });
           if (!m.agentItem) m.agentItem = mirrorAgentItem(rt, se, '');
           rt.threads.patchItem(se.threadId, m.agentItem, { activity: { steps: [...m.steps] } });
-          rt.updateSession(sessionId, { state: 'tool', currentStep: m.steps.at(-1).label });
+          rt.sessions.update(sessionId, { state: 'tool', currentStep: m.steps.at(-1).label });
         }
       }
-      if (e.message?.stop_reason === 'end_turn') rt.updateSession(sessionId, { state: 'idle', currentStep: '', finishedAt: Date.now() });
+      if (e.message?.stop_reason === 'end_turn') rt.sessions.update(sessionId, { state: 'idle', currentStep: '', finishedAt: Date.now() });
     }
     if (e.type === 'user' && Array.isArray(e.message?.content) && m.agentItem) {
       let changed = false;

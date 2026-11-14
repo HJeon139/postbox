@@ -43,9 +43,9 @@ export function stop(rt, sessionId, { silent = false, jobs = 'stop', by = 'you',
   turn.closed = true;
   rt.running.end(sessionId);
   rt.recordStopped(turn, ended, { by, why: 'You stopped the agent.' });
-  rt.updateSession(sessionId, { state: 'stopping', subagents: [], currentStep: 'Stopping', finishedAt: Date.now(), stopAsk: null });
+  rt.sessions.update(sessionId, { state: 'stopping', subagents: [], currentStep: 'Stopping', finishedAt: Date.now(), stopAsk: null });
   // Progress steps running as you keep its jobs running may follow one of them: they run on with it (#129).
-  if (keep.length) rt.updateSession(sessionId, { heldSteps: { threadId: turn.threadId, keys: runningProgress(rt, turn.threadId, sessionId) } });
+  if (keep.length) rt.sessions.update(sessionId, { heldSteps: { threadId: turn.threadId, keys: runningProgress(rt, turn.threadId, sessionId) } });
   // Its progress steps still running show as stalled, as at any turn’s end (#98); you stopped it, so no lint turn.
   // Pending, so the heldSteps just written holds its steps behind a held commit too (#1042).
   const se = rt.store.pending.session(sessionId);
@@ -145,8 +145,8 @@ export function turnExited(rt, turn) {
   const hung = se.remoteTurn?.state === 'hung' && se.remoteTurn.rtTurn === turn.id;
   const stoppedBy = turn.stopReason === 'store' ? STORE_STOPPED : hung ? se.remoteTurn.message : 'Stopped by you';
   if (se.state === 'stopping' || se.currentStep === 'Stopping')
-    rt.updateSession(se.id, { state: se.state === 'stopping' ? 'idle' : se.state, currentStep: stoppedBy, finishedAt: Date.now(), sideTurn: null });
-  else if (se.sideTurn) rt.updateSession(se.id, { sideTurn: null });
+    rt.sessions.update(se.id, { state: se.state === 'stopping' ? 'idle' : se.state, currentStep: stoppedBy, finishedAt: Date.now(), sideTurn: null });
+  else if (se.sideTurn) rt.sessions.update(se.id, { sideTurn: null });
   const held = se.retiredFork ? [] : ex.held;
   // Shutting down: your messages wait in their thread’s queue, which a restart keeps, rather than starting a CLI.
   if (rt.closing) {
@@ -182,7 +182,7 @@ export function requestStop(rt, sessionId, { jobs = null, turnId = null, subagen
   const running = turn.remote ? [] : runningJobs(rt, sessionId, turn.id);
   if (running.length && jobs !== 'stop' && jobs !== 'keep') {
     const ask = { jobs: running.length, text: stopAskText(se.handle, running.length), turnId: turn.id };
-    rt.updateSession(sessionId, { stopAsk: { ...ask, at: Date.now() } });
+    rt.sessions.update(sessionId, { stopAsk: { ...ask, at: Date.now() } });
     return { ask };
   }
   return { stopped: rt.stop(sessionId, { jobs: jobs === 'keep' ? 'keep' : 'stop' }) };
@@ -191,7 +191,7 @@ export function requestStop(rt, sessionId, { jobs = null, turnId = null, subagen
 /** You chose not to stop after all: the ask goes away, and the agent carries on. */
 export function dismissStopAsk(rt, sessionId) {
   rt.session(sessionId);
-  rt.updateSession(sessionId, { stopAsk: null });
+  rt.sessions.update(sessionId, { stopAsk: null });
 }
 
 /**

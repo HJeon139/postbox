@@ -32,7 +32,7 @@ export function settleInterrupted(rt) {
   for (const se of Object.values(rt.s.sessions)) {
     // A turn was running: its state says so, or a permission it was blocked on is the need, which only a running turn has.
     if (!RUNNING.includes(se.state) && se.needs?.kind !== 'permission') continue;
-    rt.updateSession(se.id, { ...settledNeed(rt, se), subagents: [], currentStep: 'Interrupted by a restart', stopAsk: null });
+    rt.sessions.update(se.id, { ...settledNeed(rt, se), subagents: [], currentStep: 'Interrupted by a restart', stopAsk: null });
   }
   settleRetiredNeeds(rt);
   foldCutOff(rt);
@@ -64,7 +64,7 @@ function settleRetiredNeeds(rt) {
   for (const id of Object.keys(rt.s.sessions)) {
     const se = rt.store.pending.session(id);
     if (!se?.needs || Object.hasOwn(RANK, se.needs.kind) || RUNNING.includes(se.state)) continue;
-    rt.updateSession(id, settledNeed(rt, se));
+    rt.sessions.update(id, settledNeed(rt, se));
   }
 }
 

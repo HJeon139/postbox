@@ -49,7 +49,7 @@ export function cancelQueued(rt, threadId, queueId) {
   rt.threads.patch(threadId, (t) => ({ queue: (t.queue ?? []).filter((x) => x.id !== queueId) }));
   // A wake you removed: its agent was told it would be answered, so it hears it won’t be (#228).
   if (q?.kind === 'wake' && rt.s.sessions[q.fromSessionId] && !rt.s.sessions[q.fromSessionId].retiredFork)
-    rt.tellAgent(q.fromSessionId, `The person removed your message (“${clip(q.text, 120)}”) before it was answered. Carry on without it.`);
+    rt.sessions.tell(q.fromSessionId, `The person removed your message (“${clip(q.text, 120)}”) before it was answered. Carry on without it.`);
 }
 
 /**
@@ -217,7 +217,7 @@ export function drainQueues(rt, sessionId, threadId, wakesOnly = false) {
 
 export function rememberStoppedMessages(rt, sessionId, message) {
   for (const child of message.messages ?? [message])
-    if (child.kind === 'agent') rt.tellAgent(sessionId, `${child.from}’s message came while your turn was stopped: “${clip(child.text ?? '', 300)}”`);
+    if (child.kind === 'agent') rt.sessions.tell(sessionId, `${child.from}’s message came while your turn was stopped: “${clip(child.text ?? '', 300)}”`);
 }
 
 /**

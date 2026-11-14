@@ -72,7 +72,7 @@ export function settleOrphanTurns(rt) {
     const step = exiting ? 'Stopping' : 'Interrupted: Postbox couldn’t save changes';
     // Its need as a restart settles it (restart-sweep.mjs): a card answered or gone isn't kept, and one that waits is.
     const settled = exiting ? { state: 'stopping' } : settledNeed(rt, se);
-    rt.updateSession(se.id, { ...settled, subagents: [], currentStep: step, stopAsk: null });
+    rt.sessions.update(se.id, { ...settled, subagents: [], currentStep: step, stopAsk: null });
     for (const it of rt.store.items(se.threadId))
       if (it.sessionId === se.id && it.status === 'streaming') rt.threads.patchItem(se.threadId, it.id, { status: 'stopped', stopReason: 'store' });
   }
@@ -164,7 +164,7 @@ export function saveBackendState(rt, sessionId, patch) {
 /** @param {Runtime} rt @param {string} sessionId @param {Record<string, any>} patch */
 function writeBackendState(rt, sessionId, patch) {
   // From the pending session: a resume id saved behind a held commit, then the model, kept only the model (#796's class).
-  rt.updateSession(sessionId, (se) => ({ backendState: { ...(se.backendState ?? {}), ...patch } }));
+  rt.sessions.update(sessionId, (se) => ({ backendState: { ...(se.backendState ?? {}), ...patch } }));
 }
 
 /** Runs what waited for writes, in order, while they stay open. @param {Runtime} rt */
@@ -214,7 +214,7 @@ function recordStop(rt, turn) {
   if (!se) return;
   // Its process may not have exited yet: the session reads as stopping until it has (turnExited).
   if (rt.exiting.get(sessionId)?.turn === turn)
-    rt.updateSession(sessionId, { state: 'stopping', subagents: [], currentStep: 'Stopping', finishedAt: Date.now(), stopAsk: null });
+    rt.sessions.update(sessionId, { state: 'stopping', subagents: [], currentStep: 'Stopping', finishedAt: Date.now(), stopAsk: null });
   rt.stallLeftRunning(turn, se, 'stopped');
   // An outage isn’t the person’s Stop: its host cards stay unmarked, so their agent hears they expired (#721).
   if (turn.remote) rt.remote.stopped(turn, { by: 'store', why: WHY });

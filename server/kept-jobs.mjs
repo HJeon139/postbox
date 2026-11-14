@@ -77,7 +77,7 @@ export async function stopJob(rt, sessionId, jobId) {
   const stopJob = turn?.id === job.turnId ? turn.control?.stopJob : null;
   if (typeof stopJob !== 'function') throw httpError(409, `Postbox can’t reach that job’s process. Stop @${se.handle} to stop it.`);
   const mark = (stopping) =>
-    rt.updateSession(sessionId, { jobs: (rt.s.sessions[sessionId]?.jobs ?? []).map((j) => (j.id === jobId ? { ...j, stopping } : j)) });
+    rt.sessions.update(sessionId, { jobs: (rt.s.sessions[sessionId]?.jobs ?? []).map((j) => (j.id === jobId ? { ...j, stopping } : j)) });
   mark(true);
   const pgid = await stopJob({ id: job.id, command: job.command });
   if (!pgid) {

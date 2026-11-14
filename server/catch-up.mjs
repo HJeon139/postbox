@@ -6,7 +6,6 @@ import { positionOf } from '../shared/item-index.mjs';
 import { READING } from '../shared/limits.mjs';
 import { keepFor, leftOut, mentions } from './catch-up-keep.mjs';
 import { clip } from './helpers.mjs';
-import { pendingSessionsIn } from './sessions.mjs';
 import { reactionLines, threadLines } from './thread-summary.mjs';
 import { heldFor } from './wake-cards.mjs';
 
@@ -22,7 +21,7 @@ export function catchUp(rt, se, exclude = []) {
   const items = rt.store.items(se.threadId);
   const t = rt.s.threads[se.threadId];
   const at = se.seenItem ? positionOf(items, se.seenItem) : -1;
-  rt.updateSession(se.id, { seenItem: items.at(-1)?.id ?? null });
+  rt.sessions.update(se.id, { seenItem: items.at(-1)?.id ?? null });
   // A session from before markers were kept, alone in its conversation, already saw everything addressed to it.
   if (se.seenItem === undefined && (t?.members?.length ?? 0) <= 1 && se.startedAt < (items.at(-1)?.at ?? 0)) return null;
   // Its first catch-up in a topic thread starts with the message the thread is about, unless it holds it already.
@@ -41,7 +40,7 @@ export function catchUp(rt, se, exclude = []) {
   // The mentions this summary gave in full, which pointerIfSeen may point to: one past the cap wasn’t given, and one
   // cut at READING.mention (a message may be 50,000 characters) was given only in part, so it comes again whole.
   const whole = (/** @type {any} */ e) => mentions(e.item, se.handle) && String(e.item.text ?? '').length <= READING.mention;
-  rt.updateSession(se.id, { givenMentions: kept.filter(whole).map((e) => e.item.id) });
+  rt.sessions.update(se.id, { givenMentions: kept.filter(whole).map((e) => e.item.id) });
   const where = t?.kind === 'room' ? 'this room' : t?.kind === 'topic' ? 'this thread' : 'this conversation';
   return `[Postbox] ${root ? `${root}\n\n` : ''}What happened in ${where} since your last turn${left.length ? ` ${leftOut(kept, left, items, se.handle)}` : ''}:\n\n${kept.map((e) => e.line).join('\n\n')}`;
 }
@@ -58,7 +57,7 @@ export function moveMarkers(rt, threadId, id, stubId) {
   const conv = rt.threads.lineage(threadId, (/** @type {string} */ x) => rt.store.pending.thread(x)).at(-1);
   const marker = (/** @type {any} */ se) => (threadId === conv ? se.seenItem : se.seenIn?.[threadId]);
   const onStub = (/** @type {any} */ now) => (threadId === conv ? { seenItem: stubId } : { seenIn: { ...(now.seenIn ?? {}), [threadId]: stubId } });
-  for (const se of pendingSessionsIn(rt, conv)) if (marker(se) === id) rt.updateSession(se.id, onStub);
+  for (const se of rt.sessions.pendingIn(conv)) if (marker(se) === id) rt.sessions.update(se.id, onStub);
 }
 
 /**

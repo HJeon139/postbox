@@ -106,7 +106,7 @@ function turnMessage(rt, se, message, where, slash) {
   if (se.context?.length && !slash) {
     // Not an urgent note to stop a subagent (#229): its turn ended, and the subagent with it.
     message = { ...message, context: [...notUrgent(se.context), ...(message.context ?? [])] };
-    rt.updateSession(sessionId, (now) => ({ context: (now.context ?? []).filter((/** @type {string} */ x) => !se.context.includes(x)) })); // only what it read
+    rt.sessions.update(sessionId, (now) => ({ context: (now.context ?? []).filter((/** @type {string} */ x) => !se.context.includes(x)) })); // only what it read
   }
   // Postbox’s tools didn’t load last turn: told once, whatever the backend (tools-down.mjs).
   const down = toolsDownNote(se, message);
@@ -177,7 +177,7 @@ function atWork(rt, se, turn, message) {
   const where = turn.threadId;
   // Rules the person allowed once (from a refusal card) apply to this turn only.
   turn.allowOnce = se.allowOnce ?? [];
-  rt.updateSession(se.id, {
+  rt.sessions.update(se.id, {
     allowOnce: [],
     endingSubagents: [],
     glimpse: '',

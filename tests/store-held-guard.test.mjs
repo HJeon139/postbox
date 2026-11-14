@@ -123,20 +123,21 @@ const PENDING = {
   'room-chain-limit.mjs': ['roomChainLimit', 'patchThread'],
   // The members a delete keeps its room for, maybe joined behind a held commit (#796); the session it deletes, and the
   // threads a conversation’s delete covers, any of them maybe made there too. Every lookup comes before any change.
-  'session-lifecycle.mjs': ['conversationScope', 'conversationScope', 'deleteSession', 'deleteSession', 'deleteSession', 'deleteSession', 'deleteSession'],
+  'session-lifecycle.mjs': ['conversationScope', 'conversationScope', 'deleteSession', 'deleteSession', 'deleteSession', 'deleteSession'],
   // An agent changed or deleted, and a deleted agent’s sessions, any of them maybe made behind a held commit.
   'personas.mjs': ['update', 'remove'],
-  // needAt: the need's item's time, maybe added behind a held commit (#1155); stampNeeds: the session it stamps;
-  // forgetReported: an agent’s sessions whose last report a backend switch drops (#1315); ensureSession: the agent it
-  // joins, which the same request may have just made; unarchive: what an older Postbox archived, the threads and
-  // sessions it rewrites as the store loads.
-  'sessions.mjs': ['updateSession', 'needAt', 'stampNeeds', 'pendingSessionsIn', 'pendingSessionsIn', 'forgetReported', 'ensureSession', 'unarchive'],
+  // pendingIn: a thread's sessions, for a read that decides whether to make one; ensure: the agent it joins, which the
+  // same request may have just made; update and remove: the session they write; needAt: the need's item's time, maybe
+  // added behind a held commit (#1155); forgetReported: an agent’s sessions whose last report a backend switch drops
+  // (#1315); stampNeeds: the session it stamps; unarchive: what an older Postbox archived, the threads and sessions it
+  // rewrites as the store loads.
+  'sessions.mjs': ['pendingIn', 'pendingIn', 'ensure', 'update', 'needAt', 'remove', 'forgetReported', 'stampNeeds', 'unarchive'],
   // A command’s item, maybe deleted behind a held commit, before its output or its end is written.
   'shell-runs.mjs': ['commandOutput', 'endCommand'],
   'subagent-end.mjs': ['withUrgent'],
   'side-threads.mjs': ['agentWake', 'agentWake', 'agentWake', 'endChain', 'endChain', 'bumpSideLink', 'bumpSideLink'],
   // A thread’s apps, removed in a sweep; and the threads’ members and sessions it erases, maybe made behind a held commit.
-  'thread-erase.mjs': ['eraseThreads', 'eraseThreads', 'eraseThreads', 'eraseThreads', 'eraseThreads'],
+  'thread-erase.mjs': ['eraseThreads', 'eraseThreads', 'eraseThreads', 'eraseThreads'],
   // The thread a turn answers in, as deliver chose it from pending, and the topic a turn's end settles: a topic
   // open_topic just opened, held (#796).
   'thread-summary.mjs': ['threadHeader', 'threadCatchUp', 'settleThread'],
