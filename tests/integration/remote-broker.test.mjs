@@ -146,6 +146,43 @@ async function checkReadingTools(shim, pb) {
   assert.equal(missing.isError, true);
 }
 
+/**
+ * Starts turn t1 on a long-running harness, after the snapshot its reading tools answer from.
+ * @param {ReturnType<typeof makeHost>} h
+ * @param {Awaited<ReturnType<Awaited<ReturnType<typeof serveDaemon>>['postbox']>>} pb
+ */
+async function startTurn(h, pb) {
+  pb.send('snapshot', {
+    turn: 't1',
+    home: 'th',
+    threads: [{ id: 'th', items: [{ id: 'i1', line: 'The person, to @coder: fix the build', text: 'The person, to @coder: fix the build' }] }],
+  });
+  pb.send('start', {
+    turn: 't1',
+    harness: 'claude-code',
+    folder: h.work,
+    argv: [HARNESS, 'sleep:60000'],
+    env: {},
+    stdin: 'file',
+    files: [{ name: MESSAGE_FILE, text: '{}\n' }],
+  });
+  await pb.msgs.next('started', 10_000);
+}
+
+/**
+ * Stop: from then on the turn’s calls are refused, and nothing reaches Postbox.
+ * @param {ReturnType<typeof startShim>} shim
+ * @param {Awaited<ReturnType<Awaited<ReturnType<typeof serveDaemon>>['postbox']>>} pb2
+ */
+async function checkStop(shim, pb2) {
+  pb2.send('stop', { turn: 't1' });
+  await pb2.msgs.next('ended', 15_000);
+  const late = await shim.response(shim.tool('search_assets', { query: 'late' }));
+  assert.equal(late.isError, true);
+  assert.match(late.text, /stopped or has ended/);
+  assert.equal(pb2.msgs.messages.filter((m) => m.type === 'tool').length, 0, 'the call after Stop didn’t cross');
+}
+
 test('broker and shim: queued and asked calls, the snapshot’s reading tools, a prompt across a daemon restart, and Stop', { skip: NO_UNIX }, async () => {
   const h = makeHost();
   const s = await serveDaemon(h);
@@ -153,21 +190,7 @@ test('broker and shim: queued and asked calls, the snapshot’s reading tools, a
   let shim = null;
   try {
     const pb = await s.postbox();
-    pb.send('snapshot', {
-      turn: 't1',
-      home: 'th',
-      threads: [{ id: 'th', items: [{ id: 'i1', line: 'The person, to @coder: fix the build', text: 'The person, to @coder: fix the build' }] }],
-    });
-    pb.send('start', {
-      turn: 't1',
-      harness: 'claude-code',
-      folder: h.work,
-      argv: [HARNESS, 'sleep:60000'],
-      env: {},
-      stdin: 'file',
-      files: [{ name: MESSAGE_FILE, text: '{}\n' }],
-    });
-    await pb.msgs.next('started', 10_000);
+    await startTurn(h, pb);
     shim = startShim(h, 't1');
 
     // A queued call returns at once, and crosses as `tool`; Postbox’s reply settles it.
@@ -191,13 +214,7 @@ test('broker and shim: queued and asked calls, the snapshot’s reading tools, a
 
     const pb2 = await promptAcrossRestart(s, shim, pb);
 
-    // Stop: from then on the turn’s calls are refused, and nothing reaches Postbox.
-    pb2.send('stop', { turn: 't1' });
-    await pb2.msgs.next('ended', 15_000);
-    const late = await shim.response(shim.tool('search_assets', { query: 'late' }));
-    assert.equal(late.isError, true);
-    assert.match(late.text, /stopped or has ended/);
-    assert.equal(pb2.msgs.messages.filter((m) => m.type === 'tool').length, 0, 'the call after Stop didn’t cross');
+    await checkStop(shim, pb2);
   } finally {
     await shim?.kill();
     await s.close();
