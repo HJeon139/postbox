@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { AGY_CAPABILITIES } from '../server/adapters/antigravity-cli.mjs';
 import { BOILERPLATES } from '../server/seed.mjs';
 import { applyBoilerplate } from '../shared/agent-facts.mjs';
 
@@ -44,7 +45,11 @@ test('#1305 a boilerplate the person saved starts on its own model, though its b
 
 test('#1305 Postbox’s own Gemini boilerplate still falls back to a Gemini model agy lists', () => {
   const st = sheet();
-  const config = { adapters: ['claude-code', 'antigravity-cli'], backends: { 'antigravity-cli': { models: ['claude-sonnet-4-6', 'gemini-4-argon-medium'] } } };
+  // agy’s capabilities, as the page’s config carries them: its preferred model decides the fallback (#390).
+  const config = {
+    adapters: ['claude-code', 'antigravity-cli'],
+    backends: { 'antigravity-cli': { ...AGY_CAPABILITIES, models: ['claude-sonnet-4-6', 'gemini-4-argon-medium'] } },
+  };
   applyBoilerplate(
     st,
     BOILERPLATES.find((b) => b.id === 'bp-gemini'),
