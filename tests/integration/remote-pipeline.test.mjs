@@ -90,10 +90,10 @@ test('#120 pipeline: an ssh drop mid-turn leaves the turn running on the host; t
     m.delay = 1500;
     const written = standins(m).at(-1)?.out.length ?? 0;
     process.kill(-(/** @type {number} */ (first.child.pid)), 'SIGKILL');
-    await until(() => p.rt.hostStatus(p.host.id).state !== 'connected', 'the link to see the drop');
+    await until(() => arrange.hostStatus(p.rt, p.host.id).state !== 'connected', 'the link to see the drop');
     await until(() => (standins(m).at(-1)?.out.length ?? 0) > written + 200, 'the turn to write on with nobody connected');
     assert.ok(alive(s.runner) && alive(s.run.pid), 'the runner and the harness are still running');
-    await until(() => p.rt.hostStatus(p.host.id).state === 'connected', 'the link to reconnect', 20_000);
+    await until(() => arrange.hostStatus(p.rt, p.host.id).state === 'connected', 'the link to reconnect', 20_000);
     m.delay = 50;
     const second = m.sessions.filter((x) => x.attach).at(-1);
     assert.notEqual(second, first, 'a new session');
@@ -126,7 +126,7 @@ test('#120 pipeline: the daemon killed mid-turn; the runner survives, the next a
     // The daemon was detached, so it’s an orphan for PID 1 to reap. Where PID 1 doesn’t (a container with no init), it
     // stays a zombie, which daemon.pid’s owner check counts as gone, so a new daemon still starts.
     // Its attach relay ends with it, and the link’s next session starts `host serve` again.
-    await until(() => m.sessions.length > sessions && p.rt.hostStatus(p.host.id).state === 'connected', 'a new session', 20_000);
+    await until(() => m.sessions.length > sessions && arrange.hostStatus(p.rt, p.host.id).state === 'connected', 'a new session', 20_000);
     const fresh = await until(() => {
       const pid = daemonPid(m);
       return pid !== old && pid && alive(pid) ? pid : null;
@@ -166,7 +166,7 @@ test('#120 pipeline: Postbox restarts mid-turn; the new one attaches to the turn
       for (const it of list) if (it.status === 'streaming') arrange.setItem(second.rt, threadId, it.id, { status: 'stopped' });
     second.rt.expireStalePermissions();
     second.rt.restoreRemoteTurns();
-    second.rt.watchHosts();
+    arrange.watchHosts(second.rt);
     const read = await until(
       () =>
         m.sessions

@@ -7,6 +7,7 @@ import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
 import { checkDestination, checkHostPath, checkHostSettings, DESTINATION_MAX, defaultHostSettings, PATH_BYTES, RANGES } from '../shared/remote-settings.mjs';
+import * as arrange from './arrange.mjs';
 
 const MIN = 60 * 1000;
 const HOUR = 60 * MIN;
@@ -292,7 +293,7 @@ test('a snapshot from before hosts existed loads with none', async () => {
   delete (/** @type {any} */ (store.state).hosts);
   const rt = runtime(store);
   assert.match(
-    refused(() => rt.host('ho_x'), 404),
+    refused(() => arrange.host(rt, 'ho_x'), 404),
     /doesn’t exist/,
   );
   assert.equal(rt.addHost({ name: 'devbox' }).name, 'devbox');

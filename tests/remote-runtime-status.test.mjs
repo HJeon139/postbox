@@ -7,6 +7,7 @@ import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { WAKE_CHECK_MS, WAKE_GAP_MS, watchWake } from '../server/remote/wake.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
+import * as arrange from './arrange.mjs';
 import { fakeClock, mock, setup } from './remote-runtime-helpers.mjs';
 
 // ── Each host’s status ──────────────────────────────────────────────────────────────
@@ -19,7 +20,7 @@ test('#120: each host’s status reaches the state, at each change the manager e
   store.emit('host.status', { id: h.id, status: { state: 'connected', failure: null, welcome: null, lastHeard: 1 } });
   store.emit('host.status', { id: gone, status: { state: 'connected', failure: null, welcome: null, lastHeard: 1 } });
   hosts.statuses.set(h.id, { state: 'disconnected', failure: null, welcome: null, lastHeard: 1 });
-  rt.watchHosts();
+  arrange.watchHosts(rt);
   assert.deepEqual(
     { ...store.state.hostStatus },
     { [h.id]: { state: 'disconnected', failure: null, welcome: null, lastHeard: 1, keepUpdated: false, update: null } },
@@ -50,7 +51,7 @@ test('#120: each host’s status reaches the state, at each change the manager e
     next: 'Run ssh host.example.com in a terminal.',
     retry: false,
   });
-  assert.deepEqual(rt.hostStatus(h.id), store.state.hostStatus[h.id]);
+  assert.deepEqual(arrange.hostStatus(rt, h.id), store.state.hostStatus[h.id]);
 
   // A host removed takes its status with it.
   store.emit('host', { id: h.id, removed: true });
@@ -66,9 +67,9 @@ test('#120: without a host manager, status from before a restart is cleared and 
   });
   const h = rt.addHost({ name: 'host.example.com' });
   store.emit('host.status', { id: h.id, status: { state: 'connected', failure: null, welcome: null, lastHeard: 1 } });
-  rt.watchHosts();
+  arrange.watchHosts(rt);
   assert.deepEqual({ ...store.state.hostStatus }, {});
-  assert.equal(rt.hostStatus(h.id), null);
+  assert.equal(arrange.hostStatus(rt, h.id), null);
   await assert.rejects(rt.installHost(h.id), (e) => e.status === 503 && /wasn’t started with remote hosts/.test(e.message));
   assert.deepEqual(await rt.removeHost(h.id), { ok: true, stopped: 0 });
 });
@@ -116,7 +117,7 @@ test('#120 D2: a failing wake handler is logged, and the checks go on', () => {
 test('#672: a host’s status passes on what the welcome says of its login PATH: a count and a reason, no entries', () => {
   const { rt, store, hosts } = setup();
   const h = rt.addHost({ name: 'host.example.com' });
-  rt.watchHosts();
+  arrange.watchHosts(rt);
   const base = { version: 2, home: '/home/user', node: { path: '/usr/bin/node', version: 'v22.1.0' }, harnesses: [], problems: [], turns: [] };
   for (const loginPath of [
     { ok: true, entries: 13, ms: 149 },

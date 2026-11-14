@@ -34,7 +34,7 @@ export function hostManagerFor(given, runtime, dataDir, version) {
  */
 export function startHosts(rt, hosts, wake) {
   rt.restoreRemoteTurns();
-  rt.watchHosts();
+  rt.hostService.watch();
   return hosts ? watchWake(() => hosts.wake(), wake) : null;
 }
 

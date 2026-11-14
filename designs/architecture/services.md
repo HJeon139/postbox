@@ -1,6 +1,6 @@
 # Concerns as services
 
-**Status:** a proposal, 12 November 2026, for the person to approve before any code moves. Step 0, the test fixture, step 1, Placement, step 2, Running, step 3, Threads with the Bus, step 4, Personas, step 5, Sessions, step 6, Assets, step 7, Ledger and work, step 8, Checks, step 9, Apps, and step 10, Memory, with the thread summaries split off as Summaries, are built (“Where it stands”). Numbers are from `main` at 2259cebe. The scripts that produced them are in the pull request that added this document; the last of them, `svc-check.mjs`, checks the design against the code.
+**Status:** a proposal, 12 November 2026, for the person to approve before any code moves. Steps 0 to 11 are built, from the test fixture to Hosts, with the thread summaries split off from Memory as Summaries in step 10; Asks, Delivery and Turns wait for rooms at scale (“Where it stands”). Numbers are from `main` at 2259cebe. The scripts that produced them are in the pull request that added this document; the last of them, `svc-check.mjs`, checks the design against the code.
 
 ## Why
 
@@ -163,8 +163,8 @@ Split from Memory in step 10 (“Risks”).
 ### Hosts
 
 - **Owns:** remote hosts: adding, updating and removing them, their status, installs and keep-updated (designs/architecture/remote-hosts.md).
-- **Interface:** `add`, `update`, `remove`, `status`, `describeInstall`, `install`, `retry`, `setProjectFolder`, `watch()`.
-- **Depends on:** Store, Personas, Running, and the `hostTurns` port (`busyOn`, `sessionsOn`, `stopOn`, `cancel`, `confirmStops`: the host turns that an update or a removal stops). External: the host manager.
+- **Interface:** `get`, `add`, `update`, `remove`, `status`, `describeInstall`, `install`, `retry`, `setKeepUpdated`, `setProjectFolder`, `watch()`.
+- **Depends on:** Store, Personas, Running, and the `hostTurns` port (`busyOn`, `sessionsOn`, `stopOn`, `cancel`, `confirmStops`, `stoppingSession`: the host turns that an update or a removal stops). External: the host manager.
 
 ### The waiting concerns, once rooms at scale lands
 
@@ -268,8 +268,8 @@ Built in this order, each service’s dependencies already exist: Store, Bus, Ru
 | `thread-summary.mjs` reads `rt.turns`, `rt.exiting`, `rt.closing` and `rt.ledger` | Summaries depends on Running, and takes the ledger Work holds (done in step 10) |
 | `turn-work.mjs` calls `recordScheduledTool` (`scheduled-wakes.mjs`) | the call moves to its caller, `turn-context.mjs` (done in step 7) |
 | `shell-runs.mjs` calls `whenWritable` (`store-outage.mjs`) | `Store.whenWritable` (step 7: Work takes a `whenWritable` bound to the runtime until the Store is a service) |
-| `remote/host-admin.mjs` calls `rt.stop` and `rt.remote` | the `hostTurns` port |
-| `lint-delivery.mjs`, `apps.mjs`, `review-comments.mjs`, `host-admin.mjs` and `placement.mjs` read `rt.turns` or `rt.exiting` | Running (`placement.mjs` done in step 1, `lint-delivery.mjs` in step 8, `apps.mjs` and `review-comments.mjs` in step 9) |
+| `remote/host-admin.mjs` calls `rt.stop` and `rt.remote` | the `hostTurns` port (done in step 11) |
+| `lint-delivery.mjs`, `apps.mjs`, `review-comments.mjs`, `host-admin.mjs` and `placement.mjs` read `rt.turns` or `rt.exiting` | Running (`placement.mjs` done in step 1, `lint-delivery.mjs` in step 8, `apps.mjs` and `review-comments.mjs` in step 9, `host-admin.mjs` in step 11) |
 | `persona-delete.mjs` deletes sessions; `session-lifecycle.mjs` and `thread-erase.mjs` stop turns and kept jobs | orchestration in the facade: stop, then remove, in one method each (`deletePersona` done in step 4) |
 | `createThread` makes sessions; `resolveProposal` creates a persona and a session | orchestration in the facade |
 
@@ -324,7 +324,7 @@ The facade keeps the methods the routes, the seed, the MCP endpoint and the star
 - **Personas and sessions:** `createPersona`, `updatePersona`, `deletePersona`, `mcpContext`, `deleteSession`.
 - **Permissions:** `permissionsView`, `changePermissionRule`, `changePermissionFolder`.
 - **Commands and work:** `runAgentCommand`, `runShellCommand`, `stopShellCommand`, `workGit`, `workDiff`, `workOutput`, `restoreWork`.
-- **Hosts:** `localBackends`, `addHost`, `updateHost`, `removeHost`, `describeHostInstall`, `installHost`, `retryHost`, `setProjectHostFolder`.
+- **Hosts:** `localBackends`, `addHost`, `updateHost`, `removeHost`, `describeHostInstall`, `installHost`, `retryHost`, `setHostKeepUpdated`, `setProjectHostFolder`.
 - **Lifecycle:** `start()` and `close()`, below.
 - **Reads:** `store` (the routes read state through it), `thread(id)`, `session(id)` and `persona(id)`, which answer 404 when it’s missing.
 - **Agents:** `toolsFor(sessionId, turn)`, which the MCP endpoint and the in-process mock call.
@@ -490,7 +490,14 @@ Each step is its own pull request, and is done when:
   - The summarizer seam was an undeclared member of `Runtime` (`rt.summarize`, “The problem, measured”). It is Summaries’ declared `summarize` field now, which the fixture’s `withSummarizer` sets; two tests that assigned `rt.summarize` call the fixture. The summary timers were a `WeakMap` keyed by the runtime, and are Summaries’ own.
   - The root binds `catchUpLines` once: it calls `heldFor`, a module function no test replaces, so it needs no late lookup as `send` does (step 8).
   - No test held the whole text an agent reads; `tests/memory-golden.test.mjs` does, built through the facade and the fixture, and fails when the port’s lines are dropped. `tests/remote-broker-snapshot.test.mjs` compares a host’s reading tools with Memory’s methods, as it did with `Runtime`’s. No test was deleted, and no spec changed.
-- **Next:** step 11, Hosts, with the `hostTurns` port.
+- **Done:** step 11, Hosts, with the `hostTurns` port. `server/remote/host-service.mjs` is a class that `Runtime`’s constructor builds with the store, Personas and Running, the host manager (its `manager`), and `hostTurns`, whose parts look the runtime’s `RemoteTurns` and `stop` up as they’re called; its interface tests are `tests/host-service.test.mjs`. Its modules (`host-admin.mjs`, `host-status.mjs`) take the service, not the runtime, and nothing moved between them. `Runtime` keeps the facade’s `addHost`, `updateHost`, `removeHost`, `describeHostInstall`, `installHost`, `retryHost` and `setProjectHostFolder`; start-up calls `rt.hostService.watch()`, and the fixture reads a host and its status through the service. What step 11 found:
+  - `hostTurns` needs a sixth part, `stoppingSession`: a removal refused because the host’s token is gone names whose turns are still running, which it read from `RemoteTurns`’ stopping map. `stopOn` is Stop with `silent`, and whether a stopped turn still exits, which the removal waits for, is Running’s `exitOf`, a dependency already listed.
+  - The interface needs two more members: `get`, the 404 a lookup gives, which `Runtime` had as `host(id)`; and `setKeepUpdated` (#464-b2a), which the keep-updated route called as a module function with the runtime. It’s a facade method now, `setHostKeepUpdated`, as `deletePersona` became one in step 4.
+  - The runtime’s `hosts` field is the host manager, which Placement and the host turns read too, so the service is `rt.hostService`, and holds the manager as `manager`.
+  - The design’s `start()` isn’t built yet: start-up (`remote/serve.mjs`) calls the service’s `watch()` where it called `rt.watchHosts()`.
+  - No test replaces `rt.stop` around a removal, so the port’s late lookup isn’t pinned: a mutant that binds `stopOn` once passes the suite. It looks up late as `send` does (step 8), for the same reason.
+  - No test was deleted, and no spec changed.
+- **Complete:** steps 0 to 11, the order of work above. Asks, Delivery and Turns wait on rooms at scale’s decisions on the permission layer and the inbox, behind the facade in their current shape, and take `rt` until then.
 
 ## Appendix: every module’s members
 

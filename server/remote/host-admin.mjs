@@ -1,6 +1,7 @@
 // The person’s hosts (#120; designs/architecture/remote-hosts.md, “Remote hosts”): adding one, renaming it or changing its settings,
-// removing it, and a project’s folder on one. The hosts are in the state (s.hosts, 'host' events); the runtime
-// (server/runtime.mjs) calls these with itself first, and its host manager (rt.hosts) reaches each host’s daemon.
+// removing it, and a project’s folder on one. The hosts are in the state (s.hosts, 'host' events); Hosts
+// (host-service.mjs) calls these with itself first, its host manager reaches each host’s daemon, and the turns on a
+// host are reached only through its hostTurns port.
 
 import { checkShortName } from '../../shared/host-badge.mjs';
 import { HOST_ENFORCED } from '../../shared/remote-protocol.mjs';
@@ -14,27 +15,27 @@ import { newId } from '../store.mjs';
  */
 const REMOVE_HOST_WAIT_MS = 15000;
 
-/** @param {any} rt @param {string} id @returns {import('../../shared/remote-settings.mjs').Host} */
-export function host(rt, id) {
-  const h = rt.s.hosts?.[id];
+/** @param {import('./host-service.mjs').Hosts} hosts @param {string} id @returns {import('../../shared/remote-settings.mjs').Host} */
+export function host(hosts, id) {
+  const h = hosts.store.state.hosts?.[id];
   if (!h) throw httpError(404, 'That host doesn’t exist. It may have been removed.');
   return h;
 }
 
-/** A host by its SSH destination, the one the person sees. @param {any} rt @param {string} name @param {string} [except] */
-function hostNamed(rt, name, except) {
-  return Object.values(rt.s.hosts ?? {}).find((/** @type {any} */ h) => h.id !== except && h.name === name) ?? null;
+/** A host by its SSH destination, the one the person sees. @param {import('./host-service.mjs').Hosts} hosts @param {string} name @param {string} [except] */
+function hostNamed(hosts, name, except) {
+  return Object.values(hosts.store.state.hosts ?? {}).find((/** @type {any} */ h) => h.id !== except && h.name === name) ?? null;
 }
 
 /**
  * Adds a host: its SSH destination, its short name if it has one, and any settings that differ from the defaults.
- * @param {any} rt @param {{ name?: unknown, short?: unknown, settings?: unknown }} opts
+ * @param {import('./host-service.mjs').Hosts} hosts @param {{ name?: unknown, short?: unknown, settings?: unknown }} opts
  */
-export function addHost(rt, { name, short, settings } = {}) {
+export function addHost(hosts, { name, short, settings } = {}) {
   const dest = checked(checkDestination(name));
-  if (hostNamed(rt, dest)) throw httpError(409, `${dest} is already a host.`);
+  if (hostNamed(hosts, dest)) throw httpError(409, `${dest} is already a host.`);
   const h = { id: newId('ho'), name: dest, ...shortOf(short), settings: checked(checkHostSettings(settings)), createdAt: Date.now() };
-  rt.store.emit('host', h);
+  hosts.store.emit('host', h);
   return h;
 }
 
@@ -42,15 +43,15 @@ export function addHost(rt, { name, short, settings } = {}) {
  * Renames a host, changes its short name, or changes some of its settings; settings not given keep their values. A
  * change to one the daemon enforces (HOST_ENFORCED) reaches a connected host at once: its link opens a new session,
  * whose hello sends it.
- * @param {any} rt @param {string} id @param {{ name?: unknown, short?: unknown, settings?: unknown }} patch
+ * @param {import('./host-service.mjs').Hosts} hosts @param {string} id @param {{ name?: unknown, short?: unknown, settings?: unknown }} patch
  */
-export function updateHost(rt, id, { name, short, settings } = {}) {
-  const h = host(rt, id);
+export function updateHost(hosts, id, { name, short, settings } = {}) {
+  const h = host(hosts, id);
   const dest = name === undefined ? h.name : checked(checkDestination(name));
-  if (hostNamed(rt, dest, id)) throw httpError(409, `${dest} is already a host.`);
+  if (hostNamed(hosts, dest, id)) throw httpError(409, `${dest} is already a host.`);
   // A new destination is another machine, as far as Postbox knows: a turn there now would go on there while new
   // ones went to the new one, and a resume would look for its session on the wrong machine.
-  if (dest !== h.name && rt.remote.busyOn(id))
+  if (dest !== h.name && hosts.hostTurns.busyOn(id))
     throw httpError(
       409,
       `${h.name} can’t be renamed while agents’ turns run there or wait to go on there: they’d carry on on ${h.name} while new ones went to ${dest}. Stop them or let them finish, then rename it.`,
@@ -60,12 +61,13 @@ export function updateHost(rt, id, { name, short, settings } = {}) {
   // characters (🖥️, ❤️) would otherwise block every change to its host. The badge doesn’t show it (badgeOf).
   const kept = short === undefined ? h : { ...rest, ...shortOf(short) };
   const next = { ...kept, name: dest, settings: checked(checkHostSettings(settings ?? {}, h.settings)) };
-  rt.store.emit('host', next);
+  hosts.store.emit('host', next);
   const enforced = HOST_ENFORCED.some((k) => JSON.stringify(h.settings?.[k]) !== JSON.stringify(next.settings?.[k]));
   // Renamed: the manager drops the old link now, if nothing needs it, and the next use dials the new destination.
-  if (dest !== h.name) rt.hosts?.refresh(id).catch((/** @type {any} */ e) => console.error(`Postbox couldn’t close its link to ${h.name}: ${e?.message ?? e}`));
-  else if (enforced && rt.hosts?.status(id)?.state === 'connected')
-    rt.hosts.refresh(id).catch((/** @type {any} */ e) => console.error(`Postbox couldn’t send ${dest} its new settings: ${e?.message ?? e}`));
+  if (dest !== h.name)
+    hosts.manager?.refresh(id).catch((/** @type {any} */ e) => console.error(`Postbox couldn’t close its link to ${h.name}: ${e?.message ?? e}`));
+  else if (enforced && hosts.manager?.status(id)?.state === 'connected')
+    hosts.manager.refresh(id).catch((/** @type {any} */ e) => console.error(`Postbox couldn’t send ${dest} its new settings: ${e?.message ?? e}`));
   return next;
 }
 
@@ -82,22 +84,22 @@ export function updateHost(rt, id, { name, short, settings } = {}) {
  * token stay: without the token, Postbox could never reach what it left there. One with no token here and nothing
  * running there is removed here alone, since Postbox can’t reach anything of its own there.
  * Agents placed on it keep their placement and can’t start a turn there until they’re moved.
- * @param {any} rt @param {string} id @param {{ waitMs?: number }} [opts]
+ * @param {import('./host-service.mjs').Hosts} hosts @param {string} id @param {{ waitMs?: number }} [opts]
  */
-export async function removeHost(rt, id, { waitMs = REMOVE_HOST_WAIT_MS } = {}) {
-  const h = host(rt, id);
+export async function removeHost(hosts, id, { waitMs = REMOVE_HOST_WAIT_MS } = {}) {
+  const h = host(hosts, id);
   const until = Date.now() + waitMs;
-  const { stopped, given } = await stopTurnsOn(rt, id, waitMs);
-  await refuseWhileRunning(rt, h, id, until);
-  if (rt.hosts) await leaveHost(rt, h, id);
+  const { stopped, given } = await stopTurnsOn(hosts, id, waitMs);
+  await refuseWhileRunning(hosts, h, id, until);
+  if (hosts.manager) await leaveHost(hosts, h, id);
   // It may have been removed meanwhile, by a second click.
-  if (!rt.s.hosts?.[id]) return { ok: true, stopped: stopped.length + given };
-  for (const p of Object.values(rt.s.projects)) {
+  if (!hosts.store.state.hosts?.[id]) return { ok: true, stopped: stopped.length + given };
+  for (const p of Object.values(hosts.store.state.projects)) {
     if (!p.hostFolders || !Object.hasOwn(p.hostFolders, id)) continue;
     const { [id]: _gone, ...rest } = p.hostFolders;
-    rt.store.emit('project', { ...p, hostFolders: rest });
+    hosts.store.emit('project', { ...p, hostFolders: rest });
   }
-  rt.store.emit('host', { id, removed: true });
+  hosts.store.emit('host', { id, removed: true });
   return { ok: true, stopped: stopped.length + given };
 }
 
@@ -105,17 +107,18 @@ export async function removeHost(rt, id, { waitMs = REMOVE_HOST_WAIT_MS } = {}) 
  * Stops the turns on a host, and waits up to waitMs for those it stopped to end: agents placed on it, and sessions
  * with a turn there (one that started before its agent moved, or one waiting to be attached again after a restart,
  * which no Stop reaches, and which is given up instead).
- * @param {any} rt @param {string} id @param {number} waitMs
+ * @param {import('./host-service.mjs').Hosts} hosts @param {string} id @param {number} waitMs
  */
-async function stopTurnsOn(rt, id, waitMs) {
+async function stopTurnsOn(hosts, id, waitMs) {
   const stopped = [];
   let given = 0;
-  const on = new Set(rt.remote.sessionsOn(id));
-  for (const se of Object.values(rt.s.sessions)) if (rt.persona(se.personaId)?.remote?.hostId === id || se.remoteTurn?.hostId === id) on.add(se.id);
+  const on = new Set(hosts.hostTurns.sessionsOn(id));
+  for (const se of Object.values(hosts.store.state.sessions))
+    if (hosts.personas.get(se.personaId)?.remote?.hostId === id || se.remoteTurn?.hostId === id) on.add(se.id);
   for (const sessionId of on) {
     // A turn already stopping is waited for too.
-    if (rt.stop(sessionId, { silent: true }) || rt.exiting.has(sessionId)) stopped.push(rt.exiting.get(sessionId)?.turn.exited);
-    else if (rt.remote.cancel(sessionId)) given++;
+    if (hosts.hostTurns.stopOn(sessionId) || hosts.running.exitOf(sessionId)) stopped.push(hosts.running.exitOf(sessionId)?.turn.exited);
+    else if (hosts.hostTurns.cancel(sessionId)) given++;
   }
   if (stopped.length) {
     /** @type {NodeJS.Timeout|undefined} */
@@ -131,14 +134,16 @@ async function stopTurnsOn(rt, id, waitMs) {
 
 /**
  * The removal is refused while the daemon hasn’t confirmed that each turn Postbox stopped there is over.
- * @param {any} rt @param {any} h @param {string} id @param {number} until
+ * @param {import('./host-service.mjs').Hosts} hosts @param {any} h @param {string} id @param {number} until
  */
-async function refuseWhileRunning(rt, h, id, until) {
-  const { left, noToken } = await rt.remote.confirmStops(id, Math.max(0, until - Date.now()));
+async function refuseWhileRunning(hosts, h, id, until) {
+  const { left, noToken } = await hosts.hostTurns.confirmStops(id, Math.max(0, until - Date.now()));
   if (left.length && noToken) {
     const names = [
       ...new Set(
-        left.map((/** @type {string} */ t) => rt.s.sessions[rt.remote.stopping.get(t)?.sessionId ?? '']?.handle).map((x) => (x ? `@${x}` : 'an agent')),
+        left
+          .map((/** @type {string} */ t) => hosts.store.state.sessions[hosts.hostTurns.stoppingSession(t) ?? '']?.handle)
+          .map((x) => (x ? `@${x}` : 'an agent')),
       ),
     ];
     throw httpError(
@@ -147,7 +152,7 @@ async function refuseWhileRunning(rt, h, id, until) {
     );
   }
   if (left.length) {
-    const reached = rt.hosts?.status(id)?.state === 'connected';
+    const reached = hosts.manager?.status(id)?.state === 'connected';
     const turns = left.length === 1 ? 'a turn' : `${left.length} turns`;
     throw httpError(
       409,
@@ -160,11 +165,11 @@ async function refuseWhileRunning(rt, h, id, until) {
 
 /**
  * Postbox removes itself from the host, then forgets the link and its token.
- * @param {any} rt @param {any} h @param {string} id
+ * @param {import('./host-service.mjs').Hosts} hosts @param {any} h @param {string} id
  */
-async function leaveHost(rt, h, id) {
+async function leaveHost(hosts, h, id) {
   try {
-    await rt.hosts.removeFromHost(id);
+    await hosts.manager.removeFromHost(id);
   } catch (e) {
     // No token here: nothing of Postbox’s there can be reached. No host: a second click removed it meanwhile.
     if (e?.code !== 'not-installed' && e?.code !== 'no-host')
@@ -173,22 +178,22 @@ async function leaveHost(rt, h, id) {
         next: e?.next ?? null,
       });
   }
-  await rt.hosts.forget(id);
+  await hosts.manager.forget(id);
 }
 
 /**
  * Sets a project’s folder on a host, an absolute path there; null clears it, and its agents work in
  * ~/postbox-work/<handle> on that host instead (the design, “The adapters stay”).
- * @param {any} rt @param {string} projectId @param {string} hostId @param {unknown} folder
+ * @param {import('./host-service.mjs').Hosts} hosts @param {string} projectId @param {string} hostId @param {unknown} folder
  */
-export function setProjectHostFolder(rt, projectId, hostId, folder) {
-  const p = rt.s.projects[projectId];
+export function setProjectHostFolder(hosts, projectId, hostId, folder) {
+  const p = hosts.store.state.projects[projectId];
   if (!p) throw httpError(404, 'That project doesn’t exist.');
-  const h = host(rt, hostId);
+  const h = host(hosts, hostId);
   const { [hostId]: _old, ...rest } = p.hostFolders ?? {};
   const hostFolders = folder === null ? rest : { ...rest, [hostId]: checked(checkHostPath(folder, `The project’s folder on ${h.name}`)) };
   const next = { ...p, hostFolders };
-  rt.store.emit('project', next);
+  hosts.store.emit('project', next);
   return next;
 }
 
