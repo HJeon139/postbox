@@ -4,7 +4,7 @@
 
 import { httpError } from './helpers.mjs';
 import * as queue from './message-queue.mjs';
-import { pendingSessionsIn } from './session-write.mjs';
+import { pendingSessionsIn } from './sessions.mjs';
 import { dropWakes } from './side-threads.mjs';
 import { eraseThreads } from './thread-erase.mjs';
 

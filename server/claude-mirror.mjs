@@ -8,7 +8,7 @@ import { basename } from 'node:path';
 import { contentBlocks, listClaudeSessions, recentHistory, TranscriptTail, typedText } from './adapters/terminal-mirror.mjs';
 import { sessionFolder } from './folder-path.mjs';
 import { httpError } from './helpers.mjs';
-import { pendingSessionsIn } from './session-write.mjs';
+import { pendingSessionsIn } from './sessions.mjs';
 import { describeTool } from './tool-labels.mjs';
 
 export async function claudeSessions(rt) {

@@ -118,8 +118,6 @@ const PENDING = {
   // left, so a stream holds one patch, not one per chunk, a held compaction counts, and a held note is given. A delivery reads its session pending too (runtime.mjs
   // deliver, twice): the last summary's givenMentions and seenItem, and a notice, held, are seen, not given again or lost (#506). Whether a thread has a persona's session already
   // reads its pending members and sessions, so a second mention behind a held commit finds the session the first made.
-  // The agent ensureSession joins, which the same request may have just made.
-  'conversations.mjs': ['ensureSession'],
   // The room’s chain limit, which decides whether a wake waits, maybe set behind a held commit (#1035); and the room a
   // PATCH sets it on, maybe started there.
   'room-chain-limit.mjs': ['roomChainLimit', 'patchThread'],
@@ -128,7 +126,11 @@ const PENDING = {
   'session-lifecycle.mjs': ['conversationScope', 'conversationScope', 'deleteSession', 'deleteSession', 'deleteSession', 'deleteSession', 'deleteSession'],
   // An agent changed or deleted, and a deleted agent’s sessions, any of them maybe made behind a held commit.
   'personas.mjs': ['update', 'remove'],
-  'session-write.mjs': ['updateSession', 'needAt', 'stampNeeds', 'pendingSessionsIn', 'pendingSessionsIn', 'forgetReported'], // needAt: the need's item's time, maybe added behind a held commit (#1155); stampNeeds: the session it stamps; forgetReported: an agent’s sessions whose last report a backend switch drops (#1315)
+  // needAt: the need's item's time, maybe added behind a held commit (#1155); stampNeeds: the session it stamps;
+  // forgetReported: an agent’s sessions whose last report a backend switch drops (#1315); ensureSession: the agent it
+  // joins, which the same request may have just made; unarchive: what an older Postbox archived, the threads and
+  // sessions it rewrites as the store loads.
+  'sessions.mjs': ['updateSession', 'needAt', 'stampNeeds', 'pendingSessionsIn', 'pendingSessionsIn', 'forgetReported', 'ensureSession', 'unarchive'],
   // A command’s item, maybe deleted behind a held commit, before its output or its end is written.
   'shell-runs.mjs': ['commandOutput', 'endCommand'],
   'subagent-end.mjs': ['withUrgent'],
@@ -150,7 +152,6 @@ const PENDING = {
   'turn-finish.mjs': ['endTurn', 'endTurn', 'needsAfter'], // a turn’s end: its own items and apps, sweeps that write back, and the thread its reply count goes to, maybe held behind a commit (#796)
   'turn-stop.mjs': ['stop', 'recordStopped', 'turnExited'],
   'tool-ask.mjs': ['askForTool', 'settleToolAsks'], // a second ask for the same tool, and the sweep that settles open asks
-  'unarchive.mjs': ['unarchive'], // what an older Postbox archived: the threads and sessions it rewrites as the store loads
   'view-app/consent.mjs': ['askToSee'], // an open download card, which decides whether to add another (#95)
   'topic-open.mjs': ['startTopic', 'startTopic', 'conversationOf', 'conversationOf', 'repeatOf'], // one topic per message, the item's thread and I6's check, each maybe held behind a commit (#637)
   'wake-cards.mjs': ['lastAddAnswer', 'openCard'], // a declined add, so a mention asks no more (#693), and its lift by the person’s add (#789); another wake’s held hop card, so a second isn’t made

@@ -6,7 +6,10 @@
 // in a function of the pending session; tests/session-write-guard.test.mjs places those still built from a published one.
 
 import { itemOf } from '../shared/item-index.mjs';
+import { clipText, httpError } from './helpers.mjs';
 import { sessionPatch } from './session-patch.mjs';
+import { newId } from './store.mjs';
+import { liftDecline } from './wake-cards.mjs';
 
 /**
  * Writes the fields of `change` that change the session, with updatedAt. `change` is the fields to set, or a function
@@ -76,4 +79,97 @@ export function forgetReported(rt, was, next) {
   if (next.backend === was.backend && next.model === was.model) return;
   for (const pending of Object.values(rt.store.pending.sessions()))
     if (pending.personaId === next.id && (pending.lastModel || pending.lastEffort)) rt.updateSession(pending.id, { lastModel: null, lastEffort: null });
+}
+
+// ── An agent’s one session in a conversation, moved here from server/conversations.mjs ──
+
+/** One session per persona per thread. Adding a second agent turns a thread into a room. */
+/**
+ * @param {any} rt @param {string} threadId @param {string} personaId
+ * @param {{ brief?: string|null, joined?: { by: string, in: string } | null }} [opts]
+ *   joined: it joins to answer in a side thread, woken by `by` (a handle, or 'you') in thread `in` (#110)
+ */
+export function ensureSession(rt, threadId, personaId, { brief, joined = null } = {}) {
+  // Read pending: a conversation createThread just wrote may still be held behind a commit.
+  rt.threads.toWrite(threadId);
+  const existing = pendingSessionsIn(rt, threadId).find((x) => x.personaId === personaId);
+  if (existing) return existing;
+  // Pending too: an agent the request just made may be held behind a commit with the thread.
+  const p = rt.store.pending.persona(personaId);
+  if (!p) throw httpError(404, 'That agent doesn’t exist.');
+  const se = rt.putSession({
+    id: newId('se'),
+    personaId,
+    threadId,
+    handle: p.handle,
+    backend: p.backend,
+    state: 'idle',
+    ctx: null,
+    subagents: [],
+    compactions: 0,
+    toolCount: 0,
+    toolCalls: [],
+    currentStep: '',
+    lastMessage: '',
+    agentMessages: [],
+    needs: null,
+    unread: 0,
+    startedAt: Date.now(),
+    finishedAt: null,
+    brief: brief ?? null,
+    // The person never added it, so its row says why it’s here (decided by the person, 23 October 2026).
+    ...(joined ? { joinedBy: joined.by, joinedIn: joined.in } : {}),
+    // Nothing given yet: its first turn starts with the conversation so far (see catchUp).
+    seenItem: null,
+  });
+  rt.threads.patch(threadId, (x) => ({ members: [...x.members, se.id], kind: x.kind === 'thread' && x.members.length > 0 ? 'room' : x.kind }));
+  liftDecline(rt, threadId, p.handle); // the person added it: a decline of adding it here no longer holds (#789)
+  return se;
+}
+
+// ── Archived conversations, moved here from server/unarchive.mjs ──
+
+// Conversations can’t be archived any more: a store an older Postbox wrote can still hold an archived one (#101, #320),
+// and a fork #228 retired as archived. As the store loads, each archived conversation and its agents come back as live
+// ones, and a retired fork keeps only retiredFork, the flag that keeps it out of the rail and that no message reaches.
+
+/**
+ * Drops `archived` from every thread and session that still has it. O(threads + sessions), and it writes nothing once
+ * a store has none. @param {import('./runtime.mjs').Runtime} rt
+ */
+export function unarchive(rt) {
+  for (const t of rt.threads.pending()) if (Object.hasOwn(t, 'archived')) rt.threads.patch(t.id, { archived: undefined });
+  for (const id of Object.keys(rt.s.sessions)) {
+    const se = rt.store.pending.session(id);
+    if (se && (Object.hasOwn(se, 'archived') || Object.hasOwn(se, 'archivedAt'))) rt.updateSession(id, { archived: undefined, archivedAt: undefined });
+  }
+}
+
+// ── The commands each agent offers, moved here from server/agent-commands.mjs ──
+
+/** The most skills and commands kept for an agent’s / menu. */
+const MAX_COMMANDS = 200;
+
+/**
+ * Keeps an agent’s skills and commands on its session, bounded, for the / menu: from init (names; terminal-only
+ * ones are already left out) or the SDK’s supportedCommands() (with descriptions and argument hints).
+ * @param {string} sessionId @param {unknown} list
+ */
+export function recordCommands(rt, sessionId, list) {
+  if (!rt.s.sessions[sessionId] || !Array.isArray(list)) return;
+  const seen = new Set();
+  const commands = [];
+  for (const c of list) {
+    const name = typeof c?.name === 'string' ? c.name.replace(/^\//, '').trim() : '';
+    if (!name || name.length > 100 || seen.has(name) || !/^[\w:.@/-]+$/.test(name)) continue;
+    seen.add(name);
+    commands.push({
+      name,
+      ...(typeof c.description === 'string' && c.description.trim() ? { description: clipText(c.description.trim(), 200) } : {}),
+      ...(typeof c.argumentHint === 'string' && c.argumentHint.trim() ? { argumentHint: clipText(c.argumentHint.trim(), 100) } : {}),
+      ...(c.skill === true ? { skill: true } : {}),
+    });
+    if (commands.length >= MAX_COMMANDS) break;
+  }
+  rt.updateSession(sessionId, { commands: { at: Date.now(), list: commands } });
 }

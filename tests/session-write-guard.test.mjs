@@ -2,7 +2,7 @@
 // designs/508/601-held-view.md, “a read that decides a write reads pending”). A session.patch replaces each field
 // whole, so a field built from the published session (its context, its backend state, its jobs) overwrites the same
 // field a write still held behind a commit left: a Postbox notice, or a backend's resume id, was lost. updateSession
-// (server/session-write.mjs) takes a function of the pending session for these. This guard finds every updateSession
+// (server/sessions.mjs) takes a function of the pending session for these. This guard finds every updateSession
 // change that spreads, or filters, maps or slices, a field of a session it didn't get as that function's parameter,
 // directly or through a local, and places each by file and function. The ones still placed below are follow-ups, each
 // a write built from the published session: a new one fails until it's built from the pending session instead.
@@ -22,10 +22,10 @@ import { DECL, placed, sites, withProbes } from './server-sources-fixture.mjs';
 
 /** Every write of a session: updateSession's patch, the put of a new one, and the removal of one. */
 const SESSION_WRITES = {
-  'conversations.mjs': ['ensureSession'], // a new session, through putSession
   'runtime.mjs': ['putSession', 'putSession'], // putSession and its emit, called only by ensureSession for a new session
   'session-lifecycle.mjs': ['deleteSession'], // a delete's removal
-  'session-write.mjs': ['updateSession', 'stampNeeds'], // a session that exists, from store.pending.session; a need's time as the store loads
+  // a session that exists, from store.pending.session; a need's time as the store loads; a new session, through putSession
+  'sessions.mjs': ['updateSession', 'stampNeeds', 'ensureSession'],
   'thread-erase.mjs': ['eraseThreads'], // the sessions of the threads a delete erases
 };
 const SESSION_WRITE = /\bputSession\(|\bemit\(\s*['"`]session|\bemit\(\s*['"`]remove['"`]\s*,\s*\{\s*kind:\s*['"`]session['"`]/;

@@ -6,7 +6,7 @@ import { homedir } from 'node:os';
 import { READING } from '../shared/limits.mjs';
 import { formatDuration } from '../shared/text.mjs';
 import { listProcesses } from './adapters/process-group.mjs';
-import { recordCommands, runAgentCommand } from './agent-commands.mjs';
+import { runAgentCommand } from './agent-commands.mjs';
 import { agentFile, agentFolders, appFiles } from './agent-files.mjs';
 import { APP_HOLD_MAX, APP_SEND_LIMIT, APP_SEND_WINDOW_MS } from './app-send-limits.mjs';
 import { appCheck, appEvent, appFile, appQuery, appState, needAppSend, registerApp, resolveAppSend } from './apps.mjs';
@@ -16,7 +16,6 @@ import { act, answerDelivered, unreadAnswer } from './blocks.mjs';
 import { Bus } from './bus.mjs';
 import { catchUp, moveMarkers } from './catch-up.mjs';
 import { attachClaudeSession, claudeSessions, mirror, pollMirror, rearmMirrors, stopMirrorFor, stopMirrors } from './claude-mirror.mjs';
-import { ensureSession } from './conversations.mjs';
 import { deliver, retry } from './deliver.mjs';
 import { diagramCheck } from './diagram-check.mjs';
 import { clipText, httpError } from './helpers.mjs';
@@ -54,7 +53,7 @@ import { Running } from './running.mjs';
 import { armWake, cancelWakeSchedule, rearmWakes, scheduleWake } from './scheduled-wakes.mjs';
 import { sendMessage, threadRefs } from './send-message.mjs';
 import { deleteSession, deleteThread } from './session-lifecycle.mjs';
-import { forgetReported, pendingSessionsIn, stampNeeds, tellAgent, updateSession } from './session-write.mjs';
+import { ensureSession, forgetReported, pendingSessionsIn, recordCommands, stampNeeds, tellAgent, unarchive, updateSession } from './sessions.mjs';
 import { clearSummaryPending, shareText, shareToConversation, summarizeBack, summarizing } from './share-back.mjs';
 import { commandFolder, expireStaleCommands, flushShellOutput, runShellCommand, stopShellCommand, stopShellCommands } from './shell-runs.mjs';
 import { agentWake, bumpSideLink, recordAgentMessage, resolveHop, sideSession } from './side-threads.mjs';
@@ -66,7 +65,6 @@ import { checkTurn, stallLeftRunning, stallSteps } from './turn-checks.mjs';
 import { settleSubagentSteps } from './turn-steps.mjs';
 import { dismissStopAsk, recordStopped, requestStop, stop, stopTurns } from './turn-stop.mjs';
 import { toolsFor } from './ui-tools.mjs';
-import { unarchive } from './unarchive.mjs';
 import { closeOrphanCards } from './wake-cards.mjs';
 import { restoreWork, workDiff, workGit, workOutput } from './work-view.mjs';
 
@@ -251,7 +249,7 @@ export class Runtime {
     updateSession(this, id, patch);
   }
 
-  // ── A conversation’s own record: server/threads.mjs and conversations.mjs ──────────
+  // ── A conversation’s own record: server/threads.mjs and sessions.mjs ──────────────
 
   /**
    * Starts a conversation with the agents it starts with, each given its session there, and answers it as written, with
