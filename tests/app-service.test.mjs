@@ -220,7 +220,17 @@ test('retire signals app.retired with the app as written, after it reads as reti
 
 test('showBlock shows a block, and an app as a registered app; updateBlock withdrawing one signals block.withdrawn', () => {
   const { store, apps, signals } = rig();
-  const block = { id: 'q1', type: 'choice', version: 1, prompt: 'Pick one', options: [{ label: 'A' }, { label: 'B' }] };
+  const block = {
+    id: 'q1',
+    type: 'choice',
+    version: 1,
+    fallback: 'Pick A or B.',
+    prompt: 'Pick one',
+    options: [
+      { id: 'a', label: 'A' },
+      { id: 'b', label: 'B' },
+    ],
+  };
   assert.equal(apps.showBlock('se_1', { ...ctx(store), tools: {} }, { block }).ok, true);
   const app = apps.showBlock(
     'se_1',
@@ -241,7 +251,17 @@ test('showBlock shows a block, and an app as a registered app; updateBlock withd
 
 test('an answer is read once its event starts a turn; an update over an unread answer is refused, waiting while its event is held', () => {
   const { store, threads, running, apps } = rig();
-  const block = { id: 'q1', type: 'choice', version: 1, prompt: 'Pick one', options: [{ label: 'A' }, { label: 'B' }] };
+  const block = {
+    id: 'q1',
+    type: 'choice',
+    version: 1,
+    fallback: 'Pick A or B.',
+    prompt: 'Pick one',
+    options: [
+      { id: 'a', label: 'A' },
+      { id: 'b', label: 'B' },
+    ],
+  };
   const it = threads.addItem('th_c', {
     kind: 'block',
     valid: true,
@@ -261,7 +281,7 @@ test('an answer is read once its event starts a turn; an update over an unread a
 
 test('reviewBlock comments on another agent’s review and tells it through send; a send that throws is said in the reply', () => {
   const { store, threads, apps, sent } = rig();
-  const review = { id: 'rv', type: 'review', version: 1, format: 'markdown', title: 'Draft', content: 'one\ntwo\n' };
+  const review = { id: 'rv', type: 'review', version: 1, fallback: 'A draft to review.', format: 'markdown', title: 'Draft', content: 'one\ntwo\n' };
   threads.addItem('th_c', { kind: 'block', valid: true, sessionId: 'se_1', handle: 'alpha', block: review });
   const r = apps.reviewBlock('se_2', { blockId: 'rv', comments: [{ line: 1, text: 'Shorter.' }] });
   assert.equal(r.ok, true, r.message);

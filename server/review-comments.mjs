@@ -12,20 +12,20 @@ import { SUMMARY_WAKES_NO_ONE } from './side-threads.mjs';
 
 /**
  * review_block { blockId, comments, verdict? } for the session’s turn.
- * @param {any} rt @param {string} sessionId @param {any} args
+ * @param {any} apps @param {string} sessionId @param {any} args
  * @returns {{ ok: boolean, message: string }}
  */
-export function reviewBlock(rt, sessionId, args) {
-  const se = rt.session(sessionId);
+export function reviewBlock(apps, sessionId, args) {
+  const se = apps.sessions.get(sessionId);
   // A summary for the conversation wakes no one (#225, #93): a review would wake the block’s agent, and post in the room.
   // Refused here as well as in agentWake, since its comments would be written before any wake.
-  if (rt.turns.get(sessionId)?.summarizeTo) return no(SUMMARY_WAKES_NO_ONE);
+  if (apps.running.turnOf(sessionId)?.summarizeTo) return no(SUMMARY_WAKES_NO_ONE);
   const { blockId, comments, verdict } = args && typeof args === 'object' ? args : {};
   if (typeof blockId !== 'string' || !blockId.trim()) return no('blockId names the review block: its id, or its item id.');
   if (verdict !== undefined && !VERDICTS.includes(verdict)) return no('verdict is “comment”, “approve” or “request_changes”, or left out.');
   if (!Array.isArray(comments) || !comments.length || comments.length > MAX_COMMENTS)
     return no(`comments is a list of 1 to ${MAX_COMMENTS} comments, such as [{ line: 12, text: "…" }].`);
-  const found = find(rt, se, blockId.trim());
+  const found = find(apps, se, blockId.trim());
   if ('message' in found) return found;
   const { it, where } = found;
   if (it.sessionId === sessionId) return no(`${it.block.id} is your own review block: add or answer its threads with update_block.`);
@@ -39,15 +39,15 @@ export function reviewBlock(rt, sessionId, args) {
   const { threads, added } = withComments(it.block.threads ?? [], comments, se.handle);
   const block = { ...it.block, threads };
   // Built from checked parts, but checked again as a whole: a block on screen is always one the catalog takes.
-  const v = validateBlock(block, { imageOrigins: rt.config.imageOrigins });
+  const v = validateBlock(block, { imageOrigins: apps.config.imageOrigins });
   if (!v.ok) return no(`Nothing was added: ${v.errors.join(' ')}`);
   const revision = it.revision ?? 1;
   const review = { handle: se.handle, ...(verdict ? { verdict } : {}), revision, threads: added.map((c) => c.threadId), at: Date.now() };
-  rt.threads.patchItem(where, it.id, { block: v.block, reviews: [...(it.reviews ?? []), review] });
+  apps.threads.patchItem(where, it.id, { block: v.block, reviews: [...(it.reviews ?? []), review] });
   const event = { blockId: it.block.id, revision, action: 'review', values: { ...(verdict ? { verdict } : {}), comments: added }, from: se.handle };
   let heard = `@${it.handle} hears them now, and can revise.`;
   try {
-    rt.deliver(it.sessionId, { kind: 'event', event }, { threadId: where });
+    apps.send(it.sessionId, { kind: 'event', event }, { threadId: where });
   } catch (e) {
     heard = `@${it.handle} didn’t hear them: ${e.message}`;
   }
@@ -148,12 +148,12 @@ function withComments(before, comments, handle) {
 
 /**
  * The review block blockId names in the session’s conversation: by its id, or its item’s.
- * @param {any} rt @param {any} se @param {string} key
+ * @param {any} apps @param {any} se @param {string} key
  */
-function find(rt, se, key) {
-  const all = rt.threads
+function find(apps, se, key) {
+  const all = apps.threads
     .conversationThreads(se.threadId)
-    .flatMap((where) => rt.store.items(where).map((it) => ({ it, where })))
+    .flatMap((where) => apps.store.items(where).map((it) => ({ it, where })))
     .filter(({ it }) => it.kind === 'block' && it.valid && it.block.type === 'review' && (it.id === key || it.block.id === key));
   if (!all.length) return no(`There’s no review block “${key.slice(0, 80)}” in this conversation. read_conversation shows each block with its id.`);
   if (all.length > 1)

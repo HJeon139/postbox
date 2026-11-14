@@ -4,7 +4,6 @@
 // Runtime’s own members and the server functions that take it: the step that redoes a concern as a service changes
 // that concern’s helpers here, and no spec.
 
-import { showBlock as showBlockOf } from '../server/block-show.mjs';
 import { hostTool as hostToolOf } from '../server/host-tool.mjs';
 import { expireWait as expireWaitOf } from '../server/permission-cards.mjs';
 import { viewApp as viewAppOf } from '../server/view-app/view-app.mjs';
@@ -193,13 +192,13 @@ export const assetTools = (rt, sessionId, turn, opts) => rt.assets.tools(session
  * Shows a block for an agent, as its show_block tool does, in the turn context ctx gives: { turn, se, threadId,
  * endSegment, tools }. @param {Runtime} rt @param {string} sessionId @param {any} ctx @param {{ block: any }} args
  */
-export const showBlock = (rt, sessionId, ctx, args) => showBlockOf(rt, sessionId, ctx, args);
+export const showBlock = (rt, sessionId, ctx, args) => rt.apps.showBlock(sessionId, ctx, args);
 
 /**
  * Runs a host tool an app asked for, as the app’s query does, in the conversation `at` names.
  * @param {Runtime} rt @param {string} tool @param {any} args @param {{ threadId?: string }} [at]
  */
-export const hostTool = (rt, tool, args, at) => hostToolOf(rt, tool, args, at);
+export const hostTool = (rt, tool, args, at) => hostToolOf(rt.apps, tool, args, at);
 
 /** The folder where view_app keeps its browser and the person’s answer about downloading it. @param {Runtime} rt */
 export const viewDir = (rt) => viewOf(rt).dir;

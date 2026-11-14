@@ -7,14 +7,14 @@ import { READING } from '../shared/limits.mjs';
 import { formatDuration } from '../shared/text.mjs';
 import { listProcesses } from './adapters/process-group.mjs';
 import { runAgentCommand } from './agent-commands.mjs';
-import { needAppSend, resolveAppSend } from './app-send-cards.mjs';
+import { holdAppSend, needAppSend, releaseRetired, resolveAppSend } from './app-send-cards.mjs';
 import { APP_HOLD_MAX, APP_SEND_LIMIT, APP_SEND_WINDOW_MS } from './app-send-limits.mjs';
-import { appCheck, appEvent, appFile, appQuery, appState, registerApp } from './apps.mjs';
+import { Apps } from './app-service.mjs';
 import { askQuestions, QUESTION_TOOL, questionBlocks } from './ask-question.mjs';
 import { Assets } from './asset-service.mjs';
-import { answerDelivered, unreadAnswer } from './block-update.mjs';
 import { act } from './blocks.mjs';
 import { Bus } from './bus.mjs';
+import { releaseNeed } from './card-needs.mjs';
 import { catchUp, moveMarkers } from './catch-up.mjs';
 import { Checks } from './check-service.mjs';
 import { attachClaudeSession, claudeSessions, mirror, pollMirror, rearmMirrors, stopMirrorFor, stopMirrors } from './claude-mirror.mjs';
@@ -169,6 +169,23 @@ export class Runtime {
       send: (sessionId, message, opts) => this.deliver(sessionId, message, opts),
       config,
     });
+    // Agents’ apps and the blocks they show (designs/architecture/services.md, “Apps”). A retired app’s sends waiting
+    // for the person, and a withdrawn block, release the need they carried, before the call returns.
+    this.apps = new Apps({
+      store,
+      bus: this.bus,
+      threads: this.threads,
+      sessions: this.sessions,
+      personas: this.personas,
+      assets: this.assets,
+      running: this.running,
+      checks: this.checks,
+      send: (sessionId, message, opts) => this.deliver(sessionId, message, opts),
+      narrator: this.narrator,
+      config,
+    });
+    this.bus.on('app.retired', ({ app }) => releaseRetired(this, app));
+    this.bus.on('block.withdrawn', ({ se, itemId }) => releaseNeed(this, se, itemId));
     this.remote = new RemoteTurns(this, { hosts: this.hosts });
     this.listenToPersonas();
     // Conversations can’t be archived any more: one an older Postbox archived comes back as a live one.
@@ -432,14 +449,6 @@ export class Runtime {
 
   act(threadId, itemId, action, values, revision) {
     return act(this, threadId, itemId, action, values, revision);
-  }
-
-  answerDelivered(threadId, message) {
-    return answerDelivered(this, threadId, message);
-  }
-
-  unreadAnswer(sessionId, threadId, it, outcome = false) {
-    return unreadAnswer(this, sessionId, threadId, it, outcome);
   }
 
   resolveProposal(threadId, itemId, action) {
@@ -752,10 +761,12 @@ export class Runtime {
   static APP_SEND_WINDOW_MS = APP_SEND_WINDOW_MS;
   static APP_HOLD_MAX = APP_HOLD_MAX;
   appCheck(appId, report) {
-    return appCheck(this, appId, report);
+    return this.apps.appCheck(appId, report);
   }
   appEvent(appId, action, values, opts) {
-    return appEvent(this, appId, action, values, opts);
+    const r = this.apps.appEvent(appId, action, values, opts);
+    // Past its limit, an app’s event waits on its card for the person (asks: server/app-send-cards.mjs).
+    return r.hold ? holdAppSend(this, r.hold.app, r.hold.card, r.hold.event) : r;
   }
   needAppSend(app, itemId, waiting) {
     return needAppSend(this, app, itemId, waiting);
@@ -764,16 +775,13 @@ export class Runtime {
     return resolveAppSend(this, threadId, itemId, action, opts);
   }
   appState(appId, state) {
-    return appState(this, appId, state);
+    return this.apps.appState(appId, state);
   }
   appQuery(appId, tool, args) {
-    return appQuery(this, appId, tool, args);
+    return this.apps.appQuery(appId, tool, args);
   }
   appFile(appId, name, v) {
-    return appFile(this, appId, name, v);
-  }
-  registerApp(sessionId, block, itemId, threadId, files) {
-    return registerApp(this, sessionId, block, itemId, threadId, files);
+    return this.apps.appFile(appId, name, v);
   }
 
   // ── Presence ───────────────────────────────────────────────────────────────────────

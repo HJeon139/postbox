@@ -8,7 +8,6 @@ import { blockTitle } from './block-update.mjs';
 import { releaseNeed } from './card-needs.mjs';
 import { httpError, refuseRetired } from './helpers.mjs';
 import { REACT } from './reactions.mjs';
-import { personAnswer } from './review-person.mjs';
 import { resolveToolAsk } from './tool-ask.mjs';
 import { resolveViewAsk } from './view-app/consent.mjs';
 import { stopRequested } from './write-intent.mjs';
@@ -60,7 +59,7 @@ export function act(rt, threadId, itemId, action, values, revision) {
   if (!r.ok) throw Object.assign(httpError(422, r.error), { fieldErrors: r.fieldErrors });
   refuseRetired(rt.s.sessions[it.sessionId]);
   // A review’s comments become the person’s threads on it, in the one write that records the answer (#1143).
-  const theirs = locks && !dismissed ? personAnswer(rt, it, r.event, current) : null;
+  const theirs = locks && !dismissed ? rt.apps.personAnswer(it, r.event, current) : null;
   const ev = theirs?.event ?? r.event;
   // An AskUserQuestion’s block (#521): the answer is its call’s result, so the agent has it now, and no event goes.
   const asked = waitingQuestion(rt, itemId);

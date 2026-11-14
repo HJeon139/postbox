@@ -3,12 +3,7 @@
 // delegate to the module that owns their block, app, wake or read. Moved out of server/runtime.mjs; Runtime keeps
 // toolsFor, which delegates here.
 
-import { retireApp } from './app-retire.mjs';
-import { showApp, updateApp } from './apps.mjs';
-import { showBlock } from './block-show.mjs';
-import { updateBlock } from './block-update.mjs';
 import { bringToConversation } from './bring.mjs';
-import { reviewBlock } from './review-comments.mjs';
 import { cancelWake, scheduleWakeTool } from './schedule-tools.mjs';
 import { recordedTools } from './scheduled-wakes.mjs';
 import { wakeAgent } from './side-threads.mjs';
@@ -29,20 +24,20 @@ export function toolsFor(rt, sessionId, turn = null) {
   return recordedTools(rt, turn, {
     /** @param {{ block: any }} args @param {{ files?: AppFile[] }} [given]  data files Postbox read for show_app (#54) */
     show_block(args, given = {}) {
-      return showBlock(rt, sessionId, { turn, se, threadId, endSegment, tools: this }, args, given);
+      return rt.apps.showBlock(sessionId, { turn, se, threadId, endSegment, tools: this }, args, given);
     },
     update_block(args, given = {}) {
-      return updateBlock(rt, sessionId, args, { turn, se, threadId, endSegment }, given);
+      return rt.apps.updateBlock(sessionId, args, { turn, se, threadId, endSegment }, given);
     },
-    review_block: (args) => reviewBlock(rt, sessionId, args),
+    review_block: (args) => rt.apps.reviewBlock(sessionId, args),
     show_app(args, given = {}) {
-      return showApp(rt, sessionId, this, args, given);
+      return rt.apps.showApp(sessionId, this, args, given);
     },
     update_app(args, given) {
-      return updateApp(rt, sessionId, turn, threadId, endSegment, args, given);
+      return rt.apps.updateApp(sessionId, turn, threadId, endSegment, args, given);
     },
     retire_app(args) {
-      return retireApp(rt, sessionId, args);
+      return rt.apps.retire(sessionId, args);
     },
     define_term: (args) => defineTerm(rt, { turn, se, threadId }, args),
     propose_agent: (args) => proposeAgent(rt, sessionId, { turn, se, threadId, endSegment }, args),
