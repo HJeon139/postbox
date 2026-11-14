@@ -121,7 +121,7 @@ function askOne(rt, sessionId, block, toolUseId) {
   const se = rt.s.sessions[sessionId];
   const turn = rt.turns.get(sessionId);
   if (!se || !turn) return Promise.resolve({ message: 'The turn has ended.' });
-  const it = rt.addItem(turn.threadId, {
+  const it = rt.threads.addItem(turn.threadId, {
     kind: 'block',
     sessionId,
     handle: se.handle,
@@ -134,7 +134,7 @@ function askOne(rt, sessionId, block, toolUseId) {
   });
   rt.closeSegment(turn);
   offerNeed(rt, se, { kind: 'block', itemId: it.id, text: block.title ?? block.prompt, ...rt.awayFrom(se, turn.threadId) }, 'needs');
-  rt.notify('blocking', se, `@${se.handle} asks you`, block.prompt, turn.threadId);
+  rt.threads.notify('blocking', se, `@${se.handle} asks you`, block.prompt, turn.threadId);
   return new Promise((resolve) => {
     // As a card’s (permission-cards.mjs, expireWait), but without its “ask again”: the question stays open.
     const timer = setTimeout(() => gated(rt, () => rt.settlePermission(it.id, 'expired', WAITED)), CARD_WAIT_MS);

@@ -6,7 +6,6 @@
 // after a post below the reply show below it too, with the words they led to. replySegment moved from
 // server/runtime.mjs; its caller is adapterContext (server/turn-context.mjs).
 
-import { updateThread } from './threads.mjs';
 import { replyMarks } from './turn-marks.mjs';
 
 /**
@@ -15,7 +14,7 @@ import { replyMarks } from './turn-marks.mjs';
  */
 export function replySegment(rt, turn, se0) {
   if (!turn.segment) {
-    const it = rt.addItem(turn.threadId, {
+    const it = rt.threads.addItem(turn.threadId, {
       kind: 'agent',
       sessionId: turn.sessionId,
       personaId: se0.personaId,
@@ -27,12 +26,12 @@ export function replySegment(rt, turn, se0) {
       ...replyMarks(turn),
     });
     // The text before a tool call or a block is finished; only the newest segment shows the caret.
-    if (turn.lastSegment) rt.patchItem(turn.threadId, turn.lastSegment, { status: 'done' });
+    if (turn.lastSegment) rt.threads.patchItem(turn.threadId, turn.lastSegment, { status: 'done' });
     turn.segment = it.id;
     turn.lastSegment = turn.openSegment = it.id; // openSegment: the one still streaming, by its id (closeSegment)
     if (!turn.first) turn.first = it.id;
     if (turn.said) turn.said += '\n\n';
-    updateThread(rt, turn.threadId, { lastSpeaker: turn.sessionId });
+    rt.threads.patch(turn.threadId, { lastSpeaker: turn.sessionId });
   }
   return turn.segment;
 }

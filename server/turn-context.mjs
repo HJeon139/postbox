@@ -135,7 +135,7 @@ function replyWords(rt, se0, turn, live) {
       if (!live()) return;
       const n = (rt.store.pending.session(turn.sessionId) ?? se()).compactions + 1; // one held behind a commit counts too
       turn.segment = null;
-      rt.addItem(turn.threadId, {
+      rt.threads.addItem(turn.threadId, {
         kind: 'system',
         variant: 'compaction',
         handle: se0.handle,
@@ -149,7 +149,7 @@ function replyWords(rt, se0, turn, live) {
     sources(list) {
       if (!live()) return;
       const id = ensureSegment();
-      rt.patchItem(turn.threadId, id, {
+      rt.threads.patchItem(turn.threadId, id, {
         sources: list.slice(0, 50).map((x) => ({
           title: String(x.title ?? ''),
           authors: String(x.authors ?? ''),

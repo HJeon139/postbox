@@ -21,7 +21,8 @@ export function scheduleWake(rt, sessionId, { inMs, note }) {
   const at = Date.now() + Math.max(1000, Math.min(inMs, 7 * DAY));
   const sc = { id: newId('sc'), sessionId, threadId: se.threadId, handle: se.handle, at, note: String(note ?? '').slice(0, 200) };
   rt.store.emit('schedule', sc);
-  const it = rt.addItem(se.threadId, { kind: 'system', variant: 'schedule', scheduleId: sc.id, handle: se.handle, at, note: sc.note, status: 'pending' });
+  const line = { kind: 'system', variant: 'schedule', scheduleId: sc.id, handle: se.handle, at, note: sc.note, status: 'pending' };
+  const it = rt.threads.addItem(se.threadId, line);
   sc.itemId = it.id;
   rt.store.emit('schedule', sc);
   armWake(rt, sc);
@@ -47,10 +48,10 @@ export function fireScheduledWake(rt, schedule) {
   if (!rt.store.writable) return whenWritable(rt, () => fireScheduledWake(rt, id), { owner: id });
   const running = { ...sc, running: true };
   rt.store.emit('schedule', running);
-  if (sc.itemId) rt.patchItem(sc.threadId, sc.itemId, { status: 'running' });
+  if (sc.itemId) rt.threads.patchItem(sc.threadId, sc.itemId, { status: 'running' });
   // A retired fork isn’t woken: deliver() would refuse it, here outside any request (#228).
   if (!rt.s.sessions[sc.sessionId] || rt.s.sessions[sc.sessionId].retiredFork) return finishSchedule(rt, running, 'canceled');
-  if (!sc.attempt) rt.addItem(sc.threadId, { kind: 'system', variant: 'wake', from: sc.handle, to: sc.handle, scheduled: true });
+  if (!sc.attempt) rt.threads.addItem(sc.threadId, { kind: 'system', variant: 'wake', from: sc.handle, to: sc.handle, scheduled: true });
   rt.deliver(sc.sessionId, { kind: 'wake', note: sc.recoveryNote ?? sc.note, scheduledWakeId: sc.id });
 }
 
@@ -69,7 +70,7 @@ export function prepareScheduledRetry(rt, message, threadId) {
   clearTimeout(rt.timers.get(sc.id));
   rt.timers.delete(sc.id);
   rt.store.emit('schedule', { ...sc, running: true });
-  if (sc.itemId) rt.patchItem(sc.threadId, sc.itemId, { status: 'running' });
+  if (sc.itemId) rt.threads.patchItem(sc.threadId, sc.itemId, { status: 'running' });
   return { ...message, note: sc.recoveryNote ?? sc.note };
 }
 
@@ -161,7 +162,7 @@ export function settleScheduledWake(rt, turn, err) {
   rt.store.emit('schedule', next);
   // The line keeps the recovery too, for a Retry after you cancel the schedule (prepareScheduledRetry).
   if (next.itemId)
-    rt.patchItem(next.threadId, next.itemId, {
+    rt.threads.patchItem(next.threadId, next.itemId, {
       status: 'pending',
       at: next.at,
       retryAttempt: attempt,
@@ -175,7 +176,7 @@ function finishSchedule(rt, sc, status, patch = {}) {
   clearTimeout(rt.timers.get(sc.id));
   rt.timers.delete(sc.id);
   rt.store.emit('schedule', { id: sc.id, removed: true });
-  if (sc.itemId) rt.patchItem(sc.threadId, sc.itemId, { status, retryAttempt: null, retryStopped: false, ...patch });
+  if (sc.itemId) rt.threads.patchItem(sc.threadId, sc.itemId, { status, retryAttempt: null, retryStopped: false, ...patch });
 }
 
 /** Cancels one pending or running schedule. @param {any} rt @param {string} scheduleId */

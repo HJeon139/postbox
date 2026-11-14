@@ -235,7 +235,7 @@ export function retry(rt, threadId, itemId) {
   if (it?.status !== 'failed') throw httpError(409, 'Only a failed reply can be retried.');
   // What it was asked (turn-marks.mjs): refused, with nothing sent, when it was kept and can’t be read back exactly.
   return askedAgain(rt, threadId, it, (asked) => {
-    rt.patchItem(threadId, itemId, { status: 'retried' });
+    rt.threads.patchItem(threadId, itemId, { status: 'retried' });
     // Only the cards that wait until answered can take the need: the failed turn's own asks would flash until the
     // retried turn starts, and that turn's end decides them.
     releaseNeed(rt, rt.s.sessions[it.sessionId], itemId, undefined, { turnIds: [] });

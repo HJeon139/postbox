@@ -30,7 +30,7 @@ export function askForTool(rt, sessionId, { tool, why } = {}, endSegment = () =>
   const open = rt.store.pending.items(threadId).find((x) => x.kind === 'toolask' && x.sessionId === sessionId && x.tool === id && x.status === 'open');
   if (open) return { ok: true, message: `You already asked for ${id}, and the card is waiting for the person. End your turn.` };
   endSegment();
-  rt.addItem(threadId, {
+  rt.threads.addItem(threadId, {
     kind: 'toolask',
     sessionId,
     handle: se.handle,
@@ -78,8 +78,8 @@ export function settleToolAsks(rt, persona) {
 
 /** A card answered on or off: it says so, the agent no longer needs you for it, and it hears the answer. */
 function answered(rt, threadId, it, action) {
-  rt.patchItem(threadId, it.id, { status: action, answeredAt: Date.now() });
-  rt.addItem(threadId, {
+  rt.threads.patchItem(threadId, it.id, { status: action, answeredAt: Date.now() });
+  rt.threads.addItem(threadId, {
     kind: 'voice',
     text: action === 'on' ? `Turned on “${it.label}” for @${it.handle}` : `Kept “${it.label}” off for @${it.handle}`,
   });

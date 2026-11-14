@@ -107,7 +107,9 @@ const PENDING = {
   'remote/turns-resume.mjs': ['reattach'], // the replayed turn’s replies, replaced in a sweep
   'remote/turns.mjs': ['noteAttach', 'noteAttach'], // the session and the persona: whether it awaits attach, which decides a delivery’s wait, with the persona as written (#1135)
   'reply-segment.mjs': ['wordsSegment', 'placeStep'], // whether the turn’s open part is still its thread’s last decides where its next words and steps go
-  'runtime.mjs': ['addItem', 'addItem', 'bringForward'], // the turn’s own items, a move after a pending read, and the thread a topic reply count goes to, maybe opened or deleting behind a held commit (#796)
+  // The conversation createThread just wrote, with the agents it joined: its route’s answer is its own write, which a
+  // held commit keeps out of the published state (#1247’s class).
+  'runtime.mjs': ['createThread'],
   // The reply with the mention, a side line right after its add, and sweeps of hop cards; the conversation's hop count,
   // the topic the wake answers in, and endChain's hops and queued wakes, each maybe held behind a commit (#796).
   // A session's change and notice diff against the session a held change left (#796's class in sessions).
@@ -137,10 +139,10 @@ const PENDING = {
   // The thread a turn answers in, as deliver chose it from pending, and the topic a turn's end settles: a topic
   // open_topic just opened, held (#796).
   'thread-summary.mjs': ['threadHeader', 'threadCatchUp', 'settleThread'],
-  // Every write of a thread that exists starts from it (#796), and threadToWrite refuses one that doesn’t exist there.
-  // And the conversation createThread just wrote, with the agents it joined: its route’s answer is its own write, which
-  // a held commit keeps out of the published state (#1247’s class).
-  'threads.mjs': ['updateThread', 'threadToWrite', 'pendingThreads', 'createThread'],
+  // Every write of a thread that exists starts from it (#796), and toWrite refuses one that doesn’t exist there. Then
+  // the turn’s own items, a move after a pending read, and the thread a topic reply count goes to, maybe opened or
+  // deleting behind a held commit (#796).
+  'threads.mjs': ['patch', 'toWrite', 'pending', 'addItem', 'addItem', 'bringForward'],
   // A finished turn’s checks: its own block and the terms and apps it introduced, and the progress steps it stalls.
   'turn-checks.mjs': ['checkTurn', 'checkTurn', 'checkTurn', 'stallSteps'],
   'turn-context.mjs': ['text', 'compaction'], // a streamed chunk's state check, and a compaction's number, from the session a held write left

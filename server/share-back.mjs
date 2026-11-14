@@ -5,7 +5,6 @@
 import { positionOf } from '../shared/item-index.mjs';
 import { clip, httpError, tooLongToSend } from './helpers.mjs';
 import { threadPersona } from './side-threads.mjs';
-import { updateThread } from './threads.mjs';
 
 /** “Send to conversation”: a message from a topic or side thread (#128) is posted in its conversation, for you and its agents. */
 export function shareToConversation(rt, topicId, itemId) {
@@ -21,7 +20,7 @@ export function shareToConversation(rt, topicId, itemId) {
   const items = topic.kind === 'topic' && it.kind === 'agent' ? rt.store.items(topicId) : [];
   const index = positionOf(items, it.id);
   const question = index >= 0 ? items.slice(0, index).findLast((item) => item.kind === 'user')?.text : undefined;
-  rt.patchItem(topicId, itemId, { sharedAt: Date.now() });
+  rt.threads.patchItem(topicId, itemId, { sharedAt: Date.now() });
   return rt.shareText(topic.parentId, { fromThreadId: topicId, handle: it.kind === 'user' ? null : it.handle, text: it.text, question });
 }
 
@@ -44,8 +43,8 @@ export function summarizeBack(rt, topicId, opts) {
   if (rt.summarizing(topicId)) throw httpError(409, 'A summary is already on its way. It’s posted in the conversation when it’s written.');
   // Kept on the thread for the panel’s button, until the turn ends or is stopped. A restart can leave it
   // behind an idle agent, which the panel treats as done; the check above looks at the turns themselves.
-  updateThread(rt, topicId, { summaryPending: { sessionId: se.id, at: Date.now() } });
-  rt.addItem(topicId, { kind: 'voice', text: 'Asked for a summary to send back to the conversation' });
+  rt.threads.patch(topicId, { summaryPending: { sessionId: se.id, at: Date.now() } });
+  rt.threads.addItem(topicId, { kind: 'voice', text: 'Asked for a summary to send back to the conversation' });
   const what = topic.kind === 'side' ? 'side thread' : 'topic thread';
   rt.deliver(
     se.id,
@@ -87,12 +86,12 @@ export function postSummary(rt, se, turn, items) {
   if (!turn.summarizeTo || !turn.said.trim()) return;
   const tooLong = tooLongToSend('A summary', turn.said, 'Summarize back again for a shorter one.');
   if (tooLong) {
-    rt.addItem(turn.threadId, { kind: 'system', variant: 'send-refused', text: tooLong.message });
+    rt.threads.addItem(turn.threadId, { kind: 'system', variant: 'send-refused', text: tooLong.message });
     return;
   }
   rt.shareText(turn.summarizeTo, { fromThreadId: turn.threadId, handle: se.handle, text: turn.said, summary: true });
   for (const it of items)
-    if (it.turnId === turn.id && it.kind === 'agent' && it.text && !it.sharedAt) rt.patchItem(turn.threadId, it.id, { sharedAt: Date.now() });
+    if (it.turnId === turn.id && it.kind === 'agent' && it.text && !it.sharedAt) rt.threads.patchItem(turn.threadId, it.id, { sharedAt: Date.now() });
 }
 
 /** Whether a summarize turn is running or queued in a topic or side thread. */
@@ -111,7 +110,7 @@ export function summarizing(rt, topicId) {
  */
 export function clearSummaryPending(rt, topicId, ended = null) {
   const next = ended?.pending.some((p) => p.summarizeTo && p.threadId === topicId);
-  if (!next && !rt.summarizing(topicId)) updateThread(rt, topicId, (t) => (t.summaryPending ? { summaryPending: null } : null));
+  if (!next && !rt.summarizing(topicId)) rt.threads.patch(topicId, (t) => (t.summaryPending ? { summaryPending: null } : null));
 }
 
 /**
@@ -122,7 +121,7 @@ export function clearSummaryPending(rt, topicId, ended = null) {
 export function shareText(rt, threadId, { fromThreadId, handle, text, summary = false, agent = false, question = undefined }) {
   const from = rt.s.threads[fromThreadId];
   // The conversation’s agents read it at the start of their next turn, with everything else they missed.
-  return rt.addItem(threadId, {
+  return rt.threads.addItem(threadId, {
     kind: 'shared',
     fromThreadId,
     fromTitle: from?.title ?? '',

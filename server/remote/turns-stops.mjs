@@ -40,7 +40,7 @@ export function askStop(rts, sessionId, hostId, turn, { send: now = true, state 
   // The person’s Stop: its open cards learn it, so whichever message ends them tells the agent the Stop withdrew the
   // request, not the person refusing it (#853). Any other stop (a sign-in end, an errored end, a hung stop, the
   // restart’s re-ask) leaves them, so the agent hears it expired (#721).
-  if (byPerson) for (const card of openCards(rts, turn)) rts.rt.patchItem(card.threadId, card.it.id, { stoppedBy: 'you' });
+  if (byPerson) for (const card of openCards(rts, turn)) rts.rt.threads.patchItem(card.threadId, card.it.id, { stoppedBy: 'you' });
   if (now) sendStop(rts, turn);
   return true;
 }

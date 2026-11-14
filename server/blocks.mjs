@@ -11,7 +11,7 @@ import { answerQuestion, lateAnswer, waitingQuestion } from './ask-question.mjs'
 import { releaseNeed } from './card-needs.mjs';
 import { clip, clipText, echoedId, httpError, refuseRetired } from './helpers.mjs';
 import { stampSteps } from './progress-steps.mjs';
-import { REACT, toggleReaction } from './reactions.mjs';
+import { REACT } from './reactions.mjs';
 import { revisedFiles } from './review-files.mjs';
 import { ownedAuthors, personAnswer, revisedReview } from './review-person.mjs';
 import { resolveToolAsk } from './tool-ask.mjs';
@@ -41,7 +41,7 @@ export function act(rt, threadId, itemId, action, values, revision) {
   const it = rt.store.item(threadId, itemId);
   if (!it) throw httpError(404, 'That block doesn’t exist any more.');
   // A reaction is an act on any message, block or app (#251), and never answers one.
-  if (action === REACT) return toggleReaction(rt, threadId, itemId, values?.emoji);
+  if (action === REACT) return rt.threads.toggleReaction(threadId, itemId, values?.emoji);
   if (Object.hasOwn(ANSWERED_BY, it.kind)) return ANSWERED_BY[it.kind](rt, threadId, itemId, action, values);
   if (it.kind !== 'block' || !it.valid) throw httpError(409, 'This block can’t be acted on.');
   if (it.closed?.by === 'agent')
@@ -65,7 +65,7 @@ export function act(rt, threadId, itemId, action, values, revision) {
   const dismissed = locks && action === 'dismiss';
   const r = dismissed ? dismissal(it.block, current) : buildEvent(it.block, action, values, { revision: current });
   if (!r.ok) throw Object.assign(httpError(422, r.error), { fieldErrors: r.fieldErrors });
-  refuseRetired(rt, it.sessionId);
+  refuseRetired(rt.s.sessions[it.sessionId]);
   // A review’s comments become the person’s threads on it, in the one write that records the answer (#1143).
   const theirs = locks && !dismissed ? personAnswer(rt, it, r.event, current) : null;
   const ev = theirs?.event ?? r.event;
@@ -73,13 +73,13 @@ export function act(rt, threadId, itemId, action, values, revision) {
   const asked = waitingQuestion(rt, itemId);
   // read: whether the agent has had the answer in a turn yet. Until then an update can’t reopen the block.
   if (locks)
-    rt.patchItem(threadId, itemId, {
+    rt.threads.patchItem(threadId, itemId, {
       answered: true,
       answer: { action, values: ev.values, voice: r.voice, at: Date.now(), revision: current, read: asked },
       ...theirs?.patch,
       ...(dismissed ? { closed: { by: 'person', at: Date.now() } } : {}),
     });
-  rt.addItem(threadId, { kind: 'voice', text: r.voice, blockItemId: itemId });
+  rt.threads.addItem(threadId, { kind: 'voice', text: r.voice, blockItemId: itemId });
   const se = rt.s.sessions[it.sessionId];
   releaseNeed(rt, se, itemId);
   // A question whose call has gone gets its answer as an event, with its question and labels in words (#521).
@@ -97,7 +97,8 @@ export function act(rt, threadId, itemId, action, values, revision) {
 export function answerDelivered(rt, threadId, message) {
   if (message.kind !== 'event' || !message.blockItemId) return;
   const it = rt.store.item(threadId, message.blockItemId);
-  if (it?.answer?.read === false && it.answer.revision === message.event.revision) rt.patchItem(threadId, it.id, { answer: { ...it.answer, read: true } });
+  if (it?.answer?.read === false && it.answer.revision === message.event.revision)
+    rt.threads.patchItem(threadId, it.id, { answer: { ...it.answer, read: true } });
 }
 
 /**
@@ -122,7 +123,7 @@ export function unreadAnswer(rt, sessionId, threadId, it, outcome = false) {
   const waiting = rt.turns.get(sessionId)?.pending.some((p) => p.message.blockItemId === it.id);
   const then = outcome ? 'then record the outcome' : 'then update';
   if (waiting) return { ok: false, message: `${said} It reaches you when this turn ends: read it, ${then}.` };
-  rt.patchItem(threadId, it.id, { answer: { ...a, read: true } });
+  rt.threads.patchItem(threadId, it.id, { answer: { ...a, read: true } });
   return {
     ok: false,
     message: `${said} It didn’t reach you in a turn, so ${it.block.type !== 'review' && full.length <= 300 ? 'that’s the whole answer' : `here it is in full: ${a.action} ${clipText(full, CATCH_UP_CHARS)}`}. Read it, ${then}.`,
@@ -163,7 +164,7 @@ export function updateBlock(rt, sessionId, { block }, { turn, se, threadId, endS
   if (existing.answered && !newFiles) {
     const differ = unseenAware(v.block, existing.block).filter((k) => k !== 'outcome');
     if (differ.length > 0 && !existing.closed && differ.every((k) => UNSEEN.has(k) || k === STATUS)) {
-      if (differ.length) rt.patchItem(where, existing.id, { block: { ...v.block, outcome: existing.block.outcome }, updatedAt: now, ...reviews });
+      if (differ.length) rt.threads.patchItem(where, existing.id, { block: { ...v.block, outcome: existing.block.outcome }, updatedAt: now, ...reviews });
       // The images are the ones it already holds (no newFiles), so their blobs stay.
       if (given.files) given.held = true;
       return {
@@ -185,13 +186,13 @@ export function updateBlock(rt, sessionId, { block }, { turn, se, threadId, endS
   // Both ways below write the patch, and with it the images, onto the item (#828).
   if (given.files) given.held = true;
   if (!followsConversation(v.block)) {
-    rt.patchItem(where, existing.id, patch);
+    rt.threads.patchItem(where, existing.id, patch);
     return { ok: true, message: `Updated block ${v.block.id}.${note}` };
   }
   // It asks again, so it comes to the newest point, where the person will look for it (#92). Text the turn writes
   // next goes after it, when it’s in the turn’s own thread.
   if (where === threadId()) endSegment();
-  const moved = rt.bringForward(where, existing.id, { what: 'block', title: blockTitle(v.block) }, patch);
+  const moved = rt.threads.bringForward(where, existing.id, { what: 'block', title: blockTitle(v.block) }, patch);
   return { ok: true, message: `Updated block ${v.block.id}${moved ? '; it asks again at the newest point in the conversation' : ''}.${note}` };
 }
 
@@ -221,7 +222,7 @@ function keptWaiting(rt, where, existing, block, now) {
   const differ = unseenAware(block, existing.block);
   if (!differ.every((k) => UNSEEN.has(k) || k === STATUS)) return null;
   if (!differ.length) return { ok: true, message: `Nothing in ${block.id} changed, so it still waits on the person as it was.` };
-  rt.patchItem(where, existing.id, { block, updatedAt: now });
+  rt.threads.patchItem(where, existing.id, { block, updatedAt: now });
   return { ok: true, message: `Updated the ${differ.join(', ')} of ${block.id}; it still waits on the person as it was, since nothing they’d answer changed.` };
 }
 const STATUS = 'threads’ status';
@@ -262,7 +263,7 @@ function recordOutcome(rt, sessionId, block, { se, threadId }) {
   const { id: _id, outcome, revision: _revision, ...sent } = block;
   const differ = Object.keys(sent).filter((k) => JSON.stringify(sent[k]) !== JSON.stringify(existing.block[k]));
   // Not a new revision: the draft the person answered is unchanged, and an answered block can’t be answered again.
-  rt.patchItem(where, existing.id, { block: { ...owned, outcome }, updatedAt: Date.now() });
+  rt.threads.patchItem(where, existing.id, { block: { ...owned, outcome }, updatedAt: Date.now() });
   return {
     ok: true,
     message: `Recorded the outcome under the person’s answer to ${id}; it stays answered.${differ.length ? ` Your other changes (${differ.join(', ')}) weren’t applied: an answered block keeps the question the person answered. To ask again, update it without outcome.` : ''}`,
@@ -308,7 +309,7 @@ function withdraw(rt, sessionId, block, { se, threadId }) {
   // Not over an answer the agent hasn’t read (#123): it would close a block without knowing what the person said.
   if (existing.answer?.read === false) return rt.unreadAnswer(sessionId, where, existing);
   const s = se();
-  rt.patchItem(where, existing.id, { answered: true, closed: { by: 'agent', handle: s.handle, reason, at: Date.now() } });
+  rt.threads.patchItem(where, existing.id, { answered: true, closed: { by: 'agent', handle: s.handle, reason, at: Date.now() } });
   releaseNeed(rt, s, existing.id);
   return { ok: true, message: `Withdrew block ${id}. The person sees it closed, with your reason, and it no longer waits on them.` };
 }

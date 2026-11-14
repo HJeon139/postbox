@@ -16,7 +16,7 @@ export function settleSubagentSteps(rt, turn) {
       }
   }
   turn.steps = turn.steps.map((s) => (open.has(s.id) ? { ...s, state: 'stopped', detail: 'its turn ended before it finished' } : s));
-  if (turn.first) rt.patchItem(turn.threadId, turn.first, { activity: { steps: [...turn.steps] } });
+  if (turn.first) rt.threads.patchItem(turn.threadId, turn.first, { activity: { steps: [...turn.steps] } });
 }
 
 /**
@@ -29,7 +29,7 @@ export function settleStoppedSteps(rt, turn) {
   const open = (s) => s.state === 'running' && !(s.job && turn.keepJobs.has(s.job));
   if (!(turn.steps ?? []).some(open)) return;
   turn.steps = turn.steps.map((s) => (open(s) ? { ...s, state: 'stopped' } : s));
-  if (turn.first) rt.patchItem(turn.threadId, turn.first, { activity: { steps: [...turn.steps] } });
+  if (turn.first) rt.threads.patchItem(turn.threadId, turn.first, { activity: { steps: [...turn.steps] } });
 }
 
 /**

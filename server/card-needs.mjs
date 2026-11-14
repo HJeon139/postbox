@@ -210,8 +210,8 @@ function notifyOnce(rt, se, need) {
   const threadId = need.threadId ?? se.threadId;
   const card = rt.store.pending.items(threadId).find((x) => x.id === need.itemId);
   if (card?.notifiedAt !== null) return;
-  rt.patchItem(threadId, card.id, { notifiedAt: Date.now() });
-  rt.notify('blocking', se, need.text, `Apps send up to ${APP_SEND_LIMIT} a minute in your voice. Allow these, or don’t.`);
+  rt.threads.patchItem(threadId, card.id, { notifiedAt: Date.now() });
+  rt.threads.notify('blocking', se, need.text, `Apps send up to ${APP_SEND_LIMIT} a minute in your voice. Allow these, or don’t.`);
 }
 
 /** The session's state for a need it settles on, with no turn running: a failed turn shows Retry. @param {any} need */
@@ -248,7 +248,7 @@ export function dismissFailed(rt, threadId, itemId) {
   if (it?.kind === 'agent' && it.status === 'retried') throw httpError(409, 'It was already retried; reload to see it.');
   if (it?.kind !== 'agent' || it.status !== 'failed') throw httpError(409, 'Only a failed reply can be dismissed.');
   if (it.dismissed) return { ok: true };
-  rt.patchItem(threadId, itemId, { dismissed: true });
+  rt.threads.patchItem(threadId, itemId, { dismissed: true });
   releaseNeed(rt, rt.s.sessions[it.sessionId], itemId);
   return { ok: true };
 }

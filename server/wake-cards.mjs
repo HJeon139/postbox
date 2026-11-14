@@ -7,7 +7,6 @@ import { HELD_WAKES } from '../shared/limits.mjs';
 import { offerNeed, releaseNeed } from './card-needs.mjs';
 import { clip, httpError } from './helpers.mjs';
 import { roomChainLimit } from './room-chain-limit.mjs';
-import { updateThread } from './threads.mjs';
 
 /**
  * The card for a wake past the room’s chain limit (#108), which waits for the person’s Allow. It keeps the limit it was
@@ -19,7 +18,7 @@ export function askToWake(rt, from, parent, p, wake) {
   const n = (parent.hops ?? 0) + 1;
   const limit = roomChainLimit(rt, parent.id);
   // The card shows reason as a preview; text is the whole message, delivered when you allow it (#108).
-  const it = rt.addItem(parent.id, {
+  const it = rt.threads.addItem(parent.id, {
     kind: 'hop',
     fromSessionId: from.id,
     from: from.handle,
@@ -31,7 +30,7 @@ export function askToWake(rt, from, parent, p, wake) {
     limit,
   });
   needsCard(rt, from, parent, it, `@${from.handle} wants to wake @${p.handle}`);
-  rt.notify('blocking', from, `Let @${from.handle} wake @${p.handle}?`, `That would be agent wake ${n} since your last message.`);
+  rt.threads.notify('blocking', from, `Let @${from.handle} wake @${p.handle}?`, `That would be agent wake ${n} since your last message.`);
   return {
     ok: false,
     waiting: true,
@@ -54,7 +53,7 @@ export function askToAdd(rt, from, parent, p, wake, { prose = false } = {}) {
     return { ok: false, message: `the person chose not to add @${p.handle} to this conversation. Carry on without it, or ask the person.` };
   const open = openCard(rt, parent);
   if (open) return holdOnCard(rt, open, parent, from, p, wake);
-  const it = rt.addItem(parent.id, {
+  const it = rt.threads.addItem(parent.id, {
     kind: 'hop',
     join: true,
     fromSessionId: from.id,
@@ -65,7 +64,7 @@ export function askToAdd(rt, from, parent, p, wake, { prose = false } = {}) {
     status: 'open',
   });
   needsCard(rt, from, parent, it, `@${from.handle} wants to add @${p.handle}`);
-  rt.notify('blocking', from, `Add @${p.handle} to this conversation?`, `@${from.handle} wants to wake it.`);
+  rt.threads.notify('blocking', from, `Add @${p.handle} to this conversation?`, `@${from.handle} wants to wake it.`);
   return {
     ok: false,
     waiting: true,
@@ -92,7 +91,7 @@ function declinedAdd(rt, conv, handle) {
  */
 export function liftDecline(rt, conv, handle) {
   const last = lastAddAnswer(rt, conv, handle);
-  if (last?.status === 'declined' && !last.lifted) rt.patchItem(conv, last.id, { lifted: Date.now() });
+  if (last?.status === 'declined' && !last.lifted) rt.threads.patchItem(conv, last.id, { lifted: Date.now() });
 }
 
 /** The newest add card for `handle` the person answered, read pending, so an answer held behind a commit counts (#796). */
@@ -118,7 +117,7 @@ function holdOnCard(rt, card, parent, from, p, wake) {
       message: `Your message to @${p.handle} wasn’t sent: ${cardName(card)} is waiting for the person, with ${HELD_WAKES} messages already held on it. Send it again once they’ve answered.`,
     };
   const { text, replyIn = null, fromTurnId = null, itemId = null } = wake;
-  rt.patchItem(parent.id, card.id, {
+  rt.threads.patchItem(parent.id, card.id, {
     held: [...held, { fromSessionId: from.id, from: from.handle, to: p.handle, text, replyIn, fromTurnId, itemId, at: Date.now() }],
   });
   const message = `Postbox is holding your message to @${p.handle}: ${cardName(card)} is waiting for the person. It goes to @${p.handle} when they allow that, so don’t send it again; if they don’t, you’ll be told.`;
@@ -135,7 +134,7 @@ export function resolveHop(rt, threadId, itemId, allow) {
   const it = rt.store.item(threadId, itemId);
   if (it?.kind === 'hop' && it.status === 'closed') throw httpError(409, `That request was closed: ${it.closedWhy}.`);
   if (it?.kind !== 'hop' || it.status !== 'open') throw httpError(409, 'That request was already answered.');
-  rt.patchItem(threadId, itemId, { status: allow ? 'allowed' : 'declined' });
+  rt.threads.patchItem(threadId, itemId, { status: allow ? 'allowed' : 'declined' });
   const voice = it.join
     ? allow
       ? `Added @${it.to} to this conversation for @${it.from}`
@@ -143,15 +142,15 @@ export function resolveHop(rt, threadId, itemId, allow) {
     : allow
       ? `Allowed: @${it.from} wakes @${it.to}`
       : `Didn’t allow @${it.from} to wake @${it.to}`;
-  rt.addItem(threadId, { kind: 'voice', text: voice });
+  rt.threads.addItem(threadId, { kind: 'voice', text: voice });
   const from = rt.s.sessions[it.fromSessionId];
   releaseNeed(rt, from, itemId);
-  updateThread(rt, threadId, { hops: 0 });
+  rt.threads.patch(threadId, { hops: 0 });
   // Added: it joins with a note on why, as an agent the person adds does, and the wake goes on (#228).
   const p = it.join && allow ? rt.personaByHandle(it.to) : null;
   if (p) {
     rt.ensureSession(threadId, p.id, { brief: `@${it.from} woke you, and the person added you to this conversation.`, joined: { by: it.from, in: threadId } });
-    rt.addItem(threadId, { kind: 'system', variant: 'joined', to: p.handle });
+    rt.threads.addItem(threadId, { kind: 'system', variant: 'joined', to: p.handle });
   }
   // A request stored before #108 kept only the preview.
   if (allow)
@@ -207,10 +206,10 @@ function settleHeld(rt, card, allow) {
  * @param {{ byPerson?: boolean }} [opts]
  */
 export function retireStale(rt, threadId, target, why, { byPerson = false } = {}) {
-  const conv = rt.lineage(threadId).at(-1);
+  const conv = rt.threads.lineage(threadId).at(-1);
   const card = openCard(rt, { id: conv });
   if (!card || card.join || card.to !== target.handle) return;
-  rt.patchItem(conv, card.id, { status: 'retired', retiredWhy: why, retiredAt: Date.now() });
+  rt.threads.patchItem(conv, card.id, { status: 'retired', retiredWhy: why, retiredAt: Date.now() });
   const from = rt.s.sessions[card.fromSessionId];
   releaseNeed(rt, from, card.id);
   // A request stored before #108 kept only the preview.
@@ -239,11 +238,11 @@ function sendHeld(rt, card, w, confirmed) {
  * @param {any} rt @param {any} se  the agent @param {string} how  what happened to it
  */
 export function dropHeld(rt, se, how) {
-  const conv = rt.lineage(se.threadId).at(-1);
+  const conv = rt.threads.lineage(se.threadId).at(-1);
   const card = openCard(rt, { id: conv });
   const mine = (card?.held ?? []).filter((w) => w.to === se.handle);
   if (!mine.length) return;
-  rt.patchItem(conv, card.id, { held: card.held.filter((w) => !mine.includes(w)) });
+  rt.threads.patchItem(conv, card.id, { held: card.held.filter((w) => !mine.includes(w)) });
   for (const w of mine)
     if (rt.s.sessions[w.fromSessionId] && !rt.s.sessions[w.fromSessionId].retiredFork && w.fromSessionId !== se.id)
       rt.tellAgent(
@@ -261,7 +260,7 @@ export function dropHeld(rt, se, how) {
  */
 export function closeHop(rt, conv, card, how) {
   const why = `@${card.from} was ${how}`;
-  rt.patchItem(conv, card.id, { status: 'closed', closedWhy: why, closedAt: Date.now() });
+  rt.threads.patchItem(conv, card.id, { status: 'closed', closedWhy: why, closedAt: Date.now() });
   const asker = rt.s.sessions[card.fromSessionId];
   releaseNeed(rt, asker, card.id);
   if (asker)
@@ -278,7 +277,7 @@ export function closeHop(rt, conv, card, how) {
 
 /** The agent that asked is removed (#693): its open card closes. O(items in its conversation). */
 export function closeOwnCard(rt, se, how) {
-  const conv = rt.lineage(se.threadId).at(-1);
+  const conv = rt.threads.lineage(se.threadId).at(-1);
   const card = openCard(rt, { id: conv });
   if (card?.fromSessionId === se.id) closeHop(rt, conv, card, how);
 }
@@ -307,7 +306,7 @@ const HELD_NAMED = 3;
 export function heldFor(rt, se) {
   // Published, not pending: the catch-up says what the person can see (designs/508/601-held-view.md), and it decides no
   // write, so a card still held behind a commit isn’t named yet.
-  const card = rt.store.items(rt.lineage(se.threadId).at(-1)).find((x) => x.kind === 'hop' && x.status === 'open');
+  const card = rt.store.items(rt.threads.lineage(se.threadId).at(-1)).find((x) => x.kind === 'hop' && x.status === 'open');
   if (!card) return [];
   const own = !card.join && card.to === se.handle ? [{ from: card.from, text: card.text ?? card.reason ?? '' }] : [];
   const mine = [...own, ...(card.held ?? []).filter((w) => w.to === se.handle)];

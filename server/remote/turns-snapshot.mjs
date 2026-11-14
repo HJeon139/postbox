@@ -22,7 +22,7 @@ export const appCodeOfflineLine = (id) =>
  */
 export function snapshotOf(rts, se) {
   const rt = rts.rt;
-  const threads = rt
+  const threads = rt.threads
     .conversationThreads(se.threadId)
     .slice(0, REMOTE_LIMITS.snapshotThreads)
     .map((/** @type {string} */ id) => ({ id, items: readable(rts, id).map((/** @type {any} */ i) => itemOf(rts, i, se)) }));
@@ -75,7 +75,7 @@ export function onStoreEvent(rts, ev) {
 function inConversation(rts, live, threadId) {
   const se = rts.rt.s.sessions[live.sessionId];
   if (!se || !threadId) return false;
-  const root = (/** @type {string} */ id) => rts.rt.lineage(id).at(-1);
+  const root = (/** @type {string} */ id) => rts.rt.threads.lineage(id).at(-1);
   return root(threadId) === root(se.threadId);
 }
 
@@ -108,7 +108,7 @@ export function flushSnapshots(rts) {
       sendSnapshot(rts, live, live.current);
       continue;
     }
-    const threads = rts.rt.conversationThreads(se.threadId);
+    const threads = rts.rt.threads.conversationThreads(se.threadId);
     for (const [threadId, ids] of d.items) {
       if (!threads.includes(threadId)) continue;
       const items = readable(rts, threadId)

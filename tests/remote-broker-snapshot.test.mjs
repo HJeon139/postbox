@@ -40,7 +40,7 @@ test('read_conversation and read_message from a snapshot match server/runtime.mj
   };
   const rt = {
     store,
-    conversationThreads: () => snap.threads.map((t) => t.id),
+    threads: { conversationThreads: () => snap.threads.map((t) => t.id) },
     readLine: (i, _se, n = READING.item) => (n === Number.POSITIVE_INFINITY ? i.text : i.line) || null,
   };
   const se = { threadId: 'th_home', id: 's1', handle: 'dev' };

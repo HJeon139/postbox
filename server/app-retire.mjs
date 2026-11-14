@@ -50,7 +50,7 @@ export function retireApp(rt, sessionId, { id, reason, replacedBy } = {}) {
 function release(rt, app) {
   const card = rt.store.pending.items(app.threadId).find((x) => x.kind === 'appsend' && x.appId === app.id && x.status === 'open');
   if (!card) return;
-  rt.patchItem(app.threadId, card.id, { status: 'declined', retired: true, answeredAt: Date.now() });
+  rt.threads.patchItem(app.threadId, card.id, { status: 'declined', retired: true, answeredAt: Date.now() });
   const se = rt.s.sessions[card.sessionId];
   releaseNeed(rt, se, card.id);
 }

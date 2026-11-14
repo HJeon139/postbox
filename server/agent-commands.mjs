@@ -3,7 +3,6 @@
 // that delegates here.
 
 import { clipText, httpError, retiredError } from './helpers.mjs';
-import { updateThread } from './threads.mjs';
 
 /** The most skills and commands kept for an agent’s / menu. */
 const MAX_COMMANDS = 200;
@@ -47,9 +46,9 @@ export function runAgentCommand(rt, threadId, { sessionId, text }) {
   if (!se) throw httpError(404, 'That agent isn’t in this conversation.');
   if (se.retiredFork) throw retiredError(se);
   if (rt.turns.has(se.id)) throw httpError(409, `@${se.handle} is busy. Stop it, or wait for it to finish, then run the command.`);
-  const item = rt.addItem(threadId, { kind: 'user', text: line, attachments: [], to: [se.handle], command: { sessionId: se.id, handle: se.handle } });
-  updateThread(rt, threadId, { hops: 0 });
-  if (rt.sessionsIn(threadId).length > 1) rt.addItem(threadId, { kind: 'system', variant: 'wake', from: 'you', to: se.handle });
+  const item = rt.threads.addItem(threadId, { kind: 'user', text: line, attachments: [], to: [se.handle], command: { sessionId: se.id, handle: se.handle } });
+  rt.threads.patch(threadId, { hops: 0 });
+  if (rt.sessionsIn(threadId).length > 1) rt.threads.addItem(threadId, { kind: 'system', variant: 'wake', from: 'you', to: se.handle });
   rt.deliver(se.id, { kind: 'user', text: line, attachments: [], itemId: item.id, slash: true });
   return { item };
 }

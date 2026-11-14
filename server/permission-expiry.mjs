@@ -22,7 +22,7 @@ export function tellExpired(rt, threadId, itemId, card = undefined) {
   const it = card ?? rt.store.pending.item(threadId, itemId);
   if (it?.kind !== 'permission' || it.agentTold) return;
   if (!rt.s.sessions[it.sessionId]) return;
-  rt.patchItem(threadId, itemId, { agentTold: true });
+  rt.threads.patchItem(threadId, itemId, { agentTold: true });
   rt.tellAgent(it.sessionId, `${requestOf(it)} ${whyClosed(it)} Ask again if you still need it.`);
 }
 
@@ -65,7 +65,7 @@ function quoted(detail) {
 export function closeCard(rt, threadId, itemId, sessionId, patch) {
   // 'tool': a turn still running goes on with the tool call this card held.
   releaseNeed(rt, rt.s.sessions[sessionId], itemId, 'tool');
-  rt.patchItem(threadId, itemId, patch);
+  rt.threads.patchItem(threadId, itemId, patch);
   // Also when the turn still runs and its waiting call got the refusal (a card past its wait, or a host’s deny at
   // permissionWaitMax): the note repeats it on the next turn, by intent, since a turn that ends at the same moment
   // can’t be told apart here, and a repeated “ask again” costs one line where a lost one strands the request.
@@ -83,7 +83,7 @@ export function dismissPermission(rt, threadId, itemId) {
   if (it.status === 'open') throw httpError(409, 'This request is still waiting for your answer: allow it or don’t, rather than dismiss it.');
   // The need goes first, so the page redraws the card, on its patch, without Dismiss.
   releaseNeed(rt, rt.s.sessions[it.sessionId], itemId);
-  rt.patchItem(threadId, itemId, { dismissed: true, dismissedAt: Date.now() });
+  rt.threads.patchItem(threadId, itemId, { dismissed: true, dismissedAt: Date.now() });
   return { ok: true };
 }
 
@@ -95,7 +95,7 @@ export function expireStalePermissions(rt) {
   for (const [threadId, items] of Object.entries(rt.s.items))
     for (const it of items)
       if (it.kind === 'permission' && it.status === 'open' && !rt.remote.keepsCard(it)) {
-        rt.patchItem(threadId, it.id, { status: 'expired' });
+        rt.threads.patchItem(threadId, it.id, { status: 'expired' });
         // Only the note: the need this leaves on the card is #633’s to release. The card is at hand, so no lookup.
         tellExpired(rt, threadId, it.id, { ...it, status: 'expired' });
       }

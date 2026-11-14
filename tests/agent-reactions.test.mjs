@@ -33,9 +33,9 @@ test('agents react with the react tool, which every agent has, to any message: t
   const f = await replied();
   const def = TOOL_DEFS.find((t) => t.name === 'react');
   assert.deepEqual(def?.inputSchema.required, ['id', 'emoji']);
-  assert.match(reactTool(f.rt, f.beta, { id: f.question.id, emoji: '👍' }).message, /You reacted 👍 to the person’s message/);
-  assert.match(reactTool(f.rt, f.beta, { id: f.reply.id, emoji: '🚩' }).message, /You reacted 🚩 to @alpha’s message/);
-  assert.match(reactTool(f.rt, f.alpha, { id: f.reply.id, emoji: '✅' }).message, /You reacted ✅ to your own message/);
+  assert.match(reactTool(f.rt.threads, f.beta, { id: f.question.id, emoji: '👍' }).message, /You reacted 👍 to the person’s message/);
+  assert.match(reactTool(f.rt.threads, f.beta, { id: f.reply.id, emoji: '🚩' }).message, /You reacted 🚩 to @alpha’s message/);
+  assert.match(reactTool(f.rt.threads, f.alpha, { id: f.reply.id, emoji: '✅' }).message, /You reacted ✅ to your own message/);
   assert.deepEqual(
     f.store.item(f.t.id, f.reply.id).reactions.map((r) => [r.emoji, r.handle]),
     [
@@ -43,35 +43,35 @@ test('agents react with the react tool, which every agent has, to any message: t
       ['✅', 'alpha'],
     ],
   );
-  assert.equal(reactTool(f.rt, f.beta, { id: f.reply.id, emoji: '🎉' }).ok, false);
-  assert.match(reactTool(f.rt, f.beta, { id: 'it_nowhere', emoji: '👍' }).message, /no item/);
+  assert.equal(reactTool(f.rt.threads, f.beta, { id: f.reply.id, emoji: '🎉' }).ok, false);
+  assert.match(reactTool(f.rt.threads, f.beta, { id: 'it_nowhere', emoji: '👍' }).message, /no item/);
   assert.equal(arrange.liveTurns(f.rt), 0, 'a reaction wakes no one');
 });
 
 test('each reactor has their own: the person taking back their 👍 leaves an agent’s, and an agent’s again takes back only its own', async () => {
   const f = await replied();
   f.rt.act(f.t.id, f.reply.id, '@react', { emoji: '👍' });
-  reactTool(f.rt, f.beta, { id: f.reply.id, emoji: '👍' });
+  reactTool(f.rt.threads, f.beta, { id: f.reply.id, emoji: '👍' });
   assert.equal(f.store.item(f.t.id, f.reply.id).reactions.length, 2);
   f.rt.act(f.t.id, f.reply.id, '@react', { emoji: '👍' });
   assert.deepEqual(
     f.store.item(f.t.id, f.reply.id).reactions.map((r) => r.handle),
     ['beta'],
   );
-  assert.match(reactTool(f.rt, f.beta, { id: f.reply.id, emoji: '👍' }).message, /took back your 👍/);
+  assert.match(reactTool(f.rt.threads, f.beta, { id: f.reply.id, emoji: '👍' }).message, /took back your 👍/);
   assert.deepEqual(f.store.item(f.t.id, f.reply.id).reactions, []);
 });
 
 test('the agent whose message it is hears an agent’s reaction at its next turn, once; the reactor and others don’t', async () => {
   const f = await replied();
-  reactTool(f.rt, f.beta, { id: f.reply.id, emoji: '👎' });
+  reactTool(f.rt.threads, f.beta, { id: f.reply.id, emoji: '👎' });
   const turns = await nextTurns(f, '@alpha @beta what next?');
   assert.match(turns.alpha, /@beta reacted 👎 to your message at \d\d:\d\d: “The parser drops entries/);
   assert.doesNotMatch(turns.beta, /reacted/);
   const again = await nextTurns(f, '@alpha and now?');
   assert.doesNotMatch(again.alpha, /reacted/);
   // An agent’s reaction to its own message tells no one.
-  reactTool(f.rt, f.alpha, { id: f.reply.id, emoji: '✅' });
+  reactTool(f.rt.threads, f.alpha, { id: f.reply.id, emoji: '✅' });
   const own = await nextTurns(f, '@alpha @beta anything?');
   assert.doesNotMatch(`${own.alpha}\n${own.beta}`, /reacted/);
 });
@@ -81,5 +81,5 @@ test('read_conversation gives each item’s id, which react takes', async () => 
   const read = f.rt.toolsFor(f.beta.id).read_conversation({}).message;
   const id = /\[(it_\w+)\] @alpha: The parser/.exec(read)?.[1];
   assert.equal(id, f.reply.id);
-  assert.equal(reactTool(f.rt, f.beta, { id, emoji: '❓' }).ok, true);
+  assert.equal(reactTool(f.rt.threads, f.beta, { id, emoji: '❓' }).ok, true);
 });

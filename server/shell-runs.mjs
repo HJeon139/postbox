@@ -51,7 +51,7 @@ export async function runShellCommand(rt, threadId, command) {
   // Said once, as the output’s first line, when the agent here runs on a host: you, and the agents, see where it ran.
   const note = host ? `! commands run on this computer, not on ${host}.\n` : '';
   const startedAt = Date.now();
-  const it = rt.addItem(threadId, {
+  const it = rt.threads.addItem(threadId, {
     kind: 'command',
     command: line,
     cwd,
@@ -112,7 +112,7 @@ export function commandOutput(rt, threadId, itemId, note) {
     if (!final && (refreshed >= MAX_COMMAND_REFRESHES || now - refreshedAt < COMMAND_REFRESH_MS)) return;
     refreshed++;
     refreshedAt = now;
-    rt.patchItem(threadId, itemId, { text: out, cut: true, ...(refreshed >= MAX_COMMAND_REFRESHES && !final ? { paused: true } : {}) });
+    rt.threads.patchItem(threadId, itemId, { text: out, cut: true, ...(refreshed >= MAX_COMMAND_REFRESHES && !final ? { paused: true } : {}) });
   };
   /** @param {string} text */
   const add = (text) => {
@@ -138,7 +138,7 @@ export function commandOutput(rt, threadId, itemId, note) {
 function endCommand(rt, threadId, itemId, { run, cut, startedAt, exit: { code = null, signal = null, error } }) {
   whenWritable(rt, () => {
     if (!rt.store.pending.item(threadId, itemId)) return;
-    rt.patchItem(threadId, itemId, {
+    rt.threads.patchItem(threadId, itemId, {
       status: run.stopped ? 'stopped' : error ? 'failed' : code === 0 ? 'done' : 'failed',
       exitCode: typeof code === 'number' ? code : null,
       signal: signal ?? null,
@@ -195,7 +195,7 @@ export function expireStaleCommands(rt) {
   for (const [threadId, items] of Object.entries(rt.s.items))
     for (const it of items)
       if (it.kind === 'command' && it.status === 'running')
-        rt.patchItem(threadId, it.id, {
+        rt.threads.patchItem(threadId, it.id, {
           status: 'stopped',
           error: 'Postbox restarted while it ran. If Postbox didn’t shut down cleanly, it may still be running.',
         });

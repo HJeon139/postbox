@@ -150,7 +150,7 @@ function answered(rts, hostId, m, answer, input) {
     result = { behavior: 'deny', message: 'Postbox couldn’t send this answer to the host, so it didn’t allow it.' };
   }
   const card = cardOf(rts, m.turn, m.id);
-  if (card) rts.rt.patchItem(card.threadId, card.it.id, { remote: { ...card.it.remote, answer: result } });
+  if (card) rts.rt.threads.patchItem(card.threadId, card.it.id, { remote: { ...card.it.remote, answer: result } });
   send(linkOf(rts, hostId), 'answer', { turn: m.turn, prompt: m.id, result });
 }
 
@@ -211,7 +211,7 @@ export function onError(rts, m) {
   if (m.re === 'answer' && m.code === 'no-prompt' && typeof m.turn === 'string' && typeof m.id === 'string') {
     const card = cardOf(rts, m.turn, m.id);
     if (card && String(card.it.status).startsWith('allowed')) {
-      rts.rt.patchItem(card.threadId, card.it.id, { status: 'expired', lateAnswer: true, endedAt: rts.now() });
+      rts.rt.threads.patchItem(card.threadId, card.it.id, { status: 'expired', lateAnswer: true, endedAt: rts.now() });
       // The call never ran, so the agent hears it expired, as from every other path (#721).
       tellExpired(rts.rt, card.threadId, card.it.id);
     }
@@ -256,7 +256,7 @@ export function endCard(rts, card, status, message, at, extra = {}) {
 function cardOf(rts, turn, id) {
   const se = sessionOfTurn(rts, turn);
   if (!se) return null;
-  for (const threadId of rts.rt.conversationThreads(se.threadId)) {
+  for (const threadId of rts.rt.threads.conversationThreads(se.threadId)) {
     const it = rts.rt.store.pending
       .items(threadId)
       .find((/** @type {any} */ i) => i.kind === 'permission' && i.remote?.turn === turn && i.remote?.prompt === id);
@@ -287,7 +287,7 @@ export const openCards = (rts, turn) => permissionCards(rts, turn).filter((c) =>
 function permissionCards(rts, turn) {
   const se = sessionOfTurn(rts, turn);
   if (!se) return [];
-  return rts.rt.conversationThreads(se.threadId).flatMap((/** @type {string} */ threadId) =>
+  return rts.rt.threads.conversationThreads(se.threadId).flatMap((/** @type {string} */ threadId) =>
     rts.rt.store.pending
       .items(threadId)
       .filter((/** @type {any} */ i) => i.kind === 'permission' && i.remote?.turn === turn)

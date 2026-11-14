@@ -164,10 +164,10 @@ export async function reattach(rts, sessionId) {
     return;
   }
   // Running, ended or interrupted, it’s replayed from the start, so the reply is whole: what came before is replaced.
-  for (const threadId of rt.conversationThreads(now.threadId))
+  for (const threadId of rt.threads.conversationThreads(now.threadId))
     for (const it of rt.store.pending.items(threadId))
       if (it.kind === 'agent' && it.turnId && it.turnId === r.rtTurn && it.status !== 'replaced')
-        rt.patchItem(threadId, it.id, { status: 'replaced', text: '' });
+        rt.threads.patchItem(threadId, it.id, { status: 'replaced', text: '' });
   rt.updateSession(sessionId, { state: 'think', currentStep: `Reconnecting to ${rt.s.hosts?.[r.hostId]?.name ?? 'the host'}` });
   const go = continuing(rt, now, { kind: 'notice', text: '', attach: r.turn });
   rt.deliver(sessionId, go.message, go.opts);
@@ -195,7 +195,7 @@ export function interrupted(rts, sessionId, why, { unkilled = false, noBackend =
   if (!se?.remoteTurn) return;
   const name = rt.s.hosts?.[se.remoteTurn.hostId]?.name ?? 'its host';
   const message = `Interrupted on ${name}: ${why}.`;
-  const it = rt.addItem(se.threadId, {
+  const it = rt.threads.addItem(se.threadId, {
     kind: 'agent',
     sessionId,
     personaId: se.personaId,

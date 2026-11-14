@@ -286,7 +286,7 @@ export async function settledCall(rt, sessionId, req) {
         : `Postbox’s push failed: ${done?.error}. It couldn’t record that because ${why}.`,
     };
   }
-  rt.addItem(found.threadId, {
+  rt.threads.addItem(found.threadId, {
     kind: 'allowedcall',
     sessionId,
     handle: se.handle,
@@ -326,7 +326,7 @@ export function stopRequested(rt, threadId, itemId, action) {
   if (action !== 'stop') throw httpError(422, 'An allowed call only takes “stop”.');
   if (it.status === 'stopped') return { ok: true };
   for (const x of rt.store.items(threadId))
-    if (x.kind === 'allowedcall' && x.turnId === it.turnId && x.status !== 'stopped') rt.patchItem(threadId, x.id, { status: 'stopped' });
-  rt.addItem(threadId, { kind: 'voice', text: `Stopped: @${it.handle}’s next call asks you first` });
+    if (x.kind === 'allowedcall' && x.turnId === it.turnId && x.status !== 'stopped') rt.threads.patchItem(threadId, x.id, { status: 'stopped' });
+  rt.threads.addItem(threadId, { kind: 'voice', text: `Stopped: @${it.handle}’s next call asks you first` });
   return { ok: true };
 }

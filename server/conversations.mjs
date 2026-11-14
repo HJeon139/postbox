@@ -5,7 +5,6 @@
 import { httpError } from './helpers.mjs';
 import { pendingSessionsIn } from './session-write.mjs';
 import { newId } from './store.mjs';
-import { threadToWrite, updateThread } from './threads.mjs';
 import { liftDecline } from './wake-cards.mjs';
 
 /** One session per persona per thread. Adding a second agent turns a thread into a room. */
@@ -16,7 +15,7 @@ import { liftDecline } from './wake-cards.mjs';
  */
 export function ensureSession(rt, threadId, personaId, { brief, joined = null } = {}) {
   // Read pending: a conversation createThread just wrote may still be held behind a commit.
-  threadToWrite(rt, threadId);
+  rt.threads.toWrite(threadId);
   const existing = pendingSessionsIn(rt, threadId).find((x) => x.personaId === personaId);
   if (existing) return existing;
   // Pending too: an agent the request just made may be held behind a commit with the thread.
@@ -47,7 +46,7 @@ export function ensureSession(rt, threadId, personaId, { brief, joined = null } 
     // Nothing given yet: its first turn starts with the conversation so far (see catchUp).
     seenItem: null,
   });
-  updateThread(rt, threadId, (x) => ({ members: [...x.members, se.id], kind: x.kind === 'thread' && x.members.length > 0 ? 'room' : x.kind }));
+  rt.threads.patch(threadId, (x) => ({ members: [...x.members, se.id], kind: x.kind === 'thread' && x.members.length > 0 ? 'room' : x.kind }));
   liftDecline(rt, threadId, p.handle); // the person added it: a decline of adding it here no longer holds (#789)
   return se;
 }

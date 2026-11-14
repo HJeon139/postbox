@@ -9,10 +9,10 @@ import { rememberDiagrams } from './diagram-check.mjs';
 
 /** The server’s checks over a finished turn. */
 export function checkTurn(rt, turn, se) {
-  const lineage = rt.lineage(turn.threadId);
+  const lineage = rt.threads.lineage(turn.threadId);
   const items = lineage.flatMap((id) => rt.store.pending.items(id));
   const apps = Object.values(rt.store.pending.apps()).filter((a) => lineage.includes(a.threadId));
-  const problems = termProblems(turn.said, rt.glossaryFor(turn.threadId), introducedTerms(items, apps), personSaid(items));
+  const problems = termProblems(turn.said, rt.threads.glossaryFor(turn.threadId), introducedTerms(items, apps), personSaid(items));
   // Diagrams too wide or too busy to read at the conversation’s width.
   const diagrams = lintDiagrams(turn.said);
   if (diagrams.length)
@@ -60,7 +60,7 @@ export function stallSteps(rt, turn, se) {
     const running = it.block.steps.filter(stalls);
     if (!running.length) continue;
     const steps = it.block.steps.map((s) => (stalls(s) ? { ...s, state: 'stalled' } : s));
-    rt.patchItem(turn.threadId, it.id, { block: { ...it.block, steps }, stalledAt: Date.now() });
+    rt.threads.patchItem(turn.threadId, it.id, { block: { ...it.block, steps }, stalledAt: Date.now() });
     const names = running.map((s) => `“${s.label}”`);
     const one = running.length === 1;
     problems.push({
