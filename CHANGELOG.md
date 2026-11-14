@@ -2,6 +2,17 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.8.2 (2026-11-14)
+
+### Fixes
+
+- **app:** a wheel turn doesn't aim the pointer at a click
+- **app:** read a fixed handful of rects when a scroll takes the hold
+- **app:** give only an agent's form the full sheet height
+- **app:** never let a hold hide replies while following
+- **app:** keep an agent sheet still while its MCP servers and skills load
+- **app:** hold what you read or are about to click still while agents work
+
 ## 4.8.1 (2026-11-14)
 
 ### Fixes
