@@ -10,6 +10,7 @@ import { clip } from './helpers.mjs';
 import { settleScheduledWake } from './scheduled-wakes.mjs';
 import { postSummary } from './share-back.mjs';
 import { settleThread } from './thread-summary.mjs';
+import { endChecks } from './turn-checks.mjs';
 import { endedAs } from './turn-end-work.mjs';
 import { askedOf, replyMarks } from './turn-marks.mjs';
 import { foldSteps } from './turn-steps.mjs';
@@ -51,11 +52,7 @@ export function endTurn(rt, turn, err) {
   }
   const { open, viewing, topic } = needsAfter(rt, se, turn, items);
 
-  // The checks: what this turn sent, as problems, which go back to the agent in one lint turn. A lint turn is
-  // never linted again, so this can’t loop; one that only called tools ends as a note instead of a reply.
-  const stalled = rt.stallSteps(turn, se);
-  if (turn.kind === 'lint') rt.quietLint(turn, se);
-  else rt.endLint(turn, [...rt.checkTurn(turn, se), ...stalled]);
+  endChecks(rt, turn, se);
   if (topic && !viewing && (turn.said || open.length)) rt.threads.patch(topic, (x) => ({ unread: (x.unread ?? 0) + 1 }));
   if (turn.threadId !== se.threadId) settleThread(rt, turn.threadId);
 

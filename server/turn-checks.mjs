@@ -7,6 +7,17 @@ import { lintDiagrams } from '../shared/diagram-lint.mjs';
 import { blockProblems, diagramProblems, introducedTerms, personSaid, rawHtmlProblems, termProblems } from './checks.mjs';
 import { rememberDiagrams } from './diagram-check.mjs';
 
+/**
+ * The checks: what this turn sent, as problems, which go back to the agent in one lint turn. A lint turn is
+ * never linted again, so this can’t loop; one that only called tools ends as a note instead of a reply.
+ * @param {any} rt @param {any} turn @param {any} se
+ */
+export function endChecks(rt, turn, se) {
+  const stalled = rt.stallSteps(turn, se);
+  if (turn.kind === 'lint') rt.quietLint(turn, se);
+  else rt.endLint(turn, [...rt.checkTurn(turn, se), ...stalled]);
+}
+
 /** The server’s checks over a finished turn. */
 export function checkTurn(rt, turn, se) {
   const lineage = rt.threads.lineage(turn.threadId);

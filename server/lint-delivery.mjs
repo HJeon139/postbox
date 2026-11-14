@@ -104,6 +104,14 @@ export function foldLint(rt, sessionId, message) {
   return problems.length ? { ...message, lint: formatLint(lintMessage(problems), { folded: true }) } : message;
 }
 
+/** Clears the waits of lint turns still settling, as close() does (runtime-close.mjs, stopTimers). */
+export function stopLintTimers(rt) {
+  for (const lint of rt.lints.values()) {
+    clearTimeout(lint.timer);
+    lint.timer = null;
+  }
+}
+
 /** A lint turn that wrote nothing shows as one line, such as “@researcher defined “Step 2””. */
 export function quietLint(rt, turn, se) {
   // What the browser reports later about this lint turn’s own work is never linted.
