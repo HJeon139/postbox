@@ -71,7 +71,7 @@ export async function permission(rt, sessionId, args, closeOrSignal = null) {
  */
 export function asksByPrompt(rt, sessionId) {
   const se = rt.s.sessions[sessionId];
-  const backend = rt.turns.get(sessionId)?.backend ?? (se ? rt.personaFor(se)?.backend : null);
+  const backend = rt.turns.get(sessionId)?.backend ?? (se ? rt.personas.forSession(se)?.backend : null);
   const adapter = adapterOf(rt, backend);
   return Boolean(adapter) && adapter.capabilities?.promptTool !== false;
 }

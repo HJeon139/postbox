@@ -32,7 +32,7 @@ after(async () => {
 /** A session in a new conversation that needs you, on a confirm card it posted. */
 function needing(title) {
   const projectId = Object.values(app.store.state.projects)[0].id;
-  const t = app.rt.createThread({ projectId, title, personaIds: [app.rt.personaByHandle('researcher').id] });
+  const t = app.rt.createThread({ projectId, title, personaIds: [arrange.persona(app.rt, 'researcher').id] });
   const [se] = app.rt.sessionsIn(t.id);
   const card = arrange.post(app.rt, t.id, {
     kind: 'block',

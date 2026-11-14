@@ -30,10 +30,10 @@ export function agentIn(rt, threadId, ...handle) {
 }
 
 /** The persona with that handle, ignoring case, among those not retired. @param {Runtime} rt @param {string} handle */
-export const persona = (rt, handle) => rt.personaByHandle(handle);
+export const persona = (rt, handle) => rt.personas.byHandle(handle);
 
 /** The persona a session runs with, with its settings as a turn takes them. @param {Runtime} rt @param {object} se */
-export const personaFor = (rt, se) => rt.personaFor(/** @type {any} */ (se));
+export const personaFor = (rt, se) => rt.personas.forSession(/** @type {any} */ (se));
 
 /** Changes a session’s record, as the server does when its state moves on. @param {Runtime} rt @param {string} id @param {object} patch */
 export const setSession = (rt, id, patch) => rt.updateSession(id, patch);

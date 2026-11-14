@@ -7,7 +7,6 @@ import assert from 'node:assert/strict';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { deletePersona } from '../server/persona-delete.mjs';
 import { patchThread } from '../server/room-chain-limit.mjs';
 import * as arrange from './arrange.mjs';
 import { heldStore, setup } from './stop-reply-fixture.mjs';
@@ -42,7 +41,7 @@ test('starting a conversation with no agents while a commit is held returns the 
 
 test('starting a conversation with an agent while a commit is held joins the agent and returns the thread with it', async () => {
   const { env, result, store } = await whileHeld(({ rt }) => {
-    const p = rt.personaByHandle('researcher');
+    const p = arrange.persona(rt, 'researcher');
     return rt.createThread({ projectId: 'p1', title: 'Held room', personaIds: [p.id] });
   });
   assert.ok(result, 'createThread returned the thread');
@@ -155,7 +154,7 @@ test('deleting an agent made and joined behind a held commit deletes it and its 
     const p = rt.createPersona({ handle: 'brief', backend: 'claude-code' });
     rt.ensureSession(t.id, p.id);
     try {
-      return { handle: deletePersona(rt, p.id).handle, id: p.id };
+      return { handle: rt.deletePersona(p.id).handle, id: p.id };
     } catch (e) {
       return e;
     }
@@ -183,7 +182,7 @@ test('deleting an agent whose conversation started behind a held commit deletes 
     const p = rt.createPersona({ handle: 'solo', backend: 'claude-code' });
     const room = rt.createThread({ projectId: 'p1', title: 'Solo', personaIds: [p.id] });
     try {
-      return { handle: deletePersona(rt, p.id).handle, id: p.id, room: room.id };
+      return { handle: rt.deletePersona(p.id).handle, id: p.id, room: room.id };
     } catch (e) {
       return e;
     }

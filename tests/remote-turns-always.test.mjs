@@ -9,12 +9,13 @@ import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
+import * as arrange from './arrange.mjs';
 import { FIXTURE_PROMPT } from './fake-daemon.mjs';
 import { rig, running, settled, until } from './remote-turns-helpers.mjs';
 
 /** The local settings file Postbox would write for this persona's folder on this computer. @param {any} r */
 async function localRules(r) {
-  const persona = r.rt.personaFor(r.se());
+  const persona = arrange.personaFor(r.rt, r.se());
   const folder = await r.rt.adapters.get(persona.backend).folderFor(persona, r.rt.s.projects[r.t.projectId]);
   return join(folder, '.claude', 'settings.local.json');
 }

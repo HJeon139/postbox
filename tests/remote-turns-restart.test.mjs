@@ -4,6 +4,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { readOrigin } from '../server/remote/turns-origin.mjs';
+import * as arrange from './arrange.mjs';
 import { FIXTURE_PROMPT } from './fake-daemon.mjs';
 import { messageOf, restarted, rig, running, settled, sleep, starts, startUp, until } from './remote-turns-helpers.mjs';
 
@@ -64,7 +65,7 @@ test('#120 L5, #377: an agent woken by another, attached again after a restart, 
   // The waker runs on this computer; what it’s sent is what each Postbox’s mock got.
   const lead = (/** @type {any} */ r, /** @type {any[]} */ got) => {
     r.rt.adapters.register({ name: 'mock', deliver: async (/** @type {any} */ _se, /** @type {any} */ m) => void got.push(m) });
-    const p = r.rt.personaByHandle('lead') ?? r.rt.createPersona({ handle: 'lead', backend: 'mock' });
+    const p = arrange.persona(r.rt, 'lead') ?? r.rt.createPersona({ handle: 'lead', backend: 'mock' });
     return r.rt.ensureSession(r.t.id, p.id);
   };
   const first = rig();

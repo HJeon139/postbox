@@ -23,7 +23,7 @@ export function wakeMentions(rt, se, turn, text) {
   const woke = [];
   const refused = [];
   const tooLong = tooLongToSend('A reply that wakes another agent', text);
-  for (const h of turn.summarizeTo ? [] : parseMentions(turn.said, rt.handles())) {
+  for (const h of turn.summarizeTo ? [] : parseMentions(turn.said, rt.personas.handles())) {
     if (h.toLowerCase() === se.handle.toLowerCase() || turn.woken.includes(h)) continue;
     // Its turn has ended, so where it spoke comes from the turn: a topic thread it spoke in, else the conversation.
     const replyIn = turn.threadId !== se.threadId ? turn.threadId : null;

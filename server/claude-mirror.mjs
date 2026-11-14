@@ -36,7 +36,7 @@ export async function attachClaudeSession(rt, { claudeSessionId, projectId, hand
       .replace(/^[^a-z]+/, '')
       .slice(0, 20) || 'terminal';
   let name = base.length >= 2 ? base : `cc-${base}`;
-  for (let n = 2; rt.personaByHandle(name); n++) name = `${base.slice(0, 20)}-${n}`;
+  for (let n = 2; rt.personas.byHandle(name); n++) name = `${base.slice(0, 20)}-${n}`;
   const p = rt.createPersona({
     handle: name,
     backend: 'claude-code',

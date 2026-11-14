@@ -14,6 +14,7 @@ import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { ClaudeCodeAdapter } from '../server/adapters/claude-code.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
+import * as arrange from './arrange.mjs';
 import { callLine, createFakeDaemon, FIXTURE_PROMPT, FIXTURE_PROMPTS, fixtureLines } from './fake-daemon.mjs';
 import { fakeHosts, HOST, rig, running, settled, starts, until, VERSION } from './remote-turns-helpers.mjs';
 import { tempDir } from './temp-dirs.mjs';
@@ -25,7 +26,7 @@ const allowOf = (start) => settingsOf(start.argv).permissions?.allow ?? [];
 /** The rig, with its persona in this mode. */
 function rigIn(permissionMode = 'auto', o = {}) {
   const r = rig(o);
-  r.rt.updatePersona(r.rt.personaFor(r.se()).id, { permissionMode });
+  r.rt.updatePersona(arrange.personaFor(r.rt, r.se()).id, { permissionMode });
   return r;
 }
 const personaOf = (r) => r.rt.persona(r.se().personaId);

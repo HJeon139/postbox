@@ -40,7 +40,7 @@ export function agentWake(
   const live = rt.turns.get(fromSessionId);
   if (live?.summarizeTo && live.id === fromTurnId) return { ok: false, message: SUMMARY_WAKES_NO_ONE };
   const from = rt.s.sessions[fromSessionId];
-  const p = rt.personaByHandle(handle);
+  const p = rt.personas.byHandle(handle);
   if (!from || !p) return { ok: false, message: `There’s no agent called @${handle}.` };
   // Retired, it can’t be answered: a reply would have nowhere to go.
   if (from.retiredFork) return { ok: false, message: 'Your session was retired, so it can’t wake anyone.' };
@@ -199,7 +199,7 @@ export function sideSession(rt, side, personaId, by) {
 export function threadPersona(rt, t) {
   const last = rt.s.sessions[t.lastSpeaker];
   const first = rt.s.sessions[t.members?.[0]];
-  return (last && rt.persona(last.personaId)) ?? rt.personaByHandle(t.woke ?? t.pair?.split('|')[1] ?? '') ?? (first && rt.persona(first.personaId)) ?? null;
+  return (last && rt.persona(last.personaId)) ?? rt.personas.byHandle(t.woke ?? t.pair?.split('|')[1] ?? '') ?? (first && rt.persona(first.personaId)) ?? null;
 }
 
 /**

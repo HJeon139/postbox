@@ -4,12 +4,13 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import * as arrange from './arrange.mjs';
 import { FIXTURE_PROMPT } from './fake-daemon.mjs';
 import { rig, running, settled, until } from './remote-turns-helpers.mjs';
 
 test('a host card from the harness’s own prompt offers Always allow, with the rule alwaysFor makes for the call', async () => {
   const r = rig();
-  r.rt.updatePersona(r.rt.personaFor(r.se()).id, { permissionMode: 'auto' });
+  r.rt.updatePersona(arrange.personaFor(r.rt, r.se()).id, { permissionMode: 'auto' });
   const turn = await running(r);
   r.d.prompt(turn);
   await until(() => r.store.items(r.t.id).some((i) => i.kind === 'permission'), 'the card');

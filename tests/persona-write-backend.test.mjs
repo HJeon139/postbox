@@ -1,4 +1,4 @@
-// A persona switched to another backend (server/persona-write.mjs, updatePersona, #1315): its sessions drop the model
+// A persona switched to another backend (server/personas.mjs, updatePersona, #1315): its sessions drop the model
 // and effort the old backend reported, so the agent’s row shows the new setting, not “Opus 5.5, not auto”, until the
 // new backend reports its own. Kiro on its router reports neither, so without this the old ones stayed for good.
 import assert from 'node:assert/strict';
@@ -11,6 +11,7 @@ import { KiroCliAdapter } from '../server/adapters/kiro-cli.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
 import { chipEffort, chipModel, runsWith } from '../shared/agent-facts.mjs';
+import * as arrange from './arrange.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
 /** @alpha on `backend` in a conversation, whose last turn reported Opus at medium. */
@@ -28,7 +29,7 @@ function setup(backend = 'claude-code') {
   const [se] = rt.sessionsIn(t.id);
   rt.updateSession(se.id, { lastModel: 'claude-opus-5-5', lastEffort: 'medium' });
   const row = () => {
-    const f = runsWith(rt.s.sessions[se.id], rt.personaByHandle('alpha'), {});
+    const f = runsWith(rt.s.sessions[se.id], arrange.persona(rt, 'alpha'), {});
     return `${chipModel(f)} · ${chipEffort(f)}`;
   };
   return { rt, p, se, row };

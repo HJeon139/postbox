@@ -72,7 +72,7 @@ function summaryWriter(rt, t, handle) {
   const pair = String(t.pair ?? '').split('|');
   const chosen = name ? pair.find((x) => x.toLowerCase() === name) : pair.find((x) => x !== t.woke);
   if (name && !chosen) throw httpError(400, `@${clip(name, 40)} isn’t in this side thread. Name ${pair.map((x) => `@${x}`).join(' or ')}.`);
-  return rt.personaByHandle(chosen ?? t.woke ?? '');
+  return rt.personas.byHandle(chosen ?? t.woke ?? '');
 }
 
 /**

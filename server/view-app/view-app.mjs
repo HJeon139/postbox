@@ -75,7 +75,7 @@ export async function viewApp(rt, sessionId, { appId } = {}, ctx) {
   const app = rt.s.apps[id];
   if (!app || conversationOf(rt, app.threadId) !== conversationOf(rt, se.threadId))
     return { ok: false, message: `There’s no app “${id}” in your conversation. Use the appId show_app returned.` };
-  if (rt.personaFor(se)?.remote?.hostId)
+  if (rt.personas.forSession(se)?.remote?.hostId)
     return { ok: false, message: 'view_app can’t show an app to an agent on another computer yet. Ask the person how it looks.' };
   const status = view.browser.status();
   if (status === 'no-package')

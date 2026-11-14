@@ -252,7 +252,7 @@ export async function seed(rt, { dataDir, backend = 'mock', demo = false }) {
   const research = { id: newId('pr'), name: 'Agent research', folder: researchDir };
   rt.store.emit('project', notes);
   rt.store.emit('project', research);
-  const P = (h) => rt.personaByHandle(h).id;
+  const P = (h) => rt.personas.byHandle(h).id;
   const explorer = rt.createThread({ projectId: notes.id, title: 'Asset explorer', personaIds: [P('librarian')] });
   await seedAssets(rt, explorer.id);
   const shelf = rt.createThread({ projectId: notes.id, title: 'Index the shelf', personaIds: [P('indexer')] });

@@ -94,9 +94,9 @@ test('#690: the Scrum master boilerplate is offered in New agent and creates a p
   await dialog.getByLabel('Name').fill('scrum');
   await dialog.getByRole('button', { name: 'Create agent' }).click();
   await expect(dialog).toBeHidden();
-  await expect.poll(() => app.rt.personaByHandle('scrum')?.backend).toBe('claude-code');
-  expect.soft(app.rt.personaByHandle('scrum')?.tools).toEqual(['web.fetch']);
-  expect.soft(app.rt.personaByHandle('scrum')?.instructions).toMatch(/^# Scrum master\n/);
+  await expect.poll(() => arrange.persona(app.rt, 'scrum')?.backend).toBe('claude-code');
+  expect.soft(arrange.persona(app.rt, 'scrum')?.tools).toEqual(['web.fetch']);
+  expect.soft(arrange.persona(app.rt, 'scrum')?.instructions).toMatch(/^# Scrum master\n/);
 });
 
 test('without the Antigravity CLI, the Gemini boilerplate chip is disabled with its reason', async ({ page }) => {

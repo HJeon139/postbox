@@ -48,6 +48,6 @@ export function emptyReply(rt, se, turn) {
     'Your last turn in this conversation ended without a reply: nothing you wrote reached it, so no one read your answer. If you meant to report something, say it again now.',
   );
   return Object.assign(new Error(`@${se.handle}’s turn ended without a reply.`), {
-    rawEnding: { backend: rt.personaFor(se)?.backend ?? null, lines: [...(turn.rawTail ?? [])] },
+    rawEnding: { backend: rt.personas.forSession(se)?.backend ?? null, lines: [...(turn.rawTail ?? [])] },
   });
 }

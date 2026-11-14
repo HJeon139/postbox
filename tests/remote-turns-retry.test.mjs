@@ -10,12 +10,13 @@ import { test } from 'node:test';
 import { Blobs } from '../server/blobs.mjs';
 import { keepOrigin, ORIGIN_MESSAGE_MAX, ORIGIN_REF_MAX, readRef } from '../server/remote/turns-origin.mjs';
 import { askedAgain, askedOf } from '../server/turn-marks.mjs';
+import * as arrange from './arrange.mjs';
 import { messageOf, rig, settled, sleep, starts, until } from './remote-turns-helpers.mjs';
 
 /** Another agent, on this computer, in the conversation: what it’s sent is what its mock got. @param {any} r @param {any[]} [got] */
 function lead(r, got = []) {
   r.rt.adapters.register({ name: 'mock', deliver: async (/** @type {any} */ _se, /** @type {any} */ m) => void got.push(m) });
-  const p = r.rt.personaByHandle('lead') ?? r.rt.createPersona({ handle: 'lead', backend: 'mock' });
+  const p = arrange.persona(r.rt, 'lead') ?? r.rt.createPersona({ handle: 'lead', backend: 'mock' });
   return { se: r.rt.ensureSession(r.t.id, p.id), got };
 }
 

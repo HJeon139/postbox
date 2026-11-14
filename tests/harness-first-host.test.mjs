@@ -7,12 +7,13 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { WRITE_TOOLS } from '../server/adapters/setup.mjs';
+import * as arrange from './arrange.mjs';
 import { rig, running, settled, starts, until } from './remote-turns-helpers.mjs';
 
 /** The rig, with its persona in this mode. @param {string} permissionMode */
 function rigIn(permissionMode) {
   const r = rig();
-  r.rt.updatePersona(r.rt.personaFor(r.se()).id, { permissionMode });
+  r.rt.updatePersona(arrange.personaFor(r.rt, r.se()).id, { permissionMode });
   return r;
 }
 /** The ask rules the host’s Claude Code got for a start, from its --settings. */

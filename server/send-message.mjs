@@ -18,8 +18,8 @@ export function sendMessage(rt, threadId, { text = '', attachments = [], sendNow
   text = String(text).slice(0, 50000);
   attachments = sentAttachments(rt, attachments);
   if (!text.trim() && !attachments.length) throw httpError(400, 'Write a message or attach a file first.');
-  const mentioned = parseMentions(text, rt.handles())
-    .map((h) => rt.personaByHandle(h))
+  const mentioned = parseMentions(text, rt.personas.handles())
+    .map((h) => rt.personas.byHandle(h))
     .filter(Boolean);
   // A side or topic thread is answered by the conversation’s own sessions (#110, #128, #228): an agent you
   // @-mention there, or the one you reply to, answers from its one session in the conversation, and the reply shows here.

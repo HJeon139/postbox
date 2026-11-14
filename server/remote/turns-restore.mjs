@@ -37,7 +37,7 @@ export function restore(rts) {
       void reattach(rts, se.id);
     } else if (r.state === 'interrupted' && r.resume) {
       // A turn that waited for its backend (#965): once it’s registered, it waits only for the host, as any other.
-      if (r.resume.noBackend && rts.rt.placement.registeredAdapter(rts.rt.personaFor(se))) {
+      if (r.resume.noBackend && rts.rt.placement.registeredAdapter(rts.rt.personas.forSession(se))) {
         const { noBackend, ...rest } = r.resume;
         updateRemote(rts, se.id, { resume: rest });
       }

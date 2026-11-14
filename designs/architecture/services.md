@@ -1,6 +1,6 @@
 # Concerns as services
 
-**Status:** a proposal, 12 November 2026, for the person to approve before any code moves. Step 0, the test fixture, step 1, Placement, step 2, Running, and step 3, Threads with the Bus, are built (“Where it stands”). Numbers are from `main` at 2259cebe. The scripts that produced them are in the pull request that added this document; the last of them, `svc-check.mjs`, checks the design against the code.
+**Status:** a proposal, 12 November 2026, for the person to approve before any code moves. Step 0, the test fixture, step 1, Placement, step 2, Running, step 3, Threads with the Bus, and step 4, Personas, are built (“Where it stands”). Numbers are from `main` at 2259cebe. The scripts that produced them are in the pull request that added this document; the last of them, `svc-check.mjs`, checks the design against the code.
 
 ## Why
 
@@ -89,7 +89,7 @@ The list refines the starting point from the data:
 - **Owns:** the listeners for in-process signals. It calls them synchronously, in the order the root registered them, and a listener’s throw reaches the emitter, as a direct call’s does today. Nothing is persisted.
 - **Interface:** `emit(signal, data)`, `on(signal, fn)`.
 - **Signals:** `persona.updated` (Personas, after a write), `session.joined` (Sessions: a declined add lifts), `item.added` (Threads: a side thread’s line counts the message), `item.moved` (Threads, from `bringForward`: Memory moves its read markers to the stub), `app.retired` (Apps: its send card’s need releases).
-- **`persona.updated`’s listeners, in this order:** host turns set Running’s awaiting-attach entries for that persona’s sessions from where it runs now (`RemoteTurns.noteAttach`): one moved off its host is cleared, and one moved back before the attach waits again; tool asks settle (`settleToolAsks`); the queue of an agent moved off a host drains (`drainMovedOff`). Today `busyFor` computes awaiting attach from the persona as it is after the write, so a drain right after it already sees the agent free; clearing first keeps that. If the queue drained first, a moved agent’s messages would stay held.
+- **`persona.updated`’s listeners, in this order:** host turns set Running’s awaiting-attach entries for that persona’s sessions from where it runs now (`RemoteTurns.noteAttach`): one moved off its host is cleared, and one moved back before the attach waits again; sessions drop what their last turn reported, after a change of backend or model (`forgetReported`, #1315); tool asks settle (`settleToolAsks`); the queue of an agent moved off a host drains (`drainMovedOff`). Today `busyFor` computes awaiting attach from the persona as it is after the write, so a drain right after it already sees the agent free; clearing first keeps that. If the queue drained first, a moved agent’s messages would stay held.
 - **Depends on:** nothing.
 
 ### Running
@@ -114,7 +114,7 @@ The list refines the starting point from the data:
 ### Personas
 
 - **Owns:** personas. Invariants: a handle is unique among personas not retired, ignoring case; a persona’s backend is registered and can run where it’s placed; a stored retired permission mode runs as Auto.
-- **Interface:** `get(id)`, `forSession(se)` (today’s `personaFor`), `byHandle(handle)`, `handles()`, `create(spec)`, `update(id, patch)`, `remove(id)`, `setupFor(id, projectId)` (today’s `mcpContext`). Signal: `persona.updated`.
+- **Interface:** `get(id)`, `forSession(se)` (today’s `personaFor`), `byHandle(handle)`, `handles()`, `create(spec)`, `update(id, patch)`, `remove(id)`, `setupFor(id, projectId)` (today’s `mcpContext`). Signal: `persona.updated`, with the persona as written, as it was, and the change. `remove` emits the removal and has each backend forget the persona; its sessions go first, in the facade’s `deletePersona`.
 - **Depends on:** Store, Bus, Placement. `retireModes` stays with the permission layer and runs from `start()`.
 
 ### Sessions
@@ -239,7 +239,8 @@ Built in this order, each service’s dependencies already exist: Store, Bus, Ru
 
 | Where, today | How it breaks |
 |---|---|
-| `persona-write.mjs` calls `settleToolAsks` (`tool-ask.mjs`, which delivers and adds items) and `drainMovedOff` | `persona.updated`; tool asks and the queue listen |
+| `persona-write.mjs` calls `settleToolAsks` (`tool-ask.mjs`, which delivers and adds items) and `drainMovedOff` | `persona.updated`; tool asks and the queue listen (done in step 4) |
+| `persona-write.mjs` calls `rt.updateSession` to drop what sessions last reported after a change of backend or model (#1315) | `persona.updated`; Sessions listens with `forgetReported` (done in step 4) |
 | `remote/placement.mjs`’s `drainMovedOff` calls `rt.drainQueues` and reads `rt.remote` | it leaves Placement for the `persona.updated` listener |
 | `conversations.mjs`’s `ensureSession` calls `liftDecline` (`wake-cards.mjs`) | `session.joined`; wake cards listen |
 | `Runtime.addItem` calls `bumpSideLink` (`side-threads.mjs`) | `item.added`; side threads listen (done in step 3) |
@@ -257,7 +258,7 @@ Built in this order, each service’s dependencies already exist: Store, Bus, Ru
 | `shell-runs.mjs` calls `whenWritable` (`store-outage.mjs`) | `Store.whenWritable` |
 | `remote/host-admin.mjs` calls `rt.stop` and `rt.remote` | the `hostTurns` port |
 | `lint-delivery.mjs`, `apps.mjs`, `review-comments.mjs`, `host-admin.mjs` and `placement.mjs` read `rt.turns` or `rt.exiting` | Running |
-| `persona-delete.mjs` deletes sessions; `session-lifecycle.mjs` and `thread-erase.mjs` stop turns and kept jobs | orchestration in the facade: stop, then remove, in one method each |
+| `persona-delete.mjs` deletes sessions; `session-lifecycle.mjs` and `thread-erase.mjs` stop turns and kept jobs | orchestration in the facade: stop, then remove, in one method each (`deletePersona` done in step 4) |
 | `createThread` makes sessions; `resolveProposal` creates a persona and a session | orchestration in the facade |
 
 Waiting code also depends on itself both ways, and the steps that redo it settle those: `permission-prompt.mjs` calls `claimPrompt` (`prompt-claim.mjs`), which reads the turn’s stream, so prompt claims go with asks and read Turns’ steps; and Turns calls into Delivery in the middle of a turn, not only at its end: scheduled wakes (`prepareScheduledRetry`, `noteScheduledTurn`, `recordScheduledTool`, `recordedTools`), the chain (`endChain`, `dropWakes`), needs (`keptTurns`, `releaseNeed`, `offerNeed`), `offersBring` and `newerFromSender`. Those become the inbox’s own steps, which is why Turns waits with it.
@@ -437,7 +438,12 @@ Each step is its own pull request, and is done when:
   - The guards read names: `tests/thread-write-guard.test.mjs` now finds `threads.patch(` (and `this.patch(` in Threads) with the change after one argument, and counts `threads.get(` as a published read; `tests/store-held-guard.test.mjs` places Threads’ pending reads in `threads.mjs`, and `createThread`’s in `runtime.mjs`.
   - Tests that replaced `rt.notify` or `rt.patchItem` to listen call the fixture’s `onNotify` and `onItemPatch`, and three fakes of a runtime give a `threads` object (`shell-runs-output`, `remote-broker-snapshot`, `codex-always`). No test was deleted, and no spec changed.
   - `svc-check.mjs` finds one dependency unaccounted for, as it does on `main`: `persona-write.mjs` calls `rt.updateSession` ([#1315](https://github.com/HJeon139/postbox/issues/1315): a backend switch drops the model the old backend reported), so Personas depends on Sessions, which the graph doesn’t have. Step 4 decides its break.
-- **Next:** step 4, Personas, with `persona.updated`.
+- **Done:** step 4, Personas, with `persona.updated`. `server/personas.mjs` (renamed from `persona-write.mjs`) is a class that `Runtime`’s constructor builds with the store, the bus, Placement and the adapter registry; its interface tests are `tests/personas.test.mjs`, and `tests/personas-signals.test.mjs` holds the listeners’ order. `setup-context.mjs` takes the state and a persona lookup, `persona-delete.mjs` is gone (its `forget` is `Personas.remove`’s, its orchestration the facade’s `deletePersona`), `drainMovedOff` moved to `message-queue.mjs`, and #1315’s clear to `session-write.mjs` as `forgetReported`. `Runtime` keeps the facade’s `persona`, `createPersona`, `updatePersona`, `deletePersona` and `mcpContext`; code that still takes `rt` reaches the rest as `rt.personas`. What step 4 found:
+  - #1315’s call into Sessions breaks by the signal, not a port: `forgetReported` is the second listener, after `noteAttach` and before `settleToolAsks`, where `updatePersona` made the call. Sessions depends on Personas, so a port into Sessions would be the cycle a signal avoids; and the clear is what a change means for sessions, which Sessions decides once it’s a service. `svc-check.mjs` finds nothing unaccounted for.
+  - The listener for tool asks needs the change, not only the persona: it settles only when the change named `tools`. So the signal carries the change, and the persona as it was for #1315’s comparison.
+  - `deletePersona` was a module function the route and two tests called with `rt`; it’s a facade method now, as the design said. Its pending reads moved with it, and `tests/store-held-guard.test.mjs` places them in `runtime.mjs`.
+  - Step 0 left one spec on `rt.personaByHandle` (`gemini-boilerplate.spec.mjs`); it calls the fixture’s `persona` now. A test that replaced `rt.personaFor` (`view-app.test.mjs`) replaces `rt.personas.forSession`.
+- **Next:** step 5, Sessions, with `session.joined`.
 
 ## Appendix: every module’s members
 

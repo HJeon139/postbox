@@ -40,9 +40,9 @@ import {
   resolvePermission,
   settlePermission,
 } from './permission-cards.mjs';
-import { retireModes, runsAs } from './permission-modes.mjs';
+import { retireModes } from './permission-modes.mjs';
 import { changePermissionFolder, changePermissionRule, latestProject, PERMISSION_MODES, panelTarget, permissionsView } from './permissions-panel.mjs';
-import { createPersona, updatePersona } from './persona-write.mjs';
+import { Personas } from './personas.mjs';
 import { readCapped } from './read-capped.mjs';
 import { addReadFolder, readCardAlways } from './read-folders.mjs';
 import { readConversation, readLine, readMessage } from './read-message.mjs';
@@ -54,13 +54,13 @@ import { Running } from './running.mjs';
 import { armWake, cancelWakeSchedule, rearmWakes, scheduleWake } from './scheduled-wakes.mjs';
 import { sendMessage, threadRefs } from './send-message.mjs';
 import { deleteSession, deleteThread } from './session-lifecycle.mjs';
-import { pendingSessionsIn, stampNeeds, tellAgent, updateSession } from './session-write.mjs';
-import { mcpContext } from './setup-context.mjs';
+import { forgetReported, pendingSessionsIn, stampNeeds, tellAgent, updateSession } from './session-write.mjs';
 import { clearSummaryPending, shareText, shareToConversation, summarizeBack, summarizing } from './share-back.mjs';
 import { commandFolder, expireStaleCommands, flushShellOutput, runShellCommand, stopShellCommand, stopShellCommands } from './shell-runs.mjs';
 import { agentWake, bumpSideLink, recordAgentMessage, resolveHop, sideSession } from './side-threads.mjs';
 import { watchStore } from './store-outage.mjs';
 import { Threads } from './threads.mjs';
+import { settleToolAsks } from './tool-ask.mjs';
 import { startTopic } from './topic-open.mjs';
 import { checkTurn, stallLeftRunning, stallSteps } from './turn-checks.mjs';
 import { settleSubagentSteps } from './turn-steps.mjs';
@@ -144,7 +144,10 @@ export class Runtime {
       adapters,
       hosts: this.hosts,
     });
+    // The personas, which signal persona.updated after a change (designs/architecture/services.md, “Personas”).
+    this.personas = new Personas({ store, bus: this.bus, placement: this.placement, adapters });
     this.remote = new RemoteTurns(this, { hosts: this.hosts });
+    this.listenToPersonas();
     this.turnArchive = new ArchivePasses(this, { enabled: config.archiveTurns === true }); // #305: off until step 4
     // Conversations can’t be archived any more: one an older Postbox archived comes back as a live one.
     unarchive(this);
@@ -158,6 +161,22 @@ export class Runtime {
 
   get s() {
     return this.store.state;
+  }
+
+  /**
+   * What a persona’s change means elsewhere, in this order (designs/architecture/services.md, “Bus”). Whether its
+   * sessions wait for a host turn to be attached again follows where it runs now (#1135), before anything below reads
+   * busy; on another backend or model its sessions drop what their last turn reported (#1315); a card that asked for a
+   * tool now on answers itself (#237); and what waited in the queue for a host it moved off goes now. If the queue
+   * drained before the first, a moved agent’s messages would stay held.
+   */
+  listenToPersonas() {
+    this.bus.on('persona.updated', ({ persona }) => {
+      for (const se of Object.values(this.s.sessions)) if (se.personaId === persona.id) this.remote.noteAttach(se.id);
+    });
+    this.bus.on('persona.updated', ({ persona, was }) => forgetReported(this, was, persona));
+    this.bus.on('persona.updated', ({ persona, patch }) => patch.tools !== undefined && settleToolAsks(this, persona));
+    this.bus.on('persona.updated', ({ persona }) => queue.drainMovedOff(this, persona.id));
   }
 
   // Running’s maps and its closing flag, for the code that waits for rooms at scale and still reads them through the
@@ -181,31 +200,7 @@ export class Runtime {
   // ── Lookups ────────────────────────────────────────────────────────────────────────
 
   persona(id) {
-    return this.s.personas[id];
-  }
-  /**
-   * The persona a session runs with: the persona as it is now. One rule for every setting: a turn takes the persona
-   * when it starts (adapterContext, server/turn-context.mjs), so every change applies from the agent’s next turn, in
-   * every conversation it’s in, and never to a turn already running.
-   */
-  personaFor(se) {
-    const p = this.persona(se.personaId);
-    return (
-      p && {
-        ...p,
-        permissionMode: runsAs(p.permissionMode),
-        // Whether it loads your Claude Code setup and may publish outside Postbox are permissions too (#57), and
-        // so are the MCP servers it turned off (#59) and its tools, which real backends deny when unticked (#5).
-        usesHostSetup: p.usesHostSetup !== false,
-        canPublish: p.canPublish === true,
-        mcpOff: p.mcpOff ?? [],
-        skillsOff: p.skillsOff ?? [],
-        tools: p.tools ?? [],
-      }
-    );
-  }
-  personaByHandle(handle) {
-    return Object.values(this.s.personas).find((p) => p.handle.toLowerCase() === String(handle).toLowerCase() && !p.retired);
+    return this.personas.get(id);
   }
   thread(id) {
     return this.threads.get(id);
@@ -232,11 +227,6 @@ export class Runtime {
     return this.sessionsIn(conv)
       .filter((x) => !x.retiredFork && !seen.has(x.handle) && seen.add(x.handle))
       .map((x) => ({ handle: x.handle, role: clipText(String(this.persona(x.personaId)?.description ?? ''), 200) }));
-  }
-  handles() {
-    return Object.values(this.s.personas)
-      .filter((p) => !p.retired)
-      .map((p) => p.handle);
   }
 
   // ── Emit helpers ───────────────────────────────────────────────────────────────────
@@ -719,13 +709,28 @@ export class Runtime {
     return stopMirrorFor(this, sessionId);
   }
 
-  // ── Personas: server/persona-write.mjs ─────────────────────────────────────────────
+  // ── Personas: the facade’s, over server/personas.mjs ──────────────────────────────
 
   createPersona(spec) {
-    return createPersona(this, spec);
+    return this.personas.create(spec);
   }
   updatePersona(id, patch) {
-    return updatePersona(this, id, patch);
+    return this.personas.update(id, patch);
+  }
+
+  /**
+   * Deletes a persona at once (#208): its sessions go first, as deleting each would take them, then the persona, and
+   * each backend forgets it (Personas.remove).
+   * @param {string} id @returns {{ handle: string, forgotten: Promise<void> }}
+   */
+  deletePersona(id) {
+    // Pending, the agent and its sessions: either may have been made behind a held commit.
+    if (!this.store.pending.persona(id)) throw httpError(404, 'That agent doesn’t exist.');
+    for (const { id: sid } of Object.values(this.store.pending.sessions()).filter((se) => se.personaId === id)) {
+      // Read again each time: deleting one can erase others, as its conversation goes with it, side threads too.
+      if (this.store.pending.session(sid)) this.deleteSession(sid);
+    }
+    return this.personas.remove(id);
   }
 
   // ── Remote hosts (#120): server/remote/placement.mjs, host-admin.mjs and host-status.mjs ──────────
@@ -776,7 +781,7 @@ export class Runtime {
 
   // What the persona sheet shows of a persona’s setup: server/setup-context.mjs.
   mcpContext(personaId, projectId) {
-    return mcpContext(this, personaId, projectId);
+    return this.personas.setupFor(personaId, projectId);
   }
 
   // ── Session lifecycle: server/session-lifecycle.mjs ─────────────────────────────

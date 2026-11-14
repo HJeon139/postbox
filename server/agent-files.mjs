@@ -18,7 +18,7 @@ export class AgentFileError extends Error {}
 /** The folders an agent works in: its own (where it starts), the project’s, and any added for the conversation. */
 export async function agentFolders(rt, sessionId) {
   const se = rt.session(sessionId);
-  const persona = rt.personaFor(se);
+  const persona = rt.personas.forSession(se);
   const project = rt.s.projects[rt.s.threads[se.threadId]?.projectId] ?? null;
   const adapter = rt.placement.requestAdapter(se.handle, persona);
   const own = await workFolder(adapter, persona, project);

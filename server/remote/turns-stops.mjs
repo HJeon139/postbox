@@ -133,7 +133,7 @@ export function busyOn(rts, hostId) {
     if (r?.hostId !== hostId) return false;
     if (ON_HOST.has(r.state) || r.state === 'stopping' || rts.restoring.has(r.turn)) return true;
     // A resume goes only to the host it stopped on, for an agent still placed there (autoResume).
-    return Boolean(r.resume) && hostOf(rts.rt.personaFor(se)) === hostId;
+    return Boolean(r.resume) && hostOf(rts.rt.personas.forSession(se)) === hostId;
   });
 }
 
