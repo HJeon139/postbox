@@ -8,6 +8,20 @@ import { SearchIndex } from '../shared/search-index.mjs';
 import { searchText } from '../shared/search-text.mjs';
 import { publicItems } from './public-state.mjs';
 
+/** @type {WeakMap<object, ReturnType<typeof threadSearch>>} */
+const shared = new WeakMap();
+
+/**
+ * A store’s one search, which the page’s route and the agents’ search_conversation both read (#1340), so a conversation
+ * is indexed once.
+ * @param {Parameters<typeof threadSearch>[0]} store
+ */
+export function searchOf(store) {
+  let s = shared.get(store);
+  if (!s) shared.set(store, (s = threadSearch(store)));
+  return s;
+}
+
 /** @param {{ state: any, subscribe: (fn: (ev: any) => void) => void, onReload: (fn: () => void) => void }} store */
 export function threadSearch(store) {
   /** @type {Map<string, SearchIndex>} */

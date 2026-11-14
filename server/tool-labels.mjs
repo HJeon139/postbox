@@ -30,6 +30,7 @@ const GENERIC = {
   mcp__postbox__define_term: 'Defining a term',
   mcp__postbox__wake_agent: 'Waking an agent',
   mcp__postbox__search_assets: 'Searching the assets',
+  mcp__postbox__search_conversation: 'Searching the conversation',
 };
 
 /** A short label for a tool call, in the words the activity list uses. */
@@ -74,6 +75,8 @@ function mcpLabel(name, i) {
   switch (name) {
     case 'mcp__postbox__search_assets':
       return `Searched the assets for “${clip(i.query, 50)}”`;
+    case 'mcp__postbox__search_conversation':
+      return `Searched the conversation for “${clip(i.query, 50)}”`;
     case 'mcp__postbox__show_block':
       return 'Showing a block';
     case 'mcp__postbox__update_block':

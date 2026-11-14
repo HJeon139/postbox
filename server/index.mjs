@@ -43,7 +43,7 @@ import { sessionRoute } from './session-routes.mjs';
 import { setupRoute } from './setup-routes.mjs';
 import { isLoopback } from './shell.mjs';
 import { newId } from './store.mjs';
-import { threadSearch } from './thread-search.mjs';
+import { searchOf } from './thread-search.mjs';
 import { uploadName } from './upload-name.mjs';
 import { startViewApp } from './view-app/view-app.mjs';
 import { viewOf } from './view-app/view-of.mjs';
@@ -173,7 +173,7 @@ export async function start({
 
   // The pages’ live updates: the store’s events over server-sent events (server/live-streams.mjs).
   const { streams, stop: stopStreams, stream, headers } = liveStreams(store);
-  const search = threadSearch(store);
+  const search = searchOf(store);
   let offlineUntil = 0;
 
   /** @param {import('node:http').IncomingMessage} req @param {import('node:http').ServerResponse} res */
