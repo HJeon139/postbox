@@ -47,6 +47,7 @@ export async function writeSnapshot(store) {
     throw Object.assign(new Error('The snapshot was abandoned: the store closed while it was written.'), { code: 'ECLOSED' });
   }
   await store.io.rename(tmp, path);
+  store.steppedAt = Date.now();
 }
 
 /**
@@ -107,6 +108,7 @@ async function takeSnapshot(store) {
     store.snapshotting = false;
   }
   await syncDir(store);
+  store.steppedAt = Date.now();
   if (store.retiring) return; // closing: the rotation and the pruning are left to the next store’s load
   await store.fh?.close();
   store.fh = null;
@@ -116,5 +118,9 @@ async function takeSnapshot(store) {
   store.sinceSnapshot = 0;
   store.ops.clear(); // opIds are remembered for the commits newer than the latest snapshot
   store.opsRejected.clear(); // and the rejected ones with them
-  for (const seg of covered) if (seg.name !== store.segment && !store.retiring) await store.io.rm(store.at(seg.name), { force: true });
+  for (const seg of covered) {
+    if (seg.name === store.segment || store.retiring) continue;
+    await store.io.rm(store.at(seg.name), { force: true });
+    store.steppedAt = Date.now();
+  }
 }
