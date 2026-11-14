@@ -5,7 +5,6 @@
 // server-log guard, tests/server-log.mjs). The archive pass, the hosts, the mirrors and the shell commands have stops
 // of their own, which close() calls.
 
-import { stopLintTimers } from './lint-delivery.mjs';
 import { stopSummaryTimers } from './thread-summary.mjs';
 
 /** How long close() waits for the ledger’s records, so a file read that never answers can’t hold the shutdown. */
@@ -19,7 +18,7 @@ const LEDGER_GRACE_MS = 4000;
  */
 export function stopTimers(rt) {
   for (const t of rt.timers.values()) clearTimeout(t);
-  stopLintTimers(rt);
+  rt.checks.stopTimers();
   for (const t of rt.watchdogs) clearTimeout(t);
   rt.watchdogs.clear();
   for (const w of rt.permissionWaits.values()) clearTimeout(w.timer);

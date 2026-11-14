@@ -10,7 +10,6 @@ import { clip } from './helpers.mjs';
 import { settleScheduledWake } from './scheduled-wakes.mjs';
 import { postSummary } from './share-back.mjs';
 import { settleThread } from './thread-summary.mjs';
-import { endChecks } from './turn-checks.mjs';
 import { endedAs } from './turn-end-work.mjs';
 import { askedOf, replyMarks } from './turn-marks.mjs';
 import { foldSteps } from './turn-steps.mjs';
@@ -52,7 +51,7 @@ export function endTurn(rt, turn, err) {
   }
   const { open, viewing, topic } = needsAfter(rt, se, turn, items);
 
-  endChecks(rt, turn, se);
+  rt.checks.endTurn(turn, se);
   if (topic && !viewing && (turn.said || open.length)) rt.threads.patch(topic, (x) => ({ unread: (x.unread ?? 0) + 1 }));
   if (turn.threadId !== se.threadId) settleThread(rt, turn.threadId);
 
@@ -88,7 +87,7 @@ function settleReplies(rt, se, turn, items, err) {
  */
 function endFailed(rt, se, turn, err) {
   // Its progress steps still running show as stalled, as at any turn’s end (#98).
-  rt.stallLeftRunning(turn, se, 'failed');
+  rt.checks.stallLeftRunning(turn, se, 'failed');
   const message = err.userMessage ?? err.message ?? 'The agent stopped unexpectedly.';
   const target =
     turn.segment ??

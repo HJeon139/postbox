@@ -105,18 +105,15 @@ test('lint joins problems to a running turn’s lint turn, which goes when the t
   assert.equal(checks.lint('se_1', 'tu_1', [PROBLEM]), false, 'its lint turn has gone');
 });
 
-test('foldLint gives a lint turn still settling to the next turn instead, so it never goes on its own', () => {
-  /** @type {any[]} */
-  const timers = [];
-  const { store, threads, checks, sent } = rig({ lintSettleMs: 5, setTimer: (fn, ms) => timers.push({ fn, ms }) && timers.at(-1) });
+test('foldLint gives a lint turn still settling to the next turn instead, so it never goes on its own', async () => {
+  const { store, threads, checks, sent } = rig({ lintSettleMs: 5 });
   progress(threads);
   checks.endTurn(turnOf(), store.state.sessions.se_1);
-  assert.equal(timers.length, 1, 'it waits for the browser');
   const message = checks.foldLint('se_1', { text: 'next' });
   assert.equal(message.text, 'next');
   assert.match(message.lint, /Fetch/);
-  timers[0].fn();
-  assert.deepEqual(sent, []);
+  await new Promise((r) => setTimeout(r, 20));
+  assert.deepEqual(sent, [], 'past its settle wait');
   assert.deepEqual(checks.foldLint('se_1', { text: 'again' }), { text: 'again' }, 'folded once');
 });
 

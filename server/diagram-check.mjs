@@ -1,27 +1,28 @@
 // Diagram checks from the page: the diagram linter estimates from a diagram’s source when a turn ends; the browser
 // measures the real text size after it renders, or sees Mermaid fail, and reports here what the estimate missed.
-// Either way the agent hears about a diagram once, by its hash on the session. Moved out of server/runtime.mjs;
-// Runtime keeps a method of the same name that delegates here.
+// Either way the agent hears about a diagram once, by its hash on the session. Checks (server/check-service.mjs)
+// calls each with itself.
 
 import { createHash } from 'node:crypto';
 import { COLUMN_PX, MIN_TEXT_PX, mermaidBlocks } from '../shared/diagram-lint.mjs';
 import { clipText } from './helpers.mjs';
+import { lint } from './lint-delivery.mjs';
 
-export function rememberDiagrams(rt, sessionId, sources) {
-  const se = rt.s.sessions[sessionId];
+export function rememberDiagrams(checks, sessionId, sources) {
+  const se = checks.store.state.sessions[sessionId];
   if (!se) return;
   const hashes = sources.map((s) => createHash('sha256').update(s.trim()).digest('hex').slice(0, 16));
-  rt.sessions.update(sessionId, { diagramsLinted: [...new Set([...(se.diagramsLinted ?? []), ...hashes])].slice(-50) });
+  checks.sessions.update(sessionId, { diagramsLinted: [...new Set([...(se.diagramsLinted ?? []), ...hashes])].slice(-50) });
 }
 
 /**
  * The browser drew a diagram: { src, textPx, width } when it measured it, or { src, error: { message, line } }
  * when Mermaid couldn’t draw it.
  */
-export function diagramCheck(rt, threadId, itemId, { src, textPx, width, error }) {
-  const it = rt.store.item(threadId, itemId);
+export function diagramCheck(checks, threadId, itemId, { src, textPx, width, error }) {
+  const it = checks.store.item(threadId, itemId);
   if (it?.kind !== 'agent' || it.lintReply || typeof src !== 'string') return { ok: true, sent: false };
-  const se = rt.s.sessions[it.sessionId];
+  const se = checks.store.state.sessions[it.sessionId];
   const failed = error && typeof error === 'object' && typeof error.message === 'string';
   // Only a measurement at the conversation’s width counts; a narrow panel or phone shrinks every diagram.
   if (!se || (!failed && (!(textPx < MIN_TEXT_PX) || !(width >= COLUMN_PX * 0.8)))) return { ok: true, sent: false };
@@ -56,7 +57,7 @@ export function diagramCheck(rt, threadId, itemId, { src, textPx, width, error }
       message: `In the person’s browser, its text is drawn at ${Math.round(textPx * 10) / 10} px at a width of ${Math.round(width)} px, too small to read. Draw it top to bottom, split it, or shorten its labels.`,
       scope,
     };
-  const sent = rt.lint(se.id, it.turnId, [problem]);
-  if (sent) rememberDiagrams(rt, se.id, [src]);
+  const sent = lint(checks, se.id, it.turnId, [problem]);
+  if (sent) rememberDiagrams(checks, se.id, [src]);
   return { ok: true, sent };
 }

@@ -133,7 +133,7 @@ test('an app check’s note after the turn ended is scoped to the session’s la
   r.rt.sendMessage(r.t.id, { text: '@alpha make an app' });
   await settle(r.rt);
   const scoped = [];
-  r.rt.lint = (sessionId, turnId) => scoped.push({ sessionId, turnId });
+  r.rt.checks.lint = (sessionId, turnId) => scoped.push({ sessionId, turnId });
   r.rt.appCheck('lab', { version: 1, problems: [{ code: 'marks-too-small', message: 'Tiny marks.' }] });
   assert.deepEqual(scoped, [{ sessionId: r.alpha.id, turnId: r.store.state.sessions[r.alpha.id].lastTurnId }]);
   assert.ok(scoped[0].turnId);

@@ -103,7 +103,7 @@ export function endJob(rt, sessionId, jobId, state, detail = null, { by = null }
   const held = now?.heldSteps;
   if ((job.kept || detail === KEEP_LOST) && held && !(now.jobs ?? []).some((j) => j.kept)) {
     rt.sessions.update(sessionId, { heldSteps: null });
-    const problems = rt.turns.has(sessionId) ? [] : rt.stallSteps({ threadId: held.threadId }, rt.store.pending.session(sessionId));
+    const problems = rt.turns.has(sessionId) ? [] : rt.checks.stallSteps({ threadId: held.threadId }, rt.store.pending.session(sessionId));
     if (problems.length)
       rt.sessions.tell(
         sessionId,
