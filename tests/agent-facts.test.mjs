@@ -3,7 +3,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { AGY_DEFAULT_MODEL } from '../server/adapters/antigravity-cli.mjs';
+import { AGY_CAPABILITIES, AGY_DEFAULT_MODEL } from '../server/adapters/antigravity-cli.mjs';
 import { DEFAULT_EFFORT, DEFAULT_MODEL, effortOf, modelOf } from '../server/adapters/setup.mjs';
 import { BOILERPLATES } from '../server/seed.mjs';
 import {
@@ -132,24 +132,35 @@ test('#120 L6: a Codex agent set to auto, or to a Claude model it ignores, reads
   assert.equal(modelName('claude-code', 'claude-opus-5-5'), 'Opus 5.5');
 });
 
-test('picking the Gemini boilerplate prefers its model when offered, then the first gemini-* model, then its model', () => {
+test('picking the Gemini boilerplate prefers its model when offered, then the model a new Antigravity agent starts on', () => {
   assert.equal(GEMINI_MODEL, AGY_DEFAULT_MODEL);
   const gemini = BOILERPLATES.find((b) => b.id === 'bp-gemini');
   const critic = BOILERPLATES.find((b) => b.id === 'bp-critic');
   const st = { bp: 'bp-critic', backend: 'claude-code', model: DEFAULT_MODEL, effort: DEFAULT_EFFORT, instructions: '', description: '', tools: new Set() };
   const adapters = ['claude-code', 'antigravity-cli', 'mock'];
   // b.model is offered, though not listed first: it still wins.
-  applyBoilerplate(st, gemini, { ...config, adapters, backends: { 'antigravity-cli': { models: ['gemini-2.5-pro', 'gemini-3.8-flash-high'] } } });
+  applyBoilerplate(st, gemini, {
+    ...config,
+    adapters,
+    backends: { 'antigravity-cli': { ...AGY_CAPABILITIES, models: ['gemini-2.5-pro', 'gemini-3.8-flash-high'] } },
+  });
   assert.deepEqual([st.bp, st.backend, st.model, st.effort], ['bp-gemini', 'antigravity-cli', GEMINI_MODEL, 'high']);
   assert.deepEqual([...st.tools], ['shell', 'web.fetch']);
   // A Claude model is listed first, and b.model isn’t offered: the first gemini-* model wins.
-  applyBoilerplate(st, gemini, { ...config, adapters, backends: { 'antigravity-cli': { models: ['claude-sonnet-4-6', 'gemini-2.5-pro'] } } });
+  applyBoilerplate(st, gemini, {
+    ...config,
+    adapters,
+    backends: { 'antigravity-cli': { ...AGY_CAPABILITIES, models: ['claude-sonnet-4-6', 'gemini-2.5-pro'] } },
+  });
   assert.deepEqual([st.backend, st.model, st.effort], ['antigravity-cli', 'gemini-2.5-pro', 'medium']);
-  // Only a GPT-OSS model is offered, with no gemini-* model at all: it falls back to b.model.
-  applyBoilerplate(st, gemini, { ...config, adapters, backends: { 'antigravity-cli': { models: ['gpt-oss-120b-medium'] } } });
+  // Only a GPT-OSS model is offered, with no gemini-* model at all: the one agy lists, as a new agent starts on (#390).
+  applyBoilerplate(st, gemini, { ...config, adapters, backends: { 'antigravity-cli': { ...AGY_CAPABILITIES, models: ['gpt-oss-120b-medium'] } } });
+  assert.deepEqual([st.backend, st.model, st.effort], ['antigravity-cli', 'gpt-oss-120b-medium', 'medium']);
+  // Before agy has listed any: b.model.
+  applyBoilerplate(st, gemini, { ...config, adapters, backends: { 'antigravity-cli': AGY_CAPABILITIES } });
   assert.deepEqual([st.backend, st.model, st.effort], ['antigravity-cli', GEMINI_MODEL, 'high']);
   // Switching back to a generic boilerplate restores the default backend, model and effort.
-  applyBoilerplate(st, critic, { ...config, adapters, backends: { 'antigravity-cli': {} } });
+  applyBoilerplate(st, critic, { ...config, adapters, backends: { 'antigravity-cli': AGY_CAPABILITIES } });
   assert.deepEqual([st.bp, st.backend, st.model, st.effort], ['bp-critic', 'claude-code', DEFAULT_MODEL, DEFAULT_EFFORT]);
 });
 
@@ -162,7 +173,7 @@ test('unavailable backend boilerplates are disabled with a reason, and switching
   assert.equal(st.backend, 'claude-code');
   assert.equal(st.model, DEFAULT_MODEL);
   // Picking Gemini and then switching Runs on to Claude Code by hand resets both model and effort.
-  const cfg = { ...config, adapters: ['claude-code', 'antigravity-cli', 'kiro-cli', 'mock'], backends: { 'antigravity-cli': {} } };
+  const cfg = { ...config, adapters: ['claude-code', 'antigravity-cli', 'kiro-cli', 'mock'], backends: { 'antigravity-cli': AGY_CAPABILITIES } };
   applyBoilerplate(st, gemini, cfg);
   assert.deepEqual([st.backend, st.model, st.effort], ['antigravity-cli', GEMINI_MODEL, 'high']);
   selectBackend(st, 'claude-code', cfg);
