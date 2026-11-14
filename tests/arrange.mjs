@@ -204,13 +204,13 @@ export function withMirrorTail(rt, sessionId, tail) {
 // ── Remote hosts ─────────────────────────────────────────────────────────────────────
 
 /** A host, or a 404 when there’s none. @param {Runtime} rt @param {string} id */
-export const host = (rt, id) => rt.host(id);
+export const host = (rt, id) => rt.hostService.get(id);
 
 /** A host’s connection as the page sees it, or null before the host manager knows of it. @param {Runtime} rt @param {string} id */
-export const hostStatus = (rt, id) => rt.hostStatus(id);
+export const hostStatus = (rt, id) => rt.hostService.status(id);
 
 /** Keeps each host’s status in the state for the page, as Postbox does once it listens. @param {Runtime} rt */
-export const watchHosts = (rt) => rt.watchHosts();
+export const watchHosts = (rt) => rt.hostService.watch();
 
 // ── Permissions, apps and files ──────────────────────────────────────────────────────
 

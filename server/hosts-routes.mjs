@@ -4,8 +4,6 @@
 // kept current by 'host' and 'host.status' events. Every write here needs the page’s
 // token, as every other one does (tests/server-token.test.mjs reads this file).
 
-import { setHostKeepUpdated } from './remote/host-status.mjs';
-
 const done = (status, body) => ({ status, body });
 
 /**
@@ -21,7 +19,7 @@ export async function hostsRoute(rt, path, method, body) {
   if ((m = path.match(/^\/api\/hosts\/([^/]+)$/)) && method === 'DELETE') return done(200, await rt.removeHost(m[1]));
   if ((m = path.match(/^\/api\/hosts\/([^/]+)\/install$/)) && method === 'POST') return done(200, await rt.installHost(m[1]));
   if ((m = path.match(/^\/api\/hosts\/([^/]+)\/retry$/)) && method === 'POST') return done(200, rt.retryHost(m[1], { takeover: body.takeover ?? false }));
-  if ((m = path.match(/^\/api\/hosts\/([^/]+)\/keep-updated$/)) && method === 'PUT') return done(200, await setHostKeepUpdated(rt, m[1], body));
+  if ((m = path.match(/^\/api\/hosts\/([^/]+)\/keep-updated$/)) && method === 'PUT') return done(200, await rt.setHostKeepUpdated(m[1], body));
   if ((m = path.match(/^\/api\/projects\/([^/]+)\/hosts\/([^/]+)\/folder$/)) && method === 'PUT')
     return done(200, rt.setProjectHostFolder(m[1], m[2], body.folder));
   return null;

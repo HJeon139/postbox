@@ -41,8 +41,7 @@ import { changePermissionFolder, changePermissionRule, latestProject, PERMISSION
 import { Personas } from './personas.mjs';
 import { readCapped } from './read-capped.mjs';
 import { addReadFolder, readCardAlways } from './read-folders.mjs';
-import { addHost, host, removeHost, setProjectHostFolder, updateHost } from './remote/host-admin.mjs';
-import { describeHostInstall, hostStatus, installHost, retryHost, watchHosts } from './remote/host-status.mjs';
+import { Hosts } from './remote/host-service.mjs';
 import { Placement } from './remote/placement.mjs';
 import { RemoteTurns } from './remote/turns.mjs';
 import { Running } from './running.mjs';
@@ -209,6 +208,23 @@ export class Runtime {
       config,
     });
     this.remote = new RemoteTurns(this, { hosts: this.hosts });
+    // The person’s remote hosts (designs/architecture/services.md, “Hosts”). A rename refuses while turns run on the
+    // host, and a removal stops them first, through the hostTurns port; each part looks the runtime’s own up as it’s
+    // called, so it is the one in place then.
+    this.hostService = new Hosts({
+      store,
+      personas: this.personas,
+      running: this.running,
+      hostTurns: {
+        busyOn: (hostId) => this.remote.busyOn(hostId),
+        sessionsOn: (hostId) => this.remote.sessionsOn(hostId),
+        stopOn: (sessionId) => this.stop(sessionId, { silent: true }),
+        cancel: (sessionId) => this.remote.cancel(sessionId),
+        confirmStops: (hostId, waitMs) => this.remote.confirmStops(hostId, waitMs),
+        stoppingSession: (turnId) => this.remote.stopping.get(turnId)?.sessionId,
+      },
+      hosts: this.hosts,
+    });
     this.listenToPersonas();
     // Conversations can’t be archived any more: one an older Postbox archived comes back as a live one.
     this.sessions.unarchive();
@@ -666,50 +682,42 @@ export class Runtime {
     return this.personas.remove(id);
   }
 
-  // ── Remote hosts (#120): server/remote/placement.mjs, host-admin.mjs and host-status.mjs ──────────
+  // ── Remote hosts (#120): server/remote/placement.mjs and host-service.mjs ──────────
 
   localBackends() {
     return this.placement.localBackends();
   }
 
-  host(id) {
-    return host(this, id);
-  }
-
   addHost(opts) {
-    return addHost(this, opts);
+    return this.hostService.add(opts);
   }
 
   updateHost(id, patch) {
-    return updateHost(this, id, patch);
+    return this.hostService.update(id, patch);
   }
 
   removeHost(id, opts) {
-    return removeHost(this, id, opts);
-  }
-
-  hostStatus(id) {
-    return hostStatus(this, id);
-  }
-
-  watchHosts() {
-    return watchHosts(this);
+    return this.hostService.remove(id, opts);
   }
 
   describeHostInstall(id) {
-    return describeHostInstall(this, id);
+    return this.hostService.describeInstall(id);
   }
 
   installHost(id) {
-    return installHost(this, id);
+    return this.hostService.install(id);
   }
 
   retryHost(id, opts) {
-    return retryHost(this, id, opts);
+    return this.hostService.retry(id, opts);
+  }
+
+  setHostKeepUpdated(id, body) {
+    return this.hostService.setKeepUpdated(id, body);
   }
 
   setProjectHostFolder(projectId, hostId, folder) {
-    return setProjectHostFolder(this, projectId, hostId, folder);
+    return this.hostService.setProjectFolder(projectId, hostId, folder);
   }
 
   // What the persona sheet shows of a persona’s setup: server/setup-context.mjs.
