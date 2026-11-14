@@ -1,6 +1,6 @@
 // Reading a conversation as an agent: read_conversation’s page of items, newest last, and read_message’s one item in
-// full, with the same scope (any thread of the conversation) and pagination. readConversation and readLine moved here
-// out of server/runtime.mjs, which keeps a method of each name that delegates here.
+// full, with the same scope (any thread of the conversation) and pagination. Memory’s method of each name calls these,
+// with Memory first (designs/architecture/services.md, “Memory”).
 import { READING } from '../shared/limits.mjs';
 import { fenceFor, partOf } from '../shared/text-parts.mjs';
 import { appCheckText, appVersionText } from './app-check-status.mjs';
@@ -14,15 +14,15 @@ const count = (n) => n.toLocaleString('en-US');
  * a block’s id, from any thread of this conversation: read_conversation { thread } reads its side and topic threads,
  * a fork’s among them (#110), so the ids it gives must work here too. Its own thread and the conversation it
  * branched from come first. Long text comes in parts (#109), and an app's code in parts of a version (readApp).
- * @param {any} rt @param {any} se @param {{ id?: string, from?: number, version?: number }} [args]
+ * @param {import('./memory-service.mjs').Memory} memory @param {any} se @param {{ id?: string, from?: number, version?: number }} [args]
  */
-export function readMessage(rt, se, { id, from = 0, version } = {}) {
+export function readMessage(memory, se, { id, from = 0, version } = {}) {
   const key = String(id ?? '').trim();
   if (!key) return { ok: false, message: 'Name the item: read_message { id }, with an id from your history or read_conversation.' };
-  const threads = rt.threads.conversationThreads(se.threadId);
-  let it = threads.map((th) => rt.store.item(th, key)).find(Boolean);
+  const threads = memory.threads.conversationThreads(se.threadId);
+  let it = threads.map((th) => memory.store.item(th, key)).find(Boolean);
   if (!it) {
-    const blocks = threads.flatMap((th) => rt.store.items(th).filter((i) => i.kind === 'block' && i.valid && i.block?.id === key));
+    const blocks = threads.flatMap((th) => memory.store.items(th).filter((i) => i.kind === 'block' && i.valid && i.block?.id === key));
     if (blocks.length > 1)
       return {
         ok: false,
@@ -35,9 +35,9 @@ export function readMessage(rt, se, { id, from = 0, version } = {}) {
       ok: false,
       message: `There’s no item “${clipText(key, 80)}” in this conversation. Your history and read_conversation give the id of each item they cut.`,
     };
-  const app = rt.apps.appOf(it);
-  if (app) return readApp(rt, se, it, app, { from, version });
-  const full = rt.readLine(it, se, Infinity);
+  const app = memory.apps.appOf(it);
+  if (app) return readApp(memory, se, it, app, { from, version });
+  const full = memory.readLine(it, se, Infinity);
   if (!full) return { ok: false, message: `${it.id} has nothing to read.` };
   const p = partOf(full, from, { next: (end) => `read_message { id: "${it.id}", from: ${end} }` });
   if (!p) return { ok: true, message: `Nothing after character ${count(full.length)}: that’s the end of ${it.id}.` };
@@ -48,9 +48,9 @@ export function readMessage(rt, se, { id, from = 0, version } = {}) {
  * An app read in full (#516's S1, #417): its head line, then one version's code in parts of READING.part. `from` counts
  * characters of the code alone, since the head grows when a check is recorded, and every "reads on" line names the
  * version, since nothing is kept between calls: an update between parts doesn't change what the next part reads.
- * @param {any} rt @param {any} se @param {any} it @param {any} app @param {{ from?: number, version?: number }} args
+ * @param {import('./memory-service.mjs').Memory} memory @param {any} se @param {any} it @param {any} app @param {{ from?: number, version?: number }} args
  */
-function readApp(rt, se, it, app, { from = 0, version }) {
+function readApp(memory, se, it, app, { from = 0, version }) {
   const v = version === undefined || version === null ? app.current : Number(version);
   const code = Number.isInteger(v) ? app.versions[v - 1]?.code : undefined;
   if (typeof code !== 'string')
@@ -58,7 +58,7 @@ function readApp(rt, se, it, app, { from = 0, version }) {
       ok: false,
       message: `${app.id} has no version ${clipText(String(version), 20)}: it has v1 to v${app.current}, and v${app.current} is the newest.`,
     };
-  const line = rt.readLine(it, se, Infinity);
+  const line = memory.readLine(it, se, Infinity);
   const current = appCheckText(app);
   // An older version's check isn't kept: the head says so in place of the current version's.
   const head = v === app.current || !line.endsWith(current) ? line : `${line.slice(0, -current.length)}${appVersionText(app, v)}`;
@@ -76,16 +76,16 @@ function readApp(rt, se, it, app, { from = 0, version }) {
  * to read instead, such as a side thread or a topic thread (#121): its id from a catch-up line, a pointer to a fork, or
  * a link the person shared. Threads of other conversations are refused.
  */
-/** @param {any} rt @param {any} se @param {{ limit?: number, skip?: number, thread?: unknown }} [args] */
-export function readConversation(rt, se, { limit = 50, skip = 0, thread = null } = {}) {
+/** @param {import('./memory-service.mjs').Memory} memory @param {any} se @param {{ limit?: number, skip?: number, thread?: unknown }} [args] */
+export function readConversation(memory, se, { limit = 50, skip = 0, thread = null } = {}) {
   const id = typeof thread === 'string' && thread.trim() ? thread.trim().slice(0, 100) : se.threadId;
-  if (!rt.threads.conversationThreads(se.threadId).includes(id))
+  if (!memory.threads.conversationThreads(se.threadId).includes(id))
     throw httpError(404, `There’s no thread ${id} in this conversation. Read one of its own threads: the id is in the catch-up line or the link.`);
-  const items = rt.store.items(id).filter((i) => i.kind !== 'system' || i.variant === 'wake');
+  const items = memory.store.items(id).filter((i) => i.kind !== 'system' || i.variant === 'wake');
   const n = Math.max(1, Math.min(200, Number(limit) || 50));
   const end = Math.max(0, items.length - Math.max(0, Number(skip) || 0));
   const slice = items.slice(Math.max(0, end - n), end);
-  const lines = slice.flatMap((i) => (rt.readLine(i, se) ? [`[${i.id}] ${rt.readLine(i, se)}`] : []));
+  const lines = slice.flatMap((i) => (memory.readLine(i, se) ? [`[${i.id}] ${memory.readLine(i, se)}`] : []));
   const before = end - slice.length;
   return `${lines.join('\n\n') || 'The conversation is empty.'}${before ? `\n\n(${before} earlier ${before === 1 ? 'item' : 'items'}; call again with skip: ${items.length - before} to read them.)` : ''}`;
 }
@@ -94,6 +94,6 @@ export function readConversation(rt, se, { limit = 50, skip = 0, thread = null }
  * An item as read_conversation and read_message give it to `se`, whose own messages say “You”.
  * @param {any} i @param {any} se @param {number} [n]
  */
-export function readLine(rt, i, se, n = READING.item) {
-  return i.sessionId === se.id && i.kind === 'agent' ? `You (@${se.handle}): ${clipItem(i.text, n, i.id)}` : rt.describeItem(i, null, n, se);
+export function readLine(memory, i, se, n = READING.item) {
+  return i.sessionId === se.id && i.kind === 'agent' ? `You (@${se.handle}): ${clipItem(i.text, n, i.id)}` : memory.describeItem(i, null, n, se);
 }

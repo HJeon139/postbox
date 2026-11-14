@@ -7,7 +7,6 @@ import { attachedFiles } from './adapters/attached-files.mjs';
 import { workFolder } from './adapters/folder.mjs';
 import { toolsDownNote } from './adapters/tools-down.mjs';
 import { keptTurns, releaseNeed, TURN_TIED } from './card-needs.mjs';
-import { pointerIfSeen } from './catch-up.mjs';
 import { heldSession } from './held-session.mjs';
 import { httpError, retiredError } from './helpers.mjs';
 import { arrival } from './queue-batch.mjs';
@@ -17,7 +16,7 @@ import { endChain } from './side-threads.mjs';
 import { newId } from './store.mjs';
 import { heldTurn, saveBackendState, whenWritable } from './store-outage.mjs';
 import { notUrgent } from './subagent-end.mjs';
-import { firstPromptSection, turnContext } from './thread-catch-up.mjs';
+import { firstPromptSection } from './thread-catch-up.mjs';
 import { adapterContext } from './turn-context.mjs';
 import { endTurn } from './turn-finish.mjs';
 import { askedAgain } from './turn-marks.mjs';
@@ -100,7 +99,7 @@ function waitsBehind(rt, sessionId, message, { summarizeTo, threadId }) {
 function turnMessage(rt, se, message, where, slash) {
   const sessionId = se.id;
   // A queued mention its last room summary already gave it comes as a pointer there, never as a thread’s direct task (#484, #504).
-  if (where === se.threadId) message = pointerIfSeen(rt, se, message);
+  if (where === se.threadId) message = rt.memory.pointerIfSeen(se, message);
   // Postbox’s notices that waited for this agent’s next turn (tellAgent: what became of its earlier messages) lead the
   // background; the brief isn’t context, it goes with the room’s facts (turnFacts).
   if (se.context?.length && !slash) {
@@ -116,7 +115,7 @@ function turnMessage(rt, se, message, where, slash) {
   // message.lint: fixes it owes, placed with the request rather than in the background.
   if (message.kind !== 'lint' && !slash) message = rt.checks.foldLint(sessionId, message);
   // A topic or side thread’s request leads; its room catch-up is background. A room turn keeps the existing order.
-  return turnContext(rt, rt.store.pending.session(sessionId) ?? rt.s.sessions[sessionId], where, message, slash);
+  return rt.memory.turnContext(rt.store.pending.session(sessionId) ?? rt.s.sessions[sessionId], where, message, slash);
 }
 
 /**

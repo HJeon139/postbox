@@ -38,7 +38,7 @@ function rig({ host = null, lines = [] } = {}) {
     return lines.splice(0);
   };
   const memory = new Memory({ store, threads, sessions, personas, placement, assets, apps, catchUpLines });
-  return { store, threads, memory, asked, shownApps };
+  return { store, threads, sessions, memory, asked, shownApps };
 }
 
 const alpha = (store) => store.state.sessions.se_1;
@@ -86,11 +86,11 @@ test('pointerIfSeen gives a mention the last catch-up gave as a pointer to it, a
 });
 
 test('moveMarkers moves a reader’s marker on a moved item to its stub, and leaves another reader’s', () => {
-  const { store, threads, memory } = rig();
+  const { store, threads, sessions, memory } = rig();
   const moved = beta(threads, 'v1');
   const later = beta(threads, 'later');
-  store.emit('session.patch', { id: 'se_1', seenItem: moved.id });
-  store.emit('session.patch', { id: 'se_2', seenItem: later.id });
+  sessions.update('se_1', { seenItem: moved.id });
+  sessions.update('se_2', { seenItem: later.id });
   memory.moveMarkers('th_c', moved.id, 'it_stub');
   assert.deepEqual([alpha(store).seenItem, store.state.sessions.se_2.seenItem], ['it_stub', later.id]);
 });

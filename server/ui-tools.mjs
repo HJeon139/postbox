@@ -48,13 +48,13 @@ export function toolsFor(rt, sessionId, turn = null) {
     bring_to_conversation: (args = {}) => bringToConversation(rt, sessionId, turn, args),
     read_conversation(args = {}) {
       try {
-        return { ok: true, message: rt.readConversation(se(), args) };
+        return { ok: true, message: rt.memory.readConversation(se(), args) };
       } catch (e) {
         return { ok: false, message: e.message };
       }
     },
     read_message(args = {}) {
-      return rt.readMessage(se(), args);
+      return rt.memory.readMessage(se(), args);
     },
     ask_for_tool(args = {}) {
       return askForTool(rt, sessionId, args, endSegment, threadId());

@@ -5,8 +5,6 @@
 // server-log guard, tests/server-log.mjs). The archive pass, the hosts, the mirrors and the shell commands have stops
 // of their own, which close() calls.
 
-import { stopSummaryTimers } from './thread-summary.mjs';
-
 /** How long close() waits for the ledger’s records, so a file read that never answers can’t hold the shutdown. */
 const LEDGER_GRACE_MS = 4000;
 
@@ -24,7 +22,7 @@ export function stopTimers(rt) {
   for (const w of rt.permissionWaits.values()) clearTimeout(w.timer);
   if (rt.keptPoll) clearInterval(rt.keptPoll);
   rt.keptPoll = null;
-  stopSummaryTimers(rt);
+  rt.summaries.stopTimers();
 }
 
 /**

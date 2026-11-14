@@ -39,10 +39,10 @@ function readable(rts, threadId) {
 
 /** @param {RemoteTurns} rts @param {any} i @param {any} se */
 function itemOf(rts, i, se) {
-  const line = String(rts.rt.readLine(i, se) ?? '').slice(0, REMOTE_LIMITS.snapshotLineChars);
+  const line = String(rts.rt.memory.readLine(i, se) ?? '').slice(0, REMOTE_LIMITS.snapshotLineChars);
   // An app's code isn't in the snapshot (#516's S1): read with Postbox away, its item says how to read it.
   const offline = appOf(rts.rt, i) ? `\n\n${appCodeOfflineLine(i.id)}` : '';
-  const text = `${rts.rt.readLine(i, se, Number.POSITIVE_INFINITY) ?? ''}${offline}`.slice(0, REMOTE_LIMITS.snapshotTextChars);
+  const text = `${rts.rt.memory.readLine(i, se, Number.POSITIVE_INFINITY) ?? ''}${offline}`.slice(0, REMOTE_LIMITS.snapshotTextChars);
   return { id: i.id, line, text, ...(i.kind === 'block' && i.valid && typeof i.block?.id === 'string' ? { blockId: i.block.id } : {}) };
 }
 
