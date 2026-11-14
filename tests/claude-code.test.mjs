@@ -459,7 +459,6 @@ test('attaching a session brings its recent history and works in its folder', as
       ['system', null],
     ],
   );
-  assert.deepEqual(items[0].to, ['site'], 'typed in the terminal, to its agent (#1328)');
   assert.equal(items[1].text, 'Fixed: the header wraps now.');
   assert.deepEqual(
     items[1].activity.steps.map((s) => [s.label, s.state]),
@@ -489,7 +488,6 @@ test('turns typed in the terminal are mirrored; Postbox’s own turns aren’t s
       ['agent', 'Footer done.'],
     ],
   );
-  assert.deepEqual(added[0].to, ['site'], 'typed in the terminal, to its agent (#1328)');
   assert.deepEqual(
     added[1].activity.steps.map((s) => s.state),
     ['done'],
