@@ -1,4 +1,4 @@
-// A persona switched to another backend (server/persona-write.mjs, updatePersona, #1315): its sessions drop the model
+// A persona switched to another backend (server/personas.mjs, updatePersona, #1315): its sessions drop the model
 // and effort the old backend reported, so the agent’s row shows the new setting, not “Opus 5.5, not auto”, until the
 // new backend reports its own. Kiro on its router reports neither, so without this the old ones stayed for good.
 import assert from 'node:assert/strict';

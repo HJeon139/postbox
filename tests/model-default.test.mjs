@@ -1,5 +1,5 @@
 // The model a backend starts with (shared/agent-facts.mjs, modelDefault, #390): one rule for the New agent sheet, the
-// server’s persona with no model (persona-write.mjs) and an Antigravity turn (agyModel). Postbox’s default while the
+// server’s persona with no model (personas.mjs) and an Antigravity turn (agyModel). Postbox’s default while the
 // backend lists it; else auto, the harness’s own choice, when it lists that; else the backend’s preferred model
 // (capabilities.preferModel); else the first it lists.
 import assert from 'node:assert/strict';

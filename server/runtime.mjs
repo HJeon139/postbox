@@ -42,7 +42,7 @@ import {
 } from './permission-cards.mjs';
 import { retireModes, runsAs } from './permission-modes.mjs';
 import { changePermissionFolder, changePermissionRule, latestProject, PERMISSION_MODES, panelTarget, permissionsView } from './permissions-panel.mjs';
-import { createPersona, updatePersona } from './persona-write.mjs';
+import { createPersona, updatePersona } from './personas.mjs';
 import { readCapped } from './read-capped.mjs';
 import { addReadFolder, readCardAlways } from './read-folders.mjs';
 import { readConversation, readLine, readMessage } from './read-message.mjs';
@@ -719,7 +719,7 @@ export class Runtime {
     return stopMirrorFor(this, sessionId);
   }
 
-  // ── Personas: server/persona-write.mjs ─────────────────────────────────────────────
+  // ── Personas: server/personas.mjs ─────────────────────────────────────────────
 
   createPersona(spec) {
     return createPersona(this, spec);

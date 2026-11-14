@@ -121,7 +121,7 @@ export class RemoteTurns {
    * queue, as for a busy one: a new turn would run on the host beside the one about to be attached. Only while the
    * agent still runs on that host: once it’s moved off, that turn can’t be attached (reattach), and a message goes
    * where the agent runs now; moved back before the attach, it waits again. Called wherever `restoring` changes, and
-   * when the agent’s persona is written (persona-write.mjs). It reads the session and the persona as written, held
+   * when the agent’s persona is written (personas.mjs). It reads the session and the persona as written, held
    * behind a commit or not, so every caller sees a move the moment updatePersona makes it.
    * @param {string} sessionId
    */

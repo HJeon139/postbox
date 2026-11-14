@@ -1,4 +1,4 @@
-// The model a new persona gets when it names none (server/persona-write.mjs): Postbox’s default while the backend
+// The model a new persona gets when it names none (server/personas.mjs): Postbox’s default while the backend
 // offers it, else what the backend’s harness listed (server/model-lists.mjs).
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
