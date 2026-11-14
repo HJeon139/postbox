@@ -44,7 +44,7 @@ export const newProbes = () => ({
  */
 export const recordInput = (probes, stepNow, log) => (/** @type {any} */ entry) => {
   if (entry.kind === 'target-moved') {
-    /** @type {any} */ ((probes).targetMoved ??= []).push({ step: stepNow(), at: Date.now(), ...entry });
+    /** @type {any} */ ((probes.targetMoved ??= [])).push({ step: stepNow(), at: Date.now(), ...entry });
     log(`${entry.what} moved between the runner aiming and clicking: ${JSON.stringify(entry.from)} → ${JSON.stringify(entry.to)}`);
     return;
   }
