@@ -90,3 +90,24 @@ test('every agent-facing reading of the person says “The person”, never “Y
   // read_message gives the agent its own messages as “You”, and the person’s as theirs.
   assert.equal(f.rt.readLine(add({ kind: 'user', text: 'Hi.', to: ['alpha'] }), f.beta), 'The person, to @alpha: Hi.');
 });
+
+test('a message queued only for an agent that’s deleted is posted with that agent as its recipient', async () => {
+  const f = await afterAlpha();
+  const h = held();
+  f.adapter.next.push(h.step);
+  f.rt.sendMessage(f.t.id, { text: '@alpha one more thing' });
+  await sleep(20);
+  assert.ok(f.rt.sendMessage(f.t.id, { text: 'And the footnotes.' }).queued);
+  f.rt.deleteSession(f.alpha.id);
+  h.release();
+  await settle(f.rt);
+  const it = userItems(f, f.t.id).find((i) => i.text === 'And the footnotes.');
+  assert.deepEqual(it.to, ['alpha']);
+});
+
+test('a skill or command the person runs for an agent keeps that agent as its recipient', async () => {
+  const f = setup();
+  f.rt.runAgentCommand(f.t.id, { sessionId: f.beta.id, text: '/review src/a.js' });
+  await settle(f.rt);
+  assert.deepEqual(userItems(f, f.t.id).at(-1).to, ['beta']);
+});
