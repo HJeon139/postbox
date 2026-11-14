@@ -9,11 +9,12 @@
 // Postbox spawns the CLI for the SDK (its spawnClaudeCodeProcess option, sdk.d.ts) in a process group of its own, so
 // Stop reaches everything it started, as for the Claude Code backend, and a turn ends only once the CLI has exited
 // (#126): server/adapters/process-group.mjs.
+// POSTBOX_SDK_RECORD=<folder> saves each turn’s messages there, one JSON line each, as the other backends record theirs (#1315).
 
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { switchesLive } from '../../shared/hook-modes.mjs';
 import { withAskRules } from '../permission-rules.mjs';
+import { liveControl, MODES } from './agent-sdk-live.mjs';
 import { sdkModels } from './claude-models.mjs';
 import { createStreamMapper, forkPointMissing, resultError, windowFor } from './claude-stream.mjs';
 import { agentFolder, memoryRootFor } from './folder.mjs';
@@ -21,10 +22,19 @@ import { FRESH_START_TEXT, formatMessage, turnGuide } from './guide.mjs';
 import { listProcesses, stopJobUnder, stopTurn } from './process-group.mjs';
 import { listCommands } from './sdk-commands.mjs';
 import { canUseTool as sdkCanUseTool } from './sdk-permission.mjs';
-import { deniedTools, effortOf, fromContext, HOST_SOURCES, ISOLATED_SOURCES, modelOf, postboxServer, settingsFor, setupOf, writeRules } from './setup.mjs';
-
-// Passed explicitly, as for the CLI: an agent set to ask must not inherit a looser mode from your settings.
-const MODES = { auto: 'auto', ask: 'default', acceptEdits: 'acceptEdits', bypass: 'bypassPermissions' };
+import {
+  deniedTools,
+  effortOf,
+  fromContext,
+  HOST_SOURCES,
+  ISOLATED_SOURCES,
+  modelOf,
+  postboxServer,
+  recorderFor,
+  settingsFor,
+  setupOf,
+  writeRules,
+} from './setup.mjs';
 
 /** Loads the SDK, or returns null when it isn’t installed. */
 export async function loadAgentSdk() {
@@ -102,54 +112,25 @@ export function sdkOptions({
   };
 }
 
-/**
- * What the person can change while a turn runs: the permission mode (#66), the model and the effort (#67), with the
- * running query’s setPermissionMode, setModel and applyFlagSettings({ effortLevel }). The SDK documents them for
- * streaming input only, and Postbox sends a turn’s prompt as one string, so each change is tried, and resolves to
- * whether it took effect now; if not, it applies from the next turn, since all three are passed with every turn. A turn
- * that loaded the person’s hooks keeps its mode rather than switch into one that turns them off (switchesLive, #806).
- * @param {any} q  the running query  @param {string} [started]  the Postbox mode the turn started in
- */
-export function liveControl(q, started = 'auto') {
-  return {
-    /** @param {string} mode  one of Postbox’s modes */
-    async setPermissionMode(mode) {
-      if (!switchesLive(started, mode) || typeof q?.setPermissionMode !== 'function' || !Object.hasOwn(MODES, mode)) return false;
-      try {
-        await q.setPermissionMode(MODES[/** @type {keyof typeof MODES} */ (mode)]);
-        return true;
-      } catch {
-        return false;
-      }
-    },
-    /** @param {string} model */
-    async setModel(model) {
-      if (typeof q?.setModel !== 'function') return false;
-      try {
-        await q.setModel(model);
-        return true;
-      } catch {
-        return false;
-      }
-    },
-    /** @param {string} effort  one of EFFORT_LEVELS */
-    async setEffort(effort) {
-      if (typeof q?.applyFlagSettings !== 'function') return false;
-      try {
-        await q.applyFlagSettings({ effortLevel: effort });
-        return true;
-      } catch {
-        return false;
-      }
-    },
-  };
-}
-
 /** Where a forked session starts: the branch point’s checkpoint, or the latest point of the session it forks. */
 export function sdkForkPoint(state) {
   if (state.fork?.sdkSessionId) return state.fork;
   const from = state.forkFrom?.sdkSessionId;
   return from ? { sdkSessionId: from } : null;
+}
+
+/**
+ * What a turn’s init message tells its session: the skills and commands with their descriptions and argument hints
+ * (#67), once the session is up, where init’s list (names only, from the stream mapper) stands if the SDK can’t say;
+ * and the SDK’s session id, kept for the next turn to resume.
+ * @param {any} q  the running query @param {any} m  its init message @param {any} ctx
+ */
+function noteInit(q, m, ctx) {
+  listCommands(q, m, ctx);
+  if (m.session_id && m.session_id !== ctx.state.sdkSessionId) {
+    ctx.saveState({ sdkSessionId: m.session_id, fork: null });
+    ctx.state.sdkSessionId = m.session_id;
+  }
 }
 
 export class AgentSdkAdapter {
@@ -231,6 +212,7 @@ export class AgentSdkAdapter {
     const canUseTool = (toolName, input, opts) => sdkCanUseTool(ctx, toolName, input, opts);
 
     const mapper = createStreamMapper(ctx, { contextWindow: ctx.state.contextWindow ?? windowFor(persona.model), effort: effortOf(persona) });
+    const record = recorderFor(ctx, process.env.POSTBOX_SDK_RECORD);
     ctx.subagentNames?.((ids) => mapper.who(ids));
     const options = {
       ...sdkOptions({
@@ -255,14 +237,9 @@ export class AgentSdkAdapter {
       // A background job’s own Stop, while the CLI waits for it.
       ctx.control?.({ ...liveControl(q, persona.permissionMode ?? 'auto'), stopJob: (job) => stopJobUnder(child, job, procs) });
       for await (const m of q) {
+        record(JSON.stringify(m));
         mapper.push(m);
-        // The skills and commands with their descriptions and argument hints (#67), once the session is up; init’s
-        // list (names only, from the stream mapper) stands if the SDK can’t say.
-        if (m.type === 'system' && m.subtype === 'init') listCommands(q, m, ctx);
-        if (m.type === 'system' && m.subtype === 'init' && m.session_id && m.session_id !== ctx.state.sdkSessionId) {
-          ctx.saveState({ sdkSessionId: m.session_id, fork: null });
-          ctx.state.sdkSessionId = m.session_id;
-        }
+        if (m.type === 'system' && m.subtype === 'init') noteInit(q, m, ctx);
       }
     } catch (e) {
       if (ctx.signal.aborted) return;

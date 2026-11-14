@@ -51,6 +51,10 @@ export async function observe({ d, labels, keys, seen, paths, timeline, dir, fac
     .flatMap((t) => st.threads[t]?.members ?? [])
     .map((id) => st.sessions[id])
     .filter(Boolean)
-    .map((se) => `@${se.handle} in “${st.threads[se.threadId]?.title}”: ${se.state}${se.needs ? ` (needs you: ${se.needs.text})` : ''}`);
+    .map((se) => {
+      // Its row in the Agents section, with the model and effort it ran with (#1315).
+      const row = facts.ui?.agentLines?.[se.handle];
+      return `@${se.handle} in “${st.threads[se.threadId]?.title}”: ${se.state}${se.needs ? ` (needs you: ${se.needs.text})` : ''}${row ? `; its row in the Agents section says “${row}”` : ''}`;
+    });
   return { items: out, states };
 }

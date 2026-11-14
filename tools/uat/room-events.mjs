@@ -41,6 +41,10 @@ export function keepEvent(seq, type, data, sessions = new Map(), events = EVENTS
         // Who the agent is and the card it needs you for, when the session has them: app-need-fallback reads the
         // sequence of a session's needs (tools/uat/room-checks-needs.mjs, #366).
         ...(typeof data.handle === 'string' ? { handle: data.handle } : {}),
+        // The model and effort its backend reported for its latest turn (ctx.reported, server/turn-context.mjs): the
+        // backend-switch scenarios’ triggers read them (tools/uat/switch-facts.mjs, #1315).
+        ...(typeof data.lastModel === 'string' ? { lastModel: data.lastModel } : {}),
+        ...(typeof data.lastEffort === 'string' ? { lastEffort: data.lastEffort } : {}),
         ...(Object.hasOwn(data, 'needs') ? { needs: needOf(data.needs) } : {}),
         // A turn on a remote host (#120): which host, its turn there, and Postbox’s own turn, for the host-mode checks.
         ...(data.remoteTurn?.turn ? { remoteTurn: remoteOf(data.remoteTurn) } : {}),

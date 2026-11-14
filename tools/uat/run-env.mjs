@@ -16,6 +16,7 @@ export const runEnv = ({ gate, paths, scenario, dir, faults }) => ({
   POSTBOX_KIRO_RECORD: paths.kiroStreams,
   POSTBOX_AGY_RECORD: paths.agyStreams,
   POSTBOX_CODEX_RECORD: paths.codexStreams,
+  POSTBOX_SDK_RECORD: paths.sdkStreams,
   ...skillsEnv(scenario),
   ...chainLimitEnv(scenario), // the scenario’s `- chain-limit:` (#508), for the Postbox this run starts and restarts
   ...noGithubEnv(scenario, dir), // every run’s agents have no gh login and no network git, unless `- github: real` says so

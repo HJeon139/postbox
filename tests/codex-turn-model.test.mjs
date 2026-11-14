@@ -2,6 +2,9 @@
 // tests/codex.test.mjs, which is at its length ceiling.
 
 import assert from 'node:assert/strict';
+import { EventEmitter } from 'node:events';
+import { readFileSync } from 'node:fs';
+import { PassThrough } from 'node:stream';
 import { test } from 'node:test';
 import { CodexAdapter, codexModelOf } from '../server/adapters/codex.mjs';
 import { CODEX_ROOT, fakeAppServer } from './codex-fixture.mjs';
@@ -38,4 +41,59 @@ test('a Codex persona with Claude’s default model (made before Postbox had Cod
   assert.ok(!('model' in seen.find((x) => x.method === 'thread/start').params));
   assert.ok(!('model' in seen.find((x) => x.method === 'turn/start').params));
   assert.deepEqual(reported, [{ effort: 'medium' }], 'no model to report when Codex names none');
+});
+
+/** An app-server that answers with a recorded Codex 0.167.0 turn (tests/fixtures/codex-app-server/thread-model.jsonl). */
+function recordedServer(seen) {
+  const child = Object.assign(new EventEmitter(), { stdin: new PassThrough(), stdout: new PassThrough(), stderr: new PassThrough() });
+  child.kill = () => child.emit('close', 0);
+  const lines = readFileSync(new URL('fixtures/codex-app-server/thread-model.jsonl', import.meta.url), 'utf8')
+    .trim()
+    .split('\n')
+    .map((l) => JSON.parse(l));
+  const answer = { initialize: 1, 'skills/extraRoots/set': 2, 'thread/start': 3, 'turn/start': 4 };
+  child.stdin.on('data', (chunk) => {
+    for (const req of chunk
+      .toString()
+      .trim()
+      .split('\n')
+      .map((l) => JSON.parse(l))) {
+      seen.push(req);
+      if (req.id === undefined) continue;
+      const recorded = lines.find((l) => l.id === answer[req.method]);
+      child.stdout.write(`${JSON.stringify(recorded ? { ...recorded, id: req.id } : { id: req.id, result: { data: [], nextCursor: null } })}\n`);
+      if (req.method === 'turn/start')
+        setImmediate(() => {
+          for (const l of lines.filter((x) => x.method)) child.stdout.write(`${JSON.stringify(l)}\n`);
+        });
+    }
+  });
+  return child;
+}
+
+test('#1315: a Codex persona on auto reports the model Codex opened its thread with, so no earlier backend’s model stays on its row', async () => {
+  const seen = [];
+  const reported = [];
+  const adapter = new CodexAdapter({ workRoot: CODEX_ROOT, spawnImpl: () => recordedServer(seen) });
+  await adapter.deliver(
+    {},
+    { kind: 'user', text: 'Reply with the single word ok.' },
+    {
+      persona: { handle: 'researcher', model: 'auto', effort: 'high', permissionMode: 'auto' },
+      project: { folder: `${CODEX_ROOT}/project` },
+      handles: ['researcher'],
+      state: {},
+      signal: new AbortController().signal,
+      mcpUrl: 'http://127.0.0.1:1/mcp?session=s1',
+      text: () => {},
+      activity: () => {},
+      status: () => {},
+      saveState: () => {},
+      checkpoint: () => {},
+      reported: (r) => reported.push(r),
+      pathOf: () => null,
+    },
+  );
+  assert.ok(!('model' in seen.find((x) => x.method === 'turn/start').params), 'auto names no model to Codex');
+  assert.deepEqual(reported, [{ model: 'gpt-6.1-sol', effort: 'high' }]);
 });

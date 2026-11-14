@@ -21,6 +21,7 @@ export function runFacts({ agentModels, agentEffort, page, keyFrameOn, workspace
     kiroStreams: [],
     agyStreams: [],
     codexStreams: [],
+    sdkStreams: [],
     events: [],
     transcripts: [],
     console: page.logs,

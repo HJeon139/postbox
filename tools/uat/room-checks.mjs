@@ -150,7 +150,7 @@ export function runChecks(facts, { only = null, checks = CHECKS } = {}) {
 // off the page. A check that needs what it doesn’t have is listed as not run, with what it needed, instead of passing.
 
 /** The facts there are without the page. */
-export const LIVE_INPUTS = ['state', 'threads', 'streams', 'kiroStreams', 'agyStreams', 'codexStreams', 'events', 'transcripts'];
+export const LIVE_INPUTS = ['state', 'threads', 'streams', 'kiroStreams', 'agyStreams', 'codexStreams', 'sdkStreams', 'events', 'transcripts'];
 
 /**
  * The checks whose inputs these facts have, run; and the rest, with the inputs they’d need. What a check said it

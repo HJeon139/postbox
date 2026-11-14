@@ -14,7 +14,7 @@ These changes move the controls you use most. Agent settings leave the top bar f
 | Feature                                                                   | Issue              | Headless check                     | UAT doc and screenshot                                 | Real-agent check (`workroom.md`)                        |
 | ------------------------------------------------------------------------- | ------------------ | ---------------------------------- | ------------------------------------------------------ | ------------------------------------------------------- |
 | The Agents section: one row per agent, with its ring, state and open asks | #105               | `tests/browser/agents.spec.mjs`    | `shell/rail/agents-section.md`; scene `agents-section` | `agents-section-members`                                |
-| An agent’s name opens its persona sheet; edits apply from its next turn   | #105               | `tests/browser/agents.spec.mjs`    | scene `12-agent-settings`                              | `quick-panel-takes-effect`; phase 2                     |
+| An agent’s name opens its persona sheet; edits apply from its next turn   | #105               | `tests/browser/agents.spec.mjs`    | scene `12-agent-settings`                              | `switch-takes-effect`, `switch-shown`; phase 2          |
 | A slimmer top bar: the title and project in full                          | #105               | `tests/browser/header.spec.mjs`    | `overview.png`, `rail.png`                             | `topbar-title-cut`                                      |
 | A turned-off tool is refused visibly                                      | #104, with #105    | —                                  | —                                                      | `shell-off-silent`; phase 2                             |
 | The Work ledger: files, commands, version control, outside writes, effort | #132, #138         | `tests/work.test.mjs`              | `conversation/work-view.md`                            | `work-files-match-stream`, `work-commands-match-stream` |
@@ -43,7 +43,7 @@ These changes move the controls you use most. Agent settings leave the top bar f
 Built on the integration branch, once the Work-pane PR landed. Each check has a test in `tests/uat-checks.test.mjs`, and the driver actions were smoke-tested against the demo. The mock agent has no model, effort or mode choices, so those are only exercised with real agents.
 
 **Driver and tester actions** (`tools/uat/driver.mjs`, `tools/uat/tester.mjs`):
-- `agent_panel {target, model?, effort?, mode?, shell?}`: opens the agent’s row in the Agents section and sets those, by clicks.
+- `agent_panel {target, backend?, model?, effort?, mode?, shell?}`: clicks the agent’s row in the Agents section, which opens its persona sheet, sets those and saves.
 - `pane {open: 'work' | 'thread', item?}` and `fullscreen {pane}`, which closes it again with Escape. `thread_reply {text}` answers in the thread open in the pane.
 - `restore {file}`: in the full Work view, Restore or Remove, then confirm.
 - `fullscreen_draft {text}`: opens the thread full screen, types without sending, and leaves full screen, for the draft check.
@@ -52,7 +52,7 @@ Built on the integration branch, once the Work-pane PR landed. Each check has a 
 - `work-files-match-stream`: every file an agent changed with Edit or Write, per the turn streams, is in the ledger. The ledger’s line counts are covered by `tests/work.test.mjs`, which replays recorded turns; a Bash-made change isn’t seen, which the Work view says.
 - `work-commands-match-stream`: every Bash call in the streams appears as a command, with the exit code and the agent the stream gives.
 - `agents-section-members`: the section lists the conversation’s members, and a topic thread’s section lists the thread’s.
-- `quick-panel-takes-effect`: after the persona sheet changes a model or effort, the agent’s next turn runs with it, per its `init` and its arguments.
+- `switch-takes-effect` and `switch-shown` (#1315): after the persona sheet changes the backend, model or effort, the agent’s next turn is recorded by that backend and reports that model and effort, and its row names them.
 - `shell-off-silent` (#104): with Shell off, a Bash attempt shows as a refused step with a reason, and the reply doesn’t claim it ran.
 - `topbar-title-cut`: at 1280 px, with two agents, the title and project aren’t truncated.
 - `pane-split`: with a thread and Work open, both are visible, each with a usable height.

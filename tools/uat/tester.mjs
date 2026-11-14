@@ -132,10 +132,14 @@ export const SCHEMA = {
           description:
             'app_click: the visible text to click inside the app. settings, agent_panel, go_to_needs: the agent’s handle. restore: the file’s name. fault: the host.',
         },
-        model: { type: 'string', description: 'agent_panel: the model to pick, as the panel names it.' },
-        effort: { type: 'string', description: 'agent_panel: the effort to pick.' },
+        backend: {
+          type: 'string',
+          description: 'agent_panel: the backend to pick, as the sheet names it (Claude Code, Agent SDK, Codex, Kiro CLI, Antigravity CLI).',
+        },
+        model: { type: 'string', description: 'agent_panel: the model to type into the Model field, such as claude-sonnet-5-5.' },
+        effort: { type: 'string', description: 'agent_panel: the effort to pick: low, medium, high, xhigh or max.' },
         mode: { type: 'string', description: 'agent_panel: the permission mode to pick.' },
-        shell: { type: 'boolean', description: 'agent_panel: turn the Shell switch on or off.' },
+        shell: { type: 'boolean', description: 'agent_panel: turn the shell tool on or off.' },
         from: {
           enum: ['next', 'rail', 'agents', 'message'],
           description: 'go_to_needs: the global “Next that needs you” button, or where to click the agent’s ring.',
@@ -222,8 +226,8 @@ Then choose one action:
 - act {item, fills?, choose?, button?}: use a block or card: fill fields by label, pick options by label, press a button by its text. A wake request (“Let @a wake @b?”) is a card: allow it or not with its button.
 - review {item, verdict, comments}: answer a review block. Approve only what you’d sign off as it is. Otherwise request changes, with at least one comment on a line saying what to change; comment, with comments, when you only have questions.
 - settings {target, permissions?}: open Settings › Personas and edit that agent (target is its handle), to see what it runs on, its model, permissions and setup; with permissions, also open its permissions panel. You get what they say and their screenshots; they close after.
-- agent_panel {target, model?, effort?, mode?, shell?}: open that agent’s row in the sidebar’s Agents section, set what you give, and close it. You get what the panel says, including each setting’s scope.
-- go_to_needs {from, target?}: go to what an agent needs: from next, press the top bar’s “Next that needs you” button; from rail, agents or message, click that agent’s pulsing needs-you ring in its rail row, in its Agents-section row (its name there opens its quick panel instead), or beside its newest message. You get which item focus landed in, whether it’s on screen, and whether it was outlined.
+- agent_panel {target, backend?, model?, effort?, mode?, shell?}: click that agent’s row in the sidebar’s Agents section, which opens its persona sheet in Settings, set what you give (the backend first, which resets the model and effort when the new backend doesn’t run the model), press Save, and close Settings. You get what the sheet said, what it held when saved, whether it saved, and the agent’s row after. It applies from the agent’s next turn.
+- go_to_needs {from, target?}: go to what an agent needs: from next, press the top bar’s “Next that needs you” button; from rail, agents or message, click that agent’s pulsing needs-you ring in its rail row, in its Agents-section row (its name there opens its persona sheet instead), or beside its newest message. You get which item focus landed in, whether it’s on screen, and whether it was outlined.
 - conversation {conversation, at?, agents?, title?}: delete deletes the conversation that’s open, through its menu and the confirm, as you would, and it’s gone at once; with at (an ISO time at most 5 minutes away), it opens the confirm and presses Delete at that moment, since your own step takes seconds. new starts another conversation in the project with agents, and opens it; open opens one by its title. You get when each happened. To delete while an agent works, give send an interrupt {after, do: conversation, conversation: delete}.
 - fault {fault: restart-postbox}: in a run without hosts too, stop Postbox and start it again on the same data, and reload the page.
 - pane {open: work|thread, item?}: open Work (its top-bar button) or a thread in the right pane. You get each view’s size.

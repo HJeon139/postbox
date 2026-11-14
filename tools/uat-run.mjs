@@ -251,6 +251,7 @@ async function main() {
       facts.kiroStreams = readStreams(paths.kiroStreams);
       facts.agyStreams = readStreams(paths.agyStreams);
       facts.codexStreams = readStreams(paths.codexStreams);
+      facts.sdkStreams = readStreams(paths.sdkStreams);
       facts.events = history.events();
       facts.transcripts = readTranscripts(facts, paths.workspace);
       facts.remote = remoteFacts(dir, facts); // `- seed: git-remote`’s pushes, with the ledger’s size beside them (#305)
@@ -432,10 +433,10 @@ async function main() {
             .join('\n\n');
         } else if (a.type === 'agent_panel') {
           const handle = String(a.target ?? '').replace(/^@/, '');
-          const set = { model: a.model, effort: a.effort, mode: a.mode, shell: a.shell };
+          const set = { backend: a.backend, model: a.model, effort: a.effort, mode: a.mode, shell: a.shell };
           const r = await d.agentPanel(handle, set);
           facts.probes.panels.push({ handle, set, left: r.left, at: Date.now() });
-          actionResult = `@${handle}’s quick panel says:\n${r.said}\n\nIt was left at: ${JSON.stringify(r.left)}`;
+          actionResult = `@${handle}’s persona sheet said:\n${r.said}\n\nWhen Save was pressed it held, and then: ${JSON.stringify(r.left)}`;
         } else if (a.type === 'pane') {
           const r = await d.openPane(a.open === 'thread' ? 'thread' : 'work', key);
           facts.probes.panes.push({ open: a.open, ...r });

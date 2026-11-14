@@ -1,12 +1,7 @@
 // ── The Agents section, the Work ledger and the right pane (#105, #132, #146) ──────────────────────────────
 // Moved out of tools/uat/room-checks.mjs, which spreads them into its CHECKS.
 
-/** A model as the panel names it (“Opus 5.5”) and as a stream names it (“claude-opus-5-5”), reduced to compare. */
-const modelKey = (m) =>
-  String(m ?? '')
-    .toLowerCase()
-    .replace(/^claude-/, '')
-    .replace(/[^a-z0-9]/g, '');
+import { chosenText, ranDiffers, switchesOf } from './switch-facts.mjs';
 
 export const PANEL_CHECKS = [
   {
@@ -46,22 +41,28 @@ export const PANEL_CHECKS = [
         : [],
   },
   {
-    id: 'quick-panel-takes-effect',
-    inputs: ['probes', 'streams'],
-    issue: 105,
+    id: 'switch-takes-effect',
+    inputs: ['probes', 'streams', 'sdkStreams', 'codexStreams', 'kiroStreams', 'agyStreams', 'events'],
+    issue: 1315,
     run: (f) =>
-      (f.probes?.panels ?? []).flatMap((p) => {
-        if (!p.set?.model) return [];
-        const next = (f.streams ?? []).filter((s) => s.handle === p.handle && (s.started ?? 0) > p.at).sort((a, b) => (a.started ?? 0) - (b.started ?? 0))[0];
-        const model = next?.events.find((e) => e.type === 'system' && e.subtype === 'init')?.model;
-        if (!model || modelKey(model).includes(modelKey(p.set.model))) return [];
-        return [
-          {
-            title: 'A model picked in the quick panel didn’t reach the agent’s next turn',
-            evidence: `Picked “${p.set.model}” for @${p.handle}; its next turn ran ${model}.`,
-          },
-        ];
+      switchesOf(f).flatMap((s) => {
+        const ran = ranDiffers(s);
+        return ran
+          ? [{ title: 'A switch saved in the persona sheet didn’t reach the agent’s next turn', evidence: `@${s.handle} saved ${chosenText(s)}; ${ran}` }]
+          : [];
       }),
+  },
+  {
+    id: 'switch-shown',
+    inputs: ['probes', 'ui'],
+    issue: 1315,
+    run: (f) =>
+      switchesOf(f)
+        .filter((s) => s.turn && s.latest && /, not |, set to /.test(s.row ?? ''))
+        .map((s) => ({
+          title: 'After a switch and a turn, the agent’s row still says it runs something other than its setting',
+          evidence: `@${s.handle} saved ${chosenText(s)}, and took a turn on ${s.turn?.backend}; its row says “${s.row}”.`,
+        })),
   },
   {
     id: 'pane-split',
