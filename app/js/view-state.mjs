@@ -33,15 +33,18 @@ function holdAnchor(v) {
   // The element at the pointer or the middle holds first, and the anchor is where that left it: a picture loading
   // above it in the same reply moves the reply, not what you read (view-hold.mjs).
   const held = heldNode(v);
-  if (held && holdNode(v, held, s)) v.anchor = { ...v.anchor, at: top() };
-  else {
-    const d = top() - v.anchor.at;
-    if (Math.abs(d) >= 1) {
-      s.scrollTop += d;
-      v.lastTop = s.scrollTop;
-    }
-    takeHold(v);
+  if (held && holdNode(v, held, s)) {
+    const at = top();
+    v.anchor = { ...v.anchor, at, shown: at };
+    publish(v);
+    return;
   }
+  const d = top() - v.anchor.at;
+  if (Math.abs(d) >= 1) {
+    s.scrollTop += d;
+    v.lastTop = s.scrollTop;
+  }
+  takeHold(v);
   // The browser lands a scroll on a whole pixel, up to half a pixel from a fraction it was aimed at, and a change under
   // a pixel isn’t held at all. The anchor holds the place it aimed for, so the misses don’t add up while a jump’s target
   // is pinned (#712), but what’s published is where it is, now: its scroll event, if any, comes a frame later (#1245).

@@ -36,30 +36,58 @@ function keyBefore(/** @type {Element} */ item) {
   while (n && !(n instanceof HTMLElement && n.dataset.key)) n = n.previousElementSibling;
   return n instanceof HTMLElement ? n.dataset.key : undefined;
 }
+/** The keyed item next to this one, before or after it. @param {Element} item @param {'previousElementSibling' | 'nextElementSibling'} step */
+function keyedNext(item, step) {
+  let n = item[step];
+  while (n && !(n instanceof HTMLElement && n.dataset.key)) n = n[step];
+  return n;
+}
 /**
- * Whether an item in sight, the given one or one around it, is still laid out at the browser’s estimate (view-skip.mjs):
- * one drawn anew, as an app’s stub is, takes its real height a frame later and moves what’s around it.
+ * Whether the item, one next to it, or the anchor is still laid out at the browser’s estimate (view-skip.mjs): one
+ * drawn anew, as an app’s stub is, takes its real height a frame later and moves what’s around it (#49). A fixed
+ * handful, asked without reading where any is: a scroll event takes the hold, and a long room mustn’t cost more (#572).
  * @param {View} v @param {Element} item
  */
 function settling(v, item) {
-  const sight = inSight(v);
-  for (const step of ['previousElementSibling', 'nextElementSibling']) {
-    for (let n = /** @type {Element | null} */ (item); n; n = /** @type {any} */ (n)[step]) {
-      const r = n.getBoundingClientRect();
-      if (r.bottom < sight.top || r.top > sight.bottom) break;
-      if (n instanceof HTMLElement && n.dataset.key && skipped(n)) return true;
-    }
-  }
-  return false;
+  const anchor = v.anchor && v.nodes.get(v.anchor.key);
+  const near = [item, keyedNext(item, 'previousElementSibling'), keyedNext(item, 'nextElementSibling'), anchor];
+  return near.some((n) => n instanceof HTMLElement && skipped(n));
 }
-/** The pointer, when it’s over the transcript and in sight. @param {View} v */
+/** @type {WeakMap<View, { size: string, x: number }>} where across the window each transcript’s middle is */
+const across = new WeakMap();
+/**
+ * The middle of the view, across the transcript: read again only once the box changed size, as a scroll event asks
+ * for it and the transcript doesn’t move across (#572).
+ * @param {View} v @param {Element} s
+ */
+function middleOf(v, s) {
+  const size = sizeOf(s);
+  let mid = across.get(v);
+  if (mid?.size !== size) {
+    const r = v.el.getBoundingClientRect();
+    mid = { size, x: r.left + r.width / 2 };
+    across.set(v, mid);
+  }
+  return { x: mid.x, y: viewTop(v, s) + s.clientHeight / 2 };
+}
+/**
+ * Where an item’s top and bottom are: the anchor’s top is known where the view holds it, so a scroll event that takes
+ * the hold in the anchor’s own item reads only the element’s rect (#572).
+ * @param {View} v @param {HTMLElement} item
+ */
+function itemBox(v, item) {
+  if (v.anchor?.key === item.dataset.key && !v.inPanel) {
+    const top = v.anchor.shown ?? v.anchor.at;
+    return { top, bottom: top + item.offsetHeight };
+  }
+  return item.getBoundingClientRect();
+}
+/** The pointer, when it’s in sight of the transcript; whether it’s over it, the element there says (takeHold). @param {View} v */
 function pointerOver(v) {
   const p = pointer();
   if (!p) return null;
   const sight = inSight(v);
-  const r = v.el.getBoundingClientRect();
-  const { x, y } = p;
-  return y >= sight.top && y < sight.bottom && x >= r.left && x < r.right ? p : null;
+  return p.y >= sight.top && p.y < sight.bottom ? p : null;
 }
 
 /**
@@ -75,21 +103,21 @@ export function takeHold(v) {
   v.hold = null;
   const s = box(v);
   if (!s || v.dead || !v.el.isConnected) return;
-  let p = null;
-  if (v.stuck) {
-    p = pointerOver(v);
-  } else if (v.anchor && !v.pinned && !atEnd(s)) {
-    const r = v.el.getBoundingClientRect();
-    p = pointerOver(v) ?? { x: r.left + r.width / 2, y: viewTop(v, s) + s.clientHeight / 2 };
+  const reading = !v.stuck && v.anchor && !v.pinned && !atEnd(s);
+  if (!v.stuck && !reading) return;
+  const p = pointerOver(v);
+  let node = p && document.elementFromPoint(p.x, p.y);
+  // Reading, with the pointer off the transcript, the middle of the view.
+  if (reading && !(node && v.el.contains(node))) {
+    const mid = middleOf(v, s);
+    node = document.elementFromPoint(mid.x, mid.y);
   }
-  if (!p) return;
-  const node = document.elementFromPoint(p.x, p.y);
   const item = itemOf(v, node);
   if (!node || !item || settling(v, item)) return;
   if (v.stuck && !pressed() && !(aimed() && node.closest(CONTROL))) return;
   // Not one that isn’t laid out in its item, as an app full screen, fixed over the page: a scroll doesn’t move it.
   const r = node.getBoundingClientRect();
-  const ir = item.getBoundingClientRect();
+  const ir = itemBox(v, item);
   if (r.top < ir.top - 1 || r.bottom > ir.bottom + 1) return;
   v.hold = { node, key: /** @type {string} */ (item.dataset.key), after: keyBefore(item), at: r.top, itemAt: ir.top, size: sizeOf(s), stuck: v.stuck };
 }
@@ -112,16 +140,16 @@ export function heldNode(v) {
 }
 
 /**
- * Scrolls so what holds (heldNode) is back where it was, and says whether it is, noting where its item is now. A scroll
- * stopped at an end lets the hold go.
+ * Scrolls so what holds (heldNode) is back where it was, and says whether it is, noting where its item is now once it
+ * moved. A scroll stopped at an end lets the hold go.
  * @param {View} v @param {{ n: Element, at: number, item: Element }} held @param {Element} s
  */
 export function holdNode(v, { n, at, item }, s) {
   const d = n.getBoundingClientRect().top - at;
-  if (Math.abs(d) >= 1) {
-    s.scrollTop += d;
-    v.lastTop = s.scrollTop;
-  }
+  // Where it was: nothing moved, so nothing more to read (#572).
+  if (Math.abs(d) < 1) return true;
+  s.scrollTop += d;
+  v.lastTop = s.scrollTop;
   if (!v.hold || Math.abs(n.getBoundingClientRect().top - at) >= 1) {
     v.hold = null;
     return false;
