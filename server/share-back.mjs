@@ -5,7 +5,7 @@
 import { positionOf } from '../shared/item-index.mjs';
 import { clip, httpError, tooLongToSend } from './helpers.mjs';
 import { threadPersona } from './side-threads.mjs';
-import { updateThread } from './thread-write.mjs';
+import { updateThread } from './threads.mjs';
 
 /** “Send to conversation”: a message from a topic or side thread (#128) is posted in its conversation, for you and its agents. */
 export function shareToConversation(rt, topicId, itemId) {

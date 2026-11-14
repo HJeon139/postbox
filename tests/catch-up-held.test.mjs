@@ -5,7 +5,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { catchUp } from '../server/catch-up.mjs';
-import { updateThread } from '../server/thread-write.mjs';
+import { updateThread } from '../server/threads.mjs';
 import { HOP_LIMIT } from '../shared/limits.mjs';
 import { settle, setup } from './side-threads-fixture.mjs';
 import { heldStore } from './stop-reply-fixture.mjs';

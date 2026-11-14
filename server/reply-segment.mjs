@@ -6,7 +6,7 @@
 // after a post below the reply show below it too, with the words they led to. replySegment moved from
 // server/runtime.mjs; its caller is adapterContext (server/turn-context.mjs).
 
-import { updateThread } from './thread-write.mjs';
+import { updateThread } from './threads.mjs';
 import { replyMarks } from './turn-marks.mjs';
 
 /**

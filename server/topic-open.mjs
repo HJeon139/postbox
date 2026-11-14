@@ -5,7 +5,7 @@ import { positionOf } from '../shared/item-index.mjs';
 import { HANDLE, HANDLE_SHAPE, SENDING } from '../shared/limits.mjs';
 import { clip, httpError, tooLongToSend } from './helpers.mjs';
 import { newId } from './store.mjs';
-import { updateThread } from './thread-write.mjs';
+import { updateThread } from './threads.mjs';
 
 /**
  * Opens the topic thread of one message, or returns the one it has: `created` says which. It reads the message and its

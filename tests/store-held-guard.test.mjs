@@ -115,10 +115,8 @@ const PENDING = {
   // left, so a stream holds one patch, not one per chunk, a held compaction counts, and a held note is given. A delivery reads its session pending too (runtime.mjs
   // deliver, twice): the last summary's givenMentions and seenItem, and a notice, held, are seen, not given again or lost (#506). Whether a thread has a persona's session already
   // reads its pending members and sessions, so a second mention behind a held commit finds the session the first made.
-  // The conversation createThread just wrote, with the agents it joined: its route’s answer is its own write, which a
-  // held commit keeps out of the published state (#1247’s class). And the agent ensureSession joins, which the same
-  // request may have just made.
-  'conversations.mjs': ['createThread', 'ensureSession'],
+  // The agent ensureSession joins, which the same request may have just made.
+  'conversations.mjs': ['ensureSession'],
   // The room’s chain limit, which decides whether a wake waits, maybe set behind a held commit (#1035); and the room a
   // PATCH sets it on, maybe started there.
   'room-chain-limit.mjs': ['roomChainLimit', 'patchThread'],
@@ -140,7 +138,9 @@ const PENDING = {
   // open_topic just opened, held (#796).
   'thread-summary.mjs': ['threadHeader', 'threadCatchUp', 'settleThread'],
   // Every write of a thread that exists starts from it (#796), and threadToWrite refuses one that doesn’t exist there.
-  'thread-write.mjs': ['updateThread', 'threadToWrite', 'pendingThreads'],
+  // And the conversation createThread just wrote, with the agents it joined: its route’s answer is its own write, which
+  // a held commit keeps out of the published state (#1247’s class).
+  'threads.mjs': ['updateThread', 'threadToWrite', 'pendingThreads', 'createThread'],
   // A finished turn’s checks: its own block and the terms and apps it introduced, and the progress steps it stalls.
   'turn-checks.mjs': ['checkTurn', 'checkTurn', 'checkTurn', 'stallSteps'],
   'turn-context.mjs': ['text', 'compaction'], // a streamed chunk's state check, and a compaction's number, from the session a held write left

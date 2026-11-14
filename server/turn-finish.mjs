@@ -10,7 +10,7 @@ import { clip } from './helpers.mjs';
 import { settleScheduledWake } from './scheduled-wakes.mjs';
 import { postSummary } from './share-back.mjs';
 import { settleThread } from './thread-summary.mjs';
-import { updateThread } from './thread-write.mjs';
+import { updateThread } from './threads.mjs';
 import { endedAs, endWork } from './turn-end-work.mjs';
 import { askedOf, replyMarks } from './turn-marks.mjs';
 import { foldSteps } from './turn-steps.mjs';

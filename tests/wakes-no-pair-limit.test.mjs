@@ -6,7 +6,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { updateThread } from '../server/thread-write.mjs';
+import { updateThread } from '../server/threads.mjs';
 import { CHAIN_HINT, DEFAULT_HOP_LIMIT } from '../shared/limits.mjs';
 import { TOOL_DEFS } from '../shared/mcp-tools.mjs';
 import { settle, setup } from './side-threads-fixture.mjs';

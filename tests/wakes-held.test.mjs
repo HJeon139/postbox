@@ -4,7 +4,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { updateThread } from '../server/thread-write.mjs';
+import { updateThread } from '../server/threads.mjs';
 import { TOOL_ROUTES } from '../shared/remote-protocol.mjs';
 import { held, settle, setup } from './side-threads-fixture.mjs';
 

@@ -45,7 +45,7 @@ function node(args, env, { input } = {}) {
 const CHAIN = `
 import { HOP_LIMIT } from './shared/limits.mjs';
 import { TOOL_DEFS } from './shared/mcp-tools.mjs';
-import { updateThread } from './server/thread-write.mjs';
+import { updateThread } from './server/threads.mjs';
 import { setup } from './tests/side-threads-fixture.mjs';
 const f = setup();
 const own = f.rt.createThread({ projectId: 'p1', title: 'Own', personaIds: [f.a.id, f.b.id] });

@@ -6,7 +6,7 @@
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 import { handleMcp } from '../server/mcp.mjs';
-import { updateThread } from '../server/thread-write.mjs';
+import { updateThread } from '../server/threads.mjs';
 import { TOOL_DEFS } from '../shared/mcp-tools.mjs';
 import { fakeRequest, NAVIGATION } from './fake-http.mjs';
 import { sources } from './server-sources-fixture.mjs';

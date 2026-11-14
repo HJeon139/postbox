@@ -5,7 +5,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { updateThread } from '../server/thread-write.mjs';
+import { updateThread } from '../server/threads.mjs';
 import { settle, setup } from './side-threads-fixture.mjs';
 
 /** The fixture's room with @gamma, and a card from @alpha's wake of @beta past the chain limit, left open (phase 1). */

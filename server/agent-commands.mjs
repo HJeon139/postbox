@@ -3,7 +3,7 @@
 // that delegates here.
 
 import { clipText, httpError, retiredError } from './helpers.mjs';
-import { updateThread } from './thread-write.mjs';
+import { updateThread } from './threads.mjs';
 
 /** The most skills and commands kept for an agent’s / menu. */
 const MAX_COMMANDS = 200;

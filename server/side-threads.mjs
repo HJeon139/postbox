@@ -8,7 +8,7 @@ import { clip, retiredError, tooLongToSend } from './helpers.mjs';
 import { arrival } from './queue-batch.mjs';
 import { roomChainLimit } from './room-chain-limit.mjs';
 import { newId } from './store.mjs';
-import { pendingThreads, updateThread } from './thread-write.mjs';
+import { pendingThreads, updateThread } from './threads.mjs';
 import { askToAdd, askToWake, closeOwnCard, dropHeld, retireStale } from './wake-cards.mjs';
 
 export { resolveHop } from './wake-cards.mjs';

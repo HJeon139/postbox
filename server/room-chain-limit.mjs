@@ -6,7 +6,7 @@
 
 import { HOP_LIMIT, isRoomChainLimit, ROOM_CHAIN_LIMIT_TAKES } from '../shared/limits.mjs';
 import { httpError } from './helpers.mjs';
-import { threadToWrite, updateThread } from './thread-write.mjs';
+import { threadToWrite, updateThread } from './threads.mjs';
 
 /**
  * The chain limit of the room a thread is in: the conversation’s own, else the server’s default. Read pending, as the

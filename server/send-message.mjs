@@ -10,7 +10,7 @@ import * as queue from './message-queue.mjs';
 import { arrival } from './queue-batch.mjs';
 import { threadPersona } from './side-threads.mjs';
 import { newId } from './store.mjs';
-import { updateThread } from './thread-write.mjs';
+import { updateThread } from './threads.mjs';
 import { retireStale } from './wake-cards.mjs';
 
 /** You send a message: @mentions wake agents (joining them to the thread); otherwise the last speaker replies. */

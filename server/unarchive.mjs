@@ -2,7 +2,7 @@
 // and a fork #228 retired as archived. As the store loads, each archived conversation and its agents come back as live
 // ones, and a retired fork keeps only retiredFork, the flag that keeps it out of the rail and that no message reaches.
 
-import { pendingThreads, updateThread } from './thread-write.mjs';
+import { pendingThreads, updateThread } from './threads.mjs';
 
 /**
  * Drops `archived` from every thread and session that still has it. O(threads + sessions), and it writes nothing once

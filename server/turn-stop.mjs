@@ -10,7 +10,7 @@ import { dropWakes } from './side-threads.mjs';
 import { newId } from './store.mjs';
 import { STORE_STOPPED, whenWritable } from './store-outage.mjs';
 import { endSubagent } from './subagent-end.mjs';
-import { updateThread } from './thread-write.mjs';
+import { updateThread } from './threads.mjs';
 import { endWork } from './turn-end-work.mjs';
 import { replyMarks } from './turn-marks.mjs';
 import { foldSteps, settleStoppedSteps } from './turn-steps.mjs';

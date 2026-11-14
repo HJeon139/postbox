@@ -7,7 +7,7 @@ import { HELD_WAKES } from '../shared/limits.mjs';
 import { offerNeed, releaseNeed } from './card-needs.mjs';
 import { clip, httpError } from './helpers.mjs';
 import { roomChainLimit } from './room-chain-limit.mjs';
-import { updateThread } from './thread-write.mjs';
+import { updateThread } from './threads.mjs';
 
 /**
  * The card for a wake past the room’s chain limit (#108), which waits for the person’s Allow. It keeps the limit it was

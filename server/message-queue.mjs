@@ -2,7 +2,7 @@
 import { clip, httpError, queuedIn } from './helpers.mjs';
 import { byArrival, combineMessages, latestMessage, plainMessage, readyGroups } from './queue-batch.mjs';
 import { deliverWake } from './side-threads.mjs';
-import { pendingThreads, updateThread } from './thread-write.mjs';
+import { pendingThreads, updateThread } from './threads.mjs';
 
 export function postAndDeliver(rt, threadId, { text, attachments }, targets) {
   const to = targets.map(({ se }) => se.handle);

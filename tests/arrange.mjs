@@ -8,7 +8,7 @@ import { assetTools as assetToolsOf } from '../server/asset-tools.mjs';
 import { expireWait as expireWaitOf } from '../server/permission-cards.mjs';
 import { toggleReaction } from '../server/reactions.mjs';
 import { blockFiles as blockFilesOf } from '../server/review-files.mjs';
-import { updateThread } from '../server/thread-write.mjs';
+import { updateThread } from '../server/threads.mjs';
 import { viewApp as viewAppOf } from '../server/view-app/view-app.mjs';
 import { viewOf } from '../server/view-app/view-of.mjs';
 

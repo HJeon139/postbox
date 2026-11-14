@@ -1,6 +1,6 @@
 // The writes of a session that exists: its changed fields as a session.patch (server/session-patch.mjs), and the
 // Postbox notices it reads at the start of its next turn. Each starts from the session as memory will hold it once what
-// is held behind a commit is released (store.pending.session), as a thread write does (#796, server/thread-write.mjs):
+// is held behind a commit is released (store.pending.session), as a thread write does (#796, server/threads.mjs):
 // diffed against the published session, a change back to its published value was dropped behind a held change, and a
 // notice appended to the published context dropped the one before it. A field built from the session's own is built
 // in a function of the pending session; tests/session-write-guard.test.mjs places those still built from a published one.

@@ -16,7 +16,7 @@ import { askQuestions, QUESTION_TOOL, questionBlocks } from './ask-question.mjs'
 import { act, answerDelivered, unreadAnswer } from './blocks.mjs';
 import { catchUp, moveMarkers } from './catch-up.mjs';
 import { attachClaudeSession, claudeSessions, mirror, pollMirror, rearmMirrors, stopMirrorFor, stopMirrors } from './claude-mirror.mjs';
-import { createThread, ensureSession, renameThread } from './conversations.mjs';
+import { ensureSession } from './conversations.mjs';
 import { deliver, retry } from './deliver.mjs';
 import { diagramCheck } from './diagram-check.mjs';
 import { clipText, httpError } from './helpers.mjs';
@@ -61,8 +61,7 @@ import { commandFolder, expireStaleCommands, flushShellOutput, runShellCommand, 
 import { agentWake, bumpSideLink, recordAgentMessage, resolveHop, sideSession } from './side-threads.mjs';
 import { newId } from './store.mjs';
 import { watchStore } from './store-outage.mjs';
-import { conversationThreads, glossaryFor, lineage } from './thread-lineage.mjs';
-import { updateThread } from './thread-write.mjs';
+import { conversationThreads, createThread, glossaryFor, lineage, renameThread, updateThread } from './threads.mjs';
 import { startTopic } from './topic-open.mjs';
 import { checkTurn, stallLeftRunning, stallSteps } from './turn-checks.mjs';
 import { settleSubagentSteps } from './turn-steps.mjs';
@@ -305,7 +304,7 @@ export class Runtime {
     this.store.emit('notify', { level, sessionId: se.id, threadId: threadId ?? se.threadId, handle: se.handle, title, text });
   }
 
-  // ── A conversation’s own record: server/conversations.mjs ─────────────────────────
+  // ── A conversation’s own record: server/threads.mjs and conversations.mjs ──────────
 
   createThread(opts) {
     return createThread(this, opts);
@@ -593,7 +592,7 @@ export class Runtime {
     return readMessage(this, se, args);
   }
 
-  // ── A thread’s place in its conversation: server/thread-lineage.mjs ─────────────────
+  // ── A thread’s place in its conversation: server/threads.mjs ─────────────────
 
   conversationThreads(threadId) {
     return conversationThreads(this, threadId);

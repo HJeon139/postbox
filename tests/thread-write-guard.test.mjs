@@ -1,6 +1,6 @@
 // Where server code writes a thread (#796, designs/508/601-held-view.md). A write built from the published thread
 // overwrites a write of the same thread still held behind a commit, so every write of a thread that exists goes through
-// updateThread (server/thread-write.mjs), which starts from store.pending.thread. Every write is placed here by file and
+// updateThread (server/threads.mjs), which starts from store.pending.thread. Every write is placed here by file and
 // function, and an updateThread change may not read a published thread: directly (rt.s.threads, state.threads,
 // rt.thread(), convOf()), or through a local of its function bound from one, the form the issue's own regex missed. The
 // guard reads source text, so a local bound from a local bound from a published read passes, and review reads for it.
@@ -11,9 +11,8 @@ import { DECL, placed, sites, withProbes } from './server-sources-fixture.mjs';
 
 /** Every write of a thread: updateThread, and the two that put a new one. */
 const THREAD_WRITES = {
-  'conversations.mjs': ['createThread'], // a new thread, through putThread
   'runtime.mjs': ['putThread', 'putThread'], // putThread and its emit, called only by createThread, for a new thread
-  'thread-write.mjs': ['updateThread'], // a thread that exists, from store.pending.thread
+  'threads.mjs': ['updateThread', 'createThread'], // a thread that exists, from store.pending.thread; and a new one, through putThread
   'topic-open.mjs': ['startTopic'], // a new topic
 };
 const THREAD_WRITE = /\bputThread\(|\bemit\(\s*['"`]thread['"`]/;

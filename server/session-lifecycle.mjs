@@ -7,7 +7,7 @@ import * as queue from './message-queue.mjs';
 import { pendingSessionsIn } from './session-write.mjs';
 import { dropWakes } from './side-threads.mjs';
 import { eraseThreads } from './thread-erase.mjs';
-import { threadToWrite, updateThread } from './thread-write.mjs';
+import { threadToWrite, updateThread } from './threads.mjs';
 
 /**
  * A conversation or room and every thread under it, a side thread a topic thread’s fork woke included: what deleting
