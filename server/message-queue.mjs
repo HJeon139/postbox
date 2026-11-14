@@ -219,3 +219,13 @@ export function rememberStoppedMessages(rt, sessionId, message) {
   for (const child of message.messages ?? [message])
     if (child.kind === 'agent') rt.tellAgent(sessionId, `${child.from}’s message came while your turn was stopped: “${clip(child.text ?? '', 300)}”`);
 }
+
+/**
+ * An agent’s place may have changed: what waited in the queue for a host turn to be attached goes now if it moved off
+ * that host, since that host may never answer and nothing else would drain it (#1135). An agent still there is busy,
+ * and its messages keep waiting. @param {any} rt @param {string} personaId
+ */
+export function drainMovedOff(rt, personaId) {
+  for (const se of Object.values(rt.s.sessions))
+    if (se.personaId === personaId && rt.remote.restoring.get(se.remoteTurn?.turn) === se.id) rt.drainQueues(se.id, se.threadId);
+}

@@ -66,3 +66,14 @@ export function pendingSessionsIn(rt, threadId) {
   const { members = [] } = rt.store.pending.thread(threadId) ?? {};
   return members.map((/** @type {string} */ id) => rt.store.pending.session(id)).filter(Boolean);
 }
+
+/**
+ * On another backend or model, what the last turn reported is no longer what runs: the row shows the setting until a
+ * turn reports its own. Kiro on its router reports neither, and its row said “Opus 5.5, not auto” for good (#1315).
+ * @param {import('./runtime.mjs').Runtime} rt @param {any} was  the persona before the change @param {any} next  after it
+ */
+export function forgetReported(rt, was, next) {
+  if (next.backend === was.backend && next.model === was.model) return;
+  for (const pending of Object.values(rt.store.pending.sessions()))
+    if (pending.personaId === next.id && (pending.lastModel || pending.lastEffort)) rt.updateSession(pending.id, { lastModel: null, lastEffort: null });
+}

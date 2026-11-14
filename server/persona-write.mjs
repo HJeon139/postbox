@@ -6,8 +6,10 @@ import { modelDefault } from '../shared/agent-facts.mjs';
 import { DEFAULT_EFFORT, DEFAULT_MODEL, POSTBOX_SERVER } from './adapters/setup.mjs';
 import { placedFolder } from './folder-path.mjs';
 import { httpError } from './helpers.mjs';
+import { drainMovedOff } from './message-queue.mjs';
 import { checkedMode } from './permission-modes.mjs';
 import { checkEffort, checkModel, checkSetup, handleOf } from './persona-checks.mjs';
+import { forgetReported } from './session-write.mjs';
 import { newId } from './store.mjs';
 import { settleToolAsks } from './tool-ask.mjs';
 
@@ -126,23 +128,9 @@ export function updatePersona(rt, id, patch) {
   // Whether its sessions wait for a host turn to be attached again follows where it runs now (#1135), before anything
   // below reads busy. Personas raises persona.updated for this from step 4 (designs/architecture/services.md, “Bus”).
   for (const se of Object.values(rt.s.sessions)) if (se.personaId === id) rt.remote.noteAttach(se.id);
-  // On another backend or model, what the last turn reported is no longer what runs: the row shows the setting until a
-  // turn reports its own. Kiro on its router reports neither, and its row said “Opus 5.5, not auto” for good (#1315).
-  if (next.backend !== p.backend || next.model !== p.model)
-    for (const pending of Object.values(rt.store.pending.sessions()))
-      if (pending.personaId === id && (pending.lastModel || pending.lastEffort)) rt.updateSession(pending.id, { lastModel: null, lastEffort: null });
+  forgetReported(rt, p, next);
   // A card that asked for a tool now on answers itself, wherever it was turned on (#237).
   if (patch.tools !== undefined) settleToolAsks(rt, next);
   drainMovedOff(rt, id);
   return next;
-}
-
-/**
- * An agent’s place may have changed: what waited in the queue for a host turn to be attached goes now if it moved off
- * that host, since that host may never answer and nothing else would drain it (#1135). An agent still there is busy,
- * and its messages keep waiting. @param {any} rt @param {string} personaId
- */
-function drainMovedOff(rt, personaId) {
-  for (const se of Object.values(rt.s.sessions))
-    if (se.personaId === personaId && rt.remote.restoring.get(se.remoteTurn?.turn) === se.id) rt.drainQueues(se.id, se.threadId);
 }
