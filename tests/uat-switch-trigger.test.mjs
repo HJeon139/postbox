@@ -146,6 +146,29 @@ test('shown-codex-auto-high fires when the row names the model Codex reported an
   assert.deepEqual(fired('shown-codex-auto-high', r.facts()), [], 'the model Codex reported never reached the row');
 });
 
+test('ran-codex-auto-high fires on a model Codex reported, and not on a Claude model an earlier turn left', async () => {
+  const r = room();
+  await r.save('codex', 'auto', 'high');
+  await r.turn('codex', { model: 'gpt-6-luna', effort: 'high' });
+  assert.equal(fired('ran-codex-auto-high', r.facts()).length, 1);
+  // Codex reported no model (#1315’s Codex fix undone), and the session kept the one before the switch (its persona
+  // fix undone): the turn’s report reads as that Claude model.
+  const s = room();
+  await s.turn('claude-code', { model: 'claude-sonnet-5-5', effort: 'low' });
+  await s.save('codex', 'auto', 'high');
+  await s.turn('codex', { effort: 'high' });
+  assert.deepEqual(fired('ran-codex-auto-high', s.facts()), []);
+});
+
+test('shown-codex-auto-high doesn’t fire on “Codex’s default” while the turn’s report is a Claude model an earlier turn left', async () => {
+  const r = room();
+  await r.turn('claude-code', { model: 'claude-sonnet-5-5', effort: 'low' });
+  await r.save('codex', 'auto', 'high');
+  await r.turn('codex', { effort: 'high' });
+  r.row('alpha · idle Codex’s default · high effort');
+  assert.deepEqual(fired('shown-codex-auto-high', r.facts()), []);
+});
+
 test('shown-kiro-auto-high doesn’t fire while the row still names the model of the backend before it', async () => {
   const r = room();
   await r.turn('claude-code', { model: 'claude-opus-5-5', effort: 'medium' });

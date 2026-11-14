@@ -7,7 +7,7 @@
 //   Agents section names that model and effort, with no “not …” or “set to …”.
 // A turn that ran right but shows wrong fires the first and not the second, which says the UI is at fault.
 
-import { modelName } from '../../shared/agent-facts.mjs';
+import { codexDefault, shortModel } from '../../shared/agent-facts.mjs';
 import { chosenText, FOLDER, switchesOf, unreported } from './switch-facts.mjs';
 import { clip } from './trigger-facts.mjs';
 
@@ -47,29 +47,33 @@ export const switchedTo = (scenario) =>
 
 const FAMILY = /^[a-z]+$/;
 /**
- * Whether a model id is the target’s: of its Claude family, or the id itself. `auto` is any model the harness picks.
- * @param {string} want @param {unknown} id
+ * Whether a model id is the target’s: of its Claude family, or the id itself. `auto` is any model the harness picks,
+ * except on Codex, where it must be a model of Codex’s own: a Claude one, or none, is what an earlier turn left when
+ * Codex reported nothing (#1315).
+ * @param {string} want @param {unknown} id @param {string} backend
  */
-function isModel(want, id) {
-  if (want === 'auto') return true;
+function isModel(want, id, backend) {
+  if (want === 'auto') return !codexDefault(backend, id);
   if (FAMILY.test(want)) return new RegExp(`^claude-${want}-`).test(String(id ?? ''));
   return String(id ?? '') === want;
 }
 /** The sheet held the target: `auto` must be saved as `auto`, not as a model of the harness’s. */
 const chose = (/** @type {any} */ t, /** @type {import('./switch-facts.mjs').Switch} */ s) =>
   s.chosen.backend === t.backend &&
-  (t.model === 'auto' ? s.chosen.model === 'auto' : isModel(t.model, s.chosen.model)) &&
+  (t.model === 'auto' ? s.chosen.model === 'auto' : isModel(t.model, s.chosen.model, t.backend)) &&
   (!t.effort || s.chosen.effort === t.effort);
 
 const EFFORT_WORDS = { low: 'low', medium: 'medium', high: 'high', xhigh: 'extra high', max: 'max' };
 /**
  * What the row must name for the model: the family (“Sonnet 5.5”), or the id. On Codex’s default, the model Codex
- * reported for the turn (server/adapters/codex.mjs, startTurn), or Codex’s default when it reported none. Null when
- * any will do: Kiro’s router names no model.
+ * reported for the turn (server/adapters/codex.mjs, startTurn), and false when it reported none of its own, since a
+ * row on “Codex’s default” then never got it. Null when any will do: Kiro’s router names no model.
  * @param {{ backend: string, model: string }} t @param {import('./switch-facts.mjs').Switch} s
+ * @returns {string|null|false}
  */
 function rowModel(t, s) {
-  if (t.model === 'auto') return t.backend === 'codex' ? modelName('codex', s.reported?.model ?? 'auto') : null;
+  if (t.model === 'auto' && t.backend !== 'codex') return null;
+  if (t.model === 'auto') return isModel('auto', s.reported?.model, 'codex') && shortModel(s.reported?.model);
   if (FAMILY.test(t.model)) return `${t.model[0].toUpperCase()}${t.model.slice(1)} `;
   return t.model;
 }
@@ -83,7 +87,7 @@ function ran(t, f) {
     if (!chose(t, s) || s.turn?.backend !== t.backend) return false;
     if (unreported(t.backend, t.model)) return true;
     const effort = t.effort ?? s.chosen.effort;
-    return !!s.reported && isModel(t.model, s.reported.model) && s.reported.effort === effort;
+    return !!s.reported && isModel(t.model, s.reported.model, t.backend) && s.reported.effort === effort;
   });
 }
 
@@ -96,7 +100,7 @@ function shown(t, f) {
     if (!chose(t, s) || !s.turn || !s.latest || !s.row) return false;
     const effort = EFFORT_WORDS[/** @type {keyof typeof EFFORT_WORDS} */ (t.effort ?? s.chosen.effort)];
     const model = rowModel(t, s);
-    return !/, not |, set to /.test(s.row) && s.row.includes(`${effort} effort`) && (!model || s.row.includes(model));
+    return !/, not |, set to /.test(s.row) && s.row.includes(`${effort} effort`) && model !== false && (!model || s.row.includes(model));
   });
 }
 
