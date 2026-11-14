@@ -2,7 +2,8 @@
 // that place, and the model it gets when it names none. A persona is versioned: each change writes it whole, one
 // version on. Moved out of server/runtime.mjs; Runtime keeps a method of the same name that delegates here.
 
-import { AUTO_MODEL, DEFAULT_EFFORT, DEFAULT_MODEL, POSTBOX_SERVER } from './adapters/setup.mjs';
+import { modelDefault } from '../shared/agent-facts.mjs';
+import { DEFAULT_EFFORT, DEFAULT_MODEL, POSTBOX_SERVER } from './adapters/setup.mjs';
 import { placedFolder } from './folder-path.mjs';
 import { httpError } from './helpers.mjs';
 import { checkedMode } from './permission-modes.mjs';
@@ -16,18 +17,14 @@ const skillNames = (list) => [...new Set(list.map((n) => n.trim()))];
 const pick = (o, keys) => Object.fromEntries(keys.filter((k) => o[k] !== undefined).map((k) => [k, o[k]]));
 
 /**
- * The model a persona of this backend gets when it names none: the mock’s, else Claude’s default while the backend
- * offers it, or offers no list yet. A backend that lists models without it gets AUTO_MODEL when it offers that: Codex,
- * which runs none of Claude’s models and always offers AUTO_MODEL, alone when its CLI gave no list (Codex only on a
- * host, #120). Otherwise it gets the first model its harness listed (server/model-lists.mjs), so a Claude Code whose
- * models moved on never gets one it doesn’t run. The Antigravity CLI puts its own default in place of Claude’s.
+ * The model a persona of this backend gets when it names none: the mock’s, else the one the New agent sheet would
+ * start it on, from what its backend offers (shared/agent-facts.mjs, modelDefault, #390).
  * @param {string} backend
  */
 function defaultModelFor(rt, backend) {
   if (backend === 'mock') return 'mock';
-  const offered = rt.placement.registeredAdapter({ backend })?.capabilities?.models ?? [];
-  if (!offered.length || offered.includes(DEFAULT_MODEL)) return DEFAULT_MODEL;
-  return offered.includes(AUTO_MODEL) ? AUTO_MODEL : offered[0];
+  const capabilities = rt.placement.registeredAdapter({ backend })?.capabilities ?? {};
+  return modelDefault(backend, { defaultModel: DEFAULT_MODEL, backends: { [backend]: capabilities } });
 }
 
 export function createPersona(

@@ -192,21 +192,37 @@ export function boilerplateUnavailable(b, config = {}) {
   return `${BACKEND_NAMES[b.backend] ?? b.backend} not on this computer`;
 }
 
-/**
- * The models a backend offers: the last its harness listed (server/model-lists.mjs), or null before it has listed any.
- * Antigravity’s default stands in for its list until then.
- */
-const offeredBy = (id, config) => config?.backends?.[id]?.models ?? (id === 'antigravity-cli' ? [GEMINI_MODEL] : null);
+/** The model id that leaves the choice to the harness: Codex’s configuration, Kiro’s router (server/adapters/setup.mjs). */
+const HARNESS_CHOOSES = 'auto';
 
 /**
- * The model a backend starts with: Postbox’s default while the backend offers it or has listed nothing, else the
- * first model its harness listed. Antigravity’s default stands in for Claude’s until agy lists its models. offered:
- * the list to pick from, when it isn’t this computer’s, such as a host’s (#1304).
- * @param {string} id @param {any} [config] @param {string[] | null} [offered]
+ * The models a backend offers: the last its harness listed (server/model-lists.mjs), or null before it has listed any.
+ * Its preferred model (capabilities.preferModel, Antigravity’s Gemini default) stands in for its list until then.
  */
-export const modelDefault = (id, config, offered = offeredBy(id, config)) => {
-  if (Array.isArray(offered) && offered.length) return offered.includes(config?.defaultModel) ? config.defaultModel : offered[0];
-  return config?.defaultModel;
+const offeredBy = (id, config) => {
+  const caps = config?.backends?.[id];
+  return caps?.models ?? (caps?.preferModel ? [caps.preferModel.id] : null);
+};
+
+/**
+ * The model a backend starts with, decided here for the New agent sheet, the server’s persona with no model
+ * (persona-write.mjs) and an Antigravity turn (agyModel), so they agree (#390):
+ * 1. Postbox’s default (config.defaultModel), while the backend lists it.
+ * 2. auto, the harness’s own choice, when the backend lists it: Codex, Kiro.
+ * 3. The backend’s preferred model (capabilities.preferModel: { id, prefix }), or the first of its family: Antigravity’s
+ *    Gemini, so a Claude model agy lists first isn’t picked.
+ * 4. The first model it lists.
+ * Before the backend has listed any: its preferred model, else Postbox’s default.
+ * @param {string} id @param {any} [config]  the page’s config, or the server’s with the backend’s capabilities
+ * @param {string[] | null} [offered]  the list to pick from, when it isn’t this computer’s, such as a host’s (#1304)
+ */
+export const modelDefault = (id, config, offered = config?.backends?.[id]?.models ?? null) => {
+  const prefer = config?.backends?.[id]?.preferModel;
+  if (!Array.isArray(offered) || !offered.length) return prefer?.id ?? config?.defaultModel;
+  if (offered.includes(config?.defaultModel)) return config.defaultModel;
+  if (offered.includes(HARNESS_CHOOSES)) return HARNESS_CHOOSES;
+  if (prefer && offered.includes(prefer.id)) return prefer.id;
+  return offered.find((m) => prefer && m.startsWith(prefer.prefix)) ?? offered[0];
 };
 
 /**
@@ -233,7 +249,7 @@ export function selectBackend(st, id, config = {}) {
 /**
  * Applies a boilerplate to the new-agent sheet’s state. A boilerplate that names a backend (such as Gemini on
  * the Antigravity CLI) selects that backend when it’s available on this computer, and prefers the boilerplate’s
- * model when offered, then the first gemini-* model for Antigravity or first reported model for Codex, then the boilerplate’s model. Picking a
+ * model when offered, then the model a new agent of that backend starts on, then the boilerplate’s model. Picking a
  * generic boilerplate after a backend-bound one restores the default backend, model and effort.
  * @param {any} st @param {any} b @param {any} [config]
  */
@@ -250,7 +266,8 @@ export function applyBoilerplate(st, b, config = {}) {
     st.backend = b.backend;
     const offered = config?.backends?.[b.backend]?.models;
     const list = Array.isArray(offered) ? offered : [];
-    const preferred = b.backend === 'codex' ? list[0] : list.find((m) => /^gemini-/.test(m));
+    // The model a new agent of this backend starts on, once it has listed any (modelDefault, #390).
+    const preferred = list.length ? modelDefault(b.backend, config) : undefined;
     st.model = (b.model && list.includes(b.model) ? b.model : preferred) ?? b.model ?? config?.defaultModel;
     st.modelDefaulted = false;
     st.effort = effortNamedBy(st.backend, st.model) ?? config?.defaultEffort ?? 'medium';

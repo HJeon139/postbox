@@ -37,7 +37,7 @@ test('a model of no list stays when switching to a backend that hasn’t listed 
 test('a model Postbox picked moves to the new backend’s default when that backend doesn’t list it', () => {
   const st = { backend: 'claude-code', model: DEFAULT_MODEL, effort: 'high', modelDefaulted: true };
   facts.selectBackend(st, 'codex', listed('codex', ['gpt-5.6', 'auto']));
-  assert.deepEqual([st.model, st.modelDefaulted], ['gpt-5.6', true]);
+  assert.deepEqual([st.model, st.modelDefaulted], ['auto', true], 'Codex’s own default (#390)');
 });
 
 test('a model from the previous backend’s list doesn’t carry over to one that hasn’t listed yet', () => {
