@@ -7,6 +7,7 @@
 
 import { join } from 'node:path';
 import { emptyState, ownState } from '../shared/state.mjs';
+import { Fifo } from './fifo.mjs';
 import { lockStore, unlockStore } from './store-lock.mjs';
 import { replay } from './store-replay.mjs';
 import { settledWithin } from './store-retry.mjs';
@@ -99,7 +100,7 @@ export function install(store, c) {
   store.freshSegment = c.freshSegment;
   store.ahead = 0;
   store.held = 0;
-  store.heldLog = []; // with held and the queue, so no pending read sees a job of the old history
+  store.heldLog = new Fifo(); // with held and the queue, so no pending read sees a job of the old history
   store.views.clear();
   store.waitingCommits = 0;
   store.queue = [];
@@ -128,6 +129,9 @@ export async function load(store, { fresh = false } = {}) {
     if (fresh)
       for (const n of await store.io.readdir(store.dir))
         if (/^(store\.json|snapshot\.json|events-\d+\.jsonl)/.test(n) || n === 'assets') await store.io.rm(store.at(n), { force: true, recursive: true });
+    // A snapshot’s temporary file left by a process that stopped while writing it (#1314): up to about 190 MB at
+    // 1,000,000 items, and nothing else removes it. With the lock held, no other store is writing one here.
+    for (const n of await store.io.readdir(store.dir)) if (/^snapshot\.json\.\d+\.tmp$/.test(n)) await store.io.rm(store.at(n), { force: true });
     install(store, await recover(store));
     // The folder’s entries are made durable once per start: a segment rotated by an earlier run that only ever held
     // emits may never have had its entry synced (the integrator’s review of 1a). A filesystem that can’t sync a
@@ -144,7 +148,8 @@ export async function load(store, { fresh = false } = {}) {
 /**
  * Waits for what is under way: a Retry, a writer pass, a reconciliation an earlier Retry detached. Re-read after each
  * wait, since a Retry that times out meanwhile hands its still-running listener to lateReconcile after the first
- * reading (gpt’s finding on 1b); ends when a reading shows nothing new. Whether all of it settled within the bound.
+ * reading (gpt’s finding on 1b); ends when a reading shows nothing new. Whether all of it settled before the bound
+ * passed with no progress.
  * @param {import('./store.mjs').Store} store
  */
 async function drained(store) {
@@ -154,7 +159,24 @@ async function drained(store) {
     const fresh = now.filter((p) => !seen.has(p));
     if (!fresh.length) return true;
     seen = new Set([...seen, ...fresh]);
-    if (!(await settledWithin(Promise.all(fresh.map((p) => p.catch(() => {}))), store.retryBoundMs))) return false;
+    if (!(await settledWhileProgressing(store, Promise.all(fresh.map((p) => p.catch(() => {})))))) return false;
+  }
+}
+
+/**
+ * Whether a promise settles before the writer goes the bound without finishing a step. A slow disk that keeps answering
+ * is waited for, however long its writes take in all; one that stops answering is given up on within the bound
+ * (#1314: a 100,000-item store’s writer pass ran past 3 s in all while it worked).
+ * @param {import('./store.mjs').Store} store @param {Promise<unknown>} promise
+ */
+async function settledWhileProgressing(store, promise) {
+  const began = Date.now();
+  for (;;) {
+    // The bound runs from the later of the wait’s start and the last step: a step that lands early in a wait doesn’t
+    // buy a whole new window, so a hang right after it fails within the bound (the integrator’s review of #1324).
+    const left = Math.max(began, store.steppedAt) + store.retryBoundMs - Date.now();
+    if (left <= 0) return false;
+    if (await settledWithin(promise, left)) return true;
   }
 }
 
@@ -187,7 +209,7 @@ export async function close(store) {
       () => null,
       (e) => e,
     );
-    quiet = await settledWithin(flushed, store.retryBoundMs);
+    quiet = await settledWhileProgressing(store, flushed);
     if (quiet) failed = await flushed;
   }
   store.closed = true;
@@ -195,7 +217,7 @@ export async function close(store) {
   if (!quiet || failed) {
     const why = failed
       ? `its last sync failed (${failed.code ?? 'error'}): ${(failed.cause ?? failed).message}, so the log may not be durable`
-      : `a write or Retry is still in flight after ${store.retryBoundMs} ms and the disk isn’t answering`;
+      : `a write or Retry has made no progress for ${store.retryBoundMs} ms and the disk isn’t answering`;
     store.cause = Object.assign(
       new Error(`The store can’t close: ${why}. Stop the process; its lock on the folder goes with it, and the next start takes the folder over.`),
       {

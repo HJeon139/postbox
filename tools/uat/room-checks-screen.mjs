@@ -6,6 +6,22 @@ import { itemsOf } from './room-items.mjs';
 
 export const SCREEN_CHECKS = [
   {
+    // #1319: an agent’s block or app that fails the catalog is refused, with no item. One left in the room shows its
+    // fallback and raw JSON as a broken card, which the agent retried around. A block a newer host took but this
+    // Postbox can’t read (reason unknown-type or newer-version) is still shown that way on purpose, so isn’t counted.
+    id: 'broken-block-card',
+    inputs: ['state', 'threads'],
+    issue: 1319,
+    run: (f) =>
+      itemsOf(f)
+        .filter((it) => it.kind === 'block' && it.valid === false && it.reason === 'invalid')
+        .map((it) => ({
+          key: it.id,
+          title: 'An agent’s invalid block or app is in the conversation as a broken card, not refused',
+          evidence: `@${it.handle}’s ${it.raw?.type ?? 'block'} “${clip(String(it.raw?.id ?? ''), 60)}”: ${clip((it.errors ?? []).join(' '), 160)}`,
+        })),
+  },
+  {
     id: 'review-table-raw',
     inputs: ['ui', 'state', 'threads'],
     issue: 62,

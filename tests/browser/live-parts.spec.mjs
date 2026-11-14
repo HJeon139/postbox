@@ -85,6 +85,40 @@ test('a finished turn whose words came after another agent’s post keeps its re
   await expect(page.locator('details.activity:visible'), 'one record for the turn').toHaveCount(1);
 });
 
+test('a finished reply isn’t drawn again when its agent starts its next turn, so its diagram doesn’t reload', async ({ page }) => {
+  // The agent’s new turn has posted nothing yet, so its last reply is still its newest: that reply read as running,
+  // and was drawn again whole at the turn’s start and end, reloading its diagram’s frame (CI run 43525807240).
+  const t = room('Next turn', ['teller']);
+  let turns = 0;
+  scripts.set('teller', async ({ emit, who }) => {
+    turns += 1;
+    if (turns === 1) return void emit({ kind: 'text', text: 'First answer.\n\n```mermaid\nflowchart LR\n  Read --> Index\n```' });
+    await hold(who, 1);
+    emit({ kind: 'text', text: 'Second answer.' });
+  });
+  await page.goto(`${scripted.app.origin}/#/t/${t.id}`);
+  await synced(page, scripted.app);
+  scripted.app.rt.sendMessage(t.id, { text: 'First question.' });
+  await expect.poll(() => scripted.app.store.items(t.id).some((it) => it.text?.startsWith('First answer.') && it.status === 'done')).toBe(true);
+  await expect.poll(() => arrange.liveTurns(scripted.app.rt)).toBe(0);
+  await synced(page, scripted.app);
+  const frame = page.locator('.transcript > [data-key]', { hasText: 'First answer.' }).locator('figure.diagram iframe');
+  await expect(frame, 'the diagram is drawn').toHaveAttribute('data-sized', '1');
+  await frame.evaluate((node) => {
+    /** @type {any} */ (node).firstDrawn = true;
+  });
+  const same = () => frame.evaluate((node) => /** @type {any} */ (node).firstDrawn === true);
+  scripted.app.rt.sendMessage(t.id, { text: 'Second question.' });
+  await expect.poll(() => at('teller')).toBe(1);
+  await synced(page, scripted.app);
+  expect.soft(await same(), 'the frame stays as it was drawn when the next turn starts').toBe(true);
+  go('teller');
+  await expect.poll(() => arrange.liveTurns(scripted.app.rt)).toBe(0);
+  await synced(page, scripted.app);
+  await expect(page.locator('.transcript > [data-key]', { hasText: 'Second answer.' })).toBeVisible();
+  expect.soft(await same(), 'and when it ends').toBe(true);
+});
+
 test('four agents’ running replies fit the screen together: their words, a capped thought, steps and working rows', async ({ page }) => {
   const four = ['amy', 'bob', 'cat', 'dan'];
   const thought = 'The parser drops empty fields, so a trailing comma loses a column, and the sums shift by one. '.repeat(16).trim();

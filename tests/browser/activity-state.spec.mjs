@@ -57,20 +57,29 @@ test('#488 an invalid block’s raw details keep the state the person chose when
   await page.goto(`${app.origin}/#/t/${thread.id}`);
   await synced(page, app);
   const session = arrange.agentIn(app.rt, thread.id);
-  const shown = app.rt.toolsFor(session.id).show_block({
-    block: { id: 'invalid-state', type: 'timeline', version: 1, title: 'Unknown block', fallback: 'Plain-text fallback.' },
+  // A block of a type this Postbox doesn’t know, which a newer host’s catalog took: the one kind still shown with its
+  // fallback and raw details (#1319), as server/block-show.mjs posts it.
+  const raw = { id: 'invalid-state', type: 'timeline', version: 1, title: 'Unknown block', fallback: 'Plain-text fallback.' };
+  const errors = ['Unknown type “timeline”.'];
+  const item = arrange.post(app.rt, thread.id, {
+    kind: 'block',
+    sessionId: session.id,
+    handle: session.handle,
+    turnId: null,
+    valid: false,
+    raw,
+    errors,
+    reason: 'unknown-type',
+    fallback: raw.fallback,
   });
-  expect(shown.ok, 'the unknown block is refused').toBe(false);
-  const item = app.store.items(thread.id).find((entry) => entry.kind === 'block' && entry.raw?.id === 'invalid-state');
-  expect(item, 'the invalid block is kept with its fallback').toBeTruthy();
   await synced(page, app);
-  const raw = page.locator(`[data-key="${item.id}"] details.raw`);
-  await raw.locator('> summary').click();
-  await expect(raw).toHaveAttribute('open', '');
+  const details = page.locator(`[data-key="${item.id}"] details.raw`);
+  await details.locator('> summary').click();
+  await expect(details).toHaveAttribute('open', '');
 
-  arrange.setItem(app.rt, thread.id, item.id, { errors: [...item.errors, 'A second validation error.'] });
+  arrange.setItem(app.rt, thread.id, item.id, { errors: [...errors, 'A second validation error.'] });
   await synced(page, app);
-  await expect(raw, 'the raw block stays open when its item is rebuilt').toHaveAttribute('open', '');
+  await expect(details, 'the raw block stays open when its item is rebuilt').toHaveAttribute('open', '');
 });
 
 test('#488 an activity list and thought keep the state the person chose while the reply updates', async ({ page }) => {

@@ -36,6 +36,7 @@ import { DELIVERY_CHECKS } from './room-checks-delivery.mjs';
 import { NEEDS_CHECKS } from './room-checks-needs.mjs';
 import { P0_CHECKS } from './room-checks-p0.mjs';
 import { PANEL_CHECKS } from './room-checks-panels.mjs';
+import { POINTER_CHECKS } from './room-checks-pointer.mjs';
 import { REPLY_CHECKS } from './room-checks-replies.mjs';
 import { SCREEN_CHECKS } from './room-checks-screen.mjs';
 import { THREAD_CHECKS } from './room-checks-threads.mjs';
@@ -64,6 +65,7 @@ export const CHECKS = [
   ...NEEDS_CHECKS,
   ...ASK_CHECKS,
   ...VIEW_CHECKS,
+  ...POINTER_CHECKS,
   ...DELIVERY_CHECKS,
   ...P0_CHECKS,
   {

@@ -10,6 +10,7 @@ import * as fs from 'node:fs/promises';
 import { join } from 'node:path';
 import { itemOf } from '../shared/item-index.mjs';
 import { emptyState } from '../shared/state.mjs';
+import { Fifo } from './fifo.mjs';
 import { newId } from './ids.mjs';
 import { commit, run } from './store-commit.mjs';
 import { pendingReads } from './store-held.mjs';
@@ -19,7 +20,10 @@ import { fail, reload } from './store-retry.mjs';
 
 export { emptyState };
 
-const KEEP_EVENTS = 20000; // events kept in memory for reconnecting browsers
+const KEEP_EVENTS = 20000; // events kept in memory for reconnecting browsers, at least
+// The backlog is trimmed back to KEEP_EVENTS once it’s this many longer, not at every event: a splice of its start moves
+// every event kept, so trimming at each emit made one about 100 times dearer past 20,000 (tests/store-commit-scale.test.mjs).
+const TRIM_EVERY = 5000;
 export const SNAPSHOT_EVERY = 5000; // events between snapshots
 const RETRY_BOUND_MS = 3000; // how long Retry waits for a write still in flight
 
@@ -28,6 +32,8 @@ export { newId }; // server/ids.mjs; its callers import it from here
 export class Store {
   /** A snapshot is reading the state: emits are held until it’s written, as behind a commit, so it reads one view (#1180). */
   snapshotting = false;
+  /** When the disk last finished one of the writer’s steps: close() gives up the bound after it, not before (#1314). */
+  steppedAt = 0;
 
   /**
    * @param {string|null} dir  the data folder; null keeps everything in memory (tests)
@@ -56,7 +62,7 @@ export class Store {
     this.ahead = 0; // events numbered but not yet applied: a commit’s, before its fsync
     this.waitingCommits = 0; // commits queued or pending; emits are held behind them
     this.held = 0; // emits held in the queue, still to be numbered
-    this.heldLog = []; // those jobs, in order, for the reads that include them (server/store-held.mjs)
+    this.heldLog = new Fifo(); // those jobs, in order, for the reads that include them (server/store-held.mjs)
     this.version = 0; // counts the changes record() applies; a held view is rebuilt when it moves
     this.views = new Map(); // `${list}:${key}` → its pending view
     /** the lists as memory will hold them once what is held is released (#601): for the placed in-process readers only */
@@ -176,7 +182,7 @@ export class Store {
     this.state.seq = ev.seq;
     this.ahead--;
     if (kept) this.events.push({ seq: ev.seq, line: kept });
-    if (this.events.length > KEEP_EVENTS) this.events.splice(0, this.events.length - KEEP_EVENTS);
+    if (this.events.length >= KEEP_EVENTS + TRIM_EVERY) this.events.splice(0, this.events.length - KEEP_EVENTS);
     return { line, heard, error };
   }
 

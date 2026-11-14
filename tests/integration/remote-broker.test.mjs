@@ -171,7 +171,9 @@ test('broker and shim: queued and asked calls, the snapshot’s reading tools, a
     shim = startShim(h, 't1');
 
     // A queued call returns at once, and crosses as `tool`; Postbox’s reply settles it.
-    const shown = await shim.response(shim.tool('show_block', { block: { id: 'pick', type: 'confirm', version: 1, fallback: 'OK?', statement: 'OK?' } }));
+    const shown = await shim.response(
+      shim.tool('show_block', { block: { id: 'pick', type: 'confirm', version: 1, fallback: 'OK?', statement: 'OK?', confirmLabel: 'OK' } }),
+    );
     assert.match(shown.text, /^Sent block pick to Postbox/);
     const tool = await pb.msgs.next('tool', 5000);
     assert.deepEqual([tool.turn, tool.name, tool.args.block.id], ['t1', 'show_block', 'pick']);

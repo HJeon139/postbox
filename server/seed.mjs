@@ -106,8 +106,11 @@ export const DEMO_PERSONAS = [
   },
 ];
 
+// Postbox’s own boilerplates, each marked builtIn: its model is Postbox’s pick, so New agent falls back to one the
+// backend lists, where a boilerplate the person saved (toBoilerplate) keeps its own (#1305).
 export const BOILERPLATES = [
   {
+    builtIn: true,
     id: 'bp-researcher',
     name: 'Researcher',
     description: 'Reads and cites sources',
@@ -115,6 +118,7 @@ export const BOILERPLATES = [
     tools: ['web.fetch'],
   },
   {
+    builtIn: true,
     id: 'bp-critic',
     name: 'Critic',
     description: 'Reviews code and documents',
@@ -122,6 +126,7 @@ export const BOILERPLATES = [
     tools: ['shell', 'web.fetch'],
   },
   {
+    builtIn: true,
     id: 'bp-developer',
     name: 'Developer',
     description: 'Changes code and verifies it',
@@ -129,6 +134,7 @@ export const BOILERPLATES = [
     tools: ['shell', 'web.fetch'],
   },
   {
+    builtIn: true,
     id: 'bp-gemini',
     name: 'Gemini',
     description: 'Collaborates, compares options and gives a second opinion on Gemini',
@@ -138,6 +144,7 @@ export const BOILERPLATES = [
     model: GEMINI_MODEL,
   },
   {
+    builtIn: true,
     id: 'bp-gpt',
     name: 'GPT',
     description: 'Helps with questions, writing and code using Codex',
@@ -147,6 +154,7 @@ export const BOILERPLATES = [
     tools: ['shell', 'web.fetch'],
   },
   {
+    builtIn: true,
     id: 'bp-scrum-master',
     name: 'Scrum master',
     description: 'Runs sprints by the Agile Manifesto: backlog, check-ins and retros',
@@ -156,7 +164,7 @@ export const BOILERPLATES = [
     tools: ['web.fetch'],
   },
   // No description: the New agent sheet shows “Write it yourself” as a placeholder, so nothing is saved unless typed.
-  { id: 'bp-blank', name: 'Blank', description: '', instructions: '', tools: [] },
+  { builtIn: true, id: 'bp-blank', name: 'Blank', description: '', instructions: '', tools: [] },
 ];
 
 export const toBoilerplate = (p) => ({
