@@ -2,8 +2,6 @@
 // (adapterContext, server/turn-context.mjs), each taken only while the turn is live. The calls are also what a permission prompt may
 // be for (#353, #665): server/prompt-claim.mjs reads them here.
 
-import { recordScheduledTool } from './scheduled-wakes.mjs';
-
 /**
  * Each tool call with its whole input, before it runs ({ id, name, input, who, parent }: parent is the Agent call a
  * subagent’s call is under); what it returned ({ id, isError, text, result: the tool’s own record, vcsCwd }); a
@@ -17,7 +15,7 @@ export function workEvents(rt, turn, live) {
     toolUse(u) {
       if (!live()) return;
       seeCall(turn, u);
-      recordScheduledTool(rt, turn, u);
+      rt.ledger.toolUse(turn, u);
     },
     /** @param {any} r */
     toolResult(r) {
