@@ -54,7 +54,7 @@ test('`!` in a conversation whose agent has a stored relative folder is refused 
     ['mo', 'mock'],
   ]) {
     const { t } = stored(handle, backend);
-    await assert.rejects(() => rt.commandFolder(t.id), refusal(handle));
+    await assert.rejects(() => arrange.commandFolder(rt, t.id), refusal(handle));
     await assert.rejects(() => rt.runShellCommand(t.id, 'ls'), refusal(handle));
     assert.deepEqual(
       store.items(t.id).filter((i) => i.kind === 'command'),
@@ -162,7 +162,7 @@ test('a conversation whose snapshot holds a bad folder works in the agent’s fo
     assert.equal(se.personaSnapshot.folder, 'server', 'the snapshot still holds the bad folder');
     assert.equal(arrange.personaFor(rt, se).folder, fixed);
     assert.equal(await workFolder(rt.adapters.get(backend), arrange.personaFor(rt, se), store.state.projects.p1), fixed);
-    assert.deepEqual(await rt.commandFolder(t.id), { folder: fixed, host: null });
+    assert.deepEqual(await arrange.commandFolder(rt, t.id), { folder: fixed, host: null });
     assert.equal((await rt.panelTarget({ sessionId: se.id })).folder, fixed);
     assert.deepEqual(await arrange.agentFolders(rt, se.id), [fixed, '/srv/project']);
     if (backend === 'mock') {
@@ -187,7 +187,7 @@ test('a conversation whose snapshot and agent both hold a bad folder is refused 
       assert.equal(e.message, refused(handle, '"../x"', RELATIVE));
       return true;
     };
-    await assert.rejects(() => rt.commandFolder(t.id), refusedLive);
+    await assert.rejects(() => arrange.commandFolder(rt, t.id), refusedLive);
     await assert.rejects(() => rt.panelTarget({ sessionId: se.id }), refusedLive);
     await assert.rejects(() => arrange.agentFolders(rt, se.id), refusedLive);
     if (backend === 'mock') await assert.rejects(() => turn(rt, t).ledger, refusedLive);
@@ -209,7 +209,7 @@ test('a conversation already going works in the agent’s new folder from its ne
     rt.updatePersona(p.id, { folder: later });
     assert.equal(store.state.personas[p.id].folder, later);
     assert.equal(arrange.personaFor(rt, se).folder, later);
-    assert.deepEqual(await rt.commandFolder(t.id), { folder: later, host: null });
+    assert.deepEqual(await arrange.commandFolder(rt, t.id), { folder: later, host: null });
     assert.equal((await rt.panelTarget({ sessionId: se.id })).folder, later);
     if (backend === 'mock') assert.equal((await turn(rt, t).delivered).folder, later);
   }
@@ -224,7 +224,7 @@ test('a conversation whose agent had no folder works in the one its sheet gets, 
   rt.updatePersona(p.id, { folder: later });
   assert.equal(store.state.personas[p.id].folder, later);
   assert.equal(arrange.personaFor(rt, se).folder, later);
-  assert.deepEqual(await rt.commandFolder(t.id), { folder: later, host: null });
+  assert.deepEqual(await arrange.commandFolder(rt, t.id), { folder: later, host: null });
   assert.equal((await rt.panelTarget({ sessionId: se.id })).folder, later);
   assert.equal((await turn(rt, t).delivered).folder, later);
 });
@@ -239,6 +239,6 @@ test('a conversation from before snapshots works in its agent’s folder', async
   const se = store.state.sessions[old.id];
   assert.equal(se.personaSnapshot, undefined);
   assert.equal(arrange.personaFor(rt, se).folder, folder);
-  assert.deepEqual(await rt.commandFolder(t.id), { folder, host: null });
+  assert.deepEqual(await arrange.commandFolder(rt, t.id), { folder, host: null });
   assert.equal((await turn(rt, t).delivered).folder, folder);
 });

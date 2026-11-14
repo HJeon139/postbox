@@ -1,8 +1,9 @@
 // The part of tests/arrange.mjs that reaches the server’s own machinery: the work ledger, the archive of old turns
-// (#305), the blob store, the server’s delays, and the timers close() clears. tests/arrange.mjs re-exports each helper,
+// (#305), the person’s ! commands (#67), the blob store, the server’s delays, and the timers close() clears. tests/arrange.mjs re-exports each helper,
 // so tests use them as `arrange.<name>`. Each names what a test needs, so none hands out the object behind it.
 
 import { createStreamMapper } from '../server/adapters/claude-stream.mjs';
+import { endWork as endWorkOf } from '../server/turn-end-work.mjs';
 import { archiveTurns } from '../server/work-archive.mjs';
 
 /** @typedef {import('../server/runtime.mjs').Runtime} Runtime */
@@ -48,6 +49,9 @@ export async function recordTurn(rt, turn, start, events) {
   await ledger.idle();
 }
 
+/** Records a turn’s end in its work, as the turn’s end does, and resolves once its reply has its line. @param {Runtime} rt @param {any} turn @param {string} status */
+export const endWork = (rt, turn, status) => endWorkOf(rt, turn, status);
+
 // ── The archive of old turns (#305) ──────────────────────────────────────────────────
 
 /** Whether the archive passes run. @param {Runtime} rt */
@@ -72,6 +76,25 @@ export const stopArchive = (rt, boundMs) => rt.turnArchive.stop(boundMs);
 
 /** Archives a conversation’s older turns once, with nothing running, into the ledger’s blob store. @param {Runtime} rt @param {string} convId */
 export const archiveOldTurns = (rt, convId) => archiveTurns({ store: rt.store, blobs: rt.ledger.blobs, convId, running: new Set() });
+
+// ── The person’s ! commands (#67) ─────────────────────────────────────────────────────
+
+/** Where a conversation’s ! commands run, and the host its agent is on, if one. @param {Runtime} rt @param {string} threadId */
+export const commandFolder = (rt, threadId) => rt.commandFolder(threadId);
+
+/** Starts each ! command’s process with spawn, a fake a test drives. @param {Runtime} rt @param {Function} spawn */
+export function withSpawn(rt, spawn) {
+  rt.spawnShell = /** @type {any} */ (spawn);
+}
+
+/** Sends the running commands’ output that waits for its next flush now, so a test needn’t wait for the timer. @param {Runtime} rt */
+export const flushCommands = (rt) => rt.flushShellOutput();
+
+/** Stops every running command, as shutdown does: SIGINT, then SIGKILL after graceMs. @param {Runtime} rt @param {{ graceMs?: number }} [opts] */
+export const stopCommands = (rt, opts) => rt.stopShellCommands(opts);
+
+/** Ends the commands a restart left running, as start-up does. @param {Runtime} rt */
+export const expireStaleCommands = (rt) => rt.expireStaleCommands();
 
 // ── Blobs ────────────────────────────────────────────────────────────────────────────
 
