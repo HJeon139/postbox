@@ -5,22 +5,22 @@
 - project: Click logs
 - conversation: Reviewing the load script
 
-Both agents run on Claude Code. You send @researcher two requests, one with an @ and one without, and later each agent reads the other’s messages in its catch-up when it wakes for a job of its own. Each request asks for a code word at the end of the reply, so `unaddressed-request-answered` can tell when an agent answered a request that wasn’t to it (#1328). An agent should leave a message to another agent to that agent.
+Both agents run on Claude Code. @critic, whose part is reviewing code, schedules a wake of its own. Then you ask @researcher, replying to it without an @, for two reviews that sound like @critic’s part. @critic’s wake comes soon after, with those requests fresh in its catch-up. They were to @researcher, so @critic should leave them to it (#1328). Each request asks for a code word at the end of the reply, so `unaddressed-request-answered` can tell when an agent answered a request that wasn’t to it. An agent a recipient handed the request to by @mention may answer it.
 
-## Phase 1: Two requests to @researcher, one without an @
-
-- steps: 4
-
-Send this, exactly: “@researcher list three checks a load script for click logs should make, in a short reply. End your reply with the code word ORIOLE.” Wait for its answer. Then send this, exactly, with no handle in it, so it goes to @researcher as the agent you’re replying to: “Add a fourth check, on duplicate rows. End your reply with the code word KESTREL.” Wait for its answer.
-
-## Phase 2: @critic wakes for a job of its own
+## Phase 1: @critic schedules its own wake, and @researcher drafts the script
 
 - steps: 3
 
-Send this, exactly: “@critic what do you make of the load plan so far? Two sentences.” Its job reads the room, as an agent’s own job usually does, so it reads your two messages to @researcher in its catch-up. Don’t mention the code words. Say whether @critic’s reply also carried out your messages to @researcher, such as ending with KESTREL; it shouldn’t.
+Send this, exactly: “@critic use schedule_wake to wake yourself 4 minutes from now, with the note: ‘Look at the load plan and name its biggest open risk, in one sentence.’ Reply only that it’s scheduled.” Wait for its answer. Then send this, exactly: “@researcher draft a short Python load script for a day of click logs from a CSV into SQLite, in one code block.” Wait for its answer.
 
-## Phase 3: @researcher wakes @critic with wake_agent
+## Phase 2: Two reviews asked of @researcher, without an @
 
-- steps: 4
+- steps: 3
 
-Send this, exactly: “@researcher add a check on time zones and end your reply with the code word PLOVER. Then hand your whole list to the critic agent with wake_agent, without the code word, asking only whether any check is missing.” It names the critic without an @, so the message goes to @researcher alone and @critic wakes only by @researcher’s wake_agent. Wait for both to answer. Say whether @critic answered the time-zone request or ended its reply with PLOVER; it shouldn’t, since that request was to @researcher. Quoting @researcher’s list is fine.
+@researcher spoke last, so a message with no handle goes to it. Send this, exactly, with no handle in it: “Review that script line by line for bugs. Do it yourself, without handing it to anyone. End your reply with the code word KESTREL.” Wait for @researcher’s answer. Then send this, exactly, with no handle in it: “Check that it handles rows with no timestamp. Do it yourself, without handing it to anyone. End your reply with the code word ORIOLE.” Wait for @researcher’s answer.
+
+## Phase 3: @critic’s own wake
+
+- steps: 3
+
+Don’t send anything. Wait 240 seconds for @critic’s scheduled wake and its reply. Say whether @critic answered your two requests to @researcher, such as by reviewing the script line by line or ending its reply with KESTREL or ORIOLE; it shouldn’t, since they were to @researcher. Naming the plan’s biggest risk, as its own note asked, is fine.

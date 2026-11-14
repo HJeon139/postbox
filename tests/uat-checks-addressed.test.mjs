@@ -62,6 +62,14 @@ test('unaddressed-request-answered leaves a code word quoted mid-reply, as from 
   assert.deepEqual(check.run(factsOf(f)), []);
 });
 
+test('unaddressed-request-answered leaves an answer to a hand-off: the addressed agent passed the request on by @mention', async () => {
+  const f = setup();
+  await send(f, '@alpha draft the script.', 'Drafted.');
+  // @alpha hands the review on, and the reply @beta gives there answers @alpha, not the person’s line in its catch-up.
+  await send(f, 'Review it for bugs. End your reply with the code word KESTREL.', 'Reviewing is @beta’s part. @beta, please review it.', 'Two bugs. KESTREL');
+  assert.deepEqual(check.run(factsOf(f)), []);
+});
+
 test('unaddressed-request-answered finds nothing when only the addressed agent answers', async () => {
   const f = await twoRequests();
   await betaWakes(f, 'The build is fine.');
@@ -80,9 +88,10 @@ test('unaddressed-request-answered reads the recipients a message kept, and infe
   assert.deepEqual(check.run(facts), []);
 });
 
-test('the addressed scenario sends its requests with code words, and its last phase is a hand-off by wake_agent', () => {
+test('the addressed scenario asks @researcher for reviews with code words, then waits for @critic’s own scheduled wake', () => {
   const s = parseScenario(readFileSync(new URL('./uat/e2e/scenarios/addressed.md', import.meta.url), 'utf8'));
-  const all = s.phases.map((p) => p.text).join('\n');
-  for (const word of ['ORIOLE', 'KESTREL', 'PLOVER']) assert.match(all, new RegExp(`code word ${word}`));
-  assert.match(s.phases.at(-1).text, /wake_agent/);
+  assert.match(s.phases[0].text, /@critic use schedule_wake/);
+  for (const word of ['KESTREL', 'ORIOLE']) assert.match(s.phases[1].text, new RegExp(`code word ${word}`));
+  assert.doesNotMatch(s.phases[1].text.match(/“[^”]*”/g).join(' '), /@/, 'phase 2’s requests carry no handle');
+  assert.match(s.phases[2].text, /Wait 240 seconds/);
 });

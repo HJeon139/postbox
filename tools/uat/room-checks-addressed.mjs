@@ -44,8 +44,15 @@ function unaddressedAnswers(facts) {
       items.slice(0, i).filter((x) => x.threadId === it.threadId),
       handles,
     );
+    // The agents it reached: its recipients, and any one of them handed it on to by @mention, whose answer then
+    // answers that hand-off rather than the person’s line in its catch-up.
+    const reached = new Set(to);
     for (const reply of items.slice(i + 1)) {
-      if (reply.kind !== 'agent' || !reply.handle || to.includes(reply.handle)) continue;
+      if (reply.kind !== 'agent' || !reply.handle) continue;
+      if (reached.has(reply.handle)) {
+        for (const h of parseMentions(reply.text, handles)) reached.add(h);
+        continue;
+      }
       const said = words.find((w) => endsWith(reply.text, w));
       if (said) out.push({ it, reply, said, to });
     }
