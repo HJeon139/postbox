@@ -51,7 +51,7 @@ What each box holds is under “The main components”; what moves along the arr
 
 **The work ledger** (`server/ledger.mjs`). What each turn changed, ran, committed, pushed and published, built from its tool calls and counted from diffs, with git only read. See [work-ledger.md](architecture/work-ledger.md).
 
-**What agents read** (`server/catch-up.mjs`, `server/read-message.mjs`). Every agent in a conversation can read all of it: each turn catches the agent up on what it missed, and its read tools reach further back. An agent has one session per conversation, and answers in its topic threads from it. A Claude Code session started in a terminal can join as an agent. See [shared-memory.md](architecture/shared-memory.md) and [attached-sessions.md](architecture/attached-sessions.md).
+**What agents read** (Memory, `server/memory-service.mjs`, with `server/catch-up.mjs` and `server/read-message.mjs`). Every agent in a conversation can read all of it: each turn catches the agent up on what it missed, and its read tools reach further back. An agent has one session per conversation, and answers in its topic threads from it. A Claude Code session started in a terminal can join as an agent. See [shared-memory.md](architecture/shared-memory.md) and [attached-sessions.md](architecture/attached-sessions.md).
 
 ## How data flows
 

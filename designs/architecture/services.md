@@ -1,6 +1,6 @@
 # Concerns as services
 
-**Status:** a proposal, 12 November 2026, for the person to approve before any code moves. Step 0, the test fixture, step 1, Placement, step 2, Running, step 3, Threads with the Bus, step 4, Personas, step 5, Sessions, step 6, Assets, step 7, Ledger and work, step 8, Checks, and step 9, Apps, are built (“Where it stands”). Numbers are from `main` at 2259cebe. The scripts that produced them are in the pull request that added this document; the last of them, `svc-check.mjs`, checks the design against the code.
+**Status:** a proposal, 12 November 2026, for the person to approve before any code moves. Step 0, the test fixture, step 1, Placement, step 2, Running, step 3, Threads with the Bus, step 4, Personas, step 5, Sessions, step 6, Assets, step 7, Ledger and work, step 8, Checks, step 9, Apps, and step 10, Memory, with the thread summaries split off as Summaries, are built (“Where it stands”). Numbers are from `main` at 2259cebe. The scripts that produced them are in the pull request that added this document; the last of them, `svc-check.mjs`, checks the design against the code.
 
 ## Why
 
@@ -74,7 +74,7 @@ One service per concern, each a class in the folder that designs/architecture/fo
 The list refines the starting point from the data:
 - **Running** is new: the live-turn registry (`turns`, `exiting`, `closing`). 36 modules read `rt.turns`, most only to ask whether a session has a live turn; answering that from a small service below everything else breaks several cycles.
 - **Placement** is new: where a backend runs (`remote/placement.mjs`, today in the strongly connected component). Personas, Assets, Work and Memory ask it; it reads Running.
-- **Memory** is new: what an agent reads of a conversation (catch-up, `describeItem`, `read_conversation`, the thread summaries).
+- **Memory** is new: what an agent reads of a conversation (catch-up, `describeItem`, `read_conversation`). The thread summaries were part of it, and are a service of their own, **Summaries**, since step 10.
 - **Bus** carries in-process signals only. The store’s own events (`store.emit`, `store.subscribe`) stay the Store’s.
 - **Ports** are the few functions a redone service needs from waiting code, injected late by the root: `send`, `catchUpLines` and `hostTurns`. Each names what the service needs, not the machinery behind it: `send` is “a message for an agent”, which is an inbox entry in rooms-at-scale’s end state.
 
@@ -149,9 +149,16 @@ The list refines the starting point from the data:
 
 ### Memory
 
-- **Owns:** each session’s marker of what it has read, how a conversation reads to an agent, and the thread summaries and their timers (designs/architecture/shared-memory.md).
-- **Interface:** `catchUp(se, exclude)`, `describeItem(item, se)`, `topicRootLine(se, t)`, `readConversation(se, args)`, `readMessage(se, args)`, `readLine`, `settleThread(threadId)`, `summarize(threadId)`, `moveMarkers(…)`, `stopTimers()`.
-- **Depends on:** Store, Threads, Sessions, Personas, Placement, Assets, Running, Work, Apps, and the `catchUpLines` port. External: the summarizer (today’s `rt.summarize` seam).
+- **Owns:** each session’s marker of what it has read, and how a conversation reads to an agent: the catch-up a turn starts with, a topic or side thread’s, a mention given before as a pointer (#484), an item’s line and the read tools (designs/architecture/shared-memory.md).
+- **Interface:** `catchUp(se, exclude)`, `turnContext(se, where, message, slash)`, `threadCatchUp(se, threadId, exclude)`, `pointerIfSeen(se, message)`, `moveMarkers(threadId, id, stubId)`, `describeItem(item, se, n, reader)`, `topicRootLine(se, t)`, `readConversation(se, args)`, `readMessage(se, args)`, `readLine(item, se, n)`.
+- **Depends on:** Store, Threads, Sessions, Personas, Placement, Assets, Apps, and the `catchUpLines` port: the messages held for an agent on a card waiting for the person (#693).
+
+### Summaries
+
+Split from Memory in step 10 (“Risks”).
+- **Owns:** the short summary a model writes on a topic or side thread’s line once the thread is quiet (#228), and the timers that wait for it.
+- **Interface:** `settleThread(threadId)`, `summarizeThread(threadId, summarize)`, `summarizerOf(threadId)`, `stopTimers()`, and `summarize`, the model a test gives in place of Haiku.
+- **Depends on:** Store, Threads, Sessions, Personas, Running. External: the ledger, which Work holds too, the adapter registry, for the Agent SDK, and the server’s settings (`config`), where a test shortens the wait.
 
 ### Hosts
 
@@ -164,7 +171,7 @@ The list refines the starting point from the data:
 Their target shape, for the step that redoes each; its details belong to that design.
 - **Asks:** an ask is a record its agents write together, and needs you is the queue of open ones. Depends on Store, Bus, Threads, Sessions, Personas, Running and `send`. A harness’s own question (AskUserQuestion, a permission prompt while the layer stays) comes in through Turns’ adapter contract and becomes an ask.
 - **Delivery (the inbox):** one stored inbox per agent per conversation; `send` adds an entry. Depends on Store, Bus, Running, Threads, Sessions, Personas, Memory and Turns.
-- **Turns:** starts a turn from inbox entries, runs it through the adapter contract, and ends it through the end steps below. Depends on Store, Bus, Running, Threads, Sessions, Personas, Placement, Memory, Assets, Work, Checks and Apps. Delivery and asks attach to its start and end steps; they don’t sit below it.
+- **Turns:** starts a turn from inbox entries, runs it through the adapter contract, and ends it through the end steps below. Depends on Store, Bus, Running, Threads, Sessions, Personas, Placement, Memory, Summaries, Assets, Work, Checks and Apps. Delivery and asks attach to its start and end steps; they don’t sit below it.
 
 ### The dependency graph
 
@@ -204,9 +211,11 @@ flowchart BT
   Memory --> Personas
   Memory --> Placement
   Memory --> Assets
-  Memory --> Running
-  Memory --> Work
   Memory --> Apps
+  Summaries --> Threads
+  Summaries --> Sessions
+  Summaries --> Personas
+  Summaries --> Running
   Hosts --> Personas
   Hosts --> Running
   Waiting[Waiting: Turns, Delivery, asks]
@@ -216,7 +225,7 @@ flowchart BT
   Hosts -.->|hostTurns| Waiting
 ```
 
-Built in this order, each service’s dependencies already exist: Store, Bus, Running, Placement, Threads, Personas, Sessions, Assets, Work, Checks, Apps, Memory, Hosts. The waiting code is built after them, and the root binds the ports to it.
+Built in this order, each service’s dependencies already exist: Store, Bus, Running, Placement, Threads, Personas, Sessions, Assets, Work, Checks, Apps, Memory, Summaries, Hosts. The waiting code is built after them, and the root binds the ports to it.
 
 | Service | Dependencies, Store and ports included |
 |---|---|
@@ -230,9 +239,10 @@ Built in this order, each service’s dependencies already exist: Store, Bus, Ru
 | Assets | 4 |
 | Hosts | 4 |
 | Checks | 5 |
+| Summaries | 5 |
 | Work | 6 |
+| Memory | 8 |
 | Apps | 9 |
-| Memory | 10 |
 
 ### How each dependency on waiting code breaks
 
@@ -246,16 +256,16 @@ Built in this order, each service’s dependencies already exist: Store, Bus, Ru
 | `conversations.mjs`’s `ensureSession` calls `liftDecline` (`wake-cards.mjs`) | `session.joined`; wake cards listen (done in step 5) |
 | `Runtime.addItem` calls `bumpSideLink` (`side-threads.mjs`) | `item.added`; side threads listen (done in step 3) |
 | `Runtime.busyFor` calls `remote.awaitsAttach`, which reads the session and its persona’s host | Running keeps the awaiting sessions; `RemoteTurns` writes them, and the first `persona.updated` listener sets them from where the agent runs now (done in step 2: `busyFor` is gone) |
-| `Runtime.bringForward` calls `moveMarkers` (`catch-up.mjs`) | `item.moved`; Memory moves its markers (done in step 3: the root listens with `moveMarkers` until Memory is a service) |
+| `Runtime.bringForward` calls `moveMarkers` (`catch-up.mjs`) | `item.moved`; Memory moves its markers (done in step 3: the root listens with `moveMarkers`, Memory’s since step 10) |
 | `Runtime.view` clears the sessions’ unread counts | the facade’s `view()`: `Sessions.markRead`, then `Threads.view` (done in step 3; `Sessions.markRead` since step 5) |
 | `app-retire.mjs` calls `releaseNeed` (`card-needs.mjs`) | `app.retired`; asks listen (done in step 9) |
 | `apps.mjs`’s `needAppSend` and `resolveAppSend` call `offerNeed` and `releaseNeed` | they stay with asks; `apps.mjs` splits (done in step 9: `app-send-cards.mjs`) |
 | `blocks.mjs`’s `updateBlock` withdraws a block with `releaseNeed` | `block.withdrawn`; asks listen (done in step 9) |
 | `lint-delivery.mjs`, `apps.mjs` and `review-comments.mjs` call `rt.deliver` | the `send` port (`lint-delivery.mjs` done in step 8, the others in step 9) |
-| `catch-up.mjs` calls `heldFor` (`wake-cards.mjs`) | the `catchUpLines` port: waiting code contributes lines |
+| `catch-up.mjs` calls `heldFor` (`wake-cards.mjs`) | the `catchUpLines` port: waiting code contributes lines (done in step 10) |
 | `item-lines.mjs` calls `rt.remote.hostOf` | it moves to `Placement.hostOf` |
-| `read-message.mjs` calls `appOf` (`apps.mjs`) | Memory depends on Apps |
-| `thread-summary.mjs` reads `rt.turns`, `rt.exiting`, `rt.closing` and `rt.ledger` | Memory depends on Running and Work |
+| `read-message.mjs` calls `appOf` (`apps.mjs`) | Memory depends on Apps (done in step 10) |
+| `thread-summary.mjs` reads `rt.turns`, `rt.exiting`, `rt.closing` and `rt.ledger` | Summaries depends on Running, and takes the ledger Work holds (done in step 10) |
 | `turn-work.mjs` calls `recordScheduledTool` (`scheduled-wakes.mjs`) | the call moves to its caller, `turn-context.mjs` (done in step 7) |
 | `shell-runs.mjs` calls `whenWritable` (`store-outage.mjs`) | `Store.whenWritable` (step 7: Work takes a `whenWritable` bound to the runtime until the Store is a service) |
 | `remote/host-admin.mjs` calls `rt.stop` and `rt.remote` | the `hostTurns` port |
@@ -291,7 +301,7 @@ flowchart TD
   M --> N[Asks: the next need, session state, unread and notification]
   N --> O[Checks: stalled steps, then lint or quiet lint]
   O --> P[Threads: a topic’s unread]
-  P --> Q[Memory: settle a topic or side thread]
+  P --> Q[Summaries: settle a topic or side thread]
   Q --> R[Delivery: wake mentions, then take pending]
 ```
 
@@ -323,7 +333,7 @@ That is 58 members, from 152 methods today. `deletePersona`, `dismissFailed` and
 
 **`start()`** replaces the calls `server/index.mjs` makes after building `Runtime`, in their order: settling turns left interrupted, marking items left streaming as stopped, `rearmSchedules`, `expireStalePermissions`, `expireStaleCommands`, `ledger.expireStale`, `expireStaleJobs`, `rearmMirrors`, `restoreRemoteTurns`, `watchHosts`, and `drainAll` once Postbox listens.
 
-**`close()`** replaces `server/index.mjs`’s `close()` and `server/runtime-close.mjs`, in their order. `stopTimers` clears the timers of six owners: scheduled wakes (`rt.timers`, Delivery), lint entries (Checks), stopped turns’ watchdogs and the kept jobs’ poll (Turns), permission cards’ waits (asks) and summaries (Memory). It runs three times, because a turn that ends as it stops, or as its host’s link closes, can start one: before the turns stop, after them, and after the hosts stop. Then the ledger settles (Work’s `idle()`, with a grace time). Each owner gets a `stopTimers()`, and the facade calls all six at each of the three points, so the order stays in one place:
+**`close()`** replaces `server/index.mjs`’s `close()` and `server/runtime-close.mjs`, in their order. `stopTimers` clears the timers of six owners: scheduled wakes (`rt.timers`, Delivery), lint entries (Checks), stopped turns’ watchdogs and the kept jobs’ poll (Turns), permission cards’ waits (asks) and summaries (Summaries). It runs three times, because a turn that ends as it stops, or as its host’s link closes, can start one: before the turns stop, after them, and after the hosts stop. Then the ledger settles (Work’s `idle()`, with a grace time). Each owner gets a `stopTimers()`, and the facade calls all six at each of the three points, so the order stays in one place:
 
 ```mermaid
 sequenceDiagram
@@ -388,7 +398,7 @@ Smallest and least tangled first. Until a dependency is redone, a service takes 
 7. **Ledger and work.**
 8. **Checks**, with the `send` port.
 9. **Apps**, with `app.retired`; the app-send cards split off to asks.
-10. **Memory**, with the `catchUpLines` port.
+10. **Memory**, with the `catchUpLines` port; the thread summaries split off as Summaries.
 11. **Hosts**, with the `hostTurns` port.
 
 Asks, Delivery and Turns then wait for rooms-at-scale’s decisions on the permission layer and the inbox, behind the facade in their current shape. When those land, their pull requests redo them as services, with the end steps above, and `Runtime` becomes only the root and the facade.
@@ -407,7 +417,7 @@ Each step is its own pull request, and is done when:
 
 - **The order at the end of a turn.** Today it’s the order of the lines in `endTurn`; later it’s the order of the end steps in the root. A facade test holds today’s order before Turns is redone.
 - **Signals change who calls whom, not when.** Each listener runs synchronously where the call ran, in the order the root registers them; a step that adds a signal shows a test that would fail if the listener ran late.
-- **Memory has ten dependencies,** the most of the services redone first. If its step shows two concerns inside it (what an agent reads, and the thread summaries), it splits.
+- **Memory has ten dependencies,** the most of the services redone first. If its step shows two concerns inside it (what an agent reads, and the thread summaries), it splits. Step 10 did: Memory and Summaries.
 - **Two styles at once, for a while.** Until rooms at scale lands, 55 modules take `rt`. The ports and the getters on `Runtime` mark the seam; `svc-check.mjs` keeps services from reaching across it.
 - **Thin net in places.** A concern whose only tests pin internals has no net to delete against. The deletion rule makes the step write that coverage first.
 - **Overlap with other work.** designs/architecture/folders.md moves the same modules; services land in the target folders, so a module moves once.
@@ -457,7 +467,7 @@ Each step is its own pull request, and is done when:
   - `tests/arrange.mjs` was past Biome’s length with this step’s helpers, so its fakes and listeners moved to `tests/arrange-fakes.mjs` first, as a move of its own.
 - **Done:** step 7, Ledger and work. `server/work-service.mjs` is a class that `Runtime`’s constructor builds with the store, Threads, Sessions, Personas, Placement and Running, the ledger, `spawnShell` and a `whenWritable`; its interface tests are `tests/work-service.test.mjs`, and `tests/work-end-order.test.mjs` holds where a turn’s end records its work. Its modules (`work-view.mjs`, `turn-work.mjs`, `turn-end-work.mjs`, `archive-runtime.mjs`, `shell-runs.mjs`) take the service, not the runtime, as Assets’ do (step 6), and nothing moved between them. `Runtime` keeps the facade’s `runShellCommand`, `stopShellCommand`, `workGit`, `workDiff`, `workOutput` and `restoreWork`; the turn’s end and Stop call `rt.work.endWork`, and start-up, listening and `close()` call `rt.work`’s `expireStale`, `archiveAll`, `stopAll`, `stopArchive` and `idle`. What step 7 found:
   - Work needs four members the interface didn’t list: `commandFolder` and `flushShellOutput`, which tests read and call; and `archiveAll` and `stopArchive`, the archive passes that start-up and shutdown ran through `rt.turnArchive`. `workEvents` takes the turn’s `live` check, and `expireStale()` ends the commands left running, then the ledger’s records, the two start-up calls it replaces, in their order.
-  - The ledger is an external dependency both `Runtime` and Work hold, as the blobs are (step 6): tests pass one to `Runtime`’s constructor, and waiting code (`deliver`, `turn-context`, `job-records`, `scheduled-wakes`, `write-intent`) and Memory’s `thread-summary` read `rt.ledger`, the same ledger.
+  - The ledger is an external dependency both `Runtime` and Work hold, as the blobs are (step 6): tests pass one to `Runtime`’s constructor, and waiting code (`deliver`, `turn-context`, `job-records`, `scheduled-wakes`, `write-intent`) and `thread-summary` read `rt.ledger`, the same ledger (Summaries takes it since step 10).
   - `recordScheduledTool` recorded a tool’s start in the ledger, then counted it toward a scheduled wake. Work’s `toolUse` records it now, and `turn-context.mjs` counts it right after, with the ledger flag off, so the order stays: the call is seen, the ledger has it, the wake counts it.
   - The Store isn’t a service yet, so Work takes `whenWritable` as a function bound to the runtime, as Placement took `midTurn` before Running (step 1).
   - No test held where a turn’s end records its work (“Risks”, “The order at the end of a turn”). `tests/work-end-order.test.mjs` does: after the turn leaves Running, before its reply settles and before a failed turn fails its session. Neither did any test hold that the archive passes keep a live turn hot; the interface test does.
@@ -474,7 +484,13 @@ Each step is its own pull request, and is done when:
   - An app’s data file is read from the blobs Assets holds, the same store as `rt.blobs`, so the fixture’s `withBlobs` (step 6) still sets it.
   - `view-app/view-of.mjs` keys view_app’s state by the runtime object and reads none of it; it stays as it was, with `view-app.mjs` and `consent.mjs`, which wait with asks.
   - The signals’ timing is held by tests that read right after the call: “#193: retiring drops the sends waiting for the person, clears needs-you, and later sends are refused” fails when `app.retired`’s listener runs late. No test was deleted, and no spec changed.
-- **Next:** step 10, Memory, with the `catchUpLines` port.
+- **Done:** step 10, Memory, with the `catchUpLines` port, and the thread summaries split off as Summaries. `server/memory-service.mjs` is a class that `Runtime`’s constructor builds with the store, Threads, Sessions, Personas, Placement, Assets and Apps, and `catchUpLines`, which the root binds to the wake cards’ `heldFor`; `server/summary-service.mjs` is a class it builds with the store, Threads, Sessions, Personas and Running, the ledger, the adapter registry and the server’s settings. Their interface tests are `tests/memory-service.test.mjs` and `tests/summary-service.test.mjs`, and `tests/memory-golden.test.mjs` holds what an agent reads, byte for byte, as `main` gave it. Memory’s modules (`catch-up.mjs`, `item-lines.mjs`, `read-message.mjs`, `thread-catch-up.mjs`) take Memory, and `thread-summary.mjs` takes Summaries, never the runtime. One move came first, with no change to the code moved: what an agent reads of a topic or side thread, from `thread-summary.mjs` to `thread-catch-up.mjs`. `Runtime` keeps no method of either; the agent tools, `deliver`, a host’s snapshot, the turn’s end and `close()` reach them as `rt.memory` and `rt.summaries`, and the root’s `item.moved` listener calls `Memory.moveMarkers`. What step 10 found:
+  - Memory held two concerns, as “Risks” foresaw, so it split. What an agent reads needs Placement, Assets and Apps; the summaries need Running, the ledger and the adapters; and neither calls the other: an agent reads a summary from the store, on the thread’s line. `thread-summary.mjs` held both, so its reading half moved out first. The thread’s line (`lineOf`) and what counts as said (`SAID`) stay in `thread-summary.mjs`, and `lineOf` takes the store.
+  - Memory needs three members the interface didn’t list: `pointerIfSeen`, which `deliver` calls for a mention a catch-up already gave (#484); and `turnContext` and `threadCatchUp`, which build a turn’s context in a topic or side thread. Neither Running nor Work is a dependency of Memory any more; Summaries takes the ledger, an external dependency Work holds too, as the blobs are Assets’ and `Runtime`’s (step 6).
+  - The summarizer seam was an undeclared member of `Runtime` (`rt.summarize`, “The problem, measured”). It is Summaries’ declared `summarize` field now, which the fixture’s `withSummarizer` sets; two tests that assigned `rt.summarize` call the fixture. The summary timers were a `WeakMap` keyed by the runtime, and are Summaries’ own.
+  - The root binds `catchUpLines` once: it calls `heldFor`, a module function no test replaces, so it needs no late lookup as `send` does (step 8).
+  - No test held the whole text an agent reads; `tests/memory-golden.test.mjs` does, built through the facade and the fixture, and fails when the port’s lines are dropped. `tests/remote-broker-snapshot.test.mjs` compares a host’s reading tools with Memory’s methods, as it did with `Runtime`’s. No test was deleted, and no spec changed.
+- **Next:** step 11, Hosts, with the `hostTurns` port.
 
 ## Appendix: every module’s members
 
