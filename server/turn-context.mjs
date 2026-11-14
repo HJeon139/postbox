@@ -34,14 +34,14 @@ export function adapterContext(rt, se0, turn) {
  */
 function whatTheTurnIs(rt, se0, turn) {
   const thread = rt.s.threads[turn.threadId];
-  const persona = rt.personaFor(se0);
+  const persona = rt.personas.forSession(se0);
   return {
     signal: turn.abort.signal,
     mcpUrl: `${rt.config.origin}/mcp?session=${encodeURIComponent(turn.sessionId)}&turn=${turn.token}`,
     persona,
     project: rt.s.projects[thread?.projectId] ?? null,
     thread: { id: turn.threadId, title: thread?.title ?? '', kind: thread?.kind ?? 'thread' },
-    handles: rt.handles(),
+    handles: rt.personas.handles(),
     room: rt.roomOf(turn.threadId, se0),
     /** What the adapter saved for this session last time, such as its own session id. */
     state: { ...(se0.backendState ?? {}) },

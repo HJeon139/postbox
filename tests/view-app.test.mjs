@@ -89,7 +89,7 @@ test('view_app tells an agent on another computer it can’t show its app yet, a
   const s = setup();
   try {
     keepAnswer(viewOf(s.rt).dir, 'allowed');
-    s.rt.personaFor = () => ({ remote: { hostId: 'h_devbox' } });
+    s.rt.personas.forSession = () => ({ remote: { hostId: 'h_devbox' } });
     const r = await viewApp(s.rt, s.se.id, { appId: s.appId }, ctx(s.t));
     assert.equal(r.ok, false);
     assert.match(r.message, /can’t show an app to an agent on another computer yet/);

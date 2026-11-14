@@ -132,7 +132,7 @@ export function settingsFor(persona, memoryDir = null) {
  */
 export const memoryFolder = (root, persona, project) => `${personaMemory(root, persona)}/${part(project?.id || 'no-project')}`;
 
-/** A persona’s memory folders for every project, which deleting it removes (server/persona-delete.mjs). */
+/** A persona’s memory folders for every project, which deleting it removes (Personas.remove, server/personas.mjs). */
 export const personaMemory = (root, persona) => `${root}/${part(persona.id || persona.handle)}`;
 // Ids are Postbox’s own (newId); anything else in one is replaced, so it stays one folder under root.
 const part = (v) => String(v).replace(/[^\w-]/g, '_');

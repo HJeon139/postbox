@@ -119,7 +119,7 @@ function offered(rt, sessionId, turnToken, name) {
 /** What view_app needs of the turn: where it speaks, how to end its reply so far, and whether its agent sees images. */
 function viewContext(rt, sessionId, turn) {
   const se = rt.session(sessionId);
-  const images = rt.adapters.get(rt.personaFor(se)?.backend)?.capabilities?.images === true;
+  const images = rt.adapters.get(rt.personas.forSession(se)?.backend)?.capabilities?.images === true;
   return {
     threadId: () => turn?.threadId ?? se.threadId,
     endSegment: () => {

@@ -2,7 +2,7 @@
 // list, so without this the agent can’t tell it apart from a computer that lacks it: a critic without shell told the
 // person it had “no shell, gh or GitHub access”. The guide names what’s off (offText in server/adapters/guide.mjs) and
 // points at ask_for_tool, which shows a card the person answers. Turning the tool on changes the persona, in every
-// conversation, from its next turn (Runtime.personaFor reads Tools from the persona, not the session’s snapshot).
+// conversation, from its next turn (Personas.forSession reads Tools from the persona, not the session’s snapshot).
 
 import { REAL_BACKEND_TOOLS } from './adapters/setup.mjs';
 import { releaseNeed } from './card-needs.mjs';

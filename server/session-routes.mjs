@@ -2,8 +2,6 @@
 // about background jobs and a job’s own Stop (#129); and deleting a persona, which deletes its sessions (#208). Moved out of server/index.mjs, whose route() keeps one line that
 // calls this.
 
-import { deletePersona } from './persona-delete.mjs';
-
 /** A route’s answer: its status and its JSON body. */
 const done = (status, body) => ({ status, body });
 
@@ -27,7 +25,7 @@ export async function sessionRoute(rt, path, method, body) {
   }
   if ((m = path.match(/^\/api\/sessions\/([^/]+)\/jobs\/([^/]+)\/stop$/)) && method === 'POST')
     return done(200, await rt.stopJob(m[1], decodeURIComponent(m[2])));
-  // Deleting a persona (#208, server/persona-delete.mjs), at once.
-  if ((m = path.match(/^\/api\/personas\/([^/]+)$/)) && method === 'DELETE') return done(200, { handle: deletePersona(rt, m[1]).handle });
+  // Deleting a persona (#208, Runtime.deletePersona), at once.
+  if ((m = path.match(/^\/api\/personas\/([^/]+)$/)) && method === 'DELETE') return done(200, { handle: rt.deletePersona(m[1]).handle });
   return null;
 }

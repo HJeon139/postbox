@@ -12,7 +12,6 @@ import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { ClaudeCodeAdapter } from '../server/adapters/claude-code.mjs';
 import { memoryRootFor } from '../server/adapters/folder.mjs';
 import { memoryFolder } from '../server/adapters/setup.mjs';
-import { deletePersona } from '../server/persona-delete.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { sessionRoute } from '../server/session-routes.mjs';
 import { Store } from '../server/store.mjs';
@@ -82,7 +81,7 @@ test('#208: the delete’s answer waits for no backend: a slow forget runs after
   const reached = new Promise((r) => (entered = r));
   const slow = { name: 'slow', deliver: async () => {}, forget: () => new Promise((r) => entered(r)) };
   arrange.withAdapter(s.rt, slow);
-  const { forgotten } = deletePersona(s.rt, s.alpha.id);
+  const { forgotten } = s.rt.deletePersona(s.alpha.id);
   assert.equal(s.store.state.personas[s.alpha.id], undefined, 'gone before any backend forgets it');
   const release = /** @type {(v?: unknown) => void} */ (await reached);
   release();
@@ -93,7 +92,7 @@ test('#208: deleting a persona that doesn’t exist says so', () => {
   const s = setup();
   return s.then((x) =>
     assert.throws(
-      () => deletePersona(x.rt, 'nope'),
+      () => x.rt.deletePersona('nope'),
       (e) => e.status === 404,
     ),
   );

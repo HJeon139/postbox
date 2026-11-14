@@ -208,7 +208,7 @@ export function appQuery(rt, appId, tool, args) {
   const app = rt.s.apps[appId];
   if (!app) throw httpError(404, 'That app doesn’t exist.');
   const se = rt.s.sessions[app.sessionId];
-  const persona = se && rt.personaFor(se);
+  const persona = se && rt.personas.forSession(se);
   const held = (/** @type {string} */ t) => HELD_BY_EVERY_AGENT.has(t) || persona?.tools?.includes(t);
   const allowed = new Set((app.versions[app.current - 1].permissions ?? []).filter(held));
   if (!allowed.has(tool)) throw httpError(403, `This app can’t use “${tool}”. It needs the permission, and its agent needs the tool.`);

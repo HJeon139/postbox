@@ -26,7 +26,7 @@ export async function commandFolder(rt, threadId) {
   const t = rt.thread(threadId);
   const members = rt.sessionsIn(threadId).filter((x) => !x.retiredFork);
   const se = members.find((x) => x.id === t.lastSpeaker) ?? members[0];
-  const persona = se ? rt.personaFor(se) : null;
+  const persona = se ? rt.personas.forSession(se) : null;
   const project = rt.s.projects[t.projectId] ?? null;
   const adapter = persona ? rt.placement.requestAdapter(se.handle, persona) : null;
   if (persona?.remote?.hostId) return rt.placement.hereFolder(persona, project, adapter);

@@ -24,13 +24,16 @@ export { PERMISSION_MODES } from './permission-modes.mjs';
 const MAX_CONVERSATION_RULES = 200;
 const MAX_ADD_DIRS = 20;
 
+/** The persona named, or null. @param {any} rt @param {string|null} personaId */
+const personaOf = (rt, personaId) => (personaId ? rt.persona(personaId) : null);
+
 /**
  * Who the panel is about: { se, persona, project, folder }. A session’s persona is the one it runs with now.
  * @param {any} rt @param {{ sessionId?: string|null, personaId?: string|null, projectId?: string|null }} who
  */
 export async function panelTarget(rt, { sessionId = null, personaId = null, projectId = null }) {
   const se = sessionId ? rt.session(sessionId) : null;
-  const persona = se ? rt.personaFor(se) : personaId ? rt.persona(personaId) : null;
+  const persona = se ? rt.personas.forSession(se) : personaOf(rt, personaId);
   if (!persona) throw httpError(404, 'That agent doesn’t exist.');
   const project = rt.s.projects[se ? rt.s.threads[se.threadId]?.projectId : (projectId ?? '')] ?? rt.latestProject(persona.id) ?? null;
   const adapter = rt.placement.requestAdapter(persona.handle, persona);

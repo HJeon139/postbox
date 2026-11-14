@@ -84,9 +84,9 @@ function autoResume(rts, sessionId) {
   const r = se?.remoteTurn;
   if (!r?.resume || se.retiredFork || rt.turns.has(sessionId) || rt.exiting.has(sessionId) || rt.closing) return;
   // Only on the host it stopped on: an agent moved since waits for the person.
-  if (hostOf(rt.personaFor(se)) !== r.hostId) return;
+  if (hostOf(rt.personas.forSession(se)) !== r.hostId) return;
   // Nor can one whose backend isn’t registered here: a resume would only fail again (#874, #909).
-  if (!rt.placement.registeredAdapter(rt.personaFor(se))) return;
+  if (!rt.placement.registeredAdapter(rt.personas.forSession(se))) return;
   // Nor while that host hasn’t confirmed a stop Postbox asked of it for this session (#965).
   if (stopWaitsOn(r, r.hostId)) return;
   // An interruption that keeps coming back waits for the person after a few resumes, and so does one whose process
@@ -108,7 +108,7 @@ export function resume(rts, sessionId) {
   if (rt.turns.has(sessionId)) return { ok: false, message: `@${se.handle} is already at work.` };
   // A turn there that Postbox asked to stop may still run until the daemon confirms it: a new one would run beside it
   // on the same session (#872, #965). A stop on another host, one the agent moved off, doesn’t hold it.
-  const hostId = hostOf(rt.personaFor(se));
+  const hostId = hostOf(rt.personas.forSession(se));
   if (hostId && stopWaitsOn(r, hostId)) {
     const name = rt.s.hosts?.[hostId]?.name ?? 'its host';
     return { ok: false, message: `@${se.handle}’s last turn on ${name} hasn’t confirmed it stopped. Resume once it has.` };
@@ -136,7 +136,7 @@ export async function reattach(rts, sessionId) {
   const listed = (welcome?.turns ?? []).find((/** @type {any} */ t) => t.turn === r.turn);
   // An agent moved off the host since can’t be attached there, nor one whose backend isn’t registered here (#874,
   // #909): it waits for the person, and the host is asked to stop a turn still there.
-  const persona = rt.personaFor(now);
+  const persona = rt.personas.forSession(now);
   const moved = hostOf(persona) !== r.hostId;
   const unregistered = !rt.placement.registeredAdapter(persona);
   if (!listed || moved || unregistered) {

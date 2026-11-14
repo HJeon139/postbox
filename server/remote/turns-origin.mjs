@@ -178,7 +178,7 @@ function readMessage(kind, m, max) {
  */
 export function continuing(rt, se, notice) {
   const r = se.remoteTurn;
-  if (hostOf(rt.personaFor(se)) !== r.hostId) return { message: notice, opts: {} };
+  if (hostOf(rt.personas.forSession(se)) !== r.hostId) return { message: notice, opts: {} };
   const threadId = known(rt.s.threads, r.threadId) ? r.threadId : null;
   const o = readOrigin(rt, r.origin);
   if (!o) return { message: notice, opts: { threadId } };

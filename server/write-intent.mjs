@@ -215,7 +215,7 @@ async function judged(rt, turn, request, call, words) {
 export async function requestedCall(rt, sessionId, { tool, input, agentId }) {
   const se = rt.s.sessions[sessionId];
   const turn = rt.turns.get(sessionId);
-  const persona = se && rt.personaFor(se);
+  const persona = se && rt.personas.forSession(se);
   // A host’s turn asks through its host (#120); Ask me means every card; a subagent didn’t get the person’s request.
   if (!turn || turn.remote || agentId || persona?.permissionMode !== 'auto' || !setupOf(persona).allowRequested) return null;
   // Only Postbox’s own rules for writes outside: a call the person’s own ask rule covers keeps its card, even where

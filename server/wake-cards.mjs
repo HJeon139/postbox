@@ -147,7 +147,7 @@ export function resolveHop(rt, threadId, itemId, allow) {
   releaseNeed(rt, from, itemId);
   rt.threads.patch(threadId, { hops: 0 });
   // Added: it joins with a note on why, as an agent the person adds does, and the wake goes on (#228).
-  const p = it.join && allow ? rt.personaByHandle(it.to) : null;
+  const p = it.join && allow ? rt.personas.byHandle(it.to) : null;
   if (p) {
     rt.ensureSession(threadId, p.id, { brief: `@${it.from} woke you, and the person added you to this conversation.`, joined: { by: it.from, in: threadId } });
     rt.threads.addItem(threadId, { kind: 'system', variant: 'joined', to: p.handle });
