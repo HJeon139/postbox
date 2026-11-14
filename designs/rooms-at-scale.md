@@ -38,7 +38,7 @@ Each part below answers one of the failures above, and they lean on each other: 
 flowchart LR
   P[The person] -->|gives a task| TH[Thread per piece of work]
   TH -->|its live line| R[Main chat: directions and thread lines]
-  A[Agents] -->|mention or wake_agent| IN[Inbox per agent]
+  A[Agents] -->|mention| IN[Inbox per agent]
   IN -->|a turn when idle| A
   A -->|live steps, not stored| LS[Live state per agent]
   LS --> TH
@@ -86,8 +86,8 @@ Changes in `intent.md`: the topic thread rows in “Agents and sessions”, the 
 
 **Today.** A message for a busy agent is queued once for all its recipients. One open card holds up to 20 other wakes. Holds kept only in memory are lost on restart. A queued wake takes its sender’s newest post in place of the older one. Turn input is a catch-up summary in which a mention can be cut or given twice. These produced #594, #1149, #1146, #1136, #484, #834 and #1108, among others.
 
-**End state.** Mentions, `wake_agent` and the queue stay. Underneath them, each agent has one stored inbox per conversation.
-- **A message addressed to an agent becomes an entry in its inbox** once the sender’s message is final, not while it streams (#834). A person’s mention, an agent’s mention, `wake_agent`, an answer to an ask and a scheduled wake all arrive the same way.
+**End state.** Mentions and the queue stay. `wake_agent` goes: an @-mention is the only way one agent wakes another (the person’s decision of 13 November 2026, [#481](https://github.com/HJeon139/postbox/issues/481); [`room-context.md`](room-context.md), “One message, one wake”). Underneath them, each agent has one stored inbox per conversation.
+- **A message addressed to an agent becomes an entry in its inbox** once the sender’s message is final, not while it streams (#834). A person’s mention, an agent’s mention, an answer to an ask and a scheduled wake all arrive the same way.
 - **An idle agent with entries starts a turn.** Its input is its entries, whole and in order, with sender, time and thread, within a per-turn size budget. The rest of the room since its last turn comes after, as a bounded tail with a pointer to `read_conversation`.
 - **Nothing is held, merged or dropped.** A newer post from the same sender is noted on the waiting entry (“@x posted since”) rather than replacing it. No card holds other messages.
 - **The sender sees each entry’s state:** waiting behind @x’s turn since a given time, delivered, or failed.
