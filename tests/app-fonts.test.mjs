@@ -216,7 +216,9 @@ test('#1322 the scan is linear: no app at the size limit holds the server up', a
     assert.ok(code.length > LIMITS.appCode - 20 && code.length <= LIMITS.appCode, what);
     const ms = await timed(code);
     if (ms instanceof Error) assert.fail(`${what}: ${ms.message}`);
-    assert.ok(ms < 100, `${what}: ${Number.isFinite(ms) ? `${Math.round(ms)} ms` : 'stopped after 3 s'}`);
+    // A linear scan takes about 10 ms here at the limit and 110 ms in a cold worker on CI’s runner; the scans it
+    // replaced took 2.7 s on 222 characters and 4.8 s on 280 KB, so 1 s holds the line without timing the runner.
+    assert.ok(ms < 1000, `${what}: ${Number.isFinite(ms) ? `${Math.round(ms)} ms` : 'stopped after 3 s'}`);
   }
 });
 
