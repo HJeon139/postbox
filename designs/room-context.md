@@ -46,7 +46,7 @@ On 13 November 2026:
 | A reply doesn’t wake its waker | 21 turns were a short acknowledgment with no work | [#372](https://github.com/HJeon139/postbox/issues/372) |
 | Waiting messages arrive together | 92 turns took several queued messages at once | [#374](https://github.com/HJeon139/postbox/issues/374) |
 | The prompt cache holds across turns | 67 of 8,301 requests over 100,000 tokens read under half from cache | [#515](https://github.com/HJeon139/postbox/issues/515) |
-| The catch-up doesn’t repeat itself | 6% of its lines had been given to that session before | [#484](https://github.com/HJeon139/postbox/issues/484) |
+| The catch-up doesn’t repeat itself | 6% of its lines had been given to that session before | [#484](https://github.com/HJeon139/postbox/issues/484), open again for a regression |
 | Agents pull when pointed | The read calls above | [#109](https://github.com/HJeon139/postbox/issues/109): a cut item gives its id |
 | One session per agent per conversation | The person’s ruling | Principle 7, #228, #469 |
 
@@ -118,7 +118,7 @@ Each of these was considered and left out, because nothing measured asks for it 
 | A notice or an index after a compaction | Nothing shows what agents fail to find after one. The one filed loss is review thread ids ([#791](https://github.com/HJeon139/postbox/issues/791)) |
 | A one-line answer when an agent reads an item again | Of 54 repeat reads, 30 were reading on through a long item. An agent that reads twice usually can’t find the item ([#499](https://github.com/HJeon139/postbox/issues/499)) |
 | A shorter catch-up | Issue #1 was agents answering from partial information. It can be tried once search exists |
-| A session per thread, or thread isolation | Tried and removed (#228, #469) |
+| A session per thread, or thread isolation | Tried. Forks went with #228, and the person ruled against thread isolation in #469, which is still open |
 | A smaller starting context | Not designed here, but the search measurement makes it the next thing to measure: a Claude Code request re-read about 52,000 tokens before any of the agent’s own reading (about 38,000 of them before any conversation, in earlier recorded turns), and the count of requests decided what a short session cost. It belongs to each backend’s setup and to the size of Postbox’s tool definitions (`search_conversation` adds about 148 tokens to every request) |
 
 ## How this was measured
