@@ -84,7 +84,8 @@ export function htmlParts(code) {
       continue;
     }
     const tag = readTag(code, lt + 1);
-    attributes.push(...tag.attrs);
+    // One by one: a tag can hold as many attributes as the code has room for, too many to spread into a call.
+    for (const a of tag.attrs) attributes.push(a);
     i = tag.end;
     const raw = tag.name.toLowerCase();
     if (raw !== 'style' && raw !== 'script') continue;

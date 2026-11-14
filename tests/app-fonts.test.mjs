@@ -159,7 +159,8 @@ test('#1322 show_app refuses an app with its own font, and nothing is shown', as
 
 /**
  * How long appFontErrors takes on code, in ms, measured in a worker that’s stopped after 3 s, so a scan that runs
- * away fails the test rather than hanging it. @param {string} code @returns {Promise<number>}
+ * away fails the test rather than hanging it. The worker has about the main thread’s stack, where the server runs
+ * the scan, and an error it throws is the test’s failure. @param {string} code @returns {Promise<number | Error>}
  */
 function timed(code) {
   const url = new URL('../shared/app-fonts.mjs', import.meta.url).href;
@@ -170,7 +171,11 @@ import(workerData.url).then(({ appFontErrors }) => {
   parentPort.postMessage(performance.now() - start);
 });`;
   return new Promise((resolve) => {
-    const w = new Worker(body, { eval: true, workerData: { code, url } });
+    const w = new Worker(body, { eval: true, workerData: { code, url }, resourceLimits: { stackSizeMb: 1 } });
+    w.once('error', (e) => {
+      clearTimeout(stop);
+      resolve(e);
+    });
     const stop = setTimeout(() => {
       void w.terminate();
       resolve(Number.POSITIVE_INFINITY);
@@ -204,10 +209,13 @@ test('#1322 the scan is linear: no app at the size limit holds the server up', a
     'canvas fonts with no closing quote': fill('.font = `', '<script>'),
     'font-family attrs with no value': fill("'font-family', ", '<script>'),
     'closed tags, each with a style': fill('<p style="font-family: inherit">x</p>'),
+    // One tag with as many attributes as fit: spread into a call, they overflowed the stack (#1332’s review).
+    'one tag of bare attributes': `${fill(' b', '<a')}`.slice(0, LIMITS.appCode - 1) + '>',
   };
   for (const [what, code] of Object.entries(inputs)) {
     assert.ok(code.length > LIMITS.appCode - 20 && code.length <= LIMITS.appCode, what);
     const ms = await timed(code);
+    if (ms instanceof Error) assert.fail(`${what}: ${ms.message}`);
     assert.ok(ms < 100, `${what}: ${Number.isFinite(ms) ? `${Math.round(ms)} ms` : 'stopped after 3 s'}`);
   }
 });
@@ -234,4 +242,11 @@ test('#1322 the platform fallbacks common stacks end with may follow an allowed 
   // A fallback first is the font the app asks for, and any other name after an allowed one is still its own font.
   assert.match(refused('<style>body { font-family: Arial, sans-serif; }</style>')[0] ?? '', /“Arial”/);
   assert.match(refused('<style>body { font-family: -apple-system, Georgia, serif; }</style>')[0] ?? '', /“Georgia”/);
+});
+
+test('#1322 one tag with as many attributes as the limit holds is read, not a crash', () => {
+  // About 200,000 attributes: a call spread over them throws RangeError, which validateBlock would pass up.
+  const tag = `${'<a'}${' b'.repeat(299_000)} style="font-family: Georgia">`;
+  assert.ok(tag.length <= LIMITS.appCode);
+  assert.match(refused(tag)[0] ?? '', /“Georgia”/);
 });
