@@ -42,7 +42,7 @@ export function searchConversation(rt, se, args = {}) {
   const query = args.query.trim().slice(0, SEARCHING.query);
   const k = Math.max(1, Math.min(SEARCHING.most, Math.floor(Number(args.limit)) || SEARCHING.hits));
   const search = searchOf(rt.store);
-  const hits = rt
+  const hits = rt.threads
     .conversationThreads(se.threadId)
     .flatMap((threadId) => search.search(threadId, query, k).map((hit) => ({ ...hit, threadId })))
     .sort((a, b) => b.score - a.score)
