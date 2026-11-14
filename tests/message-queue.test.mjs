@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import { formatMessage } from '../server/adapters/guide.mjs';
 import { batchPending } from '../server/message-queue.mjs';
 import { combineMessages } from '../server/queue-batch.mjs';
+import * as arrange from './arrange.mjs';
 import { held, settle, setup } from './side-threads-fixture.mjs';
 
 test('three queued wakes from different agents become one turn with each sender and time', async () => {
@@ -20,7 +21,7 @@ test('three queued wakes from different agents become one turn with each sender 
   ])
     rt.agentWake(sender.id, 'beta', text);
   const queue = store.state.threads[t.id].queue.map((q, index) => ({ ...q, at: (index + 1) * 1000 }));
-  rt.putThread({ ...store.state.threads[t.id], queue });
+  arrange.putThread(rt, { ...store.state.threads[t.id], queue });
   assert.equal(queue.length, 3, 'each queued wake stays visible until delivery');
   busy.release();
   await settle(rt);
@@ -61,7 +62,7 @@ test('a waker’s unaddressed later post replaces a queued wake and reaches its 
   adapter.next.push(busy.step);
   rt.sendMessage(t.id, { text: '@beta start' });
   rt.agentWake(alpha.id, 'beta', 'Please check it.');
-  rt.addItem(t.id, { kind: 'agent', sessionId: alpha.id, handle: 'alpha', text: 'I already resolved it.', status: 'done' });
+  arrange.post(rt, t.id, { kind: 'agent', sessionId: alpha.id, handle: 'alpha', text: 'I already resolved it.', status: 'done' });
   busy.release();
   await settle(rt);
   const calls = adapter.calls.filter((call) => call.sessionId === beta.id);
@@ -115,7 +116,7 @@ test('a waker finishing the same turn does not supersede its own queued handoff'
   adapter.next.push(busy.step);
   rt.sendMessage(t.id, { text: '@beta start' });
   rt.agentWake(alpha.id, 'beta', 'Please review.', { fromTurnId: 'source-turn' });
-  rt.addItem(t.id, { kind: 'agent', sessionId: alpha.id, handle: 'alpha', turnId: 'source-turn', text: 'I asked for review.', status: 'done' });
+  arrange.post(rt, t.id, { kind: 'agent', sessionId: alpha.id, handle: 'alpha', turnId: 'source-turn', text: 'I asked for review.', status: 'done' });
   busy.release();
   await settle(rt);
   assert.equal(adapter.calls.filter((call) => call.sessionId === beta.id)[1].message.text, 'Please review.');
@@ -143,7 +144,7 @@ test('direct pending messages and a queued wake are delivered together', async (
 test('a batch never combines messages from the conversation and a topic thread', async () => {
   const { rt, adapter, t, alpha, beta, c } = setup();
   const gamma = rt.ensureSession(t.id, c.id);
-  const root = rt.addItem(t.id, { kind: 'agent', sessionId: alpha.id, handle: 'alpha', text: 'A topic.', status: 'done' });
+  const root = arrange.post(rt, t.id, { kind: 'agent', sessionId: alpha.id, handle: 'alpha', text: 'A topic.', status: 'done' });
   const topic = rt.startTopic(t.id, root.id).threadId;
   const busy = held();
   adapter.next.push(busy.step);
@@ -164,13 +165,13 @@ test('a batch never combines messages from the conversation and a topic thread',
 
 test('a post in another thread does not supersede a queued wake in the conversation', async () => {
   const { rt, adapter, t, alpha, beta } = setup();
-  const root = rt.addItem(t.id, { kind: 'agent', sessionId: alpha.id, handle: 'alpha', text: 'A topic.', status: 'done' });
+  const root = arrange.post(rt, t.id, { kind: 'agent', sessionId: alpha.id, handle: 'alpha', text: 'A topic.', status: 'done' });
   const topic = rt.startTopic(t.id, root.id).threadId;
   const busy = held();
   adapter.next.push(busy.step);
   rt.sendMessage(t.id, { text: '@beta start' });
   rt.agentWake(alpha.id, 'beta', 'Still needed.');
-  rt.addItem(topic, { kind: 'agent', sessionId: alpha.id, handle: 'alpha', text: 'Different topic.', status: 'done' });
+  arrange.post(rt, topic, { kind: 'agent', sessionId: alpha.id, handle: 'alpha', text: 'Different topic.', status: 'done' });
   busy.release();
   await settle(rt);
   assert.equal(adapter.calls.filter((call) => call.sessionId === beta.id)[1].message.text, 'Still needed.');
@@ -182,7 +183,7 @@ test('refreshing a wake does not strand a queued message addressed to several ag
   adapter.next.push(busy.step);
   rt.sendMessage(t.id, { text: '@beta start' });
   rt.agentWake(alpha.id, 'beta', 'Obsolete request.');
-  rt.addItem(t.id, { kind: 'agent', sessionId: alpha.id, handle: 'alpha', text: 'Already resolved.', status: 'done' });
+  arrange.post(rt, t.id, { kind: 'agent', sessionId: alpha.id, handle: 'alpha', text: 'Already resolved.', status: 'done' });
   rt.sendMessage(t.id, { text: '@alpha @beta the shared next task.' });
   busy.release();
   await settle(rt);
@@ -218,7 +219,7 @@ test('an empty streaming placeholder does not supersede a queued wake', async ()
   adapter.next.push(busy.step);
   rt.sendMessage(t.id, { text: '@beta start' });
   rt.agentWake(alpha.id, 'beta', 'Still needs review.', { fromTurnId: 'old-turn' });
-  rt.addItem(t.id, { kind: 'agent', sessionId: alpha.id, handle: 'alpha', turnId: 'new-turn', text: '', status: 'streaming' });
+  arrange.post(rt, t.id, { kind: 'agent', sessionId: alpha.id, handle: 'alpha', turnId: 'new-turn', text: '', status: 'streaming' });
   busy.release();
   await settle(rt);
   assert.equal(adapter.calls.filter((call) => call.sessionId === beta.id)[1].message.text, 'Still needs review.');
@@ -258,7 +259,7 @@ test('a pending batch is reconsidered when a newer message supersedes one of its
     ['gamma', 'other', 'Independent request.'],
     ['alpha', 'new', 'Current request.'],
   ].map(([handle, turnId, text]) => {
-    const item = rt.addItem(t.id, { kind: 'agent', handle, turnId, text, status: 'done' });
+    const item = arrange.post(rt, t.id, { kind: 'agent', handle, turnId, text, status: 'done' });
     return { kind: 'agent', from: `@${handle}`, text, itemId: item.id, at: item.at };
   });
   const pending = [{ message: combineMessages(messages.slice(0, 2)) }, { message: messages[2] }];
@@ -275,9 +276,9 @@ test('a newer unaddressed post replaces a directly pending wake exactly once', a
   const busy = held();
   adapter.next.push(busy.step);
   rt.sendMessage(t.id, { text: '@beta start' });
-  const old = rt.addItem(t.id, { kind: 'agent', handle: 'alpha', turnId: 'old', text: 'Please review.' });
+  const old = arrange.post(rt, t.id, { kind: 'agent', handle: 'alpha', turnId: 'old', text: 'Please review.' });
   rt.deliver(beta.id, { kind: 'agent', from: '@alpha', text: old.text, itemId: old.id, at: old.at });
-  const newer = rt.addItem(t.id, {
+  const newer = arrange.post(rt, t.id, {
     kind: 'agent',
     sessionId: alpha.id,
     handle: 'alpha',

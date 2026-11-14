@@ -69,6 +69,15 @@ export const moveToEnd = (rt, threadId, itemId, stub, patch) => rt.bringForward(
 /** An agent’s reaction to a message, or the person’s when `by` is left out. @param {Runtime} rt @param {string} threadId @param {string} itemId @param {string} emoji @param {object} [by] */
 export const react = (rt, threadId, itemId, emoji, by) => toggleReaction(rt, threadId, itemId, emoji, by);
 
+/** A thread, then the conversation it branched from. @param {Runtime} rt @param {string} threadId */
+export const lineage = (rt, threadId) => rt.lineage(threadId);
+
+/** Every thread of a thread’s conversation, its lineage first. @param {Runtime} rt @param {string} threadId */
+export const conversationThreads = (rt, threadId) => rt.conversationThreads(threadId);
+
+/** The terms a thread knows, its own over its conversation’s. @param {Runtime} rt @param {string} threadId */
+export const glossaryFor = (rt, threadId) => rt.glossaryFor(threadId);
+
 /** Shares text into a conversation from a topic or side thread, as a summary or an answer. @param {Runtime} rt @param {string} threadId @param {object} opts */
 export const shareText = (rt, threadId, opts) => rt.shareText(threadId, opts);
 
@@ -249,6 +258,21 @@ export const withPushes = (rt, pushes) => seam(rt, 'pushes', pushes);
 
 /** Replaces the model that summarizes a thread; undefined restores the real one. @param {Runtime} rt @param {any} summarize */
 export const withSummarizer = (rt, summarize) => seam(rt, 'summarize', summarize);
+
+/**
+ * Hears each change to an item, before it’s written as it would be. Returns a function that stops listening.
+ * @param {Runtime} rt @param {(threadId: string, itemId: string, patch: object) => void} fn
+ */
+export function onItemPatch(rt, fn) {
+  const patchItem = rt.patchItem.bind(rt);
+  rt.patchItem = (threadId, itemId, patch) => {
+    fn(threadId, itemId, patch);
+    return patchItem(threadId, itemId, patch);
+  };
+  return () => {
+    rt.patchItem = patchItem;
+  };
+}
 
 /**
  * Hears each notification the server raises, before it goes out as it would. Returns a function that stops listening.

@@ -4,6 +4,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import * as arrange from './arrange.mjs';
 import { setup } from './side-threads-fixture.mjs';
 
 const REASON = '@beta’s Claude Code isn’t available on this computer. Install it and restart Postbox, or change this agent’s backend.';
@@ -18,7 +19,7 @@ function unregistered() {
 
 test('#874 a ! command where the agent that replies has an unregistered backend is refused with the reason, and nothing runs', async () => {
   const f = unregistered();
-  f.rt.putThread({ ...f.store.state.threads[f.t.id], lastSpeaker: f.beta.id });
+  arrange.putThread(f.rt, { ...f.store.state.threads[f.t.id], lastSpeaker: f.beta.id });
   const before = f.store.items(f.t.id).length;
   await assert.rejects(f.rt.runShellCommand(f.t.id, 'ls'), refused);
   assert.equal(f.store.items(f.t.id).length, before, 'no command item');
@@ -45,7 +46,7 @@ test('#874 Always allow on a permission card of an agent with an unregistered ba
 
 test('#874 Always on a refusal card of an agent with an unregistered backend is refused with the reason, and the card stays open', async () => {
   const f = unregistered();
-  const card = f.rt.addItem(f.t.id, {
+  const card = arrange.post(f.rt, f.t.id, {
     kind: 'denial',
     sessionId: f.beta.id,
     handle: 'beta',

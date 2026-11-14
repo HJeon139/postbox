@@ -4,6 +4,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { Blobs } from '../server/blobs.mjs';
+import * as arrange from './arrange.mjs';
 import { setup } from './remote-runtime-helpers.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
@@ -22,7 +23,7 @@ function room() {
     { kind: 'file', fileId: 'f1', name: 'Pasted text.txt', type: 'text/plain' },
     { kind: 'project-file', path: 'notes/plan.md' },
   ];
-  const item = rt.addItem(t.id, { kind: 'user', text: 'Read these.', attachments });
+  const item = arrange.post(rt, t.id, { kind: 'user', text: 'Read these.', attachments });
   return { rt, t, item, near, far, sessionOf, upload: rt.blobs.pathOf(SHA) };
 }
 

@@ -4,6 +4,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import * as arrange from './arrange.mjs';
 import { settle, setup } from './side-threads-fixture.mjs';
 
 /** A room where @alpha asked to bring in @gamma, as an agent's mention of one outside the room does. */
@@ -39,7 +40,7 @@ test('Send now on a queued wake returns a body for the route to send, and the wa
     sessionIds: [f.beta.id],
     at: Date.now(),
   };
-  f.rt.putThread({ ...th, queue: [wake] });
+  arrange.putThread(f.rt, { ...th, queue: [wake] });
   const r = f.rt.sendQueuedNow(f.t.id, 'q_w1');
   assert.deepEqual(r, { ok: true });
   assert.deepEqual(f.store.state.threads[f.t.id].queue ?? [], [], 'it left the queue');

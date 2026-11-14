@@ -5,6 +5,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { handleMcp } from '../server/mcp.mjs';
+import * as arrange from './arrange.mjs';
 import { held, settle, setup, sleep } from './side-threads-fixture.mjs';
 
 const call = (rt, se, name, args) =>
@@ -60,7 +61,7 @@ test('#694: the person counts as a sender: their queued message is named to a tu
 
 test('#694: a newer message from the sender in another thread isn’t named: that waits on A3 (#734)', async () => {
   const { rt, t, alpha, beta, release } = await busyWithAlpha();
-  const root = rt.addItem(t.id, { kind: 'agent', sessionId: alpha.id, handle: 'alpha', text: 'A topic.', status: 'done' });
+  const root = arrange.post(rt, t.id, { kind: 'agent', sessionId: alpha.id, handle: 'alpha', text: 'A topic.', status: 'done' });
   const topic = rt.startTopic(t.id, root.id).threadId;
   rt.agentWake(alpha.id, 'beta', 'In the topic.', { replyIn: topic });
   assert.doesNotMatch(await define(rt, beta, 'X'), /newer message/);
@@ -70,7 +71,7 @@ test('#694: a newer message from the sender in another thread isn’t named: tha
 
 test('#694: a message from the sender waiting on the turn itself is named only if it’s for the turn’s thread', async () => {
   const { rt, t, alpha, beta, release } = await busyWithAlpha();
-  const root = rt.addItem(t.id, { kind: 'agent', sessionId: alpha.id, handle: 'alpha', text: 'A topic.', status: 'done' });
+  const root = arrange.post(rt, t.id, { kind: 'agent', sessionId: alpha.id, handle: 'alpha', text: 'A topic.', status: 'done' });
   const topic = rt.startTopic(t.id, root.id).threadId;
   rt.deliver(beta.id, { kind: 'agent', from: '@alpha', text: 'Pending in the topic.' }, { threadId: topic });
   assert.doesNotMatch(await define(rt, beta, 'X'), /newer message/, 'not one for another thread');

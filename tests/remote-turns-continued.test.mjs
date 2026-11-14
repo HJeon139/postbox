@@ -7,6 +7,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { lintMessage } from '../server/checks.mjs';
+import * as arrange from './arrange.mjs';
 import { fixtureLines } from './fake-daemon.mjs';
 import { rig, settled, starts, startUp, until } from './remote-turns-helpers.mjs';
 
@@ -109,7 +110,7 @@ test('#120, #377: a wake stopped with Sign-in needed and resumed by the person a
 test('#120, #225: a summary attached again after a restart is posted back once, and its @-mentions wake no one', async () => {
   const r = rig({ daemon: { lines: mentioning('lead') } });
   lead(r);
-  const root = r.rt.addItem(r.t.id, { kind: 'agent', sessionId: r.se().id, handle: 'coder', text: 'Plan the release', status: 'done' });
+  const root = arrange.post(r.rt, r.t.id, { kind: 'agent', sessionId: r.se().id, handle: 'coder', text: 'Plan the release', status: 'done' });
   const { threadId: topic } = r.rt.startTopic(r.t.id, root.id);
   r.rt.summarizeBack(topic);
   const turn = await onHost(r, 1);

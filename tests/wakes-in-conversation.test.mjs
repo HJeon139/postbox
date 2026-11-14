@@ -3,6 +3,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import * as arrange from './arrange.mjs';
 import { held, settle, setup, sleep } from './side-threads-fixture.mjs';
 
 const sides = (store) => Object.values(store.state.threads).filter((x) => x.kind === 'side');
@@ -97,7 +98,7 @@ test('#372 a wake for a busy agent waits in the conversation’s queue, and goes
 test('#372 a side thread from before reads only, and a turn there hands off in the conversation, told once', async () => {
   const { store, rt, adapter, t, alpha, beta } = setup();
   // A side thread as the code before #372 made it.
-  const old = rt.putThread({
+  const old = arrange.putThread(rt, {
     id: 'th_old',
     projectId: 'p1',
     title: '@alpha ↔ @beta',

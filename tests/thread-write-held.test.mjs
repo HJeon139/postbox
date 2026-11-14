@@ -124,7 +124,7 @@ test('open_topic with a mention behind a held commit posts once, in the topic, a
 
 test('a reply in a topic opened behind a held commit counts on its message', async () => {
   const f = await heldRoom();
-  const root = f.rt.addItem(f.t.id, {
+  const root = arrange.post(f.rt, f.t.id, {
     kind: 'agent',
     sessionId: f.beta.id,
     personaId: f.beta.personaId,
@@ -135,7 +135,7 @@ test('a reply in a topic opened behind a held commit counts on its message', asy
   await f.store.flush();
   const release = await f.hold();
   const { threadId: topic } = f.rt.startTopic(f.t.id, root.id);
-  f.rt.addItem(topic, { kind: 'agent', sessionId: f.alpha.id, personaId: f.alpha.personaId, handle: 'alpha', text: 'Which column?', status: 'done' });
+  arrange.post(f.rt, topic, { kind: 'agent', sessionId: f.alpha.id, personaId: f.alpha.personaId, handle: 'alpha', text: 'Which column?', status: 'done' });
   await release();
   assert.equal(f.store.item(f.t.id, root.id).replies, 1);
   await f.store.close();

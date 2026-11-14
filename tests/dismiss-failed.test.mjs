@@ -9,6 +9,7 @@ import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { dismissFailed } from '../server/card-needs.mjs';
 import { settleInterrupted } from '../server/restart-sweep.mjs';
 import { Runtime } from '../server/runtime.mjs';
+import * as arrange from './arrange.mjs';
 import { room } from './card-needs-fixture.mjs';
 import { held, settle, sleep } from './side-threads-fixture.mjs';
 
@@ -64,7 +65,7 @@ test('#883 Dismiss hands the need to the card that waits behind the failure', as
 test('#883 Dismiss makes a block the failed turn itself showed the need, since no new turn starts to decide it', async () => {
   const r = await failedTurn();
   // A block from the failed turn: added with that turn's id, as a block it showed before it threw would be.
-  const b = r.rt.addItem(r.t.id, {
+  const b = arrange.post(r.rt, r.t.id, {
     kind: 'block',
     sessionId: r.alpha.id,
     handle: 'alpha',
@@ -79,7 +80,7 @@ test('#883 Dismiss makes a block the failed turn itself showed the need, since n
 
 test('#883 only a failed reply can be dismissed', async () => {
   const r = await failedTurn();
-  const done = r.rt.addItem(r.t.id, { kind: 'agent', sessionId: r.alpha.id, handle: 'alpha', status: 'done', text: 'ok' });
+  const done = arrange.post(r.rt, r.t.id, { kind: 'agent', sessionId: r.alpha.id, handle: 'alpha', status: 'done', text: 'ok' });
   const b = r.block();
   for (const id of [done.id, b.id, 'it_missing'])
     assert.throws(
@@ -96,11 +97,7 @@ test('#883 a second Dismiss is a quiet no-op: it changes nothing and releases no
   dismissFailed(r.rt, r.t.id, r.failed.id);
   const after = r.store.items(r.t.id).find((x) => x.id === r.failed.id);
   const patches = [];
-  const patch = r.rt.patchItem.bind(r.rt);
-  r.rt.patchItem = (...a) => {
-    patches.push(a);
-    return patch(...a);
-  };
+  arrange.onItemPatch(r.rt, (...a) => patches.push(a));
   assert.doesNotThrow(() => dismissFailed(r.rt, r.t.id, r.failed.id));
   assert.deepEqual(patches, [], 'nothing written again');
   assert.deepEqual(
@@ -171,7 +168,7 @@ test('#883 after a restart, a need left pointing at a dismissed reply isn’t ke
 
 test('#883 Dismiss on a reply another tab already retried says so, and what to do', async () => {
   const r = await failedTurn();
-  r.rt.patchItem(r.t.id, r.failed.id, { status: 'retried' });
+  arrange.setItem(r.rt, r.t.id, r.failed.id, { status: 'retried' });
   assert.throws(
     () => dismissFailed(r.rt, r.t.id, r.failed.id),
     (e) => e.status === 409 && e.message === 'It was already retried; reload to see it.',

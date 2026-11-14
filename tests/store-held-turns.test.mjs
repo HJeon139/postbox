@@ -6,6 +6,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { newId } from '../server/store.mjs';
+import * as arrange from './arrange.mjs';
 import { heldStore, setup, until } from './stop-reply-fixture.mjs';
 
 /** A room whose turn runs `step` once a commit is held in its fsync; resolves with the step's results and a release. */
@@ -86,7 +87,7 @@ test('show_app, update_app, show_app again and retire_app in one turn while a co
 test('a side thread’s line counts a message added there while a commit is held (should-fix 3, bumpSideLink)', async () => {
   const h = await heldStore();
   const env = await setup(async () => {}, h.store);
-  const side = env.rt.putThread({
+  const side = arrange.putThread(env.rt, {
     id: newId('th'),
     projectId: env.t.projectId,
     title: 'Side',
@@ -98,12 +99,12 @@ test('a side thread’s line counts a message added there while a commit is held
     queue: [],
     createdAt: Date.now(),
   });
-  env.rt.addItem(env.t.id, { kind: 'sidelink', sideThreadId: side.id, from: 'you', to: 'researcher', count: 0 });
+  arrange.post(env.rt, env.t.id, { kind: 'sidelink', sideThreadId: side.id, from: 'you', to: 'researcher', count: 0 });
   await h.store.flush();
   h.hold();
   const commit = h.store.commit([{ type: 'settings', data: { theme: 'system' } }]);
   await h.atSync;
-  env.rt.addItem(side.id, { kind: 'user', text: 'A question in the side thread' });
+  arrange.post(env.rt, side.id, { kind: 'user', text: 'A question in the side thread' });
   h.release();
   await commit;
   await h.store.flush();

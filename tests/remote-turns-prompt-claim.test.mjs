@@ -8,6 +8,7 @@ import { test } from 'node:test';
 import { REFUSED } from '../server/prompt-claim.mjs';
 import { Store } from '../server/store.mjs';
 import { PROMPT_CALL_WAIT_MS } from '../shared/limits.mjs';
+import * as arrange from './arrange.mjs';
 import { callLine, createFakeDaemon, FIXTURE_PROMPT } from './fake-daemon.mjs';
 import { rig, running, settled, sleep, startUp, until } from './remote-turns-helpers.mjs';
 
@@ -183,7 +184,7 @@ function shownBeforeRestart(status) {
   const answer = status === 'open' ? {} : { answer: { behavior: 'allow', updatedInput: input } };
   const remote = { hostId: first.host.id, turn: 'host-turn-1', prompt: 'p-1', entry: 'entry-p-1', ...answer };
   const shown = { kind: 'permission', sessionId: se.id, handle: 'coder', turnId: 'turn_old', tool, summary: 'run a command', input, toolUseId, remote };
-  const card = first.rt.addItem(first.t.id, { ...shown, status });
+  const card = arrange.post(first.rt, first.t.id, { ...shown, status });
   d.addTurn('host-turn-1', { exit: null });
   if (status === 'open') d.prompt('host-turn-1', FIXTURE_PROMPT, 'p-1', 'entry-p-1');
   else d.append('host-turn-1', callLine(FIXTURE_PROMPT));

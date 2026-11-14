@@ -6,6 +6,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { READING } from '../shared/limits.mjs';
+import * as arrange from './arrange.mjs';
 import { held, settle, setup, sleep } from './side-threads-fixture.mjs';
 
 // Longer than the pointer's quote of a message's start (pointerIfSeen), so a repeat in full can be told from it.
@@ -53,7 +54,7 @@ test('#506 an agent’s mention batched with your later message reaches the agen
 
 test('#506 your posted message that a turn in a topic thread gave in full comes after it as a pointer', async () => {
   const f = setup();
-  const root = f.rt.addItem(f.t.id, {
+  const root = arrange.post(f.rt, f.t.id, {
     kind: 'agent',
     sessionId: f.beta.id,
     personaId: f.beta.personaId,
@@ -81,7 +82,7 @@ test('#506 your posted message that a turn in a topic thread gave in full comes 
 
 test('#506 each of your posted messages that a topic thread’s turn gave comes after it as a pointer, in one batch', async () => {
   const f = setup();
-  const root = f.rt.addItem(f.t.id, {
+  const root = arrange.post(f.rt, f.t.id, {
     kind: 'agent',
     sessionId: f.beta.id,
     personaId: f.beta.personaId,
@@ -118,7 +119,7 @@ test('#506 your queued mention alone comes in full: no summary gave it', async (
 test('#506 the pointer to your message keeps its attachments', async () => {
   const f = setup();
   const attachments = [{ id: 'att1', name: 'tally.csv', path: '/tmp/tally.csv', size: 10, type: 'text/csv' }];
-  const it = f.rt.addItem(f.t.id, { kind: 'user', text: MINE, attachments });
+  const it = arrange.post(f.rt, f.t.id, { kind: 'user', text: MINE, attachments });
   f.rt.deliver(f.alpha.id, { kind: 'user', text: 'Check the build.' });
   await settle(f.rt);
   f.rt.deliver(f.alpha.id, { kind: 'user', text: MINE, attachments, itemId: it.id });
@@ -130,8 +131,8 @@ test('#506 the pointer to your message keeps its attachments', async () => {
 
 test('#506 your message a summary left out, past the mentions’ cap, comes in full', async () => {
   const f = setup();
-  const first = f.rt.addItem(f.t.id, { kind: 'user', text: `@alpha the oldest: ${'check this first. '.repeat(55)}` });
-  for (let i = 0; i < 40; i++) f.rt.addItem(f.t.id, { kind: 'user', text: `@alpha note ${i + 1}: ${'the tally needs another look. '.repeat(33)}` });
+  const first = arrange.post(f.rt, f.t.id, { kind: 'user', text: `@alpha the oldest: ${'check this first. '.repeat(55)}` });
+  for (let i = 0; i < 40; i++) arrange.post(f.rt, f.t.id, { kind: 'user', text: `@alpha note ${i + 1}: ${'the tally needs another look. '.repeat(33)}` });
   f.rt.deliver(f.alpha.id, { kind: 'user', text: 'Check the build.' });
   await settle(f.rt);
   f.rt.deliver(f.alpha.id, { kind: 'user', text: first.text, itemId: first.id });
@@ -141,7 +142,7 @@ test('#506 your message a summary left out, past the mentions’ cap, comes in f
 
 test('#506 your two queued messages in a topic thread, delivered as one batch, reach the agent once each', async () => {
   const f = setup();
-  const root = f.rt.addItem(f.t.id, {
+  const root = arrange.post(f.rt, f.t.id, {
     kind: 'agent',
     sessionId: f.beta.id,
     personaId: f.beta.personaId,
@@ -164,7 +165,7 @@ test('#506 your two queued messages in a topic thread, delivered as one batch, r
 test('#506 a command of yours a summary gave comes again whole on Retry: a command is never a pointer', async () => {
   const f = setup();
   const line = `/review @alpha ${'the totals, column by column. '.repeat(10)}`;
-  const it = f.rt.addItem(f.t.id, { kind: 'user', text: line, attachments: [], command: { sessionId: f.alpha.id, handle: 'alpha' } });
+  const it = arrange.post(f.rt, f.t.id, { kind: 'user', text: line, attachments: [], command: { sessionId: f.alpha.id, handle: 'alpha' } });
   f.rt.deliver(f.alpha.id, { kind: 'user', text: 'Check the build.' });
   await settle(f.rt);
   f.rt.deliver(f.alpha.id, { kind: 'user', text: line, attachments: [], itemId: it.id, slash: true });
@@ -177,7 +178,7 @@ const LONG = `@alpha please recount the totals. ${'Each column needs its own che
 
 test('#506 your long message a topic thread’s summary cut comes after it in full, not as a pointer to what was cut', async () => {
   const f = setup();
-  const root = f.rt.addItem(f.t.id, {
+  const root = arrange.post(f.rt, f.t.id, {
     kind: 'agent',
     sessionId: f.beta.id,
     personaId: f.beta.personaId,
@@ -203,7 +204,7 @@ test('#506 an agent’s mention one character past what a summary gives whole co
   // One character past what a summary gives whole.
   const text = `@alpha from beta: ${'x'.repeat(READING.mention + 1 - 30)}THE-END-MARK`;
   assert.equal(text.length, READING.mention + 1);
-  const it = f.rt.addItem(f.t.id, { kind: 'agent', sessionId: f.beta.id, personaId: f.beta.personaId, handle: 'beta', text, status: 'done' });
+  const it = arrange.post(f.rt, f.t.id, { kind: 'agent', sessionId: f.beta.id, personaId: f.beta.personaId, handle: 'beta', text, status: 'done' });
   f.rt.deliver(f.alpha.id, { kind: 'user', text: 'Check the build.' });
   await settle(f.rt);
   f.rt.deliver(f.alpha.id, { kind: 'agent', from: '@beta', text, itemId: it.id });
@@ -218,7 +219,7 @@ test('#506 an agent’s mention exactly as long as a summary gives whole comes a
   const head = '@alpha from beta: the totals, column by column. ';
   const text = `${head}${'x'.repeat(READING.mention - head.length)}`;
   assert.equal(text.length, READING.mention);
-  const it = f.rt.addItem(f.t.id, { kind: 'agent', sessionId: f.beta.id, personaId: f.beta.personaId, handle: 'beta', text, status: 'done' });
+  const it = arrange.post(f.rt, f.t.id, { kind: 'agent', sessionId: f.beta.id, personaId: f.beta.personaId, handle: 'beta', text, status: 'done' });
   f.rt.deliver(f.alpha.id, { kind: 'user', text: 'Check the build.' });
   await settle(f.rt);
   f.rt.deliver(f.alpha.id, { kind: 'agent', from: '@beta', text, itemId: it.id });
@@ -230,7 +231,7 @@ test('#506 an agent’s mention exactly as long as a summary gives whole comes a
 
 test('#506 your message sent again, word for word, comes in full: it’s a new message, not the one a summary gave', async () => {
   const f = setup();
-  const root = f.rt.addItem(f.t.id, {
+  const root = arrange.post(f.rt, f.t.id, {
     kind: 'agent',
     sessionId: f.beta.id,
     personaId: f.beta.personaId,

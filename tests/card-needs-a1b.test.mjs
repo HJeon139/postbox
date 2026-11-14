@@ -7,6 +7,7 @@ import { test } from 'node:test';
 import { nextNeed, offerNeed } from '../server/card-needs.mjs';
 import { settledNeed } from '../server/restart-sweep.mjs';
 import { settleOrphanTurns } from '../server/store-outage.mjs';
+import * as arrange from './arrange.mjs';
 import { room } from './card-needs-fixture.mjs';
 import { oldSide } from './side-threads-fixture.mjs';
 
@@ -15,7 +16,7 @@ const T0 = 1_000_000;
 /** A permission card of @alpha's at a fixed time; `waits` puts it in permissionWaits, as its ask or waitOn does. */
 function permissionAt(r, at, { waits = true, host = false } = {}) {
   const remote = host ? { remote: { hostId: 'h1', turn: 'turn_host', prompt: `p${at}` } } : {};
-  const it = r.rt.addItem(r.t.id, { kind: 'permission', sessionId: r.alpha.id, handle: 'alpha', summary: `run ${at}`, status: 'open', at, ...remote });
+  const it = arrange.post(r.rt, r.t.id, { kind: 'permission', sessionId: r.alpha.id, handle: 'alpha', summary: `run ${at}`, status: 'open', at, ...remote });
   if (waits) waitOnCard(r, it);
   return it;
 }
@@ -25,10 +26,10 @@ function waitOnCard(r, it) {
   r.rt.permissionWaits.set(it.id, { threadId: r.t.id, sessionId: r.alpha.id, timer: null, resolve: () => {} });
 }
 
-const hopAt = (r, at) => r.rt.addItem(r.t.id, { kind: 'hop', fromSessionId: r.alpha.id, from: 'alpha', to: 'beta', status: 'open', text: 'please', at });
+const hopAt = (r, at) => arrange.post(r.rt, r.t.id, { kind: 'hop', fromSessionId: r.alpha.id, from: 'alpha', to: 'beta', status: 'open', text: 'please', at });
 
 const appAt = (r, at, threadId = r.t.id) =>
-  r.rt.addItem(threadId, { kind: 'appsend', sessionId: r.alpha.id, appId: 'app1', title: 'App', events: [{ action: 'x' }], status: 'open', at });
+  arrange.post(r.rt, threadId, { kind: 'appsend', sessionId: r.alpha.id, appId: 'app1', title: 'App', events: [{ action: 'x' }], status: 'open', at });
 
 const CARDS = { permission: permissionAt, hop: hopAt, appsend: appAt };
 
@@ -229,8 +230,8 @@ test('one comparison: the restart keeps a block from an older turn against a new
     const r = room();
     const kept = r.block('turn_old');
     const next = r.block('turn_last');
-    r.rt.patchItem(r.t.id, kept.id, { at: keptAt });
-    r.rt.patchItem(r.t.id, next.id, { at: nextAt });
+    arrange.setItem(r.rt, r.t.id, kept.id, { at: keptAt });
+    arrange.setItem(r.rt, r.t.id, next.id, { at: nextAt });
     r.rt.updateSession(r.alpha.id, { needs: { kind: 'block', itemId: kept.id, text: 'Pick' }, state: 'needs' });
     const won = winner === 'kept' ? kept : next;
     assert.deepEqual(shape(settledNeed(r.rt, session(r)).needs), { itemId: won.id, kind: 'block', threadId: undefined }, `${keptAt - T0} vs ${nextAt - T0}`);

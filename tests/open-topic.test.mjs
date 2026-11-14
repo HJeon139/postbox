@@ -8,6 +8,7 @@ import { READ_TOOLS } from '../server/mcp.mjs';
 import { threadCatchUp } from '../server/thread-summary.mjs';
 import { isQuietTool } from '../server/tool-labels.mjs';
 import { TOOL_DEFS } from '../shared/mcp-tools.mjs';
+import * as arrange from './arrange.mjs';
 import { settle, setup } from './side-threads-fixture.mjs';
 import { heldStore } from './stop-reply-fixture.mjs';
 
@@ -59,7 +60,7 @@ test('open_topic refuses an item in a topic thread and an item of another conver
   await settle(f.rt);
   const inTopic = f.store.items(threadId).find((i) => i.kind === 'agent');
   const other = f.rt.createThread({ projectId: 'p1', title: 'Other', personaIds: [f.a.id] });
-  f.rt.addItem(other.id, { kind: 'user', text: 'Elsewhere' });
+  arrange.post(f.rt, other.id, { kind: 'user', text: 'Elsewhere' });
   const elsewhere = f.store.items(other.id).at(-1);
   const r = await alphaTurn(f, (tools) => [tools.open_topic({ itemId: inTopic.id }), tools.open_topic({ itemId: elsewhere.id })]);
   assert.equal(r?.[0]?.ok, false);
@@ -99,7 +100,7 @@ test('a repeated call with the same message, after the topic exists, posts nothi
 test('an open from the page and the same text from you don’t suppress the agent’s first message there (I6)', async () => {
   const f = await conversation();
   const { threadId } = f.rt.startTopic(f.t.id, f.mine.id); // opened from the page
-  f.rt.addItem(threadId, { kind: 'user', text: 'Notes on the totals' });
+  arrange.post(f.rt, threadId, { kind: 'user', text: 'Notes on the totals' });
   const r = await alphaTurn(f, (tools) => tools.open_topic({ itemId: f.mine.id, message: 'Notes on the totals' }));
   assert.equal(r?.created, false);
   assert.equal(f.store.items(threadId).filter((i) => i.kind === 'agent' && i.sessionId === f.alpha.id && i.text === 'Notes on the totals').length, 1, 'posted');
@@ -133,7 +134,8 @@ test('open_topic is a tool agents are offered, and the store’s write gate refu
 test('#507: a thread’s catch-up keeps an ask that mentions the agent, whole, though 24 newer items pass its cap, and says what it left out', async () => {
   const f = await conversation();
   const { threadId } = f.rt.startTopic(f.t.id, f.reply.id);
-  const say = (text) => f.rt.addItem(threadId, { kind: 'agent', sessionId: f.beta.id, personaId: f.beta.personaId, handle: 'beta', text, status: 'done' });
+  const say = (text) =>
+    arrange.post(f.rt, threadId, { kind: 'agent', sessionId: f.beta.id, personaId: f.beta.personaId, handle: 'beta', text, status: 'done' });
   const ask = `@alpha please re-run the totals for March and post the diff here. ${'Context on the run follows. '.repeat(6)}`;
   say(ask);
   for (let i = 0; i < 24; i++) say(`Note ${i + 1} on the run.`);

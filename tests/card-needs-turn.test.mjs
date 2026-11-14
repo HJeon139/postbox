@@ -5,6 +5,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { askToWake } from '../server/wake-cards.mjs';
+import * as arrange from './arrange.mjs';
 import { room } from './card-needs-fixture.mjs';
 import { held, oldSide, settle, sleep } from './side-threads-fixture.mjs';
 
@@ -65,7 +66,7 @@ test('a card in a side thread becomes the need and names its thread; one in the 
 
 test('a block in a topic thread off the conversation becomes the need, with the topic’s id', async () => {
   const r = room();
-  const root = r.rt.addItem(r.t.id, { kind: 'agent', sessionId: r.alpha.id, handle: 'alpha', text: 'Start here', status: 'done' });
+  const root = arrange.post(r.rt, r.t.id, { kind: 'agent', sessionId: r.alpha.id, handle: 'alpha', text: 'Start here', status: 'done' });
   const { threadId: topic } = r.rt.startTopic(r.t.id, root.id);
   const b = r.block('turn_last', topic);
   const app = r.appCard();
@@ -142,7 +143,7 @@ test('mid-turn, a block the running turn itself showed isn’t the need when a p
   const r = room();
   const work = held();
   r.adapter.next.push(async (c, m, se) => {
-    r.rt.addItem(r.t.id, {
+    arrange.post(r.rt, r.t.id, {
       kind: 'block',
       sessionId: se.id,
       handle: 'alpha',

@@ -8,6 +8,7 @@ import { EventEmitter } from 'node:events';
 import { PassThrough } from 'node:stream';
 import { test } from 'node:test';
 import { recordDenial } from '../server/permission-cards.mjs';
+import * as arrange from './arrange.mjs';
 import { heldStore, setup, sleep, until } from './stop-reply-fixture.mjs';
 
 /** A room on a store whose next commit is held in its fsync; returns once emits are held, with `done` to release. */
@@ -35,7 +36,7 @@ const progress = (se, turnId) => ({
 
 test('stallSteps: a progress block held at the turn’s end has its running step stalled, and the agent is told', async () => {
   const env = await heldRoom();
-  const it = env.rt.addItem(env.t.id, progress(env.se, 'turn_a'));
+  const it = arrange.post(env.rt, env.t.id, progress(env.se, 'turn_a'));
   const problems = env.rt.stallSteps({ threadId: env.t.id }, env.rt.s.sessions[env.se.id]);
   assert.deepEqual(
     problems.map((p) => p.code),
@@ -48,7 +49,7 @@ test('stallSteps: a progress block held at the turn’s end has its running step
 
 test('the lint block check: a choice block held when the turn ends counts as shown, so options in the reply aren’t flagged', async () => {
   const env = await heldRoom();
-  env.rt.addItem(env.t.id, {
+  arrange.post(env.rt, env.t.id, {
     kind: 'block',
     valid: true,
     sessionId: env.se.id,
@@ -76,13 +77,13 @@ test('recordDenial: the same refused call twice while its first card is held giv
 test('a topic’s reply count includes the reply just added while a commit is held', async () => {
   const h = await heldStore();
   const env = await setup(async () => {}, h.store);
-  const root = env.rt.addItem(env.t.id, { kind: 'user', text: 'Start here' });
+  const root = arrange.post(env.rt, env.t.id, { kind: 'user', text: 'Start here' });
   const { threadId } = env.rt.startTopic(env.t.id, root.id);
   await h.store.flush();
   h.hold();
   const commit = h.store.commit([{ type: 'settings', data: { theme: 'system' } }]);
   await h.atSync;
-  env.rt.addItem(threadId, { kind: 'user', text: 'The first reply' });
+  arrange.post(env.rt, threadId, { kind: 'user', text: 'The first reply' });
   h.release();
   await commit;
   await h.store.flush();

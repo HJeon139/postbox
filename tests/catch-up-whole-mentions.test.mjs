@@ -5,10 +5,11 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { READING } from '../shared/limits.mjs';
+import * as arrange from './arrange.mjs';
 import { settle, setup } from './side-threads-fixture.mjs';
 
 /** A message from beta in the conversation, posted as a reply is, with no wake: this tests the summary alone. */
-const say = (f, text) => f.rt.addItem(f.t.id, { kind: 'agent', sessionId: f.beta.id, personaId: f.beta.personaId, handle: 'beta', text, status: 'done' });
+const say = (f, text) => arrange.post(f.rt, f.t.id, { kind: 'agent', sessionId: f.beta.id, personaId: f.beta.personaId, handle: 'beta', text, status: 'done' });
 /** The fixture, with alpha's marker at the end of the conversation, so the next summary covers only what follows. */
 function fresh() {
   const f = setup();

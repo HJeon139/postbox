@@ -9,6 +9,7 @@ import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { offerNeed } from '../server/card-needs.mjs';
 import { settleInterrupted } from '../server/restart-sweep.mjs';
 import { Runtime } from '../server/runtime.mjs';
+import * as arrange from './arrange.mjs';
 import { room } from './card-needs-fixture.mjs';
 import { held, settle, sleep } from './side-threads-fixture.mjs';
 
@@ -132,7 +133,7 @@ test('a wake keeps only turns still asking you something, so the list doesn’t 
 
 test('a wake’s end keeps a failed turn’s need and its Retry, where main drops it', async () => {
   const r = room();
-  const f = r.rt.addItem(r.t.id, { kind: 'agent', sessionId: r.alpha.id, handle: 'alpha', turnId: 'turn_last', text: '', status: 'failed', error: 'x' });
+  const f = arrange.post(r.rt, r.t.id, { kind: 'agent', sessionId: r.alpha.id, handle: 'alpha', turnId: 'turn_last', text: '', status: 'failed', error: 'x' });
   r.rt.updateSession(r.alpha.id, { needs: { kind: 'failed', itemId: f.id, text: 'failed' }, state: 'failed' });
   r.adapter.next.push(async (c) => c.text('Thanks, noted.'));
   r.rt.deliver(r.alpha.id, { kind: 'agent', from: '@beta', text: 'Here are the numbers.' });
@@ -144,7 +145,15 @@ test('a wake’s end keeps a failed turn’s need and its Retry, where main drop
 
 /** A failed reply is the need, another agent wakes @alpha, and the wake asks a permission that takes the need. */
 async function failedThenWakeWithPermission(r) {
-  const f = r.rt.addItem(r.t.id, { kind: 'agent', sessionId: r.alpha.id, handle: 'alpha', turnId: 'turn_last', text: '', status: 'failed', error: 'boom' });
+  const f = arrange.post(r.rt, r.t.id, {
+    kind: 'agent',
+    sessionId: r.alpha.id,
+    handle: 'alpha',
+    turnId: 'turn_last',
+    text: '',
+    status: 'failed',
+    error: 'boom',
+  });
   r.rt.updateSession(r.alpha.id, { needs: { kind: 'failed', itemId: f.id, text: 'boom' }, state: 'failed' });
   const work = held();
   r.adapter.next.push(work.step);

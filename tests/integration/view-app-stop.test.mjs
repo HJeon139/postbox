@@ -8,6 +8,7 @@ import { afterEach, test } from 'node:test';
 import { start } from '../../server/index.mjs';
 import { STOPPED } from '../../server/view-app/browser.mjs';
 import { viewOf } from '../../server/view-app/view-of.mjs';
+import * as arrange from '../arrange.mjs';
 import { freePort } from '../process/chrome.mjs';
 import { assertNoServerFailures, captureServerLog } from '../server-log.mjs';
 import { tempDir } from '../temp-dirs.mjs';
@@ -31,7 +32,7 @@ test('stop closes view_app’s browser, and the next start settles a card left d
     store.emit('project', { id: 'pv', name: 'View app', folder: work });
     const t = rt.createThread({ projectId: 'pv', title: 'Cut short', personaIds: [rt.personaByHandle('researcher').id] });
     const se = rt.sessionsIn(t.id)[0];
-    const card = rt.addItem(t.id, { kind: 'viewask', sessionId: se.id, handle: se.handle, turnId: null, status: 'downloading' });
+    const card = arrange.post(rt, t.id, { kind: 'viewask', sessionId: se.id, handle: se.handle, turnId: null, status: 'downloading' });
     let closed = 0;
     const close = viewOf(rt).close.bind(viewOf(rt));
     viewOf(rt).close = () => {

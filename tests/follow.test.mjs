@@ -7,6 +7,7 @@ import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
 import { apply, emptyState } from '../shared/state.mjs';
+import * as arrange from './arrange.mjs';
 
 class Quiet {
   name = 'mock';
@@ -31,7 +32,7 @@ function setup() {
   return { store, rt, t, se, other, tools: rt.toolsFor(se.id) };
 }
 const kinds = (store, t) => store.items(t.id).map((i) => (i.kind === 'block' ? `${i.kind}:${i.block.id}` : i.kind === 'moved' ? `moved:${i.itemId}` : i.kind));
-const say = (rt, t, se, text) => rt.addItem(t.id, { kind: 'agent', sessionId: se.id, handle: se.handle, text, status: 'done' });
+const say = (rt, t, se, text) => arrange.post(rt, t.id, { kind: 'agent', sessionId: se.id, handle: se.handle, text, status: 'done' });
 
 test('#49: a new version brings the app to the newest point, with a stub where it was and one live copy', () => {
   const { store, rt, t, se, tools } = setup();
@@ -39,7 +40,7 @@ test('#49: a new version brings the app to the newest point, with a stub where i
   const item = store.items(t.id).at(-1);
   rt.appState('pairs', { tab: 'graph' });
   say(rt, t, se, 'Here it is.');
-  rt.addItem(t.id, { kind: 'user', text: 'The graph overlaps.' });
+  arrange.post(rt, t.id, { kind: 'user', text: 'The graph overlaps.' });
   const r = tools.update_app({ id: 'pairs', code: '<p>2</p>', summary: 'each group laid out on its own' });
   assert.equal(r.ok, true);
   assert.match(r.message, /v2, shown at the newest point/);
@@ -78,7 +79,7 @@ test('#49: a session that last saw the app reads on from the stub, so nothing af
   tools.show_app({ id: 'ap', title: 'A', code: '<p>1</p>' });
   const app = store.items(t.id).at(-1);
   rt.updateSession(other.id, { seenItem: app.id });
-  rt.addItem(t.id, { kind: 'user', text: 'Make it blue.' });
+  arrange.post(rt, t.id, { kind: 'user', text: 'Make it blue.' });
   tools.update_app({ id: 'ap', code: '<p>2</p>' });
   const stub = store.items(t.id)[0];
   assert.equal(store.state.sessions[other.id].seenItem, stub.id);
@@ -120,7 +121,7 @@ test('#92: a block that asks again comes to the newest point, with one live copy
   tools.show_block({ block: confirm() });
   const item = store.items(t.id).at(-1);
   rt.act(t.id, item.id, 'confirm', {}, 1);
-  rt.patchItem(t.id, item.id, { answer: { ...store.item(t.id, item.id).answer, read: true } });
+  arrange.setItem(rt, t.id, item.id, { answer: { ...store.item(t.id, item.id).answer, read: true } });
   say(rt, t, se, 'Deleted the frames. Four new app versions follow.');
   const r = tools.update_block({ block: confirm({ title: 'Video frames deleted', statement: 'Deleted. OK?', confirmLabel: 'OK' }) });
   assert.match(r.message, /asks again at the newest point/);
@@ -162,7 +163,7 @@ test('#92: progress, an outcome and blocks that don’t ask keep their place', (
   tools.update_block({ block: { id: 'job', type: 'progress', version: 1, fallback: 'Working', steps: [{ id: 'a', label: 'Read', state: 'done' }] } });
   tools.update_block({ block: { id: 'note', type: 'card', version: 1, fallback: 'Note', body: 'Second' } });
   rt.act(t.id, frames.id, 'confirm', {}, 1);
-  rt.patchItem(t.id, frames.id, { answer: { ...store.item(t.id, frames.id).answer, read: true } });
+  arrange.setItem(rt, t.id, frames.id, { answer: { ...store.item(t.id, frames.id).answer, read: true } });
   tools.update_block({ block: confirm({ outcome: 'Deleted 23 frames.' }) });
   assert.deepEqual(kinds(store, t), ['block:job', 'block:note', 'block:frames', 'agent', 'voice']);
   assert.equal(store.item(t.id, frames.id).answered, true);

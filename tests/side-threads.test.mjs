@@ -4,6 +4,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import * as arrange from './arrange.mjs';
 import { held, oldSide, sessionsOfPersona, settle, setup, sleep } from './side-threads-fixture.mjs';
 
 const sides = (store) => Object.values(store.state.threads).filter((x) => x.kind === 'side');
@@ -225,7 +226,7 @@ test('#110: an item read_conversation cut in a side thread can be read in full w
   assert.match(full.message, /The last paragraph: ship it\.$/);
   // An item of another conversation is out of reach, as read_conversation’s threads are.
   const other = rt.createThread({ projectId: 'p1', title: 'Other', personaIds: [a.id, b.id] });
-  const theirs = rt.addItem(other.id, { kind: 'agent', sessionId: 'x', handle: 'beta', text: 'Not yours.', status: 'done' });
+  const theirs = arrange.post(rt, other.id, { kind: 'agent', sessionId: 'x', handle: 'beta', text: 'Not yours.', status: 'done' });
   assert.equal(tools.read_message({ id: theirs.id }).ok, false);
 });
 

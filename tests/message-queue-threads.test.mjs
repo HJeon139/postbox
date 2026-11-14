@@ -15,7 +15,7 @@ const turnsAfterFirst = ({ adapter, beta, t }) =>
 /** The side-thread room with a topic in its conversation, and @beta busy in a turn held open. */
 function busyWithTopic() {
   const f = setup();
-  const root = f.rt.addItem(f.t.id, { kind: 'agent', sessionId: f.alpha.id, handle: 'alpha', text: 'A topic.', status: 'done' });
+  const root = arrange.post(f.rt, f.t.id, { kind: 'agent', sessionId: f.alpha.id, handle: 'alpha', text: 'A topic.', status: 'done' });
   const topic = f.rt.startTopic(f.t.id, root.id).threadId;
   const busy = held();
   f.adapter.next.push(busy.step);
@@ -39,7 +39,7 @@ test('a wake queued in a turn’s thread joins that turn when another thread’s
 
 test('after a failed reply, a wake queued in the next turn’s thread joins it past another thread’s pending message', async () => {
   const f = setup();
-  const root = f.rt.addItem(f.t.id, { kind: 'agent', sessionId: f.alpha.id, handle: 'alpha', text: 'A topic.', status: 'done' });
+  const root = arrange.post(f.rt, f.t.id, { kind: 'agent', sessionId: f.alpha.id, handle: 'alpha', text: 'A topic.', status: 'done' });
   const topic = f.rt.startTopic(f.t.id, root.id).threadId;
   let fail = () => {};
   const failing = new Promise((r) => {

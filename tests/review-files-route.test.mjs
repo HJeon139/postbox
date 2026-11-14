@@ -5,6 +5,7 @@
 import assert from 'node:assert/strict';
 import { rm } from 'node:fs/promises';
 import { after, before, test } from 'node:test';
+import * as arrange from './arrange.mjs';
 import { fakeRequest } from './fake-http.mjs';
 import { png } from './review-files-fixture.mjs';
 import { tempDir } from './temp-dirs.mjs';
@@ -34,14 +35,14 @@ async function reviewWithImage() {
   const { sha256, size } = await rt.blobs.put(bytes);
   const file = { name: 'today.png', ref: 'figs/today.png', sha256, size, type: 'image/png', width: 4, height: 3 };
   const block = (id) => ({ id, type: 'review', version: 1, format: 'markdown', content: 'x', fallback: 'x' });
-  const it = rt.addItem(t.id, { kind: 'block', valid: true, block: block('fig'), files: [file] });
-  const other = rt.addItem(t.id, { kind: 'block', valid: true, block: block('other') });
+  const it = arrange.post(rt, t.id, { kind: 'block', valid: true, block: block('fig'), files: [file] });
+  const other = arrange.post(rt, t.id, { kind: 'block', valid: true, block: block('other') });
   // Not a review, though it carries a file record: only a review’s files are served.
-  const message = rt.addItem(t.id, { kind: 'message', text: 'x', files: [file] });
+  const message = arrange.post(rt, t.id, { kind: 'message', text: 'x', files: [file] });
   // A block that isn’t a review, though it carries a file record: only a review’s files are served.
-  const code = rt.addItem(t.id, { kind: 'block', valid: true, block: { id: 'code', type: 'code', version: 1, code: 'x', fallback: 'x' }, files: [file] });
+  const code = arrange.post(rt, t.id, { kind: 'block', valid: true, block: { id: 'code', type: 'code', version: 1, code: 'x', fallback: 'x' }, files: [file] });
   // A record whose name would break the header, as no call can make (FILE_NAME refuses it).
-  const quoted = rt.addItem(t.id, { kind: 'block', valid: true, block: block('quoted'), files: [{ ...file, name: 'a"b.png' }] });
+  const quoted = arrange.post(rt, t.id, { kind: 'block', valid: true, block: block('quoted'), files: [{ ...file, name: 'a"b.png' }] });
   await rt.store.flush();
   return { t, it, other, message, code, quoted, bytes, sha256 };
 }
@@ -97,7 +98,7 @@ test('#825 an item whose blob is gone from the store is the same 404, not a 500 
   const gone = await rt.blobs.put(png(9, 7));
   const file = { name: 'gone.png', ref: null, sha256: gone.sha256, size: gone.size, type: 'image/png', width: 9, height: 7 };
   const block = { id: 'gone', type: 'review', version: 1, format: 'markdown', content: 'x', fallback: 'x' };
-  const item = rt.addItem(t.id, { kind: 'block', valid: true, block, files: [file] });
+  const item = arrange.post(rt, t.id, { kind: 'block', valid: true, block, files: [file] });
   await rt.store.flush();
   await rm(rt.blobs.pathOf(gone.sha256));
   const r = await get(url(t, item, 'gone.png', gone.sha256));

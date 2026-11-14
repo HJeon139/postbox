@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { formatMessage } from '../server/adapters/guide.mjs';
 import { THREAD_CHECKS } from '../tools/uat/room-checks-threads.mjs';
+import * as arrange from './arrange.mjs';
 import { held, settle, setup } from './side-threads-fixture.mjs';
 
 /** A room with a topic on alpha’s first reply, while beta has not taken a turn. */
@@ -20,7 +21,7 @@ async function roomAndTopic() {
 test('#504 a topic turn leads with its request and labels the room backlog as background', async () => {
   const f = await roomAndTopic();
   const backlog = `@beta review the parser changes. ${'Detailed room context. '.repeat(260)}`;
-  f.rt.addItem(f.t.id, {
+  arrange.post(f.rt, f.t.id, {
     kind: 'agent',
     sessionId: f.alpha.id,
     personaId: f.alpha.personaId,
@@ -49,7 +50,7 @@ test('#504 a follow-up in the same topic thread still leads with its new request
   const f = await roomAndTopic();
   f.rt.sendMessage(f.topic.id, { text: '@beta check the first sentence.' });
   await settle(f.rt);
-  f.rt.addItem(f.t.id, {
+  arrange.post(f.rt, f.t.id, {
     kind: 'agent',
     sessionId: f.alpha.id,
     personaId: f.alpha.personaId,
@@ -72,7 +73,7 @@ test('#504 a follow-up in the same topic thread still leads with its new request
 
 test('#504 a thread request stays whole even when the room summary already gave its source message', async () => {
   const f = await roomAndTopic();
-  const sent = f.rt.addItem(f.t.id, {
+  const sent = arrange.post(f.rt, f.t.id, {
     kind: 'agent',
     sessionId: f.alpha.id,
     personaId: f.alpha.personaId,
@@ -129,7 +130,7 @@ test('#504 failed and stopped topic turns without text keep their prompt marker'
 
 test('#504 #508 a turn in the room leads with its request, its catch-up labeled as background after it', async () => {
   const f = setup();
-  f.rt.addItem(f.t.id, { kind: 'user', text: 'Earlier room context.' });
+  arrange.post(f.rt, f.t.id, { kind: 'user', text: 'Earlier room context.' });
   f.rt.sendMessage(f.t.id, { text: '@beta answer in the room.' });
   await settle(f.rt);
 

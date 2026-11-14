@@ -4,6 +4,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import * as arrange from './arrange.mjs';
 import { settle, setup } from './side-threads-fixture.mjs';
 import { heldStore } from './stop-reply-fixture.mjs';
 
@@ -95,7 +96,7 @@ test('#693 a later add the person allowed lifts the decline: once that agent is 
 
 test('#693 a card retiring forks declined isn’t the person’s decline', async () => {
   const f = setup();
-  f.rt.addItem(f.t.id, { kind: 'hop', join: true, fromSessionId: 'se_fork', from: 'alpha', to: 'gamma', text: 'x', status: 'declined' });
+  arrange.post(f.rt, f.t.id, { kind: 'hop', join: true, fromSessionId: 'se_fork', from: 'alpha', to: 'gamma', text: 'x', status: 'declined' });
   f.store.emit('session', { id: 'se_fork', personaId: f.a.id, handle: 'alpha', threadId: f.t.id, retiredFork: true });
   const r = f.rt.agentWake(f.beta.id, 'gamma', 'Over to gamma.', { itemId: 'it_v', prose: true });
   assert.equal(r.waiting, true);
@@ -112,7 +113,7 @@ test('#693 a mention of a declined agent while another card waits is refused, no
 
 test('#693 a declined wake-limit card for an agent isn’t a declined add', async () => {
   const f = setup();
-  f.rt.addItem(f.t.id, { kind: 'hop', fromSessionId: f.alpha.id, from: 'alpha', to: 'gamma', text: 'x', status: 'declined', n: 51 });
+  arrange.post(f.rt, f.t.id, { kind: 'hop', fromSessionId: f.alpha.id, from: 'alpha', to: 'gamma', text: 'x', status: 'declined', n: 51 });
   const r = f.rt.agentWake(f.beta.id, 'gamma', 'Gamma?', { itemId: 'it_t', prose: true });
   assert.equal(r.waiting, true);
 });
@@ -169,10 +170,10 @@ test('#789 a mention in a topic thread lifts it too', async () => {
 test('#789 a new agent created into the conversation lifts a decline of its handle', async () => {
   const f = setup();
   // A decline of adding an earlier @delta, whose persona is gone, is in the conversation.
-  f.rt.addItem(f.t.id, { kind: 'hop', join: true, fromSessionId: f.alpha.id, from: 'alpha', to: 'delta', text: 'x', status: 'declined' });
+  arrange.post(f.rt, f.t.id, { kind: 'hop', join: true, fromSessionId: f.alpha.id, from: 'alpha', to: 'delta', text: 'x', status: 'declined' });
   const p = f.rt.createPersona({ handle: 'delta' });
   // What POST /api/personas does with join: { threadId } (server/index.mjs).
-  f.rt.ensureSession(f.rt.lineage(f.t.id).at(-1), p.id, { brief: 'You were just created and added to this thread.' });
+  f.rt.ensureSession(arrange.lineage(f.rt, f.t.id).at(-1), p.id, { brief: 'You were just created and added to this thread.' });
   const delta = f.rt.sessionsIn(f.t.id).find((x) => x.handle === 'delta');
   f.rt.deleteSession(delta.id);
   assert.equal(f.rt.agentWake(f.beta.id, 'delta', 'Delta?', { itemId: 'it_d', prose: true }).waiting, true);

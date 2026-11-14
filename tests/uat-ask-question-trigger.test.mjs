@@ -8,6 +8,7 @@ import { test } from 'node:test';
 import { canUseTool } from '../server/adapters/sdk-permission.mjs';
 import { parseScenario } from '../tools/uat/scenario.mjs';
 import { TRIGGERS, unknownTriggers } from '../tools/uat/triggers.mjs';
+import * as arrange from './arrange.mjs';
 import { settle, setup } from './side-threads-fixture.mjs';
 
 const RECORDED = JSON.parse(readFileSync(new URL('fixtures/claude-code/ask-user-question-prompts.json', import.meta.url), 'utf8')).prompts;
@@ -68,7 +69,7 @@ test('#521 question-answered-in-turn doesn’t fire when a permission card for A
   r.choose('Red');
   await r.done;
   await settle(r.rt);
-  r.rt.addItem(r.t.id, {
+  arrange.post(r.rt, r.t.id, {
     kind: 'permission',
     sessionId: r.alpha.id,
     handle: 'alpha',

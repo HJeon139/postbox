@@ -7,7 +7,7 @@ import { formatMessage } from '../server/adapters/guide.mjs';
 import { handleMcp } from '../server/mcp.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
-import { updateThread } from '../server/threads.mjs';
+import * as arrange from './arrange.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -220,7 +220,7 @@ test('after the room’s chain limit of agent wakes in a row, the next one waits
   const { rt, store, t, b } = setup();
   rt.ensureSession(t.id, b.id);
   const alpha = rt.sessionsIn(t.id).find((x) => x.handle === 'alpha');
-  updateThread(rt, t.id, { chainLimit: 3 }); // the room’s own (#1035), so the test needn’t make 1,000 wakes
+  arrange.setThread(rt, t.id, { chainLimit: 3 }); // the room’s own (#1035), so the test needn’t make 1,000 wakes
   // All while the chain runs: one that ends starts the count again (#492).
   for (let i = 0; i < 3; i++) assert.equal(rt.agentWake(alpha.id, 'beta', 'check', { confirmed: true }).ok, true);
   const r = rt.agentWake(alpha.id, 'beta', 'check again');
@@ -241,7 +241,7 @@ test('a wake you allow delivers its whole message, not the card’s preview (#10
   const { rt, store, t, b, adapter } = setup();
   rt.ensureSession(t.id, b.id);
   const alpha = rt.sessionsIn(t.id).find((x) => x.handle === 'alpha');
-  updateThread(rt, t.id, { chainLimit: 3 });
+  arrange.setThread(rt, t.id, { chainLimit: 3 });
   for (let i = 0; i < 3; i++) rt.agentWake(alpha.id, 'beta', 'check', { confirmed: true });
   const long = `Must fix: ${'acceptance bar, '.repeat(200)}`.slice(0, 3000);
   assert.equal(rt.agentWake(alpha.id, 'beta', long).waiting, true);
@@ -258,11 +258,11 @@ test('a wake request stored before #108, with only a preview, still delivers tha
   const { rt, store, t, b, adapter } = setup();
   rt.ensureSession(t.id, b.id);
   const alpha = rt.sessionsIn(t.id).find((x) => x.handle === 'alpha');
-  updateThread(rt, t.id, { chainLimit: 3 });
+  arrange.setThread(rt, t.id, { chainLimit: 3 });
   for (let i = 0; i < 3; i++) rt.agentWake(alpha.id, 'beta', 'check', { confirmed: true });
   rt.agentWake(alpha.id, 'beta', 'the whole message');
   const hop = store.items(t.id).find((i) => i.kind === 'hop');
-  rt.patchItem(t.id, hop.id, { text: undefined, reason: 'the preview' });
+  arrange.setItem(rt, t.id, hop.id, { text: undefined, reason: 'the preview' });
   rt.act(t.id, hop.id, 'confirm');
   await settle(rt);
   const woke = adapter.calls.filter((c) => c.handle === 'beta' && c.message.kind === 'agent' && c.message.from === '@alpha').at(-1);
@@ -782,8 +782,8 @@ test('a conversation with several agents is a room, and can be renamed', () => {
   const { rt, a, b } = setup();
   const room = rt.createThread({ projectId: 'p1', title: 'Planning', personaIds: [a.id, b.id] });
   assert.equal(room.kind, 'room');
-  assert.equal(rt.renameThread(room.id, '  Index planning ').title, 'Index planning');
-  assert.throws(() => rt.renameThread(room.id, ' '), /needs a name/);
+  assert.equal(arrange.renameThread(rt, room.id, '  Index planning ').title, 'Index planning');
+  assert.throws(() => arrange.renameThread(rt, room.id, ' '), /needs a name/);
 });
 
 // ── Diagram legibility ────────────────────────────────────────────────────────────────
@@ -948,11 +948,11 @@ test('#56: a topic thread uses its conversation’s terms, and its own definitio
   rt.sendMessage(topic, { text: 'check it' });
   await settle(rt);
   assert.equal(lints(adapter).length, 0, 'the parent’s term isn’t linted in the topic');
-  assert.equal(rt.glossaryFor(topic)['step-2'].definition, 'Show matches as highlights.');
+  assert.equal(arrange.glossaryFor(rt, topic)['step-2'].definition, 'Show matches as highlights.');
   const r = rt.toolsFor(adapter.calls.at(-1).sessionId, { threadId: topic }).define_term({ term: 'Step 2', definition: 'Quote the match instead.' });
   assert.match(r.message, /over the conversation’s definition/);
-  assert.equal(rt.glossaryFor(topic)['step-2'].definition, 'Quote the match instead.');
-  assert.equal(rt.glossaryFor(t.id)['step-2'].definition, 'Show matches as highlights.', 'the conversation keeps its own');
+  assert.equal(arrange.glossaryFor(rt, topic)['step-2'].definition, 'Quote the match instead.');
+  assert.equal(arrange.glossaryFor(rt, t.id)['step-2'].definition, 'Show matches as highlights.', 'the conversation keeps its own');
 });
 
 test('raw HTML in a reply reaches the agent through the lint turn', async () => {
@@ -1240,7 +1240,7 @@ test('#75: a conversation started without a title is a “New conversation”, a
   const tools = rt.toolsFor(rt.sessionsIn(t.id)[0].id);
   assert.equal(tools.define_term({ term: 'BM25', definition: 'A ranking function.' }).message, 'Defined “BM25”.');
   // A topic thread’s definition over its conversation’s says “here”, not “this thread”.
-  rt.putThread({ ...store.state.threads[t.id], id: 'th-topic', kind: 'topic', parentId: t.id, members: [] });
+  arrange.putThread(rt, { ...store.state.threads[t.id], id: 'th-topic', kind: 'topic', parentId: t.id, members: [] });
   const se = rt.ensureSession('th-topic', rt.sessionsIn(t.id)[0].personaId);
   assert.equal(
     rt.toolsFor(se.id).define_term({ term: 'BM25', definition: 'Here, the baseline.' }).message,
@@ -1473,7 +1473,7 @@ test('#123: an outcome over an answer the agent hasn’t read is refused, and a 
   assert.equal(store.item(t.id, item.id).block.outcome, 'Kept them.');
 
   // Stop drops what waited behind the turn, so the answer never reaches the agent: the refusal carries all of it.
-  rt.patchItem(t.id, item.id, { answered: false, answer: null });
+  arrange.setItem(rt, t.id, item.id, { answered: false, answer: null });
   let working = () => {};
   const isWorking = new Promise((r) => {
     working = r;
@@ -1723,7 +1723,7 @@ test('#109 read_conversation cuts the same way, the agent’s own messages too, 
 test('#109 read_message reads a long item in parts, and says where it couldn’t find one', async () => {
   const { rt, store, t, se } = await longReplyReviewed();
   const huge = 'x'.repeat(95_000);
-  const it = rt.addItem(t.id, { kind: 'agent', handle: 'alpha', sessionId: 'other', text: huge, status: 'done' });
+  const it = arrange.post(rt, t.id, { kind: 'agent', handle: 'alpha', sessionId: 'other', text: huge, status: 'done' });
   const read = rt.toolsFor(se.id).read_message;
   const one = read({ id: it.id });
   assert.equal(one.ok, true);
@@ -1955,7 +1955,7 @@ test('#153 an agent reads its own review block’s content in read_conversation'
 
 test('#153 read_message by a block id two agents both used asks for the item id', async () => {
   const { rt, t, se, item } = await blocksShown([{ id: 'plan', type: 'code', code: 'a', fallback: 'a' }]);
-  rt.addItem(t.id, {
+  arrange.post(rt, t.id, {
     kind: 'block',
     sessionId: se.id,
     handle: 'beta',

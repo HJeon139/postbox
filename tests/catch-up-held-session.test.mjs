@@ -6,6 +6,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { clip } from '../server/helpers.mjs';
+import * as arrange from './arrange.mjs';
 import { settle, setup } from './side-threads-fixture.mjs';
 import { heldStore } from './stop-reply-fixture.mjs';
 
@@ -37,8 +38,8 @@ const toAlpha = (/** @type {any} */ f) => f.adapter.calls.filter((/** @type {any
 /** Beta's mention of alpha and a line of beta's, both published; then a held commit. */
 async function mentionThenHold() {
   const f = await heldRoom();
-  const it = f.rt.addItem(f.t.id, { kind: 'agent', sessionId: f.beta.id, personaId: f.beta.personaId, handle: 'beta', text: THEIRS, status: 'done' });
-  f.rt.addItem(f.t.id, { kind: 'agent', sessionId: f.beta.id, personaId: f.beta.personaId, handle: 'beta', text: 'FILLER-LINE noted.', status: 'done' });
+  const it = arrange.post(f.rt, f.t.id, { kind: 'agent', sessionId: f.beta.id, personaId: f.beta.personaId, handle: 'beta', text: THEIRS, status: 'done' });
+  arrange.post(f.rt, f.t.id, { kind: 'agent', sessionId: f.beta.id, personaId: f.beta.personaId, handle: 'beta', text: 'FILLER-LINE noted.', status: 'done' });
   await f.store.flush();
   const release = await f.hold();
   return { f, it, release };

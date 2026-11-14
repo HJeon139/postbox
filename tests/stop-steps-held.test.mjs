@@ -6,6 +6,7 @@ import { test } from 'node:test';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
+import * as arrange from './arrange.mjs';
 import { fakeKill, slowToExit } from './stop-fixture.mjs';
 import { heldStore, until } from './stop-reply-fixture.mjs';
 
@@ -50,7 +51,7 @@ async function stopped({ held, jobs }) {
   adapter.next.push(turn);
   rt.sendMessage(t.id, { text: 'go' });
   await until(() => (store.pending.session(se.id).jobs ?? []).some((j) => j.id === 'bgH'), 'the job to start');
-  const block = rt.addItem(t.id, {
+  const block = arrange.post(rt, t.id, {
     kind: 'block',
     sessionId: se.id,
     valid: true,

@@ -9,6 +9,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { deletePersona } from '../server/persona-delete.mjs';
 import { patchThread } from '../server/room-chain-limit.mjs';
+import * as arrange from './arrange.mjs';
 import { heldStore, setup } from './stop-reply-fixture.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
@@ -80,7 +81,7 @@ test('a new agent joining a conversation behind a held commit joins it, not a 40
   const { env, result, store } = await whileHeld(({ rt, t }) => {
     const p = rt.createPersona({ handle: 'helper', backend: 'claude-code' });
     try {
-      return rt.ensureSession(rt.lineage(t.id).at(-1), p.id, { brief: 'You were just created and added to this thread.' });
+      return rt.ensureSession(arrange.lineage(rt, t.id).at(-1), p.id, { brief: 'You were just created and added to this thread.' });
     } catch (e) {
       return e;
     }
@@ -209,7 +210,7 @@ test('a delete it refuses stops no turn and leaves every session', async () => {
       stopped.push(args[0]);
       return stop(...args);
     };
-    const topic = rt.putThread({ id: 'th_topic', projectId: 'p1', title: 'A topic', kind: 'topic', parentId: t.id, members: [], queue: [] });
+    const topic = arrange.putThread(rt, { id: 'th_topic', projectId: 'p1', title: 'A topic', kind: 'topic', parentId: t.id, members: [], queue: [] });
     const refused = [];
     for (const del of [() => rt.deleteThread('th_gone'), () => rt.deleteThread(topic.id)])
       try {
