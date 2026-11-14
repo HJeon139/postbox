@@ -222,3 +222,11 @@ test('switch-shown flags a row that still says “not” after the turn, and sta
   r.row('alpha · idle auto · high effort');
   assert.deepEqual(check('switch-shown', r.facts()), []);
 });
+
+test('a shown- trigger can’t be checked from facts without the agents’ rows, as a recheck has them', async () => {
+  const r = room();
+  await r.save('codex', 'auto', 'high');
+  const f = { ...r.facts(), ui: {} };
+  assert.equal(TRIGGERS['shown-codex-auto-high'].recorded(f), false);
+  assert.equal(TRIGGERS['shown-codex-auto-high'].recorded(r.facts()), true);
+});

@@ -123,7 +123,7 @@ export const SWITCH_TRIGGERS = Object.fromEntries(
         {
           issue: 1315,
           says: `an agent switched in its persona sheet to ${what} shows it: the sheet saved it, and after its next turn its row names that model and effort, with no “not” or “set to”`,
-          recorded: (/** @type {any} */ f) => Array.isArray(f.probes?.panels) && !!f.ui,
+          recorded: (/** @type {any} */ f) => Array.isArray(f.probes?.panels) && !!f.ui?.agentLines,
           run: (/** @type {any} */ f) =>
             shown(t, f).map((s) => ({
               at: s.turn?.started ?? null,
