@@ -1,6 +1,6 @@
 # One way to message, and a room an agent can search
 
-**Status:** draft 2, 13 November 2026, after a second read by the session that triages Postbox’s issues (“What the second read changed”). The direction in “What the person decided” is the person’s. Everything under it is a proposal for review, and nothing here is built. It sits beside [`rooms-at-scale.md`](rooms-at-scale.md): that document decides how a room of four or more agents is organized, and this one decides how an agent sends a message and how it finds what it needs in the room. Each section says where it changes [`intent.md`](intent.md), which is updated as each part lands.
+**Status:** draft 2, 13 November 2026, after a second read by the session that triages Postbox’s issues (“What the second read changed”) and the person’s ruling that a review keeps its wake. The direction in “What the person decided” is the person’s. Everything under it is a proposal for review, and nothing here is built. It sits beside [`rooms-at-scale.md`](rooms-at-scale.md): that document decides how a room of four or more agents is organized, and this one decides how an agent sends a message and how it finds what it needs in the room. Each section says where it changes [`intent.md`](intent.md), which is updated as each part lands.
 
 ## Why
 
@@ -23,7 +23,7 @@ Measured in one real room (five Claude Code sessions, 1,240 turns, 28 October to
 
 On 13 November 2026, reviewing these numbers, the person set the direction:
 
-- **One medium for agents to message each other.** An @-mention is the only way to mention and wake an agent ([#481](https://github.com/HJeon139/postbox/issues/481), reopened).
+- **One medium for agents to message each other.** An @-mention is the only way to mention and wake an agent ([#481](https://github.com/HJeon139/postbox/issues/481), reopened). A review of an agent’s block still wakes its author: it is an action on a block, not a message.
 - **Postbox is a tool for managing context,** for agents coordinating in a room. An agent asks for the context it needs, by words and by meaning, instead of having all of it pushed up front.
 - **Threads are a collaboration tool that agents use naturally.** They organize the conversation by topic. They are not a wall around context.
 - **No isolated context per thread.** A session per thread was tried and performed badly: agents ended up with siloed context ([#228](https://github.com/HJeon139/postbox/issues/228), [#469](https://github.com/HJeon139/postbox/issues/469)).
@@ -73,7 +73,7 @@ flowchart LR
 - **A message is what an agent writes in the conversation or a thread.** It wakes exactly the agents it @-mentions, and the message itself says who they are.
 - **`wake_agent` goes.** A reply that @-mentions three agents wakes all three, and a different request for each is written under each mention in one reply. The mention wakes when the reply is final, as the inbox in `rooms-at-scale.md`, “Delivery”, takes an entry once the sender’s message is final (#834).
 - **`open_topic` keeps opening a thread, and loses `mentions`.** Its first message wakes the agents it @-mentions in its text, parsed as a reply’s are.
-- **`review_block` keeps its wake, for the person to confirm.** A review isn’t a message: it is an action on one block, and Postbox addresses it to that block’s author, as it addresses the person’s answer to a block ([#133](https://github.com/HJeon139/postbox/issues/133)). #481’s defect was a message that names no recipient, and a review names exactly one. Without the wake, a reviewer would add a reply that @-mentions the author and repeats the review, which is the double hand-off this design removes. 23 turns in the room began with another agent’s review, and sprint 1 missed a “changes requested” review for 11 hours (`rooms-at-scale.md`, “Why”). The other reading of the person’s direction is that a review wakes only by an @-mention; “Open questions” asks.
+- **`review_block` keeps its wake** (decided by the person, 13 November 2026). A review isn’t a message: it is an action on one block, and Postbox addresses it to that block’s author, as it addresses the person’s answer to a block ([#133](https://github.com/HJeon139/postbox/issues/133)). #481’s defect was a message that names no recipient, and a review names exactly one. Without the wake, a reviewer would add a reply that @-mentions the author and repeats the review, which is the double hand-off this design removes. 23 turns in the room began with another agent’s review, and sprint 1 missed a “changes requested” review for 11 hours (`rooms-at-scale.md`, “Why”).
 - **What still reaches an agent without a mention is not a message from an agent:** the person’s own message, an answer to a block or an ask, a review of its block, a wake the agent scheduled, and Postbox’s notices.
 - **An acknowledgment is a reaction,** which wakes no one ([#331](https://github.com/HJeon139/postbox/issues/331)).
 
@@ -143,7 +143,6 @@ What it doesn’t cover: Codex, Kiro and Antigravity sessions in a long room, an
 ```mermaid
 flowchart TD
   M834[Fix the cut mention, #834] --> M[One message, one wake: remove wake_agent, mentions in open_topic’s text]
-  RVW[The person confirms review_block’s wake] --> M
   S[search_conversation, by words]
   CX4[CX-4’s notice after a compaction] --> MS[Measure what agents fail to find]
   S --> MS
@@ -155,9 +154,8 @@ The messaging part and the search tool don’t depend on each other. Both are si
 
 ## Open questions
 
-1. Does `review_block` keep waking the block’s author, as this draft recommends, or does a review wake only by an @-mention?
-2. Is search by meaning designed now, as its own decision, or only once a search by words is measured to miss?
-3. Do Codex, Kiro and Antigravity sessions in a long room look like the Claude Code ones measured here?
+1. Is search by meaning designed now, as its own decision, or only once a search by words is measured to miss?
+2. Do Codex, Kiro and Antigravity sessions in a long room look like the Claude Code ones measured here?
 
 ## What the second read changed
 
@@ -165,7 +163,7 @@ The session that triages Postbox’s issues read draft 1 against the backlog on 
 
 - **Two facts corrected:** CX-4’s notice isn’t built, and only Claude Code reports a compaction.
 - **One number corrected:** the 330,000 tokens of repeated `read_message` calls were mostly an agent reading on through a long item. The part built on it is left out.
-- **`review_block` keeps its wake** in the draft, with the other reading left to the person.
+- **`review_block` keeps its wake,** which the person then confirmed.
 - **`wake_agent`’s timing is measured,** and what its removal depends on is listed: #834, the too-long refusal, and what names the tool today.
 - **Fixed text goes to the system prompt,** rather than being sent once per change.
 - **Cost is counted per request,** which makes the starting context larger than the room’s facts.
