@@ -1,12 +1,18 @@
 // #1328’s check: an agent answered a request the person sent to another agent, which it read in its catch-up. A request
 // says so in a way a check can read: it asks for a code word (“End your reply with the code word KESTREL.”), and an
-// agent the person didn’t write to that writes the word answered it. The addressed scenario’s requests carry one each
-// (tests/uat/e2e/scenarios/addressed.md). Part of tools/uat/room-checks.mjs’s CHECKS.
-
+// agent the person didn’t write to that ends its reply with the word answered it. The addressed scenario’s requests
+// carry one each (tests/uat/e2e/scenarios/addressed.md). Part of tools/uat/room-checks.mjs’s CHECKS.
 import { parseMentions } from '../../shared/text.mjs';
 import { itemsOf } from './room-items.mjs';
 
 const CODE_WORD = /code word\W{0,3}([A-Z]{4,})\b/g;
+
+/**
+ * Whether a reply ends with a code word, as the request asks (“End your reply with the code word …”). A word quoted
+ * earlier, as from a list another agent handed over, isn’t an answer to the request.
+ * @param {unknown} text @param {string} word
+ */
+const endsWith = (text, word) => new RegExp(`\\b${word}\\W*$`).test(String(text ?? '').trim());
 
 /** The code words a message of the person’s asks for. @param {string} text */
 const codeWords = (text) => [...String(text ?? '').matchAll(CODE_WORD)].map((m) => m[1]);
@@ -40,7 +46,7 @@ function unaddressedAnswers(facts) {
     );
     for (const reply of items.slice(i + 1)) {
       if (reply.kind !== 'agent' || !reply.handle || to.includes(reply.handle)) continue;
-      const said = words.find((w) => new RegExp(`\\b${w}\\b`).test(String(reply.text ?? '')));
+      const said = words.find((w) => endsWith(reply.text, w));
       if (said) out.push({ it, reply, said, to });
     }
   });

@@ -56,6 +56,12 @@ test('unaddressed-request-answered finds an answer to a request by @mention too'
   assert.match(check.run(factsOf(f))[0].evidence, /@beta wrote the code word ORIOLE from the person’s request to @alpha/);
 });
 
+test('unaddressed-request-answered leaves a code word quoted mid-reply, as from a list another agent handed over', async () => {
+  const f = await twoRequests();
+  await betaWakes(f, '@alpha’s list ends “Four checks. KESTREL”, and nothing is missing from it.');
+  assert.deepEqual(check.run(factsOf(f)), []);
+});
+
 test('unaddressed-request-answered finds nothing when only the addressed agent answers', async () => {
   const f = await twoRequests();
   await betaWakes(f, 'The build is fine.');

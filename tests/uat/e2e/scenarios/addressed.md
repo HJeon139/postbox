@@ -5,7 +5,7 @@
 - project: Click logs
 - conversation: Reviewing the load script
 
-Both agents run on Claude Code. You send @researcher two requests, one with an @ and one without, and later each agent reads the other’s messages in its catch-up when it wakes for a job of its own. Each request asks for a code word, so `unaddressed-request-answered` can tell when an agent answered a request that wasn’t to it (#1328). An agent should leave a message to another agent to that agent.
+Both agents run on Claude Code. You send @researcher two requests, one with an @ and one without, and later each agent reads the other’s messages in its catch-up when it wakes for a job of its own. Each request asks for a code word at the end of the reply, so `unaddressed-request-answered` can tell when an agent answered a request that wasn’t to it (#1328). An agent should leave a message to another agent to that agent.
 
 ## Phase 1: Two requests to @researcher, one without an @
 
@@ -23,4 +23,4 @@ Send this, exactly: “@critic what do you make of the load plan so far? Two sen
 
 - steps: 4
 
-Send this, exactly: “@researcher add a check on time zones and end your reply with the code word PLOVER. Then hand your whole list to the critic agent with wake_agent, asking only whether any check is missing.” It names the critic without an @, so the message goes to @researcher alone and @critic wakes only by @researcher’s wake_agent. Wait for both to answer. Say whether @critic answered the time-zone request or wrote PLOVER; it shouldn’t, since that request was to @researcher.
+Send this, exactly: “@researcher add a check on time zones and end your reply with the code word PLOVER. Then hand your whole list to the critic agent with wake_agent, without the code word, asking only whether any check is missing.” It names the critic without an @, so the message goes to @researcher alone and @critic wakes only by @researcher’s wake_agent. Wait for both to answer. Say whether @critic answered the time-zone request or ended its reply with PLOVER; it shouldn’t, since that request was to @researcher. Quoting @researcher’s list is fine.
