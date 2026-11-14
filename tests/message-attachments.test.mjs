@@ -6,6 +6,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { formatMessage } from '../server/adapters/guide.mjs';
+import * as arrange from './arrange.mjs';
 import { held, settle, setup } from './side-threads-fixture.mjs';
 
 const RLO = '\u202e';
@@ -24,8 +25,8 @@ test('#991 a file attachment is stored with its upload’s name, type and size, 
   const { rt, store, t } = room();
   const { item } = rt.sendMessage(t.id, { text: '@beta read this', attachments: [forged] });
   assert.deepEqual(store.state.items[t.id].find((i) => i.id === item.id).attachments, [KEPT]);
-  assert.ok(!rt.describeItem(item).includes(RLO), 'the line other agents read');
-  assert.match(rt.describeItem(item), /\[attached: report_fdp\.exe\]/);
+  assert.ok(!arrange.describeItem(rt, item).includes(RLO), 'the line other agents read');
+  assert.match(arrange.describeItem(rt, item), /\[attached: report_fdp\.exe\]/);
   await settle(rt);
 });
 
@@ -102,7 +103,7 @@ test('#1067 a file attachment whose upload was stored under a raw name has it cl
   store.emit('file', old);
   const { item } = rt.sendMessage(t.id, { text: '@beta read this', attachments: [{ kind: 'file', fileId: 'f0' }] });
   assert.deepEqual(store.state.items[t.id].find((i) => i.id === item.id).attachments, [{ ...KEPT, fileId: 'f0' }]);
-  assert.match(rt.describeItem(item), /\[attached: report_fdp\.exe\]/);
+  assert.match(arrange.describeItem(rt, item), /\[attached: report_fdp\.exe\]/);
   await settle(rt);
   const prompt = formatMessage(adapter.calls.find((c) => c.sessionId === beta.id).message);
   assert.match(prompt, /^- report_fdp\.exe \(application\/x-msdownload\)$/m);

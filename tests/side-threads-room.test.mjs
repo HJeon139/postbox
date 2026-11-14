@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { handleMcp } from '../server/mcp.mjs';
 import { SENDING } from '../shared/limits.mjs';
+import * as arrange from './arrange.mjs';
 import { held, oldSide, settle, setup, sleep } from './side-threads-fixture.mjs';
 
 const linkOf = (store, t) => store.items(t.id).find((x) => x.kind === 'sidelink');
@@ -38,7 +39,7 @@ test('#130, #372: a side thread from before keeps its line’s count, one per ag
   assert.equal(link.lastAt, store.items(side.id).at(-1).at);
   // An agent of the conversation reads the same number.
   const gamma = rt.ensureSession(t.id, Object.values(store.state.personas).find((p) => p.handle === 'gamma').id);
-  assert.match(rt.catchUp(store.state.sessions[gamma.id]) ?? '', /talked in a side thread \(3 messages;/);
+  assert.match(arrange.catchUp(rt, store.state.sessions[gamma.id]) ?? '', /talked in a side thread \(3 messages;/);
 });
 
 test('#128: the person sends a message from a side thread from before to the conversation, as from a topic thread, and no one is woken', async () => {
@@ -94,7 +95,7 @@ test('#128, #372: an agent the person asked posts to the conversation from a top
   // It wakes no one, and isn’t an agent wake; and your message there started the conversation’s wake count again.
   assert.equal(store.state.threads[t.id].hops, 0);
   assert.equal(
-    rt.describeItem(shared, store.state.sessions[alpha.id]),
+    arrange.describeItem(rt, shared, store.state.sessions[alpha.id]),
     `Shared from the thread “${topic.title}”, by @beta in a turn the person started: The details, for the main chat.`,
   );
 });

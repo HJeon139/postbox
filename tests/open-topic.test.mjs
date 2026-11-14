@@ -5,7 +5,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { READ_TOOLS } from '../server/mcp.mjs';
-import { threadCatchUp } from '../server/thread-catch-up.mjs';
 import { isQuietTool } from '../server/tool-labels.mjs';
 import { TOOL_DEFS } from '../shared/mcp-tools.mjs';
 import * as arrange from './arrange.mjs';
@@ -139,7 +138,7 @@ test('#507: a thread’s catch-up keeps an ask that mentions the agent, whole, t
   const ask = `@alpha please re-run the totals for March and post the diff here. ${'Context on the run follows. '.repeat(6)}`;
   say(ask);
   for (let i = 0; i < 24; i++) say(`Note ${i + 1} on the run.`);
-  const text = threadCatchUp(f.rt, f.store.state.sessions[f.alpha.id], threadId) ?? '';
+  const text = arrange.threadCatchUp(f.rt, f.store.state.sessions[f.alpha.id], threadId) ?? '';
   assert.ok(text.includes(ask), 'the ask is kept, whole');
   assert.match(text, /left out/, 'and the catch-up says what it left out');
   assert.ok(text.includes(`read_conversation { thread: "${threadId}", skip:`), 'and its hint reads this thread, not the room');

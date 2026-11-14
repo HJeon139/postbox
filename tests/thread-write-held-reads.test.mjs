@@ -114,10 +114,10 @@ test('a turn that ends in a topic opened behind a held commit settles the topicâ
   const f = await heldRoom();
   /** @type {string[]} */
   const prompts = [];
-  f.rt.summarize = async (/** @type {string} */ prompt) => {
+  arrange.withSummarizer(f.rt, async (/** @type {string} */ prompt) => {
     prompts.push(prompt);
     return { text: 'Alpha found the off column.', costUsd: null };
-  };
+  });
   // The quiet wait is the test's: it ends once the release has come, so the summary reads the topic published.
   /** @type {(() => void)[]} */
   const waits = [];

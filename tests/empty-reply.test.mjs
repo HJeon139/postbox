@@ -21,7 +21,6 @@ import { ClaudeCodeAdapter } from '../server/adapters/claude-code.mjs';
 import { createStreamMapper } from '../server/adapters/claude-stream.mjs';
 import { endedWithoutReply, noteAnswer } from '../server/empty-reply.mjs';
 import { handleMcp } from '../server/mcp.mjs';
-import { readMessage } from '../server/read-message.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
 import * as arrange from './arrange.mjs';
@@ -140,7 +139,7 @@ test('#485: a reply that wrote its report and then failed still reaches the othe
   const report = store.items(t.id).find((i) => i.kind === 'agent' && i.text?.includes('#451 is ready'));
   assert.equal(report.status, 'failed');
   // read_message by another agent: the text, and that the turn failed.
-  const read = readMessage(rt, researcher, { id: report.id });
+  const read = arrange.readMessage(rt, researcher, { id: report.id });
   assert.ok(read.ok, read.message);
   assert.match(read.message, /^@critic \(this reply failed: Claude Code exited with code 1\.\): #451 is ready at 41f3a0f/);
   // And the catch-up at that agent’s next turn.

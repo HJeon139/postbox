@@ -4,7 +4,6 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { threadCatchUp } from '../server/thread-catch-up.mjs';
 import { READING } from '../shared/limits.mjs';
 import * as arrange from './arrange.mjs';
 import { settle, setup } from './side-threads-fixture.mjs';
@@ -19,7 +18,7 @@ async function topic() {
   const { threadId } = f.rt.startTopic(f.t.id, reply.id);
   const say = (text) =>
     arrange.post(f.rt, threadId, { kind: 'agent', sessionId: f.beta.id, personaId: f.beta.personaId, handle: 'beta', text, status: 'done' });
-  const catchUp = () => threadCatchUp(f.rt, f.store.state.sessions[f.alpha.id], threadId) ?? '';
+  const catchUp = () => arrange.threadCatchUp(f.rt, f.store.state.sessions[f.alpha.id], threadId) ?? '';
   return { say, catchUp };
 }
 /** A message of about 5,000 characters that starts with `start`. @param {string} start */

@@ -4,7 +4,6 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { threadCatchUp } from '../server/thread-catch-up.mjs';
 import * as arrange from './arrange.mjs';
 import { setup } from './side-threads-fixture.mjs';
 import { heldStore } from './stop-reply-fixture.mjs';
@@ -52,7 +51,7 @@ test('an item brought forward in a topic thread moves seenIn for that topic to t
   assert.equal(seenIn(f, f.alpha, topic), stub.id, 'the topic marker moved to the stub');
   assert.equal(seenIn(f, f.beta, topic), 'it_a', 'a marker on another item is untouched');
   assert.equal(f.store.state.sessions[f.alpha.id].seenItem, null, 'the conversation marker is untouched');
-  assert.match(threadCatchUp(f.rt, f.store.state.sessions[f.alpha.id], topic) ?? '', /text of it_b/, 'the next topic catch-up skips nothing');
+  assert.match(arrange.threadCatchUp(f.rt, f.store.state.sessions[f.alpha.id], topic) ?? '', /text of it_b/, 'the next topic catch-up skips nothing');
   await f.store.close();
 });
 

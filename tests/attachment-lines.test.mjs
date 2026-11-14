@@ -31,16 +31,16 @@ test('#671: a local agent the message wasn’t sent to gets each attachment’s 
   const { rt, item, near, sessionOf, upload } = room();
   const se = sessionOf(near);
   const want = `[attached: Pasted text.txt at ${upload}, notes/plan.md at /work/project/notes/plan.md]`;
-  assert.ok(rt.describeItem(item, se).includes(want), 'the catch-up line');
-  const read = rt.readMessage(se, { id: item.id });
+  assert.ok(arrange.describeItem(rt, item, se).includes(want), 'the catch-up line');
+  const read = arrange.readMessage(rt, se, { id: item.id });
   assert.ok(read.ok && read.message.includes(want), read.message);
-  assert.ok(rt.readConversation(se).includes(want), 'read_conversation');
+  assert.ok(arrange.readConversation(rt, se).includes(want), 'read_conversation');
 });
 
 test('#671: an agent on a remote host gets the names, and that its host can’t open them yet', () => {
   const { rt, item, far, sessionOf, upload } = room();
   const se = sessionOf(far);
-  for (const line of [rt.describeItem(item, se), rt.readMessage(se, { id: item.id }).message, rt.readConversation(se)]) {
+  for (const line of [arrange.describeItem(rt, item, se), arrange.readMessage(rt, se, { id: item.id }).message, arrange.readConversation(rt, se)]) {
     assert.ok(line.includes('[attached: Pasted text.txt, notes/plan.md] Your host can’t open attachments from earlier messages yet'), line);
     assert.ok(!line.includes(upload) && !line.includes('/work/project'), 'no path on this computer');
   }
@@ -50,12 +50,12 @@ test('#671: a topic thread’s opener gives a local agent the paths too', () => 
   const { rt, t, item, near, sessionOf, upload } = room();
   const { threadId } = rt.startTopic(t.id, item.id);
   // A topic thread shares the agent’s session (#228).
-  const line = rt.topicRootLine(sessionOf(near), rt.s.threads[threadId]);
+  const line = arrange.topicRootLine(rt, sessionOf(near), rt.s.threads[threadId]);
   assert.match(line, /^This thread started from the person’s message: Read these\./);
   assert.ok(line.includes(`Pasted text.txt at ${upload}`), line);
 });
 
 test('#671: with no reader, a line names the attachments alone', () => {
   const { rt, item } = room();
-  assert.equal(rt.describeItem(item), 'The person: Read these. [attached: Pasted text.txt, notes/plan.md]');
+  assert.equal(arrange.describeItem(rt, item), 'The person: Read these. [attached: Pasted text.txt, notes/plan.md]');
 });

@@ -70,7 +70,7 @@ test('a message in a topic thread keeps its recipients, and the thread’s opene
 test('an item from before recipients were kept still reads as the person’s', () => {
   const f = setup();
   const it = arrange.post(f.rt, f.t.id, { kind: 'user', text: 'Old message.' });
-  assert.equal(f.rt.describeItem(it, f.beta), 'The person: Old message.');
+  assert.equal(arrange.describeItem(f.rt, it, f.beta), 'The person: Old message.');
 });
 
 test('every agent-facing reading of the person says “The person”, never “You”', () => {
@@ -81,7 +81,7 @@ test('every agent-facing reading of the person says “The person”, never “Y
     add({ kind: 'shared', fromTitle: 'Totals', question: 'Which year?', text: '1908.' }),
     add({ kind: 'system', variant: 'wake', from: 'you', to: 'alpha' }),
     add({ kind: 'command', command: 'ls', cwd: '/tmp', text: 'a', status: 'done', exitCode: 0 }),
-  ].map((it) => f.rt.describeItem(it, f.beta));
+  ].map((it) => arrange.describeItem(f.rt, it, f.beta));
   assert.deepEqual(lines, [
     'The person: Approved.',
     'Shared from the thread “Totals”, by the person: The person asked: “Which year?” 1908.',
@@ -89,7 +89,7 @@ test('every agent-facing reading of the person says “The person”, never “Y
     'The person ran `ls` in /tmp (it exited with 0). Output:\n```\na\n```',
   ]);
   // read_message gives the agent its own messages as “You”, and the person’s as theirs.
-  assert.equal(f.rt.readLine(add({ kind: 'user', text: 'Hi.', to: ['alpha'] }), f.beta), 'The person, to @alpha: Hi.');
+  assert.equal(arrange.readLine(f.rt, add({ kind: 'user', text: 'Hi.', to: ['alpha'] }), f.beta), 'The person, to @alpha: Hi.');
 });
 
 test('a message queued only for an agent that’s deleted is posted with that agent as its recipient', async () => {

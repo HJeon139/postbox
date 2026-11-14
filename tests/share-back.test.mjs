@@ -3,6 +3,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import * as arrange from './arrange.mjs';
 import { settle, setup } from './side-threads-fixture.mjs';
 
 const LIMIT = 50_000;
@@ -49,6 +50,6 @@ test('#362: a summary one character past the limit isn’t posted, and the threa
   // Postbox's line, never the person's: an agent would read a voice line as `The person: …`, an instruction they gave.
   assert.equal(why.kind, 'system');
   assert.equal(why.variant, 'send-refused');
-  assert.doesNotMatch(String(rt.describeItem(why) ?? ''), /^You:/, 'no agent hears it as the person');
+  assert.doesNotMatch(String(arrange.describeItem(rt, why) ?? ''), /^You:/, 'no agent hears it as the person');
   assert.equal(store.state.threads[threadId].summaryPending, null, 'Summarize back works again');
 });

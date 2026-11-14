@@ -33,7 +33,7 @@ function withApp(code) {
   const shown = tools.show_app({ id: 'lab', title: 'Lab', code });
   assert.notEqual(shown.ok, false, JSON.stringify(shown));
   const read = (args) => {
-    const res = r.rt.readMessage(r.beta, args);
+    const res = arrange.readMessage(r.rt, r.beta, args);
     assert.equal(res.ok, true, res.message);
     return res.message;
   };
@@ -83,7 +83,7 @@ test('#516 S1: read_message { id, version: 1 } on a v3 app gives v1’s code and
   assert.match(old, /isn’t kept/);
   assert.doesNotMatch(old, /Browser check: pending/, 'v3’s check isn’t given as v1’s');
   assert.equal(codeOf(read({ id: 'lab' })), '<p>three</p>', 'without a version, the current one');
-  const none = rt.readMessage(arrange.sessionsIn(rt, Object.keys(rt.s.threads)[0])[1], { id: 'lab', version: 9 });
+  const none = arrange.readMessage(rt, arrange.sessionsIn(rt, Object.keys(rt.s.threads)[0])[1], { id: 'lab', version: 9 });
   assert.equal(none.ok, false);
   assert.match(none.message, /v3/, 'the refusal names the newest version');
 });
@@ -124,14 +124,14 @@ test('#516 S1: the same holds for a long message’s parts', () => {
   const { rt, alpha, beta, t } = setup();
   const item = arrange.post(rt, t.id, { kind: 'agent', sessionId: alpha.id, personaId: alpha.personaId, handle: alpha.handle, text: 'x', status: 'done' });
   // Puts the emoji's first half at the last character of part 1, after the line's own prefix.
-  const prefix = rt.readLine(item, beta, Number.POSITIVE_INFINITY).length - 1;
+  const prefix = arrange.readLine(rt, item, beta, Number.POSITIVE_INFINITY).length - 1;
   const text = `${'a'.repeat(READING.part - 1 - prefix)}${EMOJI}${'b'.repeat(100)}`;
   arrange.setItem(rt, t.id, item.id, { text });
-  const full = rt.readLine(rt.store.item(t.id, item.id), beta, Number.POSITIVE_INFINITY);
+  const full = arrange.readLine(rt, rt.store.item(t.id, item.id), beta, Number.POSITIVE_INFINITY);
   const body = (/** @type {string} */ m) => m.replace(/\n\n\(Characters [^)]*\)$/, '');
-  const one = rt.readMessage(beta, { id: item.id });
+  const one = arrange.readMessage(rt, beta, { id: item.id });
   const next = Number(one.message.match(/from: (\d+) \} reads on/)?.[1]);
-  const two = rt.readMessage(beta, { id: item.id, from: next });
+  const two = arrange.readMessage(rt, beta, { id: item.id, from: next });
   assert.ok(!loneHigh(body(one.message)), 'part 1 doesn’t end with half a character');
   assert.ok(!loneLow(body(two.message)));
   assert.equal(body(one.message) + body(two.message), full);
