@@ -136,8 +136,7 @@ export async function start({
     for (const it of list) if (it.status === 'streaming') rt.threads.patchItem(threadId, it.id, { status: 'stopped' });
   rt.rearmSchedules();
   rt.expireStalePermissions();
-  rt.expireStaleCommands();
-  rt.ledger.expireStale();
+  rt.work.expireStale();
   rt.expireStaleJobs();
   rt.rearmMirrors();
   // Turns that went on on their hosts are attached again, each host’s status is kept for the page, and the hosts
@@ -459,7 +458,7 @@ export async function start({
     rt.stopMirrors();
     // `!` commands run in their own process groups, so they’d outlive Postbox: SIGINT, then SIGKILL (#67). So do the
     // agents’ CLIs, and the background jobs Postbox kept running (#126, #129).
-    await rt.stopShellCommands();
+    await rt.work.stopAll();
     await rt.stopTurns();
     stopTimers(rt); // what a turn ending as it stopped started
     // After the turns, whose Stop goes to their hosts over these links (#120).
@@ -495,7 +494,7 @@ export async function start({
  */
 function listening(rt) {
   rt.drainAll();
-  rt.turnArchive.all();
+  rt.work.archiveAll();
 }
 
 // ── HTTP helpers ─────────────────────────────────────────────────────────────────────────

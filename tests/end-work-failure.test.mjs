@@ -1,9 +1,9 @@
-// A turn's work is recorded when it ends (server/turn-end-work.mjs endWork), and nothing awaits it: if the ledger can't write, that
+// A turn's work is recorded when it ends (Work’s endWork, server/turn-end-work.mjs), and nothing awaits it: if the ledger can't write, that
 // must be a warning, not an unhandled rejection, which would take the server down.
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { endWork } from '../server/turn-end-work.mjs';
+import * as arrange from './arrange.mjs';
 import { setup } from './side-threads-fixture.mjs';
 
 test('a ledger that rejects while a turn ends is warned about, and endWork still resolves', async () => {
@@ -13,7 +13,7 @@ test('a ledger that rejects while a turn ends is warned about, and endWork still
   const error = console.error;
   console.error = (...a) => warned.push(a.join(' '));
   try {
-    await endWork(rt, { id: 'turn_1', threadId: t.id, sessionId: alpha.id, work: { convId: t.id, se: { handle: 'alpha' } } }, 'done');
+    await arrange.endWork(rt, { id: 'turn_1', threadId: t.id, sessionId: alpha.id, work: { convId: t.id, se: { handle: 'alpha' } } }, 'done');
   } finally {
     console.error = error;
   }

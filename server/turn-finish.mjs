@@ -10,7 +10,7 @@ import { clip } from './helpers.mjs';
 import { settleScheduledWake } from './scheduled-wakes.mjs';
 import { postSummary } from './share-back.mjs';
 import { settleThread } from './thread-summary.mjs';
-import { endedAs, endWork } from './turn-end-work.mjs';
+import { endedAs } from './turn-end-work.mjs';
 import { askedOf, replyMarks } from './turn-marks.mjs';
 import { foldSteps } from './turn-steps.mjs';
 /**
@@ -31,7 +31,7 @@ export function endTurn(rt, turn, err) {
   // How a remote turn ended on its host decides what the person sees: Sign-in needed and Interrupted say so (#120).
   if (turn.remote) err = rt.remote.ended(turn, err);
   settleScheduledWake(rt, turn, err);
-  endWork(rt, turn, endedAs(err));
+  rt.work.endWork(turn, endedAs(err));
   // The turn’s own lines in an attached session’s transcript aren’t terminal activity.
   rt.mirrors.get(turn.sessionId)?.tail.skipToEnd();
   const se = rt.s.sessions[turn.sessionId];

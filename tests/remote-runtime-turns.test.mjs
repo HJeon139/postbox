@@ -15,7 +15,7 @@ test('#120 G6: ! for an agent on a host runs in the project’s folder here, nev
   const far = rt.createPersona({ handle: 'far', backend: 'claude-code', folder: '/home/user/app', remote: { hostId: h.id } });
   const t = rt.createThread({ projectId: 'p1', title: 'T', personaIds: [far.id] });
   rt.setProjectHostFolder('p1', h.id, '/home/user/app');
-  assert.deepEqual(await rt.commandFolder(t.id), { folder: '/work/project', host: 'host.example.com' });
+  assert.deepEqual(await arrange.commandFolder(rt, t.id), { folder: '/work/project', host: 'host.example.com' });
   await rt.runShellCommand(t.id, 'ls');
   assert.equal(children[0].opts.cwd, '/work/project');
   children[0].stdout.write('a\n');
@@ -28,10 +28,10 @@ test('#120 G6: ! for an agent on a host runs in the project’s folder here, nev
 
   // No folder for the project here: the workspace of its own the agent would have on this computer.
   store.emit('project', { ...store.state.projects.p1, folder: '' });
-  assert.deepEqual(await rt.commandFolder(t.id), { folder: '/work/space/far', host: 'host.example.com' });
+  assert.deepEqual(await arrange.commandFolder(rt, t.id), { folder: '/work/space/far', host: 'host.example.com' });
   // An agent on this computer: its own folder, and no note.
   rt.updatePersona(far.id, { remote: null });
-  assert.deepEqual(await rt.commandFolder(t.id), { folder: '/home/user/app', host: null });
+  assert.deepEqual(await arrange.commandFolder(rt, t.id), { folder: '/home/user/app', host: null });
 });
 
 test('#120: a remote turn is told it may post to the conversation only where the laptop’s would: the person’s, in a topic thread', async () => {

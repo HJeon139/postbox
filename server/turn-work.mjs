@@ -1,37 +1,35 @@
-// What a turn’s adapter tells the runtime about its tool calls, for the work ledger (#132): part of the turn’s context
+// What a turn’s adapter tells Work about its tool calls, for the work ledger (#132): part of the turn’s context
 // (adapterContext, server/turn-context.mjs), each taken only while the turn is live. The calls are also what a permission prompt may
 // be for (#353, #665): server/prompt-claim.mjs reads them here.
-
-import { recordScheduledTool } from './scheduled-wakes.mjs';
 
 /**
  * Each tool call with its whole input, before it runs ({ id, name, input, who, parent }: parent is the Agent call a
  * subagent’s call is under); what it returned ({ id, isError, text, result: the tool’s own record, vcsCwd }); a
  * background task’s end ({ toolUseId, status, summary, outputFile }); and the process’s running spend ({ key, costUsd,
  * tokens }).
- * @param {any} rt @param {any} turn @param {() => boolean} live
+ * @param {import('./work-service.mjs').Work} work @param {any} turn @param {() => boolean} live
  */
-export function workEvents(rt, turn, live) {
+export function workEvents(work, turn, live) {
   return {
     /** @param {any} u */
     toolUse(u) {
       if (!live()) return;
       seeCall(turn, u);
-      recordScheduledTool(rt, turn, u);
+      work.ledger.toolUse(turn, u);
     },
     /** @param {any} r */
     toolResult(r) {
       if (!live()) return;
       answerCall(turn, r?.id);
-      rt.ledger.toolResult(turn, r);
+      work.ledger.toolResult(turn, r);
     },
     /** @param {any} t */
     taskEnded(t) {
-      if (live()) rt.ledger.taskEnded(turn, t);
+      if (live()) work.ledger.taskEnded(turn, t);
     },
     /** @param {any} u */
     usage(u) {
-      if (live()) rt.ledger.usage(turn, u);
+      if (live()) work.ledger.usage(turn, u);
     },
   };
 }

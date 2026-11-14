@@ -147,7 +147,7 @@ test('a ! command run while a commit is held keeps its output: the flush finds i
   const env = await heldRoom();
   // A fake child, as tests/commands.test.mjs makes: unit specs start no processes.
   const child = Object.assign(new EventEmitter(), { stdout: new PassThrough(), stderr: new PassThrough(), kill: () => true });
-  env.rt.spawnShell = () => child;
+  arrange.withSpawn(env.rt, () => child);
   await env.rt.runShellCommand(env.t.id, 'echo held-output');
   child.stdout.write('held-output\n');
   child.stdout.end();

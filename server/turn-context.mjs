@@ -9,7 +9,6 @@ import { recordScheduledTool } from './scheduled-wakes.mjs';
 import { turnStep } from './step-text.mjs';
 import { newId } from './store.mjs';
 import { saveBackendState } from './store-outage.mjs';
-import { workEvents } from './turn-work.mjs';
 /**
  * What a turn's adapter runs with: what the turn is, its permissions, and the callbacks it reports through.
  * @param {any} rt  the runtime @param {any} se0  the session as the turn starts @param {any} turn
@@ -64,6 +63,24 @@ function whatTheTurnIs(rt, se0, turn) {
 }
 
 /**
+ * For the work ledger (#132): toolUse, toolResult, taskEnded and usage (turn-work.mjs). A tool’s start also counts
+ * toward a scheduled wake’s recovery (scheduled-wakes.mjs), once the ledger has it, as it did when turn-work.mjs called
+ * it (designs/architecture/services.md, “How each dependency on waiting code breaks”).
+ * @param {any} rt @param {any} turn @param {() => boolean} live
+ */
+function workCallbacks(rt, turn, live) {
+  const work = rt.work.workEvents(turn, live);
+  return {
+    ...work,
+    /** @param {any} u */
+    toolUse(u) {
+      work.toolUse(u);
+      if (live()) recordScheduledTool(rt, turn, u, false);
+    },
+  };
+}
+
+/**
  * What the adapter hands over or reports about the turn itself: its subagents' names, its own controls, the agent's
  * commands, background jobs, refused calls, the work ledger's events and its checkpoint.
  * @param {any} rt @param {any} turn @param {() => boolean} live
@@ -103,8 +120,7 @@ function turnHooks(rt, turn, live) {
       rt.ledger.denied(turn, d.toolUseId);
       rt.recordDenial(turn, d);
     },
-    // For the work ledger (#132): toolUse, toolResult, taskEnded and usage (turn-work.mjs).
-    ...workEvents(rt, turn, live),
+    ...workCallbacks(rt, turn, live),
     /**
      * Where this turn ends in the backend’s own transcript, such as { claudeSessionId, uuid }. A topic
      * thread that branches from this turn’s messages forks the agent’s session there.

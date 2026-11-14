@@ -1,10 +1,11 @@
 // The runtime’s archive passes (#305; designs/305-archive-turns.md, “When the pass runs”): when a turn ends, and once
 // after start, a conversation’s older ended turns move to archive files (server/work-archive.mjs). One promise chain
-// per conversation, which both join, so two passes never archive one conversation at once; the runtime ends them
-// before the store closes.
+// per conversation, which both join, so two passes never archive one conversation at once; shutdown ends them
+// before the store closes. Work (server/work-service.mjs) builds them with the store, Running and the ledger.
 //
-// Off unless `config.archiveTurns === true` (server/index.mjs passes it to new Runtime). A pass removes work entries and
-// reply steps from the live state, and the readers that give them back aren’t all in yet; step 4 switches it on.
+// Off unless `config.archiveTurns === true` (server/index.mjs passes it to new Runtime, which passes it to Work). A pass
+// removes work entries and reply steps from the live state, and the readers that give them back aren’t all in yet;
+// step 4 switches it on.
 
 import { archiveTurns } from './work-archive.mjs';
 
@@ -15,9 +16,16 @@ const yieldNow = () => new Promise((r) => setImmediate(r));
 const messageOf = (/** @type {unknown} */ e) => (e instanceof Error ? e.message : String(e));
 
 export class ArchivePasses {
-  /** @param {any} rt  the runtime @param {{ enabled?: boolean }} [options] */
-  constructor(rt, { enabled = false } = {}) {
-    this.rt = rt;
+  /**
+   * @param {{ store: import('./store.mjs').Store, running: { all: () => any[] }, ledger: { blobs: any } }} deps
+   *   running: the live turns, which stay hot; ledger: whose blob store the archive files go to
+   * @param {{ enabled?: boolean }} [options]
+   */
+  constructor({ store, running, ledger }, { enabled = false } = {}) {
+    this.store = store;
+    /** Running (server/running.mjs), whose live turns stay hot */
+    this.live = running;
+    this.ledger = ledger;
     this.enabled = enabled;
     /** @type {Map<string, Promise<number>>} the last pass queued per conversation */
     this.chains = new Map();
@@ -51,7 +59,7 @@ export class ArchivePasses {
   async all() {
     // Off: nothing to walk, and no yield per thread for nothing at every start.
     if (!this.enabled) return;
-    for (const t of Object.values(this.rt.s.threads)) {
+    for (const t of Object.values(this.store.state.threads)) {
       if (this.closing) return;
       if (t.parentId) continue;
       await this.conversation(t.id);
@@ -81,8 +89,8 @@ export class ArchivePasses {
 
   /** The turns that must stay hot: running, or with a job kept running after a Stop. Read at each check. O(sessions’ jobs). */
   running() {
-    const running = new Set([...this.rt.turns.values()].map((t) => t.id));
-    for (const se of Object.values(this.rt.s.sessions)) for (const j of se.jobs ?? []) if (j.kept && j.turnId) running.add(j.turnId);
+    const running = new Set(this.live.all().map((t) => t.id));
+    for (const se of Object.values(this.store.state.sessions)) for (const j of se.jobs ?? []) if (j.kept && j.turnId) running.add(j.turnId);
     return running;
   }
 
@@ -91,21 +99,21 @@ export class ArchivePasses {
    * @param {string} convId
    */
   canWrite(convId) {
-    const { store, s } = this.rt;
-    return store.writable && !this.closing && Boolean(s.threads[convId]);
+    const { store } = this;
+    return store.writable && !this.closing && Boolean(store.state.threads[convId]);
   }
 
   /** One pass. A failure is logged once and not retried: the next turn’s end tries again. @param {string} convId */
   async once(convId) {
-    const { store } = this.rt;
+    const { store } = this;
     const canWrite = () => this.canWrite(convId);
     if (!canWrite()) return 0;
     try {
-      return await archiveTurns({ store, blobs: this.rt.ledger.blobs, convId, running: () => this.running(), canWrite });
+      return await archiveTurns({ store, blobs: this.ledger.blobs, convId, running: () => this.running(), canWrite });
     } catch (e) {
       // Shutting down, or the store closed under the pass: nothing to report.
       if (this.closing || /** @type {any} */ (e)?.code === 'ECLOSED' || !store.writable) return 0;
-      const title = this.rt.s.threads[convId]?.title ?? convId;
+      const title = store.state.threads[convId]?.title ?? convId;
       console.error(`Old turns in ${title} weren’t archived: ${messageOf(e)}. The next turn’s end tries again.`);
       return 0;
     }

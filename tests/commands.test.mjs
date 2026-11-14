@@ -96,7 +96,7 @@ test('#67: ! runs with the person’s shell in the conversation’s folder, stre
   c.stdout.write('ok 1\n');
   c.stderr.write('warning\n');
   await tick();
-  rt.flushShellOutput();
+  arrange.flushCommands(rt);
   assert.equal(commandItem(store, t).text, 'ok 1\nwarning\n');
   assert.equal(commandItem(store, t).status, 'running');
   c.stdout.write('ok 2\n');
@@ -155,7 +155,7 @@ test('#67: when Postbox shuts down, every running command gets SIGINT, then SIGK
     if (sig === 'SIGKILL') queueMicrotask(() => children[1].emit('close', null, 'SIGKILL'));
     return true;
   };
-  await rt.stopShellCommands({ graceMs: 10 });
+  await arrange.stopCommands(rt, { graceMs: 10 });
   await tick();
   assert.deepEqual(children[0].signals, ['SIGINT']);
   assert.deepEqual(children[1].signals, ['SIGINT', 'SIGKILL']);
@@ -179,12 +179,12 @@ test('#67: output past 64 KB keeps the end, the item says it was cut, and the st
   const bytes = () => store.since(0).reduce((n, e) => (ours(e) ? n + JSON.stringify(e.data).length : n), 0);
   c.stdout.write('a'.repeat(50 * 1024));
   await tick();
-  rt.flushShellOutput();
+  arrange.flushCommands(rt);
   // Far more than the bound, flushed many times: the item’s text is refreshed rarely, not on every flush.
   for (let i = 0; i < 200; i++) {
     c.stdout.write('b'.repeat(16 * 1024));
     await tick();
-    rt.flushShellOutput();
+    arrange.flushCommands(rt);
   }
   assert.ok(bytes() < 3 * 64 * 1024, `the store kept ${bytes()} bytes of events for one command`);
   assert.equal(commandItem(store, t).cut, true);
@@ -220,7 +220,7 @@ test('#67: no command, or a long one, is refused', async () => {
 test('#67: after a restart a running command is marked stopped, saying it may still be running', () => {
   const { rt, store, t } = setup();
   arrange.post(rt, t.id, { kind: 'command', command: 'sleep 9', cwd: '/', status: 'running', text: '' });
-  rt.expireStaleCommands();
+  arrange.expireStaleCommands(rt);
   assert.equal(commandItem(store, t).status, 'stopped');
   assert.match(commandItem(store, t).error, /may still be running/);
 });

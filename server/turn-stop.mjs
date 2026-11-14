@@ -10,7 +10,6 @@ import { dropWakes } from './side-threads.mjs';
 import { newId } from './store.mjs';
 import { STORE_STOPPED, whenWritable } from './store-outage.mjs';
 import { endSubagent } from './subagent-end.mjs';
-import { endWork } from './turn-end-work.mjs';
 import { replyMarks } from './turn-marks.mjs';
 import { foldSteps, settleStoppedSteps } from './turn-steps.mjs';
 
@@ -91,7 +90,7 @@ export function recordStopped(rt, turn, ended, { by, why }) {
   if (by !== 'shutdown' && by !== 'store') settleScheduledWake(rt, turn, { name: 'AbortError' });
   settleStoppedSteps(rt, turn);
   if (turn.first) foldSteps(rt, turn.threadId, turn.first);
-  endWork(rt, turn, 'stopped');
+  rt.work.endWork(turn, 'stopped');
   // A waiting permission is answered no; the card keeps who stopped it, so its note says the person’s stop withdrew
   // it, or that it expired (tellExpired, #721, #853).
   for (const [id, w] of rt.permissionWaits) if (w.sessionId === sessionId) rt.settlePermission(id, 'expired', why, {}, { stoppedBy: by });
@@ -228,7 +227,7 @@ export async function stopTurns(rt, { graceMs = 4000 } = {}) {
   await Promise.race([Promise.all([...rt.exiting.values()].map((x) => x.turn.exited)), late]);
   clearTimeout(timer);
   // Last: a stopped turn’s end may have queued an archive pass, whose file mustn’t land after the store closes (#305).
-  await rt.turnArchive.stop();
+  await rt.work.stopArchive();
 }
 
 /** What Postbox asks when you stop an agent whose background jobs are running (#129). */
