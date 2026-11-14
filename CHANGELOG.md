@@ -2,6 +2,19 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.9.0 (2026-11-14)
+
+### Features
+
+- **apps:** refuse an app that names a font of its own
+
+### Fixes
+
+- **apps:** push a tag’s attributes one by one, so many can’t overflow the stack
+- **apps:** scan an app’s code in one linear pass, and allow platform fallbacks
+- **apps:** read only the fonts an app applies, and allow generic families
+- **apps:** take another name for a face in Postbox’s stacks as its font
+
 ## 4.8.2 (2026-11-14)
 
 ### Fixes
