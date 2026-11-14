@@ -2,6 +2,14 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.7.1 (2026-11-14)
+
+### Fixes
+
+- **models:** start a built-in boilerplate on its backend's default model
+- **remote:** match an older host's exact refusal, and say when a host has no cli
+- **models:** decide a backend's default model in one place
+
 ## 4.7.0 (2026-11-13)
 
 ### Features
