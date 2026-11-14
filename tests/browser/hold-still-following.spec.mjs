@@ -104,3 +104,24 @@ test('following, a pointer resting on an app doesn’t stop the view, and one re
     await expect(pill).toBeHidden();
   });
 });
+
+// The side panel in follow.spec.mjs’s #49 (CI run 43538589665): a pointer moved somewhere only to turn the wheel aims
+// at nothing, though it rests on a button; the view following still goes on to what arrives.
+test('following, a pointer that turned the wheel over a button doesn’t hold the view', async ({ page }) => {
+  const { t, tools, say } = room('Hold still: wheel');
+  for (let i = 1; i <= 20; i++) say(LONG(i));
+  tools.show_block({ block: PICK(`pick-${t.id}`) });
+  await open(page, t);
+  const chip = page.getByRole('radio', { name: 'The corpus' });
+  const b = /** @type {{ x: number, y: number, width: number, height: number }} */ (await chip.boundingBox());
+  await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
+  await page.mouse.wheel(0, 100);
+  await settled(page);
+  let last = null;
+  for (let i = 300; i < 305; i++) last = say(LONG(i));
+  await expect(page.locator(`[data-key="${last?.id}"]`)).toBeAttached();
+  await synced(page, app);
+  await settled(page);
+  const gap = await page.evaluate(() => Math.round(document.documentElement.scrollHeight - scrollY - innerHeight));
+  expect(gap, 'at the end').toBeLessThanOrEqual(2);
+});

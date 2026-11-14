@@ -4,7 +4,7 @@
 // The mouse’s place in the window, whether it moved there since the last click (aimed), and whether a click has
 // started there: null outside the window, or when the last pointer was a finger, which rests nowhere. Inside an app’s
 // frame the page doesn’t see the pointer move, so this is where it went in, on the frame, and a click there takes
-// the focus from the page (blur), which ends the aim as a click on the page does.
+// the focus from the page (blur), which ends the aim as a click on the page does, and as a wheel turn does.
 /** @type {{ x: number, y: number } | null} */
 let at = null;
 let aimedNow = false;
@@ -39,6 +39,15 @@ document.documentElement.addEventListener('pointerleave', (e) => {
   pressedNow = aimedNow = false;
   tell();
 });
+// A wheel turn scrolls with the pointer where it is: it aims at nothing until the pointer moves again.
+addEventListener(
+  'wheel',
+  () => {
+    aimedNow = false;
+    tell();
+  },
+  { capture: true, passive: true },
+);
 addEventListener('blur', () => {
   pressedNow = aimedNow = false;
   tell();
