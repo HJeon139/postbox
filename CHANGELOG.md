@@ -2,6 +2,40 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.8.0 (2026-11-14)
+
+### Features
+
+- **apps:** refuse an app that names a font of its own
+- **agent-sdk:** record each turn’s messages under POSTBOX_SDK_RECORD
+
+### Fixes
+
+- **adapters:** a turn’s recorder makes its folder, for every backend
+- **uat:** the Codex switch triggers fail when the turn’s report is a model Codex didn’t run
+- **store:** count a snapshot's rename, folder sync and pruning as steps
+- **personas:** a model change drops what the last turn reported, as a backend switch does
+- **uat:** report a click target that moved before the click
+- **uat:** a recheck says it can’t check the switch rows, not that they never showed
+- **uat:** the Codex switch trigger reads the model Codex reported for the turn
+- **app:** a finished reply stays drawn when its agent starts its next turn
+- **codex:** report the model Codex opened the thread with when the persona names none
+- **personas:** a backend switch drops the model and effort the old backend reported
+- **uat:** count a refused block as fixed only under the same id
+- **store:** list a snapshot map's keys, not its entries, before its lines
+- **apps:** take another name for a face in Postbox’s stacks as its font
+- **blocks:** refuse an invalid block outright, and advertise each type’s schema
+- **store:** give up on close() the bound after the writer's last step
+- **app:** keep the Model field's help the same height when its answer comes
+- **uat:** click where a button is, and fail when Save didn't take
+- **store:** remove a snapshot's stale temporary file at load
+- **store:** give up on close() only when the writer stops making progress
+- **store:** stop a snapshot at its next piece once close() begins
+- **store:** release held emits without shifting the whole held log
+- **store:** trim the since() backlog in batches, not at every emit
+- **store:** take the writer's queued run in one step, so a large store closes
+- **uat:** agent_panel switches backend, model and effort in the persona sheet, and saves
+
 ## 4.7.2 (2026-11-14)
 
 ### Fixes
