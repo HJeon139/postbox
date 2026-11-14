@@ -3,7 +3,7 @@
 // so tests use them as `arrange.<name>`. Each names what a test needs, so none hands out the object behind it.
 
 import { createStreamMapper } from '../server/adapters/claude-stream.mjs';
-import { endWork as endWorkOf } from '../server/turn-end-work.mjs';
+import { expireStaleCommands as expireStaleCommandsOf } from '../server/shell-runs.mjs';
 import { archiveTurns } from '../server/work-archive.mjs';
 
 /** @typedef {import('../server/runtime.mjs').Runtime} Runtime */
@@ -50,29 +50,29 @@ export async function recordTurn(rt, turn, start, events) {
 }
 
 /** Records a turn’s end in its work, as the turn’s end does, and resolves once its reply has its line. @param {Runtime} rt @param {any} turn @param {string} status */
-export const endWork = (rt, turn, status) => endWorkOf(rt, turn, status);
+export const endWork = (rt, turn, status) => rt.work.endWork(turn, status);
 
 // ── The archive of old turns (#305) ──────────────────────────────────────────────────
 
 /** Whether the archive passes run. @param {Runtime} rt */
-export const archiving = (rt) => rt.turnArchive.enabled;
+export const archiving = (rt) => rt.work.archive.enabled;
 
 /** Turns the archive passes on or off, as config.archiveTurns does. @param {Runtime} rt @param {boolean} on */
 export function setArchiving(rt, on) {
-  rt.turnArchive.enabled = on;
+  rt.work.archive.enabled = on;
 }
 
 /** Runs a conversation’s archive pass, chained behind any running, and returns how many turns it archived. @param {Runtime} rt @param {string} convId */
-export const archivePass = (rt, convId) => rt.turnArchive.conversation(convId);
+export const archivePass = (rt, convId) => rt.work.archive.conversation(convId);
 
 /** Runs the pass after start, over every conversation. @param {Runtime} rt */
-export const archiveAll = (rt) => rt.turnArchive.all();
+export const archiveAll = (rt) => rt.work.archiveAll();
 
 /** Waits for a conversation’s archive passes to finish. @param {Runtime} rt @param {string} convId */
-export const archiveIdle = (rt, convId) => rt.turnArchive.idle(convId);
+export const archiveIdle = (rt, convId) => rt.work.archive.idle(convId);
 
 /** Stops the archive passes, as shutdown does, waiting at most boundMs. @param {Runtime} rt @param {number} [boundMs] */
-export const stopArchive = (rt, boundMs) => rt.turnArchive.stop(boundMs);
+export const stopArchive = (rt, boundMs) => rt.work.stopArchive(boundMs);
 
 /** Archives a conversation’s older turns once, with nothing running, into the ledger’s blob store. @param {Runtime} rt @param {string} convId */
 export const archiveOldTurns = (rt, convId) => archiveTurns({ store: rt.store, blobs: rt.ledger.blobs, convId, running: new Set() });
@@ -80,21 +80,21 @@ export const archiveOldTurns = (rt, convId) => archiveTurns({ store: rt.store, b
 // ── The person’s ! commands (#67) ─────────────────────────────────────────────────────
 
 /** Where a conversation’s ! commands run, and the host its agent is on, if one. @param {Runtime} rt @param {string} threadId */
-export const commandFolder = (rt, threadId) => rt.commandFolder(threadId);
+export const commandFolder = (rt, threadId) => rt.work.commandFolder(threadId);
 
 /** Starts each ! command’s process with spawn, a fake a test drives. @param {Runtime} rt @param {Function} spawn */
 export function withSpawn(rt, spawn) {
-  rt.spawnShell = /** @type {any} */ (spawn);
+  rt.work.spawnShell = /** @type {any} */ (spawn);
 }
 
 /** Sends the running commands’ output that waits for its next flush now, so a test needn’t wait for the timer. @param {Runtime} rt */
-export const flushCommands = (rt) => rt.flushShellOutput();
+export const flushCommands = (rt) => rt.work.flushShellOutput();
 
 /** Stops every running command, as shutdown does: SIGINT, then SIGKILL after graceMs. @param {Runtime} rt @param {{ graceMs?: number }} [opts] */
-export const stopCommands = (rt, opts) => rt.stopShellCommands(opts);
+export const stopCommands = (rt, opts) => rt.work.stopAll(opts);
 
 /** Ends the commands a restart left running, as start-up does. @param {Runtime} rt */
-export const expireStaleCommands = (rt) => rt.expireStaleCommands();
+export const expireStaleCommands = (rt) => expireStaleCommandsOf(rt.work);
 
 // ── Blobs ────────────────────────────────────────────────────────────────────────────
 

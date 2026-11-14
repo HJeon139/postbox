@@ -9,7 +9,6 @@ import { recordScheduledTool } from './scheduled-wakes.mjs';
 import { turnStep } from './step-text.mjs';
 import { newId } from './store.mjs';
 import { saveBackendState } from './store-outage.mjs';
-import { workEvents } from './turn-work.mjs';
 /**
  * What a turn's adapter runs with: what the turn is, its permissions, and the callbacks it reports through.
  * @param {any} rt  the runtime @param {any} se0  the session as the turn starts @param {any} turn
@@ -70,7 +69,7 @@ function whatTheTurnIs(rt, se0, turn) {
  * @param {any} rt @param {any} turn @param {() => boolean} live
  */
 function workCallbacks(rt, turn, live) {
-  const work = workEvents(rt, turn, live);
+  const work = rt.work.workEvents(turn, live);
   return {
     ...work,
     /** @param {any} u */

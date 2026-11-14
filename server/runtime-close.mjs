@@ -41,6 +41,6 @@ export async function settleLedger(rt) {
   const late = new Promise((r) => {
     timer = setTimeout(r, rt.config.ledgerGraceMs ?? LEDGER_GRACE_MS);
   });
-  await Promise.race([rt.ledger.idle(), late]);
+  await Promise.race([rt.work.idle(), late]);
   clearTimeout(timer);
 }

@@ -27,7 +27,10 @@ function fakeLedger() {
     blobs: null,
     /** @type {any} */ restored: { rel: 'a.txt', handles: ['alpha'], before: { exists: true } },
     /** @type {any} */ failWith: null,
-    /** @type {any[]} */ entries: () => [{ kind: 'change', turnId: 'tu_1', fileId: 'f1', handle: 'alpha', added: 2, deleted: 1 }],
+    /** @type {any[]} */ entries: () => [
+      { kind: 'turn', id: 'tu_1', handle: 'alpha' },
+      { kind: 'command', id: 'k1', turnId: 'tu_1', handle: 'alpha', command: 'npm test', state: 'done' },
+    ],
     gitState: (convId) => noted(['gitState', convId], { convId }),
     fileDiff: async (convId, fileId, changeId) => {
       calls.push(['fileDiff', convId, fileId, changeId]);
@@ -197,8 +200,7 @@ test('endWork records the turn’s end at once, then gives its last reply the li
   assert.equal(store.item('th_c', reply.id).work, undefined, 'the list waits for the ledger');
   await ended;
   const it = store.item('th_c', reply.id);
-  assert.equal(it.workTurn, 'tu_1');
-  assert.ok(it.work, 'the reply carries the turn’s line');
+  assert.deepEqual([it.work, it.workTurn], ['1 command', 'tu_1'], 'the reply carries the turn’s line');
 });
 
 test('endWork logs a ledger that fails, naming the agent, and still resolves', async () => {
@@ -272,7 +274,13 @@ test('a command’s end waits for the store to be writable before it is written'
 test('stopShellCommand stops a running command, and stopAll stops every one as Postbox shuts down', async () => {
   const { work, store, children } = rig();
   const a = await work.runShellCommand('th_c', 'sleep 1');
-  await work.runShellCommand('th_c', 'sleep 2');
+  await work.runShellCommand('th_c', 'trap "" INT; sleep 2');
+  // The second ignores SIGINT.
+  children[1].kill = (sig) => {
+    children[1].signals.push(sig);
+    if (sig === 'SIGKILL') queueMicrotask(() => children[1].emit('close', null, 'SIGKILL'));
+    return true;
+  };
   assert.deepEqual(work.stopShellCommand('th_c', a.item.id), { ok: true });
   await tick();
   assert.equal(store.item('th_c', a.item.id).status, 'stopped');

@@ -152,7 +152,7 @@ export function stoppingOnHost(rt, turnId, entry) {
 export const permissionWaits = (rt) => rt.permissionWaits.size;
 
 /** How many of the person’s ! commands are running. @param {Runtime} rt */
-export const shellRuns = (rt) => rt.shellRuns.size;
+export const shellRuns = (rt) => rt.work.shellRuns.size;
 
 /** Whether a mirror follows a session’s Claude Code transcript. @param {Runtime} rt @param {string} sessionId */
 export const mirrored = (rt, sessionId) => rt.mirrors.has(sessionId);

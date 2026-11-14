@@ -9,7 +9,6 @@ import { listProcesses } from './adapters/process-group.mjs';
 import { runAgentCommand } from './agent-commands.mjs';
 import { APP_HOLD_MAX, APP_SEND_LIMIT, APP_SEND_WINDOW_MS } from './app-send-limits.mjs';
 import { appCheck, appEvent, appFile, appQuery, appState, needAppSend, registerApp, resolveAppSend } from './apps.mjs';
-import { ArchivePasses } from './archive-runtime.mjs';
 import { askQuestions, QUESTION_TOOL, questionBlocks } from './ask-question.mjs';
 import { Assets } from './asset-service.mjs';
 import { act, answerDelivered, unreadAnswer } from './blocks.mjs';
@@ -54,9 +53,8 @@ import { sendMessage, threadRefs } from './send-message.mjs';
 import { deleteSession, deleteThread } from './session-lifecycle.mjs';
 import { Sessions } from './sessions.mjs';
 import { clearSummaryPending, shareText, shareToConversation, summarizeBack, summarizing } from './share-back.mjs';
-import { commandFolder, expireStaleCommands, flushShellOutput, runShellCommand, stopShellCommand, stopShellCommands } from './shell-runs.mjs';
 import { agentWake, bumpSideLink, recordAgentMessage, resolveHop, sideSession } from './side-threads.mjs';
-import { watchStore } from './store-outage.mjs';
+import { watchStore, whenWritable } from './store-outage.mjs';
 import { Threads } from './threads.mjs';
 import { settleToolAsks } from './tool-ask.mjs';
 import { startTopic } from './topic-open.mjs';
@@ -65,7 +63,7 @@ import { settleSubagentSteps } from './turn-steps.mjs';
 import { dismissStopAsk, recordStopped, requestStop, stop, stopTurns } from './turn-stop.mjs';
 import { toolsFor } from './ui-tools.mjs';
 import { closeOrphanCards, liftDecline } from './wake-cards.mjs';
-import { restoreWork, workDiff, workGit, workOutput } from './work-view.mjs';
+import { Work } from './work-service.mjs';
 
 export { AgentFileError } from './agent-files.mjs';
 export { httpError } from './helpers.mjs';
@@ -127,8 +125,6 @@ export class Runtime {
     this.timers = new Map(); // scheduleId → timeout
     this.watchdogs = new Set(); // stopped turns’ watchdogs, cleared by close (server/runtime-close.mjs)
     this.lints = new Map(); // agent turn id → its lint turn, gathering: { sessionId, kind, ended, sent, problems, timer }
-    this.spawnShell = spawnShell ?? undefined;
-    this.shellRuns = new Map(); // command item id → { stop, kill, done, flush, stopped, closing }
     // What each conversation’s agents changed, ran and published (#132).
     this.ledger = ledger ?? new Ledger({ store, blobs: this.blobs, home: this.home });
     // Turns of agents whose persona runs on a remote host (#120): server/remote/turns.mjs.
@@ -148,9 +144,23 @@ export class Runtime {
     this.bus.on('session.joined', ({ threadId, persona }) => liftDecline(this, threadId, persona.handle));
     // A conversation’s files and its agents’: assets, attachments, the files an agent reads, a review’s images.
     this.assets = new Assets({ store, sessions: this.sessions, personas: this.personas, placement: this.placement, blobs: this.blobs });
+    // What the agents changed, ran and published, and the person’s `!` commands (designs/architecture/services.md,
+    // “Ledger and work”). The archive passes are off until #305’s step 4. Writing a command’s end waits for the store
+    // to be writable (store-outage.mjs) until the Store is a service.
+    this.work = new Work({
+      store,
+      threads: this.threads,
+      sessions: this.sessions,
+      personas: this.personas,
+      placement: this.placement,
+      running: this.running,
+      ledger: this.ledger,
+      spawnShell,
+      whenWritable: (fn) => whenWritable(this, fn),
+      archiveTurns: config.archiveTurns === true,
+    });
     this.remote = new RemoteTurns(this, { hosts: this.hosts });
     this.listenToPersonas();
-    this.turnArchive = new ArchivePasses(this, { enabled: config.archiveTurns === true }); // #305: off until step 4
     // Conversations can’t be archived any more: one an older Postbox archived comes back as a live one.
     this.sessions.unarchive();
     // After that, so a card of an agent it brings back stays the person’s to answer (#693).
@@ -606,38 +616,26 @@ export class Runtime {
   runAgentCommand(threadId, req) {
     return runAgentCommand(this, threadId, req);
   }
-  commandFolder(threadId) {
-    return commandFolder(this, threadId);
-  }
   runShellCommand(threadId, command) {
-    return runShellCommand(this, threadId, command);
-  }
-  flushShellOutput() {
-    return flushShellOutput(this);
+    return this.work.runShellCommand(threadId, command);
   }
   stopShellCommand(threadId, itemId) {
-    return stopShellCommand(this, threadId, itemId);
-  }
-  stopShellCommands(opts) {
-    return stopShellCommands(this, opts);
-  }
-  expireStaleCommands() {
-    return expireStaleCommands(this);
+    return this.work.stopShellCommand(threadId, itemId);
   }
 
-  // ── The work ledger’s answers to the page (#132): server/work-view.mjs ─────────────
+  // ── The work ledger’s answers to the page (#132): server/work-service.mjs ──────────
 
   workGit(threadId) {
-    return workGit(this, threadId);
+    return this.work.workGit(threadId);
   }
   workDiff(threadId, fileId, changeId) {
-    return workDiff(this, threadId, fileId, changeId);
+    return this.work.workDiff(threadId, fileId, changeId);
   }
   workOutput(threadId, entryId) {
-    return workOutput(this, threadId, entryId);
+    return this.work.workOutput(threadId, entryId);
   }
   restoreWork(threadId, fileId) {
-    return restoreWork(this, threadId, fileId);
+    return this.work.restoreWork(threadId, fileId);
   }
 
   // ── Attached Claude Code sessions: server/claude-mirror.mjs ─────────────────────────
