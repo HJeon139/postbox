@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { fireScheduledWake, rearmWakes } from '../server/scheduled-wakes.mjs';
 import { Store } from '../server/store.mjs';
+import * as arrange from './arrange.mjs';
 import { createFakeDaemon } from './fake-daemon.mjs';
 import { rig, running, starts, until } from './remote-turns-helpers.mjs';
 import { setup } from './side-threads-fixture.mjs';
@@ -52,7 +53,7 @@ for (const state of ['waiting', 'lost'])
     const f = setup();
     const sc = f.rt.schedule(f.alpha.id, { inMs: 60_000, note: 'Check the host.' });
     f.store.emit('schedule', { ...f.store.state.schedules[sc.id], running: true, turnId: 'turn_wake' });
-    f.rt.updateSession(f.alpha.id, { remoteTurn: { state, turn: 'host-turn-1', rtTurn: 'turn_wake' } });
+    arrange.setSession(f.rt, f.alpha.id, { remoteTurn: { state, turn: 'host-turn-1', rtTurn: 'turn_wake' } });
     rearmWakes(f.rt);
     assert.equal(f.rt.timers.has(sc.id), false, 'no second turn is armed');
     assert.equal(f.store.state.schedules[sc.id], undefined);

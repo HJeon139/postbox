@@ -11,6 +11,7 @@ import { AgentFileError, agentFile } from '../server/agent-files.mjs';
 import { Blobs } from '../server/blobs.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
+import * as arrange from './arrange.mjs';
 import { callTool } from './review-files-fixture.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
@@ -158,7 +159,7 @@ async function showApp(folder, root) {
   store.emit('project', { id: 'p1', name: 'P', folder: null });
   const a = rt.createPersona({ handle: 'alpha' });
   const t = rt.createThread({ projectId: 'p1', title: 'T', personaIds: [a.id] });
-  const se = rt.sessionsIn(t.id)[0];
+  const se = arrange.sessionsIn(rt, t.id)[0];
   const call = (name, args) => callTool(rt, adapter, t.id, se.id, name, args);
   return { rt, call };
 }

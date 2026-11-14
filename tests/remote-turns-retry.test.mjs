@@ -134,7 +134,7 @@ test('#120, #151: the agent retired while Retry reads its kept request leaves th
       return get(sha);
     };
     const retried = r.rt.retry(threadId, failed.id);
-    r.rt.updateSession(r.se().id, { retiredFork: true });
+    arrange.setSession(r.rt, r.se().id, { retiredFork: true });
     const needs = r.se().needs;
     release();
     await assert.rejects(retried, { status: 409, message: /session here was retired/ });

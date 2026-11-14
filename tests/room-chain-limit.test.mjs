@@ -11,7 +11,7 @@ import { settle, setup } from './side-threads-fixture.mjs';
 
 /** n wakes between alpha and beta in turn, all while the chain runs, as tests/wakes-no-pair-limit.test.mjs makes them. */
 function chain(f, n, { threadId = f.t.id, replyIn = undefined } = {}) {
-  const fromOf = (i) => (i % 2 ? [f.rt.sessionsIn(threadId)[1], 'alpha'] : [f.rt.sessionsIn(threadId)[0], 'beta']);
+  const fromOf = (i) => (i % 2 ? [arrange.sessionsIn(f.rt, threadId)[1], 'alpha'] : [arrange.sessionsIn(f.rt, threadId)[0], 'beta']);
   for (let i = 0; i < n; i++) {
     const [from, to] = fromOf(i);
     const r = f.rt.agentWake(from.id, to, `hand-off ${i + 1}`, { replyIn });

@@ -15,6 +15,7 @@ import { handleMcp } from '../server/mcp.mjs';
 import { inReadFolder, readFolderOffer } from '../server/read-folders.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
+import * as arrange from './arrange.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -117,7 +118,7 @@ test('#338 Always allow on the card saves the folder for the conversation, and t
   store.emit('project', { id: 'p1', name: 'P', folder: ws });
   const p = rt.createPersona({ handle: 'gem', backend: 'antigravity-cli', permissionMode: 'ask' });
   const t = rt.createThread({ projectId: 'p1', title: 'T', personaIds: [p.id] });
-  const se = rt.sessionsIn(t.id)[0];
+  const se = arrange.sessionsIn(rt, t.id)[0];
   const fetchMcp = async (_url, init) => ({
     ok: true,
     status: 200,
@@ -167,8 +168,8 @@ test('#338 the panel lists a readable folder as read only, and Remove takes out 
   rt.store.emit('project', { id: 'p1', name: 'P', folder: ws });
   const p = rt.createPersona({ handle: 'gem', backend: 'antigravity-cli' });
   const t = rt.createThread({ projectId: 'p1', title: 'T', personaIds: [p.id] });
-  const se = rt.sessionsIn(t.id)[0];
-  rt.updateSession(se.id, { readDirs: [notes], addDirs: [notes] });
+  const se = arrange.sessionsIn(rt, t.id)[0];
+  arrange.setSession(rt, se.id, { readDirs: [notes], addDirs: [notes] });
   const view = await permissionsView(rt, { threadId: t.id, sessionId: se.id });
   assert.deepEqual(
     view.folders.filter((f) => f.path === notes).map((f) => f.source),
@@ -189,7 +190,7 @@ test('#338 a conversation keeps up to 20 readable folders; one already listed ad
   });
   rt.store.emit('project', { id: 'p1', name: 'P', folder: ws });
   const p = rt.createPersona({ handle: 'gem', backend: 'antigravity-cli' });
-  const se = rt.sessionsIn(rt.createThread({ projectId: 'p1', title: 'T', personaIds: [p.id] }).id)[0];
+  const se = arrange.sessionsIn(rt, rt.createThread({ projectId: 'p1', title: 'T', personaIds: [p.id] }).id)[0];
   for (let i = 0; i < MAX_READ_DIRS; i++) addReadFolder(rt, se.id, `/r/${i}`);
   addReadFolder(rt, se.id, '/r/0');
   assert.equal(rt.s.sessions[se.id].readDirs.length, MAX_READ_DIRS);

@@ -9,9 +9,9 @@ export function room() {
   const ctx = setup();
   const { rt, t, alpha } = ctx;
   // The last ended turn is on the session, in the store, so it survives a restart.
-  rt.updateSession(alpha.id, { lastTurnId: 'turn_last' });
+  arrange.setSession(rt, alpha.id, { lastTurnId: 'turn_last' });
   const needs = () => rt.s.sessions[alpha.id].needs;
-  const setNeed = (kind, itemId) => rt.updateSession(alpha.id, { needs: { kind, itemId, text: kind }, state: 'needs' });
+  const setNeed = (kind, itemId) => arrange.setSession(rt, alpha.id, { needs: { kind, itemId, text: kind }, state: 'needs' });
   const appCard = (threadId = t.id) =>
     arrange.post(rt, threadId, { kind: 'appsend', sessionId: alpha.id, appId: 'app1', title: 'App', events: [{ action: 'x' }], status: 'open' });
   const block = (turnId = 'turn_last', threadId = t.id) =>

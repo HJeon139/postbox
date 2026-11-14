@@ -4,6 +4,7 @@
 
 import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
+import * as arrange from './arrange.mjs';
 import { fakeRequest, NAVIGATION } from './fake-http.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
@@ -65,7 +66,7 @@ test('a store with an archived conversation and a retired fork loads with the co
   app.store.emit('session.patch', { id: fork, patch: { archived: true, retiredFork: true, archivedAt: 1 } });
   app = await restart(app, dir);
   assert.equal(st().threads[dm.id].archived, undefined, 'the conversation is live');
-  for (const se of app.rt.sessionsIn(dm.id)) assert.equal(se.archived, undefined, `@${se.handle} is live`);
+  for (const se of arrange.sessionsIn(app.rt, dm.id)) assert.equal(se.archived, undefined, `@${se.handle} is live`);
   assert.equal(st().sessions[fork].retiredFork, true, 'the fork stays retired');
   assert.equal(st().sessions[fork].archived, undefined, 'under its own flag, not archived');
   assert.deepEqual(archived(st()), []);

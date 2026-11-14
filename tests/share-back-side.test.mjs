@@ -127,7 +127,7 @@ test('#697: a card raised before a summary began still wakes on Allow while the 
   rt.resolveHop(t.id, card.id, true);
   summary.release();
   await settle(rt);
-  const gamma = rt.sessionsIn(t.id).find((x) => x.personaId === c.id);
+  const gamma = arrange.sessionsIn(rt, t.id).find((x) => x.personaId === c.id);
   assert.ok(gamma && adapter.calls.some((call) => call.sessionId === gamma.id), 'gamma was woken from turn A’s card');
   const told = Object.values(store.state.threads)
     .flatMap((th) => store.items(th.id))

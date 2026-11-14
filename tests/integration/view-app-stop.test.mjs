@@ -31,7 +31,7 @@ test('stop closes view_app’s browser, and the next start settles a card left d
     const { rt, store } = first;
     store.emit('project', { id: 'pv', name: 'View app', folder: work });
     const t = rt.createThread({ projectId: 'pv', title: 'Cut short', personaIds: [arrange.persona(rt, 'researcher').id] });
-    const se = rt.sessionsIn(t.id)[0];
+    const se = arrange.sessionsIn(rt, t.id)[0];
     const card = arrange.post(rt, t.id, { kind: 'viewask', sessionId: se.id, handle: se.handle, turnId: null, status: 'downloading' });
     let closed = 0;
     const close = viewOf(rt).close.bind(viewOf(rt));

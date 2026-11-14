@@ -5,6 +5,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { readMessage } from '../server/read-message.mjs';
+import * as arrange from './arrange.mjs';
 import { setup as blocksSetup, settle as settleBlocks } from './blocks-fixture.mjs';
 
 test('#485: a failed reply’s @-mentions still wake their agents, with the message marked as from a failed turn', async () => {
@@ -52,7 +53,7 @@ test('#485: Retry doesn’t wake again the agents a failed reply already woke', 
   );
   assert.equal(woken(), 1, 'researcher isn’t woken a second time for the same hand-off');
   // The failed text still reads as failed, next to the retry’s reply.
-  const researcher = rt.sessionsIn(t.id).find((x) => x.handle === 'researcher');
+  const researcher = arrange.sessionsIn(rt, t.id).find((x) => x.handle === 'researcher');
   assert.match(readMessage(rt, researcher, { id: failed.id }).message, /^@critic \(this reply failed and was retried: /);
 });
 

@@ -83,7 +83,7 @@ test('#516 S1: read_message { id, version: 1 } on a v3 app gives v1’s code and
   assert.match(old, /isn’t kept/);
   assert.doesNotMatch(old, /Browser check: pending/, 'v3’s check isn’t given as v1’s');
   assert.equal(codeOf(read({ id: 'lab' })), '<p>three</p>', 'without a version, the current one');
-  const none = rt.readMessage(rt.sessionsIn(Object.keys(rt.s.threads)[0])[1], { id: 'lab', version: 9 });
+  const none = rt.readMessage(arrange.sessionsIn(rt, Object.keys(rt.s.threads)[0])[1], { id: 'lab', version: 9 });
   assert.equal(none.ok, false);
   assert.match(none.message, /v3/, 'the refusal names the newest version');
 });

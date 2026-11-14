@@ -10,6 +10,7 @@ import { Blobs } from '../server/blobs.mjs';
 import { handleMcp } from '../server/mcp.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
+import * as arrange from './arrange.mjs';
 
 export { png } from './png.mjs';
 
@@ -70,7 +71,7 @@ export async function setup() {
   store.emit('project', { id: 'p1', name: 'P', folder: null });
   const a = rt.createPersona({ handle: 'alpha' });
   const t = rt.createThread({ projectId: 'p1', title: 'T', personaIds: [a.id] });
-  const se = rt.sessionsIn(t.id)[0];
+  const se = arrange.sessionsIn(rt, t.id)[0];
   const during = (step) => duringTurn(rt, adapter, t.id, step);
   const call = (name, args) => callTool(rt, adapter, t.id, se.id, name, args);
   /** The review block item with this block id. */

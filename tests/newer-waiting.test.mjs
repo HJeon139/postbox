@@ -191,7 +191,7 @@ test('#694: a slow tool call of a turn Send now replaced names nothing; the turn
 test('#694: an urgent note comes first, then the newer message, then the result', async () => {
   const { rt, alpha, beta, release } = await busyWithAlpha();
   rt.agentWake(alpha.id, 'beta', 'New head bbb222.');
-  rt.updateSession(beta.id, { context: ['[Postbox] URGENT: stop the subagent.'] });
+  arrange.setSession(rt, beta.id, { context: ['[Postbox] URGENT: stop the subagent.'] });
   const lines = (await define(rt, beta, 'X')).split('\n');
   assert.equal(lines[0], '[Postbox] URGENT: stop the subagent.');
   assert.match(lines[1], /^\[Postbox\] A newer message from @alpha/);

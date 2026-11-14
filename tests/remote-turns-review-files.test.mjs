@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { onTool } from '../server/remote/turns-tools.mjs';
 import { REVIEW_IMAGES } from '../shared/limits.mjs';
+import * as arrange from './arrange.mjs';
 import { png, reviewBlock, setup } from './review-files-fixture.mjs';
 
 const b64 = (s) => Buffer.from(s).toString('base64');
@@ -129,11 +130,9 @@ test('#780 a local turn can’t hand Postbox base64: a file with no path is refu
 test('#780 a host’s refused review call is answered to the agent that waits for it, not told again at its next turn', async () => {
   const f = await setup();
   const told = [];
-  const tell = f.rt.tellAgent.bind(f.rt);
-  f.rt.tellAgent = (sessionId, text) => {
+  arrange.onTell(f.rt, (_sessionId, text) => {
     told.push(text);
-    return tell(sessionId, text);
-  };
+  });
   const r = await fromHost(f, 'show_block', reviewBlock('svg', [{ name: 'a.png', path: 'a.png', base64: Buffer.from('<svg/>').toString('base64') }]));
   assert.equal(r.ok, false);
   assert.match(r.text, /PNG, JPEG, GIF or WebP/);

@@ -9,6 +9,7 @@ import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { alwaysAllow, changeRule, cleanRule, readRules, settingsFiles } from '../server/permission-rules.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
+import * as arrange from './arrange.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -47,7 +48,7 @@ async function setup({ usesHostSetup = true } = {}) {
   store.emit('project', { id: 'p1', name: 'P', folder });
   const p = rt.createPersona({ handle: 'coder', backend: 'claude-code', permissionMode: 'ask', usesHostSetup, tools: ['shell'] });
   const t = rt.createThread({ projectId: 'p1', title: 'T', personaIds: [p.id] });
-  const se = rt.sessionsIn(t.id)[0];
+  const se = arrange.sessionsIn(rt, t.id)[0];
   return { root, folder, home, store, rt, adapter, p, t, se };
 }
 const settle = async (rt) => {

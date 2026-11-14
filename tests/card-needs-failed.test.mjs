@@ -41,11 +41,9 @@ test('Retry clears the failure without the block you moved past flashing as the 
   const r = await failedAfterBlock();
   const failed = r.store.items(r.t.id).find((x) => x.kind === 'agent' && x.status === 'failed');
   const kinds = [];
-  const update = r.rt.updateSession.bind(r.rt);
-  r.rt.updateSession = (id, patch) => {
+  arrange.onSessionUpdate(r.rt, (id, patch) => {
     if (id === r.alpha.id && 'needs' in patch) kinds.push(patch.needs?.kind ?? null);
-    return update(id, patch);
-  };
+  });
   const work = held();
   r.adapter.next.push(work.step);
   r.rt.retry(r.t.id, failed.id);
@@ -73,11 +71,9 @@ test('Retry doesn’t flash a block the failed turn showed before it threw', asy
   assert.equal(r.needs()?.kind, 'failed');
   const failed = r.store.items(r.t.id).find((x) => x.kind === 'agent' && x.status === 'failed');
   const kinds = [];
-  const update = r.rt.updateSession.bind(r.rt);
-  r.rt.updateSession = (id, patch) => {
+  arrange.onSessionUpdate(r.rt, (id, patch) => {
     if (id === r.alpha.id && 'needs' in patch) kinds.push(patch.needs?.kind ?? null);
-    return update(id, patch);
-  };
+  });
   const work = held();
   r.adapter.next.push(work.step);
   r.rt.retry(r.t.id, failed.id);

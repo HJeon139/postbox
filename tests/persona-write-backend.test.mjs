@@ -26,8 +26,8 @@ function setup(backend = 'claude-code') {
   store.emit('project', { id: 'p1', name: 'P', folder: tempDir('pb-persona-backend-project-') });
   const p = rt.createPersona({ handle: 'alpha', backend, model: 'claude-opus-5-5', effort: 'medium' });
   const t = rt.createThread({ projectId: 'p1', title: 'T', personaIds: [p.id] });
-  const [se] = rt.sessionsIn(t.id);
-  rt.updateSession(se.id, { lastModel: 'claude-opus-5-5', lastEffort: 'medium' });
+  const [se] = arrange.sessionsIn(rt, t.id);
+  arrange.setSession(rt, se.id, { lastModel: 'claude-opus-5-5', lastEffort: 'medium' });
   const row = () => {
     const f = runsWith(rt.s.sessions[se.id], arrange.persona(rt, 'alpha'), {});
     return `${chipModel(f)} · ${chipEffort(f)}`;

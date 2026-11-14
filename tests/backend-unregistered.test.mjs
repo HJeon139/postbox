@@ -228,7 +228,7 @@ test('#874 a backend name from the data loses every character that hides or reor
 test('#874 a handle from the data is clipped in the reason too, and a backend named like an object key isn’t looked up', async () => {
   const f = setup();
   unregister(f, f.b, 'constructor');
-  f.rt.updateSession(f.beta.id, { handle: `a"<&\u0000\u202e${'b'.repeat(500)}` });
+  arrange.setSession(f.rt, f.beta.id, { handle: `a"<&\u0000\u202e${'b'.repeat(500)}` });
   queued(f);
   assert.doesNotThrow(() => f.rt.drainAll());
   await settle(f.rt);

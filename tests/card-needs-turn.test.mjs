@@ -21,7 +21,7 @@ test('after a restart (the runtime knows no turns), answering a tool request fal
 
 test('a session from before lastTurnId: the released card’s own turn counts', async () => {
   const r = room();
-  r.rt.updateSession(r.alpha.id, { lastTurnId: undefined });
+  arrange.setSession(r.rt, r.alpha.id, { lastTurnId: undefined });
   const one = r.toolAsk('turn_old', 'one');
   await sleep(2);
   const two = r.toolAsk('turn_old', 'two');

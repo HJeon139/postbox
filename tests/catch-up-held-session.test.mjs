@@ -77,10 +77,10 @@ test('#506 behind a held commit: the next turn’s summary starts where the last
 
 test('a Postbox notice held for an agent reaches its next turn with the published ones, and none is cleared unread', async () => {
   const f = await heldRoom();
-  f.rt.tellAgent(f.alpha.id, 'First notice.');
+  arrange.tell(f.rt, f.alpha.id, 'First notice.');
   await f.store.flush();
   const release = await f.hold();
-  f.rt.tellAgent(f.alpha.id, 'Second notice.');
+  arrange.tell(f.rt, f.alpha.id, 'Second notice.');
   f.rt.deliver(f.alpha.id, { kind: 'user', text: 'Check the build.' });
   await settle(f.rt);
   const [first] = toAlpha(f);

@@ -11,7 +11,7 @@ import { held, settle, setup, sleep } from './side-threads-fixture.mjs';
 function three() {
   const f = setup();
   f.rt.ensureSession(f.t.id, f.c.id);
-  const gamma = f.rt.sessionsIn(f.t.id).find((x) => x.handle === 'gamma');
+  const gamma = arrange.sessionsIn(f.rt, f.t.id).find((x) => x.handle === 'gamma');
   return { ...f, gamma };
 }
 /** A side thread as the code before #372 made it. */

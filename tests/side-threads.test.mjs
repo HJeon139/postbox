@@ -257,7 +257,7 @@ test('#121: a link to a thread of the conversation in your message reaches the a
 test('a turn’s room is its conversation’s other agents with their roles, in a side thread too', () => {
   const { rt, t, b, alpha } = setup();
   rt.updatePersona(b.id, { description: 'Reviews code.' });
-  const room = rt.roomOf(t.id, alpha);
+  const room = arrange.roomOf(rt, t.id, alpha);
   assert.deepEqual(
     room.map((r) => r.handle),
     ['beta'],
@@ -265,5 +265,5 @@ test('a turn’s room is its conversation’s other agents with their roles, in 
   assert.equal(room[0].role, rt.persona(b.id).description ?? '');
   // A side thread of the conversation has the conversation’s room, not one of its own.
   const side = rt.createThread({ projectId: 'p1', title: 'S', kind: 'side', parentId: t.id });
-  assert.deepEqual(rt.roomOf(side.id, alpha), room);
+  assert.deepEqual(arrange.roomOf(rt, side.id, alpha), room);
 });

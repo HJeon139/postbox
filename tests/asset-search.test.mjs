@@ -71,7 +71,7 @@ test('#516: a search reads each asset’s newest version and name, and leaves ou
   await A.delete_asset({ id, base: 3 });
   assert.deepEqual(await search('herons'), [], 'a deleted asset isn’t searched');
   const other = rt.createThread({ projectId: 'p1', title: 'Other', personaIds: [arrange.persona(rt, 'alpha').id] });
-  const there = as(rt.sessionsIn(other.id)[0]);
+  const there = as(arrange.sessionsIn(rt, other.id)[0]);
   await there.write_asset({ name: 'theirs.md', text: 'Their notes about herons.' });
   assert.deepEqual(await search('herons'), [], 'another conversation’s assets aren’t this one’s');
   assert.deepEqual(await hostTool(rt, 'assets.search', { query: 'herons' }, { threadId: other.id }).then((h) => h.map((x) => x.name)), ['theirs.md']);

@@ -51,7 +51,7 @@ test('#120 L5, #135: a turn another agent woke, attached again after a restart, 
   const { store, d } = restarted({ welcome: 'ended' });
   const r = rig({ store, d });
   const origin = { kind: 'agent', movesOn: false, from: 'lead', replyTo: null, replyIn: null, summarizeTo: null, woke: { by: 'lead' }, message: null };
-  r.rt.updateSession(r.se().id, { remoteTurn: { ...r.se().remoteTurn, origin } });
+  arrange.setSession(r.rt, r.se().id, { remoteTurn: { ...r.se().remoteTurn, origin } });
   startUp(r);
   await settled(r);
   await until(() => r.se().remoteTurn.state === 'done', 'the turn to be applied');
@@ -100,7 +100,7 @@ test('#120 L5: a record on disk naming no thread, or a handle that isn’t one, 
     summarizeTo: 'constructor',
     woke: { by: 'lead', reply: true, in: '__proto__' },
   };
-  r.rt.updateSession(se.id, { remoteTurn: { ...se.remoteTurn, threadId: 'hasOwnProperty', origin: { ...origin, message: { kind: 'user', text: 7 } } } });
+  arrange.setSession(r.rt, se.id, { remoteTurn: { ...se.remoteTurn, threadId: 'hasOwnProperty', origin: { ...origin, message: { kind: 'user', text: 7 } } } });
   startUp(r);
   await settled(r);
   await until(() => r.se().remoteTurn.state === 'done', 'the turn to be applied');
@@ -127,11 +127,9 @@ test('#120 L5: after a restart a turn the welcome doesn’t list is Interrupted,
   const r = rig({ store, d });
   // The interrupt's own patch: the resume starts a new turn at once, which records itself as the last turn.
   const failedPatches = [];
-  const update = r.rt.updateSession.bind(r.rt);
-  r.rt.updateSession = (id, patch) => {
+  arrange.onSessionUpdate(r.rt, (_id, patch) => {
     if (patch.needs?.kind === 'failed') failedPatches.push(patch);
-    return update(id, patch);
-  };
+  });
   startUp(r);
   await until(() => r.store.items(r.t.id).some((i) => i.kind === 'agent' && i.status === 'failed'), 'Interrupted');
   const failed = r.store.items(r.t.id).find((i) => i.kind === 'agent' && i.status === 'failed');

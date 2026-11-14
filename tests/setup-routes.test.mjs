@@ -7,13 +7,14 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { setupRoute } from '../server/setup-routes.mjs';
+import * as arrange from './arrange.mjs';
 import { setup } from './side-threads-fixture.mjs';
 
 /** A session that reported its MCP servers and its / menu, as a Claude Code turn's init does. */
 function reported() {
   const f = setup();
-  f.rt.updateSession(f.alpha.id, { mcpServers: { at: Date.now(), servers: [] } });
-  f.rt.recordCommands(f.alpha.id, [{ name: 'sample:review', skill: true }, { name: 'doctor' }]);
+  arrange.setSession(f.rt, f.alpha.id, { mcpServers: { at: Date.now(), servers: [] } });
+  arrange.offerCommands(f.rt, f.alpha.id, [{ name: 'sample:review', skill: true }, { name: 'doctor' }]);
   return f;
 }
 
@@ -34,6 +35,6 @@ test('the skills route reads a session’s / menu as recordCommands stores it, a
 test('mcpContext’s skills are the stored / menu’s skills, and a session with no / menu gives none', () => {
   const f = reported();
   assert.deepEqual(f.rt.mcpContext(f.a.id, 'p1').skills, ['sample:review']);
-  f.rt.updateSession(f.beta.id, { mcpServers: { at: Date.now() + 1, servers: [] } });
+  arrange.setSession(f.rt, f.beta.id, { mcpServers: { at: Date.now() + 1, servers: [] } });
   assert.deepEqual(f.rt.mcpContext(f.b.id, 'p1').skills, []);
 });

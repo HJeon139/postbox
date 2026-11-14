@@ -58,7 +58,7 @@ test('#693 wake_agent for a declined agent still asks the person: it’s a delib
 test('#693 a decline in one conversation doesn’t stop a mention in another', async () => {
   const f = await declined();
   const t2 = f.rt.createThread({ projectId: 'p1', title: 'T2', personaIds: [f.a.id] });
-  const [alpha2] = f.rt.sessionsIn(t2.id);
+  const [alpha2] = arrange.sessionsIn(f.rt, t2.id);
   const r = f.rt.agentWake(alpha2.id, 'gamma', 'Over here.', { itemId: 'it_y', prose: true });
   assert.equal(r.waiting, true, 'asks the person in the other conversation');
 });
@@ -88,7 +88,7 @@ test('#693 a later add the person allowed lifts the decline: once that agent is 
   const second = addCards(f).find((c) => c.status === 'open');
   f.rt.resolveHop(f.t.id, second.id, true);
   await settle(f.rt);
-  const gamma = f.rt.sessionsIn(f.t.id).find((x) => x.handle === 'gamma');
+  const gamma = arrange.sessionsIn(f.rt, f.t.id).find((x) => x.handle === 'gamma');
   f.rt.deleteSession(gamma.id);
   const r = f.rt.agentWake(f.beta.id, 'gamma', 'Back again?', { itemId: 'it_w', prose: true });
   assert.equal(r.waiting, true, 'the person’s latest answer was yes');
@@ -140,7 +140,7 @@ test('#693 a prose mention from a topic thread is refused after a decline in its
 
 /** The person removes @gamma from the conversation, as the remove menu does: the session goes, and is purged. */
 function removeGamma(f) {
-  const gamma = f.rt.sessionsIn(f.t.id).find((x) => x.handle === 'gamma');
+  const gamma = arrange.sessionsIn(f.rt, f.t.id).find((x) => x.handle === 'gamma');
   assert.ok(gamma, '@gamma had joined');
   f.rt.deleteSession(gamma.id);
 }
@@ -174,7 +174,7 @@ test('#789 a new agent created into the conversation lifts a decline of its hand
   const p = f.rt.createPersona({ handle: 'delta' });
   // What POST /api/personas does with join: { threadId } (server/index.mjs).
   f.rt.ensureSession(arrange.lineage(f.rt, f.t.id).at(-1), p.id, { brief: 'You were just created and added to this thread.' });
-  const delta = f.rt.sessionsIn(f.t.id).find((x) => x.handle === 'delta');
+  const delta = arrange.sessionsIn(f.rt, f.t.id).find((x) => x.handle === 'delta');
   f.rt.deleteSession(delta.id);
   assert.equal(f.rt.agentWake(f.beta.id, 'delta', 'Delta?', { itemId: 'it_d', prose: true }).waiting, true);
 });
@@ -206,7 +206,7 @@ test('#789 the lift holds after a restart, since the mark is in the store', asyn
   await settle(f.rt);
   const { Runtime } = await import('../server/runtime.mjs');
   const rt = new Runtime({ store: f.store, adapters: f.rt.adapters, config: f.rt.config });
-  const gamma = rt.sessionsIn(f.t.id).find((x) => x.handle === 'gamma');
+  const gamma = arrange.sessionsIn(rt, f.t.id).find((x) => x.handle === 'gamma');
   rt.deleteSession(gamma.id);
   assert.equal(mentionAsks(f, rt), true);
 });

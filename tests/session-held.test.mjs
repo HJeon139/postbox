@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { saveBackendState } from '../server/store-outage.mjs';
 import { withUrgent } from '../server/subagent-end.mjs';
+import * as arrange from './arrange.mjs';
 import { settle, setup } from './side-threads-fixture.mjs';
 import { heldStore } from './stop-reply-fixture.mjs';
 
@@ -49,8 +50,8 @@ test('your first @-mention of an agent behind a held commit reaches it once the 
 test('a session change back to its published value behind a held commit lands', async () => {
   const f = await heldRoom();
   const release = await f.hold();
-  f.rt.updateSession(f.alpha.id, { currentStep: 'Reading' });
-  f.rt.updateSession(f.alpha.id, { currentStep: '' });
+  arrange.setSession(f.rt, f.alpha.id, { currentStep: 'Reading' });
+  arrange.setSession(f.rt, f.alpha.id, { currentStep: '' });
   await release();
   assert.equal(f.store.state.sessions[f.alpha.id].currentStep, '');
   await f.store.close();
@@ -59,8 +60,8 @@ test('a session change back to its published value behind a held commit lands', 
 test('two Postbox notices for an agent behind a held commit both wait for its next turn', async () => {
   const f = await heldRoom();
   const release = await f.hold();
-  f.rt.tellAgent(f.alpha.id, 'First notice.');
-  f.rt.tellAgent(f.alpha.id, 'Second notice.');
+  arrange.tell(f.rt, f.alpha.id, 'First notice.');
+  arrange.tell(f.rt, f.alpha.id, 'Second notice.');
   await release();
   assert.deepEqual(f.store.state.sessions[f.alpha.id].context, ['[Postbox] First notice.', '[Postbox] Second notice.']);
   await f.store.close();
@@ -82,7 +83,7 @@ test('a session removed behind a held commit stays gone in the pending read, as 
   f.store.emit('remove', { kind: 'session', id: f.alpha.id });
   f.store.emit('session.patch', { id: f.alpha.id, patch: { currentStep: 'Reading' } });
   assert.equal(f.store.pending.session(f.alpha.id), undefined);
-  f.rt.tellAgent(f.alpha.id, 'Too late.');
+  arrange.tell(f.rt, f.alpha.id, 'Too late.');
   await release();
   assert.equal(f.store.state.sessions[f.alpha.id], undefined);
   await f.store.close();
@@ -150,10 +151,10 @@ test('a backend’s resume id and its model, saved in one turn behind a held com
 test('an urgent note given on a tool result behind a held commit keeps a notice held after it', async () => {
   const f = await heldRoom();
   const urgent = '[Postbox] URGENT: the person ended your subagent Scout (id sub-1).';
-  f.rt.updateSession(f.alpha.id, { context: [urgent] });
+  arrange.setSession(f.rt, f.alpha.id, { context: [urgent] });
   await f.store.flush();
   const release = await f.hold();
-  f.rt.tellAgent(f.alpha.id, 'Later notice.');
+  arrange.tell(f.rt, f.alpha.id, 'Later notice.');
   const text = withUrgent(f.rt, f.alpha.id, 'Result.', null);
   await release();
   assert.equal(text, `${urgent}\n\nResult.`);
@@ -194,11 +195,11 @@ test('a reply streamed behind a held commit holds one session change for its sta
 
 test('3,000 session changes behind a held commit each read the session in far less than the whole held log', async () => {
   const f = await heldRoom();
-  f.rt.updateSession(f.alpha.id, { context: Array.from({ length: 20 }, (_, i) => `[Postbox] Notice ${i}.`) });
+  arrange.setSession(f.rt, f.alpha.id, { context: Array.from({ length: 20 }, (_, i) => `[Postbox] Notice ${i}.`) });
   await f.store.flush();
   const release = await f.hold();
   const started = performance.now();
-  for (let i = 0; i < 3000; i++) f.rt.updateSession(f.alpha.id, { currentStep: `Step ${i}` });
+  for (let i = 0; i < 3000; i++) arrange.setSession(f.rt, f.alpha.id, { currentStep: `Step ${i}` });
   const ms = performance.now() - started;
   // Measured at 4,589 ms when each read applied the whole held log again (QS-1's review); about 20 ms incrementally.
   assert.ok(ms < 1500, `3,000 held session changes took ${Math.round(ms)} ms`);
@@ -210,7 +211,7 @@ test('3,000 session changes behind a held commit each read the session in far le
 test('a conversation whose last agent is deleted keeps its room for an agent that joined it behind a held commit', async () => {
   const f = await heldRoom();
   const solo = f.rt.createThread({ projectId: 'p1', title: 'Solo', personaIds: [f.c.id] });
-  const [gamma] = f.rt.sessionsIn(solo.id);
+  const [gamma] = arrange.sessionsIn(f.rt, solo.id);
   const d = f.rt.createPersona({ handle: 'delta' });
   await f.store.flush();
   const release = await f.hold();

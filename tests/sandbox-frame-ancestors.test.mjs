@@ -5,6 +5,7 @@
 
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
+import * as arrange from './arrange.mjs';
 import { fakeRequest } from './fake-http.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
@@ -19,7 +20,7 @@ before(async () => {
   app.rt.store.emit('project', { id: 'p1', name: 'P', folder: null });
   const p = app.rt.createPersona({ handle: 'drawer' });
   const t = app.rt.createThread({ projectId: 'p1', title: 'T', personaIds: [p.id] });
-  app.rt.toolsFor(app.rt.sessionsIn(t.id)[0].id).show_app({ id: 'framed', title: 'Framed', code: '<p>Hi</p>' });
+  app.rt.toolsFor(arrange.sessionsIn(app.rt, t.id)[0].id).show_app({ id: 'framed', title: 'Framed', code: '<p>Hi</p>' });
 });
 after(async () => {
   await app.close();

@@ -97,7 +97,7 @@ test('after Retry and after a restart, a pending read holds what the disk kept, 
   const atSync = h.hold();
   const commit = h.store.commit([{ type: 'settings', data: { theme: 'system' } }]);
   await atSync;
-  f.rt.tellAgent(f.alpha.id, 'Held notice.');
+  arrange.tell(f.rt, f.alpha.id, 'Held notice.');
   arrange.renameThread(f.rt, f.t.id, 'Renamed behind the commit');
   h.release();
   await commit;
@@ -112,7 +112,7 @@ test('after Retry and after a restart, a pending read holds what the disk kept, 
   const again = h.hold('pass');
   const second = h.store.commit([{ type: 'settings', data: { theme: 'dark' } }]);
   await again;
-  f.rt.tellAgent(f.alpha.id, 'Second notice.');
+  arrange.tell(f.rt, f.alpha.id, 'Second notice.');
   assert.deepEqual(h.store.pending.session(f.alpha.id).context, ['[Postbox] Held notice.', '[Postbox] Second notice.']);
   assert.deepEqual(h.store.state.sessions[f.alpha.id].context, ['[Postbox] Held notice.'], 'still held');
   h.release();

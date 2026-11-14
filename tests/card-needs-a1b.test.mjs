@@ -41,7 +41,7 @@ function needFor(it) {
 }
 
 const session = (r) => r.rt.s.sessions[r.alpha.id];
-const setNeedTo = (r, it) => r.rt.updateSession(r.alpha.id, { needs: needFor(it), state: 'needs' });
+const setNeedTo = (r, it) => arrange.setSession(r.rt, r.alpha.id, { needs: needFor(it), state: 'needs' });
 /** Offered as waitOn (remote/turns-prompts.mjs) and the other callers offer: the card's need, in the conversation. */
 const offer = (r, it) => offerNeed(r.rt, session(r), needFor(it), 'needs');
 
@@ -150,7 +150,7 @@ test('a laptop permission that waits stays the need when an older permission is 
 
 test('a card offered when the need’s card is gone from pending is decided by rank alone', () => {
   const r = room();
-  r.rt.updateSession(r.alpha.id, { needs: { kind: 'hop', itemId: 'it_gone', text: 'gone' }, state: 'needs' });
+  arrange.setSession(r.rt, r.alpha.id, { needs: { kind: 'hop', itemId: 'it_gone', text: 'gone' }, state: 'needs' });
   const card = appAt(r, T0);
   assert.equal(offer(r, card), true);
   needIs(r, card);
@@ -159,7 +159,7 @@ test('a card offered when the need’s card is gone from pending is decided by r
 test('a need of a kind RANK doesn’t list is never replaced', () => {
   const r = room();
   const old = hopAt(r, T0);
-  r.rt.updateSession(r.alpha.id, { needs: { kind: 'mystery', itemId: old.id, text: 'mystery' }, state: 'needs' });
+  arrange.setSession(r.rt, r.alpha.id, { needs: { kind: 'mystery', itemId: old.id, text: 'mystery' }, state: 'needs' });
   assert.equal(offer(r, permissionAt(r, T0 + 1000)), false);
   assert.deepEqual(shape(r.needs()), { itemId: old.id, kind: 'mystery', threadId: undefined });
 });
@@ -215,7 +215,7 @@ test('one comparison: a Retry’s reset after a store outage keeps the newer car
   ]) {
     const r = room();
     const { first, won } = pair(r, ['hop', firstAt, 'appsend', secondAt, winner]);
-    r.rt.updateSession(r.alpha.id, { needs: needFor(first), state: 'gen' }); // mid-turn, with no turn running
+    arrange.setSession(r.rt, r.alpha.id, { needs: needFor(first), state: 'gen' }); // mid-turn, with no turn running
     settleOrphanTurns(r.rt);
     needIs(r, won);
   }
@@ -232,7 +232,7 @@ test('one comparison: the restart keeps a block from an older turn against a new
     const next = r.block('turn_last');
     arrange.setItem(r.rt, r.t.id, kept.id, { at: keptAt });
     arrange.setItem(r.rt, r.t.id, next.id, { at: nextAt });
-    r.rt.updateSession(r.alpha.id, { needs: { kind: 'block', itemId: kept.id, text: 'Pick' }, state: 'needs' });
+    arrange.setSession(r.rt, r.alpha.id, { needs: { kind: 'block', itemId: kept.id, text: 'Pick' }, state: 'needs' });
     const won = winner === 'kept' ? kept : next;
     assert.deepEqual(shape(settledNeed(r.rt, session(r)).needs), { itemId: won.id, kind: 'block', threadId: undefined }, `${keptAt - T0} vs ${nextAt - T0}`);
   }

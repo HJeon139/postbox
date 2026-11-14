@@ -33,7 +33,7 @@ after(async () => {
 function needing(title) {
   const projectId = Object.values(app.store.state.projects)[0].id;
   const t = app.rt.createThread({ projectId, title, personaIds: [arrange.persona(app.rt, 'researcher').id] });
-  const [se] = app.rt.sessionsIn(t.id);
+  const [se] = arrange.sessionsIn(app.rt, t.id);
   const card = arrange.post(app.rt, t.id, {
     kind: 'block',
     sessionId: se.id,
@@ -41,7 +41,7 @@ function needing(title) {
     answered: false,
     block: { id: 'na', type: 'confirm', version: 1, fallback: 'Go?', statement: 'Go?', confirmLabel: 'Go' },
   });
-  app.rt.updateSession(se.id, { state: 'needs', needs: { kind: 'block', itemId: card.id, text: 'Go?' } });
+  arrange.setSession(app.rt, se.id, { state: 'needs', needs: { kind: 'block', itemId: card.id, text: 'Go?' } });
   return { se, card };
 }
 
@@ -49,7 +49,7 @@ test('a need records its item’s time, and waitedSince reads it with no items i
   const { se, card } = needing('Needs at');
   const now = app.store.state.sessions[se.id];
   assert.deepEqual(now.needsAt, { itemId: card.id, at: card.at });
-  app.rt.updateSession(se.id, { updatedAt: card.at + 60_000 });
+  arrange.setSession(app.rt, se.id, { updatedAt: card.at + 60_000 });
   const page = { threads: app.store.state.threads, items: {} };
   assert.equal(waitedSince(page, app.store.state.sessions[se.id]), card.at, 'not the session’s last change');
 });

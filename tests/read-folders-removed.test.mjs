@@ -13,6 +13,7 @@ import { handleMcp } from '../server/mcp.mjs';
 import { changePermissionFolder } from '../server/permissions-panel.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
+import * as arrange from './arrange.mjs';
 import { heldStore } from './stop-reply-fixture.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
@@ -46,8 +47,8 @@ function aRoom(store, { home, ws, notes }) {
   store.emit('project', { id: 'p1', name: 'P', folder: ws });
   const p = rt.createPersona({ handle: 'gem', backend: 'antigravity-cli', permissionMode: 'ask' });
   const t = rt.createThread({ projectId: 'p1', title: 'T', personaIds: [p.id] });
-  const se = rt.sessionsIn(t.id)[0];
-  rt.updateSession(se.id, { readDirs: [notes] });
+  const se = arrange.sessionsIn(rt, t.id)[0];
+  arrange.setSession(rt, se.id, { readDirs: [notes] });
   return { rt, adapter, t, se };
 }
 

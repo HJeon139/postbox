@@ -11,6 +11,7 @@ import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { readFolderOffer } from '../server/read-folders.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
+import * as arrange from './arrange.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -60,7 +61,7 @@ function aRoom(home, ws, backend = 'antigravity-cli') {
   store.emit('project', { id: 'p1', name: 'P', folder: ws });
   const p = rt.createPersona({ handle: 'gem', backend, permissionMode: 'ask' });
   const t = rt.createThread({ projectId: 'p1', title: 'T', personaIds: [p.id] });
-  return { rt, store, adapter, t, se: rt.sessionsIn(t.id)[0] };
+  return { rt, store, adapter, t, se: arrange.sessionsIn(rt, t.id)[0] };
 }
 
 /** Runs one turn, in which the folder is saved readable mid-turn and then `ask` asks for a read. */
@@ -69,7 +70,7 @@ async function readAfterSaving({ home, ws, dir, file, backend }) {
   /** @type {any[]} */
   const results = [];
   adapter.during = async () => {
-    rt.updateSession(se.id, { readDirs: [dir] });
+    arrange.setSession(rt, se.id, { readDirs: [dir] });
     const asked = rt.requestPermission(se.id, { tool: 'Read', summary: 'read', input: { file_path: file } });
     await sleep(10);
     const cards = store.items(t.id).filter((i) => i.kind === 'permission');

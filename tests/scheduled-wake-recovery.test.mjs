@@ -6,6 +6,7 @@ import { createKiroMapper } from '../server/adapters/kiro-cli.mjs';
 import { kiroError } from '../server/adapters/kiro-errors.mjs';
 import { failure, SshFailure } from '../server/remote/ssh-failures.mjs';
 import { fireScheduledWake, isNetworkFailure } from '../server/scheduled-wakes.mjs';
+import * as arrange from './arrange.mjs';
 import { settle, setup } from './side-threads-fixture.mjs';
 
 const networkError = (code = 'ENOTFOUND') => Object.assign(new Error(`network failed: ${code}`), { code });
@@ -137,7 +138,7 @@ test('#466 a host turn marked lost is attached again, not also retried as a sche
   const f = setup();
   const sc = f.rt.schedule(f.alpha.id, { inMs: 60_000, note: 'Check the host.' });
   f.adapter.next.push(async () => {
-    f.rt.updateSession(f.alpha.id, { remoteTurn: { state: 'lost' } });
+    arrange.setSession(f.rt, f.alpha.id, { remoteTurn: { state: 'lost' } });
     throw failure('unreachable', 'the test host', { code: 255, stderr: 'ssh: connect to host test port 22: Network is unreachable' });
   });
   await fire(f, sc);

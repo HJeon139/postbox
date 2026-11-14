@@ -44,7 +44,7 @@ export function setup(store = new Store(null)) {
   const b = rt.createPersona({ handle: 'beta' });
   const c = rt.createPersona({ handle: 'gamma' });
   const t = rt.createThread({ projectId: 'p1', title: 'T', personaIds: [a.id, b.id] });
-  const [alpha, beta] = rt.sessionsIn(t.id);
+  const [alpha, beta] = arrange.sessionsIn(rt, t.id);
   return { store, rt, adapter, t, a, b, c, alpha, beta };
 }
 export const settle = async (rt) => {

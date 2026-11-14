@@ -4,6 +4,7 @@
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
+import * as arrange from './arrange.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
 /** The stop tests’ project and agent folders go in this temp folder of the test file’s: the adapters make them (#823). */
@@ -57,7 +58,7 @@ export function setup() {
   store.emit('project', { id: 'p1', name: 'P', folder: STOP_DIR });
   const p = rt.createPersona({ handle: 'developer' });
   const t = rt.createThread({ projectId: 'p1', title: 'T', personaIds: [p.id] });
-  return { store, rt, adapter, t, se: rt.sessionsIn(t.id)[0], k, procs };
+  return { store, rt, adapter, t, se: arrange.sessionsIn(rt, t.id)[0], k, procs };
 }
 /** A kept job’s shell as ps shows it, leading its own group. */
 export const shellRow = (pgid, command) => ({ pid: pgid, ppid: 1, pgid, command: `/bin/zsh -c source snapshot.sh && eval '${command}' < /dev/null` });

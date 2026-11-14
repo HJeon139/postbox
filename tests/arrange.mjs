@@ -38,6 +38,12 @@ export const personaFor = (rt, se) => rt.personas.forSession(/** @type {any} */ 
 /** Changes a session’s record, as the server does when its state moves on. @param {Runtime} rt @param {string} id @param {object} patch */
 export const setSession = (rt, id, patch) => rt.updateSession(id, patch);
 
+/** Leaves a Postbox notice for an agent’s next turn, as the server does. @param {Runtime} rt @param {string} sessionId @param {string} text */
+export const tell = (rt, sessionId, text) => rt.tellAgent(sessionId, text);
+
+/** The other agents in a thread’s conversation, with their roles, as the guide gives them. @param {Runtime} rt @param {string} threadId @param {object} se */
+export const roomOf = (rt, threadId, se) => rt.roomOf(threadId, /** @type {any} */ (se));
+
 /** Offers an agent’s slash commands, as its backend reports them when a turn starts. @param {Runtime} rt @param {string} sessionId @param {object[]} list */
 export const offerCommands = (rt, sessionId, list) => rt.recordCommands(sessionId, list);
 
@@ -270,6 +276,36 @@ export function onItemPatch(rt, fn) {
   };
   return () => {
     threads.patchItem = patchItem;
+  };
+}
+
+/**
+ * Hears each change to a session, before it’s written as it would be. Returns a function that stops listening.
+ * @param {Runtime} rt @param {(sessionId: string, change: any) => void} fn
+ */
+export function onSessionUpdate(rt, fn) {
+  const update = rt.updateSession.bind(rt);
+  rt.updateSession = (id, change) => {
+    fn(id, change);
+    return update(id, change);
+  };
+  return () => {
+    rt.updateSession = update;
+  };
+}
+
+/**
+ * Hears each Postbox notice left for an agent, before it’s written as it would be. Returns a function that stops listening.
+ * @param {Runtime} rt @param {(sessionId: string, text: string) => void} fn
+ */
+export function onTell(rt, fn) {
+  const tellAgent = rt.tellAgent.bind(rt);
+  rt.tellAgent = (id, text) => {
+    fn(id, text);
+    return tellAgent(id, text);
+  };
+  return () => {
+    rt.tellAgent = tellAgent;
   };
 }
 

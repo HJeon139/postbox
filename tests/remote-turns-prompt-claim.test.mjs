@@ -118,7 +118,7 @@ test('#353 after a restart, a prompt that waited for its call before it is sent 
   const first = rig({ store, d });
   first.rt.remote.close();
   const se = first.se();
-  first.rt.updateSession(se.id, {
+  arrange.setSession(first.rt, se.id, {
     backendState: { claudeSessionId: 'e6f7d942-4a4f-4015-b186-0ef8d5c103ca' },
     remoteTurn: { hostId: first.host.id, turn: 'host-turn-1', offset: 0, rtTurn: 'turn_old', threadId: first.t.id, state: 'running', at: 1 },
   });
@@ -175,7 +175,7 @@ function shownBeforeRestart(status) {
   const first = rig({ store, d });
   first.rt.remote.close();
   const se = first.se();
-  first.rt.updateSession(se.id, {
+  arrange.setSession(first.rt, se.id, {
     backendState: { claudeSessionId: 'e6f7d942-4a4f-4015-b186-0ef8d5c103ca' },
     remoteTurn: { hostId: first.host.id, turn: 'host-turn-1', offset: 0, rtTurn: 'turn_old', threadId: first.t.id, state: 'waiting', at: 1 },
   });

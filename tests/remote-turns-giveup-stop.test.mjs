@@ -113,7 +113,7 @@ async function interruptedWith(t, { stopping }) {
   const { store, d } = restarted({ welcome: 'missing' });
   const r = rig({ store, d });
   const old = r.se().remoteTurn;
-  r.rt.updateSession(r.se().id, {
+  arrange.setSession(r.rt, r.se().id, {
     remoteTurn: {
       ...old,
       state: 'interrupted',

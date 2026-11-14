@@ -5,11 +5,12 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import * as arrange from './arrange.mjs';
 import { choice, setup, turn } from './blocks-fixture.mjs';
 
 /** Retires every agent in the conversation, as #228’s migration did a fork. */
 const retire = (rt, t) => {
-  for (const se of rt.sessionsIn(t.id)) rt.updateSession(se.id, { retiredFork: true });
+  for (const se of arrange.sessionsIn(rt, t.id)) arrange.setSession(rt, se.id, { retiredFork: true });
 };
 const retiredRefusal = (e) => e.status === 409 && /was retired/.test(e.message);
 
@@ -30,7 +31,7 @@ test('#848 an answer to a block of a retired fork is refused before anything is 
 /** A conversation whose agent has shown an app, as apps-needs.test.mjs makes one. */
 function withApp() {
   const { store, rt, adapter, t } = setup();
-  const se = rt.sessionsIn(t.id)[0];
+  const se = arrange.sessionsIn(rt, t.id)[0];
   rt.toolsFor(se.id).show_app({ id: 'spam', title: 'Spam', code: '<p>x</p>', permissions: [] });
   return { store, rt, adapter, t, se };
 }

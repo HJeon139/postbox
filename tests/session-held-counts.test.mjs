@@ -5,6 +5,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { withUrgent } from '../server/subagent-end.mjs';
+import * as arrange from './arrange.mjs';
 import { settle, setup } from './side-threads-fixture.mjs';
 import { heldStore } from './stop-reply-fixture.mjs';
 
@@ -67,7 +68,7 @@ test('an urgent note itself held behind a commit is given on the next tool resul
   const f = await heldRoom();
   const urgent = '[Postbox] URGENT: the person ended your subagent Scout (id sub-1).';
   const release = await f.hold();
-  f.rt.updateSession(f.alpha.id, (/** @type {any} */ se) => ({ context: [...(se.context ?? []), urgent] }));
+  arrange.setSession(f.rt, f.alpha.id, (/** @type {any} */ se) => ({ context: [...(se.context ?? []), urgent] }));
   const text = withUrgent(f.rt, f.alpha.id, 'Result.', null);
   await release();
   assert.equal(text, `${urgent}\n\nResult.`);

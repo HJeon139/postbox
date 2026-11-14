@@ -12,6 +12,7 @@ import { handleMcp } from '../server/mcp.mjs';
 import { expireWait } from '../server/permission-cards.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
+import * as arrange from './arrange.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -124,7 +125,7 @@ function setupHookRuntime() {
   store.emit('project', { id: 'p1', name: 'P', folder: root });
   const p = rt.createPersona({ handle: 'gem', backend: 'antigravity-cli', permissionMode: 'auto', tools: ['shell'] });
   const t = rt.createThread({ projectId: 'p1', title: 'T', personaIds: [p.id] });
-  const se = rt.sessionsIn(t.id)[0];
+  const se = arrange.sessionsIn(rt, t.id)[0];
   const env = { POSTBOX_MCP_URL: 'http://127.0.0.1:1/mcp', POSTBOX_AGY_MODE: 'auto', POSTBOX_AGY_FOLDERS: JSON.stringify([root]) };
   const fetchMcp = async (_url, init) => {
     const reply = await handleMcp(rt, se.id, JSON.parse(init.body), rt.turns.get(se.id)?.token ?? null);
