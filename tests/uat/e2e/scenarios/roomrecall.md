@@ -16,7 +16,6 @@ What it measures is narrow on purpose: the cost and the correctness of finding o
 ## Phase 1: One item each, at four depths
 
 Send these four messages, each as its own message, waiting for the agent’s reply before the next. Send them word for word:
-
 1. `@researcher Find item 136 of the release log in this conversation. Reply with its id and its exact text, and nothing else.`
 2. `@critic Find item 414 of the release log in this conversation. Reply with its id and its exact text, and nothing else.`
 3. `@developer Find item 680 of the release log in this conversation. Reply with its id and its exact text, and nothing else.`
@@ -27,7 +26,6 @@ After each reply, say whether it gives an id of the form `it_big` followed by th
 ## Phase 2: A second question, once each agent has looked
 
 Send these four messages the same way:
-
 1. `@researcher What did this conversation decide about how 2.0 ships? Reply with the decision’s id and its exact text, and nothing else.`
 2. `@critic What are the steps in release-plan.md, the draft reviewed near the start of this conversation? Reply with the steps, and nothing else.`
 3. `@developer Which checklist did the very first message of this conversation ask about? Reply with that message’s id and its exact text, and nothing else.`
