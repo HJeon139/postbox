@@ -63,12 +63,13 @@ const chose = (/** @type {any} */ t, /** @type {import('./switch-facts.mjs').Swi
 
 const EFFORT_WORDS = { low: 'low', medium: 'medium', high: 'high', xhigh: 'extra high', max: 'max' };
 /**
- * What the row must name for the model: the family (“Sonnet 5.5”), Codex’s default, or the id. Null when any will do:
- * Kiro’s router names no model.
- * @param {{ backend: string, model: string }} t
+ * What the row must name for the model: the family (“Sonnet 5.5”), or the id. On Codex’s default, the model Codex
+ * reported for the turn (server/adapters/codex.mjs, startTurn), or Codex’s default when it reported none. Null when
+ * any will do: Kiro’s router names no model.
+ * @param {{ backend: string, model: string }} t @param {import('./switch-facts.mjs').Switch} s
  */
-function rowModel(t) {
-  if (t.model === 'auto') return t.backend === 'codex' ? modelName('codex', 'auto') : null;
+function rowModel(t, s) {
+  if (t.model === 'auto') return t.backend === 'codex' ? modelName('codex', s.reported?.model ?? 'auto') : null;
   if (FAMILY.test(t.model)) return `${t.model[0].toUpperCase()}${t.model.slice(1)} `;
   return t.model;
 }
@@ -94,7 +95,7 @@ function shown(t, f) {
   return switchesOf(f).filter((s) => {
     if (!chose(t, s) || !s.turn || !s.latest || !s.row) return false;
     const effort = EFFORT_WORDS[/** @type {keyof typeof EFFORT_WORDS} */ (t.effort ?? s.chosen.effort)];
-    const model = rowModel(t);
+    const model = rowModel(t, s);
     return !/, not |, set to /.test(s.row) && s.row.includes(`${effort} effort`) && (!model || s.row.includes(model));
   });
 }

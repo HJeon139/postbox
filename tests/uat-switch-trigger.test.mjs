@@ -133,15 +133,17 @@ test('ran-kiro-auto-high fires on the backend alone, since Kiro reports no model
   assert.match(hit.evidence, /^@alpha saved kiro-cli · auto · high; its next turn is in streams\/kiro\//);
 });
 
-test('shown-codex-auto-high fires when the row names Codex’s default and high effort, and not when it says “not”', async () => {
+test('shown-codex-auto-high fires when the row names the model Codex reported and high effort, and not when it says “not”', async () => {
   const r = room();
   await r.save('codex', 'auto', 'high');
   await r.turn('codex', { model: 'gpt-6-luna', effort: 'high' });
-  r.row('alpha · idle Codex’s default · high effort');
+  r.row('alpha · idle gpt-6-luna · high effort');
   const [hit] = fired('shown-codex-auto-high', r.facts());
-  assert.equal(hit.evidence, '@alpha saved codex · auto · high; its row says “alpha · idle Codex’s default · high effort”.');
+  assert.equal(hit.evidence, '@alpha saved codex · auto · high; its row says “alpha · idle gpt-6-luna · high effort”.');
   r.row('alpha · idle gpt-6-luna, not auto · high effort');
-  assert.deepEqual(fired('shown-codex-auto-high', r.facts()), []);
+  assert.deepEqual(fired('shown-codex-auto-high', r.facts()), [], 'it says “not”');
+  r.row('alpha · idle Codex’s default · high effort');
+  assert.deepEqual(fired('shown-codex-auto-high', r.facts()), [], 'the model Codex reported never reached the row');
 });
 
 test('shown-kiro-auto-high doesn’t fire while the row still names the model of the backend before it', async () => {
