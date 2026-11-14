@@ -504,6 +504,12 @@ details.activity > .work-record-link { display: inline-block; margin: 4px 0 0 22
 .select-wrap { position: relative; }
 .select-wrap .i-down { position: absolute; right: 8px; top: 8px; color: var(--dim); pointer-events: none; }
 .help { font-size: 12px; color: var(--dim); }
+/* A help whose message changes with an answer the person didn’t click for (the Model field’s, #1327): every message it
+   could show sits in one cell, only the current one visible, so the cell keeps the tallest’s height and nothing below
+   it moves when the answer comes. */
+.held-help { display: grid; }
+.held-help > span { grid-area: 1 / 1; }
+.held-help > [aria-hidden='true'] { visibility: hidden; }
 .err { font-size: 12px; color: var(--alert-ink); display: flex; align-items: center; gap: 5px; }
 .err .i { width: 12px; height: 12px; }
 .toggle { display: inline-flex; align-items: center; gap: 10px; cursor: pointer; }
