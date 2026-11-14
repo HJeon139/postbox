@@ -6,6 +6,7 @@
 import { writeFile } from 'node:fs/promises';
 import { js, sleep } from '../browser.mjs';
 import { targetScript } from './app-target.mjs';
+import { agentPanel } from './driver-panel.mjs';
 import { pointer } from './driver-pointer.mjs';
 import { review } from './driver-review.mjs';
 import { keeper, shots } from './driver-shots.mjs';
@@ -286,46 +287,7 @@ export function driver(page, hooks = {}) {
     ...shots({ ev, page, sleep, input: hooks.input }),
 
     /** Presses an app’s Expand (full screen) button and reports whether anything visibly changed. */
-    /**
-     * Opens an agent’s quick panel from the sidebar’s Agents section (#105), sets what’s given, and closes it.
-     * Returns what the panel said, and what each control was left at.
-     * @param {string} handle  @param {{ model?: string, effort?: string, mode?: string, shell?: boolean }} set
-     */
-    async agentPanel(handle, set = {}) {
-      await clickAt(
-        `[...document.querySelectorAll('.agent-btn')].find((b) => b.offsetParent !== null && b.querySelector('.name b')?.textContent === ${js(handle)})`,
-        `@${handle}’s row in the Agents section`,
-      );
-      await page.waitFor(`!!document.querySelector('.dialog [role=radiogroup], .dialog [role=switch]')`, { label: 'the quick panel' });
-      try {
-        const group = (label) =>
-          `[...document.querySelectorAll('.dialog [role=radiogroup]')].find((g) => (g.getAttribute('aria-label') ?? '').toLowerCase().startsWith(${js(label.toLowerCase())}))`;
-        for (const [label, value] of [
-          ['Model', set.model],
-          ['Effort', set.effort],
-          ['Permission mode', set.mode],
-        ]) {
-          if (!value) continue;
-          await clickAt(
-            `[...(${group(label)}?.querySelectorAll('[role=radio]') ?? [])].find((r) => r.textContent.toLowerCase().includes(${js(String(value).toLowerCase())}))`,
-            `“${value}” under ${label}`,
-          );
-        }
-        const shellSwitch = `[...document.querySelectorAll('.dialog [role=switch]')].find((x) => (x.getAttribute('aria-label') ?? '').startsWith('Shell,'))`;
-        if (set.shell !== undefined && (await ev(`${shellSwitch}?.getAttribute('aria-checked') === 'true'`)) !== Boolean(set.shell))
-          await clickAt(shellSwitch, 'the Shell switch');
-        await sleep(400);
-        const said = await ev(`document.querySelector('.dialog')?.innerText ?? ''`);
-        const left = await ev(`({
-          groups: Object.fromEntries([...document.querySelectorAll('.dialog [role=radiogroup]')].map((g) => [g.getAttribute('aria-label'), g.querySelector('[aria-checked=true]')?.textContent.trim() ?? null])),
-          switches: Object.fromEntries([...document.querySelectorAll('.dialog [role=switch]')].map((x) => [x.getAttribute('aria-label'), x.getAttribute('aria-checked') === 'true'])),
-        })`);
-        return { said, left };
-      } finally {
-        // Closed whatever happened, so the next action starts from the conversation.
-        if (await ev(`!!document.querySelector('.dialog')`)) await press('Escape');
-      }
-    },
+    agentPanel: (handle, set = {}) => agentPanel({ ev, clickAt, press, page }, handle, set),
 
     /** Opens a view in the right pane: Work by its top-bar button, or the thread on an item (#146). Returns both views’ sizes. */
     async openPane(view, key = null) {

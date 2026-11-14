@@ -34,7 +34,7 @@ export async function goToNeeds(d, page, from, handle = '') {
     at = await ev(landed);
     if (!at) await sleep(100);
   }
-  // A ring that opened a dialog instead (an agent’s quick panel) is closed, so the next action starts from the page.
+  // A ring that opened a dialog instead (an agent’s persona sheet) is closed, so the next action starts from the page.
   const dialog = await ev(`!!document.querySelector('.backdrop .dialog')`);
   if (dialog) await d.press('Escape');
   return { before, after: await ev('location.hash'), landed: at, dialog };

@@ -285,8 +285,8 @@ test('apps: a missing-data message is #47, tiny marks are #53, status colors for
 const EXIT = ['wikisearch', 'announcement', 'papersurvey', 'longresearch'];
 
 // Scenarios with more than three phases: Codex's four features, and the acceptance scenarios whose phases are a design's
-// steps: #508's delivery (A1 to A4) and big room (B1 to B3, then #701), #516's assets, and #464's, #872's, #827's and #672's remote hosts.
-const LONGER = { codex: 4, delivery: 9, remotehosts: 8, bigroom: 5, 'assets-room': 11, 'assets-host': 4, 'assets-delete': 4 };
+// steps: #508's delivery (A1 to A4) and big room (B1 to B3, then #701), #516's assets, #464's, #872's, #827's and #672's remote hosts, and #1315's switches.
+const LONGER = { codex: 4, delivery: 9, remotehosts: 8, bigroom: 5, 'assets-room': 11, 'assets-host': 4, 'assets-delete': 4, switch: 6, 'switch-compat': 6 };
 
 test('the scenarios parse into phases the tester works through', () => {
   const dir = new URL('uat/e2e/scenarios/', import.meta.url);
@@ -1226,13 +1226,6 @@ describe('the Agents section, the Work ledger and the right pane (#105, #132, #1
     ];
     assert.ok(!ids(f).includes('work-files-match-stream'));
     assert.ok(!ids(f).includes('work-commands-match-stream'));
-  });
-
-  test('quick-panel-takes-effect: the next turn runs the model picked', () => {
-    const turn = (model) => ({ handle: 'critic', started: 20, events: [{ type: 'system', subtype: 'init', model }] });
-    const panels = [{ handle: 'critic', set: { model: 'Sonnet 5.5' }, at: 10 }];
-    assert.ok(ids(base({ probes: { fullScreen: [], attachments: [], panels }, streams: [turn('claude-opus-5-5')] })).includes('quick-panel-takes-effect'));
-    assert.ok(!ids(base({ probes: { fullScreen: [], attachments: [], panels }, streams: [turn('claude-sonnet-5-5')] })).includes('quick-panel-takes-effect'));
   });
 
   test('shell-off-silent: a refused command after Shell went off must show as refused', () => {

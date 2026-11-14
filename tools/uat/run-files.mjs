@@ -19,6 +19,7 @@ export async function runPaths(dir) {
     kiroStreams: join(dir, 'streams', 'kiro'),
     agyStreams: join(dir, 'streams', 'agy'),
     codexStreams: join(dir, 'streams', 'codex'),
+    sdkStreams: join(dir, 'streams', 'sdk'),
     shots: join(dir, 'shots'),
   };
   for (const p of Object.values(paths)) await mkdir(p, { recursive: true });
@@ -42,7 +43,8 @@ export function userSetup(workspace) {
 }
 
 /** Each agent turn’s raw stream, as recorded by the Claude Code adapter (POSTBOX_CLAUDE_RECORD), by the Kiro CLI
- * adapter (POSTBOX_KIRO_RECORD) in streams/kiro/, or by the Antigravity CLI adapter (POSTBOX_AGY_RECORD) in streams/agy/.
+ * adapter (POSTBOX_KIRO_RECORD) in streams/kiro/, by the Antigravity CLI adapter (POSTBOX_AGY_RECORD) in streams/agy/,
+ * by Codex’s (POSTBOX_CODEX_RECORD) in streams/codex/, or by the Agent SDK’s (POSTBOX_SDK_RECORD) in streams/sdk/.
  * A file is named for when its turn’s process started, and its last write is when that process last said anything (#126). */
 export function readStreams(folder) {
   if (!existsSync(folder)) return [];
@@ -226,6 +228,10 @@ export async function readUi(page) {
     headerText: await page.evaluate(`document.querySelector('.rail .agents-sec')?.innerText ?? ''`),
     // Each row’s handle, which its name shows in bold, without an @.
     agentRows: await page.evaluate(`[...document.querySelectorAll('.agent-rows .agent-btn .name b')].map((b) => b.textContent.trim()).filter(Boolean)`),
+    // Each row’s whole line by its handle, with its model and effort (#1315: tools/uat/switch-facts.mjs).
+    agentLines: await page.evaluate(
+      `Object.fromEntries([...document.querySelectorAll('.agent-rows .agent-btn')].map((b) => [b.querySelector('.name b')?.textContent.trim() ?? '', b.innerText.replace(/\\s+/g, ' ').trim()]).filter(([h]) => h))`,
+    ),
     topbarCut: await page.evaluate(
       `innerWidth >= 1200 && [...document.querySelectorAll('header.topbar .title, header.topbar .crumb')].some((n) => n.scrollWidth > n.clientWidth + 1)`,
     ),

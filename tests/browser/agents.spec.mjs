@@ -178,6 +178,21 @@ test('a change in the sheet applies from the agent’s next turn', async ({ page
   await expect.poll(() => app.store.state.sessions[indexer.id].state).toBe('idle');
 });
 
+// #1315: Kiro on its router reports no model, so an agent switched to it kept saying “Opus 5.5, not auto”.
+test('switched to another backend in the sheet, an agent’s row names the new model and effort, not the old backend’s', async ({ page }) => {
+  arrange.setSession(app.rt, indexer.id, { lastModel: 'claude-opus-5-5', lastEffort: 'medium' });
+  await open(page, `#/t/${planning.id}`);
+  await expect(row(page, 'indexer')).toHaveText(/Opus 5\.5 · medium effort$/);
+  await row(page, 'indexer').click();
+  await sheet(page).getByLabel('Backend', { exact: true }).selectOption('agent-sdk');
+  await sheet(page).getByLabel('Model', { exact: true }).fill('claude-sonnet-5-5');
+  await sheet(page).getByLabel('Effort', { exact: true }).selectOption('low');
+  await sheet(page).getByRole('button', { name: 'Save' }).click();
+  await expect.poll(() => personaNamed('indexer').backend).toBe('agent-sdk');
+  await page.keyboard.press('Escape');
+  await expect(row(page, 'indexer')).toHaveText(/Sonnet 5\.5 · low effort$/);
+});
+
 // ── Actions are commands to the agent ───────────────────────────────────────────────────
 
 test('@agent /compact compacts that agent, and @agent /delete opens its delete confirm; there’s no Archive (#320)', async ({ page }) => {
