@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import { after, afterEach, before, test } from 'node:test';
 import { sessionPatch } from '../server/session-patch.mjs';
 import { waitedSince } from '../shared/needs.mjs';
+import * as arrange from './arrange.mjs';
 import { assertNoServerFailures, captureServerLog } from './server-log.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
@@ -33,7 +34,7 @@ function needing(title) {
   const projectId = Object.values(app.store.state.projects)[0].id;
   const t = app.rt.createThread({ projectId, title, personaIds: [app.rt.personaByHandle('researcher').id] });
   const [se] = app.rt.sessionsIn(t.id);
-  const card = app.rt.addItem(t.id, {
+  const card = arrange.post(app.rt, t.id, {
     kind: 'block',
     sessionId: se.id,
     valid: true,

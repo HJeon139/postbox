@@ -93,13 +93,13 @@ function refused(rt, turn, why, id, call, args) {
   const line = { kind: 'system', variant: 'prompt-refused', handle, turnId: turn.id };
   if (shown.keys.size < PROMPT_REFUSAL_LINES) {
     shown.keys.add(key);
-    rt.addItem(turn.threadId, { ...line, text: lineText(why, handle, call, args) });
+    rt.threads.addItem(turn.threadId, { ...line, text: lineText(why, handle, call, args) });
   } else {
     // Past the cap only a count is kept, so a flood of prompts holds nothing more than its number.
     shown.more += 1;
     const text = `${shown.more} more permission ${shown.more === 1 ? 'prompt' : 'prompts'} from @${handle} ${shown.more === 1 ? 'was' : 'were'} refused this turn, so nobody was asked.`;
-    if (shown.moreId) rt.patchItem(turn.threadId, shown.moreId, { text });
-    else shown.moreId = rt.addItem(turn.threadId, { ...line, text }).id;
+    if (shown.moreId) rt.threads.patchItem(turn.threadId, shown.moreId, { text });
+    else shown.moreId = rt.threads.addItem(turn.threadId, { ...line, text }).id;
   }
   return refusal(why);
 }

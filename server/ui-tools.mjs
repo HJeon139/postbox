@@ -93,7 +93,7 @@ function defineTerm(rt, { turn, se, threadId }, { term, definition, key, source 
       at: Date.now(),
     },
   });
-  const inherited = rt
+  const inherited = rt.threads
     .lineage(threadId())
     .slice(1)
     .some((id) => rt.s.glossary[id]?.[k]);
@@ -117,7 +117,7 @@ function proposeAgent(rt, sessionId, { turn, se, threadId, endSegment }, { handl
   model = str(model, 80);
   backend = str(backend, 40);
   endSegment();
-  rt.addItem(threadId(), {
+  rt.threads.addItem(threadId(), {
     kind: 'proposal',
     sessionId,
     handle: se().handle,

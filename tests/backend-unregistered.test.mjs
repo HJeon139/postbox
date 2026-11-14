@@ -21,7 +21,7 @@ const wakeLines = (f, threadId) => f.store.items(threadId).filter((i) => i.kind 
 /** A message of yours for @beta, waiting in the queue as it does when Postbox stops. */
 function queued(f, text = 'hello') {
   const th = f.store.state.threads[f.t.id];
-  f.rt.putThread({ ...th, queue: [{ id: 'q_1', text, attachments: [], sessionIds: [f.beta.id], at: Date.now() }] });
+  arrange.putThread(f.rt, { ...th, queue: [{ id: 'q_1', text, attachments: [], sessionIds: [f.beta.id], at: Date.now() }] });
 }
 /** @beta’s failed reply from a queued message the drain sent. */
 async function failedOnce() {
@@ -91,7 +91,7 @@ test('#874 a message to an agent whose backend isn’t registered is refused bef
   // One of two mentioned: refused for both, since the message is one.
   assert.throws(() => f.rt.sendMessage(f.t.id, { text: '@alpha @beta hi' }), { status: 422, message: REASON });
   // With no mention, @beta is the last speaker it would go to.
-  f.rt.putThread({ ...f.store.state.threads[f.t.id], lastSpeaker: f.beta.id });
+  arrange.putThread(f.rt, { ...f.store.state.threads[f.t.id], lastSpeaker: f.beta.id });
   assert.throws(() => f.rt.sendMessage(f.t.id, { text: 'hi' }), { status: 422, message: REASON });
   assert.equal(f.store.items(f.t.id).length, before, 'nothing posted');
   assert.equal(f.store.state.threads[f.t.id].hops, hops);
@@ -118,7 +118,7 @@ test('#874 a topic-thread message with no mention, for an agent not in the conve
   await settle(f.rt);
   const { threadId } = f.rt.startTopic(f.t.id, f.store.items(f.t.id).find((i) => i.kind === 'agent').id);
   // The thread was woken for @gamma, who has no session in the conversation: the agent a message with no mention goes to.
-  f.rt.putThread({ ...f.store.state.threads[threadId], woke: 'gamma', lastSpeaker: null, members: [] });
+  arrange.putThread(f.rt, { ...f.store.state.threads[threadId], woke: 'gamma', lastSpeaker: null, members: [] });
   unregister(f, f.c);
   const sessions = Object.keys(f.store.state.sessions).length;
   const members = f.store.state.threads[f.t.id].members;

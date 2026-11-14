@@ -5,6 +5,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { SUMMARY_WAKES_NO_ONE } from '../server/side-threads.mjs';
+import * as arrange from './arrange.mjs';
 import { held, oldSide, settle, setup, sleep } from './side-threads-fixture.mjs';
 
 /** A side thread from before #372 between alpha, who started it, and beta, who answered. */
@@ -90,7 +91,7 @@ test('#225: nor does a summary’s review_block, which would wake the block’s 
 
 test('#225: nor does a summary’s open_topic: its message posts, and each mention is refused as wake_agent refuses it', async () => {
   const { store, rt, adapter, t, side } = await sideThread();
-  const root = rt.addItem(t.id, { kind: 'user', text: 'Which editions differ?' });
+  const root = arrange.post(rt, t.id, { kind: 'user', text: 'Which editions differ?' });
   let said = null;
   adapter.next.push(async (c) => {
     said = c.tools.open_topic({ itemId: root.id, message: 'Check my summary.', mentions: ['beta'] });

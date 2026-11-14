@@ -1,6 +1,6 @@
 # Concerns as services
 
-**Status:** a proposal, 12 November 2026, for the person to approve before any code moves. Step 0, the test fixture, step 1, Placement, and step 2, Running, are built (“Where it stands”). Numbers are from `main` at 2259cebe. The scripts that produced them are in the pull request that added this document; the last of them, `svc-check.mjs`, checks the design against the code.
+**Status:** a proposal, 12 November 2026, for the person to approve before any code moves. Step 0, the test fixture, step 1, Placement, step 2, Running, and step 3, Threads with the Bus, are built (“Where it stands”). Numbers are from `main` at 2259cebe. The scripts that produced them are in the pull request that added this document; the last of them, `svc-check.mjs`, checks the design against the code.
 
 ## Why
 
@@ -108,7 +108,7 @@ The list refines the starting point from the data:
 ### Threads
 
 - **Owns:** conversations, topic and side threads, their items, and presence (`viewing`). Invariants: an item has one live copy (`bringForward` leaves a stub); a topic’s reply count follows each message; a thread’s lineage ends at its conversation.
-- **Interface:** `get(id)`, `create(opts)` (from `conversations.mjs`), `patch(id, patch)`, `addItem`, `patchItem`, `bringForward`, `lineage(id)`, `conversationThreads(id)`, `glossaryFor(id)`, `notify(level, …)`, `view(id)`, `isViewing(id)`, `toggleReaction`. Signals: `item.added`, `item.moved`. Clearing the sessions’ unread counts when a thread is viewed is Sessions’ (`markRead`); the facade’s `view()` calls both.
+- **Interface:** `get(id)`, `create(opts)` (from `conversations.mjs`), `put(thread)`, `patch(id, change)`, `toWrite(id)`, `pending()`, `rename(id, title)`, `addItem`, `patchItem`, `bringForward`, `lineage(id)`, `conversationThreads(id)`, `glossaryFor(id)`, `notify(level, …)`, `view(id)`, `isViewing(id)`, `toggleReaction`. Signals: `item.added`, with the thread as written, and `item.moved`, with the stub’s id. Clearing the sessions’ unread counts when a thread is viewed is Sessions’ (`markRead`); the facade’s `view()` clears them first, then calls `Threads.view`, which marks the thread open and clears its own, the order the two writes always had.
 - **Depends on:** Store, Bus.
 
 ### Personas
@@ -242,10 +242,10 @@ Built in this order, each service’s dependencies already exist: Store, Bus, Ru
 | `persona-write.mjs` calls `settleToolAsks` (`tool-ask.mjs`, which delivers and adds items) and `drainMovedOff` | `persona.updated`; tool asks and the queue listen |
 | `remote/placement.mjs`’s `drainMovedOff` calls `rt.drainQueues` and reads `rt.remote` | it leaves Placement for the `persona.updated` listener |
 | `conversations.mjs`’s `ensureSession` calls `liftDecline` (`wake-cards.mjs`) | `session.joined`; wake cards listen |
-| `Runtime.addItem` calls `bumpSideLink` (`side-threads.mjs`) | `item.added`; side threads listen |
+| `Runtime.addItem` calls `bumpSideLink` (`side-threads.mjs`) | `item.added`; side threads listen (done in step 3) |
 | `Runtime.busyFor` calls `remote.awaitsAttach`, which reads the session and its persona’s host | Running keeps the awaiting sessions; `RemoteTurns` writes them, and the first `persona.updated` listener sets them from where the agent runs now (done in step 2: `busyFor` is gone) |
-| `Runtime.bringForward` calls `moveMarkers` (`catch-up.mjs`) | `item.moved`; Memory moves its markers |
-| `Runtime.view` clears the sessions’ unread counts | the facade’s `view()`: `Threads.view`, then `Sessions.markRead` |
+| `Runtime.bringForward` calls `moveMarkers` (`catch-up.mjs`) | `item.moved`; Memory moves its markers (done in step 3: the root listens with `moveMarkers` until Memory is a service) |
+| `Runtime.view` clears the sessions’ unread counts | the facade’s `view()`: `Sessions.markRead`, then `Threads.view` (done in step 3, with today’s `session-write.mjs` for the first) |
 | `app-retire.mjs` calls `releaseNeed` (`card-needs.mjs`) | `app.retired`; asks listen |
 | `apps.mjs`’s `needAppSend` and `resolveAppSend` call `offerNeed` and `releaseNeed` | they stay with asks; `apps.mjs` splits |
 | `lint-delivery.mjs`, `apps.mjs` and `review-comments.mjs` call `rt.deliver` | the `send` port |
@@ -430,7 +430,14 @@ Each step is its own pull request, and is done when:
   - `deliver` never checked awaiting attach; only the queue and wakes hold a message for such a session. A first cut had `begin` refuse any turn but the attach for one: the review found Send now, a direct delivery and a scheduled wake still reach it, so it lost their messages, and a wake’s throw from its timer stopped Postbox. `begin` keeps today’s behavior, and `tests/remote-turns-restart-window.test.mjs` pins each of the three being delivered. Gating `deliver` on awaiting attach is a fix of its own.
   - `noteAttach` reads the session and the persona from the store’s pending view, so a move held behind a commit counts the moment `updatePersona` makes it, whichever call notes it.
   - A stored answer goes stale where a live one didn’t: Retry installs the disk’s state, which may undo a held move. The store’s reload listener (`store-outage.mjs`) notes every awaiting session again before writes reopen (`RemoteTurns.noteAllAttach`), and `tests/remote-turns-restart-retry.test.mjs` holds both directions. A service that keeps what main computed must be told when the state is replaced wholesale.
-- **Next:** step 3, Threads, with Bus and `item.added`.
+- **Done:** step 3, Threads, with the Bus. `server/bus.mjs` is a class with no dependencies, and `server/threads.mjs` a class that `Runtime`’s constructor builds with the store and the bus; their interface tests are `tests/bus.test.mjs` and `tests/threads.test.mjs`, and `tests/threads-signals.test.mjs` holds that each listener runs where its call ran. `thread-write.mjs`, `thread-lineage.mjs`, and `createThread` and `renameThread` from `conversations.mjs` moved into it; `reactions.mjs` and `refuseRetired` (`helpers.mjs`) no longer take `rt`. The root listens to `item.added` with the side threads’ `bumpSideLink` and to `item.moved` with `moveMarkers`. `Runtime` keeps the facade’s `createThread`, `view` and `thread(id)`; code that still takes `rt` reaches Threads as `rt.threads`, and the fixture’s thread helpers call it. What step 3 found:
+  - Threads needs four members the interface didn’t list: `put(thread)`, for a topic or side thread made whole (`topic-open.mjs`, the side threads, the fixture); `toWrite(id)` and `pending()`, the 404 and the sweep `thread-write.mjs` had; and `rename(id, title)`.
+  - The facade’s `view()` can’t call `Threads.view` first: today the sessions’ unread counts clear before the thread’s, so it clears them, then calls `Threads.view`. Presence is no write, so marking the thread open after the sessions’ writes changes nothing a listener sees.
+  - `item.added` carries the thread as written, so the listener, not `addItem`, decides that a message in a side thread counts on its line.
+  - The guards read names: `tests/thread-write-guard.test.mjs` now finds `threads.patch(` (and `this.patch(` in Threads) with the change after one argument, and counts `threads.get(` as a published read; `tests/store-held-guard.test.mjs` places Threads’ pending reads in `threads.mjs`, and `createThread`’s in `runtime.mjs`.
+  - Tests that replaced `rt.notify` or `rt.patchItem` to listen call the fixture’s `onNotify` and `onItemPatch`, and three fakes of a runtime give a `threads` object (`shell-runs-output`, `remote-broker-snapshot`, `codex-always`). No test was deleted, and no spec changed.
+  - `svc-check.mjs` finds one dependency unaccounted for, as it does on `main`: `persona-write.mjs` calls `rt.updateSession` ([#1315](https://github.com/HJeon139/postbox/issues/1315): a backend switch drops the model the old backend reported), so Personas depends on Sessions, which the graph doesn’t have. Step 4 decides its break.
+- **Next:** step 4, Personas, with `persona.updated`.
 
 ## Appendix: every module’s members
 

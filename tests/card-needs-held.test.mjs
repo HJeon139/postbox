@@ -3,12 +3,13 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import * as arrange from './arrange.mjs';
 import { heldStore, setup } from './stop-reply-fixture.mjs';
 
 test('an app card held behind a commit becomes the need when the card before it is answered', async () => {
   const h = await heldStore();
   const { rt, t, se } = await setup(async () => {}, h.store);
-  const card = () => rt.addItem(t.id, { kind: 'appsend', sessionId: se.id, appId: 'app1', title: 'App', events: [{ action: 'x' }], status: 'open' });
+  const card = () => arrange.post(rt, t.id, { kind: 'appsend', sessionId: se.id, appId: 'app1', title: 'App', events: [{ action: 'x' }], status: 'open' });
   const first = card();
   rt.updateSession(se.id, { needs: { kind: 'appsend', itemId: first.id, text: 'App' }, state: 'needs' });
   await h.store.flush();

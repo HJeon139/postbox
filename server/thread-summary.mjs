@@ -131,7 +131,7 @@ const busyIn = (rt, threadId) =>
  */
 export function summarizerOf(rt, threadId) {
   if (rt.summarize !== undefined) return rt.summarize;
-  const claude = rt.sessionsIn(rt.lineage(threadId).at(-1)).some((x) => ['claude-code', 'agent-sdk'].includes(rt.persona(x.personaId)?.backend));
+  const claude = rt.sessionsIn(rt.threads.lineage(threadId).at(-1)).some((x) => ['claude-code', 'agent-sdk'].includes(rt.persona(x.personaId)?.backend));
   if (!claude || !rt.adapters.names().includes('agent-sdk')) return null;
   const sdk = rt.adapters.get('agent-sdk').sdk;
   return async (prompt) => {
@@ -221,7 +221,7 @@ export async function summarizeThread(rt, threadId, summarize) {
   // history, meanwhile: nothing is written against it; the next turn’s end settles again.
   if (!summary || !rt.store.writable || rt.store.epoch !== epoch || rt.store.items(threadId).filter(SAID).at(-1)?.id !== last.id) return null;
   // Its own field: on a topic thread’s root, summary marks a summary sent back (#93).
-  rt.patchItem(t.parentId, line.id, { threadSummary: clipText(summary, 100), threadSummaryOf: last.id });
+  rt.threads.patchItem(t.parentId, line.id, { threadSummary: clipText(summary, 100), threadSummaryOf: last.id });
   // Its cost has a field of its own on the turn’s entry, which the turn’s own spend (ledger.endTurn) doesn’t overwrite.
   const conv = rt.ledger.convOf(threadId);
   const cost = r?.costUsd;

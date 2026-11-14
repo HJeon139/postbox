@@ -4,6 +4,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import * as arrange from './arrange.mjs';
 import { held, settle, setup, sleep } from './side-threads-fixture.mjs';
 
 const userItems = (f, threadId) => f.store.items(threadId).filter((i) => i.kind === 'user');
@@ -68,13 +69,13 @@ test('a message in a topic thread keeps its recipients, and the thread’s opene
 
 test('an item from before recipients were kept still reads as the person’s', () => {
   const f = setup();
-  const it = f.rt.addItem(f.t.id, { kind: 'user', text: 'Old message.' });
+  const it = arrange.post(f.rt, f.t.id, { kind: 'user', text: 'Old message.' });
   assert.equal(f.rt.describeItem(it, f.beta), 'The person: Old message.');
 });
 
 test('every agent-facing reading of the person says “The person”, never “You”', () => {
   const f = setup();
-  const add = (x) => f.rt.addItem(f.t.id, x);
+  const add = (x) => arrange.post(f.rt, f.t.id, x);
   const lines = [
     add({ kind: 'voice', text: 'Approved.' }),
     add({ kind: 'shared', fromTitle: 'Totals', question: 'Which year?', text: '1908.' }),

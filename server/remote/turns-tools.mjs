@@ -79,7 +79,7 @@ async function applyTool(rts, live, m) {
   // react and the asset tools are their own modules’, beside the runtime’s tools and recorded as they are, as server/mcp.mjs
   // adds them; the asset tools take text only here, since a path names a file on the host.
   const own = {
-    react: (/** @type {any} */ a) => reactTool(rts.rt, rts.rt.session(live.sessionId), a),
+    react: (/** @type {any} */ a) => reactTool(rts.rt.threads, rts.rt.session(live.sessionId), a),
     ...assetTools(rts.rt, live.sessionId, live.rt, { onHost: true }),
   };
   const tools = { ...rts.rt.toolsFor(live.sessionId, live.rt), ...recordedTools(rts.rt, live.rt, own) };

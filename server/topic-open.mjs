@@ -5,7 +5,6 @@ import { positionOf } from '../shared/item-index.mjs';
 import { HANDLE, HANDLE_SHAPE, SENDING } from '../shared/limits.mjs';
 import { clip, httpError, tooLongToSend } from './helpers.mjs';
 import { newId } from './store.mjs';
-import { updateThread } from './thread-write.mjs';
 
 /**
  * Opens the topic thread of one message, or returns the one it has: `created` says which. It reads the message and its
@@ -22,7 +21,7 @@ export function startTopic(rt, threadId, itemId) {
   const root = items[idx];
   if (!root || !['user', 'agent', 'block', 'shared'].includes(root.kind)) throw httpError(404, 'That message can’t start a thread.');
   if (root.topicId && rt.store.pending.thread(root.topicId)) return { threadId: root.topicId, created: false };
-  const topic = rt.putThread({
+  const topic = rt.threads.put({
     id: newId('th'),
     projectId: parent.projectId,
     // Named after the message’s first line, which is its heading when it has one.
@@ -38,7 +37,7 @@ export function startTopic(rt, threadId, itemId) {
     queue: [],
     createdAt: Date.now(),
   });
-  rt.patchItem(threadId, itemId, { topicId: topic.id, replies: 0 });
+  rt.threads.patchItem(threadId, itemId, { topicId: topic.id, replies: 0 });
   // Who comes along: the agent that wrote the message, or for yours, the agent that answered it.
   const answer = items.slice(idx + 1).find((x) => x.sessionId && (x.kind === 'agent' || x.kind === 'block'));
   const members = rt.sessionsIn(threadId).filter((x) => !x.retiredFork);
@@ -47,7 +46,7 @@ export function startTopic(rt, threadId, itemId) {
     (answer && rt.s.sessions[answer.sessionId]) ||
     members.find((x) => x.id === parent.lastSpeaker) ||
     members[0];
-  if (src) updateThread(rt, topic.id, { woke: src.handle });
+  if (src) rt.threads.patch(topic.id, { woke: src.handle });
   return { threadId: topic.id, created: true };
 }
 
@@ -82,7 +81,7 @@ export function openTopic(rt, sessionId, { itemId, message, mentions }) {
   }
   const { threadId, created } = opened;
   // The opener answers there first (I4), only when this call made the topic.
-  if (created) updateThread(rt, threadId, { woke: se.handle });
+  if (created) rt.threads.patch(threadId, { woke: se.handle });
   const where = `${created ? 'Opened a topic thread' : 'That message already has a topic thread'}, ${threadId}, beside it in the page. read_conversation { thread: "${threadId}" } reads it.`;
   if (!text) return { ok: true, threadId, created, posted: false, itemId: null, message: where };
   // The reply says what happened to the message (#651): posted, here or in the topic it had, or already there (I6). It
@@ -103,7 +102,7 @@ const alreadyThere = (id) =>
  * startTopic answers 404 for it. @param {any} rt @param {any} se @param {string} itemId
  */
 function conversationOf(rt, se, itemId) {
-  const conv = rt.lineage(se.threadId).at(-1);
+  const conv = rt.threads.lineage(se.threadId).at(-1);
   if (rt.store.pending.items(conv).some((/** @type {any} */ x) => x.id === itemId)) return conv;
   const topic = Object.values(rt.s.threads).find(
     (/** @type {any} */ t) => t.kind === 'topic' && t.parentId === conv && rt.store.pending.items(t.id).some((/** @type {any} */ x) => x.id === itemId),
@@ -135,6 +134,7 @@ function repeatOf(rt, se, threadId, text, handles, created) {
 function post(rt, se, threadId, text, handles) {
   const fromTurnId = rt.turns.get(se.id)?.id;
   const opened = named(handles);
-  const it = rt.addItem(threadId, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text, status: 'done', opened, fromTurnId });
+  const message = { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text, status: 'done', opened, fromTurnId };
+  const it = rt.threads.addItem(threadId, message);
   return { id: it.id, woke: handles.map((h) => rt.agentWake(se.id, h, text, { replyIn: threadId, itemId: it.id, fromTurnId }).message) };
 }

@@ -9,6 +9,7 @@ import { POSTBOX_SERVER } from '../server/adapters/setup.mjs';
 import { CHECKS } from '../tools/uat/room-checks.mjs';
 import { parseScenario } from '../tools/uat/scenario.mjs';
 import { TRIGGERS, unknownTriggers } from '../tools/uat/triggers.mjs';
+import * as arrange from './arrange.mjs';
 import { setup, turn } from './blocks-fixture.mjs';
 
 const CHECK = CHECKS.find((c) => c.id === 'broken-block-card');
@@ -92,9 +93,9 @@ test('#1319 broken-block-card flags an invalid block left in the room, as main b
   assert.deepEqual(CHECK.run(facts), []);
   const se = Object.values(store.state.sessions)[0];
   const card = { kind: 'block', sessionId: se.id, handle: 'critic', turnId: null, valid: false, fallback: 'x' };
-  rt.addItem(t.id, { ...card, raw: { id: 'promote-2', type: 'form' }, errors: ['fallback is required.'], reason: 'invalid' });
+  arrange.post(rt, t.id, { ...card, raw: { id: 'promote-2', type: 'form' }, errors: ['fallback is required.'], reason: 'invalid' });
   // A newer host’s block this Postbox can’t read still shows its fallback on purpose.
-  rt.addItem(t.id, { ...card, raw: { id: 'map', type: 'map' }, errors: ['Unknown type “map”.'], reason: 'unknown-type' });
+  arrange.post(rt, t.id, { ...card, raw: { id: 'map', type: 'map' }, errors: ['Unknown type “map”.'], reason: 'unknown-type' });
   const after = { ...facts, state: { ...facts.state, items: { [t.id]: store.items(t.id) } } };
   assert.deepEqual(
     CHECK.run(after).map((x) => x.evidence),

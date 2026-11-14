@@ -9,6 +9,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { STOPPED_TEXT } from '../server/remote/turns.mjs';
 import { NOT_YOUR_PROMPT } from '../shared/mcp-tools.mjs';
+import * as arrange from './arrange.mjs';
 import { FIXTURE_PROMPT, FIXTURE_PROMPTS } from './fake-daemon.mjs';
 import { rig, running, settled, sleep, starts, until } from './remote-turns-helpers.mjs';
 
@@ -33,7 +34,7 @@ test('#120 L5: a remote turn gets its host turn ID persisted and the conversatio
   assert.equal(snap.home, r.t.id);
   assert.deepEqual(
     snap.threads.map((th) => th.id),
-    r.rt.conversationThreads(r.t.id),
+    arrange.conversationThreads(r.rt, r.t.id),
   );
   const mine = snap.threads[0].items.find((i) => i.line === 'The person, to @coder: hi');
   assert.ok(mine, JSON.stringify(snap.threads[0].items));
@@ -44,7 +45,7 @@ test('#120 L5: a remote turn gets its host turn ID persisted and the conversatio
   // Kept current while it runs: a new item goes as snapshot-items. What changed as the turn started (the thread’s
   // lastSpeaker, a full snapshot) goes first, so only the new item is left to send.
   r.rt.remote.flushSnapshots();
-  const it = r.rt.addItem(r.t.id, { kind: 'user', text: 'one more thing' });
+  const it = arrange.post(r.rt, r.t.id, { kind: 'user', text: 'one more thing' });
   r.rt.remote.flushSnapshots();
   await until(() => r.d.turns.get(turn).snapshotItems.length > 0, 'snapshot-items');
   const items = r.d.turns.get(turn).snapshotItems[0];
@@ -61,8 +62,8 @@ test('#120 L5: a remote turn gets its host turn ID persisted and the conversatio
 test('#120 L5: the project’s folder on the host is the turn’s folder; every item counts in the snapshot, shown or not', async () => {
   const r = rig();
   r.store.emit('project', { ...r.store.state.projects.p1, hostFolders: { [r.host.id]: '/srv/work' } });
-  r.rt.addItem(r.t.id, { kind: 'system', variant: 'wake', from: 'you', to: 'coder' });
-  r.rt.addItem(r.t.id, { kind: 'agent', sessionId: 'other', handle: 'other', text: '', status: 'failed' });
+  arrange.post(r.rt, r.t.id, { kind: 'system', variant: 'wake', from: 'you', to: 'coder' });
+  arrange.post(r.rt, r.t.id, { kind: 'agent', sessionId: 'other', handle: 'other', text: '', status: 'failed' });
   const turn = await running(r);
   assert.equal(starts(r.d)[0].folder, '/srv/work');
   const snap = r.d.received.find((m) => m.type === 'snapshot' && m.turn === turn);

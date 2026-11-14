@@ -3,6 +3,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import * as arrange from './arrange.mjs';
 import { room } from './card-needs-fixture.mjs';
 import { held, settle, sleep } from './side-threads-fixture.mjs';
 
@@ -57,7 +58,7 @@ test('Retry clears the failure without the block you moved past flashing as the 
 test('Retry doesn’t flash a block the failed turn showed before it threw', async () => {
   const r = room();
   r.adapter.next.push(async (_c, _m, se) => {
-    r.rt.addItem(r.t.id, {
+    arrange.post(r.rt, r.t.id, {
       kind: 'block',
       sessionId: se.id,
       handle: 'alpha',

@@ -35,7 +35,7 @@ const LISTS = /** @type {const} */ ({
 const ENTITIES = /** @type {const} */ ({
   apps: { event: 'app', removed: 'app', patched: null },
   // A topic the turn or the page may have just opened (#637): startTopic reads it to make one topic per message. Every
-  // write of a thread starts from it (#796, server/thread-write.mjs).
+  // write of a thread starts from it (#796, server/threads.mjs).
   threads: { event: 'thread', removed: 'thread', patched: null },
   // A session just made, or changed, behind a held commit: its writes diff against it, and its turn waits for it to be
   // published (#796's class in sessions, server/session-write.mjs).

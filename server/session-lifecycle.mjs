@@ -7,7 +7,6 @@ import * as queue from './message-queue.mjs';
 import { pendingSessionsIn } from './session-write.mjs';
 import { dropWakes } from './side-threads.mjs';
 import { eraseThreads } from './thread-erase.mjs';
-import { threadToWrite, updateThread } from './thread-write.mjs';
 
 /**
  * A conversation or room and every thread under it, a side thread a topic thread’s fork woke included: what deleting
@@ -15,9 +14,9 @@ import { threadToWrite, updateThread } from './thread-write.mjs';
  * conversation started behind a held commit is deleted too, not refused as gone halfway through.
  */
 function conversationScope(rt, threadId) {
-  const t = threadToWrite(rt, threadId);
+  const t = rt.threads.toWrite(threadId);
   const pending = (/** @type {string} */ id) => rt.store.pending.thread(id);
-  return [t, ...Object.values(rt.store.pending.threads()).filter((x) => x.id !== t.id && rt.lineage(x.id, pending).at(-1) === t.id)];
+  return [t, ...Object.values(rt.store.pending.threads()).filter((x) => x.id !== t.id && rt.threads.lineage(x.id, pending).at(-1) === t.id)];
 }
 
 /**
@@ -54,12 +53,12 @@ export function deleteSession(rt, sessionId) {
   if (erase) eraseThreads(rt, erase, 'Its session was deleted.', [sessionId]);
   else if (t) {
     const gone = t.members.filter((id) => !others.includes(id)); // it, and any member whose session is gone; a held join stays
-    updateThread(rt, t.id, (x) => ({
+    rt.threads.patch(t.id, (x) => ({
       members: x.members.filter((id) => !gone.includes(id)),
       lastSpeaker: x.lastSpeaker === sessionId ? (others[0] ?? null) : x.lastSpeaker,
     }));
-    for (const it of rt.store.pending.items(t.id)) if (it.sessionId === sessionId) rt.patchItem(t.id, it.id, { deletedAgent: true });
-    rt.addItem(t.id, { kind: 'system', variant: 'left', to: se.handle });
+    for (const it of rt.store.pending.items(t.id)) if (it.sessionId === sessionId) rt.threads.patchItem(t.id, it.id, { deletedAgent: true });
+    rt.threads.addItem(t.id, { kind: 'system', variant: 'left', to: se.handle });
   }
   if (rt.store.pending.session(sessionId)) rt.store.emit('remove', { kind: 'session', id: sessionId });
   return { handle: se.handle };
@@ -71,7 +70,7 @@ export function deleteSession(rt, sessionId) {
  */
 export function deleteThread(rt, threadId) {
   // Every lookup first, pending, as deleteSession’s.
-  const t = threadToWrite(rt, threadId);
+  const t = rt.threads.toWrite(threadId);
   if (t.kind === 'topic' || t.kind === 'side') throw httpError(409, 'Delete the conversation it belongs to instead.');
   const scope = conversationScope(rt, threadId);
   // A turn of one on a host, waiting to be attached again or to resume, is neither (#120).

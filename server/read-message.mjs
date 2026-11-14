@@ -20,7 +20,7 @@ const count = (n) => n.toLocaleString('en-US');
 export function readMessage(rt, se, { id, from = 0, version } = {}) {
   const key = String(id ?? '').trim();
   if (!key) return { ok: false, message: 'Name the item: read_message { id }, with an id from your history or read_conversation.' };
-  const threads = rt.conversationThreads(se.threadId);
+  const threads = rt.threads.conversationThreads(se.threadId);
   let it = threads.map((th) => rt.store.item(th, key)).find(Boolean);
   if (!it) {
     const blocks = threads.flatMap((th) => rt.store.items(th).filter((i) => i.kind === 'block' && i.valid && i.block?.id === key));
@@ -80,7 +80,7 @@ function readApp(rt, se, it, app, { from = 0, version }) {
 /** @param {any} rt @param {any} se @param {{ limit?: number, skip?: number, thread?: unknown }} [args] */
 export function readConversation(rt, se, { limit = 50, skip = 0, thread = null } = {}) {
   const id = typeof thread === 'string' && thread.trim() ? thread.trim().slice(0, 100) : se.threadId;
-  if (!rt.conversationThreads(se.threadId).includes(id))
+  if (!rt.threads.conversationThreads(se.threadId).includes(id))
     throw httpError(404, `There’s no thread ${id} in this conversation. Read one of its own threads: the id is in the catch-up line or the link.`);
   const items = rt.store.items(id).filter((i) => i.kind !== 'system' || i.variant === 'wake');
   const n = Math.max(1, Math.min(200, Number(limit) || 50));

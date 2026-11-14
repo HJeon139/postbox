@@ -6,9 +6,7 @@
 
 import { assetTools as assetToolsOf } from '../server/asset-tools.mjs';
 import { expireWait as expireWaitOf } from '../server/permission-cards.mjs';
-import { toggleReaction } from '../server/reactions.mjs';
 import { blockFiles as blockFilesOf } from '../server/review-files.mjs';
-import { updateThread } from '../server/thread-write.mjs';
 import { viewApp as viewAppOf } from '../server/view-app/view-app.mjs';
 import { viewOf } from '../server/view-app/view-of.mjs';
 
@@ -46,28 +44,37 @@ export const offerCommands = (rt, sessionId, list) => rt.recordCommands(sessionI
 // ── Threads and items ────────────────────────────────────────────────────────────────
 
 /** Adds an item to a thread, as if an agent, the person or the server had posted it, and returns it. @param {Runtime} rt @param {string} threadId @param {object} item */
-export const post = (rt, threadId, item) => rt.addItem(threadId, item);
+export const post = (rt, threadId, item) => rt.threads.addItem(threadId, item);
 
 /** Changes an item in place. @param {Runtime} rt @param {string} threadId @param {string} itemId @param {object} patch */
-export const setItem = (rt, threadId, itemId, patch) => rt.patchItem(threadId, itemId, patch);
+export const setItem = (rt, threadId, itemId, patch) => rt.threads.patchItem(threadId, itemId, patch);
 
 /** Writes a thread’s record as given: a new side or topic thread, or one with fields changed. @param {Runtime} rt @param {object} thread */
-export const putThread = (rt, thread) => rt.putThread(thread);
+export const putThread = (rt, thread) => rt.threads.put(thread);
 
 /** Changes fields of a thread that exists, as the server’s own writes do. @param {Runtime} rt @param {string} threadId @param {object} patch */
-export const setThread = (rt, threadId, patch) => updateThread(rt, threadId, patch);
+export const setThread = (rt, threadId, patch) => rt.threads.patch(threadId, patch);
 
 /** Renames a thread, as an agent’s title or the person’s edit does. @param {Runtime} rt @param {string} threadId @param {string} title */
-export const renameThread = (rt, threadId, title) => rt.renameThread(threadId, title);
+export const renameThread = (rt, threadId, title) => rt.threads.rename(threadId, title);
 
 /**
  * Moves an item to the end of its thread with a stub in its old place, as an app’s new version or a block that asks
  * again does. @param {Runtime} rt @param {string} threadId @param {string} itemId @param {object} stub @param {object} [patch]
  */
-export const moveToEnd = (rt, threadId, itemId, stub, patch) => rt.bringForward(threadId, itemId, stub, patch);
+export const moveToEnd = (rt, threadId, itemId, stub, patch) => rt.threads.bringForward(threadId, itemId, stub, patch);
 
 /** An agent’s reaction to a message, or the person’s when `by` is left out. @param {Runtime} rt @param {string} threadId @param {string} itemId @param {string} emoji @param {object} [by] */
-export const react = (rt, threadId, itemId, emoji, by) => toggleReaction(rt, threadId, itemId, emoji, by);
+export const react = (rt, threadId, itemId, emoji, by) => rt.threads.toggleReaction(threadId, itemId, emoji, by);
+
+/** A thread, then the conversation it branched from. @param {Runtime} rt @param {string} threadId */
+export const lineage = (rt, threadId) => rt.threads.lineage(threadId);
+
+/** Every thread of a thread’s conversation, its lineage first. @param {Runtime} rt @param {string} threadId */
+export const conversationThreads = (rt, threadId) => rt.threads.conversationThreads(threadId);
+
+/** The terms a thread knows, its own over its conversation’s. @param {Runtime} rt @param {string} threadId */
+export const glossaryFor = (rt, threadId) => rt.threads.glossaryFor(threadId);
 
 /** Shares text into a conversation from a topic or side thread, as a summary or an answer. @param {Runtime} rt @param {string} threadId @param {object} opts */
 export const shareText = (rt, threadId, opts) => rt.shareText(threadId, opts);
@@ -251,16 +258,33 @@ export const withPushes = (rt, pushes) => seam(rt, 'pushes', pushes);
 export const withSummarizer = (rt, summarize) => seam(rt, 'summarize', summarize);
 
 /**
+ * Hears each change to an item, before it’s written as it would be. Returns a function that stops listening.
+ * @param {Runtime} rt @param {(threadId: string, itemId: string, patch: object) => void} fn
+ */
+export function onItemPatch(rt, fn) {
+  const { threads } = rt;
+  const patchItem = threads.patchItem.bind(threads);
+  threads.patchItem = (threadId, itemId, patch) => {
+    fn(threadId, itemId, patch);
+    return patchItem(threadId, itemId, patch);
+  };
+  return () => {
+    threads.patchItem = patchItem;
+  };
+}
+
+/**
  * Hears each notification the server raises, before it goes out as it would. Returns a function that stops listening.
  * @param {Runtime} rt @param {(level: string, ...rest: any[]) => void} fn
  */
 export function onNotify(rt, fn) {
-  const notify = rt.notify.bind(rt);
-  rt.notify = (level, ...rest) => {
+  const { threads } = rt;
+  const notify = threads.notify.bind(threads);
+  threads.notify = (level, ...rest) => {
     fn(level, ...rest);
     return notify(level, ...rest);
   };
   return () => {
-    rt.notify = notify;
+    threads.notify = notify;
   };
 }

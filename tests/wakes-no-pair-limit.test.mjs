@@ -6,9 +6,9 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { updateThread } from '../server/thread-write.mjs';
 import { CHAIN_HINT, DEFAULT_HOP_LIMIT } from '../shared/limits.mjs';
 import { TOOL_DEFS } from '../shared/mcp-tools.mjs';
+import * as arrange from './arrange.mjs';
 import { settle, setup } from './side-threads-fixture.mjs';
 
 /**
@@ -36,7 +36,7 @@ test('#492 two agents trading hand-offs past the old pair limit get no card: eac
 
 test('#492 the chain limit still holds: past the room’s limit of wakes in a row, the next waits for you', async () => {
   const f = setup();
-  updateThread(f.rt, f.t.id, { chainLimit: 5 });
+  arrange.setThread(f.rt, f.t.id, { chainLimit: 5 });
   chain(f, 5);
   assert.equal(f.rt.agentWake(f.alpha.id, 'beta', 'one more').waiting, true);
   await settle(f.rt);

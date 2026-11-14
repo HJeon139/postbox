@@ -43,7 +43,7 @@ export function reviewBlock(rt, sessionId, args) {
   if (!v.ok) return no(`Nothing was added: ${v.errors.join(' ')}`);
   const revision = it.revision ?? 1;
   const review = { handle: se.handle, ...(verdict ? { verdict } : {}), revision, threads: added.map((c) => c.threadId), at: Date.now() };
-  rt.patchItem(where, it.id, { block: v.block, reviews: [...(it.reviews ?? []), review] });
+  rt.threads.patchItem(where, it.id, { block: v.block, reviews: [...(it.reviews ?? []), review] });
   const event = { blockId: it.block.id, revision, action: 'review', values: { ...(verdict ? { verdict } : {}), comments: added }, from: se.handle };
   let heard = `@${it.handle} hears them now, and can revise.`;
   try {
@@ -151,7 +151,7 @@ function withComments(before, comments, handle) {
  * @param {any} rt @param {any} se @param {string} key
  */
 function find(rt, se, key) {
-  const all = rt
+  const all = rt.threads
     .conversationThreads(se.threadId)
     .flatMap((where) => rt.store.items(where).map((it) => ({ it, where })))
     .filter(({ it }) => it.kind === 'block' && it.valid && it.block.type === 'review' && (it.id === key || it.block.id === key));

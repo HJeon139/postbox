@@ -5,12 +5,13 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import * as arrange from './arrange.mjs';
 import { settle, setup } from './side-threads-fixture.mjs';
 
 // Longer than the pointer’s quote of a message’s start (pointerIfSeen), so a repeat in full can be told from it.
 const MENTION = `@alpha the review of the totals is done: two fixes needed in the tally. ${'Details follow on each fix. '.repeat(8)}`;
 /** A message from beta in the conversation, as a reply of its posts it (no wake: this tests the summary alone). */
-const say = (f, text) => f.rt.addItem(f.t.id, { kind: 'agent', sessionId: f.beta.id, personaId: f.beta.personaId, handle: 'beta', text, status: 'done' });
+const say = (f, text) => arrange.post(f.rt, f.t.id, { kind: 'agent', sessionId: f.beta.id, personaId: f.beta.personaId, handle: 'beta', text, status: 'done' });
 
 /** The fixture, with alpha's marker at the end of the conversation, so the next summary covers only what follows. */
 function fresh() {
@@ -113,7 +114,7 @@ test('#484 the skip a summary names reaches its newest left-out mention, though 
   const f = fresh();
   for (let i = 0; i < 50; i++) say(f, `@alpha note ${i + 1}: ${'the tally needs another look. '.repeat(33)}`);
   // Lines read_conversation doesn’t list, after the cut: a lint line and a schedule line, as the runtime adds them.
-  for (let i = 0; i < 5; i++) f.rt.addItem(f.t.id, { kind: 'system', variant: i % 2 ? 'schedule' : 'lint', text: `line ${i}` });
+  for (let i = 0; i < 5; i++) arrange.post(f.rt, f.t.id, { kind: 'system', variant: i % 2 ? 'schedule' : 'lint', text: `line ${i}` });
   const s = summary(f);
   const skip = Number(/read_conversation with skip: (\d+)/.exec(s)?.[1]);
   const kept = [...s.matchAll(/@alpha note (\d+):/g)].map((m) => Number(m[1]));

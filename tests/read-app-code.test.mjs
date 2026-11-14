@@ -6,6 +6,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { READING } from '../shared/limits.mjs';
+import * as arrange from './arrange.mjs';
 import { setup } from './side-threads-fixture.mjs';
 
 /** 100,000 characters of HTML whose every line names its place, so a part read twice or skipped shows. */
@@ -121,11 +122,11 @@ test('#516 S1: a part of an app’s code never ends inside a character: one spli
 
 test('#516 S1: the same holds for a long message’s parts', () => {
   const { rt, alpha, beta, t } = setup();
-  const item = rt.addItem(t.id, { kind: 'agent', sessionId: alpha.id, personaId: alpha.personaId, handle: alpha.handle, text: 'x', status: 'done' });
+  const item = arrange.post(rt, t.id, { kind: 'agent', sessionId: alpha.id, personaId: alpha.personaId, handle: alpha.handle, text: 'x', status: 'done' });
   // Puts the emoji's first half at the last character of part 1, after the line's own prefix.
   const prefix = rt.readLine(item, beta, Number.POSITIVE_INFINITY).length - 1;
   const text = `${'a'.repeat(READING.part - 1 - prefix)}${EMOJI}${'b'.repeat(100)}`;
-  rt.patchItem(t.id, item.id, { text });
+  arrange.setItem(rt, t.id, item.id, { text });
   const full = rt.readLine(rt.store.item(t.id, item.id), beta, Number.POSITIVE_INFINITY);
   const body = (/** @type {string} */ m) => m.replace(/\n\n\(Characters [^)]*\)$/, '');
   const one = rt.readMessage(beta, { id: item.id });

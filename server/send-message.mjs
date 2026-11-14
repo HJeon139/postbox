@@ -10,7 +10,6 @@ import * as queue from './message-queue.mjs';
 import { arrival } from './queue-batch.mjs';
 import { threadPersona } from './side-threads.mjs';
 import { newId } from './store.mjs';
-import { updateThread } from './thread-write.mjs';
 import { retireStale } from './wake-cards.mjs';
 
 /** You send a message: @mentions wake agents (joining them to the thread); otherwise the last speaker replies. */
@@ -33,7 +32,7 @@ export function sendMessage(rt, threadId, { text = '', attachments = [], sendNow
   // attached again after a restart (#1135).
   const busy = targets.filter(({ se }) => rt.running.turnOf(se.id) || rt.running.awaitsAttach(se.id));
   const q = busy.length && !sendNow ? { id: newId('q'), text, attachments, sessionIds: targets.map(({ se }) => se.id), at: Date.now(), seq: arrival() } : null;
-  if (q) updateThread(rt, threadId, (x) => ({ queue: [...(x.queue ?? []), q] }));
+  if (q) rt.threads.patch(threadId, (x) => ({ queue: [...(x.queue ?? []), q] }));
   // Send now is a change of course (stopForSendNow), also for one already exiting from a plain Stop (#1040).
   else if (sendNow) for (const { se } of targets) queue.stopForSendNow(rt, se.id);
   const sent = q ? { queued: q } : rt.postAndDeliver(threadId, { text, attachments }, targets);
@@ -49,7 +48,7 @@ export function sendMessage(rt, threadId, { text = '', attachments = [], sendNow
  * @param {string} threadId @param {string} text
  */
 export function threadRefs(rt, threadId, text) {
-  const root = (x) => rt.lineage(x).at(-1);
+  const root = (x) => rt.threads.lineage(x).at(-1);
   const ids = new Set();
   for (const m of String(text).matchAll(/#\/t\/(th_[A-Za-z0-9]+)(?:\/side\/(th_[A-Za-z0-9]+))?/g)) ids.add(m[2] ?? m[1]);
   const out = [];

@@ -5,6 +5,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { threadCatchUp } from '../server/thread-summary.mjs';
+import * as arrange from './arrange.mjs';
 import { setup } from './side-threads-fixture.mjs';
 import { heldStore } from './stop-reply-fixture.mjs';
 
@@ -28,7 +29,7 @@ async function heldRoom() {
 
 /** A topic thread in the conversation with three messages, it_a, it_x and it_b, on disk; @beta has read up to it_a. */
 async function topicOfThree(f) {
-  const root = f.rt.addItem(f.t.id, { kind: 'agent', sessionId: f.beta.id, handle: 'beta', text: 'A topic.', status: 'done' });
+  const root = arrange.post(f.rt, f.t.id, { kind: 'agent', sessionId: f.beta.id, handle: 'beta', text: 'A topic.', status: 'done' });
   const topic = f.rt.startTopic(f.t.id, root.id).threadId;
   for (const id of ['it_a', 'it_x', 'it_b']) f.store.emit('item.add', { threadId: topic, item: { id, kind: 'user', text: `text of ${id}`, at: Date.now() } });
   f.rt.updateSession(f.beta.id, { seenIn: { [topic]: 'it_a' } });
@@ -44,7 +45,7 @@ test('an item brought forward in a topic thread moves seenIn for that topic to t
   const topic = await topicOfThree(f);
   f.rt.updateSession(f.alpha.id, { seenIn: { [topic]: 'it_x' } });
   await f.store.flush();
-  assert.equal(f.rt.bringForward(topic, 'it_x', { what: 'block', title: 'X' }), true);
+  assert.equal(arrange.moveToEnd(f.rt, topic, 'it_x', { what: 'block', title: 'X' }), true);
   await f.store.flush();
   const stub = stubOf(f, topic, 'it_x');
   assert.ok(stub, 'a stub took its place');
@@ -60,7 +61,7 @@ test('an item brought forward in a topic thread behind a held commit moves a see
   const topic = await topicOfThree(f);
   const release = await f.hold();
   f.rt.updateSession(f.alpha.id, { seenIn: { [topic]: 'it_x' } }); // a topic catch-up that just ran, held
-  assert.equal(f.rt.bringForward(topic, 'it_x', { what: 'block', title: 'X' }), true);
+  assert.equal(arrange.moveToEnd(f.rt, topic, 'it_x', { what: 'block', title: 'X' }), true);
   await release();
   assert.equal(seenIn(f, f.alpha, topic), stubOf(f, topic, 'it_x').id, 'the held topic marker moved to the stub');
   assert.equal(seenIn(f, f.beta, topic), 'it_a');

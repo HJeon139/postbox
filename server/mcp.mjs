@@ -132,7 +132,7 @@ function viewContext(rt, sessionId, turn) {
 /** react, view_app and the asset tools: their own modules’, beside the runtime’s tools, and recorded as they are (#466). */
 function ownTools(rt, sessionId, turn) {
   return {
-    react: (a) => reactTool(rt, rt.session(sessionId), a),
+    react: (a) => reactTool(rt.threads, rt.session(sessionId), a),
     view_app: (a) => viewApp(rt, sessionId, a, viewContext(rt, sessionId, turn)),
     ...assetTools(rt, sessionId, turn),
   };

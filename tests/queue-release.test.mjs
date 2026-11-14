@@ -5,6 +5,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { releaseQueued } from '../server/message-queue.mjs';
+import * as arrange from './arrange.mjs';
 import { held, settle, setup, sleep } from './side-threads-fixture.mjs';
 
 /** @alpha busy until released, with “@alpha later, please” queued for it. */
@@ -46,7 +47,7 @@ test('at delete, a message for that agent and an idle one goes to the idle one n
 
 test('R2: a release posts the text without a turn’s side effects: the conversation’s hops are not reset', async () => {
   const { store, rt, t, alpha, a } = await queuedForBusyAlpha();
-  rt.putThread({ ...store.state.threads[t.id], hops: 3 });
+  arrange.putThread(rt, { ...store.state.threads[t.id], hops: 3 });
   releaseQueued(rt, alpha.id);
   assert.equal(posted(store, t.id, '@alpha later, please').length, 1);
   assert.equal(store.state.threads[t.id].hops, 3);

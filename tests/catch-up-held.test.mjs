@@ -5,8 +5,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { catchUp } from '../server/catch-up.mjs';
-import { updateThread } from '../server/thread-write.mjs';
 import { HOP_LIMIT } from '../shared/limits.mjs';
+import * as arrange from './arrange.mjs';
 import { settle, setup } from './side-threads-fixture.mjs';
 import { heldStore } from './stop-reply-fixture.mjs';
 
@@ -23,7 +23,7 @@ test('#693 a message held for an agent in the room is named in its catch-up whil
   const f = setup();
   f.rt.toolsFor(f.alpha.id).wake_agent({ handle: 'gamma', message: 'Check the numbers.' });
   const card = f.store.items(f.t.id).find((i) => i.kind === 'hop' && i.status === 'open');
-  f.rt.patchItem(f.t.id, card.id, { held: [{ fromSessionId: f.beta.id, from: 'beta', to: 'alpha', text: 'Approved: #12 and #13.', at: Date.now() }] });
+  arrange.setItem(f.rt, f.t.id, card.id, { held: [{ fromSessionId: f.beta.id, from: 'beta', to: 'alpha', text: 'Approved: #12 and #13.', at: Date.now() }] });
   const text = catchUp(f.rt, f.store.state.sessions[f.alpha.id]) ?? '';
   assert.match(
     text,
@@ -42,7 +42,7 @@ test('#693 a message held for another agent isn’t named in this one’s catch-
 /** A card from @beta's wake of @alpha past the room's chain limit of 3, left open, with `n` more wakes of @alpha held on it. */
 function wakeLimitCard(n) {
   const f = setup();
-  updateThread(f.rt, f.t.id, { chainLimit: 3 });
+  arrange.setThread(f.rt, f.t.id, { chainLimit: 3 });
   for (let i = 0; i < 3; i++) f.rt.agentWake(...(i % 2 ? [f.alpha.id, 'beta'] : [f.beta.id, 'alpha']), `hand-off ${i + 1}`);
   f.rt.agentWake(f.beta.id, 'alpha', 'The card’s own wake.');
   for (let i = 0; i < n; i++) f.rt.agentWake(f.beta.id, 'alpha', `Held ${i + 1}.`);
@@ -71,7 +71,7 @@ test('#693 a card held behind a commit isn’t named in the catch-up until it’
   const commit = h.store.commit([{ type: 'settings', data: { theme: 'system' } }]);
   await h.atSync;
   // A wake-limit card for @alpha, as askToWake makes it, held behind the commit.
-  f.rt.addItem(f.t.id, {
+  arrange.post(f.rt, f.t.id, {
     kind: 'hop',
     fromSessionId: f.beta.id,
     from: 'beta',

@@ -4,6 +4,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import * as arrange from './arrange.mjs';
 import { held, settle, setup, sleep } from './side-threads-fixture.mjs';
 import { heldStore } from './stop-reply-fixture.mjs';
 
@@ -85,7 +86,7 @@ test('a chain of wakes that ends behind a held commit starts its count again', a
 test('a turn woken in a topic opened behind a held commit is told it answers there', async () => {
   const f = await heldRoom();
   const release = await f.hold();
-  const root = f.rt.addItem(f.t.id, {
+  const root = arrange.post(f.rt, f.t.id, {
     kind: 'agent',
     sessionId: f.beta.id,
     personaId: f.beta.personaId,

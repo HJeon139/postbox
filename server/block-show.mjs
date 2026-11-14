@@ -56,7 +56,7 @@ export function showBlock(rt, sessionId, { turn, se, threadId, endSegment, tools
   endSegment();
   // A review’s images (#780), read and checked before the call reached here, stay with the item.
   const files = v.ok && v.block.type === 'review' && given.files ? { files: given.files } : {};
-  const it = rt.addItem(threadId(), { ...blockItem(sessionId, se, turn, block, v), ...files });
+  const it = rt.threads.addItem(threadId(), { ...blockItem(sessionId, se, turn, block, v), ...files });
   if (files.files) given.held = true; // the item holds them, so keptIfShown keeps their blobs (#828)
   if (v.ok && v.block.type === 'app') rt.registerApp(sessionId, v.block, it.id, threadId(), given.files ?? []);
   if (v.ok && v.block.type === 'app') {

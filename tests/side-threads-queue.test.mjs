@@ -5,6 +5,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import * as arrange from './arrange.mjs';
 import { held, settle, setup, sleep } from './side-threads-fixture.mjs';
 
 /** A conversation with a topic thread on @alpha’s reply. */
@@ -101,7 +102,7 @@ test('#228: in a topic thread from before, whose fork never spoke, a message goe
   // As before #228: the thread’s fork, retired at startup, and neither who it started with nor a last speaker.
   const fork = rt.ensureSession(topic.id, alpha.personaId);
   rt.updateSession(fork.id, { forkOf: { sessionId: alpha.id, itemId: null }, retiredFork: true });
-  rt.putThread({ ...store.state.threads[topic.id], woke: undefined, lastSpeaker: null });
+  arrange.putThread(rt, { ...store.state.threads[topic.id], woke: undefined, lastSpeaker: null });
   rt.sendMessage(topic.id, { text: 'Still there?' });
   await settle(rt);
   assert.deepEqual([adapter.calls.at(-1).sessionId, adapter.calls.at(-1).thread], [alpha.id, topic.id]);

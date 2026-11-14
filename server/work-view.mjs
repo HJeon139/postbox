@@ -33,7 +33,7 @@ export async function restoreWork(rt, threadId, fileId) {
   const convId = workConversation(rt, threadId);
   const f = await rt.ledger.restore(convId, fileId).catch(asHttp);
   const who = f?.handles?.length ? f.handles.map((h) => `@${h}`).join(', ') : 'the agents';
-  rt.addItem(convId, {
+  rt.threads.addItem(convId, {
     kind: 'voice',
     text: f?.before?.exists ? `Restored ${f.rel} to how it was before ${who} changed it` : `Removed ${f?.rel}, which ${who} created`,
   });

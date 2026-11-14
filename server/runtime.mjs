@@ -1,11 +1,10 @@
-// The runtime: threads, sessions and turns. It decides who replies, wakes agents, enforces the wake
-// limit, queues messages sent mid-reply, handles Stop, tracks what "needs you", and implements the UI
-// tools that agents call (over MCP, or in-process for the mock).
+// The runtime: sessions and turns, and the root that builds the services (Threads, Running, Placement). It decides
+// who replies, wakes agents, enforces the wake limit, queues messages sent mid-reply, handles Stop, tracks what "needs
+// you", and implements the UI tools that agents call (over MCP, or in-process for the mock).
 
 import { homedir } from 'node:os';
 import { READING } from '../shared/limits.mjs';
 import { formatDuration } from '../shared/text.mjs';
-import { carriedList } from '../shared/work.mjs';
 import { listProcesses } from './adapters/process-group.mjs';
 import { recordCommands, runAgentCommand } from './agent-commands.mjs';
 import { agentFile, agentFolders, appFiles } from './agent-files.mjs';
@@ -14,9 +13,10 @@ import { appCheck, appEvent, appFile, appQuery, appState, needAppSend, registerA
 import { ArchivePasses } from './archive-runtime.mjs';
 import { askQuestions, QUESTION_TOOL, questionBlocks } from './ask-question.mjs';
 import { act, answerDelivered, unreadAnswer } from './blocks.mjs';
+import { Bus } from './bus.mjs';
 import { catchUp, moveMarkers } from './catch-up.mjs';
 import { attachClaudeSession, claudeSessions, mirror, pollMirror, rearmMirrors, stopMirrorFor, stopMirrors } from './claude-mirror.mjs';
-import { createThread, ensureSession, renameThread } from './conversations.mjs';
+import { ensureSession } from './conversations.mjs';
 import { deliver, retry } from './deliver.mjs';
 import { diagramCheck } from './diagram-check.mjs';
 import { clipText, httpError } from './helpers.mjs';
@@ -59,10 +59,8 @@ import { mcpContext } from './setup-context.mjs';
 import { clearSummaryPending, shareText, shareToConversation, summarizeBack, summarizing } from './share-back.mjs';
 import { commandFolder, expireStaleCommands, flushShellOutput, runShellCommand, stopShellCommand, stopShellCommands } from './shell-runs.mjs';
 import { agentWake, bumpSideLink, recordAgentMessage, resolveHop, sideSession } from './side-threads.mjs';
-import { newId } from './store.mjs';
 import { watchStore } from './store-outage.mjs';
-import { conversationThreads, glossaryFor, lineage } from './thread-lineage.mjs';
-import { updateThread } from './thread-write.mjs';
+import { Threads } from './threads.mjs';
 import { startTopic } from './topic-open.mjs';
 import { checkTurn, stallLeftRunning, stallSteps } from './turn-checks.mjs';
 import { settleSubagentSteps } from './turn-steps.mjs';
@@ -101,6 +99,15 @@ export class Runtime {
     /** @type {Map<string, Record<string, any>>} a backend’s state saved meanwhile, per session, merged (saveBackendState) */
     this.backendWait = new Map();
     watchStore(this);
+    // Signals between services, and the conversations with their items and presence (designs/architecture/services.md,
+    // “Bus” and “Threads”). Each listener runs where its call ran: a message in a side thread counts on its line in the
+    // conversation (#130), and the readers of an item brought forward read on from its stub (#1041).
+    this.bus = new Bus();
+    this.threads = new Threads({ store, bus: this.bus });
+    this.bus.on('item.added', ({ threadId, item, thread }) => {
+      if (thread?.kind === 'side' && (item.kind === 'user' || item.kind === 'agent')) bumpSideLink(this, threadId);
+    });
+    this.bus.on('item.moved', ({ threadId, id, stubId }) => moveMarkers(this, threadId, id, stubId));
     this.adapters = adapters;
     this.config = config;
     // Where the person’s Claude Code user settings are read and written (#66); tests and checks pass a temp folder.
@@ -120,7 +127,6 @@ export class Runtime {
     this.listProcesses = list ?? listProcesses;
     /** @type {NodeJS.Timeout|null} */
     this.keptPoll = null; // checks on the background jobs Postbox kept running (#129)
-    this.viewing = new Map(); // threadId → last time a browser said it was open
     this.timers = new Map(); // scheduleId → timeout
     this.watchdogs = new Set(); // stopped turns’ watchdogs, cleared by close (server/runtime-close.mjs)
     this.lints = new Map(); // agent turn id → its lint turn, gathering: { sessionId, kind, ended, sent, problems, timer }
@@ -202,9 +208,7 @@ export class Runtime {
     return Object.values(this.s.personas).find((p) => p.handle.toLowerCase() === String(handle).toLowerCase() && !p.retired);
   }
   thread(id) {
-    const t = this.s.threads[id];
-    if (!t) throw httpError(404, 'That thread doesn’t exist. It may have been deleted.');
-    return t;
+    return this.threads.get(id);
   }
   session(id) {
     const se = this.s.sessions[id];
@@ -237,29 +241,9 @@ export class Runtime {
 
   // ── Emit helpers ───────────────────────────────────────────────────────────────────
 
-  putThread(t) {
-    this.store.emit('thread', { ...t });
-    return t;
-  }
   putSession(se) {
     this.store.emit('session', { ...se });
     return se;
-  }
-  addItem(threadId, item) {
-    const it = { id: item.id ?? newId('it'), at: Date.now(), ...item };
-    this.store.emit('item.add', { threadId, item: it });
-    // A reply in a topic thread counts on the message it branched from, as “3 replies”: one maybe just opened, held (#796).
-    const t = this.store.pending.thread(threadId);
-    if (t?.kind === 'topic' && (it.kind === 'user' || it.kind === 'agent')) {
-      const replies = this.store.pending.items(threadId).filter((x) => x.kind === 'user' || x.kind === 'agent').length;
-      this.patchItem(t.parentId, t.rootItemId, { replies, lastReplyAt: it.at });
-    }
-    // …and a message in a side thread on its line in the conversation, whoever wrote it (#130).
-    if (t?.kind === 'side' && (it.kind === 'user' || it.kind === 'agent')) this.bumpSideLink(threadId);
-    return it;
-  }
-  patchItem(threadId, id, patch) {
-    this.store.emit('item.patch', { threadId, id, patch });
   }
   /**
    * Ends the turn’s current segment as done, as a card does when it opens: the reply goes on below the card. The turn
@@ -269,52 +253,28 @@ export class Runtime {
    * @param {any} turn
    */
   closeSegment(turn) {
-    if (turn.segment) this.patchItem(turn.threadId, turn.segment, { status: 'done' });
+    if (turn.segment) this.threads.patchItem(turn.threadId, turn.segment, { status: 'done' });
     if (turn.openSegment === turn.segment) turn.openSegment = null;
     turn.segment = null;
-  }
-  /**
-   * Brings an item to the newest point in its thread (#49, #92), for an update the person has to see: an app’s new
-   * version, or a block that asks again. The agent explains the change in its newest message, so the item belongs
-   * beside it. The item keeps its id, so there’s only ever one live copy, and a one-line stub takes its old place and
-   * leads to it. An item that’s already the newest just takes the patch.
-   * @param {string} threadId @param {string} id
-   * @param {{ what: 'app'|'block', title: string, v?: number }} stub  what the stub says moved
-   * @param {Record<string, any>} [patch]  set on the item as it moves
-   * @returns {boolean} whether it moved
-   */
-  bringForward(threadId, id, stub, patch = {}) {
-    const items = this.store.pending.items(threadId);
-    const i = items.findIndex((x) => x.id === id);
-    if (i < 0) return false;
-    if (i === items.length - 1) {
-      if (Object.keys(patch).length) this.patchItem(threadId, id, patch);
-      return false;
-    }
-    const now = Date.now();
-    const st = { id: newId('it'), kind: 'moved', at: now, itemId: id, ...stub, ...carriedList(items[i]).stub };
-    this.store.emit('item.move', { threadId, id, stub: st, patch: { ...patch, ...carriedList(items[i]).item, at: now, movedAt: now } });
-    moveMarkers(this, threadId, id, st.id);
-    return true;
   }
   updateSession(id, patch) {
     updateSession(this, id, patch);
   }
-  /** threadId: where it happened, when that isn’t the session’s own thread (a turn in a side thread, #110). */
-  notify(level, se, title, text, threadId = null) {
-    this.store.emit('notify', { level, sessionId: se.id, threadId: threadId ?? se.threadId, handle: se.handle, title, text });
-  }
 
-  // ── A conversation’s own record: server/conversations.mjs ─────────────────────────
+  // ── A conversation’s own record: server/threads.mjs and conversations.mjs ──────────
 
-  createThread(opts) {
-    return createThread(this, opts);
+  /**
+   * Starts a conversation with the agents it starts with, each given its session there, and answers it as written, with
+   * its members: behind a held commit the published state doesn’t have it yet, and the route sends this as its body.
+   * @param {{ projectId: string, title: string, personaIds?: string[], kind?: string, parentId?: string|null }} opts
+   */
+  createThread({ personaIds = [], ...opts }) {
+    const t = this.threads.create(opts);
+    for (const pid of personaIds) this.ensureSession(t.id, pid);
+    return this.store.pending.thread(t.id);
   }
   ensureSession(threadId, personaId, opts) {
     return ensureSession(this, threadId, personaId, opts);
-  }
-  renameThread(threadId, title) {
-    return renameThread(this, threadId, title);
   }
 
   // ── Messages from you: server/send-message.mjs and message-queue.mjs ──────────────
@@ -491,9 +451,6 @@ export class Runtime {
   resolveHop(threadId, itemId, allow) {
     return resolveHop(this, threadId, itemId, allow);
   }
-  bumpSideLink(sideThreadId) {
-    return bumpSideLink(this, sideThreadId);
-  }
   recordAgentMessage(sessionId, dir, other, text) {
     return recordAgentMessage(this, sessionId, dir, other, text);
   }
@@ -516,8 +473,8 @@ export class Runtime {
     const it = this.store.item(threadId, itemId);
     if (it.status !== 'open') throw httpError(409, 'That proposal was already answered.');
     if (action === 'dismiss') {
-      this.patchItem(threadId, itemId, { status: 'dismissed' });
-      this.addItem(threadId, { kind: 'voice', text: `Dismissed: @${it.proposal.handle}` });
+      this.threads.patchItem(threadId, itemId, { status: 'dismissed' });
+      this.threads.addItem(threadId, { kind: 'voice', text: `Dismissed: @${it.proposal.handle}` });
       return { ok: true };
     }
     if (action !== 'create') throw httpError(400, 'A proposal accepts “create” or “dismiss”. To edit it first, open the new-agent sheet.');
@@ -526,11 +483,11 @@ export class Runtime {
     const backend = (proposer && this.persona(proposer.personaId)?.backend) ?? 'mock';
     const { handle, description, instructions, tools } = it.proposal;
     const p = this.createPersona({ handle, description, instructions, tools, backend, createdBy: it.sessionId });
-    this.patchItem(threadId, itemId, { status: 'created', personaId: p.id });
-    this.addItem(threadId, { kind: 'voice', text: `Created @${p.handle}` });
+    this.threads.patchItem(threadId, itemId, { status: 'created', personaId: p.id });
+    this.threads.addItem(threadId, { kind: 'voice', text: `Created @${p.handle}` });
     // In a topic or side thread too, it joins the conversation: one session per agent there (#228).
-    this.ensureSession(this.lineage(threadId).at(-1), p.id, { brief: it.proposal.description });
-    this.addItem(threadId, { kind: 'system', variant: 'joined', to: p.handle });
+    this.ensureSession(this.threads.lineage(threadId).at(-1), p.id, { brief: it.proposal.description });
+    this.threads.addItem(threadId, { kind: 'system', variant: 'joined', to: p.handle });
     return { ok: true, personaId: p.id };
   }
 
@@ -591,18 +548,6 @@ export class Runtime {
   }
   readMessage(se, args = {}) {
     return readMessage(this, se, args);
-  }
-
-  // ── A thread’s place in its conversation: server/thread-lineage.mjs ─────────────────
-
-  conversationThreads(threadId) {
-    return conversationThreads(this, threadId);
-  }
-  lineage(threadId, thread) {
-    return lineage(this, threadId, thread);
-  }
-  glossaryFor(threadId) {
-    return glossaryFor(this, threadId);
   }
 
   // ── The lint pipeline ──────────────────────────────────────────────────────────────
@@ -902,15 +847,16 @@ export class Runtime {
 
   // ── Presence ───────────────────────────────────────────────────────────────────────
 
+  /**
+   * A browser has a thread open: its agents’ unread counts clear, then the thread’s (Threads.view), in the order they
+   * always did. Each is read pending, as the thread's next: an unread a turn's end counted behind a held commit is
+   * cleared too (#796).
+   * @param {string} threadId
+   */
   view(threadId) {
     if (!threadId) return;
-    this.viewing.set(threadId, Date.now());
-    // Each read pending, as the thread's next: an unread a turn's end counted behind a held commit is cleared too (#796).
     for (const se of pendingSessionsIn(this, threadId)) if (se.unread) this.updateSession(se.id, { unread: 0 });
-    updateThread(this, threadId, (t) => (t.unread ? { unread: 0 } : null));
-  }
-  isViewing(threadId) {
-    return Date.now() - (this.viewing.get(threadId) ?? 0) < 20000;
+    this.threads.view(threadId);
   }
 
   // ── UI tools (the same set MCP exposes): server/ui-tools.mjs ──────────────────────

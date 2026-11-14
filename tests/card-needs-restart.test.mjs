@@ -7,6 +7,7 @@ import { test } from 'node:test';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { settleInterrupted } from '../server/restart-sweep.mjs';
 import { Runtime } from '../server/runtime.mjs';
+import * as arrange from './arrange.mjs';
 import { room } from './card-needs-fixture.mjs';
 import { held, settle, sleep } from './side-threads-fixture.mjs';
 
@@ -39,7 +40,7 @@ test('after a restart cuts a turn off, denying its app card doesn’t bring back
 test('after a restart, a block the interrupted turn showed is the need', async () => {
   const r = room();
   r.adapter.next.push(async (c, _m, se) => {
-    r.rt.addItem(r.t.id, {
+    arrange.post(r.rt, r.t.id, {
       kind: 'block',
       sessionId: se.id,
       handle: 'alpha',
@@ -107,7 +108,7 @@ test('…and when a permission took the need mid-turn, the kept block is the nee
 test('a failed turn that showed a block, then asked permission, doesn’t flash its block as the need', async () => {
   const r = room();
   r.adapter.next.push(async (_c, _m, se) => {
-    r.rt.addItem(r.t.id, {
+    arrange.post(r.rt, r.t.id, {
       kind: 'block',
       sessionId: se.id,
       handle: 'alpha',
@@ -138,7 +139,15 @@ async function restartDuringWake(r, kind) {
     const a = r.toolAsk();
     need = { kind, itemId: a.id };
   } else {
-    const f = r.rt.addItem(r.t.id, { kind: 'agent', sessionId: r.alpha.id, handle: 'alpha', turnId: 'turn_last', text: '', status: 'failed', error: 'x' });
+    const f = arrange.post(r.rt, r.t.id, {
+      kind: 'agent',
+      sessionId: r.alpha.id,
+      handle: 'alpha',
+      turnId: 'turn_last',
+      text: '',
+      status: 'failed',
+      error: 'x',
+    });
     need = { kind, itemId: f.id };
   }
   r.rt.updateSession(r.alpha.id, { needs: { ...need, text: kind }, state: kind === 'failed' ? 'failed' : 'needs' });
@@ -180,7 +189,7 @@ test('after a restart, a block the interrupted turn showed ranks ahead of a wake
   const h = r.hop();
   r.setNeed('hop', h.id);
   r.adapter.next.push(async (c, _m, se) => {
-    r.rt.addItem(r.t.id, {
+    arrange.post(r.rt, r.t.id, {
       kind: 'block',
       sessionId: se.id,
       handle: 'alpha',
@@ -200,7 +209,14 @@ test('after a restart, a block the interrupted turn showed ranks ahead of a wake
 
 test('a refusal’s need saved before refusals stopped needing you is settled by a restart, so its ring doesn’t pulse', async () => {
   const r = room();
-  const d = r.rt.addItem(r.t.id, { kind: 'denial', sessionId: r.alpha.id, handle: 'alpha', turnId: 'turn_last', summary: 'rm -rf build', status: 'open' });
+  const d = arrange.post(r.rt, r.t.id, {
+    kind: 'denial',
+    sessionId: r.alpha.id,
+    handle: 'alpha',
+    turnId: 'turn_last',
+    summary: 'rm -rf build',
+    status: 'open',
+  });
   r.setNeed('denial', d.id);
   restart(r);
   const se = r.store.state.sessions[r.alpha.id];

@@ -45,7 +45,7 @@ export function askToSee(rt, sessionId, threadId, endSegment) {
   const open = rt.store.pending.items(threadId).find((x) => x.kind === 'viewask' && x.status === 'open');
   if (!open) {
     endSegment();
-    rt.addItem(threadId, { kind: 'viewask', sessionId, handle: se.handle, turnId: rt.turns.get(sessionId)?.id ?? null, status: 'open' });
+    rt.threads.addItem(threadId, { kind: 'viewask', sessionId, handle: se.handle, turnId: rt.turns.get(sessionId)?.id ?? null, status: 'open' });
   }
   return {
     ok: true,
@@ -70,7 +70,7 @@ export function resolveViewAsk(rt, threadId, itemId, action) {
     return settle(rt, threadId, it, 'declined', 'The person chose not to download the browser, so view_app can’t show you your app. Carry on without it.');
   }
   keepAnswer(view.dir, 'allowed');
-  rt.patchItem(threadId, it.id, { status: 'downloading', answeredAt: Date.now() });
+  rt.threads.patchItem(threadId, it.id, { status: 'downloading', answeredAt: Date.now() });
   view.browser.install().then((r) => {
     if (r.ok) settle(rt, threadId, it, 'ready', 'The person allowed the download, and it finished. Call view_app now to see your app.');
     // Postbox is stopping: the card says so, and no agent is woken on the way out.
@@ -89,7 +89,7 @@ export function settleDownloads(rt) {
   for (const threadId of Object.keys(rt.s.threads)) {
     for (const it of rt.store.items(threadId)) {
       if (it.kind !== 'viewask' || it.status !== 'downloading') continue;
-      rt.patchItem(threadId, it.id, { status: 'failed', reason: STOPPED, settledAt: Date.now() });
+      rt.threads.patchItem(threadId, it.id, { status: 'failed', reason: STOPPED, settledAt: Date.now() });
       const se = rt.s.sessions[it.sessionId];
       if (se) releaseNeed(rt, se, it.id);
     }
@@ -102,7 +102,7 @@ export function settleDownloads(rt) {
  * @param {string|null} [reason]
  */
 function settle(rt, threadId, it, status, notice, reason = null) {
-  rt.patchItem(threadId, it.id, { status, ...(reason ? { reason: String(reason).slice(0, 400) } : {}), settledAt: Date.now() });
+  rt.threads.patchItem(threadId, it.id, { status, ...(reason ? { reason: String(reason).slice(0, 400) } : {}), settledAt: Date.now() });
   const se = rt.s.sessions[it.sessionId];
   if (!se) return { ok: true };
   releaseNeed(rt, se, it.id);

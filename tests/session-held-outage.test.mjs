@@ -9,6 +9,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { Store } from '../server/store.mjs';
+import * as arrange from './arrange.mjs';
 import { settle, setup, sleep } from './side-threads-fixture.mjs';
 import { disk, handleWith } from './store-jsonl-fixture.mjs';
 
@@ -97,7 +98,7 @@ test('after Retry and after a restart, a pending read holds what the disk kept, 
   const commit = h.store.commit([{ type: 'settings', data: { theme: 'system' } }]);
   await atSync;
   f.rt.tellAgent(f.alpha.id, 'Held notice.');
-  f.rt.renameThread(f.t.id, 'Renamed behind the commit');
+  arrange.renameThread(f.rt, f.t.id, 'Renamed behind the commit');
   h.release();
   await commit;
   await h.store.flush().catch(() => {}); // rejects: the sync after the release failed, and writes closed

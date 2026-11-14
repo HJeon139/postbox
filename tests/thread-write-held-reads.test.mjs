@@ -5,6 +5,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import * as arrange from './arrange.mjs';
 import { held, oldSide, settle, setup, sleep } from './side-threads-fixture.mjs';
 import { heldStore } from './stop-reply-fixture.mjs';
 
@@ -40,7 +41,7 @@ async function busyBeta(f) {
 
 /** A topic thread on a reply of @beta's in the conversation. */
 function topicOn(f) {
-  const root = f.rt.addItem(f.t.id, {
+  const root = arrange.post(f.rt, f.t.id, {
     kind: 'agent',
     sessionId: f.beta.id,
     personaId: f.beta.personaId,

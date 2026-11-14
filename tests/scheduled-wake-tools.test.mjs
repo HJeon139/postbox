@@ -6,6 +6,7 @@ import { test } from 'node:test';
 import { handleMcp } from '../server/mcp.mjs';
 import { fireScheduledWake } from '../server/scheduled-wakes.mjs';
 import { Store } from '../server/store.mjs';
+import * as arrange from './arrange.mjs';
 import { createFakeDaemon } from './fake-daemon.mjs';
 import { rig, settled, starts, until } from './remote-turns-helpers.mjs';
 import { settle, setup } from './side-threads-fixture.mjs';
@@ -19,7 +20,7 @@ const fire = (rt, sc) => {
 test('#466 a react a scheduled turn calls through MCP counts as a tool that started', async () => {
   const f = setup();
   const sc = f.rt.schedule(f.alpha.id, { inMs: 60_000, note: 'Acknowledge the request.' });
-  const mine = f.rt.addItem(sc.threadId, { kind: 'user', text: 'Please check.' });
+  const mine = arrange.post(f.rt, sc.threadId, { kind: 'user', text: 'Please check.' });
   f.adapter.next.push(async () => {
     const call = { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'react', arguments: { id: mine.id, emoji: '👍' } } };
     const r = await handleMcp(f.rt, f.alpha.id, call, f.rt.turns.get(f.alpha.id)?.token ?? null);
@@ -34,7 +35,7 @@ test('#466 a react a scheduled turn calls through MCP counts as a tool that star
 
 test('#466 a react a scheduled turn on a host calls counts as a tool that started', async () => {
   const r = rig({ store: new Store(null), d: createFakeDaemon({ autoEnd: false }) });
-  const mine = r.rt.addItem(r.t.id, { kind: 'user', text: 'Please check.' });
+  const mine = arrange.post(r.rt, r.t.id, { kind: 'user', text: 'Please check.' });
   const sc = r.rt.schedule(r.se().id, { inMs: 60_000, note: 'Acknowledge the request.' });
   fire(r.rt, sc);
   await until(() => starts(r.d).length === 1, 'the wake’s turn to start on the host');

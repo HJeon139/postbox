@@ -141,7 +141,7 @@ export function settleJobs(rt, turn) {
   if (turn.stopReason !== 'kept-jobs' || turn.keptAny || rt.s.sessions[turn.sessionId]?.jobs?.some((j) => j.turnId === turn.id && j.kept)) return;
   turn.stopReason = 'stop';
   for (const it of rt.store.pending.items(turn.threadId))
-    if (it.turnId === turn.id && it.stopReason === 'kept-jobs') rt.patchItem(turn.threadId, it.id, { stopReason: 'stop' });
+    if (it.turnId === turn.id && it.stopReason === 'kept-jobs') rt.threads.patchItem(turn.threadId, it.id, { stopReason: 'stop' });
 }
 
 /** After a restart, no background job Postbox knew of is its to track any more. */

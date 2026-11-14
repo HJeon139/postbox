@@ -48,9 +48,9 @@ export async function attachClaudeSession(rt, { claudeSessionId, projectId, hand
   const se = pendingSessionsIn(rt, t.id)[0];
   rt.updateSession(se.id, { backendState: { claudeSessionId, transcript: cs.file, attached: true } });
   for (const it of recentHistory(cs.file)) {
-    if (it.kind === 'user') rt.addItem(t.id, { kind: 'user', text: it.text, via: 'terminal', to: [se.handle] });
+    if (it.kind === 'user') rt.threads.addItem(t.id, { kind: 'user', text: it.text, via: 'terminal', to: [se.handle] });
     else
-      rt.addItem(t.id, {
+      rt.threads.addItem(t.id, {
         kind: 'agent',
         sessionId: se.id,
         personaId: p.id,
@@ -61,7 +61,7 @@ export async function attachClaudeSession(rt, { claudeSessionId, projectId, hand
         activity: it.steps.length ? { steps: it.steps.map((s) => ({ ...s, state: s.state === 'running' ? 'done' : s.state })) } : null,
       });
   }
-  rt.addItem(t.id, { kind: 'system', variant: 'attached', handle: p.handle, folder: cs.cwd });
+  rt.threads.addItem(t.id, { kind: 'system', variant: 'attached', handle: p.handle, folder: cs.cwd });
   rt.mirror(se.id);
   return { threadId: t.id, personaId: p.id, sessionId: se.id };
 }
@@ -110,7 +110,7 @@ export function pollMirror(rt, sessionId) {
     if (e.isSidechain) continue;
     const typed = typedText(e);
     if (typed) {
-      rt.addItem(se.threadId, { kind: 'user', text: typed, via: 'terminal', to: [se.handle] });
+      rt.threads.addItem(se.threadId, { kind: 'user', text: typed, via: 'terminal', to: [se.handle] });
       m.agentItem = null;
       m.steps = [];
       rt.updateSession(sessionId, { state: 'think', currentStep: 'Working in a terminal', finishedAt: null });
@@ -120,14 +120,14 @@ export function pollMirror(rt, sessionId) {
       for (const b of contentBlocks(e.message?.content)) {
         if (b.type === 'text' && b.text?.trim()) {
           const it = m.agentItem && rt.store.pending.item(se.threadId, m.agentItem);
-          if (it) rt.patchItem(se.threadId, it.id, { text: it.text ? `${it.text}\n\n${b.text}` : b.text });
+          if (it) rt.threads.patchItem(se.threadId, it.id, { text: it.text ? `${it.text}\n\n${b.text}` : b.text });
           else m.agentItem = mirrorAgentItem(rt, se, b.text);
           rt.updateSession(sessionId, { state: 'gen', currentStep: 'Writing in a terminal' });
         }
         if (b.type === 'tool_use') {
           m.steps.push({ id: b.id, label: describeTool(b.name, b.input), state: 'running', ms: null });
           if (!m.agentItem) m.agentItem = mirrorAgentItem(rt, se, '');
-          rt.patchItem(se.threadId, m.agentItem, { activity: { steps: [...m.steps] } });
+          rt.threads.patchItem(se.threadId, m.agentItem, { activity: { steps: [...m.steps] } });
           rt.updateSession(sessionId, { state: 'tool', currentStep: m.steps.at(-1).label });
         }
       }
@@ -142,13 +142,13 @@ export function pollMirror(rt, sessionId) {
           changed = true;
         }
       }
-      if (changed) rt.patchItem(se.threadId, m.agentItem, { activity: { steps: [...m.steps] } });
+      if (changed) rt.threads.patchItem(se.threadId, m.agentItem, { activity: { steps: [...m.steps] } });
     }
   }
 }
 
 function mirrorAgentItem(rt, se, text) {
-  return rt.addItem(se.threadId, {
+  return rt.threads.addItem(se.threadId, {
     kind: 'agent',
     sessionId: se.id,
     personaId: se.personaId,

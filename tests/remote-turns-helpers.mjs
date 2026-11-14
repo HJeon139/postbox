@@ -9,6 +9,7 @@ import { ClaudeCodeAdapter } from '../server/adapters/claude-code.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
 import { createMessageReader, encode, MESSAGE_FILE, message, PROTOCOL_VERSION, validateMessage } from '../shared/remote-protocol.mjs';
+import * as arrange from './arrange.mjs';
 import { createFakeDaemon, FAKE_TOKEN, FIXTURE_PROMPT } from './fake-daemon.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
@@ -214,8 +215,8 @@ export function restarted({ welcome = /** @type {'running' | 'ended' | 'missing'
     backendState: { claudeSessionId: 'e6f7d942-4a4f-4015-b186-0ef8d5c103ca' },
     remoteTurn: { hostId: first.host.id, turn: 'host-turn-1', offset: 120, rtTurn: 'turn_old', threadId: first.t.id, state: 'waiting', at: 1 },
   });
-  first.rt.addItem(first.t.id, { kind: 'agent', sessionId: se.id, handle: 'coder', turnId: 'turn_old', text: 'I ran', status: 'streaming' });
-  first.rt.addItem(first.t.id, {
+  arrange.post(first.rt, first.t.id, { kind: 'agent', sessionId: se.id, handle: 'coder', turnId: 'turn_old', text: 'I ran', status: 'streaming' });
+  arrange.post(first.rt, first.t.id, {
     kind: 'permission',
     sessionId: se.id,
     handle: 'coder',
@@ -241,7 +242,7 @@ export function restarted({ welcome = /** @type {'running' | 'ended' | 'missing'
 /** server/index.mjs’s startup, as far as remote turns go. @param {any} r */
 export function startUp(r) {
   for (const [threadId, list] of Object.entries(r.store.state.items))
-    for (const it of list) if (it.status === 'streaming') r.rt.patchItem(threadId, it.id, { status: 'stopped' });
+    for (const it of list) if (it.status === 'streaming') arrange.setItem(r.rt, threadId, it.id, { status: 'stopped' });
   r.rt.expireStalePermissions();
   r.rt.restoreRemoteTurns();
 }

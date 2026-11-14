@@ -6,8 +6,8 @@
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 import { handleMcp } from '../server/mcp.mjs';
-import { updateThread } from '../server/thread-write.mjs';
 import { TOOL_DEFS } from '../shared/mcp-tools.mjs';
+import * as arrange from './arrange.mjs';
 import { fakeRequest, NAVIGATION } from './fake-http.mjs';
 import { sources } from './server-sources-fixture.mjs';
 import { settle, setup, sleep } from './side-threads-fixture.mjs';
@@ -34,7 +34,7 @@ function room(title = 'Room') {
   const personas = ['alpha', 'beta'].map((h) => Object.values(app.store.state.personas).find((p) => p.handle === h) ?? app.rt.createPersona({ handle: h }));
   const t = app.rt.createThread({ projectId: 'pr_cl', title, personaIds: personas.map((p) => p.id) });
   const [alpha] = app.rt.sessionsIn(t.id);
-  const it = app.rt.addItem(t.id, { kind: 'agent', sessionId: alpha.id, personaId: alpha.personaId, handle: 'alpha', text: 'Done.', status: 'done' });
+  const it = arrange.post(app.rt, t.id, { kind: 'agent', sessionId: alpha.id, personaId: alpha.personaId, handle: 'alpha', text: 'Done.', status: 'done' });
   return { t, alpha, it };
 }
 const threadOf = (id) => app.store.state.threads[id];
@@ -104,7 +104,7 @@ test('#1035 PATCH /api/threads/:id needs the page’s token: without it, it’s 
 test('#1035 no MCP tool sets or clears a room’s chain limit, whatever its arguments carry', async () => {
   // Through the MCP server’s own tools/call, from a running turn with its token, as an agent calls every tool.
   const f = setup();
-  updateThread(f.rt, f.t.id, { chainLimit: 7 });
+  arrange.setThread(f.rt, f.t.id, { chainLimit: 7 });
   const t = f.t.id;
   const args = { threadId: t, thread: t, id: t, itemId: t, handle: 'beta', message: 'hi', title: 'T', name: 'n', text: 'x', key: 'k' };
   const called = [];

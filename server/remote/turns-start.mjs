@@ -164,7 +164,7 @@ async function warnSignIn(rts, turn, ctx, se, host) {
   const check = await signInCheck(rts, turn.remote.hostId);
   if (ctx.signal.aborted) throw abortError();
   if (check && !check.ok)
-    rts.rt.notify(
+    rts.rt.threads.notify(
       'blocking',
       se,
       `Sign-in on ${host.name} may have run out`,

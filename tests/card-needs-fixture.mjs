@@ -1,6 +1,7 @@
 // What the card-needs specs share (#366): a conversation with @alpha, whose last ended turn is `turn_last`, and helpers
 // that add its cards.
 
+import * as arrange from './arrange.mjs';
 import { setup } from './side-threads-fixture.mjs';
 
 /** A conversation with @alpha, whose last ended turn is `turn_last`, and helpers that add its cards. */
@@ -12,9 +13,9 @@ export function room() {
   const needs = () => rt.s.sessions[alpha.id].needs;
   const setNeed = (kind, itemId) => rt.updateSession(alpha.id, { needs: { kind, itemId, text: kind }, state: 'needs' });
   const appCard = (threadId = t.id) =>
-    rt.addItem(threadId, { kind: 'appsend', sessionId: alpha.id, appId: 'app1', title: 'App', events: [{ action: 'x' }], status: 'open' });
+    arrange.post(rt, threadId, { kind: 'appsend', sessionId: alpha.id, appId: 'app1', title: 'App', events: [{ action: 'x' }], status: 'open' });
   const block = (turnId = 'turn_last', threadId = t.id) =>
-    rt.addItem(threadId, {
+    arrange.post(rt, threadId, {
       kind: 'block',
       sessionId: alpha.id,
       handle: 'alpha',
@@ -23,13 +24,13 @@ export function room() {
       block: { id: `b${Math.random()}`, type: 'choice', version: 1, fallback: 'Pick', prompt: 'Pick', options: [{ id: 'a', label: 'A' }] },
     });
   const permission = () => {
-    const it = rt.addItem(t.id, { kind: 'permission', sessionId: alpha.id, handle: 'alpha', summary: 'run ls', status: 'open' });
+    const it = arrange.post(rt, t.id, { kind: 'permission', sessionId: alpha.id, handle: 'alpha', summary: 'run ls', status: 'open' });
     rt.permissionWaits.set(it.id, { threadId: t.id, sessionId: alpha.id, timer: null, resolve: () => {} });
     return it;
   };
   // A tool request: a turn-tied ask, as an asking block is, which the specs answer with Off.
   const toolAsk = (turnId = 'turn_last', label = 'Shell') =>
-    rt.addItem(t.id, {
+    arrange.post(rt, t.id, {
       kind: 'toolask',
       sessionId: alpha.id,
       personaId: ctx.a.id,
@@ -39,6 +40,6 @@ export function room() {
       turnId,
       status: 'open',
     });
-  const hop = () => rt.addItem(t.id, { kind: 'hop', fromSessionId: alpha.id, from: 'alpha', to: 'beta', status: 'open', text: 'please' });
+  const hop = () => arrange.post(rt, t.id, { kind: 'hop', fromSessionId: alpha.id, from: 'alpha', to: 'beta', status: 'open', text: 'please' });
   return { ...ctx, needs, setNeed, appCard, block, permission, toolAsk, hop };
 }

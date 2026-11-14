@@ -63,7 +63,7 @@ export function askPerson(
   const turn = rt.turns.get(sessionId);
   if (!se || !turn) return Promise.resolve({ allow: false, message: 'The turn has ended.' });
   const json = input && typeof input === 'object' && !Array.isArray(input) ? JSON.stringify(input) : null;
-  const it = rt.addItem(turn.threadId, {
+  const it = rt.threads.addItem(turn.threadId, {
     kind: 'permission',
     sessionId,
     handle: se.handle,
@@ -94,7 +94,7 @@ export function askPerson(
   // The text so far is finished; the reply continues below the card.
   rt.closeSegment(turn);
   offerNeed(rt, se, { kind: 'permission', itemId: it.id, text: `@${se.handle} asks to ${it.summary}`, ...rt.awayFrom(se, turn.threadId) }, 'needs');
-  rt.notify('blocking', se, `@${se.handle} asks permission`, `To ${it.summary}.`, turn.threadId);
+  rt.threads.notify('blocking', se, `@${se.handle} asks permission`, `To ${it.summary}.`, turn.threadId);
   return new Promise((resolve) => {
     // A host prompt’s card expires when its host says so (permissionWaitMax, `prompt-expired`, #120): the host’s
     // Claude Code waits on its shim, not on POSTBOX_TIMEOUT_MS, so CARD_WAIT_MS doesn’t apply to it.
@@ -167,7 +167,7 @@ export function resolvePermission(rt, threadId, itemId, action, values = {}) {
   if (!['allow', 'always', 'edit', 'deny'].includes(action)) throw httpError(400, 'A permission request takes “allow”, “always”, “edit” or “deny”.');
   const asked = `${it.who ? `@${it.handle}’s subagent (${it.who})` : `@${it.handle}`} to ${it.summary}`;
   if (action === 'allow') {
-    rt.addItem(threadId, { kind: 'voice', text: `Allowed: ${asked}` });
+    rt.threads.addItem(threadId, { kind: 'voice', text: `Allowed: ${asked}` });
     rt.settlePermission(itemId, 'allowed');
   } else if (action === 'always') {
     if (!it.always) throw httpError(409, 'There’s no rule to save for this one, so it can only be allowed once.');
@@ -178,7 +178,7 @@ export function resolvePermission(rt, threadId, itemId, action, values = {}) {
     // the same keys with the same values of the same types, in any order, since the tool reads an object, not its text.
     // Any other change, a space inside a command included, stays an edit with its updatedInput.
     if (isDeepStrictEqual(input, it.input)) return resolvePermission(rt, threadId, itemId, 'allow');
-    rt.addItem(threadId, { kind: 'voice', text: `Allowed with your edit: ${asked}` });
+    rt.threads.addItem(threadId, { kind: 'voice', text: `Allowed with your edit: ${asked}` });
     rt.settlePermission(
       itemId,
       'allowed-edited',
@@ -190,7 +190,7 @@ export function resolvePermission(rt, threadId, itemId, action, values = {}) {
     const reason = String(values?.reason ?? '')
       .trim()
       .slice(0, MAX_REASON);
-    rt.addItem(threadId, { kind: 'voice', text: `Didn’t allow: ${asked}${reason ? ` (“${reason}”)` : ''}` });
+    rt.threads.addItem(threadId, { kind: 'voice', text: `Didn’t allow: ${asked}${reason ? ` (“${reason}”)` : ''}` });
     rt.settlePermission(
       itemId,
       'denied',
@@ -228,7 +228,7 @@ export async function allowAlways(rt, threadId, it, asked) {
       }
     }
   } else if (it.remote) throw httpError(409, ON_HOST);
-  rt.addItem(threadId, { kind: 'voice', text: `Always allowed (${it.always.lines.map((l) => l.rule ?? l.text).join(', ')}): ${asked}` });
+  rt.threads.addItem(threadId, { kind: 'voice', text: `Always allowed (${it.always.lines.map((l) => l.rule ?? l.text).join(', ')}): ${asked}` });
   rt.settlePermission(it.id, 'allowed-always', undefined, it.always.updates ? { updatedPermissions: it.always.updates } : {});
   return { ok: true };
 }
@@ -249,7 +249,7 @@ export function recordDenial(rt, turn, d) {
   // On a host, a refusal’s Always would save its rule on this computer: only Allow once stays.
   const rules = { ...rulesFor(String(d.tool ?? ''), d.input ?? {}), ...(turn.remote ? { always: null } : {}) };
   const detail = d.tool === 'Bash' ? String(d.input?.command ?? '') : JSON.stringify(d.input ?? {}, null, 2);
-  rt.addItem(turn.threadId, {
+  rt.threads.addItem(turn.threadId, {
     kind: 'denial',
     sessionId: se.id,
     handle: se.handle,
@@ -302,9 +302,9 @@ export async function resolveDenial(rt, threadId, itemId, action) {
     note = `[Postbox] The person allowed \`${it.rules.once}\` for your next turn only. The step ${asked} tried, ${it.summary}, was refused before: try it again exactly as before, since the allow covers only that exact call, then carry on.`;
   }
   const status = { once: 'allowed-once', always: 'allowed-always', leave: 'left' }[action];
-  rt.patchItem(threadId, itemId, { status, answeredAt: Date.now() });
+  rt.threads.patchItem(threadId, itemId, { status, answeredAt: Date.now() });
   const words = { once: 'Allowed once', always: `Always allowed ${it.rules.alwaysWords}`, leave: 'Left refused' }[action];
-  rt.addItem(threadId, { kind: 'voice', text: `${words}: @${it.handle} to ${it.summary}` });
+  rt.threads.addItem(threadId, { kind: 'voice', text: `${words}: @${it.handle} to ${it.summary}` });
   releaseNeed(rt, se, itemId);
   if (note && se && !se.retiredFork) rt.deliver(se.id, { kind: 'notice', text: note }, { threadId });
   return { ok: true };

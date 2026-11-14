@@ -133,7 +133,7 @@ export async function start({
   await seed(rt, { dataDir, backend: firstReal, demo });
   settleInterrupted(rt);
   for (const [threadId, list] of Object.entries(store.state.items))
-    for (const it of list) if (it.status === 'streaming') rt.patchItem(threadId, it.id, { status: 'stopped' });
+    for (const it of list) if (it.status === 'streaming') rt.threads.patchItem(threadId, it.id, { status: 'stopped' });
   rt.rearmSchedules();
   rt.expireStalePermissions();
   rt.expireStaleCommands();
@@ -357,7 +357,8 @@ export async function start({
     if (path === '/api/claude-sessions/attach' && req.method === 'POST') return send(res, 201, await rt.attachClaudeSession(body));
     if (path === '/api/personas' && req.method === 'POST') {
       const p = rt.createPersona(body);
-      if (body.join?.threadId) rt.ensureSession(rt.lineage(body.join.threadId).at(-1), p.id, { brief: 'You were just created and added to this thread.' });
+      if (body.join?.threadId)
+        rt.ensureSession(rt.threads.lineage(body.join.threadId).at(-1), p.id, { brief: 'You were just created and added to this thread.' });
       else if (body.join?.projectId) rt.createThread({ projectId: body.join.projectId, title: body.join.title || `With @${p.handle}`, personaIds: [p.id] });
       if (body.saveAsBoilerplate) store.emit('boilerplate', toBoilerplate(p));
       return send(res, 201, p);

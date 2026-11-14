@@ -4,6 +4,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { catchUp } from '../server/catch-up.mjs';
+import * as arrange from './arrange.mjs';
 import { setup } from './side-threads-fixture.mjs';
 import { heldStore } from './stop-reply-fixture.mjs';
 
@@ -37,7 +38,7 @@ test('bringForward unheld moves the marker to the stub', async () => {
   const f = await heldRoom();
   await threeItems(f);
   f.rt.updateSession(f.alpha.id, { seenItem: 'it_x' });
-  assert.equal(f.rt.bringForward(f.t.id, 'it_x', { what: 'block', title: 'X' }), true);
+  assert.equal(arrange.moveToEnd(f.rt, f.t.id, 'it_x', { what: 'block', title: 'X' }), true);
   await f.store.flush();
   assert.equal(f.store.state.sessions[f.alpha.id].seenItem, stubOf(f, f.t.id, 'it_x').id);
   await f.store.close();
@@ -50,7 +51,7 @@ test('bringForward behind a held commit: a session whose held seenItem was the m
   await f.store.flush();
   const release = await f.hold();
   f.rt.updateSession(f.alpha.id, { seenItem: 'it_x' }); // a catch-up that just ran, held
-  const moved = f.rt.bringForward(f.t.id, 'it_x', { what: 'block', title: 'X' });
+  const moved = arrange.moveToEnd(f.rt, f.t.id, 'it_x', { what: 'block', title: 'X' });
   await release();
   assert.equal(moved, true);
   const stub = stubOf(f, f.t.id, 'it_x');

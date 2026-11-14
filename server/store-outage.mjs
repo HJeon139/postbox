@@ -74,7 +74,7 @@ export function settleOrphanTurns(rt) {
     const settled = exiting ? { state: 'stopping' } : settledNeed(rt, se);
     rt.updateSession(se.id, { ...settled, subagents: [], currentStep: step, stopAsk: null });
     for (const it of rt.store.items(se.threadId))
-      if (it.sessionId === se.id && it.status === 'streaming') rt.patchItem(se.threadId, it.id, { status: 'stopped', stopReason: 'store' });
+      if (it.sessionId === se.id && it.status === 'streaming') rt.threads.patchItem(se.threadId, it.id, { status: 'stopped', stopReason: 'store' });
   }
 }
 

@@ -13,6 +13,7 @@ import { createStreamMapper } from '../server/adapters/claude-stream.mjs';
 import { KiroCliAdapter } from '../server/adapters/kiro-cli.mjs';
 import { evalOf, parsePs, runsCommand, shellGroups, stopTurn } from '../server/adapters/process-group.mjs';
 import { handleMcp } from '../server/mcp.mjs';
+import * as arrange from './arrange.mjs';
 import { exitedGroups, fakeKill, STOP_DIR, setup, shellRow, slowToExit } from './stop-fixture.mjs';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -633,7 +634,7 @@ test('#129: a progress step that follows a kept job reads as running on, and sta
   rt.sendMessage(t.id, { text: 'go' });
   await sleep(5);
   const steps = [{ id: 'w', label: 'Write heartbeat-1.log', state: 'running' }];
-  const block = rt.addItem(t.id, {
+  const block = arrange.post(rt, t.id, {
     kind: 'block',
     sessionId: se.id,
     valid: true,
@@ -648,7 +649,7 @@ test('#129: a progress step that follows a kept job reads as running on, and sta
   assert.doesNotMatch(context(), /Close each with update_block/);
   // A step a later turn leaves running doesn’t follow the job: it stalls at that turn’s end, as any would.
   adapter.next.push(async (c) => {
-    rt.addItem(t.id, {
+    arrange.post(rt, t.id, {
       kind: 'block',
       sessionId: se.id,
       valid: true,

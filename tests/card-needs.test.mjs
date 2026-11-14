@@ -3,6 +3,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import * as arrange from './arrange.mjs';
 import { room } from './card-needs-fixture.mjs';
 import { held, settle, sleep } from './side-threads-fixture.mjs';
 
@@ -40,7 +41,7 @@ test('#366 case 1: an app card, then a tool request; answering it leaves the age
 test('#366 case 1: an app card, then a failed reply; Retry leaves the agent needing you for the app card', async () => {
   const r = room();
   const app = r.appCard();
-  const failed = r.rt.addItem(r.t.id, {
+  const failed = arrange.post(r.rt, r.t.id, {
     kind: 'agent',
     sessionId: r.alpha.id,
     handle: 'alpha',
@@ -57,7 +58,7 @@ test('#366 case 1: an app card, then a failed reply; Retry leaves the agent need
 test('#366 case 2: two app cards; the second is the need at once, notified once, and answering it leaves the first', async () => {
   const r = room();
   const notes = [];
-  r.rt.notify = (_level, _se, title) => notes.push(title);
+  arrange.onNotify(r.rt, (_level, _se, title) => notes.push(title));
   const app = { sessionId: r.alpha.id, title: 'App', threadId: r.t.id };
   const first = r.appCard();
   r.rt.needAppSend(app, first.id, 1);
@@ -93,7 +94,7 @@ test('the integrator’s item: Retry of a failed reply does not clear an app car
   const r = room();
   const app = r.appCard();
   r.setNeed('appsend', app.id);
-  const failed = r.rt.addItem(r.t.id, {
+  const failed = arrange.post(r.rt, r.t.id, {
     kind: 'agent',
     sessionId: r.alpha.id,
     handle: 'alpha',
@@ -138,7 +139,7 @@ test('an open refusal is never a need, alone or beside an asking block (intent.m
   const r = room();
   const { nextNeed } = await import('../server/card-needs.mjs');
   for (const s of ['one', 'two'])
-    r.rt.addItem(r.t.id, { kind: 'denial', sessionId: r.alpha.id, handle: 'alpha', turnId: 'turn_last', summary: s, status: 'open' });
+    arrange.post(r.rt, r.t.id, { kind: 'denial', sessionId: r.alpha.id, handle: 'alpha', turnId: 'turn_last', summary: s, status: 'open' });
   assert.equal(nextNeed(r.rt, r.rt.s.sessions[r.alpha.id]), null, 'the agent works around a refusal');
   const b = r.block();
   assert.equal(nextNeed(r.rt, r.rt.s.sessions[r.alpha.id])?.itemId, b.id, 'the question');
@@ -167,7 +168,7 @@ test('a permission card whose wait has ended does not count', async () => {
 test('an app card that waited behind an older block is notified when the turn’s end makes it the need', async () => {
   const r = room();
   const notes = [];
-  r.rt.notify = (_level, _se, title) => notes.push(title);
+  arrange.onNotify(r.rt, (_level, _se, title) => notes.push(title));
   const work = held();
   r.adapter.next.push(work.step);
   r.rt.sendMessage(r.t.id, { text: '@alpha a long job' });
@@ -212,7 +213,7 @@ test('a later event of an older app card doesn’t take the need back from a new
 test('an app card that waited behind a block is notified when answering the block makes it the need', async () => {
   const r = room();
   const notes = [];
-  r.rt.notify = (_level, _se, title) => notes.push(title);
+  arrange.onNotify(r.rt, (_level, _se, title) => notes.push(title));
   const b = r.block();
   r.setNeed('block', b.id);
   const card = r.appCard();
@@ -226,7 +227,7 @@ test('an app card that waited behind a block is notified when answering the bloc
 
 test('moving on clears a failed turn’s need, as main does', async () => {
   const r = room();
-  const f = r.rt.addItem(r.t.id, { kind: 'agent', sessionId: r.alpha.id, handle: 'alpha', turnId: 'turn_last', text: '', status: 'failed', error: 'x' });
+  const f = arrange.post(r.rt, r.t.id, { kind: 'agent', sessionId: r.alpha.id, handle: 'alpha', turnId: 'turn_last', text: '', status: 'failed', error: 'x' });
   r.rt.updateSession(r.alpha.id, { needs: { kind: 'failed', itemId: f.id, text: 'x' }, state: 'failed' });
   const work = held();
   r.adapter.next.push(work.step);

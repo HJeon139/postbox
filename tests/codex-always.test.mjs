@@ -178,7 +178,7 @@ test('#324 a host turn’s card offers no Codex rule, and Always allow there is 
   const offer = codexAlwaysOffer(command({ proposedExecpolicyAmendment: ['gh', 'issue', 'view'] }).params, EDITS_WEB);
   assert.equal(alwaysFor({}, {}, { tool: 'Bash', input: {}, suggestions: offer, suppressAlways: false, hostId: 'ho_1' }), null);
   assert.deepEqual(alwaysFor({}, {}, { tool: 'Bash', input: {}, suggestions: offer, suppressAlways: false }), offer, 'on this computer it is offered');
-  const rt = { addItem: () => {}, settlePermission: () => {} };
+  const rt = { threads: { addItem: () => {} }, settlePermission: () => {} };
   const remote = { hostId: 'ho_1', turn: 't', id: 'p1' };
   await assert.rejects(allowAlways(rt, 'th_1', { id: 'it_1', always: offer, remote }, '@coder to run a command'), { status: 409 });
 });

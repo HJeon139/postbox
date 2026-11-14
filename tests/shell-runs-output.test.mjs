@@ -8,7 +8,7 @@ import { commandOutput, MAX_COMMAND_OUTPUT } from '../server/shell-runs.mjs';
 /** A runtime with an item that exists, which keeps the text each refresh of the item writes. */
 function fakeRuntime() {
   const written = [];
-  const rt = { store: { pending: { item: () => ({}) }, emit() {} }, patchItem: (_t, _id, patch) => written.push(patch.text) };
+  const rt = { store: { pending: { item: () => ({}) }, emit() {} }, threads: { patchItem: (_t, _id, patch) => written.push(patch.text) } };
   return { rt, written };
 }
 

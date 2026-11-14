@@ -4,6 +4,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { HOP_LIMIT } from '../server/side-threads.mjs';
+import * as arrange from './arrange.mjs';
 import { held, settle, setup, sleep } from './side-threads-fixture.mjs';
 
 /** The fixture’s room with @gamma added: three agents. */
@@ -15,7 +16,7 @@ function three() {
 }
 /** A side thread as the code before #372 made it. */
 const oldSide = (rt, t) =>
-  rt.putThread({
+  arrange.putThread(rt, {
     id: 'th_old',
     projectId: 'p1',
     title: '@alpha ↔ @beta',
@@ -46,7 +47,7 @@ test('#372 a turn in an old side thread that mentions two agents posts its messa
 test('#372 a turn in an old side thread whose wake waits on a card is still told side threads are gone', async () => {
   const { store, rt, adapter, t, alpha } = three();
   const old = oldSide(rt, t);
-  rt.putThread({ ...store.state.threads[t.id], hops: HOP_LIMIT });
+  arrange.putThread(rt, { ...store.state.threads[t.id], hops: HOP_LIMIT });
   const h = held();
   adapter.next.push(h.step);
   rt.deliver(alpha.id, { kind: 'user', text: 'carry on' }, { threadId: old.id });

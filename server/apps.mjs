@@ -114,7 +114,7 @@ export function appEvent(rt, appId, action, values, { hold = false, now = Date.n
   if (app.retired) throw httpError(409, `${app.title} was retired, so it can’t send messages.`);
   const r = buildEvent({ type: 'app', id: appId, title: app.title }, action, values);
   if (!r.ok) throw httpError(422, r.error);
-  refuseRetired(rt, app.sessionId);
+  refuseRetired(rt.s.sessions[app.sessionId]);
   const items = rt.store.items(app.threadId);
   const card = items.find((x) => x.kind === 'appsend' && x.appId === appId && x.status === 'open');
   // Sends you allowed on a card don’t count against the next minute.
@@ -126,10 +126,10 @@ export function appEvent(rt, appId, action, values, { hold = false, now = Date.n
     if (card) {
       if (card.events.length >= APP_HOLD_MAX)
         throw httpError(429, `${card.events.length} messages from ${app.title} are already waiting for the person to allow them. Wait for their answer.`);
-      rt.patchItem(app.threadId, card.id, { events: [...card.events, held] });
+      rt.threads.patchItem(app.threadId, card.id, { events: [...card.events, held] });
     }
     const cardId =
-      card?.id ?? rt.addItem(app.threadId, { kind: 'appsend', appId, title: app.title, sessionId: app.sessionId, events: [held], status: 'open' }).id;
+      card?.id ?? rt.threads.addItem(app.threadId, { kind: 'appsend', appId, title: app.title, sessionId: app.sessionId, events: [held], status: 'open' }).id;
     rt.needAppSend(app, cardId, waiting);
     return {
       ok: true,
@@ -138,7 +138,7 @@ export function appEvent(rt, appId, action, values, { hold = false, now = Date.n
       message: `Held for the person to allow: an app sends up to ${APP_SEND_LIMIT} messages a minute. ${waiting === 1 ? '1 message is' : `${waiting} messages are`} waiting.`,
     };
   }
-  rt.addItem(app.threadId, { kind: 'voice', text: r.voice, ...(r.quote ? { quote: r.quote } : {}), appId, sentAt: now });
+  rt.threads.addItem(app.threadId, { kind: 'voice', text: r.voice, ...(r.quote ? { quote: r.quote } : {}), appId, sentAt: now });
   if (rt.s.sessions[app.sessionId]) rt.deliver(app.sessionId, { kind: 'event', event: r.event }, { threadId: app.threadId });
   return { ok: true, voice: r.voice };
 }
@@ -156,8 +156,8 @@ export function needAppSend(rt, app, itemId, waiting) {
   const took = offerNeed(rt, se, { kind: 'appsend', itemId, text, ...rt.awayFrom(se, app.threadId) }, rt.turns.has(se.id) ? se.state : 'needs');
   // Only the first event is noticed: behind another need it isn't yet, and is when it becomes the need (card-needs.mjs).
   if (waiting !== 1) return;
-  rt.patchItem(app.threadId, itemId, { notifiedAt: took ? Date.now() : null });
-  if (took) rt.notify('blocking', se, text, `Apps send up to ${APP_SEND_LIMIT} a minute in your voice. Allow these, or don’t.`);
+  rt.threads.patchItem(app.threadId, itemId, { notifiedAt: took ? Date.now() : null });
+  if (took) rt.threads.notify('blocking', se, text, `Apps send up to ${APP_SEND_LIMIT} a minute in your voice. Allow these, or don’t.`);
 }
 
 /** Your answer on an app’s card: allow sends the waiting events as they were sent; don’t allow drops them. */
@@ -166,18 +166,18 @@ export function resolveAppSend(rt, threadId, itemId, action, { now = Date.now() 
   if (it?.kind !== 'appsend' || it.status !== 'open') throw httpError(409, 'That request was already answered.');
   if (action !== 'allow' && action !== 'deny') throw httpError(400, 'An app’s request takes “allow” or “deny”.');
   const allow = action === 'allow';
-  if (allow) refuseRetired(rt, it.sessionId);
-  rt.patchItem(threadId, itemId, { status: allow ? 'allowed' : 'declined', answeredAt: now });
+  if (allow) refuseRetired(rt.s.sessions[it.sessionId]);
+  rt.threads.patchItem(threadId, itemId, { status: allow ? 'allowed' : 'declined', answeredAt: now });
   const owner = rt.s.sessions[it.sessionId];
   releaseNeed(rt, owner, itemId);
   if (!allow) {
     const n = it.events.length;
-    rt.addItem(threadId, { kind: 'voice', text: `Didn’t allow ${it.title} to send ${n === 1 ? '1 message' : `${n} messages`}` });
+    rt.threads.addItem(threadId, { kind: 'voice', text: `Didn’t allow ${it.title} to send ${n === 1 ? '1 message' : `${n} messages`}` });
     return { ok: true };
   }
   const se = rt.s.sessions[it.sessionId];
   for (const ev of it.events) {
-    rt.addItem(threadId, { kind: 'voice', text: ev.voice, ...(ev.quote ? { quote: ev.quote } : {}), appId: it.appId, sentAt: now, approved: true });
+    rt.threads.addItem(threadId, { kind: 'voice', text: ev.voice, ...(ev.quote ? { quote: ev.quote } : {}), appId: it.appId, sentAt: now, approved: true });
     const event = {
       blockId: it.appId,
       action: ev.action,
@@ -315,7 +315,7 @@ export function updateApp(rt, sessionId, turn, threadId, endSegment, { id, code,
   let moved = false;
   if (followsConversation({ type: 'app' })) {
     if (app.threadId === threadId()) endSegment();
-    moved = rt.bringForward(app.threadId, app.itemId, { what: 'app', title: next.title, v: versions.length }, turn ? { turnId: turn.id } : {});
+    moved = rt.threads.bringForward(app.threadId, app.itemId, { what: 'app', title: next.title, v: versions.length }, turn ? { turnId: turn.id } : {});
   }
   return withIntentNote(appReceipt(next, `App ${id} is now v${versions.length}${moved ? ', shown at the newest point in the conversation' : ''}.`), intent);
 }

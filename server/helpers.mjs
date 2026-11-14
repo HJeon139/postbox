@@ -52,9 +52,8 @@ export const retiredError = (se) => httpError(409, `@${se.handle}’s session he
 
 /**
  * A retired fork can’t hear the person (deliver refuses it), so what they answer or send for it is refused before
- * anything is recorded (#848). @param {any} rt @param {string} sessionId
+ * anything is recorded (#848). @param {any} se  the session, if it exists
  */
-export function refuseRetired(rt, sessionId) {
-  const se = rt.s.sessions[sessionId];
+export function refuseRetired(se) {
   if (se?.retiredFork) throw retiredError(se);
 }

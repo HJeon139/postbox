@@ -4,6 +4,7 @@
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { newId, Store } from '../server/store.mjs';
+import * as arrange from './arrange.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
 // The project’s folder, a temp folder of the test file’s: the adapters make agent folders in it (#823).
@@ -71,7 +72,7 @@ export const sessionsOfPersona = (store, personaId) => Object.values(store.state
  * @beta’s answer in it, as many as texts has, taking turns. Side threads are history now, read but not written in.
  */
 export function oldSide({ rt, t, alpha, beta }, texts = ['Which editions?', 'The 1908 one differs.']) {
-  const side = rt.putThread({
+  const side = arrange.putThread(rt, {
     id: newId('th'),
     projectId: t.projectId,
     title: '@alpha ↔ @beta',
@@ -85,10 +86,10 @@ export function oldSide({ rt, t, alpha, beta }, texts = ['Which editions?', 'The
     queue: [],
     createdAt: Date.now(),
   });
-  rt.addItem(t.id, { kind: 'sidelink', sideThreadId: side.id, from: 'alpha', to: 'beta', count: 0 });
+  arrange.post(rt, t.id, { kind: 'sidelink', sideThreadId: side.id, from: 'alpha', to: 'beta', count: 0 });
   texts.forEach((text, i) => {
     const se = i % 2 ? beta : alpha;
-    rt.addItem(side.id, {
+    arrange.post(rt, side.id, {
       kind: 'agent',
       sessionId: se.id,
       personaId: se.personaId,

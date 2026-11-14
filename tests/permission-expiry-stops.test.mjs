@@ -13,6 +13,7 @@ import { endCard, openCards } from '../server/remote/turns-prompts.mjs';
 import { askStop } from '../server/remote/turns-stops.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
+import * as arrange from './arrange.mjs';
 import { notes, settle, setup } from './permission-expiry-fixture.mjs';
 import { rig, running, settled, until } from './remote-turns-helpers.mjs';
 
@@ -54,7 +55,7 @@ test('#721 a host turn stopped for a reason that isn’t the person’s Stop tel
 test('#721 a note for a retired fork is kept', async () => {
   for (const patch of [{ retiredFork: true }]) {
     const f = await setup();
-    const it = f.rt.addItem(f.t.id, {
+    const it = arrange.post(f.rt, f.t.id, {
       kind: 'permission',
       sessionId: f.now().id,
       handle: 'deployer',
@@ -70,7 +71,7 @@ test('#721 a note for a retired fork is kept', async () => {
 
 test('#721 a subagent’s request is named as its own in the note', async () => {
   const f = await setup();
-  const it = f.rt.addItem(f.t.id, {
+  const it = arrange.post(f.rt, f.t.id, {
     kind: 'permission',
     sessionId: f.now().id,
     handle: 'deployer',

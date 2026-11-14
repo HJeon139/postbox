@@ -5,6 +5,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { Runtime } from '../server/runtime.mjs';
+import * as arrange from './arrange.mjs';
 import { setup } from './side-threads-fixture.mjs';
 
 const card = (f, id) => f.store.item(f.t.id, id);
@@ -39,7 +40,7 @@ test('#693 the requester’s need goes with its closed card', () => {
 
 test('#693 the sweep closes a card whose agent’s session is gone altogether', () => {
   const f = heldOnAlphasCard();
-  f.rt.patchItem(f.t.id, f.open.id, { fromSessionId: 'se_purged' });
+  arrange.setItem(f.rt, f.t.id, f.open.id, { fromSessionId: 'se_purged' });
   restart(f);
   assert.equal(card(f, f.open.id).status, 'closed');
 });

@@ -10,7 +10,6 @@ import { dropWakes } from './side-threads.mjs';
 import { newId } from './store.mjs';
 import { STORE_STOPPED, whenWritable } from './store-outage.mjs';
 import { endSubagent } from './subagent-end.mjs';
-import { updateThread } from './thread-write.mjs';
 import { endWork } from './turn-end-work.mjs';
 import { replyMarks } from './turn-marks.mjs';
 import { foldSteps, settleStoppedSteps } from './turn-steps.mjs';
@@ -100,12 +99,12 @@ export function recordStopped(rt, turn, ended, { by, why }) {
   // other segment of this turn still streaming in the visible state (#602).
   let marked = false;
   if (turn.openSegment) {
-    rt.patchItem(turn.threadId, turn.openSegment, ended);
+    rt.threads.patchItem(turn.threadId, turn.openSegment, ended);
     marked = true;
   }
   for (const it of rt.store.pending.items(turn.threadId)) {
     if (it.turnId === turn.id && it.kind === 'agent' && it.status === 'streaming' && it.id !== turn.openSegment) {
-      rt.patchItem(turn.threadId, it.id, ended);
+      rt.threads.patchItem(turn.threadId, it.id, ended);
       marked = true;
     }
   }
@@ -114,7 +113,7 @@ export function recordStopped(rt, turn, ended, { by, why }) {
   // thing the turn showed (#602), on every path that records a stop, the store’s included.
   const se = rt.s.sessions[sessionId];
   if (se && !marked)
-    rt.addItem(turn.threadId, {
+    rt.threads.addItem(turn.threadId, {
       kind: 'agent',
       sessionId,
       personaId: se.personaId,
@@ -153,7 +152,7 @@ export function turnExited(rt, turn) {
   if (rt.closing) {
     for (const h of held.filter((x) => x.message.kind === 'user')) {
       const q = { id: newId('q'), text: h.message.text ?? '', attachments: h.message.attachments ?? [], sessionIds: [se.id], at: Date.now(), seq: arrival() };
-      updateThread(rt, h.threadId ?? se.threadId, (t) => ({ queue: [...(t.queue ?? []), q] }));
+      rt.threads.patch(h.threadId ?? se.threadId, (t) => ({ queue: [...(t.queue ?? []), q] }));
     }
     return;
   }

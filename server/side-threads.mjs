@@ -8,7 +8,6 @@ import { clip, retiredError, tooLongToSend } from './helpers.mjs';
 import { arrival } from './queue-batch.mjs';
 import { roomChainLimit } from './room-chain-limit.mjs';
 import { newId } from './store.mjs';
-import { pendingThreads, updateThread } from './thread-write.mjs';
 import { askToAdd, askToWake, closeOwnCard, dropHeld, retireStale } from './wake-cards.mjs';
 
 export { resolveHop } from './wake-cards.mjs';
@@ -47,7 +46,7 @@ export function agentWake(
   if (from.retiredFork) return { ok: false, message: 'Your session was retired, so it can’t wake anyone.' };
   // The conversation: every session lives in one. A fork from before #228 wakes from the conversation it came from.
   // Read pending, as every thread this decides on: its hop count decides the limit, behind a held commit too (#796).
-  const parent = rt.store.pending.thread(rt.lineage(from.threadId).at(-1));
+  const parent = rt.store.pending.thread(rt.threads.lineage(from.threadId).at(-1));
   const target = rt.sessionsIn(parent.id).find((x) => x.personaId === p.id && !x.retiredFork);
   if (target?.id === from.id) return { ok: false, message: `@${p.handle} is you: just carry on.` };
   // Where the waker speaks now: a topic thread it’s in, else the conversation. Agents talk where the person reads,
@@ -63,22 +62,21 @@ export function agentWake(
   // No limit between two agents (#492): the room shows the chain’s count, with a hint to Stop past CHAIN_HINT.
   if (!confirmed && (parent.hops ?? 0) >= roomChainLimit(rt, parent.id)) return askToWake(rt, from, parent, p, card);
   const hop = (parent.hops ?? 0) + 1;
-  updateThread(rt, parent.id, { hops: hop });
+  rt.threads.patch(parent.id, { hops: hop });
   // A mention is already the waker’s message there, so the wake’s number in the chain (#114) goes on the
   // turn’s first item: it marks the turn, not necessarily the paragraph with the mention. One message can wake several
   // agents, so each wake’s number is kept (wakes); hop stays the first. wake_agent’s message is posted as the waker’s.
   const said = itemId ? rt.store.pending.item(at, itemId) : null;
-  if (said) rt.patchItem(at, said.id, { hop: said.hop ?? hop, wakes: [...(said.wakes ?? (said.hop ? [said.hop] : [])), hop] });
-  const it =
-    said ??
-    rt.addItem(at, { kind: 'agent', sessionId: from.id, personaId: from.personaId, handle: from.handle, text, status: 'done', hop, wakes: [hop], fromTurnId });
+  if (said) rt.threads.patchItem(at, said.id, { hop: said.hop ?? hop, wakes: [...(said.wakes ?? (said.hop ? [said.hop] : [])), hop] });
+  const message = { kind: 'agent', sessionId: from.id, personaId: from.personaId, handle: from.handle, text, status: 'done', hop, wakes: [hop], fromTurnId };
+  const it = said ?? rt.threads.addItem(at, message);
   rt.recordAgentMessage(from.id, 'to', p.handle, text);
   rt.recordAgentMessage(target.id, 'from', from.handle, text);
   // The woken agent answers from its session in the conversation (#110). Busy, it takes the wake when its turn ends,
   // from the queue where it was sent, where the person sees it and can cancel it (#228).
   const waits = rt.running.busy(target.id);
   const wake = wakeEntry(from, target, text, it.id);
-  if (waits) updateThread(rt, at, (t) => ({ queue: [...(t.queue ?? []), wake] }));
+  if (waits) rt.threads.patch(at, (t) => ({ queue: [...(t.queue ?? []), wake] }));
   else deliverWake(rt, at, wake);
   // itemId: the message the wake went out as, so a turn’s further mentions reuse it rather than post it again.
   return { ok: true, itemId: it.id, message: waits ? `Woke @${p.handle}: it’s busy, so it answers when its current turn ends.` : `Woke @${p.handle}.` };
@@ -132,13 +130,13 @@ export function deliverWake(rt, threadId, q) {
  * @param {any} rt @param {string} threadId  where the turn that ended spoke
  */
 export function endChain(rt, threadId) {
-  const conv = rt.lineage(threadId).at(-1);
+  const conv = rt.threads.lineage(threadId).at(-1);
   if (!rt.store.pending.thread(conv)?.hops) return;
   if (rt.sessionsIn(conv).some((se) => rt.turns.has(se.id) || rt.exiting.has(se.id))) return;
-  const threads = pendingThreads(rt).filter((t) => rt.lineage(t.id).at(-1) === conv);
+  const threads = rt.threads.pending().filter((t) => rt.threads.lineage(t.id).at(-1) === conv);
   if (threads.some((t) => (t.queue ?? []).some((q) => q.kind === 'wake'))) return;
   if (rt.store.pending.items(conv).some((x) => x.kind === 'hop' && x.status === 'open')) return;
-  updateThread(rt, conv, { hops: 0 });
+  rt.threads.patch(conv, { hops: 0 });
 }
 
 /**
@@ -150,11 +148,11 @@ export function dropWakes(rt, se, how = 'stopped') {
   dropHeld(rt, se, how);
   // Removed, it can't answer for its own card; stopped, it can, and the person still may (#693).
   if (how !== 'stopped') closeOwnCard(rt, se, how);
-  for (const t of pendingThreads(rt)) {
+  for (const t of rt.threads.pending()) {
     const mine = (t.queue ?? []).filter((q) => q.kind === 'wake' && q.sessionIds.includes(se.id));
     if (!mine.length) continue;
     const gone = new Set(mine.map((q) => q.id));
-    updateThread(rt, t.id, (now) => ({ queue: (now.queue ?? []).filter((q) => !gone.has(q.id)) }));
+    rt.threads.patch(t.id, (now) => ({ queue: (now.queue ?? []).filter((q) => !gone.has(q.id)) }));
     for (const q of mine)
       if (rt.s.sessions[q.fromSessionId] && !rt.s.sessions[q.fromSessionId].retiredFork && q.fromSessionId !== se.id)
         rt.tellAgent(q.fromSessionId, `@${se.handle} was ${how} before it answered your message (“${clip(q.text, 120)}”). Wake it again if you still need it.`);
@@ -180,7 +178,7 @@ export function wakeAgent(rt, sessionId, { handle, message }) {
  * @param {any} side  the side or topic thread @param {string} personaId @param {string} by  the handle that woke it, or 'you'
  */
 export function sideSession(rt, side, personaId, by) {
-  const conv = rt.lineage(side.id).at(-1);
+  const conv = rt.threads.lineage(side.id).at(-1);
   const had = rt.sessionsIn(conv).find((x) => x.personaId === personaId);
   if (had?.retiredFork) throw retiredError(had);
   const where = side.kind === 'topic' ? 'a topic thread' : 'a side thread';
@@ -216,7 +214,7 @@ export function bumpSideLink(rt, sideThreadId) {
   if (!link) return;
   // A turn that failed or was stopped before it said anything left an empty placeholder: not a message.
   const said = rt.store.pending.items(side.id).filter((x) => x.kind === 'user' || (x.kind === 'agent' && (x.text || x.status === 'streaming')));
-  rt.patchItem(side.parentId, link.id, { count: new Set(said.map((x) => x.turnId ?? x.id)).size, lastAt: said.at(-1)?.at ?? link.at });
+  rt.threads.patchItem(side.parentId, link.id, { count: new Set(said.map((x) => x.turnId ?? x.id)).size, lastAt: said.at(-1)?.at ?? link.at });
 }
 
 export function recordAgentMessage(rt, sessionId, dir, other, text) {

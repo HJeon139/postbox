@@ -1,33 +1,11 @@
-// A conversation’s own record (#101, #110, #228): starting one with the agents it starts with, giving an agent its one
-// session there (a second agent makes it a room), and naming it. Moved out of server/runtime.mjs; Runtime keeps a
-// method of each name that delegates here.
+// An agent’s one session in a conversation (#101, #110, #228): a second agent makes it a room. Moved out of
+// server/runtime.mjs; Runtime keeps a method of that name that delegates here. Starting and naming a conversation
+// moved to server/threads.mjs.
 
 import { httpError } from './helpers.mjs';
 import { pendingSessionsIn } from './session-write.mjs';
 import { newId } from './store.mjs';
-import { threadToWrite, updateThread } from './thread-write.mjs';
 import { liftDecline } from './wake-cards.mjs';
-
-/** @param {any} rt @param {{ projectId: string, title: string, personaIds?: string[], kind?: string, parentId?: string|null }} opts */
-export function createThread(rt, { projectId, title, personaIds = [], kind = 'thread', parentId = null }) {
-  if (!rt.s.projects[projectId]) throw httpError(404, 'That project doesn’t exist.');
-  const t = rt.putThread({
-    id: newId('th'),
-    projectId,
-    title: title || 'New conversation',
-    kind,
-    parentId,
-    members: [],
-    lastSpeaker: null,
-    hops: 0,
-    queue: [],
-    createdAt: Date.now(),
-  });
-  for (const pid of personaIds) rt.ensureSession(t.id, pid);
-  // As written, with its members: behind a held commit the published state doesn’t have it yet, and the route sends
-  // this as its body.
-  return rt.store.pending.thread(t.id);
-}
 
 /** One session per persona per thread. Adding a second agent turns a thread into a room. */
 /**
@@ -37,7 +15,7 @@ export function createThread(rt, { projectId, title, personaIds = [], kind = 'th
  */
 export function ensureSession(rt, threadId, personaId, { brief, joined = null } = {}) {
   // Read pending: a conversation createThread just wrote may still be held behind a commit.
-  threadToWrite(rt, threadId);
+  rt.threads.toWrite(threadId);
   const existing = pendingSessionsIn(rt, threadId).find((x) => x.personaId === personaId);
   if (existing) return existing;
   // Pending too: an agent the request just made may be held behind a commit with the thread.
@@ -68,16 +46,7 @@ export function ensureSession(rt, threadId, personaId, { brief, joined = null } 
     // Nothing given yet: its first turn starts with the conversation so far (see catchUp).
     seenItem: null,
   });
-  updateThread(rt, threadId, (x) => ({ members: [...x.members, se.id], kind: x.kind === 'thread' && x.members.length > 0 ? 'room' : x.kind }));
+  rt.threads.patch(threadId, (x) => ({ members: [...x.members, se.id], kind: x.kind === 'thread' && x.members.length > 0 ? 'room' : x.kind }));
   liftDecline(rt, threadId, p.handle); // the person added it: a decline of adding it here no longer holds (#789)
   return se;
-}
-
-export function renameThread(rt, threadId, title) {
-  threadToWrite(rt, threadId);
-  const name = String(title ?? '')
-    .trim()
-    .slice(0, 120);
-  if (!name) throw httpError(422, 'A conversation needs a name.');
-  return updateThread(rt, threadId, { title: name });
 }

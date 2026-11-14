@@ -7,6 +7,7 @@ import { test } from 'node:test';
 import { expireWait } from '../server/permission-cards.mjs';
 import { tellExpired } from '../server/permission-expiry.mjs';
 import { endCard } from '../server/remote/turns-prompts.mjs';
+import * as arrange from './arrange.mjs';
 import { EXPIRED_NOTE, notes, settle, setup, WITHDRAWN_NOTE } from './permission-expiry-fixture.mjs';
 
 test('#721 a card that expires unanswered tells the agent in its next turn which request expired, and to ask again', async () => {
@@ -41,7 +42,7 @@ test('#721 Stop expires the card and clears the need; #853 the note says the Sto
 
 test('#721 a card whose summary is generic names its command in the note, so the agent knows what to ask for again', async () => {
   const { rt, t, now } = await setup();
-  const it = rt.addItem(t.id, {
+  const it = arrange.post(rt, t.id, {
     kind: 'permission',
     sessionId: now().id,
     handle: 'deployer',
@@ -56,7 +57,14 @@ test('#721 a card whose summary is generic names its command in the note, so the
 
 test('#721 the note is sent once per card, however many paths tell it', async () => {
   const { rt, t, now } = await setup();
-  const it = rt.addItem(t.id, { kind: 'permission', sessionId: now().id, handle: 'deployer', tool: 'Bash', summary: 'run the deploy', status: 'expired' });
+  const it = arrange.post(rt, t.id, {
+    kind: 'permission',
+    sessionId: now().id,
+    handle: 'deployer',
+    tool: 'Bash',
+    summary: 'run the deploy',
+    status: 'expired',
+  });
   tellExpired(rt, t.id, it.id);
   tellExpired(rt, t.id, it.id);
   assert.equal(notes(now()).length, 1);
@@ -64,7 +72,7 @@ test('#721 the note is sent once per card, however many paths tell it', async ()
 
 test('#721 a host card kept open across a restart, which its host then expires with no wait here, clears the need and tells', async () => {
   const { rt, t, now } = await setup();
-  const it = rt.addItem(t.id, { kind: 'permission', sessionId: now().id, handle: 'deployer', tool: 'Bash', summary: 'run the deploy', status: 'open' });
+  const it = arrange.post(rt, t.id, { kind: 'permission', sessionId: now().id, handle: 'deployer', tool: 'Bash', summary: 'run the deploy', status: 'open' });
   rt.updateSession(now().id, { needs: { kind: 'permission', itemId: it.id, text: 'x' }, state: 'needs' });
   endCard({ rt, now: () => Date.now() }, { it, threadId: t.id }, 'expired', 'Expired on its host.', Date.now());
   assert.equal(rt.store.item(t.id, it.id).status, 'expired');
@@ -83,7 +91,7 @@ test('#721 a card the person declined sends no expiry note: the agent hears the 
 
 test('#721 after a restart, a card that can’t be answered any more tells the agent it expired', async () => {
   const { rt, t, now } = await setup();
-  const it = rt.addItem(t.id, {
+  const it = arrange.post(rt, t.id, {
     kind: 'permission',
     sessionId: now().id,
     handle: 'deployer',
@@ -102,7 +110,14 @@ test('#721 after a restart, a card that can’t be answered any more tells the a
 
 test('#721 Dismiss on an expired card that still needs you clears the need, and marks the card dismissed', async () => {
   const { rt, t, now } = await setup();
-  const it = rt.addItem(t.id, { kind: 'permission', sessionId: now().id, handle: 'deployer', tool: 'Bash', summary: 'run the deploy', status: 'expired' });
+  const it = arrange.post(rt, t.id, {
+    kind: 'permission',
+    sessionId: now().id,
+    handle: 'deployer',
+    tool: 'Bash',
+    summary: 'run the deploy',
+    status: 'expired',
+  });
   // The need a restart left on the card it expired (#633 fixes that path; Dismiss is the backstop).
   rt.updateSession(now().id, { state: 'needs', needs: { kind: 'permission', itemId: it.id, text: '@deployer asks to run the deploy' } });
   assert.deepEqual(rt.act(t.id, it.id, 'dismiss'), { ok: true });
@@ -114,7 +129,14 @@ test('#721 Dismiss on an expired card that still needs you clears the need, and 
 
 test('#721 Dismiss on a closed card leaves a need for another card alone', async () => {
   const { rt, t, now } = await setup();
-  const it = rt.addItem(t.id, { kind: 'permission', sessionId: now().id, handle: 'deployer', tool: 'Bash', summary: 'run the deploy', status: 'expired' });
+  const it = arrange.post(rt, t.id, {
+    kind: 'permission',
+    sessionId: now().id,
+    handle: 'deployer',
+    tool: 'Bash',
+    summary: 'run the deploy',
+    status: 'expired',
+  });
   const needs = { kind: 'block', itemId: 'it_other', text: 'a choice' };
   rt.updateSession(now().id, { state: 'needs', needs });
   rt.act(t.id, it.id, 'dismiss');
@@ -137,7 +159,7 @@ test('#721 Dismiss on a card still waiting for an answer is refused, and the car
 
 test('#721 the note quotes a command as it is: its Markdown kept, its backticks fenced', async () => {
   const { rt, t, now } = await setup();
-  const it = rt.addItem(t.id, {
+  const it = arrange.post(rt, t.id, {
     kind: 'permission',
     sessionId: now().id,
     handle: 'deployer',
@@ -153,7 +175,7 @@ test('#721 the note quotes a command as it is: its Markdown kept, its backticks 
 test('#721 on #633: an expired card that was the need hands it to the next card that waits, not to nothing', async () => {
   const { rt, t, ask, now } = await setup();
   const { card } = await ask();
-  const app = rt.addItem(t.id, { kind: 'appsend', sessionId: now().id, appId: 'a1', title: 'App', events: [{ action: 'x' }], status: 'open' });
+  const app = arrange.post(rt, t.id, { kind: 'appsend', sessionId: now().id, appId: 'a1', title: 'App', events: [{ action: 'x' }], status: 'open' });
   assert.equal(now().needs?.itemId, card.id, 'the permission ranks ahead');
   expireWait(rt, card.id);
   assert.equal(now().needs?.itemId, app.id, 'the app card is the need at once, before the turn’s end decides again');
@@ -164,8 +186,8 @@ test('#721 on #633: an expired card that was the need hands it to the next card 
 
 test('#721 on #633: a host card with no wait here that its host ends hands the need to the next waiting card', async () => {
   const { rt, t, now } = await setup();
-  const it = rt.addItem(t.id, { kind: 'permission', sessionId: now().id, handle: 'deployer', tool: 'Bash', summary: 'run the deploy', status: 'open' });
-  const app = rt.addItem(t.id, { kind: 'appsend', sessionId: now().id, appId: 'a1', title: 'App', events: [{ action: 'x' }], status: 'open' });
+  const it = arrange.post(rt, t.id, { kind: 'permission', sessionId: now().id, handle: 'deployer', tool: 'Bash', summary: 'run the deploy', status: 'open' });
+  const app = arrange.post(rt, t.id, { kind: 'appsend', sessionId: now().id, appId: 'a1', title: 'App', events: [{ action: 'x' }], status: 'open' });
   rt.updateSession(now().id, { needs: { kind: 'permission', itemId: it.id, text: 'x' }, state: 'needs' });
   endCard({ rt, now: () => Date.now() }, { it, threadId: t.id }, 'expired', 'Expired on its host.', Date.now());
   assert.equal(now().needs?.itemId, app.id);
@@ -177,18 +199,16 @@ test('#721 closing a card moves the need before the card’s patch, so the page 
   const { card } = await ask();
   const order = [];
   const update = rt.updateSession.bind(rt);
-  const patch = rt.patchItem.bind(rt);
   rt.updateSession = (id, p) => {
     if (Object.hasOwn(p, 'needs')) order.push('need');
     return update(id, p);
   };
-  rt.patchItem = (threadId, id, p) => {
+  const heard = arrange.onItemPatch(rt, (_threadId, id, p) => {
     if (id === card.id && Object.hasOwn(p, 'status')) order.push('card');
-    return patch(threadId, id, p);
-  };
+  });
   rt.resolvePermission(t.id, card.id, 'allow');
   rt.updateSession = update;
-  rt.patchItem = patch;
+  heard();
   await settle(rt);
   assert.deepEqual(order.slice(0, 2), ['need', 'card']);
   assert.equal(now().needs, null);

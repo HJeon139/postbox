@@ -10,7 +10,6 @@ import { clip } from './helpers.mjs';
 import { settleScheduledWake } from './scheduled-wakes.mjs';
 import { postSummary } from './share-back.mjs';
 import { settleThread } from './thread-summary.mjs';
-import { updateThread } from './thread-write.mjs';
 import { endedAs, endWork } from './turn-end-work.mjs';
 import { askedOf, replyMarks } from './turn-marks.mjs';
 import { foldSteps } from './turn-steps.mjs';
@@ -57,7 +56,7 @@ export function endTurn(rt, turn, err) {
   const stalled = rt.stallSteps(turn, se);
   if (turn.kind === 'lint') rt.quietLint(turn, se);
   else rt.endLint(turn, [...rt.checkTurn(turn, se), ...stalled]);
-  if (topic && !viewing && (turn.said || open.length)) updateThread(rt, topic, (x) => ({ unread: (x.unread ?? 0) + 1 }));
+  if (topic && !viewing && (turn.said || open.length)) rt.threads.patch(topic, (x) => ({ unread: (x.unread ?? 0) + 1 }));
   if (turn.threadId !== se.threadId) settleThread(rt, turn.threadId);
 
   rt.wakeMentions(se, turn, turn.said);
@@ -71,14 +70,14 @@ export function endTurn(rt, turn, err) {
  */
 function settleReplies(rt, se, turn, items, err) {
   // The open segment by its id, even while held behind a commit; then any other still streaming in the visible state.
-  if (turn.openSegment) rt.patchItem(turn.threadId, turn.openSegment, { status: err ? 'failed' : 'done' });
+  if (turn.openSegment) rt.threads.patchItem(turn.threadId, turn.openSegment, { status: err ? 'failed' : 'done' });
   for (const it of items)
     if (it.turnId === turn.id && it.kind === 'agent' && it.status === 'streaming' && it.id !== turn.openSegment)
-      rt.patchItem(turn.threadId, it.id, { status: err ? 'failed' : 'done' });
+      rt.threads.patchItem(turn.threadId, it.id, { status: err ? 'failed' : 'done' });
   turn.openSegment = null;
   if (turn.checkpoint && !err)
     for (const it of items)
-      if (it.turnId === turn.id && (it.kind === 'agent' || it.kind === 'block')) rt.patchItem(turn.threadId, it.id, { checkpoint: turn.checkpoint });
+      if (it.turnId === turn.id && (it.kind === 'agent' || it.kind === 'block')) rt.threads.patchItem(turn.threadId, it.id, { checkpoint: turn.checkpoint });
   if (!err) postSummary(rt, se, turn, items);
   // Posted or not, the summary isn’t pending any more, so Summarize back works again, unless one waits behind this
   // turn (#225). Any turn ending clears one a restart left behind, too.
@@ -97,7 +96,7 @@ function endFailed(rt, se, turn, err) {
   const target =
     turn.segment ??
     turn.first ??
-    rt.addItem(turn.threadId, {
+    rt.threads.addItem(turn.threadId, {
       kind: 'agent',
       sessionId: se.id,
       personaId: se.personaId,
@@ -107,7 +106,7 @@ function endFailed(rt, se, turn, err) {
       status: 'failed',
       ...replyMarks(turn),
     }).id;
-  rt.patchItem(turn.threadId, target, {
+  rt.threads.patchItem(turn.threadId, target, {
     status: 'failed',
     error: message,
     retry: turn.retry ?? null,
@@ -124,13 +123,13 @@ function endFailed(rt, se, turn, err) {
     finishedAt: Date.now(),
     stopAsk: null,
   });
-  rt.notify('blocking', se, `@${se.handle}’s reply failed`, message, turn.threadId);
+  rt.threads.notify('blocking', se, `@${se.handle}’s reply failed`, message, turn.threadId);
   // Its @-mentions still wake their agents (#485, the person’s choice): what it wrote may be cut off, so they’re told.
   // Not a host turn that goes on (Interrupted, Sign-in needed, its link lost): it wakes them when it ends.
   // The item keeps whom they woke, with those the failures before it woke, so no Retry wakes them again.
   const wakes = turn.said.trim() && !err.remote && se.remoteTurn?.state !== 'lost';
   const woke = wakes ? rt.wakeMentions(se, turn, `(This reply failed before it finished: ${message} It may be cut off.)\n\n${turn.said}`) : [];
-  if (woke.length || turn.woken.length) rt.patchItem(turn.threadId, target, { wokeOnFailure: [...new Set([...turn.woken, ...woke])] });
+  if (woke.length || turn.woken.length) rt.threads.patchItem(turn.threadId, target, { wokeOnFailure: [...new Set([...turn.woken, ...woke])] });
   // A wake that waited for this turn still goes: with no forks, it was promised an answer (#228). Your own
   // queued messages wait, as before, for you to see the failure.
   rt.takePending(se, turn, 'wakes');
@@ -151,7 +150,7 @@ function needsAfter(rt, se, turn, items) {
   const waiting = se.keptId ? items.find((it) => it.id === se.keptId) : null;
   if (!open.length && waiting && !waiting.answered) open.push(waiting);
   const last = [...items].reverse().find((it) => it.kind === 'agent' && it.sessionId === se.id && it.text);
-  const viewing = rt.isViewing(turn.threadId);
+  const viewing = rt.threads.isViewing(turn.threadId);
   const topic = turn.threadId !== se.threadId && rt.store.pending.thread(turn.threadId)?.kind === 'topic' ? turn.threadId : null;
   // The newest card that still waits (card-needs.mjs): this turn's asks, the kept turns' (a failed reply's Retry
   // among them), and the cards that wait until answered.
@@ -172,8 +171,8 @@ function needsAfter(rt, se, turn, items) {
     stopAsk: null,
   }));
   noticeNeed(rt, se, needs);
-  if (needs && (needs.kind === 'block' || needs.kind === 'toolask')) rt.notify('blocking', se, `@${se.handle} needs you`, needs.text, needs.threadId);
-  else if (mentionsYou && !viewing) rt.notify('info', se, `@${se.handle} mentioned you`, clip(turn.said, 120), turn.threadId);
-  else if (turn.said && !viewing) rt.notify('info', se, `@${se.handle} finished`, clip(turn.said, 120), turn.threadId);
+  if (needs && (needs.kind === 'block' || needs.kind === 'toolask')) rt.threads.notify('blocking', se, `@${se.handle} needs you`, needs.text, needs.threadId);
+  else if (mentionsYou && !viewing) rt.threads.notify('info', se, `@${se.handle} mentioned you`, clip(turn.said, 120), turn.threadId);
+  else if (turn.said && !viewing) rt.threads.notify('info', se, `@${se.handle} finished`, clip(turn.said, 120), turn.threadId);
   return { open, viewing, topic };
 }

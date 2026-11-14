@@ -4,9 +4,9 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { updateThread } from '../server/thread-write.mjs';
 import { DEFAULT_HOP_LIMIT, HOP_LIMIT } from '../shared/limits.mjs';
 import { TOOL_DEFS } from '../shared/mcp-tools.mjs';
+import * as arrange from './arrange.mjs';
 import { settle, setup } from './side-threads-fixture.mjs';
 
 /** n wakes between alpha and beta in turn, all while the chain runs, as tests/wakes-no-pair-limit.test.mjs makes them. */
@@ -20,7 +20,7 @@ function chain(f, n, { threadId = f.t.id, replyIn = undefined } = {}) {
 }
 const cards = (f, id = f.t.id) => f.store.items(id).filter((x) => x.kind === 'hop');
 /** The room’s own limit, written as the person’s PATCH writes it, on the conversation. */
-const setLimit = (f, id, chainLimit) => updateThread(f.rt, id, { chainLimit });
+const setLimit = (f, id, chainLimit) => arrange.setThread(f.rt, id, { chainLimit });
 
 test('#1035 with nothing set, 51 wakes in a row all go, with no card: the old limit of 50 is gone', async () => {
   const f = setup();
@@ -33,7 +33,7 @@ test('#1035 with nothing set, 51 wakes in a row all go, with no card: the old li
 test('#1035 with nothing set, the wake after 1,000 in a row asks, on a card numbered 1,001 that keeps the limit of 1,000', async () => {
   const f = setup();
   assert.equal(HOP_LIMIT, 1000, 'the tests run without POSTBOX_CHAIN_LIMIT');
-  updateThread(f.rt, f.t.id, { hops: 1000 });
+  arrange.setThread(f.rt, f.t.id, { hops: 1000 });
   const r = f.rt.agentWake(f.alpha.id, 'beta', 'one more');
   assert.equal(r.waiting, true);
   assert.equal(r.message, 'Waiting for the person to allow waking @beta: this room’s chain limit is 1,000.');

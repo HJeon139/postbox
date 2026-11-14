@@ -5,6 +5,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { summarizerOf, summarizeThread } from '../server/thread-summary.mjs';
+import * as arrange from './arrange.mjs';
 import { held, settle, setup, sleep } from './side-threads-fixture.mjs';
 
 /** A conversation with one exchange with @alpha, and a topic thread on @alpha’s reply. */
@@ -267,7 +268,7 @@ test('#228: no summary call unless the conversation already runs on Claude, thro
 test('#228: the catch-up in a thread is capped, as the conversation’s is, keeping the newest', async () => {
   const { rt, adapter, topic } = await topicOnReply();
   for (let i = 0; i < 30; i++)
-    rt.addItem(topic.id, { kind: 'agent', sessionId: 'se_other', handle: 'beta', text: `${i} ${'word '.repeat(400)}`, status: 'done' });
+    arrange.post(rt, topic.id, { kind: 'agent', sessionId: 'se_other', handle: 'beta', text: `${i} ${'word '.repeat(400)}`, status: 'done' });
   rt.sendMessage(topic.id, { text: '@alpha and now?' });
   await settle(rt);
   const there = contexts(adapter.calls.at(-1)).find((x) => x.includes('What was said there since you last took part'));
