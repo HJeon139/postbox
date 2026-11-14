@@ -4,7 +4,6 @@
 import { READING } from '../shared/limits.mjs';
 import { fenceFor, partOf } from '../shared/text-parts.mjs';
 import { appCheckText, appVersionText } from './app-check-status.mjs';
-import { appOf } from './apps.mjs';
 import { clipText, httpError } from './helpers.mjs';
 import { clipItem } from './item-lines.mjs';
 
@@ -36,7 +35,7 @@ export function readMessage(rt, se, { id, from = 0, version } = {}) {
       ok: false,
       message: `There’s no item “${clipText(key, 80)}” in this conversation. Your history and read_conversation give the id of each item they cut.`,
     };
-  const app = appOf(rt, it);
+  const app = rt.apps.appOf(it);
   if (app) return readApp(rt, se, it, app, { from, version });
   const full = rt.readLine(it, se, Infinity);
   if (!full) return { ok: false, message: `${it.id} has nothing to read.` };

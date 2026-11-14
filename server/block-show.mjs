@@ -5,21 +5,21 @@ import { notShown } from '../shared/block-examples.mjs';
 import { validateBlock } from '../shared/catalog.mjs';
 import { PERSON } from '../shared/review-comments.mjs';
 import { appReceipt } from './app-check-status.mjs';
-import { withAppIntent, withIntentNote } from './apps.mjs';
-import { OUTCOME_LATER } from './blocks.mjs';
+import { registerApp, withAppIntent, withIntentNote } from './apps.mjs';
+import { OUTCOME_LATER } from './block-update.mjs';
 import { newId } from './store.mjs';
 import { wokeOf } from './turn-marks.mjs';
 
 /** @typedef {import('./agent-files.mjs').AppFile} AppFile */
 
 /**
- * @param {import('./runtime.mjs').Runtime} rt @param {string} sessionId
+ * @param {import('./app-service.mjs').Apps} apps @param {string} sessionId
  * @param {{ turn: any, se: () => any, threadId: () => string, endSegment: () => void, tools: any }} ctx  the turn's
  *   tools as toolsFor made them, for update_app
  * @param {{ block: any }} args @param {{ files?: AppFile[], held?: boolean }} [given]  data files Postbox read for show_app
  *   (#54), or a review’s images (#780); held is set once an item takes the images (keptIfShown)
  */
-export function showBlock(rt, sessionId, { turn, se, threadId, endSegment, tools }, { block }, given = {}) {
+export function showBlock(apps, sessionId, { turn, se, threadId, endSegment, tools }, { block }, given = {}) {
   // An outcome reports what came of an answer (#94). On a new block it would show under whatever the person
   // answers, even Cancel, so it’s refused here and only taken by update_block once the block is answered.
   if (block && typeof block === 'object' && Object.hasOwn(block, 'outcome'))
@@ -33,7 +33,7 @@ export function showBlock(rt, sessionId, { turn, se, threadId, endSegment, tools
     };
   const saidIntent = block?.type === 'app' ? block.intent : undefined;
   block = withAppIntent(block);
-  const v = validateBlock(block, { imageOrigins: rt.config.imageOrigins });
+  const v = validateBlock(block, { imageOrigins: apps.config.imageOrigins });
   // An agent’s invalid block is refused outright (#1319): an item would stay as a broken card, and agents retry at
   // once, often under a new id, so each try left another. Only a block this Postbox can’t read but a newer host’s
   // catalog took, of a type or version it doesn’t know, still shows its fallback.
@@ -42,26 +42,26 @@ export function showBlock(rt, sessionId, { turn, se, threadId, endSegment, tools
   // theirs (its versions and saved state) is left alone.
   /** @type {string | null} */
   let renamed = null;
-  if (v.ok && v.block.type === 'app' && rt.store.pending.app(v.block.id)) {
+  if (v.ok && v.block.type === 'app' && apps.store.pending.app(v.block.id)) {
     const { id, code, permissions, title } = /** @type {any} */ (v.block);
-    if (rt.store.pending.app(id).sessionId === sessionId) return tools.update_app({ id, code, permissions, title, intent: saidIntent }, given);
+    if (apps.store.pending.app(id).sessionId === sessionId) return tools.update_app({ id, code, permissions, title, intent: saidIntent }, given);
     renamed = newId(String(id).slice(0, 40));
     v.block = { ...v.block, id: renamed };
   }
   // Any other id names one block of this session in this conversation, answered or not, so an answer to it,
   // and an update or outcome by it, always means that block (#125). Showing it again is refused, not turned
   // into an update: an update can reopen a block the person answered.
-  const again = v.ok && v.block.type !== 'app' ? shownAgain(rt, sessionId, threadId(), v.block.id) : null;
+  const again = v.ok && v.block.type !== 'app' ? shownAgain(apps, sessionId, threadId(), v.block.id) : null;
   if (again) return again;
   endSegment();
   // A review’s images (#780), read and checked before the call reached here, stay with the item.
   const files = v.ok && v.block.type === 'review' && given.files ? { files: given.files } : {};
-  const it = rt.threads.addItem(threadId(), { ...blockItem(sessionId, se, turn, block, v), ...files });
+  const it = apps.threads.addItem(threadId(), { ...blockItem(sessionId, se, turn, block, v), ...files });
   if (files.files) given.held = true; // the item holds them, so keptIfShown keeps their blobs (#828)
-  if (v.ok && v.block.type === 'app') rt.registerApp(sessionId, v.block, it.id, threadId(), given.files ?? []);
+  if (v.ok && v.block.type === 'app') registerApp(apps, sessionId, v.block, it.id, threadId(), given.files ?? []);
   if (v.ok && v.block.type === 'app') {
     const shown = renamed ? `That app id was taken, so it’s shown as ${renamed}. Use that id to update it.` : `Shown app ${v.block.id}.`;
-    return withIntentNote(appReceipt(rt.store.pending.app(v.block.id), shown), saidIntent);
+    return withIntentNote(appReceipt(apps.store.pending.app(v.block.id), shown), saidIntent);
   }
   return v.ok
     ? { ok: true, message: `Shown block ${v.block.id}.` }
@@ -72,8 +72,8 @@ export function showBlock(rt, sessionId, { turn, se, threadId, endSegment, tools
 const NEWER = new Set(['unknown-type', 'newer-version']);
 
 /** The refusal when this session already showed a block with this id in the thread, or null. */
-function shownAgain(rt, sessionId, threadId, id) {
-  const shown = rt.store.pending.items(threadId).find((x) => x.kind === 'block' && x.valid && x.sessionId === sessionId && x.block.id === id);
+function shownAgain(apps, sessionId, threadId, id) {
+  const shown = apps.store.pending.items(threadId).find((x) => x.kind === 'block' && x.valid && x.sessionId === sessionId && x.block.id === id);
   // An app’s id can’t take a block’s update, so that case only asks for a new id.
   if (shown?.block.type === 'app') return { ok: false, message: `${id} is the id of your app “${shown.block.title ?? id}”. Pick a new id for this block.` };
   if (shown) return { ok: false, message: `Block ${id} is already shown. Use update_block to change it, or pick a new id.` };

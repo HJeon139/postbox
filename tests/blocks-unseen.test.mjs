@@ -1,5 +1,5 @@
 // #593: an update to a block that’s still waiting, which changes nothing the person sees, doesn’t raise its revision
-// (server/blocks.mjs, updateBlock). It used to, so the person’s answer was refused as stale and the review showed
+// (server/block-update.mjs, updateBlock). It used to, so the person’s answer was refused as stale and the review showed
 // “Changes since you looked” over an empty diff.
 import assert from 'node:assert/strict';
 import { writeFile } from 'node:fs/promises';

@@ -41,6 +41,8 @@ test('read_conversation and read_message from a snapshot match server/runtime.mj
   const rt = {
     store,
     threads: { conversationThreads: () => snap.threads.map((t) => t.id) },
+    // Its blocks aren’t apps, so no item shows one.
+    apps: { appOf: () => null },
     readLine: (i, _se, n = READING.item) => (n === Number.POSITIVE_INFINITY ? i.text : i.line) || null,
   };
   const se = { threadId: 'th_home', id: 's1', handle: 'dev' };

@@ -5,7 +5,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { searchArgs, splitPassages } from '../server/asset-search.mjs';
-import { hostTool } from '../server/host-tool.mjs';
 import { Store } from '../server/store.mjs';
 import * as arrange from './arrange.mjs';
 import { assetRoom } from './asset-tools-fixture.mjs';
@@ -49,7 +48,7 @@ test('#516: search_assets finds the room’s text assets by their words, naming 
   assert.ok(found.message.includes(`[${letter.id}:1] notes/letters.md v1, passage 1 (BM25`), found.message);
   assert.match(found.message, /on hope, loss\):\n```\nThe sailor wrote home/);
   assert.doesNotMatch(found.message, /logo\.png/, 'a binary asset isn’t searched');
-  const hits = await hostTool(rt, 'assets.search', { query: 'herons', mode: 'lexical' }, { threadId: t.id });
+  const hits = await arrange.hostTool(rt, 'assets.search', { query: 'herons', mode: 'lexical' }, { threadId: t.id });
   assert.deepEqual(
     hits.map((h) => [h.name, h.version, h.where]),
     [['notes/pond.md', 1, 'passage 1']],
@@ -60,7 +59,8 @@ test('#516: search_assets finds the room’s text assets by their words, naming 
 
 test('#516: a search reads each asset’s newest version and name, and leaves out deleted ones and other rooms’', async (ctx) => {
   const { A, rt, t, as } = await assetRoom(ctx);
-  const search = async (query) => (await hostTool(rt, 'assets.search', { query, mode: 'lexical' }, { threadId: t.id })).map((h) => `${h.name} v${h.version}`);
+  const search = async (query) =>
+    (await arrange.hostTool(rt, 'assets.search', { query, mode: 'lexical' }, { threadId: t.id })).map((h) => `${h.name} v${h.version}`);
   const { id } = await A.write_asset({ name: 'plan.md', text: 'The first plan is about whales.' });
   assert.deepEqual(await search('whales'), ['plan.md v1']);
   await A.write_asset({ id, base: 1, text: 'The second plan is about herons.' });
@@ -74,19 +74,19 @@ test('#516: a search reads each asset’s newest version and name, and leaves ou
   const there = as(arrange.sessionsIn(rt, other.id)[0]);
   await there.write_asset({ name: 'theirs.md', text: 'Their notes about herons.' });
   assert.deepEqual(await search('herons'), [], 'another conversation’s assets aren’t this one’s');
-  assert.deepEqual(await hostTool(rt, 'assets.search', { query: 'herons' }, { threadId: other.id }).then((h) => h.map((x) => x.name)), ['theirs.md']);
+  assert.deepEqual(await arrange.hostTool(rt, 'assets.search', { query: 'herons' }, { threadId: other.id }).then((h) => h.map((x) => x.name)), ['theirs.md']);
 });
 
 test('#516: assets keeps a search to the assets it names, by id or name; assets.list counts each one’s passages', async (ctx) => {
   const { A, rt, t } = await assetRoom(ctx);
   const one = await A.write_asset({ name: 'a.md', text: 'whales in the north' });
   await A.write_asset({ name: 'b.md', text: 'whales in the south' });
-  const names = async (assets) => (await hostTool(rt, 'assets.search', { query: 'whales', assets }, { threadId: t.id })).map((h) => h.name).sort();
+  const names = async (assets) => (await arrange.hostTool(rt, 'assets.search', { query: 'whales', assets }, { threadId: t.id })).map((h) => h.name).sort();
   assert.deepEqual(await names([]), ['a.md', 'b.md']);
   assert.deepEqual(await names(['b.md']), ['b.md']);
   assert.deepEqual(await names([one.id]), ['a.md']);
   assert.deepEqual(
-    (await hostTool(rt, 'assets.list', {}, { threadId: t.id })).map((a) => [a.name, a.version, a.passages]),
+    (await arrange.hostTool(rt, 'assets.list', {}, { threadId: t.id })).map((a) => [a.name, a.version, a.passages]),
     [
       ['a.md', 1, 1],
       ['b.md', 1, 1],

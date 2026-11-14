@@ -1,6 +1,6 @@
 # Concerns as services
 
-**Status:** a proposal, 12 November 2026, for the person to approve before any code moves. Step 0, the test fixture, step 1, Placement, step 2, Running, step 3, Threads with the Bus, step 4, Personas, step 5, Sessions, step 6, Assets, step 7, Ledger and work, and step 8, Checks, are built (“Where it stands”). Numbers are from `main` at 2259cebe. The scripts that produced them are in the pull request that added this document; the last of them, `svc-check.mjs`, checks the design against the code.
+**Status:** a proposal, 12 November 2026, for the person to approve before any code moves. Step 0, the test fixture, step 1, Placement, step 2, Running, step 3, Threads with the Bus, step 4, Personas, step 5, Sessions, step 6, Assets, step 7, Ledger and work, step 8, Checks, and step 9, Apps, are built (“Where it stands”). Numbers are from `main` at 2259cebe. The scripts that produced them are in the pull request that added this document; the last of them, `svc-check.mjs`, checks the design against the code.
 
 ## Why
 
@@ -61,7 +61,7 @@ flowchart LR
 designs/rooms-at-scale.md decides the end state of the most tangled code: the permission layer goes (“The permission layer”), mention, wake and queue move onto one inbox per agent (“Delivery: mention, wake and queue on one inbox”), and needs you becomes asks, with the wake, hop, add-agent, app-send and permission cards gone (“Asks: needs you as an interface”). The permission layer’s removal is paused (10 November) until a demo proves inferred grants hold.
 
 So this work doesn’t build interfaces around that machinery. Three concerns **wait**, in their current shape, behind the facade, until those decisions land:
-- **Asks and permissions:** `permission-*.mjs`, `permissions-panel`, `ask-question`, `tool-ask`, `prompt-claim`, `read-folders`, `write-guard`, `write-intent`, `host-rules`, `card-needs`, `blocks` (its `act()` dispatches the cards), `view-app/consent` and `view-app/view-app` (the download card), and the app-send cards in `apps.mjs`.
+- **Asks and permissions:** `permission-*.mjs`, `permissions-panel`, `ask-question`, `tool-ask`, `prompt-claim`, `read-folders`, `write-guard`, `write-intent`, `host-rules`, `card-needs`, `blocks` (its `act()` dispatches the cards), `view-app/consent` and `view-app/view-app` (the download card), and the app-send cards (`app-send-cards.mjs`, split from `apps.mjs` in step 9).
 - **Delivery:** `message-queue`, `send-message`, `queue-batch`, `mention-wakes`, `newer-waiting`, `side-threads`, `wake-cards`, `scheduled-wakes`, `room-chain-limit`, `topic-open`, `share-back`, `bring` and `agent-commands`.
 - **Turns:** `deliver`, `turn-context`, `turn-stop`, `turn-finish`, the turn’s steps and marks, jobs and kept jobs, `claude-mirror`, `store-outage`, `restart-sweep`, and `remote/turns*.mjs`. Starting and ending a turn interleave delivery and needs at every step (see “The end of a turn”, below), so Turns is redone with the inbox, not before it.
 
@@ -88,7 +88,7 @@ The list refines the starting point from the data:
 
 - **Owns:** the listeners for in-process signals. It calls them synchronously, in the order the root registered them, and a listener’s throw reaches the emitter, as a direct call’s does today. Nothing is persisted.
 - **Interface:** `emit(signal, data)`, `on(signal, fn)`.
-- **Signals:** `persona.updated` (Personas, after a write), `session.joined` (Sessions: a declined add lifts), `item.added` (Threads: a side thread’s line counts the message), `item.moved` (Threads, from `bringForward`: Memory moves its read markers to the stub), `app.retired` (Apps: its send card’s need releases).
+- **Signals:** `persona.updated` (Personas, after a write), `session.joined` (Sessions: a declined add lifts), `item.added` (Threads: a side thread’s line counts the message), `item.moved` (Threads, from `bringForward`: Memory moves its read markers to the stub), `app.retired` (Apps: its send card’s need releases), `block.withdrawn` (Apps, from `update_block`’s withdraw: the block’s need releases).
 - **`persona.updated`’s listeners, in this order:** host turns set Running’s awaiting-attach entries for that persona’s sessions from where it runs now (`RemoteTurns.noteAttach`): one moved off its host is cleared, and one moved back before the attach waits again; sessions drop what their last turn reported, after a change of backend or model (`Sessions.forgetReported`, #1315); tool asks settle (`settleToolAsks`); the queue of an agent moved off a host drains (`drainMovedOff`). Today `busyFor` computes awaiting attach from the persona as it is after the write, so a drain right after it already sees the agent free; clearing first keeps that. If the queue drained first, a moved agent’s messages would stay held.
 - **Depends on:** nothing.
 
@@ -144,8 +144,8 @@ The list refines the starting point from the data:
 ### Apps
 
 - **Owns:** agents’ apps, their state, queries and checks, the tools an app may call on this computer (`host-tool.mjs`), showing and updating blocks, review comments, and which answers an agent has read. The app-send cards and `act()`’s dispatch of cards stay with asks.
-- **Interface:** `register`, `show`, `update`, `retire`, `appCheck`, `appEvent`, `appState`, `appQuery`, `appFile`, `appOf(item)`, `updateBlock`, `answerDelivered`, `unreadAnswer`, `reviewBlock`. Signal: `app.retired`.
-- **Depends on:** Store, Threads, Sessions, Personas, Assets, Running, Checks, and the `send` port. External: the narrator.
+- **Interface:** `register`, `showApp`, `updateApp`, `retire`, `appCheck`, `appEvent`, `appState`, `appQuery`, `appFile`, `appOf(item)`, `showBlock`, `updateBlock`, `answerDelivered`, `unreadAnswer`, `reviewBlock`, `personAnswer`. Signals: `app.retired`, `block.withdrawn`. Past an app’s limit, `appEvent` answers `{ hold }`, and the facade’s `appEvent` has asks hold the event on the app’s card.
+- **Depends on:** Store, Bus, Threads, Sessions, Personas, Assets, Running, Checks, and the `send` port. External: the narrator, and the server’s settings (`config`, for the catalog’s image origins).
 
 ### Memory
 
@@ -192,6 +192,7 @@ flowchart BT
   Checks --> Threads
   Checks --> Sessions
   Checks --> Running
+  Apps --> Bus
   Apps --> Threads
   Apps --> Sessions
   Apps --> Personas
@@ -230,7 +231,7 @@ Built in this order, each service’s dependencies already exist: Store, Bus, Ru
 | Hosts | 4 |
 | Checks | 5 |
 | Work | 6 |
-| Apps | 8 |
+| Apps | 9 |
 | Memory | 10 |
 
 ### How each dependency on waiting code breaks
@@ -247,9 +248,10 @@ Built in this order, each service’s dependencies already exist: Store, Bus, Ru
 | `Runtime.busyFor` calls `remote.awaitsAttach`, which reads the session and its persona’s host | Running keeps the awaiting sessions; `RemoteTurns` writes them, and the first `persona.updated` listener sets them from where the agent runs now (done in step 2: `busyFor` is gone) |
 | `Runtime.bringForward` calls `moveMarkers` (`catch-up.mjs`) | `item.moved`; Memory moves its markers (done in step 3: the root listens with `moveMarkers` until Memory is a service) |
 | `Runtime.view` clears the sessions’ unread counts | the facade’s `view()`: `Sessions.markRead`, then `Threads.view` (done in step 3; `Sessions.markRead` since step 5) |
-| `app-retire.mjs` calls `releaseNeed` (`card-needs.mjs`) | `app.retired`; asks listen |
-| `apps.mjs`’s `needAppSend` and `resolveAppSend` call `offerNeed` and `releaseNeed` | they stay with asks; `apps.mjs` splits |
-| `lint-delivery.mjs`, `apps.mjs` and `review-comments.mjs` call `rt.deliver` | the `send` port (`lint-delivery.mjs` done in step 8) |
+| `app-retire.mjs` calls `releaseNeed` (`card-needs.mjs`) | `app.retired`; asks listen (done in step 9) |
+| `apps.mjs`’s `needAppSend` and `resolveAppSend` call `offerNeed` and `releaseNeed` | they stay with asks; `apps.mjs` splits (done in step 9: `app-send-cards.mjs`) |
+| `blocks.mjs`’s `updateBlock` withdraws a block with `releaseNeed` | `block.withdrawn`; asks listen (done in step 9) |
+| `lint-delivery.mjs`, `apps.mjs` and `review-comments.mjs` call `rt.deliver` | the `send` port (`lint-delivery.mjs` done in step 8, the others in step 9) |
 | `catch-up.mjs` calls `heldFor` (`wake-cards.mjs`) | the `catchUpLines` port: waiting code contributes lines |
 | `item-lines.mjs` calls `rt.remote.hostOf` | it moves to `Placement.hostOf` |
 | `read-message.mjs` calls `appOf` (`apps.mjs`) | Memory depends on Apps |
@@ -257,7 +259,7 @@ Built in this order, each service’s dependencies already exist: Store, Bus, Ru
 | `turn-work.mjs` calls `recordScheduledTool` (`scheduled-wakes.mjs`) | the call moves to its caller, `turn-context.mjs` (done in step 7) |
 | `shell-runs.mjs` calls `whenWritable` (`store-outage.mjs`) | `Store.whenWritable` (step 7: Work takes a `whenWritable` bound to the runtime until the Store is a service) |
 | `remote/host-admin.mjs` calls `rt.stop` and `rt.remote` | the `hostTurns` port |
-| `lint-delivery.mjs`, `apps.mjs`, `review-comments.mjs`, `host-admin.mjs` and `placement.mjs` read `rt.turns` or `rt.exiting` | Running (`placement.mjs` done in step 1, `lint-delivery.mjs` in step 8) |
+| `lint-delivery.mjs`, `apps.mjs`, `review-comments.mjs`, `host-admin.mjs` and `placement.mjs` read `rt.turns` or `rt.exiting` | Running (`placement.mjs` done in step 1, `lint-delivery.mjs` in step 8, `apps.mjs` and `review-comments.mjs` in step 9) |
 | `persona-delete.mjs` deletes sessions; `session-lifecycle.mjs` and `thread-erase.mjs` stop turns and kept jobs | orchestration in the facade: stop, then remove, in one method each (`deletePersona` done in step 4) |
 | `createThread` makes sessions; `resolveProposal` creates a persona and a session | orchestration in the facade |
 
@@ -465,7 +467,14 @@ Each step is its own pull request, and is done when:
   - The root binds `send` as a function that looks up the runtime’s `deliver` each time, not `deliver` itself. Tests put a spy on `rt.deliver` after the runtime is built (`tests/close-timers.test.mjs`), and a port bound once would go past it; `tests/check-send.test.mjs` fails on that mutant.
   - No test held that a problem the browser reports while the turn still runs joins its lint turn (`lint` reading Running’s live turns); the interface tests do.
   - The app check stays as it was: `apps.mjs`, waiting code until step 9, calls `rt.checks.lint` for its notes and `rt.deliver` for its fix turn. One test that replaced `rt.lint` to listen replaces `rt.checks.lint`, and `tests/lint-delivery.test.mjs`’s fake is shaped as Checks. No test was deleted, and no spec changed.
-- **Next:** step 9, Apps, with `app.retired`.
+- **Done:** step 9, Apps, with `app.retired`; the app-send cards split off to asks. `server/app-service.mjs` is a class that `Runtime`’s constructor builds with the store, the bus, Threads, Sessions, Personas, Assets, Running and Checks, `send`, the narrator and the server’s settings; its interface tests are `tests/app-service.test.mjs`. Its modules (`apps.mjs`, `app-retire.mjs`, `block-show.mjs`, `block-update.mjs`, `review-comments.mjs`, `review-person.mjs`, `host-tool.mjs`) take the service, not the runtime. Two moves came first, each with no change to the code moved: `update_block`, `answerDelivered` and `unreadAnswer` from `blocks.mjs`, which keeps the person’s answer (`act`) with asks, to `block-update.mjs`; and the app-send cards (`needAppSend`, `resolveAppSend`, the hold of an event past the limit, and the sweep when an app is retired) from `apps.mjs` and `app-retire.mjs` to `app-send-cards.mjs`, a module of asks. `Runtime` keeps the facade’s `appCheck`, `appEvent`, `appState`, `appQuery` and `appFile`, and asks’ `needAppSend` and `resolveAppSend`; code that still takes `rt` reaches the rest as `rt.apps`. What step 9 found:
+  - Apps signals, so it depends on the Bus, which the design left out. It needs a second signal: `update_block`’s withdraw released the block’s need (`releaseNeed`, asks) where it ran, so it signals `block.withdrawn`, and the root’s listener releases it, as `app.retired`’s drops the card’s sends.
+  - Holding an app’s event on its card is asks’, and neither a signal nor a port fits it: the event’s answer to the page is the card’s. So `appEvent` decides (the app, its limit, a card already open) and answers `{ hold }`, and the facade’s `appEvent` has asks hold it, an orchestration in the facade as `createThread`’s is. `svc-check.mjs` names that break.
+  - “`show`” and “`update`” were each two tools: `showBlock` and `showApp`, `updateBlock` and `updateApp`. The person’s answer to a review writes through Apps too (`personAnswer`), since `act` stays with asks.
+  - An app’s data file is read from the blobs Assets holds, the same store as `rt.blobs`, so the fixture’s `withBlobs` (step 6) still sets it.
+  - `view-app/view-of.mjs` keys view_app’s state by the runtime object and reads none of it; it stays as it was, with `view-app.mjs` and `consent.mjs`, which wait with asks.
+  - The signals’ timing is held by tests that read right after the call: “#193: retiring drops the sends waiting for the person, clears needs-you, and later sends are refused” fails when `app.retired`’s listener runs late. No test was deleted, and no spec changed.
+- **Next:** step 10, Memory, with the `catchUpLines` port.
 
 ## Appendix: every module’s members
 

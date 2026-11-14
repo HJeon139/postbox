@@ -43,7 +43,7 @@ export function deliver(rt, sessionId, message, { summarizeTo = null, threadId =
   if (heldTurn(rt, sessionId, () => rt.deliver(sessionId, asked.message, { summarizeTo, threadId }), message)) return;
   if (waitsBehind(rt, sessionId, message, { summarizeTo, threadId })) return;
   const where = threadId && threadId !== se.threadId && rt.store.pending.thread(threadId) ? threadId : se.threadId;
-  rt.answerDelivered(where, message);
+  rt.apps.answerDelivered(where, message);
   // A skill or command (#67) is the whole prompt, since Claude Code runs it only when the prompt starts with /name:
   // the context below waits for the agent’s next turn instead. So does a remote turn attached again after a restart
   // (#120, message.attach): it sends the agent nothing, and replays what the host has.

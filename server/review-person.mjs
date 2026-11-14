@@ -107,9 +107,9 @@ function strayReply(it, values) {
  * reviews that record them, checked as a whole; and the event the agent hears, each comment with its threadId.
  * null when it isn’t a review, or has no comments. A reply in a thread it doesn’t have, or past the block’s bounds,
  * it’s refused, and nothing is written.
- * @param {any} rt @param {any} given  the review’s item @param {any} event  the answer’s, from buildEvent @param {number} revision
+ * @param {any} apps @param {any} given  the review’s item @param {any} event  the answer’s, from buildEvent @param {number} revision
  */
-export function personAnswer(rt, given, event, revision) {
+export function personAnswer(apps, given, event, revision) {
   if (given.block.type !== 'review') return null;
   const it = ownedAuthors(given);
   const stray = strayReply(it, event.values);
@@ -121,7 +121,7 @@ export function personAnswer(rt, given, event, revision) {
   const full = [];
   threadsError(made.block.threads, full, personNext(it.handle));
   if (full.length) throw httpError(422, `Your review wasn’t sent, so it still waits on you. ${full.join(' ')}`);
-  const v = validateBlock(made.block, { imageOrigins: rt.config.imageOrigins });
+  const v = validateBlock(made.block, { imageOrigins: apps.config.imageOrigins });
   if (!v.ok)
     throw httpError(
       422,

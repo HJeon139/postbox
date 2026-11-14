@@ -3,7 +3,7 @@
 // rules. Moved from server/catch-up.mjs, so the two summaries share it without importing each other.
 
 import { parseMentions } from '../shared/text.mjs';
-import { CATCH_UP_CHARS } from './blocks.mjs';
+import { CATCH_UP_CHARS } from './block-update.mjs';
 
 export const CATCH_UP_ITEMS = 40;
 /** How much a summary keeps of the messages that @-mention its agent, which come before the caps above (#484). */
