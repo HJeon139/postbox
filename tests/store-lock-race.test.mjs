@@ -47,7 +47,7 @@ test('a takeover mutex whose maker is gone is never removed: both starters refus
   assert.deepEqual((await readdir(dir)).sort(), [LOCK, `${LOCK}.taking`], 'nothing was removed for Postbox’s guess');
 });
 
-test('a starter paused inside its takeover keeps the mutex however long it takes: the other waits, then meets its live lock (gpt’s repro)', async () => {
+test('a starter paused inside its takeover keeps the mutex however long it takes: the other waits, and exactly one of them then holds the lock (gpt’s repro)', async () => {
   const { LOCK, lockStore } = await import('../server/store-lock.mjs');
   const dir = await tmp();
   await writeFile(join(dir, LOCK), JSON.stringify({ pid: 2 ** 22 - 7, started: 1, token: 'stale0000' }));
@@ -74,14 +74,15 @@ test('a starter paused inside its takeover keeps the mutex however long it takes
   assert.equal(JSON.parse(await readFile(join(dir, LOCK), 'utf8')).token, 'stale0000', 'the lock is unchanged while A’s mutex stands');
   assert.ok(!(await readdir(dir)).some((n) => n.endsWith('.stale')), 'nothing was moved aside');
   resume();
+  // Either may win once A’s takeover is done: A links its lock next, but a disk slow to do it lets B, polling the
+  // mutex, link first (a 40 ms delay on A’s link does it). What must hold is one holder, and the other refused.
   const results = await Promise.allSettled([a, b]);
-  assert.deepEqual(
-    results.map((r) => r.status),
-    ['fulfilled', 'rejected'],
-  );
-  assert.match(results[1].reason.message, /Another Postbox store \(process \d+\) holds/);
+  const won = results.filter((r) => r.status === 'fulfilled');
+  const lost = results.filter((r) => r.status === 'rejected');
+  assert.equal(won.length, 1, JSON.stringify(results.map((r) => r.status)));
+  assert.match(lost[0].reason.message, /Another Postbox store \(process \d+\) holds/);
   const holder = JSON.parse(await readFile(join(dir, LOCK), 'utf8'));
-  assert.equal(holder.token, results[0].value.token, 'the lock on disk is A’s');
+  assert.equal(holder.token, won[0].value.token, 'the lock on disk is the winner’s');
   assert.deepEqual((await readdir(dir)).sort(), [LOCK], 'the mutex is gone with its maker’s takeover');
 });
 
