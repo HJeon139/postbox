@@ -14,7 +14,9 @@ A block is JSON naming one component. Agents send it with the `show_block` tool.
 | `title` | No | Up to 200 characters. |
 | `fallback` | Yes | Plain text shown if the block can’t be rendered. Write it so the person can still answer in the chat. |
 
-Every block is validated before it’s shown ([`shared/catalog.mjs`](../shared/catalog.mjs)). An unknown type, a newer version, a missing field or a misspelled field gets the fallback text and a collapsed **Show the raw block**. It never fails silently and never breaks the transcript. Objects are strict, so an unknown field is an error.
+Every block is validated before it’s shown ([`shared/catalog.mjs`](../shared/catalog.mjs)). Objects are strict, so an unknown field is an error. `show_block` and `update_block` advertise each type’s JSON Schema, made from the catalog’s own rules ([`shared/block-json-schema.mjs`](../shared/block-json-schema.mjs)), so the model reads the exact shape; the few checks across fields that a schema can’t say, such as a select needing options, stay the catalog’s.
+
+An agent’s invalid block is refused, and nothing is shown: the reply names each problem and shows a valid block of that type ([`shared/block-examples.mjs`](../shared/block-examples.mjs)), so the agent can fix it and send it again with the same id. A host refuses one the same way, before Postbox sees it. It was shown before, as its fallback text, and agents retried at once, mostly under a new id, so every try left a broken card in the conversation: 26 refusals in the UAT runs from 26 October to 13 November 2026, none followed by a read, 18 retried under a new id (#1319). Only a block this Postbox can’t read but a newer host’s catalog took, of an unknown type or a newer version, still shows its fallback text and a collapsed **Show the raw block**, so it never fails silently and never breaks the transcript.
 
 | Component | Fields | Your action → the event’s `action` and `values` |
 |---|---|---|

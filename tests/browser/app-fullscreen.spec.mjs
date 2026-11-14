@@ -58,12 +58,8 @@ const boxOf = (page, title) => page.locator('.appframe').filter({ has: page.loca
 /** The app’s full-screen button, which says Exit full screen while it’s full screen. */
 const fullButton = (box) => box.getByRole('button', { name: /^(Full screen|Exit full screen)$/ });
 const overlay = (page) => page.locator('.fullscreen');
-/** The app’s own document, through its frame. */
-const contentOf = async (box) => {
-  const frame = await (await box.locator('iframe.app-iframe').elementHandle())?.contentFrame();
-  if (!frame) throw new Error('The app’s frame has no document to read');
-  return frame;
-};
+/** The app’s own document, through its frame: its root element, found again at each use. */
+const contentOf = (box) => box.locator('iframe.app-iframe').contentFrame().locator(':root');
 /**
  * A real click on a button inside an app. A frame takes no pointer events until the page sees the pointer over it (#38),
  * so the pointer goes over the frame first, and the click waits for the frame to turn live.
@@ -103,7 +99,7 @@ test('#45 full screen fills the window, with the version menu above it, and Esca
   const button = fullButton(box);
   const before = await frameBox(box);
   const loaded = loads();
-  await (await contentOf(box)).evaluate(() => {
+  await contentOf(box).evaluate(() => {
     /** @type {any} */ (window).marked = true;
   });
   await test.step('a real click on Full screen fills the window, focus in the overlay, one copy running', async () => {
@@ -147,7 +143,7 @@ test('#45 full screen fills the window, with the version menu above it, and Esca
     await focusIs(page, 'button: Full screen');
   });
   // The menu and Escape from the page didn’t reload it either.
-  expect(await (await contentOf(box)).evaluate(() => /** @type {any} */ (window).marked), 'the app never reloaded').toBe(true);
+  expect(await contentOf(box).evaluate(() => /** @type {any} */ (window).marked), 'the app never reloaded').toBe(true);
   expect(loads(), 'its saved state counted one load').toBe(loaded);
 });
 
@@ -156,7 +152,7 @@ test('#45 Escape inside the app, and Enter on the button, leave full screen too,
   const button = fullButton(box);
   const loaded = loads();
   // Marked in its window: a reload would make a new one.
-  await (await contentOf(box)).evaluate(() => {
+  await contentOf(box).evaluate(() => {
     /** @type {any} */ (window).marked = true;
   });
   await test.step('Escape pressed inside the app leaves full screen too, with focus back on the button', async () => {
@@ -175,7 +171,7 @@ test('#45 Escape inside the app, and Enter on the button, leave full screen too,
     await expect(overlay(page)).toHaveCount(0);
   });
   await settled(page);
-  expect(await (await contentOf(box)).evaluate(() => /** @type {any} */ (window).marked), 'the app never reloaded').toBe(true);
+  expect(await contentOf(box).evaluate(() => /** @type {any} */ (window).marked), 'the app never reloaded').toBe(true);
   expect(loads(), 'its saved state counted one load').toBe(loaded);
 });
 
@@ -209,7 +205,7 @@ test('#45 an app that grew while full screen comes back as tall as the column al
   await fullButton(box).click();
   await expect(overlay(page)).toBeVisible();
   await clickInApp(box, '#g');
-  await expect((await contentOf(box)).locator('#x'), 'the app grew').toHaveCSS('height', '1200px');
+  await expect(contentOf(box).locator('#x'), 'the app grew').toHaveCSS('height', '1200px');
   await fullButton(box).focus();
   await page.keyboard.press('Escape');
   await expect(overlay(page)).toHaveCount(0);
@@ -231,7 +227,7 @@ test('#45 Escape an app handles itself doesn’t leave full screen', async ({ pa
   await page.keyboard.press('Escape');
   // The app’s kit tells the page of an Escape it didn’t handle a task later, so after two of its frames and two of the
   // page’s, any such message has come.
-  await (await contentOf(box)).evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+  await contentOf(box).evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
   await frames(page);
   await expect(overlay(page), 'still full screen').toBeVisible();
   await fullButton(box).focus();

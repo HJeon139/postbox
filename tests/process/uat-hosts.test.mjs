@@ -113,16 +113,12 @@ before(async () => {
   hosts = await import('../../tools/uat/driver-hosts.mjs');
   dataDir = tempDir('pb-test-uat-hosts-');
   const none = async () => null;
-  const nothing = async () => [];
   const probes = {
     claude: async () => '2.1.308',
     sdk: none,
     kiro: none,
-    kiroModels: nothing,
     agy: none,
-    agyModels: nothing,
     codex: none,
-    codexModels: nothing,
   };
   const port = await freePort();
   app = await start({ port, dataDir, fresh: true, quiet: true, claudeHome: dataDir, hosts: /** @type {any} */ (fake), probes });

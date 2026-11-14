@@ -119,7 +119,7 @@ function collectionView(store, coll) {
   }
   const { event, removed, patched } = ENTITIES[coll];
   for (; v.seen < store.heldLog.length; v.seen++) {
-    const { held, json } = store.heldLog[v.seen];
+    const { held, json } = store.heldLog.at(v.seen);
     if (held.type !== event && held.type !== patched && !(held.type === 'remove' && held.data?.kind === removed)) continue;
     v.entries ??= { ...(store.state[coll] ?? {}) };
     v.changes++;
@@ -176,7 +176,7 @@ function pendingList(store, list, key) {
 function applyHeld(store, v, list, key) {
   const { events, key: by, added } = LISTS[list];
   for (; v.seen < store.heldLog.length; v.seen++) {
-    const { held, json } = store.heldLog[v.seen];
+    const { held, json } = store.heldLog.at(v.seen);
     if (!(/** @type {readonly string[]} */ (events).includes(held.type)) || held.data?.[by] !== key) continue;
     const { type, data } = JSON.parse(json); // what release() will apply, not the caller’s object, which may have changed
     if (type.endsWith('.add')) v.own.add(added(data));

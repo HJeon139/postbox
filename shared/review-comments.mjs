@@ -5,7 +5,7 @@
 // app, and a reply names its thread. Pure, so the browser, the server and the tests share it.
 
 import { HANDLE, REVIEW_THREADS_BYTES, REVIEW_THREADS_MAX, REVIEW_THREADS_OPEN } from './limits.mjs';
-import { id, int, obj, str } from './schema.mjs';
+import { described, id, int, obj, str } from './schema.mjs';
 
 /** The longest quote a comment keeps; a longer selection is cut to it. */
 export const QUOTE_MAX = 2000;
@@ -25,11 +25,16 @@ export const authorName = (author) => (author === PERSON ? 'You' : author);
  * The page shows a handle without its @, so @you, in any case, would read as the person too.
  * @type {import('./schema.mjs').Rule}
  */
-export const author = (v, path, errs) => {
-  const handle = typeof v === 'string' && v[0] === '@' ? v.slice(1) : '';
-  const ok = v === PERSON || (HANDLE.test(handle) && handle.toLowerCase() !== PERSON);
-  if (!ok) errs.push(`${path} must be an agent’s @handle, such as @critic.`);
-};
+export const author = described(
+  (v, path, errs) => {
+    const handle = typeof v === 'string' && v[0] === '@' ? v.slice(1) : '';
+    const ok = v === PERSON || (HANDLE.test(handle) && handle.toLowerCase() !== PERSON);
+    if (!ok) errs.push(`${path} must be an agent’s @handle, such as @critic.`);
+  },
+  // What an agent may write: an @handle, which the check above reads with HANDLE. Only the person’s answer writes
+  // PERSON, and show_block refuses it.
+  { type: 'string', pattern: '^@' },
+);
 
 const ENCODER = new TextEncoder();
 /** What the agent can do about a review past its bounds (threadsError), and what the person can, by the review’s agent. */

@@ -1,6 +1,7 @@
 // The messages Postbox and its daemon send each other over the SSH channel’s stdio (shared/remote-protocol.mjs). Each
 // maps a message type to its validator, which returns an error to show or ''. Field types are in each validator.
 
+import { isModelId, MAX_MODELS } from './model-ids.mjs';
 import {
   bool,
   clip,
@@ -113,6 +114,8 @@ export const POSTBOX_CHANNELS = {
     remove: (m) => fields(m, 'remove', []),
     /** {}: run the host’s signInCheck (hello.settings’), answered by `checked`. */
     check: (m) => fields(m, 'check', []),
+    /** { harness }: list the models the host’s own CLI for that harness offers, answered by `listed`. */
+    models: (m) => fields(m, 'models', ['harness']) || oneOf(m.harness, 'models.harness', HARNESSES),
   },
 
   /** daemon → Postbox, over the SSH channel’s stdout. */
@@ -218,6 +221,12 @@ export const POSTBOX_CHANNELS = {
       (m.code === null ? '' : int(m.code, 'checked.code', 0, 255)) ||
       int(m.at, 'checked.at', 0, Number.MAX_SAFE_INTEGER) ||
       (m.ok === (m.code === 0) ? '' : 'checked.ok is true exactly when checked.code is 0.'),
+    /** { harness, models }: what the host’s CLI for that harness listed; none when it isn’t there or couldn’t list. */
+    listed: (m) =>
+      fields(m, 'listed', ['harness', 'models']) ||
+      oneOf(m.harness, 'listed.harness', HARNESSES) ||
+      list(m.models, 'listed.models', MAX_MODELS, (v, i) => (isModelId(v) ? '' : `listed.models[${i}] must be a model ID; got “${clip(v)}”.`)) ||
+      unique(m.models, 'listed.models', 'model'),
     error: (m) => checkError(m),
   },
 };

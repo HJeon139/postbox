@@ -8,7 +8,7 @@ import { readdir } from 'node:fs/promises';
 import { test } from 'node:test';
 import { Store } from '../server/store.mjs';
 import { run } from '../server/store-commit.mjs';
-import { disk, logDisk } from './store-jsonl-fixture.mjs';
+import { disk, handleWith, logDisk } from './store-jsonl-fixture.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
 const tmp = () => tempDir('pb-close-');
@@ -120,5 +120,70 @@ test('a descriptor that fails to close doesn’t leave the lock behind', async (
   assert.equal(a.lock, null, 'released');
   const b = await new Store(dir).load(); // not refused
   assert.ok(b.state.threads.a1);
+  await b.close();
+});
+
+test('a snapshot under way when close() begins stops at its next piece, rather than writing the rest it will throw away', async () => {
+  // A close() during the snapshot of a large state waited for every piece of a file it then removed: about 1.5 s of
+  // the close of a 1,000,000-item store, against its 3 s bound.
+  const dir = await tmp();
+  let pieces = 0;
+  let closing = /** @type {Promise<void> | null} */ (null);
+  const io = disk({
+    async open(path, flags, mode) {
+      const handle = await disk().open(path, flags, mode);
+      if (!String(path).includes('snapshot.json.')) return handle;
+      return handleWith(handle, {
+        write: async (...args) => {
+          pieces++;
+          closing ??= a.close(); // the close begins as the snapshot’s first piece goes to the disk
+          return handle.write(...args);
+        },
+      });
+    },
+  });
+  const a = await new Store(dir, { io }).load();
+  // About 4 MB of state: four pieces or more.
+  for (let i = 0; i < 400; i++) a.emit('thread', { id: `t${i}`, members: [], title: 'x'.repeat(10_000) });
+  await a.flush();
+  await assert.rejects(a.snapshot(), /abandoned/);
+  await closing;
+  assert.equal(pieces, 1, 'no piece is written after the close began');
+  const names = (await readdir(dir)).filter((n) => n.startsWith('snapshot'));
+  assert.deepEqual(names, [], 'the abandoned file is removed');
+});
+
+test('emits held behind a slow snapshot when close() begins, as a stopping turn’s records are, reach the log before the lock goes', async () => {
+  // Each snapshot piece takes 60 ms against a 400 ms bound, and the pieces of the whole snapshot about 1.2 s. close()
+  // used to give up on the pass in all, and the records held behind the snapshot were then released into a closed
+  // store and written nowhere. The bound is wide of each piece, so a loaded event loop running late doesn’t fail it.
+  const dir = await tmp();
+  let closing = /** @type {Promise<void> | null} */ (null);
+  const io = disk({
+    async open(path, flags, mode) {
+      const handle = await disk().open(path, flags, mode);
+      if (!String(path).includes('snapshot.json.')) return handle;
+      return handleWith(handle, {
+        write: async (...args) => {
+          if (!closing) {
+            // As Postbox stops: settleLedger’s records are emitted, held behind the snapshot, then the store closes.
+            a.emit('thread', { id: 'stop-record-1', members: [] });
+            a.emit('thread', { id: 'stop-record-2', members: [] });
+            closing = a.close();
+          }
+          await new Promise((r) => setTimeout(r, 60));
+          return handle.write(...args);
+        },
+      });
+    },
+  });
+  const a = await new Store(dir, { io, retryBoundMs: 400 }).load();
+  for (let i = 0; i < 2000; i++) a.emit('thread', { id: `t${i}`, members: [], title: 'x'.repeat(10_000) }); // ~20 pieces
+  await a.flush();
+  await assert.rejects(a.snapshot(), /abandoned/);
+  await closing;
+  assert.equal(a.held, 0, 'nothing is left held');
+  const b = await new Store(dir).load();
+  assert.ok(b.state.threads['stop-record-1'] && b.state.threads['stop-record-2'], 'both records are on disk');
   await b.close();
 });

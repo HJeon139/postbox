@@ -44,7 +44,9 @@ export const liveAgents = (threadId) => atWork(threadId).length;
 export function isLive(it, threadId) {
   if (it?.kind !== 'agent') return false;
   if (it.status === 'streaming') return true;
-  if (!it.turnId || !atWork(threadId).some((se) => se.id === it.sessionId)) return false;
+  const se = it.turnId ? atWork(threadId).find((s) => s.id === it.sessionId) : null;
+  // The agent’s next turn, before it posts anything, isn’t this reply’s: it ended, and stays drawn as it is.
+  if (!se || (se.lastTurnId && se.lastTurnId !== it.turnId)) return false;
   const items = itemsOf(threadId);
   for (let i = items.length - 1; i >= 0; i--) if (items[i].kind === 'agent' && items[i].sessionId === it.sessionId) return items[i].turnId === it.turnId;
   return false;

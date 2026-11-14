@@ -51,10 +51,11 @@ import { spawn } from 'node:child_process';
 import { rm, rmdir, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
-import { AGY_DEFAULT_MODEL } from '../../shared/agent-facts.mjs';
+import { AGY_DEFAULT_MODEL, modelDefault } from '../../shared/agent-facts.mjs';
 import { TOOL_DEFS } from '../../shared/mcp-tools.mjs';
 import { HarnessEvents } from '../harness-events.mjs';
 import { firstSentence } from '../harness-tools.mjs';
+import { stopProbe } from '../remote/host/probe-stop.mjs';
 import { describeTool } from '../tool-labels.mjs';
 import { AGY_CAPABILITIES } from './agy-capabilities.mjs';
 import { agyHookCommand, agySupportsHooks, confirmAgyHook, HOOK_SCRIPT } from './agy-hook.mjs';
@@ -65,7 +66,6 @@ import { toolOf } from './agy-tools.mjs';
 import { agyContextPercent, agyWindowFor } from './context-usage.mjs';
 import { agentFolder } from './folder.mjs';
 import { FRESH_START_TEXT, formatMessage, turnGuide } from './guide.mjs';
-import { stopProbe } from './probe-stop.mjs';
 import { listProcesses, stopOnAbort, stopTurn } from './process-group.mjs';
 import { DEFAULT_MODEL, EFFORT_LEVELS, effortOf, modelOf, recorderFor, setupOf, TOOL_WORDS, toolsOff } from './setup.mjs';
 import { agyResult } from './work-calls.mjs';
@@ -139,14 +139,15 @@ export function modelIds(text) {
 export { AGY_CAPABILITIES, AGY_DEFAULT_MODEL };
 
 /**
- * The model to pass. A persona that names none gets Postbox’s default, Claude’s, which agy doesn’t offer: that
- * becomes Gemini’s. A model the persona named is passed as it is, and agy says if it doesn’t know it.
+ * The model to pass. A persona that names none gets Postbox’s default, Claude’s, which agy may not offer: then it
+ * runs the model a new Antigravity agent starts on (modelDefault, #390). A model the persona named is passed as it
+ * is, and agy says if it doesn’t know it.
  * @param {any} persona @param {string[]} [offered]  the models agy last listed
  */
 export function agyModel(persona, offered = []) {
   const model = modelOf(persona);
   if (model !== DEFAULT_MODEL || offered.includes(model)) return model;
-  return offered.includes(AGY_DEFAULT_MODEL) || !offered.length ? AGY_DEFAULT_MODEL : offered[0];
+  return modelDefault('antigravity-cli', { defaultModel: DEFAULT_MODEL, backends: { 'antigravity-cli': AGY_CAPABILITIES } }, offered);
 }
 
 /** The effort levels agy takes with a base Gemini model (recorded: “gemini-3.8-flash has no "xhigh" effort”). */

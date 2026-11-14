@@ -2,6 +2,45 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.7.2 (2026-11-14)
+
+### Fixes
+
+- **models:** keep a saved boilerplate's model
+
+## 4.7.1 (2026-11-14)
+
+### Fixes
+
+- **models:** start a built-in boilerplate on its backend's default model
+- **remote:** match an older host's exact refusal, and say when a host has no cli
+- **models:** decide a backend's default model in one place
+
+## 4.7.0 (2026-11-13)
+
+### Features
+
+- **remote:** list an agent's models from its host's own CLI
+
+### Fixes
+
+- **models:** forget a deleted host's model lists
+- **remote:** say a host's Postbox is older only when it is, and at once
+- **models:** drop a listed model id that starts with -
+
+## 4.6.1 (2026-11-13)
+
+### Fixes
+
+- **running:** note awaiting attach again when Retry installs the state
+- **attachments:** keep a typed path only when it is the blob's own hard link
+- **attachments:** give agents an attached file's path with its extension
+- **adapters:** let every agent read the files attached to its message, with no card
+- **uat:** read each conversation's items, which /api/state no longer carries
+- **tests:** the failed-stop test waits for the spawn and the kill, not fixed times
+- **running:** every awaiting-attach note reads the session and persona as written
+- **running:** begin no longer refuses a session awaiting attach
+
 ## 4.6.0 (2026-11-13)
 
 ### Features

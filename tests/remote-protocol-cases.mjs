@@ -145,6 +145,14 @@ export const CASES = {
     remove: { ok: {}, bad: [[{ force: true }, /“force” isn’t a field of remove/]] },
     // No argv: the daemon runs the signInCheck hello sent, so a check can’t name another program.
     check: { ok: {}, bad: [[{ argv: ['klist', '-s'] }, /“argv” isn’t a field of check/]] },
+    // No program or path: the daemon runs the one its welcome reported for the harness.
+    models: {
+      ok: { harness: 'claude-code' },
+      bad: [
+        [{ harness: 'antigravity-cli' }, /models\.harness must be one of claude-code, kiro-cli, codex/],
+        [{ harness: 'claude-code', path: '/tmp/x' }, /“path” isn’t a field of models/],
+      ],
+    },
   },
   'daemon-to-postbox': {
     welcome: {
@@ -212,6 +220,16 @@ export const CASES = {
         [{ ok: false, code: 256, at: 5 }, /checked\.code must be from 0 to 255/],
         [{ ok: 'no', code: 1, at: 5 }, /checked\.ok must be true or false/],
         [{ ok: true, code: 0 }, /checked needs “at”/],
+      ],
+    },
+    listed: {
+      ok: { harness: 'codex', models: ['gpt-6.1-sol', 'gpt-5.6-terra'] },
+      bad: [
+        [{ harness: 'codex', models: ['--dangerously-bypass-approvals-and-sandbox'] }, /listed\.models\[0\] must be a model ID/],
+        [{ harness: 'codex', models: ['a b'] }, /listed\.models\[0\] must be a model ID/],
+        [{ harness: 'codex', models: ['gpt-6', 'gpt-6'] }, /names the model “gpt-6” twice/],
+        [{ harness: 'codex', models: Array.from({ length: 61 }, (_, i) => `m-${i}`) }, /listed\.models has 61 entries; the limit is 60/],
+        [{ harness: 'agy', models: [] }, /listed\.harness must be one of/],
       ],
     },
     error: {

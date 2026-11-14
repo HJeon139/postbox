@@ -51,14 +51,17 @@ async function append(store, text, gen, sync, through) {
   const fh = await handle(store);
   if (store.generation !== gen) throw fenced();
   await writeAll(fh, Buffer.from(text), `The event log ${store.segment}`);
+  store.steppedAt = Date.now();
   if (store.generation !== gen) throw fenced();
   if (through > store.writtenThrough) store.writtenThrough = through;
   if (!sync) return;
   await fh.sync();
+  store.steppedAt = Date.now();
   if (store.generation !== gen) throw fenced();
   store.savedThrough = store.writtenThrough;
   if (store.freshSegment) {
     await syncDir(store);
+    store.steppedAt = Date.now();
     if (store.generation !== gen) throw fenced();
     store.freshSegment = false;
   }
@@ -128,14 +131,23 @@ function sequenced(store, c) {
 }
 
 /**
+ * The first n jobs of the writer’s queue, taken off it in one step. One Array.shift() per job moves every job behind
+ * it once V8 can’t trim the array’s start in place, so a run of 100,000 lines held the event loop for seconds, past
+ * close()’s bound (open-scale’s #1271 spec on CI).
+ * @param {import('./store.mjs').Store} store @param {number} n
+ */
+const takeHead = (store, n) => store.queue.splice(0, n);
+
+/**
  * Takes the commits at the head of the queue (a function commit only first, so it sees every earlier batch applied),
  * numbers their events, writes one line each, one fsync for all, then applies and resolves them. A failure rejects
  * them and closes the store (fail), unless a reload already overtook this loop.
  * @param {import('./store.mjs').Store} store @param {number} gen
  */
 async function writeCommits(store, gen) {
-  const group = [];
-  while (store.queue[0]?.commit && !(typeof store.queue[0].commit.events === 'function' && group.length)) group.push(store.queue.shift().commit);
+  let n = 0;
+  while (store.queue[n]?.commit && !(typeof store.queue[n].commit.events === 'function' && n)) n++;
+  const group = takeHead(store, n).map((job) => job.commit);
   const written = [];
   const pending = new Map(); // opId → the commit of this group that writes it
   for (const c of group) {
@@ -168,8 +180,10 @@ async function writeCommits(store, gen) {
 async function writeLines(store, gen) {
   const lines = [];
   let through = 0;
-  while (store.queue[0]?.line !== undefined || store.queue[0]?.held) {
-    const job = store.queue.shift();
+  let n = 0;
+  while (store.queue[n]?.line !== undefined || store.queue[n]?.held) n++;
+  // A job a release’s listener queues meanwhile goes behind these, and the loop’s next pass takes it.
+  for (const job of takeHead(store, n)) {
     if (job.held) {
       const line = store.release(job);
       through = job.held.seq;
@@ -206,6 +220,7 @@ export async function run(store, gen) {
       store.queue.shift();
       await (store.fh ? store.fh.sync() : Promise.resolve()).then(
         () => {
+          store.steppedAt = Date.now();
           store.savedThrough = store.writtenThrough;
           job.flush.resolve();
         },

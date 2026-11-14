@@ -78,6 +78,12 @@
 //   code is null when it couldn’t start, was killed or ran out of time). One `checked` answers each `check`, in the
 //   order they came; a hello with no signInCheck gets the `no-check` error instead. Postbox uses it to resume after
 //   Sign-in needed only when the check passes (D2), and to warn before a turn.
+// - `models` asks the daemon which models the host’s own CLI for a harness offers: the program the welcome reported,
+//   asked as the laptop’s adapter asks it (server/remote/host/harness-models.mjs), with the login shell’s PATH, which
+//   runs no model. `listed` answers each, naming its harness, with none when the harness isn’t there or couldn’t list.
+//   It’s new in this version of the protocol without a new version number: a daemon from before it refuses the line
+//   as a message it doesn’t carry (`error`, code `bad-message`, with no `re`, worded as refusesType reads it), and
+//   Postbox suggests the last list it kept and says the host’s Postbox is older (#1304, #1318).
 //
 // This module is the protocol’s one entry point, and its parts are the remote-protocol-*.mjs modules beside it, one
 // concern each: constants, checks (single values), parts (what several messages carry), files (the host’s), the
@@ -106,7 +112,17 @@ import {
 } from './remote-protocol-constants.mjs';
 import { hostPaths, socketPathFits, validateExitRecord, validateRunnerRecord, validateStartRecord } from './remote-protocol-files.mjs';
 import { createLineReader, createMessageReader } from './remote-protocol-framing.mjs';
-import { CHANNEL_NAMES, encode, encodedBytes, message, messageTypes, parseLine, VALIDATORS, validateMessage } from './remote-protocol-messages.mjs';
+import {
+  CHANNEL_NAMES,
+  encode,
+  encodedBytes,
+  message,
+  messageTypes,
+  parseLine,
+  refusesType,
+  VALIDATORS,
+  validateMessage,
+} from './remote-protocol-messages.mjs';
 import { lookedText } from './remote-protocol-parts.mjs';
 
 export {
@@ -132,6 +148,7 @@ export {
   parseLine,
   REMOTE_DIR,
   REMOTE_LIMITS,
+  refusesType,
   SIGN_IN_CHECK_MS,
   SOCKET_PATH_BYTES,
   STDIN_KINDS,

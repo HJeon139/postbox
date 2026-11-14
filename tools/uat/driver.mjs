@@ -7,6 +7,7 @@ import { writeFile } from 'node:fs/promises';
 import { js, sleep } from '../browser.mjs';
 import { targetScript } from './app-target.mjs';
 import { agentPanel } from './driver-panel.mjs';
+import { pointer } from './driver-pointer.mjs';
 import { review } from './driver-review.mjs';
 import { keeper, shots } from './driver-shots.mjs';
 import { pressKey } from './keys.mjs';
@@ -35,26 +36,7 @@ export function driver(page, hooks = {}) {
   const runnerClick = () => hooks.input?.({ kind: 'runner-click' });
   const keep = keeper(ev, hooks.input);
 
-  /**
-   * Clicks the centre of the first element that matches. As a person does, it scrolls only when it can’t reach that
-   * centre where it is, off screen or under the top bar or the composer, and then to the middle, clear of both (#531).
-   */
-  async function clickAt(findExpr, what) {
-    runnerClick();
-    const r = await ev(`(async () => {
-      const el = ${findExpr};
-      if (!el) return null;
-      const at = el.getBoundingClientRect();
-      if (!el.contains(document.elementFromPoint(at.left + at.width / 2, at.top + at.height / 2))) ${JUMP('el', 'center')};
-      const b = el.getBoundingClientRect();
-      return { x: b.left + b.width / 2, y: b.top + b.height / 2 };
-    })()`);
-    if (!r) throw new Error(`Couldn’t find ${what} on screen.`);
-    await sleep(120);
-    for (const type of ['mouseMoved', 'mousePressed', 'mouseReleased'])
-      await page.send('Input.dispatchMouseEvent', { type, x: r.x, y: r.y, button: 'left', clickCount: 1 });
-    await sleep(250);
-  }
+  const { clickAt } = pointer(page, ev, runnerClick, hooks.input);
   const press = (key) => pressKey(page, key);
   const typeInto = async (findExpr, text, what) => {
     await clickAt(findExpr, what);
