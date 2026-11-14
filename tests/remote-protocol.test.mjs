@@ -16,7 +16,9 @@ import {
   message,
   messageTypes,
   PROTOCOL_VERSION,
+  parseLine,
   REMOTE_LIMITS,
+  refusesType,
   socketPathFits,
   TOOL_ROUTES,
   TURN_FILES,
@@ -59,6 +61,15 @@ test('an unknown message type is refused, and the reason lists what the channel 
   assert.equal(validateMessage('daemon-to-postbox', { type: 'start', ...start }).ok, false, 'a message is checked for its own direction');
   assert.equal(validateMessage('postbox-to-daemon', [{ type: 'remove' }]).ok, false);
   assert.equal(validateMessage('postbox-to-daemon', null).ok, false);
+});
+
+test('refusesType reads a daemon’s refusal of a type it doesn’t carry, as the channel words it, and nothing else', () => {
+  const r = parseLine('postbox-to-daemon', JSON.stringify({ type: 'exec' }));
+  const refusal = { type: 'error', code: r.code, message: r.ok ? '' : r.error };
+  assert.equal(refusesType(refusal, 'exec'), true);
+  assert.equal(refusesType(refusal, 'ex'), false, 'the whole type is named');
+  assert.equal(refusesType({ ...refusal, re: 'exec' }, 'exec'), false, 'a refusal that names its message read it');
+  assert.equal(refusesType({ ...refusal, code: 'internal' }, 'exec'), false);
 });
 
 test('a validator for one type refuses a valid message of another type', () => {
