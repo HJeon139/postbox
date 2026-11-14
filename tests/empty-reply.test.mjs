@@ -24,6 +24,7 @@ import { handleMcp } from '../server/mcp.mjs';
 import { readMessage } from '../server/read-message.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
+import * as arrange from './arrange.mjs';
 import { setup as blocksSetup, settle as settleBlocks } from './blocks-fixture.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
@@ -57,7 +58,7 @@ function setup(lines = SILENT) {
   store.emit('project', { id: 'p1', name: 'P', folder: DIR_485 });
   const p = rt.createPersona({ handle: 'critic', backend: 'claude-code', folder: DIR_485 });
   const t = rt.createThread({ projectId: 'p1', title: 'Q4 review', personaIds: [p.id] });
-  return { store, rt, t, se: rt.sessionsIn(t.id)[0] };
+  return { store, rt, t, se: arrange.sessionsIn(rt, t.id)[0] };
 }
 const settle = async (rt) => {
   for (let i = 0; i < 400 && rt.turns.size; i++) await new Promise((r) => setTimeout(r, 5));
@@ -128,7 +129,7 @@ test('#485: a reply that wrote its report and then failed still reaches the othe
   const { store, rt, adapter, t } = blocksSetup();
   const other = rt.createPersona({ handle: 'researcher' });
   rt.ensureSession(t.id, other.id);
-  const researcher = rt.sessionsIn(t.id).find((x) => x.handle === 'researcher');
+  const researcher = arrange.sessionsIn(rt, t.id).find((x) => x.handle === 'researcher');
   adapter.next.push(async (c) => {
     c.activity({ id: 's1', label: 'Ran gh pr checks', state: 'done' });
     c.text('#451 is ready at 41f3a0f, and all 8 CI checks pass.');
@@ -154,7 +155,7 @@ test('#485: a reply that wrote its report and then failed still reaches the othe
 
 test('#485: a turn that answers only with a Postbox call that acts, such as a reaction, isn’t marked failed', async () => {
   const { store, rt, adapter, t } = blocksSetup();
-  const se = rt.sessionsIn(t.id)[0];
+  const se = arrange.sessionsIn(rt, t.id)[0];
   const call = (name, args) =>
     handleMcp(rt, se.id, { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }, rt.turns.get(se.id)?.token ?? null);
   adapter.next.push(async () => {

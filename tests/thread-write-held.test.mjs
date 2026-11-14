@@ -18,7 +18,7 @@ async function heldRoom() {
   const h = await heldStore();
   const f = setup(h.store);
   f.rt.ensureSession(f.t.id, f.c.id);
-  const gamma = f.rt.sessionsIn(f.t.id).find((x) => x.handle === 'gamma');
+  const gamma = arrange.sessionsIn(f.rt, f.t.id).find((x) => x.handle === 'gamma');
   await h.store.flush();
   const hold = async (events = [{ type: 'settings', data: { theme: 'system' } }]) => {
     h.hold();

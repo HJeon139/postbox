@@ -5,6 +5,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { Store } from '../server/store.mjs';
+import * as arrange from './arrange.mjs';
 import { held, settle, setup, sleep } from './side-threads-fixture.mjs';
 import { heldStore } from './stop-reply-fixture.mjs';
 
@@ -17,7 +18,7 @@ async function busyRoom() {
   const h = await heldStore();
   const f = setup(h.store);
   f.rt.ensureSession(f.t.id, f.c.id);
-  const gamma = f.rt.sessionsIn(f.t.id).find((x) => x.handle === 'gamma');
+  const gamma = arrange.sessionsIn(f.rt, f.t.id).find((x) => x.handle === 'gamma');
   const beta = held();
   f.adapter.next.push(beta.step);
   f.rt.sendMessage(f.t.id, { text: '@beta work' });

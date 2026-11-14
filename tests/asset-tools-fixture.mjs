@@ -6,6 +6,7 @@ import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { assetTools } from '../server/asset-tools.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
+import * as arrange from './arrange.mjs';
 import { ScriptedAdapter } from './side-threads-fixture.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
@@ -29,7 +30,7 @@ export async function assetRoom(ctx, { store = null } = {}) {
   const a = rt.createPersona({ handle: 'alpha' });
   const b = rt.createPersona({ handle: 'beta' });
   const t = rt.createThread({ projectId: 'p1', title: 'T', personaIds: [a.id, b.id] });
-  const [alpha, beta] = rt.sessionsIn(t.id);
+  const [alpha, beta] = arrange.sessionsIn(rt, t.id);
   /** The asset tools as an agent calls them; each call’s answer, with its message checked to be a string. */
   const as = (se, turn = null, opts = {}) => {
     const tools = assetTools(rt, se.id, turn, opts);

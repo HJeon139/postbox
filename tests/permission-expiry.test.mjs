@@ -73,7 +73,7 @@ test('#721 the note is sent once per card, however many paths tell it', async ()
 test('#721 a host card kept open across a restart, which its host then expires with no wait here, clears the need and tells', async () => {
   const { rt, t, now } = await setup();
   const it = arrange.post(rt, t.id, { kind: 'permission', sessionId: now().id, handle: 'deployer', tool: 'Bash', summary: 'run the deploy', status: 'open' });
-  rt.updateSession(now().id, { needs: { kind: 'permission', itemId: it.id, text: 'x' }, state: 'needs' });
+  arrange.setSession(rt, now().id, { needs: { kind: 'permission', itemId: it.id, text: 'x' }, state: 'needs' });
   endCard({ rt, now: () => Date.now() }, { it, threadId: t.id }, 'expired', 'Expired on its host.', Date.now());
   assert.equal(rt.store.item(t.id, it.id).status, 'expired');
   assert.equal(now().needs, null);
@@ -119,7 +119,7 @@ test('#721 Dismiss on an expired card that still needs you clears the need, and 
     status: 'expired',
   });
   // The need a restart left on the card it expired (#633 fixes that path; Dismiss is the backstop).
-  rt.updateSession(now().id, { state: 'needs', needs: { kind: 'permission', itemId: it.id, text: '@deployer asks to run the deploy' } });
+  arrange.setSession(rt, now().id, { state: 'needs', needs: { kind: 'permission', itemId: it.id, text: '@deployer asks to run the deploy' } });
   assert.deepEqual(rt.act(t.id, it.id, 'dismiss'), { ok: true });
   assert.equal(now().needs, null);
   assert.equal(now().state, 'idle');
@@ -138,7 +138,7 @@ test('#721 Dismiss on a closed card leaves a need for another card alone', async
     status: 'expired',
   });
   const needs = { kind: 'block', itemId: 'it_other', text: 'a choice' };
-  rt.updateSession(now().id, { state: 'needs', needs });
+  arrange.setSession(rt, now().id, { state: 'needs', needs });
   rt.act(t.id, it.id, 'dismiss');
   assert.deepEqual(now().needs, needs);
 });
@@ -188,7 +188,7 @@ test('#721 on #633: a host card with no wait here that its host ends hands the n
   const { rt, t, now } = await setup();
   const it = arrange.post(rt, t.id, { kind: 'permission', sessionId: now().id, handle: 'deployer', tool: 'Bash', summary: 'run the deploy', status: 'open' });
   const app = arrange.post(rt, t.id, { kind: 'appsend', sessionId: now().id, appId: 'a1', title: 'App', events: [{ action: 'x' }], status: 'open' });
-  rt.updateSession(now().id, { needs: { kind: 'permission', itemId: it.id, text: 'x' }, state: 'needs' });
+  arrange.setSession(rt, now().id, { needs: { kind: 'permission', itemId: it.id, text: 'x' }, state: 'needs' });
   endCard({ rt, now: () => Date.now() }, { it, threadId: t.id }, 'expired', 'Expired on its host.', Date.now());
   assert.equal(now().needs?.itemId, app.id);
   assert.equal(now().state, 'needs');
@@ -198,16 +198,14 @@ test('#721 closing a card moves the need before the card’s patch, so the page 
   const { rt, t, ask, now } = await setup();
   const { card } = await ask();
   const order = [];
-  const update = rt.updateSession.bind(rt);
-  rt.updateSession = (id, p) => {
+  const update = arrange.onSessionUpdate(rt, (_id, p) => {
     if (Object.hasOwn(p, 'needs')) order.push('need');
-    return update(id, p);
-  };
+  });
   const heard = arrange.onItemPatch(rt, (_threadId, id, p) => {
     if (id === card.id && Object.hasOwn(p, 'status')) order.push('card');
   });
   rt.resolvePermission(t.id, card.id, 'allow');
-  rt.updateSession = update;
+  update();
   heard();
   await settle(rt);
   assert.deepEqual(order.slice(0, 2), ['need', 'card']);

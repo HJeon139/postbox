@@ -44,13 +44,13 @@ export function recordJob(rt, turn, j) {
     // At the bound, the oldest job Postbox didn’t keep goes first: a kept one has no other record.
     const all = [...jobs, job];
     const drop = all.length > MAX_JOBS ? all.find((x) => !x.kept) : null;
-    rt.updateSession(se.id, { jobs: drop ? all.filter((x) => x !== drop) : all });
+    rt.sessions.update(se.id, { jobs: drop ? all.filter((x) => x !== drop) : all });
     return;
   }
   const groups = j.kept === true ? keptGroupsOf(j) : [];
   if (groups.length) {
     turn.keptAny = true;
-    rt.updateSession(se.id, { jobs: jobs.map((x) => (x.id === id ? { ...x, kept: true, pgid: groups[0].pgid, groups } : x)) });
+    rt.sessions.update(se.id, { jobs: jobs.map((x) => (x.id === id ? { ...x, kept: true, pgid: groups[0].pgid, groups } : x)) });
     // Postbox couldn’t tell which of the turn’s processes was the job, so it kept them all (#164): say so.
     const unsure = groups.length > 1 ? keepUnsure(groups.length) : null;
     if (unsure) setJobStep(rt, old, { detail: unsure });
@@ -58,7 +58,7 @@ export function recordJob(rt, turn, j) {
     // Its CLI is gone, so nothing would tell the agent: its next turn hears it’s still running, and why it ran on. Claude
     // Code, resumed, marks a background command it has no end for as stopped, and says so to the agent (#249).
     // A step that follows it reads as running on (#129): the agent leaves it running, rather than closing it as failed.
-    rt.tellAgent(
+    rt.sessions.tell(
       se.id,
       `Your background job ${id} (\`${clipText(old.command, 200)}\`) is still running: ${turn.stopReason === 'send-now' ? 'a message sent with Send now ended your last turn, but not this job' : 'the person stopped your last turn and kept this job running'}. If your CLI says it was stopped, that’s only because the process that started it has ended: it wasn’t stopped.${unsure ? ` ${unsure}` : ''}${old.outputFile ? ` Its output is in ${old.outputFile}.` : ''} They can stop it from the conversation. If a progress step follows it, leave that step running while the job runs: when it ends, Postbox tells you on your next turn.`,
     );
@@ -84,7 +84,7 @@ export function endJob(rt, sessionId, jobId, state, detail = null, { by = null }
   if (!se || !job) return;
   // Work says how it ended too: its turn may have ended thinking it was still running (#164).
   rt.ledger.jobUpdate(job, { state, by });
-  rt.updateSession(sessionId, (s) => ({ jobs: (s.jobs ?? []).filter((j) => j.id !== jobId) }));
+  rt.sessions.update(sessionId, (s) => ({ jobs: (s.jobs ?? []).filter((j) => j.id !== jobId) }));
   if (rt.keptPoll && !rt.keptJobs().length) {
     clearInterval(rt.keptPoll);
     rt.keptPoll = null;
@@ -93,7 +93,7 @@ export function endJob(rt, sessionId, jobId, state, detail = null, { by = null }
   setJobStep(rt, job, { state: stepState(state), ms: Date.now() - job.startedAt, ...(detail || job.kept ? { detail } : {}) });
   // A job Postbox kept running ended after its CLI had gone, so the agent hears it on its next turn.
   if (job.kept)
-    rt.tellAgent(
+    rt.sessions.tell(
       sessionId,
       `Your background job ${job.id} (\`${clipText(job.command, 200)}\`) ${by === 'you' ? 'was stopped by the person' : 'has ended'}.${job.outputFile ? ` Its output is in ${job.outputFile}.` : ''}`,
     );
@@ -102,10 +102,10 @@ export function endJob(rt, sessionId, jobId, state, detail = null, { by = null }
   const now = rt.store.pending.session(sessionId);
   const held = now?.heldSteps;
   if ((job.kept || detail === KEEP_LOST) && held && !(now.jobs ?? []).some((j) => j.kept)) {
-    rt.updateSession(sessionId, { heldSteps: null });
+    rt.sessions.update(sessionId, { heldSteps: null });
     const problems = rt.turns.has(sessionId) ? [] : rt.stallSteps({ threadId: held.threadId }, rt.store.pending.session(sessionId));
     if (problems.length)
-      rt.tellAgent(
+      rt.sessions.tell(
         sessionId,
         `Your background job ${job.id} ended while progress steps were running:\n${problems.map((p) => `- Block “${p.scope.title ?? p.scope.id}” (id ${p.scope.id}): ${p.message}`).join('\n')}`,
       );

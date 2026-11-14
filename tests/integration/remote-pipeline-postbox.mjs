@@ -11,6 +11,7 @@ import { createHostManager } from '../../server/remote/hosts.mjs';
 import { Runtime } from '../../server/runtime.mjs';
 import { Store } from '../../server/store.mjs';
 import { TURN_FILES } from '../../shared/remote-protocol.mjs';
+import * as arrange from '../arrange.mjs';
 import { until } from './host.mjs';
 import { appliedRuns, BLOCK_ID, HOST, machine, standins, VERSION } from './remote-pipeline-machines.mjs';
 
@@ -67,7 +68,7 @@ export async function postbox(m, postboxes, store = new Store(null)) {
     f,
     host: /** @type {any} */ (Object.values(store.state.hosts ?? {})[0]),
     t: /** @type {any} */ (null),
-    se: () => rt.sessionsIn(p.t.id)[0],
+    se: () => arrange.sessionsIn(rt, p.t.id)[0],
     async done() {
       if (closed) return;
       closed = true;

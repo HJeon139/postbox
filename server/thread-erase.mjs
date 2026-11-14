@@ -19,7 +19,7 @@ export function eraseThreads(rt, ids, why, stopped = []) {
       // A turn it still has would run on for a session that’s gone.
       if (rt.turns?.has(sid)) rt.stop(sid, { silent: true });
       rt.stopMirrorFor(sid);
-      if (rt.store.pending.session(sid)) rt.store.emit('remove', { kind: 'session', id: sid });
+      rt.sessions.remove(sid);
     }
     for (const app of Object.values(rt.store.pending.apps())) if (app.threadId === id) rt.store.emit('remove', { kind: 'app', id: app.id });
   }

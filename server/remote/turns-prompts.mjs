@@ -122,7 +122,12 @@ function waitOn(rts, live, card, m) {
   const rt = rts.rt;
   const se = rt.s.sessions[live.sessionId];
   const p = new Promise((resolve) => rt.permissionWaits.set(card.it.id, { resolve, threadId: card.threadId, sessionId: live.sessionId }));
-  offerNeed(rt, se, { kind: 'permission', itemId: card.it.id, text: `@${se.handle} asks to ${card.it.summary}`, ...rt.awayFrom(se, card.threadId) }, 'needs');
+  offerNeed(
+    rt,
+    se,
+    { kind: 'permission', itemId: card.it.id, text: `@${se.handle} asks to ${card.it.summary}`, ...rt.sessions.awayFrom(se, card.threadId) },
+    'needs',
+  );
   setWaiting(rts, live, true);
   void p.then((answer) => {
     setWaiting(rts, live, false);

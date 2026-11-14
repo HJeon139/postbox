@@ -86,14 +86,14 @@ function targetsOf(rt, t, mentioned) {
     }
   }
   // Refuse before anything is posted, so a refused message doesn’t also appear in the transcript.
-  const retired = mentioned.map((p) => rt.sessionsIn(threadId).find((x) => x.personaId === p.id)).find((x) => x?.retiredFork);
+  const retired = mentioned.map((p) => rt.sessions.in(threadId).find((x) => x.personaId === p.id)).find((x) => x?.retiredFork);
   if (retired && !away) throw retiredError(retired);
   for (const p of away ? [] : mentioned) {
-    const joined = !rt.sessionsIn(threadId).some((x) => x.personaId === p.id);
+    const joined = !rt.sessions.in(threadId).some((x) => x.personaId === p.id);
     targets.push({ se: rt.ensureSession(threadId, p.id, { brief: joined ? 'You were @-mentioned into this thread.' : null }) });
   }
   if (!targets.length) {
-    const members = rt.sessionsIn(threadId).filter((x) => !x.retiredFork);
+    const members = rt.sessions.in(threadId).filter((x) => !x.retiredFork);
     const last = members.find((x) => x.id === t.lastSpeaker) ?? members[0];
     if (!last) throw httpError(409, 'No agent is in this thread. @-mention one to bring it in.');
     targets.push({ se: last });

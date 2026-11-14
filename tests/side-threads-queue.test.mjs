@@ -101,12 +101,12 @@ test('#228: in a topic thread from before, whose fork never spoke, a message goe
   const { store, rt, adapter, t, alpha, topic } = await withTopic();
   // As before #228: the thread’s fork, retired at startup, and neither who it started with nor a last speaker.
   const fork = rt.ensureSession(topic.id, alpha.personaId);
-  rt.updateSession(fork.id, { forkOf: { sessionId: alpha.id, itemId: null }, retiredFork: true });
+  arrange.setSession(rt, fork.id, { forkOf: { sessionId: alpha.id, itemId: null }, retiredFork: true });
   arrange.putThread(rt, { ...store.state.threads[topic.id], woke: undefined, lastSpeaker: null });
   rt.sendMessage(topic.id, { text: 'Still there?' });
   await settle(rt);
   assert.deepEqual([adapter.calls.at(-1).sessionId, adapter.calls.at(-1).thread], [alpha.id, topic.id]);
-  assert.equal(rt.sessionsIn(t.id).length, 2);
+  assert.equal(arrange.sessionsIn(rt, t.id).length, 2);
 });
 
 test('#228: an agent approved from a proposal in a topic thread joins the conversation, not the thread', async () => {
@@ -119,8 +119,8 @@ test('#228: an agent approved from a proposal in a topic thread joins the conver
   await settle(rt);
   const proposal = store.items(topic.id).find((i) => i.kind === 'proposal');
   rt.resolveProposal(topic.id, proposal.id, 'create');
-  assert.equal(rt.sessionsIn(topic.id).length, 0);
-  assert.ok(rt.sessionsIn(t.id).some((x) => x.handle === 'critic'));
+  assert.equal(arrange.sessionsIn(rt, topic.id).length, 0);
+  assert.ok(arrange.sessionsIn(rt, t.id).some((x) => x.handle === 'critic'));
   assert.equal(alpha.threadId, t.id);
 });
 

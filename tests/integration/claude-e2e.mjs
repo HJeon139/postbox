@@ -31,6 +31,7 @@ import { delimiter, join } from 'node:path';
 import { loadAgentSdk } from '../../server/adapters/agent-sdk.mjs';
 import { findClaude } from '../../server/adapters/claude-code.mjs';
 import { start } from '../../server/index.mjs';
+import * as arrange from '../arrange.mjs';
 import { freePort } from '../process/chrome.mjs';
 import { assertNoServerFailures, captureServerLog } from '../server-log.mjs';
 import { removeTempDirs, tempDir } from '../temp-dirs.mjs';
@@ -212,7 +213,7 @@ export async function pushTurn(t, backend, mode, hooksIn = 'settings') {
   store.emit('project', { id: 'p_e2e', name: 'E2E', folder: f.work });
   const p = rt.createPersona({ handle: 'pusher', backend, model: MODEL, permissionMode: mode, usesHostSetup: true, tools: ['shell'] });
   const thread = rt.createThread({ projectId: 'p_e2e', title: 'E2E', personaIds: [p.id] });
-  const se = rt.sessionsIn(thread.id)[0];
+  const se = arrange.sessionsIn(rt, thread.id)[0];
   const running = () => rt.turns.has(se.id);
   rt.sendMessage(thread.id, { text: PROMPTS[hooksIn] });
   for (let i = 0; i < 120 && !running(); i++) await sleep(250);

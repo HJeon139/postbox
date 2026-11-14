@@ -47,7 +47,7 @@ test('starting a conversation with an agent while a commit is held joins the age
   assert.ok(result, 'createThread returned the thread');
   assert.equal(result.members.length, 1, 'with its agent as a member');
   assert.deepEqual(
-    env.rt.sessionsIn(result.id).map((se) => se.handle),
+    arrange.sessionsIn(env.rt, result.id).map((se) => se.handle),
     ['researcher'],
     'the agent’s session was written',
   );
@@ -87,7 +87,7 @@ test('a new agent joining a conversation behind a held commit joins it, not a 40
   });
   assert.equal(result?.handle, 'helper', `joined: ${result?.message ?? ''}`);
   assert.ok(
-    env.rt.sessionsIn(env.t.id).some((se) => se.handle === 'helper'),
+    arrange.sessionsIn(env.rt, env.t.id).some((se) => se.handle === 'helper'),
     'its session is in the conversation',
   );
   await store.close();
@@ -104,7 +104,7 @@ test('a new agent starting a conversation in a project behind a held commit star
   });
   assert.equal(result?.members?.length, 1, `started: ${result?.message ?? ''}`);
   assert.deepEqual(
-    env.rt.sessionsIn(result.id).map((se) => se.handle),
+    arrange.sessionsIn(env.rt, result.id).map((se) => se.handle),
     ['starter'],
   );
   await store.close();
@@ -162,7 +162,7 @@ test('deleting an agent made and joined behind a held commit deletes it and its 
   assert.equal(result?.handle, 'brief', `deleted: ${result?.message ?? ''}`);
   assert.equal(store.state.personas[result.id], undefined, 'the agent is gone');
   assert.deepEqual(
-    env.rt.sessionsIn(env.t.id).filter((se) => se.handle === 'brief'),
+    arrange.sessionsIn(env.rt, env.t.id).filter((se) => se.handle === 'brief'),
     [],
     'and so is its session',
   );

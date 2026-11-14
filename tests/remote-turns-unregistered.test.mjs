@@ -37,7 +37,7 @@ async function unregisteredRestart({
 } = {}) {
   const { store, d } = restarted({ welcome });
   const r = rig({ store, d, signIn });
-  if (saved) r.rt.updateSession(r.se().id, { remoteTurn: { ...r.se().remoteTurn, ...saved } });
+  if (saved) arrange.setSession(r.rt, r.se().id, { remoteTurn: { ...r.se().remoteTurn, ...saved } });
   if (moved) r.store.emit('persona', { ...r.rt.persona(r.se().personaId), remote: null });
   const registered = arrange.withoutAdapters(r.rt);
   startUp(r);

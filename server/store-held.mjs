@@ -38,7 +38,7 @@ const ENTITIES = /** @type {const} */ ({
   // write of a thread starts from it (#796, server/threads.mjs).
   threads: { event: 'thread', removed: 'thread', patched: null },
   // A session just made, or changed, behind a held commit: its writes diff against it, and its turn waits for it to be
-  // published (#796's class in sessions, server/session-write.mjs).
+  // published (#796's class in sessions, server/sessions.mjs).
   sessions: { event: 'session', removed: 'session', patched: 'session.patch' },
   // A persona just made behind a held commit, which a session joining it reads (POST /api/personas with join, and an
   // attached Claude Code session, #1247’s class).

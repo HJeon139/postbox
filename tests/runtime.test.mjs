@@ -109,7 +109,7 @@ test('Stop ends the turn cleanly and marks the reply stopped', async () => {
   });
   rt.sendMessage(t.id, { text: 'go' });
   await sleep(10);
-  const se = rt.sessionsIn(t.id)[0];
+  const se = arrange.sessionsIn(rt, t.id)[0];
   assert.equal(rt.stop(se.id), true);
   await settle(rt);
   assert.equal(store.items(t.id).find((i) => i.kind === 'agent').status, 'stopped');
@@ -125,7 +125,7 @@ test('a failing turn shows the error, asks for you, and can be retried', async (
   await settle(rt);
   const failed = store.items(t.id).find((i) => i.status === 'failed');
   assert.equal(failed.error, 'The model didn’t respond.');
-  const se = rt.sessionsIn(t.id)[0];
+  const se = arrange.sessionsIn(rt, t.id)[0];
   assert.equal(store.state.sessions[se.id].needs.kind, 'failed');
   rt.retry(t.id, failed.id);
   await settle(rt);
@@ -140,7 +140,7 @@ test('an open choice makes the agent need you; answering it sends one event and 
   });
   rt.sendMessage(t.id, { text: 'ask me' });
   await settle(rt);
-  const se = rt.sessionsIn(t.id)[0];
+  const se = arrange.sessionsIn(rt, t.id)[0];
   assert.equal(store.state.sessions[se.id].state, 'needs');
   const block = store.items(t.id).find((i) => i.kind === 'block');
   rt.act(t.id, block.id, 'choose', { selected: ['a'] });
@@ -164,7 +164,7 @@ test('a block you leave open stops the agent needing you once the conversation m
   });
   rt.sendMessage(t.id, { text: 'show me the records' });
   await settle(rt);
-  const se = rt.sessionsIn(t.id)[0];
+  const se = arrange.sessionsIn(rt, t.id)[0];
   assert.equal(store.state.sessions[se.id].needs.kind, 'block');
   // You move on without answering: a new message clears needs-you, and the turn it starts doesn’t bring it back.
   rt.sendMessage(t.id, { text: 'something else' });
@@ -191,7 +191,7 @@ test('a turn you didn’t start keeps the agent needing you for the block it jus
   });
   rt.sendMessage(t.id, { text: 'show me the records' });
   await settle(rt);
-  const se = rt.sessionsIn(t.id)[0];
+  const se = arrange.sessionsIn(rt, t.id)[0];
   // A lint pass runs before you answer: that turn isn’t you moving on.
   rt.deliver(se.id, { kind: 'lint', undefinedTerms: [{ term: 'Step 7' }], diagrams: [] });
   await settle(rt);
@@ -219,7 +219,7 @@ test('#1319 an agent’s invalid block is refused, and nothing is stored or rend
 test('after the room’s chain limit of agent wakes in a row, the next one waits for your confirm', async () => {
   const { rt, store, t, b } = setup();
   rt.ensureSession(t.id, b.id);
-  const alpha = rt.sessionsIn(t.id).find((x) => x.handle === 'alpha');
+  const alpha = arrange.sessionsIn(rt, t.id).find((x) => x.handle === 'alpha');
   arrange.setThread(rt, t.id, { chainLimit: 3 }); // the room’s own (#1035), so the test needn’t make 1,000 wakes
   // All while the chain runs: one that ends starts the count again (#492).
   for (let i = 0; i < 3; i++) assert.equal(rt.agentWake(alpha.id, 'beta', 'check', { confirmed: true }).ok, true);
@@ -240,7 +240,7 @@ test('after the room’s chain limit of agent wakes in a row, the next one waits
 test('a wake you allow delivers its whole message, not the card’s preview (#108)', async () => {
   const { rt, store, t, b, adapter } = setup();
   rt.ensureSession(t.id, b.id);
-  const alpha = rt.sessionsIn(t.id).find((x) => x.handle === 'alpha');
+  const alpha = arrange.sessionsIn(rt, t.id).find((x) => x.handle === 'alpha');
   arrange.setThread(rt, t.id, { chainLimit: 3 });
   for (let i = 0; i < 3; i++) rt.agentWake(alpha.id, 'beta', 'check', { confirmed: true });
   const long = `Must fix: ${'acceptance bar, '.repeat(200)}`.slice(0, 3000);
@@ -257,7 +257,7 @@ test('a wake you allow delivers its whole message, not the card’s preview (#10
 test('a wake request stored before #108, with only a preview, still delivers that preview when allowed', async () => {
   const { rt, store, t, b, adapter } = setup();
   rt.ensureSession(t.id, b.id);
-  const alpha = rt.sessionsIn(t.id).find((x) => x.handle === 'alpha');
+  const alpha = arrange.sessionsIn(rt, t.id).find((x) => x.handle === 'alpha');
   arrange.setThread(rt, t.id, { chainLimit: 3 });
   for (let i = 0; i < 3; i++) rt.agentWake(alpha.id, 'beta', 'check', { confirmed: true });
   rt.agentWake(alpha.id, 'beta', 'the whole message');
@@ -272,7 +272,7 @@ test('a wake request stored before #108, with only a preview, still delivers tha
 test('a message from you resets the wake count', async () => {
   const { rt, store, t, b } = setup();
   rt.ensureSession(t.id, b.id);
-  const alpha = rt.sessionsIn(t.id).find((x) => x.handle === 'alpha');
+  const alpha = arrange.sessionsIn(rt, t.id).find((x) => x.handle === 'alpha');
   rt.agentWake(alpha.id, 'beta', 'one');
   rt.agentWake(alpha.id, 'beta', 'two');
   await settle(rt);
@@ -282,7 +282,7 @@ test('a message from you resets the wake count', async () => {
 
 test('#372: agents wake each other in the conversation, with no side thread or link, and a reply doesn’t go back by itself', async () => {
   const { rt, store, t, b, adapter } = setup();
-  const alpha = rt.sessionsIn(t.id)[0];
+  const alpha = arrange.sessionsIn(rt, t.id)[0];
   const beta = rt.ensureSession(t.id, b.id);
   adapter.next.push(async (c) => c.text('Editions are fine.'));
   rt.agentWake(alpha.id, 'beta', 'Which editions?');
@@ -298,7 +298,7 @@ test('#372: agents wake each other in the conversation, with no side thread or l
 
 test('deleting a session removes it at once, with no Undo window', async () => {
   const { rt, store, t } = setup();
-  const se = rt.sessionsIn(t.id)[0];
+  const se = arrange.sessionsIn(rt, t.id)[0];
   assert.deepEqual(rt.deleteSession(se.id), { handle: se.handle });
   assert.equal(rt.timers.size, 0, 'nothing waits to finish it');
   assert.equal(store.state.sessions[se.id], undefined);
@@ -310,7 +310,7 @@ test('deleting an agent in a room keeps its messages, marked deleted', async () 
   rt.ensureSession(t.id, b.id);
   rt.sendMessage(t.id, { text: '@beta hi' });
   await settle(rt);
-  const beta = rt.sessionsIn(t.id).find((x) => x.handle === 'beta');
+  const beta = arrange.sessionsIn(rt, t.id).find((x) => x.handle === 'beta');
   rt.deleteSession(beta.id);
   assert.ok(store.state.threads[t.id]);
   assert.ok(
@@ -348,7 +348,7 @@ test('a failed pre-display check goes back to the agent once; a second failure s
 /** An app in a fresh conversation, owned by its agent. */
 function withApp(store = undefined) {
   const s = store ? setupWith(store) : setup();
-  const se = s.rt.sessionsIn(s.t.id)[0];
+  const se = arrange.sessionsIn(s.rt, s.t.id)[0];
   s.rt.toolsFor(se.id).show_app({ id: 'spam', title: 'Spam', code: '<p>x</p>', permissions: [] });
   return { ...s, se };
 }
@@ -496,7 +496,7 @@ test('#51: agents read an app’s send as what Postbox counted, with the app’s
 
 test('MCP: initialize, list tools, and a tool call that returns at once', async () => {
   const { rt, t, adapter } = setup();
-  const se = rt.sessionsIn(t.id)[0];
+  const se = arrange.sessionsIn(rt, t.id)[0];
   const init = await handleMcp(rt, se.id, { jsonrpc: '2.0', id: 1, method: 'initialize', params: {} });
   assert.equal(init.result.serverInfo.name, 'postbox');
   assert.equal(await handleMcp(rt, se.id, { jsonrpc: '2.0', method: 'notifications/initialized' }), null);
@@ -531,7 +531,7 @@ test('a permission prompt shows a card, makes the agent need you, and waits for 
   });
   rt.sendMessage(t.id, { text: 'test it' });
   await sleep(20);
-  const se = rt.sessionsIn(t.id)[0];
+  const se = arrange.sessionsIn(rt, t.id)[0];
   let card = store.items(t.id).find((i) => i.kind === 'permission' && i.status === 'open');
   assert.equal(card.detail, 'npm test');
   assert.equal(store.state.sessions[se.id].state, 'needs');
@@ -562,7 +562,7 @@ test('Stop expires an open permission card and answers no', async () => {
   });
   rt.sendMessage(t.id, { text: 'write it' });
   await sleep(20);
-  const se = rt.sessionsIn(t.id)[0];
+  const se = arrange.sessionsIn(rt, t.id)[0];
   rt.stop(se.id);
   await sleep(10);
   assert.equal(answer.allow, false);
@@ -694,7 +694,7 @@ test('#93: a stopped summary isn’t pending, and a reply in a summary still bei
   await new Promise((r) => setImmediate(r));
   const part = store.items(threadId).find((i) => i.kind === 'agent' && i.text === 'Half of the summary');
   assert.throws(() => rt.shareToConversation(threadId, part.id), { status: 409 });
-  rt.stop(rt.sessionsIn(t.id)[0].id);
+  rt.stop(arrange.sessionsIn(rt, t.id)[0].id);
   release();
   await settle(rt);
   assert.equal(store.state.threads[threadId].summaryPending, null);
@@ -733,7 +733,7 @@ test('moving a persona from the mock to a real backend gives it the default mode
 
 test('deleting a conversation removes its sessions, apps and threads at once', () => {
   const { rt, store, t } = setup();
-  const se = rt.sessionsIn(t.id)[0];
+  const se = arrange.sessionsIn(rt, t.id)[0];
   assert.deepEqual(rt.deleteThread(t.id), { title: t.title });
   assert.equal(store.state.threads[t.id], undefined);
   assert.equal(store.state.sessions[se.id], undefined);
@@ -752,25 +752,25 @@ test('a deleted conversation takes no new messages', () => {
 test('a message to a retired fork is refused before anything is posted (#228)', () => {
   const { rt, store, a, b } = setup();
   const room = rt.createThread({ projectId: 'p1', title: 'Room', personaIds: [a.id, b.id] });
-  const beta = rt.sessionsIn(room.id).find((x) => x.personaId === b.id);
-  rt.updateSession(beta.id, { retiredFork: true });
+  const beta = arrange.sessionsIn(rt, room.id).find((x) => x.personaId === b.id);
+  arrange.setSession(rt, beta.id, { retiredFork: true });
   assert.throws(() => rt.sendMessage(room.id, { text: '@beta hello' }), /was retired/);
   assert.equal(store.items(room.id).length, 0, 'no user line and no wake line');
 });
 
 test('deliver refuses a retired fork with a 409, and starts no turn for it (#228)', () => {
   const { rt, t } = setup();
-  const se = rt.sessionsIn(t.id)[0];
-  rt.updateSession(se.id, { retiredFork: true });
+  const se = arrange.sessionsIn(rt, t.id)[0];
+  arrange.setSession(rt, se.id, { retiredFork: true });
   assert.throws(() => rt.deliver(se.id, { kind: 'user', text: 'still there?' }, { threadId: t.id }), { status: 409, message: /was retired/ });
   assert.equal(rt.turns.has(se.id), false);
 });
 
 test('a wake a retired fork scheduled doesn’t wake it, or stop the server (#228)', async () => {
   const { rt, store, t } = setup();
-  const se = rt.sessionsIn(t.id)[0];
+  const se = arrange.sessionsIn(rt, t.id)[0];
   const sc = rt.schedule(se.id, { inMs: 60000, note: 'later' });
-  rt.updateSession(se.id, { retiredFork: true });
+  arrange.setSession(rt, se.id, { retiredFork: true });
   store.emit('schedule', { ...sc, at: Date.now() }); // Due now, as at a startup after it was due, where arming reads it (#466).
   rt.arm(sc);
   await sleep(20);
@@ -1183,7 +1183,7 @@ test('#98: Stop leaves running progress steps stalled, starts no lint turn, and 
   });
   rt.sendMessage(t.id, { text: 'read' });
   await sleep(10);
-  rt.stop(rt.sessionsIn(t.id)[0].id);
+  rt.stop(arrange.sessionsIn(rt, t.id)[0].id);
   await settle(rt);
   await sleep(20);
   const it = store.items(t.id).find((i) => i.kind === 'block');
@@ -1212,7 +1212,7 @@ test('#98: a failed turn leaves running progress steps stalled too', async () =>
   const it = store.items(t.id).find((i) => i.kind === 'block');
   assert.equal(it.block.steps[0].state, 'stalled');
   assert.ok(it.stalledAt);
-  assert.match(store.state.sessions[rt.sessionsIn(t.id)[0].id].context.join('\n'), /Your last turn failed while progress steps were running/);
+  assert.match(store.state.sessions[arrange.sessionsIn(rt, t.id)[0].id].context.join('\n'), /Your last turn failed while progress steps were running/);
 });
 
 test('#69: an asking block asked again with update_block belongs to the turn that asked', async () => {
@@ -1237,11 +1237,11 @@ test('#69: an asking block asked again with update_block belongs to the turn tha
 test('#75: a conversation started without a title is a “New conversation”, and agents are told what they define where', () => {
   const { rt, store, t } = setup();
   assert.equal(rt.createThread({ projectId: 'p1' }).title, 'New conversation');
-  const tools = rt.toolsFor(rt.sessionsIn(t.id)[0].id);
+  const tools = rt.toolsFor(arrange.sessionsIn(rt, t.id)[0].id);
   assert.equal(tools.define_term({ term: 'BM25', definition: 'A ranking function.' }).message, 'Defined “BM25”.');
   // A topic thread’s definition over its conversation’s says “here”, not “this thread”.
   arrange.putThread(rt, { ...store.state.threads[t.id], id: 'th-topic', kind: 'topic', parentId: t.id, members: [] });
-  const se = rt.ensureSession('th-topic', rt.sessionsIn(t.id)[0].personaId);
+  const se = rt.ensureSession('th-topic', arrange.sessionsIn(rt, t.id)[0].personaId);
   assert.equal(
     rt.toolsFor(se.id).define_term({ term: 'BM25', definition: 'Here, the baseline.' }).message,
     'Defined “BM25” here, over the conversation’s definition.',
@@ -1262,7 +1262,7 @@ test('#94: an outcome on an answered confirm reports the result: it stays answer
   adapter.next.push(async (c) => c.tools.show_block({ block: confirm }));
   rt.sendMessage(t.id, { text: 'clean up' });
   await settle(rt);
-  const se = rt.sessionsIn(t.id)[0];
+  const se = arrange.sessionsIn(rt, t.id)[0];
   const item = store.items(t.id).find((i) => i.kind === 'block');
   rt.act(t.id, item.id, 'confirm', {});
   // As in the UAT that found it: the agent reports back on the same block, retitled, with an “OK” button.
@@ -1299,7 +1299,7 @@ test('#94: an outcome on an answered confirm reports the result: it stays answer
 
 test('#94: an outcome on a block nobody answered yet is refused, and the block is left alone', () => {
   const { rt, store, t } = setup();
-  const se = rt.sessionsIn(t.id)[0];
+  const se = arrange.sessionsIn(rt, t.id)[0];
   const tools = rt.toolsFor(se.id);
   const choice = { id: 'c', type: 'choice', version: 1, fallback: 'Pick', options: [{ id: 'a', label: 'A' }] };
   tools.show_block({ block: choice });
@@ -1323,7 +1323,7 @@ test('#94: an outcome on a block nobody answered yet is refused, and the block i
 
 test('#94: show_block refuses an outcome, so a result can’t show under an answer it didn’t come from', () => {
   const { rt, store, t } = setup();
-  const tools = rt.toolsFor(rt.sessionsIn(t.id)[0].id);
+  const tools = rt.toolsFor(arrange.sessionsIn(rt, t.id)[0].id);
   // The review’s scenario: an outcome sent with the question would show under Cancel too.
   const confirm = { id: 'frames', type: 'confirm', version: 1, fallback: 'Delete?', statement: 'Delete 23 frames?', confirmLabel: 'Delete' };
   const r = tools.show_block({ block: { ...confirm, outcome: 'Deleted 23 frames' } });
@@ -1340,7 +1340,7 @@ test('#94: show_block refuses an outcome, so a result can’t show under an answ
 
 test('#125: show_block refuses an id this session already shows here, open or answered, so an answer belongs to one block', () => {
   const { rt, store, t, b } = setup();
-  const se = rt.sessionsIn(t.id)[0];
+  const se = arrange.sessionsIn(rt, t.id)[0];
   const tools = rt.toolsFor(se.id);
   const review = (title, content) => ({ id: 'issue-review', type: 'review', version: 1, fallback: 'Draft', title, format: 'markdown', content });
   const blocks = () => store.items(t.id).filter((i) => i.kind === 'block');
@@ -1445,7 +1445,7 @@ test('#123: an outcome over an answer the agent hasn’t read is refused, and a 
   rt.sendMessage(t.id, { text: 'clean up' });
   await settle(rt);
   const item = store.items(t.id).find((i) => i.kind === 'block');
-  const se = rt.sessionsIn(t.id)[0];
+  const se = arrange.sessionsIn(rt, t.id)[0];
   const replies = [];
   adapter.next.push(async (c) => {
     await held();
@@ -1536,7 +1536,7 @@ test('#123: an answer to a revision the agent has since replaced is refused, and
 
 test('#125: an app id the session owns still makes a new version, and an invalid block can be sent again', () => {
   const { rt, store, t } = setup();
-  const tools = rt.toolsFor(rt.sessionsIn(t.id)[0].id);
+  const tools = rt.toolsFor(arrange.sessionsIn(rt, t.id)[0].id);
   assert.equal(tools.show_app({ id: 'ap', title: 'A', code: '<p>1</p>' }).ok, true);
   assert.equal(tools.show_app({ id: 'ap', title: 'A', code: '<p>2</p>' }).ok, true);
   assert.equal(store.state.apps.ap.versions.length, 2);
@@ -1709,7 +1709,7 @@ test('#109 read_conversation cuts the same way, the agent’s own messages too, 
     theirs,
     new RegExp(`2,000 of ${total} characters; read_message \\{ id: "${reply.id}" \\} has the rest\\)\\n\\n\\[it_\\w+\\] The person, to @beta: @beta review`),
   );
-  const alpha = rt.sessionsIn(t.id).find((x) => x.personaId === a.id);
+  const alpha = arrange.sessionsIn(rt, t.id).find((x) => x.personaId === a.id);
   assert.ok(
     rt
       .toolsFor(alpha.id)
@@ -1949,7 +1949,7 @@ test('#153 a long draft is cut with its id, and read_message gives the whole blo
 
 test('#153 an agent reads its own review block’s content in read_conversation', async () => {
   const { rt, t, a } = await blocksShown([{ id: 'dedup-plan', type: 'review', title: 'Dedup plan', format: 'markdown', content: PLAN, fallback: 'The plan.' }]);
-  const alpha = rt.sessionsIn(t.id).find((x) => x.personaId === a.id);
+  const alpha = arrange.sessionsIn(rt, t.id).find((x) => x.personaId === a.id);
   assert.ok(rt.toolsFor(alpha.id).read_conversation({}).message.includes(`@alpha showed a review block “Dedup plan”:\n${PLAN}`));
 });
 
@@ -1970,7 +1970,7 @@ test('#153 read_message by a block id two agents both used asks for the item id'
 
 test('saving the same app state again changes nothing, so it can’t start a render loop', () => {
   const { rt, store, t } = setup();
-  const se = rt.sessionsIn(t.id)[0];
+  const se = arrange.sessionsIn(rt, t.id)[0];
   rt.toolsFor(se.id).show_app({ id: 'ap', title: 'A', code: '<p>x</p>', permissions: [] });
   const seq = () => store.state.seq;
   rt.appState('ap', { tab: 'one' });
@@ -1983,11 +1983,11 @@ test('saving the same app state again changes nothing, so it can’t start a ren
 
 test('another agent’s show_block can’t take over an app; it gets a fresh id instead', () => {
   const { rt, store, t, b } = setup();
-  const owner = rt.sessionsIn(t.id)[0];
+  const owner = arrange.sessionsIn(rt, t.id)[0];
   rt.toolsFor(owner.id).show_app({ id: 'ap', title: 'Mine', code: '<p>x</p>', permissions: [] });
   rt.appState('ap', { tab: 'one' });
   const other = rt.createThread({ projectId: 'p1', title: 'Other', personaIds: [b.id] });
-  const intruder = rt.sessionsIn(other.id)[0];
+  const intruder = arrange.sessionsIn(rt, other.id)[0];
   const r = rt.toolsFor(intruder.id).show_block({ block: { id: 'ap', type: 'app', version: 1, title: 'Replaced', fallback: 'x', code: '<h1>y</h1>' } });
   assert.match(r.message, /taken/);
   assert.equal(store.state.apps.ap.title, 'Mine');
@@ -2001,7 +2001,7 @@ test('another agent’s show_block can’t take over an app; it gets a fresh id 
 
 test('a proposal’s fields are stored as text, whatever JSON the agent sends', () => {
   const { rt, store, t } = setup();
-  const se = rt.sessionsIn(t.id)[0];
+  const se = arrange.sessionsIn(rt, t.id)[0];
   rt.toolsFor(se.id).propose_agent({ handle: 'helper', description: { html: '<a>x</a>' }, tools: ['shell', { x: 1 }] });
   const p = store.items(t.id).find((i) => i.kind === 'proposal').proposal;
   assert.equal(typeof p.description, 'string');
@@ -2028,7 +2028,7 @@ test('a refusal becomes a card that shows what happened; the agent works around 
   const cards = store.items(t.id).filter((i) => i.kind === 'denial');
   assert.equal(cards.length, 1, 'once per tool call');
   assert.equal(cards[0].rules.once, 'Bash(rm copy.txt)');
-  const se = rt.sessionsIn(t.id)[0];
+  const se = arrange.sessionsIn(rt, t.id)[0];
   assert.equal(store.state.sessions[se.id].state, 'idle');
   assert.equal(store.state.sessions[se.id].needs, null);
   assert.equal(cards[0].status, 'open', 'Allow once and Always allow stay on offer');
@@ -2049,7 +2049,7 @@ test('Allow once lets the next turn run the exact call and tells the agent', asy
   assert.deepEqual(seen.allowOnce, ['Bash(rm copy.txt)']);
   assert.match(seen.text, /next turn only/);
   assert.equal(store.item(t.id, card.id).status, 'allowed-once');
-  const se = rt.sessionsIn(t.id)[0];
+  const se = arrange.sessionsIn(rt, t.id)[0];
   assert.deepEqual(store.state.sessions[se.id].allowOnce, [], 'only that one turn');
   await assert.rejects(rt.act(t.id, card.id, 'once'), /already answered/);
 });
@@ -2117,7 +2117,7 @@ test('#59: the MCP servers a turn reports are kept on its session, bounded, for 
   adapter.next.push(async (c) => c.reported({ mcpServers: [{ name: 'search', status: 'needs-auth', source: 'claudeai' }, { status: 'x' }, ...many] }));
   rt.sendMessage(t.id, { text: 'one' });
   await settle(rt);
-  const se = rt.sessionsIn(t.id)[0];
+  const se = arrange.sessionsIn(rt, t.id)[0];
   const kept = store.state.sessions[se.id].mcpServers;
   assert.equal(typeof kept.at, 'number');
   assert.equal(kept.servers.length, 100);
@@ -2202,9 +2202,9 @@ test('#60: a persona has an effort next to its model, checked, fixed in a sessio
 
 test('one rule for settings: every persona change applies from the agent’s next turn, in every conversation', async () => {
   const { rt, store, t, a, adapter } = setup();
-  const se = rt.sessionsIn(t.id)[0];
+  const se = arrange.sessionsIn(rt, t.id)[0];
   const other = rt.createThread({ projectId: 'p1', title: 'Other', personaIds: [a.id] });
-  const there = rt.sessionsIn(other.id)[0];
+  const there = arrange.sessionsIn(rt, other.id)[0];
   /** @type {any[]} */
   const seen = [];
   let release = () => {};
@@ -2242,7 +2242,7 @@ test('#60: the model that answered and the effort a turn ran with are kept on th
   });
   rt.sendMessage(t.id, { text: 'one' });
   await settle(rt);
-  const se = store.state.sessions[rt.sessionsIn(t.id)[0].id];
+  const se = store.state.sessions[arrange.sessionsIn(rt, t.id)[0].id];
   assert.equal(se.lastModel, 'x'.repeat(100), 'bounded');
   assert.equal(se.lastEffort, 'high', 'an unknown level is ignored');
   adapter.next.push(async (c) => c.reported({ model: 'claude-haiku-5-5', effort: 'low' }));
@@ -2267,7 +2267,7 @@ test('an agent asks for a tool that’s off; the person turns it on from the car
   const cards = store.items(t.id).filter((i) => i.kind === 'toolask');
   assert.equal(cards.length, 1);
   assert.equal(cards[0].label, 'Run commands in the project folder');
-  const se = rt.sessionsIn(t.id)[0];
+  const se = arrange.sessionsIn(rt, t.id)[0];
   assert.equal(store.state.sessions[se.id].state, 'needs');
   assert.equal(store.state.sessions[se.id].needs.kind, 'toolask');
   rt.act(t.id, cards[0].id, 'on');
@@ -2292,7 +2292,7 @@ test('keeping a tool off leaves the persona as it was and tells the agent to go 
   await settle(rt);
   assert.deepEqual(store.state.personas[a.id].tools, ['arxiv.search']);
   assert.match(adapter.calls.at(-1).message.text, /kept web\.fetch off for you/);
-  assert.equal(store.state.sessions[rt.sessionsIn(t.id)[0].id].needs, null);
+  assert.equal(store.state.sessions[arrange.sessionsIn(rt, t.id)[0].id].needs, null);
 });
 
 test('#63 a reply with options in prose gets a lint turn that asks for the choice; showing it ends as a note', async () => {

@@ -51,7 +51,7 @@ const f = setup();
 const own = f.rt.createThread({ projectId: 'p1', title: 'Own', personaIds: [f.a.id, f.b.id] });
 arrange.setThread(f.rt, own.id, { chainLimit: 8 });
 const wakes = (threadId, n) => {
-  const [alpha, beta] = f.rt.sessionsIn(threadId);
+  const [alpha, beta] = arrange.sessionsIn(f.rt, threadId);
   const results = [];
   for (let i = 0; i < n; i++) {
     const [from, to] = i % 2 ? [beta, 'alpha'] : [alpha, 'beta'];

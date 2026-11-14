@@ -15,6 +15,7 @@ import { STOPPED } from '../server/view-app/browser.mjs';
 import { answerIn, DECLINE_MS, keepAnswer } from '../server/view-app/consent.mjs';
 import { ViewApp, viewApp } from '../server/view-app/view-app.mjs';
 import { attachViewApp, viewOf } from '../server/view-app/view-of.mjs';
+import * as arrange from './arrange.mjs';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const PNG = Buffer.from('89504e470d0a1a0a0000000d49484452', 'hex');
@@ -62,7 +63,7 @@ function setup(browser = fakeBrowser()) {
   store.emit('project', { id: 'p1', name: 'P', folder: dir });
   const a = rt.createPersona({ handle: 'researcher' });
   const t = rt.createThread({ projectId: 'p1', title: 'Prices', personaIds: [a.id] });
-  const se = rt.sessionsIn(t.id)[0];
+  const se = arrange.sessionsIn(rt, t.id)[0];
   const shown = rt.toolsFor(se.id).show_app({ title: 'Price and orders', code: '<p>Orders fall as price rises.</p>' });
   attachViewApp(rt, new ViewApp({ dataDir: dir, origin: () => 'http://127.0.0.1:1', browser: /** @type {any} */ (browser) }));
   return { dir, rt, adapter, t, se, appId: shown.appId, browser, done: () => rmSync(dir, { recursive: true, force: true }) };
@@ -75,7 +76,7 @@ test('view_app refuses an app that isn’t in the agent’s conversation, withou
   const s = setup();
   try {
     const other = s.rt.createThread({ projectId: 'p1', title: 'Elsewhere', personaIds: [s.se.personaId] });
-    const elsewhere = s.rt.sessionsIn(other.id)[0];
+    const elsewhere = arrange.sessionsIn(s.rt, other.id)[0];
     const r = await viewApp(s.rt, elsewhere.id, { appId: s.appId }, ctx(other));
     assert.equal(r.ok, false);
     assert.match(r.message, /There’s no app “app_[\w-]+” in your conversation/);

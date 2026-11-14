@@ -11,7 +11,7 @@ test('an app card held behind a commit becomes the need when the card before it 
   const { rt, t, se } = await setup(async () => {}, h.store);
   const card = () => arrange.post(rt, t.id, { kind: 'appsend', sessionId: se.id, appId: 'app1', title: 'App', events: [{ action: 'x' }], status: 'open' });
   const first = card();
-  rt.updateSession(se.id, { needs: { kind: 'appsend', itemId: first.id, text: 'App' }, state: 'needs' });
+  arrange.setSession(rt, se.id, { needs: { kind: 'appsend', itemId: first.id, text: 'App' }, state: 'needs' });
   await h.store.flush();
   h.hold();
   const commit = h.store.commit([{ type: 'settings', data: { theme: 'system' } }]);

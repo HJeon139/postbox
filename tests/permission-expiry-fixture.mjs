@@ -9,6 +9,7 @@ import { after } from 'node:test';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
+import * as arrange from './arrange.mjs';
 
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const folders = [];
@@ -45,7 +46,7 @@ export async function setup() {
   store.emit('project', { id: 'p1', name: 'P', folder });
   const p = rt.createPersona({ handle: 'deployer', backend: 'claude-code', tools: ['shell'] });
   const t = rt.createThread({ projectId: 'p1', title: 'T', personaIds: [p.id] });
-  const se = rt.sessionsIn(t.id)[0];
+  const se = arrange.sessionsIn(rt, t.id)[0];
   /** Starts a turn whose call waits on a card for the deploy, and returns the card once it shows. */
   const ask = async () => {
     const answers = [];

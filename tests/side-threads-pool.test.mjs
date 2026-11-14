@@ -5,6 +5,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import * as arrange from './arrange.mjs';
 import { held, sessionsOfPersona, settle, setup, sleep } from './side-threads-fixture.mjs';
 
 /** A conversation with a reply from @alpha, and a topic thread on it. */
@@ -106,7 +107,7 @@ test('#228: on Decline the waking agent is told, and nothing joins', async () =>
   assert.match(adapter.calls.at(-1).message.text, /The person chose not to add @gamma to this conversation, so it didn’t get your message/);
   assert.equal(adapter.calls.at(-1).sessionId, alpha.id);
   // A persona whose only session here is a retired fork can’t be added again.
-  rt.updateSession(rt.sessionsIn(t.id).find((x) => x.handle === 'beta').id, { retiredFork: true });
+  arrange.setSession(rt, arrange.sessionsIn(rt, t.id).find((x) => x.handle === 'beta').id, { retiredFork: true });
   assert.match(rt.agentWake(alpha.id, 'beta', 'Hello?').message, /@beta’s session in this conversation was retired/);
   assert.equal(store.items(t.id).filter((i) => i.kind === 'hop').length, 1, 'no second card');
 });

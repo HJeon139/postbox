@@ -14,6 +14,7 @@ import { STILL_OPEN } from '../server/ask-question.mjs';
 import { CARD_WAIT_MS } from '../server/permission-cards.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
+import * as arrange from './arrange.mjs';
 
 const RECORDED = JSON.parse(readFileSync(new URL('fixtures/claude-code/ask-user-question-prompts.json', import.meta.url), 'utf8')).prompts;
 const inputOf = (run) => structuredClone(RECORDED.find((p) => p.run === run).input);
@@ -47,7 +48,7 @@ function setup() {
   store.emit('project', { id: 'p1', name: 'P', folder: '/tmp' });
   const p = rt.createPersona({ handle: 'developer', backend: 'scripted', tools: ['shell'] });
   const t = rt.createThread({ projectId: 'p1', title: 'T', personaIds: [p.id] });
-  const se = () => rt.sessionsIn(t.id)[0];
+  const se = () => arrange.sessionsIn(rt, t.id)[0];
   const items = () => store.items(t.id);
   const questions = () => items().filter((i) => i.kind === 'block' && i.question);
   /** Starts a turn that asks with AskUserQuestion through the SDK’s canUseTool, and returns its answer. */

@@ -6,6 +6,7 @@ import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { fixEnded } from '../server/apps.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
+import * as arrange from './arrange.mjs';
 
 const THREW = [{ code: 'script-error', message: 'TypeError: r is negative (line 12, column 3)' }];
 
@@ -20,7 +21,7 @@ function setup() {
   store.emit('project', { id: 'p', name: 'Project', folder: '/tmp' });
   const persona = rt.createPersona({ handle: 'author' });
   const thread = rt.createThread({ projectId: 'p', title: 'Apps', personaIds: [persona.id] });
-  const [session] = rt.sessionsIn(thread.id);
+  const [session] = arrange.sessionsIn(rt, thread.id);
   const delivered = [];
   rt.deliver = (sessionId, message) => delivered.push({ sessionId, message });
   return { rt, session, delivered, tools: rt.toolsFor(session.id) };

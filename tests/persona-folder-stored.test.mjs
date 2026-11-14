@@ -35,7 +35,7 @@ function setup() {
     const p = rt.createPersona({ handle, backend, folder: '/srv/ok' });
     store.emit('persona', { ...store.state.personas[p.id], folder: 'server' });
     const t = rt.createThread({ projectId: 'p1', title: handle, personaIds: [p.id] });
-    return { p, t, se: rt.sessionsIn(t.id)[0] };
+    return { p, t, se: arrange.sessionsIn(rt, t.id)[0] };
   };
   return { store, rt, stored };
 }
@@ -122,7 +122,7 @@ test('the persona sheet’s MCP servers and skills treat a stored relative folde
 function snapshotted(rt, store, handle, backend, folder) {
   const p = rt.createPersona({ handle, backend, folder: '/srv/ok' });
   const t = rt.createThread({ projectId: 'p1', title: handle, personaIds: [p.id] });
-  const se = rt.sessionsIn(t.id)[0];
+  const se = arrange.sessionsIn(rt, t.id)[0];
   store.emit('session', { ...store.state.sessions[se.id], personaSnapshot: { ...se.personaSnapshot, folder: 'server' } });
   store.emit('persona', { ...store.state.personas[p.id], folder });
   return { p, t, se: store.state.sessions[se.id] };
@@ -205,7 +205,7 @@ test('a conversation already going works in the agent’s new folder from its ne
     const later = tempDir(`pb-persona-folder-later-${handle}-`);
     const p = rt.createPersona({ handle, backend, folder: started });
     const t = rt.createThread({ projectId: 'p1', title: handle, personaIds: [p.id] });
-    const se = rt.sessionsIn(t.id)[0];
+    const se = arrange.sessionsIn(rt, t.id)[0];
     rt.updatePersona(p.id, { folder: later });
     assert.equal(store.state.personas[p.id].folder, later);
     assert.equal(arrange.personaFor(rt, se).folder, later);
@@ -220,7 +220,7 @@ test('a conversation whose agent had no folder works in the one its sheet gets, 
   const later = tempDir('pb-persona-folder-later-');
   const p = rt.createPersona({ handle: 'mo', backend: 'mock' });
   const t = rt.createThread({ projectId: 'p1', title: 'mo', personaIds: [p.id] });
-  const se = rt.sessionsIn(t.id)[0];
+  const se = arrange.sessionsIn(rt, t.id)[0];
   rt.updatePersona(p.id, { folder: later });
   assert.equal(store.state.personas[p.id].folder, later);
   assert.equal(arrange.personaFor(rt, se).folder, later);
@@ -234,7 +234,7 @@ test('a conversation from before snapshots works in its agent’s folder', async
   const folder = tempDir('pb-persona-folder-unsnapshotted-');
   const p = rt.createPersona({ handle: 'mo', backend: 'mock', folder });
   const t = rt.createThread({ projectId: 'p1', title: 'mo', personaIds: [p.id] });
-  const { personaSnapshot: _none, ...old } = rt.sessionsIn(t.id)[0];
+  const { personaSnapshot: _none, ...old } = arrange.sessionsIn(rt, t.id)[0];
   store.emit('session', old);
   const se = store.state.sessions[old.id];
   assert.equal(se.personaSnapshot, undefined);

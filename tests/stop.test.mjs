@@ -822,7 +822,7 @@ test('#167: two kept jobs Postbox couldn’t tell apart share their processes: s
 
 test('#164: a kept job saved before groups were recorded, with only its pgid, is still checked by its command and stopped', async () => {
   const { rt, store, t, se, k, procs } = setup();
-  rt.updateSession(se.id, {
+  arrange.setSession(rt, se.id, {
     jobs: [
       {
         id: 'bgO',

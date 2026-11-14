@@ -63,7 +63,7 @@ test('#721 a note for a retired fork is kept', async () => {
       summary: 'run the deploy',
       status: 'expired',
     });
-    f.rt.updateSession(f.now().id, patch);
+    arrange.setSession(f.rt, f.now().id, patch);
     tellExpired(f.rt, f.t.id, it.id);
     assert.equal(notes(f.now()).length, 1, JSON.stringify(patch));
   }

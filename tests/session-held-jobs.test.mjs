@@ -37,7 +37,7 @@ const stubOf = (f, threadId, id) => f.store.items(threadId).find((x) => x.kind =
 test('bringForward unheld moves the marker to the stub', async () => {
   const f = await heldRoom();
   await threeItems(f);
-  f.rt.updateSession(f.alpha.id, { seenItem: 'it_x' });
+  arrange.setSession(f.rt, f.alpha.id, { seenItem: 'it_x' });
   assert.equal(arrange.moveToEnd(f.rt, f.t.id, 'it_x', { what: 'block', title: 'X' }), true);
   await f.store.flush();
   assert.equal(f.store.state.sessions[f.alpha.id].seenItem, stubOf(f, f.t.id, 'it_x').id);
@@ -47,10 +47,10 @@ test('bringForward unheld moves the marker to the stub', async () => {
 test('bringForward behind a held commit: a session whose held seenItem was the moved item reads on from the stub', async () => {
   const f = await heldRoom();
   await threeItems(f);
-  f.rt.updateSession(f.beta.id, { seenItem: 'it_a' });
+  arrange.setSession(f.rt, f.beta.id, { seenItem: 'it_a' });
   await f.store.flush();
   const release = await f.hold();
-  f.rt.updateSession(f.alpha.id, { seenItem: 'it_x' }); // a catch-up that just ran, held
+  arrange.setSession(f.rt, f.alpha.id, { seenItem: 'it_x' }); // a catch-up that just ran, held
   const moved = arrange.moveToEnd(f.rt, f.t.id, 'it_x', { what: 'block', title: 'X' });
   await release();
   assert.equal(moved, true);
@@ -86,7 +86,7 @@ async function keptJobs(f, ids = ['bg1'], { kept = true, heldSteps = true } = {}
     kept,
     startedAt: Date.now(),
   });
-  f.rt.updateSession(se.id, { jobs: ids.map(job), ...(heldSteps ? { heldSteps: { threadId: f.t.id, keys: ['it_p:s'] } } : {}) });
+  arrange.setSession(f.rt, se.id, { jobs: ids.map(job), ...(heldSteps ? { heldSteps: { threadId: f.t.id, keys: ['it_p:s'] } } : {}) });
   await f.store.flush();
   return se;
 }
@@ -155,7 +155,7 @@ test('a job Keep running lost, behind Stop’s held write, stalls its held steps
   const se = await keptJobs(f, ['bg1'], { kept: false, heldSteps: false });
   const release = await f.hold();
   // What stop({ jobs: 'keep' }) writes, held, then the job it couldn't keep ends (server/job-records.mjs, KEEP_LOST).
-  f.rt.updateSession(se.id, { heldSteps: { threadId: f.t.id, keys: ['it_p:s'] } });
+  arrange.setSession(f.rt, se.id, { heldSteps: { threadId: f.t.id, keys: ['it_p:s'] } });
   const lost = 'Postbox couldn’t find its process to keep it running: it may have ended with the agent, and Postbox can’t show it or stop it.';
   f.rt.endJob(se.id, 'bg1', 'stopped', lost);
   await release();
@@ -170,7 +170,7 @@ test('a kept job recorded behind a held commit and ended behind it leaves the li
   const se = await keptJobs(f, ['bg1']);
   const release = await f.hold();
   const bg2 = { ...f.store.pending.session(se.id).jobs[0], id: 'bg2', toolUseId: 'toolu_bg2' };
-  f.rt.updateSession(se.id, (s) => ({ jobs: [...s.jobs, bg2] })); // recorded, held
+  arrange.setSession(f.rt, se.id, (s) => ({ jobs: [...s.jobs, bg2] })); // recorded, held
   f.rt.endJob(se.id, 'bg2', 'done');
   await release();
   assert.deepEqual(

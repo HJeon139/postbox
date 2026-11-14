@@ -11,6 +11,7 @@ import { POSTBOX_TIMEOUT_MS } from '../server/adapters/setup.mjs';
 import { CARD_WAIT_MS, expireWait } from '../server/permission-cards.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
+import * as arrange from './arrange.mjs';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const folders = [];
@@ -47,7 +48,7 @@ async function setup() {
   store.emit('project', { id: 'p1', name: 'P', folder });
   const p = rt.createPersona({ handle: 'researcher', backend: 'claude-code', tools: ['shell'] });
   const t = rt.createThread({ projectId: 'p1', title: 'T', personaIds: [p.id] });
-  return { store, rt, adapter, t, se: rt.sessionsIn(t.id)[0] };
+  return { store, rt, adapter, t, se: arrange.sessionsIn(rt, t.id)[0] };
 }
 const settle = async (rt) => {
   for (let i = 0; i < 100 && rt.turns.size; i++) await sleep(5);

@@ -32,7 +32,7 @@ async function topicOfThree(f) {
   const root = arrange.post(f.rt, f.t.id, { kind: 'agent', sessionId: f.beta.id, handle: 'beta', text: 'A topic.', status: 'done' });
   const topic = f.rt.startTopic(f.t.id, root.id).threadId;
   for (const id of ['it_a', 'it_x', 'it_b']) f.store.emit('item.add', { threadId: topic, item: { id, kind: 'user', text: `text of ${id}`, at: Date.now() } });
-  f.rt.updateSession(f.beta.id, { seenIn: { [topic]: 'it_a' } });
+  arrange.setSession(f.rt, f.beta.id, { seenIn: { [topic]: 'it_a' } });
   await f.store.flush();
   return topic;
 }
@@ -43,7 +43,7 @@ const seenIn = (f, se, topic) => f.store.state.sessions[se.id].seenIn?.[topic];
 test('an item brought forward in a topic thread moves seenIn for that topic to the stub, and the next topic catch-up includes the items after it', async () => {
   const f = await heldRoom();
   const topic = await topicOfThree(f);
-  f.rt.updateSession(f.alpha.id, { seenIn: { [topic]: 'it_x' } });
+  arrange.setSession(f.rt, f.alpha.id, { seenIn: { [topic]: 'it_x' } });
   await f.store.flush();
   assert.equal(arrange.moveToEnd(f.rt, topic, 'it_x', { what: 'block', title: 'X' }), true);
   await f.store.flush();
@@ -60,7 +60,7 @@ test('an item brought forward in a topic thread behind a held commit moves a see
   const f = await heldRoom();
   const topic = await topicOfThree(f);
   const release = await f.hold();
-  f.rt.updateSession(f.alpha.id, { seenIn: { [topic]: 'it_x' } }); // a topic catch-up that just ran, held
+  arrange.setSession(f.rt, f.alpha.id, { seenIn: { [topic]: 'it_x' } }); // a topic catch-up that just ran, held
   assert.equal(arrange.moveToEnd(f.rt, topic, 'it_x', { what: 'block', title: 'X' }), true);
   await release();
   assert.equal(seenIn(f, f.alpha, topic), stubOf(f, topic, 'it_x').id, 'the held topic marker moved to the stub');

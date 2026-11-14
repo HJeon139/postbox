@@ -34,7 +34,7 @@ export function wakeMentions(rt, se, turn, text) {
     const r = rt.agentWake(se.id, h, text, { replyIn, fromTurnId: turn.id, itemId: said, prose: true });
     if (r.itemId) said = r.itemId;
     if (r.ok || r.waiting) woke.push(h);
-    else rt.tellAgent(se.id, `Your mention of @${h} woke no one: ${r.message}`);
+    else rt.sessions.tell(se.id, `Your mention of @${h} woke no one: ${r.message}`);
   }
   if (refused.length) refusedMentions(rt, se, turn, refused, text.length);
   return woke;

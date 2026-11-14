@@ -10,6 +10,7 @@ import { settleInterrupted } from '../server/restart-sweep.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
 import { STEP_TEXT } from '../shared/limits.mjs';
+import * as arrange from './arrange.mjs';
 
 const THOUGHT = 'Why the sum is wrong. '.repeat(250).trim(); // 5,000 characters or so, past what a record keeps
 
@@ -43,7 +44,7 @@ function heldTurn() {
     rt,
     adapter,
     t,
-    se: () => rt.sessionsIn(t.id)[0],
+    se: () => arrange.sessionsIn(rt, t.id)[0],
     reply: () => store.items(t.id).find((x) => x.kind === 'agent' && x.activity),
     async started() {
       rt.sendMessage(t.id, { text: 'Go.' });

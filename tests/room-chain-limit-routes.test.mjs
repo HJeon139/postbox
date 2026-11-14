@@ -33,7 +33,7 @@ after(() => app.close());
 function room(title = 'Room') {
   const personas = ['alpha', 'beta'].map((h) => Object.values(app.store.state.personas).find((p) => p.handle === h) ?? app.rt.createPersona({ handle: h }));
   const t = app.rt.createThread({ projectId: 'pr_cl', title, personaIds: personas.map((p) => p.id) });
-  const [alpha] = app.rt.sessionsIn(t.id);
+  const [alpha] = arrange.sessionsIn(app.rt, t.id);
   const it = arrange.post(app.rt, t.id, { kind: 'agent', sessionId: alpha.id, personaId: alpha.personaId, handle: 'alpha', text: 'Done.', status: 'done' });
   return { t, alpha, it };
 }

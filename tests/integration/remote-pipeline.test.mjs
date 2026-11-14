@@ -248,7 +248,7 @@ test('#120 pipeline: SIGKILL to the runner’s group shows Interrupted, and the 
     /** @type {string[]} */
     const states = [];
     const off = p.store.subscribe(() => {
-      const st = p.t && p.rt.sessionsIn(p.t.id)[0]?.remoteTurn?.state;
+      const st = p.t && arrange.sessionsIn(p.rt, p.t.id)[0]?.remoteTurn?.state;
       if (st && st !== states.at(-1)) states.push(st);
     });
     try {

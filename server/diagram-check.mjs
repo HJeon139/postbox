@@ -11,7 +11,7 @@ export function rememberDiagrams(rt, sessionId, sources) {
   const se = rt.s.sessions[sessionId];
   if (!se) return;
   const hashes = sources.map((s) => createHash('sha256').update(s.trim()).digest('hex').slice(0, 16));
-  rt.updateSession(sessionId, { diagramsLinted: [...new Set([...(se.diagramsLinted ?? []), ...hashes])].slice(-50) });
+  rt.sessions.update(sessionId, { diagramsLinted: [...new Set([...(se.diagramsLinted ?? []), ...hashes])].slice(-50) });
 }
 
 /**

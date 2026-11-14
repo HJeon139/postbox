@@ -8,6 +8,7 @@ import { ClaudeCodeAdapter } from '../server/adapters/claude-code.mjs';
 import { CodexAdapter } from '../server/adapters/codex.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
+import * as arrange from './arrange.mjs';
 import { createFakeDaemon, FIXTURE_PROMPT } from './fake-daemon.mjs';
 import { fakeHosts, forbidden, HOST, MIN, rig, running, settled, starts, until, VERSION } from './remote-turns-helpers.mjs';
 
@@ -132,7 +133,7 @@ test('#120: Codex with no CLI on this computer runs on a host that has it, and i
   rt.sendMessage(t.id, { text: 'hi' });
   await until(() => starts(d).length === 1, 'the turn on the host');
   assert.equal(starts(d)[0].harness, 'codex');
-  const se = rt.sessionsIn(t.id)[0];
+  const se = arrange.sessionsIn(rt, t.id)[0];
   /** @type {any[]} */
   const reqs = [];
   const answer = answerAsCodex(d, d.turns.get(starts(d)[0].turn), reqs);

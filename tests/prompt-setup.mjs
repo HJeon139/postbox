@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createStreamMapper } from '../server/adapters/claude-stream.mjs';
 import { handleMcp } from '../server/mcp.mjs';
+import * as arrange from './arrange.mjs';
 import { cards, until } from './requested-setup.mjs';
 
 /** Lets the event loop run, without timers: a test with a fake clock still moves on. */
@@ -43,7 +44,7 @@ export const askedAfter = (id) => STREAM.findIndex((e) => e.type === 'assistant'
 
 /** permission_prompt from whoever holds the running turn’s token: the CLI, or a command the agent ran. */
 export function prompt(s, args, signal = null) {
-  const se = s.rt.sessionsIn(s.t.id)[0];
+  const se = arrange.sessionsIn(s.rt, s.t.id)[0];
   const msg = { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'permission_prompt', arguments: args } };
   return handleMcp(s.rt, se.id, msg, s.rt.turns.get(se.id)?.token ?? null, signal).then((r) => JSON.parse(r.result.content[0].text));
 }

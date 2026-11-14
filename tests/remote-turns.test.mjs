@@ -90,7 +90,7 @@ test('#120 L5: a queued tool from the host goes through the laptop’s tools onc
   await until(() => r.link.sent.filter((m) => m.type === 'reply' && m.id === id).length === 2, 'the repeat’s reply');
   assert.equal(r.store.items(r.t.id).filter((i) => i.kind === 'block' && i.block?.id === 'pick').length, 1);
   // An asked one gets its answer’s text, after an urgent note waiting for the agent, as on the laptop (#229).
-  r.rt.updateSession(r.se().id, { context: ['[Postbox] URGENT: a subagent needs you.'] });
+  arrange.setSession(r.rt, r.se().id, { context: ['[Postbox] URGENT: a subagent needs you.'] });
   r.d.tool(turn, 'search_assets', { query: 'whales' });
   await until(() => r.d.replies.length === 2, 'the search’s reply');
   assert.match(r.d.replies[1].text, /^\[Postbox\] URGENT: a subagent needs you\.\n\n.*no data folder/s);

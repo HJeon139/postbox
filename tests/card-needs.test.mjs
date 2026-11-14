@@ -228,7 +228,7 @@ test('an app card that waited behind a block is notified when answering the bloc
 test('moving on clears a failed turn’s need, as main does', async () => {
   const r = room();
   const f = arrange.post(r.rt, r.t.id, { kind: 'agent', sessionId: r.alpha.id, handle: 'alpha', turnId: 'turn_last', text: '', status: 'failed', error: 'x' });
-  r.rt.updateSession(r.alpha.id, { needs: { kind: 'failed', itemId: f.id, text: 'x' }, state: 'failed' });
+  arrange.setSession(r.rt, r.alpha.id, { needs: { kind: 'failed', itemId: f.id, text: 'x' }, state: 'failed' });
   const work = held();
   r.adapter.next.push(work.step);
   r.rt.sendMessage(r.t.id, { text: '@alpha try something else' });

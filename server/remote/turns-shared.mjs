@@ -66,7 +66,7 @@ export function whyLine(why, host) {
 /** @param {RemoteTurns} rts @param {string} sessionId @param {Record<string, any>} patch */
 export function updateRemote(rts, sessionId, patch) {
   const se = rts.rt.s.sessions[sessionId];
-  if (se?.remoteTurn) rts.rt.updateSession(sessionId, { remoteTurn: { ...se.remoteTurn, ...patch } });
+  if (se?.remoteTurn) rts.rt.sessions.update(sessionId, { remoteTurn: { ...se.remoteTurn, ...patch } });
 }
 
 /** The session a host turn is (or was last) of. @param {RemoteTurns} rts @param {string} turn */

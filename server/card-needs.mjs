@@ -24,7 +24,7 @@ const messages = (n) => (n === 1 ? '1 message' : `${n} messages`);
  * whatever its turn (a block a turn you didn't start was waiting on).
  */
 function needOf(rt, se, it, threadId, turnIds, keep) {
-  const where = rt.awayFrom(se, threadId);
+  const where = rt.sessions.awayFrom(se, threadId);
   if (it.kind === 'appsend' && it.sessionId === se.id && it.status === 'open')
     return { kind: 'appsend', itemId: it.id, text: `${it.title} wants to send ${messages(it.events?.length ?? 1)} for you`, ...where };
   if (it.kind === 'hop' && it.fromSessionId === se.id && it.status === 'open')
@@ -133,7 +133,7 @@ export function nextNeed(rt, se, o = {}) {
  */
 export function offerNeed(rt, se, need, state) {
   if (!takesNeed(rt, se, need)) return false;
-  rt.updateSession(se.id, { needs: need, state });
+  rt.sessions.update(se.id, { needs: need, state });
   return true;
 }
 
@@ -192,7 +192,7 @@ export function releaseNeed(rt, caller, itemId, busy = caller?.state, { turnIds 
   if (!se || se.needs?.itemId !== itemId) return;
   const released = rt.store.pending.items(se.needs.threadId ?? se.threadId).find((/** @type {any} */ x) => x.id === itemId);
   const need = nextNeed(rt, se, turnIds === undefined ? { released } : { released, turnIds });
-  rt.updateSession(se.id, { needs: need, state: rt.turns.has(se.id) ? busy : stateFor(need) });
+  rt.sessions.update(se.id, { needs: need, state: rt.turns.has(se.id) ? busy : stateFor(need) });
   noticeNeed(rt, se, need);
 }
 

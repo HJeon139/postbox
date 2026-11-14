@@ -28,11 +28,9 @@ async function failedTurn(r = room()) {
 /** Counts the times the session's need is set, from now on. */
 function countNeedSets(r) {
   const sets = [];
-  const update = r.rt.updateSession.bind(r.rt);
-  r.rt.updateSession = (id, patch) => {
+  arrange.onSessionUpdate(r.rt, (id, patch) => {
     if (id === r.alpha.id && 'needs' in patch) sets.push(patch.needs?.kind ?? null);
-    return update(id, patch);
-  };
+  });
   return sets;
 }
 
@@ -161,7 +159,7 @@ test('#883 after a restart, a need left pointing at a dismissed reply isn’t ke
   const r = await failedTurn();
   // As if a turn was running when Postbox stopped, with the need still naming the failure, which was then dismissed.
   r.store.emit('item.patch', { threadId: r.t.id, id: r.failed.id, patch: { dismissed: true } });
-  r.rt.updateSession(r.alpha.id, { state: 'think', needs: { kind: 'failed', itemId: r.failed.id, text: 'x' } });
+  arrange.setSession(r.rt, r.alpha.id, { state: 'think', needs: { kind: 'failed', itemId: r.failed.id, text: 'x' } });
   settleInterrupted(r.rt);
   assert.notEqual(r.store.state.sessions[r.alpha.id].needs?.itemId, r.failed.id, 'not the dismissed failure');
 });

@@ -114,9 +114,9 @@ function endFailed(rt, se, turn, err) {
     ...(err.remote ? { remote: err.remote } : {}),
     ...(err.rawEnding ? { rawEnding: err.rawEnding } : {}),
   });
-  rt.updateSession(se.id, {
+  rt.sessions.update(se.id, {
     state: 'failed',
-    needs: { kind: 'failed', itemId: target, text: message, ...rt.awayFrom(se, turn.threadId) },
+    needs: { kind: 'failed', itemId: target, text: message, ...rt.sessions.awayFrom(se, turn.threadId) },
     sideTurn: null,
     subagents: [],
     currentStep: 'Failed',
@@ -156,7 +156,7 @@ function needsAfter(rt, se, turn, items) {
   // among them), and the cards that wait until answered.
   const needs = nextNeed(rt, se, { turnIds: [turn.id, ...(se.keptTurnIds ?? [])], keep: waiting?.id ?? null });
   const mentionsYou = /(^|\W)@you\b/i.test(turn.said);
-  rt.updateSession(se.id, (se) => ({
+  rt.sessions.update(se.id, (se) => ({
     state: stateFor(needs),
     needs,
     sideTurn: null,

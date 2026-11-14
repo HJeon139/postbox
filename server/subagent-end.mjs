@@ -20,7 +20,7 @@ export function endSubagent(rt, sessionId, subId) {
   if ((se.endingSubagents ?? []).includes(subId)) return { ending: true };
   const what = sub.asked && sub.asked !== sub.name ? `${sub.name}, asked “${sub.asked}”` : sub.name;
   // From the pending session: a notice still held behind a commit stays in the context (#796's class in sessions).
-  rt.updateSession(sessionId, (now) => ({
+  rt.sessions.update(sessionId, (now) => ({
     endingSubagents: [...(now.endingSubagents ?? []), subId],
     context: [
       ...(now.context ?? []),
@@ -42,7 +42,7 @@ export function withUrgent(rt, sessionId, text, turn) {
   // Pending: an urgent note, or another notice, still held behind a commit is given, or kept for the next turn (#796's class).
   const se = rt.store.pending.session(sessionId);
   const urgent = (se?.context ?? []).filter((/** @type {string} */ x) => x.startsWith(URGENT));
-  if (urgent.length) rt.updateSession(sessionId, (now) => ({ context: now.context.filter((/** @type {string} */ x) => !x.startsWith(URGENT)) }));
+  if (urgent.length) rt.sessions.update(sessionId, (now) => ({ context: now.context.filter((/** @type {string} */ x) => !x.startsWith(URGENT)) }));
   // A newer message from the sender the agent is answering, waiting in this thread (#694), comes after any urgent note.
   const notes = [...urgent, ...newerFromSender(rt, sessionId, turn)];
   return notes.length ? `${notes.join('\n')}\n\n${text}` : text;

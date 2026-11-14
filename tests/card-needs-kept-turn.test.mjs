@@ -134,7 +134,7 @@ test('a wake keeps only turns still asking you something, so the list doesn’t 
 test('a wake’s end keeps a failed turn’s need and its Retry, where main drops it', async () => {
   const r = room();
   const f = arrange.post(r.rt, r.t.id, { kind: 'agent', sessionId: r.alpha.id, handle: 'alpha', turnId: 'turn_last', text: '', status: 'failed', error: 'x' });
-  r.rt.updateSession(r.alpha.id, { needs: { kind: 'failed', itemId: f.id, text: 'failed' }, state: 'failed' });
+  arrange.setSession(r.rt, r.alpha.id, { needs: { kind: 'failed', itemId: f.id, text: 'failed' }, state: 'failed' });
   r.adapter.next.push(async (c) => c.text('Thanks, noted.'));
   r.rt.deliver(r.alpha.id, { kind: 'agent', from: '@beta', text: 'Here are the numbers.' });
   await settle(r.rt);
@@ -154,7 +154,7 @@ async function failedThenWakeWithPermission(r) {
     status: 'failed',
     error: 'boom',
   });
-  r.rt.updateSession(r.alpha.id, { needs: { kind: 'failed', itemId: f.id, text: 'boom' }, state: 'failed' });
+  arrange.setSession(r.rt, r.alpha.id, { needs: { kind: 'failed', itemId: f.id, text: 'boom' }, state: 'failed' });
   const work = held();
   r.adapter.next.push(work.step);
   r.rt.deliver(r.alpha.id, { kind: 'agent', from: '@beta', text: 'FYI.' });
@@ -218,7 +218,7 @@ test('after a restart, answering the card ahead of a failed reply brings back it
   const r = room();
   const { p } = await failedThenWakeWithPermission(r);
   const card = r.appCard();
-  r.rt.updateSession(r.alpha.id, { needs: { kind: 'appsend', itemId: card.id, text: 'App' }, state: 'needs' });
+  arrange.setSession(r.rt, r.alpha.id, { needs: { kind: 'appsend', itemId: card.id, text: 'App' }, state: 'needs' });
   r.rt.settlePermission(p.id, 'allowed');
   const rt = restart(r);
   rt.resolveAppSend(r.t.id, card.id, 'deny');

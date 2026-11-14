@@ -28,7 +28,7 @@ function setup() {
   const a = rt.createPersona({ handle: 'alpha' });
   const b = rt.createPersona({ handle: 'beta' });
   const t = rt.createThread({ projectId: 'p1', title: 'T', personaIds: [a.id, b.id] });
-  const [se, other] = rt.sessionsIn(t.id);
+  const [se, other] = arrange.sessionsIn(rt, t.id);
   return { store, rt, t, se, other, tools: rt.toolsFor(se.id) };
 }
 const kinds = (store, t) => store.items(t.id).map((i) => (i.kind === 'block' ? `${i.kind}:${i.block.id}` : i.kind === 'moved' ? `moved:${i.itemId}` : i.kind));
@@ -78,7 +78,7 @@ test('#49: a session that last saw the app reads on from the stub, so nothing af
   const { store, rt, t, other, tools } = setup();
   tools.show_app({ id: 'ap', title: 'A', code: '<p>1</p>' });
   const app = store.items(t.id).at(-1);
-  rt.updateSession(other.id, { seenItem: app.id });
+  arrange.setSession(rt, other.id, { seenItem: app.id });
   arrange.post(rt, t.id, { kind: 'user', text: 'Make it blue.' });
   tools.update_app({ id: 'ap', code: '<p>2</p>' });
   const stub = store.items(t.id)[0];

@@ -12,7 +12,7 @@ import { settle, setup } from './side-threads-fixture.mjs';
 async function cardOpen() {
   const f = setup();
   f.rt.ensureSession(f.t.id, f.c.id);
-  const gamma = f.rt.sessionsIn(f.t.id).find((x) => x.handle === 'gamma');
+  const gamma = arrange.sessionsIn(f.rt, f.t.id).find((x) => x.handle === 'gamma');
   const wake = async (from, to) => {
     const r = f.rt.agentWake(from.id, to, `${from.handle} to ${to}`);
     await settle(f.rt);

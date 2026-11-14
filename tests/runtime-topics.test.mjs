@@ -75,14 +75,14 @@ test('#81, #228: an agent from outside the conversation @-mentioned in a topic j
   const { store, rt, adapter, t, c, topic } = await topicOnReply();
   rt.sendMessage(topic.id, { text: '@gamma check this row' });
   await settle(rt);
-  const gamma = rt.sessionsIn(t.id).find((x) => x.personaId === c.id);
+  const gamma = arrange.sessionsIn(rt, t.id).find((x) => x.personaId === c.id);
   assert.deepEqual([gamma.joinedBy, gamma.joinedIn], ['you', topic.id]);
   assert.equal(adapter.calls.at(-1).sessionId, gamma.id);
   assert.match(context(adapter.calls.at(-1)), /This thread started from @alpha’s message: First answer\./);
   rt.sendMessage(topic.id, { text: '@gamma and the next one?' });
   await settle(rt);
   assert.doesNotMatch(context(adapter.calls.at(-1)), /This thread started from/);
-  assert.equal(rt.sessionsIn(topic.id).length, 0, 'nothing joined the thread itself');
+  assert.equal(arrange.sessionsIn(rt, topic.id).length, 0, 'nothing joined the thread itself');
   assert.equal(store.state.sessions[gamma.id].retiredFork, undefined);
 });
 

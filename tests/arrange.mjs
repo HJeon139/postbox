@@ -17,7 +17,7 @@ export * from './arrange-work.mjs';
 // ── Agents and personas ──────────────────────────────────────────────────────────────
 
 /** The agents’ sessions in a thread, in the order they joined. @param {Runtime} rt @param {string} threadId */
-export const sessionsIn = (rt, threadId) => rt.sessionsIn(threadId);
+export const sessionsIn = (rt, threadId) => rt.sessions.in(threadId);
 
 /**
  * One agent’s session in a thread: the one with that handle, or the first to join when no handle is given. A handle
@@ -25,7 +25,7 @@ export const sessionsIn = (rt, threadId) => rt.sessionsIn(threadId);
  * @param {Runtime} rt @param {string} threadId @param {[string?]} handle
  */
 export function agentIn(rt, threadId, ...handle) {
-  const all = rt.sessionsIn(threadId);
+  const all = rt.sessions.in(threadId);
   return handle.length ? all.find((se) => se.handle === handle[0]) : all[0];
 }
 
@@ -36,10 +36,16 @@ export const persona = (rt, handle) => rt.personas.byHandle(handle);
 export const personaFor = (rt, se) => rt.personas.forSession(/** @type {any} */ (se));
 
 /** Changes a session’s record, as the server does when its state moves on. @param {Runtime} rt @param {string} id @param {object} patch */
-export const setSession = (rt, id, patch) => rt.updateSession(id, patch);
+export const setSession = (rt, id, patch) => rt.sessions.update(id, patch);
+
+/** Leaves a Postbox notice for an agent’s next turn, as the server does. @param {Runtime} rt @param {string} sessionId @param {string} text */
+export const tell = (rt, sessionId, text) => rt.sessions.tell(sessionId, text);
+
+/** The other agents in a thread’s conversation, with their roles, as the guide gives them. @param {Runtime} rt @param {string} threadId @param {object} se */
+export const roomOf = (rt, threadId, se) => rt.sessions.roomOf(threadId, /** @type {any} */ (se));
 
 /** Offers an agent’s slash commands, as its backend reports them when a turn starts. @param {Runtime} rt @param {string} sessionId @param {object[]} list */
-export const offerCommands = (rt, sessionId, list) => rt.recordCommands(sessionId, list);
+export const offerCommands = (rt, sessionId, list) => rt.sessions.recordCommands(sessionId, list);
 
 // ── Threads and items ────────────────────────────────────────────────────────────────
 
@@ -270,6 +276,38 @@ export function onItemPatch(rt, fn) {
   };
   return () => {
     threads.patchItem = patchItem;
+  };
+}
+
+/**
+ * Hears each change to a session, before it’s written as it would be. Returns a function that stops listening.
+ * @param {Runtime} rt @param {(sessionId: string, change: any) => void} fn
+ */
+export function onSessionUpdate(rt, fn) {
+  const { sessions } = rt;
+  const update = sessions.update.bind(sessions);
+  sessions.update = (id, change) => {
+    fn(id, change);
+    return update(id, change);
+  };
+  return () => {
+    sessions.update = update;
+  };
+}
+
+/**
+ * Hears each Postbox notice left for an agent, before it’s written as it would be. Returns a function that stops listening.
+ * @param {Runtime} rt @param {(sessionId: string, text: string) => void} fn
+ */
+export function onTell(rt, fn) {
+  const { sessions } = rt;
+  const tell = sessions.tell.bind(sessions);
+  sessions.tell = (id, text) => {
+    fn(id, text);
+    return tell(id, text);
+  };
+  return () => {
+    sessions.tell = tell;
   };
 }
 

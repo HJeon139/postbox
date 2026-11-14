@@ -11,6 +11,7 @@ import { REFUSED } from '../server/prompt-claim.mjs';
 import { Store } from '../server/store.mjs';
 import { heldPrompts } from '../server/turn-work.mjs';
 import { PROMPT_CALL_WAIT_MS, PROMPT_REPLAY_WAIT_MS } from '../shared/limits.mjs';
+import * as arrange from './arrange.mjs';
 import { callLine, createFakeDaemon, FIXTURE_PROMPT } from './fake-daemon.mjs';
 import { rig, running, settled, startUp, until } from './remote-turns-helpers.mjs';
 
@@ -46,7 +47,7 @@ async function restartedReplaying(t, request) {
   const d = createFakeDaemon({ autoEnd: false, holdCaughtUp: ['out'] });
   const first = rig({ store, d });
   first.rt.remote.close();
-  first.rt.updateSession(first.se().id, {
+  arrange.setSession(first.rt, first.se().id, {
     backendState: { claudeSessionId: 'e6f7d942-4a4f-4015-b186-0ef8d5c103ca' },
     remoteTurn: { hostId: first.host.id, turn: 'host-turn-1', offset: 0, rtTurn: 'turn_old', threadId: first.t.id, state: 'running', at: 1 },
   });

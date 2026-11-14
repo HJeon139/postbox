@@ -212,7 +212,7 @@ function allocate(rts, live, folder) {
   adopt(rts, live, id);
   const se = rts.rt.s.sessions[live.sessionId];
   const prior = se?.remoteTurn ?? {};
-  rts.rt.updateSession(live.sessionId, {
+  rts.rt.sessions.update(live.sessionId, {
     remoteTurn: {
       hostId: live.hostId,
       turn: id,

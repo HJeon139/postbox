@@ -182,7 +182,7 @@ export function rig({
     rt.createThread({ projectId: 'p1', title: 'T', personaIds: [p.id] });
   }
   const t = Object.values(store.state.threads)[0];
-  return { d, hosts, rt, store, t, se: () => rt.sessionsIn(t.id)[0], host, f, notes, link: hosts.theLink };
+  return { d, hosts, rt, store, t, se: () => arrange.sessionsIn(rt, t.id)[0], host, f, notes, link: hosts.theLink };
 }
 
 export const starts = (d) => d.received.filter((m) => m.type === 'start');
@@ -211,7 +211,7 @@ export function restarted({ welcome = /** @type {'running' | 'ended' | 'missing'
   const first = rig({ store, d });
   first.rt.remote.close();
   const se = first.se();
-  first.rt.updateSession(se.id, {
+  arrange.setSession(first.rt, se.id, {
     backendState: { claudeSessionId: 'e6f7d942-4a4f-4015-b186-0ef8d5c103ca' },
     remoteTurn: { hostId: first.host.id, turn: 'host-turn-1', offset: 120, rtTurn: 'turn_old', threadId: first.t.id, state: 'waiting', at: 1 },
   });

@@ -70,7 +70,7 @@ export async function onTool(rts, hostId, m) {
   }
   // A queued call’s agent already has its answer (the shim’s, once the daemon took it), so Postbox’s refusal goes to
   // it at its next turn instead.
-  if (queued && !r.ok) rts.rt.tellAgent(live.sessionId, `Your ${m.name} call from the host didn’t go through: ${text.slice(0, 1000)}`);
+  if (queued && !r.ok) rts.rt.sessions.tell(live.sessionId, `Your ${m.name} call from the host didn’t go through: ${text.slice(0, 1000)}`);
   send(link, 'reply', { turn: m.turn, id: m.id, ok: r.ok, text: text || (r.ok ? 'Done.' : 'It failed.') });
 }
 

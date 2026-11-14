@@ -4,7 +4,6 @@
 
 import { httpError } from './helpers.mjs';
 import * as queue from './message-queue.mjs';
-import { pendingSessionsIn } from './session-write.mjs';
 import { dropWakes } from './side-threads.mjs';
 import { eraseThreads } from './thread-erase.mjs';
 
@@ -60,7 +59,7 @@ export function deleteSession(rt, sessionId) {
     for (const it of rt.store.pending.items(t.id)) if (it.sessionId === sessionId) rt.threads.patchItem(t.id, it.id, { deletedAgent: true });
     rt.threads.addItem(t.id, { kind: 'system', variant: 'left', to: se.handle });
   }
-  if (rt.store.pending.session(sessionId)) rt.store.emit('remove', { kind: 'session', id: sessionId });
+  rt.sessions.remove(sessionId);
   return { handle: se.handle };
 }
 
@@ -75,7 +74,7 @@ export function deleteThread(rt, threadId) {
   const scope = conversationScope(rt, threadId);
   // A turn of one on a host, waiting to be attached again or to resume, is neither (#120).
   for (const x of scope)
-    for (const se of pendingSessionsIn(rt, x.id)) {
+    for (const se of rt.sessions.pendingIn(x.id)) {
       rt.stop(se.id, { silent: true });
       rt.remote.cancel(se.id);
     }

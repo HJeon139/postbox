@@ -121,7 +121,7 @@ function stoppedHung(rts, turn, live, se, why) {
   const stoppedHere = own.filter((/** @type {any} */ it) => it.status === 'stopped');
   for (const it of stoppedHere.length ? stoppedHere : own.slice(-1)) rt.threads.patchItem(turn.threadId, it.id, { note: why });
   updateRemote(rts, se.id, { state: 'hung', at: rts.now(), message: why, resume: null });
-  rt.tellAgent(se.id, `Postbox stopped your last turn on ${rt.s.hosts?.[live.hostId]?.name ?? 'the host'}: ${why.replace(/^Stopped: /, '')}.`);
+  rt.sessions.tell(se.id, `Postbox stopped your last turn on ${rt.s.hosts?.[live.hostId]?.name ?? 'the host'}: ${why.replace(/^Stopped: /, '')}.`);
   rt.threads.notify('blocking', se, `@${se.handle} was stopped`, why, turn.threadId);
 }
 

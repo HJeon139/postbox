@@ -9,6 +9,7 @@ import { test } from 'node:test';
 import { HOOK_PROMPTS } from '../server/adapters/agy-hook.mjs';
 import { REFUSED } from '../server/prompt-claim.mjs';
 import { PROMPT_CALL_WAIT_MS } from '../shared/limits.mjs';
+import * as arrange from './arrange.mjs';
 import { answerNow, askedAfter, feed, flush, openCard, PROMPTS, prompt, refusals, turn } from './prompt-setup.mjs';
 import { cards, setup } from './requested-setup.mjs';
 
@@ -128,7 +129,7 @@ test('#353 a prompt whose request closes while it waits is refused, with no card
       const asked = prompt(s, p);
       await flush();
       // Stop: the turn ends while the prompt waits, and its call’s line comes after.
-      s.rt.stop(s.rt.sessionsIn(s.t.id)[0].id);
+      s.rt.stop(arrange.sessionsIn(s.rt, s.t.id)[0].id);
       feed(c, 0, askedAfter(p.tool_use_id));
       t.mock.timers.tick(PROMPT_CALL_WAIT_MS);
       answers.push(await answerNow(asked, 'the refusal at the bound'));

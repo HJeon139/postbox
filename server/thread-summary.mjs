@@ -64,7 +64,7 @@ export function threadCatchUp(rt, se, threadId, exclude = []) {
   const items = rt.store.items(threadId);
   const seen = se.seenIn?.[threadId];
   const at = seen ? positionOf(items, seen) : -1;
-  rt.updateSession(se.id, { seenIn: { ...(se.seenIn ?? {}), [threadId]: items.at(-1)?.id ?? null } });
+  rt.sessions.update(se.id, { seenIn: { ...(se.seenIn ?? {}), [threadId]: items.at(-1)?.id ?? null } });
   const root = seen === undefined ? rt.topicRootLine(se, t) : null;
   // The conversation's own rules (#507): a message that @-mentions the agent first and whole, then the newest, up to
   // THREAD_ITEMS and CATCH_UP_CHARS, and a line saying what was left out and how to read it in this thread.
@@ -98,7 +98,7 @@ export function threadLines(rt, se, since) {
     .filter(({ t, line, last }) => line && last && last.at > since && last.sessionId !== se.id && !(t.kind === 'side' && line.at > since))
     .filter(({ t, last }) => told[t.id] !== last.id && !readUpTo(rt, now, t.id, last));
   for (const { t, last } of out) told[t.id] = last.id;
-  if (out.length) rt.updateSession(se.id, { threadsTold: told });
+  if (out.length) rt.sessions.update(se.id, { threadsTold: told });
   return out.map(({ t, line }) => describeThread(t, line));
 }
 
@@ -131,7 +131,7 @@ const busyIn = (rt, threadId) =>
  */
 export function summarizerOf(rt, threadId) {
   if (rt.summarize !== undefined) return rt.summarize;
-  const claude = rt.sessionsIn(rt.threads.lineage(threadId).at(-1)).some((x) => ['claude-code', 'agent-sdk'].includes(rt.persona(x.personaId)?.backend));
+  const claude = rt.sessions.in(rt.threads.lineage(threadId).at(-1)).some((x) => ['claude-code', 'agent-sdk'].includes(rt.persona(x.personaId)?.backend));
   if (!claude || !rt.adapters.names().includes('agent-sdk')) return null;
   const sdk = rt.adapters.get('agent-sdk').sdk;
   return async (prompt) => {
@@ -264,7 +264,7 @@ export function reactionLines(rt, se, threadId) {
   if (!told.length) return [];
   const at = told.at(-1).r.at;
   const keys = [...(at === was.at ? was.keys : []), ...told.filter((x) => x.r.at === at).map((x) => key(x.it, x.r))];
-  rt.updateSession(se.id, { reactionsTold: { ...(now.reactionsTold ?? {}), [threadId]: { at, keys } } });
+  rt.sessions.update(se.id, { reactionsTold: { ...(now.reactionsTold ?? {}), [threadId]: { at, keys } } });
   return told.map(({ it, r }) => {
     const when = new Date(r.at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
     const words = clipText(

@@ -6,7 +6,7 @@ import { homedir } from 'node:os';
 import { READING } from '../shared/limits.mjs';
 import { formatDuration } from '../shared/text.mjs';
 import { listProcesses } from './adapters/process-group.mjs';
-import { recordCommands, runAgentCommand } from './agent-commands.mjs';
+import { runAgentCommand } from './agent-commands.mjs';
 import { agentFile, agentFolders, appFiles } from './agent-files.mjs';
 import { APP_HOLD_MAX, APP_SEND_LIMIT, APP_SEND_WINDOW_MS } from './app-send-limits.mjs';
 import { appCheck, appEvent, appFile, appQuery, appState, needAppSend, registerApp, resolveAppSend } from './apps.mjs';
@@ -16,10 +16,9 @@ import { act, answerDelivered, unreadAnswer } from './blocks.mjs';
 import { Bus } from './bus.mjs';
 import { catchUp, moveMarkers } from './catch-up.mjs';
 import { attachClaudeSession, claudeSessions, mirror, pollMirror, rearmMirrors, stopMirrorFor, stopMirrors } from './claude-mirror.mjs';
-import { ensureSession } from './conversations.mjs';
 import { deliver, retry } from './deliver.mjs';
 import { diagramCheck } from './diagram-check.mjs';
-import { clipText, httpError } from './helpers.mjs';
+import { httpError } from './helpers.mjs';
 import { describeItem, topicRootLine } from './item-lines.mjs';
 import { endJob, expireStaleJobs, recordJob } from './job-records.mjs';
 import { keptJobs, pollKept, stopJob, stopKeptJobs, watchKept } from './kept-jobs.mjs';
@@ -54,7 +53,7 @@ import { Running } from './running.mjs';
 import { armWake, cancelWakeSchedule, rearmWakes, scheduleWake } from './scheduled-wakes.mjs';
 import { sendMessage, threadRefs } from './send-message.mjs';
 import { deleteSession, deleteThread } from './session-lifecycle.mjs';
-import { forgetReported, pendingSessionsIn, stampNeeds, tellAgent, updateSession } from './session-write.mjs';
+import { Sessions } from './sessions.mjs';
 import { clearSummaryPending, shareText, shareToConversation, summarizeBack, summarizing } from './share-back.mjs';
 import { commandFolder, expireStaleCommands, flushShellOutput, runShellCommand, stopShellCommand, stopShellCommands } from './shell-runs.mjs';
 import { agentWake, bumpSideLink, recordAgentMessage, resolveHop, sideSession } from './side-threads.mjs';
@@ -66,8 +65,7 @@ import { checkTurn, stallLeftRunning, stallSteps } from './turn-checks.mjs';
 import { settleSubagentSteps } from './turn-steps.mjs';
 import { dismissStopAsk, recordStopped, requestStop, stop, stopTurns } from './turn-stop.mjs';
 import { toolsFor } from './ui-tools.mjs';
-import { unarchive } from './unarchive.mjs';
-import { closeOrphanCards } from './wake-cards.mjs';
+import { closeOrphanCards, liftDecline } from './wake-cards.mjs';
 import { restoreWork, workDiff, workGit, workOutput } from './work-view.mjs';
 
 export { AgentFileError } from './agent-files.mjs';
@@ -146,17 +144,20 @@ export class Runtime {
     });
     // The personas, which signal persona.updated after a change (designs/architecture/services.md, “Personas”).
     this.personas = new Personas({ store, bus: this.bus, placement: this.placement, adapters });
+    // Sessions, one per agent per conversation; an agent the person adds lifts a decline of adding it there (#789).
+    this.sessions = new Sessions({ store, bus: this.bus, threads: this.threads, personas: this.personas });
+    this.bus.on('session.joined', ({ threadId, persona }) => liftDecline(this, threadId, persona.handle));
     this.remote = new RemoteTurns(this, { hosts: this.hosts });
     this.listenToPersonas();
     this.turnArchive = new ArchivePasses(this, { enabled: config.archiveTurns === true }); // #305: off until step 4
     // Conversations can’t be archived any more: one an older Postbox archived comes back as a live one.
-    unarchive(this);
+    this.sessions.unarchive();
     // After that, so a card of an agent it brings back stays the person’s to answer (#693).
     closeOrphanCards(this);
     // Ask me and Accept edits are gone: a persona stored with one runs Auto (permission-modes.mjs).
     retireModes(this);
     // A need from before needsAt gets its item's time, once, so ⌃J orders it without the page holding its items.
-    stampNeeds(this);
+    this.sessions.stampNeeds();
   }
 
   get s() {
@@ -174,8 +175,10 @@ export class Runtime {
     this.bus.on('persona.updated', ({ persona }) => {
       for (const se of Object.values(this.s.sessions)) if (se.personaId === persona.id) this.remote.noteAttach(se.id);
     });
-    this.bus.on('persona.updated', ({ persona, was }) => forgetReported(this, was, persona));
-    this.bus.on('persona.updated', ({ persona, patch }) => patch.tools !== undefined && settleToolAsks(this, persona));
+    this.bus.on('persona.updated', ({ persona, was }) => this.sessions.forgetReported(was, persona));
+    this.bus.on('persona.updated', ({ persona, patch }) => {
+      if (patch.tools !== undefined) settleToolAsks(this, persona);
+    });
     this.bus.on('persona.updated', ({ persona }) => queue.drainMovedOff(this, persona.id));
   }
 
@@ -206,35 +209,11 @@ export class Runtime {
     return this.threads.get(id);
   }
   session(id) {
-    const se = this.s.sessions[id];
-    if (!se) throw httpError(404, 'That session doesn’t exist. It may have been deleted.');
-    return se;
-  }
-  sessionsIn(threadId) {
-    return (this.s.threads[threadId]?.members ?? []).map((id) => this.s.sessions[id]).filter(Boolean);
-  }
-  /**
-   * The other agents in a turn’s conversation, with their roles, for the guide: the room tells each agent who else is
-   * here and what they do, so a persona’s own prompt needn’t know its team. A side or topic thread’s room is its
-   * conversation’s.
-   * @param {string} threadId @param {any} se  the agent the guide is for
-   * @returns {{ handle: string, role: string }[]}
-   */
-  roomOf(threadId, se) {
-    const t = this.s.threads[threadId];
-    const conv = t?.parentId && this.s.threads[t.parentId] ? t.parentId : threadId;
-    const seen = new Set([se.handle]);
-    return this.sessionsIn(conv)
-      .filter((x) => !x.retiredFork && !seen.has(x.handle) && seen.add(x.handle))
-      .map((x) => ({ handle: x.handle, role: clipText(String(this.persona(x.personaId)?.description ?? ''), 200) }));
+    return this.sessions.get(id);
   }
 
   // ── Emit helpers ───────────────────────────────────────────────────────────────────
 
-  putSession(se) {
-    this.store.emit('session', { ...se });
-    return se;
-  }
   /**
    * Ends the turn’s current segment as done, as a card does when it opens: the reply goes on below the card. The turn
    * keeps the id of its one segment still streaming (openSegment), because an item held behind a commit isn’t in
@@ -247,11 +226,8 @@ export class Runtime {
     if (turn.openSegment === turn.segment) turn.openSegment = null;
     turn.segment = null;
   }
-  updateSession(id, patch) {
-    updateSession(this, id, patch);
-  }
 
-  // ── A conversation’s own record: server/threads.mjs and conversations.mjs ──────────
+  // ── A conversation’s own record: server/threads.mjs and sessions.mjs ──────────────
 
   /**
    * Starts a conversation with the agents it starts with, each given its session there, and answers it as written, with
@@ -264,7 +240,7 @@ export class Runtime {
     return this.store.pending.thread(t.id);
   }
   ensureSession(threadId, personaId, opts) {
-    return ensureSession(this, threadId, personaId, opts);
+    return this.sessions.ensure(threadId, personaId, opts);
   }
 
   // ── Messages from you: server/send-message.mjs and message-queue.mjs ──────────────
@@ -331,15 +307,6 @@ export class Runtime {
   }
 
   /**
-   * The thread a session’s ask is in, when that isn’t its own: { threadId } to spread into its needs, so the overview
-   * and ⌃J go to the side thread where the card is (#121).
-   * @param {any} se @param {string} threadId
-   */
-  awayFrom(se, threadId) {
-    return threadId && threadId !== se.threadId ? { threadId } : {};
-  }
-
-  /**
    * The queues waiting on this session: the thread its turn was in, and any other (its conversation, a side thread)
    * whose next message is for it. A session answers in more than one thread now (#110).
    */
@@ -379,11 +346,6 @@ export class Runtime {
 
   settleSubagentSteps(turn) {
     return settleSubagentSteps(this, turn);
-  }
-
-  /** Context the agent reads at the start of its next turn, as a Postbox notice. */
-  tellAgent(sessionId, text) {
-    tellAgent(this, sessionId, text);
   }
 
   /** The kept jobs, everywhere. */
@@ -640,9 +602,6 @@ export class Runtime {
   // `/` runs Postbox’s own commands without a turn, or an agent’s skill or command as its turn; `!` runs a command line
   // as the person, in the conversation’s folder, and the agents read it on their next turn, without being woken.
 
-  recordCommands(sessionId, list) {
-    return recordCommands(this, sessionId, list);
-  }
   runAgentCommand(threadId, req) {
     return runAgentCommand(this, threadId, req);
   }
@@ -860,7 +819,7 @@ export class Runtime {
    */
   view(threadId) {
     if (!threadId) return;
-    for (const se of pendingSessionsIn(this, threadId)) if (se.unread) this.updateSession(se.id, { unread: 0 });
+    this.sessions.markRead(threadId);
     this.threads.view(threadId);
   }
 

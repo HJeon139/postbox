@@ -8,6 +8,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { actionWords } from '../server/request-floor.mjs';
 import { allowedQuote, REQUESTED_MAX } from '../server/write-intent.mjs';
+import * as arrange from './arrange.mjs';
 import { afterBlock, allow, asking, asks, bash, CREATE, cards, confirm, lines, setup, until } from './requested-setup.mjs';
 
 test('a write the person’s typed words ask for runs without a card; the judge reads only their words as theirs', async () => {
@@ -146,7 +147,7 @@ test('a turn another agent’s message started has no request of the person’s,
   await until(() => !s.rt.turns.size);
   const answers = [];
   s.next.push(asking(s, [CREATE], answers));
-  s.rt.deliver(s.rt.sessionsIn(s.t.id)[0].id, { kind: 'agent', from: '@lead', text: 'Open the PR.' }, { threadId: s.t.id });
+  s.rt.deliver(arrange.sessionsIn(s.rt, s.t.id)[0].id, { kind: 'agent', from: '@lead', text: 'Open the PR.' }, { threadId: s.t.id });
   await until(() => answers.length && !s.rt.turns.size);
   assert.deepEqual(
     answers.map((a) => a.allow),

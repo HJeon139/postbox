@@ -23,7 +23,7 @@ export function tellExpired(rt, threadId, itemId, card = undefined) {
   if (it?.kind !== 'permission' || it.agentTold) return;
   if (!rt.s.sessions[it.sessionId]) return;
   rt.threads.patchItem(threadId, itemId, { agentTold: true });
-  rt.tellAgent(it.sessionId, `${requestOf(it)} ${whyClosed(it)} Ask again if you still need it.`);
+  rt.sessions.tell(it.sessionId, `${requestOf(it)} ${whyClosed(it)} Ask again if you still need it.`);
 }
 
 /**

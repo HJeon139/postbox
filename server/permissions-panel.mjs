@@ -164,7 +164,7 @@ export async function changePermissionRule(
       if (rules[b].length >= MAX_CONVERSATION_RULES) throw httpError(422, `A conversation keeps up to ${MAX_CONVERSATION_RULES} ${b} rules.`);
       rules[b].push(clean);
     }
-    rt.updateSession(se.id, { rules });
+    rt.sessions.update(se.id, { rules });
     return { ok: true, where, applies: 'next turn' };
   }
   if (where === 'user' && !setupOf(persona).usesHostSetup)
@@ -194,14 +194,14 @@ export async function changePermissionFolder(rt, { sessionId, path, remove = fal
   if (!dir) throw httpError(422, 'Write the folder’s full path.');
   const dirs = [...(se.addDirs ?? [])];
   if (remove) {
-    rt.updateSession(se.id, { addDirs: dirs.filter((d) => d !== dir) });
+    rt.sessions.update(se.id, { addDirs: dirs.filter((d) => d !== dir) });
     return { ok: true, path: dir };
   }
   const st = await stat(dir).catch(() => null);
   if (!st?.isDirectory()) throw httpError(422, `${dir} isn’t a folder on rt computer.`);
   if (!dirs.includes(dir)) {
     if (dirs.length >= MAX_ADD_DIRS) throw httpError(422, `A conversation can add up to ${MAX_ADD_DIRS} folders.`);
-    rt.updateSession(se.id, { addDirs: [...dirs, dir] });
+    rt.sessions.update(se.id, { addDirs: [...dirs, dir] });
   }
   return { ok: true, path: dir, applies: 'next turn' };
 }
@@ -211,6 +211,6 @@ export async function changePermissionFolder(rt, { sessionId, path, remove = fal
  * @param {any} rt @param {string} sessionId @param {string} dir
  */
 function removeReadFolder(rt, sessionId, dir) {
-  rt.updateSession(sessionId, (/** @type {any} */ pending) => ({ readDirs: (pending.readDirs ?? []).filter((/** @type {string} */ d) => d !== dir) }));
+  rt.sessions.update(sessionId, (/** @type {any} */ pending) => ({ readDirs: (pending.readDirs ?? []).filter((/** @type {string} */ d) => d !== dir) }));
   return { ok: true, path: dir };
 }

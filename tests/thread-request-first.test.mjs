@@ -81,7 +81,7 @@ test('#504 a thread request stays whole even when the room summary already gave 
     text: '@beta inspect this exact request in the topic.',
     status: 'done',
   });
-  f.rt.updateSession(f.beta.id, { seenItem: sent.id, givenMentions: [sent.id] });
+  arrange.setSession(f.rt, f.beta.id, { seenItem: sent.id, givenMentions: [sent.id] });
   f.rt.deliver(f.beta.id, { kind: 'agent', from: '@alpha', text: sent.text, itemId: sent.id }, { threadId: f.topic.id });
   await settle(f.rt);
 

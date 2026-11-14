@@ -7,12 +7,13 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { REFUSED } from '../server/prompt-claim.mjs';
 import { PROMPT_CALL_WAIT_MS, PROMPT_HOLDS_MAX, PROMPT_REFUSAL_LINES } from '../shared/limits.mjs';
+import * as arrange from './arrange.mjs';
 import { answerNow, askedAfter, feed, flush, PROMPTS, prompt, refusals, turn } from './prompt-setup.mjs';
 import { cards, setup, until } from './requested-setup.mjs';
 
 /** The prompts waiting for a call’s line in the session’s running turn, by its watchers. */
 const waiting = (s) => {
-  const watchers = s.rt.turns.get(s.rt.sessionsIn(s.t.id)[0].id)?.callWatchers ?? new Map();
+  const watchers = s.rt.turns.get(arrange.sessionsIn(s.rt, s.t.id)[0].id)?.callWatchers ?? new Map();
   return [...watchers.values()].reduce((n, set) => n + set.size, 0);
 };
 /** A prompt for an id no stream showed, and whether it was answered yet. */
@@ -70,7 +71,7 @@ test('#665 a flood of prompts for unseen ids holds only PROMPT_HOLDS_MAX open; t
 test('#665 the cap is a turn’s: prompts an ended turn still holds don’t refuse the next turn’s', async (t) => {
   const s = await setup();
   const [p] = PROMPTS;
-  const se = s.rt.sessionsIn(s.t.id)[0];
+  const se = arrange.sessionsIn(s.rt, s.t.id)[0];
   /** One turn whose end the test decides. */
   const begin = () => {
     const at = {};

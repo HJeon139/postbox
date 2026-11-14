@@ -11,6 +11,7 @@ import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { ClaudeCodeAdapter } from '../server/adapters/claude-code.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
+import * as arrange from './arrange.mjs';
 import { FakeHosts } from './remote-runtime-helpers.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
@@ -86,7 +87,7 @@ test('the permissions panel and the files of an agent on a host read a folder th
   const p = rt.createPersona({ handle: 'alpha', backend: 'claude-code', remote: { hostId: host.id } });
   store.emit('persona', { ...store.state.personas[p.id], folder: 'server' });
   const t = rt.createThread({ projectId: 'p1', title: 'alpha', personaIds: [p.id] });
-  const se = rt.sessionsIn(t.id)[0];
+  const se = arrange.sessionsIn(rt, t.id)[0];
   assert.equal((await rt.panelTarget({ sessionId: se.id })).folder, project);
   assert.equal((await rt.panelTarget({ personaId: p.id, projectId: 'p1' })).folder, project);
   assert.deepEqual(await rt.agentFolders(se.id), [project]);

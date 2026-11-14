@@ -8,6 +8,7 @@ import { join } from 'node:path';
 import { after, before, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { helloSettings } from '../server/remote/ssh.mjs';
+import * as arrange from './arrange.mjs';
 import { fakeRequest, NAVIGATION } from './fake-http.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
@@ -189,12 +190,12 @@ test('#74: a message sent with the page’s token posts as the person; one witho
   const sent = await call({ method: 'POST', path: `/api/threads/${thread.id}/messages`, body: { text: 'from the page' }, cookie });
   assert.equal(sent.status, 201);
   assert.equal(app.store.items(thread.id).find((i) => i.kind === 'user')?.text, 'from the page');
-  for (const se of app.rt.sessionsIn(thread.id)) app.rt.stop(se.id, { silent: true });
+  for (const se of arrange.sessionsIn(app.rt, thread.id)) app.rt.stop(se.id, { silent: true });
 });
 
 test('#120 L6: Resume after a turn on a host stopped needs the page’s token, and with it reaches resumeRemote', async () => {
   const thread = Object.values(app.store.state.threads).find((t) => t.title === 'Asset explorer');
-  const [se] = app.rt.sessionsIn(thread.id);
+  const [se] = arrange.sessionsIn(app.rt, thread.id);
   const path = `/api/sessions/${se.id}/resume`;
   const refused = await call({ method: 'POST', path, body: {} });
   assert.equal(refused.status, 403);

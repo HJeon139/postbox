@@ -168,7 +168,7 @@ export async function reattach(rts, sessionId) {
     for (const it of rt.store.pending.items(threadId))
       if (it.kind === 'agent' && it.turnId && it.turnId === r.rtTurn && it.status !== 'replaced')
         rt.threads.patchItem(threadId, it.id, { status: 'replaced', text: '' });
-  rt.updateSession(sessionId, { state: 'think', currentStep: `Reconnecting to ${rt.s.hosts?.[r.hostId]?.name ?? 'the host'}` });
+  rt.sessions.update(sessionId, { state: 'think', currentStep: `Reconnecting to ${rt.s.hosts?.[r.hostId]?.name ?? 'the host'}` });
   const go = continuing(rt, now, { kind: 'notice', text: '', attach: r.turn });
   rt.deliver(sessionId, go.message, go.opts);
 }
@@ -212,7 +212,7 @@ export function interrupted(rts, sessionId, why, { unkilled = false, noBackend =
   // Its backend isn’t registered here, so it can’t resume until it is: the hint says so (#965, resumeHint).
   if (noBackend) resume.noBackend = true;
   updateRemote(rts, sessionId, { state: 'interrupted', at: rts.now(), resume });
-  rt.updateSession(sessionId, {
+  rt.sessions.update(sessionId, {
     state: 'failed',
     needs: { kind: 'failed', itemId: it.id, text: message },
     // The interrupted turn is the last turn (card-needs.mjs turnsOf), when the host named it.

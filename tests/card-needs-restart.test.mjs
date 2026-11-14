@@ -69,11 +69,9 @@ test('a permission that expires at the turn’s end doesn’t flash the block yo
     throw new Error('the model went away');
   });
   const kinds = [];
-  const update = r.rt.updateSession.bind(r.rt);
-  r.rt.updateSession = (id, patch) => {
+  arrange.onSessionUpdate(r.rt, (id, patch) => {
     if (id === r.alpha.id && 'needs' in patch) kinds.push(patch.needs?.kind ?? null);
-    return update(id, patch);
-  };
+  });
   r.rt.sendMessage(r.t.id, { text: '@alpha go on' });
   await settle(r.rt);
   assert.ok(!kinds.includes('block'), `the needs the turn set: ${JSON.stringify(kinds)}`);
@@ -121,11 +119,9 @@ test('a failed turn that showed a block, then asked permission, doesn’t flash 
     throw new Error('the model went away');
   });
   const kinds = [];
-  const update = r.rt.updateSession.bind(r.rt);
-  r.rt.updateSession = (id, patch) => {
+  arrange.onSessionUpdate(r.rt, (id, patch) => {
     if (id === r.alpha.id && 'needs' in patch) kinds.push(patch.needs?.kind ?? null);
-    return update(id, patch);
-  };
+  });
   r.rt.sendMessage(r.t.id, { text: '@alpha go on' });
   await settle(r.rt);
   assert.ok(!kinds.includes('block'), `the needs the turn set: ${JSON.stringify(kinds)}`);
@@ -150,7 +146,7 @@ async function restartDuringWake(r, kind) {
     });
     need = { kind, itemId: f.id };
   }
-  r.rt.updateSession(r.alpha.id, { needs: { ...need, text: kind }, state: kind === 'failed' ? 'failed' : 'needs' });
+  arrange.setSession(r.rt, r.alpha.id, { needs: { ...need, text: kind }, state: kind === 'failed' ? 'failed' : 'needs' });
   r.adapter.next.push(held().step);
   r.rt.deliver(r.alpha.id, { kind: 'agent', from: '@beta', text: 'Here are the numbers.' });
   await sleep(5);

@@ -35,7 +35,7 @@ function rig(store) {
   store.emit('project', { id: 'p1', name: 'P', folder: '/tmp' });
   const p = rt.createPersona({ handle: 'developer' });
   const t = rt.createThread({ projectId: 'p1', title: 'T', personaIds: [p.id] });
-  return { store, rt, adapter, t, se: rt.sessionsIn(t.id)[0] };
+  return { store, rt, adapter, t, se: arrange.sessionsIn(rt, t.id)[0] };
 }
 
 /**

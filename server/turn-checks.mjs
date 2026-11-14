@@ -38,7 +38,7 @@ export function stallLeftRunning(rt, turn, se, how) {
   const problems = rt.stallSteps(turn, se);
   if (!problems.length) return;
   const blocks = problems.map((p) => `- Block “${p.scope.title ?? p.scope.id}” (id ${p.scope.id}): ${p.message}`);
-  rt.tellAgent(
+  rt.sessions.tell(
     se.id,
     `${{ stopped: 'The person stopped your last turn', failed: 'Your last turn failed', shutdown: 'Postbox shut down during your last turn', hung: 'Postbox stopped your last turn, which had no output for too long,' }[how]} while progress steps were running:\n${blocks.join('\n')}`,
   );
