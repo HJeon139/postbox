@@ -9,6 +9,7 @@ import { CodexAdapter } from '../server/adapters/codex.mjs';
 import { DEFAULT_MODEL } from '../server/adapters/setup.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
+import * as arrange from './arrange.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
 function setup(claudeModels) {
@@ -42,8 +43,8 @@ test('a model that starts with - is refused, made or changed, so no harness read
   const refused = (e) => e.status === 422 && /can’t start with -/.test(e.message);
   for (const backend of ['claude-code', 'codex'])
     assert.throws(() => rt.createPersona({ handle: `dash-${backend}`, backend, model: '--dangerously-skip-permissions' }), refused);
-  assert.equal(rt.personaByHandle('dash-claude-code'), undefined);
+  assert.equal(arrange.persona(rt, 'dash-claude-code'), undefined);
   const p = rt.createPersona({ handle: 'alpha', backend: 'claude-code', model: 'claude-opus-5-5' });
   assert.throws(() => rt.updatePersona(p.id, { model: '-p' }), refused);
-  assert.equal(rt.personaByHandle('alpha').model, 'claude-opus-5-5');
+  assert.equal(arrange.persona(rt, 'alpha').model, 'claude-opus-5-5');
 });

@@ -37,10 +37,10 @@ test('#120: a persona runs on a host only with a backend that can, and only on a
       refused(() => rt.createPersona({ handle: 'odd', backend: 'claude-code', remote: bad })),
       /null, for this computer, or \{ hostId \}|doesn’t exist/,
     );
-  assert.equal(rt.personaByHandle('odd'), undefined, 'a refused persona isn’t stored');
+  assert.equal(arrange.persona(rt, 'odd'), undefined, 'a refused persona isn’t stored');
 
   // Moving it: there and back, and a backend that can’t follow it there.
-  const near = rt.personaByHandle('near');
+  const near = arrange.persona(rt, 'near');
   assert.deepEqual(rt.updatePersona(near.id, { remote: { hostId: h.id } }).remote, { hostId: h.id });
   assert.deepEqual(rt.updatePersona(near.id, { description: 'Builds things' }).remote, { hostId: h.id }, 'other edits keep it');
   assert.match(

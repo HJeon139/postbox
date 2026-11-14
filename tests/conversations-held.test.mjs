@@ -42,7 +42,7 @@ test('starting a conversation with no agents while a commit is held returns the 
 
 test('starting a conversation with an agent while a commit is held joins the agent and returns the thread with it', async () => {
   const { env, result, store } = await whileHeld(({ rt }) => {
-    const p = rt.personaByHandle('researcher');
+    const p = arrange.persona(rt, 'researcher');
     return rt.createThread({ projectId: 'p1', title: 'Held room', personaIds: [p.id] });
   });
   assert.ok(result, 'createThread returned the thread');

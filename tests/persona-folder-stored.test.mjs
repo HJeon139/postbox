@@ -13,6 +13,7 @@ import { ClaudeCodeAdapter } from '../server/adapters/claude-code.mjs';
 import { workFolder } from '../server/adapters/folder.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
+import * as arrange from './arrange.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
 const RELATIVE = 'Write the folder’s full path, starting with /. Postbox doesn’t guess where a relative one is.';
@@ -159,8 +160,8 @@ test('a conversation whose snapshot holds a bad folder works in the agent’s fo
     const fixed = tempDir(`pb-persona-folder-fixed-${handle}-`);
     const { t, se } = snapshotted(rt, store, handle, backend, fixed);
     assert.equal(se.personaSnapshot.folder, 'server', 'the snapshot still holds the bad folder');
-    assert.equal(rt.personaFor(se).folder, fixed);
-    assert.equal(await workFolder(rt.adapters.get(backend), rt.personaFor(se), store.state.projects.p1), fixed);
+    assert.equal(arrange.personaFor(rt, se).folder, fixed);
+    assert.equal(await workFolder(rt.adapters.get(backend), arrange.personaFor(rt, se), store.state.projects.p1), fixed);
     assert.deepEqual(await rt.commandFolder(t.id), { folder: fixed, host: null });
     assert.equal((await rt.panelTarget({ sessionId: se.id })).folder, fixed);
     assert.deepEqual(await rt.agentFolders(se.id), [fixed, '/srv/project']);
@@ -207,7 +208,7 @@ test('a conversation already going works in the agent’s new folder from its ne
     const se = rt.sessionsIn(t.id)[0];
     rt.updatePersona(p.id, { folder: later });
     assert.equal(store.state.personas[p.id].folder, later);
-    assert.equal(rt.personaFor(se).folder, later);
+    assert.equal(arrange.personaFor(rt, se).folder, later);
     assert.deepEqual(await rt.commandFolder(t.id), { folder: later, host: null });
     assert.equal((await rt.panelTarget({ sessionId: se.id })).folder, later);
     if (backend === 'mock') assert.equal((await turn(rt, t).delivered).folder, later);
@@ -222,7 +223,7 @@ test('a conversation whose agent had no folder works in the one its sheet gets, 
   const se = rt.sessionsIn(t.id)[0];
   rt.updatePersona(p.id, { folder: later });
   assert.equal(store.state.personas[p.id].folder, later);
-  assert.equal(rt.personaFor(se).folder, later);
+  assert.equal(arrange.personaFor(rt, se).folder, later);
   assert.deepEqual(await rt.commandFolder(t.id), { folder: later, host: null });
   assert.equal((await rt.panelTarget({ sessionId: se.id })).folder, later);
   assert.equal((await turn(rt, t).delivered).folder, later);
@@ -237,7 +238,7 @@ test('a conversation from before snapshots works in its agent’s folder', async
   store.emit('session', old);
   const se = store.state.sessions[old.id];
   assert.equal(se.personaSnapshot, undefined);
-  assert.equal(rt.personaFor(se).folder, folder);
+  assert.equal(arrange.personaFor(rt, se).folder, folder);
   assert.deepEqual(await rt.commandFolder(t.id), { folder, host: null });
   assert.equal((await turn(rt, t).delivered).folder, folder);
 });

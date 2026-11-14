@@ -1587,7 +1587,7 @@ test('#57: a persona uses your Claude Code setup and can’t publish outside Pos
       (e) => e.status === 422,
     );
   }
-  assert.ok(!rt.personaByHandle('nope'), 'nothing was created');
+  assert.ok(!arrange.persona(rt, 'nope'), 'nothing was created');
   const r = rt.updatePersona(p.id, { usesHostSetup: false, canPublish: true });
   assert.deepEqual([r.usesHostSetup, r.canPublish], [false, true]);
   assert.deepEqual([rt.updatePersona(p.id, { description: 'x' }).usesHostSetup, store.state.personas[p.id].canPublish], [false, true], 'other edits keep them');

@@ -7,6 +7,7 @@ import { test } from 'node:test';
 import { searchArgs, splitPassages } from '../server/asset-search.mjs';
 import { hostTool } from '../server/host-tool.mjs';
 import { Store } from '../server/store.mjs';
+import * as arrange from './arrange.mjs';
 import { assetRoom } from './asset-tools-fixture.mjs';
 import { rig, running, settled, until } from './remote-turns-helpers.mjs';
 import { tempDir } from './temp-dirs.mjs';
@@ -69,7 +70,7 @@ test('#516: a search reads each asset’s newest version and name, and leaves ou
   assert.deepEqual(await search('herons'), ['plans/herons.md v3'], 'a rename keeps the bytes, and the hit names the new name and version');
   await A.delete_asset({ id, base: 3 });
   assert.deepEqual(await search('herons'), [], 'a deleted asset isn’t searched');
-  const other = rt.createThread({ projectId: 'p1', title: 'Other', personaIds: [rt.personaByHandle('alpha').id] });
+  const other = rt.createThread({ projectId: 'p1', title: 'Other', personaIds: [arrange.persona(rt, 'alpha').id] });
   const there = as(rt.sessionsIn(other.id)[0]);
   await there.write_asset({ name: 'theirs.md', text: 'Their notes about herons.' });
   assert.deepEqual(await search('herons'), [], 'another conversation’s assets aren’t this one’s');
