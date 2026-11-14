@@ -17,10 +17,10 @@ import { atEnd, box, skipped, viewTop } from './view-geometry.mjs';
  * @typedef {{ node: Element, key: string, after: string | undefined, at: number, itemAt: number, size: string, stuck: boolean }} Hold
  */
 
-// What a click lands on: a control, a link, or an agent app (its frame, or its body while the frame takes no pointer
-// events, app-pointer.mjs).
+// What a click lands on: a control or a link. Not an agent app: inside its frame the page can’t see the pointer leave
+// or click, so a pointer resting there would hold a view that follows for as long as it rests (#1326’s review).
 const CONTROL =
-  'button, a[href], input, select, textarea, summary, label, iframe, .app-body, [role="button"], [role="radio"], [role="checkbox"], [role="tab"], [role="link"], [role="menuitem"], [role="option"], [role="switch"]';
+  'button, a[href], input, select, textarea, summary, label, [role="button"], [role="radio"], [role="checkbox"], [role="tab"], [role="link"], [role="menuitem"], [role="option"], [role="switch"]';
 
 /** The transcript’s item an element is in. @param {View} v @param {Element | null} n */
 function itemOf(v, n) {

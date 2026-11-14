@@ -249,7 +249,8 @@ function grew(v) {
     drawNewest(v.el);
     follow(v);
   }
-  if (!v.stuck) countUnseen(v);
+  // Held short of the end for a click on its way, it counts too: a hold never hides what arrives (view-hold.mjs).
+  if (!v.stuck || v.hold) countUnseen(v);
 }
 
 /**
