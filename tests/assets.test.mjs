@@ -12,6 +12,9 @@ import { Blobs } from '../server/blobs.mjs';
 import { Store } from '../server/store.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
+/** A stored upload’s hash. */
+const SHA = 'ab'.repeat(32);
+
 /** A one-pixel PNG, as a review’s image. */
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGD4DwABBAEAwS2OUAAAAABJRU5ErkJggg==', 'base64');
 
@@ -46,7 +49,7 @@ function rig({ blobs = true } = {}) {
 
 test('agentFolders lists the agent’s own folder first, then the project’s and those added, once each', async () => {
   const { own, project, store, assets } = rig();
-  store.emit('session.patch', { id: 'se_1', addDirs: [project, '/srv/extra'] });
+  store.emit('session', { ...store.state.sessions.se_1, addDirs: [project, '/srv/extra'] });
   assert.deepEqual(await assets.agentFolders('se_1'), [own, project, '/srv/extra']);
 });
 
@@ -84,8 +87,9 @@ test('appFiles refuses data files when this Postbox can’t store files', async 
 
 test('attachmentPath finds a stored upload by its hash, and a project file only inside the project’s folder', () => {
   const { project, store, assets } = rig();
-  store.emit('file', { id: 'fi1', name: 'a.png', type: 'image/png', size: 3, sha256: 'ab12' });
-  assert.match(assets.attachmentPath('th_c', { kind: 'file', fileId: 'fi1' }) ?? '', /ab12\.png$/);
+  store.emit('file', { id: 'fi1', name: 'a.png', type: 'image/png', size: 3, sha256: SHA });
+  // Its stored bytes, by hash, in the blob folder.
+  assert.ok(assets.attachmentPath('th_c', { kind: 'file', fileId: 'fi1' })?.endsWith(SHA.slice(2)));
   assert.equal(assets.attachmentPath('th_c', { kind: 'project-file', path: 'notes/x.md' }), join(project, 'notes/x.md'));
   assert.equal(assets.attachmentPath('th_c', { kind: 'project-file', path: '../etc/passwd' }), null);
 });

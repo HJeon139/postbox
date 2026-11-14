@@ -15,11 +15,11 @@ import { clipText } from './helpers.mjs';
 /** @type {WeakMap<object, import('./blobs.mjs').Blobs>} */
 const folders = new WeakMap();
 
-/** A runtime’s asset blob folder, assets/ beside its store’s log, or null for a store kept in memory. @param {any} rt */
-export function blobsOf(rt) {
-  if (!rt.store.dir) return null;
-  if (!folders.has(rt)) folders.set(rt, assetBlobs(rt.store.dir));
-  return folders.get(rt) ?? null;
+/** The asset blob folder, assets/ beside the store’s log, or null for a store kept in memory. @param {import('./asset-service.mjs').Assets} assets */
+export function blobsOf(assets) {
+  if (!assets.store.dir) return null;
+  if (!folders.has(assets)) folders.set(assets, assetBlobs(assets.store.dir));
+  return folders.get(assets) ?? null;
 }
 
 /** A number as an answer writes it, with thousands separators. @param {number} n */
@@ -42,10 +42,10 @@ function shown(id) {
   return clipText(String(id ?? ''), 80);
 }
 
-/** The asset with this id, or null. Ids come from agents, so only the record’s own keys count. @param {any} rt @param {unknown} id */
-function assetById(rt, id) {
-  if (typeof id !== 'string' || !rt.s.assets || !Object.hasOwn(rt.s.assets, id)) return null;
-  return rt.s.assets[id];
+/** The asset with this id, or null. Ids come from agents, so only the record’s own keys count. @param {import('./asset-service.mjs').Assets} assets @param {unknown} id */
+function assetById(assets, id) {
+  if (typeof id !== 'string' || !assets.store.state.assets || !Object.hasOwn(assets.store.state.assets, id)) return null;
+  return assets.store.state.assets[id];
 }
 
 /** Types for the names agents write most, when a write gives none; anything else is text/plain or binary by its bytes. */
@@ -73,18 +73,18 @@ const BY_NAME = new Intl.Collator('en', { sensitivity: 'base' });
 /**
  * The asset tools for one session’s turn, as toolsFor’s are: the room is the turn’s conversation’s, and the author
  * the session’s handle.
- * @param {any} rt  the Runtime @param {string} sessionId @param {any} turn  the running turn, or null
+ * @param {import('./asset-service.mjs').Assets} assets @param {string} sessionId @param {any} turn  the running turn, or null
  * @param {{ onHost?: boolean }} [opts]  an agent on a host: text only
  */
-export function assetTools(rt, sessionId, turn, { onHost = false } = {}) {
-  const se = () => rt.session(sessionId);
-  const room = () => roomOf(rt.s.threads, turn?.threadId ?? se().threadId);
-  const publish = (/** @type {any} */ req) => publishAsset(rt, { ...req, room: room(), author: se().handle });
+export function assetTools(assets, sessionId, turn, { onHost = false } = {}) {
+  const se = () => assets.sessions.get(sessionId);
+  const room = () => roomOf(assets.store.state.threads, turn?.threadId ?? se().threadId);
+  const publish = (/** @type {any} */ req) => publishAsset(assets, { ...req, room: room(), author: se().handle });
   return {
-    list_assets: (/** @type {any} */ args = {}) => listAssets(rt.s, room(), args),
-    read_asset: (/** @type {any} */ args = {}) => readAsset(rt, room(), args),
-    search_assets: (/** @type {any} */ args = {}) => searchTool(rt, room(), args),
-    write_asset: (/** @type {any} */ args = {}) => writeRequest(rt, sessionId, args, onHost).then((req) => (req.ok === false ? req : publish(req))),
+    list_assets: (/** @type {any} */ args = {}) => listAssets(assets.store.state, room(), args),
+    read_asset: (/** @type {any} */ args = {}) => readAsset(assets, room(), args),
+    search_assets: (/** @type {any} */ args = {}) => searchTool(assets, room(), args),
+    write_asset: (/** @type {any} */ args = {}) => writeRequest(assets, sessionId, args, onHost).then((req) => (req.ok === false ? req : publish(req))),
     rename_asset: ({ id, base, name, op } = /** @type {any} */ ({})) =>
       argsProblem({ id, base }) ?? publish({ kind: 'rename', id, base, name: typeof name === 'string' ? name : '', op }),
     delete_asset: ({ id, base, op } = /** @type {any} */ ({})) => argsProblem({ id, base }) ?? publish({ kind: 'delete', id, base, op }),
@@ -119,9 +119,9 @@ function restoreProblem({ id, base, version }) {
 /**
  * write_asset’s request for writeAsset, or its refusal: a create names a free name and no base, an update its id and
  * the base it read; the bytes are text, or a file in the agent’s folders on this computer.
- * @param {any} rt @param {string} sessionId @param {any} args @param {boolean} onHost
+ * @param {import('./asset-service.mjs').Assets} assets @param {string} sessionId @param {any} args @param {boolean} onHost
  */
-async function writeRequest(rt, sessionId, args, onHost) {
+async function writeRequest(assets, sessionId, args, onHost) {
   const { id, name, base, text, path, type, op } = args ?? {};
   if ((text === undefined) === (path === undefined)) return refused('write_asset takes text or path: one of them.');
   if (text !== undefined && typeof text !== 'string') return refused('text is the asset’s content, as a string.');
@@ -134,12 +134,12 @@ async function writeRequest(rt, sessionId, args, onHost) {
   if (type !== undefined && (typeof type !== 'string' || !TYPE.test(type))) return refused('type is a media type, such as text/markdown.');
   let bytes;
   try {
-    bytes = text !== undefined ? Buffer.from(text, 'utf8') : await rt.agentFile(sessionId, path, ASSETS.assetBytes, 'path');
+    bytes = text !== undefined ? Buffer.from(text, 'utf8') : await assets.agentFile(sessionId, path, ASSETS.assetBytes, 'path');
   } catch (e) {
     if (e instanceof AgentFileError) return refused(e.message);
     throw e;
   }
-  const named = name ?? assetById(rt, id)?.name ?? '';
+  const named = name ?? assetById(assets, id)?.name ?? '';
   return { kind: 'write', id, name, base, bytes, type: type ?? typeOf(named, bytes), op };
 }
 
@@ -153,13 +153,13 @@ function typeOf(/** @type {string} */ name, /** @type {Buffer} */ bytes) {
 /**
  * search_assets: the room’s text assets searched by exact words (BM25) and by meaning (a stub), best first
  * (server/asset-search.mjs). Each hit names its asset, version and passage, with the passage’s text.
- * @param {any} rt @param {string} room @param {any} args
+ * @param {import('./asset-service.mjs').Assets} assets @param {string} room @param {any} args
  */
-async function searchTool(rt, room, args) {
-  const blobs = blobsOf(rt);
+async function searchTool(assets, room, args) {
+  const blobs = blobsOf(assets);
   if (!blobs) return refused('This Postbox keeps no data folder, so it has no assets to search.');
   if (typeof args?.query !== 'string' || !args.query.trim()) return refused('search_assets needs a query: the words or idea to look for.');
-  const hits = await searchAssets(rt, blobs, room, args);
+  const hits = await searchAssets(assets, blobs, room, args);
   if (!hits.length) return { ok: true, message: 'No passage of this conversation’s text assets matches. list_assets lists them; write_asset adds one.' };
   const lines = hits.map((h) => {
     const how = [h.lexical ? `BM25 ${h.lexical.score} on ${h.lexical.terms.join(', ')}` : '', h.semantic === null ? '' : `meaning ${h.semantic}`];
@@ -172,12 +172,12 @@ async function searchTool(rt, room, args) {
 }
 
 /** Publishes through the one commit path, and says what it made, or why not, in the agent’s terms. */
-async function publishAsset(rt, req) {
-  const blobs = blobsOf(rt);
+async function publishAsset(assets, req) {
+  const blobs = blobsOf(assets);
   if (!blobs) return refused('This Postbox keeps no data folder, so it can’t publish an asset.');
-  const r = await writeAsset(rt.store, blobs, req);
+  const r = await writeAsset(assets.store, blobs, req);
   if (!r.ok) return refused(r.message);
-  const asset = rt.s.assets[r.id];
+  const asset = assets.store.state.assets[r.id];
   const v = r.version.v;
   const what = `v${v} of asset ${r.id}, “${asset.name}”`;
   const next = `To change it, write from base: ${asset.head}.`;
@@ -213,10 +213,10 @@ export function listAssets(state, room, { page = 1 } = {}) {
  * read_asset: one version, its head line naming author and version (SC-4); a text version’s content in parts of
  * READING.part, `from` counting the content alone and every “reads on” line naming the version, so the first part
  * fixes it (IF-2). A delete, a pruned version or a binary one gives what’s known of it.
- * @param {any} rt @param {string} room @param {{ id?: unknown, version?: unknown, from?: unknown }} args
+ * @param {import('./asset-service.mjs').Assets} assets @param {string} room @param {{ id?: unknown, version?: unknown, from?: unknown }} args
  */
-export async function readAsset(rt, room, { id, version, from = 0 } = {}) {
-  const asset = assetById(rt, id);
+export async function readAsset(assets, room, { id, version, from = 0 } = {}) {
+  const asset = assetById(assets, id);
   if (!asset || asset.room !== room) return refused(`There’s no asset ${shown(id)} in this conversation. list_assets gives each asset’s id.`);
   const v = version === undefined || version === null ? asset.head : version;
   const ver = versionAt(asset, v);
@@ -228,7 +228,7 @@ export async function readAsset(rt, room, { id, version, from = 0 } = {}) {
   if (ver.pruned)
     return { ok: true, message: `${head} Its bytes were pruned under the room’s retention rule, ${when(ver.pruned)}, so only this is left: ${about}.` };
   if (!ver.isText) return { ok: true, message: `${head} It’s binary (${about}), so read_asset gives only this.` };
-  const blobs = blobsOf(rt);
+  const blobs = blobsOf(assets);
   /** @type {string} */
   let content;
   try {

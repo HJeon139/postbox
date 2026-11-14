@@ -4,9 +4,7 @@
 // Runtime’s own members and the server functions that take it: the step that redoes a concern as a service changes
 // that concern’s helpers here, and no spec.
 
-import { assetTools as assetToolsOf } from '../server/asset-tools.mjs';
 import { expireWait as expireWaitOf } from '../server/permission-cards.mjs';
-import { blockFiles as blockFilesOf } from '../server/review-files.mjs';
 import { viewApp as viewAppOf } from '../server/view-app/view-app.mjs';
 import { viewOf } from '../server/view-app/view-of.mjs';
 
@@ -173,19 +171,19 @@ export const alwaysFor = (rt, se, req) => rt.alwaysFor(se, req);
 export const expireWait = (rt, itemId) => expireWaitOf(rt, itemId);
 
 /** The folders an agent works in: its own, the project’s, and any added. @param {Runtime} rt @param {string} sessionId */
-export const agentFolders = (rt, sessionId) => rt.agentFolders(sessionId);
+export const agentFolders = (rt, sessionId) => rt.assets.agentFolders(sessionId);
 
 /** Where a message’s attachment can be read on disk, or null. @param {Runtime} rt @param {string} threadId @param {object} a */
-export const attachmentPath = (rt, threadId, a) => rt.attachmentPath(threadId, a);
+export const attachmentPath = (rt, threadId, a) => rt.assets.attachmentPath(threadId, a);
 
 /** The files an app’s show carries, read from the agent’s folders. @param {Runtime} rt @param {string} sessionId @param {object} args */
-export const appFiles = (rt, sessionId, args) => rt.appFiles(sessionId, args);
+export const appFiles = (rt, sessionId, args) => rt.assets.appFiles(sessionId, args);
 
 /** The files a block’s show carries. @param {Runtime} rt @param {string} sessionId @param {string} name @param {object} args */
-export const blockFiles = (rt, sessionId, name, args) => blockFilesOf(rt, sessionId, name, args);
+export const blockFiles = (rt, sessionId, name, args) => rt.assets.blockFiles(sessionId, name, args);
 
 /** An agent’s asset tools. @param {Runtime} rt @param {string} sessionId @param {any} turn @param {object} [opts] */
-export const assetTools = (rt, sessionId, turn, opts) => assetToolsOf(rt, sessionId, turn, opts);
+export const assetTools = (rt, sessionId, turn, opts) => rt.assets.tools(sessionId, turn, /** @type {any} */ (opts));
 
 /** The folder where view_app keeps its browser and the person’s answer about downloading it. @param {Runtime} rt */
 export const viewDir = (rt) => viewOf(rt).dir;

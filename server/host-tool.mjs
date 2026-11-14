@@ -1,7 +1,5 @@
 // The host’s tools that apps can use through the bridge, if granted: the conversation’s assets and narration.
 
-import { listTextAssets, searchAssets } from './asset-search.mjs';
-import { blobsOf } from './asset-tools.mjs';
 import { roomOf } from './assets.mjs';
 import { httpError } from './helpers.mjs';
 
@@ -16,10 +14,9 @@ export async function hostTool(rt, tool, args = {}, { threadId } = {}) {
   switch (tool) {
     case 'assets.search':
     case 'assets.list': {
-      const blobs = blobsOf(rt);
-      if (!blobs || !threadId) return [];
+      if (!threadId) return [];
       const room = roomOf(rt.s.threads, threadId);
-      return tool === 'assets.search' ? searchAssets(rt, blobs, room, args) : listTextAssets(rt, blobs, room);
+      return tool === 'assets.search' ? rt.assets.search(room, args) : rt.assets.listText(room);
     }
     case 'narrate.speak':
       if (!rt.narrator) throw httpError(503, 'Narration isn’t installed here. Run npm install to add Kokoro, then restart Postbox.');

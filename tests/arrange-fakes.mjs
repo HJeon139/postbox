@@ -12,6 +12,7 @@ export const withAdapter = (rt, adapter, opts) => rt.adapters.register(/** @type
 /** Gives the server another place to store files, or none, as a Postbox started with it would have. @param {Runtime} rt @param {any} blobs */
 export function withBlobs(rt, blobs) {
   rt.blobs = blobs;
+  rt.assets.blobs = blobs;
 }
 
 /** Unregisters a backend. @param {Runtime} rt @param {string} name */

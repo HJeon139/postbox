@@ -5,7 +5,7 @@
 // upload replaced can’t come back in the message, to its chip or to the agents it’s sent to. A record stored before
 // that cleaning keeps its raw name, so it’s cleaned here as it’s read (#1067).
 // Once sent, an attachment is read from disk where attachmentPath finds it: a stored upload, or a file in the project’s
-// folder. attachmentPath moved here out of server/runtime.mjs, which keeps a method of that name that delegates here.
+// folder. Both are Assets’ (server/asset-service.mjs), which takes them as its methods.
 
 import { resolve, sep } from 'node:path';
 import { extensionOf } from './attachment-extension.mjs';
@@ -19,12 +19,12 @@ import { shownName, storedName, uploadName } from './upload-name.mjs';
  * prompt prints a type beside the name. A project file keeps only its kind and path, so no fileId sent beside it makes
  * its chip open another upload; the path is refused when it’s missing, or holds a character shownName replaces:
  * replacing one would point the agent at another file, or at none.
- * @param {any} rt @param {unknown} list  what the request sent
+ * @param {import('./asset-service.mjs').Assets} assets @param {unknown} list  what the request sent
  * @returns {any[]}
  */
-export function sentAttachments(rt, list) {
+export function sentAttachments(assets, list) {
   if (!Array.isArray(list) || !list.every((a) => a !== null && typeof a === 'object')) throw httpError(422, 'attachments is a list of files, each an object.');
-  return list.map((a) => (a.kind === 'project-file' ? projectFile(a) : upload(rt, a)));
+  return list.map((a) => (a.kind === 'project-file' ? projectFile(a) : upload(assets, a)));
 }
 
 /** @param {any} a */
@@ -39,9 +39,9 @@ function projectFile(a) {
   return { kind: 'project-file', path };
 }
 
-/** @param {any} rt @param {any} a */
-function upload(rt, a) {
-  const files = rt.s.files;
+/** @param {import('./asset-service.mjs').Assets} assets @param {any} a */
+function upload(assets, a) {
+  const files = assets.store.state.files;
   if (Object.hasOwn(files, a.fileId)) {
     const f = files[a.fileId];
     return { kind: 'file', fileId: f.id, name: storedName(f.name), type: f.type, size: f.size };
@@ -50,14 +50,14 @@ function upload(rt, a) {
 }
 
 /** Where an attachment can be read on disk: a stored upload, or a file in the project’s folder. */
-export function attachmentPath(rt, threadId, a) {
+export function attachmentPath(assets, threadId, a) {
   if (a?.kind === 'file' && a.fileId) {
-    const f = rt.s.files?.[a.fileId];
+    const f = assets.store.state.files?.[a.fileId];
     // At a path with its extension, which some backends read a file by (#1307).
-    return f?.sha256 && rt.blobs ? rt.blobs.typedPathOf(f.sha256, extensionOf(f)) : null;
+    return f?.sha256 && assets.blobs ? assets.blobs.typedPathOf(f.sha256, extensionOf(f)) : null;
   }
   if (a?.kind === 'project-file' && a.path) {
-    const folder = rt.s.projects[rt.s.threads[threadId]?.projectId]?.folder;
+    const folder = assets.store.state.projects[assets.store.state.threads[threadId]?.projectId]?.folder;
     if (!folder) return null;
     const full = resolve(folder, String(a.path).replace(/^\/+/, ''));
     return full === resolve(folder) || full.startsWith(resolve(folder) + sep) ? full : null;

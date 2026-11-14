@@ -280,6 +280,8 @@ test('read calls over 2,000 chars are repeatable and not truncated on retry', as
     store: { writable: true, pending: { session: () => session } }, // the write gate (server/tool-gate.mjs), and withUrgent's pending read
     updateSession: (_id, patch) => Object.assign(session, patch),
     toolsFor: () => ({ read_message: () => ({ ok: true, message: fullText }) }),
+    // The asset tools, and a block's files, which read_message carries none of.
+    assets: { tools: () => ({}), blockFiles: async (/** @type {string} */ _id, /** @type {string} */ _name, /** @type {any} */ args) => ({ args }) },
   };
   const rts = {
     rt,

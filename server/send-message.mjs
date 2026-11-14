@@ -5,7 +5,6 @@
 
 import { parseMentions } from '../shared/text.mjs';
 import { httpError, retiredError } from './helpers.mjs';
-import { sentAttachments } from './message-attachments.mjs';
 import * as queue from './message-queue.mjs';
 import { arrival } from './queue-batch.mjs';
 import { threadPersona } from './side-threads.mjs';
@@ -16,7 +15,7 @@ import { retireStale } from './wake-cards.mjs';
 export function sendMessage(rt, threadId, { text = '', attachments = [], sendNow = false } = {}) {
   const t = rt.thread(threadId);
   text = String(text).slice(0, 50000);
-  attachments = sentAttachments(rt, attachments);
+  attachments = rt.assets.sentAttachments(attachments);
   if (!text.trim() && !attachments.length) throw httpError(400, 'Write a message or attach a file first.');
   const mentioned = parseMentions(text, rt.personas.handles())
     .map((h) => rt.personas.byHandle(h))

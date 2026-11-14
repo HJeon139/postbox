@@ -17,13 +17,12 @@
 // and agents posted large apps to /mcp from scripts, outside the tool calls you see. A large app goes by codePath.
 
 import { TOOL_DEFS } from '../shared/mcp-tools.mjs';
-import { assetTools } from './asset-tools.mjs';
 import { offersBring } from './bring.mjs';
 import { noteAnswer } from './empty-reply.mjs';
 import { sameToken } from './helpers.mjs';
 import { asksByPrompt, NOT_YOUR_PROMPT, permission } from './permission-prompt.mjs';
 import { reactTool } from './reactions.mjs';
-import { blockFiles, keptIfShown } from './review-files.mjs';
+import { keptIfShown } from './review-files.mjs';
 import { AgentFileError } from './runtime.mjs';
 import { recordedTools } from './scheduled-wakes.mjs';
 import { withUrgent } from './subagent-end.mjs';
@@ -90,7 +89,8 @@ async function one(rt, sessionId, msg, turnToken, closeOrSignal) {
       if (!(name in tools) || !TOOL_DEFS.some((t) => t.name === name)) return fail(-32602, `There’s no tool called “${name}”.`);
       try {
         // An app’s files (#54) and a review’s images (#780) may come from the agent’s folder, which Postbox reads itself.
-        const app = name === 'show_app' || name === 'update_app' ? await rt.appFiles(sessionId, args) : await blockFiles(rt, sessionId, name, args);
+        const app =
+          name === 'show_app' || name === 'update_app' ? await rt.assets.appFiles(sessionId, args) : await rt.assets.blockFiles(sessionId, name, args);
         const r = await keptIfShown(app, (given) => tools[name](app.args, given));
         noteAnswer(rt.turns.get(sessionId) ?? null, name, r);
         // An urgent note for the agent comes first (#229): this is how it hears one mid-turn.
@@ -134,7 +134,7 @@ function ownTools(rt, sessionId, turn) {
   return {
     react: (a) => reactTool(rt.threads, rt.session(sessionId), a),
     view_app: (a) => viewApp(rt, sessionId, a, viewContext(rt, sessionId, turn)),
-    ...assetTools(rt, sessionId, turn),
+    ...rt.assets.tools(sessionId, turn),
   };
 }
 

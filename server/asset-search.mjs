@@ -77,14 +77,14 @@ export function splitPassages(text, { target = 120, max = 180 } = {}) {
 
 /**
  * The room’s index, built from its text assets’ bytes, or the one kept if none of them changed.
- * @param {any} rt  the Runtime @param {import('./blobs.mjs').Blobs} blobs @param {string} room
+ * @param {import('./asset-service.mjs').Assets} assets @param {import('./blobs.mjs').Blobs} blobs @param {string} room
  */
-async function roomIndex(rt, blobs, room) {
-  const live = textAssets(rt.s, room);
+async function roomIndex(assets, blobs, room) {
+  const live = textAssets(assets.store.state, room);
   // A rename keeps the bytes but changes the name and version a hit shows, so both are in the key.
   const key = JSON.stringify(live.map(({ asset, head }) => [asset.id, head.v, head.sha256, asset.name]));
-  const kept = indexes.get(rt) ?? new Map();
-  indexes.set(rt, kept);
+  const kept = indexes.get(assets) ?? new Map();
+  indexes.set(assets, kept);
   const hit = kept.get(room);
   if (hit?.key === key) {
     kept.delete(room);
@@ -118,12 +118,12 @@ export function searchArgs(args = {}) {
 
 /**
  * Searches the room’s text assets. Each hit names its asset, the version it was read from, and where in it.
- * @param {any} rt  the Runtime @param {import('./blobs.mjs').Blobs} blobs @param {string} room @param {any} args
+ * @param {import('./asset-service.mjs').Assets} assets @param {import('./blobs.mjs').Blobs} blobs @param {string} room @param {any} args
  * @returns {Promise<any[]>} best first
  */
-export async function searchAssets(rt, blobs, room, args) {
+export async function searchAssets(assets, blobs, room, args) {
   const { query, k, mode, named } = searchArgs(args);
-  const { passages, byId, index } = await roomIndex(rt, blobs, room);
+  const { passages, byId, index } = await roomIndex(assets, blobs, room);
   const keep = named.length ? new Set(named) : null;
   const skip = (/** @type {any} */ p) => keep !== null && !keep.has(p.asset) && !keep.has(p.name);
   const hits = new Map();
@@ -150,13 +150,13 @@ export async function searchAssets(rt, blobs, room, args) {
 
 /**
  * The room’s text assets as an app lists them: each one’s id, name, newest version, size, type and passages.
- * @param {any} rt @param {import('./blobs.mjs').Blobs} blobs @param {string} room
+ * @param {import('./asset-service.mjs').Assets} assets @param {import('./blobs.mjs').Blobs} blobs @param {string} room
  */
-export async function listTextAssets(rt, blobs, room) {
-  const { passages } = await roomIndex(rt, blobs, room);
+export async function listTextAssets(assets, blobs, room) {
+  const { passages } = await roomIndex(assets, blobs, room);
   const per = new Map();
   for (const p of passages) per.set(p.asset, (per.get(p.asset) ?? 0) + 1);
-  return textAssets(rt.s, room)
+  return textAssets(assets.store.state, room)
     .map(({ asset, head }) => ({ id: asset.id, name: asset.name, version: head.v, size: head.size, type: head.type, passages: per.get(asset.id) ?? 0 }))
     .sort((a, b) => (a.name < b.name ? -1 : 1));
 }

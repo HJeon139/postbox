@@ -165,8 +165,8 @@ test('#694: a slow tool call of a turn Send now replaced names nothing; the turn
   const gate = new Promise((r) => {
     open = r;
   });
-  const appFiles = rt.appFiles.bind(rt);
-  rt.appFiles = async (...a) => {
+  const appFiles = rt.assets.appFiles.bind(rt.assets);
+  rt.assets.appFiles = async (...a) => {
     await gate;
     return appFiles(...a);
   };

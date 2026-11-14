@@ -125,7 +125,7 @@ function conversationOf(rt, threadId) {
  * @param {Buffer} png
  */
 async function save(rt, sessionId, name, png) {
-  const [folder] = await rt.agentFolders(sessionId);
+  const [folder] = await rt.assets.agentFolders(sessionId);
   if (!folder) return null;
   const dir = join(folder, '.postbox', 'view');
   await mkdir(dir, { recursive: true });

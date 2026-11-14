@@ -28,7 +28,7 @@ async function folders() {
   await writeFile(join(folder, 'sub', 'f.txt'), 'mine');
   await writeFile(join(outside, 'secret.txt'), 'not yours');
   await writeFile(join(outside, 'sub', 'f.txt'), 'not yours');
-  /** The part of a Runtime agentFile uses: the agent’s folders. */
+  /** The part of Assets that agentFile uses: the agent’s folders. */
   const rt = { agentFolders: async () => [folder] };
   return { rt, folder, outside };
 }
@@ -178,9 +178,9 @@ test('#780: show_app refuses a data file swapped for a link after its path was c
   const { folder, outside } = await folders();
   await writeFile(join(folder, 'app.html'), '<p>x</p>');
   const { rt, call } = await showApp(folder, join(folder, '..'));
-  // show_app reads its files through rt.agentFile; this one swaps the data file once its path is checked.
-  rt.agentFile = (sessionId, path, max, what) =>
-    agentFile(rt, sessionId, path, max, what, {
+  // show_app reads its files through Assets.agentFile; this one swaps the data file once its path is checked.
+  rt.assets.agentFile = (sessionId, path, max, what) =>
+    agentFile(rt.assets, sessionId, path, max, what, {
       afterCheck: () => (path === 'f.txt' ? swapForLink(join(folder, 'f.txt'), join(outside, 'secret.txt')) : undefined),
     });
   const r = await call('show_app', { id: 'x', title: 'X', codePath: 'app.html', files: [{ name: 'data', path: 'f.txt' }] });
