@@ -5,7 +5,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { READ_TOOLS } from '../server/mcp.mjs';
-import { threadCatchUp } from '../server/thread-summary.mjs';
+import { threadCatchUp } from '../server/thread-catch-up.mjs';
 import { isQuietTool } from '../server/tool-labels.mjs';
 import { TOOL_DEFS } from '../shared/mcp-tools.mjs';
 import * as arrange from './arrange.mjs';

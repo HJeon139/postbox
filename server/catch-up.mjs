@@ -6,7 +6,7 @@ import { positionOf } from '../shared/item-index.mjs';
 import { READING } from '../shared/limits.mjs';
 import { keepFor, leftOut, mentions } from './catch-up-keep.mjs';
 import { clip } from './helpers.mjs';
-import { reactionLines, threadLines } from './thread-summary.mjs';
+import { reactionLines, threadLines } from './thread-catch-up.mjs';
 import { heldFor } from './wake-cards.mjs';
 
 export { CATCH_UP_ITEMS } from './catch-up-keep.mjs';

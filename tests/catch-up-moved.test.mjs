@@ -4,7 +4,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { threadCatchUp } from '../server/thread-summary.mjs';
+import { threadCatchUp } from '../server/thread-catch-up.mjs';
 import * as arrange from './arrange.mjs';
 import { setup } from './side-threads-fixture.mjs';
 import { heldStore } from './stop-reply-fixture.mjs';

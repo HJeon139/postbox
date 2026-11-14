@@ -17,7 +17,7 @@ import { endChain } from './side-threads.mjs';
 import { newId } from './store.mjs';
 import { heldTurn, saveBackendState, whenWritable } from './store-outage.mjs';
 import { notUrgent } from './subagent-end.mjs';
-import { firstPromptSection, turnContext } from './thread-summary.mjs';
+import { firstPromptSection, turnContext } from './thread-catch-up.mjs';
 import { adapterContext } from './turn-context.mjs';
 import { endTurn } from './turn-finish.mjs';
 import { askedAgain } from './turn-marks.mjs';
