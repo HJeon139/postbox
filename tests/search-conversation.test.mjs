@@ -4,6 +4,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { describeTool } from '../server/tool-labels.mjs';
 import { TOOL_DEFS } from '../shared/mcp-tools.mjs';
 import { rig, running, settled, until } from './remote-turns-helpers.mjs';
 import { setup } from './side-threads-fixture.mjs';
@@ -79,4 +80,8 @@ test('#1340: an agent on a host searches its conversation too: search_conversati
   assert.match(found.text, /the retry limit is seven/);
   r.d.end(turn);
   await settled(r);
+});
+
+test('#1340: a search shows in the activity list as what was searched for', () => {
+  assert.equal(describeTool('mcp__postbox__search_conversation', { query: 'retry limit' }), 'Searched the conversation for “retry limit”');
 });
