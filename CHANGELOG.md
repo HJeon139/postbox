@@ -2,6 +2,14 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.8.1 (2026-11-14)
+
+### Fixes
+
+- **mirror:** keep the agent as the recipient of what the person types in its terminal
+- **guide:** say the catch-up is context and another agent's message is its own
+- **catch-up:** name the person and who they wrote to in agents' lines
+
 ## 4.8.0 (2026-11-14)
 
 ### Features
