@@ -1,29 +1,41 @@
 // The server’s checks over a finished turn (#58, #63, #98): the terms, diagrams, raw HTML and missing blocks in its
 // reply, which become its lint turn, and the progress steps it left running, marked stalled. A turn that was stopped
-// or failed starts no lint turn, so its agent hears of the stalled steps at its next turn instead. Moved out of
-// server/runtime.mjs; Runtime keeps a method of the same name that delegates here.
+// or failed starts no lint turn, so its agent hears of the stalled steps at its next turn instead. Checks
+// (server/check-service.mjs) calls each with itself.
 
 import { lintDiagrams } from '../shared/diagram-lint.mjs';
 import { blockProblems, diagramProblems, introducedTerms, personSaid, rawHtmlProblems, termProblems } from './checks.mjs';
 import { rememberDiagrams } from './diagram-check.mjs';
+import { endLint, quietLint } from './lint-delivery.mjs';
+
+/**
+ * The checks: what this turn sent, as problems, which go back to the agent in one lint turn. A lint turn is
+ * never linted again, so this can’t loop; one that only called tools ends as a note instead of a reply.
+ * @param {import('./check-service.mjs').Checks} checks @param {any} turn @param {any} se
+ */
+export function endChecks(checks, turn, se) {
+  const stalled = stallSteps(checks, turn, se);
+  if (turn.kind === 'lint') quietLint(checks, turn, se);
+  else endLint(checks, turn, [...checkTurn(checks, turn, se), ...stalled]);
+}
 
 /** The server’s checks over a finished turn. */
-export function checkTurn(rt, turn, se) {
-  const lineage = rt.threads.lineage(turn.threadId);
-  const items = lineage.flatMap((id) => rt.store.pending.items(id));
-  const apps = Object.values(rt.store.pending.apps()).filter((a) => lineage.includes(a.threadId));
-  const problems = termProblems(turn.said, rt.threads.glossaryFor(turn.threadId), introducedTerms(items, apps), personSaid(items));
+export function checkTurn(checks, turn, se) {
+  const lineage = checks.threads.lineage(turn.threadId);
+  const items = lineage.flatMap((id) => checks.store.pending.items(id));
+  const apps = Object.values(checks.store.pending.apps()).filter((a) => lineage.includes(a.threadId));
+  const problems = termProblems(turn.said, checks.threads.glossaryFor(turn.threadId), introducedTerms(items, apps), personSaid(items));
   // Diagrams too wide or too busy to read at the conversation’s width.
   const diagrams = lintDiagrams(turn.said);
   if (diagrams.length)
     rememberDiagrams(
-      rt,
+      checks,
       se.id,
       diagrams.map((d) => d.src),
     );
   problems.push(...diagramProblems(diagrams), ...rawHtmlProblems(turn.said));
   // A reply that should have been a block (#63): what this turn showed, and what the person last asked for.
-  const own = rt.store.pending.items(turn.threadId);
+  const own = checks.store.pending.items(turn.threadId);
   const shown = own.filter((it) => it.kind === 'block' && it.valid && it.turnId === turn.id).map((it) => it.block.type);
   problems.push(...blockProblems(turn.said, shown, own.findLast((it) => it.kind === 'user')?.text ?? ''));
   return problems;
@@ -34,11 +46,11 @@ export function checkTurn(rt, turn, se) {
  * at a normal end (#58), and the agent hears which at the start of its next turn (#98).
  * @param {any} turn @param {any} se @param {'stopped' | 'failed' | 'shutdown' | 'hung'} how
  */
-export function stallLeftRunning(rt, turn, se, how) {
-  const problems = rt.stallSteps(turn, se);
+export function stallLeftRunning(checks, turn, se, how) {
+  const problems = stallSteps(checks, turn, se);
   if (!problems.length) return;
   const blocks = problems.map((p) => `- Block “${p.scope.title ?? p.scope.id}” (id ${p.scope.id}): ${p.message}`);
-  rt.sessions.tell(
+  checks.sessions.tell(
     se.id,
     `${{ stopped: 'The person stopped your last turn', failed: 'Your last turn failed', shutdown: 'Postbox shut down during your last turn', hung: 'Postbox stopped your last turn, which had no output for too long,' }[how]} while progress steps were running:\n${blocks.join('\n')}`,
   );
@@ -50,17 +62,17 @@ export function stallLeftRunning(rt, turn, se, how) {
  * a step may follow the job, and they stall when the last one ends (endJob).
  * @param {{ threadId: string, keepJobs?: Set<string> }} turn
  */
-export function stallSteps(rt, turn, se) {
+export function stallSteps(checks, turn, se) {
   const problems = [];
   const runsOn = turn.keepJobs?.size || (se.jobs ?? []).some((j) => j.kept);
   const held = new Set(runsOn ? (se.heldSteps?.keys ?? []) : []);
-  for (const it of rt.store.pending.items(turn.threadId)) {
+  for (const it of checks.store.pending.items(turn.threadId)) {
     if (it.kind !== 'block' || !it.valid || it.sessionId !== se.id || it.block.type !== 'progress') continue;
     const stalls = (s) => s.state === 'running' && !held.has(`${it.id}:${s.id}`);
     const running = it.block.steps.filter(stalls);
     if (!running.length) continue;
     const steps = it.block.steps.map((s) => (stalls(s) ? { ...s, state: 'stalled' } : s));
-    rt.threads.patchItem(turn.threadId, it.id, { block: { ...it.block, steps }, stalledAt: Date.now() });
+    checks.threads.patchItem(turn.threadId, it.id, { block: { ...it.block, steps }, stalledAt: Date.now() });
     const names = running.map((s) => `“${s.label}”`);
     const one = running.length === 1;
     problems.push({

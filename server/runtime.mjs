@@ -14,15 +14,14 @@ import { Assets } from './asset-service.mjs';
 import { act, answerDelivered, unreadAnswer } from './blocks.mjs';
 import { Bus } from './bus.mjs';
 import { catchUp, moveMarkers } from './catch-up.mjs';
+import { Checks } from './check-service.mjs';
 import { attachClaudeSession, claudeSessions, mirror, pollMirror, rearmMirrors, stopMirrorFor, stopMirrors } from './claude-mirror.mjs';
 import { deliver, retry } from './deliver.mjs';
-import { diagramCheck } from './diagram-check.mjs';
 import { httpError } from './helpers.mjs';
 import { describeItem, topicRootLine } from './item-lines.mjs';
 import { endJob, expireStaleJobs, recordJob } from './job-records.mjs';
 import { keptJobs, pollKept, stopJob, stopKeptJobs, watchKept } from './kept-jobs.mjs';
 import { Ledger } from './ledger.mjs';
-import { endLint, foldLint, lint, quietLint } from './lint-delivery.mjs';
 import { wakeMentions } from './mention-wakes.mjs';
 import * as queue from './message-queue.mjs';
 import { alwaysFor } from './permission-always.mjs';
@@ -58,7 +57,6 @@ import { watchStore, whenWritable } from './store-outage.mjs';
 import { Threads } from './threads.mjs';
 import { settleToolAsks } from './tool-ask.mjs';
 import { startTopic } from './topic-open.mjs';
-import { checkTurn, stallLeftRunning, stallSteps } from './turn-checks.mjs';
 import { settleSubagentSteps } from './turn-steps.mjs';
 import { dismissStopAsk, recordStopped, requestStop, stop, stopTurns } from './turn-stop.mjs';
 import { toolsFor } from './ui-tools.mjs';
@@ -124,7 +122,6 @@ export class Runtime {
     this.keptPoll = null; // checks on the background jobs Postbox kept running (#129)
     this.timers = new Map(); // scheduleId → timeout
     this.watchdogs = new Set(); // stopped turns’ watchdogs, cleared by close (server/runtime-close.mjs)
-    this.lints = new Map(); // agent turn id → its lint turn, gathering: { sessionId, kind, ended, sent, problems, timer }
     // What each conversation’s agents changed, ran and published (#132).
     this.ledger = ledger ?? new Ledger({ store, blobs: this.blobs, home: this.home });
     // Turns of agents whose persona runs on a remote host (#120): server/remote/turns.mjs.
@@ -158,6 +155,17 @@ export class Runtime {
       spawnShell,
       whenWritable: (fn) => whenWritable(this, fn),
       archiveTurns: config.archiveTurns === true,
+    });
+    // The checks on what agents send, whose problems go back to each agent in a lint turn
+    // (designs/architecture/services.md, “Checks”). A lint turn is a message for its agent: the send port looks
+    // deliver up as it sends, so it is the one in place then.
+    this.checks = new Checks({
+      store,
+      threads: this.threads,
+      sessions: this.sessions,
+      running: this.running,
+      send: (sessionId, message, opts) => this.deliver(sessionId, message, opts),
+      config,
     });
     this.remote = new RemoteTurns(this, { hosts: this.hosts });
     this.listenToPersonas();
@@ -513,44 +521,16 @@ export class Runtime {
     return readMessage(this, se, args);
   }
 
-  // ── The lint pipeline ──────────────────────────────────────────────────────────────
+  // ── The lint pipeline: server/check-service.mjs ───────────────────────────────────
   // Every check returns problems, { code, message, scope } (server/checks.mjs). The problems an agent turn caused
   // go back to the agent as one lint turn: the server’s checks run when the turn ends, and the browser reports what
   // it measures (diagrams, the app check) as the reply renders, so the lint turn waits a moment for those. There’s
   // at most one lint turn per agent turn, a lint turn is never linted, and problems from a turn that failed or was
   // stopped are dropped.
 
-  // The server’s checks over a finished turn: server/turn-checks.mjs.
-
-  checkTurn(turn, se) {
-    return checkTurn(this, turn, se);
-  }
-  stallLeftRunning(turn, se, how) {
-    return stallLeftRunning(this, turn, se, how);
-  }
-  stallSteps(turn, se) {
-    return stallSteps(this, turn, se);
-  }
-
-  // When checks reach an agent after its turn: server/lint-delivery.mjs.
-
-  endLint(turn, problems) {
-    return endLint(this, turn, problems);
-  }
-  lint(sessionId, turnId, problems) {
-    return lint(this, sessionId, turnId, problems);
-  }
-  foldLint(sessionId, message) {
-    return foldLint(this, sessionId, message);
-  }
-  quietLint(turn, se) {
-    return quietLint(this, turn, se);
-  }
-
-  // Diagram checks from the page: server/diagram-check.mjs.
-
+  /** The browser drew a diagram, or couldn’t: what it measured. */
   diagramCheck(threadId, itemId, report) {
-    return diagramCheck(this, threadId, itemId, report);
+    return this.checks.diagramCheck(threadId, itemId, report);
   }
 
   // ── Permission prompts: server/permission-cards.mjs ──────────────────────────────────

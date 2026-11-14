@@ -7,7 +7,8 @@ test('#336 a lint turn names an app version that no open page checked', () => {
   const timers = [];
   let now = 0;
   const entry = { sessionId: 's1', threadId: 't1', problems: [], sent: false, timer: null };
-  const rt = {
+  // Checks’ own fields (server/check-service.mjs), which sendLint reads: its lint entries, the settings, the store and send.
+  const checks = {
     lints: new Map([['turn-1', entry]]),
     config: {
       lintSettleMs: 5,
@@ -19,18 +20,20 @@ test('#336 a lint turn names an app version that no open page checked', () => {
         return timer;
       },
     },
-    s: {
-      apps: { explorer: { id: 'explorer', title: 'Corpus explorer', current: 5, sessionId: 's1', check: { status: 'pending' } } },
-      sessions: { s1: { id: 's1' } },
-    },
-    deliver(sessionId, message, options) {
+    send(sessionId, message, options) {
       calls.push({ sessionId, message, options });
     },
     // sendLint reads the apps through the store's pending read (#601); nothing is held here, so it is the state's.
-    store: { pending: { apps: () => rt.s.apps } },
+    store: {
+      state: {
+        apps: { explorer: { id: 'explorer', title: 'Corpus explorer', current: 5, sessionId: 's1', check: { status: 'pending' } } },
+        sessions: { s1: { id: 's1' } },
+      },
+      pending: { apps: () => checks.store.state.apps },
+    },
   };
 
-  sendLint(rt, 'turn-1');
+  sendLint(/** @type {any} */ (checks), 'turn-1');
   while (timers.length) {
     const timer = timers.shift();
     now += timer.ms;

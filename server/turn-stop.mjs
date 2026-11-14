@@ -48,7 +48,7 @@ export function stop(rt, sessionId, { silent = false, jobs = 'stop', by = 'you',
   // Its progress steps still running show as stalled, as at any turn’s end (#98); you stopped it, so no lint turn.
   // Pending, so the heldSteps just written holds its steps behind a held commit too (#1042).
   const se = rt.store.pending.session(sessionId);
-  if (se) rt.stallLeftRunning(turn, se, by === 'shutdown' || by === 'hung' ? by : 'stopped');
+  if (se) rt.checks.stallLeftRunning(turn, se, by === 'shutdown' || by === 'hung' ? by : 'stopped');
   if (turn.remote) rt.remote.stopped(turn, { by, why });
   // A process that never exits mustn’t hold the session for good: after a while, the next turn starts anyway.
   // Kept in rt.watchdogs, so close() clears it (server/runtime-close.mjs).

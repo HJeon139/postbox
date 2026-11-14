@@ -51,11 +51,7 @@ export function endTurn(rt, turn, err) {
   }
   const { open, viewing, topic } = needsAfter(rt, se, turn, items);
 
-  // The checks: what this turn sent, as problems, which go back to the agent in one lint turn. A lint turn is
-  // never linted again, so this can’t loop; one that only called tools ends as a note instead of a reply.
-  const stalled = rt.stallSteps(turn, se);
-  if (turn.kind === 'lint') rt.quietLint(turn, se);
-  else rt.endLint(turn, [...rt.checkTurn(turn, se), ...stalled]);
+  rt.checks.endTurn(turn, se);
   if (topic && !viewing && (turn.said || open.length)) rt.threads.patch(topic, (x) => ({ unread: (x.unread ?? 0) + 1 }));
   if (turn.threadId !== se.threadId) settleThread(rt, turn.threadId);
 
@@ -91,7 +87,7 @@ function settleReplies(rt, se, turn, items, err) {
  */
 function endFailed(rt, se, turn, err) {
   // Its progress steps still running show as stalled, as at any turn’s end (#98).
-  rt.stallLeftRunning(turn, se, 'failed');
+  rt.checks.stallLeftRunning(turn, se, 'failed');
   const message = err.userMessage ?? err.message ?? 'The agent stopped unexpectedly.';
   const target =
     turn.segment ??

@@ -1,6 +1,6 @@
 # Concerns as services
 
-**Status:** a proposal, 12 November 2026, for the person to approve before any code moves. Step 0, the test fixture, step 1, Placement, step 2, Running, step 3, Threads with the Bus, step 4, Personas, step 5, Sessions, step 6, Assets, and step 7, Ledger and work, are built (“Where it stands”). Numbers are from `main` at 2259cebe. The scripts that produced them are in the pull request that added this document; the last of them, `svc-check.mjs`, checks the design against the code.
+**Status:** a proposal, 12 November 2026, for the person to approve before any code moves. Step 0, the test fixture, step 1, Placement, step 2, Running, step 3, Threads with the Bus, step 4, Personas, step 5, Sessions, step 6, Assets, step 7, Ledger and work, and step 8, Checks, are built (“Where it stands”). Numbers are from `main` at 2259cebe. The scripts that produced them are in the pull request that added this document; the last of them, `svc-check.mjs`, checks the design against the code.
 
 ## Why
 
@@ -139,7 +139,7 @@ The list refines the starting point from the data:
 
 - **Owns:** lint entries per agent turn and their timers, the server’s checks on a finished turn, the stalled-step checks, and diagram reports from the page.
 - **Interface:** `endTurn(turn, se)`, `quietLint(turn, se)`, `foldLint(sessionId, message)`, `lint(sessionId, turnId, problems)`, `stallSteps(turn, se)`, `stallLeftRunning(turn, se, how)`, `diagramCheck(threadId, itemId, report)`, `stopTimers()`.
-- **Depends on:** Store, Threads, Sessions, Running, and the `send` port.
+- **Depends on:** Store, Threads, Sessions, Running, and the `send` port. External: the server’s settings (`config`), where a test shortens a lint turn’s wait or gives its own clock and timers.
 
 ### Apps
 
@@ -249,7 +249,7 @@ Built in this order, each service’s dependencies already exist: Store, Bus, Ru
 | `Runtime.view` clears the sessions’ unread counts | the facade’s `view()`: `Sessions.markRead`, then `Threads.view` (done in step 3; `Sessions.markRead` since step 5) |
 | `app-retire.mjs` calls `releaseNeed` (`card-needs.mjs`) | `app.retired`; asks listen |
 | `apps.mjs`’s `needAppSend` and `resolveAppSend` call `offerNeed` and `releaseNeed` | they stay with asks; `apps.mjs` splits |
-| `lint-delivery.mjs`, `apps.mjs` and `review-comments.mjs` call `rt.deliver` | the `send` port |
+| `lint-delivery.mjs`, `apps.mjs` and `review-comments.mjs` call `rt.deliver` | the `send` port (`lint-delivery.mjs` done in step 8) |
 | `catch-up.mjs` calls `heldFor` (`wake-cards.mjs`) | the `catchUpLines` port: waiting code contributes lines |
 | `item-lines.mjs` calls `rt.remote.hostOf` | it moves to `Placement.hostOf` |
 | `read-message.mjs` calls `appOf` (`apps.mjs`) | Memory depends on Apps |
@@ -257,7 +257,7 @@ Built in this order, each service’s dependencies already exist: Store, Bus, Ru
 | `turn-work.mjs` calls `recordScheduledTool` (`scheduled-wakes.mjs`) | the call moves to its caller, `turn-context.mjs` (done in step 7) |
 | `shell-runs.mjs` calls `whenWritable` (`store-outage.mjs`) | `Store.whenWritable` (step 7: Work takes a `whenWritable` bound to the runtime until the Store is a service) |
 | `remote/host-admin.mjs` calls `rt.stop` and `rt.remote` | the `hostTurns` port |
-| `lint-delivery.mjs`, `apps.mjs`, `review-comments.mjs`, `host-admin.mjs` and `placement.mjs` read `rt.turns` or `rt.exiting` | Running |
+| `lint-delivery.mjs`, `apps.mjs`, `review-comments.mjs`, `host-admin.mjs` and `placement.mjs` read `rt.turns` or `rt.exiting` | Running (`placement.mjs` done in step 1, `lint-delivery.mjs` in step 8) |
 | `persona-delete.mjs` deletes sessions; `session-lifecycle.mjs` and `thread-erase.mjs` stop turns and kept jobs | orchestration in the facade: stop, then remove, in one method each (`deletePersona` done in step 4) |
 | `createThread` makes sessions; `resolveProposal` creates a persona and a session | orchestration in the facade |
 
@@ -460,7 +460,12 @@ Each step is its own pull request, and is done when:
   - The Store isn’t a service yet, so Work takes `whenWritable` as a function bound to the runtime, as Placement took `midTurn` before Running (step 1).
   - No test held where a turn’s end records its work (“Risks”, “The order at the end of a turn”). `tests/work-end-order.test.mjs` does: after the turn leaves Running, before its reply settles and before a failed turn fails its session. Neither did any test hold that the archive passes keep a live turn hot; the interface test does.
   - No test was deleted, and no spec changed.
-- **Next:** step 8, Checks, with the `send` port.
+- **Done:** step 8, Checks, with the `send` port. `server/check-service.mjs` is a class that `Runtime`’s constructor builds with the store, Threads, Sessions and Running, the server’s settings, and `send`; its interface tests are `tests/check-service.test.mjs`, and `tests/check-send.test.mjs` holds that a lint turn goes through the `deliver` in place when it’s sent. Its modules (`turn-checks.mjs`, `lint-delivery.mjs`, `diagram-check.mjs`) take the service, not the runtime, and nothing moved between them; the three lines that end a turn’s checks moved from `turn-finish.mjs` into `turn-checks.mjs` first, and the loop that clears the lint turns’ waits from `runtime-close.mjs` into `lint-delivery.mjs`, each as a move of its own. `Runtime` keeps the facade’s `diagramCheck`; code that still takes `rt` reaches the rest as `rt.checks`. What step 8 found:
+  - The interface was as listed. Checks also needs the server’s settings, an external dependency like the adapter registry (step 1): the lint turn’s settle wait, its limit while an app is checked, and a test’s own clock and timers are read there, as before.
+  - The root binds `send` as a function that looks up the runtime’s `deliver` each time, not `deliver` itself. Tests put a spy on `rt.deliver` after the runtime is built (`tests/close-timers.test.mjs`), and a port bound once would go past it; `tests/check-send.test.mjs` fails on that mutant.
+  - No test held that a problem the browser reports while the turn still runs joins its lint turn (`lint` reading Running’s live turns); the interface tests do.
+  - The app check stays as it was: `apps.mjs`, waiting code until step 9, calls `rt.checks.lint` for its notes and `rt.deliver` for its fix turn. One test that replaced `rt.lint` to listen replaces `rt.checks.lint`, and `tests/lint-delivery.test.mjs`’s fake is shaped as Checks. No test was deleted, and no spec changed.
+- **Next:** step 9, Apps, with `app.retired`.
 
 ## Appendix: every module’s members
 

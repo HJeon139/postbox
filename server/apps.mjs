@@ -88,7 +88,7 @@ export function appCheck(rt, appId, { version, problems = [] }) {
     // The version was made by the agent’s turn that’s running, or else the last one that ended.
     const turnId = [...rt.turns.values()].find((t) => t.sessionId === app.sessionId)?.id ?? rt.s.sessions[app.sessionId]?.lastTurnId;
     const scope = { kind: 'app', id: appId, title: app.title };
-    rt.lint(
+    rt.checks.lint(
       app.sessionId,
       turnId,
       clean.map((p) => ({ ...p, scope })),

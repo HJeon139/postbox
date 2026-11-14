@@ -1,9 +1,11 @@
 // The part of tests/arrange.mjs that reaches the server’s own machinery: the work ledger, the archive of old turns
-// (#305), the person’s ! commands (#67), the blob store, the server’s delays, and the timers close() clears. tests/arrange.mjs re-exports each helper,
+// (#305), the person’s ! commands (#67), the checks’ lint turns, the blob store, the server’s delays, and the timers close() clears. tests/arrange.mjs re-exports each helper,
 // so tests use them as `arrange.<name>`. Each names what a test needs, so none hands out the object behind it.
 
 import { createStreamMapper } from '../server/adapters/claude-stream.mjs';
+import { sendLint as sendLintOf } from '../server/lint-delivery.mjs';
 import { expireStaleCommands as expireStaleCommandsOf } from '../server/shell-runs.mjs';
+import { checkTurn as checkTurnOf } from '../server/turn-checks.mjs';
 import { archiveTurns } from '../server/work-archive.mjs';
 
 /** @typedef {import('../server/runtime.mjs').Runtime} Runtime */
@@ -134,13 +136,33 @@ export const setting = (rt, key) => rt.config[key];
 export const withDelays = (rt, delays) => Object.assign(rt.config, delays);
 
 /** Arms a lint entry for an agent turn, as the server’s checks do when it ends. @param {Runtime} rt @param {string} turnId @param {object} entry */
-export const armLint = (rt, turnId, entry) => rt.lints.set(turnId, entry);
+export const armLint = (rt, turnId, entry) => rt.checks.lints.set(turnId, entry);
 
 /** Adds a stopped turn’s watchdog timer, which close() must clear. @param {Runtime} rt @param {ReturnType<typeof setTimeout>} timer */
 export const addWatchdog = (rt, timer) => rt.watchdogs.add(timer);
 
 /** How many stopped turns’ watchdogs are set. @param {Runtime} rt */
 export const watchdogCount = (rt) => rt.watchdogs.size;
+
+// ── The checks (#58) ─────────────────────────────────────────────────────────────────
+
+/** Sends an agent turn’s lint turn once its settle wait is over, as its end does. @param {Runtime} rt @param {string} turnId */
+export const sendLint = (rt, turnId) => sendLintOf(rt.checks, turnId);
+
+/** Forgets every lint entry, as a restart does. @param {Runtime} rt */
+export const clearLints = (rt) => rt.checks.lints.clear();
+
+/**
+ * Adds problems the browser found to an agent turn’s lint turn, and answers whether the agent will hear of them.
+ * @param {Runtime} rt @param {string} sessionId @param {string|null|undefined} turnId @param {any[]} problems
+ */
+export const lint = (rt, sessionId, turnId, problems) => rt.checks.lint(sessionId, turnId, problems);
+
+/** The server’s checks over a finished turn: its problems. @param {Runtime} rt @param {any} turn @param {any} se */
+export const checkTurn = (rt, turn, se) => checkTurnOf(rt.checks, turn, se);
+
+/** Marks the progress steps a turn left running stalled, and answers their problems. @param {Runtime} rt @param {any} turn @param {any} se */
+export const stallSteps = (rt, turn, se) => rt.checks.stallSteps(turn, se);
 
 // ── Hosts ────────────────────────────────────────────────────────────────────────────
 

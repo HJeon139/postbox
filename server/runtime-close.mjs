@@ -18,10 +18,7 @@ const LEDGER_GRACE_MS = 4000;
  */
 export function stopTimers(rt) {
   for (const t of rt.timers.values()) clearTimeout(t);
-  for (const lint of rt.lints.values()) {
-    clearTimeout(lint.timer);
-    lint.timer = null;
-  }
+  rt.checks.stopTimers();
   for (const t of rt.watchdogs) clearTimeout(t);
   rt.watchdogs.clear();
   for (const w of rt.permissionWaits.values()) clearTimeout(w.timer);

@@ -215,7 +215,7 @@ function recordStop(rt, turn) {
   // Its process may not have exited yet: the session reads as stopping until it has (turnExited).
   if (rt.exiting.get(sessionId)?.turn === turn)
     rt.sessions.update(sessionId, { state: 'stopping', subagents: [], currentStep: 'Stopping', finishedAt: Date.now(), stopAsk: null });
-  rt.stallLeftRunning(turn, se, 'stopped');
+  rt.checks.stallLeftRunning(turn, se, 'stopped');
   // An outage isn’t the person’s Stop: its host cards stay unmarked, so their agent hears they expired (#721).
   if (turn.remote) rt.remote.stopped(turn, { by: 'store', why: WHY });
   rt.clearSummaryPending(turn.threadId);

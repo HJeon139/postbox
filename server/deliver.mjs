@@ -114,7 +114,7 @@ function turnMessage(rt, se, message, where, slash) {
   if (down) saveBackendState(rt, sessionId, { postboxToolsDown: null });
   // Problems the checks found in its last reply, still waiting to go as a lint turn, come with this turn instead, as
   // message.lint: fixes it owes, placed with the request rather than in the background.
-  if (message.kind !== 'lint' && !slash) message = rt.foldLint(sessionId, message);
+  if (message.kind !== 'lint' && !slash) message = rt.checks.foldLint(sessionId, message);
   // A topic or side thread’s request leads; its room catch-up is background. A room turn keeps the existing order.
   return turnContext(rt, rt.store.pending.session(sessionId) ?? rt.s.sessions[sessionId], where, message, slash);
 }

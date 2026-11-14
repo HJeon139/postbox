@@ -146,5 +146,5 @@ test('#120: a lint turn Interrupted on the host and resumed is still a lint turn
   await settled(r);
   const answer = reply(r);
   assert.equal(answer.lintReply, true);
-  assert.equal(r.rt.lint(r.se().id, answer.turnId, [problem]), false, 'what’s found in it never goes back as a lint turn');
+  assert.equal(arrange.lint(r.rt, r.se().id, answer.turnId, [problem]), false, 'what’s found in it never goes back as a lint turn');
 });
