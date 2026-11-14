@@ -10,6 +10,8 @@
 // - inputs: every input the run made that can move the person’s view, by step (#531): the tester’s scroll, and the
 //   runner’s clicks, which scroll what they click into view; and, as the runner’s (cause: 'runner'), a shot that didn’t
 //   leave the view as it was (tools/uat/driver-shots.mjs, keepView). A run saved before these were recorded has none.
+// - targetMoved: what the runner aimed a click at and found moved before it clicked, from and to (#1320,
+//   tools/uat/driver-pointer.mjs); not an input, since nothing the run did moved it
 // - keyFrame: the key-to-frame measurements --measure-key-frame made of the run’s room (#508, tools/uat/key-frame-run.mjs)
 // - keyFrameOn: whether the run had --measure-key-frame on, so a run without it, or one saved before this was, can’t
 //   say it didn’t measure (tools/uat/triggers-measure.mjs)
@@ -30,16 +32,22 @@ export const newProbes = () => ({
   jumps: [],
   conversation: [],
   inputs: [],
+  targetMoved: [],
   keyFrame: [],
   keyFrameOn: false,
 });
 
 /**
  * Records an input into probes.inputs, stamped with the step it’s in and when; a shot that moved the person’s view is
- * logged too.
- * @param {{ inputs: any[] }} probes  @param {() => number} stepNow  @param {(line: string) => void} log
+ * logged too. A click target that moved (kind 'target-moved') goes to probes.targetMoved instead, and is logged.
+ * @param {{ inputs: any[], targetMoved?: any[] }} probes  @param {() => number} stepNow  @param {(line: string) => void} log
  */
 export const recordInput = (probes, stepNow, log) => (/** @type {any} */ entry) => {
+  if (entry.kind === 'target-moved') {
+    /** @type {any} */ ((probes).targetMoved ??= []).push({ step: stepNow(), at: Date.now(), ...entry });
+    log(`${entry.what} moved between the runner aiming and clicking: ${JSON.stringify(entry.from)} → ${JSON.stringify(entry.to)}`);
+    return;
+  }
   probes.inputs.push({ step: stepNow(), at: Date.now(), ...entry });
   if (entry.cause === 'runner') log(`the runner moved the ${entry.where} view: ${JSON.stringify(entry.before)} → ${JSON.stringify(entry.after)}`);
 };

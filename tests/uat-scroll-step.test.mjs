@@ -144,6 +144,6 @@ test('a runner click is recorded before it scrolls what it clicks into view', as
     facts.probes.inputs.map((x) => [x.step, x.kind]),
     [[5, 'runner-click']],
   );
-  // The scroll, then the readings that aim the click where it holds still (#1320): all after the click is recorded.
-  assert.ok(order.length >= 1 && order.every((o) => o === 'scroll after 1'), order.join(', '));
+  // The scroll, then the one reading that finds it held still (#1320): both after the click is recorded.
+  assert.deepEqual(order, ['scroll after 1', 'scroll after 1']);
 });

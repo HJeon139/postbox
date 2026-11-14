@@ -3,11 +3,16 @@
 import { sleep } from '../browser.mjs';
 import { JUMP } from './selectors.mjs';
 
+/** A move of more than this, in px, between the runner aiming and clicking is reported. */
+const MOVED_PX = 1;
+
 /**
- * The click the driver makes on page, measuring through ev, and telling runnerClick first.
+ * The click the driver makes on page, measuring through ev, telling runnerClick first, and telling input when what it
+ * aimed at moved before it clicked (#1320): a button moving under the pointer is a defect the run’s checks report.
  * @param {any} page @param {(expr: string) => Promise<any>} ev @param {() => void} runnerClick
+ * @param {(entry: any) => void} [input]  the driver’s hooks.input (tools/uat/probes.mjs, recordInput)
  */
-export function pointer(page, ev, runnerClick) {
+export function pointer(page, ev, runnerClick, input) {
   /**
    * Clicks the centre of the first element that matches. As a person does, it scrolls only when it can’t reach that
    * centre where it is, off screen or under the top bar or the composer, and then to the middle, clear of both (#531).
@@ -25,6 +30,8 @@ export function pointer(page, ev, runnerClick) {
     if (!r) throw new Error(`Couldn’t find ${what} on screen.`);
     await sleep(120);
     const at = await heldStill(findExpr, r);
+    // Clicked where it is, so the run goes on; but the move is the page’s defect, and the checks hear of it.
+    if (Math.abs(at.x - r.x) > MOVED_PX || Math.abs(at.y - r.y) > MOVED_PX) input?.({ kind: 'target-moved', what, from: r, to: at });
     for (const type of ['mouseMoved', 'mousePressed', 'mouseReleased'])
       await page.send('Input.dispatchMouseEvent', { type, x: at.x, y: at.y, button: 'left', clickCount: 1 });
     await sleep(250);

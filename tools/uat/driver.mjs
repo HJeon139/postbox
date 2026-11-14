@@ -35,7 +35,7 @@ export function driver(page, hooks = {}) {
   const runnerClick = () => hooks.input?.({ kind: 'runner-click' });
   const keep = keeper(ev, hooks.input);
 
-  const { clickAt } = pointer(page, ev, runnerClick);
+  const { clickAt } = pointer(page, ev, runnerClick, hooks.input);
   const press = (key) => pressKey(page, key);
   const typeInto = async (findExpr, text, what) => {
     await clickAt(findExpr, what);

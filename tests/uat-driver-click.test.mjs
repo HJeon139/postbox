@@ -6,6 +6,8 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { driver } from '../tools/uat/driver.mjs';
 import { placePersona } from '../tools/uat/driver-hosts.mjs';
+import { newProbes, recordInput } from '../tools/uat/probes.mjs';
+import { POINTER_CHECKS } from '../tools/uat/room-checks-pointer.mjs';
 
 /**
  * A page whose element is at each of `centers` in turn, one per measurement, staying at the last; and that answers
@@ -75,4 +77,52 @@ test('#1320 placePersona fails, saying so, when Save didn’t close the editor',
     fast(t, () => placePersona(kit, 'coder', 'ho_1')),
     /@coder’s editor is still open after Save/,
   );
+});
+
+test('#1320 a button that moved between aiming and clicking is recorded, and the run’s checks report it', async (t) => {
+  const facts = { probes: newProbes() };
+  const logged = [];
+  const input = recordInput(
+    facts.probes,
+    () => 7,
+    (line) => logged.push(line),
+  );
+  const { page, clicks } = standIn([
+    { x: 364.5, y: 1066.3 },
+    { x: 364.5, y: 1083.1 },
+    { x: 364.5, y: 1083.1 },
+  ]);
+  await fast(t, () => driver(page, { input }).clickAt(`document.querySelector('#save')`, 'Save'));
+  assert.deepEqual(clicks, [{ x: 364.5, y: 1083.1 }], 'it still clicks Save, so the run goes on');
+  assert.deepEqual(
+    facts.probes.targetMoved.map(({ step, kind, what, from, to }) => ({ step, kind, what, from, to })),
+    [{ step: 7, kind: 'target-moved', what: 'Save', from: { x: 364.5, y: 1066.3 }, to: { x: 364.5, y: 1083.1 } }],
+  );
+  assert.deepEqual(
+    facts.probes.inputs.map((x) => x.kind),
+    ['runner-click'],
+    'a move isn’t an input: nothing the run did moved it, so it excuses no view move',
+  );
+  assert.match(logged.join('\n'), /Save moved between the runner aiming and clicking/);
+  const findings = POINTER_CHECKS[0].run(facts);
+  assert.equal(findings.length, 1);
+  assert.equal(findings[0].title, 'A button moved under the pointer');
+  assert.match(findings[0].evidence, /^At step 7, Save moved from \(364\.5, 1066\.3\) to \(364\.5, 1083\.1\)/);
+});
+
+test('#1320 a button that held still, or moved 1 px or less, is no finding', async (t) => {
+  const facts = { probes: newProbes() };
+  const input = recordInput(
+    facts.probes,
+    () => 1,
+    () => {},
+  );
+  const { page } = standIn([
+    { x: 10, y: 10 },
+    { x: 10.5, y: 11 },
+    { x: 10.5, y: 11 },
+  ]);
+  await fast(t, () => driver(page, { input }).clickAt(`document.querySelector('#save')`, 'Save'));
+  assert.deepEqual(facts.probes.targetMoved, []);
+  assert.deepEqual(POINTER_CHECKS[0].run(facts), []);
 });
