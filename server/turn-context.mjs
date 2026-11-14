@@ -47,7 +47,7 @@ function whatTheTurnIs(rt, se0, turn) {
     state: { ...(se0.backendState ?? {}) },
     saveState: (patch) => saveBackendState(rt, turn.sessionId, patch),
     /** Where an attachment can be read on disk, or null. */
-    pathOf: (a) => rt.attachmentPath(turn.threadId, a),
+    pathOf: (a) => rt.assets.attachmentPath(turn.threadId, a),
     /**
      * Asks the person in the thread; resolves to { allow, message?, updatedInput?, updatedPermissions? }. On a remote
      * turn, req.hostPrompt names the prompt as the host knows it (a Codex request’s codex:<id>), so the host’s

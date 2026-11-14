@@ -7,11 +7,11 @@ import { READING } from '../shared/limits.mjs';
 import { formatDuration } from '../shared/text.mjs';
 import { listProcesses } from './adapters/process-group.mjs';
 import { runAgentCommand } from './agent-commands.mjs';
-import { agentFile, agentFolders, appFiles } from './agent-files.mjs';
 import { APP_HOLD_MAX, APP_SEND_LIMIT, APP_SEND_WINDOW_MS } from './app-send-limits.mjs';
 import { appCheck, appEvent, appFile, appQuery, appState, needAppSend, registerApp, resolveAppSend } from './apps.mjs';
 import { ArchivePasses } from './archive-runtime.mjs';
 import { askQuestions, QUESTION_TOOL, questionBlocks } from './ask-question.mjs';
+import { Assets } from './asset-service.mjs';
 import { act, answerDelivered, unreadAnswer } from './blocks.mjs';
 import { Bus } from './bus.mjs';
 import { catchUp, moveMarkers } from './catch-up.mjs';
@@ -25,7 +25,6 @@ import { keptJobs, pollKept, stopJob, stopKeptJobs, watchKept } from './kept-job
 import { Ledger } from './ledger.mjs';
 import { endLint, foldLint, lint, quietLint } from './lint-delivery.mjs';
 import { wakeMentions } from './mention-wakes.mjs';
-import { attachmentPath } from './message-attachments.mjs';
 import * as queue from './message-queue.mjs';
 import { alwaysFor } from './permission-always.mjs';
 import {
@@ -147,6 +146,8 @@ export class Runtime {
     // Sessions, one per agent per conversation; an agent the person adds lifts a decline of adding it there (#789).
     this.sessions = new Sessions({ store, bus: this.bus, threads: this.threads, personas: this.personas });
     this.bus.on('session.joined', ({ threadId, persona }) => liftDecline(this, threadId, persona.handle));
+    // A conversation’s files and its agents’: assets, attachments, the files an agent reads, a review’s images.
+    this.assets = new Assets({ store, sessions: this.sessions, personas: this.personas, placement: this.placement, blobs: this.blobs });
     this.remote = new RemoteTurns(this, { hosts: this.hosts });
     this.listenToPersonas();
     this.turnArchive = new ArchivePasses(this, { enabled: config.archiveTurns === true }); // #305: off until step 4
@@ -639,11 +640,6 @@ export class Runtime {
     return restoreWork(this, threadId, fileId);
   }
 
-  /** Where an attachment can be read on disk (server/message-attachments.mjs). */
-  attachmentPath(threadId, a) {
-    return attachmentPath(this, threadId, a);
-  }
-
   // ── Attached Claude Code sessions: server/claude-mirror.mjs ─────────────────────────
 
   claudeSessions() {
@@ -795,15 +791,6 @@ export class Runtime {
   }
   appFile(appId, name, v) {
     return appFile(this, appId, name, v);
-  }
-  agentFolders(sessionId) {
-    return agentFolders(this, sessionId);
-  }
-  agentFile(sessionId, path, max, what) {
-    return agentFile(this, sessionId, path, max, what);
-  }
-  appFiles(sessionId, args) {
-    return appFiles(this, sessionId, args);
   }
   registerApp(sessionId, block, itemId, threadId, files) {
     return registerApp(this, sessionId, block, itemId, threadId, files);

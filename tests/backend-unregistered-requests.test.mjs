@@ -27,7 +27,7 @@ test('#874 a ! command where the agent that replies has an unregistered backend 
 
 test('#874 the folders of an agent with an unregistered backend are refused with the reason', async () => {
   const f = unregistered();
-  await assert.rejects(f.rt.agentFolders(f.beta.id), refused);
+  await assert.rejects(arrange.agentFolders(f.rt, f.beta.id), refused);
 });
 
 test('#874 the permissions panel of an agent with an unregistered backend is refused with the reason', async () => {

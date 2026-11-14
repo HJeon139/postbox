@@ -1,5 +1,5 @@
 // Files an agent names for an app (#54): its code (codePath) and data files, read from its own folders under the
-// same limits as an inline call. Each is a Runtime method’s body, with the instance first, as in server/apps.mjs.
+// same limits as an inline call. Each is an Assets method’s body (server/asset-service.mjs), with the service first.
 
 import { constants } from 'node:fs';
 import { lstat, open, realpath } from 'node:fs/promises';
@@ -16,11 +16,11 @@ export class AgentFileError extends Error {}
 // ── Files an agent names (#54) ─────────────────────────────────────────────────────
 
 /** The folders an agent works in: its own (where it starts), the project’s, and any added for the conversation. */
-export async function agentFolders(rt, sessionId) {
-  const se = rt.session(sessionId);
-  const persona = rt.personas.forSession(se);
-  const project = rt.s.projects[rt.s.threads[se.threadId]?.projectId] ?? null;
-  const adapter = rt.placement.requestAdapter(se.handle, persona);
+export async function agentFolders(assets, sessionId) {
+  const se = assets.sessions.get(sessionId);
+  const persona = assets.personas.forSession(se);
+  const project = assets.store.state.projects[assets.store.state.threads[se.threadId]?.projectId] ?? null;
+  const adapter = assets.placement.requestAdapter(se.handle, persona);
   const own = await workFolder(adapter, persona, project);
   return [...new Set([own, project?.folder, ...(se.addDirs ?? [])].filter(Boolean))];
 }
@@ -54,13 +54,13 @@ async function stillThere(opened, real, roots) {
  * A hard link in the folders to a file outside them is read, as any file there is (#828): it has no path outside to
  * check, the agent runs as the same user and could copy that file in, and show_app’s files have always read one.
  * The boundary is the folders’ paths, not where a file’s bytes first came from.
- * @param {any} rt  the Runtime @param {string} sessionId @param {unknown} path @param {number} max @param {string} what  how the error names it
+ * @param {import('./asset-service.mjs').Assets} assets @param {string} sessionId @param {unknown} path @param {number} max @param {string} what  how the error names it
  * @param {{ afterCheck?: () => unknown, afterOpen?: () => unknown, beforeRead?: () => unknown }} [hooks]  for tests:
  *   each runs at its step (after the path’s check, after the open, before the read), so a test can swap a file there
  */
-export async function agentFile(rt, sessionId, path, max, what, hooks = {}) {
+export async function agentFile(assets, sessionId, path, max, what, hooks = {}) {
   if (typeof path !== 'string' || !path.trim()) throw new AgentFileError(`${what} needs a path to a file in your folder.`);
-  const folders = await rt.agentFolders(sessionId);
+  const folders = await assets.agentFolders(sessionId);
   if (!folders.length) throw new AgentFileError(`You have no folder to read ${what} from. Send it inline instead.`);
   const named = resolve(folders[0], path);
   const real = await realpath(named).catch(() => null);
@@ -97,23 +97,23 @@ export async function agentFile(rt, sessionId, path, max, what, hooks = {}) {
  * and files names data files there for the app to read. Postbox reads both itself, under the same limits as an
  * inline call, and stores the data files with the version. Returns the call’s arguments with code filled in, and
  * the files as Postbox stored them; a call can’t name stored files itself.
- * @param {any} rt  the Runtime @param {string} sessionId @param {any} args
+ * @param {import('./asset-service.mjs').Assets} assets @param {string} sessionId @param {any} args
  * @returns {Promise<{ args: any, files?: AppFile[] }>}
  */
-export async function appFiles(rt, sessionId, args) {
+export async function appFiles(assets, sessionId, args) {
   const { codePath, files: wanted, ...rest } = args ?? {};
   const out = { ...rest };
   if (codePath !== undefined) {
     if (typeof rest.code === 'string' && rest.code) throw new AgentFileError('Send code or codePath, not both.');
     // A character is at most 4 bytes, so a file within the limit in characters is within 4 times it in bytes.
-    out.code = (await rt.agentFile(sessionId, codePath, LIMITS.appCode * 4, 'codePath')).toString('utf8');
+    out.code = (await assets.agentFile(sessionId, codePath, LIMITS.appCode * 4, 'codePath')).toString('utf8');
     if (out.code.length > LIMITS.appCode)
       throw new AgentFileError(`${codePath} has ${out.code.length.toLocaleString('en-US')} characters; an app’s code is up to ${limitText('appCode')}.`);
   }
   if (wanted === undefined) return { args: out };
   if (!Array.isArray(wanted)) throw new AgentFileError('files is a list: [{ name?, path }].');
   if (wanted.length > LIMITS.appFiles) throw new AgentFileError(`An app carries up to ${limitText('appFiles')} data files.`);
-  if (!rt.blobs) throw new AgentFileError('This Postbox can’t store files.');
+  if (!assets.blobs) throw new AgentFileError('This Postbox can’t store files.');
   /** @type {AppFile[]} */
   const stored = [];
   for (const f of wanted) {
@@ -121,8 +121,8 @@ export async function appFiles(rt, sessionId, args) {
     const name = String((typeof f === 'object' && f?.name) || basename(String(path ?? '')));
     if (!FILE_NAME.test(name)) throw new AgentFileError(`“${name}” can’t name a file: use letters, digits and - _ . (up to 64).`);
     if (stored.some((x) => x.name === name)) throw new AgentFileError(`Two files are named “${name}”.`);
-    const buf = await rt.agentFile(sessionId, path, LIMITS.appFileBytes, `the file “${name}” (up to ${limitText('appFileBytes')})`);
-    const { sha256, size } = await rt.blobs.put(buf);
+    const buf = await assets.agentFile(sessionId, path, LIMITS.appFileBytes, `the file “${name}” (up to ${limitText('appFileBytes')})`);
+    const { sha256, size } = await assets.blobs.put(buf);
     stored.push({ name, sha256, size });
   }
   return { args: out, files: stored };

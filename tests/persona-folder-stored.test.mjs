@@ -81,7 +81,7 @@ test('the folders an agent with a stored relative folder names files from are re
     ['cc', 'claude-code'],
     ['mo', 'mock'],
   ])
-    await assert.rejects(() => rt.agentFolders(stored(handle, backend).se.id), refusal(handle));
+    await assert.rejects(() => arrange.agentFolders(rt, stored(handle, backend).se.id), refusal(handle));
 });
 
 test('the work ledger of a turn by an agent with no folderFor and a stored relative folder never gets that folder', async () => {
@@ -164,7 +164,7 @@ test('a conversation whose snapshot holds a bad folder works in the agent’s fo
     assert.equal(await workFolder(rt.adapters.get(backend), arrange.personaFor(rt, se), store.state.projects.p1), fixed);
     assert.deepEqual(await rt.commandFolder(t.id), { folder: fixed, host: null });
     assert.equal((await rt.panelTarget({ sessionId: se.id })).folder, fixed);
-    assert.deepEqual(await rt.agentFolders(se.id), [fixed, '/srv/project']);
+    assert.deepEqual(await arrange.agentFolders(rt, se.id), [fixed, '/srv/project']);
     if (backend === 'mock') {
       const { ledger, delivered } = turn(rt, t);
       assert.equal(await ledger, fixed);
@@ -189,7 +189,7 @@ test('a conversation whose snapshot and agent both hold a bad folder is refused 
     };
     await assert.rejects(() => rt.commandFolder(t.id), refusedLive);
     await assert.rejects(() => rt.panelTarget({ sessionId: se.id }), refusedLive);
-    await assert.rejects(() => rt.agentFolders(se.id), refusedLive);
+    await assert.rejects(() => arrange.agentFolders(rt, se.id), refusedLive);
     if (backend === 'mock') await assert.rejects(() => turn(rt, t).ledger, refusedLive);
   }
   assert.deepEqual(readdirSync(process.cwd()), cwdBefore, 'nothing is made in the folder Postbox was started from');

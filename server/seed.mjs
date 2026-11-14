@@ -9,7 +9,6 @@ import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isDeepStrictEqual } from 'node:util';
 import { GEMINI_MODEL } from '../shared/agent-facts.mjs';
-import { blobsOf } from './asset-tools.mjs';
 import { writeAsset } from './assets.mjs';
 import { agentFolderPath } from './folder-path.mjs';
 import { httpError } from './helpers.mjs';
@@ -275,7 +274,7 @@ const DEMO_ASSETS = fileURLToPath(new URL('./demo-assets/', import.meta.url));
  * @param {any} rt @param {string} room
  */
 async function seedAssets(rt, room) {
-  const blobs = blobsOf(rt);
+  const blobs = rt.assets.roomBlobs();
   if (!blobs) return;
   const files = (await readdir(DEMO_ASSETS, { recursive: true, withFileTypes: true })).filter((e) => e.isFile());
   for (const path of files.map((e) => join(e.parentPath, e.name)).sort()) {

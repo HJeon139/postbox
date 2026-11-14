@@ -1,6 +1,6 @@
 # Concerns as services
 
-**Status:** a proposal, 12 November 2026, for the person to approve before any code moves. Step 0, the test fixture, step 1, Placement, step 2, Running, step 3, Threads with the Bus, step 4, Personas, and step 5, Sessions, are built (“Where it stands”). Numbers are from `main` at 2259cebe. The scripts that produced them are in the pull request that added this document; the last of them, `svc-check.mjs`, checks the design against the code.
+**Status:** a proposal, 12 November 2026, for the person to approve before any code moves. Step 0, the test fixture, step 1, Placement, step 2, Running, step 3, Threads with the Bus, step 4, Personas, step 5, Sessions, and step 6, Assets, are built (“Where it stands”). Numbers are from `main` at 2259cebe. The scripts that produced them are in the pull request that added this document; the last of them, `svc-check.mjs`, checks the design against the code.
 
 ## Why
 
@@ -126,7 +126,7 @@ The list refines the starting point from the data:
 ### Assets
 
 - **Owns:** room assets and blobs, message attachments, the files an agent reads and serves (`agentFile`, `appFiles`), and review files.
-- **Interface:** `attachmentPath`, `sentAttachments`, `agentFolders`, `agentFile`, `appFiles`, `search`, `reviewFiles`.
+- **Interface:** `attachmentPath`, `sentAttachments`, `agentFolders`, `agentFile`, `appFiles`, `search` and `listText` (the room’s text assets, for an app’s host tools), `tools` (the asset tools an agent calls), `roomBlobs`, and a review’s files: `blockFiles`, `storeReviewFiles`, `servedReviewFile`.
 - **Depends on:** Store, Sessions, Personas, Placement. External: blobs.
 
 ### Ledger and work
@@ -448,7 +448,12 @@ Each step is its own pull request, and is done when:
   - A delete and an erase emitted a session’s removal themselves (`session-lifecycle.mjs`, `thread-erase.mjs`); they call `Sessions.remove` now, so every write of a session is in `sessions.mjs`, and `tests/session-write-guard.test.mjs` places them there.
   - The session-write guard reads names, as the thread one did in step 3: it finds `sessions.update(` (and `this.update(` in Sessions) with the change after one argument, counts `sessions.get(` and `sessions.in(` as published reads, and a raw write is a store emit of `session` or `session.patch`, so the bus’s `session.joined` isn’t taken for one.
   - Tests that replaced `rt.updateSession` or `rt.tellAgent` to listen call the fixture’s `onSessionUpdate` and `onTell`. They now hear every write, since every module writes through `rt.sessions`, not some through `updateSession(rt, …)`; each still passes. No test was deleted, and no spec changed.
-- **Next:** step 6, Assets.
+- **Done:** step 6, Assets. `server/asset-service.mjs` is a class that `Runtime`’s constructor builds with the store, Sessions, Personas, Placement and the blobs; its interface tests are `tests/assets.test.mjs`. Its modules (`agent-files.mjs`, `asset-tools.mjs`, `asset-search.mjs`, `message-attachments.mjs`, `review-files.mjs`) take the service, not the runtime, and nothing moved between them. `Runtime` keeps no method of Assets; code that still takes `rt` reaches it as `rt.assets`, and the asset tools reach an agent the same way on this computer (`mcp.mjs`) and through a host’s shim (`remote/turns-tools.mjs`). What step 6 found:
+  - Assets is too large for one module: about 800 lines across five, each a concern of its own. The class is the interface, a method each, and the five modules stay as they were, each taking the service instead of the runtime. That is the shape for a service whose code is larger than a file: the class names what it offers, and its modules what each part does.
+  - “`reviewFiles`” and “`search`” were each a name for several calls: a review’s files are read and stored (`blockFiles`, `storeReviewFiles`) and served back (`servedReviewFile`), and a search has a listing beside it (`listText`) for an app’s host tools. The asset tools (`tools`) and the asset folder (`roomBlobs`, which the seed writes to) weren’t listed.
+  - The blobs are an external dependency both `Runtime` and Assets hold, as the adapter registry is both Runtime’s and Placement’s (step 1): five tests assigned `rt.blobs` to stand for a Postbox with another store or none, and call the fixture’s `withBlobs` now, which sets both. Waiting code (apps, turn marks, the host turns) reads `rt.blobs`, the same store.
+  - `tests/arrange.mjs` was past Biome’s length with this step’s helpers, so its fakes and listeners moved to `tests/arrange-fakes.mjs` first, as a move of its own.
+- **Next:** step 7, Ledger and work.
 
 ## Appendix: every module’s members
 

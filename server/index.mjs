@@ -32,7 +32,7 @@ import { createProject, setPushUrl } from './projects.mjs';
 import { hostModels } from './remote/hosts-models.mjs';
 import { hostManagerFor, startHosts, stopHosts } from './remote/serve.mjs';
 import { settleInterrupted } from './restart-sweep.mjs';
-import { SAME_ORIGIN_ONLY, servedReviewFile } from './review-files.mjs';
+import { SAME_ORIGIN_ONLY } from './review-files.mjs';
 import { patchThread } from './room-chain-limit.mjs';
 import { httpError, Runtime } from './runtime.mjs';
 import { settleLedger, stopTimers } from './runtime-close.mjs';
@@ -289,7 +289,7 @@ export async function start({
       });
     // A review’s image (#780): only a file on that item, by its name and SHA-256; every miss is the same 404.
     if ((m = path.match(/^\/api\/threads\/([^/]+)\/items\/([^/]+)\/files\/([^/]+)$/)) && req.method === 'GET') {
-      const served = await servedReviewFile(rt, decodePath(m[1]), decodePath(m[2]), decodePath(m[3]), url.searchParams.get('sha') ?? '');
+      const served = await rt.assets.servedReviewFile(decodePath(m[1]), decodePath(m[2]), decodePath(m[3]), url.searchParams.get('sha') ?? '');
       if (!served) throw httpError(404, 'That file doesn’t exist.');
       return raw(res, 200, served.bytes, served.headers);
     }

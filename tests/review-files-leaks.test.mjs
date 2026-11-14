@@ -21,7 +21,7 @@ test('#825 a put that fails at a later file settles the earlier staged ones, so 
   });
   const files = { 'a.png': png(4, 3), 'b.png': png(5, 3) };
   const read = async (x) => files[x.path];
-  await assert.rejects(storeReviewFiles(f.rt, [{ path: 'a.png' }, { path: 'b.png' }], read), /no space left/);
+  await assert.rejects(storeReviewFiles(f.rt.assets, [{ path: 'a.png' }, { path: 'b.png' }], read), /no space left/);
   assert.deepEqual(await blobsIn(f), [], 'the first file’s staged blob is removed');
   assert.equal(arrange.heldBlobs(f.rt), 0, 'and nothing still holds it');
 });
@@ -32,7 +32,7 @@ test('#825 a review item whose blob is gone from the store gets null, so the rou
   assert.equal((await f.call('show_block', reviewBlock('fig', [{ path: 'figs/today.png' }]))).isError, false);
   const [kept] = f.review('fig').files;
   await rm(arrange.blobPath(f.rt, kept.sha256));
-  assert.equal(await servedReviewFile(f.rt, f.t.id, f.review('fig').id, 'today.png', kept.sha256), null);
+  assert.equal(await servedReviewFile(f.rt.assets, f.t.id, f.review('fig').id, 'today.png', kept.sha256), null);
 });
 
 test('#828 showing a shown review again with new bytes is refused, and keeps none of them', async () => {
@@ -70,5 +70,5 @@ test('#825 a damaged blob is still an error, not passed off as a missing one', a
   await f.call('show_block', reviewBlock('fig', [{ path: 'figs/today.png' }]));
   const [kept] = f.review('fig').files;
   await writeFile(arrange.blobPath(f.rt, kept.sha256), 'not the bytes it was stored as');
-  await assert.rejects(servedReviewFile(f.rt, f.t.id, f.review('fig').id, 'today.png', kept.sha256), /damaged/);
+  await assert.rejects(servedReviewFile(f.rt.assets, f.t.id, f.review('fig').id, 'today.png', kept.sha256), /damaged/);
 });

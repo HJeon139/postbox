@@ -151,7 +151,7 @@ function attachedText(rt, list, reader) {
   const remote = Boolean(reader && rt.placement?.hostOf(rt.personas.forSession(reader)));
   const names = list.map((a) => {
     const name = a.name ?? a.path;
-    const where = reader && !remote ? rt.attachmentPath(reader.threadId, a) : null;
+    const where = reader && !remote ? rt.assets.attachmentPath(reader.threadId, a) : null;
     return where ? `${name} at ${where}` : name;
   });
   const note = remote ? ' Your host can’t open attachments from earlier messages yet: ask the person to paste what you need.' : '';

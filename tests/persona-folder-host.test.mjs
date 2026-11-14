@@ -90,7 +90,7 @@ test('the permissions panel and the files of an agent on a host read a folder th
   const se = arrange.sessionsIn(rt, t.id)[0];
   assert.equal((await rt.panelTarget({ sessionId: se.id })).folder, project);
   assert.equal((await rt.panelTarget({ personaId: p.id, projectId: 'p1' })).folder, project);
-  assert.deepEqual(await rt.agentFolders(se.id), [project]);
+  assert.deepEqual(await arrange.agentFolders(rt, se.id), [project]);
   // The same folder on an agent here is still refused, with where to change it.
   const here = rt.createPersona({ handle: 'beta', backend: 'claude-code' });
   store.emit('persona', { ...store.state.personas[here.id], folder: 'server' });

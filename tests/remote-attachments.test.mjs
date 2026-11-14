@@ -12,6 +12,7 @@ import { Blobs } from '../server/blobs.mjs';
 import { carryAttachments, hostName } from '../server/remote/attachments.mjs';
 import { encode, message, REMOTE_LIMITS, validateMessage } from '../shared/remote-protocol.mjs';
 import { FILE_RE } from '../shared/remote-protocol-checks.mjs';
+import * as arrange from './arrange.mjs';
 import { start } from './remote-protocol-cases.mjs';
 import { messageOf, rig, settled, starts, until } from './remote-turns-helpers.mjs';
 import { tempDir } from './temp-dirs.mjs';
@@ -106,7 +107,7 @@ test('#120: a message over an attachment limit is refused, naming the limit, and
 async function withUpload(bytes) {
   const r = rig();
   const dir = tempDir('pb-attach-blobs-');
-  r.rt.blobs = new Blobs(dir);
+  arrange.withBlobs(r.rt, new Blobs(dir));
   const { sha256 } = await r.rt.blobs.put(bytes);
   r.store.emit('file', { id: 'fi_1', name: 'chart (1).png', size: bytes.length, type: 'image/png', sha256, at: 1 });
   const a = { kind: 'file', fileId: 'fi_1', name: 'chart (1).png', type: 'image/png' };

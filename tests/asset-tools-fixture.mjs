@@ -33,7 +33,7 @@ export async function assetRoom(ctx, { store = null } = {}) {
   const [alpha, beta] = arrange.sessionsIn(rt, t.id);
   /** The asset tools as an agent calls them; each call’s answer, with its message checked to be a string. */
   const as = (se, turn = null, opts = {}) => {
-    const tools = assetTools(rt, se.id, turn, opts);
+    const tools = assetTools(rt.assets, se.id, turn, opts);
     return Object.fromEntries(
       Object.entries(tools).map(([name, fn]) => [
         name,

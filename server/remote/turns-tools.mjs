@@ -7,10 +7,9 @@
 import { LIMITS } from '../../shared/limits.mjs';
 import { REMOTE_LIMITS, toolRoute } from '../../shared/remote-protocol.mjs';
 import { AgentFileError } from '../agent-files.mjs';
-import { assetTools } from '../asset-tools.mjs';
 import { noteAnswer } from '../empty-reply.mjs';
 import { reactTool } from '../reactions.mjs';
-import { blockFiles, keptIfShown } from '../review-files.mjs';
+import { keptIfShown } from '../review-files.mjs';
 import { recordedTools } from '../scheduled-wakes.mjs';
 import { withUrgent } from '../subagent-end.mjs';
 import { closedTo, READ_TOOLS } from '../tool-gate.mjs';
@@ -80,7 +79,7 @@ async function applyTool(rts, live, m) {
   // adds them; the asset tools take text only here, since a path names a file on the host.
   const own = {
     react: (/** @type {any} */ a) => reactTool(rts.rt.threads, rts.rt.session(live.sessionId), a),
-    ...assetTools(rts.rt, live.sessionId, live.rt, { onHost: true }),
+    ...rts.rt.assets.tools(live.sessionId, live.rt, { onHost: true }),
   };
   const tools = { ...rts.rt.toolsFor(live.sessionId, live.rt), ...recordedTools(rts.rt, live.rt, own) };
   if (!Object.hasOwn(tools, m.name)) return { ok: false, text: `There’s no tool called “${m.name}”.` };
@@ -90,7 +89,7 @@ async function applyTool(rts, live, m) {
   try {
     // show_app’s and update_app’s files, and a review block’s (#780), were read on the host (the broker), and come as base64.
     const app =
-      m.name === 'show_app' || m.name === 'update_app' ? await appFiles(rts, m.args) : await blockFiles(rts.rt, live.sessionId, m.name, m.args, hostFile);
+      m.name === 'show_app' || m.name === 'update_app' ? await appFiles(rts, m.args) : await rts.rt.assets.blockFiles(live.sessionId, m.name, m.args, hostFile);
     const r = await keptIfShown(app, (given) => tools[m.name](app.args, given));
     noteAnswer(live.rt, m.name, r);
     return { ok: !(r.ok === false && !r.waiting), text: r.results ? JSON.stringify(r.results) : String(r.message ?? '') };

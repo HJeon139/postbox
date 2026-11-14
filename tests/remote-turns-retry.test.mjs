@@ -97,7 +97,7 @@ test('#120, #151: Retry after a resumed turn fails sends a request over 32,000 c
   const r = rig();
   const dir = mkdtempSync(join(tmpdir(), 'pb-origin-'));
   try {
-    r.rt.blobs = new Blobs(dir);
+    arrange.withBlobs(r.rt, new Blobs(dir));
     assert.equal(LONG.length, 50_000);
     r.rt.sendMessage(r.t.id, { text: LONG });
     const { failed, threadId } = await failedResume(r);
@@ -121,7 +121,7 @@ test('#120, #151: the agent retired while Retry reads its kept request leaves th
   const r = rig();
   const dir = mkdtempSync(join(tmpdir(), 'pb-origin-'));
   try {
-    r.rt.blobs = new Blobs(dir);
+    arrange.withBlobs(r.rt, new Blobs(dir));
     r.rt.sendMessage(r.t.id, { text: LONG });
     const { failed, threadId } = await failedResume(r);
     // The read waits until the agent is retired, as it might on a slow --data folder.
@@ -152,7 +152,7 @@ test('#120, #151: Retry refuses, and sends nothing, when the request a resumed t
   const r = rig();
   const dir = mkdtempSync(join(tmpdir(), 'pb-origin-'));
   try {
-    r.rt.blobs = new Blobs(dir);
+    arrange.withBlobs(r.rt, new Blobs(dir));
     r.rt.sendMessage(r.t.id, { text: LONG });
     const { failed, threadId } = await failedResume(r);
     const path = r.rt.blobs.pathOf(failed.asked.messageRef.sha256);
@@ -164,7 +164,7 @@ test('#120, #151: Retry refuses, and sends nothing, when the request a resumed t
     await assert.rejects(r.rt.retry(threadId, failed.id), refused, 'damaged');
     rmSync(path);
     await assert.rejects(r.rt.retry(threadId, failed.id), refused, 'missing');
-    r.rt.blobs = null;
+    arrange.withBlobs(r.rt, null);
     await assert.rejects(r.rt.retry(threadId, failed.id), refused, 'no store');
     await sleep(20);
     assert.equal(starts(r.d).length, 1, 'nothing started on the host');
