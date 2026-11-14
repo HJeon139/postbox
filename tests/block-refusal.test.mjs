@@ -4,7 +4,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { showBlock } from '../server/block-show.mjs';
+import * as arrange from './arrange.mjs';
 import { choice, setup, turn } from './blocks-fixture.mjs';
 
 const blocks = (store, t) => store.items(t.id).filter((i) => i.kind === 'block');
@@ -50,13 +50,13 @@ test('#1319 a block this Postbox can’t read, from a newer host, still shows it
   const se = Object.values(store.state.sessions)[0];
   const ctx = { turn: { id: 'turn_1', remote: {} }, se: () => se, threadId: () => t.id, endSegment() {}, tools: {} };
   const newer = { id: 'map', type: 'map', version: 1, fallback: 'A map of the three sites.' };
-  const r = showBlock(rt, se.id, ctx, { block: newer });
+  const r = arrange.showBlock(rt, se.id, ctx, { block: newer });
   assert.equal(r.ok, false);
   const [it] = blocks(store, t);
   assert.equal(it?.valid, false);
   assert.equal(it.fallback, 'A map of the three sites.');
   // A plain mistake from that host is still refused: the host’s own catalog would have caught it.
-  const bad = showBlock(rt, se.id, ctx, { block: { id: 'x', type: 'choice', version: 1, options: [] } });
+  const bad = arrange.showBlock(rt, se.id, ctx, { block: { id: 'x', type: 'choice', version: 1, options: [] } });
   assert.match(bad.message, /^The block wasn’t shown: /);
   assert.equal(blocks(store, t).length, 1);
 });

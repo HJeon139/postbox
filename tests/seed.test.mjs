@@ -6,10 +6,10 @@ import { test } from 'node:test';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { deniedTools, OUTSIDE_TOOLS } from '../server/adapters/setup.mjs';
 import { roomAssets } from '../server/assets.mjs';
-import { hostTool } from '../server/host-tool.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { BOILERPLATES, DEMO_PERSONAS, freshInstall, seed, toBoilerplate } from '../server/seed.mjs';
 import { Store } from '../server/store.mjs';
+import * as arrange from './arrange.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
 async function seeded({ demo = false, agents = null } = {}) {
@@ -221,7 +221,7 @@ test('#516: --demo publishes its notes as the asset explorerâ€™s and the shelfâ€
   assert.deepEqual(names('Asset explorer'), notes);
   assert.deepEqual(names('Index the shelf'), notes);
   assert.deepEqual(names('Catalog tour'), []);
-  const hits = await hostTool(rt, 'assets.search', { query: 'hope after loss', k: 3 }, { threadId: threadNamed('Asset explorer').id });
+  const hits = await arrange.hostTool(rt, 'assets.search', { query: 'hope after loss', k: 3 }, { threadId: threadNamed('Asset explorer').id });
   assert.equal(hits.length, 3);
 });
 
