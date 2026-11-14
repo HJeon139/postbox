@@ -1,6 +1,6 @@
 # Postbox as a context multiplexer for agent harnesses
 
-**Status:** draft 3, 13 November 2026. The direction in “What the person decided” is the person’s; the three changes under it are proposals, and nothing here is built. Draft 3 is shorter than the first two on purpose: it keeps only changes that a measurement supports and that remove or reuse something, and it lists the rest under “Not proposed”. It sits beside [`rooms-at-scale.md`](rooms-at-scale.md), which decides how a room of four or more agents is organized.
+**Status:** draft 4, 13 November 2026. The direction in “What the person decided” is the person’s; the three changes under it are proposals, and nothing here is built. Draft 3 is shorter than the first two on purpose: it keeps only changes that a measurement supports and that remove or reuse something, and it lists the rest under “Not proposed”. It sits beside [`rooms-at-scale.md`](rooms-at-scale.md), which decides how a room of four or more agents is organized.
 
 ## What Postbox does
 
@@ -52,7 +52,7 @@ On 13 November 2026:
 
 ## Three changes
 
-Each one removes a mechanism or reuses one that exists. None adds stored state.
+Each one removes a mechanism or reuses one that exists. The first and third add no stored state; the second turned out to need some, and is on hold.
 
 ### 1. One way in: the @-mention
 
@@ -69,11 +69,15 @@ What it gives up: an agent can no longer start an idle agent while it keeps work
 
 Changes in `intent.md`: the rows on `@name` and on agents talking in the conversation, in “Attention and wakes”.
 
-### 2. Say a fixed thing once
+### 2. Say a fixed thing once: on hold
 
-The paragraph on sharing work is the same for every agent and every turn, and it is sent with every turn. It moves to the system prompt, which holds what is fixed (#515). That is a move of one string, with no new state, and it takes about a quarter of the room’s facts out of every turn.
+The paragraph on sharing work is the same for every agent and every turn, and it is sent with every turn. Draft 3 proposed moving it to the system prompt as a move of one string with no new state. That was wrong, found on starting to build it:
 
-The rest of the facts (the roster, the brief, the session’s model, the tools turned off) stay in each turn, because they can change mid-session and a resumed session keeps its old system prompt (CX-3 in [`508/requirements.md`](508/requirements.md)).
+- **A resumed Claude Code session keeps the system prompt of its first request** until it compacts ([#515](https://github.com/HJeon139/postbox/issues/515), from Claude Code’s CLI reference). So every session already running would lose the paragraph: it would no longer come with the turn, and it isn’t in the prompt the session recorded. The room measured here compacted 34 times in six days across five sessions, so a session could run for days without the rule that keeps two agents from doing one task twice ([#121](https://github.com/HJeon139/postbox/issues/121)).
+- **Doing it safely needs state:** a mark on each session that its recorded prompt has the paragraph, set by each of the five adapters when it starts a backend session.
+- **The saving is small.** The paragraph is about 113 tokens a turn: 141,000 of the 13.5 million tokens that entered the sessions, about 1%.
+
+It waits for the person’s call: leave it, or accept the mark on the session.
 
 ### 3. One way to find: `search_conversation`
 
@@ -112,10 +116,9 @@ It covers one room and one backend. Codex, Kiro and Antigravity sessions in a lo
 | Change | Measure |
 |---|---|
 | One way in | No hand-off posted twice, and no more wakes that found nothing to do |
-| Say a fixed thing once | Tokens of facts per turn fall by the paragraph’s size, and the cache still holds |
 | `search_conversation` | Agents use it, and read fewer pages of `read_conversation` to find one item |
 
 ## Where it stands
 
 - **Done:** the measurement, the person’s direction, and a second read against the backlog by the session that triages Postbox’s issues, which corrected one number and cut three parts.
-- **Next:** the person’s review. Then each change gets its own issue and pull request, smallest first: the fixed paragraph, then `search_conversation`, then the @-mention once #834 is fixed.
+- **Next:** the person’s review. Then each change gets its own issue and pull request, `search_conversation` first, then the @-mention once #834 is fixed.
