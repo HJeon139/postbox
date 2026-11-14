@@ -583,12 +583,12 @@ test('personas keep a permission mode and a model; real backends default to Clau
 
 test('attachments resolve to stored files, and project files stay inside the project folder', () => {
   const { rt, store, t } = setup();
-  rt.blobs = { typedPathOf: (sha, ext) => `/data/blobs/typed/${sha}${ext}` };
+  arrange.withBlobs(rt, { typedPathOf: (sha, ext) => `/data/blobs/typed/${sha}${ext}` });
   store.emit('file', { id: 'fi1', name: 'a.png', sha256: 'ab12' });
   // At the path with its extension (#1307).
-  assert.equal(rt.attachmentPath(t.id, { kind: 'file', fileId: 'fi1' }), '/data/blobs/typed/ab12.png');
-  assert.equal(rt.attachmentPath(t.id, { kind: 'project-file', path: 'notes/x.md' }), '/tmp/notes/x.md');
-  assert.equal(rt.attachmentPath(t.id, { kind: 'project-file', path: '../etc/passwd' }), null);
+  assert.equal(arrange.attachmentPath(rt, t.id, { kind: 'file', fileId: 'fi1' }), '/data/blobs/typed/ab12.png');
+  assert.equal(arrange.attachmentPath(rt, t.id, { kind: 'project-file', path: 'notes/x.md' }), '/tmp/notes/x.md');
+  assert.equal(arrange.attachmentPath(rt, t.id, { kind: 'project-file', path: '../etc/passwd' }), null);
 });
 
 test('an edit reaches a session that started before it, from its next turn, as it reaches new ones', async () => {

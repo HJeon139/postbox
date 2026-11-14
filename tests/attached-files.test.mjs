@@ -14,6 +14,7 @@ import { kiroRules } from '../server/adapters/kiro-cli-agent.mjs';
 import { fromContext } from '../server/adapters/setup.mjs';
 import { Blobs } from '../server/blobs.mjs';
 import { hostName } from '../server/remote/attachments.mjs';
+import * as arrange from './arrange.mjs';
 import { settle, setup } from './side-threads-fixture.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
@@ -23,7 +24,7 @@ import { tempDir } from './temp-dirs.mjs';
  */
 async function uploaded({ name, type }) {
   const r = setup();
-  r.rt.blobs = new Blobs(tempDir('pb-blobs-'));
+  arrange.withBlobs(r.rt, new Blobs(tempDir('pb-blobs-')));
   const { sha256 } = await r.rt.blobs.put(Buffer.from(`${name} bytes`));
   r.store.emit('file', { id: 'fi_pic', name, type, size: 9, sha256, at: 1 });
   let ctx;

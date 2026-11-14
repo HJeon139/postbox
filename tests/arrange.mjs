@@ -171,6 +171,12 @@ export const alwaysFor = (rt, se, req) => rt.alwaysFor(se, req);
 /** Expires a permission card’s wait, as its timeout does. @param {Runtime} rt @param {string} itemId */
 export const expireWait = (rt, itemId) => expireWaitOf(rt, itemId);
 
+/** The folders an agent works in: its own, the project’s, and any added. @param {Runtime} rt @param {string} sessionId */
+export const agentFolders = (rt, sessionId) => rt.agentFolders(sessionId);
+
+/** Where a message’s attachment can be read on disk, or null. @param {Runtime} rt @param {string} threadId @param {object} a */
+export const attachmentPath = (rt, threadId, a) => rt.attachmentPath(threadId, a);
+
 /** The files an app’s show carries, read from the agent’s folders. @param {Runtime} rt @param {string} sessionId @param {object} args */
 export const appFiles = (rt, sessionId, args) => rt.appFiles(sessionId, args);
 
@@ -198,6 +204,11 @@ export const viewApp = (rt, sessionId, args, ctx) => viewAppOf(rt, sessionId, ar
 
 /** Registers a fake backend under its own name, replacing any of that name. @param {Runtime} rt @param {object} adapter @param {object} [opts] */
 export const withAdapter = (rt, adapter, opts) => rt.adapters.register(/** @type {any} */ (adapter), opts);
+
+/** Gives the server another place to store files, or none, as a Postbox started with it would have. @param {Runtime} rt @param {any} blobs */
+export function withBlobs(rt, blobs) {
+  rt.blobs = blobs;
+}
 
 /** Unregisters a backend. @param {Runtime} rt @param {string} name */
 export const withoutAdapter = (rt, name) => rt.adapters.adapters.delete(name);

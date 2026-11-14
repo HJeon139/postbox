@@ -12,7 +12,7 @@ const SHA = 'ab'.repeat(32);
 
 function room() {
   const { rt, store } = setup();
-  rt.blobs = new Blobs(tempDir('pb-blobs-'));
+  arrange.withBlobs(rt, new Blobs(tempDir('pb-blobs-')));
   store.emit('file', { id: 'f1', name: 'Pasted text.txt', type: 'text/plain', size: 12, sha256: SHA });
   const h = rt.addHost({ name: 'host.example.com' });
   const near = rt.createPersona({ handle: 'near', backend: 'claude-code' });
