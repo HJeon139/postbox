@@ -180,7 +180,8 @@ export async function placePersona(kit, handle, hostId) {
     if (!(await kit.ev(`!!document.getElementById('pe-where')`))) return closeAll(kit);
     await sleep(250);
   }
-  throw new Error(`@${handle}’s editor was still open 10 seconds after Save, so where it runs may not have changed.`);
+  // Still open: Save didn’t take, and closing it now would drop the change without a word (#1320).
+  throw new Error(`@${handle}’s editor is still open after Save, 10 s on: the change wasn’t saved.`);
 }
 
 /**
