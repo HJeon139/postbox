@@ -27,8 +27,8 @@ const ctxFor = (folder) => ({
   status: () => {},
 });
 
-test('#1315: with POSTBOX_SDK_RECORD set, an Agent SDK turn writes each message it got to a file named for the agent', async (t) => {
-  const record = tempDir('pb-sdk-record-');
+test('#1315: with POSTBOX_SDK_RECORD set, an Agent SDK turn writes each message it got to a file named for the agent, in a folder it makes', async (t) => {
+  const record = join(tempDir('pb-sdk-record-'), 'streams', 'sdk');
   const project = tempDir('pb-sdk-project-');
   const was = process.env.POSTBOX_SDK_RECORD;
   process.env.POSTBOX_SDK_RECORD = record;

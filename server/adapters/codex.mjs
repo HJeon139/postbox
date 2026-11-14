@@ -1,7 +1,6 @@
 // OpenAI Codex app-server backend. Each Postbox session owns a persistent app-server thread; the local
 // `codex` installation supplies sign-in, configuration, sandboxing and the model catalog.
 import { spawn } from 'node:child_process';
-import { mkdirSync } from 'node:fs';
 import { realpath } from 'node:fs/promises';
 import { createInterface } from 'node:readline';
 import { HarnessEvents } from '../harness-events.mjs';
@@ -228,7 +227,6 @@ export class CodexAdapter {
       child.once('close', r);
       child.once('error', r);
     });
-    if (process.env.POSTBOX_CODEX_RECORD) mkdirSync(process.env.POSTBOX_CODEX_RECORD, { recursive: true });
     const record = recorderFor(ctx, process.env.POSTBOX_CODEX_RECORD);
     let stderr = '';
     child.stderr.on('data', (chunk) => {

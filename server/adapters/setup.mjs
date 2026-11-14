@@ -15,7 +15,7 @@
 // A persona set to Isolated (usesHostSetup: false) loads the project’s settings only, not the person’s own, and
 // only Postbox’s MCP server: both adapters pass --strict-mcp-config / strictMcpConfig for it.
 
-import { appendFileSync } from 'node:fs';
+import { appendFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { asksForWrites } from '../../shared/hook-modes.mjs';
 import { agentPlugins } from './agent-plugin.mjs';
@@ -393,11 +393,13 @@ export function keepShape(ctx, event) {
 }
 
 /**
- * What one turn writes each raw line to. The last few go in the turn’s ctx.rawTail too, as shapes (keepShape).
+ * What one turn writes each raw line to, in `dir`, made if it isn’t there yet. The last few go in the turn’s
+ * ctx.rawTail too, as shapes (keepShape), whether or not they’re recorded.
  * @param {any} ctx  the turn’s context @param {string|undefined} dir  POSTBOX_*_RECORD
  * @returns {(line: string) => void}
  */
 export function recorderFor(ctx, dir) {
+  if (dir) mkdirSync(dir, { recursive: true });
   const file = dir ? join(dir, `${Date.now()}-${ctx.persona.handle}.jsonl`) : null;
   return (line) => {
     if (file) appendFileSync(file, `${line}\n`);
