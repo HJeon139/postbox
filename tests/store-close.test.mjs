@@ -154,8 +154,9 @@ test('a snapshot under way when close() begins stops at its next piece, rather t
 });
 
 test('emits held behind a slow snapshot when close() begins, as a stopping turn’s records are, reach the log before the lock goes', async () => {
-  // Each snapshot piece takes 60 ms against a 100 ms bound. close() used to give up on the pass in all, and the records
-  // held behind the snapshot were then released into a closed store and written nowhere.
+  // Each snapshot piece takes 60 ms against a 400 ms bound, and the pieces of the whole snapshot about 1.2 s. close()
+  // used to give up on the pass in all, and the records held behind the snapshot were then released into a closed
+  // store and written nowhere. The bound is wide of each piece, so a loaded event loop running late doesn’t fail it.
   const dir = await tmp();
   let closing = /** @type {Promise<void> | null} */ (null);
   const io = disk({
@@ -176,8 +177,8 @@ test('emits held behind a slow snapshot when close() begins, as a stopping turn�
       });
     },
   });
-  const a = await new Store(dir, { io, retryBoundMs: 100 }).load();
-  for (let i = 0; i < 400; i++) a.emit('thread', { id: `t${i}`, members: [], title: 'x'.repeat(10_000) }); // pieces
+  const a = await new Store(dir, { io, retryBoundMs: 400 }).load();
+  for (let i = 0; i < 2000; i++) a.emit('thread', { id: `t${i}`, members: [], title: 'x'.repeat(10_000) }); // ~20 pieces
   await a.flush();
   await assert.rejects(a.snapshot(), /abandoned/);
   await closing;

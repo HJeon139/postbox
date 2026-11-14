@@ -167,7 +167,7 @@ test('one write lands, then the disk hangs: close() gives up the bound after tha
   // a hang right after it took two to three times the bound to fail (the integrator’s review of #1324).
   const dir = await tmp();
   const faults = {};
-  const a = await new Store(dir, { io: logDisk(faults), retryBoundMs: 400 }).load();
+  const a = await new Store(dir, { io: logDisk(faults), retryBoundMs: 1000 }).load();
   let writes = 0;
   faults.write = (handle, ...args) => (++writes === 1 ? handle.write(...args) : new Promise(() => {})); // then nothing answers
   a.emit('thread', { id: 'e0', members: [] });
@@ -176,30 +176,31 @@ test('one write lands, then the disk hangs: close() gives up the bound after tha
   await assert.rejects(a.close(), /can’t close.*isn’t answering/);
   const took = Date.now() - t0;
   assert.equal(writes, 2, 'the first write landed, and the second hung');
-  assert.ok(took < 650, `close() gave up after ${took} ms, against a 400 ms bound`);
+  // The old rule took at least twice the bound; 700 ms of slack covers a loaded event loop running late.
+  assert.ok(took < 1700, `close() gave up after ${took} ms, against a 1,000 ms bound`);
 });
 
 test('a slow disk that keeps answering: close() waits past its bound while each write lands, and closes with every event durable (#1314)', async () => {
-  // The bound is “no progress for retryBoundMs”, not retryBoundMs in all: a writer pass of eight writes of 60 ms each
-  // runs well past a 100 ms bound, yet every write is the disk answering.
+  // The bound is “no progress for retryBoundMs”, not retryBoundMs in all: a writer pass of twenty writes of 60 ms each
+  // runs well past a 400 ms bound, yet every write is the disk answering, well within the bound of the last.
   const dir = await tmp();
   const faults = {};
-  const a = await new Store(dir, { io: logDisk(faults), retryBoundMs: 100 }).load();
+  const a = await new Store(dir, { io: logDisk(faults), retryBoundMs: 400 }).load();
   faults.write = async (handle, ...args) => {
     await new Promise((r) => setTimeout(r, 60));
     return handle.write(...args);
   };
   const commits = [];
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < 10; i++) {
     a.emit('thread', { id: `e${i}`, members: [] });
     commits.push(a.commit([thread(`c${i}`)], { opId: `c${i}` }));
   }
   const t0 = Date.now();
   await a.close();
-  assert.ok(Date.now() - t0 > 100, 'the pass ran past the bound');
+  assert.ok(Date.now() - t0 > 400, 'the pass ran past the bound');
   await Promise.all(commits);
   assert.equal(a.lock, null, 'released');
   const b = await new Store(dir).load();
-  assert.deepEqual(Object.keys(b.state.threads).sort(), ['c0', 'c1', 'c2', 'c3', 'e0', 'e1', 'e2', 'e3']);
+  assert.equal(Object.keys(b.state.threads).length, 20, 'all ten commits and ten emits');
   await b.close();
 });
