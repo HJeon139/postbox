@@ -79,3 +79,19 @@ test('#1326 the New agent sheet’s Create agent stays under the pointer while i
   expect.soft(moved, 'Create agent didn’t move').toBeLessThanOrEqual(1);
   expect.soft(under, 'Create agent is still under the pointer').toBe('Create agent');
 });
+
+test('#1326 Settings’ other tabs still fit what they show: only an agent’s form takes the full height', async ({ page }) => {
+  const persona = started.app.rt.createPersona({ handle: 'fits', backend: 'claude-code' });
+  await page.goto(`${started.app.origin}/`);
+  await synced(page, started.app);
+  await page.evaluate(() => import('/app/js/sheets.mjs').then((m) => m.openSettings('appearance')));
+  const dialog = page.getByRole('dialog');
+  const height = () => dialog.evaluate((d) => d.getBoundingClientRect().height);
+  const room = await page.evaluate(() => innerHeight - 32);
+  await settled(page);
+  expect(await height(), 'Appearance fits what it shows').toBeLessThan(room - 100);
+  await dialog.getByRole('tab', { name: 'Personas' }).click();
+  await dialog.locator(`#pe-edit-${persona.id}`).click();
+  await settled(page);
+  expect(Math.abs((await height()) - room), 'a persona’s form takes the full height').toBeLessThanOrEqual(1);
+});

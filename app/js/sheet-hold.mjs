@@ -1,8 +1,8 @@
 // An agent sheet that fills in late moves nothing under the pointer (#1326). The New agent sheet and a persona’s
 // sheet ask for your MCP servers and the skills the agent loads once they open, and each list, of any length, takes
 // the place of its “Looking for…” line when it comes. A sheet that grew to fit moved Save or Create agent from under
-// the pointer. So such a sheet keeps one height, the most the window gives it (.dialog.held, workbench.css), and what
-// comes late scrolls inside its body, which holds still whatever is under the pointer when what’s above it changes.
+// the pointer. So such a sheet keeps one height, the most the window gives it (fullHeight), and what comes late scrolls
+// inside its body, which holds still whatever is under the pointer when what’s above it changes (holdSheet).
 
 import { onPointerMoved, pointer } from './pointer-rest.mjs';
 
@@ -14,14 +14,20 @@ function pathOf(/** @type {Element} */ body, /** @type {Element} */ n) {
 }
 
 /**
- * Keeps the dialog’s height, and the element under the pointer where it is in its body, until the function it returns
- * is called, as the dialog closes.
+ * Gives an agent sheet the most height the window gives it, or lets it fit what it shows again: only while it shows an
+ * agent’s form, whose lists come late (.dialog.held, workbench.css). The other Settings tabs fit what they show.
+ * @param {HTMLElement | null | undefined} dialog @param {boolean} on
+ */
+export const fullHeight = (dialog, on) => dialog?.classList.toggle('held', on);
+
+/**
+ * Keeps the element under the pointer where it is in the dialog’s body, until the function it returns is called, as
+ * the dialog closes.
  * The sheet draws itself anew as each answer comes, so the element is found again by its place in the body, and only
  * if it’s the same kind of element saying the same thing: Save is still Save.
  * @param {HTMLElement} dialog  as openDialog made it @returns {() => void}
  */
 export function holdSheet(dialog) {
-  dialog.classList.add('held');
   const body = /** @type {HTMLElement} */ (dialog.querySelector('.d-body'));
   /** @type {{ path: number[], tag: string, text: string | null, at: number } | null} */
   let held = null;
