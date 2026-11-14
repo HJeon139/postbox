@@ -2,6 +2,12 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.7.2 (2026-11-14)
+
+### Fixes
+
+- **models:** keep a saved boilerplate's model
+
 ## 4.7.1 (2026-11-14)
 
 ### Fixes
