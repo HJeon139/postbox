@@ -35,7 +35,7 @@ test('#120 L5: a remote turn gets its host turn ID persisted and the conversatio
     snap.threads.map((th) => th.id),
     r.rt.conversationThreads(r.t.id),
   );
-  const mine = snap.threads[0].items.find((i) => i.line === 'You: hi');
+  const mine = snap.threads[0].items.find((i) => i.line === 'The person, to @coder: hi');
   assert.ok(mine, JSON.stringify(snap.threads[0].items));
   assert.equal(mine.text, r.rt.readLine(r.store.item(r.t.id, mine.id), r.se(), Number.POSITIVE_INFINITY));
   // The host is needed for the turn’s life.
@@ -49,7 +49,7 @@ test('#120 L5: a remote turn gets its host turn ID persisted and the conversatio
   await until(() => r.d.turns.get(turn).snapshotItems.length > 0, 'snapshot-items');
   const items = r.d.turns.get(turn).snapshotItems[0];
   assert.equal(items.thread, r.t.id);
-  assert.deepEqual(items.items, [{ id: it.id, line: 'You: one more thing', text: 'You: one more thing' }]);
+  assert.deepEqual(items.items, [{ id: it.id, line: 'The person: one more thing', text: 'The person: one more thing' }]);
   r.d.end(turn);
   await settled(r);
   assert.equal(r.se().remoteTurn.state, 'done');
@@ -69,7 +69,7 @@ test('#120 L5: the project’s folder on the host is the turn’s folder; every 
   const lines = snap.threads[0].items.map((i) => i.line);
   // The failed reply shows nothing but still counts, as read_conversation counts it when paging.
   assert.ok(lines.includes(''), JSON.stringify(lines));
-  assert.ok(lines.includes('You woke @coder'));
+  assert.ok(lines.includes('The person woke @coder'));
   r.d.end(turn);
   await settled(r);
 });

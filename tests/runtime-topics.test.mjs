@@ -62,7 +62,7 @@ test('#228: a topic thread on your message is answered by the agent that answere
   await settle(rt);
   const call = adapter.calls.at(-1);
   assert.deepEqual([call.handle, call.thread], ['alpha', topic.id]);
-  assert.match(context(call), /This thread started from your message: @beta a question/);
+  assert.match(context(call), /This thread started from the person’s message to @beta: @beta a question/);
   rt.sendMessage(topic.id, { text: 'and you?' });
   await settle(rt);
   assert.equal(adapter.calls.at(-1).handle, 'alpha', 'the last speaker answers');
@@ -98,7 +98,7 @@ test('#228: a turn in a topic thread catches up on what others said there since 
   const ctx = context(adapter.calls.at(-1));
   assert.match(ctx, /What was said there since you last took part:/);
   assert.match(ctx, /@beta: Pages are easier to cite\./);
-  assert.match(ctx, /You: @beta do you agree\?/);
+  assert.match(ctx, /The person, to @beta: @beta do you agree\?/);
   assert.doesNotMatch(ctx, /Offsets, I think\./, 'not its own reply');
 });
 

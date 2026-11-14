@@ -187,10 +187,10 @@ test('#1143: an answered review from before threads gets its answer’s comments
   assert.equal(item().reviews?.[0]?.person, true);
 });
 
-test('#1143: the agent reads the person’s comments as “You”', async () => {
+test('#1143: the agent reads the person’s comments as “The person”', async () => {
   const { rt, item } = await answered([onLast]);
   const read = rt.toolsFor(item().sessionId).read_message({ id: 'plan' });
-  assert.match(read.message, /Comments on line 4 \(open\):\n- You: Cut it\./);
+  assert.match(read.message, /Comments on line 4 \(open\):\n- The person: Cut it\./);
 });
 
 test('#1143: show_block can’t show a review with a comment in the person’s name', async () => {

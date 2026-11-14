@@ -4,7 +4,7 @@ Part of [the architecture](../architecture.md). What each agent in a conversatio
 
 **Decision.** Every agent in a conversation can read all of it.
 - **A marker per session:** each session records the last item it was given (`seenItem`).
-- **Catch-up:** each delivery starts with the items after that marker, written as plain lines (“You: …”, “@indexer: …”, “@critic showed a review block …”), leaving out the agent’s own messages and the message being delivered.
+- **Catch-up:** each delivery starts with the items after that marker, written as plain lines (“The person, to @critic: …”, “@indexer: …”, “@critic showed a review block …”), leaving out the agent’s own messages and the message being delivered.
 - **Caps:** at most 40 items or about 16,000 characters. Messages that @-mention the agent come first, within a cap of their own of about 32,000 characters (`MENTION_CHARS`), so the rest’s caps can’t push one out ([#484](https://github.com/HJeon139/postbox/issues/484)). When items are left out, the catch-up says how many, of what kinds (“10 messages from other agents”, “2 mentions of you”), and which `read_conversation` `skip` reaches them.
 - **A mention it already gave:** the catch-up records the mentions it gave in full (`givenMentions`). When one of them is then delivered as its own queued wake, the agent gets a pointer to it that quotes its first 200 characters, not the whole message again as if it were new ([#484](https://github.com/HJeon139/postbox/issues/484)).
 - **Joining:** a new session starts with no marker, so an agent that joins a room gets its recent history.

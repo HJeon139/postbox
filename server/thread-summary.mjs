@@ -235,7 +235,7 @@ export async function summarizeThread(rt, threadId, summarize) {
 /** Who an item is from, as a catch-up names them. */
 const whose = (it) =>
   it.kind === 'user'
-    ? 'your own message'
+    ? 'their own message'
     : it.handle
       ? `@${it.handle}’s ${it.kind === 'block' ? (it.block?.type === 'app' ? 'app' : 'block') : 'message'}`
       : 'a message';
@@ -273,10 +273,10 @@ export function reactionLines(rt, se, threadId) {
         .trim(),
       80,
     );
-    // “You” is the person in a catch-up, as in “You: …”; the agent’s own message is named, and marked as its own.
+    // The person is named, as in a catch-up’s “The person: …”; the agent’s own message is marked as its own.
     const mine = it.sessionId && it.sessionId === se.id ? ' (yours: take it as feedback)' : '';
     // An agent’s reaction is to this agent’s own message, and is feedback from a teammate.
     if (r.by) return `@${r.handle} reacted ${r.emoji} to your ${it.kind === 'block' ? 'block' : 'message'} at ${when}${words ? `: “${words}”` : ''}`;
-    return `You reacted ${r.emoji} to ${whose(it)}${mine} at ${when}${words ? `: “${words}”` : ''}`;
+    return `The person reacted ${r.emoji} to ${whose(it)}${mine} at ${when}${words ? `: “${words}”` : ''}`;
   });
 }

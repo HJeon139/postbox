@@ -46,7 +46,7 @@ test('#362: a summary one character past the limit isn’t posted, and the threa
   const why = store.items(threadId).findLast((x) => /up to 50,000 characters/.test(x.text ?? ''));
   assert.match(why?.text ?? '', /up to 50,000 characters, and this one has 50,001/);
   assert.match(why.text, /Summarize back/);
-  // Postbox's line, never the person's: an agent would read a voice line as `You: …`, an instruction they gave.
+  // Postbox's line, never the person's: an agent would read a voice line as `The person: …`, an instruction they gave.
   assert.equal(why.kind, 'system');
   assert.equal(why.variant, 'send-refused');
   assert.doesNotMatch(String(rt.describeItem(why) ?? ''), /^You:/, 'no agent hears it as the person');

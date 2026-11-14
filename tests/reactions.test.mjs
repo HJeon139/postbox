@@ -51,14 +51,14 @@ test('#251: the reacted-to agent hears it once, at its next turn, and another ag
   react(f, f.reply, '👎');
   const [[who, heard]] = await nextTurns(f, '@alpha try again');
   assert.equal(who, 'alpha');
-  assert.match(heard, /You reacted 👎 to @alpha’s message \(yours: take it as feedback\) at \d\d:\d\d: “The parser drops entries/);
+  assert.match(heard, /The person reacted 👎 to @alpha’s message \(yours: take it as feedback\) at \d\d:\d\d: “The parser drops entries/);
   // Once: the turn after doesn’t hear it again.
   const [[, again]] = await nextTurns(f, '@alpha and now?');
   assert.doesNotMatch(again, /reacted/);
   // beta, which wasn’t there for it, reads it in its first catch-up, as the room’s.
   const [[b, seen]] = await nextTurns(f, '@beta what do you make of it?');
   assert.equal(b, 'beta');
-  assert.match(seen, /You reacted 👎 to @alpha’s message at/);
+  assert.match(seen, /The person reacted 👎 to @alpha’s message at/);
   assert.doesNotMatch(seen, /yours/);
 });
 
@@ -100,7 +100,7 @@ test('#251: a reaction in a topic thread reaches the agent answering there, and 
   f.rt.sendMessage(topic, { text: '@alpha and?' });
   await settle(f.rt);
   const heard = turnContext(f.adapter.calls[before]);
-  assert.match(heard, /You reacted 🚩 to @alpha’s message \(yours: take it as feedback\)/);
+  assert.match(heard, /The person reacted 🚩 to @alpha’s message \(yours: take it as feedback\)/);
   f.rt.sendMessage(topic, { text: '@alpha once more?' });
   await settle(f.rt);
   assert.doesNotMatch(turnContext(f.adapter.calls.at(-1)), /reacted/);

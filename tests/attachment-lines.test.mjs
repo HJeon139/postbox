@@ -50,11 +50,11 @@ test('#671: a topic thread’s opener gives a local agent the paths too', () => 
   const { threadId } = rt.startTopic(t.id, item.id);
   // A topic thread shares the agent’s session (#228).
   const line = rt.topicRootLine(sessionOf(near), rt.s.threads[threadId]);
-  assert.match(line, /^This thread started from your message: Read these\./);
+  assert.match(line, /^This thread started from the person’s message: Read these\./);
   assert.ok(line.includes(`Pasted text.txt at ${upload}`), line);
 });
 
 test('#671: with no reader, a line names the attachments alone', () => {
   const { rt, item } = room();
-  assert.equal(rt.describeItem(item), 'You: Read these. [attached: Pasted text.txt, notes/plan.md]');
+  assert.equal(rt.describeItem(item), 'The person: Read these. [attached: Pasted text.txt, notes/plan.md]');
 });

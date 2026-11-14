@@ -27,6 +27,7 @@
 // Each check names the inputs it reads (`inputs`), so facts with only some inputs run only those (liveChecks, below).
 
 import { clip } from '../../shared/text.mjs';
+import { ADDRESSED_CHECKS } from './room-checks-addressed.mjs';
 import { AGENT_CHECKS } from './room-checks-agents.mjs';
 import { APP_CHECKS } from './room-checks-apps.mjs';
 import { ASK_CHECKS } from './room-checks-asks.mjs';
@@ -60,6 +61,7 @@ export const CHECKS = [
   // The Kiro CLI’s and the Antigravity CLI’s (#117, #143): tools/uat/room-checks-backends.mjs.
   ...BACKEND_CHECKS,
   ...THREAD_CHECKS,
+  ...ADDRESSED_CHECKS,
   ...NEEDS_CHECKS,
   ...ASK_CHECKS,
   ...VIEW_CHECKS,

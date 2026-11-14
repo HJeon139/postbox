@@ -61,7 +61,7 @@ test('#515: the turn’s message carries the room list, the brief, the session f
 });
 
 test('DL-4: a turn opens with the request; what waited and the catch-up follow it, labeled background', () => {
-  const catchUp = '[Postbox] What happened in this room since your last turn:\n\nYou: Which edition?';
+  const catchUp = '[Postbox] What happened in this room since your last turn:\n\nThe person, to @alpha: Which edition?';
   const prompt = formatMessage({ kind: 'user', text: '@coder fix the ring', facts: turnFacts(base), context: [catchUp] });
   assert.ok(prompt.startsWith('@coder fix the ring'), `the prompt starts with: ${prompt.slice(0, 80)}`);
   const facts = prompt.indexOf('## In this conversation');
@@ -74,7 +74,7 @@ test('DL-4: a turn opens with the request; what waited and the catch-up follow i
 
 test('#504 #515: a topic thread’s turn is its thread, its task, the request, then the room’s facts, then the room as background', () => {
   const thread = '[Postbox] You’re answering in the thread “Note” (thread th_1).';
-  const meanwhile = '[Postbox] Meanwhile in the room and other background context (answer room work in the room):\n\nYou: Ship it.';
+  const meanwhile = '[Postbox] Meanwhile in the room and other background context (answer room work in the room):\n\nThe person, to @alpha: Ship it.';
   const prompt = formatMessage({ kind: 'user', text: '@coder check the grammar', taskContext: thread, facts: turnFacts(base), context: [meanwhile] });
   const parts = [
     thread,
@@ -91,7 +91,7 @@ test('folded lint has its own place: after the request and the room’s facts, b
   const lint = formatLint(lintMessage([{ code: 'numbered-term', message: 'Step 6 isn’t defined', scope: { kind: 'reply' } }]), { folded: true });
   assert.doesNotMatch(lint, /below/, 'nothing follows the lint that it could point at');
   assert.match(lint, /the request above/);
-  const catchUp = '[Postbox] What happened in this room since your last turn:\n\nYou: Which edition?';
+  const catchUp = '[Postbox] What happened in this room since your last turn:\n\nThe person, to @alpha: Which edition?';
   const prompt = formatMessage({ kind: 'user', text: '@coder fix the ring', facts: turnFacts(base), lint, context: [catchUp] });
   const at = ['@coder fix the ring', '[Postbox] What’s current in this room:', lint, '[Postbox] Background for this turn', catchUp].map((x) =>
     prompt.indexOf(x),
@@ -109,14 +109,14 @@ test('folded lint has its own place: after the request and the room’s facts, b
 test('in a topic thread, folded lint follows the request and the facts too, before the room’s background', () => {
   const thread = '[Postbox] You’re answering in the thread “Note” (thread th_1).';
   const lint = formatLint(lintMessage([{ code: 'numbered-term', message: 'Step 6 isn’t defined', scope: { kind: 'reply' } }]), { folded: true });
-  const meanwhile = '[Postbox] Meanwhile in the room and other background context (answer room work in the room):\n\nYou: Ship it.';
+  const meanwhile = '[Postbox] Meanwhile in the room and other background context (answer room work in the room):\n\nThe person, to @alpha: Ship it.';
   const prompt = formatMessage({ kind: 'user', text: '@coder check the grammar', taskContext: thread, facts: turnFacts(base), lint, context: [meanwhile] });
   const at = [thread, '@coder check the grammar', '[Postbox] What’s current in this room:', lint, meanwhile].map((x) => prompt.indexOf(x));
   assert.ok(at[0] === 0 && at.every((n, i) => n >= 0 && (i === 0 || n > at[i - 1])), `the order was: ${at.join(', ')}`);
 });
 
 test('the brief is part of the room’s facts, so it comes before the background in a room turn and in a topic thread’s', () => {
-  const catchUp = '[Postbox] What happened in this room since your last turn:\n\nYou: Which edition?';
+  const catchUp = '[Postbox] What happened in this room since your last turn:\n\nThe person, to @alpha: Which edition?';
   const room = formatMessage({ kind: 'user', text: '@coder fix the ring', facts: turnFacts(base), context: [catchUp] });
   const brief = room.indexOf(base.brief);
   assert.ok(
@@ -124,7 +124,7 @@ test('the brief is part of the room’s facts, so it comes before the background
     'the brief sits between the request and the background',
   );
   const thread = '[Postbox] You’re answering in the thread “Note” (thread th_1).';
-  const meanwhile = '[Postbox] Meanwhile in the room and other background context (answer room work in the room):\n\nYou: Ship it.';
+  const meanwhile = '[Postbox] Meanwhile in the room and other background context (answer room work in the room):\n\nThe person, to @alpha: Ship it.';
   const topic = formatMessage({ kind: 'user', text: '@coder check the grammar', taskContext: thread, facts: turnFacts(base), context: [meanwhile] });
   assert.ok(topic.indexOf(base.brief) > topic.indexOf('@coder check the grammar') && topic.indexOf(base.brief) < topic.indexOf(meanwhile));
 });

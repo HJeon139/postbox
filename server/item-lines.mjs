@@ -2,7 +2,7 @@
 // #153), moved out of runtime.mjs. Runtime’s describeItem and topicRootLine call these.
 
 import { READING } from '../shared/limits.mjs';
-import { authorName, commentAt } from '../shared/review-comments.mjs';
+import { authorName, commentAt, PERSON } from '../shared/review-comments.mjs';
 import { appCheckText } from './app-check-status.mjs';
 import { closedText } from './blocks.mjs';
 import { clipText, fenced } from './helpers.mjs';
@@ -32,7 +32,7 @@ function blockContent(it) {
       if (b.format === 'app') out.push(`It reviews the app ${b.appId}.`);
       else out.push(b.format === 'code' ? `${b.filename ? `${b.filename}:\n` : ''}${fenced(b.content ?? '', b.language)}` : String(b.content ?? ''));
       for (const th of b.threads ?? [])
-        out.push(`Comments on ${commentAt(th)} (${th.status}):\n${lines(th.comments.map((c) => `${authorName(c.author)}: ${c.text}`))}`);
+        out.push(`Comments on ${commentAt(th)} (${th.status}):\n${lines(th.comments.map((c) => `${commenter(c.author)}: ${c.text}`))}`);
       break;
     case 'card':
       if (b.body) out.push(b.body);
@@ -66,6 +66,22 @@ function blockContent(it) {
   if (b.outcome) out.push(`Outcome: ${b.outcome}`);
   return out.filter(Boolean).join('\n\n');
 }
+
+/**
+ * Who wrote a review comment, as an agent reads it: “The person”, never the page’s “You”, which reads as the agent.
+ * @param {string} author
+ */
+const commenter = (author) => (author === PERSON ? 'The person' : authorName(author));
+
+/**
+ * Who the person’s message went to, as its line says it: “ to @alpha”, or nothing for an item from before recipients
+ * were kept. Without it, an agent took a message to another agent as its own to act on.
+ * @param {any} i  a user item
+ */
+const toWhom = (i) => (i.to?.length ? ` to ${i.to.map((/** @type {string} */ h) => `@${h}`).join(', ')}` : '');
+
+/** The person’s message as a line: “The person, to @alpha: …”, or “The person: …” for one with no recipients kept. */
+const personSaid = (i) => (i.to?.length ? `The person,${toWhom(i)}` : 'The person');
 
 /** A bulleted list, one line per entry. */
 const lines = (list) => list.map((x) => `- ${x}`).join('\n');
@@ -154,7 +170,7 @@ export function topicRootLine(rt, se, t) {
   const from = 'This thread started from';
   switch (root.kind) {
     case 'user':
-      return `${from} your message: ${text(root.text)}${attachedText(rt, root.attachments, se)}`;
+      return `${from} the person’s message${toWhom(root)}: ${text(root.text)}${attachedText(rt, root.attachments, se)}`;
     case 'agent':
       return `${from} @${root.handle}’s message: ${text(root.text)}`;
     case 'block': {
@@ -180,7 +196,7 @@ export function describeItem(rt, i, se, n, reader) {
   const text = (s) => clipItem(s, n, i.id);
   switch (i.kind) {
     case 'user':
-      return `You: ${text(i.text)}${attachedText(rt, i.attachments, reader)}`;
+      return `${personSaid(i)}: ${text(i.text)}${attachedText(rt, i.attachments, reader)}`;
     case 'agent':
       // A reply that wrote its text and then failed still reaches the others, marked: it had been dropped, so a
       // report written before the turn failed reached no one (#485).
@@ -205,14 +221,14 @@ export function describeItem(rt, i, se, n, reader) {
       if (block && block.sessionId === se?.id) return null;
       // An app’s summary is its own wording, never the person’s (#51).
       const quote = i.quote ? `\nThe app’s own summary, not the person’s words: “${text(i.quote)}”` : '';
-      return `You: ${text(i.text)}${quote}`;
+      return `The person: ${text(i.text)}${quote}`;
     }
     case 'shared': {
-      const asked = i.question ? `You asked: “${text(i.question)}” ` : '';
+      const asked = i.question ? `The person asked: “${text(i.question)}” ` : '';
       return `${i.summary ? 'Summary' : 'Shared'} from the thread “${i.fromTitle}”${sharedBy(i)}: ${asked}${text(i.text)}`;
     }
     case 'system':
-      if (i.variant === 'wake') return `${i.from === 'you' ? 'You' : `@${i.from}`} woke @${i.to}`;
+      if (i.variant === 'wake') return `${i.from === 'you' ? 'The person' : `@${i.from}`} woke @${i.to}`;
       if (i.variant === 'joined') return `@${i.to} joined`;
       if (i.variant === 'left') return `@${i.to} left`;
       return null;
@@ -234,7 +250,7 @@ export function describeItem(rt, i, se, n, reader) {
 function commandLine(i) {
   const out = String(i.text ?? '');
   const tail = out.length > COMMAND_CONTEXT ? `…${out.slice(-COMMAND_CONTEXT)}` : out;
-  const ran = `You ran \`${clipText(String(i.command), 500)}\` in ${i.cwd} (${commandEnd(i)}).`;
+  const ran = `The person ran \`${clipText(String(i.command), 500)}\` in ${i.cwd} (${commandEnd(i)}).`;
   if (!tail.trim()) return `${ran} No output.`;
   const which = i.cut || tail !== out ? ', the end of it' : '';
   return `${ran} Output${which}:\n\`\`\`\n${tail}\n\`\`\``;
