@@ -1,6 +1,7 @@
 // show_block: a block or an app the turn shows (Runtime.toolsFor binds it). An app id the session already holds is a
 // new version of it (updateApp, server/apps.mjs); an id that names another session's app gets a fresh one.
 
+import { notShown } from '../shared/block-examples.mjs';
 import { validateBlock } from '../shared/catalog.mjs';
 import { PERSON } from '../shared/review-comments.mjs';
 import { appReceipt } from './app-check-status.mjs';
@@ -33,6 +34,10 @@ export function showBlock(rt, sessionId, { turn, se, threadId, endSegment, tools
   const saidIntent = block?.type === 'app' ? block.intent : undefined;
   block = withAppIntent(block);
   const v = validateBlock(block, { imageOrigins: rt.config.imageOrigins });
+  // An agent’s invalid block is refused outright (#1319): an item would stay as a broken card, and agents retry at
+  // once, often under a new id, so each try left another. Only a block this Postbox can’t read but a newer host’s
+  // catalog took, of a type or version it doesn’t know, still shows its fallback.
+  if (!v.ok && !(turn?.remote && NEWER.has(v.reason))) return { ok: false, message: notShown(v.errors, block) };
   // App ids are global. Yours already: it’s a new version. Another agent’s: yours gets a fresh id, and
   // theirs (its versions and saved state) is left alone.
   /** @type {string | null} */
@@ -60,8 +65,11 @@ export function showBlock(rt, sessionId, { turn, se, threadId, endSegment, tools
   }
   return v.ok
     ? { ok: true, message: `Shown block ${v.block.id}.` }
-    : { ok: false, message: `The block was invalid, so the person sees its fallback text. Problems: ${v.errors.join(' ')}` };
+    : { ok: false, message: `This Postbox can’t read that block, so the person sees its fallback text: ${v.errors.join(' ')}` };
 }
+
+/** Why a block a newer host took can still fail here: validateBlock’s reasons for a type or version it doesn’t know. */
+const NEWER = new Set(['unknown-type', 'newer-version']);
 
 /** The refusal when this session already showed a block with this id in the thread, or null. */
 function shownAgain(rt, sessionId, threadId, id) {

@@ -3,6 +3,7 @@
 // (server/remote/host/) serves the same list, so an agent on another host sees exactly these tools and limits.
 // So this file imports only node: modules and shared/, as host code must (#120); tests/host-imports.test.mjs checks it.
 
+import { shownBlock, updatedBlock } from './block-json-schema.mjs';
 import { HOP_LIMIT, limitText as n, PALETTES, PENDING_WAKES, READING, REVIEW_IMAGES, SENDING } from './limits.mjs';
 import { ASSET_TOOLS } from './mcp-tools-assets.mjs';
 import { REACTIONS } from './reactions.mjs';
@@ -10,13 +11,10 @@ import { COMMENT_MAX, MAX_COMMENTS, QUOTE_MAX, VERDICTS } from './review-comment
 
 const count = (k) => k.toLocaleString('en-US');
 
-const blockSchema = {
-  type: 'object',
-  description: 'A block from the catalog: { id, type, version, title?, fallback, …fields }. See README, “The block catalog”.',
-};
-
 /** A data file an app carries (#54): a path in the agent’s folder, and the name the app reads it by. */
 const FILE_SCHEMA = { type: 'object', properties: { name: { type: 'string' }, path: { type: 'string' } }, required: ['path'] };
+/** A review block’s images (#780), files as an app’s are. */
+const REVIEW_FILES = { type: 'array', items: FILE_SCHEMA };
 
 /** review_block (#133), as agents read it; server/review-comments.mjs runs it. */
 const REVIEW_BLOCK_DEF = {
@@ -39,12 +37,12 @@ export const TOOL_DEFS = [
   {
     name: 'show_block',
     description: `Show a catalog block (choice, form, table, progress, card, confirm, image, code, review) in the conversation. Its id names that one block in this conversation: showing an id you already showed is refused, so change a block with update_block, or pick a new id. Returns at once; the person’s answer arrives later as a message. The person can also dismiss a choice, form, confirm or review without answering it: you get the action “dismiss”, and it no longer waits on them. To push, or to create, comment on or edit a PR or issue with gh, show a confirm whose statement holds the exact command in code, as you’ll run it: once the person confirms, that command runs without asking them again. A choice’s or a select’s options are [{ id, label, description? }], never strings. Limits: a fallback up to ${n('fallback')} characters, a prompt or statement up to ${n('prompt')}, choice options 1–${n('choiceOptions')}, form fields up to ${n('formFields')} with labels up to ${n('fieldLabel')} characters, select options up to ${n('selectOptions')}, table columns up to ${n('tableColumns')} and rows up to ${n('tableRows')}, progress steps up to ${n('progressSteps')}, a card body up to ${n('cardBody')} characters with up to ${n('cardFacts')} facts and ${n('cardActions')} actions, code and review content up to ${n('longText')} characters. A Markdown review can carry images from your folder: files [{ name?, path }], where path is where the file is and name, if you give one, is a plain file name with no folder in it, such as chart.png (up to ${n('appFiles')}, PNG, JPEG, GIF or WebP, up to ${REVIEW_IMAGES.reviewImageBytes / 1024 / 1024} MB each and ${REVIEW_IMAGES.reviewImagesBytes / 1024 / 1024} MB together, or about 12 MB together from an agent on a remote host), shown where its content names one by name or path, as ![Chart](figs/chart.png); update_block with files replaces them.`,
-    inputSchema: { type: 'object', properties: { block: blockSchema }, required: ['block'] },
+    inputSchema: { type: 'object', properties: { block: shownBlock(REVIEW_FILES) }, required: ['block'] },
   },
   {
     name: 'update_block',
     description: `Replace a block you showed earlier, by its id. An update asks again, except one that sets outcome on an answered choice, form, confirm or review, with block: { id, outcome } (Markdown, up to ${n('outcome')} characters): that reports the result under the person’s answer, such as “Filed as #105”, keeps the block answered, and changes nothing else. One that changes only an answered block’s fallback doesn’t ask again either. To close a choice, form, confirm or review that’s wrong, handled or stale, answered or not, call update_block with block: { id, withdraw: why } (up to ${n('outcome')} characters): the person sees it closed with your reason, and it stops waiting on them. Don’t ask again just to say a block is done. A choice, form, confirm or review that asks again moves to the newest point in the conversation, with a line where it was; other blocks update in place. Each update makes the block’s next revision, and the person’s answer names the revision it’s for. An update over an answer you haven’t read yet (it waits until your turn ends), whether it asks again or sets outcome, is refused, and the reply says what they answered: read it, then update. For a progress block, send every step each time: set progress { done, total, unit } on a step as items finish, update at least every minute, and close each step as done or failed before your turn ends, or Postbox marks it stalled and tells you. Postbox stamps when the block and each step changed, and fills in duration.`,
-    inputSchema: { type: 'object', properties: { block: blockSchema }, required: ['block'] },
+    inputSchema: { type: 'object', properties: { block: updatedBlock(REVIEW_FILES) }, required: ['block'] },
   },
   REVIEW_BLOCK_DEF,
   {
