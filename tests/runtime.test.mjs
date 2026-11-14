@@ -974,7 +974,7 @@ test('a report the reply doesn’t match, or about a turn this runtime never saw
   const item = store.items(t.id).find((i) => i.kind === 'agent');
   assert.equal(rt.diagramCheck(t.id, item.id, { src: 'graph LR\nX-->Y', textPx: 7, width: 728 }).sent, false, 'not a diagram in the reply');
   // After a restart, the old reply’s turn has no entry: a broken diagram in it doesn’t start a lint turn.
-  rt.lints.clear();
+  arrange.clearLints(rt);
   assert.equal(rt.diagramCheck(t.id, item.id, { src: 'graph LR\nA-->B', error: { message: 'Parse error', line: 1 } }).sent, false);
   await settle(rt);
   assert.equal(lints(adapter).length, 0);

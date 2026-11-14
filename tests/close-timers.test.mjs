@@ -6,7 +6,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { setTimeout as sleep } from 'node:timers/promises';
-import { sendLint } from '../server/lint-delivery.mjs';
 import * as arrange from './arrange.mjs';
 import { captureServerLog, takeServerFailures } from './server-log.mjs';
 import { tempDir } from './temp-dirs.mjs';
@@ -44,7 +43,7 @@ test('a lint turn due just after close() isn’t delivered, and nothing is logge
     timer: null,
     threadId: t.id,
   });
-  sendLint(a.rt, 'turn_1');
+  arrange.sendLint(a.rt, 'turn_1');
   await a.close();
   await sleep(80); // past the lint’s settle time
   assert.deepEqual(delivered, [], 'nothing was delivered after close');
@@ -99,7 +98,7 @@ test('a lint turn armed while the hosts stop isn’t delivered after close()', a
       timer: null,
       threadId: t.id,
     });
-    sendLint(a.rt, 'turn_h');
+    arrange.sendLint(a.rt, 'turn_h');
   });
   await a.close();
   await sleep(80); // past the lint’s settle time

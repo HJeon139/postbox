@@ -37,7 +37,7 @@ const progress = (se, turnId) => ({
 test('stallSteps: a progress block held at the turn’s end has its running step stalled, and the agent is told', async () => {
   const env = await heldRoom();
   const it = arrange.post(env.rt, env.t.id, progress(env.se, 'turn_a'));
-  const problems = env.rt.stallSteps({ threadId: env.t.id }, env.rt.s.sessions[env.se.id]);
+  const problems = arrange.stallSteps(env.rt, { threadId: env.t.id }, env.rt.s.sessions[env.se.id]);
   assert.deepEqual(
     problems.map((p) => p.code),
     ['steps-left-running'],
@@ -57,7 +57,7 @@ test('the lint block check: a choice block held when the turn ends counts as sho
     block: { id: 'pick', type: 'choice', version: 1, fallback: 'Pick', options: [{ id: 'a', label: 'A' }] },
   });
   const turn = { id: 'turn_b', threadId: env.t.id, said: 'Two ways to go:\n\n1. The corpus\n2. The claims\n\nWhich first?' };
-  const codes = env.rt.checkTurn(turn, env.rt.s.sessions[env.se.id]).map((p) => p.code);
+  const codes = arrange.checkTurn(env.rt, turn, env.rt.s.sessions[env.se.id]).map((p) => p.code);
   assert.ok(!codes.includes('options-in-prose'), `the held choice is what the turn showed: ${codes}`);
   await env.done();
   await env.close();
