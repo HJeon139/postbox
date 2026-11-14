@@ -3,7 +3,6 @@
 // you", and implements the UI tools that agents call (over MCP, or in-process for the mock).
 
 import { homedir } from 'node:os';
-import { READING } from '../shared/limits.mjs';
 import { formatDuration } from '../shared/text.mjs';
 import { listProcesses } from './adapters/process-group.mjs';
 import { runAgentCommand } from './agent-commands.mjs';
@@ -15,15 +14,14 @@ import { Assets } from './asset-service.mjs';
 import { act } from './blocks.mjs';
 import { Bus } from './bus.mjs';
 import { releaseNeed } from './card-needs.mjs';
-import { catchUp, moveMarkers } from './catch-up.mjs';
 import { Checks } from './check-service.mjs';
 import { attachClaudeSession, claudeSessions, mirror, pollMirror, rearmMirrors, stopMirrorFor, stopMirrors } from './claude-mirror.mjs';
 import { deliver, retry } from './deliver.mjs';
 import { httpError } from './helpers.mjs';
-import { describeItem, topicRootLine } from './item-lines.mjs';
 import { endJob, expireStaleJobs, recordJob } from './job-records.mjs';
 import { keptJobs, pollKept, stopJob, stopKeptJobs, watchKept } from './kept-jobs.mjs';
 import { Ledger } from './ledger.mjs';
+import { Memory } from './memory-service.mjs';
 import { wakeMentions } from './mention-wakes.mjs';
 import * as queue from './message-queue.mjs';
 import { alwaysFor } from './permission-always.mjs';
@@ -43,7 +41,6 @@ import { changePermissionFolder, changePermissionRule, latestProject, PERMISSION
 import { Personas } from './personas.mjs';
 import { readCapped } from './read-capped.mjs';
 import { addReadFolder, readCardAlways } from './read-folders.mjs';
-import { readConversation, readLine, readMessage } from './read-message.mjs';
 import { addHost, host, removeHost, setProjectHostFolder, updateHost } from './remote/host-admin.mjs';
 import { describeHostInstall, hostStatus, installHost, retryHost, watchHosts } from './remote/host-status.mjs';
 import { Placement } from './remote/placement.mjs';
@@ -56,13 +53,14 @@ import { Sessions } from './sessions.mjs';
 import { clearSummaryPending, shareText, shareToConversation, summarizeBack, summarizing } from './share-back.mjs';
 import { agentWake, bumpSideLink, recordAgentMessage, resolveHop, sideSession } from './side-threads.mjs';
 import { watchStore, whenWritable } from './store-outage.mjs';
+import { Summaries } from './summary-service.mjs';
 import { Threads } from './threads.mjs';
 import { settleToolAsks } from './tool-ask.mjs';
 import { startTopic } from './topic-open.mjs';
 import { settleSubagentSteps } from './turn-steps.mjs';
 import { dismissStopAsk, recordStopped, requestStop, stop, stopTurns } from './turn-stop.mjs';
 import { toolsFor } from './ui-tools.mjs';
-import { closeOrphanCards, liftDecline } from './wake-cards.mjs';
+import { closeOrphanCards, heldFor, liftDecline } from './wake-cards.mjs';
 import { Work } from './work-service.mjs';
 
 export { AgentFileError } from './agent-files.mjs';
@@ -96,13 +94,12 @@ export class Runtime {
     watchStore(this);
     // Signals between services, and the conversations with their items and presence (designs/architecture/services.md,
     // “Bus” and “Threads”). Each listener runs where its call ran: a message in a side thread counts on its line in the
-    // conversation (#130), and the readers of an item brought forward read on from its stub (#1041).
+    // conversation (#130).
     this.bus = new Bus();
     this.threads = new Threads({ store, bus: this.bus });
     this.bus.on('item.added', ({ threadId, item, thread }) => {
       if (thread?.kind === 'side' && (item.kind === 'user' || item.kind === 'agent')) bumpSideLink(this, threadId);
     });
-    this.bus.on('item.moved', ({ threadId, id, stubId }) => moveMarkers(this, threadId, id, stubId));
     this.adapters = adapters;
     this.config = config;
     // Where the person’s Claude Code user settings are read and written (#66); tests and checks pass a temp folder.
@@ -186,6 +183,31 @@ export class Runtime {
     });
     this.bus.on('app.retired', ({ app }) => releaseRetired(this, app));
     this.bus.on('block.withdrawn', ({ se, itemId }) => releaseNeed(this, se, itemId));
+    // What an agent reads of its conversation (designs/architecture/services.md, “Memory”). The messages held for it on
+    // a card waiting for the person come into its catch-up through the catchUpLines port (#693); the readers of an item
+    // brought forward read on from its stub, before the call returns (#1041).
+    this.memory = new Memory({
+      store,
+      threads: this.threads,
+      sessions: this.sessions,
+      personas: this.personas,
+      placement: this.placement,
+      assets: this.assets,
+      apps: this.apps,
+      catchUpLines: (se) => heldFor(this, se),
+    });
+    this.bus.on('item.moved', ({ threadId, id, stubId }) => this.memory.moveMarkers(threadId, id, stubId));
+    // The short summaries a model writes on a topic or side thread’s line once it’s quiet (#228).
+    this.summaries = new Summaries({
+      store,
+      threads: this.threads,
+      sessions: this.sessions,
+      personas: this.personas,
+      running: this.running,
+      ledger: this.ledger,
+      adapters,
+      config,
+    });
     this.remote = new RemoteTurns(this, { hosts: this.hosts });
     this.listenToPersonas();
     // Conversations can’t be archived any more: one an older Postbox archived comes back as a live one.
@@ -497,39 +519,6 @@ export class Runtime {
   }
   shareText(threadId, opts) {
     return shareText(this, threadId, opts);
-  }
-
-  // ── Shared memory in a conversation ────────────────────────────────────────────────
-  // Every agent in a conversation can read all of it. Each session keeps a marker of the last item it was given;
-  // a delivery starts with what came after it, from you and from the other agents, and an agent joining later
-  // gets the recent history the same way. read_conversation reads further back.
-
-  /** The catch-up text for a session, or null, and moves its marker to the end of the conversation (server/catch-up.mjs). */
-  catchUp(se, exclude = []) {
-    return catchUp(this, se, exclude);
-  }
-
-  /** The message a topic thread started from, for an agent’s first turn there (item-lines.mjs). */
-  topicRootLine(se, t) {
-    return topicRootLine(this, se, t);
-  }
-
-  /**
-   * One conversation item as a line an agent can read, from the point of view of `se` (item-lines.mjs).
-   * @param {any} i @param {any} [se] @param {number} [n] @param {any} [reader]  the session its attachments are for
-   */
-  describeItem(i, se = null, n = READING.item, reader = se) {
-    return describeItem(this, i, se, n, reader);
-  }
-
-  readConversation(se, args) {
-    return readConversation(this, se, args);
-  }
-  readLine(i, se, n) {
-    return readLine(this, i, se, n);
-  }
-  readMessage(se, args = {}) {
-    return readMessage(this, se, args);
   }
 
   // ── The lint pipeline: server/check-service.mjs ───────────────────────────────────

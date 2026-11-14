@@ -467,7 +467,7 @@ test('#51: agents read an app’s send as what Postbox counted, with the app’s
   assert.deepEqual([ev.sent, ev.appSummary], ['send_pairs · pairs: 2 items · 15 bytes', 'Sending 1,258 pairs']);
   // Another agent reads the line, and the summary marked as the app’s.
   assert.match(
-    rt.catchUp(store.state.sessions[other.id]),
+    arrange.catchUp(rt, store.state.sessions[other.id]),
     /The person: Sent from Spam: send_pairs · pairs: 2 items · 15 bytes\nThe app’s own summary, not the person’s words: “Sending 1,258 pairs”/,
   );
 });
@@ -489,7 +489,7 @@ test('#51: agents read an app’s send as what Postbox counted, with the app’s
   );
   // Another agent reads the line, and the summary marked as the app’s.
   assert.match(
-    rt.catchUp(store.state.sessions[other.id]),
+    arrange.catchUp(rt, store.state.sessions[other.id]),
     /The person: Sent from Spam: send_pairs · pairs: 2 items · 15 bytes\nThe app’s own summary, not the person’s words: “Sending 1,258 pairs”/,
   );
 });
@@ -634,7 +634,7 @@ test('#111: sharing a topic reply keeps the question it answers', async () => {
   rt.shareToConversation(threadId, reply.id);
   const shared = store.items(t.id).at(-1);
   assert.deepEqual({ question: shared.question, text: shared.text }, { question: 'Offsets or pages?', text: 'Use chapter offsets.' });
-  assert.match(rt.describeItem(shared), /The person asked: “Offsets or pages\?” Use chapter offsets\./);
+  assert.match(arrange.describeItem(rt, shared), /The person asked: “Offsets or pages\?” Use chapter offsets\./);
   assert.equal(adapter.calls.length, calls, 'sharing costs no turn');
   assert.throws(() => rt.shareToConversation(threadId, reply.id), /already in the conversation/);
   rt.sendMessage(t.id, { text: 'Carry on' });
@@ -1658,13 +1658,13 @@ test('a long history is capped, says so, and read_conversation has the rest', as
   const { rt, store, t, b } = setup();
   for (let i = 0; i < 60; i++) store.emit('item.add', { threadId: t.id, item: { id: `old${i}`, kind: 'user', text: `message ${i}`, at: i } });
   const se = rt.ensureSession(t.id, b.id);
-  const ctx = rt.catchUp(se);
+  const ctx = arrange.catchUp(rt, se);
   assert.match(ctx, /the last 40; 20 earlier items are left out: 20 messages from the person, and read_conversation with skip: 40 has them/);
   assert.ok(ctx.includes('message 59') && !ctx.includes('message 19\n'));
   const r = rt.toolsFor(se.id).read_conversation({ limit: 5, skip: 0 });
   assert.match(r.message, /The person: message 59/);
   assert.match(r.message, /call again with skip: 5/);
-  assert.match(rt.readConversation(se, { limit: 2, skip: 58 }).message ?? rt.readConversation(se, { limit: 2, skip: 58 }), /message 1/);
+  assert.match(arrange.readConversation(rt, se, { limit: 2, skip: 58 }).message ?? arrange.readConversation(rt, se, { limit: 2, skip: 58 }), /message 1/);
 });
 
 /** A reply of about 5,000 characters, as @critic's were in the research UAT (#109), with a last paragraph to quote. */

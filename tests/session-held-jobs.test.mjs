@@ -3,7 +3,6 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { catchUp } from '../server/catch-up.mjs';
 import * as arrange from './arrange.mjs';
 import { setup } from './side-threads-fixture.mjs';
 import { heldStore } from './stop-reply-fixture.mjs';
@@ -58,7 +57,7 @@ test('bringForward behind a held commit: a session whose held seenItem was the m
   assert.ok(stub, 'a stub took its place');
   assert.equal(f.store.state.sessions[f.alpha.id].seenItem, stub.id, 'seenItem moved to the stub');
   assert.equal(f.store.state.sessions[f.beta.id].seenItem, 'it_a', 'a marker on another item is untouched');
-  assert.match(catchUp(f.rt, f.store.state.sessions[f.alpha.id]) ?? '', /text of it_b/, 'the next catch-up skips nothing');
+  assert.match(arrange.catchUp(f.rt, f.store.state.sessions[f.alpha.id]) ?? '', /text of it_b/, 'the next catch-up skips nothing');
   await f.store.close();
 });
 

@@ -7,7 +7,6 @@
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { after, afterEach, before, beforeEach, test } from 'node:test';
-import { settleThread } from '../server/thread-summary.mjs';
 import * as arrange from './arrange.mjs';
 import { eio } from './outage-log.mjs';
 import { assertNoServerFailures, captureServerLog } from './server-log.mjs';
@@ -134,11 +133,11 @@ test('a thread settled while the store is closed makes no summarizer call; one s
   arrange.withDelays(rt, { summaryDelayMs: 1 });
   await rt.store.flush();
   rt.store.fail(eio());
-  settleThread(rt, topicId);
+  arrange.settleThread(rt, topicId);
   await sleep(40);
   assert.equal(calls, 0, 'no paid call whose summary would be lost');
   await rt.store.reload();
-  settleThread(rt, topicId);
+  arrange.settleThread(rt, topicId);
   await until(() => calls === 1, 'the summarizer after Retry');
   arrange.withSummarizer(rt, undefined);
   await rt.store.flush();
@@ -168,7 +167,7 @@ test('a callback held across an outage and Retry applies nothing to the old hist
   });
   arrange.withDelays(rt, { summaryDelayMs: 1 });
   const poll = rt.pollKept();
-  settleThread(rt, topicId);
+  arrange.settleThread(rt, topicId);
   await sleep(20); // each is now past its entry check, awaiting
   const epoch = rt.store.epoch;
   rt.store.fail(eio());

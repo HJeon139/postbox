@@ -85,6 +85,44 @@ export const glossaryFor = (rt, threadId) => rt.threads.glossaryFor(threadId);
 /** Shares text into a conversation from a topic or side thread, as a summary or an answer. @param {Runtime} rt @param {string} threadId @param {object} opts */
 export const shareText = (rt, threadId, opts) => rt.shareText(threadId, opts);
 
+// ── What agents read ─────────────────────────────────────────────────────────────────
+
+/**
+ * The catch-up a session’s next turn starts with, or null, with its marker moved to the end; `exclude` are the messages
+ * that turn delivers. @param {Runtime} rt @param {object} se @param {string[]} [exclude]
+ */
+export const catchUp = (rt, se, exclude) => rt.memory.catchUp(se, exclude);
+
+/** What a turn in a topic or side thread catches up on there, or null. @param {Runtime} rt @param {object} se @param {string} threadId @param {string[]} [exclude] */
+export const threadCatchUp = (rt, se, threadId, exclude) => rt.memory.threadCatchUp(se, threadId, exclude);
+
+/**
+ * An item as a line an agent reads, from `se`’s point of view, cut at n characters, with its attachments for `reader`.
+ * @param {Runtime} rt @param {object} item @param {object | null} [se] @param {number} [n] @param {object | null} [reader]
+ */
+export const describeItem = (rt, item, se, n, reader) => rt.memory.describeItem(item, se, n, reader);
+
+/** The message a topic thread started from, as an agent’s first turn there reads it. @param {Runtime} rt @param {object} se @param {object} thread */
+export const topicRootLine = (rt, se, thread) => rt.memory.topicRootLine(se, thread);
+
+/** read_conversation, as an agent calls it. @param {Runtime} rt @param {object} se @param {object} [args] */
+export const readConversation = (rt, se, args) => rt.memory.readConversation(se, args);
+
+/** read_message, as an agent calls it. @param {Runtime} rt @param {object} se @param {object} [args] */
+export const readMessage = (rt, se, args) => rt.memory.readMessage(se, args);
+
+/** An item as the read tools give it to `se`, its own messages as “You”. @param {Runtime} rt @param {object} item @param {object} se @param {number} [n] */
+export const readLine = (rt, item, se, n) => rt.memory.readLine(item, se, n);
+
+/** A turn ended in a topic or side thread: its summary is written once the thread is quiet. @param {Runtime} rt @param {string} threadId */
+export const settleThread = (rt, threadId) => rt.summaries.settleThread(threadId);
+
+/** Writes a thread’s summary with the model given, now, and returns it, or null. @param {Runtime} rt @param {string} threadId @param {any} summarize */
+export const summarizeThread = (rt, threadId, summarize) => rt.summaries.summarizeThread(threadId, summarize);
+
+/** The model that would summarize a thread, or null when there is none. @param {Runtime} rt @param {string} threadId */
+export const summarizerOf = (rt, threadId) => rt.summaries.summarizerOf(threadId);
+
 // ── Turns ────────────────────────────────────────────────────────────────────────────
 
 /** The turn running for a session, if one is. @param {Runtime} rt @param {string} sessionId */

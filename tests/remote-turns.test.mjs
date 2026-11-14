@@ -38,7 +38,7 @@ test('#120 L5: a remote turn gets its host turn ID persisted and the conversatio
   );
   const mine = snap.threads[0].items.find((i) => i.line === 'The person, to @coder: hi');
   assert.ok(mine, JSON.stringify(snap.threads[0].items));
-  assert.equal(mine.text, r.rt.readLine(r.store.item(r.t.id, mine.id), r.se(), Number.POSITIVE_INFINITY));
+  assert.equal(mine.text, arrange.readLine(r.rt, r.store.item(r.t.id, mine.id), r.se(), Number.POSITIVE_INFINITY));
   // The host is needed for the turn’s life.
   assert.deepEqual(r.hosts.calls.need, [[r.host.id, 'turn']]);
   assert.equal(r.f.calls.length, 0);

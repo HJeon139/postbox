@@ -6,8 +6,8 @@
 import assert from 'node:assert/strict';
 import { readFileSync, statSync } from 'node:fs';
 import { test } from 'node:test';
+import { Memory } from '../server/memory-service.mjs';
 import { readConversation, readMessage } from '../server/remote/host/broker.mjs';
-import { Runtime } from '../server/runtime.mjs';
 import { READING } from '../shared/limits.mjs';
 import { TURN_FILES } from '../shared/remote-protocol.mjs';
 import { connectShim, makeBroker, makeHome } from './remote-broker-fixtures.mjs';
@@ -23,7 +23,7 @@ const itemsOf = (th, n) =>
     ...(i === 2 ? { blockId: `blk_${th}` } : {}),
   }));
 
-test('read_conversation and read_message from a snapshot match server/runtime.mjs’s, case for case', () => {
+test('read_conversation and read_message from a snapshot match Memory’s (server/memory-service.mjs), case for case', () => {
   const snap = {
     home: 'th_home',
     threads: [
@@ -32,13 +32,13 @@ test('read_conversation and read_message from a snapshot match server/runtime.mj
       { id: 'th_empty', items: [] },
     ],
   };
-  // runtime.mjs’s own methods, over a store that holds the same items, so the paging and the words are its.
+  // Memory’s own methods, over a store that holds the same items, so the paging and the words are its.
   const store = {
     items: (th) =>
       snap.threads.find((t) => t.id === th)?.items.map((i) => ({ ...i, ...(i.blockId ? { kind: 'block', valid: true, block: { id: i.blockId } } : {}) })) ?? [],
     item: (th, id) => store.items(th).find((i) => i.id === id),
   };
-  const rt = {
+  const memory = {
     store,
     threads: { conversationThreads: () => snap.threads.map((t) => t.id) },
     // Its blocks aren’t apps, so no item shows one.
@@ -48,13 +48,13 @@ test('read_conversation and read_message from a snapshot match server/runtime.mj
   const se = { threadId: 'th_home', id: 's1', handle: 'dev' };
   const laptopConversation = (args) => {
     try {
-      return { ok: true, text: Runtime.prototype.readConversation.call(rt, se, args) };
+      return { ok: true, text: Memory.prototype.readConversation.call(memory, se, args) };
     } catch (e) {
       return { ok: false, text: e.message };
     }
   };
   const laptopMessage = (args) => {
-    const r = Runtime.prototype.readMessage.call(rt, se, args);
+    const r = Memory.prototype.readMessage.call(memory, se, args);
     return { ok: r.ok, text: r.message };
   };
   const conversations = [

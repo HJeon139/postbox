@@ -16,10 +16,10 @@ const say = (f, text) => arrange.post(f.rt, f.t.id, { kind: 'agent', sessionId: 
 /** The fixture, with alpha's marker at the end of the conversation, so the next summary covers only what follows. */
 function fresh() {
   const f = setup();
-  f.rt.catchUp(f.store.state.sessions[f.alpha.id]);
+  arrange.catchUp(f.rt, f.store.state.sessions[f.alpha.id]);
   return f;
 }
-const summary = (f) => f.rt.catchUp(f.store.state.sessions[f.alpha.id]) ?? '';
+const summary = (f) => arrange.catchUp(f.rt, f.store.state.sessions[f.alpha.id]) ?? '';
 
 test('#484 a mention of the agent is in its summary, though 44 newer items pass the item cap', () => {
   const f = fresh();
@@ -120,6 +120,6 @@ test('#484 the skip a summary names reaches its newest left-out mention, though 
   const kept = [...s.matchAll(/@alpha note (\d+):/g)].map((m) => Number(m[1]));
   const newestLeft = Math.min(...kept) - 1;
   assert.ok(newestLeft > 0, `some were left out: ${s.slice(0, 300)}`);
-  const read = f.rt.readConversation(f.store.state.sessions[f.alpha.id], { skip, limit: 200 });
+  const read = arrange.readConversation(f.rt, f.store.state.sessions[f.alpha.id], { skip, limit: 200 });
   assert.match(read, new RegExp(`@alpha note ${newestLeft}:`), `skip: ${skip} reads note ${newestLeft}`);
 });

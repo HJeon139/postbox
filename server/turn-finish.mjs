@@ -9,7 +9,6 @@ import { emptyReply, endedWithoutReply } from './empty-reply.mjs';
 import { clip } from './helpers.mjs';
 import { settleScheduledWake } from './scheduled-wakes.mjs';
 import { postSummary } from './share-back.mjs';
-import { settleThread } from './thread-summary.mjs';
 import { endedAs } from './turn-end-work.mjs';
 import { askedOf, replyMarks } from './turn-marks.mjs';
 import { foldSteps } from './turn-steps.mjs';
@@ -53,7 +52,7 @@ export function endTurn(rt, turn, err) {
 
   rt.checks.endTurn(turn, se);
   if (topic && !viewing && (turn.said || open.length)) rt.threads.patch(topic, (x) => ({ unread: (x.unread ?? 0) + 1 }));
-  if (turn.threadId !== se.threadId) settleThread(rt, turn.threadId);
+  if (turn.threadId !== se.threadId) rt.summaries.settleThread(turn.threadId);
 
   rt.wakeMentions(se, turn, turn.said);
   rt.takePending(se, turn, true);

@@ -1,5 +1,5 @@
 // How a conversation item reads to an agent, in its history, catch-up, topic-thread opener and read tools (#109,
-// #153), moved out of runtime.mjs. Runtime’s describeItem and topicRootLine call these.
+// #153). Memory’s describeItem and topicRootLine call these, with Memory first (designs/architecture/services.md, “Memory”).
 
 import { READING } from '../shared/limits.mjs';
 import { authorName, commentAt, PERSON } from '../shared/review-comments.mjs';
@@ -144,14 +144,14 @@ function answerText(b, a) {
  * A message’s attachments, for the agent reading it (#671). A local agent gets the path it can open, as the turn the
  * message was sent to gives it (guide.mjs’s formatBody); one on a remote host gets their names, since only that turn
  * copies them there (remote/attachments.mjs). With no reader, the names alone.
- * @param {any} rt @param {any[] | undefined} list @param {any} reader  the session reading it, or null
+ * @param {import('./memory-service.mjs').Memory} memory @param {any[] | undefined} list @param {any} reader  the session reading it, or null
  */
-function attachedText(rt, list, reader) {
+function attachedText(memory, list, reader) {
   if (!list?.length) return '';
-  const remote = Boolean(reader && rt.placement?.hostOf(rt.personas.forSession(reader)));
+  const remote = Boolean(reader && memory.placement?.hostOf(memory.personas.forSession(reader)));
   const names = list.map((a) => {
     const name = a.name ?? a.path;
-    const where = reader && !remote ? rt.assets.attachmentPath(reader.threadId, a) : null;
+    const where = reader && !remote ? memory.assets.attachmentPath(reader.threadId, a) : null;
     return where ? `${name} at ${where}` : name;
   });
   const note = remote ? ' Your host can’t open attachments from earlier messages yet: ask the person to paste what you need.' : '';
@@ -161,16 +161,16 @@ function attachedText(rt, list, reader) {
 /**
  * The message a topic thread started from, for an agent’s first turn there (#81, #228); null for anything else.
  */
-export function topicRootLine(rt, se, t) {
+export function topicRootLine(memory, se, t) {
   if (t?.kind !== 'topic') return null;
-  const root = rt.store.item(t.parentId, t.rootItemId);
+  const root = memory.store.item(t.parentId, t.rootItemId);
   if (!root) return null;
   // The thread is about this message, so it gets more room than an item in the catch-up.
   const text = (s) => clipItem(s, 4000, root.id);
   const from = 'This thread started from';
   switch (root.kind) {
     case 'user':
-      return `${from} the person’s message${toWhom(root)}: ${text(root.text)}${attachedText(rt, root.attachments, se)}`;
+      return `${from} the person’s message${toWhom(root)}: ${text(root.text)}${attachedText(memory, root.attachments, se)}`;
     case 'agent':
       return `${from} @${root.handle}’s message: ${text(root.text)}`;
     case 'block': {
@@ -180,7 +180,7 @@ export function topicRootLine(rt, se, t) {
       return `${from} @${root.handle}’s ${blockNoun(b.type)}${titled(b.title)}: ${text(body)}`;
     }
     default: {
-      const line = describeItem(rt, root, se, READING.item, se);
+      const line = describeItem(memory, root, se, READING.item, se);
       return line ? `${from} this message: ${line}` : null;
     }
   }
@@ -190,13 +190,13 @@ export function topicRootLine(rt, se, t) {
  * One conversation item as a line an agent can read, from the point of view of `se`; null to leave it out. Its
  * text is cut at n characters, saying so (#109). `reader` is the session its attachments are given to, or null for
  * none (#671). Runtime’s describeItem decides the defaults: `se` and `n` as given, and the reader as `se`.
- * @param {any} rt @param {any} i @param {any} se @param {number} n @param {any} reader
+ * @param {import('./memory-service.mjs').Memory} memory @param {any} i @param {any} se @param {number} n @param {any} reader
  */
-export function describeItem(rt, i, se, n, reader) {
+export function describeItem(memory, i, se, n, reader) {
   const text = (s) => clipItem(s, n, i.id);
   switch (i.kind) {
     case 'user':
-      return `${personSaid(i)}: ${text(i.text)}${attachedText(rt, i.attachments, reader)}`;
+      return `${personSaid(i)}: ${text(i.text)}${attachedText(memory, i.attachments, reader)}`;
     case 'agent':
       // A reply that wrote its text and then failed still reaches the others, marked: it had been dropped, so a
       // report written before the turn failed reached no one (#485).
@@ -207,8 +207,8 @@ export function describeItem(rt, i, se, n, reader) {
       if (!i.valid) return null;
       // What it holds comes with it, so another agent can review it (#153).
       const body =
-        n === Number.POSITIVE_INFINITY && i.block.type === 'app' && rt.s.apps[i.block.id]?.itemId === i.id
-          ? appCheckText(rt.s.apps[i.block.id])
+        n === Number.POSITIVE_INFINITY && i.block.type === 'app' && memory.store.state.apps[i.block.id]?.itemId === i.id
+          ? appCheckText(memory.store.state.apps[i.block.id])
           : blockContent(i);
       const what = i.block.type === 'app' ? 'an app' : `a ${i.block.type} block`;
       const title = i.block.title ?? (i.block.type === 'app' ? i.block.fallback : null);
@@ -217,7 +217,7 @@ export function describeItem(rt, i, se, n, reader) {
     }
     case 'voice': {
       // The agent hears about its own blocks as events already.
-      const block = i.blockItemId && rt.store.item(se?.threadId, i.blockItemId);
+      const block = i.blockItemId && memory.store.item(se?.threadId, i.blockItemId);
       if (block && block.sessionId === se?.id) return null;
       // An app’s summary is its own wording, never the person’s (#51).
       const quote = i.quote ? `\nThe app’s own summary, not the person’s words: “${text(i.quote)}”` : '';

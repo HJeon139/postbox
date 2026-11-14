@@ -44,7 +44,8 @@ const PUBLISHED = {
   'share-back.mjs': ['shareToConversation', 'shareToConversation'], // the person’s Share of an item they see
   'shell-runs.mjs': ['stopShellCommand'], // the person’s Stop on a command they see
   'store-outage.mjs': ['settleOrphanTurns'], // at a reload, when nothing is held
-  'thread-summary.mjs': ['lineOf', 'lineOf', 'threadCatchUp', 'threadLines', 'readUpTo', 'summarizeThread', 'summarizeThread', 'reactionLines'], // prompts and summaries for a later turn
+  'thread-catch-up.mjs': ['threadCatchUp', 'threadLines', 'readUpTo', 'reactionLines'], // prompts for a later turn
+  'thread-summary.mjs': ['lineOf', 'lineOf', 'summarizeThread', 'summarizeThread'], // summaries for a later turn
   'tool-ask.mjs': ['resolveToolAsk'], // the person’s answer to an ask they see
   'view-app/consent.mjs': ['resolveViewAsk', 'settleDownloads'], // the person’s answer to the download card they see, and at startup a card a stop cut short, before any write is held (#95)
   'view-app/view-app.mjs': ['viewApp'], // the app’s item, to render as the person sees it: the picture leaves the process
@@ -143,7 +144,8 @@ const PENDING = {
   'thread-erase.mjs': ['eraseThreads', 'eraseThreads', 'eraseThreads', 'eraseThreads'],
   // The thread a turn answers in, as deliver chose it from pending, and the topic a turn's end settles: a topic
   // open_topic just opened, held (#796).
-  'thread-summary.mjs': ['threadHeader', 'threadCatchUp', 'settleThread'],
+  'thread-catch-up.mjs': ['threadHeader', 'threadCatchUp'],
+  'thread-summary.mjs': ['settleThread'],
   // Every write of a thread that exists starts from it (#796), and toWrite refuses one that doesn’t exist there. Then
   // the turn’s own items, a move after a pending read, and the thread a topic reply count goes to, maybe opened or
   // deleting behind a held commit (#796).

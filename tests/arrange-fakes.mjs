@@ -61,11 +61,11 @@ export function withProcesses(rt, { list, signal }) {
 }
 
 /**
- * Sets one of the seams the server looks for before its own (rt.judge, rt.pushes, rt.summarize), or removes it, given
- * undefined, so the server’s own runs again. @param {Runtime} rt @param {string} name @param {any} value
+ * Sets one of the seams the server looks for before its own (rt.judge, rt.pushes, Summaries’ summarize), or removes it,
+ * given undefined, so the server’s own runs again. @param {object} owner  the runtime, or the service @param {string} name @param {any} value
  */
-function seam(rt, name, value) {
-  const r = /** @type {any} */ (rt);
+function seam(owner, name, value) {
+  const r = /** @type {any} */ (owner);
   if (value === undefined) delete r[name];
   else r[name] = value;
 }
@@ -77,7 +77,7 @@ export const withJudge = (rt, judge) => seam(rt, 'judge', judge);
 export const withPushes = (rt, pushes) => seam(rt, 'pushes', pushes);
 
 /** Replaces the model that summarizes a thread; undefined restores the real one. @param {Runtime} rt @param {any} summarize */
-export const withSummarizer = (rt, summarize) => seam(rt, 'summarize', summarize);
+export const withSummarizer = (rt, summarize) => seam(rt.summaries, 'summarize', summarize);
 
 /**
  * Hears each change to an item, before it’s written as it would be. Returns a function that stops listening.

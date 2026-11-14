@@ -3,6 +3,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import * as arrange from './arrange.mjs';
 import { settle, setup } from './side-threads-fixture.mjs';
 
 const LIMIT = 50_000;
@@ -56,7 +57,7 @@ test('#362: a reply one character past the limit wakes no one; the conversation 
     lines.map((x) => `${x.kind}/${x.variant}`),
     ['system/send-refused', 'system/send-refused'],
   );
-  assert.doesNotMatch(String(rt.describeItem(lines[0]) ?? ''), /^You:/, 'no agent hears it as the person');
+  assert.doesNotMatch(String(arrange.describeItem(rt, lines[0]) ?? ''), /^You:/, 'no agent hears it as the person');
   assert.match(lines[0].text, /^@alpha’s mention of @beta woke no one: its reply has 50,001 characters, past the 50,000 a hand-off can send\.$/);
   // The reply itself is still in the conversation, as the agent wrote it, with no wake marked on it.
   const posted = store.items(t.id).find((x) => x.kind === 'agent' && x.text === text);

@@ -13,10 +13,10 @@ const say = (f, text) => arrange.post(f.rt, f.t.id, { kind: 'agent', sessionId: 
 /** The fixture, with alpha's marker at the end of the conversation, so the next summary covers only what follows. */
 function fresh() {
   const f = setup();
-  f.rt.catchUp(f.store.state.sessions[f.alpha.id]);
+  arrange.catchUp(f.rt, f.store.state.sessions[f.alpha.id]);
   return f;
 }
-const summary = (f) => f.rt.catchUp(f.store.state.sessions[f.alpha.id]) ?? '';
+const summary = (f) => arrange.catchUp(f.rt, f.store.state.sessions[f.alpha.id]) ?? '';
 // About 5,000 characters, as the review drafts and finding lists the regression pass saw resent were 2,129 and longer.
 const long = (start) => `${start} ${'Each finding has its file, line and a failing case. '.repeat(96)}The end.`;
 
