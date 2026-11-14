@@ -6,8 +6,10 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
+import { Worker } from 'node:worker_threads';
 import { FACE_ALIASES, STACK_FONTS } from '../shared/app-fonts.mjs';
 import { validateBlock } from '../shared/catalog.mjs';
+import { LIMITS } from '../shared/limits.mjs';
 import { TOOL_DEFS } from '../shared/mcp-tools.mjs';
 import { setup, turn } from './blocks-fixture.mjs';
 
@@ -153,4 +155,83 @@ test('#1322 show_app refuses an app with its own font, and nothing is shown', as
     store.items(t.id).filter((i) => i.kind === 'block'),
     [],
   );
+});
+
+/**
+ * How long appFontErrors takes on code, in ms, measured in a worker that’s stopped after 3 s, so a scan that runs
+ * away fails the test rather than hanging it. @param {string} code @returns {Promise<number>}
+ */
+function timed(code) {
+  const url = new URL('../shared/app-fonts.mjs', import.meta.url).href;
+  const body = `const { parentPort, workerData } = require('node:worker_threads');
+import(workerData.url).then(({ appFontErrors }) => {
+  const start = performance.now();
+  appFontErrors(workerData.code, []);
+  parentPort.postMessage(performance.now() - start);
+});`;
+  return new Promise((resolve) => {
+    const w = new Worker(body, { eval: true, workerData: { code, url } });
+    const stop = setTimeout(() => {
+      void w.terminate();
+      resolve(Number.POSITIVE_INFINITY);
+    }, 3000);
+    w.once('message', (ms) => {
+      clearTimeout(stop);
+      void w.terminate();
+      resolve(ms);
+    });
+  });
+}
+
+/** Code at the app limit: prefix, then unit repeated to fill it. @param {string} unit */
+const fill = (unit, prefix = '') => prefix + unit.repeat(Math.floor((LIMITS.appCode - prefix.length) / unit.length));
+
+test('#1322 the scan is linear: no app at the size limit holds the server up', async () => {
+  // validateBlock runs it on the server, synchronously, so a slow scan freezes Postbox for everyone. Each input
+  // is one that backtracked or rescanned before: an unclosed tag of quoted values with spaces, unclosed
+  // <style>, <script> and comments, and setters with no closing quote.
+  const inputs = {
+    'an unclosed tag of quoted values with spaces': fill(' b="x y z"', '<a'),
+    'a truncated SVG text tag': fill(' font-family="a b"', '<svg><text'),
+    'an unclosed quote in a style attribute': fill(' style="font:', '<p'),
+    'unclosed <style> tags': fill('<style>'),
+    'unclosed <script> tags': fill('<script>'),
+    'unclosed HTML comments': fill('<!--'),
+    'unclosed CSS comments': fill('/*', '<style>'),
+    'font-family declarations': fill('font-family:', '<style>'),
+    'font shorthands': fill('font: 12px ', '<style>'),
+    'fontFamily setters with no closing quote': fill("fontFamily='", '<script>'),
+    'canvas fonts with no closing quote': fill('.font = `', '<script>'),
+    'font-family attrs with no value': fill("'font-family', ", '<script>'),
+    'closed tags, each with a style': fill('<p style="font-family: inherit">x</p>'),
+  };
+  for (const [what, code] of Object.entries(inputs)) {
+    assert.ok(code.length > LIMITS.appCode - 20 && code.length <= LIMITS.appCode, what);
+    const ms = await timed(code);
+    assert.ok(ms < 100, `${what}: ${Number.isFinite(ms) ? `${Math.round(ms)} ms` : 'stopped after 3 s'}`);
+  }
+});
+
+test('#1322 false positives: comments and a script’s strings are never read as fonts it applies', () => {
+  for (const code of [
+    `<script>out.textContent = "set fontFamily: 'Georgia'";</script>`,
+    "<script>// el.style.fontFamily='Georgia'\nlet x = 1;</script>",
+    "<script>/* ctx.font = '12px Georgia' */ let x = 1;</script>",
+    '<!-- <div style="font-family:Georgia"> -->',
+    '<!-- <style>p { font-family: Georgia }</style> -->',
+  ])
+    assert.deepEqual(refused(code), [], code);
+});
+
+test('#1322 the platform fallbacks common stacks end with may follow an allowed family, and emoji fonts anywhere', () => {
+  for (const code of [
+    '<style>body { font-family: system-ui, Roboto, Helvetica, Arial, sans-serif; }</style>',
+    '<style>body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji"; }</style>',
+    '<style>code { font-family: ui-monospace, SFMono-Regular, "Liberation Mono", "Courier New", monospace; }</style>',
+    '<span style="font-family: \'Noto Color Emoji\'">🎉</span>',
+  ])
+    assert.deepEqual(refused(code), [], code);
+  // A fallback first is the font the app asks for, and any other name after an allowed one is still its own font.
+  assert.match(refused('<style>body { font-family: Arial, sans-serif; }</style>')[0] ?? '', /“Arial”/);
+  assert.match(refused('<style>body { font-family: -apple-system, Georgia, serif; }</style>')[0] ?? '', /“Georgia”/);
 });
