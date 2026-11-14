@@ -43,6 +43,17 @@ export const LIMITS = Object.freeze({
   cardActions: 3,
 });
 
+/** search_conversation’s bounds (#1340): an agent sends the query and the limit, so each is cut where it enters. */
+export const SEARCHING = Object.freeze({
+  /** The query’s characters. */
+  query: 200,
+  /** How many hits a search gives when it doesn’t say, and the most it can ask for. */
+  hits: 8,
+  most: 30,
+  /** A hit’s characters: the words around the match. read_message has the rest. */
+  snippet: 300,
+});
+
 /**
  * What agents read of the conversation, rather than what they send (#109). Each cut says where the rest is, so the
  * guide doesn’t list these; read_conversation’s and read_message’s descriptions name them.

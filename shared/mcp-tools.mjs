@@ -5,7 +5,7 @@
 
 import { FONT_RULE } from './app-fonts.mjs';
 import { shownBlock, updatedBlock } from './block-json-schema.mjs';
-import { HOP_LIMIT, limitText as n, PALETTES, PENDING_WAKES, READING, REVIEW_IMAGES, SENDING } from './limits.mjs';
+import { HOP_LIMIT, limitText as n, PALETTES, PENDING_WAKES, READING, REVIEW_IMAGES, SEARCHING, SENDING } from './limits.mjs';
 import { ASSET_TOOLS } from './mcp-tools-assets.mjs';
 import { REACTIONS } from './reactions.mjs';
 import { COMMENT_MAX, MAX_COMMENTS, QUOTE_MAX, VERDICTS } from './review-comments.mjs';
@@ -188,6 +188,18 @@ export const TOOL_DEFS = [
         skip: { type: 'number', description: 'Skip this many of the newest items, to read further back.' },
         thread: { type: 'string', description: 'The id (th_…) of a side thread or topic thread of this conversation. Default: where you are.' },
       },
+    },
+  },
+  {
+    name: 'search_conversation',
+    description: `Find where something was said in this conversation or its topic and side threads, by its words, without reading it in order. Gives the best matches first, each with its id, when it was posted, the topic or side thread it’s in, who wrote it and the words around the match; read_message { id } reads one in full.`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: `The words to look for, up to ${count(SEARCHING.query)} characters.` },
+        limit: { type: 'number', description: `How many matches, up to ${SEARCHING.most}. Default ${SEARCHING.hits}.` },
+      },
+      required: ['query'],
     },
   },
   {
