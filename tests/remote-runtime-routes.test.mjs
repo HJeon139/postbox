@@ -161,12 +161,12 @@ test('#120: left out, the server makes the real host manager, keeping tokens in 
   const server = await start({ port: PORT + 1, dataDir: own, fresh: true, demo: true, quiet: true, claudeHome: own, listen: false });
   assert.equal(arrange.realHostManager(server.rt), true, 'server/remote/hosts.mjs’s manager');
   const h = server.rt.addHost({ name: 'host.example.com' });
-  assert.equal(server.rt.hostStatus(h.id).state, 'not-installed', 'no token in its data folder yet');
+  assert.equal(arrange.hostStatus(server.rt, h.id).state, 'not-installed', 'no token in its data folder yet');
   // A host whose token install.mjs wrote there is installed.
   const h2 = server.rt.addHost({ name: 'other.example.com' });
   await mkdir(join(own, 'remote-tokens'), { recursive: true, mode: 0o700 });
   await writeFile(tokenFile(own, h2.id), 'fake-token-0123456789abcdefghijklmnop\n', { mode: 0o600 });
-  assert.equal(server.rt.hostStatus(h2.id).state, 'disconnected', 'installed: its token is in the data folder');
+  assert.equal(arrange.hostStatus(server.rt, h2.id).state, 'disconnected', 'installed: its token is in the data folder');
   assert.equal(arrange.hostLink(server.rt, h2.id), arrange.hostLink(server.rt, h2.id));
   await server.close();
   assert.throws(() => arrange.hostLink(server.rt, h2.id), /closed its host connections/);

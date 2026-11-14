@@ -201,6 +201,17 @@ export function withMirrorTail(rt, sessionId, tail) {
   /** @type {any} */ (rt.mirrors.get(sessionId)).tail = tail;
 }
 
+// ── Remote hosts ─────────────────────────────────────────────────────────────────────
+
+/** A host, or a 404 when there’s none. @param {Runtime} rt @param {string} id */
+export const host = (rt, id) => rt.host(id);
+
+/** A host’s connection as the page sees it, or null before the host manager knows of it. @param {Runtime} rt @param {string} id */
+export const hostStatus = (rt, id) => rt.hostStatus(id);
+
+/** Keeps each host’s status in the state for the page, as Postbox does once it listens. @param {Runtime} rt */
+export const watchHosts = (rt) => rt.watchHosts();
+
 // ── Permissions, apps and files ──────────────────────────────────────────────────────
 
 /** What Always would allow for a request. @param {Runtime} rt @param {object} se @param {object} req */

@@ -110,7 +110,7 @@ test('#120 e2e: a remote Claude Code turn streams the host’s lines, shows its 
   try {
     const turn = await running(p);
     assert.equal(p.ssh.calls.length, 1, 'one ssh session for the turn');
-    assert.equal(p.rt.hostStatus(p.host.id).state, 'connected');
+    assert.equal(arrange.hostStatus(p.rt, p.host.id).state, 'connected');
     await applied(p, turn);
     // The recorded stream, applied as the laptop applies a local one.
     assert.match(
@@ -164,7 +164,7 @@ function startUp(p, store) {
     for (const it of list) if (it.status === 'streaming') arrange.setItem(p.rt, threadId, it.id, { status: 'stopped' });
   p.rt.expireStalePermissions();
   p.rt.restoreRemoteTurns();
-  p.rt.watchHosts();
+  arrange.watchHosts(p.rt);
 }
 
 test('#120 e2e: Postbox restarts mid-turn, attaches to the turn still on the host, and no line is applied twice', async () => {
@@ -254,7 +254,7 @@ test('#120 e2e: a change to a setting the daemon enforces reaches a connected ho
     await until(() => hellos(p.d).length === 2, 'a fresh hello');
     assert.equal(hellos(p.d)[1].settings.permissionWaitMax, 2 * 3_600_000);
     // The turn carries on over the new session.
-    await until(() => p.rt.hostStatus(p.host.id).state === 'connected', 'connected again');
+    await until(() => arrange.hostStatus(p.rt, p.host.id).state === 'connected', 'connected again');
     const id = p.d.prompt(turn);
     await until(() => p.store.items(p.t.id).some((i) => i.remote?.prompt === id), 'a card over the new session');
     p.rt.resolvePermission(p.t.id, p.store.items(p.t.id).find((i) => i.remote?.prompt === id).id, 'allow');

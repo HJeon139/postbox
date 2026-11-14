@@ -12,6 +12,7 @@ import { installCommand, tokenCommand } from '../server/remote/install.mjs';
 import { createHostLink } from '../server/remote/link.mjs';
 import { Store } from '../server/store.mjs';
 import { defaultHostSettings } from '../shared/remote-settings.mjs';
+import * as arrange from './arrange.mjs';
 import { createFakeDaemon, FAKE_TOKEN } from './fake-daemon.mjs';
 import { fakeSsh } from './fake-ssh.mjs';
 import { SIGN_IN, sleep, testClock, until, VERSION } from './remote-hosts-fixtures.mjs';
@@ -58,7 +59,7 @@ function rig({ daemon = createFakeDaemon({ autoEnd: false }), spawn } = {}) {
     delay: () => 5,
   });
   const { rt } = runtime({ store, hosts });
-  rt.watchHosts();
+  arrange.watchHosts(rt);
   const status = (/** @type {string} */ id) => store.state.hostStatus?.[id] ?? null;
   const done = () => {
     hosts.close();
