@@ -1,4 +1,4 @@
-// Recording an outcome on an answered block, and updates that ask nothing new (#286, #330): server/blocks.mjs.
+// Recording an outcome on an answered block, and updates that ask nothing new (#286, #330): server/block-update.mjs.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { choice, review, settle, setup, turn } from './blocks-fixture.mjs';

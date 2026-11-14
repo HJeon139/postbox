@@ -1,4 +1,4 @@
-// Closing blocks that ask (#106), and update_block from a topic thread (#216): server/blocks.mjs.
+// Closing blocks that ask (#106), and update_block from a topic thread (#216): server/blocks.mjs and block-update.mjs.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { formatMessage } from '../server/adapters/guide.mjs';

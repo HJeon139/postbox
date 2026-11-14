@@ -4,7 +4,7 @@
 import { READING } from '../shared/limits.mjs';
 import { authorName, commentAt, PERSON } from '../shared/review-comments.mjs';
 import { appCheckText } from './app-check-status.mjs';
-import { closedText } from './blocks.mjs';
+import { closedText } from './block-update.mjs';
 import { clipText, fenced } from './helpers.mjs';
 
 const COMMAND_CONTEXT = 4000;

@@ -2,7 +2,7 @@
 // what replaced it, with its version menu (app/js/apps.mjs). It stays where it is, since nothing new needs the person,
 // and it runs no sandbox until they open a version. A new version (update_app) brings it back.
 
-import { releaseNeed } from './card-needs.mjs';
+import { releaseRetired } from './app-send-cards.mjs';
 import { echoedId } from './helpers.mjs';
 
 /**
@@ -39,18 +39,6 @@ export function retireApp(rt, sessionId, { id, reason, replacedBy } = {}) {
     to = { id: rid, title: String(other?.title ?? item.block.title ?? item.block.prompt ?? rid).slice(0, 200), itemId: item.id };
   }
   rt.store.emit('app', { ...app, retired: { by: rt.session(sessionId).handle, reason: why, replacedBy: to, at: Date.now() } });
-  release(rt, app);
+  releaseRetired(rt, app);
   return { ok: true, message: `Retired ${app.title}. It shows as one line where it was, with its versions; update_app brings it back.` };
-}
-
-/**
- * A retired app can’t act: sends waiting on its card for the person to allow are dropped, with the card saying why, and
- * its agent no longer needs the person for them. Later sends are refused (appEvent in server/apps.mjs).
- */
-function release(rt, app) {
-  const card = rt.store.pending.items(app.threadId).find((x) => x.kind === 'appsend' && x.appId === app.id && x.status === 'open');
-  if (!card) return;
-  rt.threads.patchItem(app.threadId, card.id, { status: 'declined', retired: true, answeredAt: Date.now() });
-  const se = rt.s.sessions[card.sessionId];
-  releaseNeed(rt, se, card.id);
 }

@@ -22,8 +22,10 @@ import { normalized, placed, sources } from './server-sources-fixture.mjs';
 
 /** store.items() and item(): published reads. */
 const PUBLISHED = {
-  'apps.mjs': ['appEvent', 'resolveAppSend'], // the page’s app events and an app send it answers: what the person sees
-  'blocks.mjs': ['act', 'answerDelivered'], // the person’s answer to a block they see
+  'app-send-cards.mjs': ['resolveAppSend'], // an app send the person answers: what they see
+  'apps.mjs': ['appEvent'], // the page’s app events: what the person sees
+  'block-update.mjs': ['answerDelivered'], // the answer to a block the person saw, as its event starts a turn
+  'blocks.mjs': ['act'], // the person’s answer to a block they see
   'card-needs.mjs': ['dismissFailed'], // the person’s Dismiss on a failed reply they see (#883)
   'deliver.mjs': ['retry'], // the person’s Retry of a failed reply they see
   'diagram-check.mjs': ['diagramCheck'], // the page’s report on a diagram the person sees
@@ -84,10 +86,11 @@ const PENDING = {
   'claude-mirror.mjs': ['mirror', 'pollMirror'],
   'deliver.mjs': ['deliver', 'deliver', 'turnMessage'], // the session it starts a turn in, and the thread it answers in, maybe made or held behind a commit (#796)
   'restart-sweep.mjs': ['settleRetiredNeeds', 'cardOf'], // the need's card: whether it still waits, and its time on a tie, decide the need kept (#366); a session whose need is of a retired kind, settled
-  'app-retire.mjs': ['retireApp', 'retireApp', 'retireApp', 'release'], // retire_app of an app the turn may have just shown, and its sweep of open sends
+  'app-retire.mjs': ['retireApp', 'retireApp', 'retireApp'], // retire_app of an app the turn may have just shown
+  'app-send-cards.mjs': ['releaseRetired'], // a retired app’s sweep of its open sends
   'apps.mjs': ['showApp', 'updateApp'], // show_app and update_app of an app the turn may have just shown
   'block-show.mjs': ['showBlock', 'showBlock', 'showBlock', 'shownAgain'], // show_block of an app or a block id the turn may have just shown
-  'blocks.mjs': ['shownBy'], // update_block of a block the turn just showed
+  'block-update.mjs': ['shownBy'], // update_block of a block the turn just showed
   'catch-up.mjs': ['moveMarkers'], // the conversation of a topic an item moved in, maybe opened behind a held commit, whose sessions' markers move (#1041)
   'held-session.mjs': ['heldSession'], // a delivery to a session just made behind a held commit waits until it's published (#796's class in sessions)
   // A job's end: the list it leaves, whether a kept job still runs to hold the steps, and the steps to stall (#957).

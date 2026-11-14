@@ -1,5 +1,6 @@
 // Apps (#54, #38, #49): what an agent shows, the browser’s pre-display check of it, what an app sends in your voice,
 // and its saved state and the host data it asks for; the files an agent names for it are in server/agent-files.mjs.
+// The cards that hold what an app sends past its limit are asks’ (server/app-send-cards.mjs).
 // Each is a Runtime method’s body, with the instance first; Runtime keeps a one-line method that calls it.
 
 import { followsConversation, validateBlock } from '../shared/catalog.mjs';
@@ -8,8 +9,8 @@ import { INTENT_CHARS, LIMITS } from '../shared/limits.mjs';
 import { wordCount } from '../shared/text.mjs';
 import { appReceipt } from './app-check-status.mjs';
 import { notYours } from './app-retire.mjs';
-import { APP_HOLD_MAX, APP_SEND_LIMIT, APP_SEND_WINDOW_MS } from './app-send-limits.mjs';
-import { offerNeed, releaseNeed } from './card-needs.mjs';
+import { holdAppSend } from './app-send-cards.mjs';
+import { APP_SEND_LIMIT, APP_SEND_WINDOW_MS } from './app-send-limits.mjs';
 import { httpError, refuseRetired } from './helpers.mjs';
 import { HELD_BY_EVERY_AGENT, hostTool } from './host-tool.mjs';
 import { newId } from './store.mjs';
@@ -120,74 +121,10 @@ export function appEvent(rt, appId, action, values, { hold = false, now = Date.n
   // Sends you allowed on a card don’t count against the next minute.
   const recent = items.filter((x) => x.kind === 'voice' && x.appId === appId && !x.approved && now - (x.sentAt ?? x.at) < APP_SEND_WINDOW_MS).length;
   // Once some sends wait, later ones wait behind them, so the agent gets them in order.
-  if (card || hold || recent >= APP_SEND_LIMIT) {
-    const held = { action: r.event.action, values: r.event.values, voice: r.voice, sent: r.event.sent, ...(r.quote ? { quote: r.quote } : {}) };
-    const waiting = (card?.events.length ?? 0) + 1;
-    if (card) {
-      if (card.events.length >= APP_HOLD_MAX)
-        throw httpError(429, `${card.events.length} messages from ${app.title} are already waiting for the person to allow them. Wait for their answer.`);
-      rt.threads.patchItem(app.threadId, card.id, { events: [...card.events, held] });
-    }
-    const cardId =
-      card?.id ?? rt.threads.addItem(app.threadId, { kind: 'appsend', appId, title: app.title, sessionId: app.sessionId, events: [held], status: 'open' }).id;
-    rt.needAppSend(app, cardId, waiting);
-    return {
-      ok: true,
-      held: true,
-      waiting,
-      message: `Held for the person to allow: an app sends up to ${APP_SEND_LIMIT} messages a minute. ${waiting === 1 ? '1 message is' : `${waiting} messages are`} waiting.`,
-    };
-  }
+  if (card || hold || recent >= APP_SEND_LIMIT) return holdAppSend(rt, app, card, r);
   rt.threads.addItem(app.threadId, { kind: 'voice', text: r.voice, ...(r.quote ? { quote: r.quote } : {}), appId, sentAt: now });
   if (rt.s.sessions[app.sessionId]) rt.deliver(app.sessionId, { kind: 'event', event: r.event }, { threadId: app.threadId });
   return { ok: true, voice: r.voice };
-}
-
-/**
- * An open app card makes its agent need you and tells you, like a permission card, unless it already needs you. It
- * waits until you answer it: the agent’s turns, and you moving on (#69), leave it (runtime.mjs keeps it, as a hop).
- */
-export function needAppSend(rt, app, itemId, waiting) {
-  const se = rt.s.sessions[app.sessionId];
-  if (!se) return;
-  // A later event of a card that isn't the need changes nothing: the card isn't new, so it doesn't offer itself again.
-  if (waiting !== 1 && se.needs?.itemId !== itemId) return;
-  const text = `${app.title} wants to send ${waiting === 1 ? '1 message' : `${waiting} messages`} for you`;
-  const took = offerNeed(rt, se, { kind: 'appsend', itemId, text, ...rt.sessions.awayFrom(se, app.threadId) }, rt.turns.has(se.id) ? se.state : 'needs');
-  // Only the first event is noticed: behind another need it isn't yet, and is when it becomes the need (card-needs.mjs).
-  if (waiting !== 1) return;
-  rt.threads.patchItem(app.threadId, itemId, { notifiedAt: took ? Date.now() : null });
-  if (took) rt.threads.notify('blocking', se, text, `Apps send up to ${APP_SEND_LIMIT} a minute in your voice. Allow these, or don’t.`);
-}
-
-/** Your answer on an app’s card: allow sends the waiting events as they were sent; don’t allow drops them. */
-export function resolveAppSend(rt, threadId, itemId, action, { now = Date.now() } = {}) {
-  const it = rt.store.item(threadId, itemId);
-  if (it?.kind !== 'appsend' || it.status !== 'open') throw httpError(409, 'That request was already answered.');
-  if (action !== 'allow' && action !== 'deny') throw httpError(400, 'An app’s request takes “allow” or “deny”.');
-  const allow = action === 'allow';
-  if (allow) refuseRetired(rt.s.sessions[it.sessionId]);
-  rt.threads.patchItem(threadId, itemId, { status: allow ? 'allowed' : 'declined', answeredAt: now });
-  const owner = rt.s.sessions[it.sessionId];
-  releaseNeed(rt, owner, itemId);
-  if (!allow) {
-    const n = it.events.length;
-    rt.threads.addItem(threadId, { kind: 'voice', text: `Didn’t allow ${it.title} to send ${n === 1 ? '1 message' : `${n} messages`}` });
-    return { ok: true };
-  }
-  const se = rt.s.sessions[it.sessionId];
-  for (const ev of it.events) {
-    rt.threads.addItem(threadId, { kind: 'voice', text: ev.voice, ...(ev.quote ? { quote: ev.quote } : {}), appId: it.appId, sentAt: now, approved: true });
-    const event = {
-      blockId: it.appId,
-      action: ev.action,
-      values: ev.values,
-      ...(ev.sent ? { sent: ev.sent } : {}),
-      ...(ev.quote ? { appSummary: ev.quote } : {}),
-    };
-    if (se && !se.retiredFork) rt.deliver(se.id, { kind: 'event', event }, { threadId });
-  }
-  return { ok: true };
 }
 
 export function appState(rt, appId, state) {

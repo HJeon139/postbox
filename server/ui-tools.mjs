@@ -6,7 +6,7 @@
 import { retireApp } from './app-retire.mjs';
 import { showApp, updateApp } from './apps.mjs';
 import { showBlock } from './block-show.mjs';
-import { updateBlock } from './blocks.mjs';
+import { updateBlock } from './block-update.mjs';
 import { bringToConversation } from './bring.mjs';
 import { reviewBlock } from './review-comments.mjs';
 import { cancelWake, scheduleWakeTool } from './schedule-tools.mjs';

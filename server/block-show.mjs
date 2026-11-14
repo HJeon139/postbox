@@ -6,7 +6,7 @@ import { validateBlock } from '../shared/catalog.mjs';
 import { PERSON } from '../shared/review-comments.mjs';
 import { appReceipt } from './app-check-status.mjs';
 import { withAppIntent, withIntentNote } from './apps.mjs';
-import { OUTCOME_LATER } from './blocks.mjs';
+import { OUTCOME_LATER } from './block-update.mjs';
 import { newId } from './store.mjs';
 import { wokeOf } from './turn-marks.mjs';
 
