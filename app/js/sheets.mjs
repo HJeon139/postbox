@@ -27,6 +27,7 @@ import { capsOf, modelField, modelsFor } from './model-field.mjs';
 import { openPermissions } from './permissions.mjs';
 import { lifeButtons } from './persona-delete.mjs';
 import { projectsTab } from './projects-tab.mjs';
+import { holdSheet } from './sheet-hold.mjs';
 import { placeField, saveRefused } from './sheets-place.mjs';
 import { appearance, connect } from './sheets-settings.mjs';
 import { skillsField } from './skills-field.mjs';
@@ -599,7 +600,10 @@ export function openNewAgent({ threadId = null, projectId: pid = null, preset = 
       h('button.btn.send', { type: 'button', onclick: create }, 'Create agent'),
     ],
     initialFocus: () => body.querySelector('#na-h'),
+    onClose: () => letGo(),
   });
+  // Its MCP servers and skills come after it opens, and move nothing under the pointer when they do (#1326).
+  const letGo = holdSheet(dlg.dialog);
 }
 
 // ── New conversation ────────────────────────────────────────────────────────────────────
@@ -1005,7 +1009,9 @@ export function openSettings(tab = 'appearance', personaId = null) {
     ];
   };
   paint();
-  const dlg = openDialog({ title: 'Settings', size: 'lg', body: [tabs, panel] });
+  const dlg = openDialog({ title: 'Settings', size: 'lg', body: [tabs, panel], onClose: () => letGo() });
+  // A persona’s MCP servers and skills come after it opens, and move nothing under the pointer when they do (#1326).
+  const letGo = holdSheet(dlg.dialog);
 }
 
 // ── Folder picker ───────────────────────────────────────────────────────────────────────
