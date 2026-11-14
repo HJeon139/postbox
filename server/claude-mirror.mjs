@@ -48,7 +48,7 @@ export async function attachClaudeSession(rt, { claudeSessionId, projectId, hand
   const se = pendingSessionsIn(rt, t.id)[0];
   rt.updateSession(se.id, { backendState: { claudeSessionId, transcript: cs.file, attached: true } });
   for (const it of recentHistory(cs.file)) {
-    if (it.kind === 'user') rt.addItem(t.id, { kind: 'user', text: it.text, via: 'terminal' });
+    if (it.kind === 'user') rt.addItem(t.id, { kind: 'user', text: it.text, via: 'terminal', to: [se.handle] });
     else
       rt.addItem(t.id, {
         kind: 'agent',
@@ -110,7 +110,7 @@ export function pollMirror(rt, sessionId) {
     if (e.isSidechain) continue;
     const typed = typedText(e);
     if (typed) {
-      rt.addItem(se.threadId, { kind: 'user', text: typed, via: 'terminal' });
+      rt.addItem(se.threadId, { kind: 'user', text: typed, via: 'terminal', to: [se.handle] });
       m.agentItem = null;
       m.steps = [];
       rt.updateSession(sessionId, { state: 'think', currentStep: 'Working in a terminal', finishedAt: null });
