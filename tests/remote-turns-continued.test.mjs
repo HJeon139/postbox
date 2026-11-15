@@ -148,3 +148,48 @@ test('#120: a lint turn Interrupted on the host and resumed is still a lint turn
   assert.equal(answer.lintReply, true);
   assert.equal(arrange.lint(r.rt, r.se().id, answer.turnId, [problem]), false, 'what’s found in it never goes back as a lint turn');
 });
+
+test('#1138’s class: a reply settled before a restart and replayed after it hands its @-mention over once', async () => {
+  // The host turn’s reply closes mid-turn, so its mention is handed over then. The attach after a restart replays the
+  // turn from its start, marks that reply replaced and posts it again: the same mention is keyed by the host turn, so
+  // it’s stored once (server/mention-entries.mjs, replayKey).
+  const lines = mentioning('lead');
+  // The reply’s message again, as a new message whose words have no mention: the words after the block.
+  const from = lines.findIndex((l) => l.includes('"message_start"') && l.includes('msg_011CgFTsfUqRmERyis7eEc6P'));
+  const to = lines.findIndex((l, n) => n > from && l.includes('"message_stop"'));
+  const more = lines.slice(from, to + 1).map((l) => {
+    const j = JSON.parse(l.replaceAll('msg_011CgFTsfUqRmERyis7eEc6P', 'msg_more'));
+    if (j.uuid) j.uuid = `more-${j.uuid}`;
+    if (j.event?.delta?.type === 'text_delta') j.event.delta.text = j.event.delta.text.startsWith('@lead') ? 'One more thing.' : '';
+    for (const c of j.message?.content ?? []) if (c.type === 'text') c.text = 'One more thing.';
+    return JSON.stringify(j);
+  });
+  const result = lines.find((l) => JSON.parse(l).type === 'result');
+  // The turn runs on until the test ends it, after the restart.
+  const r = rig({ daemon: { lines: lines.filter((l) => l !== result) } });
+  const got = [];
+  lead(r, got);
+  r.rt.sendMessage(r.t.id, { text: '@coder go' });
+  const turn = await onHost(r, 1);
+  await until(() => all(r).some((i) => i.kind === 'agent' && i.handle === 'coder' && /@lead I ran/.test(i.text ?? '')), 'its reply, with the mention');
+  // A block it shows, then more words, close the reply’s first part, so its mention is handed over while the turn runs.
+  r.d.tool(turn, 'show_block', {
+    block: { id: 'pick', type: 'choice', version: 1, title: 'Pick', fallback: 'Pick one', prompt: 'Which?', options: [{ id: 'a', label: 'A' }] },
+  });
+  await until(() => all(r).some((i) => i.kind === 'block'), 'the block');
+  for (const l of more) r.d.append(turn, l);
+  await until(() => got.length === 1, 'the closed part’s mention handed over mid-turn');
+  const next = await restart(r, turn, got);
+  next.d.append(turn, result);
+  next.d.end(turn);
+  await settled(next);
+  assert.ok(
+    all(next).some((i) => i.kind === 'agent' && i.handle === 'coder' && i.status === 'replaced'),
+    'the replay replaced the settled reply',
+  );
+  assert.equal(got.filter((m) => JSON.stringify(m).includes('@lead I ran')).length, 1, 'lead was handed the mention once');
+  const entries = Object.values(next.store.state.inbox)
+    .flat()
+    .filter((e) => e.from === 'coder');
+  assert.equal(entries.length, 1, 'and stored once: the replay’s copy made no second entry');
+});
