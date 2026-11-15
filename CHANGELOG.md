@@ -2,6 +2,12 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.11.0 (2026-11-15)
+
+### Features
+
+- **threads:** raise item.final once per item, when it is first final
+
 ## 4.10.0 (2026-11-15)
 
 ### Features
