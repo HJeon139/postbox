@@ -1,6 +1,6 @@
 # Postbox as a context multiplexer for agent harnesses
 
-**Status:** draft 5, 13 November 2026. The direction in “What the person decided” is the person’s; the three changes under it are proposals, and nothing here is built. Draft 3 is shorter than the first two on purpose: it keeps only changes that a measurement supports and that remove or reuse something, and it lists the rest under “Not proposed”. It sits beside [`rooms-at-scale.md`](rooms-at-scale.md), which decides how a room of four or more agents is organized.
+**Status:** 15 November 2026. The direction in “What the person decided” is the person’s; the three changes under it are proposals, and only the third is built (#1341, in review). It keeps only changes that a measurement supports and that remove or reuse something, and it lists the rest under “Not proposed”. It sits beside [`rooms-at-scale.md`](rooms-at-scale.md), which decides how a room of four or more agents is organized.
 
 ## What Postbox does
 
@@ -16,6 +16,8 @@ flowchart LR
 ```
 
 Each harness keeps its own context, compacts it by its own rules, and re-reads all of it on every model request. Postbox can’t change that. It decides only what it puts in, and what an agent can ask for.
+
+What it puts in and what an agent asks for meet at one line: the messages addressed to an agent are given whole, the rest of the room since its last turn comes as a bounded tail, and anything beyond that the agent pulls with `search_conversation` or `read_conversation` ([`rooms-at-scale.md`](rooms-at-scale.md), “Delivery: mention, wake and queue on one inbox”).
 
 ## What was measured
 
@@ -58,13 +60,16 @@ Each one removes a mechanism or reuses one that exists. The first and third add 
 
 - **`wake_agent` goes.** A reply that @-mentions three agents wakes all three, and the message itself says who it is for.
 - **`open_topic` loses its `mentions` parameter.** Its first message wakes the agents it @-mentions in its text, as a reply does.
+- **A mention inside quoted or code text names an agent without waking it.** A mention wakes only outside a blockquote, a code span and a code block. In the first run of the search measurement, three replies quoted a seeded line that began with another agent’s `@handle`, and each woke that agent, which answered unasked. With the @-mention as the only wake, that would happen more.
 - **Nothing else changes.** A review still wakes its block’s author, a reaction still wakes no one, and the person’s messages, answers and scheduled wakes arrive as today.
 
+**Where it lands.** In the step that builds the inbox ([`rooms-at-scale.md`](rooms-at-scale.md), “Delivery: mention, wake and queue on one inbox”), not as a patch to `server/mention-wakes.mjs`, `server/topic-open.mjs` or `server/wake-cards.mjs`, which that step replaces.
+
 What has to change with it:
-- **[#834](https://github.com/HJeon139/postbox/issues/834), open, first:** a mention handed over while its reply still streamed reached the agent cut to “I”.
+- **[#834](https://github.com/HJeon139/postbox/issues/834), open:** a mention handed over while its reply still streamed reached the agent cut to “I”. An inbox entry made once the message is final fixes it in the same step.
 - **The notice for a reply too long to hand off** tells its agent to use `wake_agent` (`server/mention-wakes.mjs`, `refusedMentions`). It says instead to post a shorter reply that @-mentions the agent.
-- **What names the tool:** the guide’s lines on it, the remote shim, and the UAT scenarios that hand off with it.
-- **A quoted mention wakes too.** In the first run of the search measurement, three replies quoted a seeded line that began with another agent’s `@handle`, and each woke that agent, which answered unasked. With the @-mention as the only wake, that matters more: a mention inside quoted or code text should name an agent without waking it. This needs its own issue before `wake_agent` goes.
+- **The card that asks again for a declined agent.** After the person declines adding an agent to a conversation, a mention in a reply asks no more, and `wake_agent` still does ([#693](https://github.com/HJeon139/postbox/issues/693), `server/wake-cards.mjs`). That card goes with the others when needs you becomes asks ([`rooms-at-scale.md`](rooms-at-scale.md), “Asks: needs you as an interface”).
+- **What names the tool:** every caller and test.
 
 What it gives up: an agent can no longer start an idle agent while it keeps working. In the room that mattered for 16 of 169 calls. An agent with a long job ahead ends its turn with the hand-off and schedules a wake.
 
@@ -72,7 +77,7 @@ Changes in `intent.md`: the rows on `@name` and on agents talking in the convers
 
 ### 2. Say a fixed thing once: on hold
 
-The paragraph on sharing work is the same for every agent and every turn, and it is sent with every turn. Draft 3 proposed moving it to the system prompt as a move of one string with no new state. That was wrong, found on starting to build it:
+The paragraph on sharing work is the same for every agent and every turn, and it is sent with every turn. Moving it to the system prompt looked like a move of one string with no new state. It isn’t:
 
 - **A resumed Claude Code session keeps the system prompt of its first request** until it compacts ([#515](https://github.com/HJeon139/postbox/issues/515), from Claude Code’s CLI reference). So every session already running would lose the paragraph: it would no longer come with the turn, and it isn’t in the prompt the session recorded. The room measured here compacted 34 times in six days across five sessions, so a session could run for days without the rule that keeps two agents from doing one task twice ([#121](https://github.com/HJeon139/postbox/issues/121)).
 - **Doing it safely needs state:** a mark on each session that its recorded prompt has the paragraph, set by each of the five adapters when it starts a backend session.
@@ -138,4 +143,4 @@ It covers one room and one backend. Codex, Kiro and Antigravity sessions in a lo
 
 - **Done:** the measurement, the person’s direction, and a second read against the backlog by the session that triages Postbox’s issues, which corrected one number and cut three parts.
 - **Done:** `search_conversation`, built and measured on four harnesses (#1341, in review).
-- **Next:** the person’s review of this design. Then the @-mention as the only wake, once #834 is fixed and a quoted mention no longer wakes. A long-session measurement of search, and the starting context, are the open measurements.
+- **Next:** the person’s review of this design. Then the @-mention as the only wake, built as part of the inbox, where #834 and the quoted mention are settled with it. A long-session measurement of search, and the starting context, are the open measurements.
