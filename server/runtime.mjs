@@ -17,6 +17,7 @@ import { releaseNeed } from './card-needs.mjs';
 import { Checks } from './check-service.mjs';
 import { attachClaudeSession, claudeSessions, mirror, pollMirror, rearmMirrors, stopMirrorFor, stopMirrors } from './claude-mirror.mjs';
 import { deliver, retry } from './deliver.mjs';
+import { Delivery } from './delivery.mjs';
 import { httpError } from './helpers.mjs';
 import { endJob, expireStaleJobs, recordJob } from './job-records.mjs';
 import { keptJobs, pollKept, stopJob, stopKeptJobs, watchKept } from './kept-jobs.mjs';
@@ -114,6 +115,11 @@ export class Runtime {
     // The live turn per session, the stopped ones still exiting (#126), the host turns waiting to be attached again
     // (#1135), and whether Postbox is shutting down (designs/architecture/services.md, “Running”).
     this.running = new Running();
+    // Each agent's inbox in each conversation, as stored entries (designs/architecture/services.md, “Delivery and Turns,
+    // built as the inbox”). Nothing sends to it until the turn-end wakes switch to entries, which binds the chain cap.
+    // An entry's size is its text until Turns gives it as server/turn-input.mjs's entryLine (step 3).
+    const sizeOf = (/** @type {any} */ e) => (e.text ?? store.pending.item(e.threadId, e.itemId)?.text ?? '').length;
+    this.delivery = new Delivery({ store, bus: this.bus, running: this.running, chainHeld: () => false, sizeOf });
     this.signalProcess = signalProcess ?? process.kill;
     this.listProcesses = list ?? listProcesses;
     /** @type {NodeJS.Timeout|null} */
@@ -348,7 +354,9 @@ export class Runtime {
 
   /** Once Postbox listens after a restart: what waited in the queues goes now, a wake or a message of yours (#228). */
   drainAll() {
-    return queue.drainAll(this);
+    queue.drainAll(this);
+    // Then the inbox: a turn lost to the restart reopens what it took, and each agent with entries is woken.
+    this.delivery.start();
   }
 
   /**

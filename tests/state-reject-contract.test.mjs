@@ -30,6 +30,7 @@ function base() {
   s.items.t = [{ id: 'i', kind: 'agent', text: 'a', activity: { steps: [{ id: 'st', state: 'running' }] } }];
   s.work.t = [{ id: 'w', kind: 'turn', status: 'running' }];
   s.sessions.se = { id: 'se', threadId: 't', handle: 'dev' };
+  s.inbox.se = [{ id: 'en', state: 'waiting' }];
   s.glossary.t = map({ k: { key: 'k', term: 'K', definition: 'a k' } });
   s.hosts.h = { id: 'h', name: 'host' };
   apply(s, 'asset', { id: 'as', room: 't', name: 'a.md', created: 1 });
@@ -56,6 +57,8 @@ export const VALID = {
   'item.text': { threadId: 't', id: 'i', text: 'd' },
   'work.add': { convId: 't', entry: { id: 'w2', kind: 'command' } },
   'work.patch': { convId: 't', id: 'w', patch: { status: 'done' } },
+  'entry.add': { sessionId: 'se', entry: { id: 'en2', state: 'waiting' } },
+  'entry.patch': { sessionId: 'se', id: 'en', patch: { state: 'taken' } },
   remove: { kind: 'thread', id: 't' },
   notify: { text: 'hi' },
   host: { id: 'h2', name: 'host two' },

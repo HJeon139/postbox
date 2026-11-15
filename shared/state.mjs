@@ -43,6 +43,9 @@ export function emptyState() {
     assetReleases: map(),
     // Each room’s index of its assets, which the reducer keeps so a write’s checks look up instead of scanning.
     assetRooms: map(),
+    // Each agent's inbox (designs/rooms-at-scale.md, “What an entry is”): per session, its entries in arrival order, each
+    // pointing at the item it came from rather than copying it. A session's go with it (removeEntity).
+    inbox: map(),
   };
 }
 
@@ -94,6 +97,9 @@ export const PUBLIC_STATE_KEYS = Object.freeze([
   'assets',
   'assetReleases',
   'assetRooms',
+  // Ids, states and times, and only the own text of an entry with no item (a check, an event, a notice), which reach
+  // the page today as items and events: the sender sees each entry's state (designs/rooms-at-scale.md, “Delivery”).
+  'inbox',
 ]);
 export const PRIVATE_STATE_KEYS = Object.freeze(/** @type {string[]} */ ([]));
 
@@ -151,6 +157,8 @@ export const EVENTS = Object.freeze({
   'item.text': { apply: (s, d) => withItem(s, d, (it) => (it.text = (it.text ?? '') + d.text)), public: true },
   'work.add': { apply: (s, d) => ((s.work ??= map())[d.convId] ??= []).push(d.entry), public: true },
   'work.patch': { apply: patchWork, public: true },
+  'entry.add': { apply: (s, d) => (s.inbox[d.sessionId] ??= []).push(d.entry), public: true },
+  'entry.patch': { apply: patchEntry, public: true },
   // An old turn’s summary in place of its entries, and its replies’ step counts (#305, shared/state-archive.mjs).
   'turn.archive': { apply: applyTurnArchive, public: true },
   remove: { apply: removeEntity, public: true },
@@ -199,6 +207,14 @@ function removeEntity(s, d) {
   }
   const kept = { session: 'sessions', app: 'apps', persona: 'personas' }[d.kind];
   if (kept) delete s[kept][d.id];
+  // Deleting a session deletes its entries; the messages they came from stay (designs/rooms-at-scale.md, “What an entry is”).
+  if (d.kind === 'session') delete s.inbox[d.id];
+}
+
+/** Sets fields on one of a session's entries, if it's there. */
+function patchEntry(s, d) {
+  const e = s.inbox[d.sessionId]?.find((/** @type {any} */ x) => x.id === d.id);
+  if (e) Object.assign(e, d.patch);
 }
 
 /**

@@ -35,6 +35,10 @@ const TYPES = [
   'asset.released',
   // An old turn leaving the state (#305): its summary entry and its replies’ step counts, none of the moved detail.
   'turn.archive',
+  // Each agent's inbox (designs/rooms-at-scale.md, “What an entry is”): ids, states and times, and only the own text of
+  // an entry with no item, which reaches the page today as an item or an event.
+  'entry.add',
+  'entry.patch',
 ];
 
 test('the event table has exactly the known types, each with a handler and a public flag, all public today', () => {
@@ -62,7 +66,7 @@ test('every key of the state is either public or private, never both and never n
   const keys = Object.keys(emptyState());
   assert.deepEqual([...PUBLIC_STATE_KEYS, ...PRIVATE_STATE_KEYS].sort(), [...keys].sort());
   for (const k of PUBLIC_STATE_KEYS) assert.equal(PRIVATE_STATE_KEYS.includes(k), false, k);
-  assert.equal(PUBLIC_STATE_KEYS.length, 19);
+  assert.equal(PUBLIC_STATE_KEYS.length, 20);
 });
 
 test('the public state keeps the public keys, as the store’s own values, and drops any other key', () => {
