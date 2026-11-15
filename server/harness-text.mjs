@@ -9,6 +9,8 @@ import { byOf, firstSentence } from './harness-tools.mjs';
 
 // The least time between two showings of a thought still being written, in milliseconds.
 const THOUGHT_EVERY = 1000;
+/** Whether text ends a sentence or a line, so another block's words can follow it as their own paragraph. */
+const ENDS = /(?:[.!?…:;]["'”’)\]]*\s*|\n\s*)$/;
 
 /**
  * Text without Markdown’s emphasis and code marks, its runs of whitespace as one space, to compare streamed text with a
@@ -40,6 +42,11 @@ export class HarnessText {
     this.calls = 0; // the turn’s own tool calls so far: text without a block starts a paragraph after one
     /** @type {Map<unknown, { text: string, id: string | null, at: number }>} a thought still streaming, by its block */
     this.thinking = new Map();
+    /** @type {Set<unknown>} blocks that may stream alongside another until their text_end, as Codex's messages can (#1293) */
+    this.open = new Set();
+    /** @type {Map<unknown, string>} other blocks' words, waiting while an open block is mid-sentence (#1293) */
+    this.held = new Map();
+    this.tail = ''; // the end of the block writing now, to tell whether it ended a sentence
   }
 
   /** The latest whole sentences of what the agent is thinking or writing, at most a few times a second. @param {string} text */
@@ -60,15 +67,54 @@ export class HarnessText {
     if (this.pending) this.glimpse(this.pending, { force: true });
   }
 
-  /** Words of the reply. A new block starts a paragraph, and the ring’s “writing”. @param {string} text @param {unknown} [block] */
-  write(text, block = `after-call-${this.calls}`) {
+  /**
+   * Words of the reply. A new block starts a paragraph, and the ring’s “writing”. A block that’s open (a Codex message
+   * still streaming, which can run alongside another, #1293) keeps the reply until it ends a sentence or its text_end:
+   * another block’s words wait till then, so two streams take turns by whole sentences, never spliced word by word. A
+   * block that isn’t open, every other harness’s, never holds another back.
+   * @param {string} text @param {unknown} [block] @param {boolean} [open]
+   */
+  write(text, block = `after-call-${this.calls}`, open = false) {
+    if (open) this.open.add(block);
+    if (block !== this.block && this.wrote && this.busy()) {
+      this.held.set(block, (this.held.get(block) ?? '') + text);
+      return;
+    }
+    this.append(text, block);
+    this.release(() => !this.busy());
+  }
+
+  /** Whether the block writing now holds the reply: it’s open and mid-sentence. */
+  busy() {
+    return this.open.has(this.block) && !ENDS.test(this.tail);
+  }
+
+  /** An open block ended (text_end): blocks waiting on it take their turns. @param {unknown} block */
+  ended(block) {
+    this.open.delete(block);
+    this.release(() => !this.busy());
+  }
+
+  /** The words waiting, in the order their blocks began, while `go()` says so: at the turn’s end, all of them. */
+  release(go = () => true) {
+    for (const [block, words] of this.held) {
+      if (!go()) return;
+      this.held.delete(block);
+      this.append(words, block);
+    }
+  }
+
+  /** @param {string} text @param {unknown} block */
+  append(text, block) {
     if (block !== this.block) {
+      this.tail = '';
       this.block = block;
       if (this.wrote) this.ctx.text('\n\n');
       this.status({ state: 'gen', currentStep: 'Writing a reply' });
     }
     if (!text) return;
     this.ctx.text(text);
+    this.tail = (this.tail + text).slice(-8);
     this.written = (this.written + text).slice(-200_000);
     this.wrote = true;
     this.said = appendGlimpseSource(this.said, text);
@@ -143,6 +189,7 @@ export class HarnessText {
    * @param {{ isError?: boolean, text?: string }} e
    */
   fromResult(e) {
+    this.release();
     const said = !e.isError && typeof e.text === 'string' ? e.text.trim() : '';
     if (said && !squash(this.written).includes(squash(said).slice(0, 60))) this.write(said, Symbol('result'));
   }

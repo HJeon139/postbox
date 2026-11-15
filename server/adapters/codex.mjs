@@ -88,12 +88,14 @@ export function createCodexMapper(ctx, io = {}) {
       case 'item/completed':
         if (p.item?.type === 'agentMessage') {
           if (p.item.text && !streamed.has(p.item.id)) emit({ kind: 'text', text: p.item.text, block: p.item.id });
+          else if (streamed.has(p.item.id)) emit({ kind: 'text_end', block: p.item.id });
         } else itemCompleted(emit, p.item, io.read);
         break;
       case 'item/agentMessage/delta':
         if (typeof p.delta === 'string') {
           streamed.add(p.itemId);
-          emit({ kind: 'text', text: p.delta, block: p.itemId });
+          // Open until its item completes: two agent messages can stream at once, narrating parallel calls (#1293).
+          emit({ kind: 'text', text: p.delta, block: p.itemId, open: true });
         }
         break;
       case 'item/commandExecution/outputDelta':

@@ -2,9 +2,11 @@
 // its harness’s own stream (Claude Code’s stream-json, Codex’s app server, the Kiro and Antigravity CLIs, the mock’s
 // scripts) and calls event() with these kinds, in its harness’s order:
 //
-// - text      { text, block?, parent? }   words of the reply; a new block starts a new paragraph, and without
+// - text      { text, block?, parent?, open? }   words of the reply; a new block starts a new paragraph, and without
 //                                          blocks, text after a tool call does. With parent, a
 //                                          subagent’s own words: a step in its voice, never the reply (#73).
+// - text_end  { block }                   an open block of the reply ended: open, on a text event, says its block may
+//                                          stream alongside another, as Codex's agent messages can, until this (#1293).
 // - thinking  { text, block?, parent?, whole? }   a piece of a thought; whole, or a thinking_end, makes it a step.
 // - thinking_end { block }
 // - tool_call { id, name, input?, label?, parent?, who?, final?, work?, patch? }   a call, named as Claude Code names its
@@ -43,6 +45,7 @@ const DECLINED = /^The person didn’t allow/;
 /** The kinds of event the contract has, each the method that takes it. */
 export const KINDS = Object.freeze([
   'text',
+  'text_end',
   'thinking',
   'thinking_end',
   'tool_call',
@@ -118,8 +121,13 @@ export class HarnessEvents {
   }
 
   /** @param {any} e */
+  on_text_end(e) {
+    this.words.ended(e.block);
+  }
+
+  /** @param {any} e */
   on_text(e) {
-    if (!e.parent) return this.words.write(e.text, e.block);
+    if (!e.parent) return this.words.write(e.text, e.block, e.open === true);
     this.moveSub(e.parent, { state: 'gen', ...(e.text?.trim() ? { said: e.text } : {}) });
     this.words.narrate(e.text, this.by(e.parent));
   }
