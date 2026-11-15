@@ -91,13 +91,14 @@ async function refill(next, epoch) {
   client.ranges = ranges;
 }
 
+// Whether the last numbered frame was one the page had (seq at or below its own). The unnumbered frames sent right after
+// an event are as old: a header the state has moved past, a rejected event's resync that would reload for nothing (#1264).
+let behind = false;
+
 /**
  * One numbered frame from the stream: an event the page applies, or a cursor that only moves its place on.
  * @param {string} t @param {MessageEvent} e
  */
-// Whether the last numbered frame was one the page had (seq at or below its own). The unnumbered frames sent right after
-// an event are as old: a header the state has moved past, a rejected event's resync that would reload for nothing (#1264).
-let behind = false;
 function hear(t, e) {
   const seq = Number(e.lastEventId);
   behind = Boolean(seq) && seq <= client.seq;
@@ -133,7 +134,6 @@ let es = null;
  */
 export function connect({ quiet = false } = {}) {
   es?.close();
-  behind = false; // a new stream starts after the page's seq
   // Item events only for the conversations open here (#1155); every other event, and each thread’s header, for all.
   const open = encodeURIComponent([...client.open.keys()].join(','));
   es = new EventSource(`/api/stream?since=${client.seq}&epoch=${encodeURIComponent(client.epoch)}&open=${open}`);
@@ -170,7 +170,6 @@ export function connect({ quiet = false } = {}) {
   });
   // The store’s status, unnumbered: each time it can’t save, or can again (app/js/store-line.mjs).
   es.addEventListener(STREAM.status, (e) => {
-    behind = false;
     client.store = JSON.parse(e.data);
     client.emit({ type: 'store' });
   });
