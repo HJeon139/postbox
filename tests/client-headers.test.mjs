@@ -43,7 +43,7 @@ async function loadedPage() {
     ownState: (s) => s,
     PUBLIC_EVENT_TYPES,
     STREAM,
-    apply() {},
+    applyOnPage() {},
     gate: () => 'apply',
     needsYouNow() {},
     whereNeeds() {},
