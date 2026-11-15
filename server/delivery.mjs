@@ -4,7 +4,8 @@
 // sender is noted on a waiting entry (“posted since”), and only the person’s Stop and delete end one unread.
 //
 // Its invariants:
-// - one entry per final item and recipient, and a send with a retry id already stored makes none (#1138);
+// - a send with a retry id already stored makes no second entry (#1138); one entry per final item and recipient is
+//   its senders’ rule, such as the item.final listener’s, not something send can check;
 // - a take is stored when the turn starts, so a restart knows what the turn held, and a lost turn’s entries reopen
 //   once, as a resend (#466);
 // - entry.waiting is raised only for an agent that can start a turn now: not busy in Running, its session not failed,

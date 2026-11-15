@@ -658,7 +658,7 @@ Each step is its own pull request, and is done when:
     - `server/delivery.mjs` is a class that `Runtime`’s constructor builds with the store, the bus, Running and a chain-cap predicate. Its interface tests are `tests/delivery.test.mjs`.
     - Entries are stored as `entry.add` and `entry.patch` events in a public `inbox` key, per session, with a pending read like the items’, so an entry written behind a held commit is read back before its release. Deleting a session deletes its entries in the reducer.
     - `start()` runs after the queue’s drain on start-up.
-  - **What it found:** an entry keeps the message today’s `deliver` takes, in `message`, for a source with no item, until Turns builds a turn’s input from entries. Delivery keeps nothing in memory, so a store Retry that installs the disk’s state needs no listener of its own.
+  - **What it found:** a review’s entry keeps the event today’s `deliver` takes, in `message`, until Turns builds a turn’s input from entries. Delivery keeps nothing in memory, so a store Retry that installs the disk’s state needs no listener of its own.
   - **Not yet:** nothing sends to it until the turn-end wakes switch to entries.
 - **Next:** Delivery and Turns, built as the inbox, from step 2 of the order “Delivery and Turns, built as the inbox” gives. Asks follow, after the permission layer.
 
