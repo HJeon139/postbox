@@ -282,14 +282,28 @@ test('a wheel turn heard during the jump to the end keeps landed() from ending i
   const cdp = await page.context().newCDPSession(page);
   await cdp.send('Emulation.setCPUThrottlingRate', { rate: 3 });
   await record(page);
+  // The wheel turn comes during the jump, from the page’s own frames: a poll from the test can come late on a slow runner,
+  // after the jump has landed at the end, and landed() ending it then is right.
+  await page.evaluate(() => {
+    const w = /** @type {any} */ (window);
+    const watch = () => {
+      if (scrollY <= 2000) return requestAnimationFrame(watch);
+      w.wheelAt = (w.smoothYs?.length ?? 1) - 1;
+      dispatchEvent(new WheelEvent('wheel', { deltaY: -1 }));
+    };
+    requestAnimationFrame(watch);
+  });
   await page.locator('.jump').getByRole('button').click();
-  await expect.poll(() => page.evaluate(() => scrollY), { message: 'the jump to be on its way' }).toBeGreaterThan(2000);
-  await page.evaluate(() => dispatchEvent(new WheelEvent('wheel', { deltaY: -1 })));
   await recorded(page);
   await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
   await still(page);
-  const writes = await page.evaluate(() =>
-    /** @type {any[]} */ (/** @type {any} */ (window).scrollTrace).filter((t) => t.kind.startsWith('write') && t.at?.includes('landed')),
-  );
-  expect(writes, 'landed() wrote no scroll after your wheel turn').toEqual([]);
+  const { wheelAt, writes } = await page.evaluate(() => {
+    const w = /** @type {any} */ (window);
+    return { wheelAt: w.wheelAt, writes: /** @type {any[]} */ (w.scrollTrace).filter((t) => t.kind.startsWith('write') && t.at?.includes('landed')) };
+  });
+  expect(wheelAt, 'the wheel turn came during the jump').toBeGreaterThanOrEqual(0);
+  expect(
+    writes.filter((t) => t.f >= wheelAt),
+    'landed() wrote no scroll after your wheel turn',
+  ).toEqual([]);
 });
