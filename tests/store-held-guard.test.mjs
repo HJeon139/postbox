@@ -95,7 +95,7 @@ const PENDING = {
   'block-show.mjs': ['showBlock', 'showBlock', 'showBlock', 'shownAgain'], // show_block of an app or a block id the turn may have just shown
   'block-update.mjs': ['shownBy'], // update_block of a block the turn just showed
   'catch-up.mjs': ['moveMarkers'], // the conversation of a topic an item moved in, maybe opened behind a held commit, whose sessions' markers move (#1041)
-  'delivery.mjs': ['inbox', 'ready'], // an inbox's entries and its session decide each entry's next state and the wake (#796's class)
+  'delivery.mjs': ['sessionIds', 'inbox', 'ready'], // the sessions with inboxes, an inbox's entries and its session decide each entry's next state and the wake (#796's class)
   'held-session.mjs': ['heldSession'], // a delivery to a session just made behind a held commit waits until it's published (#796's class in sessions)
   // A job's end: the list it leaves, whether a kept job still runs to hold the steps, and the steps to stall (#957).
   'job-records.mjs': ['endJob', 'endJob', 'endJob', 'runningProgress', 'setJobStep', 'settleJobs'],

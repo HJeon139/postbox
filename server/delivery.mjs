@@ -77,6 +77,14 @@ export class Delivery {
     return entry;
   }
 
+  /**
+   * Every session that may have entries, read pending as its writes are, so an inbox whose first entry is held behind a
+   * commit is in it (#796’s class): a session’s entries go with it, so it has none without a session.
+   */
+  sessionIds() {
+    return Object.keys(this.store.pending.sessions());
+  }
+
   /** The agent’s entries, as memory will hold them once what is held is released. @param {string} sessionId */
   inbox(sessionId) {
     return this.store.pending.inbox(sessionId);
@@ -89,7 +97,7 @@ export class Delivery {
 
   /** Every entry made from an item, in any inbox. @param {string} itemId */
   entriesFrom(itemId) {
-    return Object.keys(this.store.state.inbox).flatMap((sessionId) => this.inbox(sessionId).filter((e) => e.itemId === itemId));
+    return this.sessionIds().flatMap((sessionId) => this.inbox(sessionId).filter((e) => e.itemId === itemId));
   }
 
   /**
@@ -138,7 +146,7 @@ export class Delivery {
    * in their place. @param {{ threadId: string, from: string, itemId: string }} post
    */
   postedSince({ threadId, from, itemId }) {
-    for (const sessionId of Object.keys(this.store.state.inbox))
+    for (const sessionId of this.sessionIds())
       for (const e of this.waiting(sessionId))
         if (e.threadId === threadId && e.from === from && e.itemId !== itemId && !e.postedSince.includes(itemId))
           this.patch(e, { postedSince: [...e.postedSince, itemId] });
@@ -174,7 +182,7 @@ export class Delivery {
    */
   retry(turnId) {
     const reopened = [];
-    for (const sessionId of Object.keys(this.store.state.inbox))
+    for (const sessionId of this.sessionIds())
       for (const e of this.inbox(sessionId))
         if (e.takenBy === turnId) {
           this.patch(e, { state: 'waiting', takenBy: null, resend: true });
@@ -199,12 +207,12 @@ export class Delivery {
    * start a turn from its entries is woken. Runs after the host turns are restored, so Running knows which wait.
    */
   start() {
-    for (const sessionId of Object.keys(this.store.state.inbox)) {
+    for (const sessionId of this.sessionIds()) {
       if (this.running.awaitsAttach(sessionId)) continue;
       for (const e of this.inbox(sessionId))
         if (e.state === 'taken') this.patch(e, e.resend ? { state: 'failed' } : { state: 'waiting', takenBy: null, resend: true });
     }
-    for (const sessionId of Object.keys(this.store.state.inbox)) this.wake(sessionId);
+    for (const sessionId of this.sessionIds()) this.wake(sessionId);
   }
 
   /** The agent’s entries a turn took. @param {string} sessionId @param {string} turnId */
