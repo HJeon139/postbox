@@ -63,7 +63,7 @@ flowchart LR
 - **Because nothing in it is stored, the live view can show more:** each tool and its input, a tail of its output, the agent’s use of Postbox’s own tools, and how long each step has run.
 - **Each agent’s state is always in view,** wherever you’ve scrolled: running (and its current step), waiting on a job, waiting on another agent, waiting on you, failed, or done. It is derived from records, never from what an agent said in chat.
 - **A turn that dies says so,** with what it held, instead of ending as an empty message.
-- **Status questions don’t wake agents.** “Is the job still running” is answered from the agent’s state and its jobs, which Postbox already tracks.
+- **Status questions needn’t be asked.** “Is the job still running” is answered by the agent’s state and its jobs, always in view. Postbox doesn’t try to tell a status question from work, so a question that mentions an agent still wakes it.
 
 Changes in `intent.md`: the Work rows on the per-turn list, the Layout row on the agent tree, and “The loop”.
 

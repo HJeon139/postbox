@@ -185,47 +185,96 @@ flowchart LR
 ```
 
 **Delivery**
-- **Owns:** each agent’s inbox in each conversation, as stored entries; scheduled wakes; the chain count (principle 6). An entry has its source (a mention, a review, the person’s answer, a scheduled wake, or Postbox’s notice), the item it came from, its thread, its sender, when it arrived, its state (waiting, delivered or failed), whether it is a resend, and the newer posts from its sender since (“@x posted since”).
+- **Owns:**
+  - each agent’s inbox in each conversation, as stored entries;
+  - scheduled wakes;
+  - the chain count (principle 6).
+
+  An entry has:
+  - its source: the person, a mention, a review, an answer, a scheduled wake, a command, a check, an event, or a notice;
+  - the item it came from, or its own text where there is no item (a notice, an event, a scheduled wake’s note);
+  - its thread, its sender, and when it arrived;
+  - its state: waiting, taken by a turn, delivered, failed, or stopped;
+  - whether it is a resend;
+  - the newer posts from its sender since (“@x posted since”).
 - **Invariants:**
-  - An entry is made only from a final item, once per item and recipient. A replayed tool call or a page’s resend carries the same retry id and makes none (#1138).
-  - Nothing is held, merged or dropped.
-  - An entry a turn took and failed to start goes back to waiting; the turn’s record says which entries it took. One that a harness accepted and then lost to a network failure goes back once, marked as a resend (#466).
-  - A mention wakes only outside a blockquote, a code span and a code block.
+  - **One entry per final item and recipient.** An item makes entries once, when it is first final. A block’s later revisions make none; a review makes its own. A replayed tool call or a page’s resend carries the same retry id and makes none (#1138).
+  - **Nothing is held, merged or dropped.** Stop and delete are the person’s, below.
+  - **A take is stored when the turn starts:** each taken entry records the turn that took it. An entry whose turn failed to start goes back to waiting. One that a harness accepted and then lost to a network failure goes back once, marked as a resend (#466).
+  - **A mention wakes only outside a blockquote, a code span and a code block.**
 - **Interface:**
   - `send(entry)`: what the `send` port names today. Checks and Apps call it directly once Delivery exists, so the port goes.
-  - `waiting(sessionId)`, `take(sessionId, budget)` and `stateOf(sessionId)`: a sender’s view of each entry, and an agent’s “waiting behind @x since”.
-  - `schedule` and `cancel`.
-  - Signals: `entry.waiting`, raised when an agent with no live turn gets an entry or its turn ends with entries left.
+  - **Turns calls:**
+    - `waiting(sessionId)`;
+    - `take(sessionId, turnId, budget)`, which returns what fits the budget and leaves the rest waiting;
+    - `entriesFrom(itemId)`.
+  - `stateOf(sessionId)`: a sender’s view of each entry, and an agent’s “waiting behind @x since”.
+  - **Scheduled wakes:**
+    - `schedule` and `cancel` add and remove them.
+    - A due wake is an entry with the source “scheduled”, so `noteScheduledTurn` becomes its take, `prepareScheduledRetry` becomes the failed-start rule, and the tools a wake recorded (`recordScheduledTool`, `recordedTools`) are its note.
+  - **The person’s own actions:**
+    - `edit(entryId)`, `cancel(entryId)` and `stopped(sessionId)`;
+    - `continueChain(threadId)`: Continue at the chain cap.
+
+    Until the person’s message is an entry (step 2 below keeps today’s queue in front), editing and canceling a waiting message stay with the queue.
+  - **Signals:** `entry.waiting`. It is raised for an agent that has a waiting entry that isn’t a notice, and that:
+    - isn’t `busy()` in Running (no live turn, none exiting, no host turn awaiting attach);
+    - has a session that hasn’t failed;
+    - isn’t held at the chain cap.
+
+    It is raised when such an entry arrives, after `turn.ended`, after an exiting turn is gone, after `attached`, and when an attach is given up.
 - **Listens to:**
-  - `item.final`, which turns the item’s mentions into entries;
-  - `turn.ended`, which settles what the turn took, its scheduled wake and the chain;
-  - `persona.updated`, which drains an agent moved off a host, as `drainMovedOff` does now.
+  - `item.final`: the item’s mentions become entries;
+  - `turn.settled`: it settles the turn’s scheduled wake, before Work’s `endWork`, as step E does now;
+  - `turn.ended`: it marks what the turn took as delivered, counts the chain, and raises `entry.waiting` if entries are left (steps R and L3);
+  - `persona.updated`: it drains an agent moved off a host, as `drainMovedOff` does now.
+- **Stop and delete:**
+  - The person’s Stop marks the agent’s waiting entries stopped, as `dropWakes` drops them today. A stopped entry starts no turn, its sender sees it was stopped, and the agent’s next turn lists the stopped entries’ ids in one line, so nothing is lost from the record.
+  - Send now is facade orchestration: `Turns.stop`, then `send`. Today’s `stopForSendNow` goes.
+  - Deleting a session deletes its entries.
+- **On start (`start()`):**
+  1. An entry taken by a turn here that has no record of ending reopens once, as a resend.
+  2. An entry taken by a host turn that is awaiting attach stays with that turn until it attaches or is given up.
+  3. Then `entry.waiting` is raised for every idle agent with entries, which is today’s `drainAll`.
 - **Depends on:** Store, Bus, Threads, Sessions, Personas, Running. Not on Turns.
-- **What goes:** `wake_agent`, `open_topic`’s `mentions`, wake cards and their held lines (the `catchUpLines` port), `newer-waiting`’s replacement of a waiting message, `queue-batch`, and the wakes at the end of a turn (steps L and R of “The end of a turn”). A reply’s mentions are entries as soon as it is final.
+- **What goes:**
+  - `wake_agent`, and `open_topic`’s `mentions`;
+  - wake cards and their held lines (the `catchUpLines` port);
+  - `newer-waiting`’s replacement of a waiting message (“posted since” takes its place);
+  - `queue-batch`, and the wakes at the end of a turn (step L).
+
+  A reply’s mentions are entries as soon as it is final, a failed reply’s included.
 
 **Turns**
 - **Owns:**
   - starting a turn from the entries it takes;
-  - the turn’s input: its entries whole, grouped by thread, then a bounded tail of the rest of the room and a pointer to `search_conversation` and `read_conversation`;
+  - the turn’s input: its entries whole, grouped by thread, then a bounded tail of the rest of the room and a pointer to `search_conversation` and `read_conversation`. A side thread’s entry carries its offer to bring the thread forward (`offersBring`), as today;
   - the harness-event contract (`server/harness-events.mjs`, #1239);
-  - the live progress of a running turn, with a small buffer for a page that reconnects; each step carries its start time, and Postbox’s own tool calls are steps like any other;
-  - one record of the turn when it ends: the entries it took, its steps, its jobs still running, and why it ended. A turn that dies says what it held from this record, not with an empty message;
-  - stopping a turn.
+  - host turns (`remote/turns*.mjs`);
+  - stopping a turn;
+  - one record of the turn when it ends: the entries it took, its steps, its jobs still running, and why it ended. A turn that dies says what it held from this record, not with an empty message.
+
+  The live-state step, which follows this one, adds the live progress of a running turn: a small buffer for a page that reconnects, each step with its start time, and Postbox’s own tool calls as steps like any other.
 - **Invariants:**
   - A turn starts only through Running’s `begin`.
-  - Progress is never written to the store; the turn’s record is.
   - A reply’s segment becomes final through Threads, which raises `item.final`.
-- **Interface:** `start(sessionId)`, `stop(sessionId, reason)`, `progress(sessionId)`. Signals: `turn.started`, and `turn.ended` with its outcome and `err`.
+- **Interface:**
+  - `start(sessionId)`, `stop(sessionId, reason)`;
+  - the host-turn interface Hosts used through the `hostTurns` port: `busyOn`, `sessionsOn`, `stopOn`, `cancel`, `confirmStops` and `stoppingSession`. Hosts takes it from Turns, and the port goes;
+  - **signals,** raised on the Bus in this order: `turn.started`, `turn.settled` and `turn.ended`, each with the turn, its outcome and `err`.
 - **No one else starts a turn.** `rt.deliver` has 15 calling modules today (#1236, the inventory of 15 November). Twelve of them hand an agent a message, and they call Delivery’s `send` instead: the queue, mention wakes, side threads, scheduled wakes, share-back, agent commands, blocks, and the permission, wake, tool-ask, app-send and download cards. The other three aren’t messages, and they become Turns’ own steps:
   - `retryHeld`: a start that waited behind a held commit;
-  - `release`: a stopped turn has exited, so Delivery’s waiting entries for it raise `entry.waiting` again (`turn-stop.mjs` today);
+  - `release`: a stopped turn has exited, so Delivery raises `entry.waiting` if the agent has entries;
   - `resume`: a host turn resumed after a restart (`remote/turns-resume.mjs`).
-- **End steps** are named for `turn-finish.mjs`’s stages: `ending`, `settled`, `replied` (`settleReplies`), `failed` (`endFailed`) and `ended` (`needsAfter`).
+- **Calls into waiting code:** until the permission layer is removed and Asks is built, Turns reaches them through one port, `asks`. It covers `requestPermission`, `recordDenial`, `settlePermission`, the needs (`keptTurns`, `offerNeed`, `releaseNeed`) and `card.opened`. Nothing else in Turns calls waiting code.
 - **Listens to:** `entry.waiting`.
-- **Depends on:** Store, Bus, Running, Threads, Sessions, Personas, Placement, Memory, Summaries, Assets, Work, Checks, Apps, Delivery, and the `hostTurns` port, which becomes its own interface.
-- **The end of a turn** keeps its order, with fewer steps. Delivery’s steps E, H, L, L3 and R become one `turn.ended` listener. Turns still marks whom a failure woke (L2): a failed turn’s reply is final, and its mentions are entries like any other.
+- **Depends on:** Store, Bus, Running, Threads, Sessions, Personas, Placement, Memory, Summaries, Assets, Work, Checks, Apps, Delivery, and the `asks` port.
+- **The end of a turn** keeps its order (“The end of a turn”, below), and changes three steps:
+  - **Step H** (posting a thread’s summary, clearing the pending one) is Summaries’ listener on `replied`, since `shareText` and `clearSummaryPending` are Summaries’ (#1236).
+  - **Steps L and L3** (wake mentions with the failure, take pending) go: the failed reply is final, so its mentions are entries.
+  - **Step L2** (marking whom the failure woke) reads them with `entriesFrom`. Step E is Delivery’s `turn.settled` listener, and step R its `turn.ended` listener.
 
-**Agent state** is read, never stored. It comes from Running (a live turn, exiting, awaiting attach), Turns’ current step and its last turn’s end, Work’s jobs, Delivery’s `stateOf`, and asks once they exist. Each agent shows one of:
+**Agent state** is read, never stored, and is built in the live-state step from what this step records. It comes from Running (a live turn, exiting, awaiting attach), Turns’ current step and its last turn’s end, Work’s jobs, Delivery’s `stateOf`, and asks once they exist. Each agent shows one of:
 - running, with its current step;
 - waiting on a job;
 - waiting behind @x;
@@ -233,7 +282,7 @@ flowchart LR
 - failed;
 - idle.
 
-The facade gives it to `server/public-state.mjs`. With the state always in view, the person has no reason to ask an agent for status. Delivery doesn’t try to tell a status question from work; a question still wakes the agent it mentions.
+The facade gives it to `server/public-state.mjs`. With the state always in view, the person has no reason to ask an agent for status. Postbox doesn’t try to tell a status question from work, so a question still wakes the agent it mentions.
 
 **What this does to `runtime.mjs`.** Most of its remaining facade forwards to the modules above: `deliver`, the queue, mention wakes, the turn’s start and end, and the cards. Those methods move to Delivery and Turns or are deleted with what they served. So the rest of the split of `runtime.mjs` (#1236, wave 3) happens in these steps and in Asks. #1236’s inventory counts the remaining lines:
 - **806 lines today:** 51 facade methods stay.
@@ -245,11 +294,9 @@ The facade gives it to `server/public-state.mjs`. With the state always in view,
 **Order inside this step.** Each item is a pull request of its own, from interface tests to moves to the service, as in steps 0 to 11:
 1. Threads raises `item.final`.
 2. Delivery with stored entries, behind today’s queue. Mentions become entries, and a call to `wake_agent` is refused with what to do instead ([`rooms-at-scale.md`](../rooms-at-scale.md), “After `wake_agent` goes”).
-3. Turns takes entries and builds its input from them.
-4. Live-only progress.
-5. Agent state.
+3. Turns takes entries, builds its input from them, and keeps the turn’s record.
 
-Asks follow, after the permission layer.
+Live-only progress and agent state follow, as the next step ([`rooms-at-scale.md`](../rooms-at-scale.md), “Order of work”). Asks follow the permission layer.
 
 ### Asks, after the inbox
 
@@ -355,7 +402,7 @@ Built in this order, each service’s dependencies already exist: Store, Bus, Ru
 | `persona-delete.mjs` deletes sessions; `session-lifecycle.mjs` and `thread-erase.mjs` stop turns and kept jobs | orchestration in the facade: stop, then remove, in one method each (`deletePersona` done in step 4) |
 | `createThread` makes sessions; `resolveProposal` creates a persona and a session | orchestration in the facade |
 
-Waiting code also depends on itself both ways, and the steps that redo it settle those: `permission-prompt.mjs` calls `claimPrompt` (`prompt-claim.mjs`), which reads the turn’s stream, so prompt claims go with asks and read Turns’ steps; and Turns calls into Delivery in the middle of a turn, not only at its end: scheduled wakes (`prepareScheduledRetry`, `noteScheduledTurn`, `recordScheduledTool`, `recordedTools`), the chain (`endChain`, `dropWakes`), needs (`keptTurns`, `releaseNeed`, `offerNeed`), `offersBring` and `newerFromSender`. Those become the inbox’s own steps, which is why Turns waits with it.
+Waiting code also depends on itself both ways, and the steps that redo it settle those: `permission-prompt.mjs` calls `claimPrompt` (`prompt-claim.mjs`), which reads the turn’s stream, so prompt claims go with asks and read Turns’ steps; and Turns calls into Delivery in the middle of a turn, not only at its end: scheduled wakes (`prepareScheduledRetry`, `noteScheduledTurn`, `recordScheduledTool`, `recordedTools`), the chain (`endChain`, `dropWakes`), needs (`keptTurns`, `releaseNeed`, `offerNeed`), `offersBring` and `newerFromSender`. Each has a named home in “Delivery and Turns, built as the inbox”: the scheduled wakes and the chain are Delivery’s, `dropWakes` becomes Stop’s stopped entries, `newerFromSender` becomes “posted since”, `offersBring` is part of Turns’ input, and the needs go through Turns’ `asks` port.
 
 ### The end of a turn
 
