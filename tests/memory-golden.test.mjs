@@ -47,6 +47,7 @@ const BLOCKS = [
       content: 'The totals.',
       threads: [
         {
+          id: 'th-1',
           line: 1,
           status: 'open',
           comments: [
@@ -162,7 +163,7 @@ const EXPECTED = {
           'The person answered:\n- Name: Ada\n- Sync: on',
           '@beta showed a code block:\na.js:\n```js\nlet a = 1;\n```',
           '@beta showed a review block “Draft”:\nThe totals.',
-          'Comments on line 1 (open):\n- The person: Which?\n- @beta: Row 4.',
+          'Comments on line 1 (open, thread th-1):\n- The person: Which?\n- @beta: Row 4.',
           'The person’s review: Changes asked\n- line 1: Recount.',
           '@beta showed a confirm block:\nShip it?',
           '@beta withdrew it: Not needed.',
@@ -229,7 +230,7 @@ const EXPECTED = {
       'The person answered:\n- Name: Ada\n- Sync: on',
       '[<id 10>] @beta showed a code block:\na.js:\n```js\nlet a = 1;\n```',
       '[<id 11>] @beta showed a review block “Draft”:\nThe totals.',
-      'Comments on line 1 (open):\n- The person: Which?\n- @beta: Row 4.',
+      'Comments on line 1 (open, thread th-1):\n- The person: Which?\n- @beta: Row 4.',
       'The person’s review: Changes asked\n- line 1: Recount.',
       '[<id 12>] @beta showed a confirm block:\nShip it?',
       '@beta withdrew it: Not needed.',
