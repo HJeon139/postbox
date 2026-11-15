@@ -189,8 +189,10 @@ export class Delivery {
     for (const sessionId of this.sessionIds())
       for (const e of this.inbox(sessionId))
         if (e.takenBy === turnId) {
-          this.patch(e, { state: 'waiting', takenBy: null, resend: true });
-          reopened.push({ ...e, state: /** @type {EntryState} */ ('waiting'), takenBy: null, resend: true });
+          const entry = { ...e, state: /** @type {EntryState} */ ('waiting'), takenBy: null, resend: true };
+          // Whole: it was delivered, so a page has dropped it, and a patch would reach nothing there.
+          this.store.emit('entry.put', { sessionId, id: e.id, entry });
+          reopened.push(entry);
         }
     return reopened;
   }
