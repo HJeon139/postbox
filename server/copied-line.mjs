@@ -34,8 +34,8 @@ export function copiedLine(rt, se) {
   /** @type {string[] | null} */
   let threads = null;
   return (itemId, said) => {
-    threads ??= rt.threads.conversationThreads(se.threadId);
-    const item = threads.map((th) => rt.store.item(th, itemId)).find(Boolean);
+    const here = (threads ??= rt.threads.conversationThreads(se.threadId));
+    const item = here.map((/** @type {string} */ th) => rt.store.item(th, itemId)).find(Boolean);
     const line = item ? plain(rt.memory.readLine(item, se, Number.POSITIVE_INFINITY) ?? '') : '';
     const parts = pieces(said);
     // A mention with nothing of the item after it, “[it_x] @beta”, is the message’s own.
