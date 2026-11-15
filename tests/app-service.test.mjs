@@ -1,60 +1,14 @@
 // Apps’ interface (designs/architecture/services.md, “Apps”): agents’ apps, their versions, saved state, host data and
-// the browser’s check, blocks shown and updated, review comments, and which answers an agent has read. Built on an
-// in-memory store, the real Bus, Threads and Running, fakes of Sessions, Personas, Assets and Checks, and a `send` port
-// that records what it was given; it never builds Runtime. The app-send cards are asks’, so an event past an app’s
-// limit comes back to be held, and nothing is sent.
+// the browser’s check, blocks shown and updated, and which answers an agent has read, on the Apps rig
+// (tests/app-service-fixture.mjs); review comments are tests/app-service-review.test.mjs. The app-send cards are asks’,
+// so an event past an app’s limit comes back to be held, and nothing is sent.
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { APP_SEND_LIMIT } from '../server/app-send-limits.mjs';
-import { Apps } from '../server/app-service.mjs';
-import { Bus } from '../server/bus.mjs';
-import { Running } from '../server/running.mjs';
-import { Store } from '../server/store.mjs';
-import { Threads } from '../server/threads.mjs';
+import { rig } from './app-service-fixture.mjs';
 
 const CODE = '<p>Lab</p>';
-
-/** Apps over a store with one agent in a conversation; `blobs` is what the asset store holds, by hash. */
-function rig({ tools = [], blobs = { f1: Buffer.from('data') } } = {}) {
-  const store = new Store(null);
-  store.emit('project', { id: 'p1', name: 'P', folder: '/work' });
-  store.emit('thread', { id: 'th_c', projectId: 'p1', title: 'C', kind: 'thread', parentId: null, members: ['se_1', 'se_2'], queue: [], createdAt: 1 });
-  store.emit('session', { id: 'se_1', personaId: 'pe_a', threadId: 'th_c', handle: 'alpha', backend: 'mock', lastTurnId: 'tu_0' });
-  store.emit('session', { id: 'se_2', personaId: 'pe_b', threadId: 'th_c', handle: 'beta', backend: 'mock' });
-  const bus = new Bus();
-  /** @type {[string, any][]} */
-  const signals = [];
-  for (const s of ['app.retired', 'block.withdrawn']) bus.on(s, (data) => signals.push([s, data]));
-  const threads = new Threads({ store, bus });
-  const running = new Running();
-  const sessions = {
-    get: (/** @type {string} */ id) => {
-      const se = store.state.sessions[id];
-      if (!se) throw Object.assign(new Error('That session doesn’t exist.'), { status: 404 });
-      return se;
-    },
-  };
-  const personas = { forSession: () => ({ handle: 'alpha', tools }) };
-  /** @type {any[]} */
-  const searched = [];
-  const assets = {
-    blobs: blobs && { get: async (/** @type {string} */ sha) => blobs[sha] },
-    search: async (room, args) => {
-      searched.push([room, args]);
-      return [{ name: 'a.md' }];
-    },
-    listText: async () => [],
-  };
-  /** @type {any[]} */
-  const linted = [];
-  const checks = { lint: (sessionId, turnId, problems) => linted.push({ sessionId, turnId, problems }) };
-  /** @type {any[]} */
-  const sent = [];
-  const send = (sessionId, message, opts) => sent.push({ sessionId, message, opts });
-  const apps = new Apps({ store, bus, threads, sessions, personas, assets, running, checks, send, narrator: null, config: { imageOrigins: [] } });
-  return { store, threads, running, apps, sent, linted, signals, searched };
-}
 
 /** Shows an app of alpha’s, as show_app does, and returns its item. */
 function shown(apps, threads, { id = 'lab', permissions = [], files = [] } = {}) {
@@ -277,21 +231,4 @@ test('an answer is read once its event starts a turn; an update over an unread a
   assert.match(waiting.message, /reaches you when this turn ends/);
   apps.answerDelivered('th_c', { kind: 'event', blockItemId: it.id, event: { revision: 1 } });
   assert.equal(store.item('th_c', it.id).answer.read, true);
-});
-
-test('reviewBlock comments on another agent’s review and tells it through send; a send that throws is said in the reply', () => {
-  const { store, threads, apps, sent } = rig();
-  const review = { id: 'rv', type: 'review', version: 1, fallback: 'A draft to review.', format: 'markdown', title: 'Draft', content: 'one\ntwo\n' };
-  threads.addItem('th_c', { kind: 'block', valid: true, sessionId: 'se_1', handle: 'alpha', block: review });
-  const r = apps.reviewBlock('se_2', { blockId: 'rv', comments: [{ line: 1, text: 'Shorter.' }] });
-  assert.equal(r.ok, true, r.message);
-  assert.equal(sent.length, 1);
-  assert.deepEqual([sent[0].sessionId, sent[0].message.event.action, sent[0].message.event.from], ['se_1', 'review', 'beta']);
-  const failing = rig();
-  failing.threads.addItem('th_c', { kind: 'block', valid: true, sessionId: 'se_1', handle: 'alpha', block: review });
-  failing.apps.send = () => {
-    throw new Error('Postbox is closing');
-  };
-  assert.match(failing.apps.reviewBlock('se_2', { blockId: 'rv', comments: [{ line: 1, text: 'x' }] }).message, /didn’t hear them: Postbox is closing/);
-  assert.equal(store.items('th_c').at(-1).reviews.length, 1);
 });
