@@ -1,8 +1,9 @@
 // A remote turn’s life on the laptop (#120, the plan’s L5): what the runtime does for an agent whose persona runs on
 // a host (persona.remote.hostId), between its adapter and the host’s daemon. The design is designs/architecture/remote-hosts.md, “Remote
 // hosts” (“Turn states”, “Permission prompts while nobody is connected”, “Postbox’s tools on the host”); D2 decided
-// when a turn resumes on its own. server/runtime.mjs calls it from deliver, its turn context, endTurn, stop and the
-// permission cards, and owns everything else.
+// when a turn resumes on its own. server/runtime.mjs builds it as rt.remote, and a turn’s modules call it as the turn
+// starts, asks, ends or stops (server/deliver.mjs, turn-context.mjs, turn-finish.mjs, turn-stop.mjs); the runtime owns
+// everything else.
 //
 // - Before the adapter starts, the host has its welcome (the host manager’s ensureWelcome), and the runtime allocates
 //   the host turn’s ID and keeps it on the session as se.remoteTurn = { hostId, turn, offset, ... }, so it survives a

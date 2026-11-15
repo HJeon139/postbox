@@ -155,8 +155,8 @@ const PENDING = {
   'turn-checks.mjs': ['checkTurn', 'checkTurn', 'checkTurn', 'stallSteps'],
   'turn-context.mjs': ['text', 'compaction'], // a streamed chunk's state check, and a compaction's number, from the session a held write left
   'turn-end-work.mjs': ['endWork'], // the turn’s own reply or block, to carry its line, maybe held behind a commit
-  // Stop's session as its own write of heldSteps left it, so Keep running's steps run on behind a held commit (#1042).
   'turn-finish.mjs': ['endTurn', 'endTurn', 'needsAfter'], // a turn’s end: its own items and apps, sweeps that write back, and the thread its reply count goes to, maybe held behind a commit (#796)
+  // Stop's session as its own write of heldSteps left it, so Keep running's steps run on behind a held commit (#1042).
   'turn-stop.mjs': ['stop', 'recordStopped', 'turnExited'],
   'tool-ask.mjs': ['askForTool', 'settleToolAsks'], // a second ask for the same tool, and the sweep that settles open asks
   'view-app/consent.mjs': ['askToSee'], // an open download card, which decides whether to add another (#95)
