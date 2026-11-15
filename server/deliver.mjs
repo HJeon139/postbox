@@ -243,9 +243,10 @@ export function retry(rt, threadId, itemId) {
     // retried turn starts, and that turn's end decides them.
     releaseNeed(rt, rt.s.sessions[it.sessionId], itemId, undefined, { turnIds: [] });
     // The entries the failed turn took go with its request again, as a resend the new turn takes (Delivery's retry).
+    // Entries that came since wait for the turn after it, behind the person's messages queued before them (#1146).
     const turnId = newId('turn');
     if (it.turnId) rt.delivery.retry(it.turnId, turnId);
-    const message = { ...asked.message, retry: true, woken: it.wokeOnFailure ?? [], turnId };
+    const message = { ...asked.message, retry: true, woken: it.wokeOnFailure ?? [], turnId, entriesWait: true };
     rt.deliver(it.sessionId, message, { summarizeTo: asked.summarizeTo, threadId });
   });
 }
