@@ -176,8 +176,31 @@ async function settledWhileProgressing(store, promise) {
     // buy a whole new window, so a hang right after it fails within the bound (the integrator’s review of #1324).
     const left = Math.max(began, store.steppedAt) + store.retryBoundMs - Date.now();
     if (left <= 0) return false;
+    const due = Date.now() + left;
     if (await settledWithin(promise, left)) return true;
+    // How late this check's own timer ran: seconds late means this process was starved of CPU, not the disk (#1314).
+    lateBy.set(store, Math.max(0, Date.now() - due));
   }
+}
+
+/** How late each store’s last close() check ran against its timer, for close()’s error (#1314). */
+const lateBy = new WeakMap();
+
+/** Seconds, to a tenth. @param {number} ms */
+const secs = (ms) => `${(ms / 1000).toFixed(1)} s`;
+
+/**
+ * What close() was waiting on when it gave up, so one failure tells a slow disk from a starved process (#1314): the
+ * step the writer began last and how long it had run, or how long since it finished, and how late close()'s own check
+ * ran. A step running long with a check on time is the disk; a check seconds late is this process starved of CPU.
+ * @param {import('./store.mjs').Store} store
+ */
+function stalled(store) {
+  const late = `this check ran ${secs(lateBy.get(store) ?? 0)} late`;
+  const step = store.step;
+  if (!step) return `no disk step had begun; ${late}`;
+  if (step.done) return `${step.what} had finished ${secs(Date.now() - store.steppedAt)} before, with no step since; ${late}`;
+  return `${step.what} had run ${secs(Date.now() - step.since)}; ${late}`;
 }
 
 const CLOSED = () => Object.assign(new Error('The store is closed: Postbox shut it down, so nothing more is saved here.'), { code: 'ECLOSED' });
@@ -217,7 +240,7 @@ export async function close(store) {
   if (!quiet || failed) {
     const why = failed
       ? `its last sync failed (${failed.code ?? 'error'}): ${(failed.cause ?? failed).message}, so the log may not be durable`
-      : `a write or Retry has made no progress for ${store.retryBoundMs} ms and the disk isn’t answering`;
+      : `a write or Retry has made no progress for ${store.retryBoundMs} ms (${stalled(store)})`;
     store.cause = Object.assign(
       new Error(`The store can’t close: ${why}. Stop the process; its lock on the folder goes with it, and the next start takes the folder over.`),
       {

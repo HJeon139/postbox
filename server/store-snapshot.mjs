@@ -4,7 +4,7 @@
 // is retiring (the integrator’s review of 1a: a snapshot that outlived close() deleted the next store’s segment). Split
 // from server/store-commit.mjs under the file-length rule.
 
-import { writeAll } from './store-commit.mjs';
+import { stepOn, stepped, writeAll } from './store-commit.mjs';
 import { snapshotFailed, snapshotSucceeded } from './store-retry.mjs';
 import { snapshotLines } from './store-snapshot-lines.mjs';
 
@@ -14,7 +14,7 @@ const PIECE = 1 << 20; // the snapshot’s text goes to the disk in pieces this 
  * Writes the state to snapshot.json atomically: a temporary file, written in pieces of about 1 MB (one write of
  * the whole text converts it to bytes in one go, which blocked the loop for about half the snapshot’s time, #508’s
  * storage design, “Snapshots and pruning”), fsynced, then renamed over the snapshot. The caller syncs the folder.
- * @param {{ io: typeof import('node:fs/promises'), at: (name: string) => string, state: any, retiring?: boolean, steppedAt?: number }} store
+ * @param {{ io: typeof import('node:fs/promises'), at: (name: string) => string, state: any, retiring?: boolean, steppedAt?: number, step?: any }} store
  */
 export async function writeSnapshot(store) {
   const path = store.at('snapshot.json');
@@ -36,8 +36,9 @@ export async function writeSnapshot(store) {
     }
     if (!store.retiring) {
       while (text.length) text = await writePiece(store, fh, text, tmp);
+      stepOn(store, 'the snapshot’s sync');
       await fh.sync();
-      store.steppedAt = Date.now();
+      stepped(store);
     }
   } finally {
     await fh.close();
@@ -46,20 +47,22 @@ export async function writeSnapshot(store) {
     await store.io.rm(tmp, { force: true }); // the store is closing: the folder may be another’s before this landed
     throw Object.assign(new Error('The snapshot was abandoned: the store closed while it was written.'), { code: 'ECLOSED' });
   }
+  stepOn(store, 'the snapshot’s rename');
   await store.io.rename(tmp, path);
-  store.steppedAt = Date.now();
+  stepped(store);
 }
 
 /**
  * Writes the first PIECE of text, or all of it when shorter, without splitting a surrogate pair; returns the rest. Each
- * piece written is a step close() waits on (#1314). @param {{ steppedAt?: number }} store
+ * piece written is a step close() waits on (#1314). @param {{ steppedAt?: number, step?: any }} store
  */
 async function writePiece(store, fh, text, tmp) {
   let end = Math.min(PIECE, text.length);
   const code = text.charCodeAt(end - 1);
   if (end < text.length && code >= 0xd800 && code <= 0xdbff) end++;
+  stepOn(store, 'a snapshot piece’s write');
   await writeAll(fh, Buffer.from(text.slice(0, end)), `The snapshot ${tmp}`);
-  store.steppedAt = Date.now();
+  stepped(store);
   return text.slice(end);
 }
 
@@ -108,7 +111,7 @@ async function takeSnapshot(store) {
     store.snapshotting = false;
   }
   await syncDir(store);
-  store.steppedAt = Date.now();
+  stepped(store);
   if (store.retiring) return; // closing: the rotation and the pruning are left to the next store’s load
   await store.fh?.close();
   store.fh = null;
@@ -121,6 +124,6 @@ async function takeSnapshot(store) {
   for (const seg of covered) {
     if (seg.name === store.segment || store.retiring) continue;
     await store.io.rm(store.at(seg.name), { force: true });
-    store.steppedAt = Date.now();
+    stepped(store);
   }
 }
