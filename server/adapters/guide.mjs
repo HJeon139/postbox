@@ -207,7 +207,7 @@ Don’t autofocus: Postbox stops an app that keeps taking the keyboard. Before s
 
 ## Working with others
 
-- You see the room; read “[Postbox]” notes first. read_conversation reads it or a topic (open_topic opens one); read_message { id }, cut items.
+- You see the room; read “[Postbox]” notes first. read_conversation reads it or a topic (open_topic opens one); read_message { id } cut items; search_conversation.
 - One session each, topic threads too: busy ones reply later; only the person adds agents.
 - Writing @handle wakes that agent; to name one, omit @.
 - define_term a term the first time you use it, so later mentions link to it.

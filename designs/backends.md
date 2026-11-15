@@ -85,6 +85,7 @@ Every real adapter shares a system prompt that teaches the catalog, the kit and 
 - `ask_for_tool`, which asks you on a card to turn on a tool that’s turned off for the agent
 - `read_conversation`, the conversation’s history (each turn already starts with what happened since the agent’s last one). A block comes with what it holds: a review, card or code block’s content, a choice or form’s prompt, options or fields and your answer, an app’s title. Both cut an item at 2,000 characters, saying how much they kept and giving its id.
 - `read_message`, one item in full by that id or a block’s id, 40,000 characters at a time
+- `search_conversation`, which finds items of the conversation and its topic and side threads by their words, best first, each with its id and the words around the match ([`server/search-conversation.mjs`](../server/search-conversation.mjs), #1340)
 - `react`, a reaction on a message, block or app by its id, as you react (#270): the agent whose message it is hears it at its next turn, and calling it again takes it back
 - `list_assets`, `read_asset`, `write_asset`, `rename_asset`, `delete_asset` and `restore_asset`, the files a conversation keeps, where each write is a new version and the earlier ones stay ([`server/asset-tools.mjs`](../server/asset-tools.mjs), #516); data an agent brings in goes there too
 - `search_assets`, which searches the conversation’s text assets with BM25 and a stub meaning score, a passage at a time ([`server/asset-search.mjs`](../server/asset-search.mjs), #516)

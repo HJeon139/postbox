@@ -125,6 +125,8 @@ export const TOOL_ROUTES = Object.freeze({
   // Asks Postbox when attached, answers from the snapshot when not.
   read_conversation: 'read',
   read_message: 'read',
+  // The index lives only in Postbox, and the snapshot carries none of it (#1340), so it waits for Postbox’s answer.
+  search_conversation: 'ask',
   // A conversation’s assets (#516 S3b) live only in Postbox, and the snapshot carries none of them; a write’s answer
   // names the version it made or why it was refused, so each waits.
   list_assets: 'ask',

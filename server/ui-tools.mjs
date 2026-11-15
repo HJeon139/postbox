@@ -6,6 +6,7 @@
 import { bringToConversation } from './bring.mjs';
 import { cancelWake, scheduleWakeTool } from './schedule-tools.mjs';
 import { recordedTools } from './scheduled-wakes.mjs';
+import { searchConversation } from './search-conversation.mjs';
 import { wakeAgent } from './side-threads.mjs';
 import { askForTool } from './tool-ask.mjs';
 import { openTopic } from './topic-open.mjs';
@@ -56,6 +57,7 @@ export function toolsFor(rt, sessionId, turn = null) {
     read_message(args = {}) {
       return rt.memory.readMessage(se(), args);
     },
+    search_conversation: (args = {}) => searchConversation(rt, se(), args),
     ask_for_tool(args = {}) {
       return askForTool(rt, sessionId, args, endSegment, threadId());
     },
