@@ -4,7 +4,7 @@
 import { client, headerOf } from './client.mjs';
 import { h, plural } from './dom.mjs';
 import { WeakElements } from './held-weakly.mjs';
-import { focusItem } from './needs-nav.mjs';
+import { goToItem } from './needs-nav.mjs';
 
 const S = () => client.state;
 
@@ -50,7 +50,8 @@ export function openAsksEl(se, before = undefined) {
     dataset: { openAsks: se.id },
     onclick: () => {
       before?.();
-      void focusItem(el.dataset.item ?? '', el.dataset.thread);
+      // Its block may be in a side thread of the conversation: that thread opens first (#543).
+      void goToItem(el.dataset.item ?? '', el.dataset.thread ?? '');
     },
   });
   paintOpenAsks(el);
