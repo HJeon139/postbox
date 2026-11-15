@@ -8,6 +8,13 @@ const plain = (/** @type {string} */ s) =>
     .replace(/\s+/g, ' ')
     .trim();
 
+/**
+ * Who an entry is from, as a turn gives it (entryLine in server/turn-input.mjs): the sender, what the entry is, its
+ * time, and whether it was sent again, as in “@critic, a review of your block, 14:02 UTC: ”. Read as “@critic: ”, which
+ * is how the item’s own line starts, so a copied entry is a copy by the same rule as any other line.
+ */
+const ENTRY_FROM = /^(@[A-Za-z0-9_-]+), [^:]*?\d\d:\d\d UTC[^:]*: /;
+
 /** What a cut line ends with: how much of it was kept, and the call that reads the rest. */
 const CUT_NOTE = /^\([\d,]+ (?:of [\d,]+ )?characters\b/;
 
@@ -17,6 +24,7 @@ const CUT_NOTE = /^\([\d,]+ (?:of [\d,]+ )?characters\b/;
  */
 const pieces = (/** @type {string} */ said) =>
   plain(said)
+    .replace(ENTRY_FROM, '$1: ')
     .split('…')
     .map((p) => p.trim())
     .filter((p) => p && !CUT_NOTE.test(p));

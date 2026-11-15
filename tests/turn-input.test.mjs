@@ -58,7 +58,7 @@ test('each source says what it is: a review, an answer, a scheduled wake, a comm
 test('a resend says so, newer posts from the sender are listed, and a deleted item is named as gone', () => {
   assert.equal(
     entryLine({ ...mention, resend: true, postedSince: ['it_900', 'it_901'] }, read),
-    '[it_881] @critic, 14:02 UTC, sent again in case it didn’t reach you: Is the index kept current?\n(@critic posted since: [it_900], [it_901])',
+    '[it_881] @critic, 14:02 UTC, sent again in case it didn’t reach you: Is the index kept current?\n(The same sender posted since: [it_900], [it_901])',
   );
   assert.equal(entryLine({ ...mention, itemId: 'it_gone' }, read), '[it_gone] @critic, 14:02 UTC: (deleted since it was sent)');
 });
@@ -127,4 +127,11 @@ test('a tail none of whose lines fit still says how many were left out and where
       '[Postbox] Also since your last turn, not addressed to you: 1 item, not shown here. read_conversation has it in order, and search_conversation finds one by its words.',
     ),
   );
+});
+
+test('#675: an entry cut at the ceiling ends on a whole character, never half of an emoji', () => {
+  const text = `${'x'.repeat(READING.mention - 1)}😀 and more`;
+  const line = entryLine(mention, () => text);
+  assert.ok(!/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/.test(line), 'no lone first half of a pair');
+  assert.ok(line.includes(`${'x'.repeat(READING.mention - 1)}… (`), 'the emoji goes whole to the part read_message reads');
 });
