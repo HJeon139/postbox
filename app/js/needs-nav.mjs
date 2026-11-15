@@ -55,6 +55,16 @@ export async function focusItem(itemId, threadId = null) {
   return true;
 }
 
+/**
+ * Goes to an item in a thread: opens the thread when it isn’t the one on screen (the side panel for a side or topic
+ * thread), then the item, as goToNeeds does for a need (#543).
+ * @param {string} itemId @param {string} threadId
+ */
+export function goToItem(itemId, threadId) {
+  if (threadId && here().at !== threadId) navigate(hrefOf(threadId));
+  return focusItem(itemId, threadId);
+}
+
 let last = null;
 /** Goes to what an agent needs: its ask’s thread, then the ask itself. */
 export function goToNeeds(se) {
