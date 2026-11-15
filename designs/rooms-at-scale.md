@@ -1,6 +1,6 @@
 # Rooms at scale: the end state
 
-**Status:** draft 1, 10 November 2026. The direction in “What the person decided” is the person’s. The designs under it are proposals for review, and nothing here is built yet. It is the design of record for how a room works with four or more agents, and it replaces patching each feature on its own. Each section says where it changes [`intent.md`](intent.md), and that document is updated as each part lands.
+**Status:** draft 1, 10 November 2026. The direction in “What the person decided” is the person’s. The designs under it are proposals for review. Of them, live state is partly built (#1239, “Live state”, below) and the inbox is designed (#1364); nothing else is built yet. It is the design of record for how a room works with four or more agents, and it replaces patching each feature on its own. Each section says where it changes [`intent.md`](intent.md), and that document is updated as each part lands.
 
 ## Why
 
@@ -53,7 +53,7 @@ flowchart LR
 
 ## Live state: what each agent is doing
 
-**Today.** Every text delta and step is written to the store, and live progress (`toolCalls`, `subagents`, `glimpse`) is written as session patches. In the UAT run `2026-11-08T06-08-26-real-q1`, progress was about half the event log. Yet the page shows little of it while a turn runs: one row at the end of the transcript, steps clipped to 200 and 1,200 characters, and nothing for Postbox’s own tool calls.
+**Today.** Every text delta and step is written to the store, and live progress (`toolCalls`, `subagents`, `glimpse`) is written as session patches. In the UAT run `2026-11-08T06-08-26-real-q1`, progress was about half the event log. Until #1239, the page showed little of it while a turn ran: one row at the end of the transcript, steps clipped to 200 and 1,200 characters, and nothing for Postbox’s own tool calls.
 
 **The harness’s transcript isn’t the record.** Other agents, search and catch-up read replies across backends, so an agent on Codex can’t depend on a Claude transcript. Claude Code deletes its transcripts after 30 days by default ([`architecture/remote-hosts.md`](architecture/remote-hosts.md), “Files and cleanup”), Antigravity keeps an SQLite file, and on a host every transcript stays on the host. Raw streams are 4 to 10 times the size of the event log.
 
@@ -64,6 +64,19 @@ flowchart LR
 - **Each agent’s state is always in view,** wherever you’ve scrolled: running (and its current step), waiting on a job, waiting on another agent, waiting on you, failed, or done. It is derived from records, never from what an agent said in chat.
 - **A turn that dies says so,** with what it held, instead of ending as an empty message.
 - **Status questions needn’t be asked.** “Is the job still running” is answered by the agent’s state and its jobs, always in view. Postbox doesn’t try to tell a status question from work, so a question that mentions an agent still wakes it.
+
+**Built** (#1239, 12 November 2026):
+- **One harness-event contract.** Every adapter reports its harness’s stream as the same events ([`server/harness-events.mjs`](../server/harness-events.mjs)), and Postbox builds the reply, its steps, Work’s calls and the ring from them in one place, for all five backends ([`architecture/adapters.md`](architecture/adapters.md)).
+- **A running reply shows the turn as it happens.** Its words and thoughts sit between its steps in the order they came, and a thought shows as it’s written. The newest call shows in full, an edit as its diff and a command with the end of its output, and older calls are a line each. Detail fades into “N earlier steps” within the reply’s share of the screen, which counts each agent’s words, name line and working row. A post landing below a running reply doesn’t split its steps from its words.
+- **A crowded room fits the screen.** With eight agents or more, a running reply is its name line, a line of its newest words and its step, and “Show the whole reply” opens the rest. An agent’s working row shows only while its reply is off screen.
+- **A finished turn is one line.** When a turn ends, is stopped or is cut off by a restart, its steps fold into its work record at the top of its words. The record opens to the steps and to the turn in Work, and the list under the post keeps only what the calls made.
+- **What it costs,** measured against `main`: no more layout a step than `main`, but 20 to 26% more of the page’s time a turn, because it draws more. A finished turn’s stored steps are 13 to 15% bigger than on `main`, and the log grows 16 to 18% more a turn while the turn runs.
+
+**Still to do,** after the inbox, as [`architecture/services.md`](architecture/services.md) orders it:
+- **Progress is still stored.** The live view’s detail goes to the event log and folds when the turn ends. Live-only progress replaces that, with Turns owning the live buffer and the turn’s record.
+- **Postbox’s own tool calls are still quiet,** and a running step doesn’t show how long it has run.
+- **An agent’s state shows only as running and its step.** Waiting on a job, on another agent or on you, failed and done come from Running, Turns, Work’s jobs, Delivery’s entries and asks.
+- **A turn that dies doesn’t yet say what it held.** Turns’ record of the turn will.
 
 Changes in `intent.md`: the Work rows on the per-turn list, the Layout row on the agent tree, and “The loop”.
 
@@ -291,5 +304,6 @@ flowchart TD
 ## Where it stands
 
 - **Done:** the analysis above, and the person’s direction.
+- **Done:** the harness-event contract and the live view of running turns (#1239): what “Live state” lists as built.
 - **Done:** the inbox’s design: what an entry is, what a turn is given and its budget, and what the build must show (“Delivery: mention, wake and queue on one inbox”). Nothing in it is built.
 - **Next:** review this draft. Then each part gets its own pull request, which updates the rows of `intent.md` it changes, and a UAT scenario with four or more agents that measures what each part claims: time before anything shows in a turn, messages crossed, wakes that found nothing to do, and asks per decision.
