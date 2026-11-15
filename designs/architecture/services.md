@@ -231,6 +231,8 @@ flowchart LR
     - **Lost after the harness accepted it, and not a resend** (#466): the entries go back to waiting, marked as a resend. This loss doesn’t fail the session, so `entry.waiting` starts the one resend on its own.
     - **Lost again on its resend:** the entries are failed, and the session fails.
     - **Any other failure:** the entries are delivered, since the agent was given them, and the session fails. No turn follows until the person acts.
+
+    Turns fails the session (step K), by the same rule; Delivery settles only the entries.
   - `turn.ended`: it marks what the turn took as delivered, counts the chain, and raises `entry.waiting` if entries are left (step R). It is the last listener on `turn.ended`;
   - `turn.exited`: a stopped turn is gone, so `entry.waiting` is raised if the agent has entries;
   - `turn.attached`: a host turn awaiting attach attached, or the wait for it was given up, so `entry.waiting` is raised likewise;
@@ -437,9 +439,9 @@ flowchart TD
   G --> H[turn.replied — Summaries: post the summary when ok, clear the pending summary]
   H --> I{err, and not an AbortError?}
   I -->|failed| J[turn.failed — Checks: stalled steps]
-  J --> K[Turns: failed reply, the session fails, notify]
+  J --> K[Turns: failed reply, notify; the session fails unless the turn was lost after the harness accepted it and wasn’t a resend]
   K --> L2[Turns: mark whom the failure woke, from entriesFrom]
-  L2 --> L4[turn.failed — Delivery: mark what the turn took delivered, count the chain]
+  L2 --> L4[turn.failed — Delivery: settle what the turn took by why it failed, as a resend, failed or delivered; count the chain]
   I -->|no: ok, or stopped by an AbortError| M[turn.ended — Apps: an app-check turn’s fix ends]
   M --> N[turn.ended — Asks: the next need, session state, unread and notification]
   N --> O[turn.ended — Checks: stalled steps, then lint or quiet lint]
