@@ -23,12 +23,14 @@ export const clip = (s, n = 240) => {
 /** A Markdown blockquote line: what it holds is someone else’s words. */
 const BLOCKQUOTE = /^ {0,3}>/;
 /**
- * A line copied from the conversation as Postbox gives it to agents: an item’s id, then who wrote it, as in
- * “[it_4kQ2xY9a] @developer: …” (read_conversation) or “it_4kQ2xY9a: You (@alpha): …”, alone or as a list item.
- * In the search measurement, replies that copied such a line woke the agent it named, which answered unasked
- * (designs/rooms-at-scale.md, “Which mention wakes”).
+ * A line copied from the conversation as Postbox gives it to agents. Every such line starts with an id in brackets:
+ * “[it_4kQ2xY9a] @developer: …” (read_conversation), “[it_4kQ2xY9a] 2026-11-15 14:02 UTC · @developer: …”
+ * (search_conversation). Without the brackets, an id counts only when who wrote the line follows it, as in
+ * “it_4kQ2xY9a: @developer: …” or “it_4kQ2xY9a: You (@alpha): …”, so “it_4kQ2xY9a: @developer, can you rerun it?”
+ * still wakes. Alone or as a list item. In the search measurement, replies that copied such a line woke the agent it
+ * named, which answered unasked (designs/rooms-at-scale.md, “Which mention wakes”).
  */
-const COPIED_LINE = /^\s*(?:[-*]\s+)?\[?it_[\w-]+\]?:?\s+(?:You \()?@[A-Za-z0-9_-]+\)?:/;
+const COPIED_LINE = /^\s*(?:[-*]\s+)?(?:\[[a-z]{2,3}_[\w-]+\]|it_[\w-]+:?\s+(?:You \()?@[A-Za-z0-9_-]+\)?:)/;
 
 /**
  * A message’s text with what it quotes left out, so a mention there names an agent without waking it: code, blockquote

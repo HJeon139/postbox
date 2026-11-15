@@ -157,7 +157,7 @@ The sources cover everything that starts a turn today (the callers of `deliver` 
 A mention makes an entry only where it is written as part of the message. What a message quotes names an agent without waking it:
 - **Code:** a code span or a code block.
 - **A blockquote line.**
-- **A line copied from the conversation as Postbox gives it:** an item’s id, then who wrote it, as in “[it_4kQ2xY9a] @developer: …”.
+- **A line copied from the conversation as Postbox gives it:** one that starts with an id in brackets, as every line of `read_conversation`, `search_conversation` and a turn’s input does (“[it_4kQ2xY9a] @developer: …”), or with an item’s id and then who wrote it (“it_4kQ2xY9a: @developer: …”).
 
 The third is the one that was measured. In the first run of the search measurement, three replies woke an agent that then answered unasked, and the two whose text the run kept were a copied line, such as “it_big0137: @developer: I reran the migration guide…”. Postbox writes who said a line as `@handle:` (`server/item-lines.mjs`), so an agent that copies a line writes a mention. A blockquote wasn’t seen to wake anyone; it is the way a person or an agent quotes on purpose. Addressing an agent with a colon, “@critic: what’s your concern?”, still wakes it. The rule is `parseMentions` in `shared/text.mjs`.
 
