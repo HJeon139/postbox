@@ -115,7 +115,7 @@ flowchart LR
 | The thread | The conversation, or the topic or side thread the item is in |
 | The source | One of the nine below |
 | From and when | Who wrote the item, and when it became final |
-| The state | Waiting, taken by a turn, delivered, failed or stopped, and whether it is a resend. “Taken” is stored when the turn starts, so a restart knows what the turn held. An entry is failed when it can no longer reach a turn: the turn that took it was lost after the harness accepted it and its one resend was lost too, or its agent left the conversation. The person’s Stop marks the agent’s waiting entries stopped: no turn starts from them, the sender sees it, and the agent’s next turn lists their ids in one line |
+| The state | Waiting, taken by a turn, delivered, failed or stopped, and whether it is a resend. “Taken” is stored when the turn starts, so a restart knows what the turn held. An entry is failed when it can no longer reach a turn: the turn that took it was lost after the harness accepted it and its one resend was lost too. Deleting an agent’s session deletes its entries. The person’s Stop marks the agent’s waiting entries stopped: no turn starts from them, the sender sees it, and the agent’s next turn lists their ids in one line |
 | Posted since | The sender’s newer posts in that thread while the entry waited, by id (“@x posted since”) |
 
 The sources cover everything that starts a turn today (the callers of `deliver` in `server/`, read on `main` at 3b8af366). Eight start a turn; a notice never does.

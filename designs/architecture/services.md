@@ -214,7 +214,8 @@ flowchart LR
     - A due wake is an entry with the source “scheduled”, so `noteScheduledTurn` becomes its take, `prepareScheduledRetry` becomes the failed-start rule, and the tools a wake recorded (`recordScheduledTool`, `recordedTools`) are its note.
   - **The person’s own actions:**
     - `edit(entryId)`, `cancel(entryId)` and `stopped(sessionId)`;
-    - `continueChain(threadId)`: Continue at the chain cap.
+    - `continueChain(threadId)`: Continue at the chain cap;
+    - `retry(sessionId)`: the facade’s Retry on a failed turn. The entries that turn took go back to waiting, marked as a resend, and the session is no longer failed, so `entry.waiting` starts the turn.
 
     Until the person’s message is an entry (step 2 below keeps today’s queue in front), editing and canceling a waiting message stay with the queue.
   - **Signals:** `entry.waiting`. It is raised for an agent that has a waiting entry that isn’t a notice, and that:
@@ -226,7 +227,10 @@ flowchart LR
 - **Listens to:**
   - `item.final`: the item’s mentions become entries;
   - `turn.settled`: it settles the turn’s scheduled wake, before Work’s `endWork`, as step E does now;
-  - `turn.failed`: it marks what the turn took as delivered and counts the chain. The session has failed, so no turn follows;
+  - `turn.failed`: it settles what the turn took by why the turn failed, and counts the chain:
+    - **Lost after the harness accepted it, and not a resend** (#466): the entries go back to waiting, marked as a resend. This loss doesn’t fail the session, so `entry.waiting` starts the one resend on its own.
+    - **Lost again on its resend:** the entries are failed, and the session fails.
+    - **Any other failure:** the entries are delivered, since the agent was given them, and the session fails. No turn follows until the person acts.
   - `turn.ended`: it marks what the turn took as delivered, counts the chain, and raises `entry.waiting` if entries are left (step R). It is the last listener on `turn.ended`;
   - `turn.exited`: a stopped turn is gone, so `entry.waiting` is raised if the agent has entries;
   - `turn.attached`: a host turn awaiting attach attached, or the wait for it was given up, so `entry.waiting` is raised likewise;
@@ -234,7 +238,7 @@ flowchart LR
 - **Stop and delete:**
   - The person’s Stop marks the agent’s waiting entries stopped, as `dropWakes` drops them today. A stopped entry starts no turn, its sender sees it was stopped, and the agent’s next turn lists the stopped entries’ ids in one line, so nothing is lost from the record.
   - Send now is facade orchestration: `Turns.stop`, then `send`. Today’s `stopForSendNow` goes.
-  - Deleting a session deletes its entries.
+  - Deleting a session deletes its entries, as delete is plain. The messages they came from stay in the conversation.
 - **On start (`start()`):**
   1. An entry taken by a turn here that has no record of ending reopens once, as a resend.
   2. An entry taken by a host turn that is awaiting attach stays with that turn until it attaches or is given up.
