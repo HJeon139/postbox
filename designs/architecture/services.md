@@ -201,7 +201,7 @@ flowchart LR
   - **One entry per final item and recipient.** An item makes entries once, when it is first final. A block’s later revisions make none; a review makes its own. A replayed tool call or a page’s resend carries the same retry id and makes none (#1138).
   - **Nothing is held, merged or dropped.** Stop and delete are the person’s, below.
   - **A take is stored when the turn starts:** each taken entry records the turn that took it. An entry whose turn failed to start goes back to waiting. One that a harness accepted and then lost to a network failure goes back once, marked as a resend (#466).
-  - **A mention wakes only outside a blockquote, a code span and a code block.**
+  - **A mention wakes only where [`rooms-at-scale.md`](../rooms-at-scale.md), “Which mention wakes”, says.**
 - **Interface:**
   - `send(entry)`: what the `send` port names today. Checks and Apps call it directly once Delivery exists, so the port goes.
   - **Turns calls:**
