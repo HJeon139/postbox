@@ -90,7 +90,7 @@ Changes in `intent.md`: the topic thread rows in “Agents and sessions”, the 
 - **A message addressed to an agent becomes an entry in its inbox** once the sender’s message is final, not while it streams (#834). A person’s mention, an agent’s mention, an answer to an ask and a scheduled wake all arrive the same way.
 - **An idle agent with entries starts a turn.** Its input is its waiting entries in one thread, with sender and time, each whole up to a ceiling. The rest of the room since its last turn comes after, as a bounded tail with a pointer to `read_conversation` and `search_conversation` (“What a turn is given”, below).
 - **Nothing is held, merged or dropped.** A newer post from the same sender is noted on the waiting entry (“@x posted since”) rather than replacing it. No card holds other messages.
-- **The sender sees each entry’s state:** waiting behind @x’s turn since a given time, delivered, or failed.
+- **The sender sees each entry’s state:** waiting behind @x’s turn since a given time, taken by a turn, delivered, failed, or stopped (“What an entry is”, below).
 - **A turn that fails to start leaves its entries waiting.** A network failure after the harness accepted the turn reopens them once, marked as a resend (#466). A failed session doesn’t restart on its own in a loop.
 - **Fewer wakes for nothing.** An acknowledgment wakes no one: agents react instead (#331). An agent waiting on a long job ends its turn and sets a scheduled wake, so it doesn’t hold its queue. While a turn runs, its tool results say how many entries are waiting.
 - **The chain cap stays (principle 6)** as a count. At the cap, entries still arrive, but no new turn starts until the person acts, shown as one line with Continue.
@@ -104,7 +104,7 @@ An entry is one message for one agent, stored when the message it comes from is 
 ```mermaid
 flowchart LR
   M[A final message, review, answer or scheduled wake] -->|one entry per agent it addresses| I[That agent’s inbox in the conversation]
-  I -->|the agent is idle| T[A turn: its entries whole, then a tail of the rest]
+  I -->|the agent is idle| T[A turn: one thread’s entries whole, then a tail of the rest]
   T -->|anything older or elsewhere| P[read_conversation, search_conversation, read_message]
 ```
 
@@ -115,7 +115,7 @@ flowchart LR
 | The thread | The conversation, or the topic or side thread the item is in |
 | The source | One of the nine below |
 | From and when | Who wrote the item, and when it became final |
-| The state | Waiting, taken by a turn, delivered, failed or stopped, and whether it is a resend. “Taken” is stored when the turn starts, so a restart knows what the turn held. The person’s Stop marks the agent’s waiting entries stopped: no turn starts from them, the sender sees it, and the agent’s next turn lists their ids in one line |
+| The state | Waiting, taken by a turn, delivered, failed or stopped, and whether it is a resend. “Taken” is stored when the turn starts, so a restart knows what the turn held. An entry is failed when it can no longer reach a turn: the turn that took it was lost after the harness accepted it and its one resend was lost too, or its agent left the conversation. The person’s Stop marks the agent’s waiting entries stopped: no turn starts from them, the sender sees it, and the agent’s next turn lists their ids in one line |
 | Posted since | The sender’s newer posts in that thread while the entry waited, by id (“@x posted since”) |
 
 The sources cover everything that starts a turn today (the callers of `deliver` in `server/`, read on `main` at 3b8af366). Eight start a turn; a notice never does.
@@ -129,8 +129,8 @@ The sources cover everything that starts a turn today (the callers of `deliver` 
 | Answer | The person’s answer on a block, a card or an ask | `server/blocks.mjs`, `server/tool-ask.mjs`, `server/permission-cards.mjs`, `server/view-app/consent.mjs` | The block or card |
 | Event | What an app sent | `server/app-send-cards.mjs` | The event’s text |
 | Check | What a check found in the agent’s work | `server/lint-delivery.mjs` | Text |
-| Wake | A scheduled wake coming due | `server/scheduled-wakes.mjs` | Its note, as text |
-| Notice | Something Postbox tells an agent that it needn’t act on now | The lines a wake card holds | Text |
+| Scheduled | A scheduled wake coming due | `server/scheduled-wakes.mjs` | Its note, as text |
+| Notice | Something Postbox tells an agent that it needn’t act on now | None rides today: a notice starts a turn of its own (`refusedMentions` in `server/mention-wakes.mjs`) | Text |
 
 - **A review is the one entry an agent causes without an @-mention** (the person’s ruling of 13 November 2026 that a review keeps its wake). It goes through the same inbox, not a path of its own.
 - **Three of today’s notices start a turn, and aren’t notices here.** The person’s answer to a tool ask, a permission card or a consent card is an answer. The request for a thread’s summary is a command.
