@@ -56,13 +56,18 @@ Codex permission modes map to its sandbox and approval policy: **Ask me** uses r
 **Your own adapter.** All model access goes through one interface, in [`server/adapters/adapter.mjs`](../server/adapters/adapter.mjs):
 
 ```js
+import { HarnessEvents } from '../harness-events.mjs';
+
 export class MyAdapter {
   name = 'my-backend';                      // a persona’s `backend` picks its adapter
   capabilities = { permissions: 'none' };   // optional: it doesn’t read Claude Code’s rules
   async deliver(session, message, ctx) {    // one turn; resolve when it ends, throw to fail it
-    ctx.status({ state: 'think', ctx: 12 }); // ring state and % of context used
-    ctx.activity({ id: 't1', label: 'Read schema.md', state: 'running' });
-    ctx.text('Streaming **Markdown**…');     // reply text, in chunks
+    // Your harness’s stream, reported as the contract’s events; Postbox builds the reply, steps and Work from them.
+    const { event } = new HarnessEvents(ctx);
+    event({ kind: 'text', text: 'Reading the schema first.' });
+    event({ kind: 'tool_call', id: 't1', name: 'Read', input: { file_path: 'schema.md' }, final: true });
+    event({ kind: 'tool_result', id: 't1', text: '…the file…' });
+    event({ kind: 'context', percent: 12 });     // the ring’s share of the context window used
     const ok = await ctx.askPermission({ tool: 'Bash', summary: 'run a command', detail: 'npm test' });
     // Blocks, apps, glossary terms and wakes go through the UI tools:
     //   in-process: ctx.tools.show_block({ block }), or over MCP at ctx.mcpUrl
@@ -71,7 +76,7 @@ export class MyAdapter {
 }
 ```
 
-Every real adapter shares a system prompt that teaches the catalog, the kit and the [recipes](recipes.md) ([`server/adapters/guide.mjs`](../server/adapters/guide.mjs)), and the mapper from a stream’s events to the turn context ([`server/adapters/claude-stream.mjs`](../server/adapters/claude-stream.mjs)).
+Every real adapter shares a system prompt that teaches the catalog, the kit and the [recipes](recipes.md) ([`server/adapters/guide.mjs`](../server/adapters/guide.mjs)), and reports its stream through the harness-event contract ([`server/harness-events.mjs`](../server/harness-events.mjs), [architecture/adapters.md](architecture/adapters.md)): name a call as Claude Code names its tools (Bash, Read, Edit, Write), and the steps, Work and the live view follow.
 
 **MCP.** The UI tools are served over JSON-RPC 2.0 at `POST /mcp?session=<session id>&turn=<token>` ([`server/mcp.mjs`](../server/mcp.mjs)). Postbox gives each turn it starts its own token, and a tool call without the running turn’s token is refused (#54), so only an agent turn Postbox started can call them, not a script that knows a session id. A large app goes by `codePath`, a file in the agent’s folder, and an app’s data files by `files`, which the app reads with `postbox.file(name)`. The tools:
 - `show_block`, `update_block`, and `review_block`, which comments on another agent’s review block, line by line or on a selection, with a verdict; each comment becomes a thread on the draft, its agent hears them, and the block still waits on you (#133)
