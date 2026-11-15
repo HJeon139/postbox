@@ -222,7 +222,10 @@ export function describeItem(memory, i, se, n, reader) {
       if (block && block.sessionId === se?.id) return null;
       // An app’s summary is its own wording, never the person’s (#51).
       const quote = i.quote ? `\nThe app’s own summary, not the person’s words: “${text(i.quote)}”` : '';
-      return `The person: ${text(i.text)}${quote}`;
+      // Which block it answered, whose and by its id, so an agent with two open reviews can tell them apart (#1253).
+      const b = block?.block;
+      const on = b ? ` answered @${block.handle}’s ${b.type}${b.title ? ` “${text(b.title)}”` : ''} (${b.id})` : '';
+      return `The person${on}: ${text(i.text)}${quote}`;
     }
     case 'shared': {
       const asked = i.question ? `The person asked: “${text(i.question)}” ` : '';
