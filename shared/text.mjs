@@ -22,7 +22,8 @@ export const clip = (s, n = 240) => {
 
 /**
  * The agents a message @-mentions, in order, without duplicates.
- * Mentions inside code are ignored, and "name@example.com" is not a mention.
+ * Mentions inside code (a fenced block or a code span) or a blockquote are ignored: they name an agent without
+ * addressing it (designs/rooms-at-scale.md, “Which mention wakes”). "name@example.com" is not a mention.
  * @param {string} text
  * @param {string[]} handles  known handles, without the @
  */
@@ -30,7 +31,10 @@ export function parseMentions(text, handles) {
   const known = new Map(handles.map((h) => [h.toLowerCase(), h]));
   const plain = String(text ?? '')
     .replace(/```[\s\S]*?(```|$)/g, ' ')
-    .replace(/`[^`]*`/g, ' ');
+    .replace(/~~~[\s\S]*?(~~~|$)/g, ' ')
+    .replace(/`[^`]*`/g, ' ')
+    // A quoted line, in a list item too: its first mark after any indent, a list marker, is a >.
+    .replace(/^[ \t]*(?:(?:[-*+]|\d+[.)])[ \t]+)?>.*$/gm, ' ');
   const found = [];
   for (const m of plain.matchAll(/(^|[^\w@.])@([A-Za-z0-9_-]+)/g)) {
     const h = known.get(m[2].toLowerCase());
