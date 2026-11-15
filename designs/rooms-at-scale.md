@@ -254,11 +254,14 @@ Postbox’s own modes, cards, rules panel, request judge, push on request and th
 
 The store work under #1155 and #1210 continues alongside, since it doesn’t depend on these.
 
+The inbox is not separate from the code’s structure. It is the step of the services refactor that builds Delivery and Turns ([`architecture/services.md`](architecture/services.md), “Delivery and Turns, built as the inbox”). The rest of the split of `runtime.mjs` happens in it, since most of what is left there forwards to the code it replaces (#1236). Live state comes after it, because an agent’s state is read from the inbox’s entries and Turns’ records, and live-only progress belongs to Turns.
+
 ```mermaid
 flowchart TD
   PERM[Remove the permission layer] --> ASK[Asks]
-  LIVE[Live-only progress and live state] --> TH[Threads per piece of work]
-  INBOX[Inbox per agent] --> TH
+  INBOX[Inbox per agent: Delivery and Turns as services] --> LIVE[Live-only progress and live state]
+  LIVE --> TH[Threads per piece of work]
+  INBOX --> TH
   INBOX --> ASK
   ASK --> BLK[Blocks show state]
   TH --> MOD[Thread lines and moderation from records]
