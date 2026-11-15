@@ -244,7 +244,7 @@ The facade gives it to `server/public-state.mjs`. With the state always in view,
 
 **Order inside this step.** Each item is a pull request of its own, from interface tests to moves to the service, as in steps 0 to 11:
 1. Threads raises `item.final`.
-2. Delivery with stored entries, behind today’s queue. Mentions become entries, and `wake_agent` answers with a refusal: “mention @handle in a message”.
+2. Delivery with stored entries, behind today’s queue. Mentions become entries, and a call to `wake_agent` is refused with what to do instead ([`rooms-at-scale.md`](../rooms-at-scale.md), “After `wake_agent` goes”).
 3. Turns takes entries and builds its input from them.
 4. Live-only progress.
 5. Agent state.
