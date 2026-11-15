@@ -122,7 +122,8 @@ function stoppedHung(rts, turn, live, se, why) {
   for (const it of stoppedHere.length ? stoppedHere : own.slice(-1)) rt.threads.patchItem(turn.threadId, it.id, { note: why });
   updateRemote(rts, se.id, { state: 'hung', at: rts.now(), message: why, resume: null });
   rt.sessions.tell(se.id, `Postbox stopped your last turn on ${rt.s.hosts?.[live.hostId]?.name ?? 'the host'}: ${why.replace(/^Stopped: /, '')}.`);
-  rt.threads.notify('blocking', se, `@${se.handle} was stopped`, why, turn.threadId);
+  // Postbox took the step and the reply's note records it: nothing waits on the person, so it's no alarm (#1218).
+  rt.threads.notify('info', se, `@${se.handle} was stopped`, why, turn.threadId);
 }
 
 /** @param {RemoteTurns} rts @param {Live} live */
