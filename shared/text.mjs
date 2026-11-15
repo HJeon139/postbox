@@ -50,9 +50,10 @@ function copied(line, isCopy) {
  * @param {string} text @param {((itemId: string, said: string) => boolean) | null} isCopy
  */
 function unquoted(text, isCopy) {
-  return String(text ?? '')
-    .replace(/```[\s\S]*?(```|$)/g, ' ')
-    .replace(/`[^`]*`/g, ' ')
+  const plain = text.replace(/```[\s\S]*?(```|$)/g, ' ').replace(/`[^`]*`/g, ' ');
+  // Read line by line only when a line could be a quote: the page reads a draft on every keystroke.
+  if (!plain.includes('>') && !(isCopy && plain.includes('it_'))) return plain;
+  return plain
     .split('\n')
     .filter((line) => !BLOCKQUOTE.test(line) && !(isCopy && copied(line, isCopy)))
     .join('\n');
@@ -67,8 +68,10 @@ function unquoted(text, isCopy) {
  *   on, is the words of the item with that id. Without it, no line counts as copied from the conversation.
  */
 export function parseMentions(text, handles, isCopy = null) {
+  const said = String(text ?? '');
+  if (!said.includes('@')) return [];
   const known = new Map(handles.map((h) => [h.toLowerCase(), h]));
-  const plain = unquoted(text, isCopy);
+  const plain = unquoted(said, isCopy);
   const found = [];
   for (const m of plain.matchAll(/(^|[^\w@.])@([A-Za-z0-9_-]+)/g)) {
     const h = known.get(m[2].toLowerCase());
