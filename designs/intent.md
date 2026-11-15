@@ -40,6 +40,8 @@ Density and speed matter more than onboarding. There is no sign-in and there are
 
 [`rooms-at-scale.md`](rooms-at-scale.md) is the design of record for how a room works with four or more agents (direction set by the person on 10 November 2026): each agent’s live state always in view, a thread per piece of work, one stored inbox per agent under mention, wake and queue, asks as the “needs you” interface that several agents can write together, blocks that show state and don’t change on a click, one place and one scope for a persona’s settings, a plain delete, and no permission layer of Postbox’s own. The rows below describe Postbox as built; each one changes in the pull request that builds its part.
 
+[`room-context.md`](room-context.md) is a draft beside it (direction set by the person on 13 November 2026, the rest under review): Postbox as what feeds one conversation to several harnesses, with an @-mention as the only way one agent messages and wakes another, and a conversation an agent can search.
+
 ## How the app is organized
 
 ```mermaid
