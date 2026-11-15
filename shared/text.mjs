@@ -20,17 +20,39 @@ export const clip = (s, n = 240) => {
   return t.length > n ? `${t.slice(0, partEnd(t, n - 1))}…` : t;
 };
 
+/** A Markdown blockquote line: what it holds is someone else’s words. */
+const BLOCKQUOTE = /^ {0,3}>/;
+/**
+ * A line copied from the conversation as Postbox gives it to agents: an item’s id, then who wrote it, as in
+ * “[it_4kQ2xY9a] @developer: …” (read_conversation) or “it_4kQ2xY9a: You (@alpha): …”, alone or as a list item.
+ * In the search measurement, replies that copied such a line woke the agent it named, which answered unasked
+ * (designs/rooms-at-scale.md, “Which mention wakes”).
+ */
+const COPIED_LINE = /^\s*(?:[-*]\s+)?\[?it_[\w-]+\]?:?\s+(?:You \()?@[A-Za-z0-9_-]+\)?:/;
+
+/**
+ * A message’s text with what it quotes left out, so a mention there names an agent without waking it: code, blockquote
+ * lines, and lines copied from the conversation.
+ * @param {string} text
+ */
+function unquoted(text) {
+  return String(text ?? '')
+    .replace(/```[\s\S]*?(```|$)/g, ' ')
+    .replace(/`[^`]*`/g, ' ')
+    .split('\n')
+    .filter((line) => !BLOCKQUOTE.test(line) && !COPIED_LINE.test(line))
+    .join('\n');
+}
+
 /**
  * The agents a message @-mentions, in order, without duplicates.
- * Mentions inside code are ignored, and "name@example.com" is not a mention.
+ * Mentions inside what the message quotes are ignored (unquoted, above), and "name@example.com" is not a mention.
  * @param {string} text
  * @param {string[]} handles  known handles, without the @
  */
 export function parseMentions(text, handles) {
   const known = new Map(handles.map((h) => [h.toLowerCase(), h]));
-  const plain = String(text ?? '')
-    .replace(/```[\s\S]*?(```|$)/g, ' ')
-    .replace(/`[^`]*`/g, ' ');
+  const plain = unquoted(text);
   const found = [];
   for (const m of plain.matchAll(/(^|[^\w@.])@([A-Za-z0-9_-]+)/g)) {
     const h = known.get(m[2].toLowerCase());

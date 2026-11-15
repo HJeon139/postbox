@@ -11,6 +11,30 @@ test('mentions: known handles only, in order, not in code or emails', () => {
   assert.deepEqual(parseMentions('@critic @critic', h), ['critic']);
 });
 
+// A reply that quotes another agent names it without waking it (designs/rooms-at-scale.md, “Which mention wakes”).
+test('mentions: a line copied from the conversation, with its id and who wrote it, wakes no one', () => {
+  const h = ['developer', 'alpha', 'critic'];
+  // The two replies that woke an agent unasked in the search measurement, as they were written.
+  assert.deepEqual(parseMentions('it_big0137: @developer: I reran the migration guide for the zephyrine milestone; item 137 of the release log.', h), []);
+  assert.deepEqual(parseMentions('it_big0412: You (@alpha): I drafted deprecation warnings; item 412 of the release log.', h), []);
+  // As read_conversation gives a line, and in a list.
+  assert.deepEqual(parseMentions('[it_4kQ2xY9a] @developer: ask @critic about it', h), []);
+  assert.deepEqual(parseMentions('Found two:\n- [it_a1] @developer: first\n- [it_b2] @alpha: second\n\n@critic which one?', h), ['critic']);
+});
+
+test('mentions: a mention in a blockquote wakes no one, and one outside it still does', () => {
+  const h = ['developer', 'critic'];
+  assert.deepEqual(parseMentions('> @developer said the build is green\n\n@critic do you agree?', h), ['critic']);
+  assert.deepEqual(parseMentions('  > quoted @developer\n>> and @critic', h), []);
+});
+
+test('mentions: addressing an agent with a colon, or naming an id in passing, still wakes it', () => {
+  const h = ['developer', 'critic'];
+  assert.deepEqual(parseMentions('@critic: what’s your concern?', h), ['critic']);
+  assert.deepEqual(parseMentions('About it_big0137, @developer: can you rerun it?', h), ['developer']);
+  assert.deepEqual(parseMentions('2 > 1, @critic', h), ['critic']);
+});
+
 test('finished sentences are announced once, and the tail on completion', () => {
   let r = finishedSentences('Yes. Prefaces are easy to spot', 0);
   assert.deepEqual(r.sentences, ['Yes.']);

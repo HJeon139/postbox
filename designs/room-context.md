@@ -60,7 +60,7 @@ Each one removes a mechanism or reuses one that exists. The first and third add 
 
 - **`wake_agent` goes.** A reply that @-mentions three agents wakes all three, and the message itself says who it is for.
 - **`open_topic` loses its `mentions` parameter.** Its first message wakes the agents it @-mentions in its text, as a reply does.
-- **A mention inside quoted or code text names an agent without waking it.** A mention wakes only outside a blockquote, a code span and a code block. In the first run of the search measurement, three replies quoted a seeded line that began with another agent’s `@handle`, and each woke that agent, which answered unasked. With the @-mention as the only wake, that would happen more.
+- **A mention inside what a message quotes names an agent without waking it:** code, a blockquote, or a line copied from the conversation with its id and who wrote it. In the first run of the search measurement, three replies copied a seeded line that began with another agent’s `@handle`, and each woke that agent, which answered unasked. With the @-mention as the only wake, that would happen more ([`rooms-at-scale.md`](rooms-at-scale.md), “Which mention wakes”).
 - **Nothing else changes.** A review still wakes its block’s author, a reaction still wakes no one, and the person’s messages, answers and scheduled wakes arrive as today.
 
 **Where it lands.** In the step that builds the inbox ([`rooms-at-scale.md`](rooms-at-scale.md), “Delivery: mention, wake and queue on one inbox”), not as a patch to `server/mention-wakes.mjs`, `server/topic-open.mjs` or `server/wake-cards.mjs`, which that step replaces.
