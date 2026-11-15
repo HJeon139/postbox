@@ -149,8 +149,9 @@ const PENDING = {
   'thread-summary.mjs': ['settleThread'],
   // Every write of a thread that exists starts from it (#796), and toWrite refuses one that doesn’t exist there. Then
   // the turn’s own items, a move after a pending read, and the thread a topic reply count goes to, maybe opened or
-  // deleting behind a held commit (#796).
-  'threads.mjs': ['patch', 'toWrite', 'pending', 'addItem', 'addItem', 'bringForward'],
+  // deleting behind a held commit (#796). A reply a patch settles, streaming as the patch before it left it, and that
+  // reply and its thread as item.final carries them, both maybe held (#1367).
+  'threads.mjs': ['patch', 'toWrite', 'pending', 'addItem', 'addItem', 'patchItem', 'patchItem', 'patchItem', 'bringForward'],
   // A finished turn’s checks: its own block and the terms and apps it introduced, and the progress steps it stalls.
   'turn-checks.mjs': ['checkTurn', 'checkTurn', 'checkTurn', 'stallSteps'],
   'turn-context.mjs': ['text', 'compaction'], // a streamed chunk's state check, and a compaction's number, from the session a held write left

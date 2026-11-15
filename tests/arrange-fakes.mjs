@@ -80,6 +80,12 @@ export const withPushes = (rt, pushes) => seam(rt, 'pushes', pushes);
 export const withSummarizer = (rt, summarize) => seam(rt.summaries, 'summarize', summarize);
 
 /**
+ * Hears each item as it becomes final, once (item.final, designs/architecture/services.md, “Bus”).
+ * @param {Runtime} rt @param {(d: { threadId: string, item: any, thread: any }) => void} fn
+ */
+export const onItemFinal = (rt, fn) => rt.bus.on('item.final', fn);
+
+/**
  * Hears each change to an item, before it’s written as it would be. Returns a function that stops listening.
  * @param {Runtime} rt @param {(threadId: string, itemId: string, patch: object) => void} fn
  */
