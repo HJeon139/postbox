@@ -1,6 +1,6 @@
 # Postbox as a context multiplexer for agent harnesses
 
-**Status:** 15 November 2026. The direction in “What the person decided” is the person’s; the three changes under it are proposals, and only the third is built (#1341, in review). It keeps only changes that a measurement supports and that remove or reuse something, and it lists the rest under “Not proposed”. It sits beside [`rooms-at-scale.md`](rooms-at-scale.md), which decides how a room of four or more agents is organized.
+**Status:** 15 November 2026. The direction in “What the person decided” is the person’s; the three changes under it are proposals, and only the third is built (#1341, merged). It keeps only changes that a measurement supports and that remove or reuse something, and it lists the rest under “Not proposed”. It sits beside [`rooms-at-scale.md`](rooms-at-scale.md), which decides how a room of four or more agents is organized.
 
 ## What Postbox does
 
@@ -142,5 +142,5 @@ It covers one room and one backend. Codex, Kiro and Antigravity sessions in a lo
 ## Where it stands
 
 - **Done:** the measurement, the person’s direction, and a second read against the backlog by the session that triages Postbox’s issues, which corrected one number and cut three parts.
-- **Done:** `search_conversation`, built and measured on four harnesses (#1341, in review).
+- **Done:** `search_conversation`, built and measured on four harnesses (#1341, merged).
 - **Next:** the person’s review of this design. Then the @-mention as the only wake, built as part of the inbox, where #834 and the quoted mention are settled with it. A long-session measurement of search, and the starting context, are the open measurements.
