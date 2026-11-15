@@ -99,3 +99,30 @@ test('after a failed turn, a mention waiting for the agent and your message ahea
   await settle(rt);
   assert.ok(adapter.calls.some((x) => x.sessionId === alpha.id && JSON.stringify(x.message).includes('A question for you.')));
 });
+
+test('#1146: after a failed turn, what waited goes in the order it was sent once the person retries, the person’s messages included', async () => {
+  // In #1146, a failed turn’s end sent only the agents’ wakes, so the person’s messages went a whole turn behind a wake
+  // sent after them. Now nothing starts the failed agent until the person acts, and then everything goes in order.
+  const { store, rt, adapter, t, alpha, beta } = setup();
+  const failing = held();
+  adapter.next.push(async (c) => {
+    await failing.step(c);
+    throw new Error('API 500');
+  });
+  rt.sendMessage(t.id, { text: '@beta the long job' });
+  await sleep(5);
+  rt.sendMessage(t.id, { text: '@beta P1' });
+  rt.agentWake(alpha.id, 'beta', 'W1');
+  rt.sendMessage(t.id, { text: '@beta P2' });
+  failing.release();
+  await sleep(20);
+  assert.equal(adapter.calls.filter((x) => x.sessionId === beta.id).length, 1, 'nothing went ahead after the failure');
+  const failed = store.items(t.id).find((i) => i.kind === 'agent' && i.status === 'failed');
+  await rt.retry(t.id, failed.id);
+  await settle(rt);
+  const after = adapter.calls.filter((x) => x.sessionId === beta.id).slice(2);
+  assert.deepEqual(
+    after.flatMap((c) => (c.message.messages ?? [c.message]).map((m) => m.text)),
+    ['@beta P1', 'W1', '@beta P2'],
+  );
+});
