@@ -2,8 +2,9 @@
 // “Threads”). Threads is a service: Runtime’s constructor builds it with the store and the bus, and nothing else writes a
 // thread or an item but through it. Its invariants: an item has one live copy (bringForward leaves a stub where it
 // was); a topic’s reply count follows each message; a thread’s lineage ends at its conversation. Where it used to call
-// into another concern, it signals on the bus: item.added (a side thread’s line counts the message) and item.moved
-// (the readers’ markers move to the stub). Until Sessions is a service, the facade’s createThread and view() do their
+// into another concern, it signals on the bus: item.added (a side thread’s line counts the message), item.moved
+// (the readers’ markers move to the stub), and item.final, once per item, when it is first final (Delivery will turn
+// its mentions into entries, designs/architecture/services.md, “Delivery and Turns, built as the inbox”). Until Sessions is a service, the facade’s createThread and view() do their
 // part.
 //
 // The one write of a thread that already exists (#796): it starts from the thread as memory will hold it once what is
@@ -121,12 +122,24 @@ export class Threads {
       this.patchItem(t.parentId, t.rootItemId, { replies, lastReplyAt: it.at });
     }
     this.bus.emit('item.added', { threadId, item: it, thread: t });
+    // Final as it’s added, unless it’s a reply still streaming: that one is final when it settles (patchItem).
+    if (it.status !== 'streaming') this.bus.emit('item.final', { threadId, item: it, thread: t });
     return it;
   }
 
-  /** @param {string} threadId @param {string} id @param {Record<string, any>} patch */
+  /**
+   * Changes an item. A reply that leaves streaming here is final: its segment closed, or its turn ended, failed or was
+   * stopped. It is final once, so a later patch (a block’s revision, a card’s answer, settling it again) raises nothing.
+   * @param {string} threadId @param {string} id @param {Record<string, any>} patch
+   */
   patchItem(threadId, id, patch) {
+    // Only a patch that sets a status can settle a reply, so only it reads the item first, pending as the next write.
+    const settling = Object.hasOwn(patch, 'status') && patch.status !== 'streaming';
+    const settles = settling && this.store.pending.item(threadId, id)?.status === 'streaming';
     this.store.emit('item.patch', { threadId, id, patch });
+    if (!settles) return;
+    const item = this.store.pending.item(threadId, id);
+    this.bus.emit('item.final', { threadId, item, thread: this.store.pending.thread(threadId) });
   }
 
   /**
