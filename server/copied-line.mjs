@@ -29,11 +29,13 @@ const pieces = (/** @type {string} */ said) =>
  * @returns {(itemId: string, said: string) => boolean}
  */
 export function copiedLine(rt, se) {
+  // Worked out once for a message, and only if it has a line to check: finding a conversation’s threads walks every
+  // thread in the store.
+  /** @type {string[] | null} */
+  let threads = null;
   return (itemId, said) => {
-    const item = rt.threads
-      .conversationThreads(se.threadId)
-      .map((/** @type {string} */ th) => rt.store.item(th, itemId))
-      .find(Boolean);
+    threads ??= rt.threads.conversationThreads(se.threadId);
+    const item = threads.map((th) => rt.store.item(th, itemId)).find(Boolean);
     const line = item ? plain(rt.memory.readLine(item, se, Number.POSITIVE_INFINITY) ?? '') : '';
     const parts = pieces(said);
     // A mention with nothing of the item after it, “[it_x] @beta”, is the message’s own.

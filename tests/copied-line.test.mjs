@@ -60,6 +60,29 @@ test('#1370: a hand-off that names an item wakes: other words after the id, an i
   assert.deepEqual(wakes(`[${said.id}] @beta`), ['beta']);
 });
 
+test('#1370: a copy of another conversation’s item wakes: only this conversation’s items are checked', () => {
+  const { rt, store, wakes } = room();
+  const other = rt.createThread({ projectId: Object.keys(store.state.projects)[0], title: 'Elsewhere', personaIds: [] });
+  const there = post(rt, other.id, { kind: 'user', text: 'Elsewhere: @beta owns the changelog for the other release.' });
+  assert.deepEqual(wakes(`[${there.id}] The person: Elsewhere: @beta owns the changelog for the other release.`), ['beta']);
+});
+
+test('#1370: a message’s lines are checked against the conversation’s threads worked out once, and not at all with no line to check', () => {
+  const { rt, said, alpha } = room();
+  let lookups = 0;
+  const found = rt.threads.conversationThreads.bind(rt.threads);
+  rt.threads.conversationThreads = (/** @type {string} */ id) => {
+    lookups++;
+    return found(id);
+  };
+  const handles = ['alpha', 'beta', 'gamma'];
+  const lines = Array.from({ length: 50 }, () => `${said.id}: @beta: ${RERAN}`).join('\n');
+  assert.deepEqual(parseMentions(lines, handles, copiedLine(rt, alpha)), []);
+  assert.equal(lookups, 1, 'one lookup for 50 lines');
+  assert.deepEqual(parseMentions('@beta over to you', handles, copiedLine(rt, alpha)), ['beta']);
+  assert.equal(lookups, 1, 'none for a message with no line that starts with an id');
+});
+
 /** Whom alpha’s turn woke, when its reply is what `text` makes of beta’s earlier message. */
 async function replyWakes(text) {
   const f = setup();
