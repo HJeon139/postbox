@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import { copiedLine } from '../server/copied-line.mjs';
 import { parseMentions } from '../shared/text.mjs';
 import { post } from './arrange.mjs';
-import { setup } from './side-threads-fixture.mjs';
+import { settle, setup } from './side-threads-fixture.mjs';
 
 const RERAN = 'I reran the migration guide for the zephyrine milestone; item 137 of the release log. Nothing here needs anyone yet.';
 
@@ -58,4 +58,19 @@ test('#1370: a hand-off that names an item wakes: other words after the id, an i
   assert.deepEqual(wakes(`${said.id}: @beta: ${RERAN} Can you rerun it for 2.1?`), ['beta']);
   assert.deepEqual(wakes(`${said.id}: @beta: …`), ['beta']);
   assert.deepEqual(wakes(`[${said.id}] @beta`), ['beta']);
+});
+
+/** Whom alpha’s turn woke, when its reply is what `text` makes of beta’s earlier message. */
+async function replyWakes(text) {
+  const f = setup();
+  const said = post(f.rt, f.t.id, { kind: 'agent', sessionId: f.beta.id, personaId: f.beta.personaId, handle: 'beta', text: RERAN, status: 'done' });
+  f.adapter.next.push(async (c) => c.text(text(said)));
+  f.rt.sendMessage(f.t.id, { text: '@alpha find item 137 and reply with its id and its exact text' });
+  await settle(f.rt);
+  return f.adapter.calls.filter((c) => c.sessionId === f.beta.id).length;
+}
+
+test('#1370: an agent’s reply that copies another agent’s line doesn’t wake it, and a hand-off that names the item does', async () => {
+  assert.equal(await replyWakes((said) => `${said.id}: @beta: ${RERAN}`), 0, 'the copied line woke no one');
+  assert.equal(await replyWakes((said) => `${said.id}: @beta: can you rerun it for 2.1?`), 1, 'the hand-off woke beta');
 });
