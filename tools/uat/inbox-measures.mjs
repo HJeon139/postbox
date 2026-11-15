@@ -4,13 +4,10 @@
 //   node tools/uat/inbox-measures.mjs --main <run folder>… --branch <run folder>…
 // Each measure is a function of plain records, so tests/uat-inbox-measures.test.mjs holds them without a run.
 
-import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { parseMentions } from '../../shared/text.mjs';
-
-/** A tool’s name without what a harness puts before it, so one name counts the same on every harness. */
-export const toolName = (/** @type {unknown} */ name) => String(name ?? '').replace(/^(mcp__postbox__|@postbox\/|postbox[./]|pb\.)/, '');
+import { filesIn, jsonLines, turnsIn } from './run-turns.mjs';
 
 /** The reads an agent makes to catch up, which the turn’s input is meant to make unnecessary. */
 const CATCH_UP_READS = new Set(['read_message', 'read_conversation']);
@@ -177,96 +174,6 @@ export function promptTokens(transcript) {
       sizes.push(content.reduce((n, c) => n + String(c?.text ?? '').length, 0));
   }
   return sizes.map((chars) => Math.round(chars / 4));
-}
-
-/** The first number in a list of values that is one. */
-const numberOr = (/** @type {unknown[]} */ ...values) => /** @type {number} */ (values.find((v) => Number.isFinite(v)) ?? 0);
-
-/** A Claude Code turn’s stream: its model requests, the input tokens it reports, and its tool calls in order. */
-function claudeTurn(/** @type {any[]} */ lines) {
-  const events = lines.map((l) => l.event ?? l.line ?? l);
-  const assistant = events.filter((e) => e.type === 'assistant');
-  const usage = events.find((e) => e.type === 'result')?.usage ?? {};
-  return {
-    requests: new Set(assistant.map((e) => e.message?.id)).size,
-    input: numberOr(usage.input_tokens) + numberOr(usage.cache_read_input_tokens) + numberOr(usage.cache_creation_input_tokens),
-    tools: assistant.flatMap((e) => (e.message?.content ?? []).filter((c) => c.type === 'tool_use').map((c) => toolName(c.name))),
-  };
-}
-
-/** A Codex turn’s stream. Its token counts run for the whole thread, so `before` is the thread’s total at the last turn. */
-function codexTurn(/** @type {any[]} */ lines, /** @type {Map<string, number>} */ before) {
-  const usage = lines.filter((e) => e.method === 'thread/tokenUsage/updated');
-  const last = usage.at(-1)?.params;
-  const total = numberOr(last?.tokenUsage?.total?.inputTokens);
-  const input = total - (before.get(last?.threadId) ?? 0);
-  if (last) before.set(last.threadId, total);
-  const started = lines.filter((e) => e.method === 'item/started').map((e) => e.params?.item ?? {});
-  return {
-    requests: usage.length,
-    input: last ? input : null,
-    tools: started
-      .filter((it) => it.type === 'mcpToolCall' || it.type === 'commandExecution')
-      .map((it) => (it.type === 'mcpToolCall' ? toolName(it.tool) : 'shell')),
-  };
-}
-
-/** An Antigravity turn’s stream. */
-function agyTurn(/** @type {any[]} */ lines) {
-  const steps = lines.map((e) => e.step_update).filter(Boolean);
-  const usage = lines.find((e) => e.event === 'result')?.result?.usage;
-  return {
-    requests: steps.filter((s) => s.step_type === 'agent_response' && s.state === 'DONE').length,
-    input: usage ? numberOr(usage.input_tokens) + numberOr(usage.cache_read_tokens) : null,
-    tools: steps
-      .filter((s) => s.step_type === 'tool' && s.state === 'ACTIVE')
-      .map((s) => (s.tool_name === 'call_mcp_tool' ? toolName(s.tool_info?.parameters?.ToolName) : String(s.tool_name))),
-  };
-}
-
-/** A Kiro turn’s stream. Kiro reports no token counts and no model requests. */
-function kiroTurn(/** @type {any[]} */ lines) {
-  const calls = lines.map((e) => e.data?.update).filter((u) => u?.sessionUpdate === 'tool_call');
-  return { requests: null, input: null, tools: calls.map((u) => toolName(String(u.title ?? u.kind).split(/[ :(]/)[0])) };
-}
-
-const jsonLines = (/** @type {string} */ file) =>
-  fs
-    .readFileSync(file, 'utf8')
-    .split('\n')
-    .flatMap((l) => {
-      try {
-        return l ? [JSON.parse(l)] : [];
-      } catch {
-        return [];
-      }
-    });
-
-const filesIn = (/** @type {string} */ dir, /** @type {RegExp} */ like) =>
-  fs.existsSync(dir)
-    ? fs
-        .readdirSync(dir)
-        .filter((f) => like.test(f))
-        .sort()
-        .map((f) => path.join(dir, f))
-    : [];
-
-/**
- * A run’s turns, oldest first, from its recorded streams: `<when it started>-<handle>.jsonl`, in a folder per harness.
- * @param {string} dir  the run’s folder
- */
-export function turnsIn(dir) {
-  const codexBefore = new Map();
-  const read = { '': claudeTurn, codex: (/** @type {any[]} */ l) => codexTurn(l, codexBefore), agy: agyTurn, kiro: kiroTurn };
-  const names = { '': 'Claude Code', codex: 'Codex', agy: 'Antigravity', kiro: 'Kiro' };
-  return Object.entries(read)
-    .flatMap(([sub, turn]) =>
-      filesIn(path.join(dir, 'streams', sub), /^\d+-.+\.jsonl$/).map((file) => {
-        const [started, handle] = path.basename(file, '.jsonl').split(/-(.+)/);
-        return { handle, started: Number(started), harness: names[sub], ...turn(jsonLines(file)) };
-      }),
-    )
-    .sort((a, b) => a.started - b.started);
 }
 
 /** Gives each turn the id Postbox knows it by: that of the agent’s first reply at or after the turn started. */

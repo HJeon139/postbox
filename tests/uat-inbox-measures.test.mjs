@@ -13,9 +13,9 @@ import {
   promptTokens,
   readsAfterWake,
   table,
-  toolName,
   waitingElsewhere,
 } from '../tools/uat/inbox-measures.mjs';
+import { toolName } from '../tools/uat/run-turns.mjs';
 
 const agent = (id, handle, at, text, more = {}) => ({ id, kind: 'agent', handle, at, text, turnId: `turn_${id}`, ...more });
 const person = (id, at, text) => ({ id, kind: 'user', at, text });
