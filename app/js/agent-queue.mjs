@@ -1,7 +1,7 @@
 // Queued messages for one agent (#427): a counted mail button in its row, and a bounded dialog with each message’s actions.
 
 import { conversationRoot, threadsOfConversation } from '/shared/conversation.mjs';
-import { api, client } from './client.mjs';
+import { api, client, itemsOf } from './client.mjs';
 import { h, icon, syncList } from './dom.mjs';
 import { onChangeWhileAlive } from './held-weakly.mjs';
 import { openDialog, openMenu, toast } from './ui.mjs';
@@ -13,9 +13,26 @@ const S = () => client.state;
 function entriesFor(sessionId) {
   const session = S().sessions[sessionId];
   if (!session) return [];
-  return threadsOfConversation(S().threads, session.threadId)
+  const queued = threadsOfConversation(S().threads, session.threadId)
     .map((id) => S().threads[id])
     .flatMap((thread) => (thread.queue ?? []).filter((q) => q.sessionIds.includes(sessionId)).map((q) => ({ thread, q })));
+  return [...queued, ...waitingFor(sessionId)];
+}
+
+/**
+ * An agent’s messages from other agents waiting in its inbox (designs/rooms-at-scale.md, “Delivery”), as rows of its
+ * queue: the same row and actions as a queued wake had, whose routes act on the entry by its id. An entry keeps no copy
+ * of its message, so its text is the item’s, when the page has loaded it.
+ * @param {string} sessionId
+ */
+function waitingFor(sessionId) {
+  const waiting = (S().inbox?.[sessionId] ?? []).filter((e) => e.state === 'waiting' && e.from && e.itemId);
+  return waiting
+    .filter((e) => S().threads[e.threadId])
+    .map((e) => {
+      const text = itemsOf(e.threadId).find((it) => it.id === e.itemId)?.text ?? `A message from @${e.from}.`;
+      return { thread: S().threads[e.threadId], q: { id: e.id, kind: 'wake', from: e.from, text, sessionIds: [sessionId] } };
+    });
 }
 
 /**
@@ -175,7 +192,7 @@ export function openQueue(sessionId, anchor = null) {
     },
   });
   const off = client.on((change) => {
-    if (change.type === 'load' || change.type === 'thread' || change.type === 'session') paint();
+    if (['load', 'thread', 'session', 'entry.add', 'entry.patch'].includes(change.type)) paint();
   });
   anchor?.setAttribute('aria-expanded', 'true');
 }
@@ -200,7 +217,7 @@ function followQueue(session) {
   return (/** @type {HTMLElement} */ b, /** @type {any} */ change, /** @type {() => void} */ off) => {
     if (b.isConnected) mounted = true;
     else if (mounted) return off();
-    if (change.type === 'load' || change.type === 'thread') paintQueueButton(b, session);
+    if (['load', 'thread', 'entry.add', 'entry.patch'].includes(change.type)) paintQueueButton(b, session);
   };
 }
 

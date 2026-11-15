@@ -46,7 +46,7 @@ const given = (rt, entries) => entries.map((e) => messageOf(rt, e));
  * error reads it here. A review carries the event it was sent with; a notice is Postbox’s own words.
  * @param {any} rt @param {any} e
  */
-function messageOf(rt, e) {
+export function messageOf(rt, e) {
   if (e.message) return { ...e.message, at: e.at, seq: e.seq };
   if (!e.itemId) return { kind: 'notice', text: e.text, at: e.at, seq: e.seq };
   const it = rt.store.pending.item(e.threadId, e.itemId);

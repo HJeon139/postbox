@@ -110,7 +110,8 @@ test('Remove and Send now still act on one queued item at a time', async ({ page
   ).toEqual(['Send only this now', 'Leave this queued']);
 });
 
-test('a newer request replaces an older queued wake when the batch starts', async ({ page }) => {
+// Nothing is replaced (designs/rooms-at-scale.md, “Delivery”): #374 swapped an older wake for its sender’s newer one.
+test('a newer request from the same sender doesn’t replace the older one: all three reach the agent in one reply', async ({ page }) => {
   const r = await busyRoom(page);
   arrange.wake(app.rt, r.senders[0].id, r.worker.handle, 'Review the old revision');
   arrange.wake(app.rt, r.senders[0].id, r.worker.handle, 'Review the current revision');
@@ -120,12 +121,16 @@ test('a newer request replaces an older queued wake when the batch starts', asyn
   releases.get(r.worker.id)();
   await idle(r);
   await synced(page, app);
-  await expect(page.getByText('Answered 2 queued messages.', { exact: true })).toBeVisible();
+  await expect(page.getByText('Answered 3 queued messages.', { exact: true })).toBeVisible();
   expect(turnsFor(r)).toHaveLength(2);
-  expect(turnsFor(r)[1].message.messages.map((message) => message.text)).toEqual(['Review the current revision', 'Check the tests too']);
+  expect(turnsFor(r)[1].message.messages.map((message) => message.text.split('\n')[0])).toEqual([
+    'Review the old revision',
+    'Review the current revision',
+    'Check the tests too',
+  ]);
 });
 
-test('an unaddressed newer post reaches the waiting target exactly once', async ({ page }) => {
+test('an unaddressed newer post is named on the waiting message as posted since, and the message reaches its target once', async ({ page }) => {
   const r = await busyRoom(page);
   const sender = r.senders[0];
   arrange.wake(app.rt, sender.id, r.worker.handle, 'Review the older context');
@@ -144,8 +149,7 @@ test('an unaddressed newer post reaches the waiting target exactly once', async 
   await expect(mail(page, r)).toBeHidden();
   await expect(page.getByText('Answered 1 queued messages.', { exact: true })).toBeVisible();
   expect(turnsFor(r)).toHaveLength(2);
-  expect(turnsFor(r)[1].message.text).toBe(newer.text);
-  expect(turnsFor(r)[1].message.itemId).toBe(newer.id);
+  expect(turnsFor(r)[1].message.text).toBe(`Review the older context\n\n(@${sender.handle} posted since: ${newer.id}. read_message reads each.)`);
 });
 
 test('#427 ten queued messages stay out of the composer and edit in the agent’s bounded mail view', async ({ page }) => {

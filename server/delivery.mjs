@@ -211,6 +211,30 @@ export class Delivery {
   }
 
   /**
+   * The person removed one waiting entry from the agent’s queue: it’s stopped, so no turn starts from it, and the
+   * sender can see it. Returns it, or null when it isn’t waiting there any more.
+   * @param {string} sessionId @param {string} entryId @returns {Entry|null}
+   */
+  cancel(sessionId, entryId) {
+    const e = this.waiting(sessionId).find((x) => x.id === entryId);
+    if (!e) return null;
+    this.patch(e, { state: 'stopped' });
+    return e;
+  }
+
+  /**
+   * The person’s Send now on one waiting entry: a turn takes it alone, ahead of the rest. Returns it, or null when it
+   * isn’t waiting there any more. @param {string} sessionId @param {string} entryId @param {string} turnId
+   * @returns {Entry|null}
+   */
+  takeOne(sessionId, entryId, turnId) {
+    const e = this.waiting(sessionId).find((x) => x.id === entryId);
+    if (!e) return null;
+    this.patch(e, { state: 'taken', takenBy: turnId });
+    return { ...e, state: 'taken', takenBy: turnId };
+  }
+
+  /**
    * The person stopped the agent: its waiting entries are stopped, so none starts a turn, and the sender can see it.
    * @param {string} sessionId @returns {Entry[]} the entries stopped
    */

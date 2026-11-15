@@ -1570,7 +1570,7 @@ export function mountComposer(threadId, { side = false } = {}) {
   paintAtt();
   autosize();
   const off = client.on((ch) => {
-    if (['thread', 'session', 'connection', 'outbox', 'load', 'persona', 'host'].includes(ch.type)) paint();
+    if (['thread', 'session', 'connection', 'outbox', 'load', 'persona', 'host', 'entry.add', 'entry.patch'].includes(ch.type)) paint();
   });
   const unwatch = draft.watch(paintAtt);
   return {

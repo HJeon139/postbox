@@ -18,6 +18,7 @@ import { Checks } from './check-service.mjs';
 import { attachClaudeSession, claudeSessions, mirror, pollMirror, rearmMirrors, stopMirrorFor, stopMirrors } from './claude-mirror.mjs';
 import { deliver, retry } from './deliver.mjs';
 import { Delivery } from './delivery.mjs';
+import { cancelEntry, isEntryId, refuseEntryEdit, sendEntryNow } from './entry-queue.mjs';
 import { startFromEntries } from './entry-turns.mjs';
 import { httpError } from './helpers.mjs';
 import { endJob, expireStaleJobs, recordJob } from './job-records.mjs';
@@ -352,17 +353,18 @@ export class Runtime {
     return queue.postAndDeliver(this, threadId, { text, attachments }, targets);
   }
 
+  // An agent’s waiting message in the queue is an entry in its inbox (server/entry-queue.mjs).
   editQueued(threadId, queueId, text) {
-    return queue.editQueued(this, threadId, queueId, text);
+    return isEntryId(queueId) ? refuseEntryEdit() : queue.editQueued(this, threadId, queueId, text);
   }
 
   cancelQueued(threadId, queueId) {
-    return queue.cancelQueued(this, threadId, queueId);
+    return isEntryId(queueId) ? cancelEntry(this, threadId, queueId) : queue.cancelQueued(this, threadId, queueId);
   }
 
   /** Send now: stops the agent’s current turn and delivers the queued message at once. */
   sendQueuedNow(threadId, queueId) {
-    return queue.sendQueuedNow(this, threadId, queueId);
+    return isEntryId(queueId) ? sendEntryNow(this, threadId, queueId) : queue.sendQueuedNow(this, threadId, queueId);
   }
 
   /** Once Postbox listens after a restart: what waited in the queues goes now, a wake or a message of yours (#228). */
