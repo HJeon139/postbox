@@ -67,7 +67,7 @@ Each one removes a mechanism or reuses one that exists. The first and third add 
 
 What has to change with it:
 - **[#834](https://github.com/HJeon139/postbox/issues/834), open:** a mention handed over while its reply still streamed reached the agent cut to “I”. An inbox entry made once the message is final fixes it in the same step.
-- **The notice for a reply too long to hand off** tells its agent to use `wake_agent` (`server/mention-wakes.mjs`, `refusedMentions`). It says instead to post a shorter reply that @-mentions the agent.
+- **The notice for a reply too long to hand off** tells its agent to use `wake_agent` (`server/mention-wakes.mjs`, `refusedMentions`). It goes with the refusal: an inbox entry points at its message and is cut with its id, so no mention is refused for length ([`rooms-at-scale.md`](rooms-at-scale.md), “What an entry is”).
 - **The card that asks again for a declined agent.** After the person declines adding an agent to a conversation, a mention in a reply asks no more, and `wake_agent` still does ([#693](https://github.com/HJeon139/postbox/issues/693), `server/wake-cards.mjs`). That card goes with the others when needs you becomes asks ([`rooms-at-scale.md`](rooms-at-scale.md), “Asks: needs you as an interface”).
 - **What names the tool:** every caller and test.
 

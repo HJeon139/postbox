@@ -88,13 +88,13 @@ Changes in `intent.md`: the topic thread rows in “Agents and sessions”, the 
 
 **End state.** Mentions and the queue stay. `wake_agent` goes: an @-mention is the only way one agent wakes another (the person’s decision of 13 November 2026, [#481](https://github.com/HJeon139/postbox/issues/481); [`room-context.md`](room-context.md), “1. One way in: the @-mention”). Underneath them, each agent has one stored inbox per conversation.
 - **A message addressed to an agent becomes an entry in its inbox** once the sender’s message is final, not while it streams (#834). A person’s mention, an agent’s mention, an answer to an ask and a scheduled wake all arrive the same way.
-- **An idle agent with entries starts a turn.** Its input is its entries, whole and grouped by thread, with sender and time. The rest of the room since its last turn comes after, as a bounded tail with a pointer to `read_conversation` and `search_conversation` (“What a turn is given”, below).
+- **An idle agent with entries starts a turn.** Its input is its waiting entries in one thread, with sender and time, each whole up to a ceiling. The rest of the room since its last turn comes after, as a bounded tail with a pointer to `read_conversation` and `search_conversation` (“What a turn is given”, below).
 - **Nothing is held, merged or dropped.** A newer post from the same sender is noted on the waiting entry (“@x posted since”) rather than replacing it. No card holds other messages.
 - **The sender sees each entry’s state:** waiting behind @x’s turn since a given time, delivered, or failed.
 - **A turn that fails to start leaves its entries waiting.** A network failure after the harness accepted the turn reopens them once, marked as a resend (#466). A failed session doesn’t restart on its own in a loop.
 - **Fewer wakes for nothing.** An acknowledgment wakes no one: agents react instead (#331). An agent waiting on a long job ends its turn and sets a scheduled wake, so it doesn’t hold its queue. While a turn runs, its tool results say how many entries are waiting.
 - **The chain cap stays (principle 6)** as a count. At the cap, entries still arrive, but no new turn starts until the person acts, shown as one line with Continue.
-- **Postbox’s own notices** (“your mention woke no one”) are entries that start no turn and ride the next one.
+- **Postbox’s own notices** (“@x isn’t in this conversation, so your mention woke no one”) are entries that start no turn and ride the next one. Anything that must start a turn has another source (“What an entry is”, below).
 - **Retries carry an id,** so a page’s resend or a host’s replayed tool call is stored once (#1138).
 
 ### What an entry is
@@ -110,14 +110,34 @@ flowchart LR
 
 | Field | What it holds |
 |---|---|
-| The item | The id of the message, block or wake it comes from. The entry keeps no copy of the text |
+| The item | The id of the message, block or card it comes from, when there is one. The entry keeps no copy of an item’s text |
+| Its own text | Only for an entry with no item: a check’s findings, a scheduled wake’s note, an event, a summary’s request, a notice. Within the ceiling for one entry |
 | The thread | The conversation, or the topic or side thread the item is in |
-| The source | A mention, a review, an answer, a scheduled wake, or a notice from Postbox |
+| The source | One of the nine below |
 | From and when | Who wrote the item, and when it became final |
-| The state | Waiting, delivered or failed, and whether it is a resend |
+| The state | Waiting, taken by a turn, delivered, failed or stopped, and whether it is a resend. “Taken” is stored when the turn starts, so a restart knows what the turn held. The person’s Stop marks the agent’s waiting entries stopped: no turn starts from them, the sender sees it, and the agent’s next turn lists their ids in one line |
+| Posted since | The sender’s newer posts in that thread while the entry waited, by id (“@x posted since”) |
 
-- **A review is an entry too.** A review of an agent’s block makes an entry for the block’s author with the source “review” (the person’s ruling of 13 November 2026 that a review keeps its wake). It is the one entry an agent causes without an @-mention, and it goes through the same inbox, not a path of its own.
-- **A notice starts no turn.** It waits for the agent’s next turn, as above.
+The sources cover everything that starts a turn today (the callers of `deliver` in `server/`, read on `main` at 3b8af366). Eight start a turn; a notice never does.
+
+| Source | What makes it | Today | Item or text |
+|---|---|---|---|
+| Mention | An @-mention in a final message, the person’s or an agent’s | `server/mention-wakes.mjs`, `server/message-queue.mjs` | The message |
+| Person | The person’s message that names no one, for the agent that spoke last there | `targetsOf` in `server/send-message.mjs` | The message |
+| Command | A `/` command, or the person’s request for a thread’s summary | `server/agent-commands.mjs`, `server/share-back.mjs` | The command’s item, or the request’s text |
+| Review | A review of the agent’s block | `review_block` | The block |
+| Answer | The person’s answer on a block, a card or an ask | `server/blocks.mjs`, `server/tool-ask.mjs`, `server/permission-cards.mjs`, `server/view-app/consent.mjs` | The block or card |
+| Event | What an app sent | `server/app-send-cards.mjs` | The event’s text |
+| Check | What a check found in the agent’s work | `server/lint-delivery.mjs` | Text |
+| Wake | A scheduled wake coming due | `server/scheduled-wakes.mjs` | Its note, as text |
+| Notice | Something Postbox tells an agent that it needn’t act on now | The lines a wake card holds | Text |
+
+- **A review is the one entry an agent causes without an @-mention** (the person’s ruling of 13 November 2026 that a review keeps its wake). It goes through the same inbox, not a path of its own.
+- **Three of today’s notices start a turn, and aren’t notices here.** The person’s answer to a tool ask, a permission card or a consent card is an answer. The request for a thread’s summary is a command.
+- **A thread’s summary keeps its own destination.** Summaries makes the command’s entry and posts the reply in the parent conversation, as `summarizeTo` does today. The entry has no field for it.
+- **No mention is refused for its reply’s length.** Today a reply over 50,000 characters wakes no one, and its agent gets a notice turn telling it to use `wake_agent` (`refusedMentions` in `server/mention-wakes.mjs`, #362). An entry points at its item and is cut at the ceiling with its id, so the refusal, its notice and its line in the conversation go.
+- **A failed reply’s mentions are entries like any other** (#485). The entry’s line says the reply failed and may be cut off, read from the item, where today the text is prefixed (`server/turn-finish.mjs`).
+- **While today’s queue stays,** during the build, the person’s message to a busy agent becomes an entry only when the queue releases it. Until then its sender sees the queue’s state, not an entry’s.
 
 ### Which mention wakes
 
@@ -127,19 +147,17 @@ A mention makes an entry only where it is written as part of the message. A ment
 
 Three parts, in this order. The room’s facts that come with each turn today are not changed here.
 
-1. **The agent’s entries, whole,** grouped by thread, oldest first in each group. Each has its item’s id, who it is from and when. A group in a topic or side thread starts with that thread’s title and id.
+1. **The agent’s waiting entries in one thread, oldest first.** Each has its id, who it is from and when, and its item’s whole text up to the ceiling for one entry. In a topic or side thread they start with that thread’s title and id.
 2. **The tail:** the newest items since the agent’s last turn that are not among its entries, one line each, cut as `read_conversation` cuts them.
 3. **One line on the rest:** how many items the tail left out, and that `read_conversation` reads them in order and `search_conversation` finds one by its words.
 
-A turn with one entry in a topic thread and one in the conversation reads like this:
+A turn with two entries in a topic thread reads like this:
 
 ```text
-[Postbox] 2 messages for you.
+[Postbox] 2 messages for you in the thread “Search index” (th_12). Your reply posts there. 1 more waits in the conversation, and starts your next turn.
 
-In the thread “Search index” (th_12):
 [it_881] @critic, 14:02 UTC: the whole message
 
-In this conversation:
 [it_890] The person, 14:05 UTC: the whole message
 
 [Postbox] Also since your last turn, not addressed to you (the last 12 of 31 items; read_conversation has the rest in order, and search_conversation finds one by its words):
@@ -158,7 +176,7 @@ The budget is a ceiling no higher than today’s catch-up, not a saving. In the 
 
 | Part | Ceiling | Today’s limit it keeps |
 |---|---|---|
-| One entry | 15,000 characters, then cut with its id for `read_message` | `READING.mention` (`shared/limits.mjs`) |
+| One entry | 15,000 characters, then cut with its id for `read_message`. A message can be 50,000 characters (`SENDING.message`), so “whole” holds up to this ceiling | `READING.mention` (`shared/limits.mjs`) |
 | All entries in one turn | 32,000 characters. Entries past it stay waiting and start the next turn | The summary’s cap on mentions (`server/catch-up-keep.mjs`) |
 | The tail | 40 items and 16,000 characters, each item cut at 2,000 | `CATCH_UP_ITEMS`, `CATCH_UP_CHARS`, `READING.item` |
 
@@ -166,12 +184,11 @@ Two differences from today, both from “nothing is dropped”: the newest entry
 
 ### Where a reply goes
 
-A turn’s reply posts in one thread, decided by its entries and not by a rule the agent must remember. A session that resumes keeps the guide it started with ([#515](https://github.com/HJeon139/postbox/issues/515)), so a default that a guide line carries would not reach running sessions.
+A turn takes the waiting entries of one thread, the thread of its oldest waiting entry, and its reply posts there. Entries in other threads wait and start the next turn.
 
-- **Entries in one thread:** the reply posts there.
-- **Entries in several threads:** the reply posts in the thread of the newest entry, and the turn’s input says so in one line. The agent answers another thread with `open_topic`, which posts in a topic thread by its message’s id today.
-
-Open question, which the build’s UAT answers with a count: how often a turn holds entries from more than one thread. If it is rare, the simpler rule is that a turn takes one thread’s entries and the others wait.
+- **It holds by construction.** A session that resumes keeps the guide it started with ([#515](https://github.com/HJeon139/postbox/issues/515)), so a default that a guide line carries would not reach running sessions. Here the agent chooses nothing, and the input needs no line on where an answer to each entry goes.
+- **It costs few turns.** In the measured room 92 of 1,240 turns took several waiting messages at once ([`room-context.md`](room-context.md), “What works today, and is kept”). At most those 7% could have held more than one thread, and each would have been two turns. That room used threads less than this design intends, so the build reports the count.
+- **The other rule was considered:** one turn with every thread’s entries, the reply in the newest entry’s thread. An agent would answer an entry in a topic thread with `open_topic`, but nothing posts in the conversation from a topic thread except `bring_to_conversation`, which is for when the person asks.
 
 ### After `wake_agent` goes
 
@@ -194,7 +211,7 @@ One UAT scenario with four agents, run on `main` and on the branch, at least thr
 | Postbox’s input per turn | Characters of the entries, tail and facts, divided by four | No more than `main` |
 | Input tokens per turn | What each harness reports | Reported, not a pass mark: its range is wide |
 | A resumed session | A session started on `main` and resumed on the branch hands work to another agent | The hand-off arrives, and what the call to `wake_agent` returned is recorded |
-| Turns with entries from several threads | Counted from the inbox | Reported, to settle “Where a reply goes” |
+| Entries waiting in another thread when a turn starts | Counted from the inbox | Reported: it is what one thread a turn costs in turns |
 
 What is and isn’t measured:
 - **Claude Code** is the one harness with a measured long room, and it reports every figure above.
