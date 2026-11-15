@@ -158,13 +158,13 @@ The list refines the starting point from the data:
 Split from Memory in step 10 (“Risks”).
 - **Owns:** the short summary a model writes on a topic or side thread’s line once the thread is quiet (#228), and the timers that wait for it.
 - **Interface:** `settleThread(threadId)`, `summarizeThread(threadId, summarize)`, `summarizerOf(threadId)`, `stopTimers()`, and `summarize`, the model a test gives in place of Haiku.
-- **Depends on:** Store, Threads, Sessions, Personas, Running. External: the ledger, which Work holds too, the adapter registry, for the Agent SDK, and the server’s settings (`config`), where a test shortens the wait.
+- **Depends on:** Store, Threads, Sessions, Personas, Running, and, from the inbox step, Delivery: a summary’s request is an entry Summaries sends with the source “command”, and its `turn.replied` listener posts the summary (step H of “The end of a turn”). It knows the turn that answered the request from the turn’s record of the entries it took. External: the ledger, which Work holds too, the adapter registry, for the Agent SDK, and the server’s settings (`config`), where a test shortens the wait.
 
 ### Hosts
 
 - **Owns:** remote hosts: adding, updating and removing them, their status, installs and keep-updated (designs/architecture/remote-hosts.md).
 - **Interface:** `get`, `add`, `update`, `remove`, `status`, `describeInstall`, `install`, `retry`, `setKeepUpdated`, `setProjectFolder`, `watch()`.
-- **Depends on:** Store, Personas, Running, and the `hostTurns` port (`busyOn`, `sessionsOn`, `stopOn`, `cancel`, `confirmStops`, `stoppingSession`: the host turns that an update or a removal stops). External: the host manager.
+- **Depends on:** Store, Personas, Running, and the `hostTurns` port (`busyOn`, `sessionsOn`, `stopOn`, `cancel`, `confirmStops`, `stoppingSession`: the host turns that an update or a removal stops). External: the host manager. In the inbox step, Hosts takes this interface from Turns, and the port goes (“Delivery and Turns, built as the inbox”).
 
 ### Delivery and Turns, built as the inbox
 
@@ -210,7 +210,7 @@ flowchart LR
     - `entriesFrom(itemId)`.
   - `stateOf(sessionId)`: a sender’s view of each entry, and an agent’s “waiting behind @x since”.
   - **Scheduled wakes:**
-    - `schedule` and `cancel` add and remove them.
+    - `schedule` and `cancelSchedule` add and remove them.
     - A due wake is an entry with the source “scheduled”, so `noteScheduledTurn` becomes its take, `prepareScheduledRetry` becomes the failed-start rule, and the tools a wake recorded (`recordScheduledTool`, `recordedTools`) are its note.
   - **The person’s own actions:**
     - `edit(entryId)`, `cancel(entryId)` and `stopped(sessionId)`;
@@ -222,11 +222,14 @@ flowchart LR
     - has a session that hasn’t failed;
     - isn’t held at the chain cap.
 
-    It is raised when such an entry arrives, after `turn.ended`, after an exiting turn is gone, after `attached`, and when an attach is given up.
+    It is raised when such an entry arrives, and from the listeners below.
 - **Listens to:**
   - `item.final`: the item’s mentions become entries;
   - `turn.settled`: it settles the turn’s scheduled wake, before Work’s `endWork`, as step E does now;
-  - `turn.ended`: it marks what the turn took as delivered, counts the chain, and raises `entry.waiting` if entries are left (steps R and L3);
+  - `turn.failed`: it marks what the turn took as delivered and counts the chain. The session has failed, so no turn follows;
+  - `turn.ended`: it marks what the turn took as delivered, counts the chain, and raises `entry.waiting` if entries are left (step R). It is the last listener on `turn.ended`;
+  - `turn.exited`: a stopped turn is gone, so `entry.waiting` is raised if the agent has entries;
+  - `turn.attached`: a host turn awaiting attach attached, or the wait for it was given up, so `entry.waiting` is raised likewise;
   - `persona.updated`: it drains an agent moved off a host, as `drainMovedOff` does now.
 - **Stop and delete:**
   - The person’s Stop marks the agent’s waiting entries stopped, as `dropWakes` drops them today. A stopped entry starts no turn, its sender sees it was stopped, and the agent’s next turn lists the stopped entries’ ids in one line, so nothing is lost from the record.
@@ -261,18 +264,26 @@ flowchart LR
 - **Interface:**
   - `start(sessionId)`, `stop(sessionId, reason)`;
   - the host-turn interface Hosts used through the `hostTurns` port: `busyOn`, `sessionsOn`, `stopOn`, `cancel`, `confirmStops` and `stoppingSession`. Hosts takes it from Turns, and the port goes;
-  - **signals,** raised on the Bus in this order: `turn.started`, `turn.settled` and `turn.ended`, each with the turn, its outcome and `err`.
+  - **signals,** raised on the Bus, each with the turn, its outcome and `err`. They are the end steps below:
+    - starting: `turn.started`;
+    - ending: `turn.ending`, `turn.settled`, `turn.replied`, then `turn.failed` or `turn.ended`;
+    - stopping: `turn.stopping` and `turn.exited`;
+    - host turns: `turn.attached`, with `given: true` when the wait is given up.
+
+    The Bus calls a signal’s listeners in the order the root adds them, as it does for `persona.updated`.
 - **No one else starts a turn.** `rt.deliver` has 15 calling modules today (#1236, the inventory of 15 November). Twelve of them hand an agent a message, and they call Delivery’s `send` instead: the queue, mention wakes, side threads, scheduled wakes, share-back, agent commands, blocks, and the permission, wake, tool-ask, app-send and download cards. The other three aren’t messages, and they become Turns’ own steps:
   - `retryHeld`: a start that waited behind a held commit;
-  - `release`: a stopped turn has exited, so Delivery raises `entry.waiting` if the agent has entries;
+  - `release`: a stopped turn has exited; Turns raises `turn.exited`, and Delivery raises `entry.waiting` if the agent has entries;
   - `resume`: a host turn resumed after a restart (`remote/turns-resume.mjs`).
 - **Calls into waiting code:** until the permission layer is removed and Asks is built, Turns reaches them through one port, `asks`. It covers `requestPermission`, `recordDenial`, `settlePermission`, the needs (`keptTurns`, `offerNeed`, `releaseNeed`) and `card.opened`. Nothing else in Turns calls waiting code.
 - **Listens to:** `entry.waiting`.
 - **Depends on:** Store, Bus, Running, Threads, Sessions, Personas, Placement, Memory, Summaries, Assets, Work, Checks, Apps, Delivery, and the `asks` port.
-- **The end of a turn** keeps its order (“The end of a turn”, below), and changes three steps:
-  - **Step H** (posting a thread’s summary, clearing the pending one) is Summaries’ listener on `replied`, since `shareText` and `clearSummaryPending` are Summaries’ (#1236).
+- **The end of a turn** keeps its order, as Bus signals (“The end of a turn”, below). Three steps change:
+  - **Step H** (posting a thread’s summary, clearing the pending one) is Summaries’ listener on `turn.replied`, since `shareText` and `clearSummaryPending` are Summaries’ (#1236).
   - **Steps L and L3** (wake mentions with the failure, take pending) go: the failed reply is final, so its mentions are entries.
-  - **Step L2** (marking whom the failure woke) reads them with `entriesFrom`. Step E is Delivery’s `turn.settled` listener, and step R its `turn.ended` listener.
+  - **Step L2** (marking whom the failure woke) reads them with `entriesFrom`.
+
+  Step E is Delivery’s `turn.settled` listener, and step R its `turn.ended` listener.
 
 **Agent state** is read, never stored, and is built in the live-state step from what this step records. It comes from Running (a live turn, exiting, awaiting attach), Turns’ current step and its last turn’s end, Work’s jobs, Delivery’s `stateOf`, and asks once they exist. Each agent shows one of:
 - running, with its current step;
@@ -406,35 +417,41 @@ Waiting code also depends on itself both ways, and the steps that redo it settle
 
 ### The end of a turn
 
-`endTurn` (`server/turn-finish.mjs`) on 2259cebe, in order, with the concern each step belongs to. The step that redoes Turns keeps this order, with each group of steps a named end step that the root fills, and Turns knows only the step names. The steps get `err`, which changes along the way (a host turn’s ending can set it, and so can an empty reply), and a shared record of what earlier steps found (`open`, `viewing`, `topic`).
+`endTurn` (`server/turn-finish.mjs`), in order, as the inbox step builds it, with the concern each step belongs to. Each group of steps is a Bus signal Turns raises, and the root adds each signal’s listeners in this order. Turns knows only the signals. The steps get `err`, which changes along the way (a host turn’s ending can set it, and so can an empty reply), and a shared record of what earlier steps found (`open`, `viewing`, `topic`).
 
 ```mermaid
 flowchart TD
-  A[Turns: mark the turn closed] --> B[Asks: expire its permission waits, while it still counts as running]
+  A[Turns: mark the turn closed] --> B[turn.ending — Asks: expire its permission waits, while it still counts as running]
   B --> C[Running: the turn leaves]
   C --> D[Turns: settle subagent steps, fold steps, a host turn’s ending may set err]
-  D --> E[Delivery: settle the scheduled wake, with err]
-  E --> F[Work: endWork]
+  D --> E[turn.settled — Delivery: settle the scheduled wake, with err]
+  E --> F[turn.settled — Work: endWork]
   F --> G0[Turns: skip the mirror’s tail to the end]
   G0 --> S{session still there?}
   S -->|no| Z[stop]
-  S -->|yes| G[Turns: an empty reply may set err, settle reply segments]
-  G --> H[Delivery: post the summary when ok, clear the pending summary]
+  S -->|yes| G[Turns: an empty reply may set err, settle reply segments, so their mentions are entries]
+  G --> H[turn.replied — Summaries: post the summary when ok, clear the pending summary]
   H --> I{err, and not an AbortError?}
-  I -->|failed| J[Checks: stalled steps]
+  I -->|failed| J[turn.failed — Checks: stalled steps]
   J --> K[Turns: failed reply, the session fails, notify]
-  K --> L[Delivery: wake mentions with the failure]
-  L --> L2[Turns: mark whom the failure woke, wokeOnFailure]
-  L2 --> L3[Delivery: take pending wakes only]
-  I -->|no: ok, or stopped by an AbortError| M[Apps: an app-check turn’s fix ends]
-  M --> N[Asks: the next need, session state, unread and notification]
-  N --> O[Checks: stalled steps, then lint or quiet lint]
-  O --> P[Threads: a topic’s unread]
-  P --> Q[Summaries: settle a topic or side thread]
-  Q --> R[Delivery: wake mentions, then take pending]
+  K --> L2[Turns: mark whom the failure woke, from entriesFrom]
+  L2 --> L4[turn.failed — Delivery: mark what the turn took delivered, count the chain]
+  I -->|no: ok, or stopped by an AbortError| M[turn.ended — Apps: an app-check turn’s fix ends]
+  M --> N[turn.ended — Asks: the next need, session state, unread and notification]
+  N --> O[turn.ended — Checks: stalled steps, then lint or quiet lint]
+  O --> P[turn.ended — Threads: a topic’s unread]
+  P --> Q[turn.ended — Summaries: settle a topic or side thread]
+  Q --> R[turn.ended — Delivery: mark what the turn took delivered, count the chain, raise entry.waiting]
 ```
 
-So the steps are: `ending` before Running lets the turn go (B), `settled` with the final host `err` (E, F), `replied` (H), `failed` (J to L3, with Turns’ `wokeOnFailure` patch between the wakes and the take), and `ended` (M to R), whose listeners run in that order and share `open`, `viewing` and `topic`. Stopping a turn (`turn-stop.mjs`) gets its own steps, `stopping` and `exited`, in the same way.
+So the signals are:
+- `turn.ending`, before Running lets the turn go (B);
+- `turn.settled`, with the final host `err` (E, F);
+- `turn.replied` (H);
+- `turn.failed` (J, and L4 after Turns’ own K and L2);
+- `turn.ended` (M to R).
+
+Their listeners run in that order and share `open`, `viewing` and `topic`. Stopping a turn (`turn-stop.mjs`) raises `turn.stopping` and `turn.exited` in the same way.
 
 **`card.opened` must be synchronous.** When a card opens, `permission-cards.mjs` (line 96) closes the turn’s reply segment before `offerNeed`, so the reply goes on below the card and the need points at a settled segment. When asks raise `card.opened` and Turns closes the segment in a listener, the bus must call it synchronously, before `offerNeed`; the bus above does.
 
