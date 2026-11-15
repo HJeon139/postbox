@@ -149,7 +149,7 @@ test('an unaddressed newer post is named on the waiting message as posted since,
   await expect(mail(page, r)).toBeHidden();
   await expect(page.getByText('Answered 1 queued messages.', { exact: true })).toBeVisible();
   expect(turnsFor(r)).toHaveLength(2);
-  expect(turnsFor(r)[1].message.text).toBe(`Review the older context\n\n(@${sender.handle} posted since: ${newer.id}. read_message reads each.)`);
+  expect(turnsFor(r)[1].message.text).toBe(`Review the older context\n(The same sender posted since: [${newer.id}])`);
 });
 
 test('#427 ten queued messages stay out of the composer and edit in the agent’s bounded mail view', async ({ page }) => {

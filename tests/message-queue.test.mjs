@@ -67,7 +67,7 @@ test('a waker’s unaddressed later post is named on its waiting mention as post
   await settle(rt);
   const calls = adapter.calls.filter((call) => call.sessionId === beta.id);
   assert.equal(calls.length, 2, 'one initial turn and one with the mention');
-  assert.equal(calls[1].message.text, `Please check it.\n\n(@alpha posted since: ${later.id}. read_message reads each.)`);
+  assert.equal(calls[1].message.text, `Please check it.\n(The same sender posted since: [${later.id}])`);
 });
 
 test('queued user messages and agent wakes share one turn without losing user transcript items', async () => {

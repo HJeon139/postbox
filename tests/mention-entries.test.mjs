@@ -46,7 +46,7 @@ test('a reply past what one message carries still reaches the agent it mentions,
   const woke = adapter.calls.filter((c) => c.sessionId === beta.id);
   assert.equal(woke.length, 1, 'beta was woken');
   const posted = store.items(t.id).find((x) => x.kind === 'agent' && x.text === text);
-  assert.match(woke[0].message.text, new RegExp(`… \\(cut; read_message ${posted.id} reads it whole\\)$`));
+  assert.match(woke[0].message.text, new RegExp(`… \\(50,000 of 50,001 characters; read_message \\{ id: "${posted.id}" \\} has the rest\\)$`));
   assert.equal(adapter.calls.filter((c) => c.sessionId === alpha.id).length, 1, 'alpha got no notice turn');
   assert.ok(!store.items(t.id).some((x) => /woke no one/.test(x.text ?? '')), 'no refusal line');
 });

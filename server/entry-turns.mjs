@@ -4,6 +4,7 @@
 // Functions take the Runtime first, as waiting code does until Turns is a service.
 
 import { SENDING } from '../shared/limits.mjs';
+import { partEnd } from '../shared/text-parts.mjs';
 import { combineMessages, plainMessage } from './queue-batch.mjs';
 import { newId } from './store.mjs';
 
@@ -37,6 +38,8 @@ export function withEntries(rt, sessionId, threadId, message) {
   return { ...combineMessages([message, ...given(rt, entries)]), turnId };
 }
 
+const count = (/** @type {number} */ n) => n.toLocaleString('en-US');
+
 /** Taken entries as today’s deliver takes them. @param {any} rt @param {any[]} entries */
 const given = (rt, entries) => entries.map((e) => messageOf(rt, e));
 
@@ -51,9 +54,13 @@ export function messageOf(rt, e) {
   if (!e.itemId) return { kind: 'notice', text: e.text, at: e.at, seq: e.seq };
   const it = rt.store.pending.item(e.threadId, e.itemId);
   const said = String(it?.text ?? '');
-  const whole = said.length > SENDING.message ? `${said.slice(0, SENDING.message)}… (cut; read_message ${e.itemId} reads it whole)` : said;
+  // Cut as turn-input.mjs’s entryText cuts: at a whole character (#675), with the note copiedLine reads as a copy (#1370).
+  const cut = () =>
+    `${said.slice(0, partEnd(said, SENDING.message))}… (${count(SENDING.message)} of ${count(said.length)} characters; read_message { id: "${e.itemId}" } has the rest)`;
+  const whole = said.length > SENDING.message ? cut() : said;
   const failed = it?.status === 'failed' ? `(This reply failed before it finished${it.error ? `: ${it.error}` : '.'} It may be cut off.)\n\n` : '';
-  // Nothing replaces a waiting entry: the sender’s newer posts there are named, for read_message (“posted since”).
-  const since = e.postedSince.length ? `\n\n(@${e.from} posted since: ${e.postedSince.join(', ')}. read_message reads each.)` : '';
+  // Nothing replaces a waiting entry: the sender’s newer posts there are named, as entryLine names them, without the
+  // sender’s handle, which a copy of the entry would wake (#1370).
+  const since = e.postedSince.length ? `\n(The same sender posted since: ${e.postedSince.map((id) => `[${id}]`).join(', ')})` : '';
   return { kind: 'agent', from: `@${e.from}`, text: failed + whole + since, itemId: e.itemId, at: e.at, seq: e.seq };
 }
