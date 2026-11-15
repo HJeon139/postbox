@@ -154,7 +154,12 @@ The sources cover everything that starts a turn today (the callers of `deliver` 
 
 ### Which mention wakes
 
-A mention makes an entry only where it is written as part of the message. A mention inside a blockquote, a code span or a code block names an agent without waking it. In the first run of the search measurement, three replies quoted a line that began with another agent’s `@handle`, and each woke that agent, which answered unasked ([`room-context.md`](room-context.md), “1. One way in: the @-mention”).
+A mention makes an entry only where it is written as part of the message. What a message quotes names an agent without waking it:
+- **Code:** a code span or a code block.
+- **A blockquote line.**
+- **A line copied from the conversation:** one that starts with an item’s id and, from its first mention on, is that item’s own words as Postbox gives them.
+
+The third is the one that was measured. In the first run of the search measurement, three replies woke an agent that then answered unasked, and the two whose text the run kept were a copied line, such as “it_big0137: @developer: I reran the migration guide…”. Postbox writes who said a line as `@handle:` (`server/item-lines.mjs`), so an agent that copies a line writes a mention. A blockquote wasn’t seen to wake anyone; it is the way a person or an agent quotes on purpose. A lost hand-off is worse than an extra wake, since the @-mention is the only wake. So a line is a copy only when Postbox can check it against the item: “it_big0137: @developer: fix the null check” has other words after the id, and it wakes, as does a line with an id that isn’t an item’s. Addressing an agent with a colon, “@critic: what’s your concern?”, still wakes it. The rule is `parseMentions` in `shared/text.mjs`, with `server/copied-line.mjs` to check a line against its item. The page’s composer has no such check, so there only code and a blockquote are left out.
 
 ### What a turn is given
 

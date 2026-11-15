@@ -5,6 +5,7 @@
 // - a topic thread says who an unaddressed message goes to, “Replying to @x”, as the conversation does (#134); side
 //   threads have no composer since #372, so no hint either;
 // - a draft that @-mentions an agent says it wakes that one, and not the agent it would otherwise go to (#107).
+// - a draft that only quotes an agent’s line wakes no one, so the hint says who it replies to (#1370).
 // On the demo’s mock agents, each test in a room of its own where @researcher spoke last. Moved from
 // tools/checks/composer-address.mjs (#303).
 
@@ -97,6 +98,15 @@ test('#107 replying while mentioning another agent says it wakes that one, not t
   await typeIn(page, 'composer-input', '@critic and @researcher, both of you');
   await expect(hint(page, 'composer-input')).toContainText('Wakes critic, researcher');
   await expect(hint(page, 'composer-input')).not.toContainText(', not ');
+});
+
+test('#1370 a draft that only quotes an agent’s line says it replies to the last speaker, not that it wakes the quoted agent', async ({ page }) => {
+  await room(page, 'Quoted');
+  await typeIn(page, 'composer-input', '> @critic said revision 2 was fine\n\nIs it still?');
+  await expect(hint(page, 'composer-input')).toContainText('Replying to');
+  await expect(hint(page, 'composer-input'), 'a quoted mention wakes no one').not.toContainText('Wakes');
+  await typeIn(page, 'composer-input', '> @critic said revision 2 was fine\n\n@critic is it still?');
+  await expect(hint(page, 'composer-input'), 'a mention outside the quote still wakes').toContainText('Wakes critic');
 });
 
 test('#134 a topic thread says who an unaddressed message goes to', async ({ page }) => {

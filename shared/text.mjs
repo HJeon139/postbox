@@ -20,17 +20,58 @@ export const clip = (s, n = 240) => {
   return t.length > n ? `${t.slice(0, partEnd(t, n - 1))}…` : t;
 };
 
+/** A Markdown blockquote line: what it holds is someone else’s words. */
+const BLOCKQUOTE = /^ {0,3}>/;
+/** A line that starts with an item’s id, in brackets or not, alone or as a list item. */
+const STARTS_WITH_ID = /^\s*(?:(?:[-*]|\d+\.)\s+)?\[?(it_[A-Za-z0-9]+)\]?/;
+/** The first mention in a line, as parseMentions reads one. */
+const FIRST_MENTION = /(?:^|[^\w@.])(@[A-Za-z0-9_-]+)/;
+
+/**
+ * Whether a line is a copy of an item’s line, as Postbox gave it to an agent: it starts with that item’s id, and
+ * from its first mention on it is the item’s own words. The caller’s isCopy knows the items, so a line that only
+ * looks like one, with an id that isn’t an item’s or words the item doesn’t hold, is the message’s own and wakes
+ * (designs/rooms-at-scale.md, “Which mention wakes”).
+ * @param {string} line @param {(itemId: string, said: string) => boolean} isCopy
+ */
+function copied(line, isCopy) {
+  const id = STARTS_WITH_ID.exec(line)?.[1];
+  if (!id) return false;
+  // “You (@alpha): …” is how an agent’s own line reads to it.
+  const plain = line.replace(/You \((@[A-Za-z0-9_-]+)\)/g, '$1');
+  const at = FIRST_MENTION.exec(plain);
+  if (!at) return false;
+  return isCopy(id, plain.slice(at.index + at[0].length - at[1].length));
+}
+
+/**
+ * A message’s text with what it quotes left out, so a mention there names an agent without waking it: code, blockquote
+ * lines, and, for a caller that can tell one, lines copied from the conversation.
+ * @param {string} text @param {((itemId: string, said: string) => boolean) | null} isCopy
+ */
+function unquoted(text, isCopy) {
+  const plain = text.replace(/```[\s\S]*?(```|$)/g, ' ').replace(/`[^`]*`/g, ' ');
+  // Read line by line only when a line could be a quote: the page reads a draft on every keystroke.
+  if (!plain.includes('>') && !(isCopy && plain.includes('it_'))) return plain;
+  return plain
+    .split('\n')
+    .filter((line) => !BLOCKQUOTE.test(line) && !(isCopy && copied(line, isCopy)))
+    .join('\n');
+}
+
 /**
  * The agents a message @-mentions, in order, without duplicates.
- * Mentions inside code are ignored, and "name@example.com" is not a mention.
+ * Mentions inside what the message quotes are ignored (unquoted, above), and "name@example.com" is not a mention.
  * @param {string} text
  * @param {string[]} handles  known handles, without the @
+ * @param {((itemId: string, said: string) => boolean) | null} [isCopy]  whether `said`, a line from its first mention
+ *   on, is the words of the item with that id. Without it, no line counts as copied from the conversation.
  */
-export function parseMentions(text, handles) {
+export function parseMentions(text, handles, isCopy = null) {
+  const said = String(text ?? '');
+  if (!said.includes('@')) return [];
   const known = new Map(handles.map((h) => [h.toLowerCase(), h]));
-  const plain = String(text ?? '')
-    .replace(/```[\s\S]*?(```|$)/g, ' ')
-    .replace(/`[^`]*`/g, ' ');
+  const plain = unquoted(said, isCopy);
   const found = [];
   for (const m of plain.matchAll(/(^|[^\w@.])@([A-Za-z0-9_-]+)/g)) {
     const h = known.get(m[2].toLowerCase());
