@@ -74,7 +74,7 @@ export class Delivery {
       ...(message === undefined ? {} : { message }),
       ...(from === undefined ? {} : { from }),
       at: Date.now(),
-      // Its place among what arrived in the same millisecond, with the queue’s messages (#733).
+      // Its place among what arrived in the same millisecond, here and with the queue’s messages (#733).
       seq: arrival(),
       state: 'waiting',
       takenBy: null,
