@@ -11,6 +11,23 @@ test('mentions: known handles only, in order, not in code or emails', () => {
   assert.deepEqual(parseMentions('@critic @critic', h), ['critic']);
 });
 
+test('a mention quoted in a blockquote names the agent without waking it, and the rest of the message still does', () => {
+  // The search measurement’s replies quoted a line that began with another agent’s @handle, and each woke that agent
+  // (designs/rooms-at-scale.md, “Which mention wakes”).
+  const h = ['indexer', 'researcher', 'critic'];
+  assert.deepEqual(parseMentions('> @critic said the index is stale.\n\nI checked: it isn’t.', h), []);
+  assert.deepEqual(parseMentions('As quoted:\n  > @critic: look again\n> > @indexer too\n\n@researcher over to you', h), ['researcher']);
+  assert.deepEqual(parseMentions('- > @critic in a list’s quote', h), []);
+  // A > inside a line isn’t a quote: 2 > 1 still wakes the critic it names.
+  assert.deepEqual(parseMentions('2 > 1, @critic', h), ['critic']);
+});
+
+test('a mention in a tilde-fenced code block wakes no one, as one in a backtick fence doesn’t', () => {
+  const h = ['indexer', 'critic'];
+  assert.deepEqual(parseMentions('~~~\n@critic in code\n~~~\nand @indexer outside', h), ['indexer']);
+  assert.deepEqual(parseMentions('~~~text\nstill open @critic', h), []);
+});
+
 test('finished sentences are announced once, and the tail on completion', () => {
   let r = finishedSentences('Yes. Prefaces are easy to spot', 0);
   assert.deepEqual(r.sentences, ['Yes.']);
