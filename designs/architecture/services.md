@@ -192,7 +192,7 @@ flowchart LR
 
   An entry has:
   - its source: the person, a mention, a review, an answer, a scheduled wake, a command, a check, an event, or a notice;
-  - the item it came from, or its own text where there is no item (a notice, an event, a scheduled wake’s note);
+  - the item it came from, or its own text where there is no item (a check’s findings, a scheduled wake’s note, an event, a summary’s request, a notice);
   - its thread, its sender, and when it arrived;
   - its state: waiting, taken by a turn, delivered, failed, or stopped;
   - whether it is a resend;
@@ -206,7 +206,7 @@ flowchart LR
   - `send(entry)`: what the `send` port names today. Checks and Apps call it directly once Delivery exists, so the port goes.
   - **Turns calls:**
     - `waiting(sessionId)`;
-    - `take(sessionId, turnId, budget)`, which returns what fits the budget and leaves the rest waiting;
+    - `take(sessionId, turnId, budget)`, which returns the waiting entries of one thread, that of the oldest waiting entry, up to the budget, and leaves the rest waiting for the next turn;
     - `entriesFrom(itemId)`.
   - `stateOf(sessionId)`: a sender’s view of each entry, and an agent’s “waiting behind @x since”.
   - **Scheduled wakes:**
@@ -248,7 +248,7 @@ flowchart LR
 **Turns**
 - **Owns:**
   - starting a turn from the entries it takes;
-  - the turn’s input: its entries whole, grouped by thread, then a bounded tail of the rest of the room and a pointer to `search_conversation` and `read_conversation`. A side thread’s entry carries its offer to bring the thread forward (`offersBring`), as today;
+  - the turn’s input: its entries, all from one thread and each whole up to its ceiling, then a bounded tail of the rest of the room and a pointer to `search_conversation` and `read_conversation`. A side thread’s entry carries its offer to bring the thread forward (`offersBring`), as today;
   - the harness-event contract (`server/harness-events.mjs`, #1239);
   - host turns (`remote/turns*.mjs`);
   - stopping a turn;
