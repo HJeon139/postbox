@@ -4,6 +4,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { copiedLine } from '../server/copied-line.mjs';
+import { entryLine } from '../server/turn-input.mjs';
 import { parseMentions } from '../shared/text.mjs';
 import { post } from './arrange.mjs';
 import { settle, setup } from './side-threads-fixture.mjs';
@@ -96,4 +97,26 @@ async function replyWakes(text) {
 test('#1370: an agent’s reply that copies another agent’s line doesn’t wake it, and a hand-off that names the item does', async () => {
   assert.equal(await replyWakes((said) => `${said.id}: @beta: ${RERAN}`), 0, 'the copied line woke no one');
   assert.equal(await replyWakes((said) => `${said.id}: @beta: can you rerun it for 2.1?`), 1, 'the hand-off woke beta');
+});
+
+// What a turn is given names who an entry is from with its time and what it is (server/turn-input.mjs), so a copy of
+// one must be read as a copy too, or it wakes as the lines before it did.
+test('#1370: an entry’s line as a turn gives it, copied back, wakes no one, and a hand-off in its shape still wakes', () => {
+  const { said, wakes } = room();
+  const at = Date.UTC(2026, 10, 15, 14, 2);
+  const entry = { id: 'en_1', threadId: said.threadId, itemId: said.id, from: 'beta', at };
+  const read = () => RERAN;
+  for (const more of [
+    { source: 'mention' },
+    { source: 'review' },
+    { source: 'mention', resend: true },
+    { source: 'mention', postedSince: ['it_900', 'it_901'] },
+  ]) {
+    const line = entryLine({ ...entry, ...more }, read);
+    assert.match(line, /^\[it_\w+\] @beta, /, 'the line names who it is from');
+    assert.deepEqual(wakes(line), [], line.slice(0, 90));
+  }
+  const cut = entryLine({ ...entry, source: 'mention' }, () => `${RERAN} ${'more '.repeat(4000)}`);
+  assert.ok(cut.includes('characters; read_message'), 'a cut entry');
+  assert.deepEqual(wakes(`[${said.id}] @beta, 14:02 UTC: can you rerun it for 2.1?`), ['beta']);
 });

@@ -4,6 +4,7 @@
 // read an item’s text, and the lines of the tail, so it depends on no service.
 
 import { READING, TURN_INPUT } from '../shared/limits.mjs';
+import { partEnd } from '../shared/text-parts.mjs';
 
 /**
  * An inbox entry, as the design’s entry table gives it.
@@ -50,7 +51,8 @@ function entryText(e, read) {
   if (text === null) return '(deleted since it was sent)';
   if (text.length <= READING.mention) return text;
   const rest = e.itemId ? `; read_message { id: "${e.itemId}" } has the rest` : '';
-  return `${text.slice(0, READING.mention)}… (${count(READING.mention)} of ${count(text.length)} characters${rest})`;
+  // At a whole character: a cut between the halves of a pair leaves a lone half, which shows as a box (#675).
+  return `${text.slice(0, partEnd(text, READING.mention))}… (${count(READING.mention)} of ${count(text.length)} characters${rest})`;
 }
 
 /**
@@ -60,7 +62,8 @@ function entryText(e, read) {
  */
 export function entryLine(e, read) {
   const again = e.resend ? ', sent again in case it didn’t reach you' : '';
-  const since = e.postedSince?.length ? `\n(${sender(e)} posted since: ${e.postedSince.map((id) => `[${id}]`).join(', ')})` : '';
+  // Without the sender’s handle: a second line that named it would wake it when an agent copies the entry.
+  const since = e.postedSince?.length ? `\n(The same sender posted since: ${e.postedSince.map((id) => `[${id}]`).join(', ')})` : '';
   return `[${e.itemId ?? e.id}] ${sender(e)}${SOURCE_NOTE[e.source] ?? ''}, ${when(e.at)}${again}: ${entryText(e, read)}${since}`;
 }
 
