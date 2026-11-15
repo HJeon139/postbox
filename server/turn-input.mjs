@@ -96,15 +96,22 @@ function entriesPart({ entries, thread, read, waitingElsewhere }) {
   return [head, ...entries.map((/** @type {Entry} */ e) => entryLine(e, read))].join('\n\n');
 }
 
-/** The second and third parts: the tail, and the line that says what it left out and how to find it. */
+/**
+ * The second and third parts: the tail, and the line that says what it left out and how to find it. The notes are the
+ * tail’s newest lines, so they count within its limits and are kept first.
+ */
 function tailPart({ tail, notes }) {
-  const { kept, left } = tailOf(tail);
-  const lines = [...kept, ...notes];
-  if (!lines.length) return null;
+  const { kept, left } = tailOf([...tail, ...notes]);
+  const head = '[Postbox] Also since your last turn, not addressed to you';
+  if (!kept.length) {
+    if (!left) return null;
+    const them = left === 1 ? '1 item, not shown here. read_conversation has it' : `${count(left)} items, not shown here. read_conversation has them`;
+    return `${head}: ${them} in order, and search_conversation finds one by its words.`;
+  }
   const rest = left
     ? ` (the last ${count(kept.length)} of ${count(kept.length + left)} items; read_conversation has the rest in order, and search_conversation finds one by its words)`
     : '';
-  return [`[Postbox] Also since your last turn, not addressed to you${rest}:`, ...lines].join('\n\n');
+  return [`${head}${rest}:`, ...kept].join('\n\n');
 }
 
 /**
@@ -114,7 +121,7 @@ function tailPart({ tail, notes }) {
  * @param {{ id: string, kind?: string, title?: string }} input.thread  that thread
  * @param {(itemId: string) => string | null} input.read  an item’s text, or null when it is gone
  * @param {string[]} [input.tail]  the items since the agent’s last turn that aren’t its entries, oldest first, one line each
- * @param {string[]} [input.notes]  lines the tail always carries: threads with something new, the person’s reactions
+ * @param {string[]} [input.notes]  the tail’s newest lines: threads with something new, the person’s reactions
  * @param {string | null} [input.root]  the message a topic thread is about, on the agent’s first turn there
  * @param {number} [input.waitingElsewhere]  entries waiting in other threads
  * @param {string[]} [input.stopped]  ids of entries the person’s Stop kept from starting a turn

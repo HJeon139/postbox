@@ -110,3 +110,21 @@ test('the tail carries its notes after its lines, a topic’s first message come
   assert.equal(parts[3], '[Postbox] The person stopped you before a turn started from [it_700], [it_701]. read_message reads one.');
   assert.deepEqual(parts.slice(-2), ['[it_870] @developer: built it', 'The thread “Release” (th_9) has 3 new messages.']);
 });
+
+test('the tail’s notes count within its limits, so a room with many threads can’t grow a turn without bound', () => {
+  const notes = Array.from({ length: 60 }, (_, i) => `The thread “T${i}” (th_${i}) has 1 new message.`);
+  const text = turnInput({ entries: [mention], thread: topic, read, tail: ['[it_870] @developer: built it'], notes });
+  const lines = text.split('Also since your last turn')[1].split('\n\n').slice(1);
+  assert.equal(lines.length, TURN_INPUT.tailItems);
+  assert.equal(lines.at(-1), notes.at(-1), 'the notes are the newest, so they are kept first');
+  assert.ok(text.includes('(the last 40 of 61 items; read_conversation has the rest in order'));
+});
+
+test('a tail none of whose lines fit still says how many were left out and where they are', () => {
+  const text = turnInput({ entries: [mention], thread: topic, read, tail: ['z'.repeat(TURN_INPUT.tailChars + 1)] });
+  assert.ok(
+    text.endsWith(
+      '[Postbox] Also since your last turn, not addressed to you: 1 item, not shown here. read_conversation has it in order, and search_conversation finds one by its words.',
+    ),
+  );
+});
