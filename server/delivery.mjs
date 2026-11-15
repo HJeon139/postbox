@@ -119,24 +119,27 @@ export class Delivery {
 
   /**
    * A turn starts and takes the waiting entries of one thread, that of the oldest waiting entry that can start one, with
-   * the notices waiting to ride it, in order, up to `budget` characters (designs/rooms-at-scale.md, “The budget”). The
-   * first is always taken, so an entry larger than the budget still reaches a turn. The rest wait for the next turn, so
-   * nothing is dropped. Each taken entry records the turn.
+   * the notices waiting to ride it, in order, up to `budget` characters (designs/rooms-at-scale.md, “The budget”). That
+   * oldest entry, the lead, is always taken: one larger than the budget still reaches a turn, and a notice before it
+   * can’t crowd it out. The rest wait for the next turn, so nothing is dropped. Each taken entry records the turn.
    * @param {string} sessionId @param {string} turnId @param {number} [budget] @returns {Entry[]}
    */
   take(sessionId, turnId, budget = Number.POSITIVE_INFINITY) {
     const waiting = this.waiting(sessionId);
     const lead = waiting.find((e) => e.source !== 'notice' && !this.chainHeld(e)) ?? waiting.find((e) => e.source !== 'notice');
     if (!lead) return [];
-    const taken = [];
-    let size = 0;
+    // The lead first, whatever its size, so nothing that arrived before it uses the budget up; then the rest in order,
+    // until one doesn’t fit. They’re taken, and given, in the order they arrived.
+    const chosen = new Set([lead]);
+    let size = this.sizeOf(lead);
     for (const e of waiting) {
-      if (!(e.source === 'notice' || e === lead || (e.threadId === lead.threadId && !this.chainHeld(e)))) continue;
+      if (e === lead || !(e.source === 'notice' || (e.threadId === lead.threadId && !this.chainHeld(e)))) continue;
       const n = this.sizeOf(e);
-      if (taken.length && size + n > budget) break;
-      taken.push(e);
+      if (size + n > budget) break;
+      chosen.add(e);
       size += n;
     }
+    const taken = waiting.filter((e) => chosen.has(e));
     for (const e of taken) this.patch(e, { state: 'taken', takenBy: turnId });
     return taken.map((e) => ({ ...e, state: /** @type {EntryState} */ ('taken'), takenBy: turnId }));
   }
