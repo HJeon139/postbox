@@ -71,6 +71,18 @@ export const READING = Object.freeze({
 });
 
 /**
+ * What a turn is given beyond one entry, which is cut at READING.mention (designs/rooms-at-scale.md, “The budget”).
+ * Each is a ceiling no higher than the catch-up’s before it.
+ */
+export const TURN_INPUT = Object.freeze({
+  /** All of a turn’s entries together. Entries past it wait, and start the next turn. */
+  entries: 32_000,
+  /** The tail: the newest items since the agent’s last turn that aren’t its entries. */
+  tailItems: 40,
+  tailChars: 16_000,
+});
+
+/**
  * What agents send each other and the conversation (#351). Past it a send is refused, and the refusal and the tool
  * descriptions (wake_agent, bring_to_conversation) name it, so the guide doesn’t list it.
  */
