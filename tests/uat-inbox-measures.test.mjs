@@ -115,6 +115,20 @@ test('entries waiting in another thread are counted once a turn, after its take'
   assert.deepEqual(waitingElsewhere([add('en_1', 'th_topic'), notice, take('en_n', 'turn_1'), take('en_1', 'turn_1')]), [0], 'a notice taken first');
   assert.deepEqual(waitingElsewhere([add('en_1', 'th_topic'), notice, take('en_1', 'turn_1'), take('en_n', 'turn_1')]), [0], 'a notice taken last');
   assert.deepEqual(waitingElsewhere([add('en_1', 'th_topic'), add('en_3', 'th_main'), notice, take('en_1', 'turn_1')]), [1], 'a notice left waiting');
+  // A Retry’s take arrives as a put, the entry written whole (server/delivery.mjs): it is a take like any other, and
+  // a put can also be an entry’s first record.
+  const put = (id, threadId, more) => ({
+    type: 'entry.put',
+    data: { sessionId: 'se_a', id, entry: { id, threadId, state: 'waiting', takenBy: null, ...more } },
+  });
+  const retried = [
+    add('en_1', 'th_topic'),
+    put('en_3', 'th_main'),
+    take('en_1', 'turn_1'),
+    put('en_1', 'th_topic', { state: 'taken', takenBy: 'turn_2', resend: true }),
+  ];
+  assert.deepEqual(waitingElsewhere(retried), [1, 1], 'the retried turn’s take, as a put');
+
   // An entry the person’s Stop stopped starts no turn, so it isn’t waiting anywhere.
   const stop = { type: 'entry.patch', data: { sessionId: 'se_a', id: 'en_3', patch: { state: 'stopped' } } };
   assert.deepEqual(waitingElsewhere([add('en_1', 'th_topic'), add('en_3', 'th_main'), stop, take('en_1', 'turn_1')]), [0], 'a stopped entry');

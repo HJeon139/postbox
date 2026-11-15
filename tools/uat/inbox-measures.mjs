@@ -120,6 +120,18 @@ export function readsAfterWake(items, turns) {
 }
 
 /**
+ * What an entry event writes: the whole entry (entry.add, and entry.put, which a Retry reopens and takes an entry
+ * with), or some of its fields (entry.patch). Null for any other event.
+ * @param {any} e
+ * @returns {{ id: string, whole: boolean, fields: any } | null}
+ */
+function entryWrite(e) {
+  const d = e.data ?? {};
+  if ((e.type === 'entry.add' || e.type === 'entry.put') && d.entry) return { id: d.entry.id, whole: true, fields: { ...d.entry, sessionId: d.sessionId } };
+  return e.type === 'entry.patch' && d.id ? { id: d.id, whole: false, fields: d.patch ?? {} } : null;
+}
+
+/**
  * Entries waiting in another thread when a turn starts, from the event log’s entry events (server/delivery.mjs): once
  * a turn has taken its entries, how many of that agent’s entries still wait in a thread other than the one taken. A
  * notice rides a take whatever its thread, so it is neither the turn’s thread nor waiting elsewhere. A run on `main`
@@ -143,13 +155,12 @@ export function waitingElsewhere(events) {
     taking = null;
   };
   for (const e of events) {
-    const d = e.data ?? {};
-    const entry = e.type === 'entry.patch' ? entries.get(d.id) : null;
-    const turn = entry && d.patch?.state === 'taken' ? d.patch.takenBy : null;
-    // A turn’s take is a run of patches naming it; anything else ends the run, and the count is made then.
+    const write = entryWrite(e);
+    const turn = write?.fields.state === 'taken' ? (write.fields.takenBy ?? null) : null;
+    // A turn’s take is a run of writes naming it; anything else ends the run, and the count is made then.
     if (taking && turn !== taking) close();
-    if (e.type === 'entry.add' && d.entry) entries.set(d.entry.id, { ...d.entry, sessionId: d.sessionId });
-    if (entry) Object.assign(entry, d.patch ?? {});
+    if (write?.whole) entries.set(write.id, write.fields);
+    else if (write && entries.has(write.id)) Object.assign(entries.get(write.id), write.fields);
     if (turn && !seen.has(turn)) {
       seen.add(turn);
       taking = turn;
