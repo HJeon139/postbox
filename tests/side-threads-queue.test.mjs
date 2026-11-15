@@ -62,17 +62,16 @@ test('#228: Don’t add tells the waking agent in the thread it spoke from', asy
   assert.match(told.message.text, /chose not to add @gamma/);
 });
 
-test('#228, #372: a queued wake shows in the conversation’s queue, can’t be edited, and Send now to the busy agent keeps it', async () => {
+test('#228, #372: a waiting mention is in the agent’s inbox, not your queue, and Send now to the busy agent keeps it for the turn after', async () => {
   const { store, rt, adapter, t, alpha, beta } = setup();
   const long = held();
   adapter.next.push(long.step);
   rt.sendMessage(t.id, { text: '@beta the long job' });
   await sleep(5);
   rt.agentWake(alpha.id, 'beta', 'One question.');
-  const [q] = store.state.threads[t.id].queue;
-  assert.equal(q.kind, 'wake');
-  assert.throws(() => rt.editQueued(t.id, q.id, 'Changed.'), /can’t be edited/);
-  // You change course: Send now stops @beta’s turn, and the wake still waits for it.
+  assert.deepEqual(store.state.threads[t.id].queue, [], 'an agent’s message isn’t yours to edit');
+  assert.equal(arrange.waitingEntries(rt, beta.id).length, 1);
+  // You change course: Send now stops @beta’s turn, and the mention still waits for it.
   rt.sendMessage(t.id, { text: '@beta stop that, do this', sendNow: true });
   long.release();
   await settle(rt);
@@ -159,18 +158,15 @@ test('#228, #372: an @-mention from a turn in a topic thread wakes the agent the
   );
 });
 
-test('#228: a wake for an agent that’s deleted, or that you remove from the queue, goes, and its agent is told', async () => {
+test('#228: a mention for an agent that’s deleted goes with it, and its sender is told', async () => {
   const { store, rt, adapter, t, alpha, beta } = setup();
   const h = held();
   adapter.next.push(h.step);
   rt.sendMessage(t.id, { text: '@beta the long job' });
   await sleep(5);
   rt.agentWake(alpha.id, 'beta', 'First question.');
-  rt.agentWake(alpha.id, 'beta', 'Second question.');
-  rt.cancelQueued(t.id, store.state.threads[t.id].queue[1].id);
-  assert.match(store.state.sessions[alpha.id].context.at(-1), /The person removed your message \(“Second question\.”\) before it was answered/);
   rt.deleteSession(beta.id);
-  assert.deepEqual(store.state.threads[t.id].queue, []);
+  assert.equal(store.state.inbox[beta.id], undefined);
   assert.match(store.state.sessions[alpha.id].context.at(-1), /@beta was removed before it answered your message \(“First question\.”\)/);
   h.release();
   await settle(rt);
@@ -186,9 +182,10 @@ test('#228: a wake waiting for a busy agent doesn’t hold back a message behind
   rt.agentWake(alpha.id, 'beta', 'Which editions?');
   adapter.next.push(a.step);
   rt.sendMessage(t.id, { text: '@alpha meanwhile, a word' });
-  // @alpha’s turn, then a message for it that waits behind the wake for @beta.
+  // @alpha’s turn, then a message for it that waits in the queue, while the mention for @beta waits in its inbox.
   rt.sendMessage(t.id, { text: '@alpha and another' });
-  assert.equal(store.state.threads[t.id].queue.length, 2);
+  assert.equal(store.state.threads[t.id].queue.length, 1);
+  assert.equal(arrange.waitingEntries(rt, beta.id).length, 1);
   a.release();
   await sleep(30);
   assert.ok(

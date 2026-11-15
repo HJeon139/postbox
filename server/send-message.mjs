@@ -34,7 +34,8 @@ export function sendMessage(rt, threadId, { text = '', attachments = [], sendNow
   if (q) rt.threads.patch(threadId, (x) => ({ queue: [...(x.queue ?? []), q] }));
   // Send now is a change of course (stopForSendNow), also for one already exiting from a plain Stop (#1040).
   else if (sendNow) for (const { se } of targets) queue.stopForSendNow(rt, se.id);
-  const sent = q ? { queued: q } : rt.postAndDeliver(threadId, { text, attachments }, targets);
+  // Send now goes alone: the agents’ inbox entries wait for the turn after it, as the queue does.
+  const sent = q ? { queued: q } : queue.postAndDeliver(rt, threadId, { text, attachments }, targets, sendNow ? { entriesWait: true } : {});
   // A card waiting to wake one of them is stale now (#439), whether this went at once or waits in the queue. It
   // retires after, so the wake you never allowed goes behind your message rather than ahead of it.
   for (const { se } of targets) retireStale(rt, threadId, se, 'you wrote to it', { byPerson: true });

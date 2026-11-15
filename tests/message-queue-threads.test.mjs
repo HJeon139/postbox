@@ -37,7 +37,9 @@ test('a wake queued in a turn’s thread joins that turn when another thread’s
   ]);
 });
 
-test('after a failed reply, a wake queued in the next turn’s thread joins it past another thread’s pending message', async () => {
+test('after a failed reply, the messages that waited on its turn still go, and a mention in its inbox waits for the person', async () => {
+  // designs/rooms-at-scale.md, “What an entry is”: a failed session starts no turn from its entries on its own. What
+  // waited on the turn itself (#228’s promise of an answer) still goes, as before.
   const f = setup();
   const root = arrange.post(f.rt, f.t.id, { kind: 'agent', sessionId: f.alpha.id, handle: 'alpha', text: 'A topic.', status: 'done' });
   const topic = f.rt.startTopic(f.t.id, root.id).threadId;
@@ -56,9 +58,10 @@ test('after a failed reply, a wake queued in the next turn’s thread joins it p
   fail();
   await settle(f.rt);
   assert.deepEqual(turnsAfterFirst(f), [
-    ['conversation', ['Pending in conversation.', 'Queued from alpha in conversation.']],
+    ['conversation', ['Pending in conversation.']],
     ['topic', ['Pending in topic.']],
   ]);
+  assert.equal(arrange.waitingEntries(f.rt, f.beta.id).length, 1, 'the mention is kept for when the person acts');
 });
 
 test('a queued wake stays behind a later pending message in its thread that can’t join', async () => {

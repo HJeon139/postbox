@@ -3,6 +3,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import * as arrange from './arrange.mjs';
 import { held, settle, setup, sleep } from './side-threads-fixture.mjs';
 
 test('#135: a woken turn that opens with a block, or proposes a teammate, says what woke it, and keeps to its own turn', async () => {
@@ -79,10 +80,11 @@ test('#114, #492: two agents mentioning each other in turn go on without a card,
   assert.equal(Object.values(store.state.threads).filter((x) => x.kind === 'side').length, 0);
 });
 
-test('#135, #374: both wakes keep their transcript provenance, but only the newer turn’s wake is delivered', async () => {
+test('#135: both wakes keep their transcript provenance, and both are delivered: the newer doesn’t replace the older', async () => {
   const { store, rt, adapter, t, alpha, beta } = setup();
-  // beta is busy, so alpha’s two wakes, one by wake_agent and one by an @-mention, wait together in the conversation’s
-  // queue until beta answers. Each keeps the turn it came from, so the second one gets its own sender line.
+  // beta is busy, so alpha’s two wakes, one by wake_agent and one by an @-mention, wait together in beta’s inbox until
+  // beta answers. Each keeps the turn it came from, so the second one gets its own sender line. Nothing is replaced
+  // (designs/rooms-at-scale.md, “Delivery”), where #374 delivered only the newer.
   const busy = held();
   adapter.next.push(busy.step);
   adapter.next.push(async (c) => {
@@ -96,9 +98,9 @@ test('#135, #374: both wakes keep their transcript provenance, but only the newe
     for (let i = 0; i < 200 && rt.turns.has(alpha.id); i++) await sleep(5);
   }
   assert.ok(rt.turns.has(beta.id), 'beta is still busy');
-  const queued = store.state.threads[t.id].queue.filter((q) => q.kind === 'wake');
+  const queued = arrange.waitingEntries(rt, beta.id);
   assert.deepEqual(
-    queued.map((q) => q.text),
+    queued.map((e) => store.items(t.id).find((x) => x.id === e.itemId)?.text),
     ['Check revision 3.', '@beta and the totals, please.'],
   );
   busy.release();
@@ -119,8 +121,8 @@ test('#135, #374: both wakes keep their transcript provenance, but only the newe
   // Your message between them started the wake count again.
   assert.deepEqual([first.hop, second.hop], [1, 1]);
   assert.deepEqual(
-    adapter.calls.filter((x) => x.sessionId === beta.id && x.message.kind === 'agent').map((x) => x.message.itemId),
-    [second.id],
+    adapter.calls.filter((x) => x.sessionId === beta.id && x.message.kind === 'agent').flatMap((x) => (x.message.messages ?? [x.message]).map((m) => m.itemId)),
+    [first.id, second.id],
   );
 });
 

@@ -49,12 +49,20 @@ function pendingFor(turn) {
   return out;
 }
 
-/** What waits for this agent in the turn’s thread, each with its sender, its own id and the item it was posted as. */
+/**
+ * What waits for this agent in the turn’s thread, each with its sender, its own id and the item it was posted as: the
+ * person’s messages in the queue, the agent’s inbox entries (an agent’s mention or review, server/delivery.mjs), and
+ * what waits on the turn itself.
+ */
 function waitingFor(rt, sessionId, turn) {
   const queued = (rt.s.threads[turn.threadId]?.queue ?? [])
     .filter((q) => q.sessionIds.includes(sessionId))
     .map((q) => ({ key: q.id, sender: senderOfQueued(q), itemId: q.itemId ?? null, at: q.at }));
-  return [...queued, ...pendingFor(turn)];
+  const entries = rt.delivery
+    .waiting(sessionId)
+    .filter((e) => e.threadId === turn.threadId && e.from)
+    .map((e) => ({ key: e.id, sender: e.from === 'you' ? PERSON : handleOf(e.from), itemId: e.itemId ?? null, at: e.at }));
+  return [...queued, ...entries, ...pendingFor(turn)];
 }
 
 /**

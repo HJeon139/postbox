@@ -1,6 +1,6 @@
 // #796: the reads that decide a thread write read the thread as it will be once what is held behind a commit is
 // released (store.pending.thread), and the sweeps that find what to write go over every pending thread. A read of the
-// published thread missed what a held write left: a topic just opened, a wake just queued, a delete just marked
+// published thread missed what a held write left: a topic just opened, a message just queued, a delete just marked
 // (designs/508/601-held-view.md, “a read that decides a write reads pending”).
 
 import assert from 'node:assert/strict';
@@ -54,18 +54,20 @@ function topicOn(f) {
 
 const textsTo = (f, handle) => f.adapter.calls.filter((c) => c.handle === handle).map((c) => (c.message.messages ?? [c.message]).map((m) => m.text));
 
-test('a wake queued behind a held commit leaves the queue when its agent is deleted meanwhile', async () => {
+test('a mention held behind a commit leaves with its agent’s inbox when the agent is deleted meanwhile', async () => {
   const f = await heldRoom();
   const b = await busyBeta(f);
   const release = await f.hold();
   f.rt.agentWake(f.alpha.id, 'beta', 'First.');
+  assert.equal(arrange.waitingEntries(f.rt, f.beta.id).length, 1, 'held, it waits in beta’s inbox');
   f.rt.deleteSession(f.beta.id);
   await release();
   b.release();
   await settle(f.rt);
-  assert.deepEqual(
-    (f.store.state.threads[f.t.id].queue ?? []).filter((q) => q.kind === 'wake'),
-    [],
+  assert.equal(f.store.state.inbox[f.beta.id], undefined, 'the entry went with the session');
+  assert.equal(
+    f.adapter.calls.some((c) => c.sessionId === f.beta.id && JSON.stringify(c.message).includes('First.')),
+    false,
   );
   await f.store.close();
 });
@@ -142,10 +144,10 @@ test('a sweep over every pending thread sees each held write of a thread, read a
   const b = await busyBeta(f);
   const release = await f.hold();
   const queued = () => (f.store.pending.threads()[f.t.id].queue ?? []).map((q) => q.text);
-  f.rt.agentWake(f.alpha.id, 'beta', 'First.');
-  assert.deepEqual(queued(), ['First.']);
-  f.rt.agentWake(f.gamma.id, 'beta', 'Second.');
-  assert.deepEqual(queued(), ['First.', 'Second.']);
+  f.rt.sendMessage(f.t.id, { text: '@beta first' });
+  assert.deepEqual(queued(), ['@beta first']);
+  f.rt.sendMessage(f.t.id, { text: '@beta second' });
+  assert.deepEqual(queued(), ['@beta first', '@beta second']);
   await release();
   b.release();
   await settle(f.rt);

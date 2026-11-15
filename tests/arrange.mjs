@@ -142,6 +142,9 @@ export const heldMessages = (rt, sessionId) => /** @type {any} */ (rt.running.tu
 /** Whether a turn is running for a session. @param {Runtime} rt @param {string} sessionId */
 export const running = (rt, sessionId) => Boolean(rt.running.turnOf(sessionId));
 
+/** An agent’s waiting inbox entries, oldest first (server/delivery.mjs). @param {Runtime} rt @param {string} sessionId */
+export const waitingEntries = (rt, sessionId) => rt.delivery.waiting(sessionId);
+
 /** How many turns are running. @param {Runtime} rt */
 export const liveTurns = (rt) => rt.running.all().length;
 

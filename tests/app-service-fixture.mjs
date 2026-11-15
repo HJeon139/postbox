@@ -1,6 +1,6 @@
 // The Apps rig its interface tests share (tests/app-service.test.mjs, tests/app-service-review.test.mjs): Apps over an
-// in-memory store, the real Bus, Threads and Running, and fakes of Sessions, Personas, Assets, Checks and the `send`
-// port that record what they were given. It never builds Runtime.
+// in-memory store, the real Bus, Threads and Running, and fakes of Sessions, Personas, Assets, Checks, Delivery and the
+// `send` port that record what they were given. It never builds Runtime.
 
 import { Apps } from '../server/app-service.mjs';
 import { Bus } from '../server/bus.mjs';
@@ -45,6 +45,8 @@ export function rig({ tools = [], blobs = { f1: Buffer.from('data') } } = {}) {
   /** @type {any[]} */
   const sent = [];
   const send = (sessionId, message, opts) => sent.push({ sessionId, message, opts });
-  const apps = new Apps({ store, bus, threads, sessions, personas, assets, running, checks, send, narrator: null, config: { imageOrigins: [] } });
-  return { store, threads, running, apps, sent, linted, signals, searched };
+  const entries = /** @type {any[]} */ ([]);
+  const delivery = { send: (/** @type {any} */ e) => entries.push(e) };
+  const apps = new Apps({ store, bus, threads, sessions, personas, assets, running, checks, delivery, send, narrator: null, config: { imageOrigins: [] } });
+  return { store, threads, running, apps, sent, entries, linted, signals, searched };
 }

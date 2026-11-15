@@ -161,6 +161,8 @@ export function turnExited(rt, turn) {
   // normal end does (#733, #1040).
   if (ex.silent) for (const h of held) rt.deliver(se.id, h.message, { summarizeTo: h.summarizeTo, threadId: h.threadId });
   else rt.takePending(se, { pending: held, threadId: turn.threadId }, true);
+  // The stopped turn is gone: entries that arrived during its exit start the next turn, if nothing above did.
+  rt.delivery.wake(se.id);
 }
 
 /**

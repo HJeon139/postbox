@@ -249,9 +249,11 @@ test('a wake you allow delivers its whole message, not the card’s preview (#10
   assert.ok(hop.reason.length <= 200, 'the card keeps a short preview');
   rt.act(t.id, hop.id, 'confirm');
   await settle(rt);
-  const woke = adapter.calls.filter((c) => c.handle === 'beta' && c.message.kind === 'agent' && c.message.from === '@alpha').at(-1);
-  assert.equal(woke?.message.text.length, 3000);
-  assert.equal(woke?.message.text, long);
+  // The wakes that waited for beta reach it in one turn (designs/rooms-at-scale.md, “What a turn is given”).
+  const given = adapter.calls.filter((c) => c.handle === 'beta').flatMap((c) => c.message.messages ?? [c.message]);
+  const woke = given.filter((m) => m.kind === 'agent' && m.from === '@alpha').at(-1);
+  assert.equal(woke?.text.length, 3000);
+  assert.equal(woke?.text, long);
 });
 
 test('a wake request stored before #108, with only a preview, still delivers that preview when allowed', async () => {
@@ -265,8 +267,8 @@ test('a wake request stored before #108, with only a preview, still delivers tha
   arrange.setItem(rt, t.id, hop.id, { text: undefined, reason: 'the preview' });
   rt.act(t.id, hop.id, 'confirm');
   await settle(rt);
-  const woke = adapter.calls.filter((c) => c.handle === 'beta' && c.message.kind === 'agent' && c.message.from === '@alpha').at(-1);
-  assert.equal(woke?.message.text, 'the preview');
+  const given = adapter.calls.filter((c) => c.handle === 'beta').flatMap((c) => c.message.messages ?? [c.message]);
+  assert.equal(given.filter((m) => m.kind === 'agent' && m.from === '@alpha').at(-1)?.text, 'the preview');
 });
 
 test('a message from you resets the wake count', async () => {

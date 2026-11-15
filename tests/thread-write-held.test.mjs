@@ -1,6 +1,8 @@
 // #796: a thread write starts from the thread as it will be once what is held behind a commit is released
 // (store.pending.thread), never from the published one. Built from the published thread, a write overwrites a write of
-// the same thread still held: a queued wake was lost, and the wake limit stopped counting (designs/508/601-held-view.md).
+// the same thread still held: a queued message was lost, and the wake limit stopped counting (designs/508/601-held-view.md).
+// An agent’s mention of another waits in that agent’s inbox, not in the thread’s queue: these hold that a held mention
+// stays a waiting entry beside the thread’s held writes (server/delivery.mjs).
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
@@ -49,7 +51,14 @@ async function busyBeta(f) {
 }
 
 const queueOf = (f, id = f.t.id) => f.store.pending.thread(id).queue ?? [];
+/** The texts of the room’s queue, read pending, and published. */
+const pendingQueue = (f) => queueOf(f).map((q) => q.text);
+const publishedQueue = (f) => (f.store.state.threads[f.t.id].queue ?? []).map((q) => q.text);
 const texts = (message) => (message.messages ?? [message]).map((m) => m.text);
+/** @beta’s waiting mentions as “@sender: its message’s text”, read pending, and in a store’s published state. */
+const mentionsWaiting = (f) => arrange.waitingEntries(f.rt, f.beta.id).map((e) => `@${e.from}: ${f.store.pending.item(e.threadId, e.itemId)?.text}`);
+const mentionsIn = (store, sessionId) =>
+  (store.state.inbox[sessionId] ?? []).filter((e) => e.state === 'waiting').map((e) => `@${e.from}: ${store.item(e.threadId, e.itemId)?.text}`);
 
 test('two wakes queued for a busy agent behind a held commit both reach it after the release', async () => {
   const f = await heldRoom();
@@ -157,74 +166,71 @@ test('two wakes queued behind a held commit both reach their agent when its turn
   await f.store.close();
 });
 
-test('your message to a busy agent and a wake for it behind a held commit both wait in the queue', async () => {
+test('your message to a busy agent waits in the queue and a mention of it in its inbox, both behind a held commit', async () => {
   const f = await heldRoom();
   const b = await busyBeta(f);
   const release = await f.hold();
   f.rt.sendMessage(f.t.id, { text: '@beta and this' });
   f.rt.agentWake(f.alpha.id, 'beta', 'First.');
-  assert.equal(queueOf(f).length, 2);
+  assert.deepEqual(pendingQueue(f), ['@beta and this']);
+  assert.deepEqual(mentionsWaiting(f), ['@alpha: First.']);
   await release();
-  assert.equal(f.store.state.threads[f.t.id].queue.length, 2);
+  assert.deepEqual(publishedQueue(f), ['@beta and this']);
+  assert.deepEqual(mentionsIn(f.store, f.beta.id), ['@alpha: First.']);
   b.release();
   await settle(f.rt);
   await f.store.close();
 });
 
-test('Edit of a queued message behind a held commit keeps a wake queued meanwhile', async () => {
+test('Edit of a queued message behind a held commit keeps your other message queued meanwhile', async () => {
   const f = await heldRoom();
   const b = await busyBeta(f);
   const { queued } = f.rt.sendMessage(f.t.id, { text: '@beta and this' });
   await f.store.flush();
   const release = await f.hold();
-  f.rt.agentWake(f.alpha.id, 'beta', 'First.');
+  f.rt.sendMessage(f.t.id, { text: '@beta and that' });
   f.rt.editQueued(f.t.id, queued.id, '@beta and this, edited');
-  assert.deepEqual(
-    queueOf(f).map((q) => [q.kind ?? 'user', q.text]),
-    [
-      ['user', '@beta and this, edited'],
-      ['wake', 'First.'],
-    ],
-  );
+  assert.deepEqual(pendingQueue(f), ['@beta and this, edited', '@beta and that']);
   await release();
+  assert.deepEqual(publishedQueue(f), ['@beta and this, edited', '@beta and that']);
   b.release();
   await settle(f.rt);
   await f.store.close();
 });
 
-test('Cancel of a queued wake behind a held commit keeps the other queued wake', async () => {
+test('Cancel of a queued message behind a held commit keeps your other queued message and a mention waiting meanwhile', async () => {
   const f = await heldRoom();
   const b = await busyBeta(f);
-  f.rt.agentWake(f.gamma.id, 'beta', 'From gamma.');
+  const { queued } = f.rt.sendMessage(f.t.id, { text: '@beta and this' });
   await f.store.flush();
-  const [mine] = f.store.state.threads[f.t.id].queue;
   const release = await f.hold();
+  f.rt.sendMessage(f.t.id, { text: '@beta and that' });
   f.rt.agentWake(f.alpha.id, 'beta', 'From alpha.');
-  f.rt.cancelQueued(f.t.id, mine.id);
-  assert.deepEqual(
-    queueOf(f).map((q) => q.text),
-    ['From alpha.'],
-  );
+  f.rt.cancelQueued(f.t.id, queued.id);
+  assert.deepEqual(pendingQueue(f), ['@beta and that']);
+  assert.deepEqual(mentionsWaiting(f), ['@alpha: From alpha.']);
   await release();
+  assert.deepEqual(publishedQueue(f), ['@beta and that']);
+  assert.deepEqual(mentionsIn(f.store, f.beta.id), ['@alpha: From alpha.']);
   b.release();
   await settle(f.rt);
   await f.store.close();
 });
 
-test('Send now on a queued wake behind a held commit keeps the other queued wake', async () => {
+test('Send now on a queued message behind a held commit keeps your other queued message and a mention waiting meanwhile', async () => {
   const f = await heldRoom();
   const b = await busyBeta(f);
-  f.rt.agentWake(f.gamma.id, 'beta', 'From gamma.');
+  const { queued } = f.rt.sendMessage(f.t.id, { text: '@beta and this' });
   await f.store.flush();
-  const [mine] = f.store.state.threads[f.t.id].queue;
   const release = await f.hold();
+  f.rt.sendMessage(f.t.id, { text: '@beta and that' });
   f.rt.agentWake(f.alpha.id, 'beta', 'From alpha.');
-  f.rt.sendQueuedNow(f.t.id, mine.id);
-  assert.deepEqual(
-    queueOf(f).map((q) => q.text),
-    ['From alpha.'],
-  );
+  f.rt.sendQueuedNow(f.t.id, queued.id);
+  assert.deepEqual(pendingQueue(f), ['@beta and that']);
+  assert.deepEqual(mentionsWaiting(f), ['@alpha: From alpha.']);
   await release();
+  assert.deepEqual(publishedQueue(f), ['@beta and that']);
+  assert.deepEqual(mentionsIn(f.store, f.beta.id), ['@alpha: From alpha.']);
   b.release();
   await settle(f.rt);
   await f.store.close();
@@ -263,10 +269,7 @@ test('your messages re-queued as Postbox shuts down behind a held commit all wai
   arrange.shuttingDown(f.rt);
   b.release();
   for (let i = 0; i < 200 && arrange.exitingTurns(f.rt); i++) await sleep(5);
-  assert.deepEqual(
-    queueOf(f).map((q) => q.text),
-    ['@beta one', '@beta two'],
-  );
+  assert.deepEqual(pendingQueue(f), ['@beta one', '@beta two']);
   await release();
   await f.store.close();
 });
@@ -275,30 +278,27 @@ test('held queue writes survive a failed commit, as its release applies them in 
   const f = await heldRoom();
   const b = await busyBeta(f);
   const release = await f.hold([{ type: 'nonsense', data: {} }]);
-  f.rt.agentWake(f.alpha.id, 'beta', 'First.');
-  f.rt.agentWake(f.gamma.id, 'beta', 'Second.');
+  f.rt.sendMessage(f.t.id, { text: '@beta first' });
+  f.rt.sendMessage(f.t.id, { text: '@beta second' });
   assert.equal(await release(), 'EREJECTED', 'the commit failed');
-  assert.deepEqual(
-    f.store.state.threads[f.t.id].queue.map((q) => q.text),
-    ['First.', 'Second.'],
-  );
+  assert.deepEqual(publishedQueue(f), ['@beta first', '@beta second']);
   b.release();
   await settle(f.rt);
   await f.store.close();
 });
 
-test('after a release and a restart, the log holds both queued wakes and the exact hop count', async () => {
+test('after a release and a restart, the log holds both held mentions as waiting entries and the exact hop count', async () => {
   const f = await heldRoom();
   const b = await busyBeta(f);
   const release = await f.hold();
   f.rt.agentWake(f.alpha.id, 'beta', 'First.');
   f.rt.agentWake(f.gamma.id, 'beta', 'Second.');
+  assert.deepEqual(mentionsWaiting(f), ['@alpha: First.', '@gamma: Second.']);
   await release();
   const dir = f.store.dir;
   await f.store.close();
   const again = await new Store(dir).load();
-  const t = again.state.threads[f.t.id];
-  assert.deepEqual([t.queue.map((q) => q.text), t.hops], [['First.', 'Second.'], 2]);
+  assert.deepEqual([mentionsIn(again, f.beta.id), again.state.threads[f.t.id].hops], [['@alpha: First.', '@gamma: Second.'], 2]);
   await again.close();
   b.release();
 });

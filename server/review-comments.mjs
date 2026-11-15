@@ -47,7 +47,10 @@ export function reviewBlock(apps, sessionId, args) {
   const event = { blockId: it.block.id, revision, action: 'review', values: { ...(verdict ? { verdict } : {}), comments: added }, from: se.handle };
   let heard = `@${it.handle} hears them now, and can revise.`;
   try {
-    apps.send(it.sessionId, { kind: 'event', event }, { threadId: where });
+    // A review is the one entry an agent makes without an @-mention: its block’s author’s, pointing at the block. Until
+    // Turns builds a turn’s input from entries, the entry carries the event its turn is given.
+    const entry = { sessionId: it.sessionId, threadId: where, source: 'review', itemId: it.id, from: se.handle };
+    apps.delivery.send({ ...entry, message: { kind: 'event', event } });
   } catch (e) {
     heard = `@${it.handle} didn’t hear them: ${e.message}`;
   }

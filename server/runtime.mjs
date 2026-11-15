@@ -18,12 +18,13 @@ import { Checks } from './check-service.mjs';
 import { attachClaudeSession, claudeSessions, mirror, pollMirror, rearmMirrors, stopMirrorFor, stopMirrors } from './claude-mirror.mjs';
 import { deliver, retry } from './deliver.mjs';
 import { Delivery } from './delivery.mjs';
+import { startFromEntries } from './entry-turns.mjs';
 import { httpError } from './helpers.mjs';
 import { endJob, expireStaleJobs, recordJob } from './job-records.mjs';
 import { keptJobs, pollKept, stopJob, stopKeptJobs, watchKept } from './kept-jobs.mjs';
 import { Ledger } from './ledger.mjs';
 import { Memory } from './memory-service.mjs';
-import { wakeMentions } from './mention-wakes.mjs';
+import { mentionEntries, wakeMentioned } from './mention-entries.mjs';
 import * as queue from './message-queue.mjs';
 import { alwaysFor } from './permission-always.mjs';
 import {
@@ -116,8 +117,8 @@ export class Runtime {
     // (#1135), and whether Postbox is shutting down (designs/architecture/services.md, “Running”).
     this.running = new Running();
     // Each agent's inbox in each conversation, as stored entries (designs/architecture/services.md, “Delivery and Turns,
-    // built as the inbox”). Nothing sends to it until the turn-end wakes switch to entries, which binds the chain cap.
-    // An entry's size is its text until Turns gives it as server/turn-input.mjs's entryLine (step 3).
+    // built as the inbox”). The chain cap's card stands in front of it (agentWake), so nothing it holds is past the cap
+    // until Asks replaces the card. An entry's size is its text until Turns gives it as turn-input.mjs's entryLine (step 3).
     const sizeOf = (/** @type {any} */ e) => (e.text ?? store.pending.item(e.threadId, e.itemId)?.text ?? '').length;
     this.delivery = new Delivery({ store, bus: this.bus, running: this.running, chainHeld: () => false, sizeOf });
     this.signalProcess = signalProcess ?? process.kill;
@@ -182,6 +183,7 @@ export class Runtime {
       assets: this.assets,
       running: this.running,
       checks: this.checks,
+      delivery: this.delivery,
       send: (sessionId, message, opts) => this.deliver(sessionId, message, opts),
       narrator: this.narrator,
       config,
@@ -262,6 +264,17 @@ export class Runtime {
       if (patch.tools !== undefined) settleToolAsks(this, persona);
     });
     this.bus.on('persona.updated', ({ persona }) => queue.drainMovedOff(this, persona.id));
+    // A final reply's mentions become entries; an agent with waiting entries starts a turn through deliver until Turns
+    // starts it; the end of a turn settles what it took and wakes whom its replies mentioned, as its last step.
+    this.bus.on('item.final', ({ threadId, item }) => {
+      if (item.kind === 'agent' && item.handle) this.delivery.postedSince({ threadId, from: item.handle, itemId: item.id, turnId: item.turnId });
+    });
+    this.bus.on('item.final', (final) => mentionEntries(this, final));
+    this.bus.on('entry.waiting', ({ sessionId }) => startFromEntries(this, sessionId));
+    this.bus.on('turn.ended', ({ turn }) => this.delivery.turnEnded({ sessionId: turn.sessionId, turnId: turn.id }));
+    this.bus.on('turn.ended', ({ turn }) => wakeMentioned(this, turn));
+    this.bus.on('turn.failed', ({ turn }) => this.delivery.turnFailed({ sessionId: turn.sessionId, turnId: turn.id, lost: false }));
+    this.bus.on('turn.failed', ({ turn }) => wakeMentioned(this, turn));
   }
 
   // Running’s maps and its closing flag, for the code that waits for rooms at scale and still reads them through the
@@ -375,11 +388,6 @@ export class Runtime {
   }
   retry(threadId, itemId) {
     return retry(this, threadId, itemId);
-  }
-
-  /** The wakes a turn's @-mentions make once it ends (server/mention-wakes.mjs). */
-  wakeMentions(se, turn, text) {
-    return wakeMentions(this, se, turn, text);
   }
 
   /**

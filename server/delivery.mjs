@@ -13,6 +13,7 @@
 // Depends on Store, Bus and Running. Until Turns is a service, the composition root listens to entry.waiting and starts
 // the turn through today’s deliver, and the chain cap is a predicate the root binds (`chainHeld`).
 
+import { arrival } from './queue-batch.mjs';
 import { newId } from './store.mjs';
 
 /** Where an entry comes from (designs/rooms-at-scale.md, “What an entry is”). A notice never starts a turn. */
@@ -25,7 +26,7 @@ export const SOURCES = Object.freeze(['mention', 'person', 'command', 'review', 
  * `retryId` what a retried send carries (#1138). `message` is what today’s deliver is given for a review, until Turns
  * builds a turn’s input from entries (step 3).
  * @typedef {{ id: string, sessionId: string, threadId: string, source: string, itemId?: string, text?: string,
- *   message?: any, from?: string, at: number, state: EntryState, takenBy: string|null, resend: boolean,
+ *   message?: any, from?: string, at: number, seq: number, state: EntryState, takenBy: string|null, resend: boolean,
  *   postedSince: string[], retryId?: string }} Entry
  */
 
@@ -47,13 +48,19 @@ export class Delivery {
    * Stores one entry for one agent, and raises entry.waiting if the agent can start a turn from it. An entry with an
    * item keeps no copy of its text; one without keeps its own text (a check’s findings, an event, a notice). Until Turns
    * builds a turn’s input from entries, `message` is what today’s deliver is given for it.
+   * `wake: false` stores it without raising entry.waiting: the end of the turn that wrote its item raises it, once that
+   * turn has written what its failed reply says (designs/architecture/services.md, “The end of a turn”).
    * @param {{ sessionId: string, threadId: string, source: string, itemId?: string, text?: string, message?: any,
    *   from?: string, retryId?: string }} e
+   * @param {{ wake?: boolean }} [opts]
    * @returns {Entry}
    */
-  send({ sessionId, threadId, source, itemId, text, message, from, retryId }) {
+  send({ sessionId, threadId, source, itemId, text, message, from, retryId }, { wake = true } = {}) {
     if (!SOURCES.includes(source)) throw new Error(`An entry’s source is one of ${SOURCES.join(', ')}, not “${source}”.`);
     if ((itemId === undefined) === (text === undefined)) throw new Error('An entry has an item or its own text, and not both.');
+    const se = this.store.pending.session(sessionId);
+    if (!se) throw new Error('That agent’s session doesn’t exist any more, so nothing can be sent to it.');
+    if (se.retiredFork) throw new Error(`@${se.handle}’s session was retired, so nothing can be sent to it.`);
     const stored = retryId ? this.inbox(sessionId).find((x) => x.retryId === retryId) : undefined;
     if (stored) return stored;
     /** @type {Entry} */
@@ -66,6 +73,8 @@ export class Delivery {
       ...(message === undefined ? {} : { message }),
       ...(from === undefined ? {} : { from }),
       at: Date.now(),
+      // Its place among what arrived in the same millisecond, with the queue’s messages (#733).
+      seq: arrival(),
       state: 'waiting',
       takenBy: null,
       resend: false,
@@ -73,7 +82,7 @@ export class Delivery {
       ...(retryId === undefined ? {} : { retryId }),
     };
     this.store.emit('entry.add', { sessionId, entry });
-    this.wake(sessionId);
+    if (wake) this.wake(sessionId);
     return entry;
   }
 
@@ -121,11 +130,13 @@ export class Delivery {
    * A turn starts and takes the waiting entries of one thread, that of the oldest waiting entry that can start one, with
    * the notices waiting to ride it, in order, up to `budget` characters (designs/rooms-at-scale.md, “The budget”). The
    * first is always taken, so an entry larger than the budget still reaches a turn. The rest wait for the next turn, so
-   * nothing is dropped. Each taken entry records the turn.
-   * @param {string} sessionId @param {string} turnId @param {number} [budget] @returns {Entry[]}
+   * nothing is dropped. Each taken entry records the turn. `threadId` names the thread when the turn already has one:
+   * one the queue started for the person’s message there takes that thread’s entries with it.
+   * @param {string} sessionId @param {string} turnId @param {number} [budget] @param {string} [threadId]
+   * @returns {Entry[]}
    */
-  take(sessionId, turnId, budget = Number.POSITIVE_INFINITY) {
-    const waiting = this.waiting(sessionId);
+  take(sessionId, turnId, budget = Number.POSITIVE_INFINITY, threadId = undefined) {
+    const waiting = this.waiting(sessionId).filter((e) => threadId === undefined || e.threadId === threadId || e.source === 'notice');
     const lead = waiting.find((e) => e.source !== 'notice' && !this.chainHeld(e)) ?? waiting.find((e) => e.source !== 'notice');
     if (!lead) return [];
     const taken = [];
@@ -143,12 +154,17 @@ export class Delivery {
 
   /**
    * A newer post from a sender in a thread: noted on each of its waiting entries there (“@x posted since”), never put
-   * in their place. @param {{ threadId: string, from: string, itemId: string }} post
+   * in their place. A later part of the same turn’s reply is the same post, not a newer one (#374).
+   * @param {{ threadId: string, from: string, itemId: string, turnId?: string }} post
    */
-  postedSince({ threadId, from, itemId }) {
+  postedSince({ threadId, from, itemId, turnId }) {
+    const sameTurn = (/** @type {Entry} */ e) => {
+      const it = turnId && e.itemId ? this.store.pending.item(e.threadId, e.itemId) : null;
+      return Boolean(it) && (it.turnId === turnId || it.fromTurnId === turnId);
+    };
     for (const sessionId of this.sessionIds())
       for (const e of this.waiting(sessionId))
-        if (e.threadId === threadId && e.from === from && e.itemId !== itemId && !e.postedSince.includes(itemId))
+        if (e.threadId === threadId && e.from === from && e.itemId !== itemId && !e.postedSince.includes(itemId) && !sameTurn(e))
           this.patch(e, { postedSince: [...e.postedSince, itemId] });
   }
 
@@ -177,16 +193,19 @@ export class Delivery {
   }
 
   /**
-   * The person’s Retry of a failed turn: what it took goes back to waiting, as a resend.
-   * @param {string} turnId @returns {Entry[]} the entries reopened
+   * The person’s Retry of a failed turn: what it took goes back, as a resend. Until Turns starts a turn from entries,
+   * Retry sends the failed turn’s request again itself, so the turn it starts takes them (`takenBy`), and they don’t
+   * start another; without one, they wait.
+   * @param {string} turnId @param {string|null} [takenBy] @returns {Entry[]} the entries reopened
    */
-  retry(turnId) {
+  retry(turnId, takenBy = null) {
+    const state = /** @type {EntryState} */ (takenBy ? 'taken' : 'waiting');
     const reopened = [];
     for (const sessionId of this.sessionIds())
       for (const e of this.inbox(sessionId))
         if (e.takenBy === turnId) {
-          this.patch(e, { state: 'waiting', takenBy: null, resend: true });
-          reopened.push({ ...e, state: /** @type {EntryState} */ ('waiting'), takenBy: null, resend: true });
+          this.patch(e, { state, takenBy, resend: true });
+          reopened.push({ ...e, state, takenBy, resend: true });
         }
     return reopened;
   }

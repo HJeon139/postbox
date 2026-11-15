@@ -3,10 +3,14 @@ import { clip, httpError, queuedIn } from './helpers.mjs';
 import { byArrival, combineMessages, latestMessage, plainMessage, readyGroups } from './queue-batch.mjs';
 import { deliverWake } from './side-threads.mjs';
 
-export function postAndDeliver(rt, threadId, { text, attachments }, targets) {
+/**
+ * Posts the person’s message and delivers it to each target. `extra` marks what it’s delivered with, such as Send now’s
+ * `entriesWait`: that message goes alone, and the agents’ inbox entries wait for the turn after it.
+ */
+export function postAndDeliver(rt, threadId, { text, attachments }, targets, extra = {}) {
   const to = targets.map(({ se }) => se.handle);
   const { item, message } = postUserMessage(rt, threadId, { text, attachments }, to);
-  for (const { se } of targets) rt.deliver(se.id, message, { threadId });
+  for (const { se } of targets) rt.deliver(se.id, { ...message, ...extra }, { threadId });
   return { item };
 }
 
@@ -75,10 +79,12 @@ export function sendQueuedNow(rt, threadId, queueId) {
     deliverWake(rt, threadId, q);
     return { ok: true };
   }
-  return rt.postAndDeliver(
+  return postAndDeliver(
+    rt,
     threadId,
     q,
     q.sessionIds.map((id) => ({ se: rt.s.sessions[id] })).filter((x) => x.se && !x.se.retiredFork),
+    { entriesWait: true },
   );
 }
 
@@ -172,7 +178,9 @@ export function takePending(rt, se, turn, drain) {
         }
       }
     }
-    rt.deliver(se.id, next.message, { summarizeTo: next.summarizeTo, threadId: next.threadId });
+    // The agent's inbox entries in the thread join it by the same rule: not past a later group there, nor after a failure.
+    const message = !later && drain === true ? next.message : { ...next.message, entriesWait: true };
+    rt.deliver(se.id, message, { summarizeTo: next.summarizeTo, threadId: next.threadId });
     const t = rt.turns.get(se.id);
     if (t) t.pending.push(...groups);
     else holdRest(rt, se, next, groups);
@@ -213,6 +221,8 @@ export function drainQueues(rt, sessionId, threadId, wakesOnly = false) {
   const ids = new Set(wakesOnly ? [] : [threadId]);
   for (const t of rt.threads.pending()) if (t.queue?.some((q) => q.sessionIds.includes(sessionId) && (!wakesOnly || q.kind === 'wake'))) ids.add(t.id);
   for (const id of ids) rt.drainQueue(id, wakesOnly);
+  // The agent is free of what held it: its inbox's waiting entries start its next turn if the queue started none.
+  rt.delivery.wake(sessionId);
 }
 
 export function rememberStoppedMessages(rt, sessionId, message) {
