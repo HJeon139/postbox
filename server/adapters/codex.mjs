@@ -139,7 +139,7 @@ export function createCodexMapper(ctx, io = {}) {
     for (const id of open) emit({ kind: 'text_end', block: id });
     open.clear();
   };
-  ctx.signal?.addEventListener('abort', end, { once: true });
+  if (ctx.signal instanceof EventTarget) ctx.signal.addEventListener('abort', end, { once: true }); // a turn’s; a test’s context may have none
   io.lines?.on('close', end);
   return { push, end };
 }
