@@ -95,7 +95,7 @@ test('reads after a wake are the catch-up reads before the first other action, i
   assert.deepEqual(readsAfterWake(items, turns), [2, 1]);
 });
 
-test('entries waiting in another thread are counted once a turn, at its first take', () => {
+test('entries waiting in another thread are counted once a turn, after its take', () => {
   const add = (id, threadId) => ({ type: 'entry.add', data: { sessionId: 'se_a', entry: { id, threadId, state: 'waiting', takenBy: null } } });
   const take = (id, turn) => ({ type: 'entry.patch', data: { sessionId: 'se_a', id, patch: { state: 'taken', takenBy: turn } } });
   const events = [
@@ -110,6 +110,11 @@ test('entries waiting in another thread are counted once a turn, at its first ta
   ];
   assert.deepEqual(waitingElsewhere(events), [1, 0]);
   assert.deepEqual(waitingElsewhere([{ type: 'item.add', data: {} }]), [], 'a run before the inbox has none');
+  // A notice rides a take whatever its thread: it isn’t waiting elsewhere, before it is patched or after.
+  const notice = { type: 'entry.add', data: { sessionId: 'se_a', entry: { id: 'en_n', threadId: 'th_main', source: 'notice', state: 'waiting' } } };
+  assert.deepEqual(waitingElsewhere([add('en_1', 'th_topic'), notice, take('en_n', 'turn_1'), take('en_1', 'turn_1')]), [0], 'a notice taken first');
+  assert.deepEqual(waitingElsewhere([add('en_1', 'th_topic'), notice, take('en_1', 'turn_1'), take('en_n', 'turn_1')]), [0], 'a notice taken last');
+  assert.deepEqual(waitingElsewhere([add('en_1', 'th_topic'), add('en_3', 'th_main'), notice, take('en_1', 'turn_1')]), [1], 'a notice left waiting');
 });
 
 test('Postbox’s input is each prompt’s size, without what the agent’s own tools returned', () => {

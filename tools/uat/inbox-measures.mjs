@@ -123,27 +123,42 @@ export function readsAfterWake(items, turns) {
 }
 
 /**
- * Entries waiting in another thread when a turn starts, from the event log’s entry events (server/delivery-service.mjs):
- * for each turn’s first take, how many of that agent’s entries still wait in a thread other than the one taken.
- * A run on `main` before the inbox has no entry events, and gives no counts.
+ * Entries waiting in another thread when a turn starts, from the event log’s entry events (server/delivery.mjs): once
+ * a turn has taken its entries, how many of that agent’s entries still wait in a thread other than the one taken. A
+ * notice rides a take whatever its thread, so it is neither the turn’s thread nor waiting elsewhere. A run on `main`
+ * before the inbox has no entry events, and gives no counts.
  * @param {any[]} events
- * @returns {number[]}  one count per turn that took entries
+ * @returns {number[]}  one count per turn that took an entry other than a notice
  */
 export function waitingElsewhere(events) {
   /** @type {Map<string, any>} */
   const entries = new Map();
-  const seen = new Set();
   const counts = [];
+  /** @type {string | null} */
+  let taking = null;
+  const seen = new Set();
+  const close = () => {
+    const all = [...entries.values()];
+    const lead = all.find((x) => x.takenBy === taking && x.source !== 'notice');
+    const elsewhere = (/** @type {any} */ x) =>
+      x.sessionId === lead.sessionId && x.state === 'waiting' && x.source !== 'notice' && x.threadId !== lead.threadId;
+    if (lead) counts.push(all.filter(elsewhere).length);
+    taking = null;
+  };
   for (const e of events) {
     const d = e.data ?? {};
+    const entry = e.type === 'entry.patch' ? entries.get(d.id) : null;
+    const turn = entry && d.patch?.state === 'taken' ? d.patch.takenBy : null;
+    // A turn’s take is a run of patches naming it; anything else ends the run, and the count is made then.
+    if (taking && turn !== taking) close();
     if (e.type === 'entry.add' && d.entry) entries.set(d.entry.id, { ...d.entry, sessionId: d.sessionId });
-    const entry = entries.get(d.id);
-    if (e.type !== 'entry.patch' || !entry) continue;
-    Object.assign(entry, d.patch ?? {});
-    if (d.patch?.state !== 'taken' || !entry.takenBy || seen.has(entry.takenBy)) continue;
-    seen.add(entry.takenBy);
-    counts.push([...entries.values()].filter((x) => x.sessionId === entry.sessionId && x.state === 'waiting' && x.threadId !== entry.threadId).length);
+    if (entry) Object.assign(entry, d.patch ?? {});
+    if (turn && !seen.has(turn)) {
+      seen.add(turn);
+      taking = turn;
+    }
   }
+  if (taking) close();
   return counts;
 }
 
