@@ -38,7 +38,11 @@ test('#120 L5: a turn quiet for the host’s stallTimeout is Hung: stopped throu
   assert.equal(r.se().remoteTurn.state, 'hung');
   assert.equal(r.se().currentStep, text);
   assert.ok(r.store.items(r.t.id).some((i) => i.kind === 'agent' && i.note === text));
-  assert.ok(r.notes.some((n) => n.text === text));
+  // Postbox already stopped it and says so on the reply, so its notice asks nothing of the person: info, not blocking (#1218).
+  assert.deepEqual(
+    r.notes.filter((n) => n.text === text).map((n) => n.level),
+    ['info'],
+  );
   assert.equal(r.f.calls.length, 0, 'never the local kill or ps');
 });
 
