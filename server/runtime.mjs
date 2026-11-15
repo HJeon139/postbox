@@ -19,13 +19,12 @@ import { attachClaudeSession, claudeSessions, mirror, pollMirror, rearmMirrors, 
 import { deliver, retry } from './deliver.mjs';
 import { Delivery } from './delivery.mjs';
 import { cancelEntry, isEntryId, refuseEntryEdit, sendEntryNow } from './entry-queue.mjs';
-import { startFromEntries } from './entry-turns.mjs';
 import { httpError } from './helpers.mjs';
+import { listenInbox } from './inbox-listeners.mjs';
 import { endJob, expireStaleJobs, recordJob } from './job-records.mjs';
 import { keptJobs, pollKept, stopJob, stopKeptJobs, watchKept } from './kept-jobs.mjs';
 import { Ledger } from './ledger.mjs';
 import { Memory } from './memory-service.mjs';
-import { mentionEntries, wakeMentioned } from './mention-entries.mjs';
 import * as queue from './message-queue.mjs';
 import { alwaysFor } from './permission-always.mjs';
 import {
@@ -265,18 +264,8 @@ export class Runtime {
       if (patch.tools !== undefined) settleToolAsks(this, persona);
     });
     this.bus.on('persona.updated', ({ persona }) => queue.drainMovedOff(this, persona.id));
-    // A final reply's mentions become entries; an agent with waiting entries starts a turn through deliver until Turns
-    // starts it; the end of a turn settles what it took and wakes whom its replies mentioned, as its last step.
-    this.bus.on('item.final', ({ threadId, item }) => {
-      if (item.kind === 'agent' && item.handle) this.delivery.postedSince({ threadId, from: item.handle, itemId: item.id, turnId: item.turnId });
-    });
-    this.bus.on('item.final', (final) => mentionEntries(this, final));
-    this.bus.on('entry.waiting', ({ sessionId }) => startFromEntries(this, sessionId));
-    this.bus.on('turn.ended', ({ turn }) => this.delivery.turnEnded({ sessionId: turn.sessionId, turnId: turn.id }));
-    this.bus.on('turn.ended', ({ turn }) => wakeMentioned(this, turn));
-    this.bus.on('turn.failed', ({ turn }) => this.delivery.turnFailed({ sessionId: turn.sessionId, turnId: turn.id, lost: false }));
-    this.bus.on('turn.failed', ({ turn }) => wakeMentioned(this, turn));
-    this.bus.on('turn.stopping', ({ turn }) => this.delivery.turnEnded({ sessionId: turn.sessionId, turnId: turn.id }));
+    // The inbox’s listeners, last: a final reply’s mentions become entries, and the end of a turn settles them.
+    listenInbox(this);
   }
 
   // Running’s maps and its closing flag, for the code that waits for rooms at scale and still reads them through the
