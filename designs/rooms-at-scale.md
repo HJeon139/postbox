@@ -88,7 +88,7 @@ Changes in `intent.md`: the topic thread rows in “Agents and sessions”, the 
 
 **End state.** Mentions and the queue stay. `wake_agent` goes: an @-mention is the only way one agent wakes another (the person’s decision of 13 November 2026, [#481](https://github.com/HJeon139/postbox/issues/481); [`room-context.md`](room-context.md), “1. One way in: the @-mention”). Underneath them, each agent has one stored inbox per conversation.
 - **A message addressed to an agent becomes an entry in its inbox** once the sender’s message is final, not while it streams (#834). A person’s mention, an agent’s mention, an answer to an ask and a scheduled wake all arrive the same way.
-- **An idle agent with entries starts a turn.** Its input is its entries, whole and in order, with sender, time and thread, within a per-turn size budget. The rest of the room since its last turn comes after, as a bounded tail with a pointer to `read_conversation`.
+- **An idle agent with entries starts a turn.** Its input is its entries, whole and grouped by thread, with sender and time. The rest of the room since its last turn comes after, as a bounded tail with a pointer to `read_conversation` and `search_conversation` (“What a turn is given”, below).
 - **Nothing is held, merged or dropped.** A newer post from the same sender is noted on the waiting entry (“@x posted since”) rather than replacing it. No card holds other messages.
 - **The sender sees each entry’s state:** waiting behind @x’s turn since a given time, delivered, or failed.
 - **A turn that fails to start leaves its entries waiting.** A network failure after the harness accepted the turn reopens them once, marked as a resend (#466). A failed session doesn’t restart on its own in a loop.
@@ -96,6 +96,109 @@ Changes in `intent.md`: the topic thread rows in “Agents and sessions”, the 
 - **The chain cap stays (principle 6)** as a count. At the cap, entries still arrive, but no new turn starts until the person acts, shown as one line with Continue.
 - **Postbox’s own notices** (“your mention woke no one”) are entries that start no turn and ride the next one.
 - **Retries carry an id,** so a page’s resend or a host’s replayed tool call is stored once (#1138).
+
+### What an entry is
+
+An entry is one message for one agent, stored when the message it comes from is final.
+
+```mermaid
+flowchart LR
+  M[A final message, review, answer or scheduled wake] -->|one entry per agent it addresses| I[That agent’s inbox in the conversation]
+  I -->|the agent is idle| T[A turn: its entries whole, then a tail of the rest]
+  T -->|anything older or elsewhere| P[read_conversation, search_conversation, read_message]
+```
+
+| Field | What it holds |
+|---|---|
+| The item | The id of the message, block or wake it comes from. The entry keeps no copy of the text |
+| The thread | The conversation, or the topic or side thread the item is in |
+| The source | A mention, a review, an answer, a scheduled wake, or a notice from Postbox |
+| From and when | Who wrote the item, and when it became final |
+| The state | Waiting, delivered or failed, and whether it is a resend |
+
+- **A review is an entry too.** A review of an agent’s block makes an entry for the block’s author with the source “review” (the person’s ruling of 13 November 2026 that a review keeps its wake). It is the one entry an agent causes without an @-mention, and it goes through the same inbox, not a path of its own.
+- **A notice starts no turn.** It waits for the agent’s next turn, as above.
+
+### Which mention wakes
+
+A mention makes an entry only where it is written as part of the message. A mention inside a blockquote, a code span or a code block names an agent without waking it. In the first run of the search measurement, three replies quoted a line that began with another agent’s `@handle`, and each woke that agent, which answered unasked ([`room-context.md`](room-context.md), “1. One way in: the @-mention”).
+
+### What a turn is given
+
+Three parts, in this order. The room’s facts that come with each turn today are not changed here.
+
+1. **The agent’s entries, whole,** grouped by thread, oldest first in each group. Each has its item’s id, who it is from and when. A group in a topic or side thread starts with that thread’s title and id.
+2. **The tail:** the newest items since the agent’s last turn that are not among its entries, one line each, cut as `read_conversation` cuts them.
+3. **One line on the rest:** how many items the tail left out, and that `read_conversation` reads them in order and `search_conversation` finds one by its words.
+
+A turn with one entry in a topic thread and one in the conversation reads like this:
+
+```text
+[Postbox] 2 messages for you.
+
+In the thread “Search index” (th_12):
+[it_881] @critic, 14:02 UTC: the whole message
+
+In this conversation:
+[it_890] The person, 14:05 UTC: the whole message
+
+[Postbox] Also since your last turn, not addressed to you (the last 12 of 31 items; read_conversation has the rest in order, and search_conversation finds one by its words):
+[it_870] @developer: a line, cut at 2,000 characters
+```
+
+What this removes from today’s catch-up (`server/catch-up.mjs`, `server/catch-up-keep.mjs`):
+- **A mention given twice.** Today a mention can arrive in the summary and again as the message that starts the turn, so Postbox records which mentions a summary gave and sends a pointer the second time (`givenMentions`, `pointerIfSeen`, #484). An entry is delivered once, and the tail never holds an item that is an entry, so both go.
+- **A mention cut or dropped by the summary’s caps** (#834, #484). Entries are not part of the tail’s budget.
+
+### The budget
+
+The budget is a ceiling no higher than today’s catch-up, not a saving. In the measured room the catch-up was about 1,300 tokens a turn, 1.6 million of the 13.5 million tokens that entered the sessions ([`room-context.md`](room-context.md), “What was measured”), so its size is not what costs. The case for whole entries is that nothing addressed to an agent is cut or repeated.
+
+| Part | Ceiling | Today’s limit it keeps |
+|---|---|---|
+| One entry | 15,000 characters, then cut with its id for `read_message` | `READING.mention` (`shared/limits.mjs`) |
+| All entries in one turn | 32,000 characters. Entries past it stay waiting and start the next turn | The summary’s cap on mentions (`server/catch-up-keep.mjs`) |
+| The tail | 40 items and 16,000 characters, each item cut at 2,000 | `CATCH_UP_ITEMS`, `CATCH_UP_CHARS`, `READING.item` |
+
+Two differences from today, both from “nothing is dropped”: the newest entry no longer pushes older ones out, and an entry past the ceiling waits where today the summary left it out with a count.
+
+### Where a reply goes
+
+A turn’s reply posts in one thread, decided by its entries and not by a rule the agent must remember. A session that resumes keeps the guide it started with ([#515](https://github.com/HJeon139/postbox/issues/515)), so a default that a guide line carries would not reach running sessions.
+
+- **Entries in one thread:** the reply posts there.
+- **Entries in several threads:** the reply posts in the thread of the newest entry, and the turn’s input says so in one line. The agent answers another thread with `open_topic`, which posts in a topic thread by its message’s id today.
+
+Open question, which the build’s UAT answers with a count: how often a turn holds entries from more than one thread. If it is rare, the simpler rule is that a turn takes one thread’s entries and the others wait.
+
+### After `wake_agent` goes
+
+- **The tool leaves the list,** and `open_topic` loses `mentions`.
+- **A call to it by name is refused with what to do:** “wake_agent is gone. Post a message that @-mentions the agent; that wakes it.” A running Claude Code session still has a guide that names the tool (#515), so it may try.
+- **Not verified:** whether a harness passes a call to a tool that is no longer listed through to Postbox, or answers with an error of its own. The resumed session in the measurement below shows which, and whether the agent then hands off by mention.
+
+### What the build must show
+
+One UAT scenario with four agents, run on `main` and on the branch, at least three runs a side, reported as a mean with its range. Three runs a side gave ranges as wide as 361,000 to 890,000 input tokens in the search measurement, so one pair proves nothing.
+
+| Measure | How it is counted | What passes |
+|---|---|---|
+| Messages crossed | An agent’s reply posted after a newer message to it that its turn did not hold | Fewer than `main` |
+| Wakes that found nothing to do | Turns whose only output is an acknowledgment, with no tool call | No more than `main` |
+| A hand-off posted twice | A reply and a second message with the same hand-off in one turn | None |
+| A quoted mention | The scenario has an agent quote a line that starts with another’s `@handle` | It wakes no one |
+| Model requests per turn | The harness’s stream, per asked turn | No more than `main` |
+| Reads after a wake | `read_message` and `read_conversation` calls in a woken turn before its first other action | Fewer than `main` |
+| Postbox’s input per turn | Characters of the entries, tail and facts, divided by four | No more than `main` |
+| Input tokens per turn | What each harness reports | Reported, not a pass mark: its range is wide |
+| A resumed session | A session started on `main` and resumed on the branch hands work to another agent | The hand-off arrives, and what the call to `wake_agent` returned is recorded |
+| Turns with entries from several threads | Counted from the inbox | Reported, to settle “Where a reply goes” |
+
+What is and isn’t measured:
+- **Claude Code** is the one harness with a measured long room, and it reports every figure above.
+- **Codex and Antigravity** reported input tokens in the search measurement, in short sessions only. A long room on either is unmeasured.
+- **Kiro** reported no token counts in the search measurement, so its rows are requests, reads and right answers only.
+- **Each run uses real agents and costs real usage,** so each set of runs needs the person’s go-ahead.
 
 This is #508’s A2 to A4 (#527 to #529), made smaller. It drops A1’s held wakes and the revisions of sent entries.
 
@@ -166,4 +269,5 @@ flowchart TD
 ## Where it stands
 
 - **Done:** the analysis above, and the person’s direction.
+- **Done:** the inbox’s design: what an entry is, what a turn is given and its budget, and what the build must show (“Delivery: mention, wake and queue on one inbox”). Nothing in it is built.
 - **Next:** review this draft. Then each part gets its own pull request, which updates the rows of `intent.md` it changes, and a UAT scenario with four or more agents that measures what each part claims: time before anything shows in a turn, messages crossed, wakes that found nothing to do, and asks per decision.
