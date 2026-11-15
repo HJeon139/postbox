@@ -2,6 +2,18 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.12.0 (2026-11-15)
+
+### Features
+
+- **turns:** build what a turn is given from its inbox entries
+
+### Fixes
+
+- **server:** an agent reads each review thread's id, so it can resolve the ones it fixed
+- **server:** the permissions panel says “this” where it said “rt”
+- **turns:** count the tail's notes within its limits, and always say what it left out
+
 ## 4.11.0 (2026-11-15)
 
 ### Features
