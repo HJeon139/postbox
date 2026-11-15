@@ -671,6 +671,7 @@ Each step is its own pull request, and is done when:
     - The chain cap’s card and the add-agent card stand in front of Delivery until Asks replaces them, so `chainHeld` stays unbound.
     - A host turn’s replay keys its mentions by the host turn and their order, as the retry id (#1138’s class).
     - Entries carry an arrival number, so they sort with the queue’s messages in the same millisecond (#733).
+    - Stop closes a turn without `endTurn`, so it raises `turn.stopping`, and Delivery marks what the turn took as delivered. A shutdown’s stop doesn’t: the restart reopens those entries once, as a resend. A reply the person stopped hands its mentions to no one, as before.
   - **Not yet:** `wake_agent`’s removal.
 - **Next:** Delivery and Turns, built as the inbox, from step 2 of the order “Delivery and Turns, built as the inbox” gives. Asks follow, after the permission layer.
 

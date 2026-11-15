@@ -276,6 +276,7 @@ export class Runtime {
     this.bus.on('turn.ended', ({ turn }) => wakeMentioned(this, turn));
     this.bus.on('turn.failed', ({ turn }) => this.delivery.turnFailed({ sessionId: turn.sessionId, turnId: turn.id, lost: false }));
     this.bus.on('turn.failed', ({ turn }) => wakeMentioned(this, turn));
+    this.bus.on('turn.stopping', ({ turn }) => this.delivery.turnEnded({ sessionId: turn.sessionId, turnId: turn.id }));
   }
 
   // Running’s maps and its closing flag, for the code that waits for rooms at scale and still reads them through the

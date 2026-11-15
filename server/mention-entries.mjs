@@ -17,6 +17,8 @@ import { copiedLine } from './copied-line.mjs';
  */
 export function mentionEntries(rt, { threadId, item }) {
   if (item.kind !== 'agent' || item.via === 'terminal' || !item.turnId || !item.sessionId) return;
+  // A reply the person stopped hands nothing over, as a stopped turn woke no one before.
+  if (item.status === 'stopped') return;
   // A reply a restart or an outage left without its turn wakes no one, as before.
   const turn = rt.running.turnFor(item.sessionId, item.turnId);
   if (!turn || turn.summarizeTo) return;
