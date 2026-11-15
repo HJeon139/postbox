@@ -7,9 +7,10 @@
 // name events the server never kept (server/live-streams.mjs). The page's epoch is the one its loaded
 // state came with, never one heard on the stream alone.
 
+import { applyOnPage } from '/shared/inbox-page.mjs';
 import { itemOf, positionOf } from '/shared/item-index.mjs';
 import { needsYouNow, whereNeeds } from '/shared/needs.mjs';
-import { apply, ownState, PUBLIC_EVENT_TYPES, STREAM } from '/shared/state.mjs';
+import { ownState, PUBLIC_EVENT_TYPES, STREAM } from '/shared/state.mjs';
 import { fetchRange, gate, loading, place } from './item-ranges.mjs';
 import { windowOn } from './window-flag.mjs';
 
@@ -117,7 +118,7 @@ function hear(t, e) {
   // An item moved past the range's end: the state has its stub in its place, which the transcript draws.
   if (verdict === 'moved') client.emit({ type: t, data: { ...data, past: true } });
   if (verdict !== 'apply') return;
-  apply(client.state, t, data);
+  applyOnPage(client.state, t, data);
   // A session’s change comes as only its changed fields (designs/508, “Store events”); listeners hear the whole
   // session, as they did when the server sent it whole.
   if (t === 'session.patch') {

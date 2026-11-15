@@ -51,7 +51,7 @@ async function pageWith(answer) {
     // client.mjs's imports from shared/state.mjs that the test uses as they are.
     PUBLIC_EVENT_TYPES,
     STREAM,
-    apply() {},
+    applyOnPage() {},
     needsYouNow() {},
     whereNeeds() {},
     fetch: async () => answer(),
