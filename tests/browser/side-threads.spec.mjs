@@ -233,7 +233,10 @@ test('the Threads page lists side threads beside topic threads, with their pair,
   const link = store.items(r.room.id).find((x) => x.kind === 'sidelink' && x.sideThreadId === side.id);
   await open(page, `#/p/${r.room.projectId}/threads`);
   const card = page.locator(`.thread-list li[data-kind="side"]`).filter({ has: page.locator(`a[href="#/t/${r.room.id}/side/${side.id}"]`) });
-  expect((await words(card))[0]).toMatch(new RegExp(`^${escapeRegExp(side.title)} Side thread · in Listed · ${link.count} messages · (idle|@\\w+ [a-z ]+) · `));
+  // Read until the card is drawn: a list not rendered yet reads as its bare text, labels and all, with no spaces (#1283).
+  await expect
+    .poll(async () => (await words(card))[0])
+    .toMatch(new RegExp(`^${escapeRegExp(side.title)} Side thread · in Listed · ${link.count} messages · (idle|@\\w+ [a-z ]+) · `));
   // A topic thread says which kind it is too.
   await expect(page.locator('.thread-list li[data-kind="topic"]', { hasText: /Topic thread · in / }).first()).toBeVisible();
 });
@@ -250,7 +253,7 @@ test('a message in a side thread from before #372 still goes to the conversation
     .toBe(true);
   await synced(page, app);
   await expect(page.locator(`.sidepanel [data-key="${reply.id}"]`)).toContainText('Sent to the conversation');
-  expect(await words(page.locator('#main .shared-head'))).toContain(`From the thread “${side.title}” · researcher Open thread`);
+  await expect.poll(() => words(page.locator('#main .shared-head'))).toContain(`From the thread “${side.title}” · researcher Open thread`);
 });
 
 test('a failed side-thread turn shows on its line with Retry, and the line’s Open goes to its card (#151)', async ({ page }) => {
