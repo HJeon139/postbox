@@ -50,7 +50,7 @@ export function latestProject(rt, personaId) {
 
 /**
  * Everything the panel shows. Rule lists carry their source: user, project, local (the settings files), conversation
- * (rt session’s), tools (the persona’s unticked Tools, as deny rules), publishing (when it may not publish outside
+ * (this session’s), tools (the persona’s unticked Tools, as deny rules), publishing (when it may not publish outside
  * Postbox), writes (ask rules for writes outside Postbox, #112) and postbox (its own tools, always allowed). hooks
  * lists each settings file’s PreToolUse and PermissionRequest hooks, with the same sources (#817, #871).
  * @param {any} rt @param {{ sessionId?: string|null, personaId?: string|null, projectId?: string|null }} who
@@ -124,7 +124,7 @@ function runningOf(rt, persona) {
 
 /**
  * Adds or removes a rule. where: local (the default, as the CLI saves “don’t ask again”), user (the person’s own
- * settings, only for a persona that loads them), conversation (rt session only) or host (an allow rule Postbox keeps
+ * settings, only for a persona that loads them), conversation (this session only) or host (an allow rule Postbox keeps
  * for the persona on hostId, #120). The project’s shared settings.json is never written.
  * @param {any} rt @param {{ sessionId?: string|null, personaId?: string|null, projectId?: string|null, behavior: string, rule: string,
  *           where?: string, remove?: boolean, hostId?: string|null }} change
@@ -143,10 +143,10 @@ export async function changePermissionRule(
   if (where === 'project')
     throw httpError(
       409,
-      'The project’s settings are shared with your team, so Postbox doesn’t change them. Save the rule in rt folder’s local settings, or edit .claude/settings.json yourself.',
+      'The project’s settings are shared with your team, so Postbox doesn’t change them. Save the rule in this folder’s local settings, or edit .claude/settings.json yourself.',
     );
   if (!['local', 'user', 'conversation', 'host'].includes(where))
-    throw httpError(422, 'A rule is saved in rt folder’s local settings, your user settings or rt conversation.');
+    throw httpError(422, 'A rule is saved in this folder’s local settings, your user settings or this conversation.');
   const { se, persona, folder } = await rt.panelTarget({ sessionId, personaId, projectId });
   if (persona.backend === 'mock' || !rt.readsRules(persona.backend)) throw httpError(409, 'Only Claude Code and Agent SDK agents read permission rules.');
   const b = /** @type {'allow'|'ask'|'deny'} */ (behavior);
@@ -170,7 +170,7 @@ export async function changePermissionRule(
   if (where === 'user' && !setupOf(persona).usesHostSetup)
     throw httpError(
       409,
-      `@${persona.handle} is isolated, so it doesn’t read your user settings. Save the rule in rt folder’s local settings, or rt conversation.`,
+      `@${persona.handle} is isolated, so it doesn’t read your user settings. Save the rule in this folder’s local settings, or this conversation.`,
     );
   if (!folder) throw httpError(409, `@${persona.handle} has no folder yet, so there’s no local settings file to save in.`);
   const files = settingsFiles(folder, rt.home, rt.configDir);
@@ -179,7 +179,7 @@ export async function changePermissionRule(
 }
 
 /**
- * Adds a folder rt conversation’s agent may work in, passed as --add-dir / additionalDirectories from its next
+ * Adds a folder this conversation’s agent may work in, passed as --add-dir / additionalDirectories from its next
  * turn, or removes one. path is absolute, or relative to the project’s folder (from the folder picker).
  * @param {any} rt @param {{ sessionId: string, path: string, remove?: boolean, read?: boolean }} change
  */
@@ -198,7 +198,7 @@ export async function changePermissionFolder(rt, { sessionId, path, remove = fal
     return { ok: true, path: dir };
   }
   const st = await stat(dir).catch(() => null);
-  if (!st?.isDirectory()) throw httpError(422, `${dir} isn’t a folder on rt computer.`);
+  if (!st?.isDirectory()) throw httpError(422, `${dir} isn’t a folder on this computer.`);
   if (!dirs.includes(dir)) {
     if (dirs.length >= MAX_ADD_DIRS) throw httpError(422, `A conversation can add up to ${MAX_ADD_DIRS} folders.`);
     rt.sessions.update(se.id, { addDirs: [...dirs, dir] });
