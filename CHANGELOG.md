@@ -2,6 +2,17 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.10.0 (2026-11-15)
+
+### Features
+
+- **tools:** let an agent search its conversation by words
+
+### Fixes
+
+- **tools:** read a search hit's line through the memory service
+- **tools:** follow main's thread service and guide limit in conversation search
+
 ## 4.9.0 (2026-11-14)
 
 ### Features
