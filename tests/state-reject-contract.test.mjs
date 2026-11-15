@@ -59,6 +59,7 @@ export const VALID = {
   'work.patch': { convId: 't', id: 'w', patch: { status: 'done' } },
   'entry.add': { sessionId: 'se', entry: { id: 'en2', state: 'waiting' } },
   'entry.patch': { sessionId: 'se', id: 'en', patch: { state: 'taken' } },
+  'entry.put': { sessionId: 'se', id: 'en', entry: { id: 'en', state: 'waiting' } },
   remove: { kind: 'thread', id: 't' },
   notify: { text: 'hi' },
   host: { id: 'h2', name: 'host two' },

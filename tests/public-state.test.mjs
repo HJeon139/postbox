@@ -39,6 +39,7 @@ const TYPES = [
   // an entry with no item, which reaches the page today as an item or an event.
   'entry.add',
   'entry.patch',
+  'entry.put',
 ];
 
 test('the event table has exactly the known types, each with a handler and a public flag, all public today', () => {

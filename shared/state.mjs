@@ -159,6 +159,7 @@ export const EVENTS = Object.freeze({
   'work.patch': { apply: patchWork, public: true },
   'entry.add': { apply: (s, d) => (s.inbox[d.sessionId] ??= []).push(d.entry), public: true },
   'entry.patch': { apply: patchEntry, public: true },
+  'entry.put': { apply: putEntry, public: true },
   // An old turn’s summary in place of its entries, and its replies’ step counts (#305, shared/state-archive.mjs).
   'turn.archive': { apply: applyTurnArchive, public: true },
   remove: { apply: removeEntity, public: true },
@@ -209,6 +210,18 @@ function removeEntity(s, d) {
   if (kept) delete s[kept][d.id];
   // Deleting a session deletes its entries; the messages they came from stay (designs/rooms-at-scale.md, “What an entry is”).
   if (d.kind === 'session') delete s.inbox[d.id];
+}
+
+/**
+ * Writes one of a session's entries whole, in its place or added: a change that brings an entry back from delivered,
+ * which a page has dropped (shared/inbox-page.mjs), so a patch would find nothing there.
+ */
+function putEntry(s, d) {
+  const { id } = d.entry; // read first, so missing data throws before anything changes (#609)
+  const list = (s.inbox[d.sessionId] ??= []);
+  const at = list.findIndex((/** @type {any} */ x) => x.id === id);
+  if (at >= 0) list[at] = d.entry;
+  else list.push(d.entry);
 }
 
 /** Sets fields on one of a session's entries, if it's there. */
