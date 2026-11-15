@@ -115,6 +115,9 @@ test('entries waiting in another thread are counted once a turn, after its take'
   assert.deepEqual(waitingElsewhere([add('en_1', 'th_topic'), notice, take('en_n', 'turn_1'), take('en_1', 'turn_1')]), [0], 'a notice taken first');
   assert.deepEqual(waitingElsewhere([add('en_1', 'th_topic'), notice, take('en_1', 'turn_1'), take('en_n', 'turn_1')]), [0], 'a notice taken last');
   assert.deepEqual(waitingElsewhere([add('en_1', 'th_topic'), add('en_3', 'th_main'), notice, take('en_1', 'turn_1')]), [1], 'a notice left waiting');
+  // An entry the person’s Stop stopped starts no turn, so it isn’t waiting anywhere.
+  const stop = { type: 'entry.patch', data: { sessionId: 'se_a', id: 'en_3', patch: { state: 'stopped' } } };
+  assert.deepEqual(waitingElsewhere([add('en_1', 'th_topic'), add('en_3', 'th_main'), stop, take('en_1', 'turn_1')]), [0], 'a stopped entry');
 });
 
 test('Postbox’s input is each prompt’s size, without what the agent’s own tools returned', () => {
