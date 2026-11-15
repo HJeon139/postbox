@@ -91,13 +91,18 @@ async function refill(next, epoch) {
   client.ranges = ranges;
 }
 
+// Whether the last numbered frame was one the page had (seq at or below its own). The unnumbered frames sent right after
+// an event are as old: a header the state has moved past, a rejected event's resync that would reload for nothing (#1264).
+let behind = false;
+
 /**
  * One numbered frame from the stream: an event the page applies, or a cursor that only moves its place on.
  * @param {string} t @param {MessageEvent} e
  */
 function hear(t, e) {
   const seq = Number(e.lastEventId);
-  if (seq && seq <= client.seq) return;
+  behind = Boolean(seq) && seq <= client.seq;
+  if (behind) return;
   // A cursor stands for an event the page doesn't see: it moves the page's place on, and nothing else.
   if (t === STREAM.cursor) {
     client.seq = seq || client.seq;
@@ -151,11 +156,13 @@ export function connect({ quiet = false } = {}) {
   // loads the state again, as a resync does. Taking the epoch from the frame would, if that load then failed, send the
   // new epoch with the old state on the next reconnect, which the server would accept at an equal seq.
   es.addEventListener(STREAM.epoch, (e) => {
+    behind = false;
     if ((JSON.parse(e.data) ?? '') !== client.epoch) void resync();
   });
-  es.addEventListener(STREAM.resync, resync);
+  es.addEventListener(STREAM.resync, () => (behind ? undefined : resync()));
   // A thread’s header, unnumbered: it follows the event that changed it, and null says the thread was removed.
   es.addEventListener(STREAM.header, (e) => {
+    if (behind) return;
     const { threadId, header } = JSON.parse(e.data);
     if (header) client.headers[threadId] = header;
     else delete client.headers[threadId];
