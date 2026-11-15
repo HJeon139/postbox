@@ -34,3 +34,17 @@ test('Retry brings a delivered entry back to a page left open, as it is to a pag
     [['it_1', 'waiting', true]],
   );
 });
+
+test('an entry Retry brings back takes its place among the page’s entries by when it arrived, as the server keeps it', () => {
+  const { store, page, delivery } = rig();
+  delivery.send({ sessionId: 'se_b', threadId: 'th_c', source: 'mention', itemId: 'it_1', from: 'alpha' });
+  delivery.take('se_b', 'tu_1');
+  delivery.turnFailed({ sessionId: 'se_b', turnId: 'tu_1', lost: false });
+  delivery.send({ sessionId: 'se_b', threadId: 'th_c', source: 'mention', itemId: 'it_2', from: 'alpha' });
+  delivery.retry('tu_1');
+  assert.deepEqual(
+    page.inbox.se_b.map((e) => e.itemId),
+    ['it_1', 'it_2'],
+  );
+  assert.deepEqual(page.inbox, pageInbox(store.state.inbox));
+});
