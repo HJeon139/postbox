@@ -1,6 +1,6 @@
 # Concerns as services
 
-**Status:** a proposal, 12 November 2026, for the person to approve before any code moves. Steps 0 to 11 are built, from the test fixture to Hosts, with the thread summaries split off from Memory as Summaries in step 10; Asks, Delivery and Turns wait for rooms at scale (“Where it stands”). Numbers are from `main` at 2259cebe. The scripts that produced them are in the pull request that added this document; the last of them, `svc-check.mjs`, checks the design against the code.
+**Status:** a proposal, 12 November 2026, for the person to approve before any code moves. Steps 0 to 11 are built, from the test fixture to Hosts, with the thread summaries split off from Memory as Summaries in step 10; Asks, Delivery and Turns wait for rooms at scale; Delivery and Turns are designed as the inbox (“Delivery and Turns, built as the inbox”). Numbers are from `main` at 2259cebe. The scripts that produced them are in the pull request that added this document; the last of them, `svc-check.mjs`, checks the design against the code.
 
 ## Why
 
@@ -166,12 +166,94 @@ Split from Memory in step 10 (“Risks”).
 - **Interface:** `get`, `add`, `update`, `remove`, `status`, `describeInstall`, `install`, `retry`, `setKeepUpdated`, `setProjectFolder`, `watch()`.
 - **Depends on:** Store, Personas, Running, and the `hostTurns` port (`busyOn`, `sessionsOn`, `stopOn`, `cancel`, `confirmStops`, `stoppingSession`: the host turns that an update or a removal stops). External: the host manager.
 
-### The waiting concerns, once rooms at scale lands
+### Delivery and Turns, built as the inbox
 
-Their target shape, for the step that redoes each; its details belong to that design.
-- **Asks:** an ask is a record its agents write together, and needs you is the queue of open ones. Depends on Store, Bus, Threads, Sessions, Personas, Running and `send`. A harness’s own question (AskUserQuestion, a permission prompt while the layer stays) comes in through Turns’ adapter contract and becomes an ask.
-- **Delivery (the inbox):** one stored inbox per agent per conversation; `send` adds an entry. Depends on Store, Bus, Running, Threads, Sessions, Personas, Memory and Turns.
-- **Turns:** starts a turn from inbox entries, runs it through the adapter contract, and ends it through the end steps below. Depends on Store, Bus, Running, Threads, Sessions, Personas, Placement, Memory, Summaries, Assets, Work, Checks and Apps. Delivery and asks attach to its start and end steps; they don’t sit below it.
+[`rooms-at-scale.md`](../rooms-at-scale.md), “Delivery: mention, wake and queue on one inbox”, decides what an agent receives and what its turn is given. This section decides where that lives. Delivery is built below Turns. Today they call each other both ways (“The tangles”). The inbox removes most of those calls instead of wrapping them, because a mention becomes an entry when its message is final, not at the end of the turn that wrote it.
+
+```mermaid
+flowchart LR
+  TH[Threads] -->|item.final| D[Delivery]
+  AP[Apps: a review] -->|send| D
+  CK[Checks: a lint turn] -->|send| D
+  D -->|entry.waiting| T[Turns]
+  T -->|take| D
+  T -->|turn.ended| D
+  T -->|progress, not stored| PG[The page’s stream]
+  D -->|stateOf| ST[Agent state]
+  R[Running] --> ST
+  ST --> PG
+```
+
+**Delivery**
+- **Owns:** each agent’s inbox in each conversation, as stored entries; scheduled wakes; the chain count (principle 6). An entry has its source (a mention, a review, the person’s answer, a scheduled wake, or Postbox’s notice), the item it came from, its thread, its sender, when it arrived, its state (waiting, delivered or failed), whether it is a resend, and the newer posts from its sender since (“@x posted since”).
+- **Invariants:**
+  - An entry is made only from a final item, once per item and recipient. A replayed tool call or a page’s resend carries the same retry id and makes none (#1138).
+  - Nothing is held, merged or dropped.
+  - An entry a turn took and failed to start goes back to waiting; the turn’s record says which entries it took. One that a harness accepted and then lost to a network failure goes back once, marked as a resend (#466).
+  - A mention wakes only outside a blockquote, a code span and a code block.
+- **Interface:**
+  - `send(entry)`: what the `send` port names today. Checks and Apps call it directly once Delivery exists, so the port goes.
+  - `waiting(sessionId)`, `take(sessionId, budget)` and `stateOf(sessionId)`: a sender’s view of each entry, and an agent’s “waiting behind @x since”.
+  - `schedule` and `cancel`.
+  - Signals: `entry.waiting`, raised when an agent with no live turn gets an entry or its turn ends with entries left.
+- **Listens to:**
+  - `item.final`, which turns the item’s mentions into entries;
+  - `turn.ended`, which settles what the turn took, its scheduled wake and the chain;
+  - `persona.updated`, which drains an agent moved off a host, as `drainMovedOff` does now.
+- **Depends on:** Store, Bus, Threads, Sessions, Personas, Running. Not on Turns.
+- **What goes:** `wake_agent`, `open_topic`’s `mentions`, wake cards and their held lines (the `catchUpLines` port), `newer-waiting`’s replacement of a waiting message, `queue-batch`, and the wakes at the end of a turn (steps L and R of “The end of a turn”). A reply’s mentions are entries as soon as it is final.
+
+**Turns**
+- **Owns:**
+  - starting a turn from the entries it takes;
+  - the turn’s input: its entries whole, grouped by thread, then a bounded tail of the rest of the room and a pointer to `search_conversation` and `read_conversation`;
+  - the harness-event contract (`server/harness-events.mjs`, #1239);
+  - the live progress of a running turn, with a small buffer for a page that reconnects; each step carries its start time, and Postbox’s own tool calls are steps like any other;
+  - one record of the turn when it ends: the entries it took, its steps, its jobs still running, and why it ended. A turn that dies says what it held from this record, not with an empty message;
+  - stopping a turn.
+- **Invariants:**
+  - A turn starts only through Running’s `begin`.
+  - Progress is never written to the store; the turn’s record is.
+  - A reply’s segment becomes final through Threads, which raises `item.final`.
+- **Interface:** `start(sessionId)`, `stop(sessionId, reason)`, `progress(sessionId)`. Signals: `turn.started`, and `turn.ended` with its outcome and `err`.
+- **No one else starts a turn.** `rt.deliver` has 15 calling modules today (#1236, the inventory of 15 November). Twelve of them hand an agent a message, and they call Delivery’s `send` instead: the queue, mention wakes, side threads, scheduled wakes, share-back, agent commands, blocks, and the permission, wake, tool-ask, app-send and download cards. The other three aren’t messages, and they become Turns’ own steps:
+  - `retryHeld`: a start that waited behind a held commit;
+  - `release`: a stopped turn has exited, so Delivery’s waiting entries for it raise `entry.waiting` again (`turn-stop.mjs` today);
+  - `resume`: a host turn resumed after a restart (`remote/turns-resume.mjs`).
+- **End steps** are named for `turn-finish.mjs`’s stages: `ending`, `settled`, `replied` (`settleReplies`), `failed` (`endFailed`) and `ended` (`needsAfter`).
+- **Listens to:** `entry.waiting`.
+- **Depends on:** Store, Bus, Running, Threads, Sessions, Personas, Placement, Memory, Summaries, Assets, Work, Checks, Apps, Delivery, and the `hostTurns` port, which becomes its own interface.
+- **The end of a turn** keeps its order, with fewer steps. Delivery’s steps E, H, L, L3 and R become one `turn.ended` listener. Turns still marks whom a failure woke (L2): a failed turn’s reply is final, and its mentions are entries like any other.
+
+**Agent state** is read, never stored. It comes from Running (a live turn, exiting, awaiting attach), Turns’ current step and its last turn’s end, Work’s jobs, Delivery’s `stateOf`, and asks once they exist. Each agent shows one of:
+- running, with its current step;
+- waiting on a job;
+- waiting behind @x;
+- waiting on you;
+- failed;
+- idle.
+
+The facade gives it to `server/public-state.mjs`. With the state always in view, the person has no reason to ask an agent for status. Delivery doesn’t try to tell a status question from work; a question still wakes the agent it mentions.
+
+**What this does to `runtime.mjs`.** Most of its remaining facade forwards to the modules above: `deliver`, the queue, mention wakes, the turn’s start and end, and the cards. Those methods move to Delivery and Turns or are deleted with what they served. So the rest of the split of `runtime.mjs` (#1236, wave 3) happens in these steps and in Asks. #1236’s inventory counts the remaining lines:
+- **806 lines today:** 51 facade methods stay.
+- **About 680 after this step:** 39 forwarding methods go.
+- **About 650 after Asks.**
+- **About 590 after the permission layer goes:** its 15 methods go.
+- **About 490 after a final pass:** it removes what forwarding is left, and the 28 modules that read `rt.turns` ask Running directly.
+
+**Order inside this step.** Each item is a pull request of its own, from interface tests to moves to the service, as in steps 0 to 11:
+1. Threads raises `item.final`.
+2. Delivery with stored entries, behind today’s queue. Mentions become entries, and `wake_agent` answers with a refusal: “mention @handle in a message”.
+3. Turns takes entries and builds its input from them.
+4. Live-only progress.
+5. Agent state.
+
+Asks follow, after the permission layer.
+
+### Asks, after the inbox
+
+- **Asks:** an ask is a record its agents write together, and needs you is the queue of open ones. Depends on Store, Bus, Threads, Sessions, Personas, Running and Delivery. A harness’s own question (AskUserQuestion, a permission prompt while the layer stays) comes in through Turns’ adapter contract and becomes an ask. Whether the stop ask survives as the harness’s own question is Asks’ call (#1236).
 
 ### The dependency graph
 
@@ -498,6 +580,7 @@ Each step is its own pull request, and is done when:
   - No test replaces `rt.stop` around a removal, so the port’s late lookup isn’t pinned: a mutant that binds `stopOn` once passes the suite. It looks up late as `send` does (step 8), for the same reason.
   - No test was deleted, and no spec changed.
 - **Complete:** steps 0 to 11, the order of work above. Asks, Delivery and Turns wait on rooms at scale’s decisions on the permission layer and the inbox, behind the facade in their current shape, and take `rt` until then.
+- **Next:** Delivery and Turns, built as the inbox, in the order “Delivery and Turns, built as the inbox” gives. Asks follow, after the permission layer.
 
 ## Appendix: every module’s members
 
