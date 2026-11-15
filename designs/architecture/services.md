@@ -88,7 +88,7 @@ The list refines the starting point from the data:
 
 - **Owns:** the listeners for in-process signals. It calls them synchronously, in the order the root registered them, and a listener’s throw reaches the emitter, as a direct call’s does today. Nothing is persisted.
 - **Interface:** `emit(signal, data)`, `on(signal, fn)`.
-- **Signals:** `persona.updated` (Personas, after a write), `session.joined` (Sessions: a declined add lifts), `item.added` (Threads: a side thread’s line counts the message), `item.moved` (Threads, from `bringForward`: Memory moves its read markers to the stub), `app.retired` (Apps: its send card’s need releases), `block.withdrawn` (Apps, from `update_block`’s withdraw: the block’s need releases).
+- **Signals:** `persona.updated` (Personas, after a write), `session.joined` (Sessions: a declined add lifts), `item.added` (Threads: a side thread’s line counts the message), `item.final` (Threads, once per item, when it is first final: Delivery will turn its mentions into entries; nothing listens yet but the tests), `item.moved` (Threads, from `bringForward`: Memory moves its read markers to the stub), `app.retired` (Apps: its send card’s need releases), `block.withdrawn` (Apps, from `update_block`’s withdraw: the block’s need releases).
 - **`persona.updated`’s listeners, in this order:** host turns set Running’s awaiting-attach entries for that persona’s sessions from where it runs now (`RemoteTurns.noteAttach`): one moved off its host is cleared, and one moved back before the attach waits again; sessions drop what their last turn reported, after a change of backend or model (`Sessions.forgetReported`, #1315); tool asks settle (`settleToolAsks`); the queue of an agent moved off a host drains (`drainMovedOff`). Today `busyFor` computes awaiting attach from the persona as it is after the write, so a drain right after it already sees the agent free; clearing first keeps that. If the queue drained first, a moved agent’s messages would stay held.
 - **Depends on:** nothing.
 
@@ -108,7 +108,7 @@ The list refines the starting point from the data:
 ### Threads
 
 - **Owns:** conversations, topic and side threads, their items, and presence (`viewing`). Invariants: an item has one live copy (`bringForward` leaves a stub); a topic’s reply count follows each message; a thread’s lineage ends at its conversation.
-- **Interface:** `get(id)`, `create(opts)` (from `conversations.mjs`), `put(thread)`, `patch(id, change)`, `toWrite(id)`, `pending()`, `rename(id, title)`, `addItem`, `patchItem`, `bringForward`, `lineage(id)`, `conversationThreads(id)`, `glossaryFor(id)`, `notify(level, …)`, `view(id)`, `isViewing(id)`, `toggleReaction`. Signals: `item.added`, with the thread as written, and `item.moved`, with the stub’s id. Clearing the sessions’ unread counts when a thread is viewed is Sessions’ (`markRead`); the facade’s `view()` clears them first, then calls `Threads.view`, which marks the thread open and clears its own, the order the two writes always had.
+- **Interface:** `get(id)`, `create(opts)` (from `conversations.mjs`), `put(thread)`, `patch(id, change)`, `toWrite(id)`, `pending()`, `rename(id, title)`, `addItem`, `patchItem`, `bringForward`, `lineage(id)`, `conversationThreads(id)`, `glossaryFor(id)`, `notify(level, …)`, `view(id)`, `isViewing(id)`, `toggleReaction`. Signals: `item.added`, with the thread as written; `item.final`, with the item and its thread, once per item, when it is first final; and `item.moved`, with the stub’s id. An item is final when it’s added, unless it’s a reply still streaming, which is final when a patch moves it out of streaming (its segment closes, or its turn ends, fails or is stopped). Clearing the sessions’ unread counts when a thread is viewed is Sessions’ (`markRead`); the facade’s `view()` clears them first, then calls `Threads.view`, which marks the thread open and clears its own, the order the two writes always had.
 - **Depends on:** Store, Bus.
 
 ### Personas
@@ -310,7 +310,7 @@ The facade gives it to `server/public-state.mjs`. With the state always in view,
 
 **Order inside this step.** Each item is a pull request of its own, from interface tests to moves to the service, as in steps 0 to 11:
 1. Threads raises `item.final`.
-2. Delivery with stored entries, behind today’s queue. Mentions become entries, and a call to `wake_agent` is refused with what to do instead ([`rooms-at-scale.md`](../rooms-at-scale.md), “After `wake_agent` goes”).
+2. Delivery with stored entries, behind today’s queue. Mentions become entries, and a call to `wake_agent` is refused with what to do instead ([`rooms-at-scale.md`](../rooms-at-scale.md), “After `wake_agent` goes”). Step 1 found three final items whose entries this step decides, since `item.final` raises them like any other: a reply a restart or a store outage stopped mid-stream; a host turn’s reply replaced by its replay after a restart, which is final again as the replay’s new reply (#1138’s class); and a reply mirrored from an attached Claude Code terminal, which is final when it’s added and grows after, and whose mentions wake no one today.
 3. Turns takes entries, builds its input from them, and keeps the turn’s record.
 
 Live-only progress and agent state follow, as the next step ([`rooms-at-scale.md`](../rooms-at-scale.md), “Order of work”). Asks follow the permission layer.
@@ -650,7 +650,10 @@ Each step is its own pull request, and is done when:
   - No test replaces `rt.stop` around a removal, so the port’s late lookup isn’t pinned: a mutant that binds `stopOn` once passes the suite. It looks up late as `send` does (step 8), for the same reason.
   - No test was deleted, and no spec changed.
 - **Complete:** steps 0 to 11, the order of work above. Asks, Delivery and Turns wait on rooms at scale’s decisions on the permission layer and the inbox, behind the facade in their current shape, and take `rt` until then.
-- **Next:** Delivery and Turns, built as the inbox, in the order “Delivery and Turns, built as the inbox” gives. Asks follow, after the permission layer.
+- **Done:** the inbox’s step 1, `item.final`. Threads raises it once per item, when it is first final: as it’s added, unless it’s a reply still streaming, and for a streaming reply when `patchItem` moves it out of streaming. One rule in Threads covers every path that settles a reply: a segment closed mid-turn (`closeSegment`, a new segment after a post below it), the end of a turn (`settleReplies`), a failed turn’s reply (`endFailed`), Stop (`turn-stop.mjs`), a store outage (`store-outage.mjs`), start-up (`index.mjs`) and a host turn’s replay (`remote/turns-resume.mjs`). Its interface tests are `tests/threads-final.test.mjs`, and `tests/threads-final-turns.test.mjs` holds each turn path through a runtime; the fixture’s `onItemFinal` listens. Nothing listens in the root yet. What it found:
+  - A patch reads the item first only when it sets a status, so a reply’s words and steps, the patches that come per chunk, cost no read.
+  - The three final items “Order inside this step” lists for step 2 to decide.
+- **Next:** Delivery and Turns, built as the inbox, from step 2 of the order “Delivery and Turns, built as the inbox” gives. Asks follow, after the permission layer.
 
 ## Appendix: every module’s members
 
