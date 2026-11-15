@@ -50,7 +50,7 @@ export function searchConversation(rt, se, args = {}) {
   const asked = `“${clipText(query, 80)}”`;
   const lines = hits.flatMap((hit) => {
     const item = rt.store.item(hit.threadId, hit.id);
-    const line = item ? rt.readLine(item, se, Number.POSITIVE_INFINITY) : '';
+    const line = item ? rt.memory.readLine(item, se, Number.POSITIVE_INFINITY) : '';
     if (!line) return [];
     const t = hit.threadId === se.threadId ? null : rt.s.threads[hit.threadId];
     const where = t ? `in the ${t.kind === 'side' ? 'side thread' : 'thread'} “${clipText(String(t.title ?? ''), 80)}” (${t.id}) · ` : '';
