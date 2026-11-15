@@ -6,7 +6,7 @@
 //                                          blocks, text after a tool call does. With parent, a
 //                                          subagent’s own words: a step in its voice, never the reply (#73).
 // - text_end  { block }                   an open block of the reply ended: open, on a text event, says its block may
-//                                          stream alongside another, as Codex's agent messages can, until this (#1293).
+//                                          stream alongside another, as Codex’s agent messages can, until this (#1293).
 // - thinking  { text, block?, parent?, whole? }   a piece of a thought; whole, or a thinking_end, makes it a step.
 // - thinking_end { block }
 // - tool_call { id, name, input?, label?, parent?, who?, final?, work?, patch? }   a call, named as Claude Code names its

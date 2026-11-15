@@ -9,7 +9,7 @@ import { byOf, firstSentence } from './harness-tools.mjs';
 
 // The least time between two showings of a thought still being written, in milliseconds.
 const THOUGHT_EVERY = 1000;
-/** Whether text ends a sentence or a line, so another block's words can follow it as their own paragraph. */
+/** Whether text ends a sentence or a line, so another block’s words can follow it as their own paragraph. */
 const ENDS = /(?:[.!?…:;]["'”’)\]]*\s*|\n\s*)$/;
 
 /**
@@ -42,11 +42,13 @@ export class HarnessText {
     this.calls = 0; // the turn’s own tool calls so far: text without a block starts a paragraph after one
     /** @type {Map<unknown, { text: string, id: string | null, at: number }>} a thought still streaming, by its block */
     this.thinking = new Map();
-    /** @type {Set<unknown>} blocks that may stream alongside another until their text_end, as Codex's messages can (#1293) */
+    /** @type {Set<unknown>} blocks that may stream alongside another until their text_end, as Codex’s messages can (#1293) */
     this.open = new Set();
     /** @type {Map<unknown, string>} other blocks' words, waiting while an open block is mid-sentence (#1293) */
     this.held = new Map();
     this.tail = ''; // the end of the block writing now, to tell whether it ended a sentence
+    /** @type {Set<unknown>} blocks that have written, so one that takes the reply back starts its paragraph without a space */
+    this.begun = new Set();
   }
 
   /** The latest whole sentences of what the agent is thinking or writing, at most a few times a second. @param {string} text */
@@ -107,6 +109,8 @@ export class HarnessText {
   /** @param {string} text @param {unknown} block */
   append(text, block) {
     if (block !== this.block) {
+      // A block taking the reply back mid-stream (only an open one can, #1293) starts its new paragraph at its word.
+      if (this.begun.has(block)) text = text.trimStart();
       this.tail = '';
       this.block = block;
       if (this.wrote) this.ctx.text('\n\n');
@@ -114,6 +118,7 @@ export class HarnessText {
     }
     if (!text) return;
     this.ctx.text(text);
+    this.begun.add(block);
     this.tail = (this.tail + text).slice(-8);
     this.written = (this.written + text).slice(-200_000);
     this.wrote = true;

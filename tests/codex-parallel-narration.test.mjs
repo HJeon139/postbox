@@ -89,3 +89,25 @@ test('#1293: a message that ends mid-sentence lets the waiting one in when its i
   c.push(completed(A, 'Looking at the files'));
   assert.equal(c.out.text, 'Looking at the files\n\nHere is what I found.');
 });
+
+test('#1293: a message waiting behind one that never ends a sentence is written at the turn’s end', () => {
+  const c = codex();
+  c.push(started(A));
+  c.push(delta(A, 'Looking at the files'));
+  c.push(started(B));
+  c.push(delta(B, 'Here is what I found.'));
+  assert.equal(c.out.text, 'Looking at the files');
+  c.push({ method: 'turn/completed', params: { turn: { status: 'completed' } } }); // no item/completed for A
+  assert.equal(c.out.text, 'Looking at the files\n\nHere is what I found.');
+});
+
+test('#1293: a message that takes the reply back starts its paragraph at its word, with no space', () => {
+  const c = codex();
+  c.push(started(A));
+  c.push(delta(A, 'Alpha one'));
+  c.push(started(B));
+  c.push(delta(B, 'Beta one.'));
+  c.push(delta(A, ' done.'));
+  c.push(delta(A, ' Alpha two.'));
+  assert.equal(c.out.text, 'Alpha one done.\n\nBeta one.\n\nAlpha two.');
+});

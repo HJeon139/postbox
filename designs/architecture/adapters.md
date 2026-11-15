@@ -26,7 +26,7 @@ The Agent SDK streams the same messages as the Claude Code CLI, so one mapper ([
 
 A harness that doesn’t report a thing never gets a guess at it: Antigravity’s edits name only their file, so they show no diff (#1239).
 
-**Two blocks of the reply at once.** Most harnesses write the reply one block at a time, so a new block means the last one ended. Codex can stream two agent messages at once, narrating parallel calls, and their deltas interleave. Its adapter marks such text `open` until the message ends, which it reports as `text_end`. While an open block is mid-sentence, another block’s words wait, and follow as their own paragraph once it ends a sentence or its message: the reply takes turns by whole sentences, never spliced word by word (#1293). A harness that never marks text open streams exactly as it did.
+**Two blocks of the reply at once.** Most harnesses write the reply one block at a time, so a new block means the last one ended. Codex can stream two agent messages at once, narrating parallel calls, and their deltas interleave. Its adapter marks such text `open` until the message ends, which it reports as `text_end`. While an open block is mid-sentence, another block’s words wait, and follow as their own paragraph once it ends a sentence or its message: the reply takes turns by whole sentences, never spliced word by word (#1293). A long open block that never ends a sentence holds the others until its message ends, and whatever is still waiting is written when the turn ends, by Stop, a crash or its end. A harness that never marks text open streams exactly as it did.
 
 ## Thinking, subagents and the guide
 
