@@ -14,6 +14,7 @@
 // Depends on Store, Bus and Running. Until Turns is a service, the composition root listens to entry.waiting and starts
 // the turn through today’s deliver, and the chain cap is a predicate the root binds (`chainHeld`).
 
+import { arrival } from './queue-batch.mjs';
 import { newId } from './store.mjs';
 
 /** Where an entry comes from (designs/rooms-at-scale.md, “What an entry is”). A notice never starts a turn. */
@@ -26,7 +27,7 @@ export const SOURCES = Object.freeze(['mention', 'person', 'command', 'review', 
  * `retryId` what a retried send carries (#1138). `message` is what today’s deliver is given for a review, until Turns
  * builds a turn’s input from entries (step 3).
  * @typedef {{ id: string, sessionId: string, threadId: string, source: string, itemId?: string, text?: string,
- *   message?: any, from?: string, at: number, state: EntryState, takenBy: string|null, resend: boolean,
+ *   message?: any, from?: string, at: number, seq: number, state: EntryState, takenBy: string|null, resend: boolean,
  *   postedSince: string[], retryId?: string }} Entry
  */
 
@@ -67,6 +68,8 @@ export class Delivery {
       ...(message === undefined ? {} : { message }),
       ...(from === undefined ? {} : { from }),
       at: Date.now(),
+      // Its place among what arrived in the same millisecond, here and with the queue’s messages (#733).
+      seq: arrival(),
       state: 'waiting',
       takenBy: null,
       resend: false,

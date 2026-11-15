@@ -221,7 +221,12 @@ function putEntry(s, d) {
   const list = (s.inbox[d.sessionId] ??= []);
   const at = list.findIndex((/** @type {any} */ x) => x.id === id);
   if (at >= 0) list[at] = d.entry;
-  else list.push(d.entry);
+  else {
+    // Where it arrived, as the server’s list keeps entries: by time, then by arrival within a millisecond (#733).
+    const later = (/** @type {any} */ x) => x.at > d.entry.at || (x.at === d.entry.at && (x.seq ?? 0) > (d.entry.seq ?? 0));
+    const before = list.findIndex(later);
+    list.splice(before < 0 ? list.length : before, 0, d.entry);
+  }
 }
 
 /** Sets fields on one of a session's entries, if it's there. */
