@@ -12,16 +12,29 @@ test('mentions: known handles only, in order, not in code or emails', () => {
 });
 
 // A reply that quotes another agent names it without waking it (designs/rooms-at-scale.md, “Which mention wakes”).
-test('mentions: a line copied from the conversation, with its id and who wrote it, wakes no one', () => {
+test('mentions: a line that starts with an item’s id is a copy only when the caller says it is that item’s words', () => {
   const h = ['developer', 'alpha', 'critic'];
-  // The two replies that woke an agent unasked in the search measurement, as they were written.
-  assert.deepEqual(parseMentions('it_big0137: @developer: I reran the migration guide for the zephyrine milestone; item 137 of the release log.', h), []);
-  assert.deepEqual(parseMentions('it_big0412: You (@alpha): I drafted deprecation warnings; item 412 of the release log.', h), []);
-  // As search_conversation gives a hit, where the time comes between the id and who wrote it.
-  assert.deepEqual(parseMentions('[it_4kQ2xY9a] 2026-11-15 14:02 UTC · in the thread “Index” (th_12) · @developer: built it', h), []);
-  // As read_conversation gives a line, and in a list.
-  assert.deepEqual(parseMentions('[it_4kQ2xY9a] @developer: ask @critic about it', h), []);
-  assert.deepEqual(parseMentions('Found two:\n- [it_a1] @developer: first\n- [it_b2] @alpha: second\n\n@critic which one?', h), ['critic']);
+  const asked = [];
+  const isCopy = (id, said) => {
+    asked.push([id, said]);
+    return id === 'it_big0137';
+  };
+  const copy = 'it_big0137: @developer: I reran the migration guide; item 137 of the release log.';
+  assert.deepEqual(parseMentions(copy, h, isCopy), []);
+  assert.deepEqual(asked, [['it_big0137', '@developer: I reran the migration guide; item 137 of the release log.']]);
+  // The same shape with another id is the message’s own: a hand-off, which wakes.
+  assert.deepEqual(parseMentions('it_abcdefgh: @developer: fix the null check', h, isCopy), ['developer']);
+  // In brackets, in a list, after a time, and as an agent’s own line reads to it.
+  assert.deepEqual(parseMentions('- [it_big0137] 2026-11-14 01:04 UTC · @developer: built it\n\n@critic which one?', h, isCopy), ['critic']);
+  asked.length = 0;
+  assert.deepEqual(parseMentions('1. it_big0137: You (@alpha): I drafted it', h, isCopy), []);
+  assert.deepEqual(asked, [['it_big0137', '@alpha: I drafted it']]);
+});
+
+test('mentions: with no way to tell a copy, a line that starts with an id wakes as any other', () => {
+  const h = ['developer'];
+  assert.deepEqual(parseMentions('it_big0137: @developer: I reran the migration guide', h), ['developer']);
+  assert.deepEqual(parseMentions('[it_4kQ2xY9a] @developer please look', h), ['developer']);
 });
 
 test('mentions: a mention in a blockquote wakes no one, and one outside it still does', () => {
@@ -35,7 +48,6 @@ test('mentions: addressing an agent with a colon, or naming an id in passing, st
   assert.deepEqual(parseMentions('@critic: what’s your concern?', h), ['critic']);
   assert.deepEqual(parseMentions('About it_big0137, @developer: can you rerun it?', h), ['developer']);
   assert.deepEqual(parseMentions('2 > 1, @critic', h), ['critic']);
-  assert.deepEqual(parseMentions('it_big0137: @developer, can you rerun it?', h), ['developer']);
 });
 
 test('finished sentences are announced once, and the tail on completion', () => {

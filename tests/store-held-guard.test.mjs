@@ -27,6 +27,7 @@ const PUBLISHED = {
   'block-update.mjs': ['answerDelivered'], // the answer to a block the person saw, as its event starts a turn
   'blocks.mjs': ['act'], // the person’s answer to a block they see
   'card-needs.mjs': ['dismissFailed'], // the person’s Dismiss on a failed reply they see (#883)
+  'copied-line.mjs': ['copiedLine'], // a line an agent copied (#1370): the item it was given, as read_conversation reads it
   'deliver.mjs': ['retry'], // the person’s Retry of a failed reply they see
   'diagram-check.mjs': ['diagramCheck'], // the page’s report on a diagram the person sees
   'item-lines.mjs': ['topicRootLine', 'describeItem'], // a read tool and a prompt

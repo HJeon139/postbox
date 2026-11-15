@@ -22,27 +22,39 @@ export const clip = (s, n = 240) => {
 
 /** A Markdown blockquote line: what it holds is someone else’s words. */
 const BLOCKQUOTE = /^ {0,3}>/;
+/** A line that starts with an item’s id, in brackets or not, alone or as a list item. */
+const STARTS_WITH_ID = /^\s*(?:(?:[-*]|\d+\.)\s+)?\[?(it_[A-Za-z0-9]+)\]?/;
+/** The first mention in a line, as parseMentions reads one. */
+const FIRST_MENTION = /(?:^|[^\w@.])(@[A-Za-z0-9_-]+)/;
+
 /**
- * A line copied from the conversation as Postbox gives it to agents. Every such line starts with an id in brackets:
- * “[it_4kQ2xY9a] @developer: …” (read_conversation), “[it_4kQ2xY9a] 2026-11-15 14:02 UTC · @developer: …”
- * (search_conversation). Without the brackets, an id counts only when who wrote the line follows it, as in
- * “it_4kQ2xY9a: @developer: …” or “it_4kQ2xY9a: You (@alpha): …”, so “it_4kQ2xY9a: @developer, can you rerun it?”
- * still wakes. Alone or as a list item. In the search measurement, replies that copied such a line woke the agent it
- * named, which answered unasked (designs/rooms-at-scale.md, “Which mention wakes”).
+ * Whether a line is a copy of an item’s line, as Postbox gave it to an agent: it starts with that item’s id, and
+ * from its first mention on it is the item’s own words. The caller’s isCopy knows the items, so a line that only
+ * looks like one, with an id that isn’t an item’s or words the item doesn’t hold, is the message’s own and wakes
+ * (designs/rooms-at-scale.md, “Which mention wakes”).
+ * @param {string} line @param {(itemId: string, said: string) => boolean} isCopy
  */
-const COPIED_LINE = /^\s*(?:[-*]\s+)?(?:\[[a-z]{2,3}_[\w-]+\]|it_[\w-]+:?\s+(?:You \()?@[A-Za-z0-9_-]+\)?:)/;
+function copied(line, isCopy) {
+  const id = STARTS_WITH_ID.exec(line)?.[1];
+  if (!id) return false;
+  // “You (@alpha): …” is how an agent’s own line reads to it.
+  const plain = line.replace(/You \((@[A-Za-z0-9_-]+)\)/g, '$1');
+  const at = FIRST_MENTION.exec(plain);
+  if (!at) return false;
+  return isCopy(id, plain.slice(at.index + at[0].length - at[1].length));
+}
 
 /**
  * A message’s text with what it quotes left out, so a mention there names an agent without waking it: code, blockquote
- * lines, and lines copied from the conversation.
- * @param {string} text
+ * lines, and, for a caller that can tell one, lines copied from the conversation.
+ * @param {string} text @param {((itemId: string, said: string) => boolean) | null} isCopy
  */
-function unquoted(text) {
+function unquoted(text, isCopy) {
   return String(text ?? '')
     .replace(/```[\s\S]*?(```|$)/g, ' ')
     .replace(/`[^`]*`/g, ' ')
     .split('\n')
-    .filter((line) => !BLOCKQUOTE.test(line) && !COPIED_LINE.test(line))
+    .filter((line) => !BLOCKQUOTE.test(line) && !(isCopy && copied(line, isCopy)))
     .join('\n');
 }
 
@@ -51,10 +63,12 @@ function unquoted(text) {
  * Mentions inside what the message quotes are ignored (unquoted, above), and "name@example.com" is not a mention.
  * @param {string} text
  * @param {string[]} handles  known handles, without the @
+ * @param {((itemId: string, said: string) => boolean) | null} [isCopy]  whether `said`, a line from its first mention
+ *   on, is the words of the item with that id. Without it, no line counts as copied from the conversation.
  */
-export function parseMentions(text, handles) {
+export function parseMentions(text, handles, isCopy = null) {
   const known = new Map(handles.map((h) => [h.toLowerCase(), h]));
-  const plain = unquoted(text);
+  const plain = unquoted(text, isCopy);
   const found = [];
   for (const m of plain.matchAll(/(^|[^\w@.])@([A-Za-z0-9_-]+)/g)) {
     const h = known.get(m[2].toLowerCase());
