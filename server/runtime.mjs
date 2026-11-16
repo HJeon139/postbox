@@ -18,7 +18,7 @@ import { Checks } from './check-service.mjs';
 import { attachClaudeSession, claudeSessions, mirror, pollMirror, rearmMirrors, stopMirrorFor, stopMirrors } from './claude-mirror.mjs';
 import { deliver, retry } from './deliver.mjs';
 import { Delivery } from './delivery.mjs';
-import { cancelEntry, isEntryId, refuseEntryEdit, sendEntryNow } from './entry-queue.mjs';
+import { cancelEntry, editEntry, isEntryId, sendEntryNow } from './entry-queue.mjs';
 import { httpError } from './helpers.mjs';
 import { listenInbox } from './inbox-listeners.mjs';
 import { endJob, expireStaleJobs, recordJob } from './job-records.mjs';
@@ -354,9 +354,9 @@ export class Runtime {
     return queue.postAndDeliver(this, threadId, { text, attachments }, targets);
   }
 
-  // An agent’s waiting message in the queue is an entry in its inbox (server/entry-queue.mjs).
+  // A message waiting in an agent’s queue is an entry in its inbox (server/entry-queue.mjs).
   editQueued(threadId, queueId, text) {
-    return isEntryId(queueId) ? refuseEntryEdit() : queue.editQueued(this, threadId, queueId, text);
+    return isEntryId(queueId) ? editEntry(this, threadId, queueId, text) : queue.editQueued(this, threadId, queueId, text);
   }
 
   cancelQueued(threadId, queueId) {

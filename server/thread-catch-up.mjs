@@ -16,10 +16,11 @@ export function firstPromptSection(message, inThread) {
   return inThread && direct ? (message.taskContext ? 'thread-task' : 'missing') : inThread ? 'system' : 'room';
 }
 
-export function turnContext(memory, se, where, message, slash) {
+export function turnContext(memory, se, where, message, slash, waiting = []) {
   if (slash) return message;
-  // Every message the turn delivers, each of a batch, is read in full there, so no summary gives it again (#506).
-  const given = (message.messages ?? [message]).map((/** @type {any} */ m) => m.itemId).filter(Boolean);
+  // Every message the turn delivers, each of a batch, is read in full there, so no summary gives it again (#506); and
+  // the person’s messages waiting in the agent’s inbox, which a later turn gives whole (#1404).
+  const given = [...(message.messages ?? [message]).map((/** @type {any} */ m) => m.itemId).filter(Boolean), ...waiting];
   const thread = where === se.threadId ? null : (threadCatchUp(memory, se, where, given) ?? threadHeader(memory, where));
   const room = memory.catchUp(se, given);
   const prior = [room, ...(message.context ?? [])].filter(Boolean);

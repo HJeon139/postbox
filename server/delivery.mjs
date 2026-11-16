@@ -53,6 +53,8 @@ export class Delivery {
     this.running = running;
     this.chainHeld = chainHeld;
     this.sizeOf = sizeOf;
+    /** @type {Map<string, Set<string>>} the person’s entries each failed agent holds for the person (failedWith) */
+    this.heldByFailure = new Map();
   }
 
   /**
@@ -129,15 +131,32 @@ export class Delivery {
     if (this.running.busy(sessionId) || this.running.closing) return false;
     const se = this.store.pending.session(sessionId);
     if (!se || se.retiredFork) return false;
-    return this.waiting(sessionId).some((e) => this.canStart(e, se.state === 'failed'));
+    return this.waiting(sessionId).some((e) => this.canStart(e, se));
   }
 
   /**
    * Whether an entry can start a turn: not a notice, not held at the chain cap, and, for a failed agent, the person’s
-   * own action, since anything else waits for the person. @param {Entry} e @param {boolean} failed
+   * own action, since anything else waits for the person; not their messages that were waiting when its turn failed,
+   * though (failedWith).
+   * @param {Entry} e @param {{ id?: string, state?: string }} se  the agent’s session
    */
-  canStart(e, failed) {
-    return e.source !== 'notice' && !this.chainHeld(e) && (!failed || PERSON.has(e.source));
+  canStart(e, se) {
+    if (e.source === 'notice' || this.chainHeld(e)) return false;
+    if (se.state !== 'failed') return true;
+    return PERSON.has(e.source) && !this.heldByFailure.get(e.sessionId)?.has(e.id);
+  }
+
+  /**
+   * The agent’s turn failed: the person’s messages waiting for it wait for the person to act (Retry, or a new message),
+   * as their queued messages did when a failed turn’s end drained only agents’ wakes (#1146). Kept in memory, as that
+   * rule was: a restart, or a host turn’s attach given up, sends what waited, as the queue’s drain did (#1135).
+   * @param {string} sessionId
+   */
+  failedWith(sessionId) {
+    const ids = this.waiting(sessionId)
+      .filter((e) => e.source === 'person')
+      .map((e) => e.id);
+    if (ids.length) this.heldByFailure.set(sessionId, new Set(ids));
   }
 
   /** Raises entry.waiting for the agent, if it can start a turn now. @param {string} sessionId */
@@ -157,8 +176,8 @@ export class Delivery {
    */
   take(sessionId, turnId, budget = Number.POSITIVE_INFINITY, threadId = undefined) {
     const waiting = this.waiting(sessionId).filter((e) => threadId === undefined || e.threadId === threadId || e.source === 'notice');
-    const failed = this.store.pending.session(sessionId)?.state === 'failed';
-    const lead = waiting.find((e) => this.canStart(e, failed)) ?? waiting.find((e) => e.source !== 'notice');
+    const se = this.store.pending.session(sessionId) ?? {};
+    const lead = waiting.find((e) => this.canStart(e, se)) ?? waiting.find((e) => e.source !== 'notice');
     if (!lead) return [];
     if (alone(lead)) {
       // A turn that already has its message (threadId) takes none: this one waits for a turn of its own.
@@ -205,6 +224,7 @@ export class Delivery {
    * @param {{ sessionId: string, turnId: string }} turn
    */
   turnEnded({ sessionId, turnId }) {
+    this.heldByFailure.delete(sessionId);
     for (const e of this.takenBy(sessionId, turnId)) this.patch(e, { state: 'delivered' });
     this.wake(sessionId);
   }
@@ -270,10 +290,12 @@ export class Delivery {
 
   /**
    * The person stopped the agent: its waiting entries are stopped, so none starts a turn, and the sender can see it.
-   * @param {string} sessionId @returns {Entry[]} the entries stopped
+   * The person’s messages keep waiting, as their queued messages did across a Stop (#1040), unless the agent was
+   * removed (`all`).
+   * @param {string} sessionId @param {{ all?: boolean }} [opts] @returns {Entry[]} the entries stopped
    */
-  stopped(sessionId) {
-    const stopped = this.waiting(sessionId);
+  stopped(sessionId, { all = false } = {}) {
+    const stopped = this.waiting(sessionId).filter((e) => all || e.source !== 'person');
     for (const e of stopped) this.patch(e, { state: 'stopped' });
     return stopped;
   }

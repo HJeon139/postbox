@@ -143,8 +143,9 @@ export function dropWakes(rt, se, how = 'stopped') {
   dropHeld(rt, se, how);
   // Removed, it can't answer for its own card; stopped, it can, and the person still may (#693).
   if (how !== 'stopped') closeOwnCard(rt, se, how);
-  // Its waiting entries are stopped, so none starts a turn after the Stop, and each agent that sent one hears so.
-  for (const e of rt.delivery.stopped(se.id)) {
+  // Agents’ waiting entries are stopped, so none starts a turn after the Stop, and each agent that sent one hears so;
+  // the person’s messages wait for the next turn, and are stopped too when the agent was removed.
+  for (const e of rt.delivery.stopped(se.id, { all: how !== 'stopped' })) {
     const sender = e.source === 'mention' && e.from ? rt.sessions.in(rt.threads.lineage(e.threadId).at(-1)).find((x) => x.handle === e.from) : null;
     if (!sender || sender.retiredFork || sender.id === se.id) continue;
     const said = clip(rt.store.pending.item(e.threadId, e.itemId)?.text ?? '', 120);

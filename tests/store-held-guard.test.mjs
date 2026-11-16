@@ -96,8 +96,11 @@ const PENDING = {
   'block-update.mjs': ['shownBy'], // update_block of a block the turn just showed
   'catch-up.mjs': ['moveMarkers'], // the conversation of a topic an item moved in, maybe opened behind a held commit, whose sessions' markers move (#1041)
   'delivery.mjs': ['send', 'sessionIds', 'inbox', 'ready', 'take', 'postedSince'], // the sessions with inboxes, an inbox's entries, its session and an entry's item, maybe just made, decide each entry's next state and the wake (#796's class)
-  'entry-queue.mjs': ['cancelEntry'], // the text of the message the person removed, for its sender, maybe settled behind a held commit
-  'entry-turns.mjs': ['messageOf'], // the item an entry gives the turn whole, maybe settled in the same held write
+  // the handle of the agent that already has a message the person edits, maybe joined behind a held commit; and the text
+  // of the message the person removed, for its sender, maybe settled behind one
+  'entry-queue.mjs': ['editEntry', 'cancelEntry'],
+  // the item an entry gives the turn whole, maybe settled in the same held write; the person’s message, posted at send
+  'entry-turns.mjs': ['messageOf', 'personMessage'],
   'mention-entries.mjs': ['mentionEntries'], // the session whose final reply makes entries, maybe made behind a held commit
   'held-session.mjs': ['heldSession'], // a delivery to a session just made behind a held commit waits until it's published (#796's class in sessions)
   // A job's end: the list it leaves, whether a kept job still runs to hold the steps, and the steps to stall (#957).

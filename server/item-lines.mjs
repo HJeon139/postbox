@@ -188,6 +188,16 @@ export function topicRootLine(memory, se, t) {
 }
 
 /**
+ * The person’s message as one line, with the files it carried. One they removed before any agent read it is still in the
+ * conversation, but asks nothing any more, so its words aren’t given (#1404).
+ * @param {any} memory @param {any} i @param {(s: string) => string} text  clips to the line’s length @param {any} reader
+ */
+function personLine(memory, i, text, reader) {
+  if (i.removed) return `${personSaid(i)}: (a message removed before any agent read it)`;
+  return `${personSaid(i)}: ${text(i.text)}${attachedText(memory, i.attachments, reader)}`;
+}
+
+/**
  * One conversation item as a line an agent can read, from the point of view of `se`; null to leave it out. Its
  * text is cut at n characters, saying so (#109). `reader` is the session its attachments are given to, or null for
  * none (#671). Runtime’s describeItem decides the defaults: `se` and `n` as given, and the reader as `se`.
@@ -197,7 +207,7 @@ export function describeItem(memory, i, se, n, reader) {
   const text = (s) => clipItem(s, n, i.id);
   switch (i.kind) {
     case 'user':
-      return `${personSaid(i)}: ${text(i.text)}${attachedText(memory, i.attachments, reader)}`;
+      return personLine(memory, i, text, reader);
     case 'agent':
       // A reply that wrote its text and then failed still reaches the others, marked: it had been dropped, so a
       // report written before the turn failed reached no one (#485).

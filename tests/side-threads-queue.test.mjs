@@ -167,7 +167,7 @@ test('#228: a mention for an agent that’s deleted goes with it, and its sender
 });
 
 test('#228: a wake waiting for a busy agent doesn’t hold back a message behind it for another agent', async () => {
-  const { store, rt, adapter, t, alpha, beta } = setup();
+  const { rt, adapter, t, alpha, beta } = setup();
   const b = held();
   const a = held();
   adapter.next.push(b.step);
@@ -178,7 +178,7 @@ test('#228: a wake waiting for a busy agent doesn’t hold back a message behind
   rt.sendMessage(t.id, { text: '@alpha meanwhile, a word' });
   // @alpha’s turn, then a message for it that waits in the queue, while the mention for @beta waits in its inbox.
   rt.sendMessage(t.id, { text: '@alpha and another' });
-  assert.equal(store.state.threads[t.id].queue.length, 1);
+  assert.equal(arrange.personWaiting(rt, t.id).length, 1);
   assert.equal(arrange.waitingEntries(rt, beta.id).length, 1);
   a.release();
   await sleep(30);

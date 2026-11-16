@@ -61,7 +61,9 @@ function waitingFor(rt, sessionId, turn) {
   const entries = rt.delivery
     .waiting(sessionId)
     .filter((e) => e.threadId === turn.threadId && e.from)
-    .map((e) => ({ key: e.id, sender: e.from === 'you' ? PERSON : handleOf(e.from), itemId: e.itemId ?? null, at: e.at }));
+    // The person’s own is named without its item, which is posted when it’s sent (#1404), so the note never points at a
+    // message they may still remove (AT-6).
+    .map((e) => ({ key: e.id, sender: e.from === 'you' ? PERSON : handleOf(e.from), itemId: e.from === 'you' ? null : (e.itemId ?? null), at: e.at }));
   return [...queued, ...entries, ...pendingFor(turn)];
 }
 

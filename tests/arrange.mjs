@@ -145,6 +145,19 @@ export const running = (rt, sessionId) => Boolean(rt.running.turnOf(sessionId));
 /** An agent’s waiting inbox entries, oldest first (server/delivery.mjs). @param {Runtime} rt @param {string} sessionId */
 export const waitingEntries = (rt, sessionId) => rt.delivery.waiting(sessionId);
 
+/**
+ * The texts of the person’s messages waiting in a thread for any of its agents, oldest first, each once: what the
+ * thread’s queue held before the person’s message became an entry when it’s sent (#1404).
+ * @param {Runtime} rt @param {string} threadId
+ */
+export function personWaiting(rt, threadId) {
+  const entries = Object.keys(rt.store.pending.sessions())
+    .flatMap((id) => rt.delivery.waiting(id))
+    .filter((e) => e.source === 'person' && e.threadId === threadId)
+    .sort((a, b) => a.at - b.at || a.seq - b.seq);
+  return [...new Set(entries.map((e) => e.itemId))].map((id) => rt.store.pending.item(threadId, id)?.text);
+}
+
 /** How many turns are running. @param {Runtime} rt */
 export const liveTurns = (rt) => rt.running.all().length;
 

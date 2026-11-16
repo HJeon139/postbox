@@ -2,6 +2,7 @@
 // the session's next turn start (#126), and stopping every turn as Postbox shuts down. Moved from server/runtime.mjs
 // (#1236); Runtime keeps a method of each name its callers use, and each function here takes the runtime first.
 
+import { entriesFirst } from './entry-turns.mjs';
 import { runningJobs, runningProgress, settleJobs } from './job-records.mjs';
 import * as queue from './message-queue.mjs';
 import { arrival } from './queue-batch.mjs';
@@ -150,9 +151,11 @@ export function turnExited(rt, turn) {
     rt.sessions.update(se.id, { state: se.state === 'stopping' ? 'idle' : se.state, currentStep: stoppedBy, finishedAt: Date.now(), sideTurn: null });
   else if (se.sideTurn) rt.sessions.update(se.id, { sideTurn: null });
   const held = se.retiredFork ? [] : ex.held;
-  // Shutting down: your messages wait in their thread’s queue, which a restart keeps, rather than starting a CLI.
+  // Shutting down: your messages wait in their thread’s queue, which a restart keeps, rather than starting a CLI. One a
+  // turn took from the inbox (Send now’s) stays taken, and the restart reopens it once (Delivery’s start), so it isn’t
+  // posted again (#1108).
   if (rt.closing) {
-    for (const h of held.filter((x) => x.message.kind === 'user')) {
+    for (const h of held.filter((x) => x.message.kind === 'user' && !x.message.fromEntries)) {
       const q = { id: newId('q'), text: h.message.text ?? '', attachments: h.message.attachments ?? [], sessionIds: [se.id], at: Date.now(), seq: arrival() };
       rt.threads.patch(h.threadId ?? se.threadId, (t) => ({ queue: [...(t.queue ?? []), q] }));
     }
@@ -163,7 +166,13 @@ export function turnExited(rt, turn) {
   // store outage’s or a hung host turn’s, gives the first turn its thread’s queue, in arrival order, as a turn’s
   // normal end does (#733, #1040).
   if (ex.silent) for (const h of held) rt.deliver(se.id, h.message, { summarizeTo: h.summarizeTo, threadId: h.threadId });
-  else rt.takePending(se, { pending: held, threadId: turn.threadId }, true);
+  else {
+    // What arrived first goes first: an entry that came before everything held starts its turn, and the held messages
+    // wait on it (#733).
+    const ended = { pending: held, threadId: turn.threadId };
+    if (entriesFirst(rt, se, ended)) rt.delivery.wake(se.id);
+    rt.takePending(se, ended, true);
+  }
   // The stopped turn is gone: entries that arrived during its exit start the next turn, if nothing above did.
   rt.delivery.wake(se.id);
 }

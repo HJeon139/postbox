@@ -108,7 +108,7 @@ test('#694: a message queued before the one the turn answers isn’t called newe
   rt.sendMessage(t.id, { text: '@beta q1, older' });
   await sleep(2);
   rt.sendMessage(t.id, { text: '@beta q2, sent now' });
-  rt.sendQueuedNow(t.id, rt.s.threads[t.id].queue.at(-1).id);
+  rt.sendQueuedNow(t.id, rt.delivery.waiting(beta.id).at(-1).id);
   first.release();
   for (let i = 0; i < 100 && adapter.calls.filter((c) => c.sessionId === beta.id).length < 2; i++) await sleep(5);
   assert.match(adapter.calls.at(-1).message.text, /q2, sent now/, 'the turn answers q2');
@@ -127,7 +127,7 @@ test('#694: the note never quotes the message, so one the person removes after i
   const text = await define(rt, beta, 'X');
   assert.ok(text.startsWith(`${PERSON}\n\n`), text);
   assert.doesNotMatch(text, /bbb222/, 'its words aren’t in the note');
-  rt.cancelQueued(t.id, rt.s.threads[t.id].queue.at(-1).id);
+  rt.cancelQueued(t.id, rt.delivery.waiting(beta.id).at(-1).id);
   assert.doesNotMatch(await define(rt, beta, 'Y'), /newer message|bbb222/);
   busy.release();
   await settle(rt);

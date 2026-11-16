@@ -25,7 +25,7 @@ const handlesOf = (rt, sessionIds) => sessionIds.map((id) => rt.s.sessions[id]?.
  * addressed to them, and builds the message its agents are delivered.
  * @param {any} rt @param {string} threadId @param {any} q @param {string[]} to
  */
-function postUserMessage(rt, threadId, q, to) {
+export function postUserMessage(rt, threadId, q, to) {
   const item = rt.threads.addItem(threadId, { kind: 'user', text: q.text, attachments: q.attachments, to });
   const conv = rt.threads.lineage(threadId).at(-1);
   rt.threads.patch(conv, { hops: 0 });

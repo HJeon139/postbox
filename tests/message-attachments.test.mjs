@@ -45,7 +45,8 @@ test('#991 a message queued behind a busy agent holds its file’s upload name t
   adapter.next.push(busy.step);
   rt.sendMessage(t.id, { text: '@beta start' });
   rt.sendMessage(t.id, { text: '@beta then this', attachments: [forged] });
-  assert.deepEqual(store.state.threads[t.id].queue.at(-1).attachments, [KEPT]);
+  // Posted when it’s sent (#1404), with the upload’s name the server kept.
+  assert.deepEqual(store.items(t.id).find((i) => i.kind === 'user' && i.text === '@beta then this').attachments, [KEPT]);
   busy.release();
   await settle(rt);
 });

@@ -41,7 +41,7 @@ test('#215: a reply Send now interrupted says so, and so does the notice about i
   assert.equal(now.reply.stopReason, 'send-now');
   assert.equal(now.next.text, 'Change of plan.');
   assert.match(now.next.context[0], /bgR .* is still running: a message sent with Send now ended your last turn, but not this job\. If your CLI says/);
-  const queued = await stopAnd((rt, t) => rt.sendQueuedNow(t.id, rt.sendMessage(t.id, { text: 'Queued, then sent now.' }).queued.id));
+  const queued = await stopAnd((rt, t) => rt.sendQueuedNow(t.id, rt.sendMessage(t.id, { text: 'Queued, then sent now.' }).queued[0].id));
   assert.equal(queued.reply.stopReason, 'send-now');
   assert.equal(queued.next.text, 'Queued, then sent now.');
 });

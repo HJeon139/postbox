@@ -6,6 +6,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import * as arrange from './arrange.mjs';
 import { restarted, rig, settled, starts, startUp, until } from './remote-turns-helpers.mjs';
 
 /** The rig after a restart, with the first host’s welcome held until release(). */
@@ -25,7 +26,7 @@ function heldWelcome() {
   return { r, d, release };
 }
 
-const queued = (r) => (r.store.pending.thread(r.t.id)?.queue ?? []).map((q) => q.text);
+const queued = (r) => arrange.personWaiting(r.rt, r.t.id);
 
 test('moving an agent off a silent host lets go of its waiting message before the move returns, not after (#1135)', async () => {
   const { r, d, release } = heldWelcome();

@@ -25,7 +25,7 @@ function heldWelcome(welcome) {
   return { r, d, release };
 }
 
-const queued = (r) => (r.store.pending.thread(r.t.id)?.queue ?? []).map((q) => q.text);
+const queued = (r) => arrange.personWaiting(r.rt, r.t.id);
 
 test('#1135 a message while the turn waits to be attached waits in the queue, and no second turn starts on the host', async () => {
   const { r, d, release } = heldWelcome('running');
