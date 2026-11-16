@@ -104,7 +104,8 @@ test('after a failed turn, a mention waiting for the agent and your message ahea
 
 test('#1146: after a failed turn, what waited goes in the order it was sent once the person retries, the person’s messages included', async () => {
   // In #1146, a failed turn’s end sent only the agents’ wakes, so the person’s messages went a whole turn behind a wake
-  // sent after them. Now nothing starts the failed agent until the person acts, and then everything goes in order.
+  // sent after them. Now nothing starts the failed agent until the person acts, and then everything goes in order: the
+  // failed turn’s message, resent, ahead of what came after it (#1429).
   const { store, rt, adapter, t, alpha, beta } = setup();
   const failing = held();
   adapter.next.push(async (c) => {
@@ -122,9 +123,9 @@ test('#1146: after a failed turn, what waited goes in the order it was sent once
   const failed = store.items(t.id).find((i) => i.kind === 'agent' && i.status === 'failed');
   await rt.retry(t.id, failed.id);
   await settle(rt);
-  const after = adapter.calls.filter((x) => x.sessionId === beta.id).slice(2);
+  const after = adapter.calls.filter((x) => x.sessionId === beta.id).slice(1);
   assert.deepEqual(
     after.flatMap((c) => c.parts.map((m) => m.text)),
-    ['@beta P1', 'W1', '@beta P2'],
+    ['@beta the long job', '@beta P1', 'W1', '@beta P2'],
   );
 });

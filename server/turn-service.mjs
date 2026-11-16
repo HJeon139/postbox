@@ -45,6 +45,19 @@ export class Turns {
     this.run(sessionId, message, opts);
   }
 
+  /**
+   * The person’s Retry of a failed turn that took entries: they reopen as a resend (Delivery’s retry), marked with
+   * whom the failed reply already woke (#485), and the session is no longer failed, since the person acted. Whichever
+   * turn takes them is built from them, and is the retry (retryMarks in turns.mjs). Returns whether the turn took any.
+   * @param {string} sessionId @param {string} turnId  the failed turn @param {string[]} woken
+   */
+  retryEntries(sessionId, turnId, woken) {
+    if (!this.rt.delivery.retry(turnId, woken).length) return false;
+    if (this.rt.store.pending.session(sessionId)?.state === 'failed') this.rt.sessions.update(sessionId, { state: 'idle' });
+    this.rt.delivery.wake(sessionId);
+    return true;
+  }
+
   /** The person’s Retry of a failed reply. @param {string} threadId @param {string} itemId */
   retry(threadId, itemId) {
     return retry(this.rt, threadId, itemId);

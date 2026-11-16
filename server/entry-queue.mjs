@@ -8,7 +8,7 @@ import { parseMentions } from '../shared/text.mjs';
 import { clip, httpError } from './helpers.mjs';
 import { stopForSendNow } from './message-queue.mjs';
 import { newId } from './store.mjs';
-import { messageOf } from './turns.mjs';
+import { messageOf, retryMarks } from './turns.mjs';
 
 /**
  * Edit: the person’s message is their item, posted when it was sent, so an edit changes it while it still waits for
@@ -124,6 +124,7 @@ export function sendEntryAlone(rt, { id, sessionId }) {
   const turnId = newId('turn');
   const e = rt.delivery.takeOne(sessionId, id, turnId);
   if (!e) return false;
-  rt.turnService.run(sessionId, { ...messageOf(rt, e), turnId, fromEntries: true, entriesWait: true }, { threadId: e.threadId });
+  const message = { ...messageOf(rt, e), turnId, fromEntries: true, entriesWait: true, ...retryMarks([e]) };
+  rt.turnService.run(sessionId, message, { threadId: e.threadId });
   return true;
 }
