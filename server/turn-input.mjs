@@ -107,7 +107,7 @@ function tailPart({ tail, notes, thread }) {
   const { kept, left } = tailOf([...tail, ...notes]);
   const head = '[Postbox] Also since your last turn, not addressed to you';
   // read_conversation reads the conversation unless it’s given the thread, and a thread’s tail holds both.
-  const there = thread.kind === 'topic' || thread.kind === 'side' ? `, with thread: "${thread.id}" for this thread’s` : '';
+  const there = thread.kind === 'topic' || thread.kind === 'side' ? `, with thread: "${thread.id}" for this thread’s items` : '';
   if (!kept.length) {
     if (!left) return null;
     const them = left === 1 ? '1 item, not shown here. read_conversation has it' : `${count(left)} items, not shown here. read_conversation has them`;

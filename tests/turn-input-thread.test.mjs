@@ -17,12 +17,12 @@ test('#1428 in a topic thread the line on the rest names the thread read_convers
   const line = restLine(turnInput({ entries, thread: topic, read, tail: many }));
   assert.equal(
     line,
-    '[Postbox] Also since your last turn, not addressed to you (the last 40 of 45 items; read_conversation has the rest in order, with thread: "th_t" for this thread’s, and search_conversation finds one by its words):',
+    '[Postbox] Also since your last turn, not addressed to you (the last 40 of 45 items; read_conversation has the rest in order, with thread: "th_t" for this thread’s items, and search_conversation finds one by its words):',
   );
   const none = restLine(turnInput({ entries, thread: topic, read, tail: [`[it_9] @alpha: ${'x'.repeat(20_000)}`] }));
   assert.equal(
     none,
-    '[Postbox] Also since your last turn, not addressed to you: 1 item, not shown here. read_conversation has it in order, with thread: "th_t" for this thread’s, and search_conversation finds one by its words.',
+    '[Postbox] Also since your last turn, not addressed to you: 1 item, not shown here. read_conversation has it in order, with thread: "th_t" for this thread’s items, and search_conversation finds one by its words.',
   );
 });
 
