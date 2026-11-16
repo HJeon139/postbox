@@ -88,3 +88,25 @@ test('a message one agent’s entry failed on counts as given: Edit is refused',
   f.b.release();
   await settle(f.rt);
 });
+
+test('an edit that leaves a name out stops that agent’s entry, as Remove does; one that names no one keeps them all', async () => {
+  const f = await bothBusy();
+  const { item, queued } = f.rt.sendMessage(f.t.id, { text: '@alpha @beta check this' });
+  const forBeta = queued.find((e) => e.sessionId === f.beta.id);
+  f.rt.editQueued(f.t.id, forBeta.id, '@beta check this');
+  assert.deepEqual(
+    arrange.waitingEntries(f.rt, f.alpha.id).filter((e) => e.itemId === item.id),
+    [],
+    'alpha won’t get it',
+  );
+  assert.deepEqual(f.store.item(f.t.id, item.id).removedFor, [f.alpha.id]);
+  assert.equal(f.store.item(f.t.id, item.id).removed, undefined, 'beta still will');
+  // Naming no one is no change of who gets it: a message without an @-mention goes to someone all the same.
+  f.rt.editQueued(f.t.id, forBeta.id, 'check this, please');
+  assert.equal(arrange.waitingEntries(f.rt, f.beta.id).filter((e) => e.itemId === item.id).length, 1);
+  f.a.release();
+  f.b.release();
+  await settle(f.rt);
+  assert.ok(!f.adapter.calls.some((c) => c.sessionId === f.alpha.id && JSON.stringify(c.message).includes('check this')), 'alpha never read it');
+  assert.ok(f.adapter.calls.some((c) => c.sessionId === f.beta.id && JSON.stringify(c.message).includes('check this, please')));
+});
