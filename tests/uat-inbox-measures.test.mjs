@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { byHarness, copyWakes, crossed, doubledHandOffs, idleWakes, itemsOf, promptTokens, readsAfterWake } from '../tools/uat/inbox-measures.mjs';
 import { across, harnessTable, table } from '../tools/uat/inbox-tables.mjs';
-import { waitingElsewhere } from '../tools/uat/run-entries.mjs';
+import { takesOf, waitingElsewhere, wakesOf } from '../tools/uat/run-entries.mjs';
 import { agyTurn, toolName } from '../tools/uat/run-turns.mjs';
 
 const agent = (id, handle, at, text, more = {}) => ({ id, kind: 'agent', handle, at, text, turnId: `turn_${id}`, ...more });
@@ -184,4 +184,68 @@ test('the table by harness gives each harness its own rows, so one harness can�
   // A harness that reports none, and one a side never ran.
   const kiro = { harnesses: { Kiro: { turns: 2, input: null, requests: null, toolCalls: 0 } } };
   assert.ok(harnessTable([kiro], []).split('\n').includes('| Kiro | Input tokens | not reported | not recorded |'));
+});
+
+// Who woke a turn, from the entries it took: a reply’s woke.by names only the last sender of a batch, and nothing when
+// the entries joined the person’s message (server/turn-marks.mjs).
+const entryAdd = (id, more) => ({
+  type: 'entry.add',
+  data: { sessionId: 'se_b', entry: { id, threadId: 'th_1', source: 'mention', state: 'waiting', takenBy: null, ...more } },
+});
+const entryTake = (id, turn) => ({ type: 'entry.patch', data: { sessionId: 'se_b', id, patch: { state: 'taken', takenBy: turn } } });
+
+test('a turn’s take is the entries it took, as they were then, however they are patched after', () => {
+  const events = [
+    entryAdd('en_1', { from: 'alpha', itemId: 'it_1' }),
+    entryAdd('en_2', { from: 'gamma', itemId: 'it_2' }),
+    entryTake('en_1', 'turn_1'),
+    entryTake('en_2', 'turn_1'),
+    { type: 'entry.patch', data: { sessionId: 'se_b', id: 'en_1', patch: { state: 'waiting', takenBy: null, resend: true } } },
+    entryTake('en_1', 'turn_2'),
+  ];
+  const takes = takesOf(events);
+  assert.deepEqual(
+    takes.get('turn_1').map((e) => [e.id, e.from]),
+    [
+      ['en_1', 'alpha'],
+      ['en_2', 'gamma'],
+    ],
+  );
+  assert.deepEqual(
+    takes.get('turn_2').map((e) => [e.id, e.resend]),
+    [['en_1', true]],
+  );
+  assert.equal(takesOf([{ type: 'item.add', data: {} }]).size, 0);
+});
+
+test('a turn was woken by every agent whose mention it took, and a run with no entries has no answer', () => {
+  const events = [
+    entryAdd('en_1', { from: 'alpha', itemId: 'it_1' }),
+    entryAdd('en_2', { from: 'gamma', itemId: 'it_2' }),
+    entryAdd('en_3', { from: 'you', source: 'person', itemId: 'it_3' }),
+    entryAdd('en_4', { source: 'notice', text: 'a note' }),
+    entryTake('en_1', 'turn_1'),
+    entryTake('en_2', 'turn_1'),
+    entryTake('en_3', 'turn_2'),
+    entryTake('en_4', 'turn_2'),
+  ];
+  const wakes = wakesOf(events);
+  assert.deepEqual([...wakes], [['turn_1', ['it_1', 'it_2']]], 'two senders in one batch; the person’s message and a notice wake as no agent');
+  assert.equal(wakesOf([{ type: 'item.add', data: {} }]), null);
+});
+
+test('with the entries, a batch from two agents and a turn the person’s message started are counted as woken', () => {
+  const said = agent('it_0', 'beta', 1, 'I reran the migration guide; item 137 of the release log.');
+  const copy = agent('it_1', 'alpha', 10, 'it_0: @beta: I reran the migration guide; item 137 of the release log.');
+  const ask = agent('it_2', 'gamma', 11, '@beta is that right?');
+  // The reply has no woke.by at all: the entries joined the person’s message.
+  const reply = agent('it_3', 'beta', 20, 'Acknowledged.', { turnId: 'turn_1' });
+  const items = [said, copy, ask, reply];
+  const turns = [{ turnId: 'turn_1', tools: ['read_message', 'Bash'] }];
+  const wakes = new Map([['turn_1', ['it_1', 'it_2']]]);
+  assert.deepEqual(readsAfterWake(items, turns, wakes), [1]);
+  assert.deepEqual(readsAfterWake(items, turns), [], 'without the entries, woke.by missed it');
+  assert.equal(idleWakes(items, [{ turnId: 'turn_1', tools: [] }], wakes), 1);
+  assert.equal(copyWakes(items, wakes), 0, 'one of the two entries is a real mention');
+  assert.equal(copyWakes(items, new Map([['turn_1', ['it_1']]])), 1, 'an entry made from a copied line alone');
 });

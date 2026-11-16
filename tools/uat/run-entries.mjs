@@ -51,3 +51,41 @@ export function waitingElsewhere(events) {
   if (taking) close();
   return counts;
 }
+
+/**
+ * What each turn took: its entries as they were when taken, by the turn’s id. An entry taken again by a Retry’s turn
+ * is in both.
+ * @param {any[]} events
+ * @returns {Map<string, any[]>}
+ */
+export function takesOf(events) {
+  /** @type {Map<string, any>} */
+  const entries = new Map();
+  /** @type {Map<string, any[]>} */
+  const takes = new Map();
+  for (const e of events) {
+    const write = entryWrite(e);
+    if (!write) continue;
+    if (write.whole) entries.set(write.id, write.fields);
+    else if (entries.has(write.id)) Object.assign(entries.get(write.id), write.fields);
+    const entry = entries.get(write.id);
+    const turn = write.fields.state === 'taken' ? write.fields.takenBy : null;
+    if (turn && entry) takes.set(turn, [...(takes.get(turn) ?? []), { ...entry }]);
+  }
+  return takes;
+}
+
+/**
+ * The turns another agent woke, each with the messages that woke it: the items of the mentions it took. Every sender
+ * of a batch counts, and so does a turn whose entries joined the person’s message, which a reply’s woke.by misses.
+ * Null for a run with no entry events, from before the inbox, where woke.by is all there is.
+ * @param {any[]} events
+ * @returns {Map<string, string[]> | null}
+ */
+export function wakesOf(events) {
+  const takes = takesOf(events);
+  if (!takes.size) return null;
+  const byAgent = (/** @type {any} */ e) => e.source === 'mention' && e.from && e.from !== 'you' && e.itemId;
+  const wakes = [...takes].map(([turn, taken]) => /** @type {[string, string[]]} */ ([turn, taken.filter(byAgent).map((e) => e.itemId)]));
+  return new Map(wakes.filter(([, itemIds]) => itemIds.length));
+}

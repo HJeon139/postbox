@@ -8,7 +8,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { parseMentions } from '../../shared/text.mjs';
 import { harnessTable, table } from './inbox-tables.mjs';
-import { waitingElsewhere } from './run-entries.mjs';
+import { waitingElsewhere, wakesOf } from './run-entries.mjs';
 import { filesIn, jsonLines, turnsIn } from './run-turns.mjs';
 
 /** The reads an agent makes to catch up, which the turn’s input is meant to make unnecessary. */
@@ -42,6 +42,29 @@ function wokenReplies(items) {
   return items.filter((i) => i.kind === 'agent' && i.woke?.by && !seen.has(i.turnId) && seen.add(i.turnId));
 }
 
+/**
+ * The turns another agent woke: each with the agent woken, and what the messages that woke it said. From the entries
+ * each turn took when the run has them (`wakes`, from wakesOf in run-entries.mjs); otherwise from each reply’s
+ * woke.by, which names only the last sender of a batch, and takes all that sender’s last turn said.
+ * @param {any[]} items @param {Map<string, string[]> | null} [wakes]
+ * @returns {{ turnId: string, handle: string | undefined, said: string }[]}
+ */
+function wokenTurns(items, wakes = null) {
+  const byId = new Map(items.map((i) => [i.id, i]));
+  if (wakes)
+    return [...wakes].map(([turnId, itemIds]) => ({
+      turnId,
+      handle: items.find((i) => i.kind === 'agent' && i.turnId === turnId)?.handle,
+      said: itemIds.map((id) => byId.get(id)?.text ?? '').join('\n'),
+    }));
+  return wokenReplies(items).map((reply) => {
+    const last = items.filter((m) => m.kind === 'agent' && m.handle === reply.woke.by && m.at <= reply.at && m.id !== reply.id).at(-1);
+    // Everything the waking turn said: a turn can post several items, and a mention in any of them wakes.
+    const said = items.filter((m) => last && m.kind === 'agent' && m.turnId === last.turnId).map((m) => m.text);
+    return { turnId: reply.turnId, handle: reply.handle, said: said.join('\n') };
+  });
+}
+
 /** The handles of the run’s agents, from its replies. */
 const handlesOf = (/** @type {any[]} */ items) => [...new Set(items.filter((i) => i.kind === 'agent' && i.handle).map((i) => i.handle))];
 
@@ -65,16 +88,16 @@ export function crossed(items, turns) {
 /**
  * Wakes that found nothing to do: a turn another agent’s message started, which called no tool and whose reply is
  * short enough to be only an acknowledgment.
- * @param {any[]} items @param {{ turnId?: string, tools: string[] }[]} turns
+ * @param {any[]} items @param {{ turnId?: string, tools: string[] }[]} turns @param {Map<string, string[]> | null} [wakes]
  */
-export function idleWakes(items, turns) {
+export function idleWakes(items, turns, wakes = null) {
   const tools = new Map(turns.map((t) => [t.turnId, t.tools]));
   const said = (/** @type {string} */ turnId) =>
     items
       .filter((i) => i.kind === 'agent' && i.turnId === turnId)
       .map((i) => i.text.trim())
       .join(' ');
-  return wokenReplies(items).filter((i) => !(tools.get(i.turnId) ?? []).length && said(i.turnId).length <= ACK_CHARS).length;
+  return wokenTurns(items, wakes).filter((w) => !(tools.get(w.turnId) ?? []).length && said(w.turnId).length <= ACK_CHARS).length;
 }
 
 /**
@@ -92,23 +115,17 @@ export function doubledHandOffs(items, turns) {
 /**
  * Wakes by a copied line: a woken reply whose waking turn names its agent only inside a line copied from the
  * conversation. Zero on a branch with #1370’s fix; on `main` it counts what the fix removes.
- * @param {any[]} items
+ * @param {any[]} items @param {Map<string, string[]> | null} [wakes]
  */
-export function copyWakes(items) {
+export function copyWakes(items, wakes = null) {
   const byId = new Map(items.map((i) => [i.id, i]));
   const isCopy = (/** @type {string} */ id, /** @type {string} */ said) => {
     const words = said.replace(/^@[\w-]+[^:]*:\s*/, '').trim();
     return Boolean(words) && String(byId.get(id)?.text ?? '').includes(words);
   };
-  return wokenReplies(items).filter((reply) => {
-    const last = items.filter((m) => m.kind === 'agent' && m.handle === reply.woke.by && m.at <= reply.at && m.id !== reply.id).at(-1);
-    if (!last) return false;
-    // Everything the waking turn said: a turn can post several items, and a mention in any of them wakes.
-    const said = items
-      .filter((m) => m.kind === 'agent' && m.turnId === last.turnId)
-      .map((m) => m.text)
-      .join('\n');
-    return parseMentions(said, [reply.handle]).length > 0 && parseMentions(said, [reply.handle], isCopy).length === 0;
+  return wokenTurns(items, wakes).filter(({ handle, said }) => {
+    if (!handle) return false;
+    return parseMentions(said, [handle]).length > 0 && parseMentions(said, [handle], isCopy).length === 0;
   }).length;
 }
 
@@ -116,10 +133,11 @@ export function copyWakes(items) {
  * Reads after a wake: in each turn another agent’s message started, the read_message and read_conversation calls
  * before its first other action.
  * @param {any[]} items @param {{ turnId?: string, tools: string[] }[]} turns
+ * @param {Map<string, string[]> | null} [wakes]
  * @returns {number[]}  one count per woken turn
  */
-export function readsAfterWake(items, turns) {
-  const woken = new Set(wokenReplies(items).map((i) => i.turnId));
+export function readsAfterWake(items, turns, wakes = null) {
+  const woken = new Set(wokenTurns(items, wakes).map((w) => w.turnId));
   return turns
     .filter((t) => woken.has(t.turnId))
     .map((t) => {
@@ -183,16 +201,18 @@ export function measure(dir) {
   const events = filesIn(path.join(dir, 'data'), /^events-\d+\.jsonl$/).flatMap(jsonLines);
   const items = itemsOf(events);
   const turns = withTurnIds(turnsIn(dir), items);
+  // Who woke each turn: from the entries it took when the run has an inbox, else from each reply’s woke.by.
+  const wakes = wakesOf(events);
   const prompts = filesIn(path.join(dir, 'transcripts'), /\.jsonl$/).flatMap((f) => promptTokens(jsonLines(f)));
   const reported = (/** @type {'requests'|'input'} */ key) => turns.map((t) => t[key]).filter((v) => v !== null);
   return {
     turns: turns.length,
     crossed: crossed(items, turns),
-    idleWakes: idleWakes(items, turns),
+    idleWakes: idleWakes(items, turns, wakes),
     doubledHandOffs: doubledHandOffs(items, turns),
-    copyWakes: copyWakes(items),
+    copyWakes: copyWakes(items, wakes),
     requestsPerTurn: mean(reported('requests')),
-    readsAfterWake: mean(readsAfterWake(items, turns)),
+    readsAfterWake: mean(readsAfterWake(items, turns, wakes)),
     promptTokensPerTurn: mean(prompts),
     inputTokensPerTurn: mean(reported('input')),
     waitingElsewhere: mean(waitingElsewhere(events)),
