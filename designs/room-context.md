@@ -99,8 +99,10 @@ An agent searches its conversation and its topic and side threads by words. Each
 |---|---|---|---|---|---|
 | Claude Code | 645k (361k–890k) | 425k (389k–451k) | −34% | 8.3 → 7.7 | 6 of 6 → 6 of 6 |
 | Codex | 300k (229k–389k) | 187k (155k–238k) | −38% | 8.3 → 6.7 | 6 of 6 → 6 of 6 |
-| Antigravity | 438k (288k–667k) | 307k (213k–440k) | −30% | 13.0 → 11.3 | 6 of 6 → 6 of 6 |
+| Antigravity | 236k (193k–283k) | 200k (134k–294k) | −15%, with ranges that overlap | 13.0 → 11.3 | 6 of 6 → 6 of 6 |
 | Kiro | not reported | not reported | | | 4 of 6 → 6 of 6 |
+
+The Antigravity row was first given as 438k against 307k, a 30% drop. That was a counting error, found on 16 November 2026: Antigravity’s result line reports the whole conversation so far, so a second turn’s figure held the first turn again. The row now adds up each model call, as `tools/uat/run-turns.mjs` does. On that harness the runs don’t show a saving: the two ranges overlap almost wholly.
 
 What the runs showed beyond the table:
 - **Agents took to the tool unasked.** Every harness called it in every run on the branch but one, where the Kiro agent paged instead and still answered. On `main`, the Claude Code agent tried `search_assets` in all three runs, and the Kiro agent in one, looking for a search.
