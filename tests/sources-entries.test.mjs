@@ -29,3 +29,23 @@ test('the person’s answer to a busy agent’s block waits in its inbox as an a
   await settle(f.rt);
   assert.match(JSON.stringify(f.adapter.calls.filter((c) => c.sessionId === f.alpha.id).at(-1).message), /papers/);
 });
+
+test('the person’s answer to a busy agent’s tool ask waits in its inbox as an answer, pointing at the card', async () => {
+  const f = setup();
+  f.adapter.next.push(async (c) => c.tools.ask_for_tool({ tool: 'shell', why: 'To run the tests.' }));
+  f.rt.sendMessage(f.t.id, { text: '@alpha run the tests' });
+  await settle(f.rt);
+  const card = f.store.items(f.t.id).find((i) => i.kind === 'toolask');
+  const busy = held();
+  f.adapter.next.push(busy.step);
+  f.rt.sendMessage(f.t.id, { text: '@alpha meanwhile, read the notes' });
+  await sleep(5);
+  await f.rt.act(f.t.id, card.id, 'on');
+  assert.deepEqual(
+    arrange.waitingEntries(f.rt, f.alpha.id).map((e) => [e.source, e.itemId, e.from]),
+    [['answer', card.id, 'you']],
+  );
+  busy.release();
+  await settle(f.rt);
+  assert.match(JSON.stringify(f.adapter.calls.filter((c) => c.sessionId === f.alpha.id).at(-1).message), /turned on shell/);
+});
