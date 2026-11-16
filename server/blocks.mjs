@@ -77,7 +77,10 @@ export function act(rt, threadId, itemId, action, values, revision) {
   // A question whose call has gone gets its answer as an event, with its question and labels in words (#521).
   const event = it.question ? { ...ev, question: lateAnswer(it.block, r.event.values, dismissed) } : ev;
   if (asked) answerQuestion(rt, itemId, dismissed ? null : r.event.values);
-  else if (se) rt.deliver(se.id, { kind: 'event', event, blockItemId: itemId }, { threadId });
+  // The answer is an entry in the block’s agent’s inbox, pointing at the block; its event, which the page already has as
+  // the person’s voice line, is what its turn is given until Turns builds input from entries (designs/rooms-at-scale.md,
+  // “What an entry is”).
+  else if (se) rt.delivery.send({ sessionId: se.id, threadId, source: 'answer', itemId, from: 'you', message: { kind: 'event', event, blockItemId: itemId } });
   return { ok: true, voice: r.voice };
 }
 

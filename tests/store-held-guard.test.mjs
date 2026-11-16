@@ -95,7 +95,7 @@ const PENDING = {
   'block-show.mjs': ['showBlock', 'showBlock', 'showBlock', 'shownAgain'], // show_block of an app or a block id the turn may have just shown
   'block-update.mjs': ['shownBy'], // update_block of a block the turn just showed
   'catch-up.mjs': ['moveMarkers'], // the conversation of a topic an item moved in, maybe opened behind a held commit, whose sessions' markers move (#1041)
-  'delivery.mjs': ['send', 'sessionIds', 'inbox', 'ready', 'postedSince'], // the sessions with inboxes, an inbox's entries, its session and an entry's item, maybe just made, decide each entry's next state and the wake (#796's class)
+  'delivery.mjs': ['send', 'sessionIds', 'inbox', 'ready', 'take', 'postedSince'], // the sessions with inboxes, an inbox's entries, its session and an entry's item, maybe just made, decide each entry's next state and the wake (#796's class)
   'entry-queue.mjs': ['cancelEntry'], // the text of the message the person removed, for its sender, maybe settled behind a held commit
   'entry-turns.mjs': ['messageOf'], // the item an entry gives the turn whole, maybe settled in the same held write
   'mention-entries.mjs': ['mentionEntries'], // the session whose final reply makes entries, maybe made behind a held commit
@@ -120,8 +120,9 @@ const PENDING = {
   // The conversation createThread just wrote, with the agents it joined: its route’s answer is its own write, which a
   // held commit keeps out of the published state (#1247’s class). And the agent deletePersona deletes, with its sessions,
   // any of them maybe made behind a held commit. The constructor binds Delivery's sizeOf, which reads the item an entry
-  // points at as take decides what a turn holds, maybe added in the same held write.
-  'runtime.mjs': ['constructor', 'createThread', 'deletePersona', 'deletePersona', 'deletePersona'],
+  // points at as take decides what a turn holds, maybe added in the same held write; and Checks' send, which reads the
+  // session a lint turn's entry goes to when it names no thread.
+  'runtime.mjs': ['constructor', 'constructor', 'createThread', 'deletePersona', 'deletePersona', 'deletePersona'],
   // The reply with the mention, a side line right after its add, and sweeps of hop cards; the conversation's hop count,
   // the topic the wake answers in, and endChain's hops and queued wakes, each maybe held behind a commit (#796).
   // A session's change and notice diff against the session a held change left (#796's class in sessions).

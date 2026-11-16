@@ -46,7 +46,7 @@ export function rig({ tools = [], blobs = { f1: Buffer.from('data') } } = {}) {
   const sent = [];
   const send = (sessionId, message, opts) => sent.push({ sessionId, message, opts });
   const entries = /** @type {any[]} */ ([]);
-  const delivery = { send: (/** @type {any} */ e) => entries.push(e) };
+  const delivery = { send: (/** @type {any} */ e) => entries.push(e), waiting: () => [] };
   const apps = new Apps({ store, bus, threads, sessions, personas, assets, running, checks, delivery, send, narrator: null, config: { imageOrigins: [] } });
   return { store, threads, running, apps, sent, entries, linted, signals, searched };
 }

@@ -24,7 +24,7 @@ export class Apps {
    *           assets: { blobs: any, search: (room: string, args: any) => Promise<any>, listText: (room: string) => Promise<any> },
    *           running: { all: () => any[], turnOf: (sessionId: string) => any },
    *           checks: { lint: (sessionId: string, turnId: string|null|undefined, problems: any[]) => unknown },
-   *           delivery: { send: (entry: any) => unknown },
+   *           delivery: { send: (entry: any) => unknown, waiting: (sessionId: string) => any[] },
    *           send: (sessionId: string, message: any, opts: { threadId: string }) => unknown,
    *           narrator: { speak: (args: any) => any } | null, config: { imageOrigins: string[] } }} deps
    *   delivery: the inbox, which a review of a block reaches its author through (designs/rooms-at-scale.md, “What an
