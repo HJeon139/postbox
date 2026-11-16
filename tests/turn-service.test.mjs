@@ -23,6 +23,14 @@ test('#1429 the runtime has no deliver, and no server module starts a turn but t
   assert.deepEqual(callers, []);
 });
 
+test('#1429 only Turns imports the turn builder (turn-run.mjs)', () => {
+  const importers = sources().filter((p) => /from '\.{1,2}\/(?:[\w-]+\/)*turn-run\.mjs'/.test(readFileSync(p, 'utf8')));
+  assert.deepEqual(
+    importers.map((p) => p.slice(SERVER.length)),
+    ['turn-service.mjs'],
+  );
+});
+
 test('#1429 an agent’s waiting entries start its turn through Turns’ start', async () => {
   const { rt, t, beta } = setup();
   const started = [];
