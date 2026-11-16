@@ -9,6 +9,7 @@
 import * as fs from 'node:fs/promises';
 import { join } from 'node:path';
 import { itemOf } from '../shared/item-index.mjs';
+import { STORE_WAITS } from '../shared/limits.mjs';
 import { emptyState } from '../shared/state.mjs';
 import { Fifo } from './fifo.mjs';
 import { newId } from './ids.mjs';
@@ -25,7 +26,6 @@ const KEEP_EVENTS = 20000; // events kept in memory for reconnecting browsers, a
 // every event kept, so trimming at each emit made one about 100 times dearer past 20,000 (tests/store-commit-scale.test.mjs).
 const TRIM_EVERY = 5000;
 export const SNAPSHOT_EVERY = 5000; // events between snapshots
-const RETRY_BOUND_MS = 3000; // how long Retry waits for a write still in flight
 
 export { newId }; // server/ids.mjs; its callers import it from here
 
@@ -42,7 +42,7 @@ export class Store {
    * @param {{ snapshotEvery?: number, io?: typeof fs, retryBoundMs?: number }} [options]  `io` stands in for
    *   node:fs/promises; `retryBoundMs` is how long Retry waits for a write still in flight before it refuses
    */
-  constructor(dir, { snapshotEvery = SNAPSHOT_EVERY, io = fs, retryBoundMs = RETRY_BOUND_MS } = {}) {
+  constructor(dir, { snapshotEvery = SNAPSHOT_EVERY, io = fs, retryBoundMs = STORE_WAITS.noProgressMs } = {}) {
     this.dir = dir;
     this.io = io;
     this.snapshotEvery = snapshotEvery;

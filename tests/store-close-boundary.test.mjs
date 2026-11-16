@@ -82,7 +82,7 @@ test('a Retry whose barrier never resolves: close() rejects within the bound, ke
   const retried = a.reload().catch((e) => e.code);
   await barrier.reached;
   const t0 = Date.now();
-  await assert.rejects(a.close(), /can’t close.*no progress.*Stop the process/);
+  await assert.rejects(a.close(), /can’t close.*a disk step hasn’t finished.*Stop the process/);
   assert.ok(Date.now() - t0 < 1000, 'close() answered within the bound');
   assert.equal(a.closed, true);
   assert.equal(a.writable, false);
@@ -148,7 +148,7 @@ test('close() begun before a reconciliation times out waits for the listener the
   const retried = a.reload().catch((e) => e.code);
   for (let i = 0; i < 200 && !a.reconciling; i++) await new Promise((r) => setTimeout(r, 5));
   assert.equal(a.lateReconcile, null, 'close() begins before the timeout: nothing is detached yet');
-  await assert.rejects(a.close(), /can’t close.*no progress/);
+  await assert.rejects(a.close(), /can’t close.*a disk step hasn’t finished/);
   assert.equal(await retried, 'ETIMEDOUT');
   assert.ok(a.lateReconcile, 'the Retry detached its listener meanwhile');
   assert.ok(a.lock, 'the lock is kept while the listener still runs');
@@ -173,7 +173,7 @@ test('one write lands, then the disk hangs: close() gives up the bound after tha
   a.emit('thread', { id: 'e0', members: [] });
   a.commit([thread('c0')], { opId: 'c0' }).catch(() => {}); // rejected as the store gives up
   const t0 = Date.now();
-  await assert.rejects(a.close(), /can’t close.*no progress/);
+  await assert.rejects(a.close(), /can’t close.*a disk step hasn’t finished/);
   const took = Date.now() - t0;
   assert.equal(writes, 2, 'the first write landed, and the second hung');
   // The old rule took at least twice the bound; 700 ms of slack covers a loaded event loop running late.

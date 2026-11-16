@@ -6,6 +6,7 @@
 // is 1b’s and will reuse recover() and install().
 
 import { join } from 'node:path';
+import { STORE_WAITS } from '../shared/limits.mjs';
 import { emptyState, ownState } from '../shared/state.mjs';
 import { Fifo } from './fifo.mjs';
 import { lockStore, unlockStore } from './store-lock.mjs';
@@ -174,14 +175,38 @@ async function settledWhileProgressing(store, promise) {
   for (;;) {
     // The bound runs from the later of the wait’s start and the last step: a step that lands early in a wait doesn’t
     // buy a whole new window, so a hang right after it fails within the bound (the integrator’s review of #1324).
-    const left = Math.max(began, store.steppedAt) + store.retryBoundMs - Date.now();
+    const idleBy = Math.max(began, store.steppedAt) + store.retryBoundMs;
+    // A step the disk is still working on is progress too, up to a limit of its own from when it began: one write
+    // took a CI runner 3.6 s with this check on time, and nothing was wrong but the disk’s speed (#1314).
+    const stepBy = stepInFlight(store) ? store.step.since + stepBound(store) : 0;
+    const left = Math.max(idleBy, stepBy) - Date.now();
     if (left <= 0) return false;
-    const due = Date.now() + left;
-    if (await settledWithin(promise, left)) return true;
+    // No one wait is longer than the bound: a step that finishes early leaves the short rule to hold from then, and
+    // only the next reading sees that it has finished (the integrator’s review of #1421).
+    const wait = Math.min(left, store.retryBoundMs);
+    const due = Date.now() + wait;
+    if (await settledWithin(promise, wait)) return true;
     // How late this check's own timer ran: seconds late means this process was starved of CPU, not the disk (#1314).
-    lateBy.set(store, Math.max(0, Date.now() - due));
+    // The latest of this close()’s checks: a step that begins only once the process is let run again gets a wait of
+    // its own, on time, which mustn’t hide that the check before it ran late.
+    lateBy.set(store, Math.max(lateBy.get(store) ?? 0, Date.now() - due));
   }
 }
+
+/** Whether the writer has begun a disk step that hasn’t finished. @param {import('./store.mjs').Store} store @returns {store is import('./store.mjs').Store & { step: { what: string, since: number, done: boolean } }} */
+const stepInFlight = (store) => Boolean(store.step && !store.step.done);
+
+/** Which limit close() gave up at: a step’s own, when one was still in flight, else the bound on no progress. @param {import('./store.mjs').Store} store */
+const gaveUpOn = (store) =>
+  stepInFlight(store) ? `a disk step hasn’t finished in ${stepBound(store)} ms` : `a write or Retry has made no progress for ${store.retryBoundMs} ms`;
+
+/**
+ * How long close() gives one disk step that is still running. A store with its own bound gives the longer limit; one
+ * whose bound a caller shortened, as tests do, gives that bound for a step too, unless the caller names a limit for
+ * a step (`stepBoundMs`).
+ * @param {import('./store.mjs').Store & { stepBoundMs?: number }} store
+ */
+export const stepBound = (store) => store.stepBoundMs ?? (store.retryBoundMs === STORE_WAITS.noProgressMs ? STORE_WAITS.stepMs : store.retryBoundMs);
 
 /** How late each store’s last close() check ran against its timer, for close()’s error (#1314). */
 const lateBy = new WeakMap();
@@ -217,6 +242,7 @@ export async function close(store) {
   // close()’s first await trimmed the next owner’s line).
   store.closing = true;
   store.cause ??= CLOSED();
+  lateBy.delete(store);
   // A Retry or a writer pass under way finishes first, then the queue is flushed (flush() is the one path still open
   // on a closing store), each within a bound. The bound decides only what the caller is told: a flag can’t cancel a
   // write or a rename already handed to the disk, so past it the lock is KEPT and close() rejects (gpt’s and critic’s
@@ -240,7 +266,7 @@ export async function close(store) {
   if (!quiet || failed) {
     const why = failed
       ? `its last sync failed (${failed.code ?? 'error'}): ${(failed.cause ?? failed).message}, so the log may not be durable`
-      : `a write or Retry has made no progress for ${store.retryBoundMs} ms (${stalled(store)})`;
+      : `${gaveUpOn(store)} (${stalled(store)})`;
     store.cause = Object.assign(
       new Error(`The store can’t close: ${why}. Stop the process; its lock on the folder goes with it, and the next start takes the folder over.`),
       {
