@@ -194,6 +194,8 @@ const entryAdd = (id, more) => ({
 });
 const entryTake = (id, turn) => ({ type: 'entry.patch', data: { sessionId: 'se_b', id, patch: { state: 'taken', takenBy: turn } } });
 
+const entryDone = (id) => ({ type: 'entry.patch', data: { sessionId: 'se_b', id, patch: { state: 'delivered' } } });
+
 test('a turn’s take is the entries it took, as they were then, however they are patched after', () => {
   const events = [
     entryAdd('en_1', { from: 'alpha', itemId: 'it_1' }),
@@ -228,10 +230,27 @@ test('a turn was woken by every agent whose mention it took, and a run with no e
     entryTake('en_2', 'turn_1'),
     entryTake('en_3', 'turn_2'),
     entryTake('en_4', 'turn_2'),
+    entryAdd('en_5', { from: 'alpha', source: 'review', itemId: 'it_5' }),
+    entryTake('en_5', 'turn_3'),
+    ...['en_1', 'en_2', 'en_3', 'en_4', 'en_5'].map(entryDone),
   ];
   const wakes = wakesOf(events);
-  assert.deepEqual([...wakes], [['turn_1', ['it_1', 'it_2']]], 'two senders in one batch; the person’s message and a notice wake as no agent');
+  assert.deepEqual([...wakes], [['turn_1', ['it_1', 'it_2']]], 'two senders in one batch; the person’s message, a notice and a review wake as no agent');
   assert.equal(wakesOf([{ type: 'item.add', data: {} }]), null);
+});
+
+test('a turn that was lost, its entries reopened for a resend, is no wake: only the turn that ran is', () => {
+  const lost = { type: 'entry.patch', data: { sessionId: 'se_b', id: 'en_1', patch: { state: 'waiting', takenBy: null, resend: true } } };
+  const events = [entryAdd('en_1', { from: 'alpha', itemId: 'it_1' }), entryTake('en_1', 'turn_lost'), lost, entryTake('en_1', 'turn_ran'), entryDone('en_1')];
+  const wakes = wakesOf(events);
+  assert.deepEqual([...wakes], [['turn_ran', ['it_1']]]);
+  const reply = agent('it_9', 'beta', 20, 'Done.', { turnId: 'turn_ran' });
+  const turns = [{ turnId: 'turn_ran', tools: ['Bash'] }];
+  assert.equal(idleWakes([reply], turns, wakes), 0, 'the lost turn said nothing and ran nothing, and isn’t a wake that found nothing to do');
+  assert.deepEqual(readsAfterWake([reply], turns, wakes), [0]);
+  // A turn that failed after it replied took its entries and ran: its reply says so, though nothing was delivered.
+  const replied = { type: 'item.add', data: { threadId: 'th_1', item: { id: 'it_8', kind: 'agent', handle: 'beta', turnId: 'turn_lost', text: 'I started' } } };
+  assert.deepEqual([...wakesOf([...events.slice(0, 2), replied, ...events.slice(2)]).keys()], ['turn_lost', 'turn_ran']);
 });
 
 test('with the entries, a batch from two agents and a turn the person’s message started are counted as woken', () => {

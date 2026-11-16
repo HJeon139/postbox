@@ -85,7 +85,29 @@ export function takesOf(events) {
 export function wakesOf(events) {
   const takes = takesOf(events);
   if (!takes.size) return null;
+  const ran = turnsThatRan(events);
   const byAgent = (/** @type {any} */ e) => e.source === 'mention' && e.from && e.from !== 'you' && e.itemId;
   const wakes = [...takes].map(([turn, taken]) => /** @type {[string, string[]]} */ ([turn, taken.filter(byAgent).map((e) => e.itemId)]));
-  return new Map(wakes.filter(([, itemIds]) => itemIds.length));
+  return new Map(wakes.filter(([turn, itemIds]) => itemIds.length && ran.has(turn)));
+}
+
+/**
+ * The turns that ran: one whose entries were delivered, or that posted a reply. A turn that took entries and was
+ * lost, its entries reopened for a resend (server/delivery.mjs), said nothing and ran nothing, and isn’t a wake.
+ * @param {any[]} events
+ * @returns {Set<string>}
+ */
+function turnsThatRan(events) {
+  /** @type {Map<string, string>} */
+  const takenBy = new Map();
+  const ran = new Set();
+  for (const e of events) {
+    const write = entryWrite(e);
+    if (e.type === 'item.add' && e.data?.item?.kind === 'agent' && e.data.item.turnId) ran.add(e.data.item.turnId);
+    if (!write) continue;
+    if (write.fields.state === 'taken' && write.fields.takenBy) takenBy.set(write.id, write.fields.takenBy);
+    else if (write.fields.state === 'delivered' && takenBy.has(write.id)) ran.add(takenBy.get(write.id));
+    else if (write.fields.state) takenBy.delete(write.id);
+  }
+  return ran;
 }
