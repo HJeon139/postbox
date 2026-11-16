@@ -230,3 +230,15 @@ test('the person’s answer to a busy agent’s refusal card waits in its inbox 
   await settle(rt);
   assert.match(adapter.calls.at(-1).message.text, /try it again exactly as before/);
 });
+
+test('Always allow’s answer entry names no file path: the inbox reaches the page, and the path is the computer’s', async () => {
+  const { rt, adapter, t, se } = await setup();
+  const card = await refused(rt, adapter, t, 'python -m pytest -q');
+  await rt.act(t.id, card.id, 'always');
+  await settle(rt);
+  const [entry] = Object.values(rt.store.state.inbox)
+    .flat()
+    .filter((e) => e.sessionId === se.id && e.itemId === card.id);
+  assert.match(entry.message.text, /now always allows `Bash\(python -m pytest -q\)`/);
+  assert.doesNotMatch(entry.message.text, /\/(tmp|var|private|Users|home)\//, 'no absolute path');
+});
