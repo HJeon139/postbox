@@ -32,23 +32,19 @@ Then send these two messages one right after the other, without waiting for a re
 
 Wait until @developer has stopped working. Say whether its replies answer both messages, and whether it answered the first as if the second hadn’t been sent.
 
-## Phase 2: A line copied from the conversation, then messages for one agent in two threads
+## Phase 2: A line copied from the conversation, then an agent’s messages for one agent in two threads
 
 Send this message, then wait until no agent is working:
 
-`@alpha Find the newest message in this conversation that an agent other than you posted. Reply with its id and its exact text, as read_conversation gives that line, and nothing else.`
+`@researcher Call read_conversation. Find the newest line in what it returns that another agent wrote. Reply with that one line exactly as it was given, from its id in brackets to its end, and nothing else: no words of your own before or after it.`
 
-Say whether any agent replied after @alpha did. Nothing asked another agent for anything, so a reply from one is a wake by the copied line.
+Say whether the reply is one line that starts with an id in brackets, and whether any agent replied after it. Nothing asked another agent for anything, so a reply from one is a wake by the copied line. The step is @researcher’s, on Claude Code, because the first runs gave it to the Kiro agent, which made up an id and named the other agent in a sentence of its own: that is a mention, not a copy.
 
-Then open a topic thread on @researcher’s first reply, and send this message in the thread:
+Then send this message, and wait until no agent is working:
 
-`@critic In this thread only: is “adds search to the conversation” clear enough for a changelog? Answer in one sentence.`
+`@researcher Do two things, in this order, and nothing else. First, open a topic thread on your first reply in this conversation with open_topic, and in its message ask the critic, with an @, whether “adds search to the conversation” is clear enough for a changelog, in one sentence. Second, in your reply here, ask the critic, with an @, what version number comes after 2.1, with the number only.`
 
-Right after it, without waiting, go back to the conversation and send:
-
-`@critic Here in the main conversation: what version number comes after 2.1? Answer with the number only.`
-
-Wait until @critic has stopped working. Say where each of its answers was posted, the thread or the conversation, and whether each answer is in the place its question was asked.
+Say where each of @critic’s answers was posted, the thread or the conversation, and whether each is in the place its question was asked. The two questions reach @critic from an agent, in two threads, so one waits while the other is answered: your own messages aren’t inbox entries yet, and two of yours would measure nothing.
 
 ## Phase 3: What each agent was asked
 
