@@ -207,7 +207,11 @@ test('#135 a later turn of the same agent has its own sender line with its time 
         fromTurnId: `turn_135_${Math.min(n, 1)}`,
       });
     await expect(page.locator(`.transcript[data-thread="${room.id}"] .md p`, { hasText: 'And the names.' })).toBeVisible();
-    const wakes = (await senders(page, room.id)).slice(-3);
-    expect(wakes).toEqual([expect.stringMatching(/^analyst/), expect.stringMatching(/^analyst/), '']);
+    // Polled, as the steps above are (#1277): an item off screen is skipped (content-visibility, app/js/view-skip.mjs),
+    // and innerText leaves a skipped item’s words out, so a line read once as the view settles had its time and no name.
+    // The name is built with its line in one call (thread.mjs’s `who`), so this hides no line drawn without it.
+    await expect
+      .poll(async () => (await senders(page, room.id)).slice(-3), { message: 'the three wakes’ sender lines' })
+      .toEqual([expect.stringMatching(/^analyst/), expect.stringMatching(/^analyst/), '']);
   });
 });
