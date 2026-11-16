@@ -2,6 +2,25 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.12.1 (2026-11-16)
+
+### Fixes
+
+- **store:** close()'s error says which disk step it waited on, and how late its own check ran
+- **turns:** a copied entry line wakes no one, and an entry's cut keeps whole characters
+- **app:** an agent's “N open requests” opens the side thread its block is in
+- **remote:** a host turn Postbox stopped as hung notifies as info, not as an alarm
+- **mentions:** read a draft line by line only when a line could be a quote
+- **mentions:** give the type check the threads it found
+- **mentions:** find the conversation's threads once for a message, not once a line
+- **mentions:** an agent's reply that copies a line wakes no one
+- **mentions:** count a line as a copy only when it holds its item's words
+- **mentions:** treat any line that starts with a bracketed id as copied
+- **mentions:** a quoted or copied line names an agent without waking it
+- **app:** hear() keeps its JSDoc, and only an epoch frame ends a run of old frames
+- **server:** the person's answer to a block names the block, for the room's other agents
+- **app:** unnumbered frames tied to an event the page already has are dropped with it
+
 ## 4.12.0 (2026-11-15)
 
 ### Features

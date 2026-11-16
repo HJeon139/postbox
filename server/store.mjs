@@ -34,6 +34,8 @@ export class Store {
   snapshotting = false;
   /** When the disk last finished one of the writer’s steps: close() gives up the bound after it, not before (#1314). */
   steppedAt = 0;
+  /** The disk step the writer began last, when, and whether it finished: close()’s error names it (#1314). @type {{ what: string, since: number, done: boolean } | null} */
+  step = null;
 
   /**
    * @param {string|null} dir  the data folder; null keeps everything in memory (tests)

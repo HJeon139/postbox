@@ -29,6 +29,17 @@ async function handle(store) {
 const fenced = () =>
   Object.assign(new Error('The store was reset while this write was in flight; its outcome is whatever the next load reads back.'), { code: 'ERELOADED' });
 
+/** The disk step the writer begins: close() names it if it gives up while it runs (#1314). @param {{ step?: any }} store @param {string} what */
+export function stepOn(store, what) {
+  store.step = { what, since: Date.now(), done: false };
+}
+
+/** The disk finished the writer’s step: close() waits while these come (#1314). @param {{ steppedAt?: number, step?: any }} store */
+export function stepped(store) {
+  store.steppedAt = Date.now();
+  if (store.step) store.step.done = true;
+}
+
 /**
  * Writes a buffer whole through a handle: a write may take fewer bytes than given.
  * @param {import('node:fs/promises').FileHandle} fh @param {Buffer} buf @param {string} name  what’s being written, for the error
@@ -50,18 +61,21 @@ export async function writeAll(fh, buf, name) {
 async function append(store, text, gen, sync, through) {
   const fh = await handle(store);
   if (store.generation !== gen) throw fenced();
+  stepOn(store, 'the event log’s write');
   await writeAll(fh, Buffer.from(text), `The event log ${store.segment}`);
-  store.steppedAt = Date.now();
+  stepped(store);
   if (store.generation !== gen) throw fenced();
   if (through > store.writtenThrough) store.writtenThrough = through;
   if (!sync) return;
+  stepOn(store, 'the event log’s sync');
   await fh.sync();
-  store.steppedAt = Date.now();
+  stepped(store);
   if (store.generation !== gen) throw fenced();
   store.savedThrough = store.writtenThrough;
   if (store.freshSegment) {
+    stepOn(store, 'the folder’s sync');
     await syncDir(store);
-    store.steppedAt = Date.now();
+    stepped(store);
     if (store.generation !== gen) throw fenced();
     store.freshSegment = false;
   }
@@ -218,9 +232,10 @@ export async function run(store, gen) {
     else if (job.line !== undefined || job.held) await writeLines(store, gen);
     else if (job.flush) {
       store.queue.shift();
+      stepOn(store, 'the final sync');
       await (store.fh ? store.fh.sync() : Promise.resolve()).then(
         () => {
-          store.steppedAt = Date.now();
+          stepped(store);
           store.savedThrough = store.writtenThrough;
           job.flush.resolve();
         },
