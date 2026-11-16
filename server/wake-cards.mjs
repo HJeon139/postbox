@@ -161,17 +161,12 @@ export function resolveHop(rt, threadId, itemId, allow) {
     });
   settleHeld(rt, it, allow);
   if (allow) return { ok: true };
-  if (from && !from.retiredFork)
-    rt.deliver(
-      from.id,
-      {
-        kind: 'notice',
-        text: it.join
-          ? `The person chose not to add @${it.to} to this conversation, so it didn’t get your message. Carry on without it.`
-          : `The person chose not to let you wake @${it.to}. Carry on without it.`,
-      },
-      { threadId: it.replyIn ?? null },
-    );
+  if (from && !from.retiredFork) {
+    const text = it.join
+      ? `The person chose not to add @${it.to} to this conversation, so it didn’t get your message. Carry on without it.`
+      : `The person chose not to let you wake @${it.to}. Carry on without it.`;
+    answerWaker(rt, from, it, it.replyIn, text);
+  }
   return { ok: true };
 }
 
@@ -184,15 +179,25 @@ function settleHeld(rt, card, allow) {
     }
     const se = rt.s.sessions[w.fromSessionId];
     if (se && !se.retiredFork)
-      rt.deliver(
-        se.id,
-        {
-          kind: 'notice',
-          text: `The person chose not to allow ${cardName(card)}, so your message held on it (“${clip(w.text, 120)}”) didn’t go to @${w.to}. Send it again if you still need it.`,
-        },
-        { threadId: w.replyIn ?? null },
+      answerWaker(
+        rt,
+        se,
+        card,
+        w.replyIn,
+        `The person chose not to allow ${cardName(card)}, so your message held on it (“${clip(w.text, 120)}”) didn’t go to @${w.to}. Send it again if you still need it.`,
       );
   }
+}
+
+/**
+ * The person’s decline on a card reaches an agent whose wake it held as an answer entry pointing at the card
+ * (designs/rooms-at-scale.md, “What an entry is”), in the thread it spoke from, with the words its turn is given until
+ * Turns builds input from entries.
+ * @param {any} rt @param {any} se @param {any} card @param {string|null|undefined} replyIn @param {string} text
+ */
+function answerWaker(rt, se, card, replyIn, text) {
+  const threadId = replyIn ?? se.threadId;
+  rt.delivery.send({ sessionId: se.id, threadId, source: 'answer', itemId: card.id, from: 'you', message: { kind: 'notice', text } });
 }
 
 /**
