@@ -52,7 +52,9 @@ export function fireScheduledWake(rt, schedule) {
   // A retired fork isn’t woken: deliver() would refuse it, here outside any request (#228).
   if (!rt.s.sessions[sc.sessionId] || rt.s.sessions[sc.sessionId].retiredFork) return finishSchedule(rt, running, 'canceled');
   if (!sc.attempt) rt.threads.addItem(sc.threadId, { kind: 'system', variant: 'wake', from: sc.handle, to: sc.handle, scheduled: true });
-  rt.deliver(sc.sessionId, { kind: 'wake', note: sc.recoveryNote ?? sc.note, scheduledWakeId: sc.id });
+  const message = { kind: 'wake', note: sc.recoveryNote ?? sc.note, scheduledWakeId: sc.id };
+  // A scheduled entry (designs/rooms-at-scale.md, “What an entry is”) that carries the wake its turn keeps (#466).
+  rt.delivery.send({ sessionId: sc.sessionId, threadId: sc.threadId, source: 'scheduled', text: String(message.note ?? ''), message });
 }
 
 /**
@@ -183,6 +185,8 @@ function finishSchedule(rt, sc, status, patch = {}) {
 export function cancelWakeSchedule(rt, scheduleId) {
   const sc = rt.s.schedules[scheduleId];
   if (!sc) throw httpError(404, 'That wake-up already happened or was canceled.');
+  // A fire waiting in the inbox goes with it, as one held behind a turn did; one a turn took is that turn’s.
+  leftOver(rt, sc, ['waiting']);
   finishSchedule(rt, sc, 'canceled');
 }
 
@@ -209,6 +213,9 @@ const onHost = (rt, sc) => {
  */
 export function rearmWakes(rt) {
   for (const sc of Object.values(rt.s.schedules)) {
+    // The schedule owns its wake across a restart: an entry its last fire left is stopped, and the wake fires again,
+    // with the recovery when a tool had started, rather than the inbox resending the instruction (#466).
+    leftOver(rt, sc);
     if (sc.running && onHost(rt, sc)) {
       finishSchedule(rt, sc, 'done');
       continue;
@@ -219,6 +226,15 @@ export function rearmWakes(rt) {
     if (pending !== sc) rt.store.emit('schedule', pending);
     armWake(rt, pending);
   }
+}
+
+/**
+ * Stops a schedule’s entries in the given states: what an earlier fire left, at a restart, or a wake still waiting when
+ * its schedule is canceled. @param {any} rt @param {any} sc @param {string[]} [states]
+ */
+function leftOver(rt, sc, states = ['waiting', 'taken']) {
+  for (const e of rt.delivery.inbox(sc.sessionId))
+    if (e.source === 'scheduled' && e.message?.scheduledWakeId === sc.id && states.includes(e.state)) rt.delivery.patch(e, { state: 'stopped' });
 }
 
 /** A scheduled wake waiting behind a turn you stopped goes with it (#466): it’s settled, not left running. */

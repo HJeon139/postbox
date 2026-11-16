@@ -28,7 +28,8 @@ test('#466 a scheduled wake queued behind the person’s turn on a host is due a
   await running(first, 'Work on it.');
   const sc = first.rt.schedule(first.se().id, { inMs: 60_000, note: 'Check later.' });
   fire(first.rt, sc);
-  assert.equal(first.rt.turns.get(first.se().id).pending.length, 1, 'the wake waits behind the person’s turn');
+  // In the agent’s inbox, since a scheduled wake is an entry (#1425), where it waited on the turn before.
+  assert.equal(first.rt.delivery.waiting(first.se().id).filter((e) => e.source === 'scheduled').length, 1, 'the wake waits behind the person’s turn');
   assert.equal(first.se().remoteTurn.state, 'running');
   const r = restart(first);
   assert.ok(r.store.state.schedules[sc.id], 'the wake is still saved');

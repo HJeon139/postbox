@@ -149,6 +149,8 @@ export class Delivery {
   canStart(e, se) {
     if (e.source === 'notice' || this.chainHeld(e)) return false;
     if (se.state !== 'failed') return true;
+    // A scheduled wake is the agent’s own, which started a failed agent’s turn before entries, as its retries rely on (#466).
+    if (e.source === 'scheduled') return true;
     return PERSON.has(e.source) && !this.heldByFailure.get(e.sessionId)?.has(e.id);
   }
 

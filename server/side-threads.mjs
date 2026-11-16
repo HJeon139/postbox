@@ -6,6 +6,7 @@
 import { HOP_LIMIT } from '../shared/limits.mjs';
 import { clip, retiredError } from './helpers.mjs';
 import { roomChainLimit } from './room-chain-limit.mjs';
+import { dropScheduledWake } from './scheduled-wakes.mjs';
 import { askToAdd, askToWake, closeOwnCard, dropHeld, retireStale } from './wake-cards.mjs';
 
 export { resolveHop } from './wake-cards.mjs';
@@ -125,6 +126,8 @@ export function dropWakes(rt, se, how = 'stopped') {
   // Agents’ waiting entries are stopped, so none starts a turn after the Stop, and each agent that sent one hears so;
   // the person’s messages wait for the next turn, and are stopped too when the agent was removed.
   for (const e of rt.delivery.stopped(se.id, { all: how !== 'stopped' })) {
+    // A scheduled wake that waited is settled, as one held on the turn was, so a restart doesn’t fire it again (#466).
+    if (e.source === 'scheduled') dropScheduledWake(rt, e.message);
     const sender = e.source === 'mention' && e.from ? rt.sessions.in(rt.threads.lineage(e.threadId).at(-1)).find((x) => x.handle === e.from) : null;
     if (!sender || sender.retiredFork || sender.id === se.id) continue;
     const said = clip(rt.store.pending.item(e.threadId, e.itemId)?.text ?? '', 120);
