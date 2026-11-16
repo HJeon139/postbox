@@ -76,12 +76,12 @@ test('#1135 another agent’s wake while the turn waits to be attached waits in 
   assert.match(messageOf(starts(d)[0]), /a wake in the window/);
 });
 
-test('#1135 a drain of the thread while the turn waits to be attached leaves its message queued', async () => {
+test('#1135 a wake of the agent while the turn waits to be attached leaves its message waiting', async () => {
   const { r, d, release } = heldWelcome('running');
   await until(() => r.rt.remote.restoring.has('host-turn-1'), 'the turn to wait for its welcome');
   r.rt.sendMessage(r.t.id, { text: 'sent in the window' });
-  // Any drain of the thread, as another agent’s turn ending there runs, reads the agent as busy too.
-  r.rt.drainQueue(r.t.id);
+  // Any wake of the agent, as another agent’s turn ending there may make, reads it as busy too.
+  r.rt.delivery.wake(r.se().id);
   await sleep(20);
   assert.equal(r.rt.turns.has(r.se().id), false, 'no turn starts for it');
   assert.deepEqual(queued(r), ['sent in the window']);

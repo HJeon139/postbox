@@ -10,9 +10,6 @@ import { clip, httpError } from './helpers.mjs';
 import { stopForSendNow } from './message-queue.mjs';
 import { newId } from './store.mjs';
 
-/** Whether a queue route’s id names an inbox entry rather than a queued message. @param {string} id */
-export const isEntryId = (id) => String(id).startsWith('en_');
-
 /**
  * Edit: the person’s message is their item, posted when it was sent, so an edit changes it while it still waits for
  * every agent it went to; once one has it, it’s that agent’s to read as it was (#1404). An agent’s message isn’t the

@@ -91,6 +91,5 @@ export function entriesFirst(rt, se, turn) {
   if (!lead) return false;
   const before = (/** @type {any} */ a, /** @type {any} */ b) => (a.at ?? 0) < (b.at ?? 0) || ((a.at ?? 0) === (b.at ?? 0) && (a.seq ?? 0) < (b.seq ?? 0));
   const onTurn = turn.pending.flatMap((/** @type {any} */ p) => p.message.messages ?? [p.message]);
-  const queued = rt.threads.pending().flatMap((/** @type {any} */ t) => (t.queue ?? []).filter((/** @type {any} */ q) => q.sessionIds.includes(se.id)));
-  return [...onTurn, ...queued].every((m) => before(lead, m));
+  return onTurn.every((m) => before(lead, m));
 }

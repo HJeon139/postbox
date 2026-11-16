@@ -160,7 +160,7 @@ export async function reattach(rts, sessionId) {
     // Its cards, kept for the attach, can’t be answered now (#965).
     endOrphanCards(rts, [r.turn]);
     // What waited for the attach goes now, unless the turn may still run there and waits for the person (#1135).
-    if (!mayRun) rt.drainQueues(sessionId, now.threadId);
+    if (!mayRun) rt.delivery.wake(sessionId);
     return;
   }
   // Running, ended or interrupted, it’s replayed from the start, so the reply is whole: what came before is replaced.

@@ -5,10 +5,8 @@
 import { entriesFirst } from './entry-turns.mjs';
 import { runningJobs, runningProgress, settleJobs } from './job-records.mjs';
 import * as queue from './message-queue.mjs';
-import { arrival } from './queue-batch.mjs';
 import { dropScheduledWake, settleScheduledWake } from './scheduled-wakes.mjs';
 import { dropWakes } from './side-threads.mjs';
-import { newId } from './store.mjs';
 import { STORE_STOPPED, whenWritable } from './store-outage.mjs';
 import { endSubagent } from './subagent-end.mjs';
 import { replyMarks } from './turn-marks.mjs';
@@ -151,20 +149,20 @@ export function turnExited(rt, turn) {
     rt.sessions.update(se.id, { state: se.state === 'stopping' ? 'idle' : se.state, currentStep: stoppedBy, finishedAt: Date.now(), sideTurn: null });
   else if (se.sideTurn) rt.sessions.update(se.id, { sideTurn: null });
   const held = se.retiredFork ? [] : ex.held;
-  // Shutting down: your messages wait in their thread’s queue, which a restart keeps, rather than starting a CLI. One a
-  // turn took from the inbox (Send now’s) stays taken, and the restart reopens it once (Delivery’s start), so it isn’t
-  // posted again (#1108).
+  // Shutting down, nothing starts a CLI: your messages wait in the agent’s inbox, which a restart keeps. One a turn took
+  // from it (Send now’s) stays taken, and the restart reopens it once (Delivery’s start), so it isn’t posted again
+  // (#1108); one held without an entry gets one for its item.
   if (rt.closing) {
-    for (const h of held.filter((x) => x.message.kind === 'user' && !x.message.fromEntries)) {
-      const q = { id: newId('q'), text: h.message.text ?? '', attachments: h.message.attachments ?? [], sessionIds: [se.id], at: Date.now(), seq: arrival() };
-      rt.threads.patch(h.threadId ?? se.threadId, (t) => ({ queue: [...(t.queue ?? []), q] }));
+    for (const h of held.filter((x) => x.message.kind === 'user' && !x.message.fromEntries && x.message.itemId)) {
+      const entry = { sessionId: se.id, threadId: h.threadId ?? se.threadId, source: 'person', itemId: h.message.itemId, from: 'you' };
+      rt.delivery.send(entry, { wake: false });
     }
     return;
   }
   // A silent exit (Send now, which sends only your message, and erase, side threads, host admin and the
-  // like) delivers what was held as it is, and the queue waits for that turn’s end. Any other Stop, the person’s, a
-  // store outage’s or a hung host turn’s, gives the first turn its thread’s queue, in arrival order, as a turn’s
-  // normal end does (#733, #1040).
+  // like) delivers what was held as it is, and the agent’s entries wait for that turn’s end. Any other Stop, the
+  // person’s, a store outage’s or a hung host turn’s, gives the first turn its thread’s entries, in arrival order, as a
+  // turn’s normal end does (#733, #1040).
   if (ex.silent) for (const h of held) rt.deliver(se.id, h.message, { summarizeTo: h.summarizeTo, threadId: h.threadId });
   else {
     // What arrived first goes first: an entry that came before everything held starts its turn, and the held messages
