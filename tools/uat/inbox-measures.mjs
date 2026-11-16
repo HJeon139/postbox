@@ -7,6 +7,7 @@
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { parseMentions } from '../../shared/text.mjs';
+import { harnessTable, table } from './inbox-tables.mjs';
 import { filesIn, jsonLines, turnsIn } from './run-turns.mjs';
 
 /** The reads an agent makes to catch up, which the turn’s input is meant to make unnecessary. */
@@ -206,6 +207,25 @@ function withTurnIds(/** @type {any[]} */ turns, /** @type {any[]} */ items) {
 const mean = (/** @type {number[]} */ xs) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null);
 
 /**
+ * A run’s turns added up by harness: how many, the input tokens and model requests they report, and their tool calls.
+ * A harness that reports no tokens or requests has null there, not zero.
+ * @param {{ harness: string, requests: number|null, input: number|null, tools: string[] }[]} turns
+ */
+export function byHarness(turns) {
+  /** @type {Record<string, { turns: number, input: number|null, requests: number|null, toolCalls: number }>} */
+  const sums = {};
+  const plus = (/** @type {number|null} */ sum, /** @type {number|null} */ n) => (n === null ? sum : (sum ?? 0) + n);
+  for (const t of turns) {
+    const h = (sums[t.harness] ??= { turns: 0, input: null, requests: null, toolCalls: 0 });
+    h.turns++;
+    h.input = plus(h.input, t.input);
+    h.requests = plus(h.requests, t.requests);
+    h.toolCalls += t.tools.length;
+  }
+  return sums;
+}
+
+/**
  * One run’s measures.
  * @param {string} dir  the run’s folder
  */
@@ -226,41 +246,8 @@ export function measure(dir) {
     promptTokensPerTurn: mean(prompts),
     inputTokensPerTurn: mean(reported('input')),
     waitingElsewhere: mean(waitingElsewhere(events)),
+    harnesses: byHarness(turns),
   };
-}
-
-/** What each measure is called, and what passes, as the design’s table has them. */
-const ROWS = [
-  ['crossed', 'Messages crossed', 'fewer than main'],
-  ['idleWakes', 'Wakes that found nothing to do', 'no more than main'],
-  ['doubledHandOffs', 'A hand-off posted twice', 'none'],
-  ['copyWakes', 'Wakes by a copied line', 'none'],
-  ['requestsPerTurn', 'Model requests per turn', 'no more than main'],
-  ['readsAfterWake', 'Reads after a wake, per woken turn', 'fewer than main'],
-  ['promptTokensPerTurn', 'Postbox’s input per turn, Claude Code, tokens', 'no more than main'],
-  ['inputTokensPerTurn', 'Input tokens per turn, as reported', 'reported'],
-  ['waitingElsewhere', 'Entries waiting in another thread at a turn’s start', 'reported'],
-];
-
-/**
- * A measure across one side’s runs: its mean and range, or “not recorded” when no run has it.
- * @param {any[]} runs @param {string} key
- */
-export function across(runs, key) {
-  const values = runs.map((r) => r[key]).filter((v) => v !== null);
-  if (!values.length) return 'not recorded';
-  const round = (/** @type {number} */ n) => {
-    if (Math.abs(n) >= 100) return Math.round(n).toLocaleString('en-US');
-    return Number.isInteger(n) ? String(n) : n.toFixed(1);
-  };
-  const range = values.length > 1 ? ` (${round(Math.min(...values))} to ${round(Math.max(...values))})` : '';
-  return `${round(/** @type {number} */ (mean(values)))}${range}`;
-}
-
-/** The table for two sides’ runs, as Markdown. */
-export function table(/** @type {any[]} */ main, /** @type {any[]} */ branch) {
-  const head = `| Measure | main, ${main.length} ${main.length === 1 ? 'run' : 'runs'} | branch, ${branch.length} ${branch.length === 1 ? 'run' : 'runs'} | What passes |\n|---|---|---|---|`;
-  return [head, ...ROWS.map(([key, name, passes]) => `| ${name} | ${across(main, key)} | ${across(branch, key)} | ${passes} |`)].join('\n');
 }
 
 /** The run folders after a flag, up to the next flag. */
@@ -279,5 +266,6 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
     console.error('Give the runs to compare: node tools/uat/inbox-measures.mjs --main <run folder>… --branch <run folder>…');
     process.exit(2);
   }
-  console.log(table(main.map(measure), branch.map(measure)));
+  const [before, after] = [main.map(measure), branch.map(measure)];
+  console.log(`${table(before, after)}\n\n${harnessTable(before, after)}`);
 }

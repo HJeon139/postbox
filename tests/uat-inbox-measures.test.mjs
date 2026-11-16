@@ -4,7 +4,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
-  across,
+  byHarness,
   copyWakes,
   crossed,
   doubledHandOffs,
@@ -12,9 +12,9 @@ import {
   itemsOf,
   promptTokens,
   readsAfterWake,
-  table,
   waitingElsewhere,
 } from '../tools/uat/inbox-measures.mjs';
+import { across, harnessTable, table } from '../tools/uat/inbox-tables.mjs';
 import { agyTurn, toolName } from '../tools/uat/run-turns.mjs';
 
 const agent = (id, handle, at, text, more = {}) => ({ id, kind: 'agent', handle, at, text, turnId: `turn_${id}`, ...more });
@@ -166,4 +166,31 @@ test('an Antigravity turn’s input is its model calls added up: its result coun
   const lines = [call(3163, 23162), call(2417, 25754), { event: 'result', result: { usage: { input_tokens: 35222, cache_read_tokens: 116754 } } }];
   assert.deepEqual(agyTurn(lines), { requests: 2, input: 54496, tools: [] });
   assert.equal(agyTurn([{ event: 'result', result: { usage: { input_tokens: 9 } } }]).input, null, 'no call recorded, so nothing is reported');
+});
+
+test('a run’s turns are added up by harness, and one that reports no tokens says so', () => {
+  const turns = [
+    { harness: 'Codex', requests: 3, input: 100, tools: ['shell'] },
+    { harness: 'Codex', requests: 2, input: 50, tools: [] },
+    { harness: 'Kiro', requests: null, input: null, tools: ['read_conversation', 'read_conversation'] },
+  ];
+  assert.deepEqual(byHarness(turns), {
+    Codex: { turns: 2, input: 150, requests: 5, toolCalls: 1 },
+    Kiro: { turns: 1, input: null, requests: null, toolCalls: 2 },
+  });
+});
+
+test('the table by harness gives each harness its own rows, so one harness can’t hide in a mean of four', () => {
+  const run = (codex, agy) => ({
+    harnesses: { Codex: { turns: 2, input: codex, requests: 5, toolCalls: 1 }, Antigravity: { turns: 6, input: agy, requests: 20, toolCalls: 15 } },
+  });
+  const text = harnessTable([run(300, 600), run(340, 700)], [run(280, 540), run(270, 3850)]);
+  const rows = text.split('\n');
+  assert.equal(rows[0], '| Harness | Per run | main, 2 runs | branch, 2 runs |');
+  assert.ok(rows.includes('| Codex | Input tokens | 320 (300 to 340) | 275 (270 to 280) |'));
+  assert.ok(rows.includes('| Antigravity | Input tokens | 650 (600 to 700) | 2,195 (540 to 3,850) |'));
+  assert.ok(rows.includes('| Antigravity | Model requests | 20 (20 to 20) | 20 (20 to 20) |'));
+  // A harness that reports none, and one a side never ran.
+  const kiro = { harnesses: { Kiro: { turns: 2, input: null, requests: null, toolCalls: 0 } } };
+  assert.ok(harnessTable([kiro], []).split('\n').includes('| Kiro | Input tokens | not reported | not recorded |'));
 });
