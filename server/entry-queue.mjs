@@ -23,6 +23,7 @@ export function editEntry(rt, threadId, entryId, text) {
   const se = holderOf(rt, threadId, entryId);
   const e = rt.delivery.waiting(se.id).find((/** @type {any} */ x) => x.id === entryId);
   if (e.source !== 'person') throw httpError(409, 'An agent’s message can’t be edited. Remove it instead.');
+  // A failed entry was handed to its agent too (#466).
   const given = rt.delivery.entriesFrom(e.itemId).find((/** @type {any} */ x) => GIVEN.has(x.state));
   if (given) {
     const who = rt.store.pending.session(given.sessionId)?.handle;
@@ -37,7 +38,7 @@ export function editEntry(rt, threadId, entryId, text) {
 }
 
 /** An entry’s states once its agent was handed the message. */
-const GIVEN = new Set(['taken', 'delivered']);
+const GIVEN = new Set(['taken', 'delivered', 'failed']);
 
 /** The agents a message @-mentions, as one key to compare. @param {any} rt @param {string} text */
 const named = (rt, text) => [...new Set(parseMentions(text, rt.personas.handles()).map((h) => h.toLowerCase()))].sort().join(' ');
