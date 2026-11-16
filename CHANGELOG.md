@@ -2,6 +2,17 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.19.0 (2026-11-16)
+
+### Features
+
+- **turns:** Turns owns the start of every turn, and the runtime's deliver goes
+- **turns:** in a topic thread the line on the rest names the thread to read
+
+### Fixes
+
+- **turns:** the line on the rest says "for this thread's items"
+
 ## 4.18.0 (2026-11-16)
 
 ### Features
