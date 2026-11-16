@@ -4,6 +4,7 @@
 // an entry’s id: only one waiting in the inbox of a session of the route’s own conversation. Functions take the Runtime first, as waiting code does
 // until Turns is a service.
 
+import { parseMentions } from '../shared/text.mjs';
 import { messageOf } from './entry-turns.mjs';
 import { clip, httpError } from './helpers.mjs';
 import { stopForSendNow } from './message-queue.mjs';
@@ -22,15 +23,24 @@ export function editEntry(rt, threadId, entryId, text) {
   const se = holderOf(rt, threadId, entryId);
   const e = rt.delivery.waiting(se.id).find((/** @type {any} */ x) => x.id === entryId);
   if (e.source !== 'person') throw httpError(409, 'An agent’s message can’t be edited. Remove it instead.');
-  const given = rt.delivery.entriesFrom(e.itemId).find((/** @type {any} */ x) => x.state === 'taken' || x.state === 'delivered');
+  const given = rt.delivery.entriesFrom(e.itemId).find((/** @type {any} */ x) => GIVEN.has(x.state));
   if (given) {
     const who = rt.store.pending.session(given.sessionId)?.handle;
     throw httpError(409, `${who ? `@${who}` : 'An agent'} already has this message, so it can’t be edited. Send a new one instead.`);
   }
   const said = String(text ?? '').slice(0, 50000);
   if (!said.trim()) throw httpError(400, 'Write the message, or remove it instead.');
+  // It went to the agents it named when it was sent, so an edit keeps the same ones.
+  const now = rt.store.pending.item(e.threadId, e.itemId)?.text ?? '';
+  if (named(rt, now) !== named(rt, said)) throw httpError(409, 'Remove it and send a new message to change who it’s for.');
   rt.threads.patchItem(e.threadId, e.itemId, { text: said });
 }
+
+/** An entry’s states once its agent was handed the message. */
+const GIVEN = new Set(['taken', 'delivered']);
+
+/** The agents a message @-mentions, as one key to compare. @param {any} rt @param {string} text */
+const named = (rt, text) => [...new Set(parseMentions(text, rt.personas.handles()).map((h) => h.toLowerCase()))].sort().join(' ');
 
 /**
  * The session in the thread’s conversation whose inbox holds the entry waiting, or a 404 as for a queued message that
