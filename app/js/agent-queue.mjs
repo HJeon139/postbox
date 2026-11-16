@@ -1,6 +1,6 @@
 // Queued messages for one agent (#427): a counted mail button in its row, and a bounded dialog with each message’s actions.
 
-import { conversationRoot, threadsOfConversation } from '/shared/conversation.mjs';
+import { conversationRoot } from '/shared/conversation.mjs';
 import { api, client, itemsOf } from './client.mjs';
 import { h, icon, syncList } from './dom.mjs';
 import { onChangeWhileAlive } from './held-weakly.mjs';
@@ -10,13 +10,9 @@ export { paintOfflineQueue } from './offline-queue.mjs';
 
 const S = () => client.state;
 
+/** What waits for an agent: its inbox’s waiting entries (#1404). @param {string} sessionId */
 function entriesFor(sessionId) {
-  const session = S().sessions[sessionId];
-  if (!session) return [];
-  const queued = threadsOfConversation(S().threads, session.threadId)
-    .map((id) => S().threads[id])
-    .flatMap((thread) => (thread.queue ?? []).filter((q) => q.sessionIds.includes(sessionId)).map((q) => ({ thread, q })));
-  return [...queued, ...waitingFor(sessionId)];
+  return S().sessions[sessionId] ? waitingFor(sessionId) : [];
 }
 
 /**

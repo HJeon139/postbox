@@ -1,25 +1,5 @@
-// Queue batches keep per-agent order and thread boundaries; later turns can supersede a waker’s old request (#374).
+// Messages given to one turn as a batch, in arrival order (#374, #733); a turn’s later segments are the same post.
 import { positionOf } from '../shared/item-index.mjs';
-
-/** @param {any} rt @param {any} thread @param {boolean} wakesOnly */
-export function readyGroups(rt, thread, wakesOnly) {
-  const blocked = new Set();
-  const groups = new Map();
-  for (const q of thread.queue ?? []) {
-    if (wakesOnly && q.kind !== 'wake') continue;
-    // A busy agent (Running’s busy) takes nothing yet (#427).
-    const free = !q.sessionIds.some((id) => blocked.has(id) || rt.running.busy(id));
-    if (!free) {
-      for (const id of q.sessionIds) blocked.add(id);
-      continue;
-    }
-    for (const id of q.sessionIds) {
-      if (!groups.has(id)) groups.set(id, { sessionIds: [id], entries: [] });
-      groups.get(id).entries.push(q);
-    }
-  }
-  return [...groups.values()];
-}
 
 /** A turn’s later streaming segments are the same post, not a new instruction from its author. */
 export function latestMessage(rt, threadId, message) {

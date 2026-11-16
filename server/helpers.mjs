@@ -40,13 +40,6 @@ export function tooLongToSend(what, text, next = 'Send less.') {
   const n = (k) => k.toLocaleString('en-US');
   return { ok: false, message: `${what} is up to ${n(SENDING.message)} characters, and this one has ${n(text.length)}, so nothing was sent. ${next}` };
 }
-/** A message waiting in a conversation’s queue, or a 404: an edit, a removal or a Send now of one that isn’t there does nothing (#352). */
-export function queuedIn(t, queueId) {
-  const q = (t.queue ?? []).find((x) => x.id === queueId);
-  if (!q) throw httpError(404, 'That queued message was already sent or removed.');
-  return q;
-}
-
 /** The refusal of a fork #228 retired: no message reaches it, since its agent answers in the conversation now. @param {any} se */
 export const retiredError = (se) => httpError(409, `@${se.handle}’s session here was retired. Write to @${se.handle} in the conversation.`);
 

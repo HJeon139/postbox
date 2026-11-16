@@ -34,7 +34,7 @@ const PUBLISHED = {
   'catch-up.mjs': ['catchUp', 'pointerIfSeen'], // the prompt for a later turn
   'permission-cards.mjs': ['resolvePermission', 'resolveDenial'], // the person’s answer to a card they see
   'permission-expiry.mjs': ['dismissPermission'], // the person’s Dismiss on a card they see (#721)
-  'queue-batch.mjs': ['latestMessage'], // the person’s queued messages
+  'queue-batch.mjs': ['latestMessage'], // an agent’s later post, for a message that waited on a turn (#374)
   'reactions.mjs': ['toggleReaction', 'reactTool'], // a reaction aimed at an item the person or the agent sees
   'read-message.mjs': ['readMessage', 'readMessage', 'readConversation'], // read tools (T-31)
   'remote/turns-snapshot.mjs': ['readable'], // the snapshot sent to a host: it leaves the process
@@ -102,6 +102,7 @@ const PENDING = {
   'entry-queue.mjs': ['editEntry', 'editEntry', 'leaveOut', 'cancelEntry', 'removedUnread'],
   // the item an entry gives the turn whole, maybe settled in the same held write; the person’s message, posted at send
   'entry-turns.mjs': ['messageOf', 'personMessage'],
+  'queue-convert.mjs': ['convertOne', 'convertOne', 'notDelivered'], // the agents a stored queue's row waited for or came from, and the item an earlier conversion posted for it, read as the start's writes leave them (#1423)
   'send-message.mjs': ['repeatOf'], // the item a repeated send's first try posted, maybe behind a held commit (#1138)
   'mention-entries.mjs': ['mentionEntries'], // the session whose final reply makes entries, maybe made behind a held commit
   'held-session.mjs': ['heldSession'], // a delivery to a session just made behind a held commit waits until it's published (#796's class in sessions)
@@ -109,10 +110,6 @@ const PENDING = {
   'job-records.mjs': ['endJob', 'endJob', 'endJob', 'runningProgress', 'setJobStep', 'settleJobs'],
   'ledger.mjs': ['entries', 'recordPublishes', 'recordPublishes'], // the ledger reads back its own entries; the turn’s blocks and apps
   'lint-delivery.mjs': ['sendLint'], // the apps the turn showed, still being checked
-  // The queue a drain takes from and the queued messages a deleted session's release posts: a wake or a message
-  // queued behind a held commit is in them (#796). Send now aims at an entry the person sees, but a turn ending behind
-  // a held commit may have drained it already, and sending it again would deliver it twice (#1007).
-  'message-queue.mjs': ['sendQueuedNow', 'releaseQueued', 'drainQueue', 'takePending'],
   'permission-cards.mjs': ['recordDenial'], // the same refused call, once
   'permission-expiry.mjs': ['tellExpired'], // the card a turn’s end just expired, told about once (#721)
   'permission-prompt.mjs': ['permission'], // the card the call waits on

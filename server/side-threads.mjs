@@ -98,25 +98,6 @@ const replyInOf = (rt, se) => {
 };
 
 /**
- * A wake reaches its agent: at once, or from the queue of the thread it was sent in (drainQueue, Send now). One whose agent was
- * removed meanwhile isn’t delivered, and the waker hears so at its next turn.
- * @param {any} rt @param {string} threadId  where the wake was sent @param {any} q  the wake
- */
-export function deliverWake(rt, threadId, q) {
-  const target = rt.s.sessions[q.sessionIds[0]];
-  const from = rt.s.sessions[q.fromSessionId];
-  const live = from && !from.retiredFork ? from : null;
-  if (!target || target.retiredFork) {
-    const why = target ? 'retired' : 'removed';
-    if (live) rt.sessions.tell(live.id, `Your message to @${target?.handle ?? 'an agent'} (“${clip(q.text, 120)}”) wasn’t delivered: its session was ${why}.`);
-    return;
-  }
-  // No reply-back (#372): the reply posts where the wake was, and wakes the waker only if it @-mentions it.
-  rt.deliver(target.id, { kind: 'agent', from: `@${q.from}`, text: q.text, itemId: q.itemId }, { threadId });
-  retireStale(rt, threadId, target, `@${q.from} woke it`);
-}
-
-/**
  * When the last agent working in a conversation ends its turn with nothing left to answer, the chain of wakes has ended,
  * as when an agent acks a hand-off without waking anyone, so its count starts again (#492): separate chains don’t add up
  * to the chain limit. A wake waiting on a card keeps it, until you answer the card.
@@ -126,8 +107,6 @@ export function endChain(rt, threadId) {
   const conv = rt.threads.lineage(threadId).at(-1);
   if (!rt.store.pending.thread(conv)?.hops) return;
   if (rt.sessions.in(conv).some((se) => rt.turns.has(se.id) || rt.exiting.has(se.id))) return;
-  const threads = rt.threads.pending().filter((t) => rt.threads.lineage(t.id).at(-1) === conv);
-  if (threads.some((t) => (t.queue ?? []).some((q) => q.kind === 'wake'))) return;
   // A mention still waiting in an inbox there is the chain going on (designs/rooms-at-scale.md, “Delivery”).
   if (rt.sessions.in(conv).some((se) => rt.delivery.waiting(se.id).some((e) => e.source === 'mention'))) return;
   if (rt.store.pending.items(conv).some((x) => x.kind === 'hop' && x.status === 'open')) return;
@@ -135,8 +114,8 @@ export function endChain(rt, threadId) {
 }
 
 /**
- * The person stopped an agent, or removed it (#228): wakes queued for it are dropped, since a queued wake mustn’t undo
- * a Stop, and each waker hears at its next turn that its message went unanswered.
+ * The person stopped an agent, or removed it (#228): agents’ messages waiting for it are stopped, since a waiting
+ * mention mustn’t undo a Stop, and each sender hears at its next turn that its message went unanswered.
  * @param {any} rt @param {any} se  the agent @param {string} [how]  what happened to it
  */
 export function dropWakes(rt, se, how = 'stopped') {
@@ -150,18 +129,6 @@ export function dropWakes(rt, se, how = 'stopped') {
     if (!sender || sender.retiredFork || sender.id === se.id) continue;
     const said = clip(rt.store.pending.item(e.threadId, e.itemId)?.text ?? '', 120);
     rt.sessions.tell(sender.id, `@${se.handle} was ${how} before it answered your message (“${said}”). Mention it again if you still need it.`);
-  }
-  for (const t of rt.threads.pending()) {
-    const mine = (t.queue ?? []).filter((q) => q.kind === 'wake' && q.sessionIds.includes(se.id));
-    if (!mine.length) continue;
-    const gone = new Set(mine.map((q) => q.id));
-    rt.threads.patch(t.id, (now) => ({ queue: (now.queue ?? []).filter((q) => !gone.has(q.id)) }));
-    for (const q of mine)
-      if (rt.s.sessions[q.fromSessionId] && !rt.s.sessions[q.fromSessionId].retiredFork && q.fromSessionId !== se.id)
-        rt.sessions.tell(
-          q.fromSessionId,
-          `@${se.handle} was ${how} before it answered your message (“${clip(q.text, 120)}”). Wake it again if you still need it.`,
-        );
   }
 }
 
