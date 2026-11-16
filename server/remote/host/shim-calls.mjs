@@ -2,7 +2,7 @@
 // which waits for the person’s answer or denies at permissionWaitMax. shim.mjs’s header says how each waits.
 
 import { hostBlockRefusal } from '../../../shared/block-updates.mjs';
-import { NOT_YOUR_PROMPT, TOOL_DEFS } from '../../../shared/mcp-tools.mjs';
+import { GONE_TOOLS, NOT_YOUR_PROMPT, TOOL_DEFS } from '../../../shared/mcp-tools.mjs';
 import { encode, message, TOOL_ROUTES, toolRoute } from '../../../shared/remote-protocol.mjs';
 import { fail, minutes, respond, send, textResult } from './shim-harness.mjs';
 import { after, deliver, settle, TIMINGS } from './shim-state.mjs';
@@ -18,6 +18,8 @@ const TOOL_NAMES = new Set(TOOL_DEFS.map((t) => t.name));
 export function toolCall(sh, rpcId, params) {
   const name = params?.name;
   const args = params?.arguments ?? {};
+  // A tool that’s gone says what to do instead, as the laptop’s MCP server does, with nothing sent to the daemon.
+  if (typeof name === 'string' && Object.hasOwn(GONE_TOOLS, name)) return respond(rpcId, textResult(GONE_TOOLS[name], true));
   if (typeof name !== 'string' || !TOOL_NAMES.has(name) || !Object.hasOwn(TOOL_ROUTES, name)) return fail(rpcId, -32602, `There’s no tool called “${name}”.`);
   // As on the laptop (server/mcp.mjs): a backend that asks another way gets no card, and its call returns at once.
   if (name === 'permission_prompt' && !sh.asksByPrompt) return respond(rpcId, NOT_YOUR_PROMPT);
