@@ -62,3 +62,17 @@ test('the person’s / command is a command entry pointing at its line, and its 
   const turn = f.adapter.calls.filter((c) => c.sessionId === f.alpha.id).at(-1);
   assert.deepEqual([turn.message.text, turn.message.slash], ['/review src/a.js', true]);
 });
+
+test('a lint turn is a check entry, with its findings, and starts the agent’s next turn', async () => {
+  const f = setup();
+  const problems = [{ code: 'table', message: 'Fix the table in your reply.', scope: { kind: 'item', id: 'it_x' } }];
+  arrange.armLint(f.rt, 'tu_lint', { sessionId: f.alpha.id, kind: null, ended: true, sent: false, problems, timer: null, threadId: f.t.id });
+  arrange.sendLint(f.rt, 'tu_lint');
+  await settle(f.rt);
+  const entries = Object.values(f.store.state.inbox).flat();
+  assert.deepEqual(
+    entries.filter((e) => e.source === 'check').map((e) => [e.sessionId, e.text]),
+    [[f.alpha.id, '1 problem in your last reply']],
+  );
+  assert.match(JSON.stringify(f.adapter.calls.filter((c) => c.sessionId === f.alpha.id).at(-1).message), /Fix the table in your reply\./);
+});
