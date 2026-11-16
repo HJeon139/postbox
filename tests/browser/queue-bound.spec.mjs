@@ -68,7 +68,7 @@ for (const width of [1280, 375])
           app.rt.sendMessage(thread.id, { text: `@${sessions[i % agents].handle} follow-up ${i + 1}: also check the second half of the results` });
         await synced(page, app);
         await settled(page);
-        const pending = app.store.state.threads[thread.id].queue?.length ?? 0;
+        const pending = arrange.personWaiting(app.rt, thread.id).length;
         expect(pending, 'the follow-ups are queued, not delivered').toBe(queued);
         expect(await share(page), 'the composer’s share of the window').toBeLessThanOrEqual(BOUND);
       });
@@ -110,7 +110,7 @@ for (const agents of [1, 5])
       for (let i = 0; i < 10; i++) app.rt.sendMessage(threadId, { text: `@${sessions[i % agents].handle} follow-up ${i + 1} in the thread` });
       await synced(page, app);
       await settled(page);
-      expect(app.store.state.threads[threadId].queue?.length ?? 0, 'the follow-ups are queued').toBe(10);
+      expect(arrange.personWaiting(app.rt, threadId).length, 'the follow-ups are queued').toBe(10);
       if (full)
         await expect(page.locator('.sidepanel.pane-full, .sidepanel .pane-full, .pane-full .sidepanel').first(), 'the panel is full screen').toBeVisible();
       const panelShare = await page.evaluate(() => {

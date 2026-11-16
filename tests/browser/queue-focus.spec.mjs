@@ -140,7 +140,7 @@ test('F1: when another row leaves the queue, focus stays on the row that had it 
   await second.evaluate((el) => {
     el.dataset.focusProbe = 'held';
   });
-  const first = app.store.state.threads[r.thread.id].queue.find((q) => q.text.endsWith('first follow-up'));
+  const first = app.rt.delivery.waiting(r.se.id).find((e) => app.store.item(r.thread.id, e.itemId)?.text.endsWith('first follow-up'));
   app.rt.cancelQueued(r.thread.id, first.id);
   await synced(page, app);
   await settled(page);
