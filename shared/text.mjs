@@ -50,7 +50,7 @@ function copied(line, isCopy) {
  * goes on over the lines after it for as long as they are that item’s words: a message of several lines, copied
  * whole, has its id on the first line only (#1416). A line that isn’t the item’s ends the copy and is the message’s
  * own, so a hand-off written after a copy still wakes.
- * @param {string[]} lines @param {(itemId: string, said: string) => boolean} isCopy
+ * @param {string[]} lines @param {(itemId: string, said: string, more?: boolean) => boolean} isCopy
  */
 function withoutCopies(lines, isCopy) {
   /** @type {string | null} */
@@ -58,18 +58,25 @@ function withoutCopies(lines, isCopy) {
   return lines.filter((line) => {
     const starts = copied(line, isCopy);
     if (starts) copying = starts;
-    else if (copying && line.trim() && !isCopy(copying, line.trim())) copying = null;
+    else if (copying && line.trim() && !isCopy(copying, line.trim(), true)) copying = null;
     return !copying;
   });
 }
 
 /**
+ * Text without its code: a fenced block and a code span each become a space. A mention in code names no one, and an
+ * item’s line is compared with a copy of it the same way (server/copied-line.mjs).
+ * @param {string} text
+ */
+export const withoutCode = (text) => text.replace(/```[\s\S]*?(```|$)/g, ' ').replace(/`[^`]*`/g, ' ');
+
+/**
  * A message’s text with what it quotes left out, so a mention there names an agent without waking it: code, blockquote
  * lines, and, for a caller that can tell one, lines copied from the conversation.
- * @param {string} text @param {((itemId: string, said: string) => boolean) | null} isCopy
+ * @param {string} text @param {((itemId: string, said: string, more?: boolean) => boolean) | null} isCopy
  */
 function unquoted(text, isCopy) {
-  const plain = text.replace(/```[\s\S]*?(```|$)/g, ' ').replace(/`[^`]*`/g, ' ');
+  const plain = withoutCode(text);
   // Read line by line only when a line could be a quote: the page reads a draft on every keystroke.
   if (!plain.includes('>') && !(isCopy && plain.includes('it_'))) return plain;
   const lines = plain.split('\n').filter((line) => !BLOCKQUOTE.test(line));
@@ -81,7 +88,7 @@ function unquoted(text, isCopy) {
  * Mentions inside what the message quotes are ignored (unquoted, above), and "name@example.com" is not a mention.
  * @param {string} text
  * @param {string[]} handles  known handles, without the @
- * @param {((itemId: string, said: string) => boolean) | null} [isCopy]  whether `said`, a line from its first mention
+ * @param {((itemId: string, said: string, more?: boolean) => boolean) | null} [isCopy]  whether `said`, a line from its first mention
  *   on, is the words of the item with that id. Without it, no line counts as copied from the conversation.
  */
 export function parseMentions(text, handles, isCopy = null) {

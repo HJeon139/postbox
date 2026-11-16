@@ -146,3 +146,57 @@ test('#1416: a message of several lines copied whole wakes no one, and the agent
   // The same lines with no copy before them are a hand-off.
   assert.deepEqual(wakes('@gamma Which file should the changelog entry go in?'), ['gamma']);
 });
+
+/** A conversation where @beta said `text`, read as @alpha: the item, what @alpha’s message would wake, and the tools. */
+function saidBy(/** @type {string} */ text) {
+  const f = setup();
+  const said = post(f.rt, f.t.id, { kind: 'agent', sessionId: f.beta.id, personaId: f.beta.personaId, handle: 'beta', text, status: 'done' });
+  const wakes = (/** @type {string} */ message) => parseMentions(message, ['alpha', 'beta', 'gamma'], copiedLine(f.rt, f.alpha));
+  return { ...f, said, wakes, tools: f.rt.toolsFor(f.alpha.id) };
+}
+
+test('#1416: a copy of a message with code in it wakes no one: the item is compared without its code, as the message is read', () => {
+  const { said, wakes, tools } = saidBy('I ran `npm test` and it failed.\n\n@gamma can you look at the logs?\n\n```\nnpm ERR! @gamma\n```\nThat is all.');
+  const given = tools.read_conversation({}).message;
+  const line = given.slice(given.indexOf(`[${said.id}]`));
+  assert.ok(line.includes('`npm test`'), 'read_conversation gives the code');
+  assert.deepEqual(wakes(line), [], 'copied exactly as read_conversation gave it');
+  const hit = tools
+    .search_conversation({ query: 'logs' })
+    .message.split('\n\n')
+    .find((l) => l.startsWith(`[${said.id}]`));
+  assert.deepEqual(wakes(hit), [], 'the search hit');
+  assert.deepEqual(wakes(`[${said.id}] @beta: I ran \`npm test\` and it failed.\n\n@gamma can you rerun it?`), ['gamma'], 'a hand-off after it still wakes');
+});
+
+test('#1416: a line after a copy is copy only when it is one of the item’s lines, whole and in order', () => {
+  const { said, wakes } = saidBy('I ran the suite.\n@gamma can you look at step two?\nThen I stopped.');
+  const start = `[${said.id}] @beta: I ran the suite.`;
+  assert.deepEqual(wakes(`${start}\n@gamma can you look at step two?\nThen I stopped.`), [], 'the whole message');
+  // Part of one of the item’s lines is the agent’s own words: the review’s lost hand-off.
+  assert.deepEqual(wakes(`${start}\n@gamma can you look`), ['gamma']);
+  assert.deepEqual(wakes(`${start}\n@gamma can you look at step two? Today, please.`), ['gamma']);
+  // A line of the item from before where the copy stands isn’t the copy going on.
+  assert.deepEqual(wakes(`[${said.id}] @beta: I ran the suite.\nThen I stopped.\n@gamma can you look at step two?`), ['gamma']);
+  // A line that was cut is the start of one of the item’s lines.
+  assert.deepEqual(wakes(`${start}\n@gamma can you look at… (40 of 61 characters; read_message { id: "${said.id}" } has the rest)`), []);
+});
+
+test('#1416: an item is found and read once for a message, however many lines of it the message copies', () => {
+  const lines = Array.from({ length: 400 }, (_, i) => `Line ${i} of the log, for @gamma.`);
+  const { rt, said, alpha } = saidBy(lines.join('\n'));
+  let reads = 0;
+  const readLine = rt.memory.readLine.bind(rt.memory);
+  rt.memory.readLine = (/** @type {any[]} */ ...args) => {
+    reads++;
+    return readLine(...args);
+  };
+  const copy = `[${said.id}] @beta: ${lines.join('\n')}`;
+  assert.deepEqual(parseMentions(copy, ['alpha', 'beta', 'gamma'], copiedLine(rt, alpha)), []);
+  assert.equal(reads, 1, 'one read of the item for 400 copied lines');
+  // An id that isn’t an item’s is looked up once too.
+  reads = 0;
+  const missing = Array.from({ length: 50 }, () => 'it_nothere1: @beta: x').join('\n');
+  assert.deepEqual(parseMentions(missing, ['alpha', 'beta', 'gamma'], copiedLine(rt, alpha)), ['beta']);
+  assert.equal(reads, 0);
+});
