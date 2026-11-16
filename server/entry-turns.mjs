@@ -50,7 +50,8 @@ const given = (rt, entries) => entries.map((e) => messageOf(rt, e));
  * @param {any} rt @param {any} e
  */
 export function messageOf(rt, e) {
-  if (e.message) return { ...e.message, at: e.at, seq: e.seq };
+  // A plain message carries its place, to sort in a batch; one with a turn of its own is given as it was sent.
+  if (e.message) return plainMessage(e.message) ? { ...e.message, at: e.at, seq: e.seq } : e.message;
   if (!e.itemId) return { kind: 'notice', text: e.text, at: e.at, seq: e.seq };
   const it = rt.store.pending.item(e.threadId, e.itemId);
   const said = String(it?.text ?? '');
