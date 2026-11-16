@@ -73,7 +73,7 @@ test('the tail keeps the newest lines within its count, and the turn says how ma
   const text = turnInput({ entries: [mention], thread: topic, read, tail: lines });
   assert.ok(
     text.includes(
-      '[Postbox] Also since your last turn, not addressed to you (the last 40 of 45 items; read_conversation has the rest in order, and search_conversation finds one by its words):\n\n[it_5] @developer: line 5',
+      '[Postbox] Also since your last turn, not addressed to you (the last 40 of 45 items; read_conversation has the rest in order, with thread: "th_12" for this thread’s, and search_conversation finds one by its words):\n\n[it_5] @developer: line 5',
     ),
   );
   assert.ok(!text.includes('[it_4] @developer: line 4'));
@@ -124,7 +124,7 @@ test('a tail none of whose lines fit still says how many were left out and where
   const text = turnInput({ entries: [mention], thread: topic, read, tail: ['z'.repeat(TURN_INPUT.tailChars + 1)] });
   assert.ok(
     text.endsWith(
-      '[Postbox] Also since your last turn, not addressed to you: 1 item, not shown here. read_conversation has it in order, and search_conversation finds one by its words.',
+      '[Postbox] Also since your last turn, not addressed to you: 1 item, not shown here. read_conversation has it in order, with thread: "th_12" for this thread’s, and search_conversation finds one by its words.',
     ),
   );
 });

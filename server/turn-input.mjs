@@ -103,16 +103,18 @@ function entriesPart({ entries, thread, read, waitingElsewhere }) {
  * The second and third parts: the tail, and the line that says what it left out and how to find it. The notes are the
  * tail’s newest lines, so they count within its limits and are kept first.
  */
-function tailPart({ tail, notes }) {
+function tailPart({ tail, notes, thread }) {
   const { kept, left } = tailOf([...tail, ...notes]);
   const head = '[Postbox] Also since your last turn, not addressed to you';
+  // read_conversation reads the conversation unless it’s given the thread, and a thread’s tail holds both.
+  const there = thread.kind === 'topic' || thread.kind === 'side' ? `, with thread: "${thread.id}" for this thread’s` : '';
   if (!kept.length) {
     if (!left) return null;
     const them = left === 1 ? '1 item, not shown here. read_conversation has it' : `${count(left)} items, not shown here. read_conversation has them`;
-    return `${head}: ${them} in order, and search_conversation finds one by its words.`;
+    return `${head}: ${them} in order${there}, and search_conversation finds one by its words.`;
   }
   const rest = left
-    ? ` (the last ${count(kept.length)} of ${count(kept.length + left)} items; read_conversation has the rest in order, and search_conversation finds one by its words)`
+    ? ` (the last ${count(kept.length)} of ${count(kept.length + left)} items; read_conversation has the rest in order${there}, and search_conversation finds one by its words)`
     : '';
   return [`${head}${rest}:`, ...kept].join('\n\n');
 }
@@ -133,7 +135,7 @@ export function turnInput({ entries, thread, read, tail = [], notes = [], root =
   const halted = stopped.length
     ? `[Postbox] The person stopped you before a turn started from ${stopped.map((id) => `[${id}]`).join(', ')}. read_message reads one.`
     : null;
-  return [root && `[Postbox] ${root}`, entriesPart({ entries, thread, read, waitingElsewhere }), halted, tailPart({ tail, notes })]
+  return [root && `[Postbox] ${root}`, entriesPart({ entries, thread, read, waitingElsewhere }), halted, tailPart({ tail, notes, thread })]
     .filter(Boolean)
     .join('\n\n');
 }
