@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import * as arrange from './arrange.mjs';
 import { held, settle, setup, sleep } from './side-threads-fixture.mjs';
+import { heldStore } from './stop-reply-fixture.mjs';
 
 /** The room with alpha busy in a turn held open. */
 async function alphaBusy() {
@@ -113,4 +114,21 @@ test('a notice of Postbox’s own, “your mention woke no one”, starts no tur
   f.rt.sendMessage(f.t.id, { text: '@beta anything else?' });
   await settle(f.rt);
   assert.match(JSON.stringify(f.adapter.calls.filter((c) => c.sessionId === f.beta.id).at(-1).message), /Your mention of @gamma woke no one/);
+});
+
+test('a lint turn for a session deleted behind a held commit doesn’t throw from its timer', async () => {
+  const h = await heldStore();
+  const f = setup(h.store);
+  await f.store.flush();
+  const problems = [{ code: 'table', message: 'Fix the table.', scope: { kind: 'item', id: 'it_x' } }];
+  arrange.armLint(f.rt, 'tu_lint', { sessionId: f.alpha.id, kind: null, ended: true, sent: false, problems, timer: null, threadId: f.t.id });
+  h.hold();
+  const commit = f.store.commit([{ type: 'settings', data: { theme: 'system' } }]);
+  await h.atSync;
+  f.rt.deleteSession(f.alpha.id);
+  assert.doesNotThrow(() => arrange.sendLint(f.rt, 'tu_lint'));
+  h.release();
+  await commit;
+  await f.store.flush();
+  await f.store.close();
 });
