@@ -40,13 +40,17 @@ function codexTurn(/** @type {any[]} */ lines, /** @type {Map<string, number>} *
   };
 }
 
-/** An Antigravity turn’s stream. */
-function agyTurn(/** @type {any[]} */ lines) {
+/**
+ * An Antigravity turn’s stream. Its input is each model call’s, added up: the result’s usage counts the whole
+ * conversation so far, so a later turn’s would hold every turn before it (agyTokens in tools/uat/room-checks-agy.mjs).
+ */
+export function agyTurn(/** @type {any[]} */ lines) {
   const steps = lines.map((e) => e.step_update).filter(Boolean);
-  const usage = lines.find((e) => e.event === 'result')?.result?.usage;
+  const calls = steps.filter((s) => s.step_type === 'agent_response' && s.state === 'DONE');
+  const used = calls.map((s) => s.usage).filter(Boolean);
   return {
-    requests: steps.filter((s) => s.step_type === 'agent_response' && s.state === 'DONE').length,
-    input: usage ? numberOr(usage.input_tokens) + numberOr(usage.cache_read_tokens) : null,
+    requests: calls.length,
+    input: used.length ? used.reduce((n, u) => n + numberOr(u.input_tokens) + numberOr(u.cache_read_tokens), 0) : null,
     tools: steps
       .filter((s) => s.step_type === 'tool' && s.state === 'ACTIVE')
       .map((s) => (s.tool_name === 'call_mcp_tool' ? toolName(s.tool_info?.parameters?.ToolName) : String(s.tool_name))),
