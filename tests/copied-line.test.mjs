@@ -180,6 +180,9 @@ test('#1416: a line after a copy is copy only when it is one of the item’s lin
   assert.deepEqual(wakes(`[${said.id}] @beta: I ran the suite.\nThen I stopped.\n@gamma can you look at step two?`), ['gamma']);
   // A line that was cut is the start of one of the item’s lines.
   assert.deepEqual(wakes(`${start}\n@gamma can you look at… (40 of 61 characters; read_message { id: "${said.id}" } has the rest)`), []);
+  // Only Postbox’s own note after the “…” says a line was cut: an agent that trails off wrote a hand-off.
+  assert.deepEqual(wakes(`${start}\n@gamma can you look…`), ['gamma']);
+  assert.deepEqual(wakes(`${start}\n@gamma can you look… (when you have a minute)`), ['gamma']);
 });
 
 test('#1416: an item is found and read once for a message, however many lines of it the message copies', () => {

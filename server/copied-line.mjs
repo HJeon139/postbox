@@ -77,13 +77,18 @@ function starts(item, said) {
  */
 function goesOn(item, said) {
   const whole = plain(said);
-  const [first, ...rest] = pieces(said);
-  const cut = whole.includes('…') && rest.length === 0;
-  const is = (/** @type {string} */ line) => (cut ? Boolean(first) && line.startsWith(first) : line === whole);
-  const found = item.lines.findIndex((line, i) => i >= item.stands && is(line));
-  if (found < 0) return false;
-  item.stands = found + 1;
-  return true;
+  // A line was cut only when Postbox’s own note follows its “…”. An agent that trails off, “@gamma can you look…”,
+  // wrote its own words.
+  const dots = whole.lastIndexOf('…');
+  const start = dots > 0 && CUT_NOTE.test(whole.slice(dots + 1).trim()) ? whole.slice(0, dots).trim() : null;
+  const is = (/** @type {string} */ line) => (start ? line.startsWith(start) : line === whole);
+  // From where the copy stands, which only moves on: a long copy is read through once.
+  for (let i = item.stands; i < item.lines.length; i++) {
+    if (!is(item.lines[i])) continue;
+    item.stands = i + 1;
+    return true;
+  }
+  return false;
 }
 
 /**
