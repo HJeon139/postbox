@@ -4,6 +4,7 @@ import { spawn } from 'node:child_process';
 import { realpath } from 'node:fs/promises';
 import { createInterface } from 'node:readline';
 import { HarnessEvents } from '../harness-events.mjs';
+import { withQuota } from '../harness-failure.mjs';
 import { codexApproval } from './codex-approval.mjs';
 import { itemCompleted, itemStarted } from './codex-events.mjs';
 import { codexMcpApprovalConfig, postboxMcpApprovalArgs } from './codex-mcp-policy.mjs';
@@ -124,7 +125,9 @@ export function createCodexMapper(ctx, io = {}) {
         return { completed: true, status };
       }
       case 'error':
-        return { error: errorText(p) };
+        // Out of quota (#442). Which rate limit window ran out, and so when it resets, is in account/rateLimits/updated’s
+        // usage figures, which are account data Postbox doesn’t read (tools/privacy-check.mjs), so no reset time.
+        return p.error?.codexErrorInfo === 'usageLimitExceeded' ? { error: errorText(p), quota: { until: null } } : { error: errorText(p) };
       default:
         break;
     }
@@ -313,7 +316,7 @@ export class CodexAdapter {
         finish(err);
       } else if (result?.error) {
         reported = result.error;
-        fail(new Error(result.error));
+        fail(withQuota(new Error(result.error), result.quota));
       }
     };
     rl.on('line', (line) => {

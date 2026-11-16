@@ -54,6 +54,7 @@ import { createInterface } from 'node:readline';
 import { AGY_DEFAULT_MODEL, modelDefault } from '../../shared/agent-facts.mjs';
 import { TOOL_DEFS } from '../../shared/mcp-tools.mjs';
 import { HarnessEvents } from '../harness-events.mjs';
+import { withQuota } from '../harness-failure.mjs';
 import { firstSentence } from '../harness-tools.mjs';
 import { stopProbe } from '../remote/host/probe-stop.mjs';
 import { describeTool } from '../tool-labels.mjs';
@@ -320,6 +321,7 @@ export function createAgyMapper(ctx, { now = Date.now, effort = null, resumed = 
     contextWindow: agyWindowFor(ctx?.persona?.model),
     finished: /** @type {any} */ (null),
     error: /** @type {string|null} */ (null),
+    quota: /** @type {{ until: number | null }|null} */ (null),
     missingSession: false,
     wrote,
     // The refused call the turn ended on, with nothing said after it: agy ends a turn at a refusal.
@@ -427,6 +429,10 @@ export function createAgyMapper(ctx, { now = Date.now, effort = null, resumed = 
     get error() {
       return st.error;
     },
+    /** The quota the turn ran out of, with when it resets, or null (#396). */
+    get quota() {
+      return st.quota;
+    },
     /** The label of the refused call the turn ended on, with nothing said after it; else null. */
     get endedOnRefusal() {
       return st.refusedLast;
@@ -488,12 +494,24 @@ export function createAgyMapper(ctx, { now = Date.now, effort = null, resumed = 
             return;
           }
           st.error = `Antigravity couldn’t run the turn: ${why}`;
+          // Out of quota on its model (#396): agy says so in its status, and counts down to the reset in its error.
+          if (r.status === 'RESOURCE_EXHAUSTED') st.quota = { until: resetIn(r.error, now()) };
           return;
         }
         default:
       }
     },
   };
+}
+
+/**
+ * When a quota resets, from agy’s “Resets in 155h28m23s” (#396, as the “Agent research” room recorded it), or null.
+ * @param {unknown} error @param {number} now
+ */
+export function resetIn(error, now) {
+  const m = /Resets in (?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?/.exec(String(error ?? ''));
+  if (!m || !(m[1] || m[2] || m[3])) return null;
+  return now + ((Number(m[1] ?? 0) * 60 + Number(m[2] ?? 0)) * 60 + Number(m[3] ?? 0)) * 1000;
 }
 
 /** Why a turn failed, from its exit code, when the stream didn’t say. agy logs to a file, so stderr is short. */
@@ -707,7 +725,7 @@ export class AntigravityCliAdapter {
         if (mapper.missingSession) return resolve({ missingSession: true });
         if (mapper.model) ctx.saveState({ model: mapper.model });
         if (ctx.signal.aborted) return resolve({});
-        if (mapper.error) return reject(new Error(mapper.error));
+        if (mapper.error) return reject(withQuota(new Error(mapper.error), mapper.quota));
         if (code !== 0 || !mapper.finished) return reject(new Error(exitError(code, stderr)));
         resolve({ endedOnRefusal: mapper.endedOnRefusal, wrote: mapper.wrote });
       };

@@ -13,6 +13,7 @@
 
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
+import { withQuota } from '../harness-failure.mjs';
 import { withAskRules } from '../permission-rules.mjs';
 import { liveControl, MODES } from './agent-sdk-live.mjs';
 import { sdkModels } from './claude-models.mjs';
@@ -278,12 +279,13 @@ export class AgentSdkAdapter {
       // The result says why, when there was one; the SDK’s own error (“process exited with code 1”) doesn’t, and the SDK
       // adds no stderr to it for a process it didn’t spawn, so the last lines of the CLI’s stderr go with it (#61).
       const why = stderr.trim().split('\n').slice(-3).join(' ').slice(0, 400);
-      throw new Error(mapper.result?.is_error ? (resultError(mapper.result) ?? '') : `The Agent SDK stopped: ${thrown.message}${why ? `: ${why}` : ''}`);
+      const said = mapper.result?.is_error ? (resultError(mapper.result) ?? '') : `The Agent SDK stopped: ${thrown.message}${why ? `: ${why}` : ''}`;
+      throw withQuota(new Error(said), mapper.quota);
     }
     const current = mapper.sessionId ?? ctx.state.sdkSessionId;
     if (mapper.lastUuid && current) ctx.checkpoint?.({ sdkSessionId: current, uuid: mapper.lastUuid });
     if (ctx.signal.aborted) return;
     const failure = resultError(mapper.result);
-    if (failure) throw new Error(failure);
+    if (failure) throw withQuota(new Error(failure), mapper.quota);
   }
 }

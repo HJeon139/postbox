@@ -1,5 +1,6 @@
 // Scheduled wake lifecycle: persistence, timers, cancellation, restart re-arming and network recovery (#458, #466).
 
+import { isNetworkFailure } from './harness-failure.mjs';
 import { httpError } from './helpers.mjs';
 import { ON_HOST } from './remote/turns-shared.mjs';
 import { newId } from './store.mjs';
@@ -9,7 +10,6 @@ import { READ_TOOLS } from './tool-gate.mjs';
 const DAY = 24 * 3600 * 1000;
 const RETRY_MAX_MS = 5 * 60_000;
 const RETRY_WINDOW_MS = 60 * 60_000;
-const NETWORK_CODES = new Set(['EADDRNOTAVAIL', 'ENOTFOUND', 'ECONNRESET']);
 const TOOL_LIMIT = 20;
 const TOOL_NAME_CHARS = 100;
 /** Postbox’s MCP server, as Claude Code names its tools (mcp__postbox__show_block) and agy-tools.mjs names Antigravity’s. */
@@ -121,12 +121,6 @@ export function recordedTools(rt, turn, tools) {
         return fn.apply(raw, args);
       };
   return tools;
-}
-
-/** Whether a structured error says the network was unavailable. #467 can add Kiro’s code without message matching. */
-export function isNetworkFailure(error) {
-  for (let e = error, depth = 0; e && depth < 10; e = e.cause, depth++) if (e.kind === 'unreachable' || NETWORK_CODES.has(e.code)) return true;
-  return false;
 }
 
 /** The bounded delay before retry number attempt. */
