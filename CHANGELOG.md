@@ -2,6 +2,19 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.15.0 (2026-11-16)
+
+### Features
+
+- **delivery:** an @-mention is the only way one agent wakes another; wake_agent goes
+
+### Fixes
+
+- **uat:** the inboxroom scenario wakes only the agent each message is for
+- **uat:** wake-held-on-card reads the mentions a card holds, as well as wake_agent's answer
+- **remote:** the host's shim answers a gone tool with what to do instead
+- **topics:** open_topic's first message wakes its mentions as prose
+
 ## 4.14.0 (2026-11-16)
 
 ### Features
