@@ -31,6 +31,8 @@ export function runFacts({ agentModels, agentEffort, page, keyFrameOn, workspace
     probes: { ...newProbes(), keyFrameOn },
     samples: [],
     ui: {},
+    // Where the agents work, for the check that their commands stay in it (tools/uat/room-checks-workspace.mjs).
+    workspace,
     ...userSetup(workspace),
     ...(hr ? { hosts: hr.record } : {}),
   };
