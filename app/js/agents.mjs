@@ -11,6 +11,8 @@
 // started it, with what it was asked and what it’s doing now, a line each, without hover.
 
 import { chipEffort, chipModel } from '/shared/agent-facts.mjs';
+import { agentState } from '/shared/agent-state.mjs';
+import { conversationRoot } from '/shared/conversation.mjs';
 import { factsOf, mockMarker } from './agent-facts.mjs';
 import { everyMinute, hostBadge } from './agent-host.mjs';
 import { agentQueueButton } from './agent-queue.mjs';
@@ -19,7 +21,7 @@ import { client, headerOf, sessionsOf } from './client.mjs';
 import { fill, h, syncList } from './dom.mjs';
 import { openAsksEl } from './open-asks.mjs';
 import { hostLine, hostOf, turnLine } from './remote.mjs';
-import { ringFor, stateWord } from './ring.mjs';
+import { ringFor } from './ring.mjs';
 import { openSettings } from './sheets.mjs';
 
 export { subagentNow } from './agent-tree.mjs';
@@ -51,10 +53,31 @@ export function agentsSection(threadId) {
   paint();
   const off = client.on((ch) => {
     if (ch.type === 'session' && ch.data.threadId !== threadId && S().threads[ch.data.threadId]?.parentId !== threadId) return;
-    if (['session', 'thread', 'persona', 'load', 'remove', 'host', 'host.status'].includes(ch.type)) paint();
+    if (['session', 'thread', 'persona', 'load', 'remove', 'host', 'host.status'].includes(ch.type) || movesState(ch, threadId)) paint();
   });
   return { el, destroy: everyMinute(el, paint, off) };
 }
+
+/**
+ * Whether an inbox event can change the state of an agent in this conversation (shared/agent-state.mjs): an entry’s
+ * arrival or take in one of its agents’ inboxes. Its jobs are on its session, so a session event says those.
+ */
+function movesState(ch, threadId) {
+  if (ch.type !== 'entry.add' && ch.type !== 'entry.patch' && ch.type !== 'entry.put') return false;
+  const se = S().sessions[ch.data.sessionId];
+  return Boolean(se) && conversationRoot(S().threads, se.threadId) === threadId;
+}
+
+/** An agent’s state in words, after its name: what it’s doing, or what it waits on. */
+export function stateWords(st) {
+  if (st.state === 'running') return st.detail || 'running';
+  if (st.state === 'stopping') return 'stopping';
+  if (st.state === 'job') return `waiting on a job: ${st.detail}`;
+  if (st.state === 'quota') return st.until ? `out of quota until ${clock(st.until)}` : 'out of quota';
+  if (st.state === 'behind') return `waiting behind @${st.detail}${st.since ? ` since ${clock(st.since)}` : ''}`;
+  return { you: 'needs you', failed: 'failed' }[st.state] ?? 'idle';
+}
+const clock = (ms) => new Date(ms).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
 
 /**
  * Who is in a topic thread, in one line for its panel (#228): the agent it started with, and the ones that answered
@@ -114,13 +137,14 @@ function paintRow(n, se, fresh = false) {
   // Where it runs, for an agent on a host, and how its turn there stands when that needs saying.
   const where = [hostLine(se), hostOf(se)?.short];
   const there = turnLine(se);
-  const sig = JSON.stringify([se.handle, f.mock, se.state, runs, joined, where, there]);
+  const state = stateWords(agentState(se, S()));
+  const sig = JSON.stringify([se.handle, f.mock, state, runs, joined, where, there]);
   paintTree(n, se, fresh);
   if (!fresh && n.dataset.sig === sig) return;
   n.dataset.sig = sig;
   fill(
     n.querySelector('.agent-btn .name'),
-    h('span', h('b', se.handle), mockMarker(se), h('span.agent-state', ` · ${stateWord(se.state).toLowerCase()}`)),
+    h('span', { title: state }, h('b', se.handle), mockMarker(se), h('span.agent-state', ` · ${state}`)),
     runs ? h('span.sub', runs) : null,
     hostBadge(se),
     there ? h('span.sub.host-turn', there) : null,
