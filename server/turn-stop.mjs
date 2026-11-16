@@ -2,7 +2,6 @@
 // the session's next turn start (#126), and stopping every turn as Postbox shuts down. Moved from server/runtime.mjs
 // (#1236); Runtime keeps a method of each name its callers use, and each function here takes the runtime first.
 
-import { entriesFirst } from './entry-turns.mjs';
 import { runningJobs, runningProgress, settleJobs } from './job-records.mjs';
 import * as queue from './message-queue.mjs';
 import { dropScheduledWake, settleScheduledWake } from './scheduled-wakes.mjs';
@@ -11,6 +10,7 @@ import { STORE_STOPPED, whenWritable } from './store-outage.mjs';
 import { endSubagent } from './subagent-end.mjs';
 import { replyMarks } from './turn-marks.mjs';
 import { foldSteps, settleStoppedSteps } from './turn-steps.mjs';
+import { entriesFirst } from './turns.mjs';
 
 /** How long a stopped turn may hold its session before Postbox lets the next turn start anyway, and says so (#126). */
 const STOP_WATCHDOG_MS = 15000;

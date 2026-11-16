@@ -6,13 +6,13 @@ import { ASKING } from '../shared/catalog.mjs';
 import { fixEnded } from './apps.mjs';
 import { nextNeed, noticeNeed, stateFor } from './card-needs.mjs';
 import { emptyReply, endedWithoutReply } from './empty-reply.mjs';
-import { entriesFirst } from './entry-turns.mjs';
 import { clip } from './helpers.mjs';
 import { settleScheduledWake } from './scheduled-wakes.mjs';
 import { postSummary } from './share-back.mjs';
 import { endedAs } from './turn-end-work.mjs';
 import { askedOf, replyMarks } from './turn-marks.mjs';
 import { foldSteps } from './turn-steps.mjs';
+import { entriesFirst } from './turns.mjs';
 /**
  * A turn ended, with err when it failed or was stopped: it leaves the running turns, its replies and the session show
  * how it ended, and what waited for it goes next.
@@ -130,7 +130,7 @@ function endFailed(rt, se, turn, err) {
   });
   rt.threads.notify('blocking', se, `@${se.handle}’s reply failed`, message, turn.threadId);
   // Its @-mentions still reach their agents (#485, the person’s choice), as entries its replies made as they settled,
-  // read with the failure first, since what it wrote may be cut off (entry-turns.mjs). Not a host turn that goes on
+  // read with the failure first, since what it wrote may be cut off (turns.mjs). Not a host turn that goes on
   // (Interrupted, Sign-in needed, its link lost): its replay’s replies make them (mention-entries.mjs). The item keeps
   // whom they reached, with those the failures before it reached, so no Retry hands the work over again.
   const woke = turn.mentioned ?? [];

@@ -661,7 +661,7 @@ Each step is its own pull request, and is done when:
   - **What it found:** a review’s entry keeps the event today’s `deliver` takes, in `message`, until Turns builds a turn’s input from entries. Delivery keeps nothing in memory, so a store Retry that installs the disk’s state needs no listener of its own.
   - **The switch:**
     - The root listens to `item.final` with `mention-entries.mjs`, so a reply’s mentions become entries once it’s final, and steps L and L3’s wakes (`mention-wakes.mjs`) are gone.
-    - It listens to `entry.waiting` with `entry-turns.mjs`, which takes one thread’s entries and starts the turn through today’s `deliver`.
+    - It listens to `entry.waiting` with `turns.mjs`, which takes one thread’s entries and starts the turn through today’s `deliver`.
     - `endTurn` raises `turn.ended` and `turn.failed`, with Delivery’s listeners last.
     - A review reaches its author as a “review” entry. App events and checks stay on the `send` port, so no app’s own text is stored in the public key.
     - A turn the queue starts in a thread takes that thread’s waiting entries with it, as the queue’s wakes joined the person’s message (#733). Send now, and a group that can’t join, keep them for the next turn.

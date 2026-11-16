@@ -101,7 +101,7 @@ const PENDING = {
   // person’s own was removed for
   'entry-queue.mjs': ['editEntry', 'editEntry', 'leaveOut', 'cancelEntry', 'removedUnread'],
   // the item an entry gives the turn whole, maybe settled in the same held write; the person’s message, posted at send
-  'entry-turns.mjs': ['messageOf', 'personMessage'],
+  'turns.mjs': ['messageOf', 'personMessage'],
   'queue-convert.mjs': ['convertOne', 'convertOne', 'notDelivered'], // the agents a stored queue's row waited for or came from, and the item an earlier conversion posted for it, read as the start's writes leave them (#1423)
   'send-message.mjs': ['repeatOf'], // the item a repeated send's first try posted, maybe behind a held commit (#1138)
   'mention-entries.mjs': ['mentionEntries'], // the session whose final reply makes entries, maybe made behind a held commit
