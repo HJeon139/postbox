@@ -132,3 +132,21 @@ test('the evidence never holds the person’s user name, as a path or as Claude 
   assert.ok(found, 'both commands are outside');
   assert.ok(!found.evidence.includes('Users'), found.evidence);
 });
+
+test('a heredoc’s body is text a command writes, not paths it names', () => {
+  const written = ['cat > src/app.mjs <<EOF', "import x from '../lib/db.mjs';", 'const home = "~/notes";', 'EOF', 'node src/app.mjs'].join('\n');
+  assert.deepEqual(pathsOutside(written, where), []);
+  // Quoted and dashed markers, as a shell takes them.
+  assert.deepEqual(pathsOutside(["cat <<'TXT' > a.txt", 'see ../../secrets', 'TXT'].join('\n'), where), []);
+  assert.deepEqual(pathsOutside(['cat <<-END', '\t../up', '\tEND'].join('\n'), where), []);
+  // What comes before and after the body is still the command’s.
+  assert.deepEqual(pathsOutside(['cat > ../out.txt <<EOF', 'body', 'EOF', 'ls ..'].join('\n'), where), ['../out.txt', '..']);
+});
+
+test('the dashed form of a home with a dot in the user’s name is written as ~ too', () => {
+  // Claude Code turns every character that isn’t a letter or a digit into “-”. The name is put together here so this
+  // file holds no home path the privacy check would read as a real one.
+  const dotted = ['', 'Users', ['pat', 'lee'].join('.')].join('/');
+  const slug = ['', 'Users', 'pat', 'lee', 'postbox'].join('-');
+  assert.equal(withoutHome(`ls ${dotted}/x /tmp/scratch/${slug}/y`, dotted), 'ls ~/x /tmp/scratch/~-postbox/y');
+});

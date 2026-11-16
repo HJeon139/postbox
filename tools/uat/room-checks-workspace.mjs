@@ -18,13 +18,35 @@ const unwrapped = (/** @type {string} */ command) => {
 };
 
 /**
+ * A command without the bodies of its heredocs: the lines after a `<<WORD` up to the line that is `WORD`. They are
+ * text the command writes, such as a file’s source with its imports, not paths it names. The line with `<<WORD` stays,
+ * without the marker, and so does what follows the body.
+ * @param {string} command
+ */
+function withoutHeredocs(command) {
+  const kept = [];
+  /** @type {string | null} */
+  let until = null;
+  for (const line of command.split('\n')) {
+    if (until !== null) {
+      if (line.trim() === until) until = null;
+      continue;
+    }
+    const marker = /<<-?\s*(["']?)([A-Za-z_][A-Za-z0-9_]*)\1/.exec(line);
+    until = marker ? marker[2] : null;
+    kept.push(marker ? line.replace(marker[0], ' ') : line);
+  }
+  return kept.join('\n');
+}
+
+/**
  * A command’s words, a quoted string as one word, with what separates one command from the next kept as words of
  * their own: `&&`, `||`, `;`, `|` and a new line.
  * @param {string} command
  * @returns {string[]}
  */
 function wordsOf(command) {
-  const words = command.match(/&&|\|\||[;|\n]|"(?:\\.|[^"\\])*"|'[^']*'|[^\s;|&"']+/g) ?? [];
+  const words = withoutHeredocs(command).match(/&&|\|\||[;|\n]|"(?:\\.|[^"\\])*"|'[^']*'|[^\s;|&"']+/g) ?? [];
   return words.map((w) => (/^["']/.test(w) ? w.slice(1, -1) : w));
 }
 
@@ -132,10 +154,16 @@ export function commandsOf(f) {
 
 /**
  * Text with the person’s home folder written as `~`, in both forms it takes: as a path, and as Claude Code writes a
- * path in a folder’s name, with a “-” for each “/”. Evidence reaches a report, and a report can reach a public issue.
+ * path in a folder’s name, with a “-” for every character that isn’t a letter or a digit, a “.” in the user’s name
+ * included. Evidence reaches a report, and a report can reach a public issue.
  * @param {string} text @param {string} home
  */
-export const withoutHome = (text, home) => text.split(home).join('~').split(home.replaceAll('/', '-')).join('~');
+export const withoutHome = (text, home) =>
+  text
+    .split(home)
+    .join('~')
+    .split(home.replace(/[^A-Za-z0-9]/g, '-'))
+    .join('~');
 
 export const WORKSPACE_CHECKS = [
   {
