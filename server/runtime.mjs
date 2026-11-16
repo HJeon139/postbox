@@ -171,10 +171,15 @@ export class Runtime {
       running: this.running,
       // A lint turn is a check entry (designs/rooms-at-scale.md, “What an entry is”): its findings, about the agent’s own
       // replies, are what its turn is given until Turns builds input from entries.
+      // It runs from a timer, so a refusal (the session deleted meanwhile) is logged, not thrown, as deliver's was.
       send: (sessionId, message, opts) => {
         const threadId = opts?.threadId ?? this.store.pending.session(sessionId)?.threadId;
         const n = message.problems?.length ?? 0;
-        this.delivery.send({ sessionId, threadId, source: 'check', text: `${n} problem${n === 1 ? '' : 's'} in your last reply`, message });
+        try {
+          this.delivery.send({ sessionId, threadId, source: 'check', text: `${n} problem${n === 1 ? '' : 's'} in your last reply`, message });
+        } catch (e) {
+          console.error(`Couldn’t send a lint turn: ${/** @type {Error} */ (e).message}`);
+        }
       },
       config,
     });
