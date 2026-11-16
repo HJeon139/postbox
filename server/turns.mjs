@@ -57,8 +57,10 @@ export function inputOf(rt, se, { entries, as }, where) {
   const thread = rt.store.pending.thread(threadId) ?? { id: threadId };
   const text = turnInput({ entries, thread, read, tail, notes: inThread ? [...notes, inThread] : notes, root, waitingElsewhere: elsewhere });
   const attachments = entries.flatMap((e) => (e.itemId ? (rt.store.pending.item(threadId, e.itemId)?.attachments ?? []) : []));
+  // The threads the person’s messages link to, each with how to read it (threadRefs, #121), ride with it.
+  const links = entries.flatMap((e) => (e.source === 'person' && e.itemId ? rt.threadRefs(threadId, read(e.itemId) ?? '') : []));
   // Its plain parts stay on what was asked (`turn.asked`), where what reads them looks; the agent is given the text.
-  return { kind: 'input', text, attachments, as };
+  return { kind: 'input', text, attachments, as, ...(links.length ? { context: links } : {}) };
 }
 
 /**
