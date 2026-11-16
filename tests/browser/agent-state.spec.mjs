@@ -36,6 +36,8 @@ test('an agent’s row says its state from its records, and keeps its size as th
   await synced(page, app);
   await expect(words(page, indexer)).toHaveText(' · idle');
   const idle = await box(page, indexer);
+  // The row is painted in place, never rebuilt (#987, #1130): the node it started as is the one at the end.
+  await page.locator('.rail .agent-row').filter({ has: button(page, indexer) }).evaluate((n) => n.setAttribute('data-first', ''));
 
   const sizeHolds = async (what) => expect(await box(page, indexer), `${what}: the row keeps its place and size`).toEqual(idle);
 
@@ -69,6 +71,13 @@ test('an agent’s row says its state from its records, and keeps its size as th
   app.store.emit('entry.patch', { sessionId: researcher.id, id: 'en-behind', patch: { state: 'taken' } });
   await expect(words(page, indexer)).toHaveText(' · idle');
 
+  // Its harness ran out of quota, with the reset time it gave.
+  const reset = Date.now() + 3 * 3600_000;
+  arrange.setSession(app.rt, indexer.id, { quota: { until: reset } });
+  await expect(words(page, indexer)).toHaveText(` · out of quota until ${new Date(reset).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`);
+  await sizeHolds('out of quota');
+  arrange.setSession(app.rt, indexer.id, { quota: null });
+
   arrange.setSession(app.rt, indexer.id, { state: 'needs' });
   await expect(words(page, indexer)).toHaveText(' · needs you');
   arrange.setSession(app.rt, indexer.id, { state: 'failed' });
@@ -78,6 +87,7 @@ test('an agent’s row says its state from its records, and keeps its size as th
   arrange.setSession(app.rt, indexer.id, { state: 'idle' });
   arrange.setSession(app.rt, researcher.id, { state: 'idle', currentStep: '' });
   await expect(words(page, indexer)).toHaveText(' · idle');
+  await expect(page.locator('.rail .agent-row[data-first]').filter({ has: button(page, indexer) }), 'the same row node throughout').toHaveCount(1);
 });
 
 test('a step or a file in the work list repaints no agent row', async ({ page }) => {

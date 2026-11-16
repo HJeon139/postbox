@@ -81,14 +81,35 @@ test('only the agent’s own conversation counts', () => {
   assert.equal(of(s).state, 'idle');
 });
 
+test('an agent whose harness ran out of quota says until when', () => {
+  const s = room();
+  s.sessions.s1.quota = { until: 5000 };
+  assert.deepEqual(agentState(s.sessions.s1, s, 1000), { state: 'quota', detail: '', until: 5000 });
+  s.sessions.s1.quota = { until: null };
+  assert.deepEqual(agentState(s.sessions.s1, s, 1000), { state: 'quota', detail: '' }, 'a harness that gives no reset time');
+});
+
+test('once the reset time has passed, the quota no longer holds it', () => {
+  const s = room();
+  s.sessions.s1.quota = { until: 5000 };
+  assert.equal(agentState(s.sessions.s1, s, 6000).state, 'idle');
+});
+
 test('an agent that needs the person is waiting on you', () => {
   const s = room();
   s.sessions.s1.state = 'needs';
   assert.deepEqual(of(s), { state: 'you', detail: '' });
 });
 
-test('the first state that holds wins: failed, running, a job, then behind', () => {
+test('the first state that holds wins: failed, quota, running, a job, then behind', () => {
   const s = room();
+  s.sessions.s1.quota = { until: Date.now() + 60_000 };
+  s.sessions.s1.state = 'tool';
+  assert.equal(of(s).state, 'quota');
+  s.sessions.s1.state = 'failed';
+  assert.equal(of(s).state, 'failed');
+  s.sessions.s1.quota = undefined;
+  s.sessions.s1.state = 'idle';
   s.work.c1.push({ kind: 'command', id: 'w1', sessionId: 's1', state: 'background', command: 'npm run build' });
   s.inbox.s2 = [{ id: 'e1', sessionId: 's2', threadId: 'c1', from: 'dev', state: 'waiting', at: 1 }];
   assert.equal(of(s).state, 'job');

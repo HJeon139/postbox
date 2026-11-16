@@ -73,6 +73,7 @@ function movesState(ch, threadId) {
 export function stateWords(st) {
   if (st.state === 'running') return st.detail || 'running';
   if (st.state === 'job') return `waiting on a job: ${st.detail}`;
+  if (st.state === 'quota') return st.until ? `out of quota until ${clock(st.until)}` : 'out of quota';
   if (st.state === 'behind') return `waiting behind @${st.detail}${st.since ? ` since ${clock(st.since)}` : ''}`;
   return { you: 'needs you', failed: 'failed' }[st.state] ?? 'idle';
 }
