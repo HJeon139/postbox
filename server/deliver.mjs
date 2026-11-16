@@ -7,7 +7,6 @@ import { attachedFiles } from './adapters/attached-files.mjs';
 import { workFolder } from './adapters/folder.mjs';
 import { toolsDownNote } from './adapters/tools-down.mjs';
 import { keptTurns, releaseNeed, TURN_TIED } from './card-needs.mjs';
-import { withEntries } from './entry-turns.mjs';
 import { heldSession } from './held-session.mjs';
 import { httpError, retiredError } from './helpers.mjs';
 import { arrival } from './queue-batch.mjs';
@@ -22,6 +21,7 @@ import { adapterContext } from './turn-context.mjs';
 import { endTurn } from './turn-finish.mjs';
 import { askedAgain } from './turn-marks.mjs';
 import { turnExited } from './turn-stop.mjs';
+import { withEntries } from './turns.mjs';
 
 /**
  * Runs one agent turn through its adapter.
@@ -48,7 +48,7 @@ export function deliver(rt, sessionId, message, { summarizeTo = null, threadId =
   // the context below waits for the agent’s next turn instead. So does a remote turn attached again after a restart
   // (#120, message.attach): it sends the agent nothing, and replays what the host has.
   const slash = message.slash === true || typeof message.attach === 'string';
-  // The agent’s waiting entries in this thread come with it (entry-turns.mjs), and Retry sends them again with it.
+  // The agent’s waiting entries in this thread come with it (turns.mjs), and Retry sends them again with it.
   if (!slash && !summarizeTo) asked.message = message = withEntries(rt, sessionId, where, message);
   // Postbox’s own marks (the turn’s chosen id, and how it takes entries) stay with Postbox, not the agent’s message.
   const { turnId, fromEntries: _taken, entriesWait: _waits, ...asSent } = message;
@@ -135,7 +135,7 @@ function turnMessage(rt, se, message, where, slash) {
  */
 function newTurn(se, message, persona, { where, slash, summarizeTo, asked }) {
   return {
-    // An id chosen before the turn, by the take of its inbox entries (entry-turns.mjs), or a new one.
+    // An id chosen before the turn, by the take of its inbox entries (turns.mjs), or a new one.
     id: typeof message.turnId === 'string' ? message.turnId : newId('turn'),
     kind: message.kind,
     // Whether this is the person moving on (#69): their message or an event of theirs, not another agent’s review (#133).

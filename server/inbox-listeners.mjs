@@ -4,8 +4,8 @@
 // turn through deliver until Turns starts it; the end of a turn settles what it took and wakes whom its replies
 // mentioned, as its last step. Functions take the Runtime first, as waiting code does until Turns is a service.
 
-import { startFromEntries } from './entry-turns.mjs';
 import { mentionEntries, wakeMentioned } from './mention-entries.mjs';
+import { startFromEntries } from './turns.mjs';
 
 /** Adds the inbox’s listeners to the runtime’s bus. @param {any} rt */
 export function listenInbox(rt) {

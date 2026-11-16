@@ -1,4 +1,4 @@
-// What a turn started from a mention entry is given (server/entry-turns.mjs, messageOf), in the forms turn-input.mjs’s
+// What a turn started from a mention entry is given (server/turns.mjs, messageOf), in the forms turn-input.mjs’s
 // entryLine uses (#1386): a newer post from the sender is named without the sender’s handle, a cut falls on a whole
 // character (#675), and a cut keeps the note copiedLine reads, so an agent that copies what it was given wakes no one
 // (#1370).

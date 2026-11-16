@@ -122,8 +122,8 @@ export function appEvent(apps, appId, action, values, { hold = false, now = Date
   // Once some sends wait, later ones wait behind them, so the agent gets them in order.
   // Past the limit the event waits on the app’s card, which is asks’ (server/app-send-cards.mjs): the facade holds it.
   if (card || hold || recent >= APP_SEND_LIMIT) return { hold: { app, card, event: r } };
-  apps.threads.addItem(app.threadId, { kind: 'voice', text: r.voice, ...(r.quote ? { quote: r.quote } : {}), appId, sentAt: now });
-  if (apps.store.state.sessions[app.sessionId]) apps.send(app.sessionId, { kind: 'event', event: r.event }, { threadId: app.threadId });
+  const voice = apps.threads.addItem(app.threadId, { kind: 'voice', text: r.voice, ...(r.quote ? { quote: r.quote } : {}), appId, sentAt: now });
+  if (apps.store.state.sessions[app.sessionId]) apps.send(app.sessionId, { kind: 'event', event: r.event }, { threadId: app.threadId, itemId: voice.id });
   return { ok: true, voice: r.voice };
 }
 

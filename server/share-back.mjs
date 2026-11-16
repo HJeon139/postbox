@@ -46,14 +46,10 @@ export function summarizeBack(rt, topicId, opts) {
   rt.threads.patch(topicId, { summaryPending: { sessionId: se.id, at: Date.now() } });
   rt.threads.addItem(topicId, { kind: 'voice', text: 'Asked for a summary to send back to the conversation' });
   const what = topic.kind === 'side' ? 'side thread' : 'topic thread';
-  rt.deliver(
-    se.id,
-    {
-      kind: 'notice',
-      text: `Summarize this ${what} for the main conversation: what was decided, what changed, and anything still open. One short paragraph, no headings. It will be posted there as your summary.`,
-    },
-    { summarizeTo: topic.parentId, threadId: topicId },
-  );
+  const text = `Summarize this ${what} for the main conversation: what was decided, what changed, and anything still open. One short paragraph, no headings. It will be posted there as your summary.`;
+  // A command entry (designs/rooms-at-scale.md, “What an entry is”), marked a summary’s, so the turn that takes it posts
+  // its reply in the thread’s parent (summaryOf in turns.mjs).
+  rt.delivery.send({ sessionId: se.id, threadId: topicId, source: 'command', text: 'Summarize this thread', message: { kind: 'notice', text, summary: true } });
   return { ok: true };
 }
 
@@ -94,9 +90,14 @@ export function postSummary(rt, se, turn, items) {
     if (it.turnId === turn.id && it.kind === 'agent' && it.text && !it.sharedAt) rt.threads.patchItem(turn.threadId, it.id, { sharedAt: Date.now() });
 }
 
-/** Whether a summarize turn is running or queued in a topic or side thread. */
+/** Whether a summarize turn is running or queued in a topic or side thread. * A request still waiting in its agent’s inbox counts too (#1425).
+ */
 export function summarizing(rt, topicId) {
+  const waiting = rt.sessions
+    .in(rt.threads.lineage(topicId).at(-1))
+    .some((/** @type {any} */ se) => rt.delivery.waiting(se.id).some((/** @type {any} */ e) => e.threadId === topicId && e.message?.summary));
   return (
+    waiting ||
     [...rt.turns.values()].some((x) => (x.threadId === topicId && x.summarizeTo) || x.pending.some((p) => p.summarizeTo && p.threadId === topicId)) ||
     // One waiting for a stopped turn’s process to exit (#126).
     [...rt.exiting.values()].some((x) => x.held.some((h) => h.summarizeTo && h.threadId === topicId))

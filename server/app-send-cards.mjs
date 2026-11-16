@@ -3,6 +3,7 @@
 // for rooms at scale (designs/architecture/services.md, “What waits for rooms at scale”). Moved out of
 // server/apps.mjs and server/app-retire.mjs.
 
+import { sendAppMessage } from './app-entries.mjs';
 import { APP_HOLD_MAX, APP_SEND_LIMIT } from './app-send-limits.mjs';
 import { offerNeed, releaseNeed } from './card-needs.mjs';
 import { httpError, refuseRetired } from './helpers.mjs';
@@ -66,7 +67,14 @@ export function resolveAppSend(rt, threadId, itemId, action, { now = Date.now() 
   }
   const se = rt.s.sessions[it.sessionId];
   for (const ev of it.events) {
-    rt.threads.addItem(threadId, { kind: 'voice', text: ev.voice, ...(ev.quote ? { quote: ev.quote } : {}), appId: it.appId, sentAt: now, approved: true });
+    const voice = rt.threads.addItem(threadId, {
+      kind: 'voice',
+      text: ev.voice,
+      ...(ev.quote ? { quote: ev.quote } : {}),
+      appId: it.appId,
+      sentAt: now,
+      approved: true,
+    });
     const event = {
       blockId: it.appId,
       action: ev.action,
@@ -74,7 +82,7 @@ export function resolveAppSend(rt, threadId, itemId, action, { now = Date.now() 
       ...(ev.sent ? { sent: ev.sent } : {}),
       ...(ev.quote ? { appSummary: ev.quote } : {}),
     };
-    if (se && !se.retiredFork) rt.deliver(se.id, { kind: 'event', event }, { threadId });
+    if (se && !se.retiredFork) sendAppMessage(rt, se.id, { kind: 'event', event }, { threadId, itemId: voice.id });
   }
   return { ok: true };
 }

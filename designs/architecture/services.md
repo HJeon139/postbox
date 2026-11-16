@@ -661,7 +661,7 @@ Each step is its own pull request, and is done when:
   - **What it found:** a review’s entry keeps the event today’s `deliver` takes, in `message`, until Turns builds a turn’s input from entries. Delivery keeps nothing in memory, so a store Retry that installs the disk’s state needs no listener of its own.
   - **The switch:**
     - The root listens to `item.final` with `mention-entries.mjs`, so a reply’s mentions become entries once it’s final, and steps L and L3’s wakes (`mention-wakes.mjs`) are gone.
-    - It listens to `entry.waiting` with `entry-turns.mjs`, which takes one thread’s entries and starts the turn through today’s `deliver`.
+    - It listens to `entry.waiting` with `turns.mjs`, which takes one thread’s entries and starts the turn through today’s `deliver`.
     - `endTurn` raises `turn.ended` and `turn.failed`, with Delivery’s listeners last.
     - A review reaches its author as a “review” entry. App events and checks stay on the `send` port, so no app’s own text is stored in the public key.
     - A turn the queue starts in a thread takes that thread’s waiting entries with it, as the queue’s wakes joined the person’s message (#733). Send now, and a group that can’t join, keep them for the next turn.
@@ -686,7 +686,13 @@ Each step is its own pull request, and is done when:
     - #694’s note names a waiting message of the person’s without pointing at its item, so Remove still retracts one it named.
     - A send the page tries again carries its client id, which its entries keep as their retry id, so it’s stored once (#1138).
   - **A stored queue becomes entries once, on start** (#1423), before Delivery’s own start (`queue-convert.mjs`). The person’s message is posted with a `person` entry per agent still here, and an agent’s wake becomes a `mention` entry for its item. Each entry carries its queue row’s id as its retry id, so a conversion a crash cut short posts nothing twice. The queue’s code is gone: its drain, its batching, and its Edit, Remove and Send now.
-  - **Next:** Turns as a service.
+  - **The last sources are entries** (#1425):
+    - an app’s event is an `event` entry for the voice line it posted, and what the app sent rides in memory with it (Delivery’s `carry`), so it never enters the public `inbox`; after a restart its turn reads the voice line;
+    - an app check needing a fix is a `check` entry;
+    - a thread’s summary request is a `command` entry, whose reply the turn posts in the thread’s parent;
+    - a scheduled wake is a `scheduled` entry carrying the wake its turn keeps, so #466’s lifecycle is unchanged. A Stop that stops it, or canceling its schedule, settles it, and a restart’s rearm stops what an earlier fire left.
+  - The start of a turn from entries lives in `turns.mjs`. The `Turns` class comes with `deliver`’s removal (4c), whose remaining callers become its steps.
+  - **Next:** a turn’s input from `turnInput` (4b), then `deliver` goes (4c).
 
 ## Appendix: every module’s members
 

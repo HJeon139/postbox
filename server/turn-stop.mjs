@@ -2,7 +2,6 @@
 // the session's next turn start (#126), and stopping every turn as Postbox shuts down. Moved from server/runtime.mjs
 // (#1236); Runtime keeps a method of each name its callers use, and each function here takes the runtime first.
 
-import { entriesFirst } from './entry-turns.mjs';
 import { runningJobs, runningProgress, settleJobs } from './job-records.mjs';
 import * as queue from './message-queue.mjs';
 import { dropScheduledWake, settleScheduledWake } from './scheduled-wakes.mjs';
@@ -11,6 +10,7 @@ import { STORE_STOPPED, whenWritable } from './store-outage.mjs';
 import { endSubagent } from './subagent-end.mjs';
 import { replyMarks } from './turn-marks.mjs';
 import { foldSteps, settleStoppedSteps } from './turn-steps.mjs';
+import { entriesFirst } from './turns.mjs';
 
 /** How long a stopped turn may hold its session before Postbox lets the next turn start anyway, and says so (#126). */
 const STOP_WATCHDOG_MS = 15000;
@@ -34,6 +34,8 @@ export function stop(rt, sessionId, { silent = false, jobs = 'stop', by = 'you',
   const keep = jobs === 'keep' && !turn.remote ? runningJobs(rt, sessionId, turn.id) : [];
   turn.keepJobs = new Set(keep.map((j) => j.id));
   turn.stopReason = sendNow ? 'send-now' : by === 'shutdown' ? null : keep.length ? 'kept-jobs' : 'stop';
+  // Postbox is going: its exit starts nothing, as once it’s closing (turnExited).
+  if (by === 'shutdown') turn.shutdown = true;
   const ended = { status: 'stopped', stoppedAt: Date.now(), stopReason: turn.stopReason };
   rt.running.exit(sessionId, { turn, held: [], silent });
   // The adapter reads which jobs to keep from the reason; anything else only sees that the turn was aborted.
@@ -152,7 +154,7 @@ export function turnExited(rt, turn) {
   // Shutting down, nothing starts a CLI: your messages wait in the agent’s inbox, which a restart keeps. One a turn took
   // from it (Send now’s) stays taken, and the restart reopens it once (Delivery’s start), so it isn’t posted again
   // (#1108); one held without an entry gets one, for its item, or with its own text when it has none.
-  if (rt.closing) {
+  if (rt.closing || turn.shutdown) {
     for (const h of held.filter((x) => x.message.kind === 'user' && !x.message.fromEntries)) {
       const said = h.message.itemId ? { itemId: h.message.itemId } : { text: String(h.message.text ?? '') };
       rt.delivery.send({ ...said, sessionId: se.id, threadId: h.threadId ?? se.threadId, source: 'person', from: 'you' }, { wake: false });

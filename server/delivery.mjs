@@ -20,15 +20,18 @@ import { newId } from './store.mjs';
 /** Where an entry comes from (designs/rooms-at-scale.md, “What an entry is”). A notice never starts a turn. */
 export const SOURCES = Object.freeze(['mention', 'person', 'command', 'review', 'answer', 'event', 'check', 'scheduled', 'notice']);
 
-/** Sources that are the person’s own action: one starts a failed agent’s turn, as it did before entries. */
-const PERSON = new Set(['person', 'answer', 'command']);
+/**
+ * Sources that are the person’s own action, an app’s event included, since it’s their click: one starts a failed
+ * agent’s turn, as it did before entries.
+ */
+const PERSON = new Set(['person', 'answer', 'command', 'event']);
 
 /**
  * An entry given to a turn of its own until Turns builds input from entries (step 3’s PR 4): one that carries a message
- * other than a plain one, such as an answer’s event or a lint turn, whose kind its turn keeps.
- * @param {{ message?: any }} e
+ * other than a plain one, such as an answer’s event or a lint turn, whose kind its turn keeps; and an app’s event.
+ * @param {{ source?: string, message?: any }} e
  */
-export const alone = (e) => Boolean(e.message) && !plainMessage(e.message);
+export const alone = (e) => e.source === 'event' || (Boolean(e.message) && !plainMessage(e.message));
 
 /** @typedef {'waiting'|'taken'|'delivered'|'failed'|'stopped'} EntryState */
 /**
@@ -55,6 +58,8 @@ export class Delivery {
     this.sizeOf = sizeOf;
     /** @type {Map<string, Set<string>>} the person’s entries each failed agent holds for the person (failedWith) */
     this.heldByFailure = new Map();
+    /** @type {Map<string, any>} what an entry carries in memory only, by its id (send’s `carry`) */
+    this.carried = new Map();
   }
 
   /**
@@ -66,10 +71,12 @@ export class Delivery {
    * `at` is when it arrived, now unless it waited somewhere first, as a stored queue’s row did (#1423).
    * @param {{ sessionId: string, threadId: string, source: string, itemId?: string, text?: string, message?: any,
    *   from?: string, retryId?: string, at?: number }} e
-   * @param {{ wake?: boolean }} [opts]
+   * `carry` is a message kept in memory for the turn that takes the entry, and never stored: what an app sent, which
+   * stays out of the public inbox (#1425). A restart loses it, as it lost a message held for a busy agent before.
+   * @param {{ wake?: boolean, carry?: any }} [opts]
    * @returns {Entry}
    */
-  send({ sessionId, threadId, source, itemId, text, message, from, retryId, at }, { wake = true } = {}) {
+  send({ sessionId, threadId, source, itemId, text, message, from, retryId, at }, { wake = true, carry = undefined } = {}) {
     if (!SOURCES.includes(source)) throw new Error(`An entry’s source is one of ${SOURCES.join(', ')}, not “${source}”.`);
     if ((itemId === undefined) === (text === undefined)) throw new Error('An entry has an item or its own text, and not both.');
     const se = this.store.pending.session(sessionId);
@@ -96,6 +103,7 @@ export class Delivery {
       ...(retryId === undefined ? {} : { retryId }),
     };
     this.store.emit('entry.add', { sessionId, entry });
+    if (carry !== undefined) this.carried.set(entry.id, carry);
     if (wake) this.wake(sessionId);
     return entry;
   }
@@ -144,6 +152,8 @@ export class Delivery {
   canStart(e, se) {
     if (e.source === 'notice' || this.chainHeld(e)) return false;
     if (se.state !== 'failed') return true;
+    // A scheduled wake is the agent’s own, which started a failed agent’s turn before entries, as its retries rely on (#466).
+    if (e.source === 'scheduled') return true;
     return PERSON.has(e.source) && !this.heldByFailure.get(e.sessionId)?.has(e.id);
   }
 
@@ -320,8 +330,17 @@ export class Delivery {
     return this.inbox(sessionId).filter((e) => e.state === 'taken' && e.takenBy === turnId);
   }
 
-  /** Writes fields of one entry. @param {Entry} e @param {Partial<Entry>} patch */
+  /** What an entry carries in memory, if it still does (send’s `carry`). @param {string} entryId */
+  carriedFor(entryId) {
+    return this.carried.get(entryId);
+  }
+
+  /**
+   * Writes fields of one entry. One that leaves waiting and taken for good, whichever way (delivered, failed, stopped),
+   * lets go of what it carried in memory (send’s `carry`). @param {Entry} e @param {Partial<Entry>} patch
+   */
   patch(e, patch) {
+    if (patch.state && patch.state !== 'waiting' && patch.state !== 'taken') this.carried.delete(e.id);
     this.store.emit('entry.patch', { sessionId: e.sessionId, id: e.id, patch });
   }
 }

@@ -5,10 +5,10 @@
 // first, as waiting code does until Turns is a service.
 
 import { parseMentions } from '../shared/text.mjs';
-import { messageOf } from './entry-turns.mjs';
 import { clip, httpError } from './helpers.mjs';
 import { stopForSendNow } from './message-queue.mjs';
 import { newId } from './store.mjs';
+import { messageOf } from './turns.mjs';
 
 /**
  * Edit: the person’s message is their item, posted when it was sent, so an edit changes it while it still waits for
