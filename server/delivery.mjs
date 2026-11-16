@@ -63,12 +63,13 @@ export class Delivery {
    * builds a turn’s input from entries, `message` is what today’s deliver is given for it.
    * `wake: false` stores it without raising entry.waiting: the end of the turn that wrote its item raises it, once that
    * turn has written what its failed reply says (designs/architecture/services.md, “The end of a turn”).
+   * `at` is when it arrived, now unless it waited somewhere first, as a stored queue’s row did (#1423).
    * @param {{ sessionId: string, threadId: string, source: string, itemId?: string, text?: string, message?: any,
-   *   from?: string, retryId?: string }} e
+   *   from?: string, retryId?: string, at?: number }} e
    * @param {{ wake?: boolean }} [opts]
    * @returns {Entry}
    */
-  send({ sessionId, threadId, source, itemId, text, message, from, retryId }, { wake = true } = {}) {
+  send({ sessionId, threadId, source, itemId, text, message, from, retryId, at }, { wake = true } = {}) {
     if (!SOURCES.includes(source)) throw new Error(`An entry’s source is one of ${SOURCES.join(', ')}, not “${source}”.`);
     if ((itemId === undefined) === (text === undefined)) throw new Error('An entry has an item or its own text, and not both.');
     const se = this.store.pending.session(sessionId);
@@ -85,7 +86,7 @@ export class Delivery {
       ...(itemId === undefined ? { text } : { itemId }),
       ...(message === undefined ? {} : { message }),
       ...(from === undefined ? {} : { from }),
-      at: Date.now(),
+      at: at ?? Date.now(),
       // Its place among what arrived in the same millisecond, here and with the queue’s messages (#733).
       seq: arrival(),
       state: 'waiting',

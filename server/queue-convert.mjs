@@ -23,7 +23,8 @@ export function convertQueues(rt) {
 /** One queue row as entries, with what an earlier conversion made found. @param {any} rt @param {string} threadId @param {any} q */
 function convertOne(rt, threadId, q) {
   const agents = (q.sessionIds ?? []).map((/** @type {string} */ id) => rt.store.pending.session(id)).filter((/** @type {any} */ se) => se && !se.retiredFork);
-  const entry = { threadId, retryId: q.id };
+  // Each keeps the time its row waited from, so it sorts with what arrived around it.
+  const entry = { threadId, retryId: q.id, ...(typeof q.at === 'number' ? { at: q.at } : {}) };
   if (q.kind === 'wake') {
     const said = q.itemId ? { itemId: q.itemId } : { text: String(q.text ?? '') };
     for (const se of agents) rt.delivery.send({ ...entry, ...said, sessionId: se.id, source: 'mention', from: q.from }, { wake: false });
