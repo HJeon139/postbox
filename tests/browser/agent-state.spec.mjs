@@ -63,17 +63,19 @@ test('an agent’s row says what it runs or waits on, from its session, its jobs
   await expect(words(page, indexer)).toHaveText(` · ${step}`);
   await expect(button(page, indexer).locator('.name > span').first()).toHaveAttribute('title', step);
   await row.sizeHolds('running');
+  // The person presses Stop: the row says so until the turn ends, not its last step.
+  arrange.setSession(app.rt, indexer.id, { state: 'stopping' });
+  await expect(words(page, indexer)).toHaveText(' · stopping');
 
-  // Its turn ends with a command it started in the background still running: waiting on that job.
-  const job = { kind: 'command', id: 'wc-job', sessionId: indexer.id, handle: 'indexer', command: 'npm run build', description: 'Build the index' };
-  app.store.emit('work.add', { convId: planning.id, entry: { ...job, background: true, state: 'background' } });
-  arrange.setSession(app.rt, indexer.id, { state: 'idle', currentStep: '' });
+  // Its turn ends with a job it kept running in the background: waiting on that job.
+  const job = { id: 'job-1', sessionId: indexer.id, label: 'Build the index', state: 'running', kept: true };
+  arrange.setSession(app.rt, indexer.id, { state: 'idle', currentStep: '', jobs: [job] });
   await expect(words(page, indexer)).toHaveText(' · waiting on a job: Build the index');
   await row.sizeHolds('waiting on a job');
 
   // The job ends, and what it posted to @researcher still waits in its inbox behind its turn.
   arrange.setSession(app.rt, researcher.id, { state: 'tool', currentStep: 'Reading the shelf' });
-  app.store.emit('work.patch', { convId: planning.id, id: 'wc-job', patch: { state: 'done' } });
+  arrange.setSession(app.rt, indexer.id, { jobs: [] });
   const at = Date.now();
   const entry = { id: 'en-behind', sessionId: researcher.id, threadId: planning.id, from: 'indexer', source: 'mention', state: 'waiting', at };
   app.store.emit('entry.add', { sessionId: researcher.id, entry });
@@ -108,7 +110,7 @@ test('an agent’s row says when it is out of quota, needs you or failed', async
   await row.sameNode();
 });
 
-test('a step or a file in the work list repaints no agent row', async ({ page }) => {
+test('nothing in the work list repaints an agent row: its jobs are on its session', async ({ page }) => {
   await page.goto(`${app.origin}/#/t/${planning.id}`);
   await synced(page, app);
   await page.evaluate(() => {
@@ -118,11 +120,14 @@ test('a step or a file in the work list repaints no agent row', async ({ page })
       w.rowWrites += list.length;
     }).observe(document.querySelector('.rail .agent-rows'), { childList: true, subtree: true, characterData: true, attributes: true });
   });
-  for (let i = 0; i < 20; i++)
-    app.store.emit('work.add', {
-      convId: planning.id,
-      entry: { kind: 'read', id: `wr-${i}`, sessionId: indexer.id, handle: 'indexer', path: `/tmp/f${i}`, state: 'done' },
-    });
+  // A file read, and a background command with its end: the work list grows with the room, and a row reads none of it.
+  for (let i = 0; i < 20; i++) {
+    const base = { sessionId: indexer.id, handle: 'indexer', state: 'done' };
+    app.store.emit('work.add', { convId: planning.id, entry: { ...base, kind: 'read', id: `wr-${i}`, path: `/tmp/f${i}` } });
+    const command = { ...base, kind: 'command', id: `wc-${i}`, command: 'npm run build', background: true, state: 'background' };
+    app.store.emit('work.add', { convId: planning.id, entry: command });
+    app.store.emit('work.patch', { convId: planning.id, id: `wc-${i}`, patch: { state: 'done' } });
+  }
   await synced(page, app);
   expect(await page.evaluate(() => /** @type {any} */ (window).rowWrites)).toBe(0);
 });

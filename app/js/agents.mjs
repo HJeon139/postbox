@@ -12,6 +12,7 @@
 
 import { chipEffort, chipModel } from '/shared/agent-facts.mjs';
 import { agentState } from '/shared/agent-state.mjs';
+import { conversationRoot } from '/shared/conversation.mjs';
 import { factsOf, mockMarker } from './agent-facts.mjs';
 import { everyMinute, hostBadge } from './agent-host.mjs';
 import { agentQueueButton } from './agent-queue.mjs';
@@ -58,20 +59,19 @@ export function agentsSection(threadId) {
 }
 
 /**
- * Whether an event can change an agent’s state in this conversation beyond its session (shared/agent-state.mjs): a
- * background command’s start or end, or an entry’s arrival or take. A step or a file in the work list can’t, so it
- * repaints nothing.
+ * Whether an inbox event can change the state of an agent in this conversation (shared/agent-state.mjs): an entry’s
+ * arrival or take in one of its agents’ inboxes. Its jobs are on its session, so a session event says those.
  */
 function movesState(ch, threadId) {
-  const d = ch.data;
-  if (ch.type === 'work.add') return d.convId === threadId && d.entry?.kind === 'command' && d.entry.background === true;
-  if (ch.type === 'work.patch') return d.convId === threadId && 'state' in (d.patch ?? {});
-  return ch.type === 'entry.add' || ch.type === 'entry.patch' || ch.type === 'entry.put';
+  if (ch.type !== 'entry.add' && ch.type !== 'entry.patch' && ch.type !== 'entry.put') return false;
+  const se = S().sessions[ch.data.sessionId];
+  return Boolean(se) && conversationRoot(S().threads, se.threadId) === threadId;
 }
 
 /** An agent’s state in words, after its name: what it’s doing, or what it waits on. */
 export function stateWords(st) {
   if (st.state === 'running') return st.detail || 'running';
+  if (st.state === 'stopping') return 'stopping';
   if (st.state === 'job') return `waiting on a job: ${st.detail}`;
   if (st.state === 'quota') return st.until ? `out of quota until ${clock(st.until)}` : 'out of quota';
   if (st.state === 'behind') return `waiting behind @${st.detail}${st.since ? ` since ${clock(st.since)}` : ''}`;
