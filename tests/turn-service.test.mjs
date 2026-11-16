@@ -35,18 +35,44 @@ test('#1429 only Turns imports the turn builder (turn-run.mjs)', () => {
 
 /** Turns’ own modules: server/turns.mjs and server/turn-*.mjs. */
 const turnsModules = () => sources().filter((p) => /^turns?(?:-[\w-]+)?\.mjs$/.test(p.slice(SERVER.length)));
-/** The permission layer and the needs: the waiting code Turns reaches only through its `asks` port. */
-const WAITING = /from '\.\/(?:permission[\w-]*|card-needs|ask-question|tool-ask|prompt-claim|wake-cards|app-send-cards)\.mjs'/;
+/** Host turns (server/remote/turns*.mjs) and the restart sweep, which start and resume turns too. */
+const hostAndSweep = () => sources().filter((p) => /^(?:remote\/turns[\w-]*|restart-sweep)\.mjs$/.test(p.slice(SERVER.length)));
+/**
+ * What a module calls of the permission layer and the needs, the waiting code Turns reaches only through its `asks`
+ * port: each waiting module it imports, and each permission method it calls on the Runtime. @param {string} src
+ */
+function waitingCalls(src) {
+  const imports = [...src.matchAll(/from '\.{1,2}\/((?:permission[\w-]*|card-needs|ask-question|tool-ask|prompt-claim|wake-cards|app-send-cards)\.mjs)'/g)];
+  const calls = [...src.matchAll(/\brt\.(requestPermission|recordDenial|settlePermission|permissionWaits)\b/g)];
+  return [...new Set([...imports.map((m) => m[1]), ...calls.map((m) => `rt.${m[1]}`)])].sort();
+}
+/**
+ * Host turns and the restart sweep still reach waiting code directly; routing them through `asks` is pending
+ * (designs/architecture/services.md, Turns: “Calls into waiting code”). The list only shrinks: a new import fails.
+ */
+const PENDING = {
+  'remote/turns-prompts.mjs': [
+    'card-needs.mjs',
+    'permission-expiry.mjs',
+    'permission-prompt.mjs',
+    'prompt-claim.mjs',
+    'rt.permissionWaits',
+    'rt.requestPermission',
+    'rt.settlePermission',
+  ],
+  'remote/turns-resume.mjs': ['rt.permissionWaits'],
+  'remote/turns-start.mjs': ['permission-prompt.mjs'],
+  'restart-sweep.mjs': ['card-needs.mjs'],
+};
 
 test('#1429 Turns reaches the permission layer and the needs only through its asks port', () => {
-  const direct = turnsModules().filter((p) => {
-    const src = readFileSync(p, 'utf8');
-    return WAITING.test(src) || /\brt\.(?:requestPermission|recordDenial|settlePermission|permissionWaits)\b/.test(src);
-  });
-  assert.deepEqual(
-    direct.map((p) => p.slice(SERVER.length)),
-    [],
-  );
+  /** @type {Record<string, string[]>} */
+  const direct = {};
+  for (const p of [...turnsModules(), ...hostAndSweep()]) {
+    const calls = waitingCalls(readFileSync(p, 'utf8'));
+    if (calls.length) direct[p.slice(SERVER.length)] = calls;
+  }
+  assert.deepEqual(direct, PENDING, 'the laptop’s Turns modules call none; host turns and the sweep only what’s pending');
 });
 
 test('#1429 a card that opens raises card.opened, and Turns closes the turn’s reply segment', () => {
