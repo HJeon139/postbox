@@ -694,7 +694,15 @@ Each step is its own pull request, and is done when:
   - The start of a turn from entries lives in `turns.mjs`. The `Turns` class comes with `deliver`’s removal (4c), whose remaining callers become its steps.
   - **A turn of plain entries is given `turnInput`’s text** (#1427): the person’s messages and agents’ mentions, with notices riding, as an `input` message that every backend formats as its text after the room’s fixed facts (#515). It’s built as the turn starts: its entries, each whole up to `READING.mention`; the room’s items since the agent’s last turn that aren’t its entries nor the person’s waiting messages (Memory’s `turnTail`, which moves its marker as the catch-up did); a topic thread’s own talk; and the files and thread links its messages carry. The take’s budget is `TURN_INPUT.entries`, and `sizeOf` counts each entry’s line as the turn gives it.
   - An entry with a message kind of its own keeps it until 4c: an answer, a review, an app event, a scheduled wake, a command, a check, and a host turn’s attach. The input keeps its batch’s plain parts on what the turn was asked, with their kind and sender (`as`), for what reads them there until Turns owns it.
-  - **Next:** `deliver` goes (4c).
+  - **Turns owns the start** (#1429, 4c-a): `server/turn-service.mjs` is a class the root builds as `rt.turnService`, since `rt.turns` is Running’s map. Every start is one of its steps:
+    - `start`: an agent’s waiting entries (`entry.waiting`);
+    - `takeAlone`: the person’s Send now on one entry;
+    - `release`: what waited on a turn, once it ended or its process exited;
+    - `resume`: a host turn resumed or attached again;
+    - `retry`: the person’s Retry.
+
+    Each goes through `run`, which builds and runs the turn (`deliver.mjs`), and holds a start until it can go: behind a held commit, with writes closed, or behind a stopped turn still exiting. The runtime’s `deliver` is gone, and no server module calls one.
+  - **Next:** Retry reopens a failed turn’s entries as a resend (4c-b); then the `asks` port (4c-c).
 
 ## Appendix: every module’s members
 
