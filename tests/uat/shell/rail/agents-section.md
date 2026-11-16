@@ -17,7 +17,7 @@ The person needs to see what each agent runs with, from wherever they are. The c
   - its current step while it runs (“· Running npm test”), on this computer or a host;
   - “· out of quota until 4:00 PM”, or “· out of quota” when its harness gave no reset time (#442);
   - “· failed”;
-  - “· waiting on a job: Build the index”, while a background job of its own still runs;
+  - “· waiting on a job: Build the index”, while a background job it kept running after a Stop still runs;
   - “· waiting behind @researcher since 3:04 PM”, while something it posted waits in that agent’s inbox;
   - “· idle”.
 - An agent with blocks left open from earlier turns shows a quiet “1 open review” button under its row, which scrolls to the block and focuses it (#69).
@@ -40,7 +40,7 @@ The person needs to see what each agent runs with, from wherever they are. The c
 7. Narrow the window to 375 px and check a topic thread’s panel.
 8. In a room, ask @indexer to wake @researcher with a long task, and while @researcher works in the side thread, have @indexer wake it again: the second wake waits for its turn, with no fork. Check the tree under @researcher, the side-thread line, and `/stop` in the conversation.
 9. With a real agent, ask it to use a subagent that starts its own subagent, and watch the tree under its row while they work. Tab to one’s End and press Enter: it reads “ending”, and the agent stops it.
-10. Ask @indexer to start a long command in the background and end its turn: its row says it’s waiting on that job until the job ends. Ask it to @-mention @researcher while @researcher works: its row says it’s waiting behind @researcher until @researcher takes it.
+10. Ask @indexer to start a long command in the background (`sleep 120`, run in the background) and keep working. While it works, press Stop, and in “@indexer has 1 background job running. Stop it too?” choose Keep running: its row says it’s waiting on that job until the job ends. A turn that ends on its own stops every job it didn’t keep, so without Keep running there’s no job to wait on. Ask it to @-mention @researcher while @researcher works: its row says it’s waiting behind @researcher until @researcher takes it.
 11. Run `npx playwright test agents agent-state side-threads` (`tests/browser/agents.spec.mjs`, `agent-state.spec.mjs` and `side-threads.spec.mjs`).
 
 **Pass if:** Each row says its agent’s state as listed, at a steady size; an agent’s name opens its persona sheet, a change there reaches its next turn, a backend switch leaves no other backend’s model on its row, and `@handle /compact` and `/delete` act on that agent; the row works by keyboard and fits at 375 and 1280 px; an agent at work in a side or topic thread shows under its row with a Stop, and nothing else lists agents; each subagent at work shows under it with what it was asked and what it’s doing now, nested by who started it, with an End the agent obeys; and the checks pass.
