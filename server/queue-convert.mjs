@@ -4,9 +4,10 @@
 // - the person’s message is posted as its item, with a `person` entry for each agent it waited for that is still here;
 //   with none, it’s posted and wakes no one, as a message to a deleted agent was (#604);
 // - an agent’s queued wake becomes a `mention` entry for the item it was posted as.
-// Each entry carries its queue row’s id as its retry id, so a conversion that a crash cut short, before the queue was
-// written back, finds what it already did and posts nothing twice. Functions take the Runtime first, as waiting code
-// does until Turns is a service.
+// A conversion that a crash cut short, before the queue was written back, finds what it already did and does the rest:
+// the item keeps its queue row’s id (`fromQueue`), so it’s posted once, and each entry carries that id as its retry id,
+// which Delivery’s send stores once per inbox. Functions take the Runtime first, as waiting code does until Turns is a
+// service.
 
 import { postUserMessage } from './message-queue.mjs';
 
@@ -19,10 +20,9 @@ export function convertQueues(rt) {
   }
 }
 
-/** One queue row as entries, unless an earlier conversion made them. @param {any} rt @param {string} threadId @param {any} q */
+/** One queue row as entries, with what an earlier conversion made found. @param {any} rt @param {string} threadId @param {any} q */
 function convertOne(rt, threadId, q) {
   const agents = (q.sessionIds ?? []).map((/** @type {string} */ id) => rt.store.pending.session(id)).filter((/** @type {any} */ se) => se && !se.retiredFork);
-  if (agents.some((/** @type {any} */ se) => rt.delivery.inbox(se.id).some((/** @type {any} */ e) => e.retryId === q.id))) return;
   const entry = { threadId, retryId: q.id };
   if (q.kind === 'wake') {
     const said = q.itemId ? { itemId: q.itemId } : { text: String(q.text ?? '') };
@@ -30,6 +30,7 @@ function convertOne(rt, threadId, q) {
     return;
   }
   const to = agents.map((/** @type {any} */ se) => se.handle);
-  const { item } = postUserMessage(rt, threadId, { text: String(q.text ?? ''), attachments: q.attachments ?? [] }, to);
+  const posted = rt.store.pending.items(threadId).findLast((/** @type {any} */ it) => it.fromQueue === q.id);
+  const item = posted ?? postUserMessage(rt, threadId, { text: String(q.text ?? ''), attachments: q.attachments ?? [] }, to, { fromQueue: q.id }).item;
   for (const se of agents) rt.delivery.send({ ...entry, itemId: item.id, sessionId: se.id, source: 'person', from: 'you' }, { wake: false });
 }

@@ -8,9 +8,10 @@ import { combineMessages, latestMessage, plainMessage } from './queue-batch.mjs'
  * Posts the person’s message with who it goes to (to: handles), so another agent reading it later sees it wasn’t
  * addressed to them. The conversation’s chain of hand-offs starts again from it.
  * @param {any} rt @param {string} threadId @param {{ text: string, attachments: any[] }} message @param {string[]} to
+ * @param {object} [marks]  what else the item keeps, such as the queue row it was converted from
  */
-export function postUserMessage(rt, threadId, { text, attachments }, to) {
-  const item = rt.threads.addItem(threadId, { kind: 'user', text, attachments, to });
+export function postUserMessage(rt, threadId, { text, attachments }, to, marks = {}) {
+  const item = rt.threads.addItem(threadId, { kind: 'user', text, attachments, to, ...marks });
   rt.threads.patch(rt.threads.lineage(threadId).at(-1), { hops: 0 });
   return { item };
 }
