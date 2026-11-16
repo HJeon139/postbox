@@ -21,7 +21,9 @@ export class MockAdapter {
     this.memory = new Map();
   }
 
-  async deliver(session, message, ctx) {
+  async deliver(session, given, ctx) {
+    // The plain message the turn answers, which its scripts read (ctx.plain): an input’s batch since #1427.
+    const message = ctx.plain ?? given;
     const mem = this.memory.get(session.id) ?? {};
     this.memory.set(session.id, mem);
     ctx.checkpoint?.({ mock: session.id });

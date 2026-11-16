@@ -227,6 +227,17 @@ function atWork(rt, se, turn) {
 }
 
 /**
+ * The plain message a turn answers, for Postbox’s own scripted backend (the mock), which picks its script by a message’s
+ * kind, sender and words where a model reads the prompt: an input’s batch as it was asked, with the input’s text and
+ * what rode with it as its context (#1427); any other message as it is. @param {any} turn @param {any} message
+ */
+function plainOf(turn, message) {
+  const asked = turn.asked?.message;
+  if (message.kind !== 'input' || !asked?.as) return message;
+  return { ...asked, kind: asked.as.kind, context: [message.text, ...(message.context ?? [])] };
+}
+
+/**
  * The adapter runs the turn; it ends through endTurn, and its exit lets the session’s next turn start.
  * @param {any} rt @param {any} se @param {any} turn @param {any} message
  * @param {{ adapter: any, persona: any, hostId: string|null }} how
@@ -235,7 +246,7 @@ function runTurn(rt, se, turn, message, { adapter, persona, hostId }) {
   // With the turn’s last raw lines, which each adapter’s recorder keeps (recorderFor), for an empty reply (#485).
   // And the files attached to its message, which its agent may read (#1307): a host turn reads its own copies of them.
   const base = adapterContext(rt, se, turn);
-  const ctx = Object.assign(base, { rawTail: turn.rawTail, readFiles: hostId ? [] : attachedFiles(message, base.pathOf) });
+  const ctx = Object.assign(base, { rawTail: turn.rawTail, readFiles: hostId ? [] : attachedFiles(message, base.pathOf), plain: plainOf(turn, message) });
   // A remote turn has its host’s welcome, its host turn and the conversation’s snapshot before the adapter starts.
   const run = Promise.resolve().then(async () => {
     if (!adapter) refuseUnregistered(se, persona);
