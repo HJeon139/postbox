@@ -22,6 +22,8 @@ async function topicOnReply() {
 const contexts = (call) =>
   [call.message.kind === 'input' ? call.message.text : null, call.message.taskContext, ...(call.message.context ?? [])].filter(Boolean);
 const context = (call) => contexts(call).join('\n');
+/** The input’s tail, where a thread’s talk is since #1427: lines, within the tail’s limits. */
+const tailIn = (call) => context(call).split('Also since your last turn, not addressed to you')[1] ?? '';
 
 test('#228: a topic thread has no session of its own; the conversation’s agent answers there, and sees the message it’s on once', async () => {
   const { store, rt, adapter, t, alpha, reply, topic } = await topicOnReply();
@@ -33,10 +35,8 @@ test('#228: a topic thread has no session of its own; the conversation’s agent
   await settle(rt);
   const first = adapter.calls.at(-1);
   assert.deepEqual([first.sessionId, first.thread], [alpha.id, topic.id]);
-  assert.match(
-    context(first),
-    new RegExp(`You’re answering in the thread “First answer\\.” \\(thread ${topic.id}\\)\\. This thread started from @alpha’s message: First answer\\.`),
-  );
+  assert.match(context(first), /^\[Postbox\] This thread started from @alpha’s message: First answer\./);
+  assert.match(context(first), new RegExp(`1 message for you in the thread “First answer\\.” \\(${topic.id}\\)`));
   assert.ok(store.items(topic.id).some((i) => i.kind === 'agent' && i.sessionId === alpha.id && i.text === 'Because of the offsets.'));
   assert.equal(store.item(t.id, reply.id).replies, 2);
   assert.equal(store.items(t.id).length, before, 'nothing was added to the conversation');
@@ -97,8 +97,7 @@ test('#228: a turn in a topic thread catches up on what others said there since 
   await settle(rt);
   rt.sendMessage(topic.id, { text: '@alpha and now?' });
   await settle(rt);
-  const ctx = context(adapter.calls.at(-1));
-  assert.match(ctx, /What was said there since you last took part:/);
+  const ctx = tailIn(adapter.calls.at(-1));
   assert.match(ctx, /@beta: Pages are easier to cite\./);
   assert.match(ctx, /The person, to @beta: @beta do you agree\?/);
   assert.doesNotMatch(ctx, /Offsets, I think\./, 'not its own reply');
@@ -268,13 +267,13 @@ test('#228: no summary call unless the conversation already runs on Claude, thro
   assert.equal(typeof arrange.summarizerOf(rt, topic.id), 'function');
 });
 
-test('#228: the catch-up in a thread is capped, as the conversation’s is, keeping the newest', async () => {
+test('#228: what was said in a thread is capped, as the conversation’s is, keeping the newest', async () => {
   const { rt, adapter, topic } = await topicOnReply();
   for (let i = 0; i < 30; i++)
     arrange.post(rt, topic.id, { kind: 'agent', sessionId: 'se_other', handle: 'beta', text: `${i} ${'word '.repeat(400)}`, status: 'done' });
   rt.sendMessage(topic.id, { text: '@alpha and now?' });
   await settle(rt);
-  const there = contexts(adapter.calls.at(-1)).find((x) => x.includes('What was said there since you last took part'));
+  const there = tailIn(adapter.calls.at(-1));
   assert.ok(there.length <= 16000 + 600, `${there.length} characters`);
   assert.match(there, /@beta: 29 word/);
   assert.doesNotMatch(there, /@beta: 0 word/);

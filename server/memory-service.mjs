@@ -11,7 +11,7 @@ import { READING } from '../shared/limits.mjs';
 import { catchUp, moveMarkers, pointerIfSeen, turnTail } from './catch-up.mjs';
 import { describeItem, topicRootLine } from './item-lines.mjs';
 import { readConversation, readLine, readMessage } from './read-message.mjs';
-import { threadCatchUp, turnContext } from './thread-catch-up.mjs';
+import { threadCatchUp, threadTail, turnContext } from './thread-catch-up.mjs';
 
 export class Memory {
   /**
@@ -59,6 +59,14 @@ export class Memory {
    */
   turnContext(se, where, message, slash, waiting = []) {
     return turnContext(this, se, where, message, slash, waiting);
+  }
+
+  /**
+   * A topic or side thread’s talk since the agent last took part there, as tail lines, and its root the first time
+   * (#1427). @param {any} se @param {string} threadId @param {string[]} exclude
+   */
+  threadTail(se, threadId, exclude) {
+    return threadTail(this, se, threadId, exclude);
   }
 
   /** What a turn in a topic or side thread catches up on there, or null. @param {any} se @param {string} threadId @param {string[]} [exclude] */
