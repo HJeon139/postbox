@@ -295,8 +295,9 @@ export async function resolveDenial(rt, threadId, itemId, action) {
     const adapter = persona && rt.placement.requestAdapter(se.handle, persona);
     if (!adapter?.folderFor || !rt.readsRules(persona.backend)) throw httpError(409, 'Only Claude Code and Agent SDK agents read permission rules.');
     const folder = await adapter.folderFor(persona, rt.s.projects[rt.s.threads[threadId]?.projectId]);
-    const { file } = await addAllowRule(folder, it.rules.always);
-    note = `[Postbox] The person now always allows \`${it.rules.always}\` (saved in ${file}). The step ${asked} tried, ${it.summary}, was refused before: try it again, then carry on.`;
+    await addAllowRule(folder, it.rules.always);
+    // Without the settings file’s path: the note is an inbox entry, which reaches the page, and the path is this computer’s.
+    note = `[Postbox] The person now always allows \`${it.rules.always}\` (saved in your project’s permission rules). The step ${asked} tried, ${it.summary}, was refused before: try it again, then carry on.`;
   } else if (action === 'once') {
     if (se) rt.sessions.update(se.id, { allowOnce: [...(se.allowOnce ?? []), it.rules.once] });
     note = `[Postbox] The person allowed \`${it.rules.once}\` for your next turn only. The step ${asked} tried, ${it.summary}, was refused before: try it again exactly as before, since the allow covers only that exact call, then carry on.`;
