@@ -2,6 +2,16 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.20.0 (2026-11-16)
+
+### Features
+
+- **turns:** Retry reopens the failed turn's entries, and the turn built from them is the retry
+
+### Fixes
+
+- **turns:** a Retry's marks ride on its entries, and a failed turn's entries keep their carry
+
 ## 4.19.0 (2026-11-16)
 
 ### Features
