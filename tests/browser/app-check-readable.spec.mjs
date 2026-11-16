@@ -8,6 +8,7 @@
 import { readFile } from 'node:fs/promises';
 import { expect, test } from '@playwright/test';
 import * as arrange from '../arrange.mjs';
+import { plainOf } from '../turn-parts.mjs';
 import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 
 failOnPageErrors(test);
@@ -106,7 +107,9 @@ test.beforeAll(async ({ browser }) => {
   // The agent hears a failed check and doesn’t answer, so each app keeps what its first check found.
   arrange.withAdapter(rt, {
     name: 'mock',
-    async deliver(_s, message) {
+    async deliver(session, given) {
+      // The plain message the turn answers: an input’s batch, as its turn was asked (#1427).
+      const message = plainOf(app.rt, session.id, given);
       if (message.kind === 'app-check') sent[message.appId] = message.problems;
     },
   });

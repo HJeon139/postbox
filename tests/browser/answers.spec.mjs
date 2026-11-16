@@ -10,6 +10,7 @@
 import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
 import * as arrange from '../arrange.mjs';
+import { plainOf } from '../turn-parts.mjs';
 import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 
 const V1 = ['# Draft issue', '', 'Steps to reproduce:', '1. Open a review.', '2. Answer it.'].join('\n');
@@ -41,7 +42,9 @@ test.beforeAll(async () => {
   // The agent: shows a block on cue, and records every message Postbox sends it.
   arrange.withAdapter(app.rt, {
     name: 'mock',
-    async deliver(session, message, ctx) {
+    async deliver(session, given, ctx) {
+      // The plain message the turn answers: an input’s batch, as its turn was asked (#1427).
+      const message = plainOf(app.rt, session.id, given);
       calls.push({ ...message, threadId: session.threadId });
       if (message.text === 'review') ctx.tools.show_block({ block: review(V1) });
       if (message.text === 'choice') ctx.tools.show_block({ block: choice('Load which first?') });

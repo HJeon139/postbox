@@ -4,6 +4,7 @@
 
 import { expect, test } from '@playwright/test';
 import * as arrange from '../arrange.mjs';
+import { plainOf } from '../turn-parts.mjs';
 import { failOnPageErrors, settled, startPostbox, synced } from './postbox.mjs';
 
 const block = (id, options, extra = {}) => ({ id, type: 'choice', version: 1, fallback: id, options, ...extra });
@@ -27,7 +28,9 @@ test.beforeAll(async () => {
   app = await startPostbox('choice-panels');
   arrange.withAdapter(app.rt, {
     name: 'mock',
-    async deliver(_session, message, ctx) {
+    async deliver(session, given, ctx) {
+      // The plain message the turn answers: an input’s batch, as its turn was asked (#1427).
+      const message = plainOf(app.rt, session.id, given);
       if (message.kind !== 'user') return;
       ctx.tools.show_block({ block: block('long', LONG, { title: 'Long options', other: { label: 'Another approach' } }) });
       ctx.tools.show_block({ block: block('short', SHORT, { title: 'Short options', multiple: true }) });

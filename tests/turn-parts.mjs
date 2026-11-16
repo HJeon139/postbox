@@ -18,3 +18,13 @@ export function partsOf(rt, sessionId, message) {
  */
 export const readOf = (call) =>
   [call.message.kind === 'input' ? call.message.text : null, call.message.taskContext, ...(call.message.context ?? [])].filter(Boolean).join('\n');
+
+/**
+ * The plain message a turn answers, as a scripted agent dispatches on it: an input’s batch, with its plain kind, as its
+ * turn was asked; any other message as it is. @param {any} rt @param {string} sessionId @param {any} message
+ */
+export function plainOf(rt, sessionId, message) {
+  if (message.kind !== 'input') return message;
+  const asked = rt?.running.turnOf(sessionId)?.asked?.message;
+  return asked?.as ? { ...asked, kind: asked.as.kind } : message;
+}

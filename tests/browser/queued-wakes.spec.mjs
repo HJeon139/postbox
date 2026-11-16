@@ -1,6 +1,7 @@
 // Queued messages retain individual controls but start one combined turn when their agent is free (#374).
 import { expect, test } from '@playwright/test';
 import * as arrange from '../arrange.mjs';
+import { plainOf } from '../turn-parts.mjs';
 import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 
 let app;
@@ -13,7 +14,9 @@ test.beforeAll(async () => {
   arrange.withAdapter(app.rt, {
     name: 'claude-code',
     folderFor: async () => app.root,
-    async deliver(session, message, ctx) {
+    async deliver(session, given, ctx) {
+      // The plain message the turn answers: an input’s batch, as its turn was asked (#1427).
+      const message = plainOf(app.rt, session.id, given);
       calls.push({ sessionId: session.id, message });
       if (holds.delete(session.id)) {
         await new Promise((resolve) => {

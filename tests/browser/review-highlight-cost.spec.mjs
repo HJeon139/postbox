@@ -5,6 +5,7 @@
 
 import { expect, test } from '@playwright/test';
 import * as arrange from '../arrange.mjs';
+import { plainOf } from '../turn-parts.mjs';
 import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 
 const REVIEWS = 8;
@@ -58,7 +59,9 @@ test.beforeAll(async () => {
   app = await startPostbox('review-highlight-cost');
   arrange.withAdapter(app.rt, {
     name: 'mock',
-    async deliver(_session, message, ctx) {
+    async deliver(session, given, ctx) {
+      // The plain message the turn answers: an input’s batch, as its turn was asked (#1427).
+      const message = plainOf(app.rt, session.id, given);
       if (message.kind === 'user' && message.text.endsWith('reviews')) for (let n = 1; n <= REVIEWS; n++) ctx.tools.show_block({ block: review(n) });
       if (message.kind === 'user' && message.text.endsWith('revise'))
         ctx.tools.update_block({ block: { ...review(1), content: `${CONTENT}\n\nOne more line.` } });
