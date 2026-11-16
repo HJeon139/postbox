@@ -43,6 +43,7 @@ import { THREAD_CHECKS } from './room-checks-threads.mjs';
 import { toolCalls } from './room-checks-tools.mjs';
 import { VIEW_CHECKS } from './room-checks-view.mjs';
 import { keptStreams, WORK_CHECKS } from './room-checks-work.mjs';
+import { WORKSPACE_CHECKS } from './room-checks-workspace.mjs';
 import { itemsOf } from './room-items.mjs';
 
 export { callsFor, LONG_TURN_MS, LONG_TURN_TOOLS } from './block-use.mjs';
@@ -60,6 +61,8 @@ export const CHECKS = [
   ...SCREEN_CHECKS,
   // The Kiro CLI’s and the Antigravity CLI’s (#117, #143): tools/uat/room-checks-backends.mjs.
   ...BACKEND_CHECKS,
+  // Any harness’s shell commands, kept to the run’s workspace (#465).
+  ...WORKSPACE_CHECKS,
   ...THREAD_CHECKS,
   ...ADDRESSED_CHECKS,
   ...NEEDS_CHECKS,
