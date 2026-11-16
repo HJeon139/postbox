@@ -237,6 +237,46 @@ What is and isn’t measured:
 - **Kiro** reported no token counts in the search measurement, so its rows are requests, reads and right answers only.
 - **Each run uses real agents and costs real usage,** so each set of runs needs the person’s go-ahead.
 
+### What the runs showed
+
+Run on 16 November 2026 ([#1431](https://github.com/HJeon139/postbox/issues/1431)): three runs of `tests/uat/e2e/scenarios/inboxroom.md` on `main` before the inbox (2949f6c3) and three with every plain turn built from entries (dd9b53ee, [#1428](https://github.com/HJeon139/postbox/pull/1428)), the same scenario on both sides, with agents on Claude Code, Codex, Antigravity and Kiro. `tools/uat/inbox-measures.mjs` counted each row from the runs’ event logs and harness streams: the mean of three, with the range.
+
+| Measure | Before the inbox | Turns built from entries | What passes | Result |
+|---|---|---|---|---|
+| Messages crossed | 2 (1 to 3) | 1.7 (1 to 2) | Fewer than `main` | Fewer, by less than the range |
+| Wakes that found nothing to do | 2.7 (2 to 3) | 2 (2 to 2) | No more than `main` | Passes |
+| A hand-off posted twice | 1.3 (1 to 2) | 0 (0 to 0) | None | Passes |
+| Wakes by a copied line | 0 (0 to 0) | 0 (0 to 0) | None | Not exercised |
+| Model requests per turn | 2.7 (2.6 to 2.8) | 2.6 (2.3 to 2.8) | No more than `main` | Passes |
+| Reads after a wake, per woken turn | 0.1 (0 to 0.2) | 0.1 (0 to 0.3) | Fewer than `main` | The same |
+| Postbox’s input per turn, Claude Code, tokens | 733 (712 to 753) | 742 (733 to 757) | No more than `main` | Flat: 9 tokens more, with ranges that overlap |
+| Input tokens per turn, as reported | 73,682 (68,195 to 79,479) | 72,069 (63,410 to 77,364) | Reported | Ranges overlap |
+| Entries waiting in another thread at a turn’s start | Not recorded | 0 (0 to 0) | Reported | Not exercised |
+
+Input tokens a run, as each harness reported them, with the turns its agent took:
+
+| Harness | Before the inbox | Turns built from entries |
+|---|---|---|
+| Claude Code | 346,793 (327,053 to 382,221) in 4 turns | 324,739 (323,860 to 325,790) in 4 turns |
+| Codex | 330,285 (273,695 to 400,406) in 4.7 turns | 304,999 (208,652 to 387,869) in 4 turns |
+| Antigravity | 330,019 (306,000 to 353,979) in 5 turns | 256,224 (215,934 to 289,885) in 4.3 turns |
+| Kiro | Not reported, 1 turn | Not reported, 1 turn |
+
+What they show:
+- **No token saving.** Every token row’s ranges overlap, and Postbox’s own input per turn is flat at about 740 tokens. Much of what Codex and Antigravity read less a run is turns they didn’t take. That fits “The budget”: it is a ceiling no higher than today’s catch-up, not a saving. The case for whole entries is that an agent is given what it was sent, not that it reads less.
+- **No hand-off was posted twice,** where every run before the inbox had one. Fewer messages crossed, by less than the range.
+
+What they don’t show:
+- **Only plain batches were built from entries.** An answer, a review, an event, a scheduled wake, a command and a check each still arrived as a message of its own in these runs.
+- **No agent copied a line that woke another,** on either side. One earlier run of the scenario did have a copy, and a mention on its second line woke an agent ([#1416](https://github.com/HJeon139/postbox/issues/1416), fixed).
+- **No entry waited in another thread when a turn started,** so what one thread a turn costs in turns is unmeasured.
+- **The resumed session wasn’t run.**
+- **Three short runs a side.** No long room was measured, on any harness.
+
+One thing for the turn-building step to settle, seen on both sides: the person’s message asked the researcher to have the critic hand a question to the developer. The researcher’s reply named the developer and the critic’s did too, so the developer was woken twice in one chain and answered the same question twice. The two mentions didn’t wait together, so no batch held both.
+
+The runs, by the time each started: before the inbox 06-42-25, 06-47-37 and 06-53-32; with turns built from entries 06-42-45, 06-47-55 and 06-53-30.
+
 This is #508’s A2 to A4 (#527 to #529), made smaller. It drops A1’s held wakes and the revisions of sent entries.
 
 Changes in `intent.md`: most of “Attention and wakes”: the wake card, chain limit and batching rows are replaced.
@@ -310,5 +350,6 @@ flowchart TD
 
 - **Done:** the analysis above, and the person’s direction.
 - **Done:** the harness-event contract and the live view of running turns (#1239): what “Live state” lists as built.
-- **Done:** the inbox’s design: what an entry is, what a turn is given and its budget, and what the build must show (“Delivery: mention, wake and queue on one inbox”). Nothing in it is built.
+- **Done:** the inbox’s design: what an entry is, what a turn is given and its budget, and what the build must show (“Delivery: mention, wake and queue on one inbox”).
+- **Done:** the inbox’s entries, the mention as the only wake, and every plain turn built from its entries (#1428), measured once on four harnesses (“What the runs showed”). An answer, a review, an event, a scheduled wake, a command and a check still arrive as a message of their own.
 - **Next:** review this draft. Then each part gets its own pull request, which updates the rows of `intent.md` it changes, and a UAT scenario with four or more agents that measures what each part claims: time before anything shows in a turn, messages crossed, wakes that found nothing to do, and asks per decision.
