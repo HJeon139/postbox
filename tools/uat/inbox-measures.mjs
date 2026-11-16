@@ -7,7 +7,7 @@
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { parseMentions } from '../../shared/text.mjs';
-import { table } from './inbox-tables.mjs';
+import { harnessTable, table } from './inbox-tables.mjs';
 import { filesIn, jsonLines, turnsIn } from './run-turns.mjs';
 
 /** The reads an agent makes to catch up, which the turn’s input is meant to make unnecessary. */
@@ -207,6 +207,25 @@ function withTurnIds(/** @type {any[]} */ turns, /** @type {any[]} */ items) {
 const mean = (/** @type {number[]} */ xs) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null);
 
 /**
+ * A run’s turns added up by harness: how many, the input tokens and model requests they report, and their tool calls.
+ * A harness that reports no tokens or requests has null there, not zero.
+ * @param {{ harness: string, requests: number|null, input: number|null, tools: string[] }[]} turns
+ */
+export function byHarness(turns) {
+  /** @type {Record<string, { turns: number, input: number|null, requests: number|null, toolCalls: number }>} */
+  const sums = {};
+  const plus = (/** @type {number|null} */ sum, /** @type {number|null} */ n) => (n === null ? sum : (sum ?? 0) + n);
+  for (const t of turns) {
+    const h = (sums[t.harness] ??= { turns: 0, input: null, requests: null, toolCalls: 0 });
+    h.turns++;
+    h.input = plus(h.input, t.input);
+    h.requests = plus(h.requests, t.requests);
+    h.toolCalls += t.tools.length;
+  }
+  return sums;
+}
+
+/**
  * One run’s measures.
  * @param {string} dir  the run’s folder
  */
@@ -227,6 +246,7 @@ export function measure(dir) {
     promptTokensPerTurn: mean(prompts),
     inputTokensPerTurn: mean(reported('input')),
     waitingElsewhere: mean(waitingElsewhere(events)),
+    harnesses: byHarness(turns),
   };
 }
 
@@ -246,5 +266,6 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
     console.error('Give the runs to compare: node tools/uat/inbox-measures.mjs --main <run folder>… --branch <run folder>…');
     process.exit(2);
   }
-  console.log(table(main.map(measure), branch.map(measure)));
+  const [before, after] = [main.map(measure), branch.map(measure)];
+  console.log(`${table(before, after)}\n\n${harnessTable(before, after)}`);
 }

@@ -36,3 +36,37 @@ export function table(/** @type {any[]} */ main, /** @type {any[]} */ branch) {
   const head = `| Measure | main, ${main.length} ${main.length === 1 ? 'run' : 'runs'} | branch, ${branch.length} ${branch.length === 1 ? 'run' : 'runs'} | What passes |\n|---|---|---|---|`;
   return [head, ...ROWS.map(([key, name, passes]) => `| ${name} | ${across(main, key)} | ${across(branch, key)} | ${passes} |`)].join('\n');
 }
+
+/** What the table by harness gives for each harness, per run. */
+const HARNESS_ROWS = [
+  ['input', 'Input tokens'],
+  ['requests', 'Model requests'],
+  ['toolCalls', 'Tool calls'],
+  ['turns', 'Turns'],
+];
+
+/**
+ * One side’s runs for one harness and one figure: “not recorded” when no run had that harness, “not reported” when
+ * the harness reports none.
+ * @param {any[]} runs @param {string} harness @param {string} key
+ */
+function acrossHarness(runs, harness, key) {
+  const had = runs.map((r) => r.harnesses?.[harness]).filter(Boolean);
+  if (!had.length) return 'not recorded';
+  const text = across(had, key);
+  return text === 'not recorded' ? 'not reported' : text;
+}
+
+/**
+ * The table by harness for two sides’ runs, as Markdown: each harness’s figures per run, so a change on one harness
+ * isn’t hidden in a mean over all of them.
+ * @param {any[]} main @param {any[]} branch
+ */
+export function harnessTable(main, branch) {
+  const runs = (/** @type {any[]} */ side) => `${side.length} ${side.length === 1 ? 'run' : 'runs'}`;
+  const names = [...new Set([...main, ...branch].flatMap((r) => Object.keys(r.harnesses ?? {})))];
+  const rows = names.flatMap((h) =>
+    HARNESS_ROWS.map(([key, name]) => `| ${h} | ${name} | ${acrossHarness(main, h, key)} | ${acrossHarness(branch, h, key)} |`),
+  );
+  return [`| Harness | Per run | main, ${runs(main)} | branch, ${runs(branch)} |`, '|---|---|---|---|', ...rows].join('\n');
+}
