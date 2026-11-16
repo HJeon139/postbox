@@ -189,11 +189,12 @@ export function topicRootLine(memory, se, t) {
 
 /**
  * The person’s message as one line, with the files it carried. One they removed before any agent read it is still in the
- * conversation, but asks nothing any more, so its words aren’t given (#1404).
+ * conversation, but asks nothing any more, so its words aren’t given (#1404); nor to an agent they removed it for.
  * @param {any} memory @param {any} i @param {(s: string) => string} text  clips to the line’s length @param {any} reader
  */
 function personLine(memory, i, text, reader) {
   if (i.removed) return `${personSaid(i)}: (a message removed before any agent read it)`;
+  if (reader && i.removedFor?.includes(reader.id)) return `${personSaid(i)}: (a message the person removed for you before you read it)`;
   return `${personSaid(i)}: ${text(i.text)}${attachedText(memory, i.attachments, reader)}`;
 }
 

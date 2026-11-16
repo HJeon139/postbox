@@ -59,13 +59,16 @@ export function cancelEntry(rt, threadId, entryId) {
 }
 
 /**
- * The person removed their message for one agent. Once no agent it went to has it, or is still to get it, the item says
- * it was removed before it was read (#1404): it stays in the conversation, as everything said there does.
- * @param {any} rt @param {{ threadId: string, itemId: string }} e
+ * The person removed their message for one agent: the item records it (`removedFor`), so that agent reads it was removed,
+ * not its words, while others may still get it. Once no agent it went to has it or is still to get it, the item says it
+ * was removed before it was read (#1404): it stays in the conversation, as everything said there does.
+ * @param {any} rt @param {{ threadId: string, itemId: string, sessionId: string }} e
  */
-function removedUnread(rt, { threadId, itemId }) {
-  if (rt.delivery.entriesFrom(itemId).every((/** @type {any} */ x) => x.state === 'stopped'))
-    rt.threads.patchItem(threadId, itemId, { removed: { at: Date.now() } });
+function removedUnread(rt, { threadId, itemId, sessionId }) {
+  const it = rt.store.pending.item(threadId, itemId);
+  const removedFor = [...new Set([...(it?.removedFor ?? []), sessionId])];
+  const unread = rt.delivery.entriesFrom(itemId).every((/** @type {any} */ x) => x.state === 'stopped');
+  rt.threads.patchItem(threadId, itemId, { removedFor, ...(unread ? { removed: { at: Date.now() } } : {}) });
 }
 
 /**
