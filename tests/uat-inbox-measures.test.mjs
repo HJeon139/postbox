@@ -3,18 +3,8 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import {
-  across,
-  copyWakes,
-  crossed,
-  doubledHandOffs,
-  idleWakes,
-  itemsOf,
-  promptTokens,
-  readsAfterWake,
-  table,
-  waitingElsewhere,
-} from '../tools/uat/inbox-measures.mjs';
+import { copyWakes, crossed, doubledHandOffs, idleWakes, itemsOf, promptTokens, readsAfterWake, waitingElsewhere } from '../tools/uat/inbox-measures.mjs';
+import { across, table } from '../tools/uat/inbox-tables.mjs';
 import { agyTurn, toolName } from '../tools/uat/run-turns.mjs';
 
 const agent = (id, handle, at, text, more = {}) => ({ id, kind: 'agent', handle, at, text, turnId: `turn_${id}`, ...more });
