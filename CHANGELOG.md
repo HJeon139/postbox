@@ -2,6 +2,19 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.14.0 (2026-11-16)
+
+### Features
+
+- **delivery:** keep an agent's waiting messages in its queue, with Remove and Send now
+- **delivery:** hand a reply's mentions over as inbox entries once it's final
+
+### Fixes
+
+- **delivery:** name a newer post without its sender, and cut as entryLine cuts
+- **delivery:** a turn the person stops settles what it took, and its reply wakes no one
+- **delivery:** a Retry resends what its turn was asked, and takes no entries that came since
+
 ## 4.13.0 (2026-11-16)
 
 ### Features
