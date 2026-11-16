@@ -256,18 +256,15 @@ export class Delivery {
   }
 
   /**
-   * The person’s Retry of a failed turn: what it took goes back, as a resend. Until Turns starts a turn from entries,
-   * Retry sends the failed turn’s request again itself, so the turn it starts takes them (`takenBy`), and they don’t
-   * start another; without one, they wait.
-   * @param {string} turnId @param {string|null} [takenBy] @returns {Entry[]} the entries reopened
+   * The person’s Retry of a failed turn: what it took waits again, as a resend, for the turn Turns starts from it
+   * (#1429). @param {string} turnId @returns {Entry[]} the entries reopened
    */
-  retry(turnId, takenBy = null) {
-    const state = /** @type {EntryState} */ (takenBy ? 'taken' : 'waiting');
+  retry(turnId) {
     const reopened = [];
     for (const sessionId of this.sessionIds())
       for (const e of this.inbox(sessionId))
         if (e.takenBy === turnId) {
-          const entry = { ...e, state, takenBy, resend: true };
+          const entry = { ...e, state: /** @type {EntryState} */ ('waiting'), takenBy: null, resend: true };
           // Whole: it was delivered, so a page has dropped it, and a patch would reach nothing there.
           this.store.emit('entry.put', { sessionId, id: e.id, entry });
           reopened.push(entry);

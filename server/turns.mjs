@@ -24,9 +24,20 @@ export function startFromEntries(rt, sessionId) {
   // keeps it until Turns owns what reads it (#1427).
   const batch = combineMessages(given(rt, entries));
   // Its plain parts stay with it (`messages`, `as`), for what reads the person’s words or who woke the agent.
+  // A Retry’s marks, when this start is one (Turns’ retryEntries).
+  const retried = rt.turnService.retryMarks(sessionId);
   const message = plainBatch(entries)
-    ? { ...batch, kind: 'input', as: { kind: batch.kind, from: batch.from }, messages: batch.messages ?? [batch], entries, turnId, fromEntries: true }
-    : { ...batch, turnId, fromEntries: true };
+    ? {
+        ...batch,
+        kind: 'input',
+        as: { kind: batch.kind, from: batch.from },
+        messages: batch.messages ?? [batch],
+        entries,
+        turnId,
+        fromEntries: true,
+        ...retried,
+      }
+    : { ...batch, turnId, fromEntries: true, ...retried };
   const lead = leadOf(entries);
   const summarizeTo = summaryOf(rt, lead);
   rt.turnService.run(sessionId, message, { threadId: lead.threadId, ...(summarizeTo ? { summarizeTo } : {}) });

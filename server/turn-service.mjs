@@ -14,6 +14,8 @@ export class Turns {
   /** @param {any} rt */
   constructor(rt) {
     this.rt = rt;
+    /** @type {Map<string, { woken: string[] }>} what a Retry hands its session’s next start from entries (retryEntries) */
+    this.retried = new Map();
   }
 
   /** The agent’s waiting entries of one thread start its turn (entry.waiting). @param {string} sessionId */
@@ -43,6 +45,27 @@ export class Turns {
    */
   resume(sessionId, message, opts) {
     this.run(sessionId, message, opts);
+  }
+
+  /**
+   * The person’s Retry of a failed turn that took entries: they reopen as a resend (Delivery’s retry), the session is
+   * no longer failed, since the person acted, and the turn that takes them is built from them, marked a retry with
+   * whom the failed reply already woke (#485). Returns whether the turn took any.
+   * @param {string} sessionId @param {string} turnId  the failed turn @param {{ woken: string[] }} marks
+   */
+  retryEntries(sessionId, turnId, marks) {
+    if (!this.rt.delivery.retry(turnId).length) return false;
+    this.retried.set(sessionId, marks);
+    if (this.rt.store.pending.session(sessionId)?.state === 'failed') this.rt.sessions.update(sessionId, { state: 'idle' });
+    this.rt.delivery.wake(sessionId);
+    return true;
+  }
+
+  /** What a Retry hands the session’s next start from entries, once. @param {string} sessionId */
+  retryMarks(sessionId) {
+    const marks = this.retried.get(sessionId);
+    this.retried.delete(sessionId);
+    return marks ? { retry: true, woken: marks.woken } : {};
   }
 
   /** The person’s Retry of a failed reply. @param {string} threadId @param {string} itemId */

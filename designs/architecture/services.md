@@ -215,7 +215,7 @@ flowchart LR
   - **The person’s own actions:**
     - `edit(entryId)`, `cancel(entryId)` and `stopped(sessionId)`;
     - `continueChain(threadId)`: Continue at the chain cap;
-    - `retry(sessionId)`: the facade’s Retry on a failed turn. The entries that turn took go back to waiting, marked as a resend, and the session is no longer failed, so `entry.waiting` starts the turn.
+    - `retry(sessionId)`: the facade’s Retry on a failed turn. The entries that turn took go back to waiting, marked as a resend, and the session is no longer failed, so `entry.waiting` starts the turn. As built (#1429) it takes the failed turn’s id, and Turns’ `retryEntries` calls it and marks the turn it starts as a retry. A failed turn that took no entries, such as a host turn’s replay, sends its request again instead.
 
     The person’s message is an entry when it’s sent (#1404), so `edit` and `cancel` act on it. A queue a store holds from before that is turned into entries once, on start (step 3).
   - **Signals:** `entry.waiting`. It is raised for an agent that has a waiting entry that isn’t a notice, and that:

@@ -276,11 +276,13 @@ export function retry(rt, threadId, itemId) {
     // Only the cards that wait until answered can take the need: the failed turn's own asks would flash until the
     // retried turn starts, and that turn's end decides them.
     releaseNeed(rt, rt.s.sessions[it.sessionId], itemId, undefined, { turnIds: [] });
-    // The entries the failed turn took go with its request again, as a resend the new turn takes (Delivery's retry).
-    // Entries that came since wait for the turn after it, behind the person's messages queued before them (#1146).
-    const turnId = newId('turn');
-    if (it.turnId) rt.delivery.retry(it.turnId, turnId);
-    const message = { ...asked.message, retry: true, woken: it.wokeOnFailure ?? [], turnId, entriesWait: true };
+    // Whom the failed reply already handed work to (#485), so the retry doesn't hand it over again.
+    const woken = it.wokeOnFailure ?? [];
+    // A turn that took entries: they reopen as a resend, and the turn that takes them is built from them, so nothing
+    // sends the asked message again (#1429).
+    if (it.turnId && rt.turnService.retryEntries(it.sessionId, it.turnId, { woken })) return;
+    // One that took none, such as a host turn's replay or a message a test sent: its request goes again.
+    const message = { ...asked.message, retry: true, woken, turnId: newId('turn'), entriesWait: true };
     rt.turnService.run(it.sessionId, message, { summarizeTo: asked.summarizeTo, threadId });
   });
 }
