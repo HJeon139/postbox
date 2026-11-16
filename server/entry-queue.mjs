@@ -1,8 +1,8 @@
 // The person’s Edit, Remove and Send now on a message waiting for an agent (#228, #374): an entry in that agent’s inbox,
 // an agent’s since mentions became entries, and the person’s own since it is one when it’s sent (#1404;
 // designs/rooms-at-scale.md, “Delivery”). The page lists them in the agent’s queue, and the queue’s routes reach here for
-// an entry’s id: only one waiting in the inbox of a session of the route’s own conversation. Functions take the Runtime first, as waiting code does
-// until Turns is a service.
+// an entry’s id: only one waiting in the inbox of a session of the route’s own conversation. Functions take the Runtime
+// first, as waiting code does until Turns is a service.
 
 import { parseMentions } from '../shared/text.mjs';
 import { messageOf } from './entry-turns.mjs';
