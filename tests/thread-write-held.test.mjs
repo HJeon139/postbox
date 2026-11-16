@@ -111,12 +111,12 @@ test('open_topic with a mention behind a held commit posts once, in the topic, a
   f.rt.sendMessage(f.t.id, { text: '@alpha check the totals' });
   await settle(f.rt);
   const reply = f.store.items(f.t.id).find((i) => i.kind === 'agent');
-  const ASK = 'Beta, check the totals here.';
+  const ASK = '@beta check the totals here.';
   let out;
   let release;
   f.adapter.next.push(async (c) => {
     release = await f.hold();
-    out = c.tools.open_topic({ itemId: reply.id, message: ASK, mentions: ['beta'] });
+    out = c.tools.open_topic({ itemId: reply.id, message: ASK });
     c.text('Opened.');
   });
   f.rt.sendMessage(f.t.id, { text: '@alpha open a topic' });

@@ -45,18 +45,19 @@ test('#651 the first open with a message says it opened the topic and posted it,
   assert.doesNotMatch(r.message, /already there/);
 });
 
-test('#651 a second open with a new message says it posted it, and still says who it couldn’t wake', async () => {
+test('#651 a second open with a new message says it posted it, and still says what came of its mention', async () => {
   const f = await conversation();
   const one = await f.open({ message: 'A' });
-  const two = await f.open({ message: 'B', mentions: ['betta'] });
-  const [it] = f.copies(one.threadId, 'B');
+  // gamma isn’t in the conversation, so its wake waits on a card, and the reply says so.
+  const two = await f.open({ message: 'B, for @gamma' });
+  const [it] = f.copies(one.threadId, 'B, for @gamma');
   assert.ok(it, 'B posted');
   assert.equal(two.created, false);
   assert.equal(two.posted, true, JSON.stringify(two));
   assert.equal(two.itemId, it.id);
   assert.match(two.message, /Posted/);
   assert.ok(two.message.includes(it.id), 'the reply names the new message');
-  assert.match(two.message, /There’s no agent called @betta/);
+  assert.match(two.message, /@gamma isn’t in this conversation, so the person was asked to add it/);
 });
 
 test('#651 a repeat says its message is already there and wasn’t posted again (I6)', async () => {
@@ -73,13 +74,13 @@ test('#651 a repeat says its message is already there and wasn’t posted again 
 
 test('#651 a repeat that names beta wakes beta once, and says no one was woken again', async () => {
   const f = await conversation();
-  const one = await f.open({ message: 'A', mentions: ['beta'] });
+  const one = await f.open({ message: '@beta A' });
   const betaCalls = () => f.adapter.calls.filter((c) => c.sessionId === f.beta.id).length;
   const before = betaCalls();
   assert.equal(before, 1, 'the first open woke beta');
-  const again = await f.open({ message: 'A', mentions: ['beta'] });
+  const again = await f.open({ message: '@beta A' });
   assert.equal(betaCalls(), before, 'beta wasn’t woken again');
-  assert.equal(f.copies(one.threadId, 'A').length, 1);
+  assert.equal(f.copies(one.threadId, '@beta A').length, 1);
   assert.equal(again.posted, false);
   assert.match(again.message, /no one was woken again/);
 });

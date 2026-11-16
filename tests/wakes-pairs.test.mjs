@@ -59,15 +59,14 @@ test('#372 a turn in an old side thread whose wake waits on a card is still told
   await settle(rt);
 });
 
-test('#372 a woken agent is told its reply reaches the waker only by an @-mention, and wake_agent names the chain limit', async () => {
-  const { formatMessage } = await import('../server/adapters/guide.mjs');
-  const { TOOL_DEFS } = await import('../server/mcp.mjs');
+test('#372 a woken agent is told its reply reaches the waker only by an @-mention, and the guide names the chain limit', async () => {
+  const { formatMessage, roomText } = await import('../server/adapters/guide.mjs');
   assert.match(
     formatMessage({ kind: 'agent', from: '@alpha', text: 'Check the totals.' }),
     /^\[Postbox\] @alpha wrote to you\. Your reply posts here; it reaches @alpha only if you @-mention them/,
   );
   assert.match(
-    TOOL_DEFS.find((d) => d.name === 'wake_agent').description,
+    roomText([{ handle: 'beta', role: 'Reviews' }]),
     /After the room’s chain limit of agent wakes in one chain \(1,000 unless the person set another\), the person must allow/,
   );
 });

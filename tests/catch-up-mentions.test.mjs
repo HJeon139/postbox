@@ -65,7 +65,7 @@ test('#484 a mention a summary gave the agent reaches it in full once: its queue
   assert.match(second.text, /@beta’s message above/);
 });
 
-test('#484 a wake_agent message that names no one comes in full: a summary may have left it out', async () => {
+test('#484 a wake’s message that names no one comes in full: a summary may have left it out', async () => {
   const f = setup();
   const text = 'Please recount the totals.';
   const it = say(f, text);

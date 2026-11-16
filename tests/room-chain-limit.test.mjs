@@ -4,8 +4,8 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { roomText } from '../server/adapters/guide.mjs';
 import { DEFAULT_HOP_LIMIT, HOP_LIMIT } from '../shared/limits.mjs';
-import { TOOL_DEFS } from '../shared/mcp-tools.mjs';
 import * as arrange from './arrange.mjs';
 import { settle, setup } from './side-threads-fixture.mjs';
 
@@ -98,8 +98,8 @@ test('#1035 the card keeps the limit it was raised under: at 20 wakes, setting t
   await settle(f.rt);
 });
 
-test('#1035 wake_agent tells agents the room’s chain limit, with the server’s default, not one number for every room', () => {
-  const description = TOOL_DEFS.find((d) => d.name === 'wake_agent').description;
-  assert.match(description, /After the room’s chain limit of agent wakes in one chain \(1,000 unless the person set another\), the person must allow/);
-  assert.doesNotMatch(description, /After \d+ agent wakes/);
+test('#1035 the guide tells agents the room’s chain limit, with the server’s default, not one number for every room', () => {
+  const room = roomText([{ handle: 'beta', role: 'Reviews' }]);
+  assert.match(room, /After the room’s chain limit of agent wakes in one chain \(1,000 unless the person set another\), the person must allow/);
+  assert.doesNotMatch(room, /After \d+ agent wakes/);
 });

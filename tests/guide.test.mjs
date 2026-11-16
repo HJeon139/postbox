@@ -150,11 +150,13 @@ test('agy’s rules file for a busy room stays within its 12,000 characters', ()
   assert.ok(agyRules({ persona, guide, schemas: '/Users/someone/.gemini/antigravity/mcp/postbox' }).length <= 12000);
 });
 
-// Codex agents drifted to unstructured replies and wake_agent messages with the spaces left out, so they’re told how to
-// write; no other backend was seen doing it, so no other backend’s guide carries it.
-test('a Codex agent’s guide says how to write, including wake_agent messages', () => {
+// Codex agents drifted to unstructured replies and hand-offs with the spaces left out, so they’re told how to write; no
+// other backend was seen doing it, so no other backend’s guide carries it. wake_agent is gone, so it names no tool for it.
+test('a Codex agent’s guide says how to write, hand-offs included, and names no wake_agent', () => {
   const g = agentGuide({ persona: { handle: 'gpt', backend: 'codex' }, session: {}, handles: ['gpt'] });
-  assert.match(g, /## How you write here\n\nEverything you send is read in the conversation as Markdown, including the message you give wake_agent\./);
+  assert.match(g, /## How you write here\n\nEverything you send is read in the conversation as Markdown\. Write it as you would for a person/);
+  assert.match(g, /Don’t compress or abbreviate a hand-off to save room/);
+  assert.doesNotMatch(g, /wake_agent/);
   assert.match(g, /a blank line before every list, and a space between all words/);
   for (const backend of ['claude-code', 'agent-sdk', 'kiro-cli', 'antigravity-cli'])
     assert.doesNotMatch(agentGuide({ persona: { handle: 'x', backend }, handles: ['x'] }), /How you write here/, backend);
@@ -166,7 +168,7 @@ test('#372 a room’s guide says to @mention an agent only when it must act next
   const g = turnFacts({ persona: { handle: 'alpha' }, handles: ['alpha', 'beta'], room: [{ handle: 'beta', role: 'Reviews' }] });
   assert.match(g, /@mention one only when it must act next \(a hand-off, a question, a review\); else write its name without @\./);
   assert.doesNotMatch(guideText(), /side thread/i);
-  assert.doesNotMatch(TOOL_DEFS.find((d) => d.name === 'wake_agent').description, /side thread/);
+  assert.doesNotMatch(TOOL_DEFS.find((d) => d.name === 'open_topic').description, /side thread/);
 });
 
 // An agent ended turns promising results that “will follow”, and nothing woke it when they did: Postbox wakes an agent

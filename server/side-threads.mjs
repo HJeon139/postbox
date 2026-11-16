@@ -3,8 +3,8 @@
 // add an agent the conversation doesn’t have, and the lines of side threads from before #372. Functions take the
 // Runtime first (designs/architecture/code-size.md, “What a move may change”).
 
-import { HANDLE, HANDLE_SHAPE, HOP_LIMIT } from '../shared/limits.mjs';
-import { clip, retiredError, tooLongToSend } from './helpers.mjs';
+import { HOP_LIMIT } from '../shared/limits.mjs';
+import { clip, retiredError } from './helpers.mjs';
 import { roomChainLimit } from './room-chain-limit.mjs';
 import { askToAdd, askToWake, closeOwnCard, dropHeld, retireStale } from './wake-cards.mjs';
 
@@ -19,7 +19,7 @@ export { HOP_LIMIT };
 export const SUMMARY_WAKES_NO_ONE = 'A summary for the conversation wakes no one: finish it, and the person decides the rest.';
 
 /**
- * An agent wakes another (#110, #228, #372): by an @-mention in what it said (itemId, that message) or by wake_agent. It
+ * An agent wakes another (#110, #228, #372): by an @-mention in what it said (itemId, that message). It
  * reaches the persona’s one session in the conversation, as an entry in its inbox there, which answers there; a busy
  * one takes it when its turn ends. `wake: false` stores it for the end of the waker’s turn to wake (mention-entries.mjs). A persona the conversation doesn’t have needs the
  * person: a card asks to add it. After the room’s chain limit of wakes in a row without you (1,000 unless the person set
@@ -65,7 +65,7 @@ export function agentWake(
   rt.threads.patch(parent.id, { hops: hop });
   // A mention is already the waker’s message there, so the wake’s number in the chain (#114) goes on the
   // turn’s first item: it marks the turn, not necessarily the paragraph with the mention. One message can wake several
-  // agents, so each wake’s number is kept (wakes); hop stays the first. wake_agent’s message is posted as the waker’s.
+  // agents, so each wake’s number is kept (wakes); hop stays the first. A wake with no message of its own (a test’s, a card’s from before) posts one as the waker’s.
   const said = itemId ? rt.store.pending.item(at, itemId) : null;
   if (said) rt.threads.patchItem(at, said.id, { hop: said.hop ?? hop, wakes: [...(said.wakes ?? (said.hop ? [said.hop] : [])), hop] });
   const message = { kind: 'agent', sessionId: from.id, personaId: from.personaId, handle: from.handle, text, status: 'done', hop, wakes: [hop], fromTurnId };
@@ -162,19 +162,6 @@ export function dropWakes(rt, se, how = 'stopped') {
           `@${se.handle} was ${how} before it answered your message (“${clip(q.text, 120)}”). Wake it again if you still need it.`,
         );
   }
-}
-
-/** wake_agent { handle, message }, the tool, for the session rt.toolsFor made it for. A summary’s turn wakes no one (#225, agentWake). */
-export function wakeAgent(rt, sessionId, { handle, message }) {
-  const text = String(message ?? '');
-  const to = String(handle ?? '')
-    .trim()
-    .replace(/^@/, '');
-  const tooLong = tooLongToSend('A message to another agent', text);
-  if (tooLong) return tooLong;
-  // Checked before the lookup, whose refusal names the handle: it never echoes what isn’t one (#650).
-  if (!HANDLE.test(to)) return { ok: false, message: `That isn’t an agent’s handle: ${HANDLE_SHAPE}.` };
-  return rt.agentWake(sessionId, to, text);
 }
 
 /**

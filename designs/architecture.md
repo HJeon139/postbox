@@ -64,7 +64,7 @@ sequenceDiagram
   participant P as The page
   H->>A: its own stream: text, tool calls, results
   A->>R: harness events
-  H->>R: Postbox’s tools over MCP: show_block, wake_agent…
+  H->>R: Postbox’s tools over MCP: show_block, open_topic…
   R->>S: emit or commit events
   S->>S: append to the log, apply with the shared reducer
   S-->>P: public events, numbered, over server-sent events

@@ -244,7 +244,7 @@ test('#133: a revision that would push a reviewer’s kept thread past 200 open 
 test('#133, #372: a comment from a topic thread, by an agent woken there, lands on the block in the room', async () => {
   const { rt, store, adapter, t, theirs, item } = await shown();
   let said;
-  adapter.next.push(async (c) => c.tools.wake_agent({ handle: 'critic', message: 'Review my plan, please.' }));
+  adapter.next.push(async (c) => c.text('@critic review my plan, please.'));
   adapter.next.push(async (c) => {
     said = c.tools.review_block({ blockId: 'plan', comments: [{ line: 1, text: 'A clearer title.' }] });
     c.text('Commented.');

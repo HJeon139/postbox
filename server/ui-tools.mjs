@@ -7,7 +7,6 @@ import { bringToConversation } from './bring.mjs';
 import { cancelWake, scheduleWakeTool } from './schedule-tools.mjs';
 import { recordedTools } from './scheduled-wakes.mjs';
 import { searchConversation } from './search-conversation.mjs';
-import { wakeAgent } from './side-threads.mjs';
 import { askForTool } from './tool-ask.mjs';
 import { openTopic } from './topic-open.mjs';
 import { wokeOf } from './turn-marks.mjs';
@@ -44,7 +43,6 @@ export function toolsFor(rt, sessionId, turn = null) {
     propose_agent: (args) => proposeAgent(rt, sessionId, { turn, se, threadId, endSegment }, args),
     schedule_wake: (args) => scheduleWakeTool(rt, sessionId, args),
     cancel_wake: (args) => cancelWake(rt, sessionId, args),
-    wake_agent: (args) => wakeAgent(rt, sessionId, args),
     open_topic: (args) => openTopic(rt, sessionId, args),
     bring_to_conversation: (args = {}) => bringToConversation(rt, sessionId, turn, args),
     read_conversation(args = {}) {

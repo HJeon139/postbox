@@ -129,30 +129,13 @@ test('#128: a topic thread’s agent can bring something to the conversation too
   );
 });
 
-test('#351: a wake_agent message or bring_to_conversation text past the limit is refused, and nothing is sent or posted', async () => {
-  const { store, rt, adapter, t } = setup();
+test('#351: bring_to_conversation text past the limit is refused, and nothing is posted', async () => {
+  const f = setup();
+  const { store, rt, adapter, t } = f;
   const long = 'x'.repeat(SENDING.message + 1);
   let result;
-  adapter.next.push(async (c) => {
-    result = c.tools.wake_agent({ handle: 'beta', message: long });
-  });
-  rt.sendMessage(t.id, { text: '@alpha ask beta' });
-  await settle(rt);
-  assert.equal(result.ok, false);
-  assert.match(result.message, /up to 50,000 characters, and this one has 50,001, so nothing was sent/);
-  assert.deepEqual(
-    adapter.calls.map((c) => c.handle),
-    ['alpha'],
-    'beta wasn’t woken',
-  );
-  assert.equal(
-    store.items(t.id).some((x) => x.text === long),
-    false,
-    'nothing was posted',
-  );
   // From a topic thread the person asked in, at the limit it posts; past it, it doesn’t.
-  const root = store.items(t.id).find((x) => x.kind === 'user');
-  const topic = rt.startTopic(t.id, root.id).threadId;
+  const topic = (await withTopic(f)).id;
   for (const text of [long, 'y'.repeat(SENDING.message)]) {
     adapter.next.push(async (c) => {
       result = c.tools.bring_to_conversation({ text });
@@ -185,7 +168,7 @@ test('#128, #372: bring_to_conversation is offered over MCP only to the person�
     const tools = await listFor(se);
     h.release();
     await settle(rt);
-    assert.ok(tools.includes('wake_agent'));
+    assert.ok(tools.includes('open_topic'), 'the list is the turn’s tools');
     return tools.includes('bring_to_conversation');
   };
   // A wake, in the conversation or in a topic thread: another agent started it.

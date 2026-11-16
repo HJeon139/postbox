@@ -14,9 +14,9 @@ const toldOf = (f, se) => (f.store.state.sessions[se.id].context ?? []).join(' |
 function heldOnAlphasCard() {
   const f = setup();
   f.rt.createPersona({ handle: 'delta' });
-  f.rt.toolsFor(f.alpha.id).wake_agent({ handle: 'gamma', message: 'Check the numbers.' });
+  f.rt.agentWake(f.alpha.id, 'gamma', 'Check the numbers.');
   const open = f.store.items(f.t.id).find((i) => i.kind === 'hop' && i.status === 'open');
-  const r = f.rt.toolsFor(f.beta.id).wake_agent({ handle: 'delta', message: 'Draw the chart.' });
+  const r = f.rt.agentWake(f.beta.id, 'delta', 'Draw the chart.');
   assert.equal(r.held, true, 'beta’s wake is held on alpha’s card');
   return { ...f, open };
 }
@@ -29,7 +29,7 @@ test('#693 a card whose agent is removed closes, and the agent whose wake was he
   await settle(f.rt);
   assert.equal(card(f, f.open.id).status, 'closed');
   assert.match(toldOf(f, f.beta), /Your message to @delta \(“Draw the chart.”\), held on @alpha’s request to add @gamma.*didn’t go: @alpha was removed/);
-  const again = f.rt.toolsFor(f.beta.id).wake_agent({ handle: 'delta', message: 'Draw the chart.' });
+  const again = f.rt.agentWake(f.beta.id, 'delta', 'Draw the chart.');
   assert.deepEqual([again.waiting, again.held], [true, undefined], 'the next wake asks the person with a card of its own');
 });
 
@@ -39,7 +39,7 @@ test('#693 Stop leaves the card open: the person can still answer it', async () 
   f.adapter.next.push(work.step);
   f.rt.sendMessage(f.t.id, { text: '@alpha go on' });
   await sleep(5);
-  f.rt.toolsFor(f.alpha.id).wake_agent({ handle: 'gamma', message: 'Check the numbers.' });
+  f.rt.agentWake(f.alpha.id, 'gamma', 'Check the numbers.');
   const open = f.store.items(f.t.id).find((i) => i.kind === 'hop' && i.status === 'open');
   assert.equal(f.rt.stop(f.alpha.id), true, 'a turn was running, so Stop reached its wakes');
   work.release();

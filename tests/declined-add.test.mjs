@@ -1,6 +1,6 @@
 // #693: once the person declines adding an agent to a conversation, a prose @-mention of it there raises no new card,
 // and its sender is told. On 2 November a third card for the same agent, raised 36 s after the second decline, held the
-// room's wakes for hours. wake_agent stays a deliberate ask, and raises a card.
+// room's wakes for hours.
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
@@ -48,13 +48,6 @@ test('#693 the decline holds after a restart, since the card is in the store', a
   assert.equal(addCards(f).length, 1);
 });
 
-test('#693 wake_agent for a declined agent still asks the person: it’s a deliberate ask', async () => {
-  const f = await declined();
-  const r = f.rt.toolsFor(f.alpha.id).wake_agent({ handle: 'gamma', message: 'I really need gamma for this.' });
-  assert.equal(r.waiting, true);
-  assert.equal(addCards(f).length, 2, 'a new card');
-});
-
 test('#693 a decline in one conversation doesn’t stop a mention in another', async () => {
   const f = await declined();
   const t2 = f.rt.createThread({ projectId: 'p1', title: 'T2', personaIds: [f.a.id] });
@@ -72,7 +65,7 @@ test('#693 declining one agent doesn’t stop a prose mention of another the con
 
 test('#693 the issue’s acceptance, which passes on main too: declining a card tells the sender of a mention held on it', async () => {
   const f = setup();
-  f.rt.toolsFor(f.alpha.id).wake_agent({ handle: 'gamma', message: 'Check the numbers.' });
+  f.rt.agentWake(f.alpha.id, 'gamma', 'Check the numbers.');
   const [card] = addCards(f);
   await says(f, f.beta, 'And @gamma, the totals too.');
   assert.equal(f.store.item(f.t.id, card.id).held?.length, 1, 'beta’s mention is held on alpha’s card');
@@ -84,7 +77,8 @@ test('#693 the issue’s acceptance, which passes on main too: declining a card 
 
 test('#693 a later add the person allowed lifts the decline: once that agent is removed, a mention asks again', async () => {
   const f = await declined();
-  f.rt.toolsFor(f.alpha.id).wake_agent({ handle: 'gamma', message: 'I really need gamma for this.' });
+  // A wake that isn’t a prose mention still asks after a decline.
+  f.rt.agentWake(f.alpha.id, 'gamma', 'I really need gamma for this.');
   const second = addCards(f).find((c) => c.status === 'open');
   f.rt.resolveHop(f.t.id, second.id, true);
   await settle(f.rt);
@@ -105,7 +99,7 @@ test('#693 a card retiring forks declined isn’t the person’s decline', async
 test('#693 a mention of a declined agent while another card waits is refused, not held on that card', async () => {
   const f = await declined();
   f.rt.createPersona({ handle: 'delta' });
-  f.rt.toolsFor(f.alpha.id).wake_agent({ handle: 'delta', message: 'Chart?' });
+  f.rt.agentWake(f.alpha.id, 'delta', 'Chart?');
   const r = f.rt.agentWake(f.beta.id, 'gamma', 'And gamma.', { itemId: 'it_u', prose: true });
   assert.deepEqual([r.ok, r.held], [false, undefined]);
   assert.match(r.message, /chose not to add @gamma/);
@@ -120,7 +114,7 @@ test('#693 a declined wake-limit card for an agent isn’t a declined add', asyn
 
 test('#693 a card closed because its agent was removed isn’t a decline: a later mention asks the person', async () => {
   const f = setup();
-  f.rt.toolsFor(f.alpha.id).wake_agent({ handle: 'gamma', message: 'Check the numbers.' });
+  f.rt.agentWake(f.alpha.id, 'gamma', 'Check the numbers.');
   f.rt.deleteSession(f.alpha.id);
   assert.equal(addCards(f)[0].status, 'closed');
   await says(f, f.beta, 'Then @gamma can take a look.');
@@ -184,7 +178,7 @@ test('#789 a decline after the person’s add holds', async () => {
   f.rt.sendMessage(f.t.id, { text: '@gamma please join' });
   await settle(f.rt);
   removeGamma(f);
-  f.rt.toolsFor(f.alpha.id).wake_agent({ handle: 'gamma', message: 'I need gamma again.' });
+  f.rt.agentWake(f.alpha.id, 'gamma', 'I need gamma again.');
   const again = addCards(f).find((c) => c.status === 'open');
   f.rt.resolveHop(f.t.id, again.id, false);
   await settle(f.rt);
@@ -229,4 +223,13 @@ test('#789 the person’s add behind a held commit lifts a decline held with it'
   removeGamma(f);
   assert.equal(mentionAsks(f), true, 'the decline and the add were held together: the add is the latest answer');
   await h.store.close();
+});
+
+test('#693 after the person declines adding an agent, open_topic’s first message that mentions it raises no new card either', async () => {
+  // Its mentions are read from its text since open_topic lost `mentions`, so they’re prose, as a reply’s are.
+  const f = await declined();
+  const root = arrange.post(f.rt, f.t.id, { kind: 'agent', sessionId: f.beta.id, handle: 'beta', text: 'The numbers.', status: 'done' });
+  f.rt.toolsFor(f.beta.id).open_topic({ itemId: root.id, message: '@gamma could check these later.' });
+  await settle(f.rt);
+  assert.equal(addCards(f).length, 1, 'no second card');
 });

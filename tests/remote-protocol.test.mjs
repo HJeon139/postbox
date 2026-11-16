@@ -6,7 +6,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import { TOOL_DEFS } from '../shared/mcp-tools.mjs';
+import { GONE_TOOLS, TOOL_DEFS } from '../shared/mcp-tools.mjs';
 import {
   CHANNEL_NAMES,
   ERROR_CODES,
@@ -84,7 +84,8 @@ test('message() builds a valid message and throws on a refused one, naming the f
 });
 
 test('every Postbox tool has a route on the host, and nothing else does', () => {
-  assert.deepEqual(Object.keys(TOOL_ROUTES).sort(), TOOL_DEFS.map((t) => t.name).sort());
+  // A gone tool keeps its route, so a resumed host session’s call reaches Postbox and is told what to do instead.
+  assert.deepEqual(Object.keys(TOOL_ROUTES).sort(), [...TOOL_DEFS.map((t) => t.name), ...Object.keys(GONE_TOOLS)].sort());
   assert.equal(TOOL_ROUTES.permission_prompt, 'host');
   assert.equal(TOOL_ROUTES.search_assets, 'ask');
   assert.equal(TOOL_ROUTES.review_block, 'ask');

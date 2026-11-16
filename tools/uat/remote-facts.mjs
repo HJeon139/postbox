@@ -23,6 +23,8 @@
 
 /** Where an agent runs in this run: a host’s label, or 'local'. Unplaced agents, and a run without hosts, are local. */
 export const placeOf = (f, handle) => f.hosts?.placement?.[handle] ?? 'local';
+/** Where an agent runs, as a check’s evidence names it: this computer, or its host’s label. */
+export const placeName = (f, handle) => (placeOf(f, handle) === 'local' ? 'this computer' : placeOf(f, handle));
 /** The host Postbox made for a label. */
 export const hostIdOf = (f, label) => f.hosts?.hosts?.find((h) => h.label === label)?.id ?? null;
 /** The label of a host Postbox made. */

@@ -2,7 +2,8 @@
 // open_topic. Moved from server/runtime.mjs, whose Runtime keeps a method that delegates to it.
 
 import { positionOf } from '../shared/item-index.mjs';
-import { HANDLE, HANDLE_SHAPE, SENDING } from '../shared/limits.mjs';
+import { parseMentions } from '../shared/text.mjs';
+import { copiedLine } from './copied-line.mjs';
 import { clip, httpError, tooLongToSend } from './helpers.mjs';
 import { newId } from './store.mjs';
 
@@ -52,27 +53,19 @@ export function startTopic(rt, threadId, itemId) {
 
 /**
  * open_topic (#637): an agent opens the topic thread of a message in its own conversation, or finds the one it has,
- * through startTopic, the page's own path. Its first message, if any, posts there as wake_agent's does, waking each
- * agent it names; one message serves every mention. Nothing is stored that the page's open doesn't store, so A2
- * converts it with everything else (designs/508/637-open-topic.md).
+ * through startTopic, the page's own path. Its first message, if any, posts there as the agent's own, and wakes each
+ * agent it @-mentions, read as a reply's mentions are (parseMentions with copiedLine): an @-mention is the only way one
+ * agent wakes another (designs/rooms-at-scale.md, “After `wake_agent` goes”). One message serves every mention. Nothing
+ * is stored that the page's open doesn't store, so A2 converts it with everything else (designs/508/637-open-topic.md).
  * @param {import('./runtime.mjs').Runtime} rt @param {string} sessionId
- * @param {{ itemId?: string, message?: string, mentions?: string[] }} args
+ * @param {{ itemId?: string, message?: string }} args
  */
-export function openTopic(rt, sessionId, { itemId, message, mentions }) {
+export function openTopic(rt, sessionId, { itemId, message }) {
   const se = rt.session(sessionId);
   const text = String(message ?? '').trim() ? String(message) : '';
   const tooLong = text && tooLongToSend('A topic thread’s first message', text);
   if (tooLong) return tooLong;
-  if (mentions !== undefined && !(Array.isArray(mentions) && mentions.every((h) => typeof h === 'string')))
-    return { ok: false, message: 'mentions is a list of handles, such as ["critic"].' };
-  if (mentions && mentions.length > SENDING.mentions)
-    return { ok: false, message: `mentions names up to ${SENDING.mentions} handles: one message wakes at most that many.` };
-  const handles = [...new Set((mentions ?? []).map((h) => h.trim().replace(/^@/, '')).filter(Boolean))];
-  // The whole call is refused, before anything is written, and never echoes what was sent: it’s an agent’s text.
-  if (!handles.every((h) => HANDLE.test(h))) return { ok: false, message: `mentions has something that isn’t a handle: ${HANDLE_SHAPE}.` };
-  if (mentions?.length && !handles.length) return { ok: false, message: 'mentions names no handle: give each as a handle, such as ["critic"].' };
-  // Checked before anything opens: a mention is woken by the message, so with none there's nothing to wake them with.
-  if (handles.length && !text) return { ok: false, message: 'mentions need a message: they’re woken by it, in the topic thread.' };
+  const handles = text ? parseMentions(text, rt.personas.handles(), copiedLine(rt, se)).filter((h) => h.toLowerCase() !== se.handle.toLowerCase()) : [];
   let opened;
   try {
     opened = startTopic(rt, conversationOf(rt, se, String(itemId ?? '')), String(itemId ?? ''));
@@ -125,8 +118,9 @@ function repeatOf(rt, se, threadId, text, handles, created) {
 }
 
 /**
- * Posts the first message in the topic as the agent's own, then wakes each agent it names from it, as a turn's later
- * mentions reuse its message (agentWake's `itemId`). Posting first means the ask is never lost when every wake is
+ * Posts the first message in the topic as the agent's own, then wakes each agent it @-mentions from it, as prose, as
+ * a reply's mentions are (a declined agent isn't asked about again, #693), and as a turn's later mentions reuse its
+ * message (agentWake's `itemId`). Posting first means the ask is never lost when every wake is
  * refused (a self-mention, a mistyped handle), and a card keeps the message's id, so Allow wakes from it rather than
  * posting it again; the reply carries each wake's result. It keeps the handles it named (`opened`), which I6 compares;
  * A2's records carry the same as the message's addressees. Returns the message's id and the wakes' replies.
@@ -136,5 +130,5 @@ function post(rt, se, threadId, text, handles) {
   const opened = named(handles);
   const message = { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text, status: 'done', opened, fromTurnId };
   const it = rt.threads.addItem(threadId, message);
-  return { id: it.id, woke: handles.map((h) => rt.agentWake(se.id, h, text, { replyIn: threadId, itemId: it.id, fromTurnId }).message) };
+  return { id: it.id, woke: handles.map((h) => rt.agentWake(se.id, h, text, { replyIn: threadId, itemId: it.id, fromTurnId, prose: true }).message) };
 }

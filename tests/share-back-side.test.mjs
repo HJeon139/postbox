@@ -54,23 +54,6 @@ test('#225: the person can name the side thread’s other agent to write it, and
   assert.throws(() => rt.summarizeBack(t.id), { status: 409, message: /Only a topic or side thread/ });
 });
 
-test('#225: a summary’s wake_agent wakes no one either, and the agent is told why', async () => {
-  const { store, rt, adapter, t, side } = await sideThread();
-  let said = null;
-  adapter.next.push(async (c) => {
-    said = c.tools.wake_agent({ handle: 'beta', message: 'Check my summary.' });
-    c.text('Two chapters differ.');
-  });
-  const before = adapter.calls.length;
-  const hops = store.state.threads[t.id].hops;
-  rt.summarizeBack(side.id);
-  await settle(rt);
-  assert.equal(said?.ok, false);
-  assert.match(said?.message ?? '', /wakes no one/);
-  assert.equal(adapter.calls.length, before + 1, 'only the summary’s own turn ran');
-  assert.equal(store.state.threads[t.id].hops, hops);
-});
-
 test('#225: nor does a summary’s review_block, which would wake the block’s agent and post on its block', async () => {
   const { store, rt, adapter, t, side, beta } = await sideThread();
   const block = { id: 'plan', type: 'review', version: 1, title: 'plan.md', fallback: 'The plan', format: 'markdown', content: 'One.\nTwo.' };
@@ -89,12 +72,12 @@ test('#225: nor does a summary’s review_block, which would wake the block’s 
   assert.equal(store.items(t.id).find((i) => i.kind === 'block')?.block.threads, undefined, 'no comment on the block');
 });
 
-test('#225: nor does a summary’s open_topic: its message posts, and each mention is refused as wake_agent refuses it', async () => {
+test('#225: nor does a summary’s open_topic: its message posts, and each mention in it is refused, and the reply says why', async () => {
   const { store, rt, adapter, t, side } = await sideThread();
   const root = arrange.post(rt, t.id, { kind: 'user', text: 'Which editions differ?' });
   let said = null;
   adapter.next.push(async (c) => {
-    said = c.tools.open_topic({ itemId: root.id, message: 'Check my summary.', mentions: ['beta'] });
+    said = c.tools.open_topic({ itemId: root.id, message: '@beta check my summary.' });
     c.text('Two chapters differ.');
   });
   const before = adapter.calls.length;
@@ -108,11 +91,8 @@ test('#225: nor does a summary’s open_topic: its message posts, and each menti
 
 test('#697: a card raised before a summary began still wakes on Allow while the summary runs: only the summary’s own turn wakes no one', async () => {
   const { store, rt, adapter, t, side, c } = await sideThread();
-  // Turn A: alpha wakes gamma, whom the conversation doesn’t have, so a card asks the person to add it.
-  adapter.next.push(async (ctx) => {
-    ctx.tools.wake_agent({ handle: 'gamma', message: 'Please check the totals.' });
-    ctx.text('Asked gamma.');
-  });
+  // Turn A: alpha mentions gamma, whom the conversation doesn’t have, so a card asks the person to add it.
+  adapter.next.push(async (ctx) => ctx.text('@gamma please check the totals.'));
   rt.sendMessage(t.id, { text: '@alpha get gamma to check' });
   await settle(rt);
   const card = store.items(t.id).find((i) => i.kind === 'hop' && i.status === 'open');

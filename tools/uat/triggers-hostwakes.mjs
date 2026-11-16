@@ -11,7 +11,8 @@
 // was refused, whatever else woke the target meanwhile. Whether its sender was told reads which turns follow.
 
 import { clip } from '../../server/helpers.mjs';
-import { agentTurns, onHost, placeOf } from './remote-facts.mjs';
+import { heldMentions } from './hostwakes-held.mjs';
+import { agentTurns, onHost, placeName } from './remote-facts.mjs';
 import { resultText } from './trigger-facts.mjs';
 
 const MINUTE = 60_000;
@@ -202,7 +203,6 @@ function receivedFor(c, received, from, to) {
 
 /** The calls Postbox refused: a hop card was waiting, and it didn’t send the call’s message to its target. */
 const refused = (f) => wakeCalls(f).filter((c) => c.cardOpen && !c.applied);
-const where = (f, h) => (placeOf(f, h) === 'local' ? 'this computer' : placeOf(f, h));
 
 /**
  * The defects, as checks (tools/uat/checks-remote.mjs): a refused wake that its host sender was told was sent, and a
@@ -219,7 +219,7 @@ export const HOSTWAKE_CHECKS = [
             .filter((c) => c.onHost && /Sent your message|applies it as soon/i.test(c.text))
             .map((c) => ({
               key: `${c.from}:${c.to}:${c.at}`,
-              title: `@${c.from} on ${where(f, c.from)} was told its wake of @${c.to} was sent, and Postbox refused it`,
+              title: `@${c.from} on ${placeName(f, c.from)} was told its wake of @${c.to} was sent, and Postbox refused it`,
               evidence: `wake_agent answered “${c.text.slice(0, 80)}”, but Postbox didn’t send it to @${c.to} within a minute: a wake card was waiting.`,
             }))
         : [],
@@ -277,7 +277,7 @@ export const HOSTWAKE_TRIGGERS = {
         .filter((c) => c.onHost && c.at !== null && c.senderNext !== null && c.senderNext <= c.at + APPLIED_MS)
         .map((c) => ({
           at: c.senderNext,
-          evidence: `@${c.from} (${where(f, c.from)}) started a turn ${Math.round(/** @type {number} */ (c.senderNext - /** @type {number} */ (c.at)) / 1000)} s after its refused wake of @${c.to}.`,
+          evidence: `@${c.from} (${placeName(f, c.from)}) started a turn ${Math.round(/** @type {number} */ (c.senderNext - /** @type {number} */ (c.at)) / 1000)} s after its refused wake of @${c.to}.`,
         })),
   },
   'local-wake-told-in-turn': {
@@ -291,12 +291,14 @@ export const HOSTWAKE_TRIGGERS = {
   },
   'wake-held-on-card': {
     issue: 439,
-    says: 'a wake that needed a card while one waited was held on it, and wake_agent said so',
+    says: 'a wake that needed a card while one waited was held on it: a mention, as the card keeps it, or wake_agent before #481',
     recorded: (f) => !!f.state && Array.isArray(f.streams),
-    run: (f) =>
-      wakeCalls(f)
+    run: (f) => [
+      ...wakeCalls(f)
         .filter((c) => c.held)
-        .map((c) => ({ at: c.at, evidence: `@${c.from}’s wake of @${c.to} is held (${where(f, c.from)}): “${c.text.slice(0, 100)}”.` })),
+        .map((c) => ({ at: c.at, evidence: `@${c.from}’s wake of @${c.to} is held (${placeName(f, c.from)}): “${c.text.slice(0, 100)}”.` })),
+      ...heldMentions(f),
+    ],
   },
   'held-wake-delivered-after-allow': {
     issue: 439,

@@ -13,14 +13,14 @@ import { heldStore } from './stop-reply-fixture.mjs';
 function heldForAlpha() {
   const f = setup();
   f.rt.createPersona({ handle: 'delta' });
-  f.rt.toolsFor(f.alpha.id).wake_agent({ handle: 'gamma', message: 'Check the numbers.' });
-  f.rt.toolsFor(f.beta.id).wake_agent({ handle: 'delta', message: 'Draw the chart.' });
+  f.rt.agentWake(f.alpha.id, 'gamma', 'Check the numbers.');
+  f.rt.agentWake(f.beta.id, 'delta', 'Draw the chart.');
   return f;
 }
 
 test('#693 a message held for an agent in the room is named in its catch-up while the card waits', async () => {
   const f = setup();
-  f.rt.toolsFor(f.alpha.id).wake_agent({ handle: 'gamma', message: 'Check the numbers.' });
+  f.rt.agentWake(f.alpha.id, 'gamma', 'Check the numbers.');
   const card = f.store.items(f.t.id).find((i) => i.kind === 'hop' && i.status === 'open');
   arrange.setItem(f.rt, f.t.id, card.id, { held: [{ fromSessionId: f.beta.id, from: 'beta', to: 'alpha', text: 'Approved: #12 and #13.', at: Date.now() }] });
   const text = arrange.catchUp(f.rt, f.store.state.sessions[f.alpha.id]) ?? '';

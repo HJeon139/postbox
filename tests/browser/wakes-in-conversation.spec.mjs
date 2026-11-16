@@ -1,4 +1,4 @@
-// Agents talk in the conversation (#372): an agent's @-mention, or its wake_agent message, wakes another there, both
+// Agents talk in the conversation (#372): an agent's @-mention wakes another there, both
 // messages show in the main transcript, and no side thread or side-thread line appears; the reply goes back to the
 // waker only if it @-mentions it. A side thread from before #372 opens read-only: a note in place of its composer.
 // Each test has a room of its own (tests/browser/side-threads.mjs).
@@ -60,25 +60,6 @@ test('an agent’s @-mention wakes another in the conversation: both messages sh
   });
   // @indexer’s reply doesn’t @-mention @researcher, so @researcher isn’t woken again.
   expect(held.turns.slice(before).filter((t) => t.sessionId === r.researcher.id).length, 'no reply-back').toBe(1);
-});
-
-test('wake_agent posts its message in the conversation as the waker’s, and the woken agent answers there', async ({ page }) => {
-  const { rt, store } = app;
-  const r = room('Tool');
-  held.scripts.set(r.researcher.id, (ctx) => {
-    ctx.tools.wake_agent({ handle: 'indexer', message: 'Index the 1999 edition too.' });
-    ctx.text('Asked indexer for it.');
-  });
-  held.scripts.set(r.indexer.id, (ctx) => ctx.text('The 1999 edition is indexed.'));
-  await open(page, `#/t/${r.room.id}`);
-  rt.sendMessage(r.room.id, { text: '@researcher get the 1999 edition indexed' });
-  await expect.poll(() => held.turns.some((t) => t.sessionId === r.indexer.id && t.thread === r.room.id), { message: 'indexer’s turn there' }).toBe(true);
-  await r.idle();
-  const wake = store.items(r.room.id).find((x) => x.kind === 'agent' && x.text === 'Index the 1999 edition too.');
-  expect(wake, 'the wake is @researcher’s message in the conversation').toMatchObject({ handle: 'researcher', hop: 1 });
-  await expect(said(page, 'Index the 1999 edition too.')).toBeVisible();
-  await expect(said(page, 'The 1999 edition is indexed.')).toBeVisible();
-  expect(r.sideOf(), 'no side thread').toBeUndefined();
 });
 
 test('a side thread from before #372 opens read-only: its lines, and a note where the composer was', async ({ page }) => {

@@ -29,15 +29,12 @@ const noForks = (store) =>
 
 test('#228 UAT 1, #372: an agent answering in a topic thread wakes @beta, and the conversation’s @beta answers there', async () => {
   const { store, rt, adapter, alpha, beta, topic } = await topicOnReply();
-  adapter.next.push(async (c) => {
-    c.tools.wake_agent({ handle: 'beta', message: 'Your one-sentence opinion on test_converter.py?' });
-    c.text('Asked the reviewer.');
-  });
+  adapter.next.push(async (c) => c.text('@beta your one-sentence opinion on test_converter.py?'));
   adapter.next.push(async (c) => c.text('It covers the edge cases.'));
   rt.sendMessage(topic.id, { text: '@alpha get the reviewer agent’s one-sentence opinion on test_converter.py' });
   await settle(rt);
   assert.equal(adapter.calls.find((x) => x.message.text?.startsWith('@alpha get')).sessionId, alpha.id);
-  const answer = adapter.calls.find((x) => x.message.text === 'Your one-sentence opinion on test_converter.py?');
+  const answer = adapter.calls.find((x) => x.message.text === '@beta your one-sentence opinion on test_converter.py?');
   assert.deepEqual([answer.sessionId, answer.thread], [beta.id, topic.id]);
   assert.ok(store.items(topic.id).some((x) => x.sessionId === beta.id && x.text === 'It covers the edge cases.'));
   assert.equal(
@@ -53,32 +50,26 @@ test('#228 UAT 1, #372: an agent answering in a topic thread wakes @beta, and th
 test('#228 UAT 2, #372: naming both agents in a topic thread reaches their two sessions, and the wake waits for @beta there', async () => {
   const { store, rt, adapter, beta, topic } = await topicOnReply();
   const reviewing = held();
-  /** @type {any} */
-  let r = null;
-  adapter.next.push(async (c) => {
-    r = c.tools.wake_agent({ handle: 'beta', message: 'Please review converter.py.' });
-    c.text('Asked the reviewer.');
-  });
+  adapter.next.push(async (c) => c.text('@beta please review converter.py.'));
   adapter.next.push(reviewing.step);
   rt.sendMessage(topic.id, { text: '@alpha please ask @beta to review converter.py' });
   await sleep(20);
-  // @beta is busy with your message, so the wake waits for its turn.
-  assert.equal(r.message, 'Woke @beta: it’s busy, so it answers when its current turn ends.');
+  // @beta is busy with your message, so alpha’s mention waits in its inbox for its turn.
   assert.deepEqual(
     arrange.waitingEntries(rt, beta.id).map((e) => [e.threadId, store.items(topic.id).find((x) => x.id === e.itemId)?.text]),
-    [[topic.id, 'Please review converter.py.']],
+    [[topic.id, '@beta please review converter.py.']],
   );
   reviewing.release();
   await settle(rt);
   assert.equal(sessions(store).length, 2, 'two sessions, not six');
   noForks(store);
-  const woke = adapter.calls.find((x) => x.message.text === 'Please review converter.py.');
+  const woke = adapter.calls.find((x) => x.message.text === '@beta please review converter.py.');
   assert.deepEqual([woke.sessionId, woke.thread], [beta.id, topic.id]);
 });
 
 test('#228: waking a persona the conversation doesn’t have asks the person; Allow adds it and delivers the wake', async () => {
   const { store, rt, adapter, t, c, alpha } = setup();
-  const r = rt.toolsFor(alpha.id).wake_agent({ handle: 'gamma', message: 'Check the numbers.' });
+  const r = rt.agentWake(alpha.id, 'gamma', 'Check the numbers.');
   assert.equal(r.ok, false);
   assert.match(r.message, /@gamma isn’t in this conversation, so the person was asked to add it/);
   assert.equal(sessionsOfPersona(store, c.id).length, 0, 'no session until the person says so');

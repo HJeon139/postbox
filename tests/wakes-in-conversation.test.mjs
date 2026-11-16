@@ -62,7 +62,7 @@ test('#372 a hand-off that needs the waker to act wakes it exactly once', async 
   assert.equal(store.state.threads[t.id].hops, 0);
 });
 
-test('#372 wake_agent posts its message in the conversation as the waker’s, with its number in the chain', async () => {
+test('#372 a wake with a message of its own posts it in the conversation as the waker’s, with its number in the chain', async () => {
   const { store, rt, adapter, t, alpha, beta } = setup();
   const r = rt.agentWake(alpha.id, 'beta', 'Which editions?');
   assert.equal(r.ok, true);

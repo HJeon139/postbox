@@ -1,6 +1,7 @@
 // #637: an agent opens a topic thread from any message of its conversation with open_topic, and the first message there
-// reaches whom it mentions, as wake_agent's does (designs/508/637-open-topic.md). The tool calls the page's startTopic
-// and wake_agent's path, so it adds no shape of its own. The agents are tests/side-threads-fixture.mjs's.
+// wakes each agent it @-mentions, read as a reply's mentions are (designs/508/637-open-topic.md; designs/rooms-at-scale.md,
+// “After `wake_agent` goes”). The tool calls the page's startTopic and the runtime's agentWake, so it adds no shape of its
+// own. The agents are tests/side-threads-fixture.mjs's.
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
@@ -74,7 +75,7 @@ test('a mention in the first message wakes that agent in the thread, and two men
   // gamma isn't in the conversation, so its wake asks the person to add it: the message still posts once.
   const r = await alphaTurn(f, (tools) => {
     f.adapter.next.push(async (c) => c.text('Both fixes look right.')); // beta's turn, which the open wakes
-    return tools.open_topic({ itemId: f.reply.id, message: 'Please check the two fixes', mentions: ['beta', 'gamma'] });
+    return tools.open_topic({ itemId: f.reply.id, message: '@beta @gamma please check the two fixes' });
   });
   assert.equal(r?.ok, true, JSON.stringify(r));
   await settle(f.rt);
@@ -155,43 +156,27 @@ test('the opener answers first there: your message in a topic beta opened, with 
   assert.equal(f.adapter.calls.at(-1).sessionId, f.beta.id, 'beta, the opener, answered');
 });
 
-test('a repeated open that names a different agent is not a repeat: it posts (I6, by handle, not by count)', async () => {
+test('a first message that mentions only the opener, or no agent there is, still posts once, as the opener’s own, and wakes no one', async () => {
   const f = await conversation();
-  f.rt.ensureSession(f.t.id, f.c.id); // gamma joins the conversation, so it can be woken
-  const one = await alphaTurn(f, (tools) => tools.open_topic({ itemId: f.reply.id, message: 'Please check', mentions: ['beta'] }));
-  await settle(f.rt);
-  const two = await alphaTurn(f, (tools) => tools.open_topic({ itemId: f.reply.id, message: 'Please check', mentions: ['gamma'] }));
-  await settle(f.rt);
-  assert.equal(two?.threadId, one?.threadId);
-  assert.equal(
-    f.store.items(one.threadId).filter((i) => i.kind === 'agent' && i.sessionId === f.alpha.id && i.text === 'Please check').length,
-    2,
-    'the second names gamma, one mention as the first had, so it posts',
-  );
-});
-
-test('a first message whose every mention is refused still posts, as the opener’s own, and the reply says why each was refused', async () => {
-  const f = await conversation();
-  // The integrator's probe: a self-mention, and a mistyped handle. Neither wake posts, so the message must post anyway.
-  for (const [mentions, refusal] of [
-    [['alpha'], /@alpha is you/],
-    [['ghost0'], /no agent called @ghost0/],
-  ]) {
-    const text = `Notes for ${mentions[0]}`;
-    const r = await alphaTurn(f, (tools) => tools.open_topic({ itemId: f.reply.id, message: text, mentions }));
+  // The integrator's probe: a self-mention, and a mistyped handle. Neither is a mention a reply would wake, so the
+  // message posts with no wake, and no handles kept for I6.
+  for (const text of ['@alpha notes for me', '@ghost0 notes for ghost0']) {
+    const turns = f.adapter.calls.length;
+    const r = await alphaTurn(f, (tools) => tools.open_topic({ itemId: f.reply.id, message: text }));
     assert.equal(r?.ok, true, JSON.stringify(r));
-    assert.match(r.message, refusal, 'the reply names the refusal');
+    assert.equal(r.posted, true, text);
     const posted = f.store.items(r.threadId).filter((i) => i.kind === 'agent' && i.sessionId === f.alpha.id && i.text === text);
-    assert.equal(posted.length, 1, `the message posted once, for ${mentions[0]}`);
-    assert.equal(posted[0].opened, mentions[0], 'keeping the handles it named, for I6');
+    assert.equal(posted.length, 1, `the message posted once: ${text}`);
+    assert.equal(posted[0].opened, '', 'it named no one to wake');
+    assert.equal(f.adapter.calls.length, turns + 1, 'only the opener’s own turn ran: no one was woken');
   }
 });
 
 test('a first message whose only mention waits on a card posts once, and allowing the card doesn’t post it again', async () => {
   const f = await conversation();
   // gamma isn't in the conversation, so its wake asks the person to add it (askToAdd), with no wake to post the message.
-  const text = 'Gamma, please check the totals';
-  const r = await alphaTurn(f, (tools) => tools.open_topic({ itemId: f.reply.id, message: text, mentions: ['gamma'] }));
+  const text = '@gamma please check the totals';
+  const r = await alphaTurn(f, (tools) => tools.open_topic({ itemId: f.reply.id, message: text }));
   assert.equal(r?.ok, true, JSON.stringify(r));
   const mine = () => f.store.items(r.threadId).filter((i) => i.kind === 'agent' && i.sessionId === f.alpha.id && i.text === text);
   assert.equal(mine().length, 1, 'posted once, as the opener’s own');
@@ -203,42 +188,7 @@ test('a first message whose only mention waits on a card posts once, and allowin
   assert.equal(mine().length, 1, 'Allow wakes gamma from the message already there, not a second copy');
 });
 
-test('open_topic refuses mentions with no message, before it opens anything', async () => {
-  const f = await conversation();
-  const r = await alphaTurn(f, (tools) => tools.open_topic({ itemId: f.reply.id, mentions: ['beta'] }));
-  assert.equal(r?.ok, false, JSON.stringify(r));
-  assert.match(r.message, /message/);
-  assert.equal(topics(f.store).length, 0, 'nothing opened');
-});
-
-test('open_topic refuses mentions that aren’t a list of handles, before it opens anything (#650)', async () => {
-  const f = await conversation();
-  const r = await alphaTurn(f, (tools) => {
-    try {
-      return tools.open_topic({ itemId: f.reply.id, message: 'Please check', mentions: 'beta' });
-    } catch (e) {
-      return { thrown: String(e) };
-    }
-  });
-  assert.equal(r?.ok, false, JSON.stringify(r));
-  assert.match(r.message, /list of handles/);
-  assert.equal(topics(f.store).length, 0, 'nothing opened');
-});
-
-test('open_topic refuses a mention with a message of only spaces, and mentions that name no handle', async () => {
-  const f = await conversation();
-  const r = await alphaTurn(f, (tools) => [
-    tools.open_topic({ itemId: f.reply.id, message: '   \n ', mentions: ['beta'] }),
-    tools.open_topic({ itemId: f.reply.id, message: 'Please check', mentions: ['@'] }),
-  ]);
-  assert.equal(r?.[0]?.ok, false, JSON.stringify(r?.[0]));
-  assert.match(r[0].message, /need a message/);
-  assert.equal(r?.[1]?.ok, false, JSON.stringify(r?.[1]));
-  assert.match(r[1].message, /names no handle/);
-  assert.equal(topics(f.store).length, 0, 'nothing opened');
-});
-
-test('open_topic is quiet, as wake_agent is (#654)', () => {
+test('open_topic is quiet, and so is a call to wake_agent by name, which a resumed session may make (#654)', () => {
   // It shows in the conversation as the topic it opens and the message it posts, not as a step; every backend asks this.
   assert.equal(isQuietTool('mcp__postbox__wake_agent'), true);
   assert.equal(isQuietTool('mcp__postbox__open_topic'), true);

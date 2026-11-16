@@ -82,15 +82,12 @@ test('#114, #492: two agents mentioning each other in turn go on without a card,
 
 test('#135: both wakes keep their transcript provenance, and both are delivered: the newer doesn’t replace the older', async () => {
   const { store, rt, adapter, t, alpha, beta } = setup();
-  // beta is busy, so alpha’s two wakes, one by wake_agent and one by an @-mention, wait together in beta’s inbox until
+  // beta is busy, so alpha’s two wakes, an @-mention in each of two turns, wait together in beta’s inbox until
   // beta answers. Each keeps the turn it came from, so the second one gets its own sender line. Nothing is replaced
   // (designs/rooms-at-scale.md, “Delivery”), where #374 delivered only the newer.
   const busy = held();
   adapter.next.push(busy.step);
-  adapter.next.push(async (c) => {
-    c.tools.wake_agent({ handle: 'beta', message: 'Check revision 3.' });
-    c.text('Asked beta.');
-  });
+  adapter.next.push(async (c) => c.text('@beta check revision 3.'));
   adapter.next.push(async (c) => c.text('@beta and the totals, please.'));
   rt.sendMessage(t.id, { text: '@beta draft the notes' });
   for (const text of ['@alpha get revision 3 checked', '@alpha the totals too']) {
@@ -101,11 +98,11 @@ test('#135: both wakes keep their transcript provenance, and both are delivered:
   const queued = arrange.waitingEntries(rt, beta.id);
   assert.deepEqual(
     queued.map((e) => store.items(t.id).find((x) => x.id === e.itemId)?.text),
-    ['Check revision 3.', '@beta and the totals, please.'],
+    ['@beta check revision 3.', '@beta and the totals, please.'],
   );
   busy.release();
   await settle(rt);
-  // alpha’s two turns you started; the wake_agent message is from the first, and the mention is the second’s reply.
+  // alpha’s two turns you started; each mention is that turn’s reply.
   const turns = [
     ...new Set(
       store
@@ -117,7 +114,7 @@ test('#135: both wakes keep their transcript provenance, and both are delivered:
   const [first, second] = queued.map((q) => store.item(t.id, q.itemId));
   assert.deepEqual([first.handle, second.handle], ['alpha', 'alpha']);
   assert.equal(turns.length, 2);
-  assert.deepEqual([first.fromTurnId, second.turnId], turns);
+  assert.deepEqual([first.turnId, second.turnId], turns);
   // Your message between them started the wake count again.
   assert.deepEqual([first.hop, second.hop], [1, 1]);
   assert.deepEqual(

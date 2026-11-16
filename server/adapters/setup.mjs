@@ -279,8 +279,8 @@ export const writeRules = (persona) => (asksForWrites(persona?.permissionMode) ?
 
 /**
  * Tools that act outside Postbox’s record, denied for real backends unless the persona has `agents.outside`. They
- * bypass the wake cap and the record of who woke whom (intent.md, principle 6); Postbox’s own schedule_wake and
- * wake_agent are the way to do that here.
+ * bypass the wake cap and the record of who woke whom (intent.md, principle 6); Postbox’s own schedule_wake and an
+ * @-mention are the way to do that here.
  *
  * How the list was derived: from the `tools` of real `init` events (claude 2.1.296, the person’s setup;
  * tests/fixtures/claude-code/host-mcp-init.jsonl), and wave 1’s UAT, which saw them on a critic’s turn (#5):

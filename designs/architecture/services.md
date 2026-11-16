@@ -672,7 +672,11 @@ Each step is its own pull request, and is done when:
     - A host turn’s replay keys its mentions by the host turn and their order, as the retry id (#1138’s class).
     - Entries carry an arrival number, so they sort with the queue’s messages in the same millisecond (#733).
     - Stop closes a turn without `endTurn`, so it raises `turn.stopping`, and Delivery marks what the turn took as delivered. A shutdown’s stop doesn’t: the restart reopens those entries once, as a resend. A reply the person stopped hands its mentions to no one, as before.
-  - **Not yet:** `wake_agent`’s removal.
+  - **`wake_agent` is gone** (#481):
+    - It left the tool list. A call to it by name gets `GONE_TOOLS`’ answer, “wake_agent is gone. Post a message that @-mentions the agent; that wakes it.”, from Postbox’s MCP server and from a host’s calls, whose route table keeps the name for that.
+    - `open_topic` lost `mentions`: its first message’s own @-mentions wake, as prose, as a reply’s do.
+    - The chain-limit sentence moved to the guide’s room paragraph.
+  - **What the removal found:** the measurement’s resumed session is still to show whether a harness passes a call to an unlisted tool through to Postbox (rooms-at-scale.md, “After `wake_agent` goes”).
 - **Next:** Delivery and Turns, built as the inbox, from step 2 of the order “Delivery and Turns, built as the inbox” gives. Asks follow, after the permission layer.
 
 ## Appendix: every module’s members

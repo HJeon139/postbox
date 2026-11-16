@@ -503,7 +503,9 @@ test('MCP: initialize, list tools, and a tool call that returns at once', async 
   assert.equal(init.result.serverInfo.name, 'postbox');
   assert.equal(await handleMcp(rt, se.id, { jsonrpc: '2.0', method: 'notifications/initialized' }), null);
   const tools = (await handleMcp(rt, se.id, { jsonrpc: '2.0', id: 2, method: 'tools/list' })).result.tools.map((x) => x.name);
-  assert.ok(tools.includes('show_block') && tools.includes('wake_agent'));
+  assert.ok(tools.includes('show_block') && tools.includes('open_topic'));
+  // A gone tool isn’t listed; a call to it by name is answered (tests/wake-agent-gone.test.mjs).
+  assert.ok(!tools.includes('wake_agent'));
   const call = {
     jsonrpc: '2.0',
     id: 3,
