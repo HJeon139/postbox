@@ -280,7 +280,7 @@ export function retry(rt, threadId, itemId) {
     const woken = it.wokeOnFailure ?? [];
     // A turn that took entries: they reopen as a resend, and the turn that takes them is built from them, so nothing
     // sends the asked message again (#1429).
-    if (it.turnId && rt.turnService.retryEntries(it.sessionId, it.turnId, { woken })) return;
+    if (it.turnId && rt.turnService.retryEntries(it.sessionId, it.turnId, woken)) return;
     // One that took none, such as a host turn's replay or a message a test sent: its request goes again.
     const message = { ...asked.message, retry: true, woken, turnId: newId('turn'), entriesWait: true };
     rt.turnService.run(it.sessionId, message, { summarizeTo: asked.summarizeTo, threadId });

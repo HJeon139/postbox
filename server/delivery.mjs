@@ -37,11 +37,12 @@ export const alone = (e) => e.source === 'event' || (Boolean(e.message) && !plai
 /**
  * An entry as stored, in the shape server/turn-input.mjs reads: `itemId` or `text`, never both; `from` the sender’s
  * handle without its @, or “you” for the person, and absent for Postbox. `takenBy` is the turn that took it, and
- * `retryId` what a retried send carries (#1138). `message` is what today’s deliver is given for a review, until Turns
+ * `retryId` what a retried send carries (#1138). `woken`, on an entry the person’s Retry reopened, is whom its failed
+ * turn’s reply already handed work to, so the turn that takes it doesn’t again (#485). `message` is what today’s deliver is given for a review, until Turns
  * builds a turn’s input from entries (step 3).
  * @typedef {{ id: string, sessionId: string, threadId: string, source: string, itemId?: string, text?: string,
  *   message?: any, from?: string, at: number, seq: number, state: EntryState, takenBy: string|null, resend: boolean,
- *   postedSince: string[], retryId?: string }} Entry
+ *   postedSince: string[], retryId?: string, woken?: string[] }} Entry
  */
 
 export class Delivery {
@@ -243,13 +244,14 @@ export class Delivery {
   /**
    * A turn failed. Lost after the harness accepted it, and not a resend, its entries go back to waiting as a resend,
    * and start the one resend on their own (#466); lost again, they fail. Any other failure delivered them: the agent was
-   * given them, and the failed session waits for the person.
+   * given them, and the failed session waits for the person. Either way the person can Retry it, which reopens them,
+   * so what they carry in memory stays until a turn delivers them for good, or their agent is removed.
    * @param {{ sessionId: string, turnId: string, lost: boolean }} turn
    */
   turnFailed({ sessionId, turnId, lost }) {
     for (const e of this.takenBy(sessionId, turnId)) {
-      if (!lost) this.patch(e, { state: 'delivered' });
-      else if (e.resend) this.patch(e, { state: 'failed' });
+      if (!lost) this.patch(e, { state: 'delivered' }, { keepCarry: true });
+      else if (e.resend) this.patch(e, { state: 'failed' }, { keepCarry: true });
       else this.patch(e, { state: 'waiting', takenBy: null, resend: true });
     }
     this.wake(sessionId);
@@ -257,14 +259,15 @@ export class Delivery {
 
   /**
    * The person’s Retry of a failed turn: what it took waits again, as a resend, for the turn Turns starts from it
-   * (#1429). @param {string} turnId @returns {Entry[]} the entries reopened
+   * (#1429), marked with whom the failed reply already woke (`woken`).
+   * @param {string} turnId @param {string[]} woken @returns {Entry[]} the entries reopened
    */
-  retry(turnId) {
+  retry(turnId, woken) {
     const reopened = [];
     for (const sessionId of this.sessionIds())
       for (const e of this.inbox(sessionId))
         if (e.takenBy === turnId) {
-          const entry = { ...e, state: /** @type {EntryState} */ ('waiting'), takenBy: null, resend: true };
+          const entry = { ...e, state: /** @type {EntryState} */ ('waiting'), takenBy: null, resend: true, woken };
           // Whole: it was delivered, so a page has dropped it, and a patch would reach nothing there.
           this.store.emit('entry.put', { sessionId, id: e.id, entry });
           reopened.push(entry);
@@ -305,6 +308,8 @@ export class Delivery {
   stopped(sessionId, { all = false } = {}) {
     const stopped = this.waiting(sessionId).filter((e) => all || e.source !== 'person');
     for (const e of stopped) this.patch(e, { state: 'stopped' });
+    // A removed agent’s failed turn can’t be retried: what its entries kept for a Retry goes (turnFailed).
+    if (all) for (const e of this.inbox(sessionId)) this.carried.delete(e.id);
     return stopped;
   }
 
@@ -334,10 +339,11 @@ export class Delivery {
 
   /**
    * Writes fields of one entry. One that leaves waiting and taken for good, whichever way (delivered, failed, stopped),
-   * lets go of what it carried in memory (send’s `carry`). @param {Entry} e @param {Partial<Entry>} patch
+   * lets go of what it carried in memory (send’s `carry`), unless a Retry can still reopen it (`keepCarry`).
+   * @param {Entry} e @param {Partial<Entry>} patch @param {{ keepCarry?: boolean }} [opts]
    */
-  patch(e, patch) {
-    if (patch.state && patch.state !== 'waiting' && patch.state !== 'taken') this.carried.delete(e.id);
+  patch(e, patch, { keepCarry = false } = {}) {
+    if (!keepCarry && patch.state && patch.state !== 'waiting' && patch.state !== 'taken') this.carried.delete(e.id);
     this.store.emit('entry.patch', { sessionId: e.sessionId, id: e.id, patch });
   }
 }

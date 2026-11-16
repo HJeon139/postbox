@@ -24,8 +24,7 @@ export function startFromEntries(rt, sessionId) {
   // keeps it until Turns owns what reads it (#1427).
   const batch = combineMessages(given(rt, entries));
   // Its plain parts stay with it (`messages`, `as`), for what reads the person’s words or who woke the agent.
-  // A Retry’s marks, when this start is one (Turns’ retryEntries).
-  const retried = rt.turnService.retryMarks(sessionId);
+  const retried = retryMarks(entries);
   const message = plainBatch(entries)
     ? {
         ...batch,
@@ -41,6 +40,15 @@ export function startFromEntries(rt, sessionId) {
   const lead = leadOf(entries);
   const summarizeTo = summaryOf(rt, lead);
   rt.turnService.run(sessionId, message, { threadId: lead.threadId, ...(summarizeTo ? { summarizeTo } : {}) });
+}
+
+/**
+ * A turn that takes entries the person’s Retry reopened is the retry (Turns’ retryEntries): marked so, with whom the
+ * failed reply already woke, so it doesn’t wake them again (#485). Empty for any other turn. @param {any[]} entries
+ */
+export function retryMarks(entries) {
+  const retried = entries.filter((e) => Array.isArray(e.woken));
+  return retried.length ? { retry: true, woken: [...new Set(retried.flatMap((e) => e.woken))] } : {};
 }
 
 /** Sources a plain batch is made of: messages to read, and Postbox’s notices riding with them. */
@@ -123,7 +131,7 @@ export function withEntries(rt, sessionId, threadId, message) {
   const turnId = typeof message.turnId === 'string' ? message.turnId : newId('turn');
   const entries = rt.delivery.take(sessionId, turnId, TURN_INPUT.entries, threadId);
   if (!entries.length) return message;
-  return { ...combineMessages([message, ...given(rt, entries)]), turnId };
+  return { ...combineMessages([message, ...given(rt, entries)]), turnId, ...retryMarks(entries) };
 }
 
 const count = (/** @type {number} */ n) => n.toLocaleString('en-US');
