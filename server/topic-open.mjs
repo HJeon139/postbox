@@ -118,8 +118,9 @@ function repeatOf(rt, se, threadId, text, handles, created) {
 }
 
 /**
- * Posts the first message in the topic as the agent's own, then wakes each agent it @-mentions from it, as a turn's later
- * mentions reuse its message (agentWake's `itemId`). Posting first means the ask is never lost when every wake is
+ * Posts the first message in the topic as the agent's own, then wakes each agent it @-mentions from it, as prose, as
+ * a reply's mentions are (a declined agent isn't asked about again, #693), and as a turn's later mentions reuse its
+ * message (agentWake's `itemId`). Posting first means the ask is never lost when every wake is
  * refused (a self-mention, a mistyped handle), and a card keeps the message's id, so Allow wakes from it rather than
  * posting it again; the reply carries each wake's result. It keeps the handles it named (`opened`), which I6 compares;
  * A2's records carry the same as the message's addressees. Returns the message's id and the wakes' replies.
@@ -129,5 +130,5 @@ function post(rt, se, threadId, text, handles) {
   const opened = named(handles);
   const message = { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text, status: 'done', opened, fromTurnId };
   const it = rt.threads.addItem(threadId, message);
-  return { id: it.id, woke: handles.map((h) => rt.agentWake(se.id, h, text, { replyIn: threadId, itemId: it.id, fromTurnId }).message) };
+  return { id: it.id, woke: handles.map((h) => rt.agentWake(se.id, h, text, { replyIn: threadId, itemId: it.id, fromTurnId, prose: true }).message) };
 }
