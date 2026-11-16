@@ -126,3 +126,18 @@ test('an edit can’t name an agent the message was removed for: it would reach 
   f.b.release();
   await settle(f.rt);
 });
+
+test('a message of the person’s kept with no item, held at a shutdown, can’t be edited or removed: it goes as it is', async () => {
+  const f = await bothBusy();
+  const kept = f.rt.delivery.send({ sessionId: f.alpha.id, threadId: f.t.id, source: 'person', text: 'held at shutdown', from: 'you' }, { wake: false });
+  const other = f.rt.delivery.send({ sessionId: f.beta.id, threadId: f.t.id, source: 'person', text: 'another one', from: 'you' }, { wake: false });
+  assert.throws(() => f.rt.editQueued(f.t.id, kept.id, 'changed'), { status: 409, message: 'This message can’t be edited; it goes as it is.' });
+  assert.throws(() => f.rt.cancelQueued(f.t.id, kept.id), { status: 409, message: 'This message can’t be removed; it goes as it is.' });
+  assert.deepEqual(
+    [kept, other].map((e) => f.rt.delivery.inbox(e.sessionId).find((x) => x.id === e.id).state),
+    ['waiting', 'waiting'],
+  );
+  f.a.release();
+  f.b.release();
+  await settle(f.rt);
+});
