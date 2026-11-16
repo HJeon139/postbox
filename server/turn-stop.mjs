@@ -151,11 +151,11 @@ export function turnExited(rt, turn) {
   const held = se.retiredFork ? [] : ex.held;
   // Shutting down, nothing starts a CLI: your messages wait in the agent’s inbox, which a restart keeps. One a turn took
   // from it (Send now’s) stays taken, and the restart reopens it once (Delivery’s start), so it isn’t posted again
-  // (#1108); one held without an entry gets one for its item.
+  // (#1108); one held without an entry gets one, for its item, or with its own text when it has none.
   if (rt.closing) {
-    for (const h of held.filter((x) => x.message.kind === 'user' && !x.message.fromEntries && x.message.itemId)) {
-      const entry = { sessionId: se.id, threadId: h.threadId ?? se.threadId, source: 'person', itemId: h.message.itemId, from: 'you' };
-      rt.delivery.send(entry, { wake: false });
+    for (const h of held.filter((x) => x.message.kind === 'user' && !x.message.fromEntries)) {
+      const said = h.message.itemId ? { itemId: h.message.itemId } : { text: String(h.message.text ?? '') };
+      rt.delivery.send({ ...said, sessionId: se.id, threadId: h.threadId ?? se.threadId, source: 'person', from: 'you' }, { wake: false });
     }
     return;
   }

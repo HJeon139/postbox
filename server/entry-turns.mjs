@@ -52,8 +52,8 @@ const given = (rt, entries) => entries.map((e) => messageOf(rt, e));
 export function messageOf(rt, e) {
   // A plain message carries its place, to sort in a batch; one with a turn of its own is given as it was sent.
   if (e.message) return plainMessage(e.message) ? { ...e.message, at: e.at, seq: e.seq } : e.message;
-  if (!e.itemId) return { kind: 'notice', text: e.text, at: e.at, seq: e.seq };
   if (e.source === 'person') return personMessage(rt, e);
+  if (!e.itemId) return { kind: 'notice', text: e.text, at: e.at, seq: e.seq };
   const it = rt.store.pending.item(e.threadId, e.itemId);
   const said = String(it?.text ?? '');
   // Cut as turn-input.mjs’s entryText cuts: at a whole character (#675), with the note copiedLine reads as a copy (#1370).
@@ -69,10 +69,12 @@ export function messageOf(rt, e) {
 
 /**
  * The person’s message as today’s deliver takes it: their item as it is now, so an edit made while it waited is what
- * the agent reads, with the threads it links to (threadRefs).
+ * the agent reads, with the threads it links to (threadRefs). One kept without an item, held when Postbox shut down,
+ * is its own text.
  * @param {any} rt @param {any} e
  */
 function personMessage(rt, e) {
+  if (!e.itemId) return { kind: 'user', text: e.text, attachments: [], at: e.at, seq: e.seq };
   const it = rt.store.pending.item(e.threadId, e.itemId);
   const text = String(it?.text ?? '');
   const refs = rt.threadRefs(e.threadId, text);
