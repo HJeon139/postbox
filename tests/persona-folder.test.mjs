@@ -137,6 +137,7 @@ test('an agents.json whose second agent would be refused seeds neither, and says
     [{ handle: 'b', folder: '/srv/b' }, 422, `agents.json: agent 2: ${NAME}`],
     [{ folder: '/srv/b' }, 422, `agents.json: agent 2: ${NAME}`],
     [null, 422, `agents.json: agent 2: ${NAME}`],
+    [{ handle: '@You' }, 422, 'agents.json: agent 2: @you is the person’s own name in a room. Pick another handle.'],
     [{ handle: '@Alpha' }, 409, 'agents.json: agent 2: @Alpha is there twice. Give each agent a name of its own.'],
     [{ handle: '@Alpha \t' }, 409, 'agents.json: agent 2: @Alpha is there twice. Give each agent a name of its own.'],
     [{ handle: ' @beta' }, 422, `agents.json: agent 2: ${NAME}`],
