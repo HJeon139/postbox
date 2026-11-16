@@ -79,6 +79,9 @@ test('a wake is by a copied line when the waking reply names the agent only in a
   const handOff = agent('it_2', 'alpha', 10, 'it_big0137: @beta: can you rerun it for 2.1?');
   assert.equal(copyWakes([said, handOff, woken]), 0);
   assert.equal(copyWakes([said, copy, woken, { ...woken, id: 'it_4', at: 21 }]), 1, 'two items of one woken turn are one wake');
+  // The waking turn said more than the copy: “I’ll find @beta’s newest message” is a mention of its own, and that woke.
+  const narrated = agent('it_1b', 'alpha', 9, 'I’ll find @beta’s newest message.', { turnId: copy.turnId });
+  assert.equal(copyWakes([said, narrated, copy, woken]), 0, 'a mention elsewhere in the waking turn');
 });
 
 test('reads after a wake are the catch-up reads before the first other action, in woken turns only', () => {

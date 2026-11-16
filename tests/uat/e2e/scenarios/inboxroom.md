@@ -6,7 +6,7 @@
 - steps: 30
 - conversation: Release 2.1
 
-A measuring scenario for the inbox’s build (designs/rooms-at-scale.md, “What the build must show”), and a compatibility run: @researcher runs on Claude Code, @critic on Codex, @developer on the Antigravity CLI and @alpha on the Kiro CLI. It makes the things the inbox is meant to change happen on purpose: a hand-off between agents, a second message while an agent works, a line copied from the conversation, and messages for one agent in two threads. Every message is given word for word, so a run on `main` and a run on the branch under test get the same input.
+A measuring scenario for the inbox’s build (designs/rooms-at-scale.md, “What the build must show”), and a compatibility run: @researcher runs on Claude Code, @critic on Codex, @developer on the Antigravity CLI and @alpha on the Kiro CLI. It makes the things the inbox is meant to change happen on purpose: a hand-off between agents, a second message while an agent works, a line copied from the conversation, and messages for one agent in two threads. Every message is given word for word, so a run on `main` and a run on the branch under test get the same input. Each message @-mentions only the agent it is for: your own @-mention wakes an agent, so a message that named the critic or the developer with an @ would wake them itself, and no hand-off between agents would be measured (the first run of this scenario did that).
 
 Run it at least three times on each side, since one pair proves nothing:
 
@@ -22,7 +22,7 @@ What it doesn’t cover is a session started on `main` and resumed on the branch
 
 Send this message, then wait until no agent is working:
 
-`@researcher Write one sentence saying what release 2.1 changes: it adds search to the conversation. Then hand it to @critic to check the sentence, and ask @critic to hand it to @developer to say which file a changelog entry goes in.`
+`@researcher Write one sentence saying what release 2.1 changes: it adds search to the conversation. Then hand it to the critic to check the sentence, and ask the critic to hand it to the developer to say which file a changelog entry goes in.`
 
 Say which agents replied, in what order, and whether any agent replied without being asked to.
 
@@ -36,9 +36,9 @@ Wait until @developer has stopped working. Say whether its replies answer both m
 
 Send this message, then wait until no agent is working:
 
-`@alpha Find @critic’s newest message in this conversation. Reply with its id and its exact text, as read_conversation gives that line, and nothing else.`
+`@alpha Find the newest message in this conversation that an agent other than you posted. Reply with its id and its exact text, as read_conversation gives that line, and nothing else.`
 
-Say whether @critic replied after @alpha did. Nothing asked @critic for anything, so a reply from it is a wake by the copied line.
+Say whether any agent replied after @alpha did. Nothing asked another agent for anything, so a reply from one is a wake by the copied line.
 
 Then open a topic thread on @researcher’s first reply, and send this message in the thread:
 
@@ -53,9 +53,9 @@ Wait until @critic has stopped working. Say where each of its answers was posted
 ## Phase 3: What each agent was asked
 
 Send these four messages, each as its own message, waiting for the reply before the next:
-1. `@researcher In one line, list what you were asked in this conversation.`
-2. `@critic In one line, list what you were asked in this conversation and its thread.`
-3. `@developer In one line, list what you were asked in this conversation.`
-4. `@alpha In one line, list what you were asked in this conversation.`
+1. `@researcher In one line, list what you were asked in this conversation. Name no other agent with an @.`
+2. `@critic In one line, list what you were asked in this conversation and its thread. Name no other agent with an @.`
+3. `@developer In one line, list what you were asked in this conversation. Name no other agent with an @.`
+4. `@alpha In one line, list what you were asked in this conversation. Name no other agent with an @.`
 
 After each, say whether the list leaves out anything the agent was asked. Then say, for the whole run, whether any message addressed to an agent went unanswered.
