@@ -228,7 +228,7 @@ flowchart LR
   - `item.final`: the item’s mentions become entries;
   - `turn.settled`: it settles the turn’s scheduled wake, before Work’s `endWork`, as step E does now;
   - `turn.failed`: it settles what the turn took by why the turn failed, and counts the chain:
-    - **Lost after the harness accepted it, and not a resend** (#466): the entries go back to waiting, marked as a resend. This loss doesn’t fail the session, so `entry.waiting` starts the one resend on its own.
+    - **Lost after the harness accepted it, and not a resend** (#466): the entries go back to waiting, marked as a resend. This loss doesn’t fail the session, so `entry.waiting` starts the one resend on its own. As built (#1429), one classifier (`server/harness-failure.mjs`) reads network loss and quota from marks each adapter puts on the error it throws, and `turn.failed` passes `lost` from it. The failed reply shows as retried, with a note, and the notification is info, since the person has nothing to act on (#1218’s rule). A scheduled wake’s turn isn’t lost this way: its schedule recovers it, with backoff, and with a recovery turn after a tool started. A turn that failed for quota leaves the session failed with `quota: { until }`, raises one info notice per backend (`server/turn-quota.mjs`), and keeps the agent’s own scheduled wakes until the reset; the next turn that starts clears it (#442).
     - **Lost again on its resend:** the entries are failed, and the session fails.
     - **Any other failure:** the entries are delivered, since the agent was given them, and the session fails. No turn follows until the person acts.
 

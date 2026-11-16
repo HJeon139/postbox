@@ -9,8 +9,8 @@
 // - running: a live turn, or one on its host, awaiting attach among them, with its current step;
 // - quota: its harness ran out of quota, until the reset time it gave (the owner’s decision on #442). The one place
 //   quota shows in the agents area. A turn failed for quota leaves the session failed, so nothing wakes it, and the
-//   person still sees why; a session running again is past it. `se.quota` is a slot until inbox step 3 records quota
-//   failures;
+//   person still sees why; a session running again is past it. Turns records `se.quota` when a turn fails for quota
+//   (server/turn-quota.mjs);
 // - failed: its last turn failed;
 // - job: a background job of its own still runs (`se.jobs`, at most 50, and a kept one stays until it ends);
 // - behind: something it posted still waits in another agent’s inbox, since that entry arrived;
