@@ -14,11 +14,21 @@
 // Depends on Store, Bus and Running. Until Turns is a service, the composition root listens to entry.waiting and starts
 // the turn through today’s deliver, and the chain cap is a predicate the root binds (`chainHeld`).
 
-import { arrival } from './queue-batch.mjs';
+import { arrival, plainMessage } from './queue-batch.mjs';
 import { newId } from './store.mjs';
 
 /** Where an entry comes from (designs/rooms-at-scale.md, “What an entry is”). A notice never starts a turn. */
 export const SOURCES = Object.freeze(['mention', 'person', 'command', 'review', 'answer', 'event', 'check', 'scheduled', 'notice']);
+
+/** Sources that are the person’s own action: one starts a failed agent’s turn, as it did before entries. */
+const PERSON = new Set(['person', 'answer', 'command']);
+
+/**
+ * An entry given to a turn of its own until Turns builds input from entries (step 3’s PR 4): one that carries a message
+ * other than a plain one, such as an answer’s event or a lint turn, whose kind its turn keeps.
+ * @param {{ message?: any }} e
+ */
+const alone = (e) => Boolean(e.message) && !plainMessage(e.message);
 
 /** @typedef {'waiting'|'taken'|'delivered'|'failed'|'stopped'} EntryState */
 /**
@@ -118,8 +128,16 @@ export class Delivery {
   ready(sessionId) {
     if (this.running.busy(sessionId) || this.running.closing) return false;
     const se = this.store.pending.session(sessionId);
-    if (!se || se.retiredFork || se.state === 'failed') return false;
-    return this.waiting(sessionId).some((e) => e.source !== 'notice' && !this.chainHeld(e));
+    if (!se || se.retiredFork) return false;
+    return this.waiting(sessionId).some((e) => this.canStart(e, se.state === 'failed'));
+  }
+
+  /**
+   * Whether an entry can start a turn: not a notice, not held at the chain cap, and, for a failed agent, the person’s
+   * own action, since anything else waits for the person. @param {Entry} e @param {boolean} failed
+   */
+  canStart(e, failed) {
+    return e.source !== 'notice' && !this.chainHeld(e) && (!failed || PERSON.has(e.source));
   }
 
   /** Raises entry.waiting for the agent, if it can start a turn now. @param {string} sessionId */
@@ -139,14 +157,23 @@ export class Delivery {
    */
   take(sessionId, turnId, budget = Number.POSITIVE_INFINITY, threadId = undefined) {
     const waiting = this.waiting(sessionId).filter((e) => threadId === undefined || e.threadId === threadId || e.source === 'notice');
-    const lead = waiting.find((e) => e.source !== 'notice' && !this.chainHeld(e)) ?? waiting.find((e) => e.source !== 'notice');
+    const failed = this.store.pending.session(sessionId)?.state === 'failed';
+    const lead = waiting.find((e) => this.canStart(e, failed)) ?? waiting.find((e) => e.source !== 'notice');
     if (!lead) return [];
+    if (alone(lead)) {
+      // A turn that already has its message (threadId) takes none: this one waits for a turn of its own.
+      if (threadId !== undefined) return [];
+      this.patch(lead, { state: 'taken', takenBy: turnId });
+      return [{ ...lead, state: /** @type {EntryState} */ ('taken'), takenBy: turnId }];
+    }
     // The lead first, whatever its size, so nothing that arrived before it uses the budget up; then the rest in order,
     // until one doesn’t fit. They’re taken, and given, in the order they arrived.
     const chosen = new Set([lead]);
     let size = this.sizeOf(lead);
     for (const e of waiting) {
       if (e === lead || !(e.source === 'notice' || (e.threadId === lead.threadId && !this.chainHeld(e)))) continue;
+      // One for a turn of its own waits, with what came after it, so the order holds.
+      if (alone(e)) break;
       const n = this.sizeOf(e);
       if (size + n > budget) break;
       chosen.add(e);
