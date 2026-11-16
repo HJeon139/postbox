@@ -106,6 +106,9 @@ function settle(rt, threadId, it, status, notice, reason = null) {
   const se = rt.s.sessions[it.sessionId];
   if (!se) return { ok: true };
   releaseNeed(rt, se, it.id);
-  if (notice && !se.retiredFork) rt.deliver(se.id, { kind: 'notice', text: notice });
+  // The person’s answer, or how the download it allowed ended, is an entry pointing at the card (designs/rooms-at-scale.md,
+  // “What an entry is”), with the words its turn is given until Turns builds input from entries.
+  if (notice && !se.retiredFork)
+    rt.delivery.send({ sessionId: se.id, threadId: se.threadId, source: 'answer', itemId: it.id, from: 'you', message: { kind: 'notice', text: notice } });
   return { ok: true };
 }

@@ -262,3 +262,19 @@ test('the window and column come from the person’s tab when it reported them i
     s.done();
   }
 });
+
+test('the person’s answer on the download card reaches the agent as an answer entry, pointing at the card', async () => {
+  const s = setup(fakeBrowser({ status: 'missing' }));
+  try {
+    await viewApp(s.rt, s.se.id, { appId: s.appId }, ctx(s.t));
+    const card = cards(s.rt, s.t)[0];
+    s.rt.act(s.t.id, card.id, 'decline');
+    const entries = Object.values(s.rt.store.state.inbox).flat();
+    assert.deepEqual(
+      entries.filter((e) => e.itemId === card.id).map((e) => [e.source, e.from]),
+      [['answer', 'you']],
+    );
+  } finally {
+    s.done();
+  }
+});

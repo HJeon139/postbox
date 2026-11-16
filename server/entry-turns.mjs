@@ -5,6 +5,7 @@
 
 import { SENDING } from '../shared/limits.mjs';
 import { partEnd } from '../shared/text-parts.mjs';
+import { alone } from './delivery.mjs';
 import { combineMessages, plainMessage } from './queue-batch.mjs';
 import { newId } from './store.mjs';
 
@@ -50,7 +51,8 @@ const given = (rt, entries) => entries.map((e) => messageOf(rt, e));
  * @param {any} rt @param {any} e
  */
 export function messageOf(rt, e) {
-  if (e.message) return { ...e.message, at: e.at, seq: e.seq };
+  // A plain message carries its place, to sort in a batch; one with a turn of its own is given as it was sent.
+  if (e.message) return plainMessage(e.message) ? { ...e.message, at: e.at, seq: e.seq } : e.message;
   if (!e.itemId) return { kind: 'notice', text: e.text, at: e.at, seq: e.seq };
   const it = rt.store.pending.item(e.threadId, e.itemId);
   const said = String(it?.text ?? '');
@@ -63,4 +65,20 @@ export function messageOf(rt, e) {
   // sender’s handle, which a copy of the entry would wake (#1370).
   const since = e.postedSince.length ? `\n(The same sender posted since: ${e.postedSince.map((id) => `[${id}]`).join(', ')})` : '';
   return { kind: 'agent', from: `@${e.from}`, text: failed + whole + since, itemId: e.itemId, at: e.at, seq: e.seq };
+}
+
+/**
+ * Whether a turn’s end wakes the agent’s inbox before its queue drains (#733’s order, across the queue and the inbox):
+ * its oldest entry that can start a turn needs a turn of its own (an answer’s event, a lint turn), and arrived before
+ * every message waiting for it, on the turn or in a thread’s queue. A plain mention needs no such turn: the queue’s turn
+ * takes it in arrival order (withEntries).
+ * @param {any} rt @param {any} se @param {any} turn
+ */
+export function entriesFirst(rt, se, turn) {
+  const lead = rt.delivery.waiting(se.id).find((/** @type {any} */ e) => rt.delivery.canStart(e, se.state === 'failed'));
+  if (!lead || !alone(lead)) return false;
+  const before = (/** @type {any} */ a, /** @type {any} */ b) => (a.at ?? 0) < (b.at ?? 0) || ((a.at ?? 0) === (b.at ?? 0) && (a.seq ?? 0) < (b.seq ?? 0));
+  const onTurn = turn.pending.flatMap((/** @type {any} */ p) => p.message.messages ?? [p.message]);
+  const queued = rt.threads.pending().flatMap((/** @type {any} */ t) => (t.queue ?? []).filter((/** @type {any} */ q) => q.sessionIds.includes(se.id)));
+  return [...onTurn, ...queued].every((m) => before(lead, m));
 }

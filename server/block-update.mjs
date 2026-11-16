@@ -44,7 +44,9 @@ export function unreadAnswer(apps, sessionId, threadId, it, outcome = false) {
         ? `${a.values?.verdict}${n ? `, ${n} comment${n === 1 ? '' : 's'}` : ''}`
         : `${a.action} ${clipText(full, 300)}`;
   const said = `${outcome ? 'The outcome wasn’t recorded: you haven’t read the answer it reports on.' : 'The update wasn’t applied.'} The person answered revision ${a.revision ?? 1} of ${it.block.id} at ${at}: ${what}. Their answer stays on screen.`;
-  const waiting = apps.running.turnOf(sessionId)?.pending.some((p) => p.message.blockItemId === it.id);
+  // Waiting behind the turn, or as an answer entry in the agent’s inbox (designs/rooms-at-scale.md, “What an entry is”).
+  const pending = apps.running.turnOf(sessionId)?.pending.some((p) => p.message.blockItemId === it.id);
+  const waiting = pending || apps.delivery.waiting(sessionId).some((e) => e.source === 'answer' && e.itemId === it.id);
   const then = outcome ? 'then record the outcome' : 'then update';
   if (waiting) return { ok: false, message: `${said} It reaches you when this turn ends: read it, ${then}.` };
   apps.threads.patchItem(threadId, it.id, { answer: { ...a, read: true } });
