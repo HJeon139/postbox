@@ -73,12 +73,14 @@ export function codexConfigArgs(mcpUrl) {
 const errorText = (x) => x?.error?.message ?? x?.message ?? 'Codex app-server failed.';
 
 /**
- * Reads app-server notifications into the harness-event contract (server/harness-events.mjs). io.read: a file’s text,
+ * Reads app-server notifications into the harness-event contract (server/harness-events.mjs). io.lines: the harness’s
+ * line reader, whose close ends the turn’s open messages; io.read: a file’s text,
  * for what a change replaced (codex-events.mjs).
  */
 export function createCodexMapper(ctx, io = {}) {
   const emit = new HarnessEvents(ctx).event;
   const streamed = new Set(); // messages whose text arrived as deltas
+  const open = new Set(); // streamed messages not yet completed: their text is open (#1293)
   const push = (msg) => {
     const p = msg?.params ?? {};
     switch (msg?.method) {
@@ -88,12 +90,15 @@ export function createCodexMapper(ctx, io = {}) {
       case 'item/completed':
         if (p.item?.type === 'agentMessage') {
           if (p.item.text && !streamed.has(p.item.id)) emit({ kind: 'text', text: p.item.text, block: p.item.id });
+          else if (open.delete(p.item.id)) emit({ kind: 'text_end', block: p.item.id });
         } else itemCompleted(emit, p.item, io.read);
         break;
       case 'item/agentMessage/delta':
         if (typeof p.delta === 'string') {
           streamed.add(p.itemId);
-          emit({ kind: 'text', text: p.delta, block: p.itemId });
+          open.add(p.itemId);
+          // Open until its item completes: two agent messages can stream at once, narrating parallel calls (#1293).
+          emit({ kind: 'text', text: p.delta, block: p.itemId, open: true });
         }
         break;
       case 'item/commandExecution/outputDelta':
@@ -125,7 +130,18 @@ export function createCodexMapper(ctx, io = {}) {
     }
     return null;
   };
-  return { push };
+  /**
+   * The turn ended however it did: every message still open ends with it, so the words another one held back reach the
+   * reply rather than being lost with the turn (#1293). Stop’s abort runs this before deliver’s own listener, while the
+   * turn still takes text; a crash, a failure or any other end closes the harness’s lines in deliver’s finally.
+   */
+  const end = () => {
+    for (const id of open) emit({ kind: 'text_end', block: id });
+    open.clear();
+  };
+  if (ctx.signal instanceof EventTarget) ctx.signal.addEventListener('abort', end, { once: true }); // a turn’s; a test’s context may have none
+  io.lines?.on('close', end);
+  return { push, end };
 }
 
 /**
@@ -262,7 +278,7 @@ export class CodexAdapter {
         pending.set(id, { resolve, reject, method });
         send({ id, method, params });
       });
-    const mapper = createCodexMapper(ctx);
+    const mapper = createCodexMapper(ctx, { lines: rl });
     const fail = (err) => {
       for (const x of pending.values()) x.reject(err);
       pending.clear();
