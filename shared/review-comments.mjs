@@ -4,7 +4,7 @@
 // go stale when the text changes, and the quote finds the place again. An app review’s comment names a part of the
 // app, and a reply names its thread. Pure, so the browser, the server and the tests share it.
 
-import { HANDLE, REVIEW_THREADS_BYTES, REVIEW_THREADS_MAX, REVIEW_THREADS_OPEN } from './limits.mjs';
+import { HANDLE, PERSON, REVIEW_THREADS_BYTES, REVIEW_THREADS_MAX, REVIEW_THREADS_OPEN } from './limits.mjs';
 import { described, id, int, obj, str } from './schema.mjs';
 
 /** The longest quote a comment keeps; a longer selection is cut to it. */
@@ -15,8 +15,8 @@ export const COMMENT_MAX = 4000;
 export const MAX_COMMENTS = 50;
 export const VERDICTS = ['comment', 'approve', 'request_changes'];
 
-/** How the person’s comments are stored in a review’s threads (#1143): only their answer writes it. */
-export const PERSON = 'you';
+// How the person’s comments are stored in a review’s threads (#1143): only their answer writes it.
+export { PERSON };
 /** A comment’s author as people and agents read it: You, or an agent’s @handle. @param {string} author */
 export const authorName = (author) => (author === PERSON ? 'You' : author);
 /**
