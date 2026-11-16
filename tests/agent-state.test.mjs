@@ -81,6 +81,17 @@ test('an agent whose post still waits in another agent’s inbox is waiting behi
   assert.equal(of(s, 's2').state, 'idle', 'the agent it waits on has its own state');
 });
 
+test('waiting behind says the oldest post still waiting, and never the agent’s own inbox', () => {
+  const s = room();
+  s.inbox.s1 = [{ id: 'e0', sessionId: 's1', threadId: 'c1', from: 'dev', state: 'waiting', at: 1 }];
+  assert.equal(of(s).state, 'idle', 'a post of its own in its own inbox');
+  s.inbox.s2 = [
+    { id: 'e2', sessionId: 's2', threadId: 'c1', from: 'dev', state: 'waiting', at: 3000 },
+    { id: 'e1', sessionId: 's2', threadId: 'c1', from: 'dev', state: 'waiting', at: 2000 },
+  ];
+  assert.deepEqual(of(s), { state: 'behind', detail: 'critic', since: 2000 });
+});
+
 test('an entry already taken by a turn is no longer waited behind', () => {
   const s = room();
   s.inbox.s2 = [{ id: 'e1', sessionId: 's2', threadId: 'c1', from: 'dev', state: 'taken', at: 1 }];
