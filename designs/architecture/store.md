@@ -69,7 +69,7 @@ flowchart LR
     Mdl[model]
   end
   Mdl -->|streamed text, tool activity, status| AD["adapter (in the Node process)"]
-  Mdl -->|"UI tools: show_block, show_app, define_term, wake_agent…"| MCP["MCP endpoint POST /mcp (JSON-RPC over HTTP)"]
+  Mdl -->|"UI tools: show_block, show_app, define_term, open_topic…"| MCP["MCP endpoint POST /mcp (JSON-RPC over HTTP)"]
   AD --> RT[runtime]
   MCP --> RT
   RT -->|validate against the catalog| RT
