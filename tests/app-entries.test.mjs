@@ -85,3 +85,33 @@ test('#1425 after a restart, a waiting event’s turn reads its voice line, sinc
   f.busy.release();
   await settle(f.rt);
 });
+
+test('#1425 an app’s event starts a failed agent’s turn, as the person’s own action does', async () => {
+  const f = setup();
+  f.rt.toolsFor(f.beta.id).show_app({ id: 'lab', title: 'Lab', code: '<p>x</p>', permissions: [] });
+  arrange.setSession(f.rt, f.beta.id, { state: 'failed', finishedAt: Date.now() - 1000 });
+  f.rt.appEvent('lab', 'retry', { n: 1 });
+  await settle(f.rt);
+  assert.equal(eventsTo(f.adapter, f.beta).length, 1);
+});
+
+test('#1425 what an event carries in memory goes when its entry is stopped, removed or its session deleted', async () => {
+  const f = await busyWithApp();
+  f.rt.appEvent('lab', 'one', { n: 1 });
+  f.rt.stop(f.beta.id);
+  assert.equal(f.rt.delivery.carried.size, 0, 'a Stop');
+  f.busy.release();
+  await settle(f.rt);
+  const again = held();
+  f.adapter.next.push(again.step);
+  f.rt.sendMessage(f.t.id, { text: '@beta again' });
+  await sleep(5);
+  f.rt.appEvent('lab', 'two', { n: 2 });
+  f.rt.cancelQueued(f.t.id, arrange.waitingEntries(f.rt, f.beta.id)[0].id);
+  assert.equal(f.rt.delivery.carried.size, 0, 'a Remove');
+  f.rt.appEvent('lab', 'three', { n: 3 });
+  f.rt.deleteSession(f.beta.id);
+  assert.equal(f.rt.delivery.carried.size, 0, 'a deleted session');
+  again.release();
+  await settle(f.rt);
+});

@@ -28,3 +28,20 @@ test('#1425 a summary request for a busy agent waits as a command entry, once, a
   assert.equal(shared.length, 1, 'posted once, in the conversation');
   assert.match(shared[0].text, /We chose offsets\./);
 });
+
+test('#1425 a Stop that stops a waiting summary request clears the thread’s pending summary', async () => {
+  const { store, rt, adapter, t, alpha } = setup();
+  adapter.next.push(async (c) => c.text('Hi.'));
+  rt.sendMessage(t.id, { text: '@alpha start' });
+  await settle(rt);
+  const { threadId } = rt.startTopic(t.id, store.items(t.id).find((x) => x.kind === 'user').id);
+  const busy = held();
+  adapter.next.push(busy.step);
+  rt.sendMessage(t.id, { text: '@alpha keep going' });
+  await sleep(5);
+  rt.summarizeBack(threadId);
+  rt.stop(alpha.id);
+  assert.equal(store.state.threads[threadId].summaryPending ?? null, null, 'the panel’s button isn’t left waiting');
+  busy.release();
+  await settle(rt);
+});
