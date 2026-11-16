@@ -31,8 +31,10 @@ export function editEntry(rt, threadId, entryId, text) {
   }
   const said = String(text ?? '').slice(0, 50000);
   if (!said.trim()) throw httpError(400, 'Write the message, or remove it instead.');
-  // It went to its agents when it was sent, so an edit can’t name another: it wouldn’t reach it.
-  const to = new Set((rt.store.pending.item(e.threadId, e.itemId)?.to ?? []).map((/** @type {string} */ h) => h.toLowerCase()));
+  // It goes only to the agents still waiting for it, so an edit can’t name another, one it was removed for included: it
+  // wouldn’t reach it.
+  const waiting = rt.delivery.entriesFrom(e.itemId).filter((/** @type {any} */ x) => x.state === 'waiting');
+  const to = new Set(waiting.map((/** @type {any} */ x) => String(rt.store.pending.session(x.sessionId)?.handle ?? '').toLowerCase()));
   const names = named(rt, said);
   if (names.some((h) => !to.has(h))) throw httpError(409, 'Remove it and send a new message to change who it’s for.');
   if (names.length) leaveOut(rt, e.itemId, names);
