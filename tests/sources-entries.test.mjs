@@ -76,3 +76,19 @@ test('a lint turn is a check entry, with its findings, and starts the agent’s 
   );
   assert.match(JSON.stringify(f.adapter.calls.filter((c) => c.sessionId === f.alpha.id).at(-1).message), /Fix the table in your reply\./);
 });
+
+test('the person’s decline on a wake card reaches the waking agent as an answer entry, pointing at the card', async () => {
+  const f = setup();
+  f.adapter.next.push(async (c) => c.text('Let’s ask @gamma to check the numbers.'));
+  f.rt.sendMessage(f.t.id, { text: '@alpha go on' });
+  await settle(f.rt);
+  const card = f.store.items(f.t.id).find((i) => i.kind === 'hop' && i.status === 'open');
+  f.rt.resolveHop(f.t.id, card.id, false);
+  await settle(f.rt);
+  const entries = Object.values(f.store.state.inbox).flat();
+  assert.deepEqual(
+    entries.filter((e) => e.itemId === card.id).map((e) => [e.sessionId, e.source, e.from]),
+    [[f.alpha.id, 'answer', 'you']],
+  );
+  assert.match(JSON.stringify(f.adapter.calls.filter((c) => c.sessionId === f.alpha.id).at(-1).message), /chose not to add @gamma/);
+});
