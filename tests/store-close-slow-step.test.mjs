@@ -6,6 +6,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { Store } from '../server/store.mjs';
+import { stepOn, stepped } from '../server/store-commit.mjs';
 import { stepBound } from '../server/store-recover.mjs';
 import { logDisk, tmp } from './store-retry-fixture.mjs';
 
@@ -61,4 +62,22 @@ test('#1314: the store’s own limits are 3 s with no step and 30 s for a step i
   assert.equal(s.retryBoundMs, 3000);
   assert.equal(stepBound(s), 30_000);
   assert.equal(stepBound(new Store(null, { retryBoundMs: 200 })), 200, 'a shortened bound is the step’s too');
+});
+
+// A step that finishes early isn’t a reason to wait out its limit: once no step is in flight, the short bound on no
+// progress holds again (the integrator’s review of #1421). A Retry or a reconciliation can be pending with no disk step.
+test('#1314: a step that finishes with the writer still pending is given up on by the short bound, not the step’s limit', async () => {
+  const { s } = await storeBeforeItsLastSync({ retryBoundMs: 200, stepBoundMs: 2000 });
+  await s.flush();
+  s.running = new Promise(() => {}); // a pass that never settles, as a Retry’s barrier that never resolves
+  stepOn(s, 'the event log’s write');
+  setTimeout(() => stepped(s), 100);
+  const t0 = Date.now();
+  const said = await s.close().then(
+    () => assert.fail('close() should have given up'),
+    (/** @type {any} */ e) => String(e.message),
+  );
+  const took = Date.now() - t0;
+  assert.ok(took >= 250 && took < 1000, `gave up after ${took} ms: 200 ms after a step that ended at 100 ms, against a 2,000 ms limit for a step`);
+  assert.match(said, /no progress for 200 ms \(the event log’s write had finished 0\.[12] s before, with no step since/);
 });

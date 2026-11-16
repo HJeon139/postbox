@@ -181,8 +181,11 @@ async function settledWhileProgressing(store, promise) {
     const stepBy = stepInFlight(store) ? store.step.since + stepBound(store) : 0;
     const left = Math.max(idleBy, stepBy) - Date.now();
     if (left <= 0) return false;
-    const due = Date.now() + left;
-    if (await settledWithin(promise, left)) return true;
+    // No one wait is longer than the bound: a step that finishes early leaves the short rule to hold from then, and
+    // only the next reading sees that it has finished (the integrator’s review of #1421).
+    const wait = Math.min(left, store.retryBoundMs);
+    const due = Date.now() + wait;
+    if (await settledWithin(promise, wait)) return true;
     // How late this check's own timer ran: seconds late means this process was starved of CPU, not the disk (#1314).
     // The latest of this close()’s checks: a step that begins only once the process is let run again gets a wait of
     // its own, on time, which mustn’t hide that the check before it ran late.
