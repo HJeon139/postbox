@@ -28,10 +28,7 @@ test('#1314: a sync the disk never answers is named, with how long it ran, and a
   const { s, hang } = await storeWithSync();
   hang();
   const said = await refusal(s);
-  assert.match(
-    said,
-    /^The store can’t close: a write or Retry has made no progress for 300 ms \(the final sync had run 0\.\d s; this check ran 0\.\d s late\)\./,
-  );
+  assert.match(said, /^The store can’t close: a disk step hasn’t finished in 300 ms \(the final sync had run 0\.\d s; this check ran 0\.\d s late\)\./);
   const late = Number(/this check ran (\d+\.\d) s late/.exec(said)?.[1]);
   assert.ok(late < 0.2, `the check ran on time: ${said}`);
 });

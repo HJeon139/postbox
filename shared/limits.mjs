@@ -70,6 +70,14 @@ export const READING = Object.freeze({
   part: 40_000,
 });
 
+/** How long the store waits on its disk before it gives up (server/store.mjs, server/store-recover.mjs). */
+export const STORE_WAITS = Object.freeze({
+  /** For a write or a Retry that makes no progress: a Retry’s wait, and close()’s when no disk step is running. */
+  noProgressMs: 3000,
+  /** For one disk step that is still running, before close() gives up on it: a slow disk, not a stopped one (#1314). */
+  stepMs: 30_000,
+});
+
 /**
  * What a turn is given beyond one entry, which is cut at READING.mention (designs/rooms-at-scale.md, “The budget”).
  * Each is a ceiling no higher than the catch-up’s before it.
