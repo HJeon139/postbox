@@ -20,8 +20,11 @@ import { newId } from './store.mjs';
 /** Where an entry comes from (designs/rooms-at-scale.md, “What an entry is”). A notice never starts a turn. */
 export const SOURCES = Object.freeze(['mention', 'person', 'command', 'review', 'answer', 'event', 'check', 'scheduled', 'notice']);
 
-/** Sources that are the person’s own action: one starts a failed agent’s turn, as it did before entries. */
-const PERSON = new Set(['person', 'answer', 'command']);
+/**
+ * Sources that are the person’s own action, an app’s event included, since it’s their click: one starts a failed
+ * agent’s turn, as it did before entries.
+ */
+const PERSON = new Set(['person', 'answer', 'command', 'event']);
 
 /**
  * An entry given to a turn of its own until Turns builds input from entries (step 3’s PR 4): one that carries a message
