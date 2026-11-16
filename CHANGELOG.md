@@ -2,6 +2,53 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.16.0 (2026-11-16)
+
+### Features
+
+- **uat:** flag an agent's shell command that leaves its run's workspace
+- **queue:** the person's waiting message is theirs to edit, and a removed one is marked
+- **inbox:** the person's message is an entry when it's sent
+- **app:** say when an agent is out of quota, until its reset time
+- **uat:** print the measures by harness, beside the mean over all of them
+- **app:** say each agent's state in its row in the sidebar
+- **shared:** read each agent's state from the room's records
+- **delivery:** the person's decline on a wake card is an answer entry for each waker
+- **delivery:** a lint turn is a check entry in its agent's inbox
+- **delivery:** the person's / command is an entry in its agent's inbox
+- **delivery:** the person's answer on the download card is an entry in its agent's inbox
+- **delivery:** the person's answer to a refusal card is an entry in its agent's inbox
+- **delivery:** the person's answer to a tool ask is an entry in its agent's inbox
+- **delivery:** the person's answer to a block is an entry in its agent's inbox
+- **delivery:** the person's own action starts a failed agent's turn; an event is a turn of its own
+
+### Fixes
+
+- **inbox:** an edit names only agents still waiting for the message
+- **mentions:** a line was cut only when Postbox's note follows its ellipsis
+- **inbox:** an edit that leaves a name out stops that agent's entry, as Remove does
+- **mentions:** compare a copy with its item without code, once, and line by whole line
+- **inbox:** an edit may leave a name out; only naming an agent it doesn't go to is refused
+- **inbox:** a failed entry counts as given, so Edit is refused
+- **inbox:** an edit can't change whom the person's message names
+- **inbox:** an agent the person removed their message for reads that it was removed
+- **send:** a resend is found by its client id before whom it goes to is worked out
+- **uat:** the inboxroom persona declines any card but a wake card
+- **personas:** refuse "you" as a persona's name, in any case
+- **uat:** a turn that was lost is no wake, only the turn that ran
+- **uat:** count who woke a turn from the entries it took
+- **uat:** take each Codex thread's largest token total, not the last one read
+- **send:** a message the outbox sends again carries its client id, and is stored once
+- **mentions:** a message of several lines, copied whole, wakes no one
+- **shared:** read an agent's jobs from its session, and say stopping again
+- **uat:** make the inboxroom scenario exercise a copied line and two threads
+- **uat:** say whose cost a run's agents' dollars are, and what the other harnesses report
+- **shared:** say out of quota ahead of failed
+- **delivery:** Always allow's note says where the rule went without the file's path
+- **delivery:** a lint turn's refusal from its timer is logged, not thrown
+- **delivery:** an entry that came before the person's queued message starts first
+- **deliver:** keep Postbox's own marks off the message an agent is given
+
 ## 4.15.1 (2026-11-16)
 
 ### Fixes
