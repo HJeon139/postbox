@@ -31,7 +31,7 @@ async function cardOpen() {
 }
 
 const HANDOFF = 'Count the lines in work/*.txt and post the total.';
-const got = (f, handle, text) => f.adapter.calls.filter((c) => c.handle === handle && c.message?.text === text);
+const got = (f, handle, text) => f.adapter.calls.filter((c) => c.handle === handle && c.parts.some((m) => m.text === text));
 const posted = (f, handle, text) => f.store.items(f.t.id).filter((x) => x.kind === 'agent' && x.handle === handle && x.text === text);
 const received = (f, se, from, text) =>
   (f.store.state.sessions[se.id].agentMessages ?? []).filter((m) => m.dir === 'from' && m.other === from && m.text === text);
@@ -68,7 +68,7 @@ test('#439 not allowing the card tells each held wake’s agent, and delivers no
   await settle(f.rt);
   assert.deepEqual(got(f, 'alpha', HANDOFF), []);
   assert.deepEqual(posted(f, 'gamma', HANDOFF), []);
-  const told = f.adapter.calls.filter((c) => c.handle === 'gamma' && c.message?.kind === 'notice').map((c) => c.message.text);
+  const told = f.adapter.calls.filter((c) => c.handle === 'gamma' && c.message?.kind === 'notice').map((c) => c.parts[0].text);
   assert.ok(
     told.some((l) => /didn’t go to @alpha/.test(l)),
     `gamma is told: ${told.join(' | ')}`,

@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import * as arrange from './arrange.mjs';
 import { settle, setup } from './side-threads-fixture.mjs';
+import { readOf } from './turn-parts.mjs';
 
 /** A room where alpha has replied once, and the reply to react to. */
 async function replied() {
@@ -16,7 +17,7 @@ async function replied() {
   return { ...f, reply };
 }
 const react = (f, item, emoji, threadId = f.t.id) => f.rt.act(threadId, item.id, '@react', { emoji });
-const turnContext = (call) => [call.message.taskContext, ...(call.message.context ?? [])].filter(Boolean).join('\n');
+const turnContext = (call) => readOf(call);
 /** What each agent’s next turn starts with. */
 async function nextTurns(f, text) {
   const before = f.adapter.calls.length;

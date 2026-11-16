@@ -9,8 +9,7 @@ import * as arrange from './arrange.mjs';
 import { held, settle, setup, sleep } from './side-threads-fixture.mjs';
 
 const said = (store, threadId, text) => store.items(threadId).filter((i) => i.kind === 'user' && i.text === text);
-const givenTo = (adapter, se, text) =>
-  adapter.calls.filter((c) => c.sessionId === se.id && (c.message.messages ?? [c.message]).some((m) => m.text === text)).length;
+const givenTo = (adapter, se, text) => adapter.calls.filter((c) => c.sessionId === se.id && c.parts.some((m) => m.text === text)).length;
 
 test('the person’s message to a busy agent is posted when it’s sent, with a person entry waiting for it', async () => {
   const { rt, store, adapter, t, beta } = setup();
@@ -63,6 +62,7 @@ test('#1108 a message sent during a Stop’s exit at shutdown is in the transcri
   busy.release();
   await closing;
   const rt = new Runtime({ store: f.store, adapters: f.rt.adapters, config: f.rt.config });
+  f.adapter.rt = rt;
   rt.drainAll();
   await settle(rt);
   assert.equal(said(f.store, f.t.id, '@beta held at shutdown').length, 1, 'one item in the transcript');

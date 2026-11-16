@@ -5,6 +5,7 @@
 
 import { expect } from '@playwright/test';
 import * as arrange from '../arrange.mjs';
+import { plainOf } from '../turn-parts.mjs';
 
 /**
  * Registers the fake backend on a spec’s Postbox and moves @indexer and @researcher to it. turns lists every turn it
@@ -24,8 +25,11 @@ export function heldBackend(app) {
       return app.root;
     },
     fork() {},
-    async deliver(session, message, ctx) {
-      turns.push({ sessionId: session.id, thread: ctx.thread.id, text: message.text ?? '', context: message.context ?? [] });
+    async deliver(session, given, ctx) {
+      // The plain message the turn answers, and what it read besides: an input’s text holds that since #1427.
+      const message = plainOf(rt, session.id, given);
+      const context = [...(given.kind === 'input' ? [given.text] : []), ...(given.context ?? [])];
+      turns.push({ sessionId: session.id, thread: ctx.thread.id, text: message.text ?? '', context });
       const script = scripts.get(session.id);
       scripts.delete(session.id);
       if (script) return script(ctx);

@@ -26,7 +26,7 @@ test('three waiting mentions from different agents become one turn with each sen
   const calls = adapter.calls.filter((call) => call.sessionId === beta.id);
   assert.equal(calls.length, 2, 'one initial turn and one batch');
   assert.deepEqual(
-    calls[1].message.messages.map((message) => [message.from, message.text]),
+    calls[1].parts.map((message) => [message.from, message.text]),
     [
       ['@alpha', 'First'],
       ['@gamma', 'Second'],
@@ -51,7 +51,7 @@ test('a later message from a waker doesn’t replace its waiting one: both reach
   const calls = adapter.calls.filter((call) => call.sessionId === beta.id);
   assert.equal(calls.length, 2);
   assert.deepEqual(
-    calls[1].message.messages.map((m) => m.text.split('\n')[0]),
+    calls[1].parts.map((m) => m.text.split('\n')[0]),
     ['Review the old revision.', 'Review the new revision.'],
   );
 });
@@ -67,7 +67,7 @@ test('a waker’s unaddressed later post is named on its waiting mention as post
   await settle(rt);
   const calls = adapter.calls.filter((call) => call.sessionId === beta.id);
   assert.equal(calls.length, 2, 'one initial turn and one with the mention');
-  assert.equal(calls[1].message.text, `Please check it.\n(The same sender posted since: [${later.id}])`);
+  assert.equal(calls[1].parts[0].text, `Please check it.\n(The same sender posted since: [${later.id}])`);
 });
 
 test('queued user messages and agent wakes share one turn without losing user transcript items', async () => {
@@ -84,7 +84,7 @@ test('queued user messages and agent wakes share one turn without losing user tr
   const calls = adapter.calls.filter((call) => call.sessionId === beta.id);
   assert.equal(calls.length, 2);
   assert.deepEqual(
-    calls[1].message.messages.map((message) => message.kind),
+    calls[1].parts.map((message) => message.kind),
     ['agent', 'user', 'agent'],
   );
   assert.equal(store.items(t.id).filter((item) => item.kind === 'user' && item.text === '@beta include the second point.').length, 1);
@@ -99,7 +99,7 @@ test('a waker finishing the same turn does not supersede its own queued handoff'
   arrange.post(rt, t.id, { kind: 'agent', sessionId: alpha.id, handle: 'alpha', turnId: 'source-turn', text: 'I asked for review.', status: 'done' });
   busy.release();
   await settle(rt);
-  assert.equal(adapter.calls.filter((call) => call.sessionId === beta.id)[1].message.text, 'Please review.');
+  assert.equal(adapter.calls.filter((call) => call.sessionId === beta.id)[1].parts[0].text, 'Please review.');
   assert.deepEqual(store.state.threads[t.id].queue, []);
 });
 
@@ -116,7 +116,7 @@ test('direct pending messages and a queued wake are delivered together', async (
   const calls = adapter.calls.filter((call) => call.sessionId === beta.id);
   assert.equal(calls.length, 2);
   assert.deepEqual(
-    calls[1].message.messages.map((message) => message.text),
+    calls[1].parts.map((message) => message.text),
     ['Pending one.', 'Pending two.', 'Queued third.'],
   );
 });
@@ -135,7 +135,7 @@ test('a batch never combines messages from the conversation and a topic thread',
   await settle(rt);
   const calls = adapter.calls.filter((call) => call.sessionId === beta.id);
   assert.deepEqual(
-    calls.slice(1).map((call) => [call.thread, call.message.text]),
+    calls.slice(1).map((call) => [call.thread, call.parts[0].text]),
     [
       [t.id, 'In the conversation.'],
       [topic, 'In the topic.'],
@@ -154,7 +154,7 @@ test('a post in another thread does not supersede a queued wake in the conversat
   arrange.post(rt, topic, { kind: 'agent', sessionId: alpha.id, handle: 'alpha', text: 'Different topic.', status: 'done' });
   busy.release();
   await settle(rt);
-  assert.equal(adapter.calls.filter((call) => call.sessionId === beta.id)[1].message.text, 'Still needed.');
+  assert.equal(adapter.calls.filter((call) => call.sessionId === beta.id)[1].parts[0].text, 'Still needed.');
 });
 
 test('a later post noted on a waiting mention doesn’t strand a queued message addressed to several agents', async () => {
@@ -168,7 +168,7 @@ test('a later post noted on a waiting mention doesn’t strand a queued message 
   busy.release();
   await settle(rt);
   assert.deepEqual(store.state.threads[t.id].queue, []);
-  const delivered = adapter.calls.flatMap((call) => call.message.messages ?? [call.message]);
+  const delivered = adapter.calls.flatMap((call) => call.parts ?? [call.message]);
   assert.equal(delivered.filter((message) => message.text === '@alpha @beta the shared next task.').length, 2);
   assert.equal(delivered.filter((message) => message.text?.startsWith('Obsolete request.') && message.text.includes(resolved.id)).length, 1);
   assert.deepEqual(arrange.waitingEntries(rt, beta.id), []);
@@ -187,7 +187,7 @@ test('overlapping recipient lists give each agent one batch and post shared user
   const calls = adapter.calls.filter((call) => call.sessionId === beta.id);
   assert.equal(calls.length, 2);
   assert.deepEqual(
-    calls[1].message.messages.map((message) => message.text),
+    calls[1].parts.map((message) => message.text),
     ['@beta first', '@alpha @beta shared', '@beta last'],
   );
   assert.equal(adapter.calls.filter((call) => call.handle === 'alpha').length, 1);
@@ -203,7 +203,7 @@ test('an empty streaming placeholder does not supersede a queued wake', async ()
   arrange.post(rt, t.id, { kind: 'agent', sessionId: alpha.id, handle: 'alpha', turnId: 'new-turn', text: '', status: 'streaming' });
   busy.release();
   await settle(rt);
-  assert.equal(adapter.calls.filter((call) => call.sessionId === beta.id)[1].message.text, 'Still needs review.');
+  assert.equal(adapter.calls.filter((call) => call.sessionId === beta.id)[1].parts[0].text, 'Still needs review.');
 });
 
 test('stopping a turn preserves each agent’s message from a mixed pending batch', async () => {
@@ -272,5 +272,5 @@ test('a newer unaddressed post replaces a directly pending wake exactly once', a
   const calls = adapter.calls.filter((call) => call.sessionId === beta.id);
   assert.equal(calls.length, 2);
   assert.equal(calls[1].message.itemId, newer.id);
-  assert.equal(calls[1].message.text, newer.text);
+  assert.equal(calls[1].parts[0].text, newer.text);
 });

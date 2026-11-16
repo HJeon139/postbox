@@ -8,6 +8,7 @@ import { reactTool } from '../server/reactions.mjs';
 import { TOOL_DEFS } from '../shared/mcp-tools.mjs';
 import * as arrange from './arrange.mjs';
 import { settle, setup } from './side-threads-fixture.mjs';
+import { readOf } from './turn-parts.mjs';
 
 /** A room where alpha has replied to the person once, and the reply. */
 async function replied() {
@@ -26,7 +27,7 @@ async function nextTurns(f, text) {
   const before = f.adapter.calls.length;
   f.rt.sendMessage(f.t.id, { text });
   await settle(f.rt);
-  return Object.fromEntries(f.adapter.calls.slice(before).map((c) => [c.handle, (c.message.context ?? []).join('\n')]));
+  return Object.fromEntries(f.adapter.calls.slice(before).map((c) => [c.handle, readOf(c)]));
 }
 
 test('agents react with the react tool, which every agent has, to any message: the person’s, another agent’s, its own', async () => {

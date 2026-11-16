@@ -118,7 +118,7 @@ test('#135: both wakes keep their transcript provenance, and both are delivered:
   // Your message between them started the wake count again.
   assert.deepEqual([first.hop, second.hop], [1, 1]);
   assert.deepEqual(
-    adapter.calls.filter((x) => x.sessionId === beta.id && x.message.kind === 'agent').flatMap((x) => (x.message.messages ?? [x.message]).map((m) => m.itemId)),
+    adapter.calls.filter((x) => x.sessionId === beta.id && x.parts[0].kind === 'agent').flatMap((x) => x.parts.map((m) => m.itemId)),
     [first.id, second.id],
   );
 });

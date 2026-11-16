@@ -3,6 +3,7 @@
 
 import { expect } from '@playwright/test';
 import * as arrange from '../arrange.mjs';
+import { plainOf } from '../turn-parts.mjs';
 import { startPostbox, synced } from './postbox.mjs';
 
 // Line numbers matter: the selection below is on line 3, and the table row on line 10.
@@ -55,7 +56,9 @@ export async function reviewRoom(name) {
   // The agent: shows the review on cue, and revises it on cue.
   arrange.withAdapter(app.rt, {
     name: 'mock',
-    async deliver(session, message, ctx) {
+    async deliver(session, given, ctx) {
+      // The plain message the turn answers: an input’s batch, as its turn was asked (#1427).
+      const message = plainOf(app.rt, session.id, given);
       calls.push(message);
       const block = review(session.threadId);
       if (message.kind === 'user' && message.text.endsWith('review')) ctx.tools.show_block({ block });

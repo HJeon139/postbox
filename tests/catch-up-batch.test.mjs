@@ -17,7 +17,7 @@ const THEIRS = `@alpha the review of the totals is done: two fixes needed. ${'De
 
 /** How many times `text` reached alpha in one call: its message (a batch's is its messages' joined), a thread's task context and its context. */
 const copies = (call, text) =>
-  [call.message.text, call.message.taskContext, ...(call.message.context ?? [])].filter((s) => String(s ?? '').includes(text)).length;
+  [call.parts[0].text, call.message.taskContext, ...(call.message.context ?? [])].filter((s) => String(s ?? '').includes(text)).length;
 const toAlpha = (f) => f.adapter.calls.filter((c) => c.handle === 'alpha');
 
 /** @alpha busy in a turn that waits until the returned release(). */
@@ -38,7 +38,7 @@ test('#506 your queued mention batched with a later wake reaches the agent once'
   b.release();
   await settle(f.rt);
   const batch = toAlpha(f)[1];
-  assert.equal(batch.message.messages?.length, 2, 'the two came as one batch');
+  assert.equal(batch.parts.length, 2, 'the two came as one batch');
   assert.equal(copies(batch, MINE), 1);
 });
 
@@ -50,7 +50,7 @@ test('#506 an agent’s mention batched with your later message reaches the agen
   b.release();
   await settle(f.rt);
   const batch = toAlpha(f)[1];
-  assert.equal(batch.message.messages?.length, 2, 'the two came as one batch');
+  assert.equal(batch.parts.length, 2, 'the two came as one batch');
   assert.equal(copies(batch, THEIRS), 1);
 });
 
@@ -76,7 +76,7 @@ test('#506 your message waiting behind a turn in a topic thread stays out of tha
   const [, inTopic, after] = toAlpha(f);
   assert.equal(inTopic.thread, topic, 'the topic’s turn came first');
   assert.equal(copies(inTopic, MINE), 0, 'its summary leaves out what waits for the agent');
-  assert.equal(after.message.text, MINE, 'the next turn gives it whole, once');
+  assert.equal(after.parts[0].text, MINE, 'the next turn gives it whole, once');
 });
 
 test('#506 each of your messages waiting behind a topic thread’s turn comes whole after it, in one batch', async () => {
@@ -98,9 +98,9 @@ test('#506 each of your messages waiting behind a topic thread’s turn comes wh
   b.release();
   await settle(f.rt);
   const after = toAlpha(f).at(-1);
-  assert.equal(after.message.messages?.length, 2, 'your two came as one batch');
+  assert.equal(after.parts.length, 2, 'your two came as one batch');
   assert.deepEqual(
-    after.message.messages.map((m) => m.text),
+    after.parts.map((m) => m.text),
     [MINE, THEIRS.replace('@alpha the review', '@alpha my review')],
   );
   assert.equal(copies(toAlpha(f).at(-2), MINE), 0, 'the topic’s turn didn’t give it first');
@@ -112,7 +112,7 @@ test('#506 your queued mention alone comes in full: no summary gave it', async (
   f.rt.sendMessage(f.t.id, { text: MINE });
   b.release();
   await settle(f.rt);
-  assert.equal(toAlpha(f)[1].message.text, MINE);
+  assert.equal(toAlpha(f)[1].parts[0].text, MINE);
 });
 
 test('#506 the pointer to your message keeps its attachments', async () => {
@@ -157,7 +157,7 @@ test('#506 your two queued messages in a topic thread, delivered as one batch, r
   await settle(f.rt);
   const batch = toAlpha(f).at(-1);
   assert.equal(batch.thread, topic);
-  assert.equal(batch.message.messages?.length, 2, 'the two came as one batch');
+  assert.equal(batch.parts.length, 2, 'the two came as one batch');
   assert.equal(copies(batch, MINE), 1);
 });
 
@@ -195,7 +195,7 @@ test('#506 your long message a topic thread’s summary cut comes after it in fu
   const [, inTopic, after] = toAlpha(f);
   assert.equal(inTopic.thread, topic, 'the topic’s turn came first');
   assert.equal(copies(inTopic, 'THE-END-MARK'), 0, 'its summary cut your message');
-  assert.equal(after.message.text, LONG);
+  assert.equal(after.parts[0].text, LONG);
 });
 
 test('#506 an agent’s mention one character past what a summary gives whole comes in full when its wake is delivered, not as a pointer', async () => {
@@ -210,7 +210,7 @@ test('#506 an agent’s mention one character past what a summary gives whole co
   await settle(f.rt);
   const [first, second] = toAlpha(f);
   assert.equal(copies(first, 'THE-END-MARK'), 0, 'the summary cut it');
-  assert.equal(second.message.text, text);
+  assert.equal(second.parts[0].text, text);
 });
 
 test('#506 an agent’s mention exactly as long as a summary gives whole comes as a pointer: the summary gave all of it', async () => {
@@ -225,7 +225,7 @@ test('#506 an agent’s mention exactly as long as a summary gives whole comes a
   await settle(f.rt);
   const [first, second] = toAlpha(f);
   assert.equal(copies(first, text), 1, 'the summary gave it whole');
-  assert.match(second.message.text, /^@beta’s message above, which your last summary gave you in full: /);
+  assert.match(second.parts[0].text, /^@beta’s message above, which your last summary gave you in full: /);
 });
 
 test('#506 your message sent again, word for word, comes in full: it’s a new message, not the one a summary gave', async () => {
@@ -248,6 +248,6 @@ test('#506 your message sent again, word for word, comes in full: it’s a new m
   f.rt.sendMessage(f.t.id, { text: MINE });
   await settle(f.rt);
   const [, , first, again] = toAlpha(f);
-  assert.equal(first.message.text, MINE);
-  assert.equal(again.message.text, MINE);
+  assert.equal(first.parts[0].text, MINE);
+  assert.equal(again.parts[0].text, MINE);
 });

@@ -6,6 +6,7 @@ import { Runtime } from '../server/runtime.mjs';
 import { newId, Store } from '../server/store.mjs';
 import * as arrange from './arrange.mjs';
 import { tempDir } from './temp-dirs.mjs';
+import { partsOf } from './turn-parts.mjs';
 
 // The project’s folder, a temp folder of the test file’s: the adapters make agent folders in it (#823).
 const PROJECT_DIR = tempDir('pb-project-');
@@ -24,7 +25,8 @@ export class ScriptedAdapter {
     this.forks.push([source.id, target.id]);
   }
   async deliver(session, message, ctx) {
-    this.calls.push({ handle: session.handle, sessionId: session.id, message, thread: ctx.thread.id, state: ctx.state });
+    const parts = partsOf(this.rt, session.id, message);
+    this.calls.push({ handle: session.handle, sessionId: session.id, message, parts, thread: ctx.thread.id, state: ctx.state });
     ctx.saveState({ backendSession: `cli-${session.id}` });
     const step = this.next.shift() ?? (async (c) => c.text('ok'));
     await step(ctx, message, session);
@@ -39,6 +41,7 @@ export function setup(store = new Store(null)) {
     adapters: new AdapterRegistry().register(adapter),
     config: { origin: 'http://127.0.0.1:1', imageOrigins: [], lintSettleMs: 0 },
   });
+  adapter.rt = rt;
   store.emit('project', { id: 'p1', name: 'P', folder: PROJECT_DIR });
   const a = rt.createPersona({ handle: 'alpha' });
   const b = rt.createPersona({ handle: 'beta' });

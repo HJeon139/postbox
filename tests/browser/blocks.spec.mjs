@@ -12,6 +12,7 @@
 
 import { expect, test } from '@playwright/test';
 import * as arrange from '../arrange.mjs';
+import { plainOf } from '../turn-parts.mjs';
 import { allowPageError, failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 
 const choice = (id, title) => ({
@@ -61,7 +62,9 @@ test.beforeAll(async () => {
   app = await startPostbox('blocks');
   arrange.withAdapter(app.rt, {
     name: 'mock',
-    async deliver(_session, message, ctx) {
+    async deliver(session, given, ctx) {
+      // The plain message the turn answers: an input’s batch, as its turn was asked (#1427).
+      const message = plainOf(app.rt, session.id, given);
       calls.push(message);
       if (message.kind === 'user') await scripts[message.text]?.(ctx);
     },

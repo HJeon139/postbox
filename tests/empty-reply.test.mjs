@@ -26,6 +26,7 @@ import { Store } from '../server/store.mjs';
 import * as arrange from './arrange.mjs';
 import { setup as blocksSetup, settle as settleBlocks } from './blocks-fixture.mjs';
 import { tempDir } from './temp-dirs.mjs';
+import { readOf } from './turn-parts.mjs';
 
 // Fixed paths under /tmp outlive the run and collide between users (#823); each is a temp folder of this file’s.
 const DIR_485 = tempDir('pb-test-485-');
@@ -145,11 +146,8 @@ test('#485: a reply that wrote its report and then failed still reaches the othe
   // And the catch-up at that agent’s next turn.
   rt.sendMessage(t.id, { text: '@researcher what did critic find?' });
   await settleBlocks(rt);
-  const sent = adapter.calls.at(-1).message;
-  assert.ok(
-    (sent.context ?? []).some((c) => c.includes('#451 is ready at 41f3a0f') && c.includes('this reply failed')),
-    JSON.stringify(sent.context),
-  );
+  const sent = readOf(adapter.calls.at(-1));
+  assert.ok(sent.includes('#451 is ready at 41f3a0f') && sent.includes('this reply failed'), sent);
 });
 
 test('#485: a turn that answers only with a Postbox call that acts, such as a reaction, isn’t marked failed', async () => {

@@ -17,7 +17,7 @@ test('#372 an @-mention wakes the agent in the conversation, its reply posts the
   await settle(rt);
   const woke = turnsOf(adapter, beta.id);
   assert.deepEqual(
-    woke.map((c) => [c.thread, c.message.kind, c.message.from]),
+    woke.map((c) => [c.thread, c.parts[0].kind, c.parts[0].from]),
     [[t.id, 'agent', '@alpha']],
   );
   const said = store.items(t.id).filter((x) => x.kind === 'agent');
@@ -89,7 +89,7 @@ test('#372 a wake for a busy agent waits in its inbox in the conversation, and g
   busy.release();
   await settle(rt);
   assert.deepEqual(
-    turnsOf(adapter, beta.id).map((c) => c.message.text ?? c.message.kind),
+    turnsOf(adapter, beta.id).map((c) => c.parts[0].text ?? c.parts[0].kind),
     ['@beta start the long job', 'Which editions?'],
   );
   assert.equal(sides(store).length, 0);

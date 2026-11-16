@@ -5,6 +5,7 @@
 
 import { expect, test } from '@playwright/test';
 import * as arrange from '../arrange.mjs';
+import { plainOf } from '../turn-parts.mjs';
 import { failOnPageErrors, settled, startPostbox, synced } from './postbox.mjs';
 
 // Tracing is off: Playwright’s trace snapshot walks the page each action, and an item the transcript skips (#712a) is
@@ -25,7 +26,9 @@ test.beforeAll(async () => {
   app = await startPostbox('choice-layout-cost');
   arrange.withAdapter(app.rt, {
     name: 'mock',
-    async deliver(_session, message, ctx) {
+    async deliver(session, given, ctx) {
+      // The plain message the turn answers: an input’s batch, as its turn was asked (#1427).
+      const message = plainOf(app.rt, session.id, given);
       if (message.kind !== 'user') return;
       const n = Number(message.text);
       for (let i = 0; i < n; i++) ctx.tools.show_block({ block: { id: `c${i}`, type: 'choice', version: 1, fallback: `c${i}`, options: OPTIONS } });

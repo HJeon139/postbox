@@ -58,7 +58,7 @@ const waitingTexts = (f, source, store = null) =>
   (store ? (store.state.inbox[f.beta.id] ?? []) : arrange.waitingEntries(f.rt, f.beta.id))
     .filter((e) => e.state === 'waiting' && e.source === source)
     .map((e) => `${source === 'mention' ? `@${e.from}: ` : ''}${(store ?? f.store.pending).item(e.threadId, e.itemId)?.text}`);
-const texts = (message) => (message.messages ?? [message]).map((m) => m.text);
+const texts = (call) => (call?.parts ?? []).map((m) => m.text);
 
 test('two wakes queued for a busy agent behind a held commit both reach it after the release', async () => {
   const f = await heldRoom();
@@ -70,7 +70,7 @@ test('two wakes queued for a busy agent behind a held commit both reach it after
   b.release();
   await settle(f.rt);
   const toBeta = f.adapter.calls.filter((c) => c.handle === 'beta');
-  assert.deepEqual(texts(toBeta[1].message), ['First.', 'Second.']);
+  assert.deepEqual(texts(toBeta[1]), ['First.', 'Second.']);
   await f.store.close();
 });
 
@@ -162,7 +162,7 @@ test('two wakes queued behind a held commit both reach their agent when its turn
   await release();
   await settle(f.rt);
   const toBeta = f.adapter.calls.filter((c) => c.handle === 'beta');
-  assert.deepEqual(texts(toBeta[1]?.message ?? {}), ['First.', 'Second.']);
+  assert.deepEqual(texts(toBeta[1]), ['First.', 'Second.']);
   await f.store.close();
 });
 

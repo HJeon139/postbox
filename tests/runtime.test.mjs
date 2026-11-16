@@ -9,6 +9,7 @@ import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
 import * as arrange from './arrange.mjs';
 import { tempDir } from './temp-dirs.mjs';
+import { partsOf } from './turn-parts.mjs';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -28,7 +29,7 @@ class ScriptedAdapter {
     this.forks.push([source.id, target.id]);
   }
   async deliver(session, message, ctx) {
-    this.calls.push({ handle: session.handle, message, sessionId: session.id, state: ctx.state });
+    this.calls.push({ handle: session.handle, message, parts: partsOf(this.rt, session.id, message), sessionId: session.id, state: ctx.state });
     // Each turn ends at a point a topic thread can fork from.
     ctx.checkpoint?.({ turn: this.calls.length });
     const step = this.next.shift() ?? (async (c) => c.text('ok'));
@@ -44,6 +45,7 @@ function setup(config = {}) {
     adapters: new AdapterRegistry().register(adapter),
     config: { origin: 'http://127.0.0.1:1', imageOrigins: [], lintSettleMs: 0, ...config },
   });
+  adapter.rt = rt;
   store.emit('project', { id: 'p1', name: 'P', folder: '/tmp' });
   const a = rt.createPersona({ handle: 'alpha', tools: ['arxiv.search'] });
   const b = rt.createPersona({ handle: 'beta' });
@@ -54,6 +56,8 @@ const settle = async (rt) => {
   for (let i = 0; i < 100 && rt.turns.size; i++) await sleep(5);
   await sleep(5);
 };
+/** What a turn read besides its request: an input’s text holds the room since #1427, as its context did before. */
+const readOf = (call) => [call.message.kind === 'input' ? call.message.text : null, ...(call.message.context ?? [])].filter(Boolean).join('\n');
 
 test('a message goes to the thread’s agent and its reply streams into an item', async () => {
   const { rt, store, t, adapter } = setup();
@@ -250,7 +254,7 @@ test('a wake you allow delivers its whole message, not the card’s preview (#10
   rt.act(t.id, hop.id, 'confirm');
   await settle(rt);
   // The wakes that waited for beta reach it in one turn (designs/rooms-at-scale.md, “What a turn is given”).
-  const given = adapter.calls.filter((c) => c.handle === 'beta').flatMap((c) => c.message.messages ?? [c.message]);
+  const given = adapter.calls.filter((c) => c.handle === 'beta').flatMap((c) => c.parts);
   const woke = given.filter((m) => m.kind === 'agent' && m.from === '@alpha').at(-1);
   assert.equal(woke?.text.length, 3000);
   assert.equal(woke?.text, long);
@@ -267,7 +271,7 @@ test('a wake request stored before #108, with only a preview, still delivers tha
   arrange.setItem(rt, t.id, hop.id, { text: undefined, reason: 'the preview' });
   rt.act(t.id, hop.id, 'confirm');
   await settle(rt);
-  const given = adapter.calls.filter((c) => c.handle === 'beta').flatMap((c) => c.message.messages ?? [c.message]);
+  const given = adapter.calls.filter((c) => c.handle === 'beta').flatMap((c) => c.parts);
   assert.equal(given.filter((m) => m.kind === 'agent' && m.from === '@alpha').at(-1)?.text, 'the preview');
 });
 
@@ -643,7 +647,7 @@ test('#111: sharing a topic reply keeps the question it answers', async () => {
   assert.throws(() => rt.shareToConversation(threadId, reply.id), /already in the conversation/);
   rt.sendMessage(t.id, { text: 'Carry on' });
   await settle(rt);
-  assert.match(adapter.calls.at(-1).message.context[0], /Shared from the thread .*Use chapter offsets\./s);
+  assert.match(readOf(adapter.calls.at(-1)), /Shared from the thread .*Use chapter offsets\./s);
 });
 
 test('summarize back posts the thread agent’s summary in the conversation', async () => {
@@ -900,7 +904,7 @@ test('a message during the settle takes the lint’s problems with it, and no li
   await sleep(80);
   await settle(rt);
   assert.equal(lints(adapter).length, 0);
-  const next = adapter.calls.find((c) => c.message.text === 'and next?');
+  const next = adapter.calls.find((c) => c.parts.some((m) => m.text === 'and next?'));
   assert.match(next.message.lint, /^\[Postbox\] Postbox checked your last reply[\s\S]*- Step 6/, 'the lint has its own place in the turn');
   assert.ok(!(next.message.context ?? []).some((c) => /checked your last reply/.test(c)), 'and isn’t background');
 });
@@ -1200,7 +1204,7 @@ test('#98: Stop leaves running progress steps stalled, starts no lint turn, and 
   rt.sendMessage(t.id, { text: 'carry on' });
   await settle(rt);
   assert.match(
-    adapter.calls.at(-1).message.context.join('\n'),
+    readOf(adapter.calls.at(-1)),
     /The person stopped your last turn while progress steps were running:\n- Block “Reading” \(id job\): Step “Read B”/,
   );
 });
@@ -1627,12 +1631,13 @@ test('issue #1: an agent mentioned into a room gets the exchange it wasn’t wok
   await settle(rt);
   const b = adapter.calls.at(-1);
   assert.equal(b.handle, 'beta');
-  assert.equal(b.message.text, '@beta what did alpha say about the editions?');
-  const ctx = b.message.context[0];
-  assert.match(ctx, /^\[Postbox\] What happened in this room since your last turn:/);
+  assert.equal(b.parts[0].text, '@beta what did alpha say about the editions?');
+  // Its message, then the room since its last turn, in the input’s tail (#1427).
+  const ctx = readOf(b).split('[Postbox] Also since your last turn, not addressed to you')[1] ?? '';
   assert.match(ctx, /The person, to @alpha: Which edition of Emma should we index\?/);
   assert.match(ctx, /@alpha: The editions differ in chapter 12\./);
   assert.ok(!ctx.includes('what did alpha say'), 'the message itself isn’t repeated as context');
+  assert.equal(readOf(b).split('what did alpha say').length - 1, 1, 'the message is given once');
 });
 
 test('each agent catches up only on what it missed, and never on its own replies', async () => {
@@ -1644,7 +1649,7 @@ test('each agent catches up only on what it missed, and never on its own replies
   await settle(rt);
   rt.sendMessage(t.id, { text: '@beta and you?' });
   await settle(rt);
-  const ctx = adapter.calls.at(-1).message.context?.[0] ?? '';
+  const ctx = readOf(adapter.calls.at(-1));
   assert.match(ctx, /The person, to @alpha: @alpha status\?/);
   assert.match(ctx, /@alpha: Alpha here\./);
   assert.ok(!ctx.includes('@beta hi'), 'beta already had that');
@@ -1685,7 +1690,7 @@ async function longReplyReviewed() {
   await settle(rt);
   const reply = store.items(t.id).find((i) => i.kind === 'agent' && i.handle === 'alpha');
   const call = adapter.calls.at(-1);
-  return { ...ctx, reply, se: rt.s.sessions[call.sessionId], catchUp: (call.message.context ?? []).join('\n') };
+  return { ...ctx, reply, se: rt.s.sessions[call.sessionId], catchUp: readOf(call) };
 }
 
 test('#109 history cuts a long reply, says how much it kept, and gives the id read_message takes', async () => {
@@ -1780,9 +1785,8 @@ test('#109 a topic thread’s root, cut at 4,000, gives its id, and read_message
   await settle(rt);
   const call = adapter.calls.at(-1);
   assert.equal(call.handle, 'critic');
-  const context = [call.message.taskContext, ...(call.message.context ?? [])].filter(Boolean).join('\n');
   assert.match(
-    context,
+    readOf(call),
     new RegExp(
       `This thread started from @alpha’s message: Finding 1[^]*… \\(4,000 of [\\d,]+ characters; read_message \\{ id: "${reply.id}" \\} has the rest\\)`,
     ),
@@ -1811,7 +1815,7 @@ async function blocksShown(blocks, answers = []) {
   await settle(rt);
   const call = adapter.calls.at(-1);
   assert.equal(call.handle, 'beta');
-  return { ...ctx, item, se: rt.s.sessions[call.sessionId], catchUp: (call.message.context ?? []).join('\n') };
+  return { ...ctx, item, se: rt.s.sessions[call.sessionId], catchUp: readOf(call) };
 }
 
 test('#153 another agent reads a review block’s draft in its history, not only its title', async () => {
@@ -1909,7 +1913,7 @@ test('#153 an app is still its title alone', async () => {
   await settle(rt);
   rt.sendMessage(t.id, { text: '@beta look' });
   await settle(rt);
-  const ctx = adapter.calls.at(-1).message.context.join('\n');
+  const ctx = readOf(adapter.calls.at(-1));
   assert.match(ctx, /@alpha showed an app “Explorer”(\n|$)/);
   assert.doesNotMatch(ctx, /Secret code/);
   assert.ok(store.items(t.id).some((i) => i.kind === 'block'));

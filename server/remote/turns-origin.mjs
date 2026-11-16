@@ -158,7 +158,9 @@ function readMessage(kind, m, max) {
   if (!isObject(m)) return null;
   const v = /** @type {Record<string, any>} */ (m);
   const whole = json(v);
-  if (whole === null || whole.length > max || v.kind !== kind || typeof v.attach === 'string') return null;
+  // A plain batch given as an input (#1427) is of its plain parts’ kind, which the turn and its record keep.
+  const asKind = v.kind === 'input' ? v.as?.kind : v.kind;
+  if (whole === null || whole.length > max || asKind !== kind || typeof v.attach === 'string') return null;
   if (v.text !== undefined && typeof v.text !== 'string') return null;
   if (v.context !== undefined && !(Array.isArray(v.context) && v.context.every((c) => typeof c === 'string'))) return null;
   if (v.lint !== undefined && typeof v.lint !== 'string') return null;

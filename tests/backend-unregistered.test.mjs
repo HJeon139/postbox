@@ -149,12 +149,12 @@ test('#874 Retry after the backend is registered delivers the message once', asy
   await f.rt.retry(f.t.id, failedIn(f, f.t.id)[0].id);
   await settle(f.rt);
   const [second] = failedIn(f, f.t.id);
-  const claude = Object.assign(new ScriptedAdapter(), { name: 'claude-code' });
+  const claude = Object.assign(new ScriptedAdapter(), { name: 'claude-code', rt: f.rt });
   f.rt.adapters.register(claude);
   await f.rt.retry(f.t.id, second.id);
   await settle(f.rt);
   assert.equal(claude.calls.length, 1);
-  assert.equal(claude.calls[0].message.text, 'hello');
+  assert.equal(claude.calls[0].parts[0].text, 'hello');
   assert.equal(claude.calls[0].message.retry, true);
   f.rt.drainAll();
   await settle(f.rt);

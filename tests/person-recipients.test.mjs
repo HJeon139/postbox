@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import * as arrange from './arrange.mjs';
 import { held, settle, setup, sleep } from './side-threads-fixture.mjs';
+import { readOf } from './turn-parts.mjs';
 
 const userItems = (f, threadId) => f.store.items(threadId).filter((i) => i.kind === 'user');
 
@@ -25,7 +26,7 @@ test('a message the person sent to @alpha reads as theirs, to @alpha, in @beta�
   f.rt.deliver(f.beta.id, { kind: 'agent', from: '@alpha', text: 'Can you check the build?' });
   await settle(f.rt);
   const call = f.adapter.calls.findLast((c) => c.handle === 'beta');
-  const background = (call.message.context ?? []).join('\n');
+  const background = readOf(call);
   assert.match(background, /The person, to @alpha: Please fix the tally\./);
   assert.doesNotMatch(background, /You: /);
 });
@@ -63,7 +64,7 @@ test('a message in a topic thread keeps its recipients, and the thread’s opene
   await settle(f.rt);
   assert.deepEqual(userItems(f, topic.id).at(-1).to, ['beta']);
   const call = f.adapter.calls.findLast((c) => c.handle === 'beta');
-  const context = [call.message.taskContext, ...(call.message.context ?? [])].join('\n');
+  const context = readOf(call);
   assert.match(context, /This thread started from the person’s message to @alpha: @alpha start the totals/);
 });
 

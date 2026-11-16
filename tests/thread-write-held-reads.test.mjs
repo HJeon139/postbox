@@ -52,7 +52,7 @@ function topicOn(f) {
   return f.rt.startTopic(f.t.id, root.id).threadId;
 }
 
-const textsTo = (f, handle) => f.adapter.calls.filter((c) => c.handle === handle).map((c) => (c.message.messages ?? [c.message]).map((m) => m.text));
+const textsTo = (f, handle) => f.adapter.calls.filter((c) => c.handle === handle).map((c) => c.parts.map((m) => m.text));
 
 test('a mention held behind a commit leaves with its agent’s inbox when the agent is deleted meanwhile', async () => {
   const f = await heldRoom();

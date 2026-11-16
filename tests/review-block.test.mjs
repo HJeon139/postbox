@@ -9,6 +9,7 @@ import { Store } from '../server/store.mjs';
 import { validateBlock } from '../shared/catalog.mjs';
 import { buildEvent } from '../shared/events.mjs';
 import * as arrange from './arrange.mjs';
+import { readOf } from './turn-parts.mjs';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -78,7 +79,7 @@ test('#179: the history and read_message give a comment’s line, columns and qu
   const { rt, adapter, t, theirs } = await answered({ verdict: 'comment', comments: [ranged] });
   rt.sendMessage(t.id, { text: '@critic what do you make of the plan?' });
   await settle(rt);
-  const catchUp = (adapter.calls.at(-1).message.context ?? []).join('\n');
+  const catchUp = readOf(adapter.calls.at(-1));
   assert.match(catchUp, /The person’s review: Comment · 1 comment\n- line 3, col 5–19 “the quoted text”: Say which text\./);
   const read = rt.toolsFor(theirs.id).read_message({ id: 'plan' });
   assert.match(read.message, /- line 3, col 5–19 “the quoted text”: Say which text\./);
