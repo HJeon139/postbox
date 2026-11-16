@@ -333,11 +333,11 @@ test.describe('1280 px', () => {
     await open(page, `#/t/${room.id}`);
     const wide = await fitted(page, 'wide');
     expect(wide.drop).toBe('');
-    // “· calling tools” is longer than “· idle”; it’s in the sidebar, so the top bar stays as it was.
+    // A running agent’s step is longer than “· idle”; it’s in the sidebar, so the top bar stays as it was.
     const all = ['librarian', 'indexer', 'researcher', 'critic'];
     try {
-      for (const handle of all) arrange.setSession(rt, sessionOf(handle).id, { state: 'tool', currentStep: 'Working' });
-      await expect(row(page, 'indexer'), 'the row says “calling tools”').toContainText(/^indexer · calling tools/);
+      for (const handle of all) arrange.setSession(rt, sessionOf(handle).id, { state: 'tool', currentStep: 'Reading every book on the shelf' });
+      await expect(row(page, 'indexer'), 'the row says its step').toContainText(/^indexer · Reading every book on the shelf/);
       const busy = await fitted(page, 'busy');
       expect([busy.overflow, busy.drop, busy.title]).toEqual([0, '', wide.title]);
     } finally {
