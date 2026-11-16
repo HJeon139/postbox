@@ -79,7 +79,7 @@ export function pointerIfSeen(memory, se, message) {
   // A command is the whole prompt, so it’s never a pointer, though a Retry delivers it again after a summary (#67).
   if ((message?.kind !== 'agent' && message?.kind !== 'user') || message.slash || !message.itemId || !se?.seenItem) return message;
   const at = positionOf(memory.store.items(se.threadId), message.itemId);
-  // Only a mention the last summary kept was given: a wake_agent message that names no one, or a mention past the
+  // Only a mention the last summary kept was given: a message that names no one, or a mention past the
   // mentions’ cap, may have been left out, so it comes in full.
   if (at < 0 || !(se.givenMentions ?? []).includes(message.itemId)) return message;
   return {

@@ -36,9 +36,10 @@ test('declined-add-no-card fires when a prose mention after a decline raises no 
   assert.deepEqual(rest, []);
 });
 
-test('declined-add-no-card doesn’t fire when a new card asked again, as main does after a decline', async () => {
+test('declined-add-no-card doesn’t fire when a new card asked again after the decline', async () => {
   const f = await declinedThenMentioned();
-  f.rt.toolsFor(f.beta.id).wake_agent({ handle: 'gamma', message: 'I need gamma.' });
+  // A wake that isn’t a prose mention still asks after a decline: the card the trigger looks for.
+  f.rt.agentWake(f.beta.id, 'gamma', 'I need gamma.');
   assert.deepEqual(trigger.run(factsOf(f)), []);
 });
 

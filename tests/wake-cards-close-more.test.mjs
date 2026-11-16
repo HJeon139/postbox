@@ -16,9 +16,9 @@ const restart = (f) => new Runtime({ store: f.store, adapters: f.rt.adapters, co
 function heldOnAlphasCard() {
   const f = setup();
   f.rt.createPersona({ handle: 'delta' });
-  f.rt.toolsFor(f.alpha.id).wake_agent({ handle: 'gamma', message: 'Check the numbers.' });
+  f.rt.agentWake(f.alpha.id, 'gamma', 'Check the numbers.');
   const open = f.store.items(f.t.id).find((i) => i.kind === 'hop' && i.status === 'open');
-  f.rt.toolsFor(f.beta.id).wake_agent({ handle: 'delta', message: 'Draw the chart.' });
+  f.rt.agentWake(f.beta.id, 'delta', 'Draw the chart.');
   return { ...f, open };
 }
 

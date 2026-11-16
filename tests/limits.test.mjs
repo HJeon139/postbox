@@ -40,13 +40,8 @@ test('the MCP tool descriptions name the limits each tool needs', () => {
   const count = (k) => `${k.toLocaleString('en-US')} characters`;
   for (const tool of ['read_conversation', 'read_message']) assert.ok(said(tool).includes(count(READING.item)), `${tool} doesn’t name READING.item`);
   assert.ok(said('read_message').includes(count(READING.part)), 'read_message doesn’t name READING.part');
-  for (const tool of ['wake_agent', 'bring_to_conversation'])
+  for (const tool of ['open_topic', 'bring_to_conversation'])
     assert.ok(said(tool).includes(`up to ${count(SENDING.message)}`), `${tool} doesn’t name SENDING.message`);
-  assert.match(
-    JSON.stringify(TOOL_DEFS.find((t) => t.name === 'open_topic')),
-    new RegExp(`up to ${SENDING.mentions}\\b`),
-    'open_topic doesn’t name SENDING.mentions',
-  );
 });
 
 test('the catalog enforces the limits from the module', () => {

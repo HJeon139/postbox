@@ -116,38 +116,44 @@ test('#372: a turn still running in a side thread from before hands off in the c
   const f = setup();
   const { store, rt, adapter, t, alpha, beta } = f;
   const side = oldSide(f);
-  const results = [];
-  adapter.next.push(async (c) => {
-    results.push(c.tools.wake_agent({ handle: 'alpha', message: 'The 1908 one, page 12.' }));
-    results.push(c.tools.wake_agent({ handle: 'alpha', message: 'And page 40.' }));
-    c.text('Told alpha.');
-  });
-  rt.deliver(beta.id, { kind: 'agent', from: '@alpha', text: 'Which page?' }, { threadId: side.id });
-  await settle(rt);
+  // Two turns of @beta’s in the old side thread, each with a reply that @-mentions @alpha.
+  for (const [asked, said] of [
+    ['Which page?', '@alpha the 1908 one, page 12.'],
+    ['Any other?', '@alpha and page 40.'],
+  ]) {
+    adapter.next.push(async (c) => c.text(said));
+    rt.deliver(beta.id, { kind: 'agent', from: '@alpha', text: asked }, { threadId: side.id });
+    await settle(rt);
+  }
+  // Its replies stay in the side thread; the wakes, posted as @beta’s, and @alpha’s answers are in the conversation.
+  // Each is the first in its chain: @alpha’s answer between them woke no one, which ended the first.
   assert.deepEqual(
-    results.map((r) => r.ok),
-    [true, true],
+    store
+      .items(side.id)
+      .filter((i) => i.sessionId === beta.id && i.turnId)
+      .map((i) => i.text),
+    ['@alpha the 1908 one, page 12.', '@alpha and page 40.'],
   );
-  // Its reply stays in the side thread; the wakes and @alpha’s answers are in the conversation.
-  assert.ok(store.items(side.id).some((i) => i.sessionId === beta.id && i.text === 'Told alpha.'));
   assert.deepEqual(
     store
       .items(t.id)
       .filter((i) => i.kind === 'agent' && i.handle === 'beta')
       .map((i) => [i.text, i.hop]),
     [
-      ['The 1908 one, page 12.', 1],
-      ['And page 40.', 2],
+      ['@alpha the 1908 one, page 12.', 1],
+      ['@alpha and page 40.', 1],
     ],
   );
   assert.deepEqual(
     adapter.calls.filter((c) => c.sessionId === alpha.id).map((c) => [c.thread, c.message.text]),
     [
-      [t.id, 'The 1908 one, page 12.'],
-      [t.id, 'And page 40.'],
+      [t.id, '@alpha the 1908 one, page 12.'],
+      [t.id, '@alpha and page 40.'],
     ],
   );
-  const told = (store.state.sessions[beta.id].context ?? []).filter((x) => /Side threads are gone/.test(x));
+  // Told after the first hand-off, so its second turn was given it, and not again after the second.
+  const given = adapter.calls.filter((c) => c.sessionId === beta.id).flatMap((c) => c.message.context ?? []);
+  const told = [...given, ...(store.state.sessions[beta.id].context ?? [])].filter((x) => /Side threads are gone/.test(x));
   assert.equal(told.length, 1);
   assert.equal(store.state.sessions[beta.id].toldSideThreadsGone, true);
   assert.equal(store.items(t.id).filter((i) => i.kind === 'sidelink').length, 1, 'no new side thread or line');
@@ -162,10 +168,7 @@ test('#110, #372: an agent woken from a topic thread that asks for permission ne
   const topic = store.state.threads[rt.startTopic(t.id, reply.id).threadId];
   /** @type {any} */
   let asked = null;
-  adapter.next.push(async (c) => {
-    c.tools.wake_agent({ handle: 'beta', message: 'Run the tests.' });
-    c.text('Asked beta.');
-  });
+  adapter.next.push(async (c) => c.text('@beta run the tests.'));
   adapter.next.push(async (c) => {
     asked = c.askPermission({ tool: 'Bash', summary: 'run tests' });
     await asked;

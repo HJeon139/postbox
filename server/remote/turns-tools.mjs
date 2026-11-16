@@ -5,6 +5,7 @@
 // twice.
 
 import { LIMITS } from '../../shared/limits.mjs';
+import { GONE_TOOLS } from '../../shared/mcp-tools.mjs';
 import { REMOTE_LIMITS, toolRoute } from '../../shared/remote-protocol.mjs';
 import { AgentFileError } from '../agent-files.mjs';
 import { noteAnswer } from '../empty-reply.mjs';
@@ -82,6 +83,7 @@ async function applyTool(rts, live, m) {
     ...rts.rt.assets.tools(live.sessionId, live.rt, { onHost: true }),
   };
   const tools = { ...rts.rt.toolsFor(live.sessionId, live.rt), ...recordedTools(rts.rt, live.rt, own) };
+  if (Object.hasOwn(GONE_TOOLS, m.name)) return { ok: false, text: GONE_TOOLS[m.name] };
   if (!Object.hasOwn(tools, m.name)) return { ok: false, text: `There’s no tool called “${m.name}”.` };
   // The one write gate, as for a local turn's call (server/tool-gate.mjs): while the store is closed, a write is refused.
   const closed = closedTo(rts.rt, m.name);

@@ -41,8 +41,7 @@ export function askToWake(rt, from, parent, p, wake) {
 /**
  * An agent wakes a persona the conversation doesn’t have (#228): only the person adds one, so a card asks them. Allow
  * adds it, with a note, and delivers the wake; Decline tells the agent (resolveHop). One whose session here was
- * retired can’t be woken. After the person declines adding it here, a prose mention asks no more
- * (#693): wake_agent still does, since it’s a deliberate ask.
+ * retired can’t be woken. After the person declines adding it here, a prose mention asks no more (#693).
  * @param {any} rt @param {any} from @param {any} parent @param {any} p @param {any} wake
  * @param {{ prose?: boolean }} [opts]  prose: the wake is an @-mention in a turn’s reply
  */

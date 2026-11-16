@@ -2,7 +2,7 @@
 // One endpoint serves every backend. A Claude Code session or an Agent SDK agent connects to
 //   POST <origin>/mcp?session=<postbox session id>&turn=<the turn’s token>
 // and gets show_block, update_block, review_block, show_app, update_app, retire_app, define_term, react, propose_agent, schedule_wake,
-// cancel_wake, wake_agent, open_topic, bring_to_conversation (in side and topic threads), read_conversation, search_conversation,
+// cancel_wake, open_topic, bring_to_conversation (in side and topic threads), read_conversation, search_conversation,
 // read_message, ask_for_tool, and the asset tools (server/asset-tools.mjs).
 // Every tool returns at once; when you answer a block, your answer reaches the agent later as a new message
 // carrying { blockId, action, values }. The tools’ definitions are in shared/mcp-tools.mjs, which the shim on a
@@ -16,7 +16,7 @@
 // (#126). So is a call with no token (#54): the session id alone let any process on this computer act as that agent,
 // and agents posted large apps to /mcp from scripts, outside the tool calls you see. A large app goes by codePath.
 
-import { TOOL_DEFS } from '../shared/mcp-tools.mjs';
+import { GONE_TOOLS, TOOL_DEFS } from '../shared/mcp-tools.mjs';
 import { offersBring } from './bring.mjs';
 import { noteAnswer } from './empty-reply.mjs';
 import { sameToken } from './helpers.mjs';
@@ -86,6 +86,7 @@ async function one(rt, sessionId, msg, turnToken, closeOrSignal) {
       const turn = rt.turns.get(sessionId) ?? null;
       const tools = { ...rt.toolsFor(sessionId, turn), ...recordedTools(rt, turn, ownTools(rt, sessionId, turn)) };
       if (name === 'permission_prompt') return reply(asksByPrompt(rt, sessionId) ? await permission(rt, sessionId, args, closeOrSignal) : NOT_YOUR_PROMPT);
+      if (Object.hasOwn(GONE_TOOLS, name)) return reply({ content: [{ type: 'text', text: GONE_TOOLS[name] }], isError: true });
       if (!(name in tools) || !TOOL_DEFS.some((t) => t.name === name)) return fail(-32602, `There’s no tool called “${name}”.`);
       try {
         // An app’s files (#54) and a review’s images (#780) may come from the agent’s folder, which Postbox reads itself.

@@ -115,7 +115,8 @@ export const TOOL_ROUTES = Object.freeze({
   // Its answer carries the wake’s id, which only Postbox has, for cancel_wake; both wait (#458).
   schedule_wake: 'ask',
   cancel_wake: 'ask',
-  // Postbox may send it, hold it on a waiting card or refuse it, and only its answer says which (#439), so it waits.
+  // Gone (#481): a session that resumed with a guide that still names it may call it, and Postbox answers with what to
+  // do instead (GONE_TOOLS, shared/mcp-tools.mjs), so it waits for that answer.
   wake_agent: 'ask',
   // Its answer carries the topic thread's id, which only Postbox has (#637), so it waits.
   open_topic: 'ask',

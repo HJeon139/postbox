@@ -5,7 +5,7 @@
 
 import { FONT_RULE } from './app-fonts.mjs';
 import { shownBlock, updatedBlock } from './block-json-schema.mjs';
-import { HOP_LIMIT, limitText as n, PALETTES, PENDING_WAKES, READING, REVIEW_IMAGES, SEARCHING, SENDING } from './limits.mjs';
+import { limitText as n, PALETTES, PENDING_WAKES, READING, REVIEW_IMAGES, SEARCHING, SENDING } from './limits.mjs';
 import { ASSET_TOOLS } from './mcp-tools-assets.mjs';
 import { REACTIONS } from './reactions.mjs';
 import { COMMENT_MAX, MAX_COMMENTS, QUOTE_MAX, VERDICTS } from './review-comments.mjs';
@@ -151,24 +151,14 @@ export const TOOL_DEFS = [
     inputSchema: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] },
   },
   {
-    name: 'wake_agent',
-    description: `Wake another agent with a message, up to ${count(SENDING.message)} characters. Your message posts where you are, the conversation or a topic thread, and the agent answers there from its one session in this conversation; its reply wakes you only if it @-mentions you. If it’s busy, it answers when its current turn ends. Waking an agent that isn’t in this conversation asks the person to add it. After the room’s chain limit of agent wakes in one chain (${count(HOP_LIMIT)} unless the person set another), the person must allow the next one; while that waits, a further one is held and goes with their answer.`,
-    inputSchema: { type: 'object', properties: { handle: { type: 'string' }, message: { type: 'string' } }, required: ['handle', 'message'] },
-  },
-  {
     name: 'open_topic',
     // lint-allow thread: read_conversation's parameter of that name.
-    description: `Open a topic thread from a message in your conversation, by its item id, or find the topic thread it has, and optionally post a first message there, up to ${count(SENDING.message)} characters. Each agent in mentions is woken in the topic thread, as wake_agent wakes it, and answers there; one message serves them all. The topic thread opens beside the message in the page. A message in a topic thread can’t start another one: reply in that topic thread. The reply gives the topic thread’s id, which read_conversation { thread } reads, and says whether your message was posted, by its id.`,
+    description: `Open a topic thread from a message in your conversation, by its item id, or find the topic thread it has, and optionally post a first message there, up to ${count(SENDING.message)} characters. Each agent your message @-mentions is woken in the topic thread and answers there; one message serves them all. The topic thread opens beside the message in the page. A message in a topic thread can’t start another one: reply in that topic thread. The reply gives the topic thread’s id, which read_conversation { thread } reads, and says whether your message was posted, by its id.`,
     inputSchema: {
       type: 'object',
       properties: {
         itemId: { type: 'string', description: 'The id (it_…) of the message the topic thread is about, in your conversation.' },
         message: { type: 'string', description: 'A first message to post in the topic thread, in Markdown.' },
-        mentions: {
-          type: 'array',
-          items: { type: 'string' },
-          description: `The handles of agents to wake there with that message, up to ${SENDING.mentions}.`,
-        },
       },
       required: ['itemId'],
     },
@@ -245,6 +235,15 @@ export const TOOL_DEFS = [
     },
   },
 ];
+
+/**
+ * Tools that are gone, by name, with what a call to one is told instead. A session that resumes keeps the guide it
+ * started with (#515), which may still name one, so a call by name is answered with what to do, not “no such tool”
+ * (designs/rooms-at-scale.md, “After `wake_agent` goes”). Postbox’s MCP server and a host’s tool calls read this.
+ */
+export const GONE_TOOLS = Object.freeze({
+  wake_agent: 'wake_agent is gone. Post a message that @-mentions the agent; that wakes it.',
+});
 
 /**
  * What a permission_prompt call gets, at once, from an agent whose backend doesn’t ask through it (server/mcp.mjs on

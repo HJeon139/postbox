@@ -84,13 +84,11 @@ export const TURN_INPUT = Object.freeze({
 
 /**
  * What agents send each other and the conversation (#351). Past it a send is refused, and the refusal and the tool
- * descriptions (wake_agent, bring_to_conversation) name it, so the guide doesn’t list it.
+ * descriptions (open_topic, bring_to_conversation) name it, so the guide doesn’t list it.
  */
 export const SENDING = Object.freeze({
-  /** A message to another agent with wake_agent, and a post to the conversation with bring_to_conversation. */
+  /** A topic thread’s first message with open_topic, and a post to the conversation with bring_to_conversation. */
   message: 50_000,
-  /** The handles one open_topic wakes with its first message (#650). */
-  mentions: 16,
 });
 
 /**

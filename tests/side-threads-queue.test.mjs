@@ -21,15 +21,12 @@ async function withTopic() {
 
 test('#228, #372: an agent in a topic thread that wakes another gets the answer there, and isn’t woken by it', async () => {
   const { store, rt, adapter, t, alpha, beta, topic } = await withTopic();
-  adapter.next.push(async (c) => {
-    c.tools.wake_agent({ handle: 'beta', message: 'Your opinion?' });
-    c.text('Asked.');
-  });
+  adapter.next.push(async (c) => c.text('@beta your opinion?'));
   adapter.next.push(async (c) => c.text('Looks fine.'));
   rt.sendMessage(topic.id, { text: '@alpha get the reviewer’s opinion' });
   await settle(rt);
-  // The wake is @alpha’s message in the topic thread, and @beta answers there from its session in the conversation.
-  const wake = store.items(topic.id).find((i) => i.kind === 'agent' && i.text === 'Your opinion?');
+  // The wake is @alpha’s reply in the topic thread, and @beta answers there from its session in the conversation.
+  const wake = store.items(topic.id).find((i) => i.kind === 'agent' && i.text === '@beta your opinion?');
   assert.deepEqual([wake.sessionId, wake.hop], [alpha.id, 1]);
   const answer = adapter.calls.find((x) => x.sessionId === beta.id);
   assert.deepEqual([answer.thread, answer.message.from, answer.message.itemId], [topic.id, '@alpha', wake.id]);
@@ -40,7 +37,7 @@ test('#228, #372: an agent in a topic thread that wakes another gets the answer 
     false,
   );
   assert.equal(
-    store.items(t.id).some((i) => i.text === 'Looks fine.' || i.text === 'Your opinion?'),
+    store.items(t.id).some((i) => i.text === 'Looks fine.' || i.text === '@beta your opinion?'),
     false,
     'the exchange landed in the conversation',
   );
@@ -48,10 +45,7 @@ test('#228, #372: an agent in a topic thread that wakes another gets the answer 
 
 test('#228: Don’t add tells the waking agent in the thread it spoke from', async () => {
   const { store, rt, adapter, t, alpha, topic } = await withTopic();
-  adapter.next.push(async (c) => {
-    c.tools.wake_agent({ handle: 'gamma', message: 'Check the numbers.' });
-    c.text('Asked to add gamma.');
-  });
+  adapter.next.push(async (c) => c.text('@gamma check the numbers.'));
   rt.sendMessage(topic.id, { text: '@alpha ask gamma' });
   await settle(rt);
   const card = store.items(t.id).find((i) => i.kind === 'hop' && i.join);

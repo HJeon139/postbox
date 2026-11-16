@@ -44,7 +44,7 @@ function node(args, env, { input } = {}) {
 // each, as a line of JSON.
 const CHAIN = `
 import { HOP_LIMIT } from './shared/limits.mjs';
-import { TOOL_DEFS } from './shared/mcp-tools.mjs';
+import { roomText } from './server/adapters/guide.mjs';
 import * as arrange from './tests/arrange.mjs';
 import { setup } from './tests/side-threads-fixture.mjs';
 const f = setup();
@@ -59,13 +59,13 @@ const wakes = (threadId, n) => {
   }
   return { waiting: results, n: f.store.items(threadId).find((x) => x.kind === 'hop')?.n ?? null };
 };
-const told = TOOL_DEFS.find((d) => d.name === 'wake_agent').description.match(/the room’s chain limit of agent wakes in one chain \\(([\\d,]+) unless the person set another\\)/)?.[1];
+const told = roomText([{ handle: 'beta', role: '' }]).match(/the room’s chain limit of agent wakes in one chain \\(([\\d,]+) unless the person set another\\)/)?.[1];
 console.log(JSON.stringify({ HOP_LIMIT, unset: wakes(f.t.id, 4), own: wakes(own.id, 9), told }));
 process.exit(0);
 `;
 const goes = (n) => Array(n).fill(false);
 
-test('under POSTBOX_CHAIN_LIMIT=3 an unset room’s fourth wake waits on a card numbered 4, a room set to 8 asks at its ninth, and wake_agent says 3', async () => {
+test('under POSTBOX_CHAIN_LIMIT=3 an unset room’s fourth wake waits on a card numbered 4, a room set to 8 asks at its ninth, and the guide says 3', async () => {
   const r = await node(['--input-type=module', '-e', CHAIN], { POSTBOX_CHAIN_LIMIT: '3' });
   assert.equal(r.code, 0, r.err);
   assert.deepEqual(JSON.parse(r.out.trim()), {
@@ -76,7 +76,7 @@ test('under POSTBOX_CHAIN_LIMIT=3 an unset room’s fourth wake waits on a card 
   });
 });
 
-test('without the variable the default is 1,000: four wakes all go in an unset room, and wake_agent says 1,000', async () => {
+test('without the variable the default is 1,000: four wakes all go in an unset room, and the guide says 1,000', async () => {
   const r = await node(['--input-type=module', '-e', CHAIN], {});
   assert.equal(r.code, 0, r.err);
   assert.deepEqual(JSON.parse(r.out.trim()), {
