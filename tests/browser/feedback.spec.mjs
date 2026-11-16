@@ -14,6 +14,7 @@ import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
 import { formatMessage } from '../../server/adapters/guide.mjs';
 import * as arrange from '../arrange.mjs';
+import { plainOf } from '../turn-parts.mjs';
 import { failOnPageErrors, frames, startPostbox, synced } from './postbox.mjs';
 
 const BROKEN = 'flowchart LR\n  A[Read] -->> B[Index]';
@@ -86,7 +87,9 @@ test.beforeAll(async () => {
   app = await startPostbox('feedback');
   arrange.withAdapter(app.rt, {
     name: 'mock',
-    async deliver(session, message, ctx) {
+    async deliver(session, given, ctx) {
+      // The plain message the turn answers: an input’s batch, as its turn was asked (#1427).
+      const message = plainOf(app.rt, session.id, given);
       calls.push({ ...message, threadId: session.threadId });
       if (message.kind === 'user') await scripts[message.text]?.(ctx, session);
       if (message.kind === 'lint' && message.problems.some((p) => p.code === 'options-in-prose')) ctx.tools.show_block({ block: UNBLOCK });

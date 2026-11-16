@@ -10,7 +10,7 @@ const turnsAfterFirst = ({ adapter, beta, t }) =>
   adapter.calls
     .filter((c) => c.sessionId === beta.id)
     .slice(1)
-    .map((c) => [c.thread === t.id ? 'conversation' : 'topic', (c.message.messages ?? [c.message]).map((m) => m.text)]);
+    .map((c) => [c.thread === t.id ? 'conversation' : 'topic', c.parts.map((m) => m.text)]);
 
 /** The side-thread room with a topic in its conversation, and @beta busy in a turn held open. */
 function busyWithTopic() {
@@ -25,8 +25,8 @@ function busyWithTopic() {
 
 test('a wake queued in a turn’s thread joins that turn when another thread’s message waits too', async () => {
   const f = busyWithTopic();
-  f.rt.deliver(f.beta.id, { kind: 'agent', from: '@gamma', text: 'Pending in conversation.' });
-  f.rt.deliver(f.beta.id, { kind: 'agent', from: '@gamma', text: 'Pending in topic.' }, { threadId: f.topic });
+  f.rt.turnService.run(f.beta.id, { kind: 'agent', from: '@gamma', text: 'Pending in conversation.' });
+  f.rt.turnService.run(f.beta.id, { kind: 'agent', from: '@gamma', text: 'Pending in topic.' }, { threadId: f.topic });
   f.rt.agentWake(f.alpha.id, 'beta', 'Queued from alpha in conversation.');
   assert.equal(f.rt.turns.get(f.beta.id).pending.length, 2, 'two pending messages, in two threads');
   f.busy.release();
@@ -52,8 +52,8 @@ test('after a failed reply, the messages that waited on its turn still go, and a
     throw new Error('The reply broke off.');
   });
   f.rt.sendMessage(f.t.id, { text: '@beta start' });
-  f.rt.deliver(f.beta.id, { kind: 'agent', from: '@gamma', text: 'Pending in conversation.' });
-  f.rt.deliver(f.beta.id, { kind: 'agent', from: '@gamma', text: 'Pending in topic.' }, { threadId: topic });
+  f.rt.turnService.run(f.beta.id, { kind: 'agent', from: '@gamma', text: 'Pending in conversation.' });
+  f.rt.turnService.run(f.beta.id, { kind: 'agent', from: '@gamma', text: 'Pending in topic.' }, { threadId: topic });
   f.rt.agentWake(f.alpha.id, 'beta', 'Queued from alpha in conversation.');
   fail();
   await settle(f.rt);
@@ -66,8 +66,8 @@ test('after a failed reply, the messages that waited on its turn still go, and a
 
 test('a queued wake stays behind a later pending message in its thread that can’t join', async () => {
   const f = busyWithTopic();
-  f.rt.deliver(f.beta.id, { kind: 'agent', from: '@gamma', text: 'Pending A.' });
-  f.rt.deliver(f.beta.id, { kind: 'notice', text: 'Notice N.' });
+  f.rt.turnService.run(f.beta.id, { kind: 'agent', from: '@gamma', text: 'Pending A.' });
+  f.rt.turnService.run(f.beta.id, { kind: 'notice', text: 'Notice N.' });
   f.rt.agentWake(f.alpha.id, 'beta', 'Queued W.');
   f.busy.release();
   await settle(f.rt);
@@ -80,8 +80,8 @@ test('a queued wake stays behind a later pending message in its thread that can�
 
 test('a summary turn takes nothing from its thread’s queue', async () => {
   const f = busyWithTopic();
-  f.rt.deliver(f.beta.id, { kind: 'notice', text: 'Summarize the topic.' }, { summarizeTo: f.topic });
-  f.rt.deliver(f.beta.id, { kind: 'agent', from: '@gamma', text: 'Pending in topic.' }, { threadId: f.topic });
+  f.rt.turnService.run(f.beta.id, { kind: 'notice', text: 'Summarize the topic.' }, { summarizeTo: f.topic });
+  f.rt.turnService.run(f.beta.id, { kind: 'agent', from: '@gamma', text: 'Pending in topic.' }, { threadId: f.topic });
   f.rt.agentWake(f.alpha.id, 'beta', 'Queued W.');
   f.busy.release();
   await settle(f.rt);
@@ -97,7 +97,7 @@ test('Send now, then messages in two threads during the exit: a wake queued in t
   t.mock.method(Date, 'now', () => 1_000_000);
   f.rt.agentWake(f.alpha.id, 'beta', 'Queued W in conversation.');
   const q = f.rt.sendMessage(f.topic, { text: '@beta topic P' });
-  f.rt.sendQueuedNow(f.topic, q.queued.id);
+  f.rt.sendQueuedNow(f.topic, q.queued[0].id);
   assert.ok(f.rt.exiting.has(f.beta.id), 'the stopped turn is exiting');
   f.rt.sendMessage(f.t.id, { text: '@beta conversation P' });
   f.rt.sendMessage(f.topic, { text: '@beta topic Q' });
@@ -120,8 +120,8 @@ test('Send now, then messages in two threads during the exit: a wake queued in t
 
 test('writes close as the turn ends: what waited in two threads is delivered once they reopen, not dropped', async () => {
   const f = busyWithTopic();
-  f.rt.deliver(f.beta.id, { kind: 'agent', from: '@gamma', text: 'Pending in conversation.' });
-  f.rt.deliver(f.beta.id, { kind: 'agent', from: '@gamma', text: 'Pending in topic.' }, { threadId: f.topic });
+  f.rt.turnService.run(f.beta.id, { kind: 'agent', from: '@gamma', text: 'Pending in conversation.' });
+  f.rt.turnService.run(f.beta.id, { kind: 'agent', from: '@gamma', text: 'Pending in topic.' }, { threadId: f.topic });
   const takePending = f.rt.takePending.bind(f.rt);
   f.rt.takePending = (se, turn, drain) => {
     if (se.id === f.beta.id) f.store.fail(Object.assign(new Error('disk sync refused'), { code: 'EIO' }));
@@ -143,8 +143,8 @@ test('writes close as the turn ends: what waited in two threads is delivered onc
 
 test('Postbox shutting down as the turn ends: what waited in another thread is logged, not dropped without a word', async (t) => {
   const f = busyWithTopic();
-  f.rt.deliver(f.beta.id, { kind: 'agent', from: '@gamma', text: 'Pending in conversation.' });
-  f.rt.deliver(f.beta.id, { kind: 'agent', from: '@gamma', text: 'Pending in topic.' }, { threadId: f.topic });
+  f.rt.turnService.run(f.beta.id, { kind: 'agent', from: '@gamma', text: 'Pending in conversation.' });
+  f.rt.turnService.run(f.beta.id, { kind: 'agent', from: '@gamma', text: 'Pending in topic.' }, { threadId: f.topic });
   const warn = t.mock.method(console, 'warn', () => {});
   arrange.shuttingDown(f.rt); // what stopTurns sets first; a turn it didn't stop, such as a remote one, still ends
   f.busy.release();
@@ -159,7 +159,7 @@ test('Postbox shutting down as the turn ends: what waited in another thread is l
 
 test('Postbox shutting down as the turn ends, with one delivery waiting: that one is logged too', async (t) => {
   const f = busyWithTopic();
-  f.rt.deliver(f.beta.id, { kind: 'agent', from: '@gamma', text: 'Pending in conversation.' });
+  f.rt.turnService.run(f.beta.id, { kind: 'agent', from: '@gamma', text: 'Pending in conversation.' });
   const warn = t.mock.method(console, 'warn', () => {});
   arrange.shuttingDown(f.rt);
   f.busy.release();

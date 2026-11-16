@@ -36,7 +36,7 @@ async function busyBeta(f) {
   return b;
 }
 
-const textsTo = (f, handle) => f.adapter.calls.filter((c) => c.handle === handle).map((c) => (c.message.messages ?? [c.message]).map((m) => m.text));
+const textsTo = (f, handle) => f.adapter.calls.filter((c) => c.handle === handle).map((c) => c.parts.map((m) => m.text));
 
 test('your queued message edited behind a held commit is posted as edited when its agent is deleted', async () => {
   const f = await heldRoom();
@@ -44,7 +44,7 @@ test('your queued message edited behind a held commit is posted as edited when i
   const { queued } = f.rt.sendMessage(f.t.id, { text: '@beta After the tests.' });
   await f.store.flush();
   const release = await f.hold();
-  f.rt.editQueued(f.t.id, queued.id, '@beta After the tests, edited.');
+  f.rt.editQueued(f.t.id, queued[0].id, '@beta After the tests, edited.');
   f.rt.deleteSession(f.beta.id);
   await release();
   b.release();
@@ -62,7 +62,7 @@ test('your message queued behind a held commit joins, in one batch, the message 
   const f = await heldRoom();
   const b = await busyBeta(f);
   const release = await f.hold();
-  f.rt.deliver(f.beta.id, { kind: 'agent', from: '@alpha', text: 'Waited in the turn.' });
+  f.rt.turnService.run(f.beta.id, { kind: 'agent', from: '@alpha', text: 'Waited in the turn.' });
   f.rt.sendMessage(f.t.id, { text: '@beta Queued behind it.' });
   b.release();
   for (let i = 0; i < 200 && textsTo(f, 'beta').length < 2; i++) await sleep(5);
@@ -98,8 +98,9 @@ test('a turn woken in a topic opened behind a held commit is told it answers the
   f.rt.agentWake(f.beta.id, 'alpha', 'Which column?', { replyIn: topic });
   for (let i = 0; i < 200 && !f.adapter.calls.length; i++) await sleep(5);
   const [call] = f.adapter.calls.filter((c) => c.handle === 'alpha');
-  assert.ok(call.message.taskContext.startsWith('[Postbox] You’re answering in the thread “'), call.message.taskContext);
-  assert.ok(call.message.taskContext.includes(`(thread ${topic}).`), call.message.taskContext);
+  // Its input names the topic as where the entry is, and its reply posts (#1427).
+  assert.ok(call.message.text.includes(`for you in the thread “`), call.message.text);
+  assert.ok(call.message.text.includes(`(${topic}). Your reply posts there.`), call.message.text);
   await release();
   await settle(f.rt);
   await f.store.close();

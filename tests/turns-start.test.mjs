@@ -1,4 +1,4 @@
-// How a turn started from inbox entries ends for them (server/entry-turns.mjs, and endTurn’s turn.ended and turn.failed):
+// How a turn started from inbox entries ends for them (server/turns.mjs, and endTurn’s turn.ended and turn.failed):
 // a stopped turn delivered what it took, so nothing reopens to wake the agent after the person’s Stop; and a Retry hands
 // the failed turn’s entries to the turn it starts, which delivers them.
 

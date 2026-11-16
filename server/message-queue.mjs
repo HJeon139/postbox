@@ -1,64 +1,24 @@
-// Queued messages, their controls and delivery order; one session still runs at most one turn (#228).
-import { clip, httpError, queuedIn } from './helpers.mjs';
-import { byArrival, combineMessages, latestMessage, plainMessage, readyGroups } from './queue-batch.mjs';
-import { deliverWake } from './side-threads.mjs';
+// The person’s message as it’s posted, Send now’s stop, and what waited on a turn for it to end (#228). The person’s
+// message waits for a busy agent as an entry in its inbox since #1404, so there’s no queue of its own here; one stored
+// before that becomes entries on start (queue-convert.mjs). One session still runs at most one turn.
+import { clip } from './helpers.mjs';
+import { combineMessages, latestMessage, plainMessage } from './queue-batch.mjs';
 
 /**
- * Posts the person’s message and delivers it to each target. `extra` marks what it’s delivered with, such as Send now’s
- * `entriesWait`: that message goes alone, and the agents’ inbox entries wait for the turn after it.
+ * Posts the person’s message with who it goes to (to: handles), so another agent reading it later sees it wasn’t
+ * addressed to them. The conversation’s chain of hand-offs starts again from it.
+ * @param {any} rt @param {string} threadId @param {{ text: string, attachments: any[] }} message @param {string[]} to
+ * @param {object} [marks]  what else the item keeps, such as the queue row it was converted from
  */
-export function postAndDeliver(rt, threadId, { text, attachments }, targets, extra = {}) {
-  const to = targets.map(({ se }) => se.handle);
-  const { item, message } = postUserMessage(rt, threadId, { text, attachments }, to);
-  for (const { se } of targets) rt.deliver(se.id, { ...message, ...extra }, { threadId });
+export function postUserMessage(rt, threadId, { text, attachments }, to, marks = {}) {
+  const item = rt.threads.addItem(threadId, { kind: 'user', text, attachments, to, ...marks });
+  rt.threads.patch(rt.threads.lineage(threadId).at(-1), { hops: 0 });
   return { item };
 }
 
 /**
- * The handles of the agents a queued message of the person’s goes to, which its item keeps.
- * @param {any} rt @param {string[]} sessionIds
- */
-const handlesOf = (rt, sessionIds) => sessionIds.map((id) => rt.s.sessions[id]?.handle).filter(Boolean);
-
-/**
- * Posts the person’s message with who it goes to (to: handles), so another agent reading it later sees it wasn’t
- * addressed to them, and builds the message its agents are delivered.
- * @param {any} rt @param {string} threadId @param {any} q @param {string[]} to
- */
-function postUserMessage(rt, threadId, q, to) {
-  const item = rt.threads.addItem(threadId, { kind: 'user', text: q.text, attachments: q.attachments, to });
-  const conv = rt.threads.lineage(threadId).at(-1);
-  rt.threads.patch(conv, { hops: 0 });
-  const refs = rt.threadRefs(threadId, q.text);
-  const message = {
-    kind: 'user',
-    text: q.text,
-    attachments: q.attachments,
-    itemId: item.id,
-    ...(q.at === undefined ? {} : { at: q.at }),
-    ...(refs.length ? { context: refs } : {}),
-  };
-  return { item, message };
-}
-
-// The person's Edit and Cancel aim at an entry they see, so it's found in the published queue; the queue written back
-// is the pending one, so a wake queued meanwhile behind a held commit stays (#796). Send now is below.
-export function editQueued(rt, threadId, queueId, text) {
-  if (queuedIn(rt.thread(threadId), queueId).kind === 'wake') throw httpError(409, 'An agent’s message can’t be edited. Remove it instead.');
-  rt.threads.patch(threadId, (t) => ({ queue: (t.queue ?? []).map((q) => (q.id === queueId ? { ...q, text: String(text) } : q)) }));
-}
-
-export function cancelQueued(rt, threadId, queueId) {
-  const q = queuedIn(rt.thread(threadId), queueId);
-  rt.threads.patch(threadId, (t) => ({ queue: (t.queue ?? []).filter((x) => x.id !== queueId) }));
-  // A wake you removed: its agent was told it would be answered, so it hears it won’t be (#228).
-  if (q?.kind === 'wake' && rt.s.sessions[q.fromSessionId] && !rt.s.sessions[q.fromSessionId].retiredFork)
-    rt.sessions.tell(q.fromSessionId, `The person removed your message (“${clip(q.text, 120)}”) before it was answered. Carry on without it.`);
-}
-
-/**
  * Send now’s stop: a change of course, so background jobs keep running, each with its own Stop (#129), and the exit is
- * silent, so the person’s message goes alone and the queue waits for that turn’s end. A plain Stop still exiting has
+ * silent, so the person’s message goes alone and the agent’s other entries wait for that turn’s end. A plain Stop still exiting has
  * left turns, so stop() finds nothing to stop: its exit is marked silent here instead (#1040).
  * @param {any} rt @param {string} sessionId
  */
@@ -68,123 +28,20 @@ export function stopForSendNow(rt, sessionId) {
   if (ex) ex.silent = true;
 }
 
-// Send now finds the entry in the pending queue: a turn that ended behind a held commit may have drained it already,
-// while the page still shows it queued, and sending it again would deliver it twice (#1007). Gone, it's refused.
-export function sendQueuedNow(rt, threadId, queueId) {
-  const q = queuedIn(rt.store.pending.thread(threadId) ?? {}, queueId);
-  rt.threads.patch(threadId, (t) => ({ queue: (t.queue ?? []).filter((x) => x.id !== queueId) }));
-  for (const id of q.sessionIds) stopForSendNow(rt, id);
-  // The route sends what this returns, so a wake, which deliverWake answers with nothing, still gets a body.
-  if (q.kind === 'wake') {
-    deliverWake(rt, threadId, q);
-    return { ok: true };
-  }
-  return postAndDeliver(
-    rt,
-    threadId,
-    q,
-    q.sessionIds.map((id) => ({ se: rt.s.sessions[id] })).filter((x) => x.se && !x.se.retiredFork),
-    { entriesWait: true },
-  );
-}
-
-/**
- * A deleted session goes at once (#604): the person’s messages queued only for it are posted to their thread, waking
- * no one, so none waits invisibly for an agent that won’t come back (#427). One addressed to others too just drops
- * it, and the queue drains, so an idle co-recipient gets it now. Agents’ wakes went at delete, with dropWakes
- * (side-threads.mjs), which tells their senders.
- */
-export function releaseQueued(rt, sessionId) {
-  for (const t of rt.threads.pending()) {
-    const mine = (t.queue ?? []).filter((q) => q.kind !== 'wake' && q.sessionIds.includes(sessionId)).map((q) => q.id);
-    // In queue order, so the transcript reads them as they were sent; each one posted before it leaves the queue, so
-    // a failed write between the two leaves it queued, not lost (#598’s outage case).
-    for (const id of mine) {
-      const q = rt.store.pending.thread(t.id)?.queue?.find((x) => x.id === id);
-      if (!q) continue;
-      const rest = (/** @type {any} */ x) => rt.threads.patch(t.id, (now) => ({ queue: now.queue.map(x).filter(Boolean) }));
-      if (q.sessionIds.length === 1) {
-        // R2: the person’s text as it was, without a turn’s side effects: no hops reset, no context, no wake.
-        rt.threads.addItem(t.id, { kind: 'user', text: q.text, attachments: q.attachments, to: handlesOf(rt, q.sessionIds) });
-        rest((x) => (x.id === id ? null : x));
-      } else {
-        rest((x) => (x.id === id ? { ...x, sessionIds: x.sessionIds.filter((s) => s !== sessionId) } : x));
-        rt.drainQueue(t.id);
-      }
-    }
-  }
-}
-
-export function drainAll(rt) {
-  for (const t of Object.values(rt.s.threads)) if (t.queue?.length) rt.drainQueue(t.id);
-}
-
-export function drainQueue(rt, threadId, wakesOnly = false) {
-  const t = rt.store.pending.thread(threadId);
-  if (!t?.queue?.length) return;
-  const groups = readyGroups(rt, t, wakesOnly);
-  for (const batch of takeBatches(rt, threadId, groups)) deliverBatch(rt, threadId, batch.sessionIds, batch.messages);
-}
-
-function takeBatches(rt, threadId, groups) {
-  // By id: a thread read pending behind a held commit is a fresh copy each read, so its entries aren't the groups' own.
-  const go = new Set(groups.flatMap((group) => group.entries.map((q) => q.id)));
-  const cache = new Map();
-  const batches = groups.map((group) => ({ ...group, messages: queuedMessages(rt, threadId, group.entries, cache) }));
-  rt.threads.patch(threadId, (t) => ({ queue: (t.queue ?? []).filter((q) => !go.has(q.id)) }));
-  return batches;
-}
-
-function queuedMessages(rt, threadId, entries, cache = new Map()) {
-  return entries.flatMap((q) => {
-    if (q.kind !== 'wake') {
-      if (!cache.has(q)) cache.set(q, { ...postUserMessage(rt, threadId, q, handlesOf(rt, q.sessionIds)).message, seq: q.seq });
-      return [cache.get(q)];
-    }
-    const target = rt.s.sessions[q.sessionIds[0]];
-    if (!target || target.retiredFork) {
-      deliverWake(rt, threadId, q);
-      return [];
-    }
-    const message = { kind: 'agent', from: `@${q.from}`, text: q.text, itemId: q.itemId, at: q.at, seq: q.seq };
-    return [latestMessage(rt, threadId, message)];
-  });
-}
-
-function deliverBatch(rt, threadId, sessionIds, messages) {
-  if (!messages.length) return;
-  const message = combineMessages(messages);
-  for (const id of sessionIds) {
-    const se = rt.s.sessions[id];
-    if (se && !se.retiredFork) rt.deliver(id, message, { threadId });
-  }
-}
-
 export function takePending(rt, se, turn, drain) {
   const groups = batchPending(rt, turn.pending, se.threadId);
   const next = groups.shift();
   if (next) {
     const where = next.threadId ?? se.threadId;
-    // A later group in this thread keeps the queue behind it, so a wake never jumps ahead of it; one in another thread
-    // doesn't (#733).
+    // The agent's inbox entries in the thread join it, unless a later group there waits behind it, so nothing jumps
+    // ahead of that, or the turn failed (#733).
     const later = groups.some((g) => (g.threadId ?? se.threadId) === where);
-    if (!later && drain && (plainMessage(next.message) || next.message.messages)) {
-      const t = rt.store.pending.thread(where);
-      if (t?.queue?.length) {
-        const ready = readyGroups(rt, t, drain === 'wakes');
-        for (const batch of takeBatches(rt, where, ready)) {
-          if (batch.sessionIds[0] !== se.id) deliverBatch(rt, where, batch.sessionIds, batch.messages);
-          else next.message = combineMessages([...(next.message.messages ?? [next.message]), ...batch.messages].sort(byArrival));
-        }
-      }
-    }
-    // The agent's inbox entries in the thread join it by the same rule: not past a later group there, nor after a failure.
     const message = !later && drain === true ? next.message : { ...next.message, entriesWait: true };
-    rt.deliver(se.id, message, { summarizeTo: next.summarizeTo, threadId: next.threadId });
+    rt.turnService.release(se.id, message, { summarizeTo: next.summarizeTo, threadId: next.threadId });
     const t = rt.turns.get(se.id);
     if (t) t.pending.push(...groups);
     else holdRest(rt, se, next, groups);
-  } else if (drain) rt.drainQueues(se.id, turn.threadId, drain === 'wakes');
+  } else if (drain) rt.delivery.wake(se.id); // its inbox’s next turn, if it has entries that can start one
 }
 
 /**
@@ -200,7 +57,7 @@ function holdRest(rt, se, next, groups) {
     console.warn(`@${se.handle}’s turn ended as Postbox shut down: ${n} (${kinds}) undelivered.`);
     return;
   }
-  for (const g of groups) rt.deliver(se.id, g.message, { summarizeTo: g.summarizeTo, threadId: g.threadId });
+  for (const g of groups) rt.turnService.release(se.id, g.message, { summarizeTo: g.summarizeTo, threadId: g.threadId });
 }
 
 export function batchPending(rt, pending, threadId) {
@@ -217,25 +74,17 @@ export function batchPending(rt, pending, threadId) {
   return groups;
 }
 
-export function drainQueues(rt, sessionId, threadId, wakesOnly = false) {
-  const ids = new Set(wakesOnly ? [] : [threadId]);
-  for (const t of rt.threads.pending()) if (t.queue?.some((q) => q.sessionIds.includes(sessionId) && (!wakesOnly || q.kind === 'wake'))) ids.add(t.id);
-  for (const id of ids) rt.drainQueue(id, wakesOnly);
-  // The agent is free of what held it: its inbox's waiting entries start its next turn if the queue started none.
-  rt.delivery.wake(sessionId);
-}
-
 export function rememberStoppedMessages(rt, sessionId, message) {
   for (const child of message.messages ?? [message])
     if (child.kind === 'agent') rt.sessions.tell(sessionId, `${child.from}’s message came while your turn was stopped: “${clip(child.text ?? '', 300)}”`);
 }
 
 /**
- * An agent’s place may have changed: what waited in the queue for a host turn to be attached goes now if it moved off
- * that host, since that host may never answer and nothing else would drain it (#1135). An agent still there is busy,
- * and its messages keep waiting. @param {any} rt @param {string} personaId
+ * An agent’s place may have changed: what waited in its inbox for a host turn to be attached goes now if it moved off
+ * that host, since that host may never answer and nothing else would wake it (#1135). An agent still there is busy,
+ * and its entries keep waiting. @param {any} rt @param {string} personaId
  */
 export function drainMovedOff(rt, personaId) {
   for (const se of Object.values(rt.s.sessions))
-    if (se.personaId === personaId && rt.remote.restoring.get(se.remoteTurn?.turn) === se.id) rt.drainQueues(se.id, se.threadId);
+    if (se.personaId === personaId && rt.remote.restoring.get(se.remoteTurn?.turn) === se.id) rt.delivery.wake(se.id);
 }

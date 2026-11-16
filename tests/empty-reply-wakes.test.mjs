@@ -19,10 +19,10 @@ test('#485: a failed reply’s @-mentions still wake their agents, with the mess
   adapter.next.push(async (c) => c.text('Recorded.'));
   rt.sendMessage(t.id, { text: '@critic watch the checks' });
   await settleBlocks(rt);
-  const woke = adapter.calls.find((x) => x.message.kind === 'agent' && x.message.from === '@critic');
+  const woke = adapter.calls.find((x) => x.parts[0].kind === 'agent' && x.parts[0].from === '@critic');
   assert.ok(woke, 'researcher was woken');
-  assert.match(woke.message.text, /^\(This reply failed before it finished: Claude Code exited with code 1\.[^)]*\)/);
-  assert.match(woke.message.text, /#451 is ready at 41f3a0f\. @researcher please record it\./);
+  assert.match(woke.parts[0].text, /^\(This reply failed before it finished: Claude Code exited with code 1\.[^)]*\)/);
+  assert.match(woke.parts[0].text, /#451 is ready at 41f3a0f\. @researcher please record it\./);
   // It wakes from the failed reply itself, which isn’t posted again.
   assert.equal(store.items(t.id).filter((i) => i.kind === 'agent' && i.text?.includes('#451 is ready')).length, 1);
 });
@@ -41,7 +41,7 @@ test('#485: Retry doesn’t wake again the agents a failed reply already woke', 
   await settleBlocks(rt);
   const failed = store.items(t.id).find((i) => i.kind === 'agent' && i.status === 'failed');
   assert.deepEqual(failed.wokeOnFailure, ['researcher']);
-  const woken = () => adapter.calls.filter((x) => x.message.kind === 'agent' && x.message.from === '@critic').length;
+  const woken = () => adapter.calls.filter((x) => x.parts[0].kind === 'agent' && x.parts[0].from === '@critic').length;
   assert.equal(woken(), 1);
   adapter.next.push(async (c) => c.text('#451 is ready at 41f3a0f. @researcher please record it.'));
   await rt.retry(t.id, failed.id);
@@ -69,7 +69,7 @@ test('#485: a second Retry doesn’t wake again the agents the first failure wok
   adapter.next.push(async (c) => c.text('Recorded.'));
   rt.sendMessage(t.id, { text: '@critic watch the checks' });
   await settleBlocks(rt);
-  const woken = () => adapter.calls.filter((x) => x.message.kind === 'agent' && x.message.from === '@critic').length;
+  const woken = () => adapter.calls.filter((x) => x.parts[0].kind === 'agent' && x.parts[0].from === '@critic').length;
   const lastFailed = () =>
     store
       .items(t.id)

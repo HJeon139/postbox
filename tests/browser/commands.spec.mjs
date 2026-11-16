@@ -14,6 +14,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
 import * as arrange from '../arrange.mjs';
+import { plainOf, readOf } from '../turn-parts.mjs';
 import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -38,8 +39,10 @@ test.beforeAll(async () => {
     async folderFor() {
       return work;
     },
-    async deliver(session, message, ctx) {
-      turns.push({ handle: session.handle, message, sessionId: session.id });
+    async deliver(session, given, ctx) {
+      // The plain message the turn answers: an input’s batch, as its turn was asked (#1427).
+      const message = plainOf(app.rt, session.id, given);
+      turns.push({ handle: session.handle, message, given, sessionId: session.id });
       ctx.text('Done.');
     },
   });
@@ -188,7 +191,7 @@ test('#67 the next turn reads what ran, with its output', async ({ page }) => {
   await run(page, 'echo oops >&2; exit 3', 3);
   app.rt.sendMessage(t.id, { text: '@alpha what did that print?' });
   await expect.poll(() => turns.some((x) => x.sessionId === seA.id && x.message.text?.includes('what did that print')), { message: 'alpha’s turn' }).toBe(true);
-  const context = turns.find((x) => x.sessionId === seA.id && x.message.text?.includes('what did that print')).message.context.join('\n');
+  const context = readOf({ message: turns.find((x) => x.sessionId === seA.id && x.message.text?.includes('what did that print')).given });
   expect(context).toMatch(/The person ran `cat hello\.txt && pwd` in .* \(it exited with 0\)\. Output:\n```\nhello from the folder/);
   expect(context).toMatch(/The person ran `echo oops >&2; exit 3` in .* \(it exited with 3\)/);
 });

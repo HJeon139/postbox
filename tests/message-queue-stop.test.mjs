@@ -10,7 +10,7 @@ const turnsAfterFirst = ({ adapter, beta, t }) =>
   adapter.calls
     .filter((c) => c.sessionId === beta.id)
     .slice(1)
-    .map((c) => [c.thread === t.id ? 'conversation' : 'topic', (c.message.messages ?? [c.message]).map((m) => m.text)]);
+    .map((c) => [c.thread === t.id ? 'conversation' : 'topic', c.parts.map((m) => m.text)]);
 
 /** The side-thread room with @beta busy in a turn held open, then stopped by the person: its process is exiting. */
 async function stoppedBeta() {
@@ -73,7 +73,7 @@ test('a Send now turn sends only the person’s message; the wake runs in the ne
   f.rt.sendMessage(f.t.id, { text: '@beta start' });
   f.rt.agentWake(f.alpha.id, 'beta', 'Wake W from alpha.');
   const q = f.rt.sendMessage(f.t.id, { text: '@beta change of plan' });
-  f.rt.sendQueuedNow(f.t.id, q.queued.id);
+  f.rt.sendQueuedNow(f.t.id, q.queued[0].id);
   assert.ok(f.rt.exiting.has(f.beta.id), 'the stopped turn is exiting');
   busy.release();
   await settle(f.rt);
@@ -92,7 +92,7 @@ test('Send now pressed while a plain Stop is still exiting sends only the person
   const q = f.rt.sendMessage(f.t.id, { text: '@beta change of plan' });
   f.rt.stop(f.beta.id); // a plain Stop: the turn leaves turns, so Send now’s own stop finds nothing to stop
   f.rt.agentWake(f.alpha.id, 'beta', 'Wake W from alpha.');
-  f.rt.sendQueuedNow(f.t.id, q.queued.id);
+  f.rt.sendQueuedNow(f.t.id, q.queued[0].id);
   assert.ok(f.rt.exiting.has(f.beta.id), 'the stopped turn is still exiting');
   busy.release();
   await settle(f.rt);
@@ -111,7 +111,7 @@ test('Send now during a plain Stop’s exit leaves the person’s other queued m
   const q = f.rt.sendMessage(f.t.id, { text: '@beta change of plan' });
   f.rt.sendMessage(f.t.id, { text: '@beta and later this' });
   f.rt.stop(f.beta.id);
-  f.rt.sendQueuedNow(f.t.id, q.queued.id);
+  f.rt.sendQueuedNow(f.t.id, q.queued[0].id);
   busy.release();
   await settle(f.rt);
   assert.deepEqual(turnsAfterFirst(f).slice(0, 1), [['conversation', ['@beta change of plan']]]);
@@ -137,17 +137,18 @@ test('a Send now from the API during a plain Stop’s exit sends only that messa
   ]);
 });
 
-test('after a Stop, a held notice behind the person’s message keeps the queued wake behind it', async () => {
+test('after a Stop, the person’s message and a wake, both entries, go in one turn ahead of a notice held on the exit', async () => {
+  // The person’s message is an entry since #1404, so it folds with the wake in arrival order; the notice, held on the
+  // exiting turn, isn’t an entry, and goes after them.
   const f = await stoppedBeta();
   f.rt.sendMessage(f.t.id, { text: '@beta after the stop' });
-  f.rt.deliver(f.beta.id, { kind: 'notice', text: 'Notice N.' });
+  f.rt.turnService.run(f.beta.id, { kind: 'notice', text: 'Notice N.' });
   f.rt.agentWake(f.alpha.id, 'beta', 'Wake W from alpha.');
   f.busy.release();
   await settle(f.rt);
   assert.deepEqual(turnsAfterFirst(f), [
-    ['conversation', ['@beta after the stop']],
+    ['conversation', ['@beta after the stop', 'Wake W from alpha.']],
     ['conversation', ['Notice N.']],
-    ['conversation', ['Wake W from alpha.']],
   ]);
 });
 
@@ -169,7 +170,7 @@ test('after writes close and stop the turn, the first turn once they reopen take
   f.adapter.next.push(busy.step);
   f.rt.sendMessage(f.t.id, { text: '@beta start' });
   await sleep(5);
-  f.rt.deliver(f.beta.id, { kind: 'agent', from: '@gamma', text: 'Pending from gamma.' });
+  f.rt.turnService.run(f.beta.id, { kind: 'agent', from: '@gamma', text: 'Pending from gamma.' });
   f.rt.agentWake(f.alpha.id, 'beta', 'Wake W from alpha.');
   // Writes close: the outage stops the running turn, and what waited behind it is held for its exit (store-outage.mjs).
   f.store.fail(Object.assign(new Error('disk sync refused'), { code: 'EIO' }));

@@ -23,7 +23,9 @@ function setup() {
   const thread = rt.createThread({ projectId: 'p', title: 'Apps', personaIds: [persona.id] });
   const [session] = arrange.sessionsIn(rt, thread.id);
   const delivered = [];
-  rt.deliver = (sessionId, message) => delivered.push({ sessionId, message });
+  // What the agent is given: an app check is a check entry (#1425), whose turn carries the entry’s marks, which deliver
+  // takes off before the turn is built.
+  rt.turnService.run = (sessionId, { turnId, fromEntries, entriesWait, ...message }) => delivered.push({ sessionId, message });
   return { rt, session, delivered, tools: rt.toolsFor(session.id) };
 }
 

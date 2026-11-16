@@ -8,10 +8,10 @@
 // `catchUpLines`. The thread summaries are a service of their own (summary-service.mjs).
 
 import { READING } from '../shared/limits.mjs';
-import { catchUp, moveMarkers, pointerIfSeen } from './catch-up.mjs';
+import { catchUp, moveMarkers, pointerIfSeen, turnTail } from './catch-up.mjs';
 import { describeItem, topicRootLine } from './item-lines.mjs';
 import { readConversation, readLine, readMessage } from './read-message.mjs';
-import { threadCatchUp, turnContext } from './thread-catch-up.mjs';
+import { threadCatchUp, threadTail, turnContext } from './thread-catch-up.mjs';
 
 export class Memory {
   /**
@@ -45,11 +45,28 @@ export class Memory {
   }
 
   /**
+   * The room’s items, notes and topic root a turn given turn-input.mjs’s text reads besides its entries, and moves its
+   * marker (#1427). @param {any} se @param {string[]} exclude
+   */
+  turnTail(se, exclude) {
+    return turnTail(this, se, exclude);
+  }
+
+  /**
    * What a turn reads before its message: the room’s catch-up, and in a topic or side thread, that thread’s as its task.
    * @param {any} se @param {string} where  the thread the turn speaks in @param {any} message @param {boolean} slash
+   * @param {string[]} [waiting]  the items of the person’s messages still waiting for the agent, left for their own turn
    */
-  turnContext(se, where, message, slash) {
-    return turnContext(this, se, where, message, slash);
+  turnContext(se, where, message, slash, waiting = []) {
+    return turnContext(this, se, where, message, slash, waiting);
+  }
+
+  /**
+   * A topic or side thread’s talk since the agent last took part there, as tail lines, and its root the first time
+   * (#1427). @param {any} se @param {string} threadId @param {string[]} exclude
+   */
+  threadTail(se, threadId, exclude) {
+    return threadTail(this, se, threadId, exclude);
   }
 
   /** What a turn in a topic or side thread catches up on there, or null. @param {any} se @param {string} threadId @param {string[]} [exclude] */

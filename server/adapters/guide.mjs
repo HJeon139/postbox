@@ -86,7 +86,7 @@ export function roomText(room) {
 
 ${who}
 
-Each agent here has a part. Your task is this turn’s request and anything that @-mentions you; the catch-up is context. A message the person sent to another agent is that agent’s, unless it asks for you too. Of a request, take the part that’s yours and leave another agent’s part to it, so no task is done twice. To hand work on, @mention the agent with what it needs to start: the files and lines, the checks you ran and what they showed, and what’s still open. @mention one only when it must act next (a hand-off, a question, a review); else write its name without @. An @-mention in a quote, in code or in a line you copied wakes no one. After the room’s chain limit of agent wakes in one chain (${HOP_LIMIT.toLocaleString('en-US')} unless the person set another), the person must allow the next one. Before redoing something, read what the others already did here.`;
+Each agent here has a part. Your task is this turn’s request and anything that @-mentions you; what else happened since your last turn is context. A message the person sent to another agent is that agent’s, unless it asks for you too. Of a request, take the part that’s yours and leave another agent’s part to it, so no task is done twice. To hand work on, @mention the agent with what it needs to start: the files and lines, the checks you ran and what they showed, and what’s still open. @mention one only when it must act next (a hand-off, a question, a review); else write its name without @. An @-mention in a quote, in code or in a line you copied wakes no one. After the room’s chain limit of agent wakes in one chain (${HOP_LIMIT.toLocaleString('en-US')} unless the person set another), the person must allow the next one. Before redoing something, read what the others already did here.`;
 }
 
 /**
@@ -254,6 +254,7 @@ const isReview = (event) =>
  * @param {(a: any) => string|null} [pathOf]  where an attachment can be read on disk
  */
 export function formatMessage(message, pathOf = () => null) {
+  if (message.kind === 'input') return formatInput(message, pathOf);
   const body = message.messages?.length ? formatQueuedMessages(message.messages, pathOf, formatMessage) : formatBody(message, pathOf);
   // A command is the whole prompt: Claude Code runs it only when the prompt is /name and its arguments (#67).
   if (message.slash || typeof message.attach === 'string') return body;
@@ -272,6 +273,22 @@ export function formatMessage(message, pathOf = () => null) {
       .filter(Boolean)
       .join('\n\n');
   return [body, facts, lint, message.context?.length ? `${BACKGROUND}\n\n${message.context.join('\n\n')}` : ''].filter(Boolean).join('\n\n');
+}
+
+/**
+ * What turn-input.mjs built from a turn’s entries (#1427): the room’s facts first, which change least, so a turn’s fixed
+ * parts lead in a stable order for the prompt cache (#515); then its entries and tail; the files its messages carry,
+ * where this backend reads them; then what rides with it.
+ * @param {any} message @param {(a: any) => string | null} pathOf
+ */
+function formatInput(message, pathOf) {
+  const facts = message.facts ? `[Postbox] What’s current in this room:\n\n${message.facts}` : '';
+  const lint = typeof message.lint === 'string' && message.lint ? message.lint : '';
+  const files = (message.attachments ?? []).map((/** @type {any} */ a) => {
+    const where = pathOf(a);
+    return `- ${a.kind === 'project-file' ? a.path : `${a.name}${a.type ? ` (${a.type})` : ''}`}${where ? `: ${where}` : ''}`;
+  });
+  return [facts, message.text, files.length ? `Attached:\n${files.join('\n')}` : '', lint, ...(message.context ?? [])].filter(Boolean).join('\n\n');
 }
 
 /** A late answer to an AskUserQuestion, in words. @param {{ text: string, answer: string | null }} q */

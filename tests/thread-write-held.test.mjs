@@ -50,15 +50,15 @@ async function busyBeta(f) {
   return b;
 }
 
-const queueOf = (f, id = f.t.id) => f.store.pending.thread(id).queue ?? [];
-/** The texts of the room’s queue, read pending, and published. */
-const pendingQueue = (f) => queueOf(f).map((q) => q.text);
-const publishedQueue = (f) => (f.store.state.threads[f.t.id].queue ?? []).map((q) => q.text);
-const texts = (message) => (message.messages ?? [message]).map((m) => m.text);
-/** @beta’s waiting mentions as “@sender: its message’s text”, read pending, and in a store’s published state. */
-const mentionsWaiting = (f) => arrange.waitingEntries(f.rt, f.beta.id).map((e) => `@${e.from}: ${f.store.pending.item(e.threadId, e.itemId)?.text}`);
-const mentionsIn = (store, sessionId) =>
-  (store.state.inbox[sessionId] ?? []).filter((e) => e.state === 'waiting').map((e) => `@${e.from}: ${store.item(e.threadId, e.itemId)?.text}`);
+/**
+ * @beta’s waiting entries from `source` as their items’ texts, a mention’s as “@sender: text”: read pending, or in a
+ * store’s published state. The person’s messages are entries since #1404.
+ */
+const waitingTexts = (f, source, store = null) =>
+  (store ? (store.state.inbox[f.beta.id] ?? []) : arrange.waitingEntries(f.rt, f.beta.id))
+    .filter((e) => e.state === 'waiting' && e.source === source)
+    .map((e) => `${source === 'mention' ? `@${e.from}: ` : ''}${(store ?? f.store.pending).item(e.threadId, e.itemId)?.text}`);
+const texts = (call) => (call?.parts ?? []).map((m) => m.text);
 
 test('two wakes queued for a busy agent behind a held commit both reach it after the release', async () => {
   const f = await heldRoom();
@@ -70,7 +70,7 @@ test('two wakes queued for a busy agent behind a held commit both reach it after
   b.release();
   await settle(f.rt);
   const toBeta = f.adapter.calls.filter((c) => c.handle === 'beta');
-  assert.deepEqual(texts(toBeta[1].message), ['First.', 'Second.']);
+  assert.deepEqual(texts(toBeta[1]), ['First.', 'Second.']);
   await f.store.close();
 });
 
@@ -162,21 +162,21 @@ test('two wakes queued behind a held commit both reach their agent when its turn
   await release();
   await settle(f.rt);
   const toBeta = f.adapter.calls.filter((c) => c.handle === 'beta');
-  assert.deepEqual(texts(toBeta[1]?.message ?? {}), ['First.', 'Second.']);
+  assert.deepEqual(texts(toBeta[1]), ['First.', 'Second.']);
   await f.store.close();
 });
 
-test('your message to a busy agent waits in the queue and a mention of it in its inbox, both behind a held commit', async () => {
+test('your message to a busy agent and a mention of it both wait in its inbox behind a held commit', async () => {
   const f = await heldRoom();
   const b = await busyBeta(f);
   const release = await f.hold();
   f.rt.sendMessage(f.t.id, { text: '@beta and this' });
   f.rt.agentWake(f.alpha.id, 'beta', 'First.');
-  assert.deepEqual(pendingQueue(f), ['@beta and this']);
-  assert.deepEqual(mentionsWaiting(f), ['@alpha: First.']);
+  assert.deepEqual(waitingTexts(f, 'person'), ['@beta and this']);
+  assert.deepEqual(waitingTexts(f, 'mention'), ['@alpha: First.']);
   await release();
-  assert.deepEqual(publishedQueue(f), ['@beta and this']);
-  assert.deepEqual(mentionsIn(f.store, f.beta.id), ['@alpha: First.']);
+  assert.deepEqual(waitingTexts(f, 'person', f.store), ['@beta and this']);
+  assert.deepEqual(waitingTexts(f, 'mention', f.store), ['@alpha: First.']);
   b.release();
   await settle(f.rt);
   await f.store.close();
@@ -189,10 +189,10 @@ test('Edit of a queued message behind a held commit keeps your other message que
   await f.store.flush();
   const release = await f.hold();
   f.rt.sendMessage(f.t.id, { text: '@beta and that' });
-  f.rt.editQueued(f.t.id, queued.id, '@beta and this, edited');
-  assert.deepEqual(pendingQueue(f), ['@beta and this, edited', '@beta and that']);
+  f.rt.editQueued(f.t.id, queued[0].id, '@beta and this, edited');
+  assert.deepEqual(waitingTexts(f, 'person'), ['@beta and this, edited', '@beta and that']);
   await release();
-  assert.deepEqual(publishedQueue(f), ['@beta and this, edited', '@beta and that']);
+  assert.deepEqual(waitingTexts(f, 'person', f.store), ['@beta and this, edited', '@beta and that']);
   b.release();
   await settle(f.rt);
   await f.store.close();
@@ -206,12 +206,12 @@ test('Cancel of a queued message behind a held commit keeps your other queued me
   const release = await f.hold();
   f.rt.sendMessage(f.t.id, { text: '@beta and that' });
   f.rt.agentWake(f.alpha.id, 'beta', 'From alpha.');
-  f.rt.cancelQueued(f.t.id, queued.id);
-  assert.deepEqual(pendingQueue(f), ['@beta and that']);
-  assert.deepEqual(mentionsWaiting(f), ['@alpha: From alpha.']);
+  f.rt.cancelQueued(f.t.id, queued[0].id);
+  assert.deepEqual(waitingTexts(f, 'person'), ['@beta and that']);
+  assert.deepEqual(waitingTexts(f, 'mention'), ['@alpha: From alpha.']);
   await release();
-  assert.deepEqual(publishedQueue(f), ['@beta and that']);
-  assert.deepEqual(mentionsIn(f.store, f.beta.id), ['@alpha: From alpha.']);
+  assert.deepEqual(waitingTexts(f, 'person', f.store), ['@beta and that']);
+  assert.deepEqual(waitingTexts(f, 'mention', f.store), ['@alpha: From alpha.']);
   b.release();
   await settle(f.rt);
   await f.store.close();
@@ -225,12 +225,12 @@ test('Send now on a queued message behind a held commit keeps your other queued 
   const release = await f.hold();
   f.rt.sendMessage(f.t.id, { text: '@beta and that' });
   f.rt.agentWake(f.alpha.id, 'beta', 'From alpha.');
-  f.rt.sendQueuedNow(f.t.id, queued.id);
-  assert.deepEqual(pendingQueue(f), ['@beta and that']);
-  assert.deepEqual(mentionsWaiting(f), ['@alpha: From alpha.']);
+  f.rt.sendQueuedNow(f.t.id, queued[0].id);
+  assert.deepEqual(waitingTexts(f, 'person'), ['@beta and that']);
+  assert.deepEqual(waitingTexts(f, 'mention'), ['@alpha: From alpha.']);
   await release();
-  assert.deepEqual(publishedQueue(f), ['@beta and that']);
-  assert.deepEqual(mentionsIn(f.store, f.beta.id), ['@alpha: From alpha.']);
+  assert.deepEqual(waitingTexts(f, 'person', f.store), ['@beta and that']);
+  assert.deepEqual(waitingTexts(f, 'mention', f.store), ['@alpha: From alpha.']);
   b.release();
   await settle(f.rt);
   await f.store.close();
@@ -269,7 +269,7 @@ test('your messages re-queued as Postbox shuts down behind a held commit all wai
   arrange.shuttingDown(f.rt);
   b.release();
   for (let i = 0; i < 200 && arrange.exitingTurns(f.rt); i++) await sleep(5);
-  assert.deepEqual(pendingQueue(f), ['@beta one', '@beta two']);
+  assert.deepEqual(waitingTexts(f, 'person'), ['@beta one', '@beta two']);
   await release();
   await f.store.close();
 });
@@ -281,7 +281,7 @@ test('held queue writes survive a failed commit, as its release applies them in 
   f.rt.sendMessage(f.t.id, { text: '@beta first' });
   f.rt.sendMessage(f.t.id, { text: '@beta second' });
   assert.equal(await release(), 'EREJECTED', 'the commit failed');
-  assert.deepEqual(publishedQueue(f), ['@beta first', '@beta second']);
+  assert.deepEqual(waitingTexts(f, 'person', f.store), ['@beta first', '@beta second']);
   b.release();
   await settle(f.rt);
   await f.store.close();
@@ -293,12 +293,12 @@ test('after a release and a restart, the log holds both held mentions as waiting
   const release = await f.hold();
   f.rt.agentWake(f.alpha.id, 'beta', 'First.');
   f.rt.agentWake(f.gamma.id, 'beta', 'Second.');
-  assert.deepEqual(mentionsWaiting(f), ['@alpha: First.', '@gamma: Second.']);
+  assert.deepEqual(waitingTexts(f, 'mention'), ['@alpha: First.', '@gamma: Second.']);
   await release();
   const dir = f.store.dir;
   await f.store.close();
   const again = await new Store(dir).load();
-  assert.deepEqual([mentionsIn(again, f.beta.id), again.state.threads[f.t.id].hops], [['@alpha: First.', '@gamma: Second.'], 2]);
+  assert.deepEqual([waitingTexts(f, 'mention', again), again.state.threads[f.t.id].hops], [['@alpha: First.', '@gamma: Second.'], 2]);
   await again.close();
   b.release();
 });

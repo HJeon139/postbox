@@ -7,7 +7,6 @@ import { attachedFiles } from './adapters/attached-files.mjs';
 import { workFolder } from './adapters/folder.mjs';
 import { toolsDownNote } from './adapters/tools-down.mjs';
 import { keptTurns, releaseNeed, TURN_TIED } from './card-needs.mjs';
-import { withEntries } from './entry-turns.mjs';
 import { heldSession } from './held-session.mjs';
 import { httpError, retiredError } from './helpers.mjs';
 import { arrival } from './queue-batch.mjs';
@@ -22,6 +21,7 @@ import { adapterContext } from './turn-context.mjs';
 import { endTurn } from './turn-finish.mjs';
 import { askedAgain } from './turn-marks.mjs';
 import { turnExited } from './turn-stop.mjs';
+import { inputOf, withEntries } from './turns.mjs';
 
 /**
  * Runs one agent turn through its adapter.
@@ -33,14 +33,14 @@ import { turnExited } from './turn-stop.mjs';
  */
 export function deliver(rt, sessionId, message, { summarizeTo = null, threadId = null } = {}) {
   // A session just made behind a held commit: its turn starts once it's published (#796's class in sessions).
-  if (heldSession(rt, sessionId, () => rt.deliver(sessionId, message, { summarizeTo, threadId }))) return;
+  if (heldSession(rt, sessionId, () => rt.turnService.run(sessionId, message, { summarizeTo, threadId }))) return;
   const se = rt.store.pending.session(sessionId) ?? rt.session(sessionId); // a summary's or a notice's write held (#506)
   if (se.retiredFork) throw retiredError(se);
   message = prepareScheduledRetry(rt, message, se.threadId);
   // As it was asked, for Retry (askedOf).
   const asked = { message, summarizeTo, threadId };
   // The store can’t be written: the turn starts once it can (ST-3).
-  if (heldTurn(rt, sessionId, () => rt.deliver(sessionId, asked.message, { summarizeTo, threadId }), message)) return;
+  if (heldTurn(rt, sessionId, () => rt.turnService.run(sessionId, asked.message, { summarizeTo, threadId }), message)) return;
   if (waitsBehind(rt, sessionId, message, { summarizeTo, threadId })) return;
   const where = threadId && threadId !== se.threadId && rt.store.pending.thread(threadId) ? threadId : se.threadId;
   rt.apps.answerDelivered(where, message);
@@ -48,7 +48,7 @@ export function deliver(rt, sessionId, message, { summarizeTo = null, threadId =
   // the context below waits for the agent’s next turn instead. So does a remote turn attached again after a restart
   // (#120, message.attach): it sends the agent nothing, and replays what the host has.
   const slash = message.slash === true || typeof message.attach === 'string';
-  // The agent’s waiting entries in this thread come with it (entry-turns.mjs), and Retry sends them again with it.
+  // The agent’s waiting entries in this thread come with it (turns.mjs), and Retry sends them again with it.
   if (!slash && !summarizeTo) asked.message = message = withEntries(rt, sessionId, where, message);
   // Postbox’s own marks (the turn’s chosen id, and how it takes entries) stay with Postbox, not the agent’s message.
   const { turnId, fromEntries: _taken, entriesWait: _waits, ...asSent } = message;
@@ -68,7 +68,7 @@ export function deliver(rt, sessionId, message, { summarizeTo = null, threadId =
     folder: hostId ? null : workFolder(adapter, persona, project),
     projectFolder: project?.folder ?? null,
   });
-  atWork(rt, se, turn, message);
+  atWork(rt, se, turn);
   runTurn(rt, se, turn, message, { adapter, persona, hostId });
 }
 
@@ -103,8 +103,15 @@ function waitsBehind(rt, sessionId, message, { summarizeTo, threadId }) {
  */
 function turnMessage(rt, se, message, where, slash) {
   const sessionId = se.id;
+  // A plain batch is given turn-input.mjs’s text, built now, with the room’s tail in it, so no catch-up follows (#1427).
+  const input = message.kind === 'input';
+  if (input) {
+    // What else it carries (a Retry’s `woken` and `retry`) stays; its entries and plain parts are on what was asked.
+    const { entries: _entries, messages: _parts, ...carried } = message;
+    message = { ...carried, ...inputOf(rt, se, message, where) };
+  }
   // A queued mention its last room summary already gave it comes as a pointer there, never as a thread’s direct task (#484, #504).
-  if (where === se.threadId) message = rt.memory.pointerIfSeen(se, message);
+  else if (where === se.threadId) message = rt.memory.pointerIfSeen(se, message);
   // Postbox’s notices that waited for this agent’s next turn (tellAgent: what became of its earlier messages) lead the
   // background; the brief isn’t context, it goes with the room’s facts (turnFacts).
   if (se.context?.length && !slash) {
@@ -119,8 +126,14 @@ function turnMessage(rt, se, message, where, slash) {
   // Problems the checks found in its last reply, still waiting to go as a lint turn, come with this turn instead, as
   // message.lint: fixes it owes, placed with the request rather than in the background.
   if (message.kind !== 'lint' && !slash) message = rt.checks.foldLint(sessionId, message);
-  // A topic or side thread’s request leads; its room catch-up is background. A room turn keeps the existing order.
-  return rt.memory.turnContext(rt.store.pending.session(sessionId) ?? rt.s.sessions[sessionId], where, message, slash);
+  if (input) return message;
+  // A topic or side thread’s request leads; its room catch-up is background. A room turn keeps the existing order. The
+  // person’s messages still waiting for the agent stay out of it: they’re posted at send, and a later turn gives them.
+  const waiting = rt.delivery
+    .waiting(sessionId)
+    .filter((/** @type {any} */ e) => e.source === 'person')
+    .map((/** @type {any} */ e) => e.itemId);
+  return rt.memory.turnContext(rt.store.pending.session(sessionId) ?? rt.s.sessions[sessionId], where, message, slash, waiting);
 }
 
 /**
@@ -129,15 +142,17 @@ function turnMessage(rt, se, message, where, slash) {
  * @param {{ where: string, slash: boolean, summarizeTo: string|null, asked: any }} opts
  */
 function newTurn(se, message, persona, { where, slash, summarizeTo, asked }) {
+  // An input’s plain parts say who it’s from, as a batch’s did (turns.mjs).
+  const said = message.as ?? message;
   return {
-    // An id chosen before the turn, by the take of its inbox entries (entry-turns.mjs), or a new one.
+    // An id chosen before the turn, by the take of its inbox entries (turns.mjs), or a new one.
     id: typeof message.turnId === 'string' ? message.turnId : newId('turn'),
-    kind: message.kind,
+    kind: said.kind,
     // Whether this is the person moving on (#69): their message or an event of theirs, not another agent’s review (#133).
-    movesOn: message.kind === 'user' || (message.kind === 'event' && !message.event?.from),
+    movesOn: said.kind === 'user' || (message.kind === 'event' && !message.event?.from),
     from:
-      message.kind === 'agent'
-        ? String(message.from ?? '')
+      said.kind === 'agent'
+        ? String(said.from ?? '')
             .replace(/^@/, '')
             .toLowerCase()
         : null,
@@ -174,11 +189,17 @@ function newTurn(se, message, persona, { where, slash, summarizeTo, asked }) {
   };
 }
 
+/** Who a turn answers, for the side thread’s line that shows it at work: an agent by its handle, or you. @param {any} turn */
+function startedBy(turn) {
+  if (turn.kind === 'agent') return turn.from;
+  return turn.kind === 'user' ? 'you' : null;
+}
+
 /**
  * The session shows the agent at work on the turn, which takes the rules the person allowed once.
- * @param {any} rt @param {any} se @param {any} turn @param {any} message
+ * @param {any} rt @param {any} se @param {any} turn
  */
-function atWork(rt, se, turn, message) {
+function atWork(rt, se, turn) {
   const where = turn.threadId;
   // Rules the person allowed once (from a refusal card) apply to this turn only.
   turn.allowOnce = se.allowOnce ?? [];
@@ -187,7 +208,7 @@ function atWork(rt, se, turn, message) {
     endingSubagents: [],
     glimpse: '',
     // Where the turn is, when it’s in a side thread (#121): the conversation shows the agent at work there.
-    sideTurn: where === se.threadId ? null : { threadId: where, by: message.kind === 'agent' ? turn.from : message.kind === 'user' ? 'you' : null },
+    sideTurn: where === se.threadId ? null : { threadId: where, by: startedBy(turn) },
     state: 'think',
     // Moving on clears a need tied to a turn; the cards that wait until answered stay (card-needs.mjs RANK).
     needs: turn.movesOn && TURN_TIED.has(se.needs?.kind) ? null : se.needs,
@@ -206,6 +227,17 @@ function atWork(rt, se, turn, message) {
 }
 
 /**
+ * The plain message a turn answers, for Postbox’s own scripted backend (the mock), which picks its script by a message’s
+ * kind, sender and words where a model reads the prompt: an input’s batch as it was asked, with the input’s text and
+ * what rode with it as its context (#1427); any other message as it is. @param {any} turn @param {any} message
+ */
+function plainOf(turn, message) {
+  const asked = turn.asked?.message;
+  if (message.kind !== 'input' || !asked?.as) return message;
+  return { ...asked, kind: asked.as.kind, context: [message.text, ...(message.context ?? [])] };
+}
+
+/**
  * The adapter runs the turn; it ends through endTurn, and its exit lets the session’s next turn start.
  * @param {any} rt @param {any} se @param {any} turn @param {any} message
  * @param {{ adapter: any, persona: any, hostId: string|null }} how
@@ -214,7 +246,7 @@ function runTurn(rt, se, turn, message, { adapter, persona, hostId }) {
   // With the turn’s last raw lines, which each adapter’s recorder keeps (recorderFor), for an empty reply (#485).
   // And the files attached to its message, which its agent may read (#1307): a host turn reads its own copies of them.
   const base = adapterContext(rt, se, turn);
-  const ctx = Object.assign(base, { rawTail: turn.rawTail, readFiles: hostId ? [] : attachedFiles(message, base.pathOf) });
+  const ctx = Object.assign(base, { rawTail: turn.rawTail, readFiles: hostId ? [] : attachedFiles(message, base.pathOf), plain: plainOf(turn, message) });
   // A remote turn has its host’s welcome, its host turn and the conversation’s snapshot before the adapter starts.
   const run = Promise.resolve().then(async () => {
     if (!adapter) refuseUnregistered(se, persona);
@@ -244,11 +276,13 @@ export function retry(rt, threadId, itemId) {
     // Only the cards that wait until answered can take the need: the failed turn's own asks would flash until the
     // retried turn starts, and that turn's end decides them.
     releaseNeed(rt, rt.s.sessions[it.sessionId], itemId, undefined, { turnIds: [] });
-    // The entries the failed turn took go with its request again, as a resend the new turn takes (Delivery's retry).
-    // Entries that came since wait for the turn after it, behind the person's messages queued before them (#1146).
-    const turnId = newId('turn');
-    if (it.turnId) rt.delivery.retry(it.turnId, turnId);
-    const message = { ...asked.message, retry: true, woken: it.wokeOnFailure ?? [], turnId, entriesWait: true };
-    rt.deliver(it.sessionId, message, { summarizeTo: asked.summarizeTo, threadId });
+    // Whom the failed reply already handed work to (#485), so the retry doesn't hand it over again.
+    const woken = it.wokeOnFailure ?? [];
+    // A turn that took entries: they reopen as a resend, and the turn that takes them is built from them, so nothing
+    // sends the asked message again (#1429).
+    if (it.turnId && rt.turnService.retryEntries(it.sessionId, it.turnId, woken)) return;
+    // One that took none, such as a host turn's replay or a message a test sent: its request goes again.
+    const message = { ...asked.message, retry: true, woken, turnId: newId('turn'), entriesWait: true };
+    rt.turnService.run(it.sessionId, message, { summarizeTo: asked.summarizeTo, threadId });
   });
 }

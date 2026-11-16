@@ -29,8 +29,7 @@ async function heldRoom() {
 }
 
 /** What each of an agent's turns was given to answer, its messages in order. @param {any} f @param {string} handle */
-const asked = (f, handle) =>
-  f.adapter.calls.filter((c) => c.handle === handle).map((c) => (c.message.messages ? c.message.messages.map((m) => m.text) : [c.message.text]));
+const asked = (f, handle) => f.adapter.calls.filter((c) => c.handle === handle).map((c) => (c.parts ? c.parts.map((m) => m.text) : [c.parts[0].text]));
 
 test('your first @-mention of an agent behind a held commit reaches it once the commit is released', async () => {
   const f = await heldRoom();
@@ -40,7 +39,7 @@ test('your first @-mention of an agent behind a held commit reaches it once the 
   await settle(f.rt);
   const toGamma = f.adapter.calls.filter((c) => c.handle === 'gamma');
   assert.deepEqual(
-    toGamma.map((c) => c.message.text),
+    toGamma.map((c) => c.parts[0].text),
     ['@gamma Check the totals.'],
   );
   assert.equal(f.store.items(f.t.id).filter((x) => x.kind === 'user').length, 1, 'your message posted once');
@@ -70,7 +69,7 @@ test('two Postbox notices for an agent behind a held commit both wait for its ne
 test('a delivery to a session that is neither published nor held behind a commit answers 404 at once', async () => {
   const f = await heldRoom();
   const release = await f.hold();
-  assert.throws(() => f.rt.deliver('se_gone', { kind: 'user', text: 'Hello.' }), { status: 404 });
+  assert.throws(() => f.rt.turnService.run('se_gone', { kind: 'user', text: 'Hello.' }), { status: 404 });
   await release();
   await settle(f.rt);
   assert.equal(f.adapter.calls.length, 0, 'no turn started');
@@ -109,8 +108,9 @@ test('your follow-up to a new agent, sent after the release but before its flush
   await settle(f.rt);
   const [first, second, ...more] = asked(f, 'gamma');
   assert.deepEqual([first, more], [['@gamma First.'], []]);
-  // Its first turn's summary gave the follow-up, so it comes after it as a pointer (#506), never ahead of it.
-  assert.match(second[0], /^The person’s message above, which your last summary gave you in full: “@gamma Second\.”/);
+  // The follow-up waited for gamma, so its first turn’s input left it out, and it comes whole after it (#1427), never
+  // ahead of it.
+  assert.deepEqual(second, ['@gamma Second.']);
   await f.store.close();
 });
 

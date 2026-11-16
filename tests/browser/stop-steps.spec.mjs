@@ -8,6 +8,7 @@
 
 import { expect, test } from '@playwright/test';
 import * as arrange from '../arrange.mjs';
+import { plainOf } from '../turn-parts.mjs';
 import { failOnPageErrors, openSteps, startPostbox, synced } from './postbox.mjs';
 
 // The reply’s steps as the p0 UAT recorded them at its Stop (Postbox 0.30.1): a background loop with its job, a wait
@@ -32,7 +33,9 @@ test.beforeAll(async () => {
     async folderFor() {
       return app.root;
     },
-    async deliver(_session, message, ctx) {
+    async deliver(session, given, ctx) {
+      // The plain message the turn answers: an input’s batch, as its turn was asked (#1427).
+      const message = plainOf(app.rt, session.id, given);
       const id = `bgheart${++n}`;
       ctx.text('Started the loop.');
       ctx.activity({ id: `tu_${id}`, label: BG, state: 'running', job: id });

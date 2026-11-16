@@ -1,6 +1,7 @@
 // Queued messages retain individual controls but start one combined turn when their agent is free (#374).
 import { expect, test } from '@playwright/test';
 import * as arrange from '../arrange.mjs';
+import { plainOf } from '../turn-parts.mjs';
 import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 
 let app;
@@ -13,7 +14,9 @@ test.beforeAll(async () => {
   arrange.withAdapter(app.rt, {
     name: 'claude-code',
     folderFor: async () => app.root,
-    async deliver(session, message, ctx) {
+    async deliver(session, given, ctx) {
+      // The plain message the turn answers: an input’s batch, as its turn was asked (#1427).
+      const message = plainOf(app.rt, session.id, given);
       calls.push({ sessionId: session.id, message });
       if (holds.delete(session.id)) {
         await new Promise((resolve) => {
@@ -193,7 +196,7 @@ test('#427 an edit stays visible if its message leaves the queue', async ({ page
   app.rt.sendMessage(r.thread.id, { text: `@${r.worker.handle} Another queued message` });
   await synced(page, app);
   const dialog = await openQueue(page, r);
-  const removed = app.rt.thread(r.thread.id).queue.find((q) => q.text.endsWith('Keep this draft'));
+  const removed = app.rt.delivery.waiting(r.worker.id).find((e) => app.store.item(r.thread.id, e.itemId)?.text.endsWith('Keep this draft'));
   const row = queued(page, `@${r.worker.handle} Keep this draft`);
   await row.getByRole('button', { name: /^Edit message/ }).click();
   const unsaved = dialog.getByRole('textbox', { name: 'Edit the queued message' });

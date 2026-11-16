@@ -4,7 +4,6 @@
 // turn through deliver until Turns starts it; the end of a turn settles what it took and wakes whom its replies
 // mentioned, as its last step. Functions take the Runtime first, as waiting code does until Turns is a service.
 
-import { startFromEntries } from './entry-turns.mjs';
 import { mentionEntries, wakeMentioned } from './mention-entries.mjs';
 
 /** Adds the inbox’s listeners to the runtime’s bus. @param {any} rt */
@@ -15,7 +14,7 @@ export function listenInbox(rt) {
     if (item.kind === 'agent' && item.handle) delivery.postedSince({ threadId, from: item.handle, itemId: item.id, turnId: item.turnId });
   });
   bus.on('item.final', (final) => mentionEntries(rt, final));
-  bus.on('entry.waiting', ({ sessionId }) => startFromEntries(rt, sessionId));
+  bus.on('entry.waiting', ({ sessionId }) => rt.turnService.start(sessionId));
   bus.on('turn.ended', ({ turn }) => delivery.turnEnded(settle(turn)));
   bus.on('turn.ended', ({ turn }) => wakeMentioned(rt, turn));
   // Lost after the harness accepted it is never claimed yet: one classifier of a harness’s failures comes with Turns

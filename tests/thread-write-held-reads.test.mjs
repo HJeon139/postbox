@@ -52,7 +52,7 @@ function topicOn(f) {
   return f.rt.startTopic(f.t.id, root.id).threadId;
 }
 
-const textsTo = (f, handle) => f.adapter.calls.filter((c) => c.handle === handle).map((c) => (c.message.messages ?? [c.message]).map((m) => m.text));
+const textsTo = (f, handle) => f.adapter.calls.filter((c) => c.handle === handle).map((c) => c.parts.map((m) => m.text));
 
 test('a mention held behind a commit leaves with its agent’s inbox when the agent is deleted meanwhile', async () => {
   const f = await heldRoom();
@@ -143,11 +143,11 @@ test('a sweep over every pending thread sees each held write of a thread, read a
   const f = await heldRoom();
   const b = await busyBeta(f);
   const release = await f.hold();
-  const queued = () => (f.store.pending.threads()[f.t.id].queue ?? []).map((q) => q.text);
-  f.rt.sendMessage(f.t.id, { text: '@beta first' });
-  assert.deepEqual(queued(), ['@beta first']);
-  f.rt.sendMessage(f.t.id, { text: '@beta second' });
-  assert.deepEqual(queued(), ['@beta first', '@beta second']);
+  const limit = () => f.store.pending.threads()[f.t.id].chainLimit;
+  arrange.setThread(f.rt, f.t.id, { chainLimit: 3 });
+  assert.equal(limit(), 3);
+  arrange.setThread(f.rt, f.t.id, { chainLimit: 4 });
+  assert.equal(limit(), 4);
   await release();
   b.release();
   await settle(f.rt);
@@ -157,7 +157,7 @@ test('a sweep over every pending thread sees each held write of a thread, read a
 test('a turn in an old side thread counts unread on its agent, not on the side thread', async () => {
   const f = setup();
   const side = oldSide(f);
-  f.rt.deliver(f.beta.id, { kind: 'agent', from: '@alpha', text: 'Which editions?' }, { threadId: side.id });
+  f.rt.turnService.run(f.beta.id, { kind: 'agent', from: '@alpha', text: 'Which editions?' }, { threadId: side.id });
   await settle(f.rt);
   assert.deepEqual([f.store.state.threads[side.id].unread, f.store.state.sessions[f.beta.id].unread], [undefined, 1]);
 });

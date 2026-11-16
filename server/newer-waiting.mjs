@@ -27,12 +27,6 @@ const answering = (turn) => {
   return message.messages ?? [message];
 };
 
-/** A queued entry’s sender, as senderOfMessage names it: a wake is an agent’s, anything else in the queue is the person’s. */
-function senderOfQueued(q) {
-  if (q.kind !== 'wake') return PERSON;
-  return handleOf(q.from);
-}
-
 /** A message that waits on the turn itself, for the turn’s thread: each part of a batch on its own. */
 function pendingFor(turn) {
   const out = [];
@@ -51,18 +45,17 @@ function pendingFor(turn) {
 
 /**
  * What waits for this agent in the turn’s thread, each with its sender, its own id and the item it was posted as: the
- * person’s messages in the queue, the agent’s inbox entries (an agent’s mention or review, server/delivery.mjs), and
- * what waits on the turn itself.
+ * agent’s inbox entries (the person’s messages, an agent’s mention or review, server/delivery.mjs), and what waits on
+ * the turn itself.
  */
 function waitingFor(rt, sessionId, turn) {
-  const queued = (rt.s.threads[turn.threadId]?.queue ?? [])
-    .filter((q) => q.sessionIds.includes(sessionId))
-    .map((q) => ({ key: q.id, sender: senderOfQueued(q), itemId: q.itemId ?? null, at: q.at }));
   const entries = rt.delivery
     .waiting(sessionId)
     .filter((e) => e.threadId === turn.threadId && e.from)
-    .map((e) => ({ key: e.id, sender: e.from === 'you' ? PERSON : handleOf(e.from), itemId: e.itemId ?? null, at: e.at }));
-  return [...queued, ...entries, ...pendingFor(turn)];
+    // The person’s own is named without its item, which is posted when it’s sent (#1404), so the note never points at a
+    // message they may still remove (AT-6).
+    .map((e) => ({ key: e.id, sender: e.from === 'you' ? PERSON : handleOf(e.from), itemId: e.from === 'you' ? null : (e.itemId ?? null), at: e.at }));
+  return [...entries, ...pendingFor(turn)];
 }
 
 /**

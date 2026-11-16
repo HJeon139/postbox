@@ -215,9 +215,9 @@ flowchart LR
   - **The person’s own actions:**
     - `edit(entryId)`, `cancel(entryId)` and `stopped(sessionId)`;
     - `continueChain(threadId)`: Continue at the chain cap;
-    - `retry(sessionId)`: the facade’s Retry on a failed turn. The entries that turn took go back to waiting, marked as a resend, and the session is no longer failed, so `entry.waiting` starts the turn.
+    - `retry(sessionId)`: the facade’s Retry on a failed turn. The entries that turn took go back to waiting, marked as a resend, and the session is no longer failed, so `entry.waiting` starts the turn. As built (#1429) it takes the failed turn’s id and whom its failed reply already woke (`woken`, #485), which rides on each reopened entry, so whichever turn takes them, Send now’s included, is the retry and no other turn is. What an app event’s entry carries in memory stays while a Retry can reopen it. A failed turn that took no entries, such as a host turn’s replay, sends its request again instead.
 
-    Until the person’s message is an entry (step 2 below keeps today’s queue in front), editing and canceling a waiting message stay with the queue.
+    The person’s message is an entry when it’s sent (#1404), so `edit` and `cancel` act on it. A queue a store holds from before that is turned into entries once, on start (step 3).
   - **Signals:** `entry.waiting`. It is raised for an agent that has a waiting entry that isn’t a notice, and that:
     - isn’t `busy()` in Running (no live turn, none exiting, no host turn awaiting attach);
     - has a session that hasn’t failed;
@@ -278,8 +278,8 @@ flowchart LR
 
     The Bus calls a signal’s listeners in the order the root adds them, as it does for `persona.updated`.
 - **No one else starts a turn.** `rt.deliver` has 15 calling modules today (#1236, the inventory of 15 November). Twelve of them hand an agent a message, and they call Delivery’s `send` instead: the queue, mention wakes, side threads, scheduled wakes, share-back, agent commands, blocks, and the permission, wake, tool-ask, app-send and download cards. The other three aren’t messages, and they become Turns’ own steps:
-  - `retryHeld`: a start that waited behind a held commit;
-  - `release`: a stopped turn has exited; Turns raises `turn.exited`, and Delivery raises `entry.waiting` if the agent has entries;
+  - `retryHeld`: a start that waited, behind a held commit, with writes closed, or for a session joined behind one. As built (#1429) it isn’t a step of its own: it’s `run`’s held re-entry, which calls `run` again when the start can go;
+  - `release`: what waited on a turn, given when a stopped turn has exited, and when a turn ends normally with messages held on it (`takePending`); Turns raises `turn.exited`, and Delivery raises `entry.waiting` if the agent has entries;
   - `resume`: a host turn resumed after a restart (`remote/turns-resume.mjs`).
 - **Calls into waiting code:** until the permission layer is removed and Asks is built, Turns reaches them through one port, `asks`. It covers `requestPermission`, `recordDenial`, `settlePermission`, the needs (`keptTurns`, `offerNeed`, `releaseNeed`) and `card.opened`. Nothing else in Turns calls waiting code.
 - **Listens to:** `entry.waiting`.
@@ -661,7 +661,7 @@ Each step is its own pull request, and is done when:
   - **What it found:** a review’s entry keeps the event today’s `deliver` takes, in `message`, until Turns builds a turn’s input from entries. Delivery keeps nothing in memory, so a store Retry that installs the disk’s state needs no listener of its own.
   - **The switch:**
     - The root listens to `item.final` with `mention-entries.mjs`, so a reply’s mentions become entries once it’s final, and steps L and L3’s wakes (`mention-wakes.mjs`) are gone.
-    - It listens to `entry.waiting` with `entry-turns.mjs`, which takes one thread’s entries and starts the turn through today’s `deliver`.
+    - It listens to `entry.waiting` with `turns.mjs`, which takes one thread’s entries and starts the turn through today’s `deliver`.
     - `endTurn` raises `turn.ended` and `turn.failed`, with Delivery’s listeners last.
     - A review reaches its author as a “review” entry. App events and checks stay on the `send` port, so no app’s own text is stored in the public key.
     - A turn the queue starts in a thread takes that thread’s waiting entries with it, as the queue’s wakes joined the person’s message (#733). Send now, and a group that can’t join, keep them for the next turn.
@@ -677,7 +677,32 @@ Each step is its own pull request, and is done when:
     - `open_topic` lost `mentions`: its first message’s own @-mentions wake, as prose, as a reply’s do.
     - The chain-limit sentence moved to the guide’s room paragraph.
   - **What the removal found:** the measurement’s resumed session is still to show whether a harness passes a call to an unlisted tool through to Postbox (rooms-at-scale.md, “After `wake_agent` goes”).
-- **Next:** Delivery and Turns, built as the inbox, from step 2 of the order “Delivery and Turns, built as the inbox” gives. Asks follow, after the permission layer.
+- **In progress:** the inbox’s step 3, Turns takes entries.
+  - **The person’s message is an entry when it’s sent** (#1404). It’s posted at once, with a `person` entry per agent it goes to; the thread’s `queue` stops growing. Send now stops the turn, then a turn takes that entry alone.
+  - **What it found:**
+    - Before entries, a Stop kept the person’s queued messages and dropped what waited on the turn. So a Stop stops agents’ entries and answers, and keeps the person’s messages waiting.
+    - A failed turn’s end drained only agents’ wakes, so the person’s queued messages waited for them (#1146). Delivery holds the person’s entries that waited through a failure until the person acts. It keeps that in memory, as the queue’s rule was: a restart, or a host turn’s attach given up, sends them, as the queue’s drain did (#1135).
+    - A message posted at send would be in the catch-up of the turn before its own, so the agent read it twice. The catch-up leaves out the person’s messages still waiting for the agent.
+    - #694’s note names a waiting message of the person’s without pointing at its item, so Remove still retracts one it named.
+    - A send the page tries again carries its client id, which its entries keep as their retry id, so it’s stored once (#1138).
+  - **A stored queue becomes entries once, on start** (#1423), before Delivery’s own start (`queue-convert.mjs`). The person’s message is posted with a `person` entry per agent still here, and an agent’s wake becomes a `mention` entry for its item. Each entry carries its queue row’s id as its retry id, so a conversion a crash cut short posts nothing twice. The queue’s code is gone: its drain, its batching, and its Edit, Remove and Send now.
+  - **The last sources are entries** (#1425):
+    - an app’s event is an `event` entry for the voice line it posted, and what the app sent rides in memory with it (Delivery’s `carry`), so it never enters the public `inbox`; after a restart its turn reads the voice line;
+    - an app check needing a fix is a `check` entry;
+    - a thread’s summary request is a `command` entry, whose reply the turn posts in the thread’s parent;
+    - a scheduled wake is a `scheduled` entry carrying the wake its turn keeps, so #466’s lifecycle is unchanged. A Stop that stops it, or canceling its schedule, settles it, and a restart’s rearm stops what an earlier fire left.
+  - The start of a turn from entries lives in `turns.mjs`. The `Turns` class comes with `deliver`’s removal (4c), whose remaining callers become its steps.
+  - **A turn of plain entries is given `turnInput`’s text** (#1427): the person’s messages and agents’ mentions, with notices riding, as an `input` message that every backend formats as its text after the room’s fixed facts (#515). It’s built as the turn starts: its entries, each whole up to `READING.mention`; the room’s items since the agent’s last turn that aren’t its entries nor the person’s waiting messages (Memory’s `turnTail`, which moves its marker as the catch-up did); a topic thread’s own talk; and the files and thread links its messages carry. The take’s budget is `TURN_INPUT.entries`, and `sizeOf` counts each entry’s line as the turn gives it.
+  - An entry with a message kind of its own keeps it until 4c: an answer, a review, an app event, a scheduled wake, a command, a check, and a host turn’s attach. The input keeps its batch’s plain parts on what the turn was asked, with their kind and sender (`as`), for what reads them there until Turns owns it.
+  - **Turns owns the start** (#1429, 4c-a): `server/turn-service.mjs` is a class the root builds as `rt.turnService`, since `rt.turns` is Running’s map. Every start is one of its steps:
+    - `start`: an agent’s waiting entries (`entry.waiting`);
+    - `takeAlone`: the person’s Send now on one entry;
+    - `release`: what waited on a turn, once it ended or its process exited;
+    - `resume`: a host turn resumed or attached again;
+    - `retry`: the person’s Retry.
+
+    Each goes through `run`, which builds and runs the turn (`turn-run.mjs`, moved from `deliver.mjs`), and holds a start until it can go: behind a held commit, with writes closed, or behind a stopped turn still exiting. The runtime’s `deliver` is gone, and no server module calls one.
+  - **Next:** Retry reopens a failed turn’s entries as a resend (4c-b); then the `asks` port (4c-c).
 
 ## Appendix: every module’s members
 

@@ -7,6 +7,7 @@ import { handleMcp } from '../server/mcp.mjs';
 import { SENDING } from '../shared/limits.mjs';
 import * as arrange from './arrange.mjs';
 import { held, oldSide, settle, setup, sleep } from './side-threads-fixture.mjs';
+import { readOf } from './turn-parts.mjs';
 
 const linkOf = (store, t) => store.items(t.id).find((x) => x.kind === 'sidelink');
 /** A topic thread on the person’s first message in the conversation, which @alpha answered. */
@@ -31,7 +32,7 @@ test('#130, #372: a side thread from before keeps its line’s count, one per ag
   assert.equal(linkOf(store, t).count, 2);
   // A turn that was running there when side threads went finishes there: its two items count as one message.
   adapter.next.push(twoItems);
-  rt.deliver(beta.id, { kind: 'agent', from: '@alpha', text: 'And the 1908 one?' }, { threadId: side.id });
+  rt.turnService.run(beta.id, { kind: 'agent', from: '@alpha', text: 'And the 1908 one?' }, { threadId: side.id });
   await settle(rt);
   assert.equal(store.items(side.id).filter((x) => x.kind === 'user' || x.kind === 'agent').length, 4);
   const link = linkOf(store, t);
@@ -60,10 +61,7 @@ test('#128: the person sends a message from a side thread from before to the con
   adapter.next.push(async (c) => c.text('ok'));
   rt.sendMessage(t.id, { text: '@alpha go on' });
   await settle(rt);
-  assert.match(
-    adapter.calls.at(-1).message.context?.join('\n') ?? adapter.calls.at(-1).message.text,
-    /Shared from the thread “@alpha ↔ @beta”, by @beta: Status: 3 of 5/,
-  );
+  assert.match(readOf(adapter.calls.at(-1)), /Shared from the thread “@alpha ↔ @beta”, by @beta: Status: 3 of 5/);
 });
 
 test('#128, #372: an agent the person asked posts to the conversation from a topic thread, marked as shared by it', async () => {
@@ -198,7 +196,7 @@ test('#151, #372: a failed wake in a topic thread needs you there, and Retry ans
   await settle(rt);
   const calls = adapter.calls.slice(before);
   assert.deepEqual(
-    calls.map((c) => [c.handle, c.message.kind, c.message.from, c.message.text, c.thread]),
+    calls.map((c) => [c.handle, c.parts[0].kind, c.parts[0].from, c.parts[0].text, c.thread]),
     [
       ['beta', 'agent', '@alpha', 'Review the plan.', topic.id],
       ['beta', 'agent', '@alpha', 'Review the plan.', topic.id],
@@ -217,7 +215,7 @@ test('#151: Retry sends a failed turn again as it was asked, so an agent’s tur
   adapter.next.push(async () => {
     throw new Error('API 500');
   });
-  rt.deliver(beta.id, { kind: 'agent', from: '@gamma', text: 'Here are the numbers.' }, { threadId: topic.id });
+  rt.turnService.run(beta.id, { kind: 'agent', from: '@gamma', text: 'Here are the numbers.' }, { threadId: topic.id });
   await settle(rt);
   const failed = store.items(topic.id).find((x) => x.status === 'failed');
   let result;

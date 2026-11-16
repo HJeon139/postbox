@@ -67,7 +67,9 @@ export function askedAgain(rt, threadId, it, sendNow) {
  */
 export const wokeOf = (turn) => {
   if (turn?.origin) return turn.origin.woke ? { woke: turn.origin.woke } : {};
-  const m = turn?.asked?.message;
+  const asked = turn?.asked?.message;
+  // An input’s plain parts say who woke the agent, as a batch’s did (turns.mjs).
+  const m = asked?.as ? { ...asked.as, saidIn: asked.saidIn } : asked;
   if (m?.kind === 'wake') return { woke: { scheduled: true } };
   return m?.kind === 'agent' ? { woke: { by: String(m.from ?? '').replace(/^@/, ''), ...(m.saidIn ? { reply: true, in: m.saidIn } : {}) } } : {};
 };

@@ -28,10 +28,10 @@ function setup() {
   const a = rt.createPersona({ handle: 'dev' });
   const t = rt.createThread({ projectId: 'p1', title: 'T', personaIds: [a.id] });
   const se = arrange.agentIn(rt, t.id, 'dev');
-  const deliver = rt.deliver.bind(rt);
+  const deliver = rt.turnService.run.bind(rt.turnService);
   /** @type {any[]} */
   const lintTurns = [];
-  rt.deliver = (sessionId, message, opts) => {
+  rt.turnService.run = (sessionId, message, opts) => {
     if (message.kind === 'lint') {
       lintTurns.push({ sessionId, message, opts });
       return Promise.resolve();
@@ -54,7 +54,7 @@ test('a turn that left a progress step running sends its lint turn through the d
     sessionId: se.id,
     block: { type: 'progress', id: 'b1', title: 'Plan', steps: [{ id: 's1', label: 'Fetch', state: 'running' }] },
   });
-  await rt.deliver(se.id, { text: 'go' });
+  await rt.turnService.run(se.id, { text: 'go' });
   await settle(rt);
   assert.equal(store.item(t.id, block.id).block.steps[0].state, 'stalled');
   assert.equal(lintTurns.length, 1);

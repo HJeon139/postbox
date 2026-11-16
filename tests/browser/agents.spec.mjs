@@ -13,6 +13,7 @@ import { readFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
 import { createStreamMapper } from '../../server/adapters/claude-stream.mjs';
 import * as arrange from '../arrange.mjs';
+import { plainOf } from '../turn-parts.mjs';
 import { failOnPageErrors, PHONE, startPostbox, synced } from './postbox.mjs';
 
 // Light, as the old check ran it; the narrow tests below run in both.
@@ -53,7 +54,9 @@ test.beforeAll(async () => {
       async folderFor() {
         return app.root;
       },
-      async deliver(session, message, ctx) {
+      async deliver(session, given, ctx) {
+        // The plain message the turn answers: an input’s batch, as its turn was asked (#1427).
+        const message = plainOf(app.rt, session.id, given);
         turns.push({ handle: session.handle, text: message.text, effort: ctx.persona?.effort });
         const r = replays.shift();
         if (!r) return ctx.text('Done.');

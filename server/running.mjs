@@ -9,7 +9,7 @@
 // so the queue and wakes hold what’s for it, but begin doesn’t refuse it: Send now, a direct delivery and a scheduled
 // wake reach deliver without the queue and start a turn there, as they did before Running, a gap #1135 leaves open.
 
-/** @typedef {any} Turn  a live turn, as deliver.mjs’s newTurn makes it; Running reads only its sessionId */
+/** @typedef {any} Turn  a live turn, as turn-run.mjs’s newTurn makes it; Running reads only its sessionId */
 /** @typedef {{ turn: Turn, held: any[], silent: boolean }} Exiting  what waits for a stopped turn’s exit */
 
 export class Running {

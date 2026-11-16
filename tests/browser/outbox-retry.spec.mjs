@@ -66,7 +66,7 @@ test('#1126 a send whose POST fails while the stream is open is sent again, and 
   await expect.poll(tried, { message: 'the first POST failed' }).toBeGreaterThan(0);
   expect(await page.evaluate(async () => (await import('/app/js/client.mjs')).client.connection), 'the stream stays open').toBe('open');
   await expect
-    .poll(() => (app.rt.thread(thread.id).queue ?? []).map((q) => q.text), { message: 'the message reaches the agent’s queue', timeout: 15000 })
+    .poll(() => arrange.personWaiting(app.rt, thread.id), { message: 'the message reaches the agent’s queue', timeout: 15000 })
     .toEqual([`@${worker.handle} sent while one POST fails`]);
   const badge = page
     .locator('.agent-row')
@@ -96,7 +96,7 @@ test('#1126 offline, a failed send still waits for the connection, and isn’t s
   await page.context().setOffline(false);
   await page.evaluate(async () => (await import('/app/js/client.mjs')).connect());
   await synced(page, app);
-  await expect.poll(() => (app.rt.thread(thread.id).queue ?? []).length).toBe(1);
+  await expect.poll(() => arrange.personWaiting(app.rt, thread.id).length).toBe(1);
   releases.get(worker.id)?.();
 });
 
@@ -117,5 +117,27 @@ test('#1126 a send that keeps failing while the stream is open is tried quickly 
   await expect.poll(() => posts).toBe(8);
   await expect(page.locator('.composer .queued').filter({ hasText: 'never gets through' })).toBeVisible();
   await page.unroute('**/api/threads/*/messages');
+  releases.get(worker.id)?.();
+});
+
+test('#1138 a send the server took but whose response was lost is sent again, and stored once', async ({ page }) => {
+  const { thread, worker } = await busyAgent(page);
+  const text = `@${worker.handle} sent once, answered never`;
+  let tried = 0;
+  // The first POST reaches the server, and its response never reaches the page, as when a connection drops after the
+  // request went out; the outbox sends it again.
+  await page.route('**/api/threads/*/messages', async (route) => {
+    if (tried++) return route.continue();
+    await route.fetch();
+    return route.abort('connectionreset');
+  });
+  allowPageError(page, /ERR_CONNECTION_RESET|NetworkError|Failed to load resource/);
+  await page.locator('#composer-input').fill(text);
+  await page.locator('#composer-input').press('Enter');
+  await expect.poll(() => tried, { message: 'the outbox sent it again', timeout: 15000 }).toBeGreaterThan(1);
+  await expect(page.locator('.composer .queued').filter({ hasText: 'answered never' }), 'the repeat was answered as sent').toHaveCount(0);
+  const copies = app.store.items(thread.id).filter((i) => i.kind === 'user' && i.text === text);
+  expect(copies, 'one copy on the server').toHaveLength(1);
+  expect(arrange.personWaiting(app.rt, thread.id)).toEqual([text]);
   releases.get(worker.id)?.();
 });

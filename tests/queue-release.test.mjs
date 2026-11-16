@@ -1,10 +1,8 @@
-// A deleted agent’s queued messages (#427): delete is immediate, and at once a
-// message only for it is posted, waking no one and leaving the conversation’s hops alone (R2), and one for others too
-// goes to them now.
+// A deleted agent’s queued messages (#427): delete is immediate. The person’s message is posted when it’s sent (#1404),
+// so one only for it stays in the conversation once, and reaches no one; one for others too goes to them.
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { releaseQueued } from '../server/message-queue.mjs';
 import * as arrange from './arrange.mjs';
 import { held, settle, setup, sleep } from './side-threads-fixture.mjs';
 
@@ -25,12 +23,12 @@ test('at delete, a message only for that agent is posted once', async () => {
   rt.deleteSession(alpha.id);
   a.release();
   await settle(rt);
-  assert.deepEqual(store.state.threads[t.id].queue, []);
+  assert.deepEqual(arrange.personWaiting(rt, t.id), [], 'nothing waits for the deleted agent');
   assert.equal(posted(store, t.id, '@alpha later, please').length, 1);
 });
 
 test('at delete, a message for that agent and an idle one goes to the idle one now', async () => {
-  const { store, rt, adapter, t, alpha, beta, a } = await queuedForBusyAlpha();
+  const { rt, adapter, t, alpha, beta, a } = await queuedForBusyAlpha();
   assert.ok(rt.sendMessage(t.id, { text: '@alpha @beta both of you' }).queued);
   rt.deleteSession(alpha.id);
   a.release();
@@ -39,25 +37,11 @@ test('at delete, a message for that agent and an idle one goes to the idle one n
     adapter.calls.some((x) => x.sessionId === beta.id && /both of you/.test(JSON.stringify(x.message))),
     '@beta got it',
   );
-  assert.equal(
-    store.state.threads[t.id].queue.some((q) => /both of you/.test(q.text)),
-    false,
-  );
-});
-
-test('R2: a release posts the text without a turn’s side effects: the conversation’s hops are not reset', async () => {
-  const { store, rt, t, alpha, a } = await queuedForBusyAlpha();
-  arrange.putThread(rt, { ...store.state.threads[t.id], hops: 3 });
-  releaseQueued(rt, alpha.id);
-  assert.equal(posted(store, t.id, '@alpha later, please').length, 1);
-  assert.equal(store.state.threads[t.id].hops, 3);
-  a.release();
-  await settle(rt);
+  assert.deepEqual(arrange.personWaiting(rt, t.id), []);
 });
 
 test('delete posts in queue order: M1 for @alpha and @beta, then M2 for @alpha alone, read M1 then M2 (nit)', async () => {
   const { store, rt, t, alpha, a } = await queuedForBusyAlpha();
-  store.emit('thread', { ...store.state.threads[t.id], queue: [] });
   assert.ok(rt.sendMessage(t.id, { text: '@alpha @beta M1' }).queued);
   assert.ok(rt.sendMessage(t.id, { text: '@alpha M2' }).queued);
   rt.deleteSession(alpha.id);

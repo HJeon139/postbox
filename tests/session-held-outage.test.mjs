@@ -83,7 +83,7 @@ test('your first @-mention of an agent behind a held commit, when the next sync 
     'the disk kept the new session',
   );
   assert.deepEqual(
-    f.adapter.calls.filter((c) => c.handle === 'gamma').map((c) => c.message.text),
+    f.adapter.calls.filter((c) => c.handle === 'gamma').map((c) => c.parts[0].text),
     ['@gamma Check the totals.'],
   );
   await h.store.close();

@@ -105,7 +105,7 @@ test('a wake while that session is busy waits in the conversation’s queue: no 
   await expect(queued.getByRole('button', { name: /^Edit message/ }), 'a wake can’t be edited').toHaveCount(0);
   await settled(page);
   await expect(row(page, 'researcher').locator('.agent-sub'), 'its row has no entry of its own').toHaveCount(0);
-  await expect(row(page, 'researcher').locator('.agent-btn')).toContainText('calling tools');
+  await expect(row(page, 'researcher').locator('.agent-btn'), 'its row says its step').toContainText('Reading the shelf');
   held.scripts.set(r.researcher.id, (ctx) => ctx.text('Dates: 1999 and 2004.'));
   held.release(r.researcher.id);
   await expect

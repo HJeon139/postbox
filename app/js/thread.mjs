@@ -414,6 +414,8 @@ function renderItem(it, prev, ctx) {
           h('div.md', { html: trusted(renderMarkdown(it.text, { mentions: handles() })) }),
           it.attachments?.length ? h('div.attachments', it.attachments.map(attChip)) : null,
         ),
+        // Removed from every agent’s queue before one read it (#1404): it stays where it was said, marked.
+        it.removed ? h('span.stopped-tag', 'Removed before any agent read it') : null,
       );
     }
     case 'agent': {
@@ -738,15 +740,19 @@ function retrySoon() {
   }, delay);
 }
 
-export async function sendMessage(threadId, text, attachments = [], { sendNow = false } = {}) {
+/**
+ * Sends the person’s message. `clientId` names it for the server, which stores one message per id, so a try sent again
+ * after its response was lost isn’t posted twice (#1138): the outbox keeps it with the message.
+ */
+export async function sendMessage(threadId, text, attachments = [], { sendNow = false, clientId = crypto.randomUUID() } = {}) {
   try {
-    const r = await api(`/api/threads/${threadId}/messages`, { text, attachments, sendNow });
+    const r = await api(`/api/threads/${threadId}/messages`, { text, attachments, sendNow, clientId });
     if (r.queued) say('Queued. It sends when the agent finishes.');
     retries = 0;
     return true;
   } catch (e) {
     if (e.offline) {
-      outbox.push({ threadId, text, attachments });
+      outbox.push({ threadId, text, attachments, clientId });
       saveOutbox();
       retrySoon(); // first, so the repaint knows which try comes next
       client.emit({ type: 'outbox' });
@@ -776,7 +782,7 @@ function sendOutboxNow({ fresh = false } = {}) {
 export function flushOutbox() {
   const items = outbox.splice(0);
   saveOutbox();
-  for (const m of items) void sendMessage(m.threadId, m.text, m.attachments);
+  for (const m of items) void sendMessage(m.threadId, m.text, m.attachments, { clientId: m.clientId });
   if (items.length) client.emit({ type: 'outbox' });
 }
 

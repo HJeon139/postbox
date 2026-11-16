@@ -25,7 +25,7 @@ function heldWelcome(welcome) {
   return { r, d, release };
 }
 
-const queued = (r) => (r.store.pending.thread(r.t.id)?.queue ?? []).map((q) => q.text);
+const queued = (r) => arrange.personWaiting(r.rt, r.t.id);
 
 test('#1135 a message while the turn waits to be attached waits in the queue, and no second turn starts on the host', async () => {
   const { r, d, release } = heldWelcome('running');
@@ -76,12 +76,12 @@ test('#1135 another agent’s wake while the turn waits to be attached waits in 
   assert.match(messageOf(starts(d)[0]), /a wake in the window/);
 });
 
-test('#1135 a drain of the thread while the turn waits to be attached leaves its message queued', async () => {
+test('#1135 a wake of the agent while the turn waits to be attached leaves its message waiting', async () => {
   const { r, d, release } = heldWelcome('running');
   await until(() => r.rt.remote.restoring.has('host-turn-1'), 'the turn to wait for its welcome');
   r.rt.sendMessage(r.t.id, { text: 'sent in the window' });
-  // Any drain of the thread, as another agent’s turn ending there runs, reads the agent as busy too.
-  r.rt.drainQueue(r.t.id);
+  // Any wake of the agent, as another agent’s turn ending there may make, reads it as busy too.
+  r.rt.delivery.wake(r.se().id);
   await sleep(20);
   assert.equal(r.rt.turns.has(r.se().id), false, 'no turn starts for it');
   assert.deepEqual(queued(r), ['sent in the window']);
@@ -161,7 +161,6 @@ test('#1135 a message after the agent moved off a silent host and back waits for
 const unqueued = {
   'Send now': (r) => r.rt.sendMessage(r.t.id, { text: 'in the window', sendNow: true }),
   'a direct delivery': (r) => arrange.deliver(r.rt, r.se().id, { kind: 'notice', text: 'in the window' }),
-  'a scheduled wake that comes due': (r) => fireScheduledWake(r.rt, arrange.schedule(r.rt, r.se().id, { inMs: 1000, note: 'in the window' }).id),
 };
 for (const [what, send] of Object.entries(unqueued))
   test(`#1135 ${what} while the turn waits to be attached is delivered, not lost`, async () => {
@@ -175,3 +174,23 @@ for (const [what, send] of Object.entries(unqueued))
     d.end(starts(d)[0].turn);
     await settled(r);
   });
+
+test('#1135 a scheduled wake that comes due while the turn waits to be attached waits in the inbox, and goes after it', async () => {
+  // A scheduled wake is an entry since #1425, so it waits for a busy agent as a message does, where it started a turn
+  // beside the one about to be attached before.
+  const { r, d, release } = heldWelcome('running');
+  await until(() => r.rt.remote.restoring.has('host-turn-1'), 'the turn to wait for its welcome');
+  fireScheduledWake(r.rt, arrange.schedule(r.rt, r.se().id, { inMs: 1000, note: 'in the window' }).id);
+  assert.equal(arrange.liveTurn(r.rt, r.se().id), undefined, 'no turn starts beside the one to be attached');
+  assert.deepEqual(
+    arrange.waitingEntries(r.rt, r.se().id).map((e) => e.source),
+    ['scheduled'],
+  );
+  release();
+  await until(() => d.received.some((m) => m.type === 'read' && m.turn === 'host-turn-1'), 'the attach');
+  d.end('host-turn-1');
+  await until(() => starts(d).length === 1, 'the wake’s turn');
+  assert.match(messageOf(starts(d)[0]), /in the window/);
+  d.end(starts(d)[0].turn);
+  await settled(r);
+});

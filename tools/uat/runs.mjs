@@ -7,7 +7,7 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
-import { agentsSpent } from './cost.mjs';
+import { agentsSpent, uncosted } from './cost.mjs';
 import { pictureRecord } from './picture-choice.mjs';
 import { isTargeted, parseScenario } from './scenario.mjs';
 
@@ -93,17 +93,21 @@ function streamInits(folder) {
  */
 export function reportFacts(md) {
   const N = String.raw`(\d+(?:\.\d+)?)`;
-  const m = new RegExp(String.raw`Run on [^,]*, (?:(\d+) min, )?(\d+) steps[^.]*\. Usage: agents \$${N}(?: and ${N} Kiro credits)?, tester \$${N}`).exec(
-    md ?? '',
-  );
+  // The usage line, as it is written now and as it was: Kiro’s credits come inside the note on harnesses that report no
+  // cost, or after “and”, with Antigravity’s tokens after them.
+  const kiro = String.raw`${N} Kiro credits`;
+  const alone = String.raw`(?: on Claude Code alone \((?:[^)]*?${kiro})?[^)]*\))?`;
+  const usage = String.raw`Usage: agents \$${N}${alone}(?: and ${kiro})?(?: and [\d,]+ Antigravity tokens)?, tester \$${N}`;
+  const m = new RegExp(String.raw`Run on [^,]*, (?:(\d+) min, )?(\d+) steps[^.]*\. ${usage}`).exec(md ?? '');
+  const credits = m?.[4] ?? m?.[5];
   // The runner’s “Agents: @critic claude-haiku-5-5, low effort; …” line, read for its first agent.
   const ran = /Agents: @[\w-]+ (its default model|[\w.:+-]+)(?:, (\w+) effort)?/.exec(md ?? '');
   return {
     minutes: m?.[1] ? Number(m[1]) : null,
     steps: m ? Number(m[2]) : null,
     agentsUsd: m ? Number(m[3]) : null,
-    kiroCredits: m?.[4] ? Number(m[4]) : null,
-    testerUsd: m ? Number(m[5]) : null,
+    kiroCredits: credits ? Number(credits) : null,
+    testerUsd: m ? Number(m[6]) : null,
     agentModel: ran && ran[1] !== 'its default model' ? ran[1] : null,
     agentEffort: ran?.[2] ?? null,
   };
@@ -134,6 +138,7 @@ export function runRecord({
   git = gitOut,
 }) {
   const agents = agentsSpent(facts.streams ?? []);
+  const others = uncosted(facts);
   const flag = (k) => (typeof opt[k] === 'string' && opt[k] ? /** @type {string} */ (opt[k]) : null);
   return {
     run: basename(dir),
@@ -149,7 +154,13 @@ export function runRecord({
     // The phases a --phases run played (tools/uat/phases.mjs), so a recheck reads the scenario as it played it.
     ...(phases ? { phases } : {}),
     minutes: Math.round((now - started) / 60000),
-    cost: { agents: Math.round(agents * 100) / 100, tester: Math.round((tester.spent ?? 0) * 100) / 100, kiroCredits: null },
+    // `noCostFrom`: the harnesses the run had turns on whose cost isn’t in `agents`, since they report none.
+    cost: {
+      agents: Math.round(agents * 100) / 100,
+      tester: Math.round((tester.spent ?? 0) * 100) / 100,
+      kiroCredits: null,
+      ...(others.length ? { noCostFrom: others } : {}),
+    },
     coverage,
     ...(facts.timing ? { timing: facts.timing } : {}),
     // Whether the agent drew, when and what, for a judged run (#983).

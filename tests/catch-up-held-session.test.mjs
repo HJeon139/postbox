@@ -47,9 +47,9 @@ async function mentionThenHold() {
 
 test('#506 behind a held commit: a mention the last summary gave in full comes as a pointer when its wake is delivered', async () => {
   const { f, it, release } = await mentionThenHold();
-  f.rt.deliver(f.alpha.id, { kind: 'user', text: 'Check the build.' });
+  f.rt.turnService.run(f.alpha.id, { kind: 'user', text: 'Check the build.' });
   await settle(f.rt);
-  f.rt.deliver(f.alpha.id, { kind: 'agent', from: '@beta', text: THEIRS, itemId: it.id });
+  f.rt.turnService.run(f.alpha.id, { kind: 'agent', from: '@beta', text: THEIRS, itemId: it.id });
   await settle(f.rt);
   const [first, second] = toAlpha(f);
   assert.equal(given(first).split(THEIRS).length - 1, 1, 'the first summary gave it in full');
@@ -64,9 +64,9 @@ test('#506 behind a held commit: a mention the last summary gave in full comes a
 
 test('#506 behind a held commit: the next turn’s summary starts where the last one ended', async () => {
   const { f, release } = await mentionThenHold();
-  f.rt.deliver(f.alpha.id, { kind: 'user', text: 'Check the build.' });
+  f.rt.turnService.run(f.alpha.id, { kind: 'user', text: 'Check the build.' });
   await settle(f.rt);
-  f.rt.deliver(f.alpha.id, { kind: 'user', text: 'And the tests.' });
+  f.rt.turnService.run(f.alpha.id, { kind: 'user', text: 'And the tests.' });
   await settle(f.rt);
   const [first, second] = toAlpha(f);
   assert.equal(given(first).includes('FILLER-LINE'), true, 'the first summary gave it');
@@ -81,7 +81,7 @@ test('a Postbox notice held for an agent reaches its next turn with the publishe
   await f.store.flush();
   const release = await f.hold();
   arrange.tell(f.rt, f.alpha.id, 'Second notice.');
-  f.rt.deliver(f.alpha.id, { kind: 'user', text: 'Check the build.' });
+  f.rt.turnService.run(f.alpha.id, { kind: 'user', text: 'Check the build.' });
   await settle(f.rt);
   const [first] = toAlpha(f);
   assert.deepEqual(

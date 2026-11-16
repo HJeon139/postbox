@@ -14,6 +14,7 @@
 
 import { expect, test } from '@playwright/test';
 import * as arrange from '../arrange.mjs';
+import { plainOf } from '../turn-parts.mjs';
 import { failOnPageErrors, focusIs, openSteps, PHONE, startPostbox, synced } from './postbox.mjs';
 import { ask, choice, jobStop, keepRunning, stopButton } from './stop-ask.mjs';
 
@@ -51,7 +52,9 @@ test.beforeAll(async () => {
     async folderFor() {
       return app.root;
     },
-    async deliver(session, message, ctx) {
+    async deliver(session, given, ctx) {
+      // The plain message the turn answers: an input’s batch, as its turn was asked (#1427).
+      const message = plainOf(app.rt, session.id, given);
       if (!/job/.test(message.text ?? '')) return ctx.text('Done.');
       n += 1;
       // Asked for two, it starts a second job beside the first (#167).

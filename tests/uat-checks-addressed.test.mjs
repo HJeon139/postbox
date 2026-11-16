@@ -22,7 +22,7 @@ async function send(f, text, ...replies) {
 /** @beta’s turn for a reason of its own, which says `said`. */
 async function betaWakes(f, said) {
   f.adapter.next.push(async (c) => c.text(said));
-  f.rt.deliver(f.beta.id, { kind: 'agent', from: '@alpha', text: 'Can you look at the build?' });
+  f.rt.turnService.run(f.beta.id, { kind: 'agent', from: '@alpha', text: 'Can you look at the build?' });
   await settle(f.rt);
 }
 

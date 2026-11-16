@@ -57,7 +57,7 @@ test('a turn’s work is recorded after it leaves Running and before its reply s
     c.toolResult({ id: 'toolu_1', text: 'ok' });
     c.text('Tests pass');
   });
-  await rt.deliver(se.id, { text: 'hi' });
+  await rt.turnService.run(se.id, { text: 'hi' });
   await settle(rt, ledger);
   assert.deepEqual(seen, [{ status: 'done', live: false, reply: 'streaming', session: 'gen' }], 'the session still generates: its state settles after');
   const reply = store.items(t.id).findLast((x) => x.kind === 'agent');
@@ -72,7 +72,7 @@ test('a failed turn’s work is recorded as failed before its session fails', as
     c.text('Partly');
     throw new Error('the backend went away');
   });
-  await rt.deliver(se.id, { text: 'hi' });
+  await rt.turnService.run(se.id, { text: 'hi' });
   await settle(rt, ledger);
   assert.equal(seen.length, 1);
   assert.equal(seen[0].status, 'failed');

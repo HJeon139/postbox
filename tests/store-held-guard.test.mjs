@@ -28,13 +28,13 @@ const PUBLISHED = {
   'blocks.mjs': ['act'], // the person’s answer to a block they see
   'card-needs.mjs': ['dismissFailed'], // the person’s Dismiss on a failed reply they see (#883)
   'copied-line.mjs': ['copiedLine'], // a line an agent copied (#1370): the item it was given, as read_conversation reads it
-  'deliver.mjs': ['retry'], // the person’s Retry of a failed reply they see
+  'turn-run.mjs': ['retry'], // the person’s Retry of a failed reply they see
   'diagram-check.mjs': ['diagramCheck'], // the page’s report on a diagram the person sees
   'item-lines.mjs': ['topicRootLine', 'describeItem'], // a read tool and a prompt
-  'catch-up.mjs': ['catchUp', 'pointerIfSeen'], // the prompt for a later turn
+  'catch-up.mjs': ['catchUp', 'turnTail', 'pointerIfSeen'], // the prompt for a later turn
   'permission-cards.mjs': ['resolvePermission', 'resolveDenial'], // the person’s answer to a card they see
   'permission-expiry.mjs': ['dismissPermission'], // the person’s Dismiss on a card they see (#721)
-  'queue-batch.mjs': ['latestMessage'], // the person’s queued messages
+  'queue-batch.mjs': ['latestMessage'], // an agent’s later post, for a message that waited on a turn (#374)
   'reactions.mjs': ['toggleReaction', 'reactTool'], // a reaction aimed at an item the person or the agent sees
   'read-message.mjs': ['readMessage', 'readMessage', 'readConversation'], // read tools (T-31)
   'remote/turns-snapshot.mjs': ['readable'], // the snapshot sent to a host: it leaves the process
@@ -46,7 +46,7 @@ const PUBLISHED = {
   'share-back.mjs': ['shareToConversation', 'shareToConversation'], // the person’s Share of an item they see
   'shell-runs.mjs': ['stopShellCommand'], // the person’s Stop on a command they see
   'store-outage.mjs': ['settleOrphanTurns'], // at a reload, when nothing is held
-  'thread-catch-up.mjs': ['threadCatchUp', 'threadLines', 'readUpTo', 'reactionLines'], // prompts for a later turn
+  'thread-catch-up.mjs': ['threadTail', 'threadCatchUp', 'threadLines', 'readUpTo', 'reactionLines'], // prompts for a later turn
   'thread-summary.mjs': ['lineOf', 'lineOf', 'summarizeThread', 'summarizeThread'], // summaries for a later turn
   'tool-ask.mjs': ['resolveToolAsk'], // the person’s answer to an ask they see
   'view-app/consent.mjs': ['resolveViewAsk', 'settleDownloads'], // the person’s answer to the download card they see, and at startup a card a stop cut short, before any write is held (#95)
@@ -58,6 +58,7 @@ const PUBLISHED = {
 
 /** Direct reads of state.items, state.work or state.apps: published reads. */
 const DIRECT = {
+  'app-entries.mjs': ['sendAppMessage'], // the title of an app whose check the page reported, for its entry’s line (#1425)
   'apps.mjs': ['appCheck', 'appEvent', 'appState', 'appQuery', 'appFile', 'appOf'], // HTTP answers to the page about an app, and appOf for read_message and the host snapshot (#516's S1): a read tool and what it sends
   'index.mjs': ['start'], // /api/state and startup
   'item-lines.mjs': ['describeItem', 'describeItem'], // a read tool’s app line
@@ -87,27 +88,33 @@ const PENDING = {
   // The mirrored reply a terminal line adds to, maybe held behind a commit; and the session attachClaudeSession just
   // made, whose transcript mirror starts following.
   'claude-mirror.mjs': ['mirror', 'pollMirror'],
-  'deliver.mjs': ['deliver', 'deliver', 'turnMessage'], // the session it starts a turn in, and the thread it answers in, maybe made or held behind a commit (#796)
+  'turn-run.mjs': ['deliver', 'deliver', 'turnMessage'], // the session it starts a turn in, and the thread it answers in, maybe made or held behind a commit (#796)
   'restart-sweep.mjs': ['settleRetiredNeeds', 'cardOf'], // the need's card: whether it still waits, and its time on a tie, decide the need kept (#366); a session whose need is of a retired kind, settled
   'app-retire.mjs': ['retireApp', 'retireApp', 'retireApp'], // retire_app of an app the turn may have just shown
   'app-send-cards.mjs': ['releaseRetired'], // a retired app’s sweep of its open sends
   'apps.mjs': ['showApp', 'updateApp'], // show_app and update_app of an app the turn may have just shown
+  'app-entries.mjs': ['lostEvent'], // the voice line an app’s event posted, maybe behind a held commit, read when its turn starts (#1425)
   'block-show.mjs': ['showBlock', 'showBlock', 'showBlock', 'shownAgain'], // show_block of an app or a block id the turn may have just shown
   'block-update.mjs': ['shownBy'], // update_block of a block the turn just showed
   'catch-up.mjs': ['moveMarkers'], // the conversation of a topic an item moved in, maybe opened behind a held commit, whose sessions' markers move (#1041)
   'delivery.mjs': ['send', 'sessionIds', 'inbox', 'ready', 'take', 'postedSince'], // the sessions with inboxes, an inbox's entries, its session and an entry's item, maybe just made, decide each entry's next state and the wake (#796's class)
-  'entry-queue.mjs': ['cancelEntry'], // the text of the message the person removed, for its sender, maybe settled behind a held commit
-  'entry-turns.mjs': ['messageOf'], // the item an entry gives the turn whole, maybe settled in the same held write
+  // the handle of the agent that already has a message the person edits, its recipients, and the agents an edit leaves
+  // out, maybe written behind a held commit; the text of the message the person removed, for its sender; and whom the
+  // person’s own was removed for
+  'entry-queue.mjs': ['editEntry', 'editEntry', 'leaveOut', 'cancelEntry', 'removedUnread'],
+  // the item an entry gives the turn whole, maybe settled in the same held write; the person’s message, posted at send
+  // and the thread a summary request summarizes, maybe opened behind a held commit, for where its reply posts (#1425)
+  // and an input’s entries’ items, their files and its thread, maybe written in the same held write (#1427)
+  'turns.mjs': ['inputOf', 'inputOf', 'readItem', 'summaryOf', 'messageOf', 'personMessage'],
+  'turn-service.mjs': ['retryEntries'], // whether the session a Retry wakes is still failed, maybe written behind a held commit (#1429)
+  'queue-convert.mjs': ['convertOne', 'convertOne', 'notDelivered'], // the agents a stored queue's row waited for or came from, and the item an earlier conversion posted for it, read as the start's writes leave them (#1423)
+  'send-message.mjs': ['repeatOf'], // the item a repeated send's first try posted, maybe behind a held commit (#1138)
   'mention-entries.mjs': ['mentionEntries'], // the session whose final reply makes entries, maybe made behind a held commit
   'held-session.mjs': ['heldSession'], // a delivery to a session just made behind a held commit waits until it's published (#796's class in sessions)
   // A job's end: the list it leaves, whether a kept job still runs to hold the steps, and the steps to stall (#957).
   'job-records.mjs': ['endJob', 'endJob', 'endJob', 'runningProgress', 'setJobStep', 'settleJobs'],
   'ledger.mjs': ['entries', 'recordPublishes', 'recordPublishes'], // the ledger reads back its own entries; the turn’s blocks and apps
   'lint-delivery.mjs': ['sendLint'], // the apps the turn showed, still being checked
-  // The queue a drain takes from and the queued messages a deleted session's release posts: a wake or a message
-  // queued behind a held commit is in them (#796). Send now aims at an entry the person sees, but a turn ending behind
-  // a held commit may have drained it already, and sending it again would deliver it twice (#1007).
-  'message-queue.mjs': ['sendQueuedNow', 'releaseQueued', 'drainQueue', 'takePending'],
   'permission-cards.mjs': ['recordDenial'], // the same refused call, once
   'permission-expiry.mjs': ['tellExpired'], // the card a turn’s end just expired, told about once (#721)
   'permission-prompt.mjs': ['permission'], // the card the call waits on
@@ -153,7 +160,7 @@ const PENDING = {
   'thread-erase.mjs': ['eraseThreads', 'eraseThreads', 'eraseThreads', 'eraseThreads'],
   // The thread a turn answers in, as deliver chose it from pending, and the topic a turn's end settles: a topic
   // open_topic just opened, held (#796).
-  'thread-catch-up.mjs': ['threadHeader', 'threadCatchUp'],
+  'thread-catch-up.mjs': ['threadHeader', 'threadTail', 'threadCatchUp'],
   'thread-summary.mjs': ['settleThread'],
   // Every write of a thread that exists starts from it (#796), and toWrite refuses one that doesn’t exist there. Then
   // the turn’s own items, a move after a pending read, and the thread a topic reply count goes to, maybe opened or

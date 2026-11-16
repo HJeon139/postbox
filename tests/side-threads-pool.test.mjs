@@ -33,12 +33,12 @@ test('#228 UAT 1, #372: an agent answering in a topic thread wakes @beta, and th
   adapter.next.push(async (c) => c.text('It covers the edge cases.'));
   rt.sendMessage(topic.id, { text: '@alpha get the reviewer agent’s one-sentence opinion on test_converter.py' });
   await settle(rt);
-  assert.equal(adapter.calls.find((x) => x.message.text?.startsWith('@alpha get')).sessionId, alpha.id);
-  const answer = adapter.calls.find((x) => x.message.text === '@beta your one-sentence opinion on test_converter.py?');
+  assert.equal(adapter.calls.find((x) => x.parts[0].text?.startsWith('@alpha get')).sessionId, alpha.id);
+  const answer = adapter.calls.find((x) => x.parts[0].text === '@beta your one-sentence opinion on test_converter.py?');
   assert.deepEqual([answer.sessionId, answer.thread], [beta.id, topic.id]);
   assert.ok(store.items(topic.id).some((x) => x.sessionId === beta.id && x.text === 'It covers the edge cases.'));
   assert.equal(
-    adapter.calls.some((x) => x.sessionId === alpha.id && x.message.from === '@beta'),
+    adapter.calls.some((x) => x.sessionId === alpha.id && x.parts[0].from === '@beta'),
     false,
     'the answer woke @alpha, which it didn’t mention',
   );
@@ -63,7 +63,7 @@ test('#228 UAT 2, #372: naming both agents in a topic thread reaches their two s
   await settle(rt);
   assert.equal(sessions(store).length, 2, 'two sessions, not six');
   noForks(store);
-  const woke = adapter.calls.find((x) => x.message.text === '@beta please review converter.py.');
+  const woke = adapter.calls.find((x) => x.parts[0].text === '@beta please review converter.py.');
   assert.deepEqual([woke.sessionId, woke.thread], [beta.id, topic.id]);
 });
 
@@ -82,7 +82,7 @@ test('#228: waking a persona the conversation doesn’t have asks the person; Al
   const [gamma] = sessionsOfPersona(store, c.id);
   assert.deepEqual([gamma.threadId, gamma.joinedBy], [t.id, 'alpha']);
   assert.ok(store.items(t.id).some((i) => i.kind === 'voice' && i.text === 'Added @gamma to this conversation for @alpha'));
-  const woke = adapter.calls.find((x) => x.message.text === 'Check the numbers.');
+  const woke = adapter.calls.find((x) => x.parts[0].text === 'Check the numbers.');
   assert.equal(woke.sessionId, gamma.id);
   assert.match(gamma.brief, /@alpha woke you, and the person added you to this conversation/, 'its guide says why it’s here');
   assert.equal(store.state.sessions[alpha.id].needs, null);
@@ -95,7 +95,7 @@ test('#228: on Decline the waking agent is told, and nothing joins', async () =>
   rt.resolveHop(t.id, card.id, false);
   await settle(rt);
   assert.equal(sessionsOfPersona(store, c.id).length, 0);
-  assert.match(adapter.calls.at(-1).message.text, /The person chose not to add @gamma to this conversation, so it didn’t get your message/);
+  assert.match(adapter.calls.at(-1).parts[0].text, /The person chose not to add @gamma to this conversation, so it didn’t get your message/);
   assert.equal(adapter.calls.at(-1).sessionId, alpha.id);
   // A persona whose only session here is a retired fork can’t be added again.
   arrange.setSession(rt, arrange.sessionsIn(rt, t.id).find((x) => x.handle === 'beta').id, { retiredFork: true });

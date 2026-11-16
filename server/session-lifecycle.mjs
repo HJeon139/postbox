@@ -3,7 +3,6 @@
 // Moved out of server/runtime.mjs; Runtime keeps a method of the same name that delegates here.
 
 import { httpError } from './helpers.mjs';
-import * as queue from './message-queue.mjs';
 import { dropWakes } from './side-threads.mjs';
 import { eraseThreads } from './thread-erase.mjs';
 
@@ -45,8 +44,6 @@ export function deleteSession(rt, sessionId) {
   // A turn of one on a host, waiting to be attached again or to resume, is neither, as deleting a conversation does.
   rt.remote.cancel(sessionId);
   dropWakes(rt, se, 'removed');
-  // The person’s messages queued for it leave the queue (#427).
-  queue.releaseQueued(rt, sessionId);
   // Background jobs Postbox kept running for it would run on with no record (#129).
   rt.stopKeptJobs([sessionId], 'Its session was deleted.').catch((e) => console.error(`Couldn’t stop a deleted session’s jobs: ${e.message}`));
   if (erase) eraseThreads(rt, erase, 'Its session was deleted.', [sessionId]);

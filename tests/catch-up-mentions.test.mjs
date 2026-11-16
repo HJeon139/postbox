@@ -51,10 +51,10 @@ test('#484 a mention a summary gave the agent reaches it in full once: its queue
   const f = setup();
   const it = say(f, MENTION);
   // A turn of alpha's for something else starts first, and its summary gives the mention.
-  f.rt.deliver(f.alpha.id, { kind: 'user', text: 'Check the build.' });
+  f.rt.turnService.run(f.alpha.id, { kind: 'user', text: 'Check the build.' });
   await settle(f.rt);
   // Then the mention's own wake, queued while it was busy, is delivered.
-  f.rt.deliver(f.alpha.id, { kind: 'agent', from: '@beta', text: MENTION, itemId: it.id });
+  f.rt.turnService.run(f.alpha.id, { kind: 'agent', from: '@beta', text: MENTION, itemId: it.id });
   await settle(f.rt);
   const seen = f.adapter.calls
     .filter((c) => c.handle === 'alpha')
@@ -69,9 +69,9 @@ test('#484 a wake’s message that names no one comes in full: a summary may hav
   const f = setup();
   const text = 'Please recount the totals.';
   const it = say(f, text);
-  f.rt.deliver(f.alpha.id, { kind: 'user', text: 'Check the build.' });
+  f.rt.turnService.run(f.alpha.id, { kind: 'user', text: 'Check the build.' });
   await settle(f.rt);
-  f.rt.deliver(f.alpha.id, { kind: 'agent', from: '@beta', text, itemId: it.id });
+  f.rt.turnService.run(f.alpha.id, { kind: 'agent', from: '@beta', text, itemId: it.id });
   await settle(f.rt);
   assert.equal(f.adapter.calls.filter((c) => c.handle === 'alpha').at(-1).message.text, text);
 });
@@ -89,9 +89,9 @@ test('#484 mentions have a cap of their own: past it, the oldest are left out an
 test('#484 the pointer to a seen mention quotes its start, in case the summary was compacted away', async () => {
   const f = setup();
   const it = say(f, MENTION);
-  f.rt.deliver(f.alpha.id, { kind: 'user', text: 'Check the build.' });
+  f.rt.turnService.run(f.alpha.id, { kind: 'user', text: 'Check the build.' });
   await settle(f.rt);
-  f.rt.deliver(f.alpha.id, { kind: 'agent', from: '@beta', text: MENTION, itemId: it.id });
+  f.rt.turnService.run(f.alpha.id, { kind: 'agent', from: '@beta', text: MENTION, itemId: it.id });
   await settle(f.rt);
   const text = f.adapter.calls.filter((c) => c.handle === 'alpha').at(-1).message.text;
   assert.match(text, /“@alpha the review of the totals is done/);
@@ -103,9 +103,9 @@ test('#484 a mention past the mentions’ cap, left out of the summary, comes in
   const f = setup();
   const first = say(f, `@alpha the oldest: ${'check this first. '.repeat(55)}`);
   for (let i = 0; i < 40; i++) say(f, `@alpha note ${i + 1}: ${'the tally needs another look. '.repeat(33)}`);
-  f.rt.deliver(f.alpha.id, { kind: 'user', text: 'Check the build.' });
+  f.rt.turnService.run(f.alpha.id, { kind: 'user', text: 'Check the build.' });
   await settle(f.rt);
-  f.rt.deliver(f.alpha.id, { kind: 'agent', from: '@beta', text: first.text, itemId: first.id });
+  f.rt.turnService.run(f.alpha.id, { kind: 'agent', from: '@beta', text: first.text, itemId: first.id });
   await settle(f.rt);
   assert.equal(f.adapter.calls.filter((c) => c.handle === 'alpha').at(-1).message.text, first.text);
 });

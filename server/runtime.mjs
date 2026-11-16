@@ -6,6 +6,7 @@ import { homedir } from 'node:os';
 import { formatDuration } from '../shared/text.mjs';
 import { listProcesses } from './adapters/process-group.mjs';
 import { runAgentCommand } from './agent-commands.mjs';
+import { sendAppMessage } from './app-entries.mjs';
 import { holdAppSend, needAppSend, releaseRetired, resolveAppSend } from './app-send-cards.mjs';
 import { APP_HOLD_MAX, APP_SEND_LIMIT, APP_SEND_WINDOW_MS } from './app-send-limits.mjs';
 import { Apps } from './app-service.mjs';
@@ -16,9 +17,8 @@ import { Bus } from './bus.mjs';
 import { releaseNeed } from './card-needs.mjs';
 import { Checks } from './check-service.mjs';
 import { attachClaudeSession, claudeSessions, mirror, pollMirror, rearmMirrors, stopMirrorFor, stopMirrors } from './claude-mirror.mjs';
-import { deliver, retry } from './deliver.mjs';
 import { Delivery } from './delivery.mjs';
-import { cancelEntry, isEntryId, refuseEntryEdit, sendEntryNow } from './entry-queue.mjs';
+import { cancelEntry, editEntry, sendEntryNow } from './entry-queue.mjs';
 import { httpError } from './helpers.mjs';
 import { listenInbox } from './inbox-listeners.mjs';
 import { endJob, expireStaleJobs, recordJob } from './job-records.mjs';
@@ -41,6 +41,7 @@ import {
 import { retireModes } from './permission-modes.mjs';
 import { changePermissionFolder, changePermissionRule, latestProject, PERMISSION_MODES, panelTarget, permissionsView } from './permissions-panel.mjs';
 import { Personas } from './personas.mjs';
+import { convertQueues } from './queue-convert.mjs';
 import { readCapped } from './read-capped.mjs';
 import { addReadFolder, readCardAlways } from './read-folders.mjs';
 import { Hosts } from './remote/host-service.mjs';
@@ -58,6 +59,8 @@ import { Summaries } from './summary-service.mjs';
 import { Threads } from './threads.mjs';
 import { settleToolAsks } from './tool-ask.mjs';
 import { startTopic } from './topic-open.mjs';
+import { entryLine } from './turn-input.mjs';
+import { Turns } from './turn-service.mjs';
 import { settleSubagentSteps } from './turn-steps.mjs';
 import { dismissStopAsk, recordStopped, requestStop, stop, stopTurns } from './turn-stop.mjs';
 import { toolsFor } from './ui-tools.mjs';
@@ -119,8 +122,11 @@ export class Runtime {
     // Each agent's inbox in each conversation, as stored entries (designs/architecture/services.md, “Delivery and Turns,
     // built as the inbox”). The chain cap's card stands in front of it (agentWake), so nothing it holds is past the cap
     // until Asks replaces the card. An entry's size is its text until Turns gives it as turn-input.mjs's entryLine (step 3).
-    const sizeOf = (/** @type {any} */ e) => (e.text ?? store.pending.item(e.threadId, e.itemId)?.text ?? '').length;
+    // What an entry takes of a turn’s budget: its line as the turn gives it (turn-input.mjs), cut at its own ceiling.
+    const sizeOf = (/** @type {any} */ e) => entryLine(e, (id) => store.pending.item(e.threadId, id)?.text ?? null).length;
     this.delivery = new Delivery({ store, bus: this.bus, running: this.running, chainHeld: () => false, sizeOf });
+    // Turns: the one way a turn starts, each start one of its steps (server/turn-service.mjs).
+    this.turnService = new Turns(this);
     this.signalProcess = signalProcess ?? process.kill;
     this.listProcesses = list ?? listProcesses;
     /** @type {NodeJS.Timeout|null} */
@@ -195,7 +201,8 @@ export class Runtime {
       running: this.running,
       checks: this.checks,
       delivery: this.delivery,
-      send: (sessionId, message, opts) => this.deliver(sessionId, message, opts),
+      // What an app sends its agent is an entry (server/app-entries.mjs).
+      send: (sessionId, message, opts) => sendAppMessage(this, sessionId, message, opts),
       narrator: this.narrator,
       config,
     });
@@ -350,63 +357,40 @@ export class Runtime {
     return threadRefs(this, threadId, text);
   }
 
-  postAndDeliver(threadId, { text, attachments }, targets) {
-    return queue.postAndDeliver(this, threadId, { text, attachments }, targets);
-  }
-
-  // An agent’s waiting message in the queue is an entry in its inbox (server/entry-queue.mjs).
+  // A message waiting in an agent’s queue is an entry in its inbox (server/entry-queue.mjs).
   editQueued(threadId, queueId, text) {
-    return isEntryId(queueId) ? refuseEntryEdit() : queue.editQueued(this, threadId, queueId, text);
+    return editEntry(this, threadId, queueId, text);
   }
 
   cancelQueued(threadId, queueId) {
-    return isEntryId(queueId) ? cancelEntry(this, threadId, queueId) : queue.cancelQueued(this, threadId, queueId);
+    return cancelEntry(this, threadId, queueId);
   }
 
   /** Send now: stops the agent’s current turn and delivers the queued message at once. */
   sendQueuedNow(threadId, queueId) {
-    return isEntryId(queueId) ? sendEntryNow(this, threadId, queueId) : queue.sendQueuedNow(this, threadId, queueId);
+    return sendEntryNow(this, threadId, queueId);
   }
 
-  /** Once Postbox listens after a restart: what waited in the queues goes now, a wake or a message of yours (#228). */
+  /** Once Postbox listens after a restart: what waited goes now, a wake or a message of yours (#228). */
   drainAll() {
-    queue.drainAll(this);
+    // A queue a store holds from before #1404 becomes entries first (#1423).
+    convertQueues(this);
     // Then the inbox: a turn lost to the restart reopens what it took, and each agent with entries is woken.
     this.delivery.start();
   }
 
-  /**
-   * Sends what can go from a thread’s queue: every item whose agents are free, in order for each agent, so one waiting
-   * for a busy agent holds back nothing for another (#228). wakesOnly: only agents’ wakes, after a failed turn, when
-   * your own messages wait for you to see the failure.
-   */
-  drainQueue(threadId, wakesOnly = false) {
-    return queue.drainQueue(this, threadId, wakesOnly);
-  }
+  // ── Turns: server/turn-run.mjs, turn-stop.mjs and job-records.mjs ──────────────────
 
-  // ── Turns: server/deliver.mjs, turn-stop.mjs and job-records.mjs ────────────────────
-
-  deliver(sessionId, message, opts) {
-    return deliver(this, sessionId, message, opts);
-  }
+  /** The person’s Retry of a failed reply (Turns’ step). @param {string} threadId @param {string} itemId */
   retry(threadId, itemId) {
-    return retry(this, threadId, itemId);
+    return this.turnService.retry(threadId, itemId);
   }
 
   /**
-   * What waited for a turn that ended: the next message, with the rest behind it; with none, the queues (drain), or
-   * only agents’ wakes waiting there (drain: 'wakes').
+   * What waited for a turn that ended: the next message, with the rest behind it; with none, the agent’s inbox (drain).
    */
   takePending(se, turn, drain) {
     return queue.takePending(this, se, turn, drain);
-  }
-
-  /**
-   * The queues waiting on this session: the thread its turn was in, and any other (its conversation, a side thread)
-   * whose next message is for it. A session answers in more than one thread now (#110).
-   */
-  drainQueues(sessionId, threadId, wakesOnly = false) {
-    return queue.drainQueues(this, sessionId, threadId, wakesOnly);
   }
 
   // ── Stopping a turn: server/turn-stop.mjs ──────────────────────────────────────────

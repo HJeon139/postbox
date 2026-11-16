@@ -23,8 +23,8 @@ async function app() {
   const t = a.rt.createThread({ projectId: 'p1', title: 'T', personaIds: [p.id] });
   const se = arrange.agentIn(a.rt, t.id);
   const delivered = [];
-  const deliver = a.rt.deliver.bind(a.rt);
-  a.rt.deliver = (...args) => {
+  const deliver = a.rt.turnService.run.bind(a.rt.turnService);
+  a.rt.turnService.run = (...args) => {
     delivered.push(args[0]);
     return deliver(...args);
   };

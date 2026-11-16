@@ -1,6 +1,7 @@
 // Retry after a turn on a host was continued and failed (#120, #151; tests/remote-turns-continued.test.mjs has the
 // rest): it asks what the turn it continues was asked, a request too large to keep inline is read back from Postbox's
 // store byte for byte, and one that can't be read back exactly, or whose agent went while it was read, isn't sent.
+// Retry of a turn on a host that took entries resends them, as a turn here does (#1429).
 
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
@@ -11,6 +12,7 @@ import { Blobs } from '../server/blobs.mjs';
 import { keepOrigin, ORIGIN_MESSAGE_MAX, ORIGIN_REF_MAX, readRef } from '../server/remote/turns-origin.mjs';
 import { askedAgain, askedOf } from '../server/turn-marks.mjs';
 import * as arrange from './arrange.mjs';
+import { fixtureLines } from './fake-daemon.mjs';
 import { messageOf, rig, settled, sleep, starts, until } from './remote-turns-helpers.mjs';
 
 /** Another agent, on this computer, in the conversation: what it’s sent is what its mock got. @param {any} r @param {any[]} [got] */
@@ -48,10 +50,9 @@ test('#120, #151, #377: Retry after a resumed wake fails asks what the wake aske
   r.hosts.emit('status', r.host.id, { state: 'connected' });
   await until(() => all(r).some((i) => i.status === 'failed' && /its own version/.test(i.error ?? '')), 'the resume to fail');
   const failed = all(r).find((i) => i.status === 'failed' && /its own version/.test(i.error ?? ''));
-  assert.deepEqual(
-    { kind: failed.asked.message.kind, from: failed.asked.message.from, text: failed.asked.message.text },
-    { kind: 'agent', from: '@lead', text: 'Is hello.txt there?' },
-  );
+  // A plain batch’s request keeps its plain parts (#1427).
+  const asked = failed.asked.message.messages?.[0] ?? failed.asked.message;
+  assert.deepEqual({ kind: asked.kind, from: asked.from, text: asked.text }, { kind: 'agent', from: '@lead', text: 'Is hello.txt there?' });
   // A small request is kept inline, in the record and on the failed reply.
   assert.equal(r.se().remoteTurn.origin.message.text, 'Is hello.txt there?');
   assert.equal('messageRef' in r.se().remoteTurn.origin, false);
@@ -60,7 +61,8 @@ test('#120, #151, #377: Retry after a resumed wake fails asks what the wake aske
   r.rt.config.build = build;
   r.rt.retry(threadOf(r, failed), failed.id);
   const again = await onHost(r, 2);
-  assert.match(messageOf(starts(r.d)[1]), /@lead wrote to you\. Your reply posts here;.*\n\nIs hello\.txt there\?/s);
+  // The wake’s entry, as its input gives it (#1427): who it’s from, and its words.
+  assert.match(messageOf(starts(r.d)[1]), /@lead, \d\d:\d\d UTC[^:]*: Is hello\.txt there\?/);
   r.d.end(again);
   await settled(r);
   assert.equal(threadOf(r, reply(r)), threadOf(r, failed), 'it answers where it was woken');
@@ -109,7 +111,11 @@ test('#120, #151: Retry after a resumed turn fails sends a request over 32,000 c
     assert.deepEqual(failed.asked, { messageRef: origin.messageRef, kind: 'user', summarizeTo: null });
     await r.rt.retry(threadId, failed.id);
     const again = await onHost(r, 2);
-    assert.ok(messageOf(starts(r.d)[1]).includes(LONG), 'the whole request, as it was sent');
+    // The whole request is kept, and Retry sends it as it was sent: an input gives each entry up to one entry’s ceiling,
+    // then its id (#1427), the second time as the first.
+    const sent = messageOf(starts(r.d)[1]);
+    assert.ok(sent.includes(LONG.slice(0, 10_000)), 'the request, as it was sent');
+    assert.match(sent, /\(15,000 of 50,000 characters; read_message \{ id: "it_\w+" \} has the rest\)/);
     r.d.end(again);
     await settled(r);
   } finally {
@@ -218,4 +224,32 @@ test('#120: a turn on a host keeps a small request inline, a large one in the st
   const sent = [];
   askedAgain(here, 't', { sessionId: 's1', asked: asked({ message: small }) }, (a) => void sent.push(a));
   assert.deepEqual(sent, [{ message: small, summarizeTo: null }]);
+});
+
+test('#1429 Retry of a turn on a host that failed resends the entries it took, and the host runs them again', async () => {
+  // The harness’s first run ends in an API error, the next as the fixture does.
+  const lines = fixtureLines();
+  const i = lines.findIndex((l) => JSON.parse(l).type === 'result');
+  const failing = [...lines.slice(0, i), JSON.stringify({ ...JSON.parse(lines[i]), is_error: true, result: 'API Error: 500' })];
+  const r = rig({ daemon: { lines: failing } });
+  r.rt.sendMessage(r.t.id, { text: '@coder is hello.txt there?' });
+  const first = await onHost(r, 1);
+  r.d.end(first, { code: 1, signal: null });
+  await until(() => all(r).some((i) => i.kind === 'agent' && i.status === 'failed'), 'the turn to fail');
+  await settled(r);
+  const failed = all(r).find((i) => i.kind === 'agent' && i.status === 'failed');
+  r.d.lines = lines;
+  r.rt.retry(threadOf(r, failed), failed.id);
+  const again = await onHost(r, 2);
+  assert.match(messageOf(starts(r.d)[1]), /The person, \d\d:\d\d UTC, sent again in case it didn’t reach you: @coder is hello\.txt there\?/);
+  assert.deepEqual(
+    r.rt.delivery.inbox(r.se().id).map((e) => [e.state, e.resend]),
+    [['taken', true]],
+  );
+  r.d.end(again);
+  await settled(r);
+  assert.deepEqual(
+    r.rt.delivery.inbox(r.se().id).map((e) => [e.state, e.resend]),
+    [['delivered', true]],
+  );
 });

@@ -1,4 +1,5 @@
-// #504: a direct request in a topic thread leads the prompt; the room backlog is background after it.
+// #504: a direct request in a topic thread leads the prompt; the room backlog is background after it. Since #1427 a turn
+// of plain entries is turn-input.mjs’s text: its entries, named with the thread they’re in, then the room’s tail.
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
@@ -38,10 +39,9 @@ test('#504 a topic turn leads with its request and labels the room backlog as ba
   const taskAt = prompt.indexOf(request);
   const roomAt = prompt.indexOf('@beta review the parser changes.');
   assert.equal(call.thread, f.topic.id);
-  assert.match(prompt, new RegExp(`^\\[Postbox\\] You’re answering in the thread .*thread ${f.topic.id}`));
-  assert.match(prompt.slice(0, roomAt), /Your task in this topic or side thread/);
+  assert.match(prompt.slice(0, taskAt), new RegExp(`1 message for you in the thread “[^”]*” \\(${f.topic.id}\\)\\. Your reply posts there\\.`));
   assert.ok(taskAt >= 0 && roomAt > taskAt, 'the thread request leads the room backlog');
-  assert.match(prompt.slice(taskAt, roomAt), /Meanwhile in the room.*background.*answer room work in the room/s);
+  assert.match(prompt.slice(taskAt, roomAt), /Also since your last turn, not addressed to you/);
   assert.equal(prompt.split(request).length - 1, 1, 'the request appears once');
   assert.equal(f.store.items(f.topic.id).findLast((item) => item.kind === 'agent')?.promptFirst, 'thread-task');
 });
@@ -65,10 +65,10 @@ test('#504 a follow-up in the same topic thread still leads with its new request
   const call = f.adapter.calls.at(-1);
   const prompt = formatMessage(call.message);
   assert.equal(call.thread, f.topic.id);
-  assert.match(call.message.taskContext, new RegExp(`^\\[Postbox\\] You’re answering in the thread .*thread ${f.topic.id}`));
+  assert.match(prompt, new RegExp(`for you in the thread “[^”]*” \\(${f.topic.id}\\)`));
   assert.equal(f.store.items(f.topic.id).findLast((item) => item.kind === 'agent')?.promptFirst, 'thread-task');
   assert.ok(prompt.indexOf(request) < prompt.indexOf('@beta review the second parser revision.'), 'the follow-up leads the new room work');
-  assert.match(prompt, /Meanwhile in the room.*background.*answer room work in the room/s);
+  assert.match(prompt, /Also since your last turn, not addressed to you/);
 });
 
 test('#504 a thread request stays whole even when the room summary already gave its source message', async () => {
@@ -82,7 +82,7 @@ test('#504 a thread request stays whole even when the room summary already gave 
     status: 'done',
   });
   arrange.setSession(f.rt, f.beta.id, { seenItem: sent.id, givenMentions: [sent.id] });
-  f.rt.deliver(f.beta.id, { kind: 'agent', from: '@alpha', text: sent.text, itemId: sent.id }, { threadId: f.topic.id });
+  f.rt.turnService.run(f.beta.id, { kind: 'agent', from: '@alpha', text: sent.text, itemId: sent.id }, { threadId: f.topic.id });
   await settle(f.rt);
 
   const call = f.adapter.calls.at(-1);
@@ -98,7 +98,7 @@ test('#504 slash commands, host reattachments and Postbox notices in a topic are
     [{ kind: 'user', text: '', attach: 'host-turn-1' }, 'attach'],
     [{ kind: 'notice', text: 'The prior check finished.' }, 'system'],
   ]) {
-    f.rt.deliver(f.beta.id, message, { threadId: f.topic.id });
+    f.rt.turnService.run(f.beta.id, message, { threadId: f.topic.id });
     await settle(f.rt);
     const item = f.store.items(f.topic.id).findLast((entry) => entry.kind === 'agent');
     assert.equal(item.promptFirst, first);
@@ -137,9 +137,9 @@ test('#504 #508 a turn in the room leads with its request, its catch-up labeled 
   const call = f.adapter.calls.at(-1);
   assert.equal(call.thread, f.t.id);
   assert.equal(call.message.taskContext, undefined);
-  // #508 (DL-4) puts the request first in a room turn too; the catch-up follows as background.
+  // #508 (DL-4) puts the request first in a room turn too; the room’s tail follows it, after only the room’s facts.
   const prompt = formatMessage(call.message);
-  assert.match(prompt, /^@beta answer in the room\.\n\n\[Postbox\] Background for this turn:/);
-  assert.ok(prompt.indexOf('[Postbox] What happened in this room since your last turn:') > prompt.indexOf('[Postbox] Background for this turn:'));
+  assert.ok(prompt.indexOf('@beta answer in the room.') < prompt.indexOf('Earlier room context.'), 'the request leads');
+  assert.ok(prompt.indexOf('[Postbox] Also since your last turn, not addressed to you') > prompt.indexOf('@beta answer in the room.'));
   assert.equal(f.store.items(f.t.id).findLast((item) => item.kind === 'agent')?.promptFirst, 'room');
 });

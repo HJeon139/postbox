@@ -10,16 +10,19 @@ import { clipText } from './helpers.mjs';
 import { lineOf, SAID } from './thread-summary.mjs';
 
 export function firstPromptSection(message, inThread) {
+  // turn-input.mjs’s text leads with the turn’s entries, after only the room’s fixed facts (#1427).
+  if (message.kind === 'input') return inThread ? 'thread-task' : 'room';
   if (typeof message.attach === 'string') return 'attach';
   if (message.slash === true) return 'slash';
   const direct = message.kind === 'user' || message.kind === 'agent' || message.kind === 'event';
   return inThread && direct ? (message.taskContext ? 'thread-task' : 'missing') : inThread ? 'system' : 'room';
 }
 
-export function turnContext(memory, se, where, message, slash) {
+export function turnContext(memory, se, where, message, slash, waiting = []) {
   if (slash) return message;
-  // Every message the turn delivers, each of a batch, is read in full there, so no summary gives it again (#506).
-  const given = (message.messages ?? [message]).map((/** @type {any} */ m) => m.itemId).filter(Boolean);
+  // Every message the turn delivers, each of a batch, is read in full there, so no summary gives it again (#506); and
+  // the person’s messages waiting in the agent’s inbox, which a later turn gives whole (#1404).
+  const given = [...(message.messages ?? [message]).map((/** @type {any} */ m) => m.itemId).filter(Boolean), ...waiting];
   const thread = where === se.threadId ? null : (threadCatchUp(memory, se, where, given) ?? threadHeader(memory, where));
   const room = memory.catchUp(se, given);
   const prior = [room, ...(message.context ?? [])].filter(Boolean);
@@ -39,6 +42,31 @@ export function threadHeader(memory, threadId) {
 
 /** How many of a thread's items its catch-up keeps, past the mentions of the agent: fewer than a conversation's. */
 const THREAD_ITEMS = 20;
+
+/**
+ * A topic or side thread’s talk since the agent last took part there, for a turn given turn-input.mjs’s text (#1427):
+ * one line each as read_conversation gives them, and the person’s reactions there, which join the turn’s tail and its
+ * limits, so a long thread keeps its newest lines rather than dropping as one block; and the message the thread is on,
+ * the first time. Moves the agent’s marker in the thread, as threadCatchUp does. Empty in a conversation.
+ * @param {import('./memory-service.mjs').Memory} memory @param {any} se @param {string} threadId @param {string[]} exclude
+ * @returns {{ lines: string[], root: string | null }}
+ */
+export function threadTail(memory, se, threadId, exclude) {
+  const t = memory.store.pending.thread(threadId);
+  if (t?.kind !== 'topic' && t?.kind !== 'side') return { lines: [], root: null };
+  const items = memory.store.items(threadId);
+  const seen = se.seenIn?.[threadId];
+  const at = seen ? positionOf(items, seen) : -1;
+  memory.sessions.update(se.id, { seenIn: { ...(se.seenIn ?? {}), [threadId]: items.at(-1)?.id ?? null } });
+  const lines = items
+    .slice(at + 1)
+    .filter((i) => !exclude.includes(i.id) && i.sessionId !== se.id && (i.kind !== 'system' || i.variant === 'wake'))
+    .flatMap((i) => {
+      const line = memory.readLine(i, se);
+      return line ? [`[${i.id}] ${line}`] : [];
+    });
+  return { lines: [...lines, ...reactionLines(memory, se, threadId)], root: seen === undefined ? memory.topicRootLine(se, t) : null };
+}
 
 /**
  * What a turn in a topic or side thread catches up on there: the message a topic thread is on, the first time, and

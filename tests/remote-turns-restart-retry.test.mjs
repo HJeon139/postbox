@@ -4,6 +4,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import * as arrange from './arrange.mjs';
 import { messageOf, restarted, rig, settled, sleep, starts, startUp, until } from './remote-turns-helpers.mjs';
 import { heldStore } from './stop-reply-fixture.mjs';
 
@@ -39,7 +40,7 @@ async function droppedByRetry(h, fn) {
   await h.store.reload();
 }
 
-const queued = (r) => (r.store.pending.thread(r.t.id)?.queue ?? []).map((q) => q.text);
+const queued = (r) => arrange.personWaiting(r.rt, r.t.id);
 const moveTo = (r, hostId) => r.rt.updatePersona(r.se().personaId, { remote: hostId ? { hostId } : null });
 
 test('#1135 a move off the silent host that Retry drops leaves the agent waiting for the attach', async () => {

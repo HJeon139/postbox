@@ -115,6 +115,11 @@ export const QUIET = Object.freeze({
 
 /** A persona’s handle (Runtime.createPersona), which a handle an agent sends must match before it’s looked up (#650). */
 export const HANDLE = /^[a-z][a-z0-9_-]{1,23}$/i;
+/**
+ * The person’s own name wherever a sender or an author is named: a review comment’s author (#1143), and an entry’s
+ * `from`. A handle in any case that reads as it is the person’s, so no persona takes it.
+ */
+export const PERSON = 'you';
 /** What HANDLE allows, for a refusal that can’t echo what it was sent: that’s an agent’s text. */
 export const HANDLE_SHAPE = 'a handle is 2–24 letters, digits, - or _, and starts with a letter, such as “critic”';
 
