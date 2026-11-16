@@ -53,7 +53,7 @@ test('#499 a 5,000-character mention delivered as its own queued wake comes whol
   const f = setup();
   const text = long('@alpha please recount the totals.');
   const it = say(f, text);
-  f.rt.deliver(f.alpha.id, { kind: 'agent', from: '@beta', text, itemId: it.id });
+  f.rt.turnService.run(f.alpha.id, { kind: 'agent', from: '@beta', text, itemId: it.id });
   await settle(f.rt);
   const call = f.adapter.calls.filter((c) => c.handle === 'alpha').at(-1);
   assert.ok([call.message.text, ...(call.message.context ?? [])].some((s) => String(s).includes(text)));

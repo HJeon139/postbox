@@ -120,11 +120,11 @@ function named(f, text) {
 test('what alpha reads of the room, its topic thread, a pointer and the read tools is the same, byte for byte', async () => {
   const f = room();
   const { rt, alpha, adapter } = f;
-  rt.deliver(alpha.id, { kind: 'user', text: 'Go on.' });
+  rt.turnService.run(alpha.id, { kind: 'user', text: 'Go on.' });
   await settle(rt);
-  rt.deliver(alpha.id, { kind: 'agent', from: '@beta', text: f.mention.text, itemId: f.mention.id });
+  rt.turnService.run(alpha.id, { kind: 'agent', from: '@beta', text: f.mention.text, itemId: f.mention.id });
   await settle(rt);
-  rt.deliver(alpha.id, { kind: 'user', text: 'And here?' }, { threadId: f.topic.id });
+  rt.turnService.run(alpha.id, { kind: 'user', text: 'And here?' }, { threadId: f.topic.id });
   await settle(rt);
   const tools = rt.toolsFor(alpha.id);
   const read = {

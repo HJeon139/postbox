@@ -111,7 +111,7 @@ export function sendEntryNow(rt, threadId, entryId) {
   const se = holderOf(rt, threadId, entryId);
   stopForSendNow(rt, se.id);
   const e = rt.delivery.waiting(se.id).find((/** @type {any} */ x) => x.id === entryId);
-  if (!e || !sendEntryAlone(rt, e)) throw httpError(404, 'That queued message was already sent or removed.');
+  if (!e || !rt.turnService.takeAlone(e)) throw httpError(404, 'That queued message was already sent or removed.');
   return { ok: true };
 }
 
@@ -124,6 +124,6 @@ export function sendEntryAlone(rt, { id, sessionId }) {
   const turnId = newId('turn');
   const e = rt.delivery.takeOne(sessionId, id, turnId);
   if (!e) return false;
-  rt.deliver(sessionId, { ...messageOf(rt, e), turnId, fromEntries: true, entriesWait: true }, { threadId: e.threadId });
+  rt.turnService.run(sessionId, { ...messageOf(rt, e), turnId, fromEntries: true, entriesWait: true }, { threadId: e.threadId });
   return true;
 }

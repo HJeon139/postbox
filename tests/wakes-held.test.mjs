@@ -125,7 +125,7 @@ test('#439 stopping the held wake’s target drops it, so allowing the card does
   // alpha is working when the person stops it.
   const h = held();
   f.adapter.next.push(h.step);
-  f.rt.deliver(f.alpha.id, { kind: 'user', text: 'carry on' });
+  f.rt.turnService.run(f.alpha.id, { kind: 'user', text: 'carry on' });
   await new Promise((r) => setTimeout(r, 5));
   f.rt.stop(f.alpha.id);
   h.release();

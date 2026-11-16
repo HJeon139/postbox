@@ -29,7 +29,7 @@ export function startFromEntries(rt, sessionId) {
     : { ...batch, turnId, fromEntries: true };
   const lead = leadOf(entries);
   const summarizeTo = summaryOf(rt, lead);
-  rt.deliver(sessionId, message, { threadId: lead.threadId, ...(summarizeTo ? { summarizeTo } : {}) });
+  rt.turnService.run(sessionId, message, { threadId: lead.threadId, ...(summarizeTo ? { summarizeTo } : {}) });
 }
 
 /** Sources a plain batch is made of: messages to read, and Postbox’s notices riding with them. */

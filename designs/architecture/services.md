@@ -278,8 +278,8 @@ flowchart LR
 
     The Bus calls a signal’s listeners in the order the root adds them, as it does for `persona.updated`.
 - **No one else starts a turn.** `rt.deliver` has 15 calling modules today (#1236, the inventory of 15 November). Twelve of them hand an agent a message, and they call Delivery’s `send` instead: the queue, mention wakes, side threads, scheduled wakes, share-back, agent commands, blocks, and the permission, wake, tool-ask, app-send and download cards. The other three aren’t messages, and they become Turns’ own steps:
-  - `retryHeld`: a start that waited behind a held commit;
-  - `release`: a stopped turn has exited; Turns raises `turn.exited`, and Delivery raises `entry.waiting` if the agent has entries;
+  - `retryHeld`: a start that waited, behind a held commit, with writes closed, or for a session joined behind one. As built (#1429) it isn’t a step of its own: it’s `run`’s held re-entry, which calls `run` again when the start can go;
+  - `release`: what waited on a turn, given when a stopped turn has exited, and when a turn ends normally with messages held on it (`takePending`); Turns raises `turn.exited`, and Delivery raises `entry.waiting` if the agent has entries;
   - `resume`: a host turn resumed after a restart (`remote/turns-resume.mjs`).
 - **Calls into waiting code:** until the permission layer is removed and Asks is built, Turns reaches them through one port, `asks`. It covers `requestPermission`, `recordDenial`, `settlePermission`, the needs (`keptTurns`, `offerNeed`, `releaseNeed`) and `card.opened`. Nothing else in Turns calls waiting code.
 - **Listens to:** `entry.waiting`.
@@ -694,7 +694,15 @@ Each step is its own pull request, and is done when:
   - The start of a turn from entries lives in `turns.mjs`. The `Turns` class comes with `deliver`’s removal (4c), whose remaining callers become its steps.
   - **A turn of plain entries is given `turnInput`’s text** (#1427): the person’s messages and agents’ mentions, with notices riding, as an `input` message that every backend formats as its text after the room’s fixed facts (#515). It’s built as the turn starts: its entries, each whole up to `READING.mention`; the room’s items since the agent’s last turn that aren’t its entries nor the person’s waiting messages (Memory’s `turnTail`, which moves its marker as the catch-up did); a topic thread’s own talk; and the files and thread links its messages carry. The take’s budget is `TURN_INPUT.entries`, and `sizeOf` counts each entry’s line as the turn gives it.
   - An entry with a message kind of its own keeps it until 4c: an answer, a review, an app event, a scheduled wake, a command, a check, and a host turn’s attach. The input keeps its batch’s plain parts on what the turn was asked, with their kind and sender (`as`), for what reads them there until Turns owns it.
-  - **Next:** `deliver` goes (4c).
+  - **Turns owns the start** (#1429, 4c-a): `server/turn-service.mjs` is a class the root builds as `rt.turnService`, since `rt.turns` is Running’s map. Every start is one of its steps:
+    - `start`: an agent’s waiting entries (`entry.waiting`);
+    - `takeAlone`: the person’s Send now on one entry;
+    - `release`: what waited on a turn, once it ended or its process exited;
+    - `resume`: a host turn resumed or attached again;
+    - `retry`: the person’s Retry.
+
+    Each goes through `run`, which builds and runs the turn (`turn-run.mjs`, moved from `deliver.mjs`), and holds a start until it can go: behind a held commit, with writes closed, or behind a stopped turn still exiting. The runtime’s `deliver` is gone, and no server module calls one.
+  - **Next:** Retry reopens a failed turn’s entries as a resend (4c-b); then the `asks` port (4c-c).
 
 ## Appendix: every module’s members
 

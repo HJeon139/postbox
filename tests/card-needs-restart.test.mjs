@@ -82,7 +82,7 @@ async function wokenWithBlockKept(r) {
   const b = r.block();
   r.setNeed('block', b.id);
   r.adapter.next.push(held().step);
-  r.rt.deliver(r.alpha.id, { kind: 'agent', from: '@beta', text: 'Here are the numbers.' });
+  r.rt.turnService.run(r.alpha.id, { kind: 'agent', from: '@beta', text: 'Here are the numbers.' });
   await sleep(5);
   return b;
 }
@@ -148,7 +148,7 @@ async function restartDuringWake(r, kind) {
   }
   arrange.setSession(r.rt, r.alpha.id, { needs: { ...need, text: kind }, state: kind === 'failed' ? 'failed' : 'needs' });
   r.adapter.next.push(held().step);
-  r.rt.deliver(r.alpha.id, { kind: 'agent', from: '@beta', text: 'Here are the numbers.' });
+  r.rt.turnService.run(r.alpha.id, { kind: 'agent', from: '@beta', text: 'Here are the numbers.' });
   await sleep(5);
   restart(r);
   return need;

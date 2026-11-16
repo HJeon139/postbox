@@ -117,7 +117,7 @@ const confirm = (extra = {}) => ({
 test('#92: a block that asks again comes to the newest point, with one live copy, one answer and one event', () => {
   const { store, rt, t, se, tools } = setup();
   const delivered = [];
-  rt.deliver = (id, m) => delivered.push({ id, m });
+  rt.turnService.run = (id, m) => delivered.push({ id, m });
   tools.show_block({ block: confirm() });
   const item = store.items(t.id).at(-1);
   rt.act(t.id, item.id, 'confirm', {}, 1);

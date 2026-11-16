@@ -123,7 +123,7 @@ test('#372: a turn still running in a side thread from before hands off in the c
     ['Any other?', '@alpha and page 40.'],
   ]) {
     adapter.next.push(async (c) => c.text(said));
-    rt.deliver(beta.id, { kind: 'agent', from: '@alpha', text: asked }, { threadId: side.id });
+    rt.turnService.run(beta.id, { kind: 'agent', from: '@alpha', text: asked }, { threadId: side.id });
     await settle(rt);
   }
   // Its replies stay in the side thread; the wakes, posted as @beta’s, and @alpha’s answers are in the conversation.

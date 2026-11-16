@@ -165,7 +165,7 @@ export function turnExited(rt, turn) {
   // like) delivers what was held as it is, and the agent’s entries wait for that turn’s end. Any other Stop, the
   // person’s, a store outage’s or a hung host turn’s, gives the first turn its thread’s entries, in arrival order, as a
   // turn’s normal end does (#733, #1040).
-  if (ex.silent) for (const h of held) rt.deliver(se.id, h.message, { summarizeTo: h.summarizeTo, threadId: h.threadId });
+  if (ex.silent) for (const h of held) rt.turnService.release(se.id, h.message, { summarizeTo: h.summarizeTo, threadId: h.threadId });
   else {
     // What arrived first goes first: an entry that came before everything held starts its turn, and the held messages
     // wait on it (#733).

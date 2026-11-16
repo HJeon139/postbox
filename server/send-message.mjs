@@ -4,7 +4,6 @@
 // server/runtime.mjs; Runtime keeps a method of each name that delegates here.
 
 import { parseMentions } from '../shared/text.mjs';
-import { sendEntryAlone } from './entry-queue.mjs';
 import { httpError, retiredError } from './helpers.mjs';
 import * as queue from './message-queue.mjs';
 import { threadPersona } from './side-threads.mjs';
@@ -52,7 +51,7 @@ export function sendMessage(rt, threadId, { text = '', attachments = [], sendNow
   );
   // Send now goes alone: a turn takes its entry ahead of the rest, which wait for the turn after it.
   for (const e of entries) {
-    if (sendNow) sendEntryAlone(rt, e);
+    if (sendNow) rt.turnService.takeAlone(e);
     else rt.delivery.wake(e.sessionId);
   }
   const queued = entries.filter((e) => rt.delivery.waiting(e.sessionId).some((x) => x.id === e.id));

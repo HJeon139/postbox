@@ -113,7 +113,7 @@ test('a turn that does not move on keeps the block it found, through a permissio
   r.setNeed('block', b.id);
   const work = held();
   r.adapter.next.push(work.step);
-  r.rt.deliver(r.alpha.id, { kind: 'agent', from: '@beta', text: 'Here are the numbers.' }); // another agent's wake
+  r.rt.turnService.run(r.alpha.id, { kind: 'agent', from: '@beta', text: 'Here are the numbers.' }); // another agent's wake
   await sleep(5);
   const p = r.permission();
   r.setNeed('permission', p.id);

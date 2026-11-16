@@ -108,8 +108,8 @@ test('direct pending messages and a queued wake are delivered together', async (
   const busy = held();
   adapter.next.push(busy.step);
   rt.sendMessage(t.id, { text: '@beta start' });
-  rt.deliver(beta.id, { kind: 'agent', from: '@gamma', text: 'Pending one.' });
-  rt.deliver(beta.id, { kind: 'agent', from: '@delta', text: 'Pending two.' });
+  rt.turnService.run(beta.id, { kind: 'agent', from: '@gamma', text: 'Pending one.' });
+  rt.turnService.run(beta.id, { kind: 'agent', from: '@delta', text: 'Pending two.' });
   rt.agentWake(alpha.id, 'beta', 'Queued third.');
   busy.release();
   await settle(rt);
@@ -219,10 +219,10 @@ test('stopping a turn preserves each agent’s message from a mixed pending batc
     await second.step(ctx);
   });
   rt.sendMessage(t.id, { text: '@beta start' });
-  rt.deliver(beta.id, { kind: 'notice', text: 'A separate event.' });
-  rt.deliver(beta.id, { kind: 'agent', from: '@alpha', text: 'Alpha’s request.' });
-  rt.deliver(beta.id, { kind: 'user', text: 'The person’s request.' });
-  rt.deliver(beta.id, { kind: 'agent', from: '@gamma', text: 'Gamma’s request.' });
+  rt.turnService.run(beta.id, { kind: 'notice', text: 'A separate event.' });
+  rt.turnService.run(beta.id, { kind: 'agent', from: '@alpha', text: 'Alpha’s request.' });
+  rt.turnService.run(beta.id, { kind: 'user', text: 'The person’s request.' });
+  rt.turnService.run(beta.id, { kind: 'agent', from: '@gamma', text: 'Gamma’s request.' });
   first.release();
   await nextStarted;
   rt.stop(beta.id);
@@ -258,7 +258,7 @@ test('a newer unaddressed post replaces a directly pending wake exactly once', a
   adapter.next.push(busy.step);
   rt.sendMessage(t.id, { text: '@beta start' });
   const old = arrange.post(rt, t.id, { kind: 'agent', handle: 'alpha', turnId: 'old', text: 'Please review.' });
-  rt.deliver(beta.id, { kind: 'agent', from: '@alpha', text: old.text, itemId: old.id, at: old.at });
+  rt.turnService.run(beta.id, { kind: 'agent', from: '@alpha', text: old.text, itemId: old.id, at: old.at });
   const newer = arrange.post(rt, t.id, {
     kind: 'agent',
     sessionId: alpha.id,

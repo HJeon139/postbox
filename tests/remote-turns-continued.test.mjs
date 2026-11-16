@@ -129,7 +129,7 @@ test('#120: an app check attached again after a restart that sends no new versio
   const r = rig();
   const se = r.se();
   r.store.emit('app', { id: 'app_1', sessionId: se.id, threadId: r.t.id, current: 1, check: { status: 'fixing', attempt: 1, problems: [] } });
-  r.rt.deliver(se.id, { kind: 'app-check', appId: 'app_1', problems: [{ code: 'no-render', message: 'It drew nothing.' }] }, { threadId: r.t.id });
+  r.rt.turnService.run(se.id, { kind: 'app-check', appId: 'app_1', problems: [{ code: 'no-render', message: 'It drew nothing.' }] }, { threadId: r.t.id });
   const turn = await onHost(r, 1);
   const next = await restart(r, turn);
   next.d.end(turn);
@@ -140,7 +140,7 @@ test('#120: an app check attached again after a restart that sends no new versio
 test('#120: a lint turn Interrupted on the host and resumed is still a lint turn: its reply isn’t linted again', async () => {
   const r = rig();
   const problem = { code: 'undefined-term', message: 'Define “Widget”.', scope: { kind: 'term', term: 'Widget', key: 'widget' } };
-  r.rt.deliver(r.se().id, lintMessage([problem]), { threadId: r.t.id });
+  r.rt.turnService.run(r.se().id, lintMessage([problem]), { threadId: r.t.id });
   r.d.interrupt(await onHost(r, 1));
   r.d.end(await onHost(r, 2));
   await settled(r);

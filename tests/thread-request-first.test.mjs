@@ -82,7 +82,7 @@ test('#504 a thread request stays whole even when the room summary already gave 
     status: 'done',
   });
   arrange.setSession(f.rt, f.beta.id, { seenItem: sent.id, givenMentions: [sent.id] });
-  f.rt.deliver(f.beta.id, { kind: 'agent', from: '@alpha', text: sent.text, itemId: sent.id }, { threadId: f.topic.id });
+  f.rt.turnService.run(f.beta.id, { kind: 'agent', from: '@alpha', text: sent.text, itemId: sent.id }, { threadId: f.topic.id });
   await settle(f.rt);
 
   const call = f.adapter.calls.at(-1);
@@ -98,7 +98,7 @@ test('#504 slash commands, host reattachments and Postbox notices in a topic are
     [{ kind: 'user', text: '', attach: 'host-turn-1' }, 'attach'],
     [{ kind: 'notice', text: 'The prior check finished.' }, 'system'],
   ]) {
-    f.rt.deliver(f.beta.id, message, { threadId: f.topic.id });
+    f.rt.turnService.run(f.beta.id, message, { threadId: f.topic.id });
     await settle(f.rt);
     const item = f.store.items(f.topic.id).findLast((entry) => entry.kind === 'agent');
     assert.equal(item.promptFirst, first);
