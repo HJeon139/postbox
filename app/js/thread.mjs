@@ -414,6 +414,8 @@ function renderItem(it, prev, ctx) {
           h('div.md', { html: trusted(renderMarkdown(it.text, { mentions: handles() })) }),
           it.attachments?.length ? h('div.attachments', it.attachments.map(attChip)) : null,
         ),
+        // Removed from every agent’s queue before one read it (#1404): it stays where it was said, marked.
+        it.removed ? h('span.stopped-tag', 'Removed before any agent read it') : null,
       );
     }
     case 'agent': {
