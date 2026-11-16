@@ -112,3 +112,23 @@ test('Remove stops one agent’s entry; the message says it was removed only onc
   const line = f.rt.memory.describeItem(f.store.item(f.t.id, item.id), f.alpha);
   assert.match(line, /^The person, to @alpha, @beta: \(a message removed before any agent read it\)$/);
 });
+
+test('#1138 a send repeated with the same client id makes one item and one entry per agent, and is answered as sent', async () => {
+  const { rt, store, adapter, t, beta } = setup();
+  const busy = held();
+  adapter.next.push(busy.step);
+  rt.sendMessage(t.id, { text: '@beta start' });
+  await sleep(5);
+  // The page’s outbox sends again when the response to its first try was lost.
+  const first = rt.sendMessage(t.id, { text: '@beta once', clientId: 'cl_1' });
+  const again = rt.sendMessage(t.id, { text: '@beta once', clientId: 'cl_1' });
+  assert.equal(again.item.id, first.item.id, 'answered with the item the first try posted');
+  assert.equal(said(store, t.id, '@beta once').length, 1);
+  assert.equal(arrange.waitingEntries(rt, beta.id).length, 1);
+  busy.release();
+  await settle(rt);
+  rt.sendMessage(t.id, { text: '@beta once', clientId: 'cl_1' });
+  await settle(rt);
+  assert.equal(said(store, t.id, '@beta once').length, 1, 'a try after it was delivered posts nothing either');
+  assert.equal(givenTo(adapter, beta, '@beta once'), 1);
+});
