@@ -1,16 +1,12 @@
-// A turn's end: what it leaves on its replies and the session, a failed reply with its Retry, what the person needs
-// and is told, the checks that go back to the agent, and the wakes and messages that waited for it. Moved from
-// server/runtime.mjs (#1236). Named for finishing a turn: turn-end-work.mjs is only its work ledger's end.
+// A turn's end: what it leaves on its replies and the session, and a failed reply with its Retry. Each other
+// concern's step listens to the signals it raises, in order (designs/architecture/services.md, “The end of a turn”;
+// server/turn-end-listeners.mjs, then server/inbox-listeners.mjs). Moved from server/runtime.mjs (#1236). Named for
+// finishing a turn: turn-end-work.mjs is only its work ledger's end.
 
-import { fixEnded } from './apps.mjs';
 import { emptyReply, endedWithoutReply } from './empty-reply.mjs';
-import { settleScheduledWake } from './scheduled-wakes.mjs';
-import { postSummary } from './share-back.mjs';
-import { endedAs } from './turn-end-work.mjs';
 import { askedOf, replyMarks } from './turn-marks.mjs';
-import { needsAfter } from './turn-needs.mjs';
 import { foldSteps } from './turn-steps.mjs';
-import { entriesFirst } from './turns.mjs';
+
 /**
  * A turn ended, with err when it failed or was stopped: it leaves the running turns, its replies and the session show
  * how it ended, and what waited for it goes next.
@@ -19,17 +15,15 @@ import { entriesFirst } from './turns.mjs';
 export function endTurn(rt, turn, err) {
   if (turn.closed) return;
   turn.closed = true;
-  // Its permissions expire while it still counts as running, so their release counts no card tied to a turn: the
-  // turn's end, below, decides those.
-  rt.turnService.asks.expirePermissions(turn.sessionId);
+  // Raised while it still counts as running: its permission waits expire then.
+  rt.bus.emit('turn.ending', { turn });
   rt.running.end(turn.sessionId);
   rt.settleSubagentSteps(turn);
   // Its steps fold to what its record keeps: the live view's detail goes with the turn (turn-steps.mjs).
   if (turn.first) foldSteps(rt, turn.threadId, turn.first);
   // How a remote turn ended on its host decides what the person sees: Sign-in needed and Interrupted say so (#120).
   if (turn.remote) err = rt.remote.ended(turn, err);
-  settleScheduledWake(rt, turn, err);
-  rt.work.endWork(turn, endedAs(err));
+  rt.bus.emit('turn.settled', { turn, err });
   // The turn’s own lines in an attached session’s transcript aren’t terminal activity.
   rt.mirrors.get(turn.sessionId)?.tail.skipToEnd();
   const se = rt.s.sessions[turn.sessionId];
@@ -39,39 +33,21 @@ export function endTurn(rt, turn, err) {
   if (!err && endedWithoutReply(turn, items)) err = emptyReply(rt, se, turn);
   // How it ended, for the entries its replies’ mentions make as they settle (mention-entries.mjs).
   turn.endErr = err;
-  settleReplies(rt, se, turn, items, err);
+  settleReplies(rt, turn, items, err);
+  rt.bus.emit('turn.replied', { turn, se, items, err });
   if (err && err.name !== 'AbortError') {
     endFailed(rt, se, turn, err);
     return;
   }
-  // An app-check turn that ended without a new version: show the app with a note, or crashed (#964), not wait forever.
-  if (turn.kind === 'app-check') {
-    for (const app of Object.values(rt.store.pending.apps()))
-      if (app.sessionId === se.id && app.check.status === 'fixing') rt.store.emit('app', { ...app, check: { ...app.check, status: fixEnded(app) } });
-  }
-  const { open, viewing, topic } = needsAfter(rt, se, turn, items);
-
-  rt.checks.endTurn(turn, se);
-  if (topic && !viewing && (turn.said || open.length)) rt.threads.patch(topic, (x) => ({ unread: (x.unread ?? 0) + 1 }));
-  if (turn.threadId !== se.threadId) rt.summaries.settleThread(turn.threadId);
-
-  // Last: what it took was delivered, the agents its replies mentioned are woken, and its own next entries start. An
-  // entry that came before everything queued for the agent starts first, so what waited goes in arrival order (#733).
-  if (entriesFirst(rt, se, turn)) {
-    rt.bus.emit('turn.ended', { turn });
-    rt.takePending(se, turn, true);
-    return;
-  }
-  rt.takePending(se, turn, true);
-  rt.bus.emit('turn.ended', { turn });
+  // The listeners share what the person needs (open, viewing, topic), which the first that reads it finds.
+  rt.bus.emit('turn.ended', { turn, se, items, open: [], viewing: false, topic: null });
 }
 
 /**
- * The turn's replies show how it ended: its open part and any other still streaming are done or failed, a turn that
- * went well marks its checkpoint and posts its summary, and a summary pending on its thread is no longer.
- * @param {any} rt @param {any} se @param {any} turn @param {any[]} items @param {any} err
+ * The turn's replies show how it ended: its open part and any other still streaming are done or failed, and a turn
+ * that went well marks its checkpoint. @param {any} rt @param {any} turn @param {any[]} items @param {any} err
  */
-function settleReplies(rt, se, turn, items, err) {
+function settleReplies(rt, turn, items, err) {
   // The open segment by its id, even while held behind a commit; then any other still streaming in the visible state.
   if (turn.openSegment) rt.threads.patchItem(turn.threadId, turn.openSegment, { status: err ? 'failed' : 'done' });
   for (const it of items)
@@ -81,10 +57,6 @@ function settleReplies(rt, se, turn, items, err) {
   if (turn.checkpoint && !err)
     for (const it of items)
       if (it.turnId === turn.id && (it.kind === 'agent' || it.kind === 'block')) rt.threads.patchItem(turn.threadId, it.id, { checkpoint: turn.checkpoint });
-  if (!err) postSummary(rt, se, turn, items);
-  // Posted or not, the summary isn’t pending any more, so Summarize back works again, unless one waits behind this
-  // turn (#225). Any turn ending clears one a restart left behind, too.
-  rt.clearSummaryPending(turn.threadId, turn);
 }
 
 /**
@@ -93,8 +65,6 @@ function settleReplies(rt, se, turn, items, err) {
  * @param {any} rt @param {any} se @param {any} turn @param {any} err
  */
 function endFailed(rt, se, turn, err) {
-  // Its progress steps still running show as stalled, as at any turn’s end (#98).
-  rt.checks.stallLeftRunning(turn, se, 'failed');
   const message = err.userMessage ?? err.message ?? 'The agent stopped unexpectedly.';
   const target =
     turn.segment ??
@@ -133,11 +103,7 @@ function endFailed(rt, se, turn, err) {
   // whom they reached, with those the failures before it reached, so no Retry hands the work over again.
   const woke = turn.mentioned ?? [];
   if (woke.length || turn.woken.length) rt.threads.patchItem(turn.threadId, target, { wokeOnFailure: [...new Set([...turn.woken, ...woke])] });
-  // A wake that waited for this turn still goes: with no forks, it was promised an answer (#228). Your own
-  // queued messages wait, as before, for you to see the failure.
-  // The person’s messages that waited for it wait for them now (#1146).
-  rt.delivery.failedWith(se.id);
-  rt.takePending(se, turn, 'wakes');
-  // Last: what it took was given to the agent, and the agents its replies mentioned are woken.
-  rt.bus.emit('turn.failed', { turn });
+  // Last: its progress steps stall, what waited for it and what it took settle, and the agents its replies mentioned
+  // are woken.
+  rt.bus.emit('turn.failed', { turn, se });
 }

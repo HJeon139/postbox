@@ -173,8 +173,8 @@ export function turnExited(rt, turn) {
     if (entriesFirst(rt, se, ended)) rt.delivery.wake(se.id);
     rt.takePending(se, ended, true);
   }
-  // The stopped turn is gone: entries that arrived during its exit start the next turn, if nothing above did.
-  rt.delivery.wake(se.id);
+  // The stopped turn is gone: what waits for the agent may start its next turn.
+  rt.bus.emit('turn.exited', { turn });
 }
 
 /**
