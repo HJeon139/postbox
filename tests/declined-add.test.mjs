@@ -224,3 +224,12 @@ test('#789 the person’s add behind a held commit lifts a decline held with it'
   assert.equal(mentionAsks(f), true, 'the decline and the add were held together: the add is the latest answer');
   await h.store.close();
 });
+
+test('#693 after the person declines adding an agent, open_topic’s first message that mentions it raises no new card either', async () => {
+  // Its mentions are read from its text since open_topic lost `mentions`, so they’re prose, as a reply’s are.
+  const f = await declined();
+  const root = arrange.post(f.rt, f.t.id, { kind: 'agent', sessionId: f.beta.id, handle: 'beta', text: 'The numbers.', status: 'done' });
+  f.rt.toolsFor(f.beta.id).open_topic({ itemId: root.id, message: '@gamma could check these later.' });
+  await settle(f.rt);
+  assert.equal(addCards(f).length, 1, 'no second card');
+});
