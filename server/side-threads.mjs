@@ -128,6 +128,8 @@ export function dropWakes(rt, se, how = 'stopped') {
   for (const e of rt.delivery.stopped(se.id, { all: how !== 'stopped' })) {
     // A scheduled wake that waited is settled, as one held on the turn was, so a restart doesn’t fire it again (#466).
     if (e.source === 'scheduled') dropScheduledWake(rt, e.message);
+    // A summary request isn’t coming, as one held on a stopped turn wasn’t (#93): its panel’s button stops waiting.
+    if (e.message?.summary) rt.clearSummaryPending(e.threadId);
     const sender = e.source === 'mention' && e.from ? rt.sessions.in(rt.threads.lineage(e.threadId).at(-1)).find((x) => x.handle === e.from) : null;
     if (!sender || sender.retiredFork || sender.id === se.id) continue;
     const said = clip(rt.store.pending.item(e.threadId, e.itemId)?.text ?? '', 120);
