@@ -28,20 +28,39 @@ const STARTS_WITH_ID = /^\s*(?:(?:[-*]|\d+\.)\s+)?\[?(it_[A-Za-z0-9]+)\]?/;
 const FIRST_MENTION = /(?:^|[^\w@.])(@[A-Za-z0-9_-]+)/;
 
 /**
- * Whether a line is a copy of an item’s line, as Postbox gave it to an agent: it starts with that item’s id, and
- * from its first mention on it is the item’s own words. The caller’s isCopy knows the items, so a line that only
+ * The item a line is a copy of, as Postbox gave its line to an agent, or null: the line starts with that item’s id,
+ * and from its first mention on it is the item’s own words. The caller’s isCopy knows the items, so a line that only
  * looks like one, with an id that isn’t an item’s or words the item doesn’t hold, is the message’s own and wakes
  * (designs/rooms-at-scale.md, “Which mention wakes”).
  * @param {string} line @param {(itemId: string, said: string) => boolean} isCopy
+ * @returns {string | null}
  */
 function copied(line, isCopy) {
   const id = STARTS_WITH_ID.exec(line)?.[1];
-  if (!id) return false;
+  if (!id) return null;
   // “You (@alpha): …” is how an agent’s own line reads to it.
   const plain = line.replace(/You \((@[A-Za-z0-9_-]+)\)/g, '$1');
   const at = FIRST_MENTION.exec(plain);
-  if (!at) return false;
-  return isCopy(id, plain.slice(at.index + at[0].length - at[1].length));
+  if (!at) return null;
+  return isCopy(id, plain.slice(at.index + at[0].length - at[1].length)) ? id : null;
+}
+
+/**
+ * A message’s lines without the ones copied from the conversation. A copy starts at a line that `copied` knows, and
+ * goes on over the lines after it for as long as they are that item’s words: a message of several lines, copied
+ * whole, has its id on the first line only (#1416). A line that isn’t the item’s ends the copy and is the message’s
+ * own, so a hand-off written after a copy still wakes.
+ * @param {string[]} lines @param {(itemId: string, said: string) => boolean} isCopy
+ */
+function withoutCopies(lines, isCopy) {
+  /** @type {string | null} */
+  let copying = null;
+  return lines.filter((line) => {
+    const starts = copied(line, isCopy);
+    if (starts) copying = starts;
+    else if (copying && line.trim() && !isCopy(copying, line.trim())) copying = null;
+    return !copying;
+  });
 }
 
 /**
@@ -53,10 +72,8 @@ function unquoted(text, isCopy) {
   const plain = text.replace(/```[\s\S]*?(```|$)/g, ' ').replace(/`[^`]*`/g, ' ');
   // Read line by line only when a line could be a quote: the page reads a draft on every keystroke.
   if (!plain.includes('>') && !(isCopy && plain.includes('it_'))) return plain;
-  return plain
-    .split('\n')
-    .filter((line) => !BLOCKQUOTE.test(line) && !(isCopy && copied(line, isCopy)))
-    .join('\n');
+  const lines = plain.split('\n').filter((line) => !BLOCKQUOTE.test(line));
+  return (isCopy ? withoutCopies(lines, isCopy) : lines).join('\n');
 }
 
 /**

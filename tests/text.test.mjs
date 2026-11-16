@@ -15,9 +15,11 @@ test('mentions: known handles only, in order, not in code or emails', () => {
 test('mentions: a line that starts with an item’s id is a copy only when the caller says it is that item’s words', () => {
   const h = ['developer', 'alpha', 'critic'];
   const asked = [];
+  // The item’s words, as a caller with the items would know them: a line after a copy is asked about too (#1416).
+  const itemSays = ['I reran the migration guide; item 137 of the release log.', 'built it', 'I drafted it'];
   const isCopy = (id, said) => {
     asked.push([id, said]);
-    return id === 'it_big0137';
+    return id === 'it_big0137' && itemSays.some((words) => said.endsWith(words));
   };
   const copy = 'it_big0137: @developer: I reran the migration guide; item 137 of the release log.';
   assert.deepEqual(parseMentions(copy, h, isCopy), []);
