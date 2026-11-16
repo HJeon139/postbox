@@ -43,18 +43,21 @@ export const agentsSpent = (streams) => turnCosts(streams).reduce((a, t) => a + 
 
 /**
  * The tokens Codex used over a run’s turns, in and out. Codex reports no cost. Its count runs on for a thread from
- * turn to turn, so each thread’s last total is taken, and the threads are added up.
+ * turn to turn, so each thread’s largest total is taken, and the threads are added up. The largest, not the last
+ * read: the streams come in the order their files are read, which isn’t the order the turns ran.
  * @param {{ events: any[] }[]} streams  the run’s Codex streams
  */
 export function codexTokens(streams) {
   /** @type {Map<string, number>} */
-  const last = new Map();
+  const most = new Map();
   for (const { events } of streams ?? [])
     for (const e of events ?? []) {
       const total = e?.method === 'thread/tokenUsage/updated' ? e.params?.tokenUsage?.total : null;
-      if (total) last.set(String(e.params.threadId), (total.inputTokens ?? 0) + (total.outputTokens ?? 0));
+      if (!total) continue;
+      const thread = String(e.params.threadId);
+      most.set(thread, Math.max(most.get(thread) ?? 0, (total.inputTokens ?? 0) + (total.outputTokens ?? 0)));
     }
-  return [...last.values()].reduce((a, n) => a + n, 0);
+  return [...most.values()].reduce((a, n) => a + n, 0);
 }
 
 /**

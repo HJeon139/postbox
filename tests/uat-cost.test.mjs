@@ -100,6 +100,9 @@ const codexStreams = [
 test('Codex’s tokens are each thread’s last total, added up: a thread’s count runs on from turn to turn', () => {
   assert.equal(codexTokens(codexStreams), 960 + 55);
   assert.equal(codexTokens([]), 0);
+  // The streams come in the order their files are read, which isn’t the order the turns ran: a thread’s total only
+  // grows, so its largest is its last, whichever turn is read first.
+  assert.equal(codexTokens([...codexStreams].reverse()), 960 + 55);
 });
 
 test('the harnesses a run used that report no cost are named, and a run on Claude Code alone names none', () => {
