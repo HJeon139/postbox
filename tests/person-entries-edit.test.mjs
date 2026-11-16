@@ -110,3 +110,19 @@ test('an edit that leaves a name out stops that agent’s entry, as Remove does;
   assert.ok(!f.adapter.calls.some((c) => c.sessionId === f.alpha.id && JSON.stringify(c.message).includes('check this')), 'alpha never read it');
   assert.ok(f.adapter.calls.some((c) => c.sessionId === f.beta.id && JSON.stringify(c.message).includes('check this, please')));
 });
+
+test('an edit can’t name an agent the message was removed for: it would reach no one', async () => {
+  const f = await bothBusy();
+  const { item, queued } = f.rt.sendMessage(f.t.id, { text: '@alpha @beta look' });
+  f.rt.cancelQueued(f.t.id, queued.find((e) => e.sessionId === f.alpha.id).id);
+  const forBeta = queued.find((e) => e.sessionId === f.beta.id);
+  assert.throws(() => f.rt.editQueued(f.t.id, forBeta.id, '@alpha only'), {
+    status: 409,
+    message: 'Remove it and send a new message to change who it’s for.',
+  });
+  assert.equal(arrange.waitingEntries(f.rt, f.beta.id).filter((e) => e.itemId === item.id).length, 1, 'beta still gets it');
+  assert.equal(f.store.item(f.t.id, item.id).text, '@alpha @beta look');
+  f.a.release();
+  f.b.release();
+  await settle(f.rt);
+});
