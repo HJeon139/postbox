@@ -2,6 +2,26 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.13.0 (2026-11-16)
+
+### Features
+
+- **delivery:** store each agent's inbox as entries, behind today's queue
+
+### Fixes
+
+- **uat:** count a take that arrives as a put
+- **server:** the Codex mapper listens for Stop only on a turn's abort signal
+- **server:** words a Codex message held back reach the reply however the turn ends
+- **delivery:** entry.put inserts an entry by when it arrived
+- **delivery:** an entry brought back from delivered is written whole
+- **server:** two Codex narrations streaming at once take turns by sentences, not spliced
+- **delivery:** the page drops an inbox entry once it's delivered
+- **uat:** count entries waiting elsewhere after a turn's whole take, without notices
+- **delivery:** take the lead entry first, then the rest in order while they fit
+- **delivery:** send the page only the inbox entries it can act on
+- **delivery:** find the sessions with inboxes in the pending state
+
 ## 4.12.1 (2026-11-16)
 
 ### Fixes
