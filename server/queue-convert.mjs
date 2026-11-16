@@ -9,6 +9,7 @@
 // which Delivery’s send stores once per inbox. Functions take the Runtime first, as waiting code does until Turns is a
 // service.
 
+import { clip } from './helpers.mjs';
 import { postUserMessage } from './message-queue.mjs';
 
 /** Turns every stored queue into entries, then empties it. Delivery’s start wakes the agents. @param {any} rt */
@@ -28,10 +29,22 @@ function convertOne(rt, threadId, q) {
   if (q.kind === 'wake') {
     const said = q.itemId ? { itemId: q.itemId } : { text: String(q.text ?? '') };
     for (const se of agents) rt.delivery.send({ ...entry, ...said, sessionId: se.id, source: 'mention', from: q.from }, { wake: false });
+    if (!agents.length) notDelivered(rt, entry, q);
     return;
   }
   const to = agents.map((/** @type {any} */ se) => se.handle);
   const posted = rt.store.pending.items(threadId).findLast((/** @type {any} */ it) => it.fromQueue === q.id);
   const item = posted ?? postUserMessage(rt, threadId, { text: String(q.text ?? ''), attachments: q.attachments ?? [] }, to, { fromQueue: q.id }).item;
   for (const se of agents) rt.delivery.send({ ...entry, itemId: item.id, sessionId: se.id, source: 'person', from: 'you' }, { wake: false });
+}
+
+/**
+ * A queued wake whose agent has left: its sender hears so at its next turn, as the queue’s drain told it, as a notice.
+ * @param {any} rt @param {{ threadId: string, retryId: string, at?: number }} entry @param {any} q
+ */
+function notDelivered(rt, entry, q) {
+  const sender = rt.store.pending.session(q.fromSessionId);
+  if (!sender || sender.retiredFork) return;
+  const text = `Your message (“${clip(String(q.text ?? ''), 120)}”) wasn’t delivered: the agent it was for was removed.`;
+  rt.delivery.send({ ...entry, sessionId: sender.id, source: 'notice', text }, { wake: false });
 }
