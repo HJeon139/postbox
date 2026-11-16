@@ -150,7 +150,7 @@ The sources cover everything that starts a turn today (the callers of `deliver` 
 - **A thread’s summary keeps its own destination.** Summaries makes the command’s entry and posts the reply in the parent conversation, as `summarizeTo` does today. The entry has no field for it.
 - **No mention is refused for its reply’s length.** Today a reply over 50,000 characters wakes no one, and its agent gets a notice turn telling it to use `wake_agent` (`refusedMentions` in `server/mention-wakes.mjs`, #362). An entry points at its item and is cut at the ceiling with its id, so the refusal, its notice and its line in the conversation go.
 - **A failed reply’s mentions are entries like any other** (#485). The entry’s line says the reply failed and may be cut off, read from the item, where today the text is prefixed (`server/turn-finish.mjs`).
-- **While today’s queue stays,** during the build, the person’s message to a busy agent becomes an entry only when the queue releases it. Until then its sender sees the queue’s state, not an entry’s.
+- **The person’s message is an entry when it’s sent** (the owner’s choice of 15 November 2026, [#1404](https://github.com/HJeon139/postbox/issues/1404)). It’s posted at once, with one entry per agent it goes to, so it shows where it was said while it waits. The agent’s queue lists its entry: Edit changes the message while every agent it went to is still waiting for it, and Remove stops one agent’s entry. A message removed for every agent before one read it stays in the conversation, marked, and what agents read says so without its words.
 
 ### Which mention wakes
 

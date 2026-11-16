@@ -217,7 +217,7 @@ flowchart LR
     - `continueChain(threadId)`: Continue at the chain cap;
     - `retry(sessionId)`: the facade’s Retry on a failed turn. The entries that turn took go back to waiting, marked as a resend, and the session is no longer failed, so `entry.waiting` starts the turn.
 
-    Until the person’s message is an entry (step 2 below keeps today’s queue in front), editing and canceling a waiting message stay with the queue.
+    The person’s message is an entry when it’s sent (#1404), so `edit` and `cancel` act on it. A queue a store holds from before that is turned into entries once, on start (step 3).
   - **Signals:** `entry.waiting`. It is raised for an agent that has a waiting entry that isn’t a notice, and that:
     - isn’t `busy()` in Running (no live turn, none exiting, no host turn awaiting attach);
     - has a session that hasn’t failed;
@@ -677,7 +677,15 @@ Each step is its own pull request, and is done when:
     - `open_topic` lost `mentions`: its first message’s own @-mentions wake, as prose, as a reply’s do.
     - The chain-limit sentence moved to the guide’s room paragraph.
   - **What the removal found:** the measurement’s resumed session is still to show whether a harness passes a call to an unlisted tool through to Postbox (rooms-at-scale.md, “After `wake_agent` goes”).
-- **Next:** Delivery and Turns, built as the inbox, from step 2 of the order “Delivery and Turns, built as the inbox” gives. Asks follow, after the permission layer.
+- **In progress:** the inbox’s step 3, Turns takes entries.
+  - **The person’s message is an entry when it’s sent** (#1404). It’s posted at once, with a `person` entry per agent it goes to; the thread’s `queue` stops growing. Send now stops the turn, then a turn takes that entry alone.
+  - **What it found:**
+    - Before entries, a Stop kept the person’s queued messages and dropped what waited on the turn. So a Stop stops agents’ entries and answers, and keeps the person’s messages waiting.
+    - A failed turn’s end drained only agents’ wakes, so the person’s queued messages waited for them (#1146). Delivery holds the person’s entries that waited through a failure until the person acts. It keeps that in memory, as the queue’s rule was: a restart, or a host turn’s attach given up, sends them, as the queue’s drain did (#1135).
+    - A message posted at send would be in the catch-up of the turn before its own, so the agent read it twice. The catch-up leaves out the person’s messages still waiting for the agent.
+    - #694’s note names a waiting message of the person’s without pointing at its item, so Remove still retracts one it named.
+    - A send the page tries again carries its client id, which its entries keep as their retry id, so it’s stored once (#1138).
+  - **Next:** turning a stored queue into entries on start, and removing the queue’s code; then Turns as a service.
 
 ## Appendix: every module’s members
 
