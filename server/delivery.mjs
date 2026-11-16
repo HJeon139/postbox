@@ -25,10 +25,10 @@ const PERSON = new Set(['person', 'answer', 'command']);
 
 /**
  * An entry given to a turn of its own until Turns builds input from entries (step 3’s PR 4): one that carries a message
- * other than a plain one, such as an answer’s event or a lint turn, whose kind its turn keeps.
- * @param {{ message?: any }} e
+ * other than a plain one, such as an answer’s event or a lint turn, whose kind its turn keeps; and an app’s event.
+ * @param {{ source?: string, message?: any }} e
  */
-export const alone = (e) => Boolean(e.message) && !plainMessage(e.message);
+export const alone = (e) => e.source === 'event' || (Boolean(e.message) && !plainMessage(e.message));
 
 /** @typedef {'waiting'|'taken'|'delivered'|'failed'|'stopped'} EntryState */
 /**
@@ -55,6 +55,8 @@ export class Delivery {
     this.sizeOf = sizeOf;
     /** @type {Map<string, Set<string>>} the person’s entries each failed agent holds for the person (failedWith) */
     this.heldByFailure = new Map();
+    /** @type {Map<string, any>} what an entry carries in memory only, by its id (send’s `carry`) */
+    this.carried = new Map();
   }
 
   /**
@@ -66,10 +68,12 @@ export class Delivery {
    * `at` is when it arrived, now unless it waited somewhere first, as a stored queue’s row did (#1423).
    * @param {{ sessionId: string, threadId: string, source: string, itemId?: string, text?: string, message?: any,
    *   from?: string, retryId?: string, at?: number }} e
-   * @param {{ wake?: boolean }} [opts]
+   * `carry` is a message kept in memory for the turn that takes the entry, and never stored: what an app sent, which
+   * stays out of the public inbox (#1425). A restart loses it, as it lost a message held for a busy agent before.
+   * @param {{ wake?: boolean, carry?: any }} [opts]
    * @returns {Entry}
    */
-  send({ sessionId, threadId, source, itemId, text, message, from, retryId, at }, { wake = true } = {}) {
+  send({ sessionId, threadId, source, itemId, text, message, from, retryId, at }, { wake = true, carry = undefined } = {}) {
     if (!SOURCES.includes(source)) throw new Error(`An entry’s source is one of ${SOURCES.join(', ')}, not “${source}”.`);
     if ((itemId === undefined) === (text === undefined)) throw new Error('An entry has an item or its own text, and not both.');
     const se = this.store.pending.session(sessionId);
@@ -96,6 +100,7 @@ export class Delivery {
       ...(retryId === undefined ? {} : { retryId }),
     };
     this.store.emit('entry.add', { sessionId, entry });
+    if (carry !== undefined) this.carried.set(entry.id, carry);
     if (wake) this.wake(sessionId);
     return entry;
   }
@@ -226,7 +231,7 @@ export class Delivery {
    */
   turnEnded({ sessionId, turnId }) {
     this.heldByFailure.delete(sessionId);
-    for (const e of this.takenBy(sessionId, turnId)) this.patch(e, { state: 'delivered' });
+    for (const e of this.takenBy(sessionId, turnId)) this.settle(e, 'delivered');
     this.wake(sessionId);
   }
 
@@ -238,8 +243,8 @@ export class Delivery {
    */
   turnFailed({ sessionId, turnId, lost }) {
     for (const e of this.takenBy(sessionId, turnId)) {
-      if (!lost) this.patch(e, { state: 'delivered' });
-      else if (e.resend) this.patch(e, { state: 'failed' });
+      if (!lost) this.settle(e, 'delivered');
+      else if (e.resend) this.settle(e, 'failed');
       else this.patch(e, { state: 'waiting', takenBy: null, resend: true });
     }
     this.wake(sessionId);
@@ -318,6 +323,17 @@ export class Delivery {
   /** The agent’s entries a turn took. @param {string} sessionId @param {string} turnId */
   takenBy(sessionId, turnId) {
     return this.inbox(sessionId).filter((e) => e.state === 'taken' && e.takenBy === turnId);
+  }
+
+  /** What an entry carries in memory, if it still does (send’s `carry`). @param {string} entryId */
+  carriedFor(entryId) {
+    return this.carried.get(entryId);
+  }
+
+  /** An entry reached its last state: what it carried in memory goes. @param {Entry} e @param {EntryState} state */
+  settle(e, state) {
+    this.carried.delete(e.id);
+    this.patch(e, { state });
   }
 
   /** Writes fields of one entry. @param {Entry} e @param {Partial<Entry>} patch */

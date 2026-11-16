@@ -87,7 +87,9 @@ test('appEvent sends in the person’s voice up to the limit a minute; past it t
   const now = 1_000_000;
   for (let i = 0; i < APP_SEND_LIMIT; i++) assert.equal(apps.appEvent('lab', 'send', { text: `hi ${i}` }, { now }).ok, true);
   assert.equal(sent.length, APP_SEND_LIMIT);
-  assert.deepEqual(sent[0].opts, { threadId: 'th_c' });
+  // Sent with the voice line it posted, which its entry points at (#1425).
+  const voice = store.items('th_c').find((x) => x.kind === 'voice');
+  assert.deepEqual(sent[0].opts, { threadId: 'th_c', itemId: voice.id });
   assert.equal(sent[0].message.kind, 'event');
   const held = apps.appEvent('lab', 'send', { text: 'one more' }, { now });
   assert.equal(held.hold.app.id, 'lab');

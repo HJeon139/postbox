@@ -25,7 +25,7 @@ export class Apps {
    *           running: { all: () => any[], turnOf: (sessionId: string) => any },
    *           checks: { lint: (sessionId: string, turnId: string|null|undefined, problems: any[]) => unknown },
    *           delivery: { send: (entry: any) => unknown, waiting: (sessionId: string) => any[] },
-   *           send: (sessionId: string, message: any, opts: { threadId: string }) => unknown,
+   *           send: (sessionId: string, message: any, opts: { threadId: string, itemId?: string }) => unknown,
    *           narrator: { speak: (args: any) => any } | null, config: { imageOrigins: string[] } }} deps
    *   delivery: the inbox, which a review of a block reaches its author through (designs/rooms-at-scale.md, “What an
    *   entry is”). send: any other message for an agent (the port; designs/architecture/services.md, “The services”),

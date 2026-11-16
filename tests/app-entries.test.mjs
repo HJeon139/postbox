@@ -79,7 +79,7 @@ test('#1425 after a restart, a waiting event’s turn reads its voice line, sinc
   const again = new Runtime({ store: f.store, adapters: new AdapterRegistry().register(after), config: f.rt.config });
   again.drainAll();
   await settle(again);
-  const call = after.calls.find((c) => c.sessionId === f.beta.id && JSON.stringify(c.message).includes(voice.text));
+  const call = after.calls.find((c) => c.sessionId === f.beta.id && c.message.kind === 'notice' && c.message.text.includes(voice.text));
   assert.ok(call, JSON.stringify(after.calls.map((c) => c.message)));
   assert.match(call.message.text, /Postbox restarted before it reached you/);
   f.busy.release();

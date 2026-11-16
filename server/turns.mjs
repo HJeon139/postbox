@@ -5,6 +5,7 @@
 
 import { SENDING } from '../shared/limits.mjs';
 import { partEnd } from '../shared/text-parts.mjs';
+import { lostEvent } from './app-entries.mjs';
 import { combineMessages, plainMessage } from './queue-batch.mjs';
 import { newId } from './store.mjs';
 
@@ -51,6 +52,8 @@ const given = (rt, entries) => entries.map((e) => messageOf(rt, e));
  */
 export function messageOf(rt, e) {
   // A plain message carries its place, to sort in a batch; one with a turn of its own is given as it was sent.
+  // An app’s event rides in memory; after a restart, its voice line is what’s left of it (app-entries.mjs).
+  if (e.source === 'event') return rt.delivery.carriedFor(e.id) ?? lostEvent(rt, e);
   if (e.message) return plainMessage(e.message) ? { ...e.message, at: e.at, seq: e.seq } : e.message;
   if (e.source === 'person') return personMessage(rt, e);
   if (!e.itemId) return { kind: 'notice', text: e.text, at: e.at, seq: e.seq };

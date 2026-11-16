@@ -6,6 +6,7 @@ import { homedir } from 'node:os';
 import { formatDuration } from '../shared/text.mjs';
 import { listProcesses } from './adapters/process-group.mjs';
 import { runAgentCommand } from './agent-commands.mjs';
+import { sendAppMessage } from './app-entries.mjs';
 import { holdAppSend, needAppSend, releaseRetired, resolveAppSend } from './app-send-cards.mjs';
 import { APP_HOLD_MAX, APP_SEND_LIMIT, APP_SEND_WINDOW_MS } from './app-send-limits.mjs';
 import { Apps } from './app-service.mjs';
@@ -196,7 +197,8 @@ export class Runtime {
       running: this.running,
       checks: this.checks,
       delivery: this.delivery,
-      send: (sessionId, message, opts) => this.deliver(sessionId, message, opts),
+      // What an app sends its agent is an entry (server/app-entries.mjs).
+      send: (sessionId, message, opts) => sendAppMessage(this, sessionId, message, opts),
       narrator: this.narrator,
       config,
     });
