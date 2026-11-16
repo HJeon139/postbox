@@ -685,7 +685,8 @@ Each step is its own pull request, and is done when:
     - A message posted at send would be in the catch-up of the turn before its own, so the agent read it twice. The catch-up leaves out the person’s messages still waiting for the agent.
     - #694’s note names a waiting message of the person’s without pointing at its item, so Remove still retracts one it named.
     - A send the page tries again carries its client id, which its entries keep as their retry id, so it’s stored once (#1138).
-  - **Next:** turning a stored queue into entries on start, and removing the queue’s code; then Turns as a service.
+  - **A stored queue becomes entries once, on start** (#1423), before Delivery’s own start (`queue-convert.mjs`). The person’s message is posted with a `person` entry per agent still here, and an agent’s wake becomes a `mention` entry for its item. Each entry carries its queue row’s id as its retry id, so a conversion a crash cut short posts nothing twice. The queue’s code is gone: its drain, its batching, and its Edit, Remove and Send now.
+  - **Next:** Turns as a service.
 
 ## Appendix: every module’s members
 
