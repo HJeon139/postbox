@@ -2,12 +2,12 @@
 // turn starts. Every start is one of its steps, by what starts it: the agent’s waiting entries (start); the person’s
 // Send now on one of them (takeAlone); what waited on a turn, given once it ended or its process exited (release); a
 // host turn resumed or attached again after a restart (resume); and the person’s Retry of a failed reply (retry). Each
-// goes through run, which builds the turn and hands it to its adapter (server/deliver.mjs). Built by the composition
+// goes through run, which builds the turn and hands it to its adapter (server/turn-run.mjs). Built by the composition
 // root as `rt.turnService`, since `rt.turns` is Running’s map of live turns; it takes the Runtime until the rest of
 // what a turn reads is a service.
 
-import { deliver, retry } from './deliver.mjs';
 import { sendEntryAlone } from './entry-queue.mjs';
+import { deliver, retry } from './turn-run.mjs';
 import { startFromEntries } from './turns.mjs';
 
 export class Turns {

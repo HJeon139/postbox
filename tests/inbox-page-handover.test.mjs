@@ -1,4 +1,4 @@
-// Retry hands the failed turn’s entries to the turn it starts (server/deliver.mjs, Delivery’s retry). They were
+// Retry hands the failed turn’s entries to the turn it starts (server/turn-run.mjs, Delivery’s retry). They were
 // delivered when the turn failed, so a page left open dropped them (shared/inbox-page.mjs): the hand-over writes each
 // whole, and that page holds what a page loaded from /api/state holds, through the retried turn and after it.
 

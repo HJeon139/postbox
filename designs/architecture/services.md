@@ -701,7 +701,7 @@ Each step is its own pull request, and is done when:
     - `resume`: a host turn resumed or attached again;
     - `retry`: the person’s Retry.
 
-    Each goes through `run`, which builds and runs the turn (`deliver.mjs`), and holds a start until it can go: behind a held commit, with writes closed, or behind a stopped turn still exiting. The runtime’s `deliver` is gone, and no server module calls one.
+    Each goes through `run`, which builds and runs the turn (`turn-run.mjs`, moved from `deliver.mjs`), and holds a start until it can go: behind a held commit, with writes closed, or behind a stopped turn still exiting. The runtime’s `deliver` is gone, and no server module calls one.
   - **Next:** Retry reopens a failed turn’s entries as a resend (4c-b); then the `asks` port (4c-c).
 
 ## Appendix: every module’s members

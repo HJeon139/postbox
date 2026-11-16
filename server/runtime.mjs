@@ -379,7 +379,7 @@ export class Runtime {
     this.delivery.start();
   }
 
-  // ── Turns: server/deliver.mjs, turn-stop.mjs and job-records.mjs ────────────────────
+  // ── Turns: server/turn-run.mjs, turn-stop.mjs and job-records.mjs ──────────────────
 
   /** The person’s Retry of a failed reply (Turns’ step). @param {string} threadId @param {string} itemId */
   retry(threadId, itemId) {

@@ -28,7 +28,7 @@ const PUBLISHED = {
   'blocks.mjs': ['act'], // the person’s answer to a block they see
   'card-needs.mjs': ['dismissFailed'], // the person’s Dismiss on a failed reply they see (#883)
   'copied-line.mjs': ['copiedLine'], // a line an agent copied (#1370): the item it was given, as read_conversation reads it
-  'deliver.mjs': ['retry'], // the person’s Retry of a failed reply they see
+  'turn-run.mjs': ['retry'], // the person’s Retry of a failed reply they see
   'diagram-check.mjs': ['diagramCheck'], // the page’s report on a diagram the person sees
   'item-lines.mjs': ['topicRootLine', 'describeItem'], // a read tool and a prompt
   'catch-up.mjs': ['catchUp', 'turnTail', 'pointerIfSeen'], // the prompt for a later turn
@@ -88,7 +88,7 @@ const PENDING = {
   // The mirrored reply a terminal line adds to, maybe held behind a commit; and the session attachClaudeSession just
   // made, whose transcript mirror starts following.
   'claude-mirror.mjs': ['mirror', 'pollMirror'],
-  'deliver.mjs': ['deliver', 'deliver', 'turnMessage'], // the session it starts a turn in, and the thread it answers in, maybe made or held behind a commit (#796)
+  'turn-run.mjs': ['deliver', 'deliver', 'turnMessage'], // the session it starts a turn in, and the thread it answers in, maybe made or held behind a commit (#796)
   'restart-sweep.mjs': ['settleRetiredNeeds', 'cardOf'], // the need's card: whether it still waits, and its time on a tie, decide the need kept (#366); a session whose need is of a retired kind, settled
   'app-retire.mjs': ['retireApp', 'retireApp', 'retireApp'], // retire_app of an app the turn may have just shown
   'app-send-cards.mjs': ['releaseRetired'], // a retired app’s sweep of its open sends
