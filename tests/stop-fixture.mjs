@@ -6,6 +6,7 @@ import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
 import * as arrange from './arrange.mjs';
 import { tempDir } from './temp-dirs.mjs';
+import { partsOf } from './turn-parts.mjs';
 
 /** The stop tests’ project and agent folders go in this temp folder of the test file’s: the adapters make them (#823). */
 export const STOP_DIR = tempDir('pb-stop-');
@@ -35,8 +36,8 @@ class Scripted {
   async folderFor() {
     return null;
   }
-  async deliver(_session, message, ctx) {
-    this.calls.push({ message, ctx });
+  async deliver(session, message, ctx) {
+    this.calls.push({ message, parts: partsOf(this.rt, session.id, message), ctx });
     const step = this.next.shift() ?? (async (c) => c.text('ok'));
     await step(ctx, message);
   }
@@ -55,6 +56,7 @@ export function setup() {
     signalProcess: k.kill,
     listProcesses: async () => procs,
   });
+  adapter.rt = rt;
   store.emit('project', { id: 'p1', name: 'P', folder: STOP_DIR });
   const p = rt.createPersona({ handle: 'developer' });
   const t = rt.createThread({ projectId: 'p1', title: 'T', personaIds: [p.id] });
