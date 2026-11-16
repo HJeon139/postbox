@@ -132,3 +132,12 @@ test('a lint turn for a session deleted behind a held commit doesn’t throw fro
   await f.store.flush();
   await f.store.close();
 });
+
+test('a turn started from entries gives its agent no Postbox bookkeeping: no turn id or take marks on its message', async () => {
+  const f = setup();
+  f.adapter.next.push(async (c) => c.text('@beta please check the totals.'));
+  f.rt.sendMessage(f.t.id, { text: '@alpha go' });
+  await settle(f.rt);
+  const turn = f.adapter.calls.filter((c) => c.sessionId === f.beta.id).at(-1);
+  for (const mark of ['turnId', 'fromEntries', 'entriesWait']) assert.equal(Object.hasOwn(turn.message, mark), false, mark);
+});

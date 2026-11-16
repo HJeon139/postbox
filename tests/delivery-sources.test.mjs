@@ -53,3 +53,23 @@ test('a turn that already has its message takes no entry that needs a turn of it
   assert.deepEqual(delivery.take('se_b', 'tu_1', Number.POSITIVE_INFINITY, 'th_c'), []);
   assert.equal(delivery.waiting('se_b').length, 1);
 });
+
+test('a mention that leads takes the mentions after it, and stops at an entry that needs a turn of its own', () => {
+  const { delivery } = rig();
+  delivery.send({ sessionId: 'se_b', threadId: 'th_c', source: 'mention', itemId: 'it_1', from: 'alpha' });
+  delivery.send({ sessionId: 'se_b', threadId: 'th_c', source: 'answer', itemId: 'it_block', from: 'you', message: { kind: 'event', event: {} } });
+  delivery.send({ sessionId: 'se_b', threadId: 'th_c', source: 'mention', itemId: 'it_2', from: 'alpha' });
+  assert.deepEqual(
+    delivery.take('se_b', 'tu_1').map((e) => e.itemId),
+    ['it_1'],
+    'the answer waits, and the mention after it with it, so the order holds',
+  );
+  assert.deepEqual(
+    delivery.take('se_b', 'tu_2').map((e) => e.itemId),
+    ['it_block'],
+  );
+  assert.deepEqual(
+    delivery.take('se_b', 'tu_3').map((e) => e.itemId),
+    ['it_2'],
+  );
+});
