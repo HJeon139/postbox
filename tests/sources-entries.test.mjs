@@ -49,3 +49,16 @@ test('the person’s answer to a busy agent’s tool ask waits in its inbox as a
   await settle(f.rt);
   assert.match(JSON.stringify(f.adapter.calls.filter((c) => c.sessionId === f.alpha.id).at(-1).message), /turned on shell/);
 });
+
+test('the person’s / command is a command entry pointing at its line, and its turn is the whole command', async () => {
+  const f = setup();
+  const { item } = f.rt.runAgentCommand(f.t.id, { sessionId: f.alpha.id, text: '/review src/a.js' });
+  await settle(f.rt);
+  const entries = Object.values(f.store.state.inbox).flat();
+  assert.deepEqual(
+    entries.filter((e) => e.itemId === item.id).map((e) => [e.source, e.from, e.state]),
+    [['command', 'you', 'delivered']],
+  );
+  const turn = f.adapter.calls.filter((c) => c.sessionId === f.alpha.id).at(-1);
+  assert.deepEqual([turn.message.text, turn.message.slash], ['/review src/a.js', true]);
+});
