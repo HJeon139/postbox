@@ -2,6 +2,12 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.15.1 (2026-11-16)
+
+### Fixes
+
+- **uat:** add up Antigravity's model calls, and count a doubled hand-off once a turn
+
 ## 4.15.0 (2026-11-16)
 
 ### Features
