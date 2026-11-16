@@ -233,7 +233,7 @@ export class Delivery {
    */
   turnEnded({ sessionId, turnId }) {
     this.heldByFailure.delete(sessionId);
-    for (const e of this.takenBy(sessionId, turnId)) this.settle(e, 'delivered');
+    for (const e of this.takenBy(sessionId, turnId)) this.patch(e, { state: 'delivered' });
     this.wake(sessionId);
   }
 
@@ -245,8 +245,8 @@ export class Delivery {
    */
   turnFailed({ sessionId, turnId, lost }) {
     for (const e of this.takenBy(sessionId, turnId)) {
-      if (!lost) this.settle(e, 'delivered');
-      else if (e.resend) this.settle(e, 'failed');
+      if (!lost) this.patch(e, { state: 'delivered' });
+      else if (e.resend) this.patch(e, { state: 'failed' });
       else this.patch(e, { state: 'waiting', takenBy: null, resend: true });
     }
     this.wake(sessionId);
@@ -332,14 +332,12 @@ export class Delivery {
     return this.carried.get(entryId);
   }
 
-  /** An entry reached its last state: what it carried in memory goes. @param {Entry} e @param {EntryState} state */
-  settle(e, state) {
-    this.carried.delete(e.id);
-    this.patch(e, { state });
-  }
-
-  /** Writes fields of one entry. @param {Entry} e @param {Partial<Entry>} patch */
+  /**
+   * Writes fields of one entry. One that leaves waiting and taken for good, whichever way (delivered, failed, stopped),
+   * lets go of what it carried in memory (send’s `carry`). @param {Entry} e @param {Partial<Entry>} patch
+   */
   patch(e, patch) {
+    if (patch.state && patch.state !== 'waiting' && patch.state !== 'taken') this.carried.delete(e.id);
     this.store.emit('entry.patch', { sessionId: e.sessionId, id: e.id, patch });
   }
 }
