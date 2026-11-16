@@ -692,7 +692,9 @@ Each step is its own pull request, and is done when:
     - a thread’s summary request is a `command` entry, whose reply the turn posts in the thread’s parent;
     - a scheduled wake is a `scheduled` entry carrying the wake its turn keeps, so #466’s lifecycle is unchanged. A Stop that stops it, or canceling its schedule, settles it, and a restart’s rearm stops what an earlier fire left.
   - The start of a turn from entries lives in `turns.mjs`. The `Turns` class comes with `deliver`’s removal (4c), whose remaining callers become its steps.
-  - **Next:** a turn’s input from `turnInput` (4b), then `deliver` goes (4c).
+  - **A turn of plain entries is given `turnInput`’s text** (#1427): the person’s messages and agents’ mentions, with notices riding, as an `input` message that every backend formats as its text after the room’s fixed facts (#515). It’s built as the turn starts: its entries, each whole up to `READING.mention`; the room’s items since the agent’s last turn that aren’t its entries nor the person’s waiting messages (Memory’s `turnTail`, which moves its marker as the catch-up did); a topic thread’s own talk; and the files and thread links its messages carry. The take’s budget is `TURN_INPUT.entries`, and `sizeOf` counts each entry’s line as the turn gives it.
+  - An entry with a message kind of its own keeps it until 4c: an answer, a review, an app event, a scheduled wake, a command, a check, and a host turn’s attach. The input keeps its batch’s plain parts on what the turn was asked, with their kind and sender (`as`), for what reads them there until Turns owns it.
+  - **Next:** `deliver` goes (4c).
 
 ## Appendix: every module’s members
 
