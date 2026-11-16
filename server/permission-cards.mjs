@@ -91,8 +91,8 @@ export function askPerson(
       : {}),
     status: 'open',
   });
-  // The text so far is finished; the reply continues below the card.
-  rt.closeSegment(turn);
+  // The text so far is finished; Turns closes it, and the reply continues below the card.
+  rt.bus.emit('card.opened', { turn });
   offerNeed(rt, se, { kind: 'permission', itemId: it.id, text: `@${se.handle} asks to ${it.summary}`, ...rt.sessions.awayFrom(se, turn.threadId) }, 'needs');
   rt.threads.notify('blocking', se, `@${se.handle} asks permission`, `To ${it.summary}.`, turn.threadId);
   return new Promise((resolve) => {
@@ -265,8 +265,8 @@ export function recordDenial(rt, turn, d) {
     ...(turn.remote ? { remote: { hostId: turn.remote.hostId } } : {}),
     status: 'open',
   });
-  // The text so far is finished; the reply continues below the card.
-  rt.closeSegment(turn);
+  // The text so far is finished; Turns closes it, and the reply continues below the card.
+  rt.bus.emit('card.opened', { turn });
 }
 
 /** Why a refusal has no rule to allow once or always, and what to do instead. @param {string} why */

@@ -11,9 +11,14 @@ import { deliver, retry } from './turn-run.mjs';
 import { startFromEntries } from './turns.mjs';
 
 export class Turns {
-  /** @param {any} rt */
-  constructor(rt) {
+  /**
+   * @param {any} rt
+   * @param {{ asks: ReturnType<typeof import('./asks-port.mjs').asksPort> }} ports  `asks`: its one way into waiting code
+   *   (server/asks-port.mjs), until Asks
+   */
+  constructor(rt, { asks }) {
     this.rt = rt;
+    this.asks = asks;
   }
 
   /** The agent’s waiting entries of one thread start its turn (entry.waiting). @param {string} sessionId */

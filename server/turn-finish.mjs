@@ -4,7 +4,6 @@
 
 import { ASKING } from '../shared/catalog.mjs';
 import { fixEnded } from './apps.mjs';
-import { nextNeed, noticeNeed, stateFor } from './card-needs.mjs';
 import { emptyReply, endedWithoutReply } from './empty-reply.mjs';
 import { clip } from './helpers.mjs';
 import { settleScheduledWake } from './scheduled-wakes.mjs';
@@ -23,7 +22,7 @@ export function endTurn(rt, turn, err) {
   turn.closed = true;
   // Its permissions expire while it still counts as running, so their release counts no card tied to a turn: the
   // turn's end, below, decides those.
-  for (const [id, w] of rt.permissionWaits) if (w.sessionId === turn.sessionId) rt.settlePermission(id, 'expired');
+  rt.turnService.asks.expirePermissions(turn.sessionId);
   rt.running.end(turn.sessionId);
   rt.settleSubagentSteps(turn);
   // Its steps fold to what its record keeps: the live view's detail goes with the turn (turn-steps.mjs).
@@ -163,10 +162,11 @@ function needsAfter(rt, se, turn, items) {
   const topic = turn.threadId !== se.threadId && rt.store.pending.thread(turn.threadId)?.kind === 'topic' ? turn.threadId : null;
   // The newest card that still waits (card-needs.mjs): this turn's asks, the kept turns' (a failed reply's Retry
   // among them), and the cards that wait until answered.
-  const needs = nextNeed(rt, se, { turnIds: [turn.id, ...(se.keptTurnIds ?? [])], keep: waiting?.id ?? null });
+  const asks = rt.turnService.asks;
+  const needs = asks.nextNeed(se, { turnIds: [turn.id, ...(se.keptTurnIds ?? [])], keep: waiting?.id ?? null });
   const mentionsYou = /(^|\W)@you\b/i.test(turn.said);
   rt.sessions.update(se.id, (se) => ({
-    state: stateFor(needs),
+    state: asks.stateFor(needs),
     needs,
     sideTurn: null,
     glimpse: '',
@@ -179,7 +179,7 @@ function needsAfter(rt, se, turn, items) {
     unread: topic ? se.unread : viewing ? 0 : se.unread + (turn.said || open.length ? 1 : 0),
     stopAsk: null,
   }));
-  noticeNeed(rt, se, needs);
+  asks.noticeNeed(se, needs);
   if (needs && (needs.kind === 'block' || needs.kind === 'toolask')) rt.threads.notify('blocking', se, `@${se.handle} needs you`, needs.text, needs.threadId);
   else if (mentionsYou && !viewing) rt.threads.notify('info', se, `@${se.handle} mentioned you`, clip(turn.said, 120), turn.threadId);
   else if (turn.said && !viewing) rt.threads.notify('info', se, `@${se.handle} finished`, clip(turn.said, 120), turn.threadId);

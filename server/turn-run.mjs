@@ -6,7 +6,6 @@ import { randomUUID } from 'node:crypto';
 import { attachedFiles } from './adapters/attached-files.mjs';
 import { workFolder } from './adapters/folder.mjs';
 import { toolsDownNote } from './adapters/tools-down.mjs';
-import { keptTurns, releaseNeed, TURN_TIED } from './card-needs.mjs';
 import { heldSession } from './held-session.mjs';
 import { httpError, retiredError } from './helpers.mjs';
 import { arrival } from './queue-batch.mjs';
@@ -211,13 +210,13 @@ function atWork(rt, se, turn) {
     sideTurn: where === se.threadId ? null : { threadId: where, by: startedBy(turn) },
     state: 'think',
     // Moving on clears a need tied to a turn; the cards that wait until answered stay (card-needs.mjs RANK).
-    needs: turn.movesOn && TURN_TIED.has(se.needs?.kind) ? null : se.needs,
+    needs: turn.movesOn && rt.turnService.asks.turnTied(se.needs?.kind) ? null : se.needs,
     // This turn is the last turn from its start (card-needs.mjs turnsOf), so a restart that cuts it off, or a card
     // released after it leaves the running turns, doesn't count a block from the turn before.
     lastTurnId: turn.id,
     // A turn that doesn't move on keeps the turns still asking you something, so their refusals and tool requests
     // count until you move on (card-needs.mjs keptTurns). Read before this patch moves lastTurnId on.
-    keptTurnIds: turn.movesOn ? [] : keptTurns(rt, se),
+    keptTurnIds: turn.movesOn ? [] : rt.turnService.asks.keptTurns(se),
     // A turn that doesn't move on keeps the block it found waiting (#69): it counts mid-turn, at the turn's end and
     // after a restart (card-needs.mjs `keep`), even if a permission takes the need meanwhile. In the store, as above.
     keptId: !turn.movesOn && se.needs?.kind === 'block' ? se.needs.itemId : null,
@@ -275,7 +274,7 @@ export function retry(rt, threadId, itemId) {
     rt.threads.patchItem(threadId, itemId, { status: 'retried' });
     // Only the cards that wait until answered can take the need: the failed turn's own asks would flash until the
     // retried turn starts, and that turn's end decides them.
-    releaseNeed(rt, rt.s.sessions[it.sessionId], itemId, undefined, { turnIds: [] });
+    rt.turnService.asks.releaseNeed(rt.s.sessions[it.sessionId], itemId, undefined, { turnIds: [] });
     // Whom the failed reply already handed work to (#485), so the retry doesn't hand it over again.
     const woken = it.wokeOnFailure ?? [];
     // A turn that took entries: they reopen as a resend, and the turn that takes them is built from them, so nothing

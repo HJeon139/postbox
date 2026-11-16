@@ -52,7 +52,7 @@ function whatTheTurnIs(rt, se0, turn) {
      * turn, req.hostPrompt names the prompt as the host knows it (a Codex request’s codex:<id>), so the host’s
      * expiry of it marks the card (#120).
      */
-    askPermission: (req) => (turn.remote ? rt.remote.ask(turn, req) : rt.requestPermission(turn.sessionId, req)),
+    askPermission: (req) => (turn.remote ? rt.remote.ask(turn, req) : rt.turnService.asks.requestPermission(turn.sessionId, req)),
     /** Permission rules the person allowed for this turn only, after a refusal (Claude Code rule syntax). */
     allowOnce: [...turn.allowOnce],
     /** Rules the person made for this conversation only (#66): { allow, ask, deny }, passed every turn. */
@@ -118,7 +118,7 @@ function turnHooks(rt, turn, live) {
     denied(d) {
       if (!live()) return;
       rt.ledger.denied(turn, d.toolUseId);
-      rt.recordDenial(turn, d);
+      rt.turnService.asks.recordDenial(turn, d);
     },
     ...workCallbacks(rt, turn, live),
     /**
