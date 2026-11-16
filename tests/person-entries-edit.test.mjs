@@ -56,7 +56,7 @@ test('an agent the person removed their message for reads that it was removed, n
   assert.ok(JSON.stringify(toBeta.message).includes('delete the prod table'), '@beta still has it');
 });
 
-test('an edit that changes whom the message names is refused, and says what to do instead', async () => {
+test('an edit that names an agent the message doesn’t go to is refused, and says what to do instead', async () => {
   const f = await bothBusy();
   const { item, queued } = f.rt.sendMessage(f.t.id, { text: '@alpha check the logs' });
   assert.throws(() => f.rt.editQueued(f.t.id, queued[0].id, '@beta check the logs'), {
@@ -66,6 +66,8 @@ test('an edit that changes whom the message names is refused, and says what to d
   assert.equal(f.store.item(f.t.id, item.id).text, '@alpha check the logs');
   f.rt.editQueued(f.t.id, queued[0].id, '@alpha check the error logs');
   assert.equal(f.store.item(f.t.id, item.id).text, '@alpha check the error logs', 'the same names, other words');
+  f.rt.editQueued(f.t.id, queued[0].id, 'check the error logs too');
+  assert.equal(f.store.item(f.t.id, item.id).text, 'check the error logs too', 'leaving the name out changes nothing about who gets it');
   f.a.release();
   f.b.release();
   await settle(f.rt);

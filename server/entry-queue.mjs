@@ -31,17 +31,18 @@ export function editEntry(rt, threadId, entryId, text) {
   }
   const said = String(text ?? '').slice(0, 50000);
   if (!said.trim()) throw httpError(400, 'Write the message, or remove it instead.');
-  // It went to the agents it named when it was sent, so an edit keeps the same ones.
-  const now = rt.store.pending.item(e.threadId, e.itemId)?.text ?? '';
-  if (named(rt, now) !== named(rt, said)) throw httpError(409, 'Remove it and send a new message to change who it’s for.');
+  // It went to its agents when it was sent, so an edit can’t name another: it wouldn’t reach it. Leaving a name out
+  // changes nothing about who gets it.
+  const to = new Set((rt.store.pending.item(e.threadId, e.itemId)?.to ?? []).map((/** @type {string} */ h) => h.toLowerCase()));
+  if (named(rt, said).some((h) => !to.has(h))) throw httpError(409, 'Remove it and send a new message to change who it’s for.');
   rt.threads.patchItem(e.threadId, e.itemId, { text: said });
 }
 
 /** An entry’s states once its agent was handed the message. */
 const GIVEN = new Set(['taken', 'delivered', 'failed']);
 
-/** The agents a message @-mentions, as one key to compare. @param {any} rt @param {string} text */
-const named = (rt, text) => [...new Set(parseMentions(text, rt.personas.handles()).map((h) => h.toLowerCase()))].sort().join(' ');
+/** The handles a message @-mentions, lowercased. @param {any} rt @param {string} text @returns {string[]} */
+const named = (rt, text) => parseMentions(text, rt.personas.handles()).map((h) => h.toLowerCase());
 
 /**
  * The session in the thread’s conversation whose inbox holds the entry waiting, or a 404 as for a queued message that
