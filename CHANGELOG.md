@@ -2,6 +2,13 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.20.1 (2026-11-16)
+
+### Fixes
+
+- **store:** a step that finishes early leaves close() on its short bound
+- **store:** a disk step still running is progress, up to a limit of its own
+
 ## 4.20.0 (2026-11-16)
 
 ### Features
