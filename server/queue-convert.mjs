@@ -1,0 +1,35 @@
+// A store written before the person’s message became an inbox entry when it’s sent (#1404) can hold messages in a
+// thread’s `queue`. On start, before Delivery’s own start, each is turned into entries once (#1423), as it would have
+// been if sent now (designs/rooms-at-scale.md, “What an entry is”):
+// - the person’s message is posted as its item, with a `person` entry for each agent it waited for that is still here;
+//   with none, it’s posted and wakes no one, as a message to a deleted agent was (#604);
+// - an agent’s queued wake becomes a `mention` entry for the item it was posted as.
+// Each entry carries its queue row’s id as its retry id, so a conversion that a crash cut short, before the queue was
+// written back, finds what it already did and posts nothing twice. Functions take the Runtime first, as waiting code
+// does until Turns is a service.
+
+import { postUserMessage } from './message-queue.mjs';
+
+/** Turns every stored queue into entries, then empties it. Delivery’s start wakes the agents. @param {any} rt */
+export function convertQueues(rt) {
+  for (const t of rt.threads.pending()) {
+    if (!t.queue?.length) continue;
+    for (const q of t.queue) convertOne(rt, t.id, q);
+    rt.threads.patch(t.id, { queue: [] });
+  }
+}
+
+/** One queue row as entries, unless an earlier conversion made them. @param {any} rt @param {string} threadId @param {any} q */
+function convertOne(rt, threadId, q) {
+  const agents = (q.sessionIds ?? []).map((/** @type {string} */ id) => rt.store.pending.session(id)).filter((/** @type {any} */ se) => se && !se.retiredFork);
+  if (agents.some((/** @type {any} */ se) => rt.delivery.inbox(se.id).some((/** @type {any} */ e) => e.retryId === q.id))) return;
+  const entry = { threadId, retryId: q.id };
+  if (q.kind === 'wake') {
+    const said = q.itemId ? { itemId: q.itemId } : { text: String(q.text ?? '') };
+    for (const se of agents) rt.delivery.send({ ...entry, ...said, sessionId: se.id, source: 'mention', from: q.from }, { wake: false });
+    return;
+  }
+  const to = agents.map((/** @type {any} */ se) => se.handle);
+  const { item } = postUserMessage(rt, threadId, { text: String(q.text ?? ''), attachments: q.attachments ?? [] }, to);
+  for (const se of agents) rt.delivery.send({ ...entry, itemId: item.id, sessionId: se.id, source: 'person', from: 'you' }, { wake: false });
+}

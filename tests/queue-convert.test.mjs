@@ -5,6 +5,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
+import { convertQueues } from '../server/queue-convert.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
 import * as arrange from './arrange.mjs';
@@ -60,7 +61,7 @@ test('#1423 a conversion cut short by a crash posts nothing twice when it runs a
   const rt = new Runtime({ store, adapters: new AdapterRegistry().register(new ScriptedAdapter()), config: f.rt.config });
   // The person’s message was converted, and Postbox stopped before the queue was written back.
   const queue = store.state.threads[f.t.id].queue;
-  rt.convertQueues();
+  convertQueues(rt);
   arrange.setThread(rt, f.t.id, { queue });
   await store.close();
   const again = await restart(f.dir, f.rt.config);

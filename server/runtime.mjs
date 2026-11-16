@@ -41,6 +41,7 @@ import {
 import { retireModes } from './permission-modes.mjs';
 import { changePermissionFolder, changePermissionRule, latestProject, PERMISSION_MODES, panelTarget, permissionsView } from './permissions-panel.mjs';
 import { Personas } from './personas.mjs';
+import { convertQueues } from './queue-convert.mjs';
 import { readCapped } from './read-capped.mjs';
 import { addReadFolder, readCardAlways } from './read-folders.mjs';
 import { Hosts } from './remote/host-service.mjs';
@@ -368,9 +369,10 @@ export class Runtime {
     return isEntryId(queueId) ? sendEntryNow(this, threadId, queueId) : queue.sendQueuedNow(this, threadId, queueId);
   }
 
-  /** Once Postbox listens after a restart: what waited in the queues goes now, a wake or a message of yours (#228). */
+  /** Once Postbox listens after a restart: what waited goes now, a wake or a message of yours (#228). */
   drainAll() {
-    queue.drainAll(this);
+    // A queue a store holds from before #1404 becomes entries first (#1423).
+    convertQueues(this);
     // Then the inbox: a turn lost to the restart reopens what it took, and each agent with entries is woken.
     this.delivery.start();
   }
