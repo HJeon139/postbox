@@ -3,9 +3,10 @@
 // public state alone: the session, the conversation’s work (its jobs) and the inboxes (Delivery’s entries).
 //
 // One state at a time, the first that holds:
-// - failed: its last turn failed;
 // - quota: its harness ran out of quota, until the reset time it gave (the owner’s decision on #442). The one place
-//   quota shows in the agents area. `se.quota` is a slot until inbox step 3 records quota failures;
+//   quota shows in the agents area. It comes before failed: a turn failed for quota leaves the session failed, so
+//   nothing wakes it, and the person still sees why. `se.quota` is a slot until inbox step 3 records quota failures;
+// - failed: its last turn failed;
 // - you: it waits on the person. Today that is the session’s needs-you state; Asks makes it its open asks;
 // - running: a live turn, one stopping, or one on its host, with its current step;
 // - job: a command it started in the background still runs;
@@ -20,7 +21,7 @@ const LIVE = new Set(['think', 'gen', 'tool', 'stopping']);
 const ON_HOST = new Set(['running', 'waiting', 'lost', 'stopping']);
 
 /**
- * @typedef {{ state: 'failed'|'quota'|'you'|'running'|'job'|'behind'|'idle', detail: string, since?: number, until?: number }} AgentState
+ * @typedef {{ state: 'quota'|'failed'|'you'|'running'|'job'|'behind'|'idle', detail: string, since?: number, until?: number }} AgentState
  * until is the quota’s reset time, when the harness gave one; since is when the oldest entry arrived, for behind.
  * detail is the step for running, the job’s description or first line for job, and the other agent’s handle for behind.
  */
@@ -33,9 +34,9 @@ const ON_HOST = new Set(['running', 'waiting', 'lost', 'stopping']);
  */
 export function agentState(se, s, now = Date.now()) {
   if (!se) return { state: 'idle', detail: '' };
-  if (se.state === 'failed') return { state: 'failed', detail: '' };
   const until = se.quota?.until;
   if (se.quota && (until == null || until > now)) return { state: 'quota', detail: '', ...(until ? { until } : {}) };
+  if (se.state === 'failed') return { state: 'failed', detail: '' };
   if (se.state === 'needs') return { state: 'you', detail: '' };
   if (LIVE.has(se.state) || ON_HOST.has(se.remoteTurn?.state)) return { state: 'running', detail: se.currentStep ?? '' };
   const conv = conversationRoot(s.threads, se.threadId);

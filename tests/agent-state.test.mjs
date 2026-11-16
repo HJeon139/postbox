@@ -93,6 +93,8 @@ test('once the reset time has passed, the quota no longer holds it', () => {
   const s = room();
   s.sessions.s1.quota = { until: 5000 };
   assert.equal(agentState(s.sessions.s1, s, 6000).state, 'idle');
+  s.sessions.s1.state = 'failed';
+  assert.equal(agentState(s.sessions.s1, s, 6000).state, 'failed', 'the turn it failed is still failed');
 });
 
 test('an agent that needs the person is waiting on you', () => {
@@ -101,13 +103,13 @@ test('an agent that needs the person is waiting on you', () => {
   assert.deepEqual(of(s), { state: 'you', detail: '' });
 });
 
-test('the first state that holds wins: failed, quota, running, a job, then behind', () => {
+test('the first state that holds wins: quota, failed, running, a job, then behind', () => {
   const s = room();
   s.sessions.s1.quota = { until: Date.now() + 60_000 };
   s.sessions.s1.state = 'tool';
   assert.equal(of(s).state, 'quota');
   s.sessions.s1.state = 'failed';
-  assert.equal(of(s).state, 'failed');
+  assert.equal(of(s).state, 'quota', 'a turn failed for quota says why, though the session stays failed so nothing wakes it');
   s.sessions.s1.quota = undefined;
   s.sessions.s1.state = 'idle';
   s.work.c1.push({ kind: 'command', id: 'w1', sessionId: 's1', state: 'background', command: 'npm run build' });
