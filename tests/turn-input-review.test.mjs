@@ -97,3 +97,22 @@ test('#1427 #121 the threads the person’s message links to come with the input
     JSON.stringify(call.message.context),
   );
 });
+
+test('#1427 #121 in a batch of two messages, the thread the second links comes with the input', async () => {
+  const f = await roomAndTopic();
+  const busy = held();
+  f.adapter.next.push(busy.step);
+  f.rt.sendMessage(f.t.id, { text: '@beta start' });
+  await sleep(5);
+  f.rt.sendMessage(f.t.id, { text: '@beta first, no link' });
+  f.rt.sendMessage(f.t.id, { text: `@beta then read #/t/${f.t.id}/side/${f.topic}` });
+  busy.release();
+  await settle(f.rt);
+  const call = f.adapter.calls.filter((c) => c.sessionId === f.beta.id).at(-1);
+  assert.equal(call.message.kind, 'input');
+  assert.match(call.message.text, /first, no link[\s\S]*then read/, 'one turn, both messages');
+  assert.ok(
+    (call.message.context ?? []).some((c) => c.includes(`(thread ${f.topic})`) && c.includes('read_conversation')),
+    JSON.stringify(call.message.context),
+  );
+});
