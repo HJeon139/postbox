@@ -2,6 +2,20 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.18.0 (2026-11-16)
+
+### Features
+
+- **turns:** a turn of plain entries is given turn-input.mjs's text
+- **adapters:** an input message is formatted as its text, after the room's facts
+
+### Fixes
+
+- **mock:** the scripted mock reads the plain message a turn answers
+- **turns:** an input keeps a thread's talk, leaves out what waits, reads each entry where it is
+- **guide:** the room's paragraph names what else is context, not the catch-up
+- **turns:** an input carries the threads the person's messages link to
+
 ## 4.17.0 (2026-11-16)
 
 ### Features
