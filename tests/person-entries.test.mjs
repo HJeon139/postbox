@@ -68,3 +68,47 @@ test('#1108 a message sent during a Stop’s exit at shutdown is in the transcri
   assert.equal(said(f.store, f.t.id, '@beta held at shutdown').length, 1, 'one item in the transcript');
   assert.equal(givenTo(f.adapter, f.beta, '@beta held at shutdown'), 1, 'the agent is given it once');
 });
+
+/** @alpha and @beta both busy in turns held open until released. */
+async function bothBusy() {
+  const f = setup();
+  const a = held();
+  const b = held();
+  f.adapter.next.push(a.step, b.step);
+  f.rt.sendMessage(f.t.id, { text: '@alpha @beta start' });
+  await sleep(5);
+  return { ...f, a, b };
+}
+
+test('Edit changes the person’s message while it waits for every agent, and is refused once one has it', async () => {
+  const f = await bothBusy();
+  const { item, queued } = f.rt.sendMessage(f.t.id, { text: '@alpha @beta next' });
+  const forAlpha = queued.find((e) => e.sessionId === f.alpha.id);
+  f.rt.editQueued(f.t.id, forAlpha.id, '@alpha @beta next, edited');
+  assert.equal(f.store.item(f.t.id, item.id).text, '@alpha @beta next, edited', 'the item is the message, so it changes');
+  f.a.release();
+  await sleep(20);
+  assert.equal(givenTo(f.adapter, f.alpha, '@alpha @beta next, edited'), 1, 'alpha reads it as edited');
+  const forBeta = queued.find((e) => e.sessionId === f.beta.id);
+  assert.throws(() => f.rt.editQueued(f.t.id, forBeta.id, 'too late'), { status: 409, message: /@alpha already has this message/ });
+  assert.equal(f.store.item(f.t.id, item.id).text, '@alpha @beta next, edited');
+  f.b.release();
+  await settle(f.rt);
+});
+
+test('Remove stops one agent’s entry; the message says it was removed only once no agent has it or will', async () => {
+  const f = await bothBusy();
+  const { item, queued } = f.rt.sendMessage(f.t.id, { text: '@alpha @beta never mind' });
+  const [forAlpha, forBeta] = [f.alpha, f.beta].map((se) => queued.find((e) => e.sessionId === se.id));
+  f.rt.cancelQueued(f.t.id, forAlpha.id);
+  assert.equal(f.store.item(f.t.id, item.id).removed, undefined, 'beta still waits for it');
+  f.rt.cancelQueued(f.t.id, forBeta.id);
+  assert.ok(f.store.item(f.t.id, item.id).removed?.at, 'no agent will read it now');
+  f.a.release();
+  f.b.release();
+  await settle(f.rt);
+  assert.equal(givenTo(f.adapter, f.alpha, '@alpha @beta never mind') + givenTo(f.adapter, f.beta, '@alpha @beta never mind'), 0);
+  // What the room’s catch-up says of it, from then on: it was there, and it asks nothing.
+  const line = f.rt.memory.describeItem(f.store.item(f.t.id, item.id), f.alpha);
+  assert.match(line, /^The person, to @alpha, @beta: \(a message removed before any agent read it\)$/);
+});
