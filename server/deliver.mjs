@@ -50,10 +50,12 @@ export function deliver(rt, sessionId, message, { summarizeTo = null, threadId =
   const slash = message.slash === true || typeof message.attach === 'string';
   // The agent’s waiting entries in this thread come with it (entry-turns.mjs), and Retry sends them again with it.
   if (!slash && !summarizeTo) asked.message = message = withEntries(rt, sessionId, where, message);
-  message = turnMessage(rt, se, message, where, slash);
+  // Postbox’s own marks (the turn’s chosen id, and how it takes entries) stay with Postbox, not the agent’s message.
+  const { turnId, fromEntries: _taken, entriesWait: _waits, ...asSent } = message;
+  message = turnMessage(rt, se, asSent, where, slash);
   const persona = rt.persona(se.personaId);
   const adapter = rt.placement.registeredAdapter(persona);
-  const turn = newTurn(se, message, persona, { where, slash, summarizeTo, asked });
+  const turn = newTurn(se, { ...message, turnId }, persona, { where, slash, summarizeTo, asked });
   rt.running.begin(turn);
   // A persona on a remote host (#120): the turn is remote from here on (server/remote/turns.mjs).
   const hostId = adapter ? rt.placement.hostOf(persona) : null;
