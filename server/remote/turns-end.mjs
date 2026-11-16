@@ -126,10 +126,26 @@ function stoppedHung(rts, turn, live, se, why) {
   rt.threads.notify('info', se, `@${se.handle} was stopped`, why, turn.threadId);
 }
 
+/** How many ended host turns Postbox remembers the agent of, for their late calls (#612). */
+const ENDED_KEPT = 200;
+
+/** A host turn ended here: a call it sends late still finds its agent. @param {RemoteTurns} rts @param {string} turn @param {string} sessionId */
+function rememberEnded(rts, turn, sessionId) {
+  rts.endedTurns.delete(turn);
+  rts.endedTurns.set(turn, sessionId);
+  for (const oldest of rts.endedTurns.keys()) {
+    if (rts.endedTurns.size <= ENDED_KEPT) break;
+    rts.endedTurns.delete(oldest);
+  }
+}
+
 /** @param {RemoteTurns} rts @param {Live} live */
 function forget(rts, live) {
   if (rts.live.get(live.sessionId) === live) rts.live.delete(live.sessionId);
-  for (const t of live.hostTurns) if (rts.byTurn.get(t) === live) rts.byTurn.delete(t);
+  for (const t of live.hostTurns) {
+    if (rts.byTurn.get(t) === live) rts.byTurn.delete(t);
+    rememberEnded(rts, t, live.sessionId);
+  }
   rts.dirty.delete(live.sessionId);
   releaseHost(rts, live.hostId);
   // A prompt still waiting for the replay waits only its bound now, and is refused: its turn is over here.

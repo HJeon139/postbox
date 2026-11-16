@@ -73,7 +73,7 @@ export function updateRemote(rts, sessionId, patch) {
 export function sessionOfTurn(rts, turn) {
   const live = rts.byTurn.get(turn);
   if (live) return rts.rt.s.sessions[live.sessionId] ?? null;
-  const id = rts.restoring.get(turn);
+  const id = rts.restoring.get(turn) ?? rts.endedTurns.get(turn);
   if (id) return rts.rt.s.sessions[id] ?? null;
   return Object.values(rts.rt.s.sessions).find((se) => se.remoteTurn?.turn === turn) ?? null;
 }
