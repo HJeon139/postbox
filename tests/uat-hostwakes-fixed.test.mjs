@@ -86,3 +86,14 @@ test('#451 a turn after your Decline that another agent woke isn’t the Decline
   f.now = s(1000);
   assert.equal(check('refused-wake-lost').run(f).length, 1);
 });
+
+test('wake-held-on-card sees a mention held on the open card, as the store keeps it, since wake_agent is gone (#481)', () => {
+  const f = facts({ allowedAt: null });
+  const card = f.state.items.th1.find((it) => it.kind === 'hop');
+  card.held = [{ fromSessionId: 'se_dev', from: 'developer', to: 'critic', text: '@critic count the lines in work/*.txt', itemId: 'it_m', at: s(120) }];
+  f.streams = [];
+  const seen = HOSTWAKE_TRIGGERS['wake-held-on-card'].run(f);
+  assert.equal(seen.length, 1);
+  assert.equal(seen[0].at, s(120));
+  assert.match(seen[0].evidence, /@developer’s mention of @critic is held/);
+});
