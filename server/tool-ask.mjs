@@ -86,13 +86,13 @@ function answered(rt, threadId, it, action) {
   const se = rt.s.sessions[it.sessionId];
   if (!se) return { ok: true };
   releaseNeed(rt, se, it.id);
+  // The person’s answer is an entry pointing at the card (designs/rooms-at-scale.md, “What an entry is”), with the words
+  // its turn is given until Turns builds input from entries.
+  const text =
+    action === 'on'
+      ? `The person turned on ${it.tool} (${it.label}) for you. Its tools are in your list from this turn: carry on with what needed it.`
+      : `The person kept ${it.tool} off for you. Carry on without it, and say plainly what you can’t do.`;
   if (!se.retiredFork)
-    rt.deliver(se.id, {
-      kind: 'notice',
-      text:
-        action === 'on'
-          ? `The person turned on ${it.tool} (${it.label}) for you. Its tools are in your list from this turn: carry on with what needed it.`
-          : `The person kept ${it.tool} off for you. Carry on without it, and say plainly what you can’t do.`,
-    });
+    rt.delivery.send({ sessionId: se.id, threadId: se.threadId, source: 'answer', itemId: it.id, from: 'you', message: { kind: 'notice', text } });
   return { ok: true };
 }
