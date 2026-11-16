@@ -92,3 +92,25 @@ test('the person’s decline on a wake card reaches the waking agent as an answe
   );
   assert.match(JSON.stringify(f.adapter.calls.filter((c) => c.sessionId === f.alpha.id).at(-1).message), /chose not to add @gamma/);
 });
+
+test('a notice of Postbox’s own, “your mention woke no one”, starts no turn, and rides the agent’s next one', async () => {
+  // The integrator’s split (rooms-at-scale.md, “What an entry is”): a note that carries the person’s decision is an
+  // answer, and wakes; one of Postbox’s own information rides the next turn. This one reaches the agent as a told note.
+  const f = setup();
+  f.adapter.next.push(async (c) => c.text('Let’s ask @gamma to check the numbers.'));
+  f.rt.sendMessage(f.t.id, { text: '@alpha go on' });
+  await settle(f.rt);
+  const card = f.store.items(f.t.id).find((i) => i.kind === 'hop' && i.status === 'open');
+  f.rt.resolveHop(f.t.id, card.id, false);
+  await settle(f.rt);
+  f.adapter.next.push(async (c) => c.text('Then @gamma can look later.'));
+  f.rt.sendMessage(f.t.id, { text: '@beta go on' });
+  await settle(f.rt);
+  const betaTurns = () => f.adapter.calls.filter((c) => c.sessionId === f.beta.id).length;
+  const before = betaTurns();
+  await settle(f.rt);
+  assert.equal(betaTurns(), before, 'the notice started no turn');
+  f.rt.sendMessage(f.t.id, { text: '@beta anything else?' });
+  await settle(f.rt);
+  assert.match(JSON.stringify(f.adapter.calls.filter((c) => c.sessionId === f.beta.id).at(-1).message), /Your mention of @gamma woke no one/);
+});
