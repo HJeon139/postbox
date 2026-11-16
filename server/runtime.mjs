@@ -11,6 +11,7 @@ import { holdAppSend, needAppSend, releaseRetired, resolveAppSend } from './app-
 import { APP_HOLD_MAX, APP_SEND_LIMIT, APP_SEND_WINDOW_MS } from './app-send-limits.mjs';
 import { Apps } from './app-service.mjs';
 import { askQuestions, QUESTION_TOOL, questionBlocks } from './ask-question.mjs';
+import { asksPort } from './asks-port.mjs';
 import { Assets } from './asset-service.mjs';
 import { act } from './blocks.mjs';
 import { Bus } from './bus.mjs';
@@ -125,8 +126,11 @@ export class Runtime {
     // What an entry takes of a turn’s budget: its line as the turn gives it (turn-input.mjs), cut at its own ceiling.
     const sizeOf = (/** @type {any} */ e) => entryLine(e, (id) => store.pending.item(e.threadId, id)?.text ?? null).length;
     this.delivery = new Delivery({ store, bus: this.bus, running: this.running, chainHeld: () => false, sizeOf });
-    // Turns: the one way a turn starts, each start one of its steps (server/turn-service.mjs).
-    this.turnService = new Turns(this);
+    // Turns: the one way a turn starts, each start one of its steps (server/turn-service.mjs), reaching waiting code
+    // only through its asks port. A card that opens closes the turn’s reply segment, synchronously, before the card
+    // offers its need, so the reply goes on below it (designs/architecture/services.md, “card.opened must be synchronous”).
+    this.turnService = new Turns(this, { asks: asksPort(this) });
+    this.bus.on('card.opened', ({ turn }) => this.closeSegment(turn));
     this.signalProcess = signalProcess ?? process.kill;
     this.listProcesses = list ?? listProcesses;
     /** @type {NodeJS.Timeout|null} */

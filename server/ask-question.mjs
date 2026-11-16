@@ -132,7 +132,8 @@ function askOne(rt, sessionId, block, toolUseId) {
     question: true,
     toolUseId: toolUseId ? String(toolUseId) : null,
   });
-  rt.closeSegment(turn);
+  // The text so far is finished; Turns closes it, and the reply continues below the question.
+  rt.bus.emit('card.opened', { turn });
   offerNeed(rt, se, { kind: 'block', itemId: it.id, text: block.title ?? block.prompt, ...rt.sessions.awayFrom(se, turn.threadId) }, 'needs');
   rt.threads.notify('blocking', se, `@${se.handle} asks you`, block.prompt, turn.threadId);
   return new Promise((resolve) => {
