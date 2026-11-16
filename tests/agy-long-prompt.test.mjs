@@ -124,13 +124,10 @@ test('#362: a turn the operating system refused ends failed with the person’s 
   const [se] = arrange.sessionsIn(rt, t.id);
   rt.sendMessage(t.id, { text: `@gem ${'x'.repeat(40_000)}` });
   rt.sendMessage(t.id, { text: '@gem and this, next' });
-  assert.equal(store.state.threads[t.id].queue?.length, 1, 'the second message waits for the first turn');
+  assert.equal(arrange.personWaiting(rt, t.id).length, 1, 'the second message waits for the first turn');
   await settle(rt);
   const failed = store.items(t.id).find((x) => x.kind === 'agent' && x.status === 'failed');
   assert.equal(failed?.error, tooLongMessage(41));
   assert.equal(store.state.sessions[se.id].state, 'failed');
-  assert.deepEqual(
-    store.state.threads[t.id].queue.map((q) => q.text),
-    ['@gem and this, next'],
-  );
+  assert.deepEqual(arrange.personWaiting(rt, t.id), ['@gem and this, next']);
 });

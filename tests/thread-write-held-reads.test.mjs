@@ -143,11 +143,11 @@ test('a sweep over every pending thread sees each held write of a thread, read a
   const f = await heldRoom();
   const b = await busyBeta(f);
   const release = await f.hold();
-  const queued = () => (f.store.pending.threads()[f.t.id].queue ?? []).map((q) => q.text);
-  f.rt.sendMessage(f.t.id, { text: '@beta first' });
-  assert.deepEqual(queued(), ['@beta first']);
-  f.rt.sendMessage(f.t.id, { text: '@beta second' });
-  assert.deepEqual(queued(), ['@beta first', '@beta second']);
+  const limit = () => f.store.pending.threads()[f.t.id].chainLimit;
+  arrange.setThread(f.rt, f.t.id, { chainLimit: 3 });
+  assert.equal(limit(), 3);
+  arrange.setThread(f.rt, f.t.id, { chainLimit: 4 });
+  assert.equal(limit(), 4);
   await release();
   b.release();
   await settle(f.rt);

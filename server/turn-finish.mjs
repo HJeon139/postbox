@@ -137,6 +137,8 @@ function endFailed(rt, se, turn, err) {
   if (woke.length || turn.woken.length) rt.threads.patchItem(turn.threadId, target, { wokeOnFailure: [...new Set([...turn.woken, ...woke])] });
   // A wake that waited for this turn still goes: with no forks, it was promised an answer (#228). Your own
   // queued messages wait, as before, for you to see the failure.
+  // The person’s messages that waited for it wait for them now (#1146).
+  rt.delivery.failedWith(se.id);
   rt.takePending(se, turn, 'wakes');
   // Last: what it took was given to the agent, and the agents its replies mentioned are woken.
   rt.bus.emit('turn.failed', { turn });

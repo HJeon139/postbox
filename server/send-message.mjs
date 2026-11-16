@@ -1,19 +1,29 @@
 // A message you send (#110, #121, #228): who it goes to (the agents you @-mention, joined if they weren’t here, else
 // the one you reply to), whether it waits in the queue for a busy agent or goes now, and the threads it links to,
-// which its agents are told how to read. Delivery and the queue are message-queue.mjs’s. Moved out of
+// which its agents are told how to read. It’s posted when it’s sent, and each agent it goes to gets an inbox entry. Moved out of
 // server/runtime.mjs; Runtime keeps a method of each name that delegates here.
 
 import { parseMentions } from '../shared/text.mjs';
+import { sendEntryAlone } from './entry-queue.mjs';
 import { httpError, retiredError } from './helpers.mjs';
 import * as queue from './message-queue.mjs';
-import { arrival } from './queue-batch.mjs';
 import { threadPersona } from './side-threads.mjs';
-import { newId } from './store.mjs';
 import { retireStale } from './wake-cards.mjs';
 
-/** You send a message: @mentions wake agents (joining them to the thread); otherwise the last speaker replies. */
-export function sendMessage(rt, threadId, { text = '', attachments = [], sendNow = false } = {}) {
+/**
+ * You send a message: @mentions wake agents (joining them to the thread); otherwise the last speaker replies.
+ * `clientId`: the id the page’s outbox gives the message, which it sends again when the response to a try was lost. A
+ * repeat is answered with what the first try posted, and stores nothing (#1138).
+ * @param {any} rt @param {string} threadId
+ * @param {{ text?: string, attachments?: any[], sendNow?: boolean, clientId?: unknown }} [message]  as the route has it
+ */
+export function sendMessage(rt, threadId, { text = '', attachments = [], sendNow = false, clientId = undefined } = {}) {
   const t = rt.thread(threadId);
+  // First, before whom it goes to is worked out again: with no @-mention that’s the last speaker, who may have changed
+  // since the first try (#1418’s review).
+  const retryId = typeof clientId === 'string' && clientId ? clientId.slice(0, 100) : undefined;
+  const repeat = retryId && repeatOf(rt, threadId, retryId);
+  if (repeat) return repeat;
   text = String(text).slice(0, 50000);
   attachments = rt.assets.sentAttachments(attachments);
   if (!text.trim() && !attachments.length) throw httpError(400, 'Write a message or attach a file first.');
@@ -27,19 +37,42 @@ export function sendMessage(rt, threadId, { text = '', attachments = [], sendNow
   // Refuse before anything is posted or joined: a turn for an agent whose backend isn’t registered couldn’t start (#874).
   rt.placement.refuseUnregisteredSend(mentioned);
   const targets = targetsOf(rt, t, mentioned);
-  // Messages to a busy agent wait in the queue unless you choose Send now, as for one whose host turn waits to be
-  // attached again after a restart (#1135).
-  const busy = targets.filter(({ se }) => rt.running.turnOf(se.id) || rt.running.awaitsAttach(se.id));
-  const q = busy.length && !sendNow ? { id: newId('q'), text, attachments, sessionIds: targets.map(({ se }) => se.id), at: Date.now(), seq: arrival() } : null;
-  if (q) rt.threads.patch(threadId, (x) => ({ queue: [...(x.queue ?? []), q] }));
   // Send now is a change of course (stopForSendNow), also for one already exiting from a plain Stop (#1040).
-  else if (sendNow) for (const { se } of targets) queue.stopForSendNow(rt, se.id);
-  // Send now goes alone: the agents’ inbox entries wait for the turn after it, as the queue does.
-  const sent = q ? { queued: q } : queue.postAndDeliver(rt, threadId, { text, attachments }, targets, sendNow ? { entriesWait: true } : {});
-  // A card waiting to wake one of them is stale now (#439), whether this went at once or waits in the queue. It
+  if (sendNow) for (const { se } of targets) queue.stopForSendNow(rt, se.id);
+  // Posted when it’s sent, with one entry per agent it goes to (designs/rooms-at-scale.md, “What an entry is”): a busy
+  // agent’s waits in its inbox, which its queue lists, and an idle one’s starts its turn (#1404).
+  const { item } = queue.postUserMessage(
+    rt,
+    threadId,
+    { text, attachments },
+    targets.map(({ se }) => se.handle),
+  );
+  const entries = targets.map(({ se }) =>
+    rt.delivery.send({ sessionId: se.id, threadId, source: 'person', itemId: item.id, from: 'you', retryId }, { wake: false }),
+  );
+  // Send now goes alone: a turn takes its entry ahead of the rest, which wait for the turn after it.
+  for (const e of entries) {
+    if (sendNow) sendEntryAlone(rt, e);
+    else rt.delivery.wake(e.sessionId);
+  }
+  const queued = entries.filter((e) => rt.delivery.waiting(e.sessionId).some((x) => x.id === e.id));
+  // A card waiting to wake one of them is stale now (#439), whether this went at once or waits in the inbox. It
   // retires after, so the wake you never allowed goes behind your message rather than ahead of it.
   for (const { se } of targets) retireStale(rt, threadId, se, 'you wrote to it', { byPerson: true });
-  return sent;
+  return queued.length ? { item, queued } : { item };
+}
+
+/**
+ * A try of a message the page already sent (#1138): the item its first try posted, found by the retry id its entries
+ * carry, whatever became of them since, in the inbox of any agent of the conversation.
+ * @param {any} rt @param {string} threadId @param {string} retryId
+ */
+function repeatOf(rt, threadId, retryId) {
+  for (const se of rt.sessions.pendingIn(rt.threads.lineage(threadId).at(-1))) {
+    const e = rt.delivery.inbox(se.id).find((/** @type {any} */ x) => x.retryId === retryId);
+    if (e) return { item: rt.store.pending.item(e.threadId, e.itemId) };
+  }
+  return null;
 }
 
 /**

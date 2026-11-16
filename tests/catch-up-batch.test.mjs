@@ -1,7 +1,9 @@
 // #506: a message a turn's summary gives in full reaches the agent once. A combined batch (the person's queued message
 // and an agent's wake, delivered as one) left every message but the last in the turn's summary too, so the agent read
 // it twice in one prompt; and the person's message, already posted and waiting behind a turn in another thread, came in
-// full after that turn's summary gave it, since the pointer #484 made was only for an agent's mention.
+// full after that turn's summary gave it, since the pointer #484 made was only for an agent's mention. Since #1404 the
+// person's message is posted when it's sent, and one still waiting for the agent stays out of a summary: it comes once,
+// whole, in its own turn.
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
@@ -52,7 +54,7 @@ test('#506 an agent’s mention batched with your later message reaches the agen
   assert.equal(copies(batch, THEIRS), 1);
 });
 
-test('#506 your posted message that a turn in a topic thread gave in full comes after it as a pointer', async () => {
+test('#506 your message waiting behind a turn in a topic thread stays out of that turn’s summary, and comes whole after it', async () => {
   const f = setup();
   const root = arrange.post(f.rt, f.t.id, {
     kind: 'agent',
@@ -67,20 +69,17 @@ test('#506 your posted message that a turn in a topic thread gave in full comes 
   // Your Send now in the topic stops alpha's turn, and your message in the conversation, posted while it stops, waits
   // behind the topic's.
   const { queued } = f.rt.sendMessage(topic, { text: '@alpha Which column is off?' });
-  f.rt.sendQueuedNow(topic, queued.id);
+  f.rt.sendQueuedNow(topic, queued[0].id);
   f.rt.sendMessage(f.t.id, { text: MINE });
   b.release();
   await settle(f.rt);
   const [, inTopic, after] = toAlpha(f);
   assert.equal(inTopic.thread, topic, 'the topic’s turn came first');
-  assert.equal(copies(inTopic, MINE), 1, 'its summary gave your message in full');
-  const mine = f.store.items(f.t.id).find((x) => x.kind === 'user' && x.text === MINE);
-  assert.equal(copies(after, MINE), 0, 'the next turn doesn’t repeat it');
-  assert.match(after.message.text, /The person’s message above, which your last summary gave you in full: “@alpha please recount/);
-  assert.ok(after.message.text.includes(`read_message { id: "${mine.id}" }`), after.message.text);
+  assert.equal(copies(inTopic, MINE), 0, 'its summary leaves out what waits for the agent');
+  assert.equal(after.message.text, MINE, 'the next turn gives it whole, once');
 });
 
-test('#506 each of your posted messages that a topic thread’s turn gave comes after it as a pointer, in one batch', async () => {
+test('#506 each of your messages waiting behind a topic thread’s turn comes whole after it, in one batch', async () => {
   const f = setup();
   const root = arrange.post(f.rt, f.t.id, {
     kind: 'agent',
@@ -93,7 +92,7 @@ test('#506 each of your posted messages that a topic thread’s turn gave comes 
   const topic = f.rt.startTopic(f.t.id, root.id).threadId;
   const b = await busyAlpha(f);
   const { queued } = f.rt.sendMessage(topic, { text: '@alpha Which column is off?' });
-  f.rt.sendQueuedNow(topic, queued.id);
+  f.rt.sendQueuedNow(topic, queued[0].id);
   f.rt.sendMessage(f.t.id, { text: MINE });
   f.rt.sendMessage(f.t.id, { text: THEIRS.replace('@alpha the review', '@alpha my review') });
   b.release();
@@ -101,10 +100,10 @@ test('#506 each of your posted messages that a topic thread’s turn gave comes 
   const after = toAlpha(f).at(-1);
   assert.equal(after.message.messages?.length, 2, 'your two came as one batch');
   assert.deepEqual(
-    after.message.messages.map((m) => /^The person’s message above/.test(m.text)),
-    [true, true],
+    after.message.messages.map((m) => m.text),
+    [MINE, THEIRS.replace('@alpha the review', '@alpha my review')],
   );
-  assert.equal(copies(after, MINE), 0, 'neither repeats in full');
+  assert.equal(copies(toAlpha(f).at(-2), MINE), 0, 'the topic’s turn didn’t give it first');
 });
 
 test('#506 your queued mention alone comes in full: no summary gave it', async () => {
@@ -189,7 +188,7 @@ test('#506 your long message a topic thread’s summary cut comes after it in fu
   const topic = f.rt.startTopic(f.t.id, root.id).threadId;
   const b = await busyAlpha(f);
   const { queued } = f.rt.sendMessage(topic, { text: '@alpha Which column is off?' });
-  f.rt.sendQueuedNow(topic, queued.id);
+  f.rt.sendQueuedNow(topic, queued[0].id);
   f.rt.sendMessage(f.t.id, { text: LONG });
   b.release();
   await settle(f.rt);
@@ -242,13 +241,13 @@ test('#506 your message sent again, word for word, comes in full: it’s a new m
   const topic = f.rt.startTopic(f.t.id, root.id).threadId;
   const b = await busyAlpha(f);
   const { queued } = f.rt.sendMessage(topic, { text: '@alpha Which column is off?' });
-  f.rt.sendQueuedNow(topic, queued.id);
+  f.rt.sendQueuedNow(topic, queued[0].id);
   f.rt.sendMessage(f.t.id, { text: MINE });
   b.release();
   await settle(f.rt);
   f.rt.sendMessage(f.t.id, { text: MINE });
   await settle(f.rt);
-  const [, , pointer, again] = toAlpha(f);
-  assert.match(pointer.message.text, /^The person’s message above, which your last summary gave you in full: /);
+  const [, , first, again] = toAlpha(f);
+  assert.equal(first.message.text, MINE);
   assert.equal(again.message.text, MINE);
 });

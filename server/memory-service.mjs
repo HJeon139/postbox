@@ -47,9 +47,10 @@ export class Memory {
   /**
    * What a turn reads before its message: the room’s catch-up, and in a topic or side thread, that thread’s as its task.
    * @param {any} se @param {string} where  the thread the turn speaks in @param {any} message @param {boolean} slash
+   * @param {string[]} [waiting]  the items of the person’s messages still waiting for the agent, left for their own turn
    */
-  turnContext(se, where, message, slash) {
-    return turnContext(this, se, where, message, slash);
+  turnContext(se, where, message, slash, waiting = []) {
+    return turnContext(this, se, where, message, slash, waiting);
   }
 
   /** What a turn in a topic or side thread catches up on there, or null. @param {any} se @param {string} threadId @param {string[]} [exclude] */

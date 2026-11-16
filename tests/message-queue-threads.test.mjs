@@ -97,7 +97,7 @@ test('Send now, then messages in two threads during the exit: a wake queued in t
   t.mock.method(Date, 'now', () => 1_000_000);
   f.rt.agentWake(f.alpha.id, 'beta', 'Queued W in conversation.');
   const q = f.rt.sendMessage(f.topic, { text: '@beta topic P' });
-  f.rt.sendQueuedNow(f.topic, q.queued.id);
+  f.rt.sendQueuedNow(f.topic, q.queued[0].id);
   assert.ok(f.rt.exiting.has(f.beta.id), 'the stopped turn is exiting');
   f.rt.sendMessage(f.t.id, { text: '@beta conversation P' });
   f.rt.sendMessage(f.topic, { text: '@beta topic Q' });

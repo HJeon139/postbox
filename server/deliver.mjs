@@ -119,8 +119,13 @@ function turnMessage(rt, se, message, where, slash) {
   // Problems the checks found in its last reply, still waiting to go as a lint turn, come with this turn instead, as
   // message.lint: fixes it owes, placed with the request rather than in the background.
   if (message.kind !== 'lint' && !slash) message = rt.checks.foldLint(sessionId, message);
-  // A topic or side thread’s request leads; its room catch-up is background. A room turn keeps the existing order.
-  return rt.memory.turnContext(rt.store.pending.session(sessionId) ?? rt.s.sessions[sessionId], where, message, slash);
+  // A topic or side thread’s request leads; its room catch-up is background. A room turn keeps the existing order. The
+  // person’s messages still waiting for the agent stay out of it: they’re posted at send, and a later turn gives them.
+  const waiting = rt.delivery
+    .waiting(sessionId)
+    .filter((/** @type {any} */ e) => e.source === 'person')
+    .map((/** @type {any} */ e) => e.itemId);
+  return rt.memory.turnContext(rt.store.pending.session(sessionId) ?? rt.s.sessions[sessionId], where, message, slash, waiting);
 }
 
 /**

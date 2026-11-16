@@ -103,19 +103,19 @@ test('#228: a turn in a topic thread catches up on what others said there since 
 });
 
 test('#228: your message in a topic thread for an agent busy elsewhere waits in the thread’s queue, then its one session answers', async () => {
-  const { store, rt, adapter, t, alpha, topic } = await topicOnReply();
+  const { rt, adapter, t, alpha, topic } = await topicOnReply();
   const h = held();
   adapter.next.push(h.step);
   rt.sendMessage(t.id, { text: '@alpha the long job' });
   await sleep(5);
   const r = rt.sendMessage(topic.id, { text: 'When you can: why?' });
   assert.ok(r.queued);
-  assert.equal(store.state.threads[topic.id].queue.length, 1);
+  assert.equal(arrange.personWaiting(rt, topic.id).length, 1);
   h.release();
   await settle(rt);
   const call = adapter.calls.find((x) => x.message.text === 'When you can: why?');
   assert.deepEqual([call.sessionId, call.thread], [alpha.id, topic.id]);
-  assert.equal(store.state.threads[topic.id].queue.length, 0);
+  assert.equal(arrange.personWaiting(rt, topic.id).length, 0);
 });
 
 test('#228: after a thread’s last reply, a short summary goes on its line; the other agents see the line, and its cost is recorded', async () => {

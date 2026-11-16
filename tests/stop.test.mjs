@@ -518,7 +518,7 @@ test('#126: Send now waits on the same exit', async () => {
   rt.sendMessage(t.id, { text: 'go' });
   await sleep(5);
   const { queued } = rt.sendMessage(t.id, { text: 'change of plan' });
-  rt.sendQueuedNow(t.id, queued.id);
+  rt.sendQueuedNow(t.id, queued[0].id);
   await sleep(10);
   assert.equal(adapter.calls.length, 1);
   first.exit();
@@ -892,7 +892,7 @@ test('#126: an answer to a Stop ask about a turn that has ended stops nothing', 
   assert.deepEqual(rt.requestStop(se.id, { jobs: 'stop', turnId: ask.turnId }), { stopped: true });
 });
 
-test('#126: shutting down starts no new turn: a message held for a stopped turn waits in the queue', async () => {
+test('#126: shutting down starts no new turn: a message for a stopped turn waits in its inbox', async () => {
   const { rt, store, adapter, t, se } = setup();
   const first = slowToExit();
   adapter.next.push(first);
@@ -905,7 +905,7 @@ test('#126: shutting down starts no new turn: a message held for a stopped turn 
   await closing;
   assert.equal(adapter.calls.length, 1, 'no CLI started as Postbox shuts down');
   assert.deepEqual(
-    store.state.threads[t.id].queue.map((q) => q.text),
+    rt.delivery.waiting(se.id).map((e) => store.item(t.id, e.itemId).text),
     ['after the restart'],
   );
 });

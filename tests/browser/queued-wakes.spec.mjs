@@ -193,7 +193,7 @@ test('#427 an edit stays visible if its message leaves the queue', async ({ page
   app.rt.sendMessage(r.thread.id, { text: `@${r.worker.handle} Another queued message` });
   await synced(page, app);
   const dialog = await openQueue(page, r);
-  const removed = app.rt.thread(r.thread.id).queue.find((q) => q.text.endsWith('Keep this draft'));
+  const removed = app.rt.delivery.waiting(r.worker.id).find((e) => app.store.item(r.thread.id, e.itemId)?.text.endsWith('Keep this draft'));
   const row = queued(page, `@${r.worker.handle} Keep this draft`);
   await row.getByRole('button', { name: /^Edit message/ }).click();
   const unsaved = dialog.getByRole('textbox', { name: 'Edit the queued message' });

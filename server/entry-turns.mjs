@@ -5,7 +5,6 @@
 
 import { SENDING } from '../shared/limits.mjs';
 import { partEnd } from '../shared/text-parts.mjs';
-import { alone } from './delivery.mjs';
 import { combineMessages, plainMessage } from './queue-batch.mjs';
 import { newId } from './store.mjs';
 
@@ -54,6 +53,7 @@ export function messageOf(rt, e) {
   // A plain message carries its place, to sort in a batch; one with a turn of its own is given as it was sent.
   if (e.message) return plainMessage(e.message) ? { ...e.message, at: e.at, seq: e.seq } : e.message;
   if (!e.itemId) return { kind: 'notice', text: e.text, at: e.at, seq: e.seq };
+  if (e.source === 'person') return personMessage(rt, e);
   const it = rt.store.pending.item(e.threadId, e.itemId);
   const said = String(it?.text ?? '');
   // Cut as turn-input.mjs’s entryText cuts: at a whole character (#675), with the note copiedLine reads as a copy (#1370).
@@ -68,15 +68,27 @@ export function messageOf(rt, e) {
 }
 
 /**
- * Whether a turn’s end wakes the agent’s inbox before its queue drains (#733’s order, across the queue and the inbox):
- * its oldest entry that can start a turn needs a turn of its own (an answer’s event, a lint turn), and arrived before
- * every message waiting for it, on the turn or in a thread’s queue. A plain mention needs no such turn: the queue’s turn
- * takes it in arrival order (withEntries).
- * @param {any} rt @param {any} se @param {any} turn
+ * The person’s message as today’s deliver takes it: their item as it is now, so an edit made while it waited is what
+ * the agent reads, with the threads it links to (threadRefs).
+ * @param {any} rt @param {any} e
+ */
+function personMessage(rt, e) {
+  const it = rt.store.pending.item(e.threadId, e.itemId);
+  const text = String(it?.text ?? '');
+  const refs = rt.threadRefs(e.threadId, text);
+  return { kind: 'user', text, attachments: it?.attachments ?? [], itemId: e.itemId, at: e.at, seq: e.seq, ...(refs.length ? { context: refs } : {}) };
+}
+
+/**
+ * Whether a turn’s end, or a stopped turn’s exit, wakes the agent’s inbox before what waited on the turn and in its
+ * thread’s queue (#733’s order, across the queue and the inbox): its oldest entry that can start a turn arrived before
+ * every one of those messages. The person’s messages are entries since #1404, so what waits on a turn is mostly what
+ * can’t fold into an entry’s turn (a notice, an event, a Send now).
+ * @param {any} rt @param {any} se @param {{ pending: any[] }} turn
  */
 export function entriesFirst(rt, se, turn) {
-  const lead = rt.delivery.waiting(se.id).find((/** @type {any} */ e) => rt.delivery.canStart(e, se.state === 'failed'));
-  if (!lead || !alone(lead)) return false;
+  const lead = rt.delivery.waiting(se.id).find((/** @type {any} */ e) => rt.delivery.canStart(e, se));
+  if (!lead) return false;
   const before = (/** @type {any} */ a, /** @type {any} */ b) => (a.at ?? 0) < (b.at ?? 0) || ((a.at ?? 0) === (b.at ?? 0) && (a.seq ?? 0) < (b.seq ?? 0));
   const onTurn = turn.pending.flatMap((/** @type {any} */ p) => p.message.messages ?? [p.message]);
   const queued = rt.threads.pending().flatMap((/** @type {any} */ t) => (t.queue ?? []).filter((/** @type {any} */ q) => q.sessionIds.includes(se.id)));

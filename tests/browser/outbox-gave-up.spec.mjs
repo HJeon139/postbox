@@ -86,9 +86,7 @@ test('a send that keeps failing with the stream open is tried every 30 s on its 
   // Once a try gets through, it goes with nothing from the person.
   await page.unroute(POSTS);
   await page.clock.runFor(30_000);
-  await expect
-    .poll(() => (app.rt.thread(thread.id).queue ?? []).map((q) => q.text), { message: 'the next try sends it' })
-    .toEqual([`@${worker.handle} never gets through`]);
+  await expect.poll(() => arrange.personWaiting(app.rt, thread.id), { message: 'the next try sends it' }).toEqual([`@${worker.handle} never gets through`]);
   await expect(row(page, 'never gets through')).toHaveCount(0);
   await expect(slow).toHaveCount(0);
   releases.get(worker.id)?.();

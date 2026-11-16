@@ -20,9 +20,9 @@ function entriesFor(sessionId) {
 }
 
 /**
- * An agent’s messages from other agents waiting in its inbox (designs/rooms-at-scale.md, “Delivery”), as rows of its
- * queue: the same row and actions as a queued wake had, whose routes act on the entry by its id. An entry keeps no copy
- * of its message, so its text is the item’s, when the page has loaded it.
+ * An agent’s messages waiting in its inbox (designs/rooms-at-scale.md, “Delivery”), as rows of its queue, whose routes
+ * act on the entry by its id: another agent’s, with the row a queued wake had, and the person’s own, which they can
+ * edit (#1404). An entry keeps no copy of its message, so its text is the item’s, when the page has loaded it.
  * @param {string} sessionId
  */
 function waitingFor(sessionId) {
@@ -30,8 +30,11 @@ function waitingFor(sessionId) {
   return waiting
     .filter((e) => S().threads[e.threadId])
     .map((e) => {
-      const text = itemsOf(e.threadId).find((it) => it.id === e.itemId)?.text ?? `A message from @${e.from}.`;
-      return { thread: S().threads[e.threadId], q: { id: e.id, kind: 'wake', from: e.from, text, sessionIds: [sessionId] } };
+      const theirs = e.source === 'person';
+      const fallback = theirs ? 'Your message.' : `A message from @${e.from}.`;
+      const text = itemsOf(e.threadId).find((it) => it.id === e.itemId)?.text ?? fallback;
+      const q = { id: e.id, kind: theirs ? 'message' : 'wake', from: e.from, text, itemId: e.itemId, sessionIds: [sessionId] };
+      return { thread: S().threads[e.threadId], q };
     });
 }
 
@@ -191,8 +194,10 @@ export function openQueue(sessionId, anchor = null) {
       if (!anchor?.isConnected || anchor.closest('[hidden]')) queueMicrotask(() => document.getElementById('composer-input')?.focus());
     },
   });
+  // A listed message’s item changes when the person edits it; any other item’s patch, a streaming reply’s, is left alone.
+  const listed = (/** @type {string} */ itemId) => [...list.children].some((row) => row._entry?.q.itemId === itemId);
   const off = client.on((change) => {
-    if (['load', 'thread', 'session', 'entry.add', 'entry.patch'].includes(change.type)) paint();
+    if (change.type === 'item.patch' ? listed(change.data.id) : ['load', 'thread', 'session', 'entry.add', 'entry.patch'].includes(change.type)) paint();
   });
   anchor?.setAttribute('aria-expanded', 'true');
 }

@@ -44,7 +44,7 @@ test('your queued message edited behind a held commit is posted as edited when i
   const { queued } = f.rt.sendMessage(f.t.id, { text: '@beta After the tests.' });
   await f.store.flush();
   const release = await f.hold();
-  f.rt.editQueued(f.t.id, queued.id, '@beta After the tests, edited.');
+  f.rt.editQueued(f.t.id, queued[0].id, '@beta After the tests, edited.');
   f.rt.deleteSession(f.beta.id);
   await release();
   b.release();

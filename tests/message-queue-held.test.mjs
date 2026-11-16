@@ -1,5 +1,5 @@
-// The person’s queue controls while a commit is held (#1007): a turn that ends behind a held commit drains the
-// queue into the pending thread, while the published one, which the page shows, still lists the entry.
+// The person’s queue controls while a commit is held (#1007): a turn that ends behind a held commit takes the waiting
+// message in the pending inbox, while the published one, which the page shows, still lists it.
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
@@ -23,19 +23,14 @@ test('Send now on an entry a turn ending behind a held commit already drained do
   await h.atSync; // the commit is in flight: emits from now on are held behind it
   arrange.abortTurn(env.rt, env.se.id); // the first turn ends, and its drain takes the queued message
   await until(() => turns === 2, 'the drained message’s turn to start');
-  assert.deepEqual(
-    h.store.pending.thread(env.t.id).queue.map((q) => q.id),
-    [],
-    'the drain took it from the pending queue',
-  );
-  assert.deepEqual(
-    env.rt.thread(env.t.id).queue.map((q) => q.id),
-    [queued.id],
-    'the page still shows it queued',
-  );
+  // The person’s message is an inbox entry since #1404: the next turn took it in the pending inbox, while the
+  // published one, which the page shows, still has it waiting.
+  const stateIn = (inbox) => inbox.find((e) => e.id === queued[0].id)?.state;
+  assert.equal(stateIn(h.store.pending.inbox(env.se.id)), 'taken', 'the next turn took it');
+  assert.equal(stateIn(env.store.state.inbox[env.se.id]), 'waiting', 'the page still shows it queued');
   let refused = null;
   try {
-    env.rt.sendQueuedNow(env.t.id, queued.id);
+    env.rt.sendQueuedNow(env.t.id, queued[0].id);
   } catch (e) {
     refused = e;
   }

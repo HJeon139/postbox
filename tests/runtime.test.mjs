@@ -89,9 +89,9 @@ test('a message sent mid-reply is queued, then delivered when the agent finishes
   rt.sendMessage(t.id, { text: 'first' });
   const r = rt.sendMessage(t.id, { text: 'second' });
   assert.ok(r.queued);
-  assert.equal(store.state.threads[t.id].queue.length, 1);
+  assert.equal(arrange.personWaiting(rt, t.id).length, 1);
   await settle(rt);
-  assert.equal(store.state.threads[t.id].queue.length, 0);
+  assert.equal(arrange.personWaiting(rt, t.id).length, 0);
   assert.deepEqual(
     store
       .items(t.id)
