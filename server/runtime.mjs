@@ -17,7 +17,6 @@ import { Bus } from './bus.mjs';
 import { releaseNeed } from './card-needs.mjs';
 import { Checks } from './check-service.mjs';
 import { attachClaudeSession, claudeSessions, mirror, pollMirror, rearmMirrors, stopMirrorFor, stopMirrors } from './claude-mirror.mjs';
-import { deliver, retry } from './deliver.mjs';
 import { Delivery } from './delivery.mjs';
 import { cancelEntry, editEntry, sendEntryNow } from './entry-queue.mjs';
 import { httpError } from './helpers.mjs';
@@ -61,6 +60,7 @@ import { Threads } from './threads.mjs';
 import { settleToolAsks } from './tool-ask.mjs';
 import { startTopic } from './topic-open.mjs';
 import { entryLine } from './turn-input.mjs';
+import { Turns } from './turn-service.mjs';
 import { settleSubagentSteps } from './turn-steps.mjs';
 import { dismissStopAsk, recordStopped, requestStop, stop, stopTurns } from './turn-stop.mjs';
 import { toolsFor } from './ui-tools.mjs';
@@ -125,6 +125,8 @@ export class Runtime {
     // What an entry takes of a turn’s budget: its line as the turn gives it (turn-input.mjs), cut at its own ceiling.
     const sizeOf = (/** @type {any} */ e) => entryLine(e, (id) => store.pending.item(e.threadId, id)?.text ?? null).length;
     this.delivery = new Delivery({ store, bus: this.bus, running: this.running, chainHeld: () => false, sizeOf });
+    // Turns: the one way a turn starts, each start one of its steps (server/turn-service.mjs).
+    this.turnService = new Turns(this);
     this.signalProcess = signalProcess ?? process.kill;
     this.listProcesses = list ?? listProcesses;
     /** @type {NodeJS.Timeout|null} */
@@ -379,11 +381,9 @@ export class Runtime {
 
   // ── Turns: server/deliver.mjs, turn-stop.mjs and job-records.mjs ────────────────────
 
-  deliver(sessionId, message, opts) {
-    return deliver(this, sessionId, message, opts);
-  }
+  /** The person’s Retry of a failed reply (Turns’ step). @param {string} threadId @param {string} itemId */
   retry(threadId, itemId) {
-    return retry(this, threadId, itemId);
+    return this.turnService.retry(threadId, itemId);
   }
 
   /**

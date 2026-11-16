@@ -33,14 +33,14 @@ import { inputOf, withEntries } from './turns.mjs';
  */
 export function deliver(rt, sessionId, message, { summarizeTo = null, threadId = null } = {}) {
   // A session just made behind a held commit: its turn starts once it's published (#796's class in sessions).
-  if (heldSession(rt, sessionId, () => rt.deliver(sessionId, message, { summarizeTo, threadId }))) return;
+  if (heldSession(rt, sessionId, () => rt.turnService.run(sessionId, message, { summarizeTo, threadId }))) return;
   const se = rt.store.pending.session(sessionId) ?? rt.session(sessionId); // a summary's or a notice's write held (#506)
   if (se.retiredFork) throw retiredError(se);
   message = prepareScheduledRetry(rt, message, se.threadId);
   // As it was asked, for Retry (askedOf).
   const asked = { message, summarizeTo, threadId };
   // The store can’t be written: the turn starts once it can (ST-3).
-  if (heldTurn(rt, sessionId, () => rt.deliver(sessionId, asked.message, { summarizeTo, threadId }), message)) return;
+  if (heldTurn(rt, sessionId, () => rt.turnService.run(sessionId, asked.message, { summarizeTo, threadId }), message)) return;
   if (waitsBehind(rt, sessionId, message, { summarizeTo, threadId })) return;
   const where = threadId && threadId !== se.threadId && rt.store.pending.thread(threadId) ? threadId : se.threadId;
   rt.apps.answerDelivered(where, message);
@@ -281,6 +281,6 @@ export function retry(rt, threadId, itemId) {
     const turnId = newId('turn');
     if (it.turnId) rt.delivery.retry(it.turnId, turnId);
     const message = { ...asked.message, retry: true, woken: it.wokeOnFailure ?? [], turnId, entriesWait: true };
-    rt.deliver(it.sessionId, message, { summarizeTo: asked.summarizeTo, threadId });
+    rt.turnService.run(it.sessionId, message, { summarizeTo: asked.summarizeTo, threadId });
   });
 }

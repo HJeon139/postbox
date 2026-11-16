@@ -197,7 +197,7 @@ test('a turn you didn’t start keeps the agent needing you for the block it jus
   await settle(rt);
   const se = arrange.sessionsIn(rt, t.id)[0];
   // A lint pass runs before you answer: that turn isn’t you moving on.
-  rt.deliver(se.id, { kind: 'lint', undefinedTerms: [{ term: 'Step 7' }], diagrams: [] });
+  rt.turnService.run(se.id, { kind: 'lint', undefinedTerms: [{ term: 'Step 7' }], diagrams: [] });
   await settle(rt);
   assert.equal(adapter.calls.at(-1).message.kind, 'lint');
   assert.equal(store.state.sessions[se.id].needs?.kind, 'block');
@@ -770,7 +770,7 @@ test('deliver refuses a retired fork with a 409, and starts no turn for it (#228
   const { rt, t } = setup();
   const se = arrange.sessionsIn(rt, t.id)[0];
   arrange.setSession(rt, se.id, { retiredFork: true });
-  assert.throws(() => rt.deliver(se.id, { kind: 'user', text: 'still there?' }, { threadId: t.id }), { status: 409, message: /was retired/ });
+  assert.throws(() => rt.turnService.run(se.id, { kind: 'user', text: 'still there?' }, { threadId: t.id }), { status: 409, message: /was retired/ });
   assert.equal(rt.turns.has(se.id), false);
 });
 

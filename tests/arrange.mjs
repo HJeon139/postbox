@@ -171,7 +171,7 @@ export const exitingTurns = (rt) => rt.running.exiting.size;
 export const shuttingDown = (rt) => rt.running.close();
 
 /** Gives an agent a message, starting its turn or queueing it. @param {Runtime} rt @param {string} sessionId @param {object} message @param {object} [opts] */
-export const deliver = (rt, sessionId, message, opts) => rt.deliver(sessionId, message, opts);
+export const deliver = (rt, sessionId, message, opts) => rt.turnService.run(sessionId, message, opts);
 
 /** One agent wakes another by handle, as its wake tool does. @param {Runtime} rt @param {string} fromSessionId @param {string} handle @param {string} text @param {object} [opts] */
 export const wake = (rt, fromSessionId, handle, text, opts) => rt.agentWake(fromSessionId, handle, text, opts);

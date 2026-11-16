@@ -167,7 +167,7 @@ test('#874 an agent on a host whose backend isn’t registered fails here with t
   arrange.withoutAdapters(r.rt);
   const se = r.se();
   const ensured = r.hosts.calls.ensure;
-  assert.doesNotThrow(() => r.rt.deliver(se.id, { kind: 'user', text: 'hello' }));
+  assert.doesNotThrow(() => r.rt.turnService.run(se.id, { kind: 'user', text: 'hello' }));
   assert.equal(r.rt.remote.live.has(se.id), false, 'nothing remote started');
   await until(() => !r.rt.turns.size && !r.rt.exiting.size, 'the turn to end');
   const failed = r.store.items(r.t.id).filter((i) => i.kind === 'agent' && i.status === 'failed');

@@ -69,7 +69,7 @@ test('two Postbox notices for an agent behind a held commit both wait for its ne
 test('a delivery to a session that is neither published nor held behind a commit answers 404 at once', async () => {
   const f = await heldRoom();
   const release = await f.hold();
-  assert.throws(() => f.rt.deliver('se_gone', { kind: 'user', text: 'Hello.' }), { status: 404 });
+  assert.throws(() => f.rt.turnService.run('se_gone', { kind: 'user', text: 'Hello.' }), { status: 404 });
   await release();
   await settle(f.rt);
   assert.equal(f.adapter.calls.length, 0, 'no turn started');

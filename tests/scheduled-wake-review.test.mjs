@@ -121,7 +121,7 @@ test('#466 a scheduled wake queued behind a turn you stop is settled, not left r
   const f = setup();
   const h = held();
   f.adapter.next.push(h.step);
-  f.rt.deliver(f.alpha.id, { kind: 'user', text: 'Work on it.' });
+  f.rt.turnService.run(f.alpha.id, { kind: 'user', text: 'Work on it.' });
   await new Promise((r) => setTimeout(r, 5));
   const sc = f.rt.schedule(f.alpha.id, { inMs: 60_000, note: 'Check later.' });
   clearTimeout(f.rt.timers.get(sc.id));
@@ -137,7 +137,7 @@ test('#466 a scheduled wake queued behind a turn when Postbox shuts down comes b
   const f = setup();
   const h = held();
   f.adapter.next.push(h.step);
-  f.rt.deliver(f.alpha.id, { kind: 'user', text: 'Work on it.' });
+  f.rt.turnService.run(f.alpha.id, { kind: 'user', text: 'Work on it.' });
   await new Promise((r) => setTimeout(r, 5));
   const sc = f.rt.schedule(f.alpha.id, { inMs: 60_000, note: 'Check later.' });
   clearTimeout(f.rt.timers.get(sc.id));

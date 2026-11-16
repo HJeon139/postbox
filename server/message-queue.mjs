@@ -37,7 +37,7 @@ export function takePending(rt, se, turn, drain) {
     // ahead of that, or the turn failed (#733).
     const later = groups.some((g) => (g.threadId ?? se.threadId) === where);
     const message = !later && drain === true ? next.message : { ...next.message, entriesWait: true };
-    rt.deliver(se.id, message, { summarizeTo: next.summarizeTo, threadId: next.threadId });
+    rt.turnService.release(se.id, message, { summarizeTo: next.summarizeTo, threadId: next.threadId });
     const t = rt.turns.get(se.id);
     if (t) t.pending.push(...groups);
     else holdRest(rt, se, next, groups);
@@ -57,7 +57,7 @@ function holdRest(rt, se, next, groups) {
     console.warn(`@${se.handle}’s turn ended as Postbox shut down: ${n} (${kinds}) undelivered.`);
     return;
   }
-  for (const g of groups) rt.deliver(se.id, g.message, { summarizeTo: g.summarizeTo, threadId: g.threadId });
+  for (const g of groups) rt.turnService.release(se.id, g.message, { summarizeTo: g.summarizeTo, threadId: g.threadId });
 }
 
 export function batchPending(rt, pending, threadId) {

@@ -23,7 +23,7 @@ test('a message the person sent to @alpha reads as theirs, to @alpha, in @betaâ€
   f.rt.sendMessage(f.t.id, { text: 'Please fix the tally.' });
   await settle(f.rt);
   // @beta wakes later for its own reason: @alpha hands it something else.
-  f.rt.deliver(f.beta.id, { kind: 'agent', from: '@alpha', text: 'Can you check the build?' });
+  f.rt.turnService.run(f.beta.id, { kind: 'agent', from: '@alpha', text: 'Can you check the build?' });
   await settle(f.rt);
   const call = f.adapter.calls.findLast((c) => c.handle === 'beta');
   const background = readOf(call);

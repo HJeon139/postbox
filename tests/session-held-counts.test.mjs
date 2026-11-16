@@ -30,9 +30,9 @@ async function heldRoom() {
 test('two turns that end behind a held commit each count unread on their agent', async () => {
   const f = await heldRoom();
   const release = await f.hold();
-  f.rt.deliver(f.alpha.id, { kind: 'user', text: 'First.' });
+  f.rt.turnService.run(f.alpha.id, { kind: 'user', text: 'First.' });
   await settle(f.rt);
-  f.rt.deliver(f.alpha.id, { kind: 'user', text: 'Second.' });
+  f.rt.turnService.run(f.alpha.id, { kind: 'user', text: 'Second.' });
   await settle(f.rt);
   await release();
   assert.equal(f.store.state.sessions[f.alpha.id].unread, 2);
@@ -49,7 +49,7 @@ test('a turn’s tool calls and compactions behind a held commit each count, and
     c.text('Read both.');
   });
   const release = await f.hold();
-  f.rt.deliver(f.alpha.id, { kind: 'user', text: 'Read them.' });
+  f.rt.turnService.run(f.alpha.id, { kind: 'user', text: 'Read them.' });
   await settle(f.rt);
   await release();
   const se = f.store.state.sessions[f.alpha.id];
@@ -79,7 +79,7 @@ test('an urgent note itself held behind a commit is given on the next tool resul
 test('viewing a conversation behind a held commit clears the unread its agent’s turn counted behind it, as the thread’s', async () => {
   const f = await heldRoom();
   const release = await f.hold();
-  f.rt.deliver(f.alpha.id, { kind: 'user', text: 'First.' });
+  f.rt.turnService.run(f.alpha.id, { kind: 'user', text: 'First.' });
   await settle(f.rt);
   f.rt.view(f.t.id);
   await release();

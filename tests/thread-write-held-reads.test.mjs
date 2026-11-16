@@ -157,7 +157,7 @@ test('a sweep over every pending thread sees each held write of a thread, read a
 test('a turn in an old side thread counts unread on its agent, not on the side thread', async () => {
   const f = setup();
   const side = oldSide(f);
-  f.rt.deliver(f.beta.id, { kind: 'agent', from: '@alpha', text: 'Which editions?' }, { threadId: side.id });
+  f.rt.turnService.run(f.beta.id, { kind: 'agent', from: '@alpha', text: 'Which editions?' }, { threadId: side.id });
   await settle(f.rt);
   assert.deepEqual([f.store.state.threads[side.id].unread, f.store.state.sessions[f.beta.id].unread], [undefined, 1]);
 });

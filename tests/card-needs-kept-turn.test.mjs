@@ -32,7 +32,7 @@ async function wokenWithTwoAsks(r) {
   r.setNeed('toolask', d1.id);
   const work = held();
   r.adapter.next.push(work.step);
-  r.rt.deliver(r.alpha.id, { kind: 'agent', from: '@beta', text: 'Here are the numbers.' }); // not you moving on
+  r.rt.turnService.run(r.alpha.id, { kind: 'agent', from: '@beta', text: 'Here are the numbers.' }); // not you moving on
   await sleep(5);
   return { d1, d2, work };
 }
@@ -80,13 +80,13 @@ test('two wakes in a row: the first wake’s own tool requests still count once 
     mine.push(r.toolAsk(turnId, 'git status'), r.toolAsk(turnId, 'git log'));
     await first.step(c);
   });
-  r.rt.deliver(r.alpha.id, { kind: 'agent', from: '@beta', text: 'One.' });
+  r.rt.turnService.run(r.alpha.id, { kind: 'agent', from: '@beta', text: 'One.' });
   await sleep(5);
   first.release();
   await settle(r.rt);
   assert.equal(r.needs()?.kind, 'toolask');
   r.adapter.next.push(held().step);
-  r.rt.deliver(r.alpha.id, { kind: 'agent', from: '@beta', text: 'Two.' });
+  r.rt.turnService.run(r.alpha.id, { kind: 'agent', from: '@beta', text: 'Two.' });
   await sleep(5);
   const rt = restart(r);
   const [answered, other] = r.needs()?.itemId === mine[0].id ? mine : [mine[1], mine[0]];
@@ -121,12 +121,12 @@ test('a wake keeps only turns still asking you something, so the list doesn’t 
   const r = room();
   r.toolAsk('turn_old', 'ls'); // a turn no longer counting: not kept
   r.adapter.next.push(async () => {});
-  r.rt.deliver(r.alpha.id, { kind: 'agent', from: '@beta', text: 'One.' });
+  r.rt.turnService.run(r.alpha.id, { kind: 'agent', from: '@beta', text: 'One.' });
   await settle(r.rt);
   assert.deepEqual(r.store.state.sessions[r.alpha.id].keptTurnIds, [], 'turn_last asked nothing');
   const d = r.toolAsk(r.store.state.sessions[r.alpha.id].lastTurnId, 'pwd');
   r.adapter.next.push(async () => {});
-  r.rt.deliver(r.alpha.id, { kind: 'agent', from: '@beta', text: 'Two.' });
+  r.rt.turnService.run(r.alpha.id, { kind: 'agent', from: '@beta', text: 'Two.' });
   await settle(r.rt);
   assert.deepEqual(r.store.state.sessions[r.alpha.id].keptTurnIds, [d.turnId], 'only the wake that left a tool request open');
 });
@@ -136,7 +136,7 @@ test('a wake’s end keeps a failed turn’s need and its Retry, where main drop
   const f = arrange.post(r.rt, r.t.id, { kind: 'agent', sessionId: r.alpha.id, handle: 'alpha', turnId: 'turn_last', text: '', status: 'failed', error: 'x' });
   arrange.setSession(r.rt, r.alpha.id, { needs: { kind: 'failed', itemId: f.id, text: 'failed' }, state: 'failed' });
   r.adapter.next.push(async (c) => c.text('Thanks, noted.'));
-  r.rt.deliver(r.alpha.id, { kind: 'agent', from: '@beta', text: 'Here are the numbers.' });
+  r.rt.turnService.run(r.alpha.id, { kind: 'agent', from: '@beta', text: 'Here are the numbers.' });
   await settle(r.rt);
   const se = r.store.state.sessions[r.alpha.id];
   assert.equal(se.needs?.itemId, f.id, `Retry still waits, not ${JSON.stringify(se.needs)}`);
@@ -157,7 +157,7 @@ async function failedThenWakeWithPermission(r) {
   arrange.setSession(r.rt, r.alpha.id, { needs: { kind: 'failed', itemId: f.id, text: 'boom' }, state: 'failed' });
   const work = held();
   r.adapter.next.push(work.step);
-  r.rt.deliver(r.alpha.id, { kind: 'agent', from: '@beta', text: 'FYI.' });
+  r.rt.turnService.run(r.alpha.id, { kind: 'agent', from: '@beta', text: 'FYI.' });
   await sleep(5);
   const p = r.permission();
   offerNeed(r.rt, r.rt.s.sessions[r.alpha.id], { kind: 'permission', itemId: p.id, text: 'p' }, 'needs');
@@ -191,7 +191,7 @@ async function wakeOnOldBlock(r) {
   r.setNeed('block', b.id);
   const work = held();
   r.adapter.next.push(work.step);
-  r.rt.deliver(r.alpha.id, { kind: 'agent', from: '@beta', text: 'FYI.' });
+  r.rt.turnService.run(r.alpha.id, { kind: 'agent', from: '@beta', text: 'FYI.' });
   await sleep(5);
   return { b, work };
 }

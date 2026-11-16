@@ -51,7 +51,7 @@ test('a reply isn’t final while it streams, and is final once, whole, when its
     c.text('@beta should look');
     midTurn = replies(finals);
   });
-  await rt.deliver(se.id, { text: 'hi' });
+  await rt.turnService.run(se.id, { text: 'hi' });
   await settle(rt);
   assert.deepEqual(midTurn, [], 'nothing is final while the reply streams');
   const done = replies(finals);
@@ -72,7 +72,7 @@ test('a segment closed mid-turn is final once, when it closes, and the next one 
     c.text('Second part');
     atClose = replies(finals);
   });
-  await rt.deliver(se.id, { text: 'hi' });
+  await rt.turnService.run(se.id, { text: 'hi' });
   await settle(rt);
   const parts = store.items(t.id).filter((x) => x.kind === 'agent');
   assert.equal(parts.length, 2, 'the reply was in two parts');
@@ -94,7 +94,7 @@ test('a failed reply is final once, with the words it had', async () => {
     c.text('Partly done, @beta');
     throw new Error('The backend went away.');
   });
-  await rt.deliver(se.id, { text: 'hi' });
+  await rt.turnService.run(se.id, { text: 'hi' });
   await settle(rt);
   assert.deepEqual(
     replies(finals).map((f) => [f.text, f.status]),
@@ -107,7 +107,7 @@ test('a failed turn with no words is final once, as the failed reply it adds', a
   adapter.next.push(async () => {
     throw new Error('The backend went away.');
   });
-  await rt.deliver(se.id, { text: 'hi' });
+  await rt.turnService.run(se.id, { text: 'hi' });
   await settle(rt);
   assert.deepEqual(
     replies(finals).map((f) => f.status),
@@ -127,7 +127,7 @@ test('a stopped reply is final once, when Stop settles it', async () => {
     streamed();
     await new Promise((r) => c.signal.addEventListener('abort', r, { once: true }));
   });
-  await rt.deliver(se.id, { text: 'hi' });
+  await rt.turnService.run(se.id, { text: 'hi' });
   await started;
   assert.deepEqual(replies(finals), [], 'nothing is final while the reply streams');
   await arrange.stopTurn(rt, se.id);

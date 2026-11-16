@@ -23,7 +23,7 @@ function setup() {
   const delivered = [];
   // What the agent is given: an app check is a check entry (#1425), whose turn carries the entry’s marks, which deliver
   // takes off before the turn is built.
-  rt.deliver = (sessionId, { turnId, fromEntries, entriesWait, ...message }) => delivered.push({ sessionId, message });
+  rt.turnService.run = (sessionId, { turnId, fromEntries, entriesWait, ...message }) => delivered.push({ sessionId, message });
   return { rt, session, delivered, tools: rt.toolsFor(session.id) };
 }
 

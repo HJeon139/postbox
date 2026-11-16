@@ -62,7 +62,7 @@ test('your message queued behind a held commit joins, in one batch, the message 
   const f = await heldRoom();
   const b = await busyBeta(f);
   const release = await f.hold();
-  f.rt.deliver(f.beta.id, { kind: 'agent', from: '@alpha', text: 'Waited in the turn.' });
+  f.rt.turnService.run(f.beta.id, { kind: 'agent', from: '@alpha', text: 'Waited in the turn.' });
   f.rt.sendMessage(f.t.id, { text: '@beta Queued behind it.' });
   b.release();
   for (let i = 0; i < 200 && textsTo(f, 'beta').length < 2; i++) await sleep(5);

@@ -117,7 +117,7 @@ test('#372 a side thread from before reads only, and a turn there hands off in t
   for (const _ of [1, 2]) {
     const h = held();
     adapter.next.push(h.step);
-    rt.deliver(alpha.id, { kind: 'user', text: 'carry on' }, { threadId: old.id });
+    rt.turnService.run(alpha.id, { kind: 'user', text: 'carry on' }, { threadId: old.id });
     await sleep(5);
     rt.agentWake(alpha.id, 'beta', 'Status?');
     h.release();

@@ -132,7 +132,7 @@ test('#1423 a held message of the person’s with no item, at shutdown, reaches 
   f.rt.sendMessage(f.t.id, { text: '@beta start' });
   await sleep(5);
   f.rt.stop(f.beta.id);
-  f.rt.deliver(f.beta.id, { kind: 'user', text: 'a message with no item', attachments: [] });
+  f.rt.turnService.run(f.beta.id, { kind: 'user', text: 'a message with no item', attachments: [] });
   const closing = f.rt.stopTurns({ graceMs: 200 });
   busy.release();
   await closing;

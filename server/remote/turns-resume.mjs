@@ -96,7 +96,7 @@ function autoResume(rts, sessionId) {
   updateRemote(rts, sessionId, { resume: { ...r.resume, auto: true }, autoResumes: (r.autoResumes ?? 0) + 1 });
   // It goes on as the turn it continues: where it spoke, who it answers, what it was asked (turns-origin.mjs).
   const go = continuing(rt, rt.s.sessions[sessionId], { kind: 'notice', text: 'Postbox resumed your turn on its own. Carry on where you left off.' });
-  rt.deliver(sessionId, go.message, go.opts);
+  rt.turnService.resume(sessionId, go.message, go.opts);
 }
 
 /** The person’s Resume, after Sign-in needed or Interrupted. @param {RemoteTurns} rts @param {string} sessionId */
@@ -115,7 +115,7 @@ export function resume(rts, sessionId) {
   }
   updateRemote(rts, sessionId, { resume: { ...r.resume, auto: false }, autoResumes: 0 });
   const go = continuing(rt, rt.s.sessions[sessionId], { kind: 'notice', text: 'The person asked you to resume. Carry on where you left off.' });
-  rt.deliver(sessionId, go.message, go.opts);
+  rt.turnService.resume(sessionId, go.message, go.opts);
   return { ok: true };
 }
 
@@ -170,7 +170,7 @@ export async function reattach(rts, sessionId) {
         rt.threads.patchItem(threadId, it.id, { status: 'replaced', text: '' });
   rt.sessions.update(sessionId, { state: 'think', currentStep: `Reconnecting to ${rt.s.hosts?.[r.hostId]?.name ?? 'the host'}` });
   const go = continuing(rt, now, { kind: 'notice', text: '', attach: r.turn });
-  rt.deliver(sessionId, go.message, go.opts);
+  rt.turnService.resume(sessionId, go.message, go.opts);
 }
 
 /**

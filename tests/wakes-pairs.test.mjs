@@ -35,7 +35,7 @@ test('#372 a turn in an old side thread that mentions two agents posts its messa
   const { store, rt, adapter, t, alpha } = three();
   const old = oldSide(rt, t);
   adapter.next.push(async (c) => c.text('@beta @gamma the fix is in.'));
-  rt.deliver(alpha.id, { kind: 'user', text: 'carry on' }, { threadId: old.id });
+  rt.turnService.run(alpha.id, { kind: 'user', text: 'carry on' }, { threadId: old.id });
   await settle(rt);
   const posted = store.items(t.id).filter((x) => x.kind === 'agent' && x.handle === 'alpha');
   assert.deepEqual(
@@ -50,7 +50,7 @@ test('#372 a turn in an old side thread whose wake waits on a card is still told
   arrange.putThread(rt, { ...store.state.threads[t.id], hops: HOP_LIMIT });
   const h = held();
   adapter.next.push(h.step);
-  rt.deliver(alpha.id, { kind: 'user', text: 'carry on' }, { threadId: old.id });
+  rt.turnService.run(alpha.id, { kind: 'user', text: 'carry on' }, { threadId: old.id });
   await sleep(5);
   const r = rt.agentWake(alpha.id, 'beta', 'Status?');
   assert.equal(r.waiting, true, 'past the wake limit, it waits on the card');

@@ -142,7 +142,7 @@ test('after a Stop, the person’s message and a wake, both entries, go in one t
   // exiting turn, isn’t an entry, and goes after them.
   const f = await stoppedBeta();
   f.rt.sendMessage(f.t.id, { text: '@beta after the stop' });
-  f.rt.deliver(f.beta.id, { kind: 'notice', text: 'Notice N.' });
+  f.rt.turnService.run(f.beta.id, { kind: 'notice', text: 'Notice N.' });
   f.rt.agentWake(f.alpha.id, 'beta', 'Wake W from alpha.');
   f.busy.release();
   await settle(f.rt);
@@ -170,7 +170,7 @@ test('after writes close and stop the turn, the first turn once they reopen take
   f.adapter.next.push(busy.step);
   f.rt.sendMessage(f.t.id, { text: '@beta start' });
   await sleep(5);
-  f.rt.deliver(f.beta.id, { kind: 'agent', from: '@gamma', text: 'Pending from gamma.' });
+  f.rt.turnService.run(f.beta.id, { kind: 'agent', from: '@gamma', text: 'Pending from gamma.' });
   f.rt.agentWake(f.alpha.id, 'beta', 'Wake W from alpha.');
   // Writes close: the outage stops the running turn, and what waited behind it is held for its exit (store-outage.mjs).
   f.store.fail(Object.assign(new Error('disk sync refused'), { code: 'EIO' }));

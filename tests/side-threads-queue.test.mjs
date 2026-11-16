@@ -81,7 +81,7 @@ test('#228, #372: another agent’s message waiting for an agent you stop isn’
   rt.sendMessage(t.id, { text: '@alpha a long job' });
   await sleep(5);
   // A message from @beta reaches @alpha while it’s busy: it waits behind @alpha’s turn.
-  rt.deliver(alpha.id, { kind: 'agent', from: '@beta', text: 'Here are the numbers.' });
+  rt.turnService.run(alpha.id, { kind: 'agent', from: '@beta', text: 'Here are the numbers.' });
   rt.stop(alpha.id);
   h.release();
   await settle(rt);
