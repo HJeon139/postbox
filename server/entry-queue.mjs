@@ -20,6 +20,8 @@ export function editEntry(rt, threadId, entryId, text) {
   const se = holderOf(rt, threadId, entryId);
   const e = rt.delivery.waiting(se.id).find((/** @type {any} */ x) => x.id === entryId);
   if (e.source !== 'person') throw httpError(409, 'An agent’s message can’t be edited. Remove it instead.');
+  // One kept with its own text, held when Postbox shut down, has no item to change (turn-stop.mjs).
+  if (!e.itemId) throw httpError(409, 'This message can’t be edited; it goes as it is.');
   // A failed entry was handed to its agent too (#466).
   const given = rt.delivery.entriesFrom(e.itemId).find((/** @type {any} */ x) => GIVEN.has(x.state));
   if (given) {
@@ -75,7 +77,11 @@ function holderOf(rt, threadId, entryId) {
  * @param {any} rt @param {string} threadId @param {string} entryId
  */
 export function cancelEntry(rt, threadId, entryId) {
-  const e = rt.delivery.cancel(holderOf(rt, threadId, entryId).id, entryId);
+  const se = holderOf(rt, threadId, entryId);
+  // The person’s own kept with no item, held when Postbox shut down, has nothing to mark removed (turn-stop.mjs).
+  const waiting = rt.delivery.waiting(se.id).find((/** @type {any} */ x) => x.id === entryId);
+  if (waiting?.source === 'person' && !waiting.itemId) throw httpError(409, 'This message can’t be removed; it goes as it is.');
+  const e = rt.delivery.cancel(se.id, entryId);
   if (e?.source === 'person') return removedUnread(rt, e);
   if (!e?.from) return;
   const sender = rt.sessions.in(rt.threads.lineage(e.threadId).at(-1)).find((/** @type {any} */ x) => x.handle === e.from);
