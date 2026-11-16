@@ -2,6 +2,26 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.17.0 (2026-11-16)
+
+### Features
+
+- **inbox:** a scheduled wake coming due is a scheduled entry
+- **inbox:** a thread's summary request is a command entry
+- **inbox:** an app's event and its check are entries
+- **inbox:** a stored queue becomes entries once, on start
+
+### Fixes
+
+- **inbox:** a Stop that stops a waiting summary request clears its pending summary
+- **inbox:** an app's event starts a failed agent's turn, as the person's click
+- **inbox:** what an entry carries in memory goes wherever the entry ends
+- **inbox:** Edit and Remove refuse a person entry with no item
+- **inbox:** a held message of the person's with no item survives a shutdown
+- **inbox:** a converted wake for an agent that has left tells its sender
+- **inbox:** converted entries keep the time their queue row waited from
+- **inbox:** a conversion torn between a message's item and its entries finishes it
+
 ## 4.16.0 (2026-11-16)
 
 ### Features
