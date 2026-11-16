@@ -31,7 +31,7 @@ const after = (f) =>
   f.adapter.calls
     .slice(f.from)
     .filter((c) => c.sessionId === f.alpha.id)
-    .map((c) => (c.message.messages ?? [c.message]).map(seen));
+    .map((c) => c.parts.map(seen));
 
 test('an answer that came before the person’s queued message runs first, as it did before entries', async () => {
   const f = await alphaBusy();

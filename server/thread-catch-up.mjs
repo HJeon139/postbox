@@ -10,6 +10,8 @@ import { clipText } from './helpers.mjs';
 import { lineOf, SAID } from './thread-summary.mjs';
 
 export function firstPromptSection(message, inThread) {
+  // turn-input.mjs’s text leads with the turn’s entries, after only the room’s fixed facts (#1427).
+  if (message.kind === 'input') return inThread ? 'thread-task' : 'room';
   if (typeof message.attach === 'string') return 'attach';
   if (message.slash === true) return 'slash';
   const direct = message.kind === 'user' || message.kind === 'agent' || message.kind === 'event';

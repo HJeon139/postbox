@@ -127,7 +127,11 @@ test('#362: a turn the operating system refused ends failed with the person’s 
   assert.equal(arrange.personWaiting(rt, t.id).length, 1, 'the second message waits for the first turn');
   await settle(rt);
   const failed = store.items(t.id).find((x) => x.kind === 'agent' && x.status === 'failed');
-  assert.equal(failed?.error, tooLongMessage(41));
+  // Its size is the input’s, which gives the message up to one entry’s ceiling (#1427): the refusal, whatever the size.
+  const refusal = tooLongMessage(1)
+    .replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    .replace('1 KB', '\\d+ KB');
+  assert.match(failed?.error ?? '', new RegExp(`^${refusal}$`));
   assert.equal(store.state.sessions[se.id].state, 'failed');
   assert.deepEqual(arrange.personWaiting(rt, t.id), ['@gem and this, next']);
 });

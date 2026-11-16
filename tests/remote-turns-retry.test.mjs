@@ -48,10 +48,9 @@ test('#120, #151, #377: Retry after a resumed wake fails asks what the wake aske
   r.hosts.emit('status', r.host.id, { state: 'connected' });
   await until(() => all(r).some((i) => i.status === 'failed' && /its own version/.test(i.error ?? '')), 'the resume to fail');
   const failed = all(r).find((i) => i.status === 'failed' && /its own version/.test(i.error ?? ''));
-  assert.deepEqual(
-    { kind: failed.asked.message.kind, from: failed.asked.message.from, text: failed.asked.message.text },
-    { kind: 'agent', from: '@lead', text: 'Is hello.txt there?' },
-  );
+  // A plain batch’s request keeps its plain parts (#1427).
+  const asked = failed.asked.message.messages?.[0] ?? failed.asked.message;
+  assert.deepEqual({ kind: asked.kind, from: asked.from, text: asked.text }, { kind: 'agent', from: '@lead', text: 'Is hello.txt there?' });
   // A small request is kept inline, in the record and on the failed reply.
   assert.equal(r.se().remoteTurn.origin.message.text, 'Is hello.txt there?');
   assert.equal('messageRef' in r.se().remoteTurn.origin, false);
@@ -60,7 +59,8 @@ test('#120, #151, #377: Retry after a resumed wake fails asks what the wake aske
   r.rt.config.build = build;
   r.rt.retry(threadOf(r, failed), failed.id);
   const again = await onHost(r, 2);
-  assert.match(messageOf(starts(r.d)[1]), /@lead wrote to you\. Your reply posts here;.*\n\nIs hello\.txt there\?/s);
+  // The wake’s entry, as its input gives it (#1427): who it’s from, and its words.
+  assert.match(messageOf(starts(r.d)[1]), /@lead, \d\d:\d\d UTC[^:]*: Is hello\.txt there\?/);
   r.d.end(again);
   await settled(r);
   assert.equal(threadOf(r, reply(r)), threadOf(r, failed), 'it answers where it was woken');
@@ -109,7 +109,11 @@ test('#120, #151: Retry after a resumed turn fails sends a request over 32,000 c
     assert.deepEqual(failed.asked, { messageRef: origin.messageRef, kind: 'user', summarizeTo: null });
     await r.rt.retry(threadId, failed.id);
     const again = await onHost(r, 2);
-    assert.ok(messageOf(starts(r.d)[1]).includes(LONG), 'the whole request, as it was sent');
+    // The whole request is kept, and Retry sends it as it was sent: an input gives each entry up to one entry’s ceiling,
+    // then its id (#1427), the second time as the first.
+    const sent = messageOf(starts(r.d)[1]);
+    assert.ok(sent.includes(LONG.slice(0, 10_000)), 'the request, as it was sent');
+    assert.match(sent, /\(15,000 of 50,000 characters; read_message \{ id: "it_\w+" \} has the rest\)/);
     r.d.end(again);
     await settled(r);
   } finally {

@@ -50,6 +50,31 @@ export function catchUp(memory, se, exclude = []) {
 }
 
 /**
+ * What a turn given turn-input.mjs’s text reads of the room besides its entries (#1427; designs/rooms-at-scale.md, “What
+ * a turn is given”): the items since the agent’s last turn, one line each as read_conversation gives them, without its
+ * own and without `exclude` (the turn’s entries, and the person’s messages still waiting for it); the lines on threads
+ * with something new, the person’s reactions and what waits for it on a card; and, on its first turn in a topic thread,
+ * the message the thread is about. Moves its marker to the end of the conversation, as catchUp does.
+ * @param {import('./memory-service.mjs').Memory} memory @param {any} se @param {string[]} exclude
+ * @returns {{ tail: string[], notes: string[], root: string | null }}
+ */
+export function turnTail(memory, se, exclude) {
+  const items = memory.store.items(se.threadId);
+  const t = memory.store.state.threads[se.threadId];
+  const at = se.seenItem ? positionOf(items, se.seenItem) : -1;
+  // Nothing it was given is a summary’s any more, so no later message comes as a pointer to one (pointerIfSeen).
+  memory.sessions.update(se.id, { seenItem: items.at(-1)?.id ?? null, givenMentions: [] });
+  const root = se.seenItem === null ? memory.topicRootLine(se, t) : null;
+  const fresh = items.slice(at + 1).filter((i) => !exclude.includes(i.id) && i.sessionId !== se.id && (i.kind !== 'system' || i.variant === 'wake'));
+  const tail = fresh.flatMap((i) => {
+    const line = memory.readLine(i, se);
+    return line ? [`[${i.id}] ${line}`] : [];
+  });
+  const notes = [...threadLines(memory, se, items[at]?.at ?? 0), ...reactionLines(memory, se, se.threadId), ...memory.catchUpLines(se)];
+  return { tail, notes, root: root ?? null };
+}
+
+/**
  * An item brought forward to the end of its thread (bringForward): a session whose catch-up marker was the item now
  * reads on from the stub, where the item was, so what came after it isn’t skipped. In the conversation the marker is
  * seenItem. A topic or side thread has no members, and its marker is seenIn for that thread on the conversation’s

@@ -33,7 +33,7 @@ test('#228: a wake for an agent that’s free goes, though a message for another
   b.release();
   await sleep(30);
   assert.ok(
-    adapter.calls.some((x) => x.sessionId === beta.id && x.message.text === 'Which editions?'),
+    adapter.calls.some((x) => x.sessionId === beta.id && x.parts[0].text === 'Which editions?'),
     'the wake for @beta waited behind @alpha’s',
   );
   assert.ok(rt.turns.has(alpha.id));
@@ -48,11 +48,12 @@ test('#228: after a restart, what waited in the queues goes once Postbox is read
   // The server stops with it still waiting; the new one sends it once it listens (index.mjs calls drainAll).
   const after = new ScriptedAdapter();
   const again = new Runtime({ store, adapters: new AdapterRegistry().register(after), config: rt.config });
+  after.rt = again;
   again.drainAll();
   await sleep(20);
   // The turns the old server ran had no record of ending, so what they took reopens once, as a resend (#466), and
   // goes with what waited.
-  const texts = (c) => (c.message.messages ?? [c.message]).map((m) => m.text);
+  const texts = (c) => c.parts.map((m) => m.text);
   assert.deepEqual(after.calls.filter((c) => c.sessionId === beta.id).map(texts), [['@alpha @beta both start', 'Which editions?']]);
   assert.deepEqual(arrange.waitingEntries(again, beta.id), []);
   a.release();
@@ -71,7 +72,7 @@ test('#228: removing an agent drops the mentions waiting for it, and their agent
   b.release();
   await settle(rt);
   assert.equal(
-    adapter.calls.some((x) => x.message.text === 'Which editions?'),
+    adapter.calls.some((x) => x.parts[0].text === 'Which editions?'),
     false,
   );
 });
@@ -123,7 +124,7 @@ test('#1146: after a failed turn, what waited goes in the order it was sent once
   await settle(rt);
   const after = adapter.calls.filter((x) => x.sessionId === beta.id).slice(2);
   assert.deepEqual(
-    after.flatMap((c) => (c.message.messages ?? [c.message]).map((m) => m.text)),
+    after.flatMap((c) => c.parts.map((m) => m.text)),
     ['@beta P1', 'W1', '@beta P2'],
   );
 });

@@ -29,11 +29,11 @@ test('#228, #372: an agent in a topic thread that wakes another gets the answer 
   const wake = store.items(topic.id).find((i) => i.kind === 'agent' && i.text === '@beta your opinion?');
   assert.deepEqual([wake.sessionId, wake.hop], [alpha.id, 1]);
   const answer = adapter.calls.find((x) => x.sessionId === beta.id);
-  assert.deepEqual([answer.thread, answer.message.from, answer.message.itemId], [topic.id, '@alpha', wake.id]);
+  assert.deepEqual([answer.thread, answer.parts[0].from, answer.message.itemId], [topic.id, '@alpha', wake.id]);
   assert.ok(store.items(topic.id).some((i) => i.kind === 'agent' && i.sessionId === beta.id && i.text === 'Looks fine.'));
   // No reply goes back to @alpha: it reads the answer at its next turn.
   assert.equal(
-    adapter.calls.some((x) => x.sessionId === alpha.id && x.message.from === '@beta'),
+    adapter.calls.some((x) => x.sessionId === alpha.id && x.parts[0].from === '@beta'),
     false,
   );
   assert.equal(
@@ -69,7 +69,7 @@ test('#228, #372: a waiting mention is in the agent’s inbox, not your queue, a
   rt.sendMessage(t.id, { text: '@beta stop that, do this', sendNow: true });
   long.release();
   await settle(rt);
-  const wake = adapter.calls.find((x) => x.message.text === 'One question.');
+  const wake = adapter.calls.find((x) => x.parts[0].text === 'One question.');
   assert.deepEqual([wake?.sessionId, wake?.thread], [beta.id, t.id]);
   assert.doesNotMatch(store.state.sessions[alpha.id].context?.join('\n') ?? '', /was stopped/);
 });
@@ -140,10 +140,10 @@ test('#228, #372: an @-mention from a turn in a topic thread wakes the agent the
     [['@beta your opinion on converter.py?', 1]],
   );
   const answer = adapter.calls.find((x) => x.sessionId === beta.id);
-  assert.deepEqual([answer.thread, answer.message.from, answer.message.itemId], [topic.id, '@alpha', said[0].id]);
+  assert.deepEqual([answer.thread, answer.parts[0].from, answer.message.itemId], [topic.id, '@alpha', said[0].id]);
   assert.ok(store.items(topic.id).some((i) => i.sessionId === beta.id && i.text === 'Looks fine.'));
   assert.equal(
-    adapter.calls.some((x) => x.sessionId === alpha.id && x.message.from === '@beta'),
+    adapter.calls.some((x) => x.sessionId === alpha.id && x.parts[0].from === '@beta'),
     false,
   );
   assert.equal(
@@ -183,7 +183,7 @@ test('#228: a wake waiting for a busy agent doesn’t hold back a message behind
   a.release();
   await sleep(30);
   assert.ok(
-    adapter.calls.some((x) => x.sessionId === alpha.id && x.message.text === '@alpha and another'),
+    adapter.calls.some((x) => x.sessionId === alpha.id && x.parts[0].text === '@alpha and another'),
     'it waited for @beta',
   );
   assert.ok(rt.turns.has(beta.id), '@beta is still at work');

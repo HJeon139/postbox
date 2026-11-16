@@ -60,6 +60,7 @@ import { Summaries } from './summary-service.mjs';
 import { Threads } from './threads.mjs';
 import { settleToolAsks } from './tool-ask.mjs';
 import { startTopic } from './topic-open.mjs';
+import { entryLine } from './turn-input.mjs';
 import { settleSubagentSteps } from './turn-steps.mjs';
 import { dismissStopAsk, recordStopped, requestStop, stop, stopTurns } from './turn-stop.mjs';
 import { toolsFor } from './ui-tools.mjs';
@@ -121,7 +122,8 @@ export class Runtime {
     // Each agent's inbox in each conversation, as stored entries (designs/architecture/services.md, “Delivery and Turns,
     // built as the inbox”). The chain cap's card stands in front of it (agentWake), so nothing it holds is past the cap
     // until Asks replaces the card. An entry's size is its text until Turns gives it as turn-input.mjs's entryLine (step 3).
-    const sizeOf = (/** @type {any} */ e) => (e.text ?? store.pending.item(e.threadId, e.itemId)?.text ?? '').length;
+    // What an entry takes of a turn’s budget: its line as the turn gives it (turn-input.mjs), cut at its own ceiling.
+    const sizeOf = (/** @type {any} */ e) => entryLine(e, (id) => store.pending.item(e.threadId, id)?.text ?? null).length;
     this.delivery = new Delivery({ store, bus: this.bus, running: this.running, chainHeld: () => false, sizeOf });
     this.signalProcess = signalProcess ?? process.kill;
     this.listProcesses = list ?? listProcesses;

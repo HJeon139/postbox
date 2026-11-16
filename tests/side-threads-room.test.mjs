@@ -7,6 +7,7 @@ import { handleMcp } from '../server/mcp.mjs';
 import { SENDING } from '../shared/limits.mjs';
 import * as arrange from './arrange.mjs';
 import { held, oldSide, settle, setup, sleep } from './side-threads-fixture.mjs';
+import { readOf } from './turn-parts.mjs';
 
 const linkOf = (store, t) => store.items(t.id).find((x) => x.kind === 'sidelink');
 /** A topic thread on the person’s first message in the conversation, which @alpha answered. */
@@ -60,10 +61,7 @@ test('#128: the person sends a message from a side thread from before to the con
   adapter.next.push(async (c) => c.text('ok'));
   rt.sendMessage(t.id, { text: '@alpha go on' });
   await settle(rt);
-  assert.match(
-    adapter.calls.at(-1).message.context?.join('\n') ?? adapter.calls.at(-1).message.text,
-    /Shared from the thread “@alpha ↔ @beta”, by @beta: Status: 3 of 5/,
-  );
+  assert.match(readOf(adapter.calls.at(-1)), /Shared from the thread “@alpha ↔ @beta”, by @beta: Status: 3 of 5/);
 });
 
 test('#128, #372: an agent the person asked posts to the conversation from a topic thread, marked as shared by it', async () => {
@@ -198,7 +196,7 @@ test('#151, #372: a failed wake in a topic thread needs you there, and Retry ans
   await settle(rt);
   const calls = adapter.calls.slice(before);
   assert.deepEqual(
-    calls.map((c) => [c.handle, c.message.kind, c.message.from, c.message.text, c.thread]),
+    calls.map((c) => [c.handle, c.parts[0].kind, c.parts[0].from, c.parts[0].text, c.thread]),
     [
       ['beta', 'agent', '@alpha', 'Review the plan.', topic.id],
       ['beta', 'agent', '@alpha', 'Review the plan.', topic.id],

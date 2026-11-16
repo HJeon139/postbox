@@ -21,7 +21,7 @@ import { adapterContext } from './turn-context.mjs';
 import { endTurn } from './turn-finish.mjs';
 import { askedAgain } from './turn-marks.mjs';
 import { turnExited } from './turn-stop.mjs';
-import { withEntries } from './turns.mjs';
+import { inputOf, withEntries } from './turns.mjs';
 
 /**
  * Runs one agent turn through its adapter.
@@ -68,7 +68,7 @@ export function deliver(rt, sessionId, message, { summarizeTo = null, threadId =
     folder: hostId ? null : workFolder(adapter, persona, project),
     projectFolder: project?.folder ?? null,
   });
-  atWork(rt, se, turn, message);
+  atWork(rt, se, turn);
   runTurn(rt, se, turn, message, { adapter, persona, hostId });
 }
 
@@ -103,8 +103,15 @@ function waitsBehind(rt, sessionId, message, { summarizeTo, threadId }) {
  */
 function turnMessage(rt, se, message, where, slash) {
   const sessionId = se.id;
+  // A plain batch is given turn-input.mjs’s text, built now, with the room’s tail in it, so no catch-up follows (#1427).
+  const input = message.kind === 'input';
+  if (input) {
+    // What else it carries (a Retry’s `woken` and `retry`) stays; its entries and plain parts are on what was asked.
+    const { entries: _entries, messages: _parts, ...carried } = message;
+    message = { ...carried, ...inputOf(rt, se, message, where) };
+  }
   // A queued mention its last room summary already gave it comes as a pointer there, never as a thread’s direct task (#484, #504).
-  if (where === se.threadId) message = rt.memory.pointerIfSeen(se, message);
+  else if (where === se.threadId) message = rt.memory.pointerIfSeen(se, message);
   // Postbox’s notices that waited for this agent’s next turn (tellAgent: what became of its earlier messages) lead the
   // background; the brief isn’t context, it goes with the room’s facts (turnFacts).
   if (se.context?.length && !slash) {
@@ -119,6 +126,7 @@ function turnMessage(rt, se, message, where, slash) {
   // Problems the checks found in its last reply, still waiting to go as a lint turn, come with this turn instead, as
   // message.lint: fixes it owes, placed with the request rather than in the background.
   if (message.kind !== 'lint' && !slash) message = rt.checks.foldLint(sessionId, message);
+  if (input) return message;
   // A topic or side thread’s request leads; its room catch-up is background. A room turn keeps the existing order. The
   // person’s messages still waiting for the agent stay out of it: they’re posted at send, and a later turn gives them.
   const waiting = rt.delivery
@@ -134,15 +142,17 @@ function turnMessage(rt, se, message, where, slash) {
  * @param {{ where: string, slash: boolean, summarizeTo: string|null, asked: any }} opts
  */
 function newTurn(se, message, persona, { where, slash, summarizeTo, asked }) {
+  // An input’s plain parts say who it’s from, as a batch’s did (turns.mjs).
+  const said = message.as ?? message;
   return {
     // An id chosen before the turn, by the take of its inbox entries (turns.mjs), or a new one.
     id: typeof message.turnId === 'string' ? message.turnId : newId('turn'),
-    kind: message.kind,
+    kind: said.kind,
     // Whether this is the person moving on (#69): their message or an event of theirs, not another agent’s review (#133).
-    movesOn: message.kind === 'user' || (message.kind === 'event' && !message.event?.from),
+    movesOn: said.kind === 'user' || (message.kind === 'event' && !message.event?.from),
     from:
-      message.kind === 'agent'
-        ? String(message.from ?? '')
+      said.kind === 'agent'
+        ? String(said.from ?? '')
             .replace(/^@/, '')
             .toLowerCase()
         : null,
@@ -179,11 +189,17 @@ function newTurn(se, message, persona, { where, slash, summarizeTo, asked }) {
   };
 }
 
+/** Who a turn answers, for the side thread’s line that shows it at work: an agent by its handle, or you. @param {any} turn */
+function startedBy(turn) {
+  if (turn.kind === 'agent') return turn.from;
+  return turn.kind === 'user' ? 'you' : null;
+}
+
 /**
  * The session shows the agent at work on the turn, which takes the rules the person allowed once.
- * @param {any} rt @param {any} se @param {any} turn @param {any} message
+ * @param {any} rt @param {any} se @param {any} turn
  */
-function atWork(rt, se, turn, message) {
+function atWork(rt, se, turn) {
   const where = turn.threadId;
   // Rules the person allowed once (from a refusal card) apply to this turn only.
   turn.allowOnce = se.allowOnce ?? [];
@@ -192,7 +208,7 @@ function atWork(rt, se, turn, message) {
     endingSubagents: [],
     glimpse: '',
     // Where the turn is, when it’s in a side thread (#121): the conversation shows the agent at work there.
-    sideTurn: where === se.threadId ? null : { threadId: where, by: message.kind === 'agent' ? turn.from : message.kind === 'user' ? 'you' : null },
+    sideTurn: where === se.threadId ? null : { threadId: where, by: startedBy(turn) },
     state: 'think',
     // Moving on clears a need tied to a turn; the cards that wait until answered stay (card-needs.mjs RANK).
     needs: turn.movesOn && TURN_TIED.has(se.needs?.kind) ? null : se.needs,

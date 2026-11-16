@@ -8,7 +8,7 @@
 // `catchUpLines`. The thread summaries are a service of their own (summary-service.mjs).
 
 import { READING } from '../shared/limits.mjs';
-import { catchUp, moveMarkers, pointerIfSeen } from './catch-up.mjs';
+import { catchUp, moveMarkers, pointerIfSeen, turnTail } from './catch-up.mjs';
 import { describeItem, topicRootLine } from './item-lines.mjs';
 import { readConversation, readLine, readMessage } from './read-message.mjs';
 import { threadCatchUp, turnContext } from './thread-catch-up.mjs';
@@ -42,6 +42,14 @@ export class Memory {
    */
   catchUp(se, exclude = []) {
     return catchUp(this, se, exclude);
+  }
+
+  /**
+   * The room’s items, notes and topic root a turn given turn-input.mjs’s text reads besides its entries, and moves its
+   * marker (#1427). @param {any} se @param {string[]} exclude
+   */
+  turnTail(se, exclude) {
+    return turnTail(this, se, exclude);
   }
 
   /**

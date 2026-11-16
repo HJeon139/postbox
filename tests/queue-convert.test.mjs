@@ -33,12 +33,13 @@ async function restart(dir, config) {
   const store = await new Store(dir).load();
   const adapter = new ScriptedAdapter();
   const rt = new Runtime({ store, adapters: new AdapterRegistry().register(adapter), config });
+  adapter.rt = rt;
   rt.drainAll();
   await settle(rt);
   return { store, rt, adapter };
 }
 
-const texts = (adapter, se) => adapter.calls.filter((c) => c.sessionId === se.id).flatMap((c) => (c.message.messages ?? [c.message]).map((m) => m.text));
+const texts = (adapter, se) => adapter.calls.filter((c) => c.sessionId === se.id).flatMap((c) => c.parts.map((m) => m.text));
 
 test('#1423 a queue stored before the change becomes entries on start: each message reaches its agent once', async () => {
   const f = await storeWithQueue();

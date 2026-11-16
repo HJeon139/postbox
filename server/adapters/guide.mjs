@@ -254,14 +254,12 @@ const isReview = (event) =>
  * @param {(a: any) => string|null} [pathOf]  where an attachment can be read on disk
  */
 export function formatMessage(message, pathOf = () => null) {
+  if (message.kind === 'input') return formatInput(message, pathOf);
   const body = message.messages?.length ? formatQueuedMessages(message.messages, pathOf, formatMessage) : formatBody(message, pathOf);
   // A command is the whole prompt: Claude Code runs it only when the prompt is /name and its arguments (#67).
   if (message.slash || typeof message.attach === 'string') return body;
   const facts = message.facts ? `[Postbox] What’s current in this room:\n\n${message.facts}` : '';
   const lint = typeof message.lint === 'string' && message.lint ? message.lint : '';
-  // What turn-input.mjs built from the turn’s entries (#1427): the room’s facts first, which change least, so a turn’s
-  // fixed parts lead in a stable order for the prompt cache (#515); then its entries and tail; then what rides with it.
-  if (message.kind === 'input') return [facts, message.text, lint, ...(message.context ?? [])].filter(Boolean).join('\n\n');
   // A topic or side thread’s turn (#504, #511): the room’s catch-up is already labeled as background by turnContext.
   if (message.taskContext)
     return [
@@ -275,6 +273,22 @@ export function formatMessage(message, pathOf = () => null) {
       .filter(Boolean)
       .join('\n\n');
   return [body, facts, lint, message.context?.length ? `${BACKGROUND}\n\n${message.context.join('\n\n')}` : ''].filter(Boolean).join('\n\n');
+}
+
+/**
+ * What turn-input.mjs built from a turn’s entries (#1427): the room’s facts first, which change least, so a turn’s fixed
+ * parts lead in a stable order for the prompt cache (#515); then its entries and tail; the files its messages carry,
+ * where this backend reads them; then what rides with it.
+ * @param {any} message @param {(a: any) => string | null} pathOf
+ */
+function formatInput(message, pathOf) {
+  const facts = message.facts ? `[Postbox] What’s current in this room:\n\n${message.facts}` : '';
+  const lint = typeof message.lint === 'string' && message.lint ? message.lint : '';
+  const files = (message.attachments ?? []).map((/** @type {any} */ a) => {
+    const where = pathOf(a);
+    return `- ${a.kind === 'project-file' ? a.path : `${a.name}${a.type ? ` (${a.type})` : ''}`}${where ? `: ${where}` : ''}`;
+  });
+  return [facts, message.text, files.length ? `Attached:\n${files.join('\n')}` : '', lint, ...(message.context ?? [])].filter(Boolean).join('\n\n');
 }
 
 /** A late answer to an AskUserQuestion, in words. @param {{ text: string, answer: string | null }} q */

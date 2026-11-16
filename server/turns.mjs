@@ -3,11 +3,12 @@
 // the turn through today’s deliver, until Turns starts a turn from entries and builds its input from them (step 3).
 // Functions take the Runtime first, as waiting code does until Turns is a service.
 
-import { SENDING } from '../shared/limits.mjs';
+import { SENDING, TURN_INPUT } from '../shared/limits.mjs';
 import { partEnd } from '../shared/text-parts.mjs';
 import { lostEvent } from './app-entries.mjs';
 import { combineMessages, plainMessage } from './queue-batch.mjs';
 import { newId } from './store.mjs';
+import { turnInput } from './turn-input.mjs';
 
 /**
  * Takes the agent’s waiting entries of one thread for a new turn, and starts it. The turn’s id is chosen first, so the
@@ -17,11 +18,58 @@ import { newId } from './store.mjs';
  */
 export function startFromEntries(rt, sessionId) {
   const turnId = newId('turn');
-  const entries = rt.delivery.take(sessionId, turnId, SENDING.message);
+  const entries = rt.delivery.take(sessionId, turnId, TURN_INPUT.entries);
   if (!entries.length) return;
-  const message = { ...combineMessages(given(rt, entries)), turnId, fromEntries: true };
+  // A plain batch is given turn-input.mjs’s text, built as the turn starts (inputOf); an entry with a message of its own
+  // keeps it until Turns owns what reads it (#1427).
+  const batch = combineMessages(given(rt, entries));
+  // Its plain parts stay with it (`messages`, `as`), for what reads the person’s words or who woke the agent.
+  const message = plainBatch(entries)
+    ? { ...batch, kind: 'input', as: { kind: batch.kind, from: batch.from }, messages: batch.messages ?? [batch], entries, turnId, fromEntries: true }
+    : { ...batch, turnId, fromEntries: true };
   const summarizeTo = summaryOf(rt, entries[0]);
   rt.deliver(sessionId, message, { threadId: entries[0].threadId, ...(summarizeTo ? { summarizeTo } : {}) });
+}
+
+/** Sources a plain batch is made of: messages to read, and Postbox’s notices riding with them. */
+const PLAIN = new Set(['person', 'mention', 'notice']);
+
+/** Whether a turn’s entries are a plain batch. @param {any[]} entries */
+const plainBatch = (entries) => entries.every((e) => PLAIN.has(e.source) && !e.message);
+
+/**
+ * The text of a plain batch’s turn (designs/rooms-at-scale.md, “What a turn is given”), as the turn starts, so its tail
+ * is the room as it is then: its entries, each whole up to its ceiling; the room’s items since the agent’s last turn
+ * that aren’t its entries, nor the person’s messages still waiting for it; and the files its messages carry, which the
+ * backend places (formatMessage).
+ * @param {any} rt @param {any} se @param {{ entries: any[], as: any }} message @param {string} where  the thread the turn speaks in
+ */
+export function inputOf(rt, se, { entries, as }, where) {
+  const threadId = entries[0].threadId;
+  const read = (/** @type {string} */ id) => readItem(rt, threadId, id);
+  const waiting = rt.delivery.waiting(se.id);
+  const exclude = [...entries, ...waiting.filter((/** @type {any} */ e) => e.source === 'person')].map((e) => e.itemId).filter(Boolean);
+  // A topic or side thread’s own talk since the agent’s last turn there, as its catch-up gave it. First, so the room’s
+  // tail after it doesn’t also name that thread as one with something new.
+  const inThread = where !== se.threadId ? rt.memory.threadCatchUp(se, where, exclude) : null;
+  const { tail, notes, root } = rt.memory.turnTail(se, exclude);
+  const elsewhere = waiting.filter((/** @type {any} */ e) => e.threadId !== threadId && e.source !== 'notice').length;
+  const thread = rt.store.pending.thread(threadId) ?? { id: threadId };
+  const text = turnInput({ entries, thread, read, tail, notes: inThread ? [...notes, inThread] : notes, root, waitingElsewhere: elsewhere });
+  const attachments = entries.flatMap((e) => (e.itemId ? (rt.store.pending.item(threadId, e.itemId)?.attachments ?? []) : []));
+  // Its plain parts stay on what was asked (`turn.asked`), where what reads them looks; the agent is given the text.
+  return { kind: 'input', text, attachments, as };
+}
+
+/**
+ * An entry’s item as its line reads it, or null when it’s gone: a failed reply says so first, since it may be cut off
+ * (#485). @param {any} rt @param {string} threadId @param {string} id
+ */
+function readItem(rt, threadId, id) {
+  const it = rt.store.pending.item(threadId, id);
+  if (!it) return null;
+  const failed = it.status === 'failed' ? `(This reply failed before it finished${it.error ? `: ${it.error}` : '.'} It may be cut off.)\n\n` : '';
+  return failed + String(it.text ?? '');
 }
 
 /**
@@ -41,7 +89,7 @@ const summaryOf = (rt, e) => (e.message?.summary ? (rt.store.pending.thread(e.th
 export function withEntries(rt, sessionId, threadId, message) {
   if (message.fromEntries || message.entriesWait || !(plainMessage(message) || message.messages)) return message;
   const turnId = typeof message.turnId === 'string' ? message.turnId : newId('turn');
-  const entries = rt.delivery.take(sessionId, turnId, SENDING.message, threadId);
+  const entries = rt.delivery.take(sessionId, turnId, TURN_INPUT.entries, threadId);
   if (!entries.length) return message;
   return { ...combineMessages([message, ...given(rt, entries)]), turnId };
 }

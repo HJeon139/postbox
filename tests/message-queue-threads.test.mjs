@@ -10,7 +10,7 @@ const turnsAfterFirst = ({ adapter, beta, t }) =>
   adapter.calls
     .filter((c) => c.sessionId === beta.id)
     .slice(1)
-    .map((c) => [c.thread === t.id ? 'conversation' : 'topic', (c.message.messages ?? [c.message]).map((m) => m.text)]);
+    .map((c) => [c.thread === t.id ? 'conversation' : 'topic', c.parts.map((m) => m.text)]);
 
 /** The side-thread room with a topic in its conversation, and @beta busy in a turn held open. */
 function busyWithTopic() {

@@ -23,12 +23,15 @@ async function mention(text) {
   return { woke, told: store.state.sessions[alpha.id].context ?? [], store, t };
 }
 
-test('#362: a reply exactly at the limit wakes the agent it mentions, with every character as written', async () => {
+test('#362: a reply exactly at the limit wakes the agent it mentions; its turn gives it as written, cut at one entry’s ceiling with its id', async () => {
   const text = reply(LIMIT);
   assert.equal(text.length, LIMIT);
-  const { woke, told } = await mention(text);
+  const { woke, told, store, t } = await mention(text);
   assert.equal(woke.length, 1, 'beta was woken');
-  assert.ok(JSON.stringify(woke[0].message).includes(JSON.stringify(text).slice(1, -1)), 'beta got the reply unchanged');
+  // A turn gives each entry whole up to READING.mention, then its id (designs/rooms-at-scale.md, “The budget”; #1427).
+  const posted = store.items(t.id).find((x) => x.kind === 'agent' && x.text === text);
+  assert.ok(woke[0].message.text.includes(text.slice(0, 1000)), 'every character as written, up to the cut');
+  assert.match(woke[0].message.text, new RegExp(`… \\(15,000 of 50,000 characters; read_message \\{ id: "${posted.id}" \\} has the rest\\)`));
   assert.deepEqual(
     told.filter((x) => /woke no one/.test(x)),
     [],
@@ -46,7 +49,7 @@ test('a reply past what one message carries still reaches the agent it mentions,
   const woke = adapter.calls.filter((c) => c.sessionId === beta.id);
   assert.equal(woke.length, 1, 'beta was woken');
   const posted = store.items(t.id).find((x) => x.kind === 'agent' && x.text === text);
-  assert.match(woke[0].message.text, new RegExp(`… \\(50,000 of 50,001 characters; read_message \\{ id: "${posted.id}" \\} has the rest\\)$`));
+  assert.match(woke[0].parts[0].text, new RegExp(`… \\(50,000 of 50,001 characters; read_message \\{ id: "${posted.id}" \\} has the rest\\)$`));
   assert.equal(adapter.calls.filter((c) => c.sessionId === alpha.id).length, 1, 'alpha got no notice turn');
   assert.ok(!store.items(t.id).some((x) => /woke no one/.test(x.text ?? '')), 'no refusal line');
 });
@@ -77,8 +80,8 @@ test('#834: a mention waiting for a busy agent reaches it whole, not cut to the 
   await until(() => arrange.running(rt, alpha.id), 'alpha’s next reply to stream');
   busy.release();
   await until(() => adapter.calls.filter((c) => c.sessionId === beta.id).length === 2, 'beta’s next turn');
-  const { message } = adapter.calls.filter((c) => c.sessionId === beta.id)[1];
-  const fromAlpha = (message.messages ?? [message]).filter((m) => m.from === '@alpha').map((m) => m.text);
+  const { parts } = adapter.calls.filter((c) => c.sessionId === beta.id)[1];
+  const fromAlpha = parts.filter((m) => m.from === '@alpha').map((m) => m.text);
   assert.deepEqual(fromAlpha, ['@beta the editions differ in chapter 3; compare them.'], 'the whole hand-off, not the reply streaming');
   streaming.release();
   await settle(rt);

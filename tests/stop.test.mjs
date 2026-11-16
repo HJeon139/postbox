@@ -506,7 +506,7 @@ test('#126: after Stop the session is stopping until the process exits, and a me
   first.exit();
   await sleep(10);
   assert.equal(adapter.calls.length, 2, 'the next turn starts once the first has exited');
-  assert.equal(adapter.calls[1].message.text, 'next');
+  assert.equal(adapter.calls[1].parts[0].text, 'next');
   await sleep(10);
   assert.equal(store.state.sessions[se.id].state, 'idle');
 });
@@ -523,7 +523,7 @@ test('#126: Send now waits on the same exit', async () => {
   assert.equal(adapter.calls.length, 1);
   first.exit();
   await sleep(10);
-  assert.equal(adapter.calls.at(-1).message.text, 'change of plan');
+  assert.equal(adapter.calls.at(-1).parts[0].text, 'change of plan');
 });
 
 test('#126: a stopped turn’s tool calls are refused, and show nothing; the next turn’s still work, and a call without a token is refused (#54)', async () => {

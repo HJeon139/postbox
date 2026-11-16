@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import * as arrange from './arrange.mjs';
 import { held, oldSide, sessionsOfPersona, settle, setup, sleep } from './side-threads-fixture.mjs';
+import { readOf } from './turn-parts.mjs';
 
 const sides = (store) => Object.values(store.state.threads).filter((x) => x.kind === 'side');
 
@@ -65,7 +66,7 @@ test('#228: a wake while the session is busy waits for its turn, as a message to
   assert.deepEqual([e.source, e.from, e.threadId, store.items(t.id).find((x) => x.id === e.itemId)?.text], ['mention', 'alpha', t.id, 'Which editions?']);
   busy.release();
   await settle(rt);
-  const answer = adapter.calls.find((x) => x.message.text === 'Which editions?');
+  const answer = adapter.calls.find((x) => x.parts[0].text === 'Which editions?');
   assert.deepEqual([answer.sessionId, answer.thread], [beta.id, t.id]);
   assert.equal(
     Object.values(store.state.sessions).some((x) => x.forkOf),
@@ -92,7 +93,7 @@ test('#110, #372: a second wake while the session is busy with the first waits i
   );
   h.release();
   await settle(rt);
-  const second = adapter.calls.find((c) => c.message.text === 'And the dates?');
+  const second = adapter.calls.find((c) => c.parts[0].text === 'And the dates?');
   assert.deepEqual([second.sessionId, second.thread], [beta.id, t.id]);
 });
 
@@ -145,7 +146,7 @@ test('#372: a turn still running in a side thread from before hands off in the c
     ],
   );
   assert.deepEqual(
-    adapter.calls.filter((c) => c.sessionId === alpha.id).map((c) => [c.thread, c.message.text]),
+    adapter.calls.filter((c) => c.sessionId === alpha.id).map((c) => [c.thread, c.parts[0].text]),
     [
       [t.id, '@alpha the 1908 one, page 12.'],
       [t.id, '@alpha and page 40.'],
@@ -211,7 +212,7 @@ test('#110: a message you queued for an agent busy with a wake goes once that tu
   h.release();
   await settle(rt);
   assert.equal(store.state.threads[t.id].queue.length, 0);
-  assert.ok(adapter.calls.some((c) => c.sessionId === beta.id && c.thread === t.id && c.message.text === '@beta when you can'));
+  assert.ok(adapter.calls.some((c) => c.sessionId === beta.id && c.thread === t.id && c.parts[0].text === '@beta when you can'));
 });
 
 test('#110: an item read_conversation cut in a side thread can be read in full with read_message, and not from another conversation', async () => {
@@ -239,7 +240,7 @@ test('#121: the catch-up line for a side thread from before gives its id, so an 
   const side = oldSide(f, ['Check this.', 'ok']);
   rt.sendMessage(t.id, { text: '@gamma what happened?' });
   await settle(rt);
-  const ctx = adapter.calls.at(-1).message.context.join('\n');
+  const ctx = readOf(adapter.calls.at(-1));
   assert.match(ctx, new RegExp(`@alpha and @beta talked in a side thread \\(2 messages; read_conversation with thread: "${side.id}" reads it\\)`));
 });
 
@@ -250,7 +251,7 @@ test('#121: a link to a thread of the conversation in your message reaches the a
   const other = rt.createThread({ projectId: 'p1', title: 'Other', personaIds: [a.id] });
   rt.sendMessage(t.id, { text: `@alpha look at [it](http://127.0.0.1:4400/#/t/${t.id}/side/${side.id}) and #/t/${other.id}` });
   await settle(rt);
-  const call = adapter.calls.findLast((c) => c.sessionId === alpha.id && c.message.kind === 'user');
+  const call = adapter.calls.findLast((c) => c.sessionId === alpha.id && c.parts[0].kind === 'user');
   const refs = call.message.context.filter((x) => x.includes('links to'));
   assert.deepEqual(refs, [
     `[Postbox] The person’s message links to the side thread “${side.title}” (thread ${side.id}). Read it with read_conversation with thread: "${side.id}".`,
