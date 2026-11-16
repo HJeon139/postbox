@@ -60,6 +60,19 @@ test('create refuses a backend that isn’t registered, and a name that isn’t 
   refused(() => personas.create({ handle: '1 no' }), 422);
 });
 
+test('create refuses “you”, in any case: it’s the person’s own name in a room', () => {
+  const { personas } = rig();
+  for (const handle of ['you', '@You', 'YOU']) {
+    assert.throws(
+      () => personas.create({ handle }),
+      (/** @type {any} */ e) => e.status === 422 && e.message === '@you is the person’s own name in a room. Pick another handle.',
+      handle,
+    );
+  }
+  assert.deepEqual(personas.handles(), [], 'none was made');
+  assert.equal(personas.create({ handle: 'youth' }).handle, 'youth', 'a name that only starts with it is a name');
+});
+
 test('get, byHandle and handles find personas; byHandle and handles leave the retired out', () => {
   const { personas } = rig();
   const a = personas.create({ handle: 'alpha' });

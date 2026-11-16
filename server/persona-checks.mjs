@@ -1,7 +1,7 @@
 // The checks on a persona’s setup that its create and update share (#57, #59, #60), moved out of server/runtime.mjs
 // under the file-length rule.
 
-import { HANDLE } from '../shared/limits.mjs';
+import { HANDLE, PERSON } from '../shared/limits.mjs';
 import { EFFORT_LEVELS } from './adapters/setup.mjs';
 import { httpError } from './helpers.mjs';
 
@@ -35,7 +35,8 @@ export function checkModel(model) {
 }
 /**
  * A persona’s name as it’s stored: without a leading @ and the spaces around it. One that HANDLE refuses is refused here, so
- * createPersona and agents.json’s check before seeding read a name the same way (#990).
+ * createPersona and agents.json’s check before seeding read a name the same way (#990). PERSON, in any case, is refused
+ * too: in a room it names the person, so an agent’s posts would read as theirs and theirs as its (#1419).
  * @param {unknown} handle
  */
 export function handleOf(handle) {
@@ -43,5 +44,6 @@ export function handleOf(handle) {
     .replace(/^@/, '')
     .trim();
   if (!HANDLE.test(name)) throw httpError(422, 'A name uses 2–24 letters, digits, - or _, and starts with a letter.');
+  if (name.toLowerCase() === PERSON) throw httpError(422, `@${PERSON} is the person’s own name in a room. Pick another handle.`);
   return name;
 }
