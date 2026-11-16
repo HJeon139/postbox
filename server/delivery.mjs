@@ -28,7 +28,7 @@ const PERSON = new Set(['person', 'answer', 'command']);
  * other than a plain one, such as an answer’s event or a lint turn, whose kind its turn keeps.
  * @param {{ message?: any }} e
  */
-const alone = (e) => Boolean(e.message) && !plainMessage(e.message);
+export const alone = (e) => Boolean(e.message) && !plainMessage(e.message);
 
 /** @typedef {'waiting'|'taken'|'delivered'|'failed'|'stopped'} EntryState */
 /**

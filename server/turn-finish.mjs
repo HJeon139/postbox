@@ -6,6 +6,7 @@ import { ASKING } from '../shared/catalog.mjs';
 import { fixEnded } from './apps.mjs';
 import { nextNeed, noticeNeed, stateFor } from './card-needs.mjs';
 import { emptyReply, endedWithoutReply } from './empty-reply.mjs';
+import { entriesFirst } from './entry-turns.mjs';
 import { clip } from './helpers.mjs';
 import { settleScheduledWake } from './scheduled-wakes.mjs';
 import { postSummary } from './share-back.mjs';
@@ -56,8 +57,14 @@ export function endTurn(rt, turn, err) {
   if (topic && !viewing && (turn.said || open.length)) rt.threads.patch(topic, (x) => ({ unread: (x.unread ?? 0) + 1 }));
   if (turn.threadId !== se.threadId) rt.summaries.settleThread(turn.threadId);
 
+  // Last: what it took was delivered, the agents its replies mentioned are woken, and its own next entries start. An
+  // entry that came before everything queued for the agent starts first, so what waited goes in arrival order (#733).
+  if (entriesFirst(rt, se, turn)) {
+    rt.bus.emit('turn.ended', { turn });
+    rt.takePending(se, turn, true);
+    return;
+  }
   rt.takePending(se, turn, true);
-  // Last: what it took was delivered, the agents its replies mentioned are woken, and its own next entries start.
   rt.bus.emit('turn.ended', { turn });
 }
 
