@@ -278,8 +278,8 @@ flowchart LR
 
     The Bus calls a signal’s listeners in the order the root adds them, as it does for `persona.updated`.
 - **No one else starts a turn.** `rt.deliver` has 15 calling modules today (#1236, the inventory of 15 November). Twelve of them hand an agent a message, and they call Delivery’s `send` instead: the queue, mention wakes, side threads, scheduled wakes, share-back, agent commands, blocks, and the permission, wake, tool-ask, app-send and download cards. The other three aren’t messages, and they become Turns’ own steps:
-  - `retryHeld`: a start that waited behind a held commit;
-  - `release`: a stopped turn has exited; Turns raises `turn.exited`, and Delivery raises `entry.waiting` if the agent has entries;
+  - `retryHeld`: a start that waited, behind a held commit, with writes closed, or for a session joined behind one. As built (#1429) it isn’t a step of its own: it’s `run`’s held re-entry, which calls `run` again when the start can go;
+  - `release`: what waited on a turn, given when a stopped turn has exited, and when a turn ends normally with messages held on it (`takePending`); Turns raises `turn.exited`, and Delivery raises `entry.waiting` if the agent has entries;
   - `resume`: a host turn resumed after a restart (`remote/turns-resume.mjs`).
 - **Calls into waiting code:** until the permission layer is removed and Asks is built, Turns reaches them through one port, `asks`. It covers `requestPermission`, `recordDenial`, `settlePermission`, the needs (`keptTurns`, `offerNeed`, `releaseNeed`) and `card.opened`. Nothing else in Turns calls waiting code.
 - **Listens to:** `entry.waiting`.
