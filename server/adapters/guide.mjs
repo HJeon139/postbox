@@ -259,6 +259,9 @@ export function formatMessage(message, pathOf = () => null) {
   if (message.slash || typeof message.attach === 'string') return body;
   const facts = message.facts ? `[Postbox] What’s current in this room:\n\n${message.facts}` : '';
   const lint = typeof message.lint === 'string' && message.lint ? message.lint : '';
+  // What turn-input.mjs built from the turn’s entries (#1427): the room’s facts first, which change least, so a turn’s
+  // fixed parts lead in a stable order for the prompt cache (#515); then its entries and tail; then what rides with it.
+  if (message.kind === 'input') return [facts, message.text, lint, ...(message.context ?? [])].filter(Boolean).join('\n\n');
   // A topic or side thread’s turn (#504, #511): the room’s catch-up is already labeled as background by turnContext.
   if (message.taskContext)
     return [
