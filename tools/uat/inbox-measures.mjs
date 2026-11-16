@@ -82,7 +82,9 @@ export function idleWakes(items, turns) {
 export function doubledHandOffs(items, turns) {
   const handles = handlesOf(items);
   const woke = new Set(turns.filter((t) => t.tools.includes('wake_agent')).map((t) => t.turnId));
-  return items.filter((i) => i.kind === 'agent' && woke.has(i.turnId) && parseMentions(i.text, handles).some((h) => h !== i.handle)).length;
+  const doubled = items.filter((i) => i.kind === 'agent' && woke.has(i.turnId) && parseMentions(i.text, handles).some((h) => h !== i.handle));
+  // A turn can post several items, and is one hand-off.
+  return new Set(doubled.map((i) => i.turnId)).size;
 }
 
 /**

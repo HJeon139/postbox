@@ -15,7 +15,7 @@ import {
   table,
   waitingElsewhere,
 } from '../tools/uat/inbox-measures.mjs';
-import { toolName } from '../tools/uat/run-turns.mjs';
+import { agyTurn, toolName } from '../tools/uat/run-turns.mjs';
 
 const agent = (id, handle, at, text, more = {}) => ({ id, kind: 'agent', handle, at, text, turnId: `turn_${id}`, ...more });
 const person = (id, at, text) => ({ id, kind: 'user', at, text });
@@ -69,6 +69,8 @@ test('a hand-off is posted twice when a turn calls wake_agent and its reply ment
   ];
   assert.equal(doubledHandOffs(items, turns), 1);
   assert.equal(doubledHandOffs(items, [{ turnId: 'turn_it_1', tools: ['read_message'] }]), 0);
+  const more = agent('it_1b', 'alpha', 11, 'I’ve asked @beta.', { turnId: 'turn_it_1' });
+  assert.equal(doubledHandOffs([...items, more], turns), 1, 'two items of one turn are one hand-off');
 });
 
 test('a wake is by a copied line when the waking reply names the agent only in a line copied from the conversation', () => {
@@ -156,4 +158,12 @@ test('a measure across runs is its mean and range, and the table says when nothi
     .split('\n')
     .at(-1);
   assert.equal(row, '| Entries waiting in another thread at a turn’s start | not recorded | 1 (0.5 to 1.5) | reported |');
+});
+
+test('an Antigravity turn’s input is its model calls added up: its result counts the whole conversation so far', () => {
+  const call = (input, cached) => ({ step_update: { step_type: 'agent_response', state: 'DONE', usage: { input_tokens: input, cache_read_tokens: cached } } });
+  // The second turn of a recorded run: two calls, and a result that also holds the turn before it.
+  const lines = [call(3163, 23162), call(2417, 25754), { event: 'result', result: { usage: { input_tokens: 35222, cache_read_tokens: 116754 } } }];
+  assert.deepEqual(agyTurn(lines), { requests: 2, input: 54496, tools: [] });
+  assert.equal(agyTurn([{ event: 'result', result: { usage: { input_tokens: 9 } } }]).input, null, 'no call recorded, so nothing is reported');
 });
