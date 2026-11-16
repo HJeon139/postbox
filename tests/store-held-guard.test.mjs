@@ -95,6 +95,7 @@ const PENDING = {
   'block-show.mjs': ['showBlock', 'showBlock', 'showBlock', 'shownAgain'], // show_block of an app or a block id the turn may have just shown
   'block-update.mjs': ['shownBy'], // update_block of a block the turn just showed
   'catch-up.mjs': ['moveMarkers'], // the conversation of a topic an item moved in, maybe opened behind a held commit, whose sessions' markers move (#1041)
+  'delivery.mjs': ['sessionIds', 'inbox', 'ready'], // the sessions with inboxes, an inbox's entries and its session decide each entry's next state and the wake (#796's class)
   'held-session.mjs': ['heldSession'], // a delivery to a session just made behind a held commit waits until it's published (#796's class in sessions)
   // A job's end: the list it leaves, whether a kept job still runs to hold the steps, and the steps to stall (#957).
   'job-records.mjs': ['endJob', 'endJob', 'endJob', 'runningProgress', 'setJobStep', 'settleJobs'],
@@ -115,8 +116,9 @@ const PENDING = {
   'reply-segment.mjs': ['wordsSegment', 'placeStep'], // whether the turn’s open part is still its thread’s last decides where its next words and steps go
   // The conversation createThread just wrote, with the agents it joined: its route’s answer is its own write, which a
   // held commit keeps out of the published state (#1247’s class). And the agent deletePersona deletes, with its sessions,
-  // any of them maybe made behind a held commit.
-  'runtime.mjs': ['createThread', 'deletePersona', 'deletePersona', 'deletePersona'],
+  // any of them maybe made behind a held commit. The constructor binds Delivery's sizeOf, which reads the item an entry
+  // points at as take decides what a turn holds, maybe added in the same held write.
+  'runtime.mjs': ['constructor', 'createThread', 'deletePersona', 'deletePersona', 'deletePersona'],
   // The reply with the mention, a side line right after its add, and sweeps of hop cards; the conversation's hop count,
   // the topic the wake answers in, and endChain's hops and queued wakes, each maybe held behind a commit (#796).
   // A session's change and notice diff against the session a held change left (#796's class in sessions).

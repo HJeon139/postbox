@@ -1,6 +1,7 @@
 // What the page loads when it opens (/api/state, server/index.mjs): the state with the seq and epoch it counts within,
 // the store’s status, and the configuration the page reads once.
 
+import { pageInbox } from '../shared/inbox-page.mjs';
 import { HOP_LIMIT } from '../shared/limits.mjs';
 import { DEFAULT_EFFORT, DEFAULT_MODEL, EFFORT_LEVELS, REAL_BACKEND_TOOLS } from './adapters/setup.mjs';
 import { publicHeaders, publicState } from './public-state.mjs';
@@ -18,7 +19,7 @@ export function pageState({ store, rt, adapters, origin, demo, real, config, hea
     store: store.status, // whether changes are being saved, and why not (ST-3): the page’s status line
     // Only its public keys (server/public-state.mjs), and no conversation’s items: the page loads those by range when it
     // opens a conversation (/api/threads/:id/items, #1155), so opening the page costs the conversations, not their history.
-    state: { ...publicState(store.state), items: {} },
+    state: { ...publicState(store.state), items: {}, inbox: pageInbox(store.state.inbox) },
     // Each thread’s header facts (shared/thread-header.mjs, #1155): what the page shows about a thread without its items.
     headers: publicHeaders(headers.all()),
     config: {

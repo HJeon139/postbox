@@ -26,6 +26,8 @@ import { apply, patchSession } from '../shared/state.mjs';
 const LISTS = /** @type {const} */ ({
   items: { events: ['item.add', 'item.patch', 'item.move', 'item.text'], key: 'threadId', added: (/** @type {any} */ d) => d.item?.id },
   work: { events: ['work.add', 'work.patch'], key: 'convId', added: (/** @type {any} */ d) => d.entry?.id },
+  // An agent's inbox (server/delivery.mjs): its entries are written in the same held write as the item they come from.
+  inbox: { events: ['entry.add', 'entry.patch', 'entry.put'], key: 'sessionId', added: (/** @type {any} */ d) => d.entry?.id },
 });
 /**
  * The collections of whole entities a pending read covers, keyed by id: the event that puts one whole (the reducer
