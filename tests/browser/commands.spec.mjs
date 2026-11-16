@@ -216,6 +216,26 @@ test('#104 ! in a topic thread says before sending that it won’t run there, an
   expect(store.items(threadId).filter((i) => i.kind === 'command').length, 'nothing ran in the thread').toBe(0);
 });
 
+test('#1401 / in a topic thread goes to the agent as a message, and its reply lands in the topic', async ({ page }) => {
+  const { rt, store } = app;
+  const { t, seA } = await room(page, 'Topic command');
+  const root = arrange.post(rt, t.id, { kind: 'agent', sessionId: seA.id, personaId: seA.personaId, handle: 'alpha', text: 'Here.', status: 'done' });
+  const { threadId } = rt.startTopic(t.id, root.id);
+  await synced(page, app);
+  await page.goto(`${app.origin}/#/t/${t.id}/side/${threadId}`);
+  await synced(page, app);
+  await page.locator('#side-input').click();
+  await page.keyboard.type('/review notes.md');
+  await page.keyboard.press('Enter');
+  await expect.poll(() => turns.some((x) => x.sessionId === seA.id && x.message.text?.includes('/review notes.md')), { message: 'alpha’s turn' }).toBe(true);
+  const turn = turns.find((x) => x.sessionId === seA.id && x.message.text?.includes('/review notes.md'));
+  expect(turn.message.slash, 'a message, not a command').toBe(undefined);
+  const reply = (id) => store.items(id).filter((i) => i.kind === 'agent' && i.sessionId === seA.id && i.text === 'Done.');
+  await expect.poll(() => reply(threadId).length, { message: 'the reply in the topic' }).toBe(1);
+  expect(reply(t.id).length, 'nothing in the conversation').toBe(0);
+  expect(store.items(threadId).filter((i) => i.command).length, 'no command line').toBe(0);
+});
+
 test('#67 a ! request without the page’s token gets 403, and nothing runs', async ({ page }) => {
   const { store } = app;
   const { t } = await room(page, 'Token');
