@@ -86,7 +86,7 @@ export function doubledHandOffs(items, turns) {
 }
 
 /**
- * Wakes by a copied line: a woken reply whose waking message names its agent only inside a line copied from the
+ * Wakes by a copied line: a woken reply whose waking turn names its agent only inside a line copied from the
  * conversation. Zero on a branch with #1370’s fix; on `main` it counts what the fix removes.
  * @param {any[]} items
  */
@@ -97,9 +97,14 @@ export function copyWakes(items) {
     return Boolean(words) && String(byId.get(id)?.text ?? '').includes(words);
   };
   return wokenReplies(items).filter((reply) => {
-    const waking = items.filter((m) => m.kind === 'agent' && m.handle === reply.woke.by && m.at <= reply.at && m.id !== reply.id).at(-1);
-    if (!waking) return false;
-    return parseMentions(waking.text, [reply.handle]).length > 0 && parseMentions(waking.text, [reply.handle], isCopy).length === 0;
+    const last = items.filter((m) => m.kind === 'agent' && m.handle === reply.woke.by && m.at <= reply.at && m.id !== reply.id).at(-1);
+    if (!last) return false;
+    // Everything the waking turn said: a turn can post several items, and a mention in any of them wakes.
+    const said = items
+      .filter((m) => m.kind === 'agent' && m.turnId === last.turnId)
+      .map((m) => m.text)
+      .join('\n');
+    return parseMentions(said, [reply.handle]).length > 0 && parseMentions(said, [reply.handle], isCopy).length === 0;
   }).length;
 }
 
