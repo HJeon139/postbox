@@ -177,7 +177,7 @@ test('#228: a summary isn’t written while an agent replies in the thread, and 
   assert.equal(store.item(t.id, reply.id).threadSummary, undefined);
 });
 
-test('#228: a wake waiting for a busy agent that’s stopped goes unanswered, and its agent hears so; one behind a failed turn goes', async () => {
+test('#228: a wake waiting for a busy agent that’s stopped goes unanswered, and its agent hears so; one behind a failed turn waits for the person', async () => {
   const { rt, adapter, t, alpha, beta } = setup();
   const h = held();
   adapter.next.push(h.step);
@@ -194,7 +194,7 @@ test('#228: a wake waiting for a busy agent that’s stopped goes unanswered, an
   );
   rt.sendMessage(t.id, { text: '@alpha anything?' });
   await settle(rt);
-  assert.match(context(adapter.calls.at(-1)), /@beta was stopped before it answered your message \(“One question\.”\)\. Wake it again/);
+  assert.match(context(adapter.calls.at(-1)), /@beta was stopped before it answered your message \(“One question\.”\)\. Mention it again/);
   const failing = held();
   adapter.next.push(async (c) => {
     await failing.step(c);
@@ -205,7 +205,9 @@ test('#228: a wake waiting for a busy agent that’s stopped goes unanswered, an
   rt.agentWake(alpha.id, 'beta', 'Second question.');
   failing.release();
   await settle(rt);
-  assert.equal(adapter.calls.find((x) => x.message.text === 'Second question.')?.sessionId, beta.id, 'the wake was lost when the turn failed');
+  // A failed session starts no turn on its own (designs/rooms-at-scale.md, “What an entry is”): the mention is kept.
+  assert.ok(!adapter.calls.some((x) => x.message.text === 'Second question.'), 'beta stayed failed');
+  assert.equal(arrange.waitingEntries(rt, beta.id).length, 1, 'the mention was kept for when the person acts');
 });
 
 test('#228: another agent hears of new messages in a thread once, and not of the thread it answers in', async () => {

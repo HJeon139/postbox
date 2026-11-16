@@ -5,9 +5,7 @@
 
 import { HANDLE, HANDLE_SHAPE, HOP_LIMIT } from '../shared/limits.mjs';
 import { clip, retiredError, tooLongToSend } from './helpers.mjs';
-import { arrival } from './queue-batch.mjs';
 import { roomChainLimit } from './room-chain-limit.mjs';
-import { newId } from './store.mjs';
 import { askToAdd, askToWake, closeOwnCard, dropHeld, retireStale } from './wake-cards.mjs';
 
 export { resolveHop } from './wake-cards.mjs';
@@ -22,8 +20,8 @@ export const SUMMARY_WAKES_NO_ONE = 'A summary for the conversation wakes no one
 
 /**
  * An agent wakes another (#110, #228, #372): by an @-mention in what it said (itemId, that message) or by wake_agent. It
- * reaches the persona’s one session in the conversation, which answers there; a busy one takes the wake when its turn
- * ends, as any message to a busy agent waits. A persona the conversation doesn’t have needs the
+ * reaches the persona’s one session in the conversation, as an entry in its inbox there, which answers there; a busy
+ * one takes it when its turn ends. `wake: false` stores it for the end of the waker’s turn to wake (mention-entries.mjs). A persona the conversation doesn’t have needs the
  * person: a card asks to add it. After the room’s chain limit of wakes in a row without you (1,000 unless the person set
  * another, #1035), the next one waits for your confirm.
  */
@@ -33,7 +31,7 @@ export function agentWake(
   fromSessionId,
   handle,
   text,
-  { confirmed = false, replyIn = undefined, fromTurnId = rt.turns.get(fromSessionId)?.id, itemId = null, prose = false } = {},
+  { confirmed = false, replyIn = undefined, fromTurnId = rt.turns.get(fromSessionId)?.id, itemId = null, prose = false, wake = true, retryId = undefined } = {},
 ) {
   // Checked here, not in each tool, so no path that wakes from a turn gets around it (#225, #637). The turn is the one the
   // call came from: Allow on a card wakes from the turn that asked, after a summary may have started.
@@ -49,6 +47,8 @@ export function agentWake(
   const parent = rt.store.pending.thread(rt.threads.lineage(from.threadId).at(-1));
   const target = rt.sessions.in(parent.id).find((x) => x.personaId === p.id && !x.retiredFork);
   if (target?.id === from.id) return { ok: false, message: `@${p.handle} is you: just carry on.` };
+  // A host turn’s replay after a restart posts a mention it already handed over (#1138’s class): stored once, counted once.
+  if (target && retryId && rt.delivery.inbox(target.id).some((/** @type {any} */ e) => e.retryId === retryId)) return { ok: true, itemId };
   // Where the waker speaks now: a topic thread it’s in, else the conversation. Agents talk where the person reads,
   // never in a side thread of their own (#372); a turn still in an old side thread hands off in the conversation.
   const back = replyIn === undefined ? replyInOf(rt, from) : replyIn;
@@ -72,23 +72,16 @@ export function agentWake(
   const it = said ?? rt.threads.addItem(at, message);
   rt.recordAgentMessage(from.id, 'to', p.handle, text);
   rt.recordAgentMessage(target.id, 'from', from.handle, text);
-  // The woken agent answers from its session in the conversation (#110). Busy, it takes the wake when its turn ends,
-  // from the queue where it was sent, where the person sees it and can cancel it (#228).
+  // The woken agent answers from its session in the conversation (#110): the message is an entry in its inbox there,
+  // which starts its turn now, or once its turn ends (designs/rooms-at-scale.md, “Delivery”).
   const waits = rt.running.busy(target.id);
-  const wake = wakeEntry(from, target, text, it.id);
-  if (waits) rt.threads.patch(at, (t) => ({ queue: [...(t.queue ?? []), wake] }));
-  else deliverWake(rt, at, wake);
+  const entry = { sessionId: target.id, threadId: at, source: 'mention', itemId: it.id, from: from.handle, ...(retryId ? { retryId } : {}) };
+  rt.delivery.send(entry, { wake });
+  // A card asking to wake it is stale once it’s woken now, or at the end of the waker’s turn under way (#439); one
+  // woken once its own turn ends keeps the card the person may answer.
+  if (!waits) retireStale(rt, at, target, `@${from.handle} woke it`);
   // itemId: the message the wake went out as, so a turn’s further mentions reuse it rather than post it again.
   return { ok: true, itemId: it.id, message: waits ? `Woke @${p.handle}: it’s busy, so it answers when its current turn ends.` : `Woke @${p.handle}.` };
-}
-
-/**
- * A wake as its thread’s queue keeps it, for an agent that’s busy, or delivered at once: who sent it, the message it
- * went out as, and when it arrived (`seq`, the order a tie on the clock keeps, queue-batch.mjs).
- * @param {any} from  the waking session @param {any} target  the woken one @param {string} text @param {string} itemId
- */
-function wakeEntry(from, target, text, itemId) {
-  return { id: newId('q'), kind: 'wake', from: from.handle, fromSessionId: from.id, text, itemId, sessionIds: [target.id], at: Date.now(), seq: arrival() };
 }
 
 /** An agent whose turn runs in a side thread from before #372 is told, once, that hand-offs happen in the conversation. */
@@ -135,6 +128,8 @@ export function endChain(rt, threadId) {
   if (rt.sessions.in(conv).some((se) => rt.turns.has(se.id) || rt.exiting.has(se.id))) return;
   const threads = rt.threads.pending().filter((t) => rt.threads.lineage(t.id).at(-1) === conv);
   if (threads.some((t) => (t.queue ?? []).some((q) => q.kind === 'wake'))) return;
+  // A mention still waiting in an inbox there is the chain going on (designs/rooms-at-scale.md, “Delivery”).
+  if (rt.sessions.in(conv).some((se) => rt.delivery.waiting(se.id).some((e) => e.source === 'mention'))) return;
   if (rt.store.pending.items(conv).some((x) => x.kind === 'hop' && x.status === 'open')) return;
   rt.threads.patch(conv, { hops: 0 });
 }
@@ -148,6 +143,13 @@ export function dropWakes(rt, se, how = 'stopped') {
   dropHeld(rt, se, how);
   // Removed, it can't answer for its own card; stopped, it can, and the person still may (#693).
   if (how !== 'stopped') closeOwnCard(rt, se, how);
+  // Its waiting entries are stopped, so none starts a turn after the Stop, and each agent that sent one hears so.
+  for (const e of rt.delivery.stopped(se.id)) {
+    const sender = e.source === 'mention' && e.from ? rt.sessions.in(rt.threads.lineage(e.threadId).at(-1)).find((x) => x.handle === e.from) : null;
+    if (!sender || sender.retiredFork || sender.id === se.id) continue;
+    const said = clip(rt.store.pending.item(e.threadId, e.itemId)?.text ?? '', 120);
+    rt.sessions.tell(sender.id, `@${se.handle} was ${how} before it answered your message (“${said}”). Mention it again if you still need it.`);
+  }
   for (const t of rt.threads.pending()) {
     const mine = (t.queue ?? []).filter((q) => q.kind === 'wake' && q.sessionIds.includes(se.id));
     if (!mine.length) continue;

@@ -95,7 +95,10 @@ const PENDING = {
   'block-show.mjs': ['showBlock', 'showBlock', 'showBlock', 'shownAgain'], // show_block of an app or a block id the turn may have just shown
   'block-update.mjs': ['shownBy'], // update_block of a block the turn just showed
   'catch-up.mjs': ['moveMarkers'], // the conversation of a topic an item moved in, maybe opened behind a held commit, whose sessions' markers move (#1041)
-  'delivery.mjs': ['sessionIds', 'inbox', 'ready'], // the sessions with inboxes, an inbox's entries and its session decide each entry's next state and the wake (#796's class)
+  'delivery.mjs': ['send', 'sessionIds', 'inbox', 'ready', 'postedSince'], // the sessions with inboxes, an inbox's entries, its session and an entry's item, maybe just made, decide each entry's next state and the wake (#796's class)
+  'entry-queue.mjs': ['cancelEntry'], // the text of the message the person removed, for its sender, maybe settled behind a held commit
+  'entry-turns.mjs': ['messageOf'], // the item an entry gives the turn whole, maybe settled in the same held write
+  'mention-entries.mjs': ['mentionEntries'], // the session whose final reply makes entries, maybe made behind a held commit
   'held-session.mjs': ['heldSession'], // a delivery to a session just made behind a held commit waits until it's published (#796's class in sessions)
   // A job's end: the list it leaves, whether a kept job still runs to hold the steps, and the steps to stall (#957).
   'job-records.mjs': ['endJob', 'endJob', 'endJob', 'runningProgress', 'setJobStep', 'settleJobs'],
@@ -143,7 +146,8 @@ const PENDING = {
   // A command’s item, maybe deleted behind a held commit, before its output or its end is written.
   'shell-runs.mjs': ['commandOutput', 'endCommand'],
   'subagent-end.mjs': ['withUrgent'],
-  'side-threads.mjs': ['agentWake', 'agentWake', 'agentWake', 'endChain', 'endChain', 'bumpSideLink', 'bumpSideLink'],
+  // Stop's stopped entries name the message each sender sent, maybe settled behind a held commit.
+  'side-threads.mjs': ['agentWake', 'agentWake', 'agentWake', 'endChain', 'endChain', 'dropWakes', 'bumpSideLink', 'bumpSideLink'],
   // A thread’s apps, removed in a sweep; and the threads’ members and sessions it erases, maybe made behind a held commit.
   'thread-erase.mjs': ['eraseThreads', 'eraseThreads', 'eraseThreads', 'eraseThreads'],
   // The thread a turn answers in, as deliver chose it from pending, and the topic a turn's end settles: a topic

@@ -659,7 +659,20 @@ Each step is its own pull request, and is done when:
     - Entries are stored as `entry.add` and `entry.patch` events in a public `inbox` key, per session, with a pending read like the items’, so an entry written behind a held commit is read back before its release. Deleting a session deletes its entries in the reducer.
     - `start()` runs after the queue’s drain on start-up.
   - **What it found:** a review’s entry keeps the event today’s `deliver` takes, in `message`, until Turns builds a turn’s input from entries. Delivery keeps nothing in memory, so a store Retry that installs the disk’s state needs no listener of its own.
-  - **Not yet:** nothing sends to it until the turn-end wakes switch to entries.
+  - **The switch:**
+    - The root listens to `item.final` with `mention-entries.mjs`, so a reply’s mentions become entries once it’s final, and steps L and L3’s wakes (`mention-wakes.mjs`) are gone.
+    - It listens to `entry.waiting` with `entry-turns.mjs`, which takes one thread’s entries and starts the turn through today’s `deliver`.
+    - `endTurn` raises `turn.ended` and `turn.failed`, with Delivery’s listeners last.
+    - A review reaches its author as a “review” entry. App events and checks stay on the `send` port, so no app’s own text is stored in the public key.
+    - A turn the queue starts in a thread takes that thread’s waiting entries with it, as the queue’s wakes joined the person’s message (#733). Send now, and a group that can’t join, keep them for the next turn.
+  - **What the switch found:**
+    - A reply’s part that settles during the end of its turn is final before that turn has written its error. Its entries are stored with `wake: false`, and `turn.ended` or `turn.failed` wakes their agents, so a failed reply’s entry reads its error.
+    - Delivery needs the turn an item came from after Running has let it go: Running keeps each session’s last turn to leave (`turnFor`).
+    - The chain cap’s card and the add-agent card stand in front of Delivery until Asks replaces them, so `chainHeld` stays unbound.
+    - A host turn’s replay keys its mentions by the host turn and their order, as the retry id (#1138’s class).
+    - Entries carry an arrival number, so they sort with the queue’s messages in the same millisecond (#733).
+    - Stop closes a turn without `endTurn`, so it raises `turn.stopping`, and Delivery marks what the turn took as delivered. A shutdown’s stop doesn’t: the restart reopens those entries once, as a resend. A reply the person stopped hands its mentions to no one, as before.
+  - **Not yet:** `wake_agent`’s removal.
 - **Next:** Delivery and Turns, built as the inbox, from step 2 of the order “Delivery and Turns, built as the inbox” gives. Asks follow, after the permission layer.
 
 ## Appendix: every module’s members

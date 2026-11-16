@@ -20,6 +20,12 @@ export class Running {
     this.exiting = new Map();
     /** @type {Map<string, string>} sessionId → the host whose turn it waits to attach again */
     this.awaiting = new Map();
+    /**
+     * @type {Map<string, Turn>} sessionId → its turn that left last: the end of a turn settles its replies after it
+     * leaves, so Delivery reads what the turn was (a summary, a retry, a host turn’s ending) when its replies are final.
+     * One per session, replaced by the next, and never read to decide whether the session is busy.
+     */
+    this.left = new Map();
     this.shuttingDown = false;
   }
 
@@ -87,7 +93,19 @@ export class Running {
 
   /** The session’s live turn leaves. @param {string} sessionId */
   end(sessionId) {
+    const turn = this.turns.get(sessionId);
     this.turns.delete(sessionId);
+    if (turn) this.left.set(sessionId, turn);
+  }
+
+  /**
+   * The turn an item came from, while it runs or after it left: a live turn, or the session’s last to leave, whose end
+   * may still be settling its replies. Undefined for any other, such as a turn from before a restart.
+   * @param {string} sessionId @param {string} turnId
+   */
+  turnFor(sessionId, turnId) {
+    for (const turn of [this.turns.get(sessionId), this.left.get(sessionId)]) if (turn?.id === turnId) return turn;
+    return undefined;
   }
 
   /** The session’s stopped turn has exited. @param {string} sessionId */

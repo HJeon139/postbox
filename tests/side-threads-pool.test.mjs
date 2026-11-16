@@ -65,8 +65,8 @@ test('#228 UAT 2, #372: naming both agents in a topic thread reaches their two s
   // @beta is busy with your message, so the wake waits for its turn.
   assert.equal(r.message, 'Woke @beta: it’s busy, so it answers when its current turn ends.');
   assert.deepEqual(
-    store.state.threads[topic.id].queue.map((q) => [q.kind, q.text]),
-    [['wake', 'Please review converter.py.']],
+    arrange.waitingEntries(rt, beta.id).map((e) => [e.threadId, store.items(topic.id).find((x) => x.id === e.itemId)?.text]),
+    [[topic.id, 'Please review converter.py.']],
   );
   reviewing.release();
   await settle(rt);

@@ -60,9 +60,9 @@ test('#228: a wake while the session is busy waits for its turn, as a message to
     sessionsOfPersona(store, b.id).map((x) => x.id),
     [beta.id],
   );
-  // It waits in the conversation’s queue, where the person sees it and can remove it (#228, #372).
-  const [q] = store.state.threads[t.id].queue;
-  assert.deepEqual([q.kind, q.from, q.text, q.sessionIds], ['wake', 'alpha', 'Which editions?', [beta.id]]);
+  // It waits in beta’s inbox in the conversation (designs/rooms-at-scale.md, “Delivery”).
+  const [e] = arrange.waitingEntries(rt, beta.id);
+  assert.deepEqual([e.source, e.from, e.threadId, store.items(t.id).find((x) => x.id === e.itemId)?.text], ['mention', 'alpha', t.id, 'Which editions?']);
   busy.release();
   await settle(rt);
   const answer = adapter.calls.find((x) => x.message.text === 'Which editions?');
@@ -74,7 +74,7 @@ test('#228: a wake while the session is busy waits for its turn, as a message to
   assert.deepEqual(sides(store), []);
 });
 
-test('#110, #372: a second wake while the session is busy with the first waits in the conversation’s queue, and starts no fork', async () => {
+test('#110, #372: a second wake while the session is busy with the first waits in its inbox in the conversation, and starts no fork', async () => {
   const { store, rt, adapter, t, b, alpha, beta } = setup();
   const h = held();
   adapter.next.push(h.step);
@@ -87,8 +87,8 @@ test('#110, #372: a second wake while the session is busy with the first waits i
     [beta.id],
   );
   assert.deepEqual(
-    store.state.threads[t.id].queue.map((q) => q.text),
-    ['And the dates?'],
+    arrange.waitingEntries(rt, beta.id).map((e) => [e.threadId, store.items(t.id).find((x) => x.id === e.itemId)?.text]),
+    [[t.id, 'And the dates?']],
   );
   h.release();
   await settle(rt);

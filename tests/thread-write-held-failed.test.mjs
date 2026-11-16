@@ -1,5 +1,5 @@
 // #796, #1007: thread writes held behind a commit that fails. tests/thread-write-held.test.mjs holds that two queued
-// wakes survive a commit the reducer rejects, in memory; these hold the rest: the log and the stream, for that
+// messages survive a commit the reducer rejects, in memory; these hold the rest: the log and the stream, for that
 // rejection and for a commit whose fsync fails, which closes the store (store-retry.mjs, fail()).
 
 import assert from 'node:assert/strict';
@@ -53,18 +53,18 @@ test('held queue writes behind a rejected commit reach the stream after it, in o
   const release = await f.hold([{ type: 'nonsense', data: {} }]);
   const heard = [];
   const off = f.store.subscribe((ev) => heard.push(ev));
-  f.rt.agentWake(f.alpha.id, 'beta', 'First.');
-  f.rt.agentWake(f.gamma.id, 'beta', 'Second.');
+  f.rt.sendMessage(f.t.id, { text: '@beta first' });
+  f.rt.sendMessage(f.t.id, { text: '@beta second' });
   assert.equal(streamed(heard, f.t.id), null, 'the stream hears nothing while they’re held');
   assert.equal(await release(), 'EREJECTED', 'the commit failed');
   off();
-  assert.deepEqual(streamed(heard, f.t.id), ['First.', 'Second.'], 'released to the stream, in order');
+  assert.deepEqual(streamed(heard, f.t.id), ['@beta first', '@beta second'], 'released to the stream, in order');
   const dir = f.store.dir;
   await f.store.close(); // before @beta's turn ends, whose drain would empty the queue
   const again = await new Store(dir).load();
   assert.deepEqual(
     again.state.threads[f.t.id].queue.map((q) => q.text),
-    ['First.', 'Second.'],
+    ['@beta first', '@beta second'],
     'the log holds both',
   );
   await again.close();
@@ -76,17 +76,17 @@ test('held queue writes behind a commit whose fsync fails: memory and the stream
   const release = await f.hold([{ type: 'settings', data: { theme: 'system' } }]);
   const heard = [];
   const off = f.store.subscribe((ev) => heard.push(ev));
-  f.rt.agentWake(f.alpha.id, 'beta', 'First.');
-  f.rt.agentWake(f.gamma.id, 'beta', 'Second.');
+  f.rt.sendMessage(f.t.id, { text: '@beta first' });
+  f.rt.sendMessage(f.t.id, { text: '@beta second' });
   assert.equal(await release(Object.assign(new Error('disk sync refused'), { code: 'EIO' })), 'EIO', 'the commit failed with the cause');
   off();
   assert.equal(f.store.writable, false, 'the failure closed the store to writes');
   assert.deepEqual(
     f.store.state.threads[f.t.id].queue.map((q) => q.text),
-    ['First.', 'Second.'],
+    ['@beta first', '@beta second'],
     'fail() released both onto memory, in order',
   );
-  assert.deepEqual(streamed(heard, f.t.id), ['First.', 'Second.'], 'and to the stream, so the page shows what memory holds');
+  assert.deepEqual(streamed(heard, f.t.id), ['@beta first', '@beta second'], 'and to the stream, so the page shows what memory holds');
   await f.store.reload(); // Retry installs what the disk holds
   assert.deepEqual(f.store.state.threads[f.t.id].queue ?? [], [], 'the log has neither: they were held when the write failed');
   f.beta.release();

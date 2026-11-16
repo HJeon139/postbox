@@ -59,16 +59,14 @@ test('#1135 a message in the window goes at once when the host says the turn is 
   await settled(r);
 });
 
-test('#1135 another agent’s wake while the turn waits to be attached waits in the queue too', async () => {
+test('#1135 another agent’s wake while the turn waits to be attached waits in its inbox too', async () => {
   const { r, d, release } = heldWelcome('running');
   await until(() => r.rt.remote.restoring.has('host-turn-1'), 'the turn to wait for its welcome');
   const lead = r.rt.ensureSession(r.t.id, r.rt.createPersona({ handle: 'lead', backend: 'claude-code' }).id);
   r.rt.agentWake(lead.id, 'coder', 'a wake in the window');
   await sleep(20);
-  assert.deepEqual(
-    (r.store.pending.thread(r.t.id)?.queue ?? []).map((q) => [q.kind, q.text]),
-    [['wake', 'a wake in the window']],
-  );
+  assert.equal(starts(d).length, 0, 'no turn starts on the host for it');
+  assert.equal(arrange.waitingEntries(r.rt, r.se().id).length, 1, 'it waits in coder’s inbox');
   release();
   await until(() => d.received.some((m) => m.type === 'read' && m.turn === 'host-turn-1'), 'the attach');
   await sleep(20);

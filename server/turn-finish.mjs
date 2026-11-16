@@ -38,6 +38,8 @@ export function endTurn(rt, turn, err) {
   const items = rt.store.pending.items(turn.threadId);
   // A turn that ends with no reply is never posted as an empty message (#485, empty-reply.mjs): it fails, saying so.
   if (!err && endedWithoutReply(turn, items)) err = emptyReply(rt, se, turn);
+  // How it ended, for the entries its replies’ mentions make as they settle (mention-entries.mjs).
+  turn.endErr = err;
   settleReplies(rt, se, turn, items, err);
   if (err && err.name !== 'AbortError') {
     endFailed(rt, se, turn, err);
@@ -54,8 +56,9 @@ export function endTurn(rt, turn, err) {
   if (topic && !viewing && (turn.said || open.length)) rt.threads.patch(topic, (x) => ({ unread: (x.unread ?? 0) + 1 }));
   if (turn.threadId !== se.threadId) rt.summaries.settleThread(turn.threadId);
 
-  rt.wakeMentions(se, turn, turn.said);
   rt.takePending(se, turn, true);
+  // Last: what it took was delivered, the agents its replies mentioned are woken, and its own next entries start.
+  rt.bus.emit('turn.ended', { turn });
 }
 
 /**
@@ -119,15 +122,17 @@ function endFailed(rt, se, turn, err) {
     stopAsk: null,
   });
   rt.threads.notify('blocking', se, `@${se.handle}’s reply failed`, message, turn.threadId);
-  // Its @-mentions still wake their agents (#485, the person’s choice): what it wrote may be cut off, so they’re told.
-  // Not a host turn that goes on (Interrupted, Sign-in needed, its link lost): it wakes them when it ends.
-  // The item keeps whom they woke, with those the failures before it woke, so no Retry wakes them again.
-  const wakes = turn.said.trim() && !err.remote && se.remoteTurn?.state !== 'lost';
-  const woke = wakes ? rt.wakeMentions(se, turn, `(This reply failed before it finished: ${message} It may be cut off.)\n\n${turn.said}`) : [];
+  // Its @-mentions still reach their agents (#485, the person’s choice), as entries its replies made as they settled,
+  // read with the failure first, since what it wrote may be cut off (entry-turns.mjs). Not a host turn that goes on
+  // (Interrupted, Sign-in needed, its link lost): its replay’s replies make them (mention-entries.mjs). The item keeps
+  // whom they reached, with those the failures before it reached, so no Retry hands the work over again.
+  const woke = turn.mentioned ?? [];
   if (woke.length || turn.woken.length) rt.threads.patchItem(turn.threadId, target, { wokeOnFailure: [...new Set([...turn.woken, ...woke])] });
   // A wake that waited for this turn still goes: with no forks, it was promised an answer (#228). Your own
   // queued messages wait, as before, for you to see the failure.
   rt.takePending(se, turn, 'wakes');
+  // Last: what it took was given to the agent, and the agents its replies mentioned are woken.
+  rt.bus.emit('turn.failed', { turn });
 }
 
 /**

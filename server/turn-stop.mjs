@@ -42,6 +42,9 @@ export function stop(rt, sessionId, { silent = false, jobs = 'stop', by = 'you',
   turn.closed = true;
   rt.running.end(sessionId);
   rt.recordStopped(turn, ended, { by, why: 'You stopped the agent.' });
+  // What the turn took was given to the agent, so it isn't handed over again (designs/architecture/services.md, “The
+  // end of a turn”). A shutdown's isn't settled: the restart reopens it once, as a resend.
+  if (by !== 'shutdown') rt.bus.emit('turn.stopping', { turn });
   rt.sessions.update(sessionId, { state: 'stopping', subagents: [], currentStep: 'Stopping', finishedAt: Date.now(), stopAsk: null });
   // Progress steps running as you keep its jobs running may follow one of them: they run on with it (#129).
   if (keep.length) rt.sessions.update(sessionId, { heldSteps: { threadId: turn.threadId, keys: runningProgress(rt, turn.threadId, sessionId) } });
@@ -161,6 +164,8 @@ export function turnExited(rt, turn) {
   // normal end does (#733, #1040).
   if (ex.silent) for (const h of held) rt.deliver(se.id, h.message, { summarizeTo: h.summarizeTo, threadId: h.threadId });
   else rt.takePending(se, { pending: held, threadId: turn.threadId }, true);
+  // The stopped turn is gone: entries that arrived during its exit start the next turn, if nothing above did.
+  rt.delivery.wake(se.id);
 }
 
 /**

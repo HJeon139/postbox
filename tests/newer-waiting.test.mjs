@@ -25,9 +25,9 @@ async function busyWithAlpha() {
 }
 
 test('#694: a newer wake from the turn’s sender is named on the next Postbox tool result, once', async () => {
-  const { rt, t, alpha, beta, release } = await busyWithAlpha();
+  const { rt, alpha, beta, release } = await busyWithAlpha();
   rt.agentWake(alpha.id, 'beta', 'New head bbb222, review that instead.');
-  const wake = rt.s.threads[t.id].queue.at(-1);
+  const wake = arrange.waitingEntries(rt, beta.id).at(-1);
   const text = await define(rt, beta, 'X');
   assert.ok(text.startsWith(`[Postbox] A newer message from @alpha is waiting for you; read_message { id: "${wake.itemId}" } has it.\n\n`), text);
   assert.match(text, /Defined “X”\.$/);
@@ -147,7 +147,7 @@ test('#694: in a batch of two agents’ wakes, a newer wake from either sender i
   for (let i = 0; i < 100 && adapter.calls.filter((x) => x.sessionId === beta.id).length < 2; i++) await sleep(5);
   assert.equal(adapter.calls.at(-1).message.messages?.length, 2, 'the two wakes are one batch');
   rt.agentWake(alpha.id, 'beta', 'Newer from alpha.');
-  const wake = rt.s.threads[t.id].queue.at(-1);
+  const wake = arrange.waitingEntries(rt, beta.id).at(-1);
   assert.ok((await define(rt, beta, 'X')).includes(`from @alpha is waiting for you; read_message { id: "${wake.itemId}" } has it.`));
   second.release();
   await settle(rt);
@@ -224,9 +224,9 @@ test('#694: a person’s message waiting on the turn itself is named, as one in 
 });
 
 test('#694: at most three are named on one result; the rest are counted, then named on the next', async () => {
-  const { rt, t, alpha, beta, release } = await busyWithAlpha();
+  const { rt, alpha, beta, release } = await busyWithAlpha();
   for (const n of [1, 2, 3, 4, 5]) rt.agentWake(alpha.id, 'beta', `Newer ${n}.`);
-  const ids = rt.s.threads[t.id].queue.map((q) => q.itemId);
+  const ids = arrange.waitingEntries(rt, beta.id).map((e) => e.itemId);
   const first = await define(rt, beta, 'X');
   assert.equal((first.match(/A newer message from @alpha/g) ?? []).length, 3);
   assert.match(first, /\[Postbox\] 2 more newer messages are waiting for you; the next result names them\./);
@@ -239,7 +239,7 @@ test('#694: at most three are named on one result; the rest are counted, then na
 });
 
 test('#694: a wake queued in the same millisecond the turn started is newer', async () => {
-  const { rt, adapter, t, alpha, beta } = setup();
+  const { rt, adapter, alpha, beta } = setup();
   const busy = held();
   adapter.next.push(busy.step);
   const now = Date.now;
@@ -251,7 +251,7 @@ test('#694: a wake queued in the same millisecond the turn started is newer', as
   } finally {
     Date.now = now;
   }
-  const wake = rt.s.threads[t.id].queue.at(-1);
+  const wake = arrange.waitingEntries(rt, beta.id).at(-1);
   assert.equal(wake.at, rt.turns.get(beta.id).startedAt, 'the same millisecond');
   assert.ok((await define(rt, beta, 'X')).includes(wake.itemId));
   busy.release();

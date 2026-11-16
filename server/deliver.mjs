@@ -7,6 +7,7 @@ import { attachedFiles } from './adapters/attached-files.mjs';
 import { workFolder } from './adapters/folder.mjs';
 import { toolsDownNote } from './adapters/tools-down.mjs';
 import { keptTurns, releaseNeed, TURN_TIED } from './card-needs.mjs';
+import { withEntries } from './entry-turns.mjs';
 import { heldSession } from './held-session.mjs';
 import { httpError, retiredError } from './helpers.mjs';
 import { arrival } from './queue-batch.mjs';
@@ -47,6 +48,8 @@ export function deliver(rt, sessionId, message, { summarizeTo = null, threadId =
   // the context below waits for the agent’s next turn instead. So does a remote turn attached again after a restart
   // (#120, message.attach): it sends the agent nothing, and replays what the host has.
   const slash = message.slash === true || typeof message.attach === 'string';
+  // The agent’s waiting entries in this thread come with it (entry-turns.mjs), and Retry sends them again with it.
+  if (!slash && !summarizeTo) asked.message = message = withEntries(rt, sessionId, where, message);
   message = turnMessage(rt, se, message, where, slash);
   const persona = rt.persona(se.personaId);
   const adapter = rt.placement.registeredAdapter(persona);
@@ -125,7 +128,8 @@ function turnMessage(rt, se, message, where, slash) {
  */
 function newTurn(se, message, persona, { where, slash, summarizeTo, asked }) {
   return {
-    id: newId('turn'),
+    // An id chosen before the turn, by the take of its inbox entries (entry-turns.mjs), or a new one.
+    id: typeof message.turnId === 'string' ? message.turnId : newId('turn'),
     kind: message.kind,
     // Whether this is the person moving on (#69): their message or an event of theirs, not another agent’s review (#133).
     movesOn: message.kind === 'user' || (message.kind === 'event' && !message.event?.from),
@@ -238,6 +242,11 @@ export function retry(rt, threadId, itemId) {
     // Only the cards that wait until answered can take the need: the failed turn's own asks would flash until the
     // retried turn starts, and that turn's end decides them.
     releaseNeed(rt, rt.s.sessions[it.sessionId], itemId, undefined, { turnIds: [] });
-    rt.deliver(it.sessionId, { ...asked.message, retry: true, woken: it.wokeOnFailure ?? [] }, { summarizeTo: asked.summarizeTo, threadId });
+    // The entries the failed turn took go with its request again, as a resend the new turn takes (Delivery's retry).
+    // Entries that came since wait for the turn after it, behind the person's messages queued before them (#1146).
+    const turnId = newId('turn');
+    if (it.turnId) rt.delivery.retry(it.turnId, turnId);
+    const message = { ...asked.message, retry: true, woken: it.wokeOnFailure ?? [], turnId, entriesWait: true };
+    rt.deliver(it.sessionId, message, { summarizeTo: asked.summarizeTo, threadId });
   });
 }

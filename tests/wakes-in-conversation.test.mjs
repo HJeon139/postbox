@@ -76,7 +76,7 @@ test('#372 wake_agent posts its message in the conversation as the waker’s, wi
   assert.equal(sides(store).length, 0);
 });
 
-test('#372 a wake for a busy agent waits in the conversation’s queue, and goes when its turn ends', async () => {
+test('#372 a wake for a busy agent waits in its inbox in the conversation, and goes when its turn ends', async () => {
   const { store, rt, adapter, t, beta, alpha } = setup();
   const busy = held();
   adapter.next.push(busy.step);
@@ -84,8 +84,8 @@ test('#372 a wake for a busy agent waits in the conversation’s queue, and goes
   await sleep(5);
   const r = rt.agentWake(alpha.id, 'beta', 'Which editions?');
   assert.match(r.message, /busy/);
-  const [q] = store.state.threads[t.id].queue;
-  assert.deepEqual([q.kind, q.from, q.text, q.sessionIds], ['wake', 'alpha', 'Which editions?', [beta.id]]);
+  const [e] = arrange.waitingEntries(rt, beta.id);
+  assert.deepEqual([e.source, e.from, e.threadId, store.items(t.id).find((x) => x.id === e.itemId)?.text], ['mention', 'alpha', t.id, 'Which editions?']);
   busy.release();
   await settle(rt);
   assert.deepEqual(

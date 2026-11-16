@@ -7,8 +7,8 @@ import { combineMessages } from '../server/queue-batch.mjs';
 import * as arrange from './arrange.mjs';
 import { held, settle, setup } from './side-threads-fixture.mjs';
 
-test('three queued wakes from different agents become one turn with each sender and time', async () => {
-  const { rt, store, adapter, t, alpha, beta, c } = setup();
+test('three waiting mentions from different agents become one turn with each sender, in arrival order', async () => {
+  const { rt, adapter, t, beta, c, alpha } = setup();
   const gamma = rt.ensureSession(t.id, c.id);
   const delta = rt.ensureSession(t.id, rt.createPersona({ handle: 'delta' }).id);
   const busy = held();
@@ -20,54 +20,54 @@ test('three queued wakes from different agents become one turn with each sender 
     [delta, 'Third'],
   ])
     rt.agentWake(sender.id, 'beta', text);
-  const queue = store.state.threads[t.id].queue.map((q, index) => ({ ...q, at: (index + 1) * 1000 }));
-  arrange.putThread(rt, { ...store.state.threads[t.id], queue });
-  assert.equal(queue.length, 3, 'each queued wake stays visible until delivery');
+  assert.equal(arrange.waitingEntries(rt, beta.id).length, 3, 'each waits in beta’s inbox until its turn ends');
   busy.release();
   await settle(rt);
   const calls = adapter.calls.filter((call) => call.sessionId === beta.id);
   assert.equal(calls.length, 2, 'one initial turn and one batch');
   assert.deepEqual(
-    calls[1].message.messages.map((message) => [message.from, message.text, message.at]),
+    calls[1].message.messages.map((message) => [message.from, message.text]),
     [
-      ['@alpha', 'First', 1000],
-      ['@gamma', 'Second', 2000],
-      ['@delta', 'Third', 3000],
+      ['@alpha', 'First'],
+      ['@gamma', 'Second'],
+      ['@delta', 'Third'],
     ],
   );
-  const prompt = formatMessage(calls[1].message);
-  assert.match(prompt, /1970-01-01T00:00:01.000Z/);
-  assert.match(prompt, /@alpha[\s\S]*@gamma[\s\S]*@delta/);
-  assert.deepEqual(store.state.threads[t.id].queue, []);
+  assert.match(formatMessage(calls[1].message), /@alpha[\s\S]*@gamma[\s\S]*@delta/);
+  assert.deepEqual(arrange.waitingEntries(rt, beta.id), []);
 });
 
-test('a later message from a waker supersedes its old queued wake', async () => {
-  const { rt, store, adapter, t, alpha, beta } = setup();
+test('a later message from a waker doesn’t replace its waiting one: both reach the agent in one turn', async () => {
+  // designs/rooms-at-scale.md, “Delivery”: nothing is held, merged or dropped. #374 replaced the older one.
+  const { rt, adapter, t, alpha, beta } = setup();
   const busy = held();
   adapter.next.push(busy.step);
   rt.sendMessage(t.id, { text: '@beta start' });
   rt.agentWake(alpha.id, 'beta', 'Review the old revision.');
   rt.agentWake(alpha.id, 'beta', 'Review the new revision.');
-  assert.equal(store.state.threads[t.id].queue.length, 2);
+  assert.equal(arrange.waitingEntries(rt, beta.id).length, 2);
   busy.release();
   await settle(rt);
   const calls = adapter.calls.filter((call) => call.sessionId === beta.id);
   assert.equal(calls.length, 2);
-  assert.equal(calls[1].message.text, 'Review the new revision.');
+  assert.deepEqual(
+    calls[1].message.messages.map((m) => m.text.split('\n')[0]),
+    ['Review the old revision.', 'Review the new revision.'],
+  );
 });
 
-test('a waker’s unaddressed later post replaces a queued wake and reaches its target exactly once', async () => {
+test('a waker’s unaddressed later post is named on its waiting mention as posted since, not put in its place', async () => {
   const { rt, adapter, t, alpha, beta } = setup();
   const busy = held();
   adapter.next.push(busy.step);
   rt.sendMessage(t.id, { text: '@beta start' });
   rt.agentWake(alpha.id, 'beta', 'Please check it.');
-  arrange.post(rt, t.id, { kind: 'agent', sessionId: alpha.id, handle: 'alpha', text: 'I already resolved it.', status: 'done' });
+  const later = arrange.post(rt, t.id, { kind: 'agent', sessionId: alpha.id, handle: 'alpha', text: 'I already resolved it.', status: 'done' });
   busy.release();
   await settle(rt);
   const calls = adapter.calls.filter((call) => call.sessionId === beta.id);
-  assert.equal(calls.length, 2, 'one initial turn and one turn with the newer context');
-  assert.equal(calls[1].message.text, 'I already resolved it.');
+  assert.equal(calls.length, 2, 'one initial turn and one with the mention');
+  assert.equal(calls[1].message.text, `Please check it.\n(The same sender posted since: [${later.id}])`);
 });
 
 test('queued user messages and agent wakes share one turn without losing user transcript items', async () => {
@@ -88,26 +88,6 @@ test('queued user messages and agent wakes share one turn without losing user tr
     ['agent', 'user', 'agent'],
   );
   assert.equal(store.items(t.id).filter((item) => item.kind === 'user' && item.text === '@beta include the second point.').length, 1);
-});
-
-test('Cancel removes only its queued wake and Send now delivers only the selected item first', async () => {
-  const { rt, store, adapter, t, alpha, beta, c } = setup();
-  const gamma = rt.ensureSession(t.id, c.id);
-  const busy = held();
-  adapter.next.push(busy.step);
-  rt.sendMessage(t.id, { text: '@beta start' });
-  rt.agentWake(alpha.id, 'beta', 'Cancel this.');
-  rt.agentWake(gamma.id, 'beta', 'Send this now.');
-  rt.agentWake(alpha.id, 'beta', 'Keep this queued.');
-  const [cancel, send] = store.state.threads[t.id].queue;
-  rt.cancelQueued(t.id, cancel.id);
-  rt.sendQueuedNow(t.id, send.id);
-  busy.release();
-  await settle(rt);
-  const calls = adapter.calls.filter((call) => call.sessionId === beta.id);
-  assert.equal(calls[1].message.text, 'Send this now.');
-  assert.equal(calls[2].message.text, 'Keep this queued.');
-  assert.ok(!calls.some((call) => call.message.text === 'Cancel this.'));
 });
 
 test('a waker finishing the same turn does not supersede its own queued handoff', async () => {
@@ -177,20 +157,21 @@ test('a post in another thread does not supersede a queued wake in the conversat
   assert.equal(adapter.calls.filter((call) => call.sessionId === beta.id)[1].message.text, 'Still needed.');
 });
 
-test('refreshing a wake does not strand a queued message addressed to several agents', async () => {
-  const { rt, store, adapter, t, alpha } = setup();
+test('a later post noted on a waiting mention doesn’t strand a queued message addressed to several agents', async () => {
+  const { rt, store, adapter, t, alpha, beta } = setup();
   const busy = held();
   adapter.next.push(busy.step);
   rt.sendMessage(t.id, { text: '@beta start' });
   rt.agentWake(alpha.id, 'beta', 'Obsolete request.');
-  arrange.post(rt, t.id, { kind: 'agent', sessionId: alpha.id, handle: 'alpha', text: 'Already resolved.', status: 'done' });
+  const resolved = arrange.post(rt, t.id, { kind: 'agent', sessionId: alpha.id, handle: 'alpha', text: 'Already resolved.', status: 'done' });
   rt.sendMessage(t.id, { text: '@alpha @beta the shared next task.' });
   busy.release();
   await settle(rt);
   assert.deepEqual(store.state.threads[t.id].queue, []);
   const delivered = adapter.calls.flatMap((call) => call.message.messages ?? [call.message]);
   assert.equal(delivered.filter((message) => message.text === '@alpha @beta the shared next task.').length, 2);
-  assert.equal(delivered.filter((message) => message.text === 'Already resolved.').length, 1);
+  assert.equal(delivered.filter((message) => message.text?.startsWith('Obsolete request.') && message.text.includes(resolved.id)).length, 1);
+  assert.deepEqual(arrange.waitingEntries(rt, beta.id), []);
 });
 
 test('overlapping recipient lists give each agent one batch and post shared user messages once', async () => {

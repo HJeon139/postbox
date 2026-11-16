@@ -49,13 +49,19 @@ export class Delivery {
    * Stores one entry for one agent, and raises entry.waiting if the agent can start a turn from it. An entry with an
    * item keeps no copy of its text; one without keeps its own text (a check’s findings, an event, a notice). Until Turns
    * builds a turn’s input from entries, `message` is what today’s deliver is given for it.
+   * `wake: false` stores it without raising entry.waiting: the end of the turn that wrote its item raises it, once that
+   * turn has written what its failed reply says (designs/architecture/services.md, “The end of a turn”).
    * @param {{ sessionId: string, threadId: string, source: string, itemId?: string, text?: string, message?: any,
    *   from?: string, retryId?: string }} e
+   * @param {{ wake?: boolean }} [opts]
    * @returns {Entry}
    */
-  send({ sessionId, threadId, source, itemId, text, message, from, retryId }) {
+  send({ sessionId, threadId, source, itemId, text, message, from, retryId }, { wake = true } = {}) {
     if (!SOURCES.includes(source)) throw new Error(`An entry’s source is one of ${SOURCES.join(', ')}, not “${source}”.`);
     if ((itemId === undefined) === (text === undefined)) throw new Error('An entry has an item or its own text, and not both.');
+    const se = this.store.pending.session(sessionId);
+    if (!se) throw new Error('That agent’s session doesn’t exist any more, so nothing can be sent to it.');
+    if (se.retiredFork) throw new Error(`@${se.handle}’s session was retired, so nothing can be sent to it.`);
     const stored = retryId ? this.inbox(sessionId).find((x) => x.retryId === retryId) : undefined;
     if (stored) return stored;
     /** @type {Entry} */
@@ -77,7 +83,7 @@ export class Delivery {
       ...(retryId === undefined ? {} : { retryId }),
     };
     this.store.emit('entry.add', { sessionId, entry });
-    this.wake(sessionId);
+    if (wake) this.wake(sessionId);
     return entry;
   }
 
@@ -126,10 +132,13 @@ export class Delivery {
    * the notices waiting to ride it, in order, up to `budget` characters (designs/rooms-at-scale.md, “The budget”). That
    * oldest entry, the lead, is always taken: one larger than the budget still reaches a turn, and a notice before it
    * can’t crowd it out. The rest wait for the next turn, so nothing is dropped. Each taken entry records the turn.
-   * @param {string} sessionId @param {string} turnId @param {number} [budget] @returns {Entry[]}
+   * `threadId` names the thread when the turn already has one: one the queue started for the person’s message there
+   * takes that thread’s entries with it.
+   * @param {string} sessionId @param {string} turnId @param {number} [budget] @param {string} [threadId]
+   * @returns {Entry[]}
    */
-  take(sessionId, turnId, budget = Number.POSITIVE_INFINITY) {
-    const waiting = this.waiting(sessionId);
+  take(sessionId, turnId, budget = Number.POSITIVE_INFINITY, threadId = undefined) {
+    const waiting = this.waiting(sessionId).filter((e) => threadId === undefined || e.threadId === threadId || e.source === 'notice');
     const lead = waiting.find((e) => e.source !== 'notice' && !this.chainHeld(e)) ?? waiting.find((e) => e.source !== 'notice');
     if (!lead) return [];
     // The lead first, whatever its size, so nothing that arrived before it uses the budget up; then the rest in order,
@@ -150,12 +159,17 @@ export class Delivery {
 
   /**
    * A newer post from a sender in a thread: noted on each of its waiting entries there (“@x posted since”), never put
-   * in their place. @param {{ threadId: string, from: string, itemId: string }} post
+   * in their place. A later part of the same turn’s reply is the same post, not a newer one (#374).
+   * @param {{ threadId: string, from: string, itemId: string, turnId?: string }} post
    */
-  postedSince({ threadId, from, itemId }) {
+  postedSince({ threadId, from, itemId, turnId }) {
+    const sameTurn = (/** @type {Entry} */ e) => {
+      const it = turnId && e.itemId ? this.store.pending.item(e.threadId, e.itemId) : null;
+      return Boolean(it) && (it.turnId === turnId || it.fromTurnId === turnId);
+    };
     for (const sessionId of this.sessionIds())
       for (const e of this.waiting(sessionId))
-        if (e.threadId === threadId && e.from === from && e.itemId !== itemId && !e.postedSince.includes(itemId))
+        if (e.threadId === threadId && e.from === from && e.itemId !== itemId && !e.postedSince.includes(itemId) && !sameTurn(e))
           this.patch(e, { postedSince: [...e.postedSince, itemId] });
   }
 
@@ -184,20 +198,47 @@ export class Delivery {
   }
 
   /**
-   * The person’s Retry of a failed turn: what it took goes back to waiting, as a resend.
-   * @param {string} turnId @returns {Entry[]} the entries reopened
+   * The person’s Retry of a failed turn: what it took goes back, as a resend. Until Turns starts a turn from entries,
+   * Retry sends the failed turn’s request again itself, so the turn it starts takes them (`takenBy`), and they don’t
+   * start another; without one, they wait.
+   * @param {string} turnId @param {string|null} [takenBy] @returns {Entry[]} the entries reopened
    */
-  retry(turnId) {
+  retry(turnId, takenBy = null) {
+    const state = /** @type {EntryState} */ (takenBy ? 'taken' : 'waiting');
     const reopened = [];
     for (const sessionId of this.sessionIds())
       for (const e of this.inbox(sessionId))
         if (e.takenBy === turnId) {
-          const entry = { ...e, state: /** @type {EntryState} */ ('waiting'), takenBy: null, resend: true };
+          const entry = { ...e, state, takenBy, resend: true };
           // Whole: it was delivered, so a page has dropped it, and a patch would reach nothing there.
           this.store.emit('entry.put', { sessionId, id: e.id, entry });
           reopened.push(entry);
         }
     return reopened;
+  }
+
+  /**
+   * The person removed one waiting entry from the agent’s queue: it’s stopped, so no turn starts from it, and the
+   * sender can see it. Returns it, or null when it isn’t waiting there any more.
+   * @param {string} sessionId @param {string} entryId @returns {Entry|null}
+   */
+  cancel(sessionId, entryId) {
+    const e = this.waiting(sessionId).find((x) => x.id === entryId);
+    if (!e) return null;
+    this.patch(e, { state: 'stopped' });
+    return e;
+  }
+
+  /**
+   * The person’s Send now on one waiting entry: a turn takes it alone, ahead of the rest. Returns it, or null when it
+   * isn’t waiting there any more. @param {string} sessionId @param {string} entryId @param {string} turnId
+   * @returns {Entry|null}
+   */
+  takeOne(sessionId, entryId, turnId) {
+    const e = this.waiting(sessionId).find((x) => x.id === entryId);
+    if (!e) return null;
+    this.patch(e, { state: 'taken', takenBy: turnId });
+    return { ...e, state: 'taken', takenBy: turnId };
   }
 
   /**

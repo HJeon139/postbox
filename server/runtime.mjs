@@ -18,12 +18,13 @@ import { Checks } from './check-service.mjs';
 import { attachClaudeSession, claudeSessions, mirror, pollMirror, rearmMirrors, stopMirrorFor, stopMirrors } from './claude-mirror.mjs';
 import { deliver, retry } from './deliver.mjs';
 import { Delivery } from './delivery.mjs';
+import { cancelEntry, isEntryId, refuseEntryEdit, sendEntryNow } from './entry-queue.mjs';
 import { httpError } from './helpers.mjs';
+import { listenInbox } from './inbox-listeners.mjs';
 import { endJob, expireStaleJobs, recordJob } from './job-records.mjs';
 import { keptJobs, pollKept, stopJob, stopKeptJobs, watchKept } from './kept-jobs.mjs';
 import { Ledger } from './ledger.mjs';
 import { Memory } from './memory-service.mjs';
-import { wakeMentions } from './mention-wakes.mjs';
 import * as queue from './message-queue.mjs';
 import { alwaysFor } from './permission-always.mjs';
 import {
@@ -116,8 +117,8 @@ export class Runtime {
     // (#1135), and whether Postbox is shutting down (designs/architecture/services.md, “Running”).
     this.running = new Running();
     // Each agent's inbox in each conversation, as stored entries (designs/architecture/services.md, “Delivery and Turns,
-    // built as the inbox”). Nothing sends to it until the turn-end wakes switch to entries, which binds the chain cap.
-    // An entry's size is its text until Turns gives it as server/turn-input.mjs's entryLine (step 3).
+    // built as the inbox”). The chain cap's card stands in front of it (agentWake), so nothing it holds is past the cap
+    // until Asks replaces the card. An entry's size is its text until Turns gives it as turn-input.mjs's entryLine (step 3).
     const sizeOf = (/** @type {any} */ e) => (e.text ?? store.pending.item(e.threadId, e.itemId)?.text ?? '').length;
     this.delivery = new Delivery({ store, bus: this.bus, running: this.running, chainHeld: () => false, sizeOf });
     this.signalProcess = signalProcess ?? process.kill;
@@ -182,6 +183,7 @@ export class Runtime {
       assets: this.assets,
       running: this.running,
       checks: this.checks,
+      delivery: this.delivery,
       send: (sessionId, message, opts) => this.deliver(sessionId, message, opts),
       narrator: this.narrator,
       config,
@@ -262,6 +264,8 @@ export class Runtime {
       if (patch.tools !== undefined) settleToolAsks(this, persona);
     });
     this.bus.on('persona.updated', ({ persona }) => queue.drainMovedOff(this, persona.id));
+    // The inbox’s listeners, last: a final reply’s mentions become entries, and the end of a turn settles them.
+    listenInbox(this);
   }
 
   // Running’s maps and its closing flag, for the code that waits for rooms at scale and still reads them through the
@@ -339,17 +343,18 @@ export class Runtime {
     return queue.postAndDeliver(this, threadId, { text, attachments }, targets);
   }
 
+  // An agent’s waiting message in the queue is an entry in its inbox (server/entry-queue.mjs).
   editQueued(threadId, queueId, text) {
-    return queue.editQueued(this, threadId, queueId, text);
+    return isEntryId(queueId) ? refuseEntryEdit() : queue.editQueued(this, threadId, queueId, text);
   }
 
   cancelQueued(threadId, queueId) {
-    return queue.cancelQueued(this, threadId, queueId);
+    return isEntryId(queueId) ? cancelEntry(this, threadId, queueId) : queue.cancelQueued(this, threadId, queueId);
   }
 
   /** Send now: stops the agent’s current turn and delivers the queued message at once. */
   sendQueuedNow(threadId, queueId) {
-    return queue.sendQueuedNow(this, threadId, queueId);
+    return isEntryId(queueId) ? sendEntryNow(this, threadId, queueId) : queue.sendQueuedNow(this, threadId, queueId);
   }
 
   /** Once Postbox listens after a restart: what waited in the queues goes now, a wake or a message of yours (#228). */
@@ -375,11 +380,6 @@ export class Runtime {
   }
   retry(threadId, itemId) {
     return retry(this, threadId, itemId);
-  }
-
-  /** The wakes a turn's @-mentions make once it ends (server/mention-wakes.mjs). */
-  wakeMentions(se, turn, text) {
-    return wakeMentions(this, se, turn, text);
   }
 
   /**

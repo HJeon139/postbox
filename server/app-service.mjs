@@ -24,12 +24,14 @@ export class Apps {
    *           assets: { blobs: any, search: (room: string, args: any) => Promise<any>, listText: (room: string) => Promise<any> },
    *           running: { all: () => any[], turnOf: (sessionId: string) => any },
    *           checks: { lint: (sessionId: string, turnId: string|null|undefined, problems: any[]) => unknown },
+   *           delivery: { send: (entry: any) => unknown },
    *           send: (sessionId: string, message: any, opts: { threadId: string }) => unknown,
    *           narrator: { speak: (args: any) => any } | null, config: { imageOrigins: string[] } }} deps
-   *   send: a message for an agent (the port; designs/architecture/services.md, “The services”), which the root binds to
-   *   the runtime’s deliver. narrator: speaks for an app that asks, or null where it isn’t installed.
+   *   delivery: the inbox, which a review of a block reaches its author through (designs/rooms-at-scale.md, “What an
+   *   entry is”). send: any other message for an agent (the port; designs/architecture/services.md, “The services”),
+   *   which the root binds to the runtime’s deliver until an app’s event is an entry too. narrator: speaks for an app that asks, or null where it isn’t installed.
    */
-  constructor({ store, bus, threads, sessions, personas, assets, running, checks, send, narrator, config }) {
+  constructor({ store, bus, threads, sessions, personas, assets, running, checks, delivery, send, narrator, config }) {
     this.store = store;
     this.bus = bus;
     this.threads = threads;
@@ -38,6 +40,7 @@ export class Apps {
     this.assets = assets;
     this.running = running;
     this.checks = checks;
+    this.delivery = delivery;
     this.send = send;
     this.narrator = narrator;
     this.config = config;
