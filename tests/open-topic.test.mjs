@@ -188,7 +188,7 @@ test('a first message whose only mention waits on a card posts once, and allowin
   assert.equal(mine().length, 1, 'Allow wakes gamma from the message already there, not a second copy');
 });
 
-test('open_topic is quiet, as wake_agent is (#654)', () => {
+test('open_topic is quiet, and so is a call to wake_agent by name, which a resumed session may make (#654)', () => {
   // It shows in the conversation as the topic it opens and the message it posts, not as a step; every backend asks this.
   assert.equal(isQuietTool('mcp__postbox__wake_agent'), true);
   assert.equal(isQuietTool('mcp__postbox__open_topic'), true);
