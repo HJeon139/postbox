@@ -31,11 +31,25 @@ export function editEntry(rt, threadId, entryId, text) {
   }
   const said = String(text ?? '').slice(0, 50000);
   if (!said.trim()) throw httpError(400, 'Write the message, or remove it instead.');
-  // It went to its agents when it was sent, so an edit can’t name another: it wouldn’t reach it. Leaving a name out
-  // changes nothing about who gets it.
+  // It went to its agents when it was sent, so an edit can’t name another: it wouldn’t reach it.
   const to = new Set((rt.store.pending.item(e.threadId, e.itemId)?.to ?? []).map((/** @type {string} */ h) => h.toLowerCase()));
-  if (named(rt, said).some((h) => !to.has(h))) throw httpError(409, 'Remove it and send a new message to change who it’s for.');
+  const names = named(rt, said);
+  if (names.some((h) => !to.has(h))) throw httpError(409, 'Remove it and send a new message to change who it’s for.');
+  if (names.length) leaveOut(rt, e.itemId, names);
   rt.threads.patchItem(e.threadId, e.itemId, { text: said });
+}
+
+/**
+ * An edit that names fewer of the agents the message went to: each left out won’t get it, as when the person removes it
+ * for that agent (#1418’s review). One that names no one leaves it with them all, since a message without an @-mention
+ * goes to someone all the same, so an edit never leaves it for no one.
+ * @param {any} rt @param {string} itemId @param {string[]} names  the handles the edit names, lowercased
+ */
+function leaveOut(rt, itemId, names) {
+  for (const x of rt.delivery.entriesFrom(itemId)) {
+    const handle = String(rt.store.pending.session(x.sessionId)?.handle ?? '').toLowerCase();
+    if (x.state === 'waiting' && !names.includes(handle) && rt.delivery.cancel(x.sessionId, x.id)) removedUnread(rt, x);
+  }
 }
 
 /** An entry’s states once its agent was handed the message. */
