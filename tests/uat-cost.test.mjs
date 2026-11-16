@@ -9,8 +9,9 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
+import { codexTokens, uncosted } from '../tools/uat/cost.mjs';
 import { writeReport } from '../tools/uat/report.mjs';
-import { runRecord } from '../tools/uat/runs.mjs';
+import { reportFacts, runRecord } from '../tools/uat/runs.mjs';
 import { createTester } from '../tools/uat/tester.mjs';
 
 const fixture = JSON.parse(readFileSync(new URL('fixtures/uat/longresearch-results.json', import.meta.url), 'utf8'));
@@ -45,6 +46,26 @@ test('run.json counts each agent session’s spend once, not every running total
   assert.equal(r.cost.agents, 1.94);
 });
 
+test('a run’s record names the harnesses whose cost isn’t in the agents’ dollars', () => {
+  const r = runRecord({
+    root: '/repo',
+    dir: '/runs/2026-10-24T21-54-03-longresearch',
+    scenario: { title: 'Long research', phases: [] },
+    name: 'longresearch',
+    opt: {},
+    started: 0,
+    steps: 12,
+    cap: 15,
+    tester: { spent: 0.3 },
+    facts: { streams, codexStreams, agyStreams: [{ handle: 'developer', events: [] }] },
+    coverage: [],
+    now: 0,
+    git: () => null,
+  });
+  assert.equal(r.cost.agents, round(spent));
+  assert.deepEqual(r.cost, { agents: 1.94, tester: r.cost.tester, kiroCredits: null, noCostFrom: ['Codex', 'Antigravity'] });
+});
+
 test('the report’s usage line says what the agents spent', async (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'uat-cost-'));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
@@ -63,6 +84,55 @@ test('the report’s usage line says what the agents spent', async (t) => {
   });
   quiet.mock.restore();
   assert.match(readFileSync(join(dir, 'report.md'), 'utf8'), /Usage: agents \$1\.94, tester \$0\.30\./);
+});
+
+// A run with agents on Codex, Kiro or Antigravity: only Claude Code reports dollars, so “agents $0.01” read as what
+// all four cost (the inbox measurement of 16 November, #1399’s report).
+const usage = (thread, input, output) => ({
+  method: 'thread/tokenUsage/updated',
+  params: { threadId: thread, tokenUsage: { total: { inputTokens: input, outputTokens: output } } },
+});
+const codexStreams = [
+  { handle: 'critic', events: [usage('t1', 100, 10), usage('t1', 400, 30)] },
+  { handle: 'critic', events: [usage('t1', 900, 60), usage('t2', 50, 5)] },
+];
+
+test('Codex’s tokens are each thread’s last total, added up: a thread’s count runs on from turn to turn', () => {
+  assert.equal(codexTokens(codexStreams), 960 + 55);
+  assert.equal(codexTokens([]), 0);
+});
+
+test('the harnesses a run used that report no cost are named, and a run on Claude Code alone names none', () => {
+  assert.deepEqual(uncosted({ codexStreams, kiroStreams: [], agyStreams: [{ handle: 'developer', events: [] }] }), ['Codex', 'Antigravity']);
+  assert.deepEqual(uncosted({ streams, kiroStreams: [], agyStreams: [] }), []);
+});
+
+test('the report’s usage line says the agents’ dollars are Claude Code’s alone when other harnesses ran', async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'uat-cost-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const facts = { streams, codexStreams, kiroStreams: [], agyStreams: [], state: null, probes: {}, samples: [], agentModels: '@researcher claude-opus-5-5' };
+  const quiet = t.mock.method(console, 'log', () => {});
+  await writeReport({ dir, scenario: { title: 'Mixed' }, issues: [], findings: [], timeline: [], started: 0, tester: { spent: 0.3 }, facts, logLines: [] });
+  quiet.mock.restore();
+  const line = readFileSync(join(dir, 'report.md'), 'utf8');
+  assert.ok(line.includes('Usage: agents $1.94 on Claude Code alone (Codex reports no cost: 1,015 Codex tokens), tester $0.30.'), line.slice(0, 400));
+});
+
+test('a report’s length and cost are read back whatever its usage line holds', () => {
+  const run = 'Run on 2026-11-16 01:03, 6 min, 14 steps.';
+  const read = (/** @type {string} */ usageLine) => {
+    const f = reportFacts(`${run} ${usageLine}`);
+    return [f.steps, f.agentsUsd, f.kiroCredits, f.testerUsd];
+  };
+  // As the report wrote it before: with Antigravity’s tokens it wasn’t read back at all.
+  assert.deepEqual(read('Usage: agents $0.01 and 0.15 Kiro credits and 83,713 Antigravity tokens, tester $0.16.'), [14, 0.01, 0.15, 0.16]);
+  assert.deepEqual(
+    read(
+      'Usage: agents $0.01 on Claude Code alone (Codex, Kiro and Antigravity report no cost: 1,015 Codex tokens, 0.15 Kiro credits, 83,713 Antigravity tokens), tester $0.16.',
+    ),
+    [14, 0.01, 0.15, 0.16],
+  );
+  assert.deepEqual(read('Usage: agents $28.59, tester $1.50.'), [14, 28.59, null, 1.5]);
 });
 
 /** A fake claude CLI for the tester: each step answers with the session’s running total, as a resumed session does. */

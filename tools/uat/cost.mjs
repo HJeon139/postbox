@@ -42,6 +42,35 @@ export function turnCosts(streams) {
 export const agentsSpent = (streams) => turnCosts(streams).reduce((a, t) => a + t.usd, 0);
 
 /**
+ * The tokens Codex used over a run’s turns, in and out. Codex reports no cost. Its count runs on for a thread from
+ * turn to turn, so each thread’s last total is taken, and the threads are added up.
+ * @param {{ events: any[] }[]} streams  the run’s Codex streams
+ */
+export function codexTokens(streams) {
+  /** @type {Map<string, number>} */
+  const last = new Map();
+  for (const { events } of streams ?? [])
+    for (const e of events ?? []) {
+      const total = e?.method === 'thread/tokenUsage/updated' ? e.params?.tokenUsage?.total : null;
+      if (total) last.set(String(e.params.threadId), (total.inputTokens ?? 0) + (total.outputTokens ?? 0));
+    }
+  return [...last.values()].reduce((a, n) => a + n, 0);
+}
+
+/**
+ * The harnesses a run had turns on that report no cost in dollars, so the agents’ cost a run states is Claude Code’s
+ * alone: a run’s budget (--max-cost) doesn’t count their turns either.
+ * @param {{ codexStreams?: any[], kiroStreams?: any[], agyStreams?: any[] }} facts
+ * @returns {string[]}
+ */
+export function uncosted(facts) {
+  const ran = { Codex: facts.codexStreams, Kiro: facts.kiroStreams, Antigravity: facts.agyStreams };
+  return Object.entries(ran)
+    .filter(([, streams]) => streams?.length)
+    .map(([name]) => name);
+}
+
+/**
  * A reader of the turns’ streams in `folder`, cut to their result events, for a budget that reads them every few
  * seconds: a file whose size hasn’t changed since it was last read isn’t read again. Each call returns every stream,
  * as readStreams (tools/uat/run-files.mjs) does, with only its results.

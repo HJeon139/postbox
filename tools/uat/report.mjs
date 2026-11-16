@@ -6,7 +6,7 @@ import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { budgetNote } from './budget.mjs';
 import { agyTokens, kiroCredits, waitingOnYou } from './checks.mjs';
-import { agentsSpent } from './cost.mjs';
+import { agentsSpent, codexTokens, uncosted } from './cost.mjs';
 import { githubSection } from './github-attempts.mjs';
 import { pictureSection } from './picture-choice.mjs';
 import { backendName } from './room-unverified.mjs';
@@ -18,6 +18,9 @@ import { coverageSection } from './triggers.mjs';
 import { mergePeopleVerdicts } from './verdicts.mjs';
 import { visualSection } from './visual-judge.mjs';
 
+/** “A”, “A and B” or “A, B and C”. */
+const listOf = (/** @type {string[]} */ names) => (names.length < 3 ? names.join(' and ') : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`);
+
 /**
  * What the run spent, by whom, and what the agents ran on: the report’s first paragraph ends with it. With a run budget
  * (facts.budget, a summary from tools/uat/budget.mjs), it also says the cap, and whether the run stopped at it.
@@ -25,11 +28,19 @@ import { visualSection } from './visual-judge.mjs';
  */
 function usageLine(facts, tester) {
   const agentCost = agentsSpent(facts.streams);
-  // Kiro reports credits, not dollars: they’re listed beside the agents’ cost when a run had Kiro turns.
-  const credits = kiroCredits(facts.kiroStreams ?? []);
-  // Antigravity reports tokens, not dollars: they’re listed beside the agents’ cost when a run had its turns (#143).
-  const tokens = agyTokens(facts.agyStreams ?? []);
-  return `Usage: agents $${agentCost.toFixed(2)}${credits ? ` and ${credits.toFixed(2)} Kiro credits` : ''}${tokens ? ` and ${tokens.toLocaleString('en-US')} Antigravity tokens` : ''}, tester $${tester.spent.toFixed(2)}.${budgetNote(facts.budget)}${timingLine(facts.timing)}${facts.agentModels ? ` Agents: ${facts.agentModels}.` : ''}`;
+  // Only Claude Code reports dollars. What the others report is listed in its place: Codex and Antigravity tokens
+  // (#143), Kiro credits. The line says so, or “agents $0.01” reads as what agents on four harnesses cost.
+  const others = uncosted(facts);
+  const reported = [
+    [codexTokens(facts.codexStreams ?? []), 'Codex tokens'],
+    [kiroCredits(facts.kiroStreams ?? []), 'Kiro credits'],
+    [agyTokens(facts.agyStreams ?? []), 'Antigravity tokens'],
+  ]
+    .filter(([n]) => n)
+    .map(([n, unit]) => `${unit === 'Kiro credits' ? Number(n).toFixed(2) : Number(n).toLocaleString('en-US')} ${unit}`);
+  const told = reported.length ? `: ${reported.join(', ')}` : '';
+  const alone = others.length ? ` on Claude Code alone (${listOf(others)} ${others.length === 1 ? 'reports' : 'report'} no cost${told})` : '';
+  return `Usage: agents $${agentCost.toFixed(2)}${alone}, tester $${tester.spent.toFixed(2)}.${budgetNote(facts.budget)}${timingLine(facts.timing)}${facts.agentModels ? ` Agents: ${facts.agentModels}.` : ''}`;
 }
 
 /** A new finding: not a known issue, not the harness’s own, and not a check that said it couldn’t check. */
