@@ -169,7 +169,13 @@ export class Runtime {
       threads: this.threads,
       sessions: this.sessions,
       running: this.running,
-      send: (sessionId, message, opts) => this.deliver(sessionId, message, opts),
+      // A lint turn is a check entry (designs/rooms-at-scale.md, “What an entry is”): its findings, about the agent’s own
+      // replies, are what its turn is given until Turns builds input from entries.
+      send: (sessionId, message, opts) => {
+        const threadId = opts?.threadId ?? this.store.pending.session(sessionId)?.threadId;
+        const n = message.problems?.length ?? 0;
+        this.delivery.send({ sessionId, threadId, source: 'check', text: `${n} problem${n === 1 ? '' : 's'} in your last reply`, message });
+      },
       config,
     });
     // Agents’ apps and the blocks they show (designs/architecture/services.md, “Apps”). A retired app’s sends waiting

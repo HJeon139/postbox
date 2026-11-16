@@ -120,8 +120,9 @@ const PENDING = {
   // The conversation createThread just wrote, with the agents it joined: its route’s answer is its own write, which a
   // held commit keeps out of the published state (#1247’s class). And the agent deletePersona deletes, with its sessions,
   // any of them maybe made behind a held commit. The constructor binds Delivery's sizeOf, which reads the item an entry
-  // points at as take decides what a turn holds, maybe added in the same held write.
-  'runtime.mjs': ['constructor', 'createThread', 'deletePersona', 'deletePersona', 'deletePersona'],
+  // points at as take decides what a turn holds, maybe added in the same held write; and Checks' send, which reads the
+  // session a lint turn's entry goes to when it names no thread.
+  'runtime.mjs': ['constructor', 'constructor', 'createThread', 'deletePersona', 'deletePersona', 'deletePersona'],
   // The reply with the mention, a side line right after its add, and sweeps of hop cards; the conversation's hop count,
   // the topic the wake answers in, and endChain's hops and queued wakes, each maybe held behind a commit (#796).
   // A session's change and notice diff against the session a held change left (#796's class in sessions).
