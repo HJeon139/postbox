@@ -20,8 +20,15 @@ export function startFromEntries(rt, sessionId) {
   const entries = rt.delivery.take(sessionId, turnId, SENDING.message);
   if (!entries.length) return;
   const message = { ...combineMessages(given(rt, entries)), turnId, fromEntries: true };
-  rt.deliver(sessionId, message, { threadId: entries[0].threadId });
+  const summarizeTo = summaryOf(rt, entries[0]);
+  rt.deliver(sessionId, message, { threadId: entries[0].threadId, ...(summarizeTo ? { summarizeTo } : {}) });
 }
+
+/**
+ * Where a summary request’s reply is posted: the parent of the thread it summarizes, which Summaries keeps (#1425).
+ * Null for any other entry. @param {any} rt @param {any} e
+ */
+const summaryOf = (rt, e) => (e.message?.summary ? (rt.store.pending.thread(e.threadId)?.parentId ?? null) : null);
 
 /**
  * A turn the queue or another caller starts in a thread takes the agent’s waiting entries there with what started it,
