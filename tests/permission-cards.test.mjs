@@ -213,3 +213,20 @@ test('#220 a card answered before the wait ends keeps its answer when the wait w
   t.mock.timers.reset();
   await settle(rt);
 });
+
+test('the person’s answer to a busy agent’s refusal card waits in its inbox as an answer, pointing at the card', async () => {
+  const { rt, adapter, t, se } = await setup();
+  const card = await refused(rt, adapter, t, 'python -m pytest -q');
+  let release = () => {};
+  adapter.next.push(() => new Promise((r) => (release = r)));
+  rt.sendMessage(t.id, { text: 'meanwhile, read the notes' });
+  await sleep(5);
+  await rt.act(t.id, card.id, 'once');
+  assert.deepEqual(
+    arrange.waitingEntries(rt, se.id).map((e) => [e.source, e.itemId, e.from]),
+    [['answer', card.id, 'you']],
+  );
+  release();
+  await settle(rt);
+  assert.match(adapter.calls.at(-1).message.text, /try it again exactly as before/);
+});
