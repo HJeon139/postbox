@@ -101,6 +101,7 @@ const PENDING = {
   'entry-queue.mjs': ['editEntry', 'cancelEntry'],
   // the item an entry gives the turn whole, maybe settled in the same held write; the person’s message, posted at send
   'entry-turns.mjs': ['messageOf', 'personMessage'],
+  'send-message.mjs': ['repeatOf'], // the item a repeated send's first try posted, maybe behind a held commit (#1138)
   'mention-entries.mjs': ['mentionEntries'], // the session whose final reply makes entries, maybe made behind a held commit
   'held-session.mjs': ['heldSession'], // a delivery to a session just made behind a held commit waits until it's published (#796's class in sessions)
   // A job's end: the list it leaves, whether a kept job still runs to hold the steps, and the steps to stall (#957).

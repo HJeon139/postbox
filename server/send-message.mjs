@@ -10,8 +10,14 @@ import * as queue from './message-queue.mjs';
 import { threadPersona } from './side-threads.mjs';
 import { retireStale } from './wake-cards.mjs';
 
-/** You send a message: @mentions wake agents (joining them to the thread); otherwise the last speaker replies. */
-export function sendMessage(rt, threadId, { text = '', attachments = [], sendNow = false } = {}) {
+/**
+ * You send a message: @mentions wake agents (joining them to the thread); otherwise the last speaker replies.
+ * `clientId`: the id the page’s outbox gives the message, which it sends again when the response to a try was lost. A
+ * repeat is answered with what the first try posted, and stores nothing (#1138).
+ * @param {any} rt @param {string} threadId
+ * @param {{ text?: string, attachments?: any[], sendNow?: boolean, clientId?: unknown }} [message]  as the route has it
+ */
+export function sendMessage(rt, threadId, { text = '', attachments = [], sendNow = false, clientId = undefined } = {}) {
   const t = rt.thread(threadId);
   text = String(text).slice(0, 50000);
   attachments = rt.assets.sentAttachments(attachments);
@@ -26,6 +32,9 @@ export function sendMessage(rt, threadId, { text = '', attachments = [], sendNow
   // Refuse before anything is posted or joined: a turn for an agent whose backend isn’t registered couldn’t start (#874).
   rt.placement.refuseUnregisteredSend(mentioned);
   const targets = targetsOf(rt, t, mentioned);
+  const retryId = typeof clientId === 'string' && clientId ? clientId.slice(0, 100) : undefined;
+  const repeat = retryId && repeatOf(rt, targets, retryId);
+  if (repeat) return repeat;
   // Send now is a change of course (stopForSendNow), also for one already exiting from a plain Stop (#1040).
   if (sendNow) for (const { se } of targets) queue.stopForSendNow(rt, se.id);
   // Posted when it’s sent, with one entry per agent it goes to (designs/rooms-at-scale.md, “What an entry is”): a busy
@@ -36,7 +45,9 @@ export function sendMessage(rt, threadId, { text = '', attachments = [], sendNow
     { text, attachments },
     targets.map(({ se }) => se.handle),
   );
-  const entries = targets.map(({ se }) => rt.delivery.send({ sessionId: se.id, threadId, source: 'person', itemId: item.id, from: 'you' }, { wake: false }));
+  const entries = targets.map(({ se }) =>
+    rt.delivery.send({ sessionId: se.id, threadId, source: 'person', itemId: item.id, from: 'you', retryId }, { wake: false }),
+  );
   // Send now goes alone: a turn takes its entry ahead of the rest, which wait for the turn after it.
   for (const e of entries) {
     if (sendNow) sendEntryAlone(rt, e);
@@ -47,6 +58,18 @@ export function sendMessage(rt, threadId, { text = '', attachments = [], sendNow
   // retires after, so the wake you never allowed goes behind your message rather than ahead of it.
   for (const { se } of targets) retireStale(rt, threadId, se, 'you wrote to it', { byPerson: true });
   return queued.length ? { item, queued } : { item };
+}
+
+/**
+ * A try of a message the page already sent (#1138): the item its first try posted, found by the retry id its entries
+ * carry, whatever became of them since. @param {any} rt @param {{ se: any }[]} targets @param {string} retryId
+ */
+function repeatOf(rt, targets, retryId) {
+  for (const { se } of targets) {
+    const e = rt.delivery.inbox(se.id).find((/** @type {any} */ x) => x.retryId === retryId);
+    if (e) return { item: rt.store.pending.item(e.threadId, e.itemId) };
+  }
+  return null;
 }
 
 /**
