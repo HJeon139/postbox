@@ -27,6 +27,12 @@ export const SOURCES = Object.freeze(['mention', 'person', 'command', 'review', 
 const PERSON = new Set(['person', 'answer', 'command', 'event']);
 
 /**
+ * Whether an agent is out of quota now: a failed turn recorded it (turn-quota.mjs), and the reset the harness gave, if
+ * any, is still ahead (#442). @param {{ quota?: { until: number | null } | null }} se
+ */
+const outOfQuota = (se) => Boolean(se.quota) && (se.quota?.until == null || se.quota.until > Date.now());
+
+/**
  * An entry given to a turn of its own until Turns builds input from entries (step 3’s PR 4): one that carries a message
  * other than a plain one, such as an answer’s event or a lint turn, whose kind its turn keeps; and an app’s event.
  * @param {{ source?: string, message?: any }} e
@@ -148,13 +154,14 @@ export class Delivery {
    * Whether an entry can start a turn: not a notice, not held at the chain cap, and, for a failed agent, the person’s
    * own action, since anything else waits for the person; not their messages that were waiting when its turn failed,
    * though (failedWith).
-   * @param {Entry} e @param {{ id?: string, state?: string }} se  the agent’s session
+   * @param {Entry} e @param {{ id?: string, state?: string, quota?: { until: number | null } | null }} se  the agent’s session
    */
   canStart(e, se) {
     if (e.source === 'notice' || this.chainHeld(e)) return false;
     if (se.state !== 'failed') return true;
-    // A scheduled wake is the agent’s own, which started a failed agent’s turn before entries, as its retries rely on (#466).
-    if (e.source === 'scheduled') return true;
+    // A scheduled wake is the agent’s own, which started a failed agent’s turn before entries, as its retries rely on
+    // (#466); not while its backend is out of quota, until the reset the harness gave (#442).
+    if (e.source === 'scheduled') return !outOfQuota(se);
     return PERSON.has(e.source) && !this.heldByFailure.get(e.sessionId)?.has(e.id);
   }
 

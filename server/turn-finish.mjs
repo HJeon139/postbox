@@ -4,7 +4,9 @@
 // finishing a turn: turn-end-work.mjs is only its work ledger's end.
 
 import { emptyReply, endedWithoutReply } from './empty-reply.mjs';
+import { failureClass } from './harness-failure.mjs';
 import { askedOf, replyMarks } from './turn-marks.mjs';
+import { outOfQuota, quotaBack } from './turn-quota.mjs';
 import { foldSteps } from './turn-steps.mjs';
 
 /**
@@ -39,6 +41,7 @@ export function endTurn(rt, turn, err) {
     endFailed(rt, se, turn, err);
     return;
   }
+  if (!err) quotaBack(rt, se);
   // The listeners share what the person needs (open, viewing, topic), which the first that reads it finds.
   rt.bus.emit('turn.ended', { turn, se, items, open: [], viewing: false, topic: null });
 }
@@ -59,12 +62,24 @@ function settleReplies(rt, turn, items, err) {
       if (it.turnId === turn.id && (it.kind === 'agent' || it.kind === 'block')) rt.threads.patchItem(turn.threadId, it.id, { checkpoint: turn.checkpoint });
 }
 
+/** What a reply lost to the network says, as Postbox sends what its turn took once more (#466). */
+export const RESENT = 'The network dropped during this turn, so Postbox sent it again.';
+
 /**
  * A turn that failed: its reply says so, with Retry; the session needs the person; and the agents it mentioned, and
- * the wakes that waited for it, still go.
+ * the wakes that waited for it, still go. A turn lost to the network after its harness took it, and not a resend,
+ * needs nobody: what it took goes once more on its own (#466), its reply says so as retried, and the person isn’t
+ * alarmed by what Postbox already acted on (#1218’s rule). One its backend refused for quota marks the session out
+ * of quota (#442).
  * @param {any} rt @param {any} se @param {any} turn @param {any} err
  */
 function endFailed(rt, se, turn, err) {
+  const failure = failureClass(err);
+  // A scheduled wake’s turn recovers through its schedule instead, with backoff and, after a tool started, a recovery
+  // turn (scheduled-wakes.mjs), so what it took isn’t sent again as well.
+  const lost = failure?.kind === 'network' && !turn.asked?.message?.scheduledWakeId;
+  const took = rt.delivery.takenBy(se.id, turn.id);
+  const resends = lost && took.length > 0 && !took.some((/** @type {any} */ e) => e.resend);
   const message = err.userMessage ?? err.message ?? 'The agent stopped unexpectedly.';
   const target =
     turn.segment ??
@@ -80,23 +95,31 @@ function endFailed(rt, se, turn, err) {
       ...replyMarks(turn),
     }).id;
   rt.threads.patchItem(turn.threadId, target, {
-    status: 'failed',
+    status: resends ? 'retried' : 'failed',
     error: message,
+    ...(resends ? { note: RESENT } : {}),
     retry: turn.retry ?? null,
     asked: askedOf(turn),
     ...(err.remote ? { remote: err.remote } : {}),
     ...(err.rawEnding ? { rawEnding: err.rawEnding } : {}),
   });
-  rt.sessions.update(se.id, {
-    state: 'failed',
-    needs: { kind: 'failed', itemId: target, text: message, ...rt.sessions.awayFrom(se, turn.threadId) },
-    sideTurn: null,
-    subagents: [],
-    currentStep: 'Failed',
-    finishedAt: Date.now(),
-    stopAsk: null,
-  });
-  rt.threads.notify('blocking', se, `@${se.handle}’s reply failed`, message, turn.threadId);
+  if (resends) {
+    rt.sessions.update(se.id, { state: 'idle', sideTurn: null, subagents: [], currentStep: 'Sending again', finishedAt: Date.now(), stopAsk: null });
+    rt.threads.notify('info', se, `@${se.handle} lost the network`, RESENT, turn.threadId);
+  } else {
+    const quota = failure?.kind === 'quota' ? outOfQuota(rt, se, failure.until, turn.threadId) : null;
+    rt.sessions.update(se.id, {
+      state: 'failed',
+      needs: { kind: 'failed', itemId: target, text: message, ...rt.sessions.awayFrom(se, turn.threadId) },
+      sideTurn: null,
+      subagents: [],
+      currentStep: 'Failed',
+      finishedAt: Date.now(),
+      stopAsk: null,
+      ...(quota ? { quota } : {}),
+    });
+    if (!quota) rt.threads.notify('blocking', se, `@${se.handle}’s reply failed`, message, turn.threadId);
+  }
   // Its @-mentions still reach their agents (#485, the person’s choice), as entries its replies made as they settled,
   // read with the failure first, since what it wrote may be cut off (turns.mjs). Not a host turn that goes on
   // (Interrupted, Sign-in needed, its link lost): its replay’s replies make them (mention-entries.mjs). The item keeps
@@ -105,5 +128,5 @@ function endFailed(rt, se, turn, err) {
   if (woke.length || turn.woken.length) rt.threads.patchItem(turn.threadId, target, { wokeOnFailure: [...new Set([...turn.woken, ...woke])] });
   // Last: its progress steps stall, what waited for it and what it took settle, and the agents its replies mentioned
   // are woken.
-  rt.bus.emit('turn.failed', { turn, se });
+  rt.bus.emit('turn.failed', { turn, se, lost, resends });
 }

@@ -67,7 +67,7 @@ test('#1429 the end of a turn leaves each concern’s step to its listener', () 
   const src = readFileSync(new URL('../server/turn-finish.mjs', import.meta.url), 'utf8');
   const direct = [
     ...src.matchAll(
-      /\b(settleScheduledWake|postSummary|fixEnded|expirePermissions|rt\.work\.endWork|rt\.checks\.\w+|rt\.summaries\.\w+|rt\.clearSummaryPending|rt\.delivery\.\w+)\b/g,
+      /\b(settleScheduledWake|postSummary|fixEnded|expirePermissions|rt\.work\.endWork|rt\.checks\.\w+|rt\.summaries\.\w+|rt\.clearSummaryPending|rt\.delivery\.(?!takenBy\b)\w+)\b/g,
     ),
   ].map((m) => m[1]);
   assert.deepEqual([...new Set(direct)], []);

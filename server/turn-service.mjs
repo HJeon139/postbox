@@ -19,6 +19,8 @@ export class Turns {
   constructor(rt, { asks }) {
     this.rt = rt;
     this.asks = asks;
+    /** The backends whose run-out of quota the person was told of, until a turn of theirs ends well (turn-quota.mjs). */
+    this.quotaNoticed = new Set();
   }
 
   /** The agent’s waiting entries of one thread start its turn (entry.waiting). @param {string} sessionId */
