@@ -19,6 +19,11 @@ import { retireStale } from './wake-cards.mjs';
  */
 export function sendMessage(rt, threadId, { text = '', attachments = [], sendNow = false, clientId = undefined } = {}) {
   const t = rt.thread(threadId);
+  // First, before whom it goes to is worked out again: with no @-mention that’s the last speaker, who may have changed
+  // since the first try (#1418’s review).
+  const retryId = typeof clientId === 'string' && clientId ? clientId.slice(0, 100) : undefined;
+  const repeat = retryId && repeatOf(rt, threadId, retryId);
+  if (repeat) return repeat;
   text = String(text).slice(0, 50000);
   attachments = rt.assets.sentAttachments(attachments);
   if (!text.trim() && !attachments.length) throw httpError(400, 'Write a message or attach a file first.');
@@ -32,9 +37,6 @@ export function sendMessage(rt, threadId, { text = '', attachments = [], sendNow
   // Refuse before anything is posted or joined: a turn for an agent whose backend isn’t registered couldn’t start (#874).
   rt.placement.refuseUnregisteredSend(mentioned);
   const targets = targetsOf(rt, t, mentioned);
-  const retryId = typeof clientId === 'string' && clientId ? clientId.slice(0, 100) : undefined;
-  const repeat = retryId && repeatOf(rt, targets, retryId);
-  if (repeat) return repeat;
   // Send now is a change of course (stopForSendNow), also for one already exiting from a plain Stop (#1040).
   if (sendNow) for (const { se } of targets) queue.stopForSendNow(rt, se.id);
   // Posted when it’s sent, with one entry per agent it goes to (designs/rooms-at-scale.md, “What an entry is”): a busy
@@ -62,10 +64,11 @@ export function sendMessage(rt, threadId, { text = '', attachments = [], sendNow
 
 /**
  * A try of a message the page already sent (#1138): the item its first try posted, found by the retry id its entries
- * carry, whatever became of them since. @param {any} rt @param {{ se: any }[]} targets @param {string} retryId
+ * carry, whatever became of them since, in the inbox of any agent of the conversation.
+ * @param {any} rt @param {string} threadId @param {string} retryId
  */
-function repeatOf(rt, targets, retryId) {
-  for (const { se } of targets) {
+function repeatOf(rt, threadId, retryId) {
+  for (const se of rt.sessions.pendingIn(rt.threads.lineage(threadId).at(-1))) {
     const e = rt.delivery.inbox(se.id).find((/** @type {any} */ x) => x.retryId === retryId);
     if (e) return { item: rt.store.pending.item(e.threadId, e.itemId) };
   }
