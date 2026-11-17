@@ -3,6 +3,7 @@
 
 import { join } from 'node:path';
 import { AgentSdkAdapter, loadAgentSdk } from './adapters/agent-sdk.mjs';
+import { agyUsage, usageProbe } from './adapters/agy-usage.mjs';
 import { AntigravityCliAdapter, agyVersion, findAgy } from './adapters/antigravity-cli.mjs';
 import { ClaudeCodeAdapter, claudeVersion, findClaude } from './adapters/claude-code.mjs';
 import { CodexAdapter, codexVersion, findCodex } from './adapters/codex.mjs';
@@ -42,7 +43,9 @@ export async function registerBackends(adapters, { dataDir, demo, probes }) {
   if (real) adapters.register(new KiroCliAdapter({ workRoot, isolatedHome: join(dataDir, 'kiro-home') }), { here: !!kiro });
   // The Antigravity CLI brings Gemini models (#143). It always runs with your own agy setup: see its adapter.
   const agy = real ? await look.agy() : null;
-  if (agy) adapters.register(new AntigravityCliAdapter({ workRoot, version: agy }));
+  // Its quota comes from asking agy’s /usage alongside a turn (#1466).
+  const usage = usageProbe(() => agyUsage(findAgy()));
+  if (agy) adapters.register(new AntigravityCliAdapter({ workRoot, version: agy, usage }));
   const codex = real ? await look.codex() : null;
   if (real) adapters.register(new CodexAdapter({ workRoot }), { here: !!codex });
   return { real, claude, kiro, agy, codex };

@@ -564,8 +564,10 @@ export class AntigravityCliAdapter {
 
   /**
    * @param {{ bin?: string, workRoot: string, models?: string[], version?: string|null, hookScript?: string, settingsFile?: string,
-   *           spawnImpl?: typeof spawn, env?: NodeJS.ProcessEnv, kill?: typeof process.kill, listProcesses?: typeof listProcesses }} opts
-   *   models: a list to offer before agy is asked (server/model-lists.mjs); settingsFile: your agy settings
+   *           spawnImpl?: typeof spawn, env?: NodeJS.ProcessEnv, kill?: typeof process.kill, listProcesses?: typeof listProcesses,
+   *           usage?: ReturnType<typeof import('./agy-usage.mjs').usageProbe> | null }} opts
+   *   models: a list to offer before agy is asked (server/model-lists.mjs); settingsFile: your agy settings; usage: how
+   *   it asks agy for its quota, for the composer’s line (#1466), which server/backends.mjs passes
    */
   constructor({
     bin = findAgy(),
@@ -578,7 +580,9 @@ export class AntigravityCliAdapter {
     env = process.env,
     kill = process.kill,
     listProcesses: list = listProcesses,
+    usage = null,
   }) {
+    this.usage = usage;
     this.kill = kill;
     this.list = list;
     this.capabilities = { ...AGY_CAPABILITIES, ...(models.length ? { models } : {}) };
@@ -625,6 +629,7 @@ export class AntigravityCliAdapter {
     const rulesWith = (hooked) => agyRules({ persona, guide, schemas: join(dirname(this.settingsFile), 'mcp', AGY_SERVER), hooked });
     const rules = rulesWith(useHook);
     const addDirs = [...new Set([ctx.project?.folder, ...(ctx.addDirs ?? [])])].filter((d) => d && resolve(d) !== resolve(cwd));
+    const asked = this.usage?.start() ?? null;
     if (this.folders.busy(cwd)) ctx.status({ currentStep: 'Waiting for another Antigravity turn in this folder' });
     await this.folders.run(cwd, async () => {
       if (ctx.signal.aborted) return;
@@ -661,6 +666,7 @@ export class AntigravityCliAdapter {
         for (const dir of [dirname(plugin), dirname(dirname(plugin))]) await rmdir(dir).catch(() => {});
       }
     });
+    await this.usage?.report(ctx, asked);
   }
 
   /**
