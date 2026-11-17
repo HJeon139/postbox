@@ -76,6 +76,8 @@ test('a fetched message’s words move nothing when they land, and its edit show
   held.release();
   await expect(text).toHaveText(long);
   await expect(text).toHaveAttribute('title', long);
+  await expect(text, 'words that come by fetch and run past the clamp open in full').toHaveAttribute('aria-expanded', 'false');
+  await expect(text).toHaveAttribute('role', 'button');
   await settled(page);
   expect(await send.boundingBox(), 'Send now stays under the pointer').toEqual(before);
   await edit.click();
@@ -100,6 +102,11 @@ test('an agent’s long queued message opens in full by click or Enter, not only
   await page.keyboard.press('Enter');
   await expect(text).toHaveAttribute('aria-expanded', 'true');
   expect(await cut(), 'the whole message shows').toBe(false);
+  // Another message arrives and the queue repaints: the open one stays open, with focus on it.
+  arrange.wake(app.rt, r.senders[0].id, r.worker.handle, 'A third one');
+  await expect(dialog.getByText('A third one', { exact: true })).toBeVisible();
+  await expect(text).toHaveAttribute('aria-expanded', 'true');
+  await expect(text).toBeFocused();
   await text.click();
   await expect(text).toHaveAttribute('aria-expanded', 'false');
   expect(await cut()).toBe(true);
