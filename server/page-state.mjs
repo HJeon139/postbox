@@ -4,6 +4,7 @@
 import { pageInbox } from '../shared/inbox-page.mjs';
 import { HOP_LIMIT } from '../shared/limits.mjs';
 import { DEFAULT_EFFORT, DEFAULT_MODEL, EFFORT_LEVELS, REAL_BACKEND_TOOLS } from './adapters/setup.mjs';
+import { appNetMode } from './app-net.mjs';
 import { publicHeaders, publicState } from './public-state.mjs';
 import { PERMISSION_MODES } from './runtime.mjs';
 import { KNOWN_TOOLS } from './seed.mjs';
@@ -41,6 +42,8 @@ export function pageState({ store, rt, adapters, origin, demo, real, config, hea
       demo,
       // Whether Postbox looked for real backends, and the Claude Code it found: if none, the overview says how (#12).
       realBackends: real,
+      // Prototype: which network variant apps run under (server/app-net.mjs).
+      appNet: appNetMode(),
       versions: config.versions,
       build: config.build,
     },

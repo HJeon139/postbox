@@ -368,15 +368,17 @@ function setupWith(store) {
 }
 const LIMIT = Runtime.APP_SEND_LIMIT;
 
-test(`#38: an app sends up to ${LIMIT} events a minute in your voice; more wait on a card, and nothing is dropped`, async () => {
+// Prototype (designs/prototypes/flexible-apps.md): there’s no limit a minute, so a send waits on the card only when it’s
+// asked to (hold), as a card already open makes every later one do.
+test('#38: an app’s send that is held waits on a card, later ones join it, and nothing is dropped', async () => {
   const { rt, store, t, adapter } = withApp();
   const now = 1_000_000;
   for (let i = 0; i < LIMIT; i++) assert.equal(rt.appEvent('spam', 'ok', { i, summary: `Sure #${i}` }, { now: now + i }).held, undefined);
-  const r = rt.appEvent('spam', 'ok', { i: LIMIT, summary: 'One too many' }, { now: now + LIMIT });
+  const r = rt.appEvent('spam', 'ok', { i: LIMIT, summary: 'One too many' }, { now: now + LIMIT, hold: true });
   assert.equal(r.held, true);
   assert.match(r.message, /waiting/);
   const voices = () => store.items(t.id).filter((x) => x.kind === 'voice' && x.appId === 'spam');
-  assert.equal(voices().length, LIMIT, 'the one past the limit isn’t written in your voice');
+  assert.equal(voices().length, LIMIT, 'the held one isn’t written in your voice');
   // A later send joins the same card, in order, even after the minute is up.
   assert.equal(rt.appEvent('spam', 'ok', { i: 99, summary: 'Later' }, { now: now + 120_000 }).waiting, 2);
   const cards = store.items(t.id).filter((x) => x.kind === 'appsend');
@@ -443,7 +445,7 @@ test('#38: Don’t allow drops the waiting sends; the browser can ask for a hold
 test('#38: an app’s waiting sends survive a restart, and Allow still sends them', async (t) => {
   const dir = tempDir('pb-appsend-');
   const first = withApp(await new Store(dir).load());
-  for (let i = 0; i <= LIMIT; i++) first.rt.appEvent('spam', 'ok', { summary: `#${i}` }, { now: 10 + i });
+  for (let i = 0; i <= LIMIT; i++) first.rt.appEvent('spam', 'ok', { summary: `#${i}` }, { now: 10 + i, hold: i === LIMIT });
   await settle(first.rt);
   await first.store.close();
   const store = await new Store(dir).load();

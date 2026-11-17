@@ -5,7 +5,7 @@
 import { afterAppChecks, appChecksRunning, installAppChecks, recordAppCheck } from './app-check.mjs';
 import { crashCard, errorStrip } from './app-crash.mjs';
 import { live, nearBodies, relookSoon, setAppFrameTest } from './app-pointer.mjs';
-import { renderAppSendCard, SEND_LIMIT } from './app-send-card.mjs';
+import { renderAppSendCard } from './app-send-card.mjs';
 import { api, client, placeIn } from './client.mjs';
 import { $$, ago, h, icon } from './dom.mjs';
 import { goToItem } from './go-to-item.mjs';
@@ -42,7 +42,8 @@ addEventListener('message', async (e) => {
   if (!rec || !m || m.__pb !== 1) return;
   // An app is isolated by the sandbox policy its page is served with, which makes its origin opaque. A frame
   // that isn’t isolated gets nothing from the bridge, and is shut.
-  if (e.origin !== 'null') {
+  // Prototype variant B (server/app-net.mjs) serves apps same-origin, on purpose, to measure what that gives an app.
+  if (e.origin !== 'null' && !(client.config?.appNet === 'open' && e.origin === location.origin)) {
     console.error(`Postbox refused app “${rec.appId}”: its frame isn’t sandboxed.`);
     rec.iframe.src = 'about:blank';
     rec.onCrash?.();
@@ -100,21 +101,21 @@ addEventListener('message', async (e) => {
               ? 'This app was retired, so it’s shown read-only.'
               : 'This is an older version, shown read-only.',
         );
-      {
-        const refused = activated(e, rec);
-        if (refused) return reply(null, refused);
-      }
       try {
-        // One after another per app (#934), so the limit counts, and the server stores, in the order the app sent.
-        // Without per-frame activation (see SNAPSHOTS), every send waits for you on a card.
+        // Prototype (designs/prototypes/flexible-apps.md): a send right after your click in the app goes to the agent at
+        // once, with no limit and no card. One the app made on its own, or a second one from the same click, is a note
+        // the agent reads at its next turn: no turn, no line in your voice, no card. So one click starts at most one
+        // turn. One after another per app (#934), so the server stores them in order.
+        const route = !activated(e, rec) && !sameClick(rec.appId) ? 'event' : 'note';
+        if (route === 'event') inFlight.add(rec.appId);
         const r = await inOrder(rec.appId, async () => {
-          const sent = await api(`/api/apps/${encodeURIComponent(rec.appId)}/event`, {
-            action: m.action,
-            values: m.values,
-            hold: !SNAPSHOTS || overLimit(rec.appId),
-          });
-          if (!sent.held) countSent(rec.appId);
-          return sent;
+          try {
+            const sent = await api(`/api/apps/${encodeURIComponent(rec.appId)}/${route}`, { action: m.action, values: m.values });
+            if (route === 'event') lastEvent.set(rec.appId, Date.now());
+            return sent;
+          } finally {
+            if (route === 'event') inFlight.delete(rec.appId);
+          }
         });
         reply(r);
       } catch (err) {
@@ -124,6 +125,22 @@ addEventListener('message', async (e) => {
       break;
     case 'state':
       if (current) saveState(rec.appId, m.state);
+      break;
+    case 'open':
+      // Prototype: a web link in the app, opened in a new tab only right after the person’s click in that app.
+      // In the Claude desktop app’s pane, window.open replaces this page, so Postbox’s server opens it in the default
+      // browser instead (measured; designs/prototypes/flexible-apps.md).
+      if (rec.check || activated(e, rec) || !/^https?:\/\//i.test(String(m.url))) break;
+      if (/ Claude\//.test(navigator.userAgent)) api(`/api/apps/${encodeURIComponent(rec.appId)}/open`, { url: String(m.url) }).catch(() => {});
+      else window.open(String(m.url), '_blank', 'noopener,noreferrer');
+      break;
+    case 'publish':
+      // Prototype: data the app shares with its agent, read with read_app (server/app-flex.mjs).
+      if (!current) return reply(null, 'Only the current version of an app publishes.');
+      api(`/api/apps/${encodeURIComponent(rec.appId)}/publish`, { data: m.data }).then(
+        (r) => reply(r),
+        (err) => reply(null, err.message),
+      );
       break;
     case 'anchors':
       rec.onAnchors?.(m.names);
@@ -247,17 +264,13 @@ function activated(e, rec) {
   return null;
 }
 
-// At most SEND_LIMIT sends a minute per app go straight to the agent; past that, the server holds them on a card
-// for you to allow. The server keeps the same limit (Runtime.APP_SEND_LIMIT) for anything calling its API.
-// Only sends the server took straight through count, so a refused or held send doesn’t use up the minute.
-const SEND_WINDOW_MS = 60_000;
-const sent = new Map(); // appId → times of sends that went straight through
-function overLimit(appId, now = Date.now()) {
-  const times = (sent.get(appId) ?? []).filter((t) => now - t < SEND_WINDOW_MS);
-  sent.set(appId, times);
-  return times.length >= SEND_LIMIT;
-}
-const countSent = (appId, now = Date.now()) => sent.set(appId, [...(sent.get(appId) ?? []), now]);
+// A burst of sends from one click is one turn: one click handler’s sends arrive while its first event is still on its
+// way, or, when it awaits each, within moments of the answer. A person’s next click or key press comes later, and one
+// that didn’t would lose nothing: it reaches the agent as a note.
+const SAME_CLICK_MS = 50;
+const inFlight = new Set(); // apps whose turn-starting event is on its way to the server
+const lastEvent = new Map(); // appId → when its last event reached the agent; a refused one doesn’t count
+const sameClick = (appId, now = Date.now()) => inFlight.has(appId) || now - (lastEvent.get(appId) ?? 0) < SAME_CLICK_MS;
 
 const pendingState = new Map();
 function saveState(appId, state) {

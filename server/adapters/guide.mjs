@@ -197,8 +197,8 @@ The global postbox gives you:
 - postbox.query(tool, args), for permitted tools you hold:
   - "assets.search" with { query, k?, mode?: "both" | "lexical" | "semantic", assets?: [ids or names] } returns passages [{ id, asset, name, version, where, text, lexical: { score, terms } | null, semantic: number | null }]
   - "assets.list" returns the text assets [{ id, name, version, size, type, passages }]
-- postbox.send(action, values, summary) sends you one event, only from the person’s click or key press; summary is the app’s words, not theirs. Up to 5 a minute; more wait for the person. An event carries up to ${n('eventBytes')} of JSON, so hand over many items by id.
-- postbox.saveState(obj) and postbox.restoreState() keep state over reloads and versions
+- postbox.send(action, values, summary) starts your turn on the person’s click; others are notes in read_app. summary is the app’s words, not theirs. An event carries up to ${n('eventBytes')} of JSON, so hand over many items by id.
+- postbox.saveState(obj) and postbox.restoreState() keep state; postbox.publish(data) shares data with you, no turn (read_app)
 - postbox.load("d3" | "katex" | "mermaid") loads a bundled library
 - postbox.charts.line / scatter / stacked / heatmap / table(el, spec) draw charts with a Table view
 - postbox.on("theme", fn) to redraw canvas or SVG on a theme change

@@ -2,9 +2,22 @@
 // page with a strict policy and, because that policy starts with `sandbox` and has no allow-same-origin, an opaque
 // origin.
 
+import { appNetMode, netCsp } from './app-net.mjs';
 import { httpError } from './helpers.mjs';
 import { mermaidPage, sandboxPage } from './sandbox.mjs';
 import { decodePath, TYPES } from './served-files.mjs';
+
+/**
+ * An app page’s policy under the network variant Postbox started with (prototype, server/app-net.mjs): today’s
+ * sandbox, A’s sandbox with the network open, or B’s, which only names who may frame it, so the page is same-origin.
+ * @param {string} sandboxed @param {string} ancestor
+ */
+function policy(sandboxed, ancestor) {
+  const mode = appNetMode();
+  if (mode === 'net') return netCsp(ancestor);
+  if (mode === 'open') return `frame-ancestors ${ancestor}`;
+  return sandboxed;
+}
 
 /**
  * The sandbox page a request’s path asks for, with the headers it’s sent with, or null for any other path.
@@ -24,7 +37,12 @@ export function sandboxRoute(store, origin, ancestor, path, url) {
     const page = sandboxPage({ origin, ancestor, app, version: v, theme, check: url.searchParams.has('check') });
     return {
       html: page.html,
-      headers: { 'content-type': TYPES['.html'], 'content-security-policy': page.csp, 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' },
+      headers: {
+        'content-type': TYPES['.html'],
+        'content-security-policy': policy(page.csp, ancestor),
+        'cache-control': 'no-store',
+        'x-content-type-options': 'nosniff',
+      },
     };
   }
   if (path === '/sandbox/mermaid') {

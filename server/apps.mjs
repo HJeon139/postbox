@@ -9,7 +9,6 @@ import { INTENT_CHARS, LIMITS } from '../shared/limits.mjs';
 import { wordCount } from '../shared/text.mjs';
 import { appReceipt } from './app-check-status.mjs';
 import { notYours } from './app-retire.mjs';
-import { APP_SEND_LIMIT, APP_SEND_WINDOW_MS } from './app-send-limits.mjs';
 import { httpError, refuseRetired } from './helpers.mjs';
 import { HELD_BY_EVERY_AGENT, hostTool } from './host-tool.mjs';
 import { newId } from './store.mjs';
@@ -117,11 +116,9 @@ export function appEvent(apps, appId, action, values, { hold = false, now = Date
   refuseRetired(apps.store.state.sessions[app.sessionId]);
   const items = apps.store.items(app.threadId);
   const card = items.find((x) => x.kind === 'appsend' && x.appId === appId && x.status === 'open');
-  // Sends you allowed on a card don’t count against the next minute.
-  const recent = items.filter((x) => x.kind === 'voice' && x.appId === appId && !x.approved && now - (x.sentAt ?? x.at) < APP_SEND_WINDOW_MS).length;
-  // Once some sends wait, later ones wait behind them, so the agent gets them in order.
-  // Past the limit the event waits on the app’s card, which is asks’ (server/app-send-cards.mjs): the facade holds it.
-  if (card || hold || recent >= APP_SEND_LIMIT) return { hold: { app, card, event: r } };
+  // Prototype (designs/prototypes/flexible-apps.md): no per-minute limit. The page sends here only right after your
+  // click in the app, and anything else needs the page’s token. A card is left only for one already open.
+  if (card || hold) return { hold: { app, card, event: r } };
   const voice = apps.threads.addItem(app.threadId, { kind: 'voice', text: r.voice, ...(r.quote ? { quote: r.quote } : {}), appId, sentAt: now });
   if (apps.store.state.sessions[app.sessionId]) apps.send(app.sessionId, { kind: 'event', event: r.event }, { threadId: app.threadId, itemId: voice.id });
   return { ok: true, voice: r.voice };

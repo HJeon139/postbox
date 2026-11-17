@@ -9,6 +9,7 @@ import { dirname } from 'node:path';
 import { HarnessEvents } from '../harness-events.mjs';
 import { brokenMapApp, dashboardApp, explorerApp, layoutApp, walkthroughApp } from '../mock/apps.mjs';
 import { explainer } from './mock-explainer.mjs';
+import { flexTurn } from './mock-flex.mjs';
 import { citationFix, fasterParser } from './mock-ledger.mjs';
 import { replayShowcase } from './mock-showcase.mjs';
 
@@ -165,6 +166,7 @@ const has = (text, re) => re.test(String(text ?? '').toLowerCase());
 
 const HANDLERS = {
   async librarian(m, a, mem) {
+    if (await flexTurn(m, a)) return; // the flexible-apps prototype (mock-flex.mjs)
     if (m.kind === 'event') return librarianEvent(m.event, a, mem);
     if (m.kind === 'lint') return defineAll(m, a);
     if (m.kind === 'app-check') return;

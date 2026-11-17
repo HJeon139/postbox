@@ -49,6 +49,7 @@ test('every tool is classified for the gate: the read set, or the writers; a new
     'delete_asset',
     'permission_prompt',
     'propose_agent',
+    'read_app', // takes the notes it reads (prototype: designs/prototypes/flexible-apps.md)
     'react',
     'rename_asset',
     'restore_asset',

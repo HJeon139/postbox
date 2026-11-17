@@ -81,23 +81,21 @@ test('warnings show the app with notes, and the agent hears of them in the lint 
 
 // ── What an app sends, saves and reads ───────────────────────────────────────────────
 
-test('appEvent sends in the person’s voice up to the limit a minute; past it the event comes back to be held, and nothing is sent', () => {
+test('appEvent sends in the person’s voice with no limit a minute (prototype); it holds only when asked, and nothing is sent then', () => {
   const { store, threads, apps, sent } = rig();
   shown(apps, threads);
   const now = 1_000_000;
-  for (let i = 0; i < APP_SEND_LIMIT; i++) assert.equal(apps.appEvent('lab', 'send', { text: `hi ${i}` }, { now }).ok, true);
-  assert.equal(sent.length, APP_SEND_LIMIT);
+  const many = APP_SEND_LIMIT * 2;
+  for (let i = 0; i < many; i++) assert.equal(apps.appEvent('lab', 'send', { text: `hi ${i}` }, { now }).ok, true);
+  assert.equal(sent.length, many, 'past the old limit, every click still reaches the agent');
   // Sent with the voice line it posted, which its entry points at (#1425).
   const voice = store.items('th_c').find((x) => x.kind === 'voice');
   assert.deepEqual(sent[0].opts, { threadId: 'th_c', itemId: voice.id });
   assert.equal(sent[0].message.kind, 'event');
-  const held = apps.appEvent('lab', 'send', { text: 'one more' }, { now });
+  const held = apps.appEvent('lab', 'send', { text: 'asked to hold' }, { now, hold: true });
   assert.equal(held.hold.app.id, 'lab');
   assert.equal(held.hold.card, undefined, 'no card yet');
-  assert.equal(held.hold.event.event.action, 'send');
-  assert.equal(sent.length, APP_SEND_LIMIT, 'nothing more was sent');
-  assert.equal(store.items('th_c').filter((x) => x.kind === 'voice').length, APP_SEND_LIMIT);
-  assert.equal(apps.appEvent('lab', 'send', { text: 'asked to hold' }, { now: now + 120_000, hold: true }).hold.app.id, 'lab');
+  assert.equal(sent.length, many, 'nothing more was sent');
 });
 
 test('appState saves the app’s state, writes nothing for the same state, and refuses one over 256 KB', () => {

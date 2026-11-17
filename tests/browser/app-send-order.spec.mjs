@@ -1,6 +1,7 @@
 // #934: an app that calls postbox.send several times in one click has them stored in the order it sent them. The page
 // posts each send on its own, so with nothing ordering them the server could store a later one first. The page now
-// sends an app’s events one after another; a failed one doesn’t hold back the rest.
+// sends an app’s events one after another; a failed one doesn’t hold back the rest. In the flexible-apps prototype
+// (designs/prototypes/flexible-apps.md) the first send of a click is an event and the rest are notes, in the same order.
 
 import { expect, test } from '@playwright/test';
 import { APP_SEND_LIMIT } from '../../server/app-send-limits.mjs';
@@ -37,7 +38,7 @@ test.skip(({ browserName }) => browserName !== 'chromium', 'app sends need Messa
 async function burstApp(page, name) {
   const { rt, store } = app;
   const held = { requests: 0, /** @type {(how: 'continue' | 'fail') => void} */ release: () => {} };
-  await page.route('**/api/apps/*/event', async (route) => {
+  await page.route(/\/api\/apps\/[^/]+\/(event|note)$/, async (route) => {
     held.requests++;
     if (held.requests > 1) return route.continue();
     const how = await new Promise((r) => {
@@ -54,11 +55,13 @@ async function burstApp(page, name) {
   rt.toolsFor(se.id).show_app({ id, title: name, code: BURST, permissions: [] });
   await expect.poll(() => rt.store.state.apps[id]?.check.status, { message: 'the app to pass its check' }).toMatch(/^(passed|note)$/);
   await expect(frameOf(page, name), 'the app to load').toHaveAttribute('data-sized', '1');
-  const steps = () =>
-    store
+  const steps = () => [
+    ...store
       .items(t.id)
       .filter((x) => x.kind === 'voice' && x.appId === id)
-      .map((x) => Number(/Step (\d+)/.exec(x.quote ?? x.text)?.[1]));
+      .map((x) => Number(/Step (\d+)/.exec(x.quote ?? x.text)?.[1])),
+    ...(rt.store.state.apps[id]?.notes ?? []).map((n) => n.values.i),
+  ];
   /** Clicks, waits until the page has taken all N sends, and until any it posted beside the held one are stored. */
   const click = async () => {
     await clickApp(page, name);

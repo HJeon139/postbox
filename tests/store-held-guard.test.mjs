@@ -58,6 +58,8 @@ const PUBLISHED = {
 /** Direct reads of state.items, state.work or state.apps: published reads. */
 const DIRECT = {
   'app-entries.mjs': ['sendAppMessage'], // the title of an app whose check the page reported, for its entry’s line (#1425)
+  // Prototype (designs/prototypes/flexible-apps.md): HTTP answers to the page about an app, as apps.mjs’s, and read_app.
+  'app-flex.mjs': ['publishApp', 'noteApp', 'readApp', 'openLink'],
   'apps.mjs': ['appCheck', 'appEvent', 'appState', 'appQuery', 'appFile', 'appOf'], // HTTP answers to the page about an app, and appOf for read_message and the host snapshot (#516's S1): a read tool and what it sends
   'item-lines.mjs': ['describeItem', 'describeItem'], // a read tool’s app line
   'ledger-git.mjs': ['gitState'], // the Work view’s git state: an answer to the page

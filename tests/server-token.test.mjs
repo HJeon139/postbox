@@ -81,11 +81,14 @@ const WRITE_ROUTES = {
   'POST /api/projects': ['/api/projects'],
   'PUT ^\\/api\\/projects\\/([^/]+)\\/push-url$': ['/api/projects/pr_none/push-url'],
   'POST /api/files': ['/api/files'],
-  'POST ^\\/api\\/apps\\/([^/]+)\\/(check|event|state|query)$': [
+  'POST ^\\/api\\/apps\\/([^/]+)\\/(check|event|state|query|publish|note|open)$': [
     '/api/apps/ap_none/check',
     '/api/apps/ap_none/event',
     '/api/apps/ap_none/state',
     '/api/apps/ap_none/query',
+    '/api/apps/ap_none/publish',
+    '/api/apps/ap_none/note',
+    '/api/apps/ap_none/open',
   ],
   'POST ^\\/api\\/schedules\\/([^/]+)\\/cancel$': ['/api/schedules/sc_none/cancel'],
   'PUT /api/settings': ['/api/settings'],
