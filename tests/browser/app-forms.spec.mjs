@@ -84,13 +84,14 @@ for (const method of ['post', 'get'])
     });
     await page.goto(`${app.origin}/#/t/${t.id}`);
     await synced(page, app);
+    // Chrome reports each submission form-action blocks: the condition to wait on, rather than a fixed time.
+    const blocked = page.waitForEvent('console', { predicate: (m) => /Sending form data .* violates .*form-action/.test(m.text()), timeout: 15_000 });
     const id = `leaving-${t.id}`;
     rt.toolsFor(se.id).show_app({ id, title, code: LEAVING(action, method), permissions: [] });
     await expect(frameOf(page, title), 'the app to load').toHaveAttribute('data-sized', '1');
     const src = await frameOf(page, title).getAttribute('src');
     await expect.poll(() => rt.store.state.apps[id]?.state?.submitted, { message: 'the form submitted' }).toBe(true);
-    // Long enough for a submission that got out to be requested and load in the frame.
-    await page.waitForTimeout(1000);
+    await blocked;
     expect(left, 'nothing was requested from the form’s action').toEqual([]);
     await expect(frameOf(page, title)).toHaveAttribute('src', src);
     await expect(page.frameLocator(`iframe.app-iframe[title="${title}"]`).locator('#here'), 'the frame still shows the app').toHaveText('Still the app');
