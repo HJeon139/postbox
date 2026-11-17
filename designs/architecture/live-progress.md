@@ -190,21 +190,38 @@ Each code pull request is measured against `main`, back to back on the same mach
 
 The first code pull request extends the tool and records `main`’s numbers before any change, so every later one compares with the same baseline.
 
-**`main`’s baseline,** at 102cc4819, from `node --expose-gc tools/measure-progress.mjs`, over two runs on the developer’s Mac:
+**`main`’s baseline,** at 7874ed81, from `node tools/measure-progress.mjs --runs 3`. Each run is in a fresh process, on a virtual clock that advances 50 ms after each recorded line, with a crowd’s agents interleaved. The log is counted as the store writes it, in UTF-8 bytes (a test holds that the count equals the disk). Bytes held to within 8 bytes across the runs, the digits of a time an event carries. Times are given as least to most.
 
-| Section | Log bytes | Progress | Events of progress | Time |
-|---|---|---|---|---|
-| Claude Code, 25 recorded turns | 384,015–384,119 | 44.3–44.6% | 955–959 | |
-| Codex, 12 recorded turns | 79,870–79,895 | 22.9% | 149–150 | |
-| Kiro, 13 recorded turns | 114,368–114,447 | 38.9–39.0% | 334–335 | |
-| Antigravity, 14 recorded turns | 150,863–150,890 | 41.6–41.7% | 523–525 | |
-| One turn of 300 steps | 437,200 | 55.1% | 600 step records | 73–75 ms |
-| One turn of 1,000 steps | 1,442,223 | 55.8–55.9% | 2,000 step records | 199–201 ms |
-| 8 agents at once, one room | 354,167–354,192 | 55.9–56.0% | 1,229–1,230 | 55 ms |
-| 40 agents at once, one room | 1,799,514–1,799,593 | 55.2% | 6,142–6,144 | 257–330 ms |
-| Restart on the 40 agents’ log | 1,826,439–1,826,520 log, 344,645 snapshot | | | load 16–18 ms, heap +0.4 MB |
+| Section | Log bytes | Progress | Mixed | A page’s bytes, frames | Server µs a delta |
+|---|---|---|---|---|---|
+| Claude Code, 19 recorded turns | 407,440–407,444 | 45.1% | 8.9% | 353,100–353,104, 1,793 | 22.2–107.4 |
+| Codex, 8 recorded turns | 80,585–80,589 | 24.7% | 11.0% | 59,733–59,737, 358 | 20.8–112.3 |
+| Kiro, 11 recorded turns | 136,196–136,204 | 34.3% | 13.0% | 106,428–106,436, 675 | 12.9–86.6 |
+| Antigravity, 11 recorded turns | 163,495–163,501 | 43.6% | 10.1% | 132,487–132,493, 905 | 13.2–58.2 |
+| One turn of 300 steps, with input, output, detail and diffs | 649,174 | 67.0% | 30.8% | 635,954, 1,837 | 12.0–12.1 |
+| One turn of 1,000 steps | 2,144,179 | 68.0% | 31.1% | 2,105,759, 6,037 | 13.4–13.6 |
+| 1x: 4 agents in a room | 59,405–59,413 | 30.5% | 10.1% | 52,570–52,578, 276 | 22.3–48.5 (1 to 10 tabs) |
+| 10x: 40 agents in a room | 652,578–652,632 | 40.0–40.1% | 10.0% | 610,409–610,463, 2,979 | 9.6–13.6 (1 to 10 tabs) |
+| 100x: 100 agents across 25 rooms | 1,485,503 | 44.9% | 11.0% | 951,373, 7,697 (one room open) | 7.9–11.0 (1 to 10 tabs) |
 
-The browser rows (the page’s work, the wire, joining) and the hosts’ are measured by the specs and probes of the step that changes them, against `main` at that step.
+- **Progress** is a session patch of only live fields (with or without `updatedAt`), an `activityStep` patch, or an `item.text`.
+- **Mixed** is a session patch that sets a stored field, such as `state`, beside live ones. Its stored part stays.
+- `compacting` stays stored.
+- A recording that streams no words or step, such as Codex’s model list or a run that failed before any output, isn’t a turn, and is reported apart.
+- A page’s bytes don’t change with the number of tabs; the server’s time a delta, which includes writing to every tab, is given across 1, 3 and 10 tabs.
+
+**A restart mid-turn,** with each agent half through its turn, in rooms of 4. A graceful shutdown runs Postbox’s close path; a crash kills the process once the store has flushed:
+
+| Scale and stop | Shutdown | Log bytes | Events replayed (with the snapshot, of all) | Load, with and without the snapshot | Heap after load | Sweep |
+|---|---|---|---|---|---|---|
+| 4 agents, graceful | 7.5–7.7 ms | 35,128 | 174 of 174 | 5.6–6.2 ms, 5.4–6.3 ms | 0.09–0.39 MB | 0.07–0.08 ms |
+| 4 agents, crash | | 28,319 | 136 of 136 | 7.4–8.2 ms, 7.4–8.2 ms | 0.09–0.40 MB | 0.7–0.8 ms |
+| 40 agents, graceful | 17.1–19.8 ms | 354,575 | 1,606 of 1,606 | 8.1–9.8 ms, 7.9–8.9 ms | 0.26–0.27 MB | 0.13–0.14 ms |
+| 40 agents, crash | | 295,713 | 1,356 of 1,356 | 8.9–10.3 ms, 8.7–9.9 ms | 0.24–0.49 MB | 1.4–1.5 ms |
+| 400 agents, graceful | 44.0–45.4 ms | 1,396,227–1,423,462 | 6,509–6,573 of 6,566–6,678 | 20.3 ms; a segment before the snapshot is gone | 2.4 MB | 0.37–0.38 ms |
+| 400 agents, crash | | 846,905 | 4,137 of 4,194 | 17.8–18.6 ms; the same | 2.1 MB | 9.8–10.1 ms |
+
+Below 400 agents no snapshot had been taken, so every event is replayed either way. At 400 agents, a graceful shutdown’s log varied in one run of three with what the turns’ stops wrote. The server’s time a delta is the noisiest number; a step compares it as a band, run back to back with `main`.
 
 ## Order of work
 
