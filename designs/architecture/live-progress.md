@@ -191,19 +191,19 @@ Each code pull request is measured against `main`, back to back on the same mach
 
 The first code pull request extends the tool and records `main`’s numbers before any change, so every later one compares with the same baseline.
 
-**`main`’s baseline,** Postbox at 7874ed81, from `node tools/measure-progress.mjs --runs 3`. Each run is in a fresh process, on a virtual clock that advances 50 ms after each recorded line, with a crowd’s agents interleaved. The log is counted as the store writes it, in UTF-8 bytes (a test holds that the count equals the disk). Times are given as least to most of the runs.
+**`main`’s baseline,** Postbox at 07db980e, from `node tools/measure-progress.mjs --runs 3`. Each run is in a fresh process, on a virtual clock that advances 50 ms after each recorded line, with a crowd’s agents interleaved. The log is counted as the store writes it, in UTF-8 bytes (a test holds that the count equals the disk). The clock never runs ahead of real time while the store flushes or closes, so its bounds on disk work trip only when the disk stalls. Times are given as least to most of the runs. This run’s times came with the machine under load (a load average near 9, other sessions’ browser specs), so they show the spread a busy machine gives; a step’s times are compared only back to back with `main`’s (“Worse than `main`”).
 
 | Section | Log bytes | Progress | Mixed | A page’s bytes, frames | Event loop busy, ms | CPU, ms | Mappers’ µs a delta |
 |---|---|---|---|---|---|---|---|
-| Claude Code, 19 recorded turns | 407,447–407,450 | 45.1% | 8.9% | 353,107–353,110, 1,793 | 255–287 | 152–181 | 14.2–17.2 |
-| Codex, 8 recorded turns | 80,587–80,589 | 24.7% | 11.0% | 59,735–59,737, 358 | 77–161 | 33–43 | 19.7–34.2 |
-| Kiro, 11 recorded turns | 136,204 | 34.3% | 13.0% | 106,436, 675 | 118–121 | 43–45 | 11.6–12.7 |
-| Antigravity, 11 recorded turns | 163,502–163,503 | 43.6% | 10.1% | 132,494–132,495, 905 | 119–123 | 45–49 | 12.8–13.9 |
-| One turn of 300 steps, with input, output, detail and diffs | 649,174 | 67.0% | 30.8% | 635,954, 1,837 | 98–121 | 109–126 | 11.7–12.8 |
-| One turn of 1,000 steps | 2,144,179 | 68.0% | 31.1% | 2,105,759, 6,037 | 263–273 | 281–295 | 13.2–13.8 |
-| 1x: 4 agents in a room, 1 to 10 tabs | 59,405–59,413 | 30.5% | 10.1% | 52,570–52,578, 276 | 19–34 | 16–33 | 21.4–37.3 |
-| 10x: 40 agents in a room, 1 to 10 tabs | 652,578–652,632 | 40.0–40.1% | 10.0% | 610,409–610,463, 2,979 | 89–111 | 100–128 | 9.7–12.9 |
-| 100x: 100 agents across 25 rooms, 1 to 10 tabs | 1,485,503 | 44.9% | 11.0% | 951,373, 7,697 (one room open) | 182–286 | 221–306 | 8.3–14.7 |
+| Claude Code, 19 recorded turns | 407,440 | 45.1% | 8.9% | 353,100, 1,793 | 271–311 | 166–193 | 16.1–19.2 |
+| Codex, 8 recorded turns | 80,587 | 24.7% | 11.0% | 59,735, 358 | 77–84 | 30–35 | 20.2–23.9 |
+| Kiro, 11 recorded turns | 136,196 | 34.3% | 13.0% | 106,428, 675 | 123–173 | 48–72 | 12.9–25.3 |
+| Antigravity, 11 recorded turns | 163,495 | 43.6% | 10.1% | 132,487, 905 | 125–199 | 49–87 | 13.6–26.9 |
+| One turn of 300 steps, with input, output, detail and diffs | 649,174 | 67.0% | 30.8% | 635,954, 1,837 | 101–102 | 112–113 | 12.2–12.6 |
+| One turn of 1,000 steps | 2,144,179 | 68.0% | 31.1% | 2,105,759, 6,037 | 263–271 | 281–293 | 13.0–13.6 |
+| 1x: 4 agents in a room, 1 to 10 tabs | 59,405–59,411 | 30.5% | 10.1% | 52,570–52,576, 276 | 22–38 | 18–38 | 24.6–50.0 |
+| 10x: 40 agents in a room, 1 to 10 tabs | 652,578–652,632 | 40.0–40.1% | 10.0% | 610,409–610,463, 2,979 | 95–284 | 105–173 | 10.3–31.2 |
+| 100x: 100 agents across 25 rooms, 1 to 10 tabs | 1,485,503 | 44.9% | 11.0% | 951,373, 7,697 (one room open) | 202–510 | 246–360 | 9.9–17.5 |
 
 - **Progress** is a session patch of only live fields (with or without `updatedAt`), an `activityStep` patch, or an `item.text`.
 - **Mixed** is a session patch that sets a stored field, such as `state`, beside live ones. Its stored part stays.
@@ -216,14 +216,14 @@ The first code pull request extends the tool and records `main`’s numbers befo
 
 | Scale and stop | Shutdown | Written | Snapshot | Replayed with it: bytes, events | Load with it | Load without it: bytes, events, time | Heap after load | Sweep |
 |---|---|---|---|---|---|---|---|---|
-| 4 agents, graceful | 6.8–8.8 ms | 55,408 | none | 55,408, 176 | 6.0–6.7 ms | 55,408, 176, 5.4–6.6 ms | 0.13–0.14 MB | 0.07 ms |
-| 4 agents, crash | | 48,811 | none | 48,811, 138 | 7.5–10.8 ms | 48,811, 138, 5.3–6.3 ms | 0.17 MB | 0.8–1.2 ms |
-| 40 agents, graceful | 101–132 ms | 372,993–372,994 | none | 372,993–372,994, 1,608 | 8.1–12.5 ms | the same, 7.7–12.5 ms | 0.32–0.45 MB | 0.14–0.19 ms |
-| 40 agents, crash | | 312,714–312,945 | none | 312,714–312,945, 1,343–1,344 | 9.0–9.6 ms | 312,714–312,715, 1,343, 7.6–8.2 ms | 0.31–0.32 MB | 1.4–1.5 ms |
-| 400 agents, graceful | 665–705 ms | 3,463,150–3,469,172 | 1,068,239–1,087,813 | 1,126,092–1,208,291, 5,320–5,736 | 22.3–25.4 ms | 3,463,150–3,469,172, 16,629–16,651, 27.6–31.8 ms | 2.36 MB | 0.38–0.40 ms |
-| 400 agents, crash | | 2,911,035–2,917,054 | 1,082,781–1,172,327 | 216,169–633,178, 1,266–3,150 | 19.3–26.4 ms | 2,911,035–2,917,054, 14,167–14,189, 22.8–28.7 ms | 2.06–2.11 MB | 10.4–14.3 ms |
+| 4 agents, graceful | 30–39 ms | 55,408 | none | 55,408, 176 | 30–33 ms | 55,408, 176, 25–29 ms | 0.14 MB | 0.09–0.10 ms |
+| 4 agents, crash | | 48,811 | none | 48,811, 138 | 8.9–110 ms | 48,811, 138, 6.4–30 ms | 0.17 MB | 1.0–1.4 ms |
+| 40 agents, graceful | 106–137 ms | 372,984–372,986 | none | 372,984–372,986, 1,608 | 9.2–14 ms | the same, 8.8–12 ms | 0.31–0.32 MB | 0.13–0.48 ms |
+| 40 agents, crash | | 312,715–312,944 | none | 312,715–312,944, 1,343–1,344 | 12–35 ms | the same, 8.9–12 ms | 0.31–0.32 MB | 1.8–2.5 ms |
+| 400 agents, graceful | 862–1,602 ms | 3,462,785–3,476,169 | 1,055,746–1,232,726 | 79,945–1,256,004, 300–5,939 | 32–52 ms | 3,462,785–3,476,169, 16,605–16,691, 54–59 ms | 2.0–2.4 MB | 0.51–0.63 ms |
+| 400 agents, crash | | 2,911,035–2,913,211 | 1,043,956–1,140,947 | 390,892–792,423, 2,061–3,895 | 20–38 ms | 2,911,035–2,913,211, 14,167–14,176, 23–64 ms | 2.1 MB | 10–16 ms |
 
-Below 400 agents no snapshot is taken, so every event is replayed. At 400, when the snapshot is taken depends on how the store’s writes batch between real I/O, so the snapshot and what’s replayed after it split the log differently from run to run, up to threefold for a crash. Those two are bands only; what a step compares at 400 is the whole log’s bytes and events and its load without the snapshot, which held to within 0.2%. The 400-agent shutdown is the real `close()`, which stops 400 turns and writes what they end with.
+Below 400 agents no snapshot is taken, so every event is replayed. At 400, when the snapshot is taken depends on how the store’s writes batch between real I/O, so the snapshot and what’s replayed after it split the log differently from run to run, up to fifteenfold for a graceful stop. Those two are bands only; what a step compares at 400 is the whole log’s bytes and events and its load without the snapshot, which held to within 0.4%. The 400-agent shutdown is the real `close()`, which stops 400 turns and writes what they end with.
 
 **Worse than `main`,** for a step’s comparison, run back to back with `main` on the same machine, `--runs 3` each:
 - **Bytes** (the log, written, the snapshot and the page’s) are worse when the step’s least is above `main`’s most by more than 0.1% or 64 bytes, whichever is more. Runs differ only by the digits of times, and at 400 agents by what the stops write.
