@@ -62,7 +62,7 @@ designs/rooms-at-scale.md decides the end state of the most tangled code: the pe
 
 So this work doesn’t build interfaces around that machinery. Three concerns **wait**, in their current shape, behind the facade, until those decisions land:
 - **Asks and permissions:** `permission-*.mjs`, `permissions-panel`, `ask-question`, `tool-ask`, `prompt-claim`, `read-folders`, `write-guard`, `write-intent`, `host-rules`, `card-needs`, `blocks` (its `act()` dispatches the cards), `view-app/consent` and `view-app/view-app` (the download card), and the app-send cards (`app-send-cards.mjs`, split from `apps.mjs` in step 9).
-- **Delivery:** `message-queue`, `send-message`, `queue-batch`, `mention-wakes`, `newer-waiting`, `side-threads`, `wake-cards`, `scheduled-wakes`, `room-chain-limit`, `topic-open`, `share-back`, `bring` and `agent-commands`.
+- **Delivery:** `message-queue`, `send-message`, `turn-batch`, `mention-wakes`, `newer-waiting`, `side-threads`, `wake-cards`, `scheduled-wakes`, `room-chain-limit`, `topic-open`, `share-back`, `bring` and `agent-commands`.
 - **Turns:** `deliver`, `turn-context`, `turn-stop`, `turn-finish`, the turn’s steps and marks, jobs and kept jobs, `claude-mirror`, `store-outage`, `restart-sweep`, and `remote/turns*.mjs`. Starting and ending a turn interleave delivery and needs at every step (see “The end of a turn”, below), so Turns is redone with the inbox, not before it.
 
 That is 55 modules. Waiting code keeps taking `rt`, and may call any service. The rule for everything redone before then: **a service never calls waiting code.** Where it does today, it raises a signal or calls a port, below, and the waiting code listens or answers.
@@ -150,7 +150,7 @@ The list refines the starting point from the data:
 ### Memory
 
 - **Owns:** each session’s marker of what it has read, and how a conversation reads to an agent: the catch-up a turn starts with, a topic or side thread’s, a mention given before as a pointer (#484), an item’s line and the read tools (designs/architecture/shared-memory.md).
-- **Interface:** `catchUp(se, exclude)`, `turnContext(se, where, message, slash)`, `threadCatchUp(se, threadId, exclude)`, `pointerIfSeen(se, message)`, `moveMarkers(threadId, id, stubId)`, `describeItem(item, se, n, reader)`, `topicRootLine(se, t)`, `readConversation(se, args)`, `readMessage(se, args)`, `readLine(item, se, n)`.
+- **Interface:** `catchUp(se, exclude)`, `turnContext(se, where, message, slash)`, `threadCatchUp(se, threadId, exclude)`, `moveMarkers(threadId, id, stubId)`, `describeItem(item, se, n, reader)`, `topicRootLine(se, t)`, `readConversation(se, args)`, `readMessage(se, args)`, `readLine(item, se, n)`.
 - **Depends on:** Store, Threads, Sessions, Personas, Placement, Assets, Apps, and the `catchUpLines` port: the messages held for an agent on a card waiting for the person (#693).
 
 ### Summaries
@@ -638,7 +638,7 @@ Each step is its own pull request, and is done when:
   - The signals’ timing is held by tests that read right after the call: “#193: retiring drops the sends waiting for the person, clears needs-you, and later sends are refused” fails when `app.retired`’s listener runs late. No test was deleted, and no spec changed.
 - **Done:** step 10, Memory, with the `catchUpLines` port, and the thread summaries split off as Summaries. `server/memory-service.mjs` is a class that `Runtime`’s constructor builds with the store, Threads, Sessions, Personas, Placement, Assets and Apps, and `catchUpLines`, which the root binds to the wake cards’ `heldFor`; `server/summary-service.mjs` is a class it builds with the store, Threads, Sessions, Personas and Running, the ledger, the adapter registry and the server’s settings. Their interface tests are `tests/memory-service.test.mjs` and `tests/summary-service.test.mjs`, and `tests/memory-golden.test.mjs` holds what an agent reads, byte for byte, as `main` gave it. Memory’s modules (`catch-up.mjs`, `item-lines.mjs`, `read-message.mjs`, `thread-catch-up.mjs`) take Memory, and `thread-summary.mjs` takes Summaries, never the runtime. One move came first, with no change to the code moved: what an agent reads of a topic or side thread, from `thread-summary.mjs` to `thread-catch-up.mjs`. `Runtime` keeps no method of either; the agent tools, `deliver`, a host’s snapshot, the turn’s end and `close()` reach them as `rt.memory` and `rt.summaries`, and the root’s `item.moved` listener calls `Memory.moveMarkers`. What step 10 found:
   - Memory held two concerns, as “Risks” foresaw, so it split. What an agent reads needs Placement, Assets and Apps; the summaries need Running, the ledger and the adapters; and neither calls the other: an agent reads a summary from the store, on the thread’s line. `thread-summary.mjs` held both, so its reading half moved out first. The thread’s line (`lineOf`) and what counts as said (`SAID`) stay in `thread-summary.mjs`, and `lineOf` takes the store.
-  - Memory needs three members the interface didn’t list: `pointerIfSeen`, which `deliver` calls for a mention a catch-up already gave (#484); and `turnContext` and `threadCatchUp`, which build a turn’s context in a topic or side thread. Neither Running nor Work is a dependency of Memory any more; Summaries takes the ledger, an external dependency Work holds too, as the blobs are Assets’ and `Runtime`’s (step 6).
+  - Memory needs three members the interface didn’t list: `pointerIfSeen`, which `deliver` calls for a mention a catch-up already gave (#484; gone since step 3’s cleanup); and `turnContext` and `threadCatchUp`, which build a turn’s context in a topic or side thread. Neither Running nor Work is a dependency of Memory any more; Summaries takes the ledger, an external dependency Work holds too, as the blobs are Assets’ and `Runtime`’s (step 6).
   - The summarizer seam was an undeclared member of `Runtime` (`rt.summarize`, “The problem, measured”). It is Summaries’ declared `summarize` field now, which the fixture’s `withSummarizer` sets; two tests that assigned `rt.summarize` call the fixture. The summary timers were a `WeakMap` keyed by the runtime, and are Summaries’ own.
   - The root binds `catchUpLines` once: it calls `heldFor`, a module function no test replaces, so it needs no late lookup as `send` does (step 8).
   - No test held the whole text an agent reads; `tests/memory-golden.test.mjs` does, built through the facade and the fixture, and fails when the port’s lines are dropped. `tests/remote-broker-snapshot.test.mjs` compares a host’s reading tools with Memory’s methods, as it did with `Runtime`’s. No test was deleted, and no spec changed.
@@ -677,7 +677,7 @@ Each step is its own pull request, and is done when:
     - `open_topic` lost `mentions`: its first message’s own @-mentions wake, as prose, as a reply’s do.
     - The chain-limit sentence moved to the guide’s room paragraph.
   - **What the removal found:** the measurement’s resumed session is still to show whether a harness passes a call to an unlisted tool through to Postbox (rooms-at-scale.md, “After `wake_agent` goes”).
-- **In progress:** the inbox’s step 3, Turns takes entries.
+- **Done:** the inbox’s step 3, Turns takes entries, but for routing host turns and the restart sweep through `asks` (below).
   - **The person’s message is an entry when it’s sent** (#1404). It’s posted at once, with a `person` entry per agent it goes to; the thread’s `queue` stops growing. Send now stops the turn, then a turn takes that entry alone.
   - **What it found:**
     - Before entries, a Stop kept the person’s queued messages and dropped what waited on the turn. So a Stop stops agents’ entries and answers, and keeps the person’s messages waiting.
@@ -702,7 +702,15 @@ Each step is its own pull request, and is done when:
     - `retry`: the person’s Retry.
 
     Each goes through `run`, which builds and runs the turn (`turn-run.mjs`, moved from `deliver.mjs`), and holds a start until it can go: behind a held commit, with writes closed, or behind a stopped turn still exiting. The runtime’s `deliver` is gone, and no server module calls one.
-  - **Next:** Retry reopens a failed turn’s entries as a resend (4c-b); then the `asks` port (4c-c).
+  - **Retry runs on entries** (4c-b): a failed turn’s entries reopen as a resend, and nothing sends the asked message again. **The `asks` port** (4c-c) covers the laptop’s Turns modules (“Turns”, above).
+  - **The end of a turn is Bus signals** (#1435), and **a failed turn settles by its class** (#1436): network loss resends once on its own, and quota marks the agents of its backend on that computer, with one notice (“The end of a turn”, K and L4).
+  - **The cleanup** (#1429’s last part):
+    - A summary leaves out every message still waiting for the agent as an entry, so a mention reaches it once, whole, and `givenMentions` and `pointerIfSeen` are gone (#484).
+    - The queue’s batching is gone (`batchPending`, `latestMessage`); a turn’s batch of entries and their arrival order are `turn-batch.mjs`.
+    - #694’s note reads the agent’s entries only, in every thread: one waiting in another thread is named with its thread, on a tool result and in the prompt of a turn that starts while it waits (#734).
+    - `runtime.mjs` lost the forwards only Delivery’s and Turns’ own modules called (`takePending`, `settleSubagentSteps`, `sideSession`, `recordAgentMessage`, `threadRefs`); it’s 799 lines. What the routes and the tests act through stays, and `recordStopped` stays, since its store-outage caller would close an import cycle with `turn-stop.mjs`.
+    - A turn left on a host when its agent moves to this computer is stopped there, as one left when it moves to another host is (#1214).
+  - **Still to do:** host turns (`remote/turns-prompts.mjs`, `turns-start.mjs`, `turns-resume.mjs`) and `restart-sweep.mjs` reach waiting code directly, not through `asks`; that goes with Asks.
 
 ## Appendix: every module’s members
 
