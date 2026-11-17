@@ -7,6 +7,7 @@ import { SENDING, TURN_INPUT } from '../shared/limits.mjs';
 import { partEnd } from '../shared/text-parts.mjs';
 import { lostEvent } from './app-entries.mjs';
 import { newerElsewhere } from './newer-waiting.mjs';
+import { threadRefs } from './send-message.mjs';
 import { newId } from './store.mjs';
 import { combineMessages, plainMessage } from './turn-batch.mjs';
 import { turnInput } from './turn-input.mjs';
@@ -87,7 +88,7 @@ export function inputOf(rt, se, { entries, as }, where) {
   const text = turnInput({ entries, thread, read, tail, notes, root, waitingElsewhere: elsewhere });
   const attachments = entries.flatMap((e) => (e.itemId ? (rt.store.pending.item(e.threadId, e.itemId)?.attachments ?? []) : []));
   // The threads the person’s messages link to, each with how to read it (threadRefs, #121), ride with it.
-  const links = entries.flatMap((e) => (e.source === 'person' && e.itemId ? rt.threadRefs(e.threadId, read(e.itemId) ?? '') : []));
+  const links = entries.flatMap((e) => (e.source === 'person' && e.itemId ? threadRefs(rt, e.threadId, read(e.itemId) ?? '') : []));
   // Its plain parts stay on what was asked (`turn.asked`), where what reads them looks; the agent is given the text.
   return { kind: 'input', text, attachments, as, ...(links.length ? { context: links } : {}) };
 }
@@ -178,7 +179,7 @@ function personMessage(rt, e) {
   if (!e.itemId) return { kind: 'user', text: e.text, attachments: [], at: e.at, seq: e.seq };
   const it = rt.store.pending.item(e.threadId, e.itemId);
   const text = String(it?.text ?? '');
-  const refs = rt.threadRefs(e.threadId, text);
+  const refs = threadRefs(rt, e.threadId, text);
   return { kind: 'user', text, attachments: it?.attachments ?? [], itemId: e.itemId, at: e.at, seq: e.seq, ...(refs.length ? { context: refs } : {}) };
 }
 

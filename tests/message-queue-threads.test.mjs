@@ -122,15 +122,16 @@ test('writes close as the turn ends: what waited in two threads is delivered onc
   const f = busyWithTopic();
   f.rt.turnService.run(f.beta.id, { kind: 'agent', from: '@gamma', text: 'Pending in conversation.' });
   f.rt.turnService.run(f.beta.id, { kind: 'agent', from: '@gamma', text: 'Pending in topic.' }, { threadId: f.topic });
-  const takePending = f.rt.takePending.bind(f.rt);
-  f.rt.takePending = (se, turn, drain) => {
-    if (se.id === f.beta.id) f.store.fail(Object.assign(new Error('disk sync refused'), { code: 'EIO' }));
-    return takePending(se, turn, drain);
+  // Writes close as what waited on the turn is released, the first of it to start a turn.
+  const release = f.rt.turnService.release.bind(f.rt.turnService);
+  f.rt.turnService.release = (sessionId, message, opts) => {
+    if (sessionId === f.beta.id) f.store.fail(Object.assign(new Error('disk sync refused'), { code: 'EIO' }));
+    return release(sessionId, message, opts);
   };
   f.busy.release();
   await settle(f.rt);
   assert.equal(f.rt.turns.has(f.beta.id), false, 'no turn could start');
-  f.rt.takePending = takePending;
+  f.rt.turnService.release = release;
   f.store.writable = true; // writes reopen, as Retry does, and the status listeners run what waited
   f.store.cause = null;
   f.store.tellStatus();

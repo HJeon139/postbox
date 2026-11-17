@@ -7,7 +7,7 @@ import { emptyReply, endedWithoutReply } from './empty-reply.mjs';
 import { failureClass } from './harness-failure.mjs';
 import { askedOf, replyMarks } from './turn-marks.mjs';
 import { outOfQuota, quotaBack } from './turn-quota.mjs';
-import { foldSteps } from './turn-steps.mjs';
+import { foldSteps, settleSubagentSteps } from './turn-steps.mjs';
 
 /**
  * A turn ended, with err when it failed or was stopped: it leaves the running turns, its replies and the session show
@@ -20,7 +20,7 @@ export function endTurn(rt, turn, err) {
   // Raised while it still counts as running: its permission waits expire then.
   rt.bus.emit('turn.ending', { turn });
   rt.running.end(turn.sessionId);
-  rt.settleSubagentSteps(turn);
+  settleSubagentSteps(rt, turn);
   // Its steps fold to what its record keeps: the live view's detail goes with the turn (turn-steps.mjs).
   if (turn.first) foldSteps(rt, turn.threadId, turn.first);
   // How a remote turn ended on its host decides what the person sees: Sign-in needed and Interrupted say so (#120).
