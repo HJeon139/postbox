@@ -100,9 +100,10 @@ test('Back puts focus on the reply’s link the viewer was opened from, by keybo
   await expect(link).toBeFocused();
 });
 
-test('an asset row opens by keyboard, focus goes to Back, and Back returns focus to the row', async ({ page }) => {
+test('an asset’s row opens by keyboard, focus goes to Back, and Back returns focus to the row', async ({ page }) => {
   await open(page);
-  const row = page.locator(`#wc-asset-${ids.plan}`);
+  // Named in the reply, it’s under In this chat, not listed again under Assets (#1446).
+  const row = page.locator(`#wc-now-${ids.plan}`);
   await row.focus();
   await page.keyboard.press('Enter');
   const back = page.locator('#wv-back');

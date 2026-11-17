@@ -176,8 +176,8 @@ async function workFull(page, { width, height }) {
 async function itemFull(page) {
   await open(page, `/side/${topic}?work`);
   const file = app.store.state.work[conv.id].find((e) => e.kind === 'file' && e.rel?.endsWith('refs.bib'));
-  // Its Files row: flagged, it sorts first in its group.
-  await page.locator(`#wc-file-${file.id}`).focus();
+  // Its row: under In this chat, since the reply names it (#1446).
+  await page.locator(`#wc-now-${file.id}`).focus();
   await page.keyboard.press('Enter');
   await expect(page.locator('#wv-back'), 'the viewer, with focus on Back').toBeFocused();
   await expect(page.locator(`${WORK} .wv`).getByRole('heading', { name: file.rel })).toBeVisible();

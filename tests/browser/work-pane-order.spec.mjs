@@ -1,11 +1,12 @@
 // The Work pane in the order people open it for (#1446): In this chat first, with what the latest messages name and
-// the latest turns touched, newest first, updating as a reply lands; then Files and the room’s assets; Commands,
+// the latest turns touched, newest first, updating as a reply lands but never under the pointer or focus; then the
+// room’s assets and Files, neither repeating In this chat’s rows; Commands,
 // Outside Postbox, Spend and Turns under More, closed, unless a command in the latest turn failed.
 
 import { expect, test } from '@playwright/test';
 import { writeAsset } from '../../server/assets.mjs';
 import * as arrange from '../arrange.mjs';
-import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
+import { failOnPageErrors, frames, startPostbox, synced } from './postbox.mjs';
 
 let app;
 let conv;
@@ -56,12 +57,13 @@ const sections = (page) => page.locator('.wp-body > *').evaluateAll((els) => els
 
 test('In this chat leads, and a new reply that names an asset by its id puts it first', async ({ page }) => {
   await open(page);
-  await expect.poll(() => sections(page)).toEqual(['wc-now-h', 'wc-files-h', 'wc-assets-h', 'wc-more-s']);
+  await expect.poll(() => sections(page)).toEqual(['wc-now-h', 'wc-assets-h', 'wc-files-h', 'wc-more-s']);
   const now = page.locator('#wc-now-h').locator('..').locator('.wc-row');
   await expect(now).toHaveText([/plan\.md/]);
   say(`Then ${ids.todo}.`);
   await synced(page, app);
   await expect(now, 'both, the newest named first').toHaveText([/todo\.md/, /plan\.md/]);
+  await expect(page.locator('#wc-assets-h').locator('..').locator('.wc-row'), 'Assets lists neither again').not.toContainText([/plan\.md|todo\.md/]);
   await now.first().click();
   await expect(page.locator('#work-pane .wv').getByRole('heading', { name: 'notes/todo.md' })).toBeVisible();
 });
@@ -85,4 +87,24 @@ test('a command that failed in the latest turn keeps Commands in view', async ({
   await open(page);
   await expect(page.locator('.wp-body > section #wc-commands-h')).toBeVisible();
   await expect(page.locator('#wc-more-s')).not.toContainText('Commands');
+});
+
+test('In this chat holds its rows while the pointer rests on one, and takes the new one once the pointer leaves', async ({ page }) => {
+  await open(page);
+  const now = page.locator('#wc-now-h').locator('..').locator('.wc-row');
+  await expect(now.first()).toBeVisible();
+  const before = await now.allTextContents();
+  const box = await now.first().boundingBox();
+  await now.first().hover();
+  say(`Now ${ids.plan}, then \`notes/todo.md\` and ${ids.todo}.`);
+  say('And `notes/plan.md` once more.');
+  await synced(page, app);
+  await expect(page.locator('.transcript .md').filter({ hasText: 'once more' })).toBeVisible();
+  // The pane repaints in the frame after an event: two frames on, a repaint that moved them would have.
+  await frames(page);
+  await frames(page);
+  expect(await now.allTextContents(), 'the same rows, in the same order').toEqual(before);
+  expect(await now.first().boundingBox(), 'the row under the pointer stayed put').toEqual(box);
+  await page.mouse.move(5, 5);
+  await expect(now.first(), 'the newest named, once the pointer left').toHaveText(/plan\.md/);
 });

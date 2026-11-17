@@ -252,3 +252,14 @@ export function forget(state, ranges, threadId) {
   ranges.delete(threadId);
   delete state.items[threadId];
 }
+
+/**
+ * A conversation’s newest items as the page knows them, whatever range it shows (#1446 review): the range, when it
+ * reaches the end; else the newest items kept as the tail; else those added past its end since.
+ * @param {any} state @param {Range | undefined} r @param {string} threadId
+ */
+export function latestItems(state, r, threadId) {
+  const list = state.items[threadId] ?? [];
+  if (!r || atEnd(list, r)) return list;
+  return r.tail ?? r.beyond?.items[threadId] ?? [];
+}

@@ -12,6 +12,7 @@
 // it named, on that host, with no lines, no diff and no Restore, under one line per host that says so.
 
 import { fileEffort, fileState, flagged, formatBytes, formatCost, formatTokens, signed, summarize, turnLine } from '/shared/work.mjs';
+import { fileGroups } from '/shared/work-groups.mjs';
 import { api, client } from './client.mjs';
 import { fill, h, icon, plural, timeOf } from './dom.mjs';
 import { heldFrame } from './held-frame.mjs';
@@ -22,7 +23,7 @@ import { diffView } from './work-diff.mjs';
 import { watchGit } from './work-git.mjs';
 import { editItem, editRow, editRows, hostNotes } from './work-hosts.mjs';
 import { external, row, sec, short, spend } from './work-pane-parts.mjs';
-import { relevantSection } from './work-relevant.mjs';
+import { chatList, relevantSection, shownIds } from './work-relevant.mjs';
 import { dur, effortSection, externalSection, publishSection, readsSection, section, signedEl, vcsSection, who, workLink } from './work-sections.mjs';
 import { paneViewer } from './work-viewer.mjs';
 import { windows } from './work-window.mjs';
@@ -495,8 +496,13 @@ export function mountWorkPane(threadId) {
       ),
     );
 
-  function files(s) {
-    const states = ['uncommitted', 'committed', 'pushed', 'outside'].filter((st) => s.byState[st].files);
+  /** @param {any} s @param {Set<string>} skip  the files In this chat shows, not listed again */
+  function files(s, skip) {
+    const groups = fileGroups(
+      s.files,
+      (f) => fileState(f, git),
+      (f) => flagged(f, git),
+    );
     const back = s.byState.unchanged.files;
     const edits = editRows(s.edits);
     return sec(
@@ -504,37 +510,37 @@ export function mountWorkPane(threadId) {
       'Files',
       s.total.files + edits.length ? String(s.total.files + edits.length) : '',
       hostNotes(s.turns),
-      // What To review said, once: a flagged file carries its tag and sorts first in its group (#1446).
+      // What To review said, once: a flagged file carries its tag and goes to the top of Files (#1446).
       s.flagged
         ? h(
             'p.small.wc-flag',
             icon('warn', 'i-sm'),
-            `${plural(s.flagged, 'file')} to review: changed outside the project, or git can’t give it back. Postbox kept a copy from before.`,
+            `${plural(s.flagged, 'file')} to review: changed outside the project, or git can’t give them back. Postbox kept a copy from before.`,
           )
         : null,
       // The total, when there’s more than one state to add up.
-      states.length > 1 || (back && s.total.files)
+      groups.length > 1 || (back && s.total.files)
         ? h('p.small', plural(s.total.files, 'file'), ' ', signedEl(s.total.added, s.total.deleted), back ? h('span.dim', ` · ${back} put back`) : null)
         : null,
-      states.length
-        ? states.map((st) =>
-            h(
+      groups.length
+        ? groups.map(({ state: st, files: list }) => {
+            const rest = list.filter((f) => !skip.has(f.id));
+            return h(
               'div.wc-group',
               h(
                 'p.wc-state',
                 h('span.status-tag', { class: `ws-${st}` }, STATE_WORDS[st]),
                 h('span.small', plural(s.byState[st].files, 'file')),
                 signedEl(s.byState[st].added, s.byState[st].deleted),
+                rest.length < list.length ? h('span.small.dim', `· ${list.length - rest.length} in In this chat`) : null,
               ),
               short(
-                s.files
-                  .filter((f) => fileState(f, git) === st)
-                  .sort((a, b) => Number(flagged(b, git)) - Number(flagged(a, git)) || (b.lastAt ?? 0) - (a.lastAt ?? 0)),
+                rest,
                 (f) => fileRow(f, { at: f.id }, 'wc-file'),
                 () => go({ at: 'work-files' }),
               ),
-            ),
-          )
+            );
+          })
         : edits.length
           ? null
           : h('p.empty-note', back ? 'Every changed file was put back.' : 'No files changed yet.'),
@@ -697,7 +703,10 @@ export function mountWorkPane(threadId) {
         allAssets = true;
         paint();
       };
-      const assets = assetsSection(threadId, { all: allAssets, showAll });
+      // In this chat first, and what it shows isn’t listed again below (#1446).
+      const now = chat.current();
+      const skip = shownIds(now, allNow);
+      const assets = assetsSection(threadId, { all: allAssets, showAll, skip });
       const lines = s.turns
         .map((t) => ({ t, line: turnLine(entries, t.id) }))
         .filter((x) => x.line)
@@ -716,9 +725,9 @@ export function mountWorkPane(threadId) {
       const failedNow = s.commands.some((c) => c.turnId === latest && failedCommand(c));
       fill(
         body,
-        relevantSection(threadId, { all: allNow, showAll: showNow }),
-        files(s),
+        relevantSection(threadId, now, { all: allNow, showAll: showNow }),
         assets,
+        files(s, skip),
         failedNow ? commands(s) : null,
         more([
           ['Commands', failedNow ? null : commands(s)],
@@ -731,10 +740,11 @@ export function mountWorkPane(threadId) {
 
   // As in mountWork, what the server sends waits while a press is down (#1010).
   const live = heldFrame(body, paint);
+  const chat = chatList(threadId, el, () => live.soon());
   const off = client.on((ch) => {
     const work = (ch.type === 'work.add' || ch.type === 'work.patch') && ch.data.convId === threadId;
     // A message added or finished: In this chat reads the latest ones.
-    const said = (ch.type === 'item.add' || ch.type === 'item.patch') && ch.data.threadId === threadId;
+    const said = (ch.type === 'item.add' || ch.type === 'item.patch') && ch.data.threadId === threadId && chat.said();
     if (ch.type === 'load' || ch.type.startsWith('asset') || work || said) live.soon();
   });
   // An asset or file the address names, in place of the lists (#1446).
@@ -782,6 +792,7 @@ export function mountWorkPane(threadId) {
       gitNow.stop();
       full?.view.destroy();
       viewer.destroy();
+      chat.destroy();
       live.cancel();
     },
   };
