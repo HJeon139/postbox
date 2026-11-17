@@ -119,3 +119,23 @@ test('the turn’s end stores the session’s tool calls and their count as it l
   liveEnd(rt, turn);
   assert.deepEqual(sessionWrites, [['se_1', { toolCalls: [{ name: 'Read', state: 'done' }], toolCount: 2 }]]);
 });
+
+test('a step’s later updates send only what changed, with its id; after a commit point it goes whole again', async () => {
+  const { rt, turn, frames } = await rig();
+  liveStep(rt, turn, run('s1'));
+  liveStep(rt, turn, { ...run('s1'), state: 'done', ms: 12 });
+  assert.deepEqual(frames.at(-1).step, { id: 's1', state: 'done', ms: 12 });
+  liveStep(rt, turn, run('s2'));
+  liveStep(rt, turn, { ...run('s1'), state: 'failed' });
+  assert.equal(frames.at(-1).step.label, 'Ran s1', 'stored since: sent whole');
+});
+
+test('a session frame sends only the live fields that changed, and none when nothing did', async () => {
+  const { rt, turn, frames } = await rig();
+  liveSession(rt, turn, { toolCalls: [{ name: 'Read', state: 'running' }], toolCount: 1, currentStep: 'Read' });
+  liveSession(rt, turn, { toolCalls: [{ name: 'Read', state: 'running' }], toolCount: 1, currentStep: 'Read a.md' });
+  assert.deepEqual(frames.at(-1), { kind: 'session', sessionId: 'se_1', currentStep: 'Read a.md' });
+  const n = frames.length;
+  liveSession(rt, turn, { toolCount: 1 });
+  assert.equal(frames.length, n, 'nothing changed, nothing sent');
+});

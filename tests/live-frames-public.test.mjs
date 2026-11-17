@@ -78,7 +78,7 @@ test('the shapes are these, so a field added to one is a decision this test sees
   assert.deepEqual(SESSION_FIELDS, ['toolCalls', 'toolCount', 'currentStep', 'glimpse', 'subagents']);
   assert.deepEqual(Object.keys(LIVE), ['text', 'step', 'session', 'snapshot']);
   assert.deepEqual(LIVE.text.shape.fields, ['threadId', 'itemId', 'turnId', 'at', 'text']);
-  assert.deepEqual(LIVE.step.shape.fields, ['threadId', 'itemId', 'turnId', 'rev']);
+  assert.deepEqual(LIVE.step.shape.fields, ['threadId', 'itemId', 'rev']);
   assert.deepEqual(Object.keys(LIVE.step.shape.objects ?? {}), ['step']);
   assert.deepEqual(LIVE.session.shape.fields, ['sessionId', 'toolCount', 'currentStep', 'glimpse']);
   assert.deepEqual(Object.keys(LIVE.session.shape.lists ?? {}), ['toolCalls', 'subagents']);

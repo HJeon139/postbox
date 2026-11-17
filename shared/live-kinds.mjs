@@ -64,7 +64,7 @@ export const LIVE = Object.freeze({
     events: Object.freeze(['item.patch']),
     keys: Object.freeze(['items']),
     item: true,
-    shape: Object.freeze({ fields: Object.freeze(['threadId', 'itemId', 'turnId', 'rev']), objects: Object.freeze({ step: STEP }) }),
+    shape: Object.freeze({ fields: Object.freeze(['threadId', 'itemId', 'rev']), objects: Object.freeze({ step: STEP }) }),
   }),
   session: Object.freeze({
     events: Object.freeze(['session.patch']),

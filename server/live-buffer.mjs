@@ -60,20 +60,34 @@ export function liveStep(rt, turn, step) {
   const capped = capFields(step);
   const rev = (live.rev.get(step.id) ?? 0) + 1;
   live.rev.set(step.id, rev);
-  live.changed.set(step.id, { itemId: turn.first, step: { ...(live.changed.get(step.id)?.step ?? {}), ...capped } });
-  sendLive(rt.store, { kind: 'step', threadId: turn.threadId, itemId: turn.first, turnId: turn.id, rev, step: capped });
+  const before = live.changed.get(step.id)?.step;
+  live.changed.set(step.id, { itemId: turn.first, step: { ...(before ?? {}), ...capped } });
+  sendLive(rt.store, { kind: 'step', threadId: turn.threadId, itemId: turn.first, rev, step: before ? changedOf(before, capped) : capped });
 }
 
 /**
- * The session’s live fields: merged into the buffer, and sent live as they changed.
+ * What a step’s update changed since the buffer last had it, with its id: what a frame sends of a step the page has, so
+ * a step isn’t sent whole each time, which would cost the wire more than the log saves. A page merges it over the step
+ * it holds (shared/live-apply.mjs); one that joins later gets the whole step from the snapshot or the store.
+ * @param {Record<string, any>} before @param {Record<string, any>} now
+ */
+function changedOf(before, now) {
+  return Object.fromEntries(Object.entries(now).filter(([k, v]) => k === 'id' || before[k] !== v));
+}
+
+/**
+ * The session’s live fields: merged into the buffer, and what changed of them sent live.
  * @param {any} rt @param {any} turn @param {Record<string, any>} patch
  */
 export function liveSession(rt, turn, patch) {
   /** @type {Record<string, any>} */
   const capped = {};
   for (const [k, v] of Object.entries(patch)) capped[k] = k === 'toolCalls' || k === 'subagents' ? capList(v, LIVE_CAPS[k]) : capString(v);
-  Object.assign(bufferOf(turn).session, capped);
-  sendLive(rt.store, { kind: 'session', sessionId: turn.sessionId, ...capped });
+  const session = bufferOf(turn).session;
+  // Only what changed goes, as with a step: a page holds the rest from an earlier frame or the snapshot.
+  const changed = Object.fromEntries(Object.entries(capped).filter(([k, v]) => !(k in session) || JSON.stringify(session[k]) !== JSON.stringify(v)));
+  Object.assign(session, capped);
+  if (Object.keys(changed).length) sendLive(rt.store, { kind: 'session', sessionId: turn.sessionId, ...changed });
 }
 
 /**
