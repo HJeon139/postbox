@@ -8,26 +8,21 @@
 
 import { BACKEND_NAMES } from '/shared/agent-facts.mjs';
 import { quotaKeyOf } from '/shared/quota-key.mjs';
-import { fontOf } from './canvas-font.mjs';
+import { fontOf, textWidth } from './canvas-font.mjs';
 import { client, sessionsOf } from './client.mjs';
 import { h } from './dom.mjs';
 import { onChangeWhileAlive, WeakElements } from './held-weakly.mjs';
-import { fitBars } from './quota-fit.mjs';
+import { fitBars, namesAt } from './quota-fit.mjs';
 
 const S = () => client.state;
 const HOUR = 3_600_000;
 const STALE_MS = HOUR;
 const REPAINT_ON = new Set(['quota', 'persona', 'session', 'thread', 'host', 'load']);
 const lines = new WeakElements();
-const ctx = typeof document === 'undefined' ? null : document.createElement('canvas').getContext('2d');
 /** The line’s last width and font: a line mounted again, as going back to a room does, starts measured (#1155). */
 let room = { width: 0, font: '' };
 /** A text’s width in the line’s font. @param {string} text */
-function measure(text) {
-  if (!ctx) return 0;
-  ctx.font = room.font;
-  return ctx.measureText(text).width;
-}
+const measure = (text) => textWidth(text, room.font);
 
 /** The room’s quotas with a report, one per key, in the order its agents first use them. @param {string} threadId */
 function quotasIn(threadId) {
@@ -73,12 +68,17 @@ export function barOf(q, now) {
   return { backend: q.backend, full, host: hostName, label: `${full}${where}`, pct, shown, more, text, stale };
 }
 
-/** One bar, as a meter, drawn as the fit says: its fill in the neutral color, never an alarm’s. */
-function barEl(/** @type {ReturnType<typeof barOf>} */ b, /** @type {string} */ name, /** @type {boolean} */ track) {
+/**
+ * One bar, as a meter, drawn as the fit says: its fill in the neutral color, never an alarm’s, and at the last level its
+ * percent alone. It keeps the names it would show at the full and the short level (data-names), for a check to hold the
+ * order the levels go in. @param {ReturnType<typeof barOf>} b @param {any} fit @param {[string | null, string | null]} names
+ */
+function barEl(b, fit, names, /** @type {string} */ name) {
   return h(
     'div.quota-bar',
     {
       role: 'meter',
+      dataset: { names: JSON.stringify(names) },
       'aria-label': `${b.label} quota`,
       'aria-valuemin': '0',
       'aria-valuemax': '100',
@@ -87,30 +87,51 @@ function barEl(/** @type {ReturnType<typeof barOf>} */ b, /** @type {string} */ 
       // “~” is explained where it’s read: a stale figure’s words say its age.
       title: b.stale ? `${b.text} (~: over an hour old)` : b.text,
     },
-    track ? h('span.quota-track', { 'aria-hidden': 'true' }, h('span.quota-fill', { style: { width: `${b.pct ?? 0}%` } })) : null,
-    h('span.quota-text', { 'aria-hidden': 'true' }, h('span.quota-name', name ? `${name} ` : ''), h('span.quota-pct', b.shown), h('span.quota-more', b.more)),
+    fit.track ? h('span.quota-track', { 'aria-hidden': 'true' }, h('span.quota-fill', { style: { width: `${b.pct ?? 0}%` } })) : null,
+    h(
+      'span.quota-text',
+      { 'aria-hidden': 'true' },
+      h('span.quota-name', name ? `${name} ` : ''),
+      h('span.quota-pct', b.shown),
+      fit.level < 3 ? h('span.quota-more', b.more) : null,
+    ),
   );
 }
 
 /** Draws the line again, only when what it says changed. @param {HTMLElement} el */
 function paint(el) {
   const bars = quotasIn(el.dataset.quotaLine ?? '').map((q) => barOf(q, Date.now()));
-  const fit = fitBars(
-    bars.map((b) => ({ backend: b.backend, full: b.full, host: b.host, pct: b.shown })),
-    room.width,
-    measure,
-  );
+  const given = bars.map((b) => ({ backend: b.backend, full: b.full, host: b.host, pct: b.shown }));
+  const fit = fitBars(given, room.width, measure);
   const said = JSON.stringify([bars, fit]);
   if (el.dataset.said === said) return;
   el.dataset.said = said;
-  el.replaceChildren(...bars.map((b, i) => barEl(b, fit.names[i], fit.track)));
+  el.dataset.fit = String(fit.level);
+  const [full, short] = [namesAt(given, false), namesAt(given, true)];
+  el.replaceChildren(...bars.map((b, i) => barEl(b, fit, [full?.[i] ?? null, short?.[i] ?? null], fit.names[i])));
 }
 
-/** The line’s width, when it changes; its first report changes nothing for a line mounted again. */
+/** How many lines are observed: one per composer on the page, and none left behind by a room switch. */
+let observed = 0;
+export const observedLines = () => observed;
+/** Lets go of a line taken off the page. @param {Element} el */
+function forget(el) {
+  resized.unobserve(el);
+  observed--;
+}
+
+/**
+ * The line’s width, when it changes; its first report changes nothing for a line mounted again. A line taken off the
+ * page reports a size of nothing, and is let go of; one hidden while a hint takes its row keeps the last width.
+ */
 const resized = new ResizeObserver((entries) => {
   for (const e of entries) {
+    if (!e.target.isConnected) {
+      forget(e.target);
+      continue;
+    }
     const width = e.contentRect.width;
-    if (width === room.width) continue;
+    if (!width || width === room.width) continue;
     room = { width, font: fontOf(e.target) };
     paint(/** @type {HTMLElement} */ (e.target));
   }
@@ -122,6 +143,7 @@ export function quotaLine(threadId) {
   paint(el);
   lines.add(el);
   resized.observe(el);
+  observed++;
   onChangeWhileAlive(el, (live, change) => REPAINT_ON.has(change.type) && paint(live));
   return el;
 }

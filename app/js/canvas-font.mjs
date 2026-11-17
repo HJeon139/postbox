@@ -8,3 +8,16 @@ export function fontOf(el) {
   const cs = getComputedStyle(el);
   return `${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
 }
+
+const ctx = typeof document === 'undefined' ? null : document.createElement('canvas').getContext('2d');
+
+/**
+ * A text’s width in a font. Its digits are measured as “0”: the page draws numbers with tabular figures
+ * (font-variant-numeric in workbench.css), each as wide as a “0”, which a canvas can’t, so “11%” measured as written
+ * came out nearly 4 px short. @param {string} text @param {string} font
+ */
+export function textWidth(text, font) {
+  if (!ctx) return 0;
+  ctx.font = font;
+  return ctx.measureText(text.replace(/[0-9]/g, '0')).width;
+}
