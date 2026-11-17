@@ -41,7 +41,7 @@ export async function onTool(rts, hostId, m) {
   if (rts.applying.has(k)) return;
   const live = rts.byTurn.get(m.turn);
   // A call from a turn that was stopped or has ended is refused, as on the laptop (#126).
-  if (!live || live.rt.closed) return void send(link, 'reply', { turn: m.turn, id: m.id, ok: false, text: STOPPED_TEXT });
+  if (!live || live.rt.closed) return refuseEnded(rts, link, se, m);
   rts.applying.add(k);
   let r;
   try {
@@ -72,6 +72,22 @@ export async function onTool(rts, hostId, m) {
   // it at its next turn instead.
   if (queued && !r.ok) rts.rt.sessions.tell(live.sessionId, `Your ${m.name} call from the host didn’t go through: ${text.slice(0, 1000)}`);
   send(link, 'reply', { turn: m.turn, id: m.id, ok: r.ok, text: text || (r.ok ? 'Done.' : 'It failed.') });
+}
+
+/**
+ * A call from a turn Postbox no longer runs, after a stop, its end, or another Postbox taking the host over (#612,
+ * #759), is refused. A queued call’s agent heard “sent” from the shim once the daemon took it, so the refusal waits for
+ * its next turn as a notice entry, when Postbox knows the agent.
+ * @param {RemoteTurns} rts @param {any} link @param {any} se  the turn’s session, if known
+ * @param {{ turn: string, id: string, name: string, args: Record<string, any> }} m
+ */
+function refuseEnded(rts, link, se, m) {
+  send(link, 'reply', { turn: m.turn, id: m.id, ok: false, text: STOPPED_TEXT });
+  if (!se || toolRoute(m.name, m.args) !== 'queue') return;
+  const text = `Your ${m.name} call from the host didn’t go through: ${STOPPED_TEXT}`;
+  // By the call’s turn and id, so a host that sends it again, unanswered, leaves one notice (Delivery’s retryId).
+  const retryId = `host-refusal ${m.turn} ${m.id}`;
+  rts.rt.delivery.send({ sessionId: se.id, threadId: se.threadId, source: 'notice', text, retryId }, { wake: false });
 }
 
 /** @param {RemoteTurns} rts @param {Live} live @param {{ name: string, args: Record<string, any> }} m @returns {Promise<{ ok: boolean, text: string, closed?: boolean }>} */

@@ -33,6 +33,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { versionIn } from '../../shared/cli-version.mjs';
+import { withQuota } from '../harness-failure.mjs';
 import { stopProbe } from '../remote/host/probe-stop.mjs';
 import { claudeArgs } from './claude-code-args.mjs';
 import { attachmentPaths, CLAUDE_CODE_CAPABILITIES, checkRemoteClaude, hostTurns, remoteGuide, remoteSaid, remoteTurn } from './claude-code-remote.mjs';
@@ -285,7 +286,7 @@ export class ClaudeCodeAdapter {
         const failure = resultError(mapper.result);
         if (failure) {
           const why = stderr.trim().split('\n').slice(-3).join(' ').slice(0, 400);
-          return reject(new Error(mapper.result ? failure : `Claude Code exited with code ${code}${why ? `: ${why}` : ''}.`));
+          return reject(withQuota(new Error(mapper.result ? failure : `Claude Code exited with code ${code}${why ? `: ${why}` : ''}.`), mapper.quota));
         }
         resolve({});
       };

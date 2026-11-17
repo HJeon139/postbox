@@ -14,6 +14,7 @@ import { notify } from './notify-toast.mjs';
 import { closeThread, loaded, whenLoaded } from './open-threads.mjs';
 import { mountPane } from './pane.mjs';
 import { canonical } from './pane-route.mjs';
+import './quota-reset.mjs';
 import { theme } from './sandbox-libs.mjs';
 import { mountEmptyProject, mountRail, mountThreads, railHidden, topbar } from './shell.mjs';
 import { mountComposer, mountTranscript } from './thread.mjs';

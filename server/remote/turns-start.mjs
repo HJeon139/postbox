@@ -13,11 +13,12 @@ import { wokeOf } from '../turn-marks.mjs';
 import { carryAttachments } from './attachments.mjs';
 import { listen, needHost, releaseHost } from './turns-need.mjs';
 import { continueAs, keepOrigin } from './turns-origin.mjs';
-import { claimShown } from './turns-prompts.mjs';
+import { claimShown, endOrphanCards } from './turns-prompts.mjs';
 import { replaying } from './turns-replay.mjs';
 import { signInCheck } from './turns-resume.mjs';
 import { abortError, OFFSET_SAVE_MS, updateRemote, whyLine } from './turns-shared.mjs';
 import { sendSnapshot } from './turns-snapshot.mjs';
+import { askStop } from './turns-stops.mjs';
 
 /** @typedef {import('./turns.mjs').RemoteTurns} RemoteTurns */
 /** @typedef {import('./turns-shared.mjs').Live} Live */
@@ -206,10 +207,30 @@ function renamedBusy(rts, e, hostId, se) {
   return Object.assign(new Error(message), { userMessage: message, code: e.code });
 }
 
+/**
+ * A turn starts on another host while the agent’s last one waits there to be attached (#1214): the agent moved, and the
+ * new turn came without the queue (Send now, a scheduled wake, #1135’s gap). Its record is about to be replaced, so
+ * the old one is left as the attach leaves a moved agent’s (reattach): no longer waited for, its cards ended, and its
+ * host asked to stop it, now or once it’s back (askStop).
+ * @param {RemoteTurns} rts @param {Live} live
+ */
+function leaveMoved(rts, live) {
+  const r = rts.rt.s.sessions[live.sessionId]?.remoteTurn;
+  if (!r?.turn || r.hostId === live.hostId || rts.restoring.get(r.turn) !== live.sessionId) return;
+  rts.restoring.delete(r.turn);
+  rts.noteAttach(live.sessionId);
+  rts.early.delete(r.turn);
+  endOrphanCards(rts, [r.turn]);
+  // Asked before the restore’s hold on the host is let go, so its link isn’t dropped in between (#965).
+  askStop(rts, live.sessionId, r.hostId, r.turn);
+  releaseHost(rts, r.hostId);
+}
+
 /** A new host turn for a live turn: its ID, persisted on the session, and its snapshot. @param {RemoteTurns} rts @param {Live} live @param {string} folder */
 function allocate(rts, live, folder) {
   const id = randomUUID();
   adopt(rts, live, id);
+  leaveMoved(rts, live);
   const se = rts.rt.s.sessions[live.sessionId];
   const prior = se?.remoteTurn ?? {};
   rts.rt.sessions.update(live.sessionId, {

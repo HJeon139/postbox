@@ -65,6 +65,7 @@ const PLACED = {
   'shell-runs.mjs': 2, // a `!` command’s output flush (memory-only, I1); the shutdown’s Stop grace wait for commands: no store
   'shell.mjs': 1, // SIGKILL after a Stop’s grace: Stop is allowed while closed
   'thread-summary.mjs': 5, // an abort; settleThread's quiet wait, through an injected setTimer as lint-delivery's, skips while closed
+  'turn-quota.mjs': 1, // a wake at a quota’s reset (#442): the turn it may start is held while the store is closed
   'turn-stop.mjs': 2, // the stop watchdog (turnExited defers); the shutdown’s Stop grace wait for turns
   'turn-work.mjs': 1, // a permission prompt’s wait for its call’s line (#353): memory only, no store
   'write-intent.mjs': 1, // an abort: no store

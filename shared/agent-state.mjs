@@ -8,9 +8,9 @@
 // - stopping: the person pressed Stop and its turn hasn’t ended yet, so they see the Stop took;
 // - running: a live turn, or one on its host, awaiting attach among them, with its current step;
 // - quota: its harness ran out of quota, until the reset time it gave (the owner’s decision on #442). The one place
-//   quota shows in the agents area. A turn failed for quota leaves the session failed, so nothing wakes it, and the
-//   person still sees why; a session running again is past it. `se.quota` is a slot until inbox step 3 records quota
-//   failures;
+//   quota shows in the agents area, and never as needs-you. Turns marks every agent of the backend on the same
+//   computer or host when a turn fails for quota, so only the person’s message starts one before the reset, and a
+//   session running again is past it (server/turn-quota.mjs);
 // - failed: its last turn failed;
 // - job: a background job of its own still runs (`se.jobs`, at most 50, and a kept one stays until it ends);
 // - behind: something it posted still waits in another agent’s inbox, since that entry arrived;
@@ -41,7 +41,7 @@ export function agentState(se, s, now = Date.now()) {
   if (se.state === 'stopping') return { state: 'stopping', detail: '' };
   if (LIVE.has(se.state) || ON_HOST.has(se.remoteTurn?.state)) return { state: 'running', detail: se.currentStep ?? '' };
   const until = se.quota?.until;
-  if (se.quota && (until == null || until > now)) return { state: 'quota', detail: '', ...(until ? { until } : {}) };
+  if (quotaOut(se, now)) return { state: 'quota', detail: '', ...(until ? { until } : {}) };
   if (se.state === 'failed') return { state: 'failed', detail: '' };
   const job = jobOf(se);
   if (job) return { state: 'job', detail: job };
@@ -50,6 +50,12 @@ export function agentState(se, s, now = Date.now()) {
   if (behind) return { state: 'behind', detail: behind.handle, since: behind.at };
   return { state: 'idle', detail: '' };
 }
+
+/**
+ * Whether the agent is out of quota now: marked, and its reset, if the harness gave one, not past (#442).
+ * @param {any} se @param {number} [now]
+ */
+export const quotaOut = (se, now = Date.now()) => Boolean(se?.quota) && (se.quota.until == null || se.quota.until > now);
 
 /** The label of the agent’s newest background job still running, from its session’s bounded list. */
 function jobOf(se) {

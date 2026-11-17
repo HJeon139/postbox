@@ -69,6 +69,7 @@ export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.no
     contextWindow,
     effort,
     result: null,
+    quota: null, // the quota a rejected rate limit said the turn ran out of (#442)
     streamed: new Set(), // message ids whose text arrived as deltas
     thoughtMessages: new Set(), // message ids whose thinking arrived as deltas
     blocks: new Map(), // content block index → { type, id, name, json }
@@ -88,6 +89,11 @@ export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.no
     if (e.type === 'assistant') return assistantEvent(ctx, emit, st, e);
     if (e.type === 'user') return userEvent(emit, st, e, parent);
     if (e.type === 'result') return resultEvent(ctx, emit, st, e);
+    // Claude Code’s rate limits: one it rejected, with no overage to go on with, is the quota the turn ran out of,
+    // until its reset (#442). One that overage covers lets the turn go on, so a later failure isn’t quota.
+    const limit = e.type === 'rate_limit_event' ? e.rate_limit_info : null;
+    const overage = limit?.overageStatus === 'allowed' || limit?.overageStatus === 'allowed_warning';
+    if (limit?.status === 'rejected' && !overage) st.quota = { until: secondsToMs(limit.resetsAt) };
   }
   return {
     push,
@@ -114,6 +120,10 @@ export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.no
     },
     get result() {
       return st.result;
+    },
+    /** The quota the turn ran out of, with when it resets, or null (#442). */
+    get quota() {
+      return st.quota;
     },
     get lastUuid() {
       return st.lastUuid ?? null;
@@ -311,6 +321,9 @@ function resultEvent(/** @type {any} */ ctx, /** @type {Function} */ emit, /** @
   for (const d of e.permission_denials ?? []) emit({ kind: 'refused', ...refusalOf(d), fromResult: true });
   emit({ kind: 'turn_end', isError: e.is_error === true, text: typeof e.result === 'string' ? e.result : '' });
 }
+
+/** A harness’s reset time in epoch seconds as epoch ms, or null when it gave none. @param {unknown} s */
+export const secondsToMs = (s) => (typeof s === 'number' && Number.isFinite(s) ? s * 1000 : null);
 
 /** Why a finished stream failed, in words for the person, or null if it didn’t. */
 export function resultError(result) {

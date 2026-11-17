@@ -93,6 +93,8 @@ export class RemoteTurns {
     this.restoring = new Map();
     /** @type {Map<string, any[]>} what came for a turn being attached, before its attach started */
     this.early = new Map();
+    /** @type {Map<string, string>} host turn → session, for the last turns that ended here (#612): a late call’s agent */
+    this.endedTurns = new Map();
     /** @type {Map<string, { refs: number, link: any, off: () => void }>} hosts Postbox needs now, with its listeners */
     this.needed = new Map();
     /** @type {Set<string>} tool calls being applied, (turn, id) */

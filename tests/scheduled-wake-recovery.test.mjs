@@ -4,8 +4,9 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createKiroMapper } from '../server/adapters/kiro-cli.mjs';
 import { kiroError } from '../server/adapters/kiro-errors.mjs';
+import { isNetworkFailure } from '../server/harness-failure.mjs';
 import { failure, SshFailure } from '../server/remote/ssh-failures.mjs';
-import { fireScheduledWake, isNetworkFailure } from '../server/scheduled-wakes.mjs';
+import { fireScheduledWake } from '../server/scheduled-wakes.mjs';
 import * as arrange from './arrange.mjs';
 import { settle, setup } from './side-threads-fixture.mjs';
 
