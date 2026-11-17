@@ -62,7 +62,11 @@ sequenceDiagram
 - each update to a step between commit points;
 - while a turn runs, `toolCalls`, `toolCount`, `currentStep`, `glimpse` and `subagents`.
 
-**Which wins.** A stored write of a live field during a turn, such as “Waiting for you” while it waits on a card, also replaces the buffer’s value. Stored events and live frames reach the page in the order they were made (“Order”), so the last one wins on the page as in the buffer, and a snapshot reads the buffer.
+**Which wins.** A stored write of a live field during a turn, such as “Waiting for you” while it waits on a card, also replaces the buffer’s value. It does so when the write is made (`Sessions.update` tells the buffer, `onSessionWrite`), not when the store publishes it, so a write held behind a commit can’t undo a newer live value. Stored events and live frames reach the page in the order they were made (“Order”), so the last one wins on the page as in the buffer, and a snapshot reads the buffer.
+
+**One frame a tick.** A turn’s session changes in one tick go as one frame at the tick’s end: a harness reports a call’s end and the words after it together, and the page draws only the last. Anything that must follow the frame sends it first: a stored write of the session, a commit point, and the turn’s end or Stop.
+
+**The turn’s end** sends a last session frame that puts each live field back to what’s stored, since the edge writes that clear a glimpse or the subagents write the same `''` and `[]` the store already has, and aren’t stored or sent. Then it sends an end frame that no page sees, by which each stream forgets the reply’s steps.
 
 ### Commit points
 
