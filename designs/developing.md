@@ -244,7 +244,7 @@ Postbox is plain ES modules (`.mjs`), with JSDoc types, no build step and no fra
 
 **A child process has three ways to end, and code handles all of them:** `error` (it never started), `exit` (it ended; its output may still be arriving) and `close` (its output is done). A turn ends on `close`, and a stopped turn on `exit` too, since a background job can hold the output open after its CLI is gone (`server/adapters/claude-code.mjs`, #126).
 
-**In the browser, batch to the frame.** A streaming reply re-renders its Markdown once per animation frame, not once per text event. A live update resumes from the last sequence number it saw, so a reconnect loses and repeats nothing (architecture/store.md, “The store”).
+**In the browser, batch to the frame.** A streaming reply re-renders its Markdown once per animation frame, not once per text event, and only what follows the blocks it has closed (#850). A live update resumes from the last sequence number it saw, so a reconnect loses and repeats nothing (architecture/store.md, “The store”).
 
 ## Agent backends
 

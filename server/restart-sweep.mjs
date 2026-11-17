@@ -3,6 +3,7 @@
 import { ASKING } from '../shared/catalog.mjs';
 import { liveDetail } from '../shared/step-fold.mjs';
 import { challengerWins, nextNeed, RANK, stateFor } from './card-needs.mjs';
+import { heldOfCutOff } from './turn-held.mjs';
 import { foldSteps } from './turn-steps.mjs';
 
 /**
@@ -51,6 +52,15 @@ function foldCutOff(rt) {
   );
   for (const [threadId, list] of Object.entries(rt.s.items))
     for (const it of list) if (it.kind === 'agent' && it.activity?.steps?.some(liveDetail) && !onHost.has(it.turnId)) foldSteps(rt, threadId, it.id);
+}
+
+/**
+ * A reply still streaming when the server stopped never ended: it reads as stopped, and one with no words of its own
+ * says what its turn held (turn-held.mjs). Moved from server/index.mjs. @param {any} rt
+ */
+export function stopStreaming(rt) {
+  for (const [threadId, list] of Object.entries(rt.store.state.items))
+    for (const it of list) if (it.status === 'streaming') rt.threads.patchItem(threadId, it.id, { status: 'stopped', ...heldOfCutOff(rt, it) });
 }
 
 const RUNNING = ['think', 'gen', 'tool', 'stopping'];

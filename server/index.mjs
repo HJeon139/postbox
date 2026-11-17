@@ -31,7 +31,7 @@ import { pageState } from './page-state.mjs';
 import { createProject, setPushUrl } from './projects.mjs';
 import { hostModels } from './remote/hosts-models.mjs';
 import { hostManagerFor, startHosts, stopHosts } from './remote/serve.mjs';
-import { settleInterrupted } from './restart-sweep.mjs';
+import { settleInterrupted, stopStreaming } from './restart-sweep.mjs';
 import { SAME_ORIGIN_ONLY } from './review-files.mjs';
 import { patchThread } from './room-chain-limit.mjs';
 import { httpError, Runtime } from './runtime.mjs';
@@ -132,8 +132,7 @@ export async function start({
   const firstReal = ['claude-code', 'agent-sdk', 'kiro-cli', 'antigravity-cli', 'codex'].find((b) => adapters.runsHere(b)) ?? 'mock';
   await seed(rt, { dataDir, backend: firstReal, demo });
   settleInterrupted(rt);
-  for (const [threadId, list] of Object.entries(store.state.items))
-    for (const it of list) if (it.status === 'streaming') rt.threads.patchItem(threadId, it.id, { status: 'stopped' });
+  stopStreaming(rt);
   rt.rearmSchedules();
   rt.expireStalePermissions();
   rt.work.expireStale();
