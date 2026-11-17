@@ -740,6 +740,10 @@ iframe.app-iframe:not(.live) { pointer-events: none; }
 .main > .composer .col > :not(:empty, .hint), .main > .composer .hint:not(:empty) { pointer-events: auto; }
 .main > .composer .col > :not(:empty, .composer-box, .jump) { border-radius: 6px; background: var(--bg); }
 .main > .composer .composer-box { box-shadow: 0 6px 18px -6px var(--shadow); }
+/* The row under the card is one surface from the card down, so no half-line of the conversation shows between the card
+   and the bars or a hint: each covers the column’s 4 px gap above it, its words where they were. */
+.main > .composer .quota-line { height: 24px; padding-top: 4px; }
+.main > .composer .hint:not(:empty) { height: 24px; margin-top: -4px; padding-top: 4px; }
 /* The store’s status line (app/js/store-line.mjs): at the window’s bottom while Postbox can’t save, with the composer
    above it, so nothing it covers is lost. */
 .store-line { position: fixed; z-index: 30; left: 0; right: 0; bottom: 0; min-height: 44px; display: flex; align-items: center; gap: 12px;

@@ -71,7 +71,10 @@ const problems = (page) =>
     const lineBox = line.getBoundingClientRect();
     if (line.scrollWidth > line.clientWidth) out.push(`the line overflows: ${line.scrollWidth} > ${line.clientWidth}`);
     if (document.documentElement.scrollWidth > innerWidth) out.push('the page scrolls sideways');
-    if (lineBox.height > 20.5) out.push(`the line is ${lineBox.height} px high`);
+    // 20 px of bars, under 4 px that cover the gap from the card down (#1463).
+    if (lineBox.height > 24.5) out.push(`the line is ${lineBox.height} px high`);
+    for (const m of line.querySelectorAll('[role="meter"]'))
+      if (m.getBoundingClientRect().height > 20.5) out.push(`a bar is ${m.getBoundingClientRect().height} px high`);
     const card = /** @type {Element} */ (document.querySelector('.composer .composer-box')).getBoundingClientRect();
     if (Math.abs(lineBox.left - card.left) > 0.5 || Math.abs(lineBox.right - card.right) > 0.5) out.push('the line isn’t the card’s width');
     const names = [];

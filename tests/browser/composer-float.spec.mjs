@@ -71,7 +71,6 @@ for (const width of [1280, 375])
       page.evaluate(({ x, y }) => !!document.elementFromPoint(x, y)?.closest('.transcript'), { x, y });
     expect.soft(await reaches(card.left - 4, card.top + card.height / 2), 'beside the card').toBe(true);
     expect.soft(await reaches(card.left + card.width / 2, composer.bottom - 2), 'below it').toBe(true);
-    expect.soft(await reaches(card.left + card.width / 2, card.bottom + 2), 'between it and the row under it').toBe(true);
     // The space under the card is the hint’s row and a little more, less than the 30 px band it was.
     expect.soft(composer.bottom - card.bottom, 'the space under the card').toBeLessThanOrEqual(28.5);
   });
@@ -93,4 +92,26 @@ for (const width of [1280, 375])
     // Nothing is drawn over its last line.
     const hit = await page.evaluate(({ x, y }) => !!document.elementFromPoint(x, y)?.closest('.transcript'), { x: b.x + 20, y: b.y + b.height - 4 });
     expect.soft(hit, 'its last line is on top').toBe(true);
+  });
+
+for (const width of [1280, 375])
+  test(`#1463 at ${width} px the strip from the card down to the bars is one surface: no half-line of the conversation shows there`, async ({ page }) => {
+    const backend = arrange.persona(app.rt, 'librarian').backend ?? 'mock';
+    app.store.emit('quota', {
+      id: backend,
+      backend,
+      host: null,
+      status: 'ok',
+      windows: [{ name: '5 h', used: 0.4, resetsAt: null, seenAt: Date.now() }],
+      seenAt: Date.now(),
+    });
+    await conversation(page, width);
+    await expect(page.locator('.main > .composer .quota-line').getByRole('meter')).toHaveCount(1);
+    await page.evaluate(() => window.scrollTo(0, (document.documentElement.scrollHeight - innerHeight) / 2));
+    await settled(page);
+    const { card } = await boxes(page);
+    for (const x of [card.left + 4, card.left + card.width / 2, card.right - 4]) {
+      const inConversation = await page.evaluate(({ x, y }) => !!document.elementFromPoint(x, y)?.closest('.transcript'), { x, y: card.bottom + 2 });
+      expect.soft(inConversation, `2 px below the card, at x ${Math.round(x)}`).toBe(false);
+    }
   });
