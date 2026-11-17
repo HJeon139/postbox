@@ -76,7 +76,6 @@ async function focusSurvives(page, r, control, label) {
 test('F1: every repainting view keeps focus on the same node through session, thread and load events', async ({ page }) => {
   const r = await room(page);
   await focusSurvives(page, r, page.locator('#composer-input'), 'the composer');
-  await focusSurvives(page, r, page.locator('.composer .queue-waiting'), 'the waiting line');
   await focusSurvives(
     page,
     r,
@@ -103,6 +102,20 @@ test('F1: the thread panel’s head keeps focus through the same events', async 
   await expect(page.locator(`.sidepanel .transcript[data-thread="${threadId}"]`)).toBeVisible();
   await focusSurvives(page, r, page.locator('.sidepanel').getByRole('button', { name: 'Full screen' }), 'the panel’s full-screen button');
   await focusSurvives(page, r, page.locator('.sidepanel textarea'), 'the panel’s composer');
+});
+
+test('#1437 the composer has no waiting line: the row’s mail button and the ⋯ menu lead to the queue', async ({ page }) => {
+  const r = await room(page);
+  await expect(mailButton(page, r.se)).toBeVisible();
+  await expect(page.locator('.composer .queue-waiting')).toHaveCount(0);
+  await expect(page.locator('.composer')).not.toContainText('waiting for');
+  // Where the rows are hidden, as on a phone, the conversation’s ⋯ menu lists each agent’s queue (#427).
+  await page
+    .locator('header.topbar')
+    .getByRole('button', { name: /^Actions for / })
+    .click();
+  await page.getByRole('menuitem', { name: new RegExp(`^2 messages queued for ${r.se.handle}`) }).click();
+  await expect(page.getByRole('dialog', { name: new RegExp(`queued for ${r.se.handle}`) })).toBeVisible();
 });
 
 for (const action of ['Cancel', 'Save'])

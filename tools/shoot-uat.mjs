@@ -127,7 +127,7 @@ const AFTER = [
 
 const PREPARE = {
   // The scene may already have the menu open, and a second click on + closes it (#29).
-  plus: `document.querySelector('.menu') || document.querySelector('[aria-label="Add a file or a new agent"]').click()`,
+  plus: `document.querySelector('.menu') || document.querySelector('[aria-label="Add a file, an agent or a command"]').click()`,
   'postbox-menu': `document.querySelector('button.brand').click()`,
   'conversation-menu': `document.querySelector('header.topbar [aria-label^="Actions for"]').click()`,
   mention: `(() => { const t = document.getElementById('composer-input'); t.focus(); t.value = '@'; t.setSelectionRange(1, 1); t.dispatchEvent(new Event('input', { bubbles: true })); })()`,
@@ -135,7 +135,7 @@ const PREPARE = {
   'open-activity-last': `(() => { const d = [...document.querySelectorAll('.transcript details.activity')].at(-1); d?.setAttribute('open', ''); d?.querySelector('li.thought details')?.setAttribute('open', ''); })()`,
   cite: `(() => { const c = document.querySelector('.cite'); c.scrollIntoView({ block: 'center' }); c.focus(); c.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); })()`,
   'app-versions': `document.querySelector('.appframe [aria-haspopup="menu"]')?.click()`,
-  'new-agent': `(() => { document.querySelector('[aria-label="Add a file or a new agent"]').click(); [...document.querySelectorAll('.menu .mi')].find((b) => b.textContent.includes('From a boilerplate')).click(); })()`,
+  'new-agent': `(() => { document.querySelector('[aria-label="Add a file, an agent or a command"]').click(); [...document.querySelectorAll('.menu .mi')].find((b) => b.textContent.includes('From a boilerplate')).click(); })()`,
   'new-room': `document.querySelector('[aria-label="New room"]').click()`,
   rename: `(() => { document.querySelector('header.topbar [aria-label^="Actions for"]').click(); [...document.querySelectorAll('.menu .mi')].find((b) => b.textContent.includes('Rename')).click(); })()`,
   'delete-conversation': `(() => { document.querySelector('header.topbar [aria-label^="Actions for"]').click(); [...document.querySelectorAll('.menu .mi')].find((b) => b.textContent.includes('Delete')).click(); })()`,
@@ -146,7 +146,7 @@ const PREPARE = {
   'settings:persona-edit': `(() => { document.querySelector('[aria-label="Settings"]').click(); [...document.querySelectorAll('.dialog [role=tab], .dialog button')].find((b) => b.textContent.trim() === 'Personas').click(); setTimeout(() => [...document.querySelectorAll('.dialog button')].find((b) => b.textContent.trim() === 'Edit').click(), 100); })()`,
   'settings:projects': `(() => { document.querySelector('[aria-label="Settings"]').click(); [...document.querySelectorAll('.dialog [role=tab], .dialog button')].find((b) => b.textContent.trim() === 'Projects').click(); })()`,
   'settings:connection': `(() => { document.querySelector('[aria-label="Settings"]').click(); [...document.querySelectorAll('.dialog [role=tab], .dialog button')].find((b) => b.textContent.trim() === 'Backends').click(); })()`,
-  'folder-picker': `(() => { document.querySelector('[aria-label="Add a file or a new agent"]').click(); [...document.querySelectorAll('.menu .mi')].find((b) => b.textContent.includes('From the project folder')).click(); })()`,
+  'folder-picker': `(() => { document.querySelector('[aria-label="Add a file, an agent or a command"]').click(); [...document.querySelectorAll('.menu .mi')].find((b) => b.textContent.includes('From the project folder')).click(); })()`,
   'app-fullscreen': `document.querySelector('.appframe [aria-label="Full screen"]')?.click()`,
   // Three sends the browser asks the server to hold (as it does past its limit), so the card shows.
   'app-send-card': `(async () => { for (const summary of ['Use 3 passages', 'Use 4 passages', 'Use 2 passages']) await fetch('/api/apps/asset-explorer/event', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'use-passages', values: { passages: [], summary }, hold: true }) }); })()`,
