@@ -5,6 +5,7 @@
 // mentioned, as its last step. Functions take the Runtime first, as waiting code does until Turns is a service.
 
 import { mentionEntries, wakeMentioned } from './mention-entries.mjs';
+import { takePending } from './message-queue.mjs';
 import { entriesFirst } from './turns.mjs';
 
 /** Adds the inbox’s listeners to the runtime’s bus. @param {any} rt */
@@ -20,10 +21,10 @@ export function listenInbox(rt) {
   // An entry that came before everything queued for the agent starts first, so what waited goes in arrival order (#733).
   bus.on('turn.ended', ({ turn, se }) => {
     const first = entriesFirst(rt, se, turn);
-    if (!first) rt.takePending(se, turn, true);
+    if (!first) takePending(rt, se, turn, true);
     delivery.turnEnded(settle(turn));
     wakeMentioned(rt, turn);
-    if (first) rt.takePending(se, turn, true);
+    if (first) takePending(rt, se, turn, true);
   });
   // L4: the person’s messages that waited for it wait for them now (#1146), unless it resends on its own, and a wake
   // that waited still goes: it was promised an answer (#228). What it took settles by why it failed, before anything
@@ -32,7 +33,7 @@ export function listenInbox(rt) {
   bus.on('turn.failed', ({ turn, se, lost, resends }) => {
     if (!resends) delivery.failedWith(se.id);
     delivery.turnFailed({ ...settle(turn), lost });
-    rt.takePending(se, turn, 'wakes');
+    takePending(rt, se, turn, 'wakes');
     wakeMentioned(rt, turn);
   });
   // A turn the person stopped was given what it took; a shutdown’s stop raises nothing, so the restart reopens it once.

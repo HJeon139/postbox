@@ -2,6 +2,20 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.21.1 (2026-11-17)
+
+### Fixes
+
+- **delivery:** a turn's prompt names at most three newer messages elsewhere, then counts the rest
+- **remote:** a turn left on a host when its agent moves to this computer is stopped there
+- **turns:** whose quota an agent uses is read from its persona as written
+- **delivery:** a sender's newer message in another thread is named, and the note reads entries only
+- **composer:** measure the placeholder's room without an extra layout on going back to a room
+- **memory:** a turn's summary leaves out every message still waiting for its agent as an entry
+- **composer:** cut the ! folder in the middle, keep the hint's parts apart in its title
+- **composer:** one fixed hint row, and a placeholder that fits its own box
+- **composer:** help in the placeholder, one menu for + and /, no waiting line
+
 ## 4.21.0 (2026-11-17)
 
 ### Features

@@ -8,7 +8,6 @@ import { workFolder } from './adapters/folder.mjs';
 import { toolsDownNote } from './adapters/tools-down.mjs';
 import { heldSession } from './held-session.mjs';
 import { httpError, retiredError } from './helpers.mjs';
-import { arrival } from './queue-batch.mjs';
 import { refuseUnregistered } from './remote/placement.mjs';
 import { prepareScheduledRetry } from './scheduled-wakes.mjs';
 import { endChain } from './side-threads.mjs';
@@ -16,6 +15,7 @@ import { newId } from './store.mjs';
 import { heldTurn, saveBackendState, whenWritable } from './store-outage.mjs';
 import { notUrgent } from './subagent-end.mjs';
 import { firstPromptSection } from './thread-catch-up.mjs';
+import { arrival } from './turn-batch.mjs';
 import { adapterContext } from './turn-context.mjs';
 import { endTurn } from './turn-finish.mjs';
 import { askedAgain } from './turn-marks.mjs';
@@ -59,6 +59,7 @@ export function deliver(rt, sessionId, message, { summarizeTo = null, threadId =
   // A persona on a remote host (#120): the turn is remote from here on (server/remote/turns.mjs).
   const hostId = adapter ? rt.placement.hostOf(persona) : null;
   if (hostId) rt.remote.begin(turn, hostId, adapter);
+  else rt.remote?.leaveMoved(se.id);
   // The work ledger (#132) follows the turn’s tool calls. A change outside the project’s folder and the agent’s is
   // flagged; the adapter knows the agent’s folder. A remote agent’s folder is on its host, never made here.
   const project = rt.s.projects[rt.s.threads[se.threadId]?.projectId] ?? null;
@@ -109,8 +110,6 @@ function turnMessage(rt, se, message, where, slash) {
     const { entries: _entries, messages: _parts, ...carried } = message;
     message = { ...carried, ...inputOf(rt, se, message, where) };
   }
-  // A queued mention its last room summary already gave it comes as a pointer there, never as a thread’s direct task (#484, #504).
-  else if (where === se.threadId) message = rt.memory.pointerIfSeen(se, message);
   // Postbox’s notices that waited for this agent’s next turn (tellAgent: what became of its earlier messages) lead the
   // background; the brief isn’t context, it goes with the room’s facts (turnFacts).
   if (se.context?.length && !slash) {
@@ -126,12 +125,13 @@ function turnMessage(rt, se, message, where, slash) {
   // message.lint: fixes it owes, placed with the request rather than in the background.
   if (message.kind !== 'lint' && !slash) message = rt.checks.foldLint(sessionId, message);
   if (input) return message;
-  // A topic or side thread’s request leads; its room catch-up is background. A room turn keeps the existing order. The
-  // person’s messages still waiting for the agent stay out of it: they’re posted at send, and a later turn gives them.
+  // A topic or side thread’s request leads; its room catch-up is background. A room turn keeps the existing order. What
+  // still waits for the agent as an entry stays out of it, the person’s messages and agents’ mentions alike: each is
+  // given in its own turn, whole, so a summary never gives it first (#484), as inputOf leaves them out of a tail.
   const waiting = rt.delivery
     .waiting(sessionId)
-    .filter((/** @type {any} */ e) => e.source === 'person')
-    .map((/** @type {any} */ e) => e.itemId);
+    .map((/** @type {any} */ e) => e.itemId)
+    .filter(Boolean);
   return rt.memory.turnContext(rt.store.pending.session(sessionId) ?? rt.s.sessions[sessionId], where, message, slash, waiting);
 }
 

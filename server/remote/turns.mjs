@@ -60,7 +60,7 @@ import { cancel, keepsCard, restore } from './turns-restore.mjs';
 import { checkStalls, onHostStatus, resume, tick } from './turns-resume.mjs';
 import { ON_HOST, TICK_MS } from './turns-shared.mjs';
 import { flushSnapshots, onStoreEvent } from './turns-snapshot.mjs';
-import { begin, prepare } from './turns-start.mjs';
+import { begin, leaveMoved, prepare } from './turns-start.mjs';
 import { busyOn, confirmStops } from './turns-stops.mjs';
 
 export { AUTO_RESUMES, OFFSET_SAVE_MS, SIGN_IN_RECHECK_MS, SNAPSHOT_FLUSH_MS, STOPPED_TEXT, TICK_MS, whyLine } from './turns-shared.mjs';
@@ -167,6 +167,11 @@ export class RemoteTurns {
   /** @param {any} turn @param {string} hostId @param {any} adapter */
   begin(turn, hostId, adapter) {
     return begin(this, turn, hostId, adapter);
+  }
+
+  /** A turn starts on this computer: one its agent left on a host it moved off is let go (#1214). @param {string} sessionId */
+  leaveMoved(sessionId) {
+    leaveMoved(this, sessionId, null);
   }
 
   /** @param {any} turn @param {any} ctx @param {any} message */

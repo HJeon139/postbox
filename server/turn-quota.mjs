@@ -14,8 +14,11 @@ import { hostOf } from './remote/placement.mjs';
 /** Whose quota a persona’s turns use (shared/quota-key.mjs). */
 const keyOf = quotaKeyOf;
 
-/** Whose quota a session’s turns use (keyOf). @param {any} rt @param {any} se @returns {string} */
-const quotaKey = (rt, se) => keyOf(rt.s.personas[se.personaId]);
+/**
+ * Whose quota a session’s turns use (keyOf), from its persona as written: a move held behind a commit counts at once.
+ * @param {any} rt @param {any} se @returns {string}
+ */
+const quotaKey = (rt, se) => keyOf(rt.store.pending.persona(se.personaId));
 
 /**
  * The sessions whose turns use one quota, as written, behind a held commit too, since their marks decide writes.
@@ -25,7 +28,7 @@ const sessionsOn = (rt, key) => Object.values(rt.store.pending.sessions()).filte
 
 /** What the notice calls a quota: its backend, and its host by name. @param {any} rt @param {any} se */
 function quotaName(rt, se) {
-  const persona = rt.s.personas[se.personaId];
+  const persona = rt.store.pending.persona(se.personaId);
   const backend = persona?.backend ?? 'mock';
   const name = BACKEND_NAMES[backend] ?? backend;
   const host = hostOf(persona);

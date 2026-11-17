@@ -2,7 +2,6 @@
 // message waits for a busy agent as an entry in its inbox since #1404, so there’s no queue of its own here; one stored
 // before that becomes entries on start (queue-convert.mjs). One session still runs at most one turn.
 import { clip } from './helpers.mjs';
-import { combineMessages, latestMessage, plainMessage } from './queue-batch.mjs';
 
 /**
  * Posts the person’s message with who it goes to (to: handles), so another agent reading it later sees it wasn’t
@@ -29,7 +28,9 @@ export function stopForSendNow(rt, sessionId) {
 }
 
 export function takePending(rt, se, turn, drain) {
-  const groups = batchPending(rt, turn.pending, se.threadId);
+  // Each as it was held, in order: every source is an entry, so only a direct start holds one here (#1429), and
+  // nothing batches them.
+  const groups = [...turn.pending];
   const next = groups.shift();
   if (next) {
     const where = next.threadId ?? se.threadId;
@@ -58,20 +59,6 @@ function holdRest(rt, se, next, groups) {
     return;
   }
   for (const g of groups) rt.turnService.release(se.id, g.message, { summarizeTo: g.summarizeTo, threadId: g.threadId });
-}
-
-export function batchPending(rt, pending, threadId) {
-  const groups = [];
-  for (const entry of pending.flatMap((entry) => (entry.message.messages ?? [entry.message]).map((message) => ({ ...entry, message })))) {
-    const where = entry.threadId ?? threadId;
-    const message = latestMessage(rt, where, entry.message);
-    const prior = groups.at(-1);
-    const canJoin = !entry.summarizeTo && plainMessage(message);
-    if (canJoin && prior && !prior.summarizeTo && (prior.threadId ?? threadId) === where && (plainMessage(prior.message) || prior.message.messages)) {
-      prior.message = combineMessages([prior.message, message]);
-    } else groups.push({ ...entry, message });
-  }
-  return groups;
 }
 
 export function rememberStoppedMessages(rt, sessionId, message) {

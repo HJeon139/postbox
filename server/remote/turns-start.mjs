@@ -208,21 +208,23 @@ function renamedBusy(rts, e, hostId, se) {
 }
 
 /**
- * A turn starts on another host while the agent’s last one waits there to be attached (#1214): the agent moved, and the
- * new turn came without the queue (Send now, a scheduled wake, #1135’s gap). Its record is about to be replaced, so
- * the old one is left as the attach leaves a moved agent’s (reattach): no longer waited for, its cards ended, and its
- * host asked to stop it, now or once it’s back (askStop).
- * @param {RemoteTurns} rts @param {Live} live
+ * A turn starts on another host, or on this computer, while the agent’s last one waits on its old host to be attached
+ * (#1214): the agent moved, and the new turn came without the queue (Send now, a scheduled wake, #1135’s gap). The old
+ * one is left as the attach leaves a moved agent’s (reattach): no longer waited for, its cards ended, and its host
+ * asked to stop it, now or once it’s back (askStop).
+ * @param {RemoteTurns} rts @param {string} sessionId @param {string | null} hostId  where the new turn runs, or null for here
  */
-function leaveMoved(rts, live) {
-  const r = rts.rt.s.sessions[live.sessionId]?.remoteTurn;
-  if (!r?.turn || r.hostId === live.hostId || rts.restoring.get(r.turn) !== live.sessionId) return;
+export function leaveMoved(rts, sessionId, hostId) {
+  const r = rts.rt.s.sessions[sessionId]?.remoteTurn;
+  if (!r?.turn || r.hostId === hostId || rts.restoring.get(r.turn) !== sessionId) return;
   rts.restoring.delete(r.turn);
-  rts.noteAttach(live.sessionId);
+  rts.noteAttach(sessionId);
   rts.early.delete(r.turn);
   endOrphanCards(rts, [r.turn]);
-  // Asked before the restore’s hold on the host is let go, so its link isn’t dropped in between (#965).
-  askStop(rts, live.sessionId, r.hostId, r.turn);
+  // Asked before the restore’s hold on the host is let go, so its link isn’t dropped in between (#965). A turn here
+  // doesn’t take the session’s remoteTurn, as a new host turn does, so the old one shows as stopping until its host
+  // stops it.
+  askStop(rts, sessionId, r.hostId, r.turn, { state: !hostId });
   releaseHost(rts, r.hostId);
 }
 
@@ -230,7 +232,7 @@ function leaveMoved(rts, live) {
 function allocate(rts, live, folder) {
   const id = randomUUID();
   adopt(rts, live, id);
-  leaveMoved(rts, live);
+  leaveMoved(rts, live.sessionId, live.hostId);
   const se = rts.rt.s.sessions[live.sessionId];
   const prior = se?.remoteTurn ?? {};
   rts.rt.sessions.update(live.sessionId, {

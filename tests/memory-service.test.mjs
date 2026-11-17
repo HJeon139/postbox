@@ -63,26 +63,11 @@ test('catchUp gives what the others said since the marker, then the catchUpLines
   assert.equal(memory.catchUp(alpha(store)), null, 'nothing new since');
 });
 
-test('catchUp leaves out the messages the turn delivers, and records the mentions it gave whole', () => {
+test('catchUp leaves out the messages the turn delivers', () => {
   const { store, threads, memory } = rig();
-  const mention = beta(threads, '@alpha recount March.');
+  beta(threads, '@alpha recount March.');
   const given = beta(threads, 'Delivered in full.');
   assert.equal(memory.catchUp(alpha(store), [given.id]), '[Postbox] What happened in this conversation since your last turn:\n\n@beta: @alpha recount March.');
-  assert.deepEqual(alpha(store).givenMentions, [mention.id]);
-});
-
-test('pointerIfSeen gives a mention the last catch-up gave as a pointer to it, and any other message as it was', () => {
-  const { store, threads, memory } = rig();
-  const mention = beta(threads, '@alpha recount March.');
-  const other = beta(threads, 'Recount April.');
-  memory.catchUp(alpha(store));
-  const pointed = memory.pointerIfSeen(alpha(store), { kind: 'agent', from: '@beta', text: mention.text, itemId: mention.id });
-  assert.equal(
-    pointed.text,
-    `@beta’s message above, which your last summary gave you in full: “@alpha recount March.”. It’s addressed to you: act on it now if you haven’t. read_message { id: "${mention.id}" } has it whole.`,
-  );
-  const plain = { kind: 'agent', from: '@beta', text: other.text, itemId: other.id };
-  assert.equal(memory.pointerIfSeen(alpha(store), plain), plain);
 });
 
 test('moveMarkers moves a reader’s marker on a moved item to its stub, and leaves another reader’s', () => {

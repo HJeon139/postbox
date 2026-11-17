@@ -1,14 +1,14 @@
 // #484: a turn's summary of what happened since the agent's last turn keeps only the newest items within its caps, so a
 // message addressed to the agent could be left out, and a mention a summary already gave reached the agent again in full
-// when its queued wake was delivered. A mention of the agent is never left out now, the summary names what it left out
-// and how to read it, and a mention the agent has seen comes as a pointer.
+// when its queued wake was delivered. A mention of the agent is never left out now, and the summary names what it left
+// out and how to read it; a mention waiting as an entry is left out of a summary, so it comes once
+// (catch-up-entries.test.mjs).
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import * as arrange from './arrange.mjs';
 import { settle, setup } from './side-threads-fixture.mjs';
 
-// Longer than the pointer’s quote of a message’s start (pointerIfSeen), so a repeat in full can be told from it.
 const MENTION = `@alpha the review of the totals is done: two fixes needed in the tally. ${'Details follow on each fix. '.repeat(8)}`;
 /** A message from beta in the conversation, as a reply of its posts it (no wake: this tests the summary alone). */
 const say = (f, text) => arrange.post(f.rt, f.t.id, { kind: 'agent', sessionId: f.beta.id, personaId: f.beta.personaId, handle: 'beta', text, status: 'done' });
@@ -47,24 +47,6 @@ test('#484 a summary that leaves items out says what kinds, and how to read them
   assert.match(s, /read_conversation with skip: 40 has them/);
 });
 
-test('#484 a mention a summary gave the agent reaches it in full once: its queued wake comes as a pointer', async () => {
-  const f = setup();
-  const it = say(f, MENTION);
-  // A turn of alpha's for something else starts first, and its summary gives the mention.
-  f.rt.turnService.run(f.alpha.id, { kind: 'user', text: 'Check the build.' });
-  await settle(f.rt);
-  // Then the mention's own wake, queued while it was busy, is delivered.
-  f.rt.turnService.run(f.alpha.id, { kind: 'agent', from: '@beta', text: MENTION, itemId: it.id });
-  await settle(f.rt);
-  const seen = f.adapter.calls
-    .filter((c) => c.handle === 'alpha')
-    .flatMap((c) => [c.message?.text ?? '', ...(c.message?.context ?? [])])
-    .filter((s) => String(s).includes(MENTION));
-  assert.equal(seen.length, 1, 'the full text reached alpha once');
-  const second = f.adapter.calls.filter((c) => c.handle === 'alpha').at(-1).message;
-  assert.match(second.text, /@beta’s message above/);
-});
-
 test('#484 a wake’s message that names no one comes in full: a summary may have left it out', async () => {
   const f = setup();
   const text = 'Please recount the totals.';
@@ -84,19 +66,6 @@ test('#484 mentions have a cap of their own: past it, the oldest are left out an
   assert.ok(s.length < 40_000, `the summary is bounded: ${s.length} characters`);
   assert.ok(s.includes('@alpha note 50:'), 'the newest mention is kept');
   assert.match(s, /left out: \d+ mentions of you/);
-});
-
-test('#484 the pointer to a seen mention quotes its start, in case the summary was compacted away', async () => {
-  const f = setup();
-  const it = say(f, MENTION);
-  f.rt.turnService.run(f.alpha.id, { kind: 'user', text: 'Check the build.' });
-  await settle(f.rt);
-  f.rt.turnService.run(f.alpha.id, { kind: 'agent', from: '@beta', text: MENTION, itemId: it.id });
-  await settle(f.rt);
-  const text = f.adapter.calls.filter((c) => c.handle === 'alpha').at(-1).message.text;
-  assert.match(text, /“@alpha the review of the totals is done/);
-  // And the call that reads it whole, for an agent whose summary was compacted away or never reached its model.
-  assert.ok(text.includes(`read_message { id: "${it.id}" }`), text);
 });
 
 test('#484 a mention past the mentions’ cap, left out of the summary, comes in full when its wake is delivered', async () => {
