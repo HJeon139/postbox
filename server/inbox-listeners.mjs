@@ -26,12 +26,13 @@ export function listenInbox(rt) {
     if (first) rt.takePending(se, turn, true);
   });
   // L4: the person’s messages that waited for it wait for them now (#1146), unless it resends on its own, and a wake
-  // that waited still goes: it was promised an answer (#228). What it took settles by why it failed: lost to the
-  // network (harness-failure.mjs), it goes once more as a resend, and fails if it was one (#466).
+  // that waited still goes: it was promised an answer (#228). What it took settles by why it failed, before anything
+  // wakes the agent: lost to the network (harness-failure.mjs), it goes once more as a resend, ahead of what came
+  // after it, and fails if it was one (#466).
   bus.on('turn.failed', ({ turn, se, lost, resends }) => {
     if (!resends) delivery.failedWith(se.id);
-    rt.takePending(se, turn, 'wakes');
     delivery.turnFailed({ ...settle(turn), lost });
+    rt.takePending(se, turn, 'wakes');
     wakeMentioned(rt, turn);
   });
   // A turn the person stopped was given what it took; a shutdown’s stop raises nothing, so the restart reopens it once.
