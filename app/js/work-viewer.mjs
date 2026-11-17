@@ -134,14 +134,23 @@ export function mountViewer(convId, at, { back }) {
 }
 
 /**
+ * What focus goes back to when the viewer closes: the pane’s row or the reply’s link (room-links.mjs) that opened it.
+ * @param {Element | null} active @param {boolean} fromPane
+ */
+function openerOf(active, fromPane) {
+  if (!(active instanceof HTMLElement) || !(fromPane || active.matches('a.room-ref'))) return null;
+  return { el: active, id: active.id };
+}
+
+/**
  * The viewer in the Work pane: open while the address names an asset or file of this conversation (`?work&at=<id>`,
  * not full screen), drawn again when what it shows gets a new version. Focus goes to Back when it opens from the
- * pane, and back to the row that opened it when it closes.
+ * pane, and back to the row or the reply’s link that opened it when it closes.
  * @param {string} convId @param {HTMLElement} pane  the pane, for where focus is @param {HTMLElement} body  what it fills
  * @param {() => void} paint  draws the pane’s lists again
  */
 export function paneViewer(convId, pane, body, paint) {
-  /** @type {{ at: string, key: string, opener: string | null } | null} */
+  /** @type {{ at: string, key: string, opener: { el: HTMLElement, id: string } | null } | null} */
   let shown = null;
   const back = () => openWork(convId);
   const show = (at) => {
@@ -149,8 +158,8 @@ export function paneViewer(convId, pane, body, paint) {
     const active = document.activeElement;
     const fromPane = active instanceof HTMLElement && pane.contains(active);
     const v = mountViewer(convId, at, { back });
-    // The row it opened from, kept while a newer version is shown in its place.
-    const opener = shown?.opener ?? (fromPane && active.id ? active.id : null);
+    // The row or the reply’s link it opened from, kept while a newer version is shown in its place.
+    const opener = shown ? shown.opener : openerOf(active, fromPane);
     shown = { at, key: v.key, opener };
     fill(body, v.el);
     body.scrollTop = 0;
@@ -162,7 +171,8 @@ export function paneViewer(convId, pane, body, paint) {
     const had = pane.contains(document.activeElement);
     shown = null;
     paint();
-    if (had && opener) document.getElementById(opener)?.focus();
+    // A row the pane drew again is found by its id; a link stays the node it was.
+    if (had && opener) (opener.el.isConnected ? opener.el : document.getElementById(opener.id))?.focus();
   };
   const sync = () => {
     const r = route();

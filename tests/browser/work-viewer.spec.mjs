@@ -87,6 +87,19 @@ test('a link opens the asset in the pane, Markdown drawn, and Back returns to th
   expect(page.url()).not.toContain('at=');
 });
 
+test('Back puts focus on the reply’s link the viewer was opened from, by keyboard', async ({ page }) => {
+  await open(page, '');
+  const link = reply(page).getByRole('link', { name: 'notes/plan.md' });
+  await link.focus();
+  await page.keyboard.press('Enter');
+  const back = page.locator('#wv-back');
+  await expect(back).toBeVisible();
+  await back.focus();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#work-pane .wv')).toHaveCount(0);
+  await expect(link).toBeFocused();
+});
+
 test('an asset row opens by keyboard, focus goes to Back, and Back returns focus to the row', async ({ page }) => {
   await open(page);
   const row = page.locator(`#wc-asset-${ids.plan}`);
