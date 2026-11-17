@@ -53,6 +53,12 @@ function foldCutOff(rt) {
     for (const it of list) if (it.kind === 'agent' && it.activity?.steps?.some(liveDetail) && !onHost.has(it.turnId)) foldSteps(rt, threadId, it.id);
 }
 
+/** A reply still streaming when the server stopped never ended: it reads as stopped. Moved from server/index.mjs. @param {any} rt */
+export function stopStreaming(rt) {
+  for (const [threadId, list] of Object.entries(rt.store.state.items))
+    for (const it of list) if (it.status === 'streaming') rt.threads.patchItem(threadId, it.id, { status: 'stopped' });
+}
+
 const RUNNING = ['think', 'gen', 'tool', 'stopping'];
 
 /**
