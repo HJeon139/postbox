@@ -4,7 +4,7 @@ import { isNetworkFailure } from './harness-failure.mjs';
 import { httpError } from './helpers.mjs';
 import { ON_HOST } from './remote/turns-shared.mjs';
 import { newId } from './store.mjs';
-import { whenWritable } from './store-outage.mjs';
+import { whenWritable } from './store-wait.mjs';
 import { READ_TOOLS } from './tool-gate.mjs';
 
 const DAY = 24 * 3600 * 1000;
