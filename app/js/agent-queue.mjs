@@ -1,34 +1,65 @@
 // Queued messages for one agent (#427): a counted mail button in its row, and a bounded dialog with each message’s actions.
 
-import { api, client, itemsOf } from './client.mjs';
+import { api, client, itemIn } from './client.mjs';
 import { h, icon, syncList } from './dom.mjs';
 import { onChangeWhileAlive } from './held-weakly.mjs';
+import { fetchRange } from './item-ranges.mjs';
+import { placeholderText, queuedText } from './queue-row-text.mjs';
 import { openDialog, toast } from './ui.mjs';
 
 export { paintOfflineQueue } from './offline-queue.mjs';
 
 const S = () => client.state;
 
-/** What waits for an agent: its inbox’s waiting entries (#1404). @param {string} sessionId */
-function entriesFor(sessionId) {
-  return S().sessions[sessionId] ? waitingFor(sessionId) : [];
+/**
+ * The items an open queue fetched because the page hadn’t loaded them (#1456), by id: null while one is on its way.
+ * Emptied when the queue closes, and an item’s copy is dropped when the person edits it there.
+ * @type {Map<string, any>}
+ */
+const fetched = new Map();
+
+/**
+ * Fetches one item the page hasn’t loaded, through the conversation’s items route, and repaints the queue with it.
+ * @param {string} threadId @param {string} itemId @param {() => void} repaint
+ */
+function fetchItem(threadId, itemId, repaint) {
+  if (fetched.has(itemId)) return;
+  fetched.set(itemId, null);
+  fetchRange(threadId, `?around=${encodeURIComponent(itemId)}&limit=1`)
+    .then((answer) => {
+      const item = answer.items.find((it) => it.id === itemId);
+      if (!item || !fetched.has(itemId)) return;
+      fetched.set(itemId, item);
+      repaint();
+    })
+    // The row keeps its placeholder: the item was deleted, or the server is gone, which the page says on its own.
+    .catch(() => {});
+}
+
+/**
+ * What waits for an agent: its inbox’s waiting entries (#1404).
+ * @param {string} sessionId @param {(() => void) | null} [repaint]  an open queue’s
+ */
+function entriesFor(sessionId, repaint = null) {
+  return S().sessions[sessionId] ? waitingFor(sessionId, repaint) : [];
 }
 
 /**
  * An agent’s messages waiting in its inbox (designs/rooms-at-scale.md, “Delivery”), as rows of its queue, whose routes
  * act on the entry by its id: another agent’s, with the row a queued wake had, and the person’s own, which they can
- * edit (#1404). An entry keeps no copy of its message, so its text is the item’s, when the page has loaded it.
- * @param {string} sessionId
+ * edit (#1404). Each says what waits, by its source (queue-row-text.mjs); a message’s words are its item’s, which an
+ * open queue fetches when the page hasn’t loaded it (#1456).
+ * @param {string} sessionId @param {(() => void) | null} [repaint]  an open queue’s, which fetches what it lacks
  */
-function waitingFor(sessionId) {
+function waitingFor(sessionId, repaint = null) {
   const waiting = (S().inbox?.[sessionId] ?? []).filter((e) => e.state === 'waiting' && e.from && e.itemId);
   return waiting
     .filter((e) => S().threads[e.threadId])
     .map((e) => {
       const theirs = e.source === 'person';
-      const fallback = theirs ? 'Your message.' : `A message from @${e.from}.`;
-      const text = itemsOf(e.threadId).find((it) => it.id === e.itemId)?.text ?? fallback;
-      const q = { id: e.id, kind: theirs ? 'message' : 'wake', from: e.from, text, itemId: e.itemId, sessionIds: [sessionId] };
+      const text = queuedText(e, itemIn(e.threadId, e.itemId) ?? fetched.get(e.itemId));
+      if (text === null && repaint) fetchItem(e.threadId, e.itemId, repaint);
+      const q = { id: e.id, kind: theirs ? 'message' : 'wake', from: e.from, text: text ?? placeholderText(e), itemId: e.itemId, sessionIds: [sessionId] };
       return { thread: S().threads[e.threadId], q };
     });
 }
@@ -110,8 +141,13 @@ function editQueuedMessage(row, target) {
     row._repaint();
     row.querySelector('[data-action="edit"]')?.focus();
   };
+  // The edit is the item’s now: a copy fetched before it is dropped, so the row shows the edit (#1456).
+  const saved = () => {
+    fetched.delete(q.itemId);
+    done();
+  };
   const save = () =>
-    api(target, { text: input.value }, 'PATCH').then(done, (e) => {
+    api(target, { text: input.value }, 'PATCH').then(saved, (e) => {
       toast({ title: 'Couldn’t edit', text: e.message });
       input.focus();
     });
@@ -151,11 +187,13 @@ export function openQueue(sessionId, anchor = null) {
   const list = h('ul.agent-queue-list');
   body.append(list);
   let dialog;
+  let closed = false;
   const paint = () => {
     // The agent is gone (deleted, or a retired fork): nothing here can be sent to it any more.
     const now = S().sessions[sessionId];
     if (!now || now.retiredFork) return dialog?.close();
-    const entries = entriesFor(sessionId);
+    if (closed) return;
+    const entries = entriesFor(sessionId, paint);
     const missing = markMissing(list, entries);
     const heading = `${entries.length} queued for ${session.handle}`;
     if (title.textContent !== heading) title.textContent = heading;
@@ -182,6 +220,8 @@ export function openQueue(sessionId, anchor = null) {
     anchor,
     initialFocus: () => body.querySelector('button:not([disabled])'),
     onClose: () => {
+      closed = true;
+      fetched.clear();
       off();
       anchor?.setAttribute('aria-expanded', 'false');
       // What opened it may be gone or hidden (the agent left, its last message went, the menu closed): focus goes to
