@@ -1,9 +1,10 @@
-// Mermaid diagrams, each in its own sandboxed frame, and KaTeX math in rendered Markdown: agents' replies, a review's
-// draft, the side panel. apps.mjs re-exports enhanceMarkdown.
+// Mermaid diagrams, each in its own sandboxed frame, KaTeX math, and links to what Work’s viewer opens (#1446) in
+// rendered Markdown: agents' replies, a review's draft, the side panel. apps.mjs re-exports enhanceMarkdown.
 
 import { MIN_TEXT_PX } from '/shared/diagram-lint.mjs';
 import { api } from './client.mjs';
 import { h } from './dom.mjs';
+import { linkRoomRefs } from './room-links.mjs';
 import { libSource, theme } from './sandbox-libs.mjs';
 
 // Each drawn diagram's `message` listener, by its frame (#564). One whose frame has been in the page and has left it,
@@ -24,6 +25,7 @@ export function enhanceMarkdown(root) {
   dropGoneDiagrams();
   for (const fig of root.querySelectorAll('figure.md-mermaid:not(.done)')) drawDiagram(fig);
   drawMath(root);
+  linkRoomRefs(root);
 }
 
 /** Puts a Mermaid figure's source in a sandboxed frame that draws it, with Show source. @param {Element} fig */

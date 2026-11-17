@@ -33,6 +33,20 @@ export async function fileDiff(ledger, convId, fileId, changeId = null) {
   return { ...sizes, rows: rows.slice(0, MAX_DIFF_ROWS), cut: rows.length > MAX_DIFF_ROWS };
 }
 
+/**
+ * A changed file as the agents left it (#1446): the copy the ledger kept after their last change, the same copy its
+ * diff reads. Never the file on disk now, so a link in a message can only open what Postbox already kept.
+ * @param {import('./ledger.mjs').Ledger} ledger @param {string} convId @param {string} fileId
+ * @returns {Promise<{ bytes: Buffer, name: string, binary: boolean }>}
+ */
+export async function fileCopy(ledger, convId, fileId) {
+  const f = published(ledger, convId, fileId);
+  if (f?.kind === 'edit') throw onHost(f);
+  if (f?.kind !== 'file') throw fail(404, 'That file isn’t in this conversation’s work.');
+  if (!f.after?.sha256) throw fail(404, `Postbox kept no copy of ${f.rel}: ${f.after?.exists ? 'it was larger than 4 MB, or unreadable' : 'it was deleted'}.`);
+  return { bytes: await ledger.blobs.get(f.after.sha256), name: f.rel.replace(/^.*\//, ''), binary: Boolean(f.after.binary) };
+}
+
 /** A command’s output, as text. @param {import('./ledger.mjs').Ledger} ledger @param {string} convId @param {string} entryId */
 export async function output(ledger, convId, entryId) {
   const e = published(ledger, convId, entryId);

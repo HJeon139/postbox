@@ -21,6 +21,16 @@ export const opKey = (/** @type {string} */ id, /** @type {string} */ author, /*
 /** A record’s own value for a key, never one its prototype gives. @param {any} record @param {string} key */
 export const own = (record, key) => (record && Object.hasOwn(record, key) ? record[key] : undefined);
 
+/** The most parents roomOf follows, as Runtime’s lineage does: a thread’s parent is one level, a fork’s a few more. */
+const MAX_DEPTH = 8;
+
+/** The room a thread’s assets belong to: its conversation’s root, so side and topic threads share it. */
+export function roomOf(/** @type {Record<string, any>} */ threads, /** @type {string} */ threadId) {
+  let id = threadId;
+  for (let i = 0; i < MAX_DEPTH && threads[id]?.parentId && threads[threads[id].parentId]; i++) id = threads[id].parentId;
+  return id;
+}
+
 /** @param {any} s */
 const assetsOf = (s) => (s.assets ??= map());
 /** @param {any} s */

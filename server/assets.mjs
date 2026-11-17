@@ -10,6 +10,9 @@ import { join } from 'node:path';
 import { hasInvisible } from '../shared/invisible.mjs';
 import { ASSETS } from '../shared/limits.mjs';
 import { emptyIndex, nameKey, opKey, own } from '../shared/state-assets.mjs';
+
+export { roomOf } from '../shared/state-assets.mjs';
+
 import { bytesAfter, isTextBytes, prunable } from './asset-retention.mjs';
 import { Blobs } from './blobs.mjs';
 import { newId } from './store.mjs';
@@ -97,16 +100,6 @@ export function roomAssets(state, room) {
  * @param {any} state @param {string} room
  */
 const lookupsFor = (state, room) => ({ assets: state.assets ?? {}, index: own(state.assetRooms, room) ?? NO_ASSETS });
-
-/** The most parents roomOf follows, as Runtime’s lineage does: a thread’s parent is one level, a fork’s a few more. */
-const MAX_DEPTH = 8;
-
-/** The room a thread’s assets belong to: its conversation’s root, so side and topic threads share it. */
-export function roomOf(threads, threadId) {
-  let id = threadId;
-  for (let i = 0; i < MAX_DEPTH && threads[id]?.parentId && threads[threads[id].parentId]; i++) id = threads[id].parentId;
-  return id;
-}
 
 /** An error’s own words, for a message that quotes it. @param {unknown} e */
 const said = (e) => (e instanceof Error ? e.message : String(e));
