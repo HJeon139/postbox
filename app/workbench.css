@@ -759,13 +759,18 @@ html.store-down .sidepanel { padding-bottom: 44px; }
    the empty hint’s place. One bar per backend, split evenly, in the neutral color: it isn’t an alarm. */
 .composer .hint:not(:empty) ~ .quota-line, .composer .quota-line:empty { display: none; }
 .composer .col > .hint:empty:has(~ .quota-line:not(:empty)) { display: none; }
-.quota-line { display: flex; gap: 16px; height: 20px; align-items: center; font-size: 11.5px; color: var(--dim); }
-.quota-bar { flex: 1 1 0; min-width: 0; display: flex; align-items: center; gap: 6px; }
+.quota-line { display: flex; gap: 12px; height: 20px; align-items: center; overflow: hidden; font-size: 11.5px; color: var(--dim); }
+/* Each bar takes an even share of the line, whatever it says: its backend and percent stay whole, and the rest clips. */
+.quota-bar { flex: 1 1 0; min-width: 0; display: flex; align-items: center; gap: 6px; overflow: hidden; container-type: inline-size; }
 .quota-track { flex: 0 0 40px; height: 4px; border-radius: 2px; background: var(--line); overflow: hidden; }
 .quota-fill { display: block; height: 100%; background: var(--dim); }
+/* A stale figure’s fill is dimmed; its text says its age in words, so the state never rests on the shade alone. */
 .quota-bar.stale .quota-fill { background: var(--line-strong); }
+.quota-text { flex: 1 1 auto; min-width: 0; display: flex; }
 .quota-main { flex: none; white-space: pre; }
 .quota-more { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: pre; }
+/* Where a bar has room for little more than its backend and percent, as three do on a phone, the track gives way. */
+@container (max-width: 140px) { .quota-track { display: none; } }
 /* `!`’s folder is cut in the middle, so its last part, where the command runs, stays on the row: the head gives way
    first, then the sentence after it (#1437). */
 .composer .hint .runs-in { display: flex; min-width: 0; }

@@ -37,25 +37,24 @@ function resetTime(at, now) {
 }
 
 /**
- * What one bar says: its most-used window that hasn’t reset, else the first, which has. Its main part (the backend, the
- * percent and a stale figure’s age) stays whole on a phone’s row, and the rest (the window and its reset) gives way
- * first, since a phone has no tooltip. @param {any} q @param {number} now
+ * What one bar says: its most-used window that hasn’t reset, else the first, which has. Its main part, the backend and
+ * the percent, stays whole on a phone’s row; the rest (the window, a host’s name, a stale figure’s age and the reset)
+ * gives way first, clipped, since a phone has no tooltip. @param {any} q @param {number} now
  * @returns {{ label: string, pct: number | null, main: string, more: string, text: string, stale: boolean }}
  */
 export function barOf(q, now) {
   const name = BACKEND_NAMES[q.backend] ?? q.backend;
-  const label = q.host ? `${name} on ${S().hosts?.[q.host]?.name ?? 'its host'}` : name;
+  const where = q.host ? ` on ${S().hosts?.[q.host]?.name ?? 'its host'}` : '';
   const live = q.windows.filter((w) => !w.resetsAt || w.resetsAt > now);
   const top = live.reduce((a, w) => (!a || w.used > a.used ? w : a), null);
   const stale = now - q.seenAt > STALE_MS;
-  const ago = stale ? ` · as of ${age(now - q.seenAt)} ago` : '';
-  if (!top) {
-    const more = ` · ${q.windows[0]?.name ?? ''} reset`;
-    return { label, pct: null, main: `${label}${ago}`, more, text: `${label}${more}${ago}`, stale };
-  }
-  const pct = Math.round(top.used * 100);
-  const more = ` of ${top.name}${top.resetsAt ? ` · resets ${resetTime(top.resetsAt, now)}` : ''}`;
-  return { label, pct, main: `${label} ${pct}%${ago}`, more, text: `${label} ${pct}%${more}${ago}`, stale };
+  const ago = stale ? `, as of ${age(now - q.seenAt)} ago` : '';
+  const pct = top ? Math.round(top.used * 100) : null;
+  const main = top ? `${name} ${pct}%` : name;
+  const more = top
+    ? ` of ${top.name}${where}${ago}${top.resetsAt ? ` · resets ${resetTime(top.resetsAt, now)}` : ''}`
+    : `${where} · ${q.windows[0]?.name ?? ''} reset${ago}`;
+  return { label: `${name}${where}`, pct, main, more, text: `${main}${more}`, stale };
 }
 
 /** One bar, as a meter: its fill in the neutral color, never an alarm’s. @param {ReturnType<typeof barOf>} b */
@@ -73,8 +72,7 @@ function barEl(b) {
       title: b.text,
     },
     h('span.quota-track', { 'aria-hidden': 'true' }, h('span.quota-fill', { style: { width: `${b.pct ?? 0}%` } })),
-    h('span.quota-main', { 'aria-hidden': 'true' }, b.main),
-    h('span.quota-more', { 'aria-hidden': 'true' }, b.more),
+    h('span.quota-text', { 'aria-hidden': 'true' }, h('span.quota-main', b.main), h('span.quota-more', b.more)),
   );
 }
 

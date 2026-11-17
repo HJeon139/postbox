@@ -5,7 +5,7 @@
 
 import { expect, test } from '@playwright/test';
 import * as arrange from '../arrange.mjs';
-import { failOnPageErrors, settled, startPostbox, synced } from './postbox.mjs';
+import { failOnPageErrors, settled, startPostbox, synced, windowWidth } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
 let app;
@@ -32,6 +32,7 @@ test.beforeAll(async () => {
   });
   backend('codex', { status: 'ok', windows: [{ name: '7 d', used: 0.07, resetsAt }] });
   backend('kiro-cli', null);
+  backend('agent-sdk', null);
 });
 test.afterAll(async () => {
   await app?.stop();
@@ -105,7 +106,7 @@ test('#442 a figure seen long ago says its age, and a window past its reset show
     seenAt: Date.now(),
   });
   await synced(page, app);
-  await expect(bar(page, 'Codex'), 'its age stays on the row').toContainText('Codex 30% · as of 2 h ago');
+  await expect(bar(page, 'Codex'), 'it says its age').toHaveAttribute('aria-valuetext', /^Codex 30% of 7 d, as of 2 h ago · resets /);
   await expect(bar(page, 'Codex')).toHaveClass(/stale/);
   await expect(bar(page, 'Claude Code')).toHaveAttribute('aria-valuetext', 'Claude Code · 5 h reset');
   await expect(bar(page, 'Claude Code')).not.toContainText('90%');
@@ -121,4 +122,88 @@ test('#442 on a phone each bar keeps its backend and percent whole, and the wind
     expect(main && row && main.x >= row.x - 0.5 && main.x + main.width <= row.x + row.width + 0.5, `${name}’s percent is on the row`).toBe(true);
   }
   expect(row?.height, 'one row').toBeLessThanOrEqual(20);
+});
+
+/**
+ * A room whose agents run on the given backends, a host’s by `backend@host`, with each quota record set through the
+ * store (made-up figures), open at 375 px. @param {any} page @param {{ key: string, used: number, seenAgo?: number }[]} quotas
+ */
+async function phoneRoom(page, quotas) {
+  const n = ++count;
+  const personas = quotas.map(({ key }, i) => {
+    const [backend, hostName] = key.split('@');
+    const persona = app.rt.createPersona({ handle: `p${n}x${i}`, backend });
+    if (!hostName) return { persona, backend, remote: undefined };
+    // On a host, set through the store: the fake harnesses here run only on this computer.
+    const remote = { hostId: app.rt.addHost({ name: hostName }).id };
+    app.store.emit('persona', { ...app.store.state.personas[persona.id], remote });
+    return { persona, backend, remote };
+  });
+  const t = app.rt.createThread({ projectId: Object.keys(app.store.state.projects)[0], title: `Phone ${n}`, personaIds: personas.map((p) => p.persona.id) });
+  quotas.forEach(({ used, seenAgo = 0 }, i) => {
+    const { backend, remote } = personas[i];
+    const id = remote ? `${backend}@${remote.hostId}` : backend;
+    app.store.emit('quota', {
+      id,
+      backend,
+      host: remote?.hostId ?? null,
+      status: 'ok',
+      windows: [{ name: '5 h', used, resetsAt }],
+      seenAt: Date.now() - seenAgo,
+    });
+  });
+  await page.setViewportSize({ width: 375, height: 800 });
+  await page.goto(`${app.origin}/#/t/${t.id}`);
+  await synced(page, app);
+  await expect(line(page).getByRole('meter')).toHaveCount(quotas.length);
+  await settled(page);
+}
+
+/** On one row, inside the line: no bar overlaps the next, each keeps its backend and percent whole, nothing scrolls. */
+async function fitsThePhone(page) {
+  const row = await line(page).boundingBox();
+  const bars = await line(page)
+    .getByRole('meter')
+    .evaluateAll((els) =>
+      els.map((el) => {
+        const b = el.getBoundingClientRect();
+        const m = /** @type {HTMLElement} */ (el.querySelector('.quota-main')).getBoundingClientRect();
+        return { left: b.left, right: b.right, mainLeft: m.left, mainRight: m.right, text: el.getAttribute('aria-valuetext') };
+      }),
+    );
+  for (const [i, b] of bars.entries()) {
+    expect.soft(row && b.left >= row.x - 0.5 && b.right <= row.x + row.width + 0.5, `${b.text}: inside the line`).toBe(true);
+    expect.soft(b.mainLeft >= b.left - 0.5 && b.mainRight <= b.right + 0.5, `${b.text}: its backend and percent are whole`).toBe(true);
+    if (i) expect.soft(b.left >= bars[i - 1].right - 0.5, `${b.text}: clear of the bar before`).toBe(true);
+  }
+  expect.soft(row?.height, 'one row').toBeLessThanOrEqual(20);
+  const wide = await line(page).evaluate((el) => [el.scrollWidth, el.clientWidth]);
+  expect.soft(wide[0], 'the line doesn’t overflow').toBeLessThanOrEqual(wide[1]);
+  expect.soft(await page.evaluate(() => document.documentElement.scrollWidth), 'the page doesn’t scroll sideways').toBeLessThanOrEqual(windowWidth(page));
+}
+
+test('#442 at 375 px three backends share the line, each with its backend and percent whole', async ({ page }) => {
+  await phoneRoom(page, [
+    { key: 'claude-code', used: 0.42 },
+    { key: 'agent-sdk', used: 0.42 },
+    { key: 'codex', used: 0.07 },
+  ]);
+  await fitsThePhone(page);
+});
+
+test('#442 at 375 px two stale bars fit, their age giving way before their percent', async ({ page }) => {
+  await phoneRoom(page, [
+    { key: 'claude-code', used: 0.42, seenAgo: 2 * HOUR },
+    { key: 'codex', used: 0.07, seenAgo: 3 * HOUR },
+  ]);
+  await fitsThePhone(page);
+});
+
+test('#442 at 375 px an agent on a host with a long name fits, its host name giving way first', async ({ page }) => {
+  await phoneRoom(page, [
+    { key: 'claude-code@build-workstation-in-the-basement', used: 0.88, seenAgo: 3 * HOUR },
+    { key: 'codex', used: 0.07 },
+  ]);
+  await expect(bar(page, 'Claude Code on build-workstation-in-the-basement')).toBeVisible();
+  await fitsThePhone(page);
 });

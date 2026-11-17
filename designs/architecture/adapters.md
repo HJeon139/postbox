@@ -48,16 +48,16 @@ flowchart LR
 | Kiro CLI | only the credits each turn spent (`promptTurnSummaries[].usage`), with no limit and nothing remaining | `tests/fixtures/kiro-cli/` |
 | Antigravity CLI | nothing about quota | `tests/fixtures/antigravity-cli/` |
 
-So Kiro and Antigravity get no bar. Every recorded Claude window reads 0, so the first real nonzero value must confirm the 0-to-1 scale. Until then a Claude figure over 1 is read as a percent, up to 100, and anything larger draws no bar (`share` in [`server/adapters/quota-windows.mjs`](../../server/adapters/quota-windows.mjs)).
+So Kiro and Antigravity get no bar. Every recorded Claude window reads 0, so the first real nonzero value must confirm the 0-to-1 scale. Until then each event’s scale is read once: if any of its figures is over 1.5, all are percents, up to 100, and a larger one draws no bar; otherwise they’re fractions, and one just over 1, as overage can give, is a full bar. There’s no point where a figure a little larger reads as far less (`share` in [`server/adapters/quota-windows.mjs`](../../server/adapters/quota-windows.mjs)).
 
 **The data.**
-- A new harness-event kind, `quota`, carries `{ status: 'ok' | 'warning' | 'out', windows: [{ name, used, resetsAt }] }`. `used` is from 0 to 1, and `resetsAt` is in milliseconds, or null. Each adapter maps its harness’s shape into it: Claude’s `five_hour` and `seven_day`, and Codex’s windows named from `windowDurationMins` (300 is “5 h”, 10,080 is “7 d”).
+- A new harness-event kind, `quota`, carries `{ status: 'ok' | 'warning' | 'out', windows: [{ name, used, resetsAt }] }`. `used` is from 0 to 1, and `resetsAt` is in milliseconds, or null. Each adapter maps its harness’s shape into it: Claude’s `five_hour` and `seven_day`, and Codex’s windows named from `windowDurationMins` (300 is “5 h”, 10,080 is “7 d”). A Codex window also carries its `limitId`, where it isn’t the default limit.
 - The runtime keeps one record per backend and host in a new public state key, `quota`: `{ id, backend, host, status, windows, seenAt }`. The id is the backend, or `backend@host` for an agent on a remote host, since a host signs in to its own account ([remote-hosts.md](remote-hosts.md)). Like `hostStatus`, it is live state that a newer report replaces.
-- A report is written only when its status or a window’s whole percent or reset time changes, or when the record is more than 10 minutes old. Claude Code sends one event per turn, so this keeps the log from growing with every turn.
+- A report is merged with the last by window, its limit and name, since Codex’s updates are sparse: a window an update leaves out keeps its figure. It is written only when its status or a window’s whole percent or reset time changes, or when the record is more than 10 minutes old. Claude Code sends one event per turn, so this keeps the log from growing with every turn.
 
 **What the bars show.**
-- Each bar shows its backend’s most-used window, as text and as a bar: “Claude Code · 5 h 42% · resets 3:10 pm”. A screen reader reads the same words. The bar is in the neutral color, never `--alert` or amber. It isn’t an alarm, and no notice, toast or “needs you” comes from it.
-- **A stale figure is never shown as current.** A record older than an hour is dimmed and says its age (“as of 2 h ago”). A window whose reset time has passed shows “reset” with no number, since the old figure no longer holds.
+- Each bar shows its backend’s most-used window, as text and as a bar: “Claude Code 42% of 5 h · resets 3:10 pm”, and “on build-box” after the window for an agent on a host. A screen reader reads the same words. The bars share the line evenly. The backend and the percent always stay whole, and the rest (the window, the host, a stale figure’s age and the reset) is clipped first, since a phone has no tooltip; where a bar is too narrow for its track, the track goes. The bar is in the neutral color, never `--alert` or amber. It isn’t an alarm, and no notice, toast or “needs you” comes from it.
+- **A stale figure is never shown as current.** A record older than an hour says its age (“Codex 30% of 7 d, as of 2 h ago”), and its fill is dimmed. Its text keeps the line’s color, which a dimmer shade would take below AA contrast, so the words carry the state. A window whose reset time has passed shows “reset” with no number, since the old figure no longer holds.
 - Claude Code and the Agent SDK sign in to the same account, so in a room with both, their bars may read alike. They stay two bars, one per backend, as the owner chose for #442.
 
 **What it rests on**
@@ -68,7 +68,7 @@ So Kiro and Antigravity get no bar. Every recorded Claude window reads 0, so the
 **Where it is built**
 - [`server/adapters/quota-windows.mjs`](../../server/adapters/quota-windows.mjs) reads Claude’s and Codex’s reports into the `quota` kind, and the Claude and Codex mappers emit it.
 - [`server/quota-usage.mjs`](../../server/quota-usage.mjs) checks and bounds a report and keeps it, under [`shared/quota-key.mjs`](../../shared/quota-key.mjs)’s key, the one the agents’ out-of-quota marks use ([`server/turn-quota.mjs`](../../server/turn-quota.mjs)). A record’s `out` changes no agent’s `quota`: only a refused turn marks them.
-- [`app/js/composer-quota.mjs`](../../app/js/composer-quota.mjs) draws the line in the conversation’s composer. On a phone each bar keeps its backend and percent, and the window and reset give way first.
+- [`app/js/composer-quota.mjs`](../../app/js/composer-quota.mjs) draws the line in the conversation’s composer. On a phone each bar keeps its backend and percent, and the window, host, age and reset give way first.
 - Where a thread panel opens full screen over the conversation, the column behind it keeps its width, so its composer has room for the line ([`app/js/pane-width.mjs`](../../app/js/pane-width.mjs)).
 
 **Revisit when** Kiro or Antigravity reports a limit or what remains, a harness reports a quota per model that the person needs to see apart, or the first real Claude events show `utilization` on another scale.
