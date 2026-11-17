@@ -34,7 +34,6 @@ test.use({ colorScheme: 'light' });
 const pane = (r) => ctx.pane(r);
 const open = (page, r) => ctx.open(page, r);
 const go = (page, h) => ctx.go(page, h);
-const focusedId = (page) => page.evaluate(() => document.activeElement?.id ?? '');
 const inside = (page, sel) => page.evaluate((s) => !!document.activeElement?.closest(s), sel);
 const valueNow = (page) => page.locator('.rp-divider').getAttribute('aria-valuenow');
 
@@ -170,21 +169,22 @@ async function workFull(page, { width, height }) {
   await expect(icon).toBeFocused();
 }
 
-/** an item in the pane opens full screen at that item */
+/** a file in the pane opens in its viewer (#1446), whose Diff opens full screen at that file */
 async function itemFull(page) {
   await open(page, `/side/${topic}?work`);
   const file = app.store.state.work[conv.id].find((e) => e.kind === 'file' && e.rel?.endsWith('refs.bib'));
   // Its Files row, as the old check took it, or its To review row where it has none.
   const files = page.locator(`#wc-file-${file.id}`);
   await ((await files.count()) ? files : page.locator(`#wc-review-${file.id}`)).focus();
-  const id = await focusedId(page);
   await page.keyboard.press('Enter');
+  await expect(page.locator('#wv-back'), 'the viewer, with focus on Back').toBeFocused();
+  await expect(page.locator(`${WORK} .wv`).getByRole('heading', { name: file.rel })).toBeVisible();
+  await page.locator(`${WORK} .wv`).getByRole('button', { name: 'Diff' }).click();
   await expect(page.locator(`.pane-full details[open] > summary#wsum-${file.id}`), 'refs.bib, opened').toBeFocused();
   await expect(page.locator('.pane-full .work-diff').first(), 'its diff').toBeVisible();
   await page.keyboard.press('Escape');
   await expect(page.locator('.pane-full')).toHaveCount(0);
-  // Back to the item you chose.
-  await expect.poll(() => focusedId(page)).toBe(id);
+  await expect(page.locator('#work-full'), 'focus on the full-screen icon, the Diff button having gone').toBeFocused();
 }
 
 /** a reply’s work record opens Work at its turn, beside the thread */
@@ -281,7 +281,7 @@ const CASES = [
   ['Close shuts Work, focus goes back to the Work button, and a thread opens alone', closeWork],
   ['Work opens beside the open thread, split above it, with a divider that moves by keyboard and mouse', split],
   ['Work goes full screen with the app frames’ icon; Escape and the icon bring it back, with focus on the icon', workFull],
-  ['an item in the pane opens full screen at that item', itemFull],
+  ['a file in the pane opens in its viewer, and its Diff full screen', itemFull],
   ['a reply’s work record opens Work at its turn, beside the thread', workLine],
   ['a reload restores what was open, and the conversation keeps Work open until it’s closed', reload],
   ['#138’s Work page links open the pane', oldLinks],
