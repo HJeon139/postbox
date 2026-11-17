@@ -16,64 +16,60 @@
  */
 export const committed = new WeakSet();
 
-/** A step’s key. @param {string} itemId @param {string} stepId */
-const stepKey = (itemId, stepId) => `step\0${itemId}\0${stepId}`;
-/** A session’s key. @param {string} sessionId */
-const sessionKey = (sessionId) => `session\0${sessionId}`;
-
-/** What each page’s stream was sent live: the running turns’ steps since their last commit points, and the sessions. */
+/**
+ * What each page’s stream was sent live: the steps of each reply since their last commit points, by reply, and the
+ * sessions. A record per stream, made on its first live frame.
+ */
 export function liveSent() {
-  /** @type {WeakMap<object, Set<string>>} */
+  /** @type {WeakMap<object, { steps: Map<string, Set<string>>, sessions: Set<string> }>} */
   const sent = new WeakMap();
-  /** @param {object} res @param {string} key */
-  const note = (res, key) => {
-    let keys = sent.get(res);
-    if (!keys) sent.set(res, (keys = new Set()));
-    keys.add(key);
+  /** @param {object} res */
+  const recordOf = (res) => {
+    let r = sent.get(res);
+    if (!r) sent.set(res, (r = { steps: new Map(), sessions: new Set() }));
+    return r;
+  };
+  /** @param {object} res @param {string} itemId @param {string} stepId */
+  const noteStep = (res, itemId, stepId) => {
+    const { steps } = recordOf(res);
+    let ids = steps.get(itemId);
+    if (!ids) steps.set(itemId, (ids = new Set()));
+    ids.add(stepId);
   };
   return {
-    /** A live frame’s key, by which a page notes it was sent it: its step’s, or its session’s. @param {any} frame */
-    keyOf(frame) {
-      if (frame.kind === 'step') return stepKey(frame.itemId, frame.step.id);
-      return frame.kind === 'session' ? sessionKey(frame.sessionId) : null;
+    /** A live frame a page’s stream was sent: its step, or its session. @param {object} res @param {any} frame */
+    note(res, frame) {
+      if (frame.kind === 'step') noteStep(res, frame.itemId, frame.step.id);
+      else if (frame.kind === 'session') recordOf(res).sessions.add(frame.sessionId);
     },
-    note,
     /**
      * A running turn’s snapshot a page’s stream was sent on connecting: it has the turn’s steps and its session as they
      * are. @param {object} res @param {any} snap  as publicLive gives it, or a session frame of it
      */
     noteSnapshot(res, snap) {
-      for (const st of snap.steps ?? []) note(res, stepKey(snap.itemId, st.id));
-      note(res, sessionKey(snap.sessionId));
+      for (const st of snap.steps ?? []) noteStep(res, snap.itemId, st.id);
+      recordOf(res).sessions.add(snap.sessionId);
     },
-    /**
-     * What a page may have of an event live, asked once an event: null for an event no page gets live instead, or the
-     * key of the step or session it was marked for. @param {any} ev @returns {string | null}
-     */
-    marked(ev) {
-      if (!committed.has(ev.data)) return null;
-      return ev.type === 'session.patch' ? sessionKey(ev.data.id) : stepKey(ev.data.id, ev.data.activityStep.id);
-    },
+    /** Whether an event is one a page may have live instead, asked once an event. @param {any} ev */
+    marked: (ev) => committed.has(ev.data),
     /**
      * Whether a page has a marked event live. A session’s change: the stream has been sent the session’s frames, every
      * one of which goes to every stream, so it gets the frame that carries the change right after. A commit point: the
      * stream was sent the step live since the last one, which it forgets, so the next commit point of it asks again.
-     * @param {object} res @param {string} key
+     * @param {object} res @param {any} ev
      */
+    had(res, ev) {
+      const r = sent.get(res);
+      if (!r) return false;
+      if (ev.type === 'session.patch') return r.sessions.has(ev.data.id);
+      return r.steps.get(ev.data.id)?.delete(ev.data.activityStep.id) ?? false;
+    },
     /**
      * A reply’s turn ended: a stream forgets the steps of it it was sent, which a commit point held behind a commit,
      * released unmarked, would otherwise leave. @param {object} res @param {string} itemId
      */
     forget(res, itemId) {
-      const keys = sent.get(res);
-      if (!keys) return;
-      const prefix = stepKey(itemId, '');
-      for (const k of keys) if (k.startsWith(prefix)) keys.delete(k);
-    },
-    had(res, key) {
-      const keys = sent.get(res);
-      if (!keys) return false;
-      return key.startsWith('session\0') ? keys.has(key) : keys.delete(key);
+      sent.get(res)?.steps.delete(itemId);
     },
   };
 }

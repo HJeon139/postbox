@@ -66,7 +66,7 @@ export function liveFlush(rt, turn) {
  */
 function bufferOf(rt, turn) {
   watchStored(rt);
-  turn.live ??= { changed: new Map(), rev: new Map(), session: {} };
+  turn.live ??= { changed: new Map(), rev: new Map(), session: {}, frame: null, flush: () => liveFlush(rt, turn) };
   return turn.live;
 }
 
@@ -174,7 +174,7 @@ export function liveSession(rt, turn, patch, carried) {
   if (!any && !carried) return;
   if (!live.frame) {
     live.frame = { kind: 'session', sessionId: turn.sessionId };
-    queueMicrotask(() => liveFlush(rt, turn));
+    queueMicrotask(live.flush);
   }
   Object.assign(live.frame, frame);
 }

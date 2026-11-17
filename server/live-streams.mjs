@@ -124,14 +124,14 @@ function eventSender({ store, streams, deliver, headers, events, openOf, sent })
     const mark = sent.marked(ev);
     // Both forms now, as the event is: a send held back would otherwise read the store's objects as they are by then.
     // A marked event sent now builds them only for a stream that needs them, as most get nothing of it.
-    let frames = mark === null || lag > 0 ? framesOf(ev, events, tail) : null;
+    let frames = !mark || lag > 0 ? framesOf(ev, events, tail) : null;
     const built = () => (frames ??= framesOf(ev, events, tail));
     const send = () => {
       if (store.epoch !== epoch) return;
       for (const res of streams) {
         const open = openOf.get(res);
         // Asked of every page, so each forgets the step once it’s stored, open or not.
-        if (mark !== null && open && sent.had(res, mark)) {
+        if (mark && open && sent.had(res, ev)) {
           if (tail) deliver(res, tail);
         } else {
           const { full, shut } = built();
@@ -166,14 +166,13 @@ function liveSender({ store, streams, deliver, events, openOf, sent }) {
       // frame the same, and every stream a session’s.
       /** @type {Record<string, string>} */
       const built = {};
-      const key = sent.keyOf(frame);
       for (const res of streams) {
         const open = openOf.get(res) ?? null;
         const how = viewOf(open, frame.threadId);
         const out = (built[how] ??= publicLiveFrame(frame, open, events));
         if (!out) continue;
         deliver(res, out);
-        if (open && key) sent.note(res, key);
+        if (open) sent.note(res, frame);
       }
     };
     if (lag > 0) setTimeout(send, lag).unref();
