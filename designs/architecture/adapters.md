@@ -28,6 +28,45 @@ A harness that doesn’t report a thing never gets a guess at it: Antigravity’
 
 **Two blocks of the reply at once.** Most harnesses write the reply one block at a time, so a new block means the last one ended. Codex can stream two agent messages at once, narrating parallel calls, and their deltas interleave. Its adapter marks such text `open` until the message ends, which it reports as `text_end`. While an open block is mid-sentence, another block’s words wait, and follow as their own paragraph once it ends a sentence or its message: the reply takes turns by whole sentences, never spliced word by word (#1293). A long open block that never ends a sentence holds the others until its message ends, and whatever is still waiting is written when the turn ends, by Stop, a crash or its end. A harness that never marks text open streams exactly as it did.
 
+## Quota: each backend’s usage, in the composer
+
+**Decision** (16 November 2026, for [#442](https://github.com/HJeon139/postbox/issues/442); built after #1436 lands `session.quota`). The line under the composer’s input ([#1437](https://github.com/HJeon139/postbox/issues/1437)) shows one bar for each backend that the room’s agents run on. It shows how much of that backend’s quota is used and when it resets. A quota belongs to the harness’s account, not to an agent: four agents on Claude Code share one quota. So the bars are labeled with the backend’s name and sit in the composer, not in an agent’s row, where its context use is. Running out stays where #1407 put it: the row of the agent whose turn failed. While a contextual hint applies (who a draft reaches, a command, offline), the hint takes the line instead.
+
+```mermaid
+flowchart LR
+  H[the harness’s own stream] --> A[its adapter] -->|quota event| R[the runtime]
+  R -->|"quota, keyed by backend (and host)"| S[the store, a public key]
+  S --> P[the page] --> L[the composer’s line: one bar per backend in the room]
+```
+
+**What each harness reports.** Only Claude Code, the Agent SDK and Codex report a quota. Postbox never makes up a figure for a harness that doesn’t report one:
+
+| Backend | What it sends | Source |
+|---|---|---|
+| Claude Code, Agent SDK | `rate_limit_event` with `rate_limit_info`: `status` (`allowed`, `allowed_warning`, `rejected`), `unifiedWindows.five_hour` and `.seven_day`, each `{ utilization, resetsAt }`. `resetsAt` is in seconds, and `utilization` is a fraction from 0 to 1 | `tests/fixtures/claude-code/*.jsonl`; `SDKRateLimitInfo` in the SDK’s `sdk.d.ts`; the bundled CLI shows a window as `Math.round(utilization * 100)` |
+| Codex | the `account/rateLimits/updated` notification, `rateLimits.primary` and `.secondary`, each `{ usedPercent, windowDurationMins, resetsAt }`, with `usedPercent` from 0 to 100 | `codex app-server generate-json-schema` (codex-cli 0.167.0), `RateLimitWindow`; the fixture’s params are scrubbed |
+| Kiro CLI | only the credits each turn spent (`promptTurnSummaries[].usage`), with no limit and nothing remaining | `tests/fixtures/kiro-cli/` |
+| Antigravity CLI | nothing about quota | `tests/fixtures/antigravity-cli/` |
+
+So Kiro and Antigravity get no bar. Every recorded Claude window reads 0, so the first real nonzero value must confirm the 0-to-1 scale before the bars are trusted.
+
+**The data.**
+- A new harness-event kind, `quota`, carries `{ status: 'ok' | 'warning' | 'out', windows: [{ name, used, resetsAt }] }`. `used` is from 0 to 1, and `resetsAt` is in milliseconds, or null. Each adapter maps its harness’s shape into it: Claude’s `five_hour` and `seven_day`, and Codex’s windows named from `windowDurationMins` (300 is “5 h”, 10,080 is “7 d”).
+- The runtime keeps one record per backend and host in a new public state key, `quota`: `{ id, backend, host, status, windows, seenAt }`. The id is the backend, or `backend@host` for an agent on a remote host, since a host signs in to its own account ([remote-hosts.md](remote-hosts.md)). Like `hostStatus`, it is live state that a newer report replaces.
+- A report is written only when its status or a window’s whole percent or reset time changes, or when the record is more than 10 minutes old. Claude Code sends one event per turn, so this keeps the log from growing with every turn.
+
+**What the bars show.**
+- Each bar shows its backend’s most-used window, as text and as a bar: “Claude Code · 5 h 42% · resets 3:10 pm”. A screen reader reads the same words. The bar is in the neutral color, never `--alert` or amber. It isn’t an alarm, and no notice, toast or “needs you” comes from it.
+- **A stale figure is never shown as current.** A record older than an hour is dimmed and says its age (“as of 2 h ago”). A window whose reset time has passed shows “reset” with no number, since the old figure no longer holds.
+- Claude Code and the Agent SDK sign in to the same account, so in a room with both, their bars may read alike. They stay two bars, one per backend, as the owner chose for #442.
+
+**What it rests on**
+- **The figures are the person’s own, on their own computer.** They reach only the page Postbox serves on 127.0.0.1 ([security-boundaries.md](security-boundaries.md), “This computer alone”), so a public key is right. Recorded fixtures stay scrubbed, as the privacy scan requires, so the specs drive the bars from the mock adapter with made-up values.
+- **Per backend, not per agent.** Agents sharing a backend share its quota. A per-agent figure would repeat one number across rows and read like the context use already there.
+- **One line, shared with the hints.** The composer has room for one line under its input (#1437). A hint applies only while you type, and quota matters between messages.
+
+**Revisit when** Kiro or Antigravity reports a limit or what remains, a harness reports a quota per model that the person needs to see apart, or the first real Claude events show `utilization` on another scale.
+
 ## Thinking, subagents and the guide
 
 The Claude backends ask for summarized thinking (`--thinking-display summarized`, the SDK’s `thinking.display`) and subagents’ own messages (`--forward-subagent-text`, the SDK’s `forwardSubagentText`). Without them, thinking arrives empty and subagents are a single line. With them:
