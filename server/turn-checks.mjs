@@ -46,7 +46,7 @@ export function checkTurn(checks, turn, se) {
  * A turn that was stopped or failed starts no lint turn, but its progress steps still running show as stalled, as
  * at a normal end (#58), and the agent hears which at the start of its next turn (#98). A failed turn’s show as
  * failed instead, so the person can tell an error from a step that stopped answering (#664).
- * @param {any} turn @param {any} se @param {'stopped' | 'failed' | 'shutdown' | 'hung'} how
+ * @param {any} turn @param {any} se @param {'stopped' | 'failed' | 'lost' | 'shutdown' | 'hung'} how
  */
 export function stallLeftRunning(checks, turn, se, how) {
   const problems = stallSteps(checks, turn, se, how === 'failed' ? 'failed' : 'stalled');
@@ -54,8 +54,19 @@ export function stallLeftRunning(checks, turn, se, how) {
   const blocks = problems.map((p) => `- Block “${p.scope.title ?? p.scope.id}” (id ${p.scope.id}): ${p.message}`);
   checks.sessions.tell(
     se.id,
-    `${{ stopped: 'The person stopped your last turn', failed: 'Your last turn failed', shutdown: 'Postbox shut down during your last turn', hung: 'Postbox stopped your last turn, which had no output for too long,' }[how]} while progress steps were running:\n${blocks.join('\n')}`,
+    `${{ stopped: 'The person stopped your last turn', failed: 'Your last turn failed', lost: 'Your last turn lost its connection', shutdown: 'Postbox shut down during your last turn', hung: 'Postbox stopped your last turn, which had no output for too long,' }[how]} while progress steps were running:\n${blocks.join('\n')}`,
   );
+}
+
+/**
+ * How a failed turn’s progress steps end (#664): failed only when the turn really failed. A turn lost to the network
+ * and sent again goes on as the resend, and a host turn whose link was lost goes on on its host (mention-entries.mjs
+ * reads it the same way), so their steps stall, as at a stop.
+ * @param {any} turn @param {any} se @param {boolean} resends
+ * @returns {'failed' | 'lost'}
+ */
+export function failedHow(turn, se, resends) {
+  return resends || turn.endErr?.remote || se.remoteTurn?.state === 'lost' ? 'lost' : 'failed';
 }
 
 /**

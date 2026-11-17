@@ -16,7 +16,8 @@ export function stampSteps(item, block, now) {
     // Only Postbox marks a step stalled; from the agent, it means still running.
     const s = sent.state === 'stalled' && before !== 'stalled' ? { ...sent, state: 'running' } : sent;
     const t = { ...(item.stepTimes?.[s.id] ?? {}) };
-    const going = before === 'running' || before === 'stalled';
+    // A step its turn’s failure failed (#664) has no end of its own, as a stalled one hasn’t: it’s still going.
+    const going = before === 'running' || before === 'stalled' || (before === 'failed' && !item.stepTimes?.[s.id]?.endedAt);
     // A step that was running when the block was shown started then.
     if (going) t.startedAt ??= item.at;
     if (s.state === 'running') {

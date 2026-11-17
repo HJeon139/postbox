@@ -7,6 +7,7 @@
 import { fixEnded } from './apps.mjs';
 import { settleScheduledWake } from './scheduled-wakes.mjs';
 import { postSummary } from './share-back.mjs';
+import { failedHow } from './turn-checks.mjs';
 import { endedAs } from './turn-end-work.mjs';
 import { needsAfter } from './turn-needs.mjs';
 
@@ -25,8 +26,9 @@ export function listenTurnEnd(rt) {
     if (!err) postSummary(rt, se, turn, items);
     rt.clearSummaryPending(turn.threadId, turn);
   });
-  // J, Checks: its progress steps still running show as failed, so an error isn’t read as a stall (#98, #664).
-  bus.on('turn.failed', ({ turn, se }) => rt.checks.stallLeftRunning(turn, se, 'failed'));
+  // J, Checks: its progress steps still running show as failed, so an error isn’t read as a stall, unless the turn goes
+  // on as a resend or on its host, when they stall (#98, #664).
+  bus.on('turn.failed', ({ turn, se, resends }) => rt.checks.stallLeftRunning(turn, se, failedHow(turn, se, resends)));
   // M, Apps: an app-check turn that ended without a new version shows the app with a note, or crashed (#964).
   bus.on('turn.ended', ({ turn, se }) => {
     if (turn.kind !== 'app-check') return;

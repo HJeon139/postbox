@@ -10,6 +10,7 @@ import { Checks } from '../server/check-service.mjs';
 import { Running } from '../server/running.mjs';
 import { Store } from '../server/store.mjs';
 import { Threads } from '../server/threads.mjs';
+import { failedHow } from '../server/turn-checks.mjs';
 
 /** A problem the browser reported. */
 const PROBLEM = { code: 'x', message: 'A problem.', scope: { kind: 'reply' } };
@@ -172,6 +173,13 @@ test('stallLeftRunning tells the agent which steps stalled when its turn was sto
   );
   checks.stallLeftRunning(turnOf(), store.state.sessions.se_1, 'stopped');
   assert.equal(told.length, 1, 'nothing to tell');
+});
+
+test('#664 only a turn that really failed fails its steps: a resend, and a host turn that goes on, leave them stalled', () => {
+  assert.equal(failedHow({ endErr: new Error('x') }, {}, false), 'failed');
+  assert.equal(failedHow({ endErr: new Error('x') }, {}, true), 'lost', 'sent again');
+  assert.equal(failedHow({ endErr: Object.assign(new Error('x'), { remote: { kind: 'interrupted' } }) }, {}, false), 'lost', 'its host goes on');
+  assert.equal(failedHow({ endErr: new Error('x') }, { remoteTurn: { state: 'lost' } }, false), 'lost', 'its link was lost');
 });
 
 // ── The page’s diagram reports ───────────────────────────────────────────────────────
