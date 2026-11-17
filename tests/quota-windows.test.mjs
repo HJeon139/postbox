@@ -43,12 +43,19 @@ test('a Claude limit with no unified windows reads as the one window it names', 
   ]);
 });
 
-test('a share over 1 is read as a percent, and one over 100, or not a number, is none, so no bar is guessed', () => {
-  assert.equal(share(0.25), 0.25);
-  assert.equal(share(42), 0.42);
-  assert.equal(share(100), 1);
-  for (const x of [101, -1, Number.NaN, '0.5', null, undefined]) assert.equal(share(x), null, String(x));
-  assert.deepEqual(claudeQuota({ status: 'allowed', unifiedWindows: { five_hour: { utilization: 42, resetsAt: HOUR_S } } })?.windows[0].used, 0.42);
+test('an event’s scale is read once: any figure over 1.5 makes it percents, else fractions, capped at a whole share', () => {
+  assert.equal(share(0.25, 1), 0.25);
+  assert.equal(share(42, 100), 0.42);
+  assert.equal(share(100, 100), 1);
+  assert.equal(share(1.0001, 1), 1, 'a fraction just over 1, as overage can give, is a full bar, not 1%');
+  for (const x of [101, -1, Number.NaN, '0.5', null, undefined]) assert.equal(share(x, 100), null, String(x));
+  const used = (five, seven) =>
+    claudeQuota({
+      status: 'allowed',
+      unifiedWindows: { five_hour: { utilization: five, resetsAt: HOUR_S }, seven_day: { utilization: seven, resetsAt: HOUR_S } },
+    })?.windows.map((w) => w.used);
+  assert.deepEqual(used(42, 1), [0.42, 0.01], 'one figure over 1.5 makes the whole event percents');
+  assert.deepEqual(used(1.02, 0.5), [1, 0.5], 'all within 1.5: fractions');
   assert.equal(claudeQuota({ status: 'allowed', unifiedWindows: { five_hour: { utilization: 420, resetsAt: HOUR_S } } }), null);
 });
 
@@ -71,6 +78,13 @@ test('Codex’s rate limits read as its primary and secondary windows, named by 
   assert.equal(codexQuota({ primary: codexWindow(1, 90, null) })?.windows[0].used, 0.01, 'Codex’s 1 is 1%, never a whole share');
   assert.equal(codexQuota({ primary: codexWindow(140, 300, null) }), null);
   assert.equal(codexQuota({}), null);
+});
+
+test('Codex’s windows carry their limit, so another limit’s are kept apart from the default one’s', () => {
+  const other = codexQuota({ limitId: 'codex_other', primary: codexWindow(60, 300, HOUR_S) });
+  const plain = codexQuota({ primary: codexWindow(10, 300, HOUR_S) });
+  assert.equal(other?.windows[0].limit, 'codex_other');
+  assert.equal(plain?.windows[0].limit ?? null, null);
 });
 
 test('the Claude stream mapper reports a rate limit’s usage through ctx.quota', () => {

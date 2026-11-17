@@ -8,12 +8,13 @@ import { quotaKeyOf } from '../shared/quota-key.mjs';
 /** A report the same as the last one is written again only once the last is this old, so its age stays true. */
 export const REWRITE_MS = 10 * 60_000;
 const STATUSES = new Set(['ok', 'warning', 'out']);
-const MAX_WINDOWS = 4;
+const MAX_WINDOWS = 6;
 
 /**
- * A harness’s report, checked and bounded: a status, and windows each with a name, the share used from 0 to 1, and when
- * it resets in epoch ms or null. Null when it holds no window worth a bar.
- * @param {any} r @returns {{ status: string, windows: { name: string, used: number, resetsAt: number | null }[] } | null}
+ * A harness’s report, checked and bounded: a status, and windows each with a name, the share used from 0 to 1, when it
+ * resets in epoch ms or null, and the limit it belongs to, where a harness has more than one. Null when it holds no
+ * window worth a bar.
+ * @param {any} r @returns {{ status: string, windows: { name: string, used: number, resetsAt: number | null, limit?: string }[] } | null}
  */
 export function quotaReport(r) {
   if (!r || typeof r !== 'object' || !Array.isArray(r.windows)) return null;
@@ -24,6 +25,7 @@ export function quotaReport(r) {
       name: w.name.slice(0, 12),
       used: w.used,
       resetsAt: Number.isFinite(w.resetsAt) && w.resetsAt > 0 ? Math.round(w.resetsAt) : null,
+      ...(typeof w.limit === 'string' && w.limit ? { limit: w.limit.slice(0, 40) } : {}),
     }));
   if (!windows.length) return null;
   return { status: STATUSES.has(r.status) ? r.status : 'ok', windows };
@@ -31,7 +33,21 @@ export function quotaReport(r) {
 
 /** What a reader of the bar would see differ: the status, and each window’s name, whole percent and reset minute. */
 const shown = (/** @type {any} */ r) =>
-  JSON.stringify([r.status, r.windows.map((w) => [w.name, Math.round(w.used * 100), w.resetsAt && Math.round(w.resetsAt / 60_000)])]);
+  JSON.stringify([r.status, r.windows.map((w) => [w.limit, w.name, Math.round(w.used * 100), w.resetsAt && Math.round(w.resetsAt / 60_000)])]);
+
+/** A window’s identity across reports: its limit and its name. @param {any} w */
+const windowKey = (w) => `${w.limit ?? ''}|${w.name}`;
+
+/**
+ * The last record’s windows with a report’s laid over them, by limit and name: an update can be sparse (Codex’s
+ * account/rateLimits/updated sends what changed), and a window it leaves out keeps its figure.
+ * @param {any[]} last @param {any[]} next
+ */
+function merged(last, next) {
+  const byKey = new Map(last.map((w) => [windowKey(w), w]));
+  for (const w of next) byKey.set(windowKey(w), w);
+  return [...byKey.values()].slice(-MAX_WINDOWS);
+}
 
 /**
  * Keeps a session’s backend’s report, unless it shows what the last one did and that one is recent: Claude Code
@@ -39,11 +55,12 @@ const shown = (/** @type {any} */ r) =>
  * @param {any} rt @param {any} se  the session whose turn reported @param {any} report @param {number} [now]
  */
 export function recordQuota(rt, se, report, now = Date.now()) {
-  const r = quotaReport(report);
-  if (!r) return;
+  const given = quotaReport(report);
+  if (!given) return;
   const persona = rt.s.personas[se.personaId];
   const id = quotaKeyOf(persona);
   const last = rt.s.quota?.[id];
+  const r = { ...given, windows: merged(last?.windows ?? [], given.windows) };
   if (last && shown(last) === shown(r) && now - last.seenAt < REWRITE_MS) return;
   const host = persona?.remote?.hostId ?? null;
   rt.store.emit('quota', { id, backend: persona?.backend ?? 'mock', host, ...r, seenAt: now });

@@ -233,8 +233,8 @@ function stepCallback(rt, se0, turn, live) {
 }
 
 /**
- * The agent's status as it works, and what the backend reported about the run: its model, effort and MCP servers, and
- * its quota's usage (#442).
+ * The agent’s status as it works, and what the backend reported about the run: its model, effort and MCP servers, and
+ * its quota’s usage (#442).
  * @param {any} rt @param {any} turn @param {() => boolean} live
  */
 function reportCallbacks(rt, turn, live) {
@@ -271,7 +271,7 @@ function reportCallbacks(rt, turn, live) {
      * - model, the model that answered, as se.lastModel, and effort, the effort the turn was started with, as
      *   se.lastEffort (#60): the header shows them, marked when they differ from the persona’s setting.
      */
-    /** The backend's quota usage, kept for the composer's quota line (quota-usage.mjs). */
+    /** The backend’s quota usage, kept for the composer’s quota line (quota-usage.mjs). */
     quota(report) {
       if (live()) recordQuota(rt, rt.s.sessions[turn.sessionId], report);
     },

@@ -4,8 +4,13 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { AdapterRegistry } from '../server/adapters/adapter.mjs';
+import { createStreamMapper } from '../server/adapters/claude-stream.mjs';
 import { quotaReport, REWRITE_MS, recordQuota } from '../server/quota-usage.mjs';
+import { Runtime } from '../server/runtime.mjs';
+import { Store } from '../server/store.mjs';
 import { apply, emptyState } from '../shared/state.mjs';
+import * as arrange from './arrange.mjs';
 
 /** The little of a runtime recordQuota reads: the personas, the quota records, and the store’s emit. */
 function fakeRt(personas) {
@@ -24,7 +29,7 @@ function fakeRt(personas) {
 }
 const report = (used, status = 'ok') => ({ status, windows: [{ name: '5 h', used, resetsAt: 1_800_000_000_000 }] });
 
-test('a report keeps at most four windows with a name and a share from 0 to 1, and an unknown status is ok', () => {
+test('a report keeps at most six windows with a name and a share from 0 to 1, and an unknown status is ok', () => {
   const r = quotaReport({
     status: 'exploded',
     windows: [
@@ -35,12 +40,14 @@ test('a report keeps at most four windows with a name and a share from 0 to 1, a
       { name: 'b', used: 0.1 },
       { name: 'c', used: 0.1 },
       { name: 'd', used: 0.1, resetsAt: -5 },
+      { name: 'e', used: 0.1 },
+      { name: 'f', used: 0.1 },
     ],
   });
   assert.equal(r?.status, 'ok');
   assert.deepEqual(
     r?.windows.map((w) => w.name),
-    ['5 h', 'a', 'b', 'c'],
+    ['5 h', 'a', 'b', 'c', 'd', 'e'],
   );
   assert.equal(quotaReport({ status: 'ok', windows: [] }), null);
   assert.equal(quotaReport('nothing'), null);
@@ -73,6 +80,46 @@ test('a report that shows what the last one did is written again only once the l
   assert.equal(emitted.length, 4, 'the same, but the last is ten minutes old');
 });
 
+test('a sparse report merges with the last by window: a window it leaves out keeps its figure', () => {
+  const { rt } = fakeRt({ p: { backend: 'codex' } });
+  const se = { personaId: 'p' };
+  const at = 1_800_000_000_000;
+  recordQuota(
+    rt,
+    se,
+    {
+      status: 'ok',
+      windows: [
+        { name: '5 h', used: 0.2, resetsAt: at },
+        { name: '7 d', used: 0.9, resetsAt: at },
+      ],
+    },
+    0,
+  );
+  recordQuota(rt, se, { status: 'ok', windows: [{ name: '5 h', used: 0.3, resetsAt: at }] }, 1000);
+  assert.deepEqual(
+    rt.s.quota.codex.windows.map((w) => [w.name, w.used]),
+    [
+      ['5 h', 0.3],
+      ['7 d', 0.9],
+    ],
+  );
+});
+
+test('windows of different limits are kept apart, though they share a name', () => {
+  const { rt } = fakeRt({ p: { backend: 'codex' } });
+  const se = { personaId: 'p' };
+  recordQuota(rt, se, { status: 'ok', windows: [{ name: '5 h', used: 0.2, resetsAt: null }] }, 0);
+  recordQuota(rt, se, { status: 'ok', windows: [{ name: '5 h', used: 0.7, resetsAt: null, limit: 'codex_other' }] }, 1000);
+  assert.deepEqual(
+    rt.s.quota.codex.windows.map((w) => [w.name, w.limit ?? null, w.used]),
+    [
+      ['5 h', null, 0.2],
+      ['5 h', 'codex_other', 0.7],
+    ],
+  );
+});
+
 test('an out report changes no agent’s quota: only a refused turn marks them (turn-quota.mjs)', () => {
   const { rt, emitted } = fakeRt({ p: { backend: 'claude-code' } });
   const se = { id: 'se_1', personaId: 'p' };
@@ -92,4 +139,43 @@ test('a quota event keeps its record under its key, and a later one replaces it'
   assert.deepEqual(Object.keys(s.quota), ['codex']);
   assert.equal(s.quota.codex.windows[0].used, 0.3);
   assert.equal(s.quota.codex.seenAt, 2);
+});
+
+test('an out report through the adapter and the turn leaves every agent’s quota alone, and keeps the record', async () => {
+  const store = new Store(null);
+  /** @type {() => void} */
+  let release = () => {};
+  const held = new Promise((r) => {
+    release = () => r(null);
+  });
+  const rt = new Runtime({
+    store,
+    adapters: new AdapterRegistry().register({
+      name: 'mock',
+      async folderFor() {
+        return null;
+      },
+      async deliver(_session, _message, ctx) {
+        const m = createStreamMapper(ctx);
+        m.push({
+          type: 'rate_limit_event',
+          rate_limit_info: { status: 'rejected', unifiedWindows: { five_hour: { utilization: 1, resetsAt: 2_000_000_000 } } },
+        });
+        // Held while the test looks: a turn that ends well clears every mark on its quota (turn-quota.mjs’s quotaBack).
+        await held;
+        ctx.text('Done.');
+      },
+    }),
+    config: { origin: 'http://127.0.0.1:1', imageOrigins: [], lintSettleMs: 0 },
+  });
+  store.emit('project', { id: 'p1', name: 'P', folder: '/tmp' });
+  const a = rt.createPersona({ handle: 'reporter' });
+  const b = rt.createPersona({ handle: 'neighbor' });
+  const t = rt.createThread({ projectId: 'p1', title: 'T', personaIds: [a.id, b.id] });
+  rt.sendMessage(t.id, { text: '@reporter go' });
+  for (let i = 0; i < 200 && !store.state.quota.mock; i++) await new Promise((r) => setTimeout(r, 5));
+  assert.equal(store.state.quota.mock?.status, 'out');
+  for (const se of arrange.sessionsIn(rt, t.id)) assert.equal(se.quota ?? null, null, se.handle);
+  release();
+  rt.close?.();
 });
