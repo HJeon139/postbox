@@ -41,14 +41,15 @@ export function viewHeaders(name, { type, isText, download }) {
 
 /**
  * An asset’s version in a conversation: the newest unless v names another. A miss of any kind (another room’s asset,
- * a deleted head, a pruned version, a blob gone) is the same 404, so an id from elsewhere tells nothing (#31).
+ * a deleted asset at any version, a pruned version, a blob gone) is the same 404, so an id from elsewhere tells
+ * nothing (#31), and a deleted asset can’t be read back through an older version (#1446).
  * @param {any} rt @param {string} threadId @param {string} assetId @param {string|null} v @param {boolean} download
  */
 async function assetFile(rt, threadId, assetId, v, download) {
   const state = rt.store.state;
   if (!own(state.threads, threadId)) throw httpError(404, MISSING);
   const asset = own(state.assets, assetId);
-  if (!asset || asset.room !== roomOf(state.threads, threadId)) throw httpError(404, MISSING);
+  if (!asset || asset.room !== roomOf(state.threads, threadId) || !versionAt(asset, asset.head)?.sha256) throw httpError(404, MISSING);
   const version = versionAt(asset, v ? Number(v) : asset.head);
   const blobs = rt.assets.roomBlobs();
   if (!version?.sha256 || version.pruned || !blobs) throw httpError(404, MISSING);

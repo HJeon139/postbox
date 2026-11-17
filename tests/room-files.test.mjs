@@ -35,6 +35,9 @@ before(async () => {
   ids.image = await write('th_a', 'pics/dot.png', image, 'image/png');
   ids.page = await write('th_a', 'site/index.html', '<!doctype html><script>alert(1)</script>', 'text/html');
   ids.other = await write('th_b', 'theirs.md', 'not yours', 'text/markdown');
+  ids.gone = await write('th_a', 'gone.md', 'was here', 'text/markdown');
+  const del = await writeAsset(rt.store, rt.assets.roomBlobs(), { kind: 'delete', room: 'th_a', id: ids.gone, base: 1, author: 'alpha' });
+  assert.ok(del.ok, JSON.stringify(del));
   const kept = await rt.blobs.put(Buffer.from('export const year = 2026;\n'));
   rt.store.emit('work.add', {
     convId: 'th_a',
@@ -137,4 +140,12 @@ test('a changed file of which Postbox kept no copy is a 404 that says so', async
 test('a file from another conversation’s work is a 404', async () => {
   const r = await get('/api/threads/th_b/work/files/wf_cite/content');
   assert.equal(r.status, 404);
+});
+
+test('a deleted asset is a 404 at every version, its older ones included', async () => {
+  for (const q of ['', '?v=1', '?v=1&download=1']) {
+    const r = await get(`/api/threads/th_a/assets/${ids.gone}${q}`);
+    assert.equal(r.status, 404, q);
+    assert.doesNotMatch(r.bytes.toString(), /was here/, q);
+  }
 });
