@@ -43,6 +43,16 @@ export function roomAssets(state, convId) {
     .sort((a, b) => at(b) - at(a));
 }
 
+/**
+ * Whether a conversation has anything a message could name: a live asset in its room, or a changed file in its work.
+ * @param {any} state @param {string} convId
+ */
+export function hasRefs(state, convId) {
+  const index = own(state.assetRooms, roomOf(state.threads, convId));
+  if (index && Object.keys(index.names).length) return true;
+  return (state.work?.[convId] ?? []).some((e) => e.kind === 'file');
+}
+
 /** @typedef {{ at: string, kind: 'asset' | 'file' }} Ref */
 
 /**

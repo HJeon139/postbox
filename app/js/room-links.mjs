@@ -4,17 +4,21 @@
 // same text node, moved into an <a> made with h(). It runs with the diagrams and math (md-enhance.mjs), when a reply is
 // drawn; one drawn again is linked again, and one already linked is left as it is.
 
-import { ASSET_ID, conversationOf, refLookup } from '/shared/room-refs.mjs';
+import { ASSET_ID, conversationOf, hasRefs, refLookup } from '/shared/room-refs.mjs';
 import { client } from './client.mjs';
 import { h } from './dom.mjs';
 import { openWork, paneHref } from './ui.mjs';
 
-/** The lookup for a conversation, kept while the state is the same: a room’s replies are drawn together. */
-let cached = { key: '', find: (/** @type {string} */ _t) => /** @type {import('/shared/room-refs.mjs').Ref | null} */ (null) };
+/**
+ * The lookup for a conversation, kept while the state is the same: a room’s replies are drawn together, and a long
+ * room mounts them as you scroll. `any` says whether the conversation has anything to link: with no live asset and no
+ * changed file, a reply costs no DOM query at all (#1447 review: the pass slowed a scroll back in a room with none).
+ */
+let cached = { key: '', any: false, find: (/** @type {string} */ _t) => /** @type {import('/shared/room-refs.mjs').Ref | null} */ (null) };
 function lookupFor(convId) {
   const key = `${convId}\u0000${client.seq}`;
-  if (cached.key !== key) cached = { key, find: refLookup(client.state, convId) };
-  return cached.find;
+  if (cached.key !== key) cached = { key, any: hasRefs(client.state, convId), find: refLookup(client.state, convId) };
+  return cached;
 }
 
 /** The link around a node: to the pane, opened in place unless a modifier asks for a new tab. */
@@ -33,13 +37,16 @@ function link(convId, at, node) {
   );
 }
 
-/** Text nodes under root that aren’t in code, a link or a code block. @param {Element} root */
+/**
+ * Text nodes under root that hold an asset id’s prefix and aren’t in code, a link or a code block. Walked only when the
+ * reply’s text has the prefix at all, and a node is checked for where it sits only once its text has it.
+ * @param {Element} root
+ */
 function plainText(root) {
   const out = [];
-  const walk = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
-    acceptNode: (n) => (n.parentElement?.closest('a, code, pre') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT),
-  });
-  for (let n = walk.nextNode(); n; n = walk.nextNode()) if (n.textContent?.includes('as_')) out.push(n);
+  if (!root.textContent?.includes('as_')) return out;
+  const walk = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  for (let n = walk.nextNode(); n; n = walk.nextNode()) if (n.textContent?.includes('as_') && !n.parentElement?.closest('a, code, pre')) out.push(n);
   return out;
 }
 
@@ -66,10 +73,10 @@ export function linkRoomRefs(root) {
   const threads = client.state?.threads;
   if (!threadId || !threads?.[threadId]) return;
   const convId = conversationOf(threads, threadId);
+  const { any, find } = lookupFor(convId);
+  if (!any) return;
   const codes = [...root.querySelectorAll('code')].filter((c) => !c.closest('a, pre'));
   const ids = plainText(root);
-  if (!codes.length && !ids.length) return;
-  const find = lookupFor(convId);
   for (const code of codes) {
     const ref = find(code.textContent ?? '');
     if (!ref) continue;

@@ -2,7 +2,7 @@
 // conversation’s own room only, and a changed file by its path or a file name only one changed file has.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { conversationOf, RELEVANT_MAX, refLookup, relevantRefs, roomAsset, roomAssets, saidKey } from '../shared/room-refs.mjs';
+import { conversationOf, hasRefs, RELEVANT_MAX, refLookup, relevantRefs, roomAsset, roomAssets, saidKey } from '../shared/room-refs.mjs';
 import { apply, emptyState } from '../shared/state.mjs';
 
 const version = (v, over = {}) => ({
@@ -156,4 +156,16 @@ test('the repaint key changes with the last ten messages’ text or status, and 
   assert.notEqual(saidKey(items.map((i) => (i.id === 'it_3' ? { ...i, text: 'two, now longer' } : i))), key, 'text');
   assert.notEqual(saidKey(items.map((i) => (i.id === 'it_3' ? { ...i, status: 'streaming' } : i))), key, 'status');
   assert.notEqual(saidKey([...items, said(5, 'three')]), key, 'a new message');
+});
+
+test('a conversation has something to link only with a live asset in its room or a changed file in its work', () => {
+  const s = room();
+  assert.equal(hasRefs(s, 'th_a'), true);
+  assert.equal(hasRefs(s, 'th_a_topic'), true, 'its topic thread reads its assets');
+  apply(s, 'thread', { id: 'th_c', members: [] });
+  assert.equal(hasRefs(s, 'th_c'), false);
+  apply(s, 'work.add', { convId: 'th_c', entry: { id: 'wt_c', kind: 'turn' } });
+  assert.equal(hasRefs(s, 'th_c'), false, 'a turn alone names nothing');
+  apply(s, 'work.add', { convId: 'th_c', entry: { id: 'wf_c', kind: 'file', path: '/p/c.mjs', rel: 'c.mjs' } });
+  assert.equal(hasRefs(s, 'th_c'), true);
 });
