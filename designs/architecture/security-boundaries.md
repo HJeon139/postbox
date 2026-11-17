@@ -57,7 +57,8 @@ flowchart TD
 - **It fails closed.** A type with no entry, or one that isn’t public, reaches the page only as a cursor, and a state key not listed as public isn’t sent. A spec fails when a key of `emptyState()` is in neither list, or in both.
 - **The store keeps the raw history.** The log, snapshots and the remote hosts’ subscribers read the store directly.
 - **Only the bulk paths are projected.** They send the whole state and every event. The other routes answer with one entity or report each, so the rule for them is about what they may carry, not a second projection.
-- **The stream’s own frame names are reserved.** `STREAM` in `shared/state.mjs` holds `cursor`, `status`, `epoch`, `resync` and `header`, and none of them may be an event type.
+- **The stream’s own frame names are reserved.** `STREAM` in `shared/state.mjs` holds `cursor`, `status`, `epoch`, `resync`, `header` and `live`, and none of them may be an event type.
+- **A live frame can’t drift from the events.** The `live` frame carries a running turn’s progress unstored ([live-progress.md](live-progress.md)). Each of its kinds, in `LIVE` (`shared/live-kinds.mjs`), mirrors the event types that carry the same data when it’s stored, and takes their `public` flag from `EVENTS`: there’s no second table of flags. `publicLiveFrame` and `publicLive` (`server/public-state.mjs`) send nothing for a kind that isn’t listed, or whose event types aren’t all public. They keep only the kind’s listed fields, a step’s and a snapshot’s parts by their own lists, and send an item’s frames only to a stream with its conversation open. `tests/live-frames-public.test.mjs` holds each rule, and that removing it fails a test.
 
 **When to revisit**
 - A remote host gets a snapshot built from the store’s state. Nothing is private yet. When A2 adds private data, its design says whether a host gets `publicState` or a projection of its own.
