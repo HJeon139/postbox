@@ -146,6 +146,7 @@ Each is one line: the decision, why, and where its detail is.
 | [shared-memory.md](architecture/shared-memory.md) | Catch-up, the turn envelope, deliveries and topic threads |
 | [attached-sessions.md](architecture/attached-sessions.md) | A terminal’s Claude Code session as an agent |
 | [narration.md](architecture/narration.md) | The local voice in its own process |
+| [live-progress.md](architecture/live-progress.md) | Live-only progress: the live frame, commit points, the buffer and what a restart keeps; designed, not built |
 | [sandbox.md](architecture/sandbox.md) | Sandboxed pages that load nothing |
 | [diagram-legibility.md](architecture/diagram-legibility.md) | The checks on a reply, and the pipeline that brings their findings to the agent |
 | [security-boundaries.md](architecture/security-boundaries.md) | This computer alone, the page’s token, `!` commands, and what reaches the browser |

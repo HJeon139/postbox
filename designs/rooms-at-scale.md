@@ -59,7 +59,7 @@ flowchart LR
 
 **End state.**
 - **Postbox keeps what is the conversation:** messages, replies, blocks, asks, deliveries and the Work ledger. Markdown rendering and cards stay as they are.
-- **Progress is live only.** Steps, partial text, thinking and subagents go to the page on a stream that isn’t stored. The server keeps a small buffer per running turn for a page that reconnects, and writes one record of the turn’s steps when it ends.
+- **Progress is live only.** Steps, partial text, thinking and subagents go to the page on a stream that isn’t stored. The server keeps a small buffer per running turn for a page that reconnects, stores each reply’s words and changed steps at commit points so a restart loses little, and writes one record of the turn’s steps when it ends ([architecture/live-progress.md](architecture/live-progress.md)).
 - **Because nothing in it is stored, the live view can show more:** each tool and its input, a tail of its output, the agent’s use of Postbox’s own tools, and how long each step has run.
 - **Each agent’s state is always in view,** wherever you’ve scrolled: running (and its current step), waiting on a job, waiting on another agent, waiting on you, failed, or done. It is derived from records, never from what an agent said in chat.
 - **A turn that dies says so,** with what it held, instead of ending as an empty message.
