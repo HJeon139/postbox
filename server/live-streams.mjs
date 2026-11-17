@@ -14,8 +14,9 @@
 // out as a cursor with its seq. The control frames’ names are shared/state.mjs’s STREAM, which no event type may take.
 
 import { EVENTS, STREAM } from '../shared/state.mjs';
+import { liveSnapshots } from './live-buffer.mjs';
 import { liveSent } from './live-sent.mjs';
-import { publicFrame, publicHeaderFrame, publicLiveFrame } from './public-state.mjs';
+import { publicFrame, publicHeaderFrame, publicLive, publicLiveFrame } from './public-state.mjs';
 import { onLive } from './store-live.mjs';
 import { REJECTED } from './store-reject.mjs';
 import { threadHeaders } from './thread-headers.mjs';
@@ -32,7 +33,8 @@ export const UNREAD_MS = 60_000;
  * /api/stream.
  * @param {import('./store.mjs').Store} store
  * @param {typeof EVENTS} [events]  the event table, which a spec replaces to show a private type
- * @param {{ now?: () => number }} [options]  the clock UNREAD_MS is measured on, which a test sets
+ * @param {{ now?: () => number, running?: { all: () => any[] } }} [options]  the clock UNREAD_MS is measured on, which a
+ *   test sets; and the running turns, whose live state a stream is sent when it connects
  * @returns {{
  *   streams: Set<import('node:http').ServerResponse>,
  *   stop: () => void,
@@ -40,7 +42,7 @@ export const UNREAD_MS = 60_000;
  *   headers: ReturnType<typeof threadHeaders>,
  * }}
  */
-export function liveStreams(store, events = EVENTS, { now = Date.now } = {}) {
+export function liveStreams(store, events = EVENTS, { now = Date.now, running } = {}) {
   /** @type {Set<import('node:http').ServerResponse>} */
   const streams = new Set();
   const deliver = frameWriter(streams, now);
@@ -82,7 +84,12 @@ export function liveStreams(store, events = EVENTS, { now = Date.now } = {}) {
     const backlog = lost ? null : store.since(since);
     // Too far behind, or on a lost timeline: the browser refetches the whole state, then resumes from its seq.
     if (backlog === null) res.write(`event: ${STREAM.resync}\ndata: {}\n\n`);
-    else for (const frame of backlogFrames(backlog, since, events, headers, open)) deliver(res, frame);
+    else {
+      for (const frame of backlogFrames(backlog, since, events, headers, open)) deliver(res, frame);
+      // Then the running turns’ live state, which no backlog has: a page that opens a conversation or reconnects
+      // mid-turn gets what changed since the last commit point (live-progress.md, “A page that reconnects”).
+      if (running) for (const frame of snapshotFrames(running, open, events, res, sent)) deliver(res, frame);
+    }
     streams.add(res);
     req.on('close', () => streams.delete(res));
   }
@@ -152,7 +159,7 @@ function liveSender({ store, streams, deliver, events, openOf, sent }) {
       // frame the same, and every stream a session’s.
       /** @type {Map<string, string>} */
       const built = new Map();
-      const step = sent.stepOf(frame);
+      const key = sent.keyOf(frame);
       for (const res of streams) {
         const open = openOf.get(res) ?? null;
         const how = viewOf(open, frame.threadId);
@@ -160,7 +167,7 @@ function liveSender({ store, streams, deliver, events, openOf, sent }) {
         if (out === undefined) built.set(how, (out = publicLiveFrame(frame, open, events)));
         if (!out) continue;
         deliver(res, out);
-        if (open && step) sent.note(res, step);
+        if (open && key) sent.note(res, key);
       }
     };
     if (lag > 0) setTimeout(send, lag).unref();
@@ -184,6 +191,22 @@ function framesOf(ev, events, tail) {
 function viewOf(open, threadId) {
   if (open === null) return 'all';
   return open.has(threadId) ? 'open' : 'shut';
+}
+
+/**
+ * The running turns’ live state as a stream that connects sees it, noted as sent: a turn’s snapshot with its
+ * conversation open, and only its session’s fields without, as every stream gets a session’s frames.
+ * @param {{ all: () => any[] }} running @param {Set<string> | null} open @param {typeof EVENTS} events
+ * @param {object} res @param {ReturnType<typeof liveSent>} sent
+ */
+function snapshotFrames(running, open, events, res, sent) {
+  return liveSnapshots({ running }).flatMap((snap) => {
+    const [whole] = publicLive([snap], open, events);
+    const out = whole ?? publicLiveFrame({ kind: 'session', sessionId: snap.sessionId, ...snap.session }, open, events);
+    if (!out) return [];
+    if (open) sent.noteSnapshot(res, whole ?? { sessionId: snap.sessionId });
+    return [typeof out === 'string' ? out : `event: ${STREAM.live}\ndata: ${JSON.stringify(out)}\n\n`];
+  });
 }
 
 /** The most conversations one stream can name as open: a pane and a side panel, with room to spare. */

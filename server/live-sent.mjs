@@ -16,36 +16,54 @@
  */
 export const committed = new WeakSet();
 
-/** @param {string} itemId @param {string} stepId */
-const keyOf = (itemId, stepId) => `${itemId}\0${stepId}`;
+/** A step’s key. @param {string} itemId @param {string} stepId */
+const stepKey = (itemId, stepId) => `step\0${itemId}\0${stepId}`;
+/** A session’s key. @param {string} sessionId */
+const sessionKey = (sessionId) => `session\0${sessionId}`;
 
-/** What each page’s stream was sent of the running turns’ steps since their last commit points. */
+/** What each page’s stream was sent live: the running turns’ steps since their last commit points, and the sessions. */
 export function liveSent() {
   /** @type {WeakMap<object, Set<string>>} */
   const sent = new WeakMap();
+  /** @param {object} res @param {string} key */
+  const note = (res, key) => {
+    let keys = sent.get(res);
+    if (!keys) sent.set(res, (keys = new Set()));
+    keys.add(key);
+  };
   return {
-    /** A live frame’s step, by which a page notes it was sent it; null for a frame of no step. @param {any} frame */
-    stepOf: (frame) => (frame.kind === 'step' ? keyOf(frame.itemId, frame.step.id) : null),
-    /** A step a page’s stream was sent live (stepOf). @param {object} res @param {string} step */
-    note(res, step) {
-      let steps = sent.get(res);
-      if (!steps) sent.set(res, (steps = new Set()));
-      steps.add(step);
+    /** A live frame’s key, by which a page notes it was sent it: its step’s, or its session’s. @param {any} frame */
+    keyOf(frame) {
+      if (frame.kind === 'step') return stepKey(frame.itemId, frame.step.id);
+      return frame.kind === 'session' ? sessionKey(frame.sessionId) : null;
+    },
+    note,
+    /**
+     * A running turn’s snapshot a page’s stream was sent on connecting: it has the turn’s steps and its session as they
+     * are. @param {object} res @param {any} snap  as publicLive gives it, or a session frame of it
+     */
+    noteSnapshot(res, snap) {
+      for (const st of snap.steps ?? []) note(res, stepKey(snap.itemId, st.id));
+      note(res, sessionKey(snap.sessionId));
     },
     /**
-     * What a page may have of an event live, asked once an event: null for an event no page gets live instead; true for
-     * a session’s carried change, whose frame goes to every page right after it; or the commit point’s step.
-     * @param {any} ev @returns {string | true | null}
+     * What a page may have of an event live, asked once an event: null for an event no page gets live instead, or the
+     * key of the step or session it was marked for. @param {any} ev @returns {string | null}
      */
     marked(ev) {
       if (!committed.has(ev.data)) return null;
-      return ev.type === 'session.patch' ? true : keyOf(ev.data.id, ev.data.activityStep.id);
+      return ev.type === 'session.patch' ? sessionKey(ev.data.id) : stepKey(ev.data.id, ev.data.activityStep.id);
     },
     /**
-     * Whether a page has a marked event live: a session’s carried change, or a commit point of a step this page was
-     * sent live since the last one, which it forgets, so the next commit point of it asks again.
-     * @param {object} res @param {string | true} mark
+     * Whether a page has a marked event live. A session’s change: the stream has been sent the session’s frames, every
+     * one of which goes to every stream, so it gets the frame that carries the change right after. A commit point: the
+     * stream was sent the step live since the last one, which it forgets, so the next commit point of it asks again.
+     * @param {object} res @param {string} key
      */
-    had: (res, mark) => mark === true || (sent.get(res)?.delete(mark) ?? false),
+    had(res, key) {
+      const keys = sent.get(res);
+      if (!keys) return false;
+      return key.startsWith('session\0') ? keys.has(key) : keys.delete(key);
+    },
   };
 }

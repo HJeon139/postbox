@@ -81,6 +81,8 @@ export function liveApplier() {
     apply(state, f, has) {
       if (f?.kind === 'step') return applyStep(state, f, has);
       if (f?.kind === 'session') return applySession(state, f);
+      // A running turn’s live state, sent when the stream connects: as at load.
+      if (f?.kind === 'snapshot') return this.snapshot(state, [f], has);
       return [];
     },
     /** The held frames whose items the page now holds. @param {any} state @param {(threadId: string, id: string) => boolean} has */

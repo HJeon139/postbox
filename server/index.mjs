@@ -171,7 +171,7 @@ export async function start({
   };
 
   // The pages’ live updates: the store’s events over server-sent events (server/live-streams.mjs).
-  const { streams, stop: stopStreams, stream, headers } = liveStreams(store);
+  const { streams, stop: stopStreams, stream, headers } = liveStreams(store, undefined, { running: rt.running });
   const search = searchOf(store);
   let offlineUntil = 0;
 

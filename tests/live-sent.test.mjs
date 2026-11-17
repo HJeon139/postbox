@@ -78,10 +78,11 @@ test('a running turn’s change of state is stored, rides on its session frame, 
     const rt = { store, s: store.state, sessions: { update } };
     const page = open(live, store, '&open=th_1');
     const tool = open(live, store, '');
+    liveSession(rt, turn, { glimpse: 'Looking' }); // the page has had the session’s frames
     liveUpdate(rt, turn, { state: 'tool', currentStep: 'Read' });
     assert.equal(store.state.sessions.se_1.state, 'tool', 'stored');
     assert.deepEqual(page.events(), []);
-    assert.deepEqual(page.sessions(), [{ kind: 'session', sessionId: 'se_1', currentStep: 'Read', state: 'tool', updatedAt: 5 }]);
+    assert.deepEqual(page.sessions().at(-1), { kind: 'session', sessionId: 'se_1', currentStep: 'Read', state: 'tool', updatedAt: 5 });
     assert.deepEqual(tool.events(), [['session.patch', undefined]], 'a tool reads the stored event whole');
     // The same state again stores nothing: no write of updatedAt alone.
     const seq = store.state.seq;
@@ -136,6 +137,7 @@ test('a page that reconnects gets the events it was spared again, whole, in its 
     const { turn, rt } = turnOn(store);
     const page = open(live, store, '&open=th_1');
     const placed = store.state.seq; // the last seq the page was sent: its Last-Event-ID
+    liveSession(rt, turn, { glimpse: 'Looking' });
     liveStep(rt, turn, { id: 's1', label: 'Read', state: 'running' });
     liveUpdate(rt, turn, { state: 'tool', currentStep: 'Read' });
     liveEnd(rt, turn);
@@ -199,5 +201,21 @@ test('a commit point held behind a commit in flight goes to every page whole, af
   } finally {
     live.stop();
     await store.close();
+  }
+});
+
+test('a page that was never sent a session’s frames gets its carried change whole: marks are per stream', async () => {
+  const store = await new Store(null).load();
+  store.emit('session', { id: 'se_1', threadId: 'th_1', state: 'gen' });
+  const live = liveStreams(store);
+  try {
+    const { turn, rt } = turnOn(store);
+    const page = open(live, store, '&open=th_1');
+    liveUpdate(rt, turn, { state: 'tool' });
+    assert.deepEqual(page.events(), [['session.patch', undefined]]);
+    liveUpdate(rt, turn, { state: 'gen' });
+    assert.deepEqual(page.events().length, 1, 'sent the frame that carried the first, it’s spared the next');
+  } finally {
+    live.stop();
   }
 });
