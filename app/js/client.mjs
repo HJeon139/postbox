@@ -136,6 +136,7 @@ let es = null;
  */
 export function connect({ quiet = false } = {}) {
   es?.close();
+  behind = false; // a new stream starts from the page’s own seq: what follows its backlog, a snapshot included, is new
   // Item events only for the conversations open here (#1155); every other event, and each thread’s header, for all.
   const open = encodeURIComponent([...client.open.keys()].join(','));
   es = new EventSource(`/api/stream?since=${client.seq}&epoch=${encodeURIComponent(client.epoch)}&open=${open}`);
