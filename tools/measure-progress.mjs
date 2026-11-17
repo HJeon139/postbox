@@ -10,8 +10,8 @@ import { createStreamMapper } from '../server/adapters/claude-stream.mjs';
 import { settle, setup } from '../tests/side-threads-fixture.mjs';
 
 const DIR = new URL('../tests/fixtures/claude-code/', import.meta.url);
-/** A session patch is progress when it changes only these. */
-const PROGRESS = new Set(['toolCalls', 'toolCount', 'currentStep', 'glimpse', 'subagents', 'state', 'compacting']);
+/** A session patch is progress when it changes only these, which go live: `state` stays stored. */
+const PROGRESS = new Set(['toolCalls', 'toolCount', 'currentStep', 'glimpse', 'subagents', 'compacting']);
 
 /** @param {{ type: string, data?: any }} ev */
 function kindOf(ev) {

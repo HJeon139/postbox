@@ -11,15 +11,15 @@ A running turn writes its progress to the event log as it goes:
 
 The log is the record ([store.md](store.md)), so all of it is kept, replayed at every start, and counted in every snapshot. Most of it is never read again: when the turn ends, its steps fold to the record the reply keeps (`foldSteps`, `server/turn-steps.mjs`).
 
-**Measured on `main` at 7460688d** with `node tools/measure-progress.mjs`. It replays the 25 recorded Claude Code streams in `tests/fixtures/claude-code/` through the real stream mapper into a runtime, and sums each event’s bytes as the log writes it. Two runs gave 49.6% and 49.7%. These are the second:
+**Measured on `main` at 7460688d** with `node tools/measure-progress.mjs`. It replays the 25 recorded Claude Code streams in `tests/fixtures/claude-code/` through the real stream mapper into a runtime, and sums each event’s bytes as the log writes it. Progress is what this design makes live; a session’s `state` stays stored, so it isn’t counted. Six runs gave 43.7% to 44.4%, varying with the glimpse’s timing. This is one:
 
 | What | Bytes | Events | Share of the log |
 |---|---|---|---|
-| Progress: `session.patch` of state, calls, step, glimpse and subagents | 88,593 | 524 | 23% |
+| Progress: `session.patch` of calls, step, glimpse and subagents | 66,608 | 389 | 17% |
 | Progress: `item.patch` with `activityStep` | 57,719 | 179 | 15% |
 | Progress: `item.text` deltas | 43,307 | 376 | 11% |
-| **All progress** | **189,619** | **1,079** | **49.7%** |
-| Everything else | 191,652 | 660 | 50.3% |
+| **All progress** | **167,634** | **944** | **43.9%** |
+| Everything else | 214,065 | 795 | 56.1% |
 
 - The replies’ final text was 8,020 characters, carried by 43 KB of deltas: most of the cost is per-event overhead on small writes.
 - The folded records the replies keep came to 17,333 bytes.
@@ -70,7 +70,7 @@ A commit point writes, in one `commit`:
 - `item.text` with the words since the last commit point. This is the same event as today, so the reducer and every reader of the log take it unchanged (`tools/uat/inbox-measures.mjs`, `picture-choice.mjs` and `checks-assets.mjs` append or match `item.text`);
 - one `item.patch` with `activityStep` for each step that is new or changed since the last commit point, the same event as today, so `checks-assets.mjs` still finds a step’s words. Each costs what that step’s change costs, never the steps before it, so a turn of `n` steps writes `O(n)` step records, not `O(n²)`.
 
-The steps it stores keep `at` and `part`, which place them among the words (`app/js/activity-live.mjs`, `textFrom`). A commit point drops only what `foldedStep` drops besides those: `input`, `output` and `diff`, the live view’s detail. So a reload, a second tab or a conversation opened mid-turn places every stored step as the live view does. The fold at the turn’s end drops `at` and `part`, as today, and the restart sweep’s `foldCutOff`, which folds any step still holding them (`liveDetail`), folds a cut-off reply’s steps as it does now.
+The steps it stores keep `at` and `part`, which place them among the words (`app/js/activity-live.mjs`, `textFrom`). A commit point drops only what `foldedStep` drops besides those: `input`, `output` and `diff`, the live view’s detail. It cuts `detail` to `STEP_TEXT.detail` (1,200 characters), as the fold does, so a thought’s longer detail stays live only. The buffer keeps the newest call’s full detail across a commit point that comes on time alone, so the live view’s newest call doesn’t lose its input and output mid-call. So a reload, a second tab or a conversation opened mid-turn places every stored step as the live view does. The fold at the turn’s end drops `at` and `part`, as today, and the restart sweep’s `foldCutOff`, which folds any step still holding them (`liveDetail`), folds a cut-off reply’s steps as it does now.
 
 A commit point comes:
 - at a step boundary: when a call starts, the words before it are whole;
@@ -86,12 +86,12 @@ The interval and the ceiling are constants in `shared/limits.mjs`. The measureme
 
 Stored events wait behind a commit in flight (`server/store-held.mjs`), and `POSTBOX_STREAM_LAG` holds every stored event back on the stream (`server/live-streams.mjs`). A live frame sent past both could overtake the commit point it follows, or the `item.add` of the reply it names, so words would go missing or show twice.
 
-**So live frames take the same queue.** A turn’s live frame is queued behind its turn’s held emits and released after them. The stream sends it through the same lag as stored events. The page gets stored events and live frames in the order Turns made them.
+**So live frames take the same queue.** The store holds every emit made while a commit is queued or in flight, or a snapshot is written, in one global FIFO (`emit`, `server/store.mjs`), and numbers, applies and broadcasts each in its turn once that settles. A live frame made while anything is held joins that FIFO as an unnumbered job: when its turn comes it’s broadcast, not numbered, applied or written. The stream sends it through the same lag as stored events. So the page gets stored events and live frames in the order Turns made them.
 
 **And each frame says where it goes,** for a page that joins midway:
 - a `text` frame names the offset in the reply’s text where its words start (`at`). The page appends only at its stored text’s end, buffers a frame ahead of it, and drops what it already has;
 - a `step` frame carries the step’s `rev`, which Turns bumps on each change. The page keeps the highest;
-- a frame for an item the page doesn’t have yet waits, bounded per turn, until the item arrives or the turn ends.
+- a frame for an item the page doesn’t have yet waits, until the item arrives or the turn ends. At most 200 frames wait per turn; past that the page drops what waits for that turn and asks for its snapshot (`/api/live/:turnId`, through `publicLive`), which replaces it whole.
 
 ## What reaches the browser
 
@@ -115,6 +115,7 @@ This crosses a security boundary ([security-boundaries.md](security-boundaries.m
 2. `text`, `step` and `snapshot` frames go only to a stream that has their thread open, as item events do (#1155, `publicFrame`’s `open`).
 3. `session` frames go to every stream, as `session.patch` does.
 4. `/api/state` adds `live`, the running turns’ snapshots, from `publicLive(buffers, open)` by the same rules. `tests/public-state.test.mjs`, which builds `/api/state` from `emptyState()`, covers the new key.
+5. `/api/live/:turnId`, which a page asks when its frames for a turn overflow (“Order”), answers that turn’s snapshot through `publicLive`, by the same rules: nothing for a turn in a conversation it doesn’t have open, or for one that has ended. It goes through the request gate like every route.
 
 **Tests:** beside `tests/public-state.test.mjs` and `tests/live-streams-public.test.mjs`, one holds that a kind whose event is private goes out as nothing, at both, as they hold a private event type sent only as a cursor.
 
@@ -162,7 +163,7 @@ Today, the same restart keeps every word, because each delta was written. intent
 - **Search, fork, share and export** read stored items. While a turn runs they get its text to the last commit point; after it ends, all of it.
 - **Other `item.text` writers stay stored:** the person’s commands’ output (`shell-runs.mjs`) and an attached Claude Code terminal’s mirror (`claude-mirror.mjs`).
 - **The UAT checks** read the log:
-  - `checks-assets.mjs` matches `activityStep` and `item.text`, which commit points keep;
+  - `checks-assets.mjs`’s scan for an agent’s own words (#722) matches `activityStep` and `item.text` in the log, which commit points keep. But a call’s `input` and `output`, and the glimpse, would be on live frames only. So the UAT runner records every live frame its stream receives into the run’s files beside the log, and the scan reads them as it reads events;
   - `inbox-measures.mjs` and `picture-choice.mjs` append `item.text`, unchanged;
   - `room-events.mjs` and `history.mjs` replay events, unchanged;
   - `tools/uat/turns.mjs` reads `state`, which stays stored.
@@ -204,7 +205,10 @@ Each item is its own pull request, test first:
 
 ## Open questions
 
-1. **For the owner: the restart trade.** intent.md’s second principle asks for “Streaming that never loses a message”. With commit points, a restart keeps every message, but a reply it cuts off loses its last seconds of words: at most one step, or 10 s. The reply is redone as a resend. Is that acceptable, or must every word survive a restart? If every word must, the words between commit points would have to be stored after all: as today, or written to a file outside the log, which saves the log but not the writes.
+1. **For the owner: the restart trade.** intent.md’s second principle asks for “Streaming that never loses a message”. Today, streamed text is written on the fast path, unsynced ([store.md](store.md)), so a crash can already lose a reply’s newest words, though a clean stop or restart keeps them. With commit points, what a reply has said since its last commit point is in memory only: at most 64 KB of words, or 10 s of them, and the updates to its steps since then. The reply is redone as a resend after a restart. Which of these?
+   - **Accept the trade:** a restart or a crash loses a reply’s words and step updates since its last commit point.
+   - **A commit point at a graceful shutdown:** Postbox writes every running reply’s commit point as it stops, so a restart loses nothing, and only a crash loses words, as today, at most the bound above.
+   - **Store every word:** the words between commit points are written too, as today or to a file outside the log. That keeps the log small, but not the writes, and it gives up most of the saving on text.
 2. **The interval and the ceiling** (10 s, 64 KB) are a first guess, until the measurement decides them.
 3. **Whether a commit point should also come when the person opens the conversation,** so a page that joins reads more from the store and less from the snapshot. That trades writes for a smaller snapshot.
 
