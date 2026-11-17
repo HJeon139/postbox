@@ -4,6 +4,7 @@
 
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
+import { once } from 'node:events';
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -20,9 +21,18 @@ test('a listing runs none of the person’s SessionStart hooks', { skip: !claude
     mkdirSync(config);
     const hook = { hooks: { SessionStart: [{ hooks: [{ type: 'command', command: `touch ${JSON.stringify(marker)}` }] }] } };
     writeFileSync(join(config, 'settings.json'), JSON.stringify(hook));
+    // The listing answers before the CLI has closed: it goes on writing in its config folder for a moment after
+    // SIGTERM, so the hook is checked and the folder removed only once it has closed (#1484).
+    /** @type {Promise<unknown>} */
+    let closed = Promise.resolve();
     /** @type {any} */
-    const spawnImpl = (bin, args, options) => spawn(bin, args, { ...options, env: { ...process.env, CLAUDE_CONFIG_DIR: config } });
+    const spawnImpl = (bin, args, options) => {
+      const child = spawn(bin, args, { ...options, env: { ...process.env, CLAUDE_CONFIG_DIR: config } });
+      closed = once(child, 'close');
+      return child;
+    };
     const models = await claudeModels('claude', { spawnImpl });
+    await closed;
     assert.ok(models.length > 0, 'it listed, so it started');
     assert.equal(existsSync(marker), false, 'the SessionStart hook in its settings didn’t run');
   } finally {
