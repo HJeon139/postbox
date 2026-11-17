@@ -85,7 +85,9 @@ function refuseEnded(rts, link, se, m) {
   send(link, 'reply', { turn: m.turn, id: m.id, ok: false, text: STOPPED_TEXT });
   if (!se || toolRoute(m.name, m.args) !== 'queue') return;
   const text = `Your ${m.name} call from the host didn’t go through: ${STOPPED_TEXT}`;
-  rts.rt.delivery.send({ sessionId: se.id, threadId: se.threadId, source: 'notice', text }, { wake: false });
+  // By the call’s turn and id, so a host that sends it again, unanswered, leaves one notice (Delivery’s retryId).
+  const retryId = `host-refusal ${m.turn} ${m.id}`;
+  rts.rt.delivery.send({ sessionId: se.id, threadId: se.threadId, source: 'notice', text, retryId }, { wake: false });
 }
 
 /** @param {RemoteTurns} rts @param {Live} live @param {{ name: string, args: Record<string, any> }} m @returns {Promise<{ ok: boolean, text: string, closed?: boolean }>} */
