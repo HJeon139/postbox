@@ -1209,7 +1209,7 @@ test('#98: Stop leaves running progress steps stalled, starts no lint turn, and 
   );
 });
 
-test('#98: a failed turn leaves running progress steps stalled too', async () => {
+test('#664: a failed turn leaves its running progress steps failed, not stalled, and tells the agent', async () => {
   const { rt, store, t, adapter } = setup();
   adapter.next.push(async (c) => {
     c.tools.show_block({ block: progress([{ id: 'a', label: 'Read A', state: 'running' }]) });
@@ -1218,9 +1218,11 @@ test('#98: a failed turn leaves running progress steps stalled too', async () =>
   rt.sendMessage(t.id, { text: 'read' });
   await settle(rt);
   const it = store.items(t.id).find((i) => i.kind === 'block');
-  assert.equal(it.block.steps[0].state, 'stalled');
-  assert.ok(it.stalledAt);
-  assert.match(store.state.sessions[arrange.sessionsIn(rt, t.id)[0].id].context.join('\n'), /Your last turn failed while progress steps were running/);
+  assert.equal(it.block.steps[0].state, 'failed');
+  assert.equal(it.stalledAt, undefined, 'a failed step isn’t a stalled one');
+  const told = store.state.sessions[arrange.sessionsIn(rt, t.id)[0].id].context.join('\n');
+  assert.match(told, /Your last turn failed while progress steps were running/);
+  assert.match(told, /Step “Read A” was still running when your turn failed, so the person sees it as failed\./);
 });
 
 test('#69: an asking block asked again with update_block belongs to the turn that asked', async () => {

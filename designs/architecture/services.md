@@ -80,7 +80,7 @@ The list refines the starting point from the data:
 
 ### Store
 
-- **Owns:** the state, the event log and its snapshots, the pending view (`pending`), and the outage gate (`storeWait` and `backendWait` on `Runtime` today; `gated`, `whenWritable` and `saveBackendState` in `store-outage.mjs`). Invariant: what’s pending is applied in commit order, and nothing writes while the store can’t (designs/architecture/store.md).
+- **Owns:** the state, the event log and its snapshots, the pending view (`pending`), and the outage gate (`storeWait` and `backendWait` on `Runtime` today; `gated` and `saveBackendState` in `store-outage.mjs`, `whenWritable` in `store-wait.mjs`). Invariant: what’s pending is applied in commit order, and nothing writes while the store can’t (designs/architecture/store.md).
 - **Interface:** `state`, `pending`, `emit(type, data)`, `item(threadId, id)`, `items(threadId)`, `subscribe(fn)`, `onStatus(fn)`, `whenWritable(fn)`, `gated(fn)`.
 - **Depends on:** nothing (its folder and its `io`).
 
@@ -413,7 +413,7 @@ Built in this order, each service’s dependencies already exist: Store, Bus, Ru
 | `read-message.mjs` calls `appOf` (`apps.mjs`) | Memory depends on Apps (done in step 10) |
 | `thread-summary.mjs` reads `rt.turns`, `rt.exiting`, `rt.closing` and `rt.ledger` | Summaries depends on Running, and takes the ledger Work holds (done in step 10) |
 | `turn-work.mjs` calls `recordScheduledTool` (`scheduled-wakes.mjs`) | the call moves to its caller, `turn-context.mjs` (done in step 7) |
-| `shell-runs.mjs` calls `whenWritable` (`store-outage.mjs`) | `Store.whenWritable` (step 7: Work takes a `whenWritable` bound to the runtime until the Store is a service) |
+| `shell-runs.mjs` calls `whenWritable` (`store-wait.mjs`) | `Store.whenWritable` (step 7: Work takes a `whenWritable` bound to the runtime until the Store is a service) |
 | `remote/host-admin.mjs` calls `rt.stop` and `rt.remote` | the `hostTurns` port (done in step 11) |
 | `lint-delivery.mjs`, `apps.mjs`, `review-comments.mjs`, `host-admin.mjs` and `placement.mjs` read `rt.turns` or `rt.exiting` | Running (`placement.mjs` done in step 1, `lint-delivery.mjs` in step 8, `apps.mjs` and `review-comments.mjs` in step 9, `host-admin.mjs` in step 11) |
 | `persona-delete.mjs` deletes sessions; `session-lifecycle.mjs` and `thread-erase.mjs` stop turns and kept jobs | orchestration in the facade: stop, then remove, in one method each (`deletePersona` done in step 4) |
@@ -440,7 +440,7 @@ flowchart TD
   H --> I{err, and not an AbortError?}
   I -->|failed| K[Turns: failed reply, notify; the session fails unless the turn was lost after the harness accepted it and wasn’t a resend]
   K --> L2[Turns: mark whom the failure woke, from entriesFrom]
-  L2 --> J[turn.failed — Checks: stalled steps]
+  L2 --> J[turn.failed — Checks: its running steps fail, or stall if it goes on]
   J --> L4[turn.failed — Delivery: settle what the turn took by why it failed, as a resend, failed or delivered; count the chain]
   I -->|no: ok, or stopped by an AbortError| M[turn.ended — Apps: an app-check turn’s fix ends]
   M --> N[turn.ended — Asks: the next need, session state, unread and notification]
@@ -457,7 +457,7 @@ So the signals are:
 - `turn.failed`, after Turns’ own K and L2 (J, L4);
 - `turn.ended` (M to R).
 
-Their listeners run in that order and share `open`, `viewing` and `topic`. Stopping a turn (`turn-stop.mjs`) raises `turn.stopping` and `turn.exited` in the same way. As built (#1429), `server/turn-end-listeners.mjs` adds each concern’s listener, and the inbox’s (`server/inbox-listeners.mjs`) come last. `turn.ended` carries `open`, `viewing` and `topic`, which Asks’ listener (N, `server/turn-needs.mjs`) fills for the ones after it. Turns posts the failed reply (K) and marks whom it woke (L2) before it raises `turn.failed`, so Checks’ stalled steps (J) run after them. The inbox’s `turn.ended` listener keeps #733’s order: the agent’s held messages go before or after what the turn took settles, by which arrived first. `turn.exited` starts the agent’s next waiting entries.
+Their listeners run in that order and share `open`, `viewing` and `topic`. Stopping a turn (`turn-stop.mjs`) raises `turn.stopping` and `turn.exited` in the same way. As built (#1429), `server/turn-end-listeners.mjs` adds each concern’s listener, and the inbox’s (`server/inbox-listeners.mjs`) come last. `turn.ended` carries `open`, `viewing` and `topic`, which Asks’ listener (N, `server/turn-needs.mjs`) fills for the ones after it. Turns posts the failed reply (K) and marks whom it woke (L2) before it raises `turn.failed`, so Checks’ failed or stalled steps (J) run after them: failed when the turn really failed, stalled when it goes on as a resend or on its host (#664). The inbox’s `turn.ended` listener keeps #733’s order: the agent’s held messages go before or after what the turn took settles, by which arrived first. `turn.exited` starts the agent’s next waiting entries.
 
 **`card.opened` must be synchronous.** When a card opens, the turn’s reply segment must be closed before `offerNeed`, so the reply goes on below the card and the need points at a settled segment. As built (#1429), `permission-cards.mjs` and `ask-question.mjs` raise `card.opened` and Turns closes the segment in a listener, so the bus must call it synchronously, before `offerNeed`; the bus above does.
 
@@ -708,7 +708,7 @@ Each step is its own pull request, and is done when:
     - A summary leaves out every message still waiting for the agent as an entry, so a mention reaches it once, whole, and `givenMentions` and `pointerIfSeen` are gone (#484).
     - The queue’s batching is gone (`batchPending`, `latestMessage`); a turn’s batch of entries and their arrival order are `turn-batch.mjs`.
     - #694’s note reads the agent’s entries only, in every thread: one waiting in another thread is named with its thread, on a tool result and in the prompt of a turn that starts while it waits (#734).
-    - `runtime.mjs` lost the forwards only Delivery’s and Turns’ own modules called (`takePending`, `settleSubagentSteps`, `sideSession`, `recordAgentMessage`, `threadRefs`); it’s 799 lines. What the routes and the tests act through stays, and `recordStopped` stays, since its store-outage caller would close an import cycle with `turn-stop.mjs`.
+    - `runtime.mjs` lost the forwards only Delivery’s and Turns’ own modules called (`takePending`, `settleSubagentSteps`, `sideSession`, `recordAgentMessage`, `threadRefs`); it’s 799 lines. What the routes and the tests act through stays, and `recordStopped` stayed, since its store-outage caller would close an import cycle with `turn-stop.mjs`, until #1442 moved it into `stop-record.mjs` and dropped the forward.
     - A turn left on a host when its agent moves to this computer is stopped there, as one left when it moves to another host is (#1214).
   - **Still to do:** host turns (`remote/turns-prompts.mjs`, `turns-start.mjs`, `turns-resume.mjs`) and `restart-sweep.mjs` reach waiting code directly, not through `asks`; that goes with Asks.
 

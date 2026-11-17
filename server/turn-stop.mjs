@@ -1,15 +1,16 @@
-// Stopping a turn: your Stop and its ask about background jobs (#129), what every stop records, the turn's exit that lets
-// the session's next turn start (#126), and stopping every turn as Postbox shuts down. Moved from server/runtime.mjs
-// (#1236); Runtime keeps a method of each name its callers use, and each function here takes the runtime first.
+// Stopping a turn: your Stop and its ask about background jobs (#129), the turn's exit that lets the session's next
+// turn start (#126), and stopping every turn as Postbox shuts down. What every stop records is server/stop-record.mjs.
+// Moved from server/runtime.mjs (#1236); Runtime keeps a method of each name its callers use, and each function here
+// takes the runtime first.
 
 import { runningJobs, runningProgress, settleJobs } from './job-records.mjs';
 import * as queue from './message-queue.mjs';
-import { dropScheduledWake, settleScheduledWake } from './scheduled-wakes.mjs';
+import { dropScheduledWake } from './scheduled-wakes.mjs';
 import { dropWakes } from './side-threads.mjs';
-import { STORE_STOPPED, whenWritable } from './store-outage.mjs';
+import { recordStopped } from './stop-record.mjs';
+import { STORE_STOPPED } from './store-outage.mjs';
+import { whenWritable } from './store-wait.mjs';
 import { endSubagent } from './subagent-end.mjs';
-import { replyMarks } from './turn-marks.mjs';
-import { foldSteps, settleStoppedSteps } from './turn-steps.mjs';
 import { entriesFirst } from './turns.mjs';
 
 /** How long a stopped turn may hold its session before Postbox lets the next turn start anyway, and says so (#126). */
@@ -42,7 +43,7 @@ export function stop(rt, sessionId, { silent = false, jobs = 'stop', by = 'you',
   turn.abort.abort(Object.assign(new Error('Stopped by you.'), { name: 'AbortError', keepJobs: keep.map((j) => ({ id: j.id, command: j.command })) }));
   turn.closed = true;
   rt.running.end(sessionId);
-  rt.recordStopped(turn, ended, { by, why: 'You stopped the agent.' });
+  recordStopped(rt, turn, ended, { by, why: 'You stopped the agent.' });
   // What the turn took was given to the agent, so it isn't handed over again (designs/architecture/services.md, “The
   // end of a turn”). A shutdown's isn't settled: the restart reopens it once, as a resend.
   if (by !== 'shutdown') rt.bus.emit('turn.stopping', { turn });
@@ -76,56 +77,6 @@ export function stop(rt, sessionId, { silent = false, jobs = 'stop', by = 'you',
   // You stopped it: wakes queued for it go too, and their agents are told (#228). Send now keeps them (silent).
   if (!silent && se) dropWakes(rt, se);
   return true;
-}
-
-/**
- * What every stop of a turn records, whoever stopped it: your Stop, a shutdown, or the store closing (server/store-outage.mjs).
- * One path, so no way of ending a turn skips a step (gpt’s finding on 1b: a scheduled turn the outage stopped stayed
- * running). A shutdown leaves a scheduled wake due for the restart (#466); every other stop ends it.
- * @param {any} rt  the runtime
- * @param {any} turn @param {{ status: string, stoppedAt: number, stopReason: string | null }} ended
- * @param {{ by: string, why: string }} o  who, and what a waiting permission is told
- */
-export function recordStopped(rt, turn, ended, { by, why }) {
-  const { sessionId } = turn;
-  // Your Stop ends a scheduled wake’s turn for good, so a restart doesn’t run it again; a shutdown leaves it due
-  // (#466). A store outage leaves it too: the reload re-arms it as interrupted, its one owner (S1), so settling it
-  // here as well would cancel what the agent was told will start again (the integrator’s re-review of #598).
-  if (by !== 'shutdown' && by !== 'store') settleScheduledWake(rt, turn, { name: 'AbortError' });
-  settleStoppedSteps(rt, turn);
-  if (turn.first) foldSteps(rt, turn.threadId, turn.first);
-  rt.work.endWork(turn, 'stopped');
-  // A waiting permission is answered no; the card keeps who stopped it, so its note says the person’s stop withdrew
-  // it, or that it expired (tellExpired, #721, #853).
-  rt.turnService.asks.expirePermissions(sessionId, why, { stoppedBy: by });
-  // The open segment by its id, even while it is held behind a commit (its patch follows it in order); then any
-  // other segment of this turn still streaming in the visible state (#602).
-  let marked = false;
-  if (turn.openSegment) {
-    rt.threads.patchItem(turn.threadId, turn.openSegment, ended);
-    marked = true;
-  }
-  for (const it of rt.store.pending.items(turn.threadId)) {
-    if (it.turnId === turn.id && it.kind === 'agent' && it.status === 'streaming' && it.id !== turn.openSegment) {
-      rt.threads.patchItem(turn.threadId, it.id, ended);
-      marked = true;
-    }
-  }
-  turn.openSegment = null;
-  // The reply always says it was stopped: with no segment still streaming, the stopped reply goes below the last
-  // thing the turn showed (#602), on every path that records a stop, the store’s included.
-  const se = rt.s.sessions[sessionId];
-  if (se && !marked)
-    rt.threads.addItem(turn.threadId, {
-      kind: 'agent',
-      sessionId,
-      personaId: se.personaId,
-      handle: se.handle,
-      turnId: turn.id,
-      text: '',
-      ...replyMarks(turn),
-      ...ended,
-    });
 }
 
 /**
