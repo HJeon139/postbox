@@ -5,6 +5,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { agentState } from '../shared/agent-state.mjs';
 import * as arrange from './arrange.mjs';
 import { restarted, rig, settled, starts, startUp, until } from './remote-turns-helpers.mjs';
 
@@ -34,7 +35,7 @@ test('#1214 a turn left on the host an agent moved off is stopped there once the
   await settled(r);
 });
 
-test('#1214 a turn left on the host an agent moved off to this computer is stopped there once the host is back, and shows as stopping', async () => {
+test('#1214 #1442 a turn left on the host an agent moved off to this computer is stopped there once the host is back, and reads as stopping until the host confirms', async () => {
   const { store, d } = restarted({ welcome: 'running' });
   const r = rig({ store, d });
   let release = () => {};
@@ -46,6 +47,12 @@ test('#1214 a turn left on the host an agent moved off to this computer is stopp
     if (hostId === r.host.id) await held;
     return ensure(hostId);
   };
+  // The host doesn’t confirm a stop until the test lets it, so what the agent reads as meanwhile can be checked.
+  /** @type {any[]} */
+  const heldStops = [];
+  let holdStops = true;
+  const send = r.link.send;
+  r.link.send = (/** @type {any} */ m) => (holdStops && m.type === 'stop' ? heldStops.push(m) > 0 : send(m));
   startUp(r);
   await until(() => r.rt.remote.restoring.has('host-turn-1'), 'the turn to wait for its welcome');
   // On this computer, a backend whose turn says one word and ends.
@@ -59,8 +66,17 @@ test('#1214 a turn left on the host an agent moved off to this computer is stopp
   r.store.emit('persona', { ...persona, backend: 'mock', remote: null });
   r.rt.turnService.run(r.se().id, { kind: 'user', text: 'Send now, after the move' }, { threadId: r.t.id });
   await until(() => r.rt.remote.restoring.has('host-turn-1') === false, 'the attach no longer waits for it');
-  assert.equal(r.store.state.sessions[r.se().id].remoteTurn?.state, 'stopping', 'it shows as stopping until the host stops it');
+  const se = () => r.store.state.sessions[r.se().id];
+  await until(() => se().state === 'idle', 'the turn here to end');
+  // The old turn may still run on the host until it confirms the stop: its row says so, and the agent reads as
+  // stopping there, not as running (#1442).
+  assert.equal(se().remoteTurn?.state, 'stopping', 'the old host turn shows as stopping');
+  assert.equal(agentState(se(), r.store.state).state, 'stopping', 'it reads as stopping, not running');
   release();
+  holdStops = false;
+  for (const m of heldStops.splice(0)) send(m);
   await until(() => d.received.some((m) => m.type === 'stop' && m.turn === 'host-turn-1'), 'the old host asked to stop it');
+  await until(() => se().remoteTurn?.state === 'done', 'the host to confirm the stop');
+  assert.equal(agentState(se(), r.store.state).state, 'idle', 'once the host confirms, it reads as idle');
   await settled(r);
 });

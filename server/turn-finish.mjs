@@ -134,7 +134,7 @@ function endFailed(rt, se, turn, err) {
   // whom they reached, with those the failures before it reached, so no Retry hands the work over again.
   const woke = turn.mentioned ?? [];
   if (woke.length || turn.woken.length) rt.threads.patchItem(turn.threadId, target, { wokeOnFailure: [...new Set([...turn.woken, ...woke])] });
-  // Last: its progress steps stall, what waited for it and what it took settle, and the agents its replies mentioned
-  // are woken.
+  // Last: its progress steps fail, or stall when it goes on as a resend or on its host, what waited for it and what it
+  // took settle, and the agents its replies mentioned are woken.
   rt.bus.emit('turn.failed', { turn, se, lost, resends });
 }

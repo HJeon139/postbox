@@ -3,7 +3,7 @@
 
 import { runsCommand, stopPgid } from './adapters/process-group.mjs';
 import { httpError } from './helpers.mjs';
-import { whenWritable } from './store-outage.mjs';
+import { whenWritable } from './store-wait.mjs';
 
 /** How often Postbox checks whether a background job it kept running has ended (#129). */
 const KEPT_POLL_MS = 5000;

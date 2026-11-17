@@ -177,7 +177,8 @@ const PENDING = {
   // behind a commit (#442).
   'turn-quota.mjs': ['quotaKey', 'sessionsOn', 'quotaName', 'quotaMoved'],
   // Stop's session as its own write of heldSteps left it, so Keep running's steps run on behind a held commit (#1042).
-  'turn-stop.mjs': ['stop', 'recordStopped', 'turnExited'],
+  'turn-stop.mjs': ['stop', 'turnExited'],
+  'stop-record.mjs': ['recordStopped'], // the stopped turn’s segments still streaming, maybe held behind a commit (#602)
   'tool-ask.mjs': ['askForTool', 'settleToolAsks'], // a second ask for the same tool, and the sweep that settles open asks
   'view-app/consent.mjs': ['askToSee'], // an open download card, which decides whether to add another (#95)
   'topic-open.mjs': ['startTopic', 'startTopic', 'conversationOf', 'conversationOf', 'repeatOf'], // one topic per message, the item's thread and I6's check, each maybe held behind a commit (#637)
