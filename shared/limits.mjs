@@ -149,13 +149,13 @@ export const ASSETS = Object.freeze({
   binaryVersionsKept: 3,
 });
 
+/** Work’s viewer (#1446): the most text it shows, in bytes; the route sends no more, and a download has the rest. */
+export const VIEWER = Object.freeze({ textBytes: 256 * 1024 });
+
 /**
  * Images a review block carries (#780). server/image-check.mjs refuses an image past either size limit, read from its
  * header; the caller that takes the files refuses one past either byte limit. Each refusal names the limit.
  */
-/** Work’s viewer (#1446): the most text it shows, in bytes; the route sends no more, and a download has the rest. */
-export const VIEWER = Object.freeze({ textBytes: 256 * 1024 });
-
 export const REVIEW_IMAGES = Object.freeze({
   /** One image, in bytes. */
   reviewImageBytes: 5 * 1024 * 1024,

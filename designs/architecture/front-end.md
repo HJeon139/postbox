@@ -6,7 +6,7 @@ Part of [the architecture](../architecture.md). The page: plain HTML, CSS and ES
 
 **Does it make Postbox faster for you?** At load, yes:
 - **First load.** The app is plain ES modules (156 in `app/js/`, about 940 KB uncompressed, on 12 November 2026) plus one stylesheet, served with gzip and ETags, so a reload revalidates cheaply (`server/served-files.mjs`). There’s no framework runtime, no hydration and nothing to download before the first paint, and a full reload of a long thread renders in well under a second locally.
-- **While you use it.** The hot paths are re-rendering Markdown while a reply streams (batched once per frame) and big tables. Neither depends on a framework.
+- **While you use it.** The hot paths are re-rendering Markdown while a reply streams (batched once per frame, and only after the blocks it has closed, #850) and big tables. Neither depends on a framework.
 - **The costs are ours, not yours.** We hand-write list reconciliation (`syncList`) and event wiring, which is where Stage 2’s bugs were. There are no compile-time types. Contributors used to a framework need a moment to adjust.
 
 **What keeps it fast**

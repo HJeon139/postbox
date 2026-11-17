@@ -20,27 +20,8 @@ let app;
 const ids = {};
 const image = png(4, 3);
 
-before(async () => {
-  const dir = tempDir('pb-room-files-');
-  app = await start({ port: PORT, dataDir: dir, fresh: true, demo: false, quiet: true, claudeHome: dir, listen: false });
-  const { rt } = app;
-  const write = async (room, name, bytes, type) => {
-    const r = await writeAsset(rt.store, rt.assets.roomBlobs(), { kind: 'write', room, name, bytes: Buffer.from(bytes), type, author: 'alpha' });
-    assert.ok(r.ok, JSON.stringify(r));
-    return r.id;
-  };
-  rt.store.emit('thread', { id: 'th_a', members: [] });
-  rt.store.emit('thread', { id: 'th_a_side', kind: 'side', parentId: 'th_a', members: [] });
-  rt.store.emit('thread', { id: 'th_b', members: [] });
-  ids.notes = await write('th_a', 'notes/plan.md', '# Plan\n<script>x</script>\n', 'text/markdown');
-  ids.image = await write('th_a', 'pics/dot.png', image, 'image/png');
-  ids.page = await write('th_a', 'site/index.html', '<!doctype html><script>alert(1)</script>', 'text/html');
-  ids.other = await write('th_b', 'theirs.md', 'not yours', 'text/markdown');
-  ids.gone = await write('th_a', 'gone.md', 'was here', 'text/markdown');
-  const del = await writeAsset(rt.store, rt.assets.roomBlobs(), { kind: 'delete', room: 'th_a', id: ids.gone, base: 1, author: 'alpha' });
-  assert.ok(del.ok, JSON.stringify(del));
-  // Past the viewer’s limit, with a three-byte character across it.
-  ids.long = await write('th_a', 'long.txt', `${'a'.repeat(VIEWER.textBytes - 1)}€tail`, 'text/plain');
+/** The conversation’s changed files: one kept as text, one too large to keep, and one that isn’t UTF-8. @param {any} rt */
+async function changedFiles(rt) {
   const kept = await rt.blobs.put(Buffer.from('export const year = 2026;\n'));
   rt.store.emit('work.add', {
     convId: 'th_a',
@@ -66,6 +47,44 @@ before(async () => {
       after: { exists: true, size: 9e6, big: true },
     },
   });
+  // A changed file that isn’t UTF-8: continuation bytes all the way, with no NUL, so the ledger keeps it as text.
+  const odd = await rt.blobs.put(Buffer.alloc(VIEWER.textBytes + 10, 0x80));
+  rt.store.emit('work.add', {
+    convId: 'th_a',
+    entry: {
+      id: 'wf_odd',
+      kind: 'file',
+      path: '/p/odd.txt',
+      rel: 'odd.txt',
+      handles: ['alpha'],
+      before: { exists: false },
+      after: { exists: true, size: odd.size, sha256: odd.sha256, binary: false },
+    },
+  });
+}
+
+before(async () => {
+  const dir = tempDir('pb-room-files-');
+  app = await start({ port: PORT, dataDir: dir, fresh: true, demo: false, quiet: true, claudeHome: dir, listen: false });
+  const { rt } = app;
+  const write = async (room, name, bytes, type) => {
+    const r = await writeAsset(rt.store, rt.assets.roomBlobs(), { kind: 'write', room, name, bytes: Buffer.from(bytes), type, author: 'alpha' });
+    assert.ok(r.ok, JSON.stringify(r));
+    return r.id;
+  };
+  rt.store.emit('thread', { id: 'th_a', members: [] });
+  rt.store.emit('thread', { id: 'th_a_side', kind: 'side', parentId: 'th_a', members: [] });
+  rt.store.emit('thread', { id: 'th_b', members: [] });
+  ids.notes = await write('th_a', 'notes/plan.md', '# Plan\n<script>x</script>\n', 'text/markdown');
+  ids.image = await write('th_a', 'pics/dot.png', image, 'image/png');
+  ids.page = await write('th_a', 'site/index.html', '<!doctype html><script>alert(1)</script>', 'text/html');
+  ids.other = await write('th_b', 'theirs.md', 'not yours', 'text/markdown');
+  ids.gone = await write('th_a', 'gone.md', 'was here', 'text/markdown');
+  const del = await writeAsset(rt.store, rt.assets.roomBlobs(), { kind: 'delete', room: 'th_a', id: ids.gone, base: 1, author: 'alpha' });
+  assert.ok(del.ok, JSON.stringify(del));
+  // Past the viewer’s limit, with a three-byte character across it.
+  ids.long = await write('th_a', 'long.txt', `${'a'.repeat(VIEWER.textBytes - 1)}€tail`, 'text/plain');
+  await changedFiles(rt);
   await rt.store.flush();
 });
 after(async () => {
@@ -159,4 +178,10 @@ test('text shown inline is cut at the viewer’s limit in bytes, at a character�
   assert.equal(shown.bytes.toString(), 'a'.repeat(VIEWER.textBytes - 1));
   const whole = await get(`/api/threads/th_a/assets/${ids.long}?download=1`);
   assert.equal(whole.bytes.length, VIEWER.textBytes - 1 + 3 + 4);
+});
+
+test('the step back to a character’s edge stops after 3 bytes, so bytes that aren’t UTF-8 still show', async () => {
+  const r = await get('/api/threads/th_a/work/files/wf_odd/content');
+  assert.equal(r.status, 200);
+  assert.equal(r.bytes.length, VIEWER.textBytes - 3);
 });
