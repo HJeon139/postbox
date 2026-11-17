@@ -109,8 +109,9 @@ function follow(v) {
     else if (now.end < v.held.end && Math.abs(now.last - v.held.last) < 1 && v.held.end > s.clientHeight)
       v.el.style.marginBottom = `${heldNow + v.held.end - now.end}px`;
     // What grows back, a running reply after its steps fold, takes the room held for it first: added to, never given
-    // back, the room grew with each shrink and regrowth, and following scrolled into it until nothing showed.
-    else if (now.end > v.held.end && heldNow > 0) {
+    // back, the room grew with each shrink and regrowth, and following scrolled into it until nothing showed. Only the
+    // newest message’s growth: what grows above it moves it down, and the room keeps it where it was.
+    else if (now.end > v.held.end && heldNow > 0 && Math.abs(now.last - v.held.last) < 1) {
       const left = heldNow - Math.min(heldNow, now.end - v.held.end);
       if (left > 0) v.el.style.marginBottom = `${left}px`;
       else release(v);
