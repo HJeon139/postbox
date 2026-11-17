@@ -41,13 +41,14 @@ export function viewHeaders(name, { type, isText, download }) {
 }
 
 /**
- * What the viewer is sent: text shown inline stops at VIEWER.textBytes, cut back to a character’s first byte so no
- * character is split; anything else, and every download, whole. @param {Buffer} bytes @param {Record<string, string>} headers
+ * What the viewer is sent: text shown inline stops at VIEWER.textBytes, cut back at most 3 bytes to a character’s
+ * first byte so no character is split; anything else, and every download, whole. @param {Buffer} bytes @param {Record<string, string>} headers
  */
 function viewed(bytes, headers) {
   if (!headers['content-type'].startsWith('text/plain') || bytes.length <= VIEWER.textBytes) return { bytes, headers };
+  // A UTF-8 character has at most 3 bytes after its first; bytes that aren’t UTF-8 are cut where the limit falls.
   let end = VIEWER.textBytes;
-  while (end > 0 && (bytes[end] & 0xc0) === 0x80) end--;
+  for (let back = 0; back < 3 && (bytes[end] & 0xc0) === 0x80; back++) end--;
   return { bytes: bytes.subarray(0, end), headers };
 }
 
