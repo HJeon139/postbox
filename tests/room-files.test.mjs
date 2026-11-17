@@ -5,6 +5,7 @@
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 import { writeAsset } from '../server/assets.mjs';
+import { VIEWER } from '../shared/limits.mjs';
 import { fakeRequest } from './fake-http.mjs';
 import { png } from './review-files-fixture.mjs';
 import { tempDir } from './temp-dirs.mjs';
@@ -38,6 +39,8 @@ before(async () => {
   ids.gone = await write('th_a', 'gone.md', 'was here', 'text/markdown');
   const del = await writeAsset(rt.store, rt.assets.roomBlobs(), { kind: 'delete', room: 'th_a', id: ids.gone, base: 1, author: 'alpha' });
   assert.ok(del.ok, JSON.stringify(del));
+  // Past the viewer’s limit, with a three-byte character across it.
+  ids.long = await write('th_a', 'long.txt', `${'a'.repeat(VIEWER.textBytes - 1)}€tail`, 'text/plain');
   const kept = await rt.blobs.put(Buffer.from('export const year = 2026;\n'));
   rt.store.emit('work.add', {
     convId: 'th_a',
@@ -148,4 +151,12 @@ test('a deleted asset is a 404 at every version, its older ones included', async
     assert.equal(r.status, 404, q);
     assert.doesNotMatch(r.bytes.toString(), /was here/, q);
   }
+});
+
+test('text shown inline is cut at the viewer’s limit in bytes, at a character’s edge, and a download sends it whole', async () => {
+  const shown = await get(`/api/threads/th_a/assets/${ids.long}`);
+  assert.equal(shown.bytes.length, VIEWER.textBytes - 1, 'the € that crosses the limit is left out whole');
+  assert.equal(shown.bytes.toString(), 'a'.repeat(VIEWER.textBytes - 1));
+  const whole = await get(`/api/threads/th_a/assets/${ids.long}?download=1`);
+  assert.equal(whole.bytes.length, VIEWER.textBytes - 1 + 3 + 4);
 });

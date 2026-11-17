@@ -5,6 +5,7 @@
 
 import { expect, test } from '@playwright/test';
 import { writeAsset } from '../../server/assets.mjs';
+import { VIEWER } from '../../shared/limits.mjs';
 import * as arrange from '../arrange.mjs';
 import { png } from '../review-files-fixture.mjs';
 import { failOnPageErrors, PHONE, startPostbox, synced } from './postbox.mjs';
@@ -28,6 +29,7 @@ test.beforeAll(async () => {
   };
   ids.plan = await write(conv.id, 'notes/plan.md', Buffer.from('# The plan\n\nRead **every** note first.\n'), 'text/markdown');
   ids.dot = await write(conv.id, 'pics/dot.png', png(40, 30), 'image/png');
+  ids.long = await write(conv.id, 'logs/long.txt', Buffer.from(`${'line of the log\n'.repeat(VIEWER.textBytes / 16)}the end\n`), 'text/plain');
   ids.theirs = await write(other.id, 'theirs.md', Buffer.from('# Not here\n'), 'text/markdown');
   const kept = await arrange.storeBlob(rt, Buffer.from(SCRIPT));
   ids.file = 'wf_scriptjs';
@@ -113,6 +115,15 @@ test('an image asset shows as an image', async ({ page }) => {
   const img = page.locator('#work-pane .wv img.wv-img');
   await expect(img).toHaveAttribute('alt', 'pics/dot.png');
   await expect.poll(() => img.evaluate((el) => /** @type {HTMLImageElement} */ (el).naturalWidth)).toBe(40);
+});
+
+test('a long text shows what the route sends, the viewer’s limit in bytes, and says so in the same unit as its size', async ({ page }) => {
+  await open(page, `?work&at=${ids.long}`);
+  const viewer = page.locator('#work-pane .wv');
+  await expect(viewer).toContainText('Showing the first 262.1 KB of 262.2 KB. Download it for the rest.');
+  await expect(viewer).toContainText('· 262.2 KB');
+  await expect.poll(() => viewer.locator('pre.wv-pre').evaluate((el) => el.textContent?.length)).toBe(VIEWER.textBytes);
+  await expect(viewer.locator('pre.wv-pre')).not.toContainText('the end');
 });
 
 test('another conversation’s asset id opens nothing', async ({ page }) => {

@@ -4,6 +4,7 @@
 // (designs/architecture/assets.md, “Assets”).
 
 import { INLINE_TYPES } from '../shared/files.mjs';
+import { VIEWER } from '../shared/limits.mjs';
 import { own } from '../shared/state-assets.mjs';
 import { roomOf, versionAt } from './assets.mjs';
 import { httpError } from './helpers.mjs';
@@ -40,6 +41,17 @@ export function viewHeaders(name, { type, isText, download }) {
 }
 
 /**
+ * What the viewer is sent: text shown inline stops at VIEWER.textBytes, cut back to a character’s first byte so no
+ * character is split; anything else, and every download, whole. @param {Buffer} bytes @param {Record<string, string>} headers
+ */
+function viewed(bytes, headers) {
+  if (!headers['content-type'].startsWith('text/plain') || bytes.length <= VIEWER.textBytes) return { bytes, headers };
+  let end = VIEWER.textBytes;
+  while (end > 0 && (bytes[end] & 0xc0) === 0x80) end--;
+  return { bytes: bytes.subarray(0, end), headers };
+}
+
+/**
  * An asset’s version in a conversation: the newest unless v names another. A miss of any kind (another room’s asset,
  * a deleted asset at any version, a pruned version, a blob gone) is the same 404, so an id from elsewhere tells
  * nothing (#31), and a deleted asset can’t be read back through an older version (#1446).
@@ -57,7 +69,7 @@ async function assetFile(rt, threadId, assetId, v, download) {
     if (e?.code === 'ENOENT') throw httpError(404, MISSING);
     throw e;
   });
-  return { bytes, headers: viewHeaders(asset.name.replace(/^.*\//, ''), { type: version.type, isText: version.isText, download }) };
+  return viewed(bytes, viewHeaders(asset.name.replace(/^.*\//, ''), { type: version.type, isText: version.isText, download }));
 }
 
 /** A changed file as the agents left it, from the copy the ledger kept. @param {any} rt */
@@ -65,7 +77,7 @@ async function changedFile(rt, threadId, fileId, download) {
   const f = await workCopy(rt.work, threadId, fileId);
   const ext = f.name.replace(/^.*\./, '').toLowerCase();
   const type = (f.binary && own(IMAGES, ext)) || '';
-  return { bytes: f.bytes, headers: viewHeaders(f.name, { type, isText: !f.binary, download }) };
+  return viewed(f.bytes, viewHeaders(f.name, { type, isText: !f.binary, download }));
 }
 
 /**
