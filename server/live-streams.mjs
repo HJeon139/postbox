@@ -157,14 +157,13 @@ function liveSender({ store, streams, deliver, events, openOf, sent }) {
       if (store.epoch !== epoch) return;
       // Built once for each way a page can see it: a tool’s stream and a page with the conversation open see an item’s
       // frame the same, and every stream a session’s.
-      /** @type {Map<string, string>} */
-      const built = new Map();
+      /** @type {Record<string, string>} */
+      const built = {};
       const key = sent.keyOf(frame);
       for (const res of streams) {
         const open = openOf.get(res) ?? null;
         const how = viewOf(open, frame.threadId);
-        let out = built.get(how);
-        if (out === undefined) built.set(how, (out = publicLiveFrame(frame, open, events)));
+        const out = (built[how] ??= publicLiveFrame(frame, open, events));
         if (!out) continue;
         deliver(res, out);
         if (open && key) sent.note(res, key);

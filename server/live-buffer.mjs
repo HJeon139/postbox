@@ -90,22 +90,29 @@ export function liveCommit(rt, turn) {
 export function liveStep(rt, turn, step) {
   const live = bufferOf(rt, turn);
   if (startsOwn(live, step) || (!live.changed.has(step.id) && live.changed.size >= LIVE_CAPS.steps)) liveCommit(rt, turn);
-  const capped = capFields(step);
   const rev = (live.rev.get(step.id) ?? 0) + 1;
   live.rev.set(step.id, rev);
   const before = live.changed.get(step.id)?.step;
-  live.changed.set(step.id, { itemId: turn.first, step: { ...(before ?? {}), ...capped } });
-  sendLive(rt.store, { kind: 'step', threadId: turn.threadId, itemId: turn.first, rev, step: before ? changedOf(before, capped) : capped });
+  const sent = before ? changedOf(before, step) : capFields(step);
+  live.changed.set(step.id, { itemId: turn.first, step: before ? { ...before, ...sent } : { ...sent } });
+  sendLive(rt.store, { kind: 'step', threadId: turn.threadId, itemId: turn.first, rev, step: sent });
 }
 
 /**
- * What a step’s update changed since the buffer last had it, with its id: what a frame sends of a step the page has, so
- * a step isn’t sent whole each time, which would cost the wire more than the log saves. A page merges it over the step
- * it holds (shared/live-apply.mjs); one that joins later gets the whole step from the snapshot or the store.
+ * What a step’s update changed since the buffer last had it, capped, with its id: what a frame sends of a step the page
+ * has, so a step isn’t sent whole each time, which would cost the wire more than the log saves. A page merges it over
+ * the step it holds (shared/live-apply.mjs); one that joins later gets the whole step from the snapshot or the store.
  * @param {Record<string, any>} before @param {Record<string, any>} now
  */
 function changedOf(before, now) {
-  return Object.fromEntries(Object.entries(now).filter(([k, v]) => k === 'id' || before[k] !== v));
+  /** @type {Record<string, any>} */
+  const out = { id: now.id };
+  for (const k in now) {
+    if (!Object.hasOwn(now, k)) continue;
+    const v = capString(now[k]);
+    if (before[k] !== v) out[k] = v;
+  }
+  return out;
 }
 
 /**
@@ -129,25 +136,26 @@ function sameList(a, b) {
  * The session’s live fields: merged into the buffer, and what changed of them sent live, with any stored change the frame
  * carries (liveUpdate). @param {any} rt @param {any} turn @param {Record<string, any>} patch @param {Record<string, any>} [carried]
  */
-export function liveSession(rt, turn, patch, carried = {}) {
-  /** @type {Record<string, any>} */
-  const capped = {};
-  for (const [k, v] of Object.entries(patch)) capped[k] = k === 'toolCalls' || k === 'subagents' ? capList(v, LIVE_CAPS[k]) : capString(v);
+export function liveSession(rt, turn, patch, carried) {
   const session = bufferOf(rt, turn).session;
-  // Only what changed goes, as with a step: a page holds the rest from an earlier frame, the snapshot or the store.
-  const stored = rt.store.pending.session(turn.sessionId) ?? {};
   /** @type {Record<string, any>} */
-  const changed = {};
+  const frame = { kind: 'session', sessionId: turn.sessionId };
   let any = false;
-  for (const k in capped) {
-    const was = k in session ? session[k] : stored[k];
-    const v = capped[k];
+  /** @type {any} */
+  let stored;
+  for (const k in patch) {
+    if (!Object.hasOwn(patch, k)) continue;
+    const v = k === 'toolCalls' || k === 'subagents' ? capList(patch[k], LIVE_CAPS[k]) : capString(patch[k]);
+    // Only what changed goes, as with a step: a page holds the rest from an earlier frame, the snapshot or the store,
+    // which is read only for a field the buffer hasn’t had.
+    const was = k in session ? session[k] : (stored ??= rt.store.pending.session(turn.sessionId) ?? {})[k];
+    session[k] = v;
     if (v === was || sameList(v, was)) continue;
-    changed[k] = v;
+    frame[k] = v;
     any = true;
   }
-  Object.assign(session, capped);
-  if (any || Object.keys(carried).length) sendLive(rt.store, { kind: 'session', sessionId: turn.sessionId, ...changed, ...carried });
+  if (carried) Object.assign(frame, carried);
+  if (any || carried) sendLive(rt.store, frame);
 }
 
 /**
@@ -202,8 +210,8 @@ export function liveUpdate(rt, turn, patch) {
   const live = {};
   for (const [k, v] of Object.entries(patch)) (SESSION_FIELDS.includes(k) ? live : stored)[k] = v;
   // Only a change is stored: a write of the same state would still store its updatedAt, and send it.
-  const se = rt.store.pending.session(turn.sessionId);
-  const change = se && Object.keys(stored).length ? sessionPatch(se, stored) : null;
+  const se = Object.keys(stored).length ? rt.store.pending.session(turn.sessionId) : null;
+  const change = se ? sessionPatch(se, stored) : null;
   /** @type {Record<string, any> | undefined} */
   let carried;
   // A change of state or context rides on the live frame, and its stored event isn’t sent to the pages again:
