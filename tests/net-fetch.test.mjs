@@ -4,27 +4,20 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { netFetch, privateAddress } from '../server/net-fetch.mjs';
+import { netFetch } from '../server/net-fetch.mjs';
 
-test('private, loopback, link-local and other non-public addresses are recognized', () => {
-  for (const ip of [
-    '127.0.0.1',
-    '10.1.2.3',
-    '172.20.0.1',
-    '192.168.3.20',
-    '169.254.169.254',
-    '100.64.0.1',
-    '0.0.0.0',
-    '224.0.0.1',
-    '::1',
-    '::',
-    'fd00::1',
-    'fe80::1',
-    '::ffff:192.168.1.1',
-    '::ffff:127.0.0.1',
+test('net.fetch refuses bracketed IPv6 forms of loopback, metadata and the local network before connecting', async () => {
+  for (const url of [
+    'http://[::ffff:127.0.0.1]:4517/',
+    'http://[::ffff:7f00:1]:4517/',
+    'http://[0:0:0:0:0:ffff:127.0.0.1]:4517/',
+    'http://[::ffff:a9fe:a9fe]/latest/',
+    'http://[::ffff:192.168.1.1]/',
+    'http://[::127.0.0.1]/',
+    'http://[64:ff9b::7f00:1]/',
+    'http://[2002:7f00:1::]/',
   ])
-    assert.equal(privateAddress(ip), true, ip);
-  for (const ip of ['8.8.8.8', '1.1.1.1', '172.32.0.1', '2606:4700::1111']) assert.equal(privateAddress(ip), false, ip);
+    await assert.rejects(netFetch({ url }), (e) => e.status === 403, url);
 });
 
 test('net.fetch refuses this computer and the local network, by name and by address', async () => {
