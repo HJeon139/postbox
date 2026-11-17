@@ -150,14 +150,25 @@ test('#866 an item kept for its focus and redrawn while you read far up is on th
 
 test('#866 an item kept for its focus keeps it when you scroll far away and back', async ({ page }) => {
   await open(page);
-  const id = app.store.items(room).at(-9).id;
+  const list = app.store.items(room);
+  const id = list.at(-9).id;
   const kept = page.locator(`#main > .item[data-key="${id}"]`);
+  // Its neighbors, which the range unmounts once it moves past them, and mounts again once it grows back over them.
+  const near = [list.at(-10).id, list.at(-8).id].map((k) => page.locator(`#main > .item[data-key="${k}"]`));
+  const neighbors = async () => (await near[0].count()) + (await near[1].count());
   await kept.focus();
   await page.mouse.move(640, 400);
-  for (let round = 0; round < 4; round++) await scrollUp(page, 15);
+  // Up a view at a time until the range has left the item, then a few views more: it’s an island, kept for its focus.
+  // Each step is two frames, so the test scrolls only as far as it has to (#1459: 150 fixed steps ran at its budget).
+  for (let step = 0; step < 40 && (await neighbors()); step++) await scrollUp(page, 1);
+  await scrollUp(page, 5);
+  expect(await neighbors(), 'the range has left the item').toBe(0);
   await expect(kept, 'kept on the page for its focus').toHaveCount(1);
   // Back down: the range grows over the island and takes it back into its run (window.mjs, mountRun).
-  for (let round = 0; round < 6; round++) await scrollUp(page, 15, 800);
+  for (let step = 0; step < 60 && (await neighbors()) < 2; step++) await scrollUp(page, 1, 800);
+  await scrollUp(page, 2, 800);
+  expect(await neighbors(), 'the item is back in the range’s run').toBe(2);
+  await expect(kept).toHaveCount(1);
   const focused = await page.evaluate(
     () => /** @type {HTMLElement | null} */ (document.activeElement)?.closest('[data-key]')?.getAttribute('data-key') ?? null,
   );
