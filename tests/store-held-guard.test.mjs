@@ -173,7 +173,9 @@ const PENDING = {
   'turn-end-listeners.mjs': ['listenTurnEnd'], // an app-check turn’s apps at its end, a sweep that writes back, maybe held behind a commit (#796)
   'turn-finish.mjs': ['endTurn'], // a turn’s end: its own items, maybe held behind a commit (#796)
   'turn-needs.mjs': ['needsAfter'], // the thread a turn’s reply count goes to, maybe held behind a commit (#796)
-  'turn-quota.mjs': ['sessionsOn', 'quotaMoved'], // the quota marks that decide a mark or its clearing, maybe held behind a commit (#442)
+  // The quota marks that decide a mark or its clearing, and the persona that says whose quota it is, each maybe held
+  // behind a commit (#442).
+  'turn-quota.mjs': ['quotaKey', 'sessionsOn', 'quotaName', 'quotaMoved'],
   // Stop's session as its own write of heldSteps left it, so Keep running's steps run on behind a held commit (#1042).
   'turn-stop.mjs': ['stop', 'recordStopped', 'turnExited'],
   'tool-ask.mjs': ['askForTool', 'settleToolAsks'], // a second ask for the same tool, and the sweep that settles open asks
