@@ -10,16 +10,15 @@
 import { BACKEND_NAMES } from '../shared/agent-facts.mjs';
 import { hostOf } from './remote/placement.mjs';
 
-/**
- * Whose quota a session’s turns use: its persona’s backend, and the host it runs on, if any (`backend@host`).
- * @param {any} rt @param {any} se @returns {string}
- */
-function quotaKey(rt, se) {
-  const persona = rt.s.personas[se.personaId];
+/** Whose quota a persona’s turns use: its backend, and the host it runs on, if any (`backend@host`). @param {any} persona */
+function keyOf(persona) {
   const backend = persona?.backend ?? 'mock';
   const host = hostOf(persona);
   return host ? `${backend}@${host}` : backend;
 }
+
+/** Whose quota a session’s turns use (keyOf). @param {any} rt @param {any} se @returns {string} */
+const quotaKey = (rt, se) => keyOf(rt.s.personas[se.personaId]);
 
 /** The sessions whose turns use one quota. @param {any} rt @param {string} key @returns {any[]} */
 const sessionsOn = (rt, key) => Object.values(rt.s.sessions).filter((se) => !se.retiredFork && quotaKey(rt, se) === key);
@@ -95,5 +94,22 @@ export function quotaBack(rt, se) {
     if (other.quota) {
       rt.sessions.update(other.id, { quota: null });
       rt.delivery.wake(other.id);
+    }
+}
+
+/**
+ * A persona moved to another backend or computer: its agents’ turns use that quota now, so they leave the old one’s
+ * mark and take the new one’s, if it’s out; one no longer out may start what waited. On persona.updated.
+ * @param {any} rt @param {any} persona  as written @param {any} was  before the change
+ */
+export function quotaMoved(rt, persona, was) {
+  const key = keyOf(persona);
+  if (key === keyOf(was)) return;
+  const mine = (/** @type {any} */ se) => se.personaId === persona.id;
+  const there = sessionsOn(rt, key).find((se) => !mine(se) && se.quota)?.quota ?? null;
+  for (const se of Object.values(rt.s.sessions))
+    if (mine(se) && !se.retiredFork && (se.quota || there)) {
+      rt.sessions.update(se.id, { quota: there });
+      if (!there) rt.delivery.wake(se.id);
     }
 }

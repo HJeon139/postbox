@@ -62,7 +62,7 @@ import { settleToolAsks } from './tool-ask.mjs';
 import { startTopic } from './topic-open.mjs';
 import { listenTurnEnd } from './turn-end-listeners.mjs';
 import { entryLine } from './turn-input.mjs';
-import { armQuotaResets } from './turn-quota.mjs';
+import { armQuotaResets, quotaMoved } from './turn-quota.mjs';
 import { Turns } from './turn-service.mjs';
 import { settleSubagentSteps } from './turn-steps.mjs';
 import { dismissStopAsk, recordStopped, requestStop, stop, stopTurns } from './turn-stop.mjs';
@@ -288,6 +288,8 @@ export class Runtime {
       if (patch.tools !== undefined) settleToolAsks(this, persona);
     });
     this.bus.on('persona.updated', ({ persona }) => queue.drainMovedOff(this, persona.id));
+    // A quota is its backend’s on the computer that runs it: an agent moved keeps the mark of where it runs now (#442).
+    this.bus.on('persona.updated', ({ persona, was }) => quotaMoved(this, persona, was));
     // The inbox’s listeners, last: a final reply’s mentions become entries, and the end of a turn settles them.
     listenTurnEnd(this);
     listenInbox(this);
