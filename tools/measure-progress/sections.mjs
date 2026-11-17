@@ -26,6 +26,9 @@ export async function measured({ tabs = 0, prepare = (f) => ({ open: [f.t.id] })
     const { io, written } = countingIo();
     const store = await new Store(dir, { io }).load();
     const f = setup(store);
+    // The project’s folder isn’t a repository, so every git call the ledger makes answers as one there would, without
+    // a process: real ones were about 30% of a crowd’s profile, and none of it Postbox’s own work.
+    f.rt.ledger.git = notARepository;
     const prepared = prepare(f);
     const wire = tabs ? openTabs(store, tabs, prepared.open) : null;
     // The whole event loop’s work and the process’s CPU over the turns and what they start after them: the store’s
@@ -48,6 +51,9 @@ export async function measured({ tabs = 0, prepare = (f) => ({ open: [f.t.id] })
     rmSync(dir, { recursive: true, force: true });
   }
 }
+
+/** What git answers in a folder that isn’t a repository (server/ledger-git.mjs runGit’s result). */
+const notARepository = async () => ({ code: 128, stdout: '', stderr: 'fatal: not a git repository (or any of the parent directories): .git\n' });
 
 /** Turns in one room, by the fixture’s agent @beta. @param {any} f @param {import('./drive.mjs').Recording} rec */
 async function oneTurn(f, rec) {
