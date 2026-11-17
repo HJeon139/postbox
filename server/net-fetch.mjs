@@ -13,16 +13,20 @@ const FETCH_BYTES = 1024 * 1024;
 const FETCH_MS = 10_000;
 
 /**
+ * Agents of net.fetch’s own, so a proxy the environment sets for node’s default agents (NODE_USE_ENV_PROXY with
+ * HTTP_PROXY or HTTPS_PROXY) never applies: through one, the address checks would see only the proxy, and it would get
+ * the proxy’s credentials.
+ */
+const AGENTS = { 'http:': new http.Agent(), 'https:': new https.Agent() };
+
+/**
  * Hosts the demo treats as public, so the local stand-in for “another site” can be fetched: POSTBOX_FETCH_ALLOW,
  * host:port, comma-separated. Only for measuring; nothing sets it by default.
  */
 const allowed = () => new Set((process.env.POSTBOX_FETCH_ALLOW ?? '').split(',').filter(Boolean));
 
-/**
- * net.fetch { url }: GET a public URL from Postbox’s server, with no cookies or credentials, and give the app its status,
- * type and text. Redirects aren’t followed: the app sees the 3xx and its location. @param {{ url?: unknown }} args
- */
-export async function netFetch({ url } = {}) {
+/** The URL net.fetch may GET, or the reason it may not: refused before anything leaves. @param {unknown} url */
+export function fetchableUrl(url) {
   let u;
   try {
     u = new URL(String(url));
@@ -31,22 +35,39 @@ export async function netFetch({ url } = {}) {
   }
   if (u.protocol !== 'https:' && u.protocol !== 'http:') throw httpError(400, 'net.fetch fetches only http and https URLs.');
   if (u.username || u.password) throw httpError(400, 'net.fetch sends no credentials, so a URL can’t carry them.');
-  const listed = allowed().has(u.host);
   const bare = u.hostname.replace(/^\[|\]$/g, '');
-  if (!listed && (u.hostname === 'localhost' || (isIP(bare) && privateAddress(bare))))
+  if (!allowed().has(u.host) && (u.hostname === 'localhost' || (isIP(bare) && privateAddress(bare))))
     throw httpError(403, `net.fetch refused ${u.host}: it’s on this computer or the local network.`);
+  return u;
+}
+
+/**
+ * net.fetch { url }: GET a public URL from Postbox’s server, with no cookies or credentials, and give the app its status,
+ * type and text. Redirects aren’t followed: the app sees the 3xx and its location. The whole fetch, from connecting to
+ * the body’s last byte, has ms to finish, or it’s cut off with a 504.
+ * @param {{ url?: unknown }} args @param {{ ms?: number }} [opts]  the deadline, shorter only in tests
+ */
+export async function netFetch({ url } = {}, { ms = FETCH_MS } = {}) {
+  const u = fetchableUrl(url);
   const lib = u.protocol === 'https:' ? https : http;
   return new Promise((resolve, reject) => {
-    const req = lib.get(u, { lookup: guardedLookup(listed), headers: { 'user-agent': 'Postbox-app-fetch', accept: '*/*' }, timeout: FETCH_MS }, (res) => {
+    const headers = { 'user-agent': 'Postbox-app-fetch', accept: '*/*' };
+    const deadline = setTimeout(() => {
+      reject(httpError(504, `net.fetch gave up after ${ms / 1000} seconds.`));
+      req.destroy();
+    }, ms);
+    deadline.unref();
+    const req = lib.get(u, { agent: AGENTS[u.protocol], lookup: guardedLookup(allowed().has(u.host)), headers }, (res) => {
       const chunks = [];
       let size = 0;
       res.on('data', (c) => {
         size += c.length;
-        if (size > FETCH_BYTES) {
-          req.destroy();
-          reject(httpError(413, 'net.fetch reads at most 1 MB.'));
-        } else chunks.push(c);
+        if (size <= FETCH_BYTES) return chunks.push(c);
+        reject(httpError(413, 'net.fetch reads at most 1 MB.'));
+        req.destroy();
       });
+      res.on('error', (e) => reject(httpError(502, `net.fetch failed: ${e.message}`)));
+      res.on('close', () => clearTimeout(deadline));
       res.on('end', () =>
         resolve({
           status: res.statusCode,
@@ -56,9 +77,9 @@ export async function netFetch({ url } = {}) {
         }),
       );
     });
-    req.on('timeout', () => req.destroy(httpError(504, 'net.fetch gave up after 10 seconds.')));
-    req.on('error', (/** @type {NodeJS.ErrnoException} */ e) =>
-      reject(e.code === 'EPRIVATE' ? httpError(403, `net.fetch refused it: ${e.message}`) : httpError(502, `net.fetch failed: ${e.message}`)),
-    );
+    req.on('error', (/** @type {NodeJS.ErrnoException} */ e) => {
+      clearTimeout(deadline);
+      reject(e.code === 'EPRIVATE' ? httpError(403, `net.fetch refused it: ${e.message}`) : httpError(502, `net.fetch failed: ${e.message}`));
+    });
   });
 }
