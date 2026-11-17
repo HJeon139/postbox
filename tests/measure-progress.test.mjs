@@ -69,3 +69,35 @@ test('a number is worse only when a second round of pairs agrees, and small time
   assert.equal(worseTwice(worse, compare(runs(1), runs(1))).length, 0, 'a second round that disagrees clears it');
   assert.equal(worseTwice(worse, compare(runs(1), runs(1.2))).length, 1, 'one that agrees keeps it');
 });
+
+test('a tab connecting mid-turn counts the running turns’ snapshot apart, and its stream gets the running turns', async () => {
+  const { openTabs, tabOn } = await import('../tools/measure-progress/wire.mjs');
+  const backlog = 'event: item.add\ndata: {}\n\n';
+  const snapshot = 'event: live\ndata: {"kind":"snapshot"}\n\n';
+  /** @type {any} */
+  let streamOf = null;
+  // A stand-in for server/live-streams.mjs’s liveStreams: a connect writes a backlog frame, then a snapshot frame.
+  const fake = (/** @type {any} */ _store, /** @type {any} */ _events, /** @type {any} */ o) => {
+    const ls = {
+      running: o?.running,
+      /** @type {any[]} */ open: [],
+      stream: (/** @type {any} */ _req, /** @type {any} */ res) => {
+        res.write(backlog);
+        res.write(snapshot);
+        ls.open.push(res);
+      },
+      stop() {},
+      headers: null,
+    };
+    streamOf = ls;
+    return ls;
+  };
+  const store = { state: { seq: 7 }, epoch: 'e' };
+  const running = { all: () => [] };
+  const wire = openTabs(store, 0, ['t1'], running, fake);
+  assert.equal(streamOf.running, running, 'the stream is told the running turns, or it has no snapshot to send');
+  const tab = tabOn(wire.ls, store, ['t1'], 3);
+  assert.deepEqual([tab.connectFrames, tab.snapshotFrames, tab.snapshotBytes], [2, 1, Buffer.byteLength(snapshot)]);
+  streamOf.open[0].write('event: live\ndata: {"kind":"step"}\n\n');
+  assert.deepEqual([tab.frames, tab.snapshotFrames], [1, 1], 'a frame after the connect is the work’s, not the snapshot’s');
+});
