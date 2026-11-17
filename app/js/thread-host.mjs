@@ -5,6 +5,7 @@
 
 import { api, busy, client, itemsOf, sessionsOf } from './client.mjs';
 import { h, icon, syncList } from './dom.mjs';
+import { heldLine } from './held-line.mjs';
 import { hostOf, ranOnHost, resumeHint } from './remote.mjs';
 import { say, toast } from './ui.mjs';
 
@@ -123,7 +124,7 @@ function remoteCallout(it, f) {
     'div.callout.host-callout',
     { role: 'alert', dataset: { remote: f.state } },
     h('span.g.g-failed', { 'aria-hidden': 'true' }),
-    h('div.grow', h('b', title), rest ? ` · ${rest}` : '', f.canResume ? ` ${resumeHint(f.se)}` : ''),
+    h('div.grow', heldLine(it), h('b', title), rest ? ` · ${rest}` : '', f.canResume ? ` ${resumeHint(f.se)}` : ''),
     f.canResume
       ? h('button.btn.sm', { type: 'button', 'aria-label': `Resume ${f.se.handle} on ${f.name}`, onclick: resume }, icon('retry', 'i-sm'), 'Resume')
       : null,

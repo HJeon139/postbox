@@ -21,6 +21,7 @@ import { fitDraft } from './composer-size.mjs';
 import { addressLine, addressSig, commandHint, placeholderFor } from './composer-to.mjs';
 import { $, ago, dayOf, fill, h, icon, plural, syncList, timeOf, trusted } from './dom.mjs';
 import { draftAttachments } from './draft-attachments.mjs';
+import { appSig, drawnApp } from './drawn-app.mjs';
 import { failedCallout } from './failed-actions.mjs';
 import { goToItem } from './go-to-item.mjs';
 import { focusComposer, hopBlock } from './hop-card.mjs';
@@ -34,6 +35,7 @@ import { hostOf } from './remote.mjs';
 import { replyLine } from './reply-rings.mjs';
 import { stoppedSaid, stoppedTag } from './reply-stop.mjs';
 import { holdFocus, replaceTranscriptItem } from './rerender-state.mjs';
+import { adopt, clearBut, keepable, noteDrawn, standIn } from './resync-keep.mjs';
 import { ringFor, stateWord } from './ring.mjs';
 import { boilerplateDesc, confirmDelete, openAttachSession, openFolderPicker, openNewAgent, openRename, openSettings } from './sheets.mjs';
 import { sideActive, sideLine, sideSig } from './side-line.mjs';
@@ -107,14 +109,6 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
   // Above them, a turn on a host Postbox asked to stop and the host hasn’t confirmed it stopped (#120).
   const hostTurns = hostTurnsList(threadId);
 
-  const appSig = (app) => JSON.stringify([app.current, app.versions?.length, app.check?.status, app.check?.problems?.length ?? 0, app.retired?.at ?? null]);
-  /** The id of the app a block draws: an app’s own, or an app review’s (#857). */
-  const drawnApp = (it) => {
-    if (it.kind !== 'block' || !it.valid) return null;
-    if (it.block.type === 'app') return it.block.id;
-    if (it.block.type === 'review' && it.block.format === 'app') return it.block.appId;
-    return null;
-  };
   const render = (it, prev) => {
     const ctx = { threadId, kind: S().threads[threadId]?.kind, rerender: () => rerender(it.id) };
     const node = renderItem(it, prev, ctx);
@@ -123,6 +117,7 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
     const drawn = S().apps[drawnApp(it)];
     if (drawn) node.dataset.appSig = appSig(drawn);
     if (it.kind === 'agent') node.dataset.remoteSig = remoteSig(it);
+    noteDrawn(node, it, prev);
     node.classList.add('item');
     if (!node.hasAttribute('tabindex')) node.tabIndex = -1;
     return node;
@@ -141,8 +136,10 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
     if (old && win) replacedNode(win, old, n);
     back();
   };
+  // The nodes a rebuild keeps where they are, while it runs (resync-keep.mjs, #987).
+  let held = new Map();
   const mountAt = (/** @type {any[]} */ list, /** @type {number} */ i) => {
-    const n = render(list[i], list[i - 1]);
+    const n = held.has(list[i].id) ? standIn(list[i].id) : render(list[i], list[i - 1]);
     nodes.set(list[i].id, n);
     return n;
   };
@@ -159,7 +156,8 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
     return [...nodes.keys()].map((id) => list[placeIn(threadId, id)]).filter(Boolean);
   };
   const all = (/** @type {string | null} */ anchorKey = was?.anchor?.key ?? null, /** @type {any} */ kept = null) => {
-    el.replaceChildren();
+    held = keepable(el, nodes, itemsOf(threadId), (id) => placeIn(threadId, id));
+    clearBut(el, held);
     nodes.clear();
     win?.destroy();
     const list = itemsOf(threadId);
@@ -176,11 +174,12 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
       edge: (/** @type {'before' | 'after'} */ side) => (side === 'before' ? toFirst(threadId) : toLast(threadId)),
     };
     win = createWindow({ el, key: `${inPanel}:${threadId}`, list, anchorKey, inPanel, nodes, edges, mount: (i) => mountAt(list, i) });
-    // The item that had focus goes back in, in its range or as an island (window-keep.mjs).
-    if (win) {
-      win.build();
-      keepFocused(win, kept);
-    } else for (let i = 0; i < list.length; i++) el.append(mountAt(list, i));
+    if (win) win.build();
+    else for (let i = 0; i < list.length; i++) el.append(mountAt(list, i));
+    // The nodes kept go in their places, then the item that had focus, in its range or as an island (window-keep.mjs).
+    adopt(el, held, nodes, win);
+    held = new Map();
+    if (win) keepFocused(win, kept);
     hostTurns.paint();
     paintWorking();
   };

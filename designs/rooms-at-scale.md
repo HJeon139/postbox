@@ -71,12 +71,12 @@ flowchart LR
 - **A crowded room fits the screen.** With eight agents or more, a running reply is its name line, a line of its newest words and its step, and “Show the whole reply” opens the rest. An agent’s working row shows only while its reply is off screen.
 - **A finished turn is one line.** When a turn ends, is stopped or is cut off by a restart, its steps fold into its work record at the top of its words. The record opens to the steps and to the turn in Work, and the list under the post keeps only what the calls made.
 - **What it costs,** measured against `main`: no more layout a step than `main`, but 20 to 26% more of the page’s time a turn, because it draws more. A finished turn’s stored steps are 13 to 15% bigger than on `main`, and the log grows 16 to 18% more a turn while the turn runs.
+- **A turn that dies says what it held.** A failed reply with no words of its own keeps a small record of its turn: whom it was answering and which message (handles and ids, never the text), how many steps it took and the last, and its background jobs still running. It shows as one quiet line before the error, which stays as it was, and asks nothing of the person (`server/turn-held.mjs`, `shared/held-words.mjs`).
 
 **Still to do,** after the inbox, as [`architecture/services.md`](architecture/services.md) orders it:
 - **Progress is still stored.** The live view’s detail goes to the event log and folds when the turn ends. Live-only progress replaces that, with Turns owning the live buffer and the turn’s record.
 - **Postbox’s own tool calls are still quiet,** and a running step doesn’t show how long it has run.
 - **An agent’s state shows only as running and its step.** Waiting on a job, on another agent or on you, failed and done come from Running, Turns, Work’s jobs, Delivery’s entries and asks.
-- **A turn that dies doesn’t yet say what it held.** Turns’ record of the turn will.
 
 Changes in `intent.md`: the Work rows on the per-turn list, the Layout row on the agent tree, and “The loop”.
 
