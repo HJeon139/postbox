@@ -145,6 +145,44 @@ test('another conversation’s asset id opens nothing', async ({ page }) => {
   await expect(page.locator('#work-pane .wv .md')).toHaveCount(0);
 });
 
+test('replies in a conversation with no assets and no changed files cost no link pass', async ({ page }) => {
+  const { rt } = app;
+  const t = rt.createThread({
+    projectId: Object.values(rt.store.state.projects)[0].id,
+    title: 'Nothing to link',
+    personaIds: [arrange.persona(rt, 'librarian').id],
+  });
+  const agent = arrange.agentIn(rt, t.id);
+  const replies = (from, n) => {
+    for (let i = from; i < from + n; i++)
+      arrange.post(rt, t.id, {
+        kind: 'agent',
+        sessionId: agent.id,
+        personaId: agent.personaId,
+        handle: agent.handle,
+        status: 'done',
+        text: `Reply ${i} names \`notes/plan.md\` and ${ids.plan}.`,
+      });
+  };
+  replies(0, 40);
+  // Counts the link pass’s query for inline code (app/js/room-links.mjs is the page’s only one).
+  await page.addInitScript(() => {
+    const all = Element.prototype.querySelectorAll;
+    /** @type {any} */ (window).pbCodeQueries = 0;
+    Element.prototype.querySelectorAll = function (sel) {
+      if (sel === 'code') /** @type {any} */ (window).pbCodeQueries++;
+      return all.call(this, sel);
+    };
+  });
+  await page.goto(`${app.origin}/#/t/${t.id}`);
+  await synced(page, app);
+  replies(40, 10);
+  await synced(page, app);
+  await expect(page.locator('.transcript .md').filter({ hasText: 'Reply 49' })).toBeVisible();
+  await expect(page.locator('.transcript a.room-ref'), 'another room’s asset and a name it lacks link nothing').toHaveCount(0);
+  expect(await page.evaluate(() => /** @type {any} */ (window).pbCodeQueries)).toBe(0);
+});
+
 test.describe('on a phone', () => {
   test.use({ ...PHONE, viewport: { width: 375, height: 812 } });
   test('the viewer shows in the pane over the conversation, and nothing scrolls sideways', async ({ page }) => {
