@@ -5,7 +5,9 @@
 //
 // One state at a time, the first that holds:
 // - you: it waits on the person. Today that is the session’s needs-you state; Asks makes it its open asks;
-// - stopping: the person pressed Stop and its turn hasn’t ended yet, so they see the Stop took;
+// - stopping: the person pressed Stop and its turn hasn’t ended yet, so they see the Stop took; or Postbox asked its
+//   host to stop a turn there (a move off the host, a restart, an errored end) and the host hasn’t confirmed it, since
+//   it may still run there (#1442);
 // - running: a live turn, or one on its host, awaiting attach among them, with its current step;
 // - quota: its harness ran out of quota, until the reset time it gave (the owner’s decision on #442). The one place
 //   quota shows in the agents area, and never as needs-you. Turns marks every agent of the backend on the same
@@ -20,8 +22,8 @@ import { conversationRoot } from './conversation.mjs';
 
 /** Session states of a live turn. */
 const LIVE = new Set(['think', 'gen', 'tool']);
-/** Remote-turn states in which the turn is still on its host (app/js/remote.mjs, ON_HOST), awaiting attach among them. */
-const ON_HOST = new Set(['running', 'waiting', 'lost', 'stopping']);
+/** Remote-turn states in which the turn runs on its host, awaiting attach among them; stopping is read on its own. */
+const ON_HOST = new Set(['running', 'waiting', 'lost']);
 
 /**
  * @typedef {{ state: 'you'|'stopping'|'running'|'quota'|'failed'|'job'|'behind'|'idle', detail: string, since?: number, until?: number }} AgentState
@@ -40,6 +42,8 @@ export function agentState(se, s, now = Date.now()) {
   if (se.state === 'needs') return { state: 'you', detail: '' };
   if (se.state === 'stopping') return { state: 'stopping', detail: '' };
   if (LIVE.has(se.state) || ON_HOST.has(se.remoteTurn?.state)) return { state: 'running', detail: se.currentStep ?? '' };
+  // A turn here runs while the host it left hasn’t confirmed its old turn stopped: running wins, as it’s at work.
+  if (se.remoteTurn?.state === 'stopping') return { state: 'stopping', detail: '' };
   const until = se.quota?.until;
   if (quotaOut(se, now)) return { state: 'quota', detail: '', ...(until ? { until } : {}) };
   if (se.state === 'failed') return { state: 'failed', detail: '' };

@@ -128,12 +128,17 @@ test('a second outage inside the drain, while the stop’s own record writes, le
   await rt.store.flush(); // the session is mid-turn on disk
   rt.store.fail(eio());
   await until(() => !arrange.running(rt, se.id), 'the outage to stop the turn');
-  const recordStopped = rt.recordStopped;
-  rt.recordStopped = function (...a) {
-    rt.recordStopped = recordStopped; // once
-    rt.store.fail(eio()); // the second outage: this stop’s writes go into memory only, and its exit still waits
-    return recordStopped.apply(this, a);
-  };
+  // The stop’s record, waiting for writes (store-outage.mjs, stopOf), meets a second outage as it starts.
+  const at = rt.storeWait.findIndex((/** @type {any} */ w) => w.stopOf === se.id);
+  assert.ok(at >= 0, 'the stop’s record waits for writes');
+  const record = rt.storeWait[at];
+  rt.storeWait[at] = Object.assign(
+    () => {
+      rt.store.fail(eio()); // the second outage: this stop’s writes go into memory only, and its exit still waits
+      return record();
+    },
+    { stopOf: se.id },
+  );
   await rt.store.reload(); // Retry 1 drains the stop’s record into a closed store
   assert.equal(rt.store.writable, false);
   await rt.store.reload(); // Retry 2: the record is gone from what waits; the exit still waits

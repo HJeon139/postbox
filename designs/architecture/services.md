@@ -80,7 +80,7 @@ The list refines the starting point from the data:
 
 ### Store
 
-- **Owns:** the state, the event log and its snapshots, the pending view (`pending`), and the outage gate (`storeWait` and `backendWait` on `Runtime` today; `gated`, `whenWritable` and `saveBackendState` in `store-outage.mjs`). Invariant: what’s pending is applied in commit order, and nothing writes while the store can’t (designs/architecture/store.md).
+- **Owns:** the state, the event log and its snapshots, the pending view (`pending`), and the outage gate (`storeWait` and `backendWait` on `Runtime` today; `gated` and `saveBackendState` in `store-outage.mjs`, `whenWritable` in `store-wait.mjs`). Invariant: what’s pending is applied in commit order, and nothing writes while the store can’t (designs/architecture/store.md).
 - **Interface:** `state`, `pending`, `emit(type, data)`, `item(threadId, id)`, `items(threadId)`, `subscribe(fn)`, `onStatus(fn)`, `whenWritable(fn)`, `gated(fn)`.
 - **Depends on:** nothing (its folder and its `io`).
 
@@ -413,7 +413,7 @@ Built in this order, each service’s dependencies already exist: Store, Bus, Ru
 | `read-message.mjs` calls `appOf` (`apps.mjs`) | Memory depends on Apps (done in step 10) |
 | `thread-summary.mjs` reads `rt.turns`, `rt.exiting`, `rt.closing` and `rt.ledger` | Summaries depends on Running, and takes the ledger Work holds (done in step 10) |
 | `turn-work.mjs` calls `recordScheduledTool` (`scheduled-wakes.mjs`) | the call moves to its caller, `turn-context.mjs` (done in step 7) |
-| `shell-runs.mjs` calls `whenWritable` (`store-outage.mjs`) | `Store.whenWritable` (step 7: Work takes a `whenWritable` bound to the runtime until the Store is a service) |
+| `shell-runs.mjs` calls `whenWritable` (`store-wait.mjs`) | `Store.whenWritable` (step 7: Work takes a `whenWritable` bound to the runtime until the Store is a service) |
 | `remote/host-admin.mjs` calls `rt.stop` and `rt.remote` | the `hostTurns` port (done in step 11) |
 | `lint-delivery.mjs`, `apps.mjs`, `review-comments.mjs`, `host-admin.mjs` and `placement.mjs` read `rt.turns` or `rt.exiting` | Running (`placement.mjs` done in step 1, `lint-delivery.mjs` in step 8, `apps.mjs` and `review-comments.mjs` in step 9, `host-admin.mjs` in step 11) |
 | `persona-delete.mjs` deletes sessions; `session-lifecycle.mjs` and `thread-erase.mjs` stop turns and kept jobs | orchestration in the facade: stop, then remove, in one method each (`deletePersona` done in step 4) |
@@ -708,7 +708,7 @@ Each step is its own pull request, and is done when:
     - A summary leaves out every message still waiting for the agent as an entry, so a mention reaches it once, whole, and `givenMentions` and `pointerIfSeen` are gone (#484).
     - The queue’s batching is gone (`batchPending`, `latestMessage`); a turn’s batch of entries and their arrival order are `turn-batch.mjs`.
     - #694’s note reads the agent’s entries only, in every thread: one waiting in another thread is named with its thread, on a tool result and in the prompt of a turn that starts while it waits (#734).
-    - `runtime.mjs` lost the forwards only Delivery’s and Turns’ own modules called (`takePending`, `settleSubagentSteps`, `sideSession`, `recordAgentMessage`, `threadRefs`); it’s 799 lines. What the routes and the tests act through stays, and `recordStopped` stays, since its store-outage caller would close an import cycle with `turn-stop.mjs`.
+    - `runtime.mjs` lost the forwards only Delivery’s and Turns’ own modules called (`takePending`, `settleSubagentSteps`, `sideSession`, `recordAgentMessage`, `threadRefs`); it’s 799 lines. What the routes and the tests act through stays, and `recordStopped` stayed, since its store-outage caller would close an import cycle with `turn-stop.mjs`, until #1442 moved it into `stop-record.mjs` and dropped the forward.
     - A turn left on a host when its agent moves to this computer is stopped there, as one left when it moves to another host is (#1214).
   - **Still to do:** host turns (`remote/turns-prompts.mjs`, `turns-start.mjs`, `turns-resume.mjs`) and `restart-sweep.mjs` reach waiting code directly, not through `asks`; that goes with Asks.
 

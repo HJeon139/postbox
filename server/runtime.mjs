@@ -55,7 +55,8 @@ import { deleteSession, deleteThread } from './session-lifecycle.mjs';
 import { Sessions } from './sessions.mjs';
 import { clearSummaryPending, shareText, shareToConversation, summarizeBack, summarizing } from './share-back.mjs';
 import { agentWake, bumpSideLink, resolveHop } from './side-threads.mjs';
-import { watchStore, whenWritable } from './store-outage.mjs';
+import { watchStore } from './store-outage.mjs';
+import { whenWritable } from './store-wait.mjs';
 import { Summaries } from './summary-service.mjs';
 import { Threads } from './threads.mjs';
 import { settleToolAsks } from './tool-ask.mjs';
@@ -64,7 +65,7 @@ import { listenTurnEnd } from './turn-end-listeners.mjs';
 import { entryLine } from './turn-input.mjs';
 import { armQuotaResets, quotaMoved } from './turn-quota.mjs';
 import { Turns } from './turn-service.mjs';
-import { dismissStopAsk, recordStopped, requestStop, stop, stopTurns } from './turn-stop.mjs';
+import { dismissStopAsk, requestStop, stop, stopTurns } from './turn-stop.mjs';
 import { toolsFor } from './ui-tools.mjs';
 import { closeOrphanCards, heldFor, liftDecline } from './wake-cards.mjs';
 import { Work } from './work-service.mjs';
@@ -397,9 +398,6 @@ export class Runtime {
 
   stop(sessionId, opts) {
     return stop(this, sessionId, opts);
-  }
-  recordStopped(turn, ended, how) {
-    return recordStopped(this, turn, ended, how);
   }
   requestStop(sessionId, choice) {
     return requestStop(this, sessionId, choice);
