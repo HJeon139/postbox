@@ -2,6 +2,30 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.21.0 (2026-11-17)
+
+### Features
+
+- **turns:** a lost turn resends once without alarming, and quota marks the session
+- **turns:** one classifier of harness failures, with quota marked by each adapter
+
+### Fixes
+
+- **turns:** quota marks are read as written, behind a held commit too
+- **agents:** the ring and the row stop saying out of quota at the reset
+- **turns:** an agent moved to another backend or computer takes that quota's mark
+- **agents:** a ring resting beside an earlier reply is never a button
+- **agents:** an out-of-quota agent's ring says so, and is a button only when it needs you
+- **turns:** only a turn that ends well clears a quota mark
+- **turns:** a quota is its backend's on the computer that runs it
+- **turns:** a reply its backend refused for quota shows without an alert
+- **remote:** a refused host call sent again leaves one notice
+- **claude:** a rejected rate limit that overage covers doesn't mark the turn out of quota
+- **turns:** quota marks its backend's agents, needs nobody and wakes them at the reset
+- **turns:** a lost turn reopens what it took before anything wakes its agent
+- **remote:** a turn left on the host an agent moved off is stopped, not left waiting
+- **remote:** a queued host call refused for having no live turn becomes a notice entry
+
 ## 4.20.1 (2026-11-16)
 
 ### Fixes
