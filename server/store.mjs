@@ -11,10 +11,9 @@ import { join } from 'node:path';
 import { itemOf } from '../shared/item-index.mjs';
 import { STORE_WAITS } from '../shared/limits.mjs';
 import { emptyState } from '../shared/state.mjs';
-import { Fifo } from './fifo.mjs';
 import { newId } from './ids.mjs';
 import { commit, run } from './store-commit.mjs';
-import { pendingReads } from './store-held.mjs';
+import { HeldLog, pendingReads } from './store-held.mjs';
 import { close, load } from './store-recover.mjs';
 import { applyOrHold, refuseReserved, rejectedError } from './store-reject.mjs';
 import { fail, reload } from './store-retry.mjs';
@@ -64,7 +63,7 @@ export class Store {
     this.ahead = 0; // events numbered but not yet applied: a commit’s, before its fsync
     this.waitingCommits = 0; // commits queued or pending; emits are held behind them
     this.held = 0; // emits held in the queue, still to be numbered
-    this.heldLog = new Fifo(); // those jobs, in order, for the reads that include them (server/store-held.mjs)
+    this.heldLog = new HeldLog(); // those jobs, in order, for the reads that include them (server/store-held.mjs)
     this.version = 0; // counts the changes record() applies; a held view is rebuilt when it moves
     this.views = new Map(); // `${list}:${key}` → its pending view
     /** the lists as memory will hold them once what is held is released (#601): for the placed in-process readers only */
