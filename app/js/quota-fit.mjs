@@ -13,6 +13,9 @@ const TRACK = 40 + 6;
 /** Room for a canvas measure and the drawn text to differ by. */
 const SLACK = 2;
 
+/** A host name’s first n characters, without the hyphen, dot or underscore they may end on. @param {string} host @param {number} n */
+const startOf = (host, n) => host.slice(0, n).replace(/[-_.\s]+$/, '');
+
 /**
  * The names bars show at one level, each distinct: bars that share a name get the shortest start of their hosts’ names
  * that tells them apart (“@workstation-1” and “@workstation-2”, “@a” and “@b”). Null where nothing does: two hosts
@@ -27,9 +30,9 @@ export function namesAt(bars, short) {
     if (group.length < 2) continue;
     const hosts = group.map((i) => bars[i].host ?? '');
     const longest = Math.max(...hosts.map((x) => x.length));
-    const cut = Array.from({ length: longest }, (_, n) => n + 1).find((n) => new Set(hosts.map((x) => x.slice(0, n))).size === hosts.length);
+    const cut = Array.from({ length: longest }, (_, n) => n + 1).find((n) => new Set(hosts.map((x) => startOf(x, n))).size === hosts.length);
     if (!cut) return null;
-    for (const i of group) if (bars[i].host) names[i] = `${name} @${/** @type {string} */ (bars[i].host).slice(0, cut)}`;
+    for (const i of group) if (bars[i].host) names[i] = `${name} @${startOf(/** @type {string} */ (bars[i].host), cut)}`;
   }
   return names;
 }
