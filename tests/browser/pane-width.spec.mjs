@@ -154,3 +154,37 @@ test('#7 leaving a conversation whose pane hid the sidebar, the next one shows i
   expect([m.rail, m.toggle]).toEqual([248, 'Hide the sidebar']);
   await expect(page.locator('#rail-toggle')).toHaveAttribute('aria-pressed', 'true');
 });
+
+// ── #1472: toasts sit left of the pane ─────────────────────────────────────────────────
+
+test('#1472 a toast opens left of the pane beside the conversation, follows its width, and goes back when it closes', async ({ page }) => {
+  await fresh(page, room, 1280);
+  await page.locator('#work-button').click();
+  await expect(page.locator(WORK)).toBeVisible();
+  await page.evaluate(async () => {
+    const { toast } = await import('/app/js/ui.mjs');
+    toast({ title: 'Shelf indexed', timeout: 0 });
+  });
+  const shown = page.locator('#toasts .toast', { hasText: 'Shelf indexed' });
+  await expect(shown).toBeVisible();
+  const gap = () =>
+    page.evaluate(() => {
+      const t = /** @type {Element} */ (document.querySelector('#toasts')).getBoundingClientRect();
+      const pane = /** @type {HTMLElement} */ (document.querySelector('.rpane'));
+      return { toastRight: t.right, paneLeft: pane.hidden ? null : pane.getBoundingClientRect().left, edge: document.documentElement.clientWidth };
+    });
+  await settled(page);
+  const beside = await gap();
+  expect.soft(beside.paneLeft !== null && beside.toastRight <= beside.paneLeft - 15.5, 'left of the pane').toBe(true);
+  const handle = page.locator('.rp-handle');
+  await handle.focus();
+  await handle.press('ArrowLeft');
+  await settled(page);
+  const wider = await gap();
+  expect.soft(wider.paneLeft !== null && wider.toastRight <= wider.paneLeft - 15.5, 'still left of it, widened').toBe(true);
+  await page.locator('#work-button').click();
+  await expect(page.locator(WORK)).toBeHidden();
+  await settled(page);
+  const closed = await gap();
+  expect.soft(Math.abs(closed.edge - 16 - closed.toastRight), 'back at the window’s edge').toBeLessThanOrEqual(0.5);
+});

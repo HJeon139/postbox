@@ -61,6 +61,12 @@ test('#1150 widening the pane beside a long room restyles what reads its width, 
     getComputedStyle(/** @type {HTMLElement} */ (document.querySelector('.app > .main'))).marginRight,
   ]);
   expect(widths, 'the pane’s width and the column’s margin beside it').toEqual([456, '456px']);
+  // Each reader carries the width itself, not only by inheriting .app’s: WebKit doesn’t restyle an inherit of a
+  // non-inheriting property, and Safari’s column kept its old width (#1465). CI runs Chromium, so this holds the fix.
+  const own = await page.evaluate(() =>
+    ['.rpane', '.app > .main'].map((s) => /** @type {HTMLElement} */ (document.querySelector(s)).style.getPropertyValue('--pane-w')),
+  );
+  expect(own, 'the pane and the column each carry --pane-w').toEqual(['456px', '456px']);
   test.info().annotations.push({ type: 'measured', description: JSON.stringify({ total, widening }) });
   // On main a new width restyled every element Chromium wasn’t skipping off screen, and Firefox all of them.
   expect(widening, `elements restyled widening the pane, of ${total}`).toBeLessThan(200);
