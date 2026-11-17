@@ -4,6 +4,7 @@
 // is lost when the store starts a new log segment; it saves what it kept to events.jsonl, which --recheck reads back.
 
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { parseSnapshotText } from '../../server/store-snapshot-lines.mjs';
 import { keepEvent } from './room-events.mjs';
@@ -25,6 +26,15 @@ export function hostStateOf(d) {
   return { id: d.id, state: d.status?.state ?? null, failure: d.status?.failure?.kind ?? null, update };
 }
 
+/** A live frame’s data, parsed, as a list of it, or none if it doesn’t parse. @param {string} data */
+function framesIn(data) {
+  try {
+    return [JSON.parse(data)];
+  } catch {
+    return [];
+  }
+}
+
 /**
  * Follows a Postbox server’s event stream (/api/stream) from its first event, keeping the events the checks read,
  * and, apart from them, each host’s status as it changed, with when it arrived (#120): a host-mode fault is judged
@@ -32,11 +42,15 @@ export function hostStateOf(d) {
  * kind, so a host that couldn’t run its version (not installed) reads apart from one with no token yet (#464), and
  * its newest install try, so the run can tell how often Postbox installed there by itself.
  * @param {string} origin
- * @returns {{ events: () => any[], hostStates: () => { at: number, id: string, state: string|null, failure: string|null, update: UpdateSeen|null }[], close: () => void }}
+ * It keeps every live frame too, unnumbered, as it came: a running turn’s progress isn’t stored between commit points
+ * (designs/architecture/live-progress.md), so a check of what reached the browser reads them beside the events (#722).
+ * @returns {{ events: () => any[], live: () => any[], hostStates: () => { at: number, id: string, state: string|null, failure: string|null, update: UpdateSeen|null }[], close: () => void }}
  */
 export function followEvents(origin) {
   /** @type {any[]} */
   const kept = [];
+  /** @type {any[]} */
+  const live = [];
   /** @type {{ at: number, id: string, state: string|null, failure: string|null, update: UpdateSeen|null }[]} */
   const hostStates = [];
   let last = 0;
@@ -52,6 +66,7 @@ export function followEvents(origin) {
       else if (line.startsWith('event: ')) type = line.slice(7);
       else if (line.startsWith('data: ')) data += line.slice(6);
     }
+    if (type === 'live') return void live.push(...framesIn(data));
     if (!Number.isFinite(seq) || seq === null || seq <= last) return;
     last = seq;
     if (type === 'host.status') {
@@ -89,7 +104,7 @@ export function followEvents(origin) {
       if (!abort.signal.aborted) await new Promise((ok) => setTimeout(ok, 1000).unref());
     }
   })();
-  return { events: () => kept, hostStates: () => hostStates, close: () => abort.abort() };
+  return { events: () => kept, live: () => live, hostStates: () => hostStates, close: () => abort.abort() };
 }
 
 /** Parses JSON Lines, skipping a line that doesn’t parse (the last one, if the file was being written). Unwraps commit arrays (#508, option b). */
@@ -143,4 +158,20 @@ export function readHistory(dir) {
   if (kept.some((e) => e.type === 'item.move')) return kept;
   const moves = logged(dir).filter((e) => e.type === 'item.move');
   return moves.length ? [...kept, ...moves].sort((a, b) => a.seq - b.seq) : kept;
+}
+
+/**
+ * Saves what the checks read of the stream, for --recheck: the events, as Postbox’s own log can lose its first segments
+ * to a snapshot, and the live frames, which no log keeps. @param {string} dir @param {{ events: any[], live?: any[] }} facts
+ */
+export async function writeHistory(dir, facts) {
+  const jsonl = (/** @type {any[]} */ list) => list.map((e) => JSON.stringify(e)).join('\n') + (list.length ? '\n' : '');
+  await writeFile(join(dir, 'events.jsonl'), jsonl(facts.events));
+  await writeFile(join(dir, 'live.jsonl'), jsonl(facts.live ?? []));
+}
+
+/** The live frames a run kept (writeHistory), or none for a run from before they were. @param {string} dir */
+export function readLive(dir) {
+  const saved = join(dir, 'live.jsonl');
+  return existsSync(saved) ? lines(readFileSync(saved, 'utf8')) : [];
 }
