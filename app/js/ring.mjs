@@ -158,7 +158,7 @@ class PbRing extends HTMLElement {
     this.replaceChildren(...parts);
     // While its agent needs you, a ring outside any link or button is a button of its own, to what it needs (#285,
     // needs-nav.mjs). In a link or a button, that control goes there instead.
-    if (this.dataset.session && this.getAttribute('needs') === 'you' && !this.parentElement?.closest('a, button')) {
+    if (this.dataset.session && state !== 'rest' && this.getAttribute('needs') === 'you' && !this.parentElement?.closest('a, button')) {
       this.setAttribute('role', 'button');
       this.setAttribute('tabindex', '0');
       this.setAttribute('aria-label', `${label}. Go to what ${name} needs`);
@@ -200,7 +200,8 @@ export function ringFor(se, size = 'sm', el = null) {
 export function restRing(el) {
   el.holding = true;
   el.setAttribute('state', 'rest');
-  for (const a of ['ctx', 'subs', 'where']) el.removeAttribute(a);
+  // Nor is it a button to what its agent needs: it doesn’t follow the session, so it would outlive the need.
+  for (const a of ['ctx', 'subs', 'where', 'needs']) el.removeAttribute(a);
   el.holding = false;
   if (el.isConnected) el.render();
   return el;
