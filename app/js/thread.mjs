@@ -15,6 +15,7 @@ import { renderBlock } from './blocks.mjs';
 import { api, busy, client, hrefOf, itemsOf, placeIn, sessionsAt, sessionsOf, sideSessionsOf, stopSession, threadLink, uploadFile } from './client.mjs';
 import { describeStop, notOnHost, stopNoteEl } from './composer-host.mjs';
 import { placeholderRoom } from './composer-placeholder.mjs';
+import { runsIn } from './composer-runs-in.mjs';
 import { fitDraft } from './composer-size.mjs';
 import { addressLine, addressSig, commandHint, placeholderFor } from './composer-to.mjs';
 import { $, ago, dayOf, fill, h, icon, plural, syncList, timeOf, trusted } from './dom.mjs';
@@ -1481,8 +1482,12 @@ export function mountComposer(threadId, { side = false } = {}) {
     // A repaint while you’re on “Did you mean” keeps you there (#134).
     const onFix = !!document.activeElement?.closest('.did-you-mean') && hint.contains(document.activeElement);
     fill(hint, hintFor(mode, { line, offline, room: topic || side || members.length > 1 }));
-    // The row is one line, clipped with an ellipsis: the whole of it is there for a pointer too (#1437).
-    if (hint.textContent) hint.title = hint.textContent;
+    // The row is one line, clipped with an ellipsis: the whole of it is there for a pointer too, its parts kept apart (#1437).
+    const whole = [...hint.children]
+      .map((c) => c.textContent)
+      .filter(Boolean)
+      .join(' · ');
+    if (whole) hint.title = whole;
     else hint.removeAttribute('title');
     if (onFix) hint.querySelector('.did-you-mean')?.focus();
   }
@@ -1495,11 +1500,8 @@ export function mountComposer(threadId, { side = false } = {}) {
       const folder = commandFolder();
       const here = notOnHost(target());
       const own = isMock(target()) ? null : target();
-      return h(
-        'span',
-        folder ? ['Runs in ', h('span.mono', folder), here, ' as you, with Enter. '] : workspaceLine(own, here),
-        'The agents read it and its output on their next turn.',
-      );
+      if (folder) return runsIn(folder, here);
+      return h('span', workspaceLine(own, here), 'The agents read it and its output on their next turn.');
     }
     if (mode === 'no-shell')
       return h(
@@ -1511,13 +1513,9 @@ export function mountComposer(threadId, { side = false } = {}) {
     if (mode === 'command') return commandHint(resolved(line), threadId);
     if (offline) return h('span', 'You’re offline. Messages you send now go out when the connection is back.');
     const draft = !!ta.value.trim();
-    return [addressLine(threadId, ta.value, { room: room && draft, addAt }), draft ? null : threadNote()];
-  }
-  /** A thread’s note, which a conversation’s placeholder holds, for the line under its box while there’s no draft. */
-  function threadNote() {
-    if (topic) return h('span', 'Replies stay here · @ brings in another agent');
-    if (side) return h('span', 'Sending adds you to this side thread');
-    return null;
+    // A topic thread’s note, which a conversation’s placeholder holds, while there’s no draft.
+    const note = topic && !draft ? h('span', 'Replies stay here · @ brings in another agent') : null;
+    return [addressLine(threadId, ta.value, { room: room && draft, addAt }), note];
   }
   /**
    * Where `!` runs, as far as the page knows: the folder of the agent that replies here, else the project’s. A Claude

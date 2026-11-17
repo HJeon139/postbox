@@ -755,6 +755,12 @@ html.store-down .sidepanel { padding-bottom: 44px; }
 /* “Did you mean” fits the row, its focus ring inside it, since the row clips (#134). */
 .composer .hint .did-you-mean { height: 18px; margin: 1px 0; padding: 0 6px; font-size: 11.5px; vertical-align: top; }
 .composer .hint .did-you-mean:focus-visible { outline-offset: -2px; }
+/* `!`’s folder is cut in the middle, so its last part, where the command runs, stays on the row: the head gives way
+   first, then the sentence after it (#1437). */
+.composer .hint .runs-in { display: flex; min-width: 0; }
+.composer .hint .runs-in > * { flex: none; white-space: pre; }
+.composer .hint .runs-in .folder-head { flex: 0 1000 auto; min-width: 2em; overflow: hidden; text-overflow: ellipsis; }
+.composer .hint .runs-in .runs-in-rest { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .composer .hint b { color: var(--text); font-weight: 500; }
 /* How many wakes agents have chained since your last message, with the hint to Stop them (#492). */
 .composer .hint .chain { color: var(--text); }

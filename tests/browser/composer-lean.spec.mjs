@@ -120,6 +120,18 @@ for (const width of [1280, 375]) {
     await page.keyboard.press('ControlOrMeta+a');
     await page.keyboard.insertText('!ls');
     await expect(hint(page)).toHaveAttribute('title', /^Runs in /);
+    // A clipped folder is cut in the middle: its last part, where the command runs, stays on screen (a phone has no
+    // tooltip).
+    const folder = app.store.state.projects[Object.keys(app.store.state.projects)[0]].folder;
+    const tail = hint(page).locator('.folder-tail');
+    await expect(tail).toHaveText(`/${folder.split('/').filter(Boolean).at(-1)}`);
+    const shown = await tail.boundingBox();
+    const line = await hint(page).boundingBox();
+    expect(shown && line && shown.x + shown.width <= line.x + line.width + 0.5, 'the folder’s last part is inside the row').toBe(true);
+    // The tooltip keeps the parts apart.
+    await page.keyboard.press('ControlOrMeta+a');
+    await page.keyboard.insertText('critic: what’s left?');
+    await expect(hint(page)).toHaveAttribute('title', /@critic\? · Replying to researcher/);
   });
 
   test(`#1437 a thread panel’s input doesn’t move as its hint appears (${width} px)`, async ({ page }) => {
