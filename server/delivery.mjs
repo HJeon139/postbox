@@ -14,8 +14,8 @@
 // Depends on Store, Bus and Running. Until Turns is a service, the composition root listens to entry.waiting and starts
 // the turn through today’s deliver, and the chain cap is a predicate the root binds (`chainHeld`).
 
-import { arrival, plainMessage } from './queue-batch.mjs';
 import { newId } from './store.mjs';
+import { arrival, plainMessage } from './turn-batch.mjs';
 
 /** Where an entry comes from (designs/rooms-at-scale.md, “What an entry is”). A notice never starts a turn. */
 export const SOURCES = Object.freeze(['mention', 'person', 'command', 'review', 'answer', 'event', 'check', 'scheduled', 'notice']);

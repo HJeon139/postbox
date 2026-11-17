@@ -7,8 +7,8 @@ import { SENDING, TURN_INPUT } from '../shared/limits.mjs';
 import { partEnd } from '../shared/text-parts.mjs';
 import { lostEvent } from './app-entries.mjs';
 import { newerElsewhere } from './newer-waiting.mjs';
-import { combineMessages, plainMessage } from './queue-batch.mjs';
 import { newId } from './store.mjs';
+import { combineMessages, plainMessage } from './turn-batch.mjs';
 import { turnInput } from './turn-input.mjs';
 
 /**
