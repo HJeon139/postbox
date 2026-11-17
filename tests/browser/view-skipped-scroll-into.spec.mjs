@@ -42,13 +42,31 @@ test('#1257: scrolled into skipped items, a long reply drawing below what’s at
     'the long reply is at its estimate',
   ).toBe(71);
 
-  // Your scroll, as a wheel turn makes it: only input of yours that can scroll ends following (#1464).
-  await target.evaluate((n) => {
-    dispatchEvent(new WheelEvent('wheel', { deltaY: -1 }));
-    n.scrollIntoView({ block: 'start' });
-  });
+  // Opened at the end, following: a scroll with no input of yours (scrollIntoView, as focus and find make) still ends
+  // that, though the page grows as the skipped items it lands in draw (#1464's review).
+  await expect(page.locator('#main.transcript')).toHaveAttribute('data-view-mode', 'following');
+  await target.evaluate((n) => n.scrollIntoView({ block: 'start' }));
   await settled(page);
   const top = await target.evaluate((n) => n.getBoundingClientRect().top);
   expect.soft(Math.abs(top), 'what the scroll brought to the top is still there').toBeLessThanOrEqual(2);
+  await expect(page.locator('#main.transcript')).toHaveAttribute('data-view-mode', 'reading');
   await holds(page, t, 'after the long reply drew');
+});
+
+// Focus moved by Tab, Shift+Tab or a screen reader scrolls with no input that scrolls the page: a link in a skipped long
+// reply, focused while following, stays in view, and the view reads there instead of going back to the end (#1464’s
+// review).
+test('#1464: following, focus moved into a skipped long reply keeps it in view', async ({ page }) => {
+  const { t, say } = room(app, 'Focus into skipped items');
+  say(`[The source](https://example.com/source)\n\n${TALL}`);
+  for (let i = 0; i < 40; i++) arrange.post(app.rt, t.id, { kind: 'user', text: `Note ${i} after the long reply.` });
+  await open(app, page, t);
+  await expect(page.locator('#main.transcript')).toHaveAttribute('data-view-mode', 'following');
+  const link = page.locator('#main.transcript a[href="https://example.com/source"]');
+  await link.evaluate((a) => /** @type {HTMLElement} */ (a).focus());
+  await settled(page);
+  const at = await link.evaluate((a) => ({ top: a.getBoundingClientRect().top, bottom: a.getBoundingClientRect().bottom, view: innerHeight }));
+  expect(at.top, 'the focused link is not above the view').toBeGreaterThanOrEqual(0);
+  expect(at.bottom, 'nor below it').toBeLessThanOrEqual(at.view);
+  await expect(page.locator('#main.transcript')).toHaveAttribute('data-view-mode', 'reading');
 });
