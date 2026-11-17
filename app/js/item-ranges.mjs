@@ -193,6 +193,10 @@ export function place(state, ranges, answer, how) {
     return true;
   }
   if (how === 'replace') {
+    // A jump away from the end (reach(), ?around=) keeps the newest items it held as the tail, as placeAround does, so
+    // End puts them back and latestItems still has the conversation's last messages (#1446). One that lands at the end
+    // lets it go, below.
+    if (list.length && atEnd(list, r)) r.tail = list;
     state.items[answer.threadId] = answer.items.slice();
     Object.assign(r, { start: answer.start, total: answer.total, seq: answer.seq });
     // The first items, when they came with it, kept for Home with what was heard after the load's seq.
