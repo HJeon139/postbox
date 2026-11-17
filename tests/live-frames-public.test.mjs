@@ -174,3 +174,13 @@ test('publicLive gives the snapshots a page may have, by the same rules, reading
   assert.deepEqual(publicLive([frames.snapshot], null, privateTable('session.patch')), []);
   assert.deepEqual(publicLive([frames.snapshot], null, EVENTS, withoutKey('items')), []);
 });
+
+test('a field a frame only inherits is never sent, at any level', () => {
+  const inherit = (/** @type {any} */ proto, /** @type {any} */ own) => Object.assign(Object.create(proto), own);
+  const se = dataOf(publicLiveFrame(inherit({ glimpse: SECRET, currentStep: SECRET }, { kind: 'session', sessionId: 'se_1' })));
+  assert.deepEqual(se, { kind: 'session', sessionId: 'se_1' });
+  const st = dataOf(publicLiveFrame({ ...frames.step, step: inherit({ input: SECRET }, { id: 's1', label: 'Read' }) }));
+  assert.deepEqual(st.step, { id: 's1', label: 'Read' });
+  const snap = dataOf(publicLiveFrame({ ...frames.snapshot, session: inherit({ toolCalls: [{ name: SECRET }] }, { glimpse: 'g' }) }));
+  assert.deepEqual(snap.session, { glimpse: 'g' });
+});
