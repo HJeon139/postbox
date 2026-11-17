@@ -8,7 +8,7 @@ import { test } from 'node:test';
 import { liveEnd, liveSession, liveSnapshots, liveStep } from '../server/live-buffer.mjs';
 import { Store } from '../server/store.mjs';
 import { onLive } from '../server/store-live.mjs';
-import { LIVE_CAPS, STEP_TEXT } from '../shared/limits.mjs';
+import { LIVE_CAPS } from '../shared/limits.mjs';
 
 /** A store, a running turn on it, what it stores of steps and the frames it sends. */
 async function rig() {
@@ -20,8 +20,10 @@ async function rig() {
   store.subscribe((/** @type {any} */ ev) => ev.type === 'item.patch' && ev.data.activityStep && stored.push(ev.data.activityStep));
   onLive(store, (f) => frames.push(f));
   const turn = { id: 'tu_1', sessionId: 'se_1', threadId: 'th_1', first: 'it_1', steps: [] };
-  const rt = { store, running: { all: () => [turn] } };
-  return { rt, turn, stored, frames };
+  /** @type {any[]} */
+  const sessionWrites = [];
+  const rt = { store, running: { all: () => [turn] }, sessions: { update: (/** @type {string} */ id, /** @type {any} */ p) => sessionWrites.push([id, p]) } };
+  return { rt, turn, stored, frames, sessionWrites };
 }
 
 const run = (/** @type {string} */ id, more = {}) => ({ id, label: `Ran ${id}`, state: 'running', at: 3, part: 'p1', input: 'ls -la', ...more });
@@ -53,7 +55,7 @@ test('a step’s updates go live with a rising rev; it’s stored once, at the n
   assert.equal(stored[0].id, 's1');
   assert.equal(stored[0].state, 'done');
   for (const k of ['input', 'output', 'diff']) assert.equal(stored[0][k], undefined, `${k} stays live`);
-  assert.equal(stored[0].detail.length, STEP_TEXT.detail, 'detail cut as the fold cuts it');
+  assert.equal(stored[0].detail.length, 5000, 'detail whole while the turn runs: the fold cuts it at its end');
   assert.equal(stored[0].at, 3, 'at stays, to place it among the words');
   assert.equal(stored[0].part, 'p1');
 });
@@ -107,4 +109,13 @@ test('the buffer is bounded where it’s built: lists and strings, whatever the 
   for (let i = 0; i < LIVE_CAPS.steps + 10; i++) liveStep(rt, turn, { id: `w${i}`, label: 'x', state: 'running', who: 'helper' });
   assert.ok(liveSnapshots(rt)[0].steps.length <= LIVE_CAPS.steps);
   assert.ok(stored.length >= 10);
+});
+
+test('the turn’s end stores the session’s tool calls and their count as it leaves them, once', async () => {
+  const { rt, turn, sessionWrites } = await rig();
+  liveSession(rt, turn, { toolCalls: [{ name: 'Read', state: 'done' }], toolCount: 1, currentStep: 'Read' });
+  liveSession(rt, turn, { toolCount: 2 });
+  assert.deepEqual(sessionWrites, [], 'nothing stored while it runs');
+  liveEnd(rt, turn);
+  assert.deepEqual(sessionWrites, [['se_1', { toolCalls: [{ name: 'Read', state: 'done' }], toolCount: 2 }]]);
 });

@@ -113,6 +113,7 @@ const PENDING = {
   'job-records.mjs': ['endJob', 'endJob', 'endJob', 'runningProgress', 'setJobStep', 'settleJobs'],
   'ledger.mjs': ['entries', 'recordPublishes', 'recordPublishes'], // the ledger reads back its own entries; the turn’s blocks and apps
   'lint-delivery.mjs': ['sendLint'], // the apps the turn showed, still being checked
+  'live-buffer.mjs': ['liveFields'], // a running turn’s calls and step start from what was stored as it began, held writes included
   'permission-cards.mjs': ['recordDenial'], // the same refused call, once
   'permission-expiry.mjs': ['tellExpired'], // the card a turn’s end just expired, told about once (#721)
   'permission-prompt.mjs': ['permission'], // the card the call waits on
@@ -167,7 +168,7 @@ const PENDING = {
   'threads.mjs': ['patch', 'toWrite', 'pending', 'addItem', 'addItem', 'patchItem', 'patchItem', 'patchItem', 'bringForward'],
   // A finished turn’s checks: its own block and the terms and apps it introduced, and the progress steps it stalls.
   'turn-checks.mjs': ['checkTurn', 'checkTurn', 'checkTurn', 'stallSteps'],
-  'turn-context.mjs': ['text', 'compaction'], // a streamed chunk's state check, and a compaction's number, from the session a held write left
+  'turn-context.mjs': ['text', 'compaction', 'stepCallback'], // a streamed chunk's state check, a compaction's number, and a step's state check, from the session a held write left
   'turn-end-work.mjs': ['endWork'], // the turn’s own reply or block, to carry its line, maybe held behind a commit
   'turn-end-listeners.mjs': ['listenTurnEnd'], // an app-check turn’s apps at its end, a sweep that writes back, maybe held behind a commit (#796)
   'turn-finish.mjs': ['endTurn'], // a turn’s end: its own items, maybe held behind a commit (#796)

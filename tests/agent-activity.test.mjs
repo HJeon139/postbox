@@ -21,6 +21,7 @@ import { parsePs, stopJobUnder } from '../server/adapters/process-group.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
 import * as arrange from './arrange.mjs';
+import { pageView } from './page-view.mjs';
 
 const fixture = (name) =>
   readFileSync(new URL(`fixtures/claude-code/${name}.jsonl`, import.meta.url), 'utf8')
@@ -262,6 +263,8 @@ for (const [name, id] of [
 test('#189: the agent’s ring keeps its own state and step while its background subagent works', async () => {
   const lines = fixture('background-subagent');
   const store = new Store(null);
+  // The session as a page holds it: its state stored, its step and subagents live (live-progress.md).
+  const page = pageView(store);
   const rt = new Runtime({
     store,
     adapters: new AdapterRegistry().register({
@@ -273,7 +276,7 @@ test('#189: the agent’s ring keeps its own state and step while its background
         const m = createStreamMapper(ctx);
         for (const e of lines) {
           m.push(e);
-          seen.push({ ...store.state.sessions[se.id] });
+          seen.push({ ...page.state().sessions[se.id] });
         }
       },
     }),

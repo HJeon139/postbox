@@ -5,6 +5,7 @@
 
 import { emptyReply, endedWithoutReply } from './empty-reply.mjs';
 import { failureClass } from './harness-failure.mjs';
+import { liveEnd } from './live-buffer.mjs';
 import { heldBy } from './turn-held.mjs';
 import { askedOf, replyMarks } from './turn-marks.mjs';
 import { outOfQuota, quotaBack } from './turn-quota.mjs';
@@ -20,6 +21,8 @@ export function endTurn(rt, turn, err) {
   turn.closed = true;
   // Raised while it still counts as running: its permission waits expire then.
   rt.bus.emit('turn.ending', { turn });
+  // Its last commit point: the steps changed since the last are stored, before they fold (live-buffer.mjs).
+  liveEnd(rt, turn);
   rt.running.end(turn.sessionId);
   settleSubagentSteps(rt, turn);
   // Its steps fold to what its record keeps: the live view's detail goes with the turn (turn-steps.mjs).

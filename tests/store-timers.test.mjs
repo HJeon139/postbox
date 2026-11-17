@@ -36,7 +36,7 @@ const PLACED = {
   'claude-mirror.mjs': 1, // the mirror’s poll of an attached session’s transcript: skips its tick while closed
   'kept-jobs.mjs': 1, // pollKept: skips its tick while closed
   'lint-delivery.mjs': 5, // an injected setTimer before a lint turn: a start, held by heldTurn while closed
-  'live-streams.mjs': 2, // sends frames: reads
+  'live-streams.mjs': 3, // sends frames, the events’ and the live frames’ lag alike: reads
   'narration/narrator.mjs': 1, // stops the narrator: no store
   'permission-cards.mjs': 1, // expireWait: gated
   'remote/host-admin.mjs': 1, // a wait: no store

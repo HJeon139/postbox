@@ -27,7 +27,9 @@ async function cutOff() {
 }
 
 const replyOf = (/** @type {any} */ f) => f.store.items(f.t.id).find((/** @type {any} */ i) => i.kind === 'agent' && i.sessionId === f.beta.id);
-const HELD = { took: [{ from: 'you' }], steps: 2, last: 'Ran tests', running: [], stopped: [] };
+// The steps stored to the last commit point (live-progress.md): “Ran tests” starting stored “Read the shelf”, and was
+// live only when the turn was cut off, as a crash would. A graceful shutdown takes a commit point of its own.
+const HELD = { took: [{ from: 'you' }], steps: 1, last: 'Read the shelf', running: [], stopped: [] };
 
 test('a reply a restart cut off with no words keeps what its turn held', async () => {
   const f = await cutOff();

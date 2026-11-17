@@ -2,12 +2,13 @@
 // module. Each update to a step goes to the pages as a live frame, with a rev that rises at each change, and is stored
 // only at a commit point: a new step of the agent’s own, which ends the words and step before it, the turn’s end, or
 // more changed steps than the buffer holds. A step is stored without the live view’s detail (its input, output and
-// diff), its detail cut as the fold cuts it, and with `at` and `part`, which place it among the words. The session’s
+// diff), with its detail whole and `at` and `part`, which place it among the words; the fold at its end cuts the rest. The session’s
 // live fields (its tool calls, current step, glimpse and subagents) go as frames only; its state and context stay
 // stored, as do the writes at a turn’s edges. The buffer rides on the turn (turn.live), so it goes with the turn, and
 // it’s bounded where it’s built (LIVE_CAPS), whatever a harness reports.
 
-import { LIVE_CAPS, STEP_TEXT } from '../shared/limits.mjs';
+import { LIVE_CAPS } from '../shared/limits.mjs';
+import { SESSION_FIELDS } from '../shared/live-kinds.mjs';
 import { sendLive } from './store-live.mjs';
 
 /** A string at most LIVE_CAPS.string long; anything else as it is. @param {unknown} v */
@@ -31,10 +32,13 @@ function bufferOf(turn) {
 /** Whether a step is a new one of the agent’s own: not a subagent’s, a thought or narration. @param {any} live @param {any} step */
 const startsOwn = (live, step) => !live.rev.has(step.id) && step.state === 'running' && !step.who && step.kind !== 'thought' && step.kind !== 'said';
 
-/** A step as a commit point stores it: no live detail, its detail cut as the fold cuts it. @param {any} step */
+/**
+ * A step as a commit point stores it: without the live view’s input, output and diff. Its detail stays whole (a thought
+ * is shown whole while its turn runs, and a page merges the stored step over the live one); the fold at the turn’s end
+ * cuts it, as it always has (shared/step-fold.mjs). @param {any} step
+ */
 function storedStep(step) {
   const { input, output, diff, ...kept } = step;
-  if (typeof kept.detail === 'string' && kept.detail.length > STEP_TEXT.detail) kept.detail = kept.detail.slice(0, STEP_TEXT.detail);
   return kept;
 }
 
@@ -72,9 +76,16 @@ export function liveSession(rt, turn, patch) {
   sendLive(rt.store, { kind: 'session', sessionId: turn.sessionId, ...capped });
 }
 
-/** The turn’s end, or its stop: a last commit point, and the buffer goes. @param {any} rt @param {any} turn */
+/**
+ * The turn’s end, or its stop: a last commit point, with the session’s tool calls and their count as the turn leaves
+ * them, which nothing at a turn’s edge writes; then the buffer goes. Its step, glimpse and subagents are the edges’ to
+ * write (turn-needs.mjs, turn-finish.mjs, turn-stop.mjs). @param {any} rt @param {any} turn
+ */
 export function liveEnd(rt, turn) {
   liveCommit(rt, turn);
+  const { toolCalls, toolCount } = turn.live?.session ?? {};
+  if (toolCalls !== undefined || toolCount !== undefined)
+    rt.sessions.update(turn.sessionId, { ...(toolCalls !== undefined ? { toolCalls } : {}), ...(toolCount !== undefined ? { toolCount } : {}) });
   turn.live = null;
 }
 
@@ -91,4 +102,27 @@ export function liveSnapshots(rt) {
       steps: [...t.live.changed.values()].map((c) => c.step),
       session: { ...t.live.session },
     }));
+}
+
+/**
+ * A running turn’s change to its session: the live fields go to the buffer and the pages live, and the rest (its state,
+ * its context) is stored, only when there is any. @param {any} rt @param {any} turn @param {Record<string, any>} patch
+ */
+export function liveUpdate(rt, turn, patch) {
+  /** @type {Record<string, any>} */
+  const stored = {};
+  /** @type {Record<string, any>} */
+  const live = {};
+  for (const [k, v] of Object.entries(patch)) (SESSION_FIELDS.includes(k) ? live : stored)[k] = v;
+  if (Object.keys(stored).length) rt.sessions.update(turn.sessionId, stored);
+  if (Object.keys(live).length) liveSession(rt, turn, live);
+}
+
+/**
+ * The session’s live fields as the running turn has them: the buffer’s, over what was stored when it began.
+ * @param {any} rt @param {any} turn
+ */
+export function liveFields(rt, turn) {
+  const se = rt.store.pending.session(turn.sessionId) ?? rt.s.sessions[turn.sessionId] ?? {};
+  return { toolCalls: se.toolCalls ?? [], toolCount: se.toolCount ?? 0, currentStep: se.currentStep, subagents: se.subagents ?? [], ...turn.live?.session };
 }
