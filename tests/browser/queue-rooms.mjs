@@ -65,13 +65,19 @@ export class QueueRooms {
     await synced(page, this.app);
   }
 
-  /** A conversation with this many of the person’s messages queued, none of which the page has loaded. */
+  /**
+   * A conversation with this many of the person’s messages queued, none of which the page has loaded. The page is away
+   * while they’re posted and opens the conversation once they are: hearing the 650 or so events one by one cost 8 to
+   * 11 s with the CPU throttled 4×, and took two tests past their 30 s on CI’s slower shard (#1473).
+   */
   async longQueue(page, n) {
     const r = await this.busyRoom(page);
+    await page.goto('about:blank');
     this.lines(r, 0);
     for (let i = 0; i < n; i++) this.app.rt.sendMessage(r.thread.id, { text: `@${r.worker.handle} queued ${i}` });
     this.lines(r, 250);
-    await this.reopen(page);
+    await page.goto(`${this.app.origin}/#/t/${r.thread.id}`);
+    await synced(page, this.app);
     return r;
   }
 
