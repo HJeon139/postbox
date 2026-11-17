@@ -1,6 +1,8 @@
 // #694: an agent answering a message is told, on its next Postbox tool result, that a newer message from the same
-// sender already waits for it in the turn’s thread, so it can read that one first. Each waiting message is named once
-// per turn, and only the turn’s own sender counts, the person included.
+// sender already waits for it, so it can read that one first. Each waiting message is named once per turn, and only
+// the turn’s own sender counts, the person included. One in another thread is named with its thread, on a result and
+// in the prompt of a turn that starts while it waits (#734). What waits for an agent is its inbox’s entries, so the
+// lookup reads that agent’s entries, whatever the size of the room.
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
@@ -59,14 +61,38 @@ test('#694: the person counts as a sender: their queued message is named to a tu
   await settle(rt);
 });
 
-test('#694: a newer message from the sender in another thread isn’t named: that waits on A3 (#734)', async () => {
+test('#734: a newer message from the sender in another thread is named, with the thread it waits in', async () => {
   const { rt, t, alpha, beta, release } = await busyWithAlpha();
   const root = arrange.post(rt, t.id, { kind: 'agent', sessionId: alpha.id, handle: 'alpha', text: 'A topic.', status: 'done' });
   const topic = rt.startTopic(t.id, root.id).threadId;
   rt.agentWake(alpha.id, 'beta', 'In the topic.', { replyIn: topic });
-  assert.doesNotMatch(await define(rt, beta, 'X'), /newer message/);
+  const wake = arrange.waitingEntries(rt, beta.id).at(-1);
+  const title = rt.s.threads[topic].title;
+  const text = await define(rt, beta, 'X');
+  assert.ok(text.startsWith(`[Postbox] A newer message from @alpha is waiting for you in “${title}”; read_message { id: "${wake.itemId}" } has it.\n\n`), text);
   release();
   await settle(rt);
+});
+
+test('#734: a turn that starts while its sender’s newer message waits in another thread names it in its prompt', async () => {
+  const { rt, t, alpha, beta, adapter, release } = await busyWithAlpha();
+  rt.agentWake(alpha.id, 'beta', 'Older, in the conversation.');
+  const root = arrange.post(rt, t.id, { kind: 'agent', sessionId: alpha.id, handle: 'alpha', text: 'A topic.', status: 'done' });
+  const topic = rt.startTopic(t.id, root.id).threadId;
+  await sleep(2);
+  rt.agentWake(alpha.id, 'beta', 'Newer, in the topic.', { replyIn: topic });
+  const wake = arrange.waitingEntries(rt, beta.id).at(-1);
+  const from = adapter.calls.length;
+  release();
+  await settle(rt);
+  const [older] = adapter.calls.slice(from).filter((c) => c.handle === 'beta');
+  assert.match(JSON.stringify(older.message), /Older, in the conversation/);
+  assert.ok(
+    JSON.stringify(older.message).includes(
+      `A newer message from @alpha is waiting for you in “${rt.s.threads[topic].title}”; read_message { id: \\"${wake.itemId}\\" } has it.`,
+    ),
+    JSON.stringify(older.message).slice(0, 1500),
+  );
 });
 
 test('#694: a message from the sender waiting on the turn itself is named only if it’s for the turn’s thread', async () => {
