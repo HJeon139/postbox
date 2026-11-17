@@ -2,6 +2,26 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.22.0 (2026-11-17)
+
+### Features
+
+- **composer:** a quota line with one bar per backend the room's agents run on
+
+### Fixes
+
+- **composer:** let go of the quota line when its composer goes
+- **composer:** a host's short name never ends on a hyphen or a dot
+- **composer:** let go of quota lines hidden when they leave the page
+- **composer:** tell hosts apart by the shortest distinct start, and hold the levels' order
+- **composer:** measure the quota line's digits as the page draws them
+- **quota:** age each window on its own, keep the most recent, name a Codex limit
+- **composer:** fit the quota bars by measured width, never clipping a percent
+- **composer:** measure the placeholder in the box's real font
+- **quota:** merge Codex's sparse updates by window, read an event's scale once
+- **composer:** quota bars share the line on a phone, backend and percent whole
+- **pane:** a pane opened over the conversation leaves the column its width
+
 ## 4.21.1 (2026-11-17)
 
 ### Fixes
