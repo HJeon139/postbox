@@ -59,6 +59,7 @@ export function deliver(rt, sessionId, message, { summarizeTo = null, threadId =
   // A persona on a remote host (#120): the turn is remote from here on (server/remote/turns.mjs).
   const hostId = adapter ? rt.placement.hostOf(persona) : null;
   if (hostId) rt.remote.begin(turn, hostId, adapter);
+  else rt.remote?.leaveMoved(se.id);
   // The work ledger (#132) follows the turn’s tool calls. A change outside the project’s folder and the agent’s is
   // flagged; the adapter knows the agent’s folder. A remote agent’s folder is on its host, never made here.
   const project = rt.s.projects[rt.s.threads[se.threadId]?.projectId] ?? null;
