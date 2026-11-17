@@ -5,6 +5,7 @@
 
 import { emptyReply, endedWithoutReply } from './empty-reply.mjs';
 import { failureClass } from './harness-failure.mjs';
+import { heldBy } from './turn-held.mjs';
 import { askedOf, replyMarks } from './turn-marks.mjs';
 import { outOfQuota, quotaBack } from './turn-quota.mjs';
 import { foldSteps, settleSubagentSteps } from './turn-steps.mjs';
@@ -123,6 +124,8 @@ function endFailed(rt, se, turn, err) {
     asked: askedOf(turn),
     ...(err.remote ? { remote: err.remote } : {}),
     ...(err.rawEnding ? { rawEnding: err.rawEnding } : {}),
+    // A reply with no words of its own says what the turn held, before its error (turn-held.mjs).
+    ...(!resends && !turn.said.trim() ? { held: heldBy(rt, se, turn) } : {}),
   });
   if (resends) {
     rt.sessions.update(se.id, { state: 'idle', sideTurn: null, subagents: [], currentStep: 'Sending again', finishedAt: Date.now(), stopAsk: null });
