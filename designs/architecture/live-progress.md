@@ -227,7 +227,7 @@ The restart’s times came with the machine at its busiest (a load average of 7 
 
 Below 400 agents no snapshot is taken, so every event is replayed. At 400, when the snapshot is taken depends on how the store’s writes batch between real I/O, so the snapshot and what’s replayed after it split the log differently from run to run, from a third of the log to none. Those two are bands only; what a step compares at 400 is the whole log’s bytes and events and its load without the snapshot, which held to within 0.3%. The 400-agent shutdown is the real `close()`, which stops 400 turns and writes what they end with.
 
-**Joining mid-turn,** with 1, 10 and 100 turns running, half through each, in rooms of up to 4: `/api/state` as a new page loads it, and tabs reconnecting at once to the first room, after a long drop (they missed everything since the turns started) or a short one (since 45% of each turn). For one reconnecting tab, what its connect sends, the running turns’ live snapshot within it (frames named `live`, none on `main`), and what it’s sent after, to the turns’ end:
+**Joining mid-turn,** with 1, 10 and 100 turns running, half through each, in rooms of up to 4: `/api/state` as a new page loads it, and tabs reconnecting at once to the first room, after a long drop (they missed everything since the turns started) or a short one (since 45% of each turn). For one reconnecting tab, what its connect sends, the running turns’ live snapshot within it (frames named `live`, none on `main`; the tabs’ stream is told the runtime’s running turns, as Postbox’s is, so a step that sends one has it counted), and what it’s sent after, to the turns’ end:
 
 | Running turns, drop | `/api/state` bytes | Connect: bytes, frames | Snapshot: bytes, frames | After, to the end: bytes, frames | 1 tab reconnecting | 10 at once |
 |---|---|---|---|---|---|---|
@@ -247,7 +247,7 @@ Below 400 agents no snapshot is taken, so every event is replayed. At 400, when 
   - The time a delta is the mappers’ time over a count that doesn’t change, so it’s judged once, as the mappers’ time.
   - A section with a number worse runs a second round of pairs, and the number is worse only if that round agrees.
 - **Why paired:** a rule that held one band’s median against the other’s most let a real 11 to 16% CPU cost pass on a busy machine.
-- **The tool against itself** (`--against .`, every section, a load average of 7 to 11): 40 times judged, none worse, no second round, and the smaller of each time’s two ratios reached 1.072 at most. It catches #1471’s 100x cost, at ratios of 1.13 to 1.31. A cost near 10% needs a calmer machine or more pairs (`--pairs`) to call.
+- **The tool against itself** (`--against .`, every section, a load average of 7 to 11): 40 times judged, none worse, no second round, and the smaller of each time’s two ratios reached 1.072 at most. It catches #1471’s 100x cost, at ratios of 1.13 to 1.31, in both rounds. On a busier machine a single round can find main worse than itself, a time or two just past 1.10; the second round is what keeps main against main passing under load, since noise seldom lands on the same number twice. A cost near 10% needs a calmer machine or more pairs (`--pairs`) to call.
 - The snapshot and the replay with it at 400 agents aren’t compared, for the reason above.
 
 ## Order of work
