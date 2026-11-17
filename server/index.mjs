@@ -33,6 +33,7 @@ import { hostManagerFor, startHosts, stopHosts } from './remote/serve.mjs';
 import { settleInterrupted } from './restart-sweep.mjs';
 import { SAME_ORIGIN_ONLY } from './review-files.mjs';
 import { patchThread } from './room-chain-limit.mjs';
+import { roomFileRoute } from './room-files.mjs';
 import { httpError, Runtime } from './runtime.mjs';
 import { settleLedger, stopTimers } from './runtime-close.mjs';
 import { sandboxRoute } from './sandbox-routes.mjs';
@@ -277,6 +278,9 @@ export async function start({
       return send(res, 200, await rt.workDiff(m[1], m[2], url.searchParams.get('change')));
     if ((m = path.match(/^\/api\/threads\/([^/]+)\/work\/commands\/([^/]+)\/output$/)) && req.method === 'GET')
       return raw(res, 200, await rt.workOutput(m[1], m[2]), OUTPUT_HEADERS);
+    // A room asset, or a changed file as the agents left it, for Work’s viewer (#1446).
+    const viewed = await roomFileRoute(rt, path, req.method, url);
+    if (viewed) return raw(res, 200, viewed.bytes, viewed.headers);
     // A data file an app’s version carries (#54), for the app’s postbox.file(name). Text, never run as a page.
     if ((m = path.match(/^\/api\/apps\/([^/]+)\/files\/([^/]+)$/)) && req.method === 'GET')
       return raw(res, 200, await rt.appFile(decodePath(m[1]), decodePath(m[2]), Number(url.searchParams.get('v')) || undefined), {
