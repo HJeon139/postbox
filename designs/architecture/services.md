@@ -438,10 +438,10 @@ flowchart TD
   S -->|yes| G[Turns: an empty reply may set err, settle reply segments, so their mentions are entries]
   G --> H[turn.replied — Summaries: post the summary when ok, clear the pending summary]
   H --> I{err, and not an AbortError?}
-  I -->|failed| J[turn.failed — Checks: stalled steps]
-  J --> K[Turns: failed reply, notify; the session fails unless the turn was lost after the harness accepted it and wasn’t a resend]
+  I -->|failed| K[Turns: failed reply, notify; the session fails unless the turn was lost after the harness accepted it and wasn’t a resend]
   K --> L2[Turns: mark whom the failure woke, from entriesFrom]
-  L2 --> L4[turn.failed — Delivery: settle what the turn took by why it failed, as a resend, failed or delivered; count the chain]
+  L2 --> J[turn.failed — Checks: stalled steps]
+  J --> L4[turn.failed — Delivery: settle what the turn took by why it failed, as a resend, failed or delivered; count the chain]
   I -->|no: ok, or stopped by an AbortError| M[turn.ended — Apps: an app-check turn’s fix ends]
   M --> N[turn.ended — Asks: the next need, session state, unread and notification]
   N --> O[turn.ended — Checks: stalled steps, then lint or quiet lint]
@@ -454,7 +454,7 @@ So the signals are:
 - `turn.ending`, before Running lets the turn go (B);
 - `turn.settled`, with the final host `err` (E, F);
 - `turn.replied` (H);
-- `turn.failed` (J, and L4 after Turns’ own K and L2);
+- `turn.failed`, after Turns’ own K and L2 (J, L4);
 - `turn.ended` (M to R).
 
 Their listeners run in that order and share `open`, `viewing` and `topic`. Stopping a turn (`turn-stop.mjs`) raises `turn.stopping` and `turn.exited` in the same way. As built (#1429), `server/turn-end-listeners.mjs` adds each concern’s listener, and the inbox’s (`server/inbox-listeners.mjs`) come last. `turn.ended` carries `open`, `viewing` and `topic`, which Asks’ listener (N, `server/turn-needs.mjs`) fills for the ones after it. Turns posts the failed reply (K) and marks whom it woke (L2) before it raises `turn.failed`, so Checks’ stalled steps (J) run after them. The inbox’s `turn.ended` listener keeps #733’s order: the agent’s held messages go before or after what the turn took settles, by which arrived first. `turn.exited` starts the agent’s next waiting entries.
