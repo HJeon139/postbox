@@ -2,7 +2,8 @@
 // retried below with a note, not as a failure with Retry; the agent isn’t failed, and no blocking alert goes up, since
 // the person has nothing to act on. The resend’s reply follows it. At 375 and 1280 px; the lagged run sets
 // POSTBOX_STREAM_LAG. And #442: a turn out of quota needs nobody either. Every agent on the backend shows out of
-// quota in its row, and nothing says needs you or raises an alert; its one info notice is a badge, not a toast.
+// quota in its row and its ring, and nothing says needs you or raises an alert; its ring isn’t a button to what it
+// needs. Its one info notice is a badge, not a toast.
 
 import { expect, test } from '@playwright/test';
 import { withQuota } from '../../server/harness-failure.mjs';
@@ -71,6 +72,12 @@ test('#442 a turn out of quota marks every agent on its backend in its row, and 
   rt.sendMessage(t.id, { text: '@researcher which dates are riskiest?' });
   for (const se of [researcher, indexer]) await expect(page.locator(`#agent-row-${se.id} .agent-state`)).toContainText('out of quota until');
   await expect(page.locator('.agent-state', { hasText: 'needs you' })).toHaveCount(0);
+  // Each ring says out of quota, and isn’t a button to what the agent needs, since it needs nothing.
+  for (const se of [researcher, indexer]) {
+    const rings = page.locator(`pb-ring[data-session="${se.id}"]`);
+    await expect(rings.first().locator('svg')).toHaveAttribute('aria-label', /Out of quota/);
+    await expect(page.locator(`pb-ring[data-session="${se.id}"][role="button"]`)).toHaveCount(0);
+  }
   const reply = page.locator('#main .callout', { hasText: 'You’ve hit your usage limit.' });
   await expect(reply.getByRole('button', { name: 'Retry' })).toBeVisible();
   await expect(page.getByRole('alert')).toHaveCount(0);

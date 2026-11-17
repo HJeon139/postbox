@@ -8,8 +8,9 @@ import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { withQuota } from '../server/harness-failure.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { stopTimers } from '../server/runtime-close.mjs';
+import { outOfQuota as markOutOfQuota, quotaBack } from '../server/turn-quota.mjs';
 import { needsYouNow } from '../shared/needs.mjs';
-import { ScriptedAdapter, settle, setup, sleep } from './side-threads-fixture.mjs';
+import { held, ScriptedAdapter, settle, setup, sleep } from './side-threads-fixture.mjs';
 
 const lost = () => async () => {
   throw new Error('fetch failed', { cause: Object.assign(new Error('socket hang up'), { code: 'ECONNRESET' }) });
@@ -193,4 +194,51 @@ test('#442 the agent’s own scheduled wake doesn’t start it before its quota 
   rt.sessions.update(beta.id, { quota: { until: Date.now() - 1 } });
   assert.equal(rt.delivery.ready(beta.id), true);
   assert.ok(store.state.sessions[beta.id]);
+});
+
+/** Alpha’s persona runs on host h1, which signs in to its own account (designs/architecture/remote-hosts.md). */
+function alphaOnHost(/** @type {any} */ f) {
+  const persona = f.store.state.personas[f.alpha.personaId];
+  f.store.emit('persona', { ...persona, remote: { hostId: 'h1' } });
+}
+
+test('#442 a backend’s quota on this computer doesn’t mark an agent of that backend on a host', async () => {
+  const f = setup();
+  alphaOnHost(f);
+  f.adapter.next.push(outOfQuota(null));
+  f.rt.sendMessage(f.t.id, { text: '@beta go' });
+  await settle(f.rt);
+  assert.ok(f.store.state.sessions[f.beta.id].quota);
+  assert.equal(f.store.state.sessions[f.alpha.id].quota ?? null, null);
+});
+
+test('#442 a host’s quota and this computer’s are two, each with its notice, and a good turn on one clears only its own', async () => {
+  const f = setup();
+  const heard = notes(f.store);
+  alphaOnHost(f);
+  f.adapter.next.push(outOfQuota(null));
+  f.rt.sendMessage(f.t.id, { text: '@beta go' });
+  await settle(f.rt);
+  const alpha = f.store.state.sessions[f.alpha.id];
+  f.rt.sessions.update(alpha.id, { state: 'failed', quota: markOutOfQuota(f.rt, alpha, null, f.t.id) });
+  assert.equal(heard.length, 2, 'one notice each');
+  quotaBack(f.rt, f.store.state.sessions[f.alpha.id]);
+  assert.equal(f.store.state.sessions[f.alpha.id].quota ?? null, null);
+  assert.ok(f.store.state.sessions[f.beta.id].quota, 'the host’s good turn leaves this computer’s mark');
+});
+
+test('#442 a turn started directly while out of quota keeps the mark until a turn ends well', async () => {
+  const f = setup();
+  f.adapter.next.push(outOfQuota(null));
+  f.rt.sendMessage(f.t.id, { text: '@beta go' });
+  await settle(f.rt);
+  const busy = held();
+  f.adapter.next.push(busy.step);
+  f.rt.turnService.run(f.beta.id, { kind: 'user', text: 'started directly' }, { threadId: f.t.id });
+  await sleep(5);
+  assert.ok(f.store.state.sessions[f.alpha.id].quota, 'its start doesn’t clear the backend’s mark');
+  assert.ok(f.store.state.sessions[f.beta.id].quota, 'nor its own');
+  busy.release();
+  await settle(f.rt);
+  assert.equal(f.store.state.sessions[f.beta.id].quota ?? null, null, 'it ended well, so the quota is back');
 });
