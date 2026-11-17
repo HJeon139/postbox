@@ -279,10 +279,10 @@ export async function play({ origin, view = async () => {}, shot = async () => {
   await shot('21a-work-chip');
   await view(`#/t/${cites.id}?work`);
   await shot('21-work');
-  // A file, chosen in the pane, opens in its viewer (#1446); its Diff opens the expanded view at its diff.
+  // refs.bib, flagged, from In this chat (#1446): its viewer, then its Diff opens the expanded view at its diff.
   await shot('21b-work-file', {
     prepare: async (ui) => {
-      await ui.click('section:has(#wc-files-h) .wc-row');
+      await ui.click('section:has(#wc-now-h) .wc-row', 'refs.bib');
       await ui.click('.wv button', 'Diff');
       await ui.shows('.pane-full');
     },
