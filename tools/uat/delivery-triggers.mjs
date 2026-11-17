@@ -7,7 +7,6 @@ import { CATCH_UP_ITEMS } from '../../server/catch-up.mjs';
 import { addressed, cardHistory, headOf, holds, inputsOf, labeled, plain, RESEND_LABEL, settledAt, timeAfter, turnsOf } from './room-delivery.mjs';
 import { clip, itemsOf } from './trigger-facts.mjs';
 
-const POINTER = /which your last summary gave you in full/;
 const pair = (a, b) => [a, b].sort().join('+');
 const reached = (f, to, text, itemId, since) => (inputsOf(f, to) ?? []).some((x) => x.at >= since && holds(x, { itemId, text }));
 const prompts = (f, to) => (inputsOf(f, to) ?? []).filter((x) => x.kind === 'prompt');
@@ -110,13 +109,12 @@ function failBeforeOutput(f) {
   return out;
 }
 
-/** A message given to an agent whole a second time, in a prompt that says it’s a repeat: a pointer to it isn’t one. */
+/** A message given to an agent whole a second time, in a prompt that says it’s a repeat. */
 function resendLabeled(f) {
   return addressed(f).flatMap((a) => {
     const all = headOf(a.text) ? plain(a.text) : null;
     const got = all ? prompts(f, a.to).filter((x) => x.key.includes(all)) : [];
-    // A pointer to a message the last summary gave (#484) says so, and isn’t a resend.
-    const again = got.slice(1).find((x) => labeled(x.text, a.text) && !POINTER.test(x.text));
+    const again = got.slice(1).find((x) => labeled(x.text, a.text));
     return again ? [{ at: again.at, evidence: `@${a.to} got “${clip(a.text, 80)}” again, labeled: “${clip(RESEND_LABEL.exec(again.text)?.[0], 40)}”.` }] : [];
   });
 }

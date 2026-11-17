@@ -167,9 +167,8 @@ test('resend-labeled fires when a message came whole again under a resend label'
   assert.equal(fires('resend-labeled', resendRoom(`[Postbox] Resent: your last turn failed before any output.\n\n${DRAFT}`)).length, 1);
 });
 
-test('resend-labeled stays silent on a bare repeat and on a pointer to a message already given', () => {
+test('resend-labeled stays silent on a bare repeat', () => {
   assert.deepEqual(fires('resend-labeled', resendRoom(`You: ${DRAFT}`)), []);
-  assert.deepEqual(fires('resend-labeled', resendRoom(`The person’s message above, which your last summary gave you in full: “${DRAFT}”`)), []);
 });
 
 test('each delivery trigger carries its requirements, and a phase’s coverage reports them', () => {
