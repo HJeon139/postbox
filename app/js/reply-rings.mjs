@@ -123,6 +123,11 @@ function movedOrAdded(type, d) {
 // A message drawn again draws its line as it should be (replyLine); a session’s change, or a new or moved message,
 // can move which of its lines follows it, in every transcript showing it.
 client.on((ch) => {
+  // A load (a resync) replaces every session at once, and fires none of their events: each line is painted again.
+  if (ch.type === 'load') {
+    for (const id of followers.keys()) if (client.state.sessions[id]) paintLines(client.state.sessions[id]);
+    return;
+  }
   const se = sessionOf(ch);
   if (se) paintLines(se);
 });
