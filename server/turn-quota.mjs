@@ -68,6 +68,9 @@ function armReset(rt, key, until) {
   const timer = setTimeout(
     () => {
       rt.watchdogs.delete(timer);
+      // A timer can fire before Date.now() reaches the time it was set for, and an agent still out then isn’t woken,
+      // with nothing to wake it after (#1453): it arms again for the rest.
+      if (Date.now() < until) return armReset(rt, key, until);
       for (const se of sessionsOn(rt, key)) rt.delivery.wake(se.id);
     },
     Math.min(until - Date.now(), 2 ** 31 - 1),
