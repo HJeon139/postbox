@@ -11,10 +11,12 @@ import { synced } from './postbox.mjs';
 const scripted = scriptedRoom(test, 'live-frames');
 const { scripts, hold, at, room, go } = scripted;
 
-test('a step and the agent’s current step show live, though unstored, and again after a reload mid-turn', async ({ page }) => {
+test('the newest step, the agent’s current step and its ring show live, though unstored, and again after a reload mid-turn', async ({ page }) => {
   const t = room('Live frames', ['fixer']);
   scripts.set('fixer', async ({ emit, who }) => {
     emit({ kind: 'text', text: 'Running the tests.' });
+    emit({ kind: 'tool_call', id: 'b0', name: 'Read', input: { file_path: 'package.json' }, final: true });
+    emit({ kind: 'tool_result', id: 'b0', text: '{}' });
     emit({ kind: 'tool_call', id: 'b1', name: 'Bash', input: { command: 'npm test -- --grep live' }, final: true });
     await hold(who, 1);
     emit({ kind: 'tool_result', id: 'b1', text: '3 passing' });
@@ -27,17 +29,21 @@ test('a step and the agent’s current step show live, though unstored, and agai
   const se = arrange.sessionsIn(scripted.app.rt, t.id)[0];
   const step = page.locator('.live-steps li', { hasText: 'npm test -- --grep live' });
   const now = page.locator(`#agent-row-${se.id} .agent-state`);
-  await expect(step, 'the running command, live').toHaveCount(1);
+  const ring = page.locator(`.rail pb-ring[data-session="${se.id}"] svg`).first();
+  await expect(step, 'the newest command, live').toHaveCount(1);
   await expect(now, 'the agent’s current step, live').toContainText('npm test');
+  await expect(ring, 'the ring, live').toHaveAttribute('aria-label', /Calling tools/);
   // Neither is stored yet: the step waits for a commit point, and the current step goes live only.
   const reply = scripted.app.store.items(t.id).find((i) => i.kind === 'agent');
-  expect(reply?.activity?.steps?.some((s) => s.id === 'b1') ?? false, 'the step isn’t stored mid-call').toBe(false);
+  expect(reply?.activity?.steps?.some((s) => s.id === 'b1') ?? false, 'the newest step isn’t stored mid-call').toBe(false);
+  expect(reply?.activity?.steps?.some((s) => s.id === 'b0') ?? false, 'the one before it is, at the commit point the newest made').toBe(true);
   expect(scripted.app.store.state.sessions[se.id].currentStep ?? '', 'the current step isn’t stored').not.toContain('npm test');
   // A reload mid-turn: the state’s snapshot of the running turn draws them again.
   await page.reload();
   await synced(page, scripted.app);
-  await expect(step, 'the running command after a reload').toHaveCount(1);
+  await expect(step, 'the newest command after a reload').toHaveCount(1);
   await expect(now, 'the current step after a reload').toContainText('npm test');
+  await expect(ring, 'the ring after a reload').toHaveAttribute('aria-label', /Calling tools/);
   go('fixer');
   await expect(page.locator(`[data-key="${reply?.id}"]`)).toContainText('Done.');
   await expect

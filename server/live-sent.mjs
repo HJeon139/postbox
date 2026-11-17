@@ -3,7 +3,12 @@
 // sent with it. A page that had either isn’t sent the stored event at all: a cursor would only move its place on, which
 // its next numbered frame does, and a reconnect that replays the event changes nothing it has. So each change crosses
 // the wire once, as before commit points. Only a page’s stream is spared it; a tool’s stream, which names no open
-// conversations, reads the stored events whole.
+// conversations, reads the stored events whole. Why a page can’t miss what it’s spared:
+// - a skipped event moves neither the page’s place nor its EventSource’s Last-Event-ID, so a reconnect gets it whole
+//   in the backlog, and a new stream (a reload, a tab that joins) was sent nothing live, so it’s spared nothing;
+// - a backlog is built from the store, never skipped, and only frames sent to a stream after it joined count;
+// - an emit held behind a commit is released from its JSON, a copy, so it’s never marked and goes whole;
+// - a page that drops a live frame it was sent (shared/live-apply.mjs, past its held frames) loads the state again.
 
 /**
  * The data of the events a page gets live instead, which only server/live-buffer.mjs adds to: a commit point’s step, and

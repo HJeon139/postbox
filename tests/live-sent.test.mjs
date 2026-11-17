@@ -9,15 +9,19 @@ import { liveEnd, liveSession, liveStep, liveUpdate } from '../server/live-buffe
 import { liveStreams } from '../server/live-streams.mjs';
 import { sessionPatch } from '../server/session-patch.mjs';
 import { Store } from '../server/store.mjs';
+import { heldStore } from './stop-reply-fixture.mjs';
 
-/** A stream on `live`, and the frames written to it after it opened, by event name. */
-function open(live, store, query) {
+/**
+ * A stream on `live`, and the frames written to it after it opened, by event name; from `since`, its backlog too, as a
+ * page that reconnects with its Last-Event-ID gets it.
+ */
+function open(live, store, query, since = /** @type {number | null} */ (null)) {
   /** @type {string[]} */
   const frames = [];
   const res = { writeHead() {}, write: (/** @type {string} */ s) => frames.push(s) && true, destroy() {}, once() {} };
-  const url = new URL(`http://x/api/stream?since=${store.state.seq}&epoch=${encodeURIComponent(store.epoch)}${query}`);
+  const url = new URL(`http://x/api/stream?since=${since ?? store.state.seq}&epoch=${encodeURIComponent(store.epoch)}${query}`);
   live.stream(/** @type {any} */ ({ headers: {}, on() {} }), /** @type {any} */ (res), url);
-  frames.length = 0;
+  if (since === null) frames.length = 0;
   const events = () =>
     frames
       .join('')
@@ -110,5 +114,90 @@ test('the turn’s end stores its tool calls, which the pages had live, and does
     assert.deepEqual(tool.events(), [['session.patch', undefined]]);
   } finally {
     live.stop();
+  }
+});
+
+/** A turn on `store`, with what its live buffer needs of a runtime: writes of the session through the store. */
+function turnOn(store) {
+  const turn = { id: 'tu_1', sessionId: 'se_1', threadId: 'th_1', first: 'it_1' };
+  const update = (/** @type {string} */ id, /** @type {any} */ p, /** @type {any} */ before) => {
+    const data = sessionPatch(store.pending.session(id), { ...p, updatedAt: 5 });
+    before?.(data);
+    store.emit('session.patch', data);
+  };
+  return { turn, rt: { store, s: store.state, sessions: { update } } };
+}
+
+test('a page that reconnects gets the events it was spared again, whole, in its backlog: its place never moved past them', async () => {
+  const store = await new Store(null).load();
+  store.emit('session', { id: 'se_1', threadId: 'th_1', state: 'gen' });
+  const live = liveStreams(store);
+  try {
+    const { turn, rt } = turnOn(store);
+    const page = open(live, store, '&open=th_1');
+    const placed = store.state.seq; // the last seq the page was sent: its Last-Event-ID
+    liveStep(rt, turn, { id: 's1', label: 'Read', state: 'running' });
+    liveUpdate(rt, turn, { state: 'tool', currentStep: 'Read' });
+    liveEnd(rt, turn);
+    assert.deepEqual(page.events(), [], 'spared all three');
+    const again = open(live, store, '&open=th_1', placed);
+    assert.deepEqual(again.events(), [
+      ['session.patch', undefined],
+      ['item.patch', 's1'],
+    ]);
+  } finally {
+    live.stop();
+  }
+});
+
+test('a tab mid-backlog gets the stored events whole, and is spared only what was sent it live after it joined', async () => {
+  const store = await new Store(null).load();
+  store.emit('session', { id: 'se_1', threadId: 'th_1', state: 'gen' });
+  const live = liveStreams(store);
+  try {
+    const { turn, rt } = turnOn(store);
+    const from = store.state.seq;
+    liveStep(rt, turn, { id: 's1', label: 'Read', state: 'running' });
+    liveStep(rt, turn, { id: 's2', label: 'Edit', state: 'running' }); // a commit point: s1 is stored
+    // A tab that joins now, from before s1 was stored: its backlog has the commit point whole.
+    const tab = open(live, store, '&open=th_1', from);
+    assert.deepEqual(tab.events(), [['item.patch', 's1']]);
+    // s2 went live before the tab joined, so its commit point goes to the tab whole; s3 it had live, so it’s spared.
+    liveStep(rt, turn, { id: 's3', label: 'Test', state: 'running' });
+    liveEnd(rt, turn);
+    assert.deepEqual(tab.events(), [
+      ['item.patch', 's1'],
+      ['item.patch', 's2'],
+    ]);
+  } finally {
+    live.stop();
+  }
+});
+
+test('a commit point held behind a commit in flight goes to every page whole, after the commit it waited on', async () => {
+  const h = await heldStore();
+  const { store } = h;
+  store.emit('session', { id: 'se_1', threadId: 'th_1', state: 'gen' });
+  await store.flush();
+  const live = liveStreams(store);
+  try {
+    const { turn, rt } = turnOn(store);
+    const page = open(live, store, '&open=th_1');
+    liveStep(rt, turn, { id: 's1', label: 'Read', state: 'running' });
+    h.hold();
+    const commit = store.commit([{ type: 'settings', data: { theme: 'system' } }]);
+    await h.atSync;
+    liveEnd(rt, turn); // its commit point is held: released later, from its JSON, as an event of its own
+    assert.deepEqual(page.events(), [], 'held');
+    h.release();
+    await commit;
+    await store.flush();
+    assert.deepEqual(page.events(), [
+      ['settings', undefined],
+      ['item.patch', 's1'],
+    ]);
+  } finally {
+    live.stop();
+    await store.close();
   }
 });
