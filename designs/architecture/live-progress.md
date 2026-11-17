@@ -190,6 +190,22 @@ Each code pull request is measured against `main`, back to back on the same mach
 
 The first code pull request extends the tool and records `main`’s numbers before any change, so every later one compares with the same baseline.
 
+**`main`’s baseline,** at 102cc4819, from `node --expose-gc tools/measure-progress.mjs`, over two runs on the developer’s Mac:
+
+| Section | Log bytes | Progress | Events of progress | Time |
+|---|---|---|---|---|
+| Claude Code, 25 recorded turns | 384,015–384,119 | 44.3–44.6% | 955–959 | |
+| Codex, 12 recorded turns | 79,870–79,895 | 22.9% | 149–150 | |
+| Kiro, 13 recorded turns | 114,368–114,447 | 38.9–39.0% | 334–335 | |
+| Antigravity, 14 recorded turns | 150,863–150,890 | 41.6–41.7% | 523–525 | |
+| One turn of 300 steps | 437,200 | 55.1% | 600 step records | 73–75 ms |
+| One turn of 1,000 steps | 1,442,223 | 55.8–55.9% | 2,000 step records | 199–201 ms |
+| 8 agents at once, one room | 354,167–354,192 | 55.9–56.0% | 1,229–1,230 | 55 ms |
+| 40 agents at once, one room | 1,799,514–1,799,593 | 55.2% | 6,142–6,144 | 257–330 ms |
+| Restart on the 40 agents’ log | 1,826,439–1,826,520 log, 344,645 snapshot | | | load 16–18 ms, heap +0.4 MB |
+
+The browser rows (the page’s work, the wire, joining) and the hosts’ are measured by the specs and probes of the step that changes them, against `main` at that step.
+
 ## Order of work
 
 Each item is its own pull request, test first:
