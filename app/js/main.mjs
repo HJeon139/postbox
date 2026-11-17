@@ -8,6 +8,7 @@ import { $, h, icon } from './dom.mjs';
 import './focus-clear.mjs';
 import { hoverContent } from './hover-content.mjs';
 import './keys.mjs';
+import './live-frames.mjs';
 import { startLagLog } from './lag-log.mjs';
 import { goHome, lastIn, latestIn, remember } from './last-place.mjs';
 import { notify } from './notify-toast.mjs';

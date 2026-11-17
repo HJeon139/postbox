@@ -4,7 +4,8 @@
 import { pageInbox } from '../shared/inbox-page.mjs';
 import { HOP_LIMIT } from '../shared/limits.mjs';
 import { DEFAULT_EFFORT, DEFAULT_MODEL, EFFORT_LEVELS, REAL_BACKEND_TOOLS } from './adapters/setup.mjs';
-import { publicHeaders, publicState } from './public-state.mjs';
+import { liveSnapshots } from './live-buffer.mjs';
+import { publicHeaders, publicLive, publicState } from './public-state.mjs';
 import { PERMISSION_MODES } from './runtime.mjs';
 import { KNOWN_TOOLS } from './seed.mjs';
 
@@ -22,6 +23,8 @@ export function pageState({ store, rt, adapters, origin, demo, real, config, hea
     state: { ...publicState(store.state), items: {}, inbox: pageInbox(store.state.inbox) },
     // Each thread’s header facts (shared/thread-header.mjs, #1155): what the page shows about a thread without its items.
     headers: publicHeaders(headers.all()),
+    // The running turns’ live state, for a page that loads mid-turn (live-progress.md, “The buffer”), as it may see it.
+    live: publicLive(liveSnapshots(rt)),
     config: {
       origin,
       // Postbox’s tools, then those only real backends have (#5).

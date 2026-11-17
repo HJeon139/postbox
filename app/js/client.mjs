@@ -49,7 +49,7 @@ export const client = {
 export async function load() {
   const r = await fetch('/api/state', { cache: 'no-store' });
   if (!r.ok) throw new Error('Postbox’s server didn’t answer. Check that it’s running, then reload.');
-  const { seq, epoch, state, config, store, headers } = await r.json();
+  const { seq, epoch, state, config, store, headers, live } = await r.json();
   const next = ownState(state);
   await refill(next, epoch);
   client.state = next;
@@ -58,6 +58,7 @@ export async function load() {
   client.seq = seq;
   client.epoch = epoch ?? '';
   client.store = store ?? null;
+  client.live = live ?? []; // the running turns’ live state, which live-frames.mjs applies on load
   client.emit({ type: 'load' });
 }
 
@@ -162,6 +163,8 @@ export function connect({ quiet = false } = {}) {
   });
   es.addEventListener(STREAM.resync, () => (behind ? undefined : resync()));
   // A thread’s header, unnumbered: it follows the event that changed it, and null says the thread was removed.
+  // A running turn’s live frame, unnumbered and unstored: live-frames.mjs applies it (live-progress.md).
+  es.addEventListener(STREAM.live, (e) => behind || client.emit({ type: 'live', data: JSON.parse(e.data) }));
   es.addEventListener(STREAM.header, (e) => {
     if (behind) return;
     const { threadId, header } = JSON.parse(e.data);

@@ -64,7 +64,7 @@ test('/api/state carries each thread’s header and no conversation’s items', 
   const live = liveStreams(/** @type {any} */ (store));
   try {
     emit(1, 'item.add', { threadId: 'away', item: { id: 'b', kind: 'user', at: 2, text: 'history' } });
-    const rt = { localBackends: () => [], config: { telemetryRoot: 'x' }, store };
+    const rt = { localBackends: () => [], config: { telemetryRoot: 'x' }, store, running: { all: () => [] } };
     const adapters = { names: () => [], get: () => ({}), runsHere: () => true };
     const answer = pageState(
       /** @type {any} */ ({ store, rt, adapters, origin: '', demo: false, real: null, config: {}, corpus: { stats: () => ({}) }, headers: live.headers }),
