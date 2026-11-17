@@ -1,9 +1,11 @@
 // #466 and #1218’s rule: a turn lost to the network sends what it took once more, on its own. Its reply says so, as
 // retried below with a note, not as a failure with Retry; the agent isn’t failed, and no blocking alert goes up, since
 // the person has nothing to act on. The resend’s reply follows it. At 375 and 1280 px; the lagged run sets
-// POSTBOX_STREAM_LAG.
+// POSTBOX_STREAM_LAG. And #442: a turn out of quota needs nobody either. Every agent on the backend shows out of
+// quota in its row, and nothing says needs you or raises an alert; its one info notice is a badge, not a toast.
 
 import { expect, test } from '@playwright/test';
+import { withQuota } from '../../server/harness-failure.mjs';
 import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 import { heldBackend } from './side-threads.mjs';
@@ -49,3 +51,27 @@ for (const width of [375, 1280])
       await expect(page.getByRole('alert')).toHaveCount(0);
     });
   });
+
+test('#442 a turn out of quota marks every agent on its backend in its row, and needs nobody', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  const { rt, store } = app;
+  const persona = (/** @type {string} */ handle) => Object.values(store.state.personas).find((p) => p.handle === handle);
+  const t = rt.createThread({
+    projectId: Object.values(store.state.projects)[0].id,
+    title: 'Out of quota',
+    personaIds: [persona('researcher').id, persona('indexer').id],
+  });
+  const [researcher, indexer] = ['researcher', 'indexer'].map((h) => arrange.agentIn(rt, t.id, h));
+  await page.goto(`${app.origin}/#/t/${t.id}`);
+  await synced(page, app);
+  const until = Date.now() + 3 * 3600_000;
+  held.scripts.set(researcher.id, async () => {
+    throw withQuota(new Error('You’ve hit your usage limit.'), { until });
+  });
+  rt.sendMessage(t.id, { text: '@researcher which dates are riskiest?' });
+  for (const se of [researcher, indexer]) await expect(page.locator(`#agent-row-${se.id} .agent-state`)).toContainText('out of quota until');
+  await expect(page.locator('.agent-state', { hasText: 'needs you' })).toHaveCount(0);
+  const reply = page.locator('#main .callout', { hasText: 'You’ve hit your usage limit.' });
+  await expect(reply.getByRole('button', { name: 'Retry' })).toBeVisible();
+  await expect(page.getByRole('alert')).toHaveCount(0);
+});
