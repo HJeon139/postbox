@@ -57,6 +57,8 @@ function drawnSame(/** @type {HTMLElement} */ node, /** @type {any} */ was, /** 
 
 /** Empties the transcript but for the nodes it keeps, which stay where they are. @param {HTMLElement} el @param {Map<string, HTMLElement>} keep */
 export function clearBut(el, keep) {
+  // Nothing kept, as when every item changed: one call, as a build from nothing always made.
+  if (!keep.size) return el.replaceChildren();
   const kept = new Set(keep.values());
   for (const n of [...el.childNodes]) if (!kept.has(/** @type {HTMLElement} */ (n))) n.remove();
 }
@@ -77,6 +79,7 @@ export function standIn(id) {
  * @param {any} win  the transcript’s window, or null
  */
 export function adopt(el, keep, nodes, win) {
+  if (!keep.size) return;
   /** @type {Map<Node, HTMLElement>} */
   const placed = new Map();
   for (const [id, node] of keep) {
