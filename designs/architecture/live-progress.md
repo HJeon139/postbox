@@ -216,27 +216,39 @@ The first code pull request extends the tool and records `main`’s numbers befo
 
 | Scale and stop | Shutdown | Written | Snapshot | Replayed with it: bytes, events | Load with it | Load without it: bytes, events, time | Heap after load | Sweep |
 |---|---|---|---|---|---|---|---|---|
-| 4 agents, graceful | 7.1–9.6 ms | 55,408 | none | 55,408, 176 | 5.5–6.3 ms | 55,408, 176, 5.7–6.3 ms | 0.13–0.14 MB | 0.07–0.08 ms |
-| 4 agents, crash | | 48,811 | none | 48,811, 138 | 6.4–8.2 ms | 48,811, 138, 4.9–5.9 ms | 0.17 MB | 0.73–0.76 ms |
-| 40 agents, graceful | 100–106 ms | 372,986 | none | 372,986, 1,608 | 7.2–8.1 ms | the same, 7.7–9.0 ms | 0.32–0.55 MB | 0.14 ms |
-| 40 agents, crash | | 312,715–312,946 | none | 312,715–312,946, 1,343–1,344 | 8.7–9.8 ms | 312,491–312,715, 1,342–1,343, 6.5–7.9 ms | 0.31–0.32 MB | 1.4–1.5 ms |
-| 400 agents, graceful | 471–561 ms | 3,468,953–3,469,505 | 1,068,239–1,127,779 | 962,254–1,208,072, 4,577–5,736 | 22.4–22.6 ms | 3,468,953–3,469,505, 16,651–16,660, 26.4–27.3 ms | 2.3–2.4 MB | 0.35–0.38 ms |
-| 400 agents, crash | | 2,911,035–2,915,150 | 1,063,617–1,102,124 | 550,499–709,443, 2,717–3,503 | 17.4–18.3 ms | 2,911,035–2,915,150, 14,167–14,182, 23.0–23.4 ms | 2.1 MB | 9.6–10.0 ms |
+| 4 agents, graceful | 8–67 ms | 55,408 | none | 55,408, 176 | 7–83 ms | 55,408, 176, 7–61 ms | 0.14–0.63 MB | 0.09–0.10 ms |
+| 4 agents, crash | | 48,811 | none | 48,811, 138 | 12–100 ms | 48,811, 138, 6–39 ms | 0.17 MB | 1.1–1.4 ms |
+| 40 agents, graceful | 128–245 ms | 372,987 | none | 372,987, 1,608 | 12–33 ms | the same, 8–20 ms | 0.32–0.49 MB | 0.16–0.29 ms |
+| 40 agents, crash | | 312,491 | none | 312,491, 1,342 | 10–70 ms | the same, 11–29 ms | 0.31–0.32 MB | 1.5–2.4 ms |
+| 400 agents, graceful | 634–1,361 ms | 3,462,779–3,472,089 | 1,208,653–1,227,826 | 91,185–556,939, 356–2,494 | 24–42 ms | 3,462,779–3,472,089, 16,605–16,676, 32–60 ms | 2.1–2.3 MB | 0.38–0.75 ms |
+| 400 agents, crash | | 2,917,430–2,919,005 | 1,207,757–1,208,541 | 0, 0: the snapshot came after the last event | 14–74 ms | 2,917,430–2,919,005, 14,189–14,196, 25–38 ms | 2.0 MB | 14–16 ms |
 
-Below 400 agents no snapshot is taken, so every event is replayed. At 400, when the snapshot is taken depends on how the store’s writes batch between real I/O, so the snapshot and what’s replayed after it split the log differently from run to run, by up to a quarter. Those two are bands only; what a step compares at 400 is the whole log’s bytes and events and its load without the snapshot, which held to within 0.2%. The 400-agent shutdown is the real `close()`, which stops 400 turns and writes what they end with.
+The restart’s times came with the machine at its busiest (a load average of 7 to 11), and spread up to tenfold; they’re compared only in pairs. The restart’s ledger git calls answer without a process too, so the ledger’s git work isn’t measured anywhere.
 
-**Joining mid-turn,** with 1, 10 and 100 turns running, half through each, in rooms of up to 4: `/api/state` as a new page loads it, and tabs reconnecting at once, each having missed everything since the turns started (the stream’s backlog, for the first room open):
+Below 400 agents no snapshot is taken, so every event is replayed. At 400, when the snapshot is taken depends on how the store’s writes batch between real I/O, so the snapshot and what’s replayed after it split the log differently from run to run, from a third of the log to none. Those two are bands only; what a step compares at 400 is the whole log’s bytes and events and its load without the snapshot, which held to within 0.3%. The 400-agent shutdown is the real `close()`, which stops 400 turns and writes what they end with.
 
-| Running turns | `/api/state` bytes, time | Backlog a tab, bytes and frames | 1 tab reconnecting | 10 tabs at once |
-|---|---|---|---|---|
-| 1 | 6,124, 0.04–0.18 ms | 6,494, 39 | 0.13–0.15 ms | 0.57–0.60 ms |
-| 10 | 33,623–33,630, 0.13–0.18 ms | 70,486–70,493, 417 | 0.66–0.69 ms | 4.5–4.8 ms |
-| 100 | 214,779–214,856, 0.52–0.67 ms | 457,925–458,002, 3,275 | 3.0–3.2 ms | 30–32 ms |
+**Joining mid-turn,** with 1, 10 and 100 turns running, half through each, in rooms of up to 4: `/api/state` as a new page loads it, and tabs reconnecting at once to the first room, after a long drop (they missed everything since the turns started) or a short one (since 45% of each turn). For one reconnecting tab, what its connect sends, the running turns’ live snapshot within it (frames named `live`, none on `main`), and what it’s sent after, to the turns’ end:
+
+| Running turns, drop | `/api/state` bytes | Connect: bytes, frames | Snapshot: bytes, frames | After, to the end: bytes, frames | 1 tab reconnecting | 10 at once |
+|---|---|---|---|---|---|---|
+| 1, long | 6,124 | 6,494, 39 | 0, 0 | 5,187, 37 | 0.21–0.26 ms | 0.9–2.2 ms |
+| 1, short | 6,124 | 472, 6 | 0, 0 | 5,188, 37 | 0.05–0.16 ms | 0.23–0.32 ms |
+| 10, long | 33,625–33,630 | 70,488–70,493, 417 | 0, 0 | 80,693, 630 | 0.9–1.3 ms | 5.8–6.0 ms |
+| 10, short | 33,621 | 5,349, 35 | 0, 0 | 80,698, 630 | 0.14–0.16 ms | 0.5–1.9 ms |
+| 100, long | 214,805–214,856 | 457,951–458,002, 3,275 | 0, 0 | 484,284–484,287, 4,354 | 3.3–6.4 ms | 38–68 ms |
+| 100, short | 214,931 | 36,925, 325 | 0, 0 | 484,573, 4,361 | 0.42–0.79 ms | 3.2–5.0 ms |
+
+`/api/state` takes 0.1 to 4.2 ms at these sizes.
 
 **Worse than `main`,** for a step’s comparison: `node tools/measure-progress.mjs --against <main’s checkout>`, which runs `main`’s tool and the step’s in 8 pairs, alternating ABBA so a machine growing busier or calmer weighs on both, and gives each number a verdict (`tools/measure-progress/compare.mjs`):
-- **Bytes and counts** (the log, written, the snapshot, the page’s, the backlog and `/api/state`) are worse when the step’s least is above `main`’s most by more than 0.1% or 64 bytes, whichever is more. Runs differ only by the digits of times, and at 400 agents by what the stops write.
-- **Times** (event loop busy, CPU, the mappers’ time and time a delta, shutdown, load, sweep, `/api/state` and reconnecting) are worse when the median of the pairs’ ratios, step over `main`, and the ratio of the least runs are both above 1.10. A real cost moves both; noise seldom does. A time under 1 ms in `main`’s least run, or a time a delta whose mappers took under 1 ms, is reported and not judged. A rule that held one band’s median against the other’s most let a real 11 to 16% CPU cost pass on a busy machine, which is why times are paired.
-- **The tool’s own resolution:** run against itself (`--against .`) with a load average of 5 to 17, no number was above 1.10 on both ratios, and the smaller of the two reached 1.099 at most. A cost near 10% needs a calmer machine or more pairs (`--pairs`) to call. The snapshot and the replay with it at 400 agents aren’t compared, for the reason above.
+- **Bytes and counts** (the log, written, the snapshot, the page’s, the connect, the live snapshot, a reconnected tab’s to the end, and `/api/state`) are worse when the step’s least is above `main`’s most by more than 0.1% or 64 bytes, whichever is more. Runs differ only by the digits of times, and at 400 agents by what the stops write.
+- **Times** (event loop busy, CPU, the mappers’ time, shutdown, load, sweep, `/api/state` and reconnecting) are worse when the median of the pairs’ ratios, step over `main`, and the ratio of the least runs are both above 1.10. A real cost moves both; noise seldom does.
+  - A time under 20 ms in `main`’s least run is reported and not judged: run against itself, the mappers’ 2.5 to 4 ms in a crowd came out 11 to 16% apart on noise alone.
+  - The time a delta is the mappers’ time over a count that doesn’t change, so it’s judged once, as the mappers’ time.
+  - A section with a number worse runs a second round of pairs, and the number is worse only if that round agrees.
+- **Why paired:** a rule that held one band’s median against the other’s most let a real 11 to 16% CPU cost pass on a busy machine.
+- **The tool against itself** (`--against .`, every section, a load average of 7 to 11): 40 times judged, none worse, no second round, and the smaller of each time’s two ratios reached 1.072 at most. It catches #1471’s 100x cost, at ratios of 1.13 to 1.31. A cost near 10% needs a calmer machine or more pairs (`--pairs`) to call.
+- The snapshot and the replay with it at 400 agents aren’t compared, for the reason above.
 
 ## Order of work
 
