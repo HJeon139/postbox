@@ -206,7 +206,7 @@ export class Store {
       this.warned = true;
       return ev;
     }
-    if (this.waitingCommits || this.held || this.snapshotting) {
+    if (this.waitingCommits || this.held || /** @type {any} */ (this).heldLive || this.snapshotting) {
       this.held++;
       const job = { held: ev, json: JSON.stringify(ev) }; // as it is now: the caller may change its object later
       this.queue.push(job);
