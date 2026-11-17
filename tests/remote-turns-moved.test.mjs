@@ -5,6 +5,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { agentState } from '../shared/agent-state.mjs';
 import * as arrange from './arrange.mjs';
 import { restarted, rig, settled, starts, startUp, until } from './remote-turns-helpers.mjs';
 
@@ -34,7 +35,7 @@ test('#1214 a turn left on the host an agent moved off is stopped there once the
   await settled(r);
 });
 
-test('#1214 a turn left on the host an agent moved off to this computer is stopped there once the host is back, and shows as stopping', async () => {
+test('#1214 a turn left on the host an agent moved off to this computer is stopped there once the host is back, and isn’t its turn', async () => {
   const { store, d } = restarted({ welcome: 'running' });
   const r = rig({ store, d });
   let release = () => {};
@@ -59,7 +60,10 @@ test('#1214 a turn left on the host an agent moved off to this computer is stopp
   r.store.emit('persona', { ...persona, backend: 'mock', remote: null });
   r.rt.turnService.run(r.se().id, { kind: 'user', text: 'Send now, after the move' }, { threadId: r.t.id });
   await until(() => r.rt.remote.restoring.has('host-turn-1') === false, 'the attach no longer waits for it');
-  assert.equal(r.store.state.sessions[r.se().id].remoteTurn?.state, 'stopping', 'it shows as stopping until the host stops it');
+  // Its turn here is its turn now: the old one is asked to stop, and the agent doesn’t read as running on it.
+  assert.equal(r.store.state.sessions[r.se().id].remoteTurn?.state, 'done', 'the old host turn is settled');
+  await until(() => r.store.state.sessions[r.se().id].state === 'idle', 'the turn here to end');
+  assert.equal(agentState(r.store.state.sessions[r.se().id], r.store.state).state, 'idle', 'it reads as idle, not running');
   release();
   await until(() => d.received.some((m) => m.type === 'stop' && m.turn === 'host-turn-1'), 'the old host asked to stop it');
   await settled(r);
