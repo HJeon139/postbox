@@ -3,6 +3,7 @@
 // count toward it. Work (server/work-service.mjs) calls each with itself.
 
 import { httpError } from './helpers.mjs';
+import { fileCopy } from './ledger-answers.mjs';
 
 /** An error the ledger raised with a status, as the API answers it. */
 const asHttp = (e) => {
@@ -22,6 +23,10 @@ export function workGit(work, threadId) {
 /** @param {string} threadId @param {string} fileId @param {string|null} [changeId] */
 export function workDiff(work, threadId, fileId, changeId = null) {
   return work.ledger.fileDiff(workConversation(work, threadId), fileId, changeId).catch(asHttp);
+}
+/** A changed file as the agents left it, for Work’s viewer (#1446). @param {string} threadId @param {string} fileId */
+export function workCopy(work, threadId, fileId) {
+  return fileCopy(work.ledger, workConversation(work, threadId), fileId).catch(asHttp);
 }
 export function workOutput(work, threadId, entryId) {
   return work.ledger.output(workConversation(work, threadId), entryId).catch(asHttp);

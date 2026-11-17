@@ -14,7 +14,6 @@ import { fileURLToPath } from 'node:url';
 import { AdapterRegistry } from './adapters/adapter.mjs';
 import { MockAdapter } from './adapters/mock.mjs';
 import { PROBES, registerBackends } from './backends.mjs';
-import { INLINE_TYPES } from './blobs.mjs';
 import { buildInfo } from './build-info.mjs';
 import { dismissFailed } from './card-needs.mjs';
 import { openDataFolder } from './data-folder.mjs';
@@ -34,6 +33,7 @@ import { hostManagerFor, startHosts, stopHosts } from './remote/serve.mjs';
 import { settleInterrupted, stopStreaming } from './restart-sweep.mjs';
 import { SAME_ORIGIN_ONLY } from './review-files.mjs';
 import { patchThread } from './room-chain-limit.mjs';
+import { roomFileRoute } from './room-files.mjs';
 import { httpError, Runtime } from './runtime.mjs';
 import { settleLedger, stopTimers } from './runtime-close.mjs';
 import { sandboxRoute } from './sandbox-routes.mjs';
@@ -43,6 +43,7 @@ import { sessionRoute } from './session-routes.mjs';
 import { setupRoute } from './setup-routes.mjs';
 import { isLoopback } from './shell.mjs';
 import { newId } from './store.mjs';
+import { storedFileRoute } from './stored-files.mjs';
 import { searchOf } from './thread-search.mjs';
 import { uploadName } from './upload-name.mjs';
 import { startViewApp } from './view-app/view-app.mjs';
@@ -276,6 +277,9 @@ export async function start({
       return send(res, 200, await rt.workDiff(m[1], m[2], url.searchParams.get('change')));
     if ((m = path.match(/^\/api\/threads\/([^/]+)\/work\/commands\/([^/]+)\/output$/)) && req.method === 'GET')
       return raw(res, 200, await rt.workOutput(m[1], m[2]), OUTPUT_HEADERS);
+    // A room asset, or a changed file as the agents left it, for Work’s viewer (#1446).
+    const viewed = await roomFileRoute(rt, path, req.method, url);
+    if (viewed) return raw(res, 200, viewed.bytes, viewed.headers);
     // A data file an app’s version carries (#54), for the app’s postbox.file(name). Text, never run as a page.
     if ((m = path.match(/^\/api\/apps\/([^/]+)\/files\/([^/]+)$/)) && req.method === 'GET')
       return raw(res, 200, await rt.appFile(decodePath(m[1]), decodePath(m[2]), Number(url.searchParams.get('v')) || undefined), {
@@ -372,20 +376,8 @@ export async function start({
     if ((m = path.match(/^\/api\/projects\/([^/]+)\/files$/)) && req.method === 'GET')
       return send(res, 200, await listFolder(store.state.projects[m[1]], url.searchParams.get('path') ?? ''));
     if (path === '/api/files' && req.method === 'POST') return send(res, 201, await upload(req));
-    if ((m = path.match(/^\/api\/files\/([^/]+)$/)) && req.method === 'GET') {
-      const f = store.state.files[m[1]];
-      if (!f) throw httpError(404, 'That file doesn’t exist.');
-      // Images from the safe list show inline; everything else downloads. Neither can run script.
-      const inline = INLINE_TYPES.has(f.type);
-      return raw(res, 200, await blobs.get(f.sha256), {
-        'content-type': inline ? f.type : 'application/octet-stream',
-        'x-content-type-options': 'nosniff',
-        'content-security-policy': "sandbox; default-src 'none'",
-        'content-disposition': `${inline ? 'inline' : 'attachment'}; filename="${f.name.replace(/[^\w.-]/g, '_')}"`,
-        'cache-control': 'private, max-age=31536000, immutable',
-        ...SAME_ORIGIN_ONLY,
-      });
-    }
+    const stored = await storedFileRoute(store, blobs, path, req.method);
+    if (stored) return raw(res, 200, stored.bytes, stored.headers);
     if ((m = path.match(/^\/api\/apps\/([^/]+)\/(check|event|state|query)$/)) && req.method === 'POST') {
       const id = decodePath(m[1]);
       if (m[2] === 'check') return send(res, 200, rt.appCheck(id, body));
