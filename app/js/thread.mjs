@@ -14,6 +14,7 @@ import { attChip, fileSize } from './attachment-chip.mjs';
 import { renderBlock } from './blocks.mjs';
 import { api, busy, client, hrefOf, itemsOf, placeIn, sessionsAt, sessionsOf, sideSessionsOf, stopSession, threadLink, uploadFile } from './client.mjs';
 import { describeStop, notOnHost, stopNoteEl } from './composer-host.mjs';
+import { placeholderRoom } from './composer-placeholder.mjs';
 import { fitDraft } from './composer-size.mjs';
 import { addressLine, addressSig, commandHint, placeholderFor } from './composer-to.mjs';
 import { $, ago, dayOf, fill, h, icon, plural, syncList, timeOf, trusted } from './dom.mjs';
@@ -807,7 +808,7 @@ export function mountComposer(threadId, { side = false } = {}) {
   // One menu (#1437): add a file or an agent, and, in a conversation’s own composer, open the commands.
   const plus = h('button.btn.icon.ghost', {
     type: 'button',
-    'aria-label': commands ? 'Add a file or an agent, or run a command' : 'Add a file or a new agent',
+    'aria-label': commands ? 'Add a file, an agent or a command' : 'Add a file or an agent',
     'aria-haspopup': 'menu',
     onclick: () => plusMenu(plus),
   });
@@ -844,8 +845,6 @@ export function mountComposer(threadId, { side = false } = {}) {
   });
 
   const autosize = () => fitDraft(ta);
-  // A phone’s placeholder keeps only whom it replies to, so it isn’t cut off (#1437).
-  const narrow = matchMedia('(max-width: 767px)');
   /** What the hint’s address part depends on: the draft’s mentions, and whether there is a draft. */
   const toSig = () => `${addressSig(threadId, ta.value)}${ta.value.trim() ? '' : ' empty'}`;
   const save = () => {
@@ -1429,7 +1428,7 @@ export function mountComposer(threadId, { side = false } = {}) {
     const note = describeStop(action, b, threadId);
     const last = S().sessions[t.lastSpeaker];
     const members = sessionsOf(threadId).filter((x) => !x.retiredFork);
-    ta.placeholder = placeholderFor({ topic, side, commands, members, last, narrow: narrow.matches });
+    ta.placeholder = placeholderFor({ topic, side, members, last, fits: space.fits });
     paintOfflineQueue(
       queue,
       outbox.filter((x) => x.threadId === threadId),
@@ -1482,6 +1481,9 @@ export function mountComposer(threadId, { side = false } = {}) {
     // A repaint while you’re on “Did you mean” keeps you there (#134).
     const onFix = !!document.activeElement?.closest('.did-you-mean') && hint.contains(document.activeElement);
     fill(hint, hintFor(mode, { line, offline, room: topic || side || members.length > 1 }));
+    // The row is one line, clipped with an ellipsis: the whole of it is there for a pointer too (#1437).
+    if (hint.textContent) hint.title = hint.textContent;
+    else hint.removeAttribute('title');
     if (onFix) hint.querySelector('.did-you-mean')?.focus();
   }
   /**
@@ -1508,7 +1510,14 @@ export function mountComposer(threadId, { side = false } = {}) {
     if (mode === 'skill') return commandHint({ name: slashTarget.name, hint: slashTarget.argumentHint, named: slashTarget }, threadId);
     if (mode === 'command') return commandHint(resolved(line), threadId);
     if (offline) return h('span', 'You’re offline. Messages you send now go out when the connection is back.');
-    return addressLine(threadId, ta.value, { room: room && !!ta.value.trim(), addAt });
+    const draft = !!ta.value.trim();
+    return [addressLine(threadId, ta.value, { room: room && draft, addAt }), draft ? null : threadNote()];
+  }
+  /** A thread’s note, which a conversation’s placeholder holds, for the line under its box while there’s no draft. */
+  function threadNote() {
+    if (topic) return h('span', 'Replies stay here · @ brings in another agent');
+    if (side) return h('span', 'Sending adds you to this side thread');
+    return null;
   }
   /**
    * Where `!` runs, as far as the page knows: the folder of the agent that replies here, else the project’s. A Claude
@@ -1568,6 +1577,7 @@ export function mountComposer(threadId, { side = false } = {}) {
       h('button.btn.sm.ghost', { type: 'button', 'aria-label': `Don’t stop ${se.handle}`, onclick: dismiss }, icon('x', 'i-sm')),
     );
   }
+  const space = placeholderRoom(ta, paint);
   paint();
   paintAtt();
   autosize();
@@ -1575,7 +1585,6 @@ export function mountComposer(threadId, { side = false } = {}) {
     if (['thread', 'session', 'connection', 'outbox', 'load', 'persona', 'host'].includes(ch.type)) paint();
   });
   const unwatch = draft.watch(paintAtt);
-  narrow.addEventListener('change', paint);
   return {
     el,
     focus: () => ta.focus(),
@@ -1590,7 +1599,7 @@ export function mountComposer(threadId, { side = false } = {}) {
       off();
       unwatch();
       unlisten();
-      narrow.removeEventListener('change', paint);
+      space.stop();
     },
   };
 }

@@ -124,7 +124,7 @@ test('#48 a file dropped on a topic thread’s panel attaches to its composer, a
   await drop(page, '.main .transcript', 'png', 'main.png');
   await expect(chips(page, '.main').filter({ hasText: 'main.png' }), 'a drop on the conversation attaches to its composer').toHaveCount(1);
   await expect(chips(page, 'aside.sidepanel'), '…and not to the panel’s').toHaveCount(1);
-  await page.locator('aside.sidepanel').getByRole('button', { name: 'Add a file or a new agent' }).click();
+  await page.locator('aside.sidepanel').getByRole('button', { name: 'Add a file or an agent' }).click();
   await expect(page.getByRole('menuitem', { name: /^Upload from computer/ }), 'the panel’s plus menu says where to drop files').toContainText(
     'Or drop files on this thread',
   );

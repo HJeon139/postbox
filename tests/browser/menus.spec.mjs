@@ -130,7 +130,7 @@ test('#36 in a short window, the composer’s + menu (above its button) and ⋯ 
   await open(page);
   await page.setViewportSize({ width: 1280, height: 420 });
   for (const [what, button] of [
-    ['the + menu', page.getByRole('button', { name: 'Add a file or an agent, or run a command' })],
+    ['the + menu', page.getByRole('button', { name: 'Add a file, an agent or a command' })],
     ['the ⋯ menu', page.locator('header.topbar').getByRole('button', { name: /^Actions for / })],
   ]) {
     await opensInside(page, button, what);

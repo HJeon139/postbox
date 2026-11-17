@@ -104,7 +104,7 @@ test('#67 typing / opens the menu: Postbox’s commands, then each agent’s, gr
 
 test('#67 the composer menu’s Commands and skills opens the same menu (#1437)', async ({ page }) => {
   await room(page, 'Button');
-  await page.locator('.composer').getByRole('button', { name: 'Add a file or an agent, or run a command' }).click();
+  await page.locator('.composer').getByRole('button', { name: 'Add a file, an agent or a command' }).click();
   await page.getByRole('menuitem', { name: /^Commands and skills/ }).click();
   await expect(page.locator('#slash-list')).toBeVisible();
   await expect(composer(page)).toHaveValue('/');

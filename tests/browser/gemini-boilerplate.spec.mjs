@@ -33,7 +33,7 @@ test('the Gemini boilerplate presets the Antigravity CLI, its first Gemini model
   const threadId = Object.keys(app.store.state.threads)[0];
   await page.goto(`${app.origin}/#/t/${threadId}`);
   await synced(page, app);
-  await page.getByRole('button', { name: 'Add a file or an agent, or run a command' }).click();
+  await page.getByRole('button', { name: 'Add a file, an agent or a command' }).click();
   await page.getByRole('menuitem', { name: /From a boilerplate/ }).click();
   const dialog = page.getByRole('dialog', { name: 'New agent' });
   await expect(dialog).toBeVisible();
@@ -80,7 +80,7 @@ test('the Gemini boilerplate presets the Antigravity CLI, its first Gemini model
 test('#690: the Scrum master boilerplate is offered in New agent and creates a persona on the default backend', async ({ page }) => {
   await page.goto(`${app.origin}/#/t/${Object.keys(app.store.state.threads)[0]}`);
   await synced(page, app);
-  await page.getByRole('button', { name: 'Add a file or an agent, or run a command' }).click();
+  await page.getByRole('button', { name: 'Add a file, an agent or a command' }).click();
   const menu = page.getByRole('menuitem', { name: /From a boilerplate/ });
   await expect.soft(menu).toContainText('Scrum master');
   await menu.click();
@@ -105,7 +105,7 @@ test('without the Antigravity CLI, the Gemini boilerplate chip is disabled with 
   try {
     await page.goto(`${app.origin}/#/t/${threadId}`);
     await synced(page, app);
-    await page.getByRole('button', { name: 'Add a file or an agent, or run a command' }).click();
+    await page.getByRole('button', { name: 'Add a file, an agent or a command' }).click();
     await page.getByRole('menuitem', { name: /From a boilerplate/ }).click();
     const dlg = page.getByRole('dialog', { name: 'New agent' });
     const chip = dlg.getByRole('radiogroup', { name: 'Boilerplate' }).getByRole('radio', { name: 'Gemini (Antigravity CLI not on this computer)' });

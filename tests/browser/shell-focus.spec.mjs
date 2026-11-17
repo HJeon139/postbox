@@ -34,7 +34,7 @@ async function open(page, hash, origin = app.origin) {
 
 const dialog = (page) => page.locator('.backdrop .dialog');
 const actions = (page) => page.locator('header.topbar button[aria-label^="Actions for"]');
-const plus = (page) => page.getByRole('button', { name: 'Add a file or an agent, or run a command' });
+const plus = (page) => page.getByRole('button', { name: 'Add a file, an agent or a command' });
 
 // ── #69: an open block from an earlier turn is shown quietly ─────────────────────────────
 
@@ -136,7 +136,7 @@ test('#26 the folder picker opens with focus on its first entry, and Escape retu
   await page.keyboard.press('Enter');
   await expect(page.locator('.d-body li button').first(), 'focus on the first entry').toBeFocused();
   await page.keyboard.press('Escape');
-  await focusIs(page, 'button: Add a file or an agent, or run a command');
+  await focusIs(page, 'button: Add a file, an agent or a command');
 });
 
 // ── #29: clicking a menu’s button again closes it ──────────────────────────────────────

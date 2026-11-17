@@ -103,14 +103,15 @@ export function commandHint(r, threadId) {
 }
 
 /**
- * The composer’s placeholder: a topic thread’s reply, a side thread to join, or whom a message goes to, with the help
- * that doesn’t change as you type (#1437). On a phone (narrow) only the first part, so it isn’t cut off.
- * @param {{ topic: boolean, side: boolean, commands: boolean, members: any[], last: any, narrow: boolean }} where
+ * The composer’s placeholder: a topic thread’s reply, a side thread to join, or whom a message goes to. A conversation’s
+ * adds the help that doesn’t change as you type, where it fits on the box’s line (#1437); a thread’s note goes on the
+ * line under its box instead, since a thread panel is narrow.
+ * @param {{ topic: boolean, side: boolean, members: any[], last: any, fits: (text: string) => boolean }} where
  */
-export function placeholderFor({ topic, side, commands, members, last, narrow }) {
-  if (topic) return narrow ? 'Reply in thread' : 'Reply in thread · replies stay here, @ brings in another agent';
-  if (side) return narrow ? 'Join this side thread' : 'Join this side thread · sending adds you';
+export function placeholderFor({ topic, side, members, last, fits }) {
+  if (topic) return 'Reply in thread';
+  if (side) return 'Join this side thread…';
   const to = `${members.length > 1 ? 'Reply to' : 'Message'} ${(last ?? members[0])?.handle ?? 'an agent'}`;
-  if (narrow) return to;
-  return `${to} · @ to wake an agent${commands ? ', / for commands, ! to run' : ''}`;
+  const help = `${to} · @ to wake an agent, / for commands, ! to run`;
+  return fits(help) ? help : to;
 }
