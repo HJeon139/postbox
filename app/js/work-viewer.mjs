@@ -1,23 +1,22 @@
 // Work’s viewer (#1446): a room asset, or a file the agents changed as they left it, read in the pane. Markdown is
-// drawn by renderMarkdown() in trusted(), other text goes in as text, the four safe image types show as an image from
-// their route, and anything else shows its details and a download. Nothing an agent wrote runs here: HTML and SVG
-// come as text or a download, never as a page (server/room-files.mjs serves them that way too).
+// drawn by renderMarkdown() in trusted(), other text goes in as text (its first VIEWER.textBytes), the four safe image
+// types show as an image from their route, and anything else shows its details and a download. Nothing an agent wrote
+// runs here: HTML and SVG come as text when they are text, never as a page (server/room-files.mjs serves them so).
 
 import { INLINE_TYPES } from '/shared/files.mjs';
+import { VIEWER } from '/shared/limits.mjs';
 import { roomAsset } from '/shared/room-refs.mjs';
 import { formatBytes } from '/shared/work.mjs';
 import { client } from './client.mjs';
 import { fill, h, icon, timeOf } from './dom.mjs';
 import { mdNode, openWork, route } from './ui.mjs';
 
-/** How much text the viewer shows; the download has the rest. */
-const TEXT_MAX = 256 * 1024;
 const MARKDOWN = /\.(md|markdown)$/i;
 const IMAGE_FILE = /\.(png|jpe?g|gif|webp)$/i;
 
 /**
  * @typedef {{ name: string, url: string, key: string, how: 'markdown' | 'text' | 'image' | 'other', meta: string[],
- *   path?: string, diff?: string, missing?: string }} Viewed
+ *   size: number, path?: string, diff?: string, missing?: string }} Viewed
  */
 
 /** How a file shows, from what’s known of it: Markdown first, then an image, then text. @returns {Viewed['how']} */
@@ -43,6 +42,7 @@ function assetView(convId, asset) {
     url: `/api/threads/${convId}/assets/${asset.id}?v=${v.v}`,
     key: `${asset.id}:${v.v}`,
     how,
+    size: v.size,
     meta: ['Asset', `v${v.v} by ${v.author}`, timeOf(v.at), formatBytes(v.size)],
   };
 }
@@ -57,6 +57,7 @@ function fileView(convId, f) {
     url: `/api/threads/${convId}/work/files/${f.id}/content`,
     key: `${f.id}:${after.sha256 ?? 'none'}`,
     how,
+    size: after.size ?? 0,
     meta: ['Changed file', `by ${f.handles?.join(', ') ?? 'an agent'}`, after.size != null ? formatBytes(after.size) : ''],
     path: f.path,
     diff: f.id,
@@ -88,12 +89,12 @@ function content(v) {
       return r.text();
     })
     .then((text) => {
-      const cut = text.length > TEXT_MAX;
-      const shown = cut ? text.slice(0, TEXT_MAX) : text;
+      // The route sends at most VIEWER.textBytes of text (server/room-files.mjs).
+      const cut = v.size > VIEWER.textBytes;
       fill(
         box,
-        v.how === 'markdown' ? mdNode(shown) : h('pre.wv-pre.mono', shown),
-        cut ? h('p.small.dim', `Showing the first ${formatBytes(TEXT_MAX)}. Download it for the rest.`) : null,
+        v.how === 'markdown' ? mdNode(text) : h('pre.wv-pre.mono', text),
+        cut ? h('p.small.dim', `Showing the first ${formatBytes(VIEWER.textBytes)} of ${formatBytes(v.size)}. Download it for the rest.`) : null,
       );
     })
     .catch((e) => fill(box, h('p.empty-note', `Postbox couldn’t load it: ${e.message}`)))
@@ -133,14 +134,23 @@ export function mountViewer(convId, at, { back }) {
 }
 
 /**
+ * What focus goes back to when the viewer closes: the pane’s row or the reply’s link (room-links.mjs) that opened it.
+ * @param {Element | null} active @param {boolean} fromPane
+ */
+function openerOf(active, fromPane) {
+  if (!(active instanceof HTMLElement) || !(fromPane || active.matches('a.room-ref'))) return null;
+  return { el: active, id: active.id };
+}
+
+/**
  * The viewer in the Work pane: open while the address names an asset or file of this conversation (`?work&at=<id>`,
  * not full screen), drawn again when what it shows gets a new version. Focus goes to Back when it opens from the
- * pane, and back to the row that opened it when it closes.
+ * pane, and back to the row or the reply’s link that opened it when it closes.
  * @param {string} convId @param {HTMLElement} pane  the pane, for where focus is @param {HTMLElement} body  what it fills
  * @param {() => void} paint  draws the pane’s lists again
  */
 export function paneViewer(convId, pane, body, paint) {
-  /** @type {{ at: string, key: string, opener: string | null } | null} */
+  /** @type {{ at: string, key: string, opener: { el: HTMLElement, id: string } | null } | null} */
   let shown = null;
   const back = () => openWork(convId);
   const show = (at) => {
@@ -148,8 +158,8 @@ export function paneViewer(convId, pane, body, paint) {
     const active = document.activeElement;
     const fromPane = active instanceof HTMLElement && pane.contains(active);
     const v = mountViewer(convId, at, { back });
-    // The row it opened from, kept while a newer version is shown in its place.
-    const opener = shown?.opener ?? (fromPane && active.id ? active.id : null);
+    // The row or the reply’s link it opened from, kept while a newer version is shown in its place.
+    const opener = shown ? shown.opener : openerOf(active, fromPane);
     shown = { at, key: v.key, opener };
     fill(body, v.el);
     body.scrollTop = 0;
@@ -161,7 +171,8 @@ export function paneViewer(convId, pane, body, paint) {
     const had = pane.contains(document.activeElement);
     shown = null;
     paint();
-    if (had && opener) document.getElementById(opener)?.focus();
+    // A row the pane drew again is found by its id; a link stays the node it was.
+    if (had && opener) (opener.el.isConnected ? opener.el : document.getElementById(opener.id))?.focus();
   };
   const sync = () => {
     const r = route();
