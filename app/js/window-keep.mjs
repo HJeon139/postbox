@@ -26,6 +26,8 @@ export function keepFocused(w, kept) {
   const i = kept ? w.indexOf.get(kept.key) : undefined;
   if (!kept || i === undefined) return;
   const fresh = w.nodes.get(kept.key);
+  // Kept where it was by the rebuild (resync-keep.mjs, #987), as an app’s item is: it stays, and so does its frame.
+  if (fresh === kept.node) return refocus(kept.active);
   if (fresh) {
     w.sizes.unobserve(fresh);
     fresh.replaceWith(kept.node);
