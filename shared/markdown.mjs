@@ -18,6 +18,8 @@ import { displayMath } from './math.mjs';
 
 export { escapeHtml };
 
+/** @typedef {{ blank: (i: number, out: string[]) => void, text: (line: string) => void }} Cut */
+
 // The block rules, shared with the review renderer's line grouping (review-lines.mjs).
 export const FENCE = /^ {0,3}(`{3,}|~{3,})\s*([A-Za-z0-9_+#.-]*)\s*$/;
 export { MATH } from './math.mjs';
@@ -68,8 +70,12 @@ function at(ctx, n, line, t, from = 0) {
 /** The source lines a block spans, as data-sl to data-el (1-based), when the render marks positions. */
 const lineMarks = (ctx, a, z) => (ctx.src ? ` data-sl="${a + 1}" data-el="${z + 1}"` : '');
 
-/** @param {string[]} lines @param {any} ctx @param {number} base  the source line lines[0] is */
-function blocks(lines, ctx, base) {
+/**
+ * The blocks of lines, as HTML. A cut (markdown-cut.mjs), at the top level only, hears each blank line there, with
+ * the blocks so far, and each line read as text, which a later close could change.
+ * @param {string[]} lines @param {any} ctx @param {number} base  the source line lines[0] is @param {Cut} [cut]
+ */
+export function blocks(lines, ctx, base, cut) {
   const out = [];
   /** @type {number[]} */
   let para = [];
@@ -81,6 +87,7 @@ function blocks(lines, ctx, base) {
     const line = lines[i];
     if (!line.trim()) {
       flush();
+      cut?.blank(i, out);
       continue;
     }
 
@@ -141,7 +148,7 @@ function blocks(lines, ctx, base) {
 
     if (LIST_ITEM.test(line)) {
       flush();
-      const items = listAt(lines, i, ctx, base);
+      const items = listAt(lines, i, ctx, base, cut);
       out.push(items.html);
       i = items.end;
       continue;
@@ -156,6 +163,7 @@ function blocks(lines, ctx, base) {
       continue;
     }
 
+    cut?.text(line);
     para.push(i);
   }
   flush();
@@ -239,8 +247,9 @@ function details(lines, i) {
 /**
  * The list that starts at lines[i], to a blank line that the next line doesn’t go on, as HTML; end is its last line.
  * @param {string[]} lines @param {number} i @param {any} ctx @param {number} base  the source line lines[0] is
+ * @param {Cut} [cut]
  */
-function listAt(lines, i, ctx, base) {
+function listAt(lines, i, ctx, base, cut) {
   const body = [];
   for (; i < lines.length; i++) {
     const l = lines[i];
@@ -260,6 +269,7 @@ function listAt(lines, i, ctx, base) {
       i--;
       continue;
     }
+    cut?.text(l);
     if (LIST_ITEM.test(l) || /^\s{2,}\S/.test(l) || body.length === 0) {
       body.push(l);
       continue;
