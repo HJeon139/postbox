@@ -5,7 +5,7 @@
 // the check reads it when it’s there. Moved out of tools/uat/room-checks.mjs, for size.
 
 import { POSTBOX_SERVER } from '../../server/adapters/setup.mjs';
-import { toPlainText } from '../../shared/markdown.mjs';
+import { toPlainText } from '../../shared/markdown-plain.mjs';
 import { itemsOf } from './room-items.mjs';
 
 const BUSY = new Set(['think', 'tool', 'gen']);

@@ -18,6 +18,8 @@ import { displayMath } from './math.mjs';
 
 export { escapeHtml };
 
+/** @typedef {{ blank: (i: number, out: string[]) => void, text: (line: string) => void }} Cut */
+
 // The block rules, shared with the review renderer's line grouping (review-lines.mjs).
 export const FENCE = /^ {0,3}(`{3,}|~{3,})\s*([A-Za-z0-9_+#.-]*)\s*$/;
 export { MATH } from './math.mjs';
@@ -68,8 +70,12 @@ function at(ctx, n, line, t, from = 0) {
 /** The source lines a block spans, as data-sl to data-el (1-based), when the render marks positions. */
 const lineMarks = (ctx, a, z) => (ctx.src ? ` data-sl="${a + 1}" data-el="${z + 1}"` : '');
 
-/** @param {string[]} lines @param {any} ctx @param {number} base  the source line lines[0] is */
-function blocks(lines, ctx, base) {
+/**
+ * The blocks of lines, as HTML. A cut (markdown-cut.mjs), at the top level only, hears each blank line there, with
+ * the blocks so far, and each line read as text, which a later close could change.
+ * @param {string[]} lines @param {any} ctx @param {number} base  the source line lines[0] is @param {Cut} [cut]
+ */
+export function blocks(lines, ctx, base, cut) {
   const out = [];
   /** @type {number[]} */
   let para = [];
@@ -81,6 +87,7 @@ function blocks(lines, ctx, base) {
     const line = lines[i];
     if (!line.trim()) {
       flush();
+      cut?.blank(i, out);
       continue;
     }
 
@@ -141,34 +148,9 @@ function blocks(lines, ctx, base) {
 
     if (LIST_ITEM.test(line)) {
       flush();
-      const body = [];
-      for (; i < lines.length; i++) {
-        const l = lines[i];
-        if (!l.trim()) {
-          // A blank line ends the list unless the next line continues it.
-          const next = lines[i + 1];
-          if (next !== undefined && (LIST_ITEM.test(next) || /^\s{2,}\S/.test(next))) {
-            body.push('');
-            continue;
-          }
-          break;
-        }
-        // A fold (an exercise's answer under its question, say) belongs to the item, blank lines and all.
-        const fold = ctx.folds !== false && body.length && l.trimStart().startsWith('<details>') ? details(lines, i) : null;
-        if (fold) {
-          for (; i <= fold.end; i++) body.push(!lines[i].trim() ? '' : /^\s{2,}/.test(lines[i]) ? lines[i] : `  ${lines[i].trimStart()}`);
-          i--;
-          continue;
-        }
-        if (LIST_ITEM.test(l) || /^\s{2,}\S/.test(l) || body.length === 0) {
-          body.push(l);
-          continue;
-        }
-        // A plain line right after an item continues that item (lazy continuation).
-        body.push('  ' + l.trim());
-      }
-      i--;
-      out.push(list(body, ctx, base + i - body.length + 1));
+      const items = listAt(lines, i, ctx, base, cut);
+      out.push(items.html);
+      i = items.end;
       continue;
     }
 
@@ -181,6 +163,7 @@ function blocks(lines, ctx, base) {
       continue;
     }
 
+    cut?.text(line);
     para.push(i);
   }
   flush();
@@ -261,6 +244,43 @@ function details(lines, i) {
   return null;
 }
 
+/**
+ * The list that starts at lines[i], to a blank line that the next line doesn’t go on, as HTML; end is its last line.
+ * @param {string[]} lines @param {number} i @param {any} ctx @param {number} base  the source line lines[0] is
+ * @param {Cut} [cut]
+ */
+function listAt(lines, i, ctx, base, cut) {
+  const body = [];
+  for (; i < lines.length; i++) {
+    const l = lines[i];
+    if (!l.trim()) {
+      // A blank line ends the list unless the next line continues it.
+      const next = lines[i + 1];
+      if (next !== undefined && (LIST_ITEM.test(next) || /^\s{2,}\S/.test(next))) {
+        body.push('');
+        continue;
+      }
+      break;
+    }
+    // A fold (an exercise's answer under its question, say) belongs to the item, blank lines and all.
+    const fold = ctx.folds !== false && body.length && l.trimStart().startsWith('<details>') ? details(lines, i) : null;
+    if (fold) {
+      for (; i <= fold.end; i++) body.push(!lines[i].trim() ? '' : /^\s{2,}/.test(lines[i]) ? lines[i] : `  ${lines[i].trimStart()}`);
+      i--;
+      continue;
+    }
+    cut?.text(l);
+    if (LIST_ITEM.test(l) || /^\s{2,}\S/.test(l) || body.length === 0) {
+      body.push(l);
+      continue;
+    }
+    // A plain line right after an item continues that item (lazy continuation).
+    body.push('  ' + l.trim());
+  }
+  i--;
+  return { html: list(body, ctx, base + i - body.length + 1), end: i };
+}
+
 /** @param {any[]} lines @param {any} ctx @param {number} n0  the source line lines[0] is */
 function list(lines, ctx, n0) {
   const base = lines[0].match(LIST_ITEM)[1].length;
@@ -309,19 +329,4 @@ function table(rows, ctx, n0) {
   const th = head.map((c) => cell('th', c, rows[0], n0)).join('');
   const trs = body.map((r, j) => `<tr>${head.map((_, k) => cell('td', r[k], rows[j + 1], n0 + 2 + j)).join('')}</tr>`).join('');
   return `<div class="md-table"><table><thead><tr>${th}</tr></thead><tbody>${trs}</tbody></table></div>`;
-}
-
-/** Strips Markdown to plain text, for screen-reader announcements and short previews. */
-export function toPlainText(src) {
-  return String(src ?? '')
-    .replace(/```[\s\S]*?(```|$)/g, ' ')
-    .replace(/<\/?(details|summary)>/g, ' ')
-    .replace(/`([^`]*)`/g, '$1')
-    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
-    .replace(/^ {0,3}#{1,6}\s+/gm, '')
-    .replace(/^ {0,3}>\s?/gm, '')
-    .replace(/^\s*([-*+]|\d+[.)])\s+/gm, '')
-    .replace(/(\*\*|__|~~|\*|_)(?=\S)([\s\S]*?\S)\1/g, '$2')
-    .replace(/\s+/g, ' ')
-    .trim();
 }
