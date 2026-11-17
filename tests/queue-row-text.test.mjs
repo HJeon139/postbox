@@ -20,41 +20,59 @@ test('a slash command reads as the command you ran, without its item', () => {
   assert.equal(queuedText(e, undefined), '/review src');
 });
 
-test('your answer to a card names the card', () => {
-  const e = entry('answer', { message: { kind: 'event', event: { blockId: 'frames', action: 'confirm' }, blockItemId: 'it_1' } });
-  const card = { id: 'it_1', kind: 'block', block: { id: 'frames', type: 'confirm', title: 'Delete the video frames?' } };
-  assert.equal(queuedText(e, card), 'Your answer to “Delete the video frames?”');
+const answer = entry('answer', { message: { kind: 'notice', text: '[Postbox] The person allowed `npm test` for your next turn only.' } });
+
+test('your answer to a card names the card by its title', () => {
+  const card = { id: 'it_1', kind: 'block', block: { id: 'frames', type: 'confirm', title: 'Delete the video frames?', fallback: 'Delete?' } };
+  assert.equal(queuedText(entry('answer'), card), 'Your answer to “Delete the video frames?”');
 });
 
-test('your answer to a card the page hasn’t loaded names it by its block’s id', () => {
-  const e = entry('answer', { message: { kind: 'event', event: { blockId: 'frames', action: 'confirm' }, blockItemId: 'it_1' } });
-  assert.equal(queuedText(e, undefined), 'Your answer to “frames”');
+test('your answer to an untitled card names it by its fallback, not its id', () => {
+  const card = { id: 'it_1', kind: 'block', block: { id: 'q_region_2', type: 'choice', fallback: 'Which region first?' } };
+  assert.equal(queuedText(entry('answer'), card), 'Your answer to “Which region first?”');
 });
 
-test('your answer to a question names the question', () => {
-  const e = entry('answer', { message: { kind: 'event', event: { blockId: 'q1', action: 'submit' }, blockItemId: 'it_1' } });
+test('an answer whose card the page hasn’t loaded has no text yet, for the queue to fetch the card', () => {
+  assert.equal(queuedText(answer, undefined), null);
+  assert.equal(placeholderText(answer), 'Your answer.');
+});
+
+test('a permission answer says what you allowed, not the notice written to the agent', () => {
+  const card = { id: 'it_1', kind: 'denial', handle: 'builder', summary: 'run npm test', status: 'allowed-once', rules: { alwaysWords: 'npm test' } };
+  assert.equal(queuedText(answer, card), 'You allowed @builder once to run npm test');
+  assert.equal(queuedText(answer, { ...card, status: 'allowed-always' }), 'You always allowed npm test: @builder to run npm test');
+});
+
+test('a tool, browser or wake card’s answer says what you chose', () => {
+  assert.equal(queuedText(answer, { kind: 'toolask', handle: 'builder', label: 'GitHub', status: 'on' }), 'You turned on “GitHub” for @builder');
+  assert.equal(queuedText(answer, { kind: 'toolask', handle: 'builder', label: 'GitHub', status: 'off' }), 'You kept “GitHub” off for @builder');
+  assert.equal(queuedText(answer, { kind: 'viewask', handle: 'builder', status: 'declined' }), 'You chose not to download the browser for @builder’s app');
+  assert.equal(queuedText(answer, { kind: 'viewask', handle: 'builder', status: 'ready' }), 'You allowed the browser download for @builder’s app');
+  assert.equal(queuedText(answer, { kind: 'hop', from: 'critic', to: 'builder', status: 'declined' }), 'You didn’t allow @critic to wake @builder');
   assert.equal(
-    queuedText(e, { id: 'it_1', kind: 'block', question: true, block: { id: 'q1', type: 'form', title: 'Which region?' } }),
-    'Your answer to “Which region?”',
+    queuedText(answer, { kind: 'hop', join: true, from: 'critic', to: 'builder', status: 'declined' }),
+    'You didn’t add @builder to this conversation',
   );
 });
 
-test('a permission or consent answer reads as its notice, without the Postbox tag', () => {
-  const e = entry('answer', { message: { kind: 'notice', text: '[Postbox] The person allowed `npm test` for your next turn only.' } });
-  assert.equal(queuedText(e, undefined), 'The person allowed `npm test` for your next turn only.');
-});
-
-test('an app’s event reads as the line it posted in your voice', () => {
+test('an app’s event reads as the line it posted in your voice, and says it’s your app’s while that line comes', () => {
   assert.equal(
     queuedText(entry('event'), { id: 'it_1', kind: 'voice', text: 'Picked “Lisbon” in Trip planner', appId: 'ap_1' }),
     'Picked “Lisbon” in Trip planner',
   );
+  assert.equal(placeholderText(entry('event')), 'An event from your app.');
 });
 
-test('a review names its block and who reviewed it', () => {
+test('a review names its block and who reviewed it, once the block comes', () => {
   const e = entry('review', { from: 'critic', message: { kind: 'event', event: { blockId: 'draft', action: 'review' } } });
   assert.equal(queuedText(e, { id: 'it_1', kind: 'block', block: { id: 'draft', title: 'Launch plan' } }), '@critic’s review of “Launch plan”');
-  assert.equal(queuedText(e, undefined), '@critic’s review of “draft”');
+  assert.equal(queuedText(e, undefined), null);
+  assert.equal(placeholderText(e), 'A review from @critic.');
+});
+
+test('a message’s placeholder says whose it is', () => {
+  assert.equal(placeholderText(entry('person')), 'Your message.');
+  assert.equal(placeholderText(entry('mention', { from: 'critic' })), 'A message from @critic.');
 });
 
 test('an entry with its own text reads as that text', () => {
@@ -68,10 +86,7 @@ test('a message whose item the page hasn’t loaded has no text yet, for the que
 
 test('no entry of yours reads as a message from @you, before or after its item comes', () => {
   // A review is the one entry an agent sends without a mention: its from is the reviewer.
-  const of = (source) => {
-    if (source === 'answer') return entry(source, { message: { kind: 'notice', text: 'A notice.' } });
-    return entry(source, source === 'review' ? { from: 'critic' } : {});
-  };
+  const of = (source) => entry(source, source === 'review' ? { from: 'critic' } : {});
   for (const source of SOURCES)
     for (const item of [undefined, { id: 'it_1', kind: 'block', block: { id: 'b', title: 'A card' } }]) {
       const e = of(source);

@@ -3,7 +3,7 @@
 import { api, client, itemIn } from './client.mjs';
 import { h, icon, syncList } from './dom.mjs';
 import { onChangeWhileAlive } from './held-weakly.mjs';
-import { fetchRange } from './item-ranges.mjs';
+import { QueueItems } from './queue-items.mjs';
 import { placeholderText, queuedText } from './queue-row-text.mjs';
 import { openDialog, toast } from './ui.mjs';
 
@@ -12,54 +12,38 @@ export { paintOfflineQueue } from './offline-queue.mjs';
 const S = () => client.state;
 
 /**
- * The items an open queue fetched because the page hadn’t loaded them (#1456), by id: null while one is on its way.
- * Emptied when the queue closes, and an item’s copy is dropped when the person edits it there.
- * @type {Map<string, any>}
- */
-const fetched = new Map();
-
-/**
- * Fetches one item the page hasn’t loaded, through the conversation’s items route, and repaints the queue with it.
- * @param {string} threadId @param {string} itemId @param {() => void} repaint
- */
-function fetchItem(threadId, itemId, repaint) {
-  if (fetched.has(itemId)) return;
-  fetched.set(itemId, null);
-  fetchRange(threadId, `?around=${encodeURIComponent(itemId)}&limit=1`)
-    .then((answer) => {
-      const item = answer.items.find((it) => it.id === itemId);
-      if (!item || !fetched.has(itemId)) return;
-      fetched.set(itemId, item);
-      repaint();
-    })
-    // The row keeps its placeholder: the item was deleted, or the server is gone, which the page says on its own.
-    .catch(() => {});
-}
-
-/**
  * What waits for an agent: its inbox’s waiting entries (#1404).
- * @param {string} sessionId @param {(() => void) | null} [repaint]  an open queue’s
+ * @param {string} sessionId @param {QueueItems | null} [items]  an open queue’s fetched items
  */
-function entriesFor(sessionId, repaint = null) {
-  return S().sessions[sessionId] ? waitingFor(sessionId, repaint) : [];
+function entriesFor(sessionId, items = null) {
+  return S().sessions[sessionId] ? waitingFor(sessionId, items) : [];
 }
 
 /**
  * An agent’s messages waiting in its inbox (designs/rooms-at-scale.md, “Delivery”), as rows of its queue, whose routes
  * act on the entry by its id: another agent’s, with the row a queued wake had, and the person’s own, which they can
- * edit (#1404). Each says what waits, by its source (queue-row-text.mjs); a message’s words are its item’s, which an
- * open queue fetches when the page hasn’t loaded it (#1456).
- * @param {string} sessionId @param {(() => void) | null} [repaint]  an open queue’s, which fetches what it lacks
+ * edit (#1404). Each says what waits, by its source (queue-row-text.mjs). One whose words are an item the page hasn’t
+ * loaded says so in `want`, which an open queue fetches while the row is in view (queue-items.mjs, #1456).
+ * @param {string} sessionId @param {QueueItems | null} [items]  an open queue’s fetched items
  */
-function waitingFor(sessionId, repaint = null) {
+function waitingFor(sessionId, items = null) {
   const waiting = (S().inbox?.[sessionId] ?? []).filter((e) => e.state === 'waiting' && e.from && e.itemId);
   return waiting
     .filter((e) => S().threads[e.threadId])
     .map((e) => {
       const theirs = e.source === 'person';
-      const text = queuedText(e, itemIn(e.threadId, e.itemId) ?? fetched.get(e.itemId));
-      if (text === null && repaint) fetchItem(e.threadId, e.itemId, repaint);
-      const q = { id: e.id, kind: theirs ? 'message' : 'wake', from: e.from, text: text ?? placeholderText(e), itemId: e.itemId, sessionIds: [sessionId] };
+      const item = itemIn(e.threadId, e.itemId) ?? items?.item(e.itemId);
+      const text = queuedText(e, item);
+      const want = text === null && !item ? { threadId: e.threadId, itemId: e.itemId } : null;
+      const q = {
+        id: e.id,
+        kind: theirs ? 'message' : 'wake',
+        from: e.from,
+        text: text ?? placeholderText(e),
+        want,
+        itemId: e.itemId,
+        sessionIds: [sessionId],
+      };
       return { thread: S().threads[e.threadId], q };
     });
 }
@@ -68,9 +52,11 @@ function waitingFor(sessionId, repaint = null) {
  * One queued message’s row. Its parts are made once and updated in place by fillRow, so a repaint never replaces a
  * button that may hold focus (design-597-release-1, F1).
  */
-function queuedMessageRow(entry, repaint) {
+function queuedMessageRow(entry, repaint, items) {
   const row = h('li.agent-queue-row');
   row._repaint = repaint;
+  row._items = items;
+  items.watch(row);
   buildRow(row, entry);
   return row;
 }
@@ -116,7 +102,13 @@ function fillRow(row, entry, at, of) {
     if (el && el.textContent !== text) el.textContent = text;
   };
   set(row.querySelector('.agent-queue-meta'), q.kind === 'wake' ? `From ${q.from} · ${thread.title}` : thread.title);
-  set(row.querySelector('.agent-queue-text'), q.text);
+  // The text keeps a fixed height, clamped, so words that arrive later move nothing (#1456); the whole of it is its title.
+  const text = row.querySelector('.agent-queue-text');
+  set(text, q.text);
+  if (text && text.title !== q.text) text.title = q.text;
+  // Until its words come, Edit would open on the placeholder, and Save would put that in place of the message.
+  const edit = row.querySelector('[data-action="edit"]');
+  if (edit) edit.disabled = Boolean(q.want);
   const label = (action, text) => row.querySelector(`[data-action="${action}"]`)?.setAttribute('aria-label', text);
   label('send', `Send now: ${which}`);
   label('edit', `Edit ${which}`);
@@ -143,7 +135,7 @@ function editQueuedMessage(row, target) {
   };
   // The edit is the item’s now: a copy fetched before it is dropped, so the row shows the edit (#1456).
   const saved = () => {
-    fetched.delete(q.itemId);
+    row._items.forget(q.itemId);
     done();
   };
   const save = () =>
@@ -179,6 +171,54 @@ function refocusSlot(list, slot) {
   /** @type {HTMLElement | null} */ (row.querySelector(`[data-action="${slot.action}"]`) ?? row.querySelector('button'))?.focus();
 }
 
+/**
+ * Calls `fn` at most once a frame, however often it’s asked: a long queue’s fetched items and changes paint it once a
+ * frame, not once each (#1456). `cancel` drops a call not made yet. @param {() => void} fn
+ */
+function oncePerFrame(fn) {
+  let frame = 0;
+  return {
+    ask: () => {
+      frame ||= requestAnimationFrame(() => {
+        frame = 0;
+        fn();
+      });
+    },
+    cancel: () => cancelAnimationFrame(frame),
+  };
+}
+
+/**
+ * Puts an open queue’s rows in place and up to date, keeps focus where it was, and asks for the items of rows in view.
+ * @param {HTMLElement} list @param {any[]} all @param {() => void} paint @param {QueueItems} items
+ */
+function paintRows(list, all, paint, items) {
+  const slot = focusedSlot(list);
+  syncList(
+    list,
+    all,
+    (entry) => entry.q.id,
+    (entry) => queuedMessageRow(entry, paint, items),
+    () => {},
+  );
+  for (const [i, row] of [...list.children].entries()) {
+    fillRow(row, all[i] ?? row._entry, i + 1, all.length);
+    items.fill(row);
+  }
+  refocusSlot(list, slot);
+}
+
+/**
+ * Asks an open queue to repaint on the changes that touch it. A listed message’s item changes when the person edits it;
+ * any other item’s patch, a streaming reply’s, is left alone. @param {HTMLElement} list @param {() => void} repaint
+ */
+function followQueueChanges(list, repaint) {
+  const listed = (/** @type {string} */ itemId) => [...list.children].some((row) => /** @type {any} */ (row)._entry?.q.itemId === itemId);
+  return client.on((change) => {
+    if (change.type === 'item.patch' ? listed(change.data.id) : ['load', 'thread', 'session', 'entry.add', 'entry.patch'].includes(change.type)) repaint();
+  });
+}
+
 export function openQueue(sessionId, anchor = null) {
   const session = S().sessions[sessionId];
   if (!session) return;
@@ -187,13 +227,13 @@ export function openQueue(sessionId, anchor = null) {
   const list = h('ul.agent-queue-list');
   body.append(list);
   let dialog;
-  let closed = false;
+  const later = oncePerFrame(() => paint());
+  const items = new QueueItems(later.ask);
   const paint = () => {
     // The agent is gone (deleted, or a retired fork): nothing here can be sent to it any more.
     const now = S().sessions[sessionId];
     if (!now || now.retiredFork) return dialog?.close();
-    if (closed) return;
-    const entries = entriesFor(sessionId, paint);
+    const entries = entriesFor(sessionId, items);
     const missing = markMissing(list, entries);
     const heading = `${entries.length} queued for ${session.handle}`;
     if (title.textContent !== heading) title.textContent = heading;
@@ -201,17 +241,7 @@ export function openQueue(sessionId, anchor = null) {
       dialog?.close();
       return;
     }
-    const all = [...entries, ...missing.map((row) => row._entry)];
-    const slot = focusedSlot(list);
-    syncList(
-      list,
-      all,
-      (entry) => entry.q.id,
-      (entry) => queuedMessageRow(entry, paint),
-      () => {},
-    );
-    for (const [i, row] of [...list.children].entries()) fillRow(row, all[i] ?? row._entry, i + 1, all.length);
-    refocusSlot(list, slot);
+    paintRows(list, [...entries, ...missing.map((row) => row._entry)], paint, items);
   };
   paint();
   dialog = openDialog({
@@ -220,8 +250,8 @@ export function openQueue(sessionId, anchor = null) {
     anchor,
     initialFocus: () => body.querySelector('button:not([disabled])'),
     onClose: () => {
-      closed = true;
-      fetched.clear();
+      later.cancel();
+      items.close();
       off();
       anchor?.setAttribute('aria-expanded', 'false');
       // What opened it may be gone or hidden (the agent left, its last message went, the menu closed): focus goes to
@@ -229,11 +259,7 @@ export function openQueue(sessionId, anchor = null) {
       if (!anchor?.isConnected || anchor.closest('[hidden]')) queueMicrotask(() => document.getElementById('composer-input')?.focus());
     },
   });
-  // A listed message’s item changes when the person edits it; any other item’s patch, a streaming reply’s, is left alone.
-  const listed = (/** @type {string} */ itemId) => [...list.children].some((row) => row._entry?.q.itemId === itemId);
-  const off = client.on((change) => {
-    if (change.type === 'item.patch' ? listed(change.data.id) : ['load', 'thread', 'session', 'entry.add', 'entry.patch'].includes(change.type)) paint();
-  });
+  const off = followQueueChanges(list, later.ask);
   anchor?.setAttribute('aria-expanded', 'true');
 }
 
