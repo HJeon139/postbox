@@ -8,9 +8,9 @@
 // - stopping: the person pressed Stop and its turn hasn’t ended yet, so they see the Stop took;
 // - running: a live turn, or one on its host, awaiting attach among them, with its current step;
 // - quota: its harness ran out of quota, until the reset time it gave (the owner’s decision on #442). The one place
-//   quota shows in the agents area, and never as needs-you. Turns marks every agent on the backend when a turn fails
-//   for quota, so only the person’s message starts one before the reset, and a session running again is past it
-//   (server/turn-quota.mjs);
+//   quota shows in the agents area, and never as needs-you. Turns marks every agent of the backend on the same
+//   computer or host when a turn fails for quota, so only the person’s message starts one before the reset, and a
+//   session running again is past it (server/turn-quota.mjs);
 // - failed: its last turn failed;
 // - job: a background job of its own still runs (`se.jobs`, at most 50, and a kept one stays until it ends);
 // - behind: something it posted still waits in another agent’s inbox, since that entry arrived;
