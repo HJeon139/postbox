@@ -37,15 +37,19 @@ test('following a running reply that shrinks and grows back, the held room stays
     page
       .locator(`#main > .item[data-key="${reply.id}"]`)
       .evaluate((n) => ({ top: n.getBoundingClientRect().top, bottom: n.getBoundingClientRect().bottom, view: innerHeight }));
+  const replyEl = page.locator(`#main > .item[data-key="${reply.id}"]`);
   let biggest = 0;
   for (let round = 0; round < 8; round++) {
     // It shrinks, as its older steps fold, then grows back past where it was.
     const before = (await box()).bottom - (await box()).top;
     arrange.setItem(rt, t.id, reply.id, { text: WORDS(6) });
+    // Each event drawn before it’s measured: with the stream late (POSTBOX_STREAM_LAG), settling can come first.
+    await expect(replyEl).not.toContainText('Line 6 of');
     await frames(page);
     await settled(page);
     biggest = Math.max(biggest, before - ((await box()).bottom - (await box()).top));
     store.emit('item.text', { threadId: t.id, id: reply.id, text: `\n\n${WORDS(7).split('\n\n').slice(0, 7).join('\n\n')}` });
+    await expect(replyEl).toContainText('Line 6 of');
     await frames(page);
     await settled(page);
   }
