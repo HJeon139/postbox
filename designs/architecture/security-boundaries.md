@@ -40,6 +40,25 @@ sequenceDiagram
 
 **Revisit when** Postbox listens beyond localhost, or serves more than one person. Then it needs real sign-in, not a page token, and `!` stays off.
 
+## What leaves through net.fetch
+
+**Decision** ([#1482](https://github.com/HJeon139/postbox/issues/1482)). An agent app’s frame has no network ([sandbox.md](sandbox.md)). It gets public data through one outbound path, `postbox.query('net.fetch', { url })`, which Postbox’s server runs for an app that names `net.fetch` in its permissions (`server/net-fetch.mjs`). It refuses:
+- **This computer and the local network:** `localhost`, and any private, loopback, link-local, carrier-grade NAT, benchmark, multicast or unspecified address, IPv4 or IPv6, IPv4-mapped included. It checks the name or literal address first, then the address DNS gives, in the lookup the socket connects with, so a name can’t resolve to a public address once and a private one the next time (rebinding).
+- **Redirects:** it follows none. The app gets the 3xx and its `location`, so a redirect can’t lead it to an address it would refuse.
+- **Credentials:** it sends no cookies and no `Authorization`, and refuses a URL with a user name or password. Its requests carry the person’s IP address, as an agent’s shell already does, and nothing of the person’s sessions in their browser.
+- **Anything but GET over http or https.**
+- **Limits:** at most 1 MB of response body, and 10 seconds.
+
+Each fetch shows in the app’s agent’s activity, one line per app per turn naming each host and how often (`server/net-fetch-line.mjs`). It’s transparency about data leaving, not an alarm: no message, needs-you, notification or focus move.
+
+The tests: `tests/net-fetch.test.mjs` (the addresses and refusals), `tests/integration/net-fetch.test.mjs` (a name that resolves to loopback, no cookies, a redirect unfollowed, the 1 MB limit), `tests/net-fetch-line.test.mjs` and `tests/browser/app-net-fetch.spec.mjs`.
+
+**What it protects against.** An app’s requests carrying the person’s cookies to sites they’re signed into, and reaching servers on this computer or their network: both measured with the network open in the frame (sandbox.md, “What it rests on”).
+
+**What it doesn’t.** Data an app puts in a URL leaves, as it would from an agent’s shell; the activity line is how the person sees where it went. The allow list `POSTBOX_FETCH_ALLOW` (host:port) treats a host as public, for tests and demos only; nothing sets it by default.
+
+**Revisit when** apps need more than GET, or authenticated APIs: that needs the person’s say on each host, not cookies.
+
 ## What reaches the browser
 
 **Decision** (1 November 2026, from the integrator’s review of #608). What the page may see is decided once, in `shared/state.mjs`: each event type’s entry in `EVENTS` says whether it is `public`, and each state key is in `PUBLIC_STATE_KEYS` or `PRIVATE_STATE_KEYS`. `server/public-state.mjs` applies that to the state and the event stream: `/api/state` (`server/page-state.mjs`), a conversation’s items by range (`server/items-routes.mjs`, through `publicItems`, #1155), and the live and backlog frames (`server/live-streams.mjs`). An event the page may not see goes out as a `cursor` that keeps only its seq, so the page stays in step. Every other route that answers with state does so with a piece of it directly: the routes that create or change an entity, `PUT /api/settings`, the permissions view (`GET /api/permissions`), and the Work view’s answers, which read the store’s items and sessions directly. Such an answer may carry only data of public keys. Review holds that rule today, while every key is public; A2, which adds the first private data, adds a check that holds it before that data exists (A1b adds none: `designs/508/a1b-asks.md`).

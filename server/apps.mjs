@@ -149,7 +149,7 @@ export function appQuery(apps, appId, tool, args) {
   const held = (/** @type {string} */ t) => HELD_BY_EVERY_AGENT.has(t) || persona?.tools?.includes(t);
   const allowed = new Set((app.versions[app.current - 1].permissions ?? []).filter(held));
   if (!allowed.has(tool)) throw httpError(403, `This app can’t use “${tool}”. It needs the permission, and its agent needs the tool.`);
-  return hostTool(apps, tool, args, { threadId: app.threadId });
+  return hostTool(apps, tool, args, { threadId: app.threadId, app });
 }
 
 /**
