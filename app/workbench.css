@@ -926,6 +926,8 @@ html.store-down .sidepanel { padding-bottom: 44px; }
 .thread-card:hover { border-color: var(--line-strong); }
 .thread-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .has-panel .main { margin-right: var(--pane-w); }
+/* Where the pane opens full screen over the conversation, the column behind it keeps its width (pane-width.mjs). */
+.has-panel.pane-covers .main { margin-right: 0; }
 
 /* @-mention autocomplete */
 .mention-menu { bottom: calc(100% + 6px); left: 0; width: 320px; }

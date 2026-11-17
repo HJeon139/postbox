@@ -170,3 +170,13 @@ test('#1437 one menu button adds a file or an agent, or opens the commands, by k
   await expect(page.locator('#composer-input')).toHaveValue('/');
   await expect(page.locator('#composer-input')).toBeFocused();
 });
+
+for (const width of [768, 900])
+  test(`#442 at ${width} px a thread panel opened over the conversation leaves its composer its width`, async ({ page }) => {
+    await topic(page, width);
+    // The panel covers the conversation here, so the column behind it keeps its own width.
+    await settled(page);
+    const box = await page.locator('#composer-input').boundingBox();
+    expect(box?.width, 'the conversation’s input keeps room for its placeholder and quota line').toBeGreaterThan(300);
+    expect(await placeholderFits(page, 'composer-input'), 'its placeholder fits').toBe(true);
+  });
