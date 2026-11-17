@@ -152,16 +152,17 @@ export class Delivery {
 
   /**
    * Whether an entry can start a turn: not a notice, not held at the chain cap, and, for a failed agent, the person’s
-   * own action, since anything else waits for the person; not their messages that were waiting when its turn failed,
-   * though (failedWith).
+   * own action or its own scheduled wake, since anything else waits for the person; not their messages that were
+   * waiting when its turn failed, though (failedWith). Out of quota, the person’s own action alone (#442).
    * @param {Entry} e @param {{ id?: string, state?: string, quota?: { until: number | null } | null }} se  the agent’s session
    */
   canStart(e, se) {
     if (e.source === 'notice' || this.chainHeld(e)) return false;
+    // Out of quota, only the person’s own action tries again before the reset (#442): anything else would fail the same way.
+    if (outOfQuota(se) && !PERSON.has(e.source)) return false;
     if (se.state !== 'failed') return true;
-    // A scheduled wake is the agent’s own, which started a failed agent’s turn before entries, as its retries rely on
-    // (#466); not while its backend is out of quota, until the reset the harness gave (#442).
-    if (e.source === 'scheduled') return !outOfQuota(se);
+    // A scheduled wake is the agent’s own, which started a failed agent’s turn before entries, as its retries rely on (#466).
+    if (e.source === 'scheduled') return true;
     return PERSON.has(e.source) && !this.heldByFailure.get(e.sessionId)?.has(e.id);
   }
 

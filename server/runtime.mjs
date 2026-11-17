@@ -62,6 +62,7 @@ import { settleToolAsks } from './tool-ask.mjs';
 import { startTopic } from './topic-open.mjs';
 import { listenTurnEnd } from './turn-end-listeners.mjs';
 import { entryLine } from './turn-input.mjs';
+import { armQuotaResets } from './turn-quota.mjs';
 import { Turns } from './turn-service.mjs';
 import { settleSubagentSteps } from './turn-steps.mjs';
 import { dismissStopAsk, recordStopped, requestStop, stop, stopTurns } from './turn-stop.mjs';
@@ -381,6 +382,8 @@ export class Runtime {
   drainAll() {
     // A queue a store holds from before #1404 becomes entries first (#1423).
     convertQueues(this);
+    // A reset an agent out of quota waits for wakes it then, as before the restart (#442).
+    armQuotaResets(this);
     // Then the inbox: a turn lost to the restart reopens what it took, and each agent with entries is woken.
     this.delivery.start();
   }
