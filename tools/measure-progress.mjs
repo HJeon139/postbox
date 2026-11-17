@@ -3,7 +3,7 @@
 // live-only progress work records main’s numbers with it before any change, and each pull request compares against
 // them, back to back on the same machine.
 //
-//   node tools/measure-progress.mjs [backends|long|crowded|restart ...] [--runs N]
+//   node tools/measure-progress.mjs [backends|long|crowded|joining|restart ...] [--runs N]
 //
 // Each section runs N times (3 unless --runs says), each in a fresh process (tools/measure-progress/run.mjs), on a
 // virtual clock, and every number is printed as its band: the least, the median and the most of the runs. The log is
@@ -20,7 +20,7 @@ const argv = process.argv.slice(2);
 const runsAt = argv.indexOf('--runs');
 const RUNS = runsAt >= 0 ? Number(argv[runsAt + 1]) : 3;
 const asked = argv.filter((a, i) => !a.startsWith('--') && i !== runsAt + 1);
-const SECTIONS = ['backends', 'long', 'crowded', 'restart'].filter((s) => !asked.length || asked.includes(s));
+const SECTIONS = ['backends', 'long', 'crowded', 'joining', 'restart'].filter((s) => !asked.length || asked.includes(s));
 
 /**
  * One run of a section in a fresh process: its rows, or null when it was killed as asked. A run that fails stops the
