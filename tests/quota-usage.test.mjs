@@ -80,6 +80,30 @@ test('a report that shows what the last one did is written again only once the l
   assert.equal(emitted.length, 4, 'the same, but the last is ten minutes old');
 });
 
+test('a report read before the figures held never replaces them, nor moves the record’s time back (#1466)', () => {
+  const { rt, emitted } = fakeRt({ p: { backend: 'antigravity-cli' } });
+  const se = { personaId: 'p' };
+  recordQuota(rt, se, report(0.6, 'warning'), 600_000);
+  // A slow turn reports what it read at its start, before the figure above.
+  recordQuota(rt, se, report(0.2), 60_000);
+  assert.equal(emitted.length, 1, 'nothing new to write');
+  assert.deepEqual(
+    rt.s.quota['antigravity-cli'].windows.map((w) => [w.used, w.seenAt]),
+    [[0.6, 600_000]],
+  );
+  // It can still fill in a window the record lacks, under the record’s status and time.
+  recordQuota(rt, se, { status: 'ok', windows: [{ name: '7 d', used: 0.1, resetsAt: null }] }, 60_000);
+  const r = rt.s.quota['antigravity-cli'];
+  assert.deepEqual([r.status, r.seenAt], ['warning', 600_000]);
+  assert.deepEqual(
+    r.windows.map((w) => [w.name, w.used, w.seenAt]),
+    [
+      ['5 h', 0.6, 600_000],
+      ['7 d', 0.1, 60_000],
+    ],
+  );
+});
+
 test('a sparse report merges with the last by window: a window it leaves out keeps its figure', () => {
   const { rt } = fakeRt({ p: { backend: 'codex' } });
   const se = { personaId: 'p' };
@@ -215,5 +239,32 @@ test('an out report through the adapter and the turn leaves every agent’s quot
   assert.equal(store.state.quota.mock?.status, 'out');
   for (const se of arrange.sessionsIn(rt, t.id)) assert.equal(se.quota ?? null, null, se.handle);
   release();
+  rt.close?.();
+});
+
+test('a turn’s report keeps the time it was read, however long ago the turn began (#1466)', async () => {
+  const store = new Store(null);
+  const readAt = Date.now() - 20 * 60_000;
+  const rt = new Runtime({
+    store,
+    adapters: new AdapterRegistry().register({
+      name: 'mock',
+      async folderFor() {
+        return null;
+      },
+      async deliver(_session, _message, ctx) {
+        ctx.quota({ ...report(0.3), seenAt: readAt });
+        ctx.text('Done.');
+      },
+    }),
+    config: { origin: 'http://127.0.0.1:1', imageOrigins: [], lintSettleMs: 0 },
+  });
+  store.emit('project', { id: 'p1', name: 'P', folder: '/tmp' });
+  const a = rt.createPersona({ handle: 'reader' });
+  const t = rt.createThread({ projectId: 'p1', title: 'T', personaIds: [a.id] });
+  rt.sendMessage(t.id, { text: '@reader go' });
+  for (let i = 0; i < 200 && !store.state.quota.mock; i++) await new Promise((r) => setTimeout(r, 5));
+  assert.equal(store.state.quota.mock?.seenAt, readAt);
+  assert.equal(store.state.quota.mock?.windows[0].seenAt, readAt);
   rt.close?.();
 });
