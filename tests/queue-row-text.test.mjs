@@ -55,6 +55,27 @@ test('a tool, browser or wake card’s answer says what you chose', () => {
   );
 });
 
+test('an allowed browser download that failed says it failed', () => {
+  assert.equal(
+    queuedText(answer, { kind: 'viewask', handle: 'builder', status: 'failed' }),
+    'You allowed the browser download for @builder’s app, and it failed',
+  );
+});
+
+test('a declined wake card’s answer to an agent whose wake was held on it names that agent’s message', () => {
+  const card = {
+    kind: 'hop',
+    fromSessionId: 's9',
+    from: 'critic',
+    to: 'builder',
+    status: 'declined',
+    held: [{ fromSessionId: 's1', from: 'writer', to: 'tester' }],
+  };
+  // The queue is s1’s, the writer’s, not the critic’s whose card it is.
+  assert.equal(queuedText(answer, card), 'You didn’t allow @critic to wake @builder, so @writer’s message to @tester, held on that card, didn’t go');
+  assert.equal(queuedText({ ...answer, sessionId: 's9' }, card), 'You didn’t allow @critic to wake @builder');
+});
+
 test('an app’s event reads as the line it posted in your voice, and says it’s your app’s while that line comes', () => {
   assert.equal(
     queuedText(entry('event'), { id: 'it_1', kind: 'voice', text: 'Picked “Lisbon” in Trip planner', appId: 'ap_1' }),

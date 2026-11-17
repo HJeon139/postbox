@@ -6,11 +6,21 @@
 const blockName = (block) => `“${block?.title ?? block?.fallback ?? block?.id}”`;
 
 /**
+ * A declined wake card’s answer, for the agent whose queue it waits in: the agent the card asked for, or another whose
+ * wake was held on it (server/wake-cards.mjs, settleHeld). @param {any} card @param {string} sessionId
+ */
+function declinedWake(card, sessionId) {
+  const declined = card.join ? `You didn’t add @${card.to} to this conversation` : `You didn’t allow @${card.from} to wake @${card.to}`;
+  const held = card.fromSessionId === sessionId ? null : card.held?.find((/** @type {any} */ w) => w.fromSessionId === sessionId);
+  return held ? `${declined}, so @${held.from}’s message to @${held.to}, held on that card, didn’t go` : declined;
+}
+
+/**
  * The person’s answer, told from the card it answers, as the line it posted in their voice says it
  * (server/permission-cards.mjs, tool-ask.mjs, view-app/consent.mjs and wake-cards.mjs).
- * @param {any} card
+ * @param {any} card @param {string} sessionId  the agent whose queue it waits in
  */
-function answerTo(card) {
+function answerTo(card, sessionId) {
   switch (card.kind) {
     case 'denial':
       if (card.status === 'allowed-once') return `You allowed @${card.handle} once to ${card.summary}`;
@@ -19,12 +29,11 @@ function answerTo(card) {
     case 'toolask':
       return card.status === 'on' ? `You turned on “${card.label}” for @${card.handle}` : `You kept “${card.label}” off for @${card.handle}`;
     case 'viewask':
-      return card.status === 'declined'
-        ? `You chose not to download the browser for @${card.handle}’s app`
-        : `You allowed the browser download for @${card.handle}’s app`;
+      if (card.status === 'declined') return `You chose not to download the browser for @${card.handle}’s app`;
+      if (card.status === 'failed') return `You allowed the browser download for @${card.handle}’s app, and it failed`;
+      return `You allowed the browser download for @${card.handle}’s app`;
     case 'hop':
-      if (card.join) return `You didn’t add @${card.to} to this conversation`;
-      return `You didn’t allow @${card.from} to wake @${card.to}`;
+      return declinedWake(card, sessionId);
     default:
       return `Your answer to ${blockName(card.block)}`;
   }
@@ -37,7 +46,7 @@ function answerTo(card) {
  * - a slash command: the command, which the entry carries;
  * - an answer: told from the card it answers;
  * - a review: who reviewed which block.
- * @param {{ source: string, from?: string, text?: string, message?: any }} e
+ * @param {{ source: string, sessionId: string, from?: string, text?: string, message?: any }} e
  * @param {any} item  the item the entry points at, when the page has it
  * @returns {string | null}
  */
@@ -45,7 +54,7 @@ export function queuedText(e, item) {
   if (typeof e.text === 'string') return e.text;
   if (e.source === 'command') return e.message?.text ?? item?.text ?? null;
   if (!item) return null;
-  if (e.source === 'answer') return answerTo(item);
+  if (e.source === 'answer') return answerTo(item, e.sessionId);
   if (e.source === 'review') return `@${e.from}’s review of ${blockName(item.block)}`;
   return item.text ?? null;
 }

@@ -3,6 +3,7 @@
 import { api, client, itemIn } from './client.mjs';
 import { h, icon, syncList } from './dom.mjs';
 import { onChangeWhileAlive } from './held-weakly.mjs';
+import { markClamped, queuedTextNode } from './queue-disclosure.mjs';
 import { QueueItems } from './queue-items.mjs';
 import { placeholderText, queuedText } from './queue-row-text.mjs';
 import { openDialog, toast } from './ui.mjs';
@@ -84,7 +85,7 @@ function buildRow(row, entry) {
     },
     icon('x', 'i-sm'),
   );
-  row.replaceChildren(h('p.small.dim.agent-queue-meta'), h('p.agent-queue-text'), h('div.row-flex.wrap.agent-queue-actions', send, edit, remove));
+  row.replaceChildren(h('p.small.dim.agent-queue-meta'), queuedTextNode(), h('div.row-flex.wrap.agent-queue-actions', send, edit, remove));
   row._entry = entry;
 }
 
@@ -102,7 +103,8 @@ function fillRow(row, entry, at, of) {
     if (el && el.textContent !== text) el.textContent = text;
   };
   set(row.querySelector('.agent-queue-meta'), q.kind === 'wake' ? `From ${q.from} · ${thread.title}` : thread.title);
-  // The text keeps a fixed height, clamped, so words that arrive later move nothing (#1456); the whole of it is its title.
+  // The text keeps a fixed height, clamped, so words that arrive later move nothing; the whole of it is its title, and a
+  // disclosure opens it (queue-disclosure.mjs, #1456).
   const text = row.querySelector('.agent-queue-text');
   set(text, q.text);
   if (text && text.title !== q.text) text.title = q.text;
@@ -205,6 +207,7 @@ function paintRows(list, all, paint, items) {
     fillRow(row, all[i] ?? row._entry, i + 1, all.length);
     items.fill(row);
   }
+  markClamped(list);
   refocusSlot(list, slot);
 }
 
@@ -260,6 +263,8 @@ export function openQueue(sessionId, anchor = null) {
     },
   });
   const off = followQueueChanges(list, later.ask);
+  // The first paint was before the dialog put the list on the page, where no text has a size to measure.
+  markClamped(list);
   anchor?.setAttribute('aria-expanded', 'true');
 }
 
