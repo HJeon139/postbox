@@ -2,6 +2,8 @@
 // and only whom it replies to where it hasn’t: a phone, or a conversation beside an open thread panel. The width comes
 // from a ResizeObserver, so typing never reads the layout (composer-size.mjs says why that matters).
 
+import { fontOf } from './canvas-font.mjs';
+
 const ctx = typeof document === 'undefined' ? null : document.createElement('canvas').getContext('2d');
 /** Each box’s last room and font, by its id: a composer mounted again, as going back to a room does, starts measured, so
  * its first observation changes nothing and costs no layout (#1155). @type {Map<string, { room: number, font: string }>} */
@@ -18,7 +20,7 @@ export function placeholderRoom(ta, onChange) {
     const width = entry.contentRect.width;
     if (width === room) return;
     room = width;
-    font = getComputedStyle(ta).font;
+    font = fontOf(ta);
     known.set(ta.id, { room, font });
     onChange();
   });
