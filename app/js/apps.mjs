@@ -125,6 +125,14 @@ addEventListener('message', async (e) => {
     case 'state':
       if (current) saveState(rec.appId, m.state);
       break;
+    case 'publish':
+      // Data the app shares with its agent, read with read_app (server/app-publish.mjs, #1478).
+      if (!current) return reply(null, 'Only the current version of an app publishes.');
+      api(`/api/apps/${encodeURIComponent(rec.appId)}/publish`, { data: m.data }).then(
+        (r) => reply(r),
+        (err) => reply(null, err.message),
+      );
+      break;
     case 'anchors':
       rec.onAnchors?.(m.names);
       break;

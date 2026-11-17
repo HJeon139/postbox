@@ -3,6 +3,7 @@
 // delegate to the module that owns their block, app, wake or read. Moved out of server/runtime.mjs; Runtime keeps
 // toolsFor, which delegates here.
 
+import { readApp } from './app-publish.mjs';
 import { bringToConversation } from './bring.mjs';
 import { cancelWake, scheduleWakeTool } from './schedule-tools.mjs';
 import { recordedTools } from './scheduled-wakes.mjs';
@@ -39,6 +40,7 @@ export function toolsFor(rt, sessionId, turn = null) {
     retire_app(args) {
       return rt.apps.retire(sessionId, args);
     },
+    read_app: (args) => readApp(rt, sessionId, args),
     define_term: (args) => defineTerm(rt, { turn, se, threadId }, args),
     propose_agent: (args) => proposeAgent(rt, sessionId, { turn, se, threadId, endSegment }, args),
     schedule_wake: (args) => scheduleWakeTool(rt, sessionId, args),

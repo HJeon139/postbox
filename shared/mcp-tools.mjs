@@ -106,6 +106,16 @@ export const TOOL_DEFS = [
     },
   },
   {
+    name: 'read_app',
+    description:
+      'Read what an app in this conversation shares with you: the data it published (in an app, call postbox.publish(data) on each change of the person’s table, form or selection; no turn starts) and its saved state. Postbox tells you at your next turn when an app has something new; read it then instead of asking the person what they changed.',
+    inputSchema: {
+      type: 'object',
+      properties: { appId: { type: 'string', description: 'The appId show_app or update_app returned.' } },
+      required: ['appId'],
+    },
+  },
+  {
     name: 'define_term',
     description: 'Add a term to the glossary of this conversation, or of the topic thread you’re in. Every later mention links to its definition.',
     inputSchema: {

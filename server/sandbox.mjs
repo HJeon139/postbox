@@ -162,6 +162,7 @@ export function sandboxPage({ origin, ancestor, app, version, theme, check }) {
 ${css()}
 <script>${inline('kit/drawn.js', '</script')}</script>
 <script data-init="${esc(JSON.stringify(init))}">${inline('kit/kit.js', '</script')}</script>
+<script>${inline('kit/publish.js', '</script')}</script>
 ${check ? `<script>${inline('kit/check-layout.js', '</script')}</script>\n<script>${inline('kit/check-controls.js', '</script')}</script>\n<script>${inline('kit/check-text.js', '</script')}</script>\n<script>${inline('kit/check-view.js', '</script')}</script>\n<script>${inline('kit/check-boxes.js', '</script')}</script>\n<script>${inline('kit/check.js', '</script')}</script>\n` : ''}</head>
 <body>
 ${version.code}
