@@ -5,7 +5,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { liveEnd, liveStep, liveUpdate } from '../server/live-buffer.mjs';
+import { liveEnd, liveSession, liveStep, liveUpdate } from '../server/live-buffer.mjs';
 import { liveStreams } from '../server/live-streams.mjs';
 import { sessionPatch } from '../server/session-patch.mjs';
 import { Store } from '../server/store.mjs';
@@ -84,6 +84,30 @@ test('a running turn’s change of state is stored, rides on its session frame, 
     liveUpdate(rt, turn, { state: 'tool', currentStep: 'Read a.md' });
     assert.equal(store.state.seq, seq);
     assert.deepEqual(page.sessions().at(-1), { kind: 'session', sessionId: 'se_1', currentStep: 'Read a.md' });
+  } finally {
+    live.stop();
+  }
+});
+
+test('the turn’s end stores its tool calls, which the pages had live, and doesn’t send them again', async () => {
+  const store = await new Store(null).load();
+  store.emit('session', { id: 'se_1', threadId: 'th_1', state: 'tool' });
+  const live = liveStreams(store);
+  try {
+    const turn = { id: 'tu_1', sessionId: 'se_1', threadId: 'th_1', first: 'it_1' };
+    const update = (/** @type {string} */ id, /** @type {any} */ p, /** @type {any} */ before) => {
+      const data = sessionPatch(store.pending.session(id), { ...p, updatedAt: 5 });
+      before?.(data);
+      store.emit('session.patch', data);
+    };
+    const rt = { store, s: store.state, sessions: { update } };
+    const page = open(live, store, '&open=th_1');
+    const tool = open(live, store, '');
+    liveSession(rt, turn, { toolCalls: [{ name: 'Read', state: 'done' }], toolCount: 1 });
+    liveEnd(rt, turn);
+    assert.equal(store.state.sessions.se_1.toolCount, 1, 'stored');
+    assert.deepEqual(page.events(), [], 'had them live');
+    assert.deepEqual(tool.events(), [['session.patch', undefined]]);
   } finally {
     live.stop();
   }

@@ -106,8 +106,11 @@ export function liveSession(rt, turn, patch, carried = {}) {
 export function liveEnd(rt, turn) {
   liveCommit(rt, turn);
   const { toolCalls, toolCount } = turn.live?.session ?? {};
+  // The pages had both live, so the write isn’t sent to them again (server/live-sent.mjs).
   if (toolCalls !== undefined || toolCount !== undefined)
-    rt.sessions.update(turn.sessionId, { ...(toolCalls !== undefined ? { toolCalls } : {}), ...(toolCount !== undefined ? { toolCount } : {}) });
+    rt.sessions.update(turn.sessionId, { ...(toolCalls !== undefined ? { toolCalls } : {}), ...(toolCount !== undefined ? { toolCount } : {}) }, (data) =>
+      committed.add(data),
+    );
   turn.live = null;
 }
 
