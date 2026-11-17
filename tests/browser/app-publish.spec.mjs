@@ -36,10 +36,10 @@ test('#1478 an app publishes on load and on each edit; its agent gets one notice
   await expect(frameOf(page, 'List'), 'the app to load').toHaveAttribute('data-sized', '1');
   const notices = () => rt.delivery.waiting(se.id).filter((e) => e.source === 'notice' && e.text.startsWith(`[app ${id}]`));
 
-  await expect.poll(() => rt.store.state.apps[id]?.published, { message: 'what the app published on load' }).toEqual({ book: 'Emma', rating: 3 });
+  await expect.poll(() => rt.store.state.published[id]?.data, { message: 'what the app published on load' }).toEqual({ book: 'Emma', rating: 3 });
   await expect.poll(() => rt.store.state.apps[id]?.state?.answered, { message: 'the app heard its publish was kept' }).toBe(true);
   await clickApp(page, 'List');
-  await expect.poll(() => rt.store.state.apps[id]?.published?.rating, { message: 'the edit published' }).toBe(4);
+  await expect.poll(() => rt.store.state.published[id]?.data?.rating, { message: 'the edit published' }).toBe(4);
 
   expect(notices(), 'one notice for the changes').toHaveLength(1);
   expect(rt.session(se.id).needs ?? null, 'nobody needs the person').toBe(null);

@@ -72,7 +72,7 @@ Inside the sandbox, the kit ([`app/kit/kit.js`](../app/kit/kit.js)) provides:
 | `postbox.file(name)` | A data file the agent attached to this version with `files`, as text (#54). |
 | `postbox.send(action, values, summary)` | Sends one event to the agent. `summary` is the line you see in your voice. |
 | `postbox.saveState(obj)`, `postbox.restoreState()` | Saved state survives unloading, reloading and new versions |
-| `postbox.publish(data)` | Shares the app’s current data with its agent, up to 256 KB: no turn, no card, no line in your voice. The agent hears at its next turn that the app changed, one notice for a burst of changes, and reads it with `read_app` (`server/app-publish.mjs`, [#1478](https://github.com/HJeon139/postbox/issues/1478)). |
+| `postbox.publish(data)` | Shares the app’s current data with its agent, up to 256 KB of JSON: no turn, no card, no line in your voice. Postbox sends the latest at most every 400 ms, in order. The agent hears at its next turn that the app published, one notice for a burst, and reads it with `read_app` (`server/app-publish.mjs`, [#1478](https://github.com/HJeon139/postbox/issues/1478)). |
 | `postbox.anchors({ name: element })` | Parts you can pin review comments to |
 | `postbox.on('theme', fn)` | Light and dark tokens update by themselves; redraw canvas or D3 output here |
 | `postbox.load('d3' \| 'katex' \| 'mermaid')` | Loads a bundled library |
@@ -82,7 +82,7 @@ Inside the sandbox, the kit ([`app/kit/kit.js`](../app/kit/kit.js)) provides:
 
 The stylesheet is preloaded, so apps use the same classes and tokens as Postbox, on the cool app stage.
 
-**What the agent reads.** `read_app { appId }` gives an agent what an app in its conversation published, and its saved state. Reading is how an agent sees what you did in an app without asking you or giving you a button to send it.
+**What the agent reads.** `read_app { appId, from? }` gives an agent what an app in its conversation published, and its saved state, in parts as `read_asset` gives an asset, framed as the app’s data rather than your words. Reading is how an agent sees what you did in an app without asking you or giving you a button to send it. What an app published is kept in its own private record, not on the app, so a publish sends no page anything ([security-boundaries.md](architecture/security-boundaries.md), “What reaches the browser”).
 
 **Images.** An app loads images from `data:` URLs, or from `/media/<name>`. That serves the media bundled with Postbox, then the `media/` folder in your data folder (`~/.postbox/media/`), where agents copy the images their apps show (PNG, JPEG, GIF, WebP, AVIF or SVG). Agents find it in `$POSTBOX_MEDIA`. Nothing an agent adds goes into Postbox’s own folder, which an upgrade replaces.
 

@@ -49,6 +49,9 @@ export function emptyState() {
     // Each agent's inbox (designs/rooms-at-scale.md, “What an entry is”): per session, its entries in arrival order, each
     // pointing at the item it came from rather than copying it. A session's go with it (removeEntity).
     inbox: map(),
+    // What each app published for its agent (#1478, server/app-publish.mjs): { id: the app’s id, data, at }. Private: the
+    // agent reads it with read_app, and no page does, so a publish never sends the app’s record, or its data, to a page.
+    published: map(),
   };
 }
 
@@ -106,7 +109,8 @@ export const PUBLIC_STATE_KEYS = Object.freeze([
   // the page today as items and events: the sender sees each entry's state (designs/rooms-at-scale.md, “Delivery”).
   'inbox',
 ]);
-export const PRIVATE_STATE_KEYS = Object.freeze(/** @type {string[]} */ ([]));
+// What apps published for their agents (#1478): read only by read_app, so no page is sent a copy of each publish.
+export const PRIVATE_STATE_KEYS = Object.freeze(['published']);
 
 /** The names the event stream gives its own frames (server/live-streams.mjs). None is ever an event type. */
 export const STREAM = Object.freeze({ cursor: 'cursor', status: 'status', epoch: 'epoch', resync: 'resync', header: 'header', live: 'live' });
@@ -147,6 +151,8 @@ export const EVENTS = Object.freeze({
     public: true,
   },
   app: { apply: put('apps'), public: true },
+  // What an app published for its agent (#1478): kept apart from the app, and private, as PRIVATE_STATE_KEYS says.
+  'app.publish': { apply: put('published'), public: false },
   file: { apply: put('files'), public: true },
   schedule: {
     apply: (s, d) => {
@@ -214,6 +220,7 @@ function removeEntity(s, d) {
   }
   const kept = { session: 'sessions', app: 'apps', persona: 'personas' }[d.kind];
   if (kept) delete s[kept][d.id];
+  if (d.kind === 'app' && s.published) delete s.published[d.id];
   // Deleting a session deletes its entries; the messages they came from stay (designs/rooms-at-scale.md, “What an entry is”).
   if (d.kind === 'session') delete s.inbox[d.id];
 }
