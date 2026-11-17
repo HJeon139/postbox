@@ -191,19 +191,19 @@ Each code pull request is measured against `main`, back to back on the same mach
 
 The first code pull request extends the tool and records `main`’s numbers before any change, so every later one compares with the same baseline.
 
-**`main`’s baseline,** Postbox at 07db980e, from `node tools/measure-progress.mjs --runs 3`. Each run is in a fresh process, on a virtual clock that advances 50 ms after each recorded line, with a crowd’s agents interleaved. The log is counted as the store writes it, in UTF-8 bytes (a test holds that the count equals the disk). The clock never runs ahead of real time while the store flushes or closes, so its bounds on disk work trip only when the disk stalls. Times are given as least to most of the runs. This run’s times came with the machine under load (a load average near 9, other sessions’ browser specs), so they show the spread a busy machine gives; a step’s times are compared only back to back with `main`’s (“Worse than `main`”).
+**`main`’s baseline,** Postbox at a33cc5b0, from `node tools/measure-progress.mjs --runs 3`. Each run is in a fresh process, on a virtual clock that advances 50 ms after each recorded line, with a crowd’s agents interleaved. The log is counted as the store writes it, in UTF-8 bytes (a test holds that the count equals the disk). The clock never runs ahead of real time while the store flushes or closes, so its bounds on disk work trip only when the disk stalls. Times are given as least to most of the runs. The ledger’s git calls answer as git does in a folder that isn’t a repository, the project’s here, without starting a process: real ones were about a third of a crowd’s profile, none of it Postbox’s own. This run’s times came with the machine under load (a load average of 10 to 15, other sessions’ browser specs), so they show the spread a busy machine gives; a step’s times are compared only in pairs with `main`’s (“Worse than `main`”).
 
 | Section | Log bytes | Progress | Mixed | A page’s bytes, frames | Event loop busy, ms | CPU, ms | Mappers’ µs a delta |
 |---|---|---|---|---|---|---|---|
-| Claude Code, 19 recorded turns | 407,440 | 45.1% | 8.9% | 353,100, 1,793 | 271–311 | 166–193 | 16.1–19.2 |
-| Codex, 8 recorded turns | 80,587 | 24.7% | 11.0% | 59,735, 358 | 77–84 | 30–35 | 20.2–23.9 |
-| Kiro, 11 recorded turns | 136,196 | 34.3% | 13.0% | 106,428, 675 | 123–173 | 48–72 | 12.9–25.3 |
-| Antigravity, 11 recorded turns | 163,495 | 43.6% | 10.1% | 132,487, 905 | 125–199 | 49–87 | 13.6–26.9 |
-| One turn of 300 steps, with input, output, detail and diffs | 649,174 | 67.0% | 30.8% | 635,954, 1,837 | 101–102 | 112–113 | 12.2–12.6 |
-| One turn of 1,000 steps | 2,144,179 | 68.0% | 31.1% | 2,105,759, 6,037 | 263–271 | 281–293 | 13.0–13.6 |
-| 1x: 4 agents in a room, 1 to 10 tabs | 59,405–59,411 | 30.5% | 10.1% | 52,570–52,576, 276 | 22–38 | 18–38 | 24.6–50.0 |
-| 10x: 40 agents in a room, 1 to 10 tabs | 652,578–652,632 | 40.0–40.1% | 10.0% | 610,409–610,463, 2,979 | 95–284 | 105–173 | 10.3–31.2 |
-| 100x: 100 agents across 25 rooms, 1 to 10 tabs | 1,485,503 | 44.9% | 11.0% | 951,373, 7,697 (one room open) | 202–510 | 246–360 | 9.9–17.5 |
+| Claude Code, 19 recorded turns | 407,441 | 45.1% | 8.9% | 353,101, 1,793 | 193–214 | 100–110 | 7.9–10.0 |
+| Codex, 8 recorded turns | 80,586 | 24.7% | 11.0% | 59,734, 358 | 60–62 | 19–20 | 9.1–9.9 |
+| Kiro, 11 recorded turns | 136,196 | 34.3% | 13.0% | 106,428, 675 | 89–91 | 32–33 | 6.8–7.9 |
+| Antigravity, 11 recorded turns | 163,499 | 43.6% | 10.1% | 132,491, 905 | 88–90 | 34–36 | 7.9–8.9 |
+| One turn of 300 steps, with input, output, detail and diffs | 649,174 | 67.0% | 30.8% | 635,954, 1,837 | 97–287 | 107–177 | 11.8–33.6 |
+| One turn of 1,000 steps | 2,144,179 | 68.0% | 31.1% | 2,105,759, 6,037 | 267–479 | 284–405 | 13.4–26.0 |
+| 1x: 4 agents in a room, 1 to 10 tabs | 59,405–59,411 | 30.5% | 10.1% | 52,570–52,576, 276 | 11–36 | 9–34 | 9.7–32.9 |
+| 10x: 40 agents in a room, 1 to 10 tabs | 652,578–652,632 | 40.0–40.1% | 10.0% | 610,409–610,463, 2,979 | 32–61 | 39–81 | 4.5–8.8 |
+| 100x: 100 agents across 25 rooms, 1 to 10 tabs | 1,485,077–1,485,503 | 44.9% | 11.0% | 951,105–951,373, 7,695–7,697 (one room open) | 64–75 | 94–119 | 3.9–4.7 |
 
 - **Progress** is a session patch of only live fields (with or without `updatedAt`), an `activityStep` patch, or an `item.text`.
 - **Mixed** is a session patch that sets a stored field, such as `state`, beside live ones. Its stored part stays.
@@ -216,18 +216,27 @@ The first code pull request extends the tool and records `main`’s numbers befo
 
 | Scale and stop | Shutdown | Written | Snapshot | Replayed with it: bytes, events | Load with it | Load without it: bytes, events, time | Heap after load | Sweep |
 |---|---|---|---|---|---|---|---|---|
-| 4 agents, graceful | 30–39 ms | 55,408 | none | 55,408, 176 | 30–33 ms | 55,408, 176, 25–29 ms | 0.14 MB | 0.09–0.10 ms |
-| 4 agents, crash | | 48,811 | none | 48,811, 138 | 8.9–110 ms | 48,811, 138, 6.4–30 ms | 0.17 MB | 1.0–1.4 ms |
-| 40 agents, graceful | 106–137 ms | 372,984–372,986 | none | 372,984–372,986, 1,608 | 9.2–14 ms | the same, 8.8–12 ms | 0.31–0.32 MB | 0.13–0.48 ms |
-| 40 agents, crash | | 312,715–312,944 | none | 312,715–312,944, 1,343–1,344 | 12–35 ms | the same, 8.9–12 ms | 0.31–0.32 MB | 1.8–2.5 ms |
-| 400 agents, graceful | 862–1,602 ms | 3,462,785–3,476,169 | 1,055,746–1,232,726 | 79,945–1,256,004, 300–5,939 | 32–52 ms | 3,462,785–3,476,169, 16,605–16,691, 54–59 ms | 2.0–2.4 MB | 0.51–0.63 ms |
-| 400 agents, crash | | 2,911,035–2,913,211 | 1,043,956–1,140,947 | 390,892–792,423, 2,061–3,895 | 20–38 ms | 2,911,035–2,913,211, 14,167–14,176, 23–64 ms | 2.1 MB | 10–16 ms |
+| 4 agents, graceful | 7.1–9.6 ms | 55,408 | none | 55,408, 176 | 5.5–6.3 ms | 55,408, 176, 5.7–6.3 ms | 0.13–0.14 MB | 0.07–0.08 ms |
+| 4 agents, crash | | 48,811 | none | 48,811, 138 | 6.4–8.2 ms | 48,811, 138, 4.9–5.9 ms | 0.17 MB | 0.73–0.76 ms |
+| 40 agents, graceful | 100–106 ms | 372,986 | none | 372,986, 1,608 | 7.2–8.1 ms | the same, 7.7–9.0 ms | 0.32–0.55 MB | 0.14 ms |
+| 40 agents, crash | | 312,715–312,946 | none | 312,715–312,946, 1,343–1,344 | 8.7–9.8 ms | 312,491–312,715, 1,342–1,343, 6.5–7.9 ms | 0.31–0.32 MB | 1.4–1.5 ms |
+| 400 agents, graceful | 471–561 ms | 3,468,953–3,469,505 | 1,068,239–1,127,779 | 962,254–1,208,072, 4,577–5,736 | 22.4–22.6 ms | 3,468,953–3,469,505, 16,651–16,660, 26.4–27.3 ms | 2.3–2.4 MB | 0.35–0.38 ms |
+| 400 agents, crash | | 2,911,035–2,915,150 | 1,063,617–1,102,124 | 550,499–709,443, 2,717–3,503 | 17.4–18.3 ms | 2,911,035–2,915,150, 14,167–14,182, 23.0–23.4 ms | 2.1 MB | 9.6–10.0 ms |
 
-Below 400 agents no snapshot is taken, so every event is replayed. At 400, when the snapshot is taken depends on how the store’s writes batch between real I/O, so the snapshot and what’s replayed after it split the log differently from run to run, up to fifteenfold for a graceful stop. Those two are bands only; what a step compares at 400 is the whole log’s bytes and events and its load without the snapshot, which held to within 0.4%. The 400-agent shutdown is the real `close()`, which stops 400 turns and writes what they end with.
+Below 400 agents no snapshot is taken, so every event is replayed. At 400, when the snapshot is taken depends on how the store’s writes batch between real I/O, so the snapshot and what’s replayed after it split the log differently from run to run, by up to a quarter. Those two are bands only; what a step compares at 400 is the whole log’s bytes and events and its load without the snapshot, which held to within 0.2%. The 400-agent shutdown is the real `close()`, which stops 400 turns and writes what they end with.
 
-**Worse than `main`,** for a step’s comparison, run back to back with `main` on the same machine, `--runs 3` each:
-- **Bytes** (the log, written, the snapshot and the page’s) are worse when the step’s least is above `main`’s most by more than 0.1% or 64 bytes, whichever is more. Runs differ only by the digits of times, and at 400 agents by what the stops write.
-- **Times** (event loop busy, CPU, mappers’ time a delta, shutdown, load and sweep) are worse when the step’s median is above `main`’s most by more than 10%. A row that fails is run again, back to back, and fails only if it fails twice. The snapshot and the replay with it at 400 agents aren’t compared, for the reason above.
+**Joining mid-turn,** with 1, 10 and 100 turns running, half through each, in rooms of up to 4: `/api/state` as a new page loads it, and tabs reconnecting at once, each having missed everything since the turns started (the stream’s backlog, for the first room open):
+
+| Running turns | `/api/state` bytes, time | Backlog a tab, bytes and frames | 1 tab reconnecting | 10 tabs at once |
+|---|---|---|---|---|
+| 1 | 6,124, 0.04–0.18 ms | 6,494, 39 | 0.13–0.15 ms | 0.57–0.60 ms |
+| 10 | 33,623–33,630, 0.13–0.18 ms | 70,486–70,493, 417 | 0.66–0.69 ms | 4.5–4.8 ms |
+| 100 | 214,779–214,856, 0.52–0.67 ms | 457,925–458,002, 3,275 | 3.0–3.2 ms | 30–32 ms |
+
+**Worse than `main`,** for a step’s comparison: `node tools/measure-progress.mjs --against <main’s checkout>`, which runs `main`’s tool and the step’s in 8 pairs, alternating ABBA so a machine growing busier or calmer weighs on both, and gives each number a verdict (`tools/measure-progress/compare.mjs`):
+- **Bytes and counts** (the log, written, the snapshot, the page’s, the backlog and `/api/state`) are worse when the step’s least is above `main`’s most by more than 0.1% or 64 bytes, whichever is more. Runs differ only by the digits of times, and at 400 agents by what the stops write.
+- **Times** (event loop busy, CPU, the mappers’ time and time a delta, shutdown, load, sweep, `/api/state` and reconnecting) are worse when the median of the pairs’ ratios, step over `main`, and the ratio of the least runs are both above 1.10. A real cost moves both; noise seldom does. A time under 1 ms in `main`’s least run, or a time a delta whose mappers took under 1 ms, is reported and not judged. A rule that held one band’s median against the other’s most let a real 11 to 16% CPU cost pass on a busy machine, which is why times are paired.
+- **The tool’s own resolution:** run against itself (`--against .`) with a load average of 5 to 17, no number was above 1.10 on both ratios, and the smaller of the two reached 1.099 at most. A cost near 10% needs a calmer machine or more pairs (`--pairs`) to call. The snapshot and the replay with it at 400 agents aren’t compared, for the reason above.
 
 ## Order of work
 
