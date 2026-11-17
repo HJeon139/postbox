@@ -86,7 +86,10 @@ test('a job the turn left stops with it, and says so; one the person kept runs o
   assert.deepEqual(reply.held.stopped, ['npm test']);
   const jobs = store.state.sessions[beta.id].jobs ?? [];
   assert.ok(!jobs.some((/** @type {any} */ j) => j.id === 'j1' && j.state === 'running'), 'its end did stop it');
-  assert.ok(jobs.some((/** @type {any} */ j) => j.id === 'j2' && j.state === 'running'), 'the kept one runs on');
+  assert.ok(
+    jobs.some((/** @type {any} */ j) => j.id === 'j2' && j.state === 'running'),
+    'the kept one runs on',
+  );
 });
 
 test('a turn lost to the network and sent again keeps no record: its reply says it was retried', async () => {
