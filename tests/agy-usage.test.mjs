@@ -139,11 +139,12 @@ test('it asks at most once a minute, and hands the turn what agy said with when 
   assert.equal(reports[0].seenAt, 1_000, 'as of the ask, not the turn’s end');
 });
 
-test('a report’s time is kept only when it’s past and recent, so it can’t pass for fresher or older', () => {
+test('a report keeps the time it was read, however old, but never one in the future', () => {
   const now = 10 * REWRITE_MS;
   assert.equal(reportedAt({ seenAt: now - 30_000 }, now), now - 30_000);
+  assert.equal(reportedAt({ seenAt: now - 2 * REWRITE_MS }, now), now - 2 * REWRITE_MS, 'a turn over ten minutes long');
   assert.equal(reportedAt({ seenAt: now + 1 }, now), now, 'never in the future');
-  assert.equal(reportedAt({ seenAt: now - REWRITE_MS }, now), now, 'never older than a rewrite');
+  assert.equal(reportedAt({ seenAt: 'soon' }, now), now);
   assert.equal(reportedAt({}, now), now);
 });
 
@@ -169,16 +170,19 @@ test('Stop doesn’t wait on the probe: a stopped turn reports nothing and ends 
   assert.deepEqual(reports, []);
 });
 
-/** An Antigravity adapter on agy 1.5.10 that plays one recorded turn, its probe answering with left. */
-function adapterWith(root, turn, code, left, seen) {
+/** An Antigravity adapter on agy `version` that plays one recorded turn, its probe answering with left. */
+function adapterWith(root, turn, code, left, seen, version = NEW, asks = { n: 0 }) {
   const lines = readFileSync(new URL(`fixtures/antigravity-cli/${turn}.jsonl`, import.meta.url), 'utf8').trim();
   return new AntigravityCliAdapter({
     workRoot: join(root, 'work'),
     settingsFile: join(root, 'settings.json'),
-    version: NEW,
+    version,
     spawnImpl: /** @type {any} */ (fakeAgy(`${lines}\n`, code, seen)),
     env: {},
-    usage: usageProbe(answering(left)),
+    usage: usageProbe(() => {
+      asks.n++;
+      return answering(left)();
+    }),
   });
 }
 
@@ -219,4 +223,21 @@ test('a turn that fails, as one out of quota does, still reports what agy said',
   await assert.rejects(adapter.deliver({}, { kind: 'user', text: 'hi' }, turnCtx(quotas)), Error);
   assert.equal(quotas.length, 1);
   assert.equal(quotas[0].status, 'out');
+});
+
+test('the adapter asks only as its own agy’s version allows', async () => {
+  const asks = { n: 0 };
+  const quotas = [];
+  await adapterWith(tempDir('pb-agy-usage-'), 'first', 0, 0.9, [], '1.5.9', asks).deliver({}, { kind: 'user', text: 'hi' }, turnCtx(quotas));
+  assert.deepEqual([asks.n, quotas.length], [0, 0]);
+});
+
+test('a turn stopped as agy answers reports nothing, though the answer came first', async () => {
+  const probe = usageProbe(answering(0.5));
+  const reports = [];
+  const stop = new AbortController();
+  const done = probe.report({ signal: stop.signal, quota: (r) => reports.push(r) }, Promise.resolve({ data: await answering(0.5)(), at: 1 }));
+  stop.abort();
+  await done;
+  assert.deepEqual(reports, []);
 });

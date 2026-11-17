@@ -631,44 +631,44 @@ export class AntigravityCliAdapter {
     const addDirs = [...new Set([ctx.project?.folder, ...(ctx.addDirs ?? [])])].filter((d) => d && resolve(d) !== resolve(cwd));
     const asked = this.usage?.start(this.version) ?? null;
     if (this.folders.busy(cwd)) ctx.status({ currentStep: 'Waiting for another Antigravity turn in this folder' });
-    await this.folders
-      .run(cwd, async () => {
-        if (ctx.signal.aborted) return;
-        const plugin = join(cwd, PLUGIN_DIR);
-        if (!this.excluded.has(cwd)) {
-          this.excluded.add(cwd);
-          await excludePlugin(cwd).catch(() => false);
+    // Its quota is reported once the run is over, while the turn can still record it: after a failed turn too, which
+    // may be the one that ran out.
+    const ran = this.folders.run(cwd, async () => {
+      if (ctx.signal.aborted) return;
+      const plugin = join(cwd, PLUGIN_DIR);
+      if (!this.excluded.has(cwd)) {
+        this.excluded.add(cwd);
+        await excludePlugin(cwd).catch(() => false);
+      }
+      const hookCommand = useHook ? agyHookCommand(this.hookScript) : null;
+      await writeAgyPlugin(plugin, agyPlugin({ mcpUrl: ctx.mcpUrl, rules, hookCommand, skills: await agySkillFiles(persona) }));
+      const hookConfirmed = Boolean(useHook && (await confirmAgyHook({ version: this.version, pluginDir: plugin, script: this.hookScript })));
+      // A hook that didn’t check out isn’t passed, so agy refuses what it would ask about: the rules say so, not “a card”.
+      if (useHook && !hookConfirmed) await writeFile(join(plugin, 'rules', 'AGENTS.md'), rulesWith(false));
+      try {
+        let done = await this.run({ ctx, cwd, addDirs, prompt, sessionId: ctx.state.agySessionId ?? null, hookConfirmed });
+        // A conversation agy no longer has (its history was cleared, or the agent’s folder changed) starts over, once.
+        if (done.missingSession && !ctx.signal.aborted) {
+          ctx.saveState({ agySessionId: null });
+          ctx.state.agySessionId = null;
+          const note = `[Postbox] ${FRESH_START_TEXT}\n\n`;
+          done = await this.run({ ctx, cwd, addDirs, prompt: note + prompt, sessionId: null, hookConfirmed });
         }
-        const hookCommand = useHook ? agyHookCommand(this.hookScript) : null;
-        await writeAgyPlugin(plugin, agyPlugin({ mcpUrl: ctx.mcpUrl, rules, hookCommand, skills: await agySkillFiles(persona) }));
-        const hookConfirmed = Boolean(useHook && (await confirmAgyHook({ version: this.version, pluginDir: plugin, script: this.hookScript })));
-        // A hook that didn’t check out isn’t passed, so agy refuses what it would ask about: the rules say so, not “a card”.
-        if (useHook && !hookConfirmed) await writeFile(join(plugin, 'rules', 'AGENTS.md'), rulesWith(false));
-        try {
-          let done = await this.run({ ctx, cwd, addDirs, prompt, sessionId: ctx.state.agySessionId ?? null, hookConfirmed });
-          // A conversation agy no longer has (its history was cleared, or the agent’s folder changed) starts over, once.
-          if (done.missingSession && !ctx.signal.aborted) {
-            ctx.saveState({ agySessionId: null });
-            ctx.state.agySessionId = null;
-            const note = `[Postbox] ${FRESH_START_TEXT}\n\n`;
-            done = await this.run({ ctx, cwd, addDirs, prompt: note + prompt, sessionId: null, hookConfirmed });
-          }
-          // agy ends a turn at a refused call, before the agent says anything (the Gemini room UAT’s tester rated that
-          // high: the person saw a refused step and silence). So the conversation goes on once, for the agent to say
-          // what was refused and carry on. A refusal in that run isn’t followed up again.
-          if (done.endedOnRefusal && !ctx.signal.aborted && ctx.state.agySessionId) {
-            ctx.status({ state: 'think', currentStep: 'Telling you about the refused call' });
-            const followUp = refusalFollowUp(done.endedOnRefusal);
-            await this.run({ ctx, cwd, addDirs, prompt: followUp, sessionId: ctx.state.agySessionId, wrote: done.wrote, hookConfirmed });
-          }
-        } finally {
-          await rm(plugin, { recursive: true, force: true }).catch(() => {});
-          // The folders above it, only if the plugin was all they held.
-          for (const dir of [dirname(plugin), dirname(dirname(plugin))]) await rmdir(dir).catch(() => {});
+        // agy ends a turn at a refused call, before the agent says anything (the Gemini room UAT’s tester rated that
+        // high: the person saw a refused step and silence). So the conversation goes on once, for the agent to say
+        // what was refused and carry on. A refusal in that run isn’t followed up again.
+        if (done.endedOnRefusal && !ctx.signal.aborted && ctx.state.agySessionId) {
+          ctx.status({ state: 'think', currentStep: 'Telling you about the refused call' });
+          const followUp = refusalFollowUp(done.endedOnRefusal);
+          await this.run({ ctx, cwd, addDirs, prompt: followUp, sessionId: ctx.state.agySessionId, wrote: done.wrote, hookConfirmed });
         }
-        // Its quota, while the turn can still record it: after a failed turn too, which may be the one that ran out.
-      })
-      .finally(() => this.usage?.report(ctx, asked));
+      } finally {
+        await rm(plugin, { recursive: true, force: true }).catch(() => {});
+        // The folders above it, only if the plugin was all they held.
+        for (const dir of [dirname(plugin), dirname(dirname(plugin))]) await rmdir(dir).catch(() => {});
+      }
+    });
+    await (this.usage ? this.usage.reportAfter(ctx, asked, ran) : ran);
   }
 
   /**

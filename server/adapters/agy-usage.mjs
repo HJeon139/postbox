@@ -92,6 +92,17 @@ export function usageProbe(ask, { now = Date.now } = {}) {
         () => null,
       );
     },
+    /**
+     * The turn’s run, then its report, whether the run ended well or failed, as one out of quota does.
+     * @param {any} ctx @param {Promise<{ data: any, at: number } | null> | null} asked @param {Promise<void>} ran
+     */
+    async reportAfter(ctx, asked, ran) {
+      try {
+        await ran;
+      } finally {
+        await this.report(ctx, asked);
+      }
+    },
     /** @param {any} ctx @param {Promise<{ data: any, at: number } | null> | null} asked */
     async report(ctx, asked) {
       if (!asked) return;
