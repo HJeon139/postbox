@@ -42,7 +42,7 @@ export function endTurn(rt, turn, err) {
     return;
   }
   if (!err) quotaBack(rt, se);
-  // The listeners share what the person needs (open, viewing, topic), which the first that reads it finds.
+  // The listeners share what the person needs (open, viewing, topic): Asks’ listener (N) writes it, and those after it read it.
   rt.bus.emit('turn.ended', { turn, se, items, open: [], viewing: false, topic: null });
 }
 
