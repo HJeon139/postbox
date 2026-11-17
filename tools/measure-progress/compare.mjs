@@ -5,14 +5,19 @@
 
 /** A number’s key that is a time, compared by ratio; the rest are counts and bytes. @param {string} k */
 export const isTime = (k) => k.endsWith('Ms') || k === 'usPerDelta';
+/** The time a delta is the mappers’ time (pushMs) over a count that doesn’t change: judged once, as pushMs. */
+const JUDGED_AS_ANOTHER = new Set(['usPerDelta']);
 
 /**
  * How much more time, as a share, this branch may take before it’s worse than main. Run against itself on a busy
  * machine (a load average of 5 to 17), the tool’s own spread came to 9.9% at most, by the smaller of the two ratios.
  */
 export const TIME_TOLERANCE = 0.1;
-/** A time this small, in main’s least run, is reported and not judged: a timer’s grain, not a cost. */
-const TIME_FLOOR = 1;
+/**
+ * A time under this, in main’s least run, is reported and not judged. Run against itself, the tool’s times of a few
+ * milliseconds, such as the mappers’ 2.5 to 4 ms in a crowd, came out 11 to 16% apart on noise alone (#1461’s review).
+ */
+const TIME_FLOOR = 20;
 /** How much more a count of bytes may be, as a share or in bytes, whichever is more: the digits of times. */
 const BYTE_SHARE = 0.001;
 const BYTE_FLOOR = 64;
@@ -45,9 +50,7 @@ export function compare(main, branch) {
       if (isTime(key)) {
         const ratio = median(a.map((x, i) => b[i] / x));
         const leastRatio = Math.min(...b) / Math.min(...a);
-        // The time a delta is judged by the mappers’ whole time, which it divides.
-        const whole = key === 'usPerDelta' ? main.map((rows) => rows[r]?.pushMs ?? 0) : a;
-        const judged = Math.min(...whole) >= TIME_FLOOR;
+        const judged = !JUDGED_AS_ANOTHER.has(key) && Math.min(...a) >= TIME_FLOOR;
         const worse = judged && ratio > 1 + TIME_TOLERANCE && leastRatio > 1 + TIME_TOLERANCE;
         out.push({ row: first.row, key, main: median(a), branch: median(b), ratio, leastRatio, worse });
       } else {
@@ -57,4 +60,14 @@ export function compare(main, branch) {
       }
     }
   return out;
+}
+
+/**
+ * The numbers worse in both of two rounds of pairs: a number worse in the first is worse only if the second, run
+ * after it, agrees, so one unlucky round doesn’t fail a step. @param {ReturnType<typeof compare>} first
+ * @param {ReturnType<typeof compare>} second
+ */
+export function worseTwice(first, second) {
+  const again = new Set(second.filter((c) => c.worse).map((c) => `${c.row}\0${c.key}`));
+  return first.filter((c) => c.worse && again.has(`${c.row}\0${c.key}`));
 }

@@ -10,13 +10,13 @@
 // virtual clock, and every number is printed as its band: the least, the median and the most of the runs. The log is
 // counted as the store writes it, in UTF-8 bytes (tools/measure-progress/log-bytes.mjs). With --against, the runs of
 // that checkout’s tool and this one’s alternate in N pairs (8 unless --pairs says), and each number gets a verdict
-// against it (tools/measure-progress/compare.mjs).
+// against it (tools/measure-progress/compare.mjs); a section with a number worse runs a second round, which must agree.
 
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { compare, mainFirst } from './measure-progress/compare.mjs';
+import { compare, mainFirst, worseTwice } from './measure-progress/compare.mjs';
 
 const OWN = new URL('./measure-progress/run.mjs', import.meta.url).pathname;
 const { removeRestart } = await import('./measure-progress/restart.mjs');
@@ -105,35 +105,44 @@ function restartOnce(script) {
 /** One run of a section by the tool at `script`, its derived numbers added. @param {string} script @param {string} section */
 const once = (script, section) => (section === 'restart' ? restartOnce(script) : run(script, [section])).map(derived);
 
-/** Prints each number against main’s, and returns how many are worse. @param {string} section @param {any[][]} main @param {any[][]} branch */
-function printCompared(section, main, branch) {
-  console.log(`\n## ${section}: this branch against ${AGAINST} (${main.length} ABBA pairs; time as the median pair’s ratio, and the least runs’)`);
-  let worse = 0;
+/** Runs of main’s tool and this one in PAIRS pairs, ABBA. @param {string} theirs @param {string} section */
+function pairs(theirs, section) {
+  /** @type {any[][]} */ const main = [];
+  /** @type {any[][]} */ const branch = [];
+  for (let i = 0; i < PAIRS; i++) {
+    if (mainFirst(i)) main.push(once(theirs, section));
+    branch.push(once(OWN, section));
+    if (!mainFirst(i)) main.push(once(theirs, section));
+  }
+  return compare(main, branch);
+}
+
+/** Prints a round’s numbers against main’s. @param {string} title @param {ReturnType<typeof compare>} round */
+function printRound(title, round) {
+  console.log(`\n## ${title}`);
   let row = '';
-  for (const c of compare(main, branch)) {
+  for (const c of round) {
     if (c.row !== row) console.log(`- ${(row = c.row)}`);
     const ratios = c.ratio === undefined ? '' : ` (x${c.ratio.toFixed(3)}, least x${/** @type {number} */ (c.leastRatio).toFixed(3)})`;
     console.log(`    ${c.key}: ${f(c.main)} → ${f(c.branch)}${ratios}${c.worse ? '  WORSE' : ''}`);
-    if (c.worse) worse++;
   }
-  return worse;
 }
 
 if (AGAINST) {
   const theirs = join(AGAINST, 'tools/measure-progress/run.mjs');
-  let worse = 0;
+  /** @type {ReturnType<typeof compare>} */
+  const worse = [];
   for (const section of SECTIONS) {
-    /** @type {any[][]} */ const main = [];
-    /** @type {any[][]} */ const branch = [];
-    for (let i = 0; i < PAIRS; i++) {
-      if (mainFirst(i)) main.push(once(theirs, section));
-      branch.push(once(OWN, section));
-      if (!mainFirst(i)) main.push(once(theirs, section));
-    }
-    worse += printCompared(section, main, branch);
+    const first = pairs(theirs, section);
+    printRound(`${section}: this branch against ${AGAINST} (${PAIRS} ABBA pairs; time as the median pair’s ratio, and the least runs’)`, first);
+    if (!first.some((c) => c.worse)) continue;
+    // A number worse in one round of pairs is worse only if a second round agrees.
+    const second = pairs(theirs, section);
+    printRound(`${section}, again, for what the first round found worse`, second);
+    worse.push(...worseTwice(first, second));
   }
-  console.log(`\n${worse ? `${worse} numbers are worse than main.` : 'Nothing is worse than main.'}`);
-  process.exitCode = worse ? 1 : 0;
+  console.log(worse.length ? `\nWorse than main in both rounds:\n${worse.map((c) => `- ${c.row}: ${c.key}`).join('\n')}` : '\nNothing is worse than main.');
+  process.exitCode = worse.length ? 1 : 0;
 } else
   for (const section of SECTIONS)
     print(
