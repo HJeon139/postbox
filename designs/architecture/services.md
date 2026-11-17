@@ -440,7 +440,7 @@ flowchart TD
   H --> I{err, and not an AbortError?}
   I -->|failed| K[Turns: failed reply, notify; the session fails unless the turn was lost after the harness accepted it and wasn’t a resend]
   K --> L2[Turns: mark whom the failure woke, from entriesFrom]
-  L2 --> J[turn.failed — Checks: stalled steps]
+  L2 --> J[turn.failed — Checks: its running steps fail]
   J --> L4[turn.failed — Delivery: settle what the turn took by why it failed, as a resend, failed or delivered; count the chain]
   I -->|no: ok, or stopped by an AbortError| M[turn.ended — Apps: an app-check turn’s fix ends]
   M --> N[turn.ended — Asks: the next need, session state, unread and notification]

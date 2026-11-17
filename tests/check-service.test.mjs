@@ -163,6 +163,13 @@ test('stallLeftRunning tells the agent which steps stalled when its turn was sto
   assert.equal(told.length, 1);
   assert.match(told[0][1], /^Your last turn failed while progress steps were running:\n- Block “Plan” \(id b1\)/);
   assert.deepEqual(checks.stallSteps(turnOf(), store.state.sessions.se_1), [], 'none run any more');
+  assert.ok(
+    store.pending
+      .items('th_c')
+      .find((i) => i.kind === 'block')
+      .block.steps.every((s) => s.state !== 'stalled'),
+    'a failed turn’s steps fail (#664)',
+  );
   checks.stallLeftRunning(turnOf(), store.state.sessions.se_1, 'stopped');
   assert.equal(told.length, 1, 'nothing to tell');
 });
