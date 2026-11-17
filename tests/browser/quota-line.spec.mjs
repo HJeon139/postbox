@@ -107,7 +107,7 @@ test('#442 a figure seen long ago says its age, and a window past its reset show
   });
   await synced(page, app);
   await expect(bar(page, 'Codex'), 'it says its age').toHaveAttribute('aria-valuetext', /^Codex 30% of 7 d, as of 2 h ago · resets /);
-  await expect(bar(page, 'Codex')).toHaveClass(/stale/);
+  await expect(bar(page, 'Codex').locator('.quota-pct'), 'marked without color').toHaveText('~30%');
   await expect(bar(page, 'Claude Code')).toHaveAttribute('aria-valuetext', 'Claude Code · 5 h reset');
   await expect(bar(page, 'Claude Code')).not.toContainText('90%');
 });
@@ -118,7 +118,7 @@ test('#442 on a phone each bar keeps its backend and percent whole, and the wind
   await settled(page);
   const row = await line(page).boundingBox();
   for (const name of ['Claude Code', 'Codex']) {
-    const main = await bar(page, name).locator('.quota-main').boundingBox();
+    const main = await bar(page, name).locator('.quota-pct').boundingBox();
     expect(main && row && main.x >= row.x - 0.5 && main.x + main.width <= row.x + row.width + 0.5, `${name}’s percent is on the row`).toBe(true);
   }
   expect(row?.height, 'one row').toBeLessThanOrEqual(20);
@@ -167,7 +167,7 @@ async function fitsThePhone(page) {
     .evaluateAll((els) =>
       els.map((el) => {
         const b = el.getBoundingClientRect();
-        const m = /** @type {HTMLElement} */ (el.querySelector('.quota-main')).getBoundingClientRect();
+        const m = /** @type {HTMLElement} */ (el.querySelector('.quota-pct')).getBoundingClientRect();
         return { left: b.left, right: b.right, mainLeft: m.left, mainRight: m.right, text: el.getAttribute('aria-valuetext') };
       }),
     );
