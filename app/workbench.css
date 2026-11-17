@@ -731,12 +731,12 @@ iframe.app-iframe:not(.live) { pointer-events: none; }
 
 /* ───────── Composer ───────── */
 
-.composer { position: sticky; bottom: 0; z-index: 15; background: var(--bg); padding: 8px 24px 6px; }
+.composer { position: sticky; bottom: 0; z-index: 15; background: var(--bg); padding: 8px 24px 4px; }
 /* The conversation’s composer floats over its end as a card (#1463): it has no surface of its own, so the conversation
    shows beside the card and below it, and a click there reaches what it shows. Only what it holds is drawn: the card,
    with its shadow, and each row that says something, on the page’s color. Its end stays in the flow above the card,
    so the last message scrolls clear of it. */
-.main > .composer { background: none; padding-bottom: 4px; pointer-events: none; }
+.main > .composer { background: none; pointer-events: none; }
 .main > .composer .col > :not(:empty, .hint), .main > .composer .hint:not(:empty) { pointer-events: auto; }
 .main > .composer .col > :not(:empty, .composer-box, .jump) { border-radius: 6px; background: var(--bg); }
 .main > .composer .composer-box { box-shadow: 0 6px 18px -6px var(--shadow); }
@@ -1006,8 +1006,7 @@ html.store-down .sidepanel { padding-bottom: 44px; }
   .tbl td.act { padding: 4px; }
   /* It wraps here: as tall as its lines, with a card’s corners, not pill ends (#199). */
   .sys .pill { white-space: normal; text-align: center; justify-content: center; flex-wrap: wrap; height: auto; border-radius: 8px; }
-  .composer { padding: 8px 12px 6px; }
-  .main > .composer { padding-bottom: 4px; }
+  .composer { padding: 8px 12px 4px; }
   .me-card { max-width: 92%; }
   .form-grid { grid-template-columns: 1fr; }
   /* Under the top bar, so its Work button and ⋯ stay in reach while the pane covers the conversation. */
