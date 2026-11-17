@@ -50,7 +50,7 @@ export function roomAssets(state, convId) {
 export function hasRefs(state, convId) {
   const index = own(state.assetRooms, roomOf(state.threads, convId));
   if (index && Object.keys(index.names).length) return true;
-  return (state.work?.[convId] ?? []).some((e) => e.kind === 'file');
+  return filesOf(state, convId).byId.size > 0;
 }
 
 /** @typedef {{ at: string, kind: 'asset' | 'file' }} Ref */
