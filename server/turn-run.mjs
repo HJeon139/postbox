@@ -109,8 +109,6 @@ function turnMessage(rt, se, message, where, slash) {
     const { entries: _entries, messages: _parts, ...carried } = message;
     message = { ...carried, ...inputOf(rt, se, message, where) };
   }
-  // A queued mention its last room summary already gave it comes as a pointer there, never as a thread’s direct task (#484, #504).
-  else if (where === se.threadId) message = rt.memory.pointerIfSeen(se, message);
   // Postbox’s notices that waited for this agent’s next turn (tellAgent: what became of its earlier messages) lead the
   // background; the brief isn’t context, it goes with the room’s facts (turnFacts).
   if (se.context?.length && !slash) {

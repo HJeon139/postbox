@@ -1,5 +1,5 @@
 // What an agent reads, byte for byte (designs/architecture/services.md, “Memory”): the catch-up a turn starts with,
-// a topic thread’s catch-up and header, a mention given before as a pointer (#484), read_conversation and
+// a topic thread’s catch-up and header, a mention given again whole (#484), read_conversation and
 // read_message. One room holds an item of every kind an agent reads, the person’s message to an agent (“The person,
 // to @alpha:”, #1334), a long mention (#499), a held wake (#693), a thread with a summary (#228) and a reaction
 // (#251). Built through the facade and the fixture only, so a change to how Memory is put together can’t change it;
@@ -117,7 +117,7 @@ function named(f, text) {
   return out.replace(/\/\S*?\/notes\/a\.md/g, '<project>/notes/a.md').replace(/\b\d\d:\d\d\b/g, '<hh:mm>');
 }
 
-test('what alpha reads of the room, its topic thread, a pointer and the read tools is the same, byte for byte', async () => {
+test('what alpha reads of the room, its topic thread, a mention and the read tools is the same, byte for byte', async () => {
   const f = room();
   const { rt, alpha, adapter } = f;
   rt.turnService.run(alpha.id, { kind: 'user', text: 'Go on.' });
@@ -184,7 +184,7 @@ const EXPECTED = {
       taskContext: null,
     },
     {
-      text: '@beta’s message above, which your last summary gave you in full: “@alpha The audit of the ledger, part by part. <receipt ×3> Each entry was checke…”. It’s addressed to you: act on it now if you haven’t. read_message { id: "<id 4>" } has it whole.',
+      text: '@alpha The audit of the ledger, part by part. <receipt ×60> ',
       context: [
         [
           '[Postbox] What happened in this room since your last turn:',

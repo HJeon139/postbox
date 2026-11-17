@@ -31,7 +31,7 @@ const PUBLISHED = {
   'turn-run.mjs': ['retry'], // the person’s Retry of a failed reply they see
   'diagram-check.mjs': ['diagramCheck'], // the page’s report on a diagram the person sees
   'item-lines.mjs': ['topicRootLine', 'describeItem'], // a read tool and a prompt
-  'catch-up.mjs': ['catchUp', 'turnTail', 'pointerIfSeen'], // the prompt for a later turn
+  'catch-up.mjs': ['catchUp', 'turnTail'], // the prompt for a later turn
   'permission-cards.mjs': ['resolvePermission', 'resolveDenial'], // the person’s answer to a card they see
   'permission-expiry.mjs': ['dismissPermission'], // the person’s Dismiss on a card they see (#721)
   'queue-batch.mjs': ['latestMessage'], // an agent’s later post, for a message that waited on a turn (#374)
