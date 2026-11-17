@@ -65,7 +65,7 @@ import { listenTurnEnd } from './turn-end-listeners.mjs';
 import { entryLine } from './turn-input.mjs';
 import { armQuotaResets, quotaMoved } from './turn-quota.mjs';
 import { Turns } from './turn-service.mjs';
-import { dismissStopAsk, recordStopped, requestStop, stop, stopTurns } from './turn-stop.mjs';
+import { dismissStopAsk, requestStop, stop, stopTurns } from './turn-stop.mjs';
 import { toolsFor } from './ui-tools.mjs';
 import { closeOrphanCards, heldFor, liftDecline } from './wake-cards.mjs';
 import { Work } from './work-service.mjs';
@@ -398,9 +398,6 @@ export class Runtime {
 
   stop(sessionId, opts) {
     return stop(this, sessionId, opts);
-  }
-  recordStopped(turn, ended, how) {
-    return recordStopped(this, turn, ended, how);
   }
   requestStop(sessionId, choice) {
     return requestStop(this, sessionId, choice);

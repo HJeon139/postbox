@@ -17,6 +17,7 @@
 
 import { settledNeed } from './restart-sweep.mjs';
 import { rearmWakes } from './scheduled-wakes.mjs';
+import { recordStopped } from './stop-record.mjs';
 import { whenWritable } from './store-wait.mjs';
 
 /** @typedef {import('./runtime.mjs').Runtime} Runtime */
@@ -196,7 +197,7 @@ function stopForStore(rt, sessionId) {
 function recordStop(rt, turn) {
   const { sessionId } = turn;
   const ended = { status: 'stopped', stoppedAt: Date.now(), stopReason: 'store' };
-  rt.recordStopped(turn, ended, { by: 'store', why: WHY });
+  recordStopped(rt, turn, ended, { by: 'store', why: WHY });
   const se = rt.s.sessions[sessionId];
   if (!se) return;
   // Its process may not have exited yet: the session reads as stopping until it has (turnExited).

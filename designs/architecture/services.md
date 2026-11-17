@@ -708,7 +708,7 @@ Each step is its own pull request, and is done when:
     - A summary leaves out every message still waiting for the agent as an entry, so a mention reaches it once, whole, and `givenMentions` and `pointerIfSeen` are gone (#484).
     - The queue’s batching is gone (`batchPending`, `latestMessage`); a turn’s batch of entries and their arrival order are `turn-batch.mjs`.
     - #694’s note reads the agent’s entries only, in every thread: one waiting in another thread is named with its thread, on a tool result and in the prompt of a turn that starts while it waits (#734).
-    - `runtime.mjs` lost the forwards only Delivery’s and Turns’ own modules called (`takePending`, `settleSubagentSteps`, `sideSession`, `recordAgentMessage`, `threadRefs`); it’s 799 lines. What the routes and the tests act through stays, and `recordStopped` stays, since its store-outage caller would close an import cycle with `turn-stop.mjs`.
+    - `runtime.mjs` lost the forwards only Delivery’s and Turns’ own modules called (`takePending`, `settleSubagentSteps`, `sideSession`, `recordAgentMessage`, `threadRefs`); it’s 799 lines. What the routes and the tests act through stays, and `recordStopped` stayed, since its store-outage caller would close an import cycle with `turn-stop.mjs`, until #1442 moved it into `stop-record.mjs` and dropped the forward.
     - A turn left on a host when its agent moves to this computer is stopped there, as one left when it moves to another host is (#1214).
   - **Still to do:** host turns (`remote/turns-prompts.mjs`, `turns-start.mjs`, `turns-resume.mjs`) and `restart-sweep.mjs` reach waiting code directly, not through `asks`; that goes with Asks.
 
