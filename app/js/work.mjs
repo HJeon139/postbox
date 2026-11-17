@@ -16,12 +16,14 @@ import { api, client } from './client.mjs';
 import { fill, h, icon, plural, timeOf } from './dom.mjs';
 import { heldFrame } from './held-frame.mjs';
 import { closeWork, keepFocus, openDialog, openWork, toast } from './ui.mjs';
+import { assetsSection } from './work-assets.mjs';
 import { COMMAND_WORDS, commandsSection, GLYPH } from './work-commands.mjs';
 import { diffView } from './work-diff.mjs';
 import { watchGit } from './work-git.mjs';
 import { editItem, editRow, editRows, hostNotes } from './work-hosts.mjs';
 import { external, row, sec, short, spend } from './work-pane-parts.mjs';
 import { dur, effortSection, externalSection, publishSection, readsSection, section, signedEl, vcsSection, who, workLink } from './work-sections.mjs';
+import { paneViewer } from './work-viewer.mjs';
 import { windows } from './work-window.mjs';
 
 const S = () => client.state;
@@ -451,6 +453,7 @@ export function mountWorkPane(threadId) {
   );
   let target = null; // the turn the pane was last opened at, from its line in the transcript
   let allTurns = false;
+  let allAssets = false;
   const openTurns = new Set();
   /** @type {any} */
   let git = null;
@@ -465,10 +468,11 @@ export function mountWorkPane(threadId) {
   const go = (to) => openWork(threadId, { full: true, ...to });
 
   // A file’s name first, then its folder, so a long path outside the project still shows which file it is.
+  // Opened from the lists, a file shows in the pane’s viewer; from a turn, that turn’s change opens full screen.
   const fileRow = (f, to, prefix) =>
     row(
       `${prefix}-${to.at}`,
-      () => go(to),
+      () => (to.turn ? go(to) : openWork(threadId, { at: to.at })),
       h('span.mono.wc-name', f.rel.replace(/^.*\//, ''), f.rel.includes('/') ? h('span.dim', ` ${f.rel.replace(/\/[^/]*$/, '')}`) : null),
       f.binary ? h('span.small.dim', 'binary') : signedEl(f.added, f.deleted),
     );
@@ -656,26 +660,33 @@ export function mountWorkPane(threadId) {
 
   const paint = () =>
     keepFocus(body, () => {
-      if (full) return;
+      if (full || viewer.open) return;
       const entries = S().work?.[threadId] ?? [];
       const s = summarize(entries, { git });
+      const showAll = () => {
+        allAssets = true;
+        paint();
+      };
+      const assets = assetsSection(threadId, { all: allAssets, showAll });
       const lines = s.turns
         .map((t) => ({ t, line: turnLine(entries, t.id) }))
         .filter((x) => x.line)
         .reverse();
-      if (!lines.length && !s.files.length && !s.edits.length && !s.commands.length && !s.external.length)
+      if (!lines.length && !s.files.length && !s.edits.length && !s.commands.length && !s.external.length && !assets)
         return fill(
           body,
           h('p.empty-note', 'Nothing yet. When an agent edits a file, runs a command or publishes something, it shows here, with what it took.'),
         );
-      fill(body, review(s), files(s), commands(s), external(s, go), spend(s, go), turns(entries, lines));
+      fill(body, review(s), files(s), assets, commands(s), external(s, go), spend(s, go), turns(entries, lines));
     });
 
   // As in mountWork, what the server sends waits while a press is down (#1010).
   const live = heldFrame(body, paint);
   const off = client.on((ch) => {
-    if (ch.type === 'load' || ((ch.type === 'work.add' || ch.type === 'work.patch') && ch.data.convId === threadId)) live.soon();
+    if (ch.type === 'load' || ch.type.startsWith('asset') || ((ch.type === 'work.add' || ch.type === 'work.patch') && ch.data.convId === threadId)) live.soon();
   });
+  // An asset or file the address names, in place of the lists (#1446).
+  const viewer = paneViewer(threadId, el, body, () => paint());
   paint();
   return {
     el,
@@ -717,6 +728,7 @@ export function mountWorkPane(threadId) {
       off();
       gitNow.stop();
       full?.view.destroy();
+      viewer.destroy();
       live.cancel();
     },
   };
