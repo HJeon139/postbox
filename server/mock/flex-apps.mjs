@@ -7,14 +7,17 @@ export const readingListApp = () => `
   .rl { padding: 14px; display: flex; flex-direction: column; gap: 12px; }
   .rl table { width: 100%; border-collapse: collapse; table-layout: fixed; }
   .rl th, .rl td { padding: 6px 8px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: middle; }
-  .rl th:nth-child(2), .rl th:nth-child(3) { width: 30%; }
+  .rl th:nth-child(2) { width: 28%; }
+  .rl th:nth-child(3) { width: 16%; }
+  .rl th:nth-child(4) { width: 18%; }
   .rl .select, .rl .input { width: 100%; min-width: 0; }
   .rl-row { display: flex; gap: 8px; align-items: end; flex-wrap: wrap; }
   .rl-row .field { flex: 1 1 180px; }
+  .rl .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 </style>
 <div class="rl">
   <p class="small dim" id="st" role="status">Your changes go to the librarian as you make them.</p>
-  <table><thead><tr><th scope="col">Book</th><th scope="col">Status</th><th scope="col">Rating</th></tr></thead><tbody id="rows"></tbody></table>
+  <table><thead><tr><th scope="col">Book</th><th scope="col">Status</th><th scope="col">Rating</th><th scope="col">Find it</th></tr></thead><tbody id="rows"></tbody></table>
   <form class="rl-row" id="add">
     <div class="field"><label class="label" for="nb">Add a book</label><input class="input" id="nb" autocomplete="off"></div>
     <button class="btn" type="submit">Add</button>
@@ -39,7 +42,8 @@ export const readingListApp = () => `
       .map((r, i) => '<tr><td>' + esc(r.title) + '</td>' +
         '<td><select class="select" data-i="' + i + '" data-k="status" aria-label="Status of ' + esc(r.title) + '">' +
         STATUSES.map((s) => '<option' + (s === r.status ? ' selected' : '') + '>' + s + '</option>').join('') + '</select></td>' +
-        '<td><input class="input" type="number" min="0" max="5" data-i="' + i + '" data-k="rating" value="' + r.rating + '" aria-label="Rating of ' + esc(r.title) + ', 0 to 5"></td></tr>')
+        '<td><input class="input" type="number" min="0" max="5" data-i="' + i + '" data-k="rating" value="' + r.rating + '" aria-label="Rating of ' + esc(r.title) + ', 0 to 5"></td>' +
+        '<td><a href="https://www.gutenberg.org/ebooks/search/?query=' + encodeURIComponent(r.title) + '">Look it up<span class="sr"> on Project Gutenberg: ' + esc(r.title) + '</span></a></td></tr>')
       .join('');
   }
   $('rows').addEventListener('change', (e) => {
@@ -248,5 +252,48 @@ export const pulledChartApp = ({ other }) => `
     if (!d) return;
     postbox.charts.line(document.getElementById('chart'), { x: d.x, series: d.series, height: 220 });
     postbox.publish({ source: URL_, points: d.x.length });
+  });
+</script>`;
+
+/**
+ * What an app can reach, side by side: its own frame’s network and Postbox’s page, which the sandbox keeps from it, and
+ * public data through Postbox (net.fetch), which refuses this computer. other: a public URL’s stand-in; postbox:
+ * Postbox’s own origin.
+ */
+export const reachApp = ({ other, postbox }) => `
+<style>
+  .ra { padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+  .ra ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+  .ra li { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 10px; align-items: baseline; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+  .ra .pill { justify-self: start; font-weight: 600; }
+  .ra .ok { color: var(--good); border-color: var(--good); }
+  .ra .no { color: var(--alert-ink); border-color: var(--alert-ink); }
+  .ra li { grid-template-columns: 80px minmax(0, 1fr); padding: 6px 10px; }
+  .ra .what { font-weight: 600; }
+  .ra .why { display: block; color: var(--dim); font-size: 12px; overflow-wrap: anywhere; }
+</style>
+<div class="ra">
+  <p class="small dim">Each line is tried by this app as it loads.</p>
+  <ul id="out" aria-live="polite"></ul>
+</div>
+<script>
+  const OTHER = ${JSON.stringify(other)}, PB = ${JSON.stringify(postbox)};
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+  const rows = [];
+  function show(ok, what, why) {
+    rows.push({ what, ok, why });
+    document.getElementById('out').insertAdjacentHTML('beforeend', '<li><span class="pill ' + (ok ? 'ok' : 'no') + '">' + (ok ? 'Works' : 'Blocked') + '</span><span><span class="what">' + esc(what) + '</span><span class="why">' + esc(why) + '</span></span></li>');
+  }
+  async function trial(what, fn, okWhy) {
+    try { show(true, what, okWhy(await fn())); } catch (e) { show(false, what, e.message || String(e)); }
+  }
+  postbox.ready.then(async () => {
+    if (postbox.check) return;
+    await trial('Fetch from the app itself', () => fetch(OTHER + '/data.json'), () => 'The app’s own frame reached the network.');
+    await trial('Read or change the Postbox page', async () => parent.document.title, (t) => 'Read “' + t + '”.');
+    await trial('Call Postbox’s API as you', () => fetch(PB + '/api/state', { credentials: 'include' }), () => 'Postbox answered the app.');
+    await trial('Public data through Postbox (net.fetch)', () => postbox.query('net.fetch', { url: OTHER + '/data.json' }), (r) => 'Status ' + r.status + ', ' + r.text.length + ' characters, no cookies sent.');
+    await trial('This computer through Postbox (net.fetch)', () => postbox.query('net.fetch', { url: PB + '/api/state' }), () => 'Postbox fetched its own API.');
+    postbox.publish({ reach: rows });
   });
 </script>`;

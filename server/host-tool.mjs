@@ -1,11 +1,12 @@
-// The host’s tools that apps can use through the bridge, if granted: the conversation’s assets and narration.
+// The host’s tools that apps can use through the bridge, if granted: the conversation’s assets, narration and public
+// data (net.fetch).
 
-import { appFetchOn, netFetch } from './app-net.mjs';
 import { roomOf } from './assets.mjs';
 import { httpError } from './helpers.mjs';
+import { netFetch } from './net-fetch.mjs';
 
-/** The host tools every agent holds: its conversation’s assets, which its asset tools read too. An app still names them. */
-export const HELD_BY_EVERY_AGENT = new Set(['assets.search', 'assets.list', ...(appFetchOn() ? ['net.fetch'] : [])]);
+/** The host tools every agent holds: its conversation’s assets, which its asset tools read too, and public data. An app still names them. */
+export const HELD_BY_EVERY_AGENT = new Set(['assets.search', 'assets.list', 'net.fetch']);
 
 /**
  * Runs a host tool for an app, in its conversation.
@@ -23,8 +24,7 @@ export async function hostTool(apps, tool, args = {}, { threadId } = {}) {
       if (!apps.narrator) throw httpError(503, 'Narration isn’t installed here. Run npm install to add Kokoro, then restart Postbox.');
       return apps.narrator.speak(args);
     case 'net.fetch':
-      // Prototype variant C (server/app-net.mjs), on only when Postbox starts with POSTBOX_APP_FETCH=1.
-      if (!appFetchOn()) throw httpError(404, 'net.fetch is off. Start Postbox with POSTBOX_APP_FETCH=1 to try it.');
+      // Public data through Postbox’s server, never the app’s own frame (server/net-fetch.mjs).
       return netFetch(args);
     default:
       throw httpError(404, `There’s no host tool called “${tool}”.`);

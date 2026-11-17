@@ -34,6 +34,14 @@ const REVIEW_BLOCK_DEF = {
 };
 
 // The tools, as agents read them. Their limits come from shared/limits.mjs, as the guide’s do (#50).
+/** An app’s host tools, as show_app and update_app take them: what each gives the app, net.fetch’s limits included. */
+const APP_PERMISSIONS = {
+  type: 'array',
+  items: { type: 'string' },
+  description:
+    'Host tools the app may call with postbox.query: assets.search, assets.list, narrate.speak, and net.fetch, which fetches a public URL through Postbox ({ url } → { status, type, text }; GET, no cookies, never this computer or the local network). The app itself has no network.',
+};
+
 export const TOOL_DEFS = [
   {
     name: 'show_block',
@@ -58,7 +66,7 @@ export const TOOL_DEFS = [
         code: { type: 'string' },
         codePath: { type: 'string', description: 'A file in your folder with the app’s code, in place of code.' },
         files: { type: 'array', items: FILE_SCHEMA, description: 'Data files from your folder that the app reads with postbox.file(name).' },
-        permissions: { type: 'array', items: { type: 'string' } },
+        permissions: APP_PERMISSIONS,
         fallback: { type: 'string' },
       },
       required: ['title'],
@@ -75,7 +83,7 @@ export const TOOL_DEFS = [
         code: { type: 'string' },
         codePath: { type: 'string', description: 'A file in your folder with the new code, in place of code.' },
         files: { type: 'array', items: FILE_SCHEMA },
-        permissions: { type: 'array', items: { type: 'string' } },
+        permissions: APP_PERMISSIONS,
         summary: { type: 'string' },
       },
       required: ['id'],

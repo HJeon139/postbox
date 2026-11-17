@@ -42,8 +42,7 @@ addEventListener('message', async (e) => {
   if (!rec || !m || m.__pb !== 1) return;
   // An app is isolated by the sandbox policy its page is served with, which makes its origin opaque. A frame
   // that isn’t isolated gets nothing from the bridge, and is shut.
-  // Prototype variant B (server/app-net.mjs) serves apps same-origin, on purpose, to measure what that gives an app.
-  if (e.origin !== 'null' && !(client.config?.appNet === 'open' && e.origin === location.origin)) {
+  if (e.origin !== 'null') {
     console.error(`Postbox refused app “${rec.appId}”: its frame isn’t sandboxed.`);
     rec.iframe.src = 'about:blank';
     rec.onCrash?.();

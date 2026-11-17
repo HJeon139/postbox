@@ -61,16 +61,17 @@ The event is built and checked by [`shared/events.mjs`](../shared/events.mjs) be
 
 ## Agent-written apps
 
-`show_app({ id, title, code, permissions })` shows an app inline at the thread’s full width. The app runs in an iframe whose page is served with the policy `sandbox allow-scripts`, so it gets an opaque origin and no same-origin access. (The policy is a response header rather than the iframe’s `sandbox` attribute, because some embedded browsers refuse frames with the attribute. Postbox’s bridge only answers frames with an opaque origin.) Its content-security policy allows its own inline code, the kit and bundled libraries, and nothing else: no fetch, no websockets, no forms, no nested frames. The page is served by [`server/sandbox.mjs`](../server/sandbox.mjs).
+`show_app({ id, title, code, permissions })` shows an app inline at the thread’s full width. The app runs in an iframe whose page is served with the policy `sandbox allow-scripts allow-forms`, so it gets an opaque origin and no same-origin access. (`allow-forms` only lets a form’s submit event fire; `form-action 'none'` still stops it going anywhere.) (The policy is a response header rather than the iframe’s `sandbox` attribute, because some embedded browsers refuse frames with the attribute. Postbox’s bridge only answers frames with an opaque origin.) Its content-security policy allows its own inline code, the kit and bundled libraries, and nothing else: no fetch, no websockets, no form submissions, no nested frames, no popups. Public data comes through Postbox with `net.fetch`. Why the frame itself gets no network is measured in [the flexible-apps prototype](prototypes/flexible-apps.md), “Isolation and network: measured”. The page is served by [`server/sandbox.mjs`](../server/sandbox.mjs).
 
 Inside the sandbox, the kit ([`app/kit/kit.js`](../app/kit/kit.js)) provides:
 
 | Call | What it does |
 |---|---|
 | `postbox.ready` | Resolves to `{ state, theme, appId }` once Postbox says hello |
-| `postbox.query(tool, args)` | Asks the host for data. It works only for tools in the app’s `permissions` that its agent also holds, such as `narrate.speak`. Every agent holds its conversation’s assets, so `assets.search` (the room’s text assets by words and meaning, a passage at a time) and `assets.list` need only the app’s `permissions`. |
+| `postbox.query(tool, args)` | Asks the host for data. It works only for tools in the app’s `permissions` that its agent also holds, such as `narrate.speak`. Every agent holds its conversation’s assets, so `assets.search` (the room’s text assets by words and meaning, a passage at a time) and `assets.list` need only the app’s `permissions`, as does `net.fetch` (`server/net-fetch.mjs`): `{ url }` → `{ status, type, text }` of a public URL, fetched by Postbox’s server with GET, no cookies, at most 1 MB in 10 seconds, and never this computer or the local network. |
 | `postbox.file(name)` | A data file the agent attached to this version with `files`, as text (#54). |
-| `postbox.send(action, values, summary)` | Sends one event to the agent. `summary` is the line you see in your voice. |
+| `postbox.publish(data)` | Shares the app’s current data with its agent, up to 256 KB: no turn, no card, no line in your voice. The agent hears at its next turn that the app changed, one notice for a burst of changes, and reads it with `read_app` (`server/app-flex.mjs`). |
+| `postbox.send(action, values, summary)` | Right after your click or key press in the app, sends one event to the agent, which starts its turn; `summary` is the app’s words beside the line in your voice. One click starts at most one turn: a send while that click’s event is on its way, or within 50 ms of its answer, is part of the same burst. That, and a send with no click, is a note the agent reads with `read_app` at its next turn. There’s no limit a minute and no card. |
 | `postbox.saveState(obj)`, `postbox.restoreState()` | Saved state survives unloading, reloading and new versions |
 | `postbox.anchors({ name: element })` | Parts you can pin review comments to |
 | `postbox.on('theme', fn)` | Light and dark tokens update by themselves; redraw canvas or D3 output here |
@@ -80,6 +81,10 @@ Inside the sandbox, the kit ([`app/kit/kit.js`](../app/kit/kit.js)) provides:
 | `postbox.narrate(text, opts)` | One clip, as `{ url, ms }` |
 
 The stylesheet is preloaded, so apps use the same classes and tokens as Postbox, on the cool app stage.
+
+**Links.** A web link in an app opens in a new tab, only when you click it: the kit hands it to Postbox over the bridge, which checks the click as it does a send. In the Claude desktop app’s browser pane, where opening a window replaces Postbox’s own page, Postbox’s server opens it in your default browser.
+
+**What the agent reads.** `read_app { appId }` gives the agent what an app in its conversation published, the notes it sent on its own (reading takes them), and its saved state.
 
 **Images.** An app loads images from `data:` URLs, or from `/media/<name>`. That serves the media bundled with Postbox, then the `media/` folder in your data folder (`~/.postbox/media/`), where agents copy the images their apps show (PNG, JPEG, GIF, WebP, AVIF or SVG). Agents find it in `$POSTBOX_MEDIA`. Nothing an agent adds goes into Postbox’s own folder, which an upgrade replaces.
 

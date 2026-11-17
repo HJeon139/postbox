@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { noteApp, publishApp, readApp } from '../server/app-flex.mjs';
-import { netFetch, privateAddress } from '../server/app-net.mjs';
+import { netFetch, privateAddress } from '../server/net-fetch.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
 import * as arrange from './arrange.mjs';

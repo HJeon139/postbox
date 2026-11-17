@@ -7,6 +7,8 @@ A prototype on its own branch, opened as a draft pull request that isn’t meant
 
 This document says what the prototype changed, what was measured, and what to do next. Each claim names the run, file or screenshot behind it.
 
+**Where it stands.** The branch now carries the recommendation alone: the opaque sandbox with `allow-forms`, publish and `read_app`, one click as one turn, links through the bridge, and `net.fetch` on for any app that names it (`server/net-fetch.mjs`). The flags for variants A and B were removed after the measurements below; they’re in commit 21d43a07. agent-apps.md and sandbox.md describe the new rules. To see it, send the mock librarian “Show me flexible apps” ([screenshot](flexible-apps/demo-reach.jpg)).
+
 ## What changed
 
 ```mermaid
@@ -69,7 +71,7 @@ Two more frictions were seen:
 - `tools/probe-site.mjs` stands in for another site on `127.0.0.1:4518`. Its `/login` sets three cookies: `SameSite=None; Secure`, `Lax` and `Strict`. It records whether each probe reached it and with which cookies. The same server also listened on this computer’s LAN address, `192.168.3.20:4518`.
 - Postbox ran at `localhost:4517`, a different site from `127.0.0.1`, with a temp data folder and the mock agents.
 - The probe app (`netProbeApp`) tries each thing on load and publishes the results. `tools/probe-apps-chrome.mjs` runs it in Google Chrome 156.0.8078.48: a fresh profile, headless, with Chrome’s popup blocker on. The same app ran in the Claude desktop app’s browser pane (Claude/5.11492.2, Chrome 156.0.8078.75).
-- Each variant is a flag set when Postbox starts (`server/app-net.mjs`):
+- Each variant was a flag set when Postbox starts (`server/app-net.mjs` at commit 21d43a07; only C remains, as `server/net-fetch.mjs`):
   - **today:** the sandbox as on `main`, plus `allow-forms`;
   - **(A)** `POSTBOX_APP_NET=net`: the same opaque sandbox, with `connect-src *` and scripts, styles, fonts and images from http(s);
   - **(B)** `POSTBOX_APP_NET=open`: no sandbox, so the app is same-origin with Postbox;
@@ -149,17 +151,17 @@ Trade-offs:
 ## How to run it
 
 ```bash
-node tools/probe-site.mjs --port 4518 --lan <this computer’s LAN address>
+node tools/probe-site.mjs --port 4518
 ```
 
 ```bash
-POSTBOX_APP_NET=sandbox POSTBOX_APP_FETCH=1 POSTBOX_FETCH_ALLOW=127.0.0.1:4518 POSTBOX_PROBE_LAN=http://<LAN address>:4518 node server/index.mjs --port 4517 --data <a temp folder> --demo
+POSTBOX_FETCH_ALLOW=127.0.0.1:4518 node server/index.mjs --port 4517 --data <a temp folder> --demo
 ```
 
-Then, in a librarian conversation, send “Make me a reading list”, “send probe”, “net probe” or “pulled chart”. To run the probe in Chrome:
+`POSTBOX_FETCH_ALLOW` lets `net.fetch` treat the local stand-in for another site as public, for the demo. Then send the librarian “Show me flexible apps” for the tour: the reading list, the chart that pulls data, and what an app can reach. “send probe” and “net probe” are the probe apps. To run the network probe in Chrome:
 
 ```bash
 node tools/probe-apps-chrome.mjs
 ```
 
-The chart that pulls data works under today’s sandbox through `net.fetch` ([screenshot](flexible-apps/after-pulled-chart.jpg)).
+The tables above were measured with the variants’ flags, which commit 21d43a07 has.

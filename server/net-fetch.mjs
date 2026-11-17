@@ -1,48 +1,14 @@
-// Network for agent apps (prototype, designs/prototypes/flexible-apps.md, “Isolation and network”). Three variants to
-// measure against today’s sandbox, chosen when Postbox starts:
-// - POSTBOX_APP_NET=net   (A) the sandboxed, opaque-origin page may fetch, and load scripts, styles, fonts and images
-//                             from anywhere.
-// - POSTBOX_APP_NET=open  (B) the page is served with no sandbox: it’s same-origin with Postbox’s own page.
-// - POSTBOX_APP_FETCH=1   (C) postbox.query('net.fetch', { url }) fetches through Postbox’s server: GET only, no
-//                             cookies, and never an address on this computer or the local network.
-// Anything else is today’s sandbox, which loads nothing.
+// net.fetch { url }: public data for an agent app, fetched by Postbox’s server (designs/prototypes/flexible-apps.md,
+// “Recommendation”). The app’s own frame stays sandboxed and loads nothing: in the Claude desktop app’s browser pane
+// a sandboxed frame’s requests are blocked anyway, and in a browser that allows them they carry the person’s cookies
+// to other sites and reach the local network. This sends no cookies or credentials, only GETs, and never reaches this
+// computer or the local network.
 
 import { lookup } from 'node:dns';
 import http from 'node:http';
 import https from 'node:https';
 import { isIP } from 'node:net';
 import { httpError } from './helpers.mjs';
-
-/** @returns {'sandbox' | 'net' | 'open'} */
-export function appNetMode() {
-  const m = process.env.POSTBOX_APP_NET;
-  return m === 'net' || m === 'open' ? m : 'sandbox';
-}
-export const appFetchOn = () => process.env.POSTBOX_APP_FETCH === '1';
-
-/**
- * The policy for variant A: today’s, with the network opened. `sandbox allow-scripts` stays, so the origin is still
- * opaque. @param {string} ancestor
- */
-export function netCsp(ancestor) {
-  return [
-    'sandbox allow-scripts allow-forms',
-    "default-src 'none'",
-    "script-src 'unsafe-inline' https: http:",
-    "style-src 'unsafe-inline' https: http:",
-    'img-src data: blob: https: http:',
-    'media-src blob: https: http:',
-    'font-src data: https: http:',
-    'connect-src *',
-    "frame-src 'none'",
-    "worker-src 'none'",
-    "form-action 'none'",
-    "base-uri 'none'",
-    `frame-ancestors ${ancestor}`,
-  ].join('; ');
-}
-
-// ── C: a fetch through Postbox ─────────────────────────────────────────────────────────
 
 const FETCH_BYTES = 1024 * 1024;
 const FETCH_MS = 10_000;

@@ -2,7 +2,7 @@
 // and probe apps, and reads what an app shared with read_app when Postbox says at its next turn that it changed, or
 // when the person clicks in the app.
 
-import { netProbeApp, pulledChartApp, readingListApp, sendProbeApp } from '../mock/flex-apps.mjs';
+import { netProbeApp, pulledChartApp, reachApp, readingListApp, sendProbeApp } from '../mock/flex-apps.mjs';
 
 // The stand-in for another site (tools/probe-site.mjs), and the same server at this computer’s local network address.
 const OTHER = process.env.POSTBOX_PROBE_OTHER ?? 'http://127.0.0.1:4518';
@@ -52,8 +52,12 @@ export async function flexTurn(m, a) {
   // The person’s own words, without Postbox’s notices, which name the app and would match its trigger.
   const text = String(m.text ?? '').replace(/\[app [^\]]+\][^\n]*/g, '');
   const changed = [...new Set([...JSON.stringify(m).matchAll(/\[app ([\w.:-]+)\]/g)].map((x) => x[1]))];
-  if (changed.length && !has(text, /reading list|send probe|net probe|pulled chart/)) {
+  if (changed.length && !has(text, /reading list|send probe|net probe|pulled chart|flexible apps/)) {
     for (const id of changed) await readAndSay(a, id, `Postbox told me ${id} changed, so I read it before answering.`);
+    return true;
+  }
+  if (has(text, /flexible apps/)) {
+    await flexTour(a);
     return true;
   }
   if (has(text, /reading list/)) {
@@ -88,4 +92,30 @@ export async function flexTurn(m, a) {
     return true;
   }
   return false;
+}
+
+/** The demo of what the prototype recommends, in one reply: 0 clicks, 1 click, a link, and public data through Postbox. */
+async function flexTour(a) {
+  await a.think(300);
+  await a.say(
+    'Here’s your reading list. **Edit it as you like**: every change is shared with me as you make it, with no button and no card, and I read it at my next turn. **Ask the librarian about my list** starts my turn at once, one click. **Look it up** opens Project Gutenberg in a new tab.\n\n',
+  );
+  a.t.show_app({ id: 'reading-list', title: 'Reading list', code: readingListApp(), fallback: 'A reading list you can edit.' });
+  await a.say('This chart’s data comes from another site, fetched by Postbox for the app, with no cookies:\n\n');
+  a.t.show_app({
+    id: 'pulled-chart',
+    title: 'Visits by month',
+    code: pulledChartApp({ other: OTHER }),
+    permissions: ['net.fetch'],
+    fallback: 'A chart of visits by month.',
+  });
+  await a.say('And what an app can and can’t reach, tried live by the app itself:\n\n');
+  const postbox = process.env.POSTBOX_PROBE_POSTBOX ?? 'http://localhost:4517';
+  a.t.show_app({
+    id: 'reach',
+    title: 'What an app can reach',
+    code: reachApp({ other: OTHER, postbox }),
+    permissions: ['net.fetch'],
+    fallback: 'What an app can reach.',
+  });
 }
