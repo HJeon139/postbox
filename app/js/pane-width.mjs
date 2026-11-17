@@ -121,7 +121,10 @@ export function mountWidth(el, onCramped) {
     if (el.hidden) keep = false;
     const f = fit(roomW(), want, { keep });
     last = f;
-    el.parentElement?.style.setProperty('--pane-w', `${f.width}px`);
+    // On each reader itself, the pane and the column beside it, not only on .app for them to inherit: WebKit doesn’t
+    // restyle a child that inherits a non-inheriting property when its parent’s changes, so Safari’s column kept its
+    // old width as the pane grew, and its text ran under the pane (#1465).
+    for (const reader of [el.parentElement, el, el.parentElement?.querySelector(':scope > .main')]) reader?.style.setProperty('--pane-w', `${f.width}px`);
     handle.setAttribute('aria-valuenow', String(f.width));
     handle.setAttribute('aria-valuemax', String(f.max));
     handle.setAttribute('aria-valuetext', `${f.width} px wide`);
