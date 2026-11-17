@@ -6,8 +6,9 @@
 //   node --expose-gc tools/measure-progress/run.mjs <section> [args]
 
 import { virtualClock } from './drive.mjs';
+import { joining } from './joining.mjs';
 import { restartBuild, restartLoad } from './restart.mjs';
-import { backends, crowded, joining, long } from './sections.mjs';
+import { backends, crowded, long } from './sections.mjs';
 
 /** @type {string[]} */
 const dropped = [];
