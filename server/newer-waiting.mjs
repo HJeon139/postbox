@@ -107,5 +107,13 @@ export function newerElsewhere(rt, sessionId, threadId, taken) {
   }
   if (!newest.size) return [];
   const newer = waitingFor(rt, sessionId, threadId).filter((w) => w.thread && newest.has(w.sender) && (w.at ?? 0) > (newest.get(w.sender) ?? 0));
-  return newer.map(noteFor);
+  // At most MOST_NOTES, as on a tool result; the rest are counted. Each starts a turn of its own, which names none of
+  // them again: the turn that takes one is answering it.
+  const notes = newer.slice(0, MOST_NOTES).map(noteFor);
+  const more = newer.length - MOST_NOTES;
+  if (more > 0)
+    notes.push(
+      `[Postbox] ${more} more newer ${more === 1 ? 'message is' : 'messages are'} waiting for you in other threads; each starts a turn of its own after this one.`,
+    );
+  return notes;
 }
