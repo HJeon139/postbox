@@ -222,8 +222,6 @@ function atWork(rt, se, turn) {
     keptId: !turn.movesOn && se.needs?.kind === 'block' ? se.needs.itemId : null,
     currentStep: 'Thinking',
     finishedAt: null,
-    // A turn that starts is past a quota a failed one ran out of (#442).
-    ...(se.quota ? { quota: null } : {}),
   });
 }
 
