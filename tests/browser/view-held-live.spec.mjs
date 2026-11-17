@@ -101,3 +101,38 @@ test('following, a shrink and regrowth in one frame, with no input of yours, kee
   });
   expect(atEnd, 'at the end').toBeLessThanOrEqual(2);
 });
+
+// The held room gives back only what the newest message grows into. Growth above it, such as a picture loading in an
+// older message, keeps the room: given back, the page’s end wouldn’t move, and the newest message would slide down
+// under the pointer by what grew (#1469’s review).
+test('following, growth above the newest message keeps the held room, and the newest message where it was', async ({ page }) => {
+  const { rt, store } = app;
+  const project = Object.values(store.state.projects)[0];
+  const t = rt.createThread({ projectId: project.id, title: 'Held, growth above', personaIds: [arrange.persona(rt, 'researcher').id] });
+  const [se] = arrange.sessionsIn(rt, t.id);
+  for (let i = 1; i <= 12; i++) arrange.post(rt, t.id, { kind: 'user', text: `Question ${i}, long enough to take a line or two of the room.` });
+  const reply = arrange.post(rt, t.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text: WORDS(12), status: 'streaming' });
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto(`${app.origin}/#/t/${t.id}`);
+  await synced(page, app);
+  await settled(page);
+  const transcript = page.locator('#main.transcript');
+  await expect(transcript).toHaveAttribute('data-view-mode', 'following');
+  arrange.setItem(rt, t.id, reply.id, { text: WORDS(6) });
+  await frames(page);
+  await settled(page);
+  const held = () => transcript.evaluate((el) => Number.parseFloat(/** @type {HTMLElement} */ (el).style.marginBottom) || 0);
+  await expect.poll(held, { message: 'the shrink is held' }).toBeGreaterThan(0);
+  await settled(page);
+  const room = await held();
+  const top = () => page.locator(`#main > .item[data-key="${reply.id}"]`).evaluate((n) => n.getBoundingClientRect().top);
+  const before = await top();
+  await page.evaluate(() => {
+    const items = [...document.querySelectorAll('#main > .item')];
+    /** @type {HTMLElement} */ (items.at(-2)).style.paddingBottom = '80px'; // a picture loading above the newest message
+  });
+  await frames(page);
+  await settled(page);
+  expect(await held(), 'the held room stays').toBeCloseTo(room, 0);
+  expect(Math.abs((await top()) - before), 'the newest message stays where it was').toBeLessThanOrEqual(1);
+});
