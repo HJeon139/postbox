@@ -121,7 +121,7 @@ test('the stream sends a thread’s header after the event that changed it, and 
   const state = room();
   const events = [{ seq: 1, type: 'item.add', data: { threadId: 'c', item: { id: 'u2', kind: 'user', at: 60 } } }];
   const store = { epoch: 'ep', status: {}, state, subscribe: (f) => (listener = f), since: () => events, onStatus() {}, onReload() {} };
-  const live = liveStreams(/** @type {any} */ (store));
+  const live = liveStreams(/** @type {any} */ (store), undefined, { running: { all: () => [] } });
   try {
     const out = [];
     live.streams.add(/** @type {any} */ ({ write: (/** @type {string} */ s) => out.push(s) }));

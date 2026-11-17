@@ -15,6 +15,7 @@ import { itemOf } from '../shared/item-index.mjs';
 import { clipText, httpError } from './helpers.mjs';
 import { sessionPatch } from './session-patch.mjs';
 import { newId } from './store.mjs';
+import { sessionWriting } from './store-live.mjs';
 
 /** The most skills and commands kept for an agent’s / menu. */
 const MAX_COMMANDS = 200;
@@ -170,6 +171,7 @@ export class Sessions {
     const patch = typeof change === 'function' ? change(se) : change;
     const data = sessionPatch(se, { ...patch, ...this.needAt(se, patch), updatedAt: Date.now() });
     before?.(data);
+    sessionWriting(this.store, data);
     this.store.emit('session.patch', data);
   }
 

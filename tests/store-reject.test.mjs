@@ -195,7 +195,7 @@ test('a malformed turn.archive is rejected: listeners hear only the stand-in, an
 
 test('the page: a rejection tells every stream to resync, its stand-in carries nothing, and a backlog from before it resyncs', async () => {
   const store = new Store(null);
-  const live = liveStreams(store);
+  const live = liveStreams(store, undefined, { running: { all: () => [] } });
   try {
     const written = [];
     live.streams.add(/** @type {any} */ ({ write: (s) => written.push(String(s)) }));

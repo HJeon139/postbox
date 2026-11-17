@@ -22,7 +22,7 @@ test('live and backlog frames are the same public projection: a private event be
     onStatus() {},
     onReload() {},
   };
-  const streams = liveStreams(/** @type {any} */ (store), TABLE);
+  const streams = liveStreams(/** @type {any} */ (store), TABLE, { running: { all: () => [] } });
   try {
     const backlog = [];
     const res = { writeHead() {}, write: (s) => backlog.push(s) };
@@ -46,7 +46,7 @@ test('live and backlog frames are the same public projection: a private event be
 
 test('the stream’s first frames name the epoch and the store’s status by the reserved names', () => {
   const store = { epoch: 'ep_x', status: { writes: 'open' }, state: { seq: 0 }, subscribe() {}, since: () => [], onStatus() {}, onReload() {} };
-  const streams = liveStreams(/** @type {any} */ (store));
+  const streams = liveStreams(/** @type {any} */ (store), undefined, { running: { all: () => [] } });
   try {
     const out = [];
     streams.stream(
@@ -65,7 +65,7 @@ test('a known type the table makes private becomes a cursor on both paths, so th
   const events = [{ seq: 1, type: 'item.patch', data: { threadId: 't', id: 'i', patch: { text: 'now private' } } }];
   let listener = (_ev) => {};
   const store = { epoch: 'ep', status: {}, state: { seq: 1 }, subscribe: (f) => (listener = f), since: () => events, onStatus() {}, onReload() {} };
-  const streams = liveStreams(/** @type {any} */ (store), table);
+  const streams = liveStreams(/** @type {any} */ (store), table, { running: { all: () => [] } });
   try {
     const backlog = [];
     streams.stream(

@@ -30,7 +30,7 @@ function tab(ls, store, open) {
 
 test('a page gets an item’s live frames only with its conversation open, and a session’s on every stream', async () => {
   const store = await new Store(null).load();
-  const ls = liveStreams(store);
+  const ls = liveStreams(store, undefined, { running: { all: () => [] } });
   const open = tab(ls, store, 'th_1');
   const closed = tab(ls, store, 'th_2');
   const tool = tab(ls, store);
@@ -47,7 +47,7 @@ test('live frames reach a page in order with the events, through the same lag', 
   process.env.POSTBOX_STREAM_LAG = '20';
   try {
     const store = await new Store(null).load();
-    const ls = liveStreams(store);
+    const ls = liveStreams(store, undefined, { running: { all: () => [] } });
     const got = tab(ls, store, 'th_1');
     store.emit('thread', { id: 'th_1', projectId: 'p1', title: 'T', members: [] });
     sendLive(store, { kind: 'session', sessionId: 'se_1', currentStep: 'Read' });

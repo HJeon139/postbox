@@ -26,5 +26,10 @@ export function pageView(store) {
       for (const [type, data] of heard) if (Object.hasOwn(EVENTS, type)) EVENTS[type].apply(s, structuredClone(data));
       return s;
     },
+    /** The state as the page holds it once this tick ends: a turn’s session frame goes then (live-buffer.mjs, liveFlush). */
+    async settled() {
+      await null;
+      return this.state();
+    },
   };
 }

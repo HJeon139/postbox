@@ -41,7 +41,7 @@ function open(live, query) {
 
 test('a page’s stream sends item events only for its open conversations; a tool’s, every one', () => {
   const { store, emit } = fakeStore();
-  const live = liveStreams(/** @type {any} */ (store));
+  const live = liveStreams(/** @type {any} */ (store), undefined, { running: { all: () => [] } });
   try {
     const page = open(live, '&open=here');
     const tool = open(live, '');
@@ -61,7 +61,7 @@ test('a page’s stream sends item events only for its open conversations; a too
 
 test('/api/state carries each thread’s header and no conversation’s items', () => {
   const { store, emit } = fakeStore();
-  const live = liveStreams(/** @type {any} */ (store));
+  const live = liveStreams(/** @type {any} */ (store), undefined, { running: { all: () => [] } });
   try {
     emit(1, 'item.add', { threadId: 'away', item: { id: 'b', kind: 'user', at: 2, text: 'history' } });
     const rt = { localBackends: () => [], config: { telemetryRoot: 'x' }, store, running: { all: () => [] } };
@@ -81,7 +81,7 @@ test('a held-back event goes out as it was, not as the store has it by the time 
   // POSTBOX_STREAM_LAG holds each send back, as CI's browser run does; the item's text streams in meanwhile.
   process.env.POSTBOX_STREAM_LAG = '20';
   const { store, emit } = fakeStore();
-  const live = liveStreams(/** @type {any} */ (store));
+  const live = liveStreams(/** @type {any} */ (store), undefined, { running: { all: () => [] } });
   delete process.env.POSTBOX_STREAM_LAG;
   try {
     const frames = [];
@@ -104,7 +104,7 @@ test('a held-back event goes out as it was, not as the store has it by the time 
 test('an event the page may not see sends no header frame after its cursor', () => {
   const { store, emit } = fakeStore();
   const events = { ...EVENTS, 'item.add': { ...EVENTS['item.add'], public: false } };
-  const live = liveStreams(/** @type {any} */ (store), events);
+  const live = liveStreams(/** @type {any} */ (store), events, { running: { all: () => [] } });
   try {
     const page = open(live, '&open=here');
     emit(1, 'item.add', { threadId: 'here', item: { id: 'p', kind: 'user', at: 1 } });

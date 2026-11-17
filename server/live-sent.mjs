@@ -60,6 +60,16 @@ export function liveSent() {
      * stream was sent the step live since the last one, which it forgets, so the next commit point of it asks again.
      * @param {object} res @param {string} key
      */
+    /**
+     * A reply’s turn ended: a stream forgets the steps of it it was sent, which a commit point held behind a commit,
+     * released unmarked, would otherwise leave. @param {object} res @param {string} itemId
+     */
+    forget(res, itemId) {
+      const keys = sent.get(res);
+      if (!keys) return;
+      const prefix = stepKey(itemId, '');
+      for (const k of keys) if (k.startsWith(prefix)) keys.delete(k);
+    },
     had(res, key) {
       const keys = sent.get(res);
       if (!keys) return false;

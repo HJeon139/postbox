@@ -9,6 +9,7 @@ import { liveEnd, liveSession, liveStep, liveUpdate } from '../server/live-buffe
 import { liveStreams } from '../server/live-streams.mjs';
 import { sessionPatch } from '../server/session-patch.mjs';
 import { Store } from '../server/store.mjs';
+import { sessionWriting } from '../server/store-live.mjs';
 import { heldStore } from './stop-reply-fixture.mjs';
 
 /**
@@ -42,7 +43,7 @@ function open(live, store, query, since = /** @type {number | null} */ (null)) {
 
 test('a commit point isn’t sent to a page that had the step live, and goes whole to the rest', async () => {
   const store = await new Store(null).load();
-  const live = liveStreams(store);
+  const live = liveStreams(store, undefined, { running: { all: () => [] } });
   try {
     const turn = { id: 'tu_1', sessionId: 'se_1', threadId: 'th_1', first: 'it_1' };
     const rt = { store, sessions: { update() {} } };
@@ -67,19 +68,14 @@ test('a commit point isn’t sent to a page that had the step live, and goes who
 test('a running turn’s change of state is stored, rides on its session frame, and isn’t sent to a page again', async () => {
   const store = await new Store(null).load();
   store.emit('session', { id: 'se_1', threadId: 'th_1', state: 'gen' });
-  const live = liveStreams(store);
+  const live = liveStreams(store, undefined, { running: { all: () => [] } });
   try {
-    const turn = { id: 'tu_1', sessionId: 'se_1', threadId: 'th_1', first: 'it_1' };
-    const update = (/** @type {string} */ id, /** @type {any} */ p, /** @type {any} */ before) => {
-      const data = sessionPatch(store.pending.session(id), { ...p, updatedAt: 5 });
-      before?.(data);
-      store.emit('session.patch', data);
-    };
-    const rt = { store, s: store.state, sessions: { update } };
+    const { turn, rt } = turnOn(store);
     const page = open(live, store, '&open=th_1');
     const tool = open(live, store, '');
     liveSession(rt, turn, { glimpse: 'Looking' }); // the page has had the session’s frames
     liveUpdate(rt, turn, { state: 'tool', currentStep: 'Read' });
+    await null; // the end of the tick, which sends the turn’s session frame
     assert.equal(store.state.sessions.se_1.state, 'tool', 'stored');
     assert.deepEqual(page.events(), []);
     assert.deepEqual(page.sessions().at(-1), { kind: 'session', sessionId: 'se_1', currentStep: 'Read', state: 'tool', updatedAt: 5 });
@@ -87,6 +83,7 @@ test('a running turn’s change of state is stored, rides on its session frame, 
     // The same state again stores nothing: no write of updatedAt alone.
     const seq = store.state.seq;
     liveUpdate(rt, turn, { state: 'tool', currentStep: 'Read a.md' });
+    await null;
     assert.equal(store.state.seq, seq);
     assert.deepEqual(page.sessions().at(-1), { kind: 'session', sessionId: 'se_1', currentStep: 'Read a.md' });
   } finally {
@@ -97,15 +94,9 @@ test('a running turn’s change of state is stored, rides on its session frame, 
 test('the turn’s end stores its tool calls, which the pages had live, and doesn’t send them again', async () => {
   const store = await new Store(null).load();
   store.emit('session', { id: 'se_1', threadId: 'th_1', state: 'tool' });
-  const live = liveStreams(store);
+  const live = liveStreams(store, undefined, { running: { all: () => [] } });
   try {
-    const turn = { id: 'tu_1', sessionId: 'se_1', threadId: 'th_1', first: 'it_1' };
-    const update = (/** @type {string} */ id, /** @type {any} */ p, /** @type {any} */ before) => {
-      const data = sessionPatch(store.pending.session(id), { ...p, updatedAt: 5 });
-      before?.(data);
-      store.emit('session.patch', data);
-    };
-    const rt = { store, s: store.state, sessions: { update } };
+    const { turn, rt } = turnOn(store);
     const page = open(live, store, '&open=th_1');
     const tool = open(live, store, '');
     liveSession(rt, turn, { toolCalls: [{ name: 'Read', state: 'done' }], toolCount: 1 });
@@ -124,15 +115,17 @@ function turnOn(store) {
   const update = (/** @type {string} */ id, /** @type {any} */ p, /** @type {any} */ before) => {
     const data = sessionPatch(store.pending.session(id), { ...p, updatedAt: 5 });
     before?.(data);
+    sessionWriting(store, data); // as Sessions.update does: the turn’s waiting frame goes first
     store.emit('session.patch', data);
   };
-  return { turn, rt: { store, s: store.state, sessions: { update } } };
+  const running = { all: () => [turn], turnOf: (/** @type {string} */ sid) => (sid === turn.sessionId ? turn : undefined) };
+  return { turn, rt: { store, s: store.state, sessions: { update }, running } };
 }
 
 test('a page that reconnects gets the events it was spared again, whole, in its backlog: its place never moved past them', async () => {
   const store = await new Store(null).load();
   store.emit('session', { id: 'se_1', threadId: 'th_1', state: 'gen' });
-  const live = liveStreams(store);
+  const live = liveStreams(store, undefined, { running: { all: () => [] } });
   try {
     const { turn, rt } = turnOn(store);
     const page = open(live, store, '&open=th_1');
@@ -155,7 +148,7 @@ test('a page that reconnects gets the events it was spared again, whole, in its 
 test('a tab mid-backlog gets the stored events whole, and is spared only what was sent it live after it joined', async () => {
   const store = await new Store(null).load();
   store.emit('session', { id: 'se_1', threadId: 'th_1', state: 'gen' });
-  const live = liveStreams(store);
+  const live = liveStreams(store, undefined, { running: { all: () => [] } });
   try {
     const { turn, rt } = turnOn(store);
     const from = store.state.seq;
@@ -181,7 +174,7 @@ test('a commit point held behind a commit in flight goes to every page whole, af
   const { store } = h;
   store.emit('session', { id: 'se_1', threadId: 'th_1', state: 'gen' });
   await store.flush();
-  const live = liveStreams(store);
+  const live = liveStreams(store, undefined, { running: { all: () => [] } });
   try {
     const { turn, rt } = turnOn(store);
     const page = open(live, store, '&open=th_1');
@@ -207,7 +200,7 @@ test('a commit point held behind a commit in flight goes to every page whole, af
 test('a page that was never sent a session’s frames gets its carried change whole: marks are per stream', async () => {
   const store = await new Store(null).load();
   store.emit('session', { id: 'se_1', threadId: 'th_1', state: 'gen' });
-  const live = liveStreams(store);
+  const live = liveStreams(store, undefined, { running: { all: () => [] } });
   try {
     const { turn, rt } = turnOn(store);
     const page = open(live, store, '&open=th_1');

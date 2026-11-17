@@ -11,7 +11,7 @@ import { LIVE_CAPS } from '../shared/limits.mjs';
 import { CARRIED_FIELDS, SESSION_FIELDS } from '../shared/live-kinds.mjs';
 import { committed } from './live-sent.mjs';
 import { sessionPatch } from './session-patch.mjs';
-import { sendLive } from './store-live.mjs';
+import { onSessionWrite, sendLive } from './store-live.mjs';
 
 /** A string at most LIVE_CAPS.string long; anything else as it is. @param {unknown} v */
 const capString = (v) => (typeof v === 'string' && v.length > LIVE_CAPS.string ? v.slice(0, LIVE_CAPS.string) : v);
@@ -31,21 +31,33 @@ const capList = (v, n) => (Array.isArray(v) ? v.slice(0, n).map((x) => (x && typ
 const watched = new WeakSet();
 
 /**
- * Which wins (live-progress.md): a stored write of a live field while a turn runs, such as “Stopping” or “Waiting for
- * you”, replaces the buffer’s value, so a snapshot and the next frame start from it. Followed once a store.
- * @param {any} rt
+ * Which wins (live-progress.md): a stored write of a session while its turn runs is made after the turn’s waiting
+ * frame, which goes first, and a live field it writes, such as “Stopping” or “Waiting for you”, replaces the buffer’s
+ * value, so a snapshot and the next frame start from it. Taken when the write is made, so a write held behind a
+ * commit can’t undo a newer live value when it’s published. Followed once a store. @param {any} rt
  */
 function watchStored(rt) {
   if (watched.has(rt.store)) return;
   watched.add(rt.store);
-  rt.store.subscribe((/** @type {any} */ ev) => {
-    if (ev.type !== 'session.patch') return;
-    const session = rt.running?.turnOf?.(ev.data?.id)?.live?.session;
-    if (!session) return;
-    const patch = ev.data.patch ?? {};
-    for (const k of SESSION_FIELDS) if (Object.hasOwn(patch, k)) session[k] = patch[k];
-    for (const k of ev.data.unset ?? []) if (SESSION_FIELDS.includes(k)) delete session[k];
+  onSessionWrite(rt.store, (data) => {
+    const turn = rt.running?.turnOf?.(data.id);
+    if (!turn?.live) return;
+    liveFlush(rt, turn);
+    const { session } = turn.live;
+    for (const k of SESSION_FIELDS) if (Object.hasOwn(data.patch ?? {}, k)) session[k] = data.patch[k];
+    for (const k of data.unset ?? []) if (SESSION_FIELDS.includes(k)) delete session[k];
   });
+}
+
+/**
+ * Sends a turn’s waiting session frame, if it has one: at the end of the tick it was made in, or before anything that
+ * must follow it (a stored session write, a commit point, the turn’s end). @param {any} rt @param {any} turn
+ */
+export function liveFlush(rt, turn) {
+  const frame = turn.live?.frame;
+  if (!frame) return;
+  turn.live.frame = null;
+  sendLive(rt.store, frame);
 }
 
 /**
@@ -74,6 +86,7 @@ function storedStep(step) {
 /** A commit point: stores each step changed since the last, then forgets them. @param {any} rt @param {any} turn */
 export function liveCommit(rt, turn) {
   const live = turn.live;
+  liveFlush(rt, turn);
   if (!live?.changed.size) return;
   for (const { itemId, step } of live.changed.values()) {
     const data = { threadId: turn.threadId, id: itemId, activityStep: storedStep(step) };
@@ -133,13 +146,16 @@ function sameList(a, b) {
 }
 
 /**
- * The session’s live fields: merged into the buffer, and what changed of them sent live, with any stored change the frame
- * carries (liveUpdate). @param {any} rt @param {any} turn @param {Record<string, any>} patch @param {Record<string, any>} [carried]
+ * The session’s live fields: merged into the buffer, and what changed of them sent live, with any stored change the
+ * frame carries (liveUpdate). A turn’s changes in one tick go as one frame, at its end (liveFlush): a harness reports a
+ * call’s end and the words after it together, and the page draws only the last. @param {any} rt @param {any} turn
+ * @param {Record<string, any>} patch @param {Record<string, any>} [carried]
  */
 export function liveSession(rt, turn, patch, carried) {
-  const session = bufferOf(rt, turn).session;
+  const live = bufferOf(rt, turn);
+  const { session } = live;
   /** @type {Record<string, any>} */
-  const frame = { kind: 'session', sessionId: turn.sessionId };
+  const frame = {};
   let any = false;
   /** @type {any} */
   let stored;
@@ -148,14 +164,19 @@ export function liveSession(rt, turn, patch, carried) {
     const v = k === 'toolCalls' || k === 'subagents' ? capList(patch[k], LIVE_CAPS[k]) : capString(patch[k]);
     // Only what changed goes, as with a step: a page holds the rest from an earlier frame, the snapshot or the store,
     // which is read only for a field the buffer hasn’t had.
-    const was = k in session ? session[k] : (stored ??= rt.store.pending.session(turn.sessionId) ?? {})[k];
+    const was = Object.hasOwn(session, k) ? session[k] : (stored ??= rt.store.pending.session(turn.sessionId) ?? {})[k];
     session[k] = v;
     if (v === was || sameList(v, was)) continue;
     frame[k] = v;
     any = true;
   }
   if (carried) Object.assign(frame, carried);
-  if (any || carried) sendLive(rt.store, frame);
+  if (!any && !carried) return;
+  if (!live.frame) {
+    live.frame = { kind: 'session', sessionId: turn.sessionId };
+    queueMicrotask(() => liveFlush(rt, turn));
+  }
+  Object.assign(live.frame, frame);
 }
 
 /**
@@ -165,14 +186,40 @@ export function liveSession(rt, turn, patch, carried) {
  */
 export function liveEnd(rt, turn) {
   liveCommit(rt, turn);
-  const { toolCalls, toolCount } = turn.live?.session ?? {};
+  const session = turn.live?.session ?? {};
+  const { toolCalls, toolCount } = session;
   // The pages had both live, so the write isn’t sent to them again (server/live-sent.mjs).
   if (toolCalls !== undefined || toolCount !== undefined)
     rt.sessions.update(turn.sessionId, { ...(toolCalls !== undefined ? { toolCalls } : {}), ...(toolCount !== undefined ? { toolCount } : {}) }, (data) =>
       committed.add(data),
     );
+  if (turn.live) closeLive(rt, turn, session);
   turn.live = null;
 }
+
+/**
+ * The turn’s last frames: its session’s live fields put back to what’s stored, which the edge writes then change as
+ * ever, since a write the same as what’s stored (a glimpse of '', no subagents) isn’t stored or sent; and the end of
+ * its steps, so each stream forgets the ones it was sent (server/live-sent.mjs). @param {any} rt @param {any} turn
+ * @param {Record<string, any>} session
+ */
+function closeLive(rt, turn, session) {
+  const stored = rt.store.pending.session(turn.sessionId) ?? {};
+  /** @type {Record<string, any>} */
+  const back = {};
+  for (const k of Object.keys(session)) {
+    const now = Object.hasOwn(stored, k) ? stored[k] : emptyLike(session[k]);
+    if (now !== session[k] && !sameList(now, session[k])) back[k] = now;
+  }
+  if (Object.keys(back).length) sendLive(rt.store, { kind: 'session', sessionId: turn.sessionId, ...back });
+  sendLive(rt.store, { kind: 'end', threadId: turn.threadId, itemId: turn.first });
+}
+
+/** A field’s empty value: what a page shows of it when nothing is stored. @param {unknown} v */
+const emptyLike = (v) => {
+  if (Array.isArray(v)) return [];
+  return typeof v === 'number' ? 0 : '';
+};
 
 /**
  * A step stored outside the buffer while its turn runs (a background job’s end, a step moved to a new part): its

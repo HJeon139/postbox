@@ -39,3 +39,18 @@ export function releaseLive(store, job) {
 function hearLive(store, frame) {
   for (const fn of store.liveListeners ?? []) fn(frame);
 }
+
+/**
+ * Listens for a store’s session writes as each is made, before it’s emitted, held or not: a running turn’s buffer
+ * takes a stored write of a live field then, and sends its waiting frame ahead of it (server/live-buffer.mjs).
+ * @param {any} store @param {(data: { id: string, patch: Record<string, any>, unset?: string[] }) => void} fn
+ */
+export function onSessionWrite(store, fn) {
+  store.sessionWriters ??= new Set();
+  store.sessionWriters.add(fn);
+}
+
+/** A session write about to be emitted (server/sessions.mjs, update). @param {any} store @param {any} data */
+export function sessionWriting(store, data) {
+  for (const fn of store.sessionWriters ?? []) fn(data);
+}

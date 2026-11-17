@@ -32,9 +32,10 @@ export const UNREAD_MS = 60_000;
  * Sends the store’s events to every open stream, and a keep-alive every 15 s; stream() opens one for a request to
  * /api/stream.
  * @param {import('./store.mjs').Store} store
- * @param {typeof EVENTS} [events]  the event table, which a spec replaces to show a private type
- * @param {{ now?: () => number, running?: { all: () => any[] } }} [options]  the clock UNREAD_MS is measured on, which a
- *   test sets; and the running turns, whose live state a stream is sent when it connects
+ * @param {typeof EVENTS | undefined} table  the event table (EVENTS when undefined), which a spec replaces to show a
+ *   private type
+ * @param {{ now?: () => number, running: { all: () => any[] } }} options  the running turns, whose live state a stream
+ *   is sent when it connects; and the clock UNREAD_MS is measured on, which a test sets
  * @returns {{
  *   streams: Set<import('node:http').ServerResponse>,
  *   stop: () => void,
@@ -42,7 +43,8 @@ export const UNREAD_MS = 60_000;
  *   headers: ReturnType<typeof threadHeaders>,
  * }}
  */
-export function liveStreams(store, events = EVENTS, { now = Date.now, running } = {}) {
+export function liveStreams(store, table, { now = Date.now, running }) {
+  const events = table ?? EVENTS;
   /** @type {Set<import('node:http').ServerResponse>} */
   const streams = new Set();
   const deliver = frameWriter(streams, now);
@@ -88,7 +90,7 @@ export function liveStreams(store, events = EVENTS, { now = Date.now, running } 
       for (const frame of backlogFrames(backlog, since, events, headers, open)) deliver(res, frame);
       // Then the running turns’ live state, which no backlog has: a page that opens a conversation or reconnects
       // mid-turn gets what changed since the last commit point (live-progress.md, “A page that reconnects”).
-      if (running) for (const frame of snapshotFrames(running, open, events, res, sent)) deliver(res, frame);
+      for (const frame of snapshotFrames(running, open, events, res, sent)) deliver(res, frame);
     }
     streams.add(res);
     req.on('close', () => streams.delete(res));
@@ -155,6 +157,11 @@ function liveSender({ store, streams, deliver, events, openOf, sent }) {
     const epoch = store.epoch;
     const send = () => {
       if (store.epoch !== epoch) return;
+      // A reply’s turn ended (server/live-buffer.mjs): nothing goes to the pages, and each stream forgets its steps.
+      if (frame.kind === 'end') {
+        for (const res of streams) sent.forget(res, frame.itemId);
+        return;
+      }
       // Built once for each way a page can see it: a tool’s stream and a page with the conversation open see an item’s
       // frame the same, and every stream a session’s.
       /** @type {Record<string, string>} */

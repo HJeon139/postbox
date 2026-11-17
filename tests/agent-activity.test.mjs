@@ -276,7 +276,7 @@ test('#189: the agent’s ring keeps its own state and step while its background
         const m = createStreamMapper(ctx);
         for (const e of lines) {
           m.push(e);
-          seen.push({ ...page.state().sessions[se.id] });
+          seen.push({ ...(await page.settled()).sessions[se.id] });
         }
       },
     }),
