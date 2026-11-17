@@ -10,11 +10,12 @@
 // counted as the store writes it, in UTF-8 bytes (tools/measure-progress/log-bytes.mjs).
 
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 const RUN = new URL('./measure-progress/run.mjs', import.meta.url).pathname;
+const { removeRestart } = await import('./measure-progress/restart.mjs');
 const argv = process.argv.slice(2);
 const runsAt = argv.indexOf('--runs');
 const RUNS = runsAt >= 0 ? Number(argv[runsAt + 1]) : 3;
@@ -87,7 +88,7 @@ function restart() {
           if (built) runs[i].push(...built);
           runs[i].push(...run(['restart-load', dir, agents, mode]));
         } finally {
-          rmSync(dir, { recursive: true, force: true });
+          removeRestart(dir);
         }
       }
   print('Restart mid-turn: 1x, 10x and 100x agents in rooms of 4, half of each turn run', runs);

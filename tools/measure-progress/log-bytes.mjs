@@ -27,7 +27,27 @@ export function kindOf(ev) {
   return live === keys.length && !(d.unset ?? []).length ? 'progress: session.patch' : 'mixed: session.patch';
 }
 
-/** node:fs/promises, keeping every byte written to a log segment. */
+/**
+ * A file handle that keeps every byte written through it in `chunks`, in order.
+ * @param {import('node:fs/promises').FileHandle} fh @param {Buffer[]} chunks
+ */
+export function countingHandle(fh, chunks) {
+  return new Proxy(fh, {
+    get(target, key) {
+      if (key !== 'write') {
+        const v = Reflect.get(target, key);
+        return typeof v === 'function' ? v.bind(target) : v;
+      }
+      return async (/** @type {Buffer} */ buf, /** @type {number} */ off = 0, /** @type {number} */ len = buf.length - off) => {
+        const r = await target.write(buf, off, len);
+        chunks.push(Buffer.from(buf.subarray(off, off + r.bytesWritten)));
+        return r;
+      };
+    },
+  });
+}
+
+/** node:fs/promises, keeping every byte written to a log segment, through countingHandle. */
 export function countingIo() {
   /** @type {Buffer[]} */
   const chunks = [];
@@ -36,23 +56,10 @@ export function countingIo() {
     /** @param {string} path @param {any} flags @param {any} [mode] */
     async open(path, flags, mode) {
       const fh = await fs.open(path, flags, mode);
-      if (!/events-[^/]*$/.test(path)) return fh;
-      return new Proxy(fh, {
-        get(target, key) {
-          if (key !== 'write') {
-            const v = Reflect.get(target, key);
-            return typeof v === 'function' ? v.bind(target) : v;
-          }
-          return async (/** @type {Buffer} */ buf, /** @type {number} */ off = 0, /** @type {number} */ len = buf.length - off) => {
-            const r = await target.write(buf, off, len);
-            chunks.push(Buffer.from(buf.subarray(off, off + r.bytesWritten)));
-            return r;
-          };
-        },
-      });
+      return /events-[^/]*$/.test(path) ? countingHandle(fh, chunks) : fh;
     },
   };
-  return { io, written: () => Buffer.concat(chunks) };
+  return { io, chunks, written: () => Buffer.concat(chunks) };
 }
 
 /**
