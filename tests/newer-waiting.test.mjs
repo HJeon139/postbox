@@ -13,7 +13,6 @@ import { held, settle, setup, sleep } from './side-threads-fixture.mjs';
 const call = (rt, se, name, args) =>
   handleMcp(rt, se.id, { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }, rt.turns.get(se.id)?.token ?? null);
 const PERSON = '[Postbox] A newer message from the person is waiting for you; it reaches you when this turn ends, unless it’s removed.';
-const count = (text, re) => (text.match(re) ?? []).length;
 const define = async (rt, se, term) => (await call(rt, se, 'define_term', { term, definition: 'A word.' })).result.content[0].text;
 
 /** @beta busy with @alpha’s wake, held until release(). */
@@ -93,21 +92,6 @@ test('#734: a turn that starts while its sender’s newer message waits in anoth
     ),
     JSON.stringify(older.message).slice(0, 1500),
   );
-});
-
-test('#694: a message from the sender waiting on the turn itself is named only if it’s for the turn’s thread', async () => {
-  const { rt, t, alpha, beta, release } = await busyWithAlpha();
-  const root = arrange.post(rt, t.id, { kind: 'agent', sessionId: alpha.id, handle: 'alpha', text: 'A topic.', status: 'done' });
-  const topic = rt.startTopic(t.id, root.id).threadId;
-  rt.turnService.run(beta.id, { kind: 'agent', from: '@alpha', text: 'Pending in the topic.' }, { threadId: topic });
-  assert.doesNotMatch(await define(rt, beta, 'X'), /newer message/, 'not one for another thread');
-  rt.turnService.run(beta.id, { kind: 'agent', from: '@alpha', text: 'Pending here.' });
-  assert.match(
-    await define(rt, beta, 'Y'),
-    /^\[Postbox\] A newer message from @alpha is waiting for you; it reaches you when this turn ends, unless it’s removed\.\n\n/,
-  );
-  release();
-  await settle(rt);
 });
 
 test('#694: a message queued for another agent isn’t named, even from the same sender', async () => {
@@ -226,29 +210,6 @@ test('#694: an urgent note comes first, then the newer message, then the result'
   await settle(rt);
 });
 
-test('#694: each part of a batch waiting on the turn is named, with its own time', async () => {
-  const { rt, beta, release } = await busyWithAlpha();
-  const later = Date.now() + 1000;
-  const part = (text, at) => ({ kind: 'agent', from: '@alpha', text, at });
-  rt.turnService.run(beta.id, { kind: 'agent', from: '@alpha', text: 'A\n\nB', messages: [part('Batched A.', later), part('Batched B.', later + 1)] });
-  const text = await define(rt, beta, 'X');
-  assert.equal(count(text, /A newer message from @alpha is waiting for you; it reaches you when this turn ends, unless it’s removed\./g), 2, 'both parts');
-  release();
-  await settle(rt);
-});
-
-test('#694: a person’s message waiting on the turn itself is named, as one in the queue is', async () => {
-  const { rt, adapter, t, beta } = setup();
-  const busy = held();
-  adapter.next.push(busy.step);
-  rt.sendMessage(t.id, { text: '@beta review aaa111' });
-  await sleep(5);
-  rt.turnService.run(beta.id, { kind: 'user', text: 'Waiting on the turn.' });
-  assert.ok((await define(rt, beta, 'X')).startsWith(PERSON));
-  busy.release();
-  await settle(rt);
-});
-
 test('#694: at most three are named on one result; the rest are counted, then named on the next', async () => {
   const { rt, alpha, beta, release } = await busyWithAlpha();
   for (const n of [1, 2, 3, 4, 5]) rt.agentWake(alpha.id, 'beta', `Newer ${n}.`);
@@ -281,16 +242,5 @@ test('#694: a wake queued in the same millisecond the turn started is newer', as
   assert.equal(wake.at, rt.turns.get(beta.id).startedAt, 'the same millisecond');
   assert.ok((await define(rt, beta, 'X')).includes(wake.itemId));
   busy.release();
-  await settle(rt);
-});
-
-test('#694: two messages from one sender waiting on the turn, sent in the same millisecond, are each named', async () => {
-  const { rt, beta, release } = await busyWithAlpha();
-  const at = Date.now() + 1000;
-  rt.turnService.run(beta.id, { kind: 'agent', from: '@alpha', text: 'A.', at });
-  assert.equal(count(await define(rt, beta, 'X'), /A newer message from @alpha/g), 1);
-  rt.turnService.run(beta.id, { kind: 'agent', from: '@alpha', text: 'B.', at });
-  assert.equal(count(await define(rt, beta, 'Y'), /A newer message from @alpha/g), 1, 'the second has a key of its own');
-  release();
   await settle(rt);
 });

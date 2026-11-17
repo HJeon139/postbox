@@ -45,3 +45,23 @@ test('#694: newer-waiting-named fires on a note naming an agent, too', () => {
   );
   assert.equal(out[0]?.evidence, '@developer’s define_term result named a newer message from @critic.');
 });
+
+/** @developer’s transcript with one prompt of `text`, as Claude Code writes a user line. @param {string} text */
+const transcript = (text) => ({
+  transcripts: [{ handle: 'developer', lines: [{ type: 'user', timestamp: new Date(T0 + 7000).toISOString(), message: { role: 'user', content: text } }] }],
+});
+const ELSEWHERE = '[Postbox] A newer message from @alpha is waiting for you in “Dates”; read_message { id: "it_9" } has it.';
+
+test('#734: newer-elsewhere-named fires on a prompt that named a newer message waiting in another thread', () => {
+  const out = TRIGGERS['newer-elsewhere-named'].run(transcript(`Your review.\n\n${ELSEWHERE}`));
+  assert.deepEqual(out, [{ at: T0 + 7000, evidence: '@developer’s prompt named a newer message from @alpha waiting in “Dates”.' }]);
+});
+
+test('#734: newer-elsewhere-named stays silent on a note for the turn’s own thread, and a run without transcripts can’t show it', () => {
+  assert.deepEqual(TRIGGERS['newer-elsewhere-named'].run(transcript(NAMED)), []);
+  assert.equal(TRIGGERS['newer-elsewhere-named'].recorded({}), false);
+});
+
+test('#734: newer-waiting-named counts a note that names another thread too', () => {
+  assert.equal(TRIGGERS['newer-waiting-named'].run(streams(`${ELSEWHERE}\n\nDefined “X”.`)).length, 1);
+});
