@@ -242,3 +242,27 @@ test('#442 a turn started directly while out of quota keeps the mark until a tur
   await settle(f.rt);
   assert.equal(f.store.state.sessions[f.beta.id].quota ?? null, null, 'it ended well, so the quota is back');
 });
+
+/** The persona’s move as Personas.update writes and signals it. @param {any} f @param {any} se @param {any} remote */
+function movePersona(f, se, remote) {
+  const was = f.store.state.personas[se.personaId];
+  const persona = { ...was, remote, version: (was.version ?? 1) + 1 };
+  f.store.emit('persona', persona);
+  f.rt.bus.emit('persona.updated', { persona, was, patch: { remote } });
+}
+
+test('#442 an agent moved to another computer leaves its old quota’s mark, and takes the new one’s', async () => {
+  const f = setup();
+  f.adapter.next.push(outOfQuota(null));
+  f.rt.sendMessage(f.t.id, { text: '@beta go' });
+  await settle(f.rt);
+  movePersona(f, f.beta, { hostId: 'h1' });
+  assert.equal(f.store.state.sessions[f.beta.id].quota ?? null, null, 'h1’s quota isn’t this computer’s');
+  const until = Date.now() + 3600_000;
+  alphaOnHost(f);
+  const alpha = f.store.state.sessions[f.alpha.id];
+  f.rt.sessions.update(alpha.id, { state: 'failed', quota: markOutOfQuota(f.rt, alpha, until, f.t.id) });
+  movePersona(f, f.beta, null);
+  movePersona(f, f.beta, { hostId: 'h1' });
+  assert.deepEqual(f.store.state.sessions[f.beta.id].quota, { until }, 'h1 is out of quota, so it is too');
+});

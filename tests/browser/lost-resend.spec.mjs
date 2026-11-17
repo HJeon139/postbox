@@ -82,3 +82,41 @@ test('#442 a turn out of quota marks every agent on its backend in its row, and 
   await expect(reply.getByRole('button', { name: 'Retry' })).toBeVisible();
   await expect(page.getByRole('alert')).toHaveCount(0);
 });
+
+test('#442 a ring resting beside an earlier reply is never a button, though the agent needs you', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  const { rt, store } = app;
+  const researcher = Object.values(store.state.personas).find((p) => p.handle === 'researcher');
+  const t = rt.createThread({ projectId: Object.values(store.state.projects)[0].id, title: 'Resting rings', personaIds: [researcher.id] });
+  const [se] = arrange.sessionsIn(rt, t.id);
+  held.scripts.set(se.id, async (/** @type {any} */ ctx) => ctx.text('The first answer.'));
+  rt.sendMessage(t.id, { text: '@researcher first' });
+  await expect.poll(() => store.items(t.id).some((x) => x.kind === 'agent' && x.status === 'done')).toBe(true);
+  held.scripts.set(se.id, async () => {
+    throw new Error('The model refused.');
+  });
+  rt.sendMessage(t.id, { text: '@researcher second' });
+  await expect.poll(() => store.state.sessions[se.id].needs?.kind).toBe('failed');
+  await page.goto(`${app.origin}/#/t/${t.id}`);
+  await synced(page, app);
+  const resting = page.locator(`#main pb-ring[data-session="${se.id}"][state="rest"]`);
+  await expect(resting).not.toHaveCount(0);
+  await expect(page.locator(`#main pb-ring[data-session="${se.id}"][state="rest"][role="button"]`)).toHaveCount(0);
+});
+
+test('#442 at the reset, the row and the ring stop saying out of quota, with nothing else changing', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  const { rt, store } = app;
+  const researcher = Object.values(store.state.personas).find((p) => p.handle === 'researcher');
+  const t = rt.createThread({ projectId: Object.values(store.state.projects)[0].id, title: 'Reset', personaIds: [researcher.id] });
+  const [se] = arrange.sessionsIn(rt, t.id);
+  await page.goto(`${app.origin}/#/t/${t.id}`);
+  await synced(page, app);
+  arrange.setSession(rt, se.id, { quota: { until: Date.now() + 2500 } });
+  const words = page.locator(`#agent-row-${se.id} .agent-state`);
+  const ring = page.locator(`.rail pb-ring[data-session="${se.id}"] svg`).first();
+  await expect(words).toContainText('out of quota until');
+  await expect(ring).toHaveAttribute('aria-label', /Out of quota/);
+  await expect(words).toHaveText(' · idle', { timeout: 8000 });
+  await expect(ring).not.toHaveAttribute('aria-label', /Out of quota/);
+});
