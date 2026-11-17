@@ -111,12 +111,12 @@ function eventSender({ store, streams, deliver, headers, events, openOf, sent })
     // An event the store held as rejected (#609): its place, then a resync, since a handler that broke its contract
     // may have changed the state the page can't see.
     const tail = ev.type === REJECTED ? `${after}event: ${STREAM.resync}\ndata: {}\n\n` : after;
-    // Both forms now, as the event is: a send held back would otherwise read the store's objects as they are by then.
-    const full = publicFrame(ev, events) + tail;
-    // As a page sees it that hasn't the conversation open: differs only for an item's event, so only that is built twice.
-    const shut = ev.type.startsWith('item.') ? publicFrame(ev, events, new Set()) + tail : full;
     // A page that had it live gets nothing of it but the headers it changed (server/live-sent.mjs).
     const mark = sent.marked(ev);
+    // Both forms now, as the event is: a send held back would otherwise read the store's objects as they are by then.
+    // A marked event sent now builds them only for a stream that needs them, as most get nothing of it.
+    let frames = mark === null || lag > 0 ? framesOf(ev, events, tail) : null;
+    const built = () => (frames ??= framesOf(ev, events, tail));
     const send = () => {
       if (store.epoch !== epoch) return;
       for (const res of streams) {
@@ -124,7 +124,10 @@ function eventSender({ store, streams, deliver, headers, events, openOf, sent })
         // Asked of every page, so each forgets the step once it’s stored, open or not.
         if (mark !== null && open && sent.had(res, mark)) {
           if (tail) deliver(res, tail);
-        } else deliver(res, !open || open.has(ev.data?.threadId) ? full : shut);
+        } else {
+          const { full, shut } = built();
+          deliver(res, !open || open.has(ev.data?.threadId) ? full : shut);
+        }
       }
     };
     if (lag > 0) setTimeout(send, lag).unref();
@@ -163,6 +166,15 @@ function liveSender({ store, streams, deliver, events, openOf, sent }) {
     if (lag > 0) setTimeout(send, lag).unref();
     else send();
   };
+}
+
+/**
+ * An event’s frames: as a page with its conversation open sees it, and as one without does, which differs only for an
+ * item’s event, so only that is built twice. @param {any} ev @param {typeof EVENTS} events @param {string} tail
+ */
+function framesOf(ev, events, tail) {
+  const full = publicFrame(ev, events) + tail;
+  return { full, shut: ev.type.startsWith('item.') ? publicFrame(ev, events, new Set()) + tail : full };
 }
 
 /**

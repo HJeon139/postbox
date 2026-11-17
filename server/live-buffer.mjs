@@ -87,6 +87,23 @@ function changedOf(before, now) {
 }
 
 /**
+ * Whether two lists of flat entries (tool calls, subagents) hold the same values, entry by entry.
+ * @param {unknown} a @param {unknown} b
+ */
+function sameList(a, b) {
+  if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    const x = a[i];
+    const y = b[i];
+    if (x === y) continue;
+    if (!x || !y || typeof x !== 'object' || typeof y !== 'object') return false;
+    const keys = Object.keys(x);
+    if (keys.length !== Object.keys(y).length || keys.some((k) => x[k] !== y[k])) return false;
+  }
+  return true;
+}
+
+/**
  * The session’s live fields: merged into the buffer, and what changed of them sent live, with any stored change the frame
  * carries (liveUpdate). @param {any} rt @param {any} turn @param {Record<string, any>} patch @param {Record<string, any>} [carried]
  */
@@ -103,8 +120,7 @@ export function liveSession(rt, turn, patch, carried = {}) {
   for (const k in capped) {
     const was = k in session ? session[k] : stored[k];
     const v = capped[k];
-    // A list is compared by its JSON; a scalar as it is.
-    if (v === was || (typeof v === 'object' && v !== null && JSON.stringify(v) === JSON.stringify(was))) continue;
+    if (v === was || sameList(v, was)) continue;
     changed[k] = v;
     any = true;
   }

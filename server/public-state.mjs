@@ -61,13 +61,12 @@ const scalar = (v) => v === null || typeof v === 'string' || typeof v === 'numbe
 
 /**
  * An object as its shape keeps it: each listed scalar field, each listed object and list picked by its own shape, and
- * nothing else; null for what isn’t an object.
- * @param {any} o @param {import('../shared/live-kinds.mjs').Shape} shape @returns {Record<string, any> | null}
+ * nothing else, into `out`; null for what isn’t an object.
+ * @param {any} o @param {import('../shared/live-kinds.mjs').Shape} shape @param {Record<string, any>} [out]
+ * @returns {Record<string, any> | null}
  */
-function pick(o, shape) {
+function pick(o, shape, out = {}) {
   if (!o || typeof o !== 'object' || Array.isArray(o)) return null;
-  /** @type {Record<string, any>} */
-  const out = {};
   for (const k of shape.fields) if (Object.hasOwn(o, k) && scalar(o[k])) out[k] = o[k];
   const objects = shape.objects ?? {};
   for (const k in objects) {
@@ -96,7 +95,7 @@ export function publicLiveData(frame, open = null, events = EVENTS, keys = PUBLI
   // A tool’s stream names no conversations (open is null) and gets them all; anything else must say which it has.
   if (open !== null && !(open instanceof Set)) return null;
   if (def.item && open && !open.has(frame.threadId)) return null;
-  return { kind: frame.kind, ...pick(frame, def.shape) };
+  return pick(frame, def.shape, { kind: frame.kind });
 }
 
 /**
