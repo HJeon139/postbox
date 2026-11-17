@@ -1,6 +1,7 @@
 // Agents whose turns run on a host (#120), with axe at 1280 px:
 // - the agents list and each ring say where an agent runs, when Postbox last heard from the host, and the
-//   connection in words: Connected, Reconnecting, Disconnected (working) and Disconnected (idle);
+//   connection in words: Connected, Reconnecting, Disconnected (working) and Disconnected (idle); in the list, an
+//   agent whose host turn is stopping reads as stopping (#1442);
 // - the transcript shows each turn state in words: “Sign-in needed on <host>” and “Interrupted on <host>”, each with
 //   Resume, which goes through the runtime’s resumeRemote and starts with why the last turn stopped; a hung turn’s
 //   note; Lost, with no Retry; a stop the host hasn’t confirmed; and a replayed reply once, not twice;
@@ -45,6 +46,8 @@ test('#120 the agents list says each remote agent’s host, when it was last hea
   await expect.soft(row(page, 'idler')).toContainText('On build.example.com · Disconnected (idle) · last heard from 40 min ago');
   await expect.soft(row(page, 'coder')).toContainText('Sign-in needed on host.example.com');
   await expect.soft(row(page, 'stopper')).toContainText('Stopping on host.example.com: Postbox waits for the host to confirm');
+  // A turn its host hasn’t confirmed stopped may still run there: the agent reads as stopping, not running (#1442).
+  await expect.soft(row(page, 'stopper').locator('.agent-state')).toHaveText(' · stopping');
   // Codex’s `auto`, and a Claude model a Codex persona kept, read as Codex’s default.
   await expect.soft(row(page, 'cx')).toContainText('Codex’s default · medium effort');
   await expect.soft(row(page, 'cx')).not.toContainText('Opus');

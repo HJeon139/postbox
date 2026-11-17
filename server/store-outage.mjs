@@ -17,6 +17,8 @@
 
 import { settledNeed } from './restart-sweep.mjs';
 import { rearmWakes } from './scheduled-wakes.mjs';
+import { recordStopped } from './stop-record.mjs';
+import { whenWritable } from './store-wait.mjs';
 
 /** @typedef {import('./runtime.mjs').Runtime} Runtime */
 
@@ -93,20 +95,6 @@ export function gated(rt, fn, { owner } = {}) {
   }
   whenWritable(rt, fn, { owner });
   return false;
-}
-
-/**
- * Runs fn now if the store takes writes, else once it does. first: before what already waits, for a write any later
- * turn depends on, such as a backend’s session id. owner: the timer that would recreate this work from the recovered
- * state (a wake’s schedule id); the reload drops owned entries before it re-arms,
- * so each unit of work has one owner after Retry (S1, the integrator’s re-review of #598: a wake fired while closed was
- * delivered twice). @param {Runtime} rt @param {() => void} fn @param {{ first?: boolean, owner?: string }} [o]
- */
-export function whenWritable(rt, fn, { first = false, owner } = {}) {
-  if (rt.store.writable) return fn();
-  const entry = owner ? Object.assign(() => fn(), { owner }) : fn;
-  if (first) rt.storeWait.unshift(entry);
-  else rt.storeWait.push(entry);
 }
 
 /**
@@ -209,7 +197,7 @@ function stopForStore(rt, sessionId) {
 function recordStop(rt, turn) {
   const { sessionId } = turn;
   const ended = { status: 'stopped', stoppedAt: Date.now(), stopReason: 'store' };
-  rt.recordStopped(turn, ended, { by: 'store', why: WHY });
+  recordStopped(rt, turn, ended, { by: 'store', why: WHY });
   const se = rt.s.sessions[sessionId];
   if (!se) return;
   // Its process may not have exited yet: the session reads as stopping until it has (turnExited).

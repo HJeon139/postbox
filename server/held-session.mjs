@@ -2,7 +2,7 @@
 // commit is only in store.pending, so its first turn starts once the commit is released, or, while writes are closed,
 // once they reopen (server/store-outage.mjs). It takes the runtime first.
 
-import { whenWritable } from './store-outage.mjs';
+import { whenWritable } from './store-wait.mjs';
 
 /** @typedef {import('./runtime.mjs').Runtime} Runtime */
 

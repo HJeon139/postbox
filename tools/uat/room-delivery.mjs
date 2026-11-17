@@ -24,10 +24,11 @@ export const headOf = (text) => {
 };
 
 /**
- * What says a delivery is a repeat (decision 8.2), what points back to one rather than giving it again (#484), and
- * what gives a topic thread’s starting message on purpose (server/runtime.mjs’s topicRootLine, envelope item 2).
+ * What says a delivery is a repeat (decision 8.2), and what gives a topic thread’s starting message on purpose
+ * (server/runtime.mjs’s topicRootLine, envelope item 2). A pointer to a message the last summary gave (#484) is gone
+ * since #1440, so its words aren’t a label: a rechecked run from before then doesn’t count one as a resend.
  */
-export const RESEND_LABEL = /\b(resent|resend|sent (?:it |this )?again|a repeat of|check what ran|gave you in full|this thread started from)\b/i;
+export const RESEND_LABEL = /\b(resent|resend|sent (?:it |this )?again|a repeat of|check what ran|this thread started from)\b/i;
 
 /** Whether a prompt labels the message it repeats: the label comes in the 400 characters before the message. */
 export function labeled(prompt, text) {
