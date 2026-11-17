@@ -20,6 +20,7 @@ import { COMMAND_WORDS, commandsSection, GLYPH } from './work-commands.mjs';
 import { diffView } from './work-diff.mjs';
 import { watchGit } from './work-git.mjs';
 import { editItem, editRow, editRows, hostNotes } from './work-hosts.mjs';
+import { external, row, sec, short, spend } from './work-pane-parts.mjs';
 import { dur, effortSection, externalSection, publishSection, readsSection, section, signedEl, vcsSection, who, workLink } from './work-sections.mjs';
 import { windows } from './work-window.mjs';
 
@@ -419,8 +420,7 @@ export function mountWork(threadId, { turnId = null, at = null, gitWatch = null 
 
 // ── The pane ────────────────────────────────────────────────────────────────────────────
 
-/** How many items a list in the pane shows before “All …”, and how many turns before “Show earlier turns”. */
-const SHORT = 3;
+/** How many turns the pane shows before “Show earlier turns”. */
 const TURNS = 8;
 const failedCommand = (c) => c.state === 'failed' || c.state === 'denied';
 
@@ -464,16 +464,6 @@ export function mountWorkPane(threadId) {
   /** Opens Work full screen, at an item or section, or on one turn. */
   const go = (to) => openWork(threadId, { full: true, ...to });
 
-  const sec = (id, title, count, ...kids) =>
-    h('section.wc-sec', { 'aria-labelledby': `${id}-h` }, h('h2.wc-h', { id: `${id}-h` }, title, count ? h('span.badge', count) : null), ...kids);
-  const row = (id, run, ...kids) => h('li', h('button.wc-row', { type: 'button', id, onclick: run }, ...kids));
-  /** The first few of a list, then a row that opens the whole of it. */
-  const short = (list, make, all, n = SHORT) =>
-    h(
-      'ul.wc-list',
-      list.slice(0, n).map(make),
-      list.length > n ? h('li', h('button.wc-row.wc-more', { type: 'button', onclick: all }, `All ${list.length}`, icon('right', 'i-sm'))) : null,
-    );
   // A file’s name first, then its folder, so a long path outside the project still shows which file it is.
   const fileRow = (f, to, prefix) =>
     row(
@@ -579,80 +569,6 @@ export function mountWorkPane(threadId) {
     );
   }
 
-  function external(s) {
-    if (!s.external.length) return null;
-    const list = [...s.external].reverse();
-    return sec(
-      'wc-external',
-      'Outside Postbox',
-      String(list.length),
-      h(
-        'ul.wc-list.wc-plain',
-        list
-          .slice(0, SHORT)
-          .map((x) =>
-            h(
-              'li',
-              h('span', x.what),
-              x.state === 'failed' || x.state === 'denied' ? [' ', h('span.status-tag.ws-failed', x.state === 'denied' ? 'Refused' : 'Failed')] : null,
-              x.urls?.[0]
-                ? [
-                    ' · ',
-                    h(
-                      'a',
-                      { href: x.urls[0], target: '_blank', rel: 'noopener noreferrer' },
-                      x.urls[0].replace(/^https?:\/\/(www\.)?/, ''),
-                      ' ',
-                      icon('link', 'i-sm'),
-                    ),
-                  ]
-                : null,
-            ),
-          ),
-        list.length > SHORT
-          ? h('li', h('button.wc-row.wc-more', { type: 'button', onclick: () => go({ at: 'work-external' }) }, `All ${list.length}`, icon('right', 'i-sm')))
-          : null,
-      ),
-    );
-  }
-
-  function spend(s) {
-    if (!s.turns.length) return null;
-    const e = s.effort;
-    const agents = s.byAgent.filter((a) => a.turns);
-    return sec(
-      'wc-spend',
-      'Spend',
-      '',
-      h(
-        'p.small',
-        [e.priced ? formatCost(e.costUsd) : null, plural(e.turns, 'turn'), e.ms ? dur(e.ms) : null, e.tokens ? `${formatTokens(e.tokens)} tokens` : null]
-          .filter(Boolean)
-          .join(' · '),
-      ),
-      e.priced ? null : h('p.small.dim', 'Spend shows for Claude Code and Agent SDK turns.'),
-      agents.length > 1
-        ? h(
-            'p.small.dim',
-            agents.map((a, i) => [i ? ' · ' : '', `${a.handle} `, a.priced ? formatCost(a.costUsd) : plural(a.turns, 'turn')]),
-          )
-        : null,
-      s.idle.turns
-        ? h(
-            'p.small.dim',
-            `${plural(s.idle.turns, 'turn')} left nothing lasting${[dur(s.idle.ms), s.idle.priced ? formatCost(s.idle.costUsd) : null]
-              .filter(Boolean)
-              .map((x, i) => `${i ? ', ' : ': '}${x}`)
-              .join('')}.`,
-          )
-        : null,
-      h(
-        'ul.wc-list',
-        row('wc-effort', () => go({ at: 'work-effort' }), h('span.wc-name', 'Effort by agent'), icon('right', 'i-sm')),
-      ),
-    );
-  }
-
   function turns(entries, list) {
     if (!list.length) return null;
     if (target && list.findIndex((x) => x.t.id === target) >= TURNS) allTurns = true;
@@ -752,7 +668,7 @@ export function mountWorkPane(threadId) {
           body,
           h('p.empty-note', 'Nothing yet. When an agent edits a file, runs a command or publishes something, it shows here, with what it took.'),
         );
-      fill(body, review(s), files(s), commands(s), external(s), spend(s), turns(entries, lines));
+      fill(body, review(s), files(s), commands(s), external(s, go), spend(s, go), turns(entries, lines));
     });
 
   // As in mountWork, what the server sends waits while a press is down (#1010).
