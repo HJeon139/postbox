@@ -64,7 +64,8 @@ function settleReplies(rt, turn, items, err) {
 
 /**
  * The session failed, and needs the person, who hears it at once. Out of quota, it doesn’t need them, who can’t act on
- * it before the reset (#442): its row says so, and the backend’s one notice. @param {any} rt @param {any} se
+ * it before the reset (#442): its row says so, its reply without an alert, and the backend’s one notice.
+ * @param {any} rt @param {any} se
  * @param {any} turn @param {{ target: string, message: string, failure: any }} why
  */
 function markFailed(rt, se, turn, { target, message, failure }) {
@@ -78,7 +79,8 @@ function markFailed(rt, se, turn, { target, message, failure }) {
     finishedAt: Date.now(),
     stopAsk: null,
   });
-  if (!quota) rt.threads.notify('blocking', se, `@${se.handle}’s reply failed`, message, turn.threadId);
+  if (quota) rt.threads.patchItem(turn.threadId, target, { outOfQuota: true });
+  else rt.threads.notify('blocking', se, `@${se.handle}’s reply failed`, message, turn.threadId);
 }
 
 /** What a reply lost to the network says, as Postbox sends what its turn took once more (#466). */

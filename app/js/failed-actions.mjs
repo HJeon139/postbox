@@ -1,7 +1,7 @@
 // A failed reply’s actions (#883): Retry, and Dismiss until the person has dismissed it. The room’s callout
 // (thread.mjs) and a side thread’s line (side-line.mjs) both draw them from here, so the choice of buttons is made in
 // one place. A dismissed reply keeps its error readable in a quieter row, with no role="alert", so a screen reader
-// isn’t told about it again on every redraw.
+// isn’t told about it again on every redraw; so does one its backend refused for quota (#442).
 
 import { api } from './client.mjs';
 import { h, icon } from './dom.mjs';
@@ -53,6 +53,8 @@ export function failedCallout(threadId, it, text) {
   const actions = failedActions(threadId, it.id, { dismissed: it.dismissed === true });
   if (it.dismissed)
     return h('div.callout.quiet', h('span.g.g-failed', { 'aria-hidden': 'true' }), h('div.grow', ...text, h('span.dim', ' Dismissed.')), ...actions);
+  // Out of quota, no alert: the person can’t act on it before the reset, though Retry tries again (#442).
+  if (it.outOfQuota) return h('div.callout.quiet', h('span.g.g-failed', { 'aria-hidden': 'true' }), h('div.grow', ...text), ...actions);
   return h('div.callout', { role: 'alert' }, h('span.g.g-failed', { 'aria-hidden': 'true' }), h('div.grow', ...text), ...actions);
 }
 
