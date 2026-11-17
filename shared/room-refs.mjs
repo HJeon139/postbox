@@ -46,6 +46,37 @@ export function roomAssets(state, convId) {
 /** @typedef {{ at: string, kind: 'asset' | 'file' }} Ref */
 
 /**
+ * @typedef {{ paths: Map<string, string>, names: Map<string, string | null>, byId: Map<string, any> }} FileIndex
+ *   paths: each path to its file’s id; names: each file name to its file’s id, or null for one two files share; byId:
+ *   each changed file’s entry
+ */
+
+/** Each conversation’s file index, kept while its work list is the same array at the same length. */
+const fileIndexes = new WeakMap();
+
+/**
+ * The conversation’s changed files, by path, file name and id. Built once per change to its work list: a file’s path,
+ * name and kind never change once recorded, so a list of the same length gives the same index.
+ * @param {any} state @param {string} convId @returns {FileIndex}
+ */
+function filesOf(state, convId) {
+  const entries = state.work?.[convId] ?? [];
+  const kept = fileIndexes.get(entries);
+  if (kept?.length === entries.length) return kept.index;
+  /** @type {FileIndex} */
+  const index = { paths: new Map(), names: new Map(), byId: new Map() };
+  for (const e of entries) {
+    if (e.kind !== 'file') continue;
+    index.byId.set(e.id, e);
+    for (const k of [e.path, e.rel]) if (k) index.paths.set(k, e.id);
+    const base = e.rel?.replace(/^.*\//, '');
+    if (base) index.names.set(base, index.names.has(base) && index.names.get(base) !== e.id ? null : e.id);
+  }
+  if (entries.length) fileIndexes.set(entries, { length: entries.length, index });
+  return index;
+}
+
+/**
  * A lookup for one conversation as the state is now: what a piece of text names, or null. A file goes by its path, its
  * path in the project, or its file name when only one changed file has it.
  * @param {any} state @param {string} convId
@@ -53,16 +84,7 @@ export function roomAssets(state, convId) {
  */
 export function refLookup(state, convId) {
   const index = own(state.assetRooms, roomOf(state.threads, convId));
-  /** @type {Map<string, string>} each path to its file’s id */
-  const paths = new Map();
-  /** @type {Map<string, string | null>} each file name to its file’s id, or null for one two files share */
-  const names = new Map();
-  for (const e of state.work?.[convId] ?? []) {
-    if (e.kind !== 'file') continue;
-    for (const k of [e.path, e.rel]) if (k) paths.set(k, e.id);
-    const base = e.rel?.replace(/^.*\//, '');
-    if (base) names.set(base, names.has(base) && names.get(base) !== e.id ? null : e.id);
-  }
+  const { paths, names } = filesOf(state, convId);
   return (text) => {
     const t = text.trim();
     if (/^as_[A-Za-z0-9]{8}$/.test(t)) return roomAsset(state, convId, t) ? { at: t, kind: 'asset' } : null;
@@ -76,36 +98,91 @@ export function refLookup(state, convId) {
 /** Inline code in a message’s Markdown: what links in a reply are made from (app/js/room-links.mjs). */
 const CODE = /`([^`\n]+)`/g;
 
-/** @typedef {Ref & { when: number }} Relevant */
+/** How many In this chat ranks at most: past it, the list isn’t a short list any more. */
+export const RELEVANT_MAX = 50;
+
+/** @typedef {Ref & { when: number, name: string }} Relevant */
+
+/**
+ * The conversation’s last n messages, the person’s and the agents’, oldest first.
+ * @param {any[]} items  the conversation’s newest items the page holds, oldest first @param {number} [n]
+ */
+export function lastSaid(items, n = 10) {
+  const out = [];
+  for (let i = items.length - 1; i >= 0 && out.length < n; i--) {
+    const it = items[i];
+    if ((it.kind === 'user' || it.kind === 'agent') && typeof it.text === 'string') out.push(it);
+  }
+  return out.reverse();
+}
+
+/**
+ * The work list’s last `turns` turns, newest first, and where the oldest of them starts in it: a turn’s entries come
+ * after its own, so nothing before that index is theirs. Reads from the end, never the whole list.
+ * @param {any[]} entries @param {number} turns
+ */
+function lastTurns(entries, turns) {
+  const list = [];
+  let from = entries.length;
+  for (let i = entries.length - 1; i >= 0 && list.length < turns; i--)
+    if (entries[i].kind === 'turn') {
+      list.push(entries[i]);
+      from = i;
+    }
+  return { list, from };
+}
+
+/**
+ * Whether a turn wrote an asset version: the ledger keeps no asset entries, so a version goes to the turn whose agent
+ * wrote it while the turn ran. @param {any} turn @param {any} v
+ */
+const wroteIn = (turn, v) => v.author === turn.handle && v.at >= turn.startedAt && v.at <= turn.startedAt + (turn.ms ?? Number.POSITIVE_INFINITY);
 
 /**
  * What the chat is about now (#1446): the assets and changed files named in the conversation’s last messages, the
- * person’s and the agents’, and those touched in its last turns (a file changed, or an asset version written since the
- * first of them began). Each once, at the later of when it was named and when it was touched, newest first.
- * @param {any} state @param {string} convId @param {any[]} items  the conversation’s items the page holds, oldest first
+ * person’s and the agents’, and those touched in its last turns (a file the ledger has it change, an asset version its
+ * agent wrote while it ran). Each once, at the later of when it was named and when it was touched, newest first, at
+ * most RELEVANT_MAX, with the name the pane shows.
+ * @param {any} state @param {string} convId @param {any[]} items  the conversation’s newest items, oldest first
  * @param {{ messages?: number, turns?: number }} [opts]
  * @returns {Relevant[]}
  */
 export function relevantRefs(state, convId, items, { messages = 10, turns = 2 } = {}) {
   const find = refLookup(state, convId);
+  const { byId } = filesOf(state, convId);
   /** @type {Map<string, Relevant>} */
   const seen = new Map();
   const note = (/** @type {Ref | null} */ ref, /** @type {number} */ when) => {
-    if (ref && (seen.get(ref.at)?.when ?? -1) < when) seen.set(ref.at, { ...ref, when });
+    if (!ref || (seen.get(ref.at)?.when ?? -1) >= when) return;
+    const name = ref.kind === 'file' ? byId.get(ref.at)?.rel : roomAsset(state, convId, ref.at)?.name;
+    if (name) seen.set(ref.at, { ...ref, when, name });
   };
-  const said = items.filter((i) => (i.kind === 'user' || i.kind === 'agent') && typeof i.text === 'string').slice(-messages);
-  for (const it of said) {
+  for (const it of lastSaid(items, messages)) {
     for (const m of it.text.matchAll(CODE)) note(find(m[1]), it.at ?? 0);
     for (const m of it.text.matchAll(ASSET_ID)) note(find(m[0]), it.at ?? 0);
   }
   const entries = state.work?.[convId] ?? [];
-  const recent = entries.filter((e) => e.kind === 'turn').slice(-turns);
-  const ids = new Set(recent.map((t) => t.id));
-  for (const c of entries) if (c.kind === 'change' && ids.has(c.turnId)) note({ at: c.fileId, kind: 'file' }, c.at ?? 0);
-  const since = recent[0]?.startedAt;
-  for (const a of since == null ? [] : roomAssets(state, convId)) {
-    const v = a.versions[a.head - 1];
-    if (v.at >= since) note({ at: a.id, kind: 'asset' }, v.at);
+  const recent = lastTurns(entries, turns);
+  const ids = new Set(recent.list.map((t) => t.id));
+  // Newest first, so a turn that touched thousands of files gives its latest, and stops at the cap.
+  for (let i = entries.length - 1; i > recent.from && seen.size < RELEVANT_MAX * 2; i--) {
+    const c = entries[i];
+    if (c.kind === 'change' && ids.has(c.turnId)) note({ at: c.fileId, kind: 'file' }, c.at ?? 0);
   }
-  return [...seen.values()].sort((a, b) => b.when - a.when);
+  if (recent.list.length)
+    for (const a of roomAssets(state, convId)) {
+      const v = a.versions[a.head - 1];
+      if (recent.list.some((t) => wroteIn(t, v))) note({ at: a.id, kind: 'asset' }, v.at);
+    }
+  return [...seen.values()].sort((a, b) => b.when - a.when).slice(0, RELEVANT_MAX);
 }
+
+/**
+ * What In this chat reads of the conversation’s messages: each of the last ten’s id, status and length. The pane
+ * draws In this chat again only when this changes, not on every step or reaction (#1446 review).
+ * @param {any[]} items
+ */
+export const saidKey = (items) =>
+  lastSaid(items)
+    .map((i) => `${i.id}:${i.status ?? ''}:${i.text.length}`)
+    .join('|');

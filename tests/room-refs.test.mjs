@@ -2,7 +2,7 @@
 // conversation’s own room only, and a changed file by its path or a file name only one changed file has.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { conversationOf, refLookup, relevantRefs, roomAsset, roomAssets } from '../shared/room-refs.mjs';
+import { conversationOf, RELEVANT_MAX, refLookup, relevantRefs, roomAsset, roomAssets, saidKey } from '../shared/room-refs.mjs';
 import { apply, emptyState } from '../shared/state.mjs';
 
 const version = (v, over = {}) => ({
@@ -112,17 +112,48 @@ test('only the last ten messages count, and only the person’s and the agents�
   assert.deepEqual(relevantRefs(s, 'th_a', items), []);
 });
 
-test('files changed and assets written in the last two turns count as touched', () => {
+test('files the ledger has the last two turns change, and assets their agents wrote while they ran, count as touched', () => {
   const s = room();
-  const turn = (id, startedAt) => apply(s, 'work.add', { convId: 'th_a', entry: { id, kind: 'turn', startedAt } });
+  const turn = (id, startedAt, handle = 'dev') => apply(s, 'work.add', { convId: 'th_a', entry: { id, kind: 'turn', handle, startedAt, ms: 8 } });
   turn('wt_1', 5);
   apply(s, 'work.add', { convId: 'th_a', entry: { id: 'wc_old', kind: 'change', fileId: 'wf_readme1', turnId: 'wt_1', at: 6 } });
   turn('wt_2', 15);
-  turn('wt_3', 25);
+  turn('wt_3', 25, 'other');
   apply(s, 'work.add', { convId: 'th_a', entry: { id: 'wc_new', kind: 'change', fileId: 'wf_cite', turnId: 'wt_3', at: 26 } });
   assert.deepEqual(
-    relevantRefs(s, 'th_a', []).map((r) => r.at),
-    ['wf_cite', 'as_Data0002'],
-    'the third turn’s file, and the asset written at 20, after the second turn began; not the first turn’s file or the asset from 10',
+    relevantRefs(s, 'th_a', []).map((r) => [r.at, r.name]),
+    [
+      ['wf_cite', 'src/cite.mjs'],
+      ['as_Data0002', 'data.csv'],
+    ],
+    'the third turn’s file, and the asset @dev wrote at 20 while the second ran; not the first turn’s file or the asset from 10',
   );
+});
+
+test('an asset another agent wrote while a turn ran isn’t that turn’s', () => {
+  const s = room();
+  apply(s, 'work.add', { convId: 'th_a', entry: { id: 'wt_1', kind: 'turn', handle: 'someone', startedAt: 15, ms: 10 } });
+  assert.deepEqual(relevantRefs(s, 'th_a', []), []);
+});
+
+test('a turn that touched thousands of files gives its newest, up to the cap', () => {
+  const s = room();
+  apply(s, 'work.add', { convId: 'th_a', entry: { id: 'wt_1', kind: 'turn', handle: 'dev', startedAt: 1000 } });
+  for (let i = 0; i < 3000; i++) {
+    apply(s, 'work.add', { convId: 'th_a', entry: { id: `wf_${i}`, kind: 'file', path: `/p/f${i}.mjs`, rel: `f${i}.mjs` } });
+    apply(s, 'work.add', { convId: 'th_a', entry: { id: `wc_${i}`, kind: 'change', fileId: `wf_${i}`, turnId: 'wt_1', at: 1000 + i } });
+  }
+  const list = relevantRefs(s, 'th_a', []);
+  assert.equal(list.length, RELEVANT_MAX);
+  assert.equal(list[0].at, 'wf_2999');
+});
+
+test('the repaint key changes with the last ten messages’ text or status, and not with steps or reactions', () => {
+  const items = [said(1, 'one'), { id: 'st', kind: 'activity', at: 2 }, said(3, 'two')];
+  const key = saidKey(items);
+  assert.equal(saidKey([...items, { id: 'st2', kind: 'activity', at: 4 }]), key, 'a step');
+  assert.equal(saidKey(items.map((i) => (i.id === 'it_3' ? { ...i, reactions: { '👍': ['you'] } } : i))), key, 'a reaction');
+  assert.notEqual(saidKey(items.map((i) => (i.id === 'it_3' ? { ...i, text: 'two, now longer' } : i))), key, 'text');
+  assert.notEqual(saidKey(items.map((i) => (i.id === 'it_3' ? { ...i, status: 'streaming' } : i))), key, 'status');
+  assert.notEqual(saidKey([...items, said(5, 'three')]), key, 'a new message');
 });
