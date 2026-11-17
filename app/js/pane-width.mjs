@@ -128,6 +128,9 @@ export function mountWidth(el, onCramped) {
     setRailAuto(!el.hidden && f.collapse, !el.hidden && !f.railFits);
     const was = cramped;
     cramped = !el.hidden && f.full;
+    // Covering the conversation, the pane takes none of its width: the column behind keeps its own, so its composer has
+    // room for its placeholder and its quota line when the pane closes (#442), rather than being squeezed to 80 px.
+    el.parentElement?.classList.toggle('pane-covers', cramped);
     return was !== cramped;
   }
   const refit = (/** @type {Event} */ e) => {

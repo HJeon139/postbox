@@ -16,11 +16,18 @@ export async function atTheEnd(page, what) {
   await settled(page);
   expect(await gap(page), what).toBeLessThanOrEqual(2);
 }
-/** The message at the middle of the view, and where it starts; the same message must stay put. */
+/**
+ * The message at the middle of the view, and where it starts; the same message must stay put. Where the middle falls
+ * in the 12 px gap between two messages, it’s the one just below: the composer’s height (#1437) and the runner’s fonts
+ * decide where a scroll lands, and a gap there is no less a view of the conversation.
+ */
 export const reading = (page) =>
   page.evaluate(() => {
-    const n = /** @type {HTMLElement | undefined} */ (document.elementFromPoint(760, innerHeight / 2)?.closest('.item'));
-    return n ? { key: n.dataset.key ?? '', top: Math.round(n.getBoundingClientRect().top) } : null;
+    for (let dy = 0; dy <= 16; dy += 4) {
+      const n = /** @type {HTMLElement | undefined} */ (document.elementFromPoint(760, innerHeight / 2 + dy)?.closest('.item'));
+      if (n) return { key: n.dataset.key ?? '', top: Math.round(n.getBoundingClientRect().top) };
+    }
+    return null;
   });
 export const topOf = (page, key) => page.locator(`[data-key="${key}"]`).evaluate((n) => Math.round(n.getBoundingClientRect().top));
 

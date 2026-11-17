@@ -8,14 +8,11 @@
 // clears the mark on all of them, and lets the next run-out notify again; a turn that only starts clears nothing.
 
 import { BACKEND_NAMES } from '../shared/agent-facts.mjs';
+import { quotaKeyOf } from '../shared/quota-key.mjs';
 import { hostOf } from './remote/placement.mjs';
 
-/** Whose quota a persona’s turns use: its backend, and the host it runs on, if any (`backend@host`). @param {any} persona */
-function keyOf(persona) {
-  const backend = persona?.backend ?? 'mock';
-  const host = hostOf(persona);
-  return host ? `${backend}@${host}` : backend;
-}
+/** Whose quota a persona’s turns use (shared/quota-key.mjs). */
+const keyOf = quotaKeyOf;
 
 /**
  * Whose quota a session’s turns use (keyOf), from its persona as written: a move held behind a commit counts at once.

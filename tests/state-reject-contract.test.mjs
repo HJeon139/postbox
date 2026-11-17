@@ -64,6 +64,7 @@ export const VALID = {
   notify: { text: 'hi' },
   host: { id: 'h2', name: 'host two' },
   'host.status': { id: 'h', status: { state: 'connected' } },
+  quota: { id: 'claude-code', backend: 'claude-code', host: null, status: 'ok', windows: [], seenAt: 1 },
   'turn.archive': {
     convId: 't',
     turnId: 'tu',

@@ -35,6 +35,9 @@ export function emptyState() {
     // Each host’s connection as the host manager last reported it (#120): { state, failure, welcome, lastHeard }.
     // Live state, like a session’s: the server replaces it at each start, since the link it described is gone.
     hostStatus: map(),
+    // Each backend’s usage of its quota as its harness last reported it (#442, shared/quota-key.mjs’s key): the person’s
+    // own figures, for the composer’s quota line. { id, backend, host, status, windows: [{ name, used, resetsAt }], seenAt }.
+    quota: map(),
     // The work ledger (#132): per conversation, what its agents’ turns changed, ran and published (shared/work.mjs).
     work: map(),
     // A conversation’s assets (#516 S3, shared/state-assets.mjs): each with its versions, metadata only; the bytes are in
@@ -92,6 +95,8 @@ export const PUBLIC_STATE_KEYS = Object.freeze([
   'schedules',
   'hosts',
   'hostStatus',
+  // The person’s own usage figures, which reach only their page on this computer (designs/architecture/adapters.md).
+  'quota',
   'work',
   // Metadata only, like files: names, sizes, hashes and authors, never an asset’s contents (#516 S3).
   'assets',
@@ -167,6 +172,7 @@ export const EVENTS = Object.freeze({
   notify: { apply: () => {}, public: true },
   host: { apply: putHost, public: true },
   'host.status': { apply: putHostStatus, public: true },
+  quota: { apply: put('quota'), public: true },
   ...ASSET_EVENTS,
 });
 

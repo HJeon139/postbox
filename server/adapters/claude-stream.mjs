@@ -9,6 +9,7 @@ import { clip } from '../harness-tools.mjs';
 import { contentBlocks } from './claude-content.mjs';
 import { commandsOf, postboxServerStatus } from './claude-init.mjs';
 import { addTokens, forkOf, resultTokens, sessionTotals, turnCost } from './claude-usage.mjs';
+import { claudeQuota, emitQuota } from './quota-windows.mjs';
 
 export { describePermission } from './claude-permission.mjs';
 export { commandsOf }; // moved to claude-init.mjs; its importers keep this path
@@ -94,6 +95,7 @@ export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.no
     const limit = e.type === 'rate_limit_event' ? e.rate_limit_info : null;
     const overage = limit?.overageStatus === 'allowed' || limit?.overageStatus === 'allowed_warning';
     if (limit?.status === 'rejected' && !overage) st.quota = { until: secondsToMs(limit.resetsAt) };
+    if (limit) emitQuota(emit, claudeQuota(limit)); // and its usage, for the composer’s quota line
   }
   return {
     push,
