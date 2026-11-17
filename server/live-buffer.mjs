@@ -144,6 +144,16 @@ export function liveEnd(rt, turn) {
   turn.live = null;
 }
 
+/**
+ * A step stored outside the buffer while its turn runs (a background job’s end, a step moved to a new part): its
+ * change goes into the buffer’s copy too, so the next commit point stores the newest, not the copy from before it
+ * (live-progress.md, “Which wins”). @param {any} turn @param {string} itemId @param {Record<string, any>} patch
+ */
+export function liveStored(turn, itemId, patch) {
+  const held = turn?.live?.changed.get(patch.id);
+  if (held && held.itemId === itemId) held.step = { ...held.step, ...patch };
+}
+
 /** The running turns’ snapshots, for a page that loads mid-turn (/api/state’s live). @param {any} rt */
 export function liveSnapshots(rt) {
   return rt.running

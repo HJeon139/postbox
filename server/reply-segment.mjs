@@ -6,6 +6,7 @@
 // after a post below the reply show below it too, with the words they led to. replySegment moved from
 // server/runtime.mjs; its caller is adapterContext (server/turn-context.mjs).
 
+import { liveStored } from './live-buffer.mjs';
 import { replyMarks } from './turn-marks.mjs';
 
 /**
@@ -87,5 +88,6 @@ function moveUnplaced(rt, turn, part) {
     if (i < 0) continue;
     turn.steps[i] = { ...turn.steps[i], part, at: 0 };
     rt.store.emit('item.patch', { threadId: turn.threadId, id: turn.first, activityStep: { id, part, at: 0 } });
+    liveStored(turn, turn.first, { id, part, at: 0 });
   }
 }

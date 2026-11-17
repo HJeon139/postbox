@@ -5,7 +5,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { liveEnd, liveSession, liveSnapshots, liveStep } from '../server/live-buffer.mjs';
+import { liveEnd, liveSession, liveSnapshots, liveStep, liveStored } from '../server/live-buffer.mjs';
 import { Store } from '../server/store.mjs';
 import { onLive } from '../server/store-live.mjs';
 import { LIVE_CAPS } from '../shared/limits.mjs';
@@ -147,4 +147,17 @@ test('a session frame doesn’t send a live field the session already has stored
   assert.deepEqual(frames, []);
   liveSession(rt, turn, { currentStep: 'Read' });
   assert.deepEqual(frames.at(-1), { kind: 'session', sessionId: 'se_1', currentStep: 'Read' });
+});
+
+test('a step stored outside the buffer while the turn runs wins: the next commit point stores it, not the older copy', async () => {
+  const { rt, turn, stored } = await rig();
+  liveStep(rt, turn, { id: 'job1', label: 'npm test', state: 'running', job: 'b1' });
+  // A background job ends mid-turn (setJobStep), and a step moves to a new part (moveUnplaced): stored directly.
+  liveStored(turn, 'it_1', { id: 'job1', label: 'npm test', state: 'done', ms: 5000, job: 'b1' });
+  liveStep(rt, turn, { id: 's2', label: 'Read', state: 'running' });
+  liveStored(turn, 'it_1', { id: 's2', part: 'it_2', at: 0 });
+  liveEnd(rt, turn);
+  const last = (/** @type {string} */ id) => stored.filter((s) => s.id === id).at(-1);
+  assert.equal(last('job1').state, 'done', 'the job’s end, not the buffer’s running copy');
+  assert.equal(last('s2').part, 'it_2', 'the move, not the part before it');
 });
