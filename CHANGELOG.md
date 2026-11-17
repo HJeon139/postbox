@@ -2,6 +2,42 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.24.0 (2026-11-17)
+
+### Features
+
+- **state:** the live frame's kinds and what of them reaches the browser, before anything is sent
+
+### Fixes
+
+- **state:** a live frame keeps only scalars by its shape, needs public state keys, and a Set
+- **queue:** a cut message opens by click or Enter, and answers name the right agent
+- **queue:** fetch only rows in view, keep rows still, answers in your words
+- **queue:** each queued row says what is waiting, by its source
+
+## 4.23.0 (2026-11-17)
+
+### Features
+
+- **turns:** a turn that dies says what it held, before its error
+- **work:** open room assets and changed files in the pane, and from links in replies
+- **server:** serve a room asset and a changed file for Work’s viewer
+
+### Fixes
+
+- **work:** skip the link pass in a conversation with nothing to link
+- **server:** step back at most 3 bytes to a character’s edge in the viewer’s text
+- **work:** put focus back on the reply’s link when the viewer closes
+- **work:** send the viewer only the text it shows, counted in bytes
+- **transcript:** a resync that keeps nothing clears and builds as main does
+- **server:** answer a deleted asset with a 404 at every version
+- **transcript:** a resync keeps only app items' nodes, and repaints speaker lines
+- **turns:** a dead turn's record says only what holds after its end, and shows wherever it ended
+- **quota:** the reset's re-arm reads the clock the early timer read
+- **quota:** a reset timer that fires before its time arms again, so the reset still wakes the agent
+- **transcript:** a streaming reply renders only what follows the blocks it closed
+- **transcript:** a resync keeps each unchanged item node and app frame where it is
+
 ## 4.22.1 (2026-11-17)
 
 ### Fixes

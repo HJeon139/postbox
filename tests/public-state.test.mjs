@@ -60,7 +60,7 @@ test('the page’s event types are derived from the table: every public entry, a
 });
 
 test('the stream’s own frame names are never event types', () => {
-  assert.deepEqual([...RESERVED].sort(), ['cursor', 'epoch', 'header', 'resync', 'status']);
+  assert.deepEqual([...RESERVED].sort(), ['cursor', 'epoch', 'header', 'live', 'resync', 'status']);
   for (const name of RESERVED) assert.equal(Object.hasOwn(EVENTS, name), false, name);
 });
 
