@@ -102,19 +102,19 @@ export function scriptTurns(adapter, recordings) {
 }
 
 /**
- * Feeds every slot its recording a line each in turn, the clock a cadence on after each round, up to `upTo` of each
- * recording’s share (1 for all of it). A mapper’s exception is counted on its slot, never swallowed unseen. Returns the
+ * Feeds every slot its recording a line each in turn, the clock a cadence on after each round, from `from` up to
+ * `upTo` of each recording (0 and 1 for all of it), so a turn can be played in parts. A mapper’s exception is counted on its slot, never swallowed unseen. Returns the
  * lines pushed and the time the pushes took, the event loop’s own work for each delta.
- * @param {Slot[]} slots @param {{ upTo?: number, release?: boolean }} [o]
+ * @param {Slot[]} slots @param {{ from?: number, upTo?: number, release?: boolean }} [o]
  */
-export async function play(slots, { upTo = 1, release = true } = {}) {
+export async function play(slots, { from = 0, upTo = 1, release = true } = {}) {
   await until(() => slots.every((s) => s.m));
   let pushes = 0;
   let pushMs = 0;
   const longest = Math.max(...slots.map((s) => s.rec.events.length));
   for (let i = 0; i < longest; i++) {
     for (const s of slots) {
-      if (i >= Math.ceil(s.rec.events.length * upTo)) continue;
+      if (i < Math.ceil(s.rec.events.length * from) || i >= Math.ceil(s.rec.events.length * upTo)) continue;
       const at = performance.now();
       try {
         s.m.push(s.rec.events[i]);
