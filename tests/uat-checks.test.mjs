@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, test } from 'node:test';
 import { createAgyMapper } from '../server/adapters/antigravity-cli.mjs';
-import { toPlainText } from '../shared/markdown.mjs';
+import { toPlainText } from '../shared/markdown-plain.mjs';
 import { agyTokens, kiroCredits, runChecks, waitingOnYou } from '../tools/uat/checks.mjs';
 import { JOBS_ANSWERS } from '../tools/uat/driver.mjs';
 import { readHistory } from '../tools/uat/history.mjs';

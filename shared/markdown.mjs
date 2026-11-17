@@ -310,18 +310,3 @@ function table(rows, ctx, n0) {
   const trs = body.map((r, j) => `<tr>${head.map((_, k) => cell('td', r[k], rows[j + 1], n0 + 2 + j)).join('')}</tr>`).join('');
   return `<div class="md-table"><table><thead><tr>${th}</tr></thead><tbody>${trs}</tbody></table></div>`;
 }
-
-/** Strips Markdown to plain text, for screen-reader announcements and short previews. */
-export function toPlainText(src) {
-  return String(src ?? '')
-    .replace(/```[\s\S]*?(```|$)/g, ' ')
-    .replace(/<\/?(details|summary)>/g, ' ')
-    .replace(/`([^`]*)`/g, '$1')
-    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
-    .replace(/^ {0,3}#{1,6}\s+/gm, '')
-    .replace(/^ {0,3}>\s?/gm, '')
-    .replace(/^\s*([-*+]|\d+[.)])\s+/gm, '')
-    .replace(/(\*\*|__|~~|\*|_)(?=\S)([\s\S]*?\S)\1/g, '$2')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
