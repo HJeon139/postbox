@@ -3,9 +3,8 @@
 // It owns that state for one transcript, holds the anchor through changes in size (#88, #297, #341), and publishes what
 // it is on the transcript as data-view-* (publish, view-publish.mjs). Moved from thread.mjs’s mountTranscript (#531).
 
-import { youScrolledWithin } from './scroll-input.mjs';
 import { bind, unbind } from './view-bind.mjs';
-import { browserMoved, measure } from './view-box.mjs';
+import { browserMoved, clamped, measure } from './view-box.mjs';
 /** @typedef {import('./view-hold.mjs').Hold} Hold */
 /**
  * @typedef {{ el: HTMLElement, inPanel: boolean, nodes: Map<string, HTMLElement>, unseen: number, stuck: boolean,
@@ -24,9 +23,6 @@ import { countUnseen, PILL_ROOM, seen, showJump } from './view-pill.mjs';
 import { publish } from './view-publish.mjs';
 import { drawNewest, skipOffscreen } from './view-skip.mjs';
 import { landed, smoothEnded, whenSmoothEnds } from './view-smooth.mjs';
-
-/** How recent input of yours must be for a move up to be yours, not the browser’s: a wheel turn’s scroll comes in the next frame or two. */
-const YOURS_MS = 1000;
 
 /** @param {View} v */
 function holdAnchor(v) {
@@ -95,9 +91,8 @@ function follow(v) {
   // browser’s, keeping what’s on screen still as skipped items above draw shorter than their estimates, as Firefox does
   // (#712a): that move is tied to what the page lost, and a scroll of yours isn’t.
   const up = v.lastTop - s.scrollTop;
-  // Nor is a move up with no input of yours that can scroll: a clamp to a page that shrank and grew past its end in one
-  // frame, before the view measured, leaves nothing lost to go by, and read as you scrolling up (#1464).
-  if (v.stuck && up > 1 && !atEnd(s) && !browserMoved(v, s, up) && youScrolledWithin(YOURS_MS)) {
+  // Nor is a clamp to a page that shrank and grew past its end in one frame (#1464).
+  if (v.stuck && up > 1 && !atEnd(s) && !browserMoved(v, s, up) && !clamped(v, s)) {
     v.stuck = false;
     v.anchor = findAnchor(v);
     // The anchor is taken where the view now is, so that scroll is heard: heard() below mustn’t take it in again.

@@ -58,8 +58,8 @@ test('following a running reply that shrinks and grows back, the held room stays
 
 // A running reply’s parts can shrink and grow again in one frame, before the view measures: the browser clamps the
 // view up to the shorter page, and the page then grows past where it was. With nothing lost by the time it measured,
-// the view took a clamp of more than its slack for you scrolling up, and stopped following. Only your own input that
-// can scroll the page ends following (scroll-input.mjs).
+// the view took a clamp of more than its slack for you scrolling up, and stopped following. A page longer than the view
+// held, with the same newest message, still in view, is that clamp (view-state.mjs clamped()).
 test('following, a shrink and regrowth in one frame, with no input of yours, keeps following at the end', async ({ page }) => {
   const { rt, store } = app;
   const project = Object.values(store.state.projects)[0];

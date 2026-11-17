@@ -33,8 +33,6 @@ test('V1: scrolled up into space below the last item, the view reads with no anc
     const s = /** @type {Element} */ (document.scrollingElement);
     s.scrollTop = s.scrollHeight;
     await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
-    // Your scroll, as a wheel turn makes it: only input of yours that can scroll ends following (#1464).
-    dispatchEvent(new WheelEvent('wheel', { deltaY: -innerHeight }));
     s.scrollTop -= innerHeight;
     await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
     const last = [...el.querySelectorAll(':scope > [data-key]')].at(-1);
