@@ -103,10 +103,16 @@ function follow(v) {
   if (pointedAt && holdNode(v, pointedAt, s)) v.held = measure(v, s);
   else if (v.stuck) {
     const now = measure(v, s);
+    const heldNow = Number.parseFloat(v.el.style.marginBottom) || 0;
     if (now.width !== v.held.width) release(v);
-    else if (now.end < v.held.end && Math.abs(now.last - v.held.last) < 1 && v.held.end > s.clientHeight) {
-      const heldNow = Number.parseFloat(v.el.style.marginBottom) || 0;
+    else if (now.end < v.held.end && Math.abs(now.last - v.held.last) < 1 && v.held.end > s.clientHeight)
       v.el.style.marginBottom = `${heldNow + v.held.end - now.end}px`;
+    // What grows back, a running reply after its steps fold, takes the room held for it first: added to, never given
+    // back, the room grew with each shrink and regrowth, and following scrolled into it until nothing showed.
+    else if (now.end > v.held.end && heldNow > 0) {
+      const left = heldNow - Math.min(heldNow, now.end - v.held.end);
+      if (left > 0) v.el.style.marginBottom = `${left}px`;
+      else release(v);
     }
     // A smooth jump to the end is on its way there: snapping now would end it in one frame (#712a).
     if (!atEnd(s) && !v.smoothing) s.scrollTop = s.scrollHeight;
