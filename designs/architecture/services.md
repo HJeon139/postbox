@@ -149,7 +149,7 @@ The list refines the starting point from the data:
 
 ### Memory
 
-- **Owns:** each session’s marker of what it has read, and how a conversation reads to an agent: the catch-up a turn starts with, a topic or side thread’s, a mention given before as a pointer (#484), an item’s line and the read tools (designs/architecture/shared-memory.md).
+- **Owns:** each session’s marker of what it has read, and how a conversation reads to an agent: the catch-up a turn starts with, a topic or side thread’s, an item’s line and the read tools (designs/architecture/shared-memory.md).
 - **Interface:** `catchUp(se, exclude)`, `turnContext(se, where, message, slash)`, `threadCatchUp(se, threadId, exclude)`, `moveMarkers(threadId, id, stubId)`, `describeItem(item, se, n, reader)`, `topicRootLine(se, t)`, `readConversation(se, args)`, `readMessage(se, args)`, `readLine(item, se, n)`.
 - **Depends on:** Store, Threads, Sessions, Personas, Placement, Assets, Apps, and the `catchUpLines` port: the messages held for an agent on a card waiting for the person (#693).
 
@@ -250,7 +250,7 @@ flowchart LR
   - `wake_agent`, and `open_topic`’s `mentions`;
   - wake cards and their held lines (the `catchUpLines` port);
   - `newer-waiting`’s replacement of a waiting message (“posted since” takes its place);
-  - `queue-batch`, and the wakes at the end of a turn (step L).
+  - `queue-batch`, and the wakes at the end of a turn (step L). Gone since step 3’s cleanup: what’s left of `queue-batch` is a turn’s batch of entries and their arrival order, `turn-batch.mjs`.
 
   A reply’s mentions are entries as soon as it is final, a failed reply’s included.
 
@@ -811,7 +811,7 @@ Each module under `server/` that reaches `Runtime`, with the `rt.x` names it use
 | `newer-waiting.mjs` | 2 | `s`, `turns` |
 | `permission-always.mjs` | 2 | `persona`, `readsRules` |
 | `permission-modes.mjs` | 2 | `s`, `store` |
-| `queue-batch.mjs` | 2 | `busyFor`, `store` |
+| `queue-batch.mjs` (now `turn-batch.mjs`, which reaches no member) | 2 | `busyFor`, `store` |
 | `reactions.mjs` | 2 | `conversationThreads`, `store` |
 | `remote/serve.mjs` | 2 | `restoreRemoteTurns`, `watchHosts` |
 | `remote/turns-restore.mjs`* | 2 | `personaFor`, `s` |
