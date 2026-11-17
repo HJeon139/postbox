@@ -55,6 +55,8 @@ test('#467 only the classifier lists the network codes: the scheduled wakes and 
   );
 });
 
+// The event’s shape is recorded in tests/fixtures/claude-code/ (ledger-edits.jsonl, with status 'allowed'); 'rejected'
+// is the status the Agent SDK’s SDKRateLimitInfo type (sdk.d.ts) gives a limit that refuses the turn.
 test('#442 Claude Code: a rejected rate limit is the turn’s quota, until its resetsAt', () => {
   const m = createStreamMapper(quietCtx());
   m.push({ type: 'rate_limit_event', rate_limit_info: { status: 'allowed', resetsAt: 1792741200, rateLimitType: 'five_hour' } });
@@ -63,6 +65,7 @@ test('#442 Claude Code: a rejected rate limit is the turn’s quota, until its r
   assert.deepEqual(m.quota, { until: 1792741200000 });
 });
 
+// Built from what #396 quotes of the “Agent research” room’s failure: the status, the model and the reset countdown.
 test('#396 Antigravity: RESOURCE_EXHAUSTED is the turn’s quota, until the reset its error counts down to', () => {
   const m = createAgyMapper(quietCtx(), { now: () => 1000 });
   m.push({
@@ -73,6 +76,8 @@ test('#396 Antigravity: RESOURCE_EXHAUSTED is the turn’s quota, until the rese
   assert.deepEqual(m.quota, { until: 1000 + ((155 * 60 + 28) * 60 + 23) * 1000 });
 });
 
+// The app-server’s `error` notification with `codexErrorInfo: 'usageLimitExceeded'`, a value of its CodexErrorInfo enum
+// in the protocol schema (`codex app-server generate-json-schema`); the message is a stand-in.
 test('#442 Codex: a usage limit error is the turn’s quota, with no reset time', () => {
   const m = createCodexMapper(quietCtx());
   const r = m.push({ method: 'error', params: { error: { message: 'You’ve hit your usage limit.', codexErrorInfo: 'usageLimitExceeded' }, willRetry: false } });

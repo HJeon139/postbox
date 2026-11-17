@@ -10,6 +10,8 @@ import { settle, setup } from './side-threads-fixture.mjs';
 const lost = () => async () => {
   throw new Error('fetch failed', { cause: Object.assign(new Error('socket hang up'), { code: 'ECONNRESET' }) });
 };
+// A failure already marked by its adapter (server/harness-failure.mjs’s withQuota); each harness’s own quota event is
+// read from its documented shape in tests/harness-failure.test.mjs.
 const outOfQuota = (until) => async () => {
   throw withQuota(new Error('You’ve hit your usage limit.'), { until });
 };
