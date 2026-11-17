@@ -32,6 +32,17 @@ export function quotaReport(r) {
   return { status: STATUSES.has(r.status) ? r.status : 'ok', windows };
 }
 
+/**
+ * When a report’s figures were read: its own seenAt, for a harness asked before the turn that reports it (Antigravity’s
+ * /usage, #1466), else now. Never later than now, nor older than a rewrite’s age, so a stray time can’t make a bar
+ * look fresher or older than a report can be.
+ * @param {any} report @param {number} [now]
+ */
+export function reportedAt(report, now = Date.now()) {
+  const at = report?.seenAt;
+  return Number.isFinite(at) && at <= now && now - at < REWRITE_MS ? at : now;
+}
+
 /** What a reader of the bar would see differ: the status, and each window’s name, whole percent and reset minute. */
 const shown = (/** @type {any} */ r) =>
   JSON.stringify([r.status, r.windows.map((w) => [w.limit, w.name, Math.round(w.used * 100), w.resetsAt && Math.round(w.resetsAt / 60_000)])]);

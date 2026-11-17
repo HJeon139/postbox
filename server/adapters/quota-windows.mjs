@@ -98,7 +98,7 @@ const AGY_DEFAULT_POOL = 'Gemini Models';
 /**
  * Antigravity’s `/usage` (agy-usage.mjs): each model pool’s windows, with the share remaining from 0 to 1 and an ISO
  * reset time. Every pool is reported, so the backend’s bar shows whichever is most used; a pool other than Gemini’s,
- * Claude and GPT models’ say, is a limit of its own, named after the window, as Codex’s are. Out once a window has
+ * Claude and GPT models’ say, is a limit of its own, named after the pool, as Codex’s are named after theirs. Out once a window has
  * nothing left.
  * @param {any} data @returns {{ status: string, windows: any[] } | null}
  */

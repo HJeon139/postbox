@@ -20,8 +20,9 @@
 //                                           state: 'think' | 'gen' | 'tool'; ctx: % of context used;
 //                                           subagents: [{ name, state, ctx }]
 //   ctx.compaction({ kept, total, summary })  the agent's context was summarized
-//   ctx.quota({ status, windows })          its backend’s quota usage (#442): status 'ok' | 'warning' | 'out';
-//                                           windows [{ name, used (0 to 1), resetsAt (epoch ms) | null }]
+//   ctx.quota({ status, windows, seenAt? })  its backend’s quota usage (#442): status 'ok' | 'warning' | 'out';
+//                                           windows [{ name, used (0 to 1), resetsAt (epoch ms) | null }];
+//                                           seenAt: when it was read, if before now (epoch ms)
 //   ctx.sources([{ title, authors, year, url, note }])  citations for the current reply
 //   ctx.reported({ mcpServers?, model?, effort? })  what the backend reported about the run: the MCP servers
 //                                           that loaded, [{ name, status, source? }]; the model that answered;
