@@ -90,8 +90,10 @@ export function liveSession(rt, turn, patch, carried = {}) {
   const capped = {};
   for (const [k, v] of Object.entries(patch)) capped[k] = k === 'toolCalls' || k === 'subagents' ? capList(v, LIVE_CAPS[k]) : capString(v);
   const session = bufferOf(turn).session;
-  // Only what changed goes, as with a step: a page holds the rest from an earlier frame or the snapshot.
-  const changed = Object.fromEntries(Object.entries(capped).filter(([k, v]) => !(k in session) || JSON.stringify(session[k]) !== JSON.stringify(v)));
+  // Only what changed goes, as with a step: a page holds the rest from an earlier frame, the snapshot or the store.
+  const stored = rt.store.pending.session(turn.sessionId) ?? {};
+  const was = (/** @type {string} */ k) => (k in session ? session[k] : stored[k]);
+  const changed = Object.fromEntries(Object.entries(capped).filter(([k, v]) => JSON.stringify(was(k)) !== JSON.stringify(v)));
   Object.assign(session, capped);
   if (Object.keys(changed).length || Object.keys(carried).length) sendLive(rt.store, { kind: 'session', sessionId: turn.sessionId, ...changed, ...carried });
 }

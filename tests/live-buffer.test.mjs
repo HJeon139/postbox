@@ -139,3 +139,12 @@ test('a session frame sends only the live fields that changed, and none when not
   liveSession(rt, turn, { toolCount: 1 });
   assert.equal(frames.length, n, 'nothing changed, nothing sent');
 });
+
+test('a session frame doesn’t send a live field the session already has stored', async () => {
+  const { rt, turn, frames } = await rig();
+  rt.store.emit('session', { id: 'se_1', threadId: 'th_1', currentStep: 'Thinking' });
+  liveSession(rt, turn, { currentStep: 'Thinking' });
+  assert.deepEqual(frames, []);
+  liveSession(rt, turn, { currentStep: 'Read' });
+  assert.deepEqual(frames.at(-1), { kind: 'session', sessionId: 'se_1', currentStep: 'Read' });
+});

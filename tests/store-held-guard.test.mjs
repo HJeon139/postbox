@@ -113,7 +113,7 @@ const PENDING = {
   'job-records.mjs': ['endJob', 'endJob', 'endJob', 'runningProgress', 'setJobStep', 'settleJobs'],
   'ledger.mjs': ['entries', 'recordPublishes', 'recordPublishes'], // the ledger reads back its own entries; the turn’s blocks and apps
   'lint-delivery.mjs': ['sendLint'], // the apps the turn showed, still being checked
-  'live-buffer.mjs': ['liveUpdate', 'liveFields'], // a running turn’s state stored only when it changed, and its calls and step from what was stored as it began, held writes included
+  'live-buffer.mjs': ['liveSession', 'liveUpdate', 'liveFields'], // a live field sent only when it differs from the stored one, a running turn’s state stored only when it changed, and its calls and step from what was stored as it began, held writes included
   'permission-cards.mjs': ['recordDenial'], // the same refused call, once
   'permission-expiry.mjs': ['tellExpired'], // the card a turn’s end just expired, told about once (#721)
   'permission-prompt.mjs': ['permission'], // the card the call waits on
