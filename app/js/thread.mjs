@@ -1429,7 +1429,7 @@ export function mountComposer(threadId, { side = false } = {}) {
     const note = describeStop(action, b, threadId);
     const last = S().sessions[t.lastSpeaker];
     const members = sessionsOf(threadId).filter((x) => !x.retiredFork);
-    ta.placeholder = placeholderFor({ topic, side, members, last, fits: space.fits });
+    paintPlaceholder(members, last);
     paintOfflineQueue(
       queue,
       outbox.filter((x) => x.threadId === threadId),
@@ -1490,6 +1490,11 @@ export function mountComposer(threadId, { side = false } = {}) {
     if (whole) hint.title = whole;
     else hint.removeAttribute('title');
     if (onFix) hint.querySelector('.did-you-mean')?.focus();
+  }
+  /** The placeholder, set only when it changes, so a repaint or a resize that keeps it costs no layout (#1155). */
+  function paintPlaceholder(members = sessionsOf(threadId).filter((x) => !x.retiredFork), last = S().sessions[thread()?.lastSpeaker]) {
+    const text = placeholderFor({ topic, side, members, last, fits: space.fits });
+    if (ta.placeholder !== text) ta.placeholder = text;
   }
   /**
    * The one line under the input: what Enter will do with a / or ! line, offline, and once you type, whom the draft
@@ -1575,7 +1580,7 @@ export function mountComposer(threadId, { side = false } = {}) {
       h('button.btn.sm.ghost', { type: 'button', 'aria-label': `Don’t stop ${se.handle}`, onclick: dismiss }, icon('x', 'i-sm')),
     );
   }
-  const space = placeholderRoom(ta, paint);
+  const space = placeholderRoom(ta, () => paintPlaceholder());
   paint();
   paintAtt();
   autosize();
