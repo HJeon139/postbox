@@ -60,6 +60,7 @@ import { Summaries } from './summary-service.mjs';
 import { Threads } from './threads.mjs';
 import { settleToolAsks } from './tool-ask.mjs';
 import { startTopic } from './topic-open.mjs';
+import { listenTurnEnd } from './turn-end-listeners.mjs';
 import { entryLine } from './turn-input.mjs';
 import { Turns } from './turn-service.mjs';
 import { settleSubagentSteps } from './turn-steps.mjs';
@@ -287,6 +288,7 @@ export class Runtime {
     });
     this.bus.on('persona.updated', ({ persona }) => queue.drainMovedOff(this, persona.id));
     // The inbox’s listeners, last: a final reply’s mentions become entries, and the end of a turn settles them.
+    listenTurnEnd(this);
     listenInbox(this);
   }
 
