@@ -50,10 +50,13 @@ export function tabOn(ls, store, open, since) {
 /**
  * Opens `n` tabs on the store’s stream, each with `open` as its open conversations, from the store’s seq now; their
  * bytes and frames are what came after the connect, the work’s. Returns the stream too, for tabs that join
- * later. @param {any} store @param {number} n @param {string[]} open
+ * later. The stream is told the runtime’s running turns, as server/index.mjs tells it, so a tab that connects
+ * mid-turn gets their live snapshot where Postbox sends one (#1471); without, it reported none.
+ * @param {any} store @param {number} n @param {string[]} open @param {any} [running]  the runtime’s rt.running
+ * @param {typeof liveStreams} [streams]
  */
-export function openTabs(store, n, open) {
-  const ls = liveStreams(store);
+export function openTabs(store, n, open, running = undefined, streams = liveStreams) {
+  const ls = /** @type {any} */ (streams)(store, undefined, /** @type {any} */ ({ running }));
   const tabs = Array.from({ length: n }, () => tabOn(ls, store, open, store.state.seq));
   return { tabs, ls, stop: () => ls.stop() };
 }

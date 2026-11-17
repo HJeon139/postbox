@@ -28,7 +28,7 @@ export async function measured({ tabs = 0, prepare = (f) => ({ open: [f.t.id] })
     const f = setup(store);
     f.rt.ledger.git = notARepository;
     const prepared = prepare(f);
-    const wire = tabs ? openTabs(store, tabs, prepared.open) : null;
+    const wire = tabs ? openTabs(store, tabs, prepared.open, f.rt.running) : null;
     // The whole event loop’s work and the process’s CPU over the turns and what they start after them: the store’s
     // writes, the wire and the timers, not only the mappers. The virtual clock’s own stepping is in it too, the same
     // on every branch, so it’s compared between branches, never read as Postbox’s alone.
