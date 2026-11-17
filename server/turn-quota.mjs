@@ -20,8 +20,11 @@ function keyOf(persona) {
 /** Whose quota a session’s turns use (keyOf). @param {any} rt @param {any} se @returns {string} */
 const quotaKey = (rt, se) => keyOf(rt.s.personas[se.personaId]);
 
-/** The sessions whose turns use one quota. @param {any} rt @param {string} key @returns {any[]} */
-const sessionsOn = (rt, key) => Object.values(rt.s.sessions).filter((se) => !se.retiredFork && quotaKey(rt, se) === key);
+/**
+ * The sessions whose turns use one quota, as written, behind a held commit too, since their marks decide writes.
+ * @param {any} rt @param {string} key @returns {any[]}
+ */
+const sessionsOn = (rt, key) => Object.values(rt.store.pending.sessions()).filter((se) => !se.retiredFork && quotaKey(rt, se) === key);
 
 /** What the notice calls a quota: its backend, and its host by name. @param {any} rt @param {any} se */
 function quotaName(rt, se) {
@@ -107,7 +110,7 @@ export function quotaMoved(rt, persona, was) {
   if (key === keyOf(was)) return;
   const mine = (/** @type {any} */ se) => se.personaId === persona.id;
   const there = sessionsOn(rt, key).find((se) => !mine(se) && se.quota)?.quota ?? null;
-  for (const se of Object.values(rt.s.sessions))
+  for (const se of Object.values(rt.store.pending.sessions()))
     if (mine(se) && !se.retiredFork && (se.quota || there)) {
       rt.sessions.update(se.id, { quota: there });
       if (!there) rt.delivery.wake(se.id);
