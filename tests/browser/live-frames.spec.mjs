@@ -57,3 +57,26 @@ test('the newest step, the agent’s current step and its ring show live, though
     )
     .toBe(true);
 });
+
+test('a conversation opened mid-turn draws the running step whole, then its end', async ({ page }) => {
+  const t = room('Live frames reopen', ['linter']);
+  const other = room('Elsewhere', ['bystander']);
+  scripts.set('linter', async ({ emit, who }) => {
+    emit({ kind: 'tool_call', id: 'r1', name: 'Bash', input: { command: 'npm run lint -- --fix' }, final: true });
+    await hold(who, 1);
+    emit({ kind: 'tool_result', id: 'r1', text: 'clean' });
+    emit({ kind: 'text', text: 'Lint is clean.' });
+  });
+  // The page has another conversation open while the turn starts, so it holds nothing of this one.
+  await page.goto(`${scripted.app.origin}/#/t/${other.id}`);
+  await synced(page, scripted.app);
+  scripted.app.rt.sendMessage(t.id, { text: 'Lint it.' });
+  await expect.poll(() => at('linter')).toBe(1);
+  // Opened now: a new stream, whose connect sends the running turn’s snapshot.
+  await page.goto(`${scripted.app.origin}/#/t/${t.id}`);
+  const step = page.locator('.live-steps li', { hasText: 'npm run lint -- --fix' });
+  await expect(step, 'the running step, whole, from the snapshot').toHaveCount(1);
+  go('linter');
+  const reply = () => scripted.app.store.items(t.id).find((i) => i.kind === 'agent');
+  await expect(page.locator(`[data-key="${reply()?.id}"]`)).toContainText('Lint is clean.');
+});
