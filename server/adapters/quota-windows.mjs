@@ -1,7 +1,7 @@
 // Each harness’s quota usage as the harness-event contract’s `quota` kind (#442; designs/architecture/adapters.md,
 // “Quota: each backend’s usage, in the composer”): a status, and windows each with a name, the share used from 0 to 1,
-// and when it resets. Only Claude Code, the Agent SDK and Codex report one; Postbox never makes up a figure for a
-// harness that doesn’t. These are the person’s own figures: recorded fixtures keep them scrubbed (tools/privacy-check.mjs).
+// and when it resets. Only Claude Code, the Agent SDK, Codex and Antigravity report one; Postbox never makes up a
+// figure for a harness that doesn’t. These are the person’s own figures: recorded fixtures keep them scrubbed (tools/privacy-check.mjs).
 
 /** Claude’s window names, as the bars show them. */
 const CLAUDE_WINDOWS = { five_hour: '5 h', seven_day: '7 d', seven_day_opus: '7 d Opus', seven_day_sonnet: '7 d Sonnet' };
@@ -90,6 +90,36 @@ function namedLimit(limits) {
 
 /** A Codex window’s percent used, 0 to 100: always a percent, so 1 is 1%. @param {any} w */
 const percentOf = (w) => w.usedPercent;
+
+/** Antigravity’s window names, as the bars show them, and the pool its default limit is. */
+const AGY_WINDOWS = { '5h': '5 h', weekly: '7 d' };
+const AGY_DEFAULT_POOL = 'Gemini Models';
+
+/**
+ * Antigravity’s `/usage` (agy-usage.mjs): each model pool’s windows, with the share remaining from 0 to 1 and an ISO
+ * reset time. Every pool is reported, so the backend’s bar shows whichever is most used; a pool other than Gemini’s,
+ * Claude and GPT models’ say, is a limit of its own, named after the pool, as Codex’s are named after theirs. Out once a window has
+ * nothing left.
+ * @param {any} data @returns {{ status: string, windows: any[] } | null}
+ */
+export function agyQuota(data) {
+  const pools = Array.isArray(data?.groups) ? data.groups : [];
+  const windows = pools
+    .flatMap((pool) => (Array.isArray(pool?.buckets) ? pool.buckets.map((b) => agyWindow(pool, b)) : []))
+    .filter((w) => w.name && w.used !== null);
+  if (!windows.length) return null;
+  return { status: windows.some((w) => w.used >= 1) ? 'out' : 'ok', windows };
+}
+
+/** One of a pool’s windows. @param {any} pool @param {any} b */
+function agyWindow(pool, b) {
+  const left = b?.remaining_fraction;
+  const used = typeof left === 'number' && left >= 0 && left <= 1 ? share(1 - left, 1) : null;
+  const at = typeof b?.reset_time === 'string' ? Date.parse(b.reset_time) : Number.NaN;
+  const name = typeof pool.name === 'string' && pool.name ? pool.name : null;
+  const limit = name && name !== AGY_DEFAULT_POOL ? { limit: name, limitName: name } : {};
+  return { name: AGY_WINDOWS[b?.window] ?? null, used, resetsAt: Number.isFinite(at) ? at : null, ...limit };
+}
 
 /** Emits a harness’s report as the contract’s `quota` kind, when it has one. @param {(e: any) => void} emit @param {any} report */
 export function emitQuota(emit, report) {
