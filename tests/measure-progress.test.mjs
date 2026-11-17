@@ -39,3 +39,19 @@ test('a session patch is progress with only live fields, mixed with a stored one
   assert.equal(kindOf(patch({ state: 'idle', updatedAt: 1 })), 'other: session.patch');
   assert.equal(kindOf(patch({ compacting: true })), 'other: session.patch', 'compacting stays stored');
 });
+
+test('a time 12% worse in every pair is worse, though the bands overlap; the same times are not', async () => {
+  const { compare } = await import('../tools/measure-progress/compare.mjs');
+  // A busy machine: each pair runs slower than the last, so the branch’s median sits inside main’s band.
+  const mainMs = [100, 140, 180, 220, 260, 300, 340, 380];
+  const main = mainMs.map((ms) => [{ row: 'r', cpuMs: ms, logBytes: 1000 }]);
+  const worse = mainMs.map((ms) => [{ row: 'r', cpuMs: ms * 1.12, logBytes: 1000 }]);
+  const same = mainMs.map((ms) => [{ row: 'r', cpuMs: ms, logBytes: 1000 }]);
+  assert.equal(compare(main, worse).find((c) => c.key === 'cpuMs')?.worse, true);
+  assert.equal(
+    compare(main, same).some((c) => c.worse),
+    false,
+  );
+  const bytes = mainMs.map((ms) => [{ row: 'r', cpuMs: ms, logBytes: 1100 }]);
+  assert.equal(compare(main, bytes).find((c) => c.key === 'logBytes')?.worse, true);
+});
