@@ -28,15 +28,22 @@ export async function measured({ tabs = 0, prepare = (f) => ({ open: [f.t.id] })
     const f = setup(store);
     const prepared = prepare(f);
     const wire = tabs ? openTabs(store, tabs, prepared.open) : null;
+    // The whole event loop’s work and the process’s CPU over the turns and what they start after them: the store’s
+    // writes, the wire and the timers, not only the mappers. The virtual clock’s own stepping is in it too, the same
+    // on every branch, so it’s compared between branches, never read as Postbox’s alone.
+    const loop = performance.eventLoopUtilization();
+    const cpu = process.cpuUsage();
     const out = await work(f, prepared);
     await settled(f.rt);
     // The turns’ ledger records, written after they end. Postbox’s close() waits for them with a grace timer
     // (settleLedger), which the virtual clock would run out at once, so this waits for the ledger itself.
     await ticking(f.rt.work.idle());
+    const busy = performance.eventLoopUtilization(loop);
+    const used = process.cpuUsage(cpu);
     stopTimers(f.rt);
     wire?.stop();
     await ticking(store.close());
-    return { ...out, log: shares(tally(written())), tabs: wire?.tabs ?? [] };
+    return { ...out, loopMs: busy.active, cpuMs: (used.user + used.system) / 1000, log: shares(tally(written())), tabs: wire?.tabs ?? [] };
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -65,6 +72,8 @@ function numbers(m) {
     pageFrames: tab.frames,
     pushes: m.pushes,
     pushMs: m.pushMs,
+    loopMs: m.loopMs,
+    cpuMs: m.cpuMs,
     errors: m.errors,
   };
 }
