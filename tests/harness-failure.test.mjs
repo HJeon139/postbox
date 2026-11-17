@@ -65,6 +65,12 @@ test('#442 Claude Code: a rejected rate limit is the turn’s quota, until its r
   assert.deepEqual(m.quota, { until: 1792741200000 });
 });
 
+test('#442 Claude Code: a rejected limit that overage covers isn’t the turn’s quota, so a later failure isn’t marked as one', () => {
+  const m = createStreamMapper(quietCtx());
+  m.push({ type: 'rate_limit_event', rate_limit_info: { status: 'rejected', resetsAt: 1792741200, rateLimitType: 'five_hour', overageStatus: 'allowed' } });
+  assert.equal(m.quota, null);
+});
+
 // Built from what #396 quotes of the “Agent research” room’s failure: the status, the model and the reset countdown.
 test('#396 Antigravity: RESOURCE_EXHAUSTED is the turn’s quota, until the reset its error counts down to', () => {
   const m = createAgyMapper(quietCtx(), { now: () => 1000 });

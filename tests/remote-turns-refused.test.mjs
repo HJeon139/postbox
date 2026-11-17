@@ -46,3 +46,19 @@ test('#612 an asked call from a turn that has ended gets the refusal as its answ
   r.d.end(next);
   await settled(r);
 });
+
+test('#612 a late call the host sends again is refused again, and leaves one notice', async () => {
+  const r = rig();
+  const turn = await running(r);
+  r.d.end(turn);
+  await settled(r);
+  const next = await running(r, 'again');
+  const call = { type: 'tool', turn, id: 'late', name: 'define_term', args: { term: 'x', definition: 'y' } };
+  r.link.hear(call);
+  await until(() => refusal(r, 'late'), 'the first refusal');
+  r.link.hear(call);
+  await until(() => r.link.sent.filter((m) => m.type === 'reply' && m.id === 'late').length === 2, 'the second refusal');
+  assert.equal((r.store.state.inbox[r.se().id] ?? []).filter((e) => e.source === 'notice').length, 1);
+  r.d.end(next);
+  await settled(r);
+});
