@@ -32,6 +32,17 @@ export function quotaReport(r) {
   return { status: STATUSES.has(r.status) ? r.status : 'ok', windows };
 }
 
+/**
+ * When a report’s figures were read: its own seenAt, for a harness asked before the turn that reports it (Antigravity’s
+ * /usage, #1466), however long that turn ran, else now. Never later than now, so a stray time can’t make a bar look
+ * fresher than it is.
+ * @param {any} report @param {number} [now]
+ */
+export function reportedAt(report, now = Date.now()) {
+  const at = report?.seenAt;
+  return Number.isFinite(at) && at > 0 && at <= now ? at : now;
+}
+
 /** What a reader of the bar would see differ: the status, and each window’s name, whole percent and reset minute. */
 const shown = (/** @type {any} */ r) =>
   JSON.stringify([r.status, r.windows.map((w) => [w.limit, w.name, Math.round(w.used * 100), w.resetsAt && Math.round(w.resetsAt / 60_000)])]);
@@ -47,7 +58,11 @@ const windowKey = (w) => `${w.limit ?? ''}|${w.name}`;
  */
 function merged(last, next, now) {
   const byKey = new Map(last.map((w) => [windowKey(w), w]));
-  for (const w of next) byKey.set(windowKey(w), { ...w, seenAt: now });
+  for (const w of next) {
+    // A report read before the figure held, as a slow turn’s can be, never replaces it.
+    if ((byKey.get(windowKey(w))?.seenAt ?? -Infinity) > now) continue;
+    byKey.set(windowKey(w), { ...w, seenAt: now });
+  }
   const recent = [...byKey.values()].sort((a, b) => (b.seenAt ?? 0) - (a.seenAt ?? 0)).slice(0, MAX_WINDOWS);
   return [...byKey.values()].filter((w) => recent.includes(w));
 }
@@ -63,8 +78,10 @@ export function recordQuota(rt, se, report, now = Date.now()) {
   const persona = rt.s.personas[se.personaId];
   const id = quotaKeyOf(persona);
   const last = rt.s.quota?.[id];
-  const r = { ...given, windows: merged(last?.windows ?? [], given.windows, now) };
+  // A report older than the record keeps the record’s status and time: it can only fill in a window the record lacks.
+  const older = !!last && now < last.seenAt;
+  const r = { status: older ? last.status : given.status, windows: merged(last?.windows ?? [], given.windows, now) };
   if (last && shown(last) === shown(r) && now - last.seenAt < REWRITE_MS) return;
   const host = persona?.remote?.hostId ?? null;
-  rt.store.emit('quota', { id, backend: persona?.backend ?? 'mock', host, ...r, seenAt: now });
+  rt.store.emit('quota', { id, backend: persona?.backend ?? 'mock', host, ...r, seenAt: older ? last.seenAt : now });
 }
