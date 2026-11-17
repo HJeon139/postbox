@@ -71,7 +71,8 @@ export function barOf(q, now) {
 /**
  * One bar, as a meter, drawn as the fit says: a track that fills its part of the line, in the neutral color, never an
  * alarm’s, with its words below it, at the last level its percent alone. It keeps the names it would show at the full
- * and the short level (data-names), for a check to hold the order the levels go in. @param {ReturnType<typeof barOf>} b @param {any} fit @param {[string | null, string | null]} names
+ * and the short level (data-names), for a check to hold the order the levels go in.
+ * @param {ReturnType<typeof barOf>} b @param {any} fit @param {[string | null, string | null]} names
  */
 function barEl(b, fit, names, /** @type {string} */ name) {
   return h(

@@ -42,44 +42,38 @@ async function conversation(page, width) {
   return t;
 }
 
-/** Where the composer and its card are, and what is drawn at a point. */
+/** Where the composer and its card are. */
 const boxes = (page) =>
   page.evaluate(() => {
     const composer = /** @type {HTMLElement} */ (document.querySelector('.main > .composer'));
     const r = (/** @type {Element} */ el) => el.getBoundingClientRect().toJSON();
-    return { composer: r(composer), card: r(/** @type {Element} */ (composer.querySelector('.composer-box'))), style: getComputedStyle(composer) };
+    return { composer: r(composer), card: r(/** @type {Element} */ (composer.querySelector('.composer-box'))) };
   });
 
 for (const width of [1280, 375])
-  test(`#1463 at ${width} px the composer is a card over the conversation, with no band or border across it`, async ({ page }) => {
+  test(`#1463 at ${width} px the card floats over the conversation, which shows and takes clicks beside and below it`, async ({ page }) => {
     await conversation(page, width);
     const look = await page.locator('.main > .composer').evaluate((el) => {
       const s = getComputedStyle(el);
-      return {
-        border: s.borderTopWidth,
-        color: s.backgroundColor,
-        image: s.backgroundImage,
-        card: getComputedStyle(/** @type {Element} */ (el.querySelector('.composer-box'))).borderRadius,
-      };
+      const card = getComputedStyle(/** @type {Element} */ (el.querySelector('.composer-box')));
+      return { border: s.borderTopWidth, color: s.backgroundColor, image: s.backgroundImage, radius: card.borderRadius, shadow: card.boxShadow };
     });
     expect.soft(look.border, 'no border across the conversation').toBe('0px');
-    // Not a band of its own: transparent at its top edge, so the conversation fades under it rather than stopping at a line.
-    expect.soft(look.color, 'no flat background').toBe('rgba(0, 0, 0, 0)');
-    expect.soft(look.image, 'a fade at its top edge').toMatch(/^linear-gradient\(/);
-    expect.soft(Number.parseFloat(look.card), 'a rounded card').toBeGreaterThanOrEqual(12);
-    // The conversation runs on under it: scrolled up, a message lies beneath the composer’s top edge.
+    expect.soft([look.color, look.image], 'no surface of its own').toEqual(['rgba(0, 0, 0, 0)', 'none']);
+    expect.soft(Number.parseFloat(look.radius), 'a rounded card').toBeGreaterThanOrEqual(12);
+    expect.soft(look.shadow, 'with a shadow').not.toBe('none');
+    // Scrolled up, the conversation runs on under the composer: beside the card and below it, it’s what you see and
+    // what a click reaches, not a band of the composer’s.
     await page.evaluate(() => window.scrollTo(0, (document.documentElement.scrollHeight - innerHeight) / 2));
     await settled(page);
-    const { composer } = await boxes(page);
-    const under = await page.locator('.transcript > .item').evaluateAll(
-      (items, top) =>
-        items.some((el) => {
-          const b = el.getBoundingClientRect();
-          return b.top < top && b.bottom > top;
-        }),
-      composer.top,
-    );
-    expect.soft(under, 'a message runs under the composer').toBe(true);
+    const { composer, card } = await boxes(page);
+    const reaches = (/** @type {number} */ x, /** @type {number} */ y) =>
+      page.evaluate(({ x, y }) => !!document.elementFromPoint(x, y)?.closest('.transcript'), { x, y });
+    expect.soft(await reaches(card.left - 4, card.top + card.height / 2), 'beside the card').toBe(true);
+    expect.soft(await reaches(card.left + card.width / 2, composer.bottom - 2), 'below it').toBe(true);
+    expect.soft(await reaches(card.left + card.width / 2, card.bottom + 2), 'between it and the row under it').toBe(true);
+    // The space under the card is the hint’s row and a little more, less than the 30 px band it was.
+    expect.soft(composer.bottom - card.bottom, 'the space under the card').toBeLessThanOrEqual(28.5);
   });
 
 for (const width of [1280, 375])

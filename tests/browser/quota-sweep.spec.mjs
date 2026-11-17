@@ -1,7 +1,8 @@
 // The quota line at every width (#442): from 320 to 1280 px in 4 px steps, with one to four bars at 100%, fresh and
 // stale, each bar’s percent stays whole inside it, no two bars show the same label, a stale bar is marked without
 // color (“~”), and nothing overflows. The line spans the input card, each bar’s track fills its part, and its words
-// are below it (#1463). The bars give way in the order the design gives: short names, then the percent alone (designs/architecture/adapters.md, “Quota: each backend’s usage, in the composer”).
+// are below it (#1463). The bars give way in the order the design gives: short names, then the percent alone
+// (designs/architecture/adapters.md, “Quota: each backend’s usage, in the composer”).
 
 import { expect, test } from '@playwright/test';
 import * as arrange from '../arrange.mjs';

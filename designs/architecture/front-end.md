@@ -20,6 +20,12 @@ A page doesn’t hold every item of every conversation ([#508](https://github.co
 
 **Revisit when** the UI gains shared editing or several people, or the hand-written reconciliation grows past what one file can hold. The first step then would be a small runtime library such as Preact with `htm`, which still needs no build step, rather than a full build pipeline.
 
+## The composer floats
+
+**Decision** (17 November 2026, [#1463](https://github.com/HJeon139/postbox/issues/1463), from the owner’s live room). The conversation’s composer floats over the conversation’s end as a card, not a band across the window. The composer has no surface of its own and lets the pointer through, so the conversation shows beside and below the card, and a click there reaches it. Only what it holds is drawn: the input card, with its shadow (`--shadow`), and each row that says something, on the page’s color. The composer stays in the flow at the window’s bottom (`position: sticky`), so at the end of the conversation the last message sits clear above the card. Under the card is one fixed 20 px row, which the hint takes when one applies and the quota line takes otherwise ([adapters.md](adapters.md), “Quota: each backend’s usage, in the composer”), then 4 px. `focus-clear.mjs` treats the composer’s column as what covers a focused control, and the card as what shows it’s on top. A thread panel’s composer keeps its foot, with its top edge, since the panel has no conversation under it.
+
+**Revisit when** a row the composer holds needs to be read over a busy message: then that row gets a card of its own, as the input has.
+
 ## The right pane
 
 A thread and the Work view ([work-ledger.md](work-ledger.md)) are the conversation’s side views in the right pane ([`app/js/pane.mjs`](../../app/js/pane.mjs)), beside one another or alone, not pages of their own. What’s open is in the address after the conversation’s path, so a reload restores it and the views change in place without rebuilding the transcript:

@@ -2,8 +2,8 @@
 // composer”). Decided from measured widths, not fixed cutoffs: the line’s width, and each label’s and percent’s width in
 // the line’s font. Every bar keeps its percent whole; to make room, they give way in one order, all together:
 // 0 everything; 1 short backend names; 2 the percent alone, the full label in its title and for screen readers. The
-// track lies above the words and fills the bar’s part, so it never costs them width (#1463). Two bars that would read the same get the shortest start of their hosts’ names that tells them apart;
-// a level where nothing can is passed over.
+// track lies above the words and fills the bar’s part, so it never costs them width (#1463). Two bars that would read
+// the same get the shortest start of their hosts’ names that tells them apart; a level where nothing can is passed over.
 
 /** Short backend names, for a narrow line. */
 const SHORT = { 'claude-code': 'Claude', 'agent-sdk': 'SDK', codex: 'Codex', 'kiro-cli': 'Kiro', 'antigravity-cli': 'agy', mock: 'Mock' };
