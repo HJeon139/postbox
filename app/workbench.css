@@ -867,7 +867,8 @@ html.store-down .sidepanel { padding-bottom: 44px; }
 /* The right pane: a conversation’s side views, a thread and its Work, alone or split with a divider (pane.mjs).
    --pane-w is its width, which pane-width.mjs sets on .app, and the handle on its left edge changes (#86). It isn’t
    inherited, so a new width restyles .app and the two children that take it, the pane and the conversation column,
-   not every element in the conversation (#1150). A browser without @property inherits it as before. */
+   not every element in the conversation (#1150). A browser without @property inherits it as before. pane-width.mjs
+   sets it on the two readers too, since WebKit doesn’t restyle them when only .app’s changes (#1465). */
 @property --pane-w { syntax: '<length>'; inherits: false; initial-value: 440px; }
 .app { --pane-w: 440px; }
 .rpane, .app > .main { --pane-w: inherit; }
@@ -1029,8 +1030,9 @@ html.store-down .sidepanel { padding-bottom: 44px; }
 
 /* Room for an open composer menu, so it doesn't cover the last message in a screenshot of that state. */
 
-/* Toasts sit left of an open side panel on wide screens. */
-@media (min-width: 768px) { .has-panel .toasts { right: calc(var(--pane-w) + 16px); } }
+/* Toasts sit left of the right pane on wide screens, where it’s beside the conversation: pane-width.mjs sets
+   --pane-aside on #toasts, a child of body, which no class on .app reaches (#1472). */
+@media (min-width: 768px) { .toasts { right: calc(var(--pane-aside, 0px) + 16px); } }
 .appframe .app-placeholder { border: 0; border-radius: 0; }
 
 /* ═════════ Live app additions (Stage 2) ═════════ */
