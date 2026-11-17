@@ -1,23 +1,5 @@
-// Messages given to one turn as a batch, in arrival order (#374, #733); a turn’s later segments are the same post.
-import { positionOf } from '../shared/item-index.mjs';
-
-/** A turn’s later streaming segments are the same post, not a new instruction from its author. */
-export function latestMessage(rt, threadId, message) {
-  if (message.kind !== 'agent') return message;
-  const from = String(message.from ?? '')
-    .replace(/^@/, '')
-    .toLowerCase();
-  const items = rt.store.items(threadId);
-  const index = positionOf(items, message.itemId);
-  const source = items[index];
-  const turnId = source?.fromTurnId ?? source?.turnId;
-  const latest = items.slice(index + 1).findLast((item) => {
-    if (item.kind !== 'agent' || String(item.handle ?? '').toLowerCase() !== from || !String(item.text ?? '').trim()) return false;
-    if (index < 0 && !(item.at > message.at)) return false;
-    return !turnId || turnId !== (item.fromTurnId ?? item.turnId);
-  });
-  return latest ? { ...message, text: latest.text, itemId: latest.id, at: latest.at } : message;
-}
+// A turn’s plain messages given as one batch, in arrival order (#374, #733): the entries a turn takes (turns.mjs), and
+// what waits for an agent in its inbox (delivery.mjs), sorted by when each arrived.
 
 // When each message waiting for an agent arrived, as a count (#733): `at` is a clock reading, and two messages can land
 // in the same millisecond, so the order they’re given in breaks a tie by this, not by where each sat. In memory only:

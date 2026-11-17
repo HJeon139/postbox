@@ -71,8 +71,8 @@ export function agentWake(
   if (said) rt.threads.patchItem(at, said.id, { hop: said.hop ?? hop, wakes: [...(said.wakes ?? (said.hop ? [said.hop] : [])), hop] });
   const message = { kind: 'agent', sessionId: from.id, personaId: from.personaId, handle: from.handle, text, status: 'done', hop, wakes: [hop], fromTurnId };
   const it = said ?? rt.threads.addItem(at, message);
-  rt.recordAgentMessage(from.id, 'to', p.handle, text);
-  rt.recordAgentMessage(target.id, 'from', from.handle, text);
+  recordAgentMessage(rt, from.id, 'to', p.handle, text);
+  recordAgentMessage(rt, target.id, 'from', from.handle, text);
   // The woken agent answers from its session in the conversation (#110): the message is an entry in its inbox there,
   // which starts its turn now, or once its turn ends (designs/rooms-at-scale.md, “Delivery”).
   const waits = rt.running.busy(target.id);

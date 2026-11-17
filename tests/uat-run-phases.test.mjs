@@ -89,6 +89,6 @@ test('#694: delivery.md’s phase 9 names only triggers that exist, so it runs o
   assert.deepEqual(phases, [9]);
   assert.deepEqual(
     scenario.phases.map((p) => p.title),
-    ['Phase 9: A newer message from you, named mid-turn (#694)'],
+    ['Phase 9: A newer message from you, named mid-turn (#694, #734)'],
   );
 });

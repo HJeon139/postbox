@@ -171,7 +171,7 @@ export function turnExited(rt, turn) {
     // wait on it (#733).
     const ended = { pending: held, threadId: turn.threadId };
     if (entriesFirst(rt, se, ended)) rt.delivery.wake(se.id);
-    rt.takePending(se, ended, true);
+    queue.takePending(rt, se, ended, true);
   }
   // The stopped turn is gone: what waits for the agent may start its next turn.
   rt.bus.emit('turn.exited', { turn });

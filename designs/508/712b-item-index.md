@@ -24,7 +24,7 @@ Part of #712 (#508’s B1): the server’s and the page’s half, beside #712a�
 **Readers switched** (a one-line change each, `find`/`findIndex`/`some` by id on a store list → the index):
 - **Per event, both sides:** `withItem` and `moveItem` in `shared/state.mjs`. That’s every `item.patch`, `item.text` and `item.move`, on the server and in the page, which runs the same reducer.
 - **Per event or per render, page:** `thread.mjs` `rerender`, the move handler, `:355`, `updateText` and the moved line, `apps.mjs`’s retired line, `reactions.mjs:73`, `reply-rings.mjs:53`, and `hover-content.mjs` and `side-panel.mjs`.
-- **Per call or per flush, server:** `store.item` (`store.mjs:306`, 20 callers), `store-held.mjs:117`, `catch-up.mjs:17`, `:46`, `queue-batch.mjs:30`, `share-back.mjs:20`, `topic-open.mjs:18`, `runtime.mjs` (a shell command’s output flush, every 100 ms, and its exit; a job’s step; the terminal mirror), `side-threads.mjs:63`, `permission-prompt.mjs:29`, `thread-summary.mjs:62`, `shared/needs.mjs:26`.
+- **Per call or per flush, server:** `store.item` (`store.mjs:306`, 20 callers), `store-held.mjs:117`, `catch-up.mjs:17`, `:46`, `queue-batch.mjs:30` (gone since inbox step 3’s cleanup), `share-back.mjs:20`, `topic-open.mjs:18`, `runtime.mjs` (a shell command’s output flush, every 100 ms, and its exit; a job’s step; the terminal mirror), `side-threads.mjs:63`, `permission-prompt.mjs:29`, `thread-summary.mjs:62`, `shared/needs.mjs:26`.
 - **Left as they are, each with its reason:**
   - `thread-summary.mjs:105`’s `indexOf(item)` is by object;
   - `room-checks*.mjs` (now in `tools/uat/`) read recorded facts, not the store;

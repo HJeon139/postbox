@@ -1,8 +1,8 @@
 // #506: a message a turn's summary gives in full reaches the agent once. A combined batch (the person's queued message
 // and an agent's wake, delivered as one) left every message but the last in the turn's summary too, so the agent read
 // it twice in one prompt; and the person's message, already posted and waiting behind a turn in another thread, came in
-// full after that turn's summary gave it, since the pointer #484 made was only for an agent's mention. Since #1404 the
-// person's message is posted when it's sent, and one still waiting for the agent stays out of a summary: it comes once,
+// full after that turn's summary gave it. Since #1404 the person's message is posted when it's sent, and one still
+// waiting for the agent stays out of a summary, as an agent's mention waiting as an entry does (#484): it comes once,
 // whole, in its own turn.
 
 import assert from 'node:assert/strict';
@@ -11,7 +11,7 @@ import { READING } from '../shared/limits.mjs';
 import * as arrange from './arrange.mjs';
 import { held, settle, setup, sleep } from './side-threads-fixture.mjs';
 
-// Longer than the pointer's quote of a message's start (pointerIfSeen), so a repeat in full can be told from it.
+// Long enough that a repeat in full can be told from a quote of its start.
 const MINE = `@alpha please recount the totals in the tally. ${'Each column needs its own check. '.repeat(8)}`;
 const THEIRS = `@alpha the review of the totals is done: two fixes needed. ${'Details follow on each fix. '.repeat(8)}`;
 
@@ -115,19 +115,6 @@ test('#506 your queued mention alone comes in full: no summary gave it', async (
   assert.equal(toAlpha(f)[1].parts[0].text, MINE);
 });
 
-test('#506 the pointer to your message keeps its attachments', async () => {
-  const f = setup();
-  const attachments = [{ id: 'att1', name: 'tally.csv', path: '/tmp/tally.csv', size: 10, type: 'text/csv' }];
-  const it = arrange.post(f.rt, f.t.id, { kind: 'user', text: MINE, attachments });
-  f.rt.turnService.run(f.alpha.id, { kind: 'user', text: 'Check the build.' });
-  await settle(f.rt);
-  f.rt.turnService.run(f.alpha.id, { kind: 'user', text: MINE, attachments, itemId: it.id });
-  await settle(f.rt);
-  const last = toAlpha(f).at(-1).message;
-  assert.match(last.text, /The person’s message above/);
-  assert.deepEqual(last.attachments, attachments);
-});
-
 test('#506 your message a summary left out, past the mentions’ cap, comes in full', async () => {
   const f = setup();
   const first = arrange.post(f.rt, f.t.id, { kind: 'user', text: `@alpha the oldest: ${'check this first. '.repeat(55)}` });
@@ -211,21 +198,6 @@ test('#506 an agent’s mention one character past what a summary gives whole co
   const [first, second] = toAlpha(f);
   assert.equal(copies(first, 'THE-END-MARK'), 0, 'the summary cut it');
   assert.equal(second.parts[0].text, text);
-});
-
-test('#506 an agent’s mention exactly as long as a summary gives whole comes as a pointer: the summary gave all of it', async () => {
-  const f = setup();
-  const head = '@alpha from beta: the totals, column by column. ';
-  const text = `${head}${'x'.repeat(READING.mention - head.length)}`;
-  assert.equal(text.length, READING.mention);
-  const it = arrange.post(f.rt, f.t.id, { kind: 'agent', sessionId: f.beta.id, personaId: f.beta.personaId, handle: 'beta', text, status: 'done' });
-  f.rt.turnService.run(f.alpha.id, { kind: 'user', text: 'Check the build.' });
-  await settle(f.rt);
-  f.rt.turnService.run(f.alpha.id, { kind: 'agent', from: '@beta', text, itemId: it.id });
-  await settle(f.rt);
-  const [first, second] = toAlpha(f);
-  assert.equal(copies(first, text), 1, 'the summary gave it whole');
-  assert.match(second.parts[0].text, /^@beta’s message above, which your last summary gave you in full: /);
 });
 
 test('#506 your message sent again, word for word, comes in full: it’s a new message, not the one a summary gave', async () => {

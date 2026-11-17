@@ -1,16 +1,15 @@
-// #506 behind a held commit: a turn's summary records what it gave (givenMentions, seenItem) as a session write, and
-// behind a held commit that write is only pending. A delivery that read the published session didn't see it: the
-// mention the last summary gave in full came again in full, the summary repeated what the last one gave, and a notice
+// #506 behind a held commit: a turn's summary records what it gave (seenItem) as a session write, and behind a held
+// commit that write is only pending. A delivery that read the published session didn't see it: the summary repeated
+// what the last one gave, and a notice
 // held for the agent was cleared unread with the published ones (#796's class in sessions, server/runtime.mjs deliver).
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { clip } from '../server/helpers.mjs';
 import * as arrange from './arrange.mjs';
 import { settle, setup } from './side-threads-fixture.mjs';
 import { heldStore } from './stop-reply-fixture.mjs';
 
-// Longer than the pointer's quote of a message's start (pointerIfSeen), so a repeat in full can be told from it.
+// Long enough that a repeat in full can be told from a quote of its start.
 const THEIRS = `@alpha the review of the totals is done: two fixes needed. ${'Details follow on each fix. '.repeat(8)}`;
 
 /** The side-thread room on a store whose log sync can be held; hold() holds a commit and returns its release. */
@@ -44,23 +43,6 @@ async function mentionThenHold() {
   const release = await f.hold();
   return { f, it, release };
 }
-
-test('#506 behind a held commit: a mention the last summary gave in full comes as a pointer when its wake is delivered', async () => {
-  const { f, it, release } = await mentionThenHold();
-  f.rt.turnService.run(f.alpha.id, { kind: 'user', text: 'Check the build.' });
-  await settle(f.rt);
-  f.rt.turnService.run(f.alpha.id, { kind: 'agent', from: '@beta', text: THEIRS, itemId: it.id });
-  await settle(f.rt);
-  const [first, second] = toAlpha(f);
-  assert.equal(given(first).split(THEIRS).length - 1, 1, 'the first summary gave it in full');
-  assert.equal(
-    second.message.text,
-    `@beta’s message above, which your last summary gave you in full: “${clip(THEIRS, 200)}”. It’s addressed to you: act on it now if you haven’t. read_message { id: "${it.id}" } has it whole.`,
-  );
-  assert.equal(given(second).includes(THEIRS), false, 'nothing in the second repeats it');
-  await release();
-  await f.store.close();
-});
 
 test('#506 behind a held commit: the next turn’s summary starts where the last one ended', async () => {
   const { f, release } = await mentionThenHold();

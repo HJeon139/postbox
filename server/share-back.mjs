@@ -4,7 +4,7 @@
 
 import { positionOf } from '../shared/item-index.mjs';
 import { clip, httpError, tooLongToSend } from './helpers.mjs';
-import { threadPersona } from './side-threads.mjs';
+import { sideSession, threadPersona } from './side-threads.mjs';
 
 /** “Send to conversation”: a message from a topic or side thread (#128) is posted in its conversation, for you and its agents. */
 export function shareToConversation(rt, topicId, itemId) {
@@ -37,7 +37,7 @@ export function summarizeBack(rt, topicId, opts) {
   const handle = opts?.handle ?? null;
   if (topic.kind !== 'topic' && topic.kind !== 'side') throw httpError(409, 'Only a topic or side thread can be summarized back.');
   const p = summaryWriter(rt, topic, handle);
-  const se = p && rt.sideSession(topic, p.id, 'you');
+  const se = p && sideSession(rt, topic, p.id, 'you');
   if (!se) throw httpError(409, 'No agent is in this thread to summarize it.');
   // One at a time, so a second click or a second tab can’t post it twice (#93).
   if (rt.summarizing(topicId)) throw httpError(409, 'A summary is already on its way. It’s posted in the conversation when it’s written.');

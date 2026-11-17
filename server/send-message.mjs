@@ -6,7 +6,7 @@
 import { parseMentions } from '../shared/text.mjs';
 import { httpError, retiredError } from './helpers.mjs';
 import * as queue from './message-queue.mjs';
-import { threadPersona } from './side-threads.mjs';
+import { sideSession, threadPersona } from './side-threads.mjs';
 import { retireStale } from './wake-cards.mjs';
 
 /**
@@ -106,13 +106,13 @@ function targetsOf(rt, t, mentioned) {
   const targets = [];
   const away = t.kind === 'topic';
   if (away) {
-    for (const p of mentioned) targets.push({ se: rt.sideSession(t, p.id, 'you') });
+    for (const p of mentioned) targets.push({ se: sideSession(rt, t, p.id, 'you') });
     if (!targets.length) {
       // The last speaker’s agent replies, as in a conversation; before anyone has, the agent it started with.
       const p = threadPersona(rt, t);
       // Refused before sideSession, which would join an agent not yet in the conversation (#874).
       if (p) rt.placement.refuseUnregisteredSend([p]);
-      const se = p && rt.sideSession(t, p.id, 'you');
+      const se = p && sideSession(rt, t, p.id, 'you');
       if (!se) throw httpError(409, 'No agent is in this thread. @-mention one to bring it in.');
       targets.push({ se });
     }

@@ -8,7 +8,7 @@
 // `catchUpLines`. The thread summaries are a service of their own (summary-service.mjs).
 
 import { READING } from '../shared/limits.mjs';
-import { catchUp, moveMarkers, pointerIfSeen, turnTail } from './catch-up.mjs';
+import { catchUp, moveMarkers, turnTail } from './catch-up.mjs';
 import { describeItem, topicRootLine } from './item-lines.mjs';
 import { readConversation, readLine, readMessage } from './read-message.mjs';
 import { threadCatchUp, threadTail, turnContext } from './thread-catch-up.mjs';
@@ -72,11 +72,6 @@ export class Memory {
   /** What a turn in a topic or side thread catches up on there, or null. @param {any} se @param {string} threadId @param {string[]} [exclude] */
   threadCatchUp(se, threadId, exclude = []) {
     return threadCatchUp(this, se, threadId, exclude);
-  }
-
-  /** A mention the last catch-up gave the agent comes as a pointer to it (#484). @param {any} se @param {any} message */
-  pointerIfSeen(se, message) {
-    return pointerIfSeen(this, se, message);
   }
 
   /** An item moved to the end of its thread: a marker on it moves to its stub (#1041). @param {string} threadId @param {string} id @param {string} stubId */

@@ -50,11 +50,11 @@ import { Placement } from './remote/placement.mjs';
 import { RemoteTurns } from './remote/turns.mjs';
 import { Running } from './running.mjs';
 import { armWake, cancelWakeSchedule, rearmWakes, scheduleWake } from './scheduled-wakes.mjs';
-import { sendMessage, threadRefs } from './send-message.mjs';
+import { sendMessage } from './send-message.mjs';
 import { deleteSession, deleteThread } from './session-lifecycle.mjs';
 import { Sessions } from './sessions.mjs';
 import { clearSummaryPending, shareText, shareToConversation, summarizeBack, summarizing } from './share-back.mjs';
-import { agentWake, bumpSideLink, recordAgentMessage, resolveHop, sideSession } from './side-threads.mjs';
+import { agentWake, bumpSideLink, resolveHop } from './side-threads.mjs';
 import { watchStore, whenWritable } from './store-outage.mjs';
 import { Summaries } from './summary-service.mjs';
 import { Threads } from './threads.mjs';
@@ -64,7 +64,6 @@ import { listenTurnEnd } from './turn-end-listeners.mjs';
 import { entryLine } from './turn-input.mjs';
 import { armQuotaResets, quotaMoved } from './turn-quota.mjs';
 import { Turns } from './turn-service.mjs';
-import { settleSubagentSteps } from './turn-steps.mjs';
 import { dismissStopAsk, recordStopped, requestStop, stop, stopTurns } from './turn-stop.mjs';
 import { toolsFor } from './ui-tools.mjs';
 import { closeOrphanCards, heldFor, liftDecline } from './wake-cards.mjs';
@@ -362,9 +361,6 @@ export class Runtime {
   sendMessage(threadId, message) {
     return sendMessage(this, threadId, message);
   }
-  threadRefs(threadId, text) {
-    return threadRefs(this, threadId, text);
-  }
 
   // A message waiting in an agent’s queue is an entry in its inbox (server/entry-queue.mjs).
   editQueued(threadId, queueId, text) {
@@ -397,13 +393,6 @@ export class Runtime {
     return this.turnService.retry(threadId, itemId);
   }
 
-  /**
-   * What waited for a turn that ended: the next message, with the rest behind it; with none, the agent’s inbox (drain).
-   */
-  takePending(se, turn, drain) {
-    return queue.takePending(this, se, turn, drain);
-  }
-
   // ── Stopping a turn: server/turn-stop.mjs ──────────────────────────────────────────
 
   stop(sessionId, opts) {
@@ -432,10 +421,6 @@ export class Runtime {
   }
   expireStaleJobs() {
     return expireStaleJobs(this);
-  }
-
-  settleSubagentSteps(turn) {
-    return settleSubagentSteps(this, turn);
   }
 
   /** The kept jobs, everywhere. */
@@ -487,14 +472,8 @@ export class Runtime {
   agentWake(fromSessionId, handle, text, opts) {
     return agentWake(this, fromSessionId, handle, text, opts);
   }
-  sideSession(side, personaId, by) {
-    return sideSession(this, side, personaId, by);
-  }
   resolveHop(threadId, itemId, allow) {
     return resolveHop(this, threadId, itemId, allow);
-  }
-  recordAgentMessage(sessionId, dir, other, text) {
-    return recordAgentMessage(this, sessionId, dir, other, text);
   }
 
   // ── Acting in blocks ───────────────────────────────────────────────────────────────

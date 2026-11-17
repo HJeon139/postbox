@@ -185,7 +185,7 @@ A turn with two entries in a topic thread reads like this:
 What stays from today’s catch-up, as lines of the tail: one line for each topic or side thread with something new, the person’s new reactions to the agent’s items (#251), and the message a topic thread is about on the agent’s first turn there. The lines for messages held on a wake card go with the cards (“Asks: needs you as an interface”).
 
 What this removes from today’s catch-up (`server/catch-up.mjs`, `server/catch-up-keep.mjs`):
-- **A mention given twice.** Today a mention can arrive in the summary and again as the message that starts the turn, so Postbox records which mentions a summary gave and sends a pointer the second time (`givenMentions`, `pointerIfSeen`, #484). An entry is delivered once, and the tail never holds an item that is an entry, so both go.
+- **A mention given twice.** Today a mention can arrive in the summary and again as the message that starts the turn, so Postbox records which mentions a summary gave and sends a pointer the second time (`givenMentions`, `pointerIfSeen`, #484). An entry is delivered once, and the tail never holds an item that is an entry, so both go. Done in step 3’s cleanup: a summary leaves out every message still waiting as an entry.
 - **A mention cut or dropped by the summary’s caps** (#834, #484). Entries are not part of the tail’s budget.
 
 ### The budget

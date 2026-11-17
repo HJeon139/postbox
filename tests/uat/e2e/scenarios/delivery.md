@@ -76,11 +76,11 @@ Give @critic a long job. While it works, send it a second message, which waits i
 
 This phase confirms DL-7 and AT-6. It has no baseline on `main`: queued messages aren’t items there, and revisions aren’t delivered as amendments until A2.
 
-## Phase 9: A newer message from you, named mid-turn (#694)
+## Phase 9: A newer message from you, named mid-turn (#694, #734)
 
-- triggers: newer-waiting-named
-- steps: 6
+- triggers: newer-waiting-named, newer-elsewhere-named
+- steps: 8
 
-Give @developer a long job that uses Postbox’s tools as it goes: define a glossary term for each of five words in the project, one at a time. While it works, send it a second message (“use only words from the server folder”), with Enter, not Send now, so it waits in the queue. Say whether @developer’s work changed course before its turn ended, and what it said told it a newer message was waiting.
+Give @developer a long job that uses Postbox’s tools as it goes: define a glossary term for each of five words in the project, one at a time. While it works, send it a second message (“use only words from the server folder”), with Enter, not Send now, so it waits in the queue. Then open a topic thread on one of @developer’s replies and send it a third message there (“skip the tests folder”), while it still works. Say whether @developer’s work changed course before its turn ended, and what it said told it a newer message was waiting, in this conversation and in the topic.
 
 This phase has no baseline on `main`: there, nothing tells a busy agent that your newer message is waiting, so it changes course only at its next turn.
