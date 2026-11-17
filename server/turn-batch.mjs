@@ -1,4 +1,5 @@
-// Messages given to one turn as a batch, in arrival order (#374, #733); a turn’s later segments are the same post.
+// A turn’s plain messages given as one batch, in arrival order (#374, #733): the entries a turn takes (turns.mjs), and
+// what waits for an agent in its inbox (delivery.mjs), sorted by when each arrived.
 
 // When each message waiting for an agent arrived, as a count (#733): `at` is a clock reading, and two messages can land
 // in the same millisecond, so the order they’re given in breaks a tie by this, not by where each sat. In memory only:
