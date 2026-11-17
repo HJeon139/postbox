@@ -159,13 +159,18 @@ export class Sessions {
    * Writes the fields of `change` that change the session, with updatedAt. `change` is the fields to set, or a function
    * of the pending session that returns them, so a field built from the session's own (its context, its backend state)
    * starts from what a held write left. A session that doesn’t exist isn’t written.
+   * `before` sees the event’s data before it’s emitted, for a running turn’s live frame to carry it
+   * (server/live-buffer.mjs, liveUpdate).
    * @param {string} id @param {Record<string, unknown> | ((se: any) => Record<string, unknown>)} change
+   * @param {(data: any) => void} [before]
    */
-  update(id, change) {
+  update(id, change, before) {
     const se = this.store.pending.session(id);
     if (!se) return;
     const patch = typeof change === 'function' ? change(se) : change;
-    this.store.emit('session.patch', sessionPatch(se, { ...patch, ...this.needAt(se, patch), updatedAt: Date.now() }));
+    const data = sessionPatch(se, { ...patch, ...this.needAt(se, patch), updatedAt: Date.now() });
+    before?.(data);
+    this.store.emit('session.patch', data);
   }
 
   /**

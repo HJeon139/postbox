@@ -8,7 +8,9 @@
 // it’s bounded where it’s built (LIVE_CAPS), whatever a harness reports.
 
 import { LIVE_CAPS } from '../shared/limits.mjs';
-import { SESSION_FIELDS } from '../shared/live-kinds.mjs';
+import { CARRIED_FIELDS, SESSION_FIELDS } from '../shared/live-kinds.mjs';
+import { committed } from './live-sent.mjs';
+import { sessionPatch } from './session-patch.mjs';
 import { sendLive } from './store-live.mjs';
 
 /** A string at most LIVE_CAPS.string long; anything else as it is. @param {unknown} v */
@@ -46,7 +48,11 @@ function storedStep(step) {
 export function liveCommit(rt, turn) {
   const live = turn.live;
   if (!live?.changed.size) return;
-  for (const { itemId, step } of live.changed.values()) rt.store.emit('item.patch', { threadId: turn.threadId, id: itemId, activityStep: storedStep(step) });
+  for (const { itemId, step } of live.changed.values()) {
+    const data = { threadId: turn.threadId, id: itemId, activityStep: storedStep(step) };
+    committed.add(data); // not sent to a page that had the step live (server/live-sent.mjs)
+    rt.store.emit('item.patch', data);
+  }
   live.changed.clear();
 }
 
@@ -76,10 +82,10 @@ function changedOf(before, now) {
 }
 
 /**
- * The session’s live fields: merged into the buffer, and what changed of them sent live.
- * @param {any} rt @param {any} turn @param {Record<string, any>} patch
+ * The session’s live fields: merged into the buffer, and what changed of them sent live, with any stored change the frame
+ * carries (liveUpdate). @param {any} rt @param {any} turn @param {Record<string, any>} patch @param {Record<string, any>} [carried]
  */
-export function liveSession(rt, turn, patch) {
+export function liveSession(rt, turn, patch, carried = {}) {
   /** @type {Record<string, any>} */
   const capped = {};
   for (const [k, v] of Object.entries(patch)) capped[k] = k === 'toolCalls' || k === 'subagents' ? capList(v, LIVE_CAPS[k]) : capString(v);
@@ -87,7 +93,7 @@ export function liveSession(rt, turn, patch) {
   // Only what changed goes, as with a step: a page holds the rest from an earlier frame or the snapshot.
   const changed = Object.fromEntries(Object.entries(capped).filter(([k, v]) => !(k in session) || JSON.stringify(session[k]) !== JSON.stringify(v)));
   Object.assign(session, capped);
-  if (Object.keys(changed).length) sendLive(rt.store, { kind: 'session', sessionId: turn.sessionId, ...changed });
+  if (Object.keys(changed).length || Object.keys(carried).length) sendLive(rt.store, { kind: 'session', sessionId: turn.sessionId, ...changed, ...carried });
 }
 
 /**
@@ -120,7 +126,7 @@ export function liveSnapshots(rt) {
 
 /**
  * A running turn’s change to its session: the live fields go to the buffer and the pages live, and the rest (its state,
- * its context) is stored, only when there is any. @param {any} rt @param {any} turn @param {Record<string, any>} patch
+ * its context) is stored, only when it changed, and carried to the pages on the same frame. @param {any} rt @param {any} turn @param {Record<string, any>} patch
  */
 export function liveUpdate(rt, turn, patch) {
   /** @type {Record<string, any>} */
@@ -128,8 +134,20 @@ export function liveUpdate(rt, turn, patch) {
   /** @type {Record<string, any>} */
   const live = {};
   for (const [k, v] of Object.entries(patch)) (SESSION_FIELDS.includes(k) ? live : stored)[k] = v;
-  if (Object.keys(stored).length) rt.sessions.update(turn.sessionId, stored);
-  if (Object.keys(live).length) liveSession(rt, turn, live);
+  // Only a change is stored: a write of the same state would still store its updatedAt, and send it.
+  const se = rt.store.pending.session(turn.sessionId);
+  const change = se && Object.keys(stored).length ? sessionPatch(se, stored) : null;
+  /** @type {Record<string, any> | undefined} */
+  let carried;
+  // A change of state or context rides on the live frame, and its stored event isn’t sent to the pages again:
+  // marked before it’s emitted, as the streams build its frames then.
+  const carry = (/** @type {any} */ data) => {
+    if (data.unset || !Object.keys(data.patch).every((k) => CARRIED_FIELDS.includes(k))) return;
+    committed.add(data);
+    carried = data.patch;
+  };
+  if (change && (Object.keys(change.patch).length || change.unset)) rt.sessions.update(turn.sessionId, stored, carry);
+  if (Object.keys(live).length || carried) liveSession(rt, turn, live, carried);
 }
 
 /**

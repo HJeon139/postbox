@@ -40,6 +40,13 @@ export const SUBAGENT_FIELDS = Object.freeze(['id', 'name', 'state', 'ctx', 'doi
 /** A session’s fields that go live while its turn runs. */
 export const SESSION_FIELDS = Object.freeze(['toolCalls', 'toolCount', 'currentStep', 'glimpse', 'subagents']);
 
+/**
+ * A session’s stored fields a session frame may carry beside its live ones: a running turn’s change of state or context,
+ * stored as ever, rides on the frame sent with it, and its stored event isn’t sent to the page
+ * (server/live-sent.mjs), so the change costs the wire one frame, as it did when the two were one patch.
+ */
+export const CARRIED_FIELDS = Object.freeze(['state', 'ctx', 'updatedAt']);
+
 /** @type {Shape} */
 const STEP = Object.freeze({ fields: STEP_FIELDS });
 /** @type {Shape} */
@@ -70,7 +77,7 @@ export const LIVE = Object.freeze({
     events: Object.freeze(['session.patch']),
     keys: Object.freeze(['sessions']),
     item: false,
-    shape: Object.freeze({ fields: Object.freeze(['sessionId', ...SESSION.fields]), lists: SESSION.lists }),
+    shape: Object.freeze({ fields: Object.freeze(['sessionId', ...SESSION.fields, ...CARRIED_FIELDS]), lists: SESSION.lists }),
   }),
   snapshot: Object.freeze({
     events: Object.freeze(['item.text', 'item.patch', 'session.patch']),

@@ -4,7 +4,7 @@
 
 import { glimpseOf } from '../shared/text.mjs';
 import { EFFORT_LEVELS } from './adapters/setup.mjs';
-import { liveFields, liveSession, liveStep, liveUpdate } from './live-buffer.mjs';
+import { liveFields, liveStep, liveUpdate } from './live-buffer.mjs';
 import { recordQuota } from './quota-usage.mjs';
 import { placeStep, replySegment, stepTaken, wordsSegment } from './reply-segment.mjs';
 import { recordScheduledTool } from './scheduled-wakes.mjs';
@@ -225,8 +225,8 @@ function stepCallback(rt, se0, turn, live) {
       const own = state === 'running' && !(i >= 0 ? turn.steps[i] : step).who;
       // The calls and the step from the buffer, over what was stored as the turn began; the state stays stored.
       const now = liveFields(rt, turn);
-      if (own && rt.store.pending.session(turn.sessionId)?.state !== 'tool') rt.sessions.update(turn.sessionId, { state: 'tool' });
-      liveSession(rt, turn, {
+      liveUpdate(rt, turn, {
+        ...(own ? { state: 'tool' } : {}),
         toolCalls: [{ name: step.label, state: step.state, ms: step.ms }, ...now.toolCalls.filter((/** @type {any} */ c) => c.name !== step.label)].slice(0, 5),
         toolCount: now.toolCount + (i >= 0 ? 0 : 1),
         ...(own ? { currentStep: step.label } : {}),

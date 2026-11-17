@@ -14,6 +14,7 @@
 // out as a cursor with its seq. The control frames’ names are shared/state.mjs’s STREAM, which no event type may take.
 
 import { EVENTS, STREAM } from '../shared/state.mjs';
+import { liveSent } from './live-sent.mjs';
 import { publicFrame, publicHeaderFrame, publicLiveFrame } from './public-state.mjs';
 import { onLive } from './store-live.mjs';
 import { REJECTED } from './store-reject.mjs';
@@ -47,9 +48,11 @@ export function liveStreams(store, events = EVENTS, { now = Date.now } = {}) {
   const headers = threadHeaders(store);
   /** The conversations each page’s stream has open (#1155); a tool’s stream names none and gets every item event. */
   const openOf = new WeakMap();
-  store.subscribe(eventSender({ store, streams, deliver, headers, events, openOf }));
+  // What each page was sent live, so a stored event of it isn’t sent to that page again.
+  const sent = liveSent();
+  store.subscribe(eventSender({ store, streams, deliver, headers, events, openOf, sent }));
   // A running turn’s live frames (designs/architecture/live-progress.md), in order with the events (server/store-live.mjs).
-  onLive(store, liveSender({ store, streams, deliver, events, openOf }));
+  onLive(store, liveSender({ store, streams, deliver, events, openOf, sent }));
   // The store’s status, unnumbered, each time writes close or reopen, a Retry starts or ends, or a warning changes
   // (#508’s storage design, “When a write fails (ST-3)”): the page shows one status line from it.
   store.onStatus((status) => {
@@ -91,9 +94,10 @@ export function liveStreams(store, events = EVENTS, { now = Date.now } = {}) {
  * What the store tells the streams of each event: its frame, as each page’s open conversations let it see the event,
  * then the header frames it changed.
  * @param {{ store: any, streams: Set<import('node:http').ServerResponse>, deliver: (res: any, frame: string) => void,
- *   headers: ReturnType<typeof threadHeaders>, events: typeof EVENTS, openOf: WeakMap<object, Set<string>> }} o
+ *   headers: ReturnType<typeof threadHeaders>, events: typeof EVENTS, openOf: WeakMap<object, Set<string>>,
+ *   sent: ReturnType<typeof liveSent> }} o
  */
-function eventSender({ store, streams, deliver, headers, events, openOf }) {
+function eventSender({ store, streams, deliver, headers, events, openOf, sent }) {
   // POSTBOX_STREAM_LAG holds every event back that many milliseconds, as a busy computer can. The browser specs run
   // with it in CI to show they wait for the page to hear a change, not for a fixed time.
   const lag = Number(process.env.POSTBOX_STREAM_LAG) || 0;
@@ -111,11 +115,16 @@ function eventSender({ store, streams, deliver, headers, events, openOf }) {
     const full = publicFrame(ev, events) + tail;
     // As a page sees it that hasn't the conversation open: differs only for an item's event, so only that is built twice.
     const shut = ev.type.startsWith('item.') ? publicFrame(ev, events, new Set()) + tail : full;
+    // A page that had it live gets nothing of it but the headers it changed (server/live-sent.mjs).
+    const had = sent.marked(ev);
     const send = () => {
       if (store.epoch !== epoch) return;
       for (const res of streams) {
         const open = openOf.get(res);
-        deliver(res, !open || open.has(ev.data?.threadId) ? full : shut);
+        // Asked of every page, so each forgets the step once it’s stored, open or not.
+        if (had && open && sent.had(res, ev)) {
+          if (tail) deliver(res, tail);
+        } else deliver(res, !open || open.has(ev.data?.threadId) ? full : shut);
       }
     };
     if (lag > 0) setTimeout(send, lag).unref();
@@ -128,17 +137,20 @@ function eventSender({ store, streams, deliver, headers, events, openOf }) {
  * (publicLiveFrame: an item’s only with its conversation open, a session’s on every stream), through the same lag as
  * the events, so a page hears them in the order they were made.
  * @param {{ store: any, streams: Set<import('node:http').ServerResponse>, deliver: (res: any, frame: string) => void,
- *   events: typeof EVENTS, openOf: WeakMap<object, Set<string>> }} o
+ *   events: typeof EVENTS, openOf: WeakMap<object, Set<string>>, sent: ReturnType<typeof liveSent> }} o
  */
-function liveSender({ store, streams, deliver, events, openOf }) {
+function liveSender({ store, streams, deliver, events, openOf, sent }) {
   const lag = Number(process.env.POSTBOX_STREAM_LAG) || 0;
   return (/** @type {any} */ frame) => {
     const epoch = store.epoch;
     const send = () => {
       if (store.epoch !== epoch) return;
       for (const res of streams) {
-        const out = publicLiveFrame(frame, openOf.get(res) ?? null, events);
-        if (out) deliver(res, out);
+        const open = openOf.get(res) ?? null;
+        const out = publicLiveFrame(frame, open, events);
+        if (!out) continue;
+        deliver(res, out);
+        if (open) sent.note(res, frame);
       }
     };
     if (lag > 0) setTimeout(send, lag).unref();
