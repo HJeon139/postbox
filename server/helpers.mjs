@@ -2,7 +2,7 @@
 
 import { timingSafeEqual } from 'node:crypto';
 import { SENDING } from '../shared/limits.mjs';
-import { toPlainText } from '../shared/markdown.mjs';
+import { toPlainText } from '../shared/markdown-plain.mjs';
 import { partEnd } from '../shared/text-parts.mjs';
 
 export function httpError(status, message) {

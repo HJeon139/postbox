@@ -1,6 +1,7 @@
 // A review line’s Markdown and text in the Lines view (#179), moved from app/js/review.mjs.
 
-import { LIST_ITEM, renderMarkdown, toPlainText } from '/shared/markdown.mjs';
+import { LIST_ITEM, renderMarkdown } from '/shared/markdown.mjs';
+import { toPlainText } from '/shared/markdown-plain.mjs';
 
 /**
  * Bold, italic and code inside a review line, without block structure. A fold shows as its source. files: the

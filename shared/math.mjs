@@ -19,7 +19,8 @@ export function findMathEnd(s, from) {
 export const MATH = /^ {0,3}\$\$\s*$/;
 // LaTeX’s own delimiters, which GPT models on other backends write by default (#137): \[ on a line of its own
 // opens display math, closed by \] on one, and \[…\] on one line is display math too.
-const LATEX_OPEN = /^ {0,3}\\\[\s*$/;
+/** A line that opens a `\[` block, alone on it: one only once its `\]` follows (displayCloser). */
+export const LATEX_OPEN = /^ {0,3}\\\[\s*$/;
 const LATEX_CLOSE = /^ {0,3}\\\]\s*$/;
 
 /**
