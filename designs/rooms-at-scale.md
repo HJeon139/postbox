@@ -59,7 +59,7 @@ flowchart LR
 
 **End state.**
 - **Postbox keeps what is the conversation:** messages, replies, blocks, asks, deliveries and the Work ledger. Markdown rendering and cards stay as they are.
-- **Progress is live only.** Steps, partial text, thinking and subagents go to the page on a stream that isn’t stored. The server keeps a small buffer per running turn for a page that reconnects, and writes one record of the turn’s steps when it ends.
+- **Progress is live only.** Steps, partial text, thinking and subagents go to the page on a stream that isn’t stored. The server keeps a small buffer per running turn for a page that reconnects, stores each reply’s words and changed steps at commit points so a restart loses little, and writes one record of the turn’s steps when it ends ([architecture/live-progress.md](architecture/live-progress.md)).
 - **Because nothing in it is stored, the live view can show more:** each tool and its input, a tail of its output, the agent’s use of Postbox’s own tools, and how long each step has run.
 - **Each agent’s state is always in view,** wherever you’ve scrolled: running (and its current step), waiting on a job, waiting on another agent, waiting on you, failed, or done. It is derived from records, never from what an agent said in chat.
 - **A turn that dies says so,** with what it held, instead of ending as an empty message.
@@ -74,7 +74,7 @@ flowchart LR
 - **A turn that dies says what it held.** A failed reply with no words of its own keeps a small record of its turn: whom it was answering and which message (handles and ids, never the text), how many steps it took and the last, and its background jobs still running. It shows as one quiet line before the error, which stays as it was, and asks nothing of the person (`server/turn-held.mjs`, `shared/held-words.mjs`).
 
 **Still to do,** after the inbox, as [`architecture/services.md`](architecture/services.md) orders it:
-- **Progress is still stored.** The live view’s detail goes to the event log and folds when the turn ends. Live-only progress replaces that, with Turns owning the live buffer and the turn’s record.
+- **Progress is still stored.** The live view’s detail goes to the event log and folds when the turn ends. Live-only progress replaces that, with Turns owning the live buffer and the turn’s record, as [`architecture/live-progress.md`](architecture/live-progress.md) designs it.
 - **Postbox’s own tool calls are still quiet,** and a running step doesn’t show how long it has run.
 - **An agent’s state shows only as running and its step.** Waiting on a job, on another agent or on you, failed and done come from Running, Turns, Work’s jobs, Delivery’s entries and asks.
 
