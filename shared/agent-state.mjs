@@ -41,7 +41,7 @@ export function agentState(se, s, now = Date.now()) {
   if (se.state === 'stopping') return { state: 'stopping', detail: '' };
   if (LIVE.has(se.state) || ON_HOST.has(se.remoteTurn?.state)) return { state: 'running', detail: se.currentStep ?? '' };
   const until = se.quota?.until;
-  if (se.quota && (until == null || until > now)) return { state: 'quota', detail: '', ...(until ? { until } : {}) };
+  if (quotaOut(se, now)) return { state: 'quota', detail: '', ...(until ? { until } : {}) };
   if (se.state === 'failed') return { state: 'failed', detail: '' };
   const job = jobOf(se);
   if (job) return { state: 'job', detail: job };
@@ -50,6 +50,12 @@ export function agentState(se, s, now = Date.now()) {
   if (behind) return { state: 'behind', detail: behind.handle, since: behind.at };
   return { state: 'idle', detail: '' };
 }
+
+/**
+ * Whether the agent is out of quota now: marked, and its reset, if the harness gave one, not past (#442).
+ * @param {any} se @param {number} [now]
+ */
+export const quotaOut = (se, now = Date.now()) => Boolean(se?.quota) && (se.quota.until == null || se.quota.until > now);
 
 /** The label of the agent’s newest background job still running, from its session’s bounded list. */
 function jobOf(se) {

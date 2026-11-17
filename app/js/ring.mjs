@@ -12,11 +12,25 @@
 //
 // A ring at rest, state="rest", says only whose it is: the ring beside an agent’s earlier reply, whose state and
 // context show beside its latest one (#622). It draws its track alone, in the idle color.
+//
+// An agent out of quota (#442), state="quota", holds still in the idle color: it isn’t an alarm. A ring is a button to
+// what its agent needs only when the agent needs the person now (needs="you", from shared/needs.mjs).
 
+import { quotaOut } from '/shared/agent-state.mjs';
+import { needsYouNow } from '/shared/needs.mjs';
 import { ringWhere } from './remote.mjs';
 
 // stopping: Stop was pressed, and its process hasn’t exited yet (#126). It holds still, in the idle color.
-const STATE_WORD = { idle: 'Idle', think: 'Thinking', gen: 'Generating', tool: 'Calling tools', needs: 'Needs you', failed: 'Failed', stopping: 'Stopping' };
+const STATE_WORD = {
+  idle: 'Idle',
+  think: 'Thinking',
+  gen: 'Generating',
+  tool: 'Calling tools',
+  needs: 'Needs you',
+  failed: 'Failed',
+  stopping: 'Stopping',
+  quota: 'Out of quota',
+};
 const STATE_VAR = { idle: '--st-idle', think: '--st-think', gen: '--st-gen', tool: '--st-tool', needs: '--accent', failed: '--alert' };
 const RING_SIZES = { xs: [4.5, 1.75, 3, 2], sm: [6, 2, 3.5, 2], lg: [10, 3, 5, 3] };
 const NS = 'http://www.w3.org/2000/svg';
@@ -96,7 +110,7 @@ export const subsAttr = (subagents = []) =>
   subagents.map((s) => `${s.state}:${Number.isFinite(s.ctx) ? Math.round(s.ctx) : ''}:${String(s.name).replace(/[,:]/g, ' ')}`).join(',');
 
 class PbRing extends HTMLElement {
-  static observedAttributes = ['state', 'ctx', 'subs', 'size', 'name', 'where'];
+  static observedAttributes = ['state', 'ctx', 'subs', 'size', 'name', 'where', 'needs'];
   connectedCallback() {
     this.render();
   }
@@ -144,7 +158,7 @@ class PbRing extends HTMLElement {
     this.replaceChildren(...parts);
     // While its agent needs you, a ring outside any link or button is a button of its own, to what it needs (#285,
     // needs-nav.mjs). In a link or a button, that control goes there instead.
-    if (this.dataset.session && (state === 'needs' || state === 'failed') && !this.parentElement?.closest('a, button')) {
+    if (this.dataset.session && this.getAttribute('needs') === 'you' && !this.parentElement?.closest('a, button')) {
       this.setAttribute('role', 'button');
       this.setAttribute('tabindex', '0');
       this.setAttribute('aria-label', `${label}. Go to what ${name} needs`);
@@ -169,7 +183,10 @@ export function ringFor(se, size = 'sm', el = null) {
   };
   el.holding = true;
   set('name', se.handle);
-  set('state', se.state ?? 'idle');
+  // Out of quota, a failed or idle agent’s ring says so, and isn’t the alert color of a failure the person can act on.
+  const resting = !se.state || se.state === 'idle' || se.state === 'failed';
+  set('state', resting && quotaOut(se) ? 'quota' : (se.state ?? 'idle'));
+  set('needs', needsYouNow(se) ? 'you' : '');
   set('ctx', se.ctx != null ? String(se.ctx) : 'unknown');
   set('subs', subsAttr(se.subagents));
   set('size', size);
