@@ -1019,8 +1019,9 @@ html.store-down .sidepanel { padding-bottom: 44px; }
 
 /* Room for an open composer menu, so it doesn't cover the last message in a screenshot of that state. */
 
-/* Toasts sit left of an open side panel on wide screens. */
-@media (min-width: 768px) { .has-panel .toasts { right: calc(var(--pane-w) + 16px); } }
+/* Toasts sit left of the right pane on wide screens, where it’s beside the conversation: pane-width.mjs sets
+   --pane-aside on #toasts, a child of body, which no class on .app reaches (#1472). */
+@media (min-width: 768px) { .toasts { right: calc(var(--pane-aside, 0px) + 16px); } }
 .appframe .app-placeholder { border: 0; border-radius: 0; }
 
 /* ═════════ Live app additions (Stage 2) ═════════ */
