@@ -221,12 +221,10 @@ export function leaveMoved(rts, sessionId, hostId) {
   rts.noteAttach(sessionId);
   rts.early.delete(r.turn);
   endOrphanCards(rts, [r.turn]);
-  // Asked before the restore’s hold on the host is let go, so its link isn’t dropped in between (#965). The stop stays
-  // in remoteTurn.stopping until its host confirms it. The old turn is no longer the agent’s, so it settles now: a
-  // turn here doesn’t take the session’s remoteTurn, as a new host turn does, and the agent mustn’t read as running
-  // on a host it left (#1442).
-  askStop(rts, sessionId, r.hostId, r.turn);
-  updateRemote(rts, sessionId, { state: 'done', at: rts.now() });
+  // Asked before the restore’s hold on the host is let go, so its link isn’t dropped in between (#965). A turn here
+  // doesn’t take the session’s remoteTurn, as a new host turn does, so the old one shows as stopping until its host
+  // stops it: it may still run there meanwhile, and the agent reads as stopping, not running (#1442).
+  askStop(rts, sessionId, r.hostId, r.turn, { state: !hostId });
   releaseHost(rts, r.hostId);
 }
 
