@@ -2,7 +2,7 @@
 // conversation’s own room only, and a changed file by its path or a file name only one changed file has.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { conversationOf, refLookup, roomAsset, roomAssets } from '../shared/room-refs.mjs';
+import { conversationOf, refLookup, relevantRefs, roomAsset, roomAssets } from '../shared/room-refs.mjs';
 import { apply, emptyState } from '../shared/state.mjs';
 
 const version = (v, over = {}) => ({
@@ -83,5 +83,46 @@ test('the room’s assets come newest first', () => {
   assert.deepEqual(
     roomAssets(room(), 'th_a_topic').map((a) => a.id),
     ['as_Data0002', 'as_Plan0001'],
+  );
+});
+
+// #1446’s second part: what the chat is about now, for the pane’s In this chat.
+const said = (at, text, kind = 'agent') => ({ id: `it_${at}`, kind, text, at, status: 'done' });
+
+test('what the latest messages name ranks first, newest first, with each item once', () => {
+  const s = room();
+  const items = [said(100, 'see `notes/plan.md`'), said(200, 'and `cite.mjs`, then as_Data0002', 'user'), said(300, 'back to `notes/plan.md`')];
+  assert.deepEqual(
+    relevantRefs(s, 'th_a', items).map((r) => [r.at, r.when]),
+    [
+      ['as_Plan0001', 300],
+      ['wf_cite', 200],
+      ['as_Data0002', 200],
+    ],
+  );
+});
+
+test('only the last ten messages count, and only the person’s and the agents’', () => {
+  const s = room();
+  const items = [
+    said(1, '`notes/plan.md`'),
+    ...Array.from({ length: 10 }, (_, i) => said(10 + i, 'nothing here')),
+    { id: 'x', kind: 'system', text: '`cite.mjs`', at: 99 },
+  ];
+  assert.deepEqual(relevantRefs(s, 'th_a', items), []);
+});
+
+test('files changed and assets written in the last two turns count as touched', () => {
+  const s = room();
+  const turn = (id, startedAt) => apply(s, 'work.add', { convId: 'th_a', entry: { id, kind: 'turn', startedAt } });
+  turn('wt_1', 5);
+  apply(s, 'work.add', { convId: 'th_a', entry: { id: 'wc_old', kind: 'change', fileId: 'wf_readme1', turnId: 'wt_1', at: 6 } });
+  turn('wt_2', 15);
+  turn('wt_3', 25);
+  apply(s, 'work.add', { convId: 'th_a', entry: { id: 'wc_new', kind: 'change', fileId: 'wf_cite', turnId: 'wt_3', at: 26 } });
+  assert.deepEqual(
+    relevantRefs(s, 'th_a', []).map((r) => r.at),
+    ['wf_cite', 'as_Data0002'],
+    'the third turn’s file, and the asset written at 20, after the second turn began; not the first turn’s file or the asset from 10',
   );
 });

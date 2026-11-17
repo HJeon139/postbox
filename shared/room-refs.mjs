@@ -72,3 +72,40 @@ export function refLookup(state, convId) {
     return file ? { at: file, kind: 'file' } : null;
   };
 }
+
+/** Inline code in a message’s Markdown: what links in a reply are made from (app/js/room-links.mjs). */
+const CODE = /`([^`\n]+)`/g;
+
+/** @typedef {Ref & { when: number }} Relevant */
+
+/**
+ * What the chat is about now (#1446): the assets and changed files named in the conversation’s last messages, the
+ * person’s and the agents’, and those touched in its last turns (a file changed, or an asset version written since the
+ * first of them began). Each once, at the later of when it was named and when it was touched, newest first.
+ * @param {any} state @param {string} convId @param {any[]} items  the conversation’s items the page holds, oldest first
+ * @param {{ messages?: number, turns?: number }} [opts]
+ * @returns {Relevant[]}
+ */
+export function relevantRefs(state, convId, items, { messages = 10, turns = 2 } = {}) {
+  const find = refLookup(state, convId);
+  /** @type {Map<string, Relevant>} */
+  const seen = new Map();
+  const note = (/** @type {Ref | null} */ ref, /** @type {number} */ when) => {
+    if (ref && (seen.get(ref.at)?.when ?? -1) < when) seen.set(ref.at, { ...ref, when });
+  };
+  const said = items.filter((i) => (i.kind === 'user' || i.kind === 'agent') && typeof i.text === 'string').slice(-messages);
+  for (const it of said) {
+    for (const m of it.text.matchAll(CODE)) note(find(m[1]), it.at ?? 0);
+    for (const m of it.text.matchAll(ASSET_ID)) note(find(m[0]), it.at ?? 0);
+  }
+  const entries = state.work?.[convId] ?? [];
+  const recent = entries.filter((e) => e.kind === 'turn').slice(-turns);
+  const ids = new Set(recent.map((t) => t.id));
+  for (const c of entries) if (c.kind === 'change' && ids.has(c.turnId)) note({ at: c.fileId, kind: 'file' }, c.at ?? 0);
+  const since = recent[0]?.startedAt;
+  for (const a of since == null ? [] : roomAssets(state, convId)) {
+    const v = a.versions[a.head - 1];
+    if (v.at >= since) note({ at: a.id, kind: 'asset' }, v.at);
+  }
+  return [...seen.values()].sort((a, b) => b.when - a.when);
+}

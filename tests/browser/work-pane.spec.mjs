@@ -73,9 +73,12 @@ async function workButton(page, { phone }) {
   await expect(page.locator(THREAD), 'no thread opened too').toHaveCount(0);
   await expect(page.locator('.rpane.split')).toHaveCount(0);
   await expect(button).toHaveAttribute('aria-pressed', 'true');
-  // Compact: the summary and stats, each a short list into its detail.
-  for (const h of ['To review', 'Files', 'Commands', 'Outside Postbox', 'Spend', 'Turns'])
-    await expect(page.locator('.wp-body h2').filter({ hasText: new RegExp(`^${h}`) }), `“${h}”`).not.toHaveCount(0);
+  // Compact (#1446): In this chat, Files with what to review, and Commands, one failed in the latest turn; the rest
+  // under More (tests/browser/work-pane-order.spec.mjs has the order).
+  for (const h of ['In this chat', 'Files', 'Commands'])
+    await expect(page.locator('.wp-body h2').filter({ hasText: new RegExp(`^${h}`) }), `“${h}”`).toHaveCount(1);
+  await expect(page.locator('#wc-files-h').locator('..')).toContainText('3 files to review');
+  await expect(page.locator('#wc-more-s')).toHaveText(/More\s*Outside Postbox, Spend, Turns/);
   // Both turns ran five commands, and two failed.
   await expect(page.locator('#wc-commands-h').locator('..')).toContainText('5 commands · 2 failed');
   expect(await tabTo(page, WORK), 'Tab reaches the Work pane').toBeGreaterThan(0);
@@ -173,9 +176,8 @@ async function workFull(page, { width, height }) {
 async function itemFull(page) {
   await open(page, `/side/${topic}?work`);
   const file = app.store.state.work[conv.id].find((e) => e.kind === 'file' && e.rel?.endsWith('refs.bib'));
-  // Its Files row, as the old check took it, or its To review row where it has none.
-  const files = page.locator(`#wc-file-${file.id}`);
-  await ((await files.count()) ? files : page.locator(`#wc-review-${file.id}`)).focus();
+  // Its Files row: flagged, it sorts first in its group.
+  await page.locator(`#wc-file-${file.id}`).focus();
   await page.keyboard.press('Enter');
   await expect(page.locator('#wv-back'), 'the viewer, with focus on Back').toBeFocused();
   await expect(page.locator(`${WORK} .wv`).getByRole('heading', { name: file.rel })).toBeVisible();
