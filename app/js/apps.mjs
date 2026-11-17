@@ -125,6 +125,14 @@ addEventListener('message', async (e) => {
     case 'state':
       if (current) saveState(rec.appId, m.state);
       break;
+    case 'open':
+      // A web link the person clicked in the app (#1480): a new tab, only right after their click or key press there. In
+      // the Claude desktop app’s pane, where window.open replaces this page, Postbox’s server opens it in the default
+      // browser instead (designs/architecture/sandbox.md, “No popups; links through the bridge”).
+      if (rec.check || activated(e, rec) || !/^https?:\/\//i.test(String(m.url))) break;
+      if (/ Claude\//.test(navigator.userAgent)) api(`/api/apps/${encodeURIComponent(rec.appId)}/open`, { url: String(m.url) }).catch(() => {});
+      else window.open(String(m.url), '_blank', 'noopener,noreferrer');
+      break;
     case 'anchors':
       rec.onAnchors?.(m.names);
       break;

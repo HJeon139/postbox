@@ -81,6 +81,8 @@ Inside the sandbox, the kit ([`app/kit/kit.js`](../app/kit/kit.js)) provides:
 
 The stylesheet is preloaded, so apps use the same classes and tokens as Postbox, on the cool app stage.
 
+**Links.** A web link in an app opens in a new tab when you click it, and never on the app’s own ([#1480](https://github.com/HJeon139/postbox/issues/1480)). The kit hands it to Postbox over the bridge, which checks the click as it does a send (`app/kit/links.js`). In the Claude desktop app’s browser pane, where opening a window replaces Postbox’s own page, Postbox’s server opens it in your default browser (`server/app-links.mjs`).
+
 **Images.** An app loads images from `data:` URLs, or from `/media/<name>`. That serves the media bundled with Postbox, then the `media/` folder in your data folder (`~/.postbox/media/`), where agents copy the images their apps show (PNG, JPEG, GIF, WebP, AVIF or SVG). Agents find it in `$POSTBOX_MEDIA`. Nothing an agent adds goes into Postbox’s own folder, which an upgrade replaces.
 
 **The pre-display check.** Before you see an app, your browser loads it in two hidden frames, at 375 and 1280 px. It checks for:
