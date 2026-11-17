@@ -5,7 +5,7 @@
 
 import { expect, test } from '@playwright/test';
 import * as arrange from '../arrange.mjs';
-import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
+import { failOnPageErrors, settled, startPostbox, synced } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
 let app;
@@ -40,14 +40,14 @@ failOnPageErrors(test);
 
 let count = 0;
 /** A room with an agent on each backend, each having answered once, open at 1280 px. */
-async function room(page, backends = ['claude-code', 'codex', 'kiro-cli']) {
+async function room(page, backends = ['claude-code', 'codex', 'kiro-cli'], width = 1280) {
   const n = ++count;
   const personas = backends.map((backend, i) => app.rt.createPersona({ handle: `q${n}x${i}`, backend }));
   const t = app.rt.createThread({ projectId: Object.keys(app.store.state.projects)[0], title: `Quota ${n}`, personaIds: personas.map((p) => p.id) });
   app.rt.sendMessage(t.id, { text: personas.map((p) => `@${p.handle}`).join(' ') + ' go' });
   // Each agent answered once, so each harness has had its turn to report.
   await expect.poll(() => app.store.items(t.id).filter((i) => i.kind === 'agent' && i.text === 'Done.').length).toBe(backends.length);
-  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.setViewportSize({ width, height: 800 });
   await page.goto(`${app.origin}/#/t/${t.id}`);
   await synced(page, app);
   return t;
@@ -58,12 +58,14 @@ const bar = (page, backend) => line(page).getByRole('meter', { name: new RegExp(
 test('#442 one bar per backend in the room, with its most-used window and reset time; Kiro reports none', async ({ page }) => {
   await room(page);
   await expect(bar(page, 'Claude Code')).toHaveAttribute('aria-valuenow', '42');
-  await expect(bar(page, 'Claude Code')).toContainText(/Claude Code · 5 h 42% · resets /);
+  await expect(bar(page, 'Claude Code')).toHaveAttribute('aria-valuetext', /^Claude Code 42% of 5 h · resets /);
+  await expect(bar(page, 'Claude Code')).toContainText('Claude Code 42%');
   await expect(bar(page, 'Codex')).toHaveAttribute('aria-valuenow', '7');
   await expect(line(page).getByRole('meter'), 'no bar for a backend that reports no quota').toHaveCount(2);
   await expect(line(page)).not.toContainText('Kiro');
   // Per backend, not per agent: the agents’ rows show no quota figure.
-  await expect(page.locator('.agent-row')).not.toContainText('42%');
+  await expect(page.locator('.agent-row')).toHaveCount(3);
+  await expect(page.locator('.agent-row').filter({ hasText: '42%' })).toHaveCount(0);
 });
 
 test('#442 a room’s bars are only its own backends’', async ({ page }) => {
@@ -103,8 +105,20 @@ test('#442 a figure seen long ago says its age, and a window past its reset show
     seenAt: Date.now(),
   });
   await synced(page, app);
-  await expect(bar(page, 'Codex')).toContainText('as of 2 h ago');
+  await expect(bar(page, 'Codex'), 'its age stays on the row').toContainText('Codex 30% · as of 2 h ago');
   await expect(bar(page, 'Codex')).toHaveClass(/stale/);
-  await expect(bar(page, 'Claude Code')).toContainText('reset');
+  await expect(bar(page, 'Claude Code')).toHaveAttribute('aria-valuetext', 'Claude Code · 5 h reset');
   await expect(bar(page, 'Claude Code')).not.toContainText('90%');
+});
+
+test('#442 on a phone each bar keeps its backend and percent whole, and the window and reset give way first', async ({ page }) => {
+  await room(page, ['claude-code', 'codex'], 375);
+  await expect(bar(page, 'Codex')).toBeVisible();
+  await settled(page);
+  const row = await line(page).boundingBox();
+  for (const name of ['Claude Code', 'Codex']) {
+    const main = await bar(page, name).locator('.quota-main').boundingBox();
+    expect(main && row && main.x >= row.x - 0.5 && main.x + main.width <= row.x + row.width + 0.5, `${name}’s percent is on the row`).toBe(true);
+  }
+  expect(row?.height, 'one row').toBeLessThanOrEqual(20);
 });

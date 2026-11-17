@@ -755,6 +755,17 @@ html.store-down .sidepanel { padding-bottom: 44px; }
 /* “Did you mean” fits the row, its focus ring inside it, since the row clips (#134). */
 .composer .hint .did-you-mean { height: 18px; margin: 1px 0; padding: 0 6px; font-size: 11.5px; vertical-align: top; }
 .composer .hint .did-you-mean:focus-visible { outline-offset: -2px; }
+/* The quota line (#442, composer-quota.mjs) shares the hint’s row: a hint that applies takes it, and the line takes
+   the empty hint’s place. One bar per backend, split evenly, in the neutral color: it isn’t an alarm. */
+.composer .hint:not(:empty) ~ .quota-line, .composer .quota-line:empty { display: none; }
+.composer .col > .hint:empty:has(~ .quota-line:not(:empty)) { display: none; }
+.quota-line { display: flex; gap: 16px; height: 20px; align-items: center; font-size: 11.5px; color: var(--dim); }
+.quota-bar { flex: 1 1 0; min-width: 0; display: flex; align-items: center; gap: 6px; }
+.quota-track { flex: 0 0 40px; height: 4px; border-radius: 2px; background: var(--line); overflow: hidden; }
+.quota-fill { display: block; height: 100%; background: var(--dim); }
+.quota-bar.stale .quota-fill { background: var(--line-strong); }
+.quota-main { flex: none; white-space: pre; }
+.quota-more { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: pre; }
 /* `!`’s folder is cut in the middle, so its last part, where the command runs, stays on the row: the head gives way
    first, then the sentence after it (#1437). */
 .composer .hint .runs-in { display: flex; min-width: 0; }

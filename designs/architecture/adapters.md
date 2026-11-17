@@ -30,7 +30,7 @@ A harness that doesn’t report a thing never gets a guess at it: Antigravity’
 
 ## Quota: each backend’s usage, in the composer
 
-**Decision** (16 November 2026, for [#442](https://github.com/HJeon139/postbox/issues/442); built after #1436 lands `session.quota`). The line under the composer’s input ([#1437](https://github.com/HJeon139/postbox/issues/1437)) shows one bar for each backend that the room’s agents run on. It shows how much of that backend’s quota is used and when it resets. A quota belongs to the harness’s account, not to an agent: four agents on Claude Code share one quota. So the bars are labeled with the backend’s name and sit in the composer, not in an agent’s row, where its context use is. Running out stays where #1407 put it: the row of the agent whose turn failed. While a contextual hint applies (who a draft reaches, a command, offline), the hint takes the line instead.
+**Decision** (16 November 2026, for [#442](https://github.com/HJeon139/postbox/issues/442); built on #1436’s `session.quota`). The line under the composer’s input ([#1437](https://github.com/HJeon139/postbox/issues/1437)) shows one bar for each backend that the room’s agents run on. It shows how much of that backend’s quota is used and when it resets. A quota belongs to the harness’s account, not to an agent: four agents on Claude Code share one quota. So the bars are labeled with the backend’s name and sit in the composer, not in an agent’s row, where its context use is. Running out stays where #1407 put it: the row of the agent whose turn failed. While a contextual hint applies (who a draft reaches, a command, offline), the hint takes the line instead.
 
 ```mermaid
 flowchart LR
@@ -48,7 +48,7 @@ flowchart LR
 | Kiro CLI | only the credits each turn spent (`promptTurnSummaries[].usage`), with no limit and nothing remaining | `tests/fixtures/kiro-cli/` |
 | Antigravity CLI | nothing about quota | `tests/fixtures/antigravity-cli/` |
 
-So Kiro and Antigravity get no bar. Every recorded Claude window reads 0, so the first real nonzero value must confirm the 0-to-1 scale before the bars are trusted.
+So Kiro and Antigravity get no bar. Every recorded Claude window reads 0, so the first real nonzero value must confirm the 0-to-1 scale. Until then a Claude figure over 1 is read as a percent, up to 100, and anything larger draws no bar (`share` in [`server/adapters/quota-windows.mjs`](../../server/adapters/quota-windows.mjs)).
 
 **The data.**
 - A new harness-event kind, `quota`, carries `{ status: 'ok' | 'warning' | 'out', windows: [{ name, used, resetsAt }] }`. `used` is from 0 to 1, and `resetsAt` is in milliseconds, or null. Each adapter maps its harness’s shape into it: Claude’s `five_hour` and `seven_day`, and Codex’s windows named from `windowDurationMins` (300 is “5 h”, 10,080 is “7 d”).
@@ -64,6 +64,12 @@ So Kiro and Antigravity get no bar. Every recorded Claude window reads 0, so the
 - **The figures are the person’s own, on their own computer.** They reach only the page Postbox serves on 127.0.0.1 ([security-boundaries.md](security-boundaries.md), “This computer alone”), so a public key is right. Recorded fixtures stay scrubbed, as the privacy scan requires, so the specs drive the bars from the mock adapter with made-up values.
 - **Per backend, not per agent.** Agents sharing a backend share its quota. A per-agent figure would repeat one number across rows and read like the context use already there.
 - **One line, shared with the hints.** The composer has room for one line under its input (#1437). A hint applies only while you type, and quota matters between messages.
+
+**Where it is built**
+- [`server/adapters/quota-windows.mjs`](../../server/adapters/quota-windows.mjs) reads Claude’s and Codex’s reports into the `quota` kind, and the Claude and Codex mappers emit it.
+- [`server/quota-usage.mjs`](../../server/quota-usage.mjs) checks and bounds a report and keeps it, under [`shared/quota-key.mjs`](../../shared/quota-key.mjs)’s key, the one the agents’ out-of-quota marks use ([`server/turn-quota.mjs`](../../server/turn-quota.mjs)). A record’s `out` changes no agent’s `quota`: only a refused turn marks them.
+- [`app/js/composer-quota.mjs`](../../app/js/composer-quota.mjs) draws the line in the conversation’s composer. On a phone each bar keeps its backend and percent, and the window and reset give way first.
+- Where a thread panel opens full screen over the conversation, the column behind it keeps its width, so its composer has room for the line ([`app/js/pane-width.mjs`](../../app/js/pane-width.mjs)).
 
 **Revisit when** Kiro or Antigravity reports a limit or what remains, a harness reports a quota per model that the person needs to see apart, or the first real Claude events show `utilization` on another scale.
 

@@ -55,6 +55,7 @@ export const KINDS = Object.freeze([
   'refused',
   'task',
   'context',
+  'quota',
   'progress',
   'status',
   'message_end',
@@ -221,6 +222,11 @@ export class HarnessEvents {
       this.st.ctx = e.percent;
       this.status({ ctx: e.percent });
     }
+  }
+
+  /** The backend’s quota usage (#442): { status, windows: [{ name, used, resetsAt }] }, kept for the composer. @param {any} e */
+  on_quota(e) {
+    this.ctx.quota?.({ status: e.status, windows: e.windows });
   }
 
   /** @param {any} e */

@@ -16,6 +16,7 @@ import { codexContextPercent } from './context-usage.mjs';
 import { agentFolder } from './folder.mjs';
 import { FRESH_START_TEXT, formatMessage, turnGuide } from './guide.mjs';
 import { listProcesses, stopTurn } from './process-group.mjs';
+import { codexQuota, emitQuota } from './quota-windows.mjs';
 import { AUTO_MODEL, effortOf, POSTBOX_SERVER, recorderFor } from './setup.mjs';
 
 export { codexModels, codexVersion, findCodex } from './codex-models.mjs';
@@ -124,9 +125,12 @@ export function createCodexMapper(ctx, io = {}) {
         emit({ kind: 'turn_end', isError: status === 'failed' });
         return { completed: true, status };
       }
+      case 'account/rateLimits/updated':
+        emitQuota(emit, codexQuota(p.rateLimits)); // the quota’s usage, for the composer’s quota line (#442)
+        break;
       case 'error':
-        // Out of quota (#442). Which rate limit window ran out, and so when it resets, is in account/rateLimits/updated’s
-        // usage figures, which are account data Postbox doesn’t read (tools/privacy-check.mjs), so no reset time.
+        // Out of quota (#442). The error doesn’t say which rate limit window ran out, so no reset time here; the
+        // windows’ figures reach the quota line from account/rateLimits/updated.
         return p.error?.codexErrorInfo === 'usageLimitExceeded' ? { error: errorText(p), quota: { until: null } } : { error: errorText(p) };
       default:
         break;
