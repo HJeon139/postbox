@@ -129,6 +129,10 @@ const UTILIZATION = /\\?"utilization\\?"\s*:\s*([^,}\]\s]+)/g;
 // The value a scrubbed utilization holds.
 const ZERO = /^0(?:\.0+)?$/;
 
+// Antigravity’s `/usage`: the share of a pool’s window left (#1466). Only 1, a window untouched, says nothing.
+const REMAINING = /\\?"remaining_fraction\\?"\s*:\s*([^,}\]\s]+)/g;
+const ONE = /^1(?:\.0+)?$/;
+
 // An email address. It stops at the first character an address can’t hold, so an address with “_” and a name run on
 // after it is still the address. It starts where no address character comes before, so a long run of them with no “@”
 // is tried once, not once from each of its characters.
@@ -223,6 +227,7 @@ function privateStrings(content) {
     ...valuesOf(content, CONNECTOR_TOOL, 'connector tool id', directoryTool),
     ...matchesOf(content, API_TOKEN, 'token'),
     ...valuesOf(content, UTILIZATION, 'utilization', (value) => ZERO.test(value)),
+    ...valuesOf(content, REMAINING, 'remaining fraction', (value) => ONE.test(value)),
     ...valuesOf(content, EMAIL, 'email', placeholderEmail),
   ];
 }
@@ -254,7 +259,7 @@ const sameLine = (line) => line;
 /**
  * Checks text for leaked personal data or un-sanitized environment paths: home paths with a real user name, temp
  * folders, Claude Code uids and uid fields, a real Codex installation id, account metadata, a claude.ai connector a
- * person named or its tool ids, API keys and tokens, a utilization other than 0, and real email addresses.
+ * person named or its tool ids, API keys and tokens, a utilization other than 0, a remaining fraction other than 1, and real email addresses.
  *
  * Each violation names its kind and its line, “email at line 3”, and never any part of what it found: CI prints them to
  * its log, which is public and kept for 90 days, so a masked address or a token’s first characters would outlast the
