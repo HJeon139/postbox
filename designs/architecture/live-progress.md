@@ -81,7 +81,7 @@ A commit point comes:
 
 The interval and the ceiling are constants in `shared/limits.mjs`. The measurement decides their values, within the bound that the commit points of a turn together write less than `main` writes for it.
 
-**At the end of a turn,** the last commit point, the settling patch, a failed reply’s `held` record (#1451, if it has merged by then) and the fold are one `commit`, so a restart sees all of them or none.
+**At the end of a turn,** the last commit point, the settling patch, a failed reply’s `held` record (#1451, `server/turn-held.mjs`) and the fold are one `commit`, so a restart sees all of them or none.
 
 ## Order
 
@@ -147,7 +147,7 @@ After either:
 - the reply keeps its text and its steps to the last commit point, which is the shutdown’s own after a planned restart;
 - it reads as cut off by a restart, as today, and the entries the turn took reopen once as a resend (Delivery’s start, [services.md](services.md), “Delivery and Turns, built as the inbox”), so the agent picks the work up again.
 
-**#1451’s record of a reply cut off with no words** (#1452, not merged yet) is built from what was stored: the reply’s steps and the entries its turn took. With this design, those steps are the ones to the last commit point.
+**#1451’s record of a reply cut off with no words** (`heldOfCutOff`, `server/turn-held.mjs`) is built from what was stored: the reply’s steps and the entries its turn took. With this design, those steps are the ones to the last commit point.
 
 **A turn on a host** goes on there. Postbox attaches again after the restart and replays the turn from the host’s `out.jsonl`, replacing what the reply had (`reattach`, `server/remote/turns-resume.mjs`). The replay goes through the same commit points, at its boundaries, so the reply comes back whole, as today.
 
