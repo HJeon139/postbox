@@ -141,6 +141,7 @@ At 100 running turns, the ceiling is 6.4 MB of text. The measurement records the
 
 **A turn on this computer** can’t outlive Postbox: its harness is a child of the server, and a restart ends it (`settleInterrupted`, `server/restart-sweep.mjs`). **The owner’s decision** (17 November 2026, “Flush at shutdown”), against intent.md’s second principle, “Streaming that never loses a message”:
 - **A planned restart loses nothing.** A graceful shutdown takes a commit point for every running reply, with its words, its changed steps and its session fields, before its turn is stopped: in `close()` (`server/index.mjs`), ahead of `rt.stopTurns()`, so the store writes it before `store.close()` flushes and releases the folder.
+- **Nor does the ledger,** which `main` doesn’t hold today: `settleLedger` waits 4 seconds (`ledgerGraceMs`) for the turns’ ledger records and then closes the store, so a record that ends later, such as a `git` call near its 10-second timeout (`runGit`), is dropped at a graceful shutdown. Once closing begins, the ledger starts no new work and writes what it has before `store.close()` (“Order of work”, 5).
 - **Only a crash can lose words:** those since the last commit point, at most 64 KB or 10 s of them, and the step updates since. That’s as today, when streamed text is written on the fast path, unsynced ([store.md](store.md)), so a crash can already lose a reply’s newest words.
 
 After either:
@@ -190,38 +191,43 @@ Each code pull request is measured against `main`, back to back on the same mach
 
 The first code pull request extends the tool and records `main`’s numbers before any change, so every later one compares with the same baseline.
 
-**`main`’s baseline,** at 7874ed81, from `node tools/measure-progress.mjs --runs 3`. Each run is in a fresh process, on a virtual clock that advances 50 ms after each recorded line, with a crowd’s agents interleaved. The log is counted as the store writes it, in UTF-8 bytes (a test holds that the count equals the disk). Bytes held to within 8 bytes across the runs, the digits of a time an event carries. Times are given as least to most.
+**`main`’s baseline,** Postbox at 7874ed81, from `node tools/measure-progress.mjs --runs 3`. Each run is in a fresh process, on a virtual clock that advances 50 ms after each recorded line, with a crowd’s agents interleaved. The log is counted as the store writes it, in UTF-8 bytes (a test holds that the count equals the disk). Times are given as least to most of the runs.
 
-| Section | Log bytes | Progress | Mixed | A page’s bytes, frames | Server µs a delta |
-|---|---|---|---|---|---|
-| Claude Code, 19 recorded turns | 407,440–407,444 | 45.1% | 8.9% | 353,100–353,104, 1,793 | 22.2–107.4 |
-| Codex, 8 recorded turns | 80,585–80,589 | 24.7% | 11.0% | 59,733–59,737, 358 | 20.8–112.3 |
-| Kiro, 11 recorded turns | 136,196–136,204 | 34.3% | 13.0% | 106,428–106,436, 675 | 12.9–86.6 |
-| Antigravity, 11 recorded turns | 163,495–163,501 | 43.6% | 10.1% | 132,487–132,493, 905 | 13.2–58.2 |
-| One turn of 300 steps, with input, output, detail and diffs | 649,174 | 67.0% | 30.8% | 635,954, 1,837 | 12.0–12.1 |
-| One turn of 1,000 steps | 2,144,179 | 68.0% | 31.1% | 2,105,759, 6,037 | 13.4–13.6 |
-| 1x: 4 agents in a room | 59,405–59,413 | 30.5% | 10.1% | 52,570–52,578, 276 | 22.3–48.5 (1 to 10 tabs) |
-| 10x: 40 agents in a room | 652,578–652,632 | 40.0–40.1% | 10.0% | 610,409–610,463, 2,979 | 9.6–13.6 (1 to 10 tabs) |
-| 100x: 100 agents across 25 rooms | 1,485,503 | 44.9% | 11.0% | 951,373, 7,697 (one room open) | 7.9–11.0 (1 to 10 tabs) |
+| Section | Log bytes | Progress | Mixed | A page’s bytes, frames | Event loop busy, ms | CPU, ms | Mappers’ µs a delta |
+|---|---|---|---|---|---|---|---|
+| Claude Code, 19 recorded turns | 407,447–407,450 | 45.1% | 8.9% | 353,107–353,110, 1,793 | 255–287 | 152–181 | 14.2–17.2 |
+| Codex, 8 recorded turns | 80,587–80,589 | 24.7% | 11.0% | 59,735–59,737, 358 | 77–161 | 33–43 | 19.7–34.2 |
+| Kiro, 11 recorded turns | 136,204 | 34.3% | 13.0% | 106,436, 675 | 118–121 | 43–45 | 11.6–12.7 |
+| Antigravity, 11 recorded turns | 163,502–163,503 | 43.6% | 10.1% | 132,494–132,495, 905 | 119–123 | 45–49 | 12.8–13.9 |
+| One turn of 300 steps, with input, output, detail and diffs | 649,174 | 67.0% | 30.8% | 635,954, 1,837 | 98–121 | 109–126 | 11.7–12.8 |
+| One turn of 1,000 steps | 2,144,179 | 68.0% | 31.1% | 2,105,759, 6,037 | 263–273 | 281–295 | 13.2–13.8 |
+| 1x: 4 agents in a room, 1 to 10 tabs | 59,405–59,413 | 30.5% | 10.1% | 52,570–52,578, 276 | 19–34 | 16–33 | 21.4–37.3 |
+| 10x: 40 agents in a room, 1 to 10 tabs | 652,578–652,632 | 40.0–40.1% | 10.0% | 610,409–610,463, 2,979 | 89–111 | 100–128 | 9.7–12.9 |
+| 100x: 100 agents across 25 rooms, 1 to 10 tabs | 1,485,503 | 44.9% | 11.0% | 951,373, 7,697 (one room open) | 182–286 | 221–306 | 8.3–14.7 |
 
 - **Progress** is a session patch of only live fields (with or without `updatedAt`), an `activityStep` patch, or an `item.text`.
 - **Mixed** is a session patch that sets a stored field, such as `state`, beside live ones. Its stored part stays.
 - `compacting` stays stored.
-- A recording that streams no words or step, such as Codex’s model list or a run that failed before any output, isn’t a turn, and is reported apart.
-- A page’s bytes don’t change with the number of tabs; the server’s time a delta, which includes writing to every tab, is given across 1, 3 and 10 tabs.
+- A recording that streams no words or step, such as Codex’s model list or a run that failed before any output, isn’t a turn, and is reported apart (the tool prints it).
+- A page’s bytes don’t change with the number of tabs, except by the digits of a time.
+- **Event loop busy** is `performance.eventLoopUtilization()`’s active time, and **CPU** `process.cpuUsage()`’s user and system time, both from the first turn’s start until every turn and its ledger record have settled: the store’s writes, the wire to every tab and the timers, not only the mappers. Both include the virtual clock’s own stepping, which is the same on every branch, so they’re compared between branches and never read as Postbox’s alone. **Mappers’ µs a delta** is the time in the adapters’ mappers only.
 
-**A restart mid-turn,** with each agent half through its turn, in rooms of 4. A graceful shutdown runs Postbox’s close path; a crash kills the process once the store has flushed:
+**A restart mid-turn,** with each agent half through its turn, in rooms of 4. Postbox is started with `start({ listen: false })`. A graceful stop is its own `close()`, with `ledgerGraceMs` raised so the virtual clock doesn’t run the ledger’s grace out; a crash kills the process once the store has flushed. “Written” is every byte of the log, counted from `start()`; “without the snapshot” loads a copy of that whole log with no snapshot, so it’s comparable whenever a snapshot is taken.
 
-| Scale and stop | Shutdown | Log bytes | Events replayed (with the snapshot, of all) | Load, with and without the snapshot | Heap after load | Sweep |
-|---|---|---|---|---|---|---|
-| 4 agents, graceful | 7.5–7.7 ms | 35,128 | 174 of 174 | 5.6–6.2 ms, 5.4–6.3 ms | 0.09–0.39 MB | 0.07–0.08 ms |
-| 4 agents, crash | | 28,319 | 136 of 136 | 7.4–8.2 ms, 7.4–8.2 ms | 0.09–0.40 MB | 0.7–0.8 ms |
-| 40 agents, graceful | 17.1–19.8 ms | 354,575 | 1,606 of 1,606 | 8.1–9.8 ms, 7.9–8.9 ms | 0.26–0.27 MB | 0.13–0.14 ms |
-| 40 agents, crash | | 295,713 | 1,356 of 1,356 | 8.9–10.3 ms, 8.7–9.9 ms | 0.24–0.49 MB | 1.4–1.5 ms |
-| 400 agents, graceful | 44.0–45.4 ms | 1,396,227–1,423,462 | 6,509–6,573 of 6,566–6,678 | 20.3 ms; a segment before the snapshot is gone | 2.4 MB | 0.37–0.38 ms |
-| 400 agents, crash | | 846,905 | 4,137 of 4,194 | 17.8–18.6 ms; the same | 2.1 MB | 9.8–10.1 ms |
+| Scale and stop | Shutdown | Written | Snapshot | Replayed with it: bytes, events | Load with it | Load without it: bytes, events, time | Heap after load | Sweep |
+|---|---|---|---|---|---|---|---|---|
+| 4 agents, graceful | 6.8–8.8 ms | 55,408 | none | 55,408, 176 | 6.0–6.7 ms | 55,408, 176, 5.4–6.6 ms | 0.13–0.14 MB | 0.07 ms |
+| 4 agents, crash | | 48,811 | none | 48,811, 138 | 7.5–10.8 ms | 48,811, 138, 5.3–6.3 ms | 0.17 MB | 0.8–1.2 ms |
+| 40 agents, graceful | 101–132 ms | 372,993–372,994 | none | 372,993–372,994, 1,608 | 8.1–12.5 ms | the same, 7.7–12.5 ms | 0.32–0.45 MB | 0.14–0.19 ms |
+| 40 agents, crash | | 312,714–312,945 | none | 312,714–312,945, 1,343–1,344 | 9.0–9.6 ms | 312,714–312,715, 1,343, 7.6–8.2 ms | 0.31–0.32 MB | 1.4–1.5 ms |
+| 400 agents, graceful | 665–705 ms | 3,463,150–3,469,172 | 1,068,239–1,087,813 | 1,126,092–1,208,291, 5,320–5,736 | 22.3–25.4 ms | 3,463,150–3,469,172, 16,629–16,651, 27.6–31.8 ms | 2.36 MB | 0.38–0.40 ms |
+| 400 agents, crash | | 2,911,035–2,917,054 | 1,082,781–1,172,327 | 216,169–633,178, 1,266–3,150 | 19.3–26.4 ms | 2,911,035–2,917,054, 14,167–14,189, 22.8–28.7 ms | 2.06–2.11 MB | 10.4–14.3 ms |
 
-Below 400 agents no snapshot had been taken, so every event is replayed either way. At 400 agents, a graceful shutdown’s log varied in one run of three with what the turns’ stops wrote. The server’s time a delta is the noisiest number; a step compares it as a band, run back to back with `main`.
+Below 400 agents no snapshot is taken, so every event is replayed. At 400, when the snapshot is taken depends on how the store’s writes batch between real I/O, so the snapshot and what’s replayed after it split the log differently from run to run, up to threefold for a crash. Those two are bands only; what a step compares at 400 is the whole log’s bytes and events and its load without the snapshot, which held to within 0.2%. The 400-agent shutdown is the real `close()`, which stops 400 turns and writes what they end with.
+
+**Worse than `main`,** for a step’s comparison, run back to back with `main` on the same machine, `--runs 3` each:
+- **Bytes** (the log, written, the snapshot and the page’s) are worse when the step’s least is above `main`’s most by more than 0.1% or 64 bytes, whichever is more. Runs differ only by the digits of times, and at 400 agents by what the stops write.
+- **Times** (event loop busy, CPU, mappers’ time a delta, shutdown, load and sweep) are worse when the step’s median is above `main`’s most by more than 10%. A row that fails is run again, back to back, and fails only if it fails twice. The snapshot and the replay with it at 400 agents aren’t compared, for the reason above.
 
 ## Order of work
 
@@ -230,7 +236,7 @@ Each item is its own pull request, test first:
 2. **`LIVE`, the `live` frame, `publicLiveFrame` and `publicLive`,** with the public-derivation, field-subset and private-kind tests, and `security-boundaries.md` updated in the same change, before anything is sent on it.
 3. **`server/live-buffer.mjs`, commit points, and the session fields and steps going live,** with the shared queue, the lag, `rev`, and `subagent-end.mjs` reading the buffer.
 4. **Text going live,** with `at`, the snapshot, `/api/state`’s `live`, and `app/js/live-frames.mjs`.
-5. **The shutdown commit point,** with a test that fails without it: a reply stopped cleanly mid-stream, Postbox started again on the same store, and every word the reply had said is there.
+5. **The shutdown commit point,** with a test that fails without it: a reply stopped cleanly mid-stream, Postbox started again on the same store, and every word the reply had said is there. **And the ledger at shutdown:** once closing begins, the ledger starts no new work and writes what it has before `store.close()`, with a test through the real `start()` and `close()` and a short grace, such as `ledgerGraceMs` of 30 ms and a record that writes after 150 ms, which `main` drops.
 6. **The readers:** catch-up’s line for a reply still being written, the UAT checks held to `main`’s results, this document’s “Status” moved to built, and `architecture.md`’s summary (“Streamed text is emitted on a fast path”) updated.
 
 ## What this doesn’t do
