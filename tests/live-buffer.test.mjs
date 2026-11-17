@@ -161,3 +161,15 @@ test('a step stored outside the buffer while the turn runs wins: the next commit
   assert.equal(last('job1').state, 'done', 'the job’s end, not the buffer’s running copy');
   assert.equal(last('s2').part, 'it_2', 'the move, not the part before it');
 });
+
+test('which wins: a stored write of a live field mid-turn replaces the buffer’s value, so a reload shows it', async () => {
+  const { rt, turn } = await rig();
+  /** @type {any} */ (rt.running).turnOf = (/** @type {string} */ id) => (id === turn.sessionId ? turn : undefined);
+  rt.store.emit('session', { id: 'se_1', threadId: 'th_1', state: 'tool', currentStep: '', subagents: [] });
+  liveSession(rt, turn, { currentStep: 'Bash', subagents: [{ id: 'a', name: 'helper', state: 'tool' }] });
+  // Stop, or a store outage, as turn-stop.mjs and store-outage.mjs write it: stored, not through the buffer.
+  rt.store.emit('session.patch', { id: 'se_1', patch: { state: 'stopping', subagents: [], currentStep: 'Stopping' } });
+  const [snap] = liveSnapshots(rt);
+  assert.equal(snap.session.currentStep, 'Stopping');
+  assert.deepEqual(snap.session.subagents, []);
+});

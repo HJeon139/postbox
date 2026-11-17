@@ -27,11 +27,33 @@ function capFields(o) {
 /** A list at most `n` long, each entry’s strings capped. @param {unknown} v @param {number} n */
 const capList = (v, n) => (Array.isArray(v) ? v.slice(0, n).map((x) => (x && typeof x === 'object' ? capFields(x) : capString(x))) : undefined);
 
+/** The stores whose stored session writes the buffers follow (watchStored). */
+const watched = new WeakSet();
+
+/**
+ * Which wins (live-progress.md): a stored write of a live field while a turn runs, such as “Stopping” or “Waiting for
+ * you”, replaces the buffer’s value, so a snapshot and the next frame start from it. Followed once a store.
+ * @param {any} rt
+ */
+function watchStored(rt) {
+  if (watched.has(rt.store)) return;
+  watched.add(rt.store);
+  rt.store.subscribe((/** @type {any} */ ev) => {
+    if (ev.type !== 'session.patch') return;
+    const session = rt.running?.turnOf?.(ev.data?.id)?.live?.session;
+    if (!session) return;
+    const patch = ev.data.patch ?? {};
+    for (const k of SESSION_FIELDS) if (Object.hasOwn(patch, k)) session[k] = patch[k];
+    for (const k of ev.data.unset ?? []) if (SESSION_FIELDS.includes(k)) delete session[k];
+  });
+}
+
 /**
  * The turn’s buffer, made on its first use: the steps changed since the last commit point by id, each step’s rev, and
- * the session’s live fields. @param {any} turn
+ * the session’s live fields. @param {any} rt @param {any} turn
  */
-function bufferOf(turn) {
+function bufferOf(rt, turn) {
+  watchStored(rt);
   turn.live ??= { changed: new Map(), rev: new Map(), session: {} };
   return turn.live;
 }
@@ -66,7 +88,7 @@ export function liveCommit(rt, turn) {
  * kept and sent live with its rev. @param {any} rt @param {any} turn @param {any} step
  */
 export function liveStep(rt, turn, step) {
-  const live = bufferOf(turn);
+  const live = bufferOf(rt, turn);
   if (startsOwn(live, step) || (!live.changed.has(step.id) && live.changed.size >= LIVE_CAPS.steps)) liveCommit(rt, turn);
   const capped = capFields(step);
   const rev = (live.rev.get(step.id) ?? 0) + 1;
@@ -111,7 +133,7 @@ export function liveSession(rt, turn, patch, carried = {}) {
   /** @type {Record<string, any>} */
   const capped = {};
   for (const [k, v] of Object.entries(patch)) capped[k] = k === 'toolCalls' || k === 'subagents' ? capList(v, LIVE_CAPS[k]) : capString(v);
-  const session = bufferOf(turn).session;
+  const session = bufferOf(rt, turn).session;
   // Only what changed goes, as with a step: a page holds the rest from an earlier frame, the snapshot or the store.
   const stored = rt.store.pending.session(turn.sessionId) ?? {};
   /** @type {Record<string, any>} */
