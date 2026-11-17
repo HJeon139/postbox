@@ -126,12 +126,13 @@ function turnMessage(rt, se, message, where, slash) {
   // message.lint: fixes it owes, placed with the request rather than in the background.
   if (message.kind !== 'lint' && !slash) message = rt.checks.foldLint(sessionId, message);
   if (input) return message;
-  // A topic or side thread’s request leads; its room catch-up is background. A room turn keeps the existing order. The
-  // person’s messages still waiting for the agent stay out of it: they’re posted at send, and a later turn gives them.
+  // A topic or side thread’s request leads; its room catch-up is background. A room turn keeps the existing order. What
+  // still waits for the agent as an entry stays out of it, the person’s messages and agents’ mentions alike: each is
+  // given in its own turn, whole, so a summary never gives it first (#484), as inputOf leaves them out of a tail.
   const waiting = rt.delivery
     .waiting(sessionId)
-    .filter((/** @type {any} */ e) => e.source === 'person')
-    .map((/** @type {any} */ e) => e.itemId);
+    .map((/** @type {any} */ e) => e.itemId)
+    .filter(Boolean);
   return rt.memory.turnContext(rt.store.pending.session(sessionId) ?? rt.s.sessions[sessionId], where, message, slash, waiting);
 }
 
