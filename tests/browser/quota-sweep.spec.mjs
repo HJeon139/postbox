@@ -180,5 +180,5 @@ test('#442 a line hidden when it’s taken off the page, empty or behind a hint,
   await expect(page.locator('.composer .hint')).toContainText('Runs in');
   for (let i = 0; i < 12; i++) await goTo(page, (i % 2 ? shown : empty).id);
   await frames(page);
-  expect(await observed(page), 'one line on the page, and at most the one it replaced').toBeLessThanOrEqual(2);
+  expect(await observed(page), 'the one line on the page').toBe(1);
 });

@@ -15,7 +15,7 @@ import { renderBlock } from './blocks.mjs';
 import { api, busy, client, hrefOf, itemsOf, placeIn, sessionsAt, sessionsOf, sideSessionsOf, stopSession, threadLink, uploadFile } from './client.mjs';
 import { describeStop, notOnHost, stopNoteEl } from './composer-host.mjs';
 import { placeholderRoom } from './composer-placeholder.mjs';
-import { quotaLine } from './composer-quota.mjs';
+import { quotaLine, releaseQuotaLine } from './composer-quota.mjs';
 import { runsIn } from './composer-runs-in.mjs';
 import { fitDraft } from './composer-size.mjs';
 import { addressLine, addressSig, commandHint, placeholderFor } from './composer-to.mjs';
@@ -1386,10 +1386,8 @@ export function mountComposer(threadId, { side = false } = {}) {
     }
   });
 
-  const el = h(
-    'div.composer',
-    h('div.col', status, asks, queue, menuBox, att, h('div.composer-box', plus, ta, action), hint, commands ? quotaLine(threadId) : null, file),
-  );
+  const quota = commands ? quotaLine(threadId) : null;
+  const el = h('div.composer', h('div.col', status, asks, queue, menuBox, att, h('div.composer-box', plus, ta, action), hint, quota, file));
 
   // Drop files: the main composer takes drops anywhere in the window. A side or topic composer takes drops on
   // its own panel (see dropZone below), and stops them there so the main composer doesn’t take them too.
@@ -1607,6 +1605,7 @@ export function mountComposer(threadId, { side = false } = {}) {
       unwatch();
       unlisten();
       space.stop();
+      releaseQuotaLine(quota);
     },
   };
 }

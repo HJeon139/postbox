@@ -120,11 +120,13 @@ function forget(el) {
   observed.delete(el);
 }
 /**
- * Lets go of every line no longer on the page. A shown line taken off reports a size of nothing; one hidden then
- * (empty, or behind a hint) reports nothing, so each new line, and each minute, looks too.
+ * Lets go of a line when its composer goes, so neither the observer nor this module holds it, or the room it was drawn
+ * in (#866). A line hidden as it leaves, empty or behind a hint, reports no resize to go by. @param {Element | null} el
  */
-function forgetGone() {
-  for (const el of observed) if (!el.isConnected) forget(el);
+export function releaseQuotaLine(el) {
+  if (!el) return;
+  forget(el);
+  lines.delete(/** @type {HTMLElement} */ (el));
 }
 
 /**
@@ -149,7 +151,6 @@ export function quotaLine(threadId) {
   const el = h('div.quota-line', { role: 'group', 'aria-label': 'Quota by backend', dataset: { quotaLine: threadId } });
   paint(el);
   lines.add(el);
-  forgetGone();
   resized.observe(el);
   observed.add(el);
   onChangeWhileAlive(el, (live, change) => REPAINT_ON.has(change.type) && paint(live));
@@ -158,6 +159,5 @@ export function quotaLine(threadId) {
 
 // Ages and resets move with the clock, not with events: each minute, every line on the page says what’s true now.
 setInterval(() => {
-  forgetGone();
   for (const el of lines) if (el.isConnected) paint(el);
 }, 60_000);
