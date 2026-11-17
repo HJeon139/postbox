@@ -5,6 +5,7 @@
 
 import { api } from './client.mjs';
 import { h, icon } from './dom.mjs';
+import { heldLine } from './held-line.mjs';
 import { toast } from './ui.mjs';
 
 /**
@@ -46,10 +47,13 @@ export function failedActions(threadId, itemId, { dismissed = false, name, focus
 }
 
 /**
- * The callout under a failed reply in the room: its error and its actions, quieter once dismissed.
- * @param {string} threadId @param {any} it  the failed reply @param {any[]} text  its error, as the room words it
+ * The callout under a failed reply in the room: its error and its actions, quieter once dismissed. A reply with no
+ * words of its own says first, in a quiet line, what its turn held (server/turn-held.mjs); the error follows as before.
+ * @param {string} threadId @param {any} it  the failed reply @param {any[]} errorText  its error, as the room words it
  */
-export function failedCallout(threadId, it, text) {
+export function failedCallout(threadId, it, errorText) {
+  const held = heldLine(it);
+  const text = held ? [held, ...errorText] : errorText;
   const actions = failedActions(threadId, it.id, { dismissed: it.dismissed === true });
   if (it.dismissed)
     return h('div.callout.quiet', h('span.g.g-failed', { 'aria-hidden': 'true' }), h('div.grow', ...text, h('span.dim', ' Dismissed.')), ...actions);

@@ -19,6 +19,7 @@ import { settledNeed } from './restart-sweep.mjs';
 import { rearmWakes } from './scheduled-wakes.mjs';
 import { recordStopped } from './stop-record.mjs';
 import { whenWritable } from './store-wait.mjs';
+import { heldOfCutOff } from './turn-held.mjs';
 
 /** @typedef {import('./runtime.mjs').Runtime} Runtime */
 
@@ -76,7 +77,8 @@ export function settleOrphanTurns(rt) {
     const settled = exiting ? { state: 'stopping' } : settledNeed(rt, se);
     rt.sessions.update(se.id, { ...settled, subagents: [], currentStep: step, stopAsk: null });
     for (const it of rt.store.items(se.threadId))
-      if (it.sessionId === se.id && it.status === 'streaming') rt.threads.patchItem(se.threadId, it.id, { status: 'stopped', stopReason: 'store' });
+      if (it.sessionId === se.id && it.status === 'streaming')
+        rt.threads.patchItem(se.threadId, it.id, { status: 'stopped', stopReason: 'store', ...heldOfCutOff(rt, it) });
   }
 }
 
