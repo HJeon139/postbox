@@ -156,7 +156,7 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
     return [...nodes.keys()].map((id) => list[placeIn(threadId, id)]).filter(Boolean);
   };
   const all = (/** @type {string | null} */ anchorKey = was?.anchor?.key ?? null, /** @type {any} */ kept = null) => {
-    held = keepable(el, nodes, itemsOf(threadId), (id) => placeIn(threadId, id), kept?.key);
+    held = keepable(el, nodes, itemsOf(threadId), (id) => placeIn(threadId, id));
     clearBut(el, held);
     nodes.clear();
     win?.destroy();

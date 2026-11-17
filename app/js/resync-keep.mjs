@@ -1,15 +1,17 @@
 // What a transcript keeps when it’s built again from a new state, as on a resync or a range landing (#987). Built
 // from nothing, every item node was new, so every app’s frame loaded again and lost what it held: a half-filled form,
-// a scroll position, a running simulation. Now an item that hasn’t changed keeps its node, where it is on the page:
-// taken out of the page and put back, a frame loads again, so a kept node never moves, and what’s new is put around it.
+// a scroll position, a running simulation. Now an app’s item that hasn’t changed keeps its node, where it is on the
+// page: taken out of the page and put back, a frame loads again, so a kept node never moves, and what’s new is put
+// around it.
 //
-// Unchanged means its record is the same, the item before it is the same one (its speaker line reads that), and its
-// app and its look on a host are as it drew them. Only mounted items are compared, which the window bounds (#866),
-// so a resync’s cost follows what’s on the page, not the length of the room.
+// Only an app’s item is kept, since its frame is what the person would lose. Every other item draws again from the new
+// state, as it always did, so nothing it reads beyond its own record (a term defined meanwhile, a side thread’s
+// state, a speaker’s marker) can go stale. Unchanged means its record is the same, the item before it is the same one
+// (its speaker line reads that), and its app is as it drew it. Only mounted items are compared, which the window bounds
+// (#866), so a resync’s cost follows what’s on the page, not the length of the room.
 
 import { S } from './client.mjs';
 import { appSig, drawnApp } from './drawn-app.mjs';
-import { remoteSig } from './thread-host.mjs';
 import { replaced } from './window-shrink.mjs';
 
 /** Each item node, and the item and the item before it that it was drawn from. @type {WeakMap<Element, { it: any, prevId: string | null }>} */
@@ -23,34 +25,34 @@ export function noteDrawn(node, it, prev) {
 }
 
 /**
- * The item nodes on the page the new list leaves as they are, by id, in the page’s order. A node whose item moved
- * ahead of one kept before it is drawn again, since keeping both would move one.
+ * The app items’ nodes on the page the new list leaves as they are, by id, in the page’s order. A node whose item moved
+ * ahead of one kept before it is drawn again, since keeping both would move one. Each kept node is noted as drawn
+ * from the new item, which is the same record.
  * @param {HTMLElement} el  the transcript @param {Map<string, HTMLElement>} nodes  its item nodes
  * @param {any[]} list  the new items @param {(id: string) => number} at  an item’s place in it
- * @param {string | undefined} skip  the item with focus, which the window puts back itself (window-keep.mjs)
  */
-export function keepable(el, nodes, list, at, skip) {
+export function keepable(el, nodes, list, at) {
   /** @type {Map<string, HTMLElement>} */
   const keep = new Map();
   let last = -1;
   for (const node of /** @type {HTMLCollectionOf<HTMLElement>} */ (el.children)) {
     const id = node.dataset.key;
     const was = drawnFrom.get(node);
-    if (!id || id === skip || !was || nodes.get(id) !== node) continue;
+    if (!id || !was || nodes.get(id) !== node || !drawnApp(was.it)) continue;
     const i = at(id);
     if (i <= last || (list[i - 1]?.id ?? null) !== was.prevId || !drawnSame(node, was.it, list[i])) continue;
     keep.set(id, node);
+    noteDrawn(node, list[i], list[i - 1]);
     last = i;
   }
   return keep;
 }
 
-/** Whether the node drew this item as it is now: its record, its app and its look on a host. */
+/** Whether the node drew this item as it is now: its record, and its app as it shows it. */
 function drawnSame(/** @type {HTMLElement} */ node, /** @type {any} */ was, /** @type {any} */ it) {
   if (JSON.stringify(was) !== JSON.stringify(it)) return false;
   const app = S().apps[drawnApp(it)];
-  if ((node.dataset.appSig ?? null) !== (app ? appSig(app) : null)) return false;
-  return it.kind !== 'agent' || node.dataset.remoteSig === remoteSig(it);
+  return (node.dataset.appSig ?? null) === (app ? appSig(app) : null);
 }
 
 /** Empties the transcript but for the nodes it keeps, which stay where they are. @param {HTMLElement} el @param {Map<string, HTMLElement>} keep */
