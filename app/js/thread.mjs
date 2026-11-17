@@ -7,13 +7,15 @@ import { laterParts } from './activity-live.mjs';
 import { activityParts, drawnStale, hasRecord, paintActivity, paintPatch, recordMoved } from './activity-paint.mjs';
 import { mockMarker } from './agent-facts.mjs';
 import { agentMarkdown, handles, markTerms, paintAgentMarkdown, usesTerm } from './agent-markdown.mjs';
-import { paintOfflineQueue, paintWaitingLine } from './agent-queue.mjs';
+import { paintOfflineQueue } from './agent-queue.mjs';
 import { allowedCallLine } from './allowed-call.mjs';
 import { enhanceMarkdown, releaseApps, renderAppItem, renderAppSendCard } from './apps.mjs';
 import { attChip, fileSize } from './attachment-chip.mjs';
 import { renderBlock } from './blocks.mjs';
 import { api, busy, client, hrefOf, itemsOf, placeIn, sessionsAt, sessionsOf, sideSessionsOf, stopSession, threadLink, uploadFile } from './client.mjs';
 import { describeStop, notOnHost, stopNoteEl } from './composer-host.mjs';
+import { placeholderRoom } from './composer-placeholder.mjs';
+import { runsIn } from './composer-runs-in.mjs';
 import { fitDraft } from './composer-size.mjs';
 import { addressLine, addressSig, commandHint, placeholderFor } from './composer-to.mjs';
 import { $, ago, dayOf, fill, h, icon, plural, syncList, timeOf, trusted } from './dom.mjs';
@@ -804,40 +806,28 @@ export function mountComposer(threadId, { side = false } = {}) {
   try {
     ta.value = localStorage.getItem(key) ?? '';
   } catch {}
+  // One menu (#1437): add a file or an agent, and, in a conversation’s own composer, open the commands.
   const plus = h('button.btn.icon.ghost', {
     type: 'button',
-    'aria-label': 'Add a file or a new agent',
+    'aria-label': commands ? 'Add a file, an agent or a command' : 'Add a file or an agent',
     'aria-haspopup': 'menu',
     onclick: () => plusMenu(plus),
   });
   plus.append(icon('plus'));
-  // The / menu (#67): Postbox’s commands and the agents’ skills, by typing / or with this button. Only in a
+  // The / menu (#67): Postbox’s commands and the agents’ skills, by typing / or from the menu above. Only in a
   // conversation’s own composer, where ! runs commands too.
   let slash = null; // { query, index }
   let slashTarget = null; // the agent skill or command picked: { sessionId, handle, name, argumentHint }
-  const commandsButton = !commands
-    ? null
-    : h(
-        'button.btn.icon.ghost.cmd-button',
-        {
-          type: 'button',
-          'aria-label': 'Commands',
-          title: 'Commands (/)',
-          'aria-haspopup': 'listbox',
-          onclick: () => {
-            if (!ta.value.startsWith('/')) ta.value = `/${ta.value.trimStart()}`;
-            ta.focus();
-            ta.setSelectionRange(1, 1);
-            updateSlash();
-            autosize();
-          },
-        },
-        h('span.cmd-glyph', { 'aria-hidden': 'true' }, '/'),
-      );
+  const openCommands = () => {
+    if (!ta.value.startsWith('/')) ta.value = `/${ta.value.trimStart()}`;
+    ta.focus();
+    ta.setSelectionRange(1, 1);
+    updateSlash();
+    autosize();
+  };
   const action = h('button.btn', { type: 'button' });
   const att = h('div.attachments', { role: 'group', 'aria-label': 'Attachments' });
   const queue = h('div.outbox');
-  const waiting = h('div.queue-waiting-box');
   // Stop’s ask about background jobs (#129), one row per agent, until you answer it.
   const asks = h('div.outbox');
   /** @type {Map<string, { jobs: number, text: string, turnId?: string }>} asks the server returned before its session event arrives */
@@ -856,6 +846,8 @@ export function mountComposer(threadId, { side = false } = {}) {
   });
 
   const autosize = () => fitDraft(ta);
+  /** What the hint’s address part depends on: the draft’s mentions, and whether there is a draft. */
+  const toSig = () => `${addressSig(threadId, ta.value)}${ta.value.trim() ? '' : ' empty'}`;
   const save = () => {
     try {
       localStorage.setItem(key, ta.value);
@@ -943,8 +935,20 @@ export function mountComposer(threadId, { side = false } = {}) {
               },
             ]
           : []),
+        ...(commands
+          ? [
+              'hr',
+              { heading: 'Commands' },
+              {
+                label: 'Commands and skills',
+                desc: 'Or type / in the message box',
+                icon: h('span.cmd-glyph', { 'aria-hidden': 'true' }, '/'),
+                run: openCommands,
+              },
+            ]
+          : []),
       ],
-      { placement: 'above', label: 'Add' },
+      { placement: 'above', label: commands ? 'Add or run' : 'Add' },
     );
   }
 
@@ -1289,7 +1293,7 @@ export function mountComposer(threadId, { side = false } = {}) {
     updateSlash();
     // The hint line follows what the line will do: a picked skill, a ! command, or a message, and whom it reaches.
     if (slashTarget && !ta.value.startsWith(`/${slashTarget.name}`)) slashTarget = null;
-    const to = hint.dataset.to !== addressSig(threadId, ta.value);
+    const to = hint.dataset.to !== toSig();
     if (to || ta.value.startsWith('!') || hint.dataset.mode || (commands && /^(@\S+\s+)?\//.test(ta.value))) paint();
     // Said once, when it appears, since the hint isn’t read as you type.
     if (to && hint.querySelector('.did-you-mean')) say(`${hint.querySelector('.did-you-mean').textContent} Its button follows the message box.`);
@@ -1381,7 +1385,7 @@ export function mountComposer(threadId, { side = false } = {}) {
     }
   });
 
-  const el = h('div.composer', h('div.col', status, asks, waiting, queue, menuBox, att, h('div.composer-box', plus, commandsButton, ta, action), hint, file));
+  const el = h('div.composer', h('div.col', status, asks, queue, menuBox, att, h('div.composer-box', plus, ta, action), hint, file));
 
   // Drop files: the main composer takes drops anywhere in the window. A side or topic composer takes drops on
   // its own panel (see dropZone below), and stops them there so the main composer doesn’t take them too.
@@ -1425,8 +1429,7 @@ export function mountComposer(threadId, { side = false } = {}) {
     const note = describeStop(action, b, threadId);
     const last = S().sessions[t.lastSpeaker];
     const members = sessionsOf(threadId).filter((x) => !x.retiredFork);
-    ta.placeholder = placeholderFor({ topic, side, members, last });
-    paintWaitingLine(waiting, threadId);
+    paintPlaceholder(members, last);
     paintOfflineQueue(
       queue,
       outbox.filter((x) => x.threadId === threadId),
@@ -1475,44 +1478,49 @@ export function mountComposer(threadId, { side = false } = {}) {
               : '';
     if (mode) hint.dataset.mode = mode;
     else delete hint.dataset.mode;
-    hint.dataset.to = addressSig(threadId, ta.value);
-    const folder = mode === 'shell' ? commandFolder() : null;
-    const here = mode === 'shell' ? notOnHost(target()) : null;
-    const own = isMock(target()) ? null : target();
+    hint.dataset.to = toSig();
     // A repaint while you’re on “Did you mean” keeps you there (#134).
     const onFix = !!document.activeElement?.closest('.did-you-mean') && hint.contains(document.activeElement);
-    fill(
-      hint,
-      mode === 'shell'
-        ? h(
-            'span',
-            folder ? ['Runs in ', h('span.mono', folder), here, ' as you, with Enter. '] : workspaceLine(own, here),
-            'The agents read it and its output on their next turn.',
-          )
-        : mode === 'no-shell'
-          ? h(
-              'span',
-              h('b', '! runs commands only in the conversation’s own composer.'),
-              ` Here, this goes to ${topic ? 'the agent' : 'the agents'} as a message. To run it, send it from the conversation.`,
-            )
-          : mode === 'command' || mode === 'skill'
-            ? commandHint(mode === 'skill' ? { name: slashTarget.name, hint: slashTarget.argumentHint, named: slashTarget } : resolved(line), threadId)
-            : offline
-              ? h('span', 'You’re offline. Messages you send now go out when the connection is back.')
-              : [
-                  // Who it reaches, in a room and in a topic or side thread too, and the @ a name may lack (#134).
-                  addressLine(threadId, ta.value, { room: topic || side || members.length > 1, addAt }),
-                  topic
-                    ? h('span', 'Replies stay here · @ brings in another agent')
-                    : side
-                      ? h('span', 'Sending adds you to this side thread')
-                      : [
-                          h('span', 'Enter to send · Shift+Enter for a new line'),
-                          h('span.hide-sm', '@ to wake an agent · / for commands · ! to run a command · + to add a file or an agent'),
-                        ],
-                ],
-    );
+    fill(hint, hintFor(mode, { line, offline, room: topic || side || members.length > 1 }));
+    // The row is one line, clipped with an ellipsis: the whole of it is there for a pointer too, its parts kept apart (#1437).
+    const whole = [...hint.children]
+      .map((c) => c.textContent)
+      .filter(Boolean)
+      .join(' · ');
+    if (whole) hint.title = whole;
+    else hint.removeAttribute('title');
     if (onFix) hint.querySelector('.did-you-mean')?.focus();
+  }
+  /** The placeholder, set only when it changes, so a repaint or a resize that keeps it costs no layout (#1155). */
+  function paintPlaceholder(members = sessionsOf(threadId).filter((x) => !x.retiredFork), last = S().sessions[thread()?.lastSpeaker]) {
+    const text = placeholderFor({ topic, side, members, last, fits: space.fits });
+    if (ta.placeholder !== text) ta.placeholder = text;
+  }
+  /**
+   * The one line under the input: what Enter will do with a / or ! line, offline, and once you type, whom the draft
+   * reaches and the @ a name may lack (#134). Empty otherwise: the help that doesn’t change is in the placeholder (#1437).
+   */
+  function hintFor(mode, { line, offline, room }) {
+    if (mode === 'shell') {
+      const folder = commandFolder();
+      const here = notOnHost(target());
+      const own = isMock(target()) ? null : target();
+      if (folder) return runsIn(folder, here);
+      return h('span', workspaceLine(own, here), 'The agents read it and its output on their next turn.');
+    }
+    if (mode === 'no-shell')
+      return h(
+        'span',
+        h('b', '! runs commands only in the conversation’s own composer.'),
+        ` Here, this goes to ${topic ? 'the agent' : 'the agents'} as a message. To run it, send it from the conversation.`,
+      );
+    if (mode === 'skill') return commandHint({ name: slashTarget.name, hint: slashTarget.argumentHint, named: slashTarget }, threadId);
+    if (mode === 'command') return commandHint(resolved(line), threadId);
+    if (offline) return h('span', 'You’re offline. Messages you send now go out when the connection is back.');
+    const draft = !!ta.value.trim();
+    // A topic thread’s note, which a conversation’s placeholder holds, while there’s no draft.
+    const note = topic && !draft ? h('span', 'Replies stay here · @ brings in another agent') : null;
+    return [addressLine(threadId, ta.value, { room: room && draft, addAt }), note];
   }
   /**
    * Where `!` runs, as far as the page knows: the folder of the agent that replies here, else the project’s. A Claude
@@ -1572,11 +1580,12 @@ export function mountComposer(threadId, { side = false } = {}) {
       h('button.btn.sm.ghost', { type: 'button', 'aria-label': `Don’t stop ${se.handle}`, onclick: dismiss }, icon('x', 'i-sm')),
     );
   }
+  const space = placeholderRoom(ta, () => paintPlaceholder());
   paint();
   paintAtt();
   autosize();
   const off = client.on((ch) => {
-    if (['thread', 'session', 'connection', 'outbox', 'load', 'persona', 'host', 'entry.add', 'entry.patch'].includes(ch.type)) paint();
+    if (['thread', 'session', 'connection', 'outbox', 'load', 'persona', 'host'].includes(ch.type)) paint();
   });
   const unwatch = draft.watch(paintAtt);
   return {
@@ -1593,6 +1602,7 @@ export function mountComposer(threadId, { side = false } = {}) {
       off();
       unwatch();
       unlisten();
+      space.stop();
     },
   };
 }

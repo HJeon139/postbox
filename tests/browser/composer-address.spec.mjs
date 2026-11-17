@@ -116,7 +116,9 @@ test('#134 a topic thread says who an unaddressed message goes to', async ({ pag
   await synced(page, app);
   await page.goto(`${app.origin}/#/t/${t.id}/side/${threadId}`);
   await synced(page, app);
-  await expect(hint(page, 'side-input')).toContainText('Replying to researcher');
+  await expect(hint(page, 'side-input'), 'its note, while there’s no draft (#1437)').toContainText('Replies stay here');
+  await typeIn(page, 'side-input', 'is this right?');
+  await expect(hint(page, 'side-input'), 'once you type').toContainText('Replying to researcher');
   await typeIn(page, 'side-input', 'critic, is this right?');
   await expect(hint(page, 'side-input')).toContainText('Did you mean @critic?');
 });

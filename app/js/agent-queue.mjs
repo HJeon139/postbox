@@ -1,10 +1,9 @@
 // Queued messages for one agent (#427): a counted mail button in its row, and a bounded dialog with each message’s actions.
 
-import { conversationRoot } from '/shared/conversation.mjs';
 import { api, client, itemsOf } from './client.mjs';
 import { h, icon, syncList } from './dom.mjs';
 import { onChangeWhileAlive } from './held-weakly.mjs';
-import { openDialog, openMenu, toast } from './ui.mjs';
+import { openDialog, toast } from './ui.mjs';
 
 export { paintOfflineQueue } from './offline-queue.mjs';
 
@@ -234,48 +233,6 @@ export function agentQueueButton(session) {
   // Weakly: a button built and never put on the page, or taken off it, is let go of with its listener (#912, #866).
   onChangeWhileAlive(button, followQueue(session));
   return button;
-}
-
-/** The conversation’s agents with something queued for them, and how many each. */
-function waitingIn(threadId) {
-  const conv = conversationRoot(S().threads, threadId);
-  return Object.values(S().sessions)
-    .filter((se) => se.threadId === conv && !se.retiredFork)
-    .map((se) => ({ se, n: entriesFor(se.id).length }))
-    .filter((x) => x.n > 0);
-}
-
-/**
- * The composer’s one line saying something waits (#427, V2), since the mail buttons may be collapsed or off screen.
- * With one agent waiting it opens that agent’s queue; with several, a menu of them.
- */
-export function paintWaitingLine(container, threadId) {
-  const waiting = waitingIn(threadId);
-  const total = waiting.reduce((n, x) => n + x.n, 0);
-  if (!total) return container.replaceChildren();
-  const label = `${total} waiting for ${waiting.length} agent${waiting.length === 1 ? '' : 's'}`;
-  // One button, kept: its label changes in place, so it keeps focus through a repaint (F1).
-  let button = container.querySelector('.queue-waiting');
-  if (!button) {
-    const text = h('span.queue-waiting-text');
-    button = h(
-      'button.btn.sm.ghost.queue-waiting',
-      {
-        type: 'button',
-        onclick: () => {
-          const now = waitingIn(threadId);
-          if (now.length === 1) return openQueue(now[0].se.id, button);
-          openMenu(button, now.map(({ se }) => agentQueueMenuItem(se, button)).filter(Boolean), { label: 'Queued messages' });
-        },
-      },
-      icon('mail', 'i-sm'),
-      text,
-    );
-    container.replaceChildren(button);
-  }
-  button.setAttribute('aria-haspopup', waiting.length === 1 ? 'dialog' : 'menu');
-  const text = button.querySelector('.queue-waiting-text');
-  if (text.textContent !== label) text.textContent = label;
 }
 
 /** The phone conversation menu’s route to an agent queue, or null when it has none. */

@@ -17,7 +17,7 @@ for (const models of [['gpt-example'], []]) {
     arrange.withAdapter(app.rt, { name: 'codex', capabilities: { models }, deliver: async () => {} });
     await page.goto(`${app.origin}/#/t/${Object.keys(app.store.state.threads)[0]}`);
     await synced(page, app);
-    await page.getByRole('button', { name: 'Add a file or a new agent' }).click();
+    await page.getByRole('button', { name: 'Add a file, an agent or a command' }).click();
     const boilerplates = page.getByRole('menuitem', { name: /From a boilerplate/ });
     await expect(boilerplates).toContainText('GPT');
     await boilerplates.click();

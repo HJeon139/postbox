@@ -1,6 +1,7 @@
 // The queue view’s rules beyond the bound (#427; the design note design-427-1, V1, V2, V5 and V6): offline rows are
-// capped, a waiting line near the composer keeps the queue visible, Remove buttons have distinct names, and the
-// agent’s dialog is modal, labelled, and gives focus back somewhere that exists.
+// capped, each agent’s mail button counts its queue and the conversation’s ⋯ menu lists every queue (the composer’s
+// waiting line went in #1437), Remove buttons have distinct names, and the agent’s dialog is modal, labelled, and gives
+// focus back somewhere that exists.
 import { expect, test } from '@playwright/test';
 import * as arrange from '../arrange.mjs';
 import { allowPageError, failOnPageErrors, settled, startPostbox, synced } from './postbox.mjs';
@@ -72,25 +73,27 @@ test('V1: ten messages written offline show in the composer as exactly two rows 
   await page.context().setOffline(false);
 });
 
-test('V2: a waiting line near the composer counts the queue and opens it', async ({ page }) => {
+test('V2: each agent’s mail button counts its queue, and the ⋯ menu lists every queue and opens it', async ({ page }) => {
   const { thread, sessions } = await busyRoom(page, 2);
   app.rt.sendMessage(thread.id, { text: `@${sessions[0].handle} one` });
   app.rt.sendMessage(thread.id, { text: `@${sessions[0].handle} two` });
   app.rt.sendMessage(thread.id, { text: `@${sessions[1].handle} three` });
   await synced(page, app);
-  const line = page.locator('.composer').getByRole('button', { name: '3 waiting for 2 agents' });
-  await expect(line).toBeVisible();
-  await line.click();
+  const mail = (se) =>
+    page
+      .locator('.agent-row')
+      .filter({ hasText: se.handle })
+      .getByRole('button', { name: /queued for/ });
+  await expect(mail(sessions[0])).toHaveAccessibleName(`2 messages queued for ${sessions[0].handle}`);
+  await expect(mail(sessions[1])).toHaveAccessibleName(`1 message queued for ${sessions[1].handle}`);
+  // Where the rows are hidden, as on a phone, the ⋯ menu is the route to each queue.
+  await page
+    .locator('header.topbar')
+    .getByRole('button', { name: /^Actions for / })
+    .click();
+  await expect(page.getByRole('menuitem', { name: `1 message queued for ${sessions[1].handle}` })).toBeVisible();
   await page.getByRole('menuitem', { name: `2 messages queued for ${sessions[0].handle}` }).click();
   await expect(page.getByRole('dialog', { name: `2 queued for ${sessions[0].handle}` })).toBeVisible();
-});
-
-test('V2: with one agent waiting, the line opens its dialog directly', async ({ page }) => {
-  const { thread, sessions } = await busyRoom(page, 1);
-  app.rt.sendMessage(thread.id, { text: `@${sessions[0].handle} only one` });
-  await synced(page, app);
-  await page.locator('.composer').getByRole('button', { name: '1 waiting for 1 agent' }).click();
-  await expect(page.getByRole('dialog', { name: `1 queued for ${sessions[0].handle}` })).toBeVisible();
 });
 
 test('V5: two identical queued messages have Send now, Edit and Remove buttons with different names', async ({ page }) => {
@@ -120,7 +123,12 @@ test('offline to queue: a message saved offline leaves the composer’s offline 
   await page.evaluate(async () => (await import('/app/js/client.mjs')).connect());
   await synced(page, app);
   await expect(page.locator('.composer .queued')).toHaveCount(0);
-  await expect(page.locator('.composer').getByRole('button', { name: '1 waiting for 1 agent' })).toBeVisible();
+  await expect(
+    page
+      .locator('.agent-row')
+      .filter({ hasText: sessions[0].handle })
+      .getByRole('button', { name: /queued for/ }),
+  ).toHaveAccessibleName(`1 message queued for ${sessions[0].handle}`);
 });
 
 test('V6: the dialog keeps Tab inside, closes on Escape, and gives focus back to the mail button', async ({ page }) => {
