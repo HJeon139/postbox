@@ -12,7 +12,7 @@ A failure must be visible, explained, and recoverable; a stop must look differen
 
 - A failed reply shows the reason and Retry; the agent needs you until you retry or move on.
 - A reply lost to the network goes again on its own, once (#466): it shows “Retried below” with “The network dropped during this turn, so Postbox sent it again.”, no Retry, no blocking alert, and the agent isn’t failed. Lost again, it fails as any reply does.
-- A reply its backend refused for quota fails, and the agent shows “out of quota”, until the reset time when the backend gave one (#442). One notice says the backend ran out, however many of its agents did.
+- A reply its backend refused for quota fails without an alert, and every agent on that backend shows “out of quota”, until the reset time when the backend gave one (#442). Nothing says needs you. One notice says the backend ran out, however many of its agents did, and says when Postbox doesn’t know the reset.
 - A stopped reply says why it stopped ([screenshot](../../screenshots/stopped-reply.png)):
   - “Stopped by you at hh:mm” after Stop;
   - “Stopped by you at hh:mm · its background work kept running” after Stop with Keep running (#249);
