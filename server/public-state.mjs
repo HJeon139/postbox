@@ -69,12 +69,16 @@ function pick(o, shape) {
   /** @type {Record<string, any>} */
   const out = {};
   for (const k of shape.fields) if (Object.hasOwn(o, k) && scalar(o[k])) out[k] = o[k];
-  for (const [k, sub] of Object.entries(shape.objects ?? {})) {
-    const v = Object.hasOwn(o, k) ? pick(o[k], sub) : null;
+  const objects = shape.objects ?? {};
+  for (const k in objects) {
+    const v = Object.hasOwn(o, k) ? pick(o[k], objects[k]) : null;
     if (v) out[k] = v;
   }
-  for (const [k, sub] of Object.entries(shape.lists ?? {}))
+  const lists = shape.lists ?? {};
+  for (const k in lists) {
+    const sub = lists[k];
     if (Object.hasOwn(o, k) && Array.isArray(o[k])) out[k] = o[k].map((x) => pick(x, sub)).filter(Boolean);
+  }
   return out;
 }
 

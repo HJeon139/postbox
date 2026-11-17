@@ -19,24 +19,28 @@ export function liveSent() {
   /** @type {WeakMap<object, Set<string>>} */
   const sent = new WeakMap();
   return {
-    /** A live frame a page’s stream was sent. @param {object} res @param {any} frame */
-    note(res, frame) {
-      if (frame.kind !== 'step') return;
+    /** A live frame’s step, by which a page notes it was sent it; null for a frame of no step. @param {any} frame */
+    stepOf: (frame) => (frame.kind === 'step' ? keyOf(frame.itemId, frame.step.id) : null),
+    /** A step a page’s stream was sent live (stepOf). @param {object} res @param {string} step */
+    note(res, step) {
       let steps = sent.get(res);
       if (!steps) sent.set(res, (steps = new Set()));
-      steps.add(keyOf(frame.itemId, frame.step.id));
+      steps.add(step);
     },
-    /** Whether a page may get an event live instead: only such an event need be asked of each page. @param {any} ev */
-    marked: (ev) => committed.has(ev.data),
     /**
-     * Whether a page has an event live: a session’s carried change, or a commit point of a step this page was sent live
-     * since the last one, which it forgets, so the next commit point of it asks again. @param {object} res @param {any} ev
+     * What a page may have of an event live, asked once an event: null for an event no page gets live instead; true for
+     * a session’s carried change, whose frame goes to every page right after it; or the commit point’s step.
+     * @param {any} ev @returns {string | true | null}
      */
-    had(res, ev) {
-      if (!committed.has(ev.data)) return false;
-      // A session’s stored change: the frame that carries it goes to every page right after it.
-      if (ev.type === 'session.patch') return true;
-      return sent.get(res)?.delete(keyOf(ev.data.id, ev.data.activityStep.id)) ?? false;
+    marked(ev) {
+      if (!committed.has(ev.data)) return null;
+      return ev.type === 'session.patch' ? true : keyOf(ev.data.id, ev.data.activityStep.id);
     },
+    /**
+     * Whether a page has a marked event live: a session’s carried change, or a commit point of a step this page was
+     * sent live since the last one, which it forgets, so the next commit point of it asks again.
+     * @param {object} res @param {string | true} mark
+     */
+    had: (res, mark) => mark === true || (sent.get(res)?.delete(mark) ?? false),
   };
 }

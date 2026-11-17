@@ -116,13 +116,13 @@ function eventSender({ store, streams, deliver, headers, events, openOf, sent })
     // As a page sees it that hasn't the conversation open: differs only for an item's event, so only that is built twice.
     const shut = ev.type.startsWith('item.') ? publicFrame(ev, events, new Set()) + tail : full;
     // A page that had it live gets nothing of it but the headers it changed (server/live-sent.mjs).
-    const had = sent.marked(ev);
+    const mark = sent.marked(ev);
     const send = () => {
       if (store.epoch !== epoch) return;
       for (const res of streams) {
         const open = openOf.get(res);
         // Asked of every page, so each forgets the step once it’s stored, open or not.
-        if (had && open && sent.had(res, ev)) {
+        if (mark !== null && open && sent.had(res, mark)) {
           if (tail) deliver(res, tail);
         } else deliver(res, !open || open.has(ev.data?.threadId) ? full : shut);
       }
@@ -145,17 +145,33 @@ function liveSender({ store, streams, deliver, events, openOf, sent }) {
     const epoch = store.epoch;
     const send = () => {
       if (store.epoch !== epoch) return;
+      // Built once for each way a page can see it: a tool’s stream and a page with the conversation open see an item’s
+      // frame the same, and every stream a session’s.
+      /** @type {Map<string, string>} */
+      const built = new Map();
+      const step = sent.stepOf(frame);
       for (const res of streams) {
         const open = openOf.get(res) ?? null;
-        const out = publicLiveFrame(frame, open, events);
+        const how = viewOf(open, frame.threadId);
+        let out = built.get(how);
+        if (out === undefined) built.set(how, (out = publicLiveFrame(frame, open, events)));
         if (!out) continue;
         deliver(res, out);
-        if (open) sent.note(res, frame);
+        if (open && step) sent.note(res, step);
       }
     };
     if (lag > 0) setTimeout(send, lag).unref();
     else send();
   };
+}
+
+/**
+ * How a stream sees a conversation’s live frames: a tool’s sees every one, and a page’s only with it open.
+ * @param {Set<string> | null} open @param {string} threadId
+ */
+function viewOf(open, threadId) {
+  if (open === null) return 'all';
+  return open.has(threadId) ? 'open' : 'shut';
 }
 
 /** The most conversations one stream can name as open: a pane and a side panel, with room to spare. */

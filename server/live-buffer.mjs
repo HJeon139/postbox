@@ -17,7 +17,12 @@ import { sendLive } from './store-live.mjs';
 const capString = (v) => (typeof v === 'string' && v.length > LIVE_CAPS.string ? v.slice(0, LIVE_CAPS.string) : v);
 
 /** An object with each string capped. @param {Record<string, any>} o */
-const capFields = (o) => Object.fromEntries(Object.entries(o ?? {}).map(([k, v]) => [k, capString(v)]));
+function capFields(o) {
+  /** @type {Record<string, any>} */
+  const out = {};
+  for (const k in o) if (Object.hasOwn(o, k)) out[k] = capString(o[k]);
+  return out;
+}
 
 /** A list at most `n` long, each entry’s strings capped. @param {unknown} v @param {number} n */
 const capList = (v, n) => (Array.isArray(v) ? v.slice(0, n).map((x) => (x && typeof x === 'object' ? capFields(x) : capString(x))) : undefined);
@@ -92,10 +97,19 @@ export function liveSession(rt, turn, patch, carried = {}) {
   const session = bufferOf(turn).session;
   // Only what changed goes, as with a step: a page holds the rest from an earlier frame, the snapshot or the store.
   const stored = rt.store.pending.session(turn.sessionId) ?? {};
-  const was = (/** @type {string} */ k) => (k in session ? session[k] : stored[k]);
-  const changed = Object.fromEntries(Object.entries(capped).filter(([k, v]) => JSON.stringify(was(k)) !== JSON.stringify(v)));
+  /** @type {Record<string, any>} */
+  const changed = {};
+  let any = false;
+  for (const k in capped) {
+    const was = k in session ? session[k] : stored[k];
+    const v = capped[k];
+    // A list is compared by its JSON; a scalar as it is.
+    if (v === was || (typeof v === 'object' && v !== null && JSON.stringify(v) === JSON.stringify(was))) continue;
+    changed[k] = v;
+    any = true;
+  }
   Object.assign(session, capped);
-  if (Object.keys(changed).length || Object.keys(carried).length) sendLive(rt.store, { kind: 'session', sessionId: turn.sessionId, ...changed, ...carried });
+  if (any || Object.keys(carried).length) sendLive(rt.store, { kind: 'session', sessionId: turn.sessionId, ...changed, ...carried });
 }
 
 /**
