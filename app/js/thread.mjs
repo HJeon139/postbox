@@ -21,6 +21,7 @@ import { fitDraft } from './composer-size.mjs';
 import { addressLine, addressSig, commandHint, placeholderFor } from './composer-to.mjs';
 import { $, ago, dayOf, fill, h, icon, plural, syncList, timeOf, trusted } from './dom.mjs';
 import { draftAttachments } from './draft-attachments.mjs';
+import { appSig, drawnApp } from './drawn-app.mjs';
 import { failedCallout } from './failed-actions.mjs';
 import { goToItem } from './go-to-item.mjs';
 import { focusComposer, hopBlock } from './hop-card.mjs';
@@ -107,14 +108,6 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
   // Above them, a turn on a host Postbox asked to stop and the host hasn’t confirmed it stopped (#120).
   const hostTurns = hostTurnsList(threadId);
 
-  const appSig = (app) => JSON.stringify([app.current, app.versions?.length, app.check?.status, app.check?.problems?.length ?? 0, app.retired?.at ?? null]);
-  /** The id of the app a block draws: an app’s own, or an app review’s (#857). */
-  const drawnApp = (it) => {
-    if (it.kind !== 'block' || !it.valid) return null;
-    if (it.block.type === 'app') return it.block.id;
-    if (it.block.type === 'review' && it.block.format === 'app') return it.block.appId;
-    return null;
-  };
   const render = (it, prev) => {
     const ctx = { threadId, kind: S().threads[threadId]?.kind, rerender: () => rerender(it.id) };
     const node = renderItem(it, prev, ctx);
