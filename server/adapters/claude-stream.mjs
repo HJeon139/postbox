@@ -89,8 +89,11 @@ export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.no
     if (e.type === 'assistant') return assistantEvent(ctx, emit, st, e);
     if (e.type === 'user') return userEvent(emit, st, e, parent);
     if (e.type === 'result') return resultEvent(ctx, emit, st, e);
-    // Claude Code’s rate limits: one it rejected is the quota the turn ran out of, until its reset (#442).
-    if (e.type === 'rate_limit_event' && e.rate_limit_info?.status === 'rejected') st.quota = { until: secondsToMs(e.rate_limit_info.resetsAt) };
+    // Claude Code’s rate limits: one it rejected, with no overage to go on with, is the quota the turn ran out of,
+    // until its reset (#442). One that overage covers lets the turn go on, so a later failure isn’t quota.
+    const limit = e.type === 'rate_limit_event' ? e.rate_limit_info : null;
+    const overage = limit?.overageStatus === 'allowed' || limit?.overageStatus === 'allowed_warning';
+    if (limit?.status === 'rejected' && !overage) st.quota = { until: secondsToMs(limit.resetsAt) };
   }
   return {
     push,
