@@ -111,13 +111,20 @@ function paint(el) {
   el.replaceChildren(...bars.map((b, i) => barEl(b, fit, [full?.[i] ?? null, short?.[i] ?? null], fit.names[i])));
 }
 
-/** How many lines are observed: one per composer on the page, and none left behind by a room switch. */
-let observed = 0;
-export const observedLines = () => observed;
+/** The lines observed: one per composer on the page, and none left behind by a room switch. @type {Set<Element>} */
+const observed = new Set();
+export const observedLines = () => observed.size;
 /** Lets go of a line taken off the page. @param {Element} el */
 function forget(el) {
   resized.unobserve(el);
-  observed--;
+  observed.delete(el);
+}
+/**
+ * Lets go of every line no longer on the page. A shown line taken off reports a size of nothing; one hidden then
+ * (empty, or behind a hint) reports nothing, so each new line, and each minute, looks too.
+ */
+function forgetGone() {
+  for (const el of observed) if (!el.isConnected) forget(el);
 }
 
 /**
@@ -142,13 +149,15 @@ export function quotaLine(threadId) {
   const el = h('div.quota-line', { role: 'group', 'aria-label': 'Quota by backend', dataset: { quotaLine: threadId } });
   paint(el);
   lines.add(el);
+  forgetGone();
   resized.observe(el);
-  observed++;
+  observed.add(el);
   onChangeWhileAlive(el, (live, change) => REPAINT_ON.has(change.type) && paint(live));
   return el;
 }
 
 // Ages and resets move with the clock, not with events: each minute, every line on the page says what’s true now.
 setInterval(() => {
+  forgetGone();
   for (const el of lines) if (el.isConnected) paint(el);
 }, 60_000);

@@ -147,17 +147,38 @@ for (const [which, bars] of CASES)
     expect(found.slice(0, 20), `${found.length} problems`).toEqual([]);
   });
 
+/** Goes to a room by its address, as the rail does, and waits for its composer’s quota line. */
+async function goTo(page, threadId) {
+  await page.evaluate((id) => {
+    location.hash = `#/t/${id}`;
+  }, threadId);
+  await expect(page.locator(`.composer .quota-line[data-quota-line="${threadId}"]`)).toBeAttached();
+}
+const observed = (page) => page.evaluate(() => import('/app/js/composer-quota.mjs').then((m) => m.observedLines()));
+
 test('#442 a line taken off the page, as going to another room does, is no longer observed', async ({ page }) => {
   const a = await room(page, [bar('codex', 0.5)]);
   const b = await room(page, [bar('claude-code', 0.5)]);
-  for (let i = 0; i < 6; i++) {
-    for (const t of [a, b]) {
-      await page.evaluate((id) => {
-        location.hash = `#/t/${id}`;
-      }, t.id);
-      await expect(page.locator(`.composer .quota-line[data-quota-line="${t.id}"]`)).toBeVisible();
-    }
-  }
+  for (let i = 0; i < 6; i++) for (const t of [a, b]) await goTo(page, t.id);
   await frames(page);
-  expect(await page.evaluate(() => import('/app/js/composer-quota.mjs').then((m) => m.observedLines()))).toBe(1);
+  expect(await observed(page)).toBe(1);
+});
+
+test('#442 a line hidden when it’s taken off the page, empty or behind a hint, is let go of too', async ({ page }) => {
+  const shown = await room(page, [bar('codex', 0.5)]);
+  // A room whose backend has reported nothing: its line is empty, so hidden.
+  const empty = app.rt.createThread({
+    projectId: Object.keys(app.store.state.projects)[0],
+    title: 'No report',
+    personaIds: [app.rt.createPersona({ handle: `none${++count}` }).id],
+  });
+  // The page has the new room before its address names it.
+  await synced(page, app);
+  await goTo(page, shown.id);
+  // A hint takes the row: the line is hidden while the draft stays.
+  await page.locator('#composer-input').fill('!ls');
+  await expect(page.locator('.composer .hint')).toContainText('Runs in');
+  for (let i = 0; i < 12; i++) await goTo(page, (i % 2 ? shown : empty).id);
+  await frames(page);
+  expect(await observed(page), 'one line on the page, and at most the one it replaced').toBeLessThanOrEqual(2);
 });
