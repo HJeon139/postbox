@@ -55,3 +55,49 @@ test('following a running reply that shrinks and grows back, the held room stays
   expect(b.bottom, 'and the reply hasn’t scrolled away above').toBeGreaterThan(b.view / 2);
   await expect(transcript).toHaveAttribute('data-view-mode', 'following');
 });
+
+// A running reply’s parts can shrink and grow again in one frame, before the view measures: the browser clamps the
+// view up to the shorter page, and the page then grows past where it was. With nothing lost by the time it measured,
+// the view took a clamp of more than its slack for you scrolling up, and stopped following. Only your own input that
+// can scroll the page ends following (scroll-input.mjs).
+test('following, a shrink and regrowth in one frame, with no input of yours, keeps following at the end', async ({ page }) => {
+  const { rt, store } = app;
+  const project = Object.values(store.state.projects)[0];
+  const t = rt.createThread({ projectId: project.id, title: 'Held live, one frame', personaIds: [arrange.persona(rt, 'researcher').id] });
+  const [se] = arrange.sessionsIn(rt, t.id);
+  for (let i = 1; i <= 12; i++) arrange.post(rt, t.id, { kind: 'user', text: `Question ${i}, long enough to take a line or two of the room.` });
+  arrange.post(rt, t.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text: WORDS(12), status: 'done' });
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto(`${app.origin}/#/t/${t.id}`);
+  await synced(page, app);
+  // A part of the newest reply that the live view would draw, 60 px tall.
+  await page.evaluate(() => {
+    const part = document.createElement('div');
+    part.id = 'live-part';
+    part.style.height = '60px';
+    [...document.querySelectorAll('#main > .item')].at(-1)?.append(part);
+  });
+  await settled(page);
+  const transcript = page.locator('#main.transcript');
+  await expect(transcript).toHaveAttribute('data-view-mode', 'following');
+  for (let round = 0; round < 3; round++) {
+    await page.evaluate(() => {
+      const part = /** @type {HTMLElement} */ (document.getElementById('live-part'));
+      part.style.height = '30px'; // it shrinks by more than the view’s slack
+      void document.scrollingElement?.scrollTop; // a layout: the browser clamps the view to the shorter page
+      part.style.height = `${60 + 200}px`; // and grows past where it was, in the same frame
+    });
+    await frames(page);
+    await settled(page);
+    await expect(transcript, `round ${round}`).toHaveAttribute('data-view-mode', 'following');
+    await page.evaluate(() => {
+      /** @type {HTMLElement} */ (document.getElementById('live-part')).style.height = '60px';
+    });
+    await settled(page);
+  }
+  const atEnd = await page.evaluate(() => {
+    const s = /** @type {Element} */ (document.scrollingElement);
+    return s.scrollHeight - s.clientHeight - s.scrollTop;
+  });
+  expect(atEnd, 'at the end').toBeLessThanOrEqual(2);
+});

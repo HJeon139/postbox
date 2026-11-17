@@ -42,7 +42,11 @@ test('#1257: scrolled into skipped items, a long reply drawing below what’s at
     'the long reply is at its estimate',
   ).toBe(71);
 
-  await target.evaluate((n) => n.scrollIntoView({ block: 'start' }));
+  // Your scroll, as a wheel turn makes it: only input of yours that can scroll ends following (#1464).
+  await target.evaluate((n) => {
+    dispatchEvent(new WheelEvent('wheel', { deltaY: -1 }));
+    n.scrollIntoView({ block: 'start' });
+  });
   await settled(page);
   const top = await target.evaluate((n) => n.getBoundingClientRect().top);
   expect.soft(Math.abs(top), 'what the scroll brought to the top is still there').toBeLessThanOrEqual(2);

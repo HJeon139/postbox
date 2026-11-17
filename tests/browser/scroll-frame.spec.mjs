@@ -57,6 +57,7 @@ test('#341 a reply that lands in the frame you scroll up in is counted, and Jump
     const { client } = await import('/app/js/client.mjs');
     const { apply } = await import('/shared/state.mjs');
     const item = { id: 'it_inframe', kind: 'agent', handle: 'researcher', text: 'A reply in the same frame as the scroll up.', status: 'done', at: Date.now() };
+    dispatchEvent(new WheelEvent('wheel', { deltaY: -1 })); // your scroll comes with input of yours (#1464)
     scrollBy(0, -240);
     apply(client.state, 'item.add', { threadId, item });
     client.emit({ type: 'item.add', data: { threadId, item } });
@@ -104,6 +105,7 @@ test('#357 a scroll up, then a change in the same frame, isn’t taken for a cla
   // In one task, before the scroll event: scroll up 240 px, then restyle the newest reply, which the transcript’s
   // MutationObserver notes (a microtask) and its ResizeObserver then follows.
   await page.evaluate(() => {
+    dispatchEvent(new WheelEvent('wheel', { deltaY: -1 })); // your scroll comes with input of yours (#1464)
     scrollBy(0, -240);
     const items = document.querySelectorAll('#main .item');
     const last = items[items.length - 1];
@@ -146,6 +148,7 @@ test('#341 a scroll up after a jump, with a resize heard before its event, lets 
   });
   await settled(page);
   await page.evaluate(() => {
+    dispatchEvent(new WheelEvent('wheel', { deltaY: -1 })); // your scroll comes with input of yours (#1464)
     scrollBy(0, -300);
     dispatchEvent(new Event('resize'));
   });
@@ -200,6 +203,7 @@ test('#712a following, a scroll up of yours as the page gets shorter in the same
     const items = document.querySelectorAll('#main > [data-key]');
     const last = /** @type {HTMLElement} */ (items[items.length - 1]);
     last.style.marginBottom = '-100px';
+    dispatchEvent(new WheelEvent('wheel', { deltaY: -1 })); // your scroll comes with input of yours (#1464)
     scrollBy(0, -300);
     dispatchEvent(new Event('resize'));
   });
@@ -220,6 +224,7 @@ test('#341 two resizes before the scroll event take an unheard scroll once, not 
   // scroll in twice would move the item 240 px.
   const shift = await page.evaluate(async () => {
     const s = /** @type {Element} */ (document.scrollingElement);
+    dispatchEvent(new WheelEvent('wheel', { deltaY: -1 })); // your scroll comes with input of yours (#1464)
     s.scrollTop -= 240;
     const items = [...document.querySelectorAll('#main > [data-key]')];
     const mid = innerHeight / 2;
@@ -245,6 +250,7 @@ test('#341 following, a scroll up the transcript hasn’t heard of, then a resiz
   const moved = await page.evaluate(async () => {
     const s = /** @type {Element} */ (document.scrollingElement);
     const before = s.scrollTop;
+    dispatchEvent(new WheelEvent('wheel', { deltaY: -1 })); // your scroll comes with input of yours (#1464)
     s.scrollTop = before - 240;
     dispatchEvent(new Event('resize'));
     await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
