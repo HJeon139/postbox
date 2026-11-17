@@ -75,7 +75,7 @@ sequenceDiagram
 - **The event log is the record.** Every change is an event with a sequence number. Streamed text is emitted on a fast path; a commit of several events is written as one line and fsynced, and nothing in it leaves the process until the disk has it. Snapshots bound how much a restart replays ([store.md](architecture/store.md)).
 - **State is a projection.** The server and the page apply the same events with the same reducer (`shared/state.mjs`), so the page’s state is the server’s, as far as the page may see it.
 - **What reaches the browser is decided once.** Each event type says whether it’s public, and each state key is listed as public or private, in `shared/state.mjs`. `/api/state`, a conversation’s items by range and the event stream go through one projection (`server/public-state.mjs`); anything else reaches the page only as a cursor that keeps the sequence. It fails closed ([security-boundaries.md](architecture/security-boundaries.md), “What reaches the browser”).
-- **The page resumes, never reloads.** After a dropped connection it asks for everything after the last number it applied, so nothing is lost or applied twice. A history epoch made at each load tells a tab on a lost timeline to resync. A resync keeps each item node on the page whose item, place and app haven’t changed, so an app’s frame keeps what it holds (#987).
+- **The page resumes, never reloads.** After a dropped connection it asks for everything after the last number it applied, so nothing is lost or applied twice. A history epoch made at each load tells a tab on a lost timeline to resync. A resync keeps each app’s item node on the page whose item, place and app haven’t changed, so its frame keeps what it holds, and draws every other item again (#987).
 - **Agents get their turn as an envelope.** The request it answers comes first, then what changed in the room, then background; the system prompt holds only what’s fixed for a persona ([shared-memory.md](architecture/shared-memory.md)).
 
 ## Security boundaries
@@ -146,6 +146,7 @@ Each is one line: the decision, why, and where its detail is.
 | [shared-memory.md](architecture/shared-memory.md) | Catch-up, the turn envelope, deliveries and topic threads |
 | [attached-sessions.md](architecture/attached-sessions.md) | A terminal’s Claude Code session as an agent |
 | [narration.md](architecture/narration.md) | The local voice in its own process |
+| [live-progress.md](architecture/live-progress.md) | Live-only progress: the live frame, commit points, the buffer and what a restart keeps; designed, not built |
 | [sandbox.md](architecture/sandbox.md) | Sandboxed pages that load nothing |
 | [diagram-legibility.md](architecture/diagram-legibility.md) | The checks on a reply, and the pipeline that brings their findings to the agent |
 | [security-boundaries.md](architecture/security-boundaries.md) | This computer alone, the page’s token, `!` commands, and what reaches the browser |
