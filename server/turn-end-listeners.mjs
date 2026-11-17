@@ -25,7 +25,7 @@ export function listenTurnEnd(rt) {
     if (!err) postSummary(rt, se, turn, items);
     rt.clearSummaryPending(turn.threadId, turn);
   });
-  // J, Checks: its progress steps still running show as stalled, as at any turn’s end (#98).
+  // J, Checks: its progress steps still running show as failed, so an error isn’t read as a stall (#98, #664).
   bus.on('turn.failed', ({ turn, se }) => rt.checks.stallLeftRunning(turn, se, 'failed'));
   // M, Apps: an app-check turn that ended without a new version shows the app with a note, or crashed (#964).
   bus.on('turn.ended', ({ turn, se }) => {
