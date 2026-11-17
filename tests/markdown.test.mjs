@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { closesFence, renderMarkdown as md, toPlainText } from '../shared/markdown.mjs';
+import { closesFence, renderMarkdown as md } from '../shared/markdown.mjs';
 import { stripTags } from '../shared/markdown-inline.mjs';
+import { toPlainText } from '../shared/markdown-plain.mjs';
 
 test('escapes raw HTML instead of rendering it', () => {
   const out = md('Hello <script>alert(1)</script> <img src=x onerror=alert(1)>');

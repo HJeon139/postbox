@@ -2,6 +2,16 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.22.1 (2026-11-17)
+
+### Fixes
+
+- **checks:** only a turn that really failed fails its steps, and a failed step keeps its time
+- **checks:** a failed turn leaves its running progress steps failed, not stalled
+- **uat:** RESEND_LABEL no longer counts "gave you in full" as a resend label
+- **remote:** an old host turn asked to stop reads as stopping, and keeps its row
+- **remote:** settle the old host turn when an agent moves to this computer
+
 ## 4.22.0 (2026-11-17)
 
 ### Features
