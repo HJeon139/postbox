@@ -728,7 +728,11 @@ iframe.app-iframe:not(.live) { pointer-events: none; }
 
 /* ───────── Composer ───────── */
 
-.composer { position: sticky; bottom: 0; z-index: 15; background: var(--bg); padding: 8px 24px 6px; border-top: 1px solid var(--line); }
+.composer { position: sticky; bottom: 0; z-index: 15; background: var(--bg); padding: 8px 24px 6px; }
+/* The conversation’s composer floats over its end as a card (#1463): no band or border across the window. The
+   conversation runs on under it and fades out at its top edge, and its end stays in the flow above the card, so the
+   last message scrolls clear of it. */
+.main > .composer { padding-top: 14px; background: linear-gradient(to bottom, transparent, var(--bg) 14px); }
 /* The store’s status line (app/js/store-line.mjs): at the window’s bottom while Postbox can’t save, with the composer
    above it, so nothing it covers is lost. */
 .store-line { position: fixed; z-index: 30; left: 0; right: 0; bottom: 0; min-height: 44px; display: flex; align-items: center; gap: 12px;
@@ -736,10 +740,10 @@ iframe.app-iframe:not(.live) { pointer-events: none; }
 .store-line .store-text { margin: 0; flex: 1; font-size: 13px; line-height: 1.4; }
 html.store-down .composer { bottom: 44px; }
 html.store-down .sidepanel { padding-bottom: 44px; }
-.composer .col { display: flex; flex-direction: column; gap: 4px; }
+.composer .col { position: relative; display: flex; flex-direction: column; gap: 4px; }
 /* Queue, outbox and attachments take no room until they hold something. */
 .composer .col > :empty { display: none; }
-.composer-box { display: flex; align-items: flex-end; gap: 8px; padding: 5px 6px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--panel); }
+.composer-box { display: flex; align-items: flex-end; gap: 8px; padding: 5px 6px; border: 1px solid var(--line-strong); border-radius: 12px; background: var(--panel); }
 .composer-box:focus-within { border-color: var(--accent); }
 /* The box sizes to its draft without script where the browser can (#641): see composer-size.mjs. An empty box stays
    one line, as before, rather than growing to fit a placeholder that wraps (a 24-letter handle in a phone’s width). */
@@ -755,20 +759,21 @@ html.store-down .sidepanel { padding-bottom: 44px; }
 /* “Did you mean” fits the row, its focus ring inside it, since the row clips (#134). */
 .composer .hint .did-you-mean { height: 18px; margin: 1px 0; padding: 0 6px; font-size: 11.5px; vertical-align: top; }
 .composer .hint .did-you-mean:focus-visible { outline-offset: -2px; }
-/* The quota line (#442, composer-quota.mjs) shares the hint’s row: a hint that applies takes it, and the line takes
-   the empty hint’s place. One bar per backend, split evenly, in the neutral color: it isn’t an alarm. */
+/* The quota line (#442, composer-quota.mjs) lies over the hint’s row, the last in the column, which always holds its
+   20 px: a hint that applies takes the row, and the line shows only while the hint is empty, so the space under the
+   card is that one row whichever shows (#1463). It spans the card’s width, an even part per backend, in the neutral
+   color: it isn’t an alarm. */
 .composer .hint:not(:empty) ~ .quota-line, .composer .quota-line:empty { display: none; }
-.composer .col > .hint:empty:has(~ .quota-line:not(:empty)) { display: none; }
-.quota-line { display: flex; gap: 12px; height: 20px; align-items: center; overflow: hidden; font-size: 11.5px; color: var(--dim); }
-/* Each bar takes an even share of the line, whatever it says: its backend and percent stay whole, and the rest clips. */
-.quota-bar { flex: 1 1 0; min-width: 0; display: flex; align-items: center; gap: 6px; overflow: hidden; }
-.quota-track { flex: 0 0 40px; height: 4px; border-radius: 2px; background: var(--line); overflow: hidden; }
+.quota-line { position: absolute; left: 0; right: 0; bottom: 0; display: flex; gap: 12px; height: 20px; overflow: hidden; font-size: 11.5px; color: var(--dim); }
+/* Each bar fills its part, with its words below it: its backend and percent stay whole, and the rest clips. */
+.quota-bar { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 2px; overflow: hidden; }
+.quota-track { flex: none; height: 4px; border-radius: 2px; background: var(--line); overflow: hidden; }
 .quota-fill { display: block; height: 100%; background: var(--dim); }
-.quota-text { flex: 1 1 auto; min-width: 0; display: flex; }
+.quota-text { min-width: 0; display: flex; line-height: 14px; }
 .quota-name, .quota-pct { flex: none; white-space: pre; }
 .quota-more { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: pre; }
-/* What each bar shows to fit is measured, not set here: quota-fit.mjs drops the track, then shortens names, then shows
-   the percent alone, which never clips. A stale figure is marked “~”, not by a shade. */
+/* What each bar shows to fit is measured, not set here: quota-fit.mjs shortens names, then shows the percent alone,
+   which never clips. A stale figure is marked “~”, not by a shade. */
 /* `!`’s folder is cut in the middle, so its last part, where the command runs, stays on the row: the head gives way
    first, then the sentence after it (#1437). */
 .composer .hint .runs-in { display: flex; min-width: 0; }
@@ -876,10 +881,9 @@ html.store-down .sidepanel { padding-bottom: 44px; }
 @media (max-width: 767px) { .rp-handle { display: none; } }
 .sidepanel .sp-head, .workpane .wp-head { display: flex; align-items: center; gap: 8px; padding: 10px 10px 10px 14px; border-bottom: 1px solid var(--line); min-height: 52px; }
 .sidepanel .sp-body { flex: 1; overflow: auto; padding: 14px; display: flex; flex-direction: column; gap: 14px; }
-/* The composer brings its own padding, the same as the conversation’s, so the two line up (#116). The foot keeps the
-   top edge in place of the composer’s, so it spans a full-screen panel too. */
+/* The composer brings its own padding, the same as the conversation’s, so the two line up (#116). The foot draws the
+   top edge, so it spans a full-screen panel too. */
 .sidepanel .sp-foot { border-top: 1px solid var(--line); }
-.sidepanel .sp-foot > .composer { border-top: 0; }
 /* Topic threads: the message they branched from sits at the top of the panel. */
 .thread-root { display: flex; flex-direction: column; gap: 6px; padding: 0 0 12px; border-bottom: 1px solid var(--line); }
 .thread-root .md { font-size: 13px; }
@@ -995,7 +999,7 @@ html.store-down .sidepanel { padding-bottom: 44px; }
   .tbl td.act { padding: 4px; }
   /* It wraps here: as tall as its lines, with a card’s corners, not pill ends (#199). */
   .sys .pill { white-space: normal; text-align: center; justify-content: center; flex-wrap: wrap; height: auto; border-radius: 8px; }
-  .composer { padding: 8px 12px 10px; }
+  .composer { padding: 8px 12px 6px; }
   .me-card { max-width: 92%; }
   .form-grid { grid-template-columns: 1fr; }
   /* Under the top bar, so its Work button and ⋯ stay in reach while the pane covers the conversation. */

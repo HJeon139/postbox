@@ -3,7 +3,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { namesAt } from '../app/js/quota-fit.mjs';
+import { fitBars, namesAt } from '../app/js/quota-fit.mjs';
 
 const bar = (backend, full, host = null) => ({ backend, full, host });
 
@@ -28,4 +28,21 @@ test('a host’s start never ends in a hyphen, a dot or an underscore', () => {
 
 test('hosts of one name can’t be told apart, so the level is passed over', () => {
   assert.equal(namesAt([bar('codex', 'Codex', 'box'), bar('codex', 'Codex', 'box')], false), null);
+});
+
+/** Every character 6 px wide. */
+const measure = (text) => text.length * 6;
+const two = [
+  { ...bar('claude-code', 'Claude Code'), pct: '42%' },
+  { ...bar('codex', 'Codex'), pct: '7%' },
+];
+
+test('the track sits above the words, so it never costs a bar its full name', () => {
+  // Each bar gets 94 px; “Claude Code 42%” is 90 px, with no room for a track beside it (#1463).
+  assert.deepEqual(fitBars(two, 200, measure), { level: 0, names: ['Claude Code', 'Codex'] });
+});
+
+test('bars too narrow for their full names go short, then show their percent alone', () => {
+  assert.deepEqual(fitBars(two, 150, measure), { level: 1, names: ['Claude', 'Codex'] });
+  assert.deepEqual(fitBars(two, 80, measure), { level: 2, names: ['', ''] });
 });

@@ -87,6 +87,57 @@ test('#442 a hint takes the line while you type, and the bars come back when the
   await expect(bar(page, 'Claude Code')).toBeVisible();
 });
 
+/** Where the input card, the line, and each bar with its track and words are drawn. */
+const layout = (page) =>
+  page.evaluate(() => {
+    const r = (/** @type {Element | null} */ el) => (el ? el.getBoundingClientRect().toJSON() : null);
+    const composer = /** @type {Element} */ (document.querySelector('.main > .composer'));
+    const line = composer.querySelector('.quota-line');
+    const bars = [...(line?.querySelectorAll('[role="meter"]') ?? [])].map((b) => ({
+      bar: r(b),
+      track: r(b.querySelector('.quota-track')),
+      text: r(b.querySelector('.quota-text')),
+    }));
+    return { composer: r(composer), card: r(composer.querySelector('.composer-box')), line: r(line), bars };
+  });
+
+test('#1463 the line spans the input card, an equal part per backend, each bar filling its part with its words below it', async ({ page }) => {
+  await room(page);
+  await expect(line(page).getByRole('meter')).toHaveCount(2);
+  await settled(page);
+  const { card, line: row, bars } = await layout(page);
+  expect.soft(Math.abs(row.left - card.left), 'it starts where the card does').toBeLessThanOrEqual(0.5);
+  expect.soft(Math.abs(row.right - card.right), 'and ends where it does').toBeLessThanOrEqual(0.5);
+  expect.soft(Math.abs(bars[0].bar.width - bars[1].bar.width), 'two bars get half each').toBeLessThanOrEqual(1);
+  expect.soft(bars[0].bar.width, 'half the card, less the gap between them').toBeGreaterThan(card.width / 2 - 12);
+  for (const [i, b] of bars.entries()) {
+    expect.soft(b.track && Math.abs(b.track.width - b.bar.width), `bar ${i + 1}’s track fills its part`).toBeLessThanOrEqual(0.5);
+    expect.soft(b.track && b.text.top >= b.track.bottom, `bar ${i + 1}’s words are below its track`).toBe(true);
+  }
+  expect.soft(row.height, 'one row, as high as a hint’s').toBeLessThanOrEqual(20);
+});
+
+test('#1463 the space under the input is the line’s row and no more, when a report comes after the room opens', async ({ page }) => {
+  // Kiro reports nothing, so the line is empty when the room opens, and a report comes later.
+  await room(page, ['kiro-cli']);
+  await expect(line(page)).toBeHidden();
+  const before = await layout(page);
+  app.store.emit('quota', {
+    id: 'kiro-cli',
+    backend: 'kiro-cli',
+    host: null,
+    status: 'ok',
+    windows: [{ name: '5 h', used: 0.3, resetsAt }],
+    seenAt: Date.now(),
+  });
+  await expect(bar(page, 'Kiro CLI')).toBeVisible();
+  await settled(page);
+  const after = await layout(page);
+  expect.soft(after.card.top, 'the card doesn’t move as the line comes').toBe(before.card.top);
+  expect.soft(after.line.top - after.card.bottom, 'the line right under the card').toBeLessThanOrEqual(4.5);
+  expect.soft(after.composer.bottom - after.line.bottom, 'and little under it').toBeLessThanOrEqual(6.5);
+});
+
 test('#442 a figure seen long ago says its age, and a window past its reset shows no number', async ({ page }) => {
   await room(page, ['claude-code', 'codex']);
   app.store.emit('quota', {

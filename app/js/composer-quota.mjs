@@ -69,9 +69,9 @@ export function barOf(q, now) {
 }
 
 /**
- * One bar, as a meter, drawn as the fit says: its fill in the neutral color, never an alarm’s, and at the last level its
- * percent alone. It keeps the names it would show at the full and the short level (data-names), for a check to hold the
- * order the levels go in. @param {ReturnType<typeof barOf>} b @param {any} fit @param {[string | null, string | null]} names
+ * One bar, as a meter, drawn as the fit says: a track that fills its part of the line, in the neutral color, never an
+ * alarm’s, with its words below it, at the last level its percent alone. It keeps the names it would show at the full
+ * and the short level (data-names), for a check to hold the order the levels go in. @param {ReturnType<typeof barOf>} b @param {any} fit @param {[string | null, string | null]} names
  */
 function barEl(b, fit, names, /** @type {string} */ name) {
   return h(
@@ -87,13 +87,13 @@ function barEl(b, fit, names, /** @type {string} */ name) {
       // “~” is explained where it’s read: a stale figure’s words say its age.
       title: b.stale ? `${b.text} (~: over an hour old)` : b.text,
     },
-    fit.track ? h('span.quota-track', { 'aria-hidden': 'true' }, h('span.quota-fill', { style: { width: `${b.pct ?? 0}%` } })) : null,
+    h('span.quota-track', { 'aria-hidden': 'true' }, h('span.quota-fill', { style: { width: `${b.pct ?? 0}%` } })),
     h(
       'span.quota-text',
       { 'aria-hidden': 'true' },
       h('span.quota-name', name ? `${name} ` : ''),
       h('span.quota-pct', b.shown),
-      fit.level < 3 ? h('span.quota-more', b.more) : null,
+      fit.level < 2 ? h('span.quota-more', b.more) : null,
     ),
   );
 }

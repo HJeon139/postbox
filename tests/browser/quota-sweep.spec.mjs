@@ -1,7 +1,7 @@
 // The quota line at every width (#442): from 320 to 1280 px in 4 px steps, with one to four bars at 100%, fresh and
 // stale, each bar’s percent stays whole inside it, no two bars show the same label, a stale bar is marked without
-// color (“~”), and nothing overflows. The bars give way in the order the design gives: the track, then short names,
-// then the percent alone (designs/architecture/adapters.md, “Quota: each backend’s usage, in the composer”).
+// color (“~”), and nothing overflows. The line spans the input card, each bar’s track fills its part, and its words
+// are below it (#1463). The bars give way in the order the design gives: short names, then the percent alone (designs/architecture/adapters.md, “Quota: each backend’s usage, in the composer”).
 
 import { expect, test } from '@playwright/test';
 import * as arrange from '../arrange.mjs';
@@ -71,12 +71,17 @@ const problems = (page) =>
     if (line.scrollWidth > line.clientWidth) out.push(`the line overflows: ${line.scrollWidth} > ${line.clientWidth}`);
     if (document.documentElement.scrollWidth > innerWidth) out.push('the page scrolls sideways');
     if (lineBox.height > 20.5) out.push(`the line is ${lineBox.height} px high`);
+    const card = /** @type {Element} */ (document.querySelector('.composer .composer-box')).getBoundingClientRect();
+    if (Math.abs(lineBox.left - card.left) > 0.5 || Math.abs(lineBox.right - card.right) > 0.5) out.push('the line isn’t the card’s width');
     const names = [];
     for (const bar of line.querySelectorAll('[role="meter"]')) {
       const b = bar.getBoundingClientRect();
       const pct = /** @type {HTMLElement} */ (bar.querySelector('.quota-pct'));
       const p = pct.getBoundingClientRect();
       const label = bar.getAttribute('aria-label');
+      const track = bar.querySelector('.quota-track')?.getBoundingClientRect();
+      if (!track || Math.abs(track.width - b.width) > 0.5) out.push(`${label}: its track doesn’t fill its part`);
+      else if (p.top < track.bottom) out.push(`${label}: its words aren’t below its track`);
       if (p.left < b.left - 0.5 || p.right > b.right + 0.5 || pct.scrollWidth > pct.clientWidth + 0.5)
         out.push(`${label}: its percent is cut (${pct.textContent})`);
       if (!/%$/.test(pct.textContent ?? '')) out.push(`${label}: no percent`);
@@ -89,8 +94,8 @@ const problems = (page) =>
   });
 
 /**
- * Whether the line’s level is right, if not, why: the levels, in order, are 0 everything, 1 no track, 2 short names,
- * 3 the percent alone. Each shows what it says, and is used only where the one before it doesn’t fit, measured here in
+ * Whether the line’s level is right, if not, why: the levels, in order, are 0 everything, 1 short names, 2 the percent
+ * alone. Each shows what it says, and is used only where the one before it doesn’t fit, measured here in
  * the page’s own text.
  */
 const outOfOrder = (page) =>
@@ -112,19 +117,16 @@ const outOfOrder = (page) =>
       const [full, short] = JSON.parse(/** @type {HTMLElement} */ (el).dataset.names ?? '[]');
       const shown = el.querySelector('.quota-name')?.textContent?.trim() ?? '';
       const pct = el.querySelector('.quota-pct')?.textContent ?? '';
-      const track = !!el.querySelector('.quota-track');
       const label = el.getAttribute('aria-label');
-      if (track !== (level === 0)) out.push(`${label}: a track at level ${level}`);
-      const want = [full, full, short, ''][level];
+      const want = [full, short, ''][level];
       if (shown !== want) out.push(`${label}: “${shown}” at level ${level}, not “${want}”`);
-      if (level === 3 && el.querySelector('.quota-more')?.textContent) out.push(`${label}: more than its percent at the last level`);
-      const prev = [null, [full, true], [full, false], [short, false]][level];
-      if (prev) {
-        const [name, withTrack] = prev;
-        const need = (withTrack ? 46 : 0) + width(`${name} ${pct}`);
+      if (level === 2 && el.querySelector('.quota-more')?.textContent) out.push(`${label}: more than its percent at the last level`);
+      const prev = [null, full, short][level];
+      if (level > 0) {
+        const name = prev;
+        const need = width(`${name} ${pct}`);
         // Within MARGIN of the edge counts as not fitting: the line measures on a canvas, a little wide of the page’s
-        // own text, and leaves itself room, so it gives way a few pixels early, never late. Skipping a whole level is
-        // tens of pixels (the track alone is 46).
+        // own text, and leaves itself room, so it gives way a few pixels early, never late.
         if (name === null || need + MARGIN > el.getBoundingClientRect().width) before = false;
       }
     }
