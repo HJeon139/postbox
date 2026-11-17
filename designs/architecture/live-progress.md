@@ -1,6 +1,6 @@
 # Live-only progress
 
-**Status:** design, for review before any code ([`rooms-at-scale.md`](../rooms-at-scale.md), “Live state”, “Still to do”). Nothing here is built. One question is the owner’s (“Open questions”).
+**Status:** design, for review before any code ([`rooms-at-scale.md`](../rooms-at-scale.md), “Live state”, “Still to do”). Nothing here is built. The owner decided the restart question on 17 November 2026: a commit point at a graceful shutdown (“A restart mid-turn”).
 
 ## Why
 
@@ -27,7 +27,7 @@ The log is the record ([store.md](store.md)), so all of it is kept, replayed at 
 
 ## The decision
 
-Progress goes to the page on live frames that aren’t stored. The log keeps the conversation, plus **commit points** of each running reply: what it has said, and the steps that changed, since the last one. So a restart loses at most a step or a few seconds of words, if the owner accepts that trade (“Open questions”).
+Progress goes to the page on live frames that aren’t stored. The log keeps the conversation, plus **commit points** of each running reply: what it has said, and the steps that changed, since the last one. A graceful shutdown takes a commit point for every running reply, so a planned restart loses nothing, and only a crash can lose the words since the last one, as today (“A restart mid-turn”).
 
 ```mermaid
 sequenceDiagram
@@ -76,7 +76,8 @@ A commit point comes:
 - at a step boundary: when a call starts, the words before it are whole;
 - at a reply segment’s end, before the patch that settles the segment. `item.final` (`threads.mjs`, `patchItem`) then reads the whole text, and the mentions in its last words wake their agents (`mention-entries.mjs`);
 - after 10 s of new words with no step, so a long reply with no calls loses no more than that;
-- early, when the buffer’s text reaches 64 KB.
+- early, when the buffer’s text reaches 64 KB;
+- for every running reply at a graceful shutdown, before its turn is stopped (“A restart mid-turn”).
 
 The interval and the ceiling are constants in `shared/limits.mjs`. The measurement decides their values, within the bound that the commit points of a turn together write less than `main` writes for it.
 
@@ -138,12 +139,13 @@ At 100 running turns, the ceiling is 6.4 MB of text. The measurement records the
 
 ## A restart mid-turn
 
-**A turn on this computer** can’t outlive Postbox: its harness is a child of the server, and a restart ends it (`settleInterrupted`, `server/restart-sweep.mjs`). After the restart:
-- the reply keeps its text and its steps to the last commit point, at most a step or 10 s behind;
-- the words after it, and the step updates since, are gone, since they were never stored;
-- it reads as cut off by a restart, as today, and the entries the turn took reopen once as a resend (Delivery’s start, [services.md](services.md), “Delivery and Turns, built as the inbox”), so the agent picks the work up again.
+**A turn on this computer** can’t outlive Postbox: its harness is a child of the server, and a restart ends it (`settleInterrupted`, `server/restart-sweep.mjs`). **The owner’s decision** (17 November 2026, “Flush at shutdown”), against intent.md’s second principle, “Streaming that never loses a message”:
+- **A planned restart loses nothing.** A graceful shutdown takes a commit point for every running reply, with its words, its changed steps and its session fields, before its turn is stopped: in `close()` (`server/index.mjs`), ahead of `rt.stopTurns()`, so the store writes it before `store.close()` flushes and releases the folder.
+- **Only a crash can lose words:** those since the last commit point, at most 64 KB or 10 s of them, and the step updates since. That’s as today, when streamed text is written on the fast path, unsynced ([store.md](store.md)), so a crash can already lose a reply’s newest words.
 
-Today, the same restart keeps every word, because each delta was written. intent.md’s second principle reads “Streaming that never loses a message”. This keeps every message, but it can lose the last seconds of a reply a restart cuts off. That’s the owner’s call (“Open questions”).
+After either:
+- the reply keeps its text and its steps to the last commit point, which is the shutdown’s own after a planned restart;
+- it reads as cut off by a restart, as today, and the entries the turn took reopen once as a resend (Delivery’s start, [services.md](services.md), “Delivery and Turns, built as the inbox”), so the agent picks the work up again.
 
 **#1451’s record of a reply cut off with no words** (#1452, not merged yet) is built from what was stored: the reply’s steps and the entries its turn took. With this design, those steps are the ones to the last commit point.
 
@@ -195,7 +197,8 @@ Each item is its own pull request, test first:
 2. **`LIVE`, the `live` frame, `publicLiveFrame` and `publicLive`,** with the public-derivation, field-subset and private-kind tests, and `security-boundaries.md` updated in the same change, before anything is sent on it.
 3. **`server/live-buffer.mjs`, commit points, and the session fields and steps going live,** with the shared queue, the lag, `rev`, and `subagent-end.mjs` reading the buffer.
 4. **Text going live,** with `at`, the snapshot, `/api/state`’s `live`, and `app/js/live-frames.mjs`.
-5. **The readers:** catch-up’s line for a reply still being written, the UAT checks held to `main`’s results, this document’s “Status” moved to built, and `architecture.md`’s summary (“Streamed text is emitted on a fast path”) updated.
+5. **The shutdown commit point,** with a test that fails without it: a reply stopped cleanly mid-stream, Postbox started again on the same store, and every word the reply had said is there.
+6. **The readers:** catch-up’s line for a reply still being written, the UAT checks held to `main`’s results, this document’s “Status” moved to built, and `architecture.md`’s summary (“Streamed text is emitted on a fast path”) updated.
 
 ## What this doesn’t do
 
@@ -205,12 +208,8 @@ Each item is its own pull request, test first:
 
 ## Open questions
 
-1. **For the owner: the restart trade.** intent.md’s second principle asks for “Streaming that never loses a message”. Today, streamed text is written on the fast path, unsynced ([store.md](store.md)), so a crash can already lose a reply’s newest words, though a clean stop or restart keeps them. With commit points, what a reply has said since its last commit point is in memory only: at most 64 KB of words, or 10 s of them, and the updates to its steps since then. The reply is redone as a resend after a restart. Which of these?
-   - **Accept the trade:** a restart or a crash loses a reply’s words and step updates since its last commit point.
-   - **A commit point at a graceful shutdown:** Postbox writes every running reply’s commit point as it stops, so a restart loses nothing, and only a crash loses words, as today, at most the bound above.
-   - **Store every word:** the words between commit points are written too, as today or to a file outside the log. That keeps the log small, but not the writes, and it gives up most of the saving on text.
-2. **The interval and the ceiling** (10 s, 64 KB) are a first guess, until the measurement decides them.
-3. **Whether a commit point should also come when the person opens the conversation,** so a page that joins reads more from the store and less from the snapshot. That trades writes for a smaller snapshot.
+1. **The interval and the ceiling** (10 s, 64 KB) are a first guess, until the measurement decides them.
+2. **Whether a commit point should also come when the person opens the conversation,** so a page that joins reads more from the store and less from the snapshot. That trades writes for a smaller snapshot.
 
 ## When to revisit
 
