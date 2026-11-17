@@ -486,9 +486,7 @@
         "app/js/shell.mjs",
         "server/index.mjs",
         "server/persona-delete.mjs",
-        "server/scheduled-wakes.mjs",
         "server/store-commit.mjs",
-        "server/store-outage.mjs",
         "server/store-recover.mjs",
         "server/store-retry.mjs",
         "server/store-snapshot.mjs"
