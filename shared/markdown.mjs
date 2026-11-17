@@ -141,34 +141,9 @@ function blocks(lines, ctx, base) {
 
     if (LIST_ITEM.test(line)) {
       flush();
-      const body = [];
-      for (; i < lines.length; i++) {
-        const l = lines[i];
-        if (!l.trim()) {
-          // A blank line ends the list unless the next line continues it.
-          const next = lines[i + 1];
-          if (next !== undefined && (LIST_ITEM.test(next) || /^\s{2,}\S/.test(next))) {
-            body.push('');
-            continue;
-          }
-          break;
-        }
-        // A fold (an exercise's answer under its question, say) belongs to the item, blank lines and all.
-        const fold = ctx.folds !== false && body.length && l.trimStart().startsWith('<details>') ? details(lines, i) : null;
-        if (fold) {
-          for (; i <= fold.end; i++) body.push(!lines[i].trim() ? '' : /^\s{2,}/.test(lines[i]) ? lines[i] : `  ${lines[i].trimStart()}`);
-          i--;
-          continue;
-        }
-        if (LIST_ITEM.test(l) || /^\s{2,}\S/.test(l) || body.length === 0) {
-          body.push(l);
-          continue;
-        }
-        // A plain line right after an item continues that item (lazy continuation).
-        body.push('  ' + l.trim());
-      }
-      i--;
-      out.push(list(body, ctx, base + i - body.length + 1));
+      const items = listAt(lines, i, ctx, base);
+      out.push(items.html);
+      i = items.end;
       continue;
     }
 
@@ -259,6 +234,41 @@ function details(lines, i) {
     }
   }
   return null;
+}
+
+/**
+ * The list that starts at lines[i], to a blank line that the next line doesn’t go on, as HTML; end is its last line.
+ * @param {string[]} lines @param {number} i @param {any} ctx @param {number} base  the source line lines[0] is
+ */
+function listAt(lines, i, ctx, base) {
+  const body = [];
+  for (; i < lines.length; i++) {
+    const l = lines[i];
+    if (!l.trim()) {
+      // A blank line ends the list unless the next line continues it.
+      const next = lines[i + 1];
+      if (next !== undefined && (LIST_ITEM.test(next) || /^\s{2,}\S/.test(next))) {
+        body.push('');
+        continue;
+      }
+      break;
+    }
+    // A fold (an exercise's answer under its question, say) belongs to the item, blank lines and all.
+    const fold = ctx.folds !== false && body.length && l.trimStart().startsWith('<details>') ? details(lines, i) : null;
+    if (fold) {
+      for (; i <= fold.end; i++) body.push(!lines[i].trim() ? '' : /^\s{2,}/.test(lines[i]) ? lines[i] : `  ${lines[i].trimStart()}`);
+      i--;
+      continue;
+    }
+    if (LIST_ITEM.test(l) || /^\s{2,}\S/.test(l) || body.length === 0) {
+      body.push(l);
+      continue;
+    }
+    // A plain line right after an item continues that item (lazy continuation).
+    body.push('  ' + l.trim());
+  }
+  i--;
+  return { html: list(body, ctx, base + i - body.length + 1), end: i };
 }
 
 /** @param {any[]} lines @param {any} ctx @param {number} n0  the source line lines[0] is */
