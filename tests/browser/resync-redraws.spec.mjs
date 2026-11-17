@@ -1,10 +1,11 @@
 // #987: what a resync draws again, though a page kept app items’ nodes: what other items read (a term defined, a
-// speaker’s latest line, a side thread’s state). Moved from resync-keeps-nodes.spec.mjs.
+// speaker’s latest line, a side thread’s state), an app item whose own record changed, and an app item that was the
+// agent’s latest line, which rests once a later reply arrived.
 
 import { expect, test } from '@playwright/test';
 import * as arrange from '../arrange.mjs';
-import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
-import { away } from './resync-fixture.mjs';
+import { failOnPageErrors, settled, startPostbox, synced } from './postbox.mjs';
+import { away, mark, room, seen } from './resync-fixture.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
 let app;
@@ -42,4 +43,36 @@ test('#987 a resync redraws what other items read: a term defined, a speaker’s
   await expect(page.locator('#main .term.undef'), 'the term defined while away is marked as defined').toHaveCount(0);
   await expect(page.locator('#main .who-state').filter({ hasText: /\S/ }), 'only the latest reply’s line follows the agent').toHaveCount(1);
   await expect(page.locator('#main .col.sys'), 'the side thread’s line shows the agent’s state now').not.toContainText('researcher is calling tools');
+});
+
+test('#987 an app item whose own record changed while away, as by a reaction, draws again', async ({ page }) => {
+  const { t, ids } = await room(app, page, 'Resync, a reaction', 4, 2);
+  await mark(page);
+  const items = app.store.items(t.id);
+  const itemOf = (/** @type {string} */ appId) => /** @type {any} */ (items.find((i) => i.block?.id === appId)).id;
+  const resync = await away(app, page);
+  arrange.react(app.rt, t.id, itemOf(ids[0]), '👍', 'you');
+  await resync();
+  const after = await seen(page);
+  expect(after.newApps, 'the app item with a reaction draws again').toContain(itemOf(ids[0]));
+  expect(after.newApps.includes(itemOf(ids[1])), 'the other app keeps its node').toBe(false);
+});
+
+test('#987 a kept app item that was the agent’s latest line rests once a later reply arrived while away', async ({ page }) => {
+  const { rt } = app;
+  const { t } = await room(app, page, 'Resync, the latest line', 3, 1);
+  const se = arrange.agentIn(rt, t.id);
+  arrange.setSession(rt, se.id, { state: 'think' });
+  const appItem = /** @type {any} */ (app.store.items(t.id).find((i) => i.block?.type === 'app'));
+  const words = page.locator(`#main > .item[data-key="${appItem.id}"] .who-state`);
+  await expect(words, 'the app item’s line follows the agent').toHaveText('· thinking');
+  await settled(page);
+  await mark(page);
+  const resync = await away(app, page);
+  // The person speaks, then the agent: its later reply names it on a line of its own.
+  arrange.post(rt, t.id, { kind: 'user', text: 'And then?' });
+  arrange.post(rt, t.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text: 'A later reply.', status: 'done' });
+  await resync();
+  expect((await seen(page)).newApps, 'the app item is kept').toEqual([]);
+  await expect(words, 'its line rests: the later reply follows the agent now').toHaveText('');
 });
