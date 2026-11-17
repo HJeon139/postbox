@@ -33,7 +33,7 @@ function backend(name, listed, capabilities = {}) {
 async function openNewAgent(page) {
   await page.goto(`${app.origin}/#/t/${Object.keys(app.store.state.threads)[0]}`);
   await synced(page, app);
-  await page.getByRole('button', { name: 'Add a file or a new agent' }).click();
+  await page.getByRole('button', { name: 'Add a file or an agent, or run a command' }).click();
   await page.getByRole('menuitem', { name: /From a boilerplate/ }).click();
   return page.getByRole('dialog');
 }

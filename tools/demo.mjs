@@ -213,13 +213,13 @@ export async function play({ origin, view = async () => {}, shot = async () => {
       // Its chip says “uploading…” until it’s uploaded, then the file’s size.
       await ui.shows('.composer .att', ' KB');
       await ui.fill('#composer-input', 'Here are my notes, check these three quotes');
-      await ui.click('[aria-label="Add a file or a new agent"]');
+      await ui.click('[aria-label="Add a file or an agent, or run a command"]');
       await ui.shows('.menu');
     },
   });
   await shot('11-new-agent', {
     prepare: async (ui) => {
-      await ui.click('[aria-label="Add a file or a new agent"]');
+      await ui.click('[aria-label="Add a file or an agent, or run a command"]');
       await ui.click('.menu .mi', 'From a boilerplate');
       await ui.fill('#na-h', 'citer');
     },

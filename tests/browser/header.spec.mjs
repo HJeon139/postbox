@@ -176,8 +176,11 @@ test('#12 the menus and the Personas list mark mock agents', async ({ page }) =>
 test('#12 the composer marks a mock agent in “Replying to” and in the @ menu', async ({ page }) => {
   arrange.putThread(app.rt, { ...app.store.state.threads[room.id], lastSpeaker: sessionOf('critic').id });
   await open(page, `#/t/${room.id}`);
-  await expect(page.locator('.composer .hint'), 'the hint marks critic').toContainText('Replying to critic mock (last speaker)');
   await page.locator('#composer-input').click();
+  // The hint says who a draft reaches once there is one (#1437).
+  await page.keyboard.type('Hi');
+  await expect(page.locator('.composer .hint'), 'the hint marks critic').toContainText('Replying to critic mock (last speaker)');
+  await page.keyboard.press('ControlOrMeta+a');
   await page.keyboard.type('@');
   await expect(page.locator('#mention-list')).toBeVisible();
   const rows = await page

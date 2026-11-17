@@ -61,7 +61,7 @@ const error = (page) => list(page).locator('.err[role=alert]');
 async function picker(page) {
   await page.goto(`${app.origin}/#/t/${threadId}`);
   await synced(page, app);
-  await page.getByRole('button', { name: 'Add a file or a new agent' }).click();
+  await page.getByRole('button', { name: 'Add a file or an agent, or run a command' }).click();
   await page.getByRole('menuitem', { name: /^From the project folder/ }).click();
   await expect(button(page, 'Open docs'), 'the folder picker’s list').toBeVisible();
 }

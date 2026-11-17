@@ -746,8 +746,10 @@ html.store-down .sidepanel { padding-bottom: 44px; }
 .composer-box textarea { flex: 1; min-width: 0; field-sizing: content; border: 0; background: transparent; resize: none; min-height: 30px; max-height: 200px; padding: 5px 4px; line-height: 1.4; outline: none; }
 .composer-box textarea:placeholder-shown { field-sizing: fixed; }
 .composer-box textarea::placeholder { color: var(--dim); }
-/* Two lines, with no gap between them, whatever it says: every composer’s box then sits as high as the next (#116). */
-.composer .hint { font-size: 11.5px; line-height: 1.3; min-height: 2.6em; color: var(--dim); display: flex; gap: 0 14px; flex-wrap: wrap; }
+/* One line, whatever it says and when it says nothing: every composer’s box then sits as high as the next (#116). It
+   holds only the hints that apply while you type; the help that doesn’t change is in the placeholder (#1437). */
+.composer .hint { font-size: 11.5px; line-height: 1.3; min-height: 1.3em; color: var(--dim); display: flex; gap: 0 14px; flex-wrap: wrap; }
+.composer .col > .hint:empty { display: flex; }
 .composer .hint b { color: var(--text); font-weight: 500; }
 /* How many wakes agents have chained since your last message, with the hint to Stop them (#492). */
 .composer .hint .chain { color: var(--text); }
@@ -976,7 +978,6 @@ html.store-down .sidepanel { padding-bottom: 44px; }
   .hovercard { width: calc(100vw - 24px); left: 12px !important; }
   .menu { max-width: calc(100vw - 24px); }
   .mention-menu { width: 100%; }
-  .composer .hint .hide-sm { display: none; }
   .dialog .d-foot { flex-wrap: wrap; }
   .dialog .d-foot .btn { flex: 1; }
 }
@@ -1116,7 +1117,9 @@ iframe.app-iframe { display: block; width: 100%; border: 0; background: var(--st
 @media (max-width: 560px) { .perm-add .form-grid { grid-template-columns: 1fr; } }
 
 /* Commands in the composer: the / menu, and a !command’s item (#67) */
-.cmd-button .cmd-glyph { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-weight: 700; font-size: 15px; line-height: 1; }
+.cmd-glyph { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-weight: 700; font-size: 15px; line-height: 1; }
+/* In the composer’s menu, where it stands in an icon’s place (#1437). */
+.mi .cmd-glyph { flex: none; width: 16px; text-align: center; }
 .slash-menu { max-height: min(50vh, 420px); overflow: auto; }
 .slash-menu .mi .mono { font-size: 12.5px; }
 .cmd-line { overflow-wrap: anywhere; white-space: pre-wrap; }
