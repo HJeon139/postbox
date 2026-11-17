@@ -31,14 +31,36 @@ export async function until(done, step = 10, most = 200_000) {
   if (!done()) throw new Error('The measurement waited past its bound for something that never settled.');
 }
 
-/** Waits for a promise while the clock runs. @template T @param {Promise<T>} p @returns {Promise<T>} */
+/** How long ticking() waits, in real time, before it fails: a measurement that never settles is the harness’s fault. */
+const TICKING_MS = 120_000;
+
+/**
+ * Waits for a promise while the clock runs, never ahead of real time: what it waits for, a flush or a close, is real
+ * disk work, and the store bounds that work with timers (a write making no progress, store-recover.mjs). Run ahead,
+ * the clock tripped those bounds while the disk was still working (#1471’s finding). @template T @param {Promise<T>} p
+ * @returns {Promise<T>}
+ */
 export async function ticking(p) {
   let over = false;
   p.then(
     () => (over = true),
     () => (over = true),
   );
-  await until(() => over);
+  const from = performance.now();
+  // Real time not yet ticked; the clock moves in whole milliseconds, as Date does, so the times events carry keep
+  // their length.
+  let owed = 0;
+  let last = from;
+  while (!over) {
+    await turnOver();
+    const now = performance.now();
+    if (now - from > TICKING_MS) throw new Error('The measurement waited past its bound for something that never settled.');
+    owed += now - last;
+    last = now;
+    const step = Math.min(10, Math.floor(owed));
+    if (step) mock.timers.tick(step);
+    owed -= step;
+  }
   return p;
 }
 
