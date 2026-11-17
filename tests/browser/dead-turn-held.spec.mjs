@@ -46,3 +46,30 @@ for (const width of [375, 1280])
     // Nothing new: the focus stays where it was.
     expect(await page.evaluate(() => document.activeElement?.outerHTML.slice(0, 80))).toBe(focused);
   });
+
+test('the line shows on a host’s Interrupted reply, and on replies a store outage or a restart stopped, before what ended them', async ({ page }) => {
+  const { rt, store } = app;
+  const researcher = Object.values(store.state.personas).find((p) => p.handle === 'researcher');
+  const t = rt.createThread({ projectId: Object.values(store.state.projects)[0].id, title: 'Cut off', personaIds: [researcher.id] });
+  const [se] = arrange.sessionsIn(rt, t.id);
+  const held = { took: [{ from: 'you' }], steps: 3, last: 'Read the shelf', running: [], stopped: [] };
+  const reply = (/** @type {any} */ o) =>
+    arrange.post(rt, t.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, turnId: `tu_${o.key}`, text: '', held, ...o.item });
+  const host = reply({
+    key: 'host',
+    item: { status: 'failed', error: 'Interrupted on devbox: the agent’s process there ended.', remote: { state: 'interrupted', hostId: 'h1' } },
+  });
+  const outage = reply({ key: 'store', item: { status: 'stopped', stopReason: 'store' } });
+  const restart = reply({ key: 'restart', item: { status: 'stopped' } });
+  await page.goto(`${app.origin}/#/t/${t.id}`);
+  await synced(page, app);
+  const line = 'It was answering you · got to step 3, Read the shelf.';
+  const hostCallout = page.locator(`#main [data-key="${host.id}"] .host-callout`);
+  await expect(hostCallout.locator('.held')).toHaveText(line);
+  await expect(hostCallout).toContainText('Interrupted on');
+  for (const it of [outage, restart]) {
+    const item = page.locator(`#main [data-key="${it.id}"]`);
+    await expect(item.locator('.held')).toHaveText(line);
+    expect(await item.evaluate((n) => (n.textContent ?? '').indexOf('It was answering') < (n.textContent ?? '').indexOf('Stopped'))).toBe(true);
+  }
+});
