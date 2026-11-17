@@ -60,20 +60,23 @@ export function outOfQuota(rt, se, until, threadId) {
  * At the reset, the agents on that quota are woken, so a scheduled wake that waited for it can start. Kept in rt.watchdogs,
  * so close() clears it (server/runtime-close.mjs); a restart arms it again from the sessions (armQuotaResets).
  * @param {any} rt @param {string} key  whose quota (quotaKey) @param {number | null} until
+ * @param {number} [now]  the clock, read once: the early timer’s re-arm passes the time it read (#1453)
  */
-function armReset(rt, key, until) {
-  if (!until || until <= Date.now()) return;
-  // setTimeout fires at once past its 32-bit limit, about 24 days, so a later reset wakes then, and the wake finds
-  // the quota still out.
+function armReset(rt, key, until, now = Date.now()) {
+  if (!until || until <= now) return;
+  // setTimeout fires at once past its 32-bit limit, about 24 days, so a later reset fires early, and arms again for
+  // the rest, as an early fire does.
   const timer = setTimeout(
     () => {
       rt.watchdogs.delete(timer);
       // A timer can fire before Date.now() reaches the time it was set for, and an agent still out then isn’t woken,
-      // with nothing to wake it after (#1453): it arms again for the rest.
-      if (Date.now() < until) return armReset(rt, key, until);
+      // with nothing to wake it after (#1453): it arms again for the rest, from the same reading of the clock, so a
+      // millisecond ticking between two reads can’t drop it.
+      const at = Date.now();
+      if (at < until) return armReset(rt, key, until, at);
       for (const se of sessionsOn(rt, key)) rt.delivery.wake(se.id);
     },
-    Math.min(until - Date.now(), 2 ** 31 - 1),
+    Math.min(until - now, 2 ** 31 - 1),
   );
   timer.unref?.();
   rt.watchdogs.add(timer);

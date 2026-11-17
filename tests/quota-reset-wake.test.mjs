@@ -86,3 +86,36 @@ test('#442 a reset timer that fires before the clock reads the reset arms itself
   assert.equal(scheduledCalls(after).length, 1);
   stopTimers(again);
 });
+
+test('#442 the re-arm reads the clock the early timer read, so a millisecond ticking between them can’t drop the wake', async () => {
+  const until = Date.now() + 150;
+  const { after, again } = restarted(await waitingForReset(until));
+  const started = nextTurn(after, 2000);
+  again.drainAll();
+  // Armed: the timer’s callback reads until - 1, an early fire, and anything in armReset after it reads until, as when
+  // the millisecond ticks between the two reads. Each happens once; every other read is the real clock.
+  const real = Date.now;
+  let early = false;
+  let ticked = false;
+  Date.now = () => {
+    const at = new Error().stack ?? '';
+    const inQuota = at.includes('turn-quota.mjs');
+    if (inQuota && !at.includes('at armReset') && !early && real() >= until - 1) {
+      early = true;
+      return until - 1;
+    }
+    if (inQuota && at.includes('at armReset') && early && !ticked) {
+      ticked = true;
+      return until;
+    }
+    return real();
+  };
+  try {
+    assert.ok((await started) >= until, 'woken at the reset');
+    assert.ok(early, 'the timer fired early, as the test stubbed it');
+  } finally {
+    Date.now = real;
+  }
+  await settle(again);
+  stopTimers(again);
+});
