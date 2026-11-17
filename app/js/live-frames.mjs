@@ -5,7 +5,7 @@
 // it stands for, so whatever draws a step or a session draws it as before.
 
 import { liveApplier } from '/shared/live-apply.mjs';
-import { client, itemIn } from './client.mjs';
+import { client, itemIn, resync } from './client.mjs';
 
 const live = liveApplier();
 const has = (/** @type {string} */ threadId, /** @type {string} */ id) => Boolean(itemIn(threadId, id));
@@ -14,7 +14,10 @@ const tell = (/** @type {any[]} */ changes) => {
 };
 
 client.on((ch) => {
-  if (ch.type === 'live') tell(live.apply(client.state, ch.data, has));
-  else if (ch.type === 'load') tell(live.snapshot(client.state, client.live, has));
+  if (ch.type === 'live') {
+    tell(live.apply(client.state, ch.data, has));
+    // A dropped frame’s step may never be sent again (server/live-sent.mjs): the state, with its snapshot, has it.
+    if (live.lost()) void resync();
+  } else if (ch.type === 'load') tell(live.snapshot(client.state, client.live, has));
   else if (ch.type === 'item.add' || ch.type === 'range') tell(live.flush(client.state, has));
 });

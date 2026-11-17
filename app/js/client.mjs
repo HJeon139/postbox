@@ -197,7 +197,7 @@ export function reopen() {
 // frame the server sends together load once. While the load fails, the page keeps its state and its epoch, and
 // connects again shortly: naming the old epoch, it’s told to resync again, until a load succeeds.
 let resyncing = null;
-function resync() {
+export function resync() {
   es?.close(); // the old stream stops applying another history’s events onto this state while the load runs
   resyncing ??= load()
     .then(connect, () => {

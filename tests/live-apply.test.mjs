@@ -67,8 +67,12 @@ test('a frame for an item the page doesn’t hold yet waits, bounded, and applie
     ['it_2'],
   );
   assert.deepEqual(live.flush(s, has), [], 'once');
+  assert.equal(live.lost(), false, 'nothing dropped yet');
   for (let i = 0; i < HELD_MOST + 50; i++) live.apply(s, { ...step(i + 1), itemId: `it_x${i}` }, has);
   assert.ok(live.held() <= HELD_MOST);
+  // A dropped frame’s step may never come again: the page is told, once, and loads the state again.
+  assert.equal(live.lost(), true);
+  assert.equal(live.lost(), false);
 });
 
 test('a snapshot at load brings a page that joins mid-turn up to date: its steps and its session’s live fields', () => {
