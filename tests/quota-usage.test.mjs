@@ -106,6 +106,44 @@ test('a sparse report merges with the last by window: a window it leaves out kee
   );
 });
 
+test('each window keeps when it was last reported, so one an update leaves out grows old on its own', () => {
+  const { rt } = fakeRt({ p: { backend: 'codex' } });
+  const se = { personaId: 'p' };
+  recordQuota(
+    rt,
+    se,
+    {
+      status: 'ok',
+      windows: [
+        { name: '5 h', used: 0.2, resetsAt: null },
+        { name: '7 d', used: 0.9, resetsAt: null },
+      ],
+    },
+    0,
+  );
+  recordQuota(rt, se, { status: 'ok', windows: [{ name: '5 h', used: 0.3, resetsAt: null }] }, 2 * 3_600_000);
+  assert.deepEqual(
+    rt.s.quota.codex.windows.map((w) => [w.name, w.seenAt]),
+    [
+      ['5 h', 2 * 3_600_000],
+      ['7 d', 0],
+    ],
+  );
+});
+
+test('past six windows, the one reported least recently goes, not the one first seen', () => {
+  const { rt } = fakeRt({ p: { backend: 'codex' } });
+  const se = { personaId: 'p' };
+  const w = (name, used = 0.1) => ({ name, used, resetsAt: null });
+  recordQuota(rt, se, { status: 'ok', windows: ['a', 'b', 'c', 'd', 'e', 'f'].map((n) => w(n)) }, 0);
+  recordQuota(rt, se, { status: 'ok', windows: [w('a', 0.5)] }, 60_000);
+  recordQuota(rt, se, { status: 'ok', windows: [w('g')] }, 120_000);
+  const names = rt.s.quota.codex.windows.map((x) => x.name).sort();
+  assert.equal(names.length, 6);
+  assert.ok(names.includes('a'), 'a, updated since, stays');
+  assert.ok(names.includes('g'), 'the new one stays');
+});
+
 test('windows of different limits are kept apart, though they share a name', () => {
   const { rt } = fakeRt({ p: { backend: 'codex' } });
   const se = { personaId: 'p' };

@@ -26,6 +26,7 @@ export function quotaReport(r) {
       used: w.used,
       resetsAt: Number.isFinite(w.resetsAt) && w.resetsAt > 0 ? Math.round(w.resetsAt) : null,
       ...(typeof w.limit === 'string' && w.limit ? { limit: w.limit.slice(0, 40) } : {}),
+      ...(typeof w.limitName === 'string' && w.limitName ? { limitName: w.limitName.slice(0, 40) } : {}),
     }));
   if (!windows.length) return null;
   return { status: STATUSES.has(r.status) ? r.status : 'ok', windows };
@@ -40,13 +41,15 @@ const windowKey = (w) => `${w.limit ?? ''}|${w.name}`;
 
 /**
  * The last record’s windows with a report’s laid over them, by limit and name: an update can be sparse (Codex’s
- * account/rateLimits/updated sends what changed), and a window it leaves out keeps its figure.
- * @param {any[]} last @param {any[]} next
+ * account/rateLimits/updated sends what changed), and a window it leaves out keeps its figure, and when it was last
+ * reported, so the bar can say it’s old. Past MAX_WINDOWS, the windows reported least recently go.
+ * @param {any[]} last @param {any[]} next @param {number} now
  */
-function merged(last, next) {
+function merged(last, next, now) {
   const byKey = new Map(last.map((w) => [windowKey(w), w]));
-  for (const w of next) byKey.set(windowKey(w), w);
-  return [...byKey.values()].slice(-MAX_WINDOWS);
+  for (const w of next) byKey.set(windowKey(w), { ...w, seenAt: now });
+  const recent = [...byKey.values()].sort((a, b) => (b.seenAt ?? 0) - (a.seenAt ?? 0)).slice(0, MAX_WINDOWS);
+  return [...byKey.values()].filter((w) => recent.includes(w));
 }
 
 /**
@@ -60,7 +63,7 @@ export function recordQuota(rt, se, report, now = Date.now()) {
   const persona = rt.s.personas[se.personaId];
   const id = quotaKeyOf(persona);
   const last = rt.s.quota?.[id];
-  const r = { ...given, windows: merged(last?.windows ?? [], given.windows) };
+  const r = { ...given, windows: merged(last?.windows ?? [], given.windows, now) };
   if (last && shown(last) === shown(r) && now - last.seenAt < REWRITE_MS) return;
   const host = persona?.remote?.hostId ?? null;
   rt.store.emit('quota', { id, backend: persona?.backend ?? 'mock', host, ...r, seenAt: now });

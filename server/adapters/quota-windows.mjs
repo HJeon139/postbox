@@ -73,13 +73,19 @@ function lengthName(mins) {
  */
 export function codexQuota(limits) {
   if (!limits || typeof limits !== 'object') return null;
-  const limit = typeof limits.limitId === 'string' && limits.limitId && limits.limitId !== 'codex' ? { limit: limits.limitId } : {};
+  const limit = typeof limits.limitId === 'string' && limits.limitId && limits.limitId !== 'codex' ? namedLimit(limits) : {};
   const windows = [limits.primary, limits.secondary]
     .filter((w) => w && typeof w === 'object')
     .map((w) => ({ name: lengthName(w.windowDurationMins), used: share(percentOf(w), 100), resetsAt: resetMs(w.resetsAt), ...limit }))
     .filter((w) => w.name && w.used !== null);
   if (!windows.length) return null;
   return { status: limits.rateLimitReachedType ? 'out' : 'ok', windows };
+}
+
+/** A limit other than the default, kept apart by its id and shown by its name, where Codex gives one. @param {any} limits */
+function namedLimit(limits) {
+  const name = typeof limits.limitName === 'string' && limits.limitName ? { limitName: limits.limitName } : {};
+  return { limit: limits.limitId, ...name };
 }
 
 /** A Codex window’s percent used, 0 to 100: always a percent, so 1 is 1%. @param {any} w */

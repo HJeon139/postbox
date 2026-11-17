@@ -84,6 +84,8 @@ test('Codex’s windows carry their limit, so another limit’s are kept apart f
   const other = codexQuota({ limitId: 'codex_other', primary: codexWindow(60, 300, HOUR_S) });
   const plain = codexQuota({ primary: codexWindow(10, 300, HOUR_S) });
   assert.equal(other?.windows[0].limit, 'codex_other');
+  const named = codexQuota({ limitId: 'codex_other', limitName: 'GPT-5 Pro', primary: codexWindow(60, 300, HOUR_S) });
+  assert.equal(named?.windows[0].limitName, 'GPT-5 Pro', 'shown by its name where Codex gives one');
   assert.equal(plain?.windows[0].limit ?? null, null);
 });
 
