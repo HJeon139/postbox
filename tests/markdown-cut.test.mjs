@@ -25,6 +25,9 @@ const PIECES = [
   '```mermaid\ngraph LR\n  A --> B\n```',
   '$$\nE = mc^2\n$$',
   '\\[\na^2 + b^2\n\\]',
+  '\\[\na\n\nb\n\\]',
+  '$$E = mc^2$$ is the line it starts.',
+  '\\[1] was cited, a bracket and not math.',
   '$$E = mc^2$$',
   '<details>\n<summary>The answer</summary>\n\nIt is 42.\n\n</details>',
   '- a question\n  <details><summary>Answer</summary>\n\n  Yes.\n\n  </details>',
@@ -95,6 +98,10 @@ test('#850 the cut moves on as a reply grows, so each frame renders a bounded ta
 test('#850 no cut past a <details> or display math still open, and none with positions or a carriage return', () => {
   assert.equal(renderMarkdownCut('<details>\n\nOpen still.\n\nMore.\n\nAnd more.').cut, 0);
   assert.equal(renderMarkdownCut('$$\n\nx\n\nMore.\n\nAnd more.').cut, 0);
+  assert.equal(renderMarkdownCut('\\[\n\nx\n\nMore.\n\nAnd more.').cut, 0, 'a lone \\[ waits for its \\]');
+  // A line that only starts like math opens nothing, so the cut goes on past it.
+  for (const line of ['$$E = mc^2$$ is the line it starts.', '\\[1] was cited.'])
+    assert.equal(renderMarkdownCut(`${line}\n\nMore.\n\nAnd more.`).cut, `${line}\n\n`.length, line);
   assert.equal(renderMarkdownCut('One.\n\nTwo.\n\nThree.', { positions: true }).cut, 0);
   assert.equal(renderMarkdownCut('One.\r\n\r\nTwo.\r\n\r\nThree.').cut, 0);
   // The last line may still be growing, so the cut is before the line ahead of it.

@@ -3,9 +3,15 @@
 
 import { blocks, renderMarkdown } from './markdown.mjs';
 import { glossaryRegex, mentionRegex } from './markdown-inline.mjs';
+import { LATEX_OPEN } from './math.mjs';
 
-/** A line read as text that a later line could turn into a fold or display math, once its close arrives. @param {string} line */
-const waitsForClose = (line) => line.trimStart().startsWith('<details>') || /^ {0,3}(\$\$|\\\[)/.test(line);
+/**
+ * A line read as text that a later line could turn into a fold or display math, once its close arrives: a `<details>`,
+ * or a `\[` alone on its line, which opens a block only once its `\]` follows. A lone `$$` opens a block to the end
+ * at once, so it never reads as text, and a line that only starts with `$$` or `\[` never opens a block.
+ * @param {string} line
+ */
+const waitsForClose = (line) => line.trimStart().startsWith('<details>') || LATEX_OPEN.test(line);
 
 /**
  * renderMarkdown, split at a cut: the start of a whole line after a blank one at the top level, where every block
