@@ -101,3 +101,10 @@ export function longTurn(n) {
     mapper: (c) => ({ push: (e) => (e.text ? c.text(e.text) : c.activity(e.step)) }),
   };
 }
+
+/**
+ * What git answers in a folder that isn’t a repository (server/ledger-git.mjs runGit’s result). The measured projects’
+ * folders aren’t, so the ledger’s git calls answer as they would there, without a process: real ones were about a
+ * third of a crowd’s profile, none of it Postbox’s own work, so the ledger’s git work isn’t measured.
+ */
+export const notARepository = async () => ({ code: 128, stdout: '', stderr: 'fatal: not a git repository (or any of the parent directories): .git\n' });

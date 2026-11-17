@@ -16,7 +16,7 @@ import { stopTimers } from '../../server/runtime-close.mjs';
 import { Store } from '../../server/store.mjs';
 import { ScriptedAdapter } from '../../tests/side-threads-fixture.mjs';
 import { makeRooms, play, scriptTurns, ticking } from './drive.mjs';
-import { turnsOfAll } from './fixtures.mjs';
+import { notARepository, turnsOfAll } from './fixtures.mjs';
 import { countingHandle, countingIo } from './log-bytes.mjs';
 
 /** The log’s segments in a folder, in order. @param {string} dir */
@@ -42,6 +42,7 @@ export async function restartBuild(dir, agents, mode) {
   if (store.fh) store.fh = countingHandle(store.fh, counting.chunks);
   // close() waits this long for the ledger; the virtual clock would run a real grace out at once.
   rt.config.ledgerGraceMs = 10 * 60_000;
+  rt.ledger.git = notARepository;
   store.emit('project', { id: 'p1', name: 'P', folder: dir });
   const adapter = new ScriptedAdapter();
   /** @type {any} */ (adapter).rt = rt;

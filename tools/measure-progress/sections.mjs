@@ -9,7 +9,7 @@ import { stopTimers } from '../../server/runtime-close.mjs';
 import { Store } from '../../server/store.mjs';
 import { setup } from '../../tests/side-threads-fixture.mjs';
 import { makeRooms, play, scriptTurns, settled, ticking } from './drive.mjs';
-import { longTurn, MAPPERS, recordings, turnsOfAll } from './fixtures.mjs';
+import { longTurn, MAPPERS, notARepository, recordings, turnsOfAll } from './fixtures.mjs';
 import { countingIo, shares, tally } from './log-bytes.mjs';
 import { openTabs } from './wire.mjs';
 
@@ -26,8 +26,6 @@ export async function measured({ tabs = 0, prepare = (f) => ({ open: [f.t.id] })
     const { io, written } = countingIo();
     const store = await new Store(dir, { io }).load();
     const f = setup(store);
-    // The project’s folder isn’t a repository, so every git call the ledger makes answers as one there would, without
-    // a process: real ones were about 30% of a crowd’s profile, and none of it Postbox’s own work.
     f.rt.ledger.git = notARepository;
     const prepared = prepare(f);
     const wire = tabs ? openTabs(store, tabs, prepared.open) : null;
@@ -51,9 +49,6 @@ export async function measured({ tabs = 0, prepare = (f) => ({ open: [f.t.id] })
     rmSync(dir, { recursive: true, force: true });
   }
 }
-
-/** What git answers in a folder that isn’t a repository (server/ledger-git.mjs runGit’s result). */
-const notARepository = async () => ({ code: 128, stdout: '', stderr: 'fatal: not a git repository (or any of the parent directories): .git\n' });
 
 /** Turns in one room, by the fixture’s agent @beta. @param {any} f @param {import('./drive.mjs').Recording} rec */
 async function oneTurn(f, rec) {
