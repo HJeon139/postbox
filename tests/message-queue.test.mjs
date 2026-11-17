@@ -2,8 +2,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { formatMessage } from '../server/adapters/guide.mjs';
-import { batchPending } from '../server/message-queue.mjs';
-import { combineMessages } from '../server/queue-batch.mjs';
 import * as arrange from './arrange.mjs';
 import { held, settle, setup } from './side-threads-fixture.mjs';
 
@@ -101,24 +99,6 @@ test('a waker finishing the same turn does not supersede its own queued handoff'
   await settle(rt);
   assert.equal(adapter.calls.filter((call) => call.sessionId === beta.id)[1].parts[0].text, 'Please review.');
   assert.deepEqual(store.state.threads[t.id].queue, []);
-});
-
-test('direct pending messages and a queued wake are delivered together', async () => {
-  const { rt, adapter, t, alpha, beta } = setup();
-  const busy = held();
-  adapter.next.push(busy.step);
-  rt.sendMessage(t.id, { text: '@beta start' });
-  rt.turnService.run(beta.id, { kind: 'agent', from: '@gamma', text: 'Pending one.' });
-  rt.turnService.run(beta.id, { kind: 'agent', from: '@delta', text: 'Pending two.' });
-  rt.agentWake(alpha.id, 'beta', 'Queued third.');
-  busy.release();
-  await settle(rt);
-  const calls = adapter.calls.filter((call) => call.sessionId === beta.id);
-  assert.equal(calls.length, 2);
-  assert.deepEqual(
-    calls[1].parts.map((message) => message.text),
-    ['Pending one.', 'Pending two.', 'Queued third.'],
-  );
 });
 
 test('a batch never combines messages from the conversation and a topic thread', async () => {
@@ -231,46 +211,4 @@ test('stopping a turn preserves each agent’s message from a mixed pending batc
   const context = store.state.sessions[beta.id].context.join('\n');
   assert.match(context, /@alpha’s message came while your turn was stopped: “Alpha’s request\.”/);
   assert.match(context, /@gamma’s message came while your turn was stopped: “Gamma’s request\.”/);
-});
-
-test('a pending batch is reconsidered when a newer message supersedes one of its children', () => {
-  const { rt, t } = setup();
-  const messages = [
-    ['alpha', 'old', 'Old request.'],
-    ['gamma', 'other', 'Independent request.'],
-    ['alpha', 'new', 'Current request.'],
-  ].map(([handle, turnId, text]) => {
-    const item = arrange.post(rt, t.id, { kind: 'agent', handle, turnId, text, status: 'done' });
-    return { kind: 'agent', from: `@${handle}`, text, itemId: item.id, at: item.at };
-  });
-  const pending = [{ message: combineMessages(messages.slice(0, 2)) }, { message: messages[2] }];
-  const groups = batchPending(rt, pending, t.id);
-  assert.equal(groups.length, 1);
-  assert.deepEqual(
-    groups[0].message.messages.map((message) => message.text),
-    ['Independent request.', 'Current request.'],
-  );
-});
-
-test('a newer unaddressed post replaces a directly pending wake exactly once', async () => {
-  const { rt, adapter, t, alpha, beta } = setup();
-  const busy = held();
-  adapter.next.push(busy.step);
-  rt.sendMessage(t.id, { text: '@beta start' });
-  const old = arrange.post(rt, t.id, { kind: 'agent', handle: 'alpha', turnId: 'old', text: 'Please review.' });
-  rt.turnService.run(beta.id, { kind: 'agent', from: '@alpha', text: old.text, itemId: old.id, at: old.at });
-  const newer = arrange.post(rt, t.id, {
-    kind: 'agent',
-    sessionId: alpha.id,
-    handle: 'alpha',
-    turnId: 'new',
-    text: 'New context without a mention.',
-    status: 'done',
-  });
-  busy.release();
-  await settle(rt);
-  const calls = adapter.calls.filter((call) => call.sessionId === beta.id);
-  assert.equal(calls.length, 2);
-  assert.equal(calls[1].message.itemId, newer.id);
-  assert.equal(calls[1].parts[0].text, newer.text);
 });

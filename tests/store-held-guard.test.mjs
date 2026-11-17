@@ -34,7 +34,6 @@ const PUBLISHED = {
   'catch-up.mjs': ['catchUp', 'turnTail'], // the prompt for a later turn
   'permission-cards.mjs': ['resolvePermission', 'resolveDenial'], // the person’s answer to a card they see
   'permission-expiry.mjs': ['dismissPermission'], // the person’s Dismiss on a card they see (#721)
-  'queue-batch.mjs': ['latestMessage'], // an agent’s later post, for a message that waited on a turn (#374)
   'reactions.mjs': ['toggleReaction', 'reactTool'], // a reaction aimed at an item the person or the agent sees
   'read-message.mjs': ['readMessage', 'readMessage', 'readConversation'], // read tools (T-31)
   'remote/turns-snapshot.mjs': ['readable'], // the snapshot sent to a host: it leaves the process
