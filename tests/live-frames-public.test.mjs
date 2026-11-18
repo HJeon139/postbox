@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { publicLive, publicLiveFrame } from '../server/public-state.mjs';
 import { LIVE, SESSION_FIELDS, STEP_FIELDS, SUBAGENT_FIELDS, TOOL_CALL_FIELDS } from '../shared/live-kinds.mjs';
-import { EVENTS, PUBLIC_STATE_KEYS, STREAM } from '../shared/state.mjs';
+import { EVENTS, PRIVATE_STATE_KEYS, PUBLIC_STATE_KEYS, STREAM } from '../shared/state.mjs';
 
 /** The frame’s data as the page would get it, or null when it goes out as nothing. @param {string} frame */
 const dataOf = (frame) => {
@@ -183,4 +183,26 @@ test('a field a frame only inherits is never sent, at any level', () => {
   assert.deepEqual(st.step, { id: 's1', label: 'Read' });
   const snap = dataOf(publicLiveFrame({ ...frames.snapshot, session: inherit({ toolCalls: [{ name: SECRET }] }, { glimpse: 'g' }) }));
   assert.deepEqual(snap.session, { glimpse: 'g' });
+});
+
+test('no kind mirrors a private event or names a private state key: published (#1478) never rides a live frame', () => {
+  for (const [kind, def] of Object.entries(LIVE)) {
+    assert.deepEqual(
+      def.keys.filter((k) => PRIVATE_STATE_KEYS.includes(k)),
+      [],
+      `${kind} names a private key`,
+    );
+    assert.ok(
+      def.events.every((t) => Object.hasOwn(EVENTS, t) && EVENTS[t].public),
+      `${kind} mirrors a private event`,
+    );
+    assert.ok(!def.events.includes('app.publish'), kind);
+  }
+  // A kind that named the private key would go out as nothing: the gate reads the public keys.
+  assert.ok(PRIVATE_STATE_KEYS.includes('published') && !PUBLIC_STATE_KEYS.includes('published'));
+  // And a published app’s data put on a frame of any kind is dropped by its shape.
+  for (const f of Object.values(frames)) {
+    const out = dataOf(publicLiveFrame({ ...f, published: { app: { data: SECRET } } }));
+    assert.equal(JSON.stringify(out).includes(SECRET), false);
+  }
 });
