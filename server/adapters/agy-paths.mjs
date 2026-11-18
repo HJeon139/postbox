@@ -2,7 +2,11 @@
 // is at its size ceiling (designs/architecture/code-size.md, “Module and function size”).
 
 import { lstatSync, readlinkSync, realpathSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { dirname, isAbsolute, join, parse, resolve, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const DEFAULT_HOOK_SCRIPT = join(dirname(fileURLToPath(import.meta.url)), 'agy-hook.mjs');
 
 /**
  * Resolves a path as the file system does, one segment at a time through the real path of each one that exists, so
@@ -127,3 +131,25 @@ export const leadsInto = (raw, dirs, { cwd, home }) =>
     const reals = realReadings(at);
     return reals.length === 2 && reals.every((real) => dirs.some((d) => inside(real, d)));
   });
+
+/**
+ * Whether a path points at Postbox’s plugin, its hook script, or ~/.gemini/antigravity-cli (directly or via symlink).
+ * Compared without case: macOS’s file system ignores it, so .AGENTS/plugins is .agents/plugins there (#423’s review).
+ */
+export function isProtectedPath(rawPath, { cwd = process.cwd(), scriptPath = DEFAULT_HOOK_SCRIPT, home = homedir() } = {}) {
+  if (typeof rawPath !== 'string' || !rawPath.trim()) return true;
+  return readingsOf(rawPath, cwd, home).some((at) => protectedAt(at, { scriptPath, home }));
+}
+
+/** Whether one absolute path, as written or where it leads, is one isProtectedPath protects. */
+function protectedAt(at, { scriptPath, home }) {
+  const abs = resolve(at).toLowerCase();
+  const reals = realReadings(at).map((r) => r.toLowerCase());
+  const pluginRe = /(?:^|[\\/])\.agents(?:[\\/]plugins(?:[\\/]|$)|$)/;
+  if (pluginRe.test(abs) || reals.some((r) => pluginRe.test(r))) return true;
+  const realScript = (realTarget(scriptPath, '/') ?? resolve(scriptPath)).toLowerCase();
+  if (abs === resolve(scriptPath).toLowerCase() || reals.includes(realScript)) return true;
+  const agyDir = resolve(home, '.gemini', 'antigravity-cli');
+  const realAgyDir = (realTarget(agyDir, '/') ?? agyDir).toLowerCase();
+  return inside(abs, agyDir.toLowerCase()) || reals.some((r) => inside(r, realAgyDir));
+}
