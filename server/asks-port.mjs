@@ -3,7 +3,7 @@
 // a refusal, expires its permission cards and reads or releases what the person needs only through these calls.
 // The composition root builds it with the Runtime and hands it to Turns as `asks`.
 
-import { keptTurns, nextNeed, noticeNeed, releaseNeed, stateFor, TURN_TIED } from './card-needs.mjs';
+import { keptTurns, nextNeed, releaseNeed, stateFor, TURN_TIED } from './card-needs.mjs';
 
 /** @param {any} rt */
 export function asksPort(rt) {
@@ -27,8 +27,6 @@ export function asksPort(rt) {
     releaseNeed: (se, itemId, busy, opts) => releaseNeed(rt, se, itemId, busy, opts),
     /** @param {any} se @param {{ turnIds?: string[], keep?: string|null }} [opts] */
     nextNeed: (se, opts) => nextNeed(rt, se, opts),
-    /** @param {any} se @param {any} needs */
-    noticeNeed: (se, needs) => noticeNeed(rt, se, needs),
     stateFor,
   };
 }

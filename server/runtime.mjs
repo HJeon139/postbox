@@ -7,8 +7,6 @@ import { formatDuration } from '../shared/text.mjs';
 import { listProcesses } from './adapters/process-group.mjs';
 import { runAgentCommand } from './agent-commands.mjs';
 import { sendAppMessage } from './app-entries.mjs';
-import { holdAppSend, needAppSend, releaseRetired, resolveAppSend } from './app-send-cards.mjs';
-import { APP_HOLD_MAX, APP_SEND_LIMIT, APP_SEND_WINDOW_MS } from './app-send-limits.mjs';
 import { Apps } from './app-service.mjs';
 import { askQuestions, QUESTION_TOOL, questionBlocks } from './ask-question.mjs';
 import { asksPort } from './asks-port.mjs';
@@ -27,6 +25,7 @@ import { keptJobs, pollKept, stopJob, stopKeptJobs, watchKept } from './kept-job
 import { Ledger } from './ledger.mjs';
 import { Memory } from './memory-service.mjs';
 import * as queue from './message-queue.mjs';
+import { closeOldSendCards } from './old-app-sends.mjs';
 import { alwaysFor } from './permission-always.mjs';
 import {
   allowAlways,
@@ -195,8 +194,8 @@ export class Runtime {
       },
       config,
     });
-    // Agents’ apps and the blocks they show (designs/architecture/services.md, “Apps”). A retired app’s sends waiting
-    // for the person, and a withdrawn block, release the need they carried, before the call returns.
+    // Agents’ apps and the blocks they show (designs/architecture/services.md, “Apps”). A withdrawn block releases the
+    // need it carried, before the call returns.
     this.apps = new Apps({
       store,
       bus: this.bus,
@@ -212,7 +211,6 @@ export class Runtime {
       narrator: this.narrator,
       config,
     });
-    this.bus.on('app.retired', ({ app }) => releaseRetired(this, app));
     this.bus.on('block.withdrawn', ({ se, itemId }) => releaseNeed(this, se, itemId));
     // What an agent reads of its conversation (designs/architecture/services.md, “Memory”). The messages held for it on
     // a card waiting for the person come into its catch-up through the catchUpLines port (#693); the readers of an item
@@ -262,6 +260,7 @@ export class Runtime {
     this.sessions.unarchive();
     // After that, so a card of an agent it brings back stays the person’s to answer (#693).
     closeOrphanCards(this);
+    closeOldSendCards(this); // an app-send card from before #1488 closes, with nothing waiting on the person
     // Ask me and Accept edits are gone: a persona stored with one runs Auto (permission-modes.mjs).
     retireModes(this);
     // A need from before needsAt gets its item's time, once, so ⌃J orders it without the page holding its items.
@@ -745,22 +744,11 @@ export class Runtime {
 
   // ── Apps (server/apps.mjs) ─────────────────────────────────────────────────────────
 
-  static APP_SEND_LIMIT = APP_SEND_LIMIT;
-  static APP_SEND_WINDOW_MS = APP_SEND_WINDOW_MS;
-  static APP_HOLD_MAX = APP_HOLD_MAX;
   appCheck(appId, report) {
     return this.apps.appCheck(appId, report);
   }
   appEvent(appId, action, values, opts) {
-    const r = this.apps.appEvent(appId, action, values, opts);
-    // Past its limit, an app’s event waits on its card for the person (asks: server/app-send-cards.mjs).
-    return r.hold ? holdAppSend(this, r.hold.app, r.hold.card, r.hold.event) : r;
-  }
-  needAppSend(app, itemId, waiting) {
-    return needAppSend(this, app, itemId, waiting);
-  }
-  resolveAppSend(threadId, itemId, action, opts) {
-    return resolveAppSend(this, threadId, itemId, action, opts);
+    return this.apps.appEvent(appId, action, values, opts);
   }
   appState(appId, state) {
     return this.apps.appState(appId, state);

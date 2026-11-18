@@ -175,22 +175,22 @@ test('#721 the note quotes a command as it is: its Markdown kept, its backticks 
 test('#721 on #633: an expired card that was the need hands it to the next card that waits, not to nothing', async () => {
   const { rt, t, ask, now } = await setup();
   const { card } = await ask();
-  const app = arrange.post(rt, t.id, { kind: 'appsend', sessionId: now().id, appId: 'a1', title: 'App', events: [{ action: 'x' }], status: 'open' });
+  const hop = arrange.post(rt, t.id, { kind: 'hop', fromSessionId: now().id, from: 'deployer', to: 'beta', status: 'open', text: 'please' });
   assert.equal(now().needs?.itemId, card.id, 'the permission ranks ahead');
   expireWait(rt, card.id);
-  assert.equal(now().needs?.itemId, app.id, 'the app card is the need at once, before the turn’s end decides again');
+  assert.equal(now().needs?.itemId, hop.id, 'the wake request is the need at once, before the turn’s end decides again');
   await settle(rt);
-  assert.equal(now().needs?.itemId, app.id, 'and after it');
+  assert.equal(now().needs?.itemId, hop.id, 'and after it');
   assert.equal(notes(now()).length, 1);
 });
 
 test('#721 on #633: a host card with no wait here that its host ends hands the need to the next waiting card', async () => {
   const { rt, t, now } = await setup();
   const it = arrange.post(rt, t.id, { kind: 'permission', sessionId: now().id, handle: 'deployer', tool: 'Bash', summary: 'run the deploy', status: 'open' });
-  const app = arrange.post(rt, t.id, { kind: 'appsend', sessionId: now().id, appId: 'a1', title: 'App', events: [{ action: 'x' }], status: 'open' });
+  const hop = arrange.post(rt, t.id, { kind: 'hop', fromSessionId: now().id, from: 'deployer', to: 'beta', status: 'open', text: 'please' });
   arrange.setSession(rt, now().id, { needs: { kind: 'permission', itemId: it.id, text: 'x' }, state: 'needs' });
   endCard({ rt, now: () => Date.now() }, { it, threadId: t.id }, 'expired', 'Expired on its host.', Date.now());
-  assert.equal(now().needs?.itemId, app.id);
+  assert.equal(now().needs?.itemId, hop.id);
   assert.equal(now().state, 'needs');
 });
 

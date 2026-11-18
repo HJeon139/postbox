@@ -1,11 +1,9 @@
 // Apps’ interface (designs/architecture/services.md, “Apps”): agents’ apps, their versions, saved state, host data and
 // the browser’s check, blocks shown and updated, and which answers an agent has read, on the Apps rig
-// (tests/app-service-fixture.mjs); review comments are tests/app-service-review.test.mjs. The app-send cards are asks’,
-// so an event past an app’s limit comes back to be held, and nothing is sent.
+// (tests/app-service-fixture.mjs); review comments are tests/app-service-review.test.mjs.
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { APP_SEND_LIMIT } from '../server/app-send-limits.mjs';
 import { rig } from './app-service-fixture.mjs';
 
 const CODE = '<p>Lab</p>';
@@ -81,23 +79,17 @@ test('warnings show the app with notes, and the agent hears of them in the lint 
 
 // ── What an app sends, saves and reads ───────────────────────────────────────────────
 
-test('appEvent sends in the person’s voice up to the limit a minute; past it the event comes back to be held, and nothing is sent', () => {
+test('appEvent sends each event in the person’s voice, with no limit a minute and nothing held (#1488)', () => {
   const { store, threads, apps, sent } = rig();
   shown(apps, threads);
   const now = 1_000_000;
-  for (let i = 0; i < APP_SEND_LIMIT; i++) assert.equal(apps.appEvent('lab', 'send', { text: `hi ${i}` }, { now }).ok, true);
-  assert.equal(sent.length, APP_SEND_LIMIT);
+  for (let i = 0; i < 8; i++) assert.equal(apps.appEvent('lab', 'send', { text: `hi ${i}` }, { now }).ok, true, `send ${i + 1}`);
+  assert.equal(sent.length, 8);
   // Sent with the voice line it posted, which its entry points at (#1425).
   const voice = store.items('th_c').find((x) => x.kind === 'voice');
   assert.deepEqual(sent[0].opts, { threadId: 'th_c', itemId: voice.id });
   assert.equal(sent[0].message.kind, 'event');
-  const held = apps.appEvent('lab', 'send', { text: 'one more' }, { now });
-  assert.equal(held.hold.app.id, 'lab');
-  assert.equal(held.hold.card, undefined, 'no card yet');
-  assert.equal(held.hold.event.event.action, 'send');
-  assert.equal(sent.length, APP_SEND_LIMIT, 'nothing more was sent');
-  assert.equal(store.items('th_c').filter((x) => x.kind === 'voice').length, APP_SEND_LIMIT);
-  assert.equal(apps.appEvent('lab', 'send', { text: 'asked to hold' }, { now: now + 120_000, hold: true }).hold.app.id, 'lab');
+  assert.equal(store.items('th_c').filter((x) => x.kind === 'voice').length, 8);
 });
 
 test('appState saves the app’s state, writes nothing for the same state, and refuses one over 256 KB', () => {

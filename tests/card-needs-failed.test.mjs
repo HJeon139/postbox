@@ -20,13 +20,13 @@ async function failedAfterBlock() {
   return { ...r, b };
 }
 
-test('the integrator’s probe: an app card that opens after a failed turn, then is denied, leaves the need on the failure', async () => {
+test('the integrator’s probe: a wake request that opens after a failed turn, then is declined, leaves the need on the failure', async () => {
   const r = await failedAfterBlock();
   assert.equal(r.needs()?.kind, 'failed', 'the failed turn is the need');
-  const card = r.appCard();
-  r.rt.needAppSend({ sessionId: r.alpha.id, title: 'App', threadId: r.t.id }, card.id, 1);
-  assert.equal(r.needs()?.kind, 'failed', 'the app card waits behind Retry');
-  r.rt.resolveAppSend(r.t.id, card.id, 'deny');
+  const card = r.hop();
+  r.offerHop(card);
+  assert.equal(r.needs()?.kind, 'failed', 'the wake request waits behind Retry');
+  r.declineHop(card);
   assert.equal(r.needs()?.kind, 'failed', 'and the block you moved past doesn’t come back');
 });
 

@@ -49,14 +49,14 @@ test('a permission released during a running turn brings back no block from the 
 test('a card in a side thread becomes the need and names its thread; one in the conversation names none', async () => {
   const r = room();
   const side = oldSide(r);
-  const inSide = r.appCard(side.id);
+  const inSide = r.hop(side.id);
   const p = r.permission();
   r.setNeed('permission', p.id);
   r.rt.settlePermission(p.id, 'allowed');
   assert.equal(r.needs()?.itemId, inSide.id);
   assert.equal(r.needs()?.threadId, side.id, '⌃J goes to the side thread');
-  r.rt.resolveAppSend(side.id, inSide.id, 'deny');
-  const here = r.appCard();
+  r.rt.resolveHop(side.id, inSide.id, false);
+  const here = r.hop();
   const p2 = r.permission();
   r.setNeed('permission', p2.id);
   r.rt.settlePermission(p2.id, 'allowed');
@@ -69,9 +69,9 @@ test('a block in a topic thread off the conversation becomes the need, with the 
   const root = arrange.post(r.rt, r.t.id, { kind: 'agent', sessionId: r.alpha.id, handle: 'alpha', text: 'Start here', status: 'done' });
   const { threadId: topic } = r.rt.startTopic(r.t.id, root.id);
   const b = r.block('turn_last', topic);
-  const app = r.appCard();
-  r.setNeed('appsend', app.id);
-  r.rt.resolveAppSend(r.t.id, app.id, 'deny');
+  const h = r.hop();
+  r.setNeed('hop', h.id);
+  r.rt.resolveHop(r.t.id, h.id, false);
   assert.equal(r.needs()?.itemId, b.id);
   assert.equal(r.needs()?.threadId, topic);
   await settle(r.rt);
@@ -86,16 +86,6 @@ test('a wake request offered while a permission is the need waits behind it, and
   assert.equal(r.needs()?.itemId, p.id, 'the permission stays the need');
   r.rt.settlePermission(p.id, 'allowed');
   assert.equal(r.needs()?.itemId, h.id, 'then the wake request');
-});
-
-test('an app card offered while a wake request is the need takes it: same rank, newest first', async () => {
-  const r = room();
-  const h = r.hop();
-  r.setNeed('hop', h.id);
-  await sleep(2);
-  const card = r.appCard();
-  r.rt.needAppSend({ sessionId: r.alpha.id, title: 'App', threadId: r.t.id }, card.id, 1);
-  assert.equal(r.needs()?.itemId, card.id);
 });
 
 test('a turn’s end records its id on the session, in the store', async () => {

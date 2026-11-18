@@ -121,8 +121,6 @@ const AFTER = [
   ['app-fullscreen', 'Asset explorer', q('.fullscreen'), 'app-fullscreen'],
   // Near the end: it sends a message, which wakes the conversation’s agent.
   ['image-attachment', 'Asset explorer', `document.querySelector('.transcript .att-image')?.closest('.item')`, 'image-attachment'],
-  // Last: it leaves sends waiting on the explorer’s card.
-  ['app-send-card', 'Asset explorer', `document.querySelector('.appsend')?.closest('.item')`, 'app-send-card'],
 ];
 
 const PREPARE = {
@@ -148,8 +146,6 @@ const PREPARE = {
   'settings:connection': `(() => { document.querySelector('[aria-label="Settings"]').click(); [...document.querySelectorAll('.dialog [role=tab], .dialog button')].find((b) => b.textContent.trim() === 'Backends').click(); })()`,
   'folder-picker': `(() => { document.querySelector('[aria-label="Add a file, an agent or a command"]').click(); [...document.querySelectorAll('.menu .mi')].find((b) => b.textContent.includes('From the project folder')).click(); })()`,
   'app-fullscreen': `document.querySelector('.appframe [aria-label="Full screen"]')?.click()`,
-  // Three sends the browser asks the server to hold (as it does past its limit), so the card shows.
-  'app-send-card': `(async () => { for (const summary of ['Use 3 passages', 'Use 4 passages', 'Use 2 passages']) await fetch('/api/apps/asset-explorer/event', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'use-passages', values: { passages: [], summary }, hold: true }) }); })()`,
   // Sends a message with a drawn PNG and an SVG attached, through the app’s own upload, and waits for the thumbnail.
   'image-attachment': `(async () => {
     const c = document.createElement('canvas');

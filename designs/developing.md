@@ -29,7 +29,7 @@ The root `AGENTS.md` carries these rules, short, for any agent working in the re
 - **What the move may change** (architecture/code-size.md, “What a move may change”):
   - A method becomes a function that takes the instance first: `rt` for `Runtime`, `ledger` for `Ledger`. `this` becomes that parameter, and nothing else in its body changes.
   - The class keeps a one-line method that delegates to it (`agentWake(...a) { return agentWake(this, ...a); }`), so callers and tests don’t change.
-  - A static becomes a module constant, and the class keeps an alias (`static APP_HOLD_MAX = APP_HOLD_MAX;`), since tests read `Runtime.APP_HOLD_MAX`.
+  - A static becomes a module constant, and the class keeps an alias (`static APP_HOLD_MAX = APP_HOLD_MAX;` was one, until #1488 removed the limit), since tests read it through the class.
   - A closure inside another function, such as a tool handler in `toolsFor`, takes the variables it read as parameters, and the commit message names them.
   - Module-level helpers and constants the moved code reads move with it, or go to a third module both files import. Never import them back from the old file: that’s a circular import.
 - **Check the move before you commit it.** Use a folder of your own, since sessions run at once:

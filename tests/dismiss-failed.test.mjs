@@ -52,11 +52,11 @@ test('#883 Dismiss releases a failed reply’s need, keeps its error and status,
 
 test('#883 Dismiss hands the need to the card that waits behind the failure', async () => {
   const r = await failedTurn();
-  const card = r.appCard();
-  r.rt.needAppSend({ sessionId: r.alpha.id, title: 'App', threadId: r.t.id }, card.id, 1);
-  assert.equal(r.needs()?.kind, 'failed', 'the app card waits behind the failure');
+  const card = r.hop();
+  r.offerHop(card);
+  assert.equal(r.needs()?.kind, 'failed', 'the wake request waits behind the failure');
   dismissFailed(r.rt, r.t.id, r.failed.id);
-  assert.equal(r.needs()?.kind, 'appsend');
+  assert.equal(r.needs()?.kind, 'hop');
   assert.equal(r.needs()?.itemId, card.id);
 });
 
@@ -141,11 +141,11 @@ test('#883 a dismissed reply stays dismissed after a restart, and is never the n
   });
   settleInterrupted(rt);
   assert.equal(r.store.items(r.t.id).find((x) => x.id === r.failed.id).dismissed, true);
-  // An app card that becomes the need and is denied: its release must not fall back to the dismissed failure.
-  const card = r.appCard();
-  rt.needAppSend({ sessionId: r.alpha.id, title: 'App', threadId: r.t.id }, card.id, 1);
-  assert.equal(r.store.state.sessions[r.alpha.id].needs?.kind, 'appsend');
-  rt.resolveAppSend(r.t.id, card.id, 'deny');
+  // A wake request that becomes the need and is declined: its release must not fall back to the dismissed failure.
+  const card = r.hop();
+  r.offerHop(card, { on: rt });
+  assert.equal(r.store.state.sessions[r.alpha.id].needs?.kind, 'hop');
+  r.declineHop(card, { on: rt });
   assert.equal(r.store.state.sessions[r.alpha.id].needs, null, 'not the dismissed failure');
 });
 
