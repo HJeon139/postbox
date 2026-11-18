@@ -10,3 +10,7 @@ test('labels say what a tool does', () => {
   assert.equal(describeTool('Grep', { pattern: 'TODO' }), 'Searched for “TODO”');
   assert.equal(describeTool('mcp__github__list_issues', { repo: 'x' }), 'list issues (github)');
 });
+
+test('#1478 read_app is labeled by what it reads, with the app’s id', () => {
+  assert.equal(describeTool('mcp__postbox__read_app', { appId: 'reading-list' }), 'Reading what app “reading-list” published');
+});
