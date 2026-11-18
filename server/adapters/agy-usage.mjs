@@ -35,11 +35,14 @@ export function usageData(/** @type {string} */ text) {
 }
 
 /**
- * Asks agy for its usage. Null if it can’t: agy missing, signed out, or slower than timeoutMs, when it’s stopped.
- * @param {string} bin @param {{ spawnImpl?: typeof spawn, timeoutMs?: number }} [opts] @returns {Promise<any>}
+ * Asks agy for its usage. Null if it can’t: agy missing, signed out, or slower than timeoutMs, when it’s stopped, as it
+ * is when the signal aborts: a stopped turn, or Postbox closing, never leaves agy running (#1494).
+ * @param {string} bin @param {{ spawnImpl?: typeof spawn, timeoutMs?: number, signal?: AbortSignal }} [opts]
+ * @returns {Promise<any>}
  */
-export function agyUsage(bin, { spawnImpl = spawn, timeoutMs = PROBE_MS } = {}) {
+export function agyUsage(bin, { spawnImpl = spawn, timeoutMs = PROBE_MS, signal } = {}) {
   return new Promise((resolve) => {
+    if (signal?.aborted) return resolve(null);
     let out = '';
     /** @type {import('node:child_process').ChildProcessByStdio<null, import('node:stream').Readable, null>} */
     let p;
@@ -48,14 +51,23 @@ export function agyUsage(bin, { spawnImpl = spawn, timeoutMs = PROBE_MS } = {}) 
     } catch {
       return resolve(null);
     }
-    const timer = setTimeout(() => stopProbe(p), timeoutMs);
+    const stop = () => stopProbe(p);
+    const timer = setTimeout(stop, timeoutMs);
+    // Stopped, it answers nothing at once: what agy left open, as a wrapper’s own child can, holds up nothing.
+    const abort = () => {
+      clearTimeout(timer);
+      stop();
+      resolve(null);
+    };
+    signal?.addEventListener('abort', abort, { once: true });
     p.stdout.on('data', (d) => {
       out = (out + d).slice(-200_000);
     });
     p.on('error', () => resolve(null));
     p.on('close', (code) => {
       clearTimeout(timer);
-      resolve(code === 0 ? usageData(out) : null);
+      signal?.removeEventListener('abort', abort);
+      resolve(code === 0 && !signal?.aborted ? usageData(out) : null);
     });
   });
 }
@@ -75,19 +87,23 @@ function unlessStopped(asked, signal) {
 }
 
 /**
- * The adapter’s probe: start(version) as a turn starts, which asks an agy that can answer unless it asked in the last
- * minute, and report(ctx, asked) before the turn ends, which hands what agy said, and when, to the turn’s ctx.quota.
- * @param {() => Promise<any>} ask @param {{ now?: () => number }} [opts]
+ * The adapter’s probe: start(version, signal) as a turn starts, which asks an agy that can answer unless it asked in the
+ * last minute, stopping it if the signal aborts, and report(ctx, asked) before the turn ends, which hands what agy said,
+ * and when, to the turn’s ctx.quota.
+ * @param {(signal?: AbortSignal) => Promise<any>} ask @param {{ now?: () => number }} [opts]
  */
 export function usageProbe(ask, { now = Date.now } = {}) {
   let at = -Infinity;
   return {
-    /** @param {string | null | undefined} version @returns {Promise<{ data: any, at: number } | null> | null} */
-    start(version) {
+    /**
+     * @param {string | null | undefined} version @param {AbortSignal} [signal]
+     * @returns {Promise<{ data: any, at: number } | null> | null}
+     */
+    start(version, signal) {
       if (!agyHasUsage(version) || now() - at < EVERY_MS) return null;
       const asking = now();
       at = asking;
-      return ask().then(
+      return ask(signal).then(
         (data) => ({ data, at: asking }),
         () => null,
       );

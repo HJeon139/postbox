@@ -143,7 +143,7 @@ export async function start({
   rt.work.expireStale();
   rt.expireStaleJobs();
   rt.rearmMirrors();
-  void askAgyQuota(rt, usage, agy); // its bar before its agent’s first turn (#1494), not waited on
+  const agyQuota = askAgyQuota(rt, usage, agy); // its bar before its agent’s first turn (#1494), not waited on
   // Turns that went on on their hosts are attached again, each host’s status is kept for the page, and the hosts
   // reconnect when this computer wakes (#120).
   const stopWake = startHosts(rt, hosts, wake);
@@ -453,6 +453,7 @@ export async function start({
   }
 
   async function close() {
+    agyQuota.stop(); // agy’s /usage, asked as Postbox started, stops with it (#1494)
     stopStreams();
     for (const r of streams) r.destroy();
     stopTimers(rt);

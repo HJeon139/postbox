@@ -9,7 +9,7 @@ import { AntigravityCliAdapter, agyVersion, findAgy } from './adapters/antigravi
 import { ClaudeCodeAdapter, claudeVersion, findClaude } from './adapters/claude-code.mjs';
 import { CodexAdapter, codexVersion, findCodex } from './adapters/codex.mjs';
 import { findKiro, KiroCliAdapter, kiroVersion } from './adapters/kiro-cli.mjs';
-import { recordQuotaOf } from './quota-usage.mjs';
+import { recordQuotaOf, reportedAt } from './quota-usage.mjs';
 
 /**
  * How Postbox looks for each real backend’s CLI on this computer: its version, or null when it isn’t here. Tests pass
@@ -46,7 +46,7 @@ export async function registerBackends(adapters, { dataDir, demo, probes }) {
   // The Antigravity CLI brings Gemini models (#143). It always runs with your own agy setup: see its adapter.
   const agy = real ? await look.agy() : null;
   // Its quota comes from asking agy’s /usage alongside a turn (#1466).
-  const usage = usageProbe(() => agyUsage(findAgy()));
+  const usage = usageProbe((signal) => agyUsage(findAgy(), { signal }));
   if (agy) adapters.register(new AntigravityCliAdapter({ workRoot, version: agy, usage }));
   const codex = real ? await look.codex() : null;
   if (real) adapters.register(new CodexAdapter({ workRoot }), { here: !!codex });
@@ -58,20 +58,23 @@ export async function registerBackends(adapters, { dataDir, demo, probes }) {
  * restart its bar waited for the agent’s next turn. /usage runs no model, so this asks once too, for a room with an
  * Antigravity agent on this computer, through the same probe and its once-a-minute limit.
  *
- * Asks agy for its usage and records the answer, as a turn’s report is, without holding up the start: it resolves
- * once recorded, and never rejects.
+ * Asks agy for its usage and records the answer, as a turn’s report is, without holding up the start. done resolves
+ * once it’s recorded, and never rejects; stop, which Postbox’s close calls before the store closes, stops agy and
+ * records nothing after.
  * @param {any} rt @param {ReturnType<typeof import('./adapters/agy-usage.mjs').usageProbe>} usage
  * @param {string | null | undefined} version  agy’s version here, null when it isn’t here
+ * @returns {{ done: Promise<void>, stop: () => void }}
  */
-export async function askAgyQuota(rt, usage, version) {
+export function askAgyQuota(rt, usage, version) {
+  const stopped = new AbortController();
   const here = Object.values(rt.s.personas ?? {}).some((p) => p?.backend === 'antigravity-cli' && !p.remote?.hostId);
-  if (!version || !here) return;
   const owner = { id: quotaKeyOf({ backend: 'antigravity-cli' }), backend: 'antigravity-cli', host: null };
-  try {
-    await usage.report({ quota: (/** @type {any} */ r) => recordQuotaOf(rt, owner, r, r.seenAt) }, usage.start(version));
-  } catch (e) {
-    console.error('Postbox couldn’t record Antigravity’s quota as it started; its next turn will:', e);
-  }
+  const ctx = { signal: stopped.signal, quota: (/** @type {any} */ r) => recordQuotaOf(rt, owner, r, reportedAt(r)) };
+  const done = version && here ? usage.report(ctx, usage.start(version, stopped.signal)) : Promise.resolve();
+  return {
+    done: done.catch((e) => console.error('Postbox couldn’t record Antigravity’s quota as it started; its next turn will:', e)),
+    stop: () => stopped.abort(),
+  };
 }
 
 /**
