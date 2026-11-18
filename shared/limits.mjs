@@ -207,6 +207,13 @@ export const STEP_TEXT = Object.freeze({ input: 300, output: 400, thought: 8000,
 export const LIVE_CAPS = Object.freeze({ steps: 200, toolCalls: 5, subagents: 12, string: STEP_TEXT.thought });
 
 /**
+ * A running reply’s words between commit points (server/live-text.mjs; live-progress.md, “Commit points”): stored after
+ * everyMs with no commit point, so a crash loses no more than that, and early at `most` characters, which bounds a
+ * turn’s buffer whatever a harness streams.
+ */
+export const LIVE_TEXT = Object.freeze({ everyMs: 10_000, most: 64 * 1024 });
+
+/**
  * Agent wakes in a row, without you, before the next waits for your Allow: a backstop against agents that never stop,
  * until a supervisor agent watches the room (#538). 3 until #320 raised it to 10, 50 since #492, and 1,000 since #1035,
  * after one held wake left every agent in a room waiting about 7.5 hours. It’s the default: each room can set its own

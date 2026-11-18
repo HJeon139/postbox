@@ -76,16 +76,16 @@ A commit point writes, in one `commit`:
 
 The steps it stores keep `at` and `part`, which place them among the words (`app/js/activity-live.mjs`, `textFrom`). A commit point drops only what `foldedStep` drops besides those: `input`, `output` and `diff`, the live view’s detail. It keeps `detail` whole, since a page merges the stored step over the live one and a thought is shown whole while its turn runs; the fold at the turn’s end cuts it to `STEP_TEXT.detail`, as it always has. The buffer keeps the newest call’s full detail across a commit point that comes on time alone, so the live view’s newest call doesn’t lose its input and output mid-call. So a reload, a second tab or a conversation opened mid-turn places every stored step as the live view does. The fold at the turn’s end drops `at` and `part`, as today, and the restart sweep’s `foldCutOff`, which folds any step still holding them (`liveDetail`), folds a cut-off reply’s steps as it does now.
 
-**On the wire, a change crosses once.** A page that was sent a step live since its last commit point isn’t sent that commit point’s `item.patch` (`server/live-sent.mjs`). A running turn’s change of `state` or `ctx` is stored as ever, and rides on the session frame sent with it, so its `session.patch` isn’t sent to a page either, and nor is the turn’s end’s write of the tool calls and their count, which the pages had live. Both are skipped per stream: a session’s only for a stream that has been sent that session’s frames, a step’s only for one sent that step since its last commit point. A cursor would only move the page’s place on, which its next numbered frame does, and a reconnect that replays such an event changes nothing the page has. A reconnect is a new stream: it has been sent nothing, so it’s spared nothing, and it gets the backlog whole, then the running turns’ snapshots (“A page that reconnects”). A page that opened after the step went live, a page without the conversation open, and a tool’s stream, which names no open conversations, get the stored events whole. A write that changes nothing isn’t stored, since it would store and send its `updatedAt` alone.
+**On the wire, a change crosses once.** A page that was sent a step live since its last commit point isn’t sent that commit point’s `item.patch` (`server/live-sent.mjs`). A running turn’s change of `state` or `ctx` is stored as ever, and rides on the session frame sent with it, so its `session.patch` isn’t sent to a page either, and nor is the turn’s end’s write of the tool calls and their count, which the pages had live. Both are skipped per stream: a session’s only for a stream that has been sent that session’s frames, a step’s only for one sent that step since its last commit point. A cursor would only move the page’s place on, which its next numbered frame does, and a reconnect that replays such an event changes nothing the page has. A reconnect is a new stream: it has been sent nothing, so it’s spared nothing, and it gets the backlog whole, then the running turns’ snapshots (“A page that reconnects”). A commit point’s words go the same way: a page sent every word of the chunk live isn’t sent its `item.text`, a skip kept per stream as the span of each part’s words it was sent, which the turn’s end forgets for every part. A page that opened after the step went live, a page without the conversation open, and a tool’s stream, which names no open conversations, get the stored events whole. A write that changes nothing isn’t stored, since it would store and send its `updatedAt` alone.
 
 A commit point comes:
 - at a step boundary: when a call starts, the words before it are whole;
-- at a reply segment’s end, before the patch that settles the segment. `item.final` (`threads.mjs`, `patchItem`) then reads the whole text, and the mentions in its last words wake their agents (`mention-entries.mjs`);
-- after 10 s of new words with no step, so a long reply with no calls loses no more than that;
+- at a reply segment’s end, before the patch that settles the segment. `item.final` (`threads.mjs`, `patchItem`) then reads the whole text, and the mentions in its last words wake their agents (`mention-entries.mjs`). `patchItem` calls the store’s settle hook (`itemSettling`, `server/store-live.mjs`) before it emits a patch that settles a streaming reply, and the words a running turn holds for that reply are stored first (`server/live-text.mjs`). So does a Stop, and the words going to another part;
+- after 10 s of new words with no commit point, so a long reply with no calls loses no more than that;
 - early, when the buffer’s text reaches 64 KB;
 - for every running reply at a graceful shutdown, before its turn is stopped (“A restart mid-turn”).
 
-The interval and the ceiling are constants in `shared/limits.mjs`. The measurement decides their values, within the bound that the commit points of a turn together write less than `main` writes for it.
+The interval and the ceiling are constants in `shared/limits.mjs` (`LIVE_TEXT.everyMs` and `LIVE_TEXT.most`). A commit point’s `item.text` carries `at`, where its words start in the part, as a text frame does, so the reducer adds only what the item lacks of them (`shared/state.mjs`): a page that had some of the words live, or a reconnect that replays the chunk, shows each word once. An `item.text` without `at`, such as a shell run’s output, appends as ever. The measurement decides their values, within the bound that the commit points of a turn together write less than `main` writes for it.
 
 **At the end of a turn,** the last commit point, the settling patch, a failed reply’s `held` record (#1451, `server/turn-held.mjs`) and the fold are one `commit`, so a restart sees all of them or none.
 
@@ -96,7 +96,7 @@ Stored events wait behind a commit in flight (`server/store-held.mjs`), and `POS
 **So live frames take the same queue.** The store holds every emit made while a commit is queued or in flight, or a snapshot is written, in one global FIFO (`emit`, `server/store.mjs`), and numbers, applies and broadcasts each in its turn once that settles. A live frame made while anything is held joins that FIFO as an unnumbered job: when its turn comes it’s broadcast, not numbered, applied or written. The stream sends it through the same lag as stored events. So the page gets stored events and live frames in the order Turns made them.
 
 **And each frame says where it goes,** for a page that joins midway:
-- a `text` frame names the offset in the reply’s text where its words start (`at`). The page appends only at its stored text’s end, buffers a frame ahead of it, and drops what it already has;
+- a `text` frame names the offset in the reply’s text where its words start (`at`). The page appends only at its stored text’s end, buffers a frame ahead of it, and drops what it already has. It applies a text frame even when it’s ahead of its stream, as after it loads a conversation’s range while the stream runs late, which drops a step or session frame (`app/js/live-frames.mjs`): the server, having sent the words, doesn’t send their commit point to that page;
 - a `step` frame carries the step’s `rev`, which Turns bumps on each change. The page keeps the highest;
 - a frame for an item the page doesn’t have yet waits, until the item arrives or the turn ends. At most 200 frames wait per turn; past that the page drops what waits for that turn and asks for its snapshot (`/api/live/:turnId`, through `publicLive`), which replaces it whole.
 
@@ -110,12 +110,12 @@ This crosses a security boundary ([security-boundaries.md](security-boundaries.m
 
 | Kind | Mirrors | Fields, the only ones sent |
 |---|---|---|
-| `text` | `item.text` | `threadId`, `itemId`, `turnId`, `at`, `text` |
+| `text` | `item.text` | `threadId`, `itemId`, `at`, `text` |
 | `step` | `item.patch` (`activityStep`) | `threadId`, `itemId`, `rev`, and `step`, an object of the step’s `id`, `label`, `state`, `ms`, `who`, `parent`, `detail`, `kind`, `job`, `input`, `output`, `part`, `at`, `added`, `deleted`, `diff` |
 | `session` | `session.patch` | `sessionId`, `toolCalls`, `toolCount`, `currentStep`, `glimpse`, `subagents`, and the `state`, `ctx` and `updatedAt` of a change stored with them |
-| `snapshot` | the three above | `turnId`, `sessionId`, `threadId`, `itemId`, and the turn’s `text` (with its `at`), `steps` and `session`, each as its kind’s fields |
+| `snapshot` | the three above | `turnId`, `sessionId`, `threadId`, `itemId`, and the turn’s `text` (its words since the last commit point, with their part’s `itemId` and their `at`), `steps` and `session`, each as its kind’s fields |
 
-A step frame names no `turnId`: the page places a step by its item, and the snapshot names the turn. A step frame sends a step whole the first time after a commit point, then only the fields that changed, with its `id`; a session frame sends only the fields that changed.
+A step or text frame names no `turnId`: the page places it by its item, and the snapshot names the turn. A turn’s words can be in a later part than its first, after a post lands below the reply, so the snapshot’s text names its own part. A step frame sends a step whole the first time after a commit point, then only the fields that changed, with its `id`; a session frame sends only the fields that changed.
 
 **No field reaches the browser that doesn’t today.** Each is one a public event carries now. A test builds every kind from a buffer full of extra keys, and holds that a frame’s keys are a subset of its kind’s list.
 
@@ -133,7 +133,7 @@ A step frame names no `turnId`: the page places a step by its item, and the snap
 ## The buffer, and what a page that joins gets
 
 **`server/live-buffer.mjs` keeps one buffer per running turn,** in memory, and drops it when the turn ends. It’s Turns’ module, not `turn-context.mjs`, which is near its size limit. Its bounds are in `shared/limits.mjs`:
-- **text:** the words since the last commit point, at most 64 KB, since a commit point comes early at that;
+- **text:** the words since the last commit point, at most 64 KB, since a commit point comes early at that. They ride on the turn (`turn.liveText`, `server/live-text.mjs`), one part at a time;
 - **steps:** the steps changed since the last commit point, in full, each with its `rev`;
 - **session fields:** one set, the latest.
 

@@ -112,8 +112,20 @@ function liveParts(frames) {
     where: `live frame #${i + 1}`,
     type: `live.${f.kind}`,
     data: f,
-    own: f.kind === 'step' ? (/** @type {string} */ path) => path.startsWith('step.') && wordStep(f.step) : sessionOwn,
+    own: liveOwn(f),
   }));
+}
+
+/**
+ * Which paths of a live frame are someone’s own words: a reply’s words, live or in a snapshot, are its agent’s; a
+ * step’s, only a thought or a subagent’s narration; a session’s, as a session patch’s are.
+ * @param {any} f @returns {(path: string) => boolean}
+ */
+function liveOwn(f) {
+  if (f.kind === 'text') return (path) => path === 'text';
+  if (f.kind === 'step') return (path) => path.startsWith('step.') && wordStep(f.step);
+  if (f.kind === 'snapshot') return (path) => path === 'text.text' || (path.startsWith('session.') && sessionOwn(path));
+  return sessionOwn;
 }
 
 /** The state’s parts, each with which of its paths are someone’s own words: its items, its sessions, and the rest. */

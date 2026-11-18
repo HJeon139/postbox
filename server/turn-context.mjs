@@ -5,6 +5,7 @@
 import { glimpseOf } from '../shared/text.mjs';
 import { EFFORT_LEVELS } from './adapters/setup.mjs';
 import { liveFields, liveStep, liveUpdate } from './live-buffer.mjs';
+import { liveText } from './live-text.mjs';
 import { recordQuota, reportedAt } from './quota-usage.mjs';
 import { placeStep, replySegment, stepTaken, wordsSegment } from './reply-segment.mjs';
 import { recordScheduledTool } from './scheduled-wakes.mjs';
@@ -145,8 +146,10 @@ function replyWords(rt, se0, turn, live) {
       if (!live() || !delta) return;
       const id = wordsSegment(rt, turn, se0);
       turn.said += delta;
-      turn.partWords[id] = (turn.partWords[id] ?? 0) + delta.length;
-      rt.store.emit('item.text', { threadId: turn.threadId, id, text: delta });
+      const at = turn.partWords[id] ?? 0;
+      turn.partWords[id] = at + delta.length;
+      // Live, and stored at the next commit point (live-text.mjs).
+      liveText(rt, turn, id, at, delta);
       if (rt.store.pending.session(turn.sessionId)?.state !== 'gen') liveUpdate(rt, turn, { state: 'gen', currentStep: 'Writing a reply' });
     },
     compaction({ kept, total, summary }) {

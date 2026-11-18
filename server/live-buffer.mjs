@@ -10,6 +10,7 @@
 import { LIVE_CAPS } from '../shared/limits.mjs';
 import { CARRIED_FIELDS, SESSION_FIELDS } from '../shared/live-kinds.mjs';
 import { committed } from './live-sent.mjs';
+import { commitText, textSnapshot } from './live-text.mjs';
 import { sessionPatch } from './session-patch.mjs';
 import { onSessionWrite, sendLive } from './store-live.mjs';
 
@@ -101,6 +102,8 @@ function storedStep(step) {
 export function liveCommit(rt, turn) {
   const live = turn.live;
   liveFlush(rt, turn);
+  // The words before the steps: a step’s `at` places it among words a page then has.
+  commitText(rt, turn);
   if (!live?.changed.size) return;
   for (const { itemId, step } of live.changed.values()) {
     const data = { threadId: turn.threadId, id: itemId, activityStep: storedStep(step) };
@@ -216,13 +219,15 @@ export function liveEnd(rt, turn) {
       committed.add(data),
     );
   if (turn.live) closeLive(rt, turn, session);
+  // Each stream forgets the reply’s steps and words it was sent: its first part’s, and every part its words went to.
+  if (turn.first) sendLive(rt.store, { kind: 'end', threadId: turn.threadId, itemId: turn.first, parts: Object.keys(turn.partWords ?? {}) });
   turn.live = null;
 }
 
 /**
- * The turn’s last frames: its session’s live fields put back to what’s stored, which the edge writes then change as
- * ever, since a write the same as what’s stored (a glimpse of '', no subagents) isn’t stored or sent; and the end of
- * its steps, so each stream forgets the ones it was sent (server/live-sent.mjs). @param {any} rt @param {any} turn
+ * The turn’s last session frame: its live fields put back to what’s stored, which the edge writes then change as
+ * ever, since a write the same as what’s stored (a glimpse of '', no subagents) isn’t stored or sent. @param {any} rt
+ * @param {any} turn
  * @param {Record<string, any>} session
  */
 function closeLive(rt, turn, session) {
@@ -234,7 +239,6 @@ function closeLive(rt, turn, session) {
     if (now !== session[k] && !sameList(now, session[k])) back[k] = now;
   }
   if (Object.keys(back).length) sendLive(rt.store, { kind: 'session', sessionId: turn.sessionId, ...back });
-  sendLive(rt.store, { kind: 'end', threadId: turn.threadId, itemId: turn.first });
 }
 
 /** A field’s empty value: what a page shows of it when nothing is stored. @param {unknown} v */
@@ -257,14 +261,15 @@ export function liveStored(turn, itemId, patch) {
 export function liveSnapshots(rt) {
   return rt.running
     .all()
-    .filter((/** @type {any} */ t) => t.live)
+    .filter((/** @type {any} */ t) => t.live || t.liveText)
     .map((/** @type {any} */ t) => ({
       turnId: t.id,
       sessionId: t.sessionId,
       threadId: t.threadId,
       itemId: t.first,
-      steps: [...t.live.changed.values()].map((c) => c.step),
-      session: { ...t.live.session },
+      steps: t.live ? [...t.live.changed.values()].map((c) => c.step) : [],
+      session: { ...t.live?.session },
+      ...(textSnapshot(t) ? { text: textSnapshot(t) } : {}),
     }));
 }
 

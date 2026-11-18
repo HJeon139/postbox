@@ -77,13 +77,14 @@ test('the shapes are these, so a field added to one is a decision this test sees
   assert.deepEqual(SUBAGENT_FIELDS, ['id', 'name', 'state', 'ctx', 'doing', 'thinking', 'asked', 'said', 'since', 'parent', 'bg']);
   assert.deepEqual(SESSION_FIELDS, ['toolCalls', 'toolCount', 'currentStep', 'glimpse', 'subagents']);
   assert.deepEqual(Object.keys(LIVE), ['text', 'step', 'session', 'snapshot']);
-  assert.deepEqual(LIVE.text.shape.fields, ['threadId', 'itemId', 'turnId', 'at', 'text']);
+  assert.deepEqual(LIVE.text.shape.fields, ['threadId', 'itemId', 'at', 'text']);
   assert.deepEqual(LIVE.step.shape.fields, ['threadId', 'itemId', 'rev']);
   assert.deepEqual(Object.keys(LIVE.step.shape.objects ?? {}), ['step']);
   assert.deepEqual(LIVE.session.shape.fields, ['sessionId', 'toolCount', 'currentStep', 'glimpse', 'state', 'ctx', 'updatedAt']);
   assert.deepEqual(Object.keys(LIVE.session.shape.lists ?? {}), ['toolCalls', 'subagents']);
   assert.deepEqual(LIVE.snapshot.shape.fields, ['turnId', 'sessionId', 'threadId', 'itemId']);
   assert.deepEqual(Object.keys(LIVE.snapshot.shape.objects ?? {}), ['text', 'session']);
+  assert.deepEqual(LIVE.snapshot.shape.objects?.text.fields, ['itemId', 'at', 'text']);
   assert.deepEqual(Object.keys(LIVE.snapshot.shape.lists ?? {}), ['steps']);
 });
 

@@ -115,7 +115,7 @@ test('#120 e2e: a remote Claude Code turn streams the host’s lines, shows its 
     // The recorded stream, applied as the laptop applies a local one.
     assert.match(
       replies(p)
-        .map((i) => i.text)
+        .map((i) => arrange.shownText(p.rt, i))
         .join(''),
       /hello\.txt/,
     );
@@ -184,7 +184,7 @@ test('#120 e2e: Postbox restarts mid-turn, attaches to the turn still on the hos
     first.d.tool(turn, 'show_block', { block: BLOCK });
     await until(() => d.replies.length === 1, 'the block’s reply');
     assert.ok(
-      replies(first).some((i) => i.text),
+      replies(first).some((i) => arrange.shownText(first.rt, i)),
       'part of the reply showed',
     );
     // Postbox shuts down: the remote turn isn’t stopped, it goes on on the host (stopTurns), and the links close.

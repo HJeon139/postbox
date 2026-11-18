@@ -132,6 +132,12 @@ export const liveTurn = (rt, sessionId) => rt.running.turnOf(sessionId);
 /** A running turn’s session as it is live: its tool calls, step, glimpse and subagents (server/live-buffer.mjs). */
 export const liveSession = (rt, sessionId) => liveFields(rt, rt.running.turnOf(sessionId));
 
+/** An item’s words as a page shows them: what’s stored, then a running turn’s words since its last commit point (server/live-text.mjs). */
+export function shownText(rt, item) {
+  const held = rt.running.all().find((/** @type {any} */ t) => t.liveText?.itemId === item.id)?.liveText;
+  return (item.text ?? '') + (held ? held.text.slice(Math.max(0, (item.text ?? '').length - held.at)) : '');
+}
+
 /** The token of the turn running for a session, which its MCP calls carry, or null when none runs. @param {Runtime} rt @param {string} sessionId */
 export const turnToken = (rt, sessionId) => rt.running.turnOf(sessionId)?.token ?? null;
 

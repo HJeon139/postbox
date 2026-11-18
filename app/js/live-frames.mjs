@@ -19,5 +19,6 @@ client.on((ch) => {
     // A dropped frame’s step may never be sent again (server/live-sent.mjs): the state, with its snapshot, has it.
     if (live.lost()) void resync();
   } else if (ch.type === 'load') tell(live.snapshot(client.state, client.live, has));
-  else if (ch.type === 'item.add' || ch.type === 'range') tell(live.flush(client.state, has));
+  // A held frame applies once its item is there, and a text frame once the words before it are.
+  else if (ch.type === 'item.add' || ch.type === 'range' || ch.type === 'item.text') tell(live.flush(client.state, has));
 });
