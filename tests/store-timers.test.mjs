@@ -40,6 +40,8 @@ const PLACED = {
   'live-buffer.mjs': 1, // a turn’s coalesced session frame, at the end of its tick: sendLive, which holds it behind the store’s held writes
   'live-streams.mjs': 3, // sends frames, the events’ and the live frames’ lag alike: reads
   'narration/narrator.mjs': 1, // stops the narrator: no store
+  'net-fetch.mjs': 1, // net.fetch’s deadline, which ends a fetch: no store
+  'net-fetch-line.mjs': 1, // the wait between patches of a fetch’s activity step: gated, skips its patch while closed
   'permission-cards.mjs': 1, // expireWait: gated
   'remote/host-admin.mjs': 1, // a wait: no store
   'remote/host-status.mjs': 1, // a microtask after a host event publishes host status: an emit, memory-only while closed like stream text (I1)
@@ -114,7 +116,7 @@ async function sites(dir, rel = '') {
 }
 
 /** Files whose row says the callback is gated: each must carry the rule in its source, so it can’t be dropped silently. */
-const GATED = ['ask-question.mjs', 'claude-mirror.mjs', 'kept-jobs.mjs', 'permission-cards.mjs', 'thread-summary.mjs', 'turn-stop.mjs'];
+const GATED = ['ask-question.mjs', 'claude-mirror.mjs', 'kept-jobs.mjs', 'net-fetch-line.mjs', 'permission-cards.mjs', 'thread-summary.mjs', 'turn-stop.mjs'];
 const RULE = /\bstore\.writable\b|\bwhenWritable\(|\bgated\(/;
 
 test('every file whose timers table row says “gated” checks the store, defers through whenWritable or runs through gated()', async () => {

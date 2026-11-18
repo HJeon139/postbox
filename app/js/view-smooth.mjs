@@ -6,23 +6,11 @@
 // What the view does when the smooth jump ends (smoothEnded), or when a jump to an item ends it (halt), is here too,
 // moved from view-state.mjs at its size limit.
 
+import { canScroll, INPUTS } from './scroll-input.mjs';
 import { atEnd, box, findAnchor } from './view-geometry.mjs';
 import { publish } from './view-publish.mjs';
 
 /** @typedef {import('./view-state.mjs').View} View */
-
-const INPUTS = ['wheel', 'touchstart', 'pointerdown', 'keydown'];
-const SCROLL_KEYS = new Set(['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' ']);
-
-/** Whether the event’s target takes keys itself, so they don’t scroll the page. @param {EventTarget | null} target */
-const takesKeys = (target) => target instanceof HTMLElement && (target.isContentEditable || target.closest('input, textarea, select') !== null);
-
-/** Whether this input can scroll the page. @param {Event} e */
-function canScroll(e) {
-  if (e.type === 'pointerdown') return e.target === document.documentElement;
-  if (e.type === 'keydown') return SCROLL_KEYS.has(/** @type {KeyboardEvent} */ (e).key) && !takesKeys(e.target);
-  return true;
-}
 
 /** Whether input of yours that can scroll came during the jump now running, for landed(). */
 let youCame = false;

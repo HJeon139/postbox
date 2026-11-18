@@ -61,14 +61,14 @@ The event is built and checked by [`shared/events.mjs`](../shared/events.mjs) be
 
 ## Agent-written apps
 
-`show_app({ id, title, code, permissions })` shows an app inline at the thread’s full width. The app runs in an iframe whose page is served with the policy `sandbox allow-scripts allow-forms`, so it gets an opaque origin and no same-origin access. (`allow-forms` only lets a form’s submit event fire, for the app’s script; `form-action 'none'` still stops the submission going anywhere, #1476.) (The policy is a response header rather than the iframe’s `sandbox` attribute, because some embedded browsers refuse frames with the attribute. Postbox’s bridge only answers frames with an opaque origin.) Its content-security policy allows its own inline code, the kit and bundled libraries, and nothing else: no fetch, no websockets, no form submissions, no nested frames. The page is served by [`server/sandbox.mjs`](../server/sandbox.mjs).
+`show_app({ id, title, code, permissions })` shows an app inline at the thread’s full width. The app runs in an iframe whose page is served with the policy `sandbox allow-scripts allow-forms`, so it gets an opaque origin and no same-origin access. (`allow-forms` only lets a form’s submit event fire, for the app’s script; `form-action 'none'` still stops the submission going anywhere, #1476.) (The policy is a response header rather than the iframe’s `sandbox` attribute, because some embedded browsers refuse frames with the attribute. Postbox’s bridge only answers frames with an opaque origin.) Its content-security policy allows its own inline code, the kit and bundled libraries, and nothing else: no fetch, no websockets, no form submissions, no nested frames. Public data comes through Postbox, with `net.fetch`. The page is served by [`server/sandbox.mjs`](../server/sandbox.mjs).
 
 Inside the sandbox, the kit ([`app/kit/kit.js`](../app/kit/kit.js)) provides:
 
 | Call | What it does |
 |---|---|
 | `postbox.ready` | Resolves to `{ state, theme, appId }` once Postbox says hello |
-| `postbox.query(tool, args)` | Asks the host for data. It works only for tools in the app’s `permissions` that its agent also holds, such as `narrate.speak`. Every agent holds its conversation’s assets, so `assets.search` (the room’s text assets by words and meaning, a passage at a time) and `assets.list` need only the app’s `permissions`. |
+| `postbox.query(tool, args)` | Asks the host for data. It works only for tools in the app’s `permissions` that its agent also holds, such as `narrate.speak`. Every agent holds its conversation’s assets, so `assets.search` (the room’s text assets by words and meaning, a passage at a time) and `assets.list` need only the app’s `permissions`, as does `net.fetch`: `{ url }` → `{ status, type, text }` of a public URL, fetched by Postbox’s server, which its agent’s activity shows (security-boundaries.md, “What leaves through net.fetch”). |
 | `postbox.file(name)` | A data file the agent attached to this version with `files`, as text (#54). |
 | `postbox.send(action, values, summary)` | Sends one event to the agent. `summary` is the line you see in your voice. |
 | `postbox.saveState(obj)`, `postbox.restoreState()` | Saved state survives unloading, reloading and new versions |

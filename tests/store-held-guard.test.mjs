@@ -80,6 +80,7 @@ const DIRECT = {
 
 /** store.pending reads. */
 const PENDING = {
+  'net-fetch-line.mjs': ['lastReply'], // the agent’s last reply, which the fetch line patches: a write, so a held reply counts (#1482)
   // The agent's next need when a card is answered, the released card whose turn it may read, and the card it notifies:
   // each decides a write, so a card held behind a commit counts (#366). An offered card and the current need's card
   // (takesNeed): their times, and whether the current one still waits, decide whether the offer takes the need (#711).
