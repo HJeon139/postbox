@@ -2,6 +2,13 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.29.1 (2026-11-18)
+
+### Fixes
+
+- **server:** a send held back by the stream lag goes only to the streams open when it was made
+- **app:** apply a running turn's step and session frames while the page is ahead of its stream
+
 ## 4.29.0 (2026-11-18)
 
 ### Features
