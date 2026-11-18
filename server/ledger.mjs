@@ -38,7 +38,8 @@ import {
   urlsIn,
 } from '../shared/work.mjs';
 import { fileDiff, output, restore } from './ledger-answers.mjs';
-import { commandSeen, commandStarted, endedAs, folderWatch, turnEnded } from './ledger-commands.mjs';
+import { commandSeen, commandStarted, endedAs, folderWatch } from './ledger-commands.mjs';
+import { endTurn } from './ledger-end.mjs';
 import { clip, gitState, pushed, recordCommit, recordLandedPushes, recordPushes, rootOf, runGit, tracked } from './ledger-git.mjs';
 import { known, memoryBlobs, nodeIo, outputFileAt, sameSnap } from './ledger-io.mjs';
 import { hostEdit, hostFolder, hostOf } from './ledger-remote.mjs';
@@ -454,52 +455,9 @@ export class Ledger {
     turn.work?.usage.set(key, { costUsd, tokens });
   }
 
-  /**
-   * The turn ended: read what each file it changed looks like now, and record the turn’s effort.
-   * @returns {Promise<string|null>} the turn’s line for the transcript, from shared/work.mjs turnLine
-   */
-  async endTurn(turn, { status = 'done' } = {}) {
-    const w = turn.work;
-    if (!w || w.ended) return null;
-    w.ended = true;
-    const run = (async () => {
-      await Promise.allSettled(w.pending);
-      turnEnded(this, w);
-      this.recordPublishes(turn);
-      // A host turn has no files to read (they’re on the host), so this is a no-op for it; the guard says so.
-      for (const f of w.host ? [] : w.files.values()) {
-        const before = await f.before;
-        const after = await this.capture(await this.io.read(f.path));
-        await this.recordChange(turn, f, before, after);
-      }
-      const usage = [...w.usage.values()];
-      const priced = usage.filter((u) => typeof u.costUsd === 'number');
-      const tokened = usage.filter((u) => u.tokens);
-      const sum = (k) => tokened.reduce((n, u) => n + (Number(u.tokens[k]) || 0), 0);
-      const t = this.entry(w.convId, turn.id);
-      const endedAt = this.now();
-      this.patch(w.convId, turn.id, {
-        status,
-        endedAt,
-        ms: endedAt - (t?.startedAt ?? endedAt),
-        toolCalls: w.toolCalls,
-        costUsd: priced.length ? priced.reduce((n, u) => n + u.costUsd, 0) : null,
-        tokens: tokened.length ? { input: sum('input'), output: sum('output'), cacheRead: sum('cacheRead'), cacheWrite: sum('cacheWrite') } : null,
-      });
-      // A command with no result when its turn ended: stopped with it, or still running in the background,
-      // where Postbox can’t see it end (#129) unless the runtime does (jobUpdate). One you kept running still is.
-      for (const id of w.commands.values()) {
-        const e = this.entry(w.convId, id);
-        if (e?.state === 'running') this.patch(w.convId, id, { state: status === 'stopped' ? 'stopped' : 'unknown', ms: endedAt - e.startedAt });
-        else if (e?.state === 'background') this.patch(w.convId, id, { ...(e.keptRunning ? {} : { state: 'unknown' }), leftRunning: true });
-      }
-      for (const id of w.externals.values()) {
-        const e = this.entry(w.convId, id);
-        if (e?.state === 'running') this.patch(w.convId, id, { state: 'unknown' });
-      }
-    })();
-    await this.track(run);
-    return null;
+  /** The turn ended: what each file it changed looks like now, and its effort (server/ledger-end.mjs). */
+  endTurn(turn, opts) {
+    return endTurn(this, turn, opts);
   }
 
   /** Stores a read in the blob store and describes it: { exists, size, sha256, binary } (or big, unreadable). */
