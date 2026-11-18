@@ -165,8 +165,7 @@ export function connect({ quiet = false } = {}) {
   es.addEventListener(STREAM.resync, () => (behind ? undefined : resync()));
   // A thread’s header, unnumbered: it follows the event that changed it, and null says the thread was removed.
   // A running turn’s live frame, unnumbered and unstored: live-frames.mjs applies it (live-progress.md).
-  // `behind`: the page is ahead of its stream, which shared/live-apply.mjs weighs for each frame.
-  es.addEventListener(STREAM.live, (e) => client.emit({ type: 'live', data: JSON.parse(e.data), behind }));
+  es.addEventListener(STREAM.live, (e) => behind || client.emit({ type: 'live', data: JSON.parse(e.data) }));
   es.addEventListener(STREAM.header, (e) => {
     if (behind) return;
     const { threadId, header } = JSON.parse(e.data);

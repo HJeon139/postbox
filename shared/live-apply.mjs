@@ -9,7 +9,6 @@
 //   that dropped one loads the state again rather than miss it.
 // - A snapshot at load brings a page that joins mid-turn up to date.
 
-import { itemOf } from './item-index.mjs';
 import { EVENTS } from './state.mjs';
 
 /** The most frames kept for items the page doesn’t hold yet. */
@@ -46,23 +45,6 @@ function heldFrames() {
   };
 }
 
-/** Whether a session rests, as its ring shows it (app/js/ring.mjs): no turn of it runs. @param {any} se */
-const resting = (se) => !se?.state || se.state === 'idle' || se.state === 'failed';
-
-/**
- * Whether a frame the page got while ahead of its stream (client.mjs’s `behind`) is older than the end of its turn that
- * the page loaded: its session, or the session of the step’s reply, rests. Applied, it would undo the fold and the
- * resting session. Any other such frame applies: the server doesn’t send a page the commit point of what it sent it
- * live (server/live-sent.mjs), so a frame dropped then would be lost until a reload.
- * @param {any} state @param {any} f
- */
-function ended(state, f) {
-  if (f?.kind === 'session') return resting(state.sessions[f.sessionId]);
-  if (f?.kind !== 'step') return false;
-  const se = itemOf(state.items[f.threadId] ?? [], f.itemId)?.sessionId;
-  return Boolean(se) && resting(state.sessions[se]);
-}
-
 /**
  * One page’s applier: the revs it has applied, and the frames it’s holding.
  * @returns {{ apply: Function, flush: Function, snapshot: Function, held: () => number, lost: () => boolean }}
@@ -95,12 +77,8 @@ export function liveApplier() {
   }
 
   return {
-    /**
-     * A live frame: the changes to tell the page. @param {any} state @param {any} f
-     * @param {(threadId: string, id: string) => boolean} has @param {boolean} [behind]  the page is ahead of its stream
-     */
-    apply(state, f, has, behind = false) {
-      if (behind && ended(state, f)) return [];
+    /** A live frame: the changes to tell the page. @param {any} state @param {any} f @param {(threadId: string, id: string) => boolean} has */
+    apply(state, f, has) {
       if (f?.kind === 'step') return applyStep(state, f, has);
       if (f?.kind === 'session') return applySession(state, f);
       // A running turn’s live state, sent when the stream connects: as at load.

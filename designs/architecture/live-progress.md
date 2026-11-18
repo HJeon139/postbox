@@ -100,12 +100,6 @@ Stored events wait behind a commit in flight (`server/store-held.mjs`), and `POS
 - a `step` frame carries the step’s `rev`, which Turns bumps on each change. The page keeps the highest;
 - a frame for an item the page doesn’t have yet waits, until the item arrives or the turn ends. At most 200 frames wait per turn; past that the page drops what waits for that turn and asks for its snapshot (`/api/live/:turnId`, through `publicLive`), which replaces it whole.
 
-**A page ahead of its stream** (`behind` in `client.mjs`) has loaded a conversation’s range, or the state, past the numbered frame the stream sends now, as when the stream runs late. The page drops what that stream sends of events it already has, and a header. It used to drop the live frames too. But the server doesn’t send a page the commit point of a step or a session change it sent it live (`server/live-sent.mjs`), so a frame dropped then was lost until a reload: a finished turn’s step read “running” in its record. A frame the page gets then is either older than what it loaded, or newer, and nothing on it says which. So the page applies it (`shared/live-apply.mjs`), with two guards:
-- a step frame is dropped when its rev isn’t newer than the page’s, as ever;
-- a step or session frame is dropped when what the page loaded says its turn ended: the session, or the session of the step’s reply, rests (idle or failed). Applied, it would undo the fold and the resting session.
-
-An older frame of a turn still running can then show for a moment over a stored write the page loaded, such as “Waiting for you”, until the turn’s next frame or write. That’s a moment late, never a change lost.
-
 ## What reaches the browser
 
 This crosses a security boundary ([security-boundaries.md](security-boundaries.md), “What reaches the browser”). It’s decided where events are, and it can’t drift from them.
