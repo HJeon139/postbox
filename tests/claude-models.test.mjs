@@ -104,6 +104,19 @@ test('claudeModels turns hooks off for the listing, so none of the person’s Se
   assert.deepEqual(JSON.parse(seen[0].args[at + 1]), { disableAllHooks: true });
 });
 
+test('sdkModels turns hooks off for the listing, so none of the person’s SessionStart hooks run (#1486)', async () => {
+  /** @type {any} */
+  let options;
+  const sdk = {
+    query: (/** @type {any} */ q) => {
+      options = q.options;
+      return { supportedModels: async () => ROWS, close: () => {} };
+    },
+  };
+  await sdkModels(sdk);
+  assert.deepEqual(options.settings, { disableAllHooks: true });
+});
+
 test('a CLI that traps SIGTERM when its listing runs out of time gets SIGKILL after the grace', async (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const kills = [];
