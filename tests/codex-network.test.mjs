@@ -5,6 +5,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { codexPermissions } from '../server/adapters/codex.mjs';
+import { codexWebSearchArgs } from '../server/adapters/codex-network.mjs';
 import { modeHelp, PERMISSIONS } from '../shared/agent-facts.mjs';
 
 const net = (persona) => codexPermissions(persona, '/work').sandboxPolicy.networkAccess;
@@ -24,6 +25,11 @@ test('#324 without web.fetch, or in Accept edits, the sandbox stays offline', ()
   assert.equal(net({ permissionMode: 'auto' }), false, 'no tools listed');
   assert.equal(net({ permissionMode: 'acceptEdits', tools: ['web.fetch'] }), false);
   assert.equal(codexPermissions({ permissionMode: 'ask', tools: ['web.fetch'] }, '/work').sandboxPolicy.type, 'readOnly');
+});
+
+test('Run everything disables Codex’s built-in search when Web is off', () => {
+  assert.deepEqual(codexWebSearchArgs({ permissionMode: 'bypass', tools: [] }), ['-c', 'web_search="disabled"']);
+  assert.deepEqual(codexWebSearchArgs({ permissionMode: 'bypass', tools: ['web.fetch'] }), []);
 });
 
 test('#324 the persona sheet says Codex’s Auto has network access when the agent may fetch the web', () => {
