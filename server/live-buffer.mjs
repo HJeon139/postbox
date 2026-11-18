@@ -39,13 +39,27 @@ const watched = new WeakSet();
 function watchStored(rt) {
   if (watched.has(rt.store)) return;
   watched.add(rt.store);
-  onSessionWrite(rt.store, (data) => {
+  onSessionWrite(rt.store, (data, asked) => {
     const turn = rt.running?.turnOf?.(data.id);
     if (!turn?.live) return;
     liveFlush(rt, turn);
     const { session } = turn.live;
-    for (const k of SESSION_FIELDS) if (Object.hasOwn(data.patch ?? {}, k)) session[k] = data.patch[k];
+    // A field the write asks for that equals what’s stored isn’t in its event (sessionPatch drops it), but the pages
+    // hold the turn’s live value, such as subagents when Stop clears them: a frame tells them.
+    /** @type {Record<string, any>} */
+    const unstored = {};
+    let any = false;
+    for (const k of SESSION_FIELDS) {
+      if (!Object.hasOwn(asked ?? {}, k)) continue;
+      const v = asked[k];
+      if (!Object.hasOwn(data.patch ?? {}, k) && Object.hasOwn(session, k) && session[k] !== v && !sameList(session[k], v)) {
+        unstored[k] = v;
+        any = true;
+      }
+      session[k] = v;
+    }
     for (const k of data.unset ?? []) if (SESSION_FIELDS.includes(k)) delete session[k];
+    if (any) queueFrame(turn, unstored);
   });
 }
 
@@ -171,12 +185,20 @@ export function liveSession(rt, turn, patch, carried) {
     any = true;
   }
   if (carried) Object.assign(frame, carried);
-  if (!any && !carried) return;
+  if (any || carried) queueFrame(turn, frame);
+}
+
+/**
+ * Adds fields to the turn’s session frame for this tick, which goes at the tick’s end (liveFlush).
+ * @param {any} turn @param {Record<string, any>} fields
+ */
+function queueFrame(turn, fields) {
+  const live = turn.live;
   if (!live.frame) {
     live.frame = { kind: 'session', sessionId: turn.sessionId };
     queueMicrotask(live.flush);
   }
-  Object.assign(live.frame, frame);
+  Object.assign(live.frame, fields);
 }
 
 /**

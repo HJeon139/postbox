@@ -171,7 +171,7 @@ export class Sessions {
     const patch = typeof change === 'function' ? change(se) : change;
     const data = sessionPatch(se, { ...patch, ...this.needAt(se, patch), updatedAt: Date.now() });
     before?.(data);
-    sessionWriting(this.store, data);
+    sessionWriting(this.store, data, patch);
     this.store.emit('session.patch', data);
   }
 

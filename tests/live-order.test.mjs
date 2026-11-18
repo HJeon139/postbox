@@ -22,7 +22,7 @@ function turnOn(store) {
   const update = (/** @type {string} */ id, /** @type {any} */ p, /** @type {any} */ before) => {
     const data = sessionPatch(store.pending.session(id), { ...p, updatedAt: 5 });
     before?.(data);
-    sessionWriting(store, data);
+    sessionWriting(store, data, p);
     store.emit('session.patch', data);
   };
   const running = { all: () => (turn.live ? [turn] : []), turnOf: (/** @type {string} */ id) => (id === turn.sessionId ? turn : undefined) };
@@ -161,6 +161,28 @@ test('a turn’s end clears its steps from every stream’s record: a later comm
       ['s1'],
       'forgotten at the end, so not spared',
     );
+  } finally {
+    live.stop();
+  }
+});
+
+test('Stop mid-turn clears the subagents on a connected page and in the snapshot, though none were ever stored', async () => {
+  const store = await new Store(null).load();
+  // As a turn starts: no subagents stored, and none until it ends.
+  store.emit('session', { id: 'se_1', threadId: 'th_1', state: 'tool', subagents: [], currentStep: '' });
+  const { turn, rt } = turnOn(store);
+  const live = liveStreams(store, undefined, { running: rt.running });
+  try {
+    const p = page(live, store);
+    liveSession(rt, turn, { subagents: [{ id: 'a', name: 'helper', state: 'tool' }], currentStep: 'Agent' });
+    await tick();
+    assert.equal(p.state().subagents.length, 1, 'live while it runs');
+    // turn-stop.mjs, mid-turn: the same [] as stored, which sessionPatch leaves out of the event.
+    rt.sessions.update('se_1', { state: 'stopping', subagents: [], currentStep: 'Stopping', stopAsk: null });
+    assert.deepEqual(liveSnapshots(rt)[0].session.subagents, [], 'a page that loads now');
+    await tick();
+    assert.deepEqual(p.state().subagents, [], 'a page that was connected');
+    assert.equal(p.state().currentStep, 'Stopping');
   } finally {
     live.stop();
   }

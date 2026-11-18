@@ -115,7 +115,7 @@ function turnOn(store) {
   const update = (/** @type {string} */ id, /** @type {any} */ p, /** @type {any} */ before) => {
     const data = sessionPatch(store.pending.session(id), { ...p, updatedAt: 5 });
     before?.(data);
-    sessionWriting(store, data); // as Sessions.update does: the turn’s waiting frame goes first
+    sessionWriting(store, data, p); // as Sessions.update does: the turn’s waiting frame goes first
     store.emit('session.patch', data);
   };
   const running = { all: () => [turn], turnOf: (/** @type {string} */ sid) => (sid === turn.sessionId ? turn : undefined) };

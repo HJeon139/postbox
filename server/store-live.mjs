@@ -43,14 +43,19 @@ function hearLive(store, frame) {
 /**
  * Listens for a store’s session writes as each is made, before it’s emitted, held or not: a running turn’s buffer
  * takes a stored write of a live field then, and sends its waiting frame ahead of it (server/live-buffer.mjs).
- * @param {any} store @param {(data: { id: string, patch: Record<string, any>, unset?: string[] }) => void} fn
+ * It hears the write’s data, and the change asked for: a field equal to what’s stored is in the change but not the
+ * data, and a running turn may hold another value of it live.
+ * @param {any} store @param {(data: { id: string, patch: Record<string, any>, unset?: string[] }, asked: Record<string, any>) => void} fn
  */
 export function onSessionWrite(store, fn) {
   store.sessionWriters ??= new Set();
   store.sessionWriters.add(fn);
 }
 
-/** A session write about to be emitted (server/sessions.mjs, update). @param {any} store @param {any} data */
-export function sessionWriting(store, data) {
-  for (const fn of store.sessionWriters ?? []) fn(data);
+/**
+ * A session write about to be emitted (server/sessions.mjs, update), with the change it was asked for.
+ * @param {any} store @param {any} data @param {Record<string, any>} [asked]
+ */
+export function sessionWriting(store, data, asked = data.patch) {
+  for (const fn of store.sessionWriters ?? []) fn(data, asked);
 }
