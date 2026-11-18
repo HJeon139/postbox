@@ -57,6 +57,7 @@ const PUBLISHED = {
 /** Direct reads of state.items, state.work or state.apps: published reads. */
 const DIRECT = {
   'app-entries.mjs': ['sendAppMessage'], // the title of an app whose check the page reported, for its entry’s line (#1425)
+  'app-links.mjs': ['openLink'], // that the app exists, for the page’s request to open its link (#1480)
   'app-notes.mjs': ['noteApp', 'clickEvent'], // the page’s note and event, HTTP answers (#1488)
   'app-publish.mjs': ['publishApp', 'readApp'], // the page’s publish, an HTTP answer, and read_app, a read tool (#1478)
   'apps.mjs': ['appCheck', 'appEvent', 'appState', 'appQuery', 'appFile', 'appOf'], // HTTP answers to the page about an app, and appOf for read_message and the host snapshot (#516's S1): a read tool and what it sends

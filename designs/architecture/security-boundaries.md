@@ -38,7 +38,9 @@ sequenceDiagram
 
 **`!` commands** ([#67](https://github.com/HJeon139/postbox/issues/67)) run as you, through your shell, in the conversation’s folder, so they need more than the token, which a determined process can get (above): the route also refuses unless Postbox listens on 127.0.0.1 and the request came from this computer. Each runs in its own process group, so Postbox stops them all when it shuts down (SIGINT, then SIGKILL), and keeps a bounded amount of each one’s output. Postbox listens there today; the check means a later change to the listen address can’t open it silently. Your shell is the point here: you typed a command line, as in your terminal. That’s different from the rule against spawning through a shell, which is about strings from agents and data.
 
-**Revisit when** Postbox listens beyond localhost, or serves more than one person. Then it needs real sign-in, not a page token, and `!` stays off.
+**An app’s links** ([#1480](https://github.com/HJeon139/postbox/issues/1480)): `POST /api/apps/:id/open` starts your default browser (`open`, `xdg-open` or `rundll32`) on a URL an agent’s app gave, for the Claude desktop app’s pane, where the page can’t open a tab (designs/architecture/sandbox.md, “No popups; links through the bridge”). It spawns a process from agent data, so it gets the `!` route’s checks on top of the token: Postbox listens on 127.0.0.1 and the request came from this computer. Then `server/app-links.mjs` takes only an absolute http or https URL, passes it normalized as one argument with no shell, opens at most 10 a minute per app, and answers with the error when the opener fails to start. The page asks only right after a click in that app, one link per click, and never where it can’t tell which frame was clicked (`app/js/app-links.mjs`).
+
+**Revisit when** Postbox listens beyond localhost, or serves more than one person. Then it needs real sign-in, not a page token, and `!` and an app’s links stay off.
 
 ## What leaves through net.fetch
 

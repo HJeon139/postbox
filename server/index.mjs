@@ -13,6 +13,7 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { AdapterRegistry } from './adapters/adapter.mjs';
 import { MockAdapter } from './adapters/mock.mjs';
+import { openLink } from './app-links.mjs';
 import { clickEvent, noteApp } from './app-notes.mjs';
 import { publishApp } from './app-publish.mjs';
 import { PROBES, registerBackends } from './backends.mjs';
@@ -75,13 +76,14 @@ const OUTPUT_HEADERS = { 'content-type': 'text/plain; charset=utf-8', 'x-content
 
 /**
  * @param {{ port?: number, dataDir?: string, fresh?: boolean, demo?: boolean, quiet?: boolean, claudeHome?: string, listen?: boolean,
- *           host?: string, spawnShell?: typeof import('node:child_process').spawn, hosts?: import('./remote/hosts.mjs').HostManager|null,
+ *           host?: string, spawnShell?: typeof import('node:child_process').spawn, openUrl?: (cmd: [string, string[]]) => Promise<unknown>, hosts?: import('./remote/hosts.mjs').HostManager|null,
  *           wake?: Parameters<typeof import('./remote/wake.mjs').watchWake>[1], probes?: Partial<typeof PROBES>, archiveTurns?: boolean }} [opts]
  *   claudeHome: where the person’s Claude Code config is read for the persona sheet’s MCP list (the home folder;
  *   checks pass a temp folder, so they never read the real one)
  *   listen: false builds everything but doesn’t listen, so tests can call the returned handle(req, res) directly
  *   host: the address it listens on, 127.0.0.1; `!` commands refuse to run on any other (tests check that)
  *   spawnShell: how `!` commands start (tests pass a fake)
+ *   openUrl: how an app’s link opens in the default browser (server/app-links.mjs; tests pass a fake)
  *   hosts: the remote hosts’ manager (#120). Left out, Postbox makes its own (server/remote/hosts.mjs), keeping the
  *   hosts’ tokens in dataDir; tests pass a fake, or null for none, and then agents run only on this computer
  *   wake: the clock and timers that notice this computer waking, so the hosts reconnect (tests pass fakes)
@@ -98,6 +100,7 @@ export async function start({
   listen = true,
   host = '127.0.0.1',
   spawnShell = undefined,
+  openUrl = undefined,
   hosts: given = undefined,
   wake = undefined,
   probes = undefined,
@@ -164,12 +167,12 @@ export async function start({
   const fromBrowser = (req) =>
     req.headers['sec-fetch-mode'] === 'navigate' || req.headers['sec-fetch-site'] === 'same-origin' || req.headers['sec-fetch-site'] === 'none';
 
-  // `!` runs commands as the person (#67), so it’s off unless Postbox listens on this computer alone and the request
-  // came from it, on top of the page’s token. Postbox listens on 127.0.0.1 today; a later change to that can’t open
-  // this silently.
-  const shellAllowed = (req) => {
-    if (!isLoopback(host)) throw httpError(403, `! commands run only while Postbox listens on this computer alone (127.0.0.1), and it’s listening on ${host}.`);
-    if (!isLoopback(req.socket?.remoteAddress)) throw httpError(403, '! commands run only from this computer.');
+  // `!` runs commands as the person (#67), and an app’s link starts their browser (#1480), so both are off unless Postbox
+  // listens on this computer alone and the request came from it, on top of the page’s token. Postbox listens on
+  // 127.0.0.1 today; a later change to that can’t open these silently. `does` says what is refused: “! commands run”.
+  const hereAlone = (req, does) => {
+    if (!isLoopback(host)) throw httpError(403, `${does} only while Postbox listens on this computer alone (127.0.0.1), and it’s listening on ${host}.`);
+    if (!isLoopback(req.socket?.remoteAddress)) throw httpError(403, `${does} only from this computer.`);
   };
 
   // The pages’ live updates: the store’s events over server-sent events (server/live-streams.mjs).
@@ -351,7 +354,7 @@ export async function start({
     if (sessionDid) return send(res, sessionDid.status, sessionDid.body);
     if ((m = path.match(/^\/api\/threads\/([^/]+)\/agent-command$/)) && req.method === 'POST') return send(res, 201, rt.runAgentCommand(m[1], body));
     if ((m = path.match(/^\/api\/threads\/([^/]+)\/shell$/)) && req.method === 'POST') {
-      shellAllowed(req);
+      hereAlone(req, '! commands run');
       return send(res, 201, await rt.runShellCommand(m[1], body.command));
     }
     if ((m = path.match(/^\/api\/threads\/([^/]+)\/work\/files\/([^/]+)\/restore$/)) && req.method === 'POST')
@@ -380,8 +383,12 @@ export async function start({
     if (path === '/api/files' && req.method === 'POST') return send(res, 201, await upload(req));
     const stored = await storedFileRoute(store, blobs, path, req.method);
     if (stored) return raw(res, 200, stored.bytes, stored.headers);
-    if ((m = path.match(/^\/api\/apps\/([^/]+)\/(check|event|note|state|query|publish)$/)) && req.method === 'POST') {
+    if ((m = path.match(/^\/api\/apps\/([^/]+)\/(check|event|note|state|query|open|publish)$/)) && req.method === 'POST') {
       const id = decodePath(m[1]);
+      if (m[2] === 'open') {
+        hereAlone(req, 'Links from apps open');
+        return send(res, 200, await openLink(rt, id, body.url, { run: openUrl }));
+      }
       if (m[2] === 'publish') return send(res, 200, publishApp(rt, id, body.data));
       if (m[2] === 'check') return send(res, 200, rt.appCheck(id, body));
       // A click’s send starts a turn; any other is a note for the agent’s next one (#1488, app/js/app-send.mjs).
