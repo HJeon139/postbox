@@ -56,6 +56,18 @@ test('a time 12% worse in every pair is worse, though the bands overlap; the sam
   assert.equal(compare(main, bytes).find((c) => c.key === 'logBytes')?.worse, true);
 });
 
+test('the crowd section’s times are a cold process’s, reported and not judged; its bytes are judged as ever', async () => {
+  const { compare, UNGATED_TIMES } = await import('../tools/measure-progress/compare.mjs');
+  assert.deepEqual([...UNGATED_TIMES], ['crowded']);
+  const main = [100, 120, 140, 160].map((ms) => [{ row: 'r', cpuMs: ms, logBytes: 1000 }]);
+  const branch = [100, 120, 140, 160].map((ms) => [{ row: 'r', cpuMs: ms * 1.3, logBytes: 1100 }]);
+  const cold = compare(main, branch, { times: false });
+  const cpu = cold.find((c) => c.key === 'cpuMs');
+  assert.equal(cpu?.worse, false, 'reported, and not worse');
+  assert.ok(Math.abs(/** @type {number} */ (cpu?.ratio) - 1.3) < 1e-9, 'its ratio is still printed');
+  assert.equal(cold.find((c) => c.key === 'logBytes')?.worse, true);
+});
+
 test('a number is worse only when a second round of pairs agrees, and small times and the time a delta aren’t judged', async () => {
   const { compare, worseTwice } = await import('../tools/measure-progress/compare.mjs');
   const runs = (/** @type {number} */ k) =>
@@ -100,4 +112,18 @@ test('a tab connecting mid-turn counts the running turns’ snapshot apart, and 
   assert.deepEqual([tab.connectFrames, tab.snapshotFrames, tab.snapshotBytes], [2, 1, Buffer.byteLength(snapshot)]);
   streamOf.open[0].write('event: live\ndata: {"kind":"step"}\n\n');
   assert.deepEqual([tab.frames, tab.snapshotFrames], [1, 1], 'a frame after the connect is the work’s, not the snapshot’s');
+});
+
+// The steady section runs each crowd the crowd section runs, alone in a process and warmed (tools/measure-progress/
+// steady.mjs), so its rows read the time a long-running Postbox pays, apart from where the JIT and the GC land in a run
+// of all nine.
+test('the steady section has a run for each crowd and count of tabs the crowd section has, and reads their median', async () => {
+  const { STEADY_CROWDS, median, steadyOne, WARM, MEASURED } = await import('../tools/measure-progress/steady.mjs');
+  const { CROWDS, CROWD_TABS } = await import('../tools/measure-progress/sections.mjs');
+  assert.equal(STEADY_CROWDS.length, CROWDS.length * CROWD_TABS.length);
+  assert.deepEqual(STEADY_CROWDS[4], ['10x: 40 agents in a room', 1, 40, 3]);
+  assert.ok(WARM >= 1 && MEASURED >= 5, 'warmed, and measured enough runs for a median');
+  assert.equal(median([3, 1, 2]), 2);
+  assert.equal(median([4, 1, 3, 2]), 2, 'the lower middle of an even count, a time actually measured');
+  await assert.rejects(steadyOne('9'), /No steady crowd 9: name 0 to 8\./);
 });

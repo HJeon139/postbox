@@ -22,6 +22,14 @@ const TIME_FLOOR = 20;
 const BYTE_SHARE = 0.001;
 const BYTE_FLOOR = 64;
 
+/**
+ * The sections whose times are reported and not judged. `crowded` runs nine crowds one after another in a fresh process,
+ * so its times are a cold process’s, moved by where the JIT and the GC land among them; the owner accepted one-time
+ * compile costs on 17 November 2026, and `steady` judges each crowd’s time warm (tools/measure-progress/steady.mjs).
+ * Their bytes and counts are judged as ever.
+ */
+export const UNGATED_TIMES = new Set(['crowded']);
+
 /** The order of the i-th pair: main first, then this branch, then the other way, so ABBA ABBA. @param {number} i */
 export const mainFirst = (i) => i % 2 === 0;
 
@@ -35,10 +43,11 @@ const median = (xs) => {
  * Each row’s and number’s verdict, from runs of main and of this branch made in pairs: `main[i]` and `branch[i]` are
  * the i-th pair’s rows. A time is worse when the median of the pairs’ ratios and the ratio of the least runs are both
  * above 1 + TIME_TOLERANCE: a real cost moves both, and noise seldom does. Bytes and counts are worse when this
- * branch’s least is above main’s most by more than their tolerance.
- * @param {any[][]} main @param {any[][]} branch
+ * branch’s least is above main’s most by more than their tolerance. With `times` false, times are reported and never
+ * worse, as a cold process’s are (UNGATED_TIMES).
+ * @param {any[][]} main @param {any[][]} branch @param {{ times?: boolean }} [o]
  */
-export function compare(main, branch) {
+export function compare(main, branch, { times = true } = {}) {
   /** @type {{ row: string, key: string, main: number, branch: number, ratio?: number, leastRatio?: number, worse: boolean }[]} */
   const out = [];
   for (const [r, first] of main[0].entries())
@@ -50,7 +59,7 @@ export function compare(main, branch) {
       if (isTime(key)) {
         const ratio = median(a.map((x, i) => b[i] / x));
         const leastRatio = Math.min(...b) / Math.min(...a);
-        const judged = !JUDGED_AS_ANOTHER.has(key) && Math.min(...a) >= TIME_FLOOR;
+        const judged = times && !JUDGED_AS_ANOTHER.has(key) && Math.min(...a) >= TIME_FLOOR;
         const worse = judged && ratio > 1 + TIME_TOLERANCE && leastRatio > 1 + TIME_TOLERANCE;
         out.push({ row: first.row, key, main: median(a), branch: median(b), ratio, leastRatio, worse });
       } else {
