@@ -25,6 +25,7 @@ import { editItem, editRow, editRows, hostNotes } from './work-hosts.mjs';
 import { external, row, sec, short, spend } from './work-pane-parts.mjs';
 import { chatList, relevantSection, shownIds } from './work-relevant.mjs';
 import { dur, effortSection, externalSection, publishSection, readsSection, section, signedEl, vcsSection, who, workLink } from './work-sections.mjs';
+import { shownList, shownSection } from './work-shown.mjs';
 import { paneViewer } from './work-viewer.mjs';
 import { windows } from './work-window.mjs';
 
@@ -459,6 +460,7 @@ export function mountWorkPane(threadId) {
   let allTurns = false;
   let allAssets = false;
   let allNow = false;
+  let allShown = false;
   let moreOpen = false;
   const openTurns = new Set();
   /** @type {any} */
@@ -707,11 +709,16 @@ export function mountWorkPane(threadId) {
       const now = chat.current();
       const skip = shownIds(now, allNow);
       const assets = assetsSection(threadId, { all: allAssets, showAll, skip });
+      const showShown = () => {
+        allShown = true;
+        paint();
+      };
+      const shown = shownSection(threadId, shownNow.current(), S().apps, { all: allShown, showAll: showShown });
       const lines = s.turns
         .map((t) => ({ t, line: turnLine(entries, t.id) }))
         .filter((x) => x.line)
         .reverse();
-      if (!lines.length && !s.files.length && !s.edits.length && !s.commands.length && !s.external.length && !assets)
+      if (!lines.length && !s.files.length && !s.edits.length && !s.commands.length && !s.external.length && !assets && !shown)
         return fill(
           body,
           h('p.empty-note', 'Nothing yet. When an agent edits a file, runs a command or publishes something, it shows here, with what it took.'),
@@ -726,6 +733,7 @@ export function mountWorkPane(threadId) {
       fill(
         body,
         relevantSection(threadId, now, { all: allNow, showAll: showNow }),
+        shown,
         assets,
         files(s, skip),
         failedNow ? commands(s) : null,
@@ -741,11 +749,14 @@ export function mountWorkPane(threadId) {
   // As in mountWork, what the server sends waits while a press is down (#1010).
   const live = heldFrame(body, paint);
   const chat = chatList(threadId, el, () => live.soon());
+  const shownNow = shownList(threadId, el, () => live.soon());
   const off = client.on((ch) => {
     const work = (ch.type === 'work.add' || ch.type === 'work.patch') && ch.data.convId === threadId;
     // A message added or finished: In this chat reads the latest ones.
     const said = (ch.type === 'item.add' || ch.type === 'item.patch') && ch.data.threadId === threadId && chat.said();
-    if (ch.type === 'load' || ch.type.startsWith('asset') || work || said) live.soon();
+    // An app retired or brought back: Apps and reviews draws its tag.
+    const retired = ch.type === 'app' && shownNow.appChanged(ch.data);
+    if (ch.type === 'load' || ch.type.startsWith('asset') || work || said || retired) live.soon();
   });
   // An asset or file the address names, in place of the lists (#1446).
   const viewer = paneViewer(threadId, el, body, () => paint());
@@ -793,6 +804,7 @@ export function mountWorkPane(threadId) {
       full?.view.destroy();
       viewer.destroy();
       chat.destroy();
+      shownNow.destroy();
       live.cancel();
     },
   };

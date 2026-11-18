@@ -5,7 +5,7 @@ import { Ledger } from '../server/ledger.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
 import { summarize, turnLine } from '../shared/work.mjs';
-import { commandLabel, turnRows } from '../shared/work-list.mjs';
+import { appsAndReviews, commandLabel, turnRows } from '../shared/work-list.mjs';
 import * as arrange from './arrange.mjs';
 import { fakeRepo, ledgerIn } from './fake-repo.mjs';
 
@@ -142,4 +142,46 @@ test('an app a later turn updates moves on without the list of the turn that sho
     ['moved', turns[0]],
     ['agent', turns[1]],
   ]);
+});
+
+test('Work’s pane lists each app once as last shown and each review, newest first, and no other block', () => {
+  const p = (id, what, type, blockId, threadId = 't1') => ({ id, kind: 'publish', what, type, blockId, threadId });
+  const list = appsAndReviews([
+    p('a1', 'app', 'app', 'budget'),
+    p('r1', 'block', 'review', 'readme'),
+    p('c1', 'block', 'confirm', 'go'),
+    p('a2', 'app', 'app', 'budget'),
+    p('r2', 'block', 'review', 'readme', 't2'),
+  ]);
+  assert.deepEqual(
+    list.map((x) => x.id),
+    ['r2', 'a2', 'r1'],
+  );
+});
+
+test('an app updated in a side thread is still listed once: app ids are room-wide, a review’s id is its thread’s', () => {
+  const p = (id, what, type, blockId, threadId) => ({ id, kind: 'publish', what, type, blockId, threadId });
+  const list = appsAndReviews([
+    p('a1', 'app', 'app', 'budget', 'main'),
+    p('a2', 'app', 'app', 'budget', 'side'),
+    p('r1', 'block', 'review', 'draft', 'main'),
+    p('r2', 'block', 'review', 'draft', 'side'),
+  ]);
+  assert.deepEqual(
+    list.map((x) => x.id),
+    ['r2', 'r1', 'a2'],
+  );
+});
+
+test('Work’s pane builds its apps and reviews once per change to the work list', () => {
+  const entries = [{ id: 'a1', kind: 'publish', what: 'app', type: 'app', blockId: 'budget', threadId: 't' }];
+  const first = appsAndReviews(entries);
+  assert.equal(appsAndReviews(entries), first, 'the same list, unchanged');
+  entries.push({ id: 'c1', kind: 'command' });
+  assert.equal(appsAndReviews(entries), first, 'an agent’s step that shows nothing keeps the list');
+  entries.push({ id: 'a2', kind: 'publish', what: 'app', type: 'app', blockId: 'budget', threadId: 't' });
+  assert.deepEqual(
+    appsAndReviews(entries).map((x) => x.id),
+    ['a2'],
+  );
 });
