@@ -13,6 +13,7 @@ import { client, sessionsOf } from './client.mjs';
 import { h } from './dom.mjs';
 import { onChangeWhileAlive, WeakElements } from './held-weakly.mjs';
 import { fitBars, namesAt } from './quota-fit.mjs';
+import { age, resetTime } from './quota-words.mjs';
 
 const S = () => client.state;
 const HOUR = 3_600_000;
@@ -28,19 +29,6 @@ const measure = (text) => textWidth(text, room.font);
 function quotasIn(threadId) {
   const keys = new Set(sessionsOf(threadId).flatMap((se) => (se.retiredFork ? [] : [quotaKeyOf(S().personas[se.personaId])])));
   return [...keys].map((key) => S().quota?.[key]).filter(Boolean);
-}
-
-/** How long ago, in words: “25 min”, “2 h”, “3 d”. @param {number} ms */
-function age(ms) {
-  if (ms < HOUR) return `${Math.max(1, Math.round(ms / 60_000))} min`;
-  if (ms < 24 * HOUR) return `${Math.round(ms / HOUR)} h`;
-  return `${Math.round(ms / (24 * HOUR))} d`;
-}
-
-/** “3:10 pm”, or “Tue 3:10 pm” a day or more away. @param {number} at @param {number} now */
-function resetTime(at, now) {
-  const opts = /** @type {Intl.DateTimeFormatOptions} */ ({ hour: 'numeric', minute: '2-digit', ...(at - now >= 24 * HOUR ? { weekday: 'short' } : {}) });
-  return new Date(at).toLocaleString('en-US', opts).replace(/\s?([AP])M$/, (_m, p) => ` ${p.toLowerCase()}m`);
 }
 
 /**
