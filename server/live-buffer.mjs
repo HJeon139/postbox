@@ -211,6 +211,7 @@ function queueFrame(turn, fields) {
  */
 export function liveEnd(rt, turn) {
   liveCommit(rt, turn);
+  clearTimeout(turn.liveTextTimer); // the words’ timer (server/live-text.mjs): nothing is left for it to store
   const session = turn.live?.session ?? {};
   const { toolCalls, toolCount } = session;
   // The pages had both live, so the write isn’t sent to them again (server/live-sent.mjs).

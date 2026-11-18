@@ -35,9 +35,13 @@ export function liveText(rt, turn, itemId, at, delta) {
   watchSettles(rt);
   if (turn.liveText && turn.liveText.itemId !== itemId) commitText(rt, turn);
   if (!turn.liveText) {
-    const timer = setTimeout(() => commitText(rt, turn), LIVE_TEXT.everyMs);
-    timer.unref?.();
-    turn.liveText = { itemId, at, text: '', timer };
+    // One timer a turn, restarted as each run of words starts: a commit point leaves it, and it finds nothing to store.
+    if (turn.liveTextTimer) turn.liveTextTimer.refresh();
+    else {
+      turn.liveTextTimer = setTimeout(() => commitText(rt, turn), LIVE_TEXT.everyMs);
+      turn.liveTextTimer.unref?.();
+    }
+    turn.liveText = { itemId, at, text: '' };
   }
   turn.liveText.text += delta;
   sendLive(rt.store, { kind: 'text', threadId: turn.threadId, itemId, at, text: delta });
@@ -51,7 +55,6 @@ export function liveText(rt, turn, itemId, at, delta) {
 export function commitText(rt, turn) {
   const words = turn.liveText;
   if (!words) return;
-  clearTimeout(words.timer);
   turn.liveText = null;
   if (!words.text) return;
   const data = { threadId: turn.threadId, id: words.itemId, text: words.text, at: words.at };
