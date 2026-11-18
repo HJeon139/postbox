@@ -4,6 +4,7 @@
 
 import { afterAppChecks, appChecksRunning, installAppChecks, recordAppCheck } from './app-check.mjs';
 import { crashCard, errorStrip } from './app-crash.mjs';
+import { openAppLink } from './app-links.mjs';
 import { live, nearBodies, relookSoon, setAppFrameTest } from './app-pointer.mjs';
 import { renderAppSendCard, SEND_LIMIT } from './app-send-card.mjs';
 import { api, client, placeIn } from './client.mjs';
@@ -126,12 +127,8 @@ addEventListener('message', async (e) => {
       if (current) saveState(rec.appId, m.state);
       break;
     case 'open':
-      // A web link the person clicked in the app (#1480): a new tab, only right after their click or key press there. In
-      // the Claude desktop app’s pane, where window.open replaces this page, Postbox’s server opens it in the default
-      // browser instead (designs/architecture/sandbox.md, “No popups; links through the bridge”).
-      if (rec.check || activated(e, rec) || !/^https?:\/\//i.test(String(m.url))) break;
-      if (/ Claude\//.test(navigator.userAgent)) api(`/api/apps/${encodeURIComponent(rec.appId)}/open`, { url: String(m.url) }).catch(() => {});
-      else window.open(String(m.url), '_blank', 'noopener,noreferrer');
+      // A web link the person clicked in the app (#1480): one per click, in a new tab (app-links.mjs).
+      if (!rec.check) openAppLink(e, rec, m.url, activated(e, rec));
       break;
     case 'anchors':
       rec.onAnchors?.(m.names);
