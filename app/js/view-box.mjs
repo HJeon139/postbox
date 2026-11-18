@@ -47,3 +47,16 @@ export function browserMoved(v, s, up) {
   const lost = Math.max(0, v.held.end - s.scrollHeight);
   return up <= lost + BROWSER_SLACK;
 }
+
+/**
+ * Whether a move up, while following, is the browser clamping the view to a page that shrank and grew past its end in
+ * one frame, before the view measured, as a running reply’s steps fold and it streams on (#1464). Nothing is lost by
+ * then to go by (browserMoved), but the page is longer than the view held, its newest message is the same, and the
+ * view still reaches it. A scroll anywhere else, with input or none (focus, find, scrollIntoView), is yours.
+ * @param {View} v @param {Element} s
+ */
+export function clamped(v, s) {
+  const now = measure(v, s);
+  if (now.end <= v.held.end || Math.abs(now.last - v.held.last) >= 1) return false;
+  return s.scrollTop + s.clientHeight > now.last;
+}

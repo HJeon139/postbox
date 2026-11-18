@@ -2,7 +2,7 @@
 // Claude’s models of its own: the model field suggests what this sign-in runs. Each runs no model.
 
 import { claudeModelIds } from '../../shared/model-ids.mjs';
-import { LIST_TIMEOUT_MS } from '../remote/host/harness-models.mjs';
+import { LIST_TIMEOUT_MS, LISTING_SETTINGS } from '../remote/host/harness-models.mjs';
 
 export { claudeModels } from '../remote/host/harness-models.mjs';
 
@@ -25,7 +25,7 @@ export async function sdkModels(sdk) {
   /** @type {ReturnType<typeof setTimeout> | undefined} */
   let timer;
   try {
-    q = sdk.query({ prompt: nothing, options: {} });
+    q = sdk.query({ prompt: nothing, options: { settings: { ...LISTING_SETTINGS } } });
     const late = new Promise((_, reject) => {
       timer = setTimeout(() => reject(new Error('The Agent SDK didn’t list its models in time.')), LIST_TIMEOUT_MS);
       timer.unref?.();

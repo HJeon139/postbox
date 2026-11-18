@@ -11,10 +11,11 @@ import { stopProbe } from './probe-stop.mjs';
 export const LIST_TIMEOUT_MS = 15_000;
 
 /**
- * Settings for a listing, passed with --settings over the person’s own: no hooks run, so a listing never runs their
- * SessionStart hooks, up to once a minute for each open sheet. Hooks an organization manages still run.
+ * Settings for a listing, over the person’s own: no hooks run, so a listing never runs their SessionStart hooks, up to
+ * once a minute for each open sheet. Hooks an organization manages still run. Claude Code’s listing passes them with
+ * --settings, and the Agent SDK’s as its settings option (#1302, #1486).
  */
-const LISTING_SETTINGS = JSON.stringify({ disableAllHooks: true });
+export const LISTING_SETTINGS = Object.freeze({ disableAllHooks: true });
 
 /**
  * Claude Code’s models: `claude -p` in stream-json, asked with an initialize request and nothing else, then stopped
@@ -26,7 +27,7 @@ const LISTING_SETTINGS = JSON.stringify({ disableAllHooks: true });
 export function claudeModels(bin, { spawnImpl = spawn, timeoutMs = LIST_TIMEOUT_MS, graceMs } = {}) {
   return new Promise((resolve) => {
     const args = ['-p', '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose', '--no-session-persistence'];
-    args.push('--settings', LISTING_SETTINGS);
+    args.push('--settings', JSON.stringify(LISTING_SETTINGS));
     /** @type {any} */
     let child;
     try {

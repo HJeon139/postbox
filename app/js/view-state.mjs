@@ -4,7 +4,7 @@
 // it is on the transcript as data-view-* (publish, view-publish.mjs). Moved from thread.mjs’s mountTranscript (#531).
 
 import { bind, unbind } from './view-bind.mjs';
-import { browserMoved, measure } from './view-box.mjs';
+import { browserMoved, clamped, measure } from './view-box.mjs';
 /** @typedef {import('./view-hold.mjs').Hold} Hold */
 /**
  * @typedef {{ el: HTMLElement, inPanel: boolean, nodes: Map<string, HTMLElement>, unseen: number, stuck: boolean,
@@ -91,7 +91,8 @@ function follow(v) {
   // browser’s, keeping what’s on screen still as skipped items above draw shorter than their estimates, as Firefox does
   // (#712a): that move is tied to what the page lost, and a scroll of yours isn’t.
   const up = v.lastTop - s.scrollTop;
-  if (v.stuck && up > 1 && !atEnd(s) && !browserMoved(v, s, up)) {
+  // Nor is a clamp to a page that shrank and grew past its end in one frame (#1464).
+  if (v.stuck && up > 1 && !atEnd(s) && !browserMoved(v, s, up) && !clamped(v, s)) {
     v.stuck = false;
     v.anchor = findAnchor(v);
     // The anchor is taken where the view now is, so that scroll is heard: heard() below mustn’t take it in again.
@@ -103,10 +104,17 @@ function follow(v) {
   if (pointedAt && holdNode(v, pointedAt, s)) v.held = measure(v, s);
   else if (v.stuck) {
     const now = measure(v, s);
+    const heldNow = Number.parseFloat(v.el.style.marginBottom) || 0;
     if (now.width !== v.held.width) release(v);
-    else if (now.end < v.held.end && Math.abs(now.last - v.held.last) < 1 && v.held.end > s.clientHeight) {
-      const heldNow = Number.parseFloat(v.el.style.marginBottom) || 0;
+    else if (now.end < v.held.end && Math.abs(now.last - v.held.last) < 1 && v.held.end > s.clientHeight)
       v.el.style.marginBottom = `${heldNow + v.held.end - now.end}px`;
+    // What grows back, a running reply after its steps fold, takes the room held for it first: added to, never given
+    // back, the room grew with each shrink and regrowth, and following scrolled into it until nothing showed. Only the
+    // newest message’s growth: what grows above it moves it down, and the room keeps it where it was.
+    else if (now.end > v.held.end && heldNow > 0 && Math.abs(now.last - v.held.last) < 1) {
+      const left = heldNow - Math.min(heldNow, now.end - v.held.end);
+      if (left > 0) v.el.style.marginBottom = `${left}px`;
+      else release(v);
     }
     // A smooth jump to the end is on its way there: snapping now would end it in one frame (#712a).
     if (!atEnd(s) && !v.smoothing) s.scrollTop = s.scrollHeight;
