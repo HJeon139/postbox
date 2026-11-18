@@ -783,6 +783,13 @@ html.store-down .sidepanel { padding-bottom: 44px; }
 .quota-text { min-width: 0; display: flex; line-height: 14px; }
 .quota-name, .quota-pct { flex: none; white-space: pre; }
 .quota-more { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: pre; }
+/* The whole line opens each backend’s details (#1496): a button over it, which takes its click and its focus. */
+.quota-open { position: absolute; inset: 0; padding: 0; border: 0; border-radius: 4px; background: none; cursor: pointer; }
+.quota-line:has(> .quota-open:hover) { color: var(--text); }
+.quota-open:focus-visible { outline-offset: -2px; }
+/* Settings › Backends: each backend’s quota in full (quota-details.mjs, #1496). */
+.quota-detail h3 { margin: 0 0 4px; font-size: 13px; }
+.quota-table th, .quota-table td { padding: 6px 12px 6px 0; text-align: left; }
 /* What each bar shows to fit is measured, not set here: quota-fit.mjs shortens names, then shows the percent alone,
    which never clips. A stale figure is marked “~”, not by a shade. */
 /* `!`’s folder is cut in the middle, so its last part, where the command runs, stays on the row: the head gives way

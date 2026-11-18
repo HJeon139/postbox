@@ -1385,7 +1385,7 @@ export function mountComposer(threadId, { side = false } = {}) {
     }
   });
 
-  const quota = commands ? quotaLine(threadId) : null;
+  const quota = commands ? quotaLine(threadId, () => openSettings('connect')) : null;
   const el = h('div.composer', h('div.col', status, asks, queue, menuBox, att, h('div.composer-box', plus, ta, action), hint, quota, file));
 
   // Drop files: the main composer takes drops anywhere in the window. A side or topic composer takes drops on

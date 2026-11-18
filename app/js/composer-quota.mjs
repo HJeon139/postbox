@@ -33,9 +33,9 @@ function quotasIn(threadId) {
 
 /**
  * What one bar says: its most-used window that hasn’t reset, else the first, which has. A window is as fresh as the last
- * report that carried it, since a harness’s update can leave a window out. The rest of its words, after the name and
- * the percent, clip at the row’s end: the window, a limit that isn’t the default one, a host, a stale figure’s age, and
- * the reset last. @param {any} q @param {number} now
+ * report that carried it, since a harness’s update can leave a window out. It shows its name, percent and window (brief);
+ * its label (text) goes on with a limit that isn’t the default one, a host, a stale figure’s age, and the reset last.
+ * @param {any} q @param {number} now
  */
 export function barOf(q, now) {
   const full = BACKEND_NAMES[q.backend] ?? q.backend;
@@ -53,7 +53,9 @@ export function barOf(q, now) {
     ? ` of ${top.name}${limit}${where}${ago}${top.resetsAt ? ` · resets ${resetTime(top.resetsAt, now)}` : ''}`
     : ` · ${q.windows[0]?.name ?? ''}${where}${ago}`;
   const text = top ? `${full} ${pct}%${more}` : `${full}${more} reset`;
-  return { backend: q.backend, full, host: hostName, label: `${full}${where}`, pct, shown, more, text, stale };
+  // What it shows is the window alone; the rest is in its label, and in Settings › Backends (#1496).
+  const brief = ` ${top ? 'of' : '·'} ${(top ?? q.windows[0])?.name ?? ''}`;
+  return { backend: q.backend, full, host: hostName, label: `${full}${where}`, pct, shown, brief, text, stale };
 }
 
 /**
@@ -82,12 +84,12 @@ function barEl(b, fit, names, /** @type {string} */ name) {
       { 'aria-hidden': 'true' },
       h('span.quota-name', name ? `${name} ` : ''),
       h('span.quota-pct', b.shown),
-      fit.level < 2 ? h('span.quota-more', b.more) : null,
+      fit.level < 2 ? h('span.quota-more', b.brief) : null,
     ),
   );
 }
 
-/** Draws the line again, only when what it says changed. @param {HTMLElement} el */
+/** Draws the line again, only when what it says changed, under the button that opens its details. @param {HTMLElement} el */
 function paint(el) {
   const bars = quotasIn(el.dataset.quotaLine ?? '').map((q) => barOf(q, Date.now()));
   const given = bars.map((b) => ({ backend: b.backend, full: b.full, host: b.host, pct: b.shown }));
@@ -97,7 +99,7 @@ function paint(el) {
   el.dataset.said = said;
   el.dataset.fit = String(fit.level);
   const [full, short] = [namesAt(given, false), namesAt(given, true)];
-  el.replaceChildren(...bars.map((b, i) => barEl(b, fit, [full?.[i] ?? null, short?.[i] ?? null], fit.names[i])));
+  el.replaceChildren(...bars.map((b, i) => barEl(b, fit, [full?.[i] ?? null, short?.[i] ?? null], fit.names[i])), ...(bars.length ? [opens.get(el)] : []));
 }
 
 /** The lines observed: one per composer on the page, and none left behind by a room switch. @type {Set<Element>} */
@@ -135,9 +137,16 @@ const resized = new ResizeObserver((entries) => {
   }
 });
 
-/** The conversation’s quota line, which paints itself as reports and the room change. @param {string} threadId */
-export function quotaLine(threadId) {
+/** Each line’s button, over the whole line, which opens its details (#1496): kept across paints, so focus stays on it. */
+const opens = new WeakMap();
+
+/**
+ * The conversation’s quota line, which paints itself as reports and the room change. A click on it, or Enter, opens
+ * each backend’s details. @param {string} threadId @param {() => void} openDetails
+ */
+export function quotaLine(threadId, openDetails) {
   const el = h('div.quota-line', { role: 'group', 'aria-label': 'Quota by backend', dataset: { quotaLine: threadId } });
+  opens.set(el, h('button.quota-open', { type: 'button', 'aria-label': 'Quota details', title: 'Quota details', onclick: openDetails }));
   paint(el);
   lines.add(el);
   resized.observe(el);
