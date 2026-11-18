@@ -8,7 +8,7 @@
 import { ArchivePasses } from './archive-runtime.mjs';
 import { closeLedger } from './ledger-end.mjs';
 import { commandFolder, expireStaleCommands, flushShellOutput, runShellCommand, stopShellCommand, stopShellCommands } from './shell-runs.mjs';
-import { endWork } from './turn-end-work.mjs';
+import { endWork, workLine } from './turn-end-work.mjs';
 import { workEvents } from './turn-work.mjs';
 import { restoreWork, workDiff, workGit, workOutput } from './work-view.mjs';
 
@@ -76,9 +76,9 @@ export class Work {
     return this.ledger.idle();
   }
 
-  /** As Postbox shuts down, after the ledger’s grace: the turns’ ends it still has are written, and it starts no new work. */
+  /** As Postbox shuts down, after the ledger’s grace: the turns’ ends it still has are written with their lines, and it starts no new work. */
   closeLedger() {
-    closeLedger(this.ledger);
+    closeLedger(this.ledger, (turn) => workLine(this, turn));
   }
 
   // ── The archive passes (#305) ──────────────────────────────────────────────────────

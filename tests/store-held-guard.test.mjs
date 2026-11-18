@@ -172,7 +172,7 @@ const PENDING = {
   // A finished turn’s checks: its own block and the terms and apps it introduced, and the progress steps it stalls.
   'turn-checks.mjs': ['checkTurn', 'checkTurn', 'checkTurn', 'stallSteps'],
   'turn-context.mjs': ['text', 'compaction'], // a streamed chunk's state check and a compaction's number, from the session a held write left
-  'turn-end-work.mjs': ['endWork'], // the turn’s own reply or block, to carry its line, maybe held behind a commit
+  'turn-end-work.mjs': ['workLine'], // the turn’s own reply or block, to carry its line, maybe held behind a commit
   'turn-end-listeners.mjs': ['listenTurnEnd'], // an app-check turn’s apps at its end, a sweep that writes back, maybe held behind a commit (#796)
   'turn-finish.mjs': ['endTurn'], // a turn’s end: its own items, maybe held behind a commit (#796)
   'turn-needs.mjs': ['needsAfter'], // the thread a turn’s reply count goes to, maybe held behind a commit (#796)
@@ -196,7 +196,7 @@ const LEDGER = {
   'ledger-answers.mjs': ['restore'], // restore reads back the entry it just patched
   'ledger.mjs': ['entry', 'commandEnded', 'commandEnded', 'taskEnded', 'jobUpdate', 'recordChange'], // entries the ledger patches as the turn goes
   'ledger-end.mjs': ['writeEnd', 'writeEnd', 'writeEnd'], // the turn’s entry and its commands’, patched at its end
-  'turn-end-work.mjs': ['endWork'], // endWork’s line for the turn
+  'turn-end-work.mjs': ['workLine'], // the turn’s line of its work
   'thread-summary.mjs': ['summarizeThread'], // the summary’s cost, patched on its entry
   'write-intent.mjs': ['madeBy', 'judged'], // the PRs this conversation made, and the judge’s cost
 };

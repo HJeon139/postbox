@@ -3,6 +3,7 @@
 // when a read it waits on answers after the ledger’s grace. Both through the real start() and close(), on one folder.
 
 import assert from 'node:assert/strict';
+import { writeFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { HarnessEvents } from '../server/harness-events.mjs';
@@ -67,31 +68,113 @@ test('a reply stopped by a graceful shutdown keeps every word it had said, after
   assert.deepEqual(takeServerFailures(), []);
 });
 
-test('a turn’s ledger record that ends after the grace is written before the store closes, with what it has', async () => {
+/** A promise the test resolves, and its resolver. */
+function gate() {
+  /** @type {() => void} */
+  let open = () => {};
+  const shut = new Promise((r) => {
+    open = () => r(undefined);
+  });
+  return { shut, open };
+}
+
+/** The turn’s ledger entries in `t`, after Postbox starts again on `dir`. @param {string} dir @param {any} t */
+async function workAfterRestart(dir, t) {
+  const b = await postbox(dir);
+  try {
+    return b.store.state.work[t.id] ?? [];
+  } finally {
+    await b.close();
+  }
+}
+
+test('a turn’s ledger end that waits past the grace on a read is written before the store closes, and the read keeps nothing', async () => {
   const dir = tempDir('pb-shutdown-ledger-');
+  const file = `${dir}/notes.txt`;
+  const a = await postbox(dir, (emit) => {
+    emit({ kind: 'tool_call', id: 'e1', name: 'Write', input: { file_path: file, content: 'x' }, final: true });
+    writeFileSync(file, 'x'); // the agent’s write, so the read after has something to copy
+    emit({ kind: 'tool_result', id: 'e1', text: 'ok' });
+  });
+  arrange.withDelays(a.rt, { ledgerGraceMs: 30 });
+  const t = await running(a, dir);
+  await a.rt.ledger.idle(); // the file’s copy before, read as the call started
+  // A read of the file the turn changed that answers only after close(), as a slow disk’s does.
+  const late = gate();
+  const read = a.rt.ledger.io.read;
+  a.rt.ledger.io.read = async (/** @type {string} */ p) => {
+    await late.shut;
+    return read(p);
+  };
+  let kept = 0;
+  const put = a.rt.ledger.blobs.put.bind(a.rt.ledger.blobs);
+  a.rt.ledger.blobs.put = (/** @type {Buffer} */ b) => {
+    kept++;
+    return put(b);
+  };
+  await a.close();
+  late.open();
+  await a.rt.ledger.idle(); // the read answered, and its turn’s end saw it had been written
+  assert.equal(kept, 0, 'nothing was copied after the ledger closed');
+  const work = await workAfterRestart(dir, t);
+  const turn = work.find((/** @type {any} */ e) => e.kind === 'turn');
+  assert.equal(turn?.status, 'stopped', 'the turn’s end was written, not left running for the restart to call interrupted');
+  assert.equal(typeof turn?.endedAt, 'number');
+  assert.equal(work.filter((/** @type {any} */ e) => e.kind === 'file').length, 0, 'the change still being read isn’t recorded');
+  assert.deepEqual(takeServerFailures(), [], 'nothing was written after the store closed');
+});
+
+test('a command’s result the ledger is still recording at close is dropped once it has closed, not written to the closed store', async () => {
+  const dir = tempDir('pb-shutdown-command-');
+  const late = gate();
+  const a = await postbox(dir, (emit) => {
+    emit({ kind: 'tool_call', id: 'c1', name: 'Bash', input: { command: 'echo hi' }, final: true });
+    emit({ kind: 'tool_result', id: 'c1', text: 'hi' });
+  });
+  arrange.withDelays(a.rt, { ledgerGraceMs: 30 });
+  // The command’s output is kept only after close(): its result is in flight as the ledger closes.
+  const put = a.rt.ledger.blobs.put.bind(a.rt.ledger.blobs);
+  a.rt.ledger.blobs.put = async (/** @type {Buffer} */ b) => {
+    await late.shut;
+    return put(b);
+  };
+  const t = await running(a, dir);
+  await a.close();
+  late.open();
+  await a.rt.ledger.idle();
+  const work = await workAfterRestart(dir, t);
+  assert.equal(work.find((/** @type {any} */ e) => e.kind === 'command')?.state, 'stopped', 'as its turn’s end wrote it');
+  assert.equal(work.find((/** @type {any} */ e) => e.kind === 'turn')?.status, 'stopped');
+  assert.deepEqual(takeServerFailures(), [], 'its late result wasn’t written to the closed store');
+});
+
+test('a turn’s end that throws as the ledger closes is logged, and the store still closes and releases the folder', async () => {
+  const dir = tempDir('pb-shutdown-throws-');
   const file = `${dir}/notes.txt`;
   const a = await postbox(dir, (emit) => {
     emit({ kind: 'tool_call', id: 'e1', name: 'Write', input: { file_path: file, content: 'x' }, final: true });
     emit({ kind: 'tool_result', id: 'e1', text: 'ok' });
   });
   arrange.withDelays(a.rt, { ledgerGraceMs: 30 });
-  const t = await running(a, dir);
-  await sleep(20);
-  // A read of the file the turn changed that answers late, as a slow disk’s does: well past the grace.
-  const read = a.rt.ledger.io.read;
-  a.rt.ledger.io.read = async (/** @type {string} */ p) => {
-    await sleep(150);
-    return read(p);
+  await running(a, dir);
+  await a.rt.ledger.idle();
+  const late = gate();
+  a.rt.ledger.io.read = async () => {
+    await late.shut;
+    return { exists: false };
+  };
+  const patch = a.rt.ledger.patch.bind(a.rt.ledger);
+  a.rt.ledger.patch = (/** @type {string} */ convId, /** @type {string} */ id, /** @type {any} */ change) => {
+    if (change.status === 'stopped') throw new Error('the entry can’t be patched');
+    return patch(convId, id, change);
   };
   await a.close();
-  await sleep(200); // past the read, so a record written then would show in the log
-  const b = await postbox(dir);
-  try {
-    const turn = b.store.state.work[t.id]?.find((/** @type {any} */ e) => e.kind === 'turn');
-    assert.equal(turn?.status, 'stopped', 'the turn’s end was written, not left running for the restart to call interrupted');
-    assert.equal(typeof turn?.endedAt, 'number');
-  } finally {
-    await b.close();
-  }
-  assert.deepEqual(takeServerFailures(), [], 'nothing was written after the store closed');
+  late.open();
+  await a.rt.ledger.idle();
+  const logged = takeServerFailures();
+  assert.equal(logged.length, 1, logged.join('\n'));
+  assert.match(logged[0], /couldn’t record a turn’s end as Postbox shut down: the entry can’t be patched/);
+  const b = await postbox(dir); // the folder was released
+  await b.close();
+  assert.deepEqual(takeServerFailures(), []);
 });

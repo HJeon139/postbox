@@ -65,7 +65,7 @@ export class Ledger {
     this.pushedCache = new Set(); // root:sha known to be on a remote
     this.pending = new Set(); // work that hasn’t finished writing, so tests can wait for it
     this.folders = folderWatch(); // git folders, to see what a command did there (#156)
-    /** @type {Set<{ write: () => void }>} turns’ ends still being recorded, which closeLedger writes as they are */
+    /** @type {Set<{ turn: any, write: () => void }>} turns’ ends still being recorded, which closeLedger writes as they are */
     this.ending = new Set();
     this.closing = false; // closeLedger ran: nothing more is written
   }
@@ -468,6 +468,7 @@ export class Ledger {
   async capture(read) {
     const r = await read;
     if (!r?.exists) return { exists: false };
+    if (this.closing) return { exists: true, size: r.size ?? r.bytes?.length ?? null }; // nothing is kept once the ledger has closed
     if (!r.bytes)
       return { exists: true, size: r.size ?? null, ...(r.big ? { big: true } : {}), ...(r.unreadable ? { unreadable: clip(r.unreadable, 200) } : {}) };
     const { sha256 } = await this.blobs.put(r.bytes);
@@ -475,6 +476,7 @@ export class Ledger {
   }
 
   async keepOutput(bytes) {
+    if (this.closing) return { size: 0 }; // nothing is kept once the ledger has closed
     const cut = bytes.length > MAX_OUTPUT_BYTES;
     const kept = cut ? bytes.subarray(bytes.length - MAX_OUTPUT_BYTES) : bytes;
     if (!kept.length) return { size: 0 };

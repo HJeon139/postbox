@@ -8,11 +8,20 @@ import { turnEnded } from './ledger-commands.mjs';
 
 /**
  * As Postbox shuts down, once the ledger’s grace is over: every turn’s end still waiting on a read is written with
- * what it has, before the store closes, and from here the ledger writes nothing and runs no git.
- * @param {import('./ledger.mjs').Ledger} ledger
+ * what it has, then `written` (the reply’s line of its work), before the store closes; from here the ledger writes
+ * nothing and runs no git. A turn that ends after this, as the server closes, loses its end and reads as interrupted
+ * after the restart, as before.
+ * @param {import('./ledger.mjs').Ledger} ledger @param {(turn: any) => void} written
  */
-export function closeLedger(ledger) {
-  for (const end of [...ledger.ending]) end.write();
+export function closeLedger(ledger, written) {
+  // One end that can’t be written mustn’t keep the others, or the store’s close that releases the folder, from happening.
+  for (const end of [...ledger.ending])
+    try {
+      end.write();
+      written(end.turn);
+    } catch (e) {
+      console.error(`The work ledger couldn’t record a turn’s end as Postbox shut down: ${e.message}`);
+    }
   ledger.closing = true;
 }
 
@@ -34,9 +43,9 @@ export async function endTurn(ledger, turn, { status = 'done' } = {}) {
     // A host turn has no files to read (they’re on the host), so this is a no-op for it; the guard says so.
     for (const f of w.host ? [] : w.files.values()) {
       const before = await f.before;
-      const after = await ledger.capture(await ledger.io.read(f.path));
-      if (end.written) return; // the shutdown wrote the turn’s end without it
-      await ledger.recordChange(turn, f, before, after);
+      const read = await ledger.io.read(f.path);
+      if (end.written) return; // the shutdown wrote the turn’s end without it, and its copy isn’t kept
+      await ledger.recordChange(turn, f, before, await ledger.capture(read));
     }
     end.write();
   })();
@@ -52,6 +61,7 @@ function turnEnd(ledger, turn, status) {
   const w = turn.work;
   let published = false;
   const end = {
+    turn,
     written: false,
     /** The commands it watched are let go, and what it published is recorded. */
     publish() {
