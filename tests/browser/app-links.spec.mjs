@@ -31,7 +31,10 @@ const BURST = `<main style="padding:12px"><button id="b" class="btn" style="disp
 <script>
 let clicks = 0;
 document.getElementById('b').addEventListener('click', () => {
-  if (clicks++) return ${post('https://example.invalid/again')};
+  if (clicks++) {
+    ${post('https://example.invalid/again')};
+    return postbox.saveState({ done: true, clicks });
+  }
   for (let i = 0; i < 5; i++) ${post('https://example.invalid/burst')};
   setTimeout(() => ${post('https://example.invalid/timer-1s')}, 1000);
   setTimeout(() => { ${post('https://example.invalid/timer-2s')}; postbox.saveState({ done: true }); }, 2000);
@@ -49,6 +52,16 @@ addEventListener('click', () => {
   ${post(' https://example.invalid/leading-space')};
   ${post('https://example.invalid/marker')};
 });
+</script>`;
+
+// Two links, the first its big button. It counts the clicks it hears, after the kit has handed each link over.
+const TWO = `<main style="padding:12px">
+<a class="btn" href="https://example.invalid/first" style="display:block;height:120px">First</a>
+<a id="second" class="btn" href="https://example.invalid/second" style="display:block;height:60px">Second</a>
+</main>
+<script>
+let clicks = 0;
+addEventListener('click', () => postbox.saveState({ clicks: ++clicks }));
 </script>`;
 
 // Its big button is a link to a place on its own page. After the kit hears the click, the app hands over a web link.
@@ -112,6 +125,7 @@ test('#1480 one click opens one link: a burst and timers after it open nothing m
   await clickApp(page, 'Burst');
   await expect.poll(() => app.rt.store.state.apps[id]?.state?.done, { message: 'the app’s timers ran' }).toBe(true);
   await clickApp(page, 'Burst');
+  await expect.poll(() => app.rt.store.state.apps[id]?.state?.clicks, { message: 'the app heard the second click' }).toBe(2);
   await expect
     .poll(urls, { message: 'the burst’s first link, then the next click’s, and nothing between' })
     .toEqual(['https://example.invalid/burst', 'https://example.invalid/again']);
@@ -151,6 +165,20 @@ test.describe('in the Claude desktop app’s pane', () => {
     await expect.poll(() => app.rt.store.state.apps[id]?.state?.done, { message: 'the app’s timers ran' }).toBe(true);
     await expect.poll(() => ran, { message: 'the server opened the burst’s first link alone' }).toEqual(['https://example.invalid/burst']);
     expect(urls(), 'the page opened no tab').toEqual([]);
+  });
+
+  test('#1480 a second click within moments opens nothing, and says why once', async ({ page, context }) => {
+    // The pane opens no tab, so nothing uses up the first click’s activation: a click within its 5 s can’t be told from it.
+    ran.length = 0;
+    const { id } = await showApp(page, context, 'Two', TWO);
+    await clickApp(page, 'Two');
+    await expect.poll(() => ran, { message: 'the first link opened' }).toEqual(['https://example.invalid/first']);
+    const second = frameOf(page, 'Two').contentFrame().locator('#second');
+    await second.click();
+    await second.click();
+    await expect.poll(() => app.rt.store.state.apps[id]?.state?.clicks, { message: 'the app heard all three clicks' }).toBe(3);
+    await expect(page.locator('.toast', { hasText: 'Postbox opens one link per click from an app. Click it again in a moment.' })).toHaveCount(1);
+    expect(ran, 'the second link opened nothing').toEqual(['https://example.invalid/first']);
   });
 
   test('#1480 a link the server couldn’t open says so', async ({ page, context }) => {

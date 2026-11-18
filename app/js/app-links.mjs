@@ -9,18 +9,34 @@ import { toast } from './ui.mjs';
 // after the click, would each find it still active. So one open spends it, and the frame’s next open waits for a new
 // click. Opening a tab uses up the activation of the whole page, frames included, so in a browser a new click shows up
 // as this page’s activation again. The pane opens no tab here, so there a new click can’t be told from the old one until
-// the old one has lapsed.
+// the old one has lapsed. The 5 s count from the open, when Postbox spent the click, not from when the app asked.
 const ACTIVATION_MS = 5000;
-/** @type {WeakMap<HTMLIFrameElement, { at: number, usedUp: boolean }>} each app frame’s last open */
+/** @type {WeakMap<HTMLIFrameElement, { at: number, usedUp: boolean, told?: boolean }>} each app frame’s last open */
 const spent = new WeakMap();
 
-/** Whether the message carries a click in the app that hasn’t opened a link yet. @param {MessageEvent} e @param {HTMLIFrameElement} frame */
-function freshClick(e, frame, now = Date.now()) {
+/**
+ * Whether the message carries a click in the app that hasn’t opened a link yet: 'fresh', 'spent' when that click
+ * already opened one, or 'none' when it carries no click. @param {MessageEvent} e @param {HTMLIFrameElement} frame
+ */
+function clickIn(e, frame, now = Date.now()) {
   // Without the click’s snapshot in the message (Firefox and Safari, #76), Postbox can’t tell which frame was clicked:
   // links open nothing there, as sends wait for the person.
-  if (e.userActivation?.isActive !== true) return false;
+  if (e.userActivation?.isActive !== true) return 'none';
   const last = spent.get(frame);
-  return !last || now - last.at >= ACTIVATION_MS || (last.usedUp && navigator.userActivation?.isActive === true);
+  if (!last || now - last.at >= ACTIVATION_MS || (last.usedUp && navigator.userActivation?.isActive === true)) return 'fresh';
+  return 'spent';
+}
+
+/**
+ * In the pane, a person’s second click within the 5 s is refused as the app’s own burst is, so it says why, once per
+ * frame per 5 s. In a browser a new click always opens, so a refusal there is only ever the app’s, and says nothing.
+ * @param {HTMLIFrameElement} frame
+ */
+function sayOnePerClick(frame) {
+  const last = spent.get(frame);
+  if (!last || last.usedUp || last.told) return;
+  last.told = true;
+  toast({ title: 'Postbox opens one link per click from an app. Click it again in a moment.' });
 }
 
 /**
@@ -32,7 +48,10 @@ function freshClick(e, frame, now = Date.now()) {
 export function openAppLink(e, rec, url, refused) {
   const href = String(url);
   // A web link exactly as written: no other scheme, and nothing before it.
-  if (rec.check || refused || !/^https?:\/\//i.test(href) || !freshClick(e, rec.iframe)) return;
+  if (rec.check || refused || !/^https?:\/\//i.test(href)) return;
+  const click = clickIn(e, rec.iframe);
+  if (click === 'spent') sayOnePerClick(rec.iframe);
+  if (click !== 'fresh') return;
   const pane = / Claude\//.test(navigator.userAgent);
   spent.set(rec.iframe, { at: Date.now(), usedUp: !pane });
   if (!pane) window.open(href, '_blank', 'noopener,noreferrer');
