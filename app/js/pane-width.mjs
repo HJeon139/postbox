@@ -94,6 +94,25 @@ function mountHandle({ now, to }) {
 }
 
 /**
+ * Sets the pane’s width on .app and on each reader itself, the pane and the column beside it, not only on .app for them
+ * to inherit: WebKit doesn’t restyle a child that inherits a non-inheriting property when its parent’s changes, so
+ * Safari’s column kept its old width as the pane grew, and its text ran under the pane (#1465).
+ * @param {HTMLElement} el  the pane @param {number} width
+ */
+function setWidth(el, width) {
+  const app = el.parentElement;
+  for (const reader of [app, el, app?.querySelector(':scope > .main')]) reader?.style.setProperty('--pane-w', `${width}px`);
+}
+
+/**
+ * How far toasts sit from the window’s right edge, past a pane beside the conversation (#1472). #toasts is the body’s,
+ * outside .app, so it’s told here rather than reading .app’s class. @param {number} width  the pane’s, or 0
+ */
+function asideToasts(width) {
+  document.getElementById('toasts')?.style.setProperty('--pane-aside', `${width}px`);
+}
+
+/**
  * Keeps the pane’s width to the rule as the window and the rail change. onCramped runs when the pane starts or stops
  * having to open full screen.
  * @param {HTMLElement} el  the pane
@@ -121,7 +140,7 @@ export function mountWidth(el, onCramped) {
     if (el.hidden) keep = false;
     const f = fit(roomW(), want, { keep });
     last = f;
-    el.parentElement?.style.setProperty('--pane-w', `${f.width}px`);
+    setWidth(el, f.width);
     handle.setAttribute('aria-valuenow', String(f.width));
     handle.setAttribute('aria-valuemax', String(f.max));
     handle.setAttribute('aria-valuetext', `${f.width} px wide`);
@@ -131,6 +150,7 @@ export function mountWidth(el, onCramped) {
     // Covering the conversation, the pane takes none of its width: the column behind keeps its own, so its composer has
     // room for its placeholder and its quota line when the pane closes (#442), rather than being squeezed to 80 px.
     el.parentElement?.classList.toggle('pane-covers', cramped);
+    asideToasts(!el.hidden && !cramped ? f.width : 0);
     return was !== cramped;
   }
   const refit = (/** @type {Event} */ e) => {
@@ -148,6 +168,7 @@ export function mountWidth(el, onCramped) {
     destroy() {
       // Before the next view builds its top bar, which reads whether the rail shows.
       setRailAuto(false);
+      asideToasts(0);
       removeEventListener('resize', refit);
       removeEventListener('pb-rail', refit);
     },

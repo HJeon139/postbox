@@ -5,7 +5,7 @@
 import { glimpseOf } from '../shared/text.mjs';
 import { EFFORT_LEVELS } from './adapters/setup.mjs';
 import { liveFields, liveStep, liveUpdate } from './live-buffer.mjs';
-import { recordQuota } from './quota-usage.mjs';
+import { recordQuota, reportedAt } from './quota-usage.mjs';
 import { placeStep, replySegment, stepTaken, wordsSegment } from './reply-segment.mjs';
 import { recordScheduledTool } from './scheduled-wakes.mjs';
 import { turnStep } from './step-text.mjs';
@@ -276,7 +276,7 @@ function reportCallbacks(rt, turn, live) {
      */
     /** The backend’s quota usage, kept for the composer’s quota line (quota-usage.mjs). */
     quota(report) {
-      if (live()) recordQuota(rt, rt.s.sessions[turn.sessionId], report);
+      if (live()) recordQuota(rt, rt.s.sessions[turn.sessionId], report, reportedAt(report));
     },
     reported(r) {
       if (!live() || !r) return;
