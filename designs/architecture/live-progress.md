@@ -27,7 +27,7 @@ The log is the record ([store.md](store.md)), so all of it is kept, replayed at 
 
 ## The decision
 
-Progress goes to the page on live frames that aren’t stored. The log keeps the conversation, plus **commit points** of each running reply: what it has said, and the steps that changed, since the last one. A graceful shutdown takes a commit point for every running reply, so a planned restart loses nothing, and only a crash can lose the words since the last one, as today (“A restart mid-turn”).
+Progress goes to the page on live frames that aren’t stored. The log keeps the conversation, plus **commit points** of each running reply’s steps: the steps that changed since the last one. A reply’s words are stored a window at a time, every 50 ms (“Text in windows”). A graceful shutdown stores what every running reply holds, so a planned restart loses nothing, and a crash loses at most a window of words and the step updates since the last commit point (“A restart mid-turn”).
 
 ```mermaid
 sequenceDiagram
@@ -39,9 +39,11 @@ sequenceDiagram
   participant P as Page
   H->>T: text, step, status (harness-event contract)
   T->>B: update the running turn’s live state
-  T->>Q: live frame, unnumbered
-  Note over T,S: commit point: a step boundary, a segment’s end, or 10 s of new words
-  T->>S: item.text (words since the last one), item.patch for each step that changed
+  T->>Q: live frame of a step or the session, unnumbered
+  Note over T,S: a window of words ends (50 ms), or a step, a part’s end or the turn’s end comes first
+  T->>S: item.text, the window’s words
+  Note over T,S: commit point: a step boundary, a part’s end, or the turn’s end
+  T->>S: item.patch for each step that changed
   S->>Q: the stored events, numbered
   Q-->>P: stored events and live frames, in the order they were made
   Note over T,S: the turn ends
@@ -52,7 +54,7 @@ sequenceDiagram
 ```
 
 **What stays stored:**
-- messages, replies (their text at each commit point and at the end), blocks, asks, entries, the work ledger;
+- messages, replies (their text a window at a time, “Text in windows”), blocks, asks, entries, the work ledger;
 - a session’s `state` (`think`, `gen`, `tool`, `needs`, `failed`, `stopping`, `idle`) and `ctx`, as today. Many readers decide on `state`: needs, Delivery’s start, `card-needs.mjs`’s release (`busy`), and the UAT’s `tools/uat/turns.mjs`, which tells `gen` from `think`. A `state` change is one small patch, and it stays.
 - every write at a turn’s edges, as today: `turn-needs.mjs`’s “Waiting for you”, `turn-finish.mjs`’s “Failed”, `turn-stop.mjs`’s “Stopping”, the restart sweep’s and the store outage’s steps, with the `glimpse`, `subagents` and `currentStep` they set;
 - the folded record of a turn’s steps at its end.
@@ -78,14 +80,12 @@ The steps it stores keep `at` and `part`, which place them among the words (`app
 
 **On the wire, a change crosses once.** A page that was sent a step live since its last commit point isn’t sent that commit point’s `item.patch` (`server/live-sent.mjs`). A running turn’s change of `state` or `ctx` is stored as ever, and rides on the session frame sent with it, so its `session.patch` isn’t sent to a page either, and nor is the turn’s end’s write of the tool calls and their count, which the pages had live. Both are skipped per stream: a session’s only for a stream that has been sent that session’s frames, a step’s only for one sent that step since its last commit point. A cursor would only move the page’s place on, which its next numbered frame does, and a reconnect that replays such an event changes nothing the page has. A reconnect is a new stream: it has been sent nothing, so it’s spared nothing, and it gets the backlog whole, then the running turns’ snapshots (“A page that reconnects”). A page that opened after the step went live, a page without the conversation open, and a tool’s stream, which names no open conversations, get the stored events whole. A write that changes nothing isn’t stored, since it would store and send its `updatedAt` alone.
 
-A commit point comes:
-- at a step boundary: when a call starts, the words before it are whole;
-- at a reply segment’s end, before the patch that settles the segment. `item.final` (`threads.mjs`, `patchItem`) then reads the whole text, and the mentions in its last words wake their agents (`mention-entries.mjs`);
-- after 10 s of new words with no step, so a long reply with no calls loses no more than that;
-- early, when the buffer’s text reaches 64 KB;
-- for every running reply at a graceful shutdown, before its turn is stopped (“A restart mid-turn”).
+A commit point of the steps comes:
+- at a step boundary: a new step of the agent’s own;
+- when the buffer holds `LIVE_CAPS.steps` changed steps;
+- at the turn’s end, a graceful shutdown’s included (“A restart mid-turn”).
 
-The interval and the ceiling are constants in `shared/limits.mjs`. The measurement decides their values, within the bound that the commit points of a turn together write less than `main` writes for it.
+A reply’s words aren’t held to a commit point: they’re stored when their window ends, or earlier, before a step, a part’s end or the turn’s end (“Text in windows”).
 
 **At the end of a turn,** the last commit point, the settling patch, a failed reply’s `held` record (#1451, `server/turn-held.mjs`) and the fold are one `commit`, so a restart sees all of them or none.
 
@@ -109,7 +109,6 @@ Stored events wait behind a commit in flight (`server/store-held.mjs`), and `POS
 **So live frames take the same queue.** The store holds every emit made while a commit is queued or in flight, or a snapshot is written, in one global FIFO (`emit`, `server/store.mjs`), and numbers, applies and broadcasts each in its turn once that settles. A live frame made while anything is held joins that FIFO as an unnumbered job: when its turn comes it’s broadcast, not numbered, applied or written. The stream sends it through the same lag as stored events. So the page gets stored events and live frames in the order Turns made them. A send the lag holds back goes only to the streams open when it was made (`held`, `server/live-streams.mjs`): a stream that opened meanwhile has it already, in its backlog, its snapshot or the state its page loaded. Sent it again, its page would be ahead of its stream, which no page is without the lag, and would drop what came then (`behind` in `client.mjs`), while the server, having sent a step live, doesn’t send that page its commit point (#1505).
 
 **And each frame says where it goes,** for a page that joins midway:
-- a `text` frame names the offset in the reply’s text where its words start (`at`). The page appends only at its stored text’s end, buffers a frame ahead of it, and drops what it already has;
 - a `step` frame carries the step’s `rev`, which Turns bumps on each change. The page keeps the highest;
 - a frame for an item the page doesn’t have yet waits, until the item arrives or the turn ends. At most 200 frames wait per turn; past that the page drops what waits for that turn and asks for its snapshot (`/api/live/:turnId`, through `publicLive`), which replaces it whole.
 
@@ -123,10 +122,9 @@ This crosses a security boundary ([security-boundaries.md](security-boundaries.m
 
 | Kind | Mirrors | Fields, the only ones sent |
 |---|---|---|
-| `text` | `item.text` | `threadId`, `itemId`, `turnId`, `at`, `text` |
 | `step` | `item.patch` (`activityStep`) | `threadId`, `itemId`, `rev`, and `step`, an object of the step’s `id`, `label`, `state`, `ms`, `who`, `parent`, `detail`, `kind`, `job`, `input`, `output`, `part`, `at`, `added`, `deleted`, `diff` |
 | `session` | `session.patch` | `sessionId`, `toolCalls`, `toolCount`, `currentStep`, `glimpse`, `subagents`, and the `state`, `ctx` and `updatedAt` of a change stored with them |
-| `snapshot` | the three above | `turnId`, `sessionId`, `threadId`, `itemId`, and the turn’s `text` (with its `at`), `steps` and `session`, each as its kind’s fields |
+| `snapshot` | the two above | `turnId`, `sessionId`, `threadId`, `itemId`, and the turn’s `steps` and `session`, each as its kind’s fields |
 
 A step frame names no `turnId`: the page places a step by its item, and the snapshot names the turn. A step frame sends a step whole the first time after a commit point, then only the fields that changed, with its `id`; a session frame sends only the fields that changed.
 
@@ -134,7 +132,7 @@ A step frame names no `turnId`: the page places a step by its item, and the snap
 
 **`server/public-state.mjs` decides it,** with `publicLiveFrame(frame, open)`:
 1. The kind must map to a public event type, or the frame is dropped.
-2. `text`, `step` and `snapshot` frames go only to a stream that has their thread open, as item events do (#1155, `publicFrame`’s `open`).
+2. `step` and `snapshot` frames go only to a stream that has their thread open, as item events do (#1155, `publicFrame`’s `open`).
 3. `session` frames go to every stream, as `session.patch` does.
 4. `/api/state` adds `live`, the running turns’ snapshots, from `publicLive(buffers, open)` by the same rules. `tests/public-state.test.mjs`, which builds `/api/state` from `emptyState()`, covers the new key.
 5. `/api/live/:turnId`, which a page asks when its frames for a turn overflow (“Order”), answers that turn’s snapshot through `publicLive`, by the same rules: nothing for a turn in a conversation it doesn’t have open, or for one that has ended. It goes through the request gate like every route.
@@ -146,11 +144,10 @@ A step frame names no `turnId`: the page places a step by its item, and the snap
 ## The buffer, and what a page that joins gets
 
 **`server/live-buffer.mjs` keeps one buffer per running turn,** in memory, and drops it when the turn ends. It’s Turns’ module, not `turn-context.mjs`, which is near its size limit. Its bounds are in `shared/limits.mjs`:
-- **text:** the words since the last commit point, at most 64 KB, since a commit point comes early at that;
 - **steps:** the steps changed since the last commit point, in full, each with its `rev`;
 - **session fields:** one set, the latest.
 
-At 100 running turns, the ceiling is 6.4 MB of text. The measurement records the real figure.
+A turn holds at most a window of words beside the buffer (“Text in windows”).
 
 **A page that reconnects** asks for everything after its Last-Event-ID, as now. It gets the backlog of stored events, which now includes each commit point. Then it gets one `snapshot` per running turn in a conversation it has open, and a `session` frame for every other running session. So does a stream opened for a conversation the page opens mid-turn, a side or topic thread included, and one closed for `UNREAD_MS` that connects again. A page that resyncs gets the same from `/api/state`’s `live`. A snapshot’s steps are whole, so a step frame after it, which carries only what changed, applies over a whole step.
 
@@ -163,7 +160,7 @@ At 100 running turns, the ceiling is 6.4 MB of text. The measurement records the
 **A turn on this computer** can’t outlive Postbox: its harness is a child of the server, and a restart ends it (`settleInterrupted`, `server/restart-sweep.mjs`). **The owner’s decision** (17 November 2026, “Flush at shutdown”), against intent.md’s second principle, “Streaming that never loses a message”:
 - **A planned restart loses nothing.** A graceful shutdown takes a commit point for every running reply, with its words, its changed steps and its session fields, before its turn is stopped: in `close()` (`server/index.mjs`), ahead of `rt.stopTurns()`, so the store writes it before `store.close()` flushes and releases the folder.
 - **Nor does the ledger,** which `main` doesn’t hold today: `settleLedger` waits 4 seconds (`ledgerGraceMs`) for the turns’ ledger records and then closes the store, so a record that ends later, such as a `git` call near its 10-second timeout (`runGit`), is dropped at a graceful shutdown. Once closing begins, the ledger starts no new work and writes what it has before `store.close()` (“Order of work”, 5).
-- **Only a crash can lose words:** those since the last commit point, at most 64 KB or 10 s of them, and the step updates since. That’s as today, when streamed text is written on the fast path, unsynced ([store.md](store.md)), so a crash can already lose a reply’s newest words.
+- **Only a crash can lose words:** at most a window of them, 50 ms (“Text in windows”), and the step updates since the last commit point. That’s as today, when streamed text is written on the fast path, unsynced ([store.md](store.md)), so a crash can already lose a reply’s newest words.
 
 After either:
 - the reply keeps its text and its steps to the last commit point, which is the shutdown’s own after a planned restart;
@@ -285,7 +282,7 @@ Each item is its own pull request, test first:
 2. **`LIVE`, the `live` frame, `publicLiveFrame` and `publicLive`,** with the public-derivation, field-subset and private-kind tests, and `security-boundaries.md` updated in the same change, before anything is sent on it.
 3. **`server/live-buffer.mjs`, commit points, and the session fields and steps going live,** with the shared queue, the lag, `rev`, and `subagent-end.mjs` reading the buffer. The page’s handling of step and session frames (`app/js/live-frames.mjs`), the snapshot of steps and session fields, and `/api/state`’s `live` come with it, so a page that reloads or opens mid-turn never loses what changed since the last commit point (the integrator’s condition on #1471: step 3 ships no gap).
 4. **Text in windows** (“Text in windows”): a turn’s words stored once a window, with the settle hook.
-5. **The shutdown commit point,** with a test that fails without it: a reply stopped cleanly mid-stream, Postbox started again on the same store, and every word the reply had said is there. **And the ledger at shutdown:** once closing begins, the ledger starts no new work and writes what it has before `store.close()`, with a test through the real `start()` and `close()` and a short grace, such as `ledgerGraceMs` of 30 ms and a record that writes after 150 ms, which `main` drops.
+5. **The shutdown commit point,** with a test that fails without it: a reply stopped cleanly mid-stream, Postbox started again on the same store, and every word the reply had said is there. For text, nothing is left to build: a graceful shutdown stops each running turn, whose end stores the words it holds (`liveEnd`, step 4), so this step adds only the test that holds it. **And the ledger at shutdown:** once closing begins, the ledger starts no new work and writes what it has before `store.close()`, with a test through the real `start()` and `close()` and a short grace, such as `ledgerGraceMs` of 30 ms and a record that writes after 150 ms, which `main` drops.
 6. **The readers:** catch-up’s line for a reply still being written, the UAT checks held to `main`’s results, this document’s “Status” moved to built, and `architecture.md`’s summary (“Streamed text is emitted on a fast path”) updated.
 
 ## What this doesn’t do
@@ -296,8 +293,7 @@ Each item is its own pull request, test first:
 
 ## Open questions
 
-1. **The interval and the ceiling** (10 s, 64 KB) are a first guess, until the measurement decides them.
-2. **Whether a commit point should also come when the person opens the conversation,** so a page that joins reads more from the store and less from the snapshot. That trades writes for a smaller snapshot.
+1. **Whether a commit point should also come when the person opens the conversation,** so a page that joins reads more from the store and less from the snapshot. That trades writes for a smaller snapshot.
 
 ## When to revisit
 
