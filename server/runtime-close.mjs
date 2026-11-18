@@ -27,7 +27,8 @@ export function stopTimers(rt) {
 
 /**
  * Waits, up to LEDGER_GRACE_MS (config.ledgerGraceMs in a test), for the work ledger’s records in flight: a stopped turn’s end reads each file it changed
- * before it patches the turn’s entry, and a store closed under it drops the patch.
+ * before it patches the turn’s entry, and a store closed under it dropped the patch. Then the ledger is closed: what
+ * it still has is written, and it starts no new work (designs/architecture/live-progress.md, “A restart mid-turn”).
  * @param {import('./runtime.mjs').Runtime} rt
  */
 export async function settleLedger(rt) {
@@ -38,4 +39,5 @@ export async function settleLedger(rt) {
   });
   await Promise.race([rt.work.idle(), late]);
   clearTimeout(timer);
+  rt.work.closeLedger();
 }
