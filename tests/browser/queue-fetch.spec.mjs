@@ -2,6 +2,7 @@
 // once a frame, and once closed asks for nothing and paints nothing (#1456). With a scripted Claude Code agent held busy
 // until the test ends.
 import { expect, test } from '@playwright/test';
+import { RAISE_RESOURCE_BUFFER } from '../../tools/uat/diagram-probe.mjs';
 import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, settled, startPostbox, synced } from './postbox.mjs';
 import { frameHold, holdItemRequests, openQueue, QueueRooms } from './queue-rooms.mjs';
@@ -19,6 +20,8 @@ test.afterAll(async () => {
   await app?.stop();
 });
 failOnPageErrors(test);
+// Requests are counted in resource timing, whose browser default of 250 entries the page’s own load nearly fills.
+test.beforeEach(({ page }) => page.addInitScript({ content: RAISE_RESOURCE_BUFFER }));
 
 test('the queue asks for a missing item once, however often it repaints while the item is on its way', async ({ page }) => {
   const r = await rooms.busyRoom(page);

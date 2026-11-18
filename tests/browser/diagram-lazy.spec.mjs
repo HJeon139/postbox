@@ -5,7 +5,7 @@
 // pages it asks the server for, and a diagram scrolled to still draws.
 
 import { expect, test } from '@playwright/test';
-import { sampleDiagrams } from '../../tools/uat/diagram-probe.mjs';
+import { RAISE_RESOURCE_BUFFER, sampleDiagrams } from '../../tools/uat/diagram-probe.mjs';
 import { VIEW_TRIGGERS } from '../../tools/uat/view-triggers.mjs';
 import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
@@ -19,6 +19,8 @@ test.beforeAll(async () => {
 });
 test.afterAll(async () => app?.stop());
 failOnPageErrors(test);
+// The probe counts requests in resource timing, whose browser default of 250 entries the page’s own load nearly fills.
+test.beforeEach(({ page }) => page.addInitScript({ content: RAISE_RESOURCE_BUFFER }));
 
 const DIAGRAMS = [0, 10, 20, 29];
 const LINE = 'The observation is the only outside evidence in the loop, so it keeps the plan grounded.';

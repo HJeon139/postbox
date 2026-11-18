@@ -2,8 +2,14 @@
 // pages the page has requested, and which diagram frames in the conversation have drawn and which are in view.
 // tools/uat/view-triggers.mjs reads it.
 
-/** The browser’s resource timing buffer holds 250 entries unless a page raises it; past that, entries are dropped. */
-export const RESOURCE_BUFFER = 250;
+/**
+ * The resource timing buffer’s size, raised from the browser’s 250: past it, entries are dropped. The page itself loads
+ * about 240 modules and files, so at 250 a load and a few requests filled it, and the probe could count nothing.
+ */
+export const RESOURCE_BUFFER = 2000;
+
+/** The script that raises the buffer, run before each page load (Playwright’s addInitScript). */
+export const RAISE_RESOURCE_BUFFER = `performance.setResourceTimingBufferSize(${RESOURCE_BUFFER})`;
 
 /**
  * One sample. origin: when this page load began, so samples from one load can be told from another’s. requested: the
