@@ -100,6 +100,39 @@ test('#1518 the chain limit counts the reply that goes back, and past it the wak
   const card = f.store.items(f.t.id).find((x) => x.kind === 'hop');
   assert.equal(card?.status, 'open', 'a card asks the person, as for any wake past the limit');
   assert.deepEqual([card.from, card.to, card.n], ['beta', 'alpha', 2]);
+  assert.equal(replyOf(f, 'It’s CHANGELOG.md.').wentBack, undefined, 'the note waits for it to go: the card shows it till then');
+});
+
+test('#1518 a reply going back that is held on a waiting card says so as a reply, not as a mention its agent wrote', async () => {
+  const f = setup();
+  f.rt.ensureSession(f.t.id, f.c.id);
+  arrange.setThread(f.rt, f.t.id, { chainLimit: 2 });
+  f.adapter.next.push(async (c) => c.text('@beta @gamma which file holds the changelog?'));
+  f.rt.sendMessage(f.t.id, { text: '@alpha find out where the changelog goes' });
+  await quiet(f);
+  // beta’s answer going back raised the card; gamma’s waits on it.
+  const card = f.store.items(f.t.id).find((x) => x.kind === 'hop' && x.status === 'open');
+  assert.equal(card.held?.length, 1, JSON.stringify(card));
+  const gamma = arrange.sessionsIn(f.rt, f.t.id).find((x) => x.handle === 'gamma');
+  const told = (f.store.state.sessions[gamma.id].context ?? []).join(' | ');
+  assert.match(told, /Your reply, going back to @alpha, is held\./);
+  assert.doesNotMatch(told, /Your mention of @alpha/);
+});
+
+test('#1518 a turn that opens a topic naming an agent hands off, so its reply doesn’t go back', async () => {
+  const f = setup();
+  f.rt.ensureSession(f.t.id, f.c.id);
+  f.adapter.next.push(async (c) => c.text('@beta which file holds the changelog?'));
+  f.adapter.next.push(async (c) => {
+    const asked = f.store.items(f.t.id).find((x) => x.kind === 'agent' && x.handle === 'alpha');
+    c.tools.open_topic({ itemId: asked.id, message: '@gamma you own the changelog: which file is it?' });
+    c.text('I asked gamma in a topic.');
+  });
+  f.rt.sendMessage(f.t.id, { text: '@alpha find out where the changelog goes' });
+  await quiet(f);
+  assert.equal(turnsOf(f, 'alpha').length, 1, turns(f).join('\n'));
+  assert.ok(turnsOf(f, 'gamma').length >= 1, 'gamma was woken in the topic');
+  assert.equal(replyOf(f, 'I asked gamma in a topic.').wentBack, undefined);
 });
 
 test('#1518 a turn the person started goes back to no one', async () => {

@@ -336,7 +336,7 @@ function formatBody(message, pathOf) {
     case 'agent':
       // Given this way only with what isn’t an agent’s message (turns.mjs): a turn of agents’ messages alone is given
       // turn-input.mjs’s text, and only that turn’s reply goes back by itself (reply-back.mjs, #1518).
-      return `[Postbox] ${message.from} wrote to you. Your reply posts here. With the rest of this turn’s messages, it goes back to ${message.from} only if you @-mention them.\n\n${message.text}`;
+      return `[Postbox] ${message.from} wrote to you. Your reply posts here. This turn has other messages too, so your reply reaches ${message.from} only if you @-mention them.\n\n${message.text}`;
     case 'wake':
       return `[Postbox] A wake-up you scheduled is due. Your note: ${message.note || '(none)'}`;
     case 'app-check':

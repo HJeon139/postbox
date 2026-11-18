@@ -65,7 +65,7 @@ test('#372, #1518 a woken agent with more than agents’ messages is told its re
   // A turn of agents’ messages alone is given turn-input.mjs’s text, whose reply goes back (tests/reply-goes-back.test.mjs).
   assert.match(
     formatMessage({ kind: 'agent', from: '@alpha', text: 'Check the totals.' }),
-    /^\[Postbox\] @alpha wrote to you\. Your reply posts here\. With the rest of this turn’s messages, it goes back to @alpha only if you @-mention them/,
+    /^\[Postbox\] @alpha wrote to you\. Your reply posts here\. This turn has other messages too, so your reply reaches @alpha only if you @-mention them/,
   );
   assert.match(
     roomText([{ handle: 'beta', role: 'Reviews' }]),

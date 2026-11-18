@@ -20,7 +20,7 @@ export function backTo(entries) {
 /**
  * The end of a turn that went well: if it named no agent, its last reply goes back to whom backTo says, through
  * agentWake, so the chain limit counts it and a card asks past it. An agent no longer in the conversation is skipped,
- * since only the person adds one. The reply keeps whom it went to (`wentBack`), which the transcript shows under it.
+ * since only the person adds one. The reply keeps whom it went to now (`wentBack`), which the transcript shows under it.
  * @param {any} rt @param {any} turn @param {any} se @param {any[]} took  the entries the turn took
  */
 export function replyBack(rt, turn, se, took) {
@@ -36,7 +36,8 @@ export function replyBack(rt, turn, se, took) {
   const went = [];
   for (const h of to) {
     const r = rt.agentWake(se.id, h, reply.text, { replyIn, fromTurnId: turn.id, itemId: reply.id, prose: true, bounce: true });
-    if (r.ok || r.waiting) went.push(h);
+    // Only one that went: a bounce past the chain limit waits on the card, which shows it, and may never go.
+    if (r.ok) went.push(h);
   }
   if (went.length) rt.threads.patchItem(turn.threadId, reply.id, { wentBack: went });
 }
