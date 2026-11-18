@@ -59,6 +59,6 @@ test('#1478 an app publishes on load and on each edit, the latest of a burst onc
 
   expect(notices(), 'one notice for the changes').toHaveLength(1);
   expect(rt.session(se.id).needs ?? null, 'nobody needs the person').toBe(null);
-  expect(store.items(t.id).filter((x) => x.kind === 'voice' || x.kind === 'appsend')).toHaveLength(0);
-  await expect(page.locator('.appsend')).toHaveCount(0);
+  expect(store.items(t.id).filter((x) => x.kind === 'voice')).toHaveLength(0);
+  await expect(page.getByText('wants to send'), 'no card asks the person to allow anything').toHaveCount(0);
 });

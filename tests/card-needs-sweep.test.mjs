@@ -26,7 +26,7 @@ test('a block you answered before the restart is no longer the need', () => {
 
 test('a need whose card is gone is dropped, not kept', () => {
   const r = room();
-  const se = cutOff(r, { kind: 'appsend', itemId: 'it_gone', text: 'App' });
+  const se = cutOff(r, { kind: 'hop', itemId: 'it_gone', text: 'hop' });
   assert.equal(se.needs, null);
 });
 
@@ -61,11 +61,11 @@ test('a Store Retry that finds the agent mid-turn with no turn running settles i
   arrange.setSession(r.rt, r.alpha.id, { needs: { kind: 'block', itemId: b.id, text: 'Pick' }, state: 'tool' });
   settleOrphanTurns(r.rt);
   assert.equal(r.needs(), null, 'the answered block isn’t kept');
-  const card = r.appCard();
-  arrange.setSession(r.rt, r.alpha.id, { needs: { kind: 'appsend', itemId: card.id, text: 'App' }, state: 'tool' });
+  const card = r.hop();
+  arrange.setSession(r.rt, r.alpha.id, { needs: { kind: 'hop', itemId: card.id, text: 'hop' }, state: 'tool' });
   settleOrphanTurns(r.rt);
   const se = r.rt.store.state.sessions[r.alpha.id];
-  assert.equal(se.needs?.itemId, card.id, 'the app card still waits');
+  assert.equal(se.needs?.itemId, card.id, 'the wake request still waits');
   assert.equal(se.state, 'needs', 'and the ring says so, not idle');
 });
 
@@ -73,7 +73,7 @@ test('a card in a topic of another conversation is never this agent’s need', (
   const r = room();
   arrange.putThread(r.rt, { id: 'th_elsewhere', kind: 'conversation', title: 'Other', members: [], createdAt: 0 });
   arrange.putThread(r.rt, { id: 'th_other_topic', kind: 'topic', parentId: 'th_elsewhere', title: 'T', members: [], createdAt: 0 });
-  r.appCard('th_other_topic');
+  r.hop('th_other_topic');
   const se = cutOff(r, null);
   assert.equal(se.needs, null);
 });

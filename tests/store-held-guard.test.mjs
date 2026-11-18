@@ -22,7 +22,6 @@ import { normalized, placed, sources } from './server-sources-fixture.mjs';
 
 /** store.items() and item(): published reads. */
 const PUBLISHED = {
-  'app-send-cards.mjs': ['resolveAppSend'], // an app send the person answers: what they see
   'block-update.mjs': ['answerDelivered'], // the answer to a block the person saw, as its event starts a turn
   'blocks.mjs': ['act'], // the person’s answer to a block they see
   'card-needs.mjs': ['dismissFailed'], // the person’s Dismiss on a failed reply they see (#883)
@@ -64,6 +63,7 @@ const DIRECT = {
   'ledger-git.mjs': ['gitState'], // the Work view’s git state: an answer to the page
   'ledger-answers.mjs': ['published'], // the Work view’s diff and output, answers to the page
   'ledger.mjs': ['expireStale'], // at startup
+  'old-app-sends.mjs': ['closeOldSendCards'], // at startup: app-send cards from before #1488 close
   'permission-expiry.mjs': ['expireStalePermissions'], // at startup
   'public-state.mjs': ['publicItems'], // a conversation’s items by range, an HTTP answer to the page (#1155)
   'restart-sweep.mjs': ['foldCutOff', 'stopStreaming'], // at startup: the steps of turns a restart cut off, and their replies marked stopped
@@ -83,14 +83,13 @@ const PENDING = {
   // The agent's next need when a card is answered, the released card whose turn it may read, and the card it notifies:
   // each decides a write, so a card held behind a commit counts (#366). An offered card and the current need's card
   // (takesNeed): their times, and whether the current one still waits, decide whether the offer takes the need (#711).
-  'card-needs.mjs': ['keptTurns', 'nextNeed', 'takesNeed', 'takesNeed', 'releaseNeed', 'notifyOnce'],
+  'card-needs.mjs': ['keptTurns', 'nextNeed', 'takesNeed', 'takesNeed', 'releaseNeed'],
   // The mirrored reply a terminal line adds to, maybe held behind a commit; and the session attachClaudeSession just
   // made, whose transcript mirror starts following.
   'claude-mirror.mjs': ['mirror', 'pollMirror'],
   'turn-run.mjs': ['deliver', 'deliver', 'turnMessage'], // the session it starts a turn in, and the thread it answers in, maybe made or held behind a commit (#796)
   'restart-sweep.mjs': ['settleRetiredNeeds', 'cardOf'], // the need's card: whether it still waits, and its time on a tie, decide the need kept (#366); a session whose need is of a retired kind, settled
   'app-retire.mjs': ['retireApp', 'retireApp', 'retireApp'], // retire_app of an app the turn may have just shown
-  'app-send-cards.mjs': ['releaseRetired'], // a retired app’s sweep of its open sends
   'apps.mjs': ['showApp', 'updateApp'], // show_app and update_app of an app the turn may have just shown
   'app-entries.mjs': ['lostEvent'], // the voice line an app’s event posted, maybe behind a held commit, read when its turn starts (#1425)
   'block-show.mjs': ['showBlock', 'showBlock', 'showBlock', 'shownAgain'], // show_block of an app or a block id the turn may have just shown

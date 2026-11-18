@@ -217,11 +217,11 @@ test('…and through a permission mid-wake and a restart', async () => {
 test('after a restart, answering the card ahead of a failed reply brings back its Retry, in the failed state', async () => {
   const r = room();
   const { p } = await failedThenWakeWithPermission(r);
-  const card = r.appCard();
-  arrange.setSession(r.rt, r.alpha.id, { needs: { kind: 'appsend', itemId: card.id, text: 'App' }, state: 'needs' });
+  const card = r.hop();
+  r.setNeed('hop', card.id);
   r.rt.settlePermission(p.id, 'allowed');
   const rt = restart(r);
-  rt.resolveAppSend(r.t.id, card.id, 'deny');
+  r.declineHop(card, { on: rt });
   const se = r.store.state.sessions[r.alpha.id];
   assert.equal(se.needs?.kind, 'failed');
   assert.equal(se.state, 'failed', 'Retry shows, not a plain needs-you');

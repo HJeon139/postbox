@@ -1,6 +1,6 @@
 // Apps (#54, #38, #49): what an agent shows, the browser’s pre-display check of it, what an app sends in your voice,
 // and its saved state and the host data it asks for; the files an agent names for it are in server/agent-files.mjs.
-// The cards that hold what an app sends past its limit are asks’ (server/app-send-cards.mjs).
+// What an app sends without a click is a note (server/app-notes.mjs).
 // Apps (server/app-service.mjs) calls each with itself.
 
 import { followsConversation, validateBlock } from '../shared/catalog.mjs';

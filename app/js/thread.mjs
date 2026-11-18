@@ -9,7 +9,7 @@ import { mockMarker } from './agent-facts.mjs';
 import { agentMarkdown, handles, markTerms, paintAgentMarkdown, usesTerm } from './agent-markdown.mjs';
 import { paintOfflineQueue } from './agent-queue.mjs';
 import { allowedCallLine } from './allowed-call.mjs';
-import { enhanceMarkdown, releaseApps, renderAppItem, renderAppSendCard } from './apps.mjs';
+import { enhanceMarkdown, releaseApps, renderAppItem } from './apps.mjs';
 import { attChip, fileSize } from './attachment-chip.mjs';
 import { renderBlock } from './blocks.mjs';
 import { api, busy, client, hrefOf, itemsOf, placeIn, sessionsAt, sessionsOf, sideSessionsOf, stopSession, threadLink, uploadFile } from './client.mjs';
@@ -531,14 +531,13 @@ function renderItem(it, prev, ctx) {
       return viewAskBlock(it, ctx);
     case 'allowedcall':
       return allowedCallLine(it, ctx);
-    case 'appsend':
-      return renderAppSendCard(it, ctx);
     case 'moved':
       return movedLine(it, ctx);
     case 'proposal':
       return proposalBlock(it, ctx, showWho);
     default:
-      return h('div.col.small.dim', `Unknown item “${it.kind}”.`);
+      // A kind this Postbox no longer draws, from an older data folder, shows the plain line the server gave it.
+      return h('div.col.small.dim', typeof it.text === 'string' ? it.text : `Unknown item “${it.kind}”.`);
   }
 }
 

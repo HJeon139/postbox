@@ -7,7 +7,6 @@ import { crashCard, errorStrip } from './app-crash.mjs';
 import { live, nearBodies, relookSoon, setAppFrameTest } from './app-pointer.mjs';
 import { publishLater } from './app-publish.mjs';
 import { sendFromApp } from './app-send.mjs';
-import { renderAppSendCard } from './app-send-card.mjs';
 import { api, client, placeIn } from './client.mjs';
 import { $$, ago, h, icon } from './dom.mjs';
 import { goToItem } from './go-to-item.mjs';
@@ -16,7 +15,6 @@ import { nextTabStop } from './tab-stop.mjs';
 import { openMenu, toast } from './ui.mjs';
 
 export { enhanceMarkdown } from './md-enhance.mjs';
-export { renderAppSendCard };
 
 const frames = new Set(); // { appId, version, iframe, check, review, onPin, onAnchors, onCrash, onError }
 const madeFrames = new WeakSet(); // every iframe frame() made, for isAppFrame

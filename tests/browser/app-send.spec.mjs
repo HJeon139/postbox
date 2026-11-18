@@ -11,6 +11,7 @@
 // Moved from tools/checks/app-send.mjs (#303).
 
 import { expect, test } from '@playwright/test';
+import { closeOldSendCards } from '../../server/old-app-sends.mjs';
 import * as arrange from '../arrange.mjs';
 import { clickApp, frameOf } from './app-pointer.mjs';
 import { allowPageError, failOnPageErrors, frames, settled, startPostbox, synced } from './postbox.mjs';
@@ -280,3 +281,23 @@ for (const how of ['scrolls', 'moves (content above it changes)'])
     await settled(page);
     await expect(f, 'no longer live once it moved away from the resting pointer').not.toHaveClass(/\blive\b/);
   });
+
+test('#1488 an app-send card from an older Postbox’s data shows as a plain line, with nothing to answer', async ({ page }) => {
+  const { rt } = app;
+  const { t, se } = await conversation(page, 'Old card');
+  // As an older data folder holds it, open, and as the startup sweep leaves it (server/old-app-sends.mjs).
+  const card = arrange.post(rt, t.id, {
+    kind: 'appsend',
+    sessionId: se.id,
+    appId: 'gone',
+    title: 'Spam',
+    events: [{ action: 'x', values: {}, voice: 'Sent from Spam: x' }],
+    status: 'open',
+  });
+  closeOldSendCards(rt);
+  await synced(page, app);
+  const line = page.locator(`[data-key="${card.id}"]`);
+  await expect(line).toHaveText('Spam asked to send 1 message for you, in an older Postbox. Nothing waits on it.');
+  await expect(line.getByRole('button'), 'nothing to answer').toHaveCount(0);
+  expect(rt.session(se.id).needs ?? null, 'nobody needs you').toBe(null);
+});
