@@ -4,6 +4,9 @@
 // at most MAX_INSTALLS, each `{ version, at, outcome }`. No older Postbox reads this folder, so a rollback forgets the
 // consent rather than refusing a host setting it doesn’t know.
 //
+// A host with no record keeps Postbox up to date (KEEP_UPDATED_DEFAULT, #1514): after the person upgrades Postbox, an
+// agent on the host carries on without a reinstall. Only the person’s own “off” is kept as off.
+//
 // The read is strict and fails closed: anything but a regular file holding exactly that shape is no consent, with
 // the current version counted as tried (refused), so nothing installs by itself until the person saves the consent
 // again. Each host’s record is read once and kept in m.installRecords; every write to it, the consent’s and an
@@ -22,6 +25,8 @@ export const INSTALLS_DIR = 'remote-installs';
 export const MAX_INSTALLS = 16;
 /** The largest record file read: 16 entries are about 1.3 KB, so anything near this isn’t one Postbox wrote. */
 export const MAX_RECORD_BYTES = 8192;
+/** The consent of a host with no record: on, so a host the person never turned it off for stays up to date (#1514). */
+export const KEEP_UPDATED_DEFAULT = true;
 /** What an install’s entry can say: started, before ssh runs; then how it ended. */
 export const OUTCOMES = Object.freeze(['started', 'installed', 'present', 'reinstalled', 'busy', 'failed']);
 /** What the host’s status says when its record couldn’t be read. */
@@ -87,7 +92,7 @@ function readRecord(dataDir, hostId) {
     const record = text === null ? null : parseRecord(text);
     return record ?? refusedRecord(UNREADABLE);
   } catch (e) {
-    if (e?.code === 'ENOENT') return { keepUpdated: false, installs: [] };
+    if (e?.code === 'ENOENT') return { keepUpdated: KEEP_UPDATED_DEFAULT, installs: [] };
     return refusedRecord(`${UNREADABLE} (${e?.code ?? 'error'})`);
   }
 }
@@ -123,8 +128,8 @@ function readSmallFile(file) {
 }
 
 /**
- * The host’s record as this Postbox keeps it: read on first use, then as the last write left it. No file is no
- * consent. Never throws for the file; throws only for a state with no map to keep it in.
+ * The host’s record as this Postbox keeps it: read on first use, then as the last write left it. No file is the
+ * default consent (KEEP_UPDATED_DEFAULT). Never throws for the file; throws only for a state with no map to keep it in.
  * @param {RecordState} m @param {string} hostId @returns {KeptRecord}
  */
 export function recordOf(m, hostId) {
@@ -197,7 +202,7 @@ export function noteRecordError(m, hostId, error) {
 
 /**
  * Removes the host’s record, after every write before it, as removing the host does, so a later host with the same
- * ID starts with no consent.
+ * ID starts from the default, not from this one’s choice or tries.
  * @param {RecordState} m @param {string} hostId @returns {Promise<void>}
  */
 export function removeRecord(m, hostId) {

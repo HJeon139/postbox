@@ -18,20 +18,19 @@ import { HOST } from './remote-install-fixtures.mjs';
 
 const settle = () => sleep(40);
 
-test('#464-b2a: forget() removes the host’s record with its token, so a later host with the same ID has no consent', async () => {
+test('#464-b2a, #1514: forget() removes the host’s record with its token, so a later host with the same ID starts from the default', async () => {
   const t = rig();
   try {
-    await t.mgr.setKeepUpdated('h1', true);
-    assert.equal(t.mgr.status('h1').keepUpdated, true);
+    await t.mgr.setKeepUpdated('h1', false);
+    assert.equal(t.mgr.status('h1').keepUpdated, false);
     await t.mgr.forget('h1');
     assert.equal(existsSync(recordFile(t.dataDir)), false, 'no record file');
-    assert.equal(t.mgr.status('h1').keepUpdated, false, 'nor a record kept in memory');
-    // A host made later with the same ID, installed by hand: its 127 installs nothing by itself.
+    assert.equal(t.mgr.status('h1').keepUpdated, true, 'nor a record kept in memory: the default, not the old host’s off');
+    // A host made later with the same ID, installed by hand: its 127 installs by itself, as any host with no record.
     mkdirSync(join(t.dataDir, 'remote-tokens'), { recursive: true, mode: 0o700 });
     writeFileSync(tokenFile(t.dataDir, 'h1'), `${FAKE_TOKEN}\n`, { mode: 0o600 });
     await t.mgr.connect('h1').catch(() => {});
-    await settle();
-    assert.equal(t.runs.length, 0);
+    await until(() => t.runs.length === 1, 'the automatic install to start');
   } finally {
     t.done();
   }
