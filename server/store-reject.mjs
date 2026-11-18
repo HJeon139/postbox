@@ -6,6 +6,7 @@
 // handler which throws changes nothing, is held by tests/state-reject-contract.test.mjs.
 
 import { apply, RESERVED } from '../shared/state.mjs';
+import { written } from './store-text-at.mjs';
 
 /** @typedef {{ count: number, first: { seq: number, type: string, error: string }[] }} Rejected */
 
@@ -54,10 +55,13 @@ export function noteRejected(holder, seq, type, error) {
  * @param {any} store @param {any} ev @returns {{ line: string, kept: string | null, heard: any, error: unknown }}
  */
 export function applyOrHold(store, ev) {
-  const line = JSON.stringify(ev);
+  const kept = JSON.stringify(ev);
+  // The log’s line, from the state before the event (server/store-text-at.mjs); since() keeps the event whole.
+  const [logged] = written(store.state, [ev]);
+  const line = logged === ev ? kept : JSON.stringify(logged);
   try {
     apply(store.state, ev.type, ev.data);
-    return { line, kept: line, heard: ev, error: null };
+    return { line, kept, heard: ev, error: null };
   } catch (error) {
     noteRejected(store, ev.seq, ev.type, error);
     store.lastRejected = ev.seq;
