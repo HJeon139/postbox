@@ -127,3 +127,18 @@ test('the steady section has a run for each crowd and count of tabs the crowd se
   assert.equal(median([4, 1, 3, 2]), 2, 'the lower middle of an even count, a time actually measured');
   await assert.rejects(steadyOne('9'), /No steady crowd 9: name 0 to 8\./);
 });
+
+// A crash past one snapshot interval is judged at several points across that interval, not one, since where the last
+// snapshot fell before a single crash decided the load by luck (tools/measure-progress/crash-points.mjs).
+test('the crash points are evenly spaced across one snapshot interval, ending at the crash; a short log has one', async () => {
+  const { crashPoints, INTERVAL_EVENTS, POINTS } = await import('../tools/measure-progress/crash-points.mjs');
+  assert.ok(POINTS >= 8, 'at least 8 points');
+  const total = 10_199;
+  const points = crashPoints(total);
+  assert.equal(points.length, POINTS);
+  assert.equal(points.at(-1), total, 'the last is the crash itself');
+  const gaps = points.slice(1).map((p, i) => p - points[i]);
+  for (const g of gaps) assert.ok(Math.abs(g - INTERVAL_EVENTS / POINTS) <= 1, `evenly spaced: ${gaps}`);
+  assert.equal(points.at(-1) - points[0] + INTERVAL_EVENTS / POINTS, INTERVAL_EVENTS, 'together they span one interval');
+  assert.deepEqual(crashPoints(INTERVAL_EVENTS), [INTERVAL_EVENTS], 'a log no longer than an interval holds no snapshot to land before');
+});
