@@ -32,7 +32,6 @@ test.beforeAll(async () => {
   });
   backend('codex', { status: 'ok', windows: [{ name: '7 d', used: 0.07, resetsAt }] });
   backend('kiro-cli', null);
-  backend('antigravity-cli', null);
   backend('agent-sdk', null);
 });
 test.afterAll(async () => {
@@ -88,6 +87,58 @@ test('#442 a hint takes the line while you type, and the bars come back when the
   await expect(bar(page, 'Claude Code')).toBeVisible();
 });
 
+/** Where the input card, the line, and each bar with its track and words are drawn. */
+const layout = (page) =>
+  page.evaluate(() => {
+    const r = (/** @type {Element | null} */ el) => (el ? el.getBoundingClientRect().toJSON() : null);
+    const composer = /** @type {Element} */ (document.querySelector('.main > .composer'));
+    const line = composer.querySelector('.quota-line');
+    const bars = [...(line?.querySelectorAll('[role="meter"]') ?? [])].map((b) => ({
+      bar: r(b),
+      track: r(b.querySelector('.quota-track')),
+      text: r(b.querySelector('.quota-text')),
+    }));
+    return { composer: r(composer), card: r(composer.querySelector('.composer-box')), line: r(line), bars };
+  });
+
+test('#1463 the line spans the input card, an equal part per backend, each bar filling its part with its words below it', async ({ page }) => {
+  await room(page);
+  await expect(line(page).getByRole('meter')).toHaveCount(2);
+  await settled(page);
+  const { card, line: row, bars } = await layout(page);
+  expect.soft(Math.abs(row.left - card.left), 'it starts where the card does').toBeLessThanOrEqual(0.5);
+  expect.soft(Math.abs(row.right - card.right), 'and ends where it does').toBeLessThanOrEqual(0.5);
+  expect.soft(Math.abs(bars[0].bar.width - bars[1].bar.width), 'two bars get half each').toBeLessThanOrEqual(1);
+  expect.soft(bars[0].bar.width, 'half the card, less the gap between them').toBeGreaterThan(card.width / 2 - 12);
+  for (const [i, b] of bars.entries()) {
+    expect.soft(b.track && Math.abs(b.track.width - b.bar.width), `bar ${i + 1}’s track fills its part`).toBeLessThanOrEqual(0.5);
+    expect.soft(b.track && b.text.top >= b.track.bottom, `bar ${i + 1}’s words are below its track`).toBe(true);
+  }
+  expect.soft(Math.max(...bars.map((b) => b.bar.height)), 'one row of bars, as high as a hint’s').toBeLessThanOrEqual(20);
+  expect.soft(row.top, 'the line covers the gap from the card down (#1463)').toBeLessThanOrEqual(card.bottom + 0.5);
+});
+
+test('#1463 the space under the input is the line’s row and no more, when a report comes after the room opens', async ({ page }) => {
+  // Kiro reports nothing, so the line is empty when the room opens, and a report comes later.
+  await room(page, ['kiro-cli']);
+  await expect(line(page)).toBeHidden();
+  const before = await layout(page);
+  app.store.emit('quota', {
+    id: 'kiro-cli',
+    backend: 'kiro-cli',
+    host: null,
+    status: 'ok',
+    windows: [{ name: '5 h', used: 0.3, resetsAt }],
+    seenAt: Date.now(),
+  });
+  await expect(bar(page, 'Kiro CLI')).toBeVisible();
+  await settled(page);
+  const after = await layout(page);
+  expect.soft(after.card.top, 'the card doesn’t move as the line comes').toBe(before.card.top);
+  expect.soft(after.line.top - after.card.bottom, 'the line right under the card').toBeLessThanOrEqual(0.5);
+  expect.soft(after.composer.bottom - after.line.bottom, 'and little under it').toBeLessThanOrEqual(6.5);
+});
+
 test('#442 a figure seen long ago says its age, and a window past its reset shows no number', async ({ page }) => {
   await room(page, ['claude-code', 'codex']);
   app.store.emit('quota', {
@@ -122,7 +173,7 @@ test('#442 on a phone each bar keeps its backend and percent whole, and the wind
     const main = await bar(page, name).locator('.quota-pct').boundingBox();
     expect(main && row && main.x >= row.x - 0.5 && main.x + main.width <= row.x + row.width + 0.5, `${name}’s percent is on the row`).toBe(true);
   }
-  expect(row?.height, 'one row').toBeLessThanOrEqual(20);
+  expect(await barsHigh(page), 'one row').toBeLessThanOrEqual(20);
 });
 
 /**
@@ -160,6 +211,12 @@ async function phoneRoom(page, quotas) {
   await settled(page);
 }
 
+/** The tallest bar: the bars are one row, as high as a hint’s. */
+const barsHigh = (page) =>
+  line(page)
+    .getByRole('meter')
+    .evaluateAll((els) => Math.max(...els.map((el) => el.getBoundingClientRect().height)));
+
 /** On one row, inside the line: no bar overlaps the next, each keeps its backend and percent whole, nothing scrolls. */
 async function fitsThePhone(page) {
   const row = await line(page).boundingBox();
@@ -177,7 +234,7 @@ async function fitsThePhone(page) {
     expect.soft(b.mainLeft >= b.left - 0.5 && b.mainRight <= b.right + 0.5, `${b.text}: its backend and percent are whole`).toBe(true);
     if (i) expect.soft(b.left >= bars[i - 1].right - 0.5, `${b.text}: clear of the bar before`).toBe(true);
   }
-  expect.soft(row?.height, 'one row').toBeLessThanOrEqual(20);
+  expect.soft(await barsHigh(page), 'one row').toBeLessThanOrEqual(20);
   const wide = await line(page).evaluate((el) => [el.scrollWidth, el.clientWidth]);
   expect.soft(wide[0], 'the line doesn’t overflow').toBeLessThanOrEqual(wide[1]);
   expect.soft(await page.evaluate(() => document.documentElement.scrollWidth), 'the page doesn’t scroll sideways').toBeLessThanOrEqual(windowWidth(page));
@@ -207,27 +264,4 @@ test('#442 at 375 px an agent on a host with a long name fits, its host name giv
   ]);
   await expect(bar(page, 'Claude Code on build-workstation-in-the-basement')).toBeVisible();
   await fitsThePhone(page);
-});
-
-test('#1466 Antigravity gets a bar from its /usage, its most-used pool named after the window', async ({ page }) => {
-  const n = ++count;
-  const persona = app.rt.createPersona({ handle: `agy${n}`, backend: 'antigravity-cli' });
-  const t = app.rt.createThread({ projectId: Object.keys(app.store.state.projects)[0], title: `Agy ${n}`, personaIds: [persona.id] });
-  // What agyQuota makes of a /usage answer where Claude and GPT models’ pool is the most used (made-up figures).
-  app.store.emit('quota', {
-    id: 'antigravity-cli',
-    backend: 'antigravity-cli',
-    host: null,
-    status: 'ok',
-    windows: [
-      { name: '5 h', used: 0.03, resetsAt, seenAt: Date.now() },
-      { name: '7 d', used: 0.4, resetsAt, limit: 'Claude and GPT models', limitName: 'Claude and GPT models', seenAt: Date.now() },
-    ],
-    seenAt: Date.now(),
-  });
-  await page.setViewportSize({ width: 1280, height: 800 });
-  await page.goto(`${app.origin}/#/t/${t.id}`);
-  await synced(page, app);
-  await expect(bar(page, 'Antigravity CLI')).toHaveAttribute('aria-valuenow', '40');
-  await expect(bar(page, 'Antigravity CLI')).toHaveAttribute('aria-valuetext', /^Antigravity CLI 40% of 7 d \(Claude and GPT models\) · resets /);
 });
