@@ -87,6 +87,10 @@ test('the guide stays short: agents follow defaults more than prose', () => {
   assert.equal(agentGuide(who), agentGuide(who));
 });
 
+test('#1478 the guide names postbox.publish, so agents learn an app can share its data, and read_app reads it', () => {
+  assert.match(guideText(), /^- postbox\.publish\(data\) shares the app’s data with you, no turn; read_app reads it$/m);
+});
+
 test('an agent is told which tools are turned off for it, and how to ask for one, not that the computer lacks them (#104)', () => {
   const who = { persona: { handle: 'critic', tools: ['web.fetch'] }, handles: ['critic'] };
   const g = turnFacts(who);

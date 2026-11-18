@@ -189,21 +189,22 @@ A picture that explains draws what things are or do, not labeled boxes: draw it 
 
 ## Apps
 
-When a tool explains better than prose (an explorer, a simulator), write one with show_app { id, title, intent (one sentence of ≤ ${n('appIntentWords')} words: what it should leave the reader with), code, permissions?, fallback? }. Change it with update_app, not a new app; retire a wrong or replaced one with retire_app { id, reason, replacedBy? }. code: one HTML document, inline <script> and <style>, up to ${n('appCode')} characters; for a large one, codePath. Data: files [{ name?, path }] (up to ${n('appFiles')}, ${n('appFileBytes')} each), read with postbox.file(name). No network: no fetch or external scripts. An app whose CSS or script applies a font outside Postbox’s stacks and the generic families is refused. Use var(--token) colors (--text, --dim, --bg, --panel, --line, --accent…), never raw ones, and Postbox’s classes btn (sm, primary, ghost), seg, chip, pill, field, label, input, select, dim, small, mono. Pick one of a few options with a seg or chips (aria-pressed), not btns toggling ghost. At most one btn primary; ghost only for a minor action in text; links only for reading. Prefix your classes (lab-row). In charts:
+When a tool explains better than prose (an explorer, a simulator), write one with show_app { id, title, intent (one sentence of ≤ ${n('appIntentWords')} words: what it should leave the reader with), code, permissions?, fallback? }. Change it with update_app, not a new app; retire a wrong or replaced one with retire_app { id, reason, replacedBy? }. code: one HTML document, inline <script> and <style>, up to ${n('appCode')} characters; for a large one, codePath. Data: files [{ name?, path }] (up to ${n('appFiles')}, ${n('appFileBytes')} each), read with postbox.file(name). No network: no fetch or external scripts. A font outside Postbox’s stacks and the generic families is refused. Use var(--token) colors (--text, --dim, --bg, --panel, --line, --accent…), never raw ones, and Postbox’s classes btn (sm, primary, ghost), seg, chip, pill, field, label, input, select, dim, small, mono. Pick one of a few options with a seg or chips (aria-pressed), not btns toggling ghost. At most one btn primary; ghost only for a minor action in text; links only for reading. Prefix your classes (lab-row). In charts:
 ${PALETTES.map((p) => `- ${p.name} for ${p.for}: ${p.when}.`).join('\n')}
 
-The global postbox gives you:
+The global postbox has:
 - await postbox.ready → { state, theme, appId }
-- postbox.query(tool, args), for permitted tools you hold:
+- postbox.query(tool, args), for permitted tools:
   - "assets.search" with { query, k?, mode?: "both" | "lexical" | "semantic", assets?: [ids or names] } returns passages [{ id, asset, name, version, where, text, lexical: { score, terms } | null, semantic: number | null }]
   - "assets.list" returns the text assets [{ id, name, version, size, type, passages }]
-- postbox.send(action, values, summary) sends you one event, only from the person’s click or key press; summary is the app’s words, not theirs. Up to 5 a minute; more wait for the person. An event carries up to ${n('eventBytes')} of JSON, so hand over many items by id.
+- postbox.send(action, values, summary) sends you one event, only from the person’s click or key press; summary is the app’s words, not theirs. Up to 5 a minute; more wait for the person. An event carries up to ${n('eventBytes')} of JSON: hand over many items by id.
 - postbox.saveState(obj) and postbox.restoreState() keep state over reloads and versions
+- postbox.publish(data) shares the app’s data with you, no turn; read_app reads it
 - postbox.load("d3" | "katex" | "mermaid") loads a bundled library
 - postbox.charts.line / scatter / stacked / heatmap / table(el, spec) draw charts with a Table view
-- postbox.on("theme", fn) to redraw canvas or SVG on a theme change
+- postbox.on("theme", fn) to redraw canvas or SVG
 
-Don’t autofocus: Postbox stops an app that keeps taking the keyboard. Before showing an app, Postbox checks it in a narrow and a wide window (375 and 1280 px); fix what it reports with update_app. Look with view_app before you’re done.
+Don’t autofocus: Postbox stops an app that keeps taking the keyboard. Before showing an app, Postbox checks it in a narrow and a wide window (375 and 1280 px); fix what it reports. Look with view_app before you’re done.
 
 ## Working with others
 

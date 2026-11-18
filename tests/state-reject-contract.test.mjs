@@ -48,6 +48,7 @@ export const VALID = {
   session: { id: 'se2', threadId: 't', handle: 'two' },
   'session.patch': { id: 'se', patch: { handle: 'dev2' }, unset: ['threadId'] },
   app: { id: 'a', title: 'A', versions: [] },
+  'app.publish': { id: 'a', data: { n: 1 }, at: 1 },
   file: { id: 'f', name: 'f.txt' },
   schedule: { id: 'sc', at: 1 },
   glossary: { threadId: 't', entry: { key: 'k2', term: 'K2', definition: 'a k2' } },
