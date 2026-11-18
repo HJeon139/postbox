@@ -3,7 +3,7 @@
 // live-only progress work records main’s numbers with it before any change, and each pull request compares against
 // them, back to back on the same machine.
 //
-//   node tools/measure-progress.mjs [backends|long|crowded|joining|restart ...] [--runs N]
+//   node tools/measure-progress.mjs [backends|long|crowded|steady|joining|restart ...] [--runs N]
 //   node tools/measure-progress.mjs [sections ...] --against <main's checkout> [--pairs N]
 //
 // Each section runs N times (3 unless --runs says), each in a fresh process (tools/measure-progress/run.mjs), on a
@@ -11,15 +11,18 @@
 // counted as the store writes it, in UTF-8 bytes (tools/measure-progress/log-bytes.mjs). With --against, the runs of
 // that checkout’s tool and this one’s alternate in N pairs (8 unless --pairs says), and each number gets a verdict
 // against it (tools/measure-progress/compare.mjs); a section with a number worse runs a second round, which must agree.
+// `steady` runs each crowd in a process of its own, warmed before it’s measured (tools/measure-progress/steady.mjs):
+// the time a long-running Postbox pays, where `crowded` reads a cold process’s.
 
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { compare, mainFirst, worseTwice } from './measure-progress/compare.mjs';
+import { compare, mainFirst, UNGATED_TIMES, worseTwice } from './measure-progress/compare.mjs';
 
 const OWN = new URL('./measure-progress/run.mjs', import.meta.url).pathname;
 const { removeRestart } = await import('./measure-progress/restart.mjs');
+const { STEADY_CROWDS } = await import('./measure-progress/steady.mjs');
 const argv = process.argv.slice(2);
 /** A flag’s value, or undefined. @param {string} name */
 const flag = (name) => (argv.includes(name) ? argv[argv.indexOf(name) + 1] : undefined);
@@ -27,7 +30,7 @@ const RUNS = Number(flag('--runs') ?? 3);
 const PAIRS = Number(flag('--pairs') ?? 8);
 const AGAINST = flag('--against');
 const asked = argv.filter((a, i) => !a.startsWith('--') && !argv[i - 1]?.startsWith('--'));
-const SECTIONS = ['backends', 'long', 'crowded', 'joining', 'restart'].filter((s) => !asked.length || asked.includes(s));
+const SECTIONS = ['backends', 'long', 'crowded', 'steady', 'joining', 'restart'].filter((s) => !asked.length || asked.includes(s));
 
 /**
  * One run of a section in a fresh process, by the tool at `script`: its rows, or null when it was killed as asked. A
@@ -102,8 +105,15 @@ function restartOnce(script) {
   return rows;
 }
 
+/** One run of the steady section by the tool at `script`: each crowd in a process of its own. @param {string} script */
+const steadyOnce = (script) => STEADY_CROWDS.flatMap((_, i) => run(script, ['steady-one', String(i)]));
+
 /** One run of a section by the tool at `script`, its derived numbers added. @param {string} script @param {string} section */
-const once = (script, section) => (section === 'restart' ? restartOnce(script) : run(script, [section])).map(derived);
+function once(script, section) {
+  if (section === 'restart') return restartOnce(script).map(derived);
+  if (section === 'steady') return steadyOnce(script).map(derived);
+  return run(script, [section]).map(derived);
+}
 
 /** Runs of main’s tool and this one in PAIRS pairs, ABBA. @param {string} theirs @param {string} section */
 function pairs(theirs, section) {
@@ -114,7 +124,7 @@ function pairs(theirs, section) {
     branch.push(once(OWN, section));
     if (!mainFirst(i)) main.push(once(theirs, section));
   }
-  return compare(main, branch);
+  return compare(main, branch, { times: !UNGATED_TIMES.has(section) });
 }
 
 /** Prints a round’s numbers against main’s. @param {string} title @param {ReturnType<typeof compare>} round */
@@ -134,7 +144,8 @@ if (AGAINST) {
   const worse = [];
   for (const section of SECTIONS) {
     const first = pairs(theirs, section);
-    printRound(`${section}: this branch against ${AGAINST} (${PAIRS} ABBA pairs; time as the median pair’s ratio, and the least runs’)`, first);
+    const cold = UNGATED_TIMES.has(section) ? '; times are a cold process’s, reported and not judged' : '';
+    printRound(`${section}: this branch against ${AGAINST} (${PAIRS} ABBA pairs; time as the median pair’s ratio, and the least runs’${cold})`, first);
     if (!first.some((c) => c.worse)) continue;
     // A number worse in one round of pairs is worse only if a second round agrees.
     const second = pairs(theirs, section);
