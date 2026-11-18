@@ -22,6 +22,14 @@ const TIME_FLOOR = 20;
 const BYTE_SHARE = 0.001;
 const BYTE_FLOOR = 64;
 
+/**
+ * The sections whose times are reported and not judged. `crowded` runs nine crowds one after another in a fresh process,
+ * so its times are a cold process’s, moved by where the JIT and the GC land among them; the owner accepted one-time
+ * compile costs on 17 November 2026, and `steady` judges each crowd’s time warm (tools/measure-progress/steady.mjs).
+ * Their bytes and counts are judged as ever.
+ */
+export const UNGATED_TIMES = new Set(['crowded']);
+
 /** The order of the i-th pair: main first, then this branch, then the other way, so ABBA ABBA. @param {number} i */
 export const mainFirst = (i) => i % 2 === 0;
 
@@ -35,10 +43,12 @@ const median = (xs) => {
  * Each row’s and number’s verdict, from runs of main and of this branch made in pairs: `main[i]` and `branch[i]` are
  * the i-th pair’s rows. A time is worse when the median of the pairs’ ratios and the ratio of the least runs are both
  * above 1 + TIME_TOLERANCE: a real cost moves both, and noise seldom does. Bytes and counts are worse when this
- * branch’s least is above main’s most by more than their tolerance.
- * @param {any[][]} main @param {any[][]} branch
+ * branch’s least is above main’s most by more than their tolerance. With `times` false, times are reported and never
+ * worse, as a cold process’s are (UNGATED_TIMES).
+ * @param {any[][]} main @param {any[][]} branch @param {{ times?: boolean }} [o]
  */
-export function compare(main, branch) {
+export function compare(main, branch, { times = true } = {}) {
+  sameShape(main, branch);
   /** @type {{ row: string, key: string, main: number, branch: number, ratio?: number, leastRatio?: number, worse: boolean }[]} */
   const out = [];
   for (const [r, first] of main[0].entries())
@@ -50,7 +60,7 @@ export function compare(main, branch) {
       if (isTime(key)) {
         const ratio = median(a.map((x, i) => b[i] / x));
         const leastRatio = Math.min(...b) / Math.min(...a);
-        const judged = !JUDGED_AS_ANOTHER.has(key) && Math.min(...a) >= TIME_FLOOR;
+        const judged = times && !JUDGED_AS_ANOTHER.has(key) && Math.min(...a) >= TIME_FLOOR;
         const worse = judged && ratio > 1 + TIME_TOLERANCE && leastRatio > 1 + TIME_TOLERANCE;
         out.push({ row: first.row, key, main: median(a), branch: median(b), ratio, leastRatio, worse });
       } else {
@@ -60,6 +70,47 @@ export function compare(main, branch) {
       }
     }
   return out;
+}
+
+/** A row’s numbers’ keys, sorted. @param {Record<string, any>} row */
+const keysOf = (row) =>
+  Object.keys(row)
+    .filter((k) => typeof row[k] === 'number')
+    .sort();
+
+/** What to do when the two sides’ rows don’t match. */
+const SAME_TOOL =
+  'Measure both sides with the same tools/measure-progress. If this branch’s is newer, compare against a checkout of main with this branch’s tool in it; if main’s is newer, merge main into this branch.';
+
+/** The code a refusal carries, which the tool prints and exits 1 on (tools/measure-progress.mjs). */
+export const MISMATCH = 'EMEASURE_MISMATCH';
+
+/**
+ * Refuses runs whose rows or numbers don’t match, rather than judging what they share and skipping the rest: a row or a
+ * number one side has and the other doesn’t, as when main’s tool reports a row differently, would pass unjudged. Asked
+ * after the first pair too (tools/measure-progress.mjs), so a mismatch stops the measurement before the rest of the pairs.
+ * @param {any[][]} main @param {any[][]} branch
+ */
+export function sameShape(main, branch) {
+  const want = main[0] ?? [];
+  const names = (/** @type {any[]} */ rows) => rows.map((r) => r.row).join(' | ');
+  for (const [side, runs] of /** @type {const} */ ([
+    ['main', main],
+    ['this branch', branch],
+  ]))
+    for (const rows of runs) {
+      if (names(rows) !== names(want))
+        throw Object.assign(new Error(`The rows don’t match: main has ${names(want)}, and ${side} has ${names(rows)}. ${SAME_TOOL}`), { code: MISMATCH });
+      for (const [i, r] of rows.entries()) {
+        const a = keysOf(want[i]);
+        const b = keysOf(r);
+        if (a.join() === b.join()) continue;
+        const lacks = (/** @type {string[]} */ x, /** @type {string[]} */ y) => x.filter((k) => !y.includes(k)).join(', ') || 'none';
+        throw Object.assign(new Error(`The numbers of “${r.row}” don’t match: main lacks ${lacks(b, a)}, and ${side} lacks ${lacks(a, b)}. ${SAME_TOOL}`), {
+          code: MISMATCH,
+        });
+      }
+    }
 }
 
 /**

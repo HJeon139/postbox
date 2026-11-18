@@ -88,6 +88,28 @@ test('a segment closed mid-turn is final once, when it closes, and the next one 
   );
 });
 
+// A card that opens closes the reply's part while its last words are still held in their window
+// (server/live-text.mjs): threads.patchItem's settle hook stores them before the patch, so item.final reads them whole
+// and the mention in them is handed over. Without it, the part was final with none of its words.
+test('a part a card closes is final with its words still in their window, so its last mention is handed over', async () => {
+  const { rt, adapter, se, finals } = setup();
+  /** @type {any[]} */
+  let atClose = [];
+  adapter.next.push(async (c) => {
+    c.text('Over to you, ');
+    c.text('@beta');
+    rt.bus.emit('card.opened', { turn: arrange.liveTurn(rt, se.id) });
+    atClose = replies(finals);
+  });
+  await rt.turnService.run(se.id, { text: 'hi' });
+  await settle(rt);
+  assert.deepEqual(
+    atClose.map((f) => f.text),
+    ['Over to you, @beta'],
+    'final, whole, as the card closed it',
+  );
+});
+
 test('a failed reply is final once, with the words it had', async () => {
   const { rt, adapter, se, finals } = setup();
   adapter.next.push(async (c) => {

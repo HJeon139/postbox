@@ -33,7 +33,6 @@ const session = {
   subagents: [{ id: 'a1', name: 'helper', state: 'tool', doing: 'Reading', ...hide }],
 };
 const frames = {
-  text: { kind: 'text', threadId: 'th_1', itemId: 'it_1', turnId: 'tu_1', at: 0, text: 'Hello', ...hide },
   step: { kind: 'step', threadId: 'th_1', itemId: 'it_1', turnId: 'tu_1', rev: 2, step, ...hide },
   session: { kind: 'session', sessionId: 'se_1', ...session, ...hide },
   snapshot: {
@@ -76,14 +75,13 @@ test('the shapes are these, so a field added to one is a decision this test sees
   assert.deepEqual(TOOL_CALL_FIELDS, ['name', 'state', 'ms']);
   assert.deepEqual(SUBAGENT_FIELDS, ['id', 'name', 'state', 'ctx', 'doing', 'thinking', 'asked', 'said', 'since', 'parent', 'bg']);
   assert.deepEqual(SESSION_FIELDS, ['toolCalls', 'toolCount', 'currentStep', 'glimpse', 'subagents']);
-  assert.deepEqual(Object.keys(LIVE), ['text', 'step', 'session', 'snapshot']);
-  assert.deepEqual(LIVE.text.shape.fields, ['threadId', 'itemId', 'turnId', 'at', 'text']);
+  assert.deepEqual(Object.keys(LIVE), ['step', 'session', 'snapshot']);
   assert.deepEqual(LIVE.step.shape.fields, ['threadId', 'itemId', 'rev']);
   assert.deepEqual(Object.keys(LIVE.step.shape.objects ?? {}), ['step']);
   assert.deepEqual(LIVE.session.shape.fields, ['sessionId', 'toolCount', 'currentStep', 'glimpse', 'state', 'ctx', 'updatedAt']);
   assert.deepEqual(Object.keys(LIVE.session.shape.lists ?? {}), ['toolCalls', 'subagents']);
   assert.deepEqual(LIVE.snapshot.shape.fields, ['turnId', 'sessionId', 'threadId', 'itemId']);
-  assert.deepEqual(Object.keys(LIVE.snapshot.shape.objects ?? {}), ['text', 'session']);
+  assert.deepEqual(Object.keys(LIVE.snapshot.shape.objects ?? {}), ['session']);
   assert.deepEqual(Object.keys(LIVE.snapshot.shape.lists ?? {}), ['steps']);
 });
 
@@ -96,17 +94,19 @@ test('each kind takes its public flag from EVENTS: any of its event types made p
 });
 
 test('an item’s kinds need items public, and a session’s need sessions public', () => {
-  for (const kind of ['text', 'step', 'snapshot']) assert.equal(publicLiveFrame(frames[kind], null, EVENTS, withoutKey('items')), '', `${kind} without items`);
+  for (const kind of ['step', 'snapshot']) assert.equal(publicLiveFrame(frames[kind], null, EVENTS, withoutKey('items')), '', `${kind} without items`);
   for (const kind of ['session', 'snapshot']) assert.equal(publicLiveFrame(frames[kind], null, EVENTS, withoutKey('sessions')), '', `${kind} without sessions`);
-  assert.ok(dataOf(publicLiveFrame(frames.text, null, EVENTS, withoutKey('sessions'))), 'text needs only items');
+  assert.ok(dataOf(publicLiveFrame(frames.step, null, EVENTS, withoutKey('sessions'))), 'a step needs only items');
   assert.ok(dataOf(publicLiveFrame(frames.session, null, EVENTS, withoutKey('items'))), 'session needs only sessions');
 });
 
 test('a kind with no entry, or one whose event type isn’t in EVENTS, goes out as nothing', () => {
   assert.equal(publicLiveFrame({ kind: 'thinking', threadId: 'th_1', text: 'x' }), '');
   assert.equal(publicLiveFrame({ kind: 'toString' }), '');
-  const { 'item.text': _, ...without } = EVENTS;
-  assert.equal(publicLiveFrame(frames.text, null, /** @type {any} */ (without)), '');
+  // A reply's words are stored a window at a time (server/live-text.mjs), so no live frame carries them.
+  assert.equal(publicLiveFrame({ kind: 'text', threadId: 'th_1', itemId: 'it_1', at: 0, text: 'Hello' }), '');
+  const { 'item.patch': _, ...without } = EVENTS;
+  assert.equal(publicLiveFrame(frames.step, null, /** @type {any} */ (without)), '');
 });
 
 test('a frame carries only its shape, all the way down: no nested value gets past its own list', () => {
@@ -122,28 +122,25 @@ test('a frame carries only its shape, all the way down: no nested value gets pas
     subagents: [{ id: 'a1', name: 'helper', state: 'tool', doing: 'Reading' }],
   });
   const snap = dataOf(publicLiveFrame(frames.snapshot));
-  assert.deepEqual(snap.text, { at: 0, text: 'Hello' });
+  assert.equal(snap.text, undefined, 'a snapshot carries no words');
   assert.deepEqual(snap.session.toolCalls, [{ name: 'Read', state: 'done', ms: 3 }]);
   assert.deepEqual(snap.steps, [{ id: 's1', label: 'Read', state: 'running', at: 12, part: 'p1', input: 'ls' }]);
 });
 
 test('a listed field given an object or a list where a scalar belongs is dropped, not sent whole', () => {
   const objects = { secret: SECRET };
-  const t = dataOf(publicLiveFrame({ ...frames.text, text: objects, at: [objects] }));
-  assert.equal(t.text, undefined);
-  assert.equal(t.at, undefined);
   const s = dataOf(publicLiveFrame({ ...frames.step, rev: objects, step: { ...step, input: objects, label: [SECRET] } }));
   assert.equal(s.rev, undefined);
   assert.deepEqual(s.step, { id: 's1', state: 'running', at: 12, part: 'p1' });
   const se = dataOf(publicLiveFrame({ ...frames.session, toolCalls: objects, subagents: [objects, 'x', null] }));
   assert.equal(se.toolCalls, undefined, 'a list that isn’t one goes');
   assert.deepEqual(se.subagents, [{}], 'an entry that isn’t an object goes; one that is keeps its listed fields');
-  assert.ok(!JSON.stringify([t, s, se]).includes(SECRET));
+  assert.ok(!JSON.stringify([s, se]).includes(SECRET));
 });
 
 test('an item’s frames go only to a stream with its conversation open; a session’s go to every stream', () => {
   const open = new Set(['th_other']);
-  for (const kind of ['text', 'step', 'snapshot']) {
+  for (const kind of ['step', 'snapshot']) {
     assert.equal(publicLiveFrame(frames[kind], open), '', `${kind} to a stream without its conversation`);
     assert.ok(dataOf(publicLiveFrame(frames[kind], new Set(['th_1']))), `${kind} to one with it`);
     assert.ok(dataOf(publicLiveFrame(frames[kind], null)), `${kind} to a tool’s stream, which names none`);
