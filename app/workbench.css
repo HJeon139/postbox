@@ -4,6 +4,8 @@
 :root {
   /* The conversation’s column, and its input card: a dialog opens as wide (#1497). */
   --col-w: 760px;
+  /* A centered dialog, on a window with room for it (#1497). */
+  --dialog-w: 960px;
   color-scheme: dark;
   --bg: #15110e;
   --panel: #1f1a15;
@@ -508,6 +510,8 @@ details.activity > .work-record-link { display: inline-block; margin: 4px 0 0 22
 .select-wrap { position: relative; }
 .select-wrap .i-down { position: absolute; right: 8px; top: 8px; color: var(--dim); pointer-events: none; }
 .help { font-size: 12px; color: var(--dim); }
+/* A host’s name in a message, kept whole unless it’s longer than a line (#1497). */
+.host-name { display: inline-block; max-width: 100%; overflow-wrap: anywhere; }
 /* A help whose message changes with an answer the person didn’t click for (the Model field’s, #1327): every message it
    could show sits in one cell, only the current one visible, so the cell keeps the tallest’s height and nothing below
    it moves when the answer comes. */
@@ -854,15 +858,23 @@ html.store-down .sidepanel { padding-bottom: 44px; }
 .toast .t-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; font-size: 13px; }
 .toast .t-body .small { color: var(--dim); }
 
-.backdrop { position: fixed; inset: 0; z-index: 50; background: var(--overlay); display: grid; place-items: center; padding: 16px; }
-/* Every centered dialog is the conversation’s column wide, as its input card is (#1497); an anchored one keeps its own. */
-.dialog { width: 100%; max-width: var(--col-w); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; display: flex; flex-direction: column; max-height: calc(100vh - 32px); }
+/* One column no wider than the window less its gutters, whatever a dialog holds: a long host name or folder wraps or
+   gives way inside it, and never pushes it off the screen (#1497). */
+.backdrop { position: fixed; inset: 0; z-index: 50; background: var(--overlay); display: grid; grid-template-columns: minmax(0, 1fr); place-items: center; padding: 16px; }
+/* Every centered dialog is one width: 960 px where the window has room, else the window less its gutters, the input
+   card’s width on a phone (#1497). An anchored one keeps its own. */
+.dialog { width: 100%; min-width: 0; max-width: var(--dialog-w); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; display: flex; flex-direction: column; max-height: calc(100vh - 32px); }
 /* An agent sheet keeps one height, the most the window gives it, so a list that comes after it opens scrolls inside it
    and moves nothing under the pointer (sheet-hold.mjs, #1326). */
 .dialog.held { height: calc(100vh - 32px); }
 .dialog.held .d-body { flex: 1; }
 .dialog .d-head { padding: 14px 16px 10px; display: flex; align-items: flex-start; gap: 10px; }
 .dialog .d-body { padding: 4px 16px 16px; display: flex; flex-direction: column; gap: 12px; overflow: auto; }
+.dialog .d-body > *, .dialog [role="tabpanel"] > * { min-width: 0; }
+/* Inside a dialog, a row’s folder or path wraps where it must, and an input beside a button gives way to it (#1497). */
+.dialog .list-rows li > *, .dialog .field { min-width: 0; }
+.dialog .row-flex > .grow { min-width: 0; overflow-wrap: anywhere; }
+.dialog .row-flex > .input { flex: 1 1 0; min-width: 0; }
 .dialog .d-foot { padding: 12px 16px; border-top: 1px solid var(--line); display: flex; gap: 8px; justify-content: flex-end; background: var(--sunk); border-radius: 0 0 8px 8px; }
 .what-goes { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
 .what-goes li { display: flex; gap: 8px; align-items: flex-start; }
@@ -1012,6 +1024,9 @@ html.store-down .sidepanel { padding-bottom: 44px; }
   /* It wraps here: as tall as its lines, with a card’s corners, not pill ends (#199). */
   .sys .pill { white-space: normal; text-align: center; justify-content: center; flex-wrap: wrap; height: auto; border-radius: 8px; }
   .composer { padding: 8px 12px 4px; }
+  /* The composer’s gutter, so a dialog is the input card’s width (#1497). */
+  .backdrop { padding: 12px; }
+  .dialog, .dialog.held { max-height: calc(100vh - 24px); }
   .me-card { max-width: 92%; }
   .form-grid { grid-template-columns: 1fr; }
   /* Under the top bar, so its Work button and ⋯ stay in reach while the pane covers the conversation. */
@@ -1118,6 +1133,16 @@ html.pb-sandbox .label, html.pb-sandbox .tbl th, html.pb-sandbox kbd { font-size
 .tabs button:focus-visible { outline: 2px solid var(--accent); }
 .list-rows { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; }
 .list-rows li { display: flex; align-items: center; gap: 10px; padding: 8px 4px; border-bottom: 1px solid var(--line); }
+/* A persona’s row (#1497): its description takes the room, and its host gives way at the end, its whole name in its
+   title. On a phone the host and the description each take a line of their own, under the name, so the row is never wider
+   than the dialog. */
+.persona-row { flex-wrap: wrap; row-gap: 2px; }
+.persona-row > .grow { min-width: 0; flex: 1 1 12em; }
+.persona-row > .on-host { flex: 0 1 auto; min-width: 6em; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 600px) {
+  .persona-row > .grow { order: 9; flex-basis: 100%; }
+  .persona-row > .on-host { order: 8; flex-basis: 100%; max-width: none; }
+}
 .empty-note { color: var(--dim); font-size: 13px; padding: 12px 0; }
 .outbox { display: flex; flex-direction: column; gap: 4px; }
 .menu button.mi { all: unset; box-sizing: border-box; display: flex; align-items: center; gap: 10px; padding: 7px 8px; border-radius: 6px; cursor: pointer; border: 1px solid transparent; width: 100%; color: var(--text); }

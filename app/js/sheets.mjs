@@ -16,7 +16,7 @@ import {
   selectBackend,
 } from '/shared/agent-facts.mjs';
 
-import { mockMarker } from './agent-facts.mjs';
+import { hostMarker, mockMarker } from './agent-facts.mjs';
 import { boilerplateRow } from './boilerplate-row.mjs';
 import { checkField } from './check-field.mjs';
 import { api, client, headerOf, sessionsOf, threadsOf } from './client.mjs';
@@ -862,11 +862,11 @@ export function openSettings(tab = 'appearance', personaId = null) {
         'ul.list-rows',
         list.map((p) =>
           h(
-            'li',
+            'li.persona-row',
             h('b', p.handle),
             mockMarker(p),
             h('span.small.dim.grow', p.retired ? 'Retired' : p.description),
-            p.remote?.hostId ? h('span.small.dim', `On ${S().hosts?.[p.remote.hostId]?.name ?? 'a removed host'}`) : null,
+            hostMarker(p),
             h('span.small.dim', `v${p.version ?? 1}`),
             h(
               'button.btn.sm',

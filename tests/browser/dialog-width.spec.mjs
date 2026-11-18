@@ -1,5 +1,6 @@
-// Every centered dialog opens at one width, the conversation’s column and its input card’s (#1497): Settings, a sheet
-// like New agent, and the palette, which had 640, 480 and 560 px. On a phone, each takes the window less its gutter.
+// Every centered dialog opens at one width (#1497): Settings, a sheet like New agent, and the palette, which had 640,
+// 480 and 560 px. 960 px where the window has room, else the window less its gutters, which on a phone are the input
+// card’s, so a dialog is the card’s width there.
 
 import { expect, test } from '@playwright/test';
 import * as arrange from '../arrange.mjs';
@@ -43,19 +44,22 @@ const DIALOGS = [
   ['the palette', async (page) => page.keyboard.press('ControlOrMeta+k'), (page) => page.locator('.dialog.palette')],
 ];
 
-for (const [width, expected] of [
-  [1280, (/** @type {number} */ card) => card],
-  [375, () => 375 - 32],
+for (const [width, expected, says] of [
+  [1920, () => 960, '960 px, where the window has room'],
+  [1280, () => 960, '960 px, where the window has room'],
+  [1024, () => 960, '960 px, where the window has room'],
+  [768, () => 768 - 32, 'the window less its 16 px gutters'],
+  [375, (/** @type {number} */ card) => card, 'the input card’s width, on a phone'],
+  [320, (/** @type {number} */ card) => card, 'the input card’s width, on a phone'],
 ]) {
-  test(`#1497 every dialog opens at the input card’s width, at ${width} px`, async ({ page }) => {
+  test(`#1497 every dialog opens at one width, at ${width} px: ${says}`, async ({ page }) => {
     const card = await room(page, width);
-    if (width > 700) expect(card, 'the card is the column’s width').toBeGreaterThan(700);
     for (const [name, open, dialog] of DIALOGS) {
       await open(page);
       const d = dialog(page);
       await expect(d).toBeVisible();
       const w = (await d.boundingBox())?.width ?? 0;
-      expect(Math.abs(w - expected(card)), `${name} is ${w} px wide`).toBeLessThanOrEqual(1);
+      expect.soft(Math.abs(w - expected(card)), `${name} is ${w} px wide`).toBeLessThanOrEqual(1);
       await page.keyboard.press('Escape');
       await expect(page.locator('.dialog')).toHaveCount(0);
     }
