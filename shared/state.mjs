@@ -1,7 +1,7 @@
 // The state shape and the reducer, shared by the server’s store and the browser. Every change is an
 // event { seq, type, data }; applying the same events in order gives the same state on both sides.
 
-import { addNote, takeNotes } from './app-notes.mjs';
+import { addNote, dropNote, takeNotes } from './app-notes.mjs';
 import { itemOf, noteReplaced, positionOf } from './item-index.mjs';
 import { applyTurnArchive } from './state-archive.mjs';
 import { ASSET_EVENTS, ownAssetRooms } from './state-assets.mjs';
@@ -158,8 +158,10 @@ export const EVENTS = Object.freeze({
   app: { apply: put('apps'), public: true },
   // What an app published for its agent (#1478): kept apart from the app, and private, as PRIVATE_STATE_KEYS says.
   'app.publish': { apply: put('published'), public: false },
-  // A note an app sent its agent without a click, and the agent reading them (#1488): private, as app.publish is.
+  // A note an app sent its agent that started no turn, one past the cap, and the agent reading them (#1488): private,
+  // as app.publish is.
   'app.note': { apply: addNote, public: false },
+  'app.notes.dropped': { apply: dropNote, public: false },
   'app.notes.read': { apply: takeNotes, public: false },
   file: { apply: put('files'), public: true },
   schedule: {

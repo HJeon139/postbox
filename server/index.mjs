@@ -13,7 +13,7 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { AdapterRegistry } from './adapters/adapter.mjs';
 import { MockAdapter } from './adapters/mock.mjs';
-import { noteApp } from './app-notes.mjs';
+import { clickEvent, noteApp } from './app-notes.mjs';
 import { publishApp } from './app-publish.mjs';
 import { PROBES, registerBackends } from './backends.mjs';
 import { buildInfo } from './build-info.mjs';
@@ -385,8 +385,8 @@ export async function start({
       if (m[2] === 'publish') return send(res, 200, publishApp(rt, id, body.data));
       if (m[2] === 'check') return send(res, 200, rt.appCheck(id, body));
       // A click’s send starts a turn; any other is a note for the agent’s next one (#1488, app/js/app-send.mjs).
-      if (m[2] === 'event') return send(res, 200, rt.appEvent(id, body.action, body.values ?? {}));
-      if (m[2] === 'note') return send(res, 200, noteApp(rt, id, body.action, body.values ?? {}));
+      if (m[2] === 'event') return send(res, 200, clickEvent(rt, id, body.action, body.values ?? {}));
+      if (m[2] === 'note') return send(res, 200, noteApp(rt, id, body.action, body.values ?? {}, body.replaced));
       if (m[2] === 'state') {
         rt.appState(id, body.state);
         return send(res, 200, { ok: true });

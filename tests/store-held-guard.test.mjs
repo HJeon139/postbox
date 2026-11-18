@@ -22,6 +22,7 @@ import { normalized, placed, sources } from './server-sources-fixture.mjs';
 
 /** store.items() and item(): published reads. */
 const PUBLISHED = {
+  'app-notes.mjs': ['clickEvent'], // the app’s lines in your voice this last minute, for the page’s click event (#1488)
   'block-update.mjs': ['answerDelivered'], // the answer to a block the person saw, as its event starts a turn
   'blocks.mjs': ['act'], // the person’s answer to a block they see
   'card-needs.mjs': ['dismissFailed'], // the person’s Dismiss on a failed reply they see (#883)
@@ -56,7 +57,7 @@ const PUBLISHED = {
 /** Direct reads of state.items, state.work or state.apps: published reads. */
 const DIRECT = {
   'app-entries.mjs': ['sendAppMessage'], // the title of an app whose check the page reported, for its entry’s line (#1425)
-  'app-notes.mjs': ['noteApp'], // the page’s note, an HTTP answer (#1488)
+  'app-notes.mjs': ['noteApp', 'clickEvent'], // the page’s note and event, HTTP answers (#1488)
   'app-publish.mjs': ['publishApp', 'readApp'], // the page’s publish, an HTTP answer, and read_app, a read tool (#1478)
   'apps.mjs': ['appCheck', 'appEvent', 'appState', 'appQuery', 'appFile', 'appOf'], // HTTP answers to the page about an app, and appOf for read_message and the host snapshot (#516's S1): a read tool and what it sends
   'item-lines.mjs': ['describeItem', 'describeItem'], // a read tool’s app line

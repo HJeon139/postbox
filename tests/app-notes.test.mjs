@@ -5,7 +5,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
-import { noteApp } from '../server/app-notes.mjs';
+import { clickEvent, EVENTS_PER_MINUTE, NOTE_BYTES, noteApp } from '../server/app-notes.mjs';
 import { readApp } from '../server/app-publish.mjs';
 import { publicFrame, publicState } from '../server/public-state.mjs';
 import { Runtime } from '../server/runtime.mjs';
@@ -53,7 +53,10 @@ test('#1488 a note waits for the agent’s next turn as one notice: no turn, no 
   for (let i = 0; i < 7; i++) assert.deepEqual(noteApp(rt, 'list', 'step', { i }), { ok: true, noted: true });
   assert.equal(adapter.calls.length, calls, 'no turn started');
   assert.equal(notices(rt, se).length, 1, 'a burst of notes is one notice');
-  assert.match(notices(rt, se)[0].text, /Reading list has sent notes on its own since you last looked\. Call read_app/);
+  assert.match(
+    notices(rt, se)[0].text,
+    /Reading list has notes for you from sends that started no turn \(no click, or a click’s later sends\) since you last looked\. Call read_app/,
+  );
   assert.deepEqual(
     store
       .items(t.id)
@@ -82,28 +85,91 @@ test('#1488 read_app gives the app’s own agent its notes, with the summary eac
   assert.equal(readOut(rt, se.id).notes, undefined, 'read once, they’re gone');
 });
 
-test(`#1488 an app keeps its newest ${APP_NOTES_MAX} notes, and read_app counts the ones it dropped`, () => {
+test(`#1488 an app keeps ${APP_NOTES_MAX} unread notes; past them read_app counts the ones dropped`, () => {
   const { rt, se } = withApp();
   for (let i = 0; i < APP_NOTES_MAX + 3; i++) noteApp(rt, 'list', 'step', { i });
   const out = readOut(rt, se.id);
   assert.equal(out.notes.length, APP_NOTES_MAX);
-  assert.equal(out.notes[0].values.i, 3, 'the oldest went');
+  assert.equal(out.notes[0].values.i, 0, 'the unread ones stay');
   assert.equal(out.droppedNotes, 3);
 });
 
-test('#1488 notes read in parts go only once the agent has read to the end', () => {
+test('#1488 a note at its cap adds about its bytes to the log, one past the unread cap adds a count with no payload, and a larger one is refused', () => {
+  const { rt, store } = withApp();
+  const logged = [];
+  store.subscribe((ev) => logged.push(Buffer.byteLength(JSON.stringify(ev))));
+  const big = { text: 'x'.repeat(NOTE_BYTES - 20) };
+  noteApp(rt, 'list', 'step', big);
+  assert.ok(logged[0] < NOTE_BYTES + 1024, `a ${NOTE_BYTES}-byte note wrote ${logged[0]} bytes to the log`);
+  for (let i = 1; i < APP_NOTES_MAX; i++) noteApp(rt, 'list', 'step', { i });
+  logged.length = 0;
+  for (let i = 0; i < 100; i++) noteApp(rt, 'list', 'step', big);
+  const past = logged.reduce((n, b) => n + b, 0);
+  assert.ok(past < 100 * 200, `100 notes past the cap wrote ${past} bytes to the log`);
+  assert.equal(rt.s.appNotes.list.dropped, 100);
+  assert.throws(
+    () => noteApp(rt, 'list', 'step', { text: 'é'.repeat(NOTE_BYTES / 2) }),
+    (e) => e.status === 413 && /16 KB/.test(e.message),
+    'bytes, not characters',
+  );
+});
+
+test('#1488 a note gathered from several in the browser says how many it replaced', () => {
   const { rt, se } = withApp();
-  for (let i = 0; i < 3; i++) noteApp(rt, 'list', 'big', { text: 'a'.repeat(30_000), i });
+  noteApp(rt, 'list', 'step', { i: 7 }, 5);
+  noteApp(rt, 'list', 'step', { i: 8 }, 'many');
+  assert.deepEqual(
+    readOut(rt, se.id).notes.map((n) => n.replaced),
+    [5, undefined],
+  );
+});
+
+test('#1488 reading takes only the notes the read showed: one that comes after stays for the next read', () => {
+  const { rt, se } = withApp();
+  noteApp(rt, 'list', 'step', { i: 1 });
+  assert.deepEqual(
+    readOut(rt, se.id).notes.map((n) => n.values.i),
+    [1],
+  );
+  noteApp(rt, 'list', 'step', { i: 2 });
+  assert.deepEqual(
+    readOut(rt, se.id).notes.map((n) => n.values.i),
+    [2],
+  );
+});
+
+test('#1488 notes read in parts go only once the agent has read to the end, and one sent between parts stays', () => {
+  const { rt, se } = withApp();
+  for (let i = 0; i < 6; i++) noteApp(rt, 'list', 'big', { text: 'a'.repeat(15_000), i });
   const first = readApp(rt, se.id, { appId: 'list' }).message;
-  const next = first.match(/read_app \{ appId: "list", from: (\d+) \} reads on\./);
+  const next = first.match(/read_app \{ appId: "list", from: (\d+), notes: 6 \} reads on\./);
   assert.ok(next, first.slice(-200));
   assert.ok(rt.s.appNotes.list, 'a first part leaves them');
+  noteApp(rt, 'list', 'late', { i: 99 });
   let from = Number(next[1]);
-  for (let guard = 0; guard < 10 && rt.s.appNotes.list; guard++) {
-    const m = readApp(rt, se.id, { appId: 'list', from }).message;
-    from = Number(m.match(/from: (\d+) \} reads on\./)?.[1] ?? 1e9);
+  for (let guard = 0; guard < 10 && rt.s.appNotes.list?.notes.length > 1; guard++) {
+    const m = readApp(rt, se.id, { appId: 'list', from, notes: 6 }).message;
+    from = Number(m.match(/from: (\d+), notes: 6 \} reads on\./)?.[1] ?? 1e9);
   }
-  assert.equal(rt.s.appNotes.list, undefined, 'the last part takes them');
+  assert.deepEqual(
+    rt.s.appNotes.list?.notes.map((n) => n.action),
+    ['late'],
+    'the last part takes the six it read, and the late one waits',
+  );
+});
+
+test('#1488 past 30 events in a minute, an app’s next click is a note: never a card or an error', () => {
+  const { rt, store, t } = withApp();
+  const now = Date.now();
+  for (let i = 0; i < EVENTS_PER_MINUTE; i++) assert.equal(clickEvent(rt, 'list', 'clicked', { i }, now).noted, undefined, `click ${i + 1}`);
+  assert.deepEqual(clickEvent(rt, 'list', 'clicked', { i: 'over' }, now), { ok: true, noted: true });
+  assert.equal(store.items(t.id).filter((x) => x.kind === 'voice').length, EVENTS_PER_MINUTE);
+  assert.deepEqual(
+    rt.s.appNotes.list.notes.map((n) => n.values.i),
+    ['over'],
+  );
+  assert.equal(clickEvent(rt, 'list', 'clicked', { i: 'later' }, now + 61_000).ok, true, 'a minute on, a click starts a turn again');
+  assert.equal(rt.s.appNotes.list.notes.length, 1);
 });
 
 test('#1488 a note is checked as an event is; a retired app can’t send one', () => {

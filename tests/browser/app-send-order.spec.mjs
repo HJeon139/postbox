@@ -1,7 +1,7 @@
-// #934: an app that calls postbox.send several times in one click has them stored in the order it sent them. The page
-// posts each send on its own, so with nothing ordering them the server could store a later one first. The page now
-// sends an app’s sends one after another; a failed one doesn’t hold back the rest. One click starts one turn (#1488):
-// the first send of the burst is an event, and the rest are notes its agent reads with read_app, in the same order.
+// #934: an app that calls postbox.send several times in one click has them stored in the order it sent them, and a
+// failed or stuck one doesn’t hold back the rest. One click starts one turn (#1488): its first send is an event, and its
+// later sends are notes its agent reads with read_app. The page sends an app’s notes at most once per 400 ms, the
+// latest, with how many it replaced, so a burst is one turn and one note however its sends are spaced.
 
 import { expect, test } from '@playwright/test';
 import * as arrange from '../arrange.mjs';
@@ -32,93 +32,116 @@ failOnPageErrors(test);
 test.skip(({ browserName }) => browserName !== 'chromium', 'app sends need MessageEvent.userActivation (#76)');
 
 /**
- * A conversation with @librarian showing the burst app, loaded, with each event POST counted and the first held until
- * the test lets it go. Returns the steps its voices name in stored order, and when the page has taken every send.
+ * A conversation with @librarian showing an app, loaded: its lines in your voice, its notes, and its saved state.
+ * @param {import('@playwright/test').Page} page @param {string} name @param {string} code
  */
-async function burstApp(page, name) {
+async function showApp(page, name, code) {
   const { rt, store } = app;
-  const held = { requests: 0, /** @type {(how: 'continue' | 'fail') => void} */ release: () => {} };
-  await page.route(/\/api\/apps\/[^/]+\/(event|note)$/, async (route) => {
-    held.requests++;
-    if (held.requests > 1) return route.continue();
+  const t = rt.createThread({ projectId: Object.values(rt.store.state.projects)[0].id, title: name, personaIds: [arrange.persona(rt, 'librarian').id] });
+  const se = arrange.agentIn(rt, t.id);
+  await page.goto(`${app.origin}/#/t/${t.id}`);
+  await synced(page, app);
+  const id = `app-${t.id}`;
+  rt.toolsFor(se.id).show_app({ id, title: name, code, permissions: [] });
+  await expect.poll(() => rt.store.state.apps[id]?.check.status, { message: 'the app to pass its check' }).toMatch(/^(passed|note)$/);
+  await expect(frameOf(page, name), 'the app to load').toHaveAttribute('data-sized', '1');
+  const voices = () => store.items(t.id).filter((x) => x.kind === 'voice' && x.appId === id);
+  const notes = () => rt.store.state.appNotes[id]?.notes ?? [];
+  const state = () => rt.store.state.apps[id]?.state ?? {};
+  return { voices, notes, state };
+}
+
+/** The burst app, with its first POST held until the test lets it go. */
+async function burstApp(page, name) {
+  const held = { /** @type {(how: 'continue' | 'fail') => void} */ release: () => {} };
+  let first = true;
+  await page.route(/\/api\/apps\/[^/]+\/event$/, async (route) => {
+    if (!first) return route.continue();
+    first = false;
     const how = await new Promise((r) => {
       held.release = r;
     });
     if (how === 'continue') return route.continue();
     return route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'The server failed this one.' }) });
   });
-  const t = rt.createThread({ projectId: Object.values(rt.store.state.projects)[0].id, title: name, personaIds: [arrange.persona(rt, 'librarian').id] });
-  const se = arrange.agentIn(rt, t.id);
-  await page.goto(`${app.origin}/#/t/${t.id}`);
-  await synced(page, app);
-  const id = `burst-${t.id}`;
-  rt.toolsFor(se.id).show_app({ id, title: name, code: BURST, permissions: [] });
-  await expect.poll(() => rt.store.state.apps[id]?.check.status, { message: 'the app to pass its check' }).toMatch(/^(passed|note)$/);
-  await expect(frameOf(page, name), 'the app to load').toHaveAttribute('data-sized', '1');
-  const voices = () => store.items(t.id).filter((x) => x.kind === 'voice' && x.appId === id);
-  const notes = () => rt.store.state.appNotes[id]?.notes ?? [];
-  // The event’s step, then the notes’: every note follows the click’s one event.
-  const steps = () => [...voices().map((x) => Number(/Step (\d+)/.exec(x.quote ?? x.text)?.[1])), ...notes().map((n) => n.values.i)];
-  /** Clicks, waits until the page has taken all N sends, and until any it posted beside the held one are stored. */
+  const shown = await showApp(page, name, BURST);
+  const step = (x) => Number(/Step (\d+)/.exec(x.quote ?? x.text)?.[1]);
   const click = async () => {
     await clickApp(page, name);
-    await expect.poll(() => rt.store.state.apps[id]?.state?.queued, { message: 'the page took every send' }).toBe(N);
-    if (held.requests > 1) await expect.poll(() => steps().length, { message: 'the sends posted beside the held one' }).toBe(N - 1);
+    await expect.poll(() => shown.state().queued, { message: 'the page took every send' }).toBe(N);
   };
-  return { steps, voices, notes, click, held };
+  return { ...shown, step, click, held };
 }
 
-test('#934, #1488 one click’s sends are one turn and the rest notes, stored in the order the app sent them, though the server answers the first last', async ({
-  page,
-}) => {
-  const { steps, voices, notes, click, held } = await burstApp(page, 'Burst in order');
+test('#934, #1488 one click’s burst is one turn and one note, the latest, stored while the first send waits for its answer', async ({ page }) => {
+  const { voices, notes, step, click, held } = await burstApp(page, 'Burst in order');
   await click();
+  await expect.poll(() => notes().map((n) => [n.values.i, n.replaced]), { message: 'the note, while the event waits' }).toEqual([[N, N - 2]]);
   held.release('continue');
-  await expect.poll(steps, { message: `all ${N} sends stored` }).toHaveLength(N);
-  expect(steps()).toEqual(Array.from({ length: N }, (_, i) => i + 1));
-  expect(voices(), 'one line in your voice: one turn').toHaveLength(1);
-  expect(notes(), 'the rest are notes').toHaveLength(N - 1);
+  await expect.poll(() => voices().map(step), { message: 'the click’s one turn' }).toEqual([1]);
   await expect(page.getByText('wants to send'), 'no card asks you to allow them').toHaveCount(0);
 });
 
-test('#934 a send that fails doesn’t hold back the ones after it, which are still stored in order', async ({ page }) => {
+test('#934 a send that fails doesn’t hold back the ones after it', async ({ page }) => {
   allowPageError(page, /500|server failed/i);
-  const { steps, click, held } = await burstApp(page, 'Burst after a failure');
+  const { voices, notes, click, held } = await burstApp(page, 'Burst after a failure');
   await click();
   held.release('fail');
-  await expect.poll(steps, { message: `the ${N - 1} sends after the failed one stored` }).toHaveLength(N - 1);
-  expect(steps()).toEqual(Array.from({ length: N - 1 }, (_, i) => i + 2));
+  await expect.poll(() => notes().map((n) => n.values.i), { message: 'the burst’s note stored' }).toEqual([N]);
+  expect(voices()).toHaveLength(0);
 });
 
-test('#934 a send that never gets an answer doesn’t hold back the ones after it for long', async ({ page }) => {
-  const { steps, click } = await burstApp(page, 'Burst past a stuck send');
+test('#934 a send that never gets an answer doesn’t hold back the ones after it', async ({ page }) => {
+  const { notes, click } = await burstApp(page, 'Burst past a stuck send');
   await click();
-  // The first POST is never answered; the chain moves on once its turn has waited long enough.
-  await expect.poll(steps, { message: `the ${N - 1} sends after the stuck one stored`, timeout: 20_000 }).toHaveLength(N - 1);
-  expect(steps()).toEqual(Array.from({ length: N - 1 }, (_, i) => i + 2));
+  await expect.poll(() => notes().map((n) => n.values.i), { message: 'the burst’s note stored' }).toEqual([N]);
 });
 
-// One click whose handler awaits each send before the next: the second arrives just after the first’s answer.
-const AWAITED = `<main style="padding:12px"><button id="go" class="btn" type="button" style="display:block;width:100%;height:120px">Send two</button></main>
+// One click whose handler awaits each send, sleeping between them for 100 ms to 1 s: all inside the click’s 5 s of
+// activation, which a send doesn’t use up (#1488, the review’s probe: 120 ms apart gave 8 turns, 900 ms gave 6).
+const SPACED = `<main style="padding:12px"><button id="go" class="btn" type="button" style="display:block;width:100%;height:120px">Go</button></main>
 <script>
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 document.getElementById('go').addEventListener('click', async () => {
-  const first = await postbox.send('step', { i: 1 }, 'Step 1');
-  const second = await postbox.send('step', { i: 2 }, 'Step 2');
-  postbox.saveState({ first: first.noted ? 'noted' : 'sent', second: second.noted ? 'noted' : 'sent' });
+  const out = [];
+  for (const gap of [0, 100, 120, 400, 900, 1000]) {
+    await sleep(gap);
+    const r = await postbox.send('step', { gap }, 'Step').catch((e) => ({ err: e.message }));
+    out.push(r.noted ? 'noted' : r.err ? 'err' : 'sent');
+  }
+  postbox.saveState({ out });
 });
 </script>`;
 
-test('#1488 a click that awaits its first send before the next is still one turn: the second, right after the answer, is a note', async ({ page }) => {
-  const { rt, store } = app;
-  const t = rt.createThread({ projectId: Object.values(rt.store.state.projects)[0].id, title: 'Awaited', personaIds: [arrange.persona(rt, 'librarian').id] });
-  const se = arrange.agentIn(rt, t.id);
-  await page.goto(`${app.origin}/#/t/${t.id}`);
-  await synced(page, app);
-  const id = `awaited-${t.id}`;
-  rt.toolsFor(se.id).show_app({ id, title: 'Awaited', code: AWAITED, permissions: [] });
-  await expect(frameOf(page, 'Awaited'), 'the app to load').toHaveAttribute('data-sized', '1');
+test('#1488 one click whose sends come 100 ms to 1 s apart is one turn; the rest are notes', async ({ page }) => {
+  const { voices, state } = await showApp(page, 'Spaced', SPACED);
+  await clickApp(page, 'Spaced');
+  await expect
+    .poll(() => state().out, { message: 'the app recorded every answer', timeout: 15_000 })
+    .toEqual(['sent', 'noted', 'noted', 'noted', 'noted', 'noted']);
+  expect(voices(), 'one click, one turn').toHaveLength(1);
+});
+
+// One click whose handler awaits its first send before the next: the second arrives just after the first’s answer.
+const AWAITED = `<main style="padding:12px"><button id="go" class="btn" type="button" style="display:block;width:100%;height:120px">Send two</button></main>
+<script>
+let clicks = 0;
+document.getElementById('go').addEventListener('click', async () => {
+  const c = ++clicks;
+  const first = await postbox.send('step', { c, i: 1 }, 'Step 1');
+  const second = await postbox.send('step', { c, i: 2 }, 'Step 2');
+  postbox.saveState({ ['c' + c]: [first.noted ? 'noted' : 'sent', second.noted ? 'noted' : 'sent'] });
+});
+</script>`;
+
+test('#1488 a click that awaits its first send before the next is one turn, and a second click starts a turn of its own', async ({ page }) => {
+  const { voices, notes, state } = await showApp(page, 'Awaited', AWAITED);
   await clickApp(page, 'Awaited');
-  await expect.poll(() => rt.store.state.apps[id]?.state, { message: 'the app recorded both answers' }).toEqual({ first: 'sent', second: 'noted' });
-  expect(store.items(t.id).filter((x) => x.kind === 'voice' && x.appId === id)).toHaveLength(1);
-  expect(rt.store.state.appNotes[id]?.notes.map((n) => n.values.i)).toEqual([2]);
+  await expect.poll(() => state().c1, { message: 'the first click’s answers' }).toEqual(['sent', 'noted']);
+  expect(voices()).toHaveLength(1);
+  expect(notes().map((n) => [n.values.c, n.values.i])).toEqual([[1, 2]]);
+  // Within the first click’s 5 s of activation: a new click is a new gesture.
+  await clickApp(page, 'Awaited');
+  await expect.poll(() => state().c2, { message: 'the second click’s answers' }).toEqual(['sent', 'noted']);
+  expect(voices(), 'one turn a click').toHaveLength(2);
 });

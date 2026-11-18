@@ -45,10 +45,11 @@ const TYPES = [
   'app.publish',
   // A note an app sent its agent without a click, and the agent reading them (#1488): private, read only by read_app.
   'app.note',
+  'app.notes.dropped',
   'app.notes.read',
 ];
 /** The types the page may not see: each reaches it as a cursor (designs/architecture/security-boundaries.md). */
-const PRIVATE_TYPES = ['app.publish', 'app.note', 'app.notes.read'];
+const PRIVATE_TYPES = ['app.publish', 'app.note', 'app.notes.dropped', 'app.notes.read'];
 
 test('the event table has exactly the known types, each with a handler and a public flag, public but for the private ones', () => {
   assert.deepEqual(Object.keys(EVENTS).sort(), [...TYPES].sort());

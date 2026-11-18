@@ -101,7 +101,7 @@ addEventListener('message', async (e) => {
         );
       try {
         // A click’s send starts a turn; any other is a note for the agent (app-send.mjs, #1488).
-        reply(await sendFromApp(rec.appId, activated(e, rec), m));
+        reply(await sendFromApp(rec.appId, rec.iframe, activated(e, rec), m));
       } catch (err) {
         reply(null, err.message);
         toast({ title: 'That didn’t reach the agent', text: err.message, level: 'blocking' });
