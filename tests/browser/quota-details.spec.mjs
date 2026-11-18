@@ -134,3 +134,55 @@ test('#1496 the table stays current while it’s open, and focus stays where it 
   await expect(codex).toContainText(/7 d \(GPT-5\)\s*88%/);
   await expect(tab).toBeFocused();
 });
+
+test('#1496 at 375 px no word in the table breaks across lines but a window’s name, and nothing runs out of its cell', async ({ page }) => {
+  await room(page, 375);
+  const host = app.rt.addHost({ name: 'phone-box' }).id;
+  app.store.emit('quota', {
+    id: `claude-code@${host}`,
+    backend: 'claude-code',
+    host,
+    status: 'ok',
+    windows: [
+      { name: '5 h', used: 0.3, resetsAt: Date.now() + 30 * HOUR },
+      { name: '7 d', used: 0.6, resetsAt: Date.now() - 60_000 },
+    ],
+    seenAt: Date.now() - 2 * HOUR,
+  });
+  await synced(page, app);
+  await line(page).getByRole('button', { name: 'Quota details' }).click();
+  const tables = page.getByRole('dialog', { name: 'Settings' }).locator('.quota-table');
+  await expect(tables.first()).toBeVisible();
+  const broken = await tables.evaluateAll((all) =>
+    all.flatMap((table) =>
+      [...table.querySelectorAll('th:not(:first-child), td:not(:first-child)')].flatMap((cell) => {
+        const text = cell.firstChild;
+        if (!(text instanceof Text)) return [];
+        const out = [];
+        const box = cell.getBoundingClientRect();
+        for (const m of text.data.matchAll(/\S+/g)) {
+          const r = document.createRange();
+          r.setStart(text, m.index ?? 0);
+          r.setEnd(text, (m.index ?? 0) + m[0].length);
+          const rects = [...r.getClientRects()];
+          if (rects.length > 1) out.push(`${m[0]} breaks`);
+          if (rects.some((x) => x.right > box.right + 0.5)) out.push(`${m[0]} runs out of its cell`);
+        }
+        return out;
+      }),
+    ),
+  );
+  expect(broken).toEqual([]);
+});
+
+test('#1496 the chevron takes 20 px from the bars, as quota-fit is told (OPEN_W), at 1280 and 375 px', async ({ page }) => {
+  for (const width of [1280, 375]) {
+    await room(page, width);
+    await expect(line(page).getByRole('meter')).toHaveCount(2);
+    const gap = await line(page).evaluate((el) => {
+      const bars = [...el.querySelectorAll('.quota-bar')];
+      return el.getBoundingClientRect().right - bars[bars.length - 1].getBoundingClientRect().right;
+    });
+    expect.soft(Math.abs(gap - 20), `at ${width} px the bars end ${gap} px short of the line`).toBeLessThanOrEqual(0.5);
+  }
+});

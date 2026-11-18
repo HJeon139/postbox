@@ -793,10 +793,12 @@ html.store-down .sidepanel { padding-bottom: 44px; }
 .quota-details { display: flex; flex-direction: column; gap: 12px; }
 /* Every backend’s table has the same columns, so they line up from one table to the next. */
 .quota-table { table-layout: fixed; }
-.quota-table th, .quota-table td { padding: 6px 12px 6px 0; text-align: left; overflow-wrap: anywhere; }
-.quota-table th:nth-child(1) { width: 40%; }
-.quota-table th:nth-child(2) { width: 15%; }
-.quota-table th:nth-child(3) { width: 25%; }
+.quota-table th, .quota-table td { padding: 6px 12px 6px 0; text-align: left; }
+/* Only a window’s name, which can hold a long limit’s, wraps inside a word: a figure, a time or “Reset” never breaks. */
+.quota-table td:first-child { overflow-wrap: anywhere; }
+.quota-table th:nth-child(1) { width: 36%; }
+.quota-table th:nth-child(2) { width: 17%; }
+.quota-table th:nth-child(3) { width: 26%; }
 /* What each bar shows to fit is measured, not set here: quota-fit.mjs shortens names, then shows the percent alone,
    which never clips. A stale figure is marked “~”, not by a shade. */
 /* `!`’s folder is cut in the middle, so its last part, where the command runs, stays on the row: the head gives way
