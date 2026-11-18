@@ -190,6 +190,7 @@ Each code pull request is measured against `main`, back to back on the same mach
 | Log bytes and events a turn | `tools/measure-progress.mjs`, extended to the Codex, Kiro and Antigravity fixtures (`tests/fixtures/codex-app-server/`, `kiro-cli/`, `antigravity-cli/`) | 1x |
 | A long turn | A fixture of 300 and of 1,000 steps: log bytes, step records written, time a commit point | 1x, 10x |
 | A crowded room | The fixtures replayed at once by 8 and by 40 agents in one room, and 100 running turns across rooms: log bytes, server event-loop time a delta | 10x, 100x |
+| A crowd, warm | Each crowd alone in a process, run 4 times and then measured 8: the median CPU, event-loop and mappers’ time (`steady`, `tools/measure-progress/steady.mjs`). The crowded room’s rows run nine crowds in one process, so where the JIT and the GC land among them moves its times as much as a change does; these read the time a long-running Postbox pays | 1x, 10x, 100x |
 | Restart | Start on a log built from those turns: replay time, heap after start, store snapshot size | 1x, 10x, 100x |
 | The page’s work | `tests/browser/live-cost.spec.mjs` and `live-event-cost.spec.mjs`: layouts a step, the page’s time a turn | 1x, 10x, 100x |
 | The wire | Bytes and frames a page receives a turn, with 1, 3 and 10 tabs open | 1x, 10x |

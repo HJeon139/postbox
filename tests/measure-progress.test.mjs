@@ -101,3 +101,17 @@ test('a tab connecting mid-turn counts the running turns’ snapshot apart, and 
   streamOf.open[0].write('event: live\ndata: {"kind":"step"}\n\n');
   assert.deepEqual([tab.frames, tab.snapshotFrames], [1, 1], 'a frame after the connect is the work’s, not the snapshot’s');
 });
+
+// The steady section runs each crowd the crowd section runs, alone in a process and warmed (tools/measure-progress/
+// steady.mjs), so its rows read the time a long-running Postbox pays, apart from where the JIT and the GC land in a run
+// of all nine.
+test('the steady section has a run for each crowd and count of tabs the crowd section has, and reads their median', async () => {
+  const { STEADY_CROWDS, median, steadyOne, WARM, MEASURED } = await import('../tools/measure-progress/steady.mjs');
+  const { CROWDS, CROWD_TABS } = await import('../tools/measure-progress/sections.mjs');
+  assert.equal(STEADY_CROWDS.length, CROWDS.length * CROWD_TABS.length);
+  assert.deepEqual(STEADY_CROWDS[4], ['10x: 40 agents in a room', 1, 40, 3]);
+  assert.ok(WARM >= 1 && MEASURED >= 5, 'warmed, and measured enough runs for a median');
+  assert.equal(median([3, 1, 2]), 2);
+  assert.equal(median([4, 1, 3, 2]), 2, 'the lower middle of an even count, a time actually measured');
+  await assert.rejects(steadyOne('9'), /No steady crowd 9: name 0 to 8\./);
+});
