@@ -101,6 +101,8 @@ function mcpLabel(name, i) {
       return 'Reading the conversation';
     case 'mcp__postbox__read_message':
       return 'Reading a message in full';
+    case 'mcp__postbox__read_app':
+      return `Reading what app “${clip(i.appId, 40)}” published`;
     case 'ToolSearch':
       return 'Loading tools';
     default: {
