@@ -3,11 +3,11 @@
 //   postbox.query(tool, args)     → Promise<result>; only tools the app and its agent were granted
 //   postbox.file(name)            → Promise<string>; a data file the agent attached to this version (#54)
 //   postbox.send(action, values, summary)  sends one event to the agent. Postbox writes the line in your voice from
-//                                 what was sent; summary shows beside it as the app’s own words (#51). Only
-//                                 right after the person clicks or presses a key in the app (it rejects
-//                                 otherwise), up to 5 a minute; more resolve { held: true, waiting } and wait
-//                                 for the person to allow them on a card. Don’t focus anything on load: an
-//                                 app that takes the keyboard without a click gets it taken back. Values larger
+//                                 what was sent; summary shows beside it as the app’s own words (#51). The
+//                                 person’s click or key press in the app starts one turn; any other send (on
+//                                 load, on a timer, the rest of one click’s burst) resolves { ok, noted: true }:
+//                                 a note the agent reads with read_app, no turn (#1488). Don’t focus anything
+//                                 on load: an app that takes the keyboard without a click gets it taken back. Values larger
 //                                 than one event carries (eventBytes in shared/limits.mjs, which the server
 //                                 passes in data-init) reject here, with the limit named, and nothing is sent
 //   postbox.saveState(obj) / postbox.restoreState()   survives unload, reload and new versions

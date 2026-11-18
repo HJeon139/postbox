@@ -5,6 +5,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { noteApp } from '../server/app-notes.mjs';
 import * as arrange from './arrange.mjs';
 import { choice, setup, turn } from './blocks-fixture.mjs';
 
@@ -43,16 +44,7 @@ test('#848 an app’s send to a retired fork is refused before anything is recor
   retire(rt, t);
   assert.throws(() => rt.appEvent('spam', 'pick', { n: 1 }), retiredRefusal);
   assert.equal(voices(), before, 'no “You said” line');
-  assert.throws(() => rt.appEvent('spam', 'pick', { n: 1 }, { hold: true }), retiredRefusal);
-  assert.equal(store.items(t.id).filter((i) => i.kind === 'appsend').length, 0, 'no card that waits on the person');
-  assert.notEqual(rt.s.sessions[se.id].needs?.kind, 'appsend', 'and the retired fork doesn’t need them');
-});
-
-test('#848 allowing an app’s held send to a fork retired since is refused, and the card still asks', () => {
-  const { store, rt, t } = withApp();
-  rt.appEvent('spam', 'pick', { n: 1 }, { hold: true });
-  const card = store.items(t.id).find((i) => i.kind === 'appsend');
-  retire(rt, t);
-  assert.throws(() => rt.resolveAppSend(t.id, card.id, 'allow'), retiredRefusal);
-  assert.equal(store.item(t.id, card.id).status, 'open', 'the card still asks');
+  assert.throws(() => noteApp(rt, 'spam', 'pick', { n: 1 }), retiredRefusal);
+  assert.equal(rt.s.appNotes.spam, undefined, 'no note kept for it');
+  assert.equal(rt.s.sessions[se.id].needs ?? null, null, 'and the retired fork doesn’t need them');
 });

@@ -7,7 +7,7 @@ import { formatDuration } from '../shared/text.mjs';
 import { listProcesses } from './adapters/process-group.mjs';
 import { runAgentCommand } from './agent-commands.mjs';
 import { sendAppMessage } from './app-entries.mjs';
-import { holdAppSend, needAppSend, releaseRetired, resolveAppSend } from './app-send-cards.mjs';
+import { needAppSend, releaseRetired, resolveAppSend } from './app-send-cards.mjs';
 import { APP_HOLD_MAX, APP_SEND_LIMIT, APP_SEND_WINDOW_MS } from './app-send-limits.mjs';
 import { Apps } from './app-service.mjs';
 import { askQuestions, QUESTION_TOOL, questionBlocks } from './ask-question.mjs';
@@ -752,9 +752,7 @@ export class Runtime {
     return this.apps.appCheck(appId, report);
   }
   appEvent(appId, action, values, opts) {
-    const r = this.apps.appEvent(appId, action, values, opts);
-    // Past its limit, an app’s event waits on its card for the person (asks: server/app-send-cards.mjs).
-    return r.hold ? holdAppSend(this, r.hold.app, r.hold.card, r.hold.event) : r;
+    return this.apps.appEvent(appId, action, values, opts);
   }
   needAppSend(app, itemId, waiting) {
     return needAppSend(this, app, itemId, waiting);

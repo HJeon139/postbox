@@ -39,24 +39,6 @@ test('#1425 an app’s event for a busy agent waits as an entry for its voice li
   );
 });
 
-test('#1425 the events the person allows on an app’s card are entries too, each given once', async () => {
-  const f = await busyWithApp();
-  f.rt.appEvent('lab', 'one', { n: 1 }, { hold: true });
-  f.rt.appEvent('lab', 'two', { n: 2 }, { hold: true });
-  const card = f.store.items(f.t.id).find((x) => x.kind === 'appsend');
-  f.rt.resolveAppSend(f.t.id, card.id, 'allow');
-  assert.deepEqual(
-    arrange.waitingEntries(f.rt, f.beta.id).map((e) => e.source),
-    ['event', 'event'],
-  );
-  f.busy.release();
-  await settle(f.rt);
-  assert.deepEqual(
-    eventsTo(f.adapter, f.beta).map((ev) => ev.action),
-    ['one', 'two'],
-  );
-});
-
 test('#1425 an app’s check that needs a fix is a check entry, and its turn gets the problems', async () => {
   const f = await busyWithApp();
   const problems = [{ code: 'overflow', message: 'The chart runs past the frame.' }];

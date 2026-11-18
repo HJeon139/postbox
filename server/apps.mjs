@@ -9,7 +9,6 @@ import { INTENT_CHARS, LIMITS } from '../shared/limits.mjs';
 import { wordCount } from '../shared/text.mjs';
 import { appReceipt } from './app-check-status.mjs';
 import { notYours } from './app-retire.mjs';
-import { APP_SEND_LIMIT, APP_SEND_WINDOW_MS } from './app-send-limits.mjs';
 import { httpError, refuseRetired } from './helpers.mjs';
 import { HELD_BY_EVERY_AGENT, hostTool } from './host-tool.mjs';
 import { newId } from './store.mjs';
@@ -100,28 +99,20 @@ export function appCheck(apps, appId, { version, problems = [] }) {
 /** The status of an app whose agent’s app-check turn ended without a new version: crashed if its script threw (#964). */
 export const fixEnded = (app) => (app.check.problems?.some((p) => p.code === 'script-error') ? 'crashed' : 'note');
 
-// An app’s sends are limited (#38): server/app-send-limits.mjs says how, and why.
-
 /**
- * An event an app sends in your voice. Within the limit, it goes to the agent; past it (or when the browser
- * asks, with hold), it waits on the app’s card. The card and its events are items, so they survive a restart.
+ * An event an app sends in your voice, which starts its agent’s turn. The browser sends one only for the person’s click
+ * or key press in the app, one a click (app/js/app-send.mjs), so there’s no limit to count here and no card to wait
+ * on: what an app sends without a click is a note (server/app-notes.mjs, #1488).
  * @param {import('./app-service.mjs').Apps} apps @param {string} appId @param {string} action @param {object} values
- * @param {{ hold?: boolean, now?: number }} [opts]
+ * @param {{ now?: number }} [opts]
  */
-export function appEvent(apps, appId, action, values, { hold = false, now = Date.now() } = {}) {
+export function appEvent(apps, appId, action, values, { now = Date.now() } = {}) {
   const app = apps.store.state.apps[appId];
   if (!app) throw httpError(404, 'That app doesn’t exist.');
   if (app.retired) throw httpError(409, `${app.title} was retired, so it can’t send messages.`);
   const r = buildEvent({ type: 'app', id: appId, title: app.title }, action, values);
   if (!r.ok) throw httpError(422, r.error);
   refuseRetired(apps.store.state.sessions[app.sessionId]);
-  const items = apps.store.items(app.threadId);
-  const card = items.find((x) => x.kind === 'appsend' && x.appId === appId && x.status === 'open');
-  // Sends you allowed on a card don’t count against the next minute.
-  const recent = items.filter((x) => x.kind === 'voice' && x.appId === appId && !x.approved && now - (x.sentAt ?? x.at) < APP_SEND_WINDOW_MS).length;
-  // Once some sends wait, later ones wait behind them, so the agent gets them in order.
-  // Past the limit the event waits on the app’s card, which is asks’ (server/app-send-cards.mjs): the facade holds it.
-  if (card || hold || recent >= APP_SEND_LIMIT) return { hold: { app, card, event: r } };
   const voice = apps.threads.addItem(app.threadId, { kind: 'voice', text: r.voice, ...(r.quote ? { quote: r.quote } : {}), appId, sentAt: now });
   if (apps.store.state.sessions[app.sessionId]) apps.send(app.sessionId, { kind: 'event', event: r.event }, { threadId: app.threadId, itemId: voice.id });
   return { ok: true, voice: r.voice };

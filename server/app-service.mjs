@@ -77,8 +77,8 @@ export class Apps {
   }
 
   /**
-   * An event an app sends in the person’s voice: sent, or { hold: { app, card, event } } for asks to hold on its card.
-   * @param {string} appId @param {string} action @param {object} values @param {{ hold?: boolean, now?: number }} [opts]
+   * An event an app sends in the person’s voice, for their click: it starts its agent’s turn.
+   * @param {string} appId @param {string} action @param {object} values @param {{ now?: number }} [opts]
    */
   appEvent(appId, action, values, opts) {
     return appEvent(this, appId, action, values, opts);
