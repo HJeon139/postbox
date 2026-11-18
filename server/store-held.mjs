@@ -21,6 +21,7 @@
 
 import { itemOf, positionOf } from '../shared/item-index.mjs';
 import { apply, patchSession } from '../shared/state.mjs';
+import { Fifo } from './fifo.mjs';
 
 /** The lists a pending read covers: the events that change one, the key they name it by, and how an add names its entry. */
 const LISTS = /** @type {const} */ ({
@@ -46,6 +47,51 @@ const ENTITIES = /** @type {const} */ ({
   // attached Claude Code session, #1247’s class).
   personas: { event: 'persona', removed: 'persona', patched: null },
 });
+/**
+ * The names of what a held event touches, as the views are named: each list it changes (`items:<threadId>`) and each
+ * collection (`entities:sessions`). @param {any} ev
+ */
+function touchedBy(ev) {
+  const names = [];
+  for (const [list, { events, key }] of Object.entries(LISTS))
+    if (/** @type {readonly string[]} */ (events).includes(ev.type)) names.push(`${list}:${ev.data?.[key]}`);
+  for (const [coll, { event, removed, patched }] of Object.entries(ENTITIES))
+    if (ev.type === event || ev.type === patched || (ev.type === 'remove' && ev.data?.kind === removed)) names.push(`entities:${coll}`);
+  return names;
+}
+
+/**
+ * The held emits, in order, with a count of the held events that touch each list and collection: a pending read of
+ * one that nothing held touches is the published one, with no view to build. A busy room reads every agent’s inbox
+ * while a snapshot holds its writes, and most inboxes have nothing held. The names are taken when a job is held, and
+ * kept on it, so its release takes back exactly what it added, whatever its caller does to its object meanwhile.
+ * @extends {Fifo<any>}
+ */
+export class HeldLog extends Fifo {
+  /** @type {Map<string, number>} */
+  touched = new Map();
+
+  /** @param {any} job */
+  push(job) {
+    job.touches = touchedBy(job.held);
+    for (const name of job.touches) this.touched.set(name, (this.touched.get(name) ?? 0) + 1);
+    super.push(job);
+  }
+
+  shift() {
+    const job = super.shift();
+    for (const name of job?.touches ?? []) {
+      const n = (this.touched.get(name) ?? 0) - 1;
+      if (n > 0) this.touched.set(name, n);
+      else this.touched.delete(name);
+    }
+    return job;
+  }
+}
+
+/** Whether a held event touches a view’s list or collection. @param {import('./store.mjs').Store} store @param {string} name */
+const heldOn = (store, name) => Boolean(store.held) && /** @type {any} */ (store.heldLog).touched?.has(name) !== false;
+
 /** @typedef {keyof typeof LISTS} PendingList */
 /** @typedef {keyof typeof ENTITIES} PendingCollection */
 /** @typedef {any} Entry  an item, a work entry or an app, as the reducer keeps it: their shapes aren’t typed yet (shared/state.mjs) */
@@ -89,7 +135,7 @@ export function pendingReads(store) {
  */
 function pendingCollection(store, coll) {
   const published = store.state[coll] ?? {};
-  if (!store.held) return published;
+  if (!heldOn(store, `entities:${coll}`)) return published;
   const v = collectionView(store, coll);
   if (!v.entries) return published;
   if (v.copiedAt !== v.changes) {
@@ -101,7 +147,7 @@ function pendingCollection(store, coll) {
 
 /** One entity of a collection as memory will hold it once what is held is released, with no copy of the collection. @param {import('./store.mjs').Store} store @param {PendingCollection} coll @param {string} id */
 function pendingEntity(store, coll, id) {
-  if (!store.held) return store.state[coll]?.[id];
+  if (!heldOn(store, `entities:${coll}`)) return store.state[coll]?.[id];
   const v = collectionView(store, coll);
   return (v.entries ?? store.state[coll])?.[id];
 }
@@ -157,8 +203,8 @@ function pendingItem(store, threadId, id) {
  */
 function pendingList(store, list, key) {
   const published = store.state[list]?.[key] ?? [];
-  if (!store.held) return published;
   const name = `${list}:${key}`;
+  if (!heldOn(store, name)) return published;
   let v = store.views.get(name);
   if (!v || v.version !== store.version || v.state !== store.state) {
     v = { version: store.version, state: store.state, seen: 0, entries: [...published], own: new Set(), copy: null, copiedAt: -1 };

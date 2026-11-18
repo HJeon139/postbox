@@ -5,6 +5,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import * as arrange from './arrange.mjs';
+import { pageView } from './page-view.mjs';
 import { settle, setup } from './side-threads-fixture.mjs';
 
 /** A turn that takes a step, waits for the test, then writes. */
@@ -187,6 +188,8 @@ test('a subagent’s step between two chunks doesn’t split the agent’s words
 
 test('a step taken after a post below the reply shows in the part its words start below the post; the first part keeps every step', async () => {
   const f = setup();
+  // The parts as a page holds them mid-turn: stored, with the live frames over them (live-progress.md).
+  const page = pageView(f.store);
   let go = () => {};
   const posted = new Promise((r) => {
     go = r;
@@ -212,7 +215,7 @@ test('a step taken after a post below the reply shows in the part its words star
   go();
   await until(() => checked);
 
-  const [first, later] = agentItems(f);
+  const [first, later] = page.state().items[f.t.id].filter((/** @type {any} */ it) => it.kind === 'agent');
   assert.equal(later?.text, 'One line.', 'the words after the post are a part of their own');
   const part = Object.fromEntries(first.activity.steps.map((s) => [s.id, s.part ?? first.id]));
   assert.deepEqual(part, { read: first.id, count: later.id, check: later.id }, 'each step shows in the part it fell in; the first keeps them all');

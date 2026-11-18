@@ -14,7 +14,10 @@
 // out as a cursor with its seq. The control frames’ names are shared/state.mjs’s STREAM, which no event type may take.
 
 import { EVENTS, STREAM } from '../shared/state.mjs';
-import { publicFrame, publicHeaderFrame } from './public-state.mjs';
+import { liveSnapshots } from './live-buffer.mjs';
+import { liveSent } from './live-sent.mjs';
+import { publicFrame, publicHeaderFrame, publicLive, publicLiveFrame } from './public-state.mjs';
+import { onLive } from './store-live.mjs';
 import { REJECTED } from './store-reject.mjs';
 import { threadHeaders } from './thread-headers.mjs';
 
@@ -29,8 +32,10 @@ export const UNREAD_MS = 60_000;
  * Sends the store’s events to every open stream, and a keep-alive every 15 s; stream() opens one for a request to
  * /api/stream.
  * @param {import('./store.mjs').Store} store
- * @param {typeof EVENTS} [events]  the event table, which a spec replaces to show a private type
- * @param {{ now?: () => number }} [options]  the clock UNREAD_MS is measured on, which a test sets
+ * @param {typeof EVENTS | undefined} table  the event table (EVENTS when undefined), which a spec replaces to show a
+ *   private type
+ * @param {{ now?: () => number, running: { all: () => any[] } }} options  the running turns, whose live state a stream
+ *   is sent when it connects; and the clock UNREAD_MS is measured on, which a test sets
  * @returns {{
  *   streams: Set<import('node:http').ServerResponse>,
  *   stop: () => void,
@@ -38,7 +43,8 @@ export const UNREAD_MS = 60_000;
  *   headers: ReturnType<typeof threadHeaders>,
  * }}
  */
-export function liveStreams(store, events = EVENTS, { now = Date.now } = {}) {
+export function liveStreams(store, table, { now = Date.now, running }) {
+  const events = table ?? EVENTS;
   /** @type {Set<import('node:http').ServerResponse>} */
   const streams = new Set();
   const deliver = frameWriter(streams, now);
@@ -46,7 +52,11 @@ export function liveStreams(store, events = EVENTS, { now = Date.now } = {}) {
   const headers = threadHeaders(store);
   /** The conversations each page’s stream has open (#1155); a tool’s stream names none and gets every item event. */
   const openOf = new WeakMap();
-  store.subscribe(eventSender({ store, streams, deliver, headers, events, openOf }));
+  // What each page was sent live, so a stored event of it isn’t sent to that page again.
+  const sent = liveSent();
+  store.subscribe(eventSender({ store, streams, deliver, headers, events, openOf, sent }));
+  // A running turn’s live frames (designs/architecture/live-progress.md), in order with the events (server/store-live.mjs).
+  onLive(store, liveSender({ store, streams, deliver, events, openOf, sent }));
   // The store’s status, unnumbered, each time writes close or reopen, a Retry starts or ends, or a warning changes
   // (#508’s storage design, “When a write fails (ST-3)”): the page shows one status line from it.
   store.onStatus((status) => {
@@ -76,7 +86,12 @@ export function liveStreams(store, events = EVENTS, { now = Date.now } = {}) {
     const backlog = lost ? null : store.since(since);
     // Too far behind, or on a lost timeline: the browser refetches the whole state, then resumes from its seq.
     if (backlog === null) res.write(`event: ${STREAM.resync}\ndata: {}\n\n`);
-    else for (const frame of backlogFrames(backlog, since, events, headers, open)) deliver(res, frame);
+    else {
+      for (const frame of backlogFrames(backlog, since, events, headers, open)) deliver(res, frame);
+      // Then the running turns’ live state, which no backlog has: a page that opens a conversation or reconnects
+      // mid-turn gets what changed since the last commit point (live-progress.md, “A page that reconnects”).
+      for (const frame of snapshotFrames(running, open, events, res, sent)) deliver(res, frame);
+    }
     streams.add(res);
     req.on('close', () => streams.delete(res));
   }
@@ -88,9 +103,10 @@ export function liveStreams(store, events = EVENTS, { now = Date.now } = {}) {
  * What the store tells the streams of each event: its frame, as each page’s open conversations let it see the event,
  * then the header frames it changed.
  * @param {{ store: any, streams: Set<import('node:http').ServerResponse>, deliver: (res: any, frame: string) => void,
- *   headers: ReturnType<typeof threadHeaders>, events: typeof EVENTS, openOf: WeakMap<object, Set<string>> }} o
+ *   headers: ReturnType<typeof threadHeaders>, events: typeof EVENTS, openOf: WeakMap<object, Set<string>>,
+ *   sent: ReturnType<typeof liveSent> }} o
  */
-function eventSender({ store, streams, deliver, headers, events, openOf }) {
+function eventSender({ store, streams, deliver, headers, events, openOf, sent }) {
   // POSTBOX_STREAM_LAG holds every event back that many milliseconds, as a busy computer can. The browser specs run
   // with it in CI to show they wait for the page to hear a change, not for a fixed time.
   const lag = Number(process.env.POSTBOX_STREAM_LAG) || 0;
@@ -104,20 +120,98 @@ function eventSender({ store, streams, deliver, headers, events, openOf }) {
     // An event the store held as rejected (#609): its place, then a resync, since a handler that broke its contract
     // may have changed the state the page can't see.
     const tail = ev.type === REJECTED ? `${after}event: ${STREAM.resync}\ndata: {}\n\n` : after;
+    // A page that had it live gets nothing of it but the headers it changed (server/live-sent.mjs).
+    const mark = sent.marked(ev);
     // Both forms now, as the event is: a send held back would otherwise read the store's objects as they are by then.
-    const full = publicFrame(ev, events) + tail;
-    // As a page sees it that hasn't the conversation open: differs only for an item's event, so only that is built twice.
-    const shut = ev.type.startsWith('item.') ? publicFrame(ev, events, new Set()) + tail : full;
+    // A marked event sent now builds them only for a stream that needs them, as most get nothing of it.
+    let frames = !mark || lag > 0 ? framesOf(ev, events, tail) : null;
+    const built = () => (frames ??= framesOf(ev, events, tail));
     const send = () => {
       if (store.epoch !== epoch) return;
       for (const res of streams) {
         const open = openOf.get(res);
-        deliver(res, !open || open.has(ev.data?.threadId) ? full : shut);
+        // Asked of every page, so each forgets the step once it’s stored, open or not.
+        if (mark && open && sent.had(res, ev)) {
+          if (tail) deliver(res, tail);
+        } else {
+          const { full, shut } = built();
+          deliver(res, !open || open.has(ev.data?.threadId) ? full : shut);
+        }
       }
     };
     if (lag > 0) setTimeout(send, lag).unref();
     else send();
   };
+}
+
+/**
+ * What the store tells the streams of each live frame: the frame as each page’s projection lets it see it
+ * (publicLiveFrame: an item’s only with its conversation open, a session’s on every stream), through the same lag as
+ * the events, so a page hears them in the order they were made.
+ * @param {{ store: any, streams: Set<import('node:http').ServerResponse>, deliver: (res: any, frame: string) => void,
+ *   events: typeof EVENTS, openOf: WeakMap<object, Set<string>>, sent: ReturnType<typeof liveSent> }} o
+ */
+function liveSender({ store, streams, deliver, events, openOf, sent }) {
+  const lag = Number(process.env.POSTBOX_STREAM_LAG) || 0;
+  return (/** @type {any} */ frame) => {
+    const epoch = store.epoch;
+    const send = () => {
+      if (store.epoch !== epoch) return;
+      // A reply’s turn ended (server/live-buffer.mjs): nothing goes to the pages, and each stream forgets its steps.
+      if (frame.kind === 'end') {
+        for (const res of streams) sent.forget(res, frame.itemId);
+        return;
+      }
+      // Built once for each way a page can see it: a tool’s stream and a page with the conversation open see an item’s
+      // frame the same, and every stream a session’s.
+      /** @type {Record<string, string>} */
+      const built = {};
+      for (const res of streams) {
+        const open = openOf.get(res) ?? null;
+        const how = viewOf(open, frame.threadId);
+        const out = (built[how] ??= publicLiveFrame(frame, open, events));
+        if (!out) continue;
+        deliver(res, out);
+        if (open) sent.note(res, frame);
+      }
+    };
+    if (lag > 0) setTimeout(send, lag).unref();
+    else send();
+  };
+}
+
+/**
+ * An event’s frames: as a page with its conversation open sees it, and as one without does, which differs only for an
+ * item’s event, so only that is built twice. @param {any} ev @param {typeof EVENTS} events @param {string} tail
+ */
+function framesOf(ev, events, tail) {
+  const full = publicFrame(ev, events) + tail;
+  return { full, shut: ev.type.startsWith('item.') ? publicFrame(ev, events, new Set()) + tail : full };
+}
+
+/**
+ * How a stream sees a conversation’s live frames: a tool’s sees every one, and a page’s only with it open.
+ * @param {Set<string> | null} open @param {string} threadId
+ */
+function viewOf(open, threadId) {
+  if (open === null) return 'all';
+  return open.has(threadId) ? 'open' : 'shut';
+}
+
+/**
+ * The running turns’ live state as a stream that connects sees it, noted as sent: a turn’s snapshot with its
+ * conversation open, and only its session’s fields without, as every stream gets a session’s frames.
+ * @param {{ all: () => any[] }} running @param {Set<string> | null} open @param {typeof EVENTS} events
+ * @param {object} res @param {ReturnType<typeof liveSent>} sent
+ */
+function snapshotFrames(running, open, events, res, sent) {
+  return liveSnapshots({ running }).flatMap((snap) => {
+    const [whole] = publicLive([snap], open, events);
+    const out = whole ?? publicLiveFrame({ kind: 'session', sessionId: snap.sessionId, ...snap.session }, open, events);
+    if (!out) return [];
+    if (open) sent.noteSnapshot(res, whole ?? { sessionId: snap.sessionId });
+    return [typeof out === 'string' ? out : `event: ${STREAM.live}\ndata: ${JSON.stringify(out)}\n\n`];
+  });
 }
 
 /** The most conversations one stream can name as open: a pane and a side panel, with room to spare. */

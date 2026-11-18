@@ -51,7 +51,7 @@ const event = (seq) => ({ seq, type: 'item.text', data: { threadId: 't', id: 'i'
 test('#1210 a stream whose page hasn’t read for UNREAD_MS is closed at the next frame, and gets no more', () => {
   let now = 0;
   const store = fakeStore();
-  const live = liveStreams(/** @type {any} */ (store), undefined, { now: () => now });
+  const live = liveStreams(/** @type {any} */ (store), undefined, { now: () => now, running: { all: () => [] } });
   try {
     const res = fakeResponse();
     live.stream(/** @type {any} */ ({ headers: {}, on() {} }), /** @type {any} */ (res), new URL('http://localhost/api/stream'));
@@ -73,7 +73,7 @@ test('#1210 a stream whose page hasn’t read for UNREAD_MS is closed at the nex
 test('#1210 a page that reads again in time keeps its stream, and its clock starts over', () => {
   let now = 0;
   const store = fakeStore();
-  const live = liveStreams(/** @type {any} */ (store), undefined, { now: () => now });
+  const live = liveStreams(/** @type {any} */ (store), undefined, { now: () => now, running: { all: () => [] } });
   try {
     const res = fakeResponse();
     live.stream(/** @type {any} */ ({ headers: {}, on() {} }), /** @type {any} */ (res), new URL('http://localhost/api/stream'));

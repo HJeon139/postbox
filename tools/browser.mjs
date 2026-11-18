@@ -8,6 +8,7 @@
 import { spawnSync } from 'node:child_process';
 import { writeFile } from 'node:fs/promises';
 import { chromium } from '@playwright/test';
+import { RAISE_RESOURCE_BUFFER } from './uat/diagram-probe.mjs';
 import { closeOrKill } from './uat/until-gone.mjs';
 
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -83,6 +84,8 @@ export async function launch({ detached = false } = {}) {
   const { browser, pid } = await start(detached);
   // No viewport or color scheme of Playwright’s: size() sets them, as a check asks.
   const context = await browser.newContext({ viewport: null, colorScheme: null, reducedMotion: null });
+  // The UAT’s diagram probe reads resource timing, which drops entries past its buffer (tools/uat/diagram-probe.mjs).
+  await context.addInitScript({ content: RAISE_RESOURCE_BUFFER });
   const pw = await context.newPage();
   const cdp = await context.newCDPSession(pw);
   const send = (method, params = {}) => cdp.send(method, params).catch((e) => Promise.reject(new Error(`${method}: ${e.message}`)));

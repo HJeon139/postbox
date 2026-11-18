@@ -191,3 +191,24 @@ test('#722: an agent’s item is its words only where it wrote them; a tool call
   const patch = { seq: 5, type: 'item.patch', data: { threadId: room, id: 'it_a', patch: { activity: agent.activity } } };
   assert.match(where({ log: [added, patch] }).join(' | '), /under item\.patch\.patch\.activity\.steps\.1\.detail/);
 });
+
+test('#722: an asset’s content on a live frame, a call’s output or the glimpse, is flagged where it is', () => {
+  const text = files()
+    .find((x) => x.sha === head.data.version.sha256)
+    .bytes.toString('utf8');
+  const live = [
+    { kind: 'step', threadId: room, itemId: 'it_1', rev: 2, step: { id: 's1', state: 'done', output: text } },
+    { kind: 'session', sessionId: 'se_1', currentStep: text.slice(0, 200) },
+  ];
+  const f = found({ ...facts(), live });
+  assert.deepEqual(
+    [...new Set(f['asset-content-in-store'].map((x) => x.key.split(':').slice(1, 3).join(':')))],
+    ['live frame #1:live.step', 'live frame #2:live.session'],
+  );
+  // A thought is the agent’s own words, and so is the glimpse: quoting an asset there is no copy.
+  const own = [
+    { kind: 'step', threadId: room, itemId: 'it_1', rev: 1, step: { id: 't1', kind: 'thought', detail: text } },
+    { kind: 'session', sessionId: 'se_1', glimpse: text.slice(0, 200) },
+  ];
+  assert.deepEqual(found({ ...facts(), live: own })['asset-content-in-store'], []);
+});

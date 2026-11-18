@@ -15,6 +15,7 @@
 // reads whatever landed (server/store-recover.mjs, the one recovery path). Retry as a reload is 1b’s; the generation
 // check is its seam: a loop whose generation is no longer the store’s finishes its step and publishes nothing.
 
+import { releaseLive } from './store-live.mjs';
 import { opRecord, refuseReserved, rejectedError } from './store-reject.mjs';
 import { snapshotNow, syncDir } from './store-snapshot.mjs';
 
@@ -195,10 +196,11 @@ async function writeLines(store, gen) {
   const lines = [];
   let through = 0;
   let n = 0;
-  while (store.queue[n]?.line !== undefined || store.queue[n]?.held) n++;
+  while (store.queue[n]?.line !== undefined || store.queue[n]?.held || store.queue[n]?.live) n++;
   // A job a release’s listener queues meanwhile goes behind these, and the loop’s next pass takes it.
   for (const job of takeHead(store, n)) {
-    if (job.held) {
+    if (job.live) releaseLive(store, job);
+    else if (job.held) {
       const line = store.release(job);
       through = job.held.seq;
       if (store.dir) lines.push(`${line}\n`);
@@ -229,7 +231,7 @@ export async function run(store, gen) {
   while (store.queue.length && store.generation === gen && (store.writable || store.reconciling)) {
     const job = store.queue[0];
     if (job.commit) await writeCommits(store, gen);
-    else if (job.line !== undefined || job.held) await writeLines(store, gen);
+    else if (job.line !== undefined || job.held || job.live) await writeLines(store, gen);
     else if (job.flush) {
       store.queue.shift();
       stepOn(store, 'the final sync');

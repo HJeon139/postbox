@@ -49,7 +49,7 @@ export const client = {
 export async function load() {
   const r = await fetch('/api/state', { cache: 'no-store' });
   if (!r.ok) throw new Error('Postbox’s server didn’t answer. Check that it’s running, then reload.');
-  const { seq, epoch, state, config, store, headers } = await r.json();
+  const { seq, epoch, state, config, store, headers, live } = await r.json();
   const next = ownState(state);
   await refill(next, epoch);
   client.state = next;
@@ -58,6 +58,7 @@ export async function load() {
   client.seq = seq;
   client.epoch = epoch ?? '';
   client.store = store ?? null;
+  client.live = live ?? []; // the running turns’ live state, which live-frames.mjs applies on load
   client.emit({ type: 'load' });
 }
 
@@ -135,6 +136,7 @@ let es = null;
  */
 export function connect({ quiet = false } = {}) {
   es?.close();
+  behind = false; // a new stream starts from the page’s own seq: what follows its backlog, a snapshot included, is new
   // Item events only for the conversations open here (#1155); every other event, and each thread’s header, for all.
   const open = encodeURIComponent([...client.open.keys()].join(','));
   es = new EventSource(`/api/stream?since=${client.seq}&epoch=${encodeURIComponent(client.epoch)}&open=${open}`);
@@ -162,6 +164,8 @@ export function connect({ quiet = false } = {}) {
   });
   es.addEventListener(STREAM.resync, () => (behind ? undefined : resync()));
   // A thread’s header, unnumbered: it follows the event that changed it, and null says the thread was removed.
+  // A running turn’s live frame, unnumbered and unstored: live-frames.mjs applies it (live-progress.md).
+  es.addEventListener(STREAM.live, (e) => behind || client.emit({ type: 'live', data: JSON.parse(e.data) }));
   es.addEventListener(STREAM.header, (e) => {
     if (behind) return;
     const { threadId, header } = JSON.parse(e.data);
@@ -194,7 +198,7 @@ export function reopen() {
 // frame the server sends together load once. While the load fails, the page keeps its state and its epoch, and
 // connects again shortly: naming the old epoch, it’s told to resync again, until a load succeeds.
 let resyncing = null;
-function resync() {
+export function resync() {
   es?.close(); // the old stream stops applying another history’s events onto this state while the load runs
   resyncing ??= load()
     .then(connect, () => {
@@ -322,10 +326,3 @@ export const liveSessions = () =>
   });
 // Every kind its ring pulses for: a refused step and a tool it asked for too (#285).
 export const needsYou = () => liveSessions().filter(needsYouNow);
-
-/** The thread’s main state for its rail row: the most urgent of its agents, its side threads’ included (#121). */
-export function threadState(t) {
-  const ses = [...sessionsOf(t.id), ...sideSessionsOf(t.id)].filter((x) => !x.retiredFork);
-  const rank = { needs: 5, failed: 4, tool: 3, gen: 3, think: 3, stopping: 1, idle: 0 };
-  return ses.sort((a, b) => (rank[b.state] ?? 0) - (rank[a.state] ?? 0))[0];
-}

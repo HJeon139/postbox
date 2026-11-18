@@ -61,20 +61,23 @@ const scalar = (v) => v === null || typeof v === 'string' || typeof v === 'numbe
 
 /**
  * An object as its shape keeps it: each listed scalar field, each listed object and list picked by its own shape, and
- * nothing else; null for what isn’t an object.
- * @param {any} o @param {import('../shared/live-kinds.mjs').Shape} shape @returns {Record<string, any> | null}
+ * nothing else, into `out`; null for what isn’t an object.
+ * @param {any} o @param {import('../shared/live-kinds.mjs').Shape} shape @param {Record<string, any>} [out]
+ * @returns {Record<string, any> | null}
  */
-function pick(o, shape) {
+function pick(o, shape, out = {}) {
   if (!o || typeof o !== 'object' || Array.isArray(o)) return null;
-  /** @type {Record<string, any>} */
-  const out = {};
   for (const k of shape.fields) if (Object.hasOwn(o, k) && scalar(o[k])) out[k] = o[k];
-  for (const [k, sub] of Object.entries(shape.objects ?? {})) {
-    const v = Object.hasOwn(o, k) ? pick(o[k], sub) : null;
+  const objects = shape.objects ?? {};
+  for (const k in objects) {
+    const v = Object.hasOwn(o, k) ? pick(o[k], objects[k]) : null;
     if (v) out[k] = v;
   }
-  for (const [k, sub] of Object.entries(shape.lists ?? {}))
+  const lists = shape.lists ?? {};
+  for (const k in lists) {
+    const sub = lists[k];
     if (Object.hasOwn(o, k) && Array.isArray(o[k])) out[k] = o[k].map((x) => pick(x, sub)).filter(Boolean);
+  }
   return out;
 }
 
@@ -92,7 +95,7 @@ export function publicLiveData(frame, open = null, events = EVENTS, keys = PUBLI
   // A tool’s stream names no conversations (open is null) and gets them all; anything else must say which it has.
   if (open !== null && !(open instanceof Set)) return null;
   if (def.item && open && !open.has(frame.threadId)) return null;
-  return { kind: frame.kind, ...pick(frame, def.shape) };
+  return pick(frame, def.shape, { kind: frame.kind });
 }
 
 /**

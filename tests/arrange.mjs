@@ -5,6 +5,7 @@
 // that concern’s helpers here, and no spec.
 
 import { hostTool as hostToolOf } from '../server/host-tool.mjs';
+import { liveFields } from '../server/live-buffer.mjs';
 import { expireWait as expireWaitOf } from '../server/permission-cards.mjs';
 import { viewApp as viewAppOf } from '../server/view-app/view-app.mjs';
 import { viewOf } from '../server/view-app/view-of.mjs';
@@ -127,6 +128,9 @@ export const summarizerOf = (rt, threadId) => rt.summaries.summarizerOf(threadId
 
 /** The turn running for a session, if one is. @param {Runtime} rt @param {string} sessionId */
 export const liveTurn = (rt, sessionId) => rt.running.turnOf(sessionId);
+
+/** A running turn’s session as it is live: its tool calls, step, glimpse and subagents (server/live-buffer.mjs). */
+export const liveSession = (rt, sessionId) => liveFields(rt, rt.running.turnOf(sessionId));
 
 /** The token of the turn running for a session, which its MCP calls carry, or null when none runs. @param {Runtime} rt @param {string} sessionId */
 export const turnToken = (rt, sessionId) => rt.running.turnOf(sessionId)?.token ?? null;

@@ -2,6 +2,7 @@
 // closing (server/store-outage.mjs). Moved from server/turn-stop.mjs, so the outage calls it without an import cycle
 // through the runtime (#1442).
 
+import { liveEnd } from './live-buffer.mjs';
 import { settleScheduledWake } from './scheduled-wakes.mjs';
 import { replyMarks } from './turn-marks.mjs';
 import { foldSteps, settleStoppedSteps } from './turn-steps.mjs';
@@ -20,6 +21,8 @@ export function recordStopped(rt, turn, ended, { by, why }) {
   // (#466). A store outage leaves it too: the reload re-arms it as interrupted, its one owner (S1), so settling it
   // here as well would cancel what the agent was told will start again (the integrator’s re-review of #598).
   if (by !== 'shutdown' && by !== 'store') settleScheduledWake(rt, turn, { name: 'AbortError' });
+  // Its last commit point: the steps changed since the last are stored, before they settle and fold (live-buffer.mjs).
+  liveEnd(rt, turn);
   settleStoppedSteps(rt, turn);
   if (turn.first) foldSteps(rt, turn.threadId, turn.first);
   rt.work.endWork(turn, 'stopped');

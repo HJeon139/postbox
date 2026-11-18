@@ -5,6 +5,7 @@
 // the subagent or the turn ends.
 
 import { httpError } from './helpers.mjs';
+import { liveFields } from './live-buffer.mjs';
 import { newerFromSender } from './newer-waiting.mjs';
 
 const URGENT = '[Postbox] URGENT:';
@@ -15,7 +16,10 @@ const URGENT = '[Postbox] URGENT:';
  */
 export function endSubagent(rt, sessionId, subId) {
   const se = rt.session(sessionId);
-  const sub = (se.subagents ?? []).find((x) => x.id === subId);
+  // The subagents are live while the turn runs (live-buffer.mjs): the running turn’s, over what was stored.
+  const turn = rt.turns.get(sessionId);
+  const subagents = turn ? liveFields(rt, turn).subagents : (se.subagents ?? []);
+  const sub = subagents.find((/** @type {any} */ x) => x.id === subId);
   if (!sub || !rt.turns.has(sessionId)) throw httpError(409, 'That subagent has already ended.');
   if ((se.endingSubagents ?? []).includes(subId)) return { ending: true };
   const what = sub.asked && sub.asked !== sub.name ? `${sub.name}, asked “${sub.asked}”` : sub.name;

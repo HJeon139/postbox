@@ -200,6 +200,13 @@ export const GLIMPSE_SOURCE_CHARS = 2000;
 export const STEP_TEXT = Object.freeze({ input: 300, output: 400, thought: 8000, detail: 1200 });
 
 /**
+ * What a running turn’s live buffer holds at most (server/live-buffer.mjs; designs/architecture/live-progress.md,
+ * “The buffer”), whatever a harness reports: the steps changed since its last commit point, a session’s tool calls and
+ * subagents, and any one string, at the longest a step’s text may be (a thought).
+ */
+export const LIVE_CAPS = Object.freeze({ steps: 200, toolCalls: 5, subagents: 12, string: STEP_TEXT.thought });
+
+/**
  * Agent wakes in a row, without you, before the next waits for your Allow: a backstop against agents that never stop,
  * until a supervisor agent watches the room (#538). 3 until #320 raised it to 10, 50 since #492, and 1,000 since #1035,
  * after one held wake left every agent in a room waiting about 7.5 hours. It’s the default: each room can set its own

@@ -16,6 +16,7 @@
 // A failed snapshot is the other outcome of the one failure policy (I5): it closes nothing, sets a warning, and a
 // stored next-attempt time keeps it from being retried on every event.
 
+import { releaseLive } from './store-live.mjs';
 import { install, recover } from './store-recover.mjs';
 import { syncDir } from './store-snapshot.mjs';
 
@@ -39,7 +40,9 @@ export function fail(store, e) {
   const queue = store.queue;
   store.queue = [];
   for (const job of queue) {
-    if (job.held)
+    if (job.live)
+      releaseLive(store, job); // heard in its turn, as it would have been
+    else if (job.held)
       store.release(job); // applied and broadcast on the memory the page reads, not written, like every emit from now on
     else if (job.commit) store.waitingCommits--;
     (job.commit ?? job.flush ?? job.snapshot)?.reject(cause);

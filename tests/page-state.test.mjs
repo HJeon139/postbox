@@ -8,9 +8,9 @@ import { pageState } from '../server/page-state.mjs';
 import { apply, emptyState } from '../shared/state.mjs';
 
 /** /api/state’s answer for a state, through a store and runtime that hold only what pageState reads. */
-function answerFor(state) {
+function answerFor(state, turns = /** @type {any[]} */ ([])) {
   const store = { epoch: 'ep', status: {}, state };
-  const rt = { localBackends: () => [], config: {}, store };
+  const rt = { localBackends: () => [], config: {}, store, running: { all: () => turns } };
   const adapters = { names: () => [], get: () => ({}), runsHere: () => true };
   return pageState(/** @type {any} */ ({ store, rt, adapters, origin: '', demo: false, real: null, config: {}, headers: { all: () => ({}) } }));
 }
@@ -33,4 +33,29 @@ test('/api/state gives the page the entries it can act on, and its size doesn’
     ['waiting', 'taken', 'failed', 'stopped'],
   );
   assert.equal(JSON.stringify(many).length, JSON.stringify(none).length);
+});
+
+test('/api/state carries the running turns’ live state, as the page may see it, and none when nothing runs', () => {
+  assert.deepEqual(answerFor(emptyState()).live, []);
+  const turn = {
+    id: 'tu_1',
+    sessionId: 'se_1',
+    threadId: 'th_1',
+    first: 'it_1',
+    live: {
+      changed: new Map([['s1', { itemId: 'it_1', step: { id: 's1', label: 'Read', state: 'running', secret: 'held' } }]]),
+      rev: new Map([['s1', 1]]),
+      session: { currentStep: 'Read', secret: 'held' },
+    },
+  };
+  const [snap] = answerFor(emptyState(), [turn]).live;
+  assert.deepEqual(snap, {
+    kind: 'snapshot',
+    turnId: 'tu_1',
+    sessionId: 'se_1',
+    threadId: 'th_1',
+    itemId: 'it_1',
+    session: { currentStep: 'Read' },
+    steps: [{ id: 's1', label: 'Read', state: 'running' }],
+  });
 });

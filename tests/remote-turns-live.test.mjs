@@ -6,14 +6,18 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { pageView } from './page-view.mjs';
 import { rig, running, settled, until } from './remote-turns-helpers.mjs';
 
 test('#120 a host turn’s steps carry their input, output and place in the words, as the contract builds them here', async () => {
   const r = rig();
+  // The parts as a page holds them mid-turn: stored, with the live frames over them (live-progress.md).
+  const page = pageView(r.store);
+  const seen = () => page.state().items[r.t.id] ?? [];
   const turn = await running(r);
   // While it runs: the live view's detail goes with the turn (shared/step-fold.mjs).
-  await until(() => r.store.items(r.t.id).some((i) => i.activity?.steps?.some((s) => s.output)), 'the command’s output');
-  const parts = r.store.items(r.t.id).filter((i) => i.kind === 'agent');
+  await until(() => seen().some((/** @type {any} */ i) => i.activity?.steps?.some((/** @type {any} */ s) => s.output)), 'the command’s output');
+  const parts = seen().filter((/** @type {any} */ i) => i.kind === 'agent');
   const first = parts.find((i) => i.activity);
   assert.ok(first, `a part with steps: ${JSON.stringify(parts.map((p) => p.text))}`);
   const bash = first.activity.steps.find((s) => s.input?.includes('echo hello > hello.txt'));
