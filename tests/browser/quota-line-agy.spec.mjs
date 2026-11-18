@@ -70,7 +70,7 @@ test('#1466 Antigravity gets a bar from its /usage, its most-used pool named aft
     };
   });
   expect.soft(Math.abs(parts[0] - parts[1]), 'half each').toBeLessThanOrEqual(1);
-  expect.soft(agy.bar.width, 'half the card, less the gap between them').toBeGreaterThan(card.width / 2 - 12);
+  expect.soft(agy.bar.width, 'half the card less its chevron (20 px, #1496), less the gap').toBeGreaterThan((card.width - 20) / 2 - 12);
   expect.soft(Math.abs(agy.track.width - agy.bar.width), 'its track fills its part').toBeLessThanOrEqual(0.5);
   expect.soft(agy.text.top >= agy.track.bottom, 'its words are below its track').toBe(true);
 });

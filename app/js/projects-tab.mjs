@@ -38,7 +38,7 @@ export function projectsTab(paint) {
     h(
       'ul.list-rows',
       Object.values(S().projects).map((p) =>
-        h('li.col', h('div.row-flex', icon('folder', 'dim'), h('b', p.name), h('span.small.dim.mono.grow', p.folder)), pushField(p)),
+        h('li.project-row', h('div.row-flex', icon('folder', 'dim'), h('b', p.name), h('span.small.dim.mono.grow', p.folder)), pushField(p)),
       ),
     ),
     h(

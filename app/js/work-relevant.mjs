@@ -6,6 +6,7 @@ import { relevantRefs, saidKey } from '/shared/room-refs.mjs';
 import { client } from './client.mjs';
 import { h } from './dom.mjs';
 import { latestItems } from './item-ranges.mjs';
+import { readingHold } from './reading-hold.mjs';
 import { openWork } from './ui.mjs';
 import { nameFirst } from './work-assets.mjs';
 import { row, sec, short } from './work-pane-parts.mjs';
@@ -43,41 +44,18 @@ export function relevantSection(convId, list, { all, showAll }) {
 }
 
 /**
- * In this chat’s list, held still while the person reads (#1446 review): while the pointer or focus is in the pane, it
- * keeps the rows it shows, and once both have left, the pane draws the newer list. A message event counts only when it
+ * In this chat’s list, held still while the person reads (reading-hold.mjs). A message event counts only when it
  * changes what In this chat reads (chatKey): a step or a reaction draws nothing.
  * @param {string} convId @param {HTMLElement} pane @param {() => void} repaint
  */
 export function chatList(convId, pane, repaint) {
+  const hold = readingHold(pane, repaint);
   let list = relevantNow(convId);
   let key = chatKey(convId);
-  let pointer = false;
-  let stale = false;
-  const held = () => pointer || pane.contains(document.activeElement);
-  const left = () => {
-    if (stale && !held()) repaint();
-  };
-  const enter = () => {
-    pointer = true;
-  };
-  const leave = () => {
-    pointer = false;
-    left();
-  };
-  // After the focus has moved, so activeElement is where it went.
-  const blur = () => queueMicrotask(left);
-  pane.addEventListener('pointerenter', enter);
-  pane.addEventListener('pointerleave', leave);
-  pane.addEventListener('focusout', blur);
   return {
     /** The list to draw: the newest, or the one shown while the person reads. */
     current() {
-      if (held()) {
-        stale = true;
-        return list;
-      }
-      stale = false;
-      list = relevantNow(convId);
+      if (!hold.reading()) list = relevantNow(convId);
       return list;
     },
     /** Whether a message event changed what In this chat reads. */
@@ -87,10 +65,6 @@ export function chatList(convId, pane, repaint) {
       key = k;
       return true;
     },
-    destroy() {
-      pane.removeEventListener('pointerenter', enter);
-      pane.removeEventListener('pointerleave', leave);
-      pane.removeEventListener('focusout', blur);
-    },
+    destroy: hold.destroy,
   };
 }
