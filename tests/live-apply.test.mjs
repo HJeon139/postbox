@@ -96,3 +96,34 @@ test('a snapshot at load brings a page that joins mid-turn up to date: its steps
   assert.equal(s.sessions.se_1.currentStep, 'Read');
   assert.ok(changes.length >= 2);
 });
+
+// A page ahead of its stream (client.mjs’s `behind`, as after it loads a conversation’s range while the stream runs
+// late) was sent these frames, and the server doesn’t send it their commit points (server/live-sent.mjs), so dropping
+// them lost them for good: a finished turn’s step stayed “running” until a reload. It applies them, unless what it
+// loaded says the turn ended: then the frame is older than that, and the fold and the resting session stand.
+test('ahead of its stream, the page applies a running turn’s frames, and drops those of a turn its state says ended', () => {
+  const { s, has } = page();
+  EVENTS['item.patch'].apply(s, { threadId: 'th_1', id: 'it_1', patch: { sessionId: 'se_1', status: 'streaming' } });
+  const live = liveApplier();
+  live.apply(s, step(1, { state: 'running' }), has, true);
+  live.apply(s, step(2, { state: 'done' }), has, true);
+  assert.equal(stepsOf(s)[0].state, 'done', 'a running reply’s step, applied');
+  live.apply(s, { kind: 'session', sessionId: 'se_1', currentStep: 'Read' }, has, true);
+  assert.equal(s.sessions.se_1.currentStep, 'Read', 'a running session’s fields, applied');
+
+  // The reply’s first part settling mid-turn, as a post below it does, isn’t its turn’s end: its steps still apply.
+  EVENTS['item.patch'].apply(s, { threadId: 'th_1', id: 'it_1', patch: { status: 'done' } });
+  live.apply(s, step(3, { state: 'running', label: 'Read again' }), has, true);
+  assert.equal(stepsOf(s)[0].label, 'Read again');
+  live.apply(s, step(4, { state: 'done' }), has, true);
+  // The page loads a state in which the turn has ended: its reply settled and folded, its session idle.
+  EVENTS['item.patch'].apply(s, { threadId: 'th_1', id: 'it_1', patch: { status: 'done' } });
+  EVENTS['session.patch'].apply(s, { id: 'se_1', patch: { state: 'idle', currentStep: '' } });
+  assert.deepEqual(live.apply(s, step(5, { state: 'running' }), has, true), [], 'a step frame from before the end');
+  assert.equal(stepsOf(s)[0].state, 'done');
+  assert.deepEqual(live.apply(s, { kind: 'session', sessionId: 'se_1', currentStep: 'Read', state: 'tool' }, has, true), []);
+  assert.equal(s.sessions.se_1.state, 'idle', 'the session rests');
+  // Not ahead of its stream, a frame is the newest word on it, as ever.
+  live.apply(s, { kind: 'session', sessionId: 'se_1', currentStep: 'Thinking' }, has);
+  assert.equal(s.sessions.se_1.currentStep, 'Thinking');
+});

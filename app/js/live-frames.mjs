@@ -15,7 +15,7 @@ const tell = (/** @type {any[]} */ changes) => {
 
 client.on((ch) => {
   if (ch.type === 'live') {
-    tell(live.apply(client.state, ch.data, has));
+    tell(live.apply(client.state, ch.data, has, ch.behind));
     // A dropped frame’s step may never be sent again (server/live-sent.mjs): the state, with its snapshot, has it.
     if (live.lost()) void resync();
   } else if (ch.type === 'load') tell(live.snapshot(client.state, client.live, has));
