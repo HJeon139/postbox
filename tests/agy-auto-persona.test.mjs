@@ -27,6 +27,14 @@ const mcp = (ServerName, ToolName) => ['call_mcp_tool', { ServerName, ToolName, 
 const SHELL = { tools: ['shell'] };
 const WEB = { tools: ['web.fetch'] };
 
+test('Run everything refuses built-in search and fetch when Web is off', () => {
+  const { call } = workspace();
+  assert.equal(call('search_web', { query: 'Postbox' }, { mode: 'bypass' }).decision, 'deny');
+  assert.equal(call('read_url_content', { Url: 'https://example.com' }, { mode: 'bypass' }).decision, 'deny');
+  assert.equal(call('search_web', { query: 'Postbox' }, { mode: 'bypass', ...WEB }).decision, 'allow');
+  assert.equal(call(...cmd('npm test'), { mode: 'bypass' }).decision, 'allow');
+});
+
 test('#416 in Auto with shell, any command runs; without shell it still asks', () => {
   const { call } = workspace();
   for (const c of ['npm test', 'git commit -m x', 'python3 x.py', 'ls | wc -l', 'curl https://example.com/a?b=1'])

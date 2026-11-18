@@ -38,9 +38,9 @@
 //   - auto: --mode auto, agy’s own sandbox and safety check. What it would still ask about is refused. An account
 //     without auto mode runs as ask: agy warns and continues in its default mode.
 //   - acceptEdits: --mode accept-edits.
-//   - bypass: --dangerously-skip-permissions, always, with no hook.
-// - Tools: agy reads deny rules only from your own settings, which every agy session shares, so a persona’s
-//   unticked Tools can’t be turned off for one turn (tools: 'none'). The rules file tells the agent not to use them.
+//   - bypass: --dangerously-skip-permissions, with the hook required when Web is off.
+// - Tools: in bypass the hook enforces Web off for built-in search and page fetching. The rules file tells the
+//   agent which tools are turned off for the turn.
 // - Setup (#57): always yours (isolation: false). agy reads its config from ~/.gemini and has no setting to move it;
 //   with another HOME it isn’t signed in. Your rules, skills, plugins and MCP servers load, as in your terminal.
 // - Effort: agy names it in some model ids (gemini-3.8-flash-high), takes --effort for others (gemini-3.8-flash:
@@ -58,7 +58,7 @@ import { withQuota } from '../harness-failure.mjs';
 import { firstSentence } from '../harness-tools.mjs';
 import { stopProbe } from '../remote/host/probe-stop.mjs';
 import { describeTool } from '../tool-labels.mjs';
-import { agyArgs } from './agy-args.mjs';
+import { agyArgs, agyBypassWebOff } from './agy-args.mjs';
 import { AGY_CAPABILITIES } from './agy-capabilities.mjs';
 import { agyHookCommand, agySupportsHooks, confirmAgyHook, HOOK_SCRIPT } from './agy-hook.mjs';
 import { agyPlugin, agySkillFiles, excludeFile, excludePlugin, PLUGIN_DIR, writeAgyPlugin } from './agy-plugin.mjs';
@@ -220,8 +220,9 @@ export function agyRules({ persona, guide, schemas = null, hooked = false }) {
   const ask = ids.length
     ? ` If a task needs ${ids.length === 1 ? 'it' : 'one of the tools'}, say it’s turned off in Postbox, and ask the person to turn it on with ask_for_tool { tool: "${ids[0]}", why }.`
     : '';
+  const enforcement = hooked && agyBypassWebOff(persona) ? ' Postbox’s permission hook blocks built-in web search and page fetching.' : '';
   const limits = off.length
-    ? `## What you don’t do here\n\nThe person turned these off for you in Postbox: ${off.join('; ')}. Antigravity can’t enforce that, so it’s up to you: don’t do them, and say so if a task needs one.${ask}`
+    ? `## What you don’t do here\n\nThe person turned these off for you in Postbox: ${off.join('; ')}.${enforcement} Follow these limits and say so if a task needs a tool that’s off.${ask}`
     : '';
   const bypass = persona?.permissionMode === 'bypass';
   const approval = bypass ? '' : hooked ? HOOK_NOTE : `${HEADLESS_NOTE}\n\n${LOOKING_NOTE}`;
@@ -587,10 +588,10 @@ export class AntigravityCliAdapter {
       console.error(
         `Postbox couldn’t read ${this.settingsFile}, so Antigravity will refuse Postbox’s tools. Add "${ALLOW_POSTBOX}" to permissions.allow there.`,
       );
-    // agy can’t turn tools off (agyRules says what’s off), and its 12,000-character rules file has no room for #131’s sections.
+    // agyRules carries tool guidance, and its 12,000-character rules file has no room for #131’s sections.
     const { guide, message: turnMessage } = turnGuide(message, { ...ctx, persona, brief: session?.brief, toolRules: null, setup: false });
     const prompt = formatMessage(turnMessage, ctx.pathOf);
-    const useHook = persona?.permissionMode !== 'bypass' && agySupportsHooks(this.version);
+    const useHook = agySupportsHooks(this.version) && (persona?.permissionMode !== 'bypass' || agyBypassWebOff(persona));
     const rulesWith = (hooked) => agyRules({ persona, guide, schemas: join(dirname(this.settingsFile), 'mcp', AGY_SERVER), hooked });
     const rules = rulesWith(useHook);
     const addDirs = [...new Set([ctx.project?.folder, ...(ctx.addDirs ?? [])])].filter((d) => d && resolve(d) !== resolve(cwd));

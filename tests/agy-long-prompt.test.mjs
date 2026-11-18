@@ -119,7 +119,7 @@ test('#362: a turn the operating system refused ends failed with the person’s 
     config: { origin: 'http://127.0.0.1:1', imageOrigins: [], lintSettleMs: 0, home: root },
   });
   store.emit('project', { id: 'p1', name: 'P', folder: root });
-  const p = rt.createPersona({ handle: 'gem', backend: 'antigravity-cli', permissionMode: 'bypass' });
+  const p = rt.createPersona({ handle: 'gem', backend: 'antigravity-cli', permissionMode: 'bypass', tools: ['web.fetch'] });
   const t = rt.createThread({ projectId: 'p1', title: 'T', personaIds: [p.id] });
   const [se] = arrange.sessionsIn(rt, t.id);
   rt.sendMessage(t.id, { text: `@gem ${'x'.repeat(40_000)}` });

@@ -8,8 +8,8 @@
 // fails open on under --dangerously-skip-permissions.
 
 import { randomUUID } from 'node:crypto';
-import { existsSync, readFileSync, realpathSync } from 'node:fs';
-import { readFile, stat } from 'node:fs/promises';
+import { constants, existsSync, readFileSync, realpathSync } from 'node:fs';
+import { access, readFile, stat } from 'node:fs/promises';
 import { request as httpRequest } from 'node:http';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -55,7 +55,7 @@ export const agyHooksJson = (command = agyHookCommand(), timeout = HOOK_TIMEOUT_
 
 /**
  * Confirms that PreToolUse hooks will run before passing --dangerously-skip-permissions: an agy version with hooks,
- * a safe existing hook script path, and hooks.json written and read back intact.
+ * a safe executable hook script path, and hooks.json written and read back intact.
  * @param {{ version: string|null|undefined, pluginDir: string, script?: string, timeout?: number }} opts
  */
 export async function confirmAgyHook({ version, pluginDir, script = HOOK_SCRIPT, timeout = HOOK_TIMEOUT_S }) {
@@ -63,7 +63,8 @@ export async function confirmAgyHook({ version, pluginDir, script = HOOK_SCRIPT,
   const command = agyHookCommand(script);
   if (!command) return false;
   const st = await stat(script).catch(() => null);
-  if (!st?.isFile()) return false;
+  const accessFailed = (await access(script, constants.X_OK).catch(() => false)) === false;
+  if (!st?.isFile() || accessFailed) return false;
   const expected = `${JSON.stringify(agyHooksJson(command, timeout), null, 2)}\n`;
   const actual = await readFile(join(pluginDir, 'hooks.json'), 'utf8').catch(() => '');
   return actual === expected;
@@ -107,6 +108,11 @@ export function decideAgyTool(
   const name = String(event?.toolCall?.name ?? '').trim();
   const args = event?.toolCall?.args && typeof event.toolCall.args === 'object' ? event.toolCall.args : {};
   if (!name) return { decision: 'deny', reason: 'Postbox’s Antigravity hook received no tool name.' };
+  if (mode === 'bypass') {
+    if ((name === 'search_web' || name === 'read_url_content') && !tools.includes('web.fetch'))
+      return { decision: 'deny', reason: 'The person turned Web off for this agent in Postbox.' };
+    return { decision: 'allow' };
+  }
   const mcp = name === 'call_mcp_tool' || name === 'list_resources' || name === 'read_resource';
   const server = String(args.ServerName ?? '');
   const tool = String(args.ToolName ?? '');

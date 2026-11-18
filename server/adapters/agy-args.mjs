@@ -1,3 +1,6 @@
+/** @param {any} persona */
+export const agyBypassWebOff = (persona) => persona?.permissionMode === 'bypass' && !(Array.isArray(persona.tools) && persona.tools.includes('web.fetch'));
+
 /** The persona’s permission mode as agy’s flags (#370: --dangerously-skip-permissions only once the PreToolUse hook is confirmed). */
 export function modeArgs(persona, { hookConfirmed = false } = {}) {
   if (hookConfirmed) return ['--dangerously-skip-permissions'];
@@ -19,6 +22,8 @@ export function modeArgs(persona, { hookConfirmed = false } = {}) {
  * @param {{ persona: any, model: string, effort: string|null, sessionId?: string|null, prompt: string, addDirs?: string[], hookConfirmed?: boolean }} turn
  */
 export function agyArgs({ persona, model, effort, sessionId = null, prompt, addDirs = [], hookConfirmed = false }) {
+  if (agyBypassWebOff(persona) && !hookConfirmed)
+    throw new Error('Postbox couldn’t enforce Web off for this Antigravity turn. Check that agy 1.4.7 or newer and Postbox’s permission hook are available.');
   return [
     // Both always passed, where agy takes them: left out, your agy settings would decide (#60).
     '--model',

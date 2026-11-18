@@ -61,6 +61,24 @@ test('#370 the follow-up asks the agent to say that Run everything would allow t
   assert.match(refusalFollowUp('Ran ls -la'), /that your permission mode in Postbox didn’t allow it, and that Run everything would/);
 });
 
+test('Run everything installs the Web restriction hook only for a Web-off persona', async () => {
+  const off = await runDeliverTurn('bypass', { version: '1.4.7' });
+  assert.equal(off.hasHooks, true);
+  assert.equal(off.env.POSTBOX_AGY_MODE, 'bypass');
+  assert.ok(off.args.includes('--dangerously-skip-permissions'));
+  assert.match(off.rules, /Postbox’s permission hook blocks built-in web search and page fetching/);
+  const on = await runDeliverTurn('bypass', { version: '1.4.7' }, { tools: ['web.fetch'] });
+  assert.equal(on.hasHooks, false);
+});
+
+test('Run everything with Web off requires an available Antigravity hook', async () => {
+  await assert.rejects(runDeliverTurn('bypass', { version: '1.4.5' }), /couldn’t enforce Web off/);
+  await assert.rejects(runDeliverTurn('bypass', { version: '1.4.7', hookScript: '/nonexistent/agy-hook.mjs' }), /couldn’t enforce Web off/);
+  const script = join(tempDir('pb-agy-nonexecutable-'), 'hook.mjs');
+  writeFileSync(script, '#!/usr/bin/env node\n', { mode: 0o600 });
+  await assert.rejects(runDeliverTurn('bypass', { version: '1.4.7', hookScript: script }), /couldn’t enforce Web off/);
+});
+
 test('#370 condition 1: --dangerously-skip-permissions is passed for ask, auto and acceptEdits only when the hook is confirmed', async () => {
   assert.equal(HOOK_TIMEOUT_S, Math.ceil(CARD_WAIT_MS / 1000) + 60);
   for (const v of ['1.4.7', '1.4.8', '1.5.0', '2.0.0']) assert.equal(agySupportsHooks(v), true, v);
