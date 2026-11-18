@@ -82,6 +82,8 @@ Inside the sandbox, the kit ([`app/kit/kit.js`](../app/kit/kit.js)) provides:
 
 The stylesheet is preloaded, so apps use the same classes and tokens as Postbox, on the cool app stage.
 
+**Links.** A web link in an app opens in a new tab when you click it, and never on the app’s own ([#1480](https://github.com/HJeon139/postbox/issues/1480)). The kit hands it to Postbox over the bridge, which checks the click as it does a send and opens one link per click (`app/kit/links.js`, `app/js/app-links.mjs`). A link to a place on the app’s own page, like `#end`, stays in the app. In the Claude desktop app’s browser pane, where opening a window replaces Postbox’s own page, Postbox’s server opens it in your default browser (`server/app-links.mjs`).
+
 **What the agent reads.** `read_app { appId, from? }` gives an agent what an app in its conversation published, and its saved state, in parts as `read_asset` gives an asset, framed as the app’s data rather than your words. Reading is how an agent sees what you did in an app without asking you or giving you a button to send it. What an app published is kept in its own private record, not on the app, so a publish sends no page anything ([security-boundaries.md](architecture/security-boundaries.md), “What reaches the browser”).
 
 **Images.** An app loads images from `data:` URLs, or from `/media/<name>`. That serves the media bundled with Postbox, then the `media/` folder in your data folder (`~/.postbox/media/`), where agents copy the images their apps show (PNG, JPEG, GIF, WebP, AVIF or SVG). Agents find it in `$POSTBOX_MEDIA`. Nothing an agent adds goes into Postbox’s own folder, which an upgrade replaces.
