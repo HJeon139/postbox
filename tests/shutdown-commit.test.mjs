@@ -128,6 +128,7 @@ test('a command’s result the ledger is still recording at close is dropped onc
   const dir = tempDir('pb-shutdown-command-');
   const late = gate();
   const a = await postbox(dir, (emit) => {
+    emit({ kind: 'text', text: 'Running it.' });
     emit({ kind: 'tool_call', id: 'c1', name: 'Bash', input: { command: 'echo hi' }, final: true });
     emit({ kind: 'tool_result', id: 'c1', text: 'hi' });
   });
@@ -142,10 +143,54 @@ test('a command’s result the ledger is still recording at close is dropped onc
   await a.close();
   late.open();
   await a.rt.ledger.idle();
-  const work = await workAfterRestart(dir, t);
-  assert.equal(work.find((/** @type {any} */ e) => e.kind === 'command')?.state, 'stopped', 'as its turn’s end wrote it');
-  assert.equal(work.find((/** @type {any} */ e) => e.kind === 'turn')?.status, 'stopped');
+  const b = await postbox(dir);
+  try {
+    const work = b.store.state.work[t.id] ?? [];
+    assert.equal(work.find((/** @type {any} */ e) => e.kind === 'command')?.state, 'stopped', 'as its turn’s end wrote it');
+    assert.equal(work.find((/** @type {any} */ e) => e.kind === 'turn')?.status, 'stopped');
+    const reply = b.store.state.items[t.id].find((/** @type {any} */ i) => i.kind === 'agent');
+    assert.equal(reply?.work, '1 command', 'the reply’s line of its work, written with the end');
+  } finally {
+    await b.close();
+  }
   assert.deepEqual(takeServerFailures(), [], 'its late result wasn’t written to the closed store');
+});
+
+test('a background command’s output still being read at close isn’t kept once the ledger has closed', async () => {
+  const dir = tempDir('pb-shutdown-output-');
+  const out = `${dir}/job.out`;
+  writeFileSync(out, 'job output');
+  const a = await postbox(dir, (emit) => {
+    emit({ kind: 'tool_call', id: 'j1', name: 'Bash', input: { command: 'sleep 9', run_in_background: true }, final: true });
+    emit({ kind: 'tool_result', id: 'j1', text: 'started', result: { backgroundTaskId: 'b1' } });
+    emit({ kind: 'tool_end', id: 'j1', status: 'completed', summary: 'exit code 0', outputFile: out });
+  });
+  arrange.withDelays(a.rt, { ledgerGraceMs: 30 });
+  // The job’s output file answers only after close(): its end is in flight as the ledger closes.
+  const late = gate();
+  const reading = gate();
+  const tail = a.rt.ledger.io.readTail;
+  a.rt.ledger.io.readTail = async (/** @type {string} */ p, /** @type {number} */ n) => {
+    reading.open();
+    await late.shut;
+    return tail(p, n);
+  };
+  let kept = 0;
+  const put = a.rt.ledger.blobs.put.bind(a.rt.ledger.blobs);
+  a.rt.ledger.blobs.put = (/** @type {Buffer} */ b) => {
+    kept++;
+    return put(b);
+  };
+  await running(a, dir);
+  await reading.shut; // the job’s end is reading its output
+  const before = kept;
+  await a.close();
+  late.open();
+  await a.rt.ledger.idle();
+  assert.equal(kept, before, 'the output read after close isn’t copied');
+  const b = await postbox(dir);
+  await b.close();
+  assert.deepEqual(takeServerFailures(), []);
 });
 
 test('a turn’s end that throws as the ledger closes is logged, and the store still closes and releases the folder', async () => {

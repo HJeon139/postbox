@@ -9,8 +9,8 @@ import { turnEnded } from './ledger-commands.mjs';
 /**
  * As Postbox shuts down, once the ledger’s grace is over: every turn’s end still waiting on a read is written with
  * what it has, then `written` (the reply’s line of its work), before the store closes; from here the ledger writes
- * nothing and runs no git. A turn that ends after this, as the server closes, loses its end and reads as interrupted
- * after the restart, as before.
+ * nothing and runs no git. No turn here ends after this: the local ones were stopped before it, and a remote one goes
+ * on on its host and is attached again after the restart.
  * @param {import('./ledger.mjs').Ledger} ledger @param {(turn: any) => void} written
  */
 export function closeLedger(ledger, written) {
