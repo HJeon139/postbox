@@ -57,7 +57,14 @@ test('#120: a remote Codex turn starts on the host with a held stdin, the shim a
   assert.equal(start.turn, ctx.remote.turn, 'the turn runs as the runtime’s ID, which it persisted to attach after a restart');
   assert.equal(calls.next, 0);
   const shim = hostPaths('/home/user', '0.10.0').shim;
-  assert.deepEqual(start.argv, ['app-server', '--listen', 'stdio://', ...codexRemoteConfigArgs('/usr/bin/node', [shim, start.turn], WAIT)]);
+  assert.deepEqual(start.argv, [
+    'app-server',
+    '--listen',
+    'stdio://',
+    ...codexRemoteConfigArgs('/usr/bin/node', [shim, start.turn], WAIT),
+    '-c',
+    'web_search="disabled"',
+  ]);
   assert.ok(start.argv.includes('mcp_servers.postbox.tool_timeout_sec=90000'), 'Codex waits on the shim past the host’s permissionWaitMax');
   assert.ok(!JSON.stringify(start).includes('127.0.0.1'), 'the laptop’s MCP URL never goes to the host');
   const writes = d.turns.get(start.turn).writes.map((l) => JSON.parse(l));
@@ -109,10 +116,11 @@ test('#120: a remote Codex turn needs the runtime’s ctx.remote.turn and versio
   host.stop();
   const [start] = sent(d, 'start');
   assert.equal(start.turn, ctx.remote.turn);
-  assert.deepEqual(
-    start.argv.slice(3),
-    codexRemoteConfigArgs('/usr/bin/node', ['/home/user/.postbox-remote/0.99.1/server/remote/host/shim.mjs', start.turn], WAIT),
-  );
+  assert.deepEqual(start.argv.slice(3), [
+    ...codexRemoteConfigArgs('/usr/bin/node', ['/home/user/.postbox-remote/0.99.1/server/remote/host/shim.mjs', start.turn], WAIT),
+    '-c',
+    'web_search="disabled"',
+  ]);
   assert.ok(!('version' in adapter), 'the adapter keeps no version of its own');
 });
 
