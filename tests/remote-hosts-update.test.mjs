@@ -90,6 +90,19 @@ test('#1514: a host with no record file keeps Postbox up to date by default, and
   }
 });
 
+test('#1514: an off saved by an earlier run stays off: no install', async () => {
+  const t = rig();
+  try {
+    writeRecord(t.dataDir, { keepUpdated: false, installs: [] });
+    assert.equal(t.mgr.status('h1').keepUpdated, false, 'read from the file, not the default');
+    await t.mgr.connect('h1').catch(() => {});
+    await sleep(40);
+    assert.equal(t.runs.length, 0);
+  } finally {
+    t.done();
+  }
+});
+
 test('#464-b2a: no install for a link whose token this computer no longer has', async () => {
   const t = rig();
   try {
