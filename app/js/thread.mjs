@@ -1447,7 +1447,7 @@ export function mountComposer(threadId, { side = false } = {}) {
     const offline = client.connection !== 'open';
     fill(
       status,
-      offline
+      client.connection === 'reconnecting'
         ? h(
             'div.sys',
             { style: { marginBottom: '6px' } },
