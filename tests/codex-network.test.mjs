@@ -4,8 +4,8 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { codexWebSearchArgs } from '../server/adapters/codex-network.mjs';
 import { codexPermissions } from '../server/adapters/codex.mjs';
+import { codexWebSearchArgs } from '../server/adapters/codex-network.mjs';
 import { modeHelp, PERMISSIONS } from '../shared/agent-facts.mjs';
 
 const net = (persona) => codexPermissions(persona, '/work').sandboxPolicy.networkAccess;
