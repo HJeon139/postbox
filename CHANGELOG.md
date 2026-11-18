@@ -2,6 +2,18 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.31.0 (2026-11-18)
+
+### Features
+
+- **composer:** bars say backend, percent and window; a click opens each backend's quota
+
+### Fixes
+
+- **composer:** the quota line's click handlers no longer keep each visited room
+- **composer:** only a window's name wraps in a word in the quota table; pin the chevron's 20 px
+- **composer:** quota details stay live, bars keep their titles, a chevron shows there's more
+
 ## 4.30.0 (2026-11-18)
 
 ### Features
