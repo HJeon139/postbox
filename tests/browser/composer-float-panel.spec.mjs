@@ -99,3 +99,27 @@ for (const width of [1280, 375])
     expect.soft(b.y + b.height, 'its end is above the card').toBeLessThanOrEqual(card.y);
     expect.soft(await inTranscript(page, b.x + 20, b.y + b.height - 4), 'its last line is on top').toBe(true);
   });
+
+for (const [width, full] of [
+  [1280, false],
+  [1280, true],
+  [900, true],
+])
+  test(`#1500 at ${width} px${full ? ', full screen' : ''}, the row under the panel’s card is the color of what’s behind it`, async ({ page }) => {
+    await panel(page, width);
+    // At 900 px the panel covers the conversation and opens full screen; wider, its button makes it so.
+    if (full && !(await page.locator('.sidepanel.pane-full').count())) {
+      await page.locator('#thread-full').click();
+      await expect(page.locator('.sidepanel.pane-full')).toBeVisible();
+    }
+    // A topic thread’s note is on that row while there’s no draft.
+    const hint = page.locator('.sidepanel .composer .hint');
+    await expect(hint).toContainText('Replies stay here');
+    await settled(page);
+    const colors = await hint.evaluate((el) => {
+      let up = el.parentElement;
+      while (up && getComputedStyle(up).backgroundColor === 'rgba(0, 0, 0, 0)') up = up.parentElement;
+      return { row: getComputedStyle(el).backgroundColor, behind: up ? getComputedStyle(up).backgroundColor : null };
+    });
+    expect(colors.row, 'no lighter band under the card').toBe(colors.behind);
+  });
