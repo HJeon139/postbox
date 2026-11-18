@@ -78,14 +78,13 @@ test('#464-b2a: no install with the consent off', async () => {
   }
 });
 
-test('#464-b2a: no install with no record file, which is no consent', async () => {
+test('#1514: a host with no record file keeps Postbox up to date by default, and installs once', async () => {
   const t = rig();
   try {
+    assert.equal(t.mgr.status('h1').keepUpdated, true, 'the host’s status says so before anything ran');
     await t.mgr.connect('h1').catch(() => {});
-    await settle();
-    assert.equal(t.runs.length, 0);
-    assert.equal(readRecord(t.dataDir), null, 'nothing wrote a record');
-    assert.equal(t.mgr.status('h1').keepUpdated, false);
+    await until(() => t.runs.length === 1, 'the automatic install to start');
+    assert.equal(readRecord(t.dataDir).keepUpdated, true, 'the try’s write keeps the default');
   } finally {
     t.done();
   }

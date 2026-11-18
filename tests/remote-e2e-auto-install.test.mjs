@@ -106,6 +106,19 @@ test('#464-b2b e2e: a turn on a host without this version, with the consent on, 
   }
 });
 
+test('#1514 e2e: a host the person never set the consent for installs by itself, and the turn starts there', async () => {
+  const p = postbox();
+  try {
+    p.rt.sendMessage(p.threadId, { text: 'hi' });
+    await until(() => p.d.received.some((m) => m.type === 'start'), 'the turn to start on the host', 4000);
+    assert.equal(p.host.runs.length, 1, 'one automatic install');
+    const failed = p.store.items(p.threadId).filter((i) => i.status === 'failed' || i.error);
+    assert.deepEqual(failed, [], 'no failure reached the thread');
+  } finally {
+    await p.done();
+  }
+});
+
 test('#464-b2b e2e: Stop ends a turn that waits for the install at once, and the install goes on', async () => {
   const p = postbox({ hang: true });
   try {
