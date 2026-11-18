@@ -1,81 +1,151 @@
-// How much of the event log a running turn’s progress is (designs/architecture/live-progress.md, “Why”): replays each
-// recorded Claude Code stream in tests/fixtures/claude-code/ through the real stream mapper into a runtime, and sums
-// the bytes of each event as the log writes it, by kind. It changes nothing; the live-only progress work records
-// main’s numbers with it before any change, and each pull request compares against them.
+// How much of the event log a running turn’s progress is, what it costs on the wire, and what a restart does
+// (designs/architecture/live-progress.md, “Why” and “Proving it costs nothing new”). It changes nothing: the
+// live-only progress work records main’s numbers with it before any change, and each pull request compares against
+// them, back to back on the same machine.
 //
-//   node tools/measure-progress.mjs
+//   node tools/measure-progress.mjs [backends|long|crowded|joining|restart ...] [--runs N]
+//   node tools/measure-progress.mjs [sections ...] --against <main's checkout> [--pairs N]
+//
+// Each section runs N times (3 unless --runs says), each in a fresh process (tools/measure-progress/run.mjs), on a
+// virtual clock, and every number is printed as its band: the least, the median and the most of the runs. The log is
+// counted as the store writes it, in UTF-8 bytes (tools/measure-progress/log-bytes.mjs). With --against, the runs of
+// that checkout’s tool and this one’s alternate in N pairs (8 unless --pairs says), and each number gets a verdict
+// against it (tools/measure-progress/compare.mjs); a section with a number worse runs a second round, which must agree.
 
-import { readdirSync, readFileSync } from 'node:fs';
-import { createStreamMapper } from '../server/adapters/claude-stream.mjs';
-import { settle, setup } from '../tests/side-threads-fixture.mjs';
+import { spawnSync } from 'node:child_process';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { compare, mainFirst, worseTwice } from './measure-progress/compare.mjs';
 
-const DIR = new URL('../tests/fixtures/claude-code/', import.meta.url);
-/** A session patch is progress when it changes only these, which go live: `state` stays stored. */
-const PROGRESS = new Set(['toolCalls', 'toolCount', 'currentStep', 'glimpse', 'subagents', 'compacting']);
+const OWN = new URL('./measure-progress/run.mjs', import.meta.url).pathname;
+const { removeRestart } = await import('./measure-progress/restart.mjs');
+const argv = process.argv.slice(2);
+/** A flag’s value, or undefined. @param {string} name */
+const flag = (name) => (argv.includes(name) ? argv[argv.indexOf(name) + 1] : undefined);
+const RUNS = Number(flag('--runs') ?? 3);
+const PAIRS = Number(flag('--pairs') ?? 8);
+const AGAINST = flag('--against');
+const asked = argv.filter((a, i) => !a.startsWith('--') && !argv[i - 1]?.startsWith('--'));
+const SECTIONS = ['backends', 'long', 'crowded', 'joining', 'restart'].filter((s) => !asked.length || asked.includes(s));
 
-/** @param {{ type: string, data?: any }} ev */
-function kindOf(ev) {
-  const d = ev.data ?? {};
-  if (ev.type === 'item.text') return 'progress: item.text';
-  if (ev.type === 'item.patch' && d.activityStep) return 'progress: item.patch activityStep';
-  if (ev.type === 'item.patch' && d.foldSteps) return 'end: foldSteps';
-  if (ev.type === 'session.patch' && !(d.unset ?? []).length && Object.keys(d.patch ?? {}).every((k) => PROGRESS.has(k))) return 'progress: session.patch';
-  return `other: ${ev.type}`;
+/**
+ * One run of a section in a fresh process, by the tool at `script`: its rows, or null when it was killed as asked. A
+ * run that fails stops the measurement, with its output. @param {string} script @param {string[]} args
+ * @param {{ killed?: boolean }} [o]
+ */
+function run(script, args, { killed = false } = {}) {
+  const r = spawnSync(process.execPath, ['--expose-gc', script, ...args], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+  if (killed && r.signal === 'SIGKILL') return null;
+  const line = r.stdout.split('\n').find((l) => l.startsWith('RESULT '));
+  if (r.status !== 0 || !line) throw new Error(`${script} ${args.join(' ')} failed (${r.status ?? r.signal}):\n${r.stderr}\n${r.stdout}`);
+  return JSON.parse(line.slice('RESULT '.length));
 }
 
-/** @param {string} name */
-const lines = (name) =>
-  readFileSync(new URL(name, DIR), 'utf8')
-    .trim()
-    .split('\n')
-    .flatMap((l) => {
-      try {
-        return [JSON.parse(l)];
-      } catch {
-        return [];
-      }
-    });
+/** Derived numbers: the shares of the log, and the event loop’s time a delta. @param {Record<string, any>} r */
+function derived(r) {
+  if (!('logBytes' in r) || !('progressBytes' in r)) return r;
+  return {
+    ...r,
+    progressPct: (100 * r.progressBytes) / r.logBytes,
+    mixedPct: (100 * r.mixedBytes) / r.logBytes,
+    usPerDelta: r.pushes ? (1000 * r.pushMs) / r.pushes : 0,
+  };
+}
 
-/** @type {Record<string, { bytes: number, events: number }>} */
-const totals = {};
-let turns = 0;
-let finalText = 0;
-let records = 0;
-for (const name of readdirSync(DIR).filter((n) => n.endsWith('.jsonl'))) {
-  const { rt, store, t, adapter } = setup();
-  /** @type {any[]} */
-  const seen = [];
-  store.subscribe((/** @type {any} */ ev) => seen.push(ev));
-  adapter.next.push(async (/** @type {any} */ c) => {
-    const m = createStreamMapper(c, { now: () => Date.now() });
-    for (const l of lines(name)) {
-      try {
-        m.push(l);
-      } catch {}
+/** Each row’s numbers across the runs. @param {any[][]} runs */
+function bands(runs) {
+  /** @type {Map<string, Record<string, number[]>>} */
+  const rows = new Map();
+  for (const rs of runs)
+    for (const r of rs) {
+      const row = rows.get(r.row) ?? {};
+      for (const [k, v] of Object.entries(r)) if (typeof v === 'number') (row[k] ??= []).push(v);
+      rows.set(r.row, row);
     }
-  });
-  rt.sendMessage(t.id, { text: '@beta go' });
-  await settle(rt);
-  turns++;
-  for (const ev of seen) {
-    const k = kindOf(ev);
-    const row = (totals[k] ??= { bytes: 0, events: 0 });
-    row.bytes += JSON.stringify(ev).length + 1;
-    row.events++;
-  }
-  for (const it of store.items(t.id)) {
-    if (it.activity?.steps?.length) records += JSON.stringify(it.activity).length;
-    if (it.kind === 'agent') finalText += String(it.text ?? '').length;
+  return rows;
+}
+
+/** A number as text. @param {number} x */
+const f = (x) => (Number.isInteger(x) ? String(x) : x.toFixed(x < 10 ? 2 : 1));
+
+/** A band as text: one number when every run gave it, else the least, the median and the most. @param {number[]} xs */
+function band(xs) {
+  const s = [...xs].sort((a, b) => a - b);
+  const [lo, mid, hi] = [s[0], s[Math.floor(s.length / 2)], s.at(-1)];
+  return lo === hi ? f(lo) : `${f(lo)} | ${f(mid)} | ${f(hi)}`;
+}
+
+/** Prints a section’s rows. @param {string} title @param {any[][]} runs */
+function print(title, runs) {
+  console.log(`\n## ${title} (${runs.length} runs; a band is least | median | most)`);
+  for (const [row, nums] of bands(runs)) {
+    console.log(`- ${row}`);
+    for (const [k, xs] of Object.entries(nums)) console.log(`    ${k}: ${band(xs)}`);
   }
 }
-const sum = (/** @type {(k: string) => boolean} */ f) =>
-  Object.entries(totals)
-    .filter(([k]) => f(k))
-    .reduce((a, [, v]) => ({ bytes: a.bytes + v.bytes, events: a.events + v.events }), { bytes: 0, events: 0 });
-const all = sum(() => true);
-const progress = sum((k) => k.startsWith('progress'));
-console.log(`${turns} turns: ${all.bytes} bytes in ${all.events} events`);
-console.log(`progress: ${progress.bytes} bytes (${((100 * progress.bytes) / all.bytes).toFixed(1)}%) in ${progress.events} events`);
-console.log(`replies’ final text: ${finalText} characters; folded records: ${records} bytes`);
-for (const [k, v] of Object.entries(totals).sort((a, b) => b[1].bytes - a[1].bytes)) console.log(`  ${k}: ${v.bytes} bytes, ${v.events} events`);
-process.exit(0);
+
+/** One run of the restart section by the tool at `script`: each scale and way of stopping, built and loaded apart. @param {string} script */
+function restartOnce(script) {
+  const rows = [];
+  for (const agents of ['4', '40', '400'])
+    for (const mode of ['graceful', 'crash']) {
+      const dir = mkdtempSync(join(tmpdir(), 'pb-measure-restart-'));
+      try {
+        const built = run(script, ['restart-build', dir, agents, mode], { killed: mode === 'crash' });
+        if (built) rows.push(...built);
+        rows.push(...run(script, ['restart-load', dir, agents, mode]));
+      } finally {
+        removeRestart(dir);
+      }
+    }
+  return rows;
+}
+
+/** One run of a section by the tool at `script`, its derived numbers added. @param {string} script @param {string} section */
+const once = (script, section) => (section === 'restart' ? restartOnce(script) : run(script, [section])).map(derived);
+
+/** Runs of main’s tool and this one in PAIRS pairs, ABBA. @param {string} theirs @param {string} section */
+function pairs(theirs, section) {
+  /** @type {any[][]} */ const main = [];
+  /** @type {any[][]} */ const branch = [];
+  for (let i = 0; i < PAIRS; i++) {
+    if (mainFirst(i)) main.push(once(theirs, section));
+    branch.push(once(OWN, section));
+    if (!mainFirst(i)) main.push(once(theirs, section));
+  }
+  return compare(main, branch);
+}
+
+/** Prints a round’s numbers against main’s. @param {string} title @param {ReturnType<typeof compare>} round */
+function printRound(title, round) {
+  console.log(`\n## ${title}`);
+  let row = '';
+  for (const c of round) {
+    if (c.row !== row) console.log(`- ${(row = c.row)}`);
+    const ratios = c.ratio === undefined ? '' : ` (x${c.ratio.toFixed(3)}, least x${/** @type {number} */ (c.leastRatio).toFixed(3)})`;
+    console.log(`    ${c.key}: ${f(c.main)} → ${f(c.branch)}${ratios}${c.worse ? '  WORSE' : ''}`);
+  }
+}
+
+if (AGAINST) {
+  const theirs = join(AGAINST, 'tools/measure-progress/run.mjs');
+  /** @type {ReturnType<typeof compare>} */
+  const worse = [];
+  for (const section of SECTIONS) {
+    const first = pairs(theirs, section);
+    printRound(`${section}: this branch against ${AGAINST} (${PAIRS} ABBA pairs; time as the median pair’s ratio, and the least runs’)`, first);
+    if (!first.some((c) => c.worse)) continue;
+    // A number worse in one round of pairs is worse only if a second round agrees.
+    const second = pairs(theirs, section);
+    printRound(`${section}, again, for what the first round found worse`, second);
+    worse.push(...worseTwice(first, second));
+  }
+  console.log(worse.length ? `\nWorse than main in both rounds:\n${worse.map((c) => `- ${c.row}: ${c.key}`).join('\n')}` : '\nNothing is worse than main.');
+  process.exitCode = worse.length ? 1 : 0;
+} else
+  for (const section of SECTIONS)
+    print(
+      section === 'restart' ? 'Restart mid-turn: 1x, 10x and 100x agents in rooms of 4, half of each turn run' : section,
+      Array.from({ length: RUNS }, () => once(OWN, section)),
+    );
