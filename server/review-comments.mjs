@@ -51,6 +51,9 @@ export function reviewBlock(apps, sessionId, args) {
     // Turns builds a turn’s input from entries, the entry carries the event its turn is given.
     const entry = { sessionId: it.sessionId, threadId: where, source: 'review', itemId: it.id, from: se.handle };
     apps.delivery.send({ ...entry, message: { kind: 'event', event } });
+    // The review hands off to the block’s author, so the turn’s reply doesn’t go back to it as well (reply-back.mjs, #1518).
+    const turn = apps.running.turnOf(sessionId);
+    if (turn) turn.named = true;
   } catch (e) {
     heard = `@${it.handle} didn’t hear them: ${e.message}`;
   }

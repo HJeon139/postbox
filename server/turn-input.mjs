@@ -19,7 +19,7 @@ import { backTo } from './reply-back.mjs';
  * @property {number} at
  * @property {boolean} [resend]
  * @property {string[]} [postedSince]  ids of the sender’s newer posts while it waited
- * @property {boolean} [bounce]  a reply going back to the agent that woke its writer (reply-back.mjs)
+ * @property {boolean} [bounce]  goes back no further: a reply going back, or a mention from a turn one started (reply-back.mjs)
  */
 
 /** What each source is, said after who it is from. A mention or the person’s message needs no words. */

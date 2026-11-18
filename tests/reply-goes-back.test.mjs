@@ -115,7 +115,7 @@ test('#1518 a reply going back that is held on a waiting card says so as a reply
   assert.equal(card.held?.length, 1, JSON.stringify(card));
   const gamma = arrange.sessionsIn(f.rt, f.t.id).find((x) => x.handle === 'gamma');
   const told = (f.store.state.sessions[gamma.id].context ?? []).join(' | ');
-  assert.match(told, /Your reply, going back to @alpha, is held\./);
+  assert.match(told, /Your message to @alpha is held\./);
   assert.doesNotMatch(told, /Your mention of @alpha/);
 });
 
@@ -163,4 +163,36 @@ test('#1518 a reply going back that waits on a card past the chain limit is stil
   );
   assert.match(turnsOf(f, 'alpha')[1].message.text, /goes to no one unless you @-mention an agent/);
   assert.equal(f.store.items(f.t.id).filter((x) => x.kind === 'hop' && x.status === 'open').length, 0, 'no second card');
+});
+
+test('#1518 a turn that reviews the asker’s block hands off by the review, so its reply doesn’t go back too', async () => {
+  // The showcase replays: @builder hands @critic its app, and @critic answers with comments on its block.
+  const f = setup();
+  const block = { id: 'plan', type: 'review', version: 1, title: 'plan.md', fallback: 'The plan', format: 'markdown', content: '# Plan\n\nShip it.' };
+  f.adapter.next.push(async (c) => {
+    c.tools.show_block({ block });
+    c.text('@beta please review the plan.');
+  });
+  f.adapter.next.push(async (c) => {
+    const r = await c.tools.review_block({ blockId: 'plan', comments: [{ line: 3, col: 1, endLine: 3, endCol: 7, quote: 'Ship it', text: 'When?' }] });
+    assert.equal(r.ok, true, r.message);
+    c.text('One comment on your plan.');
+  });
+  f.rt.sendMessage(f.t.id, { text: '@alpha write the plan' });
+  await quiet(f);
+  const alpha = turnsOf(f, 'alpha');
+  assert.equal(alpha.length, 2, turns(f).join('\n'));
+  assert.equal(alpha[1].message.kind, 'event', 'alpha’s next turn is the review, not a bounce');
+  assert.equal(replyOf(f, 'One comment on your plan.').wentBack, undefined);
+});
+
+test('#1518 a thanks that @-mentions back, after a reply came back, gets an answer that goes back to no one: no loop', async () => {
+  // The demo’s @indexer thanks “@researcher” for its answer: without this, each answer went back and was thanked again.
+  const f = await askBeta('It’s CHANGELOG.md.', { after: ['Thanks @beta, adding it there.', 'Glad to help.', 'Thanks @beta, again.', 'Glad to help, again.'] });
+  assert.deepEqual(
+    turns(f).map((x) => x.split(':')[0]),
+    ['alpha', 'beta', 'alpha', 'beta'],
+  );
+  assert.equal(replyOf(f, 'Glad to help.').wentBack, undefined);
+  assert.match(turnsOf(f, 'beta')[1].message.text, /Your reply posts there and goes to no one unless you @-mention an agent\./);
 });

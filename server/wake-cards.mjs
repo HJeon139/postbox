@@ -123,8 +123,8 @@ function holdOnCard(rt, card, parent, from, p, wake) {
     ],
   });
   const message = `Postbox is holding your message to @${p.handle}: ${cardName(card)} is waiting for the person. It goes to @${p.handle} when they allow that, so don’t send it again; if they don’t, you’ll be told.`;
-  // A bounce isn’t a mention its agent wrote: its reply went back on its own (reply-back.mjs, #1518).
-  const what = bounce ? `Your reply, going back to @${p.handle}, is held` : `Your mention of @${p.handle} is held`;
+  // A bounce may be a reply that went back on its own, not a mention its agent wrote (reply-back.mjs, #1518).
+  const what = bounce ? `Your message to @${p.handle} is held` : `Your mention of @${p.handle} is held`;
   if (itemId) rt.sessions.tell(from.id, `${what}. ${message}`);
   return { ok: false, waiting: true, held: true, message };
 }
