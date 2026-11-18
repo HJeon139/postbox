@@ -37,7 +37,8 @@ const PLACED = {
   'claude-mirror.mjs': 1, // the mirror’s poll of an attached session’s transcript: skips its tick while closed
   'kept-jobs.mjs': 1, // pollKept: skips its tick while closed
   'lint-delivery.mjs': 5, // an injected setTimer before a lint turn: a start, held by heldTurn while closed
-  'live-streams.mjs': 2, // sends frames: reads
+  'live-buffer.mjs': 1, // a turn’s coalesced session frame, at the end of its tick: sendLive, which holds it behind the store’s held writes
+  'live-streams.mjs': 3, // sends frames, the events’ and the live frames’ lag alike: reads
   'narration/narrator.mjs': 1, // stops the narrator: no store
   'net-fetch.mjs': 1, // net.fetch’s deadline, which ends a fetch: no store
   'net-fetch-line.mjs': 1, // the wait between patches of a fetch’s activity step: gated, skips its patch while closed

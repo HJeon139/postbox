@@ -13,6 +13,7 @@ import { stepDiff } from '../server/step-diff.mjs';
 import { Store } from '../server/store.mjs';
 import { STEP_TEXT } from '../shared/limits.mjs';
 import * as arrange from './arrange.mjs';
+import { pageView } from './page-view.mjs';
 
 test('an Edit’s change is the lines it replaced and the lines it wrote, without the lines they share', () => {
   const d = stepDiff('Edit', { file_path: 'calc.py', old_string: 'def add(a, b):\n    return a - b\n', new_string: 'def add(a, b):\n    return a + b\n' });
@@ -47,6 +48,8 @@ test('a long edit’s diff shows its first whole lines, each cut short, within t
 /** A runtime whose one agent runs `script` through the contract, held at `hold` until the test lets it go. */
 function scripted(/** @type {(emit: any, hold: () => Promise<void>) => Promise<void>} */ script) {
   const store = new Store(null);
+  // The reply as a page holds it: stored, with the live frames over it (live-progress.md).
+  const page = pageView(store);
   let go = () => {};
   let waiting = false;
   const held = new Promise((r) => {
@@ -77,7 +80,7 @@ function scripted(/** @type {(emit: any, hold: () => Promise<void>) => Promise<v
     for (let i = 0; i < 400 && !ok(); i++) await new Promise((r) => setTimeout(r, 5));
   };
   return {
-    reply: () => store.items(t.id).find((x) => x.kind === 'agent'),
+    reply: () => page.state().items[t.id].find((/** @type {any} */ x) => x.kind === 'agent'),
     async held() {
       rt.sendMessage(t.id, { text: 'Go.' });
       await wait(() => waiting);

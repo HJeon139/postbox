@@ -62,7 +62,11 @@ sequenceDiagram
 - each update to a step between commit points;
 - while a turn runs, `toolCalls`, `toolCount`, `currentStep`, `glimpse` and `subagents`.
 
-**Which wins.** A stored write of a live field during a turn, such as “Waiting for you” while it waits on a card, also replaces the buffer’s value. Stored events and live frames reach the page in the order they were made (“Order”), so the last one wins on the page as in the buffer, and a snapshot reads the buffer.
+**Which wins.** A stored write of a live field during a turn, such as “Waiting for you” while it waits on a card, also replaces the buffer’s value. It does so when the write is made (`Sessions.update` tells the buffer, `onSessionWrite`), not when the store publishes it, so a write held behind a commit can’t undo a newer live value. Stored events and live frames reach the page in the order they were made (“Order”), so the last one wins on the page as in the buffer, and a snapshot reads the buffer.
+
+**One frame a tick.** A turn’s session changes in one tick go as one frame at the tick’s end: a harness reports a call’s end and the words after it together, and the page draws only the last. Anything that must follow the frame sends it first: a stored write of the session, a commit point, and the turn’s end or Stop.
+
+**The turn’s end** sends a last session frame that puts each live field back to what’s stored, since the edge writes that clear a glimpse or the subagents write the same `''` and `[]` the store already has, and aren’t stored or sent. Then it sends an end frame that no page sees, by which each stream forgets the reply’s steps.
 
 ### Commit points
 
@@ -70,7 +74,9 @@ A commit point writes, in one `commit`:
 - `item.text` with the words since the last commit point. This is the same event as today, so the reducer and every reader of the log take it unchanged (`tools/uat/inbox-measures.mjs`, `picture-choice.mjs` and `checks-assets.mjs` append or match `item.text`);
 - one `item.patch` with `activityStep` for each step that is new or changed since the last commit point, the same event as today, so `checks-assets.mjs` still finds a step’s words. Each costs what that step’s change costs, never the steps before it, so a turn of `n` steps writes `O(n)` step records, not `O(n²)`.
 
-The steps it stores keep `at` and `part`, which place them among the words (`app/js/activity-live.mjs`, `textFrom`). A commit point drops only what `foldedStep` drops besides those: `input`, `output` and `diff`, the live view’s detail. It cuts `detail` to `STEP_TEXT.detail` (1,200 characters), as the fold does, so a thought’s longer detail stays live only. The buffer keeps the newest call’s full detail across a commit point that comes on time alone, so the live view’s newest call doesn’t lose its input and output mid-call. So a reload, a second tab or a conversation opened mid-turn places every stored step as the live view does. The fold at the turn’s end drops `at` and `part`, as today, and the restart sweep’s `foldCutOff`, which folds any step still holding them (`liveDetail`), folds a cut-off reply’s steps as it does now.
+The steps it stores keep `at` and `part`, which place them among the words (`app/js/activity-live.mjs`, `textFrom`). A commit point drops only what `foldedStep` drops besides those: `input`, `output` and `diff`, the live view’s detail. It keeps `detail` whole, since a page merges the stored step over the live one and a thought is shown whole while its turn runs; the fold at the turn’s end cuts it to `STEP_TEXT.detail`, as it always has. The buffer keeps the newest call’s full detail across a commit point that comes on time alone, so the live view’s newest call doesn’t lose its input and output mid-call. So a reload, a second tab or a conversation opened mid-turn places every stored step as the live view does. The fold at the turn’s end drops `at` and `part`, as today, and the restart sweep’s `foldCutOff`, which folds any step still holding them (`liveDetail`), folds a cut-off reply’s steps as it does now.
+
+**On the wire, a change crosses once.** A page that was sent a step live since its last commit point isn’t sent that commit point’s `item.patch` (`server/live-sent.mjs`). A running turn’s change of `state` or `ctx` is stored as ever, and rides on the session frame sent with it, so its `session.patch` isn’t sent to a page either, and nor is the turn’s end’s write of the tool calls and their count, which the pages had live. Both are skipped per stream: a session’s only for a stream that has been sent that session’s frames, a step’s only for one sent that step since its last commit point. A cursor would only move the page’s place on, which its next numbered frame does, and a reconnect that replays such an event changes nothing the page has. A reconnect is a new stream: it has been sent nothing, so it’s spared nothing, and it gets the backlog whole, then the running turns’ snapshots (“A page that reconnects”). A page that opened after the step went live, a page without the conversation open, and a tool’s stream, which names no open conversations, get the stored events whole. A write that changes nothing isn’t stored, since it would store and send its `updatedAt` alone.
 
 A commit point comes:
 - at a step boundary: when a call starts, the words before it are whole;
@@ -105,9 +111,11 @@ This crosses a security boundary ([security-boundaries.md](security-boundaries.m
 | Kind | Mirrors | Fields, the only ones sent |
 |---|---|---|
 | `text` | `item.text` | `threadId`, `itemId`, `turnId`, `at`, `text` |
-| `step` | `item.patch` (`activityStep`) | `threadId`, `itemId`, `turnId`, `rev`, and `step`, an object of the step’s `id`, `label`, `state`, `ms`, `who`, `parent`, `detail`, `kind`, `job`, `input`, `output`, `part`, `at`, `added`, `deleted`, `diff` |
-| `session` | `session.patch` | `sessionId`, `toolCalls`, `toolCount`, `currentStep`, `glimpse`, `subagents` |
+| `step` | `item.patch` (`activityStep`) | `threadId`, `itemId`, `rev`, and `step`, an object of the step’s `id`, `label`, `state`, `ms`, `who`, `parent`, `detail`, `kind`, `job`, `input`, `output`, `part`, `at`, `added`, `deleted`, `diff` |
+| `session` | `session.patch` | `sessionId`, `toolCalls`, `toolCount`, `currentStep`, `glimpse`, `subagents`, and the `state`, `ctx` and `updatedAt` of a change stored with them |
 | `snapshot` | the three above | `turnId`, `sessionId`, `threadId`, `itemId`, and the turn’s `text` (with its `at`), `steps` and `session`, each as its kind’s fields |
+
+A step frame names no `turnId`: the page places a step by its item, and the snapshot names the turn. A step frame sends a step whole the first time after a commit point, then only the fields that changed, with its `id`; a session frame sends only the fields that changed.
 
 **No field reaches the browser that doesn’t today.** Each is one a public event carries now. A test builds every kind from a buffer full of extra keys, and holds that a frame’s keys are a subset of its kind’s list.
 
@@ -131,7 +139,7 @@ This crosses a security boundary ([security-boundaries.md](security-boundaries.m
 
 At 100 running turns, the ceiling is 6.4 MB of text. The measurement records the real figure.
 
-**A page that reconnects** asks for everything after its Last-Event-ID, as now. It gets the backlog of stored events, which now includes each commit point. Then it gets one `snapshot` per running turn in a conversation it has open, and a `session` frame for every running session. A page that resyncs gets the same from `/api/state`’s `live`. A snapshot replaces that turn’s live state on the page; it’s never applied on top.
+**A page that reconnects** asks for everything after its Last-Event-ID, as now. It gets the backlog of stored events, which now includes each commit point. Then it gets one `snapshot` per running turn in a conversation it has open, and a `session` frame for every other running session. So does a stream opened for a conversation the page opens mid-turn, a side or topic thread included, and one closed for `UNREAD_MS` that connects again. A page that resyncs gets the same from `/api/state`’s `live`. A snapshot’s steps are whole, so a step frame after it, which carries only what changed, applies over a whole step.
 
 **A tab that opens a conversation mid-turn,** or a second tab, may get a snapshot before the conversation’s items load (`/api/threads/:id/items`, #1155). The page holds it until `loaded(threadId)`, then applies it. A frame for an item still not there waits, as in “Order”.
 
@@ -250,13 +258,18 @@ Below 400 agents no snapshot is taken, so every event is replayed. At 400, when 
 - **The tool against itself** (`--against .`, every section, a load average of 7 to 11): 40 times judged, none worse, no second round, and the smaller of each time’s two ratios reached 1.072 at most. It catches #1471’s 100x cost, at ratios of 1.13 to 1.31, in both rounds. On a busier machine a single round can find main worse than itself, a time or two just past 1.10; the second round is what keeps main against main passing under load, since noise seldom lands on the same number twice. A cost near 10% needs a calmer machine or more pairs (`--pairs`) to call.
 - The snapshot and the replay with it at 400 agents aren’t compared, for the reason above.
 
+**Step 3’s one-time compile, accepted.** Step 3 (#1471) is level with `main` in steady state and costs more only the first time its code runs in a process, which the owner accepted on 17 November 2026:
+- **The cold first pass costs more.** Each of the tool’s runs is a fresh process, so its crowd rows include V8 compiling the step’s new code the first time it’s hot: about 76 more functions optimized a process. They land at 100x, the section’s largest, at ×1.10 to ×1.20 CPU, though the tool’s verdict on a quiet machine was nothing worse than `main`.
+- **The warm second pass is level.** The crowd section run twice in one process, 32 ABBA pairs, process CPU: 100x with 1 tab ×1.05 (more in 19 of 32), with 3 tabs ×0.99, with 10 tabs ×0.94; on the main thread, ×0.97, ×1.04 and ×0.99. The cold pass in the same runs was ×1.17, ×1.06 and ×1.12.
+- **Why it’s one-time:** with V8’s background compiling off, the cold gap moves onto the main thread. With its GC helpers off, it stays. GC and disk writes equal `main`’s. A Postbox server runs for hours, so it pays the compile once.
+
 ## Order of work
 
 Each item is its own pull request, test first:
 1. **The measurement:** `tools/measure-progress.mjs` extended as above, with `main`’s numbers. It changes nothing in Postbox.
 2. **`LIVE`, the `live` frame, `publicLiveFrame` and `publicLive`,** with the public-derivation, field-subset and private-kind tests, and `security-boundaries.md` updated in the same change, before anything is sent on it.
-3. **`server/live-buffer.mjs`, commit points, and the session fields and steps going live,** with the shared queue, the lag, `rev`, and `subagent-end.mjs` reading the buffer.
-4. **Text going live,** with `at`, the snapshot, `/api/state`’s `live`, and `app/js/live-frames.mjs`.
+3. **`server/live-buffer.mjs`, commit points, and the session fields and steps going live,** with the shared queue, the lag, `rev`, and `subagent-end.mjs` reading the buffer. The page’s handling of step and session frames (`app/js/live-frames.mjs`), the snapshot of steps and session fields, and `/api/state`’s `live` come with it, so a page that reloads or opens mid-turn never loses what changed since the last commit point (the integrator’s condition on #1471: step 3 ships no gap).
+4. **Text going live,** with `at`, and the text in the snapshot.
 5. **The shutdown commit point,** with a test that fails without it: a reply stopped cleanly mid-stream, Postbox started again on the same store, and every word the reply had said is there. **And the ledger at shutdown:** once closing begins, the ledger starts no new work and writes what it has before `store.close()`, with a test through the real `start()` and `close()` and a short grace, such as `ledgerGraceMs` of 30 ms and a record that writes after 150 ms, which `main` drops.
 6. **The readers:** catch-up’s line for a reply still being written, the UAT checks held to `main`’s results, this document’s “Status” moved to built, and `architecture.md`’s summary (“Streamed text is emitted on a fast path”) updated.
 

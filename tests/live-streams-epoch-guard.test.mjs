@@ -10,7 +10,7 @@ test('an event whose send was held back is dropped once the store runs on anothe
   process.env.POSTBOX_STREAM_LAG = '30';
   try {
     const store = new Store(null);
-    const live = liveStreams(store);
+    const live = liveStreams(store, undefined, { running: { all: () => [] } });
     const written = [];
     live.streams.add(/** @type {any} */ ({ write: (s) => written.push(String(s)) }));
     store.emit('thread', { id: 'before', members: [] });

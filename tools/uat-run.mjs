@@ -26,7 +26,6 @@
 // A run is 15 steps unless its scenario or --steps says otherwise; a targeted scenario’s phases end on their triggers
 // (tools/uat/triggers.mjs). Every finding gets a verdict: the verifier’s after the run, or yours (tools/uat-verdict.mjs).
 
-import { writeFile } from 'node:fs/promises';
 import { join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
@@ -40,7 +39,7 @@ import { faultSetup } from './uat/fault-run.mjs';
 import { attachmentFile } from './uat/fixtures.mjs';
 import { remoteFacts, setUpRemote } from './uat/git-remote.mjs';
 import { preflightRun } from './uat/github-guard.mjs';
-import { followEvents } from './uat/history.mjs';
+import { followEvents, writeHistory } from './uat/history.mjs';
 import { endHosts } from './uat/hosts-end.mjs';
 import { HOST_OPTIONS } from './uat/hosts-options.mjs';
 import { createHostRun, followStatuses, startHosts } from './uat/hosts-run.mjs';
@@ -252,7 +251,7 @@ async function main() {
       facts.agyStreams = readStreams(paths.agyStreams);
       facts.codexStreams = readStreams(paths.codexStreams);
       facts.sdkStreams = readStreams(paths.sdkStreams);
-      facts.events = history.events();
+      Object.assign(facts, { events: history.events(), live: history.live() });
       facts.transcripts = readTranscripts(facts, paths.workspace);
       facts.remote = remoteFacts(dir, facts); // `- seed: git-remote`’s pushes, with the ledger’s size beside them (#305)
       Object.assign(facts.ui, await readUi(page));
@@ -504,7 +503,7 @@ async function main() {
     for (const g of goals.gaps()) findings.set(`coverage-gap:${g.key}`, { ...g, step: timeline.length });
     const coverage = goals.coverage();
     // The history the checks read, for --recheck: Postbox’s own log can lose its first segments to a snapshot.
-    await writeFile(join(dir, 'events.jsonl'), facts.events.map((e) => JSON.stringify(e)).join('\n') + (facts.events.length ? '\n' : ''));
+    await writeHistory(dir, facts);
     writePostboxOutput(dir, facts.postboxOutput); // what Postbox printed, as the checks read it, for --recheck
     const all = [...findings.values()];
     presetFindings(all, { root: ROOT, commit: gitInfo(ROOT).commit });

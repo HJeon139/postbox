@@ -11,12 +11,15 @@ import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
 import { STEP_TEXT } from '../shared/limits.mjs';
 import * as arrange from './arrange.mjs';
+import { pageView } from './page-view.mjs';
 
 const THOUGHT = 'Why the sum is wrong. '.repeat(250).trim(); // 5,000 characters or so, past what a record keeps
 
 /** A runtime whose one agent thinks, runs a command, then waits until the test is done with it. */
 function heldTurn() {
   const store = new Store(null);
+  // The reply as a page holds it mid-turn: stored, with the live frames over it (live-progress.md).
+  const page = pageView(store);
   let waiting = false;
   const adapter = {
     name: 'mock',
@@ -46,6 +49,7 @@ function heldTurn() {
     t,
     se: () => arrange.sessionsIn(rt, t.id)[0],
     reply: () => store.items(t.id).find((x) => x.kind === 'agent' && x.activity),
+    seen: () => page.state().items[t.id].find((/** @type {any} */ x) => x.kind === 'agent' && x.activity),
     async started() {
       rt.sendMessage(t.id, { text: 'Go.' });
       for (let i = 0; i < 400 && !waiting; i++) await new Promise((r) => setTimeout(r, 5));
@@ -54,8 +58,8 @@ function heldTurn() {
 }
 
 /** Each step as its record keeps it: none of the live view’s detail, and a thought cut to other detail’s length. */
-function assertFolded(/** @type {any[]} */ steps) {
-  assert.ok(steps.length >= 2, JSON.stringify(steps));
+function assertFolded(/** @type {any[]} */ steps, most = 2) {
+  assert.ok(steps.length >= most, JSON.stringify(steps));
   for (const s of steps) for (const k of ['input', 'output', 'diff', 'at', 'part']) assert.equal(s[k], undefined, `${s.label}: no ${k}`);
   assert.equal(steps.find((s) => s.kind === 'thought').detail.length, STEP_TEXT.detail);
 }
@@ -64,7 +68,7 @@ test('a turn you stop folds its steps, as one that finishes does', async () => {
   const run = heldTurn();
   await run.started();
   assert.ok(
-    run.reply().activity.steps.some((s) => s.input),
+    run.seen().activity.steps.some((/** @type {any} */ s) => s.input),
     'the live view’s detail while it runs',
   );
   run.rt.stop(run.se().id);
@@ -82,5 +86,9 @@ test('a turn a restart cut off folds its steps when Postbox starts again', async
     config: { origin: 'http://127.0.0.1:1', imageOrigins: [], lintSettleMs: 0 },
   });
   settleInterrupted(rt);
-  assertFolded(run.reply().activity.steps);
+  // A runtime opened beside the running one is a crash, not a graceful shutdown: the reply keeps its steps to the last
+  // commit point, the thought the command’s start stored, and they fold. The command, live only since, isn’t there.
+  const steps = run.reply().activity.steps;
+  assertFolded(steps, 1);
+  assert.ok(!steps.some((/** @type {any} */ s) => s.id === 'b1'), JSON.stringify(steps));
 });

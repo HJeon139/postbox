@@ -184,9 +184,10 @@ test('a reply streamed behind a held commit holds one session change for its sta
   const release = await f.hold();
   f.rt.sendMessage(f.t.id, { text: '@alpha Go.' });
   await done;
+  // One stored change for its state; its step, “Writing a reply”, goes live (live-progress.md).
   assert.deepEqual(
     during[0].map(({ updatedAt, ...rest }) => rest),
-    [{ state: 'gen', currentStep: 'Writing a reply' }],
+    [{ state: 'gen' }],
   );
   await release();
   await settle(f.rt);

@@ -4,6 +4,7 @@
 
 import { clipText } from './helpers.mjs';
 import { keptGroupsOf } from './kept-jobs.mjs';
+import { liveStored } from './live-buffer.mjs';
 import { stepState } from './step-text.mjs';
 
 /** The background jobs Postbox keeps on a session, at most. */
@@ -129,7 +130,9 @@ export function setJobStep(rt, job, patch) {
   const next = steps.map((st) => (st.id === job.toolUseId ? { ...st, ...patch } : st));
   if (turn) turn.steps = next;
   const step = job.itemId ? next.find((st) => st.id === job.toolUseId) : null;
-  if (step) rt.store.emit('item.patch', { threadId: job.threadId, id: job.itemId, activityStep: step });
+  if (!step) return;
+  rt.store.emit('item.patch', { threadId: job.threadId, id: job.itemId, activityStep: step });
+  liveStored(turn, job.itemId, step);
 }
 
 /** Jobs nothing reported the end of went with their CLI (SIGKILL, or a crash), unless Postbox kept them running. */

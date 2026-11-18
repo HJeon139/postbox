@@ -294,7 +294,7 @@ test('End on a subagent’s row, by keyboard, tells its agent and reads “endin
     const ends = subs.locator('.sub-end');
     await expect(ends, 'End on each subagent').toHaveCount(2);
     await expect(ends.nth(0)).toHaveAttribute('aria-label', 'End indexer’s subagent ‘Reader’');
-    const first = store.state.sessions[indexer.id].subagents[0].id;
+    const first = arrange.liveSession(rt, indexer.id).subagents[0].id; // live while its turn runs (live-progress.md)
     await ends.nth(0).focus();
     await page.keyboard.press('Enter');
     await expect.poll(() => store.state.sessions[indexer.id].endingSubagents ?? [], { message: 'the subagent to be ending' }).toContain(first);

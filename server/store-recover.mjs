@@ -8,7 +8,7 @@
 import { join } from 'node:path';
 import { STORE_WAITS } from '../shared/limits.mjs';
 import { emptyState, ownState } from '../shared/state.mjs';
-import { Fifo } from './fifo.mjs';
+import { HeldLog } from './store-held.mjs';
 import { lockStore, unlockStore } from './store-lock.mjs';
 import { replay } from './store-replay.mjs';
 import { settledWithin } from './store-retry.mjs';
@@ -101,7 +101,8 @@ export function install(store, c) {
   store.freshSegment = c.freshSegment;
   store.ahead = 0;
   store.held = 0;
-  store.heldLog = new Fifo(); // with held and the queue, so no pending read sees a job of the old history
+  /** @type {any} */ (store).heldLive = 0; // a live frame of the old history goes with the queue: the pages load the state again
+  store.heldLog = new HeldLog(); // with held and the queue, so no pending read sees a job of the old history
   store.views.clear();
   store.waitingCommits = 0;
   store.queue = [];

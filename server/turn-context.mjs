@@ -4,6 +4,7 @@
 
 import { glimpseOf } from '../shared/text.mjs';
 import { EFFORT_LEVELS } from './adapters/setup.mjs';
+import { liveFields, liveStep, liveUpdate } from './live-buffer.mjs';
 import { recordQuota, reportedAt } from './quota-usage.mjs';
 import { placeStep, replySegment, stepTaken, wordsSegment } from './reply-segment.mjs';
 import { recordScheduledTool } from './scheduled-wakes.mjs';
@@ -146,7 +147,7 @@ function replyWords(rt, se0, turn, live) {
       turn.said += delta;
       turn.partWords[id] = (turn.partWords[id] ?? 0) + delta.length;
       rt.store.emit('item.text', { threadId: turn.threadId, id, text: delta });
-      if (rt.store.pending.session(turn.sessionId)?.state !== 'gen') rt.sessions.update(turn.sessionId, { state: 'gen', currentStep: 'Writing a reply' });
+      if (rt.store.pending.session(turn.sessionId)?.state !== 'gen') liveUpdate(rt, turn, { state: 'gen', currentStep: 'Writing a reply' });
     },
     compaction({ kept, total, summary }) {
       if (!live()) return;
@@ -215,19 +216,21 @@ function stepCallback(rt, se0, turn, live) {
       const step = turnStep({ id: sid, label, state, ms, who, parent, detail, kind, job, input, output, ...place, added, deleted, diff });
       if (i >= 0) turn.steps[i] = { ...turn.steps[i], ...step };
       else turn.steps.push(step);
-      if (turn.first) rt.store.emit('item.patch', { threadId: turn.threadId, id: turn.first, activityStep: step });
+      // Live, and stored at the next commit point (live-buffer.mjs).
+      if (turn.first) liveStep(rt, turn, step);
       // A thought or a subagent’s narration is in the list, but it isn’t a tool call.
       if (kind === 'thought' || kind === 'said') return;
       if (state === 'running' && !who) recordScheduledTool(rt, turn, { id, name: label }, false);
       // A subagent’s step is its own: it moves its arc, not the agent’s state or step (#189).
       const own = state === 'running' && !(i >= 0 ? turn.steps[i] : step).who;
-      // From the pending session: behind a held commit each call still counts, and the list keeps each (#796's class).
-      rt.sessions.update(turn.sessionId, (s) => ({
-        state: own ? 'tool' : s.state,
-        toolCalls: [{ name: step.label, state: step.state, ms: step.ms }, ...s.toolCalls.filter((c) => c.name !== step.label)].slice(0, 5),
-        toolCount: s.toolCount + (i >= 0 ? 0 : 1),
-        currentStep: own ? step.label : s.currentStep,
-      }));
+      // The calls and the step from the buffer, over what was stored as the turn began; the state stays stored.
+      const now = liveFields(rt, turn);
+      liveUpdate(rt, turn, {
+        ...(own ? { state: 'tool' } : {}),
+        toolCalls: [{ name: step.label, state: step.state, ms: step.ms }, ...now.toolCalls.filter((/** @type {any} */ c) => c.name !== step.label)].slice(0, 5),
+        toolCount: now.toolCount + (i >= 0 ? 0 : 1),
+        ...(own ? { currentStep: step.label } : {}),
+      });
     },
   };
 }
@@ -262,7 +265,7 @@ function reportCallbacks(rt, turn, live) {
       if (typeof patch.currentStep === 'string') allowed.currentStep = patch.currentStep.slice(0, 200);
       // A line of what it’s thinking or writing right now; cleared when the turn ends.
       if (typeof patch.glimpse === 'string') allowed.glimpse = glimpseOf(patch.glimpse);
-      rt.sessions.update(turn.sessionId, allowed);
+      liveUpdate(rt, turn, allowed);
     },
     /**
      * What the backend reported about the run, kept on the session, bounded:

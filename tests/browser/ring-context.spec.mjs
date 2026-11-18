@@ -61,7 +61,7 @@ test('#189 a subagent with no reported context says so, and its activity still s
   await synced(page, app);
   const se = arrange.agentIn(rt, t.id);
   expect(
-    app.store.state.sessions[se.id].subagents.map((s) => s.ctx),
+    arrange.liveSession(rt, se.id).subagents.map((s) => s.ctx), // live while its turn runs (live-progress.md)
     'the server keeps it unknown',
   ).toEqual([null, null]);
   // The agent’s own ring lists its subagents, collapsed as the Agents section starts (#477).

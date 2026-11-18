@@ -123,6 +123,9 @@ test('following, growth above the newest message keeps the held room, and the ne
   const transcript = page.locator('#main.transcript');
   await expect(transcript).toHaveAttribute('data-view-mode', 'following');
   arrange.setItem(rt, t.id, reply.id, { text: WORDS(6) });
+  // The shrink drawn before it’s measured: with the stream late (POSTBOX_STREAM_LAG), settling can come first, and a
+  // room already held, as when the reconnecting line leaves the composer at load, would be read as the shrink’s.
+  await expect(page.locator(`#main > .item[data-key="${reply.id}"]`)).not.toContainText('Line 6 of');
   await frames(page);
   await settled(page);
   const held = () => transcript.evaluate((el) => Number.parseFloat(/** @type {HTMLElement} */ (el).style.marginBottom) || 0);
