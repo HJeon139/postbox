@@ -57,8 +57,9 @@ export function privateAddress(ip) {
  * @param {boolean} anyAddress  the host is on the allow list
  */
 export const guardedLookup = (anyAddress) => (host, opts, cb) =>
-  lookup(host, { ...opts, all: true }, (err, addresses) => {
+  lookup(host, { ...opts, all: true }, (err, answer) => {
     if (err) return cb(err);
+    const addresses = /** @type {import('node:dns').LookupAddress[]} */ (/** @type {unknown} */ (answer));
     const bad = anyAddress ? undefined : addresses.find((a) => privateAddress(a.address));
     if (bad) return cb(Object.assign(new Error(`${host} is a private address (${bad.address}).`), { code: 'EPRIVATE' }));
     if (opts?.all) return cb(null, addresses);
