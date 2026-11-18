@@ -16,15 +16,16 @@ function keepClear(el) {
   // Only what scrolls under it, by keyboard: a click on a message focuses it too, and mustn’t move it.
   if (!composer?.parentElement?.contains(el) || composer.contains(el) || document.activeElement !== el || !el.matches(':focus-visible')) return;
   const r = el.getBoundingClientRect();
-  // Where the higher of the two that are beside it starts.
-  const beside = [composer, composer.querySelector('.jump')]
+  // Where the higher of the two that are beside it starts: the composer’s column, which is all of it that’s drawn (#1463).
+  const beside = [composer.querySelector('.col'), composer.querySelector('.jump')]
     .map((n) => n?.getBoundingClientRect())
     .filter((b) => b?.height && b.left < r.right && b.right > r.left);
   const cover = Math.min(...beside.map((b) => b.top));
   if (!beside.length || r.bottom + AIR <= cover || r.top >= innerHeight) return;
-  // Only when the composer is what you’d see there, not a full-screen review or app over it.
-  const c = composer.getBoundingClientRect();
-  if (!composer.contains(document.elementFromPoint((c.left + c.right) / 2, c.top + 1))) return;
+  // Only when the composer is what you’d see there, not a full-screen review or app over it: its card, since the rest of
+  // it lets the pointer through to the conversation.
+  const c = /** @type {Element} */ (composer.querySelector('.composer-box')).getBoundingClientRect();
+  if (!composer.contains(document.elementFromPoint((c.left + c.right) / 2, (c.top + c.bottom) / 2))) return;
   // As far as its end needs, but never past its start: a tall message keeps its top in view.
   const by = Math.min(r.bottom + AIR - cover, r.top - topEdge() - AIR);
   if (by > 0) window.scrollBy(0, by);

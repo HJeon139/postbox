@@ -108,7 +108,8 @@ for (const width of [1280, 375]) {
       await expect(hint(page)).toContainText(says);
       expect.soft(await inputTop(page, 'composer-input'), `“${draft}” leaves the input where it was`).toBeCloseTo(before, 0);
       const row = await hint(page).boundingBox();
-      expect.soft(row?.height, `“${draft}”’s hint is one row`).toBeLessThanOrEqual(20);
+      // One 20 px row of words, under the 4 px that covers the gap from the card down (#1463).
+      expect.soft(row?.height, `“${draft}”’s hint is one row`).toBeLessThanOrEqual(24);
     }
     // “Did you mean” fits whole on the row, and the clipped text is there in full for a pointer.
     await ta.focus();

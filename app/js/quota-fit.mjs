@@ -1,15 +1,14 @@
 // How the quota line’s bars fit its one row (#442; designs/architecture/adapters.md, “Quota: each backend’s usage, in the
 // composer”). Decided from measured widths, not fixed cutoffs: the line’s width, and each label’s and percent’s width in
 // the line’s font. Every bar keeps its percent whole; to make room, they give way in one order, all together:
-// 0 everything; 1 the track goes; 2 short backend names; 3 the percent alone, the full label in its title and for
-// screen readers. Two bars that would read the same get the shortest start of their hosts’ names that tells them apart;
-// a level where nothing can is passed over.
+// 0 everything; 1 short backend names; 2 the percent alone, the full label in its title and for screen readers. The
+// track lies above the words and fills the bar’s part, so it never costs them width (#1463). Two bars that would read
+// the same get the shortest start of their hosts’ names that tells them apart; a level where nothing can is passed over.
 
 /** Short backend names, for a narrow line. */
 const SHORT = { 'claude-code': 'Claude', 'agent-sdk': 'SDK', codex: 'Codex', 'kiro-cli': 'Kiro', 'antigravity-cli': 'agy', mock: 'Mock' };
-/** The gap between bars, and inside one, the track and the space after it (workbench.css, .quota-line and .quota-bar). */
+/** The gap between bars (workbench.css, .quota-line). */
 export const LINE_GAP = 12;
-const TRACK = 40 + 6;
 /** Room for a canvas measure and the drawn text to differ by. */
 const SLACK = 2;
 
@@ -38,23 +37,17 @@ export function namesAt(bars, short) {
 }
 
 /**
- * The level the bars fit at, and what each shows: its name (empty at the last level) and whether the track shows.
+ * The level the bars fit at, and the name each shows (empty at the last level).
  * @param {{ backend: string, full: string, host: string | null, pct: string }[]} bars  pct: the percent as drawn
  * @param {number} width  the line’s width @param {(text: string) => number} measure  a text’s width in the line’s font
- * @returns {{ level: number, names: string[], track: boolean }}
+ * @returns {{ level: number, names: string[] }}
  */
 export function fitBars(bars, width, measure) {
   const each = (width - LINE_GAP * (bars.length - 1)) / Math.max(1, bars.length);
-  const levels = /** @type {const} */ ([
-    [false, true],
-    [false, false],
-    [true, false],
-  ]);
-  for (const [level, [short, track]] of levels.entries()) {
+  for (const [level, short] of [false, true].entries()) {
     const names = namesAt(bars, short);
     if (!names) continue;
-    const fits = bars.every((b, i) => (track ? TRACK : 0) + measure(`${names[i]} `) + measure(b.pct) + SLACK <= each);
-    if (fits) return { level, names, track };
+    if (bars.every((b, i) => measure(`${names[i]} `) + measure(b.pct) + SLACK <= each)) return { level, names };
   }
-  return { level: 3, names: bars.map(() => ''), track: false };
+  return { level: 2, names: bars.map(() => '') };
 }
