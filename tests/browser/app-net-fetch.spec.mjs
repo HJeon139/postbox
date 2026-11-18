@@ -3,6 +3,7 @@
 
 import http from 'node:http';
 import { expect, test } from '@playwright/test';
+import { PATCH_MS } from '../../server/net-fetch-line.mjs';
 import * as arrange from '../arrange.mjs';
 import { frameOf } from './app-pointer.mjs';
 import { allowPageError, failOnPageErrors, startPostbox, synced } from './postbox.mjs';
@@ -29,7 +30,8 @@ test.afterAll(async () => {
 });
 failOnPageErrors(test);
 
-// Tries its own fetch first, which the sandbox blocks, then net.fetch twice, and saves what each did.
+// Tries its own fetch first, which the sandbox blocks, then net.fetch twice, then a local address net.fetch refuses,
+// and saves what each did.
 const VISITS = (url) => `<main style="padding:12px"><p id="out">Loading</p></main>
 <script>
 postbox.ready.then(async () => {
@@ -37,16 +39,19 @@ postbox.ready.then(async () => {
   const own = await fetch(${JSON.stringify(url)}).then(() => 'reached', () => 'blocked');
   const a = await postbox.query('net.fetch', { url: ${JSON.stringify(url)} });
   const b = await postbox.query('net.fetch', { url: ${JSON.stringify(url)} });
+  const local = await postbox.query('net.fetch', { url: 'http://10.0.0.1/' }).then(() => 'reached', () => 'refused');
   const data = JSON.parse(a.text);
   document.getElementById('out').textContent = data.visits.join(', ');
-  postbox.saveState({ own, status: a.status, again: b.status, visits: data.visits, cookie: data.cookie });
+  postbox.saveState({ own, status: a.status, again: b.status, local, visits: data.visits, cookie: data.cookie });
 });
 </script>`;
 
-test('an app gets public data through Postbox with no cookies, its own fetch stays blocked, and its agent’s activity says so', async ({ page }) => {
+test('an app gets public data through Postbox with no cookies, its own fetch stays blocked, and its agent’s activity shows every attempt', async ({ page }) => {
   const { rt, store } = app;
   // The app’s own fetch is blocked by its policy on purpose, and Chrome logs that twice.
   allowPageError(page, /Content Security Policy/, { times: 2 });
+  // The refused fetch is the bridge’s request to Postbox answered with a 403, which Chrome logs once.
+  allowPageError(page, /status of 403/, { times: 1 });
   const t = rt.createThread({ projectId: Object.values(rt.store.state.projects)[0].id, title: 'Visits', personaIds: [arrange.persona(rt, 'librarian').id] });
   const se = arrange.agentIn(rt, t.id);
   const reply = rt.threads.addItem(t.id, {
@@ -64,11 +69,12 @@ test('an app gets public data through Postbox with no cookies, its own fetch sta
   await expect(frameOf(page, 'Visits'), 'the app to load').toHaveAttribute('data-sized', '1');
   const state = () => rt.store.state.apps[id]?.state ?? {};
 
-  await expect.poll(() => state().status, { message: 'net.fetch answered' }).toBe(200);
-  expect(state()).toMatchObject({ own: 'blocked', again: 200, visits: [120, 135, 160], cookie: null });
+  await expect.poll(() => state().local, { message: 'net.fetch answered' }).toBe('refused');
+  expect(state()).toMatchObject({ own: 'blocked', status: 200, again: 200, visits: [120, 135, 160], cookie: null });
+  // The first fetch shows at once; the rest come together when the step’s wait between patches ends (PATCH_MS).
   await expect
-    .poll(() => store.item(t.id, reply.id).activity.steps.map((s) => s.label), { message: 'the fetch in the agent’s activity' })
-    .toEqual([`Visits fetched ${host} ×2`]);
+    .poll(() => store.item(t.id, reply.id).activity.steps.map((s) => s.label), { message: 'every fetch in the agent’s activity', timeout: PATCH_MS * 3 })
+    .toEqual([`Visits fetched ${host} ×2; tried 10.0.0.1 (refused)`]);
   expect(rt.session(se.id).needs ?? null, 'nobody needs the person').toBe(null);
   await expect(page.locator('.toast'), 'no notification').toHaveCount(0);
 });

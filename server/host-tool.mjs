@@ -4,7 +4,7 @@
 import { roomOf } from './assets.mjs';
 import { httpError } from './helpers.mjs';
 import { netFetch } from './net-fetch.mjs';
-import { noteFetch } from './net-fetch-line.mjs';
+import { noteFetch, outcomeOf } from './net-fetch-line.mjs';
 
 /** The host tools every agent holds: its conversation’s assets, which its asset tools read too, and public data. An app still names them. */
 export const HELD_BY_EVERY_AGENT = new Set(['assets.search', 'assets.list', 'net.fetch']);
@@ -26,13 +26,29 @@ export async function hostTool(apps, tool, args = {}, { threadId, app } = {}) {
       if (!apps.narrator) throw httpError(503, 'Narration isn’t installed here. Run npm install to add Kokoro, then restart Postbox.');
       return apps.narrator.speak(args);
     case 'net.fetch': {
-      // Public data through Postbox’s server, never the app’s own frame (server/net-fetch.mjs), shown in its agent’s
-      // activity as it goes (server/net-fetch-line.mjs).
-      const r = await netFetch(args, { app: app?.id ?? '' });
-      if (app) noteFetch(apps, app, new URL(String(args.url)).host);
-      return r;
+      // Public data through Postbox’s server, never the app’s own frame (server/net-fetch.mjs), and every attempt in its
+      // agent’s activity as it goes, the refused and failed ones too (server/net-fetch-line.mjs).
+      const host = hostOf(args.url);
+      try {
+        const r = await netFetch(args, { app: app?.id ?? '' });
+        if (app && host) noteFetch(apps, app, host, outcomeOf());
+        return r;
+      } catch (e) {
+        if (app && host) noteFetch(apps, app, host, outcomeOf(e));
+        throw e;
+      }
     }
     default:
       throw httpError(404, `There’s no host tool called “${tool}”.`);
+  }
+}
+
+/** The host an app asked net.fetch for, as its activity names it, or '' when the URL has none. @param {unknown} url */
+function hostOf(url) {
+  try {
+    const u = new URL(String(url));
+    return u.protocol === 'http:' || u.protocol === 'https:' ? u.host : '';
+  } catch {
+    return ''; // not a URL: nothing was asked of any host
   }
 }
