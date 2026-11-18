@@ -152,6 +152,8 @@ const PENDING = {
   // added behind a held commit (#1155); forgetReported: an agent’s sessions whose last report a backend switch drops
   // (#1315); stampNeeds: the session it stamps; unarchive: what an older Postbox archived, the threads and sessions it
   // rewrites as the store loads.
+  // The turn’s last reply, which goes back to whom woke it (#1518), maybe settled behind a held commit.
+  'reply-back.mjs': ['replyBack'],
   'sessions.mjs': ['pendingIn', 'pendingIn', 'ensure', 'update', 'needAt', 'remove', 'forgetReported', 'stampNeeds', 'unarchive'],
   // A command’s item, maybe deleted behind a held commit, before its output or its end is written.
   'shell-runs.mjs': ['commandOutput', 'endCommand'],

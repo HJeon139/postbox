@@ -112,7 +112,9 @@ test('a wake held on the waiting card shows on it until you answer, and goes whe
   const card = page.locator('.transcript .block').filter({ hasText: 'Let waker wake woken?' });
   const line = card.locator('.hop-held');
   await expect(line).toContainText('Also waiting on your answer: other’s message to waker');
-  await expect(line).toContainText('Allowing this sends it too.');
+  // woken’s answers @-mention no one, so each goes back to waker (#1518): past the limit, they wait on the card too.
+  await expect(line).toContainText('woken’s message to waker');
+  await expect(line).toContainText('Allowing this sends them too.');
   await card.getByRole('button', { name: 'Let waker wake woken' }).click();
   await expect(card).toContainText('Allowed');
   await expect(line).toHaveCount(0);

@@ -21,18 +21,21 @@ test('#135: a woken turn that opens with a block, or proposes a teammate, says w
   assert.deepEqual(proposal.woke, { by: 'alpha' });
 });
 
-test('#135, #372: a turn another agent started says so on its replies, and the waker answers only when mentioned', async () => {
+test('#135, #1518: a turn another agent started says so on its replies, and the waker answers once, or when mentioned', async () => {
   const { store, rt, adapter, t, alpha } = setup();
   rt.sendMessage(t.id, { text: '@alpha check the totals' });
   await settle(rt);
-  // alpha wakes beta, beta answers in the conversation without naming alpha: no turn for alpha.
+  // alpha wakes beta, beta answers in the conversation naming no one: the answer goes back to alpha for one turn, which
+  // says beta woke it, and alpha’s reply to it goes back to no one (#1518, which reverses #372 here).
   adapter.next.push(async (c) => c.text('Revision 3 has one arithmetic gap.'));
   rt.agentWake(alpha.id, 'beta', 'Check revision 3.');
   await settle(rt);
   const said = (handle) => store.items(t.id).filter((x) => x.kind === 'agent' && x.handle === handle && x.text !== 'Check revision 3.');
   assert.equal(said('alpha')[0].woke, undefined, 'the turn you started says nothing more');
   assert.deepEqual(said('beta')[0].woke, { by: 'alpha' });
-  assert.equal(said('alpha').length, 1, 'the answer started no turn for alpha');
+  assert.equal(said('alpha').length, 2, 'the answer started one turn for alpha');
+  assert.deepEqual(said('alpha')[1].woke, { by: 'beta' });
+  assert.equal(said('beta').length, 1, 'and nothing after it');
   // An answer that @-mentions alpha wakes it, and alpha’s reply says beta woke it.
   adapter.next.push(async (c) => c.text('@alpha the gap is in row 4.'));
   adapter.next.push(async (c) => c.text('Sent the fix.'));
@@ -53,8 +56,9 @@ test('#114, #492: two agents mentioning each other in turn go on without a card,
   say('@alpha one more gap in the totals.');
   say('Fixed. @beta check again, please.');
   say('All good now.');
+  say('Thanks.');
   rt.sendMessage(t.id, { text: '@alpha fix the arithmetic gap' });
-  for (let i = 0; i < 20 && store.items(t.id).filter((x) => x.kind === 'agent').length < 4; i++) await settle(rt);
+  for (let i = 0; i < 20 && store.items(t.id).filter((x) => x.kind === 'agent').length < 5; i++) await settle(rt);
   const agents = store.items(t.id).filter((x) => x.kind === 'agent');
   assert.deepEqual(
     agents.map((x) => [x.handle, x.text]),
@@ -63,6 +67,7 @@ test('#114, #492: two agents mentioning each other in turn go on without a card,
       ['beta', '@alpha one more gap in the totals.'],
       ['alpha', 'Fixed. @beta check again, please.'],
       ['beta', 'All good now.'],
+      ['alpha', 'Thanks.'],
     ],
     'each turn’s message once',
   );
@@ -71,12 +76,14 @@ test('#114, #492: two agents mentioning each other in turn go on without a card,
     store.items(t.id).filter((x) => !['user', 'agent', 'block', 'shared'].includes(x.kind)),
     [],
   );
+  // Beta’s last answer named no one, so it went back to alpha (#1518): a fourth wake, and alpha’s reply to it ended the chain.
   assert.deepEqual(
     agents.filter((x) => x.hop).map((x) => x.hop),
-    [1, 2, 3],
-    'three agent wakes in the chain',
+    [1, 2, 3, 4],
+    'four agent wakes in the chain',
   );
-  assert.equal(store.state.threads[t.id].hops, 0, 'and beta’s last answer, which woke no one, ended it');
+  assert.deepEqual(agents[3].wentBack, ['alpha']);
+  assert.equal(store.state.threads[t.id].hops, 0, 'and alpha’s reply to it, which went back to no one, ended it');
   assert.equal(Object.values(store.state.threads).filter((x) => x.kind === 'side').length, 0);
 });
 
@@ -102,12 +109,13 @@ test('#135: both wakes keep their transcript provenance, and both are delivered:
   );
   busy.release();
   await settle(rt);
-  // alpha’s two turns you started; each mention is that turn’s reply.
+  // alpha’s two turns you started; each mention is that turn’s reply. Beta’s answer going back to alpha starts a
+  // third, which says beta woke it (#1518).
   const turns = [
     ...new Set(
       store
         .items(t.id)
-        .filter((x) => x.kind === 'agent' && x.handle === 'alpha' && x.turnId)
+        .filter((x) => x.kind === 'agent' && x.handle === 'alpha' && x.turnId && !x.woke)
         .map((x) => x.turnId),
     ),
   ];

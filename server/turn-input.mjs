@@ -5,6 +5,7 @@
 
 import { READING, TURN_INPUT } from '../shared/limits.mjs';
 import { partEnd } from '../shared/text-parts.mjs';
+import { backTo } from './reply-back.mjs';
 
 /**
  * An inbox entry, as the design’s entry table gives it.
@@ -18,6 +19,7 @@ import { partEnd } from '../shared/text-parts.mjs';
  * @property {number} at
  * @property {boolean} [resend]
  * @property {string[]} [postedSince]  ids of the sender’s newer posts while it waited
+ * @property {boolean} [bounce]  goes back no further: a reply going back, or a mention from a turn one started (reply-back.mjs)
  */
 
 /** What each source is, said after who it is from. A mention or the person’s message needs no words. */
@@ -88,14 +90,26 @@ function place(/** @type {{ id: string, kind?: string, title?: string }} */ thre
   return thread.kind === 'room' ? 'in this room' : 'in this conversation';
 }
 
-/** The first part: the entries, with where the reply posts and what waits elsewhere. */
+/**
+ * Where the reply goes as well as posting (#1518): back to the agents whose mentions started the turn, unless it
+ * @-mentions an agent; after a reply that came back, to no one unless it does. Nothing for any other turn.
+ * @param {Entry[]} entries
+ */
+function replyGoes(entries) {
+  const to = backTo(entries);
+  if (to.length) return ` and goes back to ${to.map((h) => `@${h}`).join(' and ')}. @-mention another agent to hand off to them instead.`;
+  const bounces = entries.filter((e) => e.source !== 'notice');
+  return bounces.length && bounces.every((e) => e.source === 'mention' && e.bounce) ? ' and goes to no one unless you @-mention an agent.' : '.';
+}
+
+/** The first part: the entries, with where the reply posts and goes, and what waits elsewhere. */
 function entriesPart({ entries, thread, read, waitingElsewhere }) {
   const n = entries.length;
   const one = waitingElsewhere === 1;
   const more = waitingElsewhere
     ? ` ${count(waitingElsewhere)} more ${one ? 'waits in another thread, and starts' : 'wait in other threads, and start'} your next turn.`
     : '';
-  const head = `[Postbox] ${count(n)} ${n === 1 ? 'message' : 'messages'} for you ${place(thread)}. Your reply posts there.${more}`;
+  const head = `[Postbox] ${count(n)} ${n === 1 ? 'message' : 'messages'} for you ${place(thread)}. Your reply posts there${replyGoes(entries)}${more}`;
   return [head, ...entries.map((/** @type {Entry} */ e) => entryLine(e, read))].join('\n\n');
 }
 

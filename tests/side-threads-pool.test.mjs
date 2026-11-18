@@ -37,10 +37,12 @@ test('#228 UAT 1, #372: an agent answering in a topic thread wakes @beta, and th
   const answer = adapter.calls.find((x) => x.parts[0].text === '@beta your one-sentence opinion on test_converter.py?');
   assert.deepEqual([answer.sessionId, answer.thread], [beta.id, topic.id]);
   assert.ok(store.items(topic.id).some((x) => x.sessionId === beta.id && x.text === 'It covers the edge cases.'));
-  assert.equal(
-    adapter.calls.some((x) => x.sessionId === alpha.id && x.parts[0].from === '@beta'),
-    false,
-    'the answer woke @alpha, which it didn’t mention',
+  // The answer named no one, so it goes back to @alpha once, in the topic thread, at the same session (#1518).
+  const back = adapter.calls.filter((x) => x.parts[0].from === '@beta');
+  assert.deepEqual(
+    back.map((x) => [x.sessionId, x.thread]),
+    [[alpha.id, topic.id]],
+    'the answer went back to @alpha once, in the thread',
   );
   assert.equal(Object.values(store.state.threads).filter((x) => x.kind === 'side').length, 0);
   assert.equal(sessions(store).length, 2, 'the conversation’s two sessions, and no others');

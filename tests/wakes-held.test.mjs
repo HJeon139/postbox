@@ -31,6 +31,8 @@ async function cardOpen() {
 }
 
 const HANDOFF = 'Count the lines in work/*.txt and post the total.';
+/** Open cards other than the first and those for a reply going back (#1518), which the chain limit counts too. */
+const newCards = (f) => f.store.items(f.t.id).filter((x) => x.kind === 'hop' && x.status === 'open' && (x.id === f.card.id || !x.bounce));
 const got = (f, handle, text) => f.adapter.calls.filter((c) => c.handle === handle && c.parts.some((m) => m.text === text));
 const posted = (f, handle, text) => f.store.items(f.t.id).filter((x) => x.kind === 'agent' && x.handle === handle && x.text === text);
 const received = (f, se, from, text) =>
@@ -101,7 +103,9 @@ test('#439 a card whose target you write to is retired, and its own wake and the
   assert.ok(yours() > 0, `beta’s turns, in order: ${toBeta().join(' | ')}`);
   assert.ok(after(), `beta’s turns, in order: ${toBeta().join(' | ')}`);
   assert.equal(got(f, 'alpha', HANDOFF).length, 1, 'gamma’s held hand-off goes on to alpha');
-  assert.equal(f.store.items(f.t.id).filter((x) => x.kind === 'hop' && x.status === 'open').length, 0, 'your message started the counts again');
+  // Your message started the counts again. The answers held on the card go back to their wakers (#1518), so the
+  // chain passes this room’s limit of 3 again: any card open now is a new one, for a reply going back.
+  assert.deepEqual(newCards(f), []);
 });
 
 test('#439 a card another agent’s wake retires keeps its own hand-off: it goes back through the limits', async () => {
@@ -116,7 +120,7 @@ test('#439 a card another agent’s wake retires keeps its own hand-off: it goes
   // alpha's hand-off goes back through the limits, which it's now under, so it reaches beta rather than vanishing.
   for (let i = 0; i < 20 && got(f, 'beta', 'alpha to beta').length < 1; i++) await settle(f.rt);
   assert.equal(got(f, 'beta', 'alpha to beta').length, 1);
-  assert.equal(f.store.items(f.t.id).filter((x) => x.kind === 'hop' && x.status === 'open').length, 0);
+  assert.deepEqual(newCards(f), []);
 });
 
 test('#439 stopping the held wake’s target drops it, so allowing the card doesn’t undo the Stop, and its agent is told', async () => {

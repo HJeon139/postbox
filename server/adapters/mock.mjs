@@ -611,7 +611,8 @@ async function indexerReply(m, a, _mem) {
   await a.think(500);
   if (/confirm the edition/i.test(m.text))
     return a.say('Confirmed again: the 1874 *Middlemarch* and the chapter-headed *Emma* and *Persuasion*. @researcher please check once more, in a loop.');
-  await a.say(`Thanks ${m.from}. I’ll treat “Introduction” as a preface and rebuild those three books.`);
+  // Named without @, as the guide asks when it needn’t act: its answer came back on its own (#1518).
+  await a.say(`Thanks, ${String(m.from).replace(/^@/, '')}. I’ll treat “Introduction” as a preface and rebuild those three books.`);
 }
 
 async function failingReply(a) {
