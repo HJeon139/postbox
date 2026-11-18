@@ -2,6 +2,21 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.32.0 (2026-11-18)
+
+### Features
+
+- **tools:** judge a crash restart at 8 points across a snapshot interval, not one
+- **tools:** gate crowds' CPU on the steady section, and report the crowd section's times ungated
+- **tools:** measure each crowd's steady state, alone in a process and warmed
+
+### Fixes
+
+- **tools:** a refused comparison exits 1 with its message, and its advice names the older side
+- **tools:** place crash points at fixed phases of the snapshot interval
+- **tools:** refuse runs whose rows or numbers don't match, rather than judging what they share
+- **tools:** judge a crash's replay as the mean and the most across its points, not point by point
+
 ## 4.31.0 (2026-11-18)
 
 ### Features
