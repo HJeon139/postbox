@@ -12,6 +12,8 @@ const HOSTS = [
   ['cloud-builder', 'ip-10-123-45-67.us-west-2.compute.internal', 'Builds and tests the service on the cloud instance.'],
   ['trainer', 'gpu-build-a100-03.lab.example.net', 'Runs training jobs and evaluations on the GPU box.'],
 ];
+// One segment with no hyphen or space to break at, as a generated folder name can be.
+const FOLDER = '/Users/someone/Documents/research/FieldNotesArchive2026InterviewsWithTheLibrariansOfTheNorthWing/transcripts';
 test.beforeAll(async () => {
   app = await startPostbox('settings-fit');
   // A Claude Code to run on the hosts, so the persona editor can ask for its models.
@@ -23,6 +25,8 @@ test.beforeAll(async () => {
     app.store.emit('persona', { ...app.store.state.personas[persona.id], backend: 'claude-code', remote });
   }
   arrange.persona(app.rt, 'librarian');
+  // A project whose folder is long, shown only: nothing runs in it.
+  app.store.emit('project', { id: 'pr_fit', name: 'Field notes', folder: FOLDER });
 });
 test.afterAll(async () => {
   await app?.stop();
@@ -57,7 +61,7 @@ for (const width of [320, 375, 768, 1024, 1280, 1920])
     expect.soft(at.sideways, 'the page doesn’t scroll sideways').toBe(false);
     for (const [handle, host, description] of HOSTS) {
       const row = dialog.locator('li', { has: page.getByText(handle, { exact: true }) });
-      const look = await row.evaluate((li, host) => {
+      const look = await row.evaluate((li) => {
         const kids = [...li.children].map((el) => ({ el, r: el.getBoundingClientRect() }));
         const overlaps = [];
         for (const [i, a] of kids.entries())
@@ -66,45 +70,78 @@ for (const width of [320, 375, 768, 1024, 1280, 1920])
             const y = Math.min(a.r.bottom, b.r.bottom) - Math.max(a.r.top, b.r.top);
             if (x > 1 && y > 1) overlaps.push(`${a.el.textContent} / ${b.el.textContent}`);
           }
-        const where = kids.find((k) => k.el.textContent?.includes('On '))?.el;
-        const said = kids.find((k) => k.el.matches('.grow'))?.el;
+        const where = /** @type {HTMLElement} */ (kids.find((k) => k.el.textContent?.includes('On '))?.el);
+        const said = /** @type {Element} */ (kids.find((k) => k.el.matches('.grow'))?.el);
+        const top = (/** @type {string} */ sel) => li.querySelector(sel)?.getBoundingClientRect().top ?? Number.NaN;
         const lineOf = (/** @type {Element} */ el) => Number.parseFloat(getComputedStyle(el).lineHeight) || 17;
+        const hr = where.getBoundingClientRect();
+        const sr = said.getBoundingClientRect();
         return {
           overlaps,
-          hostTitle: where?.getAttribute('title') ?? where?.textContent ?? '',
-          hostLines: where ? Math.round(where.getBoundingClientRect().height / lineOf(where)) : 0,
-          hostShows: where ? where.getBoundingClientRect().width : 0,
-          lines: said ? Math.round(said.getBoundingClientRect().height / lineOf(said)) : 0,
-          text: said?.textContent ?? '',
-          fullName: host,
+          hostTitle: where.getAttribute('title') ?? '',
+          hostText: where.textContent,
+          hostCut: where.scrollWidth > where.clientWidth + 1,
+          hostLines: Math.round(hr.height / lineOf(where)),
+          hostShows: hr.width,
+          // On a phone: the name, its version and Edit on one line, the host under them, the description under that.
+          nameLine: Math.max(Math.abs(top('b') - top('button')), Math.abs(top('b') - top('.on-host ~ span'))) < lineOf(where),
+          hostBelowName: hr.top >= (li.querySelector('b')?.getBoundingClientRect().bottom ?? 0) - 1,
+          saidBelowHost: sr.top >= hr.bottom - 1,
+          lines: Math.round(sr.height / lineOf(said)),
+          text: said.textContent ?? '',
         };
-      }, host);
+      });
       expect.soft(look.overlaps, `${handle}: nothing drawn over anything else`).toEqual([]);
-      expect.soft(look.hostTitle, `${handle}: its whole host name is there to read`).toBe(`On ${host}`);
-      expect.soft(look.hostLines, `${handle}: its host on one line`).toBe(1);
-      expect.soft(look.hostShows, `${handle}: enough of its host shows to tell it apart`).toBeGreaterThanOrEqual(80);
+      expect.soft(look.hostTitle, `${handle}: its whole host name is in its title`).toBe(`On ${host}`);
+      if (width <= 600) {
+        // A phone has no hover: the whole name shows, wrapped, on a line of its own, and the description under it.
+        expect.soft([look.hostText, look.hostCut], `${handle}: its whole host name shows`).toEqual([`On ${host}`, false]);
+        expect.soft(look.nameLine, `${handle}: its name, version and Edit on one line`).toBe(true);
+        expect.soft(look.hostBelowName, `${handle}: its host under its name`).toBe(true);
+        expect.soft(look.saidBelowHost, `${handle}: its description under its host`).toBe(true);
+      } else {
+        expect.soft(look.hostLines, `${handle}: its host on one line`).toBe(1);
+        expect.soft(look.hostShows, `${handle}: enough of its host shows to tell it apart`).toBeGreaterThanOrEqual(80);
+      }
       expect.soft(look.text, `${handle}: its description`).toBe(description);
       expect.soft(look.lines, `${handle}: its description reads in lines, not a word to a line`).toBeLessThanOrEqual(3);
     }
   });
 
-for (const width of [320, 375])
-  test(`#1497 at ${width} px Settings › Projects isn’t cut off`, async ({ page }) => {
+for (const width of [320, 375, 599, 1280])
+  test(`#1497 at ${width} px Settings › Projects isn’t cut off, and its folder and repository field are usable`, async ({ page }) => {
     const dialog = await settings(page, width, 'Projects');
     const at = await placed(page);
     expect.soft(at.right, 'its right edge in the window').toBeLessThanOrEqual(at.width + 0.5);
     expect.soft(at.sideways, 'the page doesn’t scroll sideways').toBe(false);
-    const cut = await dialog.locator('[role="tabpanel"]').evaluate((panel) => {
-      const box = panel.getBoundingClientRect();
-      return [...panel.querySelectorAll('*')]
-        .filter((el) => {
-          const r = el.getBoundingClientRect();
-          return r.width && r.right > box.right + 1;
-        })
-        .map((el) => `${el.tagName.toLowerCase()}.${el.className}`)
-        .slice(0, 5);
+    const row = dialog.locator('li', { has: page.getByText('Field notes', { exact: true }) });
+    const look = await row.evaluate((li) => {
+      const r = (/** @type {string} */ sel) => /** @type {Element} */ (li.querySelector(sel)).getBoundingClientRect();
+      const tab = /** @type {Element} */ (li.closest('[role="tabpanel"]'));
+      const form = /** @type {Element} */ (tab.querySelector('.form-grid')).getBoundingClientRect();
+      return {
+        li: li.getBoundingClientRect(),
+        name: r('.row-flex'),
+        folder: r('.mono.grow'),
+        // Its text, not its box: a word that can’t break runs past a box that stays the row’s width.
+        folderSpills: (() => {
+          const el = /** @type {Element} */ (li.querySelector('.mono.grow'));
+          return el.scrollWidth > el.clientWidth + 1;
+        })(),
+        field: r('.field'),
+        input: r('input'),
+        save: r('button'),
+        panel: tab.getBoundingClientRect(),
+        form,
+      };
     });
-    expect.soft(cut, 'nothing past the panel’s right edge').toEqual([]);
+    expect.soft(look.save.right, '“Save repository” inside the panel').toBeLessThanOrEqual(look.panel.right + 0.5);
+    expect.soft(look.folderSpills, 'the folder wraps inside its line, even a part with nothing to break at').toBe(false);
+    if (width < 600) expect.soft(look.field.top, 'on a phone, where it pushes is under its folder').toBeGreaterThanOrEqual(look.name.bottom - 1);
+    expect.soft(look.input.width, 'a repository field you can type in').toBeGreaterThanOrEqual(120);
+    expect.soft(look.folder.width, 'a folder that reads in lines, not a character to a line').toBeGreaterThanOrEqual(150);
+    // As wide as the form under it: the column’s 760 px cap is the conversation’s, not a dialog’s rows’.
+    expect.soft(Math.abs(look.li.width - look.form.width), 'the row spans the panel, as the form does').toBeLessThanOrEqual(10);
   });
 
 for (const width of [320, 375])
