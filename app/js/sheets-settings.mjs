@@ -1,8 +1,10 @@
 // Tabs of Settings (app/js/sheets.mjs, openSettings) that stand on their own: Appearance, light or dark, and
-// Backends, which says how real agents reach Postbox’s tools and what this computer has.
+// Backends, which shows each backend’s quota (quota-details.mjs), how real agents reach Postbox’s tools and what this
+// computer has.
 
 import { api, client } from './client.mjs';
 import { h } from './dom.mjs';
+import { quotaDetails } from './quota-details.mjs';
 
 const S = () => client.state;
 
@@ -34,6 +36,7 @@ export const appearance = (paint) => {
 };
 
 export const connect = () => [
+  quotaDetails(),
   h(
     'p',
     'Real agents reach Postbox’s UI tools over MCP. Postbox connects each backend it runs, with a token for each turn, so only an agent turn Postbox started can call them.',

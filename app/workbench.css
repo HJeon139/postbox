@@ -2,6 +2,10 @@
    Dark is the default; [data-theme="light"] swaps every token. theme.js resolves System to one of the two. */
 
 :root {
+  /* The conversation’s column, and its input card (#1463). */
+  --col-w: 760px;
+  /* A centered dialog, on a window with room for it (#1497). */
+  --dialog-w: 960px;
   color-scheme: dark;
   --bg: #15110e;
   --panel: #1f1a15;
@@ -323,11 +327,11 @@ pb-ring[role="button"] { cursor: pointer; border-radius: 50%; }
 .transcript.cv-skip > .item { content-visibility: auto; contain-intrinsic-size: auto 71px; overflow-clip-margin: 4px; }
 @media (max-width: 600px) { .transcript.cv-skip > .item { contain-intrinsic-size: auto 91px; } }
 .transcript.cv-skip > .item:has(.rv-full, .app-full.fullscreen, .check-frame) { content-visibility: visible; }
-.col { width: 100%; max-width: 760px; margin: 0 auto; }
+.col { width: 100%; max-width: var(--col-w); margin: 0 auto; }
 .wide { width: 100%; }
 /* A retired app is one line, not a frame (#193), so its item keeps to the column, and its reactions and thread link
    line up under it as under any message (#973). */
-.wide:has(> .app-retired) { max-width: 760px; margin-inline: auto; }
+.wide:has(> .app-retired) { max-width: var(--col-w); margin-inline: auto; }
 
 /* ───────── Turns ───────── */
 
@@ -506,6 +510,8 @@ details.activity > .work-record-link { display: inline-block; margin: 4px 0 0 22
 .select-wrap { position: relative; }
 .select-wrap .i-down { position: absolute; right: 8px; top: 8px; color: var(--dim); pointer-events: none; }
 .help { font-size: 12px; color: var(--dim); }
+/* A host’s name in a message, kept whole unless it’s longer than a line (#1497). */
+.host-name { display: inline-block; max-width: 100%; overflow-wrap: anywhere; }
 /* A help whose message changes with an answer the person didn’t click for (the Model field’s, #1327): every message it
    could show sits in one cell, only the current one visible, so the cell keeps the tallest’s height and nothing below
    it moves when the answer comes. */
@@ -698,7 +704,7 @@ iframe.app-iframe:not(.live) { pointer-events: none; }
 /* A review takes the transcript’s width, past the reading column, while its agent’s name and work line keep to it
    (#179). Preview prose uses that width for detailed feedback (#486). */
 .col.turn:has(> .block.rv-wide) { max-width: none; }
-.col.turn:has(> .block.rv-wide) > :not(.block) { width: 100%; max-width: 760px; margin-inline: auto; }
+.col.turn:has(> .block.rv-wide) > :not(.block) { width: 100%; max-width: var(--col-w); margin-inline: auto; }
 /* Preview: the draft as it reads, with each thread after the part it’s on, and the Comment button beside a selection. */
 .rv-doc.rv-preview { display: block; padding: 12px 16px 16px; }
 .rv-preview:focus:not(:focus-visible) { outline: none; }
@@ -730,18 +736,20 @@ iframe.app-iframe:not(.live) { pointer-events: none; }
 /* ───────── Composer ───────── */
 
 .composer { position: sticky; bottom: 0; z-index: 15; background: var(--bg); padding: 8px 24px 4px; }
-/* The conversation’s composer floats over its end as a card (#1463): it has no surface of its own, so the conversation
-   shows beside the card and below it, and a click there reaches what it shows. Only what it holds is drawn: the card,
-   with its shadow, and each row that says something, on the page’s color. Its end stays in the flow above the card,
-   so the last message scrolls clear of it. */
-.main > .composer { background: none; pointer-events: none; }
-.main > .composer .col > :not(:empty, .hint), .main > .composer .hint:not(:empty) { pointer-events: auto; }
-.main > .composer .col > :not(:empty, .composer-box, .jump) { border-radius: 6px; background: var(--bg); }
-.main > .composer .composer-box { box-shadow: 0 6px 18px -6px var(--shadow); }
+/* The conversation’s composer floats over its end as a card (#1463), and so does the thread panel’s (#1500): it has no
+   surface of its own, so the conversation shows beside the card and below it, and a click there reaches what it shows.
+   Only what it holds is drawn: the card, with its shadow, and each row that says something, on the color under it
+   (--under: the page’s, or the pane’s, which a full-screen pane sets to the page’s). Its end stays in the flow above the
+   card, so the last message scrolls clear of it. */
+:is(.main, .sp-foot) > .composer { background: none; pointer-events: none; }
+.main > .composer { --under: var(--bg); }
+:is(.main, .sp-foot) > .composer .col > :not(:empty, .hint), :is(.main, .sp-foot) > .composer .hint:not(:empty) { pointer-events: auto; }
+:is(.main, .sp-foot) > .composer .col > :not(:empty, .composer-box, .jump) { border-radius: 6px; background: var(--under); }
+:is(.main, .sp-foot) > .composer .composer-box { box-shadow: 0 6px 18px -6px var(--shadow); }
 /* The row under the card is one surface from the card down, so no half-line of the conversation shows between the card
    and the bars or a hint: each covers the column’s 4 px gap above it, its words where they were. */
-.main > .composer .quota-line { height: 24px; padding-top: 4px; }
-.main > .composer .hint:not(:empty) { height: 24px; margin-top: -4px; padding-top: 4px; }
+:is(.main, .sp-foot) > .composer .quota-line { height: 24px; padding-top: 4px; }
+:is(.main, .sp-foot) > .composer .hint:not(:empty) { height: 24px; margin-top: -4px; padding-top: 4px; }
 /* The store’s status line (app/js/store-line.mjs): at the window’s bottom while Postbox can’t save, with the composer
    above it, so nothing it covers is lost. */
 .store-line { position: fixed; z-index: 30; left: 0; right: 0; bottom: 0; min-height: 44px; display: flex; align-items: center; gap: 12px;
@@ -781,6 +789,24 @@ html.store-down .sidepanel { padding-bottom: 44px; }
 .quota-text { min-width: 0; display: flex; line-height: 14px; }
 .quota-name, .quota-pct { flex: none; white-space: pre; }
 .quota-more { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: pre; }
+/* A bar, or the chevron at the line’s end, opens each backend’s details (#1496). The chevron shows there’s more on a
+   touch screen, and takes the keyboard’s focus; a bar keeps its title for the pointer. Its width is OPEN_W in composer-quota.mjs. */
+.quota-bar { cursor: pointer; }
+.quota-bar:hover, .quota-open:hover { color: var(--text); }
+.quota-open { flex: none; align-self: center; width: 16px; height: 16px; margin-left: -8px; display: grid; place-items: center; padding: 0; border: 0;
+  border-radius: 4px; background: none; color: inherit; cursor: pointer; }
+.quota-open:focus-visible { outline-offset: -2px; }
+/* Settings › Backends: each backend’s quota in full (quota-details.mjs, #1496). */
+.quota-detail h3 { margin: 0 0 4px; font-size: 13px; }
+.quota-details { display: flex; flex-direction: column; gap: 12px; }
+/* Every backend’s table has the same columns, so they line up from one table to the next. */
+.quota-table { table-layout: fixed; }
+.quota-table th, .quota-table td { padding: 6px 12px 6px 0; text-align: left; }
+/* Only a window’s name, which can hold a long limit’s, wraps inside a word: a figure, a time or “Reset” never breaks. */
+.quota-table td:first-child { overflow-wrap: anywhere; }
+.quota-table th:nth-child(1) { width: 36%; }
+.quota-table th:nth-child(2) { width: 17%; }
+.quota-table th:nth-child(3) { width: 26%; }
 /* What each bar shows to fit is measured, not set here: quota-fit.mjs shortens names, then shows the percent alone,
    which never clips. A stale figure is marked “~”, not by a shade. */
 /* `!`’s folder is cut in the middle, so its last part, where the command runs, stays on the row: the head gives way
@@ -852,15 +878,25 @@ html.store-down .sidepanel { padding-bottom: 44px; }
 .toast .t-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; font-size: 13px; }
 .toast .t-body .small { color: var(--dim); }
 
-.backdrop { position: fixed; inset: 0; z-index: 50; background: var(--overlay); display: grid; place-items: center; padding: 16px; }
-.dialog { width: 100%; max-width: 480px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; display: flex; flex-direction: column; max-height: calc(100vh - 32px); }
-.dialog.lg { max-width: 640px; }
+/* One column no wider than the window less its gutters, whatever a dialog holds: a long host name or folder wraps or
+   gives way inside it, and never pushes it off the screen (#1497). */
+.backdrop { position: fixed; inset: 0; z-index: 50; background: var(--overlay); display: grid; grid-template-columns: minmax(0, 1fr); place-items: center; padding: 16px; }
+/* Every centered dialog is one width: 960 px where the window has room, else the window less its gutters, the input
+   card’s width on a phone (#1497). An anchored one keeps its own. */
+.dialog { width: 100%; min-width: 0; max-width: var(--dialog-w); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; display: flex; flex-direction: column; max-height: calc(100vh - 32px); }
 /* An agent sheet keeps one height, the most the window gives it, so a list that comes after it opens scrolls inside it
    and moves nothing under the pointer (sheet-hold.mjs, #1326). */
 .dialog.held { height: calc(100vh - 32px); }
 .dialog.held .d-body { flex: 1; }
 .dialog .d-head { padding: 14px 16px 10px; display: flex; align-items: flex-start; gap: 10px; }
 .dialog .d-body { padding: 4px 16px 16px; display: flex; flex-direction: column; gap: 12px; overflow: auto; }
+.dialog .d-body > *, .dialog [role="tabpanel"] > * { min-width: 0; }
+/* Inside a dialog, a row’s folder or path wraps where it must (#1497). */
+.dialog .list-rows li > *, .dialog .field { min-width: 0; }
+.dialog .row-flex > .grow { min-width: 0; overflow-wrap: anywhere; }
+/* A host’s name can have nothing to break at (a long single word): in the Hosts tab, its heading and every notice that
+   names it break inside it rather than run out of the dialog (#1497). */
+.dialog .hosts { overflow-wrap: break-word; }
 .dialog .d-foot { padding: 12px 16px; border-top: 1px solid var(--line); display: flex; gap: 8px; justify-content: flex-end; background: var(--sunk); border-radius: 0 0 8px 8px; }
 .what-goes { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
 .what-goes li { display: flex; gap: 8px; align-items: flex-start; }
@@ -874,7 +910,7 @@ html.store-down .sidepanel { padding-bottom: 44px; }
 @property --pane-w { syntax: '<length>'; inherits: false; initial-value: 440px; }
 .app { --pane-w: 440px; }
 .rpane, .app > .main { --pane-w: inherit; }
-.rpane { position: fixed; z-index: 25; top: 48px; right: 0; bottom: 0; width: min(var(--pane-w), 100%); background: var(--panel); border-left: 1px solid var(--line);
+.rpane { --under: var(--panel); position: fixed; z-index: 25; top: 48px; right: 0; bottom: 0; width: min(var(--pane-w), 100%); background: var(--panel); border-left: 1px solid var(--line);
   display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
 .rpane[hidden] { display: none; }
 .rpane.split { grid-template-rows: minmax(0, var(--split-a, 1fr)) auto minmax(0, var(--split-b, 1fr)); }
@@ -891,9 +927,12 @@ html.store-down .sidepanel { padding-bottom: 44px; }
 @media (max-width: 767px) { .rp-handle { display: none; } }
 .sidepanel .sp-head, .workpane .wp-head { display: flex; align-items: center; gap: 8px; padding: 10px 10px 10px 14px; border-bottom: 1px solid var(--line); min-height: 52px; }
 .sidepanel .sp-body { flex: 1; overflow: auto; padding: 14px; display: flex; flex-direction: column; gap: 14px; }
-/* The composer brings its own padding, the same as the conversation’s, so the two line up (#116). The foot draws the
-   top edge, so it spans a full-screen panel too. */
-.sidepanel .sp-foot { border-top: 1px solid var(--line); }
+/* The composer brings its own padding, the same as the conversation’s, so the two line up (#116). The foot is the
+   scroll box’s last child, at its end when the thread is short, and held at its bottom over the thread as it scrolls,
+   as the conversation’s composer is in the page (#1500): the margins take back the box’s padding, so the card lines up
+   with the conversation’s and nothing of the thread shows under it. */
+.sidepanel .sp-foot { position: sticky; bottom: -14px; z-index: 15; margin: auto -14px -14px; pointer-events: none; }
+.sidepanel .sp-foot > :not(.composer) { pointer-events: auto; background: var(--under); }
 /* Topic threads: the message they branched from sits at the top of the panel. */
 .thread-root { display: flex; flex-direction: column; gap: 6px; padding: 0 0 12px; border-bottom: 1px solid var(--line); }
 .thread-root .md { font-size: 13px; }
@@ -1010,6 +1049,9 @@ html.store-down .sidepanel { padding-bottom: 44px; }
   /* It wraps here: as tall as its lines, with a card’s corners, not pill ends (#199). */
   .sys .pill { white-space: normal; text-align: center; justify-content: center; flex-wrap: wrap; height: auto; border-radius: 8px; }
   .composer { padding: 8px 12px 4px; }
+  /* The composer’s gutter, so a dialog is the input card’s width (#1497). */
+  .backdrop { padding: 12px; }
+  .dialog, .dialog.held { max-height: calc(100vh - 24px); }
   .me-card { max-width: 92%; }
   .form-grid { grid-template-columns: 1fr; }
   /* Under the top bar, so its Work button and ⋯ stay in reach while the pane covers the conversation. */
@@ -1104,7 +1146,6 @@ html.pb-sandbox .label, html.pb-sandbox .tbl th, html.pb-sandbox kbd { font-size
 .rv-pins { display: flex; flex-direction: column; gap: 8px; padding: 12px; }
 
 /* Command palette, settings and lists */
-.palette { max-width: 560px; }
 .palette .p-list { list-style: none; padding: 0; margin: 0; max-height: 50vh; overflow: auto; display: flex; flex-direction: column; gap: 1px; }
 .palette .p-list li { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 6px; cursor: pointer; border: 1px solid transparent; }
 .palette .p-list li[aria-selected="true"] { border-color: var(--accent); background: var(--sunk); }
@@ -1117,6 +1158,24 @@ html.pb-sandbox .label, html.pb-sandbox .tbl th, html.pb-sandbox kbd { font-size
 .tabs button:focus-visible { outline: 2px solid var(--accent); }
 .list-rows { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; }
 .list-rows li { display: flex; align-items: center; gap: 10px; padding: 8px 4px; border-bottom: 1px solid var(--line); }
+/* A persona’s row (#1497): its description takes the room, and its host gives way at the end, its whole name in its
+   title. On a phone, which has no hover, the host and the description each take a line of their own, under the name,
+   and the host wraps whole rather than giving way, so the row is never wider than the dialog. */
+.persona-row { flex-wrap: wrap; row-gap: 2px; }
+.persona-row > .grow { min-width: 0; flex: 1 1 12em; }
+.persona-row > .on-host { flex: 0 1 auto; min-width: 6em; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* A project’s row (#1497): its name, with its folder on a line of its own under it, so a long name (up to 80
+   characters) never squeezes the folder; then where it pushes, beside them where there’s room for both (16em and
+   22em), else on a line of its own. */
+.project-row { flex-wrap: wrap; align-items: flex-start; row-gap: 8px; }
+.project-row > .row-flex { flex: 1 1 16em; flex-wrap: wrap; }
+.project-row > .row-flex > b { min-width: 0; overflow-wrap: anywhere; }
+.project-row > .row-flex > .grow { flex-basis: 100%; }
+.project-row > .field { flex: 1 1 22em; }
+@media (max-width: 600px) {
+  .persona-row > .grow { order: 9; flex-basis: 100%; }
+  .persona-row > .on-host { order: 8; flex-basis: 100%; max-width: none; white-space: normal; overflow-wrap: anywhere; }
+}
 .empty-note { color: var(--dim); font-size: 13px; padding: 12px 0; }
 .outbox { display: flex; flex-direction: column; gap: 4px; }
 .menu button.mi { all: unset; box-sizing: border-box; display: flex; align-items: center; gap: 10px; padding: 7px 8px; border-radius: 6px; cursor: pointer; border: 1px solid transparent; width: 100%; color: var(--text); }
@@ -1208,8 +1267,8 @@ code.wl-label { font-size: 12px; }
 
 /* Full screen: a pane view fixed over the window, where it is in the page (pane.mjs). A thread reads at the
    message column’s width; Work shows its full form. */
-.rpane > .pane-full { position: fixed; inset: 0; z-index: 28; background: var(--bg); }
-.sidepanel.pane-full .sp-body > *, .sidepanel.pane-full .sp-foot > * { width: 100%; max-width: 760px; margin-inline: auto; }
+.rpane > .pane-full { --under: var(--bg); position: fixed; inset: 0; z-index: 28; background: var(--bg); }
+.sidepanel.pane-full .sp-body > *, .sidepanel.pane-full .sp-foot > * { width: 100%; max-width: var(--col-w); margin-inline: auto; }
 .workpane.pane-full .wp-body { padding: 16px 24px 32px; }
 /* Compact, in the pane: short lists, each item opening Work full screen. */
 .wp-body { flex: 1; overflow: auto; padding: 12px 14px 20px; display: flex; flex-direction: column; gap: 18px; }
@@ -1389,7 +1448,7 @@ a.room-ref { text-decoration: underline; text-underline-offset: 2px; }
 
 /* Beside its anchor on a wide window, over the page; a sheet like any dialog on a narrow one. */
 .backdrop.anchored { display: block; background: none; padding: 0; }
-.backdrop.anchored .dialog { position: fixed; max-height: calc(100vh - 16px); }
+.backdrop.anchored .dialog { position: fixed; max-width: 480px; max-height: calc(100vh - 16px); }
 .dialog.quick { max-width: 380px; }
   border: 0; border-radius: 6px; background: none; color: var(--text); font: inherit; cursor: pointer; }
 

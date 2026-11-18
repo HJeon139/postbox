@@ -52,7 +52,7 @@ function askModels(st, paint) {
 /**
  * What the field can say about where its suggestions came from, for the current backend and host: each message, and
  * the one it says now, or null when the harness listed them just now.
- * @returns {{ shown: string | null, all: string[] }}
+ * @returns {{ shown: string | null, all: string[], host?: string }}
  */
 function listHelp(st) {
   const name = BACKENDS.find(([id]) => id === st.backend)?.[1] ?? st.backend;
@@ -62,6 +62,7 @@ function listHelp(st) {
   /** @type {Record<string, { some: string, none: string }>} */
   let answers;
   let asking;
+  const host = st.remote ? (client.state.hosts?.[st.remote]?.name ?? 'the host') : undefined;
   if (!st.remote) {
     asking = `Asking ${name} for its models…`;
     answers = {
@@ -71,7 +72,6 @@ function listHelp(st) {
       },
     };
   } else {
-    const host = client.state.hosts?.[st.remote]?.name ?? 'the host';
     asking = `Asking ${name} on ${host} for its models…`;
     const some = '. These are the ones it listed last, and any model you type goes to it as --model.';
     const none = `. Type the model you want: it goes to ${name} there as --model.`;
@@ -83,10 +83,10 @@ function listHelp(st) {
     };
   }
   const all = [asking, ...Object.values(answers).flatMap((a) => [a.some, a.none])];
-  if (list === undefined || list?.fresh) return { shown: null, all };
-  if (list === null) return { shown: asking, all };
+  if (list === undefined || list?.fresh) return { shown: null, all, host };
+  if (list === null) return { shown: asking, all, host };
   const answer = (Object.hasOwn(answers, list.why ?? '') ? answers[list.why] : null) ?? answers['not-listed'];
-  return { shown: list.models.length ? answer.some : answer.none, all };
+  return { shown: list.models.length ? answer.some : answer.none, all, host };
 }
 
 /**
@@ -94,15 +94,25 @@ function listHelp(st) {
  * show for this backend and host sits in the same grid cell, only the one it says now showing, so the cell is as tall
  * as the tallest and the answer coming in moves nothing below it, Save included. Choosing another backend or host may
  * resize it, with the person’s own click.
- * @param {{ shown: string | null, all: string[] }} help @param {string} idp
+ * @param {{ shown: string | null, all: string[], host?: string }} help @param {string} idp
  */
 function helpSlot(help, idp) {
+  const words = (/** @type {string} */ text) => withHost(text, help.host);
   return h(
     'span.help.held-help',
     help.all.map((text) =>
-      text === help.shown ? h('span', { id: `${idp}-m-help`, 'data-model-help': '' }, text) : h('span', { 'aria-hidden': 'true' }, text),
+      text === help.shown ? h('span', { id: `${idp}-m-help`, 'data-model-help': '' }, words(text)) : h('span', { 'aria-hidden': 'true' }, words(text)),
     ),
   );
+}
+
+/**
+ * A message with its host’s name kept whole (#1497): a name like gpu-build-a100-03.lab.example.net moves to the next
+ * line, rather than breaking at a hyphen, unless it’s longer than a line. @param {string} text @param {string} [host]
+ */
+function withHost(text, host) {
+  if (!host || !text.includes(host)) return text;
+  return text.split(host).flatMap((part, i) => (i ? [h('span.host-name', host), part] : [part]));
 }
 
 /**

@@ -53,3 +53,37 @@ export function turnRows(entries, turnId, { folders = [] } = {}) {
   if (s.reads.length) rows.push({ kind: 'reads', at: 'work-reads', label: readsLine(s.reads), count: s.reads.length });
   return rows;
 }
+
+/** Each conversation’s apps and reviews, kept with its work list: how far it was read, and each row by key. */
+const shownLists = new WeakMap();
+
+/** A publish’s key: an app’s id is the room’s, whichever thread showed it; a block’s is its thread’s. */
+const shownKey = (p) => (p.what === 'app' ? `app\n${p.blockId}` : `${p.threadId}\n${p.blockId}`);
+
+/**
+ * The apps and reviews the agents showed, as Work’s pane lists them: each once, as it was last shown (an app at its
+ * latest version), newest first. Other blocks, a question or a chart, are read where they are, so they aren’t listed.
+ * The work list only grows, and a publish never changes once recorded, so each call reads only the entries added since
+ * the last: an agent’s step costs one entry, not every publish again.
+ * @param {any[]} entries  the conversation’s work ledger, oldest first
+ */
+export function appsAndReviews(entries) {
+  let kept = shownLists.get(entries);
+  if (!kept || kept.length > entries.length) {
+    kept = { length: 0, last: new Map(), list: [] };
+    shownLists.set(entries, kept);
+  }
+  let changed = false;
+  for (let i = kept.length; i < entries.length; i++) {
+    const p = entries[i];
+    if (p.kind !== 'publish' || (p.what !== 'app' && p.type !== 'review')) continue;
+    // Shown again, it moves to the end, where the newest are.
+    const key = shownKey(p);
+    kept.last.delete(key);
+    kept.last.set(key, p);
+    changed = true;
+  }
+  kept.length = entries.length;
+  if (changed) kept.list = [...kept.last.values()].reverse();
+  return kept.list;
+}

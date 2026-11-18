@@ -23,7 +23,12 @@ export function mountSidePanel(parentId, sideId) {
   const tr = mountTranscript(sideId, { inPanel: true });
   // A side thread from before #372 has no composer: writing there would restart what #372 ended.
   const comp = topic ? mountComposer(sideId, { side: true }) : null;
-  const body = h('div.sp-body', tr.el);
+  // The composer is the scroll box’s last child, floating over the end of the thread as the conversation’s does (#1500).
+  const foot = h(
+    'div.sp-foot',
+    comp?.el ?? h('p.small.dim', { role: 'note' }, 'This side thread is read-only. Agents talk in the conversation now, where you can reply.'),
+  );
+  const body = h('div.sp-body', tr.el, foot);
   if (topic) void rootOf(parentId, side.rootItemId).then((root) => body.prepend(threadRoot(root) ?? ''));
   // Who is in a topic thread, in a line: the conversation’s agents, from their one session there (#228).
   const who = topic ? inThreadLine(sideId) : null;
@@ -49,10 +54,6 @@ export function mountSidePanel(parentId, sideId) {
     ),
     who ? h('div.sp-agents', who.el) : null,
     body,
-    h(
-      'div.sp-foot',
-      comp?.el ?? h('p.small.dim', { role: 'note' }, 'This side thread is read-only. Agents talk in the conversation now, where you can reply.'),
-    ),
   );
   // A file dropped anywhere on the panel attaches to the panel’s composer, not the conversation’s.
   comp?.dropZone(el);
