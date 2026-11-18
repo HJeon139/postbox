@@ -4,11 +4,11 @@
 // TMPDIR, so the test sees every folder it makes.
 
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { after, test } from 'node:test';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { tempDir } from '../temp-dirs.mjs';
 import { childrenOf, chromiumMissing, running } from './chrome.mjs';
 
@@ -40,11 +40,11 @@ async function until(check, ms) {
   return check();
 }
 
-/** Starts a bench that measures one small room for longer than the test waits. */
-function bench() {
+/** Starts a bench that measures one small room for longer than the test waits. @param {Record<string, string>} [env] */
+function bench(env = {}) {
   const tmp = tempDir('pb-bench-signal-');
   const args = ['tools/bench-key-frame.mjs', '--sizes', '200', '--keys', '2000', '--warmup', '1', '--runs', '1', '--out', join(tmp, 'report.md')];
-  const child = spawn(process.execPath, args, { cwd: ROOT, env: { ...process.env, TMPDIR: tmp }, stdio: ['ignore', 'pipe', 'pipe'] });
+  const child = spawn(process.execPath, args, { cwd: ROOT, env: { ...process.env, TMPDIR: tmp, ...env }, stdio: ['ignore', 'pipe', 'pipe'] });
   seen.push(/** @type {number} */ (child.pid));
   let said = '';
   child.stdout.on('data', (d) => (said += d));
@@ -75,3 +75,28 @@ for (const [signal, code, when] of /** @type {const} */ ([
     assert.ok(await until(() => !tree.some(running), 5_000), `its Postbox and Chromium exited: ${tree.filter(running).join(', ')}`);
   });
 }
+
+/** The bench’s Postbox, once it runs: its child whose command is server/index.mjs. @param {number} pid */
+const postboxOf = (pid) =>
+  childrenOf(pid).find((c) => /server\/index\.mjs/.test(spawnSync('ps', ['-o', 'command=', '-p', String(c)], { encoding: 'utf8' }).stdout));
+
+// Twice under load, a Ctrl-C landed while the bench waited for its Postbox, and the bench went on waiting for it to
+// start, past 20 s (#1489). Here its Postbox holds 30 s before it starts, so the signal lands in that wait every time.
+test('SIGINT while its Postbox starts stops that Postbox at once, removes the size’s data folder, and exits 130', {
+  skip,
+  timeout: START_MS + 20_000,
+}, async () => {
+  const run = bench({ NODE_OPTIONS: `--import=${pathToFileURL(join(ROOT, 'tests/process/hold-postbox.mjs')).href}` });
+  const pid = /** @type {number} */ (run.child.pid);
+  assert.ok(await until(() => sizeFolders(run.tmp).length > 0 && postboxOf(pid) !== undefined, START_MS), `its Postbox started:\n${run.said()}`);
+  const tree = treeOf(pid);
+  const t0 = Date.now();
+  run.child.kill('SIGINT');
+  const timer = setTimeout(() => run.child.kill('SIGKILL'), 10_000);
+  const end = await run.exited;
+  clearTimeout(timer);
+  assert.deepEqual(end, { code: 130, signal: null }, `exited after ${Date.now() - t0} ms:\n${run.said()}`);
+  assert.ok(Date.now() - t0 < 5_000, `it exited within 5 s of Ctrl-C, not after ${Date.now() - t0} ms`);
+  assert.deepEqual(sizeFolders(run.tmp), [], 'the size’s data folder is gone');
+  assert.ok(await until(() => !tree.some(running), 5_000), `its Postbox and Chromium exited: ${tree.filter(running).join(', ')}`);
+});

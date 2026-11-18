@@ -57,13 +57,17 @@ function spawnServer(pb, fresh) {
   pb.server = server;
 }
 
-/** Waits until it answers, trying up to tries times. @param {Run} pb @param {(p: string) => Promise<any>} api @param {number} [tries] */
-async function ready(pb, api, tries = 80) {
+/**
+ * Waits until it answers, trying up to tries times, and gives up at once when signal aborts.
+ * @param {Run} pb @param {(p: string) => Promise<any>} api @param {number} [tries] @param {AbortSignal} [signal]
+ */
+async function ready(pb, api, tries = 80, signal) {
   for (let i = 0; ; i++) {
     try {
       await api('/api/state');
       return;
     } catch (e) {
+      signal?.throwIfAborted();
       if (pb.exited !== null || i > tries) throw new Error(`Postbox didn’t start: ${e.message}`);
       await sleep(250);
     }
@@ -73,11 +77,13 @@ async function ready(pb, api, tries = 80) {
 /**
  * Starts Postbox and waits until it answers. `api` reads one of its routes, and refuses once it has exited. One that
  * doesn’t answer within `tries` is stopped before the error reaches the caller, which may go on (#782). step says which
- * step of the run is going on, for each line of its output.
+ * step of the run is going on, for each line of its output. signal stops it whenever it aborts, while it starts or
+ * restarts too, and what was waiting on it rejects at once rather than waiting for it to answer (#1489).
  * @param {{ root: string, port: number, data: string, env: Record<string, string>, log: (line: string) => void,
- *   tries?: number, step?: () => number | null }} o
+ *   tries?: number, step?: () => number | null, signal?: AbortSignal }} o
  */
-export async function startPostbox({ root, port, data, env, log, tries = 80, step = () => null }) {
+export async function startPostbox({ root, port, data, env, log, tries = 80, step = () => null, signal }) {
+  signal?.throwIfAborted();
   /** @type {Run} */
   const pb = { root, port, data, env, log, server: null, exited: null, origin: `http://127.0.0.1:${port}`, output: outputRecorder(step), stopping: false };
   spawnServer(pb, true);
@@ -99,8 +105,9 @@ export async function startPostbox({ root, port, data, env, log, tries = 80, ste
     pb.stopping = true;
     if (pb.server) await untilGone(pb.server);
   };
+  signal?.addEventListener('abort', () => void stop(), { once: true });
   try {
-    await ready(pb, api, tries);
+    await ready(pb, api, tries, signal);
   } catch (e) {
     await stop();
     throw e;
@@ -131,9 +138,11 @@ export async function startPostbox({ root, port, data, env, log, tries = 80, ste
         old?.kill('SIGKILL');
         await gone;
       }
+      signal?.throwIfAborted();
       if (whileDown) await whileDown();
+      signal?.throwIfAborted();
       spawnServer(pb, false);
-      await ready(pb, api);
+      await ready(pb, api, undefined, signal);
       return Date.now() - down;
     },
   };
