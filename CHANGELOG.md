@@ -2,6 +2,61 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.26.0 (2026-11-18)
+
+### Features
+
+- **apps:** let an app load public data through Postbox with net.fetch
+- **apps:** open a link the person clicks in an app, in a new tab
+- **apps:** let an app publish its data for its agent, read with read_app
+- **tools:** joining after a short drop, the live snapshot apart, and a tab to the turn's end
+- **tools:** compare against main in ABBA pairs, times by paired and least ratios
+- **tools:** measure a page joining mid-turn, with /api/state and reconnecting tabs
+- **composer:** float the input as a card, with each quota bar filling its part
+- **tools:** measure live-only progress on every backend, long turns, crowded rooms and a restart
+- **work:** order the pane by what the chat is about
+
+### Fixes
+
+- **apps:** open an app's link from the parsed URL, never the app's string
+- **bench:** stop the size's Postbox on Ctrl-C, not only Chromium
+- **agent-sdk:** turn hooks off for the SDK's model listing, as for Claude Code's
+- **apps:** cap net.fetch's fetches a minute across all apps
+- **apps:** say why a second click on an app's link opened nothing, in the pane
+- **apps:** type the guarded lookup's answer as the list it asks for
+- **apps:** place net.fetch's timers, and skip a held activity patch while the store is closed
+- **apps:** open one link per click in an app, and none without the click's snapshot
+- **apps:** leave a link to the app's own page in the app
+- **apps:** hold an app's open route to this computer and a few links a minute
+- **apps:** show every net.fetch attempt, and patch the activity at most every 5 s
+- **activity:** label read_app by the app it reads
+- **apps:** send an app's publishes at most every 400 ms, latest only, in order
+- **apps:** cap net.fetch's fetches in flight and per minute
+- **apps:** keep what an app publishes in a private record, read in parts
+- **apps:** give net.fetch a real deadline and keep it off environment proxies
+- **apps:** refuse every IPv6 spelling of a private address in net.fetch
+- **tools:** tell the measured stream the running turns, so a joining tab gets their snapshot
+- **apps:** let a form in an app submit to its own script
+- **composer:** the strip from the card down to the bars is one surface
+- **tools:** answer the restart build's ledger git calls without a process too
+- **tools:** judge times of 20 ms and more, the mappers' once, and only if two rounds agree
+- **composer:** every composer keeps the same bottom padding, so the boxes sit level
+- **tools:** answer the ledger's git calls without a process in the measured sections
+- **composer:** only the card is drawn, so the conversation shows beside and below it
+- **tools:** wait for a flush or close without running the clock ahead of real time
+- **view:** give back held room only for the newest message's growth
+- **view:** tell a clamp from the page, not from input, so focus and find still end following
+- **tools:** time the whole event loop and CPU over each section's turns
+- **tools:** restart through start() and close(), with written, snapshot and replay apart
+- **view:** only your own scroll input ends following, not a clamp the page made
+- **demo:** open refs.bib from In this chat in the Work file scene
+- **view:** the held room gives back what a running reply grows into
+- **tools:** measure progress as written, on a virtual clock, with the wire and restarts
+- **work:** read hasRefs from the cached file index
+- **items:** keep the newest items as the tail when a jump moves the range away from the end
+- **work:** keep In this chat still while you read, and list each row once
+- **work:** rank In this chat in one pass, capped, with the names it shows
+
 ## 4.25.0 (2026-11-17)
 
 ### Features
