@@ -18,7 +18,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { compare, mainFirst, UNGATED_TIMES, worseTwice } from './measure-progress/compare.mjs';
+import { compare, mainFirst, sameShape, UNGATED_TIMES, worseTwice } from './measure-progress/compare.mjs';
 
 const OWN = new URL('./measure-progress/run.mjs', import.meta.url).pathname;
 const { removeRestart } = await import('./measure-progress/restart.mjs');
@@ -123,6 +123,7 @@ function pairs(theirs, section) {
     if (mainFirst(i)) main.push(once(theirs, section));
     branch.push(once(OWN, section));
     if (!mainFirst(i)) main.push(once(theirs, section));
+    if (i === 0) sameShape(main, branch); // a mismatch stops here, not after every pair
   }
   return compare(main, branch, { times: !UNGATED_TIMES.has(section) });
 }

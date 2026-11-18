@@ -130,16 +130,20 @@ test('the steady section has a run for each crowd and count of tabs the crowd se
 
 // A crash past one snapshot interval is judged at several points across that interval, not one, since where the last
 // snapshot fell before a single crash decided the load by luck (tools/measure-progress/crash-points.mjs).
-test('the crash points are evenly spaced across one snapshot interval, ending at the crash; a short log has one', async () => {
+test('the crash points sit at fixed phases of the snapshot interval, within one interval of the crash; a short log has one', async () => {
   const { crashPoints, INTERVAL_EVENTS, POINTS } = await import('../tools/measure-progress/crash-points.mjs');
   assert.ok(POINTS >= 8, 'at least 8 points');
-  const total = 10_199;
-  const points = crashPoints(total);
-  assert.equal(points.length, POINTS);
-  assert.equal(points.at(-1), total, 'the last is the crash itself');
-  const gaps = points.slice(1).map((p, i) => p - points[i]);
-  for (const g of gaps) assert.ok(Math.abs(g - INTERVAL_EVENTS / POINTS) <= 1, `evenly spaced: ${gaps}`);
-  assert.equal(points.at(-1) - points[0] + INTERVAL_EVENTS / POINTS, INTERVAL_EVENTS, 'together they span one interval');
+  const step = INTERVAL_EVENTS / POINTS;
+  for (const total of [10_199, 9_799, 12_345]) {
+    const points = crashPoints(total);
+    assert.equal(points.length, POINTS);
+    assert.deepEqual(
+      points.map((p) => p % INTERVAL_EVENTS).sort((x, y) => x - y),
+      Array.from({ length: POINTS }, (_, k) => k * step),
+      `the same phases past a snapshot, whatever the log's length: ${total}`,
+    );
+    for (const p of points) assert.ok(p <= total && p > total - INTERVAL_EVENTS, `${p} within one interval up to the crash`);
+  }
   assert.deepEqual(crashPoints(INTERVAL_EVENTS), [INTERVAL_EVENTS], 'a log no longer than an interval holds no snapshot to land before');
 });
 
@@ -148,8 +152,15 @@ test('the crash points are evenly spaced across one snapshot interval, ending at
 test('runs whose rows or numbers don’t match are refused, not judged on what they share', async () => {
   const { compare } = await import('../tools/measure-progress/compare.mjs');
   const runs = (/** @type {any} */ row) => [[row], [row]];
-  assert.throws(() => compare(runs({ row: 'a', cpuMs: 30 }), runs({ row: 'b', cpuMs: 30 })), /The rows don’t match: main has a, and this branch has b\./);
-  assert.throws(() => compare(runs({ row: 'a', cpuMs: 30 }), runs({ row: 'a', cpuMs: 30, worstMs: 40 })), /The numbers of “a” don’t match/);
+  assert.throws(
+    () => compare(runs({ row: 'a', cpuMs: 30 }), runs({ row: 'b', cpuMs: 30 })),
+    /The rows don’t match: main has a, and this branch has b\. Measure both sides with the same tool/,
+  );
+  assert.throws(
+    () => compare(runs({ row: 'a', cpuMs: 30, loadMs: 9 }), runs({ row: 'a', cpuMs: 30, worstMs: 40 })),
+    /The numbers of “a” don’t match: main lacks worstMs, and this branch lacks loadMs\. Measure both sides with the same tool/,
+  );
+  assert.doesNotThrow(() => compare(runs({ row: 'a', loadMs: 9, cpuMs: 30 }), runs({ row: 'a', cpuMs: 30, loadMs: 9 })), 'the keys’ order doesn’t matter');
   assert.doesNotThrow(() => compare(runs({ row: 'a', cpuMs: 30 }), runs({ row: 'a', cpuMs: 31 })));
 });
 
@@ -160,23 +171,27 @@ test('the crash points’ interval is the store’s, so the points span one snap
 });
 
 // Each point is the log as it stood then, snapshot and all, so the points replay what's after their own last snapshot:
-// as many different amounts as there are points, not the crash's copied eight times.
-test('the crash folders replay what each point had after its own last snapshot', async () => {
-  const { crashFolders } = await import('../tools/measure-progress/crash-points.mjs');
-  const dir = tempDir('pb-crash-points-');
-  const whole = join(dir, 'whole');
-  const log = await new Store(whole, { snapshotEvery: Number.POSITIVE_INFINITY }).load();
-  for (let i = 0; i < 30; i++) log.emit('thread', { id: `t${i}`, members: [] });
-  await log.close();
-  // A snapshot every 16 events, and 8 points 2 apart from 14 to 28: one interval, ending past a snapshot at 16.
-  const points = [14, 16, 18, 20, 22, 24, 26, 28];
-  const { folders } = await crashFolders(whole, join(dir, 'crash'), points, { snapshotEvery: 16 });
-  assert.equal(folders.length, points.length);
-  const replays = [];
-  for (const f of folders) {
-    const s = await new Store(f, { snapshotEvery: Number.POSITIVE_INFINITY }).load();
-    replays.push(s.sinceSnapshot);
-    await s.close();
-  }
-  assert.deepEqual(replays, [14, 0, 2, 4, 6, 8, 10, 12]);
+// as many different amounts as there are points, not the crash's copied eight times; and, at fixed phases, the same
+// amounts for two logs of different lengths, so a shorter log isn't judged at worse moments (#1513's review).
+test('the crash folders replay what each point had after its own last snapshot, the same for two log lengths', async () => {
+  const { crashFolders, crashPoints } = await import('../tools/measure-progress/crash-points.mjs');
+  /** The replays at the crash points of a log of `n` events, at a snapshot every 16. @param {number} n */
+  const replaysOf = async (n) => {
+    const dir = tempDir('pb-crash-points-');
+    const whole = join(dir, 'whole');
+    const log = await new Store(whole, { snapshotEvery: Number.POSITIVE_INFINITY }).load();
+    for (let i = 0; i < n; i++) log.emit('thread', { id: `t${i}`, members: [] });
+    await log.close();
+    const { folders } = await crashFolders(whole, join(dir, 'crash'), crashPoints(n, 16), { snapshotEvery: 16 });
+    const replays = [];
+    for (const f of folders) {
+      const s = await new Store(f, { snapshotEvery: Number.POSITIVE_INFINITY }).load();
+      replays.push(s.sinceSnapshot);
+      await s.close();
+    }
+    return replays.sort((x, y) => x - y);
+  };
+  const thirty = await replaysOf(30);
+  assert.deepEqual(thirty, [0, 2, 4, 6, 8, 10, 12, 14], 'a different replay at each point');
+  assert.deepEqual(await replaysOf(37), thirty, 'the same for a log 7 events longer');
 });

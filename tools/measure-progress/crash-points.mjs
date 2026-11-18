@@ -16,14 +16,20 @@ export const POINTS = 8;
 export const INTERVAL_EVENTS = 5000;
 
 /**
- * The crash points of a log of `total` events: POINTS of them, evenly spaced across one interval, the last the crash
- * itself; or the crash alone, for a log shorter than an interval, which holds no snapshot to land before.
- * @param {number} total
+ * The crash points of a log of `total` events: POINTS of them at fixed phases of the snapshot interval, 0, 1/8, … 7/8
+ * of it past a snapshot, each the last event at its phase up to the crash; or the crash alone, for a log shorter than
+ * an interval, which holds no snapshot to land before. At fixed phases the points replay the same whatever the log’s
+ * length, so two sides whose logs differ in length are compared at the same distances from their snapshots; points
+ * counted back from the crash rotated with the length, and a log 400 events shorter came out 9.5% worse (#1513’s review).
+ * @param {number} total @param {number} [interval]  a snapshot interval, in events, which a test shortens
  */
-export function crashPoints(total) {
-  if (total <= INTERVAL_EVENTS) return [total];
-  const step = INTERVAL_EVENTS / POINTS;
-  return Array.from({ length: POINTS }, (_, k) => total - INTERVAL_EVENTS + Math.round((k + 1) * step));
+export function crashPoints(total, interval = INTERVAL_EVENTS) {
+  if (total <= interval) return [total];
+  const step = interval / POINTS;
+  return Array.from({ length: POINTS }, (_, k) => {
+    const phase = Math.round(k * step);
+    return total - ((((total - phase) % interval) + interval) % interval);
+  }).sort((a, b) => a - b);
 }
 
 /** The log’s lines in a folder’s segments, in order. @param {string} dir */

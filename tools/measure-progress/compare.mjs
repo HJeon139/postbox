@@ -72,29 +72,38 @@ export function compare(main, branch, { times = true } = {}) {
   return out;
 }
 
-/** A row’s numbers’ keys, as one string. @param {Record<string, any>} row */
+/** A row’s numbers’ keys, sorted. @param {Record<string, any>} row */
 const keysOf = (row) =>
   Object.keys(row)
     .filter((k) => typeof row[k] === 'number')
-    .join(',');
+    .sort();
+
+/** What to do when the two sides’ rows don’t match. */
+const SAME_TOOL =
+  'Measure both sides with the same tool: merge main into this branch, or compare against a checkout of main that has this branch’s tools/measure-progress.';
 
 /**
  * Refuses runs whose rows or numbers don’t match, rather than judging what they share and skipping the rest: a row or a
- * number one side has and the other doesn’t, as when main’s tool reports a row differently, would pass unjudged.
+ * number one side has and the other doesn’t, as when main’s tool reports a row differently, would pass unjudged. Asked
+ * after the first pair too (tools/measure-progress.mjs), so a mismatch stops the measurement before the rest of the pairs.
  * @param {any[][]} main @param {any[][]} branch
  */
-function sameShape(main, branch) {
+export function sameShape(main, branch) {
   const want = main[0] ?? [];
+  const names = (/** @type {any[]} */ rows) => rows.map((r) => r.row).join(' | ');
   for (const [side, runs] of /** @type {const} */ ([
     ['main', main],
     ['this branch', branch],
   ]))
     for (const rows of runs) {
-      const got = rows.map((r) => r.row).join(' | ');
-      if (got !== want.map((r) => r.row).join(' | '))
-        throw new Error(`The rows don’t match: main has ${want.map((r) => r.row).join(' | ')}, and ${side} has ${got}.`);
-      for (const [i, r] of rows.entries())
-        if (keysOf(r) !== keysOf(want[i])) throw new Error(`The numbers of “${r.row}” don’t match: main has ${keysOf(want[i])}, and ${side} has ${keysOf(r)}.`);
+      if (names(rows) !== names(want)) throw new Error(`The rows don’t match: main has ${names(want)}, and ${side} has ${names(rows)}. ${SAME_TOOL}`);
+      for (const [i, r] of rows.entries()) {
+        const a = keysOf(want[i]);
+        const b = keysOf(r);
+        if (a.join() === b.join()) continue;
+        const lacks = (/** @type {string[]} */ x, /** @type {string[]} */ y) => x.filter((k) => !y.includes(k)).join(', ') || 'none';
+        throw new Error(`The numbers of “${r.row}” don’t match: main lacks ${lacks(b, a)}, and ${side} lacks ${lacks(a, b)}. ${SAME_TOOL}`);
+      }
     }
 }
 
