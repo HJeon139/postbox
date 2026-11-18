@@ -9,7 +9,7 @@ import { codexApproval } from './codex-approval.mjs';
 import { itemCompleted, itemStarted } from './codex-events.mjs';
 import { codexMcpApprovalConfig, postboxMcpApprovalArgs } from './codex-mcp-policy.mjs';
 import { codexModels, findCodex } from './codex-models.mjs';
-import { codexWebSearchArgs, networkOn } from './codex-network.mjs';
+import { CODEX_TOOL_RULES, codexWebSearchArgs, networkOn } from './codex-network.mjs';
 import { attachmentPaths, CODEX_CAPABILITIES, createCodexHost, interruptReached, pickUp, remoteEnd, spawnRemoteCodex } from './codex-remote.mjs';
 import { codexRefusal, openCodexThread } from './codex-thread.mjs';
 import { codexContextPercent } from './context-usage.mjs';
@@ -179,7 +179,7 @@ async function startTurn(ctx, request, send, cwd, session, message) {
   const permissions = codexPermissions(ctx.persona, cwd);
   const mcpConfig = await codexMcpApprovalConfig(request, ctx.persona?.permissionMode);
   // The guide belongs on thread start/resume/fork; turn/start has no top-level settings field.
-  const { guide, message: turnMessage } = turnGuide(message, { ...ctx, session, brief: session?.brief, toolRules: null });
+  const { guide, message: turnMessage } = turnGuide(message, { ...ctx, session, brief: session?.brief, toolRules: CODEX_TOOL_RULES });
   const openConfig = { developerInstructions: guide, ...(mcpConfig ? { config: mcpConfig } : {}) };
   const model = codexModelOf(ctx.persona);
   const fork = ctx.state.fork ?? ctx.state.forkFrom;

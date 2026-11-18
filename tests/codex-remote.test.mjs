@@ -83,6 +83,21 @@ test('#120: a remote Codex turn starts on the host with a held stdin, the shim a
   assert.deepEqual(f.calls, []);
 });
 
+test('a remote Codex turn with Web enabled keeps the host’s search setting', async () => {
+  const d = createFakeDaemon({ autoEnd: false, lines: [] });
+  const link = linkTo(d);
+  await ready(link);
+  const host = codexOnHost(d);
+  const f = forbidden();
+  const adapter = new CodexAdapter({ kill: f.kill, list: f.list });
+  const { ctx } = context(link);
+  Object.assign(ctx.persona, { tools: ['web.fetch'] });
+  await adapter.deliver({}, { kind: 'user', text: 'Say hello.' }, ctx);
+  host.stop();
+  const [start] = sent(d, 'start');
+  assert.ok(!start.argv.some((arg) => arg.startsWith('web_search=')));
+});
+
 test('#120: a remote Codex turn’s tool timeout follows the host’s own permissionWaitMax', async () => {
   const d = createFakeDaemon({ autoEnd: false, lines: [] });
   const link = linkTo(d);

@@ -172,6 +172,7 @@ test('a turn starts and saves a Codex thread and supplies Postbox instructions',
   const adapter = new CodexAdapter({
     workRoot: CODEX_ROOT,
     spawnImpl: (_bin, args) => {
+      assert.deepEqual(args.slice(0, 3), ['app-server', '--listen', 'stdio://']);
       assert.deepEqual(args.slice(-2), ['-c', 'web_search="disabled"']);
       return fakeAppServer(seen);
     },
@@ -204,6 +205,7 @@ test('a turn starts and saves a Codex thread and supplies Postbox instructions',
   );
   assert.match(seen.find((x) => x.method === 'thread/start').params.developerInstructions, /Postbox/);
   assert.equal('settings' in turn.params, false);
+  assert.match(turn.params.input[0].text, /fetching web pages or searching the web \(web\.fetch\)/);
   assert.equal(turn.params.sandboxPolicy.type, 'workspaceWrite');
   // Codex takes the effort only on turn/start, which sets it for that turn and the ones after; thread/start has none,
   // so a new thread’s thread/started shows Codex’s default until the first turn applies this.
