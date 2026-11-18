@@ -48,6 +48,7 @@ const median = (xs) => {
  * @param {any[][]} main @param {any[][]} branch @param {{ times?: boolean }} [o]
  */
 export function compare(main, branch, { times = true } = {}) {
+  sameShape(main, branch);
   /** @type {{ row: string, key: string, main: number, branch: number, ratio?: number, leastRatio?: number, worse: boolean }[]} */
   const out = [];
   for (const [r, first] of main[0].entries())
@@ -69,6 +70,32 @@ export function compare(main, branch, { times = true } = {}) {
       }
     }
   return out;
+}
+
+/** A row’s numbers’ keys, as one string. @param {Record<string, any>} row */
+const keysOf = (row) =>
+  Object.keys(row)
+    .filter((k) => typeof row[k] === 'number')
+    .join(',');
+
+/**
+ * Refuses runs whose rows or numbers don’t match, rather than judging what they share and skipping the rest: a row or a
+ * number one side has and the other doesn’t, as when main’s tool reports a row differently, would pass unjudged.
+ * @param {any[][]} main @param {any[][]} branch
+ */
+function sameShape(main, branch) {
+  const want = main[0] ?? [];
+  for (const [side, runs] of /** @type {const} */ ([
+    ['main', main],
+    ['this branch', branch],
+  ]))
+    for (const rows of runs) {
+      const got = rows.map((r) => r.row).join(' | ');
+      if (got !== want.map((r) => r.row).join(' | '))
+        throw new Error(`The rows don’t match: main has ${want.map((r) => r.row).join(' | ')}, and ${side} has ${got}.`);
+      for (const [i, r] of rows.entries())
+        if (keysOf(r) !== keysOf(want[i])) throw new Error(`The numbers of “${r.row}” don’t match: main has ${keysOf(want[i])}, and ${side} has ${keysOf(r)}.`);
+    }
 }
 
 /**
