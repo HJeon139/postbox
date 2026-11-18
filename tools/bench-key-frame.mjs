@@ -27,22 +27,24 @@ import { startPostbox } from './uat/postbox.mjs';
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 
 /**
- * What a Ctrl-C or a SIGTERM must undo, as the bench goes: the page, and the size being measured, whose own finally
- * stops its Postbox and removes its data folder.
- * @type {{ page: any, size: Promise<any> | null, stopping: boolean }}
+ * What a Ctrl-C or a SIGTERM must undo, as the bench goes: the page, the size’s Postbox, which stop aborts, and the
+ * size being measured, whose own finally stops its Postbox and removes its data folder.
+ * @type {{ page: any, size: Promise<any> | null, stop: AbortController, stopping: boolean }}
  */
-const live = { page: null, size: null, stopping: false };
+const live = { page: null, size: null, stop: new AbortController(), stopping: false };
 
 /**
- * Closes Chromium, so the size being measured fails at its next step and cleans up after itself, waits for that, and
- * exits as a shell reports the signal: 130 for SIGINT, 143 for SIGTERM. Removing the folder here instead raced the
- * size’s own steps, which went on writing into it.
+ * Stops the size’s Postbox, which ends a step that waits on it, and closes Chromium, which ends one that uses the page,
+ * so the size being measured fails at once and cleans up after itself. Then it waits for that, and exits as a shell
+ * reports the signal: 130 for SIGINT, 143 for SIGTERM. Removing the folder here instead raced the size’s own steps,
+ * which went on writing into it. Closing only Chromium left a size waiting for its Postbox to start, past 20 s (#1489).
  * @param {'SIGINT' | 'SIGTERM'} signal
  */
 async function stopOn(signal) {
   if (live.stopping) return;
   live.stopping = true;
   const quietly = (p) => Promise.resolve(p).catch(() => null);
+  live.stop.abort();
   await quietly(live.page?.close());
   await quietly(live.size);
   process.exit(signal === 'SIGINT' ? 130 : 143);
@@ -94,14 +96,15 @@ export async function openFresh(page, url) {
 
 /**
  * One size: a fresh Postbox with the room seeded at that count, measured runs times. Its data folder is removed
- * however it ends, a Postbox that didn’t start included. start, port and tmp are for tests.
+ * however it ends, a Postbox that didn’t start included. signal stops its Postbox, as it starts too. start, port and
+ * tmp are for tests.
  */
-export async function measureSize(page, items, o, log, { start = startPostbox, port = freePort, tmp = tmpdir() } = {}) {
+export async function measureSize(page, items, o, log, { start = startPostbox, port = freePort, tmp = tmpdir(), signal } = {}) {
   const data = await mkdtemp(join(tmp, `pb-key-frame-${items}-`));
   const pooled = { eventTiming: [], nextFrame: [], below: 0 };
   let postbox = null;
   try {
-    postbox = await start({ root: ROOT, port: await port(), data, env: { POSTBOX_BACKENDS: 'mock' }, log: () => {} });
+    postbox = await start({ root: ROOT, port: await port(), data, env: { POSTBOX_BACKENDS: 'mock' }, log: () => {}, signal });
     await postbox.restart({
       whileDown: async () => {
         await seedRoomFolder(data, items);
@@ -135,7 +138,7 @@ async function main() {
     const results = [];
     for (const items of o.sizes) {
       if (live.stopping) return;
-      live.size = measureSize(page, items, o, log);
+      live.size = measureSize(page, items, o, log, { signal: live.stop.signal });
       results.push(await live.size);
     }
     if (page.logs.length) log(`The page logged ${page.logs.length} errors; the first: ${page.logs[0]}`);
