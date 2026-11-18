@@ -146,11 +146,12 @@ const opens = new WeakMap();
 const OPEN_W = 20;
 
 /**
- * The conversation’s quota line, which paints itself as reports and the room change. A click on it, or Enter, opens
- * each backend’s details. @param {string} threadId @param {() => void} openDetails
+ * What opens a line’s details (#1496): the chevron, kept for its paints, and a click on a bar. In a function of its own:
+ * a closure shares its scope with every other made beside it, so a click handler made in quotaLine would let the
+ * repaint listener there, which the client holds for good, keep openDetails, and with it the conversation that made it
+ * (#866). @param {HTMLElement} el @param {() => void} openDetails
  */
-export function quotaLine(threadId, openDetails) {
-  const el = h('div.quota-line', { role: 'group', 'aria-label': 'Quota by backend', dataset: { quotaLine: threadId } });
+function opensDetails(el, openDetails) {
   opens.set(
     el,
     h('button.quota-open', { type: 'button', 'aria-label': 'Quota details', title: 'Each backend’s quota, in Settings', onclick: openDetails }, icon('right')),
@@ -158,6 +159,15 @@ export function quotaLine(threadId, openDetails) {
   el.addEventListener('click', (e) => {
     if (/** @type {Element} */ (e.target).closest('.quota-bar')) openDetails();
   });
+}
+
+/**
+ * The conversation’s quota line, which paints itself as reports and the room change. A click on a bar, or the chevron
+ * at its end, opens each backend’s details. @param {string} threadId @param {() => void} openDetails
+ */
+export function quotaLine(threadId, openDetails) {
+  const el = h('div.quota-line', { role: 'group', 'aria-label': 'Quota by backend', dataset: { quotaLine: threadId } });
+  opensDetails(el, openDetails);
   paint(el);
   lines.add(el);
   resized.observe(el);
