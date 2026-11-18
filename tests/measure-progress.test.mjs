@@ -56,6 +56,18 @@ test('a time 12% worse in every pair is worse, though the bands overlap; the sam
   assert.equal(compare(main, bytes).find((c) => c.key === 'logBytes')?.worse, true);
 });
 
+test('the crowd section’s times are a cold process’s, reported and not judged; its bytes are judged as ever', async () => {
+  const { compare, UNGATED_TIMES } = await import('../tools/measure-progress/compare.mjs');
+  assert.deepEqual([...UNGATED_TIMES], ['crowded']);
+  const main = [100, 120, 140, 160].map((ms) => [{ row: 'r', cpuMs: ms, logBytes: 1000 }]);
+  const branch = [100, 120, 140, 160].map((ms) => [{ row: 'r', cpuMs: ms * 1.3, logBytes: 1100 }]);
+  const cold = compare(main, branch, { times: false });
+  const cpu = cold.find((c) => c.key === 'cpuMs');
+  assert.equal(cpu?.worse, false, 'reported, and not worse');
+  assert.ok(Math.abs(/** @type {number} */ (cpu?.ratio) - 1.3) < 1e-9, 'its ratio is still printed');
+  assert.equal(cold.find((c) => c.key === 'logBytes')?.worse, true);
+});
+
 test('a number is worse only when a second round of pairs agrees, and small times and the time a delta aren’t judged', async () => {
   const { compare, worseTwice } = await import('../tools/measure-progress/compare.mjs');
   const runs = (/** @type {number} */ k) =>

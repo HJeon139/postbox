@@ -18,7 +18,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { compare, mainFirst, worseTwice } from './measure-progress/compare.mjs';
+import { compare, mainFirst, UNGATED_TIMES, worseTwice } from './measure-progress/compare.mjs';
 
 const OWN = new URL('./measure-progress/run.mjs', import.meta.url).pathname;
 const { removeRestart } = await import('./measure-progress/restart.mjs');
@@ -124,7 +124,7 @@ function pairs(theirs, section) {
     branch.push(once(OWN, section));
     if (!mainFirst(i)) main.push(once(theirs, section));
   }
-  return compare(main, branch);
+  return compare(main, branch, { times: !UNGATED_TIMES.has(section) });
 }
 
 /** Prints a round’s numbers against main’s. @param {string} title @param {ReturnType<typeof compare>} round */
@@ -144,7 +144,8 @@ if (AGAINST) {
   const worse = [];
   for (const section of SECTIONS) {
     const first = pairs(theirs, section);
-    printRound(`${section}: this branch against ${AGAINST} (${PAIRS} ABBA pairs; time as the median pair’s ratio, and the least runs’)`, first);
+    const cold = UNGATED_TIMES.has(section) ? '; times are a cold process’s, reported and not judged' : '';
+    printRound(`${section}: this branch against ${AGAINST} (${PAIRS} ABBA pairs; time as the median pair’s ratio, and the least runs’${cold})`, first);
     if (!first.some((c) => c.worse)) continue;
     // A number worse in one round of pairs is worse only if a second round agrees.
     const second = pairs(theirs, section);
