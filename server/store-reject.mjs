@@ -56,8 +56,9 @@ export function noteRejected(holder, seq, type, error) {
  */
 export function applyOrHold(store, ev) {
   const kept = JSON.stringify(ev);
-  // The log’s line, from the state before the event (server/store-text-at.mjs); since() keeps the event whole.
-  const [logged] = written(store.state, [ev]);
+  // The log’s line, from the state before the event (server/store-text-at.mjs); since() keeps the event whole. Only an
+  // item.text can differ, so no other event pays for asking.
+  const logged = ev.type === 'item.text' ? written(store.state, [ev])[0] : ev;
   const line = logged === ev ? kept : JSON.stringify(logged);
   try {
     apply(store.state, ev.type, ev.data);
