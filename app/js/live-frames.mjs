@@ -5,7 +5,6 @@
 // it stands for, so whatever draws a step or a session draws it as before.
 
 import { liveApplier } from '/shared/live-apply.mjs';
-import { liveFrameOf } from '/shared/live-kinds.mjs';
 import { client, itemIn, resync } from './client.mjs';
 
 const live = liveApplier();
@@ -16,12 +15,7 @@ const tell = (/** @type {any[]} */ changes) => {
 
 client.on((ch) => {
   if (ch.type === 'live') {
-    // A page ahead of its stream, as after it loads a conversation’s range while the stream runs late, may have stored
-    // what a step or session frame says, newer, so it drops them, as it drops a header then. A text frame adds only the
-    // words the page lacks, so it applies: its commit point isn’t sent to a page that was sent it (server/live-sent.mjs).
-    const f = liveFrameOf(ch.data);
-    if (ch.behind && f?.kind !== 'text') return;
-    tell(live.apply(client.state, f, has));
+    tell(live.apply(client.state, ch.data, has));
     // A dropped frame’s step may never be sent again (server/live-sent.mjs): the state, with its snapshot, has it.
     if (live.lost()) void resync();
   } else if (ch.type === 'load') tell(live.snapshot(client.state, client.live, has));
