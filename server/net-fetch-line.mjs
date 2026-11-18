@@ -68,7 +68,7 @@ function count(id, outcome, host) {
   tries.set(outcome, hosts);
   counts.delete(id);
   counts.set(id, tries);
-  if (counts.size > COUNTS_KEPT) counts.delete(counts.keys().next().value);
+  if (counts.size > COUNTS_KEPT) counts.delete(/** @type {string} */ (counts.keys().next().value));
   return tries;
 }
 
@@ -84,7 +84,8 @@ function throttled(store, patch) {
   const timer = setTimeout(() => {
     const due = waiting.get(id);
     waiting.delete(id);
-    if (due) throttled(store, due);
+    // While the store is closed it writes nothing: the next fetch’s patch carries the whole count again.
+    if (due && store.writable) throttled(store, due);
   }, PATCH_MS);
   timer.unref?.();
 }
