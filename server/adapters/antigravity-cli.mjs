@@ -58,6 +58,7 @@ import { withQuota } from '../harness-failure.mjs';
 import { firstSentence } from '../harness-tools.mjs';
 import { stopProbe } from '../remote/host/probe-stop.mjs';
 import { describeTool } from '../tool-labels.mjs';
+import { agyArgs } from './agy-args.mjs';
 import { AGY_CAPABILITIES } from './agy-capabilities.mjs';
 import { agyHookCommand, agySupportsHooks, confirmAgyHook, HOOK_SCRIPT } from './agy-hook.mjs';
 import { agyPlugin, agySkillFiles, excludeFile, excludePlugin, PLUGIN_DIR, writeAgyPlugin } from './agy-plugin.mjs';
@@ -171,22 +172,8 @@ const named = (model) => /-(low|medium|high)$/.exec(String(model))?.[1] ?? null;
 /** The effort a turn ran at, for the model chip: the one passed, or the one the id names. */
 export const effortRun = (model, passed) => passed ?? named(model);
 
+export { agyArgs, modeArgs } from './agy-args.mjs';
 export { AGY_SERVER, ALLOW_POSTBOX, allowPostbox };
-
-/** The persona’s permission mode as agy’s flags (#370: --dangerously-skip-permissions only once the PreToolUse hook is confirmed). */
-export function modeArgs(persona, { hookConfirmed = false } = {}) {
-  if (hookConfirmed) return ['--dangerously-skip-permissions'];
-  switch (persona?.permissionMode) {
-    case 'auto':
-      return ['--mode', 'auto'];
-    case 'acceptEdits':
-      return ['--mode', 'accept-edits'];
-    case 'bypass':
-      return ['--dangerously-skip-permissions'];
-    default:
-      return [];
-  }
-}
 
 /**
  * What the hook reads from its environment: its MCP server, the mode, the folders it may work in, and the persona’s
@@ -204,28 +191,6 @@ export function agyHookVars({ mcpUrl, persona, cwd, addDirs, reads = [] }) {
     POSTBOX_AGY_TOOLS: JSON.stringify(Array.isArray(persona?.tools) ? persona.tools : []),
     POSTBOX_AGY_PUBLISH: setupOf(persona).canPublish ? '1' : '',
   };
-}
-
-/**
- * The CLI arguments for one turn. Pure, so the tests can check them. Every flag comes before the message: given
- * as --print=<message>, it is one argument whatever it starts with.
- * @param {{ persona: any, model: string, effort: string|null, sessionId?: string|null, prompt: string, addDirs?: string[], hookConfirmed?: boolean }} turn
- */
-export function agyArgs({ persona, model, effort, sessionId = null, prompt, addDirs = [], hookConfirmed = false }) {
-  return [
-    // Both always passed, where agy takes them: left out, your agy settings would decide (#60).
-    '--model',
-    model,
-    ...(effort ? ['--effort', effort] : []),
-    ...(sessionId ? ['--conversation', sessionId] : []),
-    ...modeArgs(persona, { hookConfirmed }),
-    // A message that starts with / is the person’s text, not one of agy’s commands.
-    '--disable-slash-commands',
-    '--output-format',
-    'stream-json',
-    ...addDirs.flatMap((d) => ['--add-dir', d]),
-    `--print=${prompt}`,
-  ];
 }
 
 /**
