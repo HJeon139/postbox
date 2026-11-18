@@ -142,3 +142,41 @@ test('the crash points are evenly spaced across one snapshot interval, ending at
   assert.equal(points.at(-1) - points[0] + INTERVAL_EVENTS / POINTS, INTERVAL_EVENTS, 'together they span one interval');
   assert.deepEqual(crashPoints(INTERVAL_EVENTS), [INTERVAL_EVENTS], 'a log no longer than an interval holds no snapshot to land before');
 });
+
+// A row or a number one side has and the other doesn't would pass unjudged, as when main's tool reports a row another
+// way: compare() refuses it, naming what differs (#1513's review).
+test('runs whose rows or numbers don’t match are refused, not judged on what they share', async () => {
+  const { compare } = await import('../tools/measure-progress/compare.mjs');
+  const runs = (/** @type {any} */ row) => [[row], [row]];
+  assert.throws(() => compare(runs({ row: 'a', cpuMs: 30 }), runs({ row: 'b', cpuMs: 30 })), /The rows don’t match: main has a, and this branch has b\./);
+  assert.throws(() => compare(runs({ row: 'a', cpuMs: 30 }), runs({ row: 'a', cpuMs: 30, worstMs: 40 })), /The numbers of “a” don’t match/);
+  assert.doesNotThrow(() => compare(runs({ row: 'a', cpuMs: 30 }), runs({ row: 'a', cpuMs: 31 })));
+});
+
+test('the crash points’ interval is the store’s, so the points span one snapshot interval of what’s measured', async () => {
+  const { INTERVAL_EVENTS } = await import('../tools/measure-progress/crash-points.mjs');
+  const { SNAPSHOT_EVERY } = await import('../server/store.mjs');
+  assert.equal(INTERVAL_EVENTS, SNAPSHOT_EVERY);
+});
+
+// Each point is the log as it stood then, snapshot and all, so the points replay what's after their own last snapshot:
+// as many different amounts as there are points, not the crash's copied eight times.
+test('the crash folders replay what each point had after its own last snapshot', async () => {
+  const { crashFolders } = await import('../tools/measure-progress/crash-points.mjs');
+  const dir = tempDir('pb-crash-points-');
+  const whole = join(dir, 'whole');
+  const log = await new Store(whole, { snapshotEvery: Number.POSITIVE_INFINITY }).load();
+  for (let i = 0; i < 30; i++) log.emit('thread', { id: `t${i}`, members: [] });
+  await log.close();
+  // A snapshot every 16 events, and 8 points 2 apart from 14 to 28: one interval, ending past a snapshot at 16.
+  const points = [14, 16, 18, 20, 22, 24, 26, 28];
+  const { folders } = await crashFolders(whole, join(dir, 'crash'), points, { snapshotEvery: 16 });
+  assert.equal(folders.length, points.length);
+  const replays = [];
+  for (const f of folders) {
+    const s = await new Store(f, { snapshotEvery: Number.POSITIVE_INFINITY }).load();
+    replays.push(s.sinceSnapshot);
+    await s.close();
+  }
+  assert.deepEqual(replays, [14, 0, 2, 4, 6, 8, 10, 12]);
+});
