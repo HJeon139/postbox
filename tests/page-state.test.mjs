@@ -59,21 +59,3 @@ test('/api/state carries the running turns’ live state, as the page may see it
     steps: [{ id: 's1', label: 'Read', state: 'running' }],
   });
 });
-
-// /api/state names no conversation, so it would carry every running reply’s words, mostly for conversations the page
-// hasn’t opened. The stream the page opens next sends them, in its connect snapshot, for the ones it has open
-// (server/live-streams.mjs), so /api/state leaves them out (#1502: it cost 18 bytes a turn against main).
-test('/api/state’s live state leaves out a running reply’s words, which the stream’s connect snapshot carries', () => {
-  const turn = {
-    id: 'tu_1',
-    sessionId: 'se_b',
-    threadId: 'th_c',
-    first: 'it_1',
-    live: { changed: new Map(), session: {} },
-    liveText: { itemId: 'it_1', at: 0, text: 'Reading the shelf.' },
-  };
-  const [snap] = answerFor(emptyState(), [turn]).live;
-  assert.equal(snap.turnId, 'tu_1');
-  assert.equal(snap.text, undefined);
-  assert.ok(!JSON.stringify(snap).includes('Reading the shelf.'));
-});

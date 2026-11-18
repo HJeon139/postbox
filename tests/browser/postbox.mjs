@@ -9,7 +9,6 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect } from '@playwright/test';
 import { start } from '../../server/index.mjs';
-import { committed } from '../../server/live-sent.mjs';
 import { heldStill } from '../../tools/page-still.mjs';
 import { allowServerLog, captureServerLog, takeServerFailures } from '../server-log.mjs';
 
@@ -68,7 +67,6 @@ export async function startPostbox(name, { demo = true, mockOnly = true, prepare
     throw e;
   }
   const started = app;
-  newestSent(started.store);
   return {
     ...started,
     root,
@@ -111,28 +109,14 @@ export const PHONE = {
   deviceScaleFactor: 2,
 };
 
-/** Each store’s newest event that every page is sent (newestSent). @type {WeakMap<object, number>} */
-const sendable = new WeakMap();
-
 /**
- * Keeps the store’s newest event that every page is sent: a commit point of what a page had live isn’t sent to it, and
- * doesn’t move its place on (server/live-sent.mjs), so a page can stay behind the store’s seq for good.
- * @param {any} store
- */
-function newestSent(store) {
-  sendable.set(store, store.state.seq);
-  store.subscribe((/** @type {any} */ ev) => committed.has(ev.data) || sendable.set(store, ev.seq));
-}
-
-/**
- * Waits until the page has applied the server’s events up to its store’s seq now, or up to the newest one it’s sent when
- * the store’s since then are commit points it had live (newestSent). A change made on the server
+ * Waits until the page has applied the server’s events up to its store’s seq now. A change made on the server
  * reaches the page over its event stream, which nothing orders with the test’s next step (POSTBOX_STREAM_LAG shows it).
  * @param {import('@playwright/test').Page} page  @param {{ store: { state: { seq: number } } }} app
  * @param {number} [timeout] how long to wait, 5 s unless a spec sends a burst
  */
 export async function synced(page, app, timeout = 5000) {
-  const seq = sendable.get(app.store) ?? app.store.state.seq;
+  const seq = app.store.state.seq;
   await expect
     .poll(() => page.evaluate(() => import('/app/js/client.mjs').then(({ client }) => client.seq)), { message: `the page to hear event ${seq}`, timeout })
     .toBeGreaterThanOrEqual(seq);

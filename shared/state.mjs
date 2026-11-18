@@ -128,17 +128,6 @@ const withItem = (s, d, f) => {
   if (it) f(it);
 };
 
-/**
- * An item’s text with an item.text’s words: at its end; or, for words that say where they start (`at`), only the part
- * past what it has, so words it has already, live or stored, aren’t added twice. Words starting past its end, which
- * a page holds until the words before them arrive (shared/live-apply.mjs), are appended rather than lost.
- * @param {string} text @param {{ text: string, at?: number }} d
- */
-function withWords(text, d) {
-  if (typeof d.at !== 'number' || d.at >= text.length) return text + d.text;
-  return text + d.text.slice(text.length - d.at);
-}
-
 const put = (/** @type {string} */ key) => (/** @type {any} */ s, /** @type {any} */ d) => {
   s[key][d.id] = d;
 };
@@ -186,9 +175,7 @@ export const EVENTS = Object.freeze({
   'item.add': { apply: (s, d) => (s.items[d.threadId] ??= []).push(d.item), public: true },
   'item.patch': { apply: (s, d) => withItem(s, d, (it) => applyItemPatch(it, d)), public: true },
   'item.move': { apply: moveItem, public: true },
-  // A running reply’s words carry `at`, where they start (server/live-text.mjs): a page may have them live already, or
-  // part of them, so only what it lacks is added. Words without it, a shell run’s output say, are appended.
-  'item.text': { apply: (s, d) => withItem(s, d, (it) => (it.text = withWords(it.text ?? '', d))), public: true },
+  'item.text': { apply: (s, d) => withItem(s, d, (it) => (it.text = (it.text ?? '') + d.text)), public: true },
   'work.add': { apply: (s, d) => ((s.work ??= map())[d.convId] ??= []).push(d.entry), public: true },
   'work.patch': { apply: patchWork, public: true },
   'entry.add': { apply: (s, d) => (s.inbox[d.sessionId] ??= []).push(d.entry), public: true },

@@ -18,7 +18,6 @@
 import { releaseLive } from './store-live.mjs';
 import { opRecord, refuseReserved, rejectedError } from './store-reject.mjs';
 import { snapshotNow, syncDir } from './store-snapshot.mjs';
-import { written as asLogged } from './store-text-at.mjs';
 
 /** The segment the log is being appended to, opened once. @param {import('./store.mjs').Store} store */
 async function handle(store) {
@@ -116,16 +115,6 @@ function applyCommits(store, commits) {
 /** A commit’s events as its log line (the header): the event itself for one, the array for several. */
 const lineOf = (events) => `${JSON.stringify(events.length === 1 ? events[0] : events)}\n`;
 
-/** Commits’ lines, each from the state its events find: a commit’s are written before any of them applies. */
-function linesOf(state, commits) {
-  const all = asLogged(
-    state,
-    commits.flatMap((c) => c.events),
-  );
-  let i = 0;
-  return commits.map((c) => lineOf(all.slice(i, (i += c.events.length)))).join('');
-}
-
 /**
  * Numbers a commit’s events, or settles it without a write: a repeat of a known opId resolves `duplicate`, a function
  * that fails or gives no array rejects, no events resolve at once. Returns the events to write, or null.
@@ -189,7 +178,7 @@ async function writeCommits(store, gen) {
     if (c.opId !== undefined) pending.set(c.opId, c);
   }
   try {
-    if (written.length && store.dir) await append(store, linesOf(store.state, written), gen, true, written.at(-1).events.at(-1).seq);
+    if (written.length && store.dir) await append(store, written.map((c) => lineOf(c.events)).join(''), gen, true, written.at(-1).events.at(-1).seq);
     applyCommits(store, written);
   } catch (e) {
     // The numbers these commits took are given back first, so the held emits fail() releases, and every emit after,

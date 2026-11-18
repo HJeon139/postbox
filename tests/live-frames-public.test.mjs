@@ -7,14 +7,14 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { publicLive, publicLiveFrame } from '../server/public-state.mjs';
-import { LIVE, liveFrameOf, SESSION_FIELDS, STEP_FIELDS, SUBAGENT_FIELDS, TOOL_CALL_FIELDS } from '../shared/live-kinds.mjs';
+import { LIVE, SESSION_FIELDS, STEP_FIELDS, SUBAGENT_FIELDS, TOOL_CALL_FIELDS } from '../shared/live-kinds.mjs';
 import { EVENTS, PRIVATE_STATE_KEYS, PUBLIC_STATE_KEYS, STREAM } from '../shared/state.mjs';
 
 /** The frame’s data as the page would get it, or null when it goes out as nothing. @param {string} frame */
 const dataOf = (frame) => {
   if (!frame) return null;
   assert.match(frame, /^event: live\ndata: .*\n\n$/s);
-  return liveFrameOf(JSON.parse(frame.slice('event: live\ndata: '.length, -2)));
+  return JSON.parse(frame.slice('event: live\ndata: '.length, -2));
 };
 
 /** EVENTS with one type made private, as a spec would. @param {string} type */
@@ -77,14 +77,13 @@ test('the shapes are these, so a field added to one is a decision this test sees
   assert.deepEqual(SUBAGENT_FIELDS, ['id', 'name', 'state', 'ctx', 'doing', 'thinking', 'asked', 'said', 'since', 'parent', 'bg']);
   assert.deepEqual(SESSION_FIELDS, ['toolCalls', 'toolCount', 'currentStep', 'glimpse', 'subagents']);
   assert.deepEqual(Object.keys(LIVE), ['text', 'step', 'session', 'snapshot']);
-  assert.deepEqual(LIVE.text.shape.fields, ['threadId', 'itemId', 'at', 'text']);
+  assert.deepEqual(LIVE.text.shape.fields, ['threadId', 'itemId', 'turnId', 'at', 'text']);
   assert.deepEqual(LIVE.step.shape.fields, ['threadId', 'itemId', 'rev']);
   assert.deepEqual(Object.keys(LIVE.step.shape.objects ?? {}), ['step']);
   assert.deepEqual(LIVE.session.shape.fields, ['sessionId', 'toolCount', 'currentStep', 'glimpse', 'state', 'ctx', 'updatedAt']);
   assert.deepEqual(Object.keys(LIVE.session.shape.lists ?? {}), ['toolCalls', 'subagents']);
   assert.deepEqual(LIVE.snapshot.shape.fields, ['turnId', 'sessionId', 'threadId', 'itemId']);
   assert.deepEqual(Object.keys(LIVE.snapshot.shape.objects ?? {}), ['text', 'session']);
-  assert.deepEqual(LIVE.snapshot.shape.objects?.text.fields, ['itemId', 'at', 'text']);
   assert.deepEqual(Object.keys(LIVE.snapshot.shape.lists ?? {}), ['steps']);
 });
 
@@ -126,19 +125,6 @@ test('a frame carries only its shape, all the way down: no nested value gets pas
   assert.deepEqual(snap.text, { at: 0, text: 'Hello' });
   assert.deepEqual(snap.session.toolCalls, [{ name: 'Read', state: 'done', ms: 3 }]);
   assert.deepEqual(snap.steps, [{ id: 's1', label: 'Read', state: 'running', at: 12, part: 'p1', input: 'ls' }]);
-});
-
-test('a text frame, one per delta, goes as a list of its kind’s fields in order, picked as any frame is, and reads back whole', () => {
-  const sent = publicLiveFrame({ ...frames.text, turnId: 'tu_1', secret: SECRET });
-  const raw = JSON.parse(sent.slice('event: live\ndata: '.length, -2));
-  assert.deepEqual(raw, ['text', 'th_1', frames.text.itemId, frames.text.at, frames.text.text]);
-  assert.deepEqual(liveFrameOf(raw), { kind: 'text', threadId: 'th_1', itemId: frames.text.itemId, at: frames.text.at, text: frames.text.text });
-  assert.ok(!sent.includes(SECRET) && !sent.includes('tu_1'), 'a field its shape doesn’t list isn’t sent');
-  // Only a positional kind reads from a list: any other list is nothing.
-  assert.equal(liveFrameOf(['step', 'th_1', 'it_1', 1]), null);
-  assert.equal(liveFrameOf(['nope']), null);
-  const other = JSON.parse(publicLiveFrame(frames.step).slice('event: live\ndata: '.length, -2));
-  assert.equal(other.kind, 'step', 'other kinds go as objects');
 });
 
 test('a listed field given an object or a list where a scalar belongs is dropped, not sent whole', () => {

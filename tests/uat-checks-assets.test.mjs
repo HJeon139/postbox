@@ -212,16 +212,3 @@ test('#722: an asset’s content on a live frame, a call’s output or the glimp
   ];
   assert.deepEqual(found({ ...facts(), live: own })['asset-content-in-store'], []);
 });
-
-test('#722: a reply’s own words on a live text frame or a snapshot are no copy; a step’s output still is', () => {
-  const text = files()
-    .find((x) => x.sha === head.data.version.sha256)
-    .bytes.toString('utf8');
-  const live = [
-    { kind: 'text', threadId: room, itemId: 'it_1', at: 0, text },
-    { kind: 'snapshot', turnId: 'tu_1', sessionId: 'se_1', threadId: room, itemId: 'it_1', text: { itemId: 'it_1', at: 0, text }, steps: [], session: {} },
-  ];
-  assert.deepEqual(found({ ...facts(), live })['asset-content-in-store'], []);
-  const copied = [{ kind: 'step', threadId: room, itemId: 'it_1', rev: 1, step: { id: 's1', state: 'done', output: text } }];
-  assert.equal(found({ ...facts(), live: copied })['asset-content-in-store'].length > 0, true);
-});

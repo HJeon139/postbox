@@ -6,7 +6,6 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import * as arrange from './arrange.mjs';
 import { replies, setup, until } from './stop-reply-fixture.mjs';
 
 /** Runs `step` as the turn, waits for `ready`, presses Stop, and returns the turn’s reply items. */
@@ -69,7 +68,7 @@ test('Stop after a refusal card closed the segment: the reply says it was stoppe
 test('neighbors: Stop with a segment still streaming marks that one, once; Stop before any reply adds one, once', async () => {
   const streaming = await stopAfter(
     async (c) => c.text('Halfway'),
-    (env) => replies(env.store, env.t, env.se).some((i) => arrange.shownText(env.rt, i) === 'Halfway'),
+    (env) => replies(env.store, env.t, env.se).some((i) => i.text === 'Halfway'),
     'the streaming text',
   );
   assert.deepEqual(

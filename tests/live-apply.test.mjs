@@ -96,38 +96,3 @@ test('a snapshot at load brings a page that joins mid-turn up to date: its steps
   assert.equal(s.sessions.se_1.currentStep, 'Read');
   assert.ok(changes.length >= 2);
 });
-
-test('a text frame adds only what the page lacks; one past its text’s end waits for the words before it', () => {
-  const { s, has } = page();
-  const live = liveApplier();
-  const text = () => s.items.th_1.find((/** @type {any} */ x) => x.id === 'it_1').text;
-  const words = (/** @type {number} */ at, /** @type {string} */ t) => ({ kind: 'text', threadId: 'th_1', itemId: 'it_1', at, text: t });
-  assert.deepEqual(
-    live.apply(s, words(0, 'Reading '), has).map((c) => c.type),
-    ['item.text'],
-  );
-  assert.deepEqual(live.apply(s, words(0, 'Reading '), has), [], 'had already: nothing changes');
-  live.apply(s, words(4, 'ing the '), has);
-  assert.equal(text(), 'Reading the ', 'an overlap adds only its tail');
-  // Past the end: held until the stored chunk before it lands.
-  assert.deepEqual(live.apply(s, words(18, ' Done.'), has), []);
-  assert.equal(text(), 'Reading the ');
-  EVENTS['item.text'].apply(s, { threadId: 'th_1', id: 'it_1', text: 'shelf.', at: 12 });
-  assert.deepEqual(
-    live.flush(s, has).map((c) => c.data.text),
-    [' Done.'],
-  );
-  assert.equal(text(), 'Reading the shelf. Done.');
-});
-
-test('a snapshot’s words since the last commit point apply after what the page loaded', () => {
-  const { s, has } = page();
-  EVENTS['item.text'].apply(s, { threadId: 'th_1', id: 'it_1', text: 'Stored. ', at: 0 });
-  const live = liveApplier();
-  live.snapshot(
-    s,
-    [{ turnId: 'tu_1', sessionId: 'se_1', threadId: 'th_1', itemId: 'it_1', steps: [], session: {}, text: { itemId: 'it_1', at: 8, text: 'Live.' } }],
-    has,
-  );
-  assert.equal(s.items.th_1.find((/** @type {any} */ x) => x.id === 'it_1').text, 'Stored. Live.');
-});

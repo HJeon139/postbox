@@ -606,7 +606,7 @@ test('#93: a stopped summary isn’t pending, and a reply in a summary still bei
   });
   rt.summarizeBack(threadId);
   await new Promise((r) => setImmediate(r));
-  const part = store.items(threadId).find((i) => i.kind === 'agent' && arrange.shownText(rt, i) === 'Half of the summary');
+  const part = store.items(threadId).find((i) => i.kind === 'agent' && i.text === 'Half of the summary');
   assert.throws(() => rt.shareToConversation(threadId, part.id), { status: 409 });
   rt.stop(arrange.sessionsIn(rt, t.id)[0].id);
   release();

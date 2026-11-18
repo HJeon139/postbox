@@ -173,7 +173,7 @@ function liveSender({ store, streams, deliver, events, openOf, sent }) {
       if (store.epoch !== epoch) return;
       // A reply’s turn ended (server/live-buffer.mjs): nothing goes to the pages, and each stream forgets its steps.
       if (frame.kind === 'end') {
-        for (const res of streams) for (const id of new Set([frame.itemId, ...(frame.parts ?? [])])) sent.forget(res, id);
+        for (const res of streams) sent.forget(res, frame.itemId);
         return;
       }
       // Built once for each way a page can see it: a tool’s stream and a page with the conversation open see an item’s

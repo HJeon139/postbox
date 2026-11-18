@@ -78,7 +78,7 @@ test('#485: a wake whose link gave up with its reply written wakes no one yet: t
   const { se: a, got } = lead(r);
   assert.equal(r.rt.agentWake(a.id, 'coder', 'Is hello.txt there?').ok, true);
   await onHost(r, 1);
-  await until(() => all(r).some((i) => i.kind === 'agent' && i.handle === 'coder' && /@lead/.test(arrange.shownText(r.rt, i))), 'its reply, with the mention');
+  await until(() => all(r).some((i) => i.kind === 'agent' && i.handle === 'coder' && /@lead/.test(i.text ?? '')), 'its reply, with the mention');
   r.link.giveUp();
   await settled(r);
   assert.equal(r.se().remoteTurn.state, 'lost', 'still on the host, as far as Postbox knows');
@@ -171,10 +171,7 @@ test('#1138’s class: a reply settled before a restart and replayed after it ha
   lead(r, got);
   r.rt.sendMessage(r.t.id, { text: '@coder go' });
   const turn = await onHost(r, 1);
-  await until(
-    () => all(r).some((i) => i.kind === 'agent' && i.handle === 'coder' && /@lead I ran/.test(arrange.shownText(r.rt, i))),
-    'its reply, with the mention',
-  );
+  await until(() => all(r).some((i) => i.kind === 'agent' && i.handle === 'coder' && /@lead I ran/.test(i.text ?? '')), 'its reply, with the mention');
   // A block it shows, then more words, close the reply’s first part, so its mention is handed over while the turn runs.
   r.d.tool(turn, 'show_block', {
     block: { id: 'pick', type: 'choice', version: 1, title: 'Pick', fallback: 'Pick one', prompt: 'Which?', options: [{ id: 'a', label: 'A' }] },

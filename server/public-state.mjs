@@ -3,7 +3,7 @@
 // does so directly, and carries only public keys’ data, which review holds until A2 adds the first private data, with
 // a check that holds it. The Store’s history, its snapshots and its other subscribers keep the raw state and events.
 
-import { LIVE, wireOf } from '../shared/live-kinds.mjs';
+import { LIVE } from '../shared/live-kinds.mjs';
 import { EVENTS, PUBLIC_STATE_KEYS, STREAM } from '../shared/state.mjs';
 
 /** The state with only its public keys. Shallow: the values are the store’s own. @param {Record<string, any>} state */
@@ -81,28 +81,6 @@ function pick(o, shape, out = {}) {
   return out;
 }
 
-/** Whether each kind is public, worked out once for the tables it’s asked with, which are fixed but for a test’s. */
-const kindsPublic = new WeakMap();
-
-/**
- * Whether a kind’s event types are all public in `events`, and its state keys all in `keys`: asked of every frame, so
- * kept per kind for the default tables, and worked out each time for any other.
- * @param {string} kind @param {any} def @param {typeof EVENTS} events @param {readonly string[]} keys
- */
-function kindPublic(kind, def, events, keys) {
-  const fixed = events === EVENTS && keys === PUBLIC_STATE_KEYS;
-  const known = fixed ? kindsPublic.get(events)?.get(kind) : undefined;
-  if (known !== undefined) return known;
-  const yes =
-    def.events.every((/** @type {string} */ t) => Object.hasOwn(events, t) && events[t].public) &&
-    def.keys.every((/** @type {string} */ k) => keys.includes(k));
-  if (fixed) {
-    if (!kindsPublic.has(events)) kindsPublic.set(events, new Map());
-    kindsPublic.get(events).set(kind, yes);
-  }
-  return yes;
-}
-
 /**
  * A live frame’s data as the page may see it (designs/architecture/live-progress.md, “What reaches the browser”), or
  * null, failing closed: its kind must be in LIVE, every event type it mirrors public in `events`, and every state key
@@ -112,7 +90,8 @@ function kindPublic(kind, def, events, keys) {
  */
 export function publicLiveData(frame, open = null, events = EVENTS, keys = PUBLIC_STATE_KEYS) {
   const def = Object.hasOwn(LIVE, frame?.kind) ? LIVE[frame.kind] : null;
-  if (!def || !kindPublic(frame.kind, def, events, keys)) return null;
+  if (!def?.events.every((t) => Object.hasOwn(events, t) && events[t].public)) return null;
+  if (!def.keys.every((k) => keys.includes(k))) return null;
   // A tool’s stream names no conversations (open is null) and gets them all; anything else must say which it has.
   if (open !== null && !(open instanceof Set)) return null;
   if (def.item && open && !open.has(frame.threadId)) return null;
@@ -125,7 +104,7 @@ export function publicLiveData(frame, open = null, events = EVENTS, keys = PUBLI
  */
 export function publicLiveFrame(frame, open = null, events = EVENTS, keys = PUBLIC_STATE_KEYS) {
   const data = publicLiveData(frame, open, events, keys);
-  return data ? `event: ${STREAM.live}\ndata: ${JSON.stringify(wireOf(data))}\n\n` : '';
+  return data ? `event: ${STREAM.live}\ndata: ${JSON.stringify(data)}\n\n` : '';
 }
 
 /**

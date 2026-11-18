@@ -11,12 +11,11 @@ export function shareToConversation(rt, topicId, itemId) {
   const topic = rt.thread(topicId);
   if (topic.kind !== 'topic' && topic.kind !== 'side') throw httpError(409, 'Only messages in a topic or side thread can be sent to the conversation.');
   const it = rt.store.item(topicId, itemId);
-  // Part of a summary still being written: the whole summary is posted when it’s done (#93). Asked first, since its
-  // words can be live before any are stored (designs/architecture/live-progress.md, “Commit points”).
-  if (it && [...rt.turns.values()].some((x) => x.id === it.turnId && x.summarizeTo))
-    throw httpError(409, 'This reply is part of a summary that’s still being written. It’s posted in the conversation when it’s done.');
   if (!it?.text) throw httpError(404, 'That reply has no text to send.');
   if (it.sharedAt) throw httpError(409, 'That reply is already in the conversation.');
+  // Part of a summary still being written: the whole summary is posted when it’s done (#93).
+  if ([...rt.turns.values()].some((x) => x.id === it.turnId && x.summarizeTo))
+    throw httpError(409, 'This reply is part of a summary that’s still being written. It’s posted in the conversation when it’s done.');
   // A topic's reply keeps the question it answers (#111): the person's last message before it.
   const items = topic.kind === 'topic' && it.kind === 'agent' ? rt.store.items(topicId) : [];
   const index = positionOf(items, it.id);

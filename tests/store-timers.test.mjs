@@ -38,7 +38,6 @@ const PLACED = {
   'kept-jobs.mjs': 1, // pollKept: skips its tick while closed
   'lint-delivery.mjs': 5, // an injected setTimer before a lint turn: a start, held by heldTurn while closed
   'live-buffer.mjs': 1, // a turn’s coalesced session frame, at the end of its tick: sendLive, which holds it behind the store’s held writes
-  'live-text.mjs': 2, // stores a running reply’s words after LIVE_TEXT.everyMs with no commit: an item.text emit, memory-only while closed like stream text (I1); and a tick’s words as one frame at its end: sendLive, held behind the store’s held writes
   'live-streams.mjs': 3, // sends frames, the events’ and the live frames’ lag alike: reads
   'narration/narrator.mjs': 1, // stops the narrator: no store
   'net-fetch.mjs': 1, // net.fetch’s deadline, which ends a fetch: no store
