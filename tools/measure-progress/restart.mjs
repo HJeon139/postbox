@@ -134,22 +134,26 @@ export async function restartLoad(dir, agents, mode) {
   stopTimers(rt);
   await store.close();
   const row = `restart after ${agents} agents, ${mode}`;
-  // A crash past one snapshot interval is judged at its points: the mean and the worst load, and each point’s replay
-  // against main’s at the same point (tools/measure-progress/crash-points.mjs). One crash alone decides it by luck.
-  if (points.length > 1)
+  // A crash past one snapshot interval is judged at its points (tools/measure-progress/crash-points.mjs): the mean and
+  // the worst load, and the mean and the most replayed. Each side places its points by its own log’s length, so a
+  // point of one isn’t the same moment as the same point of the other: only what the points add up to compares.
+  if (points.length > 1) {
+    const mean = (/** @type {number[]} */ xs) => xs.reduce((a, x) => a + x, 0) / xs.length;
     return [
       {
         row,
         wholeBytes: without.bytes,
         wholeEvents: without.events,
-        loadMs: points.reduce((a, p) => a + p.loadMs, 0) / points.length,
+        replayedBytes: mean(points.map((p) => p.bytes)),
+        mostReplayedBytes: Math.max(...points.map((p) => p.bytes)),
+        loadMs: mean(points.map((p) => p.loadMs)),
         worstLoadMs: Math.max(...points.map((p) => p.loadMs)),
         wholeLoadMs,
         heapMB,
         sweepMs,
       },
-      ...points.map((p, k) => ({ row: `${row}, at point ${k + 1} of ${POINTS}`, replayedBytes: p.bytes, replayedEvents: p.events })),
     ];
+  }
   return [
     {
       row,

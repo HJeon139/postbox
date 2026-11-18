@@ -45,10 +45,11 @@ function copyLog(from, to) {
  * own rule says, and keeps a copy of its folder at each point. Returns the folders, in the points’ order.
  * @param {string} whole  a folder with the crash’s whole log, no snapshot @param {string} dir  where the copies go
  * @param {number[]} points  events at which to keep the folder, ascending
+ * @param {{ snapshotEvery?: number }} [options]  the store’s, which a test shortens
  */
-export async function crashFolders(whole, dir, points) {
+export async function crashFolders(whole, dir, points, options = {}) {
   const work = `${dir}-replay`;
-  const store = await new Store(work).load();
+  const store = await new Store(work, options).load();
   const folders = [];
   let events = 0;
   let next = 0;
