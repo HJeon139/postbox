@@ -241,3 +241,26 @@ test('a turn stopped as agy answers reports nothing, though the answer came firs
   await done;
   assert.deepEqual(reports, []);
 });
+
+test('a turn’s Stop stops the probe it asked: agy gets the turn’s signal, and nothing is reported', async () => {
+  /** @type {AbortSignal | undefined} */
+  let given;
+  const adapter = new AntigravityCliAdapter({
+    workRoot: join(tempDir('pb-agy-usage-'), 'work'),
+    settingsFile: join(tempDir('pb-agy-usage-'), 'settings.json'),
+    version: NEW,
+    spawnImpl: /** @type {any} */ (fakeAgy('', 0, [])),
+    env: {},
+    // A hung agy: it answers only once what asked it is stopped.
+    usage: usageProbe((signal) => {
+      given = signal;
+      return new Promise((resolve) => signal?.addEventListener('abort', () => resolve(null), { once: true }));
+    }),
+  });
+  const quotas = [];
+  const stop = new AbortController();
+  stop.abort();
+  await adapter.deliver({}, { kind: 'user', text: 'hi' }, { ...turnCtx(quotas), signal: stop.signal });
+  assert.equal(given, stop.signal, 'agy was asked with the turn’s signal, so the turn’s Stop stops it');
+  assert.deepEqual(quotas, []);
+});
