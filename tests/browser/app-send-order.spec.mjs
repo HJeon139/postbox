@@ -174,7 +174,8 @@ document.getElementById('go').addEventListener('click', async () => {
 test('#1488 one click, then events the app posts itself with forged tags, is one turn', async ({ page }) => {
   const { voices, state } = await showApp(page, 'Forged', FORGED);
   await clickApp(page, 'Forged');
-  await expect.poll(() => state().out, { message: 'the app recorded every answer' }).toHaveLength(12);
+  // Each note waits up to 400 ms to gather with the next (app/js/app-send.mjs), and the app awaits each in turn.
+  await expect.poll(() => state().out, { message: 'the app recorded every answer', timeout: 20_000 }).toHaveLength(12);
   expect(state().out).toEqual(['sent', ...Array(11).fill('noted')]);
   expect(voices(), 'one click, one turn').toHaveLength(1);
 });
