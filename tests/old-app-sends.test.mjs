@@ -76,3 +76,12 @@ test('#1488 an old answered app-send card loads with its plain line, and stays a
   assert.equal(after.status, 'allowed');
   assert.equal(after.text, 'Spam asked to send 1 message for you, in an older Postbox. Nothing waits on it.');
 });
+
+test('#1488 a second start changes nothing: the old cards were already closed and given their lines', () => {
+  const r = room();
+  oldCard(r);
+  restart(r);
+  const seq = r.store.state.seq;
+  restart(r);
+  assert.equal(r.store.state.seq, seq, 'no write');
+});
