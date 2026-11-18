@@ -2,6 +2,32 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.25.0 (2026-11-17)
+
+### Features
+
+- **agy:** show Antigravity's quota in the composer, from agy's /usage
+
+### Fixes
+
+- **agy:** keep a report's real read time, and never let an older one replace newer figures
+- **app:** toasts sit left of the right pane, as the stylesheet meant
+- **agy:** report the quota after a failed turn, never hold up Stop, and gate /usage by version
+- **app:** set the pane's width on its readers, so Safari's column reflows
+
+## 4.24.0 (2026-11-17)
+
+### Features
+
+- **state:** the live frame's kinds and what of them reaches the browser, before anything is sent
+
+### Fixes
+
+- **state:** a live frame keeps only scalars by its shape, needs public state keys, and a Set
+- **queue:** a cut message opens by click or Enter, and answers name the right agent
+- **queue:** fetch only rows in view, keep rows still, answers in your words
+- **queue:** each queued row says what is waiting, by its source
+
 ## 4.23.0 (2026-11-17)
 
 ### Features

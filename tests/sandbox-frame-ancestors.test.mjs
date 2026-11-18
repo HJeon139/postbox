@@ -29,7 +29,7 @@ after(async () => {
 /** The whole policy a sandbox page carries when the request came to `host`. */
 const policy = (host) =>
   [
-    'sandbox allow-scripts',
+    'sandbox allow-scripts allow-forms',
     "default-src 'none'",
     "script-src 'unsafe-inline'",
     "style-src 'unsafe-inline'",

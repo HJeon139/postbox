@@ -130,7 +130,8 @@ async function paneNote(page) {
   await expect(files.getByRole('heading'), 'four files: notes.txt, hello.md, untracked.txt and sub.txt').toHaveText(/^Files4$/);
   await expect(pane.locator('[id^="restore-"]')).toHaveCount(0);
   await expect(pane).not.toContainText(/Asking git|No files changed/);
-  // Each turn’s line says so too.
+  // Each turn’s line says so too, under More (#1446).
+  await pane.locator('#wc-more-s').click();
   for (const id of turnIds) await expect(pane.locator(`#wturn-s-${id}`)).toContainText(/files edited on host\.example\.com/);
   await axe(page, 'in the pane');
   await noSideways(page, 'in the pane');
@@ -141,6 +142,7 @@ async function turnFiles(page) {
   const pane = await openWork(page);
   const asked = watchDiffs(page);
   const first = turnIds[0];
+  await pane.locator('#wc-more-s').click();
   await pane.locator(`#wturn-s-${first}`).click();
   await expect(pane.locator(`#wturn-${first}`)).toHaveAttribute('open', '');
   const edit = edits.find((e) => e.turnId === first && e.rel === 'notes.txt');
