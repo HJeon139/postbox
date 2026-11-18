@@ -2,6 +2,14 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.34.1 (2026-11-18)
+
+### Fixes
+
+- **wakes:** don't send a reply back after a review or a thanks that mentions
+- **wakes:** note a reply as sent back only once it goes
+- **wakes:** send a reply that names no one back to the agent that asked
+
 ## 4.34.0 (2026-11-18)
 
 ### Features
