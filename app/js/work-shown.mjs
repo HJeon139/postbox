@@ -5,7 +5,7 @@
 import { appsAndReviews, retiredApp } from '/shared/work-list.mjs';
 import { h, icon } from './dom.mjs';
 import { row, sec, short } from './work-pane-parts.mjs';
-import { showItem } from './work-sections.mjs';
+import { showItem } from './work-show-item.mjs';
 
 /**
  * The section, or null when the agents showed no app or review.
