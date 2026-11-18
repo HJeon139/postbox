@@ -71,7 +71,7 @@ const DIRECT = {
   'restart-sweep.mjs': ['foldCutOff', 'stopStreaming'], // at startup: the steps of turns a restart cut off, and their replies marked stopped
   'sandbox-routes.mjs': ['sandboxRoute'], // an app version’s sandbox page: an HTTP answer to the page
   'shell-runs.mjs': ['expireStaleCommands'], // at startup
-  'store-text-at.mjs': ['written'], // the store’s own: the log’s line for an item.text, from the state the store applies it to
+  'store-text-at.mjs': ['writtenOne', 'written'], // the store’s own: the log’s line for an item.text, from the state the store applies it to
   'thread-headers.mjs': ['itemsOf'], // each thread's header facts, sent to the page (#1155)
   'thread-search.mjs': ['threadSearch'], // a conversation’s search, an HTTP answer to the page (#1155)
   'tool-ask.mjs': ['settleToolAsks'], // only the thread ids; each thread is read through store.pending
