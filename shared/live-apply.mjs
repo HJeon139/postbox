@@ -109,7 +109,7 @@ export function liveApplier() {
   }
 
   return {
-    /** A live frame: the changes to tell the page. @param {any} state @param {any} f @param {(threadId: string, id: string) => boolean} has */
+    /** A live frame: the changes to tell the page. @param {any} state @param {any} frame @param {(threadId: string, id: string) => boolean} has */
     apply(state, frame, has) {
       const f = liveFrameOf(frame); // as the stream sent it, a list for a text frame (shared/live-kinds.mjs, wireOf)
       if (f?.kind === 'step') return applyStep(state, f, has);
