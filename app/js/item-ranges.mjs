@@ -193,6 +193,10 @@ export function place(state, ranges, answer, how) {
     return true;
   }
   if (how === 'replace') {
+    // A jump away from the end (reach(), ?around=) keeps the newest items it held as the tail, as placeAround does, so
+    // End puts them back and latestItems still has the conversation's last messages (#1446). One that lands at the end
+    // lets it go, below.
+    if (list.length && atEnd(list, r)) r.tail = list;
     state.items[answer.threadId] = answer.items.slice();
     Object.assign(r, { start: answer.start, total: answer.total, seq: answer.seq });
     // The first items, when they came with it, kept for Home with what was heard after the load's seq.
@@ -251,4 +255,15 @@ function replay(state, r, answer, again, how) {
 export function forget(state, ranges, threadId) {
   ranges.delete(threadId);
   delete state.items[threadId];
+}
+
+/**
+ * A conversation’s newest items as the page knows them, whatever range it shows (#1446 review): the range, when it
+ * reaches the end; else the newest items kept as the tail; else those added past its end since.
+ * @param {any} state @param {Range | undefined} r @param {string} threadId
+ */
+export function latestItems(state, r, threadId) {
+  const list = state.items[threadId] ?? [];
+  if (!r || atEnd(list, r)) return list;
+  return r.tail ?? r.beyond?.items[threadId] ?? [];
 }

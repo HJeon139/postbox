@@ -167,7 +167,7 @@ test('every sandbox page is served with a sandbox policy, so it never runs with 
     sandboxPage({ origin: 'http://x', ancestor: 'http://x', app, version: app.versions[0], theme: 'dark', check: false }),
     mermaidPage({ origin: 'http://x', ancestor: 'http://x', theme: 'light' }),
   ]) {
-    assert.match(page.csp, /^sandbox allow-scripts;/);
+    assert.match(page.csp, /^sandbox allow-scripts allow-forms;/);
     assert.ok(!/allow-same-origin/.test(page.csp));
   }
   assert.match(csp('http://x', 'http://x'), /connect-src 'none'/);
