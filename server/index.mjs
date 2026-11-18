@@ -15,7 +15,7 @@ import { AdapterRegistry } from './adapters/adapter.mjs';
 import { MockAdapter } from './adapters/mock.mjs';
 import { openLink } from './app-links.mjs';
 import { publishApp } from './app-publish.mjs';
-import { askAgyQuota, PROBES, registerBackends } from './backends.mjs';
+import { askAgyQuota, PROBES, registerBackends, startedBanner } from './backends.mjs';
 import { buildInfo } from './build-info.mjs';
 import { dismissFailed } from './card-needs.mjs';
 import { openDataFolder } from './data-folder.mjs';
@@ -472,11 +472,7 @@ export async function start({
     await store.close(); // flushes, and releases the data folder’s lock for the next Postbox
   }
   if (listen) await listenServer(server, port, host, close, () => listening(rt)); // drain (#228), then archive (#305)
-  const remoteOnly = adapters.names().filter((n) => !adapters.runsHere(n));
-  if (!quiet)
-    console.log(
-      `Postbox is running at ${origin}/\nData: ${dataDir}\nBackends: ${rt.localBackends().join(', ')}${claude ? ` (Claude Code ${claude})` : ''}${kiro ? ` (Kiro CLI ${kiro})` : ''}${agy ? ` (Antigravity CLI ${agy})` : ''}${codex ? ` (Codex ${codex})` : ''}${remoteOnly.length ? `\nOn hosts only: ${remoteOnly.join(', ')}` : ''}${demo ? '\nDemo controls are on.' : ''}`,
-    );
+  if (!quiet) console.log(startedBanner({ origin, dataDir, adapters, local: rt.localBackends(), found: { claude, kiro, agy, codex }, demo }));
   return {
     server,
     rt,

@@ -73,3 +73,14 @@ export async function askAgyQuota(rt, usage, version) {
     console.error('Postbox couldn’t record Antigravity’s quota as it started; its next turn will:', e);
   }
 }
+
+/**
+ * What Postbox prints as it starts: where it runs, its data, the backends here with the version of each CLI it found,
+ * those only on hosts, and demo controls. Moved from server/index.mjs’s start.
+ * @param {{ origin: string, dataDir: string, adapters: import('./adapters/adapter.mjs').AdapterRegistry, local: string[],
+ *   found: { claude: any, kiro: any, agy: any, codex: any }, demo: boolean }} o
+ */
+export function startedBanner({ origin, dataDir, adapters, local, found: { claude, kiro, agy, codex }, demo }) {
+  const remoteOnly = adapters.names().filter((n) => !adapters.runsHere(n));
+  return `Postbox is running at ${origin}/\nData: ${dataDir}\nBackends: ${local.join(', ')}${claude ? ` (Claude Code ${claude})` : ''}${kiro ? ` (Kiro CLI ${kiro})` : ''}${agy ? ` (Antigravity CLI ${agy})` : ''}${codex ? ` (Codex ${codex})` : ''}${remoteOnly.length ? `\nOn hosts only: ${remoteOnly.join(', ')}` : ''}${demo ? '\nDemo controls are on.' : ''}`;
+}
