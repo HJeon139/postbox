@@ -50,3 +50,31 @@ test('a running reply’s words show while it runs, again after a reload and in 
     .toBe('Reading the shelf.\n\n Found three books. That’s all.');
   for (const words of ['Reading the shelf.', 'Found three books.', 'That’s all.']) expect(await times(page, reply.id, words), words).toBe(1);
 });
+
+// A page that never had the conversation open opens it partway through a turn: it reads the words stored so far from
+// the store, then each window after, and never shows a window twice (the integrator's review of the rework, #1502).
+test('a conversation first opened partway through a turn catches up from the stored words, then shows each window once', async ({ page }) => {
+  const t = room('Live text, opened late', ['writer']);
+  const other = room('Elsewhere, before opening', ['onlooker']);
+  scripts.set('writer', async ({ emit, who }) => {
+    for (const w of ['One. ', 'Two. ', 'Three. ']) emit({ kind: 'text', text: w });
+    await hold(who, 1);
+    for (const w of ['Four. ', 'Five. ']) emit({ kind: 'text', text: w });
+    await hold(who, 2);
+    emit({ kind: 'text', text: 'Six.' });
+  });
+  await page.goto(`${scripted.app.origin}/#/t/${other.id}`);
+  await synced(page, scripted.app);
+  scripted.app.rt.sendMessage(t.id, { text: 'Count to six.' });
+  await expect.poll(() => at('writer')).toBe(1);
+  await page.goto(`${scripted.app.origin}/#/t/${t.id}`);
+  const reply = /** @type {any} */ (scripted.app.store.items(t.id).find((i) => i.kind === 'agent'));
+  const el = page.locator(`[data-key="${reply.id}"]`);
+  await expect(el, 'the words stored before it opened').toContainText('One. Two. Three.');
+  go('writer');
+  await expect.poll(() => at('writer')).toBe(2);
+  await expect(el, 'the next window').toContainText('Three. Four. Five.');
+  go('writer');
+  await expect(el).toContainText('Five. Six.');
+  for (const w of ['One.', 'Two.', 'Three.', 'Four.', 'Five.', 'Six.']) expect(await times(page, reply.id, w), w).toBe(1);
+});
