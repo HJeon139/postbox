@@ -1,13 +1,15 @@
 // The real backends Postbox registers as it starts (server/index.mjs): how it looks for each one’s CLI on this
-// computer, and registering them.
+// computer, registering them, and asking agy for its quota once Postbox has started.
 
 import { join } from 'node:path';
+import { quotaKeyOf } from '../shared/quota-key.mjs';
 import { AgentSdkAdapter, loadAgentSdk } from './adapters/agent-sdk.mjs';
 import { agyUsage, usageProbe } from './adapters/agy-usage.mjs';
 import { AntigravityCliAdapter, agyVersion, findAgy } from './adapters/antigravity-cli.mjs';
 import { ClaudeCodeAdapter, claudeVersion, findClaude } from './adapters/claude-code.mjs';
 import { CodexAdapter, codexVersion, findCodex } from './adapters/codex.mjs';
 import { findKiro, KiroCliAdapter, kiroVersion } from './adapters/kiro-cli.mjs';
+import { recordQuotaOf } from './quota-usage.mjs';
 
 /**
  * How Postbox looks for each real backend’s CLI on this computer: its version, or null when it isn’t here. Tests pass
@@ -23,7 +25,7 @@ export const PROBES = {
 
 /**
  * Registers the real backends with the adapters, moved from server/index.mjs’s start, which passes what it read.
- * Returns whether Postbox looked for them (real), and the version of each CLI it found here.
+ * Returns whether Postbox looked for them (real), the version of each CLI it found here, and agy’s usage probe.
  * @param {import('./adapters/adapter.mjs').AdapterRegistry} adapters
  * @param {{ dataDir: string, demo: boolean, probes?: Partial<typeof PROBES> }} opts
  */
@@ -48,5 +50,26 @@ export async function registerBackends(adapters, { dataDir, demo, probes }) {
   if (agy) adapters.register(new AntigravityCliAdapter({ workRoot, version: agy, usage }));
   const codex = real ? await look.codex() : null;
   if (real) adapters.register(new CodexAdapter({ workRoot }), { here: !!codex });
-  return { real, claude, kiro, agy, codex };
+  return { real, claude, kiro, agy, codex, usage };
+}
+
+/**
+ * Antigravity’s quota as Postbox starts (#1494): the turn probe asks agy’s /usage only as a turn starts, so after a
+ * restart its bar waited for the agent’s next turn. /usage runs no model, so this asks once too, for a room with an
+ * Antigravity agent on this computer, through the same probe and its once-a-minute limit.
+ *
+ * Asks agy for its usage and records the answer, as a turn’s report is, without holding up the start: it resolves
+ * once recorded, and never rejects.
+ * @param {any} rt @param {ReturnType<typeof import('./adapters/agy-usage.mjs').usageProbe>} usage
+ * @param {string | null | undefined} version  agy’s version here, null when it isn’t here
+ */
+export async function askAgyQuota(rt, usage, version) {
+  const here = Object.values(rt.s.personas ?? {}).some((p) => p?.backend === 'antigravity-cli' && !p.remote?.hostId);
+  if (!version || !here) return;
+  const owner = { id: quotaKeyOf({ backend: 'antigravity-cli' }), backend: 'antigravity-cli', host: null };
+  try {
+    await usage.report({ quota: (/** @type {any} */ r) => recordQuotaOf(rt, owner, r, r.seenAt) }, usage.start(version));
+  } catch (e) {
+    console.error('Postbox couldn’t record Antigravity’s quota as it started; its next turn will:', e);
+  }
 }

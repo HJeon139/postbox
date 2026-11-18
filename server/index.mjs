@@ -15,7 +15,7 @@ import { AdapterRegistry } from './adapters/adapter.mjs';
 import { MockAdapter } from './adapters/mock.mjs';
 import { openLink } from './app-links.mjs';
 import { publishApp } from './app-publish.mjs';
-import { PROBES, registerBackends } from './backends.mjs';
+import { askAgyQuota, PROBES, registerBackends } from './backends.mjs';
 import { buildInfo } from './build-info.mjs';
 import { dismissFailed } from './card-needs.mjs';
 import { openDataFolder } from './data-folder.mjs';
@@ -109,7 +109,7 @@ export async function start({
   process.env.POSTBOX_ORIGIN = origin;
   const { store, blobs, mediaDir } = await openDataFolder(dataDir, { fresh });
   const adapters = new AdapterRegistry().register(new MockAdapter());
-  const { real, claude, kiro, agy, codex } = await registerBackends(adapters, { dataDir, demo, probes });
+  const { real, claude, kiro, agy, codex, usage } = await registerBackends(adapters, { dataDir, demo, probes });
   const config = {
     origin,
     // Which build this is, shown under Personas in the sidebar.
@@ -143,6 +143,7 @@ export async function start({
   rt.work.expireStale();
   rt.expireStaleJobs();
   rt.rearmMirrors();
+  void askAgyQuota(rt, usage, agy); // its bar before its agent’s first turn (#1494), not waited on
   // Turns that went on on their hosts are attached again, each host’s status is kept for the page, and the hosts
   // reconnect when this computer wakes (#120).
   const stopWake = startHosts(rt, hosts, wake);
