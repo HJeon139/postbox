@@ -81,6 +81,28 @@ function pick(o, shape, out = {}) {
   return out;
 }
 
+/** Whether each kind is public, worked out once for the tables it’s asked with, which are fixed but for a test’s. */
+const kindsPublic = new WeakMap();
+
+/**
+ * Whether a kind’s event types are all public in `events`, and its state keys all in `keys`: asked of every frame, so
+ * kept per kind for the default tables, and worked out each time for any other.
+ * @param {string} kind @param {any} def @param {typeof EVENTS} events @param {readonly string[]} keys
+ */
+function kindPublic(kind, def, events, keys) {
+  const fixed = events === EVENTS && keys === PUBLIC_STATE_KEYS;
+  const known = fixed ? kindsPublic.get(events)?.get(kind) : undefined;
+  if (known !== undefined) return known;
+  const yes =
+    def.events.every((/** @type {string} */ t) => Object.hasOwn(events, t) && events[t].public) &&
+    def.keys.every((/** @type {string} */ k) => keys.includes(k));
+  if (fixed) {
+    if (!kindsPublic.has(events)) kindsPublic.set(events, new Map());
+    kindsPublic.get(events).set(kind, yes);
+  }
+  return yes;
+}
+
 /**
  * A live frame’s data as the page may see it (designs/architecture/live-progress.md, “What reaches the browser”), or
  * null, failing closed: its kind must be in LIVE, every event type it mirrors public in `events`, and every state key
@@ -90,8 +112,7 @@ function pick(o, shape, out = {}) {
  */
 export function publicLiveData(frame, open = null, events = EVENTS, keys = PUBLIC_STATE_KEYS) {
   const def = Object.hasOwn(LIVE, frame?.kind) ? LIVE[frame.kind] : null;
-  if (!def?.events.every((t) => Object.hasOwn(events, t) && events[t].public)) return null;
-  if (!def.keys.every((k) => keys.includes(k))) return null;
+  if (!def || !kindPublic(frame.kind, def, events, keys)) return null;
   // A tool’s stream names no conversations (open is null) and gets them all; anything else must say which it has.
   if (open !== null && !(open instanceof Set)) return null;
   if (def.item && open && !open.has(frame.threadId)) return null;
