@@ -48,6 +48,7 @@ const median = (xs) => {
  * @param {any[][]} main @param {any[][]} branch @param {{ times?: boolean }} [o]
  */
 export function compare(main, branch, { times = true } = {}) {
+  sameShape(main, branch);
   /** @type {{ row: string, key: string, main: number, branch: number, ratio?: number, leastRatio?: number, worse: boolean }[]} */
   const out = [];
   for (const [r, first] of main[0].entries())
@@ -69,6 +70,47 @@ export function compare(main, branch, { times = true } = {}) {
       }
     }
   return out;
+}
+
+/** A row’s numbers’ keys, sorted. @param {Record<string, any>} row */
+const keysOf = (row) =>
+  Object.keys(row)
+    .filter((k) => typeof row[k] === 'number')
+    .sort();
+
+/** What to do when the two sides’ rows don’t match. */
+const SAME_TOOL =
+  'Measure both sides with the same tools/measure-progress. If this branch’s is newer, compare against a checkout of main with this branch’s tool in it; if main’s is newer, merge main into this branch.';
+
+/** The code a refusal carries, which the tool prints and exits 1 on (tools/measure-progress.mjs). */
+export const MISMATCH = 'EMEASURE_MISMATCH';
+
+/**
+ * Refuses runs whose rows or numbers don’t match, rather than judging what they share and skipping the rest: a row or a
+ * number one side has and the other doesn’t, as when main’s tool reports a row differently, would pass unjudged. Asked
+ * after the first pair too (tools/measure-progress.mjs), so a mismatch stops the measurement before the rest of the pairs.
+ * @param {any[][]} main @param {any[][]} branch
+ */
+export function sameShape(main, branch) {
+  const want = main[0] ?? [];
+  const names = (/** @type {any[]} */ rows) => rows.map((r) => r.row).join(' | ');
+  for (const [side, runs] of /** @type {const} */ ([
+    ['main', main],
+    ['this branch', branch],
+  ]))
+    for (const rows of runs) {
+      if (names(rows) !== names(want))
+        throw Object.assign(new Error(`The rows don’t match: main has ${names(want)}, and ${side} has ${names(rows)}. ${SAME_TOOL}`), { code: MISMATCH });
+      for (const [i, r] of rows.entries()) {
+        const a = keysOf(want[i]);
+        const b = keysOf(r);
+        if (a.join() === b.join()) continue;
+        const lacks = (/** @type {string[]} */ x, /** @type {string[]} */ y) => x.filter((k) => !y.includes(k)).join(', ') || 'none';
+        throw Object.assign(new Error(`The numbers of “${r.row}” don’t match: main lacks ${lacks(b, a)}, and ${side} lacks ${lacks(a, b)}. ${SAME_TOOL}`), {
+          code: MISMATCH,
+        });
+      }
+    }
 }
 
 /**
