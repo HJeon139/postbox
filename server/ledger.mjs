@@ -57,13 +57,17 @@ export class Ledger {
     this.store = store;
     this.blobs = blobs ?? memoryBlobs();
     this.io = io;
-    this.git = git;
+    // Once Postbox has closed the ledger (closeLedger), git isn’t run: it answers as it does outside a repository.
+    this.git = (/** @type {Parameters<typeof runGit>} */ ...a) => (this.closing ? Promise.resolve({ code: 128, stdout: '', stderr: '' }) : git(...a));
     this.home = home;
     this.now = now;
     this.roots = new Map(); // folder → its repository’s top folder, or null
     this.pushedCache = new Set(); // root:sha known to be on a remote
     this.pending = new Set(); // work that hasn’t finished writing, so tests can wait for it
     this.folders = folderWatch(); // git folders, to see what a command did there (#156)
+    /** @type {Set<{ write: () => void }>} turns’ ends still being recorded, which closeLedger writes as they are */
+    this.ending = new Set();
+    this.closing = false; // closeLedger ran: nothing more is written
   }
 
   get s() {
@@ -82,11 +86,11 @@ export class Ledger {
     return this.entries(convId).find((e) => e.id === id) ?? null;
   }
   add(convId, entry) {
-    this.store.emit('work.add', { convId, entry });
+    if (!this.closing) this.store.emit('work.add', { convId, entry });
     return entry;
   }
   patch(convId, id, patch) {
-    this.store.emit('work.patch', { convId, id, patch });
+    if (!this.closing) this.store.emit('work.patch', { convId, id, patch });
   }
   /** Keeps a promise until it settles, so idle() can wait for it. */
   track(p) {

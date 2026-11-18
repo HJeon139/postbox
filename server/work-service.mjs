@@ -6,6 +6,7 @@
 // Personas, Placement and Running, the ledger and how a command starts, and its modules take it, never the runtime.
 
 import { ArchivePasses } from './archive-runtime.mjs';
+import { closeLedger } from './ledger-end.mjs';
 import { commandFolder, expireStaleCommands, flushShellOutput, runShellCommand, stopShellCommand, stopShellCommands } from './shell-runs.mjs';
 import { endWork } from './turn-end-work.mjs';
 import { workEvents } from './turn-work.mjs';
@@ -73,6 +74,11 @@ export class Work {
   /** Resolves once the ledger’s records in flight are written. */
   idle() {
     return this.ledger.idle();
+  }
+
+  /** As Postbox shuts down, after the ledger’s grace: the turns’ ends it still has are written, and it starts no new work. */
+  closeLedger() {
+    closeLedger(this.ledger);
   }
 
   // ── The archive passes (#305) ──────────────────────────────────────────────────────

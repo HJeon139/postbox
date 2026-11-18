@@ -195,7 +195,7 @@ const LEDGER = {
   'ledger-remote.mjs': ['hostEdit'], // a host edit the turn is recording
   'ledger-answers.mjs': ['restore'], // restore reads back the entry it just patched
   'ledger.mjs': ['entry', 'commandEnded', 'commandEnded', 'taskEnded', 'jobUpdate', 'recordChange'], // entries the ledger patches as the turn goes
-  'ledger-end.mjs': ['endTurn', 'endTurn', 'endTurn'], // the turn’s entry and its commands’, patched at its end
+  'ledger-end.mjs': ['writeEnd', 'writeEnd', 'writeEnd'], // the turn’s entry and its commands’, patched at its end
   'turn-end-work.mjs': ['endWork'], // endWork’s line for the turn
   'thread-summary.mjs': ['summarizeThread'], // the summary’s cost, patched on its entry
   'write-intent.mjs': ['madeBy', 'judged'], // the PRs this conversation made, and the judge’s cost
