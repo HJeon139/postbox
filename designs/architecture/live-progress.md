@@ -89,6 +89,19 @@ The interval and the ceiling are constants in `shared/limits.mjs`. The measureme
 
 **At the end of a turn,** the last commit point, the settling patch, a failed reply’s `held` record (#1451, `server/turn-held.mjs`) and the fold are one `commit`, so a restart sees all of them or none.
 
+## Text in windows
+
+**The owner’s decision** (17 November 2026), in their words “Yes, rework it”, to the question whether to send a turn’s words at a fixed rate and only to open pages. It replaces this design’s plan for words, the `text` frame with its `at`, the per-stream word spans and the snapshot’s words, which #1502 built first, and measured as costing more per word than `main`.
+
+- **A turn holds its deltas for a window** of `LIVE_TEXT.windowMs`, 50 ms (`shared/limits.mjs`), and stores them as one `item.text` when it ends (`server/live-text.mjs`). The next words open the next window. So the words reach the page at a fixed rate, at most a window behind, and the log grows a window at a time, never by more than `main`’s one `item.text` a delta.
+- **Only open pages get the words.** A stored `item.text` goes whole to a stream with its conversation open and as a cursor to every other, as any item event does (#1155), so no frame carries the words and a page is never ahead of its stream.
+- **The words held are stored early** so what reads them reads them whole and in order:
+  - before a step goes to the page, since a step’s `at` places it among the words before it;
+  - before a part settles: `threads.patchItem` calls the store’s settle hook (`itemSettling`, `server/store-live.mjs`), so `item.final` and the mentions in its last words read the whole text;
+  - when the words go to another part;
+  - at the turn’s end.
+- **A reload or a page that opens mid-turn** gets the words to the last window from the store, and the rest a window later. A crash loses at most a window of words.
+
 ## Order
 
 Stored events wait behind a commit in flight (`server/store-held.mjs`), and `POSTBOX_STREAM_LAG` holds every stored event back on the stream (`server/live-streams.mjs`). A live frame sent past both could overtake the commit point it follows, or the `item.add` of the reply it names, so words would go missing or show twice.
@@ -269,7 +282,7 @@ Each item is its own pull request, test first:
 1. **The measurement:** `tools/measure-progress.mjs` extended as above, with `main`’s numbers. It changes nothing in Postbox.
 2. **`LIVE`, the `live` frame, `publicLiveFrame` and `publicLive`,** with the public-derivation, field-subset and private-kind tests, and `security-boundaries.md` updated in the same change, before anything is sent on it.
 3. **`server/live-buffer.mjs`, commit points, and the session fields and steps going live,** with the shared queue, the lag, `rev`, and `subagent-end.mjs` reading the buffer. The page’s handling of step and session frames (`app/js/live-frames.mjs`), the snapshot of steps and session fields, and `/api/state`’s `live` come with it, so a page that reloads or opens mid-turn never loses what changed since the last commit point (the integrator’s condition on #1471: step 3 ships no gap).
-4. **Text going live,** with `at`, and the text in the snapshot.
+4. **Text in windows** (“Text in windows”): a turn’s words stored once a window, with the settle hook.
 5. **The shutdown commit point,** with a test that fails without it: a reply stopped cleanly mid-stream, Postbox started again on the same store, and every word the reply had said is there. **And the ledger at shutdown:** once closing begins, the ledger starts no new work and writes what it has before `store.close()`, with a test through the real `start()` and `close()` and a short grace, such as `ledgerGraceMs` of 30 ms and a record that writes after 150 ms, which `main` drops.
 6. **The readers:** catch-up’s line for a reply still being written, the UAT checks held to `main`’s results, this document’s “Status” moved to built, and `architecture.md`’s summary (“Streamed text is emitted on a fast path”) updated.
 
