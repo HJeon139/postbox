@@ -100,6 +100,18 @@ export function liveStreams(store, table, { now = Date.now, running }) {
 }
 
 /**
+ * The streams a send goes to: those open now, or, for a send POSTBOX_STREAM_LAG holds back, those open when it was made
+ * and still open. A stream that opened meanwhile has it already, in its backlog or its snapshot, or in the state its
+ * page loaded; sent it again, the page would be ahead of its stream, which no page is without the lag.
+ * @param {Set<import('node:http').ServerResponse>} streams @param {number} lag
+ */
+function held(streams, lag) {
+  if (!(lag > 0)) return () => streams;
+  const then = [...streams];
+  return () => then.filter((res) => streams.has(res));
+}
+
+/**
  * What the store tells the streams of each event: its frame, as each page’s open conversations let it see the event,
  * then the header frames it changed.
  * @param {{ store: any, streams: Set<import('node:http').ServerResponse>, deliver: (res: any, frame: string) => void,
@@ -126,9 +138,10 @@ function eventSender({ store, streams, deliver, headers, events, openOf, sent })
     // A marked event sent now builds them only for a stream that needs them, as most get nothing of it.
     let frames = !mark || lag > 0 ? framesOf(ev, events, tail) : null;
     const built = () => (frames ??= framesOf(ev, events, tail));
+    const to = held(streams, lag);
     const send = () => {
       if (store.epoch !== epoch) return;
-      for (const res of streams) {
+      for (const res of to()) {
         const open = openOf.get(res);
         // Asked of every page, so each forgets the step once it’s stored, open or not.
         if (mark && open && sent.had(res, ev)) {
@@ -155,6 +168,7 @@ function liveSender({ store, streams, deliver, events, openOf, sent }) {
   const lag = Number(process.env.POSTBOX_STREAM_LAG) || 0;
   return (/** @type {any} */ frame) => {
     const epoch = store.epoch;
+    const to = held(streams, lag);
     const send = () => {
       if (store.epoch !== epoch) return;
       // A reply’s turn ended (server/live-buffer.mjs): nothing goes to the pages, and each stream forgets its steps.
@@ -166,7 +180,7 @@ function liveSender({ store, streams, deliver, events, openOf, sent }) {
       // frame the same, and every stream a session’s.
       /** @type {Record<string, string>} */
       const built = {};
-      for (const res of streams) {
+      for (const res of to()) {
         const open = openOf.get(res) ?? null;
         const how = viewOf(open, frame.threadId);
         const out = (built[how] ??= publicLiveFrame(frame, open, events));

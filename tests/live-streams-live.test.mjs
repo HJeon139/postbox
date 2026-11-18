@@ -64,3 +64,31 @@ test('live frames reach a page in order with the events, through the same lag', 
     else process.env.POSTBOX_STREAM_LAG = before;
   }
 });
+
+// A send POSTBOX_STREAM_LAG holds back went to every stream open when it fired, one that opened meanwhile too, which
+// had it already in its backlog, its snapshot or the state its page loaded. That page was ahead of its stream (#1505):
+// it dropped what came, and the server, having sent a step live, didn’t send it the commit point, so the step read
+// “running” to the end. No page is ahead of its stream without the lag, so the lag doesn’t make one either.
+test('a send held back by the lag goes to the streams open when it was made, not to one that opened meanwhile', async (t) => {
+  const before = process.env.POSTBOX_STREAM_LAG;
+  process.env.POSTBOX_STREAM_LAG = '20';
+  try {
+    const store = await new Store(null).load();
+    const ls = liveStreams(store, undefined, { running: { all: () => [] } });
+    t.after(() => ls.stop());
+    const early = tab(ls, store, 'th_1');
+    store.emit('thread', { id: 'th_1', projectId: 'p1', title: 'T', members: [] });
+    sendLive(store, { kind: 'session', sessionId: 'se_1', currentStep: 'Read' });
+    const late = tab(ls, store, 'th_1'); // its page loaded the state with both
+    sendLive(store, { kind: 'session', sessionId: 'se_1', currentStep: 'Write' });
+    await new Promise((r) => setTimeout(r, 60));
+    assert.deepEqual(
+      early.filter((x) => x !== 'header'),
+      ['thread', 'live session', 'live session'],
+    );
+    assert.deepEqual(late, ['live session'], 'only what was made after it opened');
+  } finally {
+    if (before === undefined) delete process.env.POSTBOX_STREAM_LAG;
+    else process.env.POSTBOX_STREAM_LAG = before;
+  }
+});
