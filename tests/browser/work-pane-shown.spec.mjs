@@ -92,3 +92,15 @@ test('the list holds still under the pointer, and takes the newer one once the p
   await page.mouse.move(0, 0);
   await expect(rows.first()).toContainText('README draft, again');
 });
+
+test.describe('375 px', () => {
+  test.use({ viewport: { width: 375, height: 760 } });
+  test('a row closes the pane that covers the conversation and shows the item there, with focus', async ({ page }) => {
+    await open(page);
+    await rowsOf(page).filter({ hasText: 'README' }).click();
+    const item = page.locator(`.transcript [data-key="${items.readme.id}"]`);
+    await expect(item).toBeFocused();
+    await expect(page.locator('#work-pane')).toHaveCount(0);
+    await expect(item).toBeInViewport();
+  });
+});
