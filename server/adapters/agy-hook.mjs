@@ -12,11 +12,11 @@ import { constants, existsSync, readFileSync, realpathSync } from 'node:fs';
 import { access, readFile, stat } from 'node:fs/promises';
 import { request as httpRequest } from 'node:http';
 import { homedir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CARD_WAIT_MS } from '../permission-cards.mjs';
 import { autoAllows, intoGit, personaAllows, personaOf, publishingCall } from './agy-auto.mjs';
-import { inside, leadsInto, PATH_FIELDS, pathArgs, readingsOf, realReadings, realTarget, tidyPath } from './agy-paths.mjs';
+import { isProtectedPath, leadsInto, PATH_FIELDS, pathArgs, realTarget, tidyPath } from './agy-paths.mjs';
 import { POSTBOX_SERVER } from './setup.mjs';
 
 export const HOOK_SCRIPT = fileURLToPath(import.meta.url);
@@ -31,6 +31,8 @@ const READ_TOOLS = new Set(['read_file', 'view_file', 'list_dir', 'find_by_name'
 // its builtin skills and guide, which a model read unprompted in a UAT: a card nobody can usefully judge (#1074).
 const AGY_READABLE = ['mcp', 'brain', 'builtin'];
 const SUBAGENT_TOOLS = new Set(['invoke_subagent', 'define_subagent', 'send_message', 'manage_subagents', 'manage_task']);
+const WEB_TOOLS = new Set(['search_web', 'read_url_content', 'open_browser_url', 'read_browser_page']);
+const isWebTool = (/** @type {string} */ name) => WEB_TOOLS.has(name) || name.startsWith('browser_') || name.includes('_browser_');
 // A command that names Antigravity’s plugin, this hook or agy’s settings: always a card, flagged.
 const PROTECTED_CMD = /\.agents\b|agy-hook\.mjs\b|\.gemini[\\/]antigravity-cli\b/i;
 const PUBLISH_OFF = 'This agent can’t publish outside Postbox (its persona’s “Can publish outside Postbox” is off), so Postbox refused this tool.';
@@ -70,28 +72,7 @@ export async function confirmAgyHook({ version, pluginDir, script = HOOK_SCRIPT,
   return actual === expected;
 }
 
-/**
- * Whether a path points at Postbox’s plugin, this hook script, or ~/.gemini/antigravity-cli (directly or via symlink).
- * Compared without case: macOS’s file system ignores it, so .AGENTS/plugins is .agents/plugins there (#423’s review).
- */
-export function isProtectedPath(rawPath, { cwd = process.cwd(), scriptPath = HOOK_SCRIPT, home = homedir() } = {}) {
-  if (typeof rawPath !== 'string' || !rawPath.trim()) return true;
-  return readingsOf(rawPath, cwd, home).some((at) => protectedAt(at, { scriptPath, home }));
-}
-
-/** Whether one absolute path, as written or where it leads, is one isProtectedPath protects. */
-function protectedAt(at, { scriptPath, home }) {
-  const abs = resolve(at).toLowerCase();
-  // Where it really leads, both ways a .. may be read (realReadings): either one protected protects the path.
-  const reals = realReadings(at).map((r) => r.toLowerCase());
-  const pluginRe = /(?:^|[\\/])\.agents(?:[\\/]plugins(?:[\\/]|$)|$)/;
-  if (pluginRe.test(abs) || reals.some((r) => pluginRe.test(r))) return true;
-  const realScript = (realTarget(scriptPath, '/') ?? resolve(scriptPath)).toLowerCase();
-  if (abs === resolve(scriptPath).toLowerCase() || reals.includes(realScript)) return true;
-  const agyDir = resolve(home, '.gemini', 'antigravity-cli');
-  const realAgyDir = (realTarget(agyDir, '/') ?? agyDir).toLowerCase();
-  return inside(abs, agyDir.toLowerCase()) || reals.some((r) => inside(r, realAgyDir));
-}
+export { isProtectedPath };
 
 /**
  * Classifies one Antigravity tool call for the persona’s mode: 'allow', 'deny' (with reason), or 'ask' (with the
@@ -108,16 +89,17 @@ export function decideAgyTool(
   const name = String(event?.toolCall?.name ?? '').trim();
   const args = event?.toolCall?.args && typeof event.toolCall.args === 'object' ? event.toolCall.args : {};
   if (!name) return { decision: 'deny', reason: 'Postbox’s Antigravity hook received no tool name.' };
-  if (mode === 'bypass') {
-    if ((name === 'search_web' || name === 'read_url_content') && !tools.includes('web.fetch'))
-      return { decision: 'deny', reason: 'The person turned Web off for this agent in Postbox.' };
-    return { decision: 'allow' };
-  }
   const mcp = name === 'call_mcp_tool' || name === 'list_resources' || name === 'read_resource';
   const server = String(args.ServerName ?? '');
   const tool = String(args.ToolName ?? '');
   if (mcp && (server === 'postbox_postbox' || server === 'postbox') && tool === 'permission_prompt')
     return { decision: 'deny', reason: 'Postbox’s permission_prompt tool is only for the PreToolUse hook.' };
+  if (WRITE_TOOLS.has(name) && protectedWrite(args, { cwd, scriptPath, home }))
+    return { decision: 'deny', reason: 'Postbox doesn’t allow editing Antigravity’s plugin, hook or settings files.' };
+  if (mode === 'bypass') {
+    if (isWebTool(name) && !tools.includes('web.fetch')) return { decision: 'deny', reason: 'The person turned Web off for this agent in Postbox.' };
+    return { decision: 'allow' };
+  }
   if (!canPublish && publishingCall(name, args)) return { decision: 'deny', reason: PUBLISH_OFF };
   const roots = /** @type {string[]} */ ((folders.length ? folders : [cwd]).map((f) => realTarget(f, cwd)).filter(Boolean));
   const command = name === 'run_command' ? String(args.CommandLine ?? '') : '';
@@ -149,9 +131,14 @@ export function decideAgyTool(
  * An edit: refused when any path it names is Antigravity’s own, and with no card in Auto and Accept edits only when every
  * one stays in the agent’s folders (#1074), else a card about the first that doesn’t.
  */
+function protectedWrite(args, { cwd, scriptPath, home }) {
+  const paths = pathArgs(args);
+  return !paths.length || paths.some((p) => isProtectedPath(p, { cwd, scriptPath, home }));
+}
+
 function decideWrite(name, args, { mode, roots, cwd, scriptPath, home }) {
   const paths = pathArgs(args);
-  if (!paths.length || paths.some((p) => isProtectedPath(p, { cwd, scriptPath, home })))
+  if (protectedWrite(args, { cwd, scriptPath, home }))
     return { decision: 'deny', reason: 'Postbox doesn’t allow editing Antigravity’s plugin, hook or settings files.' };
   // In Auto, an edit in .git asks: its config and hooks could name a program the routine git commands would run.
   const gitEdit = (/** @type {string} */ p) => mode === 'auto' && intoGit(p, cwd, home);
