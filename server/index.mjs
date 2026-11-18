@@ -16,7 +16,7 @@ import { MockAdapter } from './adapters/mock.mjs';
 import { openLink } from './app-links.mjs';
 import { clickEvent, noteApp } from './app-notes.mjs';
 import { publishApp } from './app-publish.mjs';
-import { PROBES, registerBackends } from './backends.mjs';
+import { askAgyQuota, PROBES, registerBackends, startedBanner } from './backends.mjs';
 import { buildInfo } from './build-info.mjs';
 import { dismissFailed } from './card-needs.mjs';
 import { openDataFolder } from './data-folder.mjs';
@@ -110,7 +110,7 @@ export async function start({
   process.env.POSTBOX_ORIGIN = origin;
   const { store, blobs, mediaDir } = await openDataFolder(dataDir, { fresh });
   const adapters = new AdapterRegistry().register(new MockAdapter());
-  const { real, claude, kiro, agy, codex } = await registerBackends(adapters, { dataDir, demo, probes });
+  const { real, claude, kiro, agy, codex, usage } = await registerBackends(adapters, { dataDir, demo, probes });
   const config = {
     origin,
     // Which build this is, shown under Personas in the sidebar.
@@ -144,6 +144,7 @@ export async function start({
   rt.work.expireStale();
   rt.expireStaleJobs();
   rt.rearmMirrors();
+  const agyQuota = askAgyQuota(rt, usage, agy); // its bar before its agent’s first turn (#1494), not waited on
   // Turns that went on on their hosts are attached again, each host’s status is kept for the page, and the hosts
   // reconnect when this computer wakes (#120).
   const stopWake = startHosts(rt, hosts, wake);
@@ -451,6 +452,7 @@ export async function start({
   }
 
   async function close() {
+    agyQuota.stop(); // agy’s /usage, asked as Postbox started, stops with it (#1494)
     stopStreams();
     for (const r of streams) r.destroy();
     stopTimers(rt);
@@ -470,11 +472,7 @@ export async function start({
     await store.close(); // flushes, and releases the data folder’s lock for the next Postbox
   }
   if (listen) await listenServer(server, port, host, close, () => listening(rt)); // drain (#228), then archive (#305)
-  const remoteOnly = adapters.names().filter((n) => !adapters.runsHere(n));
-  if (!quiet)
-    console.log(
-      `Postbox is running at ${origin}/\nData: ${dataDir}\nBackends: ${rt.localBackends().join(', ')}${claude ? ` (Claude Code ${claude})` : ''}${kiro ? ` (Kiro CLI ${kiro})` : ''}${agy ? ` (Antigravity CLI ${agy})` : ''}${codex ? ` (Codex ${codex})` : ''}${remoteOnly.length ? `\nOn hosts only: ${remoteOnly.join(', ')}` : ''}${demo ? '\nDemo controls are on.' : ''}`,
-    );
+  if (!quiet) console.log(startedBanner({ origin, dataDir, adapters, local: rt.localBackends(), found: { claude, kiro, agy, codex }, demo }));
   return {
     server,
     rt,
