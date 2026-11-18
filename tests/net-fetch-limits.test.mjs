@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { FetchLimits } from '../server/net-fetch-limits.mjs';
 
-const LIMITS = { bytes: 1, seconds: 1, perApp: 2, total: 3, perMinute: 5 };
+const LIMITS = { bytes: 1, seconds: 1, perApp: 2, total: 3, perMinute: 5, allPerMinute: 99 };
 
 test('one app has at most perApp fetches open; one ending lets the next in', () => {
   const limits = new FetchLimits({ now: () => 0, limits: LIMITS });
@@ -52,4 +52,16 @@ test('one app starts at most perMinute fetches a minute, counted from each start
   );
   now = 60_000;
   limits.admit('a');
+});
+
+test('all apps together start at most allPerMinute fetches a minute, so more apps don’t mean more fetches', () => {
+  let now = 0;
+  const limits = new FetchLimits({ now: () => now, limits: { ...LIMITS, perApp: 99, total: 99, perMinute: 5, allPerMinute: 8 } });
+  for (const app of ['a', 'b', 'c', 'd']) for (let i = 0; i < 2; i++) limits.admit(app)();
+  assert.throws(
+    () => limits.admit('e'),
+    (e) => e.status === 429 && /8 fetches a minute from all apps/.test(e.message),
+  );
+  now = 60_000;
+  limits.admit('e');
 });

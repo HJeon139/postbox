@@ -38,7 +38,7 @@ const REVIEW_BLOCK_DEF = {
 const APP_PERMISSIONS = {
   type: 'array',
   items: { type: 'string' },
-  description: `Host tools the app may call with postbox.query: assets.search, assets.list, narrate.speak, and net.fetch, which fetches a public URL through Postbox ({ url } → { status, type, text }; GET, no cookies, no redirects followed, never this computer or the local network; at most ${NET_FETCH.bytes / 1024 / 1024} MB in ${NET_FETCH.seconds} seconds, ${NET_FETCH.perApp} at once and ${NET_FETCH.perMinute} a minute per app, past which it’s refused with a 429). The app itself has no network.`,
+  description: `Host tools the app may call with postbox.query: assets.search, assets.list, narrate.speak, and net.fetch, which fetches a public URL through Postbox ({ url } → { status, type, text }; GET, no cookies, no redirects followed, never this computer or the local network; at most ${NET_FETCH.bytes / 1024 / 1024} MB in ${NET_FETCH.seconds} seconds, ${NET_FETCH.perApp} at once and ${NET_FETCH.perMinute} a minute per app, ${NET_FETCH.allPerMinute} a minute across all apps, past which it’s refused with a 429). The app itself has no network.`,
 };
 
 export const TOOL_DEFS = [

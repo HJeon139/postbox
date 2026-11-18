@@ -154,9 +154,10 @@ export const VIEWER = Object.freeze({ textBytes: 256 * 1024 });
 
 /**
  * An app’s net.fetch (#1482): a response’s most bytes, the seconds a whole fetch has, the fetches one app and all apps
- * may have open at once, and one app’s fetches per minute. server/net-fetch.mjs enforces them; show_app says them.
+ * may have open at once, and the fetches one app and all apps may start a minute, so an agent with many apps gets no
+ * more. server/net-fetch.mjs enforces them; show_app says them.
  */
-export const NET_FETCH = Object.freeze({ bytes: 1024 * 1024, seconds: 10, perApp: 4, total: 16, perMinute: 60 });
+export const NET_FETCH = Object.freeze({ bytes: 1024 * 1024, seconds: 10, perApp: 4, total: 16, perMinute: 60, allPerMinute: 120 });
 
 /**
  * Images a review block carries (#780). server/image-check.mjs refuses an image past either size limit, read from its
