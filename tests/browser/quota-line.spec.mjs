@@ -109,7 +109,7 @@ test('#1463 the line spans the input card, an equal part per backend, each bar f
   expect.soft(Math.abs(row.left - card.left), 'it starts where the card does').toBeLessThanOrEqual(0.5);
   expect.soft(Math.abs(row.right - card.right), 'and ends where it does').toBeLessThanOrEqual(0.5);
   expect.soft(Math.abs(bars[0].bar.width - bars[1].bar.width), 'two bars get half each').toBeLessThanOrEqual(1);
-  expect.soft(bars[0].bar.width, 'half the card, less the gap between them').toBeGreaterThan(card.width / 2 - 12);
+  expect.soft(bars[0].bar.width, 'half the card less its chevron (20 px, #1496), less the gap').toBeGreaterThan((card.width - 20) / 2 - 12);
   for (const [i, b] of bars.entries()) {
     expect.soft(b.track && Math.abs(b.track.width - b.bar.width), `bar ${i + 1}’s track fills its part`).toBeLessThanOrEqual(0.5);
     expect.soft(b.track && b.text.top >= b.track.bottom, `bar ${i + 1}’s words are below its track`).toBe(true);
