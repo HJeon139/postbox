@@ -2,6 +2,8 @@
    Dark is the default; [data-theme="light"] swaps every token. theme.js resolves System to one of the two. */
 
 :root {
+  /* The conversation’s column, and its input card: a dialog opens as wide (#1497). */
+  --col-w: 760px;
   color-scheme: dark;
   --bg: #15110e;
   --panel: #1f1a15;
@@ -323,11 +325,11 @@ pb-ring[role="button"] { cursor: pointer; border-radius: 50%; }
 .transcript.cv-skip > .item { content-visibility: auto; contain-intrinsic-size: auto 71px; overflow-clip-margin: 4px; }
 @media (max-width: 600px) { .transcript.cv-skip > .item { contain-intrinsic-size: auto 91px; } }
 .transcript.cv-skip > .item:has(.rv-full, .app-full.fullscreen, .check-frame) { content-visibility: visible; }
-.col { width: 100%; max-width: 760px; margin: 0 auto; }
+.col { width: 100%; max-width: var(--col-w); margin: 0 auto; }
 .wide { width: 100%; }
 /* A retired app is one line, not a frame (#193), so its item keeps to the column, and its reactions and thread link
    line up under it as under any message (#973). */
-.wide:has(> .app-retired) { max-width: 760px; margin-inline: auto; }
+.wide:has(> .app-retired) { max-width: var(--col-w); margin-inline: auto; }
 
 /* ───────── Turns ───────── */
 
@@ -700,7 +702,7 @@ iframe.app-iframe:not(.live) { pointer-events: none; }
 /* A review takes the transcript’s width, past the reading column, while its agent’s name and work line keep to it
    (#179). Preview prose uses that width for detailed feedback (#486). */
 .col.turn:has(> .block.rv-wide) { max-width: none; }
-.col.turn:has(> .block.rv-wide) > :not(.block) { width: 100%; max-width: 760px; margin-inline: auto; }
+.col.turn:has(> .block.rv-wide) > :not(.block) { width: 100%; max-width: var(--col-w); margin-inline: auto; }
 /* Preview: the draft as it reads, with each thread after the part it’s on, and the Comment button beside a selection. */
 .rv-doc.rv-preview { display: block; padding: 12px 16px 16px; }
 .rv-preview:focus:not(:focus-visible) { outline: none; }
@@ -855,8 +857,8 @@ html.store-down .sidepanel { padding-bottom: 44px; }
 .toast .t-body .small { color: var(--dim); }
 
 .backdrop { position: fixed; inset: 0; z-index: 50; background: var(--overlay); display: grid; place-items: center; padding: 16px; }
-.dialog { width: 100%; max-width: 480px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; display: flex; flex-direction: column; max-height: calc(100vh - 32px); }
-.dialog.lg { max-width: 640px; }
+/* Every centered dialog is the conversation’s column wide, as its input card is (#1497); an anchored one keeps its own. */
+.dialog { width: 100%; max-width: var(--col-w); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; display: flex; flex-direction: column; max-height: calc(100vh - 32px); }
 /* An agent sheet keeps one height, the most the window gives it, so a list that comes after it opens scrolls inside it
    and moves nothing under the pointer (sheet-hold.mjs, #1326). */
 .dialog.held { height: calc(100vh - 32px); }
@@ -1106,7 +1108,6 @@ html.pb-sandbox .label, html.pb-sandbox .tbl th, html.pb-sandbox kbd { font-size
 .rv-pins { display: flex; flex-direction: column; gap: 8px; padding: 12px; }
 
 /* Command palette, settings and lists */
-.palette { max-width: 560px; }
 .palette .p-list { list-style: none; padding: 0; margin: 0; max-height: 50vh; overflow: auto; display: flex; flex-direction: column; gap: 1px; }
 .palette .p-list li { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 6px; cursor: pointer; border: 1px solid transparent; }
 .palette .p-list li[aria-selected="true"] { border-color: var(--accent); background: var(--sunk); }
@@ -1211,7 +1212,7 @@ code.wl-label { font-size: 12px; }
 /* Full screen: a pane view fixed over the window, where it is in the page (pane.mjs). A thread reads at the
    message column’s width; Work shows its full form. */
 .rpane > .pane-full { position: fixed; inset: 0; z-index: 28; background: var(--bg); }
-.sidepanel.pane-full .sp-body > *, .sidepanel.pane-full .sp-foot > * { width: 100%; max-width: 760px; margin-inline: auto; }
+.sidepanel.pane-full .sp-body > *, .sidepanel.pane-full .sp-foot > * { width: 100%; max-width: var(--col-w); margin-inline: auto; }
 .workpane.pane-full .wp-body { padding: 16px 24px 32px; }
 /* Compact, in the pane: short lists, each item opening Work full screen. */
 .wp-body { flex: 1; overflow: auto; padding: 12px 14px 20px; display: flex; flex-direction: column; gap: 18px; }
@@ -1391,7 +1392,7 @@ a.room-ref { text-decoration: underline; text-underline-offset: 2px; }
 
 /* Beside its anchor on a wide window, over the page; a sheet like any dialog on a narrow one. */
 .backdrop.anchored { display: block; background: none; padding: 0; }
-.backdrop.anchored .dialog { position: fixed; max-height: calc(100vh - 16px); }
+.backdrop.anchored .dialog { position: fixed; max-width: 480px; max-height: calc(100vh - 16px); }
 .dialog.quick { max-width: 380px; }
   border: 0; border-radius: 6px; background: none; color: var(--text); font: inherit; cursor: pointer; }
 
