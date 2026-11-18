@@ -5,6 +5,7 @@
 import { afterAppChecks, appChecksRunning, installAppChecks, recordAppCheck } from './app-check.mjs';
 import { crashCard, errorStrip } from './app-crash.mjs';
 import { live, nearBodies, relookSoon, setAppFrameTest } from './app-pointer.mjs';
+import { publishLater } from './app-publish.mjs';
 import { renderAppSendCard, SEND_LIMIT } from './app-send-card.mjs';
 import { api, client, placeIn } from './client.mjs';
 import { $$, ago, h, icon } from './dom.mjs';
@@ -126,9 +127,9 @@ addEventListener('message', async (e) => {
       if (current) saveState(rec.appId, m.state);
       break;
     case 'publish':
-      // Data the app shares with its agent, read with read_app (server/app-publish.mjs, #1478).
+      // Data the app shares with its agent, read with read_app: the latest of a burst, in order (app-publish.mjs, #1478).
       if (!current) return reply(null, 'Only the current version of an app publishes.');
-      api(`/api/apps/${encodeURIComponent(rec.appId)}/publish`, { data: m.data }).then(
+      publishLater(rec.appId, m.data).then(
         (r) => reply(r),
         (err) => reply(null, err.message),
       );
