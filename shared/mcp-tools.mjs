@@ -5,7 +5,7 @@
 
 import { FONT_RULE } from './app-fonts.mjs';
 import { shownBlock, updatedBlock } from './block-json-schema.mjs';
-import { limitText as n, PALETTES, PENDING_WAKES, READING, REVIEW_IMAGES, SEARCHING, SENDING } from './limits.mjs';
+import { NET_FETCH, limitText as n, PALETTES, PENDING_WAKES, READING, REVIEW_IMAGES, SEARCHING, SENDING } from './limits.mjs';
 import { ASSET_TOOLS } from './mcp-tools-assets.mjs';
 import { REACTIONS } from './reactions.mjs';
 import { COMMENT_MAX, MAX_COMMENTS, QUOTE_MAX, VERDICTS } from './review-comments.mjs';
@@ -38,8 +38,7 @@ const REVIEW_BLOCK_DEF = {
 const APP_PERMISSIONS = {
   type: 'array',
   items: { type: 'string' },
-  description:
-    'Host tools the app may call with postbox.query: assets.search, assets.list, narrate.speak, and net.fetch, which fetches a public URL through Postbox ({ url } → { status, type, text }; GET, no cookies, never this computer or the local network). The app itself has no network.',
+  description: `Host tools the app may call with postbox.query: assets.search, assets.list, narrate.speak, and net.fetch, which fetches a public URL through Postbox ({ url } → { status, type, text }; GET, no cookies, no redirects followed, never this computer or the local network; at most ${NET_FETCH.bytes / 1024 / 1024} MB in ${NET_FETCH.seconds} seconds, ${NET_FETCH.perApp} at once and ${NET_FETCH.perMinute} a minute per app, past which it’s refused with a 429). The app itself has no network.`,
 };
 
 export const TOOL_DEFS = [
