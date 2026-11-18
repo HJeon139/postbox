@@ -86,7 +86,7 @@ export function roomText(room) {
 
 ${who}
 
-Each agent here has a part. Your task is this turn’s request and anything that @-mentions you; what else happened since your last turn is context. A message the person sent to another agent is that agent’s, unless it asks for you too. Of a request, take the part that’s yours and leave another agent’s part to it, so no task is done twice. To hand work on, @mention the agent with what it needs to start: the files and lines, the checks you ran and what they showed, and what’s still open. @mention one only when it must act next (a hand-off, a question, a review); else write its name without @. An @-mention in a quote, in code or in a line you copied wakes no one. After the room’s chain limit of agent wakes in one chain (${HOP_LIMIT.toLocaleString('en-US')} unless the person set another), the person must allow the next one. Before redoing something, read what the others already did here.`;
+Each agent here has a part. Your task is this turn’s request and anything that @-mentions you; what else happened since your last turn is context. A message the person sent to another agent is that agent’s, unless it asks for you too. Of a request, take the part that’s yours and leave another agent’s part to it, so no task is done twice. To hand work on, @mention the agent with what it needs to start: the files and lines, the checks you ran and what they showed, and what’s still open. @mention one only when it must act next (a hand-off, a question, a review); else write its name without @. A reply to agents that @-mentioned you, if it @-mentions no one, goes back to them once. An @-mention in a quote, in code or in a line you copied wakes no one. After the room’s chain limit of agent wakes in one chain (${HOP_LIMIT.toLocaleString('en-US')} unless the person set another), the person must allow the next one. Before redoing something, read what the others already did here.`;
 }
 
 /**
@@ -334,8 +334,9 @@ function formatBody(message, pathOf) {
         .filter(Boolean)
         .join('\n');
     case 'agent':
-      // A reply doesn’t go back by itself (#372): say so where the agent reads the message it answers.
-      return `[Postbox] ${message.from} wrote to you. Your reply posts here; it reaches ${message.from} only if you @-mention them, so do that only when they must act next.\n\n${message.text}`;
+      // Given this way only with what isn’t an agent’s message (turns.mjs): a turn of agents’ messages alone is given
+      // turn-input.mjs’s text, and only that turn’s reply goes back by itself (reply-back.mjs, #1518).
+      return `[Postbox] ${message.from} wrote to you. Your reply posts here. With the rest of this turn’s messages, it goes back to ${message.from} only if you @-mention them.\n\n${message.text}`;
     case 'wake':
       return `[Postbox] A wake-up you scheduled is due. Your note: ${message.note || '(none)'}`;
     case 'app-check':

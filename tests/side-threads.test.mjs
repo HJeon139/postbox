@@ -10,7 +10,7 @@ import { readOf } from './turn-parts.mjs';
 
 const sides = (store) => Object.values(store.state.threads).filter((x) => x.kind === 'side');
 
-test('#110, #372: a wake runs in the agent’s own session, in the conversation; its reply shows there, and the waker gets no new turn', async () => {
+test('#110, #1518: a wake runs in the agent’s own session, in the conversation; its reply shows there, and goes back to the waker for one turn', async () => {
   const { store, rt, adapter, t, b, alpha, beta } = setup();
   const h = held();
   adapter.next.push(h.step);
@@ -37,11 +37,16 @@ test('#110, #372: a wake runs in the agent’s own session, in the conversation;
   await settle(rt);
   const reply = store.items(t.id).find((i) => i.kind === 'agent' && i.handle === 'beta');
   assert.deepEqual([reply.sessionId, reply.text], [beta.id, 'working on it']);
-  // Its reply doesn’t go back to the session that woke it: @alpha reads it at its next turn.
+  // Its reply named no one, so it goes back to the session that woke it, in the conversation, for one turn whose reply
+  // goes back to no one (#1518, which reverses #372 here).
   assert.deepEqual(
-    adapter.calls.map((c) => c.sessionId),
-    [beta.id],
+    adapter.calls.map((c) => [c.sessionId, c.thread]),
+    [
+      [beta.id, t.id],
+      [alpha.id, t.id],
+    ],
   );
+  assert.equal(adapter.calls[1].parts[0].from, '@beta');
   // The next thing you ask @beta in the conversation goes to the same session: the one that remembers the exchange.
   rt.sendMessage(t.id, { text: '@beta what did you tell alpha?' });
   await settle(rt);
@@ -127,7 +132,8 @@ test('#372: a turn still running in a side thread from before hands off in the c
     await settle(rt);
   }
   // Its replies stay in the side thread; the wakes, posted as @beta’s, and @alpha’s answers are in the conversation.
-  // Each is the first in its chain: @alpha’s answer between them woke no one, which ended the first.
+  // Each is the first in its chain: @alpha’s answer went back to @beta (#1518), whose reply to it went back to no one,
+  // which ended the first.
   assert.deepEqual(
     store
       .items(side.id)
@@ -142,7 +148,9 @@ test('#372: a turn still running in a side thread from before hands off in the c
       .map((i) => [i.text, i.hop]),
     [
       ['@alpha the 1908 one, page 12.', 1],
+      ['ok', undefined],
       ['@alpha and page 40.', 1],
+      ['ok', undefined],
     ],
   );
   assert.deepEqual(

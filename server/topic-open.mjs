@@ -126,7 +126,10 @@ function repeatOf(rt, se, threadId, text, handles, created) {
  * A2's records carry the same as the message's addressees. Returns the message's id and the wakes' replies.
  */
 function post(rt, se, threadId, text, handles) {
-  const fromTurnId = rt.turns.get(se.id)?.id;
+  const turn = rt.turns.get(se.id);
+  const fromTurnId = turn?.id;
+  // An open that names agents hands off, so the turn’s reply doesn’t go back to whoever woke it (reply-back.mjs).
+  if (turn && handles.some((h) => h.toLowerCase() !== se.handle.toLowerCase())) turn.named = true;
   const opened = named(handles);
   const message = { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text, status: 'done', opened, fromTurnId };
   const it = rt.threads.addItem(threadId, message);

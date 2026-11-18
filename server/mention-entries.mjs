@@ -32,7 +32,10 @@ export function mentionEntries(rt, { threadId, item }) {
   // Each mention after the first reuses the message the first went out as: a reply in an old side thread posts it once.
   let said = item.id;
   for (const h of parseMentions(item.text, rt.personas.handles(), copiedLine(rt, se))) {
-    if (h.toLowerCase() === se.handle.toLowerCase() || turn.woken.includes(h)) continue;
+    if (h.toLowerCase() === se.handle.toLowerCase()) continue;
+    // It named an agent, so it doesn’t go back to the one that woke it (reply-back.mjs), whether or not this wakes it.
+    turn.named = true;
+    if (turn.woken.includes(h)) continue;
     const opts = { replyIn, fromTurnId: turn.id, itemId: said, prose: true, wake: live, retryId: replayKey(turn, h) };
     const r = rt.agentWake(se.id, h, item.text, opts);
     if (r.itemId) said = r.itemId;

@@ -37,7 +37,8 @@ test('#372 a turn in an old side thread that mentions two agents posts its messa
   adapter.next.push(async (c) => c.text('@beta @gamma the fix is in.'));
   rt.turnService.run(alpha.id, { kind: 'user', text: 'carry on' }, { threadId: old.id });
   await settle(rt);
-  const posted = store.items(t.id).filter((x) => x.kind === 'agent' && x.handle === 'alpha');
+  // Alpha’s own turn’s messages, not those of the turns beta’s and gamma’s answers start by going back to it (#1518).
+  const posted = store.items(t.id).filter((x) => x.kind === 'agent' && x.handle === 'alpha' && !x.woke);
   assert.deepEqual(
     posted.map((x) => [x.text, x.wakes]),
     [['@beta @gamma the fix is in.', [1, 2]]],
@@ -59,11 +60,12 @@ test('#372 a turn in an old side thread whose wake waits on a card is still told
   await settle(rt);
 });
 
-test('#372 a woken agent is told its reply reaches the waker only by an @-mention, and the guide names the chain limit', async () => {
+test('#372, #1518 a woken agent with more than agents’ messages is told its reply reaches the waker only by an @-mention, and the guide names the chain limit', async () => {
   const { formatMessage, roomText } = await import('../server/adapters/guide.mjs');
+  // A turn of agents’ messages alone is given turn-input.mjs’s text, whose reply goes back (tests/reply-goes-back.test.mjs).
   assert.match(
     formatMessage({ kind: 'agent', from: '@alpha', text: 'Check the totals.' }),
-    /^\[Postbox\] @alpha wrote to you\. Your reply posts here; it reaches @alpha only if you @-mention them/,
+    /^\[Postbox\] @alpha wrote to you\. Your reply posts here\. With the rest of this turn’s messages, it goes back to @alpha only if you @-mention them/,
   );
   assert.match(
     roomText([{ handle: 'beta', role: 'Reviews' }]),

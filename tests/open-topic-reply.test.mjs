@@ -15,13 +15,16 @@ async function conversation() {
   f.rt.sendMessage(f.t.id, { text: '@alpha check the totals' });
   await settle(f.rt);
   const reply = f.store.items(f.t.id).find((i) => i.kind === 'agent');
-  /** One turn of `handle`’s that opens the topic on alpha’s reply; resolves with the result. */
-  const open = async (args, handle = 'alpha') => {
+  /** One turn of `handle`’s that opens the topic on alpha’s reply, then the turns `after` scripts; resolves with the result. */
+  const open = async (args, handle = 'alpha', ...after) => {
     let out;
-    f.adapter.next.push(async (c) => {
-      out = c.tools.open_topic({ itemId: reply.id, ...args });
-      c.text('Done.');
-    });
+    f.adapter.next.push(
+      async (c) => {
+        out = c.tools.open_topic({ itemId: reply.id, ...args });
+        c.text('Done.');
+      },
+      ...after,
+    );
     f.rt.sendMessage(f.t.id, { text: `@${handle} go` });
     await settle(f.rt);
     return out;
@@ -74,7 +77,8 @@ test('#651 a repeat says its message is already there and wasn’t posted again 
 
 test('#651 a repeat that names beta wakes beta once, and says no one was woken again', async () => {
   const f = await conversation();
-  const one = await f.open({ message: '@beta A' });
+  // Beta’s answer names an agent, so it doesn’t go back to alpha (#1518): alpha’s newest message in the topic stays the open’s.
+  const one = await f.open({ message: '@beta A' }, 'alpha', async (c) => c.text('Noted; @gamma has the totals.'));
   const betaCalls = () => f.adapter.calls.filter((c) => c.sessionId === f.beta.id).length;
   const before = betaCalls();
   assert.equal(before, 1, 'the first open woke beta');

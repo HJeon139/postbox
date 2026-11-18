@@ -33,10 +33,12 @@ test('a message from the person clears the counts, so a hand-off right after it 
 });
 
 test('#492 a pair’s third wake since the person’s message goes too, though a card waits: there’s no pair limit', async () => {
-  const { rt, t, alpha, gamma, wake } = await cardOpen();
+  const { rt, store, t, alpha, gamma, wake } = await cardOpen();
   rt.sendMessage(t.id, { text: '@gamma ask @alpha, then hand it the line count' });
   await settle(rt);
   assert.equal((await wake(gamma, 'alpha')).ok, true);
-  assert.equal((await wake(alpha, 'gamma')).ok, true);
-  assert.equal((await wake(gamma, 'alpha')).ok, true);
+  // Alpha’s answer named no one, so it went back to gamma (#1518): the pair’s second wake, which went too.
+  const back = store.items(t.id).findLast((x) => x.kind === 'agent' && x.handle === 'alpha');
+  assert.deepEqual([back.hop, back.wentBack], [2, ['gamma']]);
+  assert.equal((await wake(alpha, 'gamma')).ok, true, 'the pair’s third wake');
 });

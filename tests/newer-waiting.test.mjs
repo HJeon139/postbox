@@ -155,7 +155,8 @@ test('#694: in a batch of two agents’ wakes, a newer wake from either sender i
   rt.agentWake(gamma.id, 'beta', 'From gamma, batched.');
   first.release();
   for (let i = 0; i < 100 && adapter.calls.filter((x) => x.sessionId === beta.id).length < 2; i++) await sleep(5);
-  assert.equal(adapter.calls.at(-1).parts.length, 2, 'the two wakes are one batch');
+  // Beta’s first reply goes back to alpha (#1518), so the batch is beta’s latest turn, not the latest of all.
+  assert.equal(adapter.calls.filter((x) => x.sessionId === beta.id).at(-1).parts.length, 2, 'the two wakes are one batch');
   rt.agentWake(alpha.id, 'beta', 'Newer from alpha.');
   const wake = arrange.waitingEntries(rt, beta.id).at(-1);
   assert.ok((await define(rt, beta, 'X')).includes(`from @alpha is waiting for you; read_message { id: "${wake.itemId}" } has it.`));

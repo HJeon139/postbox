@@ -115,9 +115,12 @@ function holdOnCard(rt, card, parent, from, p, wake) {
       ok: false,
       message: `Your message to @${p.handle} wasn’t sent: ${cardName(card)} is waiting for the person, with ${HELD_WAKES} messages already held on it. Send it again once they’ve answered.`,
     };
-  const { text, replyIn = null, fromTurnId = null, itemId = null } = wake;
+  const { text, replyIn = null, fromTurnId = null, itemId = null, bounce = false } = wake;
   rt.threads.patchItem(parent.id, card.id, {
-    held: [...held, { fromSessionId: from.id, from: from.handle, to: p.handle, text, replyIn, fromTurnId, itemId, at: Date.now() }],
+    held: [
+      ...held,
+      { fromSessionId: from.id, from: from.handle, to: p.handle, text, replyIn, fromTurnId, itemId, ...(bounce ? { bounce } : {}), at: Date.now() },
+    ],
   });
   const message = `Postbox is holding your message to @${p.handle}: ${cardName(card)} is waiting for the person. It goes to @${p.handle} when they allow that, so don’t send it again; if they don’t, you’ll be told.`;
   if (itemId) rt.sessions.tell(from.id, `Your mention of @${p.handle} is held. ${message}`);
@@ -158,6 +161,7 @@ export function resolveHop(rt, threadId, itemId, allow) {
       replyIn: it.replyIn ?? null,
       fromTurnId: it.fromTurnId ?? null,
       itemId: it.itemId ?? null,
+      bounce: it.bounce === true,
     });
   settleHeld(rt, it, allow);
   if (allow) return { ok: true };
@@ -224,13 +228,20 @@ export function retireStale(rt, threadId, target, why, { byPerson = false } = {}
     replyIn: card.replyIn ?? null,
     fromTurnId: card.fromTurnId ?? null,
     itemId: card.itemId ?? null,
+    bounce: card.bounce === true,
   };
   for (const w of [own, ...(card.held ?? [])]) sendHeld(rt, card, w, byPerson);
 }
 
 /** A held wake goes on as its agent sent it; one that can’t go (its target was removed meanwhile) tells its agent why. */
 function sendHeld(rt, card, w, confirmed) {
-  const r = rt.agentWake(w.fromSessionId, w.to, w.text, { confirmed, replyIn: w.replyIn, fromTurnId: w.fromTurnId, itemId: w.itemId });
+  const r = rt.agentWake(w.fromSessionId, w.to, w.text, {
+    confirmed,
+    replyIn: w.replyIn,
+    fromTurnId: w.fromTurnId,
+    itemId: w.itemId,
+    bounce: w.bounce === true,
+  });
   const se = rt.s.sessions[w.fromSessionId];
   if (!r.ok && !r.waiting && se && !se.retiredFork)
     rt.sessions.tell(se.id, `Your message to @${w.to} (“${clip(w.text, 120)}”), held on ${cardName(card)}, didn’t go: ${r.message}`);

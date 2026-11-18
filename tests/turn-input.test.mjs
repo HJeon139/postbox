@@ -28,10 +28,20 @@ test('entries waiting in other threads are counted, and the conversation and a r
   const one = turnInput({ entries: [mention], thread: { id: 'th_1', kind: 'chat' }, read, waitingElsewhere: 1 });
   assert.match(
     one,
-    /^\[Postbox\] 1 message for you in this conversation\. Your reply posts there\. 1 more waits in another thread, and starts your next turn\./,
+    /^\[Postbox\] 1 message for you in this conversation\. Your reply posts there and goes back to @critic\. @-mention another agent to hand off to them instead\. 1 more waits in another thread, and starts your next turn\./,
   );
-  const two = turnInput({ entries: [mention], thread: { id: 'th_1', kind: 'room' }, read, waitingElsewhere: 2 });
+  const two = turnInput({ entries: [person], thread: { id: 'th_1', kind: 'room' }, read, waitingElsewhere: 2 });
   assert.match(two, /for you in this room\. Your reply posts there\. 2 more wait in other threads, and start your next turn\./);
+});
+
+test('#1518 where the reply goes: back to agents whose mentions alone started the turn, and after a bounce to no one', () => {
+  const head = (/** @type {any[]} */ entries) => turnInput({ entries, thread: { id: 'th_1', kind: 'chat' }, read }).split('\n\n')[0];
+  const other = { ...mention, id: 'en_3', itemId: 'it_882', from: 'researcher' };
+  assert.match(head([mention, other]), /Your reply posts there and goes back to @critic and @researcher\. @-mention another agent/);
+  assert.match(head([{ ...mention, bounce: true }]), /Your reply posts there and goes to no one unless you @-mention an agent\.$/);
+  // With the person’s message, or what isn’t a mention, it goes where it @-mentions only, as before.
+  assert.match(head([mention, person]), /Your reply posts there\.$/);
+  assert.match(head([mention, { ...mention, id: 'en_4', source: 'check', from: undefined }]), /Your reply posts there\.$/);
 });
 
 test('an entry past the ceiling for one entry is cut, with the id that reads the rest', () => {

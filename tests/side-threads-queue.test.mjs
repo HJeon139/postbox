@@ -1,7 +1,7 @@
 // Wakes with one session per agent (#228, #372): a wake for a busy agent waits in the queue of the thread it was sent
 // in, where the person sees it, can remove it, and Send now keeps it; Stop drops it and tells the waker. The woken
-// agent answers in the thread the waker spoke in, and its answer wakes the waker only by @-mentioning it. And the
-// conversation’s pool is the only place an agent joins, from a topic thread too.
+// agent answers in the thread the waker spoke in, and an answer that @-mentions no one goes back to the waker once
+// (#1518). And the conversation’s pool is the only place an agent joins, from a topic thread too.
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
@@ -19,7 +19,7 @@ async function withTopic() {
   return { ...ctx, topic: store.state.threads[rt.startTopic(t.id, reply.id).threadId] };
 }
 
-test('#228, #372: an agent in a topic thread that wakes another gets the answer there, and isn’t woken by it', async () => {
+test('#228, #1518: an agent in a topic thread that wakes another gets the answer there, and is woken by it once', async () => {
   const { store, rt, adapter, t, alpha, beta, topic } = await withTopic();
   adapter.next.push(async (c) => c.text('@beta your opinion?'));
   adapter.next.push(async (c) => c.text('Looks fine.'));
@@ -31,11 +31,14 @@ test('#228, #372: an agent in a topic thread that wakes another gets the answer 
   const answer = adapter.calls.find((x) => x.sessionId === beta.id);
   assert.deepEqual([answer.thread, answer.parts[0].from, answer.message.itemId], [topic.id, '@alpha', wake.id]);
   assert.ok(store.items(topic.id).some((i) => i.kind === 'agent' && i.sessionId === beta.id && i.text === 'Looks fine.'));
-  // No reply goes back to @alpha: it reads the answer at its next turn.
-  assert.equal(
-    adapter.calls.some((x) => x.sessionId === alpha.id && x.parts[0].from === '@beta'),
-    false,
+  // The answer named no one, so it goes back to @alpha for one turn in the thread, and @alpha’s reply to it goes back
+  // to no one (#1518, which reverses #372 here).
+  const back = adapter.calls.filter((x) => x.sessionId === alpha.id && x.parts[0].from === '@beta');
+  assert.deepEqual(
+    back.map((x) => x.thread),
+    [topic.id],
   );
+  assert.equal(adapter.calls.at(-1), back[0], 'nothing after it');
   assert.equal(
     store.items(t.id).some((i) => i.text === 'Looks fine.' || i.text === '@beta your opinion?'),
     false,
@@ -127,24 +130,30 @@ test('#228: your message in a topic thread starts the wake count again on the co
   await settle(rt);
 });
 
-test('#228, #372: an @-mention from a turn in a topic thread wakes the agent there, on that message, and its answer doesn’t wake the waker', async () => {
+test('#228, #1518: an @-mention from a turn in a topic thread wakes the agent there, on that message, and its answer goes back to the waker once', async () => {
   const { store, rt, adapter, t, alpha, beta, topic } = await withTopic();
   adapter.next.push(async (c) => c.text('@beta your opinion on converter.py?'));
   adapter.next.push(async (c) => c.text('Looks fine.'));
   rt.sendMessage(topic.id, { text: '@alpha ask the reviewer' });
   await settle(rt);
-  // The mention is the wake: @alpha’s message carries its number in the chain, and no second message is posted.
+  // The mention is the wake: @alpha’s message carries its number in the chain, and no copy of it is posted. @alpha’s
+  // second message is its reply to the answer that went back to it (#1518).
   const said = store.items(topic.id).filter((i) => i.kind === 'agent' && i.sessionId === alpha.id);
   assert.deepEqual(
     said.map((i) => [i.text, i.hop]),
-    [['@beta your opinion on converter.py?', 1]],
+    [
+      ['@beta your opinion on converter.py?', 1],
+      ['ok', undefined],
+    ],
   );
   const answer = adapter.calls.find((x) => x.sessionId === beta.id);
   assert.deepEqual([answer.thread, answer.parts[0].from, answer.message.itemId], [topic.id, '@alpha', said[0].id]);
   assert.ok(store.items(topic.id).some((i) => i.sessionId === beta.id && i.text === 'Looks fine.'));
-  assert.equal(
-    adapter.calls.some((x) => x.sessionId === alpha.id && x.parts[0].from === '@beta'),
-    false,
+  const back = adapter.calls.filter((x) => x.sessionId === alpha.id && x.parts[0].from === '@beta');
+  assert.deepEqual(
+    back.map((x) => x.thread),
+    [topic.id],
+    'the answer went back to @alpha once, in the thread',
   );
   assert.equal(
     store.items(t.id).some((i) => i.text === 'Looks fine.'),

@@ -80,7 +80,9 @@ test('a mention in the first message wakes that agent in the thread, and two men
   assert.equal(r?.ok, true, JSON.stringify(r));
   await settle(f.rt);
   const items = f.store.items(r.threadId);
-  assert.equal(items.filter((i) => i.kind === 'agent' && i.sessionId === f.alpha.id).length, 1, 'one first message');
+  // Beta’s answer goes back to alpha (#1518), whose reply posts there too: count the first message by its text.
+  const first = items.filter((i) => i.kind === 'agent' && i.sessionId === f.alpha.id && i.text === '@beta @gamma please check the two fixes');
+  assert.equal(first.length, 1, 'one first message');
   const asked = f.adapter.calls.find((c) => c.sessionId === f.beta.id);
   assert.equal(asked?.thread, r.threadId, 'beta was woken in the thread');
   assert.ok(

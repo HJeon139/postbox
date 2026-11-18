@@ -76,7 +76,8 @@ test('#492 a chain that ends starts the count again: an ack that wakes no one en
 
 test('#492 a chain still going keeps its count: an answer that wakes the next agent isn’t the end', async () => {
   const f = setup();
-  // beta answers alpha's wake by @-mentioning alpha, and alpha's answer ends it.
+  // beta answers alpha's wake by @-mentioning alpha; alpha's answer, naming no one, goes back to beta once (#1518), and
+  // beta's reply to it ends the chain.
   f.adapter.next.push(async (c) => c.text('@alpha the totals are off by one.'));
   f.adapter.next.push(async (c) => c.text('Thanks, fixed.'));
   let most = 0;
@@ -84,8 +85,8 @@ test('#492 a chain still going keeps its count: an answer that wakes the next ag
     most = Math.max(most, f.store.state.threads[f.t.id]?.hops ?? 0);
   });
   f.rt.agentWake(f.alpha.id, 'beta', 'Check the totals.');
-  for (let i = 0; i < 20 && f.adapter.calls.length < 2; i++) await settle(f.rt);
+  for (let i = 0; i < 20 && f.adapter.calls.length < 3; i++) await settle(f.rt);
   await settle(f.rt);
-  assert.equal(most, 2, 'two wakes chained while it ran');
+  assert.equal(most, 3, 'three wakes chained while it ran');
   assert.equal(f.store.state.threads[f.t.id].hops, 0, 'and none once it ended');
 });
