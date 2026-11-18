@@ -55,13 +55,16 @@ export function privateAddress(ip) {
  * connects with, and a second lookup can’t swap one in (DNS rebinding). It answers in the shape asked for: node asks
  * for every address when it races IPv4 and IPv6, and then any private one refuses the name.
  * @param {boolean} anyAddress  the host is on the allow list
+ * @param {typeof lookup} [resolve]  the lookup it guards: node’s, or a stub in tests
  */
-export const guardedLookup = (anyAddress) => (host, opts, cb) =>
-  lookup(host, { ...opts, all: true }, (err, answer) => {
-    if (err) return cb(err);
-    const addresses = /** @type {import('node:dns').LookupAddress[]} */ (/** @type {unknown} */ (answer));
-    const bad = anyAddress ? undefined : addresses.find((a) => privateAddress(a.address));
-    if (bad) return cb(Object.assign(new Error(`${host} is a private address (${bad.address}).`), { code: 'EPRIVATE' }));
-    if (opts?.all) return cb(null, addresses);
-    cb(null, addresses[0].address, addresses[0].family);
-  });
+export const guardedLookup =
+  (anyAddress, resolve = lookup) =>
+  (host, opts, cb) =>
+    resolve(host, { ...opts, all: true }, (err, answer) => {
+      if (err) return cb(err);
+      const addresses = /** @type {import('node:dns').LookupAddress[]} */ (/** @type {unknown} */ (answer));
+      const bad = anyAddress ? undefined : addresses.find((a) => privateAddress(a.address));
+      if (bad) return cb(Object.assign(new Error(`${host} is a private address (${bad.address}).`), { code: 'EPRIVATE' }));
+      if (opts?.all) return cb(null, addresses);
+      cb(null, addresses[0].address, addresses[0].family);
+    });

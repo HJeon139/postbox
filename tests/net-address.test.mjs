@@ -3,7 +3,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { privateAddress } from '../server/net-address.mjs';
+import { guardedLookup, privateAddress } from '../server/net-address.mjs';
 
 test('private, loopback, link-local and other non-public addresses are recognized', () => {
   for (const ip of [
@@ -22,6 +22,7 @@ test('private, loopback, link-local and other non-public addresses are recognize
     '::ffff:192.168.1.1',
     '::ffff:127.0.0.1',
     '172.16.0.0',
+    '192.0.0.8',
     '172.31.255.255',
     '198.18.0.1',
     '198.19.255.255',
@@ -49,4 +50,27 @@ test('an IPv4 address inside IPv6 is classified by the IPv4 address it carries, 
     'fec0::1',
   ])
     assert.equal(privateAddress(ip), true, ip);
+});
+
+/** What the guarded lookup answers for a name whose DNS answer is `answer`, asked as node asks. @param {object} [opts] */
+function guarded(answer, opts = { all: true }) {
+  const stub = (/** @type {string} */ _host, /** @type {any} */ _opts, /** @type {Function} */ cb) => cb(null, answer);
+  return new Promise((resolve) =>
+    guardedLookup(false, /** @type {any} */ (stub))('mixed.example', opts, (/** @type {any} */ err, /** @type {any} */ value) => resolve(err ?? value)),
+  );
+}
+
+test('a name whose DNS answer holds a public and a private address is refused, in either order', async () => {
+  const pub = { address: '93.184.216.34', family: 4 };
+  const priv = { address: '127.0.0.1', family: 4 };
+  for (const answer of [
+    [pub, priv],
+    [priv, pub],
+  ]) {
+    for (const opts of [{ all: true }, {}]) {
+      const r = await guarded(answer, opts);
+      assert.equal(r?.code, 'EPRIVATE', `${answer.map((a) => a.address).join(', ')} asked ${JSON.stringify(opts)}`);
+    }
+  }
+  assert.deepEqual(await guarded([pub]), [pub], 'an all-public answer passes, in the shape asked for');
 });
