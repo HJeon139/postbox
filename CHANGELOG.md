@@ -2,6 +2,38 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.27.0 (2026-11-18)
+
+### Features
+
+- **uat:** the runner keeps the live frames, and the #722 asset scan reads them
+- **streams:** a stored event a page had live isn't sent to it again
+- **turns:** live frames send only what changed of a step or a session
+- **app:** the page applies a running turn's live frames, and its snapshot at load
+- **turns:** a running turn's steps and session fields go live, stored at its commit points
+- **turns:** a running turn's live buffer, with commit points for its steps, capped where built
+- **streams:** the pages' streams send the store's live frames, each through its projection
+- **store:** live frames take the store's held FIFO, in order with its events
+
+### Fixes
+
+- **composer:** say reconnecting only after a drop, not before the stream first opens
+- **test:** raise the resource timing buffer the diagram probe and queue spec count in
+- **turns:** Stop clears a running turn's subagents on the pages and in its snapshot
+- **streams:** each stream's record of live steps is kept by reply, with no keys built
+- **store:** a pending read of what nothing held touches is the published state
+- **turns:** a turn's end clears its live fields; session frames coalesce and keep their order
+- **turns:** the live path allocates less, and reads the stored session only when it must
+- **app:** a new stream starts not behind, so the snapshot after its backlog applies
+- **turns:** a stored write of a live field mid-turn replaces the buffer's value
+- **turns:** a step stored outside the buffer mid-turn isn't overwritten by its older copy
+- **streams:** every connect gets the running turns' live state, and session marks are per stream
+- **streams:** no stored frame is built for an event every page had live
+- **app:** a page that drops a live frame loads the state again
+- **streams:** a live frame is built once for each way a page sees it
+- **turns:** the turn's end doesn't send the pages tool calls they had live
+- **turns:** a session frame doesn't send a live field equal to the stored one
+
 ## 4.26.0 (2026-11-18)
 
 ### Features
