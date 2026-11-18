@@ -6,32 +6,13 @@
 
 import { conversationOf } from '../shared/room-refs.mjs';
 import { fenceFor, partOf } from '../shared/text-parts.mjs';
+import { noticeOnce } from './app-notice.mjs';
 import { httpError } from './helpers.mjs';
 
 /** The most an app may publish, in bytes of JSON: the same as its saved state. */
 const PUBLISH_BYTES = 256 * 1024;
 
 const count = (/** @type {number} */ n) => n.toLocaleString('en-US');
-
-/**
- * Tells the app’s agent, at its next turn, that the app has something new for it, unless a notice from this app is
- * already waiting: a burst of changes is one notice. @param {any} rt @param {any} app @param {string} what
- */
-export function noticeOnce(rt, app, what) {
-  const se = rt.s.sessions[app.sessionId];
-  if (!se || se.retiredFork) return;
-  const tag = `[app ${app.id}]`;
-  if (rt.delivery.waiting(se.id).some((/** @type {any} */ e) => e.source === 'notice' && e.text?.startsWith(tag))) return;
-  rt.delivery.send(
-    {
-      sessionId: se.id,
-      threadId: app.threadId,
-      source: 'notice',
-      text: `${tag} ${app.title} ${what} since you last looked. Call read_app with appId “${app.id}” to see it.`,
-    },
-    { wake: false },
-  );
-}
 
 /**
  * postbox.publish(data): the app’s data for its agent, replacing what it published before. Apps publish on load as well
