@@ -1,6 +1,7 @@
 // The state shape and the reducer, shared by the server’s store and the browser. Every change is an
 // event { seq, type, data }; applying the same events in order gives the same state on both sides.
 
+import { addNote, dropNote, takeNotes } from './app-notes.mjs';
 import { itemOf, noteReplaced, positionOf } from './item-index.mjs';
 import { applyTurnArchive } from './state-archive.mjs';
 import { ASSET_EVENTS, ownAssetRooms } from './state-assets.mjs';
@@ -52,6 +53,9 @@ export function emptyState() {
     // What each app published for its agent (#1478, server/app-publish.mjs): { id: the app’s id, data, at }. Private: the
     // agent reads it with read_app, and no page does, so a publish never sends the app’s record, or its data, to a page.
     published: map(),
+    // What each app sent its agent without the person’s click (#1488, shared/app-notes.mjs): { id: the app’s id, notes,
+    // dropped }. Private, as published is: only the agent’s read_app reads them.
+    appNotes: map(),
   };
 }
 
@@ -110,7 +114,8 @@ export const PUBLIC_STATE_KEYS = Object.freeze([
   'inbox',
 ]);
 // What apps published for their agents (#1478): read only by read_app, so no page is sent a copy of each publish.
-export const PRIVATE_STATE_KEYS = Object.freeze(['published']);
+// And the notes apps sent them without a click (#1488), read only by read_app too.
+export const PRIVATE_STATE_KEYS = Object.freeze(['published', 'appNotes']);
 
 /** The names the event stream gives its own frames (server/live-streams.mjs). None is ever an event type. */
 export const STREAM = Object.freeze({ cursor: 'cursor', status: 'status', epoch: 'epoch', resync: 'resync', header: 'header', live: 'live' });
@@ -164,6 +169,11 @@ export const EVENTS = Object.freeze({
   app: { apply: put('apps'), public: true },
   // What an app published for its agent (#1478): kept apart from the app, and private, as PRIVATE_STATE_KEYS says.
   'app.publish': { apply: put('published'), public: false },
+  // A note an app sent its agent that started no turn, one past the cap, and the agent reading them (#1488): private,
+  // as app.publish is.
+  'app.note': { apply: addNote, public: false },
+  'app.notes.dropped': { apply: dropNote, public: false },
+  'app.notes.read': { apply: takeNotes, public: false },
   file: { apply: put('files'), public: true },
   schedule: {
     apply: (s, d) => {
@@ -234,6 +244,7 @@ function removeEntity(s, d) {
   const kept = { session: 'sessions', app: 'apps', persona: 'personas' }[d.kind];
   if (kept) delete s[kept][d.id];
   if (d.kind === 'app' && s.published) delete s.published[d.id];
+  if (d.kind === 'app' && s.appNotes) delete s.appNotes[d.id];
   // Deleting a session deletes its entries; the messages they came from stay (designs/rooms-at-scale.md, “What an entry is”).
   if (d.kind === 'session') delete s.inbox[d.id];
 }

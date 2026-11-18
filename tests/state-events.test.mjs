@@ -185,8 +185,8 @@ test('the event table applies every type exactly as the switch did', () => {
 
 // The switch knew only the types on main at 88af074f, so it speaks for those. A type added since has its own reducer
 // tests: the asset events (#516 S3) in tests/state-assets.test.mjs, turn.archive (#305) in tests/state-archive.test.mjs,
-// the inbox's entry events in tests/delivery.test.mjs, quota (#442) in tests/quota-usage.test.mjs, and app.publish
-// (#1478) in tests/app-publish.test.mjs.
+// the inbox's entry events in tests/delivery.test.mjs, quota (#442) in tests/quota-usage.test.mjs, app.publish
+// (#1478) in tests/app-publish.test.mjs, and app.note, app.notes.dropped and app.notes.read (#1488) in tests/app-notes.test.mjs.
 const ADDED_SINCE = [
   'asset',
   'asset.version',
@@ -198,6 +198,9 @@ const ADDED_SINCE = [
   'entry.put',
   'quota',
   'app.publish',
+  'app.note',
+  'app.notes.dropped',
+  'app.notes.read',
 ];
 
 test('the cases cover every type the switch knew, so a type of its time needs one', () => {

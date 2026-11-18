@@ -22,18 +22,18 @@ function restart(r) {
   return rt;
 }
 
-test('after a restart cuts a turn off, denying its app card doesn’t bring back the block you moved past', async () => {
+test('after a restart cuts a turn off, declining its wake request doesn’t bring back the block you moved past', async () => {
   const r = room();
   const b = r.block(); // from turn_last
   r.setNeed('block', b.id);
   r.adapter.next.push(held().step); // the turn never ends here
   r.rt.sendMessage(r.t.id, { text: '@alpha go on' }); // you move on
   await sleep(5);
-  const card = r.appCard();
-  r.rt.needAppSend({ sessionId: r.alpha.id, title: 'App', threadId: r.t.id }, card.id, 1);
+  const card = r.hop();
+  r.offerHop(card);
   assert.equal(r.needs()?.itemId, card.id);
   const rt = restart(r);
-  rt.resolveAppSend(r.t.id, card.id, 'deny');
+  rt.resolveHop(r.t.id, card.id, false);
   assert.equal(r.store.state.sessions[r.alpha.id].needs, null, 'not the block from before you moved on');
 });
 

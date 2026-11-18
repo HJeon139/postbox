@@ -359,7 +359,6 @@ pb-ring[role="button"] { cursor: pointer; border-radius: 50%; }
 .voice b { color: var(--text); font-weight: 500; }
 /* An app’s own summary beside the line Postbox wrote in your voice: the app’s words, set apart from yours (#51). */
 .app-says { align-self: flex-end; max-width: 100%; font-size: 12px; color: var(--dim); overflow-wrap: anywhere; }
-.appsend-list .app-says { display: block; }
 
 .sys { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--dim); }
 .sys::before, .sys::after { content: ""; flex: 1; height: 1px; background: var(--line); }
@@ -624,7 +623,6 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
 .app-body { max-height: min(80vh, 760px); overflow: auto; background: var(--bg); }
 /* An app frame takes pointer events only once the pointer is over it, so Postbox sees you point at it (#38, app/js/apps.mjs). */
 iframe.app-iframe:not(.live) { pointer-events: none; }
-.appsend-list { margin: 8px 0 0; padding-left: 18px; font-size: 13px; display: flex; flex-direction: column; gap: 2px; }
 .app-placeholder { display: grid; place-items: center; text-align: center; gap: 6px; color: var(--dim); font-size: 12px; background: var(--sunk); border: 1px dashed var(--line); border-radius: 8px; }
 .app-placeholder .inner { background: var(--sunk); padding: 10px 14px; border-radius: 6px; border: 1px solid var(--line); display: flex; flex-direction: column; gap: 4px; align-items: center; }
 
@@ -732,18 +730,20 @@ iframe.app-iframe:not(.live) { pointer-events: none; }
 /* ───────── Composer ───────── */
 
 .composer { position: sticky; bottom: 0; z-index: 15; background: var(--bg); padding: 8px 24px 4px; }
-/* The conversation’s composer floats over its end as a card (#1463): it has no surface of its own, so the conversation
-   shows beside the card and below it, and a click there reaches what it shows. Only what it holds is drawn: the card,
-   with its shadow, and each row that says something, on the page’s color. Its end stays in the flow above the card,
-   so the last message scrolls clear of it. */
-.main > .composer { background: none; pointer-events: none; }
-.main > .composer .col > :not(:empty, .hint), .main > .composer .hint:not(:empty) { pointer-events: auto; }
-.main > .composer .col > :not(:empty, .composer-box, .jump) { border-radius: 6px; background: var(--bg); }
-.main > .composer .composer-box { box-shadow: 0 6px 18px -6px var(--shadow); }
+/* The conversation’s composer floats over its end as a card (#1463), and so does the thread panel’s (#1500): it has no
+   surface of its own, so the conversation shows beside the card and below it, and a click there reaches what it shows.
+   Only what it holds is drawn: the card, with its shadow, and each row that says something, on the color under it
+   (--under: the page’s, or the pane’s, which a full-screen pane sets to the page’s). Its end stays in the flow above the
+   card, so the last message scrolls clear of it. */
+:is(.main, .sp-foot) > .composer { background: none; pointer-events: none; }
+.main > .composer { --under: var(--bg); }
+:is(.main, .sp-foot) > .composer .col > :not(:empty, .hint), :is(.main, .sp-foot) > .composer .hint:not(:empty) { pointer-events: auto; }
+:is(.main, .sp-foot) > .composer .col > :not(:empty, .composer-box, .jump) { border-radius: 6px; background: var(--under); }
+:is(.main, .sp-foot) > .composer .composer-box { box-shadow: 0 6px 18px -6px var(--shadow); }
 /* The row under the card is one surface from the card down, so no half-line of the conversation shows between the card
    and the bars or a hint: each covers the column’s 4 px gap above it, its words where they were. */
-.main > .composer .quota-line { height: 24px; padding-top: 4px; }
-.main > .composer .hint:not(:empty) { height: 24px; margin-top: -4px; padding-top: 4px; }
+:is(.main, .sp-foot) > .composer .quota-line { height: 24px; padding-top: 4px; }
+:is(.main, .sp-foot) > .composer .hint:not(:empty) { height: 24px; margin-top: -4px; padding-top: 4px; }
 /* The store’s status line (app/js/store-line.mjs): at the window’s bottom while Postbox can’t save, with the composer
    above it, so nothing it covers is lost. */
 .store-line { position: fixed; z-index: 30; left: 0; right: 0; bottom: 0; min-height: 44px; display: flex; align-items: center; gap: 12px;
@@ -876,7 +876,7 @@ html.store-down .sidepanel { padding-bottom: 44px; }
 @property --pane-w { syntax: '<length>'; inherits: false; initial-value: 440px; }
 .app { --pane-w: 440px; }
 .rpane, .app > .main { --pane-w: inherit; }
-.rpane { position: fixed; z-index: 25; top: 48px; right: 0; bottom: 0; width: min(var(--pane-w), 100%); background: var(--panel); border-left: 1px solid var(--line);
+.rpane { --under: var(--panel); position: fixed; z-index: 25; top: 48px; right: 0; bottom: 0; width: min(var(--pane-w), 100%); background: var(--panel); border-left: 1px solid var(--line);
   display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
 .rpane[hidden] { display: none; }
 .rpane.split { grid-template-rows: minmax(0, var(--split-a, 1fr)) auto minmax(0, var(--split-b, 1fr)); }
@@ -893,9 +893,12 @@ html.store-down .sidepanel { padding-bottom: 44px; }
 @media (max-width: 767px) { .rp-handle { display: none; } }
 .sidepanel .sp-head, .workpane .wp-head { display: flex; align-items: center; gap: 8px; padding: 10px 10px 10px 14px; border-bottom: 1px solid var(--line); min-height: 52px; }
 .sidepanel .sp-body { flex: 1; overflow: auto; padding: 14px; display: flex; flex-direction: column; gap: 14px; }
-/* The composer brings its own padding, the same as the conversation’s, so the two line up (#116). The foot draws the
-   top edge, so it spans a full-screen panel too. */
-.sidepanel .sp-foot { border-top: 1px solid var(--line); }
+/* The composer brings its own padding, the same as the conversation’s, so the two line up (#116). The foot is the
+   scroll box’s last child, at its end when the thread is short, and held at its bottom over the thread as it scrolls,
+   as the conversation’s composer is in the page (#1500): the margins take back the box’s padding, so the card lines up
+   with the conversation’s and nothing of the thread shows under it. */
+.sidepanel .sp-foot { position: sticky; bottom: -14px; z-index: 15; margin: auto -14px -14px; pointer-events: none; }
+.sidepanel .sp-foot > :not(.composer) { pointer-events: auto; background: var(--under); }
 /* Topic threads: the message they branched from sits at the top of the panel. */
 .thread-root { display: flex; flex-direction: column; gap: 6px; padding: 0 0 12px; border-bottom: 1px solid var(--line); }
 .thread-root .md { font-size: 13px; }
@@ -1210,7 +1213,7 @@ code.wl-label { font-size: 12px; }
 
 /* Full screen: a pane view fixed over the window, where it is in the page (pane.mjs). A thread reads at the
    message column’s width; Work shows its full form. */
-.rpane > .pane-full { position: fixed; inset: 0; z-index: 28; background: var(--bg); }
+.rpane > .pane-full { --under: var(--bg); position: fixed; inset: 0; z-index: 28; background: var(--bg); }
 .sidepanel.pane-full .sp-body > *, .sidepanel.pane-full .sp-foot > * { width: 100%; max-width: 760px; margin-inline: auto; }
 .workpane.pane-full .wp-body { padding: 16px 24px 32px; }
 /* Compact, in the pane: short lists, each item opening Work full screen. */

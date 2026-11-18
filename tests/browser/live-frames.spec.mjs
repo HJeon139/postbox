@@ -79,4 +79,15 @@ test('a conversation opened mid-turn draws the running step whole, then its end'
   go('linter');
   const reply = () => scripted.app.store.items(t.id).find((i) => i.kind === 'agent');
   await expect(page.locator(`[data-key="${reply()?.id}"]`)).toContainText('Lint is clean.');
+  // Its last update, done, went live, and isn’t sent again at the commit point: a page that loaded the conversation
+  // while its stream ran late (POSTBOX_STREAM_LAG) still applies it, so the finished record doesn’t read “running”.
+  const stepState = () =>
+    page.evaluate(
+      ([threadId, id]) =>
+        import('/app/js/client.mjs').then(
+          ({ client }) => client.state.items[threadId]?.find((i) => i.id === id)?.activity?.steps?.find((st) => st.id === 'r1')?.state,
+        ),
+      [t.id, reply()?.id],
+    );
+  await expect.poll(stepState, { message: 'the step, done' }).toBe('done');
 });

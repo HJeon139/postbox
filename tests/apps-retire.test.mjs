@@ -4,6 +4,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
+import { noteApp } from '../server/app-notes.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
 import { TOOL_DEFS } from '../shared/mcp-tools.mjs';
@@ -94,18 +95,12 @@ test('#193: a check still running when the app was retired is ignored, and nothi
   assert.equal(store.state.apps.lab.check.status, 'pending');
 });
 
-test('#193: retiring drops the sends waiting for the person, clears needs-you, and later sends are refused', () => {
-  const { store, rt, t, se, tools } = setup();
+test('#193: a retired app’s sends and notes are refused', () => {
+  const { rt, tools } = setup();
   tools.show_app({ id: 'lab', title: 'Practice lab', code: '<p>1</p>' });
-  rt.appEvent('lab', 'try', { n: 1 }, { hold: true });
-  const card = store.items(t.id).find((x) => x.kind === 'appsend');
-  assert.equal(store.state.sessions[se.id].needs?.itemId, card.id);
   tools.retire_app({ id: 'lab', reason: 'Not needed.' });
-  const after = store.item(t.id, card.id);
-  assert.equal(after.status, 'declined');
-  assert.equal(after.retired, true);
-  assert.equal(store.state.sessions[se.id].needs, null);
   assert.throws(() => rt.appEvent('lab', 'try', { n: 2 }), /Practice lab was retired, so it can’t send messages/);
+  assert.throws(() => noteApp(rt, 'lab', 'try', { n: 2 }), /Practice lab was retired, so it can’t send messages/);
 });
 
 test('#193: replacedBy names the caller’s own block when another agent’s has the same id', () => {

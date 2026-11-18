@@ -1,21 +1,25 @@
-// An agent app can send a line in your voice only right after you click or press a key in it, a few a minute; more
-// wait on a card you answer (#38). With real (trusted) input, each test on a conversation and apps of its own:
+// An agent app sends a line in your voice, and starts its agent’s turn, only right after you click or press a key in it
+// (#38): one click, one turn, with no limit a minute and no card. Any other send is a note the agent reads with
+// read_app at its next turn (#1488). With real (trusted) input, each test on a conversation and apps of its own:
 // - Spam sends on load, and once per click on its button, and once per key press;
 // - Grabber moves focus into itself every 200 ms and tries to send, without anyone touching it;
 // - Thief moves focus into itself every 50 ms and sends on every key press it gets, while you type in the composer:
 //   it must get neither your keys nor a line in your voice, and Postbox stops it;
-// - Bad sends 5 malformed events and then a good one in one click: the refused ones don’t use up the limit;
+// - Bad sends 5 malformed events and then a good one in one click: the refused ones don’t make the good one a note;
 // - Still counts clicks: a click with the pointer resting reaches an app that moved under it, and not one that moved
 //   away.
 // Moved from tools/checks/app-send.mjs (#303).
 
 import { expect, test } from '@playwright/test';
-import { APP_SEND_LIMIT } from '../../server/app-send-limits.mjs';
+import { closeOldSendCards } from '../../server/old-app-sends.mjs';
 import * as arrange from '../arrange.mjs';
 import { clickApp, frameOf } from './app-pointer.mjs';
-import { allowPageError, failOnPageErrors, frames, settled, startPostbox, synced, watchWrites } from './postbox.mjs';
+import { allowPageError, failOnPageErrors, frames, settled, startPostbox, synced } from './postbox.mjs';
 
-const LIMIT = APP_SEND_LIMIT;
+/** The sends a minute that went straight through before #1488, past which the next waited on a card. */
+const OLD_LIMIT = 5;
+/** How long one event spends an app’s activation for (ACTIVATION_MS in app/js/app-send.mjs). */
+const ACTIVATION_MS = 5000;
 
 const SPAM = `<main style="padding:12px"><button id="go" class="btn" type="button" style="display:block;width:100%;height:96px">Send one</button><p id="out">Ready</p></main>
 <script>
@@ -23,13 +27,13 @@ const st = {};
 const note = (k, v) => { st[k] = v; postbox.saveState(st); };
 postbox.ready.then(() => {
   if (postbox.check) return;
-  postbox.send('onload', {}, 'Sent on load').then(() => note('onload', 'accepted'), (e) => note('onload', 'refused: ' + e.message));
+  postbox.send('onload', {}, 'Sent on load').then((r) => note('onload', r.noted ? 'noted' : 'sent'), (e) => note('onload', 'refused: ' + e.message));
 });
 let n = 0;
 document.getElementById('go').addEventListener('click', () => {
   n++;
   const i = n;
-  postbox.send('clicked', { i }, 'Clicked #' + i).then((r) => note('c' + i, r.held ? 'held' : 'sent'), (e) => note('c' + i, 'refused: ' + e.message));
+  postbox.send('clicked', { i }, 'Clicked #' + i).then((r) => note('c' + i, r.held ? 'held' : r.noted ? 'noted' : 'sent'), (e) => note('c' + i, 'refused: ' + e.message));
 });
 </script>`;
 // It starts when the test calls go(), once its frame is in: Postbox stops an app on its third grab, which on a busy
@@ -51,7 +55,7 @@ const BAD = `<main style="padding:12px"><button id="go" class="btn" type="button
 document.getElementById('go').addEventListener('click', async () => {
   for (let i = 0; i < 5; i++) await postbox.send('not an id', {}, 'Malformed').catch(() => {});
   const r = await postbox.send('good', {}, 'The good one').catch((e) => ({ error: e.message }));
-  postbox.saveState({ good: r.held ? 'held' : r.error ? 'refused' : 'sent' });
+  postbox.saveState({ good: r.held ? 'held' : r.noted ? 'noted' : r.error ? 'refused' : 'sent' });
 });
 </script>`;
 // Counts clicks on its big button, in saved state.
@@ -98,27 +102,17 @@ async function conversation(page, name) {
   return { t, se, show, voices, state };
 }
 
-/**
- * Clicks Spam for each send from that one to the limit, checking each went through and waiting for its line, which
- * lands under the app and can move it; then once more.
- */
-async function clicksPastLimit(page, voices, from) {
-  for (let i = from; i <= LIMIT; i++) {
-    await clickApp(page, 'Spam');
-    await expect.poll(() => voices('spam').length, { message: `send ${i} went through` }).toBe(i);
-    await expect(page.locator('.app-says', { hasText: `Clicked #${i}` })).toBeVisible();
-  }
-  await clickApp(page, 'Spam');
-}
-
-test('#38 Spam: refused on load; a click, a key press and Tab then Enter each send once; past the limit, a card; Allow sends it once', async ({ page }) => {
+test('#38, #1488 Spam: a note on load; a click, a key press and Tab then Enter each send once; past the old limit, no card', async ({ page }) => {
   const { rt } = app;
+  // One event spends the app’s activation for about 5 s (app/js/app-send.mjs): the page’s clock jumps them between turns.
+  await page.clock.install();
   const { se, show, voices, state } = await conversation(page, 'Spam');
-  await show('spam', 'Spam', SPAM);
+  const id = await show('spam', 'Spam', SPAM);
 
-  await test.step('on load, nobody has touched it: refused, and nothing in your voice', async () => {
-    await expect.poll(() => state('spam').onload, { message: 'Spam’s on-load send to be answered' }).toMatch(/^refused/);
+  await test.step('on load, nobody has touched it: a note for the agent’s next turn, and nothing in your voice', async () => {
+    await expect.poll(() => state('spam').onload, { message: 'Spam’s on-load send to be answered' }).toBe('noted');
     expect(voices('spam').length).toBe(0);
+    expect(rt.store.state.appNotes[id]?.notes.map((n) => n.action)).toEqual(['onload']);
   });
 
   await test.step('a real click in the app sends, and your line says what it sent, its summary apart (#51)', async () => {
@@ -130,11 +124,16 @@ test('#38 Spam: refused on load; a click, a key press and Tab then Enter each se
   });
 
   await test.step('a key press in the app sends: focus is on its button after the click', async () => {
+    // Once the click’s 5 s have passed: a send within them is a note (the next test).
+    await expect.poll(() => state('spam').c1, { message: 'the click’s send answered' }).toBe('sent');
+    await page.clock.fastForward(ACTIVATION_MS);
     await page.keyboard.press('Enter');
     await expect.poll(() => voices('spam')[1]?.quote, { message: 'the key-press send' }).toBe('Clicked #2');
   });
 
   await test.step('keyboard only: Tab from its full-screen button into the app, then Enter, sends', async () => {
+    await expect.poll(() => state('spam').c2, { message: 'the key press’s send answered' }).toBe('sent');
+    await page.clock.fastForward(ACTIVATION_MS);
     await page
       .locator('.appframe', { has: frameOf(page, 'Spam') })
       .getByRole('button', { name: 'Full screen', exact: true })
@@ -145,34 +144,23 @@ test('#38 Spam: refused on load; a click, a key press and Tab then Enter each se
     await expect.poll(() => voices('spam')[2]?.quote, { message: 'the Tab-and-Enter send' }).toBe('Clicked #3');
   });
 
-  await test.step(`past ${LIMIT} a minute, the next waits on a card that says what it would send, and the agent needs you`, async () => {
-    await clicksPastLimit(page, voices, 4);
-    // Saved 400 ms after its send returns. Before the card: a missed click fails here, a card slow to draw below.
-    await expect.poll(() => state('spam')[`c${LIMIT + 1}`], { message: 'the app told its send is waiting' }).toBe('held');
-    await expect(page.locator('.appsend')).toContainText(/Spam wants to send 1 message for you/);
-    await expect(page.locator('.appsend')).toContainText(`Clicked #${LIMIT + 1}`);
-    expect(voices('spam').length, `only ${LIMIT} went straight through`).toBe(LIMIT);
-    // This passes before a turn’s end could drop the need, so tests/apps-needs.test.mjs is what guards that (#38).
-    await expect.poll(() => rt.session(se.id).needs?.kind, { message: 'a waiting card makes the agent need you, like a permission card' }).toBe('appsend');
-  });
-
-  await test.step('Allow, double-clicked, sends what was waiting once, with no error, and clears needs-you', async () => {
-    const writes = watchWrites(page, /\/items\/[^/]+\/act$/);
-    await page.locator('.appsend').getByRole('button', { name: 'Allow', exact: true }).dblclick();
-    await expect.poll(() => voices('spam').some((x) => x.quote === `Clicked #${LIMIT + 1}` && x.approved), { message: 'the allowed send' }).toBe(true);
-    await expect(page.locator('.appsend'), 'the card shows it was allowed').toContainText('Allowed. It was sent.');
-    // Every write the double-click made has its answer, before looking for an error one could show.
-    await writes.answered();
-    await synced(page, app);
-    await expect(page.locator('.toast', { hasText: 'didn’t go through' }), 'no error').toHaveCount(0);
-    expect(rt.session(se.id).needs?.kind, 'answering the card clears needs-you').not.toBe('appsend');
-    expect(voices('spam').filter((x) => x.quote === `Clicked #${LIMIT + 1}`).length, 'sent once').toBe(1);
+  await test.step(`past the old ${OLD_LIMIT} a minute, each click still goes straight to the agent: no card, nobody needs you`, async () => {
+    for (let i = 4; i <= OLD_LIMIT + 1; i++) {
+      await expect.poll(() => state('spam')[`c${i - 1}`], { message: `send ${i - 1} answered` }).toBe('sent');
+      await page.clock.fastForward(ACTIVATION_MS);
+      await clickApp(page, 'Spam');
+      await expect.poll(() => voices('spam').length, { message: `send ${i} went through` }).toBe(i);
+      await expect(page.locator('.app-says', { hasText: `Clicked #${i}` })).toBeVisible();
+    }
+    await expect.poll(() => state('spam')[`c${OLD_LIMIT + 1}`], { message: 'the send past the old limit' }).toBe('sent');
+    await expect(page.getByText('wants to send'), 'no card asks you to allow it').toHaveCount(0);
+    expect(rt.session(se.id).needs ?? null, 'nobody needs you').toBe(null);
   });
 });
 
 test('#38 Grabber: a frame you aren’t pointing at can’t keep focus it moves into itself, or send, even right after your clicks elsewhere', async ({ page }) => {
   const { store } = app;
-  const { t, show, voices } = await conversation(page, 'Grabber');
+  const { t, se, show, voices } = await conversation(page, 'Grabber');
   await show('still', 'Still', STILL);
   const grabber = await show('grabber', 'Grabber', GRABBER);
   // In the app’s own frame, as no person could: Grabber starts grabbing now.
@@ -209,10 +197,9 @@ test('#38 Grabber: a frame you aren’t pointing at can’t keep focus it moves 
     await expect.poll(keeps, { message: 'Postbox takes focus back from Grabber after a click on the page' }).toBe(false);
   }
   expect(voices('grabber').length, 'nothing sent in your voice').toBe(0);
-  expect(
-    store.items(t.id).some((x) => x.kind === 'appsend' && x.appId === grabber),
-    'no card either',
-  ).toBe(false);
+  // What it sent is a note for its agent at most (#1488): no card, and nobody needs you.
+  expect(store.items(t.id).filter((x) => x.appId === grabber).length, 'no line or card of its own').toBe(0);
+  expect(app.rt.session(se.id).needs ?? null, 'nobody needs you').toBe(null);
 });
 
 test('#38 Thief: typing in the composer keeps your keys while an app grabs focus; it sends nothing and is stopped, with a card to reload it', async ({
@@ -232,7 +219,7 @@ test('#38 Thief: typing in the composer keeps your keys while an app grabs focus
   expect(voices('thief').length, 'nothing sent in your voice').toBe(0);
 });
 
-test('#38 Bad: after 5 refused sends, a good one still goes straight through', async ({ page }) => {
+test('#38, #1488 Bad: after 5 refused sends in one click, a good one still goes straight through, not as a note', async ({ page }) => {
   const { show, state } = await conversation(page, 'Bad');
   await show('bad', 'Bad', BAD);
   // Its five malformed sends are refused by the server, on purpose.
@@ -300,3 +287,23 @@ for (const how of ['scrolls', 'moves (content above it changes)'])
     await settled(page);
     await expect(f, 'no longer live once it moved away from the resting pointer').not.toHaveClass(/\blive\b/);
   });
+
+test('#1488 an app-send card from an older Postbox’s data shows as a plain line, with nothing to answer', async ({ page }) => {
+  const { rt } = app;
+  const { t, se } = await conversation(page, 'Old card');
+  // As an older data folder holds it, open, and as the startup sweep leaves it (server/old-app-sends.mjs).
+  const card = arrange.post(rt, t.id, {
+    kind: 'appsend',
+    sessionId: se.id,
+    appId: 'gone',
+    title: 'Spam',
+    events: [{ action: 'x', values: {}, voice: 'Sent from Spam: x' }],
+    status: 'open',
+  });
+  closeOldSendCards(rt);
+  await synced(page, app);
+  const line = page.locator(`[data-key="${card.id}"]`);
+  await expect(line).toHaveText('Spam asked to send 1 message for you, in an older Postbox. Nothing waits on it.');
+  await expect(line.getByRole('button'), 'nothing to answer').toHaveCount(0);
+  expect(rt.session(se.id).needs ?? null, 'nobody needs you').toBe(null);
+});

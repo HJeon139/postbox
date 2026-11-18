@@ -59,10 +59,10 @@ function webLink(url) {
  * Opens the link when the person just clicked or pressed a key in this app, and no link opened from that click yet. An
  * app asking on its own is refused without a word: there’s nothing for the person to do about it.
  * @param {MessageEvent} e @param {{ appId: string, iframe: HTMLIFrameElement, check?: boolean }} rec @param {unknown} url
- * @param {string|null} refused  apps.mjs’s activated(): null when the click or key press was in this app
+ * @param {boolean} clicked  apps.mjs’s activated(): whether the click or key press was in this app
  */
-export function openAppLink(e, rec, url, refused) {
-  if (rec.check || refused) return;
+export function openAppLink(e, rec, url, clicked) {
+  if (rec.check || !clicked) return;
   const u = webLink(url);
   if (!u) return;
   const click = clickIn(e, rec.iframe);

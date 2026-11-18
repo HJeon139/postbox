@@ -73,15 +73,23 @@ function merged(last, next, now) {
  * @param {any} rt @param {any} se  the session whose turn reported @param {any} report @param {number} [now]
  */
 export function recordQuota(rt, se, report, now = Date.now()) {
+  const persona = rt.s.personas[se.personaId];
+  const owner = { id: quotaKeyOf(persona), backend: persona?.backend ?? 'mock', host: persona?.remote?.hostId ?? null };
+  recordQuotaOf(rt, owner, report, now);
+}
+
+/**
+ * Keeps a report under its quota’s key, as recordQuota does for a turn’s: also for one read with no turn, as
+ * Antigravity’s is as Postbox starts (#1494).
+ * @param {any} rt @param {{ id: string, backend: string, host: string | null }} owner @param {any} report @param {number} [now]
+ */
+export function recordQuotaOf(rt, { id, backend, host }, report, now = Date.now()) {
   const given = quotaReport(report);
   if (!given) return;
-  const persona = rt.s.personas[se.personaId];
-  const id = quotaKeyOf(persona);
   const last = rt.s.quota?.[id];
   // A report older than the record keeps the record’s status and time: it can only fill in a window the record lacks.
   const older = !!last && now < last.seenAt;
   const r = { status: older ? last.status : given.status, windows: merged(last?.windows ?? [], given.windows, now) };
   if (last && shown(last) === shown(r) && now - last.seenAt < REWRITE_MS) return;
-  const host = persona?.remote?.hostId ?? null;
-  rt.store.emit('quota', { id, backend: persona?.backend ?? 'mock', host, ...r, seenAt: older ? last.seenAt : now });
+  rt.store.emit('quota', { id, backend, host, ...r, seenAt: older ? last.seenAt : now });
 }

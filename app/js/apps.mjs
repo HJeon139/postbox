@@ -7,17 +7,15 @@ import { crashCard, errorStrip } from './app-crash.mjs';
 import { openAppLink } from './app-links.mjs';
 import { live, nearBodies, relookSoon, setAppFrameTest } from './app-pointer.mjs';
 import { publishLater } from './app-publish.mjs';
-import { renderAppSendCard, SEND_LIMIT } from './app-send-card.mjs';
+import { sendFromApp } from './app-send.mjs';
 import { api, client, placeIn } from './client.mjs';
 import { $$, ago, h, icon } from './dom.mjs';
 import { goToItem } from './go-to-item.mjs';
 import { libSource, theme } from './sandbox-libs.mjs';
-import { inOrder } from './send-chain.mjs';
 import { nextTabStop } from './tab-stop.mjs';
 import { openMenu, toast } from './ui.mjs';
 
 export { enhanceMarkdown } from './md-enhance.mjs';
-export { renderAppSendCard };
 
 const frames = new Set(); // { appId, version, iframe, check, review, onPin, onAnchors, onCrash, onError }
 const madeFrames = new WeakSet(); // every iframe frame() made, for isAppFrame
@@ -102,23 +100,9 @@ addEventListener('message', async (e) => {
               ? 'This app was retired, so it’s shown read-only.'
               : 'This is an older version, shown read-only.',
         );
-      {
-        const refused = activated(e, rec);
-        if (refused) return reply(null, refused);
-      }
       try {
-        // One after another per app (#934), so the limit counts, and the server stores, in the order the app sent.
-        // Without per-frame activation (see SNAPSHOTS), every send waits for you on a card.
-        const r = await inOrder(rec.appId, async () => {
-          const sent = await api(`/api/apps/${encodeURIComponent(rec.appId)}/event`, {
-            action: m.action,
-            values: m.values,
-            hold: !SNAPSHOTS || overLimit(rec.appId),
-          });
-          if (!sent.held) countSent(rec.appId);
-          return sent;
-        });
-        reply(r);
+        // A click’s send starts a turn; any other is a note for the agent (app-send.mjs, #1488).
+        reply(await sendFromApp(rec.appId, rec.iframe, activated(e, rec), m));
       } catch (err) {
         reply(null, err.message);
         toast({ title: 'That didn’t reach the agent', text: err.message, level: 'blocking' });
@@ -160,8 +144,9 @@ addEventListener('message', async (e) => {
 });
 
 // ── Sends in your voice (#38) ────────────────────────────────────────────────────────────
-// An app’s postbox.send writes a line in your voice and starts an agent turn, so it counts only right after you
-// click or press a key in that app. Two things have to hold, and the frame can vouch for neither:
+// An app’s postbox.send writes a line in your voice and starts an agent turn only right after you click or press a
+// key in that app; any other send is a note for the agent (app-send.mjs, #1488). Two things have to hold, and the
+// frame can vouch for neither:
 //
 // 1. The send carries a real gesture in that frame. The kit posts each send with includeUserActivation, and
 //    Chrome attaches the sending frame’s own transient activation (a click or key press in that frame in the
@@ -176,14 +161,12 @@ addEventListener('message', async (e) => {
 //    take no pointer events until the pointer is over them (CSS: iframe.app-iframe:not(.live)): over a frame,
 //    the pointer is over this page, which sees it and makes that frame live. A frame may hold focus only if
 //    it’s live (you pointed at it) or you tabbed into it. Any other frame that takes focus gives it straight
-//    back, and is refused sends until you click or tab into it. One that keeps doing it (an app that autofocuses
+//    back, and its sends are notes until you click or tab into it. One that keeps doing it (an app that autofocuses
 //    a field does it once) is stopped, and shows a card to reload it: inert doesn’t stop a frame that runs in
 //    its own process from taking focus (measured), so only unloading it does.
 //
-// A browser without MessageEvent.userActivation can’t do 1, so it fails closed: every send waits on a card.
+// A browser without MessageEvent.userActivation can’t do 1, so it fails closed: every send is a note.
 const SNAPSHOTS = typeof MessageEvent !== 'undefined' && 'userActivation' in MessageEvent.prototype;
-const NOT_ACTIVATED = 'Postbox sends an app’s message only right after the person clicks or presses a key in the app.';
-const NOT_ENTERED = 'Postbox refused this app’s message: the app took the keyboard without the person clicking or tabbing into it.';
 
 /** @type {{ frame: HTMLIFrameElement, at: number } | null} the app frame a Tab key press is moving focus into */
 let tabbing = null;
@@ -253,25 +236,11 @@ addEventListener('focusin', checkFocus);
 // Focus moving from one frame to another tells this page nothing, so it also looks a few times a second.
 setInterval(checkFocus, 100);
 
+/** Whether the person’s click or key press in this app came with its message, from a frame that didn’t take the keyboard. */
 function activated(e, rec) {
   checkFocus();
-  if (stolen.has(rec.iframe)) return NOT_ENTERED;
-  if (SNAPSHOTS ? e.userActivation?.isActive !== true : navigator.userActivation?.isActive !== true || document.activeElement !== rec.iframe)
-    return NOT_ACTIVATED;
-  return null;
+  return SNAPSHOTS && !stolen.has(rec.iframe) && e.userActivation?.isActive === true;
 }
-
-// At most SEND_LIMIT sends a minute per app go straight to the agent; past that, the server holds them on a card
-// for you to allow. The server keeps the same limit (Runtime.APP_SEND_LIMIT) for anything calling its API.
-// Only sends the server took straight through count, so a refused or held send doesn’t use up the minute.
-const SEND_WINDOW_MS = 60_000;
-const sent = new Map(); // appId → times of sends that went straight through
-function overLimit(appId, now = Date.now()) {
-  const times = (sent.get(appId) ?? []).filter((t) => now - t < SEND_WINDOW_MS);
-  sent.set(appId, times);
-  return times.length >= SEND_LIMIT;
-}
-const countSent = (appId, now = Date.now()) => sent.set(appId, [...(sent.get(appId) ?? []), now]);
 
 const pendingState = new Map();
 function saveState(appId, state) {

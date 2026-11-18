@@ -3,9 +3,8 @@
 // updates (block-show.mjs, block-update.mjs), the person’s and other agents’ comments on a review (review-comments.mjs,
 // review-person.mjs), and which answers an agent has read. Apps is a service: Runtime’s constructor builds it with the
 // store, the bus, Threads, Sessions, Personas, Assets, Running and Checks, the `send` port, the narrator and the
-// server’s settings, and its modules take it, never the runtime. The cards that hold what an app sends past its limit
-// are asks’ (app-send-cards.mjs): retiring an app signals app.retired, and withdrawing a block block.withdrawn, so the
-// needs they carried are released where the call was.
+// server’s settings, and its modules take it, never the runtime. Retiring an app signals app.retired, and withdrawing a
+// block block.withdrawn, so the needs a withdrawn block carried are released where the call was.
 
 import { retireApp } from './app-retire.mjs';
 import { appCheck, appEvent, appFile, appOf, appQuery, appState, registerApp, showApp, updateApp } from './apps.mjs';
@@ -77,8 +76,8 @@ export class Apps {
   }
 
   /**
-   * An event an app sends in the person’s voice: sent, or { hold: { app, card, event } } for asks to hold on its card.
-   * @param {string} appId @param {string} action @param {object} values @param {{ hold?: boolean, now?: number }} [opts]
+   * An event an app sends in the person’s voice, for their click: it starts its agent’s turn.
+   * @param {string} appId @param {string} action @param {object} values @param {{ now?: number }} [opts]
    */
   appEvent(appId, action, values, opts) {
     return appEvent(this, appId, action, values, opts);

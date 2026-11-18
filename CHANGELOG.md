@@ -2,6 +2,30 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.29.0 (2026-11-18)
+
+### Features
+
+- **thread:** the thread panel's composer floats as the conversation's does
+- **agy:** ask Antigravity's quota once as Postbox starts
+
+### Fixes
+
+- **thread:** the panel's rows under the card match a full-screen pane's color
+- **agy:** stop the /usage probe with its turn and with Postbox's close
+
+## 4.28.0 (2026-11-18)
+
+### Features
+
+- **apps:** remove the card that held an app's sends for the person to allow
+- **apps:** one click starts one turn, and an app's other sends are notes
+
+### Fixes
+
+- **apps:** trust only the browser's snapshot of a click for an app's turn
+- **apps:** one click spends itself on one turn, and notes stay small
+
 ## 4.27.0 (2026-11-18)
 
 ### Features

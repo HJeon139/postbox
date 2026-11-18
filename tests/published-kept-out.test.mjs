@@ -1,6 +1,7 @@
 // What an app publishes for its agent (#1478) is Postbox’s first private data: the state key `published`, with its
-// private event `app.publish` (designs/architecture/security-boundaries.md, “What reaches the browser”). Only the agent’s
-// read_app reads it. A unique secret is published through the page’s own route, and then looked for, as text, in
+// private event `app.publish` (designs/architecture/security-boundaries.md, “What reaches the browser”). The notes an app
+// sends without a click (#1488) are the second: `appNotes`, with `app.note`. Only the agent’s read_app reads either. A
+// unique secret is published, and another sent as a note, through the page’s own routes, and then looked for, as text, in
 // everything that leaves the process for a page or a host: /api/state, the event stream’s backlog and live frames,
 // every GET route, and a remote host’s snapshot. The source-text check in tests/app-publish.test.mjs can’t see a key
 // built at run time or a spread of the whole state; this sees what each answer holds.
@@ -23,12 +24,16 @@ const { start } = await import('../server/index.mjs');
 const PORT = 4452;
 const host = `127.0.0.1:${PORT}`;
 const SECRET = `published-secret-${randomUUID()}`;
+const NOTE_SECRET = `note-secret-${randomUUID()}`;
+/** Whether a text carries either secret. @param {string} text */
+const leaks = (text) => text.includes(SECRET) || text.includes(NOTE_SECRET);
 /** @type {any} */
 let app;
 /** @type {{ thread: string, app: string, item: string, session: string, persona: string, project: string, host: string }} */
 let ids;
-/** The seq of the publish’s app.publish event, and the seq before the publish. */
+/** The seq of the publish’s app.publish event and of the note’s app.note, and the seq before the publish. */
 let seq = 0;
+let noteSeq = 0;
 let sinceBefore = 0;
 /** Frames a page’s stream, opened before the publish, heard live. @type {string[]} */
 const live = [];
@@ -80,34 +85,42 @@ before(async () => {
   seq = app.store.since(sinceBefore).find((/** @type {any} */ e) => e.type === 'app.publish')?.seq ?? 0;
   assert.ok(seq > 0, 'the publish is in the store’s history');
   assert.equal(app.store.state.published[ids.app].data.note, SECRET, 'the secret is in the store, so its absence below means kept out');
+  const noted = await call({ method: 'POST', path: `/api/apps/${ids.app}/note`, body: { action: 'secret', values: { note: NOTE_SECRET } }, cookie });
+  assert.equal(noted.status, 200, noted.text);
+  noteSeq = app.store.since(sinceBefore).find((/** @type {any} */ e) => e.type === 'app.note')?.seq ?? 0;
+  assert.ok(noteSeq > 0, 'the note is in the store’s history');
+  assert.equal(app.store.state.appNotes[ids.app].notes[0].values.note, NOTE_SECRET, 'and the note’s secret');
 });
 after(async () => {
   await app?.close();
 });
 
-test('#1478 /api/state carries nothing an app published', async () => {
+test('#1478, #1488 /api/state carries nothing an app published or noted', async () => {
   const r = await call({ path: '/api/state' });
   assert.equal(r.status, 200);
   assert.ok(r.text.includes('Secret app'), 'the app itself is there');
-  assert.ok(!r.text.includes(SECRET), '/api/state carries what the app published');
+  assert.ok(!leaks(r.text), '/api/state carries what the app published or noted');
 });
 
-test('#1478 the event stream’s live and backlog frames carry nothing an app published: its event is a cursor', async () => {
+test('#1478, #1488 the event stream’s live and backlog frames carry nothing an app published or noted: each event is a cursor', async () => {
   const cursor = `id: ${seq}\nevent: cursor\ndata: {}\n\n`;
-  await until(() => live.join('').includes(cursor));
-  assert.ok(!live.join('').includes(SECRET), 'no live frame');
+  const noteCursor = `id: ${noteSeq}\nevent: cursor\ndata: {}\n\n`;
+  await until(() => live.join('').includes(noteCursor));
+  assert.ok(!leaks(live.join('')), 'no live frame');
   assert.ok(live.join('').includes(cursor), 'the page heard the publish live, as a cursor');
+  assert.ok(live.join('').includes(noteCursor), 'and the note');
   const backlog = /** @type {string[]} */ ([]);
   openStream(`since=${sinceBefore}`, backlog);
-  await until(() => backlog.join('').includes(cursor));
-  assert.ok(!backlog.join('').includes(SECRET), 'no backlog frame');
+  await until(() => backlog.join('').includes(noteCursor));
+  assert.ok(!leaks(backlog.join('')), 'no backlog frame');
   assert.ok(backlog.join('').includes(cursor), 'the backlog has the publish, as a cursor');
+  assert.ok(backlog.join('').includes(noteCursor), 'and the note');
 });
 
-test('#1478 a remote host’s snapshot of the conversation carries nothing an app published', () => {
+test('#1478, #1488 a remote host’s snapshot of the conversation carries nothing an app published or noted', () => {
   const snap = JSON.stringify(snapshotOf(/** @type {any} */ ({ rt: app.rt }), app.rt.s.sessions[ids.session]));
   assert.ok(snap.includes(ids.item), 'the snapshot holds the app’s item');
-  assert.ok(!snap.includes(SECRET), 'the snapshot carries what the app published');
+  assert.ok(!leaks(snap), 'the snapshot carries what the app published or noted');
 });
 
 // Every GET route, by the path test in server/index.mjs or its route modules, with a path that reaches it and the status
@@ -192,12 +205,12 @@ test('#1478 every GET route has a case here', async () => {
   );
 });
 
-test('#1478 no GET route answers with anything an app published', async () => {
+test('#1478, #1488 no GET route answers with anything an app published or noted', async () => {
   for (const [route, { paths, status }] of Object.entries(GET_ROUTES)) {
     for (const path of paths(ids)) {
       const r = await call({ path });
       assert.equal(r.status, status, `${path} (${route}): ${r.text.slice(0, 200)}`);
-      assert.ok(!r.text.includes(SECRET), `${path} carries what the app published`);
+      assert.ok(!leaks(r.text), `${path} carries what the app published or noted`);
     }
   }
 });

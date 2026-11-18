@@ -629,7 +629,7 @@ export class AntigravityCliAdapter {
     const rulesWith = (hooked) => agyRules({ persona, guide, schemas: join(dirname(this.settingsFile), 'mcp', AGY_SERVER), hooked });
     const rules = rulesWith(useHook);
     const addDirs = [...new Set([ctx.project?.folder, ...(ctx.addDirs ?? [])])].filter((d) => d && resolve(d) !== resolve(cwd));
-    const asked = this.usage?.start(this.version) ?? null;
+    const asked = this.usage?.start(this.version, ctx.signal) ?? null;
     if (this.folders.busy(cwd)) ctx.status({ currentStep: 'Waiting for another Antigravity turn in this folder' });
     // Its quota is reported once the run is over, while the turn can still record it: after a failed turn too, which
     // may be the one that ran out.
