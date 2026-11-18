@@ -32,7 +32,7 @@ test('a snapshot due during close()’s flush never lands after the lock is rele
       return disk().rename(from, to);
     },
   };
-  const a = await new Store(dir, { io, snapshotEvery: 3 }).load();
+  const a = await new Store(dir, { io, snapshotChars: 150 }).load();
   a.emit('thread', { id: 'a1', members: [] });
   await a.flush();
   const sync = held();
@@ -85,7 +85,7 @@ test('a commit or emit that arrives during close()’s flush is refused as close
 
 test('nothing the store starts runs after `closed`: emit, commit, flush, snapshot and the writer’s loop itself change no file', async () => {
   const dir = await tmp();
-  const a = await new Store(dir, { snapshotEvery: 1 }).load();
+  const a = await new Store(dir, { snapshotChars: 1 }).load();
   a.emit('thread', { id: 'a1', members: [] });
   await a.flush();
   await a.close();
@@ -142,7 +142,8 @@ test('a snapshot under way when close() begins stops at its next piece, rather t
       });
     },
   });
-  const a = await new Store(dir, { io }).load();
+  // Only the test's own snapshot: 4 MB of log would pass SNAPSHOT_CHARS and start the writer's.
+  const a = await new Store(dir, { io, snapshotChars: Infinity }).load();
   // About 4 MB of state: four pieces or more.
   for (let i = 0; i < 400; i++) a.emit('thread', { id: `t${i}`, members: [], title: 'x'.repeat(10_000) });
   await a.flush();
@@ -177,7 +178,7 @@ test('emits held behind a slow snapshot when close() begins, as a stopping turn�
       });
     },
   });
-  const a = await new Store(dir, { io, retryBoundMs: 400 }).load();
+  const a = await new Store(dir, { io, retryBoundMs: 400, snapshotChars: Infinity }).load(); // only the test's own snapshot
   for (let i = 0; i < 2000; i++) a.emit('thread', { id: `t${i}`, members: [], title: 'x'.repeat(10_000) }); // ~20 pieces
   await a.flush();
   await assert.rejects(a.snapshot(), /abandoned/);

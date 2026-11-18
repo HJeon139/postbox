@@ -5,7 +5,7 @@
 //   runs (tools/bench-snapshot-stall.mjs);
 // - `/api/state`: each of --requests requests a run to a Postbox started on the room, on a free port, and its bytes;
 // - a streamed reply: each `item.text` chunk through the shared reducer, for a reply at the end of the thread;
-// - startup: the Store’s load() of the room’s snapshot and a log at the store’s snapshot limit (SNAPSHOT_EVERY).
+// - startup: the Store’s load() of the room’s snapshot and a log at the store’s snapshot limit (SNAPSHOT_CHARS).
 // Run by hand, not a CI gate. The report (tools/bench-server-report.mjs) gives p50, p95 and max over every run pooled.
 //
 //   node tools/bench-server.mjs --sizes 1000,4000,10000 --runs 3 --out designs/508/server-report.md
@@ -16,7 +16,7 @@ import { join, resolve } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
-import { SNAPSHOT_EVERY, Store } from '../server/store.mjs';
+import { SNAPSHOT_CHARS, Store } from '../server/store.mjs';
 import { apply } from '../shared/state.mjs';
 import { AGENTS, commitOf, count, freePort, hostOf, loadState, seedRoomFolder, THREAD } from './bench-room.mjs';
 import { formatServerReport } from './bench-server-report.mjs';
@@ -26,11 +26,32 @@ import { summarize } from './key-frame-stats.mjs';
 import { startPostbox } from './uat/postbox.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
-/** The log the startup replays: as long as the store lets one grow before it snapshots. */
-export const LOG_EVENTS = SNAPSHOT_EVERY;
 const CHUNK = 'part of the streamed reply ';
 const STREAMED_ID = 'it_streamed';
 const REPLY_EVENTS = 50; // each reply in the log: its item.add and then 49 item.text chunks
+
+/** The i-th event of the log after the snapshot: a reply’s item.add, then its streamed chunks. @param {number} i */
+function logEvent(i) {
+  const id = `it_log${i - (i % REPLY_EVENTS)}`;
+  if (i % REPLY_EVENTS === 0) return ['item.add', { threadId: THREAD, item: { id, kind: 'agent', handle: AGENTS[0], text: '' } }];
+  return ['item.text', { threadId: THREAD, id, text: CHUNK }];
+}
+
+/**
+ * How many of the log’s events fill `chars` of log lines, as the store writes them after a snapshot at `seq`.
+ * @param {number} chars @param {number} [seq]
+ */
+export function logEventsFor(chars, seq = 1) {
+  let n = 0;
+  for (let written = 0; written < chars; n++) {
+    const [type, data] = logEvent(n);
+    written += JSON.stringify({ type, data, seq: seq + n + 1 }).length + 1;
+  }
+  return n;
+}
+
+/** The log the startup replays: as long as the store lets one grow before it snapshots. */
+export const LOG_EVENTS = logEventsFor(SNAPSHOT_CHARS);
 
 /** The options, checked. @param {string[]} argv */
 export function options(argv) {
@@ -86,21 +107,16 @@ export function streamChunks(state, threadId, chunks) {
 
 /**
  * Snapshots the room in a data folder, then appends `events` events after it, as streamed replies, so a load reads the
- * snapshot and replays them all. @param {string} data  @param {number} [events]
+ * snapshot and replays them all. Returns the seq of the snapshot, after which the events are.
+ * @param {string} data  @param {number} [events]
  */
 export async function writeLog(data, events = LOG_EVENTS) {
-  const store = await new Store(data, { snapshotEvery: Number.POSITIVE_INFINITY }).load();
+  const store = await new Store(data, { snapshotChars: Number.POSITIVE_INFINITY }).load();
   await store.snapshot();
-  let id = '';
-  for (let i = 0; i < events; i++) {
-    if (i % REPLY_EVENTS === 0) {
-      id = `it_log${i}`;
-      store.emit('item.add', { threadId: THREAD, item: { id, kind: 'agent', handle: AGENTS[0], text: '' } });
-    } else {
-      store.emit('item.text', { threadId: THREAD, id, text: CHUNK });
-    }
-  }
+  const from = store.state.seq;
+  for (let i = 0; i < events; i++) store.emit(...logEvent(i));
   await store.close();
+  return from;
 }
 
 /** The startup’s load: a Store of the folder, loaded. @param {string} dir */
@@ -111,7 +127,7 @@ const loadStore = (dir) => new Store(dir).load();
  * snapshotPass is measureSnapshotPass(), or a test’s stand-in; openStore loads a Store, or a test’s stand-in; stream
  * is streamChunks(), or a test’s stand-in.
  */
-async function inProcessRun(state, boot, scratch, chunks, { snapshotPass, openStore, stream }) {
+async function inProcessRun(state, boot, scratch, chunks, from, { snapshotPass, openStore, stream }) {
   const pass = await snapshotPass(state, scratch);
   const copy = structuredClone(state);
   const chunk = stream(copy, THREAD, chunks);
@@ -121,8 +137,8 @@ async function inProcessRun(state, boot, scratch, chunks, { snapshotPass, openSt
   const t0 = performance.now();
   const store = await openStore(boot);
   const startup = performance.now() - t0;
-  // What the load did, read before close: the events it replayed after the snapshot, and the room it holds.
-  const replayed = store.sinceSnapshot;
+  // What the load did, read before close: the events it replayed after the snapshot, at `from`, and the room it holds.
+  const replayed = store.state.seq - from;
   const loadedItems = store.state.items[THREAD]?.length ?? 0;
   await store.close();
   const run = { stall: [stallOf(pass)], stringify: [pass.stringifyMs], chunk, startup: [startup], bytes: pass.bytes };
@@ -201,13 +217,13 @@ export async function measureSize(items, o, deps = {}) {
   try {
     await seedRoomFolder(room, items);
     await cp(room, boot, { recursive: true });
-    await writeLog(boot, logEvents);
+    const from = await writeLog(boot, logEvents);
     await mkdir(scratch); // where the snapshot passes write, and remove what they wrote
     const state = await loadState(room);
     await snapshotPass(state, scratch);
     const runs = [];
     for (let run = 0; run < o.runs; run++) {
-      const one = await inProcessRun(state, boot, scratch, o.chunks, { snapshotPass, openStore, stream });
+      const one = await inProcessRun(state, boot, scratch, o.chunks, from, { snapshotPass, openStore, stream });
       checkReplay(one, logEvents, items);
       checkStream(one.streamed, o.chunks, items);
       runs.push(one);

@@ -45,7 +45,7 @@ flowchart LR
   R --> M[("in-memory state")]
   E --> L["events-&lt;seq&gt;.jsonl (append)"]
   E --> SSE[server-sent events]
-  M -->|every 5,000 events| SN["snapshot.json (atomic write)"]
+  M -->|every 1,000,000 characters of log| SN["snapshot.json (atomic write)"]
   SN -->|then| ROT["start a new log segment, delete segments the snapshot covers"]
   subgraph Startup
     SN2[snapshot.json] --> REPLAY["replay log lines with seq greater than the snapshot's"] --> M2[("state")]
@@ -53,7 +53,7 @@ flowchart LR
 ```
 
 - **Writes** are batched and appended in order. A crash can lose at most the last few milliseconds of events. A truncated last line is detected on startup and dropped.
-- **Snapshots** are written to a temporary file and renamed, so a crash mid-write leaves the old snapshot intact. A new log segment starts after each snapshot, and segments the snapshot fully covers are deleted. A snapshot is lines, one small JSON value each, so no string holds the whole state ([#1180](https://github.com/HJeon139/postbox/issues/1180)). The write yields between pieces, so emits are held until it ends, as they are behind a commit: the snapshot is one view of the state, and nothing in it is in the next segment too.
+- **Snapshots** come every 1,000,000 characters of log written (`SNAPSHOT_CHARS`), about 5,000 events of a measured room, counted by what’s written rather than by events, so a load replays a bounded log whatever its events weigh (#1502). They’re written to a temporary file and renamed, so a crash mid-write leaves the old snapshot intact. A new log segment starts after each snapshot, and segments the snapshot fully covers are deleted. A snapshot is lines, one small JSON value each, so no string holds the whole state ([#1180](https://github.com/HJeon139/postbox/issues/1180)). The write yields between pieces, so emits are held until it ends, as they are behind a commit: the snapshot is one view of the state, and nothing in it is in the next segment too.
 - **Schema.** Events carry plain JSON. If an event’s shape ever changes, the reducer upgrades old events as it reads them (an “upcaster”), so there are no migrations to run.
 - **Stage 2 data** in `store.json` is read once as the first snapshot, then renamed `store.json.migrated`.
 

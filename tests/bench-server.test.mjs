@@ -6,12 +6,15 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync }
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { SNAPSHOT_EVERY, Store } from '../server/store.mjs';
+import { SNAPSHOT_CHARS, Store } from '../server/store.mjs';
 import { parseSnapshotText } from '../server/store-snapshot-lines.mjs';
 import { apply, emptyState } from '../shared/state.mjs';
 import { seedRoomFolder, THREAD } from '../tools/bench-room.mjs';
 import { checkReplay, checkStream, commandLine, LOG_EVENTS, measureSize, options, pooled, streamChunks, writeLog } from '../tools/bench-server.mjs';
 import { formatServerReport } from '../tools/bench-server-report.mjs';
+
+/** A loaded store with its room taken out, and `back` events of its log taken off its seq. @param {any} store @param {number} back */
+const emptied = (store, back) => Object.assign(store, { state: { ...store.state, seq: store.state.seq - back, items: { [THREAD]: [] } } });
 
 test('options default to the 1×, 4× and 10× rooms, 3 runs, 20 requests and 200 chunks', () => {
   const o = options([]);
@@ -37,8 +40,8 @@ test('pooled takes the percentiles over every run’s values, not one run’s', 
   assert.deepEqual(pooled(runs, 't'), { n: 6, p50: 3, p95: 30, max: 30 });
 });
 
-test('the log the startup replays is as long as the store lets one grow before it snapshots', () => {
-  assert.equal(LOG_EVENTS, SNAPSHOT_EVERY);
+test('the log the startup replays is as long as the store lets one grow before it snapshots', async () => {
+  assert.equal(LOG_EVENTS, (await import('../tools/bench-server.mjs')).logEventsFor(SNAPSHOT_CHARS));
 });
 
 test('streamChunks times each item.text chunk of a reply added at the end of the thread', () => {
@@ -64,7 +67,7 @@ test('writeLog leaves a snapshot of the room and a log of LOG_EVENTS events afte
     const snap = parseSnapshotText(readFileSync(join(data, 'snapshot.json'), 'utf8'));
     assert.equal(snap.items[THREAD].length, 20);
     const store = await new Store(data).load();
-    assert.equal(store.sinceSnapshot, 50);
+    assert.equal(store.sinceSnapshot, readFileSync(join(data, segments[0]), 'utf8').length, 'the log it replayed, counted toward the next snapshot');
     await store.close();
   } finally {
     rmSync(data, { recursive: true, force: true });
@@ -116,7 +119,7 @@ test('measureSize refuses a startup that replayed its log but loaded no room', a
   const tmp = mkdtempSync(join(tmpdir(), 'pb-bench-size-'));
   const { start } = fakePostbox();
   const get = async () => ({ arrayBuffer: async () => stateBody(30) });
-  const openStore = async () => ({ sinceSnapshot: 10, state: { items: { [THREAD]: [] } }, close: async () => {} });
+  const openStore = async (/** @type {string} */ dir) => emptied(await new Store(dir).load(), 0); // its log replayed, its room gone
   try {
     const o = { runs: 1, requests: 1, chunks: 1, logEvents: 10 };
     await assert.rejects(measureSize(30, o, { start, port: async () => 1, tmp, get, openStore }), /loaded 0 of the room’s 30 items/);
@@ -143,7 +146,7 @@ test('measureSize refuses a startup that replayed nothing, and still removes its
   const tmp = mkdtempSync(join(tmpdir(), 'pb-bench-size-'));
   const { start } = fakePostbox();
   const get = async () => ({ arrayBuffer: async () => stateBody(30) });
-  const openStore = async () => ({ sinceSnapshot: 0, state: { items: { [THREAD]: [] } }, close: async () => {} });
+  const openStore = async (/** @type {string} */ dir) => emptied(await new Store(dir).load(), 10); // stopped at the snapshot
   try {
     const o = { runs: 1, requests: 1, chunks: 1, logEvents: 10 };
     await assert.rejects(measureSize(30, o, { start, port: async () => 1, tmp, get, openStore }), /replayed 0 of the log’s 10 events/);

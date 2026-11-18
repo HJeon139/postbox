@@ -20,7 +20,7 @@ test('every byte cut of the final transaction recovers all its events or none', 
   t.mock.method(console, 'warn', () => {});
   for (let cut = 0; cut <= transaction.length; cut++) {
     await writeFile(join(dir, 'events-1.jsonl'), Buffer.concat([Buffer.from(prefix), transaction.subarray(0, cut)]));
-    const store = await new Store(dir, { snapshotEvery: Infinity }).load();
+    const store = await new Store(dir, { snapshotChars: Infinity }).load();
     try {
       const complete = cut === transaction.length;
       assert.equal(store.state.seq, complete ? 3 : 1, `cut at byte ${cut}`);

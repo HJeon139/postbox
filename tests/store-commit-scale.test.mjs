@@ -79,7 +79,7 @@ test('releasing 100,000 emits held behind a commit costs each about what releasi
         return fh;
       },
     };
-    const store = await new Store(dir, { io, snapshotEvery: 1e9 }).load();
+    const store = await new Store(dir, { io, snapshotChars: 1e9 }).load();
     hold = true;
     const committed = store.commit([{ type: 'thread', data: { id: 'th_c', members: [] } }]);
     for (let i = 0; i < count; i++) store.emit('thread', { id: `th_${i}`, members: [] });

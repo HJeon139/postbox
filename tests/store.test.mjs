@@ -40,7 +40,7 @@ test('a torn last line from a crash is dropped, and earlier events survive', asy
 
 test('a snapshot starts a new segment and deletes the ones it covers', async () => {
   const dir = await tmp();
-  const a = await new Store(dir, { snapshotEvery: 5 }).load();
+  const a = await new Store(dir, { snapshotChars: 250 }).load();
   for (let i = 0; i < 12; i++) {
     a.emit('thread', { id: `t${i}`, members: [] });
     await a.flush();
@@ -101,4 +101,37 @@ test('blobs are stored by content, kept once, and checked on read', async () => 
   await writeFile(a.path, 'tampered');
   await assert.rejects(blobs.get(a.sha256), /damaged/);
   assert.throws(() => blobs.pathOf('../etc/passwd'), /Not a SHA-256/);
+});
+
+// A snapshot comes at SNAPSHOT_CHARS of log written since the last, not at a count of events, so a load replays a
+// bounded log whatever its events weigh, and a change that writes fewer, bigger events doesn't move the snapshot
+// earlier (#1502's crash restart, where a smaller log of fewer events replayed more after its snapshot).
+test('a snapshot comes after so much log written, emits, commits and a load’s replay counted alike, not after so many events', async () => {
+  const dir = await tmp();
+  const line = (/** @type {string} */ id) => JSON.stringify({ type: 'thread', data: { id, members: [] }, seq: 1 }).length;
+  const a = await new Store(dir, { snapshotChars: 600 }).load();
+  for (let i = 0; i < 20; i++) {
+    a.emit('thread', { id: `t${i}`, members: [] }); // twenty small events: about 60 characters each, 1,200 in all
+    await a.flush();
+  }
+  assert.ok((await readdir(dir)).includes('snapshot.json'), 'the small events wrote enough log for a snapshot');
+  const after = a.sinceSnapshot;
+  assert.ok(after < 600, `counted from the snapshot: ${after}`);
+  await a.commit([{ type: 'thread', data: { id: 'c'.repeat(400), members: [] } }]);
+  assert.ok(a.sinceSnapshot >= after + 400, 'a commit counts its line');
+  await a.close();
+  // A load counts the log it replays toward the next snapshot.
+  const b = await new Store(dir, { snapshotChars: 600 }).load();
+  assert.ok(b.sinceSnapshot >= 400 + line('x'), `the replayed log is counted: ${b.sinceSnapshot}`);
+  await b.close();
+
+  // Few, big events: three lines past the limit, where an event count of 5 would have taken none.
+  const big = await tempDir('pb-store-big-');
+  const c = await new Store(big, { snapshotChars: 600 }).load();
+  for (let i = 0; i < 3; i++) {
+    c.emit('thread', { id: `b${i}`.padEnd(250, 'x'), members: [] });
+    await c.flush();
+  }
+  assert.ok((await readdir(big)).includes('snapshot.json'), 'three big events wrote enough');
+  await c.close();
 });

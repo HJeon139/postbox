@@ -29,7 +29,7 @@ export async function folder(t) {
 }
 
 export async function opened(_t, dir, options = {}) {
-  const store = await new Store(dir, { snapshotEvery: Infinity, ...options }).load();
+  const store = await new Store(dir, { snapshotChars: Infinity, ...options }).load();
   stores.get(dir).push(store);
   return store;
 }

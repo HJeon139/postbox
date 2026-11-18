@@ -181,7 +181,7 @@ test('a repeated opId writes nothing and returns the first commit’s seq, in th
 
 test('a snapshot forgets the opIds before it, so a commit with one of them writes again', async () => {
   const dir = await tmp();
-  const a = await new Store(dir, { snapshotEvery: 3 }).load();
+  const a = await new Store(dir, { snapshotChars: 150 }).load();
   await a.commit([thread('t1')], { opId: 'old' });
   assert.deepEqual(await a.commit([thread('t1')], { opId: 'old' }), { seq: 1, duplicate: true }, 'remembered before the snapshot');
   for (let i = 0; i < 3; i++) {

@@ -47,7 +47,7 @@ async function replaySegment(store, seg, last) {
       }
       const bad = malformed(events);
       if (bad) throw refusal(seg, n, offset, bad);
-      applyGroup(store, events, seg, n, offset);
+      applyGroup(store, events, seg, n, offset, line.length + 1);
     }
     offset += Buffer.byteLength(line) + 1;
   }
@@ -74,8 +74,11 @@ function malformed(events) {
   return null;
 }
 
-/** Applies a well-formed group above the state’s seq: skipped whole when the snapshot has it, refused when it straddles the snapshot. */
-function applyGroup(store, events, seg, n, offset) {
+/**
+ * Applies a well-formed group above the state’s seq: skipped whole when the snapshot has it, refused when it straddles
+ * the snapshot. `chars`: its line’s length with its newline, counted toward the next snapshot (SNAPSHOT_CHARS).
+ */
+function applyGroup(store, events, seg, n, offset, chars) {
   const first = events[0].seq;
   const end = events[events.length - 1].seq;
   if (end <= store.state.seq) return;
@@ -88,8 +91,8 @@ function applyGroup(store, events, seg, n, offset) {
     const held = replayEvent(store, ev); // every event is applied, or held, in order
     no ??= held; // the first rejected one names the commit, as applyCommits keeps it
     store.state.seq = ev.seq;
-    store.sinceSnapshot++;
   }
+  store.sinceSnapshot += chars;
   if (events[0].op !== undefined) store.ops.set(events[0].op, end); // the last seq, as a commit resolves
   if (events[0].op !== undefined && no)
     store.opsRejected.set(events[0].op, no); // and a retry is rejected again

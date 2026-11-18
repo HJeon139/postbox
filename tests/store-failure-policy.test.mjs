@@ -23,7 +23,7 @@ test('a failed snapshot warns and backs off; it does not close the store, and is
       return realFs.open(path, flags, mode);
     },
   });
-  const s = await new Store(dir, { io, snapshotEvery: 3 }).load();
+  const s = await new Store(dir, { io, snapshotChars: 150 }).load();
   for (let i = 0; i < 12; i++) s.emit('thread', { id: `t${i}`, members: [] });
   await s.flush();
   assert.equal(s.writable, true, 'a failed snapshot closes nothing');

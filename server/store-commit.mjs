@@ -98,7 +98,7 @@ function applyCommits(store, commits) {
     // A rejected commit's retry is rejected again; a commit that lands clears any earlier rejection of its opId.
     if (c.opId !== undefined && c.rejected) store.opsRejected.set(c.opId, opRecord(c.rejected.seq, c.rejected.type, c.rejected.cause));
     else if (c.opId !== undefined) store.opsRejected.delete(c.opId);
-    store.sinceSnapshot += c.events.length;
+    store.sinceSnapshot += c.line?.length ?? 0;
   }
   for (const ev of heard) store.notify(ev);
   for (const c of commits) {
@@ -178,7 +178,9 @@ async function writeCommits(store, gen) {
     if (c.opId !== undefined) pending.set(c.opId, c);
   }
   try {
-    if (written.length && store.dir) await append(store, written.map((c) => lineOf(c.events)).join(''), gen, true, written.at(-1).events.at(-1).seq);
+    // Each commit’s line, kept for how much log it wrote (sinceSnapshot); an in-memory store writes none.
+    if (store.dir) for (const c of written) c.line = lineOf(c.events);
+    if (written.length && store.dir) await append(store, written.map((c) => c.line).join(''), gen, true, written.at(-1).events.at(-1).seq);
     applyCommits(store, written);
   } catch (e) {
     // The numbers these commits took are given back first, so the held emits fail() releases, and every emit after,
@@ -256,7 +258,7 @@ export async function run(store, gen) {
       store.writable &&
       !store.retiring &&
       store.generation === gen &&
-      store.sinceSnapshot >= store.snapshotEvery &&
+      store.sinceSnapshot >= store.snapshotChars &&
       Date.now() >= store.nextSnapshotAt
     )
       await snapshotNow(store).catch(() => {}); // recorded as a warning with a next-attempt time, never a close

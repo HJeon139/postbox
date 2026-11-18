@@ -24,7 +24,12 @@ const KEEP_EVENTS = 20000; // events kept in memory for reconnecting browsers, a
 // The backlog is trimmed back to KEEP_EVENTS once it’s this many longer, not at every event: a splice of its start moves
 // every event kept, so trimming at each emit made one about 100 times dearer past 20,000 (tests/store-commit-scale.test.mjs).
 const TRIM_EVERY = 5000;
-export const SNAPSHOT_EVERY = 5000; // events between snapshots
+/**
+ * How much log, in characters of its lines, is written between snapshots: about main’s 5,000 events at a measured
+ * room’s 206 a line. Counted in what’s written, not in events, so a load replays a bounded log whatever its events
+ * weigh, and a change that writes fewer, bigger events doesn’t move the snapshot earlier (#1502’s crash restart).
+ */
+export const SNAPSHOT_CHARS = 1_000_000;
 
 export { newId }; // server/ids.mjs; its callers import it from here
 
@@ -38,13 +43,13 @@ export class Store {
 
   /**
    * @param {string|null} dir  the data folder; null keeps everything in memory (tests)
-   * @param {{ snapshotEvery?: number, io?: typeof fs, retryBoundMs?: number }} [options]  `io` stands in for
+   * @param {{ snapshotChars?: number, io?: typeof fs, retryBoundMs?: number }} [options]  `io` stands in for
    *   node:fs/promises; `retryBoundMs` is how long Retry waits for a write still in flight before it refuses
    */
-  constructor(dir, { snapshotEvery = SNAPSHOT_EVERY, io = fs, retryBoundMs = STORE_WAITS.noProgressMs } = {}) {
+  constructor(dir, { snapshotChars = SNAPSHOT_CHARS, io = fs, retryBoundMs = STORE_WAITS.noProgressMs } = {}) {
     this.dir = dir;
     this.io = io;
-    this.snapshotEvery = snapshotEvery;
+    this.snapshotChars = snapshotChars;
     this.retryBoundMs = retryBoundMs;
     this.state = emptyState();
     this.events = []; // the backlog for reconnecting browsers: { seq, line }
@@ -58,7 +63,7 @@ export class Store {
     this.freshSegment = false; // the segment is a file the writer made, whose folder isn’t synced yet
     /** @type {import('node:fs/promises').FileHandle | null} the segment, open for appending */
     this.fh = null;
-    this.sinceSnapshot = 0;
+    this.sinceSnapshot = 0; // characters of log written since the last snapshot (SNAPSHOT_CHARS)
     this.ops = new Map(); // opId → the seq of its commit’s last event, for the commits since the latest snapshot
     this.ahead = 0; // events numbered but not yet applied: a commit’s, before its fsync
     this.waitingCommits = 0; // commits queued or pending; emits are held behind them
@@ -221,7 +226,7 @@ export class Store {
       this.warned = true;
     } else if (this.dir) {
       this.queue.push({ line: `${line}\n`, seq: ev.seq });
-      this.sinceSnapshot++;
+      this.sinceSnapshot += line.length + 1;
       this.pump();
     }
     if (error) throw rejectedError(ev.seq, type, error);
@@ -237,7 +242,7 @@ export class Store {
     this.heldLog.shift();
     const { line, heard } = this.record(ev); // a rejected one is logged and kept as rejected; the writer goes on
     this.notify(heard);
-    if (this.dir) this.sinceSnapshot++;
+    if (this.dir) this.sinceSnapshot += line.length + 1;
     this.held--;
     if (!this.held) this.views.clear();
     return line;

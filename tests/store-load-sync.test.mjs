@@ -51,7 +51,7 @@ test('load() syncs the folder once, after recovery; a filesystem that can’t sy
   assert.equal(counter.n, 1, 'one folder sync at load');
   await a.close();
   const einval = { n: 0 };
-  const b = await new Store(dir, { io: dirSyncs(einval, 'EINVAL'), snapshotEvery: 1 }).load();
+  const b = await new Store(dir, { io: dirSyncs(einval, 'EINVAL'), snapshotChars: 1 }).load();
   assert.equal(einval.n, 1, 'the sync was attempted and its EINVAL tolerated');
   b.emit('thread', { id: 't1', members: [] });
   await b.flush(); // the first commit into a fresh segment, and the snapshot that follows, sync the folder too
