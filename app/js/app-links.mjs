@@ -40,23 +40,40 @@ function sayOnePerClick(frame) {
 }
 
 /**
+ * The app’s link as Postbox parsed it, or null unless it’s a web link exactly as written: http or https, with nothing
+ * before it (the URL parser drops leading spaces, which a person reading the link wouldn’t see). @param {unknown} url
+ */
+function webLink(url) {
+  const href = String(url);
+  if (href !== href.trimStart()) return null;
+  let u;
+  try {
+    u = new URL(href);
+  } catch {
+    return null;
+  }
+  return u.protocol === 'https:' || u.protocol === 'http:' ? u : null;
+}
+
+/**
  * Opens the link when the person just clicked or pressed a key in this app, and no link opened from that click yet. An
  * app asking on its own is refused without a word: there’s nothing for the person to do about it.
  * @param {MessageEvent} e @param {{ appId: string, iframe: HTMLIFrameElement, check?: boolean }} rec @param {unknown} url
  * @param {string|null} refused  apps.mjs’s activated(): null when the click or key press was in this app
  */
 export function openAppLink(e, rec, url, refused) {
-  const href = String(url);
-  // A web link exactly as written: no other scheme, and nothing before it.
-  if (rec.check || refused || !/^https?:\/\//i.test(href)) return;
+  if (rec.check || refused) return;
+  const u = webLink(url);
+  if (!u) return;
   const click = clickIn(e, rec.iframe);
   if (click === 'spent') sayOnePerClick(rec.iframe);
   if (click !== 'fresh') return;
   const pane = / Claude\//.test(navigator.userAgent);
   spent.set(rec.iframe, { at: Date.now(), usedUp: !pane });
-  if (!pane) window.open(href, '_blank', 'noopener,noreferrer');
+  // Only the URL rebuilt from the parsed one, never the app’s own string.
+  if (!pane) window.open(u.href, '_blank', 'noopener,noreferrer');
   else
-    api(`/api/apps/${encodeURIComponent(rec.appId)}/open`, { url: href }).catch((err) =>
+    api(`/api/apps/${encodeURIComponent(rec.appId)}/open`, { url: u.href }).catch((err) =>
       toast({ title: 'That link didn’t open', text: err.message, level: 'blocking' }),
     );
 }
