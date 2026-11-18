@@ -749,7 +749,7 @@ export function mountWorkPane(threadId) {
   // As in mountWork, what the server sends waits while a press is down (#1010).
   const live = heldFrame(body, paint);
   const chat = chatList(threadId, el, () => live.soon());
-  const shownNow = shownList(threadId);
+  const shownNow = shownList(threadId, el, () => live.soon());
   const off = client.on((ch) => {
     const work = (ch.type === 'work.add' || ch.type === 'work.patch') && ch.data.convId === threadId;
     // A message added or finished: In this chat reads the latest ones.
@@ -804,6 +804,7 @@ export function mountWorkPane(threadId) {
       full?.view.destroy();
       viewer.destroy();
       chat.destroy();
+      shownNow.destroy();
       live.cancel();
     },
   };

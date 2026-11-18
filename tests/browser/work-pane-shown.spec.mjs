@@ -79,3 +79,16 @@ test('an app retired while the pane is open shows Retired', async ({ page }) => 
   await synced(page, app);
   await expect(rowsOf(page).first()).toContainText('Retired');
 });
+
+test('the list holds still under the pointer, and takes the newer one once the pointer leaves', async ({ page }) => {
+  await open(page);
+  const rows = rowsOf(page);
+  await rows.first().hover();
+  shown('wu_r2', 5, 'readme', 'review', 'README draft, again', null);
+  await synced(page, app);
+  // Two frames, so a paint the change asked for has run.
+  await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+  await expect(rows.first(), 'the row under the pointer is the one it was').toContainText('Budget planner');
+  await page.mouse.move(0, 0);
+  await expect(rows.first()).toContainText('README draft, again');
+});

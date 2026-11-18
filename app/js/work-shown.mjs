@@ -5,19 +5,24 @@
 import { appsAndReviews, retiredApp } from '/shared/work-list.mjs';
 import { client } from './client.mjs';
 import { h, icon } from './dom.mjs';
+import { readingHold } from './reading-hold.mjs';
 import { row, sec, short } from './work-pane-parts.mjs';
 import { showItem } from './work-show-item.mjs';
 
 /**
- * The list the pane draws, and whether an app event changes it.
- * @param {string} convId
+ * The list the pane draws, held still while the person reads (reading-hold.mjs), and whether an app event changes it.
+ * @param {string} convId @param {HTMLElement} pane @param {() => void} repaint
  */
-export function shownList(convId) {
+export function shownList(convId, pane, repaint) {
+  const hold = readingHold(pane, repaint);
+  /** @type {any[]} */
+  let list = [];
   /** @type {Map<string, boolean>} each listed app’s id, and whether it was drawn retired */
   const drawn = new Map();
   return {
+    /** The list to draw: the newest, or the one shown while the person reads. */
     current() {
-      const list = appsAndReviews(client.state.work?.[convId] ?? []);
+      if (!hold.reading()) list = appsAndReviews(client.state.work?.[convId] ?? []);
       drawn.clear();
       for (const p of list) if (p.what === 'app') drawn.set(p.blockId, retiredApp(client.state.apps?.[p.blockId]));
       return list;
@@ -26,6 +31,7 @@ export function shownList(convId) {
     appChanged(app) {
       return drawn.has(app?.id) && drawn.get(app.id) !== retiredApp(app);
     },
+    destroy: hold.destroy,
   };
 }
 
