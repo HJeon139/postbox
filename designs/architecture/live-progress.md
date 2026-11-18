@@ -85,7 +85,7 @@ A commit point comes:
 - early, when the buffer’s text reaches 64 KB;
 - for every running reply at a graceful shutdown, before its turn is stopped (“A restart mid-turn”).
 
-The interval and the ceiling are constants in `shared/limits.mjs` (`LIVE_TEXT.everyMs` and `LIVE_TEXT.most`). A commit point’s `item.text` carries `at`, where its words start in the part, as a text frame does, so the reducer adds only what the item lacks of them (`shared/state.mjs`): a page that had some of the words live, or a reconnect that replays the chunk, shows each word once. An `item.text` without `at`, such as a shell run’s output, appends as ever. The measurement decides their values, within the bound that the commit points of a turn together write less than `main` writes for it.
+The interval and the ceiling are constants in `shared/limits.mjs` (`LIVE_TEXT.everyMs` and `LIVE_TEXT.most`). A commit point’s `item.text` carries `at`, where its words start in the part, as a text frame does, so the reducer adds only what the item lacks of them (`shared/state.mjs`): a page that had some of the words live, or a reconnect that replays the chunk, shows each word once. An `item.text` without `at`, such as a shell run’s output, appends as ever. The log, which is ordered and complete, writes a chunk’s `at` only when the chunk doesn’t start at its item’s end (`server/store-text-at.mjs`), for an emit and a commit alike. The event that `since()` and the streams give keeps it, and a load appends the chunks to the same text. The measurement decides their values, within the bound that the commit points of a turn together write less than `main` writes for it.
 
 **At the end of a turn,** the last commit point, the settling patch, a failed reply’s `held` record (#1451, `server/turn-held.mjs`) and the fold are one `commit`, so a restart sees all of them or none.
 
@@ -114,6 +114,8 @@ This crosses a security boundary ([security-boundaries.md](security-boundaries.m
 | `step` | `item.patch` (`activityStep`) | `threadId`, `itemId`, `rev`, and `step`, an object of the step’s `id`, `label`, `state`, `ms`, `who`, `parent`, `detail`, `kind`, `job`, `input`, `output`, `part`, `at`, `added`, `deleted`, `diff` |
 | `session` | `session.patch` | `sessionId`, `toolCalls`, `toolCount`, `currentStep`, `glimpse`, `subagents`, and the `state`, `ctx` and `updatedAt` of a change stored with them |
 | `snapshot` | the three above | `turnId`, `sessionId`, `threadId`, `itemId`, and the turn’s `text` (its words since the last commit point, with their part’s `itemId` and their `at`), `steps` and `session`, each as its kind’s fields |
+
+**A text frame goes as a list,** `["text", threadId, itemId, at, text]`, its shape’s fields in order, since one goes for each delta. As an object it cost about 12 bytes a delta more than `main`’s numbered `item.text`. `publicLiveFrame` picks it by its shape like any frame and only then encodes it (`wireOf`, `shared/live-kinds.mjs`). The page, the applier and the UAT runner read it back to its object (`liveFrameOf`), and a list of any other kind reads as nothing.
 
 A step or text frame names no `turnId`: the page places it by its item, and the snapshot names the turn. A turn’s words can be in a later part than its first, after a post lands below the reply, so the snapshot’s text names its own part. A step frame sends a step whole the first time after a commit point, then only the fields that changed, with its `id`; a session frame sends only the fields that changed.
 
