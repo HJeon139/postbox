@@ -10,7 +10,7 @@ import { BACKEND_NAMES } from '/shared/agent-facts.mjs';
 import { quotaKeyOf } from '/shared/quota-key.mjs';
 import { fontOf, textWidth } from './canvas-font.mjs';
 import { client, sessionsOf } from './client.mjs';
-import { h } from './dom.mjs';
+import { h, icon } from './dom.mjs';
 import { onChangeWhileAlive, WeakElements } from './held-weakly.mjs';
 import { fitBars, namesAt } from './quota-fit.mjs';
 import { age, resetTime } from './quota-words.mjs';
@@ -89,11 +89,11 @@ function barEl(b, fit, names, /** @type {string} */ name) {
   );
 }
 
-/** Draws the line again, only when what it says changed, under the button that opens its details. @param {HTMLElement} el */
+/** Draws the line again, only when what it says changed, with the button that opens its details at its end. @param {HTMLElement} el */
 function paint(el) {
   const bars = quotasIn(el.dataset.quotaLine ?? '').map((q) => barOf(q, Date.now()));
   const given = bars.map((b) => ({ backend: b.backend, full: b.full, host: b.host, pct: b.shown }));
-  const fit = fitBars(given, room.width, measure);
+  const fit = fitBars(given, room.width - OPEN_W, measure);
   const said = JSON.stringify([bars, fit]);
   if (el.dataset.said === said) return;
   el.dataset.said = said;
@@ -137,8 +137,13 @@ const resized = new ResizeObserver((entries) => {
   }
 });
 
-/** Each line’s button, over the whole line, which opens its details (#1496): kept across paints, so focus stays on it. */
+/**
+ * Each line’s button, which opens its details (#1496): a chevron at the line’s end, so a touch screen shows there’s more,
+ * kept across paints so focus stays on it. A click on a bar opens them too, and leaves its title to the pointer.
+ */
 const opens = new WeakMap();
+/** The width the button takes from the bars: its 16 px and the 4 px left of the gap before it (workbench.css). */
+const OPEN_W = 20;
 
 /**
  * The conversation’s quota line, which paints itself as reports and the room change. A click on it, or Enter, opens
@@ -146,7 +151,13 @@ const opens = new WeakMap();
  */
 export function quotaLine(threadId, openDetails) {
   const el = h('div.quota-line', { role: 'group', 'aria-label': 'Quota by backend', dataset: { quotaLine: threadId } });
-  opens.set(el, h('button.quota-open', { type: 'button', 'aria-label': 'Quota details', title: 'Quota details', onclick: openDetails }));
+  opens.set(
+    el,
+    h('button.quota-open', { type: 'button', 'aria-label': 'Quota details', title: 'Each backend’s quota, in Settings', onclick: openDetails }, icon('right')),
+  );
+  el.addEventListener('click', (e) => {
+    if (/** @type {Element} */ (e.target).closest('.quota-bar')) openDetails();
+  });
   paint(el);
   lines.add(el);
   resized.observe(el);

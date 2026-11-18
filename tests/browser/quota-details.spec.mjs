@@ -1,6 +1,7 @@
 // The quota line’s words fit and its details open (#1496): each bar says its backend, percent and window and no more,
-// so a third of the card holds it whole; the rest, every window’s figure, reset and age, is in Settings › Backends,
-// which a click on the line, or Enter on it, opens. Figures are made up: recorded ones stay scrubbed.
+// so a third of the card holds it whole, and keeps its full words in its title; the rest, every window’s figure, reset
+// and when it was updated, is in Settings › Backends, which a click on a bar, or the chevron at the line’s end, opens,
+// and which stays current while it’s open. Figures are made up: recorded ones stay scrubbed.
 
 import { expect, test } from '@playwright/test';
 import * as arrange from '../arrange.mjs';
@@ -63,9 +64,9 @@ test('#1496 a bar says its backend, percent and window, whole; a screen reader s
   expect(cut, 'no bar’s words run past its part').toEqual([]);
 });
 
-test('#1496 a click on the line opens Settings › Backends, with each window’s figure, reset and age', async ({ page }) => {
+test('#1496 a click on a bar opens Settings › Backends, with each window’s figure, reset and age', async ({ page }) => {
   await room(page);
-  await line(page).click();
+  await bar(page, 'Codex').click();
   const settings = page.getByRole('dialog', { name: 'Settings' });
   await expect(settings.getByRole('tab', { name: 'Backends' })).toHaveAttribute('aria-selected', 'true');
   const claude = settings.getByRole('table', { name: 'Claude Code quota' });
@@ -76,10 +77,60 @@ test('#1496 a click on the line opens Settings › Backends, with each window’
   await expect(settings, 'a backend that reports none says so').toContainText('Kiro CLI reports no quota.');
 });
 
-test('#1496 the line’s details open from the keyboard too', async ({ page }) => {
+test('#1496 the line’s details open from the keyboard too, by a chevron you can see', async ({ page }) => {
   await room(page);
   const open = line(page).getByRole('button', { name: 'Quota details' });
+  await expect(open, 'a cue on a touch screen too, where nothing hovers').toBeVisible();
+  const box = await open.boundingBox();
+  expect(box?.width ?? 0).toBeGreaterThanOrEqual(12);
   await open.focus();
   await page.keyboard.press('Enter');
   await expect(page.getByRole('dialog', { name: 'Settings' }).getByRole('tab', { name: 'Backends' })).toHaveAttribute('aria-selected', 'true');
+});
+
+test('#1496 a bar’s title is still the pointer’s: nothing covers the bars, and the title says the rest', async ({ page }) => {
+  await room(page);
+  const b = await bar(page, 'Codex').boundingBox();
+  const hit = await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.closest('[role="meter"]')?.getAttribute('aria-label') ?? null, {
+    x: (b?.x ?? 0) + (b?.width ?? 0) / 2,
+    y: (b?.y ?? 0) + (b?.height ?? 0) / 2,
+  });
+  expect(hit, 'the bar is what the pointer is on').toBe('Codex quota');
+  await expect(bar(page, 'Codex')).toHaveAttribute('title', /^Codex 7% of 7 d \(GPT-5\) · resets /);
+});
+
+test('#1496 the table says a stale window’s age, a window past its reset, and a host’s quota on its own', async ({ page }) => {
+  await room(page);
+  const host = app.rt.addHost({ name: 'build-box' }).id;
+  app.store.emit('quota', {
+    id: `claude-code@${host}`,
+    backend: 'claude-code',
+    host,
+    status: 'ok',
+    // The first window has no time of its own, so it’s as old as its record; the second is past its reset.
+    windows: [
+      { name: '5 h', used: 0.3, resetsAt },
+      { name: '7 d', used: 0.6, resetsAt: Date.now() - 60_000, seenAt: Date.now() - 3 * HOUR },
+    ],
+    seenAt: Date.now() - 2 * HOUR,
+  });
+  await synced(page, app);
+  await bar(page, 'Codex').click();
+  const there = page.getByRole('dialog', { name: 'Settings' }).getByRole('table', { name: 'Claude Code on build-box quota' });
+  await expect(there.getByRole('row').nth(1)).toContainText(/5 h\s*30%\s*\d+:\d\d [ap]m\s*2 h ago/);
+  await expect(there.getByRole('row').nth(2), 'past its reset: no figure, no reset time').toHaveText(/^7 d\s*Reset\s*3 h ago$/);
+});
+
+test('#1496 the table stays current while it’s open, and focus stays where it was', async ({ page }) => {
+  await room(page);
+  await bar(page, 'Codex').click();
+  const settings = page.getByRole('dialog', { name: 'Settings' });
+  const codex = settings.getByRole('table', { name: 'Codex quota' });
+  await expect(codex).toContainText(/7 d \(GPT-5\)\s*7%/);
+  const tab = settings.getByRole('tab', { name: 'Backends' });
+  await tab.focus();
+  app.store.emit('quota', { ...app.store.state.quota.codex, windows: [{ ...app.store.state.quota.codex.windows[0], used: 0.88 }], seenAt: Date.now() });
+  await synced(page, app);
+  await expect(codex).toContainText(/7 d \(GPT-5\)\s*88%/);
+  await expect(tab).toBeFocused();
 });

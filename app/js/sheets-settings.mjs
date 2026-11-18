@@ -36,7 +36,7 @@ export const appearance = (paint) => {
 };
 
 export const connect = () => [
-  ...quotaDetails(),
+  quotaDetails(),
   h(
     'p',
     'Real agents reach Postbox’s UI tools over MCP. Postbox connects each backend it runs, with a token for each turn, so only an agent turn Postbox started can call them.',
