@@ -2,6 +2,26 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.30.0 (2026-11-18)
+
+### Features
+
+- **work:** list the apps and reviews the agents showed in the pane
+
+### Fixes
+
+- **work:** read only the new ledger entries for Apps and reviews
+- **dialogs:** a project's folder goes under its name at every width
+- **dialogs:** a host name with nothing to break at stays inside Settings › Hosts
+- **dialogs:** Projects and persona hosts read on a phone; rows span the dialog
+- **work:** close a pane that covers the conversation before showing an item
+- **dialogs:** fit the window with long host names; 960 px where there's room
+- **work:** hold Apps and reviews still under the pointer and focus
+- **work:** show Retired on a listed app as soon as it's retired
+- **work:** build the pane's apps and reviews once per ledger change
+- **work:** list an app once when a side thread updated it
+- **dialogs:** every centered dialog opens at the input card's width
+
 ## 4.29.1 (2026-11-18)
 
 ### Fixes
