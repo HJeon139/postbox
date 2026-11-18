@@ -18,6 +18,7 @@ import { carriedList } from '../shared/work.mjs';
 import { httpError } from './helpers.mjs';
 import { toggleReaction } from './reactions.mjs';
 import { newId } from './store.mjs';
+import { itemSettling } from './store-live.mjs';
 
 /** How long a thread counts as open after the page last said so. */
 const VIEWING_MS = 20000;
@@ -136,6 +137,8 @@ export class Threads {
     // Only a patch that sets a status can settle a reply, so only it reads the item first, pending as the next write.
     const settling = Object.hasOwn(patch, 'status') && patch.status !== 'streaming';
     const settles = settling && this.store.pending.item(threadId, id)?.status === 'streaming';
+    // A running turn’s words for it, held in their window, go first, so the settled reply reads whole (server/live-text.mjs).
+    if (settles) itemSettling(this.store, threadId, id);
     this.store.emit('item.patch', { threadId, id, patch });
     if (!settles) return;
     const item = this.store.pending.item(threadId, id);
