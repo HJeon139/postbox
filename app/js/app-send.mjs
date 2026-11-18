@@ -8,36 +8,32 @@ import { api } from './client.mjs';
 import { inOrder } from './send-chain.mjs';
 
 // A click’s activation lasts about 5 s in Chromium, and a send doesn’t use it up: a click handler that awaits each
-// send, or sleeps between them, finds it still active for every one. So one event spends the click, as one link does
-// (#1481): the frame’s next event waits for a new click. The kit names the gesture each send follows (app/kit/kit.js),
-// so a person’s second click within the 5 s is a new gesture and starts its own turn. A send that names none spends
-// the frame’s activation for the whole 5 s.
+// send, or sleeps between them, finds it still active for every one. So one event spends the frame’s activation for
+// those 5 s, as one link does in a pane (app-links.mjs, #1481), and the frame’s later sends in them are notes. Only the
+// browser’s snapshot of the activation is trusted: anything the app puts in its message, it could forge. The cost: a
+// person’s second click in the same app within the 5 s is a note too, not a turn.
 const ACTIVATION_MS = 5000;
-/** @type {WeakMap<HTMLIFrameElement, { gesture: string | null, at: number }>} each app frame’s last turn-starting event */
+/** @type {WeakMap<HTMLIFrameElement, number>} when each app frame’s last turn-starting event spent its activation */
 const spent = new WeakMap();
 
-/** Whether this send is the first of a click: the click is in this app and no event has spent it. */
-function firstOfClick(frame, gesture, now = Date.now()) {
-  const last = spent.get(frame);
-  if (!last || now - last.at >= ACTIVATION_MS) return true;
-  return gesture !== null && last.gesture !== null && gesture !== last.gesture;
-}
+/** Whether this send is the first since the frame’s activation was last spent. */
+const firstOfClick = (frame, now = Date.now()) => now - (spent.get(frame) ?? Number.NEGATIVE_INFINITY) >= ACTIVATION_MS;
 
 /**
  * Sends an app’s event, or its note: one at a time per app (#934), so the server stores them in the order the app sent
  * them. Resolves to the server’s answer: `{ ok, noted: true }` for a note.
  * @param {string} appId @param {HTMLIFrameElement} frame @param {boolean} clicked  whether the person’s click or key
- * press in this app came with it @param {{ action: unknown, values: unknown, gesture?: unknown }} m
+ * press in this app came with it @param {{ action: unknown, values: unknown }} m
  */
 export function sendFromApp(appId, frame, clicked, m) {
-  const gesture = typeof m.gesture === 'string' ? m.gesture.slice(0, 64) : null;
-  if (!clicked || !firstOfClick(frame, gesture)) return noteLater(appId, m);
+  if (!clicked || !firstOfClick(frame)) return noteLater(appId, m);
   const before = spent.get(frame);
-  spent.set(frame, { gesture, at: Date.now() });
+  const at = Date.now();
+  spent.set(frame, at);
   return inOrder(appId, () => api(`/api/apps/${encodeURIComponent(appId)}/event`, { action: m.action, values: m.values })).catch((err) => {
     // A refused event started no turn, so it doesn’t spend the click.
-    if (spent.get(frame)?.gesture === gesture) {
-      if (before) spent.set(frame, before);
+    if (spent.get(frame) === at) {
+      if (before !== undefined) spent.set(frame, before);
       else spent.delete(frame);
     }
     throw err;

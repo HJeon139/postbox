@@ -18,6 +18,8 @@ import { allowPageError, failOnPageErrors, frames, settled, startPostbox, synced
 
 /** The sends a minute that went straight through before #1488, past which the next waited on a card. */
 const OLD_LIMIT = 5;
+/** How long one event spends an app’s activation for (ACTIVATION_MS in app/js/app-send.mjs). */
+const ACTIVATION_MS = 5000;
 
 const SPAM = `<main style="padding:12px"><button id="go" class="btn" type="button" style="display:block;width:100%;height:96px">Send one</button><p id="out">Ready</p></main>
 <script>
@@ -102,6 +104,8 @@ async function conversation(page, name) {
 
 test('#38, #1488 Spam: a note on load; a click, a key press and Tab then Enter each send once; past the old limit, no card', async ({ page }) => {
   const { rt } = app;
+  // One event spends the app’s activation for about 5 s (app/js/app-send.mjs): the page’s clock jumps them between turns.
+  await page.clock.install();
   const { se, show, voices, state } = await conversation(page, 'Spam');
   const id = await show('spam', 'Spam', SPAM);
 
@@ -120,15 +124,16 @@ test('#38, #1488 Spam: a note on load; a click, a key press and Tab then Enter e
   });
 
   await test.step('a key press in the app sends: focus is on its button after the click', async () => {
-    // Once the click’s send has its answer, as a person’s next key press would be: a send while one is on its way is
-    // the same click’s burst, and a note.
+    // Once the click’s 5 s have passed: a send within them is a note (the next test).
     await expect.poll(() => state('spam').c1, { message: 'the click’s send answered' }).toBe('sent');
+    await page.clock.fastForward(ACTIVATION_MS);
     await page.keyboard.press('Enter');
     await expect.poll(() => voices('spam')[1]?.quote, { message: 'the key-press send' }).toBe('Clicked #2');
   });
 
   await test.step('keyboard only: Tab from its full-screen button into the app, then Enter, sends', async () => {
     await expect.poll(() => state('spam').c2, { message: 'the key press’s send answered' }).toBe('sent');
+    await page.clock.fastForward(ACTIVATION_MS);
     await page
       .locator('.appframe', { has: frameOf(page, 'Spam') })
       .getByRole('button', { name: 'Full screen', exact: true })
@@ -142,6 +147,7 @@ test('#38, #1488 Spam: a note on load; a click, a key press and Tab then Enter e
   await test.step(`past the old ${OLD_LIMIT} a minute, each click still goes straight to the agent: no card, nobody needs you`, async () => {
     for (let i = 4; i <= OLD_LIMIT + 1; i++) {
       await expect.poll(() => state('spam')[`c${i - 1}`], { message: `send ${i - 1} answered` }).toBe('sent');
+      await page.clock.fastForward(ACTIVATION_MS);
       await clickApp(page, 'Spam');
       await expect.poll(() => voices('spam').length, { message: `send ${i} went through` }).toBe(i);
       await expect(page.locator('.app-says', { hasText: `Clicked #${i}` })).toBeVisible();

@@ -197,7 +197,7 @@ The global postbox:
 - postbox.query(tool, args), for permitted tools:
   - "assets.search" with { query, k?, mode?: "both" | "lexical" | "semantic", assets?: [ids or names] } returns passages [{ id, asset, name, version, where, text, lexical: { score, terms } | null, semantic: number | null }]
   - "assets.list" returns the text assets [{ id, name, version, size, type, passages }]
-- postbox.send(action, values, summary): a click or key press in it starts one turn with its first send: put the click’s data there. Other sends, and all in Safari and Firefox, are notes for read_app. summary: the app’s words. An event holds up to ${n('eventBytes')} of JSON: send ids.
+- postbox.send(action, values, summary): a click or key press in it starts one turn with its first send, one per 5 s: put its data there. Other sends, and all in Safari and Firefox, are notes for read_app. summary: the app’s words. An event holds ≤ ${n('eventBytes')} of JSON: send ids.
 - postbox.saveState(obj) and postbox.restoreState() keep state over reloads and versions
 - postbox.publish(data) shares the app’s data with you, no turn; read_app reads it
 - postbox.load("d3" | "katex" | "mermaid") loads a bundled library

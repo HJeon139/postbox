@@ -134,14 +134,47 @@ document.getElementById('go').addEventListener('click', async () => {
 });
 </script>`;
 
-test('#1488 a click that awaits its first send before the next is one turn, and a second click starts a turn of its own', async ({ page }) => {
+test('#1488 a click that awaits its first send is one turn; a second click within 5 s is a note, and one after them a turn', async ({ page }) => {
+  // One event spends the app’s activation for about 5 s (app/js/app-send.mjs): the page’s clock jumps them.
+  await page.clock.install();
   const { voices, notes, state } = await showApp(page, 'Awaited', AWAITED);
   await clickApp(page, 'Awaited');
   await expect.poll(() => state().c1, { message: 'the first click’s answers' }).toEqual(['sent', 'noted']);
   expect(voices()).toHaveLength(1);
   expect(notes().map((n) => [n.values.c, n.values.i])).toEqual([[1, 2]]);
-  // Within the first click’s 5 s of activation: a new click is a new gesture.
   await clickApp(page, 'Awaited');
-  await expect.poll(() => state().c2, { message: 'the second click’s answers' }).toEqual(['sent', 'noted']);
-  expect(voices(), 'one turn a click').toHaveLength(2);
+  await expect.poll(() => state().c2, { message: 'the second click’s answers, within the first’s 5 s' }).toEqual(['noted', 'noted']);
+  expect(voices(), 'still one turn').toHaveLength(1);
+  await page.clock.fastForward(5000);
+  await clickApp(page, 'Awaited');
+  await expect.poll(() => state().c3, { message: 'the third click’s answers, after the 5 s' }).toEqual(['sent', 'noted']);
+  expect(voices(), 'a turn of its own').toHaveLength(2);
+});
+
+// One click, then twelve events posted by the app’s own code, bypassing the kit, each with a tag of its own: only the
+// browser’s snapshot of the click counts, so they’re one turn (#1491’s review: forged tags gave 12).
+const FORGED = `<main style="padding:12px"><button id="go" class="btn" type="button" style="display:block;width:100%;height:120px">Go</button></main>
+<script>
+const init = JSON.parse(document.querySelector('script[data-init]').dataset.init);
+let k = 0;
+const waits = new Map();
+addEventListener('message', (e) => { const m = e.data; if (m?.__pb === 1 && m.type === 'reply' && waits.has(m.id)) { waits.get(m.id)(m); waits.delete(m.id); } });
+const raw = (i) => new Promise((r) => {
+  const id = 'forged-' + (++k);
+  waits.set(id, r);
+  parent.postMessage({ __pb: 1, appId: init.appId, version: init.version, type: 'event', id, action: 'step', values: { i }, gesture: 'fake:' + i }, { targetOrigin: '*', includeUserActivation: true });
+});
+document.getElementById('go').addEventListener('click', async () => {
+  const out = [];
+  for (let i = 0; i < 12; i++) { const m = await raw(i); out.push(m.error ? 'err' : m.result?.noted ? 'noted' : 'sent'); }
+  postbox.saveState({ out });
+});
+</script>`;
+
+test('#1488 one click, then events the app posts itself with forged tags, is one turn', async ({ page }) => {
+  const { voices, state } = await showApp(page, 'Forged', FORGED);
+  await clickApp(page, 'Forged');
+  await expect.poll(() => state().out, { message: 'the app recorded every answer' }).toHaveLength(12);
+  expect(state().out).toEqual(['sent', ...Array(11).fill('noted')]);
+  expect(voices(), 'one click, one turn').toHaveLength(1);
 });

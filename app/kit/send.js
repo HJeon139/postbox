@@ -2,11 +2,12 @@
 //   postbox.send(action, values, summary)  sends one event to the agent. Postbox writes the line in your voice from
 //                                 what was sent; summary shows beside it as the app’s own words (#51). The
 //                                 person’s click or key press in the app starts one turn with its first send,
-//                                 so put a click’s data in that one. Any other send (on load, on a timer, a
-//                                 click’s later sends, and every send in Safari and Firefox, which can’t tell
-//                                 Postbox of a click) resolves { ok, noted: true }: a note the agent reads
-//                                 with read_app, no turn. An app’s notes go at most one per 400 ms, the latest,
-//                                 and each holds up to 16 KB of JSON (#1488). Values larger
+//                                 so put a click’s data in that one: one turn per click per about 5 s. Any
+//                                 other send (on load, on a timer, a click’s later sends, a second click within
+//                                 those 5 s, and every send in Safari and Firefox, which can’t tell Postbox of
+//                                 a click) resolves { ok, noted: true }: a note the agent reads with read_app.
+//                                 An app’s notes go at most one per 400 ms, the latest, and each holds up to
+//                                 16 KB of JSON (#1488). Values larger
 //                                 than one event carries (eventBytes in shared/limits.mjs, which the server
 //                                 passes in data-init) reject here, with the limit named, and nothing is sent
 // Its own script beside the kit, which is at its length limit, as app/kit/publish.js is; it answers on the kit’s reply
@@ -23,19 +24,6 @@
     if (m.error) p.reject(new Error(m.error));
     else p.resolve(m.result);
   });
-  // Each trusted click or key press in this frame is a new gesture (#1488): the page starts one turn per gesture, and
-  // makes that gesture’s later sends notes. The frame’s activation lasts about 5 s and nothing here uses it up, so the
-  // activation alone can’t tell a second click from the first one’s later sends. The id is new each time the kit
-  // loads, so a reloaded frame’s gestures never match the last load’s.
-  const gesture = { id: Math.random().toString(36).slice(2), n: 0 };
-  for (const type of ['pointerdown', 'keydown'])
-    addEventListener(
-      type,
-      (e) => {
-        if (e.isTrusted) gesture.n++;
-      },
-      true,
-    );
   // includeUserActivation: the browser attaches this frame’s own click or key press state to the message, which
   // is how Postbox knows a send came from the person using the app (the app can’t set it itself).
   const call = (payload) =>
@@ -67,6 +55,6 @@
         ),
       );
     }
-    return call({ action, values: v, gesture: `${gesture.id}:${gesture.n}` });
+    return call({ action, values: v });
   };
 })();
