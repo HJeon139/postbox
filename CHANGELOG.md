@@ -2,6 +2,16 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.34.0 (2026-11-18)
+
+### Features
+
+- **ledger:** write a stopped turn's ledger end before the store closes
+
+### Fixes
+
+- **ledger:** a closed ledger keeps nothing, and a throw at close is logged
+
 ## 4.33.2 (2026-11-18)
 
 ### Fixes
