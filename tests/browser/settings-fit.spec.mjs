@@ -14,6 +14,8 @@ const HOSTS = [
 ];
 // One segment with no hyphen or space to break at, as a generated folder name can be.
 const FOLDER = '/Users/someone/Documents/research/FieldNotesArchive2026InterviewsWithTheLibrariansOfTheNorthWing/transcripts';
+/** 70 characters with no dot, hyphen or space to break at. */
+const UNBROKEN = 'labworkstation' + 'x'.repeat(42) + 'gpuclusternode';
 test.beforeAll(async () => {
   app = await startPostbox('settings-fit');
   // A Claude Code to run on the hosts, so the persona editor can ask for its models.
@@ -27,6 +29,8 @@ test.beforeAll(async () => {
   arrange.persona(app.rt, 'librarian');
   // A project whose folder is long, shown only: nothing runs in it.
   app.store.emit('project', { id: 'pr_fit', name: 'Field notes', folder: FOLDER });
+  // A host whose name has nothing to break at: no dot, hyphen or space.
+  app.rt.addHost({ name: UNBROKEN });
 });
 test.afterAll(async () => {
   await app?.stop();
@@ -152,4 +156,26 @@ for (const width of [320, 375])
     await expect(name).toHaveText('gpu-build-a100-03.lab.example.net');
     // One box: the name moved to its own line whole, rather than breaking at a hyphen.
     await expect.poll(() => name.evaluate((el) => el.getClientRects().length), { message: 'the host’s name in one box' }).toBe(1);
+  });
+
+for (const width of [320, 375, 540])
+  test(`#1497 at ${width} px Settings › Hosts cuts off no host’s name, even one with nothing to break at`, async ({ page }) => {
+    const dialog = await settings(page, width, 'Hosts');
+    await expect(dialog.getByText(UNBROKEN).first()).toBeVisible();
+    const at = await placed(page);
+    expect.soft(at.right, 'its right edge in the window').toBeLessThanOrEqual(at.width + 0.5);
+    expect.soft(at.sideways, 'the page doesn’t scroll sideways').toBe(false);
+    // Every element whose own text runs past its box, or past the panel.
+    const cut = await dialog.locator('[role="tabpanel"]').evaluate((panel) => {
+      const edge = panel.getBoundingClientRect().right;
+      return [...panel.querySelectorAll('*')]
+        .filter((el) => [...el.childNodes].some((n) => n.nodeType === Node.TEXT_NODE && n.textContent?.trim()))
+        .filter((el) => {
+          const style = getComputedStyle(el);
+          const clips = style.textOverflow === 'ellipsis' || style.overflow === 'hidden';
+          return el.scrollWidth > el.clientWidth + 1 || el.getBoundingClientRect().right > edge + 0.5 || (clips && el.scrollWidth > el.clientWidth);
+        })
+        .map((el) => `${el.tagName.toLowerCase()}.${[...el.classList].join('.')}: ${el.textContent?.slice(0, 40)}`);
+    });
+    expect.soft(cut, 'no text cut off or past the panel').toEqual([]);
   });
