@@ -97,3 +97,28 @@ test('#934 a send that never gets an answer doesn’t hold back the ones after i
   await expect.poll(steps, { message: `the ${N - 1} sends after the stuck one stored`, timeout: 20_000 }).toHaveLength(N - 1);
   expect(steps()).toEqual(Array.from({ length: N - 1 }, (_, i) => i + 2));
 });
+
+// One click whose handler awaits each send before the next: the second arrives just after the first’s answer.
+const AWAITED = `<main style="padding:12px"><button id="go" class="btn" type="button" style="display:block;width:100%;height:120px">Send two</button></main>
+<script>
+document.getElementById('go').addEventListener('click', async () => {
+  const first = await postbox.send('step', { i: 1 }, 'Step 1');
+  const second = await postbox.send('step', { i: 2 }, 'Step 2');
+  postbox.saveState({ first: first.noted ? 'noted' : 'sent', second: second.noted ? 'noted' : 'sent' });
+});
+</script>`;
+
+test('#1488 a click that awaits its first send before the next is still one turn: the second, right after the answer, is a note', async ({ page }) => {
+  const { rt, store } = app;
+  const t = rt.createThread({ projectId: Object.values(rt.store.state.projects)[0].id, title: 'Awaited', personaIds: [arrange.persona(rt, 'librarian').id] });
+  const se = arrange.agentIn(rt, t.id);
+  await page.goto(`${app.origin}/#/t/${t.id}`);
+  await synced(page, app);
+  const id = `awaited-${t.id}`;
+  rt.toolsFor(se.id).show_app({ id, title: 'Awaited', code: AWAITED, permissions: [] });
+  await expect(frameOf(page, 'Awaited'), 'the app to load').toHaveAttribute('data-sized', '1');
+  await clickApp(page, 'Awaited');
+  await expect.poll(() => rt.store.state.apps[id]?.state, { message: 'the app recorded both answers' }).toEqual({ first: 'sent', second: 'noted' });
+  expect(store.items(t.id).filter((x) => x.kind === 'voice' && x.appId === id)).toHaveLength(1);
+  expect(rt.store.state.appNotes[id]?.notes.map((n) => n.values.i)).toEqual([2]);
+});
