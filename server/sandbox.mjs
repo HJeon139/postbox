@@ -1,6 +1,6 @@
 // Sandbox pages for agent-written apps and Mermaid diagrams.
 //
-// Each page is served with the policy `sandbox allow-scripts` (no allow-same-origin), so it runs in an
+// Each page is served with the policy `sandbox allow-scripts allow-forms` (no allow-same-origin), so it runs in an
 // opaque origin: it can’t read Postbox’s storage, cookies or DOM. Its content-security policy allows
 // inline script and style (the agent’s code), the kit and vendored libraries from /kit/, images from
 // /media/ or data: URLs, and nothing else — no fetch, no websockets, no forms, no nested frames.
@@ -30,7 +30,9 @@ const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&
  */
 export function csp(origin, ancestor) {
   return [
-    'sandbox allow-scripts',
+    // allow-forms only lets a form’s submit event fire, for the app’s script to handle; form-action 'none' below still
+    // stops the submission going anywhere (#1476).
+    'sandbox allow-scripts allow-forms',
     "default-src 'none'",
     // Everything the page runs is inline: the agent’s code, the kit, and libraries sent over the bridge.
     "script-src 'unsafe-inline'",

@@ -12,6 +12,7 @@
 // it named, on that host, with no lines, no diff and no Restore, under one line per host that says so.
 
 import { fileEffort, fileState, flagged, formatBytes, formatCost, formatTokens, signed, summarize, turnLine } from '/shared/work.mjs';
+import { fileGroups } from '/shared/work-groups.mjs';
 import { api, client } from './client.mjs';
 import { fill, h, icon, plural, timeOf } from './dom.mjs';
 import { heldFrame } from './held-frame.mjs';
@@ -22,6 +23,7 @@ import { diffView } from './work-diff.mjs';
 import { watchGit } from './work-git.mjs';
 import { editItem, editRow, editRows, hostNotes } from './work-hosts.mjs';
 import { external, row, sec, short, spend } from './work-pane-parts.mjs';
+import { chatList, relevantSection, shownIds } from './work-relevant.mjs';
 import { dur, effortSection, externalSection, publishSection, readsSection, section, signedEl, vcsSection, who, workLink } from './work-sections.mjs';
 import { paneViewer } from './work-viewer.mjs';
 import { windows } from './work-window.mjs';
@@ -427,9 +429,11 @@ const TURNS = 8;
 const failedCommand = (c) => c.state === 'failed' || c.state === 'denied';
 
 /**
- * Work in the conversation’s right pane, its compact form: what needs review, files by where they stand, commands
- * and how many failed, what was published outside Postbox, spend, and each turn’s line, newest first. Each list is
- * short, and each item opens in the full form. Nothing here moves or pulses: it’s a record, read when you look.
+ * Work in the conversation’s right pane, its compact form, in the order people open it for (#1446): what the chat is
+ * about now (In this chat), files by where they stand with what needs review first, the room’s assets, then under
+ * More the commands (in view while one in the latest turn failed), what was published outside Postbox, spend, and
+ * each turn’s line, newest first. Each list is short; a file or an asset opens in the pane’s viewer, and anything
+ * else in the full form. Nothing here moves or pulses: it’s a record, read when you look.
  * Full screen (pane.mjs), the body holds the full form instead (setFull): #138’s view, as it was.
  * @param {string} threadId  the conversation
  */
@@ -454,6 +458,8 @@ export function mountWorkPane(threadId) {
   let target = null; // the turn the pane was last opened at, from its line in the transcript
   let allTurns = false;
   let allAssets = false;
+  let allNow = false;
+  let moreOpen = false;
   const openTurns = new Set();
   /** @type {any} */
   let git = null;
@@ -474,6 +480,7 @@ export function mountWorkPane(threadId) {
       `${prefix}-${to.at}`,
       () => (to.turn ? go(to) : openWork(threadId, { at: to.at })),
       h('span.mono.wc-name', f.rel.replace(/^.*\//, ''), f.rel.includes('/') ? h('span.dim', ` ${f.rel.replace(/\/[^/]*$/, '')}`) : null),
+      flagged(f, git) ? h('span.work-tag.warn', icon('warn', 'i-sm'), 'Review') : null,
       f.binary ? h('span.small.dim', 'binary') : signedEl(f.added, f.deleted),
     );
   const commandRow = (c, to, prefix) =>
@@ -489,24 +496,13 @@ export function mountWorkPane(threadId) {
       ),
     );
 
-  function review(s) {
-    const list = s.files.filter((f) => flagged(f, git));
-    if (!list.length) return null;
-    return sec(
-      'wc-review',
-      [icon('warn', 'i-sm'), 'To review'],
-      String(list.length),
-      h('p.small.dim', 'Changed outside the project, or a file git can’t give back. Postbox kept a copy from before.'),
-      short(
-        list,
-        (f) => fileRow(f, { at: f.id }, 'wc-review'),
-        () => go({ at: 'work-files' }),
-      ),
+  /** @param {any} s @param {Set<string>} skip  the files In this chat shows, not listed again */
+  function files(s, skip) {
+    const groups = fileGroups(
+      s.files,
+      (f) => fileState(f, git),
+      (f) => flagged(f, git),
     );
-  }
-
-  function files(s) {
-    const states = ['uncommitted', 'committed', 'pushed', 'outside'].filter((st) => s.byState[st].files);
     const back = s.byState.unchanged.files;
     const edits = editRows(s.edits);
     return sec(
@@ -514,27 +510,37 @@ export function mountWorkPane(threadId) {
       'Files',
       s.total.files + edits.length ? String(s.total.files + edits.length) : '',
       hostNotes(s.turns),
+      // What To review said, once: a flagged file carries its tag and goes to the top of Files (#1446).
+      s.flagged
+        ? h(
+            'p.small.wc-flag',
+            icon('warn', 'i-sm'),
+            `${plural(s.flagged, 'file')} to review: changed outside the project, or git can’t give them back. Postbox kept a copy from before.`,
+          )
+        : null,
       // The total, when there’s more than one state to add up.
-      states.length > 1 || (back && s.total.files)
+      groups.length > 1 || (back && s.total.files)
         ? h('p.small', plural(s.total.files, 'file'), ' ', signedEl(s.total.added, s.total.deleted), back ? h('span.dim', ` · ${back} put back`) : null)
         : null,
-      states.length
-        ? states.map((st) =>
-            h(
+      groups.length
+        ? groups.map(({ state: st, files: list }) => {
+            const rest = list.filter((f) => !skip.has(f.id));
+            return h(
               'div.wc-group',
               h(
                 'p.wc-state',
                 h('span.status-tag', { class: `ws-${st}` }, STATE_WORDS[st]),
                 h('span.small', plural(s.byState[st].files, 'file')),
                 signedEl(s.byState[st].added, s.byState[st].deleted),
+                rest.length < list.length ? h('span.small.dim', `· ${list.length - rest.length} in In this chat`) : null,
               ),
               short(
-                s.files.filter((f) => fileState(f, git) === st).sort((a, b) => (b.lastAt ?? 0) - (a.lastAt ?? 0)),
+                rest,
                 (f) => fileRow(f, { at: f.id }, 'wc-file'),
                 () => go({ at: 'work-files' }),
               ),
-            ),
-          )
+            );
+          })
         : edits.length
           ? null
           : h('p.empty-note', back ? 'Every changed file was put back.' : 'No files changed yet.'),
@@ -658,6 +664,36 @@ export function mountWorkPane(threadId) {
     );
   }
 
+  /**
+   * More, closed until you open it (#1446): what rarely brings the person to the pane, built only while open.
+   * @param {[string, any][]} parts  each section’s name and the section, or null
+   */
+  function more(parts) {
+    const shown = parts.filter(([, x]) => x);
+    if (!shown.length) return null;
+    const built = moreOpen;
+    const d = h(
+      'details.wc-more-sec',
+      {
+        id: 'wc-more',
+        open: built,
+        ontoggle: () => {
+          if (d.open === built) return;
+          moreOpen = d.open;
+          paint();
+        },
+      },
+      h('summary', { id: 'wc-more-s' }, icon('right', 'i-sm'), h('b', 'More'), h('span.small.dim', shown.map(([name]) => name).join(', '))),
+      built
+        ? h(
+            'div.wc-more-body',
+            shown.map(([, x]) => x),
+          )
+        : null,
+    );
+    return d;
+  }
+
   const paint = () =>
     keepFocus(body, () => {
       if (full || viewer.open) return;
@@ -667,7 +703,10 @@ export function mountWorkPane(threadId) {
         allAssets = true;
         paint();
       };
-      const assets = assetsSection(threadId, { all: allAssets, showAll });
+      // In this chat first, and what it shows isn’t listed again below (#1446).
+      const now = chat.current();
+      const skip = shownIds(now, allNow);
+      const assets = assetsSection(threadId, { all: allAssets, showAll, skip });
       const lines = s.turns
         .map((t) => ({ t, line: turnLine(entries, t.id) }))
         .filter((x) => x.line)
@@ -677,13 +716,36 @@ export function mountWorkPane(threadId) {
           body,
           h('p.empty-note', 'Nothing yet. When an agent edits a file, runs a command or publishes something, it shows here, with what it took.'),
         );
-      fill(body, review(s), files(s), assets, commands(s), external(s, go), spend(s, go), turns(entries, lines));
+      const showNow = () => {
+        allNow = true;
+        paint();
+      };
+      // Commands stay in view while one in the latest turn failed: that’s what needs a look.
+      const latest = s.turns.at(-1)?.id;
+      const failedNow = s.commands.some((c) => c.turnId === latest && failedCommand(c));
+      fill(
+        body,
+        relevantSection(threadId, now, { all: allNow, showAll: showNow }),
+        assets,
+        files(s, skip),
+        failedNow ? commands(s) : null,
+        more([
+          ['Commands', failedNow ? null : commands(s)],
+          ['Outside Postbox', external(s, go)],
+          ['Spend', spend(s, go)],
+          ['Turns', turns(entries, lines)],
+        ]),
+      );
     });
 
   // As in mountWork, what the server sends waits while a press is down (#1010).
   const live = heldFrame(body, paint);
+  const chat = chatList(threadId, el, () => live.soon());
   const off = client.on((ch) => {
-    if (ch.type === 'load' || ch.type.startsWith('asset') || ((ch.type === 'work.add' || ch.type === 'work.patch') && ch.data.convId === threadId)) live.soon();
+    const work = (ch.type === 'work.add' || ch.type === 'work.patch') && ch.data.convId === threadId;
+    // A message added or finished: In this chat reads the latest ones.
+    const said = (ch.type === 'item.add' || ch.type === 'item.patch') && ch.data.threadId === threadId && chat.said();
+    if (ch.type === 'load' || ch.type.startsWith('asset') || work || said) live.soon();
   });
   // An asset or file the address names, in place of the lists (#1446).
   const viewer = paneViewer(threadId, el, body, () => paint());
@@ -694,6 +756,7 @@ export function mountWorkPane(threadId) {
     showTurn(turnId, { focus = false } = {}) {
       target = turnId;
       openTurns.add(turnId);
+      moreOpen = true;
       paint();
       const d = body.querySelector(`#wturn-${CSS.escape(turnId)}`);
       if (!d) return;
@@ -729,6 +792,7 @@ export function mountWorkPane(threadId) {
       gitNow.stop();
       full?.view.destroy();
       viewer.destroy();
+      chat.destroy();
       live.cancel();
     },
   };

@@ -14,11 +14,13 @@ export const nameFirst = (name) =>
 
 /**
  * The Assets section, or null when the room has none.
- * @param {string} convId @param {{ all: boolean, showAll: () => void }} opts  all: every asset, not the first few
+ * @param {string} convId @param {{ all: boolean, showAll: () => void, skip?: Set<string> }} opts  all: every asset, not
+ *   the first few; skip: those In this chat shows, not listed again
  */
-export function assetsSection(convId, { all, showAll }) {
-  const list = roomAssets(client.state, convId);
-  if (!list.length) return null;
+export function assetsSection(convId, { all, showAll, skip = new Set() }) {
+  const every = roomAssets(client.state, convId);
+  if (!every.length) return null;
+  const list = every.filter((a) => !skip.has(a.id));
   const make = (/** @type {any} */ a) => {
     const v = a.versions[a.head - 1];
     return row(`wc-asset-${a.id}`, () => openWork(convId, { at: a.id }), nameFirst(a.name), h('span.small.dim', `v${v.v} · ${v.author}`));
@@ -26,8 +28,12 @@ export function assetsSection(convId, { all, showAll }) {
   return sec(
     'wc-assets',
     'Assets',
-    String(list.length),
-    h('p.small.dim', 'What the agents published to this conversation. Every agent here can read them.'),
+    String(every.length),
+    h(
+      'p.small.dim',
+      'What the agents published to this conversation. Every agent here can read them.',
+      list.length < every.length ? ` ${every.length - list.length} in In this chat.` : null,
+    ),
     all ? h('ul.wc-list', list.map(make)) : short(list, make, showAll),
   );
 }
