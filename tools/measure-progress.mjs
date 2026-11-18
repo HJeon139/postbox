@@ -18,7 +18,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { compare, mainFirst, sameShape, UNGATED_TIMES, worseTwice } from './measure-progress/compare.mjs';
+import { compare, MISMATCH, mainFirst, sameShape, UNGATED_TIMES, worseTwice } from './measure-progress/compare.mjs';
 
 const OWN = new URL('./measure-progress/run.mjs', import.meta.url).pathname;
 const { removeRestart } = await import('./measure-progress/restart.mjs');
@@ -123,9 +123,23 @@ function pairs(theirs, section) {
     if (mainFirst(i)) main.push(once(theirs, section));
     branch.push(once(OWN, section));
     if (!mainFirst(i)) main.push(once(theirs, section));
-    if (i === 0) sameShape(main, branch); // a mismatch stops here, not after every pair
+    if (i === 0) refused(() => sameShape(main, branch)); // a mismatch stops here, not after every pair
   }
-  return compare(main, branch, { times: !UNGATED_TIMES.has(section) });
+  return refused(() => compare(main, branch, { times: !UNGATED_TIMES.has(section) }));
+}
+
+/**
+ * What `fn` gives, or, when the two sides’ rows don’t match, its refusal printed and an exit of 1: the person reads why
+ * and what to do, not a stack. @template T @param {() => T} fn @returns {T}
+ */
+function refused(fn) {
+  try {
+    return fn();
+  } catch (e) {
+    if (/** @type {any} */ (e)?.code !== MISMATCH) throw e;
+    console.error(/** @type {Error} */ (e).message);
+    process.exit(1);
+  }
 }
 
 /** Prints a round’s numbers against main’s. @param {string} title @param {ReturnType<typeof compare>} round */

@@ -135,8 +135,8 @@ export async function restartLoad(dir, agents, mode) {
   await store.close();
   const row = `restart after ${agents} agents, ${mode}`;
   // A crash past one snapshot interval is judged at its points (tools/measure-progress/crash-points.mjs): the mean and
-  // the worst load, and the mean and the most replayed. Each side places its points by its own log’s length, so a
-  // point of one isn’t the same moment as the same point of the other: only what the points add up to compares.
+  // the worst load, and the mean and the most replayed. The points sit at fixed phases of the interval on both sides,
+  // so their sums compare whatever the two logs’ lengths.
   if (points.length > 1) {
     const mean = (/** @type {number[]} */ xs) => xs.reduce((a, x) => a + x, 0) / xs.length;
     return [

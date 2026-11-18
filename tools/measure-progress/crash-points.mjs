@@ -2,9 +2,9 @@
 // crashed once, at whatever point the build reached, so where the last snapshot fell before it decided the load by
 // luck: on #1502, main’s snapshot fell right at that point and the branch’s 4,998 events before it, and the median
 // load came out x1.50 though the log was the same size (#1512). Here the crash’s whole log is replayed through the
-// branch’s own store, which snapshots by its own rule, and the folder is kept at POINTS points evenly spaced across one
-// interval of INTERVAL_EVENTS events, ending at the crash itself. Each point’s load is timed, and the row judges their
-// mean and their worst.
+// branch’s own store, which snapshots by its own rule, and the folder is kept at POINTS points at fixed phases of the
+// interval of INTERVAL_EVENTS events, each the last point at its phase up to the crash, so they replay the same whatever
+// the log’s length. Each point’s load is timed, and the row judges their mean and their worst.
 
 import { copyFileSync, mkdirSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';

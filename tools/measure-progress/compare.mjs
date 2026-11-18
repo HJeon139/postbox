@@ -80,7 +80,10 @@ const keysOf = (row) =>
 
 /** What to do when the two sides’ rows don’t match. */
 const SAME_TOOL =
-  'Measure both sides with the same tool: merge main into this branch, or compare against a checkout of main that has this branch’s tools/measure-progress.';
+  'Measure both sides with the same tools/measure-progress. If this branch’s is newer, compare against a checkout of main with this branch’s tool in it; if main’s is newer, merge main into this branch.';
+
+/** The code a refusal carries, which the tool prints and exits 1 on (tools/measure-progress.mjs). */
+export const MISMATCH = 'EMEASURE_MISMATCH';
 
 /**
  * Refuses runs whose rows or numbers don’t match, rather than judging what they share and skipping the rest: a row or a
@@ -96,13 +99,16 @@ export function sameShape(main, branch) {
     ['this branch', branch],
   ]))
     for (const rows of runs) {
-      if (names(rows) !== names(want)) throw new Error(`The rows don’t match: main has ${names(want)}, and ${side} has ${names(rows)}. ${SAME_TOOL}`);
+      if (names(rows) !== names(want))
+        throw Object.assign(new Error(`The rows don’t match: main has ${names(want)}, and ${side} has ${names(rows)}. ${SAME_TOOL}`), { code: MISMATCH });
       for (const [i, r] of rows.entries()) {
         const a = keysOf(want[i]);
         const b = keysOf(r);
         if (a.join() === b.join()) continue;
         const lacks = (/** @type {string[]} */ x, /** @type {string[]} */ y) => x.filter((k) => !y.includes(k)).join(', ') || 'none';
-        throw new Error(`The numbers of “${r.row}” don’t match: main lacks ${lacks(b, a)}, and ${side} lacks ${lacks(a, b)}. ${SAME_TOOL}`);
+        throw Object.assign(new Error(`The numbers of “${r.row}” don’t match: main lacks ${lacks(b, a)}, and ${side} lacks ${lacks(a, b)}. ${SAME_TOOL}`), {
+          code: MISMATCH,
+        });
       }
     }
 }
