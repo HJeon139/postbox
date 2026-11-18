@@ -1,6 +1,7 @@
 // Keeps what has focus clear of the conversation’s composer (#232, WCAG 2.4.11 Focus Not Obscured). The composer
 // sticks to the bottom of the window, over the end of the conversation, and the browser scrolls a control you Tab to
-// only as far as the window’s edge: under the composer. scroll-padding-bottom would do the same, but it kept the view
+// only as far as the window’s edge: under the composer. The thread panel’s composer sticks to the bottom of the panel’s
+// scroll box the same way (#1500), so a control there is kept clear of it, scrolling the panel. scroll-padding-bottom would do the same, but it kept the view
 // from staying at the end when the thread panel opened or an app grew (#88), so this scrolls only when the composer
 // covers what has focus, and only down, toward the end the view sticks to.
 
@@ -10,11 +11,22 @@ const AIR = 8;
 /** The bottom of what sticks to the top of the window: the top bar, and below 768 px the strip of rings. */
 const topEdge = () => Math.max(0, ...['header.topbar', '.ringstrip'].map((s) => document.querySelector(s)?.getBoundingClientRect().bottom ?? 0));
 
-/** Scrolls the page so the composer, and the Jump to latest pill above it, don’t cover el, which has focus. */
-function keepClear(el) {
+/**
+ * The composer that can cover el, what scrolls under it, and the top of what’s in view there: the thread panel’s, in its
+ * scroll box, or the conversation’s, in the window. @param {Element} el
+ */
+function coverOf(el) {
+  const panel = el.closest('.sidepanel .sp-body');
+  if (panel) return { composer: panel.querySelector(':scope > .sp-foot > .composer'), scope: panel, top: panel.getBoundingClientRect().top, scroller: panel };
   const composer = document.getElementById('composer-input')?.closest('.composer');
+  return { composer, scope: composer?.parentElement, top: topEdge(), scroller: window };
+}
+
+/** Scrolls the page, or the panel, so its composer, and the Jump to latest pill above it, don’t cover el, which has focus. */
+function keepClear(el) {
+  const { composer, scope, top, scroller } = coverOf(el);
   // Only what scrolls under it, by keyboard: a click on a message focuses it too, and mustn’t move it.
-  if (!composer?.parentElement?.contains(el) || composer.contains(el) || document.activeElement !== el || !el.matches(':focus-visible')) return;
+  if (!composer || !scope?.contains(el) || composer.contains(el) || document.activeElement !== el || !el.matches(':focus-visible')) return;
   const r = el.getBoundingClientRect();
   // Where the higher of the two that are beside it starts: the composer’s column, which is all of it that’s drawn (#1463).
   const beside = [composer.querySelector('.col'), composer.querySelector('.jump')]
@@ -27,8 +39,8 @@ function keepClear(el) {
   const c = /** @type {Element} */ (composer.querySelector('.composer-box')).getBoundingClientRect();
   if (!composer.contains(document.elementFromPoint((c.left + c.right) / 2, (c.top + c.bottom) / 2))) return;
   // As far as its end needs, but never past its start: a tall message keeps its top in view.
-  const by = Math.min(r.bottom + AIR - cover, r.top - topEdge() - AIR);
-  if (by > 0) window.scrollBy(0, by);
+  const by = Math.min(r.bottom + AIR - cover, r.top - top - AIR);
+  if (by > 0) scroller.scrollBy(0, by);
 }
 
 // After the frame the browser scrolls the newly focused element into view in.
