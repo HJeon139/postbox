@@ -14,6 +14,7 @@ import { fileURLToPath } from 'node:url';
 import { AdapterRegistry } from './adapters/adapter.mjs';
 import { MockAdapter } from './adapters/mock.mjs';
 import { openLink } from './app-links.mjs';
+import { publishApp } from './app-publish.mjs';
 import { PROBES, registerBackends } from './backends.mjs';
 import { buildInfo } from './build-info.mjs';
 import { dismissFailed } from './card-needs.mjs';
@@ -381,12 +382,13 @@ export async function start({
     if (path === '/api/files' && req.method === 'POST') return send(res, 201, await upload(req));
     const stored = await storedFileRoute(store, blobs, path, req.method);
     if (stored) return raw(res, 200, stored.bytes, stored.headers);
-    if ((m = path.match(/^\/api\/apps\/([^/]+)\/(check|event|state|query|open)$/)) && req.method === 'POST') {
+    if ((m = path.match(/^\/api\/apps\/([^/]+)\/(check|event|state|query|open|publish)$/)) && req.method === 'POST') {
       const id = decodePath(m[1]);
       if (m[2] === 'open') {
         hereAlone(req, 'Links from apps open');
         return send(res, 200, await openLink(rt, id, body.url, { run: openUrl }));
       }
+      if (m[2] === 'publish') return send(res, 200, publishApp(rt, id, body.data));
       if (m[2] === 'check') return send(res, 200, rt.appCheck(id, body));
       if (m[2] === 'event') {
         // Rate-limited in the runtime, so a script calling this directly is held to the same limit (#38).

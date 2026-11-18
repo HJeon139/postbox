@@ -6,6 +6,7 @@ import { afterAppChecks, appChecksRunning, installAppChecks, recordAppCheck } fr
 import { crashCard, errorStrip } from './app-crash.mjs';
 import { openAppLink } from './app-links.mjs';
 import { live, nearBodies, relookSoon, setAppFrameTest } from './app-pointer.mjs';
+import { publishLater } from './app-publish.mjs';
 import { renderAppSendCard, SEND_LIMIT } from './app-send-card.mjs';
 import { api, client, placeIn } from './client.mjs';
 import { $$, ago, h, icon } from './dom.mjs';
@@ -129,6 +130,14 @@ addEventListener('message', async (e) => {
     case 'open':
       // A web link the person clicked in the app (#1480): one per click, in a new tab (app-links.mjs).
       if (!rec.check) openAppLink(e, rec, m.url, activated(e, rec));
+      break;
+    case 'publish':
+      // Data the app shares with its agent, read with read_app: the latest of a burst, in order (app-publish.mjs, #1478).
+      if (!current) return reply(null, 'Only the current version of an app publishes.');
+      publishLater(rec.appId, m.data).then(
+        (r) => reply(r),
+        (err) => reply(null, err.message),
+      );
       break;
     case 'anchors':
       rec.onAnchors?.(m.names);
