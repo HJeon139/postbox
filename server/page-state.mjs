@@ -24,7 +24,9 @@ export function pageState({ store, rt, adapters, origin, demo, real, config, hea
     // Each thread’s header facts (shared/thread-header.mjs, #1155): what the page shows about a thread without its items.
     headers: publicHeaders(headers.all()),
     // The running turns’ live state, for a page that loads mid-turn (live-progress.md, “The buffer”), as it may see it.
-    live: publicLive(liveSnapshots(rt)),
+    // Without their words: this names no conversation, and the stream the page opens next sends them for the ones it
+    // has open, in its connect snapshot (server/live-streams.mjs).
+    live: publicLive(liveSnapshots(rt).map(({ text, ...snap }) => snap)),
     config: {
       origin,
       // Postbox’s tools, then those only real backends have (#5).

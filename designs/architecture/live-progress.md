@@ -127,7 +127,7 @@ A step or text frame names no `turnId`: the page places it by its item, and the 
 1. The kind must map to a public event type, or the frame is dropped.
 2. `text`, `step` and `snapshot` frames go only to a stream that has their thread open, as item events do (#1155, `publicFrame`’s `open`).
 3. `session` frames go to every stream, as `session.patch` does.
-4. `/api/state` adds `live`, the running turns’ snapshots, from `publicLive(buffers, open)` by the same rules. `tests/public-state.test.mjs`, which builds `/api/state` from `emptyState()`, covers the new key.
+4. `/api/state` adds `live`, the running turns’ snapshots, from `publicLive(buffers, open)` by the same rules, without their words: it names no conversation, and the stream the page opens next sends them, in its connect snapshot, for the conversations it has open. `tests/public-state.test.mjs`, which builds `/api/state` from `emptyState()`, covers the new key.
 5. `/api/live/:turnId`, which a page asks when its frames for a turn overflow (“Order”), answers that turn’s snapshot through `publicLive`, by the same rules: nothing for a turn in a conversation it doesn’t have open, or for one that has ended. It goes through the request gate like every route.
 
 **Tests:** beside `tests/public-state.test.mjs` and `tests/live-streams-public.test.mjs`, one holds that a kind whose event is private goes out as nothing, at both, as they hold a private event type sent only as a cursor.
