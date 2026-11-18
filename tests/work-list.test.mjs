@@ -145,7 +145,7 @@ test('an app a later turn updates moves on without the list of the turn that sho
 });
 
 test('Work’s pane lists each app once as last shown and each review, newest first, and no other block', () => {
-  const p = (id, what, type, blockId, threadId = 't1') => ({ id, what, type, blockId, threadId });
+  const p = (id, what, type, blockId, threadId = 't1') => ({ id, kind: 'publish', what, type, blockId, threadId });
   const list = appsAndReviews([
     p('a1', 'app', 'app', 'budget'),
     p('r1', 'block', 'review', 'readme'),
@@ -160,7 +160,7 @@ test('Work’s pane lists each app once as last shown and each review, newest fi
 });
 
 test('an app updated in a side thread is still listed once: app ids are room-wide, a review’s id is its thread’s', () => {
-  const p = (id, what, type, blockId, threadId) => ({ id, what, type, blockId, threadId });
+  const p = (id, what, type, blockId, threadId) => ({ id, kind: 'publish', what, type, blockId, threadId });
   const list = appsAndReviews([
     p('a1', 'app', 'app', 'budget', 'main'),
     p('a2', 'app', 'app', 'budget', 'side'),
@@ -170,5 +170,16 @@ test('an app updated in a side thread is still listed once: app ids are room-wid
   assert.deepEqual(
     list.map((x) => x.id),
     ['r2', 'r1', 'a2'],
+  );
+});
+
+test('Work’s pane builds its apps and reviews once per change to the work list', () => {
+  const entries = [{ id: 'a1', kind: 'publish', what: 'app', type: 'app', blockId: 'budget', threadId: 't' }];
+  const first = appsAndReviews(entries);
+  assert.equal(appsAndReviews(entries), first, 'the same list, unchanged');
+  entries.push({ id: 'a2', kind: 'publish', what: 'app', type: 'app', blockId: 'budget', threadId: 't' });
+  assert.deepEqual(
+    appsAndReviews(entries).map((x) => x.id),
+    ['a2'],
   );
 });

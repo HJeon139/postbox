@@ -3,17 +3,18 @@
 // conversation, as full-screen Work’s “Shown in the conversation” does.
 
 import { appsAndReviews, retiredApp } from '/shared/work-list.mjs';
+import { client } from './client.mjs';
 import { h, icon } from './dom.mjs';
 import { row, sec, short } from './work-pane-parts.mjs';
 import { showItem } from './work-show-item.mjs';
 
 /**
  * The section, or null when the agents showed no app or review.
- * @param {string} convId @param {any} s  summarize()’s @param {Record<string, any>} apps  state.apps
+ * @param {string} convId @param {Record<string, any>} apps  state.apps
  * @param {{ all: boolean, showAll: () => void }} opts  all: every one, not the first few
  */
-export function shownSection(convId, s, apps, { all, showAll }) {
-  const list = appsAndReviews(s.publishes);
+export function shownSection(convId, apps, { all, showAll }) {
+  const list = appsAndReviews(client.state.work?.[convId] ?? []);
   if (!list.length) return null;
   const make = (/** @type {any} */ p) =>
     row(

@@ -54,20 +54,29 @@ export function turnRows(entries, turnId, { folders = [] } = {}) {
   return rows;
 }
 
+/** Each conversation’s apps and reviews, kept while its work list is the same array at the same length. */
+const shownLists = new WeakMap();
+
 /**
  * The apps and reviews the agents showed, as Work’s pane lists them: each once, as it was last shown (an app at its
  * latest version), newest first. Other blocks, a question or a chart, are read where they are, so they aren’t listed.
- * @param {any[]} publishes  summarize()’s, oldest first
+ * Built once per change to the work list: a publish is never changed once recorded, so a list of the same length gives
+ * the same rows, and a paint for anything else costs nothing here.
+ * @param {any[]} entries  the conversation’s work ledger, oldest first
  */
-export function appsAndReviews(publishes) {
+export function appsAndReviews(entries) {
+  const kept = shownLists.get(entries);
+  if (kept?.length === entries.length) return kept.list;
   const last = new Map();
-  for (const p of publishes) {
-    if (p.what !== 'app' && p.type !== 'review') continue;
+  for (const p of entries) {
+    if (p.kind !== 'publish' || (p.what !== 'app' && p.type !== 'review')) continue;
     // Shown again, it moves to the end, where the newest are. An app’s id is the room’s, whichever thread showed it; a
     // block’s is its thread’s.
     const key = p.what === 'app' ? `app\n${p.blockId}` : `${p.threadId}\n${p.blockId}`;
     last.delete(key);
     last.set(key, p);
   }
-  return [...last.values()].reverse();
+  const list = [...last.values()].reverse();
+  shownLists.set(entries, { length: entries.length, list });
+  return list;
 }

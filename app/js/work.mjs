@@ -713,7 +713,7 @@ export function mountWorkPane(threadId) {
         allShown = true;
         paint();
       };
-      const shown = shownSection(threadId, s, S().apps, { all: allShown, showAll: showShown });
+      const shown = shownSection(threadId, S().apps, { all: allShown, showAll: showShown });
       const lines = s.turns
         .map((t) => ({ t, line: turnLine(entries, t.id) }))
         .filter((x) => x.line)
