@@ -9,8 +9,8 @@
 // - One install at a time per host: m.updating holds each install under way, the person’s or this rule’s, as
 //   { done, abort }. done never rejects: it resolves to { ok: true, result } or { ok: false, failure }. abort stops its
 //   ssh (close()).
-// - The record says started before ssh runs, and how it ended after; no record, no install. A version is tried once
-//   until another version is tried after it (install-record.mjs’s isTried).
+// - The record says started before ssh runs, and how it ended after; a try that couldn’t be written installs
+//   nothing. A version is tried once until another version is tried after it (install-record.mjs’s isTried).
 // - Exit 75 (another attach or install holds the version’s lock) is noted busy, and the host connects once more.
 
 import { sameToken } from '../helpers.mjs';
