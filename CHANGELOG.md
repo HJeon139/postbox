@@ -2,6 +2,29 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.33.0 (2026-11-18)
+
+### Features
+
+- **live:** store a running reply's words once a window of 50 ms, not once a word
+- **store:** a hook for a reply about to settle, before its patch is emitted
+- **live:** a running reply's words go live, and are stored only at commit points
+
+### Fixes
+
+- **live:** work out once per kind whether a live frame's kind is public
+- **store:** write one emit's line without a map and a list for it
+- **live:** /api/state's live state leaves out the running replies' words
+- **store:** ask whether an event's logged line differs only for an item.text
+- **live:** send a tick's words as one frame, and none for words a commit stores in the same tick
+- **live:** name the applier's frame parameter in its JSDoc
+- **live:** a snapshot names its words' part only when it isn't the snapshot's own
+- **live:** keep one words timer a turn, restarted as each run of words starts
+- **store:** write a stored chunk's at only when it isn't its item's end
+- **live:** send a text frame as a list of its fields, not an object
+- **app:** apply a running reply's words while the page is ahead of its stream
+- **share:** say a reply is part of a summary being written before saying it has no text
+
 ## 4.32.0 (2026-11-18)
 
 ### Features
