@@ -14,7 +14,7 @@ import { stopRequested } from './write-intent.mjs';
 
 /**
  * The items other than blocks that the person acts in, and what each act does: confirm or cancel a hop, answer a
- * proposal, a permission or a denial, an app’s send, a tool or view_app ask, or stop an allowed call.
+ * proposal, a permission or a denial, a tool or view_app ask, or stop an allowed call.
  * @type {Record<string, (rt: any, threadId: string, itemId: string, action: string, values: any) => any>}
  */
 const ANSWERED_BY = {
@@ -22,7 +22,6 @@ const ANSWERED_BY = {
   proposal: (rt, threadId, itemId, action) => rt.resolveProposal(threadId, itemId, action),
   permission: (rt, threadId, itemId, action, values) => rt.resolvePermission(threadId, itemId, action, values),
   denial: (rt, threadId, itemId, action) => rt.resolveDenial(threadId, itemId, action),
-  appsend: (rt, threadId, itemId, action) => rt.resolveAppSend(threadId, itemId, action),
   toolask: (rt, threadId, itemId, action) => resolveToolAsk(rt, threadId, itemId, action),
   viewask: (rt, threadId, itemId, action) => resolveViewAsk(rt, threadId, itemId, action),
   allowedcall: (rt, threadId, itemId, action) => stopRequested(rt, threadId, itemId, action),

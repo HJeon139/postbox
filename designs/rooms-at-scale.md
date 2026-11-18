@@ -140,7 +140,7 @@ The sources cover everything that starts a turn today (the callers of `deliver` 
 | Command | A `/` command, or the person’s request for a thread’s summary | `server/agent-commands.mjs`, `server/share-back.mjs` | The command’s item, or the request’s text |
 | Review | A review of the agent’s block | `review_block` | The block |
 | Answer | The person’s answer on a block, a card or an ask | `server/blocks.mjs`, `server/tool-ask.mjs`, `server/permission-cards.mjs`, `server/view-app/consent.mjs` | The block or card |
-| Event | What an app sent | `server/app-send-cards.mjs` | The event’s text |
+| Event | What an app sent for the person’s click | `server/apps.mjs` (`appEvent`) | The event’s text |
 | Check | What a check found in the agent’s work | `server/lint-delivery.mjs` | Text |
 | Scheduled | A scheduled wake coming due | `server/scheduled-wakes.mjs` | Its note, as text |
 | Notice | Something Postbox tells an agent that it needn’t act on now | None rides today: a notice starts a turn of its own (`refusedMentions` in `server/mention-wakes.mjs`) | Text |

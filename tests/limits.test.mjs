@@ -71,12 +71,16 @@ test('an app event over the limit is refused, and the error names the limit', ()
   assert.equal(buildEvent(app, 'pairs', { ids: 'x'.repeat(LIMITS.eventBytes - 100) }).ok, true);
 });
 
-/** Runs the app kit as a sandbox page would, with the init the server writes into the page, and records what it posts. */
+/**
+ * Runs the app kit and its send (app/kit/send.js) as a sandbox page would, with the init the server writes into the
+ * page, and records what they post.
+ */
 function runKit(init) {
   const posted = [];
   const ctx = /** @type {any} */ ({
     document: {
       currentScript: { dataset: { init: JSON.stringify(init) } },
+      querySelector: () => ({ dataset: { init: JSON.stringify(init) } }),
       documentElement: { dataset: {} },
       createElement: () => ({}),
       head: { appendChild() {} },
@@ -87,6 +91,7 @@ function runKit(init) {
   ctx.window = ctx;
   vm.createContext(ctx);
   vm.runInContext(readFileSync(new URL('../app/kit/kit.js', import.meta.url), 'utf8'), ctx);
+  vm.runInContext(readFileSync(new URL('../app/kit/send.js', import.meta.url), 'utf8'), ctx);
   return { postbox: ctx.postbox, events: () => posted.filter((m) => m.type === 'event') };
 }
 

@@ -4,7 +4,6 @@
 
 import { ASKING } from '../shared/catalog.mjs';
 import { clip } from '../shared/text.mjs';
-import { APP_SEND_LIMIT } from './app-send-limits.mjs';
 import { httpError } from './helpers.mjs';
 
 /** The threads whose cards are the agent's: its own, and the side and topic threads off it. */
@@ -15,18 +14,14 @@ const threadsOf = (rt, se) => [
     .map((t) => t.id),
 ];
 
-const messages = (n) => (n === 1 ? '1 message' : `${n} messages`);
-
 /**
- * The need a card makes, or null if it doesn't wait. App sends, wake requests and waiting permission cards wait until
+ * The need a card makes, or null if it doesn't wait. Wake requests and waiting permission cards wait until
  * answered; asking blocks, refusals and tool requests wait only from the agent's last ended turn, so older ones you
  * moved past stay quiet (#69). `turnIds` are the turns whose cards count (turnsOf); `keep` is a card that still counts
  * whatever its turn (a block a turn you didn't start was waiting on).
  */
 function needOf(rt, se, it, threadId, turnIds, keep) {
   const where = rt.sessions.awayFrom(se, threadId);
-  if (it.kind === 'appsend' && it.sessionId === se.id && it.status === 'open')
-    return { kind: 'appsend', itemId: it.id, text: `${it.title} wants to send ${messages(it.events?.length ?? 1)} for you`, ...where };
   if (it.kind === 'hop' && it.fromSessionId === se.id && it.status === 'open')
     return { kind: 'hop', itemId: it.id, text: `@${se.handle} wants to ${it.join ? 'add' : 'wake'} @${it.to}`, ...where };
   if (it.kind === 'permission' && it.sessionId === se.id && it.status === 'open' && rt.permissionWaits.has(it.id))
@@ -56,10 +51,10 @@ function needOf(rt, se, it, threadId, turnIds, keep) {
  * Which need comes first when several wait, as the turn's end has always chosen: a permission the running turn is
  * blocked on, then a failed turn (its Retry: only its own release clears it, and no card but a permission, which a
  * running turn is blocked on, replaces it; on main a wake request's card did too), then the last turn's asking block,
- * its tool request, and last the cards that wait until answered (app sends, wake requests). Within a kind,
+ * its tool request, and last the cards that wait until answered (wake requests). Within a kind,
  * the newest. It ranks exactly the kinds a need can have, shared/needs.mjs's NEEDS_KINDS (tests/card-needs-kinds.test.mjs).
  */
-export const RANK = Object.freeze({ permission: 0, failed: 1, block: 2, toolask: 4, viewask: 4, appsend: 5, hop: 5 });
+export const RANK = Object.freeze({ permission: 0, failed: 1, block: 2, toolask: 4, viewask: 4, hop: 5 });
 
 /** The needs tied to a turn: the person moving on clears them (runtime.mjs, the turn's start). The rest wait until answered. */
 export const TURN_TIED = new Set(['failed', 'block', 'toolask']);
@@ -124,7 +119,7 @@ export function nextNeed(rt, se, o = {}) {
 
 /**
  * A new card offers itself as the agent’s need: it takes it when none is set, when it is the card that already is the
- * need (an app card’s new count), or when it ranks first by `challengerWins`, as nextNeed chooses (#711). Otherwise it
+ * need, or when it ranks first by `challengerWins`, as nextNeed chooses (#711). Otherwise it
  * waits, and a release reaches it. Every setter goes through here, so which card shows doesn’t depend on whether it was
  * set or released. A failed turn still sets its need directly: it ends the turn, as the turn’s end does. A current need
  * of a kind RANK doesn’t list is kept, never replaced by default.
@@ -178,8 +173,8 @@ export function challengerWins(challenger, incumbent) {
 }
 
 /**
- * A card was answered or retired. If the agent's need is that card, it falls back to the next card that waits, and
- * an app card that becomes the need without ever being notified is notified now. Any other need is left alone.
+ * A card was answered or retired. If the agent's need is that card, it falls back to the next card that waits. Any
+ * other need is left alone.
  * @param {any} rt @param {any} caller  the session, as the caller read it @param {string} itemId
  * @param {string} [busy]  the state while a turn runs: a permission's release passes 'tool', since the tool call it
  *   held goes on; others keep the session's state
@@ -193,25 +188,6 @@ export function releaseNeed(rt, caller, itemId, busy = caller?.state, { turnIds 
   const released = rt.store.pending.items(se.needs.threadId ?? se.threadId).find((/** @type {any} */ x) => x.id === itemId);
   const need = nextNeed(rt, se, turnIds === undefined ? { released } : { released, turnIds });
   rt.sessions.update(se.id, { needs: need, state: rt.turns.has(se.id) ? busy : stateFor(need) });
-  noticeNeed(rt, se, need);
-}
-
-/**
- * Whoever sets an agent's need calls this after: an app card that becomes the need without ever having been notified
- * (it waited behind another need) is notified now. The release and the turn's end both set needs.
- * @param {any} rt @param {any} se @param {any} need
- */
-export function noticeNeed(rt, se, need) {
-  if (need?.kind === 'appsend') notifyOnce(rt, se, need);
-}
-
-/** An app card that waited behind another need was never notified (`notifiedAt: null`); one from before #366 counts as notified. */
-function notifyOnce(rt, se, need) {
-  const threadId = need.threadId ?? se.threadId;
-  const card = rt.store.pending.items(threadId).find((x) => x.id === need.itemId);
-  if (card?.notifiedAt !== null) return;
-  rt.threads.patchItem(threadId, card.id, { notifiedAt: Date.now() });
-  rt.threads.notify('blocking', se, need.text, `Apps send up to ${APP_SEND_LIMIT} a minute in your voice. Allow these, or don’t.`);
 }
 
 /** The session's state for a need it settles on, with no turn running: a failed turn shows Retry. @param {any} need */

@@ -43,9 +43,13 @@ const TYPES = [
   'entry.put',
   // What an app published for its agent (#1478): private, since only read_app reads it.
   'app.publish',
+  // A note an app sent its agent without a click, and the agent reading them (#1488): private, read only by read_app.
+  'app.note',
+  'app.notes.dropped',
+  'app.notes.read',
 ];
 /** The types the page may not see: each reaches it as a cursor (designs/architecture/security-boundaries.md). */
-const PRIVATE_TYPES = ['app.publish'];
+const PRIVATE_TYPES = ['app.publish', 'app.note', 'app.notes.dropped', 'app.notes.read'];
 
 test('the event table has exactly the known types, each with a handler and a public flag, public but for the private ones', () => {
   assert.deepEqual(Object.keys(EVENTS).sort(), [...TYPES].sort());
@@ -73,7 +77,7 @@ test('every key of the state is either public or private, never both and never n
   assert.deepEqual([...PUBLIC_STATE_KEYS, ...PRIVATE_STATE_KEYS].sort(), [...keys].sort());
   for (const k of PUBLIC_STATE_KEYS) assert.equal(PRIVATE_STATE_KEYS.includes(k), false, k);
   assert.equal(PUBLIC_STATE_KEYS.length, 21);
-  assert.deepEqual(PRIVATE_STATE_KEYS, ['published']);
+  assert.deepEqual(PRIVATE_STATE_KEYS, ['published', 'appNotes']);
 });
 
 test('the public state keeps the public keys, as the store’s own values, and drops any other key', () => {
