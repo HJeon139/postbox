@@ -14,6 +14,8 @@ const HOSTS = [
 ];
 // One segment with no hyphen or space to break at, as a generated folder name can be.
 const FOLDER = '/Users/someone/Documents/research/FieldNotesArchive2026InterviewsWithTheLibrariansOfTheNorthWing/transcripts';
+/** A project name of 70 characters: the app allows 80. */
+const LONG_PROJECT = 'Interviews with the librarians of the north wing, transcribed in 2026';
 /** 70 characters with no dot, hyphen or space to break at. */
 const UNBROKEN = 'labworkstation' + 'x'.repeat(42) + 'gpuclusternode';
 test.beforeAll(async () => {
@@ -29,6 +31,8 @@ test.beforeAll(async () => {
   arrange.persona(app.rt, 'librarian');
   // A project whose folder is long, shown only: nothing runs in it.
   app.store.emit('project', { id: 'pr_fit', name: 'Field notes', folder: FOLDER });
+  app.store.emit('project', { id: 'pr_fit_long', name: LONG_PROJECT, folder: FOLDER });
+  app.store.emit('project', { id: 'pr_fit_unbroken', name: UNBROKEN, folder: FOLDER });
   // A host whose name has nothing to break at: no dot, hyphen or space.
   app.rt.addHost({ name: UNBROKEN });
 });
@@ -112,41 +116,56 @@ for (const width of [320, 375, 768, 1024, 1280, 1920])
     }
   });
 
-for (const width of [320, 375, 599, 1280])
-  test(`#1497 at ${width} px Settings › Projects isn’t cut off, and its folder and repository field are usable`, async ({ page }) => {
+for (const width of [320, 375, 599, 1024, 1280])
+  test(`#1497 at ${width} px Settings › Projects isn’t cut off, and each project’s name, folder and repository field are usable`, async ({ page }) => {
     const dialog = await settings(page, width, 'Projects');
     const at = await placed(page);
     expect.soft(at.right, 'its right edge in the window').toBeLessThanOrEqual(at.width + 0.5);
     expect.soft(at.sideways, 'the page doesn’t scroll sideways').toBe(false);
-    const row = dialog.locator('li', { has: page.getByText('Field notes', { exact: true }) });
-    const look = await row.evaluate((li) => {
-      const r = (/** @type {string} */ sel) => /** @type {Element} */ (li.querySelector(sel)).getBoundingClientRect();
-      const tab = /** @type {Element} */ (li.closest('[role="tabpanel"]'));
-      const form = /** @type {Element} */ (tab.querySelector('.form-grid')).getBoundingClientRect();
-      return {
-        li: li.getBoundingClientRect(),
-        name: r('.row-flex'),
-        folder: r('.mono.grow'),
-        // Its text, not its box: a word that can’t break runs past a box that stays the row’s width.
-        folderSpills: (() => {
-          const el = /** @type {Element} */ (li.querySelector('.mono.grow'));
-          return el.scrollWidth > el.clientWidth + 1;
-        })(),
-        field: r('.field'),
-        input: r('input'),
-        save: r('button'),
-        panel: tab.getBoundingClientRect(),
-        form,
-      };
-    });
-    expect.soft(look.save.right, '“Save repository” inside the panel').toBeLessThanOrEqual(look.panel.right + 0.5);
-    expect.soft(look.folderSpills, 'the folder wraps inside its line, even a part with nothing to break at').toBe(false);
-    if (width < 600) expect.soft(look.field.top, 'on a phone, where it pushes is under its folder').toBeGreaterThanOrEqual(look.name.bottom - 1);
-    expect.soft(look.input.width, 'a repository field you can type in').toBeGreaterThanOrEqual(120);
-    expect.soft(look.folder.width, 'a folder that reads in lines, not a character to a line').toBeGreaterThanOrEqual(150);
-    // As wide as the form under it: the column’s 760 px cap is the conversation’s, not a dialog’s rows’.
-    expect.soft(Math.abs(look.li.width - look.form.width), 'the row spans the panel, as the form does').toBeLessThanOrEqual(10);
+    for (const project of ['Field notes', LONG_PROJECT, UNBROKEN]) await projectRow(dialog, page, width, project);
   });
+
+/** One project’s row: its name and folder read in lines, its folder under its name, and its repository field usable. */
+async function projectRow(dialog, page, width, project) {
+  const row = dialog.locator('li', { has: page.getByText(project, { exact: true }) });
+  const look = await row.evaluate((li) => {
+    const r = (/** @type {string} */ sel) => /** @type {Element} */ (li.querySelector(sel)).getBoundingClientRect();
+    const tab = /** @type {Element} */ (li.closest('[role="tabpanel"]'));
+    const form = /** @type {Element} */ (tab.querySelector('.form-grid')).getBoundingClientRect();
+    return {
+      li: li.getBoundingClientRect(),
+      name: r('.row-flex'),
+      folder: r('.mono.grow'),
+      // Its text, not its box: a word that can’t break runs past a box that stays the row’s width.
+      folderSpills: (() => {
+        const el = /** @type {Element} */ (li.querySelector('.mono.grow'));
+        return el.scrollWidth > el.clientWidth + 1;
+      })(),
+      title: r('b'),
+      titleSpills: (() => {
+        const el = /** @type {Element} */ (li.querySelector('b'));
+        return el.scrollWidth > el.clientWidth + 1;
+      })(),
+      field: r('.field'),
+      input: r('input'),
+      save: r('button'),
+      panel: tab.getBoundingClientRect(),
+      form,
+    };
+  });
+  const of = (/** @type {string} */ what) => `${project.slice(0, 12)}…: ${what}`;
+  expect.soft(look.save.right, of('“Save repository” inside the panel')).toBeLessThanOrEqual(look.panel.right + 0.5);
+  expect.soft([look.titleSpills, look.folderSpills], of('its name and folder wrap inside their lines')).toEqual([false, false]);
+  expect.soft(look.title.right, of('its name inside the panel, even one with nothing to break at')).toBeLessThanOrEqual(look.panel.right + 0.5);
+  expect.soft(look.folder.top, of('its folder under its name, at every width')).toBeGreaterThanOrEqual(look.title.bottom - 1);
+  if (width < 600) expect.soft(look.field.top, of('on a phone, where it pushes is under its folder')).toBeGreaterThanOrEqual(look.name.bottom - 1);
+  // With room for both, where it pushes is beside its folder, not under it (16em and 22em).
+  else if (width > 1000) expect.soft(look.field.top, of('with room, where it pushes is beside its folder')).toBeLessThan(look.name.bottom - 1);
+  expect.soft(look.input.width, of('a repository field you can type in')).toBeGreaterThanOrEqual(120);
+  expect.soft(look.folder.width, of('a folder that reads in lines, not a character to a line')).toBeGreaterThanOrEqual(150);
+  // As wide as the form under it: the column’s 760 px cap is the conversation’s, not a dialog’s rows’.
+  expect.soft(Math.abs(look.li.width - look.form.width), of('the row spans the panel, as the form does')).toBeLessThanOrEqual(10);
+}
 
 for (const width of [320, 375])
   test(`#1497 at ${width} px a persona’s model hint keeps its host’s name whole`, async ({ page }) => {
