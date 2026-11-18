@@ -158,3 +158,17 @@ test('Work’s pane lists each app once as last shown and each review, newest fi
     ['r2', 'a2', 'r1'],
   );
 });
+
+test('an app updated in a side thread is still listed once: app ids are room-wide, a review’s id is its thread’s', () => {
+  const p = (id, what, type, blockId, threadId) => ({ id, what, type, blockId, threadId });
+  const list = appsAndReviews([
+    p('a1', 'app', 'app', 'budget', 'main'),
+    p('a2', 'app', 'app', 'budget', 'side'),
+    p('r1', 'block', 'review', 'draft', 'main'),
+    p('r2', 'block', 'review', 'draft', 'side'),
+  ]);
+  assert.deepEqual(
+    list.map((x) => x.id),
+    ['r2', 'r1', 'a2'],
+  );
+});

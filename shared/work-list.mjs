@@ -63,8 +63,9 @@ export function appsAndReviews(publishes) {
   const last = new Map();
   for (const p of publishes) {
     if (p.what !== 'app' && p.type !== 'review') continue;
-    // Shown again, it moves to the end, where the newest are.
-    const key = `${p.threadId}\n${p.blockId}`;
+    // Shown again, it moves to the end, where the newest are. An app’s id is the room’s, whichever thread showed it; a
+    // block’s is its thread’s.
+    const key = p.what === 'app' ? `app\n${p.blockId}` : `${p.threadId}\n${p.blockId}`;
     last.delete(key);
     last.set(key, p);
   }
