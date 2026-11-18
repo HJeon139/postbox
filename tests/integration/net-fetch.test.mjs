@@ -43,7 +43,11 @@ test('net.fetch GETs with no cookies, reads up to 1 MB, and gives back a redirec
 async function standIn(t, handler) {
   const server = http.createServer(handler);
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
-  t.after(() => server.close());
+  // A connection a regression left open (a drip that never stops) is cut, so the test fails rather than hangs.
+  t.after(() => {
+    server.closeAllConnections();
+    server.close();
+  });
   const host = `127.0.0.1:${/** @type {any} */ (server.address()).port}`;
   process.env.POSTBOX_FETCH_ALLOW = host;
   t.after(() => delete process.env.POSTBOX_FETCH_ALLOW);
