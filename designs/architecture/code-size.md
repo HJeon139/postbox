@@ -33,7 +33,7 @@ A method of a class that moves into a module becomes a function that takes the i
 
 - `this` becomes that parameter, and nothing else in a body changes.
 - The class keeps a one-line method that delegates to it (`agentWake(...a) { return agentWake(this, ...a); }`), so callers and tests don’t change.
-- A static becomes a module constant, and the class keeps an alias of it (`static APP_HOLD_MAX = APP_HOLD_MAX;`), so a test that reads `Runtime.APP_HOLD_MAX` doesn’t change.
+- A static becomes a module constant, and the class keeps an alias of it (`static APP_HOLD_MAX = APP_HOLD_MAX;` was one, until #1488 removed the limit), so a test that reads it through the class doesn’t change.
 - A closure that reads its enclosing function’s variables, such as a tool handler inside `toolsFor`, takes them as parameters instead. That’s the one rewrite beyond `this`, and the commit message names each parameter.
 - Module-level helpers and constants the moved code reads move with it, or go to a third module both files import. They’re never imported back from the old file: that’s a circular import, which means a missing module (developing.md, “Modules”).
 - The move is its own commit, with no other change. A reviewer checks it mechanically, by the recipe in developing.md, “Rules for every session”, its “Length limits”: undo the rewrite on the new module and diff it, ignoring whitespace, against the range the commit removed.

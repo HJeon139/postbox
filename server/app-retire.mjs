@@ -41,7 +41,7 @@ export function retireApp(apps, sessionId, { id, reason, replacedBy } = {}) {
   }
   const retired = { ...app, retired: { by: apps.sessions.get(sessionId).handle, reason: why, replacedBy: to, at: Date.now() } };
   apps.store.emit('app', retired);
-  // Sends waiting on its card are dropped, and its agent no longer needs the person for them (app-send-cards.mjs).
+  // Signaled for whatever listens: nothing does since an app’s sends stopped waiting on a card (#1488).
   apps.bus.emit('app.retired', { app: retired });
   return { ok: true, message: `Retired ${app.title}. It shows as one line where it was, with its versions; update_app brings it back.` };
 }

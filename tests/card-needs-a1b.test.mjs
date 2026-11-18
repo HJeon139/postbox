@@ -26,18 +26,15 @@ function waitOnCard(r, it) {
   r.rt.permissionWaits.set(it.id, { threadId: r.t.id, sessionId: r.alpha.id, timer: null, resolve: () => {} });
 }
 
-const hopAt = (r, at) => arrange.post(r.rt, r.t.id, { kind: 'hop', fromSessionId: r.alpha.id, from: 'alpha', to: 'beta', status: 'open', text: 'please', at });
+const hopAt = (r, at, threadId = r.t.id) =>
+  arrange.post(r.rt, threadId, { kind: 'hop', fromSessionId: r.alpha.id, from: 'alpha', to: 'beta', status: 'open', text: 'please', at });
 
-const appAt = (r, at, threadId = r.t.id) =>
-  arrange.post(r.rt, threadId, { kind: 'appsend', sessionId: r.alpha.id, appId: 'app1', title: 'App', events: [{ action: 'x' }], status: 'open', at });
-
-const CARDS = { permission: permissionAt, hop: hopAt, appsend: appAt };
+const CARDS = { permission: permissionAt, hop: hopAt };
 
 /** The need a card makes, as its caller offers it. */
 function needFor(it) {
   if (it.kind === 'permission') return { kind: 'permission', itemId: it.id, text: `@alpha asks to ${it.summary}` };
-  if (it.kind === 'hop') return { kind: 'hop', itemId: it.id, text: '@alpha wants to wake @beta' };
-  return { kind: 'appsend', itemId: it.id, text: 'App wants to send 1 message for you' };
+  return { kind: 'hop', itemId: it.id, text: '@alpha wants to wake @beta' };
 }
 
 const session = (r) => r.rt.s.sessions[r.alpha.id];
@@ -80,24 +77,14 @@ test('answering the newer permission falls back to the older one waitOn offered'
   needIs(r, older, undefined, 'nextNeed finds the older card that still waits');
 });
 
-test('a side thread’s app card takes the need from an older hop, and its need names the side thread', () => {
+test('a side thread’s wake request takes the need from an older one, and its need names the side thread', () => {
   const r = room();
   const side = oldSide(r);
   const hop = hopAt(r, T0);
   setNeedTo(r, hop);
-  const card = appAt(r, T0 + 1000, side.id);
-  r.rt.needAppSend({ sessionId: r.alpha.id, title: 'App', threadId: side.id }, card.id, 1);
+  const card = hopAt(r, T0 + 1000, side.id);
+  r.offerHop(card, { threadId: side.id });
   needIs(r, card, side.id);
-});
-
-test('an app card that is the need, sent again, updates the need’s count', () => {
-  const r = room();
-  const card = appAt(r, T0);
-  const app = { sessionId: r.alpha.id, title: 'App', threadId: r.t.id };
-  r.rt.needAppSend(app, card.id, 1);
-  r.rt.needAppSend(app, card.id, 3);
-  needIs(r, card);
-  assert.equal(r.needs().text, 'App wants to send 3 messages for you');
 });
 
 test('a permission that is the need stays when a newer hop is offered', () => {
@@ -151,7 +138,7 @@ test('a laptop permission that waits stays the need when an older permission is 
 test('a card offered when the need’s card is gone from pending is decided by rank alone', () => {
   const r = room();
   arrange.setSession(r.rt, r.alpha.id, { needs: { kind: 'hop', itemId: 'it_gone', text: 'gone' }, state: 'needs' });
-  const card = appAt(r, T0);
+  const card = hopAt(r, T0);
   assert.equal(offer(r, card), true);
   needIs(r, card);
 });
@@ -168,17 +155,15 @@ test('a need of a kind RANK doesn’t list is never replaced', () => {
 // is offered the second with the first as the need; `settledNeed` has the first as the need and nextNeed's as `next`.
 // The winner is the same for all three: the lower rank, else the second unless it is older (ties to the second).
 const PAIRS = [
-  ['hop', T0, 'appsend', T0 + 1000, 'second'],
-  ['hop', T0 + 1000, 'appsend', T0, 'first'],
-  ['hop', T0, 'appsend', T0, 'second'],
-  ['appsend', T0, 'hop', T0, 'second'],
-  ['appsend', T0 + 1000, 'hop', T0, 'first'],
+  ['hop', T0, 'hop', T0 + 1000, 'second'],
+  ['hop', T0 + 1000, 'hop', T0, 'first'],
+  ['hop', T0, 'hop', T0, 'second'],
   ['permission', T0, 'permission', T0 + 1000, 'second'],
   ['permission', T0 + 1000, 'permission', T0, 'first'],
   ['permission', T0, 'permission', T0, 'second'],
   ['permission', T0, 'hop', T0 + 1000, 'first'],
   ['hop', T0, 'permission', T0 - 500, 'second'],
-  ['appsend', T0 + 1000, 'permission', T0, 'second'],
+  ['hop', T0 + 1000, 'permission', T0, 'second'],
 ];
 
 /** The two cards of a pair, added in read order, and the one that should win. */
@@ -214,7 +199,7 @@ test('one comparison: a Retry’s reset after a store outage keeps the newer car
     [T0, T0, 'second'],
   ]) {
     const r = room();
-    const { first, won } = pair(r, ['hop', firstAt, 'appsend', secondAt, winner]);
+    const { first, won } = pair(r, ['hop', firstAt, 'hop', secondAt, winner]);
     arrange.setSession(r.rt, r.alpha.id, { needs: needFor(first), state: 'gen' }); // mid-turn, with no turn running
     settleOrphanTurns(r.rt);
     needIs(r, won);

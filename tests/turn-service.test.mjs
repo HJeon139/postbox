@@ -42,7 +42,7 @@ const hostAndSweep = () => sources().filter((p) => /^(?:remote\/turns[\w-]*|rest
  * port: each waiting module it imports, and each permission method it calls on the Runtime. @param {string} src
  */
 function waitingCalls(src) {
-  const imports = [...src.matchAll(/from '\.{1,2}\/((?:permission[\w-]*|card-needs|ask-question|tool-ask|prompt-claim|wake-cards|app-send-cards)\.mjs)'/g)];
+  const imports = [...src.matchAll(/from '\.{1,2}\/((?:permission[\w-]*|card-needs|ask-question|tool-ask|prompt-claim|wake-cards)\.mjs)'/g)];
   const calls = [...src.matchAll(/\brt\.(requestPermission|recordDenial|settlePermission|permissionWaits)\b/g)];
   return [...new Set([...imports.map((m) => m[1]), ...calls.map((m) => `rt.${m[1]}`)])].sort();
 }
