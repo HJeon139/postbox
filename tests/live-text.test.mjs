@@ -38,7 +38,9 @@ async function rig() {
 test('words go live with where they start, and aren’t stored until a step of the agent’s own', async () => {
   const { rt, turn, stored, frames, say, text } = await rig();
   say('Reading ');
+  await null; // the end of the tick, when its words go
   say('the shelf.');
+  await null;
   assert.deepEqual(
     frames.filter((f) => f.kind === 'text').map((f) => [f.at, f.text]),
     [
@@ -55,6 +57,22 @@ test('words go live with where they start, and aren’t stored until a step of t
   liveEnd(rt, turn);
   assert.deepEqual(stored.at(-1), { threadId: 'th_1', id: 'it_1', text: ' Done.', at: 18 }, 'the rest at the turn’s end');
   assert.equal(text(), 'Reading the shelf. Done.');
+});
+
+test('a tick’s words go as one frame, and words a commit point stores in the same tick go only in the stored chunk', async () => {
+  const { rt, turn, stored, frames, say } = await rig();
+  say('Reading ');
+  say('the shelf.');
+  await null;
+  assert.deepEqual(
+    frames.filter((f) => f.kind === 'text').map((f) => [f.at, f.text]),
+    [[0, 'Reading the shelf.']],
+  );
+  say(' Found three.');
+  liveStep(rt, turn, { id: 's1', label: 'Read', state: 'running' }); // the call after the words, in the same tick
+  await null;
+  assert.equal(frames.filter((f) => f.kind === 'text').length, 1, 'no frame for words already stored');
+  assert.deepEqual(stored, [{ threadId: 'th_1', id: 'it_1', text: 'Reading the shelf. Found three.', at: 0 }]);
 });
 
 test('a part’s words are stored before the patch that settles it, so item.final reads them whole', async () => {

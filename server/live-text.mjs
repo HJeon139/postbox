@@ -26,8 +26,8 @@ function watchSettles(rt) {
 }
 
 /**
- * A delta of the turn’s words: kept, sent live with where it starts, and stored early when the words held reach
- * LIVE_TEXT.most. Words in another part than those held store those first.
+ * A delta of the turn’s words: kept, sent live at the end of its tick with the rest of the tick’s words (flushText), and
+ * stored early when the words held reach LIVE_TEXT.most. Words in another part than those held store those first.
  * @param {any} rt @param {any} turn @param {string} itemId  the part @param {number} at  where the delta starts in it
  * @param {string} delta
  */
@@ -41,11 +41,31 @@ export function liveText(rt, turn, itemId, at, delta) {
       turn.liveTextTimer = setTimeout(() => commitText(rt, turn), LIVE_TEXT.everyMs);
       turn.liveTextTimer.unref?.();
     }
-    turn.liveText = { itemId, at, text: '' };
+    // sent: how much of the text has gone as frames; due: a flush is queued for the end of this tick.
+    turn.liveText = { itemId, at, text: '', sent: 0, due: false };
   }
-  turn.liveText.text += delta;
-  sendLive(rt.store, { kind: 'text', threadId: turn.threadId, itemId, at, text: delta });
-  if (turn.liveText.text.length >= LIVE_TEXT.most) commitText(rt, turn);
+  const words = turn.liveText;
+  words.text += delta;
+  if (!words.due) {
+    words.due = true;
+    queueMicrotask((turn.liveTextFlush ??= () => flushText(rt, turn)));
+  }
+  if (words.text.length >= LIVE_TEXT.most) commitText(rt, turn);
+}
+
+/**
+ * The words of a tick, as one text frame, at its end: a harness reports a delta and the call after it together, so words
+ * a commit point stores in the same tick never go as a frame, and the stored chunk goes to every page whole, since no
+ * stream was sent them (server/live-sent.mjs). @param {any} rt @param {any} turn
+ */
+function flushText(rt, turn) {
+  const words = turn.liveText;
+  if (!words?.due) return;
+  words.due = false;
+  if (words.sent === words.text.length) return;
+  const text = words.sent ? words.text.slice(words.sent) : words.text;
+  sendLive(rt.store, { kind: 'text', threadId: turn.threadId, itemId: words.itemId, at: words.at + words.sent, text });
+  words.sent = words.text.length;
 }
 
 /**

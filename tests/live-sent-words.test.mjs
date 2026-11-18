@@ -64,8 +64,10 @@ test('a page sent every word live isn’t sent their commit point; one that join
   try {
     const all = open(live, store, '&open=th_1');
     say('Reading ');
+    await null; // the end of the tick, when its words go
     const late = open(live, store, '&open=th_1'); // joins with the snapshot: the words so far, then the rest live
     say('the shelf.');
+    await null;
     const tool = open(live, store, '');
     liveEnd(rt, turn);
     assert.equal(store.state.items.th_1[0].text, 'Reading the shelf.');
@@ -87,6 +89,7 @@ test('a page that missed some of the words gets the commit point whole, and adds
   const { store, turn, rt, live, say } = await rig();
   try {
     say('Reading ');
+    await null;
     // Joins with no running turn to snapshot: the store says nothing of the words held, so the stream wasn’t sent them.
     const page = open(live, store, '&open=th_1&');
     const before = turn.liveText;
@@ -94,6 +97,7 @@ test('a page that missed some of the words gets the commit point whole, and adds
     const joined = open(live, store, '&open=th_1');
     turn.liveText = before;
     say('the shelf.');
+    await null;
     liveEnd(rt, turn);
     assert.deepEqual(
       joined.stored().map(([, d]) => [d.at, d.text]),
