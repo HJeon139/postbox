@@ -4,8 +4,8 @@
 // The record is private (shared/state.mjs, PRIVATE_STATE_KEYS): no page reads it, so a publish sends no page anything,
 // and the log gets the data alone, never the app’s record with every version’s code.
 
-import { fenceFor, partOf } from '../shared/text-parts.mjs';
 import { conversationOf } from '../shared/room-refs.mjs';
+import { fenceFor, partOf } from '../shared/text-parts.mjs';
 import { httpError } from './helpers.mjs';
 
 /** The most an app may publish, in bytes of JSON: the same as its saved state. */

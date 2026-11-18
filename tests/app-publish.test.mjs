@@ -9,6 +9,7 @@ import { publicFrame, publicState } from '../server/public-state.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
 import { READING } from '../shared/limits.mjs';
+import { apply, emptyState } from '../shared/state.mjs';
 import * as arrange from './arrange.mjs';
 import { sources } from './server-sources-fixture.mjs';
 
@@ -140,4 +141,15 @@ test('#1478 only server/app-publish.mjs reads what apps published, so no route a
     .filter(([, text]) => /\.published\b|\[\s*['"`]published['"`]\s*\]/.test(text))
     .map(([path]) => path);
   assert.deepEqual(readers, ['app-publish.mjs']);
+});
+
+test('#1478 the reducer keeps each app’s latest publish, and removing the app removes it', () => {
+  const s = emptyState();
+  apply(s, 'app', { id: 'a', title: 'A', versions: [] });
+  apply(s, 'app.publish', { id: 'a', data: { n: 1 }, at: 1 });
+  apply(s, 'app.publish', { id: 'a', data: { n: 2 }, at: 2 });
+  assert.deepEqual(s.published.a, { id: 'a', data: { n: 2 }, at: 2 });
+  assert.equal(s.apps.a.published, undefined, 'not on the app’s public record');
+  apply(s, 'remove', { kind: 'app', id: 'a' });
+  assert.equal(s.published.a, undefined);
 });
