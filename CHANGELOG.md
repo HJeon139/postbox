@@ -2,6 +2,14 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.33.1 (2026-11-18)
+
+### Fixes
+
+- **codex:** enforce web choice in every permission mode
+- **codex:** sort web permission test imports
+- **codex:** honor web permission for built-in search
+
 ## 4.33.0 (2026-11-18)
 
 ### Features
