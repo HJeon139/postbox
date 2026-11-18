@@ -25,6 +25,7 @@ import { editItem, editRow, editRows, hostNotes } from './work-hosts.mjs';
 import { external, row, sec, short, spend } from './work-pane-parts.mjs';
 import { chatList, relevantSection, shownIds } from './work-relevant.mjs';
 import { dur, effortSection, externalSection, publishSection, readsSection, section, signedEl, vcsSection, who, workLink } from './work-sections.mjs';
+import { shownSection } from './work-shown.mjs';
 import { paneViewer } from './work-viewer.mjs';
 import { windows } from './work-window.mjs';
 
@@ -459,6 +460,7 @@ export function mountWorkPane(threadId) {
   let allTurns = false;
   let allAssets = false;
   let allNow = false;
+  let allShown = false;
   let moreOpen = false;
   const openTurns = new Set();
   /** @type {any} */
@@ -707,11 +709,16 @@ export function mountWorkPane(threadId) {
       const now = chat.current();
       const skip = shownIds(now, allNow);
       const assets = assetsSection(threadId, { all: allAssets, showAll, skip });
+      const showShown = () => {
+        allShown = true;
+        paint();
+      };
+      const shown = shownSection(threadId, s, S().apps, { all: allShown, showAll: showShown });
       const lines = s.turns
         .map((t) => ({ t, line: turnLine(entries, t.id) }))
         .filter((x) => x.line)
         .reverse();
-      if (!lines.length && !s.files.length && !s.edits.length && !s.commands.length && !s.external.length && !assets)
+      if (!lines.length && !s.files.length && !s.edits.length && !s.commands.length && !s.external.length && !assets && !shown)
         return fill(
           body,
           h('p.empty-note', 'Nothing yet. When an agent edits a file, runs a command or publishes something, it shows here, with what it took.'),
@@ -726,6 +733,7 @@ export function mountWorkPane(threadId) {
       fill(
         body,
         relevantSection(threadId, now, { all: allNow, showAll: showNow }),
+        shown,
         assets,
         files(s, skip),
         failedNow ? commands(s) : null,

@@ -5,7 +5,7 @@ import { Ledger } from '../server/ledger.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
 import { summarize, turnLine } from '../shared/work.mjs';
-import { commandLabel, turnRows } from '../shared/work-list.mjs';
+import { appsAndReviews, commandLabel, turnRows } from '../shared/work-list.mjs';
 import * as arrange from './arrange.mjs';
 import { fakeRepo, ledgerIn } from './fake-repo.mjs';
 
@@ -142,4 +142,19 @@ test('an app a later turn updates moves on without the list of the turn that sho
     ['moved', turns[0]],
     ['agent', turns[1]],
   ]);
+});
+
+test('Work’s pane lists each app once as last shown and each review, newest first, and no other block', () => {
+  const p = (id, what, type, blockId, threadId = 't1') => ({ id, what, type, blockId, threadId });
+  const list = appsAndReviews([
+    p('a1', 'app', 'app', 'budget'),
+    p('r1', 'block', 'review', 'readme'),
+    p('c1', 'block', 'confirm', 'go'),
+    p('a2', 'app', 'app', 'budget'),
+    p('r2', 'block', 'review', 'readme', 't2'),
+  ]);
+  assert.deepEqual(
+    list.map((x) => x.id),
+    ['r2', 'a2', 'r1'],
+  );
 });

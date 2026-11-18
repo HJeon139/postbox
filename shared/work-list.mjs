@@ -53,3 +53,20 @@ export function turnRows(entries, turnId, { folders = [] } = {}) {
   if (s.reads.length) rows.push({ kind: 'reads', at: 'work-reads', label: readsLine(s.reads), count: s.reads.length });
   return rows;
 }
+
+/**
+ * The apps and reviews the agents showed, as Work’s pane lists them: each once, as it was last shown (an app at its
+ * latest version), newest first. Other blocks, a question or a chart, are read where they are, so they aren’t listed.
+ * @param {any[]} publishes  summarize()’s, oldest first
+ */
+export function appsAndReviews(publishes) {
+  const last = new Map();
+  for (const p of publishes) {
+    if (p.what !== 'app' && p.type !== 'review') continue;
+    // Shown again, it moves to the end, where the newest are.
+    const key = `${p.threadId}\n${p.blockId}`;
+    last.delete(key);
+    last.set(key, p);
+  }
+  return [...last.values()].reverse();
+}

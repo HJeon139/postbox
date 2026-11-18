@@ -225,7 +225,7 @@ function idleList(s, entries, threadId, win) {
 }
 
 /** Leaves full-screen Work for the conversation, at an item there, with focus on it. */
-function showItem(conv, p) {
+export function showItem(conv, p) {
   if (route().full) setPaneFull(null);
   if (p.threadId !== conv) navigate(paneHref(conv, { side: p.threadId, work: route().work }), { replace: true });
   // The range around the item first, if the page hasn’t loaded it (#1155).
