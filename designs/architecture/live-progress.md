@@ -258,6 +258,11 @@ Below 400 agents no snapshot is taken, so every event is replayed. At 400, when 
 - **The tool against itself** (`--against .`, every section, a load average of 7 to 11): 40 times judged, none worse, no second round, and the smaller of each time’s two ratios reached 1.072 at most. It catches #1471’s 100x cost, at ratios of 1.13 to 1.31, in both rounds. On a busier machine a single round can find main worse than itself, a time or two just past 1.10; the second round is what keeps main against main passing under load, since noise seldom lands on the same number twice. A cost near 10% needs a calmer machine or more pairs (`--pairs`) to call.
 - The snapshot and the replay with it at 400 agents aren’t compared, for the reason above.
 
+**Step 3’s one-time compile, accepted.** Step 3 (#1471) is level with `main` in steady state and costs more only the first time its code runs in a process, which the owner accepted on 17 November 2026:
+- **The cold first pass costs more.** Each of the tool’s runs is a fresh process, so its crowd rows include V8 compiling the step’s new code the first time it’s hot: about 76 more functions optimized a process. They land at 100x, the section’s largest, at ×1.10 to ×1.20 CPU, though the tool’s verdict on a quiet machine was nothing worse than `main`.
+- **The warm second pass is level.** The crowd section run twice in one process, 32 ABBA pairs, process CPU: 100x with 1 tab ×1.05 (more in 19 of 32), with 3 tabs ×0.99, with 10 tabs ×0.94; on the main thread, ×0.97, ×1.04 and ×0.99. The cold pass in the same runs was ×1.17, ×1.06 and ×1.12.
+- **Why it’s one-time:** with V8’s background compiling off, the cold gap moves onto the main thread. With its GC helpers off, it stays. GC and disk writes equal `main`’s. A Postbox server runs for hours, so it pays the compile once.
+
 ## Order of work
 
 Each item is its own pull request, test first:
