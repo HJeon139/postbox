@@ -10,6 +10,7 @@ import { codexPromptId } from '../remote/host/broker.mjs';
 import { remoteSpawn } from '../remote/process.mjs';
 import { checkRemoteContext } from './adapter.mjs';
 import { postboxMcpApprovalArgs } from './codex-mcp-policy.mjs';
+import { codexWebSearchArgs } from './codex-network.mjs';
 import { hostShim, hostWaitMax, startAttachments } from './remote-turn.mjs';
 import { PERMISSION_WAIT_MARGIN_MS, POSTBOX_SERVER } from './setup.mjs';
 
@@ -112,13 +113,13 @@ export function interruptReached(child, id) {
  * (CODEX_REMOTE.env), and the laptop’s environment never does. A context the runtime didn’t fill in is refused first,
  * before anything starts on the host (checkRemoteContext).
  * @param {import('./adapter.mjs').RemoteContext} remote @param {{ turn: string } | null} attach @param {string} cwd
- * @param {string} bin
+ * @param {string} bin @param {any} persona
  */
-export function spawnRemoteCodex(remote, attach, cwd, bin) {
+export function spawnRemoteCodex(remote, attach, cwd, bin, persona) {
   checkRemoteContext(remote, { attach: Boolean(attach) });
   const turn = attach?.turn ?? /** @type {string} */ (remote.turn);
   const shim = hostShim(remote, remote.welcome, turn);
-  const args = ['app-server', '--listen', 'stdio://', ...codexRemoteConfigArgs(shim.command, shim.args, hostWaitMax(remote))];
+  const args = ['app-server', '--listen', 'stdio://', ...codexRemoteConfigArgs(shim.command, shim.args, hostWaitMax(remote)), ...codexWebSearchArgs(persona)];
   const spawnRemote = remoteSpawn({
     connection: remote.link,
     harness: 'codex',
