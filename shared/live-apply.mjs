@@ -12,6 +12,7 @@
 // - A snapshot at load brings a page that joins mid-turn up to date.
 
 import { itemOf } from './item-index.mjs';
+import { liveFrameOf } from './live-kinds.mjs';
 import { EVENTS } from './state.mjs';
 
 /** The most frames kept for items the page doesn’t hold yet. */
@@ -109,7 +110,8 @@ export function liveApplier() {
 
   return {
     /** A live frame: the changes to tell the page. @param {any} state @param {any} f @param {(threadId: string, id: string) => boolean} has */
-    apply(state, f, has) {
+    apply(state, frame, has) {
+      const f = liveFrameOf(frame); // as the stream sent it, a list for a text frame (shared/live-kinds.mjs, wireOf)
       if (f?.kind === 'step') return applyStep(state, f, has);
       if (f?.kind === 'text') return applyText(state, f, has, held);
       if (f?.kind === 'session') return applySession(state, f);

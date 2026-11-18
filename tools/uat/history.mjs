@@ -7,6 +7,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { parseSnapshotText } from '../../server/store-snapshot-lines.mjs';
+import { liveFrameOf } from '../../shared/live-kinds.mjs';
 import { keepEvent } from './room-events.mjs';
 
 export { keepEvent };
@@ -26,10 +27,10 @@ export function hostStateOf(d) {
   return { id: d.id, state: d.status?.state ?? null, failure: d.status?.failure?.kind ?? null, update };
 }
 
-/** A live frame’s data, parsed, as a list of it, or none if it doesn’t parse. @param {string} data */
+/** A live frame’s data, parsed and read as its object (wireOf), as a list of it, or none if it doesn’t parse. @param {string} data */
 function framesIn(data) {
   try {
-    return [JSON.parse(data)];
+    return [liveFrameOf(JSON.parse(data))].filter(Boolean);
   } catch {
     return [];
   }

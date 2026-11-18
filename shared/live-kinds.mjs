@@ -58,7 +58,7 @@ const SESSION = Object.freeze({
 /**
  * Each kind: the event types it mirrors and the state keys its data belongs to, all of which must be public for it to
  * be sent; whether it’s an item’s, which goes only to a stream with its conversation open; and its shape.
- * @type {Readonly<Record<string, Readonly<{ events: readonly string[], keys: readonly string[], item: boolean, shape: Shape }>>>}
+ * @type {Readonly<Record<string, Readonly<{ events: readonly string[], keys: readonly string[], item: boolean, shape: Shape, positional?: boolean }>>>}
  */
 export const LIVE = Object.freeze({
   text: Object.freeze({
@@ -66,6 +66,8 @@ export const LIVE = Object.freeze({
     keys: Object.freeze(['items']),
     item: true,
     shape: Object.freeze({ fields: Object.freeze(['threadId', 'itemId', 'at', 'text']) }),
+    // One goes for each delta of a running reply’s words, so it goes as a list of its fields in this order (wireOf).
+    positional: true,
   }),
   step: Object.freeze({
     events: Object.freeze(['item.patch']),
@@ -90,3 +92,26 @@ export const LIVE = Object.freeze({
     }),
   }),
 });
+
+/**
+ * A live frame’s data as the stream sends it, once its kind’s shape has picked it (server/public-state.mjs): a kind sent
+ * for each delta (`positional`) goes as `[kind, ...its fields in its shape’s order]`, which costs a delta less than
+ * main’s numbered item.text did; any other as its object. Only the encoding differs: what’s in it is the pick’s.
+ * @param {Record<string, any>} data
+ */
+export function wireOf(data) {
+  const def = LIVE[data.kind];
+  return def?.positional ? [data.kind, ...def.shape.fields.map((k) => data[k] ?? null)] : data;
+}
+
+/**
+ * A live frame’s data as received: a positional one read back to its object by its kind’s fields (wireOf), a list of
+ * any other kind to null, and an object as it is. @param {any} data
+ */
+export function liveFrameOf(data) {
+  if (!Array.isArray(data)) return data;
+  const def = Object.hasOwn(LIVE, data[0]) ? LIVE[data[0]] : null;
+  if (!def?.positional) return null;
+  // A field the pick left out goes as null, and comes back left out.
+  return Object.fromEntries([['kind', data[0]], ...def.shape.fields.flatMap((k, i) => (data[i + 1] === null ? [] : [[k, data[i + 1]]]))]);
+}

@@ -3,7 +3,7 @@
 // does so directly, and carries only public keys’ data, which review holds until A2 adds the first private data, with
 // a check that holds it. The Store’s history, its snapshots and its other subscribers keep the raw state and events.
 
-import { LIVE } from '../shared/live-kinds.mjs';
+import { LIVE, wireOf } from '../shared/live-kinds.mjs';
 import { EVENTS, PUBLIC_STATE_KEYS, STREAM } from '../shared/state.mjs';
 
 /** The state with only its public keys. Shallow: the values are the store’s own. @param {Record<string, any>} state */
@@ -104,7 +104,7 @@ export function publicLiveData(frame, open = null, events = EVENTS, keys = PUBLI
  */
 export function publicLiveFrame(frame, open = null, events = EVENTS, keys = PUBLIC_STATE_KEYS) {
   const data = publicLiveData(frame, open, events, keys);
-  return data ? `event: ${STREAM.live}\ndata: ${JSON.stringify(data)}\n\n` : '';
+  return data ? `event: ${STREAM.live}\ndata: ${JSON.stringify(wireOf(data))}\n\n` : '';
 }
 
 /**
