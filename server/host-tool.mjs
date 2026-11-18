@@ -28,7 +28,7 @@ export async function hostTool(apps, tool, args = {}, { threadId, app } = {}) {
     case 'net.fetch': {
       // Public data through Postbox’s server, never the app’s own frame (server/net-fetch.mjs), shown in its agent’s
       // activity as it goes (server/net-fetch-line.mjs).
-      const r = await netFetch(args);
+      const r = await netFetch(args, { app: app?.id ?? '' });
       if (app) noteFetch(apps, app, new URL(String(args.url)).host);
       return r;
     }

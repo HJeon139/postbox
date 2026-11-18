@@ -6,11 +6,13 @@
 import http from 'node:http';
 import https from 'node:https';
 import { isIP } from 'node:net';
+import { NET_FETCH } from '../shared/limits.mjs';
 import { httpError } from './helpers.mjs';
 import { guardedLookup, privateAddress } from './net-address.mjs';
+import { FetchLimits } from './net-fetch-limits.mjs';
 
-const FETCH_BYTES = 1024 * 1024;
-const FETCH_MS = 10_000;
+/** Every app’s fetches, counted together, so the limits hold across apps and the total holds for Postbox. */
+const LIMITS = new FetchLimits();
 
 /**
  * Agents of net.fetch’s own, so a proxy the environment sets for node’s default agents (NODE_USE_ENV_PROXY with
@@ -44,11 +46,23 @@ export function fetchableUrl(url) {
 /**
  * net.fetch { url }: GET a public URL from Postbox’s server, with no cookies or credentials, and give the app its status,
  * type and text. Redirects aren’t followed: the app sees the 3xx and its location. The whole fetch, from connecting to
- * the body’s last byte, has ms to finish, or it’s cut off with a 504.
- * @param {{ url?: unknown }} args @param {{ ms?: number }} [opts]  the deadline, shorter only in tests
+ * the body’s last byte, has ms to finish, or it’s cut off with a 504. Past the limits on fetches at once and a minute
+ * (server/net-fetch-limits.mjs), it’s refused with a 429 before anything leaves.
+ * @param {{ url?: unknown }} args
+ * @param {{ app?: string, ms?: number }} [opts]  the app whose fetch it is, and the deadline, shorter only in tests
  */
-export async function netFetch({ url } = {}, { ms = FETCH_MS } = {}) {
+export async function netFetch({ url } = {}, { app = '', ms = NET_FETCH.seconds * 1000 } = {}) {
   const u = fetchableUrl(url);
+  const end = LIMITS.admit(app);
+  try {
+    return await get(u, ms);
+  } finally {
+    end();
+  }
+}
+
+/** One GET, with no cookies or credentials, cut off at the deadline. @param {URL} u @param {number} ms */
+function get(u, ms) {
   const lib = u.protocol === 'https:' ? https : http;
   return new Promise((resolve, reject) => {
     const headers = { 'user-agent': 'Postbox-app-fetch', accept: '*/*' };
@@ -62,7 +76,7 @@ export async function netFetch({ url } = {}, { ms = FETCH_MS } = {}) {
       let size = 0;
       res.on('data', (c) => {
         size += c.length;
-        if (size <= FETCH_BYTES) return chunks.push(c);
+        if (size <= NET_FETCH.bytes) return chunks.push(c);
         reject(httpError(413, 'net.fetch reads at most 1 MB.'));
         req.destroy();
       });

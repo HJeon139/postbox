@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import http from 'node:http';
 import { test } from 'node:test';
 import { netFetch } from '../../server/net-fetch.mjs';
+import { NET_FETCH } from '../../shared/limits.mjs';
 
 test('a name that isn’t “localhost” but resolves to loopback is refused after resolution, where the socket connects', async () => {
   await assert.rejects(netFetch({ url: 'http://localhost./' }), (e) => e.status === 403 && /private address/.test(e.message));
@@ -63,6 +64,21 @@ test('a site that sends a byte now and then is cut off at the deadline, with a 5
 test('a site that never answers is a 504, not a 502', { timeout: 10_000 }, async (t) => {
   const host = await standIn(t, () => {});
   await assert.rejects(netFetch({ url: `http://${host}/hang` }, { ms: 300 }), (e) => e.status === 504 && /gave up/.test(e.message));
+});
+
+test('one app’s fetches past the limit in flight are refused with a 429, and open no socket', { timeout: 10_000 }, async (t) => {
+  let open = 0;
+  let peak = 0;
+  const host = await standIn(t, (_req, res) => {
+    peak = Math.max(peak, ++open);
+    setTimeout(() => {
+      open--;
+      res.end('ok');
+    }, 200);
+  });
+  const all = await Promise.allSettled(Array.from({ length: 30 }, () => netFetch({ url: `http://${host}/wait` }, { app: 'poller' })));
+  const refused = all.filter((r) => r.status === 'rejected' && r.reason.status === 429).length;
+  assert.deepEqual([all.length - refused, refused, peak], [NET_FETCH.perApp, 30 - NET_FETCH.perApp, NET_FETCH.perApp]);
 });
 
 test('net.fetch goes direct, never through a proxy the environment sets, and sends it no credentials', async (t) => {
