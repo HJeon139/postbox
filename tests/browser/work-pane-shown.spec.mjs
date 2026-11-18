@@ -8,6 +8,10 @@ import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 
 let app;
 let conv;
+/** @type {any} */
+let tools;
+/** @type {any} */
+let shown;
 /** @type {Record<string, any>} */
 const items = {};
 
@@ -16,7 +20,7 @@ test.beforeAll(async () => {
   const { rt } = app;
   conv = rt.createThread({ projectId: Object.values(rt.store.state.projects)[0].id, title: 'Shown', personaIds: [arrange.persona(rt, 'librarian').id] });
   const se = arrange.agentIn(rt, conv.id);
-  const tools = rt.toolsFor(se.id);
+  tools = rt.toolsFor(se.id);
   tools.show_app({ id: 'budget', title: 'Budget planner', code: '<p>Budget</p>', permissions: [] });
   for (const block of [
     { id: 'readme', type: 'review', version: 1, fallback: 'The README.', title: 'README draft', format: 'markdown', content: '# README' },
@@ -28,7 +32,7 @@ test.beforeAll(async () => {
   for (const it of app.store.items(conv.id)) if (it.kind === 'block') items[it.block.id] = it;
   const turn = { kind: 'turn', handle: se.handle, startedAt: Date.now(), status: 'done' };
   arrange.addWork(rt, conv.id, { ...turn, id: 'wt_s' });
-  const shown = (id, at, what, type, title, version) =>
+  shown = (id, at, what, type, title, version) =>
     arrange.addWork(rt, conv.id, {
       id,
       kind: 'publish',
@@ -60,4 +64,18 @@ test('the pane lists the apps and reviews shown, newest first, an app once at it
   await expect(rows, 'the app updated last comes first; the confirm isn’t listed').toHaveText([/Budget planner.*app v2/, /README draft.*review/]);
   await rows.nth(1).click();
   await expect(page.locator(`.transcript [data-key="${items.readme.id}"]`)).toBeFocused();
+});
+
+const rowsOf = (page) => page.locator('#wc-shown-h').locator('..').locator('.wc-row');
+const open = async (page) => {
+  await page.goto(`${app.origin}/#/t/${conv.id}?work`);
+  await synced(page, app);
+};
+
+test('an app retired while the pane is open shows Retired', async ({ page }) => {
+  await open(page);
+  await expect(rowsOf(page).first()).not.toContainText('Retired');
+  expect(tools.retire_app({ id: 'budget', reason: 'The spreadsheet covers it.' }).ok).toBe(true);
+  await synced(page, app);
+  await expect(rowsOf(page).first()).toContainText('Retired');
 });

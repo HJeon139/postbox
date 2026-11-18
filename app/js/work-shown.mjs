@@ -9,12 +9,32 @@ import { row, sec, short } from './work-pane-parts.mjs';
 import { showItem } from './work-show-item.mjs';
 
 /**
+ * The list the pane draws, and whether an app event changes it.
+ * @param {string} convId
+ */
+export function shownList(convId) {
+  /** @type {Map<string, boolean>} each listed app’s id, and whether it was drawn retired */
+  const drawn = new Map();
+  return {
+    current() {
+      const list = appsAndReviews(client.state.work?.[convId] ?? []);
+      drawn.clear();
+      for (const p of list) if (p.what === 'app') drawn.set(p.blockId, retiredApp(client.state.apps?.[p.blockId]));
+      return list;
+    },
+    /** Whether an app event changed a listed app’s Retired tag: its saved state, or a check, draws nothing. @param {any} app */
+    appChanged(app) {
+      return drawn.has(app?.id) && drawn.get(app.id) !== retiredApp(app);
+    },
+  };
+}
+
+/**
  * The section, or null when the agents showed no app or review.
- * @param {string} convId @param {Record<string, any>} apps  state.apps
+ * @param {string} convId @param {any[]} list  shownList’s @param {Record<string, any>} apps  state.apps
  * @param {{ all: boolean, showAll: () => void }} opts  all: every one, not the first few
  */
-export function shownSection(convId, apps, { all, showAll }) {
-  const list = appsAndReviews(client.state.work?.[convId] ?? []);
+export function shownSection(convId, list, apps, { all, showAll }) {
   if (!list.length) return null;
   const make = (/** @type {any} */ p) =>
     row(
