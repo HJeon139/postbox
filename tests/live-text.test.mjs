@@ -90,7 +90,9 @@ test('a running turn’s snapshot carries its words since the last commit point,
   liveStep(rt, turn, { id: 's1', label: 'Read', state: 'running' }); // a commit point
   say(' Then more.');
   const [snap] = liveSnapshots(rt);
-  assert.deepEqual(snap.text, { itemId: 'it_1', at: 'First words.'.length, text: ' Then more.' });
+  assert.deepEqual(snap.text, { at: 'First words.'.length, text: ' Then more.' }, 'its part is the snapshot’s own, so it isn’t named twice');
+  say('Below the post.', 'it_2'); // words in a later part, as after a post lands below the reply
+  assert.deepEqual(liveSnapshots(rt)[0].text, { itemId: 'it_2', at: 0, text: 'Below the post.' });
 });
 
 test('the reducer applies words once: a chunk the item already has, or has part of, adds only what it lacks', () => {

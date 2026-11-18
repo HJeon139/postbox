@@ -113,7 +113,7 @@ This crosses a security boundary ([security-boundaries.md](security-boundaries.m
 | `text` | `item.text` | `threadId`, `itemId`, `at`, `text` |
 | `step` | `item.patch` (`activityStep`) | `threadId`, `itemId`, `rev`, and `step`, an object of the step’s `id`, `label`, `state`, `ms`, `who`, `parent`, `detail`, `kind`, `job`, `input`, `output`, `part`, `at`, `added`, `deleted`, `diff` |
 | `session` | `session.patch` | `sessionId`, `toolCalls`, `toolCount`, `currentStep`, `glimpse`, `subagents`, and the `state`, `ctx` and `updatedAt` of a change stored with them |
-| `snapshot` | the three above | `turnId`, `sessionId`, `threadId`, `itemId`, and the turn’s `text` (its words since the last commit point, with their part’s `itemId` and their `at`), `steps` and `session`, each as its kind’s fields |
+| `snapshot` | the three above | `turnId`, `sessionId`, `threadId`, `itemId`, and the turn’s `text` (its words since the last commit point and their `at`, with their part’s `itemId` when it isn’t the snapshot’s), `steps` and `session`, each as its kind’s fields |
 
 **A text frame goes as a list,** `["text", threadId, itemId, at, text]`, its shape’s fields in order, since one goes for each delta. As an object it cost about 12 bytes a delta more than `main`’s numbered `item.text`. `publicLiveFrame` picks it by its shape like any frame and only then encodes it (`wireOf`, `shared/live-kinds.mjs`). The page, the applier and the UAT runner read it back to its object (`liveFrameOf`), and a list of any other kind reads as nothing.
 

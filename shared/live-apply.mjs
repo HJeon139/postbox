@@ -134,7 +134,7 @@ export function liveApplier() {
     snapshot(state, snaps, has) {
       return (snaps ?? []).flatMap((s) => [
         ...(s.steps ?? []).flatMap((/** @type {any} */ step) => applyStep(state, { kind: 'step', threadId: s.threadId, itemId: s.itemId, step }, has)),
-        ...(s.text ? applyText(state, { kind: 'text', threadId: s.threadId, ...s.text }, has, held) : []),
+        ...(s.text ? applyText(state, { kind: 'text', threadId: s.threadId, itemId: s.itemId, ...s.text }, has, held) : []),
         ...(s.session && Object.keys(s.session).length ? applySession(state, { kind: 'session', sessionId: s.sessionId, ...s.session }) : []),
       ]);
     },

@@ -62,8 +62,12 @@ export function commitText(rt, turn) {
   rt.store.emit('item.text', data);
 }
 
-/** The words held, for a snapshot: their part, where they start, and the words. @param {any} turn */
+/**
+ * The words held, for a snapshot: where they start, the words, and their part when it isn’t the turn’s first, which the
+ * snapshot names already. @param {any} turn
+ */
 export function textSnapshot(turn) {
   const words = turn.liveText;
-  return words?.text ? { itemId: words.itemId, at: words.at, text: words.text } : undefined;
+  if (!words?.text) return undefined;
+  return words.itemId === turn.first ? { at: words.at, text: words.text } : { itemId: words.itemId, at: words.at, text: words.text };
 }

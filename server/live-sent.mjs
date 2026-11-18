@@ -61,7 +61,7 @@ export function liveSent() {
      */
     noteSnapshot(res, snap) {
       for (const st of snap.steps ?? []) noteStep(res, snap.itemId, st.id);
-      if (snap.text) noteWords(res, snap.text.itemId, snap.text.at, snap.text.text.length);
+      if (snap.text) noteWords(res, snap.text.itemId ?? snap.itemId, snap.text.at, snap.text.text.length);
       recordOf(res).sessions.add(snap.sessionId);
     },
     /** Whether an event is one a page may have live instead, asked once an event. @param {any} ev */
