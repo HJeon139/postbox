@@ -177,6 +177,8 @@ test('Work’s pane builds its apps and reviews once per change to the work list
   const entries = [{ id: 'a1', kind: 'publish', what: 'app', type: 'app', blockId: 'budget', threadId: 't' }];
   const first = appsAndReviews(entries);
   assert.equal(appsAndReviews(entries), first, 'the same list, unchanged');
+  entries.push({ id: 'c1', kind: 'command' });
+  assert.equal(appsAndReviews(entries), first, 'an agent’s step that shows nothing keeps the list');
   entries.push({ id: 'a2', kind: 'publish', what: 'app', type: 'app', blockId: 'budget', threadId: 't' });
   assert.deepEqual(
     appsAndReviews(entries).map((x) => x.id),
