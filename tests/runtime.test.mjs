@@ -605,8 +605,10 @@ test('#93: a stopped summary isn’t pending, and a reply in a summary still bei
     });
   });
   rt.summarizeBack(threadId);
-  await new Promise((r) => setImmediate(r));
-  const part = store.items(threadId).find((i) => i.kind === 'agent' && i.text === 'Half of the summary');
+  // Its words are stored as their window ends (server/live-text.mjs, LIVE_TEXT.windowMs).
+  const shown = () => store.items(threadId).find((i) => i.kind === 'agent' && i.text === 'Half of the summary');
+  for (let waited = 0; !shown() && waited < 1000; waited += 10) await new Promise((r) => setTimeout(r, 10));
+  const part = shown();
   assert.throws(() => rt.shareToConversation(threadId, part.id), { status: 409 });
   rt.stop(arrange.sessionsIn(rt, t.id)[0].id);
   release();

@@ -10,6 +10,7 @@
 import { LIVE_CAPS } from '../shared/limits.mjs';
 import { CARRIED_FIELDS, SESSION_FIELDS } from '../shared/live-kinds.mjs';
 import { committed } from './live-sent.mjs';
+import { storeText } from './live-text.mjs';
 import { sessionPatch } from './session-patch.mjs';
 import { onSessionWrite, sendLive } from './store-live.mjs';
 
@@ -115,6 +116,7 @@ export function liveCommit(rt, turn) {
  * kept and sent live with its rev. @param {any} rt @param {any} turn @param {any} step
  */
 export function liveStep(rt, turn, step) {
+  storeText(rt, turn); // the words before it first: its `at` places it among them
   const live = bufferOf(rt, turn);
   if (startsOwn(live, step) || (!live.changed.has(step.id) && live.changed.size >= LIVE_CAPS.steps)) liveCommit(rt, turn);
   const rev = (live.rev.get(step.id) ?? 0) + 1;
@@ -207,6 +209,7 @@ function queueFrame(turn, fields) {
  * write (turn-needs.mjs, turn-finish.mjs, turn-stop.mjs). @param {any} rt @param {any} turn
  */
 export function liveEnd(rt, turn) {
+  storeText(rt, turn); // the words held, before the last commit point
   liveCommit(rt, turn);
   const session = turn.live?.session ?? {};
   const { toolCalls, toolCount } = session;

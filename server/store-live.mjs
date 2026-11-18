@@ -59,3 +59,18 @@ export function onSessionWrite(store, fn) {
 export function sessionWriting(store, data, asked = data.patch) {
   for (const fn of store.sessionWriters ?? []) fn(data, asked);
 }
+
+/**
+ * Listens for a reply about to settle: a patch of a streaming reply that sets another status, before it’s emitted.
+ * A running turn’s words held for it are stored first, so item.final reads them whole (server/live-text.mjs).
+ * @param {any} store @param {(threadId: string, id: string) => void} fn
+ */
+export function onItemSettle(store, fn) {
+  store.itemSettlers ??= new Set();
+  store.itemSettlers.add(fn);
+}
+
+/** A reply about to settle (server/threads.mjs, patchItem). @param {any} store @param {string} threadId @param {string} id */
+export function itemSettling(store, threadId, id) {
+  for (const fn of store.itemSettlers ?? []) fn(threadId, id);
+}
