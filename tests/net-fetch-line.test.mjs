@@ -91,3 +91,13 @@ test('a polling app patches its reply at most once per wait, with the latest cou
   t.mock.timers.tick(PATCH_MS);
   assert.equal(patches(), 2, 'no patch when nothing changed');
 });
+
+test('the line names at most 20 hosts; past them, new hosts are counted as other hosts', (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const { rt, app, labels } = room('many');
+  for (let i = 1; i <= 25; i++) noteFetch(rt.apps, app, `h${i}.io`, 'fetched');
+  noteFetch(rt.apps, app, 'h1.io', 'fetched');
+  t.mock.timers.tick(PATCH_MS);
+  const [[label]] = labels();
+  assert.equal(label, `Visits fetched h1.io ×2, ${Array.from({ length: 19 }, (_, i) => `h${i + 2}.io`).join(', ')}, other hosts ×5`);
+});
