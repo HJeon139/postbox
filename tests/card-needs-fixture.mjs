@@ -1,6 +1,7 @@
 // What the card-needs specs share (#366): a conversation with @alpha, whose last ended turn is `turn_last`, and helpers
 // that add its cards.
 
+import { offerNeed, releaseNeed } from '../server/card-needs.mjs';
 import * as arrange from './arrange.mjs';
 import { setup } from './side-threads-fixture.mjs';
 
@@ -12,8 +13,6 @@ export function room() {
   arrange.setSession(rt, alpha.id, { lastTurnId: 'turn_last' });
   const needs = () => rt.s.sessions[alpha.id].needs;
   const setNeed = (kind, itemId) => arrange.setSession(rt, alpha.id, { needs: { kind, itemId, text: kind }, state: 'needs' });
-  const appCard = (threadId = t.id) =>
-    arrange.post(rt, threadId, { kind: 'appsend', sessionId: alpha.id, appId: 'app1', title: 'App', events: [{ action: 'x' }], status: 'open' });
   const block = (turnId = 'turn_last', threadId = t.id) =>
     arrange.post(rt, threadId, {
       kind: 'block',
@@ -40,6 +39,21 @@ export function room() {
       turnId,
       status: 'open',
     });
-  const hop = () => arrange.post(rt, t.id, { kind: 'hop', fromSessionId: alpha.id, from: 'alpha', to: 'beta', status: 'open', text: 'please' });
-  return { ...ctx, needs, setNeed, appCard, block, permission, toolAsk, hop };
+  // A wake request: a card that waits until answered, whatever the turn.
+  const hop = (threadId = t.id) =>
+    arrange.post(rt, threadId, { kind: 'hop', fromSessionId: alpha.id, from: 'alpha', to: 'beta', status: 'open', text: 'please' });
+  // A wake request offers itself as the need, as server/wake-cards.mjs does when it raises one. `on` is the runtime, a
+  // restart's when the spec made one.
+  const offerHop = (card, { threadId = t.id, on = rt } = {}) => {
+    const se = on.s.sessions[alpha.id];
+    const need = { kind: 'hop', itemId: card.id, text: 'hop', ...on.sessions.awayFrom(se, threadId) };
+    return offerNeed(on, se, need, on.turns.has(se.id) ? se.state : 'needs');
+  };
+  // The person declines a wake request and its need is released, as resolveHop does, without the notice that wakes the
+  // agent to tell it: a spec that reads the agent's state after the answer needs no turn started.
+  const declineHop = (card, { on = rt } = {}) => {
+    arrange.setItem(on, t.id, card.id, { status: 'declined' });
+    releaseNeed(on, on.s.sessions[alpha.id], card.id);
+  };
+  return { ...ctx, needs, setNeed, block, permission, toolAsk, hop, offerHop, declineHop };
 }

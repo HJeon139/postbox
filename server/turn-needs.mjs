@@ -41,7 +41,6 @@ export function needsAfter(rt, se, turn, items) {
     unread: topic ? se.unread : viewing ? 0 : se.unread + (turn.said || open.length ? 1 : 0),
     stopAsk: null,
   }));
-  asks.noticeNeed(se, needs);
   if (needs && (needs.kind === 'block' || needs.kind === 'toolask')) rt.threads.notify('blocking', se, `@${se.handle} needs you`, needs.text, needs.threadId);
   else if (mentionsYou && !viewing) rt.threads.notify('info', se, `@${se.handle} mentioned you`, clip(turn.said, 120), turn.threadId);
   else if (turn.said && !viewing) rt.threads.notify('info', se, `@${se.handle} finished`, clip(turn.said, 120), turn.threadId);

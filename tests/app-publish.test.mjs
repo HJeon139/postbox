@@ -48,13 +48,14 @@ const notices = (rt, se) => rt.delivery.waiting(se.id).filter((e) => e.source ==
 test('#1478 publish keeps the app’s data and waits one notice for the agent’s next turn: no turn, no card, nobody needs you', () => {
   const { rt, store, se, t, adapter } = withApp();
   const calls = adapter.calls.length;
+  const items = store.items(t.id).length;
   publishApp(rt, 'list', { rows: [{ title: 'Emma', rating: 4 }] });
   publishApp(rt, 'list', { rows: [{ title: 'Emma', rating: 5 }] });
   assert.deepEqual(readOut(rt, se).published, { rows: [{ title: 'Emma', rating: 5 }] });
   assert.equal(notices(rt, se).length, 1, 'a burst of changes is one notice');
   assert.match(notices(rt, se)[0].text, /read_app/);
   assert.equal(adapter.calls.length, calls, 'no turn started');
-  assert.equal(store.items(t.id).filter((x) => x.kind === 'appsend' || x.kind === 'voice').length, 0);
+  assert.equal(store.items(t.id).length, items, 'nothing posted: no card, no line');
   assert.equal(rt.s.sessions[se.id].needs ?? null, null);
 });
 
