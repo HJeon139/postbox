@@ -7,6 +7,18 @@
 import { itemOf } from '../shared/item-index.mjs';
 
 /**
+ * One event as the log writes it, from the state before it: an item.text whose `at` is its item’s end then, without it.
+ * The same rule as written(), for an emit, which writes one event at a time. @param {any} state @param {any} ev
+ */
+export function writtenOne(state, ev) {
+  const d = ev.data;
+  if (ev.type !== 'item.text' || typeof d?.at !== 'number') return ev;
+  if (d.at !== (itemOf(state.items?.[d.threadId] ?? [], d.id)?.text ?? '').length) return ev;
+  const { at, ...data } = d;
+  return { ...ev, data };
+}
+
+/**
  * The events as the log writes them, from the state before them: an item.text whose `at` is its item’s end then, the
  * words before it in the same events counted, without its `at`. Every other event as it is.
  * @param {any} state @param {any[]} events

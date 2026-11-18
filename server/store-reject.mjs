@@ -6,7 +6,7 @@
 // handler which throws changes nothing, is held by tests/state-reject-contract.test.mjs.
 
 import { apply, RESERVED } from '../shared/state.mjs';
-import { written } from './store-text-at.mjs';
+import { writtenOne } from './store-text-at.mjs';
 
 /** @typedef {{ count: number, first: { seq: number, type: string, error: string }[] }} Rejected */
 
@@ -58,7 +58,7 @@ export function applyOrHold(store, ev) {
   const kept = JSON.stringify(ev);
   // The log’s line, from the state before the event (server/store-text-at.mjs); since() keeps the event whole. Only an
   // item.text can differ, so no other event pays for asking.
-  const logged = ev.type === 'item.text' ? written(store.state, [ev])[0] : ev;
+  const logged = ev.type === 'item.text' ? writtenOne(store.state, ev) : ev;
   const line = logged === ev ? kept : JSON.stringify(logged);
   try {
     apply(store.state, ev.type, ev.data);
