@@ -20,12 +20,11 @@ export function bind(v, scrolled, resized, pointed) {
   v.el.addEventListener(DRAWN, resized, true);
   // What’s around it changing moves the end too: the composer, the panel’s height, the thread’s root above. A shrink
   // there clamps the view like one in the transcript, so its changes are noted the same way (#360). The panel’s
-  // composer isn’t beside the transcript: it’s in the panel’s foot, under the scroll box.
+  // composer is beside its transcript too, in the foot at the scroll box’s end (#1500).
   const parent = v.el.parentElement;
   const around = parent ? [...parent.children].filter((n) => n !== v.el) : [];
-  const foot = v.inPanel ? v.el.closest('.sidepanel')?.querySelector('.sp-foot') : null;
   if (parent) v.sizes.observe(parent);
-  for (const n of foot ? [...around, foot] : around) {
+  for (const n of around) {
     v.sizes.observe(n);
     v.changes.observe(n, { childList: true, subtree: true, attributes: true, attributeFilter: ['style'] });
   }
