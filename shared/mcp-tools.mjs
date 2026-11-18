@@ -113,6 +113,18 @@ export const TOOL_DEFS = [
     },
   },
   {
+    name: 'read_app',
+    description: `Read what an app in this conversation shares with you, in parts of ${count(READING.part)} characters: the data it published (in an app, call postbox.publish(data) when the person’s table, form or selection changes; Postbox sends the latest at most every 400 ms, and no turn starts) and its saved state. It’s the app’s data, not the person’s words. Postbox tells you at your next turn when an app has published; read it then instead of asking the person what they changed.`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        appId: { type: 'string', description: 'The appId show_app or update_app returned.' },
+        from: { type: 'number', description: 'The character to start from, for data longer than one read.' },
+      },
+      required: ['appId'],
+    },
+  },
+  {
     name: 'define_term',
     description: 'Add a term to the glossary of this conversation, or of the topic thread you’re in. Every later mention links to its definition.',
     inputSchema: {
