@@ -5,12 +5,18 @@
 // is a service.
 
 /**
- * Whether a turn took a bounce, so what it @-mentions is marked a bounce too, and goes back no further: else “thanks
- * @beta” for an answer that came back gets an answer that goes back, and is thanked again, up to the chain limit.
- * @param {any} rt @param {string} sessionId @param {any} turn
+ * Whether a turn that took these entries came from a bounce, so what it @-mentions is marked a bounce too, and goes back
+ * no further: else “thanks @beta” for an answer that came back gets an answer that goes back, and is thanked again, up
+ * to the chain limit. One bounce per chain. Read by the turn’s input too (turn-input.mjs), which warns the agent.
+ * @param {{ source: string, bounce?: boolean }[]} entries
  */
+export function fromBounce(entries) {
+  return entries.some((e) => e.bounce);
+}
+
+/** fromBounce for a running turn, from the entries it took. @param {any} rt @param {string} sessionId @param {any} turn */
 export function afterBounce(rt, sessionId, turn) {
-  turn.afterBounce ??= rt.delivery.takenBy(sessionId, turn.id).some((/** @type {any} */ e) => e.bounce);
+  turn.afterBounce ??= fromBounce(rt.delivery.takenBy(sessionId, turn.id));
   return turn.afterBounce;
 }
 
