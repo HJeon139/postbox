@@ -1,6 +1,7 @@
 // What the checks read of Postbox’s events (tools/uat/room-checks.mjs): items as they’re added, patched and moved, and
-// sessions’ states and background jobs. The UAT’s history (tools/uat/history.mjs) keeps events cut this way, from the
-// event stream or the data folder’s log, so the checks read the same thing from either.
+// sessions’ states and background jobs; and what the run’s ATIF trajectories read besides (tools/atif.mjs). The UAT’s
+// history (tools/uat/history.mjs) keeps events cut this way, from the event stream or the data folder’s log, so the
+// checks read the same thing from either.
 
 import { EVENTS, patchSession } from '../../shared/state.mjs';
 
@@ -21,6 +22,11 @@ export function keepEvent(seq, type, data, sessions = new Map(), events = EVENTS
   }
   // An item brought to the newest point (item.move) carries its update as a patch: a block’s new revision (#213).
   if (type === 'item.add' || type === 'item.patch' || type === 'item.move') return { seq, type, data };
+  // A run clock’s events, a reply’s words as they’re stored, and the work ledger’s turns with their tokens and cost:
+  // the run’s ATIF trajectories read them (tools/atif.mjs).
+  if (type.startsWith('clock.') || type === 'item.text') return { seq, type, data };
+  if (type === 'work.add' && data?.entry?.kind === 'turn') return { seq, type, data };
+  if (type === 'work.patch') return { seq, type, data };
   // A session event holds the whole session; the checks read only its state, and finishedAt, which a turn clears. The
   // triggers (tools/uat/triggers.mjs) also read Stop’s question about background jobs, and the jobs themselves (#126),
   // when the session has them.
@@ -38,8 +44,11 @@ export function keepEvent(seq, type, data, sessions = new Map(), events = EVENTS
         ...(Object.hasOwn(data, 'seenItem') ? { seenItem: data.seenItem ?? null } : {}),
         ...(Object.hasOwn(data, 'stopAsk') ? { stopAsk: data.stopAsk ? { at: data.stopAsk.at ?? null, jobs: data.stopAsk.jobs ?? null } : null } : {}),
         ...(Array.isArray(data.jobs) ? { jobs: data.jobs.slice(0, 50).map(jobOf) } : {}),
-        // Who the agent is, when the session has it, for the evidence of a check that names the agent.
+        // Who the agent is, when the session has it, for the evidence of a check that names the agent; and its
+        // conversation and backend, for its ATIF trajectory (tools/atif.mjs).
         ...(typeof data.handle === 'string' ? { handle: data.handle } : {}),
+        ...(typeof data.threadId === 'string' ? { threadId: data.threadId } : {}),
+        ...(typeof data.backend === 'string' ? { backend: data.backend } : {}),
         // The model and effort its backend reported for its latest turn (ctx.reported, server/turn-context.mjs): the
         // backend-switch scenarios’ triggers read them (tools/uat/switch-facts.mjs, #1315).
         ...(typeof data.lastModel === 'string' ? { lastModel: data.lastModel } : {}),

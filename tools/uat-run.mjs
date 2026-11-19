@@ -29,6 +29,7 @@
 import { join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
+import { writeTrajectories } from './atif-export.mjs';
 import { launch, sleep } from './browser.mjs';
 import { parseMaxCost, runBudget } from './uat/budget.mjs';
 import { lastCheckPass, MID_TURN, runChecks, waitingOnYou } from './uat/checks.mjs';
@@ -504,6 +505,8 @@ async function main() {
     const coverage = goals.coverage();
     // The history the checks read, for --recheck: Postbox’s own log can lose its first segments to a snapshot.
     await writeHistory(dir, facts);
+    // Each agent’s turns as an ATIF trajectory, timed by the server’s events (tools/atif-export.mjs).
+    writeTrajectories(join(dir, 'atif'), { events: facts.events, live: facts.live });
     writePostboxOutput(dir, facts.postboxOutput); // what Postbox printed, as the checks read it, for --recheck
     const all = [...findings.values()];
     presetFindings(all, { root: ROOT, commit: gitInfo(ROOT).commit });

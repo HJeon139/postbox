@@ -26,6 +26,9 @@ export function hostStateOf(d) {
   return { id: d.id, state: d.status?.state ?? null, failure: d.status?.failure?.kind ?? null, update };
 }
 
+/** The event types a run keeps besides the clock’s: what the checks read, and the work ledger’s, for its ATIF trajectories. */
+const KEPT = new Set(['item.add', 'item.patch', 'item.move', 'item.text', 'session', 'session.patch', 'work.add', 'work.patch']);
+
 /** A live frame’s data, parsed, as a list of it, or none if it doesn’t parse. @param {string} data */
 function framesIn(data) {
   try {
@@ -77,7 +80,7 @@ export function followEvents(origin) {
       } catch {}
       return;
     }
-    if (type !== 'item.add' && type !== 'item.patch' && type !== 'item.move' && type !== 'session' && type !== 'session.patch') return;
+    if (!KEPT.has(type) && !type.startsWith('clock.')) return;
     try {
       const e = keepEvent(seq, type, JSON.parse(data), sessions);
       if (e) kept.push(e);

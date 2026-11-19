@@ -1,0 +1,17 @@
+{"kind":"step","threadId":"th_32RcVWmk","itemId":"it_vhGlkXG3","rev":1,"step":{"id":"toolu_01UvPeupBvnh1ZXh1p8WXmXv","label":"Print CLAUDE_EFFORT environment variable","state":"running","ms":null,"input":"command: printenv CLAUDE_EFFORT","at":0}}
+{"kind":"session","sessionId":"se_WHKUw59I","toolCount":1,"currentStep":"Print CLAUDE_EFFORT environment variable","state":"tool","updatedAt":1795130373781,"toolCalls":[{"name":"Print CLAUDE_EFFORT environment variable","state":"running","ms":null}]}
+{"kind":"step","threadId":"th_32RcVWmk","itemId":"it_vhGlkXG3","rev":2,"step":{"id":"toolu_01UvPeupBvnh1ZXh1p8WXmXv","state":"done","ms":151,"output":"high"}}
+{"kind":"session","sessionId":"se_WHKUw59I","toolCalls":[{"name":"Print CLAUDE_EFFORT environment variable","state":"done","ms":151}]}
+{"kind":"session","sessionId":"se_WHKUw59I","currentStep":"Thinking","state":"think","updatedAt":1795130373932}
+{"kind":"session","sessionId":"se_WHKUw59I","currentStep":"Writing a reply","glimpse":"high","state":"gen","updatedAt":1795130374081}
+{"kind":"session","sessionId":"se_WHKUw59I","currentStep":"Thinking","glimpse":""}
+{"kind":"session","sessionId":"se_WHKUw59I","ctx":4,"updatedAt":1795130381442}
+{"kind":"session","sessionId":"se_WHKUw59I","currentStep":"Loading tools","state":"tool","updatedAt":1795130381595}
+{"kind":"session","sessionId":"se_WHKUw59I","currentStep":"Thinking","state":"think","updatedAt":1795130382957}
+{"kind":"session","sessionId":"se_WHKUw59I","currentStep":"Showing a block","state":"tool","updatedAt":1795130383709}
+{"kind":"session","sessionId":"se_WHKUw59I","currentStep":"Thinking","state":"think","updatedAt":1795130387640}
+{"kind":"session","sessionId":"se_WHKUw59I","currentStep":"Writing a reply","state":"gen","updatedAt":1795130388094}
+{"kind":"session","sessionId":"se_WHKUw59I","glimpse":"T"}
+{"kind":"session","sessionId":"se_WHKUw59I","glimpse":"Tea or coffee? Pick one above"}
+{"kind":"session","sessionId":"se_WHKUw59I","glimpse":"Tea or coffee? Pick one above."}
+{"kind":"session","sessionId":"se_WHKUw59I","currentStep":"Thinking","glimpse":""}
