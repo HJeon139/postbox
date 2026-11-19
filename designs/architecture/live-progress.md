@@ -1,6 +1,6 @@
 # Live-only progress
 
-**Status:** design, for review before any code ([`rooms-at-scale.md`](../rooms-at-scale.md), “Live state”, “Still to do”). Nothing here is built. The owner decided the restart question on 17 November 2026: a commit point at a graceful shutdown (“A restart mid-turn”).
+**Status:** built, 18 November 2026: every step in “Order of work” has landed, each with the pull request it names ([`rooms-at-scale.md`](../rooms-at-scale.md), “Live state”). The owner decided the restart question on 17 November 2026: a commit point at a graceful shutdown (“A restart mid-turn”).
 
 ## Why
 
@@ -179,7 +179,7 @@ After either:
 - `job-records.mjs` reads a job’s step from the live turn while it runs, and from the stored item after it ends. The stored item has the step, so this is unchanged.
 
 **Other readers of the store:**
-- **Other agents** (catch-up, `read_message`, `read_conversation`) read the stored text to the last commit point, and the line says the reply is still being written. Today they read every delta as it lands.
+- **Other agents** (catch-up, `read_message`, `read_conversation`) read the stored text to the last window, and the line says the reply is still being written and that `read_message` with its id reads all of it once it’s done (`writingNote`, `server/item-lines.mjs`; `tests/reply-being-written.test.mjs`). Before this design they read every delta as it landed.
 - **Host agents’ reads** refresh on stored item events (`onStoreEvent`, `server/remote/turns-snapshot.mjs`). They refresh at commit points, which is enough, since they read stored text.
 - **Search, fork, share and export** read stored items. While a turn runs they get its text to the last commit point; after it ends, all of it.
 - **Other `item.text` writers stay stored:** the person’s commands’ output (`shell-runs.mjs`) and an attached Claude Code terminal’s mirror (`claude-mirror.mjs`).
@@ -189,7 +189,7 @@ After either:
   - `room-events.mjs` and `history.mjs` replay events, unchanged;
   - `tools/uat/turns.mjs` reads `state`, which stays stored.
 
-  The first code PR runs each check over a log written with commit points, and holds its result to `main`’s.
+  `tests/uat-live-log.test.mjs` holds them to `main`’s results: it replays every recorded turn in `tests/fixtures/` through the real runtime into a store on disk, and what the checks rebuild of each reply from the log (`itemsOf`, which `inbox-measures.mjs` and `picture-choice.mjs` read) is every word the stream gave that reply, as `main` stored them a delta at a time, each stored before the reply settles.
 
 ## Proving it costs nothing new
 
@@ -278,12 +278,12 @@ Below 400 agents no snapshot is taken, so every event is replayed. At 400, when 
 ## Order of work
 
 Each item is its own pull request, test first:
-1. **The measurement:** `tools/measure-progress.mjs` extended as above, with `main`’s numbers. It changes nothing in Postbox.
-2. **`LIVE`, the `live` frame, `publicLiveFrame` and `publicLive`,** with the public-derivation, field-subset and private-kind tests, and `security-boundaries.md` updated in the same change, before anything is sent on it.
-3. **`server/live-buffer.mjs`, commit points, and the session fields and steps going live,** with the shared queue, the lag, `rev`, and `subagent-end.mjs` reading the buffer. The page’s handling of step and session frames (`app/js/live-frames.mjs`), the snapshot of steps and session fields, and `/api/state`’s `live` come with it, so a page that reloads or opens mid-turn never loses what changed since the last commit point (the integrator’s condition on #1471: step 3 ships no gap).
-4. **Text in windows** (“Text in windows”): a turn’s words stored once a window, with the settle hook.
-5. **The shutdown commit point** (built, `tests/shutdown-commit.test.mjs`), with a test that fails without it: a reply stopped cleanly mid-stream, Postbox started again on the same store, and every word the reply had said is there. For text, nothing is left to build: a graceful shutdown stops each running turn, whose end stores the words it holds (`liveEnd`, step 4), so this step adds only the test that holds it. **And the ledger at shutdown:** once closing begins, the ledger starts no new work and writes what it has before `store.close()`, with a test through the real `start()` and `close()` and a short grace, such as `ledgerGraceMs` of 30 ms and a record that writes after 150 ms, which `main` drops.
-6. **The readers:** catch-up’s line for a reply still being written, the UAT checks held to `main`’s results, this document’s “Status” moved to built, and `architecture.md`’s summary (“Streamed text is emitted on a fast path”) updated.
+1. **The measurement** (built, #1461): `tools/measure-progress.mjs` extended as above, with `main`’s numbers. It changes nothing in Postbox.
+2. **`LIVE`, the `live` frame, `publicLiveFrame` and `publicLive`** (built, #1462), with the public-derivation, field-subset and private-kind tests, and `security-boundaries.md` updated in the same change, before anything is sent on it.
+3. **`server/live-buffer.mjs`, commit points, and the session fields and steps going live** (built, #1471), with the shared queue, the lag, `rev`, and `subagent-end.mjs` reading the buffer. The page’s handling of step and session frames (`app/js/live-frames.mjs`), the snapshot of steps and session fields, and `/api/state`’s `live` come with it, so a page that reloads or opens mid-turn never loses what changed since the last commit point (the integrator’s condition on #1471: step 3 ships no gap).
+4. **Text in windows** (built, #1502; “Text in windows”): a turn’s words stored once a window, with the settle hook.
+5. **The shutdown commit point** (built, #1517, `tests/shutdown-commit.test.mjs`), with a test that fails without it: a reply stopped cleanly mid-stream, Postbox started again on the same store, and every word the reply had said is there. For text, nothing is left to build: a graceful shutdown stops each running turn, whose end stores the words it holds (`liveEnd`, step 4), so this step adds only the test that holds it. **And the ledger at shutdown:** once closing begins, the ledger starts no new work and writes what it has before `store.close()`, with a test through the real `start()` and `close()` and a short grace, such as `ledgerGraceMs` of 30 ms and a record that writes after 150 ms, which `main` drops.
+6. **The readers** (built): catch-up’s line for a reply still being written, the UAT checks held to `main`’s results, this document’s “Status” moved to built, and `architecture.md`’s summary (“Streamed text is emitted on a fast path”) updated.
 
 ## What this doesn’t do
 
