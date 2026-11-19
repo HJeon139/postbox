@@ -111,6 +111,16 @@ function failedNote(i) {
   return ` (this reply ${what}: ${clipText(i.error || 'unknown', 200)})`;
 }
 
+/**
+ * What a reply still being written says it is, or nothing for one that ended. Its words are stored in windows while its
+ * turn runs, so a reader gets them to the last window, and later ones only from read_message once the reply is done
+ * (designs/architecture/live-progress.md, “What reads the store while a turn runs”).
+ */
+function writingNote(i) {
+  if (i.status !== 'streaming') return '';
+  return ` (still writing this reply: this is what it had said so far, and read_message { id: "${i.id}" } reads all of it once it’s done)`;
+}
+
 /** Who shared an item from another thread: an agent in a turn the person started, an agent, or the person. */
 function sharedBy(i) {
   if (i.agent) return `, by @${i.handle} in a turn the person started`;
@@ -214,7 +224,7 @@ export function describeItem(memory, i, se, n, reader) {
       // report written before the turn failed reached no one (#485).
       // One retried since says so too: the retry’s reply follows it.
       if (!i.text) return null;
-      return `@${i.handle}${failedNote(i)}: ${text(i.text)}`;
+      return `@${i.handle}${failedNote(i)}${writingNote(i)}: ${text(i.text)}`;
     case 'block': {
       if (!i.valid) return null;
       // What it holds comes with it, so another agent can review it (#153).
