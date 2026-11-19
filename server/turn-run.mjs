@@ -3,13 +3,14 @@
 // server/runtime.mjs (#1236); Runtime keeps a method of each name, and each function here takes the runtime first.
 
 import { randomUUID } from 'node:crypto';
+import { clockHolds } from '../shared/run-clock.mjs';
 import { attachedFiles } from './adapters/attached-files.mjs';
 import { workFolder } from './adapters/folder.mjs';
 import { toolsDownNote } from './adapters/tools-down.mjs';
 import { heldSession } from './held-session.mjs';
 import { httpError, retiredError } from './helpers.mjs';
 import { refuseUnregistered } from './remote/placement.mjs';
-import { clockExpired, clockTurn } from './run-clock.mjs';
+import { clockTurn, holdForClock } from './run-clock.mjs';
 import { prepareScheduledRetry } from './scheduled-wakes.mjs';
 import { endChain } from './side-threads.mjs';
 import { newId } from './store.mjs';
@@ -37,10 +38,11 @@ export function deliver(rt, sessionId, message, { summarizeTo = null, threadId =
   if (heldSession(rt, sessionId, () => rt.turnService.run(sessionId, message, { summarizeTo, threadId }))) return;
   const se = rt.store.pending.session(sessionId) ?? rt.session(sessionId); // a summary's or a notice's write held (#506)
   if (se.retiredFork) throw retiredError(se);
-  // Its run clock ran out: no turn of its starts, and what was sent waits in its inbox (server/run-clock.mjs). A host
-  // turn attached again after a restart starts, to be stopped below: its clock may have run out while Postbox was down.
-  const expired = clockExpired(rt, sessionId);
-  if (expired && typeof message.attach !== 'string') return;
+  // Its run clock is paused or ran out: no turn of its starts, and what came another way than its inbox waits for the
+  // resume (server/run-clock.mjs). A host turn attached again after a restart starts, to be stopped below: its clock may
+  // have run out while Postbox was down.
+  const held = clockHolds(rt.s, sessionId);
+  if (held && typeof message.attach !== 'string') return holdForClock(rt, sessionId, { message, summarizeTo, threadId });
   message = prepareScheduledRetry(rt, message, se.threadId);
   // As it was asked, for Retry (askedOf).
   const asked = { message, summarizeTo, threadId };
@@ -76,7 +78,7 @@ export function deliver(rt, sessionId, message, { summarizeTo = null, threadId =
   });
   atWork(rt, se, turn);
   runTurn(rt, se, turn, clockTurn(rt, se.id, turn.id, message), { adapter, persona, hostId });
-  if (expired) rt.stop(se.id, { by: 'clock' });
+  if (held) rt.stop(se.id, { by: 'clock' });
 }
 
 /**

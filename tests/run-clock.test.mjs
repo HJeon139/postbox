@@ -8,6 +8,7 @@ import { formatMessage } from '../server/adapters/guide.mjs';
 import { armClock, clockAction, rearmClocks } from '../server/run-clock.mjs';
 import { clockElapsed, clockLine } from '../shared/run-clock.mjs';
 import { apply, emptyState, PUBLIC_EVENT_TYPES } from '../shared/state.mjs';
+import { waitingEntries } from './arrange.mjs';
 import { setup, slowToExit } from './stop-fixture.mjs';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -135,4 +136,44 @@ test('the person’s clock actions refuse a bad budget, a second start and a pau
   armClock(rt, se.id, at(500_000));
   assert.equal(store.state.clocks[se.id].state, 'paused');
   assert.throws(() => clockAction(rt, se.id, { action: 'start', budgetS: 60 }, at(1_000)), { status: 409 });
+});
+
+test('a pause stops the running turn, what the agent is sent meanwhile waits in its inbox, and the resume starts it', async () => {
+  const { rt, store, adapter, t, se } = setup();
+  clockAction(rt, se.id, { action: 'start', budgetS: 600 });
+  const turn = slowToExit();
+  adapter.next.push(turn);
+  rt.sendMessage(t.id, { text: 'Work until paused.' });
+  await sleep(5);
+  clockAction(rt, se.id, { action: 'pause' });
+  await sleep(1);
+  assert.equal(turn.reason?.name, 'AbortError', 'the pause stopped the turn');
+  turn.exit();
+  await sleep(10);
+  rt.sendMessage(t.id, { text: 'Sent while paused.' });
+  await sleep(10);
+  assert.equal(adapter.calls.length, 1, 'no turn while paused');
+  assert.deepEqual(
+    waitingEntries(rt, se.id).map((e) => store.item(t.id, e.itemId)?.text),
+    ['Sent while paused.'],
+  );
+  clockAction(rt, se.id, { action: 'resume' });
+  await sleep(10);
+  assert.equal(adapter.calls.length, 2);
+  assert.match(JSON.stringify(adapter.calls[1].message), /Sent while paused\./);
+  assert.match(adapter.calls[1].message.clock, /^\[Postbox\] Run clock: elapsed 0s \/ budget 600s\. /);
+});
+
+test('a message sent after the clock expired stays waiting in the inbox, never taken by a turn that didn’t run', async () => {
+  const { rt, store, adapter, t, se } = setup();
+  clockAction(rt, se.id, { action: 'start', budgetS: 60 }, at(0));
+  rearmClocks(rt, at(61_000));
+  rt.sendMessage(t.id, { text: 'Too late.' });
+  await sleep(10);
+  assert.equal(adapter.calls.length, 0);
+  const inbox = store.state.inbox[se.id] ?? [];
+  assert.deepEqual(
+    inbox.map((e) => e.state),
+    ['waiting'],
+  );
 });

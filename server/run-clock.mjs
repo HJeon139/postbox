@@ -1,5 +1,5 @@
-// Agents’ run clocks on the server: the person starts, pauses and resumes one (POST /api/sessions/:id/clock), each turn
-// the agent starts carries its line and records a clock.turn event, and when the budget runs out Postbox records
+// Agents’ run clocks on the server: the person starts, pauses and resumes one (POST /api/sessions/:id/clock); a pause
+// stops the agent’s turn and holds its next until the resume. Each turn the agent starts carries its line and records a clock.turn event, and when the budget runs out Postbox records
 // clock.expired, stops the running turn and starts no other. The clock itself is in the store (shared/run-clock.mjs);
 // the timer here is only derived from it, set again at each start of Postbox (rearmClocks), so a budget that ran out
 // while Postbox was down expires as it starts. Time while Postbox is down counts: an agent on a host goes on working.
@@ -37,10 +37,14 @@ export function clockAction(rt, sessionId, body, now = Date.now) {
     case 'pause':
       if (clock?.state !== 'running') throw httpError(409, `@${se.handle} has no running run clock to pause.`);
       rt.store.emit('clock.paused', { sessionId, at: now() });
+      // Paused time isn’t counted, so the agent doesn’t work in it: its turn stops, and none starts until the resume.
+      // Silent, as Send now is: the wakes queued for it wait for the resume rather than being dropped.
+      if (rt.turns.has(sessionId)) rt.stop(sessionId, { by: 'pause', silent: true });
       break;
     case 'resume':
       if (clock?.state !== 'paused') throw httpError(409, `@${se.handle} has no paused run clock to resume.`);
       rt.store.emit('clock.resumed', { sessionId, at: now() });
+      resumeHeld(rt, sessionId);
       break;
     default:
       throw httpError(422, 'A run clock’s action is start, pause or resume.');
@@ -113,8 +117,28 @@ export function rearmClocks(rt, now = Date.now) {
   for (const sessionId of Object.keys(rt.s.clocks ?? {})) armClock(rt, sessionId, now);
 }
 
-/** Whether an agent’s clock has expired, so no turn of its starts. @param {any} rt @param {string} sessionId */
-export const clockExpired = (rt, sessionId) => clockOf(rt, sessionId)?.state === 'expired';
+/** @type {WeakMap<any, Map<string, any[]>>} each runtime’s turns held by a paused clock, by session: memory only */
+const heldTurns = new WeakMap();
+
+/**
+ * A turn that came another way than the inbox (a message held behind a turn, a release after a stop) for an agent whose
+ * clock holds it: kept for the resume. An expired clock’s are kept too, and never run. Memory only: a restart loses
+ * them, as it loses a message held for a busy agent.
+ * @param {any} rt @param {string} sessionId @param {{ message: any, summarizeTo: string|null, threadId: string|null }} turn
+ */
+export function holdForClock(rt, sessionId, turn) {
+  const mine = heldTurns.get(rt) ?? new Map();
+  heldTurns.set(rt, mine);
+  mine.set(sessionId, [...(mine.get(sessionId) ?? []), turn]);
+}
+
+/** The clock resumed: the turns it held run, and the agent’s inbox can start one again. @param {any} rt @param {string} sessionId */
+function resumeHeld(rt, sessionId) {
+  const held = heldTurns.get(rt)?.get(sessionId) ?? [];
+  heldTurns.get(rt)?.delete(sessionId);
+  for (const { message, summarizeTo, threadId } of held) rt.turnService.run(sessionId, message, { summarizeTo, threadId });
+  rt.delivery.wake(sessionId);
+}
 
 /**
  * A turn of a clocked agent begins: the stream hears where its clock is, and the turn’s message carries the line.
