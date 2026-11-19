@@ -301,7 +301,10 @@ test('#372, #1518: agents wake each other in the conversation, with no side thre
   // that goes back to no one.
   assert.deepEqual(said[1].wentBack, ['alpha']);
   assert.equal(adapter.calls.map((c) => c.sessionId).join(), [beta.id, alpha.id].join());
-  assert.match(adapter.calls[1].message.text, /goes to no one unless you @-mention an agent\.\n\n.*@beta, .*: Editions are fine\.$/);
+  assert.match(
+    adapter.calls[1].message.text,
+    /goes to no one unless you @-mention an agent\. An agent you @-mention now answers you only if it @-mentions you: its reply doesn’t come back on its own\.\n\n.*@beta, .*: Editions are fine\.$/,
+  );
   assert.equal(store.state.sessions[alpha.id].agentMessages[0].other, 'beta');
 });
 
