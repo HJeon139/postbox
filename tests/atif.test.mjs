@@ -11,41 +11,49 @@ import { keepEvent } from '../tools/uat/room-events.mjs';
 
 const DIR = new URL('fixtures/atif/dry-run/', import.meta.url).pathname;
 const rec = readRecording(DIR);
-const only = (opts = {}) => {
-  const found = trajectories(rec.events, { version: POSTBOX_VERSION, live: rec.live, ...opts });
-  assert.equal(found.length, 1);
+const all = (events = rec.events, live = rec.live) => trajectories(events, { version: POSTBOX_VERSION, live });
+const of = (handle, events, live) => {
+  const found = all(events, live).filter((t) => t.handle === handle);
+  assert.equal(found.length, 1, handle);
   return found[0].trajectory;
 };
 const AGENT_ONLY = ['model_name', 'reasoning_effort', 'reasoning_content', 'tool_calls', 'metrics'];
+const sessionOf = (handle) => rec.events.find((e) => e.type === 'session' && e.data.handle === handle).data.id;
 
-test('the recorded run gives @dry one trajectory that keeps Harbor’s rules for a step', () => {
-  const t = only();
-  assert.equal(t.schema_version, 'ATIF-v1.8');
-  assert.equal(t.agent.name, 'postbox/claude-code');
-  assert.equal(t.agent.version, POSTBOX_VERSION);
-  assert.equal(t.agent.extra.handle, 'dry');
-  t.steps.forEach((s, i) => {
-    assert.equal(s.step_id, i + 1);
-    assert.ok(['system', 'user', 'agent'].includes(s.source));
-    assert.ok(typeof s.message === 'string');
-    assert.match(s.timestamp, /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/);
-    if (s.source !== 'agent') for (const k of AGENT_ONLY) assert.equal(s[k], undefined, `${k} on a ${s.source} step`);
-    const calls = new Set((s.tool_calls ?? []).map((c) => c.tool_call_id));
-    for (const r of s.observation?.results ?? []) assert.ok(calls.has(r.source_call_id), r.source_call_id);
-  });
+test('the recorded run gives each agent one trajectory that keeps Harbor’s rules for a step', () => {
+  assert.deepEqual(
+    all()
+      .map((t) => t.handle)
+      .sort(),
+    ['dry', 'dry2'],
+  );
+  for (const { trajectory: t } of all()) {
+    assert.equal(t.schema_version, 'ATIF-v1.8');
+    assert.equal(t.agent.name, 'postbox/claude-code');
+    assert.equal(t.agent.version, POSTBOX_VERSION);
+    t.steps.forEach((s, i) => {
+      assert.equal(s.step_id, i + 1);
+      assert.ok(['system', 'user', 'agent'].includes(s.source));
+      assert.ok(typeof s.message === 'string');
+      assert.match(s.timestamp, /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/);
+      if (s.source !== 'agent') for (const k of AGENT_ONLY) assert.equal(s[k], undefined, `${k} on a ${s.source} step`);
+      const calls = new Set((s.tool_calls ?? []).map((c) => c.tool_call_id));
+      for (const r of s.observation?.results ?? []) assert.ok(calls.has(r.source_call_id), r.source_call_id);
+    });
+  }
 });
 
-test('there is one step per message, reply and clock event the stream recorded, each at the server’s time', () => {
-  const t = only();
+test('a step is each message that reached the agent’s inbox, each of its replies and each clock event, at the server’s time', () => {
+  const t = of('dry');
+  const id = sessionOf('dry');
   const added = rec.events.filter((e) => e.type === 'item.add').map((e) => e.data.item);
-  const clocks = rec.events.filter((e) => e.type.startsWith('clock.'));
-  assert.equal(t.steps.length, added.length + clocks.length);
+  const delivered = new Set(rec.events.filter((e) => e.type === 'entry.add' && e.data.sessionId === id).map((e) => e.data.entry.itemId));
+  const own = added.filter((it) => it.sessionId === id);
+  const clocks = rec.events.filter((e) => e.type.startsWith('clock.') && e.data.sessionId === id);
+  assert.equal(t.steps.length, added.filter((it) => delivered.has(it.id)).length + own.length + clocks.length);
   assert.equal(t.final_metrics.total_steps, t.steps.length);
-  const byItem = new Map(added.map((it) => [it.id, it.at]));
-  for (const s of t.steps) {
-    const at = s.extra.event ? s.extra.at : byItem.get(s.extra.item_id);
-    assert.equal(s.timestamp, new Date(at).toISOString(), `step ${s.step_id}`);
-  }
+  const at = new Map(added.map((it) => [it.id, it.at]));
+  for (const s of t.steps) assert.equal(s.timestamp, new Date(s.extra.event ? s.extra.at : at.get(s.extra.item_id)).toISOString(), `step ${s.step_id}`);
   assert.deepEqual(
     t.steps.filter((s) => s.extra.event).map((s) => s.extra.event),
     ['clock.started', 'clock.turn', 'clock.turn', 'clock.turn', 'clock.expired'],
@@ -54,8 +62,19 @@ test('there is one step per message, reply and clock event the stream recorded, 
   assert.ok(!t.steps.some((s) => s.timestamp.startsWith('2026-10-22')));
 });
 
+test('a message to another agent that never reached this one’s inbox is no step of its', () => {
+  const toDry2 = rec.events.find((e) => e.type === 'item.add' && /only for you/.test(e.data.item.text ?? '')).data.item;
+  assert.ok(!of('dry').steps.some((s) => s.extra.item_id === toDry2.id));
+  assert.deepEqual(
+    of('dry2')
+      .steps.filter((s) => s.source === 'user')
+      .map((s) => s.extra.item_id),
+    [toDry2.id],
+  );
+});
+
 test('a turn’s tokens and cost go on its first reply, and a figure its backend didn’t report is left out', () => {
-  const replies = only().steps.filter((s) => s.source === 'agent');
+  const replies = of('dry').steps.filter((s) => s.source === 'agent');
   assert.deepEqual(replies[0].metrics, {
     prompt_tokens: 4 + 62632 + 18031,
     completion_tokens: 102,
@@ -71,28 +90,96 @@ test('a turn’s tokens and cost go on its first reply, and a figure its backend
   assert.equal(replies[2].extra.status, 'stopped');
 });
 
-test('a total only some turns reported is a partial sum in extra, never a total', () => {
-  const f = only().final_metrics;
+test('a total only some turns reported is a partial sum in extra, never a total; one every turn reported is a total', () => {
+  const f = of('dry').final_metrics;
   assert.equal(f.total_cost_usd, undefined);
   assert.deepEqual(f.extra.partial.total_cost_usd, { sum: 0.0794152, turns_reported: 1, turns_unreported: 2 });
   assert.deepEqual(f.extra.partial.total_completion_tokens, { sum: 384, turns_reported: 2, turns_unreported: 1 });
+  assert.equal(of('dry2').final_metrics.total_cost_usd, 0.0794152);
 });
 
-test('a tool call keeps the live view’s input and output, which only the live frames carry', () => {
-  const [reply] = only().steps.filter((s) => s.source === 'agent');
+// A turn whose only output is a block, from the recorded run: its reply’s item.add is left out and a block item of the
+// same turn takes its place, as server/block-show.mjs adds one ({ kind: 'block', sessionId, handle, turnId, block }).
+// The ledger’s events for the turn are as recorded.
+function withBlockTurn({ keepBlock }) {
+  const id = sessionOf('dry');
+  const reply = rec.events.filter((e) => e.type === 'item.add' && e.data.item.sessionId === id)[1];
+  const { item } = reply.data;
+  const block = {
+    id: 'it_block',
+    at: item.at,
+    kind: 'block',
+    sessionId: id,
+    handle: 'dry',
+    turnId: item.turnId,
+    block: { type: 'choice', id: 'drink', fallback: 'Tea or coffee?' },
+  };
+  const events = rec.events.flatMap((e) => {
+    if (e !== reply) return e.data?.id === item.id ? [] : [e];
+    return keepBlock ? [{ ...e, data: { threadId: e.data.threadId, item: block } }] : [];
+  });
+  return { turnId: item.turnId, t: of('dry', events) };
+}
+
+test('a turn that only showed a block has its tokens on the block’s step, and still counts toward the totals', () => {
+  const { turnId, t } = withBlockTurn({ keepBlock: true });
+  const shown = t.steps.find((s) => s.extra.item_id === 'it_block');
+  assert.equal(shown.source, 'agent');
+  assert.equal(shown.extra.turn_id, turnId);
+  assert.equal(shown.metrics.completion_tokens, 282);
+  assert.equal(t.final_metrics.extra.unattached_turns, undefined);
+  assert.equal(t.final_metrics.extra.partial.total_completion_tokens.sum, 384);
+});
+
+test('a turn the ledger has figures for but no step carries is listed, and its figures still count', () => {
+  const { turnId, t } = withBlockTurn({ keepBlock: false });
+  assert.deepEqual(
+    t.final_metrics.extra.unattached_turns.map((u) => [u.turn_id, u.metrics.completion_tokens]),
+    [[turnId, 282]],
+  );
+  assert.equal(t.final_metrics.extra.partial.total_completion_tokens.sum, 384);
+});
+
+test('a tool call names the tool its harness ran, with the arguments the work ledger kept', () => {
+  const [reply] = of('dry').steps.filter((s) => s.source === 'agent');
   assert.deepEqual(reply.tool_calls, [
     {
       tool_call_id: 'toolu_01UvPeupBvnh1ZXh1p8WXmXv',
-      function_name: 'Print CLAUDE_EFFORT environment variable',
-      arguments: { input: 'command: printenv CLAUDE_EFFORT' },
-      extra: { state: 'done', ms: 151 },
+      function_name: 'Bash',
+      arguments: { command: 'printenv CLAUDE_EFFORT', description: 'Print CLAUDE_EFFORT environment variable', run_in_background: false },
+      extra: {
+        label: 'Print CLAUDE_EFFORT environment variable',
+        state: 'done',
+        ms: reply.tool_calls[0].extra.ms,
+        arguments_source: 'work ledger',
+        display_input: 'command: printenv CLAUDE_EFFORT',
+      },
     },
   ]);
+  assert.equal(typeof reply.tool_calls[0].extra.ms, 'number');
   assert.deepEqual(reply.observation, { results: [{ source_call_id: 'toolu_01UvPeupBvnh1ZXh1p8WXmXv', content: 'high' }] });
-  // From the stored events alone, the call is there with no arguments, and nothing it returned.
-  const [bare] = trajectories(rec.events, { version: POSTBOX_VERSION })[0].trajectory.steps.filter((s) => s.source === 'agent');
-  assert.deepEqual(bare.tool_calls[0].arguments, {});
+  // From the stored events alone: the same name and arguments, and nothing it returned, which only live frames carry.
+  const [bare] = of('dry', rec.events, []).steps.filter((s) => s.source === 'agent');
+  assert.equal(bare.tool_calls[0].function_name, 'Bash');
+  assert.equal(bare.tool_calls[0].arguments.command, 'printenv CLAUDE_EFFORT');
+  assert.equal(bare.tool_calls[0].extra.display_input, undefined);
   assert.equal(bare.observation, undefined);
+});
+
+test('a call whose step has no tool name and no ledger entry says so, with no arguments made up', () => {
+  const id = sessionOf('dry');
+  const events = rec.events
+    .filter((e) => !(e.type === 'work.add' && e.data.entry.kind === 'command'))
+    .map((e) =>
+      e.type === 'item.patch' && e.data.activityStep ? { ...e, data: { ...e.data, activityStep: { ...e.data.activityStep, tool: undefined } } } : e,
+    );
+  const live = rec.live.map((l) => (l.kind === 'step' ? { ...l, step: { ...l.step, tool: undefined } } : l));
+  const call = of('dry', events, live).steps.find((s) => s.tool_calls)?.tool_calls[0];
+  assert.ok(id && call);
+  assert.equal(call.function_name, 'unknown');
+  assert.deepEqual(call.arguments, {});
+  assert.equal(call.extra.function_name, 'not recorded');
+  assert.equal(call.extra.arguments_source, 'not recorded');
 });
 
 test('the exporter reads a recording given as its events file as it reads the run’s folder', () => {
@@ -103,16 +190,17 @@ test('the exporter reads a recording given as its events file as it reads the ru
   assert.equal(trajectories(rec.events, { version: '0', sessionId: 'se_none' }).length, 0);
 });
 
-test('the UAT history keeps the clock’s events, a reply’s stored words and the work ledger’s turns', () => {
+test('the UAT history keeps the clock’s events, a reply’s stored words, the inboxes and the ledger’s turns and calls', () => {
   const lines = readFileSync(`${DIR}events.jsonl`, 'utf8')
     .trim()
     .split('\n')
     .map((l) => JSON.parse(l));
-  for (const type of ['clock.started', 'clock.turn', 'clock.expired', 'item.text', 'work.add', 'work.patch']) {
+  for (const type of ['clock.started', 'clock.turn', 'clock.expired', 'item.text', 'entry.add', 'entry.patch', 'work.add', 'work.patch']) {
     const e = lines.find((x) => x.type === type);
     assert.ok(e, `the fixture has a ${type}`);
     assert.deepEqual(keepEvent(e.seq, e.type, e.data), { seq: e.seq, type, data: e.data }, type);
   }
-  // A work entry that isn’t a turn (a command, an edit) isn’t one the trajectories read.
-  assert.equal(keepEvent(1, 'work.add', { convId: 'th_1', entry: { kind: 'command', id: 'w_1' } }), null);
+  assert.ok(lines.some((x) => x.type === 'work.add' && x.data.entry.kind === 'command'));
+  // A ledger entry the trajectories don’t read (a file’s change, a publish) isn’t kept.
+  assert.equal(keepEvent(1, 'work.add', { convId: 'th_1', entry: { kind: 'publish', id: 'w_1' } }), null);
 });

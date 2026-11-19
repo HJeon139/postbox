@@ -26,8 +26,20 @@ export function hostStateOf(d) {
   return { id: d.id, state: d.status?.state ?? null, failure: d.status?.failure?.kind ?? null, update };
 }
 
-/** The event types a run keeps besides the clock’s: what the checks read, and the work ledger’s, for its ATIF trajectories. */
-const KEPT = new Set(['item.add', 'item.patch', 'item.move', 'item.text', 'session', 'session.patch', 'work.add', 'work.patch']);
+/** The event types a run keeps besides the clock’s: what the checks read, and the ledger’s and inboxes’, for its ATIF. */
+const KEPT = new Set([
+  'item.add',
+  'item.patch',
+  'item.move',
+  'item.text',
+  'session',
+  'session.patch',
+  'work.add',
+  'work.patch',
+  'entry.add',
+  'entry.patch',
+  'entry.put',
+]);
 
 /** A live frame’s data, parsed, as a list of it, or none if it doesn’t parse. @param {string} data */
 function framesIn(data) {

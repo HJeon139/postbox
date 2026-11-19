@@ -27,16 +27,20 @@ export const POSTBOX_VERSION = JSON.parse(readFileSync(join(ROOT, 'package.json'
 /** The JSON Lines in a file, or none when it isn’t there. @param {string} file */
 const linesIn = (file) => (existsSync(file) ? lines(readFileSync(file, 'utf8')) : []);
 
+/** The work ledger’s entries the trajectories read: turns, and the calls that keep their arguments. */
+const WORK_KINDS = new Set(['turn', 'command', 'external', 'read']);
+
 /**
- * A data folder’s snapshot as events placed before the log’s: each session, each item as it ended, each turn of the
- * work ledger, and each clock as it stood. @param {Record<string, any>} snap
+ * A data folder’s snapshot as events placed before the log’s: each session, each item as it ended, the work ledger’s
+ * turns and calls, each inbox’s entries, and each clock as it stood. @param {Record<string, any>} snap
  */
 function snapshotEvents(snap) {
   const out = [];
   for (const se of Object.values(snap.sessions ?? {})) out.push({ type: 'session', data: se });
   for (const [threadId, list] of Object.entries(snap.items ?? {})) for (const item of list) out.push({ type: 'item.add', data: { threadId, item } });
   for (const [convId, list] of Object.entries(snap.work ?? {}))
-    for (const entry of list) if (entry?.kind === 'turn') out.push({ type: 'work.add', data: { convId, entry } });
+    for (const entry of list) if (WORK_KINDS.has(entry?.kind)) out.push({ type: 'work.add', data: { convId, entry } });
+  for (const [sessionId, list] of Object.entries(snap.inbox ?? {})) for (const entry of list) out.push({ type: 'entry.put', data: { sessionId, entry } });
   for (const c of Object.values(snap.clocks ?? {})) {
     out.push({ type: 'clock.started', data: { sessionId: c.sessionId, threadId: c.threadId, budgetMs: c.budgetMs, at: c.startedAt } });
     if (c.state === 'expired')
@@ -48,7 +52,7 @@ function snapshotEvents(snap) {
 }
 
 /** When a snapshot’s event happened, for its order. @param {any} e */
-const timeOf = (e) => e.data.item?.at ?? e.data.entry?.startedAt ?? e.data.at ?? e.data.startedAt ?? 0;
+const timeOf = (e) => e.data.item?.at ?? e.data.entry?.startedAt ?? e.data.entry?.at ?? e.data.at ?? e.data.startedAt ?? 0;
 
 /**
  * The events and live frames of a recording, and a note on what they leave out.

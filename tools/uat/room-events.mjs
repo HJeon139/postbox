@@ -5,6 +5,9 @@
 
 import { EVENTS, patchSession } from '../../shared/state.mjs';
 
+/** The work ledger’s entries a run keeps: turns, and the calls that keep their arguments (tools/atif-calls.mjs). */
+const WORK_KINDS = new Set(['turn', 'command', 'external', 'read']);
+
 /**
  * The event, cut to what the checks read, or null for one they don’t (streamed text, apps, glossary…). A session.patch
  * (designs/508, “Store events”) is kept as the whole session it leaves, so the checks read sessions as they always
@@ -22,10 +25,11 @@ export function keepEvent(seq, type, data, sessions = new Map(), events = EVENTS
   }
   // An item brought to the newest point (item.move) carries its update as a patch: a block’s new revision (#213).
   if (type === 'item.add' || type === 'item.patch' || type === 'item.move') return { seq, type, data };
-  // A run clock’s events, a reply’s words as they’re stored, and the work ledger’s turns with their tokens and cost:
-  // the run’s ATIF trajectories read them (tools/atif.mjs).
-  if (type.startsWith('clock.') || type === 'item.text') return { seq, type, data };
-  if (type === 'work.add' && data?.entry?.kind === 'turn') return { seq, type, data };
+  // A run clock’s events, a reply’s words as they’re stored, each inbox’s entries (what reached each agent), and the
+  // work ledger’s turns, with their tokens and cost, and calls, with their arguments: the run’s ATIF trajectories read
+  // them (tools/atif.mjs).
+  if (type.startsWith('clock.') || type === 'item.text' || type.startsWith('entry.')) return { seq, type, data };
+  if (type === 'work.add' && WORK_KINDS.has(data?.entry?.kind)) return { seq, type, data };
   if (type === 'work.patch') return { seq, type, data };
   // A session event holds the whole session; the checks read only its state, and finishedAt, which a turn clears. The
   // triggers (tools/uat/triggers.mjs) also read Stop’s question about background jobs, and the jobs themselves (#126),
