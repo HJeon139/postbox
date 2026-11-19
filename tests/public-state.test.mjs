@@ -47,6 +47,12 @@ const TYPES = [
   'app.note',
   'app.notes.dropped',
   'app.notes.read',
+  // An agent’s run clock (shared/run-clock.mjs): budgets and server times, which the person sees.
+  'clock.started',
+  'clock.paused',
+  'clock.resumed',
+  'clock.turn',
+  'clock.expired',
 ];
 /** The types the page may not see: each reaches it as a cursor (designs/architecture/security-boundaries.md). */
 const PRIVATE_TYPES = ['app.publish', 'app.note', 'app.notes.dropped', 'app.notes.read'];
@@ -76,7 +82,7 @@ test('every key of the state is either public or private, never both and never n
   const keys = Object.keys(emptyState());
   assert.deepEqual([...PUBLIC_STATE_KEYS, ...PRIVATE_STATE_KEYS].sort(), [...keys].sort());
   for (const k of PUBLIC_STATE_KEYS) assert.equal(PRIVATE_STATE_KEYS.includes(k), false, k);
-  assert.equal(PUBLIC_STATE_KEYS.length, 21);
+  assert.equal(PUBLIC_STATE_KEYS.length, 22);
   assert.deepEqual(PRIVATE_STATE_KEYS, ['published', 'appNotes']);
 });
 

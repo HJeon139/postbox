@@ -270,10 +270,11 @@ export function formatMessage(message, pathOf = () => null) {
       facts,
       lint,
       ...(message.context ?? []),
+      clockOf(message),
     ]
       .filter(Boolean)
       .join('\n\n');
-  return [body, facts, lint, message.context?.length ? `${BACKGROUND}\n\n${message.context.join('\n\n')}` : ''].filter(Boolean).join('\n\n');
+  return [body, facts, lint, message.context?.length ? `${BACKGROUND}\n\n${message.context.join('\n\n')}` : '', clockOf(message)].filter(Boolean).join('\n\n');
 }
 
 /**
@@ -289,8 +290,13 @@ function formatInput(message, pathOf) {
     const where = pathOf(a);
     return `- ${a.kind === 'project-file' ? a.path : `${a.name}${a.type ? ` (${a.type})` : ''}`}${where ? `: ${where}` : ''}`;
   });
-  return [facts, message.text, files.length ? `Attached:\n${files.join('\n')}` : '', lint, ...(message.context ?? [])].filter(Boolean).join('\n\n');
+  return [facts, message.text, files.length ? `Attached:\n${files.join('\n')}` : '', lint, ...(message.context ?? []), clockOf(message)]
+    .filter(Boolean)
+    .join('\n\n');
 }
+
+/** The run clock’s line a turn ends with (server/run-clock.mjs), or nothing for an agent with no clock. @param {any} message */
+const clockOf = (message) => (typeof message.clock === 'string' ? message.clock : '');
 
 /** A late answer to an AskUserQuestion, in words. @param {{ text: string, answer: string | null }} q */
 const lateQuestion = (q) => `It answers your AskUserQuestion “${q.text}”: ${q.answer === null ? 'the person dismissed it' : `the person chose “${q.answer}”`}.`;

@@ -16,6 +16,9 @@ import { entriesFirst } from './turns.mjs';
 /** How long a stopped turn may hold its session before Postbox lets the next turn start anyway, and says so (#126). */
 const STOP_WATCHDOG_MS = 15000;
 
+/** What a waiting permission is told, by who stopped the turn. */
+const STOP_WHY = Object.freeze({ you: 'You stopped the agent.', clock: 'Its run clock reached its budget, so Postbox stopped it.' });
+
 /**
  * Stop ends this agent’s turn and its subagents. Agents it woke keep running. Its process gets SIGINT, then SIGKILL,
  * and the session shows as stopping until it has exited: its next turn waits for that (#126).
@@ -27,7 +30,7 @@ const STOP_WATCHDOG_MS = 15000;
  * A remote turn’s Stop is always a plain stop: the daemon stops the whole turn, so no job is kept (#120).
  * @param {any} rt  the runtime
  * @param {string} sessionId
- * @param {{ silent?: boolean, jobs?: 'stop' | 'keep', by?: 'you' | 'shutdown' | 'hung', why?: string, sendNow?: boolean }} [opts]
+ * @param {{ silent?: boolean, jobs?: 'stop' | 'keep', by?: 'you' | 'shutdown' | 'hung' | 'clock', why?: string, sendNow?: boolean }} [opts]
  */
 export function stop(rt, sessionId, { silent = false, jobs = 'stop', by = 'you', why, sendNow = false } = {}) {
   const turn = rt.turns.get(sessionId);
@@ -43,7 +46,7 @@ export function stop(rt, sessionId, { silent = false, jobs = 'stop', by = 'you',
   turn.abort.abort(Object.assign(new Error('Stopped by you.'), { name: 'AbortError', keepJobs: keep.map((j) => ({ id: j.id, command: j.command })) }));
   turn.closed = true;
   rt.running.end(sessionId);
-  recordStopped(rt, turn, ended, { by, why: 'You stopped the agent.' });
+  recordStopped(rt, turn, ended, { by, why: by === 'clock' ? STOP_WHY.clock : STOP_WHY.you });
   // What the turn took was given to the agent, so it isn't handed over again (designs/architecture/services.md, “The
   // end of a turn”). A shutdown's isn't settled: the restart reopens it once, as a resend.
   if (by !== 'shutdown') rt.bus.emit('turn.stopping', { turn });
