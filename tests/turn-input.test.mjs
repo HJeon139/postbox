@@ -38,7 +38,7 @@ test('#1518 where the reply goes: back to agents whose mentions alone started th
   const head = (/** @type {any[]} */ entries) => turnInput({ entries, thread: { id: 'th_1', kind: 'chat' }, read }).split('\n\n')[0];
   const other = { ...mention, id: 'en_3', itemId: 'it_882', from: 'researcher' };
   assert.match(head([mention, other]), /Your reply posts there and goes back to @critic and @researcher\. @-mention another agent/);
-  assert.match(head([{ ...mention, bounce: true }]), /Your reply posts there and goes to no one unless you @-mention an agent\.$/);
+  assert.match(head([{ ...mention, bounce: true }]), /Your reply posts there and goes to no one unless you @-mention an agent\. /);
   // With the person’s message, or what isn’t a mention, it goes where it @-mentions only, as before.
   assert.match(head([mention, person]), /Your reply posts there\.$/);
   assert.match(head([mention, { ...mention, id: 'en_4', source: 'check', from: undefined }]), /Your reply posts there\.$/);
@@ -144,4 +144,12 @@ test('#675: an entry cut at the ceiling ends on a whole character, never half of
   const line = entryLine(mention, () => text);
   assert.ok(!/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/.test(line), 'no lone first half of a pair');
   assert.ok(line.includes(`${'x'.repeat(READING.mention - 1)}… (`), 'the emoji goes whole to the part read_message reads');
+});
+
+test('#1518 after a bounce, the agent is told an agent it @-mentions answers it only by @-mentioning it', () => {
+  const head = (/** @type {any[]} */ entries) => turnInput({ entries, thread: { id: 'th_1', kind: 'chat' }, read }).split('\n\n')[0];
+  const warning = /An agent you @-mention now answers you only if it @-mentions you: its reply doesn’t come back on its own\.$/;
+  assert.match(head([{ ...mention, bounce: true }]), warning);
+  assert.doesNotMatch(head([mention]), /answers you only if/);
+  assert.doesNotMatch(head([person]), /answers you only if/);
 });
