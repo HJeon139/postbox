@@ -114,7 +114,16 @@ export function rearmClocks(rt, now = Date.now) {
     reloading.add(rt);
     rt.store.onReload(() => rearmClocks(rt, now));
   }
-  for (const sessionId of Object.keys(rt.s.clocks ?? {})) armClock(rt, sessionId, now);
+  for (const sessionId of Object.keys(rt.s.clocks ?? {})) {
+    const clock = clockOf(rt, sessionId);
+    // Each running clock marks where Postbox’s record starts again, so a gap in it can be seen: an agent on a host may
+    // have worked through it, past the budget, since the hard stop is this server’s timer.
+    if (clock?.state === 'running' && rt.store.writable) {
+      const at = now();
+      rt.store.emit('clock.restored', { sessionId, elapsedMs: clockElapsed(clock, at), budgetMs: clock.budgetMs, at });
+    }
+    armClock(rt, sessionId, now);
+  }
 }
 
 /** @type {WeakMap<any, Map<string, any[]>>} each runtime’s turns held by a paused clock, by session: memory only */

@@ -206,6 +206,7 @@ const ADDED_SINCE = [
   'clock.paused',
   'clock.resumed',
   'clock.turn',
+  'clock.restored',
   'clock.expired',
 ];
 

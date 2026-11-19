@@ -84,6 +84,7 @@ export const VALID = {
   'clock.paused': { sessionId: 'se', at: 2 },
   'clock.resumed': { sessionId: 'se', at: 3 },
   'clock.turn': { sessionId: 'se', turnId: 'tu', elapsedMs: 1, budgetMs: 60_000, state: 'running', at: 2 },
+  'clock.restored': { sessionId: 'se', elapsedMs: 90_000, budgetMs: 600_000, at: 5 },
   'clock.expired': { sessionId: 'se', elapsedMs: 60_000, budgetMs: 60_000, at: 4 },
 };
 

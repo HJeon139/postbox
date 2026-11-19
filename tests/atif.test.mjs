@@ -47,7 +47,9 @@ test('a step is each message that reached the agent’s inbox, each of its repli
   const t = of('dry');
   const id = sessionOf('dry');
   const added = rec.events.filter((e) => e.type === 'item.add').map((e) => e.data.item);
-  const delivered = new Set(rec.events.filter((e) => e.type === 'entry.add' && e.data.sessionId === id).map((e) => e.data.entry.itemId));
+  const entries = new Map(rec.events.filter((e) => e.type === 'entry.add' && e.data.sessionId === id).map((e) => [e.data.entry.id, e.data.entry.itemId]));
+  const taken = rec.events.filter((e) => e.type === 'entry.patch' && e.data.patch.takenBy && entries.has(e.data.id));
+  const delivered = new Set(taken.map((e) => entries.get(e.data.id)));
   const own = added.filter((it) => it.sessionId === id);
   const clocks = rec.events.filter((e) => e.type.startsWith('clock.') && e.data.sessionId === id);
   assert.equal(t.steps.length, added.filter((it) => delivered.has(it.id)).length + own.length + clocks.length);
@@ -203,4 +205,16 @@ test('the UAT history keeps the clock’s events, a reply’s stored words, the 
   assert.ok(lines.some((x) => x.type === 'work.add' && x.data.entry.kind === 'command'));
   // A ledger entry the trajectories don’t read (a file’s change, a publish) isn’t kept.
   assert.equal(keepEvent(1, 'work.add', { convId: 'th_1', entry: { kind: 'publish', id: 'w_1' } }), null);
+});
+
+test('a message that waited in the agent’s inbox and no turn took is no step of its', () => {
+  // From the recorded run: the take of @dry’s second message is left out, as when its clock had expired first.
+  const second = rec.events.filter((e) => e.type === 'entry.patch' && e.data.sessionId === sessionOf('dry') && e.data.patch.takenBy)[1];
+  const entry = rec.events.find((e) => e.type === 'entry.add' && e.data.entry.id === second.data.id).data.entry;
+  const t = of(
+    'dry',
+    rec.events.filter((e) => e !== second),
+  );
+  assert.ok(!t.steps.some((s) => s.extra.item_id === entry.itemId));
+  assert.ok(of('dry').steps.some((s) => s.extra.item_id === entry.itemId));
 });

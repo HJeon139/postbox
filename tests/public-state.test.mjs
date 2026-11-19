@@ -52,6 +52,7 @@ const TYPES = [
   'clock.paused',
   'clock.resumed',
   'clock.turn',
+  'clock.restored',
   'clock.expired',
 ];
 /** The types the page may not see: each reaches it as a cursor (designs/architecture/security-boundaries.md). */

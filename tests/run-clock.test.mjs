@@ -177,3 +177,17 @@ test('a message sent after the clock expired stays waiting in the inbox, never t
     ['waiting'],
   );
 });
+
+test('as Postbox starts again, each running clock marks where its record resumes, with its elapsed time', () => {
+  const { rt, store, se } = setup();
+  clockAction(rt, se.id, { action: 'start', budgetS: 60 }, at(0));
+  rearmClocks(rt, at(20_000));
+  const restored = clockEvents(store).filter((e) => e.type === 'clock.restored');
+  assert.deepEqual(
+    restored.map((e) => e.data),
+    [{ sessionId: se.id, elapsedMs: 20_000, budgetMs: 60_000, at: T0 + 20_000 }],
+  );
+  clockAction(rt, se.id, { action: 'pause' }, at(21_000));
+  rearmClocks(rt, at(30_000));
+  assert.equal(clockEvents(store).filter((e) => e.type === 'clock.restored').length, 1, 'a paused clock marks nothing');
+});

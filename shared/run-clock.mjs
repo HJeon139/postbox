@@ -96,6 +96,9 @@ export const CLOCK_EVENTS = Object.freeze({
   },
   // A turn began with the clock at elapsedMs: a record for the stream and the log, which changes nothing.
   'clock.turn': { apply: (/** @type {any} */ _s, /** @type {any} */ d) => check(d, ['elapsedMs', 'budgetMs']), public: true },
+  // Postbox started again, or Retry reloaded the store, with the clock running: a mark of where a gap in the server’s
+  // own record ends, which changes nothing. Time while Postbox was down counted; a timed run decides what a gap means.
+  'clock.restored': { apply: (/** @type {any} */ _s, /** @type {any} */ d) => check(d, ['elapsedMs', 'budgetMs']), public: true },
   'clock.expired': {
     apply: (/** @type {any} */ s, /** @type {any} */ d) =>
       withClock(s, d, (c) => {

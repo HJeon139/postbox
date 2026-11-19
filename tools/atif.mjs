@@ -4,11 +4,11 @@
 // `at`, a block answer’s `at`, a clock event’s `at`), never one an agent’s host reported.
 //
 // What becomes a step, in the order the events added it:
-// - user: a message of the person’s that reached the agent’s inbox (an entry for it, designs/rooms-at-scale.md), and
+// - user: a message of the person’s that one of the agent’s turns took from its inbox (designs/rooms-at-scale.md), and
 //   the person’s answer to one of the agent’s blocks;
 // - agent: each reply of the agent’s, with its tool calls and thoughts (tools/atif-calls.mjs), and each block or app
 //   it showed;
-// - system: another agent’s reply that reached its inbox, and each of its run clock’s events (server/run-clock.mjs).
+// - system: another agent’s reply that one of its turns took, and each of its run clock’s events (server/run-clock.mjs).
 // A message in the room that never reached the agent’s inbox is no step of its, even where its catch-up showed it as
 // background. Tokens and cost come from the work ledger (tools/atif-metrics.mjs).
 
@@ -23,6 +23,8 @@ const CLOCK_WORDS = {
   'clock.paused': () => 'Run clock paused: Postbox stopped the agent until it resumes.',
   'clock.resumed': () => 'Run clock resumed.',
   'clock.turn': (d) => `Turn started at elapsed ${Math.floor(d.elapsedMs / 1000)}s of ${d.budgetMs / 1000}s.`,
+  'clock.restored': (d) =>
+    `Postbox started again with the run clock at elapsed ${Math.floor(d.elapsedMs / 1000)}s of ${d.budgetMs / 1000}s; the time it was down counted.`,
   'clock.expired': (d) => `Run clock expired at its budget of ${d.budgetMs / 1000}s: Postbox stopped the agent.`,
 };
 /** The work ledger’s entries for one call, which keep its arguments (tools/atif-calls.mjs). */
@@ -140,7 +142,8 @@ function itemSteps(it, ctx) {
 function contextOf(f, sessionId) {
   const turns = new Map([...f.work.values()].filter((w) => w.kind === 'turn' && w.sessionId === sessionId).map((w) => [w.id, w]));
   const calls = new Map([...f.work.values()].filter((w) => CALL_KINDS.has(w.kind) && w.toolUseId).map((w) => [w.toolUseId, w]));
-  const delivered = new Map([...(f.entries.get(sessionId)?.values() ?? [])].filter((e) => e.itemId).map((e) => [e.itemId, e]));
+  // Taken by one of its turns: an entry still waiting (sent after its clock expired, say) never reached the agent.
+  const delivered = new Map([...(f.entries.get(sessionId)?.values() ?? [])].filter((e) => e.itemId && e.takenBy).map((e) => [e.itemId, e]));
   return { sessionId, turns, calls, delivered, meter: meter(turns) };
 }
 
