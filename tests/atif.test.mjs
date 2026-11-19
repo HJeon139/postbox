@@ -218,3 +218,11 @@ test('a message that waited in the agent’s inbox and no turn took is no step o
   assert.ok(!t.steps.some((s) => s.extra.item_id === entry.itemId));
   assert.ok(of('dry').steps.some((s) => s.extra.item_id === entry.itemId));
 });
+
+test('a call’s name comes from its own step, so a call the ledger doesn’t keep is still named', () => {
+  const events = rec.events.filter((e) => !(e.type === 'work.add' && e.data.entry.kind === 'command'));
+  const call = of('dry', events).steps.find((s) => s.tool_calls)?.tool_calls[0];
+  assert.equal(call.function_name, 'Bash');
+  assert.deepEqual(call.arguments, {});
+  assert.equal(call.extra.arguments_source, 'not recorded');
+});
