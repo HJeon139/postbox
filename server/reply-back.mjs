@@ -7,11 +7,14 @@
 /**
  * Whether a turn that took these entries came from a bounce, so what it @-mentions is marked a bounce too, and goes back
  * no further: else “thanks @beta” for an answer that came back gets an answer that goes back, and is thanked again, up
- * to the chain limit. One bounce per chain. Read by the turn’s input too (turn-input.mjs), which warns the agent.
+ * to the chain limit. One bounce per chain. Only a turn agents’ mentions alone woke: one that also took the person’s
+ * message, a scheduled wake or a review is theirs as well, and its mentions go back as usual. Notices ride along. Read
+ * by the turn’s input too (turn-input.mjs), which warns the agent.
  * @param {{ source: string, bounce?: boolean }[]} entries
  */
 export function fromBounce(entries) {
-  return entries.some((e) => e.bounce);
+  const asked = entries.filter((e) => e.source !== 'notice');
+  return asked.some((e) => e.bounce) && asked.every((e) => e.source === 'mention');
 }
 
 /** fromBounce for a running turn, from the entries it took. @param {any} rt @param {string} sessionId @param {any} turn */
