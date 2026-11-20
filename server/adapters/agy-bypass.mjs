@@ -33,13 +33,22 @@ const LOCAL_TOOLS = new Set([
   ...['list_permissions', 'generate_image', 'delete_knowledge', 'define_subagent'],
 ]);
 
+// An MCP server’s tools go by the same words in the server’s and the tool’s names, as fetch/fetch and
+// playwright/browser_navigate do (the second review); Postbox’s own server isn’t the web.
+const MCP_CALLS = new Set(['call_mcp_tool', 'list_resources', 'read_resource']);
+/** @param {string} name @param {any} args */
+const mcpReachesWeb = (name, args) =>
+  MCP_CALLS.has(name) &&
+  !['postbox_postbox', 'postbox'].includes(String(args?.ServerName ?? '')) &&
+  WEB_WORDS.test(`${args?.ServerName ?? ''} ${args?.ToolName ?? ''}`.toLowerCase());
+
 /**
  * A Run everything call’s decision, while the hook holds the persona’s limits: refused when it needs Web or Shell and
  * the persona turned it off, or when it isn’t one of agy’s tools Postbox knows; else allowed.
- * @param {string} name  lowercased @param {{ tools: string[] }} persona
+ * @param {string} name  lowercased @param {{ tools: string[] }} persona @param {any} [args]  the call’s
  */
-export function decideBypass(name, { tools }) {
-  const web = isWebTool(name);
+export function decideBypass(name, { tools }, args = {}) {
+  const web = isWebTool(name) || mcpReachesWeb(name, args);
   if (web && !tools.includes('web.fetch')) return { decision: 'deny', reason: 'The person turned Web off for this agent in Postbox.' };
   if (CODE_TOOLS.has(name) && !tools.includes('shell')) return { decision: 'deny', reason: 'The person turned Shell off for this agent in Postbox.' };
   if (web || CODE_TOOLS.has(name) || LOCAL_TOOLS.has(name)) return { decision: 'allow' };

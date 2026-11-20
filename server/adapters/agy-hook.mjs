@@ -100,7 +100,7 @@ export function decideAgyTool(
   if (WRITE_TOOLS.has(name) && protectedWrite(args, { cwd, scriptPath, home }))
     return { decision: 'deny', reason: 'Postbox doesn’t allow editing Antigravity’s plugin, hook or settings files.' };
   if (!canPublish && publishingCall(name, args)) return { decision: 'deny', reason: PUBLISH_OFF };
-  if (mode === 'bypass') return decideBypass(name, { tools });
+  if (mode === 'bypass') return decideBypass(name, { tools }, args);
   const roots = /** @type {string[]} */ ((folders.length ? folders : [cwd]).map((f) => realTarget(f, cwd)).filter(Boolean));
   const command = name === 'run_command' ? String(args.CommandLine ?? '') : '';
   const isProtected = (p) => isProtectedPath(p, { cwd, scriptPath, home });

@@ -124,3 +124,19 @@ test('Run everything refuses a publishing tool unless the persona can publish', 
   assert.equal(bypass('call_mcp_tool', { canPublish: true }, slack), 'allow');
   assert.equal(bypass('call_mcp_tool', {}, { ServerName: 'postbox_postbox', ToolName: 'show_block', Arguments: {} }), 'allow');
 });
+
+test('Run everything with Web off refuses an MCP tool whose server or name says web, but not Postbox’s', () => {
+  const mcp = (ServerName, ToolName) => ({ ServerName, ToolName, Arguments: {} });
+  for (const [server, tool] of [
+    ['fetch', 'fetch'],
+    ['playwright', 'browser_navigate'],
+    ['brave-search', 'query'],
+    ['docs', 'read_url'],
+  ]) {
+    assert.equal(bypass('call_mcp_tool', {}, mcp(server, tool)), 'deny', `${server}/${tool}`);
+    assert.equal(bypass('call_mcp_tool', { tools: ['web.fetch'] }, mcp(server, tool)), 'allow', `${server}/${tool}`);
+  }
+  assert.equal(bypass('list_resources', {}, { ServerName: 'fetch' }), 'deny');
+  assert.equal(bypass('call_mcp_tool', {}, mcp('github', 'list_issues')), 'allow');
+  assert.equal(bypass('call_mcp_tool', {}, mcp('postbox_postbox', 'search_conversation')), 'allow');
+});
