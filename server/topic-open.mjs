@@ -5,7 +5,6 @@ import { positionOf } from '../shared/item-index.mjs';
 import { parseMentions } from '../shared/text.mjs';
 import { copiedLine } from './copied-line.mjs';
 import { clip, httpError, tooLongToSend } from './helpers.mjs';
-import { afterBounce } from './reply-back.mjs';
 import { newId } from './store.mjs';
 
 /**
@@ -134,6 +133,5 @@ function post(rt, se, threadId, text, handles) {
   const opened = named(handles);
   const message = { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text, status: 'done', opened, fromTurnId };
   const it = rt.threads.addItem(threadId, message);
-  const bounce = turn ? afterBounce(rt, se.id, turn) : false;
-  return { id: it.id, woke: handles.map((h) => rt.agentWake(se.id, h, text, { replyIn: threadId, itemId: it.id, fromTurnId, prose: true, bounce }).message) };
+  return { id: it.id, woke: handles.map((h) => rt.agentWake(se.id, h, text, { replyIn: threadId, itemId: it.id, fromTurnId, prose: true }).message) };
 }

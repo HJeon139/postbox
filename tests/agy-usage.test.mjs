@@ -190,7 +190,7 @@ function adapterWith(root, turn, code, left, seen, version = NEW, asks = { n: 0 
 const turnCtx = (quotas, said = { text: '' }) => ({
   signal: new AbortController().signal,
   mcpUrl: 'http://127.0.0.1:4280/mcp?session=se_1',
-  persona: { handle: 'gem', model: 'gemini-3.8-flash-high', permissionMode: 'bypass', tools: [], description: '', instructions: '' },
+  persona: { handle: 'gem', model: 'gemini-3.8-flash-high', permissionMode: 'bypass', tools: ['web.fetch'], description: '', instructions: '' },
   project: null,
   handles: ['gem'],
   state: {},

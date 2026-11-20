@@ -34,3 +34,24 @@ test('with the hook, the whole rules file still fits agy’s 12,000 characters',
   const guide = agentGuide({ persona, handles: ['gemini', 'critic'], toolRules: null, setup: false });
   assert.ok(agyRules({ persona, guide, schemas: '/Users/someone/.gemini/antigravity-cli/mcp/postbox_postbox', hooked: true }).length <= 12000);
 });
+
+// PR #1515’s review: the rules say a limit is enforced only where the hook refuses it, and keep “Antigravity can’t
+// enforce that” for the rest, as for every limit before agy 1.4.7.
+test('the rules say which limits the hook refuses and that Antigravity can’t enforce the rest', () => {
+  const old = agyRules({ persona: { permissionMode: 'ask', tools: [] }, guide: 'G', hooked: false });
+  assert.match(old, /\(agents\.outside\); publishing or posting anything outside Postbox\. Antigravity can’t enforce that, so it’s up to you: don’t do them/);
+  const asks = agyRules({ persona: { permissionMode: 'auto', tools: [] }, guide: 'G', hooked: true });
+  assert.match(asks, /Antigravity can’t enforce that, so it’s up to you/);
+  const bypass = agyRules({ persona: { permissionMode: 'bypass', tools: [] }, guide: 'G', hooked: true });
+  assert.match(
+    bypass,
+    /Postbox’s permission hook refuses running commands; fetching web pages or searching the web; publishing or posting anything outside Postbox\. Antigravity can’t enforce the rest, so it’s up to you: don’t do them/,
+  );
+  const held = agyRules({ persona: { permissionMode: 'bypass', tools: ['agents.outside'] }, guide: 'G', hooked: true });
+  assert.match(held, /outside Postbox\. Postbox’s permission hook refuses them, so say so if a task needs one\./);
+  assert.doesNotMatch(held, /can’t enforce/);
+  // With Web on no hook runs in Run everything, so nothing is refused.
+  const webOn = agyRules({ persona: { permissionMode: 'bypass', tools: ['web.fetch'] }, guide: 'G', hooked: false });
+  assert.match(webOn, /Antigravity can’t enforce that/);
+  assert.doesNotMatch(webOn, /permission hook refuses/);
+});

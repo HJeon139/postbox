@@ -27,6 +27,18 @@ const mcp = (ServerName, ToolName) => ['call_mcp_tool', { ServerName, ToolName, 
 const SHELL = { tools: ['shell'] };
 const WEB = { tools: ['web.fetch'] };
 
+test('Run everything refuses built-in search, fetch and browser tools when Web is off, and keeps hook guards', () => {
+  const { ws, home, call } = workspace();
+  for (const name of ['search_web', 'read_url_content', 'open_browser_url', 'read_browser_page', 'browser_subagent', 'capture_browser_screenshot']) {
+    assert.equal(call(name, { query: 'Postbox', Url: 'https://example.com' }, { mode: 'bypass' }).decision, 'deny', name);
+    assert.equal(call(name, { query: 'Postbox', Url: 'https://example.com' }, { mode: 'bypass', ...WEB }).decision, 'allow', name);
+  }
+  assert.equal(call(...mcp('postbox_postbox', 'permission_prompt'), { mode: 'bypass' }).decision, 'deny');
+  assert.equal(call('write_to_file', { TargetFile: join(ws, '.agents', 'plugins', 'postbox', 'hooks.json') }, { mode: 'bypass' }).decision, 'deny');
+  assert.equal(call('write_to_file', { TargetFile: join(home, '.gemini', 'antigravity-cli', 'settings.json') }, { mode: 'bypass' }).decision, 'deny');
+  assert.equal(call(...cmd('npm test'), { mode: 'bypass', ...SHELL }).decision, 'allow');
+});
+
 test('#416 in Auto with shell, any command runs; without shell it still asks', () => {
   const { call } = workspace();
   for (const c of ['npm test', 'git commit -m x', 'python3 x.py', 'ls | wc -l', 'curl https://example.com/a?b=1'])

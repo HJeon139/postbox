@@ -150,6 +150,24 @@ export const running = (rt, sessionId) => Boolean(rt.running.turnOf(sessionId));
 export const waitingEntries = (rt, sessionId) => rt.delivery.waiting(sessionId);
 
 /**
+ * Whether the agent’s running turn came only from replies that went back to it (server/reply-back.mjs, #1523): each
+ * entry’s item went back to this agent (`wentBack`). A scripted agent ends such an exchange with a reaction, as the
+ * room guide asks, since a reply would go back too, and on to the chain limit. @param {any} rt @param {string} sessionId
+ */
+export function cameBack(rt, sessionId) {
+  const handle = rt.session(sessionId)?.handle;
+  const took = rt.delivery.takenBy(sessionId, rt.running.turnOf(sessionId)?.id).filter((/** @type {any} */ e) => e.source !== 'notice');
+  return (
+    took.length > 0 &&
+    took.every((/** @type {any} */ e) => {
+      // Pending: behind a held commit, the reply’s wentBack isn’t committed yet when the turn it started runs.
+      const item = rt.store.pending.items(e.threadId).find((/** @type {any} */ x) => x.id === e.itemId);
+      return item?.wentBack?.includes(handle);
+    })
+  );
+}
+
+/**
  * The texts of the person’s messages waiting in a thread for any of its agents, oldest first, each once: what the
  * thread’s queue held before the person’s message became an entry when it’s sent (#1404).
  * @param {Runtime} rt @param {string} threadId

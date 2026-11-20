@@ -147,6 +147,10 @@ function kit(ctx, session, mem) {
     sources: (list) => ctx.sources(list),
     compaction: (c) => ctx.compaction(c),
     t: ctx.tools,
+    /** Ends an exchange as the room guide asks: a 👍 on the agent’s message, and no reply, which would wake it again. */
+    react(m) {
+      return ctx.tools.react({ id: m.itemId, emoji: '👍' });
+    },
     block(b) {
       return ctx.tools.show_block({ block: { version: 1, ...b } });
     },
@@ -160,6 +164,8 @@ function abortError() {
   return Object.assign(new Error('Stopped'), { name: 'AbortError' });
 }
 const has = (text, re) => re.test(String(text ?? '').toLowerCase());
+/** An agent’s thanks for an answer, which the mock ends the exchange on with a reaction (#1523). */
+const thanked = (m) => m.kind === 'agent' && /^thanks\b/im.test(String(m.text ?? ''));
 
 // ── Persona scripts ─────────────────────────────────────────────────────────────────────
 
@@ -168,6 +174,7 @@ const HANDLERS = {
     if (m.kind === 'event') return librarianEvent(m.event, a, mem);
     if (m.kind === 'lint') return defineAll(m, a);
     if (m.kind === 'app-check') return;
+    if (thanked(m)) return a.react(m);
     if (m.kind === 'agent') {
       await a.think(300);
       return a.say(`Thanks ${String(m.from).replace('@', '')}, noted.`);
@@ -266,6 +273,7 @@ const HANDLERS = {
     if (m.kind === 'lint') return defineAll(m, a);
     if (m.kind === 'event') return criticRevise(m.event, a, mem);
     if (m.kind === 'app-check') return;
+    if (thanked(m)) return a.react(m);
     if (m.kind === 'agent') {
       await a.think(300);
       return a.say(`Thanks ${String(m.from).replace('@', '')}, noted.`);
@@ -281,6 +289,7 @@ const HANDLERS = {
 
   async default(m, a) {
     if (m.kind === 'lint') return defineAll(m, a);
+    if (thanked(m)) return a.react(m);
     await a.think(500);
     await a.say(
       m.kind === 'agent'
@@ -535,6 +544,7 @@ async function paperChoice(a) {
 }
 
 async function researcherReply(m, a, mem) {
+  if (thanked(m)) return a.react(m);
   await a.think(700);
   if (/loop|again|ping/i.test(m.text)) {
     mem.pings = (mem.pings ?? 0) + 1;
@@ -611,7 +621,7 @@ async function indexerReply(m, a, _mem) {
   await a.think(500);
   if (/confirm the edition/i.test(m.text))
     return a.say('Confirmed again: the 1874 *Middlemarch* and the chapter-headed *Emma* and *Persuasion*. @researcher please check once more, in a loop.');
-  // Named without @, as the guide asks when it needn’t act: its answer came back on its own (#1518).
+  // Named without @, as the guide asks when it needn’t act; the thanks goes back, and the researcher reacts (#1523).
   await a.say(`Thanks, ${String(m.from).replace(/^@/, '')}. I’ll treat “Introduction” as a preface and rebuild those three books.`);
 }
 

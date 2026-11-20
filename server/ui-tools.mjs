@@ -5,6 +5,8 @@
 
 import { readApp } from './app-publish.mjs';
 import { bringToConversation } from './bring.mjs';
+import { noteAnswer } from './empty-reply.mjs';
+import { reactTool } from './reactions.mjs';
 import { cancelWake, scheduleWakeTool } from './schedule-tools.mjs';
 import { recordedTools } from './scheduled-wakes.mjs';
 import { searchConversation } from './search-conversation.mjs';
@@ -42,6 +44,13 @@ export function toolsFor(rt, sessionId, turn = null) {
     },
     read_app: (args) => readApp(rt, sessionId, args),
     define_term: (args) => defineTerm(rt, { turn, se, threadId }, args),
+    // A reaction answers: a turn that ends an exchange with one owes no reply (#1523), from any backend, a turn in
+    // Postbox’s own process (the mock) included, which MCP’s noteAnswer doesn’t see.
+    react(args) {
+      const r = reactTool(rt.threads, se(), args);
+      noteAnswer(turn, 'react', r);
+      return r;
+    },
     propose_agent: (args) => proposeAgent(rt, sessionId, { turn, se, threadId, endSegment }, args),
     schedule_wake: (args) => scheduleWakeTool(rt, sessionId, args),
     cancel_wake: (args) => cancelWake(rt, sessionId, args),

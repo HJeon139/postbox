@@ -283,7 +283,7 @@ test('the arguments: model, effort where it’s taken, the conversation, the mod
     '/data',
     '--print=-n is a flag?',
   ]);
-  const mode = (permissionMode) => agyArgs({ ...base, effort: null, persona: { permissionMode } }).slice(2, -4);
+  const mode = (permissionMode) => agyArgs({ ...base, effort: null, persona: { permissionMode, tools: ['web.fetch'] } }).slice(2, -4);
   assert.deepEqual(mode('ask'), []);
   assert.deepEqual(mode('auto'), ['--mode', 'auto']);
   assert.deepEqual(mode('acceptEdits'), ['--mode', 'accept-edits']);

@@ -2,6 +2,33 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.34.4 (2026-11-20)
+
+### Fixes
+
+- **agy:** run the hook once to confirm it before each run
+- **agy:** keep agy's file tools off the code the hook runs
+- **agy:** quote the hook's paths instead of dropping the hook
+- **agy:** refuse web mcp servers in run everything with web off
+- **agy:** refuse code and unknown tools in run everything's hook
+- **agy:** check the hook again before each run of a turn
+- **agy:** name the person's options when web off can't be kept
+- **agy:** say antigravity can't enforce a limit no hook refuses
+- **agy:** keep shell off and publishing off in run everything's hook
+- **agy:** run the hook with this node so it can't fail open
+- **agy:** refuse every web-named tool in run everything with web off
+- **agy:** block browser tools and keep hook guards in bypass
+- **agy:** enforce web off in run everything
+
+## 4.34.3 (2026-11-20)
+
+### Fixes
+
+- **wakes:** send back only a reply with words, not blank streamed text
+- **guide:** tell agents each answer continues the chain, and to end it with a reaction
+- **wakes:** send every reply that names no one back, not one per chain
+- **mock:** end an exchange with a reaction when thanked
+
 ## 4.34.2 (2026-11-19)
 
 ### Fixes

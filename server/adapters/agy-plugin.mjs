@@ -4,7 +4,8 @@
 import { chmod, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { agentSkillFiles } from './agent-plugin.mjs';
-import { agyHooksJson, HOOK_TIMEOUT_S } from './agy-hook.mjs';
+import { HOOK_TIMEOUT_S } from './agy-hook.mjs';
+import { agyHooksJson } from './agy-hook-check.mjs';
 import { POSTBOX_SERVER } from './setup.mjs';
 import { postboxSkillsOn } from './skill-config.mjs';
 

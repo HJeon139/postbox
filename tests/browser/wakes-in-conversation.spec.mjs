@@ -1,6 +1,6 @@
 // Agents talk in the conversation (#372): an agent's @-mention wakes another there, both
 // messages show in the main transcript, and no side thread or side-thread line appears; a reply that @-mentions no one
-// goes back to the waker once, with a note (#1518). A side thread from before #372 opens read-only: a note in place of its composer.
+// goes back to the waker, with a note (#1518), and the waker ends the exchange with a reaction (#1523). A side thread from before #372 opens read-only: a note in place of its composer.
 // Each test has a room of its own (tests/browser/side-threads.mjs).
 
 import { expect, test } from '@playwright/test';
@@ -38,21 +38,20 @@ async function open(page, hash) {
 /** A message in the conversation's transcript, by its words. */
 const said = (page, text) => page.locator('#main .item', { hasText: text });
 
-test('an agent’s @-mention wakes another in the conversation: both messages show there, with no side thread, and the reply goes back once', async ({
-  page,
-}) => {
+test('an agent’s @-mention wakes another in the conversation: both messages show there, with no side thread, and the reply goes back', async ({ page }) => {
   const { rt, store } = app;
   const r = room('Mentions');
-  // A script runs once: the first turn sets the second, @researcher’s answer to the reply that comes back.
+  // A script runs once: the first turn sets the second, @researcher’s reaction to the reply that comes back.
+  const answer = () => store.items(r.room.id).find((x) => x.text?.startsWith('Indexed the 1908 edition'));
   held.scripts.set(r.researcher.id, (ctx) => {
-    held.scripts.set(r.researcher.id, (next) => next.text('Thanks, indexer.'));
+    held.scripts.set(r.researcher.id, (next) => next.tools.react({ id: answer().id, emoji: '👍' }));
     return ctx.text('@indexer please index the 1908 edition.');
   });
   held.scripts.set(r.indexer.id, (ctx) => ctx.text('Indexed the 1908 edition: two chapters fewer.'));
   await open(page, `#/t/${r.room.id}`);
   const before = held.turns.length;
   rt.sendMessage(r.room.id, { text: '@researcher which edition do we index?' });
-  // @indexer’s reply names no one, so it goes back to @researcher, whose thanks goes to no one (#1518).
+  // @indexer’s reply names no one, so it goes back to @researcher (#1518), which reacts, and wakes no one (#1523).
   await expect
     .poll(() => held.turns.slice(before).map((t) => t.sessionId), { message: 'the three turns' })
     .toEqual([r.researcher.id, r.indexer.id, r.researcher.id]);
@@ -68,8 +67,8 @@ test('an agent’s @-mention wakes another in the conversation: both messages sh
     await expect(page.locator('#main .pill', { hasText: 'asked' }), 'no side-thread line').toHaveCount(0);
   });
   await expect(said(page, 'Indexed the 1908 edition').locator('.went-back')).toHaveText('Sent back to @researcher: this reply @-mentions no one.');
-  await expect(said(page, 'Thanks, indexer.')).toBeVisible();
-  expect(held.turns.slice(before).filter((t) => t.sessionId === r.indexer.id).length, 'the thanks went to no one').toBe(1);
+  expect(answer().reactions.map((x) => x.handle)).toEqual(['researcher']);
+  expect(held.turns.slice(before).filter((t) => t.sessionId === r.indexer.id).length, 'the reaction woke no one').toBe(1);
 });
 
 test('a side thread from before #372 opens read-only: its lines, and a note where the composer was', async ({ page }) => {
