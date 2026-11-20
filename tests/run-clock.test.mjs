@@ -288,3 +288,24 @@ test('a clock that holds its agent gets its line as Postbox starts, when a kill 
   assert.deepEqual(lines(), ['started', 'paused', 'expired']);
   assert.match(store.items(t.id).findLast((i) => i.variant === 'clock').text, /Messages to @developer here now wait/);
 });
+
+test('an agent’s handoff waiting in the inbox when the clock expires still waits, as the expiry’s line says', async () => {
+  const { rt, store, adapter, t, se } = setup();
+  clockAction(rt, se.id, { action: 'start', budgetS: 60 });
+  const turn = slowToExit();
+  adapter.next.push(turn);
+  rt.sendMessage(t.id, { text: 'Work until the clock runs out.' });
+  await sleep(5);
+  // Another agent’s handoff, as a mention entry, while the agent works (server/mention-entries.mjs’s send).
+  store.emit('item.add', {
+    threadId: t.id,
+    item: { id: 'it_handoff', at: Date.now(), kind: 'agent', handle: 'critic', text: '@developer, over to you.' },
+  });
+  rt.delivery.send({ sessionId: se.id, threadId: t.id, source: 'mention', itemId: 'it_handoff', from: 'critic' });
+  await sleep(61_000);
+  assert.equal(store.state.clocks[se.id].state, 'expired');
+  turn.exit();
+  await sleep(10);
+  const handoff = (store.state.inbox[se.id] ?? []).find((e) => e.itemId === 'it_handoff');
+  assert.equal(handoff.state, 'waiting', 'not stopped by the expiry');
+});

@@ -108,20 +108,22 @@ export function armClock(rt, sessionId, now = Date.now) {
 }
 
 /**
- * The budget ran out: the clock expires, and the agent’s running turn stops. While the store can’t be written, the turn
+ * The budget ran out: the clock expires, and the agent’s running turn stops, silently: the messages waiting for it,
+ * agents’ handoffs too, stay in its inbox, as the clock’s line says, rather than being stopped as a Stop stops them
+ * (hydrant-critic’s review of #1522). While the store can’t be written, the turn
  * still stops (Stop is allowed then), and the clock’s record waits for writes to reopen, ahead of the turns held
  * meanwhile, so none of them starts first (server/store-wait.mjs).
  * @param {any} rt @param {string} sessionId @param {() => number} now
  */
 function expireClock(rt, sessionId, now) {
   if (!rt.store.writable) {
-    if (rt.turns.has(sessionId)) rt.stop(sessionId, { by: 'clock' });
+    if (rt.turns.has(sessionId)) rt.stop(sessionId, { by: 'clock', silent: true });
     return whenWritable(rt, () => armClock(rt, sessionId, now), { first: true });
   }
   const clock = clockOf(rt, sessionId);
   rt.store.emit('clock.expired', { sessionId, elapsedMs: clock.budgetMs, budgetMs: clock.budgetMs, at: now() });
   clockNote(rt, sessionId, 'expired', clock);
-  if (rt.turns.has(sessionId)) rt.stop(sessionId, { by: 'clock' });
+  if (rt.turns.has(sessionId)) rt.stop(sessionId, { by: 'clock', silent: true });
 }
 
 /** The runtimes whose store re-arms their clocks at Retry. */

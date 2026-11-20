@@ -78,7 +78,7 @@ export function deliver(rt, sessionId, message, { summarizeTo = null, threadId =
   });
   atWork(rt, se, turn);
   runTurn(rt, se, turn, clockTurn(rt, se.id, turn.id, message), { adapter, persona, hostId });
-  if (held) rt.stop(se.id, { by: 'clock' });
+  if (held) rt.stop(se.id, { by: 'clock', silent: true });
 }
 
 /**
