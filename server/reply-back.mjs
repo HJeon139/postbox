@@ -31,7 +31,8 @@ export function replyBack(rt, turn, se, took) {
   const here = (/** @type {string} */ h) => rt.sessions.in(conv).some((/** @type {any} */ x) => x.handle === h && !x.retiredFork);
   const to = backTo(took).filter((h) => h !== se.handle && here(h));
   if (!to.length) return;
-  const reply = rt.store.pending.items(turn.threadId).findLast((/** @type {any} */ x) => x.kind === 'agent' && x.turnId === turn.id && x.text);
+  // Text with words: a harness may stream only whitespace around a tool call, such as a reaction, which is no reply.
+  const reply = rt.store.pending.items(turn.threadId).findLast((/** @type {any} */ x) => x.kind === 'agent' && x.turnId === turn.id && x.text?.trim());
   if (!reply) return;
   const replyIn = turn.threadId !== se.threadId ? turn.threadId : null;
   const went = [];

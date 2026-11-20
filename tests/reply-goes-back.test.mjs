@@ -88,6 +88,25 @@ test('#1523 a turn that only reacts posts nothing, so nothing goes back and no o
   assert.equal(f.rt.turns.size, 0, 'no one is woken');
 });
 
+test('#1523 a turn that reacts and streams only whitespace posts no reply, so nothing goes back', async () => {
+  // A harness can stream blank text around a tool call: “ \n\n ” is no reply, and must not carry the chain on.
+  const f = setup();
+  f.adapter.next.push(async (c) => c.text('@beta which file holds the changelog?'));
+  f.adapter.next.push(async (c) => c.text('It’s CHANGELOG.md.'));
+  f.adapter.next.push(async (c, m, se) => {
+    await reacts(f)(c, m, se);
+    c.text(' \n\n ');
+  });
+  f.rt.sendMessage(f.t.id, { text: '@alpha find out where the changelog goes' });
+  await quiet(f);
+  assert.deepEqual(
+    turns(f).map((x) => x.split(':')[0]),
+    ['alpha', 'beta', 'alpha'],
+  );
+  assert.ok(!f.store.items(f.t.id).some((x) => x.wentBack && !x.text.trim()), 'no blank item went back');
+  assert.equal(f.rt.turns.size, 0, 'no one is woken');
+});
+
 test('#1518 a reply that @-mentions anyone goes only where it says: a third agent wakes, and the asker doesn’t', async () => {
   const f = setup();
   f.rt.ensureSession(f.t.id, f.c.id);
