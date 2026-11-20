@@ -14,7 +14,7 @@
 
 import { callsOf } from './atif-calls.mjs';
 import { finalMetrics, meter } from './atif-metrics.mjs';
-import { promptSteps, scopeOf, unresolvedGuides } from './atif-prompts.mjs';
+import { promptedTurns, promptSteps, scopeOf, unresolvedGuides } from './atif-prompts.mjs';
 
 export { NOT_RECORDED, NOT_RECORDED_WITHOUT_PROMPTS } from './atif-prompts.mjs';
 
@@ -196,6 +196,8 @@ function shownSteps(it, ctx, seq) {
   // took the answer’s entry from its inbox (server/blocks.mjs): one that only waits there, as after its clock expired, didn’t.
   const entry = ctx.delivered.get(it.id);
   if (a.read !== true && entry?.source !== 'answer') return [shown];
+  // An answer a turn took from the inbox is in that turn’s prompt, when it’s recorded.
+  if (a.read !== true && carry(ctx, entry, { item_id: it.id, entry_id: entry.entryId, answer_to: it.block?.id ?? null })) return [shown];
   const answer = {
     timestamp: iso(a.at),
     source: 'user',
@@ -220,9 +222,20 @@ function itemSteps(it, ctx, seq) {
   if (!entry) return [];
   const got = { item_id: it.id, entry_id: entry.entryId, taken_by_turn: entry.turnId ?? null };
   const text = entry.text ?? it.text ?? '';
+  if (carry(ctx, entry, { item_id: it.id, entry_id: entry.entryId, ...(it.kind === 'agent' ? { from: it.handle } : {}), text })) return [];
   if (it.kind === 'user') return [{ timestamp: iso(it.at), source: 'user', message: text, extra: got }];
   if (it.kind === 'agent') return [{ timestamp: iso(it.at), source: 'system', message: `@${it.handle}: ${text}`, extra: { ...got, from: it.handle } }];
   return [];
+}
+
+/**
+ * Notes what a turn took as the provenance of its recorded prompt, which carried it, and says whether it did: then the
+ * item is no step of its own. @param {any} ctx @param {any} entry  its take @param {any} what
+ */
+function carry(ctx, entry, what) {
+  if (!entry?.turnId || !ctx.prompted.has(entry.turnId)) return false;
+  ctx.carried.set(entry.turnId, [...(ctx.carried.get(entry.turnId) ?? []), what]);
+  return true;
 }
 
 /** The context one session’s steps are built in. @param {ReturnType<typeof foldEvents>} f @param {string} sessionId */
@@ -232,7 +245,17 @@ function contextOf(f, sessionId) {
   // Taken by one of its turns, as it was when taken: an entry still waiting (sent after its clock expired, say) never
   // reached the agent, and one taken and given back by a retry did (noteTake).
   const delivered = new Map([...f.takes.values()].filter((t) => t.sessionId === sessionId).map((t) => [t.itemId, t]));
-  return { sessionId, turns, calls, delivered, models: f.models.get(sessionId) ?? [], meter: meter(turns) };
+  // A turn whose prompt is recorded carries what it took as its prompt’s provenance, not as steps of their own.
+  return {
+    sessionId,
+    turns,
+    calls,
+    delivered,
+    prompted: promptedTurns(f, sessionId),
+    carried: new Map(),
+    models: f.models.get(sessionId) ?? [],
+    meter: meter(turns),
+  };
 }
 
 /**
@@ -252,7 +275,7 @@ export function trajectoryOf(f, sessionId, { version }) {
       seq: c.seq,
       steps: [{ timestamp: iso(c.data.at), source: 'system', message: CLOCK_WORDS[c.type](c.data), extra: { event: c.type, ...c.data } }],
     });
-  const prompts = promptSteps(f, sessionId);
+  const prompts = promptSteps(f, sessionId, ctx.carried);
   placed.push(...prompts);
   const steps = placed
     .sort((a, b) => a.seq - b.seq)

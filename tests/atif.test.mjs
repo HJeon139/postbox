@@ -18,6 +18,8 @@ const of = (handle, events, live) => {
   return found[0].trajectory;
 };
 const AGENT_ONLY = ['model_name', 'reasoning_effort', 'reasoning_content', 'tool_calls', 'metrics'];
+/** Whether an item reached the agent in a trajectory: as a step of its own, or carried by a turn’s recorded prompt. */
+const reached = (t, itemId) => t.steps.some((s) => s.extra.item_id === itemId || s.extra.delivered?.some((d) => d.item_id === itemId));
 const sessionOf = (handle) => rec.events.find((e) => e.type === 'session' && e.data.handle === handle).data.id;
 
 test('the recorded run gives each agent one trajectory that keeps Harbor’s rules for a step', () => {
@@ -43,7 +45,7 @@ test('the recorded run gives each agent one trajectory that keeps Harbor’s rul
   }
 });
 
-test('a step is each message that reached the agent’s inbox, each reply, each clock event and each prompt, at the server’s time', () => {
+test('a step is each reply, each clock event and each prompt, which carries what reached the inbox, at the server’s time', () => {
   const t = of('dry');
   const id = sessionOf('dry');
   const added = rec.events.filter((e) => e.type === 'item.add').map((e) => e.data.item);
@@ -57,7 +59,15 @@ test('a step is each message that reached the agent’s inbox, each reply, each 
   const guides = new Set(prompts.map((e) => e.data.guideSha)).size;
   assert.equal(prompts.length, 3);
   assert.equal(guides, 1);
-  assert.equal(t.steps.length, added.filter((it) => delivered.has(it.id)).length + own.length + clocks.length + prompts.length + guides);
+  // Every message a turn took is carried by that turn’s prompt, so none is a step of its own.
+  assert.equal(t.steps.length, own.length + clocks.length + prompts.length + guides);
+  assert.deepEqual(
+    t.steps
+      .flatMap((s) => s.extra.delivered ?? [])
+      .map((d) => d.item_id)
+      .sort(),
+    [...delivered].sort(),
+  );
   assert.equal(t.final_metrics.total_steps, t.steps.length);
   const at = new Map(added.map((it) => [it.id, it.at]));
   // A prompt step is at its prompt’s time, and its guide’s at the same prompt’s.
@@ -78,11 +88,12 @@ test('a step is each message that reached the agent’s inbox, each reply, each 
 
 test('a message to another agent that never reached this one’s inbox is no step of its', () => {
   const toDry2 = rec.events.find((e) => e.type === 'item.add' && /only for you/.test(e.data.item.text ?? '')).data.item;
-  assert.ok(!of('dry').steps.some((s) => s.extra.item_id === toDry2.id));
+  assert.equal(reached(of('dry'), toDry2.id), false);
+  // @dry2’s one turn carried it, in the prompt it was sent.
+  const [prompt] = of('dry2').steps.filter((s) => s.source === 'user');
+  assert.equal(prompt.extra.event, 'turn.prompt');
   assert.deepEqual(
-    of('dry2')
-      .steps.filter((s) => s.source === 'user')
-      .map((s) => s.extra.item_id),
+    prompt.extra.delivered.map((d) => d.item_id),
     [toDry2.id],
   );
 });
@@ -227,8 +238,8 @@ test('a message that waited in the agent’s inbox and no turn took is no step o
     'dry',
     rec.events.filter((e) => e !== second),
   );
-  assert.ok(!t.steps.some((s) => s.extra.item_id === entry.itemId));
-  assert.ok(of('dry').steps.some((s) => s.extra.item_id === entry.itemId));
+  assert.equal(reached(t, entry.itemId), false);
+  assert.equal(reached(of('dry'), entry.itemId), true);
 });
 
 test('a call’s name comes from its own step, so a call the ledger doesn’t keep is still named', () => {
@@ -262,13 +273,13 @@ test('a session whose only output was a block still has a trajectory', () => {
   assert.deepEqual(
     t.steps.map((s) => [s.source, s.extra.item_id ?? s.extra.event]),
     [
-      ['user', t.steps[0].extra.item_id],
       ['system', 'turn.guide'],
-      ['system', 'turn.prompt'],
+      ['user', 'turn.prompt'],
       ['agent', 'it_only_block'],
     ],
   );
-  assert.equal(t.steps[3].metrics.completion_tokens, 102);
+  assert.equal(t.steps[1].extra.delivered.length, 1, 'the prompt carried the message to it');
+  assert.equal(t.steps[2].metrics.completion_tokens, 102);
 });
 
 test('each reply names the model that ran it, and the trajectory names a default only when one model ran it all', () => {

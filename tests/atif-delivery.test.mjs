@@ -15,13 +15,14 @@ const take = rec.events.find((e) => e.type === 'entry.patch' && e.data.sessionId
 const entry = rec.events.find((e) => e.type === 'entry.add' && e.data.entry.id === take.data.id).data.entry;
 const item = rec.events.find((e) => e.type === 'item.add' && e.data.item.id === entry.itemId).data.item;
 const last = Math.max(...rec.events.map((e) => e.seq));
-const userStep = (t) => t.steps.find((s) => s.source === 'user' && s.extra.item_id === item.id);
+/** How the trajectory says the message reached @dry: carried by the prompt of the turn that took it. */
+const carried = (t) => t.steps.flatMap((s) => (s.extra.delivered ?? []).map((d) => ({ ...d, turn: s.extra.turn_id }))).find((d) => d.item_id === item.id);
 
 test('a message edited after a turn took it shows as the agent read it, not as it was edited', () => {
   const edited = [...rec.events, { seq: last + 1, type: 'item.patch', data: { threadId: entry.threadId, id: item.id, patch: { text: 'Edited later.' } } }];
-  const step = userStep(dryOf(edited));
-  assert.equal(step.message, item.text);
-  assert.equal(step.extra.taken_by_turn, take.data.patch.takenBy);
+  const got = carried(dryOf(edited));
+  assert.equal(got.text, item.text);
+  assert.equal(got.turn, take.data.patch.takenBy);
 });
 
 test('a message a retry gave back to the inbox after a turn took it still reached the agent', () => {
@@ -30,5 +31,5 @@ test('a message a retry gave back to the inbox after a turn took it still reache
     ...rec.events,
     { seq: last + 1, type: 'entry.patch', data: { sessionId, id: entry.id, patch: { state: 'waiting', takenBy: null, resend: true } } },
   ];
-  assert.equal(userStep(dryOf(givenBack)).message, item.text);
+  assert.equal(carried(dryOf(givenBack)).text, item.text);
 });

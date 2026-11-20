@@ -38,16 +38,22 @@ export function scopeOf(prompts, unresolved = 0) {
   return { notes, extra: { scope: { record, not_recorded: left, ...(unresolved ? { unresolved_guides: unresolved } : {}) } } };
 }
 
+/** The turns of a session whose prompt the recording has. @param {{ prompts: { data: any }[] }} f @param {string} sessionId */
+export const promptedTurns = (f, sessionId) => new Set(f.prompts.filter((p) => p.data.sessionId === sessionId).map((p) => p.data.turnId));
+
 /** How many of a session’s prompts name a guide the recording lacks. @param {{ guides: Map<string, string>, prompts: { data: any }[] }} f @param {string} sessionId */
 export const unresolvedGuides = (f, sessionId) =>
   f.prompts.filter((p) => p.data.sessionId === sessionId && p.data.guideSha && !f.guides.has(p.data.guideSha)).length;
 
 /**
- * One session’s prompts as system steps, each where its event came: the guide first, whenever it differs from the one
- * before it, then the prompt. @param {{ guides: Map<string, string>, prompts: { seq: number, data: any }[] }} f @param {string} sessionId
+ * One session’s prompts as steps, each where its event came: the guide, Postbox’s system prompt, as a system step
+ * whenever it differs from the one before it; then the prompt, which is what the backend got as the user’s message, as
+ * a user step (hydrant-critic’s review of #1522), with the room’s messages it carried as its provenance (`delivered`).
+ * @param {{ guides: Map<string, string>, prompts: { seq: number, data: any }[] }} f @param {string} sessionId
+ * @param {Map<string, any[]>} [delivered]  what each turn took from the inbox, by turn id
  * @returns {{ seq: number, steps: any[] }[]}
  */
-export function promptSteps(f, sessionId) {
+export function promptSteps(f, sessionId, delivered = new Map()) {
   let shown = null;
   return f.prompts
     .filter((p) => p.data.sessionId === sessionId)
@@ -57,11 +63,12 @@ export function promptSteps(f, sessionId) {
         steps.push({ timestamp: iso(d.at), source: 'system', message: f.guides.get(d.guideSha), extra: { event: 'turn.guide', sha: d.guideSha } });
         shown = d.guideSha;
       }
+      const carried = delivered.get(d.turnId) ?? [];
       steps.push({
         timestamp: iso(d.at),
-        source: 'system',
+        source: 'user',
         message: d.text,
-        extra: { event: 'turn.prompt', turn_id: d.turnId, guide_sha: d.guideSha ?? null },
+        extra: { event: 'turn.prompt', turn_id: d.turnId, guide_sha: d.guideSha ?? null, ...(carried.length ? { delivered: carried } : {}) },
       });
       return { seq, steps };
     });

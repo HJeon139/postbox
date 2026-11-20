@@ -25,10 +25,16 @@ test('a trajectory says what it was built from, and what of the agent’s prompt
   for (const t of before) assert.deepEqual(t.extra.scope, { record: 'postbox-conversation', not_recorded: NOT_RECORDED_WITHOUT_PROMPTS });
 });
 
-test('each turn’s prompt is a system step, exactly as sent, after its guide, before the reply it led to', () => {
+test('each turn’s prompt is its user step, exactly as sent, after its system guide, and nothing it carried is a step again', () => {
   const t = of('dry');
   const sent = rec.events.filter((e) => e.type === 'turn.prompt' && e.data.sessionId === sessionOf('dry'));
   const steps = t.steps.filter((s) => s.extra.event === 'turn.prompt');
+  // What the backend got as the user’s message: the user steps are the prompts, and only they.
+  assert.deepEqual(
+    t.steps.filter((s) => s.source === 'user'),
+    steps,
+  );
+  assert.equal(t.steps.find((s) => s.extra.event === 'turn.guide').source, 'system');
   assert.deepEqual(
     steps.map((s) => s.message),
     sent.map((e) => e.data.text),
