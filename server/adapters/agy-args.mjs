@@ -23,7 +23,9 @@ export function modeArgs(persona, { hookConfirmed = false } = {}) {
  */
 export function agyArgs({ persona, model, effort, sessionId = null, prompt, addDirs = [], hookConfirmed = false }) {
   if (agyBypassWebOff(persona) && !hookConfirmed)
-    throw new Error('Postbox couldn’t enforce Web off for this Antigravity turn. Check that agy 1.4.7 or newer and Postbox’s permission hook are available.');
+    throw new Error(
+      'Postbox couldn’t start its permission hook, which keeps Web off for this Antigravity agent in Run everything, so the turn didn’t start. The hook needs agy 1.4.7 or newer. Turn Web on for this agent, or pick another permission mode.',
+    );
   return [
     // Both always passed, where agy takes them: left out, your agy settings would decide (#60).
     '--model',

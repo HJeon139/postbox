@@ -72,8 +72,8 @@ test('Run everything installs the Web restriction hook only for a Web-off person
 });
 
 test('Run everything with Web off requires an available Antigravity hook', async () => {
-  await assert.rejects(runDeliverTurn('bypass', { version: '1.4.5' }), /couldn’t enforce Web off/);
-  await assert.rejects(runDeliverTurn('bypass', { version: '1.4.7', hookScript: '/nonexistent/agy-hook.mjs' }), /couldn’t enforce Web off/);
+  await assert.rejects(runDeliverTurn('bypass', { version: '1.4.5' }), /couldn’t start its permission hook/);
+  await assert.rejects(runDeliverTurn('bypass', { version: '1.4.7', hookScript: '/nonexistent/agy-hook.mjs' }), /couldn’t start its permission hook/);
   // This Node runs the hook (agyHookCommand), so neither its executable bit nor its #! line matters.
   const script = join(tempDir('pb-agy-nonexecutable-'), 'hook.mjs');
   writeFileSync(script, '#!/nonexistent/node\n', { mode: 0o600 });
