@@ -6,7 +6,8 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { test } from 'node:test';
-import { agyHookCommand, HOOK_SCRIPT } from '../../server/adapters/agy-hook.mjs';
+import { HOOK_SCRIPT } from '../../server/adapters/agy-hook.mjs';
+import { agyHookCommand } from '../../server/adapters/agy-hook-check.mjs';
 
 test('the hook’s command answers with no node on PATH', { skip: process.platform === 'win32' && 'agy runs hooks with /bin/sh' }, () => {
   const command = agyHookCommand(HOOK_SCRIPT);
