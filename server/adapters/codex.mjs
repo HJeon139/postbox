@@ -386,7 +386,7 @@ export class CodexAdapter {
       rl.close();
       // The turn ends once the app-server's whole group has exited: SIGINT, then SIGKILL. Until then the session reads
       // stopping, so the next turn can't resume this Codex thread beside a process that's still running it (#126).
-      if (!exited) await (await stopTurn(child, { exited: exitedP, kill: this.kill, list: this.list })).gone;
+      if (!exited) await (await stopTurn(child, { exited: exitedP, kill: this.kill, list: this.list, unkilled: ctx.unkilled })).gone;
     }
   }
 }

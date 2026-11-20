@@ -380,7 +380,7 @@ export class KiroCliAdapter {
           c.once('close', r);
           c.once('error', r);
         });
-        const stop = stopOnAbort(ctx.signal, () => stopTurn(c, { exited, kill: this.kill, list: this.list }));
+        const stop = stopOnAbort(ctx.signal, () => stopTurn(c, { exited, kill: this.kill, list: this.list, unkilled: ctx.unkilled }));
         child.on('error', (e) =>
           reject(
             kiroError(

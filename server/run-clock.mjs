@@ -172,17 +172,17 @@ function expireClock(rt, sessionId, now) {
 }
 
 /**
- * The host confirmed that a turn of the agent’s is over (server/remote/turns-stops.mjs, stopConfirmed): if its clock’s
- * pause or expiry was waiting on it, clock.stopped records when, and a paused clock whose last such turn it was stops
- * counting. While the store can’t be written, it’s recorded once it can, at the time the host confirmed. A turn on this
- * computer is `turn:` and its id, confirmed as its CLI exits (turnExited); forced: Stop’s watchdog gave up waiting for
- * that, and the next turn starts anyway, so the CLI may still be working.
- * @param {any} rt @param {string} sessionId @param {string} turn @param {number} [at] @param {boolean} [forced]
+ * A turn the clock’s pause or expiry stopped is over (server/remote/turns-stops.mjs, stopConfirmed, for a host’s turn;
+ * turnExited, as its CLI exits, for one here, `turn:` and its id): clock.stopped records when, and a paused clock whose
+ * last such turn it was stops counting. While the store can’t be written, it’s recorded once it can, at that time.
+ * forced: why Postbox stopped waiting for a turn here that may still work ('watchdog', 'unkilled', 'restart'): the
+ * clock then ends its timed run as void, since its time can’t be known, and no turn of the agent starts again.
+ * @param {any} rt @param {string} sessionId @param {string} turn @param {number} [at] @param {string} [forced]
  */
-export function clockStopConfirmed(rt, sessionId, turn, at = Date.now(), forced = false) {
+export function clockStopConfirmed(rt, sessionId, turn, at = Date.now(), forced) {
   if (!clockOf(rt, sessionId)?.stopping?.includes(turn)) return;
   if (!rt.store.writable) return whenWritable(rt, () => clockStopConfirmed(rt, sessionId, turn, at, forced));
-  rt.store.emit('clock.stopped', { sessionId, turn, ...(forced ? { forced: true } : {}), at });
+  rt.store.emit('clock.stopped', { sessionId, turn, ...(forced ? { forced: true, why: forced } : {}), at });
   const clock = clockOf(rt, sessionId);
   const where = isLocalStop(turn) ? 'local' : 'host';
   clockNote(rt, sessionId, 'stopped', {
@@ -194,6 +194,19 @@ export function clockStopConfirmed(rt, sessionId, turn, at = Date.now(), forced 
     forced,
   });
   armClock(rt, sessionId, () => at);
+}
+
+/**
+ * A local turn the clock lists as still to stop, which this runtime isn’t waiting on: Postbox stopped between the stop
+ * and the CLI’s exit, so when it ended, if it has, is lost. The run is void (clockStopConfirmed, forced). A turn still
+ * exiting here, as at a Retry, is left for its exit.
+ * @param {any} rt @param {string} sessionId @param {() => number} now
+ */
+function voidLostStops(rt, sessionId, now) {
+  if (!rt.store.writable) return;
+  const exiting = rt.exiting.get(sessionId)?.turn;
+  for (const stop of (clockOf(rt, sessionId)?.stopping ?? []).filter(isLocalStop))
+    if (stop !== `turn:${exiting?.id}`) clockStopConfirmed(rt, sessionId, stop, now(), 'restart');
 }
 
 /** The runtimes whose store re-arms their clocks at Retry. */
@@ -210,6 +223,7 @@ export function rearmClocks(rt, now = Date.now) {
     rt.store.onReload(() => rearmClocks(rt, now));
   }
   for (const sessionId of Object.keys(rt.s.clocks ?? {})) {
+    voidLostStops(rt, sessionId, now);
     const clock = clockOf(rt, sessionId);
     if (rt.store.writable) repairClockNote(rt, sessionId, clock);
     // Each running clock marks where Postbox’s record starts again, so a gap in it can be seen: an agent on a host may

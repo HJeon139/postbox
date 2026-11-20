@@ -86,5 +86,5 @@ test('a CLI that hasn’t exited when Stop’s watchdog gives up is recorded as 
   mock.timers.tick(15_000);
   await settle();
   const stopped = clockEvents(store).find((e) => e.type === 'clock.stopped');
-  assert.deepEqual(stopped?.data, { sessionId: se.id, turn: stopId, forced: true, at: T0 + 15_000 });
+  assert.deepEqual(stopped?.data, { sessionId: se.id, turn: stopId, forced: true, why: 'watchdog', at: T0 + 15_000 });
 });

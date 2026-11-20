@@ -28,6 +28,10 @@ export function adapterContext(rt, se0, turn) {
     ...reportCallbacks(rt, turn, live),
     // What the turn sends its agent, as it leaves for the backend (server/turn-prompt.mjs).
     prompt: (/** @type {any} */ p) => recordTurnPrompt(rt, turn, p),
+    // Stop gave up on the CLI’s group, which outlived SIGKILL (server/adapters/process-group.mjs): its end isn’t an exit.
+    unkilled: () => {
+      turn.mayRunOn ??= 'unkilled';
+    },
     tools,
   };
 }

@@ -132,10 +132,18 @@ export const CLOCK_EVENTS = Object.freeze({
   'clock.stopped': {
     apply: (/** @type {any} */ s, /** @type {any} */ d) => {
       if (typeof d.turn !== 'string') throw new TypeError('A clock.stopped event names its turn.');
-      if (d.forced !== undefined && d.forced !== true) throw new TypeError('A clock.stopped event’s forced is true or left out.');
+      if (d.forced !== undefined && (d.forced !== true || typeof d.why !== 'string'))
+        throw new TypeError('A clock.stopped event’s forced is true, with why, or left out.');
       withClock(s, d, (c) => {
         if (!c.stopping?.includes(d.turn)) return;
         c.stopping = c.stopping.filter((/** @type {string} */ t) => t !== d.turn);
+        // Postbox stopped waiting for a turn that may still work: its time can’t be known, so the run is void, and no
+        // turn of the agent starts again (clockHolds), beside it or after.
+        if (d.forced) {
+          if (c.state !== 'expired') Object.assign(c, { usedMs: clockElapsed(c, d.at), since: null, state: 'expired', expiredAt: d.at });
+          c.voided ??= { why: d.why, at: d.at };
+          return;
+        }
         if (c.stopping.length || c.state !== 'paused' || c.since === null) return;
         c.usedMs = clockElapsed(c, d.at);
         c.since = null;
