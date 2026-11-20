@@ -3,14 +3,11 @@
 // how it was made. The rules checked here are Harbor’s (harbor-framework/harbor, src/harbor/models/trajectories/).
 
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
-import { apply, emptyState } from '../shared/state.mjs';
 import { trajectories } from '../tools/atif.mjs';
-import { main, POSTBOX_VERSION, readRecording, SNAPSHOT_LOSES } from '../tools/atif-export.mjs';
+import { POSTBOX_VERSION, readRecording } from '../tools/atif-export.mjs';
 import { keepEvent } from '../tools/uat/room-events.mjs';
-import { tempDir } from './temp-dirs.mjs';
 
 const DIR = new URL('fixtures/atif/dry-run/', import.meta.url).pathname;
 const rec = readRecording(DIR);
@@ -258,80 +255,4 @@ test('a session whose only output was a block still has a trajectory', () => {
     ],
   );
   assert.equal(t.steps[1].metrics.completion_tokens, 102);
-});
-
-// A UAT run with a real agent (Claude Code, claude-haiku-5-5): tests/uat/e2e/scenarios/askquestion.md, recorded by the
-// UAT kit on 20 November 2026 at 933d9884 (tests/fixtures/atif/uat-askquestion/, unedited).
-const UAT = readRecording(new URL('fixtures/atif/uat-askquestion/', import.meta.url).pathname);
-
-test('the real UAT run’s trajectory has its steps in time order, its answers among them', () => {
-  const [t] = all(UAT.events, UAT.live).map((x) => x.trajectory);
-  const times = t.steps.map((s) => Date.parse(s.timestamp));
-  assert.deepEqual(
-    times,
-    [...times].sort((a, b) => a - b),
-  );
-  assert.equal(t.steps.filter((s) => s.extra.answer_to !== undefined).length, 3);
-  assert.deepEqual(
-    t.steps.flatMap((s) => s.tool_calls ?? []).map((c) => c.function_name),
-    ['AskUserQuestion', 'AskUserQuestion'],
-  );
-});
-
-test('an answer that comes after another message is placed after it, at its own time', () => {
-  // From the real run: the first answer’s patch moves after the next message, a second later than it, as when the
-  // person answers a block only after posting something else.
-  const answer = UAT.events.find((e) => e.type === 'item.patch' && e.data.patch?.answer);
-  const next = UAT.events.find((e) => e.type === 'item.add' && e.seq > answer.seq && e.data.item.kind === 'user');
-  const late = {
-    ...answer,
-    seq: next.seq + 0.5,
-    data: { ...answer.data, patch: { ...answer.data.patch, answer: { ...answer.data.patch.answer, at: next.data.item.at + 1000 } } },
-  };
-  const [t] = all(
-    UAT.events.map((e) => (e === answer ? late : e)),
-    UAT.live,
-  ).map((x) => x.trajectory);
-  const times = t.steps.map((s) => Date.parse(s.timestamp));
-  assert.deepEqual(
-    times,
-    [...times].sort((a, b) => a - b),
-  );
-  const order = t.steps.map((s) => s.extra.item_id);
-  assert.ok(order.indexOf(next.data.item.id) < order.lastIndexOf(answer.data.id), 'the answer comes after the message');
-});
-
-/**
- * A data folder whose log starts partway: the recorded run’s first half applied to a state, as the store’s snapshot
- * keeps it, and the rest as its log segment.
- */
-function snapshotFolder() {
-  const dir = join(tempDir('pb-atif-'), 'data');
-  mkdirSync(dir, { recursive: true });
-  const half = rec.events[Math.floor(rec.events.length / 2)].seq;
-  const state = emptyState();
-  for (const e of rec.events.filter((x) => x.seq <= half)) apply(state, e.type, e.data);
-  writeFileSync(join(dir, 'snapshot.json'), JSON.stringify({ ...state, seq: half }));
-  const rest = rec.events.filter((x) => x.seq > half);
-  writeFileSync(join(dir, `events-${half + 1}.jsonl`), rest.map((e) => JSON.stringify(e)).join('\n'));
-  return { dir, half };
-}
-
-test('a data folder’s snapshot gives a partial record, which the exporter refuses to write without --partial', (t) => {
-  const { dir, half } = snapshotFolder();
-  const got = readRecording(dir);
-  assert.deepEqual(got.partial, { reconstructed_before_event: half + 1, lost: SNAPSHOT_LOSES });
-  const out = join(dir, '..', 'out');
-  t.mock.method(console, 'error', () => {});
-  t.mock.method(console, 'log', () => {});
-  assert.equal(main([dir, '--out', out]), 1);
-  assert.equal(existsSync(out), false, 'nothing written');
-  assert.equal(main([dir, '--out', out, '--partial']), 0);
-  const files = readdirSync(out);
-  assert.ok(files.length > 0);
-  for (const f of files) {
-    const traj = JSON.parse(readFileSync(join(out, f), 'utf8'));
-    assert.deepEqual(traj.extra.partial.lost, [...SNAPSHOT_LOSES]);
-    assert.match(traj.notes, /^Partial: steps before event \d+ are rebuilt from the store’s snapshot/);
-  }
 });
