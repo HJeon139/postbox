@@ -39,6 +39,8 @@ const KEPT = new Set([
   'entry.add',
   'entry.patch',
   'entry.put',
+  'turn.guide',
+  'turn.prompt',
 ]);
 
 /** A live frame’s data, parsed, as a list of it, or none if it doesn’t parse. @param {string} data */

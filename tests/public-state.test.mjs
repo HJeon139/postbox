@@ -54,6 +54,9 @@ const TYPES = [
   'clock.turn',
   'clock.restored',
   'clock.expired',
+  // What each turn sent its agent (shared/turn-prompts.mjs): the guide Postbox appends, and each prompt.
+  'turn.guide',
+  'turn.prompt',
 ];
 /** The types the page may not see: each reaches it as a cursor (designs/architecture/security-boundaries.md). */
 const PRIVATE_TYPES = ['app.publish', 'app.note', 'app.notes.dropped', 'app.notes.read'];

@@ -85,6 +85,8 @@ export const VALID = {
   'clock.resumed': { sessionId: 'se', at: 3 },
   'clock.turn': { sessionId: 'se', turnId: 'tu', elapsedMs: 1, budgetMs: 60_000, state: 'running', at: 2 },
   'clock.restored': { sessionId: 'se', elapsedMs: 90_000, budgetMs: 600_000, at: 5 },
+  'turn.guide': { sha: 'a'.repeat(64), text: 'You are @coder.', at: 1 },
+  'turn.prompt': { sessionId: 'se', turnId: 'tu', threadId: 't', guideSha: 'a'.repeat(64), text: 'Go on.', at: 2 },
   'clock.expired': { sessionId: 'se', elapsedMs: 60_000, budgetMs: 60_000, at: 4 },
 };
 

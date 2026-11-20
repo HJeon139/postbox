@@ -25,10 +25,11 @@ export function keepEvent(seq, type, data, sessions = new Map(), events = EVENTS
   }
   // An item brought to the newest point (item.move) carries its update as a patch: a block’s new revision (#213).
   if (type === 'item.add' || type === 'item.patch' || type === 'item.move') return { seq, type, data };
-  // A run clock’s events, a reply’s words as they’re stored, each inbox’s entries (what reached each agent), and the
+  // A run clock’s events, what each turn sent its agent, a reply’s words as they’re stored, each inbox’s entries (what reached each agent), and the
   // work ledger’s turns, with their tokens and cost, and calls, with their arguments: the run’s ATIF trajectories read
   // them (tools/atif.mjs).
-  if (type.startsWith('clock.') || type === 'item.text' || type.startsWith('entry.')) return { seq, type, data };
+  if (type.startsWith('clock.') || type === 'item.text' || type.startsWith('entry.') || type === 'turn.guide' || type === 'turn.prompt')
+    return { seq, type, data };
   if (type === 'work.add' && WORK_KINDS.has(data?.entry?.kind)) return { seq, type, data };
   if (type === 'work.patch') return { seq, type, data };
   // A session event holds the whole session; the checks read only its state, and finishedAt, which a turn clears. The

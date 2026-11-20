@@ -8,6 +8,7 @@ import { applyTurnArchive } from './state-archive.mjs';
 import { ASSET_EVENTS, ownAssetRooms } from './state-assets.mjs';
 import { putHost, putHostStatus } from './state-hosts.mjs';
 import { foldedStep } from './step-fold.mjs';
+import { PROMPT_EVENTS } from './turn-prompts.mjs';
 
 /**
  * Records by id with nothing but their own keys (#352). An id comes from a request, a tool call or an agent, and in a
@@ -196,6 +197,7 @@ export const EVENTS = Object.freeze({
   quota: { apply: put('quota'), public: true },
   ...ASSET_EVENTS,
   ...CLOCK_EVENTS,
+  ...PROMPT_EVENTS,
 });
 
 // Each entry too, so no code can make a type private or public at run time.

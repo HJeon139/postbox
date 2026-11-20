@@ -12,6 +12,7 @@ import { recordScheduledTool } from './scheduled-wakes.mjs';
 import { turnStep } from './step-text.mjs';
 import { newId } from './store.mjs';
 import { saveBackendState } from './store-outage.mjs';
+import { recordTurnPrompt } from './turn-prompt.mjs';
 /**
  * What a turn's adapter runs with: what the turn is, its permissions, and the callbacks it reports through.
  * @param {any} rt  the runtime @param {any} se0  the session as the turn starts @param {any} turn
@@ -25,6 +26,8 @@ export function adapterContext(rt, se0, turn) {
     ...replyWords(rt, se0, turn, live),
     ...stepCallback(rt, se0, turn, live),
     ...reportCallbacks(rt, turn, live),
+    // What the turn sends its agent, as it leaves for the backend (server/turn-prompt.mjs).
+    prompt: (/** @type {any} */ p) => recordTurnPrompt(rt, turn, p),
     tools,
   };
 }

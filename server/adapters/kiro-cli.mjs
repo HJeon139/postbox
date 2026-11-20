@@ -337,6 +337,7 @@ export class KiroCliAdapter {
    */
   async run({ ctx, cwd, folders, prompt, guide, sessionId, turn, attach = false }) {
     const persona = ctx.persona;
+    if (!attach) ctx.prompt?.({ guide, text: prompt }); // what this run sends; an attach replays what was sent
     const agent = `postbox-${String(persona.handle).replace(/[^a-z0-9_-]/gi, '')}-${randomUUID().slice(0, 8)}`;
     // On a host the prompt always goes on stdin; here, too, once it's too long for one argument (#362).
     const stdin = Boolean(ctx.remote) || tooLongForArg(prompt);

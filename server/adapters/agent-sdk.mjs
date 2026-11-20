@@ -234,6 +234,7 @@ export class AgentSdkAdapter {
     /** @type {any} */
     let thrown = null;
     try {
+      ctx.prompt?.({ guide, text: prompt });
       const q = this.sdk.query({ prompt, options });
       // A background job’s own Stop, while the CLI waits for it.
       ctx.control?.({ ...liveControl(q, persona.permissionMode ?? 'auto'), stopJob: (job) => stopJobUnder(child, job, procs) });

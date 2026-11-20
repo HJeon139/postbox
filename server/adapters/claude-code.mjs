@@ -205,6 +205,7 @@ export class ClaudeCodeAdapter {
    */
   run({ ctx, cwd, addDirs = [], prompt, guide, resume, sessionId, fork = null, turn, attach = false }) {
     const id = sessionId ?? randomUUID();
+    if (!attach) ctx.prompt?.({ guide, text: prompt }); // what this run sends; an attach replays what was sent
     // A resume (not a fork, not a fresh start) of a turn the host lost goes on with it (D2).
     const remote = ctx.remote && turn ? remoteTurn(ctx.remote, cwd, turn, Boolean(resume && !fork && ctx.remote.resumeInterrupted), attach) : null;
     const args = runArgs(this.workRoot, { ctx, id, resume, guide, addDirs, fork, remote });

@@ -613,6 +613,7 @@ export class AntigravityCliAdapter {
     // agy can’t turn tools off (agyRules says what’s off), and its 12,000-character rules file has no room for #131’s sections.
     const { guide, message: turnMessage } = turnGuide(message, { ...ctx, persona, brief: session?.brief, toolRules: null, setup: false });
     const prompt = formatMessage(turnMessage, ctx.pathOf);
+    ctx.prompt?.({ guide }); // its rules file carries the guide; each run records its own prompt
     const useHook = persona?.permissionMode !== 'bypass' && agySupportsHooks(this.version);
     const rulesWith = (hooked) => agyRules({ persona, guide, schemas: join(dirname(this.settingsFile), 'mcp', AGY_SERVER), hooked });
     const rules = rulesWith(useHook);
@@ -665,6 +666,7 @@ export class AntigravityCliAdapter {
    */
   run({ ctx, cwd, addDirs, prompt, sessionId, wrote = false, hookConfirmed = false }) {
     const persona = ctx.persona;
+    ctx.prompt?.({ text: prompt });
     const model = agyModel(persona, this.capabilities.models);
     const effort = agyEffort(model, effortOf(persona));
     const args = agyArgs({ persona, model, effort, sessionId, prompt, addDirs, hookConfirmed });
