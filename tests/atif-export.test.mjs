@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { apply, emptyState } from '../shared/state.mjs';
 import { main, readRecording, SNAPSHOT_LOSES } from '../tools/atif-export.mjs';
+import { streamRecorder } from '../tools/uat/history.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
 const rec = readRecording(new URL('fixtures/atif/dry-run/', import.meta.url).pathname);
@@ -43,5 +44,38 @@ test('a data folder’s snapshot gives a partial record, which the exporter refu
     const traj = JSON.parse(readFileSync(join(out, f), 'utf8'));
     assert.deepEqual(traj.extra.partial.lost, [...SNAPSHOT_LOSES]);
     assert.match(traj.notes, /^Partial: steps before event \d+ are rebuilt from the store’s snapshot/);
+  }
+});
+
+test('the UAT kit’s recorder notes where its stream had to resync, so a run’s record says what it lost', () => {
+  const rec2 = streamRecorder();
+  const item = (seq, id) => `id: ${seq}\nevent: item.add\ndata: ${JSON.stringify({ threadId: 't', item: { id, kind: 'user', at: 1 } })}`;
+  rec2.take(item(1, 'i1'));
+  // As server/live-streams.mjs sends it when the backlog no longer covers `since`, or after a new epoch.
+  rec2.take('event: resync\ndata: {}');
+  rec2.take('event: resync\ndata: {}');
+  rec2.take(item(900, 'i900'));
+  assert.deepEqual(
+    rec2.gaps().map((g) => g.after),
+    [1],
+    'one gap, once, after the last event it had',
+  );
+  assert.deepEqual(
+    rec2.events().map((e) => e.seq),
+    [1, 900],
+  );
+});
+
+test('a run whose stream lost events exports its trajectories marked partial, with where it lost them', (t) => {
+  const dir = tempDir('pb-atif-gaps-');
+  for (const f of ['events.jsonl', 'live.jsonl']) writeFileSync(join(dir, f), readFileSync(new URL(`fixtures/atif/dry-run/${f}`, import.meta.url), 'utf8'));
+  writeFileSync(join(dir, 'stream-gaps.json'), JSON.stringify([{ after: 40, at: 1 }]));
+  const out = join(dir, 'out');
+  t.mock.method(console, 'log', () => {});
+  assert.equal(main([dir, '--out', out]), 0);
+  for (const f of readdirSync(out)) {
+    const traj = JSON.parse(readFileSync(join(out, f), 'utf8'));
+    assert.deepEqual(traj.extra.partial.stream_gaps, [{ after: 40, at: 1 }]);
+    assert.match(traj.notes, /^Partial: the recording of \/api\/stream lost events once, after event 40/);
   }
 });

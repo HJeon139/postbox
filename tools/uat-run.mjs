@@ -252,7 +252,7 @@ async function main() {
       facts.agyStreams = readStreams(paths.agyStreams);
       facts.codexStreams = readStreams(paths.codexStreams);
       facts.sdkStreams = readStreams(paths.sdkStreams);
-      Object.assign(facts, { events: history.events(), live: history.live() });
+      Object.assign(facts, { events: history.events(), live: history.live(), gaps: history.gaps() });
       facts.transcripts = readTranscripts(facts, paths.workspace);
       facts.remote = remoteFacts(dir, facts); // `- seed: git-remote`’s pushes, with the ledger’s size beside them (#305)
       Object.assign(facts.ui, await readUi(page));
@@ -282,7 +282,7 @@ async function main() {
       facts.state = st ?? (await api('/api/state')).state;
       facts.threads = threadsUnderTest(facts.state);
       Object.assign(facts, { streams: readStreams(paths.streams), received: readReceived(paths.data, facts.received) });
-      facts.events = history.events();
+      Object.assign(facts, { events: history.events(), gaps: history.gaps() });
       midTurn.push(...newFindings(MID_TURN));
     };
 
@@ -506,7 +506,7 @@ async function main() {
     // The history the checks read, for --recheck: Postbox’s own log can lose its first segments to a snapshot.
     await writeHistory(dir, facts);
     // Each agent’s turns as an ATIF trajectory, timed by the server’s events (tools/atif-export.mjs).
-    writeTrajectories(join(dir, 'atif'), { events: facts.events, live: facts.live });
+    writeTrajectories(join(dir, 'atif'), { events: facts.events, live: facts.live, gaps: facts.gaps });
     writePostboxOutput(dir, facts.postboxOutput); // what Postbox printed, as the checks read it, for --recheck
     const all = [...findings.values()];
     presetFindings(all, { root: ROOT, commit: gitInfo(ROOT).commit });

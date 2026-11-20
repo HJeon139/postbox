@@ -43,6 +43,19 @@ const KEPT = new Set([
   'turn.prompt',
 ]);
 
+/** One server-sent frame’s id, event name and data. @param {string} frame @returns {{ seq: number|null, type: string, data: string }} */
+function parseFrame(frame) {
+  let seq = null;
+  let type = 'message';
+  let data = '';
+  for (const line of frame.split('\n')) {
+    if (line.startsWith('id: ')) seq = Number(line.slice(4));
+    else if (line.startsWith('event: ')) type = line.slice(7);
+    else if (line.startsWith('data: ')) data += line.slice(6);
+  }
+  return { seq, type, data };
+}
+
 /** A live frame’s data, parsed, as a list of it, or none if it doesn’t parse. @param {string} data */
 function framesIn(data) {
   try {
@@ -61,50 +74,16 @@ function framesIn(data) {
  * @param {string} origin
  * It keeps every live frame too, unnumbered, as it came: a running turn’s progress isn’t stored between commit points
  * (designs/architecture/live-progress.md), so a check of what reached the browser reads them beside the events (#722).
- * @returns {{ events: () => any[], live: () => any[], hostStates: () => { at: number, id: string, state: string|null, failure: string|null, update: UpdateSeen|null }[], close: () => void }}
+ * @returns {{ events: () => any[], live: () => any[], hostStates: () => { at: number, id: string, state: string|null, failure: string|null, update: UpdateSeen|null }[], gaps: () => { after: number, at: number }[], close: () => void }}
  */
 export function followEvents(origin) {
-  /** @type {any[]} */
-  const kept = [];
-  /** @type {any[]} */
-  const live = [];
-  /** @type {{ at: number, id: string, state: string|null, failure: string|null, update: UpdateSeen|null }[]} */
-  const hostStates = [];
-  let last = 0;
-  // Each session as the events so far left it, so a session.patch is kept as a whole session (keepEvent).
-  const sessions = new Map();
+  const rec = streamRecorder();
   const abort = new AbortController();
-  const take = (frame) => {
-    let seq = null;
-    let type = 'message';
-    let data = '';
-    for (const line of frame.split('\n')) {
-      if (line.startsWith('id: ')) seq = Number(line.slice(4));
-      else if (line.startsWith('event: ')) type = line.slice(7);
-      else if (line.startsWith('data: ')) data += line.slice(6);
-    }
-    if (type === 'live') return void live.push(...framesIn(data));
-    if (!Number.isFinite(seq) || seq === null || seq <= last) return;
-    last = seq;
-    if (type === 'host.status') {
-      try {
-        const d = JSON.parse(data);
-        const h = hostStateOf(d);
-        if (h) hostStates.push({ at: Date.now(), ...h });
-      } catch {}
-      return;
-    }
-    if (!KEPT.has(type) && !type.startsWith('clock.')) return;
-    try {
-      const e = keepEvent(seq, type, JSON.parse(data), sessions);
-      if (e) kept.push(e);
-    } catch {}
-  };
   void (async () => {
     // Reconnect from the last event seen if the stream drops, as the page does.
     while (!abort.signal.aborted) {
       try {
-        const res = await fetch(`${origin}/api/stream?since=${last}`, { signal: abort.signal });
+        const res = await fetch(`${origin}/api/stream?since=${rec.last()}`, { signal: abort.signal });
         if (!res.body) throw new Error('no body');
         const decoder = new TextDecoder();
         let buf = '';
@@ -112,7 +91,7 @@ export function followEvents(origin) {
           buf += decoder.decode(chunk, { stream: true });
           let at = buf.indexOf('\n\n');
           while (at >= 0) {
-            take(buf.slice(0, at));
+            rec.take(buf.slice(0, at));
             buf = buf.slice(at + 2);
             at = buf.indexOf('\n\n');
           }
@@ -121,7 +100,51 @@ export function followEvents(origin) {
       if (!abort.signal.aborted) await new Promise((ok) => setTimeout(ok, 1000).unref());
     }
   })();
-  return { events: () => kept, live: () => live, hostStates: () => hostStates, close: () => abort.abort() };
+  return { events: rec.events, live: rec.live, hostStates: rec.hostStates, gaps: rec.gaps, close: () => abort.abort() };
+}
+
+/**
+ * What a recording keeps of the frames it’s given, in the order they came (followEvents feeds it): the events the
+ * checks and the ATIF trajectories read, the live frames, each host’s status, and where the stream lost events.
+ */
+export function streamRecorder() {
+  /** @type {any[]} */
+  const kept = [];
+  /** @type {any[]} */
+  const live = [];
+  /** @type {{ at: number, id: string, state: string|null, failure: string|null, update: UpdateSeen|null }[]} */
+  const hostStates = [];
+  /** @type {{ after: number, at: number }[]} where the stream had to resync, so events were lost */
+  const gaps = [];
+  let last = 0;
+  // Each session as the events so far left it, so a session.patch is kept as a whole session (keepEvent).
+  const sessions = new Map();
+  /** @param {string} frame */
+  const take = (frame) => {
+    const { seq, type, data } = parseFrame(frame);
+    if (type === 'live') return void live.push(...framesIn(data));
+    // The server couldn’t replay what came since `last` (too far behind, or a new epoch after a restart or a Retry):
+    // what came between is lost to this recording, which says so rather than reading as whole (hydrant-critic’s
+    // review of #1522). A run’s ATIF trajectories carry it as partial (tools/atif-export.mjs).
+    if (type === 'resync') return void (gaps.at(-1)?.after === last ? null : gaps.push({ after: last, at: Date.now() }));
+    if (!Number.isFinite(seq) || seq === null || seq <= last) return;
+    last = seq;
+    if (type === 'host.status') return void hostState(hostStates, data);
+    if (!KEPT.has(type) && !type.startsWith('clock.')) return;
+    try {
+      const e = keepEvent(seq, type, JSON.parse(data), sessions);
+      if (e) kept.push(e);
+    } catch {}
+  };
+  return { take, last: () => last, events: () => kept, live: () => live, hostStates: () => hostStates, gaps: () => gaps };
+}
+
+/** A host.status frame, kept as the host’s state with when it came. @param {any[]} hostStates @param {string} data */
+function hostState(hostStates, data) {
+  try {
+    const h = hostStateOf(JSON.parse(data));
+    if (h) hostStates.push({ at: Date.now(), ...h });
+  } catch {}
 }
 
 /** Parses JSON Lines, skipping a line that doesn’t parse (the last one, if the file was being written). Unwraps commit arrays (#508, option b). */
@@ -185,6 +208,7 @@ export async function writeHistory(dir, facts) {
   const jsonl = (/** @type {any[]} */ list) => list.map((e) => JSON.stringify(e)).join('\n') + (list.length ? '\n' : '');
   await writeFile(join(dir, 'events.jsonl'), jsonl(facts.events));
   await writeFile(join(dir, 'live.jsonl'), jsonl(facts.live ?? []));
+  if (facts.gaps?.length) await writeFile(join(dir, 'stream-gaps.json'), `${JSON.stringify(facts.gaps)}\n`);
 }
 
 /** The live frames a run kept (writeHistory), or none for a run from before they were. @param {string} dir */

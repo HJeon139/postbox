@@ -70,11 +70,11 @@ export const SNAPSHOT_LOSES = Object.freeze([
 
 /**
  * The events and live frames of a recording, and a note on what they leave out.
- * @param {string} path @returns {{ events: any[], live: any[], notes: string|null, partial?: { reconstructed_before_event: number, lost: readonly string[] } }}
+ * @param {string} path @returns {{ events: any[], live: any[], notes: string|null, gaps?: { after: number, at: number }[], partial?: { reconstructed_before_event: number, lost: readonly string[] } }}
  */
 export function readRecording(path) {
   if (!statSync(path).isDirectory()) return { events: linesIn(path), live: linesIn(join(path, '..', 'live.jsonl')), notes: null };
-  if (existsSync(join(path, 'events.jsonl'))) return { events: linesIn(join(path, 'events.jsonl')), live: linesIn(join(path, 'live.jsonl')), notes: null };
+  if (existsSync(join(path, 'events.jsonl'))) return { ...runRecording(path), notes: null };
   const data = existsSync(join(path, 'data')) ? join(path, 'data') : path;
   const segments = readdirSync(data)
     .filter((n) => /^events-\d+\.jsonl$/.test(n))
@@ -91,7 +91,7 @@ export function readRecording(path) {
 
 /**
  * The run’s trajectories, written to a folder: one file per agent session.
- * @param {string} out @param {{ events: any[], live?: any[], notes?: string|null }} rec @param {{ sessionId?: string, handle?: string }} [only]
+ * @param {string} out @param {{ events: any[], live?: any[], notes?: string|null, gaps?: { after: number, at: number }[] }} rec @param {{ sessionId?: string, handle?: string }} [only]
  * @returns {string[]} the files written
  */
 export function writeTrajectories(out, rec, only = {}) {
@@ -107,20 +107,38 @@ export function writeTrajectories(out, rec, only = {}) {
 
 /** The recording’s trajectories, for one session or one handle if asked. @param {any} rec @param {{ sessionId?: string, handle?: string }} only */
 function pick(rec, { sessionId, handle }) {
+  const lost = gapNote(rec.gaps);
+  const notes = [rec.notes, lost].filter(Boolean).join(' ');
+  const partial = { ...rec.partial, ...(rec.gaps?.length ? { stream_gaps: rec.gaps } : {}) };
   return trajectories(rec.events, { version: POSTBOX_VERSION, live: rec.live ?? [], sessionId })
     .filter((t) => !handle || t.handle === handle)
     .map((t) =>
-      rec.notes
+      notes
         ? {
             ...t,
             trajectory: {
               ...t.trajectory,
-              notes: `${rec.notes} ${t.trajectory.notes}`,
-              extra: { ...t.trajectory.extra, ...(rec.partial ? { partial: rec.partial } : {}) },
+              notes: `${notes} ${t.trajectory.notes}`,
+              extra: { ...t.trajectory.extra, ...(Object.keys(partial).length ? { partial } : {}) },
             },
           }
         : t,
     );
+}
+
+/**
+ * What a recording says of the events it lost where its stream had to resync (tools/uat/history.mjs, gaps), or null
+ * when it lost none. @param {{ after: number, at: number }[] | undefined} gaps
+ */
+function gapNote(gaps) {
+  if (!gaps?.length) return null;
+  return `Partial: the recording of /api/stream lost events ${gaps.length === 1 ? 'once' : `${gaps.length} times`}, after event ${gaps.map((g) => g.after).join(', ')}, where the server could no longer replay them; steps that came between are missing.`;
+}
+
+/** A UAT run’s folder (tools/uat/history.mjs, writeHistory): its events, its live frames and where its stream lost events. @param {string} dir */
+function runRecording(dir) {
+  const gaps = existsSync(join(dir, 'stream-gaps.json')) ? JSON.parse(readFileSync(join(dir, 'stream-gaps.json'), 'utf8')) : [];
+  return { events: linesIn(join(dir, 'events.jsonl')), live: linesIn(join(dir, 'live.jsonl')), gaps };
 }
 
 /**
