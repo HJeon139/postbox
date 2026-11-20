@@ -367,9 +367,12 @@ export class KiroCliAdapter {
           reject(new Error(`Couldn’t start the Kiro CLI (${this.bin}): ${e.message}`));
           return;
         }
-        if (!attach) ctx.prompt?.({ guide: kiroSystemPrompt(persona, guide), text: prompt }); // started, so sent; an attach replays what was sent
+        // Recorded once sent: as an argument, at the start; on stdin, once the write succeeded, so a prompt kiro exited
+        // before reading (EPIPE) isn’t recorded as one it got. An attach replays what was sent.
+        const sent = () => ctx.prompt?.({ guide: kiroSystemPrompt(persona, guide), text: prompt });
+        if (!attach && !stdin) sent();
         // kiro exiting before it reads the prompt (EPIPE) ends its turn, not Postbox, as claude-code.mjs guards it.
-        if (stdin && !attach) child.stdin.on('error', () => {}).end(prompt);
+        if (stdin && !attach) child.stdin.on('error', () => {}).end(prompt, (/** @type {unknown} */ err) => err || sent());
         let stderr = '';
         const c = child;
         const exited = new Promise((r) => {

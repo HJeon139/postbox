@@ -223,7 +223,6 @@ export class ClaudeCodeAdapter {
         reject(new Error(remote ? `Couldn’t start Claude Code on the host: ${e.message}` : `Couldn’t start Claude Code (${this.bin}): ${e.message}`));
         return;
       }
-      if (!attach) ctx.prompt?.({ guide, text: prompt }); // started, so sent; an attach replays what was sent
       let stderr = '';
       let finished = false;
       const exited = new Promise((r) => {
@@ -289,7 +288,9 @@ export class ClaudeCodeAdapter {
         if (ctx.signal.aborted) settle(code);
       });
       child.stdin.on('error', () => {});
-      child.stdin.end(prompt);
+      // Recorded once the write succeeded, so a prompt the CLI exited before reading (EPIPE) isn’t recorded as one it
+      // got. An attach replays what was sent.
+      child.stdin.end(prompt, (/** @type {unknown} */ err) => err || attach || ctx.prompt?.({ guide, text: prompt }));
     });
   }
 }
