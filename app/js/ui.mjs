@@ -208,6 +208,24 @@ export function refind(el) {
 // Modal, with focus kept inside and returned to where it came from when closed.
 
 /**
+ * A dialog body that scrolls takes focus, so a keyboard can scroll it, and one that fits is no extra stop for Tab
+ * (axe’s scrollable-region-focusable; #1530: macOS’s fonts made the delete confirm’s body scroll at 375 px). Kept
+ * up to date as the window or the body’s content changes size. Returns what stops watching, for the dialog’s close.
+ * @param {HTMLElement} body @returns {() => void}
+ */
+function scrollFocus(body) {
+  const fit = () => {
+    if (body.scrollHeight > body.clientHeight || body.scrollWidth > body.clientWidth) body.setAttribute('tabindex', '0');
+    else body.removeAttribute('tabindex');
+  };
+  fit();
+  const watch = new ResizeObserver(fit);
+  watch.observe(body);
+  for (const child of body.children) watch.observe(child);
+  return () => watch.disconnect();
+}
+
+/**
  * Opens a modal dialog. With an anchor, a window wide enough shows it beside the anchor, as a popover over the
  * page; a narrow one shows it as a sheet, like any dialog (#105).
  * @param {{ title: any, sub?: any, body: any, foot?: any, size?: string, role?: string, onClose?: () => void,
@@ -217,7 +235,9 @@ export function openDialog({ title, sub, body, foot, size = '', role = 'dialog',
   // Focus goes back where it came from, or to what replaced it if that was rebuilt meanwhile.
   const back = document.activeElement && document.activeElement !== document.body ? refind(document.activeElement) : null;
   const titleId = `dlg-${Math.random().toString(36).slice(2, 8)}`;
+  let unwatch = () => {};
   const close = () => {
+    unwatch();
     backdrop.remove();
     document.removeEventListener('keydown', onKey, true);
     onClose?.();
@@ -264,6 +284,7 @@ export function openDialog({ title, sub, body, foot, size = '', role = 'dialog',
   };
   document.addEventListener('keydown', onKey, true);
   document.body.append(backdrop);
+  unwatch = scrollFocus(/** @type {HTMLElement} */ (dialog.querySelector('.d-body')));
   if (anchor && innerWidth >= 768) placeBeside(backdrop, dialog, anchor);
   (initialFocus?.() ?? $('input, textarea, select, button.send, .d-body button', dialog))?.focus();
   return { close, dialog };

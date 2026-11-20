@@ -82,8 +82,6 @@ export const confirmInstall = async (host) => {
     foot: [h('button.btn', { type: 'button', onclick: () => dlg.close() }, 'Cancel'), go],
     initialFocus: () => go,
   });
-  // The steps can be longer than a small window: the body scrolls, so it takes focus to scroll by keyboard.
-  dlg.dialog.querySelector('.d-body')?.setAttribute('tabindex', '0');
 };
 
 /** Another Postbox drives the host: taking over disconnects it, so it says so first. @param {any} host */
