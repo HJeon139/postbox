@@ -49,3 +49,14 @@ test('a clock that holds its agent gets its line as Postbox starts, when a kill 
   assert.deepEqual(lines(), ['started', 'paused', 'expired']);
   assert.match(store.items(t.id).findLast((i) => i.variant === 'clock').text, /Messages to @developer here now wait/);
 });
+
+test('the line a restart gives back to an expiry whose host turn isn’t confirmed stopped says Postbox asked the host, not that it stopped it', () => {
+  const { rt, store, t, se } = setup();
+  clockAction(rt, se.id, { action: 'start', budgetS: 60 }, at(0));
+  // The kill came between the expiry, which listed a host turn still to stop, and its line.
+  store.emit('clock.expired', { sessionId: se.id, elapsedMs: 60_000, budgetMs: 60_000, stopping: ['host-turn-1'], at: T0 + 60_000 });
+  rearmClocks(rt, at(70_000));
+  const text = store.items(t.id).findLast((i) => i.variant === 'clock').text;
+  assert.match(text, /so Postbox asked @developer’s host to stop @developer, which may still be working there until the host confirms\./);
+  assert.doesNotMatch(text, /Postbox stopped @developer/);
+});

@@ -27,16 +27,16 @@ export const CLOCK_WORDS = {
  * @param {{ type: string, data: any }[]} clocks  the session’s clock events, in order
  */
 export function remoteStops(clocks) {
-  const stops = [];
+  /** @type {Map<string, { turn: string, asked_by: string, asked_at: number, confirmed_at: number | null }>} by host turn: one stop each */
+  const stops = new Map();
   for (const c of clocks) {
+    // An expiry lists a turn a pause already asked to stop, which it didn’t ask again: the first ask is the stop.
     if (c.type === 'clock.paused' || c.type === 'clock.expired')
-      for (const turn of c.data.stopping ?? []) stops.push({ turn, asked_by: c.type, asked_at: c.data.at, confirmed_at: null });
-    if (c.type === 'clock.stopped') {
-      const open = stops.find((s) => s.turn === c.data.turn && s.confirmed_at === null);
-      if (open) open.confirmed_at = c.data.at;
-    }
+      for (const turn of c.data.stopping ?? []) if (!stops.has(turn)) stops.set(turn, { turn, asked_by: c.type, asked_at: c.data.at, confirmed_at: null });
+    const open = c.type === 'clock.stopped' ? stops.get(c.data.turn) : undefined;
+    if (open && open.confirmed_at === null) open.confirmed_at = c.data.at;
   }
-  return stops;
+  return [...stops.values()];
 }
 
 /**

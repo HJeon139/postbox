@@ -11,7 +11,7 @@ import { clockElapsed } from '../shared/run-clock.mjs';
 import { EVENTS } from '../shared/state.mjs';
 import { trajectories } from '../tools/atif.mjs';
 import { clockTimer, runClock } from './arrange.mjs';
-import { rig, starts } from './remote-turns-helpers.mjs';
+import { restarted, rig, starts, startUp } from './remote-turns-helpers.mjs';
 
 const T0 = 1_800_000_000_000;
 beforeEach(() => mock.timers.enable({ apis: ['setTimeout', 'setInterval', 'Date'], now: T0 }));
@@ -109,4 +109,66 @@ test('an export says the trajectory is partial from the stop Postbox asked of th
   assert.equal(after.extra.remote_stops[0].confirmed_at, new Date(T0 + 95_000).toISOString());
   assert.match(after.notes, /until its host confirmed the stop 35\.000s later/);
   assert.equal(after.steps.at(-1).extra.event, 'clock.stopped');
+});
+
+test('a clock doesn’t start while the agent’s turn from before a restart waits to be attached again on its host', async () => {
+  const { store, d } = restarted({ welcome: 'running' });
+  d.drop(); // the host can’t be reached as Postbox starts again
+  const r = rig({ store, d });
+  r.hosts.ensureWelcome = () => new Promise(() => {}); // no welcome comes
+  startUp(r);
+  const id = r.se().id;
+  await until(() => r.rt.running.awaitsAttach(id), 'the turn waiting to be attached');
+  assert.equal(r.rt.turns.has(id) || r.rt.exiting.has(id), false, 'no turn of its runs here');
+  assert.throws(
+    () => runClock(r.rt, id, { action: 'start', budgetS: 60 }, at(0)),
+    (e) => e.status === 409 && /still working on a turn/.test(e.message),
+  );
+  assert.equal(r.store.state.clocks?.[id], undefined);
+});
+
+test('a clock doesn’t start while a stop of the agent’s turn waits for its host to confirm it', async () => {
+  const r = rig();
+  const id = r.se().id;
+  const hostId = r.host.id;
+  r.store.emit('session', {
+    ...r.se(),
+    remoteTurn: { hostId, turn: 'host-turn-1', state: 'stopping', at: 1, stopping: [{ turn: 'host-turn-1', hostId, at: 1 }] },
+  });
+  assert.throws(
+    () => runClock(r.rt, id, { action: 'start', budgetS: 60 }, at(0)),
+    (e) => e.status === 409 && /host hasn’t confirmed/.test(e.message),
+  );
+});
+
+test('a paused clock doesn’t resume until the host confirms the turn its pause stopped', async () => {
+  const { r, id, turn, clock } = await cutOff();
+  runClock(r.rt, id, { action: 'pause' }, at(10_000));
+  await until(() => !r.rt.turns.has(id) && !r.rt.exiting.has(id), 'the turn to end here');
+  assert.throws(
+    () => runClock(r.rt, id, { action: 'resume' }, at(20_000)),
+    (e) => e.status === 409 && /host hasn’t confirmed/.test(e.message),
+  );
+  assert.equal(clock().state, 'paused');
+  mock.timers.setTime(T0 + 40_000);
+  r.link.reconnect();
+  await until(() => clock().stopping.length === 0, 'the confirmation');
+  assert.equal(r.d.turns.get(turn).exit !== null, true, 'the old turn is over on the host');
+  runClock(r.rt, id, { action: 'resume' }, at(50_000));
+  assert.equal(clock().state, 'running');
+});
+
+test('a pause whose stop is still unconfirmed at the expiry is one stop in the export, confirmed when the host confirms it', async () => {
+  const { r, id, turn } = await cutOff();
+  runClock(r.rt, id, { action: 'pause' }, at(10_000));
+  clockTimer(r.rt, id, at(60_000));
+  mock.timers.setTime(T0 + 95_000);
+  r.link.reconnect();
+  await until(() => r.store.state.clocks[id].stopping.length === 0, 'the confirmation');
+  const t = exported(r);
+  assert.deepEqual(t.extra.remote_stops, [
+    { turn, asked_by: 'clock.paused', asked_at: new Date(T0 + 10_000).toISOString(), confirmed_at: new Date(T0 + 95_000).toISOString() },
+  ]);
+  assert.match(t.notes, /asked the agent’s host to stop its turn once/);
+  assert.doesNotMatch(t.notes, /never confirmed/);
 });

@@ -47,5 +47,5 @@ export function repairClockNote(rt, sessionId, clock) {
   const last = rt.store.pending
     .items(se.threadId)
     .findLast((/** @type {any} */ i) => i.kind === 'system' && i.variant === 'clock' && i.sessionId === sessionId);
-  if (last?.change !== change) clockNote(rt, sessionId, change, { budgetMs: clock.budgetMs, elapsedMs: clock.usedMs });
+  if (last?.change !== change) clockNote(rt, sessionId, change, { budgetMs: clock.budgetMs, elapsedMs: clock.usedMs, stopping: clock.stopping ?? [] });
 }

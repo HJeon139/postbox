@@ -28,6 +28,10 @@ const clockOf = (rt, sessionId) => rt.store.pending.clock(sessionId);
  */
 const unconfirmedStops = (rt, sessionId) => (rt.store.pending.session(sessionId)?.remoteTurn?.stopping ?? []).map((/** @type {any} */ x) => x.turn);
 
+/** Why the person must wait for a host’s stop. @param {string} handle @param {string} what */
+const stillOnHost = (handle, what) =>
+  `Postbox asked @${handle}’s host to stop its turn, and the host hasn’t confirmed it, so @${handle} may still be working there. Postbox asks again each time the host connects; once it confirms, ${what}.`;
+
 /** A clock’s event’s field for the host turns still to stop, when there are any. @param {string[]} turns */
 const stoppingField = (turns) => (turns.length ? { stopping: turns } : {});
 
@@ -47,9 +51,11 @@ function refuseStart(rt, se, clock, budgetS) {
       409,
       `@${se.handle} already had a run clock in this conversation. Start the next timed run in a new conversation, so it begins with nothing from this one.`,
     );
-  // Nor while the agent works: that turn’s work and context, from before the clock, would count as the run’s.
-  if (rt.turns.has(sessionId) || rt.exiting.has(sessionId))
-    throw httpError(409, `@${se.handle} is still working on a turn. Stop it, or wait for it to end, then start the clock.`);
+  // Nor while the agent works: that turn’s work and context, from before the clock, would count as the run’s. Busy
+  // takes in a turn on a host that waits to be attached again after a restart (server/running.mjs), and a stop its
+  // host hasn’t confirmed leaves a turn that may still run there (hydrant-critic’s review of #1522).
+  if (rt.running.busy(sessionId)) throw httpError(409, `@${se.handle} is still working on a turn. Stop it, or wait for it to end, then start the clock.`);
+  if (unconfirmedStops(rt, sessionId).length) throw httpError(409, stillOnHost(se.handle, 'start the clock'));
   // Nor does a run start with messages from before it waiting in the inbox: its first turn would read them.
   const waiting = rt.delivery.waiting(sessionId).length;
   if (waiting)
@@ -90,6 +96,8 @@ export function clockAction(rt, sessionId, body, now = Date.now) {
       break;
     case 'resume':
       if (clock?.state !== 'paused') throw httpError(409, `@${se.handle} has no paused run clock to resume.`);
+      // A turn the pause stopped may still run on its host: a new one would run beside it, in paused time.
+      if (clock.stopping?.length) throw httpError(409, stillOnHost(se.handle, 'resume the clock'));
       rt.store.emit('clock.resumed', { sessionId, at: now() });
       clockNote(rt, sessionId, 'resumed', { budgetMs: clock.budgetMs, elapsedMs: clockOf(rt, sessionId).usedMs });
       resumeHeld(rt, sessionId);
