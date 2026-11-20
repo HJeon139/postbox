@@ -2,7 +2,8 @@
 // turn runs”): every recorded turn in tests/fixtures/ is replayed through the real runtime into a store on disk, as
 // tools/measure-progress.mjs replays them, and what the checks rebuild of each reply from the log (itemsOf, which
 // tools/uat/inbox-measures.mjs and picture-choice.mjs read as they did when every delta was stored) is the reply
-// Postbox kept: all its words, in order, each stored before the reply settles.
+// Postbox kept, and all of a turn’s replies together are every word its stream gave, in order, each stored before
+// its reply settles.
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
@@ -17,7 +18,7 @@ import { tempDir } from './temp-dirs.mjs';
 
 /**
  * One recorded turn, by @beta, played into a store in a temp folder: the log it wrote, the replies Postbox kept, and
- * every word the stream gave Postbox, by the reply it went to, as `main` stored them, a delta at a time.
+ * every word each turn’s stream gave Postbox, by its turn, as `main` stored them, a delta at a time.
  * @param {any} rec
  */
 async function replayed(rec) {
@@ -32,8 +33,8 @@ async function replayed(rec) {
     __proto__: c,
     text(/** @type {string} */ delta) {
       c.text(delta);
-      // The part it went to is the one this turn, known by its signal, now holds words for (server/live-text.mjs).
-      const id = f.rt.running.all().find((/** @type {any} */ t) => t.abort.signal === c.signal)?.liveText?.itemId;
+      // The turn, known by its signal: which of its replies the words went to is what the log must say.
+      const id = f.rt.running.all().find((/** @type {any} */ t) => t.abort.signal === c.signal)?.id;
       if (delta && id) said.set(id, (said.get(id) ?? '') + delta);
     },
   });
@@ -58,10 +59,14 @@ test('what the UAT checks rebuild of each reply from the log is the reply Postbo
   let words = 0;
   for (const rec of recs) {
     const { events, kept, said } = await replayed(rec);
-    const rebuilt = new Map(itemsOf(events).map((i) => [i.id, i]));
+    const rebuilt = itemsOf(events).filter((i) => i.kind === 'agent');
+    const turns = new Set([...said.keys(), ...kept.map((/** @type {any} */ i) => i.turnId)]);
+    for (const turn of turns) {
+      const words = rebuilt.filter((i) => i.turnId === turn).map((i) => i.text);
+      assert.equal(words.join(''), said.get(turn) ?? '', `${rec.name}: turn ${turn}’s replies, from the log, are every word its stream gave`);
+    }
     for (const reply of kept) {
-      const r = rebuilt.get(reply.id);
-      assert.equal(r?.text, said.get(reply.id) ?? '', `${rec.name}: ${reply.id}’s words, from the log, are every word the stream gave it`);
+      const r = rebuilt.find((i) => i.id === reply.id);
       assert.equal(r?.text, reply.text, `${rec.name}: ${reply.id}’s words, from the log, are the reply’s`);
       assert.equal(r?.status, reply.status, `${rec.name}: ${reply.id}’s status, from the log`);
       // Each of its words is stored before it settles, so a check reading in order has them all by then.
