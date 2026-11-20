@@ -5,7 +5,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
-import { trajectories } from '../tools/atif.mjs';
+import { NOT_RECORDED, trajectories } from '../tools/atif.mjs';
 import { POSTBOX_VERSION, readRecording } from '../tools/atif-export.mjs';
 import { keepEvent } from '../tools/uat/room-events.mjs';
 
@@ -267,4 +267,11 @@ test('each reply names the model that ran it, and the trajectory names a default
   assert.equal(t.agent.model_name, undefined, 'no default: two models ran');
   assert.deepEqual(t.agent.extra.models, ['claude-sonnet-5-5', 'claude-opus-5-5']);
   assert.equal(of('dry2').agent.model_name, 'claude-sonnet-5-5');
+});
+
+test('every trajectory says it’s the conversation’s record, and what of the agent’s prompt it leaves out', () => {
+  for (const { trajectory: t } of all()) {
+    assert.deepEqual(t.extra.scope, { record: 'postbox-conversation', not_recorded: NOT_RECORDED });
+    assert.match(t.notes, /^Built from Postbox’s conversation record, not from each turn’s exact prompt: it leaves out the system prompt/);
+  }
 });

@@ -17,6 +17,18 @@ import { finalMetrics, meter } from './atif-metrics.mjs';
 
 /** @typedef {{ seq: number, type: string, data: any }} Event */
 
+/**
+ * What a trajectory from the conversation’s record leaves out of what the agent was given (hydrant-critic’s review of
+ * #1522): Postbox doesn’t store a turn’s exact prompt, so a trajectory is the interaction as the conversation shows it,
+ * and says so in its notes and extra.scope.
+ */
+export const NOT_RECORDED = Object.freeze([
+  'the system prompt Postbox and the agent’s backend gave it (its guide, persona and tools)',
+  'the room’s catch-up each turn carried as background, beyond the messages that reached its inbox',
+  'the exact text of each turn’s message, as its backend formatted it',
+]);
+const SCOPE_NOTE = `Built from Postbox’s conversation record, not from each turn’s exact prompt: it leaves out ${NOT_RECORDED.join('; ')}.`;
+
 const iso = (/** @type {number} */ ms) => new Date(ms).toISOString();
 const CLOCK_WORDS = {
   'clock.started': (d) => `Run clock started with a budget of ${d.budgetMs / 1000}s.`,
@@ -228,6 +240,8 @@ export function trajectoryOf(f, sessionId, { version }) {
       ...(models.length === 1 ? { model_name: models[0] } : {}),
       extra: { handle, postbox_session: sessionId, ...(models.length > 1 ? { models } : {}) },
     },
+    notes: SCOPE_NOTE,
+    extra: { scope: { record: 'postbox-conversation', not_recorded: NOT_RECORDED } },
     steps,
     final_metrics: finalMetrics(ctx.turns, ctx.meter.metered, steps.length),
   };

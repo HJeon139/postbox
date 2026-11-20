@@ -109,7 +109,18 @@ export function writeTrajectories(out, rec, only = {}) {
 function pick(rec, { sessionId, handle }) {
   return trajectories(rec.events, { version: POSTBOX_VERSION, live: rec.live ?? [], sessionId })
     .filter((t) => !handle || t.handle === handle)
-    .map((t) => (rec.notes ? { ...t, trajectory: { ...t.trajectory, notes: rec.notes, ...(rec.partial ? { extra: { partial: rec.partial } } : {}) } } : t));
+    .map((t) =>
+      rec.notes
+        ? {
+            ...t,
+            trajectory: {
+              ...t.trajectory,
+              notes: `${rec.notes} ${t.trajectory.notes}`,
+              extra: { ...t.trajectory.extra, ...(rec.partial ? { partial: rec.partial } : {}) },
+            },
+          }
+        : t,
+    );
 }
 
 /**
