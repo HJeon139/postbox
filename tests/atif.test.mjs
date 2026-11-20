@@ -5,7 +5,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
-import { NOT_RECORDED, trajectories } from '../tools/atif.mjs';
+import { trajectories } from '../tools/atif.mjs';
 import { POSTBOX_VERSION, readRecording } from '../tools/atif-export.mjs';
 import { keepEvent } from '../tools/uat/room-events.mjs';
 
@@ -43,21 +43,33 @@ test('the recorded run gives each agent one trajectory that keeps Harbor’s rul
   }
 });
 
-test('a step is each message that reached the agent’s inbox, each of its replies and each clock event, at the server’s time', () => {
+test('a step is each message that reached the agent’s inbox, each reply, each clock event and each prompt, at the server’s time', () => {
   const t = of('dry');
   const id = sessionOf('dry');
   const added = rec.events.filter((e) => e.type === 'item.add').map((e) => e.data.item);
   const entries = new Map(rec.events.filter((e) => e.type === 'entry.add' && e.data.sessionId === id).map((e) => [e.data.entry.id, e.data.entry.itemId]));
   const taken = rec.events.filter((e) => e.type === 'entry.patch' && e.data.patch.takenBy && entries.has(e.data.id));
   const delivered = new Set(taken.map((e) => entries.get(e.data.id)));
-  const own = added.filter((it) => it.sessionId === id);
+  const own = added.filter((it) => it.sessionId === id && it.kind === 'agent');
   const clocks = rec.events.filter((e) => e.type.startsWith('clock.') && e.data.sessionId === id);
-  assert.equal(t.steps.length, added.filter((it) => delivered.has(it.id)).length + own.length + clocks.length);
+  // Each prompt it was sent, and its guide before the first prompt that went with it.
+  const prompts = rec.events.filter((e) => e.type === 'turn.prompt' && e.data.sessionId === id);
+  const guides = new Set(prompts.map((e) => e.data.guideSha)).size;
+  assert.equal(prompts.length, 3);
+  assert.equal(guides, 1);
+  assert.equal(t.steps.length, added.filter((it) => delivered.has(it.id)).length + own.length + clocks.length + prompts.length + guides);
   assert.equal(t.final_metrics.total_steps, t.steps.length);
   const at = new Map(added.map((it) => [it.id, it.at]));
-  for (const s of t.steps) assert.equal(s.timestamp, new Date(s.extra.event ? s.extra.at : at.get(s.extra.item_id)).toISOString(), `step ${s.step_id}`);
+  // A prompt step is at its prompt’s time, and its guide’s at the same prompt’s.
+  const promptAt = new Map(prompts.map((e) => [e.data.turnId, e.data.at]));
+  const timeOf = (s) => {
+    if (s.extra.event === 'turn.prompt') return promptAt.get(s.extra.turn_id);
+    if (s.extra.event === 'turn.guide') return prompts.find((e) => e.data.guideSha === s.extra.sha).data.at;
+    return s.extra.event ? s.extra.at : at.get(s.extra.item_id);
+  };
+  for (const s of t.steps) assert.equal(s.timestamp, new Date(timeOf(s)).toISOString(), `step ${s.step_id}`);
   assert.deepEqual(
-    t.steps.filter((s) => s.extra.event).map((s) => s.extra.event),
+    t.steps.filter((s) => s.extra.event?.startsWith('clock.')).map((s) => s.extra.event),
     ['clock.started', 'clock.turn', 'clock.turn', 'clock.turn', 'clock.expired'],
   );
   // The replayed Claude Code lines carry the time they were recorded, on another host: no step takes it.
@@ -105,7 +117,7 @@ test('a total only some turns reported is a partial sum in extra, never a total;
 // The ledger’s events for the turn are as recorded.
 function withBlockTurn({ keepBlock }) {
   const id = sessionOf('dry');
-  const reply = rec.events.filter((e) => e.type === 'item.add' && e.data.item.sessionId === id)[1];
+  const reply = rec.events.filter((e) => e.type === 'item.add' && e.data.item.sessionId === id && e.data.item.kind === 'agent')[1];
   const { item } = reply.data;
   const block = {
     id: 'it_block',
@@ -248,13 +260,15 @@ test('a session whose only output was a block still has a trajectory', () => {
   });
   const t = of('dry2', events);
   assert.deepEqual(
-    t.steps.map((s) => [s.source, s.extra.item_id]),
+    t.steps.map((s) => [s.source, s.extra.item_id ?? s.extra.event]),
     [
       ['user', t.steps[0].extra.item_id],
+      ['system', 'turn.guide'],
+      ['system', 'turn.prompt'],
       ['agent', 'it_only_block'],
     ],
   );
-  assert.equal(t.steps[1].metrics.completion_tokens, 102);
+  assert.equal(t.steps[3].metrics.completion_tokens, 102);
 });
 
 test('each reply names the model that ran it, and the trajectory names a default only when one model ran it all', () => {
@@ -267,11 +281,4 @@ test('each reply names the model that ran it, and the trajectory names a default
   assert.equal(t.agent.model_name, undefined, 'no default: two models ran');
   assert.deepEqual(t.agent.extra.models, ['claude-sonnet-5-5', 'claude-opus-5-5']);
   assert.equal(of('dry2').agent.model_name, 'claude-sonnet-5-5');
-});
-
-test('every trajectory says it’s the conversation’s record, and what of the agent’s prompt it leaves out', () => {
-  for (const { trajectory: t } of all()) {
-    assert.deepEqual(t.extra.scope, { record: 'postbox-conversation', not_recorded: NOT_RECORDED });
-    assert.match(t.notes, /^Built from Postbox’s conversation record, not from each turn’s exact prompt: it leaves out the system prompt/);
-  }
 });

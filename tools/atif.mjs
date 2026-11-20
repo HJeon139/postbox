@@ -14,20 +14,11 @@
 
 import { callsOf } from './atif-calls.mjs';
 import { finalMetrics, meter } from './atif-metrics.mjs';
+import { promptSteps, scopeOf } from './atif-prompts.mjs';
+
+export { NOT_RECORDED, NOT_RECORDED_WITHOUT_PROMPTS } from './atif-prompts.mjs';
 
 /** @typedef {{ seq: number, type: string, data: any }} Event */
-
-/**
- * What a trajectory from the conversation’s record leaves out of what the agent was given (hydrant-critic’s review of
- * #1522): Postbox doesn’t store a turn’s exact prompt, so a trajectory is the interaction as the conversation shows it,
- * and says so in its notes and extra.scope.
- */
-export const NOT_RECORDED = Object.freeze([
-  'the system prompt Postbox and the agent’s backend gave it (its guide, persona and tools)',
-  'the room’s catch-up each turn carried as background, beyond the messages that reached its inbox',
-  'the exact text of each turn’s message, as its backend formatted it',
-]);
-const SCOPE_NOTE = `Built from Postbox’s conversation record, not from each turn’s exact prompt: it leaves out ${NOT_RECORDED.join('; ')}.`;
 
 const iso = (/** @type {number} */ ms) => new Date(ms).toISOString();
 const CLOCK_WORDS = {
@@ -50,7 +41,17 @@ const CALL_KINDS = new Set(['command', 'external', 'read']);
  * events, in order. @param {Event[]} events @param {any[]} live  live frames, for the steps’ input and output
  */
 export function foldEvents(events, live = []) {
-  const f = { items: new Map(), order: [], sessions: new Map(), models: new Map(), entries: new Map(), work: new Map(), clocks: [] };
+  const f = {
+    items: new Map(),
+    order: [],
+    sessions: new Map(),
+    models: new Map(),
+    entries: new Map(),
+    work: new Map(),
+    clocks: [],
+    guides: new Map(),
+    prompts: [],
+  };
   for (const e of [...events].sort((a, b) => a.seq - b.seq)) foldOne(f, e);
   // A live step frame carries what changed of one step; a snapshot frame, a running turn’s steps as a page joins it.
   for (const l of live) {
@@ -80,6 +81,8 @@ function foldOne(f, e) {
   else if (e.type === 'work.add' && (d.entry?.kind === 'turn' || CALL_KINDS.has(d.entry?.kind))) f.work.set(d.entry.id, { ...d.entry });
   else if (e.type === 'work.patch' && f.work.has(d.id)) Object.assign(f.work.get(d.id), d.patch);
   else if (Object.hasOwn(CLOCK_WORDS, e.type)) f.clocks.push({ seq: e.seq, type: e.type, data: d });
+  else if (e.type === 'turn.guide') f.guides.set(d.sha, d.text);
+  else if (e.type === 'turn.prompt') f.prompts.push({ seq: e.seq, data: d });
 }
 
 /**
@@ -222,6 +225,8 @@ export function trajectoryOf(f, sessionId, { version }) {
       seq: c.seq,
       steps: [{ timestamp: iso(c.data.at), source: 'system', message: CLOCK_WORDS[c.type](c.data), extra: { event: c.type, ...c.data } }],
     });
+  const prompts = promptSteps(f, sessionId);
+  placed.push(...prompts);
   const steps = placed
     .sort((a, b) => a.seq - b.seq)
     .flatMap((p) => p.steps)
@@ -240,8 +245,7 @@ export function trajectoryOf(f, sessionId, { version }) {
       ...(models.length === 1 ? { model_name: models[0] } : {}),
       extra: { handle, postbox_session: sessionId, ...(models.length > 1 ? { models } : {}) },
     },
-    notes: SCOPE_NOTE,
-    extra: { scope: { record: 'postbox-conversation', not_recorded: NOT_RECORDED } },
+    ...scopeOf(prompts.length > 0),
     steps,
     final_metrics: finalMetrics(ctx.turns, ctx.meter.metered, steps.length),
   };
