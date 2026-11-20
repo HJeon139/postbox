@@ -36,6 +36,9 @@ export function clockAction(rt, sessionId, body, now = Date.now) {
           409,
           `@${se.handle} already had a run clock in this conversation. Start the next timed run in a new conversation, so it begins with nothing from this one.`,
         );
+      // Nor while the agent works: that turn’s work and context, from before the clock, would count as the run’s.
+      if (rt.turns.has(sessionId) || rt.exiting.has(sessionId))
+        throw httpError(409, `@${se.handle} is still working on a turn. Stop it, or wait for it to end, then start the clock.`);
       // Nor does a run start with messages from before it waiting in the inbox: its first turn would read them.
       const waiting = rt.delivery.waiting(sessionId).length;
       if (waiting)

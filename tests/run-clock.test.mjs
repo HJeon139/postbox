@@ -216,3 +216,21 @@ test('a clock doesn’t start over messages already waiting in the agent’s inb
   turn.exit();
   await sleep(10);
 });
+
+test('a clock doesn’t start while the agent is working, even with nothing waiting', async () => {
+  const { rt, store, adapter, t, se } = setup();
+  const turn = slowToExit();
+  adapter.next.push(turn);
+  rt.sendMessage(t.id, { text: 'Work on this.' });
+  await sleep(5);
+  assert.deepEqual(waitingEntries(rt, se.id), []);
+  assert.throws(() => clockAction(rt, se.id, { action: 'start', budgetS: 60 }, at(0)), { status: 409 });
+  // Stopped but still exiting counts as working too.
+  rt.stop(se.id);
+  assert.throws(() => clockAction(rt, se.id, { action: 'start', budgetS: 60 }, at(0)), { status: 409 });
+  assert.equal(store.state.clocks[se.id], undefined);
+  turn.exit();
+  await sleep(10);
+  clockAction(rt, se.id, { action: 'start', budgetS: 60 }, at(0));
+  assert.equal(store.state.clocks[se.id].state, 'running');
+});
