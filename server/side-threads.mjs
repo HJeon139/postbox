@@ -23,8 +23,10 @@ export const SUMMARY_WAKES_NO_ONE = 'A summary for the conversation wakes no one
  * An agent wakes another (#110, #228, #372): by an @-mention in what it said (itemId, that message). It
  * reaches the persona’s one session in the conversation, as an entry in its inbox there, which answers there; a busy
  * one takes it when its turn ends. `bounce`: the wake is a reply going back on its own to the agent that woke its writer,
- * not a mention its writer wrote (reply-back.mjs, #1518), which a held wake’s note says. `wake: false` stores it for the end of the waker’s turn to wake (mention-entries.mjs). A persona the conversation doesn’t have needs the
- * person: a card asks to add it. After the room’s chain limit of wakes in a row without you (1,000 unless the person set
+ * not a mention its writer wrote (reply-back.mjs, #1518). Only a card past the chain limit keeps it, so the note on a
+ * wake held there says it’s a reply; the entry doesn’t, since a reply that came back is a mention like any other
+ * (#1523). `wake: false` stores it for the end of the waker’s turn to wake (mention-entries.mjs). A persona the
+ * conversation doesn’t have needs the person: a card asks to add it. After the room’s chain limit of wakes in a row without you (1,000 unless the person set
  * another, #1035), the next one waits for your confirm.
  */
 
@@ -87,7 +89,7 @@ export function agentWake(
   // The woken agent answers from its session in the conversation (#110): the message is an entry in its inbox there,
   // which starts its turn now, or once its turn ends (designs/rooms-at-scale.md, “Delivery”).
   const waits = rt.running.busy(target.id);
-  const entry = { sessionId: target.id, threadId: at, source: 'mention', itemId: it.id, from: from.handle, ...(retryId ? { retryId } : {}), bounce };
+  const entry = { sessionId: target.id, threadId: at, source: 'mention', itemId: it.id, from: from.handle, ...(retryId ? { retryId } : {}) };
   rt.delivery.send(entry, { wake });
   // A card asking to wake it is stale once it’s woken now, or at the end of the waker’s turn under way (#439); one
   // woken once its own turn ends keeps the card the person may answer.

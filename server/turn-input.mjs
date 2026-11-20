@@ -19,7 +19,6 @@ import { backTo } from './reply-back.mjs';
  * @property {number} at
  * @property {boolean} [resend]
  * @property {string[]} [postedSince]  ids of the sender’s newer posts while it waited
- * @property {boolean} [bounce]  a reply going back on its own, not a mention its writer wrote (reply-back.mjs)
  */
 
 /** What each source is, said after who it is from. A mention or the person’s message needs no words. */

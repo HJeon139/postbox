@@ -38,7 +38,6 @@ test('#1518, #1523 where the reply goes: back to agents whose mentions alone sta
   const head = (/** @type {any[]} */ entries) => turnInput({ entries, thread: { id: 'th_1', kind: 'chat' }, read }).split('\n\n')[0];
   const other = { ...mention, id: 'en_3', itemId: 'it_882', from: 'researcher' };
   assert.match(head([mention, other]), /Your reply posts there and goes back to @critic and @researcher\. @-mention another agent/);
-  assert.match(head([{ ...mention, bounce: true }]), /Your reply posts there and goes back to @critic\. @-mention another agent/);
   // With the person’s message, or what isn’t a mention, it goes where it @-mentions only, as before.
   assert.match(head([mention, person]), /Your reply posts there\.$/);
   assert.match(head([mention, { ...mention, id: 'en_4', source: 'check', from: undefined }]), /Your reply posts there\.$/);
