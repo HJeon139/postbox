@@ -4,9 +4,9 @@
 //
 // Web off goes by the words in a tool’s name, not a list of names, so a web tool a later agy adds is refused too (PR
 // #1515’s review: a list missed view_content_chunk, which reads back a page agy fetched). The words come from agy’s
-// own tool list, the agy_tool_safety monitor config built into the agy binary (its allowed_tools), and the browser
-// tools the binary names: search_web, read_url_content, view_content_chunk, open_browser_url, read_browser_page,
-// list_browser_pages, capture_browser_screenshot, browser_get_dom, browser_subagent and the rest.
+// own tool list, as its init event names it (recorded: tests/fixtures/antigravity-cli/first.jsonl), and the
+// agy_tool_safety monitor config built into the agy binary, which also names view_content_chunk, search_in_file and
+// trajectory_search: search_web, read_url_content, open_browser_url, browser_get_dom, browser_subagent and the rest.
 
 const WEB_WORDS = /web|url|browser|search|fetch|chunk/;
 /** agy’s own tools on that list whose names share those words but that read only the folder or the conversation. */

@@ -4,6 +4,7 @@
 // adds is refused too, and allows only agy’s own local tools that share those words (PR #1515’s review).
 
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { decideAgyTool } from '../server/adapters/agy-hook.mjs';
@@ -15,25 +16,47 @@ function bypass(name, { tools = [], canPublish = false } = {}, args = {}) {
   return decideAgyTool({ toolCall: { name, args } }, { mode: 'bypass', folders: [ws], cwd: ws, tools, canPublish }).decision;
 }
 
-// Names from agy’s own tool list: the agy_tool_safety monitor config built into the agy binary (allowed_tools),
-// and the browser tools its binary names.
+// agy’s own tool list, as its init event names it (recorded), and the three names from the agy_tool_safety monitor
+// config built into the agy binary that the recording’s agy didn’t list yet.
+const RECORDED = /** @type {string[]} */ (
+  JSON.parse(readFileSync(new URL('fixtures/antigravity-cli/first.jsonl', import.meta.url), 'utf8').split('\n')[0]).init.tools
+);
+const AGY_TOOLS = [...RECORDED, 'view_content_chunk', 'search_in_file', 'trajectory_search'];
 const WEB = [
-  'search_web',
-  'read_url_content',
-  'view_content_chunk',
-  'open_browser_url',
-  'read_browser_page',
-  'list_browser_pages',
-  'capture_browser_screenshot',
+  'browser_click_element',
+  'browser_drag_pixel_to_pixel',
+  'browser_get_dom',
+  'browser_get_network_request',
+  'browser_input',
+  'browser_list_network_requests',
+  'browser_mouse_down',
+  'browser_mouse_up',
+  'browser_move_mouse',
+  'browser_press_key',
+  'browser_refresh_page',
+  'browser_resize_window',
+  'browser_scroll',
+  'browser_scroll_dom',
+  'browser_select_option',
+  'browser_subagent',
   'capture_browser_console_logs',
+  'capture_browser_screenshot',
   'click_browser_pixel',
   'execute_browser_javascript',
-  'browser_get_dom',
-  'browser_list_network_requests',
-  'browser_get_network_request',
-  'browser_subagent',
+  'list_browser_pages',
+  'open_browser_url',
+  'read_browser_page',
+  'read_url_content',
   'search_marketplace',
+  'search_web',
+  'view_content_chunk',
 ];
+
+test('Run everything with Web off refuses exactly agy’s web tools from its own list', () => {
+  assert.ok(RECORDED.length > 50, 'the recording names agy’s tools');
+  const refused = AGY_TOOLS.filter((name) => bypass(name, { tools: ['shell'] }, { TargetFile: 'notes.md' }) === 'deny');
+  assert.deepEqual(refused.sort(), WEB);
+});
 
 test('Run everything with Web off refuses agy’s web tools, whatever their case, and any new one named like them', () => {
   for (const name of WEB) assert.equal(bypass(name), 'deny', name);
