@@ -29,8 +29,20 @@ export function clockAction(rt, sessionId, body, now = Date.now) {
     case 'start': {
       if (!Number.isInteger(budgetS) || budgetS < 1 || budgetS > CLOCK_BUDGET_MAX_S)
         throw httpError(422, `A run clock’s budget is a whole number of seconds from 1 to ${CLOCK_BUDGET_MAX_S}.`);
-      if (clock && clock.state !== 'expired')
-        throw httpError(409, `@${se.handle}’s run clock is already ${clock.state}. Wait for it to expire before starting another.`);
+      // One clock per agent in a conversation: a second run there would start with the first one in its context (its
+      // backend’s session, the room’s catch-up and its inbox), so it goes in a new conversation.
+      if (clock)
+        throw httpError(
+          409,
+          `@${se.handle} already had a run clock in this conversation. Start the next timed run in a new conversation, so it begins with nothing from this one.`,
+        );
+      // Nor does a run start with messages from before it waiting in the inbox: its first turn would read them.
+      const waiting = rt.delivery.waiting(sessionId).length;
+      if (waiting)
+        throw httpError(
+          409,
+          `@${se.handle} has ${waiting} message${waiting === 1 ? '' : 's'} waiting from before this clock. Remove them from its queue, or start the run in a new conversation.`,
+        );
       rt.store.emit('clock.started', { sessionId, threadId: se.threadId, budgetMs: budgetS * 1000, at: now() });
       break;
     }

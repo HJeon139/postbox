@@ -191,3 +191,28 @@ test('as Postbox starts again, each running clock marks where its record resumes
   rearmClocks(rt, at(30_000));
   assert.equal(clockEvents(store).filter((e) => e.type === 'clock.restored').length, 1, 'a paused clock marks nothing');
 });
+
+test('an agent gets one clock per conversation, so a second timed run can’t start with the first in its context', () => {
+  const { rt, store, se } = setup();
+  clockAction(rt, se.id, { action: 'start', budgetS: 60 }, at(0));
+  rearmClocks(rt, at(61_000));
+  assert.throws(() => clockAction(rt, se.id, { action: 'start', budgetS: 60 }, at(70_000)), { status: 409 });
+  assert.equal(store.state.clocks[se.id].state, 'expired', 'the second clock didn’t start');
+  assert.equal(clockEvents(store).filter((e) => e.type === 'clock.started').length, 1);
+});
+
+test('a clock doesn’t start over messages already waiting in the agent’s inbox', async () => {
+  const { rt, store, adapter, t, se } = setup();
+  const turn = slowToExit();
+  adapter.next.push(turn);
+  rt.sendMessage(t.id, { text: 'Work on this.' });
+  await sleep(5);
+  rt.sendMessage(t.id, { text: 'From before the run, waiting while the agent is busy.' });
+  await sleep(5);
+  assert.ok(waitingEntries(rt, se.id).length > 0);
+  assert.throws(() => clockAction(rt, se.id, { action: 'start', budgetS: 60 }, at(0)), { status: 409 });
+  assert.equal(store.state.clocks[se.id], undefined);
+  rt.stop(se.id);
+  turn.exit();
+  await sleep(10);
+});
