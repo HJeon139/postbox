@@ -2,6 +2,7 @@
 // #153). Memory’s describeItem and topicRootLine call these, with Memory first (designs/architecture/services.md, “Memory”).
 
 import { READING } from '../shared/limits.mjs';
+import { escapeRegExp } from '../shared/regex.mjs';
 import { authorName, commentAt, PERSON } from '../shared/review-comments.mjs';
 import { appCheckText } from './app-check-status.mjs';
 import { closedText } from './block-update.mjs';
@@ -111,6 +112,24 @@ function failedNote(i) {
   return ` (this reply ${what}: ${clipText(i.error || 'unknown', 200)})`;
 }
 
+/** How the note on a reply still being written starts (writingNote). */
+const WRITING = 'still writing this reply:';
+/**
+ * The note on a reply still being written, as a line read it: a copy of the line is the reply’s words with or without
+ * it, since the reply may have been done or not when the line was read and when it was copied (server/copied-line.mjs).
+ */
+export const WRITING_NOTE = new RegExp(` \\(${escapeRegExp(WRITING)}[^()]*\\)`);
+
+/**
+ * What a reply still being written says it is, or nothing for one that ended. Its words are stored in windows while its
+ * turn runs, so a reader gets them to the last window, and later ones only from read_message once the reply is done
+ * (designs/architecture/live-progress.md, “What reads the store while a turn runs”).
+ */
+function writingNote(i) {
+  if (i.status !== 'streaming') return '';
+  return ` (${WRITING} what it has said so far, and read_message { id: "${i.id}" } reads all of it once it’s done)`;
+}
+
 /** Who shared an item from another thread: an agent in a turn the person started, an agent, or the person. */
 function sharedBy(i) {
   if (i.agent) return `, by @${i.handle} in a turn the person started`;
@@ -173,7 +192,7 @@ export function topicRootLine(memory, se, t) {
     case 'user':
       return `${from} the person’s message${toWhom(root)}: ${text(root.text)}${attachedText(memory, root.attachments, se)}`;
     case 'agent':
-      return `${from} @${root.handle}’s message: ${text(root.text)}`;
+      return `${from} @${root.handle}’s message${writingNote(root)}: ${text(root.text)}`;
     case 'block': {
       // The title names it; what it holds is the text an agent can quote (a draft, or a table’s rows) (#153).
       const b = root.block ?? {};
@@ -214,7 +233,7 @@ export function describeItem(memory, i, se, n, reader) {
       // report written before the turn failed reached no one (#485).
       // One retried since says so too: the retry’s reply follows it.
       if (!i.text) return null;
-      return `@${i.handle}${failedNote(i)}: ${text(i.text)}`;
+      return `@${i.handle}${failedNote(i)}${writingNote(i)}: ${text(i.text)}`;
     case 'block': {
       if (!i.valid) return null;
       // What it holds comes with it, so another agent can review it (#153).

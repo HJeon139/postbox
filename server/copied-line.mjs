@@ -2,11 +2,16 @@
 // (shared/text.mjs): a copy names its agent without waking it (designs/rooms-at-scale.md, “Which mention wakes”).
 
 import { withoutCode } from '../shared/text.mjs';
+import { WRITING_NOTE } from './item-lines.mjs';
 
-/** Text as one run of single spaces, with an agent’s own “You (@x)” as others read it. */
+/**
+ * Text as one run of single spaces, with an agent’s own “You (@x)” as others read it, and without the note on a reply
+ * still being written, which a line has only while the reply streams.
+ */
 const plain = (/** @type {string} */ s) =>
   String(s ?? '')
     .replace(/You \((@[A-Za-z0-9_-]+)\)/g, '$1')
+    .replace(WRITING_NOTE, '')
     .replace(/\s+/g, ' ')
     .trim();
 
