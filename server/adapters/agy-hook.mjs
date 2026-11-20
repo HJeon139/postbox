@@ -16,6 +16,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CARD_WAIT_MS } from '../permission-cards.mjs';
 import { autoAllows, intoGit, personaAllows, personaOf, publishingCall } from './agy-auto.mjs';
+import { decideBypass } from './agy-bypass.mjs';
 import { isProtectedPath, leadsInto, PATH_FIELDS, pathArgs, realTarget, tidyPath } from './agy-paths.mjs';
 import { POSTBOX_SERVER } from './setup.mjs';
 
@@ -31,8 +32,6 @@ const READ_TOOLS = new Set(['read_file', 'view_file', 'list_dir', 'find_by_name'
 // its builtin skills and guide, which a model read unprompted in a UAT: a card nobody can usefully judge (#1074).
 const AGY_READABLE = ['mcp', 'brain', 'builtin'];
 const SUBAGENT_TOOLS = new Set(['invoke_subagent', 'define_subagent', 'send_message', 'manage_subagents', 'manage_task']);
-const WEB_TOOLS = new Set(['search_web', 'read_url_content', 'open_browser_url', 'read_browser_page']);
-const isWebTool = (/** @type {string} */ name) => WEB_TOOLS.has(name) || name.startsWith('browser_') || name.includes('_browser_');
 // A command that names Antigravity’s plugin, this hook or agy’s settings: always a card, flagged.
 const PROTECTED_CMD = /\.agents\b|agy-hook\.mjs\b|\.gemini[\\/]antigravity-cli\b/i;
 const PUBLISH_OFF = 'This agent can’t publish outside Postbox (its persona’s “Can publish outside Postbox” is off), so Postbox refused this tool.';
@@ -86,7 +85,7 @@ export function decideAgyTool(
   event,
   { mode = 'ask', folders = [], reads = [], cwd = process.cwd(), scriptPath = HOOK_SCRIPT, home = homedir(), tools = [], canPublish = false } = {},
 ) {
-  const name = String(event?.toolCall?.name ?? '').trim();
+  const name = `${event?.toolCall?.name ?? ''}`.trim().toLowerCase();
   const args = event?.toolCall?.args && typeof event.toolCall.args === 'object' ? event.toolCall.args : {};
   if (!name) return { decision: 'deny', reason: 'Postbox’s Antigravity hook received no tool name.' };
   const mcp = name === 'call_mcp_tool' || name === 'list_resources' || name === 'read_resource';
@@ -96,10 +95,7 @@ export function decideAgyTool(
     return { decision: 'deny', reason: 'Postbox’s permission_prompt tool is only for the PreToolUse hook.' };
   if (WRITE_TOOLS.has(name) && protectedWrite(args, { cwd, scriptPath, home }))
     return { decision: 'deny', reason: 'Postbox doesn’t allow editing Antigravity’s plugin, hook or settings files.' };
-  if (mode === 'bypass') {
-    if (isWebTool(name) && !tools.includes('web.fetch')) return { decision: 'deny', reason: 'The person turned Web off for this agent in Postbox.' };
-    return { decision: 'allow' };
-  }
+  if (mode === 'bypass') return decideBypass(name, { tools });
   if (!canPublish && publishingCall(name, args)) return { decision: 'deny', reason: PUBLISH_OFF };
   const roots = /** @type {string[]} */ ((folders.length ? folders : [cwd]).map((f) => realTarget(f, cwd)).filter(Boolean));
   const command = name === 'run_command' ? String(args.CommandLine ?? '') : '';
