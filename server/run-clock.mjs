@@ -6,6 +6,7 @@
 
 import { CLOCK_BUDGET_MAX_S, clockElapsed, clockLine } from '../shared/run-clock.mjs';
 import { httpError } from './helpers.mjs';
+import { clockNote } from './run-clock-notes.mjs';
 import { whenWritable } from './store-wait.mjs';
 
 /** The longest a Node timer waits; a later expiry is checked again when it fires. */
@@ -47,11 +48,13 @@ export function clockAction(rt, sessionId, body, now = Date.now) {
           `@${se.handle} has ${waiting} message${waiting === 1 ? '' : 's'} waiting from before this clock. Remove them from its queue, or start the run in a new conversation.`,
         );
       rt.store.emit('clock.started', { sessionId, threadId: se.threadId, budgetMs: budgetS * 1000, at: now() });
+      clockNote(rt, sessionId, 'started', { budgetMs: budgetS * 1000 });
       break;
     }
     case 'pause':
       if (clock?.state !== 'running') throw httpError(409, `@${se.handle} has no running run clock to pause.`);
       rt.store.emit('clock.paused', { sessionId, at: now() });
+      clockNote(rt, sessionId, 'paused', clock);
       // Paused time isn’t counted, so the agent doesn’t work in it: its turn stops, and none starts until the resume.
       // Silent, as Send now is: the wakes queued for it wait for the resume rather than being dropped.
       if (rt.turns.has(sessionId)) rt.stop(sessionId, { by: 'pause', silent: true });
@@ -59,6 +62,7 @@ export function clockAction(rt, sessionId, body, now = Date.now) {
     case 'resume':
       if (clock?.state !== 'paused') throw httpError(409, `@${se.handle} has no paused run clock to resume.`);
       rt.store.emit('clock.resumed', { sessionId, at: now() });
+      clockNote(rt, sessionId, 'resumed', { budgetMs: clock.budgetMs, elapsedMs: clockOf(rt, sessionId).usedMs });
       resumeHeld(rt, sessionId);
       break;
     default:
@@ -113,6 +117,7 @@ function expireClock(rt, sessionId, now) {
   }
   const clock = clockOf(rt, sessionId);
   rt.store.emit('clock.expired', { sessionId, elapsedMs: clock.budgetMs, budgetMs: clock.budgetMs, at: now() });
+  clockNote(rt, sessionId, 'expired', clock);
   if (rt.turns.has(sessionId)) rt.stop(sessionId, { by: 'clock' });
 }
 
@@ -136,6 +141,7 @@ export function rearmClocks(rt, now = Date.now) {
     if (clock?.state === 'running' && rt.store.writable) {
       const at = now();
       rt.store.emit('clock.restored', { sessionId, elapsedMs: clockElapsed(clock, at), budgetMs: clock.budgetMs, at });
+      clockNote(rt, sessionId, 'restored', { budgetMs: clock.budgetMs, elapsedMs: clockElapsed(clock, at) });
     }
     armClock(rt, sessionId, now);
   }

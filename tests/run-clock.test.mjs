@@ -234,3 +234,18 @@ test('a clock doesn’t start while the agent is working, even with nothing wait
   clockAction(rt, se.id, { action: 'start', budgetS: 60 }, at(0));
   assert.equal(store.state.clocks[se.id].state, 'running');
 });
+
+test('each change of the clock is a line in the agent’s conversation, and the expiry’s says messages now wait', () => {
+  const { rt, store, t, se } = setup();
+  clockAction(rt, se.id, { action: 'start', budgetS: 60 }, at(0));
+  clockAction(rt, se.id, { action: 'pause' }, at(10_000));
+  clockAction(rt, se.id, { action: 'resume' }, at(20_000));
+  armClock(rt, se.id, at(90_000));
+  const lines = store.items(t.id).filter((i) => i.kind === 'system' && i.variant === 'clock');
+  assert.deepEqual(
+    lines.map((i) => i.change),
+    ['started', 'paused', 'resumed', 'expired'],
+  );
+  assert.equal(lines[2].text, '@developer’s run clock resumed at 10s of 60s.');
+  assert.match(lines[3].text, /Messages to @developer here now wait, and no turn starts; a new timed run goes in a new conversation\.$/);
+});
