@@ -68,22 +68,26 @@ test('#1523 every bounce goes back: a chain of four replies that name no one goe
   assert.match(turnsOf(f, 'beta')[2].message.text, /Your reply posts there and goes back to @alpha\./);
 });
 
-test('#1523 a turn that only reacts posts nothing, so nothing goes back and no one wakes', async () => {
+test('#1523 a reaction ends a chain where a reply would go on: after two bounces, a turn that only reacts wakes no one', async () => {
   const f = setup();
   f.adapter.next.push(async (c) => c.text('@beta which file holds the changelog?'));
   f.adapter.next.push(async (c) => c.text('It’s CHANGELOG.md.'));
+  // A reply here, after a bounce, goes back to beta: one bounce per chain (#1518) would have stopped it.
+  f.adapter.next.push(async (c) => c.text('Which section?'));
   f.adapter.next.push(reacts(f));
   f.rt.sendMessage(f.t.id, { text: '@alpha find out where the changelog goes' });
   await quiet(f);
   assert.deepEqual(
     turns(f).map((x) => x.split(':')[0]),
-    ['alpha', 'beta', 'alpha'],
+    ['alpha', 'beta', 'alpha', 'beta'],
   );
+  assert.deepEqual(replyOf(f, 'Which section?').wentBack, ['beta']);
+  // beta reacted to it instead, which posts nothing, so the chain ends with no failed reply and no one woken.
   assert.deepEqual(
-    replyOf(f, 'It’s CHANGELOG.md.').reactions.map((r) => `${r.handle} ${r.emoji}`),
-    ['alpha 👍'],
+    replyOf(f, 'Which section?').reactions.map((r) => `${r.handle} ${r.emoji}`),
+    ['beta 👍'],
   );
-  assert.ok(!f.store.items(f.t.id).some((x) => x.kind === 'agent' && x.handle === 'alpha' && x.turnId && !x.text?.trim()), 'no empty or failed reply');
+  assert.ok(!f.store.items(f.t.id).some((x) => x.kind === 'agent' && x.handle === 'beta' && x.turnId && !x.text?.trim()), 'no empty or failed reply');
   assert.equal(f.adapter.next.length, 0);
   assert.equal(f.rt.turns.size, 0, 'no one is woken');
 });
