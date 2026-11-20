@@ -53,6 +53,7 @@ const TYPES = [
   'clock.resumed',
   'clock.turn',
   'clock.restored',
+  'clock.stopped',
   'clock.expired',
   // What each turn sent its agent (shared/turn-prompts.mjs): the guide Postbox appends, and each prompt.
   'turn.guide',

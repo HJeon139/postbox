@@ -8,12 +8,13 @@
 //   the person’s answer to one of the agent’s blocks, once it reached the agent;
 // - agent: each reply of the agent’s, with its tool calls and thoughts (tools/atif-calls.mjs), and each block or app
 //   it showed;
-// - system: another agent’s reply that one of its turns took, and each of its run clock’s events (server/run-clock.mjs).
+// - system: another agent’s reply that one of its turns took, and each of its run clock’s events (server/run-clock.mjs);
+//   a host turn the clock asked to stop makes the trajectory partial until the host confirmed it (tools/atif-clock.mjs).
 // A message in the room that never reached the agent’s inbox is no step of its, even where its catch-up showed it as
 // background. Tokens and cost come from the work ledger (tools/atif-metrics.mjs).
 
 import { callsOf } from './atif-calls.mjs';
-import { CLOCK_WORDS } from './atif-clock.mjs';
+import { CLOCK_WORDS, remoteStops, stopsScope } from './atif-clock.mjs';
 import { finalMetrics, meter } from './atif-metrics.mjs';
 import { promptedTurns, promptSteps, scopeOf, unresolvedGuides } from './atif-prompts.mjs';
 
@@ -271,7 +272,8 @@ export function trajectoryOf(f, sessionId, { version }) {
   const placed = f.order.flatMap(({ seq, id }) =>
     itemSteps(f.items.get(id), ctx, seq).map(({ seq: own, ...step }) => ({ seq: typeof own === 'number' ? own : seq, steps: [step] })),
   );
-  for (const c of f.clocks.filter((x) => x.data.sessionId === sessionId))
+  const clocks = f.clocks.filter((x) => x.data.sessionId === sessionId);
+  for (const c of clocks)
     placed.push({
       seq: c.seq,
       steps: [{ timestamp: iso(c.data.at), source: 'system', message: CLOCK_WORDS[c.type](c.data), extra: { event: c.type, ...c.data } }],
@@ -296,11 +298,14 @@ export function trajectoryOf(f, sessionId, { version }) {
       ...(models.length === 1 ? { model_name: models[0] } : {}),
       extra: { handle, postbox_session: sessionId, ...(models.length > 1 ? { models } : {}) },
     },
-    ...scopeOf(prompts.length > 0, unresolvedGuides(f, sessionId)),
+    ...withStops(scopeOf(prompts.length > 0, unresolvedGuides(f, sessionId)), stopsScope(remoteStops(clocks))),
     steps,
     final_metrics: finalMetrics(ctx.turns, ctx.meter.metered, steps.length),
   };
 }
+
+/** A trajectory’s scope, with what its clock’s host stops leave out (tools/atif-clock.mjs). @param {{ notes: string, extra: any }} scope @param {{ note: string|null, extra: any }} stops */
+const withStops = (scope, stops) => ({ notes: stops.note ? `${stops.note} ${scope.notes}` : scope.notes, extra: { ...scope.extra, ...stops.extra } });
 
 /**
  * Every agent session’s trajectory in the events, or only `sessionId`’s.

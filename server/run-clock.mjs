@@ -22,6 +22,16 @@ const timers = new WeakMap();
 const clockOf = (rt, sessionId) => rt.store.pending.clock(sessionId);
 
 /**
+ * The agent’s turns on a host that Postbox asked to stop and the host hasn’t confirmed, which may run on there: each
+ * stop is kept on the session until the daemon confirms it (server/remote/turns-stops.mjs, askStop). Read after the
+ * stop, so a clock’s pause or expiry records them (hydrant-critic’s review of #1522). @param {any} rt @param {string} sessionId
+ */
+const unconfirmedStops = (rt, sessionId) => (rt.store.pending.session(sessionId)?.remoteTurn?.stopping ?? []).map((/** @type {any} */ x) => x.turn);
+
+/** A clock’s event’s field for the host turns still to stop, when there are any. @param {string[]} turns */
+const stoppingField = (turns) => (turns.length ? { stopping: turns } : {});
+
+/**
  * The person’s action on an agent’s clock: start it with a budget in whole seconds, pause it or resume it.
  * @param {any} rt @param {string} sessionId @param {unknown} body @param {() => number} [now]
  */
@@ -58,11 +68,15 @@ export function clockAction(rt, sessionId, body, now = Date.now) {
     }
     case 'pause':
       if (clock?.state !== 'running') throw httpError(409, `@${se.handle} has no running run clock to pause.`);
-      rt.store.emit('clock.paused', { sessionId, at: now() });
-      clockNote(rt, sessionId, 'paused', clock);
       // Paused time isn’t counted, so the agent doesn’t work in it: its turn stops, and none starts until the resume.
-      // Silent, as Send now is: the wakes queued for it wait for the resume rather than being dropped.
+      // Silent, as Send now is: the wakes queued for it wait for the resume rather than being dropped. A turn on a
+      // host may run on until the host confirms its stop, so the clock counts on until then (clock.stopped).
       if (rt.turns.has(sessionId)) rt.stop(sessionId, { by: 'pause', silent: true });
+      {
+        const stopping = unconfirmedStops(rt, sessionId);
+        rt.store.emit('clock.paused', { sessionId, ...stoppingField(stopping), at: now() });
+        clockNote(rt, sessionId, 'paused', { ...clock, stopping });
+      }
       break;
     case 'resume':
       if (clock?.state !== 'paused') throw httpError(409, `@${se.handle} has no paused run clock to resume.`);
@@ -92,7 +106,8 @@ export function armClock(rt, sessionId, now = Date.now) {
     mine.delete(sessionId);
   }
   const clock = clockOf(rt, sessionId);
-  if (clock?.state !== 'running') return;
+  // A clock that counts: running, or paused while a turn it stopped may still run on its host.
+  if (!clock || clock.state === 'expired' || clock.since === null) return;
   const left = clock.budgetMs - clockElapsed(clock, now());
   if (left <= 0) return expireClock(rt, sessionId, now);
   // In rt.watchdogs, so Runtime’s close() clears it (server/runtime-close.mjs).
@@ -123,9 +138,27 @@ function expireClock(rt, sessionId, now) {
     return whenWritable(rt, () => armClock(rt, sessionId, now), { first: true });
   }
   const clock = clockOf(rt, sessionId);
-  rt.store.emit('clock.expired', { sessionId, elapsedMs: clock.budgetMs, budgetMs: clock.budgetMs, at: now() });
-  clockNote(rt, sessionId, 'expired', clock);
+  const at = now();
+  // Stopped first, so the expiry records the turns on a host that may run on until the host confirms their stop.
   if (rt.turns.has(sessionId)) rt.stop(sessionId, { by: 'clock', silent: true });
+  const stopping = unconfirmedStops(rt, sessionId);
+  rt.store.emit('clock.expired', { sessionId, elapsedMs: clock.budgetMs, budgetMs: clock.budgetMs, ...stoppingField(stopping), at });
+  clockNote(rt, sessionId, 'expired', { ...clock, stopping });
+}
+
+/**
+ * The host confirmed that a turn of the agent’s is over (server/remote/turns-stops.mjs, stopConfirmed): if its clock’s
+ * pause or expiry was waiting on it, clock.stopped records when, and a paused clock whose last such turn it was stops
+ * counting. While the store can’t be written, it’s recorded once it can, at the time the host confirmed.
+ * @param {any} rt @param {string} sessionId @param {string} turn @param {number} [at]
+ */
+export function clockStopConfirmed(rt, sessionId, turn, at = Date.now()) {
+  if (!clockOf(rt, sessionId)?.stopping?.includes(turn)) return;
+  if (!rt.store.writable) return whenWritable(rt, () => clockStopConfirmed(rt, sessionId, turn, at));
+  rt.store.emit('clock.stopped', { sessionId, turn, at });
+  const clock = clockOf(rt, sessionId);
+  clockNote(rt, sessionId, 'stopped', { budgetMs: clock.budgetMs, elapsedMs: clockElapsed(clock, at), state: clock.state, left: clock.stopping.length });
+  armClock(rt, sessionId, () => at);
 }
 
 /** The runtimes whose store re-arms their clocks at Retry. */
@@ -146,7 +179,7 @@ export function rearmClocks(rt, now = Date.now) {
     if (rt.store.writable) repairClockNote(rt, sessionId, clock);
     // Each running clock marks where Postbox’s record starts again, so a gap in it can be seen: an agent on a host may
     // have worked through it, past the budget, since the hard stop is this server’s timer.
-    if (clock?.state === 'running' && rt.store.writable) {
+    if (clock && clock.state !== 'expired' && clock.since !== null && rt.store.writable) {
       const at = now();
       rt.store.emit('clock.restored', { sessionId, elapsedMs: clockElapsed(clock, at), budgetMs: clock.budgetMs, at });
       clockNote(rt, sessionId, 'restored', { budgetMs: clock.budgetMs, elapsedMs: clockElapsed(clock, at) });

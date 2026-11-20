@@ -1,9 +1,13 @@
 // An agent’s run clock in the store’s reducer (their entries in EVENTS, shared/state.mjs): a budget the person sets for
 // one agent in one conversation, and how much of it the agent has used. Postbox’s server sets every time here, so an
 // agent on a host can’t move its clock; the agent reads it only in the line each of its turns carries (clockLine).
-// A clock is { sessionId, threadId, budgetMs, usedMs, since, state, startedAt, expiredAt }: usedMs is what it used
-// before `since`, when it last began running, or null while it’s paused or expired. Each event’s data carries `at`,
+// A clock is { sessionId, threadId, budgetMs, usedMs, since, state, startedAt, expiredAt, stopping }: usedMs is what it
+// used before `since`, when it last began counting, or null once it stops counting. Each event’s data carries `at`,
 // the server’s time it happened, since the store’s events have no time of their own.
+// `stopping` lists the turns on a host that Postbox asked to stop, at a pause or the expiry, and whose stop the host
+// hasn’t confirmed: such a turn may run on there (server/remote/turns-stops.mjs, askStop), as when the host can’t be
+// reached. A paused clock counts on until each has stopped (clock.stopped), so a pause the agent works through is no
+// pause (hydrant-critic’s review of #1522).
 
 /** @typedef {'running' | 'paused' | 'expired'} ClockState */
 
@@ -44,7 +48,12 @@ export const clockHolds = (clock) => clock?.state === 'paused' || clock?.state =
 function check(d, numbers = []) {
   if (typeof d.sessionId !== 'string') throw new TypeError('A clock event names its session.');
   for (const k of ['at', ...numbers]) if (!Number.isFinite(d[k])) throw new TypeError(`A clock event’s ${k} is a number.`);
+  if (d.stopping !== undefined && !(Array.isArray(d.stopping) && d.stopping.every((t) => typeof t === 'string')))
+    throw new TypeError('A clock event’s stopping lists host turns by id.');
 }
+
+/** The host turns a clock’s event says are still to stop, or none. @param {any} d @returns {string[]} */
+const stoppingOf = (d) => (d.stopping ? [...d.stopping] : []);
 
 /** A clock’s event names a session it has, or does nothing. @param {any} s @param {any} d @param {(c: any) => void} f */
 function withClock(s, d, f) {
@@ -68,6 +77,7 @@ export const CLOCK_EVENTS = Object.freeze({
         state: 'running',
         startedAt: d.at,
         expiredAt: null,
+        stopping: [],
       };
     },
     public: true,
@@ -76,8 +86,12 @@ export const CLOCK_EVENTS = Object.freeze({
     apply: (/** @type {any} */ s, /** @type {any} */ d) =>
       withClock(s, d, (c) => {
         if (c.state !== 'running') return;
-        c.usedMs = clockElapsed(c, d.at);
-        c.since = null;
+        c.stopping = stoppingOf(d);
+        // Counting on while a turn it stopped may still run on its host: clock.stopped ends that.
+        if (!c.stopping.length) {
+          c.usedMs = clockElapsed(c, d.at);
+          c.since = null;
+        }
         c.state = 'paused';
       }),
     public: true,
@@ -86,7 +100,7 @@ export const CLOCK_EVENTS = Object.freeze({
     apply: (/** @type {any} */ s, /** @type {any} */ d) =>
       withClock(s, d, (c) => {
         if (c.state !== 'paused') return;
-        c.since = d.at;
+        if (c.since === null) c.since = d.at;
         c.state = 'running';
       }),
     public: true,
@@ -103,7 +117,23 @@ export const CLOCK_EVENTS = Object.freeze({
         c.since = null;
         c.state = 'expired';
         c.expiredAt = d.at;
+        c.stopping = stoppingOf(d);
       }),
+    public: true,
+  },
+  // The host confirmed that a turn the clock’s pause or expiry asked to stop is over: a paused clock whose last such
+  // turn it was stops counting here.
+  'clock.stopped': {
+    apply: (/** @type {any} */ s, /** @type {any} */ d) => {
+      if (typeof d.turn !== 'string') throw new TypeError('A clock.stopped event names its host turn.');
+      withClock(s, d, (c) => {
+        if (!c.stopping?.includes(d.turn)) return;
+        c.stopping = c.stopping.filter((/** @type {string} */ t) => t !== d.turn);
+        if (c.stopping.length || c.state !== 'paused' || c.since === null) return;
+        c.usedMs = clockElapsed(c, d.at);
+        c.since = null;
+      });
+    },
     public: true,
   },
 });

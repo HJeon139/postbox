@@ -207,6 +207,7 @@ const ADDED_SINCE = [
   'clock.resumed',
   'clock.turn',
   'clock.restored',
+  'clock.stopped',
   'clock.expired',
   'turn.guide',
   'turn.prompt',

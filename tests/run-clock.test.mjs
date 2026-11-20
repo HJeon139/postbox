@@ -49,6 +49,7 @@ test('the store counts a clock’s running time and leaves out the time the pers
       state: 'expired',
       startedAt: T0,
       expiredAt: T0 + 90_000,
+      stopping: [],
     },
   );
 });
