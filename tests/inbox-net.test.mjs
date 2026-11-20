@@ -80,6 +80,8 @@ test('#1135: a mention of an agent whose host turn waits to be attached after a 
   const r = rig({ store, d });
   const local = new ScriptedAdapter();
   arrange.withAdapter(r.rt, local);
+  // So alpha, unscripted, ends with a reaction the coder’s answer that comes back (#1523), and the chain ends there.
+  local.rt = r.rt;
   const p = r.rt.createPersona({ handle: 'alpha' });
   r.rt.ensureSession(r.t.id, p.id);
   let release = () => {};

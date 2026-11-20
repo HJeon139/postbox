@@ -28,10 +28,16 @@ export class ScriptedAdapter {
     const parts = partsOf(this.rt, session.id, message);
     this.calls.push({ handle: session.handle, sessionId: session.id, message, parts, thread: ctx.thread.id, state: ctx.state });
     ctx.saveState({ backendSession: `cli-${session.id}` });
-    // Unscripted, a turn only replies that came back started ends the exchange with a reaction (arrange.cameBack).
-    const ends = arrange.cameBack(this.rt, session.id);
-    const step = this.next.shift() ?? (ends ? async (c) => c.tools.react({ id: message.itemId, emoji: '👍' }) : async (c) => c.text('ok'));
+    const step = this.next.shift() ?? this.unscripted(session, message);
     await step(ctx, message, session);
+  }
+  /**
+   * A turn the test didn’t script says “ok”, or ends the exchange with a reaction when only replies that came back
+   * started it (arrange.cameBack). An adapter on a runtime of the test’s own has no rt here, and says “ok”.
+   */
+  unscripted(session, message) {
+    if (this.rt && arrange.cameBack(this.rt, session.id)) return async (c) => c.tools.react({ id: message.itemId, emoji: '👍' });
+    return async (c) => c.text('ok');
   }
 }
 
