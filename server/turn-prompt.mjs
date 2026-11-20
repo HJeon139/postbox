@@ -1,10 +1,15 @@
 // Records what a turn sent its agent (shared/turn-prompts.mjs): each adapter calls ctx.prompt as the prompt leaves for
 // its backend, with the system prompt Postbox appends (the guide) and the prompt’s exact text. A guide is recorded
-// once per distinct text, and each prompt names it by its SHA-256, so the log doesn’t carry the guide every turn.
+// once per session and distinct text, and each prompt names it by its SHA-256, so the log doesn’t carry the guide
+// every turn.
 
 import { createHash } from 'node:crypto';
 
-/** @type {WeakMap<any, Set<string>>} the guides each runtime has recorded since it started */
+/**
+ * The guides each runtime has recorded since it started, by session and hash: once per session, so each
+ * conversation’s record has its agent’s guide however many conversations share it (hydrant-critic’s review of #1522).
+ * @type {WeakMap<any, Set<string>>}
+ */
 const recorded = new WeakMap();
 
 /**
@@ -17,8 +22,9 @@ export function recordTurnPrompt(rt, turn, { guide, text }, now = Date.now) {
     const sha = createHash('sha256').update(guide).digest('hex');
     const mine = recorded.get(rt) ?? new Set();
     recorded.set(rt, mine);
-    if (!mine.has(sha)) rt.store.emit('turn.guide', { sha, text: guide, at: now() });
-    mine.add(sha);
+    const key = `${turn.sessionId}\u0000${sha}`;
+    if (!mine.has(key)) rt.store.emit('turn.guide', { sha, text: guide, at: now() });
+    mine.add(key);
     turn.guideSha = sha;
   }
   if (typeof text !== 'string') return;

@@ -37,6 +37,18 @@ test('a guide is recorded once per text, and each prompt names it, with its turn
   assert.deepEqual(events[1].data, { sessionId: 'se_1', turnId: 'turn_1', threadId: 'th_1', guideSha: sha, text: 'First.', at: T0 });
 });
 
+test('each session records its guide, though another session’s turn recorded the same text before', () => {
+  const store = new Store(null);
+  const rt = { store };
+  recordTurnPrompt(rt, { id: 'turn_1', sessionId: 'se_a1', threadId: 'th_a1' }, { guide: 'You are @coder.', text: 'Run A1.' }, () => T0);
+  recordTurnPrompt(rt, { id: 'turn_2', sessionId: 'se_a2', threadId: 'th_a2' }, { guide: 'You are @coder.', text: 'Run A2.' }, () => T0 + 1);
+  recordTurnPrompt(rt, { id: 'turn_3', sessionId: 'se_a2', threadId: 'th_a2' }, { guide: 'You are @coder.', text: 'A2 again.' }, () => T0 + 2);
+  assert.deepEqual(
+    store.since(0).map((e) => e.type),
+    ['turn.guide', 'turn.prompt', 'turn.guide', 'turn.prompt', 'turn.prompt'],
+  );
+});
+
 test('a guide given alone is kept for the turn’s later prompts, as an adapter that writes it once passes it', () => {
   const store = new Store(null);
   const turn = { id: 'turn_1', sessionId: 'se_1', threadId: 'th_1' };
