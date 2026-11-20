@@ -15,13 +15,25 @@ export function agySupportsHooks(version) {
   return maj > 1 || (maj === 1 && (min > 4 || (min === 4 && patch >= 7)));
 }
 
-const plainPath = (/** @type {unknown} */ p) => typeof p === 'string' && p.startsWith('/') && !/[^\w./:@+-]/.test(p);
 /**
- * The hook’s command for agy’s `/bin/sh -c` runner: this Node and the script, so it runs with no node on agy’s PATH,
- * as from launchd, where a `#!/usr/bin/env node` hook would print nothing, and agy fails open on that (PR #1515’s
- * review). Null if either path has shell characters.
+ * An absolute path as agy’s `/bin/sh -c` runner reads it: as written when it has no shell characters, else in single
+ * quotes, each ' in it closed, escaped and reopened. Null for a relative path, or one that spans lines.
+ * @param {unknown} p
  */
-export const agyHookCommand = (script = HOOK_SCRIPT, node = process.execPath) => (plainPath(script) && plainPath(node) ? `${node} ${script}` : null);
+const shellPath = (p) => {
+  if (typeof p !== 'string' || !p.startsWith('/') || /[\0\n\r]/.test(p)) return null;
+  return /[^\w./:@+-]/.test(p) ? `'${p.replaceAll("'", "'\\''")}'` : p;
+};
+
+/**
+ * The hook’s command for agy’s runner: this Node and the script, so it runs with no node on agy’s PATH, as from
+ * launchd, where a `#!/usr/bin/env node` hook would print nothing, and agy fails open on that (PR #1515’s review). A
+ * path with a space is quoted, not refused, which would lose the hook in every mode (its second review).
+ */
+export const agyHookCommand = (script = HOOK_SCRIPT, node = process.execPath) => {
+  const [s, n] = [shellPath(script), shellPath(node)];
+  return s && n ? `${n} ${s}` : null;
+};
 
 /** The plugin’s hooks.json content for a turn. */
 export const agyHooksJson = (command = agyHookCommand(), timeout = HOOK_TIMEOUT_S) => ({

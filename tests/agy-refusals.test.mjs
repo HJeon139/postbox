@@ -91,9 +91,12 @@ test('#370 condition 1: --dangerously-skip-permissions is passed for ask, auto a
     agyHookCommand('/opt/postbox/server/adapters/agy-hook.mjs', '/usr/local/bin/node'),
     '/usr/local/bin/node /opt/postbox/server/adapters/agy-hook.mjs',
   );
-  for (const bad of ['/path with spaces/agy-hook.mjs', '/path/"quote"/hook.mjs', '/path/$var/hook.mjs', 'relative/hook.mjs', ''])
-    assert.equal(agyHookCommand(bad), null, bad);
-  assert.equal(agyHookCommand('/opt/agy-hook.mjs', '/Program Files/node'), null, 'a Node path with a space');
+  // A path with a space or another shell character is quoted for agy’s /bin/sh -c, not given up on (PR #1515’s second
+  // review: a Node path with a space lost the hook in every mode).
+  assert.equal(agyHookCommand('/opt/agy-hook.mjs', '/Program Files/node'), `'/Program Files/node' /opt/agy-hook.mjs`);
+  assert.equal(agyHookCommand('/path with spaces/agy-hook.mjs', '/n'), `/n '/path with spaces/agy-hook.mjs'`);
+  assert.equal(agyHookCommand(`/it's/$var/"q"/hook.mjs`, '/n'), `/n '/it'\\''s/$var/"q"/hook.mjs'`);
+  for (const bad of ['relative/hook.mjs', '', '/line\nbreak/hook.mjs']) assert.equal(agyHookCommand(bad, '/n'), null, JSON.stringify(bad));
   assert.deepEqual(modeArgs({ permissionMode: 'ask' }), []);
   assert.deepEqual(modeArgs({ permissionMode: 'auto' }), ['--mode', 'auto']);
   assert.deepEqual(modeArgs({ permissionMode: 'acceptEdits' }), ['--mode', 'accept-edits']);
