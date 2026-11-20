@@ -57,11 +57,13 @@ export function track(m, id, job) {
 
 /**
  * Installs this Postbox on the host (install.mjs’s installHost) and keeps its token; a link made with another token
- * is replaced. It then connects, for its welcome, and for a turn or a prompt that waited for the install. A host
- * removed meanwhile keeps nothing here.
- * @param {Manager} m @param {string} id @param {AbortSignal} [signal] @returns {Promise<InstallResult>}
+ * is replaced. It then connects, for its welcome, and for a turn or a prompt that waited for the install, unless
+ * `connect` says no: the automatic install connects only while the consent is still on, since turning it off connects
+ * nothing (#1530). A host removed meanwhile keeps nothing here.
+ * @param {Manager} m @param {string} id @param {AbortSignal} [signal] @param {() => boolean} [connect]
+ * @returns {Promise<InstallResult>}
  */
-export async function installNow(m, id, signal) {
+export async function installNow(m, id, signal, connect = () => true) {
   const host = hostOf(m, id);
   // Read before the install, which writes the new token in its place (#464-b3, D4).
   const before = tokenBefore(m, id);
@@ -80,7 +82,7 @@ export async function installNow(m, id, signal) {
   const e = m.links.get(id);
   if (e && !sameToken(e.token, r.token)) dropLink(m, id);
   update(m, id);
-  connectNow(m, id).catch(() => {});
+  if (connect()) connectNow(m, id).catch(() => {});
   return done;
 }
 
@@ -138,11 +140,20 @@ function noteError(m, id, error) {
 }
 
 /**
- * After a busy install, the host connects once more: the other Postbox may have installed it.
- * @param {Manager} m @param {string} id @param {InstallOutcome} outcome
+ * Whether the automatic install may connect to the host now: only while the consent is still on, since turning it
+ * off connects nothing, even for an install already under way when it went off (#1530). The person’s choice counts
+ * from the moment they make it, before its write, which waits behind the host’s other record writes, has landed
+ * (setKeepUpdated). Install… isn’t asked.
+ * @param {Manager} m @param {string} id
+ */
+export const consentStillOn = (m, id) => m.consentAsked.get(id)?.on ?? recordOf(m, id).keepUpdated;
+
+/**
+ * After a busy automatic install, the host connects once more, while the consent is on: the other Postbox may have
+ * installed it. @param {Manager} m @param {string} id @param {InstallOutcome} outcome
  */
 function afterBusy(m, id, outcome) {
-  if (outcome.ok || m.closed || outcome.failure?.detail?.code !== BUSY_EXIT) return;
+  if (outcome.ok || m.closed || outcome.failure?.detail?.code !== BUSY_EXIT || !consentStillOn(m, id)) return;
   connectNow(m, id).catch(() => {});
 }
 
@@ -157,7 +168,7 @@ async function autoInstall(m, id, signal) {
   let result;
   try {
     if (signal.aborted) throw new SshFailure('failed', 'Postbox closed before the install started.', 'Install it from here once Postbox is running again.');
-    result = await installNow(m, id, signal);
+    result = await installNow(m, id, signal, () => consentStillOn(m, id));
   } catch (e) {
     if (!signal.aborted && !m.closed) await noteFailed(m, id, tried, e);
     throw e;
@@ -282,7 +293,15 @@ function withEnded(installs, tried, ended) {
 export async function setKeepUpdated(m, id, on) {
   if (typeof on !== 'boolean') throw new TypeError('keepUpdated is true or false.');
   hostOf(m, id);
-  await changeRecord(m, id, (was) => ({ keepUpdated: on, installs: was.installs }));
+  // Asked now: an automatic install that ends while this write waits its turn reads it (consentStillOn). Each request
+  // is its own entry, so one that ends clears only itself, never a later choice, even one of the same value.
+  const asked = { on };
+  m.consentAsked.set(id, asked);
+  try {
+    await changeRecord(m, id, (was) => ({ keepUpdated: on, installs: was.installs }));
+  } finally {
+    if (m.consentAsked.get(id) === asked) m.consentAsked.delete(id);
+  }
   update(m, id);
   // A host already stopped on a 127 hears no more failures by itself (wake() skips a stopped link), so turning the
   // consent on connects once, and the rule sees that attempt’s failure.
