@@ -43,8 +43,8 @@ class Scripted {
   }
 }
 
-export function setup() {
-  const store = new Store(null);
+/** @param {Store} [store]  the store the runtime writes to: an in-memory one unless a test gives its own */
+export function setup(store = new Store(null)) {
   const adapter = new Scripted();
   const k = fakeKill();
   /** @type {import('../server/adapters/process-group.mjs').Proc[]} what a fake ps lists: the kept jobs’ shells */

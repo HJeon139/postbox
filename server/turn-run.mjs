@@ -41,7 +41,7 @@ export function deliver(rt, sessionId, message, { summarizeTo = null, threadId =
   // Its run clock is paused or ran out: no turn of its starts, and what came another way than its inbox waits for the
   // resume (server/run-clock.mjs). A host turn attached again after a restart starts, to be stopped below: its clock may
   // have run out while Postbox was down.
-  const held = clockHolds(rt.s, sessionId);
+  const held = clockHolds(rt.store.pending.clock(sessionId));
   if (held && typeof message.attach !== 'string') return holdForClock(rt, sessionId, { message, summarizeTo, threadId });
   message = prepareScheduledRetry(rt, message, se.threadId);
   // As it was asked, for Retry (askedOf).

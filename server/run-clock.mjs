@@ -15,8 +15,11 @@ const MAX_TIMER_MS = 2 ** 31 - 1;
 /** @type {WeakMap<any, Map<string, ReturnType<typeof setTimeout>>>} each runtime’s expiry timers, by session */
 const timers = new WeakMap();
 
-/** @param {any} rt @param {string} sessionId */
-const clockOf = (rt, sessionId) => (rt.s.clocks && Object.hasOwn(rt.s.clocks, sessionId) ? rt.s.clocks[sessionId] : null);
+/**
+ * An agent’s clock, pending, as memory will hold it once held writes are released: a clock started behind a held
+ * commit times and holds its agent at once (server/store-held.mjs). @param {any} rt @param {string} sessionId
+ */
+const clockOf = (rt, sessionId) => rt.store.pending.clock(sessionId);
 
 /**
  * The person’s action on an agent’s clock: start it with a budget in whole seconds, pause it or resume it.

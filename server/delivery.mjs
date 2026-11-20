@@ -150,7 +150,7 @@ export class Delivery {
   ready(sessionId) {
     if (this.running.busy(sessionId) || this.running.closing) return false;
     const se = this.store.pending.session(sessionId);
-    if (!se || se.retiredFork || clockHolds(this.store.state, sessionId)) return false;
+    if (!se || se.retiredFork || clockHolds(this.store.pending.clock(sessionId))) return false;
     return this.waiting(sessionId).some((e) => this.canStart(e, se));
   }
 

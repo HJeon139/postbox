@@ -31,14 +31,11 @@ export const clockLine = (clock, now) =>
   `[Postbox] Run clock: elapsed ${Math.floor(clockElapsed(clock, now) / 1000)}s / budget ${Math.floor(clock.budgetMs / 1000)}s. At the budget, Postbox stops your turn and starts no other.`;
 
 /**
- * Whether an agent’s clock holds its turns: paused, until the person resumes it, or expired, for good. Delivery starts
- * no turn from its inbox meanwhile (server/delivery.mjs), so what it was sent waits there.
- * @param {any} state @param {string} sessionId
+ * Whether a run clock holds its agent’s turns: paused, until the person resumes it, or expired, for good. Delivery starts
+ * no turn from its inbox meanwhile (server/delivery.mjs), so what it was sent waits there. The caller passes the clock
+ * as in-process code must read it, pending (server/store-held.mjs). @param {{ state?: string } | null | undefined} clock
  */
-export function clockHolds(state, sessionId) {
-  const c = state.clocks && Object.hasOwn(state.clocks, sessionId) ? state.clocks[sessionId] : null;
-  return c?.state === 'paused' || c?.state === 'expired';
-}
+export const clockHolds = (clock) => clock?.state === 'paused' || clock?.state === 'expired';
 
 /**
  * Refuses a clock event without the fields it needs, before anything changes (#609): a session’s id, and a time.
