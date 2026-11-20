@@ -36,7 +36,7 @@ test('#370 condition 3: self-edit protection denies writes and edits to .agents/
     join(home, '.gemini', 'antigravity-cli', 'settings.json'),
     '',
   ]) {
-    assert.equal(isProtectedPath(p, { cwd: ws, home }), true, p);
+    assert.equal(isProtectedPath(p, { cwd: ws, scriptPath: HOOK_SCRIPT, home }), true, p);
     for (const mode of ['ask', 'auto', 'acceptEdits']) {
       for (const tool of ['write_file', 'write_to_file', 'edit_file', 'replace_file_content', 'multi_replace_file_content']) {
         const res = decideAgyTool({ toolCall: { name: tool, args: { Path: p } } }, { mode, folders: [ws], cwd: ws, home });
@@ -44,8 +44,8 @@ test('#370 condition 3: self-edit protection denies writes and edits to .agents/
       }
     }
   }
-  assert.equal(isProtectedPath('src/index.js', { cwd: ws, home }), false);
-  assert.equal(isProtectedPath('.agents/rules/style.md', { cwd: ws, home }), false);
+  assert.equal(isProtectedPath('src/index.js', { cwd: ws, scriptPath: HOOK_SCRIPT, home }), false);
+  assert.equal(isProtectedPath('.agents/rules/style.md', { cwd: ws, scriptPath: HOOK_SCRIPT, home }), false);
 });
 
 test('#370 conditions 2 & 3: decideAgyTool classifies file, command, web, MCP and subagent tools across ask, auto and acceptEdits', () => {

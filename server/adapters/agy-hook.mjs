@@ -127,15 +127,15 @@ export function decideAgyTool(
   return { decision: 'ask', toolName: name, input: args };
 }
 
-/**
- * An edit: refused when any path it names is Antigravity’s own, and with no card in Auto and Accept edits only when every
- * one stays in the agent’s folders (#1074), else a card about the first that doesn’t.
- */
 function protectedWrite(args, { cwd, scriptPath, home }) {
   const paths = pathArgs(args);
   return !paths.length || paths.some((p) => isProtectedPath(p, { cwd, scriptPath, home }));
 }
 
+/**
+ * An edit: refused when any path it names is Antigravity’s own, and with no card in Auto and Accept edits only when every
+ * one stays in the agent’s folders (#1074), else a card about the first that doesn’t.
+ */
 function decideWrite(name, args, { mode, roots, cwd, scriptPath, home }) {
   const paths = pathArgs(args);
   if (protectedWrite(args, { cwd, scriptPath, home }))

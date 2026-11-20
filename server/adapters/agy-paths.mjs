@@ -4,9 +4,6 @@
 import { lstatSync, readlinkSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, isAbsolute, join, parse, resolve, sep } from 'node:path';
-import { fileURLToPath } from 'node:url';
-
-const DEFAULT_HOOK_SCRIPT = join(dirname(fileURLToPath(import.meta.url)), 'agy-hook.mjs');
 
 /**
  * Resolves a path as the file system does, one segment at a time through the real path of each one that exists, so
@@ -135,8 +132,9 @@ export const leadsInto = (raw, dirs, { cwd, home }) =>
 /**
  * Whether a path points at Postbox’s plugin, its hook script, or ~/.gemini/antigravity-cli (directly or via symlink).
  * Compared without case: macOS’s file system ignores it, so .AGENTS/plugins is .agents/plugins there (#423’s review).
+ * @param {unknown} rawPath @param {{ cwd?: string, scriptPath: string, home?: string }} where  scriptPath: the hook’s (agy-hook.mjs’s HOOK_SCRIPT)
  */
-export function isProtectedPath(rawPath, { cwd = process.cwd(), scriptPath = DEFAULT_HOOK_SCRIPT, home = homedir() } = {}) {
+export function isProtectedPath(rawPath, { cwd = process.cwd(), scriptPath, home = homedir() }) {
   if (typeof rawPath !== 'string' || !rawPath.trim()) return true;
   return readingsOf(rawPath, cwd, home).some((at) => protectedAt(at, { scriptPath, home }));
 }
@@ -144,6 +142,7 @@ export function isProtectedPath(rawPath, { cwd = process.cwd(), scriptPath = DEF
 /** Whether one absolute path, as written or where it leads, is one isProtectedPath protects. */
 function protectedAt(at, { scriptPath, home }) {
   const abs = resolve(at).toLowerCase();
+  // Where it really leads, both ways a .. may be read (realReadings): either one protected protects the path.
   const reals = realReadings(at).map((r) => r.toLowerCase());
   const pluginRe = /(?:^|[\\/])\.agents(?:[\\/]plugins(?:[\\/]|$)|$)/;
   if (pluginRe.test(abs) || reals.some((r) => pluginRe.test(r))) return true;
