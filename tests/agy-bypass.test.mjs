@@ -1,7 +1,8 @@
 // Run everything for an Antigravity persona (server/adapters/agy-bypass.mjs): agy runs with
 // --dangerously-skip-permissions, so the PreToolUse hook is all that holds the persona’s limits. With Web off it
 // refuses every tool whose name looks like the web, by its words rather than a list of names, so a tool a later agy
-// adds is refused too, and allows only agy’s own local tools that share those words (PR #1515’s review).
+// adds is refused too, and allows only agy’s own local tools that share those words (PR #1515’s review). Every other
+// tool goes by an allow-list, its code tools only with Shell, so one agy adds later is refused (the second review).
 
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -52,10 +53,47 @@ const WEB = [
   'view_content_chunk',
 ];
 
-test('Run everything with Web off refuses exactly agy’s web tools from its own list', () => {
+// The tools that work only in the agent’s folder, the conversation, Postbox or agy itself: allowed whatever the
+// persona has. Every other tool of agy’s is refused, and so is one it adds later (PR #1515’s second review).
+const LOCAL = [
+  'ask_custom_permission',
+  'ask_permission',
+  'ask_question',
+  'call_mcp_tool',
+  'command_status',
+  'define_subagent',
+  'delete_knowledge',
+  'find_by_name',
+  'finish',
+  'generate_image',
+  'grep_search',
+  'list_dir',
+  'list_permissions',
+  'list_resources',
+  'manage_inbox',
+  'manage_task',
+  'multi_replace_file_content',
+  'read_resource',
+  'replace_file_content',
+  'search_in_file',
+  'trajectory_search',
+  'view_file',
+  'wait',
+  'wait_5_seconds',
+  'write_to_file',
+];
+// The tools that run commands or code, or edit a file the way a command would: allowed only with Shell.
+const CODE = ['notebook_edit', 'notebook_execution', 'run_command', 'run_workflow', 'schedule', 'sed_file', 'send_command_input'];
+
+test('Run everything with Web off allows only agy’s local tools, and its code tools only with Shell', () => {
   assert.ok(RECORDED.length > 50, 'the recording names agy’s tools');
-  const refused = AGY_TOOLS.filter((name) => bypass(name, { tools: ['shell'] }, { TargetFile: 'notes.md' }) === 'deny');
-  assert.deepEqual(refused.sort(), WEB);
+  const allowed = (/** @type {string[]} */ tools) =>
+    AGY_TOOLS.filter((name) => bypass(name, { tools }, { TargetFile: 'notes.md', ServerName: 'github', ToolName: 'list_issues' }) === 'allow').sort();
+  assert.deepEqual(allowed([]), LOCAL);
+  assert.deepEqual(allowed(['shell']), [...LOCAL, ...CODE].sort());
+  // The ones a hook may not see inside, or that reach agents outside the turn, aren’t on the list.
+  for (const name of ['invoke_subagent', 'manage_subagents', 'send_message', 'list_plugin_accounts', 'a_tool_agy_adds_later'])
+    assert.equal(bypass(name, { tools: ['shell'] }), 'deny', name);
 });
 
 test('Run everything with Web off refuses agy’s web tools, whatever their case, and any new one named like them', () => {

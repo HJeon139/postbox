@@ -10,19 +10,40 @@
 
 const WEB_WORDS = /web|url|browser|search|fetch|chunk/;
 /** agy’s own tools on that list whose names share those words but that read only the folder or the conversation. */
-const LOCAL_TOOLS = new Set(['grep_search', 'search_in_file', 'trajectory_search']);
+const LOCAL_SEARCHES = new Set(['grep_search', 'search_in_file', 'trajectory_search']);
 
 /** Whether a tool, by its lowercased name, reaches the web. @param {string} name */
-export const isWebTool = (name) => WEB_WORDS.test(name) && !LOCAL_TOOLS.has(name);
+export const isWebTool = (name) => WEB_WORDS.test(name) && !LOCAL_SEARCHES.has(name);
+
+// Everything else goes by an allow-list from the same two sources, so a tool a later agy adds is refused until it’s
+// listed here (PR #1515’s second review: notebook_execution and run_workflow ran code with Shell off).
+/** agy’s tools that run commands or code, or edit a file as a command would (sed_file), now or later: need Shell. */
+const CODE_TOOLS = new Set(['run_command', 'send_command_input', 'notebook_execution', 'notebook_edit', 'run_workflow', 'sed_file', 'schedule']);
+/**
+ * agy’s tools that work only in the agent’s folder, the conversation, Postbox (call_mcp_tool, judged by agy-hook.mjs’s
+ * guards) or agy itself, allowed whatever the persona has. Not invoke_subagent or manage_subagents, since whether agy
+ * runs hooks inside a subagent is unproved, nor send_message, which can reach agents outside the turn.
+ */
+const LOCAL_TOOLS = new Set([
+  ...LOCAL_SEARCHES,
+  ...['view_file', 'read_file', 'list_dir', 'find_by_name', 'command_status', 'read_terminal'],
+  ...['write_to_file', 'write_file', 'edit_file', 'replace_file_content', 'multi_replace_file_content'],
+  ...['call_mcp_tool', 'list_resources', 'read_resource', 'ask_question', 'ask_permission', 'ask_custom_permission'],
+  ...['finish', 'wait', 'wait_5_seconds', 'task_boundary', 'notify_user', 'manage_task', 'manage_inbox'],
+  ...['list_permissions', 'generate_image', 'delete_knowledge', 'define_subagent'],
+]);
 
 /**
- * A Run everything call’s decision: refused when it needs Shell or Web and the persona turned it off, else allowed.
+ * A Run everything call’s decision, while the hook holds the persona’s limits: refused when it needs Web or Shell and
+ * the persona turned it off, or when it isn’t one of agy’s tools Postbox knows; else allowed.
  * @param {string} name  lowercased @param {{ tools: string[] }} persona
  */
 export function decideBypass(name, { tools }) {
-  if (name === 'run_command' && !tools.includes('shell')) return { decision: 'deny', reason: 'The person turned Shell off for this agent in Postbox.' };
-  if (isWebTool(name) && !tools.includes('web.fetch')) return { decision: 'deny', reason: 'The person turned Web off for this agent in Postbox.' };
-  return { decision: 'allow' };
+  const web = isWebTool(name);
+  if (web && !tools.includes('web.fetch')) return { decision: 'deny', reason: 'The person turned Web off for this agent in Postbox.' };
+  if (CODE_TOOLS.has(name) && !tools.includes('shell')) return { decision: 'deny', reason: 'The person turned Shell off for this agent in Postbox.' };
+  if (web || CODE_TOOLS.has(name) || LOCAL_TOOLS.has(name)) return { decision: 'allow' };
+  return { decision: 'deny', reason: `Postbox doesn’t know Antigravity’s ${name} tool, so it can’t keep this agent’s limits with it.` };
 }
 
 /** What Run everything’s hook refuses when the persona turned it off: Shell, Web, and publishing (agyRules’s 'publish'). */
