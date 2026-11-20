@@ -2,6 +2,15 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.34.3 (2026-11-20)
+
+### Fixes
+
+- **wakes:** send back only a reply with words, not blank streamed text
+- **guide:** tell agents each answer continues the chain, and to end it with a reaction
+- **wakes:** send every reply that names no one back, not one per chain
+- **mock:** end an exchange with a reaction when thanked
+
 ## 4.34.2 (2026-11-19)
 
 ### Fixes
