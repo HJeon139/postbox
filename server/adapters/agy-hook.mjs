@@ -8,8 +8,8 @@
 // fails open on under --dangerously-skip-permissions.
 
 import { randomUUID } from 'node:crypto';
-import { constants, existsSync, readFileSync, realpathSync } from 'node:fs';
-import { access, readFile, stat } from 'node:fs/promises';
+import { existsSync, readFileSync, realpathSync } from 'node:fs';
+import { readFile, stat } from 'node:fs/promises';
 import { request as httpRequest } from 'node:http';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -44,8 +44,13 @@ export function agySupportsHooks(version) {
   return maj > 1 || (maj === 1 && (min > 4 || (min === 4 && patch >= 7)));
 }
 
-/** The hook script’s path when it’s safe to pass to agy’s `/bin/sh -c` runner, or null if it has shell characters. */
-export const agyHookCommand = (script = HOOK_SCRIPT) => (typeof script === 'string' && script.startsWith('/') && !/[^\w./:@+-]/.test(script) ? script : null);
+const plainPath = (/** @type {unknown} */ p) => typeof p === 'string' && p.startsWith('/') && !/[^\w./:@+-]/.test(p);
+/**
+ * The hook’s command for agy’s `/bin/sh -c` runner: this Node and the script, so it runs with no node on agy’s PATH,
+ * as from launchd, where a `#!/usr/bin/env node` hook would print nothing, and agy fails open on that (PR #1515’s
+ * review). Null if either path has shell characters.
+ */
+export const agyHookCommand = (script = HOOK_SCRIPT, node = process.execPath) => (plainPath(script) && plainPath(node) ? `${node} ${script}` : null);
 
 /** The plugin’s hooks.json content for a turn. */
 export const agyHooksJson = (command = agyHookCommand(), timeout = HOOK_TIMEOUT_S) => ({
@@ -56,7 +61,7 @@ export const agyHooksJson = (command = agyHookCommand(), timeout = HOOK_TIMEOUT_
 
 /**
  * Confirms that PreToolUse hooks will run before passing --dangerously-skip-permissions: an agy version with hooks,
- * a safe executable hook script path, and hooks.json written and read back intact.
+ * a hook script at a safe path, run by this Node (agyHookCommand), and hooks.json written and read back intact.
  * @param {{ version: string|null|undefined, pluginDir: string, script?: string, timeout?: number }} opts
  */
 export async function confirmAgyHook({ version, pluginDir, script = HOOK_SCRIPT, timeout = HOOK_TIMEOUT_S }) {
@@ -64,8 +69,7 @@ export async function confirmAgyHook({ version, pluginDir, script = HOOK_SCRIPT,
   const command = agyHookCommand(script);
   if (!command) return false;
   const st = await stat(script).catch(() => null);
-  const accessFailed = (await access(script, constants.X_OK).catch(() => false)) === false;
-  if (!st?.isFile() || accessFailed) return false;
+  if (!st?.isFile()) return false;
   const expected = `${JSON.stringify(agyHooksJson(command, timeout), null, 2)}\n`;
   const actual = await readFile(join(pluginDir, 'hooks.json'), 'utf8').catch(() => '');
   return actual === expected;
