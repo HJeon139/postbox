@@ -196,3 +196,38 @@ test('#1518 a thanks that @-mentions back, after a reply came back, gets an answ
   assert.equal(replyOf(f, 'Glad to help.').wentBack, undefined);
   assert.match(turnsOf(f, 'beta')[1].message.text, /Your reply posts there and goes to no one unless you @-mention an agent\./);
 });
+
+test('#1518 only a turn agents’ mentions alone woke comes from a bounce: with the person’s message, a scheduled wake or a review, it doesn’t', async () => {
+  const { fromBounce } = await import('../server/reply-back.mjs');
+  const bounce = { source: 'mention', from: 'beta', bounce: true };
+  const notice = { source: 'notice' };
+  assert.equal(fromBounce([bounce]), true);
+  assert.equal(fromBounce([bounce, notice]), true, 'a notice rides along');
+  assert.equal(fromBounce([bounce, { source: 'mention', from: 'gamma' }]), true, 'with another agent’s mention');
+  assert.equal(fromBounce([bounce, { source: 'person', from: 'you' }]), false, 'the person’s message');
+  assert.equal(fromBounce([bounce, { source: 'scheduled' }]), false, 'a scheduled wake');
+  assert.equal(fromBounce([bounce, { source: 'review', from: 'gamma' }]), false, 'a review');
+  assert.equal(fromBounce([{ source: 'mention', from: 'beta' }]), false, 'no bounce at all');
+});
+
+test('#1518 an open_topic written after a bounce is a bounce too: the answer in the topic goes back to no one', async () => {
+  const f = setup();
+  f.adapter.next.push(async (c) => c.text('@beta which file holds the changelog?'));
+  f.adapter.next.push(async (c) => c.text('It’s CHANGELOG.md.'));
+  f.adapter.next.push(async (c) => {
+    const answer = replyOf(f, 'It’s CHANGELOG.md.');
+    c.tools.open_topic({ itemId: answer.id, message: '@beta and which section?' });
+    c.text('I asked beta in a topic.');
+  });
+  f.adapter.next.push(async (c) => c.text('Under Unreleased.'));
+  f.rt.sendMessage(f.t.id, { text: '@alpha find out where the changelog goes' });
+  await quiet(f);
+  assert.deepEqual(
+    turns(f).map((x) => x.split(':')[0]),
+    ['alpha', 'beta', 'alpha', 'beta'],
+  );
+  const inTopic = Object.values(f.store.state.threads).find((x) => x.kind === 'topic');
+  const answer = f.store.items(inTopic.id).find((x) => x.kind === 'agent' && x.text === 'Under Unreleased.');
+  assert.ok(answer, 'beta answered in the topic');
+  assert.equal(answer.wentBack, undefined);
+});

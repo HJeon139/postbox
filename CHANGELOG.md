@@ -2,6 +2,13 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.34.2 (2026-11-19)
+
+### Fixes
+
+- **wakes:** mark a turn as from a bounce only when agents alone woke it
+- **wakes:** tell an agent after a bounce that its mentions won't come back
+
 ## 4.34.1 (2026-11-18)
 
 ### Fixes

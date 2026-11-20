@@ -5,7 +5,7 @@
 
 import { READING, TURN_INPUT } from '../shared/limits.mjs';
 import { partEnd } from '../shared/text-parts.mjs';
-import { backTo } from './reply-back.mjs';
+import { backTo, fromBounce } from './reply-back.mjs';
 
 /**
  * An inbox entry, as the design’s entry table gives it.
@@ -102,6 +102,13 @@ function replyGoes(entries) {
   return bounces.length && bounces.every((e) => e.source === 'mention' && e.bounce) ? ' and goes to no one unless you @-mention an agent.' : '.';
 }
 
+/**
+ * After a bounce, what the agent @-mentions goes back no further (reply-back.mjs, one bounce per chain): it’s told, so
+ * it knows an answer reaches it only if the answerer @-mentions it, and can ask for that. @param {Entry[]} entries
+ */
+const noReturn = (entries) =>
+  fromBounce(entries) ? ' An agent you @-mention now answers you only if it @-mentions you: its reply doesn’t come back on its own.' : '';
+
 /** The first part: the entries, with where the reply posts and goes, and what waits elsewhere. */
 function entriesPart({ entries, thread, read, waitingElsewhere }) {
   const n = entries.length;
@@ -109,7 +116,7 @@ function entriesPart({ entries, thread, read, waitingElsewhere }) {
   const more = waitingElsewhere
     ? ` ${count(waitingElsewhere)} more ${one ? 'waits in another thread, and starts' : 'wait in other threads, and start'} your next turn.`
     : '';
-  const head = `[Postbox] ${count(n)} ${n === 1 ? 'message' : 'messages'} for you ${place(thread)}. Your reply posts there${replyGoes(entries)}${more}`;
+  const head = `[Postbox] ${count(n)} ${n === 1 ? 'message' : 'messages'} for you ${place(thread)}. Your reply posts there${replyGoes(entries)}${noReturn(entries)}${more}`;
   return [head, ...entries.map((/** @type {Entry} */ e) => entryLine(e, read))].join('\n\n');
 }
 
