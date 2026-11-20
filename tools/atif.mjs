@@ -59,7 +59,7 @@ function foldOne(f, e) {
   } else if (e.type === 'item.text') {
     const it = f.items.get(d.id);
     if (it) it.text = (it.text ?? '') + d.text;
-  } else if (e.type === 'item.patch' || e.type === 'item.move') patchItem(f.items.get(d.id), d);
+  } else if (e.type === 'item.patch' || e.type === 'item.move') patchItem(f.items.get(d.id), d, e.seq);
   else if (e.type === 'session') f.sessions.set(d.id, { ...f.sessions.get(d.id), ...d });
   else if (e.type === 'session.patch') f.sessions.set(d.id, { ...f.sessions.get(d.id), ...d.patch });
   else if (e.type === 'entry.add' || e.type === 'entry.put') inboxOf(f, d.sessionId).set(d.entry.id, { ...d.entry });
@@ -81,11 +81,16 @@ function mergeStep(it, s) {
   it.steps.set(s.id, { ...it.steps.get(s.id), ...Object.fromEntries(Object.entries(s).filter(([, v]) => v !== undefined)) });
 }
 
-/** An item patch or move: its fields, a step, or an answer; never a move’s new `at`, so a step keeps when it was added. */
-function patchItem(it, d) {
+/**
+ * An item patch or move: its fields, a step, or an answer; never a move’s new `at`, so a step keeps when it was added.
+ * An answer keeps the place in the events of the patch that brought it, where its step goes (trajectoryOf).
+ * @param {any} it @param {any} d @param {number} seq
+ */
+function patchItem(it, d, seq) {
   if (!it) return;
   if (d.activityStep) mergeStep(it, d.activityStep);
   const { at: _moved, activity: _activity, ...patch } = d.patch ?? {};
+  if (patch.answer?.at !== undefined && patch.answer.at !== it.answer?.at) it.answerSeq = seq;
   Object.assign(it, patch);
 }
 
@@ -122,6 +127,8 @@ function shownSteps(it, ctx) {
     source: 'user',
     message: `${a.action}: ${JSON.stringify(a.values ?? {})}`,
     extra: { item_id: it.id, answer_to: it.block?.id ?? null },
+    // Placed where its patch came, not beside the block: other steps can come between them.
+    seq: it.answerSeq,
   };
   return [shown, answer];
 }
@@ -157,7 +164,10 @@ export function trajectoryOf(f, sessionId, { version }) {
   const se = f.sessions.get(sessionId) ?? {};
   const ctx = contextOf(f, sessionId);
   /** @type {{ seq: number, steps: any[] }[]} */
-  const placed = f.order.map(({ seq, id }) => ({ seq, steps: itemSteps(f.items.get(id), ctx) }));
+  // A step that brings its own place (an answer, at its patch) goes there; the rest go where their item was added.
+  const placed = f.order.flatMap(({ seq, id }) =>
+    itemSteps(f.items.get(id), ctx).map(({ seq: own, ...step }) => ({ seq: typeof own === 'number' ? own : seq, steps: [step] })),
+  );
   for (const c of f.clocks.filter((x) => x.data.sessionId === sessionId))
     placed.push({
       seq: c.seq,
