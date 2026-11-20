@@ -140,3 +140,25 @@ test('Run everything with Web off refuses an MCP tool whose server or name says 
   assert.equal(bypass('call_mcp_tool', {}, mcp('github', 'list_issues')), 'allow');
   assert.equal(bypass('call_mcp_tool', {}, mcp('postbox_postbox', 'search_conversation')), 'allow');
 });
+
+// PR #1515’s second review: one write to a module the hook imports broke its import, so it printed nothing and agy
+// let every call through. The hook imports nearly all of Postbox’s server/ and shared/, so both are refused to agy’s
+// file tools, as its script is, in every mode.
+test('no mode lets a file tool change Postbox’s server or shared code, which the hook runs', () => {
+  const adapters = new URL('../server/adapters/', import.meta.url).pathname;
+  const imported = [
+    `${adapters}agy-bypass.mjs`,
+    `${adapters}agy-paths.mjs`,
+    `${adapters}setup.mjs`,
+    new URL('../shared/command-chains.mjs', import.meta.url).pathname,
+  ];
+  const ws = join(tempDir('pb-agy-bypass-'), 'ws');
+  for (const mode of ['bypass', 'auto', 'acceptEdits'])
+    for (const TargetFile of imported) {
+      const out = decideAgyTool({ toolCall: { name: 'write_to_file', args: { TargetFile } } }, { mode, folders: [ws, adapters], cwd: ws, tools: ['shell'] });
+      assert.equal(out.decision, 'deny', `${mode}: ${TargetFile}`);
+    }
+  assert.equal(bypass('write_to_file', { tools: ['shell'] }, { TargetFile: `${adapters}a-new-module.mjs` }), 'deny');
+  // Postbox’s other files are the agent’s to edit, as before.
+  assert.equal(bypass('write_to_file', { tools: ['shell'] }, { TargetFile: new URL('../app/new-view.mjs', import.meta.url).pathname }), 'allow');
+});

@@ -3,7 +3,7 @@
 
 import { lstatSync, readlinkSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { dirname, isAbsolute, join, parse, resolve, sep } from 'node:path';
+import { basename, dirname, isAbsolute, join, parse, resolve, sep } from 'node:path';
 
 /**
  * Resolves a path as the file system does, one segment at a time through the real path of each one that exists, so
@@ -130,13 +130,25 @@ export const leadsInto = (raw, dirs, { cwd, home }) =>
   });
 
 /**
- * Whether a path points at Postbox’s plugin, its hook script, or ~/.gemini/antigravity-cli (directly or via symlink).
+ * Whether a path points at Postbox’s plugin, its hook script or the code it runs (hookCode), or
+ * ~/.gemini/antigravity-cli (directly or via symlink).
  * Compared without case: macOS’s file system ignores it, so .AGENTS/plugins is .agents/plugins there (#423’s review).
  * @param {unknown} rawPath @param {{ cwd?: string, scriptPath: string, home?: string }} where  scriptPath: the hook’s (agy-hook.mjs’s HOOK_SCRIPT)
  */
 export function isProtectedPath(rawPath, { cwd = process.cwd(), scriptPath, home = homedir() }) {
   if (typeof rawPath !== 'string' || !rawPath.trim()) return true;
   return readingsOf(rawPath, cwd, home).some((at) => protectedAt(at, { scriptPath, home }));
+}
+
+/**
+ * The folders of Postbox’s code the hook runs, lowercased: the server/ its script is in, and shared/ beside it. The
+ * hook imports nearly all of both, and one write that breaks an import makes it print nothing, which agy takes as
+ * allowed (PR #1515’s second review). A script elsewhere, as tests pass, has none.
+ * @param {string} realScript  lowercased
+ */
+function hookCode(realScript) {
+  const server = dirname(dirname(realScript));
+  return basename(server) === 'server' ? [server, join(dirname(server), 'shared')] : [];
 }
 
 /** Whether one absolute path, as written or where it leads, is one isProtectedPath protects. */
@@ -148,6 +160,7 @@ function protectedAt(at, { scriptPath, home }) {
   if (pluginRe.test(abs) || reals.some((r) => pluginRe.test(r))) return true;
   const realScript = (realTarget(scriptPath, '/') ?? resolve(scriptPath)).toLowerCase();
   if (abs === resolve(scriptPath).toLowerCase() || reals.includes(realScript)) return true;
+  if (hookCode(realScript).some((dir) => inside(abs, dir) || reals.some((r) => inside(r, dir)))) return true;
   const agyDir = resolve(home, '.gemini', 'antigravity-cli');
   const realAgyDir = (realTarget(agyDir, '/') ?? agyDir).toLowerCase();
   return inside(abs, agyDir.toLowerCase()) || reals.some((r) => inside(r, realAgyDir));
