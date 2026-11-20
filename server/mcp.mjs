@@ -21,7 +21,6 @@ import { offersBring } from './bring.mjs';
 import { noteAnswer } from './empty-reply.mjs';
 import { sameToken } from './helpers.mjs';
 import { asksByPrompt, NOT_YOUR_PROMPT, permission } from './permission-prompt.mjs';
-import { reactTool } from './reactions.mjs';
 import { keptIfShown } from './review-files.mjs';
 import { AgentFileError } from './runtime.mjs';
 import { recordedTools } from './scheduled-wakes.mjs';
@@ -130,10 +129,9 @@ function viewContext(rt, sessionId, turn) {
   };
 }
 
-/** react, view_app and the asset tools: their own modules’, beside the runtime’s tools, and recorded as they are (#466). */
+/** view_app and the asset tools: their own modules’, beside the runtime’s tools, and recorded as they are (#466). */
 function ownTools(rt, sessionId, turn) {
   return {
-    react: (a) => reactTool(rt.threads, rt.session(sessionId), a),
     view_app: (a) => viewApp(rt, sessionId, a, viewContext(rt, sessionId, turn)),
     ...rt.assets.tools(sessionId, turn),
   };

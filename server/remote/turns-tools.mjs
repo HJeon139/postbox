@@ -1,5 +1,5 @@
 // Postbox’s tools for a remote turn (#120, server/remote/turns.mjs, the header): the daemon’s `tool` is applied as the
-// laptop’s MCP server applies a call (server/mcp.mjs), through the same tools, from toolsFor and reactTool, and
+// laptop’s MCP server applies a call (server/mcp.mjs), through the same tools, from toolsFor and the asset tools, and
 // answered with `reply`. Each call is an identity, (turn, id), which the daemon sends again after every hello until
 // Postbox has answered it: the reply is kept on the session, so a repeat gets the same answer and is never applied
 // twice.
@@ -9,7 +9,6 @@ import { GONE_TOOLS } from '../../shared/mcp-tools.mjs';
 import { REMOTE_LIMITS, toolRoute } from '../../shared/remote-protocol.mjs';
 import { AgentFileError } from '../agent-files.mjs';
 import { noteAnswer } from '../empty-reply.mjs';
-import { reactTool } from '../reactions.mjs';
 import { keptIfShown } from '../review-files.mjs';
 import { recordedTools } from '../scheduled-wakes.mjs';
 import { withUrgent } from '../subagent-end.mjs';
@@ -92,12 +91,9 @@ function refuseEnded(rts, link, se, m) {
 
 /** @param {RemoteTurns} rts @param {Live} live @param {{ name: string, args: Record<string, any> }} m @returns {Promise<{ ok: boolean, text: string, closed?: boolean }>} */
 async function applyTool(rts, live, m) {
-  // react and the asset tools are their own modules’, beside the runtime’s tools and recorded as they are, as server/mcp.mjs
-  // adds them; the asset tools take text only here, since a path names a file on the host.
-  const own = {
-    react: (/** @type {any} */ a) => reactTool(rts.rt.threads, rts.rt.session(live.sessionId), a),
-    ...rts.rt.assets.tools(live.sessionId, live.rt, { onHost: true }),
-  };
+  // The asset tools are their own module’s, beside the runtime’s tools and recorded as they are, as server/mcp.mjs
+  // adds them; they take text only here, since a path names a file on the host.
+  const own = rts.rt.assets.tools(live.sessionId, live.rt, { onHost: true });
   const tools = { ...rts.rt.toolsFor(live.sessionId, live.rt), ...recordedTools(rts.rt, live.rt, own) };
   if (Object.hasOwn(GONE_TOOLS, m.name)) return { ok: false, text: GONE_TOOLS[m.name] };
   if (!Object.hasOwn(tools, m.name)) return { ok: false, text: `There’s no tool called “${m.name}”.` };
