@@ -78,8 +78,8 @@ function foldOne(f, e) {
     noteModel(f, d.id, e.seq);
   } else if (e.type === 'entry.add' || e.type === 'entry.put') inboxOf(f, d.sessionId).set(d.entry.id, { ...d.entry });
   else if (e.type === 'entry.patch') Object.assign(inboxOf(f, d.sessionId).get(d.id) ?? {}, d.patch);
-  else if (e.type === 'work.add' && (d.entry?.kind === 'turn' || CALL_KINDS.has(d.entry?.kind))) f.work.set(d.entry.id, { ...d.entry });
-  else if (e.type === 'work.patch' && f.work.has(d.id)) Object.assign(f.work.get(d.id), d.patch);
+  else if (e.type === 'work.add' && (d.entry?.kind === 'turn' || CALL_KINDS.has(d.entry?.kind))) f.work.set(d.entry.id, { ...d.entry, from: e.seq });
+  else if (e.type === 'work.patch' && f.work.has(d.id)) Object.assign(f.work.get(d.id), d.patch, d.patch?.endedAt ? { to: e.seq } : {});
   else if (Object.hasOwn(CLOCK_WORDS, e.type)) f.clocks.push({ seq: e.seq, type: e.type, data: d });
   else if (e.type === 'turn.guide') f.guides.set(d.sha, d.text);
   else if (e.type === 'turn.prompt') f.prompts.push({ seq: e.seq, data: d });
@@ -100,16 +100,19 @@ function noteModel(f, id, seq) {
 }
 
 /**
- * The model and effort that ran a step at `seq`: the backend’s report before it, else its first after (a turn reports
- * as it starts, which can land just after its first words). @param {{ seq: number, model: string, effort: string|null }[]} list @param {number} seq
+ * The model and effort that ran a step at `seq` in turn `turn`: the last its backend reported within that turn (from
+ * its ledger entry to its end, which a report after the turn’s first words still falls in: Codex reports the model
+ * that ran when the turn completes), else the last before the step, else the first after it.
+ * @param {{ seq: number, model: string, effort: string|null }[]} list @param {number} seq @param {{ from?: number, to?: number } | undefined} turn
  */
-function ranAt(list, seq) {
-  return list.findLast((m) => m.seq <= seq) ?? list[0] ?? null;
+function ranAt(list, seq, turn) {
+  const inTurn = turn?.from === undefined ? [] : list.filter((m) => m.seq > turn.from && m.seq <= (turn.to ?? Number.POSITIVE_INFINITY));
+  return inTurn.at(-1) ?? list.findLast((m) => m.seq <= seq) ?? list[0] ?? null;
 }
 
-/** What ran a step, as its fields. @param {any} ctx @param {number} seq */
-function modelFields(ctx, seq) {
-  const ran = ranAt(ctx.models, seq);
+/** What ran a step of turn `turnId`, as its fields. @param {any} ctx @param {number} seq @param {string | null | undefined} turnId */
+function modelFields(ctx, seq, turnId) {
+  const ran = ranAt(ctx.models, seq, turnId ? ctx.turns.get(turnId) : undefined);
   return ran ? { model_name: ran.model, ...(ran.effort ? { reasoning_effort: ran.effort } : {}) } : {};
 }
 
@@ -145,7 +148,7 @@ function replyStep(it, ctx, seq) {
   return {
     source: 'agent',
     message: it.text ?? '',
-    ...modelFields(ctx, seq),
+    ...modelFields(ctx, seq, it.turnId),
     ...(thoughts.length ? { reasoning_content: thoughts.join('\n\n') } : {}),
     ...(tool_calls.length ? { tool_calls } : {}),
     ...(results.length ? { observation: { results } } : {}),
@@ -161,7 +164,7 @@ function shownSteps(it, ctx, seq) {
     timestamp: iso(it.at),
     source: 'agent',
     message: it.block?.fallback ?? it.title ?? '',
-    ...modelFields(ctx, seq),
+    ...modelFields(ctx, seq, it.turnId),
     ...(metrics ? { metrics } : {}),
     extra: { item_id: it.id, turn_id: it.turnId ?? null, kind: it.kind, block_type: it.block?.type ?? null },
   };
