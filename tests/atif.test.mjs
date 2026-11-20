@@ -226,3 +226,33 @@ test('a call’s name comes from its own step, so a call the ledger doesn’t ke
   assert.deepEqual(call.arguments, {});
   assert.equal(call.extra.arguments_source, 'not recorded');
 });
+
+test('a session whose only output was a block still has a trajectory', () => {
+  // From the recorded run: @dry2’s reply is left out, and a block of its turn takes its place, shaped as
+  // server/block-show.mjs adds one.
+  const id = sessionOf('dry2');
+  const reply = rec.events.find((e) => e.type === 'item.add' && e.data.item.sessionId === id && e.data.item.kind === 'agent');
+  const { item } = reply.data;
+  const block = {
+    id: 'it_only_block',
+    at: item.at,
+    kind: 'block',
+    sessionId: id,
+    handle: 'dry2',
+    turnId: item.turnId,
+    block: { type: 'choice', id: 'pick', fallback: 'Pick one.' },
+  };
+  const events = rec.events.flatMap((e) => {
+    if (e === reply) return [{ ...e, data: { threadId: e.data.threadId, item: block } }];
+    return e.data?.id === item.id ? [] : [e];
+  });
+  const t = of('dry2', events);
+  assert.deepEqual(
+    t.steps.map((s) => [s.source, s.extra.item_id]),
+    [
+      ['user', t.steps[0].extra.item_id],
+      ['agent', 'it_only_block'],
+    ],
+  );
+  assert.equal(t.steps[1].metrics.completion_tokens, 102);
+});

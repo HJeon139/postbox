@@ -27,6 +27,8 @@ const CLOCK_WORDS = {
     `Postbox started again with the run clock at elapsed ${Math.floor(d.elapsedMs / 1000)}s of ${d.budgetMs / 1000}s; the time it was down counted.`,
   'clock.expired': (d) => `Run clock expired at its budget of ${d.budgetMs / 1000}s: Postbox stopped the agent.`,
 };
+/** The items an agent session shows: each is one of its steps. */
+const OWN_KINDS = new Set(['agent', 'block', 'app']);
 /** The work ledger’s entries for one call, which keep its arguments (tools/atif-calls.mjs). */
 const CALL_KINDS = new Set(['command', 'external', 'read']);
 
@@ -189,7 +191,8 @@ export function trajectoryOf(f, sessionId, { version }) {
  */
 export function trajectories(events, { version, live = [], sessionId }) {
   const f = foldEvents(events, live);
-  const ids = new Set([...f.items.values()].filter((it) => it.kind === 'agent' && it.sessionId).map((it) => it.sessionId));
+  // Every session that showed something: a reply, a block or an app, so one whose only output was a block has one too.
+  const ids = new Set([...f.items.values()].filter((it) => OWN_KINDS.has(it.kind) && it.sessionId).map((it) => it.sessionId));
   for (const c of f.clocks) ids.add(c.data.sessionId);
   return [...ids]
     .filter((id) => !sessionId || id === sessionId)
