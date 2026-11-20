@@ -33,3 +33,20 @@ test('a message a retry gave back to the inbox after a turn took it still reache
   ];
   assert.equal(carried(dryOf(givenBack)).text, item.text);
 });
+
+test('a subagent’s own words are narration on its reply, not a tool call', () => {
+  // A step as server/harness-text.mjs’s narrate adds one, on @dry’s first reply.
+  const reply = rec.events.find((e) => e.type === 'item.add' && e.data.item.sessionId === sessionId && e.data.item.kind === 'agent').data;
+  const said = { id: 'said-1', label: 'Found the file.', state: 'done', kind: 'said', detail: 'Found the file. It has two lines.', who: 'Explore' };
+  const events = [...rec.events, { seq: last + 1, type: 'item.patch', data: { threadId: reply.threadId, id: reply.item.id, activityStep: said } }];
+  const step = dryOf(events).steps.find((s) => s.extra.item_id === reply.item.id);
+  assert.equal(
+    step.tool_calls.some((c) => c.tool_call_id === 'said-1'),
+    false,
+  );
+  assert.equal(
+    step.observation.results.some((r) => r.source_call_id === 'said-1'),
+    false,
+  );
+  assert.deepEqual(step.extra.narration, [{ step_id: 'said-1', text: said.detail, who: 'Explore' }]);
+});

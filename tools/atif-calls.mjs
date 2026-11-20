@@ -3,7 +3,8 @@
 // come from the work ledger, which keeps them for a command (its command line), a call to another MCP server (its
 // input) and a read (its target), by the call’s id; any other call’s arguments are left empty, and its step’s
 // display text goes in extra, marked as such, never in place of them. A recording from before steps kept their tool
-// names says function_name “unknown”, and extra says it wasn’t recorded.
+// names says function_name “unknown”, and extra says it wasn’t recorded. A subagent’s own words (a `said` step,
+// server/harness-text.mjs) are no call: they’re the reply’s narration, in its extra.
 
 import { READ_TOOLS } from '../shared/work.mjs';
 
@@ -38,13 +39,14 @@ const argumentsSource = (w, args) => {
 };
 
 /**
- * The tool calls, their results and the thoughts of one reply.
+ * The tool calls, their results, the thoughts and the narration of one reply.
  * @param {any} it  the reply, with its steps @param {Map<string, any>} ledger  the work ledger’s calls, by tool call id
  */
 export function callsOf(it, ledger) {
   const steps = [...it.steps.values()].filter((s) => s.label && s.kind !== 'reply');
   const thoughts = steps.filter((s) => s.kind === 'thought').map((s) => s.detail ?? s.label);
-  const calls = steps.filter((s) => s.kind !== 'thought');
+  const narration = steps.filter((s) => s.kind === 'said').map((s) => ({ step_id: s.id, text: s.detail ?? s.label, ...(s.who ? { who: s.who } : {}) }));
+  const calls = steps.filter((s) => s.kind !== 'thought' && s.kind !== 'said');
   const tool_calls = calls.map((s) => {
     const w = ledger.get(s.id);
     const name = typeof s.tool === 'string' && s.tool ? s.tool : ledgerName(w);
@@ -68,5 +70,5 @@ export function callsOf(it, ledger) {
   const results = calls
     .filter((s) => typeof s.output === 'string' || typeof s.detail === 'string')
     .map((s) => ({ source_call_id: s.id, content: s.output ?? s.detail }));
-  return { tool_calls, results, thoughts };
+  return { tool_calls, results, thoughts, narration };
 }

@@ -168,7 +168,7 @@ function patchItem(it, d, seq) {
 
 /** An agent step for one of the session’s replies. @param {any} it @param {any} ctx @param {number} seq  where it was added */
 function replyStep(it, ctx, seq) {
-  const { tool_calls, results, thoughts } = callsOf(it, ctx.calls);
+  const { tool_calls, results, thoughts, narration } = callsOf(it, ctx.calls);
   const metrics = ctx.meter.take(it.turnId);
   return {
     source: 'agent',
@@ -178,7 +178,13 @@ function replyStep(it, ctx, seq) {
     ...(tool_calls.length ? { tool_calls } : {}),
     ...(results.length ? { observation: { results } } : {}),
     ...(metrics ? { metrics } : {}),
-    extra: { item_id: it.id, turn_id: it.turnId ?? null, status: it.status ?? null, ...(it.stopReason ? { stop_reason: it.stopReason } : {}) },
+    extra: {
+      item_id: it.id,
+      turn_id: it.turnId ?? null,
+      status: it.status ?? null,
+      ...(it.stopReason ? { stop_reason: it.stopReason } : {}),
+      ...(narration.length ? { narration } : {}),
+    },
   };
 }
 
