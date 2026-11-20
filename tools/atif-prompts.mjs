@@ -1,11 +1,19 @@
 // What each turn sent its agent, in an ATIF trajectory (tools/atif.mjs): the guide Postbox appends and each prompt as
-// it left for the backend (`turn.guide`, `turn.prompt`, shared/turn-prompts.mjs), as system steps, and what the
-// trajectory still leaves out, in its notes and extra.scope.
+// it left for the backend (`turn.guide`, `turn.prompt`, shared/turn-prompts.mjs), the guide as a system step and each
+// prompt as its turn’s user step, and what the trajectory still leaves out, in its notes and extra.scope.
 
 const iso = (/** @type {number} */ ms) => new Date(ms).toISOString();
 
-/** What a trajectory leaves out when its recording has the turns’ prompts: only what Postbox never sees. */
-export const NOT_RECORDED = Object.freeze(['the system prompt the agent’s backend adds of its own (Claude Code’s, Codex’s), and its tools’ definitions']);
+/**
+ * What a trajectory leaves out when its recording has the turns’ prompts: what Postbox never sees, which the backend
+ * adds or loads itself (designs/architecture/agent-setup.md: each agent runs with the person’s own setup). Not a list
+ * of what loaded, which Postbox doesn’t know; the kinds it can be (hydrant-critic’s review of #1522).
+ */
+export const NOT_RECORDED = Object.freeze([
+  'the system prompt the agent’s backend adds of its own (Claude Code’s, Codex’s, Kiro’s, Antigravity’s), and its tools’ definitions',
+  'the instructions and resources the backend loads itself from the person’s and the project’s setup: CLAUDE.md and AGENTS.md files, Kiro’s steering, skills, plugins and settings, and the MCP servers they add, with their tools',
+  'what the backend keeps of earlier turns, and how it compacts them',
+]);
 
 /**
  * What one from before prompts were recorded, or from a recording that dropped them, also leaves out (hydrant-critic’s

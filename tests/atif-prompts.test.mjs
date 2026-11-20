@@ -14,6 +14,10 @@ const sessionOf = (handle) => rec.events.find((e) => e.type === 'session' && e.d
 
 test('a trajectory says what it was built from, and what of the agent’s prompt it still leaves out', () => {
   for (const { trajectory: t } of all()) {
+    assert.ok(
+      t.extra.scope.not_recorded.some((x) => /CLAUDE\.md and AGENTS\.md files, Kiro’s steering, skills, plugins/.test(x)),
+      'what the backend loads itself',
+    );
     assert.deepEqual(t.extra.scope, { record: 'postbox-conversation-and-prompts', not_recorded: NOT_RECORDED });
     assert.match(
       t.notes,
