@@ -1,39 +1,20 @@
 // A reply that goes back (#1518; designs/intent.md, the row on agents waking agents): a turn only other agents’
 // @-mentions started, whose replies @-mention no one, goes back to the agents whose mentions woke it, as if it had
-// mentioned them. Once: the turn that bounce starts goes back to no one, so “thanks, got it” never comes back, and the
-// room’s chain limit counts each bounce as any wake. Functions take the Runtime first, as waiting code does until Turns
-// is a service.
-
-/**
- * Whether a turn that took these entries came from a bounce, so what it @-mentions is marked a bounce too, and goes back
- * no further: else “thanks @beta” for an answer that came back gets an answer that goes back, and is thanked again, up
- * to the chain limit. One bounce per chain. Only a turn agents’ mentions alone woke: one that also took the person’s
- * message, a scheduled wake or a review is theirs as well, and its mentions go back as usual. Notices ride along. Read
- * by the turn’s input too (turn-input.mjs), which warns the agent.
- * @param {{ source: string, bounce?: boolean }[]} entries
- */
-export function fromBounce(entries) {
-  const asked = entries.filter((e) => e.source !== 'notice');
-  return asked.some((e) => e.bounce) && asked.every((e) => e.source === 'mention');
-}
-
-/** fromBounce for a running turn, from the entries it took. @param {any} rt @param {string} sessionId @param {any} turn */
-export function afterBounce(rt, sessionId, turn) {
-  turn.afterBounce ??= fromBounce(rt.delivery.takenBy(sessionId, turn.id));
-  return turn.afterBounce;
-}
+// mentioned them. Every time (#1523): chaining is how agents talk, an agent ends an exchange with a reaction, which
+// posts no reply, and the room’s chain limit counts each bounce as any wake. Functions take the Runtime first, as
+// waiting code does until Turns is a service.
 
 /**
  * Whom a turn that took these entries goes back to when its replies @-mention no one: the agents whose mentions it
- * took, unless one of the entries is anything else (the person’s message, a scheduled wake, a review). A bounce (a
- * reply going back, or a mention written in a turn one started) sends nothing back, so its agent isn’t named. Notices ride along, and
- * don’t count. Read by the turn’s input too (turn-input.mjs), so what the agent is told is what happens.
- * @param {{ source: string, from?: string, bounce?: boolean }[]} entries @returns {string[]}  handles, without @
+ * took, a reply that came back included, unless one of the entries is anything else (the person’s message, a
+ * scheduled wake, a review). Notices ride along, and don’t count. Read by the turn’s input too (turn-input.mjs), so
+ * what the agent is told is what happens.
+ * @param {{ source: string, from?: string }[]} entries @returns {string[]}  handles, without @
  */
 export function backTo(entries) {
   const asked = entries.filter((e) => e.source !== 'notice');
   if (!asked.length || asked.some((e) => e.source !== 'mention')) return [];
-  return [...new Set(asked.filter((e) => !e.bounce && e.from).map((e) => /** @type {string} */ (e.from)))];
+  return [...new Set(asked.filter((e) => e.from).map((e) => /** @type {string} */ (e.from)))];
 }
 
 /**
@@ -50,7 +31,8 @@ export function replyBack(rt, turn, se, took) {
   const here = (/** @type {string} */ h) => rt.sessions.in(conv).some((/** @type {any} */ x) => x.handle === h && !x.retiredFork);
   const to = backTo(took).filter((h) => h !== se.handle && here(h));
   if (!to.length) return;
-  const reply = rt.store.pending.items(turn.threadId).findLast((/** @type {any} */ x) => x.kind === 'agent' && x.turnId === turn.id && x.text);
+  // Text with words: a harness may stream only whitespace around a tool call, such as a reaction, which is no reply.
+  const reply = rt.store.pending.items(turn.threadId).findLast((/** @type {any} */ x) => x.kind === 'agent' && x.turnId === turn.id && x.text?.trim());
   if (!reply) return;
   const replyIn = turn.threadId !== se.threadId ? turn.threadId : null;
   const went = [];

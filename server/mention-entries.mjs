@@ -7,7 +7,6 @@
 
 import { parseMentions } from '../shared/text.mjs';
 import { copiedLine } from './copied-line.mjs';
-import { afterBounce } from './reply-back.mjs';
 
 /**
  * The entries a final item’s mentions make: only an agent’s reply from a turn Postbox ran (not one mirrored from a
@@ -37,8 +36,7 @@ export function mentionEntries(rt, { threadId, item }) {
     // It named an agent, so it doesn’t go back to the one that woke it (reply-back.mjs), whether or not this wakes it.
     turn.named = true;
     if (turn.woken.includes(h)) continue;
-    const bounce = afterBounce(rt, se.id, turn);
-    const opts = { replyIn, fromTurnId: turn.id, itemId: said, prose: true, wake: live, retryId: replayKey(turn, h), bounce };
+    const opts = { replyIn, fromTurnId: turn.id, itemId: said, prose: true, wake: live, retryId: replayKey(turn, h) };
     const r = rt.agentWake(se.id, h, item.text, opts);
     if (r.itemId) said = r.itemId;
     if (r.ok || r.waiting) turn.mentioned = [...new Set([...(turn.mentioned ?? []), h])];
