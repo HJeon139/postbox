@@ -39,3 +39,25 @@ test('a clock started, paused, resumed and expired behind a held commit acts at 
   assert.equal(store.state.clocks[se.id].state, 'expired', 'published as it acted');
   await store.close();
 });
+
+test('the clock’s route refuses a session deleted behind a held commit, and a held deletion takes its clock', async (t) => {
+  mock.timers.enable({ apis: ['setTimeout', 'setInterval'] });
+  t.after(() => mock.timers.reset());
+  const h = await heldStore();
+  const { rt, store, se } = setup(h.store);
+  clockAction(rt, se.id, { action: 'start', budgetS: 60 }, at(0));
+  await store.flush();
+  h.hold();
+  const held = store.commit([{ type: 'notify', data: { text: 'a commit in its fsync' } }]);
+  await h.atSync;
+  // The deletion, held: its session is still published, and gone from the pending view.
+  store.emit('remove', { kind: 'session', id: se.id });
+  assert.ok(store.state.sessions[se.id], 'still published');
+  assert.equal(store.pending.clock(se.id), null, 'the held deletion takes the clock');
+  assert.throws(() => clockAction(rt, se.id, { action: 'pause' }, at(1_000)), { status: 404 });
+  h.release();
+  await held;
+  await store.flush();
+  assert.equal(store.state.clocks[se.id], undefined, 'no orphan clock');
+  await store.close();
+});

@@ -26,7 +26,9 @@ const clockOf = (rt, sessionId) => rt.store.pending.clock(sessionId);
  * @param {any} rt @param {string} sessionId @param {unknown} body @param {() => number} [now]
  */
 export function clockAction(rt, sessionId, body, now = Date.now) {
-  const se = rt.session(sessionId);
+  // Pending: a session deleted behind a held commit has no clock to start (hydrant-critic’s review of #1522).
+  const se = rt.store.pending.session(sessionId);
+  if (!se) throw httpError(404, 'That session doesn’t exist. It may have been deleted.');
   const { action, budgetS } = /** @type {any} */ (body ?? {});
   const clock = clockOf(rt, sessionId);
   switch (action) {

@@ -58,6 +58,8 @@ function touchedBy(ev) {
   for (const [coll, { event, removed, patched }] of Object.entries(ENTITIES))
     if (ev.type === event || ev.type === patched || (ev.type === 'remove' && ev.data?.kind === removed)) names.push(`entities:${coll}`);
   if (typeof ev.type === 'string' && ev.type.startsWith('clock.')) names.push(`clock:${ev.data?.sessionId}`);
+  // A session’s deletion deletes its clock too (shared/state.mjs, removeEntity).
+  if (ev.type === 'remove' && ev.data?.kind === 'session') names.push(`clock:${ev.data.id}`);
   return names;
 }
 
@@ -142,7 +144,9 @@ function pendingClock(store, sessionId) {
   const s = { clocks: Object.assign(Object.create(null), published ? { [sessionId]: { ...published } } : {}) };
   for (let i = 0; i < store.heldLog.length; i++) {
     const { held, json } = store.heldLog.at(i);
-    if (!held.type?.startsWith('clock.') || held.data?.sessionId !== sessionId) continue;
+    const removes = held.type === 'remove' && held.data?.kind === 'session' && held.data.id === sessionId;
+    if (removes) delete s.clocks[sessionId];
+    if (removes || !held.type?.startsWith('clock.') || held.data?.sessionId !== sessionId) continue;
     const { type, data } = JSON.parse(json);
     try {
       apply(s, type, data);
