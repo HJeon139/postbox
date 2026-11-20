@@ -54,3 +54,30 @@ test('another agent reads a reply still being written as not done, and reads all
   const done = arrange.readMessage(rt, researcher, { id });
   assert.equal(done.message, '@critic: The first half of my report. The second half.');
 });
+
+test('a topic thread started from a reply still being written opens with the reply’s words so far, saying so', async () => {
+  const { store, rt, adapter, t } = setup();
+  const other = rt.createPersona({ handle: 'researcher' });
+  rt.ensureSession(t.id, other.id);
+  const researcher = arrange.sessionsIn(rt, t.id).find((x) => x.handle === 'researcher');
+  /** @type {() => void} */
+  let finish = () => {};
+  adapter.next.push(async (/** @type {any} */ c) => {
+    c.text('The first half of my report. ');
+    await new Promise((r) => {
+      finish = () => r(undefined);
+    });
+  });
+  rt.sendMessage(t.id, { text: '@critic write the report' });
+  const reply = () => store.items(t.id).find((/** @type {any} */ i) => i.kind === 'agent' && i.handle === 'critic');
+  await until(() => reply()?.text);
+  const topic = rt.s.threads[rt.startTopic(t.id, reply().id).threadId];
+  const opens = () => rt.memory.topicRootLine(researcher, topic);
+  assert.match(
+    opens(),
+    new RegExp(`^This thread started from @critic’s message \\(still writing this reply: .*"${reply().id}".*\\): The first half of my report\\.`),
+  );
+  finish();
+  await settle(rt);
+  assert.equal(opens(), 'This thread started from @critic’s message: The first half of my report. ', 'once it’s done, the note is gone');
+});

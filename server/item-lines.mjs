@@ -192,7 +192,7 @@ export function topicRootLine(memory, se, t) {
     case 'user':
       return `${from} the person’s message${toWhom(root)}: ${text(root.text)}${attachedText(memory, root.attachments, se)}`;
     case 'agent':
-      return `${from} @${root.handle}’s message: ${text(root.text)}`;
+      return `${from} @${root.handle}’s message${writingNote(root)}: ${text(root.text)}`;
     case 'block': {
       // The title names it; what it holds is the text an agent can quote (a draft, or a table’s rows) (#153).
       const b = root.block ?? {};
