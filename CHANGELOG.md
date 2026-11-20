@@ -2,6 +2,18 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.35.0 (2026-11-20)
+
+### Features
+
+- **memory:** another agent reading a reply still being written is told so
+
+### Fixes
+
+- **memory:** the writing note says "what it has said so far"
+- **memory:** a topic thread opened on a reply still being written says so
+- **memory:** a copy of a reply's line wakes no one, with or without its writing note
+
 ## 4.34.4 (2026-11-20)
 
 ### Fixes
