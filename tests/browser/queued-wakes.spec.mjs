@@ -150,7 +150,8 @@ test('an unaddressed newer post is named on the waiting message as posted since,
   await idle(r);
   await synced(page, app);
   await expect(mail(page, r)).toBeHidden();
-  await expect(page.getByText('Answered 1 queued messages.', { exact: true })).toBeVisible();
+  // The worker’s reply @-mentions no one, so it goes back to the sender (#1518), who answers it the same way.
+  await expect(page.getByText('Answered 1 queued messages.', { exact: true })).toHaveCount(2);
   expect(turnsFor(r)).toHaveLength(2);
   expect(turnsFor(r)[1].message.text).toBe(`Review the older context\n(The same sender posted since: [${newer.id}])`);
 });

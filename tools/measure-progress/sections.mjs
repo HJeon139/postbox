@@ -104,29 +104,38 @@ export async function long() {
   return rows;
 }
 
-/** The crowds: 4 agents in a room (1x), 40 in a room (10x), and 100 across 25 rooms (100x), with 1, 3 and 10 tabs. */
+/** The crowds: 4 agents in a room (1x), 40 in a room (10x), and 100 across 25 rooms (100x), each with 1, 3 and 10 tabs. */
+export const CROWDS = /** @type {const} */ ([
+  ['1x: 4 agents in a room', 1, 4],
+  ['10x: 40 agents in a room', 1, 40],
+  ['100x: 100 agents across 25 rooms', 25, 4],
+]);
+export const CROWD_TABS = /** @type {const} */ ([1, 3, 10]);
+
+/**
+ * One run of a crowd: `rooms` rooms of `per` agents, each woken at once, with `tabs` tabs on the first room.
+ * @param {any[]} pool  the recorded turns the agents play, in turn @param {number} rooms @param {number} per @param {number} tabs
+ */
+export function crowdRun(pool, rooms, per, tabs) {
+  const prepare = (/** @type {any} */ f) => {
+    const made = makeRooms(f.rt, rooms, per);
+    return { open: [made[0].threadId], rooms: made };
+  };
+  return measured({ tabs, prepare }, async (f, { rooms: made }) => {
+    const slots = scriptTurns(
+      f.adapter,
+      Array.from({ length: rooms * per }, (_, i) => pool[i % pool.length]),
+    );
+    for (const room of made) f.rt.sendMessage(room.threadId, { text: room.wake });
+    return play(slots);
+  });
+}
+
+/** Each crowd with each count of tabs, one after another in this process. */
 export async function crowded() {
   const pool = turnsOfAll();
   const rows = [];
-  for (const [label, rooms, per] of /** @type {const} */ ([
-    ['1x: 4 agents in a room', 1, 4],
-    ['10x: 40 agents in a room', 1, 40],
-    ['100x: 100 agents across 25 rooms', 25, 4],
-  ]))
-    for (const tabs of [1, 3, 10]) {
-      const prepare = (/** @type {any} */ f) => {
-        const rooms_ = makeRooms(f.rt, rooms, per);
-        return { open: [rooms_[0].threadId], rooms: rooms_ };
-      };
-      const m = await measured({ tabs, prepare }, async (f, { rooms: made }) => {
-        const slots = scriptTurns(
-          f.adapter,
-          Array.from({ length: rooms * per }, (_, i) => pool[i % pool.length]),
-        );
-        for (const room of made) f.rt.sendMessage(room.threadId, { text: room.wake });
-        return play(slots);
-      });
-      rows.push({ row: `${label}, ${tabs} tabs`, ...numbers(m) });
-    }
+  for (const [label, rooms, per] of CROWDS)
+    for (const tabs of CROWD_TABS) rows.push({ row: `${label}, ${tabs} tabs`, ...numbers(await crowdRun(pool, rooms, per, tabs)) });
   return rows;
 }

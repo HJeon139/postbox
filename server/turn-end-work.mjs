@@ -13,6 +13,7 @@ export function endedAs(err) {
 
 /**
  * The turn’s work is recorded (#132), then its last reply, or its last block, gets the list that leads to it (#195).
+ * Once Postbox has closed the ledger as it shuts down, closeLedger wrote the turn’s end and its line, and nothing more is.
  * @param {import('./work-service.mjs').Work} work @param {any} turn @param {string} status
  */
 export function endWork(work, turn, status) {
@@ -20,13 +21,19 @@ export function endWork(work, turn, status) {
     work.ledger
       .endTurn(turn, { status })
       .then(() => {
-        const line = turn.work ? turnLine(work.ledger.entries(turn.work.convId), turn.id) : null;
-        const last = work.store.pending.items(turn.threadId).findLast((x) => x.turnId === turn.id && (x.kind === 'agent' || (x.kind === 'block' && x.valid)));
-        if (line && last) work.threads.patchItem(turn.threadId, last.id, { work: line, workTurn: turn.id });
+        if (work.ledger.closing) return;
+        workLine(work, turn);
         // Not awaited: the turn has ended, and nothing of it waits for the pass, which never rejects.
         work.archive.conversation(turn.work?.convId ?? work.threads.lineage(turn.threadId).at(-1));
       })
       // Its callers don’t await it: a ledger that fails here must not become an unhandled rejection.
       .catch((e) => console.error(`@${turn.work?.se?.handle ?? 'an agent'}’s turn work wasn’t recorded: ${e instanceof Error ? e.message : e}`))
   );
+}
+
+/** The turn’s last reply, or its last block, gets the list of its work (#195). @param {import('./work-service.mjs').Work} work @param {any} turn */
+export function workLine(work, turn) {
+  const line = turn.work ? turnLine(work.ledger.entries(turn.work.convId), turn.id) : null;
+  const last = work.store.pending.items(turn.threadId).findLast((x) => x.turnId === turn.id && (x.kind === 'agent' || (x.kind === 'block' && x.valid)));
+  if (line && last) work.threads.patchItem(turn.threadId, last.id, { work: line, workTurn: turn.id });
 }

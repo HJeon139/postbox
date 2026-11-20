@@ -8,6 +8,9 @@ import { liveStreams } from '../server/live-streams.mjs';
 import { Store } from '../server/store.mjs';
 import { sendLive } from '../server/store-live.mjs';
 
+/** Each tab’s stream’s close, as its page going away calls it. @type {WeakMap<string[], () => void>} */
+const closers = new WeakMap();
+
 /** A page’s stream with `open` conversations open: the frames it’s sent, as event names. @param {any} ls @param {any} store @param {string} [open] */
 function tab(ls, store, open) {
   /** @type {string[]} */
@@ -24,7 +27,8 @@ function tab(ls, store, open) {
     once() {},
   };
   const q = `since=${store.state.seq}&epoch=${encodeURIComponent(store.epoch)}${open === undefined ? '' : `&open=${open}`}`;
-  ls.stream(/** @type {any} */ ({ headers: {}, on() {} }), /** @type {any} */ (res), new URL(`http://127.0.0.1/api/stream?${q}`));
+  const req = { headers: {}, on: (/** @type {string} */ e, /** @type {() => void} */ fn) => e === 'close' && closers.set(got, fn) };
+  ls.stream(/** @type {any} */ (req), /** @type {any} */ (res), new URL(`http://127.0.0.1/api/stream?${q}`));
   return got;
 }
 
@@ -77,8 +81,10 @@ test('a send held back by the lag goes to the streams open when it was made, not
     const ls = liveStreams(store, undefined, { running: { all: () => [] } });
     t.after(() => ls.stop());
     const early = tab(ls, store, 'th_1');
+    const gone = tab(ls, store, 'th_1');
     store.emit('thread', { id: 'th_1', projectId: 'p1', title: 'T', members: [] });
     sendLive(store, { kind: 'session', sessionId: 'se_1', currentStep: 'Read' });
+    closers.get(gone)?.(); // its page went away before the sends fired
     const late = tab(ls, store, 'th_1'); // its page loaded the state with both
     sendLive(store, { kind: 'session', sessionId: 'se_1', currentStep: 'Write' });
     await new Promise((r) => setTimeout(r, 60));
@@ -87,6 +93,7 @@ test('a send held back by the lag goes to the streams open when it was made, not
       ['thread', 'live session', 'live session'],
     );
     assert.deepEqual(late, ['live session'], 'only what was made after it opened');
+    assert.deepEqual(gone, [], 'nothing to a stream closed before the sends fired');
   } finally {
     if (before === undefined) delete process.env.POSTBOX_STREAM_LAG;
     else process.env.POSTBOX_STREAM_LAG = before;

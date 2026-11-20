@@ -61,12 +61,6 @@ const SESSION = Object.freeze({
  * @type {Readonly<Record<string, Readonly<{ events: readonly string[], keys: readonly string[], item: boolean, shape: Shape }>>>}
  */
 export const LIVE = Object.freeze({
-  text: Object.freeze({
-    events: Object.freeze(['item.text']),
-    keys: Object.freeze(['items']),
-    item: true,
-    shape: Object.freeze({ fields: Object.freeze(['threadId', 'itemId', 'turnId', 'at', 'text']) }),
-  }),
   step: Object.freeze({
     events: Object.freeze(['item.patch']),
     keys: Object.freeze(['items']),
@@ -80,12 +74,12 @@ export const LIVE = Object.freeze({
     shape: Object.freeze({ fields: Object.freeze(['sessionId', ...SESSION.fields, ...CARRIED_FIELDS]), lists: SESSION.lists }),
   }),
   snapshot: Object.freeze({
-    events: Object.freeze(['item.text', 'item.patch', 'session.patch']),
+    events: Object.freeze(['item.patch', 'session.patch']),
     keys: Object.freeze(['items', 'sessions']),
     item: true,
     shape: Object.freeze({
       fields: Object.freeze(['turnId', 'sessionId', 'threadId', 'itemId']),
-      objects: Object.freeze({ text: Object.freeze({ fields: Object.freeze(['at', 'text']) }), session: SESSION }),
+      objects: Object.freeze({ session: SESSION }),
       lists: Object.freeze({ steps: STEP }),
     }),
   }),

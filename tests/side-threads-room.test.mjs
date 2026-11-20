@@ -176,7 +176,7 @@ test('#128, #372: bring_to_conversation is offered over MCP only to the person�
   assert.equal(await offered(alpha, () => rt.sendMessage(t.id, { text: '@alpha hello' })), false);
 });
 
-test('#151, #372: a failed wake in a topic thread needs you there, and Retry answers the wake again, with no reply to the agent that asked', async () => {
+test('#151, #1518: a failed wake in a topic thread needs you there, and Retry answers the wake again, whose answer alone goes back to the agent that asked', async () => {
   const f = setup();
   const { store, rt, adapter, alpha, beta } = f;
   const topic = await withTopic(f);
@@ -190,7 +190,8 @@ test('#151, #372: a failed wake in a topic thread needs you there, and Retry ans
   assert.equal(failed.handle, 'beta');
   // The room sees it: beta needs you, at the card in the topic thread.
   assert.deepEqual(store.state.sessions[beta.id].needs, { kind: 'failed', itemId: failed.id, text: 'API 500', threadId: topic.id });
-  // Retry is the wake again, in the topic thread, and its answer stays there: @alpha isn’t woken by it.
+  // Retry is the wake again, in the topic thread. The failed turn goes back to no one; the answer goes back to @alpha
+  // once, in the thread, since it named no agent (#1518, which reverses #372 here).
   adapter.next.push(async (c) => c.text('Looks right.'));
   rt.retry(topic.id, failed.id);
   await settle(rt);
@@ -200,6 +201,7 @@ test('#151, #372: a failed wake in a topic thread needs you there, and Retry ans
     [
       ['beta', 'agent', '@alpha', 'Review the plan.', topic.id],
       ['beta', 'agent', '@alpha', 'Review the plan.', topic.id],
+      ['alpha', 'agent', '@beta', 'Looks right.', topic.id],
     ],
   );
   assert.equal(store.item(topic.id, failed.id).status, 'retried');
@@ -248,7 +250,9 @@ test('#128, #228, #372: a wake from an agent that answered in a topic thread, ma
   // the conversation, its own thread, and opens no side thread.
   rt.agentWake(beta.id, 'alpha', 'Check it.');
   await settle(rt);
-  assert.deepEqual([adapter.calls.at(-1).sessionId, adapter.calls.at(-1).thread], [alpha.id, t.id]);
+  // Alpha’s answer goes back to beta afterward (#1518), so the wake’s turn is alpha’s latest, not the latest of all.
+  const woke = adapter.calls.findLast((x) => x.sessionId === alpha.id);
+  assert.equal(woke.thread, t.id);
   assert.ok(store.items(t.id).some((x) => x.kind === 'agent' && x.handle === 'beta' && x.text === 'Check it.' && x.hop === 1));
   assert.equal(
     store.items(topic.id).some((x) => x.text === 'Check it.'),

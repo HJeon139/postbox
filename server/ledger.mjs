@@ -38,7 +38,8 @@ import {
   urlsIn,
 } from '../shared/work.mjs';
 import { fileDiff, output, restore } from './ledger-answers.mjs';
-import { commandSeen, commandStarted, endedAs, folderWatch, turnEnded } from './ledger-commands.mjs';
+import { commandSeen, commandStarted, endedAs, folderWatch } from './ledger-commands.mjs';
+import { endTurn } from './ledger-end.mjs';
 import { clip, gitState, pushed, recordCommit, recordLandedPushes, recordPushes, rootOf, runGit, tracked } from './ledger-git.mjs';
 import { known, memoryBlobs, nodeIo, outputFileAt, sameSnap } from './ledger-io.mjs';
 import { hostEdit, hostFolder, hostOf } from './ledger-remote.mjs';
@@ -56,13 +57,17 @@ export class Ledger {
     this.store = store;
     this.blobs = blobs ?? memoryBlobs();
     this.io = io;
-    this.git = git;
+    // Once Postbox has closed the ledger (closeLedger), git isn’t run: it answers as it does outside a repository.
+    this.git = (/** @type {Parameters<typeof runGit>} */ ...a) => (this.closing ? Promise.resolve({ code: 128, stdout: '', stderr: '' }) : git(...a));
     this.home = home;
     this.now = now;
     this.roots = new Map(); // folder → its repository’s top folder, or null
     this.pushedCache = new Set(); // root:sha known to be on a remote
     this.pending = new Set(); // work that hasn’t finished writing, so tests can wait for it
     this.folders = folderWatch(); // git folders, to see what a command did there (#156)
+    /** @type {Set<{ turn: any, write: () => void }>} turns’ ends still being recorded, which closeLedger writes as they are */
+    this.ending = new Set();
+    this.closing = false; // closeLedger ran: nothing more is written
   }
 
   get s() {
@@ -81,11 +86,11 @@ export class Ledger {
     return this.entries(convId).find((e) => e.id === id) ?? null;
   }
   add(convId, entry) {
-    this.store.emit('work.add', { convId, entry });
+    if (!this.closing) this.store.emit('work.add', { convId, entry });
     return entry;
   }
   patch(convId, id, patch) {
-    this.store.emit('work.patch', { convId, id, patch });
+    if (!this.closing) this.store.emit('work.patch', { convId, id, patch });
   }
   /** Keeps a promise until it settles, so idle() can wait for it. */
   track(p) {
@@ -454,58 +459,16 @@ export class Ledger {
     turn.work?.usage.set(key, { costUsd, tokens });
   }
 
-  /**
-   * The turn ended: read what each file it changed looks like now, and record the turn’s effort.
-   * @returns {Promise<string|null>} the turn’s line for the transcript, from shared/work.mjs turnLine
-   */
-  async endTurn(turn, { status = 'done' } = {}) {
-    const w = turn.work;
-    if (!w || w.ended) return null;
-    w.ended = true;
-    const run = (async () => {
-      await Promise.allSettled(w.pending);
-      turnEnded(this, w);
-      this.recordPublishes(turn);
-      // A host turn has no files to read (they’re on the host), so this is a no-op for it; the guard says so.
-      for (const f of w.host ? [] : w.files.values()) {
-        const before = await f.before;
-        const after = await this.capture(await this.io.read(f.path));
-        await this.recordChange(turn, f, before, after);
-      }
-      const usage = [...w.usage.values()];
-      const priced = usage.filter((u) => typeof u.costUsd === 'number');
-      const tokened = usage.filter((u) => u.tokens);
-      const sum = (k) => tokened.reduce((n, u) => n + (Number(u.tokens[k]) || 0), 0);
-      const t = this.entry(w.convId, turn.id);
-      const endedAt = this.now();
-      this.patch(w.convId, turn.id, {
-        status,
-        endedAt,
-        ms: endedAt - (t?.startedAt ?? endedAt),
-        toolCalls: w.toolCalls,
-        costUsd: priced.length ? priced.reduce((n, u) => n + u.costUsd, 0) : null,
-        tokens: tokened.length ? { input: sum('input'), output: sum('output'), cacheRead: sum('cacheRead'), cacheWrite: sum('cacheWrite') } : null,
-      });
-      // A command with no result when its turn ended: stopped with it, or still running in the background,
-      // where Postbox can’t see it end (#129) unless the runtime does (jobUpdate). One you kept running still is.
-      for (const id of w.commands.values()) {
-        const e = this.entry(w.convId, id);
-        if (e?.state === 'running') this.patch(w.convId, id, { state: status === 'stopped' ? 'stopped' : 'unknown', ms: endedAt - e.startedAt });
-        else if (e?.state === 'background') this.patch(w.convId, id, { ...(e.keptRunning ? {} : { state: 'unknown' }), leftRunning: true });
-      }
-      for (const id of w.externals.values()) {
-        const e = this.entry(w.convId, id);
-        if (e?.state === 'running') this.patch(w.convId, id, { state: 'unknown' });
-      }
-    })();
-    await this.track(run);
-    return null;
+  /** The turn ended: what each file it changed looks like now, and its effort (server/ledger-end.mjs). */
+  endTurn(turn, opts) {
+    return endTurn(this, turn, opts);
   }
 
   /** Stores a read in the blob store and describes it: { exists, size, sha256, binary } (or big, unreadable). */
   async capture(read) {
     const r = await read;
     if (!r?.exists) return { exists: false };
+    if (this.closing) return { exists: true, size: r.size ?? r.bytes?.length ?? null }; // nothing is kept once the ledger has closed
     if (!r.bytes)
       return { exists: true, size: r.size ?? null, ...(r.big ? { big: true } : {}), ...(r.unreadable ? { unreadable: clip(r.unreadable, 200) } : {}) };
     const { sha256 } = await this.blobs.put(r.bytes);
@@ -513,6 +476,7 @@ export class Ledger {
   }
 
   async keepOutput(bytes) {
+    if (this.closing) return { size: 0 }; // nothing is kept once the ledger has closed
     const cut = bytes.length > MAX_OUTPUT_BYTES;
     const kept = cut ? bytes.subarray(bytes.length - MAX_OUTPUT_BYTES) : bytes;
     if (!kept.length) return { size: 0 };

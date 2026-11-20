@@ -5,6 +5,7 @@ import { positionOf } from '../shared/item-index.mjs';
 import { parseMentions } from '../shared/text.mjs';
 import { copiedLine } from './copied-line.mjs';
 import { clip, httpError, tooLongToSend } from './helpers.mjs';
+import { afterBounce } from './reply-back.mjs';
 import { newId } from './store.mjs';
 
 /**
@@ -126,9 +127,13 @@ function repeatOf(rt, se, threadId, text, handles, created) {
  * A2's records carry the same as the message's addressees. Returns the message's id and the wakes' replies.
  */
 function post(rt, se, threadId, text, handles) {
-  const fromTurnId = rt.turns.get(se.id)?.id;
+  const turn = rt.turns.get(se.id);
+  const fromTurnId = turn?.id;
+  // An open that names agents hands off, so the turn’s reply doesn’t go back to whoever woke it (reply-back.mjs).
+  if (turn && handles.some((h) => h.toLowerCase() !== se.handle.toLowerCase())) turn.named = true;
   const opened = named(handles);
   const message = { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text, status: 'done', opened, fromTurnId };
   const it = rt.threads.addItem(threadId, message);
-  return { id: it.id, woke: handles.map((h) => rt.agentWake(se.id, h, text, { replyIn: threadId, itemId: it.id, fromTurnId, prose: true }).message) };
+  const bounce = turn ? afterBounce(rt, se.id, turn) : false;
+  return { id: it.id, woke: handles.map((h) => rt.agentWake(se.id, h, text, { replyIn: threadId, itemId: it.id, fromTurnId, prose: true, bounce }).message) };
 }

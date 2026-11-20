@@ -286,7 +286,7 @@ test('a message from you resets the wake count', async () => {
   assert.equal(store.state.threads[t.id].hops, 0);
 });
 
-test('#372: agents wake each other in the conversation, with no side thread or link, and a reply doesn’t go back by itself', async () => {
+test('#372, #1518: agents wake each other in the conversation, with no side thread or link, and a reply that names no one goes back once', async () => {
   const { rt, store, t, b, adapter } = setup();
   const alpha = arrange.sessionsIn(rt, t.id)[0];
   const beta = rt.ensureSession(t.id, b.id);
@@ -296,9 +296,15 @@ test('#372: agents wake each other in the conversation, with no side thread or l
   const kinds = new Set([...Object.values(store.state.threads).map((x) => x.kind), ...store.items(t.id).map((i) => i.kind)]);
   assert.ok(!kinds.has('side') && !kinds.has('sidelink'), 'no side thread, and no line for one');
   const said = store.items(t.id).filter((i) => i.kind === 'agent');
-  assert.equal(said.map((i) => `@${i.handle}: ${i.text}`).join(' | '), '@alpha: Which editions? | @beta: Editions are fine.');
-  // Beta’s reply doesn’t go back to alpha as a message: it’s in the conversation, and it didn’t mention @alpha.
-  assert.equal(adapter.calls.map((c) => c.sessionId).join(), beta.id);
+  assert.equal(said.map((i) => `@${i.handle}: ${i.text}`).join(' | '), '@alpha: Which editions? | @beta: Editions are fine. | @alpha: ok');
+  // #1518 reverses #372 here: beta’s reply mentioned no one, so it goes back to alpha for one turn, and alpha’s reply to
+  // that goes back to no one.
+  assert.deepEqual(said[1].wentBack, ['alpha']);
+  assert.equal(adapter.calls.map((c) => c.sessionId).join(), [beta.id, alpha.id].join());
+  assert.match(
+    adapter.calls[1].message.text,
+    /goes to no one unless you @-mention an agent\. An agent you @-mention now answers you only if it @-mentions you: its reply doesn’t come back on its own\.\n\n.*@beta, .*: Editions are fine\.$/,
+  );
   assert.equal(store.state.sessions[alpha.id].agentMessages[0].other, 'beta');
 });
 
@@ -605,8 +611,10 @@ test('#93: a stopped summary isn’t pending, and a reply in a summary still bei
     });
   });
   rt.summarizeBack(threadId);
-  await new Promise((r) => setImmediate(r));
-  const part = store.items(threadId).find((i) => i.kind === 'agent' && i.text === 'Half of the summary');
+  // Its words are stored as their window ends (server/live-text.mjs, LIVE_TEXT.windowMs).
+  const shown = () => store.items(threadId).find((i) => i.kind === 'agent' && i.text === 'Half of the summary');
+  for (let waited = 0; !shown() && waited < 1000; waited += 10) await new Promise((r) => setTimeout(r, 10));
+  const part = shown();
   assert.throws(() => rt.shareToConversation(threadId, part.id), { status: 409 });
   rt.stop(arrange.sessionsIn(rt, t.id)[0].id);
   release();

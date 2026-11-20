@@ -2,6 +2,83 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.34.2 (2026-11-19)
+
+### Fixes
+
+- **wakes:** mark a turn as from a bounce only when agents alone woke it
+- **wakes:** tell an agent after a bounce that its mentions won't come back
+
+## 4.34.1 (2026-11-18)
+
+### Fixes
+
+- **wakes:** don't send a reply back after a review or a thanks that mentions
+- **wakes:** note a reply as sent back only once it goes
+- **wakes:** send a reply that names no one back to the agent that asked
+
+## 4.34.0 (2026-11-18)
+
+### Features
+
+- **ledger:** write a stopped turn's ledger end before the store closes
+
+### Fixes
+
+- **ledger:** a closed ledger keeps nothing, and a throw at close is logged
+
+## 4.33.2 (2026-11-18)
+
+### Fixes
+
+- **remote:** keep a host's Postbox up to date by default
+
+## 4.33.1 (2026-11-18)
+
+### Fixes
+
+- **codex:** enforce web choice in every permission mode
+- **codex:** sort web permission test imports
+- **codex:** honor web permission for built-in search
+
+## 4.33.0 (2026-11-18)
+
+### Features
+
+- **live:** store a running reply's words once a window of 50 ms, not once a word
+- **store:** a hook for a reply about to settle, before its patch is emitted
+- **live:** a running reply's words go live, and are stored only at commit points
+
+### Fixes
+
+- **live:** work out once per kind whether a live frame's kind is public
+- **store:** write one emit's line without a map and a list for it
+- **live:** /api/state's live state leaves out the running replies' words
+- **store:** ask whether an event's logged line differs only for an item.text
+- **live:** send a tick's words as one frame, and none for words a commit stores in the same tick
+- **live:** name the applier's frame parameter in its JSDoc
+- **live:** a snapshot names its words' part only when it isn't the snapshot's own
+- **live:** keep one words timer a turn, restarted as each run of words starts
+- **store:** write a stored chunk's at only when it isn't its item's end
+- **live:** send a text frame as a list of its fields, not an object
+- **app:** apply a running reply's words while the page is ahead of its stream
+- **share:** say a reply is part of a summary being written before saying it has no text
+
+## 4.32.0 (2026-11-18)
+
+### Features
+
+- **tools:** judge a crash restart at 8 points across a snapshot interval, not one
+- **tools:** gate crowds' CPU on the steady section, and report the crowd section's times ungated
+- **tools:** measure each crowd's steady state, alone in a process and warmed
+
+### Fixes
+
+- **tools:** a refused comparison exits 1 with its message, and its advice names the older side
+- **tools:** place crash points at fixed phases of the snapshot interval
+- **tools:** refuse runs whose rows or numbers don't match, rather than judging what they share
+- **tools:** judge a crash's replay as the mean and the most across its points, not point by point
+
 ## 4.31.0 (2026-11-18)
 
 ### Features

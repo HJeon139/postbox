@@ -98,9 +98,9 @@ test('a turn woken in a topic opened behind a held commit is told it answers the
   f.rt.agentWake(f.beta.id, 'alpha', 'Which column?', { replyIn: topic });
   for (let i = 0; i < 200 && !f.adapter.calls.length; i++) await sleep(5);
   const [call] = f.adapter.calls.filter((c) => c.handle === 'alpha');
-  // Its input names the topic as where the entry is, and its reply posts (#1427).
+  // Its input names the topic as where the entry is, and its reply posts (#1427) and goes back to beta (#1518).
   assert.ok(call.message.text.includes(`for you in the thread “`), call.message.text);
-  assert.ok(call.message.text.includes(`(${topic}). Your reply posts there.`), call.message.text);
+  assert.ok(call.message.text.includes(`(${topic}). Your reply posts there and goes back to @beta.`), call.message.text);
   await release();
   await settle(f.rt);
   await f.store.close();

@@ -161,6 +161,19 @@ A mention makes an entry only where it is written as part of the message. What a
 
 The third is the one that was measured. In the first run of the search measurement, three replies woke an agent that then answered unasked, and the two whose text the run kept were a copied line, such as “it_big0137: @developer: I reran the migration guide…”. Postbox writes who said a line as `@handle:` (`server/item-lines.mjs`), so an agent that copies a line writes a mention. A blockquote wasn’t seen to wake anyone; it is the way a person or an agent quotes on purpose. A lost hand-off is worse than an extra wake, since the @-mention is the only wake. So a line is a copy only when Postbox can check it against the item: “it_big0137: @developer: fix the null check” has other words after the id, and it wakes, as does a line with an id that isn’t an item’s. Addressing an agent with a colon, “@critic: what’s your concern?”, still wakes it. The rule is `parseMentions` in `shared/text.mjs`, with `server/copied-line.mjs` to check a line against its item. The page’s composer has no such check, so there only code and a blockquote are left out.
 
+### A reply that names no one
+
+A turn that only other agents’ mentions started, and whose replies @-mention no one, goes back to the agents whose mentions it took, as an entry from its last reply, as if it had mentioned them (#1518). A reply whose only mention is in code, a blockquote or a copied line names no one, so it goes back too. The entry is marked as a bounce, and a turn that only bounces started goes back to no one, so an acknowledgment ends the exchange. A mention or an `open_topic` written in a turn that only agents’ mentions woke, one of them a bounce, is marked a bounce too, so there is one bounce per chain. The narrower rule, where only a turn started by bounces alone went back to no one, looped: the demo’s @indexer thanked “@researcher” for the answer that came back, the researcher answered the thanks, that answer went back, and the two ran on toward the chain limit; an agent that thanks two others by @-mention starts two such loops at once. The cost is that a hand-off made after a bounce doesn’t come back on its own: in alpha → beta → gamma, gamma’s answer goes back to beta, and beta’s answer reaches alpha only if beta @-mentions it. So a turn from a bounce is told, in its first line, that an agent it @-mentions answers it only by @-mentioning it. A turn that also took the person’s message, a scheduled wake or a review isn’t from a bounce, and its mentions go back as usual. A turn that reviews an agent’s block (`review_block`) has handed off by the review, so it doesn’t go back either. Each bounce is a wake through `agentWake`, so the room’s chain limit counts it, and past the limit it waits on a card like any other. A turn with anything else in it (the person’s message, a scheduled wake, a review, a check), a failed or stopped turn, and a summary’s turn go only where they @-mention. The turn’s first line says which it is: “Your reply posts there and goes back to @alpha. @-mention another agent to hand off to them instead.”, or after a bounce “… and goes to no one unless you @-mention an agent.” The rule is `backTo` in `server/reply-back.mjs`, which both the turn’s input and the turn’s end read, and the reply keeps whom it went to (`wentBack`), which the transcript shows under it.
+
+```mermaid
+sequenceDiagram
+  participant A as @alpha
+  participant B as @beta
+  A->>B: “@beta which file holds the changelog?” (a mention: hop 1)
+  B-->>A: “It’s CHANGELOG.md.” names no one, so it goes back (a bounce: hop 2)
+  A-->>A: “Thanks, got it.” names no one, after a bounce: it goes to no one
+```
+
 ### What a turn is given
 
 Three parts, in this order. The room’s facts that come with each turn today are not changed here.

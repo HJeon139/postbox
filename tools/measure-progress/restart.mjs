@@ -15,6 +15,7 @@ import { Runtime } from '../../server/runtime.mjs';
 import { stopTimers } from '../../server/runtime-close.mjs';
 import { Store } from '../../server/store.mjs';
 import { ScriptedAdapter } from '../../tests/side-threads-fixture.mjs';
+import { crashFolders, crashPoints, POINTS } from './crash-points.mjs';
 import { makeRooms, play, scriptTurns, ticking } from './drive.mjs';
 import { notARepository, turnsOfAll } from './fixtures.mjs';
 import { countingHandle, countingIo } from './log-bytes.mjs';
@@ -119,6 +120,7 @@ export async function restartLoad(dir, agents, mode) {
   await (await new Store(`${dir}-whole`).load()).close();
   const { store: w, loadMs: wholeLoadMs } = await timedLoad(`${dir}-whole`);
   await w.close();
+  const points = mode === 'crash' ? await pointLoads(dir, without.events) : [];
   const { store, loadMs, heapMB } = await timedLoad(dir);
   const rt = new Runtime({
     store,
@@ -131,9 +133,30 @@ export async function restartLoad(dir, agents, mode) {
   const sweepMs = performance.now() - at;
   stopTimers(rt);
   await store.close();
+  const row = `restart after ${agents} agents, ${mode}`;
+  // A crash past one snapshot interval is judged at its points (tools/measure-progress/crash-points.mjs): the mean and
+  // the worst load, and the mean and the most replayed. The points sit at fixed phases of the interval on both sides,
+  // so their sums compare whatever the two logs’ lengths.
+  if (points.length > 1) {
+    const mean = (/** @type {number[]} */ xs) => xs.reduce((a, x) => a + x, 0) / xs.length;
+    return [
+      {
+        row,
+        wholeBytes: without.bytes,
+        wholeEvents: without.events,
+        replayedBytes: mean(points.map((p) => p.bytes)),
+        mostReplayedBytes: Math.max(...points.map((p) => p.bytes)),
+        loadMs: mean(points.map((p) => p.loadMs)),
+        worstLoadMs: Math.max(...points.map((p) => p.loadMs)),
+        wholeLoadMs,
+        heapMB,
+        sweepMs,
+      },
+    ];
+  }
   return [
     {
-      row: `restart after ${agents} agents, ${mode}`,
+      row,
       snapshotBytes: withSnap.snapshotBytes,
       replayedBytes: withSnap.bytes,
       replayedEvents: withSnap.events,
@@ -147,8 +170,28 @@ export async function restartLoad(dir, agents, mode) {
   ];
 }
 
+/**
+ * A crash’s load at each of its points, when its log runs past one snapshot interval: what each replays, and its load
+ * time. @param {string} dir  the crash’s folder, beside which its whole log is @param {number} events  the whole log’s
+ */
+async function pointLoads(dir, events) {
+  const points = crashPoints(events);
+  if (points.length < 2) return [];
+  const { folders } = await crashFolders(`${dir}-whole`, `${dir}-crash`, points);
+  const out = [];
+  for (const f of folders) {
+    const { events: e, bytes } = replayed(f);
+    const { store, loadMs } = await timedLoad(f);
+    await store.close();
+    out.push({ events: e, bytes, loadMs });
+  }
+  return out;
+}
+
 /** Removes what a restart run left. @param {string} dir */
 export function removeRestart(dir) {
   rmSync(dir, { recursive: true, force: true });
   rmSync(`${dir}-whole`, { recursive: true, force: true });
+  rmSync(`${dir}-crash-replay`, { recursive: true, force: true });
+  for (let k = 0; k < POINTS; k++) rmSync(`${dir}-crash-p${k}`, { recursive: true, force: true });
 }

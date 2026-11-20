@@ -6,6 +6,7 @@
 
 import { mentionEntries, wakeMentioned } from './mention-entries.mjs';
 import { takePending } from './message-queue.mjs';
+import { replyBack } from './reply-back.mjs';
 import { entriesFirst } from './turns.mjs';
 
 /** Adds the inbox’s listeners to the runtime’s bus. @param {any} rt */
@@ -19,11 +20,14 @@ export function listenInbox(rt) {
   bus.on('entry.waiting', ({ sessionId }) => rt.turnService.start(sessionId));
   // R: what the turn took was delivered, the agents its replies mentioned are woken, and its own next entries start.
   // An entry that came before everything queued for the agent starts first, so what waited goes in arrival order (#733).
+  // A turn only agents’ mentions started, that named no one, goes back to them (#1518): read what it took before it settles.
   bus.on('turn.ended', ({ turn, se }) => {
+    const took = delivery.takenBy(se.id, turn.id);
     const first = entriesFirst(rt, se, turn);
     if (!first) takePending(rt, se, turn, true);
     delivery.turnEnded(settle(turn));
     wakeMentioned(rt, turn);
+    replyBack(rt, turn, se, took);
     if (first) takePending(rt, se, turn, true);
   });
   // L4: the person’s messages that waited for it wait for them now (#1146), unless it resends on its own, and a wake

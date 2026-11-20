@@ -1,6 +1,16 @@
-// Whether a Codex persona’s sandbox has network access (#324): in Auto, when it may fetch the web, as the person
-// decided on 25 October 2026. Every other mode and persona stays offline. codexPermissions (codex.mjs) builds the
-// sandbox from it, and codex-always.mjs reads it before offering a network host on a card.
+// In Auto, a Codex persona that may fetch the web also gets network access for shell commands (#324).
+// Codex’s hosted search has its own setting, separate from the shell sandbox.
+
+export const CODEX_TOOL_RULES = { 'web.fetch': ['web_search'] };
 
 /** @param {any} persona */
-export const networkOn = (persona) => (persona?.permissionMode ?? 'auto') === 'auto' && Array.isArray(persona?.tools) && persona.tools.includes('web.fetch');
+const mayFetchWeb = (persona) => Array.isArray(persona?.tools) && persona.tools.includes('web.fetch');
+
+/** @param {any} persona */
+export const networkOn = (persona) => (persona?.permissionMode ?? 'auto') === 'auto' && mayFetchWeb(persona);
+
+/** @param {any} persona */
+export function codexWebSearchArgs(persona) {
+  if (mayFetchWeb(persona)) return [];
+  return ['-c', 'web_search="disabled"'];
+}

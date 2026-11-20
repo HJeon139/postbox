@@ -9,6 +9,7 @@ import { virtualClock } from './drive.mjs';
 import { joining } from './joining.mjs';
 import { restartBuild, restartLoad } from './restart.mjs';
 import { backends, crowded, long } from './sections.mjs';
+import { steadyOne } from './steady.mjs';
 
 /** @type {string[]} */
 const dropped = [];
@@ -21,7 +22,7 @@ console.error = (/** @type {any[]} */ ...args) => {
 
 const [section, ...args] = process.argv.slice(2);
 /** @type {Record<string, (...a: string[]) => Promise<any[]>>} */
-const SECTIONS = { backends, long, crowded, joining, 'restart-build': restartBuild, 'restart-load': restartLoad };
+const SECTIONS = { backends, long, crowded, 'steady-one': steadyOne, joining, 'restart-build': restartBuild, 'restart-load': restartLoad };
 if (!Object.hasOwn(SECTIONS, section)) throw new Error(`No section “${section}”. Name one of: ${Object.keys(SECTIONS).join(', ')}.`);
 if (section !== 'restart-load') virtualClock();
 const rows = await SECTIONS[section](...args);

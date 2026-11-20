@@ -250,6 +250,7 @@ test('#464-b2b: a caller waits for one install at most, though another is under 
 test('#464-b2b: with the consent off, a caller that hears the 127 throws it at once, as before', async () => {
   const t = rig();
   try {
+    await t.mgr.setKeepUpdated('h1', false);
     const e = await t.mgr.ensureWelcome('h1').then(
       () => null,
       (f) => f,

@@ -173,6 +173,7 @@ test('a turn starts and saves a Codex thread and supplies Postbox instructions',
     workRoot: CODEX_ROOT,
     spawnImpl: (_bin, args) => {
       assert.deepEqual(args.slice(0, 3), ['app-server', '--listen', 'stdio://']);
+      assert.deepEqual(args.slice(-2), ['-c', 'web_search="disabled"']);
       return fakeAppServer(seen);
     },
   });
@@ -204,20 +205,24 @@ test('a turn starts and saves a Codex thread and supplies Postbox instructions',
   );
   assert.match(seen.find((x) => x.method === 'thread/start').params.developerInstructions, /Postbox/);
   assert.equal('settings' in turn.params, false);
+  assert.match(turn.params.input[0].text, /fetching web pages or searching the web \(web\.fetch\)/);
   assert.equal(turn.params.sandboxPolicy.type, 'workspaceWrite');
   // Codex takes the effort only on turn/start, which sets it for that turn and the ones after; thread/start has none,
   // so a new thread’s thread/started shows Codex’s default until the first turn applies this.
   assert.equal(turn.params.effort, 'medium', 'the first turn of a new thread runs at the agent’s effort');
 });
 
-test('a topic thread forks Codex history at the saved completed-turn checkpoint', async () => {
+test('a topic thread forks Codex history at the saved completed-turn checkpoint with Web enabled', async () => {
   const seen = [];
   const adapter = new CodexAdapter({
     workRoot: CODEX_ROOT,
-    spawnImpl: () => fakeAppServer(seen),
+    spawnImpl: (_bin, args) => {
+      assert.ok(!args.some((arg) => arg.startsWith('web_search=')));
+      return fakeAppServer(seen);
+    },
   });
   const ctx = {
-    persona: { handle: 'critic', model: 'gpt-5.6-terra', effort: 'medium' },
+    persona: { handle: 'critic', model: 'gpt-5.6-terra', effort: 'medium', tools: ['web.fetch'] },
     project: { folder: `${CODEX_ROOT}/project` },
     handles: ['critic'],
     state: { codexThreadId: 'thr_source', fork: { threadId: 'thr_source', turnId: 'turn_source' } },
