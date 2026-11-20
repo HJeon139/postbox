@@ -32,6 +32,34 @@ const unconfirmedStops = (rt, sessionId) => (rt.store.pending.session(sessionId)
 const stoppingField = (turns) => (turns.length ? { stopping: turns } : {});
 
 /**
+ * Refuses a clock’s start that can’t be a clean timed run: a bad budget, a second clock in the conversation, the agent
+ * still working, or messages from before it waiting in its inbox.
+ * @param {any} rt @param {any} se  the session, pending @param {any} clock  its clock, pending, if it has one @param {any} budgetS  as the request gave it
+ */
+function refuseStart(rt, se, clock, budgetS) {
+  const sessionId = se.id;
+  if (!Number.isInteger(budgetS) || budgetS < 1 || budgetS > CLOCK_BUDGET_MAX_S)
+    throw httpError(422, `A run clock’s budget is a whole number of seconds from 1 to ${CLOCK_BUDGET_MAX_S}.`);
+  // One clock per agent in a conversation: a second run there would start with the first one in its context (its
+  // backend’s session, the room’s catch-up and its inbox), so it goes in a new conversation.
+  if (clock)
+    throw httpError(
+      409,
+      `@${se.handle} already had a run clock in this conversation. Start the next timed run in a new conversation, so it begins with nothing from this one.`,
+    );
+  // Nor while the agent works: that turn’s work and context, from before the clock, would count as the run’s.
+  if (rt.turns.has(sessionId) || rt.exiting.has(sessionId))
+    throw httpError(409, `@${se.handle} is still working on a turn. Stop it, or wait for it to end, then start the clock.`);
+  // Nor does a run start with messages from before it waiting in the inbox: its first turn would read them.
+  const waiting = rt.delivery.waiting(sessionId).length;
+  if (waiting)
+    throw httpError(
+      409,
+      `@${se.handle} has ${waiting} message${waiting === 1 ? '' : 's'} waiting from before this clock. Remove them from its queue, or start the run in a new conversation.`,
+    );
+}
+
+/**
  * The person’s action on an agent’s clock: start it with a budget in whole seconds, pause it or resume it.
  * @param {any} rt @param {string} sessionId @param {unknown} body @param {() => number} [now]
  */
@@ -43,25 +71,7 @@ export function clockAction(rt, sessionId, body, now = Date.now) {
   const clock = clockOf(rt, sessionId);
   switch (action) {
     case 'start': {
-      if (!Number.isInteger(budgetS) || budgetS < 1 || budgetS > CLOCK_BUDGET_MAX_S)
-        throw httpError(422, `A run clock’s budget is a whole number of seconds from 1 to ${CLOCK_BUDGET_MAX_S}.`);
-      // One clock per agent in a conversation: a second run there would start with the first one in its context (its
-      // backend’s session, the room’s catch-up and its inbox), so it goes in a new conversation.
-      if (clock)
-        throw httpError(
-          409,
-          `@${se.handle} already had a run clock in this conversation. Start the next timed run in a new conversation, so it begins with nothing from this one.`,
-        );
-      // Nor while the agent works: that turn’s work and context, from before the clock, would count as the run’s.
-      if (rt.turns.has(sessionId) || rt.exiting.has(sessionId))
-        throw httpError(409, `@${se.handle} is still working on a turn. Stop it, or wait for it to end, then start the clock.`);
-      // Nor does a run start with messages from before it waiting in the inbox: its first turn would read them.
-      const waiting = rt.delivery.waiting(sessionId).length;
-      if (waiting)
-        throw httpError(
-          409,
-          `@${se.handle} has ${waiting} message${waiting === 1 ? '' : 's'} waiting from before this clock. Remove them from its queue, or start the run in a new conversation.`,
-        );
+      refuseStart(rt, se, clock, budgetS);
       rt.store.emit('clock.started', { sessionId, threadId: se.threadId, budgetMs: budgetS * 1000, at: now() });
       clockNote(rt, sessionId, 'started', { budgetMs: budgetS * 1000 });
       break;
