@@ -60,6 +60,7 @@ import { stopProbe } from '../remote/host/probe-stop.mjs';
 import { describeTool } from '../tool-labels.mjs';
 import { AGY_CAPABILITIES } from './agy-capabilities.mjs';
 import { agyHookCommand, agySupportsHooks, confirmAgyHook, HOOK_SCRIPT } from './agy-hook.mjs';
+import { modelIds } from './agy-model-ids.mjs';
 import { agyPlugin, agySkillFiles, excludeFile, excludePlugin, PLUGIN_DIR, writeAgyPlugin } from './agy-plugin.mjs';
 import { agyStartError, clip, HEADLESS_NOTE, HOOK_NOTE, LOOKING_NOTE, refusalFollowUp, refusalOf } from './agy-refusals.mjs';
 import { AGY_SERVER, ALLOW_POSTBOX, agySettingsFile, allowPostbox } from './agy-settings.mjs';
@@ -124,20 +125,7 @@ export function agyModels(bin = findAgy(), { spawnImpl = spawn } = {}) {
   });
 }
 
-/**
- * The model ids in an `agy models` answer, bounded: one per line, the id, then a tab and its name
- * (“gemini-3.8-flash-high	Gemini 3.8 Flash (High)”). The “Fetching available models...” line and a sign-in
- * error aren’t ids.
- */
-export function modelIds(text) {
-  const ids = String(text ?? '')
-    .split('\n')
-    .map((l) => /^([a-z0-9][\w.:-]{0,79})\t/i.exec(l)?.[1])
-    .filter((id) => typeof id === 'string');
-  return [...new Set(ids)].slice(0, 60);
-}
-
-export { AGY_CAPABILITIES, AGY_DEFAULT_MODEL };
+export { AGY_CAPABILITIES, AGY_DEFAULT_MODEL, modelIds };
 
 /**
  * The model to pass. A persona that names none gets Postbox’s default, Claude’s, which agy may not offer: then it
@@ -645,6 +633,7 @@ export class AntigravityCliAdapter {
       const hookConfirmed = Boolean(useHook && (await confirmAgyHook({ version: this.version, pluginDir: plugin, script: this.hookScript })));
       // A hook that didn’t check out isn’t passed, so agy refuses what it would ask about: the rules say so, not “a card”.
       if (useHook && !hookConfirmed) await writeFile(join(plugin, 'rules', 'AGENTS.md'), rulesWith(false));
+      ctx.prompt?.({ guide: useHook && !hookConfirmed ? rulesWith(false) : rules }); // the rules file as agy reads it; each run records its prompt
       try {
         let done = await this.run({ ctx, cwd, addDirs, prompt, sessionId: ctx.state.agySessionId ?? null, hookConfirmed });
         // A conversation agy no longer has (its history was cleared, or the agent’s folder changed) starts over, once.
@@ -692,6 +681,7 @@ export class AntigravityCliAdapter {
         reject(agyStartError(e, prompt, this.bin));
         return;
       }
+      ctx.prompt?.({ text: prompt }); // started, so sent
       let stderr = '';
       const c = child;
       const exited = new Promise((r) => {
@@ -700,7 +690,7 @@ export class AntigravityCliAdapter {
         c.once('error', r);
       });
       // SIGINT to the group, then SIGKILL after the grace period (process-group.mjs), as for the other CLIs.
-      const stop = stopOnAbort(ctx.signal, () => stopTurn(c, { exited, kill: this.kill, list: this.list }));
+      const stop = stopOnAbort(ctx.signal, () => stopTurn(c, { exited, kill: this.kill, list: this.list, unkilled: ctx.unkilled }));
       child.on('error', (e) => reject(agyStartError(e, prompt, this.bin)));
       child.stderr.on('data', (d) => {
         stderr = (stderr + d).slice(-4000);

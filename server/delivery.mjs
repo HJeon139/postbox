@@ -14,6 +14,7 @@
 // Depends on Store, Bus and Running. Until Turns is a service, the composition root listens to entry.waiting and starts
 // the turn through today’s deliver, and the chain cap is a predicate the root binds (`chainHeld`).
 
+import { clockHolds } from '../shared/run-clock.mjs';
 import { newId } from './store.mjs';
 import { arrival, plainMessage } from './turn-batch.mjs';
 
@@ -139,14 +140,14 @@ export class Delivery {
   }
 
   /**
-   * Whether the agent can start a turn from its entries now: free in Running, its session there and not failed, and
-   * with a waiting entry that isn’t a notice and isn’t held at the chain cap.
+   * Whether the agent can start a turn from its entries now: free in Running, its session there and not failed, its run
+   * clock not holding it (paused or expired, shared/run-clock.mjs), and with a waiting entry that isn’t a notice and isn’t held at the chain cap.
    * @param {string} sessionId
    */
   ready(sessionId) {
     if (this.running.busy(sessionId) || this.running.closing) return false;
     const se = this.store.pending.session(sessionId);
-    if (!se || se.retiredFork) return false;
+    if (!se || se.retiredFork || clockHolds(this.store.pending.clock(sessionId))) return false;
     return this.waiting(sessionId).some((e) => this.canStart(e, se));
   }
 

@@ -80,6 +80,15 @@ export const VALID = {
   'asset.version': { id: 'as', version: version(2, 'b'), prunes: [1], released: [sha('a')] },
   'asset.erase': { room: 't', at: 3 },
   'asset.released': { hashes: [sha('a')] },
+  'clock.started': { sessionId: 'se', threadId: 't', budgetMs: 60_000, at: 1 },
+  'clock.paused': { sessionId: 'se', at: 2 },
+  'clock.resumed': { sessionId: 'se', at: 3 },
+  'clock.turn': { sessionId: 'se', turnId: 'tu', elapsedMs: 1, budgetMs: 60_000, state: 'running', at: 2 },
+  'clock.restored': { sessionId: 'se', elapsedMs: 90_000, budgetMs: 600_000, at: 5 },
+  'clock.stopped': { sessionId: 'se', turn: 'host-turn-1', at: 6 },
+  'turn.guide': { sha: 'a'.repeat(64), text: 'You are @coder.', at: 1 },
+  'turn.prompt': { sessionId: 'se', turnId: 'tu', threadId: 't', guideSha: 'a'.repeat(64), text: 'Go on.', at: 2 },
+  'clock.expired': { sessionId: 'se', elapsedMs: 60_000, budgetMs: 60_000, at: 4 },
 };
 
 /** Every key path of a payload, as arrays. */

@@ -57,6 +57,9 @@ function touchedBy(ev) {
     if (/** @type {readonly string[]} */ (events).includes(ev.type)) names.push(`${list}:${ev.data?.[key]}`);
   for (const [coll, { event, removed, patched }] of Object.entries(ENTITIES))
     if (ev.type === event || ev.type === patched || (ev.type === 'remove' && ev.data?.kind === removed)) names.push(`entities:${coll}`);
+  if (typeof ev.type === 'string' && ev.type.startsWith('clock.')) names.push(`clock:${ev.data?.sessionId}`);
+  // A session’s deletion deletes its clock too (shared/state.mjs, removeEntity).
+  if (ev.type === 'remove' && ev.data?.kind === 'session') names.push(`clock:${ev.data.id}`);
   return names;
 }
 
@@ -105,6 +108,7 @@ const heldOn = (store, name) => Boolean(store.held) && /** @type {any} */ (store
  *   session: (id: string) => Entry | undefined,
  *   sessions: () => Readonly<Record<string, Entry>>,
  *   persona: (id: string) => Entry | undefined,
+ *   clock: (sessionId: string) => Entry | null,
  * }} PendingReads
  */
 
@@ -124,7 +128,33 @@ export function pendingReads(store) {
   reads.session = (/** @type {string} */ id) => pendingEntity(store, 'sessions', id);
   reads.sessions = () => pendingCollection(store, 'sessions');
   reads.persona = (/** @type {string} */ id) => pendingEntity(store, 'personas', id);
+  reads.clock = (/** @type {string} */ sessionId) => pendingClock(store, sessionId);
   return /** @type {PendingReads} */ (reads);
+}
+
+/**
+ * An agent’s run clock as memory will hold it once what is held is released (shared/run-clock.mjs): its held events
+ * applied in order to a copy, by the reducer, so a clock started, paused or expired behind a held commit holds and
+ * times its agent at once (hydrant-critic’s review of #1522). A clock is a record of a few fields with few events,
+ * so no view is kept. @param {import('./store.mjs').Store} store @param {string} sessionId @returns {Entry|null}
+ */
+function pendingClock(store, sessionId) {
+  const published = store.state.clocks && Object.hasOwn(store.state.clocks, sessionId) ? store.state.clocks[sessionId] : null;
+  if (!heldOn(store, `clock:${sessionId}`)) return published;
+  const s = { clocks: Object.assign(Object.create(null), published ? { [sessionId]: { ...published } } : {}) };
+  for (let i = 0; i < store.heldLog.length; i++) {
+    const { held, json } = store.heldLog.at(i);
+    const removes = held.type === 'remove' && held.data?.kind === 'session' && held.data.id === sessionId;
+    if (removes) delete s.clocks[sessionId];
+    if (removes || !held.type?.startsWith('clock.') || held.data?.sessionId !== sessionId) continue;
+    const { type, data } = JSON.parse(json);
+    try {
+      apply(s, type, data);
+    } catch {
+      // the reducer rejects it the same way, and the release holds it as rejected (#609): skipped
+    }
+  }
+  return s.clocks[sessionId] ?? null;
 }
 
 /**

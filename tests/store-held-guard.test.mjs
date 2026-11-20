@@ -90,7 +90,7 @@ const PENDING = {
   // The mirrored reply a terminal line adds to, maybe held behind a commit; and the session attachClaudeSession just
   // made, whose transcript mirror starts following.
   'claude-mirror.mjs': ['mirror', 'pollMirror'],
-  'turn-run.mjs': ['deliver', 'deliver', 'turnMessage'], // the session it starts a turn in, and the thread it answers in, maybe made or held behind a commit (#796)
+  'turn-run.mjs': ['deliver', 'deliver', 'deliver', 'turnMessage'], // the session it starts a turn in, the thread it answers in, and whether its run clock holds it, maybe made or held behind a commit (#796, #1522)
   'restart-sweep.mjs': ['settleRetiredNeeds', 'cardOf'], // the need's card: whether it still waits, and its time on a tie, decide the need kept (#366); a session whose need is of a retired kind, settled
   'app-retire.mjs': ['retireApp', 'retireApp', 'retireApp'], // retire_app of an app the turn may have just shown
   'apps.mjs': ['showApp', 'updateApp'], // show_app and update_app of an app the turn may have just shown
@@ -98,7 +98,7 @@ const PENDING = {
   'block-show.mjs': ['showBlock', 'showBlock', 'showBlock', 'shownAgain'], // show_block of an app or a block id the turn may have just shown
   'block-update.mjs': ['shownBy'], // update_block of a block the turn just showed
   'catch-up.mjs': ['moveMarkers'], // the conversation of a topic an item moved in, maybe opened behind a held commit, whose sessions' markers move (#1041)
-  'delivery.mjs': ['send', 'sessionIds', 'inbox', 'ready', 'take', 'postedSince'], // the sessions with inboxes, an inbox's entries, its session and an entry's item, maybe just made, decide each entry's next state and the wake (#796's class)
+  'delivery.mjs': ['send', 'sessionIds', 'inbox', 'ready', 'ready', 'take', 'postedSince'], // the sessions with inboxes, an inbox's entries, its session, its run clock and an entry's item, maybe just made, decide each entry's next state and the wake (#796's class, #1522)
   // the handle of the agent that already has a message the person edits, its recipients, and the agents an edit leaves
   // out, maybe written behind a held commit; the text of the message the person removed, for its sender; and whom the
   // person’s own was removed for
@@ -142,6 +142,8 @@ const PENDING = {
   // The room’s chain limit, which decides whether a wake waits, maybe set behind a held commit (#1035); and the room a
   // PATCH sets it on, maybe started there.
   'room-chain-limit.mjs': ['roomChainLimit', 'patchThread'],
+  'run-clock.mjs': ['clockOf', 'unconfirmedStops', 'clockAction'], // every decision on a run clock (its route, its timer, a turn’s line), on the clock as held writes will leave it, the session its route names, which a held delete may have removed, and the host stops its pause or expiry waits on, which the stop itself just wrote (#1522)
+  'run-clock-notes.mjs': ['clockNote', 'repairClockNote', 'repairClockNote'], // the session a clock line names, maybe just made, says which conversation the line goes to; and that conversation’s newest clock line, maybe just added, whether a holding clock still needs one (#1522)
   // The members a delete keeps its room for, maybe joined behind a held commit (#796); the session it deletes, and the
   // threads a conversation’s delete covers, any of them maybe made there too. Every lookup comes before any change.
   'session-lifecycle.mjs': ['conversationScope', 'conversationScope', 'deleteSession', 'deleteSession', 'deleteSession', 'deleteSession'],

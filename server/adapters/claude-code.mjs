@@ -207,17 +207,7 @@ export class ClaudeCodeAdapter {
     const id = sessionId ?? randomUUID();
     // A resume (not a fork, not a fresh start) of a turn the host lost goes on with it (D2).
     const remote = ctx.remote && turn ? remoteTurn(ctx.remote, cwd, turn, Boolean(resume && !fork && ctx.remote.resumeInterrupted), attach) : null;
-    const args = claudeArgs({
-      persona: ctx.persona,
-      sessionId: id,
-      resume,
-      mcpUrl: ctx.mcpUrl,
-      guide,
-      addDirs,
-      fork,
-      ...fromContext(ctx, ctx.remote ? hostMemoryRoot(ctx.remote) : memoryRootFor(this.workRoot)),
-      ...(remote ? { server: remote.server, denyPrompts: ctx.remote.settings?.denyPrompts === true } : {}),
-    });
+    const args = runArgs(this.workRoot, { ctx, id, resume, guide, addDirs, fork, remote });
     const mapper = createStreamMapper(ctx, { contextWindow: ctx.state.contextWindow ?? windowFor(ctx.persona.model), effort: effortOf(ctx.persona) });
     // A subagent’s permission prompt arrives at Postbox’s MCP tool with its id; the stream knows its name.
     ctx.subagentNames?.((ids) => mapper.who(ids));
@@ -246,7 +236,7 @@ export class ClaudeCodeAdapter {
       // the whole turn): one the runtime asked to keep anyway is reported stopped, not kept.
       const stop = stopOnAbort(ctx.signal, () => {
         const keep = Array.isArray(ctx.signal.reason?.keepJobs) ? ctx.signal.reason.keepJobs : [];
-        return stopTurn(child, { keep, exited, ...procs }).then((r) => {
+        return stopTurn(child, { keep, exited, ...procs, unkilled: ctx.unkilled }).then((r) => {
           for (const k of r.kept) ctx.job?.({ id: k.id, kept: true, pgid: k.pgid, groups: k.groups });
           if (remote) for (const k of keep) if (typeof k?.id === 'string') ctx.job?.({ id: k.id, state: 'stopped' });
           return r;
@@ -298,7 +288,28 @@ export class ClaudeCodeAdapter {
         if (ctx.signal.aborted) settle(code);
       });
       child.stdin.on('error', () => {});
-      child.stdin.end(prompt);
+      // Recorded once the write succeeded, so a prompt the CLI exited before reading (EPIPE) isn’t recorded as one it
+      // got. An attach replays what was sent.
+      child.stdin.end(prompt, (/** @type {unknown} */ err) => err || attach || ctx.prompt?.({ guide, text: prompt }));
     });
   }
+}
+
+/**
+ * A run’s command line (server/adapters/claude-code-args.mjs), from its turn’s context: on a host, its memory folder
+ * and its shim as Postbox’s server there. Moved out of ClaudeCodeAdapter’s run, which is at its length limit.
+ * @param {string} workRoot @param {{ ctx: any, id: string, resume: boolean, guide: string, addDirs: string[], fork: any, remote: any }} o
+ */
+function runArgs(workRoot, { ctx, id, resume, guide, addDirs, fork, remote }) {
+  return claudeArgs({
+    persona: ctx.persona,
+    sessionId: id,
+    resume,
+    mcpUrl: ctx.mcpUrl,
+    guide,
+    addDirs,
+    fork,
+    ...fromContext(ctx, ctx.remote ? hostMemoryRoot(ctx.remote) : memoryRootFor(workRoot)),
+    ...(remote ? { server: remote.server, denyPrompts: ctx.remote.settings?.denyPrompts === true } : {}),
+  });
 }

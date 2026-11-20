@@ -3,10 +3,12 @@
 
 import { addNote, dropNote, takeNotes } from './app-notes.mjs';
 import { itemOf, noteReplaced, positionOf } from './item-index.mjs';
+import { CLOCK_EVENTS } from './run-clock.mjs';
 import { applyTurnArchive } from './state-archive.mjs';
 import { ASSET_EVENTS, ownAssetRooms } from './state-assets.mjs';
 import { putHost, putHostStatus } from './state-hosts.mjs';
 import { foldedStep } from './step-fold.mjs';
+import { PROMPT_EVENTS } from './turn-prompts.mjs';
 
 /**
  * Records by id with nothing but their own keys (#352). An id comes from a request, a tool call or an agent, and in a
@@ -56,6 +58,8 @@ export function emptyState() {
     // What each app sent its agent without the person’s click (#1488, shared/app-notes.mjs): { id: the app’s id, notes,
     // dropped }. Private, as published is: only the agent’s read_app reads them.
     appNotes: map(),
+    // Each agent’s run clock, by session (shared/run-clock.mjs): a budget the person set, and what the agent has used.
+    clocks: map(),
   };
 }
 
@@ -112,6 +116,8 @@ export const PUBLIC_STATE_KEYS = Object.freeze([
   // Ids, states and times, and only the own text of an entry with no item (a check, an event, a notice), which reach
   // the page today as items and events: the sender sees each entry's state (designs/rooms-at-scale.md, “Delivery”).
   'inbox',
+  // Budgets and times only: the person sees each clock; its agent reads only its turn’s line (shared/run-clock.mjs).
+  'clocks',
 ]);
 // What apps published for their agents (#1478): read only by read_app, so no page is sent a copy of each publish.
 // And the notes apps sent them without a click (#1488), read only by read_app too.
@@ -190,6 +196,8 @@ export const EVENTS = Object.freeze({
   'host.status': { apply: putHostStatus, public: true },
   quota: { apply: put('quota'), public: true },
   ...ASSET_EVENTS,
+  ...CLOCK_EVENTS,
+  ...PROMPT_EVENTS,
 });
 
 // Each entry too, so no code can make a type private or public at run time.
@@ -234,6 +242,7 @@ function removeEntity(s, d) {
   if (d.kind === 'app' && s.appNotes) delete s.appNotes[d.id];
   // Deleting a session deletes its entries; the messages they came from stay (designs/rooms-at-scale.md, “What an entry is”).
   if (d.kind === 'session') delete s.inbox[d.id];
+  if (d.kind === 'session' && s.clocks) delete s.clocks[d.id];
 }
 
 /**

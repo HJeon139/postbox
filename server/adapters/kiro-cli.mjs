@@ -52,10 +52,10 @@ import { checkRemoteContext } from './adapter.mjs';
 import { tooLongForArg } from './arg-prompt.mjs';
 import { agentFolder } from './folder.mjs';
 import { FRESH_START_TEXT, formatMessage, turnGuide } from './guide.mjs';
-import { KIRO_TOOL_RULES, kiroAgent } from './kiro-cli-agent.mjs';
+import { KIRO_TOOL_RULES, kiroAgent, kiroSystemPrompt } from './kiro-cli-agent.mjs';
 import { findKiro, kiroModel, kiroModels, postboxModel } from './kiro-cli-models.mjs';
 import { attachmentPaths, KIRO_CAPABILITIES, kiroRemoteSpawn } from './kiro-cli-remote.mjs';
-import { kiroError, kiroExitError, overSizeLimit, SIZE_LIMIT_START_TEXT } from './kiro-errors.mjs';
+import { failOverLimit, kiroError, kiroExitError, overSizeLimit, SIZE_LIMIT_START_TEXT } from './kiro-errors.mjs';
 import { sessionInfo } from './kiro-session-info.mjs';
 import { KINDS, toolOf } from './kiro-tools.mjs';
 import { listProcesses, stopOnAbort, stopTurn } from './process-group.mjs';
@@ -257,13 +257,6 @@ function kiroResult(u, st) {
   return { kind: 'tool_result', id: u.toolCallId, isError: failed, text: why, ...(refused ? { refused: reason } : {}) };
 }
 
-/** A run still over the size limit fails with what Kiro said, and its session isn’t kept to resume (#544). */
-function failOverLimit(ctx, { tooLarge = null }) {
-  if (!tooLarge) return;
-  ctx.saveState({ kiroSessionId: null });
-  throw kiroError(tooLarge, tooLarge);
-}
-
 export class KiroCliAdapter {
   name = 'kiro-cli';
 
@@ -374,8 +367,12 @@ export class KiroCliAdapter {
           reject(new Error(`Couldn’t start the Kiro CLI (${this.bin}): ${e.message}`));
           return;
         }
+        // Recorded once sent: as an argument, at the start; on stdin, once the write succeeded, so a prompt kiro exited
+        // before reading (EPIPE) isn’t recorded as one it got. An attach replays what was sent.
+        const sent = () => ctx.prompt?.({ guide: kiroSystemPrompt(persona, guide), text: prompt });
+        if (!attach && !stdin) sent();
         // kiro exiting before it reads the prompt (EPIPE) ends its turn, not Postbox, as claude-code.mjs guards it.
-        if (stdin && !attach) child.stdin.on('error', () => {}).end(prompt);
+        if (stdin && !attach) child.stdin.on('error', () => {}).end(prompt, (/** @type {unknown} */ err) => err || sent());
         let stderr = '';
         const c = child;
         const exited = new Promise((r) => {
@@ -383,7 +380,7 @@ export class KiroCliAdapter {
           c.once('close', r);
           c.once('error', r);
         });
-        const stop = stopOnAbort(ctx.signal, () => stopTurn(c, { exited, kill: this.kill, list: this.list }));
+        const stop = stopOnAbort(ctx.signal, () => stopTurn(c, { exited, kill: this.kill, list: this.list, unkilled: ctx.unkilled }));
         child.on('error', (e) =>
           reject(
             kiroError(
