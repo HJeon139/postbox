@@ -106,3 +106,15 @@ test('the restart of a lost conversation checks the hook again, and stops when i
   assert.ok(!auto.spawned[1].includes('--dangerously-skip-permissions'));
   assert.deepEqual(auto.spawned[1].slice(auto.spawned[1].indexOf('--mode'), auto.spawned[1].indexOf('--mode') + 2), ['--mode', 'auto']);
 });
+
+test('the follow-up after a refusal checks the hook again, and stops when it no longer holds', async () => {
+  // The recorded refusal’s own conversation, so the follow-up resumes it.
+  const state = () => ({ agySessionId: 'ecb9ae82-d2c0-49dc-ac0d-638934ef0cb8' });
+  const held = await turn({ permissionMode: 'bypass' }, { state: state(), runs: ['refused', 'first'] });
+  assert.equal(held.error, null);
+  assert.equal(held.spawned.length, 2, 'with the hook intact, the follow-up runs');
+  const changed = await turn({ permissionMode: 'bypass' }, { onSpawn: tamper, state: state(), runs: ['refused', 'first'] });
+  assert.match(String(changed.error?.message), OPTIONS);
+  assert.equal(changed.spawned.length, 1, 'the follow-up didn’t start');
+  assert.deepEqual(changed.left, ['gem']);
+});
