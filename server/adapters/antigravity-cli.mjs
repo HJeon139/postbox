@@ -613,7 +613,6 @@ export class AntigravityCliAdapter {
     // agy can’t turn tools off (agyRules says what’s off), and its 12,000-character rules file has no room for #131’s sections.
     const { guide, message: turnMessage } = turnGuide(message, { ...ctx, persona, brief: session?.brief, toolRules: null, setup: false });
     const prompt = formatMessage(turnMessage, ctx.pathOf);
-    ctx.prompt?.({ guide }); // its rules file carries the guide; each run records its own prompt
     const useHook = persona?.permissionMode !== 'bypass' && agySupportsHooks(this.version);
     const rulesWith = (hooked) => agyRules({ persona, guide, schemas: join(dirname(this.settingsFile), 'mcp', AGY_SERVER), hooked });
     const rules = rulesWith(useHook);
@@ -634,6 +633,7 @@ export class AntigravityCliAdapter {
       const hookConfirmed = Boolean(useHook && (await confirmAgyHook({ version: this.version, pluginDir: plugin, script: this.hookScript })));
       // A hook that didn’t check out isn’t passed, so agy refuses what it would ask about: the rules say so, not “a card”.
       if (useHook && !hookConfirmed) await writeFile(join(plugin, 'rules', 'AGENTS.md'), rulesWith(false));
+      ctx.prompt?.({ guide: useHook && !hookConfirmed ? rulesWith(false) : rules }); // the rules file as agy reads it; each run records its prompt
       try {
         let done = await this.run({ ctx, cwd, addDirs, prompt, sessionId: ctx.state.agySessionId ?? null, hookConfirmed });
         // A conversation agy no longer has (its history was cleared, or the agent’s folder changed) starts over, once.

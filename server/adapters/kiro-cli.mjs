@@ -52,7 +52,7 @@ import { checkRemoteContext } from './adapter.mjs';
 import { tooLongForArg } from './arg-prompt.mjs';
 import { agentFolder } from './folder.mjs';
 import { FRESH_START_TEXT, formatMessage, turnGuide } from './guide.mjs';
-import { KIRO_TOOL_RULES, kiroAgent } from './kiro-cli-agent.mjs';
+import { KIRO_TOOL_RULES, kiroAgent, kiroSystemPrompt } from './kiro-cli-agent.mjs';
 import { findKiro, kiroModel, kiroModels, postboxModel } from './kiro-cli-models.mjs';
 import { attachmentPaths, KIRO_CAPABILITIES, kiroRemoteSpawn } from './kiro-cli-remote.mjs';
 import { failOverLimit, kiroError, kiroExitError, overSizeLimit, SIZE_LIMIT_START_TEXT } from './kiro-errors.mjs';
@@ -367,7 +367,7 @@ export class KiroCliAdapter {
           reject(new Error(`Couldn’t start the Kiro CLI (${this.bin}): ${e.message}`));
           return;
         }
-        if (!attach) ctx.prompt?.({ guide, text: prompt }); // started, so sent; an attach replays what was sent
+        if (!attach) ctx.prompt?.({ guide: kiroSystemPrompt(persona, guide), text: prompt }); // started, so sent; an attach replays what was sent
         // kiro exiting before it reads the prompt (EPIPE) ends its turn, not Postbox, as claude-code.mjs guards it.
         if (stdin && !attach) child.stdin.on('error', () => {}).end(prompt);
         let stderr = '';
