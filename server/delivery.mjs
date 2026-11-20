@@ -78,8 +78,7 @@ export class Delivery {
    * `at` is when it arrived, now unless it waited somewhere first, as a stored queue’s row did (#1423).
    * @param {{ sessionId: string, threadId: string, source: string, itemId?: string, text?: string, message?: any,
    *   from?: string, retryId?: string, at?: number, bounce?: boolean }} e
-   * `bounce` marks a mention that goes back no further: a reply going back to the agent whose mention woke its writer,
-   * or a mention written in a turn a bounce started (reply-back.mjs).
+   * `bounce` marks a reply going back on its own to the agent whose mention woke its writer (reply-back.mjs).
    * `carry` is a message kept in memory for the turn that takes the entry, and never stored: what an app sent, which
    * stays out of the public inbox (#1425). A restart loses it, as it lost a message held for a busy agent before.
    * @param {{ wake?: boolean, carry?: any }} [opts]

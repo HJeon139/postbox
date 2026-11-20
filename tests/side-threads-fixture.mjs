@@ -28,8 +28,17 @@ export class ScriptedAdapter {
     const parts = partsOf(this.rt, session.id, message);
     this.calls.push({ handle: session.handle, sessionId: session.id, message, parts, thread: ctx.thread.id, state: ctx.state });
     ctx.saveState({ backendSession: `cli-${session.id}` });
-    const step = this.next.shift() ?? (async (c) => c.text('ok'));
+    const step = this.next.shift() ?? (this.cameBack(session) ? async (c) => c.tools.react({ id: message.itemId, emoji: '👍' }) : async (c) => c.text('ok'));
     await step(ctx, message, session);
+  }
+  /**
+   * Whether the turn came only from replies that went back to this agent (server/reply-back.mjs): unscripted, it ends
+   * the exchange with a reaction, as the room guide asks, since an “ok” would go back too, and on to the chain limit.
+   * @param {any} session
+   */
+  cameBack(session) {
+    const took = this.rt.delivery.takenBy(session.id, this.rt.turns.get(session.id)?.id).filter((e) => e.source !== 'notice');
+    return took.length > 0 && took.every((e) => e.bounce);
   }
 }
 

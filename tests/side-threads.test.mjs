@@ -132,8 +132,7 @@ test('#372: a turn still running in a side thread from before hands off in the c
     await settle(rt);
   }
   // Its replies stay in the side thread; the wakes, posted as @beta’s, and @alpha’s answers are in the conversation.
-  // Each is the first in its chain: @alpha’s answer went back to @beta (#1518), whose reply to it went back to no one,
-  // which ended the first.
+  // Each is the first in its chain: @alpha’s answer went back to @beta (#1518), which ended it with a reaction (#1523).
   assert.deepEqual(
     store
       .items(side.id)
@@ -148,9 +147,7 @@ test('#372: a turn still running in a side thread from before hands off in the c
       .map((i) => [i.text, i.hop]),
     [
       ['@alpha the 1908 one, page 12.', 1],
-      ['ok', undefined],
       ['@alpha and page 40.', 1],
-      ['ok', undefined],
     ],
   );
   assert.deepEqual(

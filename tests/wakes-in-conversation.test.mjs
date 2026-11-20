@@ -9,7 +9,7 @@ import { held, settle, setup, sleep } from './side-threads-fixture.mjs';
 const sides = (store) => Object.values(store.state.threads).filter((x) => x.kind === 'side');
 const turnsOf = (adapter, sessionId) => adapter.calls.filter((c) => c.sessionId === sessionId);
 
-test('#372, #1518: an @-mention wakes the agent in the conversation, its reply posts there, and goes back to the waker for one turn', async () => {
+test('#372, #1518: an @-mention wakes the agent in the conversation, its reply posts there, and goes back to the waker', async () => {
   const { store, rt, adapter, t, alpha, beta } = setup();
   adapter.next.push(async (c) => c.text('@beta which editions did you index?'));
   adapter.next.push(async (c) => c.text('The 1st and 3rd.'));
@@ -26,7 +26,6 @@ test('#372, #1518: an @-mention wakes the agent in the conversation, its reply p
     [
       ['alpha', '@beta which editions did you index?'],
       ['beta', 'The 1st and 3rd.'],
-      ['alpha', 'ok'],
     ],
   );
   // The mention is the wake’s message: it carries its number in the chain, and no copy is posted.
@@ -36,12 +35,16 @@ test('#372, #1518: an @-mention wakes the agent in the conversation, its reply p
     store.items(t.id).some((x) => x.kind === 'sidelink'),
     false,
   );
-  // beta mentioned no one, so its reply goes back to alpha for one turn, and alpha’s reply to it goes back to no one
-  // (#1518, which reverses #372 here).
+  // beta mentioned no one, so its reply goes back to alpha (#1518, which reverses #372 here), which ends the exchange
+  // with a reaction (#1523).
   assert.deepEqual(said[1].wentBack, ['alpha']);
   assert.deepEqual(
     turnsOf(adapter, alpha.id).map((c) => c.message.from),
     [undefined, '@beta'],
+  );
+  assert.deepEqual(
+    said[1].reactions.map((r) => `${r.handle} ${r.emoji}`),
+    ['alpha 👍'],
   );
   assert.equal(adapter.calls.at(-1).sessionId, alpha.id, 'nothing after it');
 });
@@ -51,7 +54,6 @@ test('#372 a hand-off that needs the waker to act wakes it exactly once', async 
   adapter.next.push(async (c) => c.text('@beta please push the fix'));
   adapter.next.push(async (c) => c.text('@alpha pushed at abc123, ready for your re-review'));
   adapter.next.push(async (c) => c.text('Re-reviewed abc123: approved.'));
-  adapter.next.push(async (c) => c.text('Thanks.'));
   rt.sendMessage(t.id, { text: '@alpha get the fix pushed' });
   await settle(rt);
   // Beta’s second turn is alpha’s answer going back to it (#1518).
@@ -64,9 +66,9 @@ test('#372 a hand-off that needs the waker to act wakes it exactly once', async 
   assert.deepEqual([alphaTurns[1].thread, alphaTurns[1].message.from], [t.id, '@beta']);
   const approved = store.items(t.id).find((x) => x.kind === 'agent' && x.text === 'Re-reviewed abc123: approved.');
   assert.deepEqual(approved.wentBack, ['beta']);
-  assert.equal(store.items(t.id).findLast((x) => x.kind === 'agent').text, 'Thanks.');
-  // Two wakes chained, then alpha’s answer going back to beta, whose reply to it went back to no one and ended the
-  // chain, so its count starts again (#492).
+  assert.equal(store.items(t.id).findLast((x) => x.kind === 'agent').text, 'Re-reviewed abc123: approved.');
+  // Two wakes chained, then alpha’s answer going back to beta, which reacted and ended the chain (#1523), so its count
+  // starts again (#492).
   assert.deepEqual(
     store
       .items(t.id)

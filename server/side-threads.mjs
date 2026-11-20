@@ -22,8 +22,8 @@ export const SUMMARY_WAKES_NO_ONE = 'A summary for the conversation wakes no one
 /**
  * An agent wakes another (#110, #228, #372): by an @-mention in what it said (itemId, that message). It
  * reaches the persona’s one session in the conversation, as an entry in its inbox there, which answers there; a busy
- * one takes it when its turn ends. `bounce`: the wake goes back no further, being a reply going back to the agent that
- * woke its writer, or a mention written in a turn a bounce started (reply-back.mjs, #1518). `wake: false` stores it for the end of the waker’s turn to wake (mention-entries.mjs). A persona the conversation doesn’t have needs the
+ * one takes it when its turn ends. `bounce`: the wake is a reply going back on its own to the agent that woke its writer,
+ * not a mention its writer wrote (reply-back.mjs, #1518), which a held wake’s note says. `wake: false` stores it for the end of the waker’s turn to wake (mention-entries.mjs). A persona the conversation doesn’t have needs the
  * person: a card asks to add it. After the room’s chain limit of wakes in a row without you (1,000 unless the person set
  * another, #1035), the next one waits for your confirm.
  */
@@ -68,7 +68,7 @@ export function agentWake(
   // Told before any card, so a wake that waits for Allow still tells it (Allow carries no side thread).
   if (backKind === 'side') sideThreadsGone(rt, from);
   // A card keeps the mention’s message, so Allow wakes from it rather than posting it again.
-  // A bounce keeps its mark on the card, so Allow sends it as one, which goes back no further (#1518).
+  // A bounce keeps its mark on the card, so what is held is told as a reply, not a mention (#1518).
   const card = { text, replyIn: at === parent.id ? null : at, fromTurnId, itemId, ...(bounce ? { bounce } : {}) };
   if (!target) return askToAdd(rt, from, parent, p, card, { prose });
   // No limit between two agents (#492): the room shows the chain’s count, with a hint to Stop past CHAIN_HINT.

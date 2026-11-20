@@ -21,21 +21,26 @@ test('#135: a woken turn that opens with a block, or proposes a teammate, says w
   assert.deepEqual(proposal.woke, { by: 'alpha' });
 });
 
-test('#135, #1518: a turn another agent started says so on its replies, and the waker answers once, or when mentioned', async () => {
+test('#135, #1518: a turn another agent started says so on its replies, and an answer that names no one goes back to the waker', async () => {
   const { store, rt, adapter, t, alpha } = setup();
   rt.sendMessage(t.id, { text: '@alpha check the totals' });
   await settle(rt);
-  // alpha wakes beta, beta answers in the conversation naming no one: the answer goes back to alpha for one turn, which
-  // says beta woke it, and alpha’s reply to it goes back to no one (#1518, which reverses #372 here).
+  // alpha wakes beta, beta answers in the conversation naming no one: the answer goes back to alpha (#1518, which
+  // reverses #372 here), and alpha ends the exchange with a reaction (#1523).
   adapter.next.push(async (c) => c.text('Revision 3 has one arithmetic gap.'));
   rt.agentWake(alpha.id, 'beta', 'Check revision 3.');
   await settle(rt);
   const said = (handle) => store.items(t.id).filter((x) => x.kind === 'agent' && x.handle === handle && x.text !== 'Check revision 3.');
   assert.equal(said('alpha')[0].woke, undefined, 'the turn you started says nothing more');
   assert.deepEqual(said('beta')[0].woke, { by: 'alpha' });
-  assert.equal(said('alpha').length, 2, 'the answer started one turn for alpha');
-  assert.deepEqual(said('alpha')[1].woke, { by: 'beta' });
-  assert.equal(said('beta').length, 1, 'and nothing after it');
+  assert.equal(adapter.calls.filter((c) => c.handle === 'alpha').length, 2, 'the answer started one turn for alpha');
+  assert.deepEqual(
+    said('beta')[0].reactions.map((r) => `${r.handle} ${r.emoji}`),
+    ['alpha 👍'],
+    'which reacted',
+  );
+  assert.equal(said('alpha').length, 1, 'and posted nothing');
+  assert.equal(said('beta').length, 1, 'so nothing came after it');
   // An answer that @-mentions alpha wakes it, and alpha’s reply says beta woke it.
   adapter.next.push(async (c) => c.text('@alpha the gap is in row 4.'));
   adapter.next.push(async (c) => c.text('Sent the fix.'));
@@ -57,8 +62,10 @@ test('#114, #492: two agents mentioning each other in turn go on without a card,
   say('Fixed. @beta check again, please.');
   say('All good now.');
   say('Thanks.');
+  say('You’re welcome.');
   rt.sendMessage(t.id, { text: '@alpha fix the arithmetic gap' });
-  for (let i = 0; i < 20 && store.items(t.id).filter((x) => x.kind === 'agent').length < 5; i++) await settle(rt);
+  for (let i = 0; i < 20 && store.items(t.id).filter((x) => x.kind === 'agent').length < 6; i++) await settle(rt);
+  await settle(rt);
   const agents = store.items(t.id).filter((x) => x.kind === 'agent');
   assert.deepEqual(
     agents.map((x) => [x.handle, x.text]),
@@ -68,6 +75,7 @@ test('#114, #492: two agents mentioning each other in turn go on without a card,
       ['alpha', 'Fixed. @beta check again, please.'],
       ['beta', 'All good now.'],
       ['alpha', 'Thanks.'],
+      ['beta', 'You’re welcome.'],
     ],
     'each turn’s message once',
   );
@@ -79,11 +87,15 @@ test('#114, #492: two agents mentioning each other in turn go on without a card,
   // Beta’s last answer named no one, so it went back to alpha (#1518): a fourth wake, and alpha’s reply to it ended the chain.
   assert.deepEqual(
     agents.filter((x) => x.hop).map((x) => x.hop),
-    [1, 2, 3, 4],
-    'four agent wakes in the chain',
+    [1, 2, 3, 4, 5, 6],
+    'six agent wakes in the chain',
   );
-  assert.deepEqual(agents[3].wentBack, ['alpha']);
-  assert.equal(store.state.threads[t.id].hops, 0, 'and alpha’s reply to it, which went back to no one, ended it');
+  // Each answer that named no one went back (#1518, #1523), and alpha’s reaction to the last ended it.
+  assert.deepEqual(
+    agents.slice(3).map((x) => x.wentBack),
+    [['alpha'], ['beta'], ['alpha']],
+  );
+  assert.equal(store.state.threads[t.id].hops, 0, 'so its count starts again');
   assert.equal(Object.values(store.state.threads).filter((x) => x.kind === 'side').length, 0);
 });
 

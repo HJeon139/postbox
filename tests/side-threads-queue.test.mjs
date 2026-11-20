@@ -130,21 +130,18 @@ test('#228: your message in a topic thread starts the wake count again on the co
   await settle(rt);
 });
 
-test('#228, #1518: an @-mention from a turn in a topic thread wakes the agent there, on that message, and its answer goes back to the waker once', async () => {
+test('#228, #1518: an @-mention from a turn in a topic thread wakes the agent there, on that message, and its answer goes back to the waker there', async () => {
   const { store, rt, adapter, t, alpha, beta, topic } = await withTopic();
   adapter.next.push(async (c) => c.text('@beta your opinion on converter.py?'));
   adapter.next.push(async (c) => c.text('Looks fine.'));
   rt.sendMessage(topic.id, { text: '@alpha ask the reviewer' });
   await settle(rt);
-  // The mention is the wake: @alpha’s message carries its number in the chain, and no copy of it is posted. @alpha’s
-  // second message is its reply to the answer that went back to it (#1518).
+  // The mention is the wake: @alpha’s message carries its number in the chain, and no copy of it is posted. The answer
+  // went back to @alpha (#1518), which ended the exchange with a reaction (#1523).
   const said = store.items(topic.id).filter((i) => i.kind === 'agent' && i.sessionId === alpha.id);
   assert.deepEqual(
     said.map((i) => [i.text, i.hop]),
-    [
-      ['@beta your opinion on converter.py?', 1],
-      ['ok', undefined],
-    ],
+    [['@beta your opinion on converter.py?', 1]],
   );
   const answer = adapter.calls.find((x) => x.sessionId === beta.id);
   assert.deepEqual([answer.thread, answer.parts[0].from, answer.message.itemId], [topic.id, '@alpha', said[0].id]);

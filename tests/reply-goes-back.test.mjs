@@ -1,6 +1,7 @@
 // #1518: an agent @-mentioned with a question that answers without @-mentioning back left its asker asleep, and the
 // room’s work stopped. A turn only agents’ mentions started, whose replies @-mention no one, goes back to the agents
-// that woke it, once: a turn that bounce started goes back to no one (designs/intent.md, the agents-waking row).
+// that woke it. #1523: every time, however many bounces came before; an agent ends the exchange with a reaction, and
+// the room’s chain limit is the backstop (designs/intent.md, the agents-waking row).
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
@@ -14,25 +15,29 @@ const turnsOf = (f, handle) => f.adapter.calls.filter((c) => c.handle === handle
 /** The agent’s reply that says text. @param {any} f @param {string} text */
 const replyOf = (f, text) => f.store.items(f.t.id).find((x) => x.kind === 'agent' && x.text === text);
 
+/**
+ * A turn that ends the exchange as the room guide asks: a 👍 on the last message another agent wrote in its thread, and
+ * no reply. @param {any} f
+ */
+const reacts = (f) => async (/** @type {any} */ c, /** @type {any} */ _m, /** @type {any} */ se) => {
+  const last = f.store.items(c.thread.id).findLast((x) => x.kind === 'agent' && x.sessionId !== se.id && x.text);
+  const r = c.tools.react({ id: last.id, emoji: '👍' });
+  assert.equal(r.ok, true, r.message);
+};
+
 /** Runs scripted turns until the room is quiet, however many wakes chain. @param {any} f */
 async function quiet(f) {
   for (let i = 0; i < 20 && (f.rt.turns.size || f.rt.exiting.size || f.adapter.next.length); i++) await settle(f.rt);
   await settle(f.rt);
 }
 
-/** The person asks alpha, alpha asks beta, and beta answers with `answer`. */
-async function askBeta(answer, { alphaAsks = '@beta which file holds the changelog?', after = [] } = {}) {
+test('#1518 a reply that @-mentions no one goes back to the agent whose mention woke it', async () => {
   const f = setup();
-  f.adapter.next.push(async (c) => c.text(alphaAsks));
-  f.adapter.next.push(async (c) => c.text(answer));
-  for (const text of after) f.adapter.next.push(async (c) => c.text(text));
+  f.adapter.next.push(async (c) => c.text('@beta which file holds the changelog?'));
+  f.adapter.next.push(async (c) => c.text('It’s CHANGELOG.md, at the root.'));
+  f.adapter.next.push(reacts(f));
   f.rt.sendMessage(f.t.id, { text: '@alpha find out where the changelog goes' });
   await quiet(f);
-  return f;
-}
-
-test('#1518 a reply that @-mentions no one goes back to the agent whose mention woke it', async () => {
-  const f = await askBeta('It’s CHANGELOG.md, at the root.', { after: ['Got it, adding the entry there.'] });
   const alpha = turnsOf(f, 'alpha');
   assert.equal(alpha.length, 2, turns(f).join('\n'));
   assert.match(alpha[1].message.text, /It’s CHANGELOG\.md, at the root\./, 'alpha is given beta’s reply');
@@ -43,17 +48,44 @@ test('#1518 a reply that @-mentions no one goes back to the agent whose mention 
   assert.deepEqual(replyOf(f, 'It’s CHANGELOG.md, at the root.').wentBack, ['alpha']);
 });
 
-test('#1518 one bounce only: the reply to a reply that came back goes to no one', async () => {
-  const f = await askBeta('It’s CHANGELOG.md.', { after: ['Thanks, got it.', 'You’re welcome.'] });
+test('#1523 every bounce goes back: a chain of four replies that name no one goes back and forth until one reacts', async () => {
+  const f = setup();
+  f.adapter.next.push(async (c) => c.text('@beta which file holds the changelog?'));
+  for (const text of ['It’s CHANGELOG.md.', 'Which section?', 'Under Unreleased.', 'Done, it’s there.']) f.adapter.next.push(async (c) => c.text(text));
+  f.adapter.next.push(reacts(f));
+  f.rt.sendMessage(f.t.id, { text: '@alpha find out where the changelog goes' });
+  await quiet(f);
+  assert.deepEqual(
+    turns(f).map((x) => x.split(':')[0]),
+    ['alpha', 'beta', 'alpha', 'beta', 'alpha', 'beta'],
+  );
+  assert.deepEqual(replyOf(f, 'It’s CHANGELOG.md.').wentBack, ['alpha']);
+  assert.deepEqual(replyOf(f, 'Which section?').wentBack, ['beta']);
+  assert.deepEqual(replyOf(f, 'Under Unreleased.').wentBack, ['alpha']);
+  assert.deepEqual(replyOf(f, 'Done, it’s there.').wentBack, ['beta']);
+  // Each woken agent is told where its reply goes, after a bounce as before one.
+  assert.match(turnsOf(f, 'alpha')[1].message.text, /Your reply posts there and goes back to @beta\. @-mention another agent to hand off to them instead\./);
+  assert.match(turnsOf(f, 'beta')[2].message.text, /Your reply posts there and goes back to @alpha\./);
+});
+
+test('#1523 a turn that only reacts posts nothing, so nothing goes back and no one wakes', async () => {
+  const f = setup();
+  f.adapter.next.push(async (c) => c.text('@beta which file holds the changelog?'));
+  f.adapter.next.push(async (c) => c.text('It’s CHANGELOG.md.'));
+  f.adapter.next.push(reacts(f));
+  f.rt.sendMessage(f.t.id, { text: '@alpha find out where the changelog goes' });
+  await quiet(f);
   assert.deepEqual(
     turns(f).map((x) => x.split(':')[0]),
     ['alpha', 'beta', 'alpha'],
-    'beta never hears alpha’s thanks',
   );
-  assert.equal(replyOf(f, 'Thanks, got it.').wentBack, undefined);
-  assert.equal(f.adapter.next.length, 1, 'the last scripted reply was never asked for');
-  // What the woken agent is told matches: its reply to a bounce goes back to no one.
-  assert.match(turnsOf(f, 'alpha')[1].message.text, /Your reply posts there and goes to no one unless you @-mention an agent\./);
+  assert.deepEqual(
+    replyOf(f, 'It’s CHANGELOG.md.').reactions.map((r) => `${r.handle} ${r.emoji}`),
+    ['alpha 👍'],
+  );
+  assert.ok(!f.store.items(f.t.id).some((x) => x.kind === 'agent' && x.handle === 'alpha' && x.turnId && !x.text?.trim()), 'no empty or failed reply');
+  assert.equal(f.adapter.next.length, 0);
+  assert.equal(f.rt.turns.size, 0, 'no one is woken');
 });
 
 test('#1518 a reply that @-mentions anyone goes only where it says: a third agent wakes, and the asker doesn’t', async () => {
@@ -61,9 +93,11 @@ test('#1518 a reply that @-mentions anyone goes only where it says: a third agen
   f.rt.ensureSession(f.t.id, f.c.id);
   f.adapter.next.push(async (c) => c.text('@beta which file holds the changelog?'));
   f.adapter.next.push(async (c) => c.text('@gamma you own the changelog: which file is it?'));
+  f.adapter.next.push(async (c) => c.text('It’s CHANGELOG.md.'));
+  f.adapter.next.push(reacts(f));
   f.rt.sendMessage(f.t.id, { text: '@alpha find out where the changelog goes' });
   await quiet(f);
-  // gamma’s own answer goes back to beta, whose mention woke it, and beta’s to that is the bounce’s, so it ends there.
+  // gamma’s own answer goes back to beta, whose mention woke it, and beta ends it with a reaction.
   assert.deepEqual(
     turns(f).map((x) => x.split(':')[0]),
     ['alpha', 'beta', 'gamma', 'beta'],
@@ -80,6 +114,7 @@ test('#1518 a mention in a quote, in code or in a copied line names no one, so t
     const asked = f.store.items(f.t.id).find((x) => x.kind === 'agent' && x.handle === 'alpha');
     c.text(`> @gamma said it’s CHANGELOG.md\n\nRun \`@gamma check\` to see.\n\n[${asked.id}] @alpha: @beta which file holds the changelog?`);
   });
+  f.adapter.next.push(reacts(f));
   f.rt.sendMessage(f.t.id, { text: '@alpha find out where the changelog goes' });
   await quiet(f);
   assert.deepEqual(
@@ -128,6 +163,8 @@ test('#1518 a turn that opens a topic naming an agent hands off, so its reply do
     c.tools.open_topic({ itemId: asked.id, message: '@gamma you own the changelog: which file is it?' });
     c.text('I asked gamma in a topic.');
   });
+  f.adapter.next.push(async (c) => c.text('It’s CHANGELOG.md.'));
+  f.adapter.next.push(reacts(f));
   f.rt.sendMessage(f.t.id, { text: '@alpha find out where the changelog goes' });
   await quiet(f);
   assert.equal(turnsOf(f, 'alpha').length, 1, turns(f).join('\n'));
@@ -146,23 +183,33 @@ test('#1518 a turn the person started goes back to no one', async () => {
   assert.ok(!f.store.items(f.t.id).some((x) => x.wentBack));
 });
 
-test('#1518 a reply going back that waits on a card past the chain limit is still the one bounce once allowed', async () => {
+test('#1523 a thanks loop stops at the chain limit and waits for the person, and goes on when allowed', async () => {
+  // The demo’s @indexer thanked “@researcher” for each answer, and each thanks was answered: chaining goes on until
+  // an agent reacts instead, or the chain limit asks the person.
   const f = setup();
-  arrange.setThread(f.rt, f.t.id, { chainLimit: 1 });
+  arrange.setThread(f.rt, f.t.id, { chainLimit: 4 });
   f.adapter.next.push(async (c) => c.text('@beta which file holds the changelog?'));
-  f.adapter.next.push(async (c) => c.text('It’s CHANGELOG.md.'));
-  f.adapter.next.push(async (c) => c.text('Thanks, got it.'));
+  for (const text of ['It’s CHANGELOG.md.', 'Thanks @beta, adding it there.', 'Glad to help.', 'Thanks @beta, again.', 'Glad to help, again.']) {
+    f.adapter.next.push(async (c) => c.text(text));
+  }
   f.rt.sendMessage(f.t.id, { text: '@alpha find out where the changelog goes' });
   await quiet(f);
+  assert.deepEqual(
+    turns(f).map((x) => x.split(':')[0]),
+    ['alpha', 'beta', 'alpha', 'beta', 'alpha'],
+  );
+  assert.deepEqual(replyOf(f, 'Glad to help.').wentBack, ['alpha']);
   const card = f.store.items(f.t.id).find((x) => x.kind === 'hop' && x.status === 'open');
+  assert.deepEqual([card?.from, card?.to, card?.n], ['alpha', 'beta', 5], 'the fifth wake waits for the person');
+  f.adapter.next.push(reacts(f));
   f.rt.resolveHop(f.t.id, card.id, true);
   await quiet(f);
   assert.deepEqual(
     turns(f).map((x) => x.split(':')[0]),
-    ['alpha', 'beta', 'alpha'],
+    ['alpha', 'beta', 'alpha', 'beta', 'alpha', 'beta', 'alpha'],
+    'allowed, beta answers, and alpha ends it with a reaction',
   );
-  assert.match(turnsOf(f, 'alpha')[1].message.text, /goes to no one unless you @-mention an agent/);
-  assert.equal(f.store.items(f.t.id).filter((x) => x.kind === 'hop' && x.status === 'open').length, 0, 'no second card');
+  assert.equal(f.store.items(f.t.id).filter((x) => x.kind === 'hop' && x.status === 'open').length, 0);
 });
 
 test('#1518 a turn that reviews the asker’s block hands off by the review, so its reply doesn’t go back too', async () => {
@@ -186,31 +233,18 @@ test('#1518 a turn that reviews the asker’s block hands off by the review, so 
   assert.equal(replyOf(f, 'One comment on your plan.').wentBack, undefined);
 });
 
-test('#1518 a thanks that @-mentions back, after a reply came back, gets an answer that goes back to no one: no loop', async () => {
-  // The demo’s @indexer thanks “@researcher” for its answer: without this, each answer went back and was thanked again.
-  const f = await askBeta('It’s CHANGELOG.md.', { after: ['Thanks @beta, adding it there.', 'Glad to help.', 'Thanks @beta, again.', 'Glad to help, again.'] });
-  assert.deepEqual(
-    turns(f).map((x) => x.split(':')[0]),
-    ['alpha', 'beta', 'alpha', 'beta'],
-  );
-  assert.equal(replyOf(f, 'Glad to help.').wentBack, undefined);
-  assert.match(turnsOf(f, 'beta')[1].message.text, /Your reply posts there and goes to no one unless you @-mention an agent\./);
-});
-
-test('#1518 only a turn agents’ mentions alone woke comes from a bounce: with the person’s message, a scheduled wake or a review, it doesn’t', async () => {
-  const { fromBounce } = await import('../server/reply-back.mjs');
+test('#1523 a reply that came back counts as that agent’s mention: the answer to it goes back, unless the turn took anything else', async () => {
+  const { backTo } = await import('../server/reply-back.mjs');
   const bounce = { source: 'mention', from: 'beta', bounce: true };
-  const notice = { source: 'notice' };
-  assert.equal(fromBounce([bounce]), true);
-  assert.equal(fromBounce([bounce, notice]), true, 'a notice rides along');
-  assert.equal(fromBounce([bounce, { source: 'mention', from: 'gamma' }]), true, 'with another agent’s mention');
-  assert.equal(fromBounce([bounce, { source: 'person', from: 'you' }]), false, 'the person’s message');
-  assert.equal(fromBounce([bounce, { source: 'scheduled' }]), false, 'a scheduled wake');
-  assert.equal(fromBounce([bounce, { source: 'review', from: 'gamma' }]), false, 'a review');
-  assert.equal(fromBounce([{ source: 'mention', from: 'beta' }]), false, 'no bounce at all');
+  assert.deepEqual(backTo([bounce]), ['beta']);
+  assert.deepEqual(backTo([bounce, { source: 'notice' }]), ['beta'], 'a notice rides along');
+  assert.deepEqual(backTo([bounce, { source: 'mention', from: 'gamma' }]), ['beta', 'gamma'], 'with another agent’s mention');
+  assert.deepEqual(backTo([bounce, { source: 'person', from: 'you' }]), [], 'the person’s message');
+  assert.deepEqual(backTo([bounce, { source: 'scheduled' }]), [], 'a scheduled wake');
+  assert.deepEqual(backTo([bounce, { source: 'review', from: 'gamma' }]), [], 'a review');
 });
 
-test('#1518 an open_topic written after a bounce is a bounce too: the answer in the topic goes back to no one', async () => {
+test('#1523 an open_topic written after a bounce wakes as any mention: the answer in the topic goes back', async () => {
   const f = setup();
   f.adapter.next.push(async (c) => c.text('@beta which file holds the changelog?'));
   f.adapter.next.push(async (c) => c.text('It’s CHANGELOG.md.'));
@@ -220,14 +254,14 @@ test('#1518 an open_topic written after a bounce is a bounce too: the answer in 
     c.text('I asked beta in a topic.');
   });
   f.adapter.next.push(async (c) => c.text('Under Unreleased.'));
+  f.adapter.next.push(reacts(f));
   f.rt.sendMessage(f.t.id, { text: '@alpha find out where the changelog goes' });
   await quiet(f);
   assert.deepEqual(
     turns(f).map((x) => x.split(':')[0]),
-    ['alpha', 'beta', 'alpha', 'beta'],
+    ['alpha', 'beta', 'alpha', 'beta', 'alpha'],
   );
   const inTopic = Object.values(f.store.state.threads).find((x) => x.kind === 'topic');
   const answer = f.store.items(inTopic.id).find((x) => x.kind === 'agent' && x.text === 'Under Unreleased.');
-  assert.ok(answer, 'beta answered in the topic');
-  assert.equal(answer.wentBack, undefined);
+  assert.deepEqual(answer?.wentBack, ['alpha']);
 });
