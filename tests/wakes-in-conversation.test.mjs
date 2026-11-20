@@ -1,5 +1,6 @@
 // Agents talk in the conversation (#372): a wake runs where the waking agent spoke, never in a side thread of its own,
-// and a reply that @-mentions no agent goes back to its waker once (#1518). Side threads from before #372 are history.
+// and a reply that @-mentions no agent goes back to its waker, every time (#1518, #1523). Side threads from before #372
+// are history.
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';

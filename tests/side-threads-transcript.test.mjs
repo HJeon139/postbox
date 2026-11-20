@@ -84,7 +84,7 @@ test('#114, #492: two agents mentioning each other in turn go on without a card,
     store.items(t.id).filter((x) => !['user', 'agent', 'block', 'shared'].includes(x.kind)),
     [],
   );
-  // Beta’s last answer named no one, so it went back to alpha (#1518): a fourth wake, and alpha’s reply to it ended the chain.
+  // From beta’s “All good now.” on, each answer named no one, so each went back (#1518, every time since #1523).
   assert.deepEqual(
     agents.filter((x) => x.hop).map((x) => x.hop),
     [1, 2, 3, 4, 5, 6],

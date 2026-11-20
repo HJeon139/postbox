@@ -10,7 +10,7 @@ import { readOf } from './turn-parts.mjs';
 
 const sides = (store) => Object.values(store.state.threads).filter((x) => x.kind === 'side');
 
-test('#110, #1518: a wake runs in the agent’s own session, in the conversation; its reply shows there, and goes back to the waker for one turn', async () => {
+test('#110, #1518: a wake runs in the agent’s own session, in the conversation; its reply shows there, and goes back to the waker', async () => {
   const { store, rt, adapter, t, b, alpha, beta } = setup();
   const h = held();
   adapter.next.push(h.step);
@@ -37,8 +37,8 @@ test('#110, #1518: a wake runs in the agent’s own session, in the conversation
   await settle(rt);
   const reply = store.items(t.id).find((i) => i.kind === 'agent' && i.handle === 'beta');
   assert.deepEqual([reply.sessionId, reply.text], [beta.id, 'working on it']);
-  // Its reply named no one, so it goes back to the session that woke it, in the conversation, for one turn whose reply
-  // goes back to no one (#1518, which reverses #372 here).
+  // Its reply named no one, so it goes back to the session that woke it, in the conversation (#1518, which reverses
+  // #372 here), which ends the exchange with a reaction (#1523).
   assert.deepEqual(
     adapter.calls.map((c) => [c.sessionId, c.thread]),
     [

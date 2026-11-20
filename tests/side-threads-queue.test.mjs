@@ -1,7 +1,7 @@
 // Wakes with one session per agent (#228, #372): a wake for a busy agent waits in the queue of the thread it was sent
 // in, where the person sees it, can remove it, and Send now keeps it; Stop drops it and tells the waker. The woken
-// agent answers in the thread the waker spoke in, and an answer that @-mentions no one goes back to the waker once
-// (#1518). And the conversation’s pool is the only place an agent joins, from a topic thread too.
+// agent answers in the thread the waker spoke in, and an answer that @-mentions no one goes back to the waker (#1518),
+// every time (#1523). And the conversation’s pool is the only place an agent joins, from a topic thread too.
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
@@ -31,8 +31,8 @@ test('#228, #1518: an agent in a topic thread that wakes another gets the answer
   const answer = adapter.calls.find((x) => x.sessionId === beta.id);
   assert.deepEqual([answer.thread, answer.parts[0].from, answer.message.itemId], [topic.id, '@alpha', wake.id]);
   assert.ok(store.items(topic.id).some((i) => i.kind === 'agent' && i.sessionId === beta.id && i.text === 'Looks fine.'));
-  // The answer named no one, so it goes back to @alpha for one turn in the thread, and @alpha’s reply to it goes back
-  // to no one (#1518, which reverses #372 here).
+  // The answer named no one, so it goes back to @alpha in the thread (#1518, which reverses #372 here), which ends the
+  // exchange with a reaction (#1523).
   const back = adapter.calls.filter((x) => x.sessionId === alpha.id && x.parts[0].from === '@beta');
   assert.deepEqual(
     back.map((x) => x.thread),
