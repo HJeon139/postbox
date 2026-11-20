@@ -25,3 +25,22 @@ export function clockNote(rt, sessionId, change, d) {
   if (!se) return;
   rt.threads.addItem(se.threadId, { kind: 'system', variant: 'clock', sessionId, handle: se.handle, change, text: WORDS[change](se.handle, d) });
 }
+
+/** The line a clock’s state needs last in its conversation, for a state that holds the agent. */
+const HOLDING = /** @type {const} */ ({ paused: 'paused', expired: 'expired' });
+
+/**
+ * As Postbox starts, a clock that holds its agent gets its line if the conversation lacks it: the clock’s event and
+ * its line are two writes, and a kill between them would leave the agent held with nothing to say so (hydrant-critic’s
+ * review of #1522). The line is the newest clock line for that session, so a second start adds nothing.
+ * @param {any} rt @param {string} sessionId @param {any} clock
+ */
+export function repairClockNote(rt, sessionId, clock) {
+  const change = Object.hasOwn(HOLDING, clock?.state) ? HOLDING[/** @type {'paused' | 'expired'} */ (clock.state)] : null;
+  const se = rt.store.pending.session(sessionId) ?? rt.s.sessions[sessionId];
+  if (!change || !se) return;
+  const last = rt.store.pending
+    .items(se.threadId)
+    .findLast((/** @type {any} */ i) => i.kind === 'system' && i.variant === 'clock' && i.sessionId === sessionId);
+  if (last?.change !== change) clockNote(rt, sessionId, change, { budgetMs: clock.budgetMs, elapsedMs: clock.usedMs });
+}

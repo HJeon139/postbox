@@ -6,7 +6,7 @@
 
 import { CLOCK_BUDGET_MAX_S, clockElapsed, clockLine } from '../shared/run-clock.mjs';
 import { httpError } from './helpers.mjs';
-import { clockNote } from './run-clock-notes.mjs';
+import { clockNote, repairClockNote } from './run-clock-notes.mjs';
 import { whenWritable } from './store-wait.mjs';
 
 /** The longest a Node timer waits; a later expiry is checked again when it fires. */
@@ -139,6 +139,7 @@ export function rearmClocks(rt, now = Date.now) {
   }
   for (const sessionId of Object.keys(rt.s.clocks ?? {})) {
     const clock = clockOf(rt, sessionId);
+    if (rt.store.writable) repairClockNote(rt, sessionId, clock);
     // Each running clock marks where Postbox’s record starts again, so a gap in it can be seen: an agent on a host may
     // have worked through it, past the budget, since the hard stop is this server’s timer.
     if (clock?.state === 'running' && rt.store.writable) {

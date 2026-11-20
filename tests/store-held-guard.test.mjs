@@ -143,7 +143,7 @@ const PENDING = {
   // PATCH sets it on, maybe started there.
   'room-chain-limit.mjs': ['roomChainLimit', 'patchThread'],
   'run-clock.mjs': ['clockOf'], // every decision on a run clock (its route, its timer, a turn’s line), on the clock as held writes will leave it (#1522)
-  'run-clock-notes.mjs': ['clockNote'], // the session a clock line names, maybe just made, says which conversation the line goes to
+  'run-clock-notes.mjs': ['clockNote', 'repairClockNote', 'repairClockNote'], // the session a clock line names, maybe just made, says which conversation the line goes to; and that conversation’s newest clock line, maybe just added, whether a holding clock still needs one (#1522)
   // The members a delete keeps its room for, maybe joined behind a held commit (#796); the session it deletes, and the
   // threads a conversation’s delete covers, any of them maybe made there too. Every lookup comes before any change.
   'session-lifecycle.mjs': ['conversationScope', 'conversationScope', 'deleteSession', 'deleteSession', 'deleteSession', 'deleteSession'],
