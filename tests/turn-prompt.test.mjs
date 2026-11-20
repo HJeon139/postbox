@@ -100,3 +100,31 @@ test('Claude Code’s run records exactly the guide it appends and the prompt it
   assert.equal(recorded[0].text, runs[0].stdin);
   assert.match(recorded[0].text, /^Tea or coffee\?/);
 });
+
+test('a Claude Code run that couldn’t start records no prompt, since none reached a backend', async () => {
+  const adapter = new ClaudeCodeAdapter({
+    bin: 'claude',
+    workRoot: tempDir('pb-prompt-work-'),
+    spawnImpl: () => {
+      throw Object.assign(new Error('spawn claude ENOENT'), { code: 'ENOENT' });
+    },
+  });
+  const recorded = [];
+  const abort = new AbortController();
+  const ctx = {
+    signal: abort.signal,
+    mcpUrl: 'http://127.0.0.1:4280/mcp?session=se_1',
+    persona: { handle: 'coder', model: 'claude-opus-5-5', permissionMode: 'ask', folder: tempDir('pb-prompt-coder-'), description: '', instructions: '' },
+    project: null,
+    handles: ['coder'],
+    state: {},
+    saveState: () => {},
+    pathOf: () => null,
+    text: () => {},
+    activity: () => {},
+    status: () => {},
+    prompt: (p) => recorded.push(p),
+  };
+  await assert.rejects(adapter.deliver({}, { kind: 'user', text: 'Tea or coffee?' }, ctx), /Couldn’t start Claude Code/);
+  assert.deepEqual(recorded, []);
+});

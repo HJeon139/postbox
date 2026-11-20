@@ -234,7 +234,6 @@ export class AgentSdkAdapter {
     /** @type {any} */
     let thrown = null;
     try {
-      ctx.prompt?.({ guide, text: prompt });
       const q = this.sdk.query({ prompt, options });
       // A background job’s own Stop, while the CLI waits for it.
       ctx.control?.({ ...liveControl(q, persona.permissionMode ?? 'auto'), stopJob: (job) => stopJobUnder(child, job, procs) });
@@ -242,6 +241,7 @@ export class AgentSdkAdapter {
         record(JSON.stringify(m));
         mapper.push(m);
         if (m.type === 'system' && m.subtype === 'init') noteInit(q, m, ctx);
+        if (m.type === 'system' && m.subtype === 'init') ctx.prompt?.({ guide, text: prompt }); // its CLI started on it
       }
     } catch (e) {
       if (ctx.signal.aborted) return;

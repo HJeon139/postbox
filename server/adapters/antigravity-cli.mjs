@@ -666,7 +666,6 @@ export class AntigravityCliAdapter {
    */
   run({ ctx, cwd, addDirs, prompt, sessionId, wrote = false, hookConfirmed = false }) {
     const persona = ctx.persona;
-    ctx.prompt?.({ text: prompt });
     const model = agyModel(persona, this.capabilities.models);
     const effort = agyEffort(model, effortOf(persona));
     const args = agyArgs({ persona, model, effort, sessionId, prompt, addDirs, hookConfirmed });
@@ -682,6 +681,7 @@ export class AntigravityCliAdapter {
         reject(agyStartError(e, prompt, this.bin));
         return;
       }
+      ctx.prompt?.({ text: prompt }); // started, so sent
       let stderr = '';
       const c = child;
       const exited = new Promise((r) => {

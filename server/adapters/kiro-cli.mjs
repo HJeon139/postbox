@@ -337,7 +337,6 @@ export class KiroCliAdapter {
    */
   async run({ ctx, cwd, folders, prompt, guide, sessionId, turn, attach = false }) {
     const persona = ctx.persona;
-    if (!attach) ctx.prompt?.({ guide, text: prompt }); // what this run sends; an attach replays what was sent
     const agent = `postbox-${String(persona.handle).replace(/[^a-z0-9_-]/gi, '')}-${randomUUID().slice(0, 8)}`;
     // On a host the prompt always goes on stdin; here, too, once it's too long for one argument (#362).
     const stdin = Boolean(ctx.remote) || tooLongForArg(prompt);
@@ -368,6 +367,7 @@ export class KiroCliAdapter {
           reject(new Error(`Couldn’t start the Kiro CLI (${this.bin}): ${e.message}`));
           return;
         }
+        if (!attach) ctx.prompt?.({ guide, text: prompt }); // started, so sent; an attach replays what was sent
         // kiro exiting before it reads the prompt (EPIPE) ends its turn, not Postbox, as claude-code.mjs guards it.
         if (stdin && !attach) child.stdin.on('error', () => {}).end(prompt);
         let stderr = '';

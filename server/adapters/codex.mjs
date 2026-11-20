@@ -193,7 +193,6 @@ async function startTurn(ctx, request, send, cwd, session, message) {
   ctx.saveState({ codexThreadId: id, fork: null, forkFrom: null });
   const note = `[Postbox] ${FRESH_START_TEXT}\n\n`;
   const inputText = formatMessage(fresh ? { ...turnMessage, text: note + turnMessage.text } : turnMessage, attachmentPaths(ctx, ctx.remote?.turn));
-  ctx.prompt?.({ guide, text: inputText });
   const started = await request('turn/start', {
     threadId: id,
     input: [{ type: 'text', text: inputText }],
@@ -202,6 +201,7 @@ async function startTurn(ctx, request, send, cwd, session, message) {
     cwd,
     ...permissions,
   });
+  ctx.prompt?.({ guide, text: inputText }); // turn/start accepted it
   // A persona on Codex’s default names none: the model Codex opened the thread with is the one that runs (#1315).
   return { started, model: model ?? opened?.model ?? null };
 }
