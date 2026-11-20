@@ -77,15 +77,13 @@ export class Delivery {
    * turn has written what its failed reply says (designs/architecture/services.md, “The end of a turn”).
    * `at` is when it arrived, now unless it waited somewhere first, as a stored queue’s row did (#1423).
    * @param {{ sessionId: string, threadId: string, source: string, itemId?: string, text?: string, message?: any,
-   *   from?: string, retryId?: string, at?: number, bounce?: boolean }} e
-   * `bounce` marks a mention that goes back no further: a reply going back to the agent whose mention woke its writer,
-   * or a mention written in a turn a bounce started (reply-back.mjs).
+   *   from?: string, retryId?: string, at?: number }} e
    * `carry` is a message kept in memory for the turn that takes the entry, and never stored: what an app sent, which
    * stays out of the public inbox (#1425). A restart loses it, as it lost a message held for a busy agent before.
    * @param {{ wake?: boolean, carry?: any }} [opts]
    * @returns {Entry}
    */
-  send({ sessionId, threadId, source, itemId, text, message, from, retryId, at, bounce }, { wake = true, carry = undefined } = {}) {
+  send({ sessionId, threadId, source, itemId, text, message, from, retryId, at }, { wake = true, carry = undefined } = {}) {
     if (!SOURCES.includes(source)) throw new Error(`An entry’s source is one of ${SOURCES.join(', ')}, not “${source}”.`);
     if ((itemId === undefined) === (text === undefined)) throw new Error('An entry has an item or its own text, and not both.');
     const se = this.store.pending.session(sessionId);
@@ -102,7 +100,6 @@ export class Delivery {
       ...(itemId === undefined ? { text } : { itemId }),
       ...(message === undefined ? {} : { message }),
       ...(from === undefined ? {} : { from }),
-      ...(bounce ? { bounce: true } : {}),
       at: at ?? Date.now(),
       // Its place among what arrived in the same millisecond, here and with the queue’s messages (#733).
       seq: arrival(),

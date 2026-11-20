@@ -24,7 +24,8 @@ test.beforeAll(async () => {
           ctx.signal.addEventListener('abort', resolve, { once: true });
         });
         if (!ctx.signal.aborted) ctx.text('Initial work done.');
-      } else ctx.text(`Answered ${message.messages?.length ?? 1} queued messages.`);
+      } else if (arrange.cameBack(app.rt, session.id)) ctx.tools.react({ id: given.itemId, emoji: '👍' });
+      else ctx.text(`Answered ${message.messages?.length ?? 1} queued messages.`);
     },
   });
 });
@@ -150,8 +151,9 @@ test('an unaddressed newer post is named on the waiting message as posted since,
   await idle(r);
   await synced(page, app);
   await expect(mail(page, r)).toBeHidden();
-  // The worker’s reply @-mentions no one, so it goes back to the sender (#1518), who answers it the same way.
-  await expect(page.getByText('Answered 1 queued messages.', { exact: true })).toHaveCount(2);
+  // The worker’s reply @-mentions no one, so it goes back to the sender (#1518), who ends it with a reaction (#1523).
+  await expect(page.getByText('Answered 1 queued messages.', { exact: true })).toHaveCount(1);
+  await expect.poll(() => app.store.items(r.thread.id).find((it) => it.text === 'Answered 1 queued messages.')?.reactions?.length ?? 0).toBe(1);
   expect(turnsFor(r)).toHaveLength(2);
   expect(turnsFor(r)[1].message.text).toBe(`Review the older context\n(The same sender posted since: [${newer.id}])`);
 });
