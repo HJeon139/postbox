@@ -1,10 +1,11 @@
 // A run clock behind held store writes (server/store-held.mjs): while a commit is in its fsync, emits are held, and the
 // published state doesn’t have them yet. The clock’s route, its timer, the turn’s line and Delivery read the clock
 // pending, so a clock started, paused or expired then holds and times its agent at once (hydrant-critic’s review of
-// #1522: a 1 s clock started behind a held commit was never armed).
+// #1522: a 1 s clock started behind a held commit was never armed). No real timer runs: node:test’s mock timers stand
+// in for setTimeout and setInterval, so the clocks’ timers never fire on their own; time is injected (`at`).
 
 import assert from 'node:assert/strict';
-import { test } from 'node:test';
+import { mock, test } from 'node:test';
 import { armClock, clockAction } from '../server/run-clock.mjs';
 import { clockHolds } from '../shared/run-clock.mjs';
 import { setup } from './stop-fixture.mjs';
@@ -13,7 +14,9 @@ import { heldStore } from './stop-reply-fixture.mjs';
 const T0 = 1_800_000_000_000;
 const at = (ms) => () => T0 + ms;
 
-test('a clock started, paused, resumed and expired behind a held commit acts at once, and publishes as it acted', async () => {
+test('a clock started, paused, resumed and expired behind a held commit acts at once, and publishes as it acted', async (t) => {
+  mock.timers.enable({ apis: ['setTimeout', 'setInterval'] });
+  t.after(() => mock.timers.reset());
   const h = await heldStore();
   const { rt, store, se } = setup(h.store);
   await store.flush();

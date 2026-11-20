@@ -1,9 +1,11 @@
 // An agent’s run clock (shared/run-clock.mjs, server/run-clock.mjs): the store keeps its budget and what it used, each
 // turn of a clocked agent carries its line and records clock.turn, and at its budget Postbox records clock.expired,
-// stops the running turn and starts no other. Time is injected (`now`); the turns are the Stop tests’ scripted adapter.
+// stops the running turn and starts no other. No real timer runs: node:test’s mock timers stand in for setTimeout,
+// setInterval and Date in every test, and time moves only when a test ticks it. The turns are the Stop tests’ scripted
+// adapter, whose steps settle on the event loop’s turns (setImmediate), not on time.
 
 import assert from 'node:assert/strict';
-import { test } from 'node:test';
+import { afterEach, beforeEach, mock, test } from 'node:test';
 import { formatMessage } from '../server/adapters/guide.mjs';
 import { armClock, clockAction, rearmClocks } from '../server/run-clock.mjs';
 import { clockElapsed, clockLine } from '../shared/run-clock.mjs';
@@ -11,8 +13,18 @@ import { apply, emptyState, PUBLIC_EVENT_TYPES } from '../shared/state.mjs';
 import { waitingEntries } from './arrange.mjs';
 import { setup, slowToExit } from './stop-fixture.mjs';
 
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const T0 = 1_800_000_000_000;
+beforeEach(() => mock.timers.enable({ apis: ['setTimeout', 'setInterval', 'Date'], now: T0 }));
+afterEach(() => mock.timers.reset());
+/** Lets the scripted turns settle, then moves the mock clock on by `ms`, and lets what that fires settle. */
+async function sleep(ms) {
+  const turns = async () => {
+    for (let i = 0; i < 20; i++) await new Promise((r) => setImmediate(r));
+  };
+  await turns();
+  mock.timers.tick(ms);
+  await turns();
+}
 const at = (ms) => () => T0 + ms;
 const clockEvents = (store) => store.since(0).filter((e) => e.type.startsWith('clock.'));
 
@@ -86,17 +98,19 @@ test('an agent with no clock gets no line and no clock event', async () => {
 
 test('at its budget the clock expires, the running turn stops, and no new turn starts', async () => {
   const { rt, store, adapter, t, se } = setup();
+  // Date is the mock clock’s, so the clock and its timer read the same time.
   const now = Date.now();
-  clockAction(rt, se.id, { action: 'start', budgetS: 60 }, () => now);
+  clockAction(rt, se.id, { action: 'start', budgetS: 60 });
   const turn = slowToExit();
   adapter.next.push(turn);
   rt.sendMessage(t.id, { text: 'Work until stopped.' });
   await sleep(5);
   assert.ok(rt.turns.has(se.id));
-  // The timer’s check, 61 s on.
-  armClock(rt, se.id, () => now + 61_000);
+  // The clock’s own timer fires as the mock clock passes 60 s.
+  await sleep(59_000);
+  assert.equal(store.state.clocks[se.id].state, 'running', 'not before its budget');
+  await sleep(1_000);
   assert.equal(store.state.clocks[se.id].state, 'expired');
-  await sleep(1);
   assert.equal(turn.reason?.name, 'AbortError');
   const reply = store.items(t.id).findLast((i) => i.kind === 'agent');
   assert.equal(reply.status, 'stopped');
@@ -108,7 +122,9 @@ test('at its budget the clock expires, the running turn stops, and no new turn s
   assert.equal(rt.turns.has(se.id), false);
   const expired = clockEvents(store).filter((e) => e.type === 'clock.expired');
   assert.equal(expired.length, 1);
-  assert.equal(expired[0].data.at, now + 61_000);
+  // The mock clock reads the end of the tick that fired it: 60 s, plus the 5 ms the turn took to start.
+  const late = expired[0].data.at - now;
+  assert.ok(late >= 60_000 && late <= 60_005, String(late));
 });
 
 test('a clock that ran out while Postbox was down expires as it starts', () => {
