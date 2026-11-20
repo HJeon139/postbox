@@ -54,7 +54,10 @@ export function foldEvents(events, live = []) {
     takes: new Map(),
   };
   // In the order they happened: by the recorder’s epoch (tools/uat/history.mjs: a restart numbers from lower again), then by seq.
-  for (const e of [...events].sort((a, b) => (a.epoch ?? 0) - (b.epoch ?? 0) || a.seq - b.seq)) foldOne(f, e);
+  // Each event’s place is its position once sorted, which every step, turn and model report is ordered by: a seq alone
+  // isn’t one, since a new epoch numbers from lower again (hydrant-critic’s review of #1522).
+  const sorted = [...events].sort((a, b) => (a.epoch ?? 0) - (b.epoch ?? 0) || a.seq - b.seq);
+  for (const [place, e] of sorted.entries()) foldOne(f, { ...e, seq: place });
   // A live step frame carries what changed of one step; a snapshot frame, a running turn’s steps as a page joins it.
   for (const l of live) {
     if (l?.kind === 'step') mergeStep(f.items.get(l.itemId), l.step ?? {});

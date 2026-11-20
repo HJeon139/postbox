@@ -39,3 +39,28 @@ test('a model a turn reports only after its first words is still that turn’s, 
   const [reply] = of('dry', events).steps.filter((s) => s.source === 'agent');
   assert.equal(reply.model_name, 'new');
 });
+
+test('steps from a new epoch, numbered from lower again after a restart, come after the old epoch’s', () => {
+  // As the UAT kit’s recorder keeps them (tools/uat/history.mjs): epoch 0 to seq 100, then epoch 1 from seq 1.
+  const events = [
+    { seq: 99, type: 'session', data: { id: 'se_1', handle: 'dry', threadId: 'th_1', backend: 'claude-code', lastModel: 'old' } },
+    { seq: 100, type: 'clock.started', data: { sessionId: 'se_1', threadId: 'th_1', budgetMs: 60_000, at: 1_000 } },
+    { seq: 1, epoch: 1, type: 'clock.restored', data: { sessionId: 'se_1', elapsedMs: 30_000, budgetMs: 60_000, at: 2_000 } },
+    {
+      seq: 2,
+      epoch: 1,
+      type: 'item.add',
+      data: { threadId: 'th_1', item: { id: 'it_r', at: 3_000, kind: 'agent', sessionId: 'se_1', handle: 'dry', text: 'After.' } },
+    },
+  ];
+  const t = of('dry', events);
+  assert.deepEqual(
+    t.steps.map((s) => s.extra.event ?? s.extra.item_id),
+    ['clock.started', 'clock.restored', 'it_r'],
+  );
+  const times = t.steps.map((s) => Date.parse(s.timestamp));
+  assert.deepEqual(
+    times,
+    [...times].sort((a, b) => a - b),
+  );
+});
