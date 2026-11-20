@@ -19,8 +19,11 @@ export default defineConfig({
   forbidOnly: CI,
   failOnFlakyTests: CI,
   retries: 0,
-  // 4 at a time on CI’s 4-core runner, as the old headless runner measured there (#174).
-  workers: CI ? 4 : undefined,
+  // 4 at a time, on CI’s 4-core runner as the old headless runner measured there (#174), and locally too (#1532): each
+  // worker runs its own Postbox and Chromium, and Playwright’s default, half the cores, starved them on a 12-core Mac. A
+  // page streaming eight agents applied events 2–3 s after they were emitted at 6 workers, against 150 ms alone or at 4,
+  // and specs’ 5 s waits timed out. `npx playwright test --workers=<n>` still overrides it.
+  workers: 4,
   timeout: 30_000,
   expect: { timeout: 5_000 },
   // In check-logs/, one file per pass.
