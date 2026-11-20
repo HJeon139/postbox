@@ -82,12 +82,14 @@ export function followEvents(origin) {
   void (async () => {
     // Reconnect from the last event seen if the stream drops, as the page does.
     while (!abort.signal.aborted) {
+      let opened = false;
       try {
         const known = rec.epoch();
         const res = await fetch(`${origin}/api/stream?since=${rec.last()}${known ? `&epoch=${encodeURIComponent(JSON.parse(known))}` : ''}`, {
           signal: abort.signal,
         });
         if (!res.body) throw new Error('no body');
+        opened = true;
         const decoder = new TextDecoder();
         let buf = '';
         for await (const chunk of res.body) {
@@ -100,6 +102,8 @@ export function followEvents(origin) {
           }
         }
       } catch {}
+      // A stream that was open and ended: its events come again from `since`, but its live frames, unnumbered, don’t.
+      if (opened && !abort.signal.aborted) rec.dropped();
       if (!abort.signal.aborted) await new Promise((ok) => setTimeout(ok, 1000).unref());
     }
   })();
@@ -117,7 +121,7 @@ export function streamRecorder() {
   const live = [];
   /** @type {{ at: number, id: string, state: string|null, failure: string|null, update: UpdateSeen|null }[]} */
   const hostStates = [];
-  /** @type {{ after: number, at: number }[]} where the stream had to resync, so events were lost */
+  /** @type {{ after: number, at: number, epoch: number, lost: 'events' | 'live' }[]} where the stream lost events, or live frames */
   const gaps = [];
   let last = 0;
   // The store’s history epoch, as each stream names it first (server/live-streams.mjs), and how many it has had: after a
@@ -137,7 +141,7 @@ export function streamRecorder() {
     // review of #1522). A run’s ATIF trajectories carry it as partial (tools/atif-export.mjs).
     // One gap however many frames say so, until an event comes again: a new epoch’s stream sends its epoch, then a resync.
     const gap = () => {
-      if (!inGap) gaps.push({ after: last, at: Date.now(), epoch: epochs });
+      if (!inGap) gaps.push({ after: last, at: Date.now(), epoch: epochs, lost: 'events' });
       inGap = true;
     };
     if (type === 'resync') return gap();
@@ -158,7 +162,13 @@ export function streamRecorder() {
       if (e) kept.push(epochs ? { ...e, epoch: epochs } : e);
     } catch {}
   };
-  return { take, last: () => last, epoch: () => epoch, events: () => kept, live: () => live, hostStates: () => hostStates, gaps: () => gaps };
+  /**
+   * The stream ended while open (followEvents): the server replays its events from `last`, but not the live frames
+   * sent meanwhile, a running turn’s tool inputs and outputs, so the recording says it lost those (hydrant-critic’s
+   * review of #1522).
+   */
+  const dropped = () => gaps.push({ after: last, at: Date.now(), epoch: epochs, lost: 'live' });
+  return { take, dropped, last: () => last, epoch: () => epoch, events: () => kept, live: () => live, hostStates: () => hostStates, gaps: () => gaps };
 }
 
 /** A host.status frame, kept as the host’s state with when it came. @param {any[]} hostStates @param {string} data */

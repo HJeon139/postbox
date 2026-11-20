@@ -105,3 +105,23 @@ test('after a restart numbers events from lower again, the recorder keeps them, 
   assert.equal(r.last(), 91);
   assert.equal(r.epoch(), '"epoch-b"');
 });
+
+test('a stream cut off and reopened in the same epoch notes the live frames it lost, and the export says so', (t) => {
+  const r = streamRecorder();
+  r.take('event: epoch\ndata: "epoch-a"');
+  r.take(`id: 40\nevent: item.add\ndata: ${JSON.stringify({ threadId: 't', item: { id: 'i40', kind: 'user', at: 1 } })}`);
+  // followEvents, when an open stream ends: its events come again from `since`, its live frames don’t.
+  r.dropped();
+  assert.deepEqual(
+    r.gaps().map((g) => [g.after, g.lost]),
+    [[40, 'live']],
+  );
+  const dir = tempDir('pb-atif-cut-');
+  for (const f of ['events.jsonl', 'live.jsonl']) writeFileSync(join(dir, f), readFileSync(new URL(`fixtures/atif/dry-run/${f}`, import.meta.url), 'utf8'));
+  writeFileSync(join(dir, 'stream-gaps.json'), JSON.stringify(r.gaps()));
+  const out = join(dir, 'out');
+  t.mock.method(console, 'log', () => {});
+  assert.equal(main([dir, '--out', out]), 0);
+  const traj = JSON.parse(readFileSync(join(out, readdirSync(out)[0]), 'utf8'));
+  assert.match(traj.notes, /^Partial: the recording of \/api\/stream was cut off once, after event 40, so tool inputs and outputs sent while it was away/);
+});

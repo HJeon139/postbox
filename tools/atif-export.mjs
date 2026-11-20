@@ -132,7 +132,18 @@ function pick(rec, { sessionId, handle }) {
  */
 function gapNote(gaps) {
   if (!gaps?.length) return null;
-  return `Partial: the recording of /api/stream lost events ${gaps.length === 1 ? 'once' : `${gaps.length} times`}, after event ${gaps.map((g) => g.after).join(', ')}, where the server could no longer replay them; steps that came between are missing.`;
+  const events = gaps.filter((g) => g.lost !== 'live');
+  const live = gaps.filter((g) => g.lost === 'live');
+  const where = (/** @type {any[]} */ list) => `after event ${list.map((g) => g.after).join(', ')}`;
+  const said = [
+    events.length
+      ? `lost events ${events.length === 1 ? 'once' : `${events.length} times`}, ${where(events)}, where the server could no longer replay them, so steps that came between are missing`
+      : '',
+    live.length
+      ? `was cut off ${live.length === 1 ? 'once' : `${live.length} times`}, ${where(live)}, so tool inputs and outputs sent while it was away (live frames, which aren’t replayed) are missing`
+      : '',
+  ].filter(Boolean);
+  return `Partial: the recording of /api/stream ${said.join('; and it ')}.`;
 }
 
 /** A UAT run’s folder (tools/uat/history.mjs, writeHistory): its events, its live frames and where its stream lost events. @param {string} dir */
