@@ -48,3 +48,21 @@ test('an answer that comes after another message is placed after it, at its own 
   const order = t.steps.map((s) => s.extra.item_id);
   assert.ok(order.indexOf(next.data.item.id) < order.lastIndexOf(answer.data.id), 'the answer comes after the message');
 });
+
+test('an answer that waited in the inbox, untaken, is no step; once a turn took its entry, it is', () => {
+  // From the real run: the first answer becomes one its question’s call no longer waited for (read: false), as when
+  // the person answers after the agent’s clock expired. Then an answer entry, as server/blocks.mjs sends one, and its
+  // take by a turn, are added after it.
+  const answer = UAT.events.find((e) => e.type === 'item.patch' && e.data.patch?.answer);
+  const unread = { ...answer, data: { ...answer.data, patch: { ...answer.data.patch, answer: { ...answer.data.patch.answer, read: false } } } };
+  const events = UAT.events.map((e) => (e === answer ? unread : e));
+  const sessionId = UAT.events.find((e) => e.type === 'session').data.id;
+  const answers = (list) => all(list, UAT.live)[0].trajectory.steps.filter((s) => s.extra.answer_to !== undefined);
+  assert.equal(answers(events).length, 2, 'the unread one is left out');
+  const entry = { id: 'en_answer', sessionId, threadId: answer.data.threadId, source: 'answer', itemId: answer.data.id, state: 'waiting', takenBy: null };
+  const waiting = [...events, { seq: 10_000, type: 'entry.add', data: { sessionId, entry } }];
+  assert.equal(answers(waiting).length, 2, 'an entry still waiting didn’t reach the agent');
+  const taken = [...waiting, { seq: 10_001, type: 'entry.patch', data: { sessionId, id: 'en_answer', patch: { state: 'taken', takenBy: 'turn_later' } } }];
+  assert.equal(answers(taken).length, 3);
+  assert.equal(answers(taken).find((s) => s.extra.item_id === answer.data.id).extra.taken_by_turn, 'turn_later');
+});

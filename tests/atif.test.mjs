@@ -256,3 +256,15 @@ test('a session whose only output was a block still has a trajectory', () => {
   );
   assert.equal(t.steps[1].metrics.completion_tokens, 102);
 });
+
+test('each reply names the model that ran it, and the trajectory names a default only when one model ran it all', () => {
+  // The recorded run replays a Claude Code turn on claude-sonnet-5-5, then two on claude-opus-5-5 (dry-run.md).
+  const t = of('dry');
+  assert.deepEqual(
+    t.steps.filter((s) => s.source === 'agent').map((s) => s.model_name),
+    ['claude-sonnet-5-5', 'claude-opus-5-5', 'claude-opus-5-5'],
+  );
+  assert.equal(t.agent.model_name, undefined, 'no default: two models ran');
+  assert.deepEqual(t.agent.extra.models, ['claude-sonnet-5-5', 'claude-opus-5-5']);
+  assert.equal(of('dry2').agent.model_name, 'claude-sonnet-5-5');
+});

@@ -5,7 +5,7 @@
 //
 // What becomes a step, in the order the events added it:
 // - user: a message of the person’s that one of the agent’s turns took from its inbox (designs/rooms-at-scale.md), and
-//   the person’s answer to one of the agent’s blocks;
+//   the person’s answer to one of the agent’s blocks, once it reached the agent;
 // - agent: each reply of the agent’s, with its tool calls and thoughts (tools/atif-calls.mjs), and each block or app
 //   it showed;
 // - system: another agent’s reply that one of its turns took, and each of its run clock’s events (server/run-clock.mjs).
@@ -38,7 +38,7 @@ const CALL_KINDS = new Set(['command', 'external', 'read']);
  * events, in order. @param {Event[]} events @param {any[]} live  live frames, for the steps’ input and output
  */
 export function foldEvents(events, live = []) {
-  const f = { items: new Map(), order: [], sessions: new Map(), entries: new Map(), work: new Map(), clocks: [] };
+  const f = { items: new Map(), order: [], sessions: new Map(), models: new Map(), entries: new Map(), work: new Map(), clocks: [] };
   for (const e of [...events].sort((a, b) => a.seq - b.seq)) foldOne(f, e);
   // A live step frame carries what changed of one step; a snapshot frame, a running turn’s steps as a page joins it.
   for (const l of live) {
@@ -60,13 +60,42 @@ function foldOne(f, e) {
     const it = f.items.get(d.id);
     if (it) it.text = (it.text ?? '') + d.text;
   } else if (e.type === 'item.patch' || e.type === 'item.move') patchItem(f.items.get(d.id), d, e.seq);
-  else if (e.type === 'session') f.sessions.set(d.id, { ...f.sessions.get(d.id), ...d });
-  else if (e.type === 'session.patch') f.sessions.set(d.id, { ...f.sessions.get(d.id), ...d.patch });
-  else if (e.type === 'entry.add' || e.type === 'entry.put') inboxOf(f, d.sessionId).set(d.entry.id, { ...d.entry });
+  else if (e.type === 'session' || e.type === 'session.patch') {
+    f.sessions.set(d.id, { ...f.sessions.get(d.id), ...(e.type === 'session' ? d : d.patch) });
+    noteModel(f, d.id, e.seq);
+  } else if (e.type === 'entry.add' || e.type === 'entry.put') inboxOf(f, d.sessionId).set(d.entry.id, { ...d.entry });
   else if (e.type === 'entry.patch') Object.assign(inboxOf(f, d.sessionId).get(d.id) ?? {}, d.patch);
   else if (e.type === 'work.add' && (d.entry?.kind === 'turn' || CALL_KINDS.has(d.entry?.kind))) f.work.set(d.entry.id, { ...d.entry });
   else if (e.type === 'work.patch' && f.work.has(d.id)) Object.assign(f.work.get(d.id), d.patch);
   else if (Object.hasOwn(CLOCK_WORDS, e.type)) f.clocks.push({ seq: e.seq, type: e.type, data: d });
+}
+
+/**
+ * Each model and effort a session’s backend reported, with where in the events it did (`lastModel`, `lastEffort`,
+ * server/turn-context.mjs), so each step is credited to the model that ran it, not to the session’s last.
+ * @param {any} f @param {string} id @param {number} seq
+ */
+function noteModel(f, id, seq) {
+  const se = f.sessions.get(id);
+  if (typeof se?.lastModel !== 'string') return;
+  const list = f.models.get(id) ?? [];
+  const last = list.at(-1);
+  if (!last || last.model !== se.lastModel || last.effort !== se.lastEffort) list.push({ seq, model: se.lastModel, effort: se.lastEffort ?? null });
+  f.models.set(id, list);
+}
+
+/**
+ * The model and effort that ran a step at `seq`: the backend’s report before it, else its first after (a turn reports
+ * as it starts, which can land just after its first words). @param {{ seq: number, model: string, effort: string|null }[]} list @param {number} seq
+ */
+function ranAt(list, seq) {
+  return list.findLast((m) => m.seq <= seq) ?? list[0] ?? null;
+}
+
+/** What ran a step, as its fields. @param {any} ctx @param {number} seq */
+function modelFields(ctx, seq) {
+  const ran = ranAt(ctx.models, seq);
+  return ran ? { model_name: ran.model, ...(ran.effort ? { reasoning_effort: ran.effort } : {}) } : {};
 }
 
 /** A session’s entries, by id. @param {any} f @param {string} sessionId @returns {Map<string, any>} */
@@ -94,14 +123,14 @@ function patchItem(it, d, seq) {
   Object.assign(it, patch);
 }
 
-/** An agent step for one of the session’s replies. @param {any} it @param {any} ctx */
-function replyStep(it, ctx) {
+/** An agent step for one of the session’s replies. @param {any} it @param {any} ctx @param {number} seq  where it was added */
+function replyStep(it, ctx, seq) {
   const { tool_calls, results, thoughts } = callsOf(it, ctx.calls);
   const metrics = ctx.meter.take(it.turnId);
   return {
     source: 'agent',
     message: it.text ?? '',
-    ...(it.model ? { model_name: it.model } : {}),
+    ...modelFields(ctx, seq),
     ...(thoughts.length ? { reasoning_content: thoughts.join('\n\n') } : {}),
     ...(tool_calls.length ? { tool_calls } : {}),
     ...(results.length ? { observation: { results } } : {}),
@@ -110,34 +139,42 @@ function replyStep(it, ctx) {
   };
 }
 
-/** A block or app the agent showed, and the person’s answer to it. @param {any} it @param {any} ctx */
-function shownSteps(it, ctx) {
+/** A block or app the agent showed, and the person’s answer to it. @param {any} it @param {any} ctx @param {number} seq */
+function shownSteps(it, ctx, seq) {
   const metrics = ctx.meter.take(it.turnId);
   const shown = {
     timestamp: iso(it.at),
     source: 'agent',
     message: it.block?.fallback ?? it.title ?? '',
+    ...modelFields(ctx, seq),
     ...(metrics ? { metrics } : {}),
     extra: { item_id: it.id, turn_id: it.turnId ?? null, kind: it.kind, block_type: it.block?.type ?? null },
   };
   const a = it.answer;
   if (!a || typeof a.at !== 'number') return [shown];
+  // An answer reached the agent when its call took it at once (an AskUserQuestion, `read`), or when one of its turns
+  // took the answer’s entry from its inbox (server/blocks.mjs): one that only waits there, as after its clock expired, didn’t.
+  const entry = ctx.delivered.get(it.id);
+  if (a.read !== true && entry?.source !== 'answer') return [shown];
   const answer = {
     timestamp: iso(a.at),
     source: 'user',
     message: `${a.action}: ${JSON.stringify(a.values ?? {})}`,
-    extra: { item_id: it.id, answer_to: it.block?.id ?? null },
+    extra: { item_id: it.id, answer_to: it.block?.id ?? null, ...(entry ? { entry_id: entry.id, taken_by_turn: entry.takenBy } : {}) },
     // Placed where its patch came, not beside the block: other steps can come between them.
     seq: it.answerSeq,
   };
   return [shown, answer];
 }
 
-/** The steps one item gives the session’s trajectory, each with when it happened. @param {any} it @param {any} ctx */
-function itemSteps(it, ctx) {
+/**
+ * The steps one item gives the session’s trajectory, each with when it happened.
+ * @param {any} it @param {any} ctx @param {number} seq  where in the events it was added
+ */
+function itemSteps(it, ctx, seq) {
   const mine = it.sessionId === ctx.sessionId;
-  if (it.kind === 'agent' && mine) return [{ timestamp: iso(it.at), ...replyStep(it, ctx) }];
-  if ((it.kind === 'block' || it.kind === 'app') && mine) return shownSteps(it, ctx);
+  if (it.kind === 'agent' && mine) return [{ timestamp: iso(it.at), ...replyStep(it, ctx, seq) }];
+  if ((it.kind === 'block' || it.kind === 'app') && mine) return shownSteps(it, ctx, seq);
   // Someone else’s words are a step only when they reached this agent’s inbox.
   const entry = ctx.delivered.get(it.id);
   if (!entry) return [];
@@ -153,7 +190,7 @@ function contextOf(f, sessionId) {
   const calls = new Map([...f.work.values()].filter((w) => CALL_KINDS.has(w.kind) && w.toolUseId).map((w) => [w.toolUseId, w]));
   // Taken by one of its turns: an entry still waiting (sent after its clock expired, say) never reached the agent.
   const delivered = new Map([...(f.entries.get(sessionId)?.values() ?? [])].filter((e) => e.itemId && e.takenBy).map((e) => [e.itemId, e]));
-  return { sessionId, turns, calls, delivered, meter: meter(turns) };
+  return { sessionId, turns, calls, delivered, models: f.models.get(sessionId) ?? [], meter: meter(turns) };
 }
 
 /**
@@ -166,7 +203,7 @@ export function trajectoryOf(f, sessionId, { version }) {
   /** @type {{ seq: number, steps: any[] }[]} */
   // A step that brings its own place (an answer, at its patch) goes there; the rest go where their item was added.
   const placed = f.order.flatMap(({ seq, id }) =>
-    itemSteps(f.items.get(id), ctx).map(({ seq: own, ...step }) => ({ seq: typeof own === 'number' ? own : seq, steps: [step] })),
+    itemSteps(f.items.get(id), ctx, seq).map(({ seq: own, ...step }) => ({ seq: typeof own === 'number' ? own : seq, steps: [step] })),
   );
   for (const c of f.clocks.filter((x) => x.data.sessionId === sessionId))
     placed.push({
@@ -179,6 +216,8 @@ export function trajectoryOf(f, sessionId, { version }) {
     .map((s, i) => ({ step_id: i + 1, ...s }));
   if (!steps.length) return null;
   const handle = se.handle ?? [...f.items.values()].find((it) => it.sessionId === sessionId)?.handle ?? null;
+  // A default model only when every step ran on it: else each step names its own, and extra lists them.
+  const models = [...new Set(steps.map((s) => s.model_name).filter(Boolean))];
   return {
     schema_version: 'ATIF-v1.8',
     session_id: sessionId,
@@ -186,8 +225,8 @@ export function trajectoryOf(f, sessionId, { version }) {
     agent: {
       name: `postbox/${se.backend ?? 'unknown'}`,
       version,
-      ...(se.lastModel ? { model_name: se.lastModel } : {}),
-      extra: { handle, postbox_session: sessionId },
+      ...(models.length === 1 ? { model_name: models[0] } : {}),
+      extra: { handle, postbox_session: sessionId, ...(models.length > 1 ? { models } : {}) },
     },
     steps,
     final_metrics: finalMetrics(ctx.turns, ctx.meter.metered, steps.length),
