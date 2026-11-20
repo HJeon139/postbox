@@ -2,6 +2,7 @@
 // #153). Memory’s describeItem and topicRootLine call these, with Memory first (designs/architecture/services.md, “Memory”).
 
 import { READING } from '../shared/limits.mjs';
+import { escapeRegExp } from '../shared/regex.mjs';
 import { authorName, commentAt, PERSON } from '../shared/review-comments.mjs';
 import { appCheckText } from './app-check-status.mjs';
 import { closedText } from './block-update.mjs';
@@ -111,6 +112,14 @@ function failedNote(i) {
   return ` (this reply ${what}: ${clipText(i.error || 'unknown', 200)})`;
 }
 
+/** How the note on a reply still being written starts (writingNote). */
+const WRITING = 'still writing this reply:';
+/**
+ * The note on a reply still being written, as a line read it: a copy of the line is the reply’s words with or without
+ * it, since the reply may have been done or not when the line was read and when it was copied (server/copied-line.mjs).
+ */
+export const WRITING_NOTE = new RegExp(` \\(${escapeRegExp(WRITING)}[^()]*\\)`);
+
 /**
  * What a reply still being written says it is, or nothing for one that ended. Its words are stored in windows while its
  * turn runs, so a reader gets them to the last window, and later ones only from read_message once the reply is done
@@ -118,7 +127,7 @@ function failedNote(i) {
  */
 function writingNote(i) {
   if (i.status !== 'streaming') return '';
-  return ` (still writing this reply: this is what it had said so far, and read_message { id: "${i.id}" } reads all of it once it’s done)`;
+  return ` (${WRITING} this is what it had said so far, and read_message { id: "${i.id}" } reads all of it once it’s done)`;
 }
 
 /** Who shared an item from another thread: an agent in a turn the person started, an agent, or the person. */

@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import { copiedLine } from '../server/copied-line.mjs';
 import { entryLine } from '../server/turn-input.mjs';
 import { parseMentions } from '../shared/text.mjs';
-import { post } from './arrange.mjs';
+import { post, setItem } from './arrange.mjs';
 import { settle, setup } from './side-threads-fixture.mjs';
 
 const RERAN = 'I reran the migration guide for the zephyrine milestone; item 137 of the release log. Nothing here needs anyone yet.';
@@ -59,6 +59,19 @@ test('#1370: a hand-off that names an item wakes: other words after the id, an i
   assert.deepEqual(wakes(`${said.id}: @beta: ${RERAN} Can you rerun it for 2.1?`), ['beta']);
   assert.deepEqual(wakes(`${said.id}: @beta: …`), ['beta']);
   assert.deepEqual(wakes(`[${said.id}] @beta`), ['beta']);
+});
+
+test('#1370: a reply still being written, copied with or without the note its line had, wakes no one', () => {
+  const { rt, t, alpha, beta, wakes } = room();
+  const words = 'So far: @gamma owns the zephyrine guide.';
+  const writing = post(rt, t.id, { kind: 'agent', sessionId: beta.id, personaId: beta.personaId, handle: 'beta', text: words, status: 'streaming' });
+  const noted = rt.memory.readLine(writing, alpha, Number.POSITIVE_INFINITY);
+  assert.match(noted, /still writing this reply/, 'its line says it isn’t done');
+  // Copied as an earlier read gave it, without the note, while it’s still being written.
+  assert.deepEqual(wakes(`[${writing.id}] @beta: ${words}`), []);
+  // Copied with the note, as it was read mid-reply, after it’s done.
+  setItem(rt, t.id, writing.id, { status: 'done' });
+  assert.deepEqual(wakes(`[${writing.id}] ${noted}`), []);
 });
 
 test('#1370: a copy of another conversation’s item wakes: only this conversation’s items are checked', () => {
