@@ -23,6 +23,7 @@ import { test } from 'node:test';
 
 /** file → number of timer mentions (SITE), each file placed in the timers table (the 1b PR body). */
 const PLACED = {
+  'adapters/agy-hook-check.mjs': 1, // the hook probe’s kill after its timeout: no store
   'adapters/agy-hook.mjs': 1, // a request’s socket timeout: no store
   'adapters/agy-usage.mjs': 1, // kills a CLI probe: no store
   'adapters/antigravity-cli.mjs': 2, // kills a CLI probe: no store

@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { mkdirSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { decideAgyTool, isProtectedPath, runAgyHook } from '../server/adapters/agy-hook.mjs';
+import { decideAgyTool, HOOK_SCRIPT, isProtectedPath, runAgyHook } from '../server/adapters/agy-hook.mjs';
 import { describePermission } from '../server/adapters/claude-permission.mjs';
 import { inReadFolder } from '../server/read-folders.mjs';
 import { tempDir } from './temp-dirs.mjs';
@@ -64,7 +64,7 @@ test('#1074 a ~ path is judged as the home folder too, since whether agy expands
   const opts = { mode: 'acceptEdits', folders: [ws], cwd: ws, home };
   assert.deepEqual(decide('read_file', { Path: '~/.ssh/id_rsa' }, opts), { decision: 'ask', toolName: 'Read', input: { file_path: '~/.ssh/id_rsa' } });
   assert.equal(decide('write_file', { Path: '~/.gemini/antigravity-cli/settings.json' }, opts).decision, 'deny');
-  assert.equal(isProtectedPath('~/.gemini/antigravity-cli/settings.json', { cwd: ws, home }), true);
+  assert.equal(isProtectedPath('~/.gemini/antigravity-cli/settings.json', { cwd: ws, scriptPath: HOOK_SCRIPT, home }), true);
   assert.equal(decide('edit_file', { Path: '~/outside/x.txt' }, opts).decision, 'ask', 'in the project as cwd/~, outside it as home');
 });
 

@@ -7,7 +7,8 @@ import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { test } from 'node:test';
-import { agyHookCommand, agyHooksJson, agySupportsHooks, confirmAgyHook, HOOK_SCRIPT, HOOK_TIMEOUT_S } from '../server/adapters/agy-hook.mjs';
+import { HOOK_SCRIPT, HOOK_TIMEOUT_S } from '../server/adapters/agy-hook.mjs';
+import { agyHookCommand, agyHooksJson, agySupportsHooks, confirmAgyHook } from '../server/adapters/agy-hook-check.mjs';
 import { makeReadOnly } from '../server/adapters/agy-plugin.mjs';
 import { refusalFollowUp, refusalOf } from '../server/adapters/agy-refusals.mjs';
 import { AntigravityCliAdapter, agyArgs, createAgyMapper, modeArgs, PLUGIN_DIR } from '../server/adapters/antigravity-cli.mjs';
@@ -61,13 +62,41 @@ test('#370 the follow-up asks the agent to say that Run everything would allow t
   assert.match(refusalFollowUp('Ran ls -la'), /that your permission mode in Postbox didn’t allow it, and that Run everything would/);
 });
 
+test('Run everything installs the Web restriction hook only for a Web-off persona', async () => {
+  const off = await runDeliverTurn('bypass', { version: '1.4.7' });
+  assert.equal(off.hasHooks, true);
+  assert.equal(off.env.POSTBOX_AGY_MODE, 'bypass');
+  assert.ok(off.args.includes('--dangerously-skip-permissions'));
+  assert.match(off.rules, /Postbox’s permission hook refuses running commands; fetching web pages or searching the web; publishing/);
+  const on = await runDeliverTurn('bypass', { version: '1.4.7' }, { tools: ['web.fetch'] });
+  assert.equal(on.hasHooks, false);
+});
+
+test('Run everything with Web off requires an available Antigravity hook', async () => {
+  await assert.rejects(runDeliverTurn('bypass', { version: '1.4.5' }), /couldn’t start its permission hook/);
+  await assert.rejects(runDeliverTurn('bypass', { version: '1.4.7', hookScript: '/nonexistent/agy-hook.mjs' }), /couldn’t start its permission hook/);
+  // This Node runs the hook (agyHookCommand), so neither its executable bit nor its #! line matters.
+  const script = join(tempDir('pb-agy-nonexecutable-'), 'hook.mjs');
+  writeFileSync(script, '#!/nonexistent/node\n', { mode: 0o600 });
+  const turn = await runDeliverTurn('bypass', { version: '1.4.7', hookScript: script });
+  assert.ok(turn.args.includes('--dangerously-skip-permissions'));
+  assert.equal(turn.hooks.postbox.PreToolUse[0].hooks[0].command, `${process.execPath} ${script}`);
+});
+
 test('#370 condition 1: --dangerously-skip-permissions is passed for ask, auto and acceptEdits only when the hook is confirmed', async () => {
   assert.equal(HOOK_TIMEOUT_S, Math.ceil(CARD_WAIT_MS / 1000) + 60);
   for (const v of ['1.4.7', '1.4.8', '1.5.0', '2.0.0']) assert.equal(agySupportsHooks(v), true, v);
   for (const v of ['1.4.6', '1.4.5', '1.4.4', '1.3.9', '0.9.0', 'unknown', null, undefined, '']) assert.equal(agySupportsHooks(v), false, String(v));
-  assert.equal(agyHookCommand('/opt/postbox/server/adapters/agy-hook.mjs'), '/opt/postbox/server/adapters/agy-hook.mjs');
-  for (const bad of ['/path with spaces/agy-hook.mjs', '/path/"quote"/hook.mjs', '/path/$var/hook.mjs', 'relative/hook.mjs', ''])
-    assert.equal(agyHookCommand(bad), null, bad);
+  assert.equal(
+    agyHookCommand('/opt/postbox/server/adapters/agy-hook.mjs', '/usr/local/bin/node'),
+    '/usr/local/bin/node /opt/postbox/server/adapters/agy-hook.mjs',
+  );
+  // A path with a space or another shell character is quoted for agy’s /bin/sh -c, not given up on (PR #1515’s second
+  // review: a Node path with a space lost the hook in every mode).
+  assert.equal(agyHookCommand('/opt/agy-hook.mjs', '/Program Files/node'), `'/Program Files/node' /opt/agy-hook.mjs`);
+  assert.equal(agyHookCommand('/path with spaces/agy-hook.mjs', '/n'), `/n '/path with spaces/agy-hook.mjs'`);
+  assert.equal(agyHookCommand(`/it's/$var/"q"/hook.mjs`, '/n'), `/n '/it'\\''s/$var/"q"/hook.mjs'`);
+  for (const bad of ['relative/hook.mjs', '', '/line\nbreak/hook.mjs']) assert.equal(agyHookCommand(bad, '/n'), null, JSON.stringify(bad));
   assert.deepEqual(modeArgs({ permissionMode: 'ask' }), []);
   assert.deepEqual(modeArgs({ permissionMode: 'auto' }), ['--mode', 'auto']);
   assert.deepEqual(modeArgs({ permissionMode: 'acceptEdits' }), ['--mode', 'accept-edits']);
@@ -77,14 +106,15 @@ test('#370 condition 1: --dangerously-skip-permissions is passed for ask, auto a
     const args = agyArgs({ persona: { permissionMode: m }, model: 'gemini-3.8-flash-high', effort: null, prompt: 'hi', hookConfirmed: true });
     assert.ok(args.includes('--dangerously-skip-permissions'), m);
   }
+  const yes = async () => true;
   const dir = tempDir('pb-agy-confirm-');
-  writeFileSync(join(dir, 'hooks.json'), `${JSON.stringify(agyHooksJson(HOOK_SCRIPT, HOOK_TIMEOUT_S), null, 2)}\n`);
-  assert.equal(await confirmAgyHook({ version: '1.4.7', pluginDir: dir }), true);
-  assert.equal(await confirmAgyHook({ version: '1.4.4', pluginDir: dir }), false);
-  assert.equal(await confirmAgyHook({ version: '1.4.7', pluginDir: dir, script: join(dir, 'missing.mjs') }), false);
-  assert.equal(await confirmAgyHook({ version: '1.4.7', pluginDir: dir, script: '/bad path/hook.mjs' }), false);
+  writeFileSync(join(dir, 'hooks.json'), `${JSON.stringify(agyHooksJson(agyHookCommand(HOOK_SCRIPT), HOOK_TIMEOUT_S), null, 2)}\n`);
+  assert.equal(await confirmAgyHook({ version: '1.4.7', pluginDir: dir, probe: yes }), true);
+  assert.equal(await confirmAgyHook({ version: '1.4.4', pluginDir: dir, probe: yes }), false);
+  assert.equal(await confirmAgyHook({ version: '1.4.7', pluginDir: dir, script: join(dir, 'missing.mjs'), probe: yes }), false);
+  assert.equal(await confirmAgyHook({ version: '1.4.7', pluginDir: dir, script: '/bad path/hook.mjs', probe: yes }), false);
   writeFileSync(join(dir, 'hooks.json'), '{}');
-  assert.equal(await confirmAgyHook({ version: '1.4.7', pluginDir: dir }), false);
+  assert.equal(await confirmAgyHook({ version: '1.4.7', pluginDir: dir, probe: yes }), false);
 });
 
 async function runDeliverTurn(permissionMode, opts = {}, personaExtra = {}) {
@@ -97,6 +127,7 @@ async function runDeliverTurn(permissionMode, opts = {}, personaExtra = {}) {
       args,
       env: spOpts.env,
       hasHooks: existsSync(hooksFile),
+      hooks: existsSync(hooksFile) ? JSON.parse(readFileSync(hooksFile, 'utf8')) : null,
       hooksMode: existsSync(hooksFile) ? statSync(hooksFile).mode & 0o777 : null,
       rules: readFileSync(join(spOpts.cwd, PLUGIN_DIR, 'rules', 'AGENTS.md'), 'utf8'),
     });
@@ -115,6 +146,8 @@ async function runDeliverTurn(permissionMode, opts = {}, personaExtra = {}) {
     settingsFile: join(root, 'settings.json'),
     spawnImpl: /** @type {any} */ (spawnImpl),
     env: {},
+    // The hook isn’t run here (tests/guard.mjs): a process test runs the real one (tests/process/agy-hook-command.test.mjs).
+    hookProbe: async () => true,
     ...opts,
   });
   const abort = new AbortController();

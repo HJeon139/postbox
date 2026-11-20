@@ -9,14 +9,14 @@
 
 import { randomUUID } from 'node:crypto';
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
-import { readFile, stat } from 'node:fs/promises';
 import { request as httpRequest } from 'node:http';
 import { homedir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CARD_WAIT_MS } from '../permission-cards.mjs';
 import { autoAllows, intoGit, personaAllows, personaOf, publishingCall } from './agy-auto.mjs';
-import { inside, leadsInto, PATH_FIELDS, pathArgs, readingsOf, realReadings, realTarget, tidyPath } from './agy-paths.mjs';
+import { decideBypass } from './agy-bypass.mjs';
+import { isProtectedPath, leadsInto, PATH_FIELDS, pathArgs, realTarget, tidyPath } from './agy-paths.mjs';
 import { POSTBOX_SERVER } from './setup.mjs';
 
 export const HOOK_SCRIPT = fileURLToPath(import.meta.url);
@@ -35,62 +35,7 @@ const SUBAGENT_TOOLS = new Set(['invoke_subagent', 'define_subagent', 'send_mess
 const PROTECTED_CMD = /\.agents\b|agy-hook\.mjs\b|\.gemini[\\/]antigravity-cli\b/i;
 const PUBLISH_OFF = 'This agent can’t publish outside Postbox (its persona’s “Can publish outside Postbox” is off), so Postbox refused this tool.';
 
-/** Whether an agy version supports PreToolUse hooks (1.4.7 and newer). */
-export function agySupportsHooks(version) {
-  const m = /^(\d+)\.(\d+)\.(\d+)/.exec(String(version ?? '').trim());
-  if (!m) return false;
-  const [maj, min, patch] = [Number(m[1]), Number(m[2]), Number(m[3])];
-  return maj > 1 || (maj === 1 && (min > 4 || (min === 4 && patch >= 7)));
-}
-
-/** The hook script’s path when it’s safe to pass to agy’s `/bin/sh -c` runner, or null if it has shell characters. */
-export const agyHookCommand = (script = HOOK_SCRIPT) => (typeof script === 'string' && script.startsWith('/') && !/[^\w./:@+-]/.test(script) ? script : null);
-
-/** The plugin’s hooks.json content for a turn. */
-export const agyHooksJson = (command = agyHookCommand(), timeout = HOOK_TIMEOUT_S) => ({
-  [POSTBOX_SERVER]: {
-    PreToolUse: [{ matcher: '*', hooks: [{ command, timeout }] }],
-  },
-});
-
-/**
- * Confirms that PreToolUse hooks will run before passing --dangerously-skip-permissions: an agy version with hooks,
- * a safe existing hook script path, and hooks.json written and read back intact.
- * @param {{ version: string|null|undefined, pluginDir: string, script?: string, timeout?: number }} opts
- */
-export async function confirmAgyHook({ version, pluginDir, script = HOOK_SCRIPT, timeout = HOOK_TIMEOUT_S }) {
-  if (!agySupportsHooks(version)) return false;
-  const command = agyHookCommand(script);
-  if (!command) return false;
-  const st = await stat(script).catch(() => null);
-  if (!st?.isFile()) return false;
-  const expected = `${JSON.stringify(agyHooksJson(command, timeout), null, 2)}\n`;
-  const actual = await readFile(join(pluginDir, 'hooks.json'), 'utf8').catch(() => '');
-  return actual === expected;
-}
-
-/**
- * Whether a path points at Postbox’s plugin, this hook script, or ~/.gemini/antigravity-cli (directly or via symlink).
- * Compared without case: macOS’s file system ignores it, so .AGENTS/plugins is .agents/plugins there (#423’s review).
- */
-export function isProtectedPath(rawPath, { cwd = process.cwd(), scriptPath = HOOK_SCRIPT, home = homedir() } = {}) {
-  if (typeof rawPath !== 'string' || !rawPath.trim()) return true;
-  return readingsOf(rawPath, cwd, home).some((at) => protectedAt(at, { scriptPath, home }));
-}
-
-/** Whether one absolute path, as written or where it leads, is one isProtectedPath protects. */
-function protectedAt(at, { scriptPath, home }) {
-  const abs = resolve(at).toLowerCase();
-  // Where it really leads, both ways a .. may be read (realReadings): either one protected protects the path.
-  const reals = realReadings(at).map((r) => r.toLowerCase());
-  const pluginRe = /(?:^|[\\/])\.agents(?:[\\/]plugins(?:[\\/]|$)|$)/;
-  if (pluginRe.test(abs) || reals.some((r) => pluginRe.test(r))) return true;
-  const realScript = (realTarget(scriptPath, '/') ?? resolve(scriptPath)).toLowerCase();
-  if (abs === resolve(scriptPath).toLowerCase() || reals.includes(realScript)) return true;
-  const agyDir = resolve(home, '.gemini', 'antigravity-cli');
-  const realAgyDir = (realTarget(agyDir, '/') ?? agyDir).toLowerCase();
-  return inside(abs, agyDir.toLowerCase()) || reals.some((r) => inside(r, realAgyDir));
-}
+export { isProtectedPath };
 
 /**
  * Classifies one Antigravity tool call for the persona’s mode: 'allow', 'deny' (with reason), or 'ask' (with the
@@ -104,7 +49,7 @@ export function decideAgyTool(
   event,
   { mode = 'ask', folders = [], reads = [], cwd = process.cwd(), scriptPath = HOOK_SCRIPT, home = homedir(), tools = [], canPublish = false } = {},
 ) {
-  const name = String(event?.toolCall?.name ?? '').trim();
+  const name = `${event?.toolCall?.name ?? ''}`.trim().toLowerCase();
   const args = event?.toolCall?.args && typeof event.toolCall.args === 'object' ? event.toolCall.args : {};
   if (!name) return { decision: 'deny', reason: 'Postbox’s Antigravity hook received no tool name.' };
   const mcp = name === 'call_mcp_tool' || name === 'list_resources' || name === 'read_resource';
@@ -112,7 +57,10 @@ export function decideAgyTool(
   const tool = String(args.ToolName ?? '');
   if (mcp && (server === 'postbox_postbox' || server === 'postbox') && tool === 'permission_prompt')
     return { decision: 'deny', reason: 'Postbox’s permission_prompt tool is only for the PreToolUse hook.' };
+  if (WRITE_TOOLS.has(name) && protectedWrite(args, { cwd, scriptPath, home }))
+    return { decision: 'deny', reason: 'Postbox doesn’t allow editing Antigravity’s plugin, hook or settings files.' };
   if (!canPublish && publishingCall(name, args)) return { decision: 'deny', reason: PUBLISH_OFF };
+  if (mode === 'bypass') return decideBypass(name, { tools }, args);
   const roots = /** @type {string[]} */ ((folders.length ? folders : [cwd]).map((f) => realTarget(f, cwd)).filter(Boolean));
   const command = name === 'run_command' ? String(args.CommandLine ?? '') : '';
   const isProtected = (p) => isProtectedPath(p, { cwd, scriptPath, home });
@@ -139,13 +87,18 @@ export function decideAgyTool(
   return { decision: 'ask', toolName: name, input: args };
 }
 
+function protectedWrite(args, { cwd, scriptPath, home }) {
+  const paths = pathArgs(args);
+  return !paths.length || paths.some((p) => isProtectedPath(p, { cwd, scriptPath, home }));
+}
+
 /**
  * An edit: refused when any path it names is Antigravity’s own, and with no card in Auto and Accept edits only when every
  * one stays in the agent’s folders (#1074), else a card about the first that doesn’t.
  */
 function decideWrite(name, args, { mode, roots, cwd, scriptPath, home }) {
   const paths = pathArgs(args);
-  if (!paths.length || paths.some((p) => isProtectedPath(p, { cwd, scriptPath, home })))
+  if (protectedWrite(args, { cwd, scriptPath, home }))
     return { decision: 'deny', reason: 'Postbox doesn’t allow editing Antigravity’s plugin, hook or settings files.' };
   // In Auto, an edit in .git asks: its config and hooks could name a program the routine git commands would run.
   const gitEdit = (/** @type {string} */ p) => mode === 'auto' && intoGit(p, cwd, home);
