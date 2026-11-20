@@ -51,6 +51,7 @@ export function foldEvents(events, live = []) {
     clocks: [],
     guides: new Map(),
     prompts: [],
+    takes: new Map(),
   };
   for (const e of [...events].sort((a, b) => a.seq - b.seq)) foldOne(f, e);
   // A live step frame carries what changed of one step; a snapshot frame, a running turn’s steps as a page joins it.
@@ -76,8 +77,16 @@ function foldOne(f, e) {
   else if (e.type === 'session' || e.type === 'session.patch') {
     f.sessions.set(d.id, { ...f.sessions.get(d.id), ...(e.type === 'session' ? d : d.patch) });
     noteModel(f, d.id, e.seq);
-  } else if (e.type === 'entry.add' || e.type === 'entry.put') inboxOf(f, d.sessionId).set(d.entry.id, { ...d.entry });
-  else if (e.type === 'entry.patch') Object.assign(inboxOf(f, d.sessionId).get(d.id) ?? {}, d.patch);
+  } else if (e.type === 'entry.add' || e.type === 'entry.put')
+    noteTake(
+      f,
+      d.sessionId,
+      inboxOf(f, d.sessionId)
+        .set(d.entry.id, { ...d.entry })
+        .get(d.entry.id),
+      e.seq,
+    );
+  else if (e.type === 'entry.patch') noteTake(f, d.sessionId, Object.assign(inboxOf(f, d.sessionId).get(d.id) ?? {}, d.patch), e.seq);
   else if (e.type === 'work.add' && (d.entry?.kind === 'turn' || CALL_KINDS.has(d.entry?.kind))) f.work.set(d.entry.id, { ...d.entry, from: e.seq });
   else if (e.type === 'work.patch' && f.work.has(d.id)) Object.assign(f.work.get(d.id), d.patch, d.patch?.endedAt ? { to: e.seq } : {});
   else if (Object.hasOwn(CLOCK_WORDS, e.type)) f.clocks.push({ seq: e.seq, type: e.type, data: d });
@@ -114,6 +123,18 @@ function ranAt(list, seq, turn) {
 function modelFields(ctx, seq, turnId) {
   const ran = ranAt(ctx.models, seq, turnId ? ctx.turns.get(turnId) : undefined);
   return ran ? { model_name: ran.model, ...(ran.effort ? { reasoning_effort: ran.effort } : {}) } : {};
+}
+
+/**
+ * The first time one of a session’s turns took an entry with an item, with the item’s text then: what reached the
+ * agent, as it read it, whatever later edits the item, or a retry that gives the entry back to the inbox, do to the
+ * final state (hydrant-critic’s review of #1522). @param {any} f @param {string} sessionId @param {any} e @param {number} seq
+ */
+function noteTake(f, sessionId, e, seq) {
+  if (!e?.takenBy || !e.itemId) return;
+  const key = `${sessionId}\u0000${e.itemId}`;
+  if (!f.takes.has(key))
+    f.takes.set(key, { sessionId, itemId: e.itemId, entryId: e.id, source: e.source, turnId: e.takenBy, seq, text: f.items.get(e.itemId)?.text });
 }
 
 /** A session’s entries, by id. @param {any} f @param {string} sessionId @returns {Map<string, any>} */
@@ -178,7 +199,7 @@ function shownSteps(it, ctx, seq) {
     timestamp: iso(a.at),
     source: 'user',
     message: `${a.action}: ${JSON.stringify(a.values ?? {})}`,
-    extra: { item_id: it.id, answer_to: it.block?.id ?? null, ...(entry ? { entry_id: entry.id, taken_by_turn: entry.takenBy } : {}) },
+    extra: { item_id: it.id, answer_to: it.block?.id ?? null, ...(entry ? { entry_id: entry.entryId, taken_by_turn: entry.turnId } : {}) },
     // Placed where its patch came, not beside the block: other steps can come between them.
     seq: it.answerSeq,
   };
@@ -196,9 +217,10 @@ function itemSteps(it, ctx, seq) {
   // Someone else’s words are a step only when they reached this agent’s inbox.
   const entry = ctx.delivered.get(it.id);
   if (!entry) return [];
-  const got = { item_id: it.id, entry_id: entry.id, taken_by_turn: entry.takenBy ?? null };
-  if (it.kind === 'user') return [{ timestamp: iso(it.at), source: 'user', message: it.text ?? '', extra: got }];
-  if (it.kind === 'agent') return [{ timestamp: iso(it.at), source: 'system', message: `@${it.handle}: ${it.text ?? ''}`, extra: { ...got, from: it.handle } }];
+  const got = { item_id: it.id, entry_id: entry.entryId, taken_by_turn: entry.turnId ?? null };
+  const text = entry.text ?? it.text ?? '';
+  if (it.kind === 'user') return [{ timestamp: iso(it.at), source: 'user', message: text, extra: got }];
+  if (it.kind === 'agent') return [{ timestamp: iso(it.at), source: 'system', message: `@${it.handle}: ${text}`, extra: { ...got, from: it.handle } }];
   return [];
 }
 
@@ -206,8 +228,9 @@ function itemSteps(it, ctx, seq) {
 function contextOf(f, sessionId) {
   const turns = new Map([...f.work.values()].filter((w) => w.kind === 'turn' && w.sessionId === sessionId).map((w) => [w.id, w]));
   const calls = new Map([...f.work.values()].filter((w) => CALL_KINDS.has(w.kind) && w.toolUseId).map((w) => [w.toolUseId, w]));
-  // Taken by one of its turns: an entry still waiting (sent after its clock expired, say) never reached the agent.
-  const delivered = new Map([...(f.entries.get(sessionId)?.values() ?? [])].filter((e) => e.itemId && e.takenBy).map((e) => [e.itemId, e]));
+  // Taken by one of its turns, as it was when taken: an entry still waiting (sent after its clock expired, say) never
+  // reached the agent, and one taken and given back by a retry did (noteTake).
+  const delivered = new Map([...f.takes.values()].filter((t) => t.sessionId === sessionId).map((t) => [t.itemId, t]));
   return { sessionId, turns, calls, delivered, models: f.models.get(sessionId) ?? [], meter: meter(turns) };
 }
 
