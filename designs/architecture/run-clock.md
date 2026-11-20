@@ -27,7 +27,7 @@ stateDiagram-v2
 
 ## What the person sees
 
-Each change of a clock adds a system line to the agent’s conversation ([`server/run-clock-notes.mjs`](../../server/run-clock-notes.mjs)). The expiry’s says that messages to the agent now wait and that a new timed run goes in a new conversation. The page shows them as it shows every system line ([`tests/uat/conversation/transcript/run-clock.md`](../../tests/uat/conversation/transcript/run-clock.md)). An expired agent otherwise looks as if it never answers.
+Each change of a clock adds a system line to the agent’s conversation ([`server/run-clock-notes.mjs`](../../server/run-clock-notes.mjs)). The expiry’s says that messages to the agent now wait and that a new timed run goes in a new conversation. If Postbox stops between a clock’s event and its line, the next start adds the line a paused or expired clock lacks (`repairClockNote`), so a held agent is never silent. The page shows them as it shows every system line ([`tests/uat/conversation/transcript/run-clock.md`](../../tests/uat/conversation/transcript/run-clock.md)). An expired agent otherwise looks as if it never answers.
 
 ## How it holds the agent
 
@@ -46,6 +46,7 @@ The hard stop is this server’s timer. While Postbox is down, an agent on a rem
 [`tools/atif.mjs`](../../tools/atif.mjs) turns recorded events into one trajectory per agent session, checked against Harbor’s own models and validator ([`harbor-framework/harbor`](https://github.com/harbor-framework/harbor/tree/2ea52267e95ed7fb00bb72f0386d9c1289d331ca/src/harbor/models/trajectories)). A UAT run writes them to `atif/`, and [`tools/atif-export.mjs`](../../tools/atif-export.mjs) writes them from any recording of `/api/stream`.
 - **Time.** Every timestamp is one the server set: an item’s `at`, an answer’s `at`, a clock event’s `at`. An answer goes where its patch came in the events, not beside its block.
 - **What reached the agent.** Someone else’s message is a step only once one of the agent’s turns took it from its inbox. A message it only saw as background in its catch-up isn’t a step. A block’s answer is a step once it reached the agent: at once, through its question’s call, or when a turn took its entry.
+- **What it isn’t.** Postbox doesn’t store a turn’s exact prompt, so a trajectory leaves out the system prompt the agent was given, the room’s catch-up each turn carried as background, and each message’s exact text; every trajectory says so in its notes and `extra.scope` (`NOT_RECORDED`).
 - **Which model.** Each step names the model and effort its backend reported for it (`lastModel`, `lastEffort`), so a session whose model changed keeps each turn’s own. The trajectory names a default model only when one model ran every step.
 - **Tools.** A call’s name is the tool its harness ran, which each step records (`tool`); its arguments come from the work ledger for commands, reads and other MCP servers, and are left empty, and marked so, for the rest ([work-ledger.md](work-ledger.md)).
 - **Tokens and cost.** They come from the ledger’s turns. A turn’s figures go on its first step, and a figure a backend didn’t report is left out. A total only some turns reported is a partial sum in `extra.partial`.
