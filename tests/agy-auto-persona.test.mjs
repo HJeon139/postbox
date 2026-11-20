@@ -36,7 +36,7 @@ test('Run everything refuses built-in search, fetch and browser tools when Web i
   assert.equal(call(...mcp('postbox_postbox', 'permission_prompt'), { mode: 'bypass' }).decision, 'deny');
   assert.equal(call('write_to_file', { TargetFile: join(ws, '.agents', 'plugins', 'postbox', 'hooks.json') }, { mode: 'bypass' }).decision, 'deny');
   assert.equal(call('write_to_file', { TargetFile: join(home, '.gemini', 'antigravity-cli', 'settings.json') }, { mode: 'bypass' }).decision, 'deny');
-  assert.equal(call(...cmd('npm test'), { mode: 'bypass' }).decision, 'allow');
+  assert.equal(call(...cmd('npm test'), { mode: 'bypass', ...SHELL }).decision, 'allow');
 });
 
 test('#416 in Auto with shell, any command runs; without shell it still asks', () => {

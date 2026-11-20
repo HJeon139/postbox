@@ -39,8 +39,9 @@
 //     without auto mode runs as ask: agy warns and continues in its default mode.
 //   - acceptEdits: --mode accept-edits.
 //   - bypass: --dangerously-skip-permissions, with the hook required when Web is off.
-// - Tools: in bypass the hook enforces Web off for built-in search and page fetching. The rules file tells the
-//   agent which tools are turned off for the turn.
+// - Tools: in bypass with Web off, the hook refuses web tools, commands without Shell, and publishing tools unless
+//   the persona can publish (agy-bypass.mjs). Nothing else can: agy reads deny rules only from your own settings,
+//   which every agy session shares. The rules file says what’s off, and what Antigravity can’t enforce.
 // - Setup (#57): always yours (isolation: false). agy reads its config from ~/.gemini and has no setting to move it;
 //   with another HOME it isn’t signed in. Your rules, skills, plugins and MCP servers load, as in your terminal.
 // - Effort: agy names it in some model ids (gemini-3.8-flash-high), takes --effort for others (gemini-3.8-flash:

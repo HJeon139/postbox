@@ -49,3 +49,17 @@ test('Run everything with Web off still allows agy’s local tools that share th
 test('Run everything with Web on allows the web tools', () => {
   for (const name of WEB) assert.equal(bypass(name, { tools: ['web.fetch'] }), 'allow', name);
 });
+
+test('Run everything refuses a command without Shell, as Kiro’s and Claude Code’s do', () => {
+  const cmd = { CommandLine: 'curl https://example.com' };
+  assert.equal(bypass('run_command', {}, cmd), 'deny');
+  assert.equal(bypass('Run_Command', { tools: ['web.fetch'] }, cmd), 'deny');
+  assert.equal(bypass('run_command', { tools: ['shell'] }, cmd), 'allow');
+});
+
+test('Run everything refuses a publishing tool unless the persona can publish', () => {
+  const slack = { ServerName: 'slack', ToolName: 'send_message', Arguments: {} };
+  assert.equal(bypass('call_mcp_tool', {}, slack), 'deny');
+  assert.equal(bypass('call_mcp_tool', { canPublish: true }, slack), 'allow');
+  assert.equal(bypass('call_mcp_tool', {}, { ServerName: 'postbox_postbox', ToolName: 'show_block', Arguments: {} }), 'allow');
+});
