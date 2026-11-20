@@ -5,11 +5,11 @@
 
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
-import { readdirSync, readFileSync } from 'node:fs';
+import { chmodSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { test } from 'node:test';
-import { AntigravityCliAdapter } from '../server/adapters/antigravity-cli.mjs';
+import { AntigravityCliAdapter, PLUGIN_DIR } from '../server/adapters/antigravity-cli.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
 const fixture = (name) =>
@@ -21,17 +21,18 @@ const fixture = (name) =>
 const OPTIONS = /Turn Web on for this agent, or pick another permission mode\./;
 
 /**
- * One turn of a persona, its runs replaying the fixtures in order; onSpawn runs as each starts, in the agent’s folder.
+ * One turn of a persona, its runs replaying the fixtures in order; onSpawn runs as the first starts, in the agent’s folder.
  * @param {{ permissionMode: string, tools?: string[] }} persona
  * @param {{ version?: string, hookScript?: string, runs?: string[], state?: any, onSpawn?: (cwd: string) => void }} [o]
  */
-async function turn(persona, { version = '1.4.7', hookScript, runs = ['first'], state = {}, onSpawn = () => {} } = {}) {
+async function turn(persona, { version = '1.4.7', hookScript, runs: fixtures = ['first'], state = {}, onSpawn = () => {} } = {}) {
+  const runs = [...fixtures];
   const root = tempDir('pb-agy-hook-turn-');
   /** @type {string[][]} */
   const spawned = [];
   const spawnImpl = (_bin, args, opts) => {
     spawned.push(args);
-    onSpawn(opts.cwd);
+    if (spawned.length === 1) onSpawn(opts.cwd);
     const child = new EventEmitter();
     Object.assign(child, { stdout: new PassThrough(), stderr: new PassThrough(), kill: () => {} });
     const lines = fixture(String(runs.shift()));
@@ -74,6 +75,13 @@ async function turn(persona, { version = '1.4.7', hookScript, runs = ['first'], 
   return { error, spawned, left };
 }
 
+/** Changes hooks.json during a run, as an agent with Shell could. @param {string} cwd */
+const tamper = (cwd) => {
+  const file = join(cwd, PLUGIN_DIR, 'hooks.json');
+  chmodSync(file, 0o644);
+  writeFileSync(file, '{}');
+};
+
 test('Run everything with Web off and no hook never starts agy, says what to do, and removes the plugin', async () => {
   for (const o of [{ version: '1.4.5' }, { hookScript: '/nonexistent/agy-hook.mjs' }]) {
     const { error, spawned, left } = await turn({ permissionMode: 'bypass' }, o);
@@ -81,4 +89,20 @@ test('Run everything with Web off and no hook never starts agy, says what to do,
     assert.equal(spawned.length, 0, 'agy wasn’t started');
     assert.deepEqual(left, ['gem'], 'the plugin is gone');
   }
+});
+
+test('the restart of a lost conversation checks the hook again, and stops when it no longer holds', async () => {
+  const state = { agySessionId: '00000000-0000-0000-0000-000000000000' };
+  const once = { onSpawn: tamper, state, runs: ['missing-session', 'first'] };
+  const bypass = await turn({ permissionMode: 'bypass' }, { ...once, state: { ...state } });
+  assert.match(String(bypass.error?.message), OPTIONS);
+  assert.equal(bypass.spawned.length, 1, 'the restart didn’t start');
+  assert.deepEqual(bypass.left, ['gem']);
+  // In Auto the restart runs, in agy’s own mode, since the hook can’t ask.
+  const auto = await turn({ permissionMode: 'auto' }, { ...once, state: { ...state } });
+  assert.equal(auto.error, null);
+  assert.equal(auto.spawned.length, 2);
+  assert.ok(auto.spawned[0].includes('--dangerously-skip-permissions'));
+  assert.ok(!auto.spawned[1].includes('--dangerously-skip-permissions'));
+  assert.deepEqual(auto.spawned[1].slice(auto.spawned[1].indexOf('--mode'), auto.spawned[1].indexOf('--mode') + 2), ['--mode', 'auto']);
 });

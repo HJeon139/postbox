@@ -611,7 +611,9 @@ export class AntigravityCliAdapter {
       }
       const hookCommand = useHook ? agyHookCommand(this.hookScript) : null;
       await writeAgyPlugin(plugin, agyPlugin({ mcpUrl: ctx.mcpUrl, rules, hookCommand, skills: await agySkillFiles(persona) }));
-      const hookConfirmed = Boolean(useHook && (await confirmAgyHook({ version: this.version, pluginDir: plugin, script: this.hookScript })));
+      // The agent can change the plugin during a run, so the hook is checked again before each (PR #1515’s review).
+      const confirmed = async () => Boolean(useHook && (await confirmAgyHook({ version: this.version, pluginDir: plugin, script: this.hookScript })));
+      const hookConfirmed = await confirmed();
       // A hook that didn’t check out isn’t passed, so agy refuses what it would ask about: the rules say so, not “a card”.
       if (useHook && !hookConfirmed && !agyBypassWebOff(persona)) await writeFile(join(plugin, 'rules', 'AGENTS.md'), rulesWith(false));
       try {
@@ -621,7 +623,7 @@ export class AntigravityCliAdapter {
           ctx.saveState({ agySessionId: null });
           ctx.state.agySessionId = null;
           const note = `[Postbox] ${FRESH_START_TEXT}\n\n`;
-          done = await this.run({ ctx, cwd, addDirs, prompt: note + prompt, sessionId: null, hookConfirmed });
+          done = await this.run({ ctx, cwd, addDirs, prompt: note + prompt, sessionId: null, hookConfirmed: await confirmed() });
         }
         // agy ends a turn at a refused call, before the agent says anything (the Gemini room UAT’s tester rated that
         // high: the person saw a refused step and silence). So the conversation goes on once, for the agent to say
@@ -629,7 +631,7 @@ export class AntigravityCliAdapter {
         if (done.endedOnRefusal && !ctx.signal.aborted && ctx.state.agySessionId) {
           ctx.status({ state: 'think', currentStep: 'Telling you about the refused call' });
           const followUp = refusalFollowUp(done.endedOnRefusal);
-          await this.run({ ctx, cwd, addDirs, prompt: followUp, sessionId: ctx.state.agySessionId, wrote: done.wrote, hookConfirmed });
+          await this.run({ ctx, cwd, addDirs, prompt: followUp, sessionId: ctx.state.agySessionId, wrote: done.wrote, hookConfirmed: await confirmed() });
         }
       } finally {
         await rm(plugin, { recursive: true, force: true }).catch(() => {});
