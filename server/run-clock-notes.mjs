@@ -27,8 +27,6 @@ const FORCED = /** @type {Record<string, string>} */ ({
 /** What a stop’s confirmation says. @param {string} h @param {any} d */
 function stoppedWords(h, d) {
   if (d.where === 'host') return `@${h}’s host confirmed its turn stopped, at ${s(d.elapsedMs)} of @${h}’s run clock.`;
-  if (d.forced)
-    return `Postbox couldn’t confirm that @${h}’s stopped turn ended (${FORCED[d.forced] ?? d.forced}), so @${h} may still be working, uncounted. This timed run is void: no turn of @${h} starts here again, and a new timed run goes in a new conversation.`;
   return `@${h}’s stopped turn ended, at ${s(d.elapsedMs)} of @${h}’s run clock.`;
 }
 
@@ -45,6 +43,8 @@ const WORDS = {
   resumed: (h, d) => `@${h}’s run clock resumed at ${s(d.elapsedMs)} of ${s(d.budgetMs)}.`,
   expired: (h, d) =>
     `@${h}’s run clock reached its budget of ${s(d.budgetMs)}, so Postbox ${expiredStop(h, d)}. Messages to @${h} here now wait, and no turn starts; a new timed run goes in a new conversation.`,
+  voided: (h, d) =>
+    `Postbox couldn’t confirm that @${h}’s stopped turn ended (${FORCED[d.forced] ?? d.forced}), so @${h} may still be working, uncounted. This timed run is void: no turn of @${h} starts here again, and a new timed run goes in a new conversation.`,
   stopped: (h, d) => `${stoppedWords(h, d)}${!d.left && d.state === 'paused' ? ' The paused clock stops counting here.' : ''}`,
   restored: (h, d) =>
     `Postbox started again with @${h}’s run clock at ${s(d.elapsedMs)} of ${s(d.budgetMs)}. The time it was down counted, and @${h} may have worked through it on its host.`,
@@ -70,11 +70,14 @@ const HOLDING = /** @type {const} */ ({ paused: 'paused', expired: 'expired' });
  * @param {any} rt @param {string} sessionId @param {any} clock
  */
 export function repairClockNote(rt, sessionId, clock) {
-  const change = Object.hasOwn(HOLDING, clock?.state) ? HOLDING[/** @type {'paused' | 'expired'} */ (clock.state)] : null;
+  // A void run’s line is the void’s, not the expiry’s: the clock expired because Postbox couldn’t confirm a stop.
+  const held = Object.hasOwn(HOLDING, clock?.state) ? HOLDING[/** @type {'paused' | 'expired'} */ (clock.state)] : null;
+  const change = clock?.voided ? 'voided' : held;
   const se = rt.store.pending.session(sessionId) ?? rt.s.sessions[sessionId];
   if (!change || !se) return;
   const last = rt.store.pending
     .items(se.threadId)
     .findLast((/** @type {any} */ i) => i.kind === 'system' && i.variant === 'clock' && i.sessionId === sessionId);
-  if (last?.change !== change) clockNote(rt, sessionId, change, { budgetMs: clock.budgetMs, elapsedMs: clock.usedMs, stopping: clock.stopping ?? [] });
+  if (last?.change !== change)
+    clockNote(rt, sessionId, change, { budgetMs: clock.budgetMs, elapsedMs: clock.usedMs, stopping: clock.stopping ?? [], forced: clock.voided?.why });
 }

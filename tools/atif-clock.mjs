@@ -38,40 +38,54 @@ export const CLOCK_WORDS = {
 };
 
 /**
+ * @typedef {{ turn: string, where: 'host' | 'local', asked_by: string, asked_at: number | null, confirmed_at: number | null,
+ *   forced?: true, why?: string, gave_up_at?: number }} ClockStop
+ * A stop: who asked it (the clock’s pause or expiry, or `stop` for one the clock didn’t make, such as the person’s Stop,
+ * which the record has only once Postbox gave up on it), when it ended (confirmed_at), or, for a forced one, when
+ * Postbox stopped waiting for it (gave_up_at), with why: then it never ended as far as Postbox knows.
+ */
+
+/**
  * The stops a session’s clock events made, each with when it ended if the recording has it: one per turn.
- * @param {{ type: string, data: any }[]} clocks  the session’s clock events, in order
+ * @param {{ type: string, data: any }[]} clocks  the session’s clock events, in order @returns {ClockStop[]}
  */
 export function clockStops(clocks) {
-  /** @type {Map<string, { turn: string, where: 'host' | 'local', asked_by: string, asked_at: number, confirmed_at: number | null, forced?: string }>} */
+  /** @type {Map<string, ClockStop>} */
   const stops = new Map();
+  const where = (/** @type {string} */ turn) => (isLocalStop(turn) ? 'local' : 'host');
   for (const c of clocks) {
     // An expiry lists a turn a pause already stopped, which it didn’t stop again: the first is the stop.
     if (c.type === 'clock.paused' || c.type === 'clock.expired')
       for (const turn of c.data.stopping ?? [])
-        if (!stops.has(turn)) stops.set(turn, { turn, where: isLocalStop(turn) ? 'local' : 'host', asked_by: c.type, asked_at: c.data.at, confirmed_at: null });
-    const open = c.type === 'clock.stopped' ? stops.get(c.data.turn) : undefined;
-    if (open && open.confirmed_at === null) Object.assign(open, { confirmed_at: c.data.at }, c.data.forced ? { forced: c.data.why } : {});
+        if (!stops.has(turn)) stops.set(turn, { turn, where: where(turn), asked_by: c.type, asked_at: c.data.at, confirmed_at: null });
+    if (c.type !== 'clock.stopped') continue;
+    const turn = c.data.turn;
+    if (!stops.has(turn) && c.data.forced) stops.set(turn, { turn, where: where(turn), asked_by: 'stop', asked_at: null, confirmed_at: null });
+    const open = stops.get(turn);
+    if (!open || open.confirmed_at !== null || open.gave_up_at !== undefined) continue;
+    if (c.data.forced) Object.assign(open, { forced: true, why: c.data.why, gave_up_at: c.data.at });
+    else open.confirmed_at = c.data.at;
   }
   return [...stops.values()];
 }
 
-/** What a trajectory says of one stop. @param {ReturnType<typeof clockStops>[number]} s @param {(ms: number) => string} iso */
+/** What a trajectory says of one stop. @param {ClockStop} s @param {(ms: number) => string} iso */
 function stopSaid(s, iso) {
-  const from = `from ${iso(s.asked_at)} (${s.asked_by})`;
+  const from = s.asked_at === null ? 'from a stop the clock didn’t make' : `from ${iso(s.asked_at)} (${s.asked_by})`;
+  const since = (/** @type {number} */ end) => (s.asked_at === null ? '' : ` ${((end - s.asked_at) / 1000).toFixed(3)}s later`);
   const host = s.where === 'host';
+  if (s.forced && s.gave_up_at !== undefined)
+    return `${from} until Postbox stopped waiting for its turn to end (${s.why})${since(s.gave_up_at)}, the agent may have gone on working, and may have after it too`;
   if (s.confirmed_at === null)
     return `${from} ${host ? 'its host never confirmed the stop' : 'its turn never ended'} in this recording, so the agent may have gone on working${host ? ' there' : ''}`;
-  const later = `${((s.confirmed_at - s.asked_at) / 1000).toFixed(3)}s later`;
-  if (host) return `${from} until its host confirmed the stop ${later}, the agent may have gone on working there`;
-  if (s.forced)
-    return `${from} until Postbox stopped waiting for its turn to end (${s.forced}) ${later}, the agent may have gone on working, and may have after it too`;
-  return `${from} until its turn ended ${later}, the agent may have gone on working`;
+  if (host) return `${from} until its host confirmed the stop${since(s.confirmed_at)}, the agent may have gone on working there`;
+  return `${from} until its turn ended${since(s.confirmed_at)}, the agent may have gone on working`;
 }
 
 /** How many times, as words. @param {number} n */
 const timesOf = (n) => (n === 1 ? 'once' : `${n} times`);
 
-/** What a trajectory’s note says of its stops in all, by where they ran. @param {ReturnType<typeof clockStops>} stops */
+/** What a trajectory’s note says of its stops in all, by where they ran. @param {ClockStop[]} stops */
 function lead(stops) {
   const host = stops.filter((s) => s.where === 'host').length;
   const local = stops.length - host;
@@ -82,20 +96,26 @@ function lead(stops) {
 
 /**
  * The note and extra a trajectory gets for its clock’s stops: none when it has none.
- * @param {ReturnType<typeof clockStops>} stops @returns {{ note: string|null, extra: Record<string, any> }}
+ * @param {ClockStop[]} stops @returns {{ note: string|null, extra: Record<string, any> }}
  */
 export function stopsScope(stops) {
   if (!stops.length) return { note: null, extra: {} };
   const iso = (/** @type {number} */ ms) => new Date(ms).toISOString();
-  const forced = stops.find((s) => s.forced && s.confirmed_at !== null);
+  const forced = stops.find((s) => s.forced);
   const voided = forced
-    ? `Void as a timed run: Postbox couldn’t confirm one of the agent’s stopped turns ended (${forced.forced}), so the agent may have worked uncounted, and Postbox ended the run. `
+    ? `Void as a timed run: Postbox couldn’t confirm one of the agent’s stopped turns ended (${forced.why}), so the agent may have worked uncounted, and Postbox ended the run. `
     : '';
+  const at = (/** @type {number | null | undefined} */ ms) => (typeof ms === 'number' ? iso(ms) : null);
   return {
     note: `${voided}Partial: ${lead(stops)}: ${stops.map((s) => stopSaid(s, iso)).join('; ')}.`,
     extra: {
-      stops: stops.map((s) => ({ ...s, asked_at: iso(s.asked_at), confirmed_at: s.confirmed_at === null ? null : iso(s.confirmed_at) })),
-      ...(forced ? { clock_void: { why: forced.forced, at: iso(/** @type {number} */ (forced.confirmed_at)) } } : {}),
+      stops: stops.map((s) => ({
+        ...s,
+        asked_at: at(s.asked_at),
+        confirmed_at: at(s.confirmed_at),
+        ...(s.gave_up_at === undefined ? {} : { gave_up_at: at(s.gave_up_at) }),
+      })),
+      ...(forced ? { clock_void: { why: forced.why, at: at(forced.gave_up_at) } } : {}),
     },
   };
 }

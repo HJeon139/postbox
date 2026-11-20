@@ -180,12 +180,14 @@ function expireClock(rt, sessionId, now) {
  * @param {any} rt @param {string} sessionId @param {string} turn @param {number} [at] @param {string} [forced]
  */
 export function clockStopConfirmed(rt, sessionId, turn, at = Date.now(), forced) {
-  if (!clockOf(rt, sessionId)?.stopping?.includes(turn)) return;
+  const was = clockOf(rt, sessionId);
+  // A forced stop voids any clock not yet void, whoever stopped the turn: the person’s Stop, Send now, a store outage.
+  if (!was || (forced ? was.voided : !was.stopping?.includes(turn))) return;
   if (!rt.store.writable) return whenWritable(rt, () => clockStopConfirmed(rt, sessionId, turn, at, forced));
   rt.store.emit('clock.stopped', { sessionId, turn, ...(forced ? { forced: true, why: forced } : {}), at });
   const clock = clockOf(rt, sessionId);
   const where = isLocalStop(turn) ? 'local' : 'host';
-  clockNote(rt, sessionId, 'stopped', {
+  clockNote(rt, sessionId, forced ? 'voided' : 'stopped', {
     budgetMs: clock.budgetMs,
     elapsedMs: clockElapsed(clock, at),
     state: clock.state,

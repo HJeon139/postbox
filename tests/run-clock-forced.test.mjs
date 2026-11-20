@@ -130,3 +130,56 @@ test('the export says a forced stop voids the run, a local expiry that the turn 
   assert.match(forced.note, /^Void as a timed run: /);
   assert.deepEqual(forced.extra.clock_void, { why: 'watchdog', at: new Date(T0 + 25_000).toISOString() });
 });
+
+test('a forced stop voids the run whoever stopped the turn: the person’s Stop, with the clock running, too', async () => {
+  const { rt, store, se, t, adapter, turnId, clock } = await working();
+  rt.stop(se.id); // the person’s Stop, not the clock’s
+  mock.timers.tick(15_000);
+  await settle();
+  assert.deepEqual(stoppedOf(store), { sessionId: se.id, turn: `turn:${turnId}`, forced: true, why: 'watchdog', at: T0 + 15_000 });
+  assert.equal(clock().state, 'expired');
+  assert.deepEqual(clock().voided, { why: 'watchdog', at: T0 + 15_000 });
+  const calls = adapter.calls.length;
+  rt.sendMessage(t.id, { text: 'Go on.' });
+  await settle();
+  assert.equal(adapter.calls.length, calls);
+});
+
+test('a restart’s void line is the clock’s last, and one a kill lost is given back, not an expiry’s', () => {
+  const { rt, store, se, t } = setup();
+  const lines = () =>
+    store
+      .items(t.id)
+      .filter((i) => i.variant === 'clock')
+      .map((i) => i.change);
+  clockAction(rt, se.id, { action: 'start', budgetS: 60 });
+  store.emit('clock.paused', { sessionId: se.id, stopping: ['turn:turn_gone'], at: T0 + 10_000 });
+  rearmClocks(rt, () => T0 + 30_000);
+  // The pause was recorded as the store holds it, with no line of its own; the void’s line comes after, and no expiry’s.
+  assert.deepEqual(lines(), ['started', 'voided']);
+  rearmClocks(rt, () => T0 + 40_000);
+  assert.deepEqual(lines(), ['started', 'voided'], 'a second start adds nothing');
+  // A kill between a forced clock.stopped and its line: the line given back says the run is void.
+  const f = setup();
+  clockAction(f.rt, f.se.id, { action: 'start', budgetS: 60 });
+  f.store.emit('clock.paused', { sessionId: f.se.id, stopping: ['turn:turn_x'], at: T0 + 10_000 });
+  f.store.emit('clock.stopped', { sessionId: f.se.id, turn: 'turn:turn_x', forced: true, why: 'watchdog', at: T0 + 25_000 });
+  rearmClocks(f.rt, () => T0 + 30_000);
+  const last = f.store.items(f.t.id).findLast((i) => i.variant === 'clock');
+  assert.equal(last.change, 'voided');
+  assert.match(last.text, /This timed run is void/);
+  assert.doesNotMatch(last.text, /reached its budget/);
+});
+
+test('the export keeps a forced stop’s forced and why as clock.stopped recorded them', () => {
+  const sessionId = 'se_1';
+  const stops = clockStops([
+    { type: 'clock.paused', data: { sessionId, stopping: ['turn:turn_1'], at: T0 + 10_000 } },
+    { type: 'clock.stopped', data: { sessionId, turn: 'turn:turn_1', forced: true, why: 'watchdog', at: T0 + 25_000 } },
+  ]);
+  const { extra } = stopsScope(stops);
+  assert.equal(extra.stops[0].forced, true);
+  assert.equal(extra.stops[0].why, 'watchdog');
+  assert.equal(extra.stops[0].confirmed_at, null, 'never confirmed: Postbox gave up');
+  assert.equal(extra.stops[0].gave_up_at, new Date(T0 + 25_000).toISOString());
+});
