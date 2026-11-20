@@ -13,6 +13,7 @@
 // background. Tokens and cost come from the work ledger (tools/atif-metrics.mjs).
 
 import { callsOf } from './atif-calls.mjs';
+import { CLOCK_WORDS } from './atif-clock.mjs';
 import { finalMetrics, meter } from './atif-metrics.mjs';
 import { promptedTurns, promptSteps, scopeOf, unresolvedGuides } from './atif-prompts.mjs';
 
@@ -21,15 +22,6 @@ export { NOT_RECORDED, NOT_RECORDED_WITHOUT_PROMPTS } from './atif-prompts.mjs';
 /** @typedef {{ seq: number, type: string, data: any }} Event */
 
 const iso = (/** @type {number} */ ms) => new Date(ms).toISOString();
-const CLOCK_WORDS = {
-  'clock.started': (d) => `Run clock started with a budget of ${d.budgetMs / 1000}s.`,
-  'clock.paused': () => 'Run clock paused: Postbox stopped the agent until it resumes.',
-  'clock.resumed': () => 'Run clock resumed.',
-  'clock.turn': (d) => `Turn started at elapsed ${Math.floor(d.elapsedMs / 1000)}s of ${d.budgetMs / 1000}s.`,
-  'clock.restored': (d) =>
-    `Postbox started again with the run clock at elapsed ${Math.floor(d.elapsedMs / 1000)}s of ${d.budgetMs / 1000}s; the time it was down counted.`,
-  'clock.expired': (d) => `Run clock expired at its budget of ${d.budgetMs / 1000}s: Postbox stopped the agent.`,
-};
 /** The items an agent session shows: each is one of its steps. */
 const OWN_KINDS = new Set(['agent', 'block', 'app']);
 /** The work ledger’s entries for one call, which keep its arguments (tools/atif-calls.mjs). */
