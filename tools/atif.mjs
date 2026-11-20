@@ -9,12 +9,12 @@
 // - agent: each reply of the agent’s, with its tool calls and thoughts (tools/atif-calls.mjs), and each block or app
 //   it showed;
 // - system: another agent’s reply that one of its turns took, and each of its run clock’s events (server/run-clock.mjs);
-//   a host turn the clock asked to stop makes the trajectory partial until the host confirmed it (tools/atif-clock.mjs).
+//   a turn the clock stopped makes the trajectory partial until it ended (tools/atif-clock.mjs).
 // A message in the room that never reached the agent’s inbox is no step of its, even where its catch-up showed it as
 // background. Tokens and cost come from the work ledger (tools/atif-metrics.mjs).
 
 import { callsOf } from './atif-calls.mjs';
-import { CLOCK_WORDS, remoteStops, stopsScope } from './atif-clock.mjs';
+import { CLOCK_WORDS, clockStops, stopsScope } from './atif-clock.mjs';
 import { finalMetrics, meter } from './atif-metrics.mjs';
 import { promptedTurns, promptSteps, scopeOf, unresolvedGuides } from './atif-prompts.mjs';
 
@@ -298,13 +298,13 @@ export function trajectoryOf(f, sessionId, { version }) {
       ...(models.length === 1 ? { model_name: models[0] } : {}),
       extra: { handle, postbox_session: sessionId, ...(models.length > 1 ? { models } : {}) },
     },
-    ...withStops(scopeOf(prompts.length > 0, unresolvedGuides(f, sessionId)), stopsScope(remoteStops(clocks))),
+    ...withStops(scopeOf(prompts.length > 0, unresolvedGuides(f, sessionId)), stopsScope(clockStops(clocks))),
     steps,
     final_metrics: finalMetrics(ctx.turns, ctx.meter.metered, steps.length),
   };
 }
 
-/** A trajectory’s scope, with what its clock’s host stops leave out (tools/atif-clock.mjs). @param {{ notes: string, extra: any }} scope @param {{ note: string|null, extra: any }} stops */
+/** A trajectory’s scope, with what its clock’s stops leave out (tools/atif-clock.mjs). @param {{ notes: string, extra: any }} scope @param {{ note: string|null, extra: any }} stops */
 const withStops = (scope, stops) => ({ notes: stops.note ? `${stops.note} ${scope.notes}` : scope.notes, extra: { ...scope.extra, ...stops.extra } });
 
 /**

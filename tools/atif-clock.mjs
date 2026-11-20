@@ -1,60 +1,79 @@
 // A run clock’s events as a trajectory’s system steps (tools/atif.mjs, server/run-clock.mjs). Moved from
 // tools/atif.mjs, which keeps its length limit.
 //
-// A turn on a host that the clock’s pause or expiry asked to stop may run on until the host confirms the stop
-// (server/remote/turns-stops.mjs), and Postbox records nothing of what it did meanwhile. So each such stop is listed,
-// with when Postbox asked and when the host confirmed, if it did in the recording, and the trajectory says it’s
-// partial (hydrant-critic’s review of #1522).
+// A turn the clock’s pause or expiry stopped may run on: on a host until the host confirms the stop
+// (server/remote/turns-stops.mjs), on this computer until its CLI has exited, after up to its grace period
+// (server/turn-stop.mjs). Postbox records nothing of what it did meanwhile. So each such stop is listed, with when
+// Postbox stopped it and when it ended, if it did in the recording, and the trajectory says it’s partial
+// (hydrant-critic’s review of #1522).
+
+import { isLocalStop } from '../shared/run-clock.mjs';
+
+/** Whether a clock event’s stops wait on a host. @param {any} d */
+const onHost = (d) => Boolean(d.stopping?.some((/** @type {string} */ t) => !isLocalStop(t)));
 
 /** Each clock event’s words, from its data. @type {Record<string, (d: any) => string>} */
 export const CLOCK_WORDS = {
   'clock.started': (d) => `Run clock started with a budget of ${d.budgetMs / 1000}s.`,
-  'clock.paused': (d) =>
-    d.stopping?.length
-      ? 'Run clock paused: Postbox asked the agent’s host to stop it, and the clock counts on until the host confirms.'
-      : 'Run clock paused: Postbox stopped the agent until it resumes.',
+  'clock.paused': (d) => {
+    if (onHost(d)) return 'Run clock paused: Postbox asked the agent’s host to stop it, and the clock counts on until the host confirms.';
+    return `Run clock paused: Postbox stopped the agent until it resumes${d.stopping?.length ? ', and the clock counts on until its turn has ended' : ''}.`;
+  },
   'clock.resumed': () => 'Run clock resumed.',
   'clock.turn': (d) => `Turn started at elapsed ${Math.floor(d.elapsedMs / 1000)}s of ${d.budgetMs / 1000}s.`,
   'clock.restored': (d) =>
     `Postbox started again with the run clock at elapsed ${Math.floor(d.elapsedMs / 1000)}s of ${d.budgetMs / 1000}s; the time it was down counted.`,
   'clock.expired': (d) =>
-    `Run clock expired at its budget of ${d.budgetMs / 1000}s: Postbox ${d.stopping?.length ? 'asked the agent’s host to stop it, which the host hadn’t confirmed yet' : 'stopped the agent'}.`,
-  'clock.stopped': () => 'The agent’s host confirmed its turn stopped.',
+    `Run clock expired at its budget of ${d.budgetMs / 1000}s: Postbox ${onHost(d) ? 'asked the agent’s host to stop it, which the host hadn’t confirmed yet' : 'stopped the agent'}.`,
+  'clock.stopped': (d) => {
+    if (!isLocalStop(d.turn)) return 'The agent’s host confirmed its turn stopped.';
+    return d.forced ? 'Postbox stopped waiting for the agent’s stopped turn to end; it may still have been working.' : 'The agent’s stopped turn ended.';
+  },
 };
 
 /**
- * The host stops a session’s clock events asked for, each with its confirmation if the recording has it.
+ * The stops a session’s clock events made, each with when it ended if the recording has it: one per turn.
  * @param {{ type: string, data: any }[]} clocks  the session’s clock events, in order
  */
-export function remoteStops(clocks) {
-  /** @type {Map<string, { turn: string, asked_by: string, asked_at: number, confirmed_at: number | null }>} by host turn: one stop each */
+export function clockStops(clocks) {
+  /** @type {Map<string, { turn: string, where: 'host' | 'local', asked_by: string, asked_at: number, confirmed_at: number | null, forced?: true }>} */
   const stops = new Map();
   for (const c of clocks) {
-    // An expiry lists a turn a pause already asked to stop, which it didn’t ask again: the first ask is the stop.
+    // An expiry lists a turn a pause already stopped, which it didn’t stop again: the first is the stop.
     if (c.type === 'clock.paused' || c.type === 'clock.expired')
-      for (const turn of c.data.stopping ?? []) if (!stops.has(turn)) stops.set(turn, { turn, asked_by: c.type, asked_at: c.data.at, confirmed_at: null });
+      for (const turn of c.data.stopping ?? [])
+        if (!stops.has(turn)) stops.set(turn, { turn, where: isLocalStop(turn) ? 'local' : 'host', asked_by: c.type, asked_at: c.data.at, confirmed_at: null });
     const open = c.type === 'clock.stopped' ? stops.get(c.data.turn) : undefined;
-    if (open && open.confirmed_at === null) open.confirmed_at = c.data.at;
+    if (open && open.confirmed_at === null) Object.assign(open, { confirmed_at: c.data.at }, c.data.forced ? { forced: true } : {});
   }
   return [...stops.values()];
 }
 
+/** What a trajectory says of one stop. @param {ReturnType<typeof clockStops>[number]} s @param {(ms: number) => string} iso */
+function stopSaid(s, iso) {
+  const from = `from ${iso(s.asked_at)} (${s.asked_by})`;
+  const host = s.where === 'host';
+  if (s.confirmed_at === null)
+    return `${from} ${host ? 'its host never confirmed the stop' : 'its turn never ended'} in this recording, so the agent may have gone on working${host ? ' there' : ''}`;
+  const later = `${((s.confirmed_at - s.asked_at) / 1000).toFixed(3)}s later`;
+  if (host) return `${from} until its host confirmed the stop ${later}, the agent may have gone on working there`;
+  if (s.forced) return `${from} until Postbox stopped waiting for its turn to end ${later}, the agent may have gone on working, and may have after it too`;
+  return `${from} until its turn ended ${later}, the agent may have gone on working`;
+}
+
 /**
- * The note and extra a trajectory gets for its clock’s host stops: none when it has none.
- * @param {ReturnType<typeof remoteStops>} stops @returns {{ note: string|null, extra: Record<string, any> }}
+ * The note and extra a trajectory gets for its clock’s stops: none when it has none.
+ * @param {ReturnType<typeof clockStops>} stops @returns {{ note: string|null, extra: Record<string, any> }}
  */
 export function stopsScope(stops) {
   if (!stops.length) return { note: null, extra: {} };
   const iso = (/** @type {number} */ ms) => new Date(ms).toISOString();
-  const said = stops.map((s) =>
-    s.confirmed_at === null
-      ? `at ${iso(s.asked_at)} (${s.asked_by}) its host never confirmed the stop in this recording, so the agent may have gone on working there`
-      : `from ${iso(s.asked_at)} (${s.asked_by}) until its host confirmed the stop ${((s.confirmed_at - s.asked_at) / 1000).toFixed(3)}s later, the agent may have gone on working there`,
-  );
+  const times = stops.length === 1 ? 'once' : `${stops.length} times`;
+  const lead = stops.some((s) => s.where === 'host')
+    ? `Postbox asked the agent’s host to stop its turn ${times}, and records nothing the turn did until the host confirmed`
+    : `Postbox stopped the agent’s turn ${times}, and records nothing it did until the turn ended`;
   return {
-    note: `Partial: Postbox asked the agent’s host to stop its turn ${stops.length === 1 ? 'once' : `${stops.length} times`}, and records nothing the turn did until the host confirmed: ${said.join('; ')}.`,
-    extra: {
-      remote_stops: stops.map((s) => ({ ...s, asked_at: iso(s.asked_at), confirmed_at: s.confirmed_at === null ? null : iso(s.confirmed_at) })),
-    },
+    note: `Partial: ${lead}: ${stops.map((s) => stopSaid(s, iso)).join('; ')}.`,
+    extra: { stops: stops.map((s) => ({ ...s, asked_at: iso(s.asked_at), confirmed_at: s.confirmed_at === null ? null : iso(s.confirmed_at) })) },
   };
 }

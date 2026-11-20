@@ -4,7 +4,7 @@
 // the timer here is only derived from it, set again at each start of Postbox (rearmClocks), so a budget that ran out
 // while Postbox was down expires as it starts. Time while Postbox is down counts: an agent on a host goes on working.
 
-import { CLOCK_BUDGET_MAX_S, clockElapsed, clockLine } from '../shared/run-clock.mjs';
+import { CLOCK_BUDGET_MAX_S, clockElapsed, clockLine, isLocalStop } from '../shared/run-clock.mjs';
 import { httpError } from './helpers.mjs';
 import { clockNote, repairClockNote } from './run-clock-notes.mjs';
 import { whenWritable } from './store-wait.mjs';
@@ -26,11 +26,18 @@ const clockOf = (rt, sessionId) => rt.store.pending.clock(sessionId);
  * stop is kept on the session until the daemon confirms it (server/remote/turns-stops.mjs, askStop). Read after the
  * stop, so a clock’s pause or expiry records them (hydrant-critic’s review of #1522). @param {any} rt @param {string} sessionId
  */
-const unconfirmedStops = (rt, sessionId) => (rt.store.pending.session(sessionId)?.remoteTurn?.stopping ?? []).map((/** @type {any} */ x) => x.turn);
+function unconfirmedStops(rt, sessionId) {
+  const host = (rt.store.pending.session(sessionId)?.remoteTurn?.stopping ?? []).map((/** @type {any} */ x) => x.turn);
+  // A turn on this computer that Stop left exiting: its CLI may work on through SIGINT’s grace period, until it exits.
+  const local = rt.exiting.get(sessionId)?.turn;
+  return local && !local.remote ? [...host, `turn:${local.id}`] : host;
+}
 
-/** Why the person must wait for a host’s stop. @param {string} handle @param {string} what */
-const stillOnHost = (handle, what) =>
-  `Postbox asked @${handle}’s host to stop its turn, and the host hasn’t confirmed it, so @${handle} may still be working there. Postbox asks again each time the host connects; once it confirms, ${what}.`;
+/** Why the person must wait for a stop to take effect. @param {string} handle @param {string} what @param {string[]} stopping */
+const stillOnHost = (handle, what, stopping = []) =>
+  stopping.length && stopping.every(isLocalStop)
+    ? `@${handle}’s stopped turn hasn’t ended yet, so @${handle} may still be working. Once it has, ${what}.`
+    : `Postbox asked @${handle}’s host to stop its turn, and the host hasn’t confirmed it, so @${handle} may still be working there. Postbox asks again each time the host connects; once it confirms, ${what}.`;
 
 /** A clock’s event’s field for the host turns still to stop, when there are any. @param {string[]} turns */
 const stoppingField = (turns) => (turns.length ? { stopping: turns } : {});
@@ -97,7 +104,7 @@ export function clockAction(rt, sessionId, body, now = Date.now) {
     case 'resume':
       if (clock?.state !== 'paused') throw httpError(409, `@${se.handle} has no paused run clock to resume.`);
       // A turn the pause stopped may still run on its host: a new one would run beside it, in paused time.
-      if (clock.stopping?.length) throw httpError(409, stillOnHost(se.handle, 'resume the clock'));
+      if (clock.stopping?.length) throw httpError(409, stillOnHost(se.handle, 'resume the clock', clock.stopping));
       rt.store.emit('clock.resumed', { sessionId, at: now() });
       clockNote(rt, sessionId, 'resumed', { budgetMs: clock.budgetMs, elapsedMs: clockOf(rt, sessionId).usedMs });
       resumeHeld(rt, sessionId);
@@ -167,15 +174,25 @@ function expireClock(rt, sessionId, now) {
 /**
  * The host confirmed that a turn of the agent’s is over (server/remote/turns-stops.mjs, stopConfirmed): if its clock’s
  * pause or expiry was waiting on it, clock.stopped records when, and a paused clock whose last such turn it was stops
- * counting. While the store can’t be written, it’s recorded once it can, at the time the host confirmed.
- * @param {any} rt @param {string} sessionId @param {string} turn @param {number} [at]
+ * counting. While the store can’t be written, it’s recorded once it can, at the time the host confirmed. A turn on this
+ * computer is `turn:` and its id, confirmed as its CLI exits (turnExited); forced: Stop’s watchdog gave up waiting for
+ * that, and the next turn starts anyway, so the CLI may still be working.
+ * @param {any} rt @param {string} sessionId @param {string} turn @param {number} [at] @param {boolean} [forced]
  */
-export function clockStopConfirmed(rt, sessionId, turn, at = Date.now()) {
+export function clockStopConfirmed(rt, sessionId, turn, at = Date.now(), forced = false) {
   if (!clockOf(rt, sessionId)?.stopping?.includes(turn)) return;
-  if (!rt.store.writable) return whenWritable(rt, () => clockStopConfirmed(rt, sessionId, turn, at));
-  rt.store.emit('clock.stopped', { sessionId, turn, at });
+  if (!rt.store.writable) return whenWritable(rt, () => clockStopConfirmed(rt, sessionId, turn, at, forced));
+  rt.store.emit('clock.stopped', { sessionId, turn, ...(forced ? { forced: true } : {}), at });
   const clock = clockOf(rt, sessionId);
-  clockNote(rt, sessionId, 'stopped', { budgetMs: clock.budgetMs, elapsedMs: clockElapsed(clock, at), state: clock.state, left: clock.stopping.length });
+  const where = isLocalStop(turn) ? 'local' : 'host';
+  clockNote(rt, sessionId, 'stopped', {
+    budgetMs: clock.budgetMs,
+    elapsedMs: clockElapsed(clock, at),
+    state: clock.state,
+    left: clock.stopping.length,
+    where,
+    forced,
+  });
   armClock(rt, sessionId, () => at);
 }
 

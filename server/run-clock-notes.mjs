@@ -2,28 +2,43 @@
 // person sees its state where they work, and why an agent with an expired or paused clock doesn’t answer. A system
 // line with its text, which the page shows as it is (app/js/system-line.mjs); no turn reads it as a message.
 
+import { isLocalStop } from '../shared/run-clock.mjs';
+
 /** @param {number} ms */
 const s = (ms) => `${Math.floor(ms / 1000)}s`;
+
+/** Whether a clock’s stop waits on a host (shared/run-clock.mjs, isLocalStop). @param {any} d */
+const onHost = (d) => Boolean(d.stopping?.some((/** @type {string} */ t) => !isLocalStop(t)));
+
+/** What a stop’s confirmation says. @param {string} h @param {any} d */
+function stoppedWords(h, d) {
+  if (d.where === 'host') return `@${h}’s host confirmed its turn stopped, at ${s(d.elapsedMs)} of @${h}’s run clock.`;
+  if (d.forced)
+    return `@${h}’s stopped turn hadn’t ended after Postbox’s wait for it, so Postbox stopped waiting at ${s(d.elapsedMs)} of @${h}’s run clock; @${h} may still be working.`;
+  return `@${h}’s stopped turn ended, at ${s(d.elapsedMs)} of @${h}’s run clock.`;
+}
 
 /** Each change’s words. @type {Record<string, (h: string, d: any) => string>} */
 const WORDS = {
   started: (h, d) => `@${h}’s run clock started, with a budget of ${s(d.budgetMs)}.`,
-  paused: (h, d) =>
-    d.stopping?.length
-      ? `@${h}’s run clock is paused. Postbox asked @${h}’s host to stop it, and starts no turn of it until the clock resumes. Until the host confirms the stop, @${h} may still be working there, so the clock counts on.`
-      : `@${h}’s run clock is paused. Postbox stopped @${h}, and starts no turn of it until the clock resumes.`,
+  paused: (h, d) => {
+    if (onHost(d)) {
+      return `@${h}’s run clock is paused. Postbox asked @${h}’s host to stop it, and starts no turn of it until the clock resumes. Until the host confirms the stop, @${h} may still be working there, so the clock counts on.`;
+    }
+    const exiting = d.stopping?.length ? ` Until its stopped turn has ended, @${h} may still be working, so the clock counts on.` : '';
+    return `@${h}’s run clock is paused. Postbox stopped @${h}, and starts no turn of it until the clock resumes.${exiting}`;
+  },
   resumed: (h, d) => `@${h}’s run clock resumed at ${s(d.elapsedMs)} of ${s(d.budgetMs)}.`,
   expired: (h, d) =>
-    `@${h}’s run clock reached its budget of ${s(d.budgetMs)}, so Postbox ${d.stopping?.length ? `asked @${h}’s host to stop @${h}, which may still be working there until the host confirms` : `stopped @${h}`}. Messages to @${h} here now wait, and no turn starts; a new timed run goes in a new conversation.`,
-  stopped: (h, d) =>
-    `@${h}’s host confirmed its turn stopped, at ${s(d.elapsedMs)} of @${h}’s run clock.${!d.left && d.state === 'paused' ? ' The paused clock stops counting here.' : ''}`,
+    `@${h}’s run clock reached its budget of ${s(d.budgetMs)}, so Postbox ${onHost(d) ? `asked @${h}’s host to stop @${h}, which may still be working there until the host confirms` : `stopped @${h}`}. Messages to @${h} here now wait, and no turn starts; a new timed run goes in a new conversation.`,
+  stopped: (h, d) => `${stoppedWords(h, d)}${!d.left && d.state === 'paused' ? ' The paused clock stops counting here.' : ''}`,
   restored: (h, d) =>
     `Postbox started again with @${h}’s run clock at ${s(d.elapsedMs)} of ${s(d.budgetMs)}. The time it was down counted, and @${h} may have worked through it on its host.`,
 };
 
 /**
  * A line in the agent’s conversation for a change of its clock.
- * @param {any} rt @param {string} sessionId @param {keyof typeof WORDS} change @param {{ budgetMs: number, elapsedMs?: number, stopping?: string[], state?: string, left?: number }} d
+ * @param {any} rt @param {string} sessionId @param {keyof typeof WORDS} change @param {{ budgetMs: number, elapsedMs?: number, stopping?: string[], state?: string, left?: number, where?: string, forced?: boolean }} d
  */
 export function clockNote(rt, sessionId, change, d) {
   const se = rt.store.pending.session(sessionId) ?? rt.s.sessions[sessionId];

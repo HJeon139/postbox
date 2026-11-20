@@ -5,6 +5,7 @@
 
 import { runningJobs, runningProgress, settleJobs } from './job-records.mjs';
 import * as queue from './message-queue.mjs';
+import { clockStopConfirmed } from './run-clock.mjs';
 import { dropScheduledWake } from './scheduled-wakes.mjs';
 import { dropWakes } from './side-threads.mjs';
 import { recordStopped } from './stop-record.mjs';
@@ -68,6 +69,7 @@ export function stop(rt, sessionId, { silent = false, jobs = 'stop', by = 'you',
     rt.watchdogs.delete(watchdog);
     if (rt.exiting.get(sessionId)?.turn !== turn) return;
     console.error(`@${se?.handle ?? sessionId}’s stopped turn hadn’t ended after ${STOP_WATCHDOG_MS / 1000} s, so its next turn starts anyway.`);
+    turn.exitForced = true;
     turnExited(rt, turn);
   }, STOP_WATCHDOG_MS);
   watchdog.unref?.();
@@ -92,6 +94,8 @@ export function stop(rt, sessionId, { silent = false, jobs = 'stop', by = 'you',
  * then the queue.
  */
 export function turnExited(rt, turn) {
+  // A run clock that paused or expired while this turn could still work hears it’s over, at the time it was.
+  if (!turn.remote) clockStopConfirmed(rt, turn.sessionId, `turn:${turn.id}`, Date.now(), turn.exitForced === true);
   // What the exit writes waits for writes to reopen (ST-3), behind the stop’s own records (server/store-outage.mjs).
   if (!rt.store.writable) return whenWritable(rt, () => turnExited(rt, turn));
   settleJobs(rt, turn);

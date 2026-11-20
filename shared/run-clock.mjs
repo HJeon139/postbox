@@ -4,12 +4,18 @@
 // A clock is { sessionId, threadId, budgetMs, usedMs, since, state, startedAt, expiredAt, stopping }: usedMs is what it
 // used before `since`, when it last began counting, or null once it stops counting. Each event’s data carries `at`,
 // the server’s time it happened, since the store’s events have no time of their own.
-// `stopping` lists the turns on a host that Postbox asked to stop, at a pause or the expiry, and whose stop the host
-// hasn’t confirmed: such a turn may run on there (server/remote/turns-stops.mjs, askStop), as when the host can’t be
-// reached. A paused clock counts on until each has stopped (clock.stopped), so a pause the agent works through is no
+// `stopping` lists the turns that Postbox stopped, at a pause or the expiry, and that may still run: a turn on a host
+// until the host confirms its stop (server/remote/turns-stops.mjs, askStop), as when the host can’t be reached, and a
+// turn on this computer until its CLI has exited, after up to its grace period (server/adapters/process-group.mjs). A paused clock counts on until each has stopped (clock.stopped), so a pause the agent works through is no
 // pause (hydrant-critic’s review of #1522).
 
 /** @typedef {'running' | 'paused' | 'expired'} ClockState */
+
+/**
+ * A turn on this computer in a clock’s `stopping`: `turn:` and its id, until its CLI has exited (server/turn-stop.mjs).
+ * Any other entry is a host’s turn, by the id its daemon knows. @param {string} stop
+ */
+export const isLocalStop = (stop) => stop.startsWith('turn:');
 
 /** The longest budget the person can give a clock: 30 days, in seconds. */
 export const CLOCK_BUDGET_MAX_S = 30 * 86_400;
@@ -125,7 +131,8 @@ export const CLOCK_EVENTS = Object.freeze({
   // turn it was stops counting here.
   'clock.stopped': {
     apply: (/** @type {any} */ s, /** @type {any} */ d) => {
-      if (typeof d.turn !== 'string') throw new TypeError('A clock.stopped event names its host turn.');
+      if (typeof d.turn !== 'string') throw new TypeError('A clock.stopped event names its turn.');
+      if (d.forced !== undefined && d.forced !== true) throw new TypeError('A clock.stopped event’s forced is true or left out.');
       withClock(s, d, (c) => {
         if (!c.stopping?.includes(d.turn)) return;
         c.stopping = c.stopping.filter((/** @type {string} */ t) => t !== d.turn);

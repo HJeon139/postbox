@@ -100,13 +100,13 @@ test('an export says the trajectory is partial from the stop Postbox asked of th
     before.notes,
     /^Partial: Postbox asked the agent’s host to stop its turn once, and records nothing the turn did until the host confirmed: .*never confirmed/,
   );
-  assert.deepEqual(before.extra.remote_stops, [{ turn, asked_by: 'clock.expired', asked_at: new Date(T0 + 60_000).toISOString(), confirmed_at: null }]);
+  assert.deepEqual(before.extra.stops, [{ turn, where: 'host', asked_by: 'clock.expired', asked_at: new Date(T0 + 60_000).toISOString(), confirmed_at: null }]);
   assert.match(before.steps.find((s) => s.extra.event === 'clock.expired').message, /asked the agent’s host to stop it, which the host hadn’t confirmed yet/);
   mock.timers.setTime(T0 + 95_000);
   r.link.reconnect();
   await until(() => r.store.state.clocks[r.se().id].stopping.length === 0, 'the confirmation');
   const after = exported(r);
-  assert.equal(after.extra.remote_stops[0].confirmed_at, new Date(T0 + 95_000).toISOString());
+  assert.equal(after.extra.stops[0].confirmed_at, new Date(T0 + 95_000).toISOString());
   assert.match(after.notes, /until its host confirmed the stop 35\.000s later/);
   assert.equal(after.steps.at(-1).extra.event, 'clock.stopped');
 });
@@ -166,8 +166,8 @@ test('a pause whose stop is still unconfirmed at the expiry is one stop in the e
   r.link.reconnect();
   await until(() => r.store.state.clocks[id].stopping.length === 0, 'the confirmation');
   const t = exported(r);
-  assert.deepEqual(t.extra.remote_stops, [
-    { turn, asked_by: 'clock.paused', asked_at: new Date(T0 + 10_000).toISOString(), confirmed_at: new Date(T0 + 95_000).toISOString() },
+  assert.deepEqual(t.extra.stops, [
+    { turn, where: 'host', asked_by: 'clock.paused', asked_at: new Date(T0 + 10_000).toISOString(), confirmed_at: new Date(T0 + 95_000).toISOString() },
   ]);
   assert.match(t.notes, /asked the agent’s host to stop its turn once/);
   assert.doesNotMatch(t.notes, /never confirmed/);
