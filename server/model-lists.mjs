@@ -36,6 +36,17 @@ export class ModelLists {
     this.listedAt = new WeakMap();
     /** @type {WeakMap<object, Promise<string[]>>} the listing under way for each adapter */
     this.asking = new WeakMap();
+    /** Whether Postbox has closed, after which nothing is kept (close). */
+    this.closed = false;
+  }
+
+  /**
+   * Postbox is closing: a list a harness gives from now on still answers its ask, but isn’t kept, since the data
+   * folder may be gone by then (#1530: a test’s teardown removed it, and the late write logged an error in the next
+   * test).
+   */
+  close() {
+    this.closed = true;
   }
 
   /** Offers each backend the last list its harness gave, as Postbox starts. Asks no harness. */
@@ -134,6 +145,7 @@ export class ModelLists {
    * a restart: a write that fails is logged, and the answer still has the list.
    */
   #keep(key, models) {
+    if (this.closed) return;
     try {
       const kept = { ...this.#kept(), [key]: models };
       // A deleted host’s lists go: no sheet can ask for them again.

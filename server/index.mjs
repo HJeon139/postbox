@@ -453,6 +453,7 @@ export async function start({
 
   async function close() {
     agyQuota.stop(); // agy’s /usage, asked as Postbox started, stops with it (#1494)
+    models.close(); // a list a harness gives after this keeps nothing in the data folder (#1530)
     stopStreams();
     for (const r of streams) r.destroy();
     stopTimers(rt);
