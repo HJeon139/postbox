@@ -73,7 +73,7 @@ sequenceDiagram
 ### Commit points
 
 A commit point writes, in one `commit`:
-- `item.text` with the words since the last commit point. This is the same event as today, so the reducer and every reader of the log take it unchanged (`tools/uat/inbox-measures.mjs`, `picture-choice.mjs` and `checks-assets.mjs` append or match `item.text`);
+- `item.text` with the words held since the last window, when it has any (“Text in windows”). This is the same event as today, so the reducer and every reader of the log take it unchanged (`tools/uat/inbox-measures.mjs`, `picture-choice.mjs` and `checks-assets.mjs` append or match `item.text`);
 - one `item.patch` with `activityStep` for each step that is new or changed since the last commit point, the same event as today, so `checks-assets.mjs` still finds a step’s words. Each costs what that step’s change costs, never the steps before it, so a turn of `n` steps writes `O(n)` step records, not `O(n²)`.
 
 The steps it stores keep `at` and `part`, which place them among the words (`app/js/activity-live.mjs`, `textFrom`). A commit point drops only what `foldedStep` drops besides those: `input`, `output` and `diff`, the live view’s detail. It keeps `detail` whole, since a page merges the stored step over the live one and a thought is shown whole while its turn runs; the fold at the turn’s end cuts it to `STEP_TEXT.detail`, as it always has. The buffer keeps the newest call’s full detail across a commit point that comes on time alone, so the live view’s newest call doesn’t lose its input and output mid-call. So a reload, a second tab or a conversation opened mid-turn places every stored step as the live view does. The fold at the turn’s end drops `at` and `part`, as today, and the restart sweep’s `foldCutOff`, which folds any step still holding them (`liveDetail`), folds a cut-off reply’s steps as it does now.
@@ -163,7 +163,7 @@ A turn holds at most a window of words beside the buffer (“Text in windows”)
 - **Only a crash can lose words:** at most a window of them, 50 ms (“Text in windows”), and the step updates since the last commit point. That’s as today, when streamed text is written on the fast path, unsynced ([store.md](store.md)), so a crash can already lose a reply’s newest words.
 
 After either:
-- the reply keeps its text and its steps to the last commit point, which is the shutdown’s own after a planned restart;
+- the reply keeps its text to the last window and its steps to the last commit point, which is the shutdown’s own after a planned restart;
 - it reads as cut off by a restart, as today, and the entries the turn took reopen once as a resend (Delivery’s start, [services.md](services.md), “Delivery and Turns, built as the inbox”), so the agent picks the work up again.
 
 **#1451’s record of a reply cut off with no words** (`heldOfCutOff`, `server/turn-held.mjs`) is built from what was stored: the reply’s steps and the entries its turn took. With this design, those steps are the ones to the last commit point.
@@ -181,7 +181,7 @@ After either:
 **Other readers of the store:**
 - **Other agents** (catch-up, `read_message`, `read_conversation`) read the stored text to the last window, and the line says the reply is still being written and that `read_message` with its id reads all of it once it’s done (`writingNote`, `server/item-lines.mjs`; `tests/reply-being-written.test.mjs`). Before this design they read every delta as it landed.
 - **Host agents’ reads** refresh on stored item events (`onStoreEvent`, `server/remote/turns-snapshot.mjs`). They refresh at commit points, which is enough, since they read stored text.
-- **Search, fork, share and export** read stored items. While a turn runs they get its text to the last commit point; after it ends, all of it.
+- **Search, fork, share and export** read stored items. While a turn runs they get its text to the last window; after it ends, all of it.
 - **Other `item.text` writers stay stored:** the person’s commands’ output (`shell-runs.mjs`) and an attached Claude Code terminal’s mirror (`claude-mirror.mjs`).
 - **The UAT checks** read the log:
   - `checks-assets.mjs`’s scan for an agent’s own words (#722) matches `activityStep` and `item.text` in the log, which commit points keep. But a call’s `input` and `output`, and the glimpse, would be on live frames only. So the UAT runner records every live frame its stream receives into the run’s files beside the log, and the scan reads them as it reads events;
