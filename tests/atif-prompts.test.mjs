@@ -44,3 +44,13 @@ test('each turn’s prompt is a system step, exactly as sent, after its guide, b
     assert.match(s.message, /\[Postbox\] Run clock: elapsed \d+s \/ budget 30s\. /);
   }
 });
+
+test('a prompt whose guide came before the recording began makes the trajectory partial, and says the guide is missing', () => {
+  // As a recording begun after Postbox recorded the guide, or a data folder whose segment with it is gone, has it.
+  const t = all(rec.events.filter((e) => e.type !== 'turn.guide')).find((x) => x.handle === 'dry').trajectory;
+  assert.match(t.notes, /^Partial: Built from Postbox’s conversation record/);
+  assert.equal(t.extra.scope.unresolved_guides, 3);
+  assert.match(t.extra.scope.not_recorded[0], /^the system prompt Postbox appended to 3 of its prompts, whose guide came before this recording began$/);
+  assert.equal(t.steps.filter((s) => s.extra.event === 'turn.guide').length, 0);
+  assert.equal(t.steps.filter((s) => s.extra.event === 'turn.prompt').length, 3);
+});

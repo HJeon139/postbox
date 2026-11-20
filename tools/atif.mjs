@@ -14,7 +14,7 @@
 
 import { callsOf } from './atif-calls.mjs';
 import { finalMetrics, meter } from './atif-metrics.mjs';
-import { promptSteps, scopeOf } from './atif-prompts.mjs';
+import { promptSteps, scopeOf, unresolvedGuides } from './atif-prompts.mjs';
 
 export { NOT_RECORDED, NOT_RECORDED_WITHOUT_PROMPTS } from './atif-prompts.mjs';
 
@@ -271,7 +271,7 @@ export function trajectoryOf(f, sessionId, { version }) {
       ...(models.length === 1 ? { model_name: models[0] } : {}),
       extra: { handle, postbox_session: sessionId, ...(models.length > 1 ? { models } : {}) },
     },
-    ...scopeOf(prompts.length > 0),
+    ...scopeOf(prompts.length > 0, unresolvedGuides(f, sessionId)),
     steps,
     final_metrics: finalMetrics(ctx.turns, ctx.meter.metered, steps.length),
   };
