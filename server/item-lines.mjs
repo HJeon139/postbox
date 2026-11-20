@@ -127,7 +127,7 @@ export const WRITING_NOTE = new RegExp(` \\(${escapeRegExp(WRITING)}[^()]*\\)`);
  */
 function writingNote(i) {
   if (i.status !== 'streaming') return '';
-  return ` (${WRITING} this is what it had said so far, and read_message { id: "${i.id}" } reads all of it once it’s done)`;
+  return ` (${WRITING} what it has said so far, and read_message { id: "${i.id}" } reads all of it once it’s done)`;
 }
 
 /** Who shared an item from another thread: an agent in a turn the person started, an agent, or the person. */
