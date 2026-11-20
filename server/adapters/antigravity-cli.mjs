@@ -60,6 +60,7 @@ import { firstSentence } from '../harness-tools.mjs';
 import { stopProbe } from '../remote/host/probe-stop.mjs';
 import { describeTool } from '../tool-labels.mjs';
 import { agyArgs, agyBypassWebOff } from './agy-args.mjs';
+import { HOOK_REFUSES, whoHolds } from './agy-bypass.mjs';
 import { AGY_CAPABILITIES } from './agy-capabilities.mjs';
 import { agyHookCommand, agySupportsHooks, confirmAgyHook, HOOK_SCRIPT } from './agy-hook.mjs';
 import { agyPlugin, agySkillFiles, excludeFile, excludePlugin, PLUGIN_DIR, writeAgyPlugin } from './agy-plugin.mjs';
@@ -214,16 +215,17 @@ export const toolsNote = (dir) =>
  */
 export function agyRules({ persona, guide, schemas = null, hooked = false }) {
   const ids = toolsOff(persona, TOOL_WORDS);
-  const off = ids.map((id) => `${TOOL_WORDS[id]} (${id})`);
-  const { canPublish } = setupOf(persona);
-  if (!canPublish) off.push('publishing or posting anything outside Postbox');
+  const offIds = setupOf(persona).canPublish ? ids : [...ids, 'publish'];
+  const words = (/** @type {string} */ id) => (id === 'publish' ? 'publishing or posting anything outside Postbox' : TOOL_WORDS[id]);
+  const off = offIds.map((id) => (id === 'publish' ? words(id) : `${words(id)} (${id})`));
+  // Run everything’s hook, which runs with Web off, refuses some limits (agy-bypass.mjs); nothing enforces the rest.
+  const refused = hooked && agyBypassWebOff(persona) ? offIds.filter((id) => HOOK_REFUSES.includes(id)) : [];
   // A tool id can be turned on from a card the agent asks for (#104); publishing is the persona’s own setting.
   const ask = ids.length
     ? ` If a task needs ${ids.length === 1 ? 'it' : 'one of the tools'}, say it’s turned off in Postbox, and ask the person to turn it on with ask_for_tool { tool: "${ids[0]}", why }.`
     : '';
-  const enforcement = hooked && agyBypassWebOff(persona) ? ' Postbox’s permission hook blocks built-in web search and page fetching.' : '';
   const limits = off.length
-    ? `## What you don’t do here\n\nThe person turned these off for you in Postbox: ${off.join('; ')}.${enforcement} Follow these limits and say so if a task needs a tool that’s off.${ask}`
+    ? `## What you don’t do here\n\nThe person turned these off for you in Postbox: ${off.join('; ')}.${whoHolds(refused.map(words), refused.length < off.length)}${ask}`
     : '';
   const bypass = persona?.permissionMode === 'bypass';
   const approval = bypass ? '' : hooked ? HOOK_NOTE : `${HEADLESS_NOTE}\n\n${LOOKING_NOTE}`;

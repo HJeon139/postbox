@@ -66,7 +66,7 @@ test('Run everything installs the Web restriction hook only for a Web-off person
   assert.equal(off.hasHooks, true);
   assert.equal(off.env.POSTBOX_AGY_MODE, 'bypass');
   assert.ok(off.args.includes('--dangerously-skip-permissions'));
-  assert.match(off.rules, /Postbox’s permission hook blocks built-in web search and page fetching/);
+  assert.match(off.rules, /Postbox’s permission hook refuses running commands; fetching web pages or searching the web; publishing/);
   const on = await runDeliverTurn('bypass', { version: '1.4.7' }, { tools: ['web.fetch'] });
   assert.equal(on.hasHooks, false);
 });

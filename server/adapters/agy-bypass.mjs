@@ -24,3 +24,19 @@ export function decideBypass(name, { tools }) {
   if (isWebTool(name) && !tools.includes('web.fetch')) return { decision: 'deny', reason: 'The person turned Web off for this agent in Postbox.' };
   return { decision: 'allow' };
 }
+
+/** What Run everything’s hook refuses when the persona turned it off: Shell, Web, and publishing (agyRules’s 'publish'). */
+export const HOOK_REFUSES = ['shell', 'web.fetch', 'publish'];
+
+/**
+ * What the rules file says about who holds the persona’s limits: the hook, for those it refuses, and the agent, for
+ * the rest, which Antigravity can’t enforce.
+ * @param {string[]} refused  in words @param {boolean} rest  whether any limit isn’t refused
+ */
+export function whoHolds(refused, rest) {
+  const hook = refused.length ? ` Postbox’s permission hook refuses ${rest ? `${refused.join('; ')}.` : 'them, so say so if a task needs one.'}` : '';
+  const agent = rest
+    ? ` Antigravity can’t enforce ${refused.length ? 'the rest' : 'that'}, so it’s up to you: don’t do them, and say so if a task needs one.`
+    : '';
+  return hook + agent;
+}
