@@ -63,7 +63,7 @@ import { agyArgs, agyBypassWebOff } from './agy-args.mjs';
 import { HOOK_REFUSES, whoHolds } from './agy-bypass.mjs';
 import { AGY_CAPABILITIES } from './agy-capabilities.mjs';
 import { HOOK_SCRIPT } from './agy-hook.mjs';
-import { agyHookCommand, agySupportsHooks, confirmAgyHook } from './agy-hook-check.mjs';
+import { agyHookCommand, agySupportsHooks, confirmAgyHook, probeAgyHook } from './agy-hook-check.mjs';
 import { agyPlugin, agySkillFiles, excludeFile, excludePlugin, PLUGIN_DIR, writeAgyPlugin } from './agy-plugin.mjs';
 import { agyStartError, clip, HEADLESS_NOTE, HOOK_NOTE, LOOKING_NOTE, refusalFollowUp, refusalOf } from './agy-refusals.mjs';
 import { AGY_SERVER, ALLOW_POSTBOX, agySettingsFile, allowPostbox } from './agy-settings.mjs';
@@ -533,7 +533,7 @@ export class AntigravityCliAdapter {
   name = 'antigravity-cli';
 
   /**
-   * @param {{ bin?: string, workRoot: string, models?: string[], version?: string|null, hookScript?: string, settingsFile?: string,
+   * @param {{ bin?: string, workRoot: string, models?: string[], version?: string|null, hookScript?: string, hookProbe?: typeof probeAgyHook, settingsFile?: string,
    *           spawnImpl?: typeof spawn, env?: NodeJS.ProcessEnv, kill?: typeof process.kill, listProcesses?: typeof listProcesses,
    *           usage?: ReturnType<typeof import('./agy-usage.mjs').usageProbe> | null }} opts
    *   models: a list to offer before agy is asked (server/model-lists.mjs); settingsFile: your agy settings; usage: how
@@ -545,6 +545,7 @@ export class AntigravityCliAdapter {
     models = [],
     version = null,
     hookScript = HOOK_SCRIPT,
+    hookProbe = probeAgyHook,
     settingsFile = agySettingsFile(),
     spawnImpl = spawn,
     env = process.env,
@@ -558,6 +559,7 @@ export class AntigravityCliAdapter {
     this.capabilities = { ...AGY_CAPABILITIES, ...(models.length ? { models } : {}) };
     this.version = version;
     this.hookScript = hookScript;
+    this.hookProbe = hookProbe;
     this.bin = bin;
     this.workRoot = workRoot;
     this.settingsFile = settingsFile;
@@ -613,7 +615,8 @@ export class AntigravityCliAdapter {
       const hookCommand = useHook ? agyHookCommand(this.hookScript) : null;
       await writeAgyPlugin(plugin, agyPlugin({ mcpUrl: ctx.mcpUrl, rules, hookCommand, skills: await agySkillFiles(persona) }));
       // The agent can change the plugin during a run, so the hook is checked again before each (PR #1515’s review).
-      const confirmed = async () => Boolean(useHook && (await confirmAgyHook({ version: this.version, pluginDir: plugin, script: this.hookScript })));
+      const confirmed = async () =>
+        Boolean(useHook && (await confirmAgyHook({ version: this.version, pluginDir: plugin, script: this.hookScript, probe: this.hookProbe })));
       const hookConfirmed = await confirmed();
       // A hook that didn’t check out isn’t passed, so agy refuses what it would ask about: the rules say so, not “a card”.
       if (useHook && !hookConfirmed && !agyBypassWebOff(persona)) await writeFile(join(plugin, 'rules', 'AGENTS.md'), rulesWith(false));

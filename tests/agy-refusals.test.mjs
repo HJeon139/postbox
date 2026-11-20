@@ -106,14 +106,15 @@ test('#370 condition 1: --dangerously-skip-permissions is passed for ask, auto a
     const args = agyArgs({ persona: { permissionMode: m }, model: 'gemini-3.8-flash-high', effort: null, prompt: 'hi', hookConfirmed: true });
     assert.ok(args.includes('--dangerously-skip-permissions'), m);
   }
+  const yes = async () => true;
   const dir = tempDir('pb-agy-confirm-');
   writeFileSync(join(dir, 'hooks.json'), `${JSON.stringify(agyHooksJson(agyHookCommand(HOOK_SCRIPT), HOOK_TIMEOUT_S), null, 2)}\n`);
-  assert.equal(await confirmAgyHook({ version: '1.4.7', pluginDir: dir }), true);
-  assert.equal(await confirmAgyHook({ version: '1.4.4', pluginDir: dir }), false);
-  assert.equal(await confirmAgyHook({ version: '1.4.7', pluginDir: dir, script: join(dir, 'missing.mjs') }), false);
-  assert.equal(await confirmAgyHook({ version: '1.4.7', pluginDir: dir, script: '/bad path/hook.mjs' }), false);
+  assert.equal(await confirmAgyHook({ version: '1.4.7', pluginDir: dir, probe: yes }), true);
+  assert.equal(await confirmAgyHook({ version: '1.4.4', pluginDir: dir, probe: yes }), false);
+  assert.equal(await confirmAgyHook({ version: '1.4.7', pluginDir: dir, script: join(dir, 'missing.mjs'), probe: yes }), false);
+  assert.equal(await confirmAgyHook({ version: '1.4.7', pluginDir: dir, script: '/bad path/hook.mjs', probe: yes }), false);
   writeFileSync(join(dir, 'hooks.json'), '{}');
-  assert.equal(await confirmAgyHook({ version: '1.4.7', pluginDir: dir }), false);
+  assert.equal(await confirmAgyHook({ version: '1.4.7', pluginDir: dir, probe: yes }), false);
 });
 
 async function runDeliverTurn(permissionMode, opts = {}, personaExtra = {}) {
@@ -145,6 +146,8 @@ async function runDeliverTurn(permissionMode, opts = {}, personaExtra = {}) {
     settingsFile: join(root, 'settings.json'),
     spawnImpl: /** @type {any} */ (spawnImpl),
     env: {},
+    // The hook isn’t run here (tests/guard.mjs): a process test runs the real one (tests/process/agy-hook-command.test.mjs).
+    hookProbe: async () => true,
     ...opts,
   });
   const abort = new AbortController();

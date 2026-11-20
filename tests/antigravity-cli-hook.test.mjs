@@ -23,9 +23,9 @@ const OPTIONS = /Turn Web on for this agent, or pick another permission mode\./;
 /**
  * One turn of a persona, its runs replaying the fixtures in order; onSpawn runs as the first starts, in the agent’s folder.
  * @param {{ permissionMode: string, tools?: string[] }} persona
- * @param {{ version?: string, hookScript?: string, runs?: string[], state?: any, onSpawn?: (cwd: string) => void }} [o]
+ * @param {{ version?: string, hookScript?: string, hookProbe?: () => Promise<boolean>, runs?: string[], state?: any, onSpawn?: (cwd: string) => void }} [o]
  */
-async function turn(persona, { version = '1.4.7', hookScript, runs: fixtures = ['first'], state = {}, onSpawn = () => {} } = {}) {
+async function turn(persona, { version = '1.4.7', hookScript, hookProbe = async () => true, runs: fixtures = ['first'], state = {}, onSpawn = () => {} } = {}) {
   const runs = [...fixtures];
   const root = tempDir('pb-agy-hook-turn-');
   /** @type {string[][]} */
@@ -50,6 +50,7 @@ async function turn(persona, { version = '1.4.7', hookScript, runs: fixtures = [
     spawnImpl: /** @type {any} */ (spawnImpl),
     env: {},
     version,
+    hookProbe,
     ...(hookScript ? { hookScript } : {}),
   });
   const nop = () => {};
@@ -117,4 +118,24 @@ test('the follow-up after a refusal checks the hook again, and stops when it no 
   assert.match(String(changed.error?.message), OPTIONS);
   assert.equal(changed.spawned.length, 1, 'the follow-up didn’t start');
   assert.deepEqual(changed.left, ['gem']);
+});
+
+// PR #1515’s second review: a hook whose import broke passed the check. The check runs it (the probe, run for real in
+// tests/process/agy-hook-command.test.mjs), and a hook that doesn’t refuse a web search isn’t confirmed.
+test('a hook that doesn’t answer stops Run everything with Web off, and other modes run in agy’s own mode', async () => {
+  const silent = async () => false;
+  const bypass = await turn({ permissionMode: 'bypass' }, { hookProbe: silent });
+  assert.match(String(bypass.error?.message), OPTIONS);
+  assert.equal(bypass.spawned.length, 0);
+  assert.deepEqual(bypass.left, ['gem']);
+  const auto = await turn({ permissionMode: 'auto' }, { hookProbe: silent });
+  assert.equal(auto.error, null);
+  assert.ok(!auto.spawned[0].includes('--dangerously-skip-permissions'));
+  // The probe runs before each run of the turn, so a hook broken during the first stops the restart.
+  let runs = 0;
+  const breaks = async () => ++runs === 1;
+  const state = { agySessionId: '00000000-0000-0000-0000-000000000000' };
+  const restart = await turn({ permissionMode: 'bypass' }, { hookProbe: breaks, state, runs: ['missing-session', 'first'] });
+  assert.match(String(restart.error?.message), OPTIONS);
+  assert.equal(restart.spawned.length, 1);
 });
