@@ -79,3 +79,29 @@ test('a run whose stream lost events exports its trajectories marked partial, wi
     assert.match(traj.notes, /^Partial: the recording of \/api\/stream lost events once, after event 40/);
   }
 });
+
+test('after a restart numbers events from lower again, the recorder keeps them, in their own epoch, after one gap', () => {
+  const r = streamRecorder();
+  const item = (seq, id) => `id: ${seq}\nevent: item.add\ndata: ${JSON.stringify({ threadId: 't', item: { id, kind: 'user', at: 1 } })}`;
+  // As server/live-streams.mjs opens a stream: its epoch first. After the restart, the new epoch, then a resync.
+  r.take('event: epoch\ndata: "epoch-a"');
+  r.take(item(100, 'before'));
+  r.take('event: epoch\ndata: "epoch-b"');
+  r.take('event: resync\ndata: {}');
+  r.take(item(90, 'after-1'));
+  r.take(item(91, 'after-2'));
+  assert.deepEqual(
+    r.events().map((e) => [e.seq, e.epoch ?? 0]),
+    [
+      [100, 0],
+      [90, 1],
+      [91, 1],
+    ],
+  );
+  assert.deepEqual(
+    r.gaps().map((g) => [g.after, g.epoch]),
+    [[100, 0]],
+  );
+  assert.equal(r.last(), 91);
+  assert.equal(r.epoch(), '"epoch-b"');
+});

@@ -53,7 +53,8 @@ export function foldEvents(events, live = []) {
     prompts: [],
     takes: new Map(),
   };
-  for (const e of [...events].sort((a, b) => a.seq - b.seq)) foldOne(f, e);
+  // In the order they happened: by the recorder’s epoch (tools/uat/history.mjs: a restart numbers from lower again), then by seq.
+  for (const e of [...events].sort((a, b) => (a.epoch ?? 0) - (b.epoch ?? 0) || a.seq - b.seq)) foldOne(f, e);
   // A live step frame carries what changed of one step; a snapshot frame, a running turn’s steps as a page joins it.
   for (const l of live) {
     if (l?.kind === 'step') mergeStep(f.items.get(l.itemId), l.step ?? {});

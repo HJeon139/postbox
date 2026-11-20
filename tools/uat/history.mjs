@@ -83,7 +83,10 @@ export function followEvents(origin) {
     // Reconnect from the last event seen if the stream drops, as the page does.
     while (!abort.signal.aborted) {
       try {
-        const res = await fetch(`${origin}/api/stream?since=${rec.last()}`, { signal: abort.signal });
+        const known = rec.epoch();
+        const res = await fetch(`${origin}/api/stream?since=${rec.last()}${known ? `&epoch=${encodeURIComponent(JSON.parse(known))}` : ''}`, {
+          signal: abort.signal,
+        });
         if (!res.body) throw new Error('no body');
         const decoder = new TextDecoder();
         let buf = '';
@@ -117,6 +120,12 @@ export function streamRecorder() {
   /** @type {{ after: number, at: number }[]} where the stream had to resync, so events were lost */
   const gaps = [];
   let last = 0;
+  // The store’s history epoch, as each stream names it first (server/live-streams.mjs), and how many it has had: after a
+  // restart or a Retry the seq starts again lower, so each kept event says which epoch it’s in, and `last` restarts.
+  /** @type {string|null} */
+  let epoch = null;
+  let epochs = 0;
+  let inGap = false;
   // Each session as the events so far left it, so a session.patch is kept as a whole session (keepEvent).
   const sessions = new Map();
   /** @param {string} frame */
@@ -126,17 +135,30 @@ export function streamRecorder() {
     // The server couldn’t replay what came since `last` (too far behind, or a new epoch after a restart or a Retry):
     // what came between is lost to this recording, which says so rather than reading as whole (hydrant-critic’s
     // review of #1522). A run’s ATIF trajectories carry it as partial (tools/atif-export.mjs).
-    if (type === 'resync') return void (gaps.at(-1)?.after === last ? null : gaps.push({ after: last, at: Date.now() }));
+    // One gap however many frames say so, until an event comes again: a new epoch’s stream sends its epoch, then a resync.
+    const gap = () => {
+      if (!inGap) gaps.push({ after: last, at: Date.now(), epoch: epochs });
+      inGap = true;
+    };
+    if (type === 'resync') return gap();
+    if (type === 'epoch') {
+      if (epoch !== null && data !== epoch) {
+        gap();
+        [epochs, last] = [epochs + 1, 0];
+      }
+      return void (epoch = data);
+    }
     if (!Number.isFinite(seq) || seq === null || seq <= last) return;
     last = seq;
+    inGap = false;
     if (type === 'host.status') return void hostState(hostStates, data);
     if (!KEPT.has(type) && !type.startsWith('clock.')) return;
     try {
       const e = keepEvent(seq, type, JSON.parse(data), sessions);
-      if (e) kept.push(e);
+      if (e) kept.push(epochs ? { ...e, epoch: epochs } : e);
     } catch {}
   };
-  return { take, last: () => last, events: () => kept, live: () => live, hostStates: () => hostStates, gaps: () => gaps };
+  return { take, last: () => last, epoch: () => epoch, events: () => kept, live: () => live, hostStates: () => hostStates, gaps: () => gaps };
 }
 
 /** A host.status frame, kept as the host’s state with when it came. @param {any[]} hostStates @param {string} data */
