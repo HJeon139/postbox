@@ -27,8 +27,8 @@ export function replyBack(rt, turn, se, took) {
   // turn.named: a reply or an open_topic of this turn @-mentioned an agent, even one that couldn’t be woken, or it
   // reviewed an agent’s block, which hands off to its author.
   if (turn.endErr || turn.named || turn.summarizeTo) return;
-  const conv = rt.threads.lineage(turn.threadId).at(-1);
-  const here = (/** @type {string} */ h) => rt.sessions.in(conv).some((/** @type {any} */ x) => x.handle === h && !x.retiredFork);
+  const conv = rt.threads.conversationToWrite(turn.threadId);
+  const here = (/** @type {string} */ h) => rt.sessions.pendingIn(conv).some((/** @type {any} */ x) => x.handle === h && !x.retiredFork);
   // A turn that took no entries carries whom it goes back to: a host turn continued under a new ID goes back as the turn
   // it continues would have (#1538), and a retry of one that took none as the failed turn would have (#1541).
   const asked = turn.backTo ?? backTo(took);

@@ -56,9 +56,9 @@ export function agentWake(
   // Retired, it can’t be answered: a reply would have nowhere to go.
   if (from.retiredFork) return { ok: false, message: 'Your session was retired, so it can’t wake anyone.' };
   // The conversation: every session lives in one. A fork from before #228 wakes from the conversation it came from.
-  // Read pending, as every thread this decides on: its hop count decides the limit, behind a held commit too (#796).
-  const parent = rt.store.pending.thread(rt.threads.lineage(from.threadId).at(-1));
-  const target = rt.sessions.in(parent.id).find((x) => x.personaId === p.id && !x.retiredFork);
+  // Read pending, as all this decides on: its hop count decides the limit (#796); an agent joined then is woken (#623).
+  const parent = rt.store.pending.thread(rt.threads.conversationToWrite(from.threadId));
+  const target = rt.sessions.pendingIn(parent.id).find((x) => x.personaId === p.id && !x.retiredFork);
   if (target?.id === from.id) return { ok: false, message: `@${p.handle} is you: just carry on.` };
   // A host turn’s replay after a restart posts a mention it already handed over (#1138’s class): stored once, counted once.
   if (target && retryId && rt.delivery.inbox(target.id).some((/** @type {any} */ e) => e.retryId === retryId)) return { ok: true, itemId };
@@ -118,11 +118,11 @@ const replyInOf = (rt, se) => {
  * @param {any} rt @param {string} threadId  where the turn that ended spoke
  */
 export function endChain(rt, threadId) {
-  const conv = rt.threads.lineage(threadId).at(-1);
+  const conv = rt.threads.conversationToWrite(threadId);
   if (!rt.store.pending.thread(conv)?.hops) return;
-  if (rt.sessions.in(conv).some((se) => rt.turns.has(se.id) || rt.exiting.has(se.id))) return;
+  if (rt.sessions.pendingIn(conv).some((se) => rt.turns.has(se.id) || rt.exiting.has(se.id))) return;
   // A mention still waiting in an inbox there is the chain going on (designs/rooms-at-scale.md, “Delivery”).
-  if (rt.sessions.in(conv).some((se) => rt.delivery.waiting(se.id).some((e) => e.source === 'mention'))) return;
+  if (rt.sessions.pendingIn(conv).some((se) => rt.delivery.waiting(se.id).some((e) => e.source === 'mention'))) return;
   if (rt.store.pending.items(conv).some((x) => x.kind === 'hop' && x.status === 'open')) return;
   rt.threads.patch(conv, { hops: 0 });
 }
@@ -143,7 +143,7 @@ export function dropWakes(rt, se, how = 'stopped') {
     if (e.source === 'scheduled') dropScheduledWake(rt, e.message);
     // A summary request isn’t coming, as one held on a stopped turn wasn’t (#93): its panel’s button stops waiting.
     if (e.message?.summary) rt.clearSummaryPending(e.threadId);
-    const sender = e.source === 'mention' && e.from ? rt.sessions.in(rt.threads.lineage(e.threadId).at(-1)).find((x) => x.handle === e.from) : null;
+    const sender = e.source === 'mention' && e.from ? rt.sessions.pendingIn(rt.threads.conversationToWrite(e.threadId)).find((x) => x.handle === e.from) : null;
     if (!sender || sender.retiredFork || sender.id === se.id) continue;
     const said = clip(rt.store.pending.item(e.threadId, e.itemId)?.text ?? '', 120);
     rt.sessions.tell(sender.id, `@${se.handle} was ${how} before it answered your message (“${said}”). Mention it again if you still need it.`);
@@ -197,7 +197,9 @@ export function bumpSideLink(rt, sideThreadId) {
 }
 
 export function recordAgentMessage(rt, sessionId, dir, other, text) {
-  const se = rt.s.sessions[sessionId];
-  if (!se) return;
-  rt.sessions.update(sessionId, { agentMessages: [{ dir, other, text: clip(text, 120), at: Date.now() }, ...se.agentMessages].slice(0, 6) });
+  // Built from the session as written: two wakes in one held window each keep theirs (#623).
+  if (!rt.store.pending.session(sessionId)) return;
+  rt.sessions.update(sessionId, (now) => ({
+    agentMessages: [{ dir, other, text: clip(text, 120), at: Date.now() }, ...(now.agentMessages ?? [])].slice(0, 6),
+  }));
 }

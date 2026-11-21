@@ -113,6 +113,8 @@ export const PENDING = {
     'threadPersona',
     'bumpSideLink',
     'bumpSideLink',
+    // the session whose last messages it keeps, maybe written behind a held commit (#623)
+    'recordAgentMessage',
   ],
   // A thread’s apps, removed in a sweep; and the threads’ members and sessions it erases, maybe made behind a held commit.
   'thread-erase.mjs': ['eraseThreads', 'eraseThreads', 'eraseThreads', 'eraseThreads'],
@@ -124,7 +126,8 @@ export const PENDING = {
   // the turn’s own items, a move after a pending read, and the thread a topic reply count goes to, maybe opened or
   // deleting behind a held commit (#796). A reply a patch settles, streaming as the patch before it left it, and that
   // reply and its thread as item.final carries them, both maybe held (#1367).
-  'threads.mjs': ['patch', 'toWrite', 'pending', 'addItem', 'addItem', 'patchItem', 'patchItem', 'patchItem', 'bringForward'],
+  // conversationToWrite: the conversation a write lands in, through a topic maybe opened behind a held commit (#623).
+  'threads.mjs': ['patch', 'toWrite', 'pending', 'addItem', 'addItem', 'patchItem', 'patchItem', 'patchItem', 'bringForward', 'conversationToWrite'],
   // A finished turn’s checks: its own block and the terms and apps it introduced, and the progress steps it stalls.
   'turn-checks.mjs': ['checkTurn', 'checkTurn', 'checkTurn', 'stallSteps'],
   'turn-context.mjs': ['text', 'compaction'], // a streamed chunk's state check and a compaction's number, from the session a held write left
