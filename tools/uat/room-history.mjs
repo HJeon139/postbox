@@ -6,6 +6,7 @@
 
 import { POSTBOX_SERVER } from '../../server/adapters/setup.mjs';
 import { toPlainText } from '../../shared/markdown-plain.mjs';
+import { placeOf } from './room-events.mjs';
 import { itemsOf } from './room-items.mjs';
 
 const BUSY = new Set(['think', 'tool', 'gen']);
@@ -70,6 +71,13 @@ export function postboxCallsAfter(events, after) {
 }
 
 /**
+ * Whether the agent started a turn between a block’s answer and the event that reopened it, so it read the answer:
+ * by place across the run’s epochs (placeOf), since a restart numbers events from lower again (#1529).
+ * @param {number[] | undefined} starts  the session’s turn starts, by place  @param {number} answeredAt  @param {any} e
+ */
+const turnBetween = (starts, answeredAt, e) => (starts ?? []).some((s) => s > answeredAt && s < placeOf(e));
+
+/**
  * Each block’s history from the event log (#123): every answer, with the revision it landed on, and every update that
  * reopened an answered block before the agent had read the answer. An answer reaches an agent at the start of a turn:
  * one given while its turn runs waits for that turn to end. So an update with no new turn of that session since the
@@ -82,7 +90,7 @@ export function postboxCallsAfter(events, after) {
 export function blockHistory(events) {
   /** @type {Map<string, boolean>} */
   const inTurn = new Map();
-  /** @type {Map<string, number[]>} */
+  /** @type {Map<string, number[]>} each session’s turn starts, by their place across the run’s epochs (placeOf) */
   const turnStarts = new Map();
   /** @type {Map<string, any>} */
   const blocks = new Map();
@@ -95,7 +103,7 @@ export function blockHistory(events) {
       const was = inTurn.get(d.id) ?? false;
       // A history without finishedAt (none on main lacks it) falls back to the state alone.
       const now = d.finishedAt === undefined ? BUSY.has(d.state) : d.finishedAt === null && (was || d.state === 'think');
-      if (now && !was) turnStarts.set(d.id, [...(turnStarts.get(d.id) ?? []), e.seq]);
+      if (now && !was) turnStarts.set(d.id, [...(turnStarts.get(d.id) ?? []), placeOf(e)]);
       inTurn.set(d.id, now);
     } else if (e.type === 'item.add' && d.item?.kind === 'block' && d.item.valid) {
       const it = d.item;
@@ -117,12 +125,12 @@ export function blockHistory(events) {
         // A fix that records the revision the person saw puts it on the answer (#123).
         const saw = Number.isFinite(p.answer.revision) ? p.answer.revision : null;
         b.answer = { seq: e.seq, at: p.answer.at ?? null, action: p.answer.action ?? 'answer', revision: b.revision, saw, read: p.answer.read === true };
+        b.answeredAt = placeOf(e);
         answers.push({ ...b.answer, itemId: b.itemId, threadId: b.threadId, handle: b.handle, title: b.title });
       } else if (p.answer?.read === true && b.answer) b.answer.read = true;
       if (Number.isFinite(p.revision)) {
         if (p.answered === false && b.answer) {
-          const read = b.answer.read || (turnStarts.get(b.sessionId) ?? []).some((s) => s > b.answer.seq && s < e.seq);
-          if (!read)
+          if (!b.answer.read && !turnBetween(turnStarts.get(b.sessionId), b.answeredAt, e))
             reopened.push({
               itemId: b.itemId,
               threadId: b.threadId,

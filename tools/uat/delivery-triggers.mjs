@@ -5,6 +5,7 @@
 
 import { CATCH_UP_ITEMS } from '../../server/catch-up.mjs';
 import { addressed, cardHistory, headOf, holds, inputsOf, labeled, plain, RESEND_LABEL, settledAt, timeAfter, turnsOf } from './room-delivery.mjs';
+import { placeOf } from './room-events.mjs';
 import { clip, itemsOf } from './trigger-facts.mjs';
 
 const pair = (a, b) => [a, b].sort().join('+');
@@ -58,10 +59,10 @@ function mentionPastCap(f) {
     });
 }
 
-/** When the item added last before seq was: a patch carries no time, so it happened at or after this. */
-const timeBefore = (events, seq) => {
+/** When the item added last before `ref` was, by its place (placeOf): a patch carries no time, so it happened at or after this. */
+const timeBefore = (events, ref) => {
   let at = null;
-  for (const e of events ?? []) if (e.seq < seq && e.type === 'item.add' && Number.isFinite(e.data?.item?.at)) at = e.data.item.at;
+  for (const e of events ?? []) if (placeOf(e) < placeOf(ref) && e.type === 'item.add' && Number.isFinite(e.data?.item?.at)) at = e.data.item.at;
   return at;
 };
 
@@ -75,8 +76,8 @@ function editWhileWaiting(f) {
   const out = [];
   for (const e of f.events ?? []) {
     if (e.type !== 'item.patch' || typeof e.data?.patch?.text !== 'string') continue;
-    const at = timeAfter(f.events, e.seq);
-    const since = timeBefore(f.events, e.seq);
+    const at = timeAfter(f.events, e);
+    const since = timeBefore(f.events, e);
     for (const a of [...due.values()].filter((x) => x.itemId === e.data.id)) {
       const turn = turnsOf(f, a.to).find((t) => t.started > a.due);
       if (at === null || !turn || at > turn.started) continue;

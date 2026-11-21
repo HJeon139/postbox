@@ -75,6 +75,17 @@ test('#872 host-hung-killed is silent with no resume, or one that didn’t finis
   assert.deepEqual(trigger.run(hung({ items: asked })), [], 'a message of the person’s came first');
 });
 
+test('#872 host-hung-killed reads a resume after a restart, which the recorder numbers from lower in a new epoch', () => {
+  // As tools/uat/history.mjs keeps events after Postbox restarted: epoch 1, numbered from 1 again (#1529).
+  const restarted = [
+    ev(10, OLD, 'tu_h1', 'running'),
+    ev(11, OLD, 'tu_h1', 'interrupted'),
+    { ...ev(2, NEW, 'tu_h2', 'running'), epoch: 1 },
+    { ...ev(3, NEW, 'tu_h2', 'done'), epoch: 1 },
+  ];
+  assert.equal(trigger.run(hung({ events: restarted })).length, 1);
+});
+
 /** A host that answers SCRIPTS.stopRunner as the given output. */
 const answers =
   (stdout, code = 0, ran = []) =>

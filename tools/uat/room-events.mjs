@@ -5,6 +5,13 @@
 
 import { EVENTS, patchSession } from '../../shared/state.mjs';
 
+/**
+ * An event’s place in a run’s history, for comparing two: by its recording epoch, then its seq. After a restart or a
+ * Retry the store numbers events from lower again, and the recorder tags each later one with its epoch
+ * (tools/uat/history.mjs, streamRecorder), so a bare seq can put a later event first. @param {{ seq?: number, epoch?: number } | null | undefined} e
+ */
+export const placeOf = (e) => (e?.epoch ?? 0) * 2 ** 40 + (e?.seq ?? 0);
+
 /** The work ledger’s entries a run keeps: turns, and the calls that keep their arguments (tools/atif-calls.mjs). */
 const WORK_KINDS = new Set(['turn', 'command', 'external', 'read']);
 
