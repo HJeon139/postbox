@@ -34,3 +34,21 @@ test('the conversation shows a clock’s start, its pause and resume, and its ex
   arrange.clockTimer(app.rt, se.id, () => t0 + 90_000);
   await expect.soft(page.getByText(/reached its budget of 60s, so Postbox stopped @timed\. Messages to @timed here now wait/)).toBeVisible();
 });
+
+test('a reply a run clock stopped says the clock stopped it, at its budget or its pause, not the person', async ({ page }) => {
+  const p = app.rt.createPersona({ handle: 'stopped', description: 'Stopped by its clock' });
+  const t = app.rt.createThread({ projectId: Object.keys(app.store.state.projects)[0], title: 'Clock stops', personaIds: [p.id] });
+  const se = arrange.agentIn(app.rt, t.id);
+  // As server/turn-stop.mjs records them: the clock’s expiry and its pause each set their own stopReason (#1526).
+  const reply = (stopReason, text) =>
+    arrange.post(app.rt, t.id, { kind: 'agent', sessionId: se.id, handle: 'stopped', text, status: 'stopped', stoppedAt: Date.now(), stopReason });
+  const expired = reply('clock', 'Working on it until the budget.');
+  const paused = reply('pause', 'Working on it until the pause.');
+  const yours = reply('stop', 'Working on it until you stopped me.');
+  await page.goto(`${app.origin}/#/t/${t.id}`);
+  await synced(page, app);
+  const tag = (it) => page.locator(`.transcript [data-key="${it.id}"] .stopped-tag`);
+  await expect.soft(tag(expired)).toHaveText(/^Stopped at .+: its run clock reached its budget$/);
+  await expect.soft(tag(paused)).toHaveText(/^Stopped at .+: its run clock was paused$/);
+  await expect.soft(tag(yours)).toHaveText(/^Stopped by you at /);
+});

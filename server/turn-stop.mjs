@@ -24,6 +24,31 @@ const STOP_WHY = Object.freeze({
   pause: 'The person paused its run clock, so Postbox stopped it until they resume it.',
 });
 
+/** What the session’s line says once a turn a run clock stopped has exited, by its stopReason. */
+const CLOCK_STOPPED = Object.freeze({ clock: 'Stopped: its run clock reached its budget', pause: 'Stopped: its run clock is paused' });
+
+/**
+ * What the session’s line says once a stopped turn has exited: a store that couldn’t save, a remote turn Postbox
+ * stopped because it hung (its message), a run clock, or your Stop. @param {any} turn @param {any} se @param {boolean} hung
+ */
+function stoppedLine(turn, se, hung) {
+  if (turn.stopReason === 'store') return STORE_STOPPED;
+  if (hung) return se.remoteTurn.message;
+  return Object.hasOwn(CLOCK_STOPPED, turn.stopReason) ? CLOCK_STOPPED[/** @type {'clock' | 'pause'} */ (turn.stopReason)] : 'Stopped by you';
+}
+
+/**
+ * Why a stopped turn’s reply says it stopped (stopReason, app/js/reply-stop.mjs): Send now, a shutdown (none), a run
+ * clock’s expiry or pause (#1526), your Stop that kept its background jobs, or your Stop.
+ * @param {{ sendNow: boolean, by: string, kept: boolean }} o @returns {string | null}
+ */
+function stopReasonOf({ sendNow, by, kept }) {
+  if (sendNow) return 'send-now';
+  if (by === 'shutdown') return null;
+  if (by === 'clock' || by === 'pause') return by;
+  return kept ? 'kept-jobs' : 'stop';
+}
+
 /**
  * Stop ends this agent’s turn and its subagents. Agents it woke keep running. Its process gets SIGINT, then SIGKILL,
  * and the session shows as stopping until it has exited: its next turn waits for that (#126).
@@ -42,7 +67,7 @@ export function stop(rt, sessionId, { silent = false, jobs = 'stop', by = 'you',
   if (!turn) return false;
   const keep = jobs === 'keep' && !turn.remote ? runningJobs(rt, sessionId, turn.id) : [];
   turn.keepJobs = new Set(keep.map((j) => j.id));
-  turn.stopReason = sendNow ? 'send-now' : by === 'shutdown' ? null : keep.length ? 'kept-jobs' : 'stop';
+  turn.stopReason = stopReasonOf({ sendNow, by, kept: keep.length > 0 });
   // Postbox is going: its exit starts nothing, as once it’s closing (turnExited).
   if (by === 'shutdown') turn.shutdown = true;
   const ended = { status: 'stopped', stoppedAt: Date.now(), stopReason: turn.stopReason };
@@ -111,7 +136,7 @@ export function turnExited(rt, turn) {
   // Something else may have set the state meanwhile (a delete, an answered card); “Stopping” goes either way.
   // A remote turn Postbox stopped because it hung says so instead (#120).
   const hung = se.remoteTurn?.state === 'hung' && se.remoteTurn.rtTurn === turn.id;
-  const stoppedBy = turn.stopReason === 'store' ? STORE_STOPPED : hung ? se.remoteTurn.message : 'Stopped by you';
+  const stoppedBy = stoppedLine(turn, se, hung);
   if (se.state === 'stopping' || se.currentStep === 'Stopping')
     rt.sessions.update(se.id, { state: se.state === 'stopping' ? 'idle' : se.state, currentStep: stoppedBy, finishedAt: Date.now(), sideTurn: null });
   else if (se.sideTurn) rt.sessions.update(se.id, { sideTurn: null });

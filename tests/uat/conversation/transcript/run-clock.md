@@ -14,6 +14,7 @@ A run clock holds its agent: while it’s paused, and for good once it expires, 
 - **Expired:** “@timed’s run clock reached its budget of 60s, so Postbox stopped @timed. Messages to @timed here now wait, and no turn starts; a new timed run goes in a new conversation.”
 - **Restored:** when Postbox starts again with the clock running: “Postbox started again with @timed’s run clock at 30s of 60s. The time it was down counted, and @timed may have worked through it on its host.”
 - Each is a plain line, like the other system lines, and starts no turn. It fits a 375 px window.
+- **A reply the clock stopped** is tagged “Stopped at 14:06: its run clock reached its budget”, or “… its run clock was paused”, never “Stopped by you”: the person didn’t press Stop.
 
 ## Steps to reproduce
 
