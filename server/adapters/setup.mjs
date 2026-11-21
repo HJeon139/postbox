@@ -386,9 +386,13 @@ export function keepShape(ctx, event) {
     } catch {
       e = { unparsed: event.length };
     }
+  // A JSON-RPC event’s `method`, Codex’s and Kiro’s, names it (#1543). Only the line’s own: deeper, a tool’s argument
+  // can be named `method` and hold what the agent wrote.
+  const method = /** @type {any} */ (e)?.method;
+  const shape = (depth = 0) => (typeof method === 'string' ? { ...shapeOf(e, depth), method: method.slice(0, 60) } : shapeOf(e, depth));
   // Too long whole (a result’s usage, say), only its top-level fields, so the line still parses.
-  let line = JSON.stringify(shapeOf(e));
-  if (line.length > RAW_LINE) line = JSON.stringify(shapeOf(e, 3));
+  let line = JSON.stringify(shape());
+  if (line.length > RAW_LINE) line = JSON.stringify(shape(3));
   if (tail.push(line.slice(0, RAW_LINE)) > RAW_TAIL) tail.shift();
 }
 
