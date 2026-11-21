@@ -25,18 +25,49 @@ const watcher = new ResizeObserver((entries, observer) => {
     else {
       const frame = target.closest('.tbl-scroll');
       if (frame) frames.add(frame);
+      // Back where the person was, before the first paint of a table drawn anew; the browser clamps it to a smaller one.
+      const at = kept.get(target);
+      if (at) {
+        kept.delete(target);
+        Object.assign(target, { scrollLeft: at.left, scrollTop: at.top });
+      }
     }
   }
   for (const frame of frames) update(frame);
 });
 
+/** A table drawn anew → where its scroll was, until the observer has put it back. */
+const kept = new WeakMap();
 /**
- * Wraps a table’s scroll region in the frame that draws its fades, and follows its width and scroll.
- * @param {HTMLElement} wrap  the scroll region, holding the table
+ * A table’s kept position → the scroll region drawn for it last, still on the page while its next is drawn. Held
+ * weakly, so a table gone from the page isn’t kept alive by its position.
  */
-export function scrollFrame(wrap) {
+const shown = new WeakMap();
+
+/**
+ * Wraps a table’s scroll region in the frame that draws its fades, and follows its width and scroll. `at` keeps its
+ * scroll, sideways and down, across redraws (#1130): an agent’s update_block, Sort and Expand each draw the table anew.
+ * @param {HTMLElement} wrap  the scroll region, holding the table @param {{ left: number, top: number }} [at]
+ */
+export function scrollFrame(wrap, at) {
   const frame = h('div.tbl-scroll', wrap);
-  wrap.addEventListener('scroll', () => update(frame), { passive: true });
+  if (at) {
+    // Read from the region on the page now: its last scroll event may not have arrived yet. Not from one whose own
+    // position hasn’t been put back yet, as when it was drawn out of view, which still reads 0.
+    const last = shown.get(at)?.deref();
+    if (last?.isConnected && !kept.has(last)) Object.assign(at, { left: last.scrollLeft, top: last.scrollTop });
+    shown.set(at, new WeakRef(wrap));
+    if (at.left || at.top) kept.set(wrap, at);
+  }
+  wrap.addEventListener(
+    'scroll',
+    () => {
+      // One that arrives after the region left the page reads 0, not where the person was.
+      if (at && wrap.isConnected) Object.assign(at, { left: wrap.scrollLeft, top: wrap.scrollTop });
+      update(frame);
+    },
+    { passive: true },
+  );
   watcher.observe(wrap);
   if (wrap.firstElementChild) watcher.observe(wrap.firstElementChild);
   return frame;
