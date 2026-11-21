@@ -55,6 +55,7 @@ import { recheck } from './uat/recheck.mjs';
 import { presetFindings } from './uat/regressions.mjs';
 import { writeReport } from './uat/report.mjs';
 import { reviewFindings } from './uat/review.mjs';
+import { exportTrajectories } from './uat/run-atif.mjs';
 import { endRun } from './uat/run-end.mjs';
 import { runEnv } from './uat/run-env.mjs';
 import { runFacts } from './uat/run-facts.mjs';
@@ -251,7 +252,7 @@ async function main() {
       facts.agyStreams = readStreams(paths.agyStreams);
       facts.codexStreams = readStreams(paths.codexStreams);
       facts.sdkStreams = readStreams(paths.sdkStreams);
-      Object.assign(facts, { events: history.events(), live: history.live() });
+      Object.assign(facts, { events: history.events(), live: history.live(), gaps: history.gaps() });
       facts.transcripts = readTranscripts(facts, paths.workspace);
       facts.remote = remoteFacts(dir, facts); // `- seed: git-remote`’s pushes, with the ledger’s size beside them (#305)
       Object.assign(facts.ui, await readUi(page));
@@ -281,7 +282,7 @@ async function main() {
       facts.state = st ?? (await api('/api/state')).state;
       facts.threads = threadsUnderTest(facts.state);
       Object.assign(facts, { streams: readStreams(paths.streams), received: readReceived(paths.data, facts.received) });
-      facts.events = history.events();
+      Object.assign(facts, { events: history.events(), gaps: history.gaps() });
       midTurn.push(...newFindings(MID_TURN));
     };
 
@@ -538,6 +539,8 @@ async function main() {
       }),
       ...(facts.budget ? { budget: facts.budget } : {}),
     });
+    // Each agent’s turns as an ATIF trajectory, once the run’s record is written (tools/uat/run-atif.mjs).
+    exportTrajectories(dir, log);
     return all;
   } finally {
     unwatch();
