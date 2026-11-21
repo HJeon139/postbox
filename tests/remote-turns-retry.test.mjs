@@ -35,7 +35,7 @@ async function onHost(r, n) {
   return turn;
 }
 
-test('#120, #151, #377: Retry after a resumed wake fails asks what the wake asked, where it was woken', async () => {
+test('#120, #151, #1541: Retry after a resumed wake fails asks what the wake asked, where it was woken, and goes back once', async () => {
   const r = rig();
   const { se: a, got } = lead(r);
   assert.equal(r.rt.agentWake(a.id, 'coder', 'Is hello.txt there?').ok, true);
@@ -66,9 +66,9 @@ test('#120, #151, #377: Retry after a resumed wake fails asks what the wake aske
   r.d.end(again);
   await settled(r);
   assert.equal(threadOf(r, reply(r)), threadOf(r, failed), 'it answers where it was woken');
-  // Retry sends the request again, not the entries the failed turn took, so it doesn’t know whom its reply goes back
-  // to (#1538 covers only a turn continued on its host).
-  assert.equal(got.length, 0, 'a retried wake’s reply goes back to no one yet');
+  // The resumed turn took no entries, so Retry sends its request again, with whom its reply goes back to (#1541).
+  assert.equal(got.filter((m) => m.from === '@coder').length, 1, 'lead hears the answer once');
+  assert.deepEqual(reply(r).wentBack, ['lead']);
 });
 
 /**

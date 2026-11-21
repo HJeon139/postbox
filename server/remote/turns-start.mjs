@@ -90,7 +90,7 @@ export async function prepare(rts, turn, ctx, message) {
   const resume = !attach && prior?.resume ? prior.resume : null;
   // What it was asked, a large request written to Postbox’s store first, so the record allocate saves never names a
   // copy that isn’t there (turns-origin.mjs).
-  live.origin = await keepOrigin(rt, turn, wokeOf(turn).woke, backTo(rt.delivery.takenBy(turn.sessionId, turn.id)));
+  live.origin = await keepOrigin(rt, turn, wokeOf(turn).woke, turn.backTo ?? backTo(rt.delivery.takenBy(turn.sessionId, turn.id)));
   if (ctx.signal.aborted) throw abortError();
   /** @type {import('../adapters/adapter.mjs').RemoteContext} */
   const remote = {
