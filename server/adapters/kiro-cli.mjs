@@ -55,7 +55,7 @@ import { FRESH_START_TEXT, formatMessage, turnGuide } from './guide.mjs';
 import { KIRO_TOOL_RULES, kiroAgent } from './kiro-cli-agent.mjs';
 import { findKiro, kiroModel, kiroModels, postboxModel } from './kiro-cli-models.mjs';
 import { attachmentPaths, KIRO_CAPABILITIES, kiroRemoteSpawn } from './kiro-cli-remote.mjs';
-import { kiroError, kiroExitError, overSizeLimit, SIZE_LIMIT_START_TEXT } from './kiro-errors.mjs';
+import { failOverLimit, kiroError, kiroExitError, overSizeLimit, SIZE_LIMIT_START_TEXT } from './kiro-errors.mjs';
 import { sessionInfo } from './kiro-session-info.mjs';
 import { KINDS, toolOf } from './kiro-tools.mjs';
 import { listProcesses, stopOnAbort, stopTurn } from './process-group.mjs';
@@ -255,13 +255,6 @@ function kiroResult(u, st) {
     ? `Kiro asks before this${asked ? ` (“${clip(asked, 80)}”)` : ''}, and can’t ask you from Postbox, so it was refused.`
     : 'Its permissions in Postbox don’t allow this.';
   return { kind: 'tool_result', id: u.toolCallId, isError: failed, text: why, ...(refused ? { refused: reason } : {}) };
-}
-
-/** A run still over the size limit fails with what Kiro said, and its session isn’t kept to resume (#544). */
-function failOverLimit(ctx, { tooLarge = null }) {
-  if (!tooLarge) return;
-  ctx.saveState({ kiroSessionId: null });
-  throw kiroError(tooLarge, tooLarge);
 }
 
 export class KiroCliAdapter {
