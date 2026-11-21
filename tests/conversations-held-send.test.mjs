@@ -64,8 +64,9 @@ test('#1292: a topic opens on a message in a conversation started while a commit
 test('#1292: an agent’s /command as the first line of a conversation started while a commit is held runs', async () => {
   const { result, store } = await whileHeld(({ rt }) => {
     const p = arrange.persona(rt, 'researcher');
-    const t = rt.createThread({ projectId: 'p1', title: 'Held room', personaIds: [p.id] });
-    const se = Object.values(rt.store.pending.sessions()).find((x) => x.threadId === t.id);
+    const q = rt.createPersona({ handle: 'critic', backend: 'claude-code' });
+    const t = rt.createThread({ projectId: 'p1', title: 'Held room', personaIds: [p.id, q.id] });
+    const se = Object.values(rt.store.pending.sessions()).find((x) => x.threadId === t.id && x.handle === 'researcher');
     return { t, ran: rt.runAgentCommand(t.id, { sessionId: se.id, text: '/review' }) };
   });
   assert.ok(result.ran);
@@ -73,6 +74,8 @@ test('#1292: an agent’s /command as the first line of a conversation started w
     store.items(result.t.id).some((i) => i.text === '/review'),
     'the command was posted',
   );
+  // In a room, it says whom it woke.
+  assert.ok(store.items(result.t.id).some((i) => i.kind === 'system' && i.variant === 'wake' && i.to === 'researcher'));
   await store.close();
 });
 
@@ -89,5 +92,58 @@ test('#1292: a `!` command as the first line of a conversation started while a c
   const command = store.items(result.t.id).find((i) => i.kind === 'command');
   assert.ok(command, 'the command item was written');
   assert.equal(command.cwd, '/work/space/researcher', 'where the conversation’s agent works');
+  await store.close();
+});
+
+test('#1292: a first message with no @-mention goes to the conversation’s agent', async () => {
+  // Pre-review: the usual first line in a conversation started with an agent names no one.
+  const { result, store } = await whileHeld(({ rt }) => {
+    const p = arrange.persona(rt, 'researcher');
+    const t = rt.createThread({ projectId: 'p1', title: 'Held room', personaIds: [p.id] });
+    return { t, sent: rt.sendMessage(t.id, { text: 'check the table' }) };
+  });
+  const se = Object.values(store.state.sessions).find((x) => x.threadId === result.t.id && x.handle === 'researcher');
+  assert.ok((store.state.inbox[se.id] ?? []).some((e) => e.source === 'person'));
+  await store.close();
+});
+
+test('#1292: the page’s retry of a first message is answered with what the first try posted, not posted again', async () => {
+  const { result, store } = await whileHeld(({ rt }) => {
+    const p = arrange.persona(rt, 'researcher');
+    const t = rt.createThread({ projectId: 'p1', title: 'Held room', personaIds: [p.id] });
+    rt.sendMessage(t.id, { text: '@researcher check the table', clientId: 'c1' });
+    rt.sendMessage(t.id, { text: '@researcher check the table', clientId: 'c1' });
+    return { t };
+  });
+  assert.equal(store.items(result.t.id).filter((i) => i.kind === 'user').length, 1);
+  await store.close();
+});
+
+test('#1292: a topic opened in a held conversation is answered by its agent, with or without an @-mention', async () => {
+  const { result, store } = await whileHeld(({ rt }) => {
+    const p = arrange.persona(rt, 'researcher');
+    const t = rt.createThread({ projectId: 'p1', title: 'Held room', personaIds: [p.id] });
+    const item = rt.threads.addItem(t.id, { kind: 'user', text: 'The table', status: 'done' });
+    const topic = rt.startTopic(t.id, item.id);
+    rt.sendMessage(topic.threadId, { text: 'is row 3 right?' });
+    rt.sendMessage(topic.threadId, { text: '@researcher and row 4?' });
+    return { t, topic };
+  });
+  assert.equal(store.state.threads[result.topic.threadId].woke, 'researcher', 'who answers in it');
+  const se = Object.values(store.state.sessions).find((x) => x.threadId === result.t.id && x.handle === 'researcher');
+  assert.equal((store.state.inbox[se.id] ?? []).filter((e) => e.source === 'person').length, 2, 'both reached it');
+  await store.close();
+});
+
+test('#1292: a topic opened on an agent’s message in a held room is answered by that agent', async () => {
+  const { result, store } = await whileHeld(({ rt }) => {
+    const p = arrange.persona(rt, 'researcher');
+    const q = rt.createPersona({ handle: 'critic', backend: 'claude-code' });
+    const t = rt.createThread({ projectId: 'p1', title: 'Held room', personaIds: [p.id, q.id] });
+    const critic = Object.values(rt.store.pending.sessions()).find((x) => x.threadId === t.id && x.handle === 'critic');
+    const item = rt.threads.addItem(t.id, { kind: 'agent', sessionId: critic.id, handle: 'critic', text: 'Row 3 is wrong.', status: 'done' });
+    return { topic: rt.startTopic(t.id, item.id) };
+  });
+  assert.equal(store.state.threads[result.topic.threadId].woke, 'critic');
   await store.close();
 });

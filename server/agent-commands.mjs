@@ -22,7 +22,7 @@ export function runAgentCommand(rt, threadId, { sessionId, text }) {
   if (rt.turns.has(se.id)) throw httpError(409, `@${se.handle} is busy. Stop it, or wait for it to finish, then run the command.`);
   const item = rt.threads.addItem(threadId, { kind: 'user', text: line, attachments: [], to: [se.handle], command: { sessionId: se.id, handle: se.handle } });
   rt.threads.patch(threadId, { hops: 0 });
-  if (rt.sessions.in(threadId).length > 1) rt.threads.addItem(threadId, { kind: 'system', variant: 'wake', from: 'you', to: se.handle });
+  if (rt.sessions.pendingIn(threadId).length > 1) rt.threads.addItem(threadId, { kind: 'system', variant: 'wake', from: 'you', to: se.handle });
   // A command entry pointing at its line (designs/rooms-at-scale.md, “What an entry is”), with the whole command its
   // turn is given until Turns builds input from entries.
   const message = { kind: 'user', text: line, attachments: [], itemId: item.id, slash: true };
