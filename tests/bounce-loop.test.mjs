@@ -51,6 +51,7 @@ class Recorded {
     // The person’s reaction is theirs: it ends no agent’s exchange.
     if (waker && play.personReacts) this.rt.threads.toggleReaction(se.threadId, waker.id, '👍', null);
     if (play.text) ctx.text(play.text);
+    if (play.fail) throw new Error('Claude Code exited with code 1.');
     // Still at work, so what comes back meanwhile waits, and the next turn takes it together.
     if (play.busyMs) await new Promise((r) => setTimeout(r, play.busyMs));
   }
@@ -176,14 +177,33 @@ test('#1553: a reaction ends the exchange only with the agent whose reply it was
 
 test('#1553: a request from the same agent in the same batch still gets its answer back', () => {
   // Pre-review of the first version: one reacted reply from alpha hid the answer to alpha’s direct request beside it.
-  const items = { r1: { reactions: [{ emoji: '✅', by: 'se_critic' }] }, q1: { reactions: [] } };
+  const items = { r1: { reactions: [{ emoji: '✅', by: 'se_critic', at: 10 }] }, q1: { reactions: [] } };
   const rt = { store: { pending: { item: (_t, id) => items[id] } } };
   const se = { id: 'se_critic' };
   const back = { source: 'mention', from: 'alpha', bounce: true, threadId: 't', itemId: 'r1' };
   const asked = { source: 'mention', from: 'alpha', threadId: 't', itemId: 'q1' };
   const note = { source: 'notice', text: 'Postbox’s note' };
-  assert.equal(endedByReaction(rt, se, [back, note], 'alpha'), true, 'a reacted reply alone ends it');
-  assert.equal(endedByReaction(rt, se, [back, asked], 'alpha'), false, 'with a request beside it, it goes back');
-  assert.equal(endedByReaction(rt, se, [{ ...back, itemId: 'q1' }], 'alpha'), false, 'a reply not reacted to goes back');
-  assert.equal(endedByReaction(rt, se, [back], 'beta'), false, 'nothing from beta, so nothing ends with beta');
+  assert.equal(endedByReaction(rt, se, [back, note], 'alpha', 0), true, 'a reacted reply alone ends it');
+  assert.equal(endedByReaction(rt, se, [back, asked], 'alpha', 0), false, 'with a request beside it, it goes back');
+  assert.equal(endedByReaction(rt, se, [{ ...back, itemId: 'q1' }], 'alpha', 0), false, 'a reply not reacted to goes back');
+  assert.equal(endedByReaction(rt, se, [back], 'beta', 0), false, 'nothing from beta, so nothing ends with beta');
+  assert.equal(endedByReaction(rt, se, [back], 'alpha', 20), false, 'a reaction from before this turn began doesn’t count');
+});
+
+test('#1553: a reaction from a failed attempt doesn’t stop the Retry’s answer going back', async () => {
+  // Critic’s review of PR #1557: alpha reacted to critic’s reply, then its turn failed; the person’s Retry answered with
+  // a question, which must reach critic. Only a reaction made in this attempt ends the exchange.
+  const plays = {
+    alpha: [{ text: '@critic please review wordcount.py.' }, { text: '', react: true, fail: true }, { text: 'One more: does it handle tabs?' }],
+    critic: [{ text: 'Reviewed: whitespace-only input prints 0.' }, { text: '' }],
+  };
+  const { store, rt, t } = room(plays);
+  rt.sendMessage(t.id, { text: '@alpha ask critic for a review' });
+  await settle(rt);
+  const failed = store.items(t.id).find((i) => i.kind === 'agent' && i.handle === 'alpha' && i.status === 'failed');
+  assert.ok(failed, 'alpha’s turn failed after it reacted');
+  await rt.retry(t.id, failed.id);
+  await settle(rt);
+  const question = store.items(t.id).find((i) => i.kind === 'agent' && i.text?.startsWith('One more'));
+  assert.deepEqual(question?.wentBack, ['critic']);
 });

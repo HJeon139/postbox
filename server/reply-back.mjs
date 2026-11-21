@@ -32,7 +32,7 @@ export function replyBack(rt, turn, se, took) {
   // A turn that took no entries carries whom it goes back to: a host turn continued under a new ID goes back as the turn
   // it continues would have (#1538), and a retry of one that took none as the failed turn would have (#1541).
   const asked = turn.backTo ?? backTo(took);
-  const to = asked.filter((h) => h !== se.handle && here(h) && !endedByReaction(rt, se, took, h));
+  const to = asked.filter((h) => h !== se.handle && here(h) && !endedByReaction(rt, se, took, h, turn.startedAt));
   if (!to.length) return;
   // Text with words: a harness may stream only whitespace around a tool call, such as a reaction, which is no reply.
   const reply = rt.store.pending.items(turn.threadId).findLast((/** @type {any} */ x) => x.kind === 'agent' && x.turnId === turn.id && x.text?.trim());
@@ -52,11 +52,15 @@ export function replyBack(rt, turn, se, took) {
  * reply that came back on its own, and the agent reacted to it. Its words, if it wrote any, then post without waking
  * it again. In two UAT runs of 21 November 2026, agents reacted ✅ and also wrote “Acknowledged.”, and each
  * acknowledgment went back, up to hop 262. Only a reply that came back counts: a direct @-mention is a request, and a
- * 👍 on it may come before the report, so a batch with one from that agent still goes back.
+ * 👍 on it may come before the report, so a batch with one from that agent still goes back. Only a reaction made since
+ * this turn began counts: one from a failed attempt the person retried doesn’t stop the Retry’s answer (critic’s review
+ * of PR #1557).
  * @param {any} rt @param {any} se  the agent @param {any[]} took  the entries the turn took @param {string} handle
+ * @param {number} since  when this turn began
  */
-export function endedByReaction(rt, se, took, handle) {
+export function endedByReaction(rt, se, took, handle, since) {
   const from = took.filter((e) => e.source !== 'notice' && e.from === handle);
-  const reacted = (/** @type {any} */ e) => (rt.store.pending.item(e.threadId, e.itemId)?.reactions ?? []).some((/** @type {any} */ r) => r.by === se.id);
+  const reacted = (/** @type {any} */ e) =>
+    (rt.store.pending.item(e.threadId, e.itemId)?.reactions ?? []).some((/** @type {any} */ r) => r.by === se.id && r.at >= since);
   return from.length > 0 && from.every((e) => e.source === 'mention' && e.bounce === true && reacted(e));
 }
