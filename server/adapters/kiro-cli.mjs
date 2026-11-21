@@ -43,7 +43,6 @@
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
-import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { HarnessEvents } from '../harness-events.mjs';
@@ -56,6 +55,7 @@ import { KIRO_TOOL_RULES, kiroAgent } from './kiro-cli-agent.mjs';
 import { findKiro, kiroModel, kiroModels, postboxModel } from './kiro-cli-models.mjs';
 import { attachmentPaths, KIRO_CAPABILITIES, kiroRemoteSpawn } from './kiro-cli-remote.mjs';
 import { kiroError, kiroExitError, overSizeLimit, SIZE_LIMIT_START_TEXT } from './kiro-errors.mjs';
+import { kiroHomeFor } from './kiro-home.mjs';
 import { sessionInfo } from './kiro-session-info.mjs';
 import { KINDS, toolOf } from './kiro-tools.mjs';
 import { listProcesses, stopOnAbort, stopTurn } from './process-group.mjs';
@@ -93,10 +93,6 @@ export function kiroArgs({ persona, agent, sessionId = null, prompt, stdin = fal
     ...(stdin ? ['--no-interactive'] : ['--', prompt]),
   ];
 }
-
-/** The Kiro home a persona runs with: yours (KIRO_HOME, else ~/.kiro), or Postbox’s own when Isolated. */
-export const kiroHomeFor = (persona, { isolatedHome, env = process.env, home = homedir() }) =>
-  setupOf(persona).usesHostSetup ? env.KIRO_HOME || join(home, '.kiro') : isolatedHome;
 
 const contentText = (content) =>
   (Array.isArray(content) ? content : [])
