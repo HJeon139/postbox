@@ -41,9 +41,16 @@ test('the socket tests pass, and leave nothing, with TMPDIR as deep as the gate�
   const args = ['--test', '--test-timeout=60000', '--import', './tests/guard.mjs', ...files.map((name) => join('tests', name))];
   const r = spawnSync(process.execPath, args, { cwd: ROOT, env, timeout: 240_000, encoding: 'utf8', maxBuffer: 1 << 28 });
   const ran = Number(/^(?:ℹ|#) tests (\d+)$/m.exec(r.stdout ?? '')?.[1] ?? 0);
-  const failed = (r.stdout ?? '').split('\n').filter((line) => /^(?:✖|not ok)/.test(line));
+  // What failed, with each failure’s own error: node --test lists them after “failing tests:”. Only the names left a
+  // nested remote test’s flake impossible to tell apart from this test’s (#464-b2a, seen once at a load of 11).
+  const out = r.stdout ?? '';
+  const failing = out
+    .slice(out.search(/^ℹ failing tests:$|^✖ failing tests:$/m))
+    .split('\n')
+    .slice(0, 80)
+    .join('\n');
   assert.ok(ran > 100, `ran ${ran} tests (exit ${r.status ?? r.signal})`);
-  assert.equal(r.status, 0, `exit ${r.status ?? r.signal}, failing:\n${failed.slice(0, 20).join('\n')}`);
+  assert.equal(r.status, 0, `exit ${r.status ?? r.signal}, failing:\n${out.includes('failing tests:') ? failing : '(none listed)'}`);
   const left = fs.readdirSync(dir).filter((name) => !OUT_OF_SCOPE.test(name));
   assert.deepEqual(left, [], 'what the socket tests left in TMPDIR');
 });
