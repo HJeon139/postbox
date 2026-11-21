@@ -29,6 +29,11 @@ test('#120: remote Codex config names the stdio shim with TOML values, never a U
     'mcp_servers.postbox.tool_timeout_sec=90000',
     '-c',
     'mcp_servers.postbox.default_tools_approval_mode="approve"',
+    // Out of the person’s Codex memories (#479).
+    '-c',
+    'memories.use_memories=false',
+    '-c',
+    'memories.generate_memories=false',
   ]);
   assert.ok(!args.some((a) => a.includes('.url=')));
 });
