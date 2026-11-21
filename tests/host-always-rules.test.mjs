@@ -238,3 +238,18 @@ test('a turn on this computer never gets a rule kept for a host', async () => {
   assert.equal(runs[0].includes(RULE), false);
   rt.remote.close();
 });
+
+test('#404 the panel saves no local or user rule for an agent on a host, which reads neither, though local agents would', async () => {
+  const r = rigIn('auto');
+  const { folder } = await r.rt.panelTarget({ sessionId: r.se().id });
+  for (const where of ['local', 'user'])
+    for (const remove of [false, true])
+      await assert.rejects(
+        () => r.rt.changePermissionRule({ sessionId: r.se().id, behavior: 'allow', rule: RULE, where, remove }),
+        { status: 409, message: new RegExp(`runs on ${HOST}`) },
+        `${remove ? 'removing' : 'adding'} a ${where} rule`,
+      );
+  assert.equal(existsSync(join(folder, '.claude', 'settings.local.json')), false, 'nothing was written on this computer');
+  // A rule for this conversation, or for the persona on its host, still saves.
+  assert.equal((await r.rt.changePermissionRule({ sessionId: r.se().id, behavior: 'allow', rule: RULE, where: 'conversation' })).ok, true);
+});
