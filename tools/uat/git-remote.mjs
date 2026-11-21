@@ -5,7 +5,8 @@
 //   which git applies over any config file, per-protocol settings included, and protocol.allow=never with only file
 //   allowed, from the environment (GIT_CONFIG_COUNT) and again from the workspace’s own .git/config. So an https,
 //   ssh or git:// remote is refused before anything leaves this computer;
-// - git lfs doesn’t read GIT_ALLOW_PROTOCOL, so the git-lfs first on the run’s PATH refuses (#1125);
+// - git lfs doesn’t read GIT_ALLOW_PROTOCOL, so the guard points it at a local path that isn’t there (LFS_OFF), and the
+//   git-lfs first on the run’s PATH refuses too (#1125);
 // - git reads the run’s own config, not the person’s: GIT_CONFIG_GLOBAL is a file in the run’s folder that holds only a
 //   test identity, and GIT_CONFIG_NOSYSTEM drops the system’s, such as Homebrew’s. So no pushInsteadOf, insteadOf,
 //   include, hook or credential helper of theirs touches an agent’s push;
@@ -25,7 +26,9 @@
 //   `git -c protocol.allow=always …`. In Ask me or Accept edits that command comes to a card first; in Auto, the
 //   harness decides;
 // - ask for a password past the credential guard on purpose: `git -c credential.helper=… credential fill`, setting
-//   GIT_ASKPASS for one command, `git credential-<helper> get`, or the real git-lfs by its full path;
+//   GIT_ASKPASS for one command, or `git credential-<helper> get`;
+// - reach an LFS server past LFS_OFF on purpose: `git -c lfs.url=…`, or a `url.<x>.insteadOf` for its path. And a
+//   repository with LFS objects can’t be cloned or pushed with them in a run, even locally;
 // - skip git: with GH_TOKEN unset, a real gh called by its full path still reads the person’s sign-in from the keychain
 //   (`gh auth token`), since HOME and the keyring are theirs, and `curl` with that token reaches GitHub;
 // - a file push can reach a bare repository outside the run’s folder, and nothing refuses `--host` for this seed: the
@@ -38,15 +41,24 @@ import { join, resolve, sep } from 'node:path';
 import { js } from '../browser.mjs';
 
 /**
- * What every git in the run reads: no transport but local paths, no credential helper and no askpass. An empty helper
- * empties the list the person’s config built, osxkeychain on a Mac, and an empty askPass sets aside a global
- * core.askPass, so `git credential fill` hands out nothing of theirs. noGithubEnv blanks GIT_ASKPASS and SSH_ASKPASS too.
+ * Where the guard points git lfs, which doesn’t read GIT_ALLOW_PROTOCOL (#1125): a local path that isn’t there, so a
+ * push or fetch fails without a request, whatever server a repository names (lfs.url outranks remote.*.lfsurl and
+ * .lfsconfig, and the environment’s config every file’s), and an ssh origin gets no git-lfs-authenticate call either.
+ */
+export const LFS_OFF = 'file:///nonexistent/postbox-uat-lfs-off';
+/**
+ * What every git in the run reads: no transport but local paths, no credential helper and no askpass, and no LFS
+ * server (LFS_OFF). An empty helper empties the list the person’s config built, osxkeychain on a Mac, and an empty
+ * askPass sets aside a global core.askPass, so `git credential fill` hands out nothing of theirs. noGithubEnv blanks
+ * GIT_ASKPASS and SSH_ASKPASS too.
  */
 export const GUARD = [
   ['protocol.allow', 'never'],
   ['protocol.file.allow', 'always'],
   ['credential.helper', ''],
   ['core.askPass', ''],
+  ['lfs.url', LFS_OFF],
+  ['lfs.pushurl', LFS_OFF],
 ];
 /** An https remote nothing listens on, refused at once: the preflight’s probe, and the tests’. */
 export const UNREACHABLE = 'https://127.0.0.1:9/uat/none.git';
@@ -84,6 +96,9 @@ function git(args, cwd) {
  */
 export const CREDENTIALS_GUARDED =
   'k=$(git config --name-only --get-regexp \'^credential\\..*helper$\' 2>/dev/null | tail -n 1); h=$(git config --get credential.helper 2>/dev/null); a=$(git config --get core.askPass 2>/dev/null); { [ -z "$k" ] || [ "$k" = credential.helper ]; } && [ -z "$h$a$GIT_ASKPASS$SSH_ASKPASS" ] && echo credentials-guarded';
+
+/** A shell line that prints lfs-guarded when git lfs there would reach only LFS_OFF (#1125). It reads the settings. */
+export const LFS_GUARDED = `[ "$(git config --get lfs.url)" = ${LFS_OFF} ] && [ "$(git config --get lfs.pushurl)" = ${LFS_OFF} ] && echo lfs-guarded`;
 
 /** git that must work: a seed step that fails stops the run, naming the step and what git said. */
 function mustGit(args, cwd) {
@@ -205,11 +220,12 @@ export function preflightRemote(workspace, dir, env) {
   if (!/transport 'https' not allowed/.test(probe.stderr ?? ''))
     throw stop(`git in the run isn’t refused an https remote (it said: ${(probe.stderr ?? '').trim().slice(0, 200)})`);
   const shell = env.SHELL || '/bin/sh';
-  const script = `[ -n "$CLAUDE_ENV_FILE" ] && . "$CLAUDE_ENV_FILE"; ${CREDENTIALS_GUARDED}; command -v gh`;
+  const script = `[ -n "$CLAUDE_ENV_FILE" ] && . "$CLAUDE_ENV_FILE"; ${CREDENTIALS_GUARDED}; ${LFS_GUARDED}; command -v gh`;
   const which = spawnSync(shell, ['-lic', script], { env, encoding: 'utf8', timeout: 20_000 });
   if (!/^credentials-guarded$/m.test(which.stdout ?? '')) throw stop('git in the agent’s shell can still hand out a password');
   const gh = (which.stdout ?? '').trim().split('\n').at(-1);
   if (gh !== join(p.bin, 'gh')) throw stop(`gh in the agent’s shell is ${gh || 'missing'}, not the run’s fake (${join(p.bin, 'gh')})`);
+  if (!/^lfs-guarded$/m.test(which.stdout ?? '')) throw stop('git lfs in the agent’s shell can reach a server past the guard');
 }
 
 /**
