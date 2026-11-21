@@ -10,7 +10,7 @@ import { heldSession } from './held-session.mjs';
 import { httpError, retiredError } from './helpers.mjs';
 import { refuseUnregistered } from './remote/placement.mjs';
 import { clockTurn } from './run-clock.mjs';
-import { holdForClock } from './run-clock-held.mjs';
+import { holdForClock, refuseWhileHeld } from './run-clock-held.mjs';
 import { prepareScheduledRetry } from './scheduled-wakes.mjs';
 import { endChain } from './side-threads.mjs';
 import { newId } from './store.mjs';
@@ -285,6 +285,8 @@ function runTurn(rt, se, turn, message, { adapter, persona, hostId }) {
 export function retry(rt, threadId, itemId) {
   const it = rt.store.item(threadId, itemId);
   if (it?.status !== 'failed') throw httpError(409, 'Only a failed reply can be retried.');
+  // With run clocks on: a clock that holds the agent would only hold the retry, so it’s refused (#1526).
+  if (rt.runClock) refuseWhileHeld(rt, it.sessionId, 'retry');
   // What it was asked (turn-marks.mjs): refused, with nothing sent, when it was kept and can’t be read back exactly.
   return askedAgain(rt, threadId, it, (asked) => {
     rt.threads.patchItem(threadId, itemId, { status: 'retried' });

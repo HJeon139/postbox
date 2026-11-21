@@ -6,6 +6,7 @@
 
 import { clockHolds } from '../shared/run-clock.mjs';
 import { rearmClocks, stopHeldTurn } from './run-clock.mjs';
+import { dropHeldOn } from './run-clock-held.mjs';
 
 /** Whether the environment turns run clocks on. @param {NodeJS.ProcessEnv} [env] */
 export const runClockOn = (env = process.env) => env.POSTBOX_RUN_CLOCK === '1';
@@ -20,5 +21,7 @@ export function installRunClock(rt) {
   const holds = (sessionId) => clockHolds(rt.store.pending.clock(sessionId));
   rt.runClock = { holds, stopHeld: (/** @type {any} */ turn) => stopHeldTurn(rt, turn) };
   rt.delivery.clockHeld = holds;
+  // The turns a clock held go once none of them can run: at its expiry or void, or the session’s delete.
+  rt.store.subscribe((/** @type {any} */ ev) => dropHeldOn(rt, ev));
   rearmClocks(rt);
 }
