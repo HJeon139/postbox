@@ -1,20 +1,27 @@
 // The run’s folders (runPaths), and what the UAT runner reads from files after each step: the person’s own Claude Code setup, to spot it leaking into
 // agents (or missing from them), each agent turn’s recorded stream, and the agents’ own Claude Code transcripts.
 
-import { closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, statSync, writeFileSync } from 'node:fs';
-import { mkdir } from 'node:fs/promises';
-import { homedir } from 'node:os';
+import { closeSync, cpSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { mkdir, mkdtemp, realpath } from 'node:fs/promises';
+import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { parseSnapshotText } from '../../server/store-snapshot-lines.mjs';
 import { patchSession } from '../../shared/state.mjs';
 import { claudeTranscriptFile } from './claude-transcript-file.mjs';
 import { lines } from './history.mjs';
 
-/** The run’s folders, made: Postbox’s data, the workspace, each backend’s recorded streams, and screenshots. @param {string} dir */
-export async function runPaths(dir) {
+/**
+ * The run’s folders, made: Postbox’s data, the workspace, each backend’s recorded streams, and screenshots. The
+ * workspace is outside the Postbox checkout, in a temp folder of its own, so an agent that reads above it reaches none
+ * of the checkout’s files, such as the visual skill’s briefs and their answers (#885); retainWorkspace keeps it in the
+ * run’s folder, as workspace/, once the run has stopped.
+ * @param {string} dir @param {{ tmp?: string }} [o]  where the workspace’s folder goes, the system temp folder by default
+ */
+export async function runPaths(dir, { tmp = tmpdir() } = {}) {
+  const outside = await mkdtemp(join(await realpath(tmp), 'postbox-uat-workspace-'));
   const paths = {
     data: join(dir, 'data'),
-    workspace: join(dir, 'workspace'),
+    workspace: join(outside, 'workspace'),
     streams: join(dir, 'streams'),
     kiroStreams: join(dir, 'streams', 'kiro'),
     agyStreams: join(dir, 'streams', 'agy'),
@@ -23,7 +30,19 @@ export async function runPaths(dir) {
     shots: join(dir, 'shots'),
   };
   for (const p of Object.values(paths)) await mkdir(p, { recursive: true });
-  return paths;
+  return { ...paths, kept: join(dir, 'workspace'), outside };
+}
+
+/**
+ * Copies the workspace into the run’s folder as workspace/, where the report, --recheck and a person read it, and
+ * removes its temp folder (#885). Once, however often it’s called: the run calls it when its process exits, after the
+ * run’s stop, so Postbox and its agents no longer write there, on an error in setup or a Ctrl-C as well.
+ * @param {{ workspace: string, kept: string, outside: string }} paths
+ */
+export function retainWorkspace(paths) {
+  if (!existsSync(paths.outside)) return;
+  if (existsSync(paths.workspace)) cpSync(paths.workspace, paths.kept, { recursive: true, verbatimSymlinks: true, force: true });
+  rmSync(paths.outside, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
 }
 
 export function userSetup(workspace) {
