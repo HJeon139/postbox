@@ -110,6 +110,7 @@ export function createHostManager({
     updating: new Map(),
     installRecords: new Map(),
     recordWrites: new Map(),
+    consentAsked: new Map(),
     onFailure: (id, failure) => maybeUpdate(m, id, failure),
   };
   // updating: the install under way per host, for tests and callers that wait on one (hosts-update.mjs); read only.

@@ -2,6 +2,14 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.35.1 (2026-11-21)
+
+### Fixes
+
+- **server:** keep no model list a harness gives after Postbox closed
+- **ui:** wrap a long folder path in the delete confirm, and let a scrolling dialog body take focus
+- **remote:** connect after an automatic install only while the consent is on
+
 ## 4.35.0 (2026-11-20)
 
 ### Features

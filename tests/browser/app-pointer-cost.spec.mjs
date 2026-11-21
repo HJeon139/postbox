@@ -29,8 +29,11 @@ test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
     const look = Document.prototype.elementFromPoint;
     /** @type {any} */ (window).pbLooks = 0;
+    /** @type {any} */ (window).pbAppLooks = 0;
     Document.prototype.elementFromPoint = function (...args) {
       /** @type {any} */ (window).pbLooks++;
+      // A look for the app frame under the pointer is app-pointer.mjs’s frameAt; any other is the page’s own.
+      if (String(new Error().stack).includes('/app-pointer.mjs')) /** @type {any} */ (window).pbAppLooks++;
       return look.apply(this, args);
     };
   });
@@ -67,15 +70,28 @@ async function looksWhileStreaming(page) {
   return page.evaluate(async (n) => {
     const w = /** @type {any} */ (window);
     const last = /** @type {HTMLElement} */ ([...document.querySelectorAll('#main > .item')].at(-1));
-    const before = w.pbLooks;
+    const before = { all: w.pbLooks, app: w.pbAppLooks };
     for (let i = 0; i < n; i++) {
       await new Promise((r) => requestAnimationFrame(r));
       last.append(document.createTextNode(` ${i}`));
     }
     // Two frames more, for a look the last change asked for.
     await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
-    return w.pbLooks - before;
+    return { all: w.pbLooks - before.all, app: w.pbAppLooks - before.app };
   }, BATCHES);
+}
+
+/**
+ * No look for an app frame while the changes stream, and none of the page’s own that comes with each change. The page
+ * may still read under the pointer once for a scroll or for the pointer coming to rest (view-hold.mjs’s takeHold), at
+ * most twice in a run: on macOS’s fonts the transcript scrolls once as the changes land, where on CI’s it didn’t
+ * (#1530). Fifty changes, one a frame, would show as fifty.
+ * @param {{ all: number, app: number }} looks @param {string} what
+ */
+function noLooks(looks, what) {
+  test.info().annotations.push({ type: 'measured', description: `elementFromPoint calls: ${looks.all}, ${looks.app} for an app frame` });
+  expect(looks.app, what).toBe(0);
+  expect(looks.all, `${what}: none of the page’s own with each change`).toBeLessThanOrEqual(2);
 }
 
 /** An app far off screen, unloaded, scrolled back under a resting pointer: it reloads and becomes live. */
@@ -190,9 +206,7 @@ async function staleReviewLooks(page, width) {
   // Far below both apps’ bodies, past the near margin (one and a half windows): nothing on the page is near the view.
   const below = await page.locator('.app-body').evaluateAll((bodies) => bodies.every((b) => b.getBoundingClientRect().bottom < -1.5 * innerHeight));
   expect(below, 'every app body is far above the view').toBe(true);
-  const looks = await looksWhileStreaming(page);
-  test.info().annotations.push({ type: 'measured', description: `elementFromPoint calls: ${looks}` });
-  expect(looks, 'looks under the pointer after an answered app review left the view').toBe(0);
+  noLooks(await looksWhileStreaming(page), 'looks under the pointer after an answered app review left the view');
 }
 
 for (const width of [375, 1280])
@@ -206,18 +220,14 @@ for (const width of [375, 1280])
       await settled(page);
       // Far off screen, it unloads: the page has heard it’s not near the view.
       await expect(page.locator('.app-body .app-placeholder', { hasText: 'Unloaded while off screen' })).toHaveCount(1);
-      const looks = await looksWhileStreaming(page);
-      test.info().annotations.push({ type: 'measured', description: `elementFromPoint calls: ${looks}` });
-      expect(looks, 'looks under the pointer while no app is near the view').toBe(0);
+      noLooks(await looksWhileStreaming(page), 'looks under the pointer while no app is near the view');
     });
 
     test(`#930 ${BATCHES} changes under a resting pointer, one a frame, in a room with no apps, look for no app frame`, async ({ page }) => {
       const r = await room(page, `No apps ${width}`);
       await r.lines(30, 'Line');
       await settled(page);
-      const looks = await looksWhileStreaming(page);
-      test.info().annotations.push({ type: 'measured', description: `elementFromPoint calls: ${looks}` });
-      expect(looks, 'looks under the pointer in a room with no apps').toBe(0);
+      noLooks(await looksWhileStreaming(page), 'looks under the pointer in a room with no apps');
     });
 
     test('#930 an app scrolled in from far away becomes live under the resting pointer', ({ page }) => scrolledIn(page, width));
