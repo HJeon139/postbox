@@ -149,7 +149,7 @@ async function main() {
   if (!(await portFree(port))) throw new Error(`Port ${port} is in use. Pick another with --port.`);
   const { agentModels, agentEffort } = await seedAgents({ scenario, opt, root: ROOT, data: paths.data, log });
   // Ctrl-C cleans the hosts up through the page before anything stops (tools/uat/stop.mjs), with what’s there by then.
-  const run = { log, dir };
+  const run = { log, dir, retain: () => retainWorkspace(paths, log) };
   const stop = runStop(run);
   const signals = onStopSignal(stop, { log });
   const timeline = [];
@@ -539,6 +539,8 @@ async function main() {
         coverage,
       }),
       ...(facts.budget ? { budget: facts.budget } : {}),
+      // Where the agents worked, outside the checkout (#885), which a recheck reads their commands against.
+      workspace: paths.workspace,
     });
     return all;
   } finally {

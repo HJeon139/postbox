@@ -37,7 +37,21 @@ test('#885 the run keeps its workspace in its folder, and a recheck reads it the
   assert.equal(existsSync(paths.outside), false, 'the temp folder is removed');
   assert.equal(readFileSync(join(dir, 'workspace', 'notes.md'), 'utf8'), 'what the agent wrote\n');
   assert.ok(existsSync(join(dir, 'workspace', '.git')), 'with its own repository');
-  const facts = savedFacts(dir, { state: { threads: {} }, mainId: 't1', saved: {}, logs: [], hostsRec: null, record: null });
-  assert.equal(facts.workspace, join(dir, 'workspace'));
-  assert.ok(existsSync(join(facts.workspace, 'notes.md')), 'the recheck reads the kept workspace');
+  // A recheck reads the agents’ commands against the path they ran in, which run.json keeps; an older run has none.
+  const saved = (record) => savedFacts(dir, { state: { threads: {} }, mainId: 't1', saved: {}, logs: [], hostsRec: null, record });
+  assert.equal(saved({ workspace: paths.workspace }).workspace, paths.workspace);
+  assert.equal(saved(null).workspace, join(dir, 'workspace'), 'a run from before #885');
+});
+
+test('#885 a workspace that can’t be kept or removed says so, and never throws from the run’s exit', async () => {
+  const { dir, tmp } = layout();
+  const paths = await runPaths(dir, { tmp });
+  writeFileSync(join(paths.workspace, 'notes.md'), 'kept\n');
+  // Where it’s kept is a file, so the copy fails, as a full disk or a read-only folder would.
+  writeFileSync(paths.kept, 'in the way');
+  /** @type {string[]} */
+  const said = [];
+  assert.doesNotThrow(() => retainWorkspace(paths, (l) => said.push(l)));
+  assert.match(said[0] ?? '', /Couldn’t keep the workspace in the run’s folder/);
+  assert.ok(existsSync(paths.workspace), 'what wasn’t kept isn’t removed either');
 });

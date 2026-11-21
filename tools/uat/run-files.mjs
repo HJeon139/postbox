@@ -34,15 +34,21 @@ export async function runPaths(dir, { tmp = tmpdir() } = {}) {
 }
 
 /**
- * Copies the workspace into the run’s folder as workspace/, where the report, --recheck and a person read it, and
- * removes its temp folder (#885). Once, however often it’s called: the run calls it when its process exits, after the
- * run’s stop, so Postbox and its agents no longer write there, on an error in setup or a Ctrl-C as well.
- * @param {{ workspace: string, kept: string, outside: string }} paths
+ * Copies the workspace into the run’s folder as workspace/, where a person and --recheck read it, and removes its temp
+ * folder (#885). Once, however often it’s called: the run’s stop calls it once Postbox has stopped, and the process’s
+ * exit again, for a run that ends before it has a stop (an error in setup) or exits mid-stop (a second Ctrl-C). It
+ * never throws, so a folder it can’t copy or remove, such as a read-only one an agent left, doesn’t fail the run’s exit
+ * or skip what else runs then: it says what’s left, and where.
+ * @param {{ workspace: string, kept: string, outside: string }} paths @param {(line: string) => void} [log]
  */
-export function retainWorkspace(paths) {
+export function retainWorkspace(paths, log = (line) => console.error(line)) {
   if (!existsSync(paths.outside)) return;
-  if (existsSync(paths.workspace)) cpSync(paths.workspace, paths.kept, { recursive: true, verbatimSymlinks: true, force: true });
-  rmSync(paths.outside, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
+  try {
+    if (existsSync(paths.workspace)) cpSync(paths.workspace, paths.kept, { recursive: true, verbatimSymlinks: true, force: true });
+    rmSync(paths.outside, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
+  } catch (e) {
+    log(`Couldn’t keep the workspace in the run’s folder, or remove ${paths.outside}: ${/** @type {Error} */ (e).message}`);
+  }
 }
 
 export function userSetup(workspace) {
