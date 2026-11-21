@@ -27,7 +27,8 @@
 //   harness decides;
 // - ask for a password past the credential guard on purpose: `git -c credential.helper=… credential fill`, setting
 //   GIT_ASKPASS for one command, or `git credential-<helper> get`;
-// - reach an LFS server past LFS_OFF on purpose: `git -c lfs.url=…`, or a `url.<x>.insteadOf` for its path. And a
+// - reach an LFS server past LFS_OFF on purpose: `git -c lfs.url=…`, a `url.<x>.insteadOf` for its path, or a custom
+//   transfer the repository’s own config picks under a name the guard can’t pin (its URL with a trailing slash). And a
 //   repository with LFS objects can’t be cloned or pushed with them in a run, even locally;
 // - skip git: with GH_TOKEN unset, a real gh called by its full path still reads the person’s sign-in from the keychain
 //   (`gh auth token`), since HOME and the keyring are theirs, and `curl` with that token reaches GitHub;
@@ -46,6 +47,8 @@ import { js } from '../browser.mjs';
  * .lfsconfig, and the environment’s config every file’s), and an ssh origin gets no git-lfs-authenticate call either.
  */
 export const LFS_OFF = 'file:///nonexistent/postbox-uat-lfs-off';
+/** git lfs’s own transfer for a local path, which the guard picks over a custom one a config names (#1125). */
+const LFS_FILE_AGENT = 'lfs-standalone-file';
 /**
  * What every git in the run reads: no transport but local paths, no credential helper and no askpass, and no LFS
  * server (LFS_OFF). An empty helper empties the list the person’s config built, osxkeychain on a Mac, and an empty
@@ -59,6 +62,8 @@ export const GUARD = [
   ['core.askPass', ''],
   ['lfs.url', LFS_OFF],
   ['lfs.pushurl', LFS_OFF],
+  ['lfs.standalonetransferagent', LFS_FILE_AGENT],
+  [`lfs.${LFS_OFF}.standalonetransferagent`, LFS_FILE_AGENT],
 ];
 /** An https remote nothing listens on, refused at once: the preflight’s probe, and the tests’. */
 export const UNREACHABLE = 'https://127.0.0.1:9/uat/none.git';
@@ -97,8 +102,12 @@ function git(args, cwd) {
 export const CREDENTIALS_GUARDED =
   'k=$(git config --name-only --get-regexp \'^credential\\..*helper$\' 2>/dev/null | tail -n 1); h=$(git config --get credential.helper 2>/dev/null); a=$(git config --get core.askPass 2>/dev/null); { [ -z "$k" ] || [ "$k" = credential.helper ]; } && [ -z "$h$a$GIT_ASKPASS$SSH_ASKPASS" ] && echo credentials-guarded';
 
-/** A shell line that prints lfs-guarded when git lfs there would reach only LFS_OFF (#1125). It reads the settings. */
-export const LFS_GUARDED = `[ "$(git config --get lfs.url)" = ${LFS_OFF} ] && [ "$(git config --get lfs.pushurl)" = ${LFS_OFF} ] && echo lfs-guarded`;
+/**
+ * A shell line that prints lfs-guarded when git lfs there would reach only LFS_OFF, with its own transfer (#1125): no
+ * custom transfer is configured, and every standalone transfer named is git lfs’s, since a name the guard can’t pin (its
+ * URL with a trailing slash) would still pick one. It reads the settings, and runs nothing.
+ */
+export const LFS_GUARDED = `[ "$(git config --get lfs.url)" = ${LFS_OFF} ] && [ "$(git config --get lfs.pushurl)" = ${LFS_OFF} ] && [ -z "$(git config --name-only --get-regexp '^lfs\\.customtransfer\\.' 2>/dev/null)" ] && [ -z "$(git config --get-regexp '^lfs\\..*standalonetransferagent$' 2>/dev/null | grep -v ' ${LFS_FILE_AGENT}$')" ] && echo lfs-guarded`;
 
 /** git that must work: a seed step that fails stops the run, naming the step and what git said. */
 function mustGit(args, cwd) {

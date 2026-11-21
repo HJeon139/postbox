@@ -125,6 +125,7 @@ test('#1125: git lfs in a git-remote run sends nothing, though lfs.url names an 
       ['lfs', 'track', '*.bin'],
       ['config', 'lfs.url', `http://127.0.0.1:${server.address().port}/lfs`],
       ['config', 'lfs.pushurl', `http://127.0.0.1:${server.address().port}/lfs`],
+      ['config', '--unset-all', 'lfs.standalonetransferagent'],
       ['config', 'lfs.locksverify', 'false'],
     ])
       await git(args, base);

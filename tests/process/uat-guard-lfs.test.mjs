@@ -6,10 +6,11 @@
 
 import assert from 'node:assert/strict';
 import { execFile, spawnSync } from 'node:child_process';
-import { writeFileSync } from 'node:fs';
+import { existsSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { join } from 'node:path';
 import { test } from 'node:test';
+import { LFS_OFF } from '../../tools/uat/git-remote.mjs';
 import { noGithubEnv, preflightRun } from '../../tools/uat/github-guard.mjs';
 import { tempDir } from '../temp-dirs.mjs';
 
@@ -88,4 +89,42 @@ test('#1125: a run whose agents’ git has its lfs server back stops before any 
     assert.ok(i, `the guard sets ${key}`);
     assert.throws(() => preflightRun({ seed: null }, env.HOME, env.HOME, { ...env, [`GIT_CONFIG_VALUE_${i}`]: '' }), /git lfs in the agent’s shell/, key);
   }
+});
+
+test('#1125: a custom LFS transfer agent neither runs under the guard nor lets a run whose git names one start', {
+  skip: !hasLfs && 'git lfs isn’t installed',
+}, async (t) => {
+  const base = person();
+  if (spawnSync('git', ['lfs', 'version'], { encoding: 'utf8', env: base }).status !== 0) return t.skip('git lfs doesn’t run with the test’s HOME');
+  const ran = join(base.HOME, 'agent-ran');
+  const agent = join(base.HOME, 'agent.sh');
+  writeFileSync(agent, `#!/bin/sh\ntouch '${ran}'\nexit 1\n`, { mode: 0o755 });
+  const run = { ...base, ...noGithubEnv({}, tempDir('postbox-uat-guard-lfs-run-')) };
+  const repo = tempDir('postbox-uat-guard-lfs-repo-');
+  const git = (/** @type {string[]} */ args, env = base) =>
+    new Promise((r) => execFile('git', args, { cwd: repo, env, timeout: 30_000 }, (err) => r(err ? 1 : 0)));
+  for (const args of [
+    ['init', '-q'],
+    ['remote', 'add', 'origin', join(repo, 'nowhere.git')],
+    ['lfs', 'install', '--local'],
+    ['lfs', 'track', '*.bin'],
+  ])
+    await git(args);
+  // The repository picks a custom standalone transfer, for every server and for the guard’s own: the guard picks git lfs’s.
+  await git(['config', 'lfs.customtransfer.mine.path', agent]);
+  await git(['config', 'lfs.standalonetransferagent', 'mine']);
+  await git(['config', `lfs.${LFS_OFF}.standalonetransferagent`, 'mine']);
+  writeFileSync(join(repo, 'a.bin'), 'bytes');
+  await git(['add', '-A']);
+  await git(['-c', 'user.name=t', '-c', 'user.email=t@example.invalid', 'commit', '-qm', 'x']);
+  await git(['lfs', 'push', '--all', 'origin'], run);
+  assert.equal(existsSync(ran), false, 'the custom agent didn’t run in the run');
+  await git(['lfs', 'push', '--all', 'origin'], withoutLfs(run));
+  assert.equal(existsSync(ran), true, 'without the guard’s lfs entries it does: the control');
+  // In the person’s own config, which a run with no seed keeps, one stops the run before any agent turn, as one only
+  // the guard can’t pin (a URL spelled with a trailing slash) would still be picked.
+  writeFileSync(join(base.HOME, '.gitconfig'), `[lfs "customtransfer.mine"]\n\tpath = ${agent}\n`);
+  assert.throws(() => preflightRun({ seed: null }, base.HOME, base.HOME, run), /git lfs in the agent’s shell/, 'a custom transfer');
+  writeFileSync(join(base.HOME, '.gitconfig'), `[lfs "${LFS_OFF}/"]\n\tstandalonetransferagent = mine\n`);
+  assert.throws(() => preflightRun({ seed: null }, base.HOME, base.HOME, run), /git lfs in the agent’s shell/, 'a transfer picked past the pin');
 });

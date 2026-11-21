@@ -102,7 +102,7 @@ describe('what the guard is, and gh', () => {
     assert.deepEqual(guardEnv(), {
       GIT_ALLOW_PROTOCOL: 'file',
       GIT_CONFIG_PARAMETERS: '',
-      GIT_CONFIG_COUNT: '6',
+      GIT_CONFIG_COUNT: '8',
       GIT_CONFIG_KEY_0: 'protocol.allow',
       GIT_CONFIG_VALUE_0: 'never',
       GIT_CONFIG_KEY_1: 'protocol.file.allow',
@@ -115,6 +115,10 @@ describe('what the guard is, and gh', () => {
       GIT_CONFIG_VALUE_4: 'file:///nonexistent/postbox-uat-lfs-off',
       GIT_CONFIG_KEY_5: 'lfs.pushurl',
       GIT_CONFIG_VALUE_5: 'file:///nonexistent/postbox-uat-lfs-off',
+      GIT_CONFIG_KEY_6: 'lfs.standalonetransferagent',
+      GIT_CONFIG_VALUE_6: 'lfs-standalone-file',
+      GIT_CONFIG_KEY_7: 'lfs.file:///nonexistent/postbox-uat-lfs-off.standalonetransferagent',
+      GIT_CONFIG_VALUE_7: 'lfs-standalone-file',
     });
   });
 
