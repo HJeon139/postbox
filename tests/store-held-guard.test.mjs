@@ -14,7 +14,7 @@
 // reads source text, not the program, so a form it doesn't match passes, and review reads for it: an optional call
 // (`rt.store?.items?.(t)`), an optional bracket (`rt.store?.["items"](t)`) and `Reflect.apply(rt.store.items, …)` are three. It reads every .mjs, .js and .cjs file under server/ except the store's own and server/remote/host/,
 // the host daemon, which has no store. Sessions have a pending read by id, for their writes and a delivery's wait
-// (#796's class); schedules and the rest have none (§ Not in this change).
+// (#796's class), and so do schedules (#623).
 // Threads follow the same rule for their writes (#796): tests/thread-write-guard.test.mjs places them.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';

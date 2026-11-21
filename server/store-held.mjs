@@ -48,6 +48,9 @@ const ENTITIES = /** @type {const} */ ({
   personas: { event: 'persona', removed: 'persona', patched: null },
   // A project changed behind a held commit, whose folder a `!` command runs in (#1292). Projects are never removed.
   projects: { event: 'project', removed: null, patched: null },
+  // A wake just scheduled or changed behind a held commit, which arming its timer, firing it, canceling it and the
+  // per-agent limit read (#623). One is removed by its own event, with `removed: true`, not by `remove`.
+  schedules: { event: 'schedule', removed: null, patched: null, removedFlag: true },
 });
 /**
  * The names of what a held event touches, as the views are named: each list it changes (`items:<threadId>`) and each
@@ -108,12 +111,14 @@ const heldOn = (store, name) => Boolean(store.held) && /** @type {any} */ (store
  *   sessions: () => Readonly<Record<string, Entry>>,
  *   persona: (id: string) => Entry | undefined,
  *   project: (id: string) => Entry | undefined,
+ *   schedule: (id: string) => Entry | undefined,
+ *   schedules: () => Readonly<Record<string, Entry>>,
  * }} PendingReads
  */
 
 /**
  * The pending reads of a store: one per list in LISTS; for apps and threads, one entity by id and the whole
- * collection; every session, or one by id; and one persona or project by id.
+ * collection; every session, or one by id; one persona or project by id; and every schedule, or one by id.
  * @param {import('./store.mjs').Store} store @returns {PendingReads}
  */
 export function pendingReads(store) {
@@ -128,6 +133,8 @@ export function pendingReads(store) {
   reads.sessions = () => pendingCollection(store, 'sessions');
   reads.persona = (/** @type {string} */ id) => pendingEntity(store, 'personas', id);
   reads.project = (/** @type {string} */ id) => pendingEntity(store, 'projects', id);
+  reads.schedule = (/** @type {string} */ id) => pendingEntity(store, 'schedules', id);
+  reads.schedules = () => pendingCollection(store, 'schedules');
   return /** @type {PendingReads} */ (reads);
 }
 
@@ -177,7 +184,8 @@ function collectionView(store, coll) {
     v.changes++;
     const { type, data } = JSON.parse(json);
     try {
-      if (type === event) v.entries[data.id] = data;
+      if (type === event && ENTITIES[coll].removedFlag && data.removed) delete v.entries[data.id];
+      else if (type === event) v.entries[data.id] = data;
       // As the reducer applies it: a patch for a session that's gone changes nothing.
       else if (type === patched) {
         if (v.entries[data.id]) v.entries[data.id] = patchSession(v.entries[data.id], data);

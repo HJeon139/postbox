@@ -30,6 +30,21 @@ export const PENDING = {
   'turns.mjs': ['inputOf', 'inputOf', 'readItem', 'summaryOf', 'messageOf', 'personMessage'],
   'turn-service.mjs': ['retryEntries'], // whether the session a Retry wakes is still failed, maybe written behind a held commit (#1429)
   'queue-convert.mjs': ['convertOne', 'convertOne', 'notDelivered'], // the agents a stored queue's row waited for or came from, and the item an earlier conversion posted for it, read as the start's writes leave them (#1423)
+  // A wake's schedule, maybe just scheduled, changed or removed behind a held commit: arming its timer, firing it,
+  // recording its tools, settling or canceling it, and the per-agent limit each decide a write (#623).
+  'schedule-tools.mjs': ['cancelWake', 'scheduleWakeTool'],
+  'scheduled-wakes.mjs': [
+    'armWake',
+    'fireScheduledWake',
+    'fireScheduledWake',
+    'prepareScheduledRetry',
+    'addTool',
+    'settleScheduledWake',
+    'settleScheduledWake',
+    'cancelWakeSchedule',
+    'noteScheduledTurn',
+    'dropScheduledWake',
+  ],
   // the item a repeated send's first try posted, and its conversation, either maybe behind a held commit (#1138, #1292)
   'send-message.mjs': ['repeatOf', 'repeatOf'],
   'persona-create.mjs': ['createPersonaFor'], // the conversation a new agent joins, maybe started behind a held commit (#1292)

@@ -29,9 +29,13 @@ export function scheduleWake(rt, sessionId, { inMs, note }) {
   return sc;
 }
 
-/** Arms one current, pending schedule. @param {any} rt @param {any} sc */
+/**
+ * Arms one current, pending schedule. Each read of a schedule here decides a write, so it reads one just scheduled or
+ * changed behind a held commit too (#623): read from the published state, a wake scheduled then was never armed.
+ * @param {any} rt @param {any} sc
+ */
 export function armWake(rt, sc) {
-  const current = rt.s.schedules[sc.id];
+  const current = rt.store.pending.schedule(sc.id);
   if (!current || current.running) return;
   clearTimeout(rt.timers.get(sc.id));
   rt.timers.set(sc.id, setTimeout(() => fireScheduledWake(rt, sc.id), Math.max(0, current.at - Date.now())).unref());
@@ -40,7 +44,7 @@ export function armWake(rt, sc) {
 /** Fires one due wake. Exported so deterministic tests don’t wait for real time. @param {any} rt @param {string|any} schedule */
 export function fireScheduledWake(rt, schedule) {
   const id = typeof schedule === 'string' ? schedule : schedule?.id;
-  const sc = rt.s.schedules[id];
+  const sc = rt.store.pending.schedule(id);
   rt.timers.delete(id);
   if (!sc || sc.running) return;
   // While writes are closed the whole fire waits, owned by its schedule: nothing goes into memory only, no start is
@@ -50,7 +54,8 @@ export function fireScheduledWake(rt, schedule) {
   rt.store.emit('schedule', running);
   if (sc.itemId) rt.threads.patchItem(sc.threadId, sc.itemId, { status: 'running' });
   // A retired fork isn’t woken: deliver() would refuse it, here outside any request (#228).
-  if (!rt.s.sessions[sc.sessionId] || rt.s.sessions[sc.sessionId].retiredFork) return finishSchedule(rt, running, 'canceled');
+  const se = rt.store.pending.session(sc.sessionId);
+  if (!se || se.retiredFork) return finishSchedule(rt, running, 'canceled');
   if (!sc.attempt) rt.threads.addItem(sc.threadId, { kind: 'system', variant: 'wake', from: sc.handle, to: sc.handle, scheduled: true });
   const message = { kind: 'wake', note: sc.recoveryNote ?? sc.note, scheduledWakeId: sc.id };
   // A scheduled entry (designs/rooms-at-scale.md, “What an entry is”) that carries the wake its turn keeps (#466).
@@ -64,7 +69,7 @@ export function fireScheduledWake(rt, schedule) {
  */
 export function prepareScheduledRetry(rt, message, threadId) {
   if (message?.retry !== true || typeof message.scheduledWakeId !== 'string') return message;
-  const sc = rt.s.schedules[message.scheduledWakeId];
+  const sc = rt.store.pending.schedule(message.scheduledWakeId);
   if (!sc) {
     const line = rt.store.items(threadId).find((i) => i.kind === 'system' && i.scheduleId === message.scheduledWakeId);
     return line?.recoveryNote ? { ...message, note: line.recoveryNote } : message;
@@ -92,7 +97,7 @@ const addTool = (rt, turn, name, id) => {
   turn.scheduledTools ??= [];
   if (turn.scheduledTools.includes(clipped) || turn.scheduledTools.length >= TOOL_LIMIT) return;
   turn.scheduledTools.push(clipped);
-  const sc = rt.s.schedules[scheduleId];
+  const sc = rt.store.pending.schedule(scheduleId);
   if (sc) rt.store.emit('schedule', { ...sc, startedTools: [...turn.scheduledTools] });
 };
 
@@ -132,11 +137,11 @@ const recoveryText = (turn, tools, why = 'failed because the network dropped') =
 export function settleScheduledWake(rt, turn, err) {
   const id = turn.asked?.message?.scheduledWakeId;
   if (!id) return;
-  const sc = rt.s.schedules[id];
+  const sc = rt.store.pending.schedule(id);
   if (!sc) return;
   if (!err || err.name === 'AbortError') return finishSchedule(rt, sc, err ? 'canceled' : 'done');
   // A host turn marked lost is still running there and RemoteTurns will attach it again; no second recovery is armed.
-  if (rt.s.sessions[turn.sessionId]?.remoteTurn?.state === 'lost') return finishSchedule(rt, sc, 'done');
+  if (rt.store.pending.session(turn.sessionId)?.remoteTurn?.state === 'lost') return finishSchedule(rt, sc, 'done');
   if (!isNetworkFailure(err)) return finishSchedule(rt, sc, 'done');
   const now = Date.now();
   const attempt = (sc.attempt ?? 0) + 1;
@@ -177,7 +182,7 @@ function finishSchedule(rt, sc, status, patch = {}) {
 
 /** Cancels one pending or running schedule. @param {any} rt @param {string} scheduleId */
 export function cancelWakeSchedule(rt, scheduleId) {
-  const sc = rt.s.schedules[scheduleId];
+  const sc = rt.store.pending.schedule(scheduleId);
   if (!sc) throw httpError(404, 'That wake-up already happened or was canceled.');
   // A fire waiting in the inbox goes with it, as one held behind a turn did; one a turn took is that turn’s.
   leftOver(rt, sc, ['waiting']);
@@ -190,7 +195,7 @@ export function cancelWakeSchedule(rt, scheduleId) {
  */
 export function noteScheduledTurn(rt, turn) {
   const id = turn?.asked?.message?.scheduledWakeId;
-  const sc = typeof id === 'string' ? rt.s.schedules[id] : null;
+  const sc = typeof id === 'string' ? rt.store.pending.schedule(id) : null;
   if (sc && sc.turnId !== turn.id) rt.store.emit('schedule', { ...sc, turnId: turn.id });
 }
 
@@ -233,6 +238,6 @@ function leftOver(rt, sc, states = ['waiting', 'taken']) {
 
 /** A scheduled wake waiting behind a turn you stopped goes with it (#466): it’s settled, not left running. */
 export function dropScheduledWake(rt, message) {
-  const sc = typeof message?.scheduledWakeId === 'string' ? rt.s.schedules[message.scheduledWakeId] : null;
+  const sc = typeof message?.scheduledWakeId === 'string' ? rt.store.pending.schedule(message.scheduledWakeId) : null;
   if (sc) finishSchedule(rt, sc, 'canceled');
 }
