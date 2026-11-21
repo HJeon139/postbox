@@ -895,6 +895,8 @@ export function mountComposer(threadId, { side = false } = {}) {
         ),
       ),
     );
+    // The hint too: a file attached or removed changes what Enter does with a / line (#546).
+    paint();
   }
 
   function plusMenu(anchor) {
@@ -1163,6 +1165,7 @@ export function mountComposer(threadId, { side = false } = {}) {
       own: [...POSTBOX_NAMES],
       views: POSTBOX_VIEWS,
       has: (se, name) => agentCommands(se).list.some((c) => c.name === name),
+      files: attachments.length > 0,
     });
 
   async function submit(sendNow = false) {
@@ -1172,7 +1175,7 @@ export function mountComposer(threadId, { side = false } = {}) {
       return;
     }
     if (!text && !attachments.length) return;
-    const command = !attachments.length ? commandFor(text) : null;
+    const command = !attachments.length || resolved(text)?.refused ? commandFor(text) : null;
     if (command) {
       if (await command()) clear();
       return;

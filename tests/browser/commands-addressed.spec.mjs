@@ -4,7 +4,7 @@
 // - `@beta /release-notes 2.1` runs @beta’s own command as its turn, with `/release-notes 2.1` as the whole prompt;
 // - `@alpha /mode` opens @alpha’s persona sheet, not the last speaker’s;
 // - `/effort low` says Postbox’s /effort takes no argument, opens the last speaker’s sheet, and sends nothing (#546);
-// - `/stop alpha` says Postbox’s /stop takes no argument, and Enter sends nothing (#546);
+// - `/stop alpha` says Postbox’s /stop takes no argument, and Enter sends nothing (#546), as does `/effort low` with a file;
 // - `/compact keep the plan`, which @alpha offers, says it runs as @alpha’s turn, not Postbox’s /compact (#546);
 // - `@alpha /release-notes`, which @alpha doesn’t offer, says so before it’s sent, and goes to @alpha as a message;
 // - `@ghost /compact`, a handle no agent here has, says so too, and goes to the last speaker as a message;
@@ -145,6 +145,30 @@ test('#546 /stop alpha, which Postbox’s /stop doesn’t take, says so and send
   await sendAfter(page, t);
   expect(sent(t, '/stop alpha'), 'no message').toEqual([]);
   expect(turnsFor('/stop'), 'no turn').toEqual([]);
+});
+
+test('#546 a file attached after /effort low is typed: the hint changes to say Enter sends nothing, and it does', async ({ page }) => {
+  const { t } = await room(page, 'With a file', 'beta');
+  await page.keyboard.type('/effort low');
+  await expect(hint(page)).toContainText('/effort takes no argument here, so Enter runs it for beta without “low”');
+  await page.locator('.composer input[type=file][multiple]').setInputFiles({ name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('Notes') });
+  await expect(page.locator('.composer .attachments .att')).toHaveText(/^notes\.txt · \d/);
+  await expect(hint(page)).toContainText('/effort takes no argument here, so Enter sends nothing. Remove “low” to run it');
+  await page.locator('#composer-input').focus();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#composer-input'), 'the draft stays').toHaveValue('/effort low');
+  await expect(page.locator('.composer .attachments .att'), 'and so does the file').toHaveCount(1);
+  await expect(page.getByRole('dialog', { name: 'Settings' }), 'no settings opened').toHaveCount(0);
+  // Without the file, the hint goes back, and the agent’s /compact no longer promises a turn with a file there.
+  await page.locator('#composer-input').fill('/compact keep the plan');
+  await expect(hint(page), 'an agent’s command with a file goes as a message, so no turn is promised').not.toContainText('alpha’s turn');
+  await page.locator('.composer .attachments .att button').first().click();
+  await expect(page.locator('.composer .attachments .att')).toHaveCount(0);
+  await expect(hint(page), 'the file removed, the agent’s command runs as its turn').toContainText('Enter runs /compact as alpha’s turn');
+  await page.locator('#composer-input').fill('');
+  await sendAfter(page, t);
+  expect(sent(t, '/effort low'), 'no message').toEqual([]);
+  expect(turnsFor('/effort'), 'no turn').toEqual([]);
 });
 
 test('#546 /compact keep the plan, which only @alpha offers, names whose turn it starts, since Postbox has a /compact too', async ({ page }) => {
