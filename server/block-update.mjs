@@ -26,6 +26,17 @@ export function answerDelivered(apps, threadId, message) {
 }
 
 /**
+ * Reopening an answered block keeps a receipt of that answer: what it was, for which revision, and when, so the person
+ * can see it was for an earlier revision and answer this one (#518). The review hides it once they answer again.
+ * @param {any} existing  the block item being updated
+ */
+function priorAnswerOf(existing) {
+  const a = existing.answered ? existing.answer : null;
+  if (!a) return {};
+  return { priorAnswer: { action: a.action, ...(a.values?.verdict ? { verdict: a.values.verdict } : {}), revision: a.revision ?? 1, at: a.at } };
+}
+
+/**
  * update_block’s refusal over an answer the agent hasn’t read: the answer stays on screen, and the reply says what
  * it was. If its event is no longer waiting for the agent (a stopped or failed turn, or a restart, dropped it), the
  * reply carries the whole answer and counts as reading it, so the block isn’t stuck.
@@ -106,6 +117,7 @@ export function updateBlock(apps, sessionId, { block }, { turn, se, threadId, en
   }
   /** @type {Record<string, any>} */
   const patch = { block: v.block, answered: false, answer: null, closed: null, revision: (existing.revision ?? 1) + 1, updatedAt: now, ...files, ...reviews };
+  Object.assign(patch, priorAnswerOf(existing));
   if (v.block.type === 'progress') Object.assign(patch, stampSteps(existing, v.block, now));
   // Asking again belongs to this turn, so its end shows the person this agent needs them (#69).
   if (ASKING.has(v.block.type) && turn) patch.turnId = turn.id;
