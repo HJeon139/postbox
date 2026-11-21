@@ -90,9 +90,9 @@ const BUILDERS = {
     for (const k of Object.keys(v)) if (!b.fields.some((f) => f.id === k)) return { ok: false, error: `“${k}” isn’t a field in this form.` };
     const n = Object.keys(fieldErrors).length;
     if (n) return { ok: false, error: n === 1 ? '1 field needs fixing.' : `${n} fields need fixing.`, fieldErrors };
+    // Every field that was sent, so the receipt never leaves out a value the agent received (#247).
     const shown = b.fields
-      .filter((f) => out[f.id] !== undefined && out[f.id] !== '' && f.kind !== 'longtext')
-      .slice(0, 2)
+      .filter((f) => out[f.id] !== undefined && out[f.id] !== '')
       .map(
         (f) =>
           `${f.label} ${f.kind === 'toggle' ? (out[f.id] ? 'on' : 'off') : f.kind === 'select' ? f.options.find((o) => o.id === out[f.id])?.label : f.kind === 'number' ? fmtNum(out[f.id]) : quote(out[f.id], 32)}`,
