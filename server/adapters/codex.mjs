@@ -96,7 +96,8 @@ export function createCodexMapper(ctx, io = {}) {
         } else itemCompleted(emit, p.item, io.read);
         break;
       case 'item/agentMessage/delta':
-        if (typeof p.delta === 'string') {
+        // Only a delta with text marks its message streamed, or an empty one would hide the completed text (#1543).
+        if (typeof p.delta === 'string' && p.delta) {
           streamed.add(p.itemId);
           open.add(p.itemId);
           // Open until its item completes: two agent messages can stream at once, narrating parallel calls (#1293).
