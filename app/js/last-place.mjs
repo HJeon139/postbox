@@ -60,9 +60,19 @@ export function goHome(root) {
     return;
   }
   // A fresh install has no project yet: this page leads to making one, as the empty overview did.
-  const make = h('button.btn', { type: 'button', onclick: () => openSettings('projects') }, icon('plus'), 'New project');
-  root.replaceChildren(
-    h('div.app.no-rail', topbar({}), h('main.threads-view.empty-home', { id: 'main' }, installLine(), h('p', 'Create a project to start.'), make)),
-  );
+  // The same id as the new project’s New conversation, so closing Settings once the project opens puts focus there (#549).
+  const make = h('button.btn', { type: 'button', id: 'first-step', onclick: () => openSettings('projects') }, icon('plus'), 'New project');
+  const page = h('main.threads-view.empty-home', { id: 'main' }, installLine(), h('p', 'Create a project to start.'), make);
+  root.replaceChildren(h('div.app.no-rail', topbar({}), page));
   setAttention(0, 'Postbox');
+  // The first project, made from this page’s New project, opens as a reload would (#549). Stops once the page goes.
+  const off = client.on(() => {
+    if (!page.isConnected) return off();
+    const next = home();
+    if (!next) return;
+    off();
+    // Focus on this page, as when Settings closed before the project came: to the new page’s first step, once drawn.
+    if (page.contains(document.activeElement)) addEventListener('hashchange', () => document.getElementById('first-step')?.focus(), { once: true });
+    navigate(next, { replace: true });
+  });
 }

@@ -112,11 +112,26 @@ test('#485: the empty reply keeps the turn’s raw ending, and the agent hears o
 });
 
 test('#485: only a turn that owes a reply is held to it; a block or a message to another agent is a reply', () => {
-  const turn = (kind, said = '') => ({ id: 'tu_1', kind, said });
+  const turn = (kind, said = '', took = [{ kind: 'tool', label: 'Ran npm test' }]) => ({ id: 'tu_1', kind, said, steps: took });
   const steps = [{ kind: 'agent', turnId: 'tu_1', text: '' }];
   // A message from the person or another agent, answered with steps only.
   assert.equal(endedWithoutReply(turn('user'), steps), true);
   assert.equal(endedWithoutReply(turn('agent'), steps), true);
+  // #1543: only a reply going back woke it, and it ended at once with nothing to add; the person’s message still owes one.
+  const back = { source: 'mention', from: 'researcher', bounce: true };
+  const woke = (entries, extra = {}, took = []) => ({ ...turn('agent', '', took), asked: { message: { entries, ...extra } } });
+  assert.equal(endedWithoutReply(woke([back]), steps), false);
+  assert.equal(endedWithoutReply(woke([back, { source: 'notice', text: 'Postbox’s note' }]), steps), false, 'a notice rides along');
+  assert.equal(endedWithoutReply(woke([back], {}, [{ kind: 'thought', label: 'Thinking' }]), steps), false, 'a thought isn’t a step');
+  assert.equal(endedWithoutReply(turn('user', '', []), steps), true);
+  // A direct @-mention is a request, alone or with a reply going back (critic’s review of PR #1546).
+  const asked = { source: 'mention', from: 'researcher' };
+  assert.equal(endedWithoutReply(woke([asked]), steps), true, 'a direct mention');
+  assert.equal(endedWithoutReply(woke([back, asked]), steps), true, 'a batch with a direct mention');
+  assert.equal(endedWithoutReply(woke([]), steps), true, 'no entries to read it from');
+  // The person’s Retry, and a host turn continued after it was cut off, still owe theirs.
+  assert.equal(endedWithoutReply(woke([back], { retry: true }), steps), true, 'a Retry');
+  assert.equal(endedWithoutReply({ ...woke([back]), origin: { kind: 'agent' }, backTo: ['researcher'] }, steps), true, 'a continued host turn');
   assert.equal(endedWithoutReply(turn('user', '\n\n'), steps), true, 'whitespace isn’t a reply');
   // Turns that may end quietly: an event (a block answered or dismissed, a review), a scheduled wake, a lint pass.
   for (const kind of ['event', 'wake', 'lint', 'app-check']) assert.equal(endedWithoutReply(turn(kind), steps), false, kind);
