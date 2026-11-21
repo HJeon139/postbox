@@ -8,6 +8,7 @@ import { withQuota } from '../harness-failure.mjs';
 import { codexApproval } from './codex-approval.mjs';
 import { itemCompleted, itemStarted } from './codex-events.mjs';
 import { codexMcpApprovalConfig, postboxMcpApprovalArgs } from './codex-mcp-policy.mjs';
+import { CODEX_MEMORY_OFF } from './codex-memory.mjs';
 import { codexModels, findCodex } from './codex-models.mjs';
 import { CODEX_TOOL_RULES, codexWebSearchArgs, networkOn } from './codex-network.mjs';
 import { attachmentPaths, CODEX_CAPABILITIES, createCodexHost, interruptReached, pickUp, remoteEnd, spawnRemoteCodex } from './codex-remote.mjs';
@@ -69,6 +70,7 @@ export function codexConfigArgs(mcpUrl) {
     '-c',
     `mcp_servers.${POSTBOX_SERVER}.required=true`,
     ...postboxMcpApprovalArgs(),
+    ...CODEX_MEMORY_OFF,
   ];
 }
 
