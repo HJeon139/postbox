@@ -5,6 +5,7 @@
 // - `@alpha /mode` opens @alpha’s persona sheet, not the last speaker’s;
 // - `/effort low` says Postbox’s /effort takes no argument, opens the last speaker’s sheet, and sends nothing (#546);
 // - `/stop alpha` says Postbox’s /stop takes no argument, and Enter sends nothing (#546), as does `/effort low` with a file;
+//   typed after a space it says so too, and a screen reader hears it;
 // - `/compact keep the plan`, which @alpha offers, says it runs as @alpha’s turn, not Postbox’s /compact (#546);
 // - `@alpha /release-notes`, which @alpha doesn’t offer, says so before it’s sent, and goes to @alpha as a message;
 // - `@ghost /compact`, a handle no agent here has, says so too, and goes to the last speaker as a message;
@@ -174,6 +175,21 @@ test('#546 a file attached after /effort low is typed: the hint changes to say E
   await sendAfter(page, t);
   expect(sent(t, '/effort low').concat(sent(t, '/effort')), 'no message').toEqual([]);
   expect(turnsFor('/effort'), 'no turn').toEqual([]);
+});
+
+test('#546 a refused line typed after a space says so too, and a screen reader hears it on Enter', async ({ page }) => {
+  const { t } = await room(page, 'Leading space', 'beta');
+  await page.keyboard.type(' /stop alpha');
+  const said = '/stop takes no argument here, so Enter sends nothing. Remove “alpha” to run it';
+  await expect(hint(page)).toContainText(said);
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#composer-input'), 'the draft stays').toHaveValue(' /stop alpha');
+  await expect(page.locator('#live'), 'announced').toHaveText(said);
+  await page.locator('#composer-input').fill(`/stop ${'a long pasted paragraph '.repeat(10)}`);
+  await expect(hint(page), 'a long argument is cut in the hint').toContainText('Remove “a long pasted paragraph a long pasted p…” to run it');
+  await page.locator('#composer-input').fill('');
+  await sendAfter(page, t);
+  expect(turnsFor('/stop'), 'no turn').toEqual([]);
 });
 
 test('#546 /compact keep the plan, which only @alpha offers, names whose turn it starts, since Postbox has a /compact too', async ({ page }) => {

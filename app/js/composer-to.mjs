@@ -3,12 +3,13 @@
 // and one that names an agent without its @ may not reach it (#134).
 
 import { chainHintAt } from '/shared/limits.mjs';
-import { parseMentions, unaddressed } from '/shared/text.mjs';
+import { clip, parseMentions, unaddressed } from '/shared/text.mjs';
 import { mockMarker } from './agent-facts.mjs';
 import { handles } from './agent-markdown.mjs';
 import { countText, roomChainLimit } from './chain-limit.mjs';
 import { S, sessionsOf } from './client.mjs';
 import { h } from './dom.mjs';
+import { say } from './ui.mjs';
 
 /**
  * Who answers a message that @-mentions no one: in a conversation, the agent that spoke last, else its first; in a
@@ -117,7 +118,8 @@ export function commandHint(r, threadId) {
   // Postbox’s own command doesn’t take what was typed after it: Enter runs it without that, or sends nothing (#546).
   if (r?.dropped) {
     const own = h('span.mono', `/${r.name}`);
-    const typed = h('span.mono', `“${r.dropped}”`);
+    // Cut, so a paragraph pasted after the command isn’t echoed whole.
+    const typed = h('span.mono', `“${clip(r.dropped, 40)}”`);
     // With files, a command can’t go either, so both are what to remove (#546).
     const also = r.files ? ' and the attached files' : '';
     if (r.refused) return h('span', own, ' takes no argument here, so Enter sends nothing. Remove ', typed, also, ' to run it');
@@ -130,6 +132,16 @@ export function commandHint(r, threadId) {
   const hint = r.hint ? [' ', h('span.mono.dim', r.hint)] : null;
   return h('span', 'Enter runs ', h('span.mono', `/${r.name}`), hint, r.own ? ' for ' : ' as ', who, r.own ? '' : '’s turn');
 }
+
+/**
+ * What Enter does with a refused line (#546): sends nothing, and says the hint’s words to a screen reader, which reads
+ * the line under the composer only when asked. Resolves false, so the draft stays.
+ * @param {any} r  resolveCommand’s refused answer @param {string} threadId
+ */
+export const refusal = (r, threadId) => async () => {
+  say(commandHint(r, threadId)?.textContent ?? '');
+  return false;
+};
 
 /**
  * The composer’s placeholder: a topic thread’s reply, a side thread to join, or whom a message goes to. A conversation’s

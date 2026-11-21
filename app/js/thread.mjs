@@ -18,7 +18,7 @@ import { placeholderRoom } from './composer-placeholder.mjs';
 import { quotaLine, releaseQuotaLine } from './composer-quota.mjs';
 import { runsIn } from './composer-runs-in.mjs';
 import { fitDraft } from './composer-size.mjs';
-import { addressLine, addressSig, commandHint, hintMode, placeholderFor } from './composer-to.mjs';
+import { addressLine, addressSig, commandHint, hintMode, placeholderFor, refusal } from './composer-to.mjs';
 import { $, ago, dayOf, fill, h, icon, plural, syncList, timeOf, trusted } from './dom.mjs';
 import { draftAttachments } from './draft-attachments.mjs';
 import { appSig, drawnApp } from './drawn-app.mjs';
@@ -1148,7 +1148,7 @@ export function mountComposer(threadId, { side = false } = {}) {
     const r = resolved(text);
     if (!r || r.missing) return null;
     // Postbox’s own command typed with an argument it can’t go without: nothing is sent, as the hint says (#546).
-    if (r.refused) return async () => false;
+    if (r.refused) return refusal(r, threadId);
     if (r.own)
       return async () => {
         POSTBOX.find(([n]) => n === r.name)?.[2](r.se ?? undefined, r.named);
@@ -1303,7 +1303,8 @@ export function mountComposer(threadId, { side = false } = {}) {
     // The hint line follows what the line will do: a picked skill, a ! command, or a message, and whom it reaches.
     if (slashTarget && !ta.value.startsWith(`/${slashTarget.name}`)) slashTarget = null;
     const to = hint.dataset.to !== toSig();
-    if (to || ta.value.startsWith('!') || hint.dataset.mode || (commands && /^(@\S+\s+)?\//.test(ta.value))) paint();
+    // From the first character that isn’t a space, as hintMode and submit read the line (#546).
+    if (to || ta.value.trimStart().startsWith('!') || hint.dataset.mode || (commands && /^(@\S+\s+)?\//.test(ta.value.trimStart()))) paint();
     // Said once, when it appears, since the hint isn’t read as you type.
     if (to && hint.querySelector('.did-you-mean')) say(`${hint.querySelector('.did-you-mean').textContent} Its button follows the message box.`);
   });
