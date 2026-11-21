@@ -246,7 +246,7 @@ export class ClaudeCodeAdapter {
       // the whole turn): one the runtime asked to keep anyway is reported stopped, not kept.
       const stop = stopOnAbort(ctx.signal, () => {
         const keep = Array.isArray(ctx.signal.reason?.keepJobs) ? ctx.signal.reason.keepJobs : [];
-        return stopTurn(child, { keep, exited, ...procs }).then((r) => {
+        return stopTurn(child, { keep, exited, ...procs, unkilled: ctx.unkilled }).then((r) => {
           for (const k of r.kept) ctx.job?.({ id: k.id, kept: true, pgid: k.pgid, groups: k.groups });
           if (remote) for (const k of keep) if (typeof k?.id === 'string') ctx.job?.({ id: k.id, state: 'stopped' });
           return r;

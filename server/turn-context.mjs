@@ -25,6 +25,13 @@ export function adapterContext(rt, se0, turn) {
     ...replyWords(rt, se0, turn, live),
     ...stepCallback(rt, se0, turn, live),
     ...reportCallbacks(rt, turn, live),
+    // With run clocks on: Stop gave up on the CLI’s group, which outlived SIGKILL (server/adapters/process-group.mjs),
+    // so its end isn’t an exit, and a run clock voids its run.
+    ...(rt.runClock && {
+      unkilled: () => {
+        turn.mayRunOn ??= 'unkilled';
+      },
+    }),
     tools,
   };
 }

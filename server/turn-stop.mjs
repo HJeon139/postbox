@@ -5,6 +5,7 @@
 
 import { runningJobs, runningProgress, settleJobs } from './job-records.mjs';
 import * as queue from './message-queue.mjs';
+import { clockStopConfirmed } from './run-clock.mjs';
 import { dropScheduledWake } from './scheduled-wakes.mjs';
 import { dropWakes } from './side-threads.mjs';
 import { recordStopped } from './stop-record.mjs';
@@ -15,6 +16,13 @@ import { entriesFirst } from './turns.mjs';
 
 /** How long a stopped turn may hold its session before Postbox lets the next turn start anyway, and says so (#126). */
 const STOP_WATCHDOG_MS = 15000;
+
+/** What a waiting permission is told, by who stopped the turn: the person, or a run clock (server/run-clock.mjs). */
+const STOP_WHY = Object.freeze({
+  you: 'You stopped the agent.',
+  clock: 'Its run clock reached its budget, so Postbox stopped it.',
+  pause: 'The person paused its run clock, so Postbox stopped it until they resume it.',
+});
 
 /**
  * Stop ends this agent’s turn and its subagents. Agents it woke keep running. Its process gets SIGINT, then SIGKILL,
@@ -27,7 +35,7 @@ const STOP_WATCHDOG_MS = 15000;
  * A remote turn’s Stop is always a plain stop: the daemon stops the whole turn, so no job is kept (#120).
  * @param {any} rt  the runtime
  * @param {string} sessionId
- * @param {{ silent?: boolean, jobs?: 'stop' | 'keep', by?: 'you' | 'shutdown' | 'hung', why?: string, sendNow?: boolean }} [opts]
+ * @param {{ silent?: boolean, jobs?: 'stop' | 'keep', by?: 'you' | 'shutdown' | 'hung' | 'clock' | 'pause', why?: string, sendNow?: boolean }} [opts]
  */
 export function stop(rt, sessionId, { silent = false, jobs = 'stop', by = 'you', why, sendNow = false } = {}) {
   const turn = rt.turns.get(sessionId);
@@ -43,7 +51,7 @@ export function stop(rt, sessionId, { silent = false, jobs = 'stop', by = 'you',
   turn.abort.abort(Object.assign(new Error('Stopped by you.'), { name: 'AbortError', keepJobs: keep.map((j) => ({ id: j.id, command: j.command })) }));
   turn.closed = true;
   rt.running.end(sessionId);
-  recordStopped(rt, turn, ended, { by, why: 'You stopped the agent.' });
+  recordStopped(rt, turn, ended, { by, why: by === 'clock' || by === 'pause' ? STOP_WHY[by] : STOP_WHY.you });
   // What the turn took was given to the agent, so it isn't handed over again (designs/architecture/services.md, “The
   // end of a turn”). A shutdown's isn't settled: the restart reopens it once, as a resend.
   if (by !== 'shutdown') rt.bus.emit('turn.stopping', { turn });
@@ -61,6 +69,8 @@ export function stop(rt, sessionId, { silent = false, jobs = 'stop', by = 'you',
     rt.watchdogs.delete(watchdog);
     if (rt.exiting.get(sessionId)?.turn !== turn) return;
     console.error(`@${se?.handle ?? sessionId}’s stopped turn hadn’t ended after ${STOP_WATCHDOG_MS / 1000} s, so its next turn starts anyway.`);
+    // Its CLI may still work: a run clock voids its run (clockStopConfirmed).
+    if (rt.runClock) turn.mayRunOn ??= 'watchdog';
     turnExited(rt, turn);
   }, STOP_WATCHDOG_MS);
   watchdog.unref?.();
@@ -85,6 +95,10 @@ export function stop(rt, sessionId, { silent = false, jobs = 'stop', by = 'you',
  * then the queue.
  */
 export function turnExited(rt, turn) {
+  // With run clocks on, a clock that paused or expired while this turn could still work hears it’s over, at the time it
+  // was, or that Postbox stopped waiting for a CLI that may still work (mayRunOn: the watchdog, or a group that
+  // outlived SIGKILL).
+  if (rt.runClock && !turn.remote) clockStopConfirmed(rt, turn.sessionId, `turn:${turn.id}`, Date.now(), turn.mayRunOn);
   // What the exit writes waits for writes to reopen (ST-3), behind the stop’s own records (server/store-outage.mjs).
   if (!rt.store.writable) return whenWritable(rt, () => turnExited(rt, turn));
   settleJobs(rt, turn);

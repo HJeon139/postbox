@@ -45,6 +45,7 @@ const PLACED = {
   'net-fetch.mjs': 1, // net.fetch’s deadline, which ends a fetch: no store
   'net-fetch-line.mjs': 1, // the wait between patches of a fetch’s activity step: gated, skips its patch while closed
   'permission-cards.mjs': 1, // expireWait: gated
+  'run-clock.mjs': 2, // a run clock’s expiry, and its timers’ type: stops the turn, which is allowed while closed; its record waits through whenWritable, and Retry re-arms it
   'remote/host-admin.mjs': 1, // a wait: no store
   'remote/host-status.mjs': 1, // a microtask after a host event publishes host status: an emit, memory-only while closed like stream text (I1)
   'remote/hosts-models.mjs': 3, // the wait for a host’s model list: a connection, no store
@@ -118,7 +119,16 @@ async function sites(dir, rel = '') {
 }
 
 /** Files whose row says the callback is gated: each must carry the rule in its source, so it can’t be dropped silently. */
-const GATED = ['ask-question.mjs', 'claude-mirror.mjs', 'kept-jobs.mjs', 'net-fetch-line.mjs', 'permission-cards.mjs', 'thread-summary.mjs', 'turn-stop.mjs'];
+const GATED = [
+  'ask-question.mjs',
+  'claude-mirror.mjs',
+  'kept-jobs.mjs',
+  'net-fetch-line.mjs',
+  'permission-cards.mjs',
+  'run-clock.mjs',
+  'thread-summary.mjs',
+  'turn-stop.mjs',
+];
 const RULE = /\bstore\.writable\b|\bwhenWritable\(|\bgated\(/;
 
 test('every file whose timers table row says “gated” checks the store, defers through whenWritable or runs through gated()', async () => {

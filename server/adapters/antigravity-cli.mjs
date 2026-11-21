@@ -691,7 +691,7 @@ export class AntigravityCliAdapter {
         c.once('error', r);
       });
       // SIGINT to the group, then SIGKILL after the grace period (process-group.mjs), as for the other CLIs.
-      const stop = stopOnAbort(ctx.signal, () => stopTurn(c, { exited, kill: this.kill, list: this.list }));
+      const stop = stopOnAbort(ctx.signal, () => stopTurn(c, { exited, kill: this.kill, list: this.list, unkilled: ctx.unkilled }));
       child.on('error', (e) => reject(agyStartError(e, prompt, this.bin)));
       child.stderr.on('data', (d) => {
         stderr = (stderr + d).slice(-4000);

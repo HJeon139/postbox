@@ -38,6 +38,7 @@ import { settleInterrupted, stopStreaming } from './restart-sweep.mjs';
 import { SAME_ORIGIN_ONLY } from './review-files.mjs';
 import { patchThread } from './room-chain-limit.mjs';
 import { roomFileRoute } from './room-files.mjs';
+import { installRunClock, runClockOn } from './run-clock-install.mjs';
 import { httpError, Runtime } from './runtime.mjs';
 import { settleLedger, stopTimers } from './runtime-close.mjs';
 import { sandboxRoute } from './sandbox-routes.mjs';
@@ -141,6 +142,7 @@ export async function start({
   settleInterrupted(rt);
   stopStreaming(rt);
   rt.rearmSchedules();
+  if (runClockOn()) installRunClock(rt); // timed UAT trials only (#1526)
   rt.expireStalePermissions();
   rt.work.expireStale();
   rt.expireStaleJobs();

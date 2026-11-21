@@ -70,6 +70,7 @@ let cookie;
 const call = (r) => fakeRequest(app.handle, { host: `127.0.0.1:${PORT}`, ...r });
 
 before(async () => {
+  process.env.POSTBOX_RUN_CLOCK = '1'; // so the run clock’s route is there to try (#1526)
   dir = tempDir('pb-proto-');
   app = await start({ port: PORT, dataDir: join(dir, 'data'), fresh: true, demo: true, quiet: true, claudeHome: dir, listen: false });
   cookie = (await call({ path: '/', headers: NAVIGATION })).headers['set-cookie'].split(';')[0];

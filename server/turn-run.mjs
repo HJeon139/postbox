@@ -9,6 +9,7 @@ import { toolsDownNote } from './adapters/tools-down.mjs';
 import { heldSession } from './held-session.mjs';
 import { httpError, retiredError } from './helpers.mjs';
 import { refuseUnregistered } from './remote/placement.mjs';
+import { clockTurn, holdForClock } from './run-clock.mjs';
 import { prepareScheduledRetry } from './scheduled-wakes.mjs';
 import { endChain } from './side-threads.mjs';
 import { newId } from './store.mjs';
@@ -36,6 +37,11 @@ export function deliver(rt, sessionId, message, { summarizeTo = null, threadId =
   if (heldSession(rt, sessionId, () => rt.turnService.run(sessionId, message, { summarizeTo, threadId }))) return;
   const se = rt.store.pending.session(sessionId) ?? rt.session(sessionId); // a summary's or a notice's write held (#506)
   if (se.retiredFork) throw retiredError(se);
+  // With run clocks on (server/run-clock-install.mjs), a paused or expired clock starts no turn of its agent, and what
+  // came another way than its inbox waits for the resume (server/run-clock.mjs). A host turn attached again after a
+  // restart starts, to be stopped below: its clock may have run out while Postbox was down.
+  const held = rt.runClock?.holds(sessionId) ?? false;
+  if (held && typeof message.attach !== 'string') return holdForClock(rt, sessionId, { message, summarizeTo, threadId });
   message = prepareScheduledRetry(rt, message, se.threadId);
   // As it was asked, for Retry (askedOf).
   const asked = { message, summarizeTo, threadId };
@@ -70,7 +76,8 @@ export function deliver(rt, sessionId, message, { summarizeTo = null, threadId =
     projectFolder: project?.folder ?? null,
   });
   atWork(rt, se, turn);
-  runTurn(rt, se, turn, message, { adapter, persona, hostId });
+  runTurn(rt, se, turn, rt.runClock ? clockTurn(rt, se.id, turn.id, message) : message, { adapter, persona, hostId });
+  if (held) rt.stop(se.id, { by: 'clock', silent: true });
 }
 
 /**

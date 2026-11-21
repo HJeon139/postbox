@@ -2,6 +2,7 @@
 // on until the daemon says it’s over, so the stop is kept on the session, the host is needed, and the stop goes again
 // at each welcome. Removing a host waits for these (confirmStops), and renaming one refuses while any is left (busyOn).
 
+import { clockStopConfirmed } from '../run-clock.mjs';
 import { hostOf } from './placement.mjs';
 import { linkOf, listen, needHost, releaseHost } from './turns-need.mjs';
 import { openCards } from './turns-prompts.mjs';
@@ -63,6 +64,8 @@ export function stopConfirmed(rts, turn) {
   if (!s) return;
   rts.stopping.delete(turn);
   dropStop(rts, s.sessionId, turn);
+  // With run clocks on, a clock that paused or expired while this turn could still run on the host hears it’s over.
+  if (rts.rt.runClock) clockStopConfirmed(rts.rt, s.sessionId, turn, rts.now());
   releaseHost(rts, s.hostId);
   for (const w of s.waiters) w();
 }

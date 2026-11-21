@@ -144,6 +144,14 @@ const PENDING = {
   // The room’s chain limit, which decides whether a wake waits, maybe set behind a held commit (#1035); and the room a
   // PATCH sets it on, maybe started there.
   'room-chain-limit.mjs': ['roomChainLimit', 'patchThread'],
+  // With run clocks on (#1526): every decision on a run clock (its route, its timer, a turn’s line, Delivery’s hold),
+  // on the clock as held writes will leave it; the session its route names, which a held delete may have removed; and
+  // the host stops its pause or expiry waits on, which the stop itself just wrote.
+  'run-clock-install.mjs': ['installRunClock'],
+  'run-clock.mjs': ['clockOf', 'unconfirmedStops', 'clockAction'],
+  // The session a clock line names, maybe just made, says which conversation the line goes to; and that
+  // conversation’s newest clock line, maybe just added, whether a holding clock still needs one.
+  'run-clock-notes.mjs': ['clockNote', 'repairClockNote', 'repairClockNote'],
   // The members a delete keeps its room for, maybe joined behind a held commit (#796); the session it deletes, and the
   // threads a conversation’s delete covers, any of them maybe made there too. Every lookup comes before any change.
   'session-lifecycle.mjs': ['conversationScope', 'conversationScope', 'deleteSession', 'deleteSession', 'deleteSession', 'deleteSession'],
