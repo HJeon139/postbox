@@ -33,17 +33,16 @@ export function mountSidePanel(parentId, sideId) {
   // Who is in a topic thread, in a line: the conversation’s agents, from their one session there (#228).
   const who = topic ? inThreadLine(sideId) : null;
   const summarize = summarizeButton(sideId, parent);
+  // Each line is cut to one with an ellipsis, so its whole text is its title too (#551).
+  const name = topic ? 'Thread' : side.title;
+  const from = topic ? `in ${parent?.title ?? 'the conversation'}` : `Side thread from ${parent?.title ?? 'this conversation'}`;
   const el = h(
     'aside.sidepanel',
     { 'aria-labelledby': 'sp-title' },
     h(
       'div.sp-head',
       icon('thread', 'dim'),
-      h(
-        'div.grow',
-        h('b.sp-line', { id: 'sp-title' }, topic ? 'Thread' : side.title),
-        h('div.small.dim.sp-line', topic ? `in ${parent?.title ?? 'the conversation'}` : `Side thread from ${parent?.title ?? 'this conversation'}`),
-      ),
+      h('div.grow', h('b.sp-line', { id: 'sp-title', title: topic ? null : name }, name), h('div.small.dim.sp-line', { title: from }, from)),
       summarize.el,
       copyLink(sideId, topic),
       h(

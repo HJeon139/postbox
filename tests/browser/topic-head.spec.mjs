@@ -1,7 +1,8 @@
 // #551: a topic thread’s head wrapped a long conversation name one word per line, beside Summarize back and Copy link,
 // and pushed the thread out of view. The head’s title and its “in <conversation>” line are now one line each, cut with
 // an ellipsis as the top bar cuts a name: at the window the issue was seen in, with Work open, and for a side thread
-// with a long title of its own in a phone-width window.
+// with a long title of its own in a phone-width window. However narrow the panel, enough of each line shows to read,
+// and each has its whole text on hover.
 
 import { expect, test } from '@playwright/test';
 import * as arrange from '../arrange.mjs';
@@ -43,16 +44,26 @@ const shape = (locator) =>
     cut: el.scrollWidth > el.clientWidth && getComputedStyle(el).textOverflow === 'ellipsis',
   }));
 
-for (const [kind, width, work] of [
-  ['topic', 1024, false],
-  ['topic', 1024, true],
-  ['side', 375, false],
+for (const [kind, width, work, paneMin] of [
+  ['topic', 1024, false, false],
+  ['topic', 1024, true, false],
+  ['topic', 1280, false, false],
+  ['side', 375, false, false],
+  ['topic', 320, false, false],
+  ['side', 1024, false, true],
 ]) {
-  test(`#551 a ${kind} thread’s head keeps its lines to one each at ${width} px${work ? ', with Work open' : ''}`, async ({ page }) => {
+  test(`#551 a ${kind} thread’s head keeps its lines to one each at ${width} px${work ? ', with Work open' : ''}${paneMin ? ', the pane at its narrowest' : ''}`, async ({
+    page,
+  }) => {
     await page.setViewportSize({ width, height: width === 375 ? 812 : 768 });
     const { t, side, title, sub } = threadIn(kind);
     await page.goto(`${app.origin}/#/t/${t.id}/side/${side}${work ? '?work' : ''}`);
     await synced(page, app);
+    if (paneMin) {
+      // Home takes the pane to its narrowest, PANE_MIN (pane-width.mjs).
+      await page.getByRole('separator', { name: 'Resize the pane' }).focus();
+      await page.keyboard.press('Home');
+    }
     const head = page.locator('aside.sidepanel .sp-head');
     const name = head.locator('#sp-title');
     const where = head.locator('#sp-title + div');
@@ -60,6 +71,23 @@ for (const [kind, width, work] of [
     await expect(where).toHaveText(sub);
     expect(await shape(where), 'the conversation it’s in: one line, cut').toEqual({ lines: 1, cut: true });
     if (kind === 'side') expect(await shape(name), 'a long title: one line, cut').toEqual({ lines: 1, cut: true });
-    expect((await head.boundingBox())?.height, 'the head stays the height of one row of buttons').toBeLessThan(80);
+    // Enough of each line shows to read it, “Thread” or a few words and an ellipsis, however narrow the panel.
+    for (const [line, what] of [
+      [name, 'its title'],
+      [where, 'the conversation it’s in'],
+    ]) {
+      expect((await line.boundingBox())?.width ?? 0, `${what}: wide enough to read`).toBeGreaterThanOrEqual(48);
+      // “Thread” is never cut, so it needs no title.
+      if (line === where || kind === 'side') await expect(line, `${what}: whole on hover`).toHaveAttribute('title', (await line.textContent()) ?? '');
+    }
+    const spill = await head.evaluate((el) => {
+      const box = el.getBoundingClientRect();
+      return [...el.querySelectorAll('button')]
+        .filter((b) => b.getBoundingClientRect().right > box.right + 0.5)
+        .map((b) => b.textContent || b.getAttribute('aria-label'));
+    });
+    expect(spill, 'every button inside the head').toEqual([]);
+    // With room, one row, as main draws it.
+    if (width >= 1280) expect((await head.boundingBox())?.height, 'the head stays the height of one row of buttons').toBeLessThan(80);
   });
 }
