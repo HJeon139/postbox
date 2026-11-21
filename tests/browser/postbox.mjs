@@ -110,33 +110,26 @@ export const PHONE = {
 };
 
 /**
- * How long synced waits, in all: 20 s. In a full local run the process that runs a spec also runs its Postbox and
+ * How long synced waits: 20 s. In a full local run the process that runs a spec also runs its Postbox and
  * agents, and the poll’s own call into the page waited 8–17 s while the page had caught up in 3–6 s (#1532), so the
  * bound has room above 17 s. It only bounds a wait. What guards how fast the page applies events is the `*-cost` specs
  * (live-cost, live-event-cost, stream-reply-cost, gap-read-cost and the rest), which count the page’s work per event
  * rather than time it.
  */
-export const SYNCED_TIMEOUT = 20_000;
+const SYNCED_TIMEOUT = 20_000;
 
 /**
  * Waits until the page has applied the server’s events up to its store’s seq now. A change made on the server
  * reaches the page over its event stream, which nothing orders with the test’s next step (POSTBOX_STREAM_LAG shows it).
- * Words a running turn still holds in their window (server/live-text.mjs) aren’t in the store yet, so it waits for
- * them to be stored first: a spec that reads a reply right after its last words wasn’t waiting for them (#1532). Both
- * waits share one budget, so a stall fails with its own message inside the test’s 30 s.
- * @param {import('@playwright/test').Page} page  @param {{ store: { state: { seq: number } }, rt?: any }} app
- * @param {number} [timeout] how long to wait in all, SYNCED_TIMEOUT unless a spec says otherwise
+ * @param {import('@playwright/test').Page} page  @param {{ store: { state: { seq: number } } }} app
+ * @param {number} [timeout] how long to wait, SYNCED_TIMEOUT unless a spec says otherwise
  */
 export async function synced(page, app, timeout = SYNCED_TIMEOUT) {
-  const until = Date.now() + timeout;
-  const left = () => Math.max(1, until - Date.now());
-  const holding = () => (app.rt?.running?.all?.() ?? []).some((/** @type {any} */ turn) => turn.liveText);
-  if (holding()) await expect.poll(holding, { message: 'the running turns’ words to be stored', timeout: left() }).toBe(false);
   const seq = app.store.state.seq;
   await expect
     .poll(() => page.evaluate(() => import('/app/js/client.mjs').then(({ client }) => client.seq)), {
       message: `the page to hear event ${seq}`,
-      timeout: left(),
+      timeout,
     })
     .toBeGreaterThanOrEqual(seq);
 }
