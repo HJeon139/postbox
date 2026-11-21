@@ -5,6 +5,7 @@
 import './md-images.mjs';
 import { ASKING } from '/shared/catalog.mjs';
 import { renderMarkdown } from '/shared/markdown.mjs';
+import { own } from '/shared/state-assets.mjs';
 import { onPageOrigin } from '/shared/urls.mjs';
 import { asDrawn, closing } from './block-close.mjs';
 import { fitChoiceOptions } from './choice-layout.mjs';
@@ -296,7 +297,7 @@ const RENDER = {
             {
               type: 'button',
               // Only this version’s fields: one the agent removed meanwhile isn’t sent.
-              onclick: () => submit(item, ctx, 'submit', Object.fromEntries(b.fields.map((f) => [f.id, d.values[f.id]])), setError),
+              onclick: () => submit(item, ctx, 'submit', Object.fromEntries(b.fields.map((f) => [f.id, own(d.values, f.id)])), setError),
             },
             b.submitLabel ?? 'Send form',
           ),
@@ -329,8 +330,7 @@ const RENDER = {
     if (d.sort) {
       const col = b.columns.find((c) => c.id === d.sort);
       rows = [...rows].sort((x, y) => {
-        const a = x.cells[d.sort],
-          c = y.cells[d.sort];
+        const [a, c] = [own(x.cells, d.sort), own(y.cells, d.sort)];
         return (col.kind === 'number' ? (+a || 0) - (+c || 0) : String(a ?? '').localeCompare(String(c ?? ''))) * d.dir;
       });
     }
@@ -355,7 +355,7 @@ const RENDER = {
       return h('th', { class: c.kind === 'number' ? 'num' : '', 'aria-sort': d.sort === c.id ? (d.dir > 0 ? 'ascending' : 'descending') : null }, label);
     };
     const tr = (r) => {
-      const cells = b.columns.map((c) => h('td', { class: c.kind === 'number' ? 'num' : '' }, fmtCell(r.cells[c.id], c)));
+      const cells = b.columns.map((c) => h('td', { class: c.kind === 'number' ? 'num' : '' }, fmtCell(own(r.cells, c.id), c)));
       const actionCell = b.rowAction
         ? h(
             'td.act',

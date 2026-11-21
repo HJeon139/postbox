@@ -2,6 +2,7 @@
 // draft and the submit; a field reads its value from the draft, or from the answer once it’s sent.
 
 import { numberRange } from '/shared/number-range.mjs';
+import { own } from '/shared/state-assets.mjs';
 import { h, icon } from './dom.mjs';
 
 /**
@@ -15,7 +16,7 @@ const charCount = (f, text) => `${text.length.toLocaleString('en-US')} / ${(f.ma
 
 /** @param {Field} f @param {FieldContext} at @param {string} id */
 function toggle(f, { vals, d, done, rerender }, id) {
-  const on = !!vals[f.id];
+  const on = !!own(vals, f.id);
   return h(
     'button.toggle',
     {
@@ -90,7 +91,7 @@ function input(f, d, common, v) {
 export function formField(f, at) {
   const id = `${at.itemId}-${f.id}`;
   const errId = `${id}-err`;
-  const err = at.d.errors[f.id];
+  const err = own(at.d.errors, f.id);
   // A number field’s range shows before any submit, in the words its error uses (#822).
   const range = f.kind === 'number' ? numberRange(f).hint : '';
   const common = {
@@ -100,8 +101,8 @@ export function formField(f, at) {
     'aria-describedby': [err ? errId : null, range ? `${id}-range` : null, f.help ? `${id}-help` : null].filter(Boolean).join(' ') || null,
     required: !!f.required,
   };
-  // Own keys only: an unanswered field with an id like “constructor” would show Object’s (#247).
-  const v = (Object.hasOwn(at.vals, f.id) ? at.vals[f.id] : undefined) ?? '';
+  // Own keys only, here and for its error: a field id like “constructor” would read Object’s (#247).
+  const v = own(at.vals, f.id) ?? '';
   const counter = f.kind === 'longtext' ? h('span.small.dim', { style: { marginLeft: 'auto' } }, charCount(f, String(v))) : null;
   let control;
   if (f.kind === 'toggle') control = toggle(f, at, id);

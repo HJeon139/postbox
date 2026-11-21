@@ -64,3 +64,33 @@ test('#247 an answered form leaves a field the person didn’t fill empty, whate
   await expect(page.locator('.transcript .voice')).toHaveText('Sent: Volumes · Questions 12 · Notify me off');
   await expect(block.getByRole('textbox', { name: 'Notes' }), 'the box the person left empty').toHaveValue('');
 });
+
+// From critic’s review: the table drew and sorted a missing cell under a column with an id like “constructor” as Object’s
+// own function, and a form field with such an id read as invalid before any submit.
+test('#247 a table leaves a missing cell empty, and a form field isn’t invalid, whatever their ids', async ({ page }) => {
+  const { rt } = app;
+  const project = Object.values(rt.store.state.projects)[0];
+  const thread = rt.createThread({ projectId: project.id, title: 'Shelf', personaIds: [arrange.persona(rt, 'librarian').id] });
+  const tools = rt.toolsFor(arrange.agentIn(rt, thread.id).id);
+  const columns = [
+    { id: 'name', label: 'Name' },
+    { id: 'constructor', label: 'Notes' },
+  ];
+  const rows = [
+    { id: 'r1', cells: { name: 'Emma', constructor: 'b' } },
+    { id: 'r2', cells: { name: 'Persuasion' } },
+    { id: 'r3', cells: { name: 'Sanditon', constructor: 'a' } },
+  ];
+  tools.show_block({ block: { id: 'shelf', type: 'table', version: 1, title: 'Shelf', fallback: 'Shelf', columns, rows } });
+  tools.show_block({
+    block: { id: 'ask', type: 'form', version: 1, title: 'Ask', fallback: 'Ask', fields: [{ id: 'constructor', label: 'Notes', kind: 'text' }] },
+  });
+  await page.goto(`${app.origin}/#/t/${thread.id}`);
+  await synced(page, app);
+  const table = page.locator('.transcript .block', { hasText: 'Shelf' });
+  await expect(table.locator('tbody tr').nth(1).locator('td').nth(1), 'the missing cell').toHaveText('');
+  await table.getByRole('button', { name: 'Notes' }).click();
+  await expect(table.locator('tbody td:first-child'), 'sorted with the missing cell first').toHaveText(['Persuasion', 'Sanditon', 'Emma']);
+  const field = page.locator('.transcript .block', { hasText: 'Ask' }).getByRole('textbox', { name: 'Notes' });
+  await expect(field, 'no error before any submit').not.toHaveAttribute('aria-invalid', 'true');
+});
