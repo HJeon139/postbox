@@ -18,6 +18,7 @@ export function openNewThread(projectId, { room = false } = {}) {
   const list = h('div.chips', { role: 'group', 'aria-label': 'Agents' });
   const err = h('div');
   const startBtn = h('button.btn.send', { type: 'button', onclick: () => create() });
+  const tooFew = () => !picked.size || (room && picked.size < 2);
   const paint = () => keepFocus(list, repaint);
   const repaint = () => {
     list.replaceChildren(
@@ -39,10 +40,12 @@ export function openNewThread(projectId, { room = false } = {}) {
       ),
     );
     startBtn.textContent = picked.size > 1 ? `Start a room with ${picked.size} agents` : 'Start conversation';
+    // An error about too few agents goes once there are enough; Start says it again if not (#550).
+    if (!tooFew()) err.replaceChildren();
   };
   paint();
   const create = async () => {
-    if (!picked.size || (room && picked.size < 2)) {
+    if (tooFew()) {
       err.replaceChildren(h('span.err', { role: 'alert' }, icon('warn'), room ? 'Pick at least two agents for a room.' : 'Pick an agent.'));
       return;
     }
