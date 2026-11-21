@@ -30,6 +30,7 @@ import { handleMcp } from './mcp.mjs';
 import { ModelLists } from './model-lists.mjs';
 import { Narrator, narrationInstalled } from './narration/narrator.mjs';
 import { pageState } from './page-state.mjs';
+import { createPersonaFor } from './persona-create.mjs';
 import { createProject, setPushUrl } from './projects.mjs';
 import { hostModels } from './remote/hosts-models.mjs';
 import { hostManagerFor, startHosts, stopHosts } from './remote/serve.mjs';
@@ -40,7 +41,7 @@ import { roomFileRoute } from './room-files.mjs';
 import { httpError, Runtime } from './runtime.mjs';
 import { settleLedger, stopTimers } from './runtime-close.mjs';
 import { sandboxRoute } from './sandbox-routes.mjs';
-import { seed, toBoilerplate } from './seed.mjs';
+import { seed } from './seed.mjs';
 import { decodePath, file, mediaPath, servedFile } from './served-files.mjs';
 import { sessionRoute } from './session-routes.mjs';
 import { setupRoute } from './setup-routes.mjs';
@@ -363,14 +364,7 @@ export async function start({
     if ((m = path.match(/^\/api\/threads\/([^/]+)\/shell\/([^/]+)\/stop$/)) && req.method === 'POST') return send(res, 200, rt.stopShellCommand(m[1], m[2]));
     if (path === '/api/claude-sessions' && req.method === 'GET') return send(res, 200, { sessions: await rt.claudeSessions() });
     if (path === '/api/claude-sessions/attach' && req.method === 'POST') return send(res, 201, await rt.attachClaudeSession(body));
-    if (path === '/api/personas' && req.method === 'POST') {
-      const p = rt.createPersona(body);
-      if (body.join?.threadId)
-        rt.ensureSession(rt.threads.lineage(body.join.threadId).at(-1), p.id, { brief: 'You were just created and added to this thread.' });
-      else if (body.join?.projectId) rt.createThread({ projectId: body.join.projectId, title: body.join.title || `With @${p.handle}`, personaIds: [p.id] });
-      if (body.saveAsBoilerplate) store.emit('boilerplate', toBoilerplate(p));
-      return send(res, 201, p);
-    }
+    if (path === '/api/personas' && req.method === 'POST') return send(res, 201, createPersonaFor(rt, store, body));
     if ((m = path.match(/^\/api\/personas\/([^/]+)$/)) && req.method === 'PATCH') return send(res, 200, rt.updatePersona(m[1], body));
     if (path === '/api/permissions/rules' && req.method === 'POST') return send(res, 200, await rt.changePermissionRule(body));
     if (path === '/api/permissions/folders' && req.method === 'POST') return send(res, 200, await rt.changePermissionFolder(body));
