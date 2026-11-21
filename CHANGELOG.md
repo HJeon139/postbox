@@ -2,6 +2,13 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.35.5 (2026-11-21)
+
+### Fixes
+
+- **turns:** end quietly only when replies going back woke the turn
+- **turns:** end an agent-woken turn quietly when it takes no step and says nothing
+
 ## 4.35.4 (2026-11-21)
 
 ### Fixes
