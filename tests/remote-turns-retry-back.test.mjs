@@ -3,7 +3,11 @@
 // turn did (#1538). tests/remote-turns-retry.test.mjs has the rest of Retry on a host.
 
 import assert from 'node:assert/strict';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { test } from 'node:test';
+import { Blobs } from '../server/blobs.mjs';
 import * as arrange from './arrange.mjs';
 import { rig, settled, starts, until } from './remote-turns-helpers.mjs';
 
@@ -27,27 +31,72 @@ async function onHost(r, n) {
   return turn;
 }
 
-test('#1541: a retried wake Interrupted on the host and resumed on its own still goes back once', async () => {
-  const r = rig();
-  const { se: a, got } = lead(r);
-  assert.equal(r.rt.agentWake(a.id, 'coder', 'Is hello.txt there?').ok, true);
+/**
+ * A turn on the host Interrupted, whose resume then fails (Postbox doesn’t know its own version), so its failed reply
+ * offers Retry, as tests/remote-turns-retry.test.mjs has it: the item, and the thread it’s in, with the version put back.
+ * @param {any} r
+ */
+async function failedResume(r) {
   r.hosts.state = 'reconnecting'; // so it waits to resume
   r.d.interrupt(await onHost(r, 1));
   await until(() => r.se().remoteTurn.state === 'interrupted', 'Interrupted');
-  // The resume fails: Postbox doesn’t know its own version.
   const build = r.rt.config.build;
   r.rt.config.build = {};
   r.hosts.state = null;
   r.hosts.emit('status', r.host.id, { state: 'connected' });
   await until(() => all(r).some((i) => i.status === 'failed' && /its own version/.test(i.error ?? '')), 'the resume to fail');
-  const failed = all(r).find((i) => i.status === 'failed' && /its own version/.test(i.error ?? ''));
   await settled(r);
   r.rt.config.build = build;
-  r.rt.retry(threadOf(r, failed), failed.id);
+  const failed = all(r).find((i) => i.status === 'failed' && /its own version/.test(i.error ?? ''));
+  return { failed, threadId: /** @type {string} */ (threadOf(r, failed)) };
+}
+
+/** What went back to lead: coder’s replies, each a message from @coder. @param {any[]} got */
+const bounces = (got) => got.filter((m) => m.from === '@coder');
+
+test('#1541: a retried wake Interrupted on the host and resumed on its own still goes back once', async () => {
+  const r = rig();
+  const { se: a, got } = lead(r);
+  assert.equal(r.rt.agentWake(a.id, 'coder', 'Is hello.txt there?').ok, true);
+  const { failed, threadId } = await failedResume(r);
+  r.rt.retry(threadId, failed.id);
   // The retried turn is Interrupted too, and resumed on its own: its record keeps whom it goes back to (#1538).
   r.d.interrupt(await onHost(r, 2));
   r.d.end(await onHost(r, 3));
   await settled(r);
-  assert.equal(got.filter((m) => m.from === '@coder').length, 1, 'lead hears the answer once');
+  assert.equal(bounces(got).length, 1, 'lead hears the answer once');
   assert.deepEqual(reply(r).wentBack, ['lead']);
+});
+
+test('#1541: a retried wake whose request was too large to keep inline goes back once, read back from the store', async () => {
+  const r = rig();
+  const dir = mkdtempSync(join(tmpdir(), 'pb-origin-'));
+  try {
+    arrange.withBlobs(r.rt, new Blobs(dir));
+    const { se: a, got } = lead(r);
+    assert.equal(r.rt.agentWake(a.id, 'coder', 'Is hello.txt there? '.repeat(2_000)).ok, true);
+    const { failed, threadId } = await failedResume(r);
+    assert.ok(failed.asked.messageRef, 'kept in the store, not inline');
+    assert.deepEqual(failed.asked.backTo, ['lead']);
+    await r.rt.retry(threadId, failed.id);
+    r.d.end(await onHost(r, 2));
+    await settled(r);
+    assert.equal(bounces(got).length, 1, 'lead hears the answer once');
+    assert.deepEqual(reply(r).wentBack, ['lead']);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('#1541: a retry of the person’s own message goes back to no one', async () => {
+  const r = rig();
+  const { got } = lead(r);
+  r.rt.sendMessage(r.t.id, { text: '@coder is hello.txt there?' });
+  const { failed, threadId } = await failedResume(r);
+  assert.equal('backTo' in failed.asked, false);
+  r.rt.retry(threadId, failed.id);
+  r.d.end(await onHost(r, 2));
+  await settled(r);
+  assert.equal(got.length, 0, 'lead wasn’t woken');
+  assert.equal(reply(r).wentBack, undefined);
 });
