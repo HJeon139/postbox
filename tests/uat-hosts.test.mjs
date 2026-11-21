@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
+import { HARDENING } from '../server/remote/ssh-args.mjs';
 import { hostMode, hostsOf, placementOf, refusal, settingValue } from '../tools/uat/hosts-options.mjs';
 import { localListeners, newListeners, parseLsof, treeOf } from '../tools/uat/hosts-probe.mjs';
 import { installRefusal } from '../tools/uat/hosts-run.mjs';
@@ -134,7 +135,12 @@ test('#120 host mode plays a phase whose agent runs on a host with its host trig
 });
 
 test('#120 host mode: the runner’s ssh is an argument list in BatchMode whose remote command is only `sh -s`', async () => {
-  assert.deepEqual(sshArgs('host.example.com'), ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=20', '-T', '--', 'host.example.com', 'sh', '-s']);
+  const args = sshArgs('host.example.com');
+  assert.deepEqual(args.slice(0, 4), ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=20']);
+  assert.deepEqual(args.slice(-5), ['-T', '--', 'host.example.com', 'sh', '-s']);
+  // #404: none of ~/.ssh/config’s forwarding, sharing or host-key trust, as Postbox’s own ssh (server/remote/ssh-args.mjs).
+  const options = args.flatMap((a, i) => (args[i - 1] === '-o' ? [a] : []));
+  for (const o of ['ControlPath=none', 'ForwardAgent=no', ...HARDENING]) assert.ok(options.includes(o), `-o ${o}`);
   const calls = [];
   const spawn = (cmd, args) => {
     const child = Object.assign(new EventEmitter(), { stdout: new EventEmitter(), stderr: new EventEmitter(), kill: () => {} });
