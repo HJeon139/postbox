@@ -112,10 +112,17 @@ export const PHONE = {
 /**
  * Waits until the page has applied the server’s events up to its store’s seq now. A change made on the server
  * reaches the page over its event stream, which nothing orders with the test’s next step (POSTBOX_STREAM_LAG shows it).
- * @param {import('@playwright/test').Page} page  @param {{ store: { state: { seq: number } } }} app
- * @param {number} [timeout] how long to wait, 5 s unless a spec sends a burst
+ * Words a running turn still holds in their window (server/live-text.mjs) aren’t in the store yet, so it waits for
+ * them to be stored first: a spec that reads a reply right after its last words wasn’t waiting for them (#1532).
+ * The wait is 15 s: in a full local run the process that runs this test also runs its Postbox and agents, and the
+ * poll’s own call into the page waited 8–17 s while the page had caught up in 3–6 s (#1532). It bounds a wait, and
+ * claims nothing about how fast the page is.
+ * @param {import('@playwright/test').Page} page  @param {{ store: { state: { seq: number } }, rt?: any }} app
+ * @param {number} [timeout] how long to wait, 15 s unless a spec says otherwise
  */
-export async function synced(page, app, timeout = 5000) {
+export async function synced(page, app, timeout = 15_000) {
+  const holding = () => (app.rt?.running?.all?.() ?? []).some((/** @type {any} */ turn) => turn.liveText);
+  if (holding()) await expect.poll(holding, { message: 'the running turns’ words to be stored', timeout }).toBe(false);
   const seq = app.store.state.seq;
   await expect
     .poll(() => page.evaluate(() => import('/app/js/client.mjs').then(({ client }) => client.seq)), { message: `the page to hear event ${seq}`, timeout })
