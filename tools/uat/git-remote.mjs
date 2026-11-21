@@ -230,7 +230,8 @@ export function preflightRemote(workspace, dir, env) {
     throw stop(`git in the run isn’t refused an https remote (it said: ${(probe.stderr ?? '').trim().slice(0, 200)})`);
   const shell = env.SHELL || '/bin/sh';
   const script = `[ -n "$CLAUDE_ENV_FILE" ] && . "$CLAUDE_ENV_FILE"; ${CREDENTIALS_GUARDED}; ${LFS_GUARDED}; command -v gh`;
-  const which = spawnSync(shell, ['-lic', script], { env, encoding: 'utf8', timeout: 20_000 });
+  // In the workspace, where the agents’ git reads its own config too, so a setting only it has counts (#1125).
+  const which = spawnSync(shell, ['-lic', script], { env, cwd: workspace, encoding: 'utf8', timeout: 20_000 });
   if (!/^credentials-guarded$/m.test(which.stdout ?? '')) throw stop('git in the agent’s shell can still hand out a password');
   const gh = (which.stdout ?? '').trim().split('\n').at(-1);
   if (gh !== join(p.bin, 'gh')) throw stop(`gh in the agent’s shell is ${gh || 'missing'}, not the run’s fake (${join(p.bin, 'gh')})`);

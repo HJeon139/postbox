@@ -141,3 +141,12 @@ test('#1125: git lfs in a git-remote run sends nothing, though lfs.url names an 
     server.close();
   }
 });
+
+test('#1125: a git-remote run’s preflight reads git in the workspace, so a custom LFS transfer only it picks stops the run', () => {
+  const base = person();
+  const { dir, env } = remoteRun(base);
+  const workspace = join(dir, 'workspace');
+  assert.doesNotThrow(() => preflightRemote(workspace, dir, env), 'the seeded workspace passes');
+  spawnSync('git', ['-C', workspace, 'config', 'lfs.standalonetransferagent', 'mine'], { env: base });
+  assert.throws(() => preflightRemote(workspace, dir, env), /git lfs in the agent’s shell/);
+});

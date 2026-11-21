@@ -48,13 +48,15 @@ export function noGithubEnv(scenario, dir) {
 /**
  * Whether the guard holds in a shell like the agent’s, the person’s login shell, whose profile could undo it. Throws, so
  * the run stops, when gh there hands out any token but the run’s, or git isn’t refused https. The shell compares the
- * token itself, so a real one is never printed or kept, and asking for it doesn’t touch the network.
- * @param {Record<string, string|undefined>} env  the run’s environment
+ * token itself, so a real one is never printed or kept, and asking for it doesn’t touch the network. It runs in the
+ * workspace, where the agents’ git reads that repository’s config too, so a setting only it has counts (#1125); the
+ * https probe goes from outside any repository, since a workspace’s own config could refuse https without the guard.
+ * @param {Record<string, string|undefined>} env  the run’s environment @param {string} workspace
  */
-function preflightNoGithub(env) {
+function preflightNoGithub(env, workspace) {
   const stop = (what) => new Error(`${what}, so the run stops before any agent turn.`);
-  const probe = `t=$(gh auth token 2>/dev/null); s=$?; if [ "$s" = 127 ] || [ "$t" = ${NO_TOKEN} ]; then echo gh-guarded; fi; t=; ${CREDENTIALS_GUARDED}; ${LFS_GUARDED}; GIT_TERMINAL_PROMPT=0 git ls-remote ${UNREACHABLE} 2>&1`;
-  const out = spawnSync(env.SHELL || '/bin/sh', ['-lic', probe], { env, encoding: 'utf8', timeout: 20_000 }).stdout ?? '';
+  const probe = `t=$(gh auth token 2>/dev/null); s=$?; if [ "$s" = 127 ] || [ "$t" = ${NO_TOKEN} ]; then echo gh-guarded; fi; t=; ${CREDENTIALS_GUARDED}; ${LFS_GUARDED}; (cd / && GIT_TERMINAL_PROMPT=0 git ls-remote ${UNREACHABLE} 2>&1)`;
+  const out = spawnSync(env.SHELL || '/bin/sh', ['-lic', probe], { env, cwd: workspace, encoding: 'utf8', timeout: 20_000 }).stdout ?? '';
   // 127 is no gh at all. No line means another token, or a shell that never got that far.
   if (!/^gh-guarded$/m.test(out)) throw stop('gh in the agent’s shell can still reach a GitHub login');
   if (!/^credentials-guarded$/m.test(out)) throw stop('git in the agent’s shell can still hand out a password');
@@ -82,5 +84,5 @@ export function preflightRun(scenario, workspace, dir, env) {
       }
       throw e;
     }
-  } else if (scenario.github !== 'real') preflightNoGithub(env);
+  } else if (scenario.github !== 'real') preflightNoGithub(env, workspace);
 }

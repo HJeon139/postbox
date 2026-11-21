@@ -128,3 +128,26 @@ test('#1125: a custom LFS transfer agent neither runs under the guard nor lets a
   writeFileSync(join(base.HOME, '.gitconfig'), `[lfs "${LFS_OFF}/"]\n\tstandalonetransferagent = mine\n`);
   assert.throws(() => preflightRun({ seed: null }, base.HOME, base.HOME, run), /git lfs in the agent’s shell/, 'a transfer picked past the pin');
 });
+
+test('#1125: the preflight reads git where the agents work, so the workspace’s own config can’t pass the runner’s check', () => {
+  const base = person();
+  const env = { ...base, ...noGithubEnv({}, tempDir('postbox-uat-guard-lfs-run-')) };
+  const workspace = tempDir('postbox-uat-guard-lfs-ws-');
+  spawnSync('git', ['init', '-q', workspace], { env: base });
+  assert.doesNotThrow(() => preflightRun({ seed: null }, workspace, env.HOME, env), 'a plain workspace passes');
+  // Settings only the workspace has: the runner’s own folder sees none of them.
+  for (const [key, value, what] of [
+    ['lfs.standalonetransferagent', 'mine', /git lfs in the agent’s shell/],
+    [`lfs.${LFS_OFF}/.standalonetransferagent`, 'mine', /git lfs in the agent’s shell/],
+  ]) {
+    spawnSync('git', ['-C', workspace, 'config', key, value], { env: base });
+    assert.throws(() => preflightRun({ seed: null }, workspace, env.HOME, env), what, key);
+    spawnSync('git', ['-C', workspace, 'config', '--unset', key], { env: base });
+  }
+  // A credential helper only the workspace names is cleared by the guard’s empty one, which the environment adds after
+  // every config file: the check passes, and so it should, since git there hands out nothing.
+  spawnSync('git', ['-C', workspace, 'config', 'credential.https://github.com.helper', '!f() { echo password=x; }; f'], { env: base });
+  assert.doesNotThrow(() => preflightRun({ seed: null }, workspace, env.HOME, env));
+  const fill = spawnSync('git', ['credential', 'fill'], { cwd: workspace, env, input: 'protocol=https\nhost=github.com\n\n', encoding: 'utf8' });
+  assert.doesNotMatch(fill.stdout, /password=/);
+});
