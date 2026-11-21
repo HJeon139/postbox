@@ -8,7 +8,7 @@ import { openAppLink } from './app-links.mjs';
 import { live, nearBodies, relookSoon, setAppFrameTest } from './app-pointer.mjs';
 import { publishLater } from './app-publish.mjs';
 import { sendFromApp } from './app-send.mjs';
-import { checkNote, fixingPlaceholder } from './apps-check-status.mjs';
+import { checkNote, fixingNote, fixingPlaceholder } from './apps-check-status.mjs';
 import { api, client, placeIn } from './client.mjs';
 import { $$, ago, h, icon } from './dom.mjs';
 import { goToItem } from './go-to-item.mjs';
@@ -422,6 +422,14 @@ function appBody(appId, review) {
 }
 
 /**
+ * Whether the version before stands in while the agent fixes what the check found in a later one (#948). Not in a
+ * review, where the person would comment on, or approve, a version that isn’t the one asked about.
+ */
+const standsIn = (app, review) => app.check.status === 'fixing' && !app.retired && !review && !viewing.has(app.id) && app.current > 1;
+/** The version the person sees: one picked from the menu, else the current one, or the one standing in for it. */
+const shownVersion = (app, review = false) => viewing.get(app.id) ?? (standsIn(app, review) ? app.current - 1 : app.current);
+
+/**
  * Renders an app (current or viewed version) into `container`. Used by transcript items and app reviews.
  */
 export function mountApp(container, appId, { review = false, onPin, onBack } = {}) {
@@ -430,7 +438,8 @@ export function mountApp(container, appId, { review = false, onPin, onBack } = {
     container.replaceChildren(h('p.small.dim', 'This app isn’t available any more.'));
     return;
   }
-  const v = viewing.get(appId) ?? app.current;
+  const fixing = standsIn(app, review);
+  const v = shownVersion(app, review);
   const old = v !== app.current || !!app.retired; // a retired app’s versions open read-only, the current one too, unchecked (#193)
   const key = `${appId}:${v}`;
   const status = old || (reloaded.has(key) && app.check.status === 'crashed') ? 'passed' : app.check.status;
@@ -486,7 +495,7 @@ export function mountApp(container, appId, { review = false, onPin, onBack } = {
       ]),
     );
   } else if (status === 'fixing') {
-    body.append(fixingPlaceholder(placeholder, app, owner));
+    body.append(fixingPlaceholder(placeholder, owner));
   } else {
     const remount = () => mountApp(container, appId, { review, onPin, onBack });
     strip = errorStrip({ app, owner, reload: remount });
@@ -499,7 +508,8 @@ export function mountApp(container, appId, { review = false, onPin, onBack } = {
   }
 
   const notes = [];
-  if (old)
+  if (fixing) notes.push(fixingNote(app, owner, v));
+  else if (old)
     notes.push(
       h(
         'div.app-note',
@@ -532,7 +542,7 @@ export function renderAppItem(item, ctx) {
   const app = client.state.apps[item.block.id];
   if (!app) return h('div.block', h('div.block-body', h('p.dim', 'This app was removed.')));
   const holder = h('div.app-holder');
-  const v = viewing.get(app.id) ?? app.current;
+  const v = shownVersion(app);
   const last = app.versions[app.current - 1];
   const versionBtn = h(
     'button.btn.sm',

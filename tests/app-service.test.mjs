@@ -39,7 +39,7 @@ test('a registered app is v1 and pending; a clean check passes it, and an old ve
 });
 
 test('a blocking problem goes back to the agent once as a fix turn, through send; the next version’s is a note, and a script error then crashes it', () => {
-  const { store, threads, apps, sent } = rig();
+  const { store, threads, apps, sent, linted } = rig();
   const it = shown(apps, threads);
   const problems = [{ code: 'text-too-small', message: 'Small text.' }];
   assert.deepEqual(apps.appCheck('lab', { version: 1, problems }), { status: 'fixing' });
@@ -54,6 +54,13 @@ test('a blocking problem goes back to the agent once as a fix turn, through send
   assert.equal(store.state.apps.lab.current, 2);
   assert.deepEqual(apps.appCheck('lab', { version: 2, problems }), { status: 'note' });
   assert.equal(sent.length, 1, 'no second fix turn');
+  // The person’s note is plain, so what the fix left reaches the agent in a lint turn, and the note says so (#981).
+  assert.deepEqual(
+    linted.at(-1)?.problems.map((p) => p.message),
+    ['Small text.'],
+    'what the fix left goes to the agent',
+  );
+  assert.equal(store.state.apps.lab.check.told, true);
   apps.updateApp(
     'se_1',
     null,
@@ -75,6 +82,13 @@ test('warnings show the app with notes, and the agent hears of them in the lint 
   running.begin({ id: 'tu_live', sessionId: 'se_1' });
   apps.appCheck('lab2', { version: 1, problems: [{ code: 'marks-too-small', message: 'Tiny.' }] });
   assert.equal(linted[1].turnId, 'tu_live');
+});
+
+test('a problem only Postbox’s own check has goes to no agent, and the note doesn’t say the agent was told (#981)', () => {
+  const { store, threads, apps, linted, sent } = rig();
+  shown(apps, threads);
+  assert.deepEqual(apps.appCheck('lab', { version: 1, problems: [{ code: 'check-error', message: 'No matrix.' }] }), { status: 'note' });
+  assert.deepEqual([linted.length, sent.length, store.state.apps.lab.check.told], [0, 0, undefined]);
 });
 
 // ── What an app sends, saves and reads ───────────────────────────────────────────────
