@@ -2,6 +2,7 @@
 // laptop checks the daemon’s welcome; a daemon that says it checks (welcome.claudeChecks) checks again at the turn’s
 // start, after looking for a claude installed since it connected, before it makes the turn’s folder.
 
+import { lookedText } from './remote-protocol-parts.mjs';
 import { olderThan } from './versions.mjs';
 
 /**
@@ -12,10 +13,16 @@ export const REMOTE_CLAUDE_MIN = '2.1.187';
 /** The oldest claude with `--permission-prompts none` (the CLI reference), for a host with denyPrompts on (D2). */
 export const DENY_PROMPTS_MIN = '2.1.259';
 
+/** That no claude was found on the host, where it looked, and what to do. @param {{ looked?: string[] } | null | undefined} h */
+export function claudeMissing(h) {
+  const looked = h?.looked?.length ? ` It looked in ${lookedText(h)}.` : '';
+  return `Claude Code isn’t installed on the host.${looked} Install it there, or set claudePath in the host’s settings.`;
+}
+
 /**
  * Why a claude found at a path can’t run a remote turn, or null if it can: a version that couldn’t be read, or one older
  * than REMOTE_CLAUDE_MIN (or DENY_PROMPTS_MIN with denyPrompts). Each says what was found, and where.
- * @param {{ path: string, version?: string | null }} h @param {boolean} [denyPrompts]
+ * @param {{ path: string | null, version?: string | null }} h  a claude that was found @param {boolean} [denyPrompts]
  */
 export function claudeVersionProblem(h, denyPrompts = false) {
   const need = denyPrompts ? DENY_PROMPTS_MIN : REMOTE_CLAUDE_MIN;

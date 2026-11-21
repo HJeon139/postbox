@@ -14,8 +14,7 @@
 //   mapper (the reply is rebuilt whole), nothing is sent to it, and no fallback starts another.
 // server/adapters/claude-code.mjs runs the turn; this module holds what only a host needs.
 
-import { claudeVersionProblem } from '../../shared/claude-version-check.mjs';
-import { lookedText } from '../../shared/remote-protocol.mjs';
+import { claudeMissing, claudeVersionProblem } from '../../shared/claude-version-check.mjs';
 import { remoteSpawn } from '../remote/process.mjs';
 import { checkRemoteContext } from './adapter.mjs';
 import { hostShim, hostWaitMax, startAttachments } from './remote-turn.mjs';
@@ -49,11 +48,10 @@ export const CLAUDE_CODE_CAPABILITIES = Object.freeze({
  */
 export function remoteClaudeProblem(welcome, settings = {}) {
   if (!welcome) return 'Postbox hasn’t heard from the host’s daemon yet, so it can’t tell which Claude Code is there.';
+  // A daemon that checks claude itself does so at the start, after looking for one installed since this welcome (#1084).
+  if (welcome.claudeChecks === true) return null;
   const h = (Array.isArray(welcome.harnesses) ? welcome.harnesses : []).find((x) => x?.name === 'claude-code');
-  if (!h?.path) {
-    const looked = h?.looked?.length ? ` It looked in ${lookedText(h)}.` : '';
-    return `Claude Code isn’t installed on the host.${looked} Install it there, or set claudePath in the host’s settings.`;
-  }
+  if (!h?.path) return claudeMissing(h);
   return claudeVersionProblem(h, !!settings.denyPrompts);
 }
 
@@ -114,6 +112,7 @@ export function remoteTurn(remote, folder, turn, resumeInterrupted, attach = fal
         env,
         files: [],
         attachments: startAttachments(remote),
+        ...(welcome?.claudeChecks === true ? { claudeCheck: { denyPrompts: !!remote.settings?.denyPrompts } } : {}),
         turn,
         ...(attach ? { attach: { from: 0 } } : {}),
       })

@@ -59,7 +59,9 @@ export async function hello(d, c, m) {
   const turns = await scan(d);
   const allProblems = [...d.programs.problems, ...[...d.problems].map(([code, text]) => ({ code, message: text }))].slice(0, REMOTE_LIMITS.problems);
   const { node, harnesses } = d.programs;
-  await send(c, 'welcome', { version: PROTOCOL_VERSION, home: d.home, node, harnesses, problems: allProblems, turns, loginPath: welcomeLoginPath(d) });
+  // claudeChecks: a turn’s start may carry claude’s version floor, which this daemon checks there (#1084).
+  const welcome = { version: PROTOCOL_VERSION, home: d.home, node, harnesses, problems: allProblems, turns, loginPath: welcomeLoginPath(d) };
+  await send(c, 'welcome', { ...welcome, claudeChecks: true });
   checkIdle(d);
   await d.brk.hello?.((type, body) => send(c, type, body));
 }
