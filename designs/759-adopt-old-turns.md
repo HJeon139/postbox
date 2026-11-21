@@ -1,6 +1,6 @@
 # Turns left under a host’s old Postbox (#759)
 
-*Draft for review, 21 November 2026. The person chose adoption: the new daemon takes over the old version’s turns, so their tool calls and prompts still reach the conversation.*
+*Draft, revised after critic’s review, 21 November 2026. The person chose adoption: the new daemon takes over the old version’s turns, so their tool calls and prompts still reach the conversation.*
 
 ## The problem
 
@@ -38,12 +38,19 @@ sequenceDiagram
 ```
 
 1. **When B relays.** After each hello from Postbox, B scans the turn folders, as it does today for the welcome. For each running turn whose `runner.json` names another version, B opens one relay connection per version to that version’s socket.
-2. **The relay’s hello.** It’s Postbox’s own `hello { version: PROTOCOL_VERSION, token }`, with the shared token and `takeover`, since A has no driver. A daemon whose protocol version differs refuses it with `version`. B then falls back to the notice below.
-3. **Up, from A.** A sends `tool`, `prompt`, `prompt-expired` and its errors for A’s turns, and again after each hello, as it would to Postbox. B forwards each one to Postbox unchanged. A call or prompt is (turn, id), and turn IDs are unique across versions, so Postbox applies each identity once, as it does now.
-4. **Down, from Postbox.** B keeps a map from turn to relay. A `reply`, `answer`, `snapshot` or `snapshot-items` for a relayed turn goes to its relay, not to B’s own broker.
-5. **What already works through B.** Reading a turn’s stream (`read`), its exit, and Stop use the shared turn folder and the runner’s own socket, so B serves them for A’s turns today. This design covers only what A’s broker holds.
-6. **Ending.** A relay closes when A has no running turn left, or when A’s socket goes. A then idles out on its own schedule.
-7. **Fallback: the notice.** When B can’t relay, because the protocol differs, A’s socket refuses, or the token check fails, Postbox adds a line to that turn: “This turn started under Postbox A on <host>. Its blocks, messages and questions after the update didn’t reach the conversation.” That keeps the issue’s first “done when” for every case.
+2. **The relay’s hello.** It’s Postbox’s own `hello { version: PROTOCOL_VERSION, token, instance }`, with the shared token and B’s driver’s own instance, and never `takeover`. The token proves the host account, not that B’s laptop owns A’s driver, so the relay never displaces a laptop still attached to A. A refuses it with `busy` while another Postbox drives it, and with `version` when its protocol differs. Either way B leaves A as it is and falls back to the notice below for those turns.
+3. **Where B connects.** B reads the version from the turn’s `runner.json`, validated as start records are, derives A’s socket with `hostPaths(home, version)`, and connects only if that path is a Unix socket inside the account’s private `~/.postbox-remote/`. The token never goes into a log, an error or a forwarded frame.
+4. **One relay per driver.** Each relay belongs to B’s current driver. It closes when that driver disconnects or is replaced, and the next driver’s hello opens it again. A relay connection is terminal: B never relays from a connection that is itself a relay, so two versions that both relay can’t loop through each other.
+5. **Up, from A.** A sends `tool`, `prompt`, `prompt-expired` and its errors for A’s turns, and again after each hello, as it would to Postbox. B validates each frame, forwards only those broker types, and only for turns assigned to that relay. A call or prompt is (turn, id), and turn IDs are unique across versions, so Postbox applies each identity once, as it does now.
+6. **Down, from Postbox.** B keeps a map from turn to relay. A `reply`, `answer`, `snapshot` or `snapshot-items` for a relayed turn is validated and goes to its relay, not to B’s own broker. Nothing else reaches A.
+7. **A relay that drops mid-prompt.** A replays unanswered prompts at each hello, but sends an expiry only once. So if the relay or B’s laptop link drops while a prompt is open, Postbox can’t tell whether it expired. When a relayed turn’s relay ends with prompts still open, Postbox marks their cards unavailable, with the interrupted notice below, rather than leaving them open. If the relay comes back and A sends one of them again, it shows again as any repeat does.
+8. **What already works through B.** Reading a turn’s stream (`read`), its exit, and Stop use the shared turn folder and the runner’s own socket, so B serves them for A’s turns today. This design covers only what A’s broker holds.
+9. **Ending.** A relay closes when A has no running turn left, or when A’s socket goes. A then idles out on its own schedule.
+10. **Fallback: the notice.** Postbox adds a line to the turn itself, in one of two wordings:
+    - **Never relayed** (the protocol differs, A is busy with another Postbox, or its socket refuses): “This turn started under Postbox A on <host>. Its blocks, messages and questions after the update can’t reach this conversation.”
+    - **Relay interrupted:** “Postbox lost its link to this turn’s older Postbox on <host>. A question or block it sent meanwhile may not have arrived.”
+
+    That keeps the issue’s first “done when” for every case.
 
 ## Security
 
@@ -57,9 +64,11 @@ These follow the issue’s “done when”, deterministic, with two fake daemons
 - A’s tool call made after B connected reaches Postbox too.
 - A daemon with another protocol version gives the turn its notice line, with nothing relayed.
 - A Postbox restart while relaying doesn’t send a prompt twice or lose its answer.
+- The relay drops with a prompt open: its card is marked unavailable, and the turn gets the interrupted notice.
+- Two laptops: A stays connected to its own driver, the relay is refused as `busy`, and the turn gets the never-relayed notice.
+- A frame for a turn not assigned to the relay, or of a type outside the broker’s, is dropped, and the token appears in no log.
 - B’s own turns are unchanged.
 
-## Open questions for review
+## Scope
 
-- **Takeover:** should B’s relay `hello` set `takeover`? A has no driver once the laptop has moved to B, but a second laptop could still be attached to A.
 - **Backends:** this relays only the shim’s broker. Codex’s approval requests also go through A’s broker (`broker-codex.mjs`), so the same relay covers them. Kiro and Antigravity have no broker traffic of their own.
