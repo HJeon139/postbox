@@ -67,7 +67,7 @@ import { agyHookCommand, agySupportsHooks, confirmAgyHook, probeAgyHook } from '
 import { agyPlugin, agySkillFiles, excludeFile, excludePlugin, PLUGIN_DIR, writeAgyPlugin } from './agy-plugin.mjs';
 import { agyStartError, clip, HEADLESS_NOTE, HOOK_NOTE, LOOKING_NOTE, refusalFollowUp, refusalOf } from './agy-refusals.mjs';
 import { AGY_SERVER, ALLOW_POSTBOX, agySettingsFile, allowPostbox } from './agy-settings.mjs';
-import { toolOf } from './agy-tools.mjs';
+import { stepId, toolOf } from './agy-tools.mjs';
 import { agyContextPercent, agyWindowFor } from './context-usage.mjs';
 import { agentFolder } from './folder.mjs';
 import { FRESH_START_TEXT, formatMessage, turnGuide } from './guide.mjs';
@@ -233,17 +233,12 @@ export function agyRules({ persona, guide, schemas = null, hooked = false }) {
   return `${[guide, schemas ? toolsNote(schemas) : '', approval, limits].filter(Boolean).join('\n\n')}\n`;
 }
 
-export { agyPlugin, excludeFile, excludePlugin, PLUGIN_DIR, refusalFollowUp };
+export { agyPlugin, excludeFile, excludePlugin, PLUGIN_DIR, refusalFollowUp, stepId };
 
 // How agy refuses a call it would ask about, headless (recorded): the step ends in ERROR with “permission check
 // failed for …: user denied permission …”, and the result lists it in denied_actions. The turn still succeeds.
 export const REFUSED = /permission check failed|user denied permission/;
 // agy words a refusal as the person’s answer, but nobody was asked: the step says what happened instead.
-/**
- * A tool step’s id in Postbox: its conversation and its index there, which grows across the conversation’s turns.
- * The UAT’s checks match refused steps by it (tools/uat/checks.mjs), so two agents’ steps never share one.
- */
-export const stepId = (s) => `agy-${String(s?.conversation_id ?? '').slice(0, 8)}-${s?.step_index}`;
 /** A step’s name: Claude Code’s for a tool Postbox knows, else agy’s name for it, spaced out. @param {{ name: string, input: any }} tool */
 const nameOf = ({ name, input }) => (name.startsWith('mcp__') || Object.keys(input).length || name === 'ToolSearch' ? name : clip(name.replace(/_/g, ' '), 80));
 
