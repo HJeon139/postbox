@@ -104,7 +104,7 @@ test('#1553: two Claude agents that write “I’m not replying” instead of re
   const answering = adapter.calls.filter((c) => c.handle === 'critic').at(-1);
   assert.match(
     answering.text,
-    /If the exchange is done, react to the reply, or end without writing anything: then no one wakes\. Once you react, what you write doesn’t go back either, so @-mention an agent that must act next\./,
+    /If the exchange is done, react to the reply: then what you write doesn’t go back, so @-mention an agent that must act next\. If you do nothing else, you can also end without writing anything\./,
   );
 });
 
@@ -197,7 +197,7 @@ test('#1553: a reaction from a failed attempt doesn’t stop the Retry’s answe
     alpha: [{ text: '@critic please review wordcount.py.' }, { text: '', react: true, fail: true }, { text: 'One more: does it handle tabs?' }],
     critic: [{ text: 'Reviewed: whitespace-only input prints 0.' }, { text: '' }],
   };
-  const { store, rt, t } = room(plays);
+  const { store, rt, adapter, t } = room(plays);
   rt.sendMessage(t.id, { text: '@alpha ask critic for a review' });
   await settle(rt);
   const failed = store.items(t.id).find((i) => i.kind === 'agent' && i.handle === 'alpha' && i.status === 'failed');
@@ -206,4 +206,8 @@ test('#1553: a reaction from a failed attempt doesn’t stop the Retry’s answe
   await settle(rt);
   const question = store.items(t.id).find((i) => i.kind === 'agent' && i.text?.startsWith('One more'));
   assert.deepEqual(question?.wentBack, ['critic']);
+  // The Retry still owes a reply (#1543), so its first line offers the reaction only (integrator’s review of PR #1557).
+  const retried = adapter.calls.filter((c) => c.handle === 'alpha').at(-1).text;
+  assert.match(retried, /If the exchange is done, react to the reply/);
+  assert.doesNotMatch(retried, /end without writing anything/);
 });
