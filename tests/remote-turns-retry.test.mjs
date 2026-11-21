@@ -66,7 +66,9 @@ test('#120, #151, #377: Retry after a resumed wake fails asks what the wake aske
   r.d.end(again);
   await settled(r);
   assert.equal(threadOf(r, reply(r)), threadOf(r, failed), 'it answers where it was woken');
-  assert.equal(got.length, 0, 'and wakes the agent that woke it only by an @-mention (#377)');
+  // Retry sends the request again, not the entries the failed turn took, so it doesn’t know whom its reply goes back
+  // to (#1538 covers only a turn continued on its host).
+  assert.equal(got.length, 0, 'a retried wake’s reply goes back to no one yet');
 });
 
 /**
@@ -192,7 +194,7 @@ test('#120: a turn on a host keeps a small request inline, a large one in the st
   const turn = (/** @type {any} */ message) => ({ kind: message.kind, movesOn: true, from: null, asked: { message } });
   const small = { kind: 'user', text: 'hi', attachments: [] };
   const record = await keepOrigin({ blobs }, turn(small), null);
-  assert.deepEqual(record, { kind: 'user', movesOn: true, from: null, summarizeTo: null, woke: null, message: small });
+  assert.deepEqual(record, { kind: 'user', movesOn: true, from: null, summarizeTo: null, woke: null, backTo: [], message: small });
   assert.notEqual(record.message, small, 'a copy');
   assert.equal(puts.length, 0, 'nothing written for it');
   const large = { kind: 'user', text: 'é'.repeat(ORIGIN_MESSAGE_MAX), attachments: [] };

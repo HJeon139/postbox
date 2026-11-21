@@ -61,7 +61,7 @@ test('#120 L5, #135: a turn another agent woke, attached again after a restart, 
   assert.deepEqual(r.se().remoteTurn.origin, origin, 'kept for a second restart');
 });
 
-test('#120 L5, #377: an agent woken by another, attached again after a restart, answers in the conversation and wakes no one by itself', async () => {
+test('#120 L5, #1538: an agent woken by another, attached again after a restart, answers in the conversation and its reply goes back once', async () => {
   // The waker runs on this computer; what it’s sent is what each Postbox’s mock got.
   const lead = (/** @type {any} */ r, /** @type {any[]} */ got) => {
     r.rt.adapters.register({ name: 'mock', deliver: async (/** @type {any} */ _se, /** @type {any} */ m) => void got.push(m) });
@@ -86,7 +86,9 @@ test('#120 L5, #377: an agent woken by another, attached again after a restart, 
   const answer = next.store.items(next.t.id).find((i) => i.kind === 'agent' && i.handle === 'coder' && i.status === 'done' && i.text);
   assert.match(answer.text, /hello\.txt/, 'its answer is in the conversation, where it was woken');
   assert.deepEqual(answer.woke, { by: 'lead' });
-  assert.equal(got.length, 0, 'a reply wakes the waker only by an @-mention (#377)');
+  // A reply that names no one goes back to the agent that asked (#1518), as the turn it continues would have sent it.
+  assert.equal(got.length, 1, 'lead hears the answer once');
+  assert.deepEqual(answer.wentBack, ['lead']);
   assert.equal(starts(next.d).length, 1, 'attached, not started again');
 });
 
@@ -99,6 +101,7 @@ test('#120 L5: a record on disk naming no thread, or a handle that isn’t one, 
     from: 'Lead',
     summarizeTo: 'constructor',
     woke: { by: 'lead', reply: true, in: '__proto__' },
+    backTo: ['Lead', '@nope', 7],
   };
   arrange.setSession(r.rt, se.id, { remoteTurn: { ...se.remoteTurn, threadId: 'hasOwnProperty', origin: { ...origin, message: { kind: 'user', text: 7 } } } });
   startUp(r);
@@ -116,6 +119,7 @@ test('#120 L5: a record on disk naming no thread, or a handle that isn’t one, 
     from: 'lead',
     summarizeTo: null,
     woke: { by: 'lead', reply: true },
+    backTo: ['lead'],
     // A request of another kind than the record’s isn’t one Retry can send: it’s lost, so Retry refuses it.
     message: null,
     lost: true,
