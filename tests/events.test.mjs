@@ -98,6 +98,27 @@ test('a form’s receipt lists every field the person sent', () => {
   );
 });
 
+// #247, found in review: a field id like “constructor” read Object’s own when unanswered, so the receipt named a value
+// the person never sent.
+test('a form’s receipt leaves out an unanswered field, whatever its id', () => {
+  const b = {
+    id: 'proto',
+    type: 'form',
+    version: 1,
+    fallback: 'x',
+    title: 'Volumes',
+    fields: [
+      { id: 'q', label: 'Questions', kind: 'number' },
+      { id: 'a', label: 'Articles', kind: 'number' },
+      { id: 'constructor', label: 'Notes', kind: 'text' },
+      { id: 'toString', label: 'More', kind: 'longtext' },
+    ],
+  };
+  const r = buildEvent(b, 'submit', { q: '12000', a: '400' });
+  assert.deepEqual(r.event.values, { q: 12000, a: 400 });
+  assert.equal(r.voice, 'Sent: Volumes · Questions 12,000 · Articles 400');
+});
+
 test('a form rejects fields it doesn’t have', () => {
   assert.match(buildEvent(form, 'submit', { name: 'a', hacked: 1 }).error, /isn’t a field/);
 });
