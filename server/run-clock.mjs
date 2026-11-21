@@ -7,6 +7,7 @@
 import { CLOCK_BUDGET_MAX_S, clockElapsed, clockLine, isLocalStop } from '../shared/run-clock.mjs';
 import { httpError } from './helpers.mjs';
 import { ON_HOST } from './remote/turns-shared.mjs';
+import { resumeHeld } from './run-clock-held.mjs';
 import { clockNote, repairClockNote } from './run-clock-notes.mjs';
 import { whenWritable } from './store-wait.mjs';
 
@@ -253,29 +254,6 @@ export function stopHeldTurn(rt, turn) {
   if (rt.turns.get(turn.sessionId) !== turn) return;
   const clock = clockOf(rt, turn.sessionId);
   rt.stop(turn.sessionId, { by: clock?.state === 'paused' ? 'pause' : 'clock', silent: true });
-}
-
-/** @type {WeakMap<any, Map<string, any[]>>} each runtime’s turns held by a paused clock, by session: memory only */
-const heldTurns = new WeakMap();
-
-/**
- * A turn that came another way than the inbox (a message held behind a turn, a release after a stop) for an agent whose
- * clock holds it: kept for the resume. An expired clock’s are kept too, and never run. Memory only: a restart loses
- * them, as it loses a message held for a busy agent.
- * @param {any} rt @param {string} sessionId @param {{ message: any, summarizeTo: string|null, threadId: string|null }} turn
- */
-export function holdForClock(rt, sessionId, turn) {
-  const mine = heldTurns.get(rt) ?? new Map();
-  heldTurns.set(rt, mine);
-  mine.set(sessionId, [...(mine.get(sessionId) ?? []), turn]);
-}
-
-/** The clock resumed: the turns it held run, and the agent’s inbox can start one again. @param {any} rt @param {string} sessionId */
-function resumeHeld(rt, sessionId) {
-  const held = heldTurns.get(rt)?.get(sessionId) ?? [];
-  heldTurns.get(rt)?.delete(sessionId);
-  for (const { message, summarizeTo, threadId } of held) rt.turnService.run(sessionId, message, { summarizeTo, threadId });
-  rt.delivery.wake(sessionId);
 }
 
 /**
