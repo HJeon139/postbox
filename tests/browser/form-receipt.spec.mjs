@@ -92,5 +92,6 @@ test('#247 a table leaves a missing cell empty, and a form field isn’t invalid
   await table.getByRole('button', { name: 'Notes' }).click();
   await expect(table.locator('tbody td:first-child'), 'sorted with the missing cell first').toHaveText(['Persuasion', 'Sanditon', 'Emma']);
   const field = page.locator('.transcript .block', { hasText: 'Ask' }).getByRole('textbox', { name: 'Notes' });
+  await expect(field).toBeVisible();
   await expect(field, 'no error before any submit').not.toHaveAttribute('aria-invalid', 'true');
 });

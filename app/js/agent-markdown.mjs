@@ -39,7 +39,8 @@ const markdownOpts = (it, threadId) => ({
 export function markTerms(root, threadId) {
   const g = glossaryOf(threadId);
   for (const t of root.querySelectorAll('.term')) {
-    const known = !!g[t.dataset.term];
+    // Own keys only, as hover-content.mjs reads it: a term like “constructor” would read Object’s (#247).
+    const known = !!(t.dataset.term && Object.hasOwn(g, t.dataset.term) && g[t.dataset.term]);
     t.classList.toggle('undef', !known);
     if (!known) t.title = 'Not defined yet. The agent has been asked to define it.';
   }
