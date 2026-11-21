@@ -32,6 +32,9 @@ test('a post landing below a running reply doesn’t break it: the steps after t
   arrange.post(scripted.app.rt, t.id, { kind: 'user', text: 'It should be one line.' });
   go('noter');
   await expect.poll(() => at('noter')).toBe(2);
+  // The turn holds its words for a window (LIVE_TEXT) before it stores them, so the page has the store’s last event
+  // before it has the words after the post: the test waits for them.
+  await expect(page.locator('.transcript'), 'the words after the post reach the page').toContainText('One line, as you said.');
   await synced(page, scripted.app);
   const order = await page.locator('.transcript > [data-key]').evaluateAll((nodes) => nodes.map((n) => n.textContent ?? ''));
   const where = (/** @type {string} */ s) => order.findIndex((x) => x.includes(s));
