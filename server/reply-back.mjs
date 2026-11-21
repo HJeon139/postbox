@@ -29,7 +29,10 @@ export function replyBack(rt, turn, se, took) {
   if (turn.endErr || turn.named || turn.summarizeTo) return;
   const conv = rt.threads.lineage(turn.threadId).at(-1);
   const here = (/** @type {string} */ h) => rt.sessions.in(conv).some((/** @type {any} */ x) => x.handle === h && !x.retiredFork);
-  const to = backTo(took).filter((h) => h !== se.handle && here(h));
+  // A turn that took no entries carries whom it goes back to: a host turn continued under a new ID goes back as the turn
+  // it continues would have (#1538), and a retry of one that took none as the failed turn would have (#1541).
+  const asked = turn.backTo ?? backTo(took);
+  const to = asked.filter((h) => h !== se.handle && here(h));
   if (!to.length) return;
   // Text with words: a harness may stream only whitespace around a tool call, such as a reaction, which is no reply.
   const reply = rt.store.pending.items(turn.threadId).findLast((/** @type {any} */ x) => x.kind === 'agent' && x.turnId === turn.id && x.text?.trim());

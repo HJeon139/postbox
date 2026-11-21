@@ -81,3 +81,24 @@ test('#1429 #1425 Retry of an app event’s failed turn gives it what the app se
   assert.equal(again.kind, 'event', JSON.stringify(again));
   assert.equal(again.event.values.secret, 'a value only the turn reads');
 });
+
+test('#1541 a wake whose turn failed, retried by the person, goes back once: the reopened mention is what it reads', async () => {
+  const f = setup();
+  f.adapter.next.push(async (c) => c.text('@beta which file holds the changelog?'));
+  f.adapter.next.push(async () => {
+    throw new Error('API 500');
+  });
+  f.rt.sendMessage(f.t.id, { text: '@alpha find out where the changelog goes' });
+  for (let i = 0; i < 3; i++) await settle(f.rt);
+  const failed = f.store.items(f.t.id).find((i) => i.kind === 'agent' && i.handle === 'beta' && i.status === 'failed');
+  f.adapter.next.push(async (c) => c.text('It’s CHANGELOG.md, at the root.'));
+  await f.rt.retry(f.t.id, failed.id);
+  // The answer goes back to alpha, whose unscripted turn reacts to it and ends the exchange.
+  for (let i = 0; i < 5; i++) await settle(f.rt);
+  assert.deepEqual(
+    f.adapter.calls.map((c) => c.handle),
+    ['alpha', 'beta', 'beta', 'alpha'],
+  );
+  const answer = f.store.items(f.t.id).find((i) => i.text === 'It’s CHANGELOG.md, at the root.');
+  assert.deepEqual(answer.wentBack, ['alpha']);
+});

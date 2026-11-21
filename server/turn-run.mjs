@@ -178,6 +178,9 @@ function newTurn(se, message, persona, { where, slash, summarizeTo, asked }) {
     slash,
     // Agents the failed reply this retries already woke: its mentions don’t wake them again (#485).
     woken: Array.isArray(message.woken) ? message.woken : [],
+    // Whom its reply goes back to, for a turn that takes no entries to read it from: a retry of one that took none
+    // (#1541), or a host turn continued (continueAs, #1538). Null: read from what it takes (reply-back.mjs).
+    backTo: Array.isArray(message.backTo) ? message.backTo : null,
     startedAt: Date.now(),
     // This turn’s own MCP token: a call that carries another turn’s, such as a stopped one’s, is refused (#126).
     token: randomUUID(),
@@ -282,7 +285,7 @@ export function retry(rt, threadId, itemId) {
     // sends the asked message again (#1429).
     if (it.turnId && rt.turnService.retryEntries(it.sessionId, it.turnId, woken)) return;
     // One that took none, such as a host turn's replay or a message a test sent: its request goes again.
-    const message = { ...asked.message, retry: true, woken, turnId: newId('turn'), entriesWait: true };
+    const message = { ...asked.message, retry: true, woken, backTo: asked.backTo, turnId: newId('turn'), entriesWait: true };
     rt.turnService.run(it.sessionId, message, { summarizeTo: asked.summarizeTo, threadId });
   });
 }

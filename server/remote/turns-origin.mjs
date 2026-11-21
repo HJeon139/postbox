@@ -5,8 +5,9 @@
 // that wakes no one, the same sender line, and the same request for Retry.
 //
 // The record is se.remoteTurn.origin, written when the turn starts (allocate) and kept through every update and
-// restart: { kind, movesOn, from, summarizeTo, woke }, as the runtime’s deliver sets them on its
-// turn, and the request Retry sends again, exactly, in one of three ways:
+// restart: { kind, movesOn, from, summarizeTo, woke }, as the runtime’s deliver sets them on its turn; backTo, whom
+// its reply goes back to when it @-mentions no one (#1518), read from what it took, which a turn that continues it
+// doesn’t have (#1538); and the request Retry sends again, exactly, in one of three ways:
 // - message: the request itself, when its JSON is within ORIGIN_MESSAGE_MAX, or null when there’s none to send again
 //   (a turn attached again with no record, whose message only names the host turn);
 // - messageRef: { sha256, size } of its JSON (UTF-8) in Postbox’s content-addressed store (rt.blobs), for a larger
@@ -50,8 +51,9 @@ const json = (v) => {
  * The record of a turn, for its se.remoteTurn, its request kept in Postbox’s store first when it’s too large to keep
  * inline: a continued turn’s is the one it continues. Never rejects: a request that can’t be kept is recorded as lost.
  * @param {any} rt @param {any} turn  the runtime’s turn @param {any} woke  what woke it (wokeOf)
+ * @param {string[]} [back]  whom its reply goes back to (backTo of what it took): the turn that continues it takes nothing
  */
-export async function keepOrigin(rt, turn, woke) {
+export async function keepOrigin(rt, turn, woke, back = []) {
   if (turn.origin) return turn.origin;
   return {
     kind: turn.kind,
@@ -59,6 +61,7 @@ export async function keepOrigin(rt, turn, woke) {
     from: turn.from ?? null,
     summarizeTo: turn.summarizeTo ?? null,
     woke: woke ?? null,
+    backTo: back,
     ...(await kept(rt.blobs, turn.asked?.message)),
   };
 }
@@ -99,6 +102,7 @@ export function readOrigin(rt, raw) {
     from: typeof o.from === 'string' && HANDLE.test(o.from) ? o.from.toLowerCase() : null,
     summarizeTo: thread(o.summarizeTo),
     woke: readWoke(rt, o.woke),
+    backTo: Array.isArray(o.backTo) ? o.backTo.filter((h) => typeof h === 'string' && HANDLE.test(h)).map((h) => h.toLowerCase()) : [],
     ...readAsked(o.kind, o),
   };
 }
@@ -197,6 +201,6 @@ export function continueAs(turn) {
   const o = turn.asked?.message?.continues;
   if (!o) return;
   turn.origin = o;
-  Object.assign(turn, { kind: o.kind, movesOn: o.movesOn, from: o.from, summarizeTo: o.summarizeTo });
+  Object.assign(turn, { kind: o.kind, movesOn: o.movesOn, from: o.from, summarizeTo: o.summarizeTo, backTo: o.backTo });
   turn.asked = { ...turn.asked, message: o.message ?? null, messageRef: o.messageRef ?? null, lost: o.lost === true };
 }

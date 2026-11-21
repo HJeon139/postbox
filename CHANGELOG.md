@@ -2,6 +2,48 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.35.6 (2026-11-21)
+
+### Fixes
+
+- **shell:** open the first project when it's made from the first-run page
+
+## 4.35.5 (2026-11-21)
+
+### Fixes
+
+- **turns:** end quietly only when replies going back woke the turn
+- **turns:** end an agent-woken turn quietly when it takes no step and says nothing
+
+## 4.35.4 (2026-11-21)
+
+### Fixes
+
+- **adapters:** keep the method of a line too long to keep whole
+- **codex:** keep a message's completed text after blank deltas
+- **adapters:** keep the JSON-RPC method in an empty reply's diagnosis
+- **codex:** keep a message's completed text after an empty delta
+
+## 4.35.3 (2026-11-21)
+
+### Fixes
+
+- **retry:** send a retried wake's reply back when its failed turn took no entries
+
+## 4.35.2 (2026-11-21)
+
+### Fixes
+
+- **remote:** send a continued host turn's reply back to the agent that asked
+
+## 4.35.1 (2026-11-21)
+
+### Fixes
+
+- **server:** keep no model list a harness gives after Postbox closed
+- **ui:** wrap a long folder path in the delete confirm, and let a scrolling dialog body take focus
+- **remote:** connect after an automatic install only while the consent is on
+
 ## 4.35.0 (2026-11-20)
 
 ### Features

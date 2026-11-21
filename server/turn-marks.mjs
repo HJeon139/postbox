@@ -13,8 +13,9 @@ import { keptMessage, readRef } from './remote/turns-origin.mjs';
  * there’s nothing to send again: a turn attached again with no record of it, whose message only names the host turn.
  * @param {any} turn
  */
-export const askedOf = ({ kind, asked: { message, messageRef, lost, summarizeTo } }) => {
-  const to = { summarizeTo: summarizeTo ?? null };
+export const askedOf = ({ kind, backTo, asked: { message, messageRef, lost, summarizeTo } }) => {
+  // A turn that took no entries keeps whom its reply goes back to (#1541): a retry sends no entries to read it from.
+  const to = { summarizeTo: summarizeTo ?? null, ...(backTo?.length ? { backTo } : {}) };
   if (messageRef) return { messageRef, kind, ...to };
   if (lost === true) return { lost: true, ...to };
   return !message || typeof message.attach === 'string' ? null : { message, ...to };
@@ -30,7 +31,7 @@ const lostError = () =>
  * guess. A request that was kept but can’t be read back exactly is refused, and nothing is sent in its place.
  * Returns what send does, or for one read back, a promise of it.
  * @param {any} rt @param {string} threadId @param {any} it  the failed reply
- * @param {(asked: { message: any, summarizeTo: string|null }) => void} sendNow
+ * @param {(asked: { message: any, summarizeTo: string|null, backTo?: string[] }) => void} sendNow
  */
 export function askedAgain(rt, threadId, it, sendNow) {
   // Checked before send marks the reply retried: a session retired (or gone) while a kept request was read would
@@ -55,7 +56,7 @@ export function askedAgain(rt, threadId, it, sendNow) {
     if (!message) throw lostError();
     // A second Retry that came while this one read.
     if (rt.store.item(threadId, it.id)?.status !== 'failed') throw httpError(409, 'Only a failed reply can be retried.');
-    return send({ message, summarizeTo: a.summarizeTo ?? null });
+    return send({ message, summarizeTo: a.summarizeTo ?? null, backTo: a.backTo });
   });
 }
 

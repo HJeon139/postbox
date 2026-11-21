@@ -218,6 +218,38 @@ test('a conversation opened from the sidebar replaces the last one’s transcrip
 
 // ── A fresh install leads to a first project ────────────────────────────────────────────
 
+/**
+ * #549: the first-run page, with Settings opened from its New project, while the server adds the first project, as
+ * Create project does. settingsFirst: Settings closes before the page hears of the project.
+ */
+async function firstProject(page, settingsFirst) {
+  const fresh = await startPostbox('shell-first-project', { demo: false });
+  try {
+    Object.assign(fresh.store.state, { projects: {}, threads: {}, sessions: {}, items: {} });
+    await page.goto(`${fresh.origin}/#/`);
+    await expect(page.locator('.empty-home')).toContainText('Create a project to start.');
+    await page.locator('.empty-home').getByRole('button', { name: 'New project' }).click();
+    await expect(dialog(page)).toBeVisible();
+    if (settingsFirst) await page.keyboard.press('Escape');
+    fresh.store.emit('project', { id: 'pr_first', name: 'First', folder: fresh.root });
+    await expect(page, 'the new project opens').toHaveURL(/#\/p\/pr_first$/);
+    if (!settingsFirst) await page.keyboard.press('Escape');
+    await expect(page.locator('.empty-home'), 'the first-run page is gone').toHaveCount(0);
+    await focusIs(page, 'button: New conversation');
+  } finally {
+    await page.goto('about:blank');
+    await fresh.stop();
+  }
+}
+
+test('#549 the first project opens without a reload, and closing Settings puts focus on its first step', async ({ page }) => {
+  await firstProject(page, false);
+});
+
+test('#549 the first project opens without a reload when Settings closed first, with focus on its first step', async ({ page }) => {
+  await firstProject(page, true);
+});
+
 test('a fresh install, with no project, offers New project, which opens Settings › Projects (#320)', async ({ page }) => {
   const fresh = await startPostbox('shell-fresh', { demo: false });
   try {

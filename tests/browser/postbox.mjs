@@ -121,6 +121,7 @@ const SYNCED_TIMEOUT = 20_000;
 /**
  * Waits until the page has applied the server’s events up to its store’s seq now. A change made on the server
  * reaches the page over its event stream, which nothing orders with the test’s next step (POSTBOX_STREAM_LAG shows it).
+ * Words a running turn still holds for its window (LIVE_TEXT) aren’t in the store yet: wait for those on the page.
  * @param {import('@playwright/test').Page} page  @param {{ store: { state: { seq: number } } }} app
  * @param {number} [timeout] how long to wait, SYNCED_TIMEOUT unless a spec says otherwise
  */
