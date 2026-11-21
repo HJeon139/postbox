@@ -157,8 +157,9 @@ const PENDING = {
   // The turn’s last reply, which goes back to whom woke it (#1518), maybe settled behind a held commit.
   'reply-back.mjs': ['replyBack'],
   'sessions.mjs': ['pendingIn', 'pendingIn', 'ensure', 'update', 'needAt', 'remove', 'forgetReported', 'stampNeeds', 'unarchive'],
-  // A command’s item, maybe deleted behind a held commit, before its output or its end is written.
-  'shell-runs.mjs': ['commandOutput', 'endCommand'],
+  // A command’s item, maybe deleted behind a held commit, before its output or its end is written; and the agent and
+  // project whose folder it runs in, maybe made or changed behind one (#1292).
+  'shell-runs.mjs': ['commandFolder', 'commandFolder', 'commandOutput', 'endCommand'],
   'subagent-end.mjs': ['withUrgent'],
   // Stop's stopped entries name the message each sender sent, maybe settled behind a held commit. A topic's conversation,
   // which its session joins, and who answers in it, read as a topic opened behind a held commit leaves them (#1292).

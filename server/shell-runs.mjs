@@ -26,8 +26,8 @@ export async function commandFolder(work, threadId) {
   const t = work.threads.toWrite(threadId);
   const members = work.sessions.pendingIn(threadId).filter((x) => !x.retiredFork);
   const se = members.find((x) => x.id === t.lastSpeaker) ?? members[0];
-  const persona = se ? work.personas.forSession(se) : null;
-  const project = work.store.state.projects[t.projectId] ?? null;
+  const persona = se ? work.personas.forSession(se, (id) => work.store.pending.persona(id)) : null;
+  const project = work.store.pending.project(t.projectId) ?? null;
   const adapter = persona ? work.placement.requestAdapter(se.handle, persona) : null;
   if (persona?.remote?.hostId) return work.placement.hereFolder(persona, project, adapter);
   return { folder: await workFolder(adapter, persona, project), host: null };

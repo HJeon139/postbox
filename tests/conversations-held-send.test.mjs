@@ -163,3 +163,22 @@ test('#1292: a new agent added to a conversation started while a commit is held 
   assert.ok(Object.values(store.state.sessions).some((x) => x.threadId === result.t.id && x.handle === 'helper'));
   await store.close();
 });
+
+test('#1292: a `!` command runs where an agent made behind the same held commit works, in its project as changed', async () => {
+  // Critic’s review of PR #1569: the session was read as written, but its persona and project weren’t, so the first
+  // command of a conversation and agent made behind one held commit, in a project changed then, ran in the project’s
+  // own folder.
+  const { result, store } = await whileHeld(async ({ rt }) => {
+    rt.work.spawnShell = () => Object.assign(new EventEmitter(), { stdout: new PassThrough(), stderr: new PassThrough(), pid: 1 });
+    rt.adapters.get('claude-code').folderFor = async (persona, project) => `/work/space/${persona?.handle}/${project?.name}`;
+    rt.store.emit('project', { ...rt.store.state.projects.p1, name: 'Renamed' });
+    assert.equal(rt.store.state.projects.p1.name, 'P', 'the rename is held, not yet published');
+    const p = rt.createPersona({ handle: 'helper', backend: 'claude-code' });
+    const t = rt.createThread({ projectId: 'p1', title: 'Held room', personaIds: [p.id] });
+    await rt.runShellCommand(t.id, 'pwd');
+    return { t };
+  });
+  const command = store.items(result.t.id).find((i) => i.kind === 'command');
+  assert.equal(command?.cwd, '/work/space/helper/Renamed');
+  await store.close();
+});
