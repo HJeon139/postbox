@@ -239,7 +239,7 @@ pb-ring .dot { transform-box: view-box; transform-origin: center; }
 .who pb-ring[state="needs"] .pulse { opacity: .8; transform: scale(1.18); }
 @keyframes pb-pulse { 0% { opacity: .9; transform: scale(1); } 45%, 100% { opacity: 0; transform: scale(1.35); } }
 @keyframes pb-turn { 0% { transform: rotate(0deg); animation-timing-function: cubic-bezier(.65, 0, .35, 1); } 55%, 100% { transform: rotate(360deg); } }
-/* The swell grows in at the arc’s start, runs to its end and shrinks there, then the ring rests: the timing of the
+/* The swell fades in at the arc’s start, runs to its end and fades out there, then the ring rests: the timing of the
    segments that once swelled one after another (#1565). */
 @keyframes pb-sweep {
   0% { transform: rotate(0deg); opacity: 0; animation-timing-function: ease-in-out; }
