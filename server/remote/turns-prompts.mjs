@@ -12,8 +12,9 @@ import { asksByPrompt } from '../permission-prompt.mjs';
 import { claimPrompt } from '../prompt-claim.mjs';
 import { claimAhead } from '../turn-work.mjs';
 import { linkOf } from './turns-need.mjs';
+import { cardOf, openCards, permissionCards } from './turns-prompt-cards.mjs';
 import { replayCeiling, replayed } from './turns-replay.mjs';
-import { ENDED_TEXT, key, ON_HOST, send, sessionOfTurn, updateRemote } from './turns-shared.mjs';
+import { ENDED_TEXT, key, ON_HOST, send, updateRemote } from './turns-shared.mjs';
 
 /** @typedef {import('./turns.mjs').RemoteTurns} RemoteTurns */
 /** @typedef {import('./turns-shared.mjs').Live} Live */
@@ -257,19 +258,6 @@ export function endCard(rts, card, status, message, at, extra = {}) {
   }
 }
 
-/** The card for a host prompt, in its session’s conversation. @param {RemoteTurns} rts @param {string} turn @param {string} id */
-function cardOf(rts, turn, id) {
-  const se = sessionOfTurn(rts, turn);
-  if (!se) return null;
-  for (const threadId of rts.rt.threads.conversationThreads(se.threadId)) {
-    const it = rts.rt.store.pending
-      .items(threadId)
-      .find((/** @type {any} */ i) => i.kind === 'permission' && i.remote?.turn === turn && i.remote?.prompt === id);
-    if (it) return { threadId, it };
-  }
-  return null;
-}
-
 /**
  * Postbox no longer follows these host turns (they ended, were stopped, or weren’t attached again after a restart):
  * each open card with no wait here can’t be answered any more, so it ends, expired, and its agent hears so (#721). A
@@ -283,19 +271,4 @@ export function endOrphanCards(rts, hostTurns) {
       endCard(rts, card, 'expired', '', rts.now());
     }
   }
-}
-
-/** @param {RemoteTurns} rts @param {string} turn */
-export const openCards = (rts, turn) => permissionCards(rts, turn).filter((c) => c.it.status === 'open');
-
-/** Every card for a host turn’s prompts, in its session’s conversation. @param {RemoteTurns} rts @param {string} turn */
-function permissionCards(rts, turn) {
-  const se = sessionOfTurn(rts, turn);
-  if (!se) return [];
-  return rts.rt.threads.conversationThreads(se.threadId).flatMap((/** @type {string} */ threadId) =>
-    rts.rt.store.pending
-      .items(threadId)
-      .filter((/** @type {any} */ i) => i.kind === 'permission' && i.remote?.turn === turn)
-      .map((/** @type {any} */ it) => ({ threadId, it })),
-  );
 }

@@ -4,7 +4,7 @@
 
 import { hostOf } from './placement.mjs';
 import { linkOf, listen, needHost, releaseHost } from './turns-need.mjs';
-import { openCards } from './turns-prompts.mjs';
+import { openCards } from './turns-prompt-cards.mjs';
 import { ON_HOST, send, updateRemote } from './turns-shared.mjs';
 
 /** @typedef {import('./turns.mjs').RemoteTurns} RemoteTurns */
