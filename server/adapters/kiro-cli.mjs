@@ -56,6 +56,7 @@ import { findKiro, kiroModel, kiroModels, postboxModel } from './kiro-cli-models
 import { attachmentPaths, KIRO_CAPABILITIES, kiroRemoteSpawn } from './kiro-cli-remote.mjs';
 import { kiroError, kiroExitError, overSizeLimit, SIZE_LIMIT_START_TEXT } from './kiro-errors.mjs';
 import { kiroHomeFor } from './kiro-home.mjs';
+import { kiroMemoryOff } from './kiro-memory.mjs';
 import { sessionInfo } from './kiro-session-info.mjs';
 import { KINDS, toolOf } from './kiro-tools.mjs';
 import { listProcesses, stopOnAbort, stopTurn } from './process-group.mjs';
@@ -356,6 +357,8 @@ export class KiroCliAdapter {
       const home = kiroHomeFor(persona, { isolatedHome: this.isolatedHome, env: this.env });
       file = join(home, 'agents', `${agent}.json`);
       await mkdir(join(home, 'agents'), { recursive: true });
+      // The home Postbox owns, which every Isolated persona shares, keeps no memory (#479).
+      if (!setupOf(persona).usesHostSetup) await kiroMemoryOff(home);
       await writeFile(file, JSON.stringify(kiroAgent({ name: agent, persona, mcpUrl: ctx.mcpUrl, guide, folders, reads: ctx.readFiles ?? [] }), null, 2));
       env = { ...this.env, ...(setupOf(persona).usesHostSetup ? {} : { KIRO_HOME: home }) };
     }
