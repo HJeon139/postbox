@@ -66,3 +66,13 @@ test('#1543: a tool argument named method keeps only its length', () => {
   assert.equal(kept.method, 'item/started');
   assert.ok(!ctx.rawTail[0].includes('example.test'), ctx.rawTail[0]);
 });
+
+test('#1543: a line too long to keep whole still keeps its method', () => {
+  const ctx = { rawTail: [] };
+  // Enough fields that the whole shape passes the 1,000-character line, so only the top level is kept.
+  const many = Object.fromEntries(Array.from({ length: 80 }, (_, i) => [`field_${i}`, { n: i }]));
+  keepShape(ctx, JSON.stringify({ method: 'item/completed', params: { threadId: 'thr_postbox_1', item: { id: 'msg_1', ...many } } }));
+  const kept = JSON.parse(ctx.rawTail[0]);
+  assert.equal(kept.method, 'item/completed');
+  assert.equal(kept.params, '{…}', 'the compact form, not the whole shape');
+});

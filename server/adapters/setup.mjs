@@ -361,13 +361,10 @@ const RAW_TAIL = 12;
 const RAW_LINE = 1000;
 /** The fields whose words a line’s shape keeps: what kind of event it is, and how it ended. */
 const SHAPE_WORDS = new Set(['type', 'subtype', 'name', 'stop_reason', 'status', 'kind', 'operationType', 'sessionUpdate', 'terminal_reason']);
-/** Kept only at a line’s top level: a JSON-RPC event’s `method`, Codex’s and Kiro’s (#1543). Deeper, a tool’s
- * argument can be named `method` and hold what the agent wrote. */
-const TOP_WORDS = new Set(['method']);
 
 /** A value’s shape: other strings become their length, so no reply, file or secret a tool printed is kept. */
 const shapeOf = (/** @type {unknown} */ v, depth = 0, key = '') => {
-  if (typeof v === 'string') return SHAPE_WORDS.has(key) || (depth === 1 && TOP_WORDS.has(key)) ? v.slice(0, 60) : v.length;
+  if (typeof v === 'string') return SHAPE_WORDS.has(key) ? v.slice(0, 60) : v.length;
   if (Array.isArray(v)) return depth > 3 ? `[${v.length}]` : v.slice(0, 8).map((x) => shapeOf(x, depth + 1));
   if (!v || typeof v !== 'object') return v;
   if (depth > 3) return '{…}';
@@ -389,9 +386,13 @@ export function keepShape(ctx, event) {
     } catch {
       e = { unparsed: event.length };
     }
+  // A JSON-RPC event’s `method`, Codex’s and Kiro’s, names it (#1543). Only the line’s own: deeper, a tool’s argument
+  // can be named `method` and hold what the agent wrote.
+  const method = /** @type {any} */ (e)?.method;
+  const shape = (depth = 0) => (typeof method === 'string' ? { ...shapeOf(e, depth), method: method.slice(0, 60) } : shapeOf(e, depth));
   // Too long whole (a result’s usage, say), only its top-level fields, so the line still parses.
-  let line = JSON.stringify(shapeOf(e));
-  if (line.length > RAW_LINE) line = JSON.stringify(shapeOf(e, 3));
+  let line = JSON.stringify(shape());
+  if (line.length > RAW_LINE) line = JSON.stringify(shape(3));
   if (tail.push(line.slice(0, RAW_LINE)) > RAW_TAIL) tail.shift();
 }
 
