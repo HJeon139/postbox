@@ -5,73 +5,14 @@
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
 import { once } from 'node:events';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, relative } from 'node:path';
+import { join } from 'node:path';
 import { test } from 'node:test';
 import { claudeModels } from '../../server/adapters/claude-models.mjs';
+import { removeListing } from './listing-folder.mjs';
 
 const claudeHere = spawnSync('claude', ['--version'], { timeout: 20_000 }).status === 0;
-
-/** When a file last changed, from the CLI’s close. @param {number | undefined} at @param {number | undefined} closedAt */
-function changed(at, closedAt) {
-  if (at === undefined) return 'gone';
-  if (closedAt === undefined) return 'the CLI never closed';
-  return `+${Math.round(at - closedAt)} ms`;
-}
-
-/**
- * What still writes in the listing’s folder: each file left, with how long after the CLI closed it last changed, and
- * every process whose environment names the folder, by its command alone (an environment can hold secrets).
- * @param {string} dir @param {string} config @param {number | undefined} closedAt
- */
-function writers(dir, config, closedAt) {
-  const left = (/** @type {string} */ d) => {
-    let entries;
-    try {
-      entries = readdirSync(d, { withFileTypes: true });
-    } catch {
-      return [`${relative(dir, d)}/ (gone)`];
-    }
-    return entries.flatMap((f) => {
-      const p = join(d, f.name);
-      if (f.isDirectory()) return left(p);
-      return [`${relative(dir, p)} (${changed(statSync(p, { throwIfNoEntry: false })?.mtimeMs, closedAt)})`];
-    });
-  };
-  const ps = (/** @type {string[]} */ args) => spawnSync('ps', args, { maxBuffer: 256 * 1024 * 1024 }).stdout?.toString() ?? '';
-  const pids = ps(['eww', '-axo', 'pid=,command='])
-    .split('\n')
-    .filter((l) => l.includes(config))
-    .map((l) => l.trim().split(/\s+/)[0])
-    .filter((p) => /^\d+$/.test(p) && Number(p) !== process.pid);
-  const procs = pids.length
-    ? ps(['-o', 'pid=,ppid=,comm=', '-p', pids.join(',')])
-        .trim()
-        .split('\n')
-    : [];
-  return `files: ${left(dir).join(', ') || 'none'}; processes: ${procs.join(' | ') || 'none'}`;
-}
-
-/**
- * Removes the listing’s folder. Something the CLI started can still write there after it closed: seen once under a
- * full run’s load, never alone (#1562), so the removal retries, and when it had to, the test’s diagnostics say what
- * was still writing. Only a folder that can’t be removed at all fails the test.
- * @param {import('node:test').TestContext} t @param {string} dir @param {string} config @param {number | undefined} closedAt
- */
-function removeListing(t, dir, config, closedAt) {
-  try {
-    rmSync(dir, { recursive: true, force: true });
-  } catch (e) {
-    const report = writers(dir, config, closedAt);
-    t.diagnostic(`#1562: the listing’s folder was still being written after the CLI closed, so its removal retried. ${report}`);
-    try {
-      rmSync(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 });
-    } catch (again) {
-      throw new Error(`Couldn’t remove the listing’s folder: ${writers(dir, config, closedAt)}`, { cause: new AggregateError([e, again]) });
-    }
-  }
-}
 
 test('a listing runs none of the person’s SessionStart hooks', { skip: !claudeHere && 'Claude Code isn’t installed here' }, async (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'pb-claude-hooks-'));
@@ -99,7 +40,7 @@ test('a listing runs none of the person’s SessionStart hooks', { skip: !claude
     assert.ok(models.length > 0, 'it listed, so it started');
     assert.equal(existsSync(marker), false, 'the SessionStart hook in its settings didn’t run');
   } finally {
-    removeListing(t, dir, config, closedAt);
+    removeListing(t, dir, closedAt);
   }
 });
 
