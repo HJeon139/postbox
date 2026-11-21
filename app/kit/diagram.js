@@ -1,6 +1,23 @@
 // Renders one Mermaid diagram inside its sandbox page. Postbox sends the source with postMessage;
 // this page answers with its height. Mermaid runs with strict security, so diagram text can’t add
 // links or script.
+
+// Mermaid reads a label as Markdown, so one that starts like a list item (“1. Build”, “2) Test”, “- Lint”) becomes a
+// list, which a label can’t show: it reads “Unsupported markdown: list” (#684). A word joiner (U+2060), which draws as
+// nothing, before the mark keeps it text. A backslash would too, but after “[” it opens Mermaid’s slanted shape.
+// A label starts after:
+// - a shape’s opening bracket, parenthesis or brace, or the “>” of an asymmetric shape, never an arrow’s head, where
+//   a sequence diagram’s “->>+ B” activates B;
+// - an edge label’s bar, or the “--”, “==” or “-.” that opens an edge’s text;
+// - a colon, for a state’s or a transition’s label;
+// - any of those, then a quote, or a quote and a backtick for a Markdown string.
+// A class diagram leaves out the colon and the brace, where “+” and “-” mark a member as public or private.
+const opener = (forClass) => String.raw`(?:[[(|${forClass ? '' : '{:'}]|(?<![-=.>])>|(?<![-=.<])(?:--|==|-\.)(?![-=.>]))(?:"\x60|["\x60])?[ \t]*`;
+const listStart = (forClass) => new RegExp(String.raw`(${opener(forClass)})(?=(?:\d{1,9}[.)]|[-*+])[ \t])`, 'g');
+const LIST_START = listStart(false);
+const LIST_START_CLASS = listStart(true);
+const asWritten = (src) => src.replace(/^\s*classDiagram\b/m.test(src) ? LIST_START_CLASS : LIST_START, '$1\u2060');
+
 (function () {
   const out = document.getElementById('out');
   const post = (m) => parent.postMessage(Object.assign({ __pbd: 1 }, m), '*');
@@ -39,7 +56,7 @@
           darkMode: !light,
         },
       });
-      const { svg } = await window.mermaid.render('d' + ++n, String(e.data.src));
+      const { svg } = await window.mermaid.render('d' + ++n, asWritten(String(e.data.src)));
       out.innerHTML = svg; // lint-allow dom: Mermaid’s own SVG, rendered with securityLevel strict in this sandboxed frame.
       out.setAttribute('aria-label', e.data.label || 'Diagram');
     } catch (err) {
