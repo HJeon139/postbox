@@ -91,6 +91,10 @@ test('#1478 the guide names postbox.publish, so agents learn an app can share it
   assert.match(guideText(), /^- postbox\.publish\(data\) shares the app’s data with you, no turn; read_app reads it$/m);
 });
 
+test('#855 the guide names postbox.anchors, so an app shown for review names the parts to comment on', () => {
+  assert.match(guideText(), /^- postbox\.anchors\(\{ name: el \}\): parts a review comments on$/m);
+});
+
 test('an agent is told which tools are turned off for it, and how to ask for one, not that the computer lacks them (#104)', () => {
   const who = { persona: { handle: 'critic', tools: ['web.fetch'] }, handles: ['critic'] };
   const g = turnFacts(who);

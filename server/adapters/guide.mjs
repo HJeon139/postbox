@@ -185,11 +185,11 @@ Every block has id (letters, digits, - _ . :; one block per id in a conversation
 
 Postbox renders headings, lists, tables, links (https only), \`code\`, fenced code, \`\`\`mermaid diagrams, and math with $…$ or $$…$$. Raw HTML shows as text, except \`<details><summary>Answer</summary> … </details>\`, which hides an exercise’s answer until the person opens it.
 
-A picture that explains draws what things are or do, not labeled boxes: draw it in an app, with shapes, icons and marks whose size or position carry the values. Keep Mermaid for a quick sketch; a lint flags one too wide to read.
+A picture that explains draws what things are or do, not labeled boxes: draw it in an app, with shapes, icons and marks whose size or position carry the values. Keep Mermaid for a quick sketch.
 
 ## Apps
 
-When a tool explains better than prose (an explorer, a simulator), write one with show_app { id, title, intent (one sentence of ≤ ${n('appIntentWords')} words: what it should leave the reader with), code, permissions?, fallback? }. Change it with update_app, not a new app; retire a wrong or replaced one with retire_app { id, reason, replacedBy? }. code: one HTML document, inline <script> and <style>, up to ${n('appCode')} characters; for a large one, codePath. Data: files [{ name?, path }] (up to ${n('appFiles')}, ${n('appFileBytes')} each), read with postbox.file(name). No network: no fetch or external scripts. Fonts outside Postbox’s stacks and generic families are refused. Use var(--token) colors (--text, --dim, --bg, --panel, --line, --accent…), not raw ones, and Postbox’s classes btn (sm, primary, ghost), seg, chip, pill, field, label, input, select, dim, small, mono. Pick one of a few options with a seg or chips (aria-pressed), not btns toggling ghost. At most one btn primary; ghost only for a minor action in text; links only for reading. Prefix your classes (lab-row). In charts:
+When a tool explains better than prose (an explorer, a simulator), write one with show_app { id, title, intent (one sentence of ≤ ${n('appIntentWords')} words: what it should leave the reader with), code, permissions?, fallback? }. Change it with update_app, not a new app; retire a wrong or replaced one with retire_app { id, reason, replacedBy? }. code: one HTML document, inline <script> and <style>, up to ${n('appCode')} characters; for a large one, codePath. Data: files [{ name?, path }] (up to ${n('appFiles')}, ${n('appFileBytes')} each), read with postbox.file(name). No network or external scripts. Fonts beyond Postbox’s and generic ones are refused. Use var(--token) colors (--text, --dim, --bg, --panel, --line, --accent…), not raw ones, and Postbox’s classes btn (sm, primary, ghost), seg, chip, pill, field, label, input, select, dim, small, mono. Pick one of a few options with a seg or chips (aria-pressed), not btns toggling ghost. At most one btn primary; ghost only for a minor action in text; links only for reading. Prefix your classes (lab-row). In charts:
 ${PALETTES.map((p) => `- ${p.name} for ${p.for}: ${p.when}.`).join('\n')}
 
 The global postbox:
@@ -200,11 +200,12 @@ The global postbox:
 - postbox.send(action, values, summary): a click or key press in it starts one turn with its first send, one per 5 s: put its data there. Other sends, and all in Safari and Firefox, are notes for read_app. summary: the app’s words. An event holds ≤ ${n('eventBytes')} of JSON: send ids.
 - postbox.saveState(obj) and postbox.restoreState() keep state over reloads and versions
 - postbox.publish(data) shares the app’s data with you, no turn; read_app reads it
+- postbox.anchors({ name: el }): parts a review comments on
 - postbox.load("d3" | "katex" | "mermaid") loads a bundled library
 - postbox.charts.line / scatter / stacked / heatmap / table(el, spec) draw charts with a Table view
 - postbox.on("theme", fn) to redraw canvas or SVG
 
-Don’t autofocus: Postbox stops an app that keeps taking focus. Before showing an app, Postbox checks it in a narrow and a wide window (375 and 1280 px); fix what it reports. Look with view_app before you’re done.
+Don’t autofocus: Postbox stops apps that keep taking focus. Before showing an app, Postbox checks it in a narrow and a wide window (375 and 1280 px); fix what it reports. Look with view_app before you’re done.
 
 ## Working with others
 

@@ -179,6 +179,8 @@
   };
 
   post({ type: 'hello' });
+  // Once the page’s own scripts have run, the parts it names, none included: a review says when there are none (#855).
+  addEventListener('load', () => post({ type: 'anchors', names: Object.keys(anchorMap).filter((k) => anchorMap[k]) }));
 
   // The pre-display check is app/kit/check.js, which Postbox adds to a check frame’s page after the kit.
   if (init.check) window.__pbCheck = { ready, errors, post, rgb, lum };
