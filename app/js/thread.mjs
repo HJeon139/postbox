@@ -18,7 +18,7 @@ import { placeholderRoom } from './composer-placeholder.mjs';
 import { quotaLine, releaseQuotaLine } from './composer-quota.mjs';
 import { runsIn } from './composer-runs-in.mjs';
 import { fitDraft } from './composer-size.mjs';
-import { addressLine, addressSig, commandHint, placeholderFor } from './composer-to.mjs';
+import { addressLine, addressSig, commandHint, hintMode, placeholderFor } from './composer-to.mjs';
 import { $, ago, dayOf, fill, h, icon, plural, syncList, timeOf, trusted } from './dom.mjs';
 import { draftAttachments } from './draft-attachments.mjs';
 import { appSig, drawnApp } from './drawn-app.mjs';
@@ -895,6 +895,8 @@ export function mountComposer(threadId, { side = false } = {}) {
         ),
       ),
     );
+    // The hint too: a file attached or removed changes what Enter does with a / line (#546).
+    paint();
   }
 
   function plusMenu(anchor) {
@@ -983,6 +985,8 @@ export function mountComposer(threadId, { side = false } = {}) {
     ['rename', 'Rename this conversation', () => openRename(threadId)],
   ];
   const POSTBOX_NAMES = new Set(POSTBOX.map(([n]) => n));
+  // Those that only open a view, so an argument typed after one can go without it acting on anything else (#546).
+  const POSTBOX_VIEWS = ['permissions', 'mode', 'model', 'effort', 'mcp'];
   function addDir(se = target()) {
     const projectId = thread()?.projectId;
     if (!se || !projectId) return;
@@ -1143,6 +1147,8 @@ export function mountComposer(threadId, { side = false } = {}) {
       };
     const r = resolved(text);
     if (!r || r.missing) return null;
+    // Postbox’s own command typed with an argument it can’t go without: nothing is sent, as the hint says (#546).
+    if (r.refused) return async () => false;
     if (r.own)
       return async () => {
         POSTBOX.find(([n]) => n === r.name)?.[2](r.se ?? undefined, r.named);
@@ -1157,7 +1163,9 @@ export function mountComposer(threadId, { side = false } = {}) {
       reply: target(),
       pick: (name) => (slashTarget?.name === name ? sessionsOf(threadId).find((x) => x.id === slashTarget?.sessionId) : null),
       own: [...POSTBOX_NAMES],
+      views: POSTBOX_VIEWS,
       has: (se, name) => agentCommands(se).list.some((c) => c.name === name),
+      files: attachments.length > 0,
     });
 
   async function submit(sendNow = false) {
@@ -1167,7 +1175,7 @@ export function mountComposer(threadId, { side = false } = {}) {
       return;
     }
     if (!text && !attachments.length) return;
-    const command = !attachments.length ? commandFor(text) : null;
+    const command = !attachments.length || resolved(text)?.refused ? commandFor(text) : null;
     if (command) {
       if (await command()) clear();
       return;
@@ -1464,20 +1472,7 @@ export function mountComposer(threadId, { side = false } = {}) {
     );
     // What Enter will do with a / or ! line (#67).
     const line = ta.value.trimStart();
-    // ! outside a conversation’s own composer would go to the agent as plain text: say so before it’s sent (#104).
-    const mode = offline
-      ? ''
-      : !commands
-        ? line.startsWith('!')
-          ? 'no-shell'
-          : ''
-        : line.startsWith('!')
-          ? 'shell'
-          : slashTarget && line.startsWith(`/${slashTarget.name}`)
-            ? 'skill'
-            : resolved(line)?.named || resolved(line)?.missing
-              ? 'command'
-              : '';
+    const mode = hintMode(line, { offline, commands, slashTarget, resolved });
     if (mode) hint.dataset.mode = mode;
     else delete hint.dataset.mode;
     hint.dataset.to = toSig();

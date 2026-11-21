@@ -85,6 +85,25 @@ export function addressLine(threadId, draft, { room, addAt }) {
 }
 
 /**
+ * Which hint the line under the composer shows for a / or ! line (#67), or '' for none.
+ * @param {string} line  the draft, without leading space
+ * @param {{ offline: boolean, commands: boolean, slashTarget: any, resolved: (line: string) => any }} at
+ *   commands: whether this composer runs commands; slashTarget: the skill the / menu picked; resolved: resolveCommand
+ * @returns {'' | 'no-shell' | 'shell' | 'skill' | 'command'}
+ */
+export function hintMode(line, { offline, commands, slashTarget, resolved }) {
+  if (offline) return '';
+  // ! outside a conversation’s own composer would go to the agent as plain text: say so before it’s sent (#104).
+  if (!commands) return line.startsWith('!') ? 'no-shell' : '';
+  if (line.startsWith('!')) return 'shell';
+  if (slashTarget && line.startsWith(`/${slashTarget.name}`)) return 'skill';
+  const r = resolved(line);
+  // A command aimed at one agent, a line that goes as a message, an argument Postbox’s own command drops, or an
+  // agent’s command named like one of Postbox’s (#546).
+  return r?.named || r?.missing || r?.dropped || r?.shadows ? 'command' : '';
+}
+
+/**
  * What Enter runs and for whom: a skill picked from the / menu (#67), or a command aimed at one agent with
  * `@handle /name` (#405); or, when that agent offers no such command or isn’t here, that the line goes as a message.
  * @param {any} r  resolveCommand’s answer (shared/slash-line.mjs), or { name, hint, named } for a picked skill
@@ -95,8 +114,18 @@ export function commandHint(r, threadId) {
     const next = nextSpeaker(threadId);
     return h('span', 'No agent ', h('b', `@${r.handle}`), ' here, so Enter sends this', next ? [' to ', h('b', next.handle)] : null, ' as a message');
   }
-  if (!r?.named) return null;
-  const who = h('b', r.named.handle);
+  // Postbox’s own command doesn’t take what was typed after it: Enter runs it without that, or sends nothing (#546).
+  if (r?.dropped) {
+    const own = h('span.mono', `/${r.name}`);
+    const typed = h('span.mono', `“${r.dropped}”`);
+    // With files, a command can’t go either, so both are what to remove (#546).
+    const also = r.files ? ' and the attached files' : '';
+    if (r.refused) return h('span', own, ' takes no argument here, so Enter sends nothing. Remove ', typed, also, ' to run it');
+    const forWho = r.se ? [' for ', h('b', r.se.handle)] : null;
+    return h('span', own, ' takes no argument here, so Enter runs it', forWho, ' without ', typed);
+  }
+  if (!r?.named && !r?.shadows) return null;
+  const who = h('b', (r.named ?? r.se).handle);
   if (r.missing) return h('span', who, ' has no ', h('span.mono', `/${r.name}`), ' skill or command, so Enter sends this to it as a message');
   const hint = r.hint ? [' ', h('span.mono.dim', r.hint)] : null;
   return h('span', 'Enter runs ', h('span.mono', `/${r.name}`), hint, r.own ? ' for ' : ' as ', who, r.own ? '' : '’s turn');
