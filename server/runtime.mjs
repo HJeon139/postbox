@@ -542,9 +542,10 @@ export class Runtime {
   // ── Permission prompts: server/permission-cards.mjs ──────────────────────────────────
 
   requestPermission(sessionId, req) {
-    // Claude Code’s AskUserQuestion asks as choice blocks, here on this computer: server/ask-question.mjs (#521).
-    const questions = req.tool === QUESTION_TOOL && !req.hostPrompt ? questionBlocks(req.input) : null;
-    return questions ? askQuestions(this, sessionId, req, questions) : requestPermission(this, sessionId, req);
+    // Claude Code’s AskUserQuestion asks as choice blocks, here and on a host: server/ask-question.mjs (#521, #1059).
+    const questions = req.tool === QUESTION_TOOL ? questionBlocks(req.input) : null;
+    // shown: a host prompt’s blocks from before a restart, which the resend carries on from (#1059).
+    return questions ? askQuestions(this, sessionId, req, questions, req.shown ?? []) : requestPermission(this, sessionId, req);
   }
   askPerson(sessionId, req) {
     return askPerson(this, sessionId, req);

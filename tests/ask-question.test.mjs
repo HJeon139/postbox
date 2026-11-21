@@ -234,7 +234,7 @@ test('#521 a question past the catalog’s limits keeps today’s permission car
   assert.equal((await asked).behavior, 'deny');
 });
 
-test('#521 a question on a host keeps today’s permission card', async () => {
+test('#1059 a question on a host is a choice block marked with its prompt, and the pick answers the call', async () => {
   const s = setup();
   let asked;
   s.adapter.next.push(async (c) => {
@@ -248,10 +248,12 @@ test('#521 a question on a host keeps today’s permission card', async () => {
     c.text('Done.');
   });
   s.rt.sendMessage(s.t.id, { text: 'Ask me.' });
-  await until(() => s.items().some((i) => i.kind === 'permission' && i.status === 'open'), 'the host prompt’s card');
-  assert.equal(s.questions().length, 0, 'no question block');
-  s.rt.act(s.t.id, s.items().find((i) => i.kind === 'permission' && i.status === 'open').id, 'deny', {});
-  assert.equal((await asked).allow, false);
+  await until(() => s.questions().length === 1, 'the question’s block');
+  const [q] = s.questions();
+  assert.equal(s.items().filter((i) => i.kind === 'permission').length, 0, 'no permission card');
+  assert.deepEqual(q.remote, { hostId: 'h1', turn: 'ht1', prompt: 'p1', entry: null, part: 0 });
+  s.rt.act(s.t.id, q.id, 'choose', { selected: [q.block.options.find((o) => o.label === 'Green').id] });
+  assert.deepEqual((await asked).updatedInput.answers, { 'Which color do you prefer?': 'Green' });
 });
 
 test('#521 a question nobody answers within CARD_WAIT_MS stays open, and the agent hears one thing: don’t ask again', async () => {
