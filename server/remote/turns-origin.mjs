@@ -201,6 +201,6 @@ export function continueAs(turn) {
   const o = turn.asked?.message?.continues;
   if (!o) return;
   turn.origin = o;
-  Object.assign(turn, { kind: o.kind, movesOn: o.movesOn, from: o.from, summarizeTo: o.summarizeTo });
+  Object.assign(turn, { kind: o.kind, movesOn: o.movesOn, from: o.from, summarizeTo: o.summarizeTo, backTo: o.backTo });
   turn.asked = { ...turn.asked, message: o.message ?? null, messageRef: o.messageRef ?? null, lost: o.lost === true };
 }
