@@ -2,6 +2,12 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.35.3 (2026-11-21)
+
+### Fixes
+
+- **retry:** send a retried wake's reply back when its failed turn took no entries
+
 ## 4.35.2 (2026-11-21)
 
 ### Fixes
