@@ -25,12 +25,13 @@ export function parseSlashLine(text) {
  * view runs without it (dropped: what it leaves out); any other is refused (refused: true), since running /stop or
  * /delete without the agent typed after it would act on others. Either way the composer says so before Enter.
  * files: the draft has files, so the composer sends the line with them as a message, unless it’s refused; one that
- * would drop its argument is refused too, and an agent’s command isn’t marked shadows, since no turn of it starts.
+ * would drop its argument is refused too, marked files, since the files must go before it can run; and an agent’s
+ * command isn’t marked shadows, since no turn of it starts.
  * @param {string} text
  * @param {{ members: any[], reply: any, pick?: (name: string) => any, own: string[], views?: string[], has: (se: any, name: string) => boolean, files?: boolean }} at
  *   members: the conversation’s sessions; reply: the one the composer replies to; pick: the agent the / menu chose
  *   for that name, if any; own: Postbox’s command names; views: those of them that only open a view; has: whether an agent offers a skill or command of that name
- * @returns {{ own: boolean, name: string, line: string, se: any, named: any, dropped?: string, shadows?: true } | { refused: true, name: string, se: any, named: any, dropped: string } | { missing: 'command' | 'agent', name: string, named: any, handle: string | null } | null}
+ * @returns {{ own: boolean, name: string, line: string, se: any, named: any, dropped?: string, shadows?: true } | { refused: true, name: string, se: any, named: any, dropped: string, files?: true } | { missing: 'command' | 'agent', name: string, named: any, handle: string | null } | null}
  */
 export function resolveCommand(text, { members, reply, pick = () => null, own, views = [], has, files = false }) {
   const cmd = parseSlashLine(text);
@@ -48,6 +49,6 @@ export function resolveCommand(text, { members, reply, pick = () => null, own, v
   // Postbox’s own, typed with an argument as a CLI takes it (`/effort low`): never a paid turn as a message (#546).
   const dropped = cmd.rest.trim();
   if (views.includes(cmd.name) && !files) return { own: true, name: cmd.name, line: `/${cmd.name}`, se: named ?? reply, named, dropped };
-  if (own.includes(cmd.name)) return { refused: true, name: cmd.name, se: named ?? reply, named, dropped };
+  if (own.includes(cmd.name)) return { refused: true, name: cmd.name, se: named ?? reply, named, dropped, ...(files ? { files } : {}) };
   return named ? { missing: 'command', name: cmd.name, named, handle: cmd.handle } : null;
 }

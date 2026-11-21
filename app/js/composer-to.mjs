@@ -118,7 +118,9 @@ export function commandHint(r, threadId) {
   if (r?.dropped) {
     const own = h('span.mono', `/${r.name}`);
     const typed = h('span.mono', `“${r.dropped}”`);
-    if (r.refused) return h('span', own, ' takes no argument here, so Enter sends nothing. Remove ', typed, ' to run it');
+    // With files, a command can’t go either, so both are what to remove (#546).
+    const also = r.files ? ' and the attached files' : '';
+    if (r.refused) return h('span', own, ' takes no argument here, so Enter sends nothing. Remove ', typed, also, ' to run it');
     const forWho = r.se ? [' for ', h('b', r.se.handle)] : null;
     return h('span', own, ' takes no argument here, so Enter runs it', forWho, ' without ', typed);
   }

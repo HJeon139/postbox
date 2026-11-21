@@ -53,7 +53,14 @@ test('Postbox’s own command with an argument runs without it if it only opens 
   assert.equal(resolveCommand('@alpha /compact keep the plan', at({ views })).shadows, undefined, 'named, it says so already');
   // With files, the composer sends the line with them as a message unless it’s refused: so a dropped argument is refused,
   // and no agent’s turn is promised.
-  assert.deepEqual(resolveCommand('/mode ask', at({ views, files: true })), { refused: true, name: 'mode', se: beta, named: null, dropped: 'ask' });
+  assert.deepEqual(resolveCommand('/mode ask', at({ views, files: true })), {
+    refused: true,
+    name: 'mode',
+    se: beta,
+    named: null,
+    dropped: 'ask',
+    files: true,
+  });
   assert.equal(resolveCommand('/compact keep the plan', at({ views, files: true })).shadows, undefined);
 });
 

@@ -153,7 +153,7 @@ test('#546 a file attached after /effort low is typed: the hint changes to say E
   await expect(hint(page)).toContainText('/effort takes no argument here, so Enter runs it for beta without “low”');
   await page.locator('.composer input[type=file][multiple]').setInputFiles({ name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('Notes') });
   await expect(page.locator('.composer .attachments .att')).toHaveText(/^notes\.txt · \d/);
-  await expect(hint(page)).toContainText('/effort takes no argument here, so Enter sends nothing. Remove “low” to run it');
+  await expect(hint(page)).toContainText('/effort takes no argument here, so Enter sends nothing. Remove “low” and the attached files to run it');
   await page.locator('#composer-input').focus();
   await page.keyboard.press('Enter');
   await expect(page.locator('#composer-input'), 'the draft stays').toHaveValue('/effort low');
@@ -165,9 +165,14 @@ test('#546 a file attached after /effort low is typed: the hint changes to say E
   await page.locator('.composer .attachments .att button').first().click();
   await expect(page.locator('.composer .attachments .att')).toHaveCount(0);
   await expect(hint(page), 'the file removed, the agent’s command runs as its turn').toContainText('Enter runs /compact as alpha’s turn');
-  await page.locator('#composer-input').fill('');
+  // What the hint said to do: without “low” and the file, Enter runs /effort, and nothing is sent.
+  await page.locator('#composer-input').fill('/effort');
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('dialog', { name: 'Settings' }).locator('b', { hasText: 'beta' })).toBeVisible();
+  await page.keyboard.press('Escape');
   await sendAfter(page, t);
-  expect(sent(t, '/effort low'), 'no message').toEqual([]);
+  expect(sent(t, '/effort low').concat(sent(t, '/effort')), 'no message').toEqual([]);
   expect(turnsFor('/effort'), 'no turn').toEqual([]);
 });
 
