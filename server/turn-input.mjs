@@ -19,6 +19,7 @@ import { backTo } from './reply-back.mjs';
  * @property {number} at
  * @property {boolean} [resend]
  * @property {string[]} [postedSince]  ids of the sender’s newer posts while it waited
+ * @property {boolean} [bounce]  a reply that came back on its own (reply-back.mjs)
  */
 
 /** What each source is, said after who it is from. A mention or the person’s message needs no words. */
@@ -96,7 +97,11 @@ function place(/** @type {{ id: string, kind?: string, title?: string }} */ thre
  */
 function replyGoes(entries) {
   const to = backTo(entries);
-  return to.length ? ` and goes back to ${to.map((h) => `@${h}`).join(' and ')}. @-mention another agent to hand off to them instead.` : '.';
+  if (!to.length) return '.';
+  const goes = ` and goes back to ${to.map((h) => `@${h}`).join(' and ')}. @-mention another agent to hand off to them instead.`;
+  // Answering a reply that came back (#1553): a reaction to it ends the exchange, as does ending with nothing (#1543).
+  const answers = entries.filter((e) => e.source !== 'notice').every((e) => e.bounce === true);
+  return answers ? `${goes} If the exchange is done, react to the reply, or end without writing anything: then no one wakes.` : goes;
 }
 
 /** The first part: the entries, with where the reply posts and goes, and what waits elsewhere. */

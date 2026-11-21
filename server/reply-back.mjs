@@ -32,7 +32,7 @@ export function replyBack(rt, turn, se, took) {
   // A turn that took no entries carries whom it goes back to: a host turn continued under a new ID goes back as the turn
   // it continues would have (#1538), and a retry of one that took none as the failed turn would have (#1541).
   const asked = turn.backTo ?? backTo(took);
-  const to = asked.filter((h) => h !== se.handle && here(h));
+  const to = asked.filter((h) => h !== se.handle && here(h) && !endedByReaction(rt, se, took, h));
   if (!to.length) return;
   // Text with words: a harness may stream only whitespace around a tool call, such as a reaction, which is no reply.
   const reply = rt.store.pending.items(turn.threadId).findLast((/** @type {any} */ x) => x.kind === 'agent' && x.turnId === turn.id && x.text?.trim());
@@ -45,4 +45,21 @@ export function replyBack(rt, turn, se, took) {
     if (r.ok) went.push(h);
   }
   if (went.length) rt.threads.patchItem(turn.threadId, reply.id, { wentBack: went });
+}
+
+/**
+ * Whether the agent ended its exchange with this one by a reaction (#1553): it reacted to a reply from it that came back
+ * on its own and woke this turn. Its words, if it wrote any, then post without waking it again. In two UAT runs of 21
+ * November 2026, agents reacted ✅ and also wrote “Acknowledged.”, and each acknowledgment went back, up to hop 262.
+ * Only a reply that came back counts: a direct @-mention is a request, and a 👍 on it may come before the report.
+ * @param {any} rt @param {any} se  the agent @param {any[]} took  the entries the turn took @param {string} handle
+ */
+function endedByReaction(rt, se, took, handle) {
+  return took.some(
+    (e) =>
+      e.source === 'mention' &&
+      e.bounce === true &&
+      e.from === handle &&
+      (rt.store.pending.item(e.threadId, e.itemId)?.reactions ?? []).some((/** @type {any} */ r) => r.by === se.id),
+  );
 }
