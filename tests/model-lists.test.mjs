@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
-import { readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { test } from 'node:test';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { ModelLists } from '../server/model-lists.mjs';
@@ -114,4 +114,22 @@ test('a list that can’t be kept is still answered, and the failure is logged',
   assert.deepEqual(await lists.list('kiro-cli'), { models: ['m-1'], fresh: true });
   assert.equal(logged.mock.callCount(), 1);
   assert.match(String(logged.mock.calls[0].arguments[0]), /couldn’t keep kiro-cli’s models/);
+});
+
+test('#1530: a list its harness gives after Postbox closed writes nothing and logs nothing, since the data folder may be gone', async (t) => {
+  const { file, adapters } = setup();
+  /** @type {(models: string[]) => void} */
+  let answer = () => {};
+  const adapter = adapters.get('kiro-cli');
+  adapter.listModels = () => new Promise((r) => (answer = r));
+  const lists = new ModelLists(adapters, { file, now: () => 0 });
+  const errors = t.mock.method(console, 'error', () => {});
+  const asked = lists.list('kiro-cli');
+  await new Promise((r) => setImmediate(r));
+  // As a test’s teardown does once its Postbox has closed: the data folder goes.
+  lists.close?.();
+  rmSync(dirname(file), { recursive: true, force: true });
+  answer(['m-late']);
+  assert.deepEqual(await asked, { models: ['m-late'], fresh: true }, 'the ask still gets its answer');
+  assert.equal(errors.mock.callCount(), 0, 'no error for a folder Postbox no longer keeps');
 });

@@ -3,11 +3,12 @@
 // record kept in memory as it was. Most go to install-record.mjs directly, over a record state of their own.
 
 import assert from 'node:assert/strict';
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, statSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, statSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { createHostManager } from '../server/remote/hosts.mjs';
+import { consentStillOn, setKeepUpdated } from '../server/remote/hosts-update.mjs';
 import { changeRecord, MAX_INSTALLS, recordOf } from '../server/remote/install-record.mjs';
 import { until, VERSION } from './remote-hosts-fixtures.mjs';
 import { readRecord, recordFile, rig, writeRecord } from './remote-hosts-update-fixtures.mjs';
@@ -120,5 +121,61 @@ test('#464-b2a: a write that fails leaves the record kept in memory as it was, n
   } finally {
     chmodSync(r.m.dataDir, 0o700);
     r.done();
+  }
+});
+
+test('#1530: the consent the person turned off counts at once, while its write waits, and a write that fails leaves it as kept', async () => {
+  const { m: state, done } = records();
+  /** A manager closed to status (update() returns at once), over the record state. */
+  const m = /** @type {any} */ ({ ...state, consentAsked: new Map(), links: new Map(), getHost: () => ({ id: 'h1' }), closed: true });
+  try {
+    m.installRecords.set('h1', { keepUpdated: true, installs: [] });
+    const off = setKeepUpdated(m, 'h1', false);
+    assert.equal(consentStillOn(m, 'h1'), false, 'off, before the write has landed');
+    await off;
+    assert.equal(consentStillOn(m, 'h1'), false, 'and once it has');
+    assert.equal(m.consentAsked.size, 0, 'the record holds it now');
+    if (POSIX) {
+      // A write that fails, as writeRecordFile refuses a records folder that’s a link: the person’s choice isn’t kept,
+      // so the record’s consent stands, and nothing of the choice is left counting.
+      const folder = join(m.dataDir, 'remote-installs');
+      rmSync(folder, { recursive: true, force: true });
+      const elsewhere = mkdtempSync(join(tmpdir(), 'pb-test-record-elsewhere-'));
+      symlinkSync(elsewhere, folder);
+      try {
+        await assert.rejects(setKeepUpdated(m, 'h1', true), { code: 'ENOTDIR' });
+      } finally {
+        rmSync(folder, { force: true });
+        rmSync(elsewhere, { recursive: true, force: true });
+      }
+      assert.equal(consentStillOn(m, 'h1'), false, 'the record’s consent stands');
+      assert.equal(m.consentAsked.size, 0);
+    }
+  } finally {
+    done();
+  }
+});
+
+test('#1530: a request that fails clears only its own pending choice, not a later one with the same value', async () => {
+  if (!POSIX) return;
+  const { m: state, done } = records();
+  const m = /** @type {any} */ ({ ...state, consentAsked: new Map(), links: new Map(), getHost: () => ({ id: 'h1' }), closed: true });
+  const folder = join(m.dataDir, 'remote-installs');
+  const elsewhere = mkdtempSync(join(tmpdir(), 'pb-test-record-elsewhere-'));
+  try {
+    m.installRecords.set('h1', { keepUpdated: true, installs: [] });
+    // Two tabs turn it off at once; the record folder is a link, so writeRecordFile refuses each in turn.
+    symlinkSync(elsewhere, folder);
+    const first = setKeepUpdated(m, 'h1', false);
+    const second = setKeepUpdated(m, 'h1', false);
+    await assert.rejects(first, { code: 'ENOTDIR' });
+    assert.equal(consentStillOn(m, 'h1'), false, 'the second, still waiting its turn, still counts');
+    await assert.rejects(second, { code: 'ENOTDIR' });
+    assert.equal(consentStillOn(m, 'h1'), true, 'with both refused, the record’s consent stands');
+    assert.equal(m.consentAsked.size, 0);
+  } finally {
+    rmSync(folder, { force: true });
+    rmSync(elsewhere, { recursive: true, force: true });
+    done();
   }
 });

@@ -101,8 +101,11 @@ const hasLfs = spawnSync('git', ['lfs', 'version'], { encoding: 'utf8' }).status
 
 test('#1125: git lfs in a git-remote run sends nothing, though lfs.url names an http server the .netrc has a login for', {
   skip: !hasLfs && 'git lfs isn’t installed',
-}, async () => {
+}, async (t) => {
   const base = person();
+  // In the person’s environment the test gives git, not this one: a git-lfs that is a shim reading its own HOME (as
+  // a toolbox install’s is) can’t run there, and then the control below couldn’t either (#1530).
+  if (spawnSync('git', ['lfs', 'version'], { encoding: 'utf8', env: base }).status !== 0) return t.skip('git lfs doesn’t run with the test’s HOME');
   const seen = [];
   const server = createServer((req, res) => {
     seen.push(req.headers.authorization ?? null);
