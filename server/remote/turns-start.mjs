@@ -8,6 +8,7 @@ import { defaultHostSettings } from '../../shared/remote-settings.mjs';
 import { offersBring } from '../bring.mjs';
 import { hostRulesOf } from '../host-rules.mjs';
 import { asksByPrompt } from '../permission-prompt.mjs';
+import { backTo } from '../reply-back.mjs';
 import { noteScheduledTurn } from '../scheduled-wakes.mjs';
 import { wokeOf } from '../turn-marks.mjs';
 import { carryAttachments } from './attachments.mjs';
@@ -89,7 +90,7 @@ export async function prepare(rts, turn, ctx, message) {
   const resume = !attach && prior?.resume ? prior.resume : null;
   // What it was asked, a large request written to Postbox’s store first, so the record allocate saves never names a
   // copy that isn’t there (turns-origin.mjs).
-  live.origin = await keepOrigin(rt, turn, wokeOf(turn).woke);
+  live.origin = await keepOrigin(rt, turn, wokeOf(turn).woke, backTo(rt.delivery.takenBy(turn.sessionId, turn.id)));
   if (ctx.signal.aborted) throw abortError();
   /** @type {import('../adapters/adapter.mjs').RemoteContext} */
   const remote = {
