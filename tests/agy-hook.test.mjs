@@ -101,7 +101,7 @@ test('#370 conditions 2 & 3: decideAgyTool classifies file, command, web, MCP an
 test('#370 condition 2: runAgyHook fails closed to deny on every error path and never outputs ask, force_ask or empty stdout', async () => {
   const root = tempDir('pb-agy-fail-');
   const env = { POSTBOX_MCP_URL: 'http://127.0.0.1:1/mcp', POSTBOX_AGY_MODE: 'auto', POSTBOX_AGY_FOLDERS: JSON.stringify([root]) };
-  const cmdEvent = JSON.stringify({ toolCall: { name: 'run_command', args: { CommandLine: 'ls /' } } });
+  const cmdEvent = JSON.stringify({ conversationId: 'c1', stepIdx: 1, toolCall: { name: 'run_command', args: { CommandLine: 'ls /' } } });
   const rpcReply = (id, text) => ({ ok: true, status: 200, json: async () => ({ jsonrpc: '2.0', id, result: { content: [{ text }] } }) });
 
   for (const [label, stdin, fetchImpl] of [
@@ -170,7 +170,7 @@ test('#370 condition 4: mcpPost uses node:http with HOOK_TIMEOUT_S instead of un
   };
   const root = tempDir('pb-agy-http-');
   const env = { POSTBOX_MCP_URL: 'http://127.0.0.1:1/mcp', POSTBOX_AGY_MODE: 'auto', POSTBOX_AGY_FOLDERS: JSON.stringify([root]) };
-  const out = await runAgyHook(JSON.stringify({ toolCall: { name: 'run_command', args: { CommandLine: 'ls /' } } }), {
+  const out = await runAgyHook(JSON.stringify({ conversationId: 'c1', stepIdx: 1, toolCall: { name: 'run_command', args: { CommandLine: 'ls /' } } }), {
     cwd: root,
     env,
     fetchImpl: (url, init) => mcpPost(url, { ...init, requestImpl: /** @type {any} */ (fakeReq) }),

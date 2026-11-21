@@ -65,6 +65,7 @@ import { AGY_CAPABILITIES } from './agy-capabilities.mjs';
 import { HOOK_SCRIPT } from './agy-hook.mjs';
 import { agyHookCommand, agySupportsHooks, confirmAgyHook, probeAgyHook } from './agy-hook-check.mjs';
 import { agyPlugin, agySkillFiles, excludeFile, excludePlugin, PLUGIN_DIR, writeAgyPlugin } from './agy-plugin.mjs';
+import { hookPromptCard } from './agy-prompt-card.mjs';
 import { agyStartError, clip, HEADLESS_NOTE, HOOK_NOTE, LOOKING_NOTE, refusalFollowUp, refusalOf } from './agy-refusals.mjs';
 import { AGY_SERVER, ALLOW_POSTBOX, agySettingsFile, allowPostbox } from './agy-settings.mjs';
 import { stepId, toolOf } from './agy-tools.mjs';
@@ -323,7 +324,15 @@ export function createAgyMapper(ctx, { now = Date.now, effort = null, resumed = 
     };
     st.tools.set(key(s), t);
     // agy reading its own files to load a tool’s schema isn’t the agent’s work (agy-tools.mjs).
-    emit({ kind: 'tool_call', id: t.id, name, input: tool.input, final: true, ...(name === 'ToolSearch' ? { work: false } : {}) });
+    emit({
+      kind: 'tool_call',
+      id: t.id,
+      name,
+      input: tool.input,
+      raw: { name: t.name, args: s.tool_info?.parameters ?? {} },
+      final: true,
+      ...(name === 'ToolSearch' ? { work: false } : {}),
+    });
     Object.assign(st, { refusedLast: null, textSinceTool: false, writing: false });
     return t;
   };
@@ -570,6 +579,11 @@ export class AntigravityCliAdapter {
   /** The models its harness offers, for the model field (server/model-lists.mjs). Empty if it can’t list. */
   listModels() {
     return agyModels(this.bin, { spawnImpl: this.spawn });
+  }
+
+  /** The card for a prompt from its hook, made from the stream’s call, or null when they disagree (agy-prompt-card.mjs, #907). */
+  promptCard(call, args) {
+    return hookPromptCard(call?.raw, args);
   }
 
   /** The folder the agent works in, by the rule every backend shares (folder.mjs). */

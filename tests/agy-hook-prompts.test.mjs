@@ -9,6 +9,7 @@ import { handleMcp } from '../server/mcp.mjs';
 import { expireWait } from '../server/permission-cards.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
+import { callId, hookEvent, promptCard, showCall } from './agy-calls.mjs';
 import * as arrange from './arrange.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
@@ -20,6 +21,7 @@ function setupHookRuntime() {
   const adapter = {
     name: 'antigravity-cli',
     capabilities: { promptTool: true, promptHook: true, permissions: 'none' },
+    promptCard,
     next: /** @type {any[]} */ ([]),
     async deliver(_s, _m, ctx) {
       await this.next.shift()?.(ctx);
@@ -42,28 +44,27 @@ function setupHookRuntime() {
   return { root, store, adapter, rt, t, se, env, fetchMcp };
 }
 
-test('#370 condition 4: runAgyHook asks through permission_prompt with its own request id and handles edit, deny and expiry', async () => {
+test('#370 condition 4: runAgyHook asks through permission_prompt by the stream’s step and handles edit, deny and expiry', async () => {
   const { root, store, adapter, rt, t, env, fetchMcp } = setupHookRuntime();
-  const cmdEvent = JSON.stringify({
-    toolCall: { name: 'run_command', args: { CommandLine: 'touch /tmp/a.txt', WaitMsBeforeAsync: 5000, toolSummary: 'Touch a.txt' } },
-  });
+  const args = { CommandLine: 'touch /tmp/a.txt', WaitMsBeforeAsync: 5000, toolSummary: 'Touch a.txt' };
   /** @type {any[]} */
   const results = [];
-  adapter.next.push(async () => {
-    const p1 = runAgyHook(cmdEvent, { cwd: root, env, fetchImpl: /** @type {any} */ (fetchMcp) });
+  adapter.next.push(async (/** @type {any} */ ctx) => {
+    for (const step of [1, 2, 3]) showCall(ctx, step, 'run_command', { CommandLine: args.CommandLine });
+    const p1 = runAgyHook(hookEvent(1, 'run_command', args), { cwd: root, env, fetchImpl: /** @type {any} */ (fetchMcp) });
     await sleep(10);
     const card1 = store.items(t.id).find((i) => i.kind === 'permission' && i.status === 'open');
-    assert.match(card1.toolUseId, /^agy-hook-/);
+    assert.equal(card1.toolUseId, callId(1));
     rt.act(t.id, card1.id, 'edit', { command: 'touch edited.txt' });
     results.push(await p1);
 
-    const p2 = runAgyHook(cmdEvent, { cwd: root, env, fetchImpl: /** @type {any} */ (fetchMcp) });
+    const p2 = runAgyHook(hookEvent(2, 'run_command', args), { cwd: root, env, fetchImpl: /** @type {any} */ (fetchMcp) });
     await sleep(10);
     const card2 = store.items(t.id).find((i) => i.kind === 'permission' && i.status === 'open');
     rt.act(t.id, card2.id, 'deny', { reason: 'Do not touch files.' });
     results.push(await p2);
 
-    const p3 = runAgyHook(cmdEvent, { cwd: root, env, fetchImpl: /** @type {any} */ (fetchMcp) });
+    const p3 = runAgyHook(hookEvent(3, 'run_command', args), { cwd: root, env, fetchImpl: /** @type {any} */ (fetchMcp) });
     await sleep(10);
     const card3 = store.items(t.id).find((i) => i.kind === 'permission' && i.status === 'open');
     expireWait(rt, card3.id);
@@ -94,12 +95,14 @@ test('#370 condition 4: disconnecting permission_prompt expires only that reques
     };
     return handleMcp(rt, se.id, body, rt.turns.get(se.id)?.token ?? null, sig);
   };
-  adapter.next.push(async () => {
+  adapter.next.push(async (/** @type {any} */ ctx) => {
+    showCall(ctx, 1, 'run_command', { CommandLine: 'touch one.txt' });
+    showCall(ctx, 2, 'run_command', { CommandLine: 'touch two.txt' });
     const [ac1, ac2] = [new AbortController(), new AbortController()];
-    const [p1, p2] = [callPrompt('agy-hook-1', 'touch one.txt', ac1.signal), callPrompt('agy-hook-2', 'touch two.txt', ac2.signal)];
+    const [p1, p2] = [callPrompt(callId(1), 'touch one.txt', ac1.signal), callPrompt(callId(2), 'touch two.txt', ac2.signal)];
     await sleep(10);
-    const card1 = store.items(t.id).find((i) => i.kind === 'permission' && i.toolUseId === 'agy-hook-1');
-    const card2 = store.items(t.id).find((i) => i.kind === 'permission' && i.toolUseId === 'agy-hook-2');
+    const card1 = store.items(t.id).find((i) => i.kind === 'permission' && i.toolUseId === callId(1));
+    const card2 = store.items(t.id).find((i) => i.kind === 'permission' && i.toolUseId === callId(2));
     assert.deepEqual([card1.status, card2.status], ['open', 'open']);
     ac1.abort();
     const rpc1 = /** @type {any} */ (await p1);
