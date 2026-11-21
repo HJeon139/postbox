@@ -100,7 +100,8 @@ export function formField(f, at) {
     'aria-describedby': [err ? errId : null, range ? `${id}-range` : null, f.help ? `${id}-help` : null].filter(Boolean).join(' ') || null,
     required: !!f.required,
   };
-  const v = at.vals[f.id] ?? '';
+  // Own keys only: an unanswered field with an id like “constructor” would show Object’s (#247).
+  const v = (Object.hasOwn(at.vals, f.id) ? at.vals[f.id] : undefined) ?? '';
   const counter = f.kind === 'longtext' ? h('span.small.dim', { style: { marginLeft: 'auto' } }, charCount(f, String(v))) : null;
   let control;
   if (f.kind === 'toggle') control = toggle(f, at, id);

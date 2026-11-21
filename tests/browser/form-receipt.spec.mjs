@@ -41,3 +41,26 @@ test('#247 a form’s receipt lists every field the person sent', async ({ page 
   const receipt = 'Sent: Schedule a release · Build number 42 · Release date “2026-10-31” · Channel beta · Notify team on';
   await expect(page.locator('.transcript .voice'), 'the line in your voice').toHaveText(receipt);
 });
+
+// From review: the answered form read each field’s value from what was sent, so an unanswered field with an id like
+// “constructor” showed Object’s own function in its box.
+test('#247 an answered form leaves a field the person didn’t fill empty, whatever its id', async ({ page }) => {
+  const { rt } = app;
+  const project = Object.values(rt.store.state.projects)[0];
+  const thread = rt.createThread({ projectId: project.id, title: 'Volumes', personaIds: [arrange.persona(rt, 'librarian').id] });
+  const tools = rt.toolsFor(arrange.agentIn(rt, thread.id).id);
+  const fields = [
+    { id: 'q', label: 'Questions', kind: 'number' },
+    { id: 'constructor', label: 'Notes', kind: 'text' },
+    { id: 'toString', label: 'Notify me', kind: 'toggle' },
+  ];
+  tools.show_block({ block: { id: 'volumes', type: 'form', version: 1, title: 'Volumes', fallback: 'How many?', fields } });
+  await page.goto(`${app.origin}/#/t/${thread.id}`);
+  await synced(page, app);
+  const block = page.locator('.transcript .block', { hasText: 'Volumes' });
+  await expect(block.getByRole('switch', { name: 'Notify me' }), 'a toggle no one touched starts off').toHaveAttribute('aria-checked', 'false');
+  await block.getByRole('textbox', { name: 'Questions' }).fill('12');
+  await block.getByRole('button', { name: 'Send form' }).click();
+  await expect(page.locator('.transcript .voice')).toHaveText('Sent: Volumes · Questions 12 · Notify me off');
+  await expect(block.getByRole('textbox', { name: 'Notes' }), 'the box the person left empty').toHaveValue('');
+});
