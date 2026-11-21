@@ -58,15 +58,17 @@ export const stepState = (state) => (STEP_STATES.has(/** @type {string} */ (stat
 
 /**
  * The step a turn keeps, from what its activity was told: each field bounded, and only the ones it has.
- * part: the reply’s part it shows in, and at: where in that part’s words, their length when it started; added,
+ * tool: the tool a call ran. part: the reply’s part it shows in, and at: where in that part’s words, their length when it started; added,
  * deleted and diff: an edit’s change (server/step-diff.mjs).
- * @param {{ id: string, label: unknown, state: unknown, ms: number|null, who: unknown, parent: unknown, detail: unknown, kind: unknown, job: unknown, input: unknown, output: unknown, part?: unknown, at?: unknown, added?: unknown, deleted?: unknown, diff?: unknown }} f
+ * @param {{ id: string, label: unknown, tool?: unknown, state: unknown, ms: number|null, who: unknown, parent: unknown, detail: unknown, kind: unknown, job: unknown, input: unknown, output: unknown, part?: unknown, at?: unknown, added?: unknown, deleted?: unknown, diff?: unknown }} f
  */
-export function turnStep({ id, label, state, ms, who, parent, detail, kind, job, input, output, part, at, added, deleted, diff }) {
+export function turnStep({ id, label, tool, state, ms, who, parent, detail, kind, job, input, output, part, at, added, deleted, diff }) {
   const count = (/** @type {unknown} */ n) => typeof n === 'number' && Number.isInteger(n) && n >= 0;
   return {
     id,
     label: String(label).slice(0, 200),
+    // The tool the call ran, by its harness’s name (server/harness-tools.mjs), for the ATIF export’s function_name (#1529).
+    ...(typeof tool === 'string' && tool ? { tool: tool.slice(0, 200) } : {}),
     state: stepState(state),
     ms,
     ...(who ? { who: String(who).slice(0, 40) } : {}),

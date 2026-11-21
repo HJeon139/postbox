@@ -77,7 +77,7 @@ export class HarnessTools {
     this.st.tools.set(id, { name, label, own, input, patch, shown: stepInput(input, label), who, parent: by?.parent ?? null, started: this.now(), quiet });
     const diff = stepDiff(name, input, patch);
     this.st.tools.get(id).diff = diff.diff;
-    const step = { id, label, state: 'running', ...byOf(by), ...inputOf(input, label), ...diff };
+    const step = { id, label, tool: name, state: 'running', ...byOf(by), ...inputOf(input, label), ...diff };
     if (!quiet) this.ctx.activity({ ...step, ...(SUBAGENT_TOOLS.has(name) ? { kind: 'agent' } : {}) });
     else if (!who) this.status({ state: 'tool', currentStep: label });
     if (SUBAGENT_TOOLS.has(name)) this.startSubagent(id, input, by);
