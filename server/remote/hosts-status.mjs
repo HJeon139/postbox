@@ -35,6 +35,7 @@ export const HEARD_EVERY_MS = 10_000;
  *   checks: Map<string, Promise<SignInCheck | null>>, removals: Map<string, Promise<void>>, closed: boolean,
  *   instance?: string | null, updating: Map<string, import('./hosts-update.mjs').Updating>,
  *   installRecords: Map<string, import('./install-record.mjs').KeptRecord>, recordWrites: Map<string, Promise<unknown>>,
+ *   consentAsked: Map<string, { on: boolean }>,
  *   onFailure: (id: string, failure: any) => void }} Manager
  *   reasons: per host, each reason it’s needed and how many times. tokens: tokens read from dataDir. emitted: the last
  *   'status' emitted, per host. heardTimers: a 'status' held back for lastHeard alone. checks and removals: the sign-in

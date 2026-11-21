@@ -4,6 +4,7 @@
 import { expect, test } from '@playwright/test';
 import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
+import { axe } from './remote-hosts.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
 let app;
@@ -79,4 +80,52 @@ test('deleting a persona from its sheet takes it and its sessions at once, and t
   await expect.soft(list).toContainText('librarian');
   await expect.soft(list).not.toContainText('gamma');
   await expect.soft(page.locator('#toasts').getByRole('button', { name: /Undo/ }), 'no Undo').toHaveCount(0);
+});
+
+// #1530: a dialog whose body scrolls takes focus there, so a keyboard can scroll it (axe’s scrollable-region-focusable),
+// and one that fits isn’t a stop to Tab through. Whether a given dialog scrolls depends on the window and the fonts
+// (macOS’s made the delete confirm’s scroll at 375 px, CI’s didn’t), so the body is made to scroll by capping its
+// height, and to fit again by taking the cap off: the attribute follows it both ways, as the window or content changes.
+test('a dialog body that scrolls can be focused to scroll by keyboard, and one that fits isn’t a tab stop', async ({ page }) => {
+  const { t } = withAgent('scrollbody');
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(`${app.origin}/#/t/${t.id}`);
+  await synced(page, app);
+  await page.getByRole('button', { name: `Actions for ${t.title}` }).click();
+  await page.getByRole('menuitem', { name: /Delete conversation/ }).click();
+  const body = page.getByRole('alertdialog').locator('.d-body');
+  await expect(body).toBeVisible();
+  const scrolls = () => body.evaluate((b) => b.scrollHeight > b.clientHeight);
+  expect(await scrolls(), 'the body fits in a tall window').toBe(false);
+  await expect(body).not.toHaveAttribute('tabindex', /.*/);
+  await body.evaluate((b) => {
+    b.style.maxHeight = '40px';
+  });
+  expect(await scrolls(), 'capped, the body scrolls').toBe(true);
+  await expect(body).toHaveAttribute('tabindex', '0');
+  expect((await axe(page)).filter((v) => v.startsWith('scrollable-region-focusable'))).toEqual([]);
+  await body.evaluate((b) => {
+    b.style.maxHeight = '';
+  });
+  await expect(body, 'fitting again, it is no tab stop').not.toHaveAttribute('tabindex', /.*/);
+});
+
+// #1530: a project folder is one long word to the browser. macOS’s per-user temp folders, as the demo’s are, made the delete
+// confirm’s “Files in …” line widen its body past a 375 px window, so the body scrolled sideways, where CI’s /tmp
+// paths fit. It wraps instead.
+test('a long project folder wraps in the delete confirm at 375 px, rather than widening it', async ({ page }) => {
+  // No hyphen or space in it, so nothing gives the browser a place to break the line, and far wider than 375 px in any
+  // font: 120 characters at 13 px.
+  const folder = `/work/${'h'.repeat(120)}/project`;
+  app.store.emit('project', { id: 'pr_long', name: 'Long', folder });
+  const t = app.rt.createThread({ projectId: 'pr_long', title: 'Long folder', personaIds: [app.rt.createPersona({ handle: 'longpath' }).id] });
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto(`${app.origin}/#/t/${t.id}`);
+  await synced(page, app);
+  await page.getByRole('button', { name: `Actions for ${t.title}` }).click();
+  await page.getByRole('menuitem', { name: /Delete conversation/ }).click();
+  const body = page.getByRole('alertdialog').locator('.d-body');
+  await expect(body).toContainText(folder.slice(0, 20));
+  expect(await body.evaluate((b) => b.scrollWidth - b.clientWidth), 'nothing wider than the body').toBeLessThanOrEqual(0);
+  expect((await axe(page)).filter((v) => v.startsWith('scrollable-region-focusable'))).toEqual([]);
 });
