@@ -83,6 +83,9 @@ function writeCard(name, p, input) {
  * A read’s card: every path the call names, the one the prompt asked about first, so allowing it allows only what each
  * is judged for (read-folders.mjs’s readPaths), where the hook names only those outside the agent’s folders. A call
  * that names none it can read is a card with an empty file_path, as the hook asks it.
+ * What runs after Allow is the call agy gave its hook, and the card is what its stream showed: they’re the same call,
+ * but if agy ever gave the hook a path its stream left out, Allow would cover that path too, unseen. Only agy could
+ * make them differ, and only run_command has a recorded hook event to compare (hook-event.json), where they agree.
  * @param {Record<string, unknown>} p @param {Record<string, any>} input @returns {Card | null}
  */
 function readCard(p, input) {
