@@ -181,9 +181,12 @@ export function threadPersona(rt, t) {
     (last && rt.persona(last.personaId)) ?? rt.personas.byHandle(t.woke ?? t.pair?.split('|')[1] ?? '') ?? (first && rt.persona(first.personaId)) ?? null;
   if (!picked || !deletedFrom(rt, t, picked.handle)) return picked;
   // An agent deleted from the conversation isn’t brought back to answer: another still in it does, or no one (#283).
-  const here = rt.sessions.pendingIn(rt.threads.lineage(t.id).at(-1)).find((x) => !x.retiredFork);
+  const here = rt.sessions.pendingIn(conversationOf(rt, t)).find((x) => !x.retiredFork);
   return (here && rt.persona(here.personaId)) ?? null;
 }
+
+/** A thread’s conversation as written: one made behind a held commit isn’t published yet (#796’s class). */
+const conversationOf = (rt, t) => rt.threads.lineage(t.id, (id) => rt.store.pending.thread(id)).at(-1);
 
 /**
  * Whether an agent was deleted from a thread’s conversation and hasn’t come back: it has no session there, and the
@@ -191,7 +194,7 @@ export function threadPersona(rt, t) {
  * @param {any} rt @param {any} t  the topic or side thread @param {string} handle
  */
 export function deletedFrom(rt, t, handle) {
-  const conv = rt.threads.lineage(t.id).at(-1);
+  const conv = conversationOf(rt, t);
   if (rt.sessions.pendingIn(conv).some((x) => !x.retiredFork && rt.persona(x.personaId)?.handle === handle)) return false;
   return rt.store.pending.items(conv).some((i) => i.kind === 'system' && i.variant === 'left' && i.to === handle);
 }
