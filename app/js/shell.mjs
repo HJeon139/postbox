@@ -465,7 +465,7 @@ export function mountEmptyProject(projectId) {
       h('div.block-body', h('p', 'No conversations here yet. Start one with an agent, or create a new agent for this project.')),
       h(
         'div.block-foot',
-        h('button.btn', { type: 'button', onclick: () => openNewThread(projectId) }, icon('plus'), 'New conversation'),
+        h('button.btn', { type: 'button', id: 'first-step', onclick: () => openNewThread(projectId) }, icon('plus'), 'New conversation'),
         h('button.btn', { type: 'button', onclick: () => openNewAgent({ projectId }) }, icon('agent'), 'New agent'),
       ),
     ),
