@@ -246,7 +246,7 @@ test('#404 the panel saves no local or user rule for an agent on a host, which r
     for (const remove of [false, true])
       await assert.rejects(
         () => r.rt.changePermissionRule({ sessionId: r.se().id, behavior: 'allow', rule: RULE, where, remove }),
-        { status: 409, message: new RegExp(`runs on ${HOST}`) },
+        (/** @type {any} */ e) => e.status === 409 && e.message.includes(`runs on ${HOST},`),
         `${remove ? 'removing' : 'adding'} a ${where} rule`,
       );
   assert.equal(existsSync(join(folder, '.claude', 'settings.local.json')), false, 'nothing was written on this computer');
