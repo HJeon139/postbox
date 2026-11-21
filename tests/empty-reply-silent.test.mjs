@@ -103,3 +103,19 @@ test('#1543: the person’s Retry of an agent-woken turn still owes a reply', as
   assert.equal(adapter.calls.filter((x) => x.sessionId === critic.id).length, 3, 'the retry ran');
   assert.equal(store.state.sessions[critic.id].needs?.kind, 'failed');
 });
+
+test('#1543: a turn another agent’s direct @-mention woke still owes its reply, even with no step', async () => {
+  // Critic’s review of PR #1546: a direct assignment that ends with nothing must not look like a finished exchange.
+  const { store, rt, adapter, t, critic } = room();
+  const researcher = arrange.sessionsIn(rt, t.id).find((x) => x.handle === 'researcher');
+  adapter.next.push(async (c) => c.text('Over to you. @researcher check the numbers.'));
+  // researcher hands critic a task by @-mention, not by a reply going back.
+  adapter.next.push(async (c) => c.text('@critic please check the change and report the result.'));
+  adapter.next.push(async () => {});
+  rt.sendMessage(t.id, { text: '@critic review the figure update' });
+  await settle(rt);
+  const woken = adapter.calls.filter((x) => x.sessionId === critic.id);
+  assert.equal(woken.length, 2, 'critic was woken by researcher’s mention');
+  assert.ok(researcher);
+  assert.equal(store.state.sessions[critic.id].needs?.kind, 'failed', 'the assignment it dropped is a failed reply');
+});

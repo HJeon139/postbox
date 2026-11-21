@@ -39,13 +39,20 @@ export function endedWithoutReply(turn, items) {
 }
 
 /**
- * Another agent’s message woke it, and it ended at once with nothing to add (#1543): an exchange between agents may end
- * quietly, and a failure there is an alarm the person can’t act on. A turn that took a step had work to report (#485).
- * The person’s Retry, and a host turn continued after Interrupted or Sign-in needed, still owe theirs: the first was
- * the person asking, and the second may have done its work before it was cut off.
+ * Only replies that went back on their own woke it, and it ended at once with nothing to add (#1543): an exchange
+ * between agents may end quietly, and a failure there is an alarm the person can’t act on. A turn that took a step had
+ * work to report (#485). A direct @-mention is a request, so a turn it woke still owes its reply, as do the person’s
+ * Retry and a host turn continued after Interrupted or Sign-in needed: the first was the person asking, and the second
+ * may have done its work before it was cut off.
  * @param {any} turn
  */
-const endedExchange = (turn) => turn.kind === 'agent' && !turn.asked?.message?.retry && !turn.origin && !turn.backTo && !tookStep(turn);
+const endedExchange = (turn) => !turn.asked?.message?.retry && !turn.origin && !turn.backTo && onlyBounces(turn) && !tookStep(turn);
+
+/** Whether the entries a turn took were replies going back and Postbox’s notices, with one reply at least. @param {any} turn */
+function onlyBounces(turn) {
+  const asked = (turn.asked?.message?.entries ?? []).filter((/** @type {any} */ e) => e.source !== 'notice');
+  return asked.length > 0 && asked.every((/** @type {any} */ e) => e.source === 'mention' && e.bounce === true);
+}
 
 /** Whether a turn took a step: not a subagent’s, a thought or narration (turn-held.mjs counts the same). @param {any} turn */
 const tookStep = (turn) => (turn.steps ?? []).some((/** @type {any} */ s) => !s.who && s.kind !== 'thought' && s.kind !== 'said');
