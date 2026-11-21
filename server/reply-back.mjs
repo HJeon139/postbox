@@ -48,18 +48,15 @@ export function replyBack(rt, turn, se, took) {
 }
 
 /**
- * Whether the agent ended its exchange with this one by a reaction (#1553): it reacted to a reply from it that came back
- * on its own and woke this turn. Its words, if it wrote any, then post without waking it again. In two UAT runs of 21
- * November 2026, agents reacted ✅ and also wrote “Acknowledged.”, and each acknowledgment went back, up to hop 262.
- * Only a reply that came back counts: a direct @-mention is a request, and a 👍 on it may come before the report.
+ * Whether the agent ended its exchange with this one by a reaction (#1553): everything from it that woke this turn is a
+ * reply that came back on its own, and the agent reacted to it. Its words, if it wrote any, then post without waking
+ * it again. In two UAT runs of 21 November 2026, agents reacted ✅ and also wrote “Acknowledged.”, and each
+ * acknowledgment went back, up to hop 262. Only a reply that came back counts: a direct @-mention is a request, and a
+ * 👍 on it may come before the report, so a batch with one from that agent still goes back.
  * @param {any} rt @param {any} se  the agent @param {any[]} took  the entries the turn took @param {string} handle
  */
-function endedByReaction(rt, se, took, handle) {
-  return took.some(
-    (e) =>
-      e.source === 'mention' &&
-      e.bounce === true &&
-      e.from === handle &&
-      (rt.store.pending.item(e.threadId, e.itemId)?.reactions ?? []).some((/** @type {any} */ r) => r.by === se.id),
-  );
+export function endedByReaction(rt, se, took, handle) {
+  const from = took.filter((e) => e.source !== 'notice' && e.from === handle);
+  const reacted = (/** @type {any} */ e) => (rt.store.pending.item(e.threadId, e.itemId)?.reactions ?? []).some((/** @type {any} */ r) => r.by === se.id);
+  return from.length > 0 && from.every((e) => e.source === 'mention' && e.bounce === true && reacted(e));
 }

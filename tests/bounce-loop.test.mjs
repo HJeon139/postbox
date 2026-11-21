@@ -4,12 +4,16 @@
 // uat-runs/2026-11-21T06-52-24-harnessmix and uat-runs/2026-11-21T06-52-53-scifact. These aren’t replays: Postbox can’t
 // replay a UAT run’s turns (tools/uat-run.mjs --recheck recomputes its checks only). Each agent here plays its own
 // recorded replies, in order, as the run woke it, and reacts to the message that woke it when it did in the run. The
-// room’s chain limit, set low, is the backstop that bounds each test, as it bounds a room.
+// room’s chain limit, set low, is the backstop that bounds each test, as it bounds a room. The fixture keeps each run’s
+// first 40 turns, each reply cut to 200 characters; its `mentions` were parsed from the full text, so a few early turns
+// (scifact 1, harnessmix 1, 2 and 5) name an agent the cut text no longer shows. The tests play `text` and
+// `reactedToWaker` only.
 
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
+import { endedByReaction } from '../server/reply-back.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
 import { tempDir } from './temp-dirs.mjs';
@@ -97,7 +101,10 @@ test('#1553: two Claude agents that write “I’m not replying” instead of re
   await settle(rt);
   assert.ok(heldOnCard(store, t), 'the chain limit is the backstop');
   const answering = adapter.calls.filter((c) => c.handle === 'critic').at(-1);
-  assert.match(answering.text, /If the exchange is done, react to the reply, or end without writing anything: then no one wakes\./);
+  assert.match(
+    answering.text,
+    /If the exchange is done, react to the reply, or end without writing anything: then no one wakes\. Once you react, what you write doesn’t go back either, so @-mention an agent that must act next\./,
+  );
 });
 
 test('#1553: control: a review that goes back by itself still reaches the agent that asked for it', async () => {
@@ -165,4 +172,18 @@ test('#1553: a reaction ends the exchange only with the agent whose reply it was
   assert.ok(third?.text.includes('alpha: the counts hold.') && third.text.includes('beta: the counts hold.'), JSON.stringify(adapter.calls));
   const noted = store.items(t.id).find((i) => i.kind === 'agent' && i.text === 'Thanks, noted.');
   assert.deepEqual(noted.wentBack, ['alpha']);
+});
+
+test('#1553: a request from the same agent in the same batch still gets its answer back', () => {
+  // Pre-review of the first version: one reacted reply from alpha hid the answer to alpha’s direct request beside it.
+  const items = { r1: { reactions: [{ emoji: '✅', by: 'se_critic' }] }, q1: { reactions: [] } };
+  const rt = { store: { pending: { item: (_t, id) => items[id] } } };
+  const se = { id: 'se_critic' };
+  const back = { source: 'mention', from: 'alpha', bounce: true, threadId: 't', itemId: 'r1' };
+  const asked = { source: 'mention', from: 'alpha', threadId: 't', itemId: 'q1' };
+  const note = { source: 'notice', text: 'Postbox’s note' };
+  assert.equal(endedByReaction(rt, se, [back, note], 'alpha'), true, 'a reacted reply alone ends it');
+  assert.equal(endedByReaction(rt, se, [back, asked], 'alpha'), false, 'with a request beside it, it goes back');
+  assert.equal(endedByReaction(rt, se, [{ ...back, itemId: 'q1' }], 'alpha'), false, 'a reply not reacted to goes back');
+  assert.equal(endedByReaction(rt, se, [back], 'beta'), false, 'nothing from beta, so nothing ends with beta');
 });

@@ -101,7 +101,9 @@ function replyGoes(entries) {
   const goes = ` and goes back to ${to.map((h) => `@${h}`).join(' and ')}. @-mention another agent to hand off to them instead.`;
   // Answering a reply that came back (#1553): a reaction to it ends the exchange, as does ending with nothing (#1543).
   const answers = entries.filter((e) => e.source !== 'notice').every((e) => e.bounce === true);
-  return answers ? `${goes} If the exchange is done, react to the reply, or end without writing anything: then no one wakes.` : goes;
+  return answers
+    ? `${goes} If the exchange is done, react to the reply, or end without writing anything: then no one wakes. Once you react, what you write doesn’t go back either, so @-mention an agent that must act next.`
+    : goes;
 }
 
 /** The first part: the entries, with where the reply posts and goes, and what waits elsewhere. */
