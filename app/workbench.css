@@ -930,6 +930,8 @@ html.store-down .sidepanel { padding-bottom: 44px; }
 .rp-handle:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 @media (max-width: 767px) { .rp-handle { display: none; } }
 .sidepanel .sp-head, .workpane .wp-head { display: flex; align-items: center; gap: 8px; padding: 10px 10px 10px 14px; border-bottom: 1px solid var(--line); min-height: 52px; }
+/* Its title and the conversation it’s in, each one line cut with an ellipsis, as the top bar cuts a name (#551). */
+.sidepanel .sp-line { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sidepanel .sp-body { flex: 1; overflow: auto; padding: 14px; display: flex; flex-direction: column; gap: 14px; }
 /* The composer brings its own padding, the same as the conversation’s, so the two line up (#116). The foot is the
    scroll box’s last child, at its end when the thread is short, and held at its bottom over the thread as it scrolls,

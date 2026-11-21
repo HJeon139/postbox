@@ -41,8 +41,8 @@ export function mountSidePanel(parentId, sideId) {
       icon('thread', 'dim'),
       h(
         'div.grow',
-        h('b', { id: 'sp-title' }, topic ? 'Thread' : side.title),
-        h('div.small.dim', topic ? `in ${parent?.title ?? 'the conversation'}` : `Side thread from ${parent?.title ?? 'this conversation'}`),
+        h('b.sp-line', { id: 'sp-title' }, topic ? 'Thread' : side.title),
+        h('div.small.dim.sp-line', topic ? `in ${parent?.title ?? 'the conversation'}` : `Side thread from ${parent?.title ?? 'this conversation'}`),
       ),
       summarize.el,
       copyLink(sideId, topic),
