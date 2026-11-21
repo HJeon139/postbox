@@ -22,8 +22,9 @@ const MAX_COMMAND_REFRESHES = 60;
  * @param {import('./work-service.mjs').Work} work @param {string} threadId @returns {Promise<{ folder: string|null, host: string|null }>}
  */
 export async function commandFolder(work, threadId) {
-  const t = work.threads.get(threadId);
-  const members = work.sessions.in(threadId).filter((x) => !x.retiredFork);
+  // As written: a conversation just started behind a held commit, and its agents, aren’t published yet (#1292).
+  const t = work.threads.toWrite(threadId);
+  const members = work.sessions.pendingIn(threadId).filter((x) => !x.retiredFork);
   const se = members.find((x) => x.id === t.lastSpeaker) ?? members[0];
   const persona = se ? work.personas.forSession(se) : null;
   const project = work.store.state.projects[t.projectId] ?? null;
@@ -41,7 +42,7 @@ export async function commandFolder(work, threadId) {
  * @param {import('./work-service.mjs').Work} work @param {string} threadId @param {string} command
  */
 export async function runShellCommand(work, threadId, command) {
-  work.threads.get(threadId);
+  work.threads.toWrite(threadId);
   const line = String(command ?? '').trim();
   if (!line) throw httpError(422, 'Write a command after the !.');
   if (line.length > 10000) throw httpError(422, 'A command is limited to 10,000 characters.');

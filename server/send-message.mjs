@@ -17,7 +17,8 @@ import { retireStale } from './wake-cards.mjs';
  * @param {{ text?: string, attachments?: any[], sendNow?: boolean, clientId?: unknown }} [message]  as the route has it
  */
 export function sendMessage(rt, threadId, { text = '', attachments = [], sendNow = false, clientId = undefined } = {}) {
-  const t = rt.thread(threadId);
+  // As written: a conversation just started behind a held commit isn’t published yet, and its first message is sent (#1292).
+  const t = rt.threads.toWrite(threadId);
   // First, before whom it goes to is worked out again: with no @-mention that’s the last speaker, who may have changed
   // since the first try (#1418’s review).
   const retryId = typeof clientId === 'string' && clientId ? clientId.slice(0, 100) : undefined;

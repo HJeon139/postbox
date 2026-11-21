@@ -15,7 +15,8 @@ import { newId } from './store.mjs';
  * @returns {{ threadId: string, created: boolean }}
  */
 export function startTopic(rt, threadId, itemId) {
-  const parent = rt.thread(threadId);
+  // As written: a conversation just started behind a held commit isn’t published yet (#1292).
+  const parent = rt.threads.toWrite(threadId);
   if (parent.kind === 'topic' || parent.kind === 'side') throw httpError(409, 'A topic thread can’t start another one. Reply in this one instead.');
   const items = rt.store.pending.items(threadId);
   const idx = positionOf(items, itemId);
