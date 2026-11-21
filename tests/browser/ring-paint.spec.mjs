@@ -119,6 +119,33 @@ test('#463: a thinking ring still moves, with one animation of transform and opa
   arrange.setSession(app.rt, se.id, { state: 'idle' });
 });
 
+// designs/intent.md, “State is shown by motion, not icons”: thinking is a short bulge of thickness running along a still
+// arc. What moves is a swell, as wide as the arc at its ends and twice as wide in its middle, not a block of one width.
+test('#1565: a thinking ring’s moving piece tapers from twice the arc’s width to the arc’s width at both ends', async ({ page }) => {
+  const se = await seeded(page, 'swell');
+  const ring = await working(page, se);
+  // The outline of the moving piece, as each point’s distance from the ring’s center past the arc’s middle line, in
+  // arc widths, and its angle along the ring.
+  const shape = await ring.evaluate((el) => {
+    const arc = /** @type {SVGCircleElement} */ (el.querySelector('svg[role="img"] .arc'));
+    const piece = /** @type {SVGGeometryElement} */ (el.querySelector('.mover.sweep path, .mover.sweep circle'));
+    const r = arc.r.baseVal.value;
+    const sw = Number(arc.getAttribute('stroke-width'));
+    const c = arc.cx.baseVal.value;
+    const total = piece.getTotalLength();
+    const points = [];
+    for (let i = 0; i < 400; i++) {
+      const p = piece.getPointAtLength((i / 400) * total);
+      points.push({ out: (Math.hypot(p.x - c, p.y - c) - r) / sw, deg: (Math.atan2(p.x - c, c - p.y) * 180) / Math.PI });
+    }
+    const spread = (ps) => (ps.length ? Math.max(...ps.map((p) => p.deg)) - Math.min(...ps.map((p) => p.deg)) : 0);
+    return { widest: Math.max(...points.map((p) => p.out)), along: spread(points), wide: spread(points.filter((p) => p.out > 0.9)) };
+  });
+  expect(shape.widest, 'its middle reaches out to twice the arc’s width, half an arc width past the arc’s edge').toBeCloseTo(1, 1);
+  expect(shape.wide, 'and only its middle: it tapers toward both ends').toBeLessThan(shape.along * 0.5);
+  arrange.setSession(app.rt, se.id, { state: 'idle' });
+});
+
 test('#463: with reduced motion, every ring holds still, a thinking one included', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   const se = await seeded(page, 'still');

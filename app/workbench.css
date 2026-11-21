@@ -239,12 +239,13 @@ pb-ring .dot { transform-box: view-box; transform-origin: center; }
 .who pb-ring[state="needs"] .pulse { opacity: .8; transform: scale(1.18); }
 @keyframes pb-pulse { 0% { opacity: .9; transform: scale(1); } 45%, 100% { opacity: 0; transform: scale(1.35); } }
 @keyframes pb-turn { 0% { transform: rotate(0deg); animation-timing-function: cubic-bezier(.65, 0, .35, 1); } 55%, 100% { transform: rotate(360deg); } }
-/* The swell fades in at the arc’s start, travels to its end and fades out there, then the ring rests. */
+/* The swell grows in at the arc’s start, runs to its end and shrinks there, then the ring rests: the timing of the
+   segments that once swelled one after another (#1565). */
 @keyframes pb-sweep {
-  0% { transform: rotate(0deg); opacity: 0; animation-timing-function: cubic-bezier(.65, 0, .35, 1); }
-  8% { opacity: 1; }
-  40% { opacity: 1; }
-  48%, 100% { transform: rotate(var(--a2)); opacity: 0; } }
+  0% { transform: rotate(0deg); opacity: 0; animation-timing-function: ease-in-out; }
+  4% { transform: rotate(0deg); opacity: 1; animation-timing-function: cubic-bezier(.37, 0, .63, 1); }
+  48% { transform: rotate(var(--a2)); opacity: 1; animation-timing-function: ease-in-out; }
+  52%, 100% { transform: rotate(var(--a2)); opacity: 0; } }
 @keyframes pb-cross {
   0% { transform: rotate(var(--a1)); animation-timing-function: cubic-bezier(.65, 0, .35, 1); }
   32% { transform: rotate(var(--a2)); }

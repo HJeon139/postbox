@@ -56,11 +56,12 @@ function ringSvg(c, r, sw, state, ctx) {
   if (state === 'rest') return { still: track, moving: null };
   // Generating: the arc turns once, then rests.
   if (state === 'gen' && L > 0) return { still: track, moving: { kind: 'turn', style: '', inner: arc(L) } };
-  // Thinking: a short swell of the arc’s thickness travels along it, fading in and out.
+  // Thinking: a short bulge of the arc’s thickness travels along it, growing in at its start and out at its end. It
+  // spans about three of the segments the arc was once cut into, each of which swelled in turn (#1565).
   if (state === 'think' && L > 0) {
-    const seg = Math.min(L, Math.max(sw * 1.1, L / 6));
-    const sweep = ((L - seg) / C) * 360;
-    return { still: track + arc(L), moving: { kind: 'sweep', style: `--a2:${sweep}deg`, inner: arc(seg, sw * 2) } };
+    const len = Math.min(L, (3 * L) / Math.max(6, Math.round(L / (sw * 1.1))));
+    const sweep = ((L - len) / C) * 360;
+    return { still: track + arc(L), moving: { kind: 'sweep', style: `--a2:${sweep}deg`, inner: swell(c, r, sw, len, color) } };
   }
   const moving = state === 'tool' || (ctx == null && (state === 'think' || state === 'gen'));
   if (!moving) return { still: track + arc(L), moving: null };
@@ -74,6 +75,27 @@ function ringSvg(c, r, sw, state, ctx) {
   // No room to cross: the dot holds still where it rests.
   if (a1 >= a2) return { still: track + arc(L) + dot(`transform:rotate(${rest}deg)`), moving: null };
   return { still: track + arc(L), moving: { kind: 'cross', style: `--a1:${a1}deg;--a2:${a2}deg;transform:rotate(${rest}deg)`, inner: dot('') } };
+}
+
+/**
+ * The thinking bulge, from the top of the ring clockwise along len of it: a filled shape that hugs the arc, as wide as
+ * the arc at both ends and twice as wide in the middle, rounded between, as the arc’s segments once swelled one after
+ * another. It’s drawn once and only turned and faded (#463), so its shape costs no paint: measured against the block it
+ * replaced, it took the same paints (none), main-thread time and CPU in Chromium and WebKit (#1565).
+ */
+function swell(c, r, sw, len, color) {
+  const steps = 24;
+  const outer = [];
+  const inner = [];
+  for (let i = 0; i <= steps; i++) {
+    const u = i / steps;
+    const half = (sw / 2) * (1 + Math.sin(Math.PI * u));
+    const a = (u * len) / r;
+    const at = (rad) => `${(c + rad * Math.sin(a)).toFixed(2)} ${(c - rad * Math.cos(a)).toFixed(2)}`;
+    outer.push(at(r + half));
+    inner.unshift(at(r - half));
+  }
+  return `<path class="swell" d="M${outer.join('L')}L${inner.join('L')}Z" fill="${color}"/>`;
 }
 
 /** An SVG of a ring’s size, S by S, holding what ringSvg() drew. */
