@@ -1,10 +1,10 @@
 // The browser specs’ wait for the page to catch up (synced, tests/browser/postbox.mjs; #1532): it waits for words a
-// running turn still holds in their window before it takes the store’s seq, and its bound is 15 s, which a page whose
-// stream stops still meets as a failure. 577 calls in the specs rely on both.
+// running turn still holds in their window before it takes the store’s seq, and a page whose stream stops still fails
+// it, with its own message; its default bound is 20 s. 577 calls in the specs rely on both.
 
 import { expect, test } from '@playwright/test';
 import * as arrange from '../arrange.mjs';
-import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
+import { failOnPageErrors, SYNCED_TIMEOUT, startPostbox, synced } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
 let app;
@@ -45,17 +45,18 @@ test('synced doesn’t return while a running turn still holds words, which aren
   }
 });
 
-test('synced fails at its 15 s bound for a page whose stream stopped, not sooner and not much later', async ({ page }) => {
-  test.setTimeout(60_000);
-  // Every stream the page opens is held: nothing it sends reaches the page.
+test('synced fails, with its message, for a page whose stream stopped, and its default bound is 20 s', async ({ page }) => {
+  // Every stream the page opens is held: nothing it sends reaches the page, and only the state it loads does.
   await page.route('**/api/stream**', () => {});
   const t = app.rt.createThread({ projectId: projectId(), title: 'Held stream', personaIds: [] });
+  const before = app.store.state.seq;
   await page.goto(`${app.origin}/#/t/${t.id}`);
+  // The page has loaded its state, so the next event can reach it only over the stream.
+  await page.waitForFunction((q) => import('/app/js/client.mjs').then(({ client }) => client.seq >= q), before);
   app.rt.createThread({ projectId: projectId(), title: 'After it', personaIds: [] });
   const started = Date.now();
-  await expect(synced(page, app)).rejects.toThrow(/the page to hear event/);
-  const took = Date.now() - started;
-  // expect.poll gives up a poll interval short of its 15 s: about 14 s. 12 s still tells it from the 5 s it was.
-  expect(took, 'the bound is 15 s').toBeGreaterThanOrEqual(12_000);
-  expect(took, 'and it fails then').toBeLessThan(20_000);
+  await expect(synced(page, app, 2_000)).rejects.toThrow(/the page to hear event/);
+  expect(Date.now() - started, 'it waited out its bound').toBeGreaterThanOrEqual(1_500);
+  // The bound every other call gets: above the 17 s a starved poll took (#1532), so not the 5 s it was.
+  expect(SYNCED_TIMEOUT).toBe(20_000);
 });
