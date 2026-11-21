@@ -190,10 +190,26 @@ function link(label, target, ctx) {
   return text;
 }
 
+/**
+ * The runs of * in text that are code or math, as in 10**9 or 2*n, each replaced with `mark` repeated (#793): a run
+ * between a digit and a word character, while no emphasis of its length is open. One that may close emphasis, as in
+ * **Q3**2026, is left to close it.
+ * @param {string} s @param {string} mark
+ */
+export function keepMathStars(s, mark) {
+  const open = new Map();
+  return s.replace(/\*+/g, (run, at) => {
+    const math = /\w/.test(s[at - 1] ?? '') && /\w/.test(s[at + run.length] ?? '') && /\d/.test(`${s[at - 1]}${s[at + run.length]}`);
+    if (math && !open.get(run.length)) return mark.repeat(run.length);
+    open.set(run.length, !open.get(run.length));
+    return run;
+  });
+}
+
 // Escapes, then applies emphasis, then glossary terms and @mentions to text outside the tags it made.
 function textRun(raw, ctx) {
   if (!raw) return '';
-  const s = escapeHtml(raw)
+  const s = keepMathStars(escapeHtml(raw), '&#42;')
     .replace(/\*\*(?=\S)([\s\S]*?\S)\*\*/g, '<strong>$1</strong>')
     .replace(/(^|[^\w])__(?=\S)([\s\S]*?\S)__(?!\w)/g, '$1<strong>$2</strong>')
     .replace(/\*(?=[^\s*])([^*]*?[^\s*])\*/g, '<em>$1</em>')
