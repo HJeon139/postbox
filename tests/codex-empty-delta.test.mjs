@@ -1,6 +1,6 @@
 // #1543, findings 2 and 3: a Codex turn’s text and its empty-reply diagnosis.
 // The stream is tests/fixtures/codex-app-server/turn.jsonl, the app-server’s shape the Codex adapter’s other tests use.
-// No recording has an empty item/agentMessage/delta: the empty one here is added by hand, to hold the mapper to what
+// No recording has an empty or blank item/agentMessage/delta: those here are added by hand, to hold the mapper to what
 // claude-stream.mjs already does, where only a delta with text marks its message as streamed.
 
 import assert from 'node:assert/strict';
@@ -23,14 +23,23 @@ function replyOf(/** @type {any[]} */ events) {
   return text;
 }
 
-test('#1543: an empty delta doesn’t hide the message’s completed text', () => {
-  const at = NOTES.findIndex((n) => n.method === 'item/agentMessage/delta');
-  const empty = { method: 'item/agentMessage/delta', params: { ...NOTES[at].params, delta: '' } };
-  // The recorded order with the delta’s text gone: only the completed item carries it.
-  const events = [...NOTES.slice(0, at), empty, ...NOTES.slice(at + 1)];
-  assert.equal(replyOf(events), 'Hello from Codex.');
+const AT = NOTES.findIndex((n) => n.method === 'item/agentMessage/delta');
+/** The recorded turn with its one delta replaced by these. */
+const withDeltas = (/** @type {string[]} */ deltas) => [
+  ...NOTES.slice(0, AT),
+  ...deltas.map((delta) => ({ method: 'item/agentMessage/delta', params: { ...NOTES[AT].params, delta } })),
+  ...NOTES.slice(AT + 1),
+];
+
+test('#1543: an empty or blank delta doesn’t hide the message’s completed text', () => {
+  // Only the completed item carries the text.
+  for (const blank of [[''], ['   '], ['\n\n'], ['', ' ', '\n']]) assert.equal(replyOf(withDeltas(blank)), 'Hello from Codex.', JSON.stringify(blank));
   // A delta with text still streams it once, not again at completion.
   assert.equal(replyOf(NOTES), 'Hello from Codex.');
+});
+
+test('#1543: a streamed reply keeps its whitespace, blank deltas included', () => {
+  assert.equal(replyOf(withDeltas(['\n', 'Hello', '\n\n', ' ', 'from Codex.'])), '\nHello\n\n from Codex.');
 });
 
 test('#1543: an empty reply’s diagnosis keeps each Codex event’s method', () => {

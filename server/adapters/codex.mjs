@@ -81,7 +81,8 @@ const errorText = (x) => x?.error?.message ?? x?.message ?? 'Codex app-server fa
  */
 export function createCodexMapper(ctx, io = {}) {
   const emit = new HarnessEvents(ctx).event;
-  const streamed = new Set(); // messages whose text arrived as deltas
+  const streamed = new Set(); // messages whose visible text arrived as deltas
+  const held = new Map(); // a message’s leading whitespace-only deltas, held until it has visible text (#1543)
   const open = new Set(); // streamed messages not yet completed: their text is open (#1293)
   const push = (msg) => {
     const p = msg?.params ?? {};
@@ -91,18 +92,24 @@ export function createCodexMapper(ctx, io = {}) {
         break;
       case 'item/completed':
         if (p.item?.type === 'agentMessage') {
+          held.delete(p.item.id);
           if (p.item.text && !streamed.has(p.item.id)) emit({ kind: 'text', text: p.item.text, block: p.item.id });
           else if (open.delete(p.item.id)) emit({ kind: 'text_end', block: p.item.id });
         } else itemCompleted(emit, p.item, io.read);
         break;
       case 'item/agentMessage/delta':
-        // Only a delta with text marks its message streamed, or an empty one would hide the completed text (#1543).
-        if (typeof p.delta === 'string' && p.delta) {
-          streamed.add(p.itemId);
-          open.add(p.itemId);
-          // Open until its item completes: two agent messages can stream at once, narrating parallel calls (#1293).
-          emit({ kind: 'text', text: p.delta, block: p.itemId, open: true });
+        if (typeof p.delta !== 'string') break;
+        // Only visible text marks a message streamed, or an empty or blank delta would hide its completed text
+        // (#1543). Blank deltas before it are held, and go out with it, so a streamed reply keeps its whitespace.
+        if (!streamed.has(p.itemId) && !/\S/.test(p.delta)) {
+          held.set(p.itemId, (held.get(p.itemId) ?? '') + p.delta);
+          break;
         }
+        streamed.add(p.itemId);
+        open.add(p.itemId);
+        // Open until its item completes: two agent messages can stream at once, narrating parallel calls (#1293).
+        emit({ kind: 'text', text: (held.get(p.itemId) ?? '') + p.delta, block: p.itemId, open: true });
+        held.delete(p.itemId);
         break;
       case 'item/commandExecution/outputDelta':
         if (p.itemId) emit({ kind: 'tool_output', id: p.itemId, text: String(p.delta ?? '') });
