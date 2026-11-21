@@ -2,6 +2,12 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.35.7 (2026-11-21)
+
+### Fixes
+
+- **codex:** keep each turn out of the person's Codex memories
+
 ## 4.35.6 (2026-11-21)
 
 ### Fixes
