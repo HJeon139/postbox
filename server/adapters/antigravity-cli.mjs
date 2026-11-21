@@ -75,6 +75,7 @@ import { agyContextPercent, agyWindowFor } from './context-usage.mjs';
 import { agentFolder } from './folder.mjs';
 import { FRESH_START_TEXT, formatMessage, turnGuide } from './guide.mjs';
 import { listProcesses, stopOnAbort, stopTurn } from './process-group.mjs';
+import { recordOnceSpawned } from './prompt-sent.mjs';
 import { DEFAULT_MODEL, EFFORT_LEVELS, effortOf, modelOf, recorderFor, setupOf, TOOL_WORDS, toolsOff } from './setup.mjs';
 import { agyResult } from './work-calls.mjs';
 
@@ -624,7 +625,9 @@ export class AntigravityCliAdapter {
         Boolean(useHook && (await confirmAgyHook({ version: this.version, pluginDir: plugin, script: this.hookScript, probe: this.hookProbe })));
       const hookConfirmed = await confirmed();
       // A hook that didn’t check out isn’t passed, so agy refuses what it would ask about: the rules say so, not “a card”.
-      if (useHook && !hookConfirmed && !agyBypassWebOff(persona)) await writeFile(join(plugin, 'rules', 'AGENTS.md'), rulesWith(false));
+      const unhooked = useHook && !hookConfirmed && !agyBypassWebOff(persona);
+      if (unhooked) await writeFile(join(plugin, 'rules', 'AGENTS.md'), rulesWith(false));
+      ctx.prompt?.({ guide: unhooked ? rulesWith(false) : rules }); // the rules file as agy reads it; each run records its prompt
       try {
         let done = await this.run({ ctx, cwd, addDirs, prompt, sessionId: ctx.state.agySessionId ?? null, hookConfirmed });
         // A conversation agy no longer has (its history was cleared, or the agent’s folder changed) starts over, once.
@@ -672,6 +675,7 @@ export class AntigravityCliAdapter {
         reject(agyStartError(e, prompt, this.bin));
         return;
       }
+      recordOnceSpawned(ctx, child, { text: prompt });
       let stderr = '';
       const c = child;
       const exited = new Promise((r) => {

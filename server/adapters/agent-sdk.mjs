@@ -240,7 +240,10 @@ export class AgentSdkAdapter {
       for await (const m of q) {
         record(JSON.stringify(m));
         mapper.push(m);
-        if (m.type === 'system' && m.subtype === 'init') noteInit(q, m, ctx);
+        if (m.type === 'system' && m.subtype === 'init') {
+          noteInit(q, m, ctx);
+          ctx.prompt?.({ guide, text: prompt }); // its CLI started on them (server/turn-prompt.mjs, #1528)
+        }
       }
     } catch (e) {
       if (ctx.signal.aborted) return;

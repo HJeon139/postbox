@@ -37,6 +37,7 @@ export function handle(p, m) {
 export function onStarted(p) {
   if (p.started) return;
   p.started = true;
+  p.emit('started'); // the host has the turn, and its message file: an adapter records the prompt it sent (#1528)
   // Started after kill(): the stop sent then may have reached the daemon before the turn was there, so it goes again.
   if (p.killed) p.stopPending = !p.send('stop', { turn: p.turn });
   p.read();

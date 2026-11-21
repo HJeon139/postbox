@@ -104,6 +104,14 @@ const ISOLATED_NOTE =
   '## Tools you can use\n\nOnly Postbox’s MCP server is allowed for you here. Tools from any other MCP server you see listed are refused, so don’t offer or use them, and don’t count them among what you can do.';
 
 /**
+ * The system prompt the agent file gives Kiro: Postbox’s guide, then what Postbox adds for Kiro (it runs headless, its
+ * size limit, and, for an Isolated persona, which tools it may use). What a turn records as its guide
+ * (server/turn-prompt.mjs), as Kiro is given it. @param {any} persona @param {string} guide
+ */
+export const kiroSystemPrompt = (persona, guide) =>
+  `${guide}\n\n${HEADLESS_NOTE}\n\n${TOOL_LOAD_NOTE}\n\n${SIZE_LIMIT_NOTE}${setupOf(persona).usesHostSetup ? '' : `\n\n${ISOLATED_NOTE}`}`;
+
+/**
  * The custom agent for one turn. Pure, so the tests can check it.
  * @param {{ name: string, persona: any, mcpUrl?: string, shim?: { command: string, args: string[] }, guide: string, folders: string[], reads?: string[], skills?: string | null }} turn
  *   shim: on a remote host, Postbox’s server is the host’s stdio shim, run as this command, in place of mcpUrl; the
@@ -115,7 +123,7 @@ export function kiroAgent({ name, persona, mcpUrl = '', shim, guide, folders, re
   return {
     name,
     description: `@${persona.handle} in Postbox`,
-    prompt: `${guide}\n\n${HEADLESS_NOTE}\n\n${TOOL_LOAD_NOTE}\n\n${SIZE_LIMIT_NOTE}${usesHostSetup ? '' : `\n\n${ISOLATED_NOTE}`}`,
+    prompt: kiroSystemPrompt(persona, guide),
     tools: ['*'],
     // Your global and workspace mcp.json, unless the persona is Isolated.
     includeMcpJson: usesHostSetup,

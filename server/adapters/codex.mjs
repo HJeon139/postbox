@@ -211,6 +211,7 @@ async function startTurn(ctx, request, send, cwd, session, message) {
     cwd,
     ...permissions,
   });
+  ctx.prompt?.({ guide, text: inputText }); // turn/start accepted it (server/turn-prompt.mjs, #1528)
   // A persona on Codex’s default names none: the model Codex opened the thread with is the one that runs (#1315).
   return { started, model: model ?? opened?.model ?? null };
 }
