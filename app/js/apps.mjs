@@ -8,6 +8,7 @@ import { openAppLink } from './app-links.mjs';
 import { live, nearBodies, relookSoon, setAppFrameTest } from './app-pointer.mjs';
 import { publishLater } from './app-publish.mjs';
 import { sendFromApp } from './app-send.mjs';
+import { checkNote, fixingPlaceholder } from './apps-check-status.mjs';
 import { api, client, placeIn } from './client.mjs';
 import { $$, ago, h, icon } from './dom.mjs';
 import { goToItem } from './go-to-item.mjs';
@@ -485,20 +486,7 @@ export function mountApp(container, appId, { review = false, onPin, onBack } = {
       ]),
     );
   } else if (status === 'fixing') {
-    body.append(
-      placeholder(
-        [
-          h(
-            'span.row-flex',
-            h('span.g.g-running', { 'aria-hidden': 'true' }),
-            h('b', { style: { color: 'var(--text)', fontWeight: 500 } }, `${owner} is fixing a problem the check found`),
-          ),
-          h('span', app.check.problems.map((p) => p.message).join(' ')),
-          h('span', 'The fixed version appears here.'),
-        ],
-        200,
-      ),
-    );
+    body.append(fixingPlaceholder(placeholder, app, owner));
   } else {
     const remount = () => mountApp(container, appId, { review, onPin, onBack });
     strip = errorStrip({ app, owner, reload: remount });
@@ -535,18 +523,7 @@ export function mountApp(container, appId, { review = false, onPin, onBack } = {
         ),
       ),
     );
-  if (!old && status === 'note')
-    notes.push(
-      h(
-        'div.app-note',
-        icon('warn'),
-        h(
-          'span',
-          // Warnings only (marks or text too small, say): the app passed and is shown, and @owner was told.
-          `${app.check.notes ? `Shown with notes for ${owner}` : `Shown with problems ${owner} couldn’t fix`}: ${app.check.problems.map((p) => p.message).join(' ')}`,
-        ),
-      ),
-    );
+  if (!old && status === 'note') notes.push(checkNote(app, owner));
   container.replaceChildren(...notes, body, ...(strip ? [strip.el] : []));
 }
 
