@@ -2,6 +2,12 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.35.6 (2026-11-21)
+
+### Fixes
+
+- **shell:** open the first project when it's made from the first-run page
+
 ## 4.35.5 (2026-11-21)
 
 ### Fixes
