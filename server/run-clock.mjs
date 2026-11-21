@@ -6,6 +6,7 @@
 
 import { CLOCK_BUDGET_MAX_S, clockElapsed, clockLine, isLocalStop } from '../shared/run-clock.mjs';
 import { httpError } from './helpers.mjs';
+import { ON_HOST } from './remote/turns-shared.mjs';
 import { clockNote, repairClockNote } from './run-clock-notes.mjs';
 import { whenWritable } from './store-wait.mjs';
 
@@ -24,10 +25,14 @@ const clockOf = (rt, sessionId) => rt.store.pending.clock(sessionId);
 /**
  * The agent’s turns on a host that Postbox asked to stop and the host hasn’t confirmed, which may run on there: each
  * stop is kept on the session until the daemon confirms it (server/remote/turns-stops.mjs, askStop). Read after the
- * stop, so a clock’s pause or expiry records them (#1526). @param {any} rt @param {string} sessionId
+ * stop, so a clock’s pause or expiry records them (#1526). And a turn from before a restart that still runs on its host
+ * as far as Postbox knows, not attached again yet: its attach is stopped (deliver), and its host’s confirmation ends
+ * it here too. @param {any} rt @param {string} sessionId
  */
 function unconfirmedStops(rt, sessionId) {
-  const host = (rt.store.pending.session(sessionId)?.remoteTurn?.stopping ?? []).map((/** @type {any} */ x) => x.turn);
+  const r = rt.store.pending.session(sessionId)?.remoteTurn;
+  const host = (r?.stopping ?? []).map((/** @type {any} */ x) => x.turn);
+  if (r?.turn && ON_HOST.has(r.state) && !rt.turns.has(sessionId) && !host.includes(r.turn)) host.push(r.turn);
   // A turn on this computer that Stop left exiting: its CLI may work on through SIGINT’s grace period, until it exits.
   const local = rt.exiting.get(sessionId)?.turn;
   return local && !local.remote ? [...host, `turn:${local.id}`] : host;
@@ -237,6 +242,17 @@ export function rearmClocks(rt, now = Date.now) {
     }
     armClock(rt, sessionId, now);
   }
+}
+
+/**
+ * A host turn attached again after a restart, for an agent its clock holds (server/turn-run.mjs): stopped as the clock
+ * stops a turn, by its pause or its expiry, now that its remote turn names its host turn. Its host’s confirmation ends
+ * it in the clock’s `stopping` (unconfirmedStops listed it as the clock paused or expired). @param {any} rt @param {any} turn
+ */
+export function stopHeldTurn(rt, turn) {
+  if (rt.turns.get(turn.sessionId) !== turn) return;
+  const clock = clockOf(rt, turn.sessionId);
+  rt.stop(turn.sessionId, { by: clock?.state === 'paused' ? 'pause' : 'clock', silent: true });
 }
 
 /** @type {WeakMap<any, Map<string, any[]>>} each runtime’s turns held by a paused clock, by session: memory only */

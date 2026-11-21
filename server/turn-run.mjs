@@ -39,7 +39,7 @@ export function deliver(rt, sessionId, message, { summarizeTo = null, threadId =
   if (se.retiredFork) throw retiredError(se);
   // With run clocks on (server/run-clock-install.mjs), a paused or expired clock starts no turn of its agent, and what
   // came another way than its inbox waits for the resume (server/run-clock.mjs). A host turn attached again after a
-  // restart starts, to be stopped below: its clock may have run out while Postbox was down.
+  // restart starts, to be stopped once its remote turn is made (runTurn): it may be working on its host.
   const held = rt.runClock?.holds(sessionId) ?? false;
   if (held && typeof message.attach !== 'string') return holdForClock(rt, sessionId, { message, summarizeTo, threadId });
   message = prepareScheduledRetry(rt, message, se.threadId);
@@ -62,6 +62,7 @@ export function deliver(rt, sessionId, message, { summarizeTo = null, threadId =
   const persona = rt.persona(se.personaId);
   const adapter = rt.placement.registeredAdapter(persona);
   const turn = newTurn(se, { ...message, turnId }, persona, { where, slash, summarizeTo, asked });
+  if (held) turn.clockStops = true;
   rt.running.begin(turn);
   // A persona on a remote host (#120): the turn is remote from here on (server/remote/turns.mjs).
   const hostId = adapter ? rt.placement.hostOf(persona) : null;
@@ -77,7 +78,6 @@ export function deliver(rt, sessionId, message, { summarizeTo = null, threadId =
   });
   atWork(rt, se, turn);
   runTurn(rt, se, turn, rt.runClock ? clockTurn(rt, se.id, turn.id, message) : message, { adapter, persona, hostId });
-  if (held) rt.stop(se.id, { by: 'clock', silent: true });
 }
 
 /**
@@ -261,7 +261,11 @@ function runTurn(rt, se, turn, message, { adapter, persona, hostId }) {
   const run = Promise.resolve().then(async () => {
     if (!adapter) refuseUnregistered(se, persona);
     if (!hostId) rt.placement.refuseHere(se, persona);
-    return adapter.deliver(rt.s.sessions[turn.sessionId], hostId ? await rt.remote.prepare(turn, ctx, message) : message, ctx);
+    const sent = hostId ? await rt.remote.prepare(turn, ctx, message) : message;
+    // A host turn attached again while its run clock holds the agent: stopped once the adapter follows it, so the stop
+    // names its host turn and goes to the host, and the clock hears when the host confirms it (#1526).
+    if (turn.clockStops) queueMicrotask(() => rt.runClock?.stopHeld(turn));
+    return adapter.deliver(rt.s.sessions[turn.sessionId], sent, ctx);
   });
   turn.exited = run.then(
     () => {},

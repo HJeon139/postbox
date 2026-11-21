@@ -45,6 +45,7 @@ const PLACED = {
   'net-fetch.mjs': 1, // net.fetch’s deadline, which ends a fetch: no store
   'net-fetch-line.mjs': 1, // the wait between patches of a fetch’s activity step: gated, skips its patch while closed
   'permission-cards.mjs': 1, // expireWait: gated
+  'turn-run.mjs': 1, // a microtask: a host turn attached again while its run clock holds the agent is stopped as its adapter follows it; Stop is allowed while closed
   'run-clock.mjs': 2, // a run clock’s expiry, and its timers’ type: stops the turn, which is allowed while closed; its record waits through whenWritable, and Retry re-arms it
   'remote/host-admin.mjs': 1, // a wait: no store
   'remote/host-status.mjs': 1, // a microtask after a host event publishes host status: an emit, memory-only while closed like stream text (I1)

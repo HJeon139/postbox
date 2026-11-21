@@ -5,7 +5,7 @@
 // (designs/architecture/run-clock.md, “Off unless a timed run asks for it”).
 
 import { clockHolds } from '../shared/run-clock.mjs';
-import { rearmClocks } from './run-clock.mjs';
+import { rearmClocks, stopHeldTurn } from './run-clock.mjs';
 
 /** Whether the environment turns run clocks on. @param {NodeJS.ProcessEnv} [env] */
 export const runClockOn = (env = process.env) => env.POSTBOX_RUN_CLOCK === '1';
@@ -18,7 +18,7 @@ export const runClockOn = (env = process.env) => env.POSTBOX_RUN_CLOCK === '1';
 export function installRunClock(rt) {
   /** Whether the agent’s clock holds it, read pending (server/store-held.mjs). @param {string} sessionId */
   const holds = (sessionId) => clockHolds(rt.store.pending.clock(sessionId));
-  rt.runClock = { holds };
+  rt.runClock = { holds, stopHeld: (/** @type {any} */ turn) => stopHeldTurn(rt, turn) };
   rt.delivery.clockHeld = holds;
   rearmClocks(rt);
 }
