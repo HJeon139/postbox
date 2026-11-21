@@ -2,6 +2,15 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.35.4 (2026-11-21)
+
+### Fixes
+
+- **adapters:** keep the method of a line too long to keep whole
+- **codex:** keep a message's completed text after blank deltas
+- **adapters:** keep the JSON-RPC method in an empty reply's diagnosis
+- **codex:** keep a message's completed text after an empty delta
+
 ## 4.35.3 (2026-11-21)
 
 ### Fixes
