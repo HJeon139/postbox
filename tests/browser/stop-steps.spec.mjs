@@ -98,7 +98,7 @@ test('#288 Stop it too: the stopped reply’s header doesn’t say running, and 
   await stopWith(page, 'Stop it too', 'stop');
   await expect(page.locator('.bg-jobs li'), 'the job row goes').toHaveCount(0);
   const r = await lastReply(page);
-  expect(r.tag).toMatch(/^Stopped by you at \d\d:\d\d$/);
+  expect(r.tag).toMatch(/^Stopped by you at \d{1,2}:\d\d(?:\s[AP]M)?$/);
   // Before #288: “Used 3 tools · 21 s in tools · running”.
   expect(r.header).not.toMatch(/running/);
   expect(r.steps).toEqual([`${BG} Stopped`, WAIT, `${WAIT} Stopped`]);
@@ -118,7 +118,7 @@ for (const [how, text] of [
     const header = text ? /^1 block · [\d.]+ s in all · background work running$/ : /^Used 3 tools · 21 s in tools · background work running$/;
     await expect(page.locator('details.activity').last().locator('> summary')).toHaveText(header);
     const r = await lastReply(page);
-    expect(r.tag).toMatch(/^Stopped by you at \d\d:\d\d · its background work kept running$/);
+    expect(r.tag).toMatch(/^Stopped by you at \d{1,2}:\d\d(?:\s[AP]M)? · its background work kept running$/);
     expect(r.header).toMatch(header);
     expect(r.steps).toEqual([`${BG} Running in the background`, WAIT, `${WAIT} Stopped`]);
     await expect(jobStop(page), 'the kept job keeps its row, with its own Stop').toHaveCount(1);

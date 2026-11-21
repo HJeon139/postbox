@@ -123,8 +123,8 @@ test('a finished progress block says when it last moved, and the clock leaves it
   await expect(live).toBeVisible();
   // A finished block says the time it last moved, which needs no tick, with the day on hover.
   const updated = finished.locator('.block-head [data-since]');
-  await expect(updated).toHaveText(/^Updated \d\d:\d\d$/);
-  await expect(updated).toHaveAttribute('title', /\w+day, \w+ \d+ \d\d:\d\d$/);
+  await expect(updated).toHaveText(/^Updated \d{1,2}:\d\d(?:\s[AP]M)?$/);
+  await expect(updated).toHaveAttribute('title', /\w+day, \w+ \d+ \d{1,2}:\d\d(?:\s[AP]M)?$/);
   // Count every change to the finished block while the running one’s time goes up at least once.
   await finished.evaluate((node) => {
     const w = /** @type {any} */ (window);

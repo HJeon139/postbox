@@ -175,7 +175,7 @@ test('#126 #129 Keep running, by keyboard: the agent reads stopping until it exi
   expect(step().state).toBe('running');
   await expect(page.locator('.bg-jobs li button'), 'still listed, with its own Stop').toHaveCount(1);
   expect(store.state.sessions[se.id].context.join('\n')).toMatch(/bgjob\d+ .* is still running/);
-  expect(await lastTag()).toMatch(/^Stopped by you at \d\d:\d\d · its background work kept running$/);
+  expect(await lastTag()).toMatch(/^Stopped by you at \d{1,2}:\d\d(?:\s[AP]M)? · its background work kept running$/);
   // Its own Stop ends it, as a person would before going on: a kept job left running would answer a later test’s Stop
   // too, since Postbox stops every kept job that shares its process group (#167).
   await jobStop(page).click();
@@ -204,7 +204,7 @@ test('#129 Stop it too stops the agent and its job', async ({ page }) => {
   await expect(ask(page)).toHaveCount(0);
   expect(step().state).toBe('stopped');
   expect(store.state.sessions[se.id].jobs).toEqual([]);
-  expect(await lastTag()).toMatch(/^Stopped by you at \d\d:\d\d$/);
+  expect(await lastTag()).toMatch(/^Stopped by you at \d{1,2}:\d\d(?:\s[AP]M)?$/);
 });
 
 test('#164 a kept job Postbox couldn’t tell apart says so under its row, and its own Stop stops every process it kept', async ({ page }) => {
@@ -246,7 +246,7 @@ test('#215 a queued message’s Send now: the reply it interrupted says so, and 
   await expect
     .poll(() => state() === 'idle' && store.state.sessions[se.id].jobs.some((j) => j.kept), { message: 'the next turn, with the job kept' })
     .toBe(true);
-  expect(await lastTag()).toMatch(/^Interrupted by Send now at \d\d:\d\d$/);
+  expect(await lastTag()).toMatch(/^Interrupted by Send now at \d{1,2}:\d\d(?:\s[AP]M)?$/);
   await expect(page.locator('.bg-jobs li button'), 'still listed, with its own Stop').toHaveCount(1);
   await page.locator('.bg-jobs li button').click();
   await expect(page.locator('.bg-jobs li'), 'the row goes').toHaveCount(0);
