@@ -361,10 +361,13 @@ const RAW_TAIL = 12;
 const RAW_LINE = 1000;
 /** The fields whose words a line’s shape keeps: what kind of event it is, and how it ended. */
 const SHAPE_WORDS = new Set(['type', 'subtype', 'name', 'stop_reason', 'status', 'kind', 'operationType', 'sessionUpdate', 'terminal_reason']);
+/** Kept only at a line’s top level: a JSON-RPC event’s `method`, Codex’s and Kiro’s (#1543). Deeper, a tool’s
+ * argument can be named `method` and hold what the agent wrote. */
+const TOP_WORDS = new Set(['method']);
 
 /** A value’s shape: other strings become their length, so no reply, file or secret a tool printed is kept. */
 const shapeOf = (/** @type {unknown} */ v, depth = 0, key = '') => {
-  if (typeof v === 'string') return SHAPE_WORDS.has(key) ? v.slice(0, 60) : v.length;
+  if (typeof v === 'string') return SHAPE_WORDS.has(key) || (depth === 1 && TOP_WORDS.has(key)) ? v.slice(0, 60) : v.length;
   if (Array.isArray(v)) return depth > 3 ? `[${v.length}]` : v.slice(0, 8).map((x) => shapeOf(x, depth + 1));
   if (!v || typeof v !== 'object') return v;
   if (depth > 3) return '{…}';
