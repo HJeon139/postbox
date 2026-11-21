@@ -2,6 +2,12 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.35.2 (2026-11-21)
+
+### Fixes
+
+- **remote:** send a continued host turn's reply back to the agent that asked
+
 ## 4.35.1 (2026-11-21)
 
 ### Fixes
