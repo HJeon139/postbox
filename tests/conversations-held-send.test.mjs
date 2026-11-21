@@ -8,6 +8,7 @@ import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { PassThrough } from 'node:stream';
 import { test } from 'node:test';
+import { createPersonaFor } from '../server/persona-create.mjs';
 import * as arrange from './arrange.mjs';
 import { heldStore, setup } from './stop-reply-fixture.mjs';
 
@@ -145,5 +146,20 @@ test('#1292: a topic opened on an agent’s message in a held room is answered b
     return { topic: rt.startTopic(t.id, item.id) };
   });
   assert.equal(store.state.threads[result.topic.threadId].woke, 'critic');
+  await store.close();
+});
+
+test('#1292: a new agent added to a conversation started while a commit is held joins it', async () => {
+  // Second pre-review: POST /api/personas with join found the conversation through the published state, and refused.
+  const { result, store } = await whileHeld(({ rt }) => {
+    const t = rt.createThread({ projectId: 'p1', title: 'Held room' });
+    try {
+      return { t, p: createPersonaFor(rt, rt.store, { handle: 'helper', backend: 'claude-code', join: { threadId: t.id } }) };
+    } catch (e) {
+      return { t, e };
+    }
+  });
+  assert.equal(result.e, undefined, result.e?.message);
+  assert.ok(Object.values(store.state.sessions).some((x) => x.threadId === result.t.id && x.handle === 'helper'));
   await store.close();
 });

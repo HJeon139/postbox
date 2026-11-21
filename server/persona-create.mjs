@@ -9,7 +9,11 @@ import { toBoilerplate } from './seed.mjs';
  */
 export function createPersonaFor(rt, store, body) {
   const p = rt.createPersona(body);
-  if (body.join?.threadId) rt.ensureSession(rt.threads.lineage(body.join.threadId).at(-1), p.id, { brief: 'You were just created and added to this thread.' });
+  // As written: a conversation just started behind a held commit isn’t published yet (#1292).
+  if (body.join?.threadId)
+    rt.ensureSession(rt.threads.lineage(body.join.threadId, (id) => rt.store.pending.thread(id)).at(-1), p.id, {
+      brief: 'You were just created and added to this thread.',
+    });
   else if (body.join?.projectId) rt.createThread({ projectId: body.join.projectId, title: body.join.title || `With @${p.handle}`, personaIds: [p.id] });
   if (body.saveAsBoilerplate) store.emit('boilerplate', toBoilerplate(p));
   return p;
