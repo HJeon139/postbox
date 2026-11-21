@@ -35,7 +35,7 @@ function seenAbove(from) {
 
 test('#885 the workspace’s real path is outside the checkout and the run’s folder, and nothing above it is a brief', async () => {
   const { checkout, dir, tmp } = layout();
-  const paths = await runPaths(dir, { tmp });
+  const paths = await runPaths(dir, { root: checkout, tmp });
   const real = realpathSync(paths.workspace);
   assert.ok(!real.startsWith(checkout + sep), `${real} is inside the checkout`);
   assert.ok(!real.startsWith(realpathSync(dir) + sep), `${real} is inside the run’s folder`);
@@ -44,4 +44,20 @@ test('#885 the workspace’s real path is outside the checkout and the run’s f
     false,
     'no folder above the workspace lists the checkout’s designs/',
   );
+});
+
+test('#885 a temp folder inside the checkout is refused, as the workspace would be under the checkout again', async () => {
+  const { checkout, dir } = layout();
+  const inside = join(checkout, 'tmp');
+  mkdirSync(inside);
+  await assert.rejects(runPaths(dir, { root: checkout, tmp: inside }), /is inside the Postbox checkout.*Set TMPDIR to a folder outside/);
+  await assert.rejects(runPaths(dir, { root: checkout, tmp: checkout }), /is inside the Postbox checkout/);
+  assert.deepEqual(readdirSync(inside), [], 'and nothing is made there');
+});
+
+test('#885 a run whose folders can’t be made leaves no temp folder behind, and says why', async () => {
+  const { checkout, dir, tmp } = layout();
+  writeFileSync(join(dir, 'data'), 'a file where the data folder goes');
+  await assert.rejects(runPaths(dir, { root: checkout, tmp }), { code: 'EEXIST' });
+  assert.deepEqual(readdirSync(tmp), [], 'no workspace folder was made');
 });

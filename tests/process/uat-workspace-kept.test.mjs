@@ -14,22 +14,23 @@ import { tempDir } from '../temp-dirs.mjs';
 
 /** A run folder inside a made-up checkout, and a temp folder elsewhere. */
 function layout() {
-  const dir = join(realpathSync(tempDir('pb-uat-checkout-')), 'uat-runs', '2026-11-21T00-00-00-visualskill-bill');
+  const root = realpathSync(tempDir('pb-uat-checkout-'));
+  const dir = join(root, 'uat-runs', '2026-11-21T00-00-00-visualskill-bill');
   mkdirSync(dir, { recursive: true });
-  return { dir, tmp: tempDir('pb-uat-tmp-') };
+  return { root, dir, tmp: tempDir('pb-uat-tmp-') };
 }
 
 test('#885 the workspace is a git repository of its own: git resolves it as its root', async () => {
-  const { dir, tmp } = layout();
-  const paths = await runPaths(dir, { tmp });
+  const { root, dir, tmp } = layout();
+  const paths = await runPaths(dir, { root, tmp });
   makeWorkspace({ seed: null }, paths, dir);
   const top = spawnSync('git', ['rev-parse', '--show-toplevel'], { cwd: paths.workspace, encoding: 'utf8' });
   assert.equal(top.stdout.trim(), realpathSync(paths.workspace));
 });
 
 test('#885 the run keeps its workspace in its folder, and a recheck reads it there after the temp folder is gone', async () => {
-  const { dir, tmp } = layout();
-  const paths = await runPaths(dir, { tmp });
+  const { root, dir, tmp } = layout();
+  const paths = await runPaths(dir, { root, tmp });
   makeWorkspace({ seed: null }, paths, dir);
   writeFileSync(join(paths.workspace, 'notes.md'), 'what the agent wrote\n');
   retainWorkspace(paths);
@@ -44,8 +45,8 @@ test('#885 the run keeps its workspace in its folder, and a recheck reads it the
 });
 
 test('#885 a workspace that can’t be kept or removed says so, and never throws from the run’s exit', async () => {
-  const { dir, tmp } = layout();
-  const paths = await runPaths(dir, { tmp });
+  const { root, dir, tmp } = layout();
+  const paths = await runPaths(dir, { root, tmp });
   writeFileSync(join(paths.workspace, 'notes.md'), 'kept\n');
   // Where it’s kept is a file, so the copy fails, as a full disk or a read-only folder would.
   writeFileSync(paths.kept, 'in the way');

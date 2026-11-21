@@ -122,7 +122,7 @@ async function main() {
   const budget = runBudget({ cap: parseMaxCost(opt['max-cost']), testerShare: Number(opt.budget) });
   const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
   const dir = join(runsRoot({ root: ROOT }), `${stamp}-${name}`);
-  const paths = await runPaths(dir);
+  const paths = await runPaths(dir, { root: ROOT });
   // Kept in the run’s folder when the process exits, whatever ends the run, after its stop (#885).
   process.once('exit', () => retainWorkspace(paths));
   makeWorkspace(scenario, paths, dir);

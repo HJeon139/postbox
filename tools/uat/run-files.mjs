@@ -4,7 +4,7 @@
 import { closeSync, cpSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { mkdir, mkdtemp, realpath } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, sep } from 'node:path';
 import { parseSnapshotText } from '../../server/store-snapshot-lines.mjs';
 import { patchSession } from '../../shared/state.mjs';
 import { claudeTranscriptFile } from './claude-transcript-file.mjs';
@@ -14,14 +14,21 @@ import { lines } from './history.mjs';
  * The run’s folders, made: Postbox’s data, the workspace, each backend’s recorded streams, and screenshots. The
  * workspace is outside the Postbox checkout, in a temp folder of its own, so an agent that reads above it reaches none
  * of the checkout’s files, such as the visual skill’s briefs and their answers (#885); retainWorkspace keeps it in the
- * run’s folder, as workspace/, once the run has stopped.
- * @param {string} dir @param {{ tmp?: string }} [o]  where the workspace’s folder goes, the system temp folder by default
+ * run’s folder, as workspace/, once the run has stopped. A temp folder inside the checkout, by TMPDIR, is refused: the
+ * workspace would be under the checkout again. The run’s own folders come first, so a run that can’t make them leaves no
+ * temp folder; one that fails after it removes it.
+ * @param {string} dir
+ * @param {{ root: string, tmp?: string }} o  the checkout, and where the workspace’s folder goes (the system temp folder)
  */
-export async function runPaths(dir, { tmp = tmpdir() } = {}) {
-  const outside = await mkdtemp(join(await realpath(tmp), 'postbox-uat-workspace-'));
+export async function runPaths(dir, { root, tmp = tmpdir() }) {
+  const base = await realpath(tmp);
+  const checkout = await realpath(root);
+  if (base === checkout || base.startsWith(checkout + sep))
+    throw new Error(
+      `The temp folder ${base} is inside the Postbox checkout, so a run’s agents could read the checkout from their workspace (#885). Set TMPDIR to a folder outside ${checkout}, and run again.`,
+    );
   const paths = {
     data: join(dir, 'data'),
-    workspace: join(outside, 'workspace'),
     streams: join(dir, 'streams'),
     kiroStreams: join(dir, 'streams', 'kiro'),
     agyStreams: join(dir, 'streams', 'agy'),
@@ -30,7 +37,15 @@ export async function runPaths(dir, { tmp = tmpdir() } = {}) {
     shots: join(dir, 'shots'),
   };
   for (const p of Object.values(paths)) await mkdir(p, { recursive: true });
-  return { ...paths, kept: join(dir, 'workspace'), outside };
+  const outside = await mkdtemp(join(base, 'postbox-uat-workspace-'));
+  const workspace = join(outside, 'workspace');
+  try {
+    await mkdir(workspace);
+  } catch (e) {
+    rmSync(outside, { recursive: true, force: true });
+    throw e;
+  }
+  return { ...paths, workspace, kept: join(dir, 'workspace'), outside };
 }
 
 /**
