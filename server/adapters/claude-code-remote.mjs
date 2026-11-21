@@ -14,8 +14,8 @@
 //   mapper (the reply is rebuilt whole), nothing is sent to it, and no fallback starts another.
 // server/adapters/claude-code.mjs runs the turn; this module holds what only a host needs.
 
+import { claudeVersionProblem } from '../../shared/claude-version-check.mjs';
 import { lookedText } from '../../shared/remote-protocol.mjs';
-import { olderThan } from '../../shared/versions.mjs';
 import { remoteSpawn } from '../remote/process.mjs';
 import { checkRemoteContext } from './adapter.mjs';
 import { hostShim, hostWaitMax, startAttachments } from './remote-turn.mjs';
@@ -43,14 +43,6 @@ export const CLAUDE_CODE_CAPABILITIES = Object.freeze({
 });
 
 /**
- * The oldest claude a remote turn runs on (C3): from 2.1.187 a stdio server’s calls have the idle window the shim’s
- * `timeout` and progress keep open (the docs’ env-vars page, CLAUDE_CODE_MCP_TOOL_IDLE_TIMEOUT).
- */
-export const REMOTE_CLAUDE_MIN = '2.1.187';
-/** The oldest claude with `--permission-prompts none` (the CLI reference), for a host with denyPrompts on (D2). */
-export const DENY_PROMPTS_MIN = '2.1.259';
-
-/**
  * Why a remote turn can’t start on this host’s claude, or null if it can: missing, a version it couldn’t read, or older
  * than REMOTE_CLAUDE_MIN (or DENY_PROMPTS_MIN with denyPrompts on). Each says what was found, and where.
  * @param {any} welcome  the daemon’s latest welcome  @param {{ denyPrompts?: boolean }} [settings]  the host’s
@@ -62,13 +54,7 @@ export function remoteClaudeProblem(welcome, settings = {}) {
     const looked = h?.looked?.length ? ` It looked in ${lookedText(h)}.` : '';
     return `Claude Code isn’t installed on the host.${looked} Install it there, or set claudePath in the host’s settings.`;
   }
-  const need = settings.denyPrompts ? DENY_PROMPTS_MIN : REMOTE_CLAUDE_MIN;
-  const why = settings.denyPrompts ? ', which turning off permission prompts (denyPrompts) needs' : ', which remote turns need';
-  const older = h.version ? olderThan(h.version, need) : null;
-  if (older === null)
-    return `Postbox couldn’t tell the version of Claude Code at ${h.path} on the host (it said ${h.version ? `“${h.version}”` : 'nothing'}). It needs ${need} or later${why}.`;
-  if (older) return `Claude Code ${h.version} at ${h.path} on the host is older than ${need}${why}. Update it there with claude update.`;
-  return null;
+  return claudeVersionProblem(h, !!settings.denyPrompts);
 }
 
 /**
