@@ -2,6 +2,34 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.35.7 (2026-11-21)
+
+### Fixes
+
+- **codex:** keep each turn out of the person's Codex memories
+
+## 4.35.6 (2026-11-21)
+
+### Fixes
+
+- **shell:** open the first project when it's made from the first-run page
+
+## 4.35.5 (2026-11-21)
+
+### Fixes
+
+- **turns:** end quietly only when replies going back woke the turn
+- **turns:** end an agent-woken turn quietly when it takes no step and says nothing
+
+## 4.35.4 (2026-11-21)
+
+### Fixes
+
+- **adapters:** keep the method of a line too long to keep whole
+- **codex:** keep a message's completed text after blank deltas
+- **adapters:** keep the JSON-RPC method in an empty reply's diagnosis
+- **codex:** keep a message's completed text after an empty delta
+
 ## 4.35.3 (2026-11-21)
 
 ### Fixes

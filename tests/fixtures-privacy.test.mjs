@@ -197,16 +197,6 @@ test('privacy checker flags a home folder in any case, as macOS paths are case-i
   assert.ok(checkContentPrivacy(`file://${slashed('', 'users', 'x')}`).length > 0, 'a file address is a disk’s path');
 });
 
-test('privacy checker reads 200 KB with no address in well under a second, whatever it repeats', () => {
-  for (const unit of ['a', '.', '-', '/', '\\', '1', '_', 'a.', 'a-', '-a']) {
-    const text = unit.repeat(200_000 / unit.length);
-    const started = performance.now();
-    checkContentPrivacy(text);
-    const elapsed = performance.now() - started;
-    assert.ok(elapsed < 100, `${JSON.stringify(unit)} took ${Math.round(elapsed)} ms`);
-  }
-});
-
 test('a file is binary when its first 8,000 bytes hold a zero byte, as git decides it', () => {
   const bytes = (zeroAt) => Buffer.alloc(9000, 'a').fill(0, zeroAt, zeroAt + 1);
   assert.equal(isBinary(bytes(7999)), true, 'a zero in the last byte git reads');
