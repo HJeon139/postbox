@@ -195,3 +195,20 @@ test('read at the top, an item moved forward leaves its stub on the page and is 
   assert.equal(beyondItem(ranges.get('t'), 't', 'i3')?.text, 'updated');
   assert.equal(ranges.get('t').total, 101);
 });
+
+test('#1260 at Home, the kept tail holds at most a page of the newest items, and End puts back the newest, in order', () => {
+  const state = { items: {} };
+  const ranges = new Map();
+  loading(ranges, 't');
+  place(state, ranges, { threadId: 't', seq: 10, start: 95, total: 100, items: items(95, 100), head: items(0, 5) }, 'replace');
+  assert.equal(placeHead(state, ranges, 't', 10), true, 'Home');
+  // A busy room while you read at its top: 300 items arrive.
+  for (let n = 100; n < 400; n++) hear(state, ranges, 'item.add', { threadId: 't', item: it(n) }, 11 + n);
+  // A patch to the newest still finds it in the tail, cut as it was.
+  hear(state, ranges, 'item.text', { threadId: 't', id: 'i399', text: '+chunk' }, 420);
+  const kept = ranges.get('t').tail;
+  assert.equal(kept.length, 200, 'a page of the newest, not every item added');
+  assert.equal(placeTail(state, ranges, 't', 500), true, 'End, with no load');
+  assert.deepEqual([state.items.t.length, state.items.t[0].id, state.items.t.at(-1).id, state.items.t.at(-1).text], [200, 'i200', 'i399', 'm399+chunk']);
+  assert.equal(ranges.get('t').start, 200, 'where the newest 200 start in 400');
+});
