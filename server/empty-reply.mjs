@@ -34,8 +34,21 @@ export function noteAnswer(turn, name, r) {
  */
 export function endedWithoutReply(turn, items) {
   if (!ASKED.has(turn.kind) || turn.slash || turn.said.trim() || turn.answered) return false;
+  if (endedExchange(turn)) return false;
   return !items.some((it) => (it.turnId === turn.id || it.fromTurnId === turn.id) && (it.kind !== 'agent' || it.text?.trim()));
 }
+
+/**
+ * Another agent’s message woke it, and it ended at once with nothing to add (#1543): an exchange between agents may end
+ * quietly, and a failure there is an alarm the person can’t act on. A turn that took a step had work to report (#485).
+ * The person’s Retry, and a host turn continued after Interrupted or Sign-in needed, still owe theirs: the first was
+ * the person asking, and the second may have done its work before it was cut off.
+ * @param {any} turn
+ */
+const endedExchange = (turn) => turn.kind === 'agent' && !turn.asked?.message?.retry && !turn.origin && !turn.backTo && !tookStep(turn);
+
+/** Whether a turn took a step: not a subagent’s, a thought or narration (turn-held.mjs counts the same). @param {any} turn */
+const tookStep = (turn) => (turn.steps ?? []).some((/** @type {any} */ s) => !s.who && s.kind !== 'thought' && s.kind !== 'said');
 
 /**
  * The failure an empty turn ends with: what the person reads, and the turn’s raw ending, which the failed reply keeps.

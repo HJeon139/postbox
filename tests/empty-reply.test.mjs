@@ -112,11 +112,19 @@ test('#485: the empty reply keeps the turn’s raw ending, and the agent hears o
 });
 
 test('#485: only a turn that owes a reply is held to it; a block or a message to another agent is a reply', () => {
-  const turn = (kind, said = '') => ({ id: 'tu_1', kind, said });
+  const turn = (kind, said = '', took = [{ kind: 'tool', label: 'Ran npm test' }]) => ({ id: 'tu_1', kind, said, steps: took });
   const steps = [{ kind: 'agent', turnId: 'tu_1', text: '' }];
   // A message from the person or another agent, answered with steps only.
   assert.equal(endedWithoutReply(turn('user'), steps), true);
   assert.equal(endedWithoutReply(turn('agent'), steps), true);
+  // #1543: woken by another agent, it ended at once with nothing to add; the person’s message still owes a reply.
+  assert.equal(endedWithoutReply(turn('agent', '', []), steps), false);
+  assert.equal(endedWithoutReply(turn('agent', '', [{ kind: 'thought', label: 'Thinking' }]), steps), false, 'a thought isn’t a step');
+  assert.equal(endedWithoutReply(turn('user', '', []), steps), true);
+  // The person’s Retry, and a host turn continued after it was cut off, still owe theirs.
+  const quiet = turn('agent', '', []);
+  assert.equal(endedWithoutReply({ ...quiet, asked: { message: { retry: true } } }, steps), true, 'a Retry');
+  assert.equal(endedWithoutReply({ ...quiet, origin: { kind: 'agent' }, backTo: ['researcher'] }, steps), true, 'a continued host turn');
   assert.equal(endedWithoutReply(turn('user', '\n\n'), steps), true, 'whitespace isn’t a reply');
   // Turns that may end quietly: an event (a block answered or dismissed, a review), a scheduled wake, a lint pass.
   for (const kind of ['event', 'wake', 'lint', 'app-check']) assert.equal(endedWithoutReply(turn(kind), steps), false, kind);
