@@ -66,6 +66,7 @@ import { HOOK_SCRIPT } from './agy-hook.mjs';
 import { agyHookCommand, agySupportsHooks, confirmAgyHook, probeAgyHook } from './agy-hook-check.mjs';
 import { agyPlugin, agySkillFiles, excludeFile, excludePlugin, PLUGIN_DIR, writeAgyPlugin } from './agy-plugin.mjs';
 import { agyStartError, clip, HEADLESS_NOTE, HOOK_NOTE, LOOKING_NOTE, refusalFollowUp, refusalOf } from './agy-refusals.mjs';
+import { repeatsLastError } from './agy-repeated-error.mjs';
 import { AGY_SERVER, ALLOW_POSTBOX, agySettingsFile, allowPostbox } from './agy-settings.mjs';
 import { toolOf } from './agy-tools.mjs';
 import { agyContextPercent, agyWindowFor } from './context-usage.mjs';
@@ -447,15 +448,12 @@ export function createAgyMapper(ctx, { now = Date.now, effort = null, resumed = 
           // The result’s usage is the whole turn’s total: the context only when no step reported its own.
           if (r.usage && !st.stepUsage) context(r.usage);
           emit({ kind: 'turn_end', isError: r.status !== 'SUCCESS' && !(st.went && !st.stuck) });
-          // The error the agent’s last turn reported, if it didn’t succeed: agy can end each later turn of the
-          // conversation with that same text, frozen to the second (#335).
-          const earlier = ctx.state?.agyLastError ?? null;
-          const why = r.status === 'SUCCESS' ? null : clip(r.error || r.status || 'no reason given', 400);
-          if (why !== earlier) {
-            if (ctx.state) ctx.state.agyLastError = why;
-            ctx.saveState?.({ agyLastError: why });
-          }
-          if (why === null) return;
+          const error = r.status === 'SUCCESS' ? null : String(r.error || r.status || 'no reason given');
+          // agy can end each later turn of a conversation with the last one’s error again (#335).
+          // Only an error agy gave words to: a bare status such as ERROR says nothing that could repeat.
+          const repeated = repeatsLastError(ctx, st.sessionId ?? resumed, r.status === 'SUCCESS' || !r.error ? null : String(r.error));
+          if (error === null) return;
+          const why = clip(error, 400);
           // agy’s ERROR doesn’t say how the turn ended. Recorded in the Gemini room UAT: ERROR after a model call it
           // retried and went on from, once with the review written in full and once ending at a refused command;
           // and ERROR (“API error (attempt 2)”) on a turn with no failed call in its stream, which a refused read
@@ -464,7 +462,7 @@ export function createAgyMapper(ctx, { now = Date.now, effort = null, resumed = 
           // retries ran out). Otherwise the error is a step, and the turn stands; a refusal shows as its own step.
           if (st.went && !st.stuck) {
             // An earlier turn’s error, repeated, with no failed call in this turn’s own stream: not this turn’s.
-            if (!st.retried && why === earlier) return;
+            if (!st.retried && repeated) return;
             ctx.activity(
               st.retried
                 ? { id: 'agy-retried', label: 'Antigravity retried after a model error', state: 'done', detail: why }

@@ -22,10 +22,15 @@ const stream = (/** @type {string} */ name, /** @type {string} */ error) =>
     .map((l) => JSON.parse(l))
     .map((e) => (e.event === 'result' && e.result.status !== 'SUCCESS' ? { ...e, result: { ...e.result, error } } : e));
 
-/** One agent’s turns, one after another: the state an adapter saves carries from each turn to the next. */
-function agent() {
-  const state = {};
-  return (/** @type {string} */ name, /** @type {string} */ error) => {
+/** The conversation error-after-refusal was recorded in: each turn resumes it, as the adapter asks agy to. */
+const CONVERSATION = '15743f10-1ffb-4dfa-8cc1-df2c3986a05c';
+
+/**
+ * One agent’s turns, one after another: the state an adapter saves carries from each turn to the next.
+ * @param {Record<string, any>} [state]
+ */
+function agent(state = {}) {
+  return (/** @type {string} */ name, /** @type {string} */ error, resumed = CONVERSATION) => {
     const activity = [];
     const ctx = {
       persona: { handle: 'gem', model: 'gemini-3.8-flash-high', permissionMode: 'ask' },
@@ -36,8 +41,12 @@ function agent() {
       status: () => {},
       reported: () => {},
     };
-    const m = createAgyMapper(ctx, { now: () => 1000 });
-    for (const e of stream(name, error)) m.push(e);
+    const m = createAgyMapper(ctx, { now: () => 1000, resumed });
+    // Each recorded stream, as if agy had run it in the conversation the turn resumed.
+    const recorded = stream(name, error);
+    const own = recorded.find((e) => e.event === 'init')?.conversation_id;
+    const events = own ? recorded.map((e) => JSON.parse(JSON.stringify(e).replaceAll(own, resumed))) : recorded;
+    for (const e of events) m.push(e);
     return { m, ended: activity.filter((a) => a.id === 'agy-error' || a.id === 'agy-retried') };
   };
 }
@@ -92,5 +101,48 @@ test('#335: after a turn that succeeds, the same error text is reported again', 
   assert.deepEqual(
     turn('error-after-refusal', QUOTA).ended.map((a) => a.state),
     ['failed'],
+  );
+});
+
+test('#335: two errors that differ only past what the step shows are both reported', () => {
+  const turn = agent();
+  const head = `Individual quota reached. ${'x'.repeat(400)}`;
+  turn('error-after-refusal', `${head} Resets in 119h36m54s.`);
+  const second = turn('error-after-refusal', `${head} Resets in 119h35m10s.`);
+  assert.deepEqual(
+    second.ended.map((a) => a.state),
+    ['failed'],
+    'a different error, though its first 400 characters match',
+  );
+});
+
+test('#335: the same error in another conversation is reported', () => {
+  const turn = agent();
+  turn('error-after-refusal', QUOTA);
+  // agy lost the conversation, and the agent’s next turn runs in a new one.
+  const fresh = turn('error-after-refusal', QUOTA, 'another-conversation');
+  assert.equal(fresh.m.missingSession, false);
+  assert.equal(fresh.m.sessionId, 'another-conversation');
+  assert.deepEqual(
+    fresh.ended.map((a) => a.state),
+    ['failed'],
+  );
+});
+
+test('#335: the saved state holds a fingerprint, never the error’s text', () => {
+  const state = {};
+  agent(state)('error-after-refusal', QUOTA);
+  assert.equal(state.agyLastError.conversation, CONVERSATION);
+  assert.match(state.agyLastError.hash, /^[0-9a-f]{64}$/);
+  assert.ok(!JSON.stringify(state).includes('quota'), JSON.stringify(state));
+});
+
+test('#335: turns that end with no error text are each reported', () => {
+  const turn = agent();
+  turn('error-after-refusal', '');
+  assert.deepEqual(
+    turn('error-after-refusal', '').ended.map((a) => [a.state, a.detail]),
+    [['failed', 'ERROR']],
+    'a bare status isn’t an error that could repeat',
   );
 });
