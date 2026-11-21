@@ -84,6 +84,29 @@ test('warnings show the app with notes, and the agent hears of them in the lint 
   assert.equal(linted[1].turnId, 'tu_live');
 });
 
+test('the last version the person was shown is kept: a pass or a note sets it, a fix or a new version doesn’t (#948)', () => {
+  const { store, threads, apps } = rig();
+  shown(apps, threads);
+  const update = (code) =>
+    apps.updateApp(
+      'se_1',
+      null,
+      () => 'th_c',
+      () => {},
+      { id: 'lab', code },
+    );
+  update('<p>Lab 2</p>');
+  assert.equal(store.state.apps.lab.lastShown, undefined, 'v1 was replaced before any check: never shown');
+  apps.appCheck('lab', { version: 2, problems: [] });
+  assert.equal(store.state.apps.lab.lastShown, 2);
+  update('<p>Lab 3</p>');
+  assert.equal(apps.appCheck('lab', { version: 3, problems: [{ code: 'text-too-small', message: 'Small text.' }] }).status, 'fixing');
+  assert.equal(store.state.apps.lab.lastShown, 2, 'a version being fixed was never shown');
+  update('<p>Lab 4</p>');
+  apps.appCheck('lab', { version: 4, problems: [{ code: 'text-too-small', message: 'Small text.' }] });
+  assert.deepEqual([store.state.apps.lab.check.status, store.state.apps.lab.lastShown], ['note', 4], 'shown with a note');
+});
+
 test('a problem only Postbox’s own check has goes to no agent, and the note doesn’t say the agent was told (#981)', () => {
   const { store, threads, apps, linted, sent } = rig();
   shown(apps, threads);

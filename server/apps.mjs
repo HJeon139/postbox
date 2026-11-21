@@ -61,8 +61,9 @@ export function appCheck(apps, appId, { version, problems = [] }) {
   const clean = (Array.isArray(problems) ? problems : [])
     .slice(0, 20)
     .map((p) => ({ code: String(p?.code).slice(0, 40), message: String(p?.message).slice(0, 300) }));
+  // The last version the person was shown, which stands in while its agent fixes a later one (#948).
   if (!clean.length) {
-    apps.store.emit('app', { ...app, check: { status: 'passed', attempt: app.check.attempt, problems: [] } });
+    apps.store.emit('app', { ...app, lastShown: version, check: { status: 'passed', attempt: app.check.attempt, problems: [] } });
     return { status: 'passed' };
   }
   // A script error goes back to the agent once, like any blocking problem (#964); after that, or with no agent to
@@ -95,7 +96,7 @@ export function appCheck(apps, appId, { version, problems = [] }) {
       fixable.map((p) => ({ ...p, scope })),
     );
   const check = { status: 'note', attempt: app.check.attempt, problems: clean, ...(notes ? { notes } : {}), ...(told ? { told } : {}) };
-  apps.store.emit('app', { ...app, check });
+  apps.store.emit('app', { ...app, lastShown: version, check });
   return { status: 'note' };
 }
 

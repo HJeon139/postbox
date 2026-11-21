@@ -1,7 +1,7 @@
 // #948 and #981: what Postbox’s pre-display check found is written for the agent, which gets it as an `app-check`
-// message or a lint turn. The person sees a plain status instead: while the agent fixes a first version, a note that
-// it’s being fixed; while it fixes a later one, the version before it; and on an app shown with problems, a short note
-// in plain words, with no pixel sizes or CSS advice.
+// message or a lint turn. The person sees a plain status instead: while the agent fixes a version, the last version
+// they were shown, read-only, or a note that it’s being fixed when they were shown none; and on an app shown with
+// problems, a short note in plain words, with no pixel sizes or CSS advice.
 // The check’s messages here are the ones the UATs quoted from the page (the issues’ “What failed instead”).
 
 import { join } from 'node:path';
@@ -10,6 +10,8 @@ import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 
 const APP = (label) => `<main style="padding:12px"><p>${label}</p></main>`;
+// A version the real check holds back: text too faint to read on its own white box, a blocking problem.
+const FAINT = '<main style="padding:12px;background:#ffffff"><p style="color:#eeeeee">Version 2</p></main>';
 // #948’s placeholder and #981’s banner, as the testers quoted them.
 const FIXING = [
   { code: 'text-too-small', message: '13 of 20 labels are drawn under 9 px.' },
@@ -23,6 +25,13 @@ const AGENT_WORDS = /\bpx\b|\.sp-head|pointer-events|stylesheet/;
 let app;
 test.beforeAll(async () => {
   app = await startPostbox('app-check-plain');
+  // The agent hears the failed check and is still at work on it, so a version it’s fixing stays “fixing”: a turn that
+  // ended would show the version with a note instead.
+  arrange.withAdapter(app.rt, {
+    name: 'mock',
+    deliver: (_session, _message, ctx) =>
+      new Promise((_resolve, reject) => ctx.signal.addEventListener('abort', () => reject(Object.assign(new Error('Stopped'), { name: 'AbortError' })))),
+  });
 });
 test.afterAll(async () => {
   await app?.stop();
@@ -37,6 +46,7 @@ async function seed(page, id) {
   const [tools] = arrange.sessionsIn(rt, t.id).map((se) => rt.toolsFor(se.id));
   const item = () => page.locator(`.transcript > [data-key="${rt.store.state.apps[id].itemId}"]`);
   const passed = () => expect.poll(() => rt.store.state.apps[id].check.status, { message: `${id} passes its own check`, timeout: 15_000 }).toBe('passed');
+  const fixing = () => expect.poll(() => rt.store.state.apps[id].check.status, { message: `${id}’s check holds it back`, timeout: 15_000 }).toBe('fixing');
   const found = async (check) => {
     store.emit('app', { ...rt.store.state.apps[id], check });
     await synced(page, app);
@@ -49,7 +59,7 @@ async function seed(page, id) {
   tools.show_app({ id, title: 'Sleep and running', code: APP('Version 1') });
   await page.goto(`${app.origin}/#/t/${t.id}`);
   await passed();
-  return { tools, item, passed, found, shoot };
+  return { tools, item, passed, fixing, found, shoot };
 }
 
 test('#948 while the agent fixes a first version, the person sees a plain status, not the check’s findings', async ({ page }) => {
@@ -61,11 +71,10 @@ test('#948 while the agent fixes a first version, the person sees a plain status
   await shoot('948-fixing-first');
 });
 
-test('#948 while the agent fixes a later version, the person sees the version before it', async ({ page }) => {
-  const { tools, item, passed, found, shoot } = await seed(page, 'later');
-  tools.update_app({ id: 'later', code: APP('Version 2'), summary: 'bigger labels' });
-  await passed();
-  await found({ status: 'fixing', attempt: 1, problems: FIXING });
+test('#948 while the agent fixes a later version, the person sees the last version shown', async ({ page }) => {
+  const { tools, item, fixing, shoot } = await seed(page, 'later');
+  tools.update_app({ id: 'later', code: FAINT, summary: 'bigger labels' });
+  await fixing();
   await expect(item().locator('iframe.app-iframe'), 'v1’s frame').toHaveAttribute('src', /\/sandbox\/app\/later\/1\?/);
   await expect(item().locator('.app-note')).toHaveText('researcher is fixing v2. Until then, this is v1, read-only.');
   await expect(item(), 'none of the check’s words for the agent').not.toContainText(AGENT_WORDS);
@@ -74,6 +83,22 @@ test('#948 while the agent fixes a later version, the person sees the version be
   await expect(page.getByRole('menuitem', { name: /^v1\b/ }), 'v1 is the one marked in the menu').toHaveAttribute('aria-current', 'true');
   await page.keyboard.press('Escape');
   await shoot('948-fixing-later');
+});
+
+test('#948 a version still waiting for its check never stands in for one being fixed', async ({ page }) => {
+  const { rt } = app;
+  const projectId = Object.values(rt.store.state.projects)[0].id;
+  const t = rt.createThread({ projectId, title: 'Check waiting', personaIds: [arrange.persona(rt, 'researcher').id] });
+  const [tools] = arrange.sessionsIn(rt, t.id).map((se) => rt.toolsFor(se.id));
+  // v1 is replaced before any page checks it, so the person was never shown it.
+  tools.show_app({ id: 'waiting', title: 'Sleep and running', code: APP('Version 1') });
+  tools.update_app({ id: 'waiting', code: FAINT, summary: 'bigger labels' });
+  await page.goto(`${app.origin}/#/t/${t.id}`);
+  await expect.poll(() => rt.store.state.apps.waiting.check.status, { message: 'v2’s check holds it back', timeout: 15_000 }).toBe('fixing');
+  await synced(page, app);
+  const item = page.locator(`.transcript > [data-key="${rt.store.state.apps.waiting.itemId}"]`);
+  await expect(item.locator('.app-placeholder')).toContainText('researcher is fixing this app before you see it');
+  await expect(item.locator('iframe.app-iframe'), 'no version runs in its place').toHaveCount(0);
 });
 
 for (const [id, check, text] of [

@@ -9,7 +9,7 @@ import { h, icon } from './dom.mjs';
 const OWN = new Set(['no-answer', 'check-error']);
 
 /**
- * The placeholder while the app’s agent fixes what the check found in its first version.
+ * The placeholder while the app’s agent fixes what the check found, when the person was shown no version of it yet.
  * @param {(lines: any[], height?: number) => HTMLElement} placeholder  mountApp’s placeholder
  * @param {string} owner  the agent’s handle
  */

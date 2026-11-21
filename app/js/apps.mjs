@@ -422,12 +422,14 @@ function appBody(appId, review) {
 }
 
 /**
- * Whether the version before stands in while the agent fixes what the check found in a later one (#948). Not in a
- * review, where the person would comment on, or approve, a version that isn’t the one asked about.
+ * Whether the last version the person was shown stands in while the agent fixes what the check found in a later one
+ * (#948): one its check passed, with or without notes, never one still waiting for its check. Not in a review, where
+ * the person would comment on, or approve, a version that isn’t the one asked about.
  */
-const standsIn = (app, review) => app.check.status === 'fixing' && !app.retired && !review && !viewing.has(app.id) && app.current > 1;
+const standsIn = (app, review) =>
+  app.check.status === 'fixing' && !app.retired && !review && !viewing.has(app.id) && app.lastShown > 0 && app.lastShown < app.current;
 /** The version the person sees: one picked from the menu, else the current one, or the one standing in for it. */
-const shownVersion = (app, review = false) => viewing.get(app.id) ?? (standsIn(app, review) ? app.current - 1 : app.current);
+const shownVersion = (app, review = false) => viewing.get(app.id) ?? (standsIn(app, review) ? app.lastShown : app.current);
 
 /**
  * Renders an app (current or viewed version) into `container`. Used by transcript items and app reviews.
