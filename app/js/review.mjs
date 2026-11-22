@@ -8,7 +8,7 @@ import { reviewFileKeys } from '/shared/review-files.mjs';
 import { groupReviewLines, rowUnit } from '/shared/review-lines.mjs';
 import { enhanceMarkdown, mountApp } from './apps.mjs';
 import { h, icon, plural, timeOf, trusted } from './dom.mjs';
-import { reviewDraft, saveEdit, startComment, stopComment } from './review-draft.mjs';
+import { followOpen, reviewDraft, saveEdit, startComment, stopComment } from './review-draft.mjs';
 import { keepReviewDraft } from './review-draft-store.mjs';
 import { inlineMd, itemWords, words } from './review-inline.mjs';
 import { focusQuote, renderPreview } from './review-preview.mjs';
@@ -30,10 +30,7 @@ export function renderReview(b, item, ctx, kit) {
   if (b.format !== 'app' && d.on !== b.content) {
     d.comments = followLines(d.comments, d.on, b.content);
     // An open comment box goes with its line, or its selection, too.
-    if (d.composing !== null && typeof d.composing !== 'string') {
-      const [c] = followLines([typeof d.composing === 'number' ? { line: d.composing } : d.composing], d.on, b.content);
-      d.composing = typeof c.col === 'number' ? c : (c.line ?? null);
-    }
+    followOpen(d, d.on, b.content);
     d.on = b.content;
   }
   if (!item.answered) keepReviewDraft(item.id, item.revision ?? 1, d);

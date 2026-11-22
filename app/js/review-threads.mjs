@@ -113,7 +113,7 @@ function editorOf(c, at, { d, rerender }) {
   };
   const ta = h('textarea.textarea', {
     'aria-label': 'Edit your draft comment',
-    'data-edit-draft': '',
+    ...tracked(d, 'data-edit-draft'),
     style: { minHeight: '56px' },
     value: text,
     oninput: remember,
@@ -151,18 +151,40 @@ function editorOf(c, at, { d, rerender }) {
   );
 }
 
+/** Each comment box’s review draft, so a repaint finds only its own box (refocus). */
+const ownerOf = new WeakMap();
+
 /**
  * Gives a comment box focus, with its saved selection, when it was just opened (`d[opened]`), or after a repaint only
- * if it had focus before (#858): a repaint while the person types elsewhere, such as another agent’s comment arriving,
- * leaves their focus where it is. The old box is still on the page while the new one is built, so `mark` finds it.
+ * if it had focus (#858): a repaint while the person types elsewhere, such as another agent’s comment arriving, leaves
+ * their focus where it is. It had focus if its old box, `mark` in this review, still has it, or if nothing does and
+ * this box had it last: a resync takes the old box off the page before the new one is built.
  * @param {HTMLTextAreaElement} ta @param {any} d @param {string} opened @param {string} mark @param {number[]} saved
  * @param {string} text
  */
 function refocus(ta, d, opened, mark, saved, text) {
-  const had = d[opened] || document.activeElement?.matches(`textarea[${mark}]`);
+  ownerOf.set(ta, d);
+  const active = document.activeElement;
+  const nowhere = !active || active === document.body;
+  const had = d.focusedBox === mark && (nowhere || (ownerOf.get(active) === d && active.hasAttribute(mark)));
+  const open = d[opened] || had;
   d[opened] = false;
-  if (had) queueMicrotask(() => restoreComposer(ta, saved, text));
+  if (open) queueMicrotask(() => restoreComposer(ta, saved, text));
 }
+
+/**
+ * Keeps which box has focus on its draft. Focus moving to another control clears it; the box leaving the page, or the
+ * window losing focus, doesn’t. @param {any} d @param {string} mark
+ */
+const tracked = (d, mark) => ({
+  [mark]: '',
+  onfocus: () => {
+    d.focusedBox = mark;
+  },
+  onblur: (/** @type {FocusEvent} */ e) => {
+    if (e.relatedTarget) d.focusedBox = null;
+  },
+});
 
 /** Restores focus and the saved selection after the box is rebuilt. */
 function restoreComposer(ta, saved, text) {
@@ -187,7 +209,7 @@ function composer(key, { b, d, closeComposer }) {
   };
   const ta = h('textarea.textarea', {
     'aria-label': label,
-    'data-new-comment': '',
+    ...tracked(d, 'data-new-comment'),
     style: { minHeight: '56px' },
     value: text,
     oninput: remember,

@@ -1,5 +1,6 @@
 // The local answer in one review block, and which comment box is open. Kept outside the renderer at its size ceiling.
 
+import { followLines } from '/shared/review-diff.mjs';
 import { restoreReviewDraft } from './review-draft-store.mjs';
 
 /** The first local answer for a review block. @param {string} content */
@@ -16,6 +17,8 @@ export const newReviewDraft = (content) => ({
   parked: null,
   composeFocus: false,
   editFocus: false,
+  // Which box last had focus, kept while it’s rebuilt, so a repaint gives focus back only to the box that had it.
+  focusedBox: null,
   verdict: 'request_changes',
   view: 'diff',
   error: null,
@@ -76,4 +79,19 @@ export function saveEdit(draft) {
   draft.editing = null;
   draft.editingText = '';
   draft.editingSelection = null;
+}
+
+/** A comment box’s place, a line or a selection, followed into the revised text as its comments are (#123). */
+function follow(key, from, to) {
+  const [c] = followLines([typeof key === 'number' ? { line: key } : key], from, to);
+  return typeof c.col === 'number' ? c : (c.line ?? null);
+}
+
+/**
+ * The open comment box, and the text set aside for one (#858), go with their line or selection when the agent revises
+ * the text. An app’s part (a string) stays. @param {any} draft @param {string} from @param {string} to
+ */
+export function followOpen(draft, from, to) {
+  if (draft.composing !== null && typeof draft.composing !== 'string') draft.composing = follow(draft.composing, from, to);
+  if (draft.parked && typeof draft.parked.key !== 'string') draft.parked = { ...draft.parked, key: follow(draft.parked.key, from, to) };
 }

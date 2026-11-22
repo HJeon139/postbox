@@ -5,7 +5,8 @@
 import { expect, test } from '@playwright/test';
 import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, synced } from './postbox.mjs';
-import { commentOn, drawn, reviewRoom, viewRadio } from './review.mjs';
+import { away } from './resync-fixture.mjs';
+import { commentOn, DRAFT, drawn, review, reviewRoom, viewRadio } from './review.mjs';
 
 /** @type {Awaited<ReturnType<typeof reviewRoom>>} */
 let room;
@@ -144,6 +145,51 @@ test('#858 a repaint leaves focus in the message box when the person moved there
   await expect(block.locator('.rv-thread', { hasText: 'Another review.' })).toBeVisible();
   await expect(message, 'the repaint leaves focus in the message box').toBeFocused();
   await expect(block.getByRole('textbox', { name: 'Comment on line 3' })).toHaveValue('half a thought');
+});
+
+test('#858 one review’s repaint leaves focus in another review’s comment box', async ({ page }) => {
+  const { rt, store } = room.app;
+  const { thread, block, blockId, sessionOf } = await room.withReview(page, 'Two reviews');
+  rt.toolsFor(sessionOf('drafter').id).show_block({ block: { ...review(thread.id), id: 'second', title: 'Second' } });
+  await synced(page, room.app);
+  const second = page.locator(`[data-block-item="${store.items(thread.id).find((i) => i.block?.id === 'second').id}"]`);
+  for (const b of [block, second]) {
+    await viewRadio(b, 'Lines').click();
+    await b.locator('.g-mark[data-line="3"]').click();
+  }
+  const typing = second.getByRole('textbox', { name: 'Comment on line 3' });
+  await typing.fill('in the second');
+  await expect(block.getByRole('textbox', { name: 'Comment on line 3' }), 'the first review’s box is still open').toBeVisible();
+  const reviewed = rt.toolsFor(sessionOf('reader').id).review_block({ blockId, verdict: 'comment', comments: [{ line: 4, text: 'On the first.' }] });
+  expect(reviewed.ok, reviewed.message).toBe(true);
+  await synced(page, room.app);
+  await expect(block.locator('.rv-thread', { hasText: 'On the first.' })).toBeVisible();
+  await expect(typing, 'focus stays in the second review’s box').toBeFocused();
+});
+
+test('#858 a resync keeps focus in the open edit box', async ({ page }) => {
+  const { open } = await twoDrafts(page, 'Resync edit');
+  const box = await open('on five');
+  await box.fill('five, during a resync');
+  const resync = await away(room.app, page);
+  await resync();
+  await expect(box, 'its text').toHaveValue('five, during a resync');
+  await expect(box, 'and its focus').toBeFocused();
+});
+
+test('#858 a new comment’s text set aside for an edit follows its line when the agent revises', async ({ page }) => {
+  const { rt } = room.app;
+  const { block, sessionOf, open } = await twoDrafts(page, 'Set aside, revised');
+  await block.locator('.g-mark[data-line="7"]').click();
+  await block.getByRole('textbox', { name: 'Comment on line 7' }).fill('half a thought');
+  await open('on three');
+  const drafter = sessionOf('drafter');
+  const revised = rt.toolsFor(drafter.id).update_block({ block: { ...review(drafter.threadId), content: `New first line.\n${DRAFT}`, previous: DRAFT } });
+  expect(revised.ok, revised.message).toBe(true);
+  await synced(page, room.app);
+  await block.getByRole('textbox', { name: 'Edit your draft comment' }).press('Escape');
+  await block.locator('.g-mark[data-line="8"]').click();
+  await expect(block.getByRole('textbox', { name: 'Comment on line 8' }), 'its text is on the line it moved to').toHaveValue('half a thought');
 });
 
 test('#858 a draft comment on a selection in Preview keeps its quote and columns when edited', async ({ page }) => {
