@@ -50,6 +50,8 @@ test.describe('at 1280 px', () => {
 
     // One agent: removing it would erase the conversation, so − is off and says why.
     await expect(minus).toHaveAttribute('aria-disabled', 'true');
+    // And looks off, as a disabled button does.
+    await expect(minus).toHaveCSS('opacity', '0.5');
     // Off, it still takes focus, and says why.
     await expect(minus).toHaveAttribute('aria-description', 'The last agent can’t be removed. Delete the conversation instead.');
     await minus.focus();
