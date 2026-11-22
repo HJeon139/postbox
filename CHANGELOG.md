@@ -2,6 +2,32 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.36.7 (2026-11-22)
+
+### Fixes
+
+- **review:** size a diagram's frame to its drawing, so a taller start doesn't stick
+- **review:** start a redrawn diagram at its height, so a press on Submit isn't lost
+- **remote:** a handed-over question becomes the need only when its turn ends
+- **remote:** hand a host question over only at the host's own limit
+- **threads:** read a persona's missing createdAt as 0 in the legacy left check
+- **threads:** don't hold an older handle-only "left" line against a newer agent
+- **remote:** hand a host question over only when its limit ends it
+- **threads:** tell a deleted agent apart from a new one with its handle
+- **remote:** keep a host question's answers when the host ends it
+- **threads:** don't ask to add back an agent the person deleted
+- **needs:** alert again when the wake asks its kept block again
+- **remote:** an ended host question no longer counts as open
+- **remote:** a host question nobody answers stays open, as here
+- **remote:** end a call whose answer already reached the agent
+- **remote:** deliver a question's answer once after a restart
+- **remote:** ask AskUserQuestion on a host as choice blocks
+- **needs:** raise no repeat alert for the block a wake's turn kept
+- **needs:** keep a block in a topic thread as the need when a wake's turn ends
+- **threads:** choose a side thread's summary writer from those present
+- **threads:** read a thread's conversation as written to find who left
+- **threads:** never bring back a deleted agent to write or answer
+
 ## 4.36.6 (2026-11-22)
 
 ### Fixes
