@@ -8,6 +8,7 @@
 // recorded output.
 
 import { spawn as nodeSpawn } from 'node:child_process';
+import { HARDENING } from '../../server/remote/ssh-args.mjs';
 
 export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 /** A path the launcher’s script may quote as it is: absolute, with nothing a shell or a quote would read. */
@@ -200,8 +201,28 @@ export function onHost(destination, script, { timeout = 60_000, spawn = nodeSpaw
   });
 }
 
-/** ssh’s arguments: never a prompt, and a remote command that is always `sh -s`. @param {string} destination */
-export const sshArgs = (destination) => ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=20', '-T', '--', destination, 'sh', '-s'];
+/**
+ * ssh’s arguments: never a prompt, and a remote command that is always `sh -s`. With Postbox’s own ssh hardening
+ * (server/remote/ssh-args.mjs), no shared connection and no agent forwarded (#404): a ~/.ssh/config that accepts new
+ * host keys, forwards the agent or opens a listener for the test host gets none of it.
+ * @param {string} destination
+ */
+export const sshArgs = (destination) => [
+  '-o',
+  'BatchMode=yes',
+  '-o',
+  'ConnectTimeout=20',
+  '-o',
+  'ControlPath=none',
+  '-o',
+  'ForwardAgent=no',
+  ...HARDENING.flatMap((o) => ['-o', o]),
+  '-T',
+  '--',
+  destination,
+  'sh',
+  '-s',
+];
 
 /** Lines of output, trimmed, without empty ones. @param {string} out */
 export const linesOf = (out) =>

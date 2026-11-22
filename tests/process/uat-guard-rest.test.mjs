@@ -118,11 +118,14 @@ test('#1125: git lfs in a git-remote run sends nothing, though lfs.url names an 
     const { dir, env } = remoteRun(base);
     const repo = join(dir, 'workspace');
     const git = (args, e = env) => new Promise((r) => execFile('git', args, { cwd: repo, env: e, timeout: 30_000 }, (err) => r(err ? 1 : 0)));
-    // Set up as the person would, with their own git lfs: one file in LFS, and lfs.url at the server.
+    // Set up as the person would, with their own git lfs: one file in LFS, and its server named for fetch and push (the
+    // seed’s guard in the workspace’s config points both elsewhere; the run’s environment does again).
     for (const args of [
       ['lfs', 'install', '--local'],
       ['lfs', 'track', '*.bin'],
       ['config', 'lfs.url', `http://127.0.0.1:${server.address().port}/lfs`],
+      ['config', 'lfs.pushurl', `http://127.0.0.1:${server.address().port}/lfs`],
+      ['config', '--unset-all', 'lfs.standalonetransferagent'],
       ['config', 'lfs.locksverify', 'false'],
     ])
       await git(args, base);
@@ -137,4 +140,13 @@ test('#1125: git lfs in a git-remote run sends nothing, though lfs.url names an 
   } finally {
     server.close();
   }
+});
+
+test('#1125: a git-remote run’s preflight reads git in the workspace, so a custom LFS transfer only it picks stops the run', () => {
+  const base = person();
+  const { dir, env } = remoteRun(base);
+  const workspace = join(dir, 'workspace');
+  assert.doesNotThrow(() => preflightRemote(workspace, dir, env), 'the seeded workspace passes');
+  spawnSync('git', ['-C', workspace, 'config', 'lfs.standalonetransferagent', 'mine'], { env: base });
+  assert.throws(() => preflightRemote(workspace, dir, env), /git lfs in the agent’s shell/);
 });
