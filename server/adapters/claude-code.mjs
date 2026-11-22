@@ -42,6 +42,7 @@ import { createStreamMapper, forkPointMissing, resultError, windowFor } from './
 import { agentFolder, forgetMemory, memoryRootFor } from './folder.mjs';
 import { FRESH_START_TEXT, formatMessage, turnGuide } from './guide.mjs';
 import { listProcesses, stopJobUnder, stopOnAbort, stopTurn } from './process-group.mjs';
+import { recordOnceWritten } from './prompt-sent.mjs';
 import { hostMemoryRoot } from './remote-turn.mjs';
 import { effortOf, fromContext, recorderFor } from './setup.mjs';
 
@@ -288,7 +289,8 @@ export class ClaudeCodeAdapter {
         if (ctx.signal.aborted) settle(code);
       });
       child.stdin.on('error', () => {});
-      child.stdin.end(prompt);
+      // Recorded once the CLI, or its host, has it (prompt-sent.mjs). An attach replays what was sent.
+      child.stdin.end(prompt, attach ? undefined : recordOnceWritten(ctx, child, { guide, text: prompt }));
     });
   }
 }
