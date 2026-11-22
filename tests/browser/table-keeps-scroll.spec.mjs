@@ -84,3 +84,21 @@ test('#1130 a narrower table keeps as much of the scroll as it has, and Sort and
   await expect(page.getByRole('button', { name: 'Collapse table' })).toBeVisible();
   await expect.poll(() => left(region), { message: 'after Expand' }).toBe(200);
 });
+
+test('#1130 two redraws in one frame keep the scroll, though the first’s region hasn’t been put back yet', async ({ page }) => {
+  const { tools, region } = await shown(page);
+  tools.update_block({ block: works(12, 40) });
+  await expect(page.getByText('40 rows')).toBeVisible();
+  await region.evaluate((el) => {
+    el.scrollLeft = 400;
+    el.scrollTop = 300;
+  });
+  const before = await at(region);
+  expect(before.left, 'scrolled sideways').toBeGreaterThan(300);
+  // Two updates back to back: the second draws before the first’s region has had its position put back, so that
+  // region still reads 0, and the position must come from the draft instead.
+  tools.update_block({ block: works(12, 41) });
+  tools.update_block({ block: works(12, 42) });
+  await expect(page.getByText('42 rows')).toBeVisible();
+  await expect.poll(() => at(region), { message: 'where the person was' }).toEqual(before);
+});

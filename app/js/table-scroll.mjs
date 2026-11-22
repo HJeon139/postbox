@@ -47,7 +47,8 @@ const shown = new WeakMap();
 /**
  * Wraps a table’s scroll region in the frame that draws its fades, and follows its width and scroll. `at` keeps its
  * scroll, sideways and down, across redraws (#1130): an agent’s update_block, Sort and Expand each draw the table anew.
- * @param {HTMLElement} wrap  the scroll region, holding the table @param {{ left: number, top: number }} [at]
+ * @param {HTMLElement} wrap  the scroll region, holding the table
+ * @param {{ left: number, top: number }} [at]  where the person had it, kept with the table’s draft
  */
 export function scrollFrame(wrap, at) {
   const frame = h('div.tbl-scroll', wrap);
