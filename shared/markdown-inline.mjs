@@ -2,7 +2,7 @@
 // one line of text. Moved out of shared/markdown.mjs, which renders the blocks and calls inline for their text. All
 // text is escaped, as there.
 
-import { codeSpanAt } from './code-spans.mjs';
+import { codeSpanAt, longestRunFrom } from './code-spans.mjs';
 import { mathAt } from './math.mjs';
 import { isSafeUrl, LOCAL_HTTP, onPageOrigin } from './urls.mjs';
 
@@ -37,6 +37,8 @@ export function inline(s, ctx, at) {
   // U+0000 and goes back in, in order, once the run's emphasis is applied.
   const codes = [],
     closes = delimiterCloses(s);
+  /** @type {Int32Array | undefined} */
+  let longest;
   const mark = (html, a, z) => (at && html ? `<span data-sl="${at.n + 1}" data-sc="${at.c + a}" data-se="${at.c + z}">${html}</span>` : html);
   const flush = () => {
     out += mark(
@@ -65,7 +67,9 @@ export function inline(s, ctx, at) {
       continue;
     }
     if (c === '`') {
-      const { code, end } = codeSpanAt(s, i);
+      // The table of runs keeps a long line with many unclosed runs linear; built on the line’s first backtick.
+      longest ??= longestRunFrom(s);
+      const { code, end } = codeSpanAt(s, i, longest);
       if (code === null) buf += s.slice(i, end);
       else {
         codes.push(`<code>${escapeHtml(ctx.cell ? code.replace(/\\\|/g, '|') : code)}</code>`);

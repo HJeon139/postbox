@@ -6,7 +6,7 @@
  * at once: an open run of n backticks can close only where n of them come later. Kept linear on the server, where a
  * block’s fallback of 200,000 characters is cut to plain text (#793).
  */
-function longestRunFrom(s) {
+export function longestRunFrom(s) {
   const run = new Int32Array(s.length + 1);
   const longest = new Int32Array(s.length + 1);
   for (let i = s.length - 1; i >= 0; i--) {
@@ -20,7 +20,7 @@ function longestRunFrom(s) {
  * The code span whose run of backticks starts at `at` in a line: its code, less one space each side, and where it ends.
  * A run closes at the next same run, even inside a longer one, and never past its line. A run with no close is text, so
  * its code is null and it ends after the run. This is the one rule the renderer (markdown-inline.mjs) and the readers
- * that set code apart without rendering share (#1602). longest, from longestRunFrom(line), skips a hopeless search.
+ * that set code apart without rendering share (#1601). longest, from longestRunFrom(line), skips a hopeless search.
  * @param {string} line @param {number} at @param {Int32Array} [longest]
  * @returns {{ code: string | null, end: number }}
  */
@@ -51,14 +51,15 @@ function mapLine(line, fn) {
 
 /**
  * The text with each code span replaced by `fn(code, span)`. A span never crosses a line, since the renderer reads one
- * line at a time: a stray run on one line leaves the next one’s prose as prose (#1602).
+ * line at a time: a stray run on one line leaves the next one’s prose as prose (#1601). A line ends where the renderer
+ * ends one (markdown.mjs), at \n, \r\n or a lone \r, and the breaks are kept as they were.
  * @param {string} s @param {(code: string, span: string) => string} fn
  */
 export function mapCodeSpans(s, fn) {
   // Most messages have no backticks, and mentions are read on every keystroke and every item in a catch-up.
   if (!s.includes('`')) return s;
   return s
-    .split('\n')
-    .map((line) => mapLine(line, fn))
-    .join('\n');
+    .split(/(\r\n?|\n)/)
+    .map((part, i) => (i % 2 ? part : mapLine(part, fn)))
+    .join('');
 }

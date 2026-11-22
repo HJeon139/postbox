@@ -59,3 +59,18 @@ test('a span never crosses a line, as the renderer reads it: a stray run leaves 
   assert.deepEqual(lintTerms('See ``a\n\n[x](term:nope) and ``b``', {}), [{ term: 'x', key: 'nope' }]);
   assert.equal(toPlainText('Use `x here.\n\nThen *y* and `z`'), 'Use `x here. Then y and z');
 });
+
+test('a lone carriage return ends a line for spans too, as the renderer reads it (pre-review)', () => {
+  const text = 'a `x\r@critic y`';
+  assert.match(renderMarkdown(text, { mentions: ['critic'] }), /class="mention"/);
+  assert.deepEqual(parseMentions(text, ['critic']), ['critic']);
+  assert.deepEqual(parseMentions('a `x\r\n@critic y`', ['critic']), ['critic']);
+});
+
+test('a long line of runs with no close renders in linear time (pre-review)', () => {
+  let line = '';
+  for (let n = 600; n > 0; n--) line += `${'`'.repeat(n)}a`;
+  const t = performance.now();
+  renderMarkdown(line);
+  assert.ok(performance.now() - t < 500, `rendered ${line.length} characters in ${Math.round(performance.now() - t)} ms`);
+});
