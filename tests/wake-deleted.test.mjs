@@ -65,3 +65,16 @@ test('#283: a line from before the persona id was recorded still counts by handl
   for (const it of f.store.items(f.t.id)) if (it.variant === 'left') delete it.personaId;
   assert.equal(deletedFrom(f.rt, f.t, f.c), true);
 });
+
+test('#283: a handle-only line doesn’t count against an agent created after it: that one came later', () => {
+  const f = setup();
+  f.rt.ensureSession(f.t.id, f.c.id);
+  const gamma = arrange.sessionsIn(f.rt, f.t.id).find((x) => x.personaId === f.c.id);
+  f.rt.deleteSession(gamma.id);
+  // As an older Postbox wrote it: the handle only, a minute before the new persona.
+  for (const it of f.store.items(f.t.id)) if (it.variant === 'left') Object.assign(it, { personaId: undefined, at: Date.now() - 60_000 });
+  f.rt.deletePersona(f.c.id);
+  const again = f.rt.createPersona({ handle: 'gamma' });
+  assert.equal(deletedFrom(f.rt, f.t, again), false, 'the new gamma was made after the old one left');
+  assert.equal(f.rt.agentWake(f.beta.id, 'gamma', 'Gamma?', { itemId: 'it_g', prose: true }).waiting, true, 'a card asks the person');
+});

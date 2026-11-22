@@ -215,16 +215,23 @@ export function presentIn(rt, t) {
 }
 
 /**
+ * A “left” line from before it named the persona, which names the handle only: it’s this persona’s, unless the persona
+ * was made after it, as a new agent given a deleted one’s handle is (#283).
+ * @param {any} i @param {{ handle: string, createdAt?: number }} p
+ */
+const legacyLeft = (i, p) => i.to === p.handle && !(p.createdAt > i.at);
+
+/**
  * Whether an agent was deleted from a thread’s conversation and hasn’t come back: it has no session there, and the
  * conversation says it left. An agent that was never in it, as one a topic thread was woken for, can still join (#874).
  * A line says which persona left, so a new agent given a deleted one’s handle wasn’t deleted; a line from before it
- * said so names the handle only, and counts by that.
+ * said so names the handle only, and counts by that for a persona made before it.
  * @param {any} rt @param {any} t  the topic or side thread @param {{ id: string, handle: string }} p  the persona
  */
 export function deletedFrom(rt, t, p) {
   if (presentIn(rt, t).has(p.handle)) return false;
   const conv = conversationOf(rt, t);
-  const left = (i) => i.kind === 'system' && i.variant === 'left' && (i.personaId ? i.personaId === p.id : i.to === p.handle);
+  const left = (i) => i.kind === 'system' && i.variant === 'left' && (i.personaId ? i.personaId === p.id : legacyLeft(i, p));
   return rt.store.pending.items(conv).some(left);
 }
 
