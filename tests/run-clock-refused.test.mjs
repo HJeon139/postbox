@@ -48,7 +48,8 @@ test('Send now while the clock is paused is refused before anything is posted', 
   const before = store.items(t.id).length;
   assert.throws(
     () => rt.sendMessage(t.id, { text: '@developer now, please', sendNow: true }),
-    (e) => e.status === 409 && /without Send now/.test(e.message),
+    // How to resume it, since the page has no clock control: the clock’s route, which a timed run’s runner calls.
+    (e) => e.status === 409 && e.message.includes(`POST /api/sessions/${se.id}/clock and {"action":"resume"}`) && /without Send now/.test(e.message),
   );
   assert.equal(store.items(t.id).length, before, 'nothing posted');
   // A plain message waits in the inbox, as the refusal says.
@@ -102,7 +103,8 @@ test('Send now on a queued message while the clock is paused is refused, and the
   assert.ok(queued, 'queued');
   assert.throws(
     () => f.rt.sendQueuedNow(f.t.id, queued.id),
-    (e) => e.status === 409 && /run clock is paused/.test(e.message),
+    // A queued message is in the inbox already: it stays queued, and isn’t told to be sent without Send now.
+    (e) => e.status === 409 && /It stays in the queue until then\./.test(e.message) && !/without Send now/.test(e.message),
   );
   await settle();
   assert.equal(f.store.state.inbox[f.se.id].find((e) => e.id === queued.id).state, 'waiting', 'still waiting, not taken');

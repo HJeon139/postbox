@@ -47,20 +47,29 @@ function endedBy(ev) {
   return ev.type === 'remove' && ev.data?.kind === 'session' ? ev.data.id : null;
 }
 
+/** What each refused action can do once the clock resumes. */
+const THEN = {
+  retry: 'retry the reply',
+  'send-now': 'send it, or send it without Send now and it waits in its inbox',
+  'send-now-queued': 'send it now. It stays in the queue until then',
+};
+
 /**
- * Refuses an action that would start a turn of an agent its clock holds: Retry, or Send now. Waiting in the inbox is
- * what a plain message does, so Send now’s refusal says to send it that way.
- * @param {any} rt @param {string} sessionId @param {'retry' | 'send-now'} action
+ * Refuses an action that would start a turn of an agent its clock holds: Retry, Send now from the composer, or Send now
+ * on a queued message. Waiting in the inbox is what a plain message does, so the composer’s refusal says to send it that
+ * way, and a queued message stays where it is. The page has no clock control: a timed run’s runner resumes it through
+ * the clock’s route (server/session-routes.mjs), so the refusal says how.
+ * @param {any} rt @param {string} sessionId @param {'retry' | 'send-now' | 'send-now-queued'} action
  */
 export function refuseWhileHeld(rt, sessionId, action) {
   if (!rt.runClock?.holds(sessionId)) return;
   const se = rt.store.pending.session(sessionId);
   const clock = rt.store.pending.clock(sessionId);
-  const then = action === 'retry' ? 'retry the reply' : 'send it, or send it without Send now and it waits in its inbox';
+  const resume = `Resume it with POST /api/sessions/${sessionId}/clock and {"action":"resume"}, then ${THEN[action]}.`;
   throw httpError(
     409,
     clock?.state === 'paused'
-      ? `@${se?.handle}’s run clock is paused, so no turn of @${se?.handle} starts until it resumes. Resume the clock, then ${then}.`
+      ? `@${se?.handle}’s run clock is paused, so no turn of @${se?.handle} starts until it resumes. ${resume}`
       : `@${se?.handle}’s run clock reached its budget, so no turn of @${se?.handle} starts in this conversation again. A new timed run goes in a new conversation.`,
   );
 }

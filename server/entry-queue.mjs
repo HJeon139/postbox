@@ -111,7 +111,7 @@ function removedUnread(rt, { threadId, itemId, sessionId }) {
 export function sendEntryNow(rt, threadId, entryId) {
   const se = holderOf(rt, threadId, entryId);
   // A turn its run clock holds would only be held in memory, with the entry already taken (#1526).
-  if (rt.runClock) refuseWhileHeld(rt, se.id, 'send-now');
+  if (rt.runClock) refuseWhileHeld(rt, se.id, 'send-now-queued');
   stopForSendNow(rt, se.id);
   const e = rt.delivery.waiting(se.id).find((/** @type {any} */ x) => x.id === entryId);
   if (!e || !rt.turnService.takeAlone(e)) throw httpError(404, 'That queued message was already sent or removed.');
