@@ -6,7 +6,8 @@
 //   refuses (NO_TOKEN), which gh prefers over the keychain. A variable survives the agent’s login shell, which a wrapper
 //   first on PATH doesn’t: a Mac profile puts Homebrew’s gh back first;
 // - git refused every remote that isn’t a local path (guardEnv), whatever repository it runs in, so a real clone reached
-//   by its absolute path is refused too. Local paths stay allowed, so a local bare repository still takes a push;
+//   by its absolute path is refused too. Local paths stay allowed, so a local bare repository still takes a push. git
+//   lfs doesn’t read that, so the guard points its server at a local path that isn’t there (LFS_OFF, #1125);
 // - git with no credential helper and no askpass: the guard empties the helper list the person’s config built, and
 //   blanks GIT_ASKPASS, SSH_ASKPASS and core.askPass, which a terminal such as VS Code’s sets. So `git credential fill`
 //   hands out nothing, the keychain’s included.
@@ -20,7 +21,7 @@
 // still reads the keychain’s token, in a run that isn’t a git-remote one, whose project has a repository set.
 
 import { spawnSync } from 'node:child_process';
-import { CREDENTIALS_GUARDED, guardEnv, NO_TOKEN, preflightRemote, remotePaths, tearDownRemote, UNREACHABLE } from './git-remote.mjs';
+import { CREDENTIALS_GUARDED, guardEnv, LFS_GUARDED, NO_TOKEN, preflightRemote, remotePaths, tearDownRemote, UNREACHABLE } from './git-remote.mjs';
 
 /**
  * The environment that takes the person’s GitHub away from a run’s Postbox and its agents, or nothing when the scenario
@@ -47,17 +48,20 @@ export function noGithubEnv(scenario, dir) {
 /**
  * Whether the guard holds in a shell like the agent’s, the person’s login shell, whose profile could undo it. Throws, so
  * the run stops, when gh there hands out any token but the run’s, or git isn’t refused https. The shell compares the
- * token itself, so a real one is never printed or kept, and asking for it doesn’t touch the network.
- * @param {Record<string, string|undefined>} env  the run’s environment
+ * token itself, so a real one is never printed or kept, and asking for it doesn’t touch the network. It runs in the
+ * workspace, where the agents’ git reads that repository’s config too, so a setting only it has counts (#1125); the
+ * https probe goes from outside any repository, since a workspace’s own config could refuse https without the guard.
+ * @param {Record<string, string|undefined>} env  the run’s environment @param {string} workspace
  */
-function preflightNoGithub(env) {
+function preflightNoGithub(env, workspace) {
   const stop = (what) => new Error(`${what}, so the run stops before any agent turn.`);
-  const probe = `t=$(gh auth token 2>/dev/null); s=$?; if [ "$s" = 127 ] || [ "$t" = ${NO_TOKEN} ]; then echo gh-guarded; fi; t=; ${CREDENTIALS_GUARDED}; GIT_TERMINAL_PROMPT=0 git ls-remote ${UNREACHABLE} 2>&1`;
-  const out = spawnSync(env.SHELL || '/bin/sh', ['-lic', probe], { env, encoding: 'utf8', timeout: 20_000 }).stdout ?? '';
+  const probe = `t=$(gh auth token 2>/dev/null); s=$?; if [ "$s" = 127 ] || [ "$t" = ${NO_TOKEN} ]; then echo gh-guarded; fi; t=; ${CREDENTIALS_GUARDED}; ${LFS_GUARDED}; (cd / && GIT_TERMINAL_PROMPT=0 git ls-remote ${UNREACHABLE} 2>&1)`;
+  const out = spawnSync(env.SHELL || '/bin/sh', ['-lic', probe], { env, cwd: workspace, encoding: 'utf8', timeout: 20_000 }).stdout ?? '';
   // 127 is no gh at all. No line means another token, or a shell that never got that far.
   if (!/^gh-guarded$/m.test(out)) throw stop('gh in the agent’s shell can still reach a GitHub login');
   if (!/^credentials-guarded$/m.test(out)) throw stop('git in the agent’s shell can still hand out a password');
   if (!/transport 'https' not allowed/.test(out)) throw stop(`git in the agent’s shell isn’t refused an https remote (it said: ${out.trim().slice(-200)})`);
+  if (!/^lfs-guarded$/m.test(out)) throw stop('git lfs in the agent’s shell can reach a server past the guard');
 }
 
 /**
@@ -80,5 +84,5 @@ export function preflightRun(scenario, workspace, dir, env) {
       }
       throw e;
     }
-  } else if (scenario.github !== 'real') preflightNoGithub(env);
+  } else if (scenario.github !== 'real') preflightNoGithub(env, workspace);
 }
