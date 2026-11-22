@@ -12,6 +12,14 @@ import { libSource, theme } from './sandbox-libs.mjs';
 // drawn into a box that isn't in the page yet keeps its listener until it has been.
 /** @type {Map<HTMLIFrameElement, { onMsg: (e: MessageEvent) => void, seen: boolean }>} */
 const diagrams = new Map();
+
+// The height each diagram’s source last drew at. A review draws its diagrams again each time it redraws (a comment
+// box opened or closed, a view switched), and a new frame starts at the stylesheet’s 160 px until Mermaid measures it.
+// Growing then moved what’s below it, the review’s Submit included, between a press and its release, and the press
+// was lost (#1631). So a frame drawn again starts at its diagram’s height, as an app’s frame does (apps.mjs, rec.height).
+/** @type {Map<string, number>} */
+const drawnHeight = new Map();
+
 function dropGoneDiagrams() {
   for (const [iframe, d] of diagrams)
     if (iframe.isConnected) d.seen = true;
@@ -38,6 +46,8 @@ function drawDiagram(fig) {
   // once held every keystroke for 40 s. So a broken or too-small diagram is reported to its agent (#573, onError and
   // onSize) only once its frame loads, not as its reply is drawn (#731).
   const iframe = h('iframe', { title: 'Diagram', src: `/sandbox/mermaid?theme=${theme()}`, referrerpolicy: 'no-referrer', loading: 'lazy' });
+  const known = drawnHeight.get(src);
+  if (known) iframe.style.height = `${known}px`;
   const btn = h(
     'button.btn.sm.ghost',
     {
@@ -101,7 +111,9 @@ function onError({ iframe, box, src }, data) {
 
 /** The frame measured its drawing: it takes that height, and a diagram too small to read is reported, once. */
 function onSize({ iframe, box, src }, data) {
-  iframe.style.height = `${Math.min(data.height, 900)}px`;
+  const height = Math.min(data.height, 900);
+  iframe.style.height = `${height}px`;
+  drawnHeight.set(src, height);
   iframe.dataset.sized = '1';
   if (typeof data.textPx === 'number') iframe.dataset.textPx = String(data.textPx);
   if (data.textPx < MIN_TEXT_PX && !iframe.dataset.reported && report(box, { src, textPx: data.textPx, width: data.width })) iframe.dataset.reported = '1';
