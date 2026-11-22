@@ -136,7 +136,7 @@ test('/media/ serves the bundled media, then what agents added to the data folde
     assert.ok(existsSync(join(dataDir, 'media')), 'the media folder is made at start, so agents can copy into it');
     const bundled = await call('/media/favicon.svg');
     assert.equal(bundled.status, 200);
-    assert.equal(bundled.headers['access-control-allow-origin'], '*');
+    assert.equal(bundled.headers['access-control-allow-origin'], undefined, 'no other site’s script reads it either (#1272)');
     await mkdir(join(dataDir, 'media', 'frames'), { recursive: true });
     await writeFile(join(dataDir, 'media', 'frames', 'f01.svg'), '<svg xmlns="http://www.w3.org/2000/svg"/>');
     const added = await call('/media/frames/f01.svg');

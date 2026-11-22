@@ -272,7 +272,7 @@ test('the hook in Auto allows a routine command without asking Postbox, and asks
     };
   };
   const run = (CommandLine, mode = env) =>
-    runAgyHook(JSON.stringify({ toolCall: { name: 'run_command', args: { CommandLine } } }), {
+    runAgyHook(JSON.stringify({ conversationId: 'c1', stepIdx: 1, toolCall: { name: 'run_command', args: { CommandLine } } }), {
       cwd: ws,
       home,
       env: mode,

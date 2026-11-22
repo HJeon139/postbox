@@ -303,7 +303,7 @@ export function openPermissions({ threadId = null, sessionId = null, personaId =
       list('deny'),
       list('ask'),
       list('allow'),
-      view.real ? addRule(p) : null,
+      view.real && (!p.host || view.conversation) ? addRule(p) : null,
     );
   }
 
@@ -316,12 +316,12 @@ export function openPermissions({ threadId = null, sessionId = null, personaId =
     };
     const preview = h('code.perm-rule', rule() || '…');
     const where = [
-      ['local', `This folder (${FILE.local})`],
+      ...(p.host ? [] : [['local', `This folder (${FILE.local})`]]), // an agent on a host reads neither file here (#404)
       ...(view.conversation ? [['conversation', 'This conversation only']] : []),
       // The real path: CLAUDE_CONFIG_DIR can move it from ~/.claude.
-      ...(p.usesHostSetup ? [['user', `Your user settings (${view.files.find((f) => f.source === 'user')?.file ?? FILE.user})`]] : []),
+      ...(p.usesHostSetup && !p.host ? [['user', `Your user settings (${view.files.find((f) => f.source === 'user')?.file ?? FILE.user})`]] : []),
     ];
-    if (!where.some(([id]) => id === draft.where)) draft.where = 'local';
+    if (!where.some(([id]) => id === draft.where)) draft.where = where[0]?.[0] ?? 'local';
     const select = (id, label, options, key) =>
       h(
         'div.field',
