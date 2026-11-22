@@ -18,17 +18,33 @@ function freeMark(s) {
 }
 
 /**
+ * The longest run of backticks that starts at or after each place in s, so a run with no close of its length is known
+ * at once: an open run of n backticks can close only where n of them come later. Kept linear on the server, where a
+ * block’s fallback of 200,000 characters is cut to plain text (#793).
+ */
+function longestRunFrom(s) {
+  const run = new Int32Array(s.length + 1);
+  const longest = new Int32Array(s.length + 1);
+  for (let i = s.length - 1; i >= 0; i--) {
+    run[i] = s[i] === '`' ? run[i + 1] + 1 : 0;
+    longest[i] = Math.max(run[i], longest[i + 1]);
+  }
+  return longest;
+}
+
+/**
  * Code spans with their asterisks as `mark`, read left to right as the renderer reads them (markdown-inline.mjs): a run
  * of backticks closes at the next same run, even inside a longer one, less one space each side; with no close, it’s text.
  */
 function keepCodeStars(s, mark) {
+  const longest = longestRunFrom(s);
   let out = '';
   let i = 0;
   while (i < s.length) {
     const at = s.indexOf('`', i);
     if (at < 0) break;
     const run = /** @type {RegExpMatchArray} */ (s.slice(at).match(/^`+/))[0];
-    const end = s.indexOf(run, at + run.length);
+    const end = longest[at + run.length] >= run.length ? s.indexOf(run, at + run.length) : -1;
     out += s.slice(i, at);
     if (end < 0) {
       out += run;

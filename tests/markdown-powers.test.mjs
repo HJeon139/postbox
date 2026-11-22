@@ -41,14 +41,14 @@ test('read-aloud text keeps them, with no entity in it', async () => {
   assert.equal(plainText('Try range(10**9, 10**10).'), 'Try range(10**9, 10**10).');
 });
 
-test('plain text keeps a character the placeholder could be, and a code span’s asterisks don’t move the count (critic’s review)', async () => {
+test('plain text keeps a character the placeholder could be, and a code span’s asterisks don’t move the count', async () => {
   const { toPlainText } = await import('../shared/markdown-plain.mjs');
   assert.equal(toPlainText('a \uE000 b'), 'a \uE000 b', 'a private-use character stays as it was');
   assert.equal(toPlainText('Run `a**b`, then 10**9.'), 'Run a**b, then 10**9.');
   assert.equal(toPlainText('`x*y` and 2*n and *word*'), 'x*y and 2*n and word');
 });
 
-test('plain text reads a code span of any backtick run as the renderer does, and always finds a placeholder (critic’s review)', async () => {
+test('plain text reads a code span of any backtick run as the renderer does, and always finds a placeholder', async () => {
   const { toPlainText } = await import('../shared/markdown-plain.mjs');
   assert.equal(toPlainText('Run ``a**b`` then 10**9.'), 'Run a**b then 10**9.');
   // A run of two holds a single backtick, and drops one space each side, as the renderer’s code span does.
@@ -69,4 +69,19 @@ test('plain text reads a code span of any backtick run as the renderer does, and
   // Every private-use character present: it still finds a placeholder the text doesn’t hold, and ends.
   const every = Array.from({ length: 0xf900 - 0xe000 }, (_, k) => String.fromCharCode(0xe000 + k)).join('');
   assert.equal(toPlainText(`${every} 10**9`), `${every} 10**9`);
+});
+
+test('a spaced * opens no emphasis, so math after it keeps its stars; a*b*c between letters is still emphasis', async () => {
+  const { renderMarkdown } = await import('../shared/markdown.mjs');
+  const { toPlainText } = await import('../shared/markdown-plain.mjs');
+  const shown = (src) => stripTags(renderMarkdown(src)).replaceAll('&#42;', '*').trim();
+  for (const typed of ['5 * 3 = 15, and 2*n*k', 'a ** b, then 10**9 and 10**10']) {
+    assert.equal(shown(typed), typed);
+    assert.equal(toPlainText(typed), typed);
+  }
+  // The digit rule: between letters, the stars are emphasis, not math.
+  assert.match(renderMarkdown('a*b*c'), /a<em>b<\/em>c/);
+  assert.match(renderMarkdown('foo**bar**baz'), /foo<strong>bar<\/strong>baz/);
+  // A code span drops one space each side, as the renderer’s does: x<code>y</code>z reads “xyz”.
+  assert.equal(toPlainText('x`` y ``z'), 'xyz');
 });

@@ -193,7 +193,7 @@ function link(label, target, ctx) {
 /**
  * The runs of * in text that are code or math, as in 10**9 or 2*n, each replaced with `mark` repeated (#793): a run
  * between a digit and a word character, while no emphasis of its length is open. One that may close emphasis, as in
- * **Q3**2026, is left to close it.
+ * **Q3**2026, is left to close it, and one spaced on both sides, as in 5 * 3, opens none.
  * @param {string} s @param {string} mark
  */
 export function keepMathStars(s, mark) {
@@ -201,6 +201,8 @@ export function keepMathStars(s, mark) {
   return s.replace(/\*+/g, (run, at) => {
     const math = /\w/.test(s[at - 1] ?? '') && /\w/.test(s[at + run.length] ?? '') && /\d/.test(`${s[at - 1]}${s[at + run.length]}`);
     if (math && !open.get(run.length)) return mark.repeat(run.length);
+    // Spaced, as in 5 * 3 or a ** b, a run can neither open nor close emphasis, so it changes nothing open.
+    if (!/\S/.test(s[at - 1] ?? ' ') && !/\S/.test(s[at + run.length] ?? ' ')) return run;
     open.set(run.length, !open.get(run.length));
     return run;
   });
