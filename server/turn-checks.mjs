@@ -6,7 +6,7 @@
 
 import { lintDiagrams } from '../shared/diagram-lint.mjs';
 import { blockProblems, diagramProblems, introducedTerms, personSaid, rawHtmlProblems, termProblems } from './checks.mjs';
-import { rememberDiagrams } from './diagram-check.mjs';
+import { rememberDiagrams, syntaxCheck } from './diagram-check.mjs';
 import { endLint, quietLint } from './lint-delivery.mjs';
 
 /**
@@ -16,8 +16,11 @@ import { endLint, quietLint } from './lint-delivery.mjs';
  */
 export function endChecks(checks, turn, se) {
   const stalled = stallSteps(checks, turn, se);
-  if (turn.kind === 'lint') quietLint(checks, turn, se);
-  else endLint(checks, turn, [...checkTurn(checks, turn, se), ...stalled]);
+  if (turn.kind === 'lint') return quietLint(checks, turn, se);
+  // The diagrams reported before this turn: its own, which the estimate may flag now, still get their syntax checked.
+  const before = new Set(checks.store.state.sessions[se.id]?.diagramsLinted ?? []);
+  endLint(checks, turn, [...checkTurn(checks, turn, se), ...stalled]);
+  syntaxCheck(checks, turn, before).catch((e) => console.error(`Postbox couldn’t check a diagram’s syntax; the page still reports it: ${e.message}`));
 }
 
 /** The server’s checks over a finished turn. */

@@ -5,6 +5,7 @@
 
 import { createHash } from 'node:crypto';
 import { COLUMN_PX, MIN_TEXT_PX, mermaidBlocks } from '../shared/diagram-lint.mjs';
+import { syntaxError } from './diagram-parse.mjs';
 import { clipText } from './helpers.mjs';
 import { lint } from './lint-delivery.mjs';
 
@@ -70,4 +71,23 @@ function failedProblem(error, scope) {
     message: `Mermaid couldn’t draw it, so the person sees an error and its source instead. Mermaid said${line}: “${said}”. Fix the syntax.`,
     scope,
   };
+}
+
+/**
+ * A finished turn’s diagrams, checked for syntax on the server (#731; designs/architecture/diagram-legibility.md,
+ * “Syntax, checked on the server”), so the agent hears of one Mermaid can’t parse though the person never scrolled
+ * to it. An error joins the turn’s lint turn with what the estimate found about the same diagram, and is remembered, so
+ * the page’s own report of it later goes nowhere. A diagram reported in an earlier turn (`before`) isn’t again.
+ * @param {any} checks @param {any} turn @param {Set<string>} before  the session’s diagramsLinted as the turn ended
+ */
+export async function syntaxCheck(checks, turn, before) {
+  const replies = checks.store.pending.items(turn.threadId).filter((it) => it.kind === 'agent' && it.turnId === turn.id && !it.lintReply);
+  for (const it of replies)
+    for (const block of mermaidBlocks(String(it.text ?? ''))) {
+      if (before.has(hashOf(block.src))) continue;
+      const error = await syntaxError(block.src);
+      // Postbox may have started closing while the parser ran: nothing new is sent then.
+      if (!error || checks.running.closing) continue;
+      if (lint(checks, turn.sessionId, turn.id, [failedProblem(error, scopeOf(block))])) rememberDiagrams(checks, turn.sessionId, [block.src]);
+    }
 }
