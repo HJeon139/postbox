@@ -21,7 +21,7 @@ failOnPageErrors(test);
 const sent = (blockId) => room.calls.find((m) => m.kind === 'event' && m.event.blockId === blockId)?.event.values.comments;
 
 /** Opens a draft comment for editing, replaces its text, and saves it with Ctrl+Enter. */
-async function edit(page, block, from, to) {
+async function edit(block, from, to) {
   const draft = block.locator('.rv-thread', { hasText: from });
   await draft.getByRole('button', { name: 'Edit', exact: true }).click();
   const box = block.getByRole('textbox', { name: 'Edit your draft comment' });
@@ -46,7 +46,7 @@ test('#858 a draft comment on a line is edited in place, and the agent gets the 
   await box.fill('not this');
   await box.press('Escape');
   await expect(block.locator('.rv-thread', { hasText: 'first draft' }), 'Escape keeps the comment as it was').toHaveCount(1);
-  await edit(page, block, 'first draft', 'second draft');
+  await edit(block, 'first draft', 'second draft');
   await block.getByRole('button', { name: 'Submit review', exact: true }).click();
   await expect
     .poll(() => sent(blockId), { message: 'the agent gets the edited comment once' })
@@ -57,7 +57,7 @@ test('#858 a draft comment on a selection in Preview keeps its quote and columns
   const { block, blockId } = await room.withReview(page, 'Edit a selection');
   await drawn(block, 'Preview');
   await commentOn(page, block, 'low', 'Say how low.');
-  await edit(page, block, 'Say how low.', 'Say how much lower.');
+  await edit(block, 'Say how low.', 'Say how much lower.');
   await expect(block.locator('.rv-preview .rv-thread q.rv-quote'), 'it still quotes its text').toHaveText('low');
   await block.getByRole('button', { name: 'Submit review', exact: true }).click();
   await expect
@@ -86,7 +86,7 @@ test('#858 a draft comment on an app’s part keeps its part when edited', async
   await synced(page, room.app);
   const block = page.locator(`[data-block-item="${item.id}"]`);
   await expect(block.locator('.rv-thread', { hasText: 'Too small.' })).toBeVisible();
-  await edit(page, block, 'Too small.', 'Make the legend bigger.');
+  await edit(block, 'Too small.', 'Make the legend bigger.');
   await block.getByRole('button', { name: 'Submit review', exact: true }).click();
   await expect
     .poll(() => store.item(t.id, item.id).answer?.values?.comments)
