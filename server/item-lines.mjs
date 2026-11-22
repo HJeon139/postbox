@@ -218,6 +218,20 @@ function personLine(memory, i, text, reader) {
 }
 
 /**
+ * The person’s answer to a block, as another agent reads it: which block, whose and by its id, so an agent with two
+ * open reviews can tell them apart (#1253). The block’s own agent hears it as an event, so it gets no line. @param {any} memory @param {any} i @param {any} se @param {(s: string) => string} text
+ */
+function answerLine(memory, i, se, text) {
+  const block = i.blockItemId && memory.store.item(se?.threadId, i.blockItemId);
+  if (block && block.sessionId === se?.id) return null;
+  // An app’s summary is its own wording, never the person’s (#51).
+  const quote = i.quote ? `\nThe app’s own summary, not the person’s words: “${text(i.quote)}”` : '';
+  const b = block?.block;
+  const on = b ? ` answered @${block.handle}’s ${b.type}${b.title ? ` “${text(b.title)}”` : ''} (${b.id})` : '';
+  return `The person${on}: ${text(i.text)}${quote}`;
+}
+
+/**
  * One conversation item as a line an agent can read, from the point of view of `se`; null to leave it out. Its
  * text is cut at n characters, saying so (#109). `reader` is the session its attachments are given to, or null for
  * none (#671). Runtime’s describeItem decides the defaults: `se` and `n` as given, and the reader as `se`.
@@ -246,17 +260,8 @@ export function describeItem(memory, i, se, n, reader) {
       const holds = body ? `${body.includes('\n') ? ':\n' : ': '}${body}` : '';
       return text(`@${i.handle} showed ${what}${titled(title)}${holds}`);
     }
-    case 'voice': {
-      // The agent hears about its own blocks as events already.
-      const block = i.blockItemId && memory.store.item(se?.threadId, i.blockItemId);
-      if (block && block.sessionId === se?.id) return null;
-      // An app’s summary is its own wording, never the person’s (#51).
-      const quote = i.quote ? `\nThe app’s own summary, not the person’s words: “${text(i.quote)}”` : '';
-      // Which block it answered, whose and by its id, so an agent with two open reviews can tell them apart (#1253).
-      const b = block?.block;
-      const on = b ? ` answered @${block.handle}’s ${b.type}${b.title ? ` “${text(b.title)}”` : ''} (${b.id})` : '';
-      return `The person${on}: ${text(i.text)}${quote}`;
-    }
+    case 'voice':
+      return answerLine(memory, i, se, text);
     case 'shared': {
       const asked = i.question ? `The person asked: “${text(i.question)}” ` : '';
       return `${i.summary ? 'Summary' : 'Shared'} from the thread “${i.fromTitle}”${sharedBy(i)}: ${asked}${text(i.text)}`;
