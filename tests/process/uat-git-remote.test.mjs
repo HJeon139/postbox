@@ -98,11 +98,11 @@ describe('no git in the run reaches a real remote', () => {
 });
 
 describe('what the guard is, and gh', () => {
-  test('the guard is GIT_ALLOW_PROTOCOL=file, protocol.allow=never with only file allowed, no credential helper or askpass, and no inherited GIT_CONFIG_PARAMETERS', () => {
+  test('the guard is GIT_ALLOW_PROTOCOL=file, protocol.allow=never with only file allowed, no credential helper or askpass, git lfs pointed nowhere, and no inherited GIT_CONFIG_PARAMETERS', () => {
     assert.deepEqual(guardEnv(), {
       GIT_ALLOW_PROTOCOL: 'file',
       GIT_CONFIG_PARAMETERS: '',
-      GIT_CONFIG_COUNT: '4',
+      GIT_CONFIG_COUNT: '8',
       GIT_CONFIG_KEY_0: 'protocol.allow',
       GIT_CONFIG_VALUE_0: 'never',
       GIT_CONFIG_KEY_1: 'protocol.file.allow',
@@ -111,6 +111,14 @@ describe('what the guard is, and gh', () => {
       GIT_CONFIG_VALUE_2: '',
       GIT_CONFIG_KEY_3: 'core.askPass',
       GIT_CONFIG_VALUE_3: '',
+      GIT_CONFIG_KEY_4: 'lfs.url',
+      GIT_CONFIG_VALUE_4: 'file:///nonexistent/postbox-uat-lfs-off',
+      GIT_CONFIG_KEY_5: 'lfs.pushurl',
+      GIT_CONFIG_VALUE_5: 'file:///nonexistent/postbox-uat-lfs-off',
+      GIT_CONFIG_KEY_6: 'lfs.standalonetransferagent',
+      GIT_CONFIG_VALUE_6: 'lfs-standalone-file',
+      GIT_CONFIG_KEY_7: 'lfs.file:///nonexistent/postbox-uat-lfs-off.standalonetransferagent',
+      GIT_CONFIG_VALUE_7: 'lfs-standalone-file',
     });
   });
 

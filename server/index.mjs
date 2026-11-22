@@ -244,15 +244,14 @@ export async function start({
         req,
       );
     if (path === '/favicon.svg') return file(res, await servedFile(BUNDLED_MEDIA, 'favicon.svg'), {}, req);
-    if (path === '/kit/workbench.css' || path === '/app/workbench.css')
-      return file(res, await servedFile(STATIC['/app/'], 'workbench.css'), { 'access-control-allow-origin': '*' }, req);
+    // No file here answers another origin’s script (#1272): sandbox pages inline the kit and the stylesheet, and load
+    // /media/ only as images, which need no cross-origin read.
     if (path.startsWith('/media/')) {
       const media = await mediaPath(BUNDLED_MEDIA, mediaDir, path.slice('/media/'.length));
-      return file(res, media.real, media.bundled ? { 'access-control-allow-origin': '*' } : MEDIA_HEADERS, req);
+      return file(res, media.real, media.bundled ? {} : MEDIA_HEADERS, req);
     }
     for (const [prefix, dir] of Object.entries(STATIC)) {
-      if (path.startsWith(prefix))
-        return file(res, await servedFile(dir, path.slice(prefix.length)), prefix === '/kit/' ? { 'access-control-allow-origin': '*' } : {}, req);
+      if (path.startsWith(prefix)) return file(res, await servedFile(dir, path.slice(prefix.length)), {}, req);
     }
 
     // Sandbox frames: agent apps and Mermaid diagrams (server/sandbox-routes.mjs).

@@ -14,6 +14,10 @@ test('Codex config attaches Postbox MCP through the local HTTP endpoint', () => 
     'mcp_servers.postbox.required=true',
     '-c',
     'mcp_servers.postbox.default_tools_approval_mode="approve"',
+    '-c',
+    'memories.use_memories=false',
+    '-c',
+    'memories.generate_memories=false',
   ]);
 });
 
