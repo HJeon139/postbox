@@ -177,8 +177,8 @@ test('the picture is as wide as the app the person sees, beside the rail by defa
     await page.goto(`${app.origin}/#/t/${t.id}${hash}`);
     await synced(page, app);
     const frame = page.locator('.transcript .appframe').first();
-    // The app itself, not “Checking the app…”: the check’s outcome mounts the app in a new section, so a box read on
-    // the old one comes back empty (CI run 44956225170 read 0 px).
+    // The app itself, not “Checking the app…”: the check’s outcome mounts the app in a new section, and one landing
+    // between finding the section and measuring it gave no box, so the width read 0.
     await expect(frame.locator('iframe.app-iframe'), 'the app has passed its check and is drawn').toHaveAttribute('data-sized', '1', { timeout: 30_000 });
     await expect.poll(() => arrange.viewWindow(rt).width, { timeout: 15_000 }).toBe(width);
     const seen = Math.round((await frame.boundingBox())?.width ?? 0);
