@@ -32,6 +32,8 @@ const ROOT = fileURLToPath(new URL('..', import.meta.url));
  * @type {{ page: any, size: Promise<any> | null, stop: AbortController, stopping: boolean }}
  */
 const live = { page: null, size: null, stop: new AbortController(), stopping: false };
+/** How long Chromium has to close on a Ctrl-C or a SIGTERM before it’s killed. */
+const STOP_CLOSE_MS = 1000;
 
 /**
  * Stops the size’s Postbox, which ends a step that waits on it, and closes Chromium, which ends one that uses the page,
@@ -45,8 +47,9 @@ async function stopOn(signal) {
   live.stopping = true;
   const quietly = (p) => Promise.resolve(p).catch(() => null);
   live.stop.abort();
-  await quietly(live.page?.close());
-  await quietly(live.size);
+  // Both at once, and Chromium killed after a moment rather than its own 10 s: a Chromium a loaded runner starves can
+  // take that long to close, and a Ctrl-C must still end the bench within seconds.
+  await Promise.all([quietly(live.page?.close(STOP_CLOSE_MS)), quietly(live.size)]);
   process.exit(signal === 'SIGINT' ? 130 : 143);
 }
 

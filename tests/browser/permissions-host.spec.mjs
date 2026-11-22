@@ -2,7 +2,7 @@
 // and the agent's Claude Code reads the host's, so the panel says so. A scripted Claude Code agent, placed on a host
 // that's added but never installed: nothing connects to it.
 
-import { mkdir } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
 import * as arrange from '../arrange.mjs';
@@ -20,7 +20,7 @@ test.beforeAll(async () => {
   app = await startPostbox('permissions-host', {
     async prepare(root) {
       work = join(root, 'work');
-      await mkdir(work, { recursive: true });
+      await mkdir(join(work, '.claude'), { recursive: true });
     },
   });
   const { rt, store } = app;
@@ -116,4 +116,17 @@ test('#120 a host card’s Always allow says Postbox keeps the rule for that hos
   await expect(page.locator('.perm-always')).toHaveText(
     'Always allow Bash(make lint:*) on build.example.com (Postbox keeps it, and sends it with each turn there)',
   );
+});
+
+test('#404 for an agent on a host, the panel saves a rule only for this conversation, and doesn’t change this computer’s files', async ({ page }) => {
+  await writeFile(join(app.root, 'work', '.claude', 'settings.local.json'), JSON.stringify({ permissions: { allow: ['Bash(ls)'] } }));
+  const dialog = await openPanel(page);
+  const save = dialog.getByLabel('Save in');
+  await expect(save.locator('option'), 'only this conversation: the agent reads neither file here').toHaveText(['This conversation only']);
+  await expect(dialog, 'this computer’s rule is listed').toContainText('Bash(ls)');
+  await expect(dialog.getByRole('button', { name: /^Remove the allow rule Bash\(ls\)/ }), 'but not removable for this agent').toHaveCount(0);
+  await dialog.getByLabel('Pattern').fill('make lint');
+  await dialog.getByRole('button', { name: 'Add rule' }).click();
+  await expect.poll(() => app.store.state.sessions[arrange.sessionsIn(app.rt, thread.id)[0].id].rules?.allow ?? []).toContain('Bash(make lint)');
+  expect(JSON.parse(await readFile(join(app.root, 'work', '.claude', 'settings.local.json'), 'utf8')).permissions.allow).toEqual(['Bash(ls)']);
 });
