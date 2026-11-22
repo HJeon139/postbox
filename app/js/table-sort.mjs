@@ -10,7 +10,8 @@ export function sortedRows(rows, columns, sort, dir) {
   if (!sort) return rows;
   const col = columns.find((c) => c.id === sort);
   return [...rows].sort((x, y) => {
-    const [a, c] = [own(x.cells, sort), own(y.cells, sort)];
+    const a = own(x.cells, sort);
+    const c = own(y.cells, sort);
     return (col.kind === 'number' ? (+a || 0) - (+c || 0) : String(a ?? '').localeCompare(String(c ?? ''))) * dir;
   });
 }
