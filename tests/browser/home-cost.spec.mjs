@@ -39,7 +39,8 @@ const home = (page, first) => press(page, 'Home', first);
 /** Main's layouts for Home in this room, measured with this case on origin/main beside #1155's branch: 2 a press. */
 const MAIN_LAYOUTS = 2;
 
-test('#1155 Home in a 10,000-item room does main’s work: no load, and no more layouts', async ({ page }) => {
+test('#1155 Home in a 10,000-item room does main’s work: no load, and no more layouts', async ({ page, browserName }) => {
+  test.skip(browserName !== 'chromium', 'the layout count comes from Chromium’s DevTools protocol');
   test.setTimeout(120_000);
   const projectId = /** @type {any} */ (Object.values(app.rt.store.state.projects)[0]).id;
   const room = app.rt.createThread({ projectId, title: '10,000 items', personaIds: [] });
@@ -90,7 +91,8 @@ test('#1155 Home with focus in the transcript goes to the room’s first item in
   await expect(page.locator(`#main > [data-key="${app.store.items(room.id)[0].id}"]`), 'the first item, after one press').toBeInViewport();
 });
 
-test('#1155 Home at once after a 10,000-item room opens does main’s work: no load, and no more layouts', async ({ page }) => {
+test('#1155 Home at once after a 10,000-item room opens does main’s work: no load, and no more layouts', async ({ page, browserName }) => {
+  test.skip(browserName !== 'chromium', 'the layout count comes from Chromium’s DevTools protocol');
   test.setTimeout(120_000);
   const projectId = /** @type {any} */ (Object.values(app.rt.store.state.projects)[0]).id;
   const room = app.rt.createThread({ projectId, title: '10,000 items, Home at once', personaIds: [] });
@@ -129,7 +131,8 @@ test('#1155 Home at once after a 10,000-item room opens does main’s work: no l
 /** Main's layouts for End after Home in this room, measured with this case on origin/main beside #1155's branch. */
 const MAIN_END_LAYOUTS = 1;
 
-test('#1155 End after Home in a 10,000-item room does main’s work: no load, and no more layouts', async ({ page }) => {
+test('#1155 End after Home in a 10,000-item room does main’s work: no load, and no more layouts', async ({ page, browserName }) => {
+  test.skip(browserName !== 'chromium', 'the layout count comes from Chromium’s DevTools protocol');
   test.setTimeout(120_000);
   const projectId = /** @type {any} */ (Object.values(app.rt.store.state.projects)[0]).id;
   const room = app.rt.createThread({ projectId, title: '10,000 items, Home then End', personaIds: [] });

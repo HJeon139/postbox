@@ -2,6 +2,101 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.36.3 (2026-11-22)
+
+### Fixes
+
+- **markdown:** let a spaced * open no emphasis, and read code spans in linear time
+- **server:** point a cut in an answer's comments at its own line
+- **markdown:** tell fenced blocks from inline spans in plain text
+- **server:** keep each answer's comments on its own line, readable with no session
+- **server:** give the room the comments that came with the person's review
+- **markdown:** read code spans left to right as the renderer does
+- **markdown:** read code spans of any backtick run in plain text
+- **blocks:** keep a wide table's scroll when it's drawn anew
+- **markdown:** keep a placeholder-like character and code spans' stars in plain text
+- **markdown:** keep the asterisks of 10**9 and 2*n as typed
+
+## 4.36.2 (2026-11-22)
+
+### Fixes
+
+- **guide:** give postbox.anchors’ argument shape in the review entry
+- **review:** keep the guide’s diagram-lint clause, and build the kit’s reported parts once
+- **review:** keep the receipt on reviews only, wait for the answer in the spec, report it plainly
+- **review:** keep a part named “the whole app” from sharing the whole-app comment’s target
+- **review:** take a comment on the whole app, and say when an app names no parts
+- **review:** read a saved verdict by its own key, in the receipt and the reviewers’ line
+- **review:** keep a receipt of the answer a revision replaced, and say this revision needs its own
+
+## 4.36.1 (2026-11-22)
+
+### Fixes
+
+- **review:** read a legacy review’s authors in revisedReview, and pin the echo count
+- **review:** keep a stored comment echoed under another name beside the agent’s new reply
+- **review:** take an update echoing the person’s comments; hold the author rule on show_block
+
+## 4.36.0 (2026-11-22)
+
+### Features
+
+- **server:** name a step's tool only in UAT recording mode
+- **server:** name the tool each activity step ran
+
+### Fixes
+
+- **server:** read UAT recording mode once, and test that no mirrored step names its tool when off
+- **threads:** keep a relabeled head button's text where a plain one puts it
+- **apps:** name the version on screen in the app bar, and pin the review exception
+- **threads:** give a thread head's changing labels their widest width
+- **server:** name the tool on every step a tool call makes, refused and mirrored ones too
+- **threads:** set a thread head's rows by its width alone
+- **app:** show times on the browser's own clock
+- **threads:** keep room for a thread head's text at the panel's narrowest
+- **threads:** keep a thread panel's head lines to one line each
+- **apps:** never let a version Postbox couldn’t check stand in for a later one
+- **apps:** stand in only a version the person was shown while its agent fixes the next
+- **apps:** keep the check’s findings for the agent and show the person a plain status
+
+## 4.35.17 (2026-11-22)
+
+### Fixes
+
+- **app:** cut the kept tail back a page at a time, not on every add
+- **app:** cap the newest items kept for End when they're first kept
+- **app:** keep at most a page of the newest items for End
+
+## 4.35.16 (2026-11-22)
+
+### Fixes
+
+- **remote:** find a claude installed on a host after Postbox connected
+
+## 4.35.15 (2026-11-22)
+
+### Fixes
+
+- **blocks:** keep the own import that a form's submit and table cells use
+- **blocks:** write the table sort's two cell reads as two declarations
+- **app:** mark a term no one defined, whatever its key
+- **blocks:** read a table's cells and a field's error by own keys only
+- **blocks:** read only answered values wherever a block's answer is shown
+- **blocks:** name only fields the person answered in a form's receipt
+- **blocks:** list every sent field in a form's receipt
+
+## 4.35.14 (2026-11-22)
+
+### Fixes
+
+- **kiro:** turn memory off in the Kiro home Postbox owns
+
+## 4.35.13 (2026-11-22)
+
+### Fixes
+
+- **app:** a press on the transcript's work chip isn't lost to a refill
+
 ## 4.35.12 (2026-11-22)
 
 ### Fixes
