@@ -89,6 +89,7 @@ test.describe('at 1280 px, a remove that races another', () => {
     // While the dialog is open, @indexer goes, so @librarian is the last agent when the person confirms.
     app.rt.deleteSession(arrange.sessionsIn(app.rt, t.id).find((x) => x.handle === 'indexer').id);
     await ask.getByRole('button', { name: 'Delete session' }).click();
+    await expect(page.getByText('Couldn’t remove @librarian')).toBeVisible();
     await expect(page.getByText('@librarian is the last agent here, so removing it would delete the conversation.', { exact: false })).toBeVisible();
     expect(app.rt.store.state.threads[t.id], 'the conversation stays').toBeTruthy();
     expect(handlesIn(t)).toEqual(['librarian']);

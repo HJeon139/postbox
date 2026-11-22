@@ -745,7 +745,7 @@ export function confirmDelete(se, { keepConversation = false } = {}) {
               say(`Deleted ${se.handle}’s session`);
               if (location.hash.includes(se.threadId) && !room) (await import('./last-place.mjs')).leave(se.threadId);
             } catch (e) {
-              toast({ title: 'Couldn’t delete', text: e.message, level: 'blocking' });
+              toast({ title: keepConversation ? `Couldn’t remove @${se.handle}` : 'Couldn’t delete', text: e.message, level: 'blocking' });
             }
           },
         },
