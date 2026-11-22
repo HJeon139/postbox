@@ -1,6 +1,7 @@
 // Tokens and cost in an ATIF trajectory (tools/atif.mjs), from the work ledger’s turn entries (server/ledger-end.mjs):
-// a turn’s figures go on its first step, whether a reply or a block it showed, and final_metrics sums the session’s
-// turns from the ledger, not from the steps, so a turn no step carries is still counted. A figure the backend didn’t
+// a turn’s figures go on its first reply’s step, since a block or app step is no model call (llm_call_count 0) and
+// carries none, and final_metrics sums the session’s turns from the ledger, not from the steps, so a turn that showed
+// only a block is still counted, in final_metrics.extra.unattached_turns. A figure the backend didn’t
 // report is left out, never made up: a total only some turns reported is a partial sum in extra, with how many did.
 
 /** A turn’s tokens and cost as ATIF metrics, or null when its backend reported neither. @param {any} turn */
