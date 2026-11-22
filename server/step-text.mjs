@@ -4,6 +4,7 @@
 // moved from server/runtime.mjs.
 
 import { STEP_TEXT } from '../shared/limits.mjs';
+import { uatRecording } from './uat-mode.mjs';
 
 // The most of one field a step shows, so the next field still fits on the line.
 const FIELD = 120;
@@ -56,17 +57,30 @@ const STEP_KINDS = /** @type {Set<unknown>} */ (new Set(['thought', 'said', 'age
 /** A step’s state, or done for one Postbox doesn’t know. @param {unknown} state */
 export const stepState = (state) => (STEP_STATES.has(/** @type {string} */ (state)) ? /** @type {string} */ (state) : 'done');
 
+/** Whether steps name their tool: UAT recording mode, decided once, when Postbox starts (server/uat-mode.mjs). */
+const RECORDING = uatRecording();
+
+/**
+ * A tool call’s step names the tool it ran, by its harness’s name, bounded as a label is, for the ATIF export’s
+ * function_name (#1527, #1529). Only in UAT recording mode, by the owner’s decision on #1527: only the UAT export reads
+ * it, and every room would otherwise carry it on each step update. `name` is checked first, so a step that isn’t a
+ * tool call reads nothing else. Every place that makes a tool call’s step takes it from here.
+ * @param {unknown} name @param {boolean} [on] whether steps name their tool: RECORDING, unless a test says otherwise
+ */
+export const stepTool = (name, on = RECORDING) => (typeof name === 'string' && name && on ? { tool: name.slice(0, 200) } : {});
+
 /**
  * The step a turn keeps, from what its activity was told: each field bounded, and only the ones it has.
- * part: the reply’s part it shows in, and at: where in that part’s words, their length when it started; added,
+ * tool: the tool a call ran. part: the reply’s part it shows in, and at: where in that part’s words, their length when it started; added,
  * deleted and diff: an edit’s change (server/step-diff.mjs).
- * @param {{ id: string, label: unknown, state: unknown, ms: number|null, who: unknown, parent: unknown, detail: unknown, kind: unknown, job: unknown, input: unknown, output: unknown, part?: unknown, at?: unknown, added?: unknown, deleted?: unknown, diff?: unknown }} f
+ * @param {{ id: string, label: unknown, tool?: unknown, state: unknown, ms: number|null, who: unknown, parent: unknown, detail: unknown, kind: unknown, job: unknown, input: unknown, output: unknown, part?: unknown, at?: unknown, added?: unknown, deleted?: unknown, diff?: unknown }} f
  */
-export function turnStep({ id, label, state, ms, who, parent, detail, kind, job, input, output, part, at, added, deleted, diff }) {
+export function turnStep({ id, label, tool, state, ms, who, parent, detail, kind, job, input, output, part, at, added, deleted, diff }) {
   const count = (/** @type {unknown} */ n) => typeof n === 'number' && Number.isInteger(n) && n >= 0;
   return {
     id,
     label: String(label).slice(0, 200),
+    ...stepTool(tool),
     state: stepState(state),
     ms,
     ...(who ? { who: String(who).slice(0, 40) } : {}),

@@ -93,10 +93,10 @@ export { ACK_LINES, ACK_MS } from './process-receive.mjs';
  * later call carries them again.
  * @param {{ connection: RemoteConnection, harness: import('../../shared/remote-protocol.mjs').Harness, folder: string,
  *           stdin: StdinKind, env?: Record<string, string>, files?: TurnFile[], agentFile?: AgentFile, turn?: string,
- *           attach?: { from?: number }, attachments?: Attachment[] }} o
+ *           attach?: { from?: number }, attachments?: Attachment[], claudeCheck?: { denyPrompts: boolean } }} o
  * @returns {(bin: string, args?: readonly string[], opts?: object) => RemoteProcess}
  */
-export function remoteSpawn({ connection, harness, folder, stdin, env = {}, files = [], agentFile, turn, attach, attachments = [] }) {
+export function remoteSpawn({ connection, harness, folder, stdin, env = {}, files = [], agentFile, turn, attach, attachments = [], claudeCheck }) {
   let first = turn;
   return (_bin, args = [], _opts) => {
     const id = first ?? randomUUID();
@@ -104,7 +104,8 @@ export function remoteSpawn({ connection, harness, folder, stdin, env = {}, file
     if (attach) return attachRemote(connection, { turn: id, from: attach.from ?? 0, stdin });
     const agent = agentFile ? { agentFile: { ...agentFile } } : {};
     const carried = attachments.length ? { attachments: attachments.map((x) => ({ ...x })) } : {};
-    const start = { harness, folder, argv: [...args], env: { ...env }, stdin, files: [...files], ...agent, ...carried };
+    const check = claudeCheck ? { claudeCheck: { ...claudeCheck } } : {};
+    const start = { harness, folder, argv: [...args], env: { ...env }, stdin, files: [...files], ...agent, ...carried, ...check };
     return new RemoteProcess(connection, { turn: id, start });
   };
 }

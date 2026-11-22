@@ -9,12 +9,12 @@ import {
   KiroCliAdapter,
   kiroAgent,
   kiroArgs,
-  kiroHomeFor,
   kiroModel,
   kiroRules,
   modelIds,
   postboxModel,
 } from '../server/adapters/kiro-cli.mjs';
+import { kiroHomeFor } from '../server/adapters/kiro-home.mjs';
 import { TOOL_DEFS } from '../shared/mcp-tools.mjs';
 import { fakeCtx, fakeSpawn, fixture } from './kiro-cli-fakes.mjs';
 import { tempDir } from './temp-dirs.mjs';
