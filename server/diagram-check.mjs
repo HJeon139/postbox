@@ -84,7 +84,8 @@ export async function syntaxCheck(checks, turn, before) {
   const replies = checks.store.pending.items(turn.threadId).filter((it) => it.kind === 'agent' && it.turnId === turn.id && !it.lintReply);
   for (const it of replies)
     for (const block of mermaidBlocks(String(it.text ?? ''))) {
-      if (before.has(hashOf(block.src))) continue;
+      // Nothing new is parsed once Postbox is closing, so its exit never waits on the parser.
+      if (before.has(hashOf(block.src)) || checks.running.closing) continue;
       const error = await syntaxError(block.src);
       // Postbox may have started closing, or stopped saving, while the parser ran: nothing new is sent or kept then, and
       // the page still reports the diagram when it’s drawn.

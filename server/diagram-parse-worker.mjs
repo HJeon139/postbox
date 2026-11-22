@@ -43,7 +43,8 @@ function page() {
   vm.runInContext(readFileSync(new URL('vendor/mermaid/mermaid.min.js', KIT), 'utf8'), ctx);
   vm.runInContext(readFileSync(new URL('diagram.js', KIT), 'utf8'), ctx);
   ctx.mermaid.initialize({ startOnLoad: false, securityLevel: 'strict' });
-  // The page’s label rewrite (#684), so the parser reads what the page draws; the source as it is before it landed.
+  // The page’s label rewrite, when its script has one (#684 adds asWritten), so the parser reads what the page draws;
+  // without it, the page draws the source as written, and so does this.
   const asWritten = vm.runInContext("typeof asWritten === 'function' ? asWritten : (s) => s", ctx);
   return { mermaid: ctx.mermaid, asWritten };
 }
