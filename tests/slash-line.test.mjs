@@ -22,7 +22,7 @@ test('parseSlashLine reads /name and @handle /name, and nothing else', () => {
 const alpha = { id: 'a', handle: 'alpha' };
 const beta = { id: 'b', handle: 'beta' };
 const gone = { id: 'g', handle: 'gone', retiredFork: true };
-const offered = { a: ['review'], b: ['release-notes'], g: ['review'] };
+const offered = { a: ['review', 'compact'], b: ['release-notes'], g: ['review'] };
 const at = (over = {}) => ({
   members: [alpha, beta, gone],
   reply: beta,
@@ -35,8 +35,33 @@ test('Postbox’s own command runs for the agent named, else the one the compose
   assert.deepEqual(resolveCommand('@alpha /compact', at()), { own: true, name: 'compact', line: '/compact', se: alpha, named: alpha });
   assert.deepEqual(resolveCommand('@ALPHA /compact', at()).se, alpha, 'a handle in any case');
   assert.deepEqual(resolveCommand('/compact', at()), { own: true, name: 'compact', line: '/compact', se: beta, named: null });
-  // With arguments it’s not Postbox’s, as before (#67): an agent that offers it runs it, else it’s a message.
-  assert.equal(resolveCommand('@alpha /compact keep the plan', at()).missing, 'command');
+});
+
+// #546: `/effort low` went to the agent as a message and started a paid turn, with nothing said before it was sent.
+test('Postbox’s own command with an argument runs without it if it only opens a view, else is refused', () => {
+  const views = ['mode'];
+  assert.deepEqual(resolveCommand('/mode ask', at({ views })), { own: true, name: 'mode', line: '/mode', se: beta, named: null, dropped: 'ask' });
+  assert.deepEqual(resolveCommand('@alpha /mode ask', at({ views })).se, alpha, 'for the agent named');
+  // /stop alpha run as /stop would stop every agent: it’s refused, and nothing is sent.
+  assert.deepEqual(resolveCommand('/stop alpha', at({ views })), { refused: true, name: 'stop', se: beta, named: null, dropped: 'alpha' });
+  assert.equal(resolveCommand('/compact keep the plan', at({ views, members: [beta] })).refused, true);
+  assert.equal(resolveCommand('@ghost /mode ask', at({ views })).missing, 'agent', 'a handle no agent here has, as before');
+  // An agent that offers a command of that name still gets it with its argument, the one named or any here (#67).
+  assert.deepEqual(resolveCommand('@alpha /compact keep the plan', at({ views })).line, '/compact keep the plan');
+  const theirs = resolveCommand('/compact keep the plan', at({ views }));
+  assert.deepEqual([theirs.se, theirs.shadows], [alpha, true], 'beta doesn’t offer it, alpha does, and the composer says so');
+  assert.equal(resolveCommand('@alpha /compact keep the plan', at({ views })).shadows, undefined, 'named, it says so already');
+  // With files, the composer sends the line with them as a message unless it’s refused: so a dropped argument is refused,
+  // and no agent’s turn is promised.
+  assert.deepEqual(resolveCommand('/mode ask', at({ views, files: true })), {
+    refused: true,
+    name: 'mode',
+    se: beta,
+    named: null,
+    dropped: 'ask',
+    files: true,
+  });
+  assert.equal(resolveCommand('/compact keep the plan', at({ views, files: true })).shadows, undefined);
 });
 
 test('an agent’s skill or command runs as the named agent’s turn, only if it offers it', () => {

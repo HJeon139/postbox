@@ -56,7 +56,7 @@ export class HarnessTools {
   used(id, t) {
     if (this.st.used.has(id)) return;
     this.st.used.add(id);
-    this.ctx.toolUse?.({ id, name: t.name, input: t.input ?? {}, who: t.who, ...(t.parent ? { parent: t.parent } : {}) });
+    this.ctx.toolUse?.({ id, name: t.name, input: t.input ?? {}, who: t.who, ...(t.parent ? { parent: t.parent } : {}), ...(t.raw ? { raw: t.raw } : {}) });
   }
 
   /** @param {string} id @param {any} t @param {string} state @param {Record<string, unknown>} [extra] */

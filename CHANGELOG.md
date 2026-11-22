@@ -2,6 +2,59 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.35.12 (2026-11-22)
+
+### Fixes
+
+- **shell:** keep New room's error row a fixed height, and clear only its own
+- **shell:** clear New room's "pick at least two" once two are picked
+
+## 4.35.11 (2026-11-22)
+
+### Fixes
+
+- **wakes:** offer the quiet ending only where it ends quietly, and draw the reaction case
+- **bench:** on Ctrl-C, kill a Chromium slow to close instead of waiting its full 10 s
+- **store:** run a held conversation's first `!` command where its agent works
+- **kit:** label stacked segments in pure black, so every label reaches 4.5:1
+- **permissions:** save no rule in this computer's files for an agent on a host
+- **wakes:** count only this turn's reaction when a reply that came back ends the exchange
+- **uat:** give the runner's own ssh Postbox's hardening, no shared connection and no agent
+- **wakes:** keep a request beside a reacted reply going back, and say a reaction stops it
+- **wakes:** let a reaction to a reply that came back end the exchange
+- **store:** join a new agent to a conversation started behind a held commit
+- **store:** find a held conversation's agents for its first message, its retry and its topics
+- **store:** send the first line of a conversation started behind a held commit
+
+## 4.35.10 (2026-11-22)
+
+### Fixes
+
+- **uat:** check the guard's git settings in the workspace, where the agents' git reads them
+- **uat:** pin git lfs's own transfer in the guard, and stop a run whose git picks a custom one
+- **uat:** point git lfs at nothing in every run's guard, not only git-remote runs
+- **server:** drop the wildcard CORS on /kit/, the stylesheet alias and bundled /media/
+- **antigravity:** hold the hook's permission prompt to the call its stream shows
+
+## 4.35.9 (2026-11-22)
+
+### Fixes
+
+- **antigravity:** compare a repeated error by a fingerprint of its whole text
+- **antigravity:** don't show an earlier turn's error again as a failed step
+
+## 4.35.8 (2026-11-21)
+
+### Fixes
+
+- **rings:** a short thinking swell is a round blob, not a spike
+- **rings:** a thinking ring runs a tapered swell along its arc again
+- **kiro:** tell a Kiro agent that Postbox's tools load on demand
+- **composer:** hint a refused command typed after a space, and say it
+- **composer:** say to remove the files too when a command is refused for them
+- **composer:** keep the command hint true when files are attached
+- **composer:** run or refuse Postbox's own command typed with an argument
+
 ## 4.35.7 (2026-11-21)
 
 ### Fixes
