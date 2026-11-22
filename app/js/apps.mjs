@@ -433,8 +433,12 @@ const shownVersion = (app, review = false) => viewing.get(app.id) ?? (standsIn(a
 
 /**
  * Renders an app (current or viewed version) into `container`. Used by transcript items and app reviews.
+ * @param {HTMLElement} container @param {string} appId
+ * @param {{ review?: boolean, onPin?: (anchor: string) => void, onBack?: () => void, onAnchors?: (names: string[]) => void }} [opts]
+ *   onAnchors hears the parts the app names for comments, none included, once its page has loaded (#855)
  */
-export function mountApp(container, appId, { review = false, onPin, onBack } = {}) {
+export function mountApp(container, appId, opts = {}) {
+  const { review = false, onPin, onBack, onAnchors } = opts;
   const app = client.state.apps[appId];
   if (!app) {
     container.replaceChildren(h('p.small.dim', 'This app isn’t available any more.'));
@@ -466,7 +470,7 @@ export function mountApp(container, appId, { review = false, onPin, onBack } = {
                 type: 'button',
                 onclick: () => {
                   stopped.delete(key);
-                  mountApp(container, appId, { review, onPin, onBack });
+                  mountApp(container, appId, opts);
                 },
               },
               icon('retry', 'i-sm'),
@@ -482,7 +486,7 @@ export function mountApp(container, appId, { review = false, onPin, onBack } = {
     const reload = () => {
       crashes.delete(key);
       reloaded.add(key);
-      mountApp(container, appId, { review, onPin, onBack });
+      mountApp(container, appId, opts);
     };
     body.append(crashCard(placeholder, { app, owner, msg, reload }));
   } else if (status === 'pending') {
@@ -499,9 +503,9 @@ export function mountApp(container, appId, { review = false, onPin, onBack } = {
   } else if (status === 'fixing') {
     body.append(fixingPlaceholder(placeholder, owner));
   } else {
-    const remount = () => mountApp(container, appId, { review, onPin, onBack });
+    const remount = () => mountApp(container, appId, opts);
     strip = errorStrip({ app, owner, reload: remount });
-    const mount = () => body.replaceChildren(frame(appId, v, { review, onPin, onCrash: remount, onError: strip.show }));
+    const mount = () => body.replaceChildren(frame(appId, v, { review, onPin, onAnchors, onCrash: remount, onError: strip.show }));
     mountAfterChecks(body, mount, placeholder);
     body._unmount = (reason = 'offscreen') => {
       body.replaceChildren(pausedApp(placeholder, reason, body.firstElementChild?.offsetHeight || 200));
@@ -527,7 +531,7 @@ export function mountApp(container, appId, { review = false, onPin, onBack } = {
               hidden: !!app.retired && !onBack,
               onclick: () => {
                 viewing.delete(appId);
-                (onBack ?? (() => mountApp(container, appId, { review, onPin, onBack })))();
+                (onBack ?? (() => mountApp(container, appId, opts)))();
               },
             },
             onBack ? 'Close' : `Back to v${app.current}`,

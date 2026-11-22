@@ -26,6 +26,8 @@
     resolveReady = r;
   });
   let anchorMap = {};
+  // The parts a review hears the app names: the ones still set (#855). Both reports use it, so they agree.
+  const namedParts = () => Object.keys(anchorMap).filter((k) => anchorMap[k]);
   let reviewing = false;
 
   // includeUserActivation: the browser attaches this frame’s own click or key press state to the message, which
@@ -164,8 +166,10 @@
     },
     restoreState: () => ready.then((r) => r.state),
     anchors(map) {
-      anchorMap = Object.assign({}, map);
-      post({ type: 'anchors', names: Object.keys(anchorMap).filter((k) => anchorMap[k]) });
+      // “the whole app” is a review’s comment on the app as a whole, so no part can take that name (#855).
+      const { 'the whole app': _whole, ...parts } = map || {};
+      anchorMap = parts;
+      post({ type: 'anchors', names: namedParts() });
       if (reviewing) paintAnchors();
     },
     on(event, fn) {
@@ -179,6 +183,8 @@
   };
 
   post({ type: 'hello' });
+  // Once the page’s own scripts have run, the parts it names, none included: a review says when there are none (#855).
+  addEventListener('load', () => post({ type: 'anchors', names: namedParts() }));
 
   // The pre-display check is app/kit/check.js, which Postbox adds to a check frame’s page after the kit.
   if (init.check) window.__pbCheck = { ready, errors, post, rgb, lum };
