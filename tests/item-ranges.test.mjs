@@ -212,3 +212,14 @@ test('#1260 at Home, the kept tail holds at most a page of the newest items, and
   assert.deepEqual([state.items.t.length, state.items.t[0].id, state.items.t.at(-1).id, state.items.t.at(-1).text], [200, 'i200', 'i399', 'm399+chunk']);
   assert.equal(ranges.get('t').start, 200, 'where the newest 200 start in 400');
 });
+
+test('#1260 a tail saved from a range past a page holds the newest 200 at once, before any event (critic’s review)', () => {
+  const state = { items: {} };
+  const ranges = new Map();
+  loading(ranges, 't');
+  place(state, ranges, { threadId: 't', seq: 10, start: 0, total: 300, items: items(0, 300), head: items(0, 5) }, 'replace');
+  assert.equal(placeHead(state, ranges, 't', 10), true, 'Home, from a range that held all 300');
+  assert.equal(ranges.get('t').tail.length, 200, 'the newest 200 kept, with no event since');
+  assert.equal(placeTail(state, ranges, 't', 10), true, 'End');
+  assert.deepEqual([state.items.t.length, state.items.t[0].id, state.items.t.at(-1).id, ranges.get('t').start], [200, 'i100', 'i299', 100]);
+});
