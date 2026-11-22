@@ -2,6 +2,23 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.35.11 (2026-11-22)
+
+### Fixes
+
+- **wakes:** offer the quiet ending only where it ends quietly, and draw the reaction case
+- **bench:** on Ctrl-C, kill a Chromium slow to close instead of waiting its full 10 s
+- **store:** run a held conversation's first `!` command where its agent works
+- **kit:** label stacked segments in pure black, so every label reaches 4.5:1
+- **permissions:** save no rule in this computer's files for an agent on a host
+- **wakes:** count only this turn's reaction when a reply that came back ends the exchange
+- **uat:** give the runner's own ssh Postbox's hardening, no shared connection and no agent
+- **wakes:** keep a request beside a reacted reply going back, and say a reaction stops it
+- **wakes:** let a reaction to a reply that came back end the exchange
+- **store:** join a new agent to a conversation started behind a held commit
+- **store:** find a held conversation's agents for its first message, its retry and its topics
+- **store:** send the first line of a conversation started behind a held commit
+
 ## 4.35.10 (2026-11-22)
 
 ### Fixes
