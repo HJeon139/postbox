@@ -94,6 +94,19 @@ function asWritten(src) {
     .join('\n');
 }
 
+/** What the page reports once it has drawn: its drawing’s height, and its text’s size as shown. */
+function measure(out) {
+  // The diagram is scaled to fit; its text ends up at fontSize × (shown width ÷ natural width).
+  const svg = out.querySelector('svg');
+  const natural = svg?.viewBox?.baseVal?.width;
+  const shown = svg?.getBoundingClientRect().width;
+  const textPx = natural && shown ? Math.round(13 * Math.min(1, shown / natural) * 10) / 10 : null;
+  // The drawing’s own height, not the frame’s: a frame that started taller than its drawing would report its own
+  // height back and keep it (#1631). Postbox’s stylesheet keeps a small diagram’s frame at its floor.
+  const height = Math.ceil(document.body.getBoundingClientRect().height);
+  return { height, textPx, width: document.documentElement.clientWidth };
+}
+
 (function () {
   const out = document.getElementById('out');
   const post = (m) => parent.postMessage(Object.assign({ __pbd: 1 }, m), '*');
@@ -146,14 +159,7 @@ function asWritten(src) {
       const line = err?.hash?.loc?.first_line ?? +(/line (\d+)/i.exec(message)?.[1] ?? 0);
       post({ type: 'error', render: true, message, line: line || null });
     }
-    requestAnimationFrame(() => {
-      // The diagram is scaled to fit; its text ends up at fontSize × (shown width ÷ natural width).
-      const svg = out.querySelector('svg');
-      const natural = svg?.viewBox?.baseVal?.width;
-      const shown = svg?.getBoundingClientRect().width;
-      const textPx = natural && shown ? Math.round(13 * Math.min(1, shown / natural) * 10) / 10 : null;
-      post({ type: 'size', height: Math.ceil(document.documentElement.scrollHeight), textPx, width: document.documentElement.clientWidth });
-    });
+    requestAnimationFrame(() => post({ type: 'size', ...measure(out) }));
   });
   post({ type: 'ready' });
 })();
