@@ -21,6 +21,8 @@ export async function sessionRoute(rt, path, method, body) {
     return done(200, { ok: true, result: result ?? null });
   }
   if ((m = path.match(/^\/api\/sessions\/([^/]+)$/)) && method === 'DELETE') return done(200, rt.deleteSession(m[1]));
+  // The Agents header’s −: the same delete, refused rather than erase the conversation if it’s the last agent (#1620).
+  if ((m = path.match(/^\/api\/sessions\/([^/]+)\/remove$/)) && method === 'POST') return done(200, rt.deleteSession(m[1], { keepConversation: true }));
   // Stop’s ask about background jobs, dismissed, and a background job’s own Stop (#129).
   if ((m = path.match(/^\/api\/sessions\/([^/]+)\/stop-ask$/)) && method === 'DELETE') {
     rt.dismissStopAsk(m[1]);

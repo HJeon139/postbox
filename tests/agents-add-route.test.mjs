@@ -65,3 +65,18 @@ test('#1620 an agent whose session here was retired is refused, saying so, with 
   await assert.rejects(add(f, f.t.id, f.c.id), { status: 409 });
   assert.equal(f.store.items(f.t.id).filter((i) => i.variant === 'joined').length, 0);
 });
+
+test('#1620 − removing the last agent, as a remove that keeps the conversation, is refused and erases nothing', async () => {
+  const f = setup();
+  // The person’s − on alpha, then beta removed meanwhile: alpha is the last agent when the remove arrives.
+  await sessionRoute(f.rt, `/api/sessions/${f.beta.id}`, 'DELETE', {});
+  await assert.rejects(sessionRoute(f.rt, `/api/sessions/${f.alpha.id}/remove`, 'POST', {}), {
+    status: 409,
+    message: '@alpha is the last agent here, so removing it would delete the conversation. To end it, delete the conversation.',
+  });
+  assert.ok(f.store.state.threads[f.t.id], 'the conversation stays');
+  assert.deepEqual(handlesIn(f), ['alpha']);
+  // The plain delete of the last agent still deletes its conversation, as the agent’s own Delete does (#320).
+  await sessionRoute(f.rt, `/api/sessions/${f.alpha.id}`, 'DELETE', {});
+  assert.equal(f.store.state.threads[f.t.id], undefined);
+});

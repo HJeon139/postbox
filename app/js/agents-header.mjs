@@ -64,13 +64,16 @@ async function add(threadId, p) {
   }
 }
 
-/** The agents here, each removed after the Delete session dialog says what goes with it. */
+/**
+ * The agents here, each removed after the Delete session dialog says what goes with it. The conversation stays: the
+ * server refuses a remove that would leave it without agents, as one raced with another remove would.
+ */
 export function openRemove(anchor, threadId, sheets) {
   const items = here(threadId).map((se) => ({
     label: `Remove @${se.handle}…`,
     icon: 'trash',
     danger: true,
-    run: () => sheets.confirmDelete(se),
+    run: () => sheets.confirmDelete(se, { keepConversation: true }),
   }));
   openMenu(anchor, items, { label: 'Remove an agent' });
 }

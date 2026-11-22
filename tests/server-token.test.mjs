@@ -60,6 +60,7 @@ const WRITE_ROUTES = {
   'POST ^\\/api\\/sessions\\/([^/]+)\\/stop$': ['/api/sessions/se_none/stop'],
   'POST ^\\/api\\/sessions\\/([^/]+)\\/resume$': ['/api/sessions/se_none/resume'],
   'DELETE ^\\/api\\/sessions\\/([^/]+)$': ['/api/sessions/se_none'],
+  'POST ^\\/api\\/sessions\\/([^/]+)\\/remove$': ['/api/sessions/se_none/remove'],
   'DELETE ^\\/api\\/sessions\\/([^/]+)\\/stop-ask$': ['/api/sessions/se_none/stop-ask'],
   'POST ^\\/api\\/sessions\\/([^/]+)\\/jobs\\/([^/]+)\\/stop$': ['/api/sessions/se_none/jobs/job_none/stop'],
   'POST ^\\/api\\/threads\\/([^/]+)\\/agent-command$': ['/api/threads/th_none/agent-command'],

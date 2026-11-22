@@ -3,7 +3,7 @@
 
 import { expect, test } from '@playwright/test';
 import * as arrange from '../arrange.mjs';
-import { failOnPageErrors, PHONE, startPostbox, synced } from './postbox.mjs';
+import { allowPageError, failOnPageErrors, PHONE, startPostbox, synced } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
 let app;
@@ -69,6 +69,29 @@ test.describe('at 1280 px', () => {
     expect(handlesIn(t)).toEqual(['librarian']);
     expect(arrange.persona(app.rt, 'indexer'), 'the persona stays').toBeTruthy();
     await expect(minus, 'one agent again: − is off').toBeDisabled();
+  });
+});
+
+test.describe('at 1280 px, a remove that races another', () => {
+  test.use({ viewport: { width: 1280, height: 800 } });
+
+  test('#1620 − on one of two agents, with the other removed meanwhile, keeps the conversation and says why', async ({ page }) => {
+    // The server refuses the remove with a 409, which the page logs.
+    allowPageError(page, /status of 409/);
+    const t = await opened(page);
+    await app.rt.ensureSession(t.id, arrange.persona(app.rt, 'indexer').id);
+    await synced(page, app);
+    const section = page.locator('.rail section.agents-sec');
+    await section.getByRole('button', { name: 'Remove an agent from this conversation' }).click();
+    await page.getByRole('menu', { name: 'Remove an agent' }).getByRole('menuitem', { name: 'Remove @librarian…' }).click();
+    const ask = page.getByRole('alertdialog', { name: 'Delete librarian’s session?' });
+    await expect(ask).toBeVisible();
+    // While the dialog is open, @indexer goes, so @librarian is the last agent when the person confirms.
+    app.rt.deleteSession(arrange.sessionsIn(app.rt, t.id).find((x) => x.handle === 'indexer').id);
+    await ask.getByRole('button', { name: 'Delete session' }).click();
+    await expect(page.getByText('@librarian is the last agent here, so removing it would delete the conversation.', { exact: false })).toBeVisible();
+    expect(app.rt.store.state.threads[t.id], 'the conversation stays').toBeTruthy();
+    expect(handlesIn(t)).toEqual(['librarian']);
   });
 });
 
