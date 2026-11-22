@@ -93,7 +93,8 @@ Postbox starts every harness process with two variables in its environment: `POS
 - **(b) It’s outside that group,** after `setsid` or as the orphan of a tool shell that led its own group. It binds when all of these hold:
   - its marker names this session and this turn;
   - its start time falls inside the turn;
-  - its parent is init or the subreaper.
+  - its parent is init or the subreaper;
+  - it belongs to the user running the harness on that machine (its real uid matches the harness’s).
 
 **Why case (b) binds: the owner’s decision.** Case (b) gives no tie to the harness that Postbox observed. The marker is the process’s own account, and the start time and parent show only timing. The owner decided on 22 November 2026, on #1615, that it binds anyway:
 - **The reasoning:** a forged marker can only come from a process of the person’s own user. That process can already signal these processes, so a forger gains at most a spurious wake for the agent the marker names.
@@ -113,8 +114,10 @@ The owner chose coverage for `setsid` jobs and the orphans of tool shells that l
 **The poll’s cost.** On `main`, `pollKept` runs `ps` only while a kept job exists (`server/kept-jobs.mjs`). This design adds the marker scan at each turn’s end, and at each 5-second tick only while kept jobs exist. One scan per tick serves every turn and job. The implementation PR measures the scan, `ps -Eww -ax`, whose output is larger than today’s read, against `main`’s poll, and holds it to a budget stated there.
 
 **What the scan reads.** The scan keeps only the two marker variables from its output, and nothing else of any process’s environment. Raw scan output is never logged or stored.
-- **On macOS:** `ps -Eww -ax -o pid=,ppid=,pgid=,lstart=,command=`.
-- **On Linux:** `/proc/<pid>/environ`.
+- **On macOS:** `ps -Eww -ax -o pid=,ppid=,pgid=,uid=,lstart=,command=`.
+- **On Linux:** `/proc/<pid>/environ`, with the owner from `/proc/<pid>/status` (`Uid:`).
+
+The owner is read so that case (b)’s same-user rule is checked, not assumed. A process of another user never binds, wakes no one and gets no Stop, whatever marker it carries.
 
 It’s one more read beside `listProcesses`, with the same 2 s timeout and 16 MB cap.
 
@@ -132,7 +135,7 @@ So on macOS a job is found through any member that isn’t a platform binary, su
 Other ways the marker is lost or misused:
 - **A fresh environment.** A process that execs with a new environment drops the marker and isn’t tracked. That includes `env -i`, `sudo`, `launchctl`, `systemd-run`, and work handed to `docker` or `ssh`. Changing the environment after exec changes nothing, because the scan reads the kernel’s exec-time copy.
 - **Linux, not verified here.** `/proc/<pid>/environ` is readable for the same user’s dumpable processes, but not for setuid processes or under `hidepid`. Each host’s live check confirms it.
-- **A process that drops or forges its marker.** One that drops it isn’t tracked, as a `nohup` process isn’t today. One outside the harness’s group that copies another session’s marker, with a start time inside that session’s turn and init as its parent, binds to that session by case (b). At worst it wakes that session’s agent once, spuriously. It can only come from the person’s own user, which could already signal it.
+- **A process that drops or forges its marker.** One that drops it isn’t tracked, as a `nohup` process isn’t today. One outside the harness’s group that copies another session’s marker, with a start time inside that session’s turn and init as its parent, binds to that session by case (b). At worst it wakes that session’s agent once, spuriously. The one-wake limit holds per bound job: each bound job wakes its agent once, at its own end. A forger can only be the person’s own user, which case (b) checks and which could already signal it. A marker never makes a process bind to a session other than the one it names.
 
 ### 4. Wake on exit
 
@@ -238,7 +241,8 @@ What each check answers:
     - `sh -c 'cmd &'`, with the shell leading its own group: `cmd`, reparented to init, binds by its marker and wakes the agent;
     - a process in the harness’s group that doesn’t bind is still stopped at the turn’s end;
     - a marked process outside the group that doesn’t bind isn’t signaled, and its exit queues no wake;
-    - one with another session’s marker isn’t bound.
+    - one whose marker names session B, inside B’s turn, binds to B and never to the session whose turn is ending. It wakes only B’s agent, once;
+    - one owned by another user isn’t bound, whatever its marker.
   - **Codex, Kiro and Antigravity by pid:** the harness and its children stop, and a bound marked process survives.
   - **A reused pid is skipped:** a pid whose start time changes between the first SIGINT and the delayed SIGKILL, or before a Stop, isn’t signaled.
   - **The output file:**
