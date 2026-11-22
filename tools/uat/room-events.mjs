@@ -4,6 +4,7 @@
 // checks read the same thing from either.
 
 import { EVENTS, patchSession } from '../../shared/state.mjs';
+import { WORK_KINDS } from '../atif-calls.mjs';
 
 /**
  * An event’s place in a run’s history, for comparing two: by its recording epoch, then its seq. After a restart or a
@@ -11,9 +12,6 @@ import { EVENTS, patchSession } from '../../shared/state.mjs';
  * (tools/uat/history.mjs, streamRecorder), so a bare seq can put a later event first. @param {{ seq?: number, epoch?: number } | null | undefined} e
  */
 export const placeOf = (e) => (e?.epoch ?? 0) * 2 ** 40 + (e?.seq ?? 0);
-
-/** The work ledger’s entries a run keeps: turns, and the calls that keep their arguments (tools/atif-calls.mjs). */
-const WORK_KINDS = new Set(['turn', 'command', 'external', 'read']);
 
 /**
  * The event, cut to what the checks read, or null for one they don’t (streamed text, apps, glossary…). A session.patch

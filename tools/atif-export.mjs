@@ -22,6 +22,7 @@ import { parseSnapshotText } from '../server/store-snapshot-lines.mjs';
 import { PROMPTS_FILE } from '../server/turn-prompt.mjs';
 import { EVENTS } from '../shared/state.mjs';
 import { trajectories } from './atif.mjs';
+import { WORK_KINDS } from './atif-calls.mjs';
 import { lines } from './uat/history.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
@@ -36,9 +37,6 @@ const promptsIn = (dirs) => {
   const file = dirs.map((d) => join(d, PROMPTS_FILE)).find((f) => existsSync(f));
   return file ? linesIn(file) : [];
 };
-
-/** The work ledger’s entries the trajectories read: turns, and the calls that keep their arguments. */
-const WORK_KINDS = new Set(['turn', 'command', 'external', 'read']);
 
 /**
  * A data folder’s snapshot as events placed before the log’s: each session, each item as it ended, the work ledger’s

@@ -9,6 +9,12 @@
 
 import { READ_TOOLS } from '../shared/work.mjs';
 
+/** The work ledger’s entries for one call that keep its arguments: a command, an external MCP call and a read. */
+export const CALL_KINDS = new Set(['command', 'external', 'read']);
+
+/** The work ledger’s entries a run keeps (tools/uat/room-events.mjs) and the trajectories read: turns, and those calls. */
+export const WORK_KINDS = new Set(['turn', ...CALL_KINDS]);
+
 /** The tool a ledger entry ran, by its harness’s name, or null. @param {any} w */
 function ledgerName(w) {
   if (w?.kind === 'command') return 'Bash';

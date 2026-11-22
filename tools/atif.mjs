@@ -14,7 +14,7 @@
 // background. Tokens and cost come from the work ledger (tools/atif-metrics.mjs). The run clock’s events are no steps,
 // since the agent saw only its line in a prompt: they go in the trajectory’s extra (tools/atif-clock.mjs).
 
-import { callsOf, questionsOf } from './atif-calls.mjs';
+import { CALL_KINDS, callsOf, questionsOf, WORK_KINDS } from './atif-calls.mjs';
 import { CLOCK_WORDS, clockScope } from './atif-clock.mjs';
 import { finalMetrics, meter } from './atif-metrics.mjs';
 import { placePrompts, promptedTurns, promptSteps, scopeOf, unresolvedGuides } from './atif-prompts.mjs';
@@ -27,8 +27,6 @@ export { NOT_RECORDED, NOT_RECORDED_WITHOUT_PROMPTS } from './atif-prompts.mjs';
 const iso = (/** @type {unknown} */ ms) => (typeof ms === 'number' && Number.isFinite(ms) ? new Date(ms).toISOString() : undefined);
 /** The items an agent session shows: each is one of its steps. */
 const OWN_KINDS = new Set(['agent', 'block', 'app']);
-/** The work ledger’s entries for one call, which keep its arguments (tools/atif-calls.mjs). */
-const CALL_KINDS = new Set(['command', 'external', 'read']);
 
 /**
  * The events folded into what the trajectories read: each item as it ended, in the order it was added, each step of a
@@ -88,7 +86,7 @@ function foldOne(f, e) {
       e.seq,
     );
   else if (e.type === 'entry.patch') noteTake(f, d.sessionId, Object.assign(inboxOf(f, d.sessionId).get(d.id) ?? {}, d.patch), e.seq);
-  else if (e.type === 'work.add' && (d.entry?.kind === 'turn' || CALL_KINDS.has(d.entry?.kind))) f.work.set(d.entry.id, { ...d.entry, from: e.seq });
+  else if (e.type === 'work.add' && WORK_KINDS.has(d.entry?.kind)) f.work.set(d.entry.id, { ...d.entry, from: e.seq });
   else if (e.type === 'work.patch' && f.work.has(d.id)) Object.assign(f.work.get(d.id), d.patch, d.patch?.endedAt ? { to: e.seq } : {});
   else if (Object.hasOwn(CLOCK_WORDS, e.type)) f.clocks.push({ seq: e.seq, type: e.type, data: d });
 }
