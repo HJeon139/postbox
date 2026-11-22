@@ -2,6 +2,18 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.36.2 (2026-11-22)
+
+### Fixes
+
+- **guide:** give postbox.anchors’ argument shape in the review entry
+- **review:** keep the guide’s diagram-lint clause, and build the kit’s reported parts once
+- **review:** keep the receipt on reviews only, wait for the answer in the spec, report it plainly
+- **review:** keep a part named “the whole app” from sharing the whole-app comment’s target
+- **review:** take a comment on the whole app, and say when an app names no parts
+- **review:** read a saved verdict by its own key, in the receipt and the reviewers’ line
+- **review:** keep a receipt of the answer a revision replaced, and say this revision needs its own
+
 ## 4.36.1 (2026-11-22)
 
 ### Fixes
