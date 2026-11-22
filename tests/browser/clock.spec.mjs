@@ -20,9 +20,13 @@ failOnPageErrors(test);
 const HALF_PAST_MIDNIGHT = Date.UTC(2026, 10, 21, 0, 30);
 let n = 0;
 
-for (const [locale, shown, reset] of [
-  ['en-US', /^12:30\sAM$/, /^12:30 am$/],
-  ['en-GB', /^00:30$/, /^00:30$/],
+// The next 00:30 UTC to come, for an agent out of quota until then: a time already past isn’t shown.
+const now = new Date();
+const NEXT_HALF_PAST = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1, 0, 30);
+
+for (const [locale, shown, reset, quota] of [
+  ['en-US', /^12:30\sAM$/, /^12:30 am$/, /^ · out of quota until 12:30\sAM$/],
+  ['en-GB', /^00:30$/, /^00:30$/, /^ · out of quota until 00:30$/],
 ]) {
   test.describe(locale, () => {
     test.use({ locale, timezoneId: 'UTC', viewport: { width: 375, height: 812 } });
@@ -42,6 +46,9 @@ for (const [locale, shown, reset] of [
       // A quota’s reset time, in the composer, on the same clock.
       const at = await page.evaluate((ms) => import('/app/js/quota-words.mjs').then((m) => m.resetTime(ms, ms - 60_000)), HALF_PAST_MIDNIGHT);
       expect(at, 'a quota’s reset time').toMatch(reset);
+      // An agent’s row, out of quota until 00:30, on the same clock.
+      arrange.setSession(rt, arrange.agentIn(rt, t.id).id, { quota: { until: NEXT_HALF_PAST } });
+      await expect(page.locator(`#agent-row-${arrange.agentIn(rt, t.id).id} .agent-state`), 'an agent row’s quota time').toHaveText(quota);
     });
   });
 }
