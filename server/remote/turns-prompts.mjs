@@ -4,6 +4,7 @@
 // repeat gets the same answer. A prompt nobody can answer any more marks its card expired, canceled or ended.
 
 import { NOT_YOUR_PROMPT } from '../../shared/mcp-tools.mjs';
+import { HOST_LIMIT } from '../../shared/question-words.mjs';
 import { message as protocolMessage, REMOTE_LIMITS } from '../../shared/remote-protocol.mjs';
 import { describePermission } from '../adapters/claude-stream.mjs';
 import { offerNeed } from '../card-needs.mjs';
@@ -12,8 +13,9 @@ import { asksByPrompt } from '../permission-prompt.mjs';
 import { claimPrompt } from '../prompt-claim.mjs';
 import { claimAhead } from '../turn-work.mjs';
 import { linkOf } from './turns-need.mjs';
+import { cardOf, isOpen, isQuestion, openCards, permissionCards, questionParts } from './turns-prompt-cards.mjs';
 import { replayCeiling, replayed } from './turns-replay.mjs';
-import { ENDED_TEXT, key, ON_HOST, send, sessionOfTurn, updateRemote } from './turns-shared.mjs';
+import { ENDED_TEXT, key, ON_HOST, send, updateRemote } from './turns-shared.mjs';
 
 /** @typedef {import('./turns.mjs').RemoteTurns} RemoteTurns */
 /** @typedef {import('./turns-shared.mjs').Live} Live */
@@ -31,7 +33,7 @@ export function onPrompt(rts, hostId, m) {
   // prompt, which claims as any does (#353), and never gets the card’s answer.
   const shown = cardOf(rts, m.turn, m.id);
   const card = shown && sameEntry(shown.it, m) ? shown : null;
-  if (card && card.it.status !== 'open') {
+  if (card && !isOpen(card.it)) {
     if (card.it.remote?.answer) send(link, 'answer', { turn: m.turn, prompt: m.id, result: card.it.remote.answer });
     return;
   }
@@ -44,9 +46,12 @@ export function onPrompt(rts, hostId, m) {
   // --no-prompt, refuses the call itself; this is for one that wasn’t.
   if (!card && !asksByPrompt(rts.rt, live.sessionId))
     return void send(link, 'answer', { turn: m.turn, prompt: m.id, result: { behavior: 'deny', message: NOT_YOUR_PROMPT.content[0].text } });
-  // Shown already: after a restart nothing waits on it here yet, so its answer is waited for again.
+  // Shown already: after a restart nothing waits on it here yet, so its answer is waited for again. A question carries
+  // on from the blocks it showed (#1059).
   if (card) {
-    if (!rts.rt.permissionWaits.has(card.it.id)) waitOn(rts, live, card, m);
+    if (waiting(rts, card)) return;
+    if (isQuestion(card.it)) askAgain(rts, live, m);
+    else waitOn(rts, live, card, m);
     return;
   }
   // As on the laptop, only a prompt for a call the turn’s stream showed counts, once (#353). The daemon’s repeat of one
@@ -135,6 +140,29 @@ function waitOn(rts, live, card, m) {
   });
 }
 
+/** Whether anything here waits on a prompt’s card, or on any of a question’s blocks. @param {RemoteTurns} rts @param {{ it: any }} card */
+const waiting = (rts, card) =>
+  isQuestion(card.it)
+    ? questionParts(rts, card.it.remote.turn, card.it.remote.prompt).some((p) => rts.rt.permissionWaits.has(p.it.id))
+    : rts.rt.permissionWaits.has(card.it.id);
+
+/**
+ * A question shown before a restart, asked on from its blocks (#1059): an answered one counts, an open one is waited on,
+ * and those never shown are shown now. @param {RemoteTurns} rts @param {Live} live @param {any} m
+ */
+function askAgain(rts, live, m) {
+  const input = m.request?.input;
+  const hostPrompt = { hostId: live.hostId, turn: m.turn, id: m.id, entry: typeof m.entry === 'string' ? m.entry : null };
+  const shown = questionParts(rts, m.turn, m.id);
+  setWaiting(rts, live, true);
+  const tool = String(m.request?.tool_name ?? '');
+  const asked = rts.rt.requestPermission(live.sessionId, { tool, input, toolUseId: m.request?.tool_use_id ?? null, hostPrompt, shown });
+  void asked.then((/** @type {any} */ answer) => {
+    setWaiting(rts, live, false);
+    answered(rts, live.hostId, m, answer, input ?? {});
+  });
+}
+
 /**
  * The person answered (or the turn ended first): the answer goes to the host, and onto the card for repeats,
  * unless the host ended the prompt meanwhile.
@@ -154,9 +182,18 @@ function answered(rts, hostId, m, answer, input) {
   } catch {
     result = { behavior: 'deny', message: 'Postbox couldn’t send this answer to the host, so it didn’t allow it.' };
   }
-  const card = cardOf(rts, m.turn, m.id);
-  if (card) rts.rt.threads.patchItem(card.threadId, card.it.id, { remote: { ...card.it.remote, answer: result } });
+  for (const c of answerHolders(rts, m)) rts.rt.threads.patchItem(c.threadId, c.it.id, { remote: { ...c.it.remote, answer: result } });
   send(linkOf(rts, hostId), 'answer', { turn: m.turn, prompt: m.id, result });
+}
+
+/**
+ * Where a prompt’s answer is kept for repeats: its card, or each of a question’s blocks, so none of them reads as still
+ * waiting. @param {RemoteTurns} rts @param {{ id: string, turn: string }} m
+ */
+function answerHolders(rts, m) {
+  const card = cardOf(rts, m.turn, m.id);
+  if (!card) return [];
+  return isQuestion(card.it) ? questionParts(rts, m.turn, m.id) : [card];
 }
 
 /**
@@ -194,7 +231,7 @@ function setWaiting(rts, live, on) {
  */
 export function onPromptExpired(rts, m) {
   const card = cardOf(rts, m.turn, m.id);
-  if (card && card.it.status !== 'open') return;
+  if (card && !isOpen(card.it)) return;
   rts.endedPrompts.add(key(m.turn, m.id));
   if (!card) return;
   const canceled = m.reason === 'canceled';
@@ -228,7 +265,7 @@ export function onError(rts, m) {
   if (m.re === 'prompt-expired' && typeof m.turn === 'string') {
     if (typeof m.id === 'string') {
       const card = cardOf(rts, m.turn, m.id);
-      if (card && card.it.status !== 'open') return;
+      if (card && !isOpen(card.it)) return;
       rts.endedPrompts.add(key(m.turn, m.id));
       if (card) endCard(rts, card, 'ended', ENDED_TEXT, rts.now());
       return;
@@ -250,24 +287,22 @@ export function onError(rts, m) {
  */
 export function endCard(rts, card, status, message, at, extra = {}) {
   const rt = rts.rt;
+  // A question’s blocks stay asking: its call hears why it ended, and a later answer reaches the agent as an event.
+  // The end goes on each block, so the host prompt no longer counts as open (isOpen).
+  if (isQuestion(card.it)) {
+    // The host’s own limit (noAnswer) says so, so the question hands over what it took (ask-question.mjs, handOver).
+    const why = extra.noAnswer ? HOST_LIMIT : status;
+    for (const p of questionParts(rts, card.it.remote.turn, card.it.remote.prompt)) {
+      rt.settlePermission(p.it.id, why, message);
+      rt.threads.patchItem(p.threadId, p.it.id, { remote: { ...p.it.remote, ended: at } });
+    }
+    return;
+  }
   if (rt.permissionWaits.has(card.it.id)) rt.settlePermission(card.it.id, status, message, {}, { endedAt: at, ...extra });
   else {
     // A card kept open across a restart has no wait to settle: it closes here, and an expiry tells the agent (#721).
     closeCard(rt, card.threadId, card.it.id, card.it.sessionId, { status, answeredAt: rts.now(), endedAt: at, ...extra });
   }
-}
-
-/** The card for a host prompt, in its session’s conversation. @param {RemoteTurns} rts @param {string} turn @param {string} id */
-function cardOf(rts, turn, id) {
-  const se = sessionOfTurn(rts, turn);
-  if (!se) return null;
-  for (const threadId of rts.rt.threads.conversationThreads(se.threadId)) {
-    const it = rts.rt.store.pending
-      .items(threadId)
-      .find((/** @type {any} */ i) => i.kind === 'permission' && i.remote?.turn === turn && i.remote?.prompt === id);
-    if (it) return { threadId, it };
-  }
-  return null;
 }
 
 /**
@@ -279,23 +314,8 @@ function cardOf(rts, turn, id) {
 export function endOrphanCards(rts, hostTurns) {
   for (const t of hostTurns) {
     for (const card of openCards(rts, t)) {
-      if (rts.rt.permissionWaits.has(card.it.id)) continue;
+      if (waiting(rts, card)) continue;
       endCard(rts, card, 'expired', '', rts.now());
     }
   }
-}
-
-/** @param {RemoteTurns} rts @param {string} turn */
-export const openCards = (rts, turn) => permissionCards(rts, turn).filter((c) => c.it.status === 'open');
-
-/** Every card for a host turn’s prompts, in its session’s conversation. @param {RemoteTurns} rts @param {string} turn */
-function permissionCards(rts, turn) {
-  const se = sessionOfTurn(rts, turn);
-  if (!se) return [];
-  return rts.rt.threads.conversationThreads(se.threadId).flatMap((/** @type {string} */ threadId) =>
-    rts.rt.store.pending
-      .items(threadId)
-      .filter((/** @type {any} */ i) => i.kind === 'permission' && i.remote?.turn === turn)
-      .map((/** @type {any} */ it) => ({ threadId, it })),
-  );
 }

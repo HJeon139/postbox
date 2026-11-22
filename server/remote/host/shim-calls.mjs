@@ -3,6 +3,7 @@
 
 import { hostBlockRefusal } from '../../../shared/block-updates.mjs';
 import { GONE_TOOLS, NOT_YOUR_PROMPT, TOOL_DEFS } from '../../../shared/mcp-tools.mjs';
+import { nobodyAnswered, QUESTION_TOOL } from '../../../shared/question-words.mjs';
 import { encode, message, TOOL_ROUTES, toolRoute } from '../../../shared/remote-protocol.mjs';
 import { fail, minutes, respond, send, textResult } from './shim-harness.mjs';
 import { after, deliver, settle, TIMINGS } from './shim-state.mjs';
@@ -114,7 +115,7 @@ function permission(sh, rpcId, args, progressToken) {
     return respond(rpcId, textResult(JSON.stringify({ behavior: 'deny', message: `Postbox couldn’t show this permission request: ${e.message}` })));
   }
   /** @type {Pending} */
-  const p = { msg, kind: 'permission', rpcId, started: Date.now(), timers: new Set(), tool: 'permission_prompt' };
+  const p = { msg, kind: 'permission', rpcId, started: Date.now(), timers: new Set(), tool: 'permission_prompt', asks: String(args?.tool_name ?? '') };
   if (typeof progressToken === 'string' || (typeof progressToken === 'number' && Number.isFinite(progressToken))) {
     p.progress = { token: progressToken, value: 0 };
     const tick = () => {
@@ -151,7 +152,11 @@ export function armExpiry(sh, p, id) {
 function expire(sh, id, limit) {
   const p = settle(sh, id);
   if (!p) return;
-  const message = `Nobody answered this permission request in Postbox within ${minutes(limit)}, so it was denied. Ask again if you still need it.`;
+  // A question stays open in the conversation, as it does on this computer (#1059): asking again would show it twice.
+  const message =
+    p.asks === QUESTION_TOOL
+      ? nobodyAnswered(minutes(limit))
+      : `Nobody answered this permission request in Postbox within ${minutes(limit)}, so it was denied. Ask again if you still need it.`;
   respond(p.rpcId, textResult(JSON.stringify({ behavior: 'deny', message })));
   notify(sh, 'permission-expired', id);
 }

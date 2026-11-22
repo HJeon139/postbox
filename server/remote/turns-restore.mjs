@@ -4,7 +4,8 @@
 // or to resume.
 
 import { needHost, releaseHost } from './turns-need.mjs';
-import { endCard, openCards } from './turns-prompts.mjs';
+import { openCards } from './turns-prompt-cards.mjs';
+import { endCard } from './turns-prompts.mjs';
 import { interrupted, reattach, whenBack } from './turns-resume.mjs';
 import { key, ON_HOST, sessionOfTurn, updateRemote } from './turns-shared.mjs';
 import { askStop, dropStop } from './turns-stops.mjs';

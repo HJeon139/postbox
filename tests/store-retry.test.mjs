@@ -4,6 +4,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { Store } from '../server/store.mjs';
+import { STORE_WAITS } from '../shared/limits.mjs';
 import { eio, logDisk, thread, tmp } from './store-retry-fixture.mjs';
 
 test('the status says writable, the cause, what was lost, a warning, whether a Retry runs, and the last durable seq', async () => {
@@ -178,6 +179,8 @@ test('a reload listener that never settles makes Retry reject within the bound a
   assert.equal(s.writable, true);
   assert.equal(s.state.threads.late, undefined, 'the late listener’s commit was refused: nothing of the old reconciliation lands');
   assert.ok(['ECLOSED', 'EIO', 'ETIMEDOUT', 'EBUSY'].includes(await late), `refused with the cause, not landed: ${await late}`);
+  // The 50 ms bound is the listener’s, not the final sync’s: close() gets the product’s limit for a disk step (#1636).
+  Object.assign(s, { stepBoundMs: STORE_WAITS.stepMs });
   await s.close();
 });
 
@@ -213,6 +216,8 @@ test('a reload listener that rejects at once doesn’t hide a sibling still runn
   assert.equal(s.writable, true);
   assert.equal(s.state.threads.late, undefined, 'B’s late commit never landed');
   assert.notEqual(await late, 'landed');
+  // The 50 ms bound is the listeners’, not the final sync’s: close() gets the product’s limit for a disk step (#1636).
+  Object.assign(s, { stepBoundMs: STORE_WAITS.stepMs });
   await s.close();
 });
 
