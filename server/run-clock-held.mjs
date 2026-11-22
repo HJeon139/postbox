@@ -10,10 +10,12 @@ const heldTurns = new WeakMap();
 
 /**
  * A turn that came another way than the inbox (a message held behind a turn, a release after a stop) for an agent whose
- * clock holds it: kept for the resume. Memory only: a restart loses them, as it loses a message held for a busy agent.
+ * clock is paused: kept for the resume. One whose clock expired is dropped. Memory only: a restart loses them, as it loses a message held for a busy agent.
  * @param {any} rt @param {string} sessionId @param {{ message: any, summarizeTo: string|null, threadId: string|null }} turn
  */
 export function holdForClock(rt, sessionId, turn) {
+  // An expired clock holds its agent for good: the turn can never run, so it isn’t kept.
+  if (rt.store.pending.clock(sessionId)?.state === 'expired') return;
   const mine = heldTurns.get(rt) ?? new Map();
   heldTurns.set(rt, mine);
   mine.set(sessionId, [...(mine.get(sessionId) ?? []), turn]);

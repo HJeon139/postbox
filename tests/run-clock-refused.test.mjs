@@ -90,3 +90,34 @@ test('the turns a clock holds go at its expiry, and at the session’s delete', 
   await settle();
   assert.equal(heldCount(g.rt, g.se.id), 0, 'its session is gone');
 });
+
+test('Send now on a queued message while the clock is paused is refused, and the message stays queued', async () => {
+  const f = clocked();
+  clockAction(f.rt, f.se.id, { action: 'start', budgetS: 600 });
+  clockAction(f.rt, f.se.id, { action: 'pause' });
+  // A plain message waits in the agent’s inbox while the clock holds it.
+  f.rt.sendMessage(f.t.id, { text: 'When you can.' });
+  await settle();
+  const queued = (f.store.state.inbox[f.se.id] ?? []).find((e) => e.state === 'waiting');
+  assert.ok(queued, 'queued');
+  assert.throws(
+    () => f.rt.sendQueuedNow(f.t.id, queued.id),
+    (e) => e.status === 409 && /run clock is paused/.test(e.message),
+  );
+  await settle();
+  assert.equal(f.store.state.inbox[f.se.id].find((e) => e.id === queued.id).state, 'waiting', 'still waiting, not taken');
+  assert.equal(heldCount(f.rt, f.se.id), 0, 'nothing held in memory');
+  assert.equal(f.adapter.calls.length, 0, 'no turn');
+});
+
+test('a turn that comes after the clock expired isn’t held, since it can never run', async () => {
+  const f = clocked();
+  clockAction(f.rt, f.se.id, { action: 'start', budgetS: 60 });
+  mock.timers.tick(60_000);
+  await settle();
+  assert.equal(f.store.state.clocks[f.se.id].state, 'expired');
+  f.rt.turnService.run(f.se.id, { kind: 'notice', text: 'A job you started ended.' });
+  f.rt.turnService.run(f.se.id, { kind: 'notice', text: 'And another.' });
+  assert.equal(heldCount(f.rt, f.se.id), 0);
+  assert.equal(f.adapter.calls.length, 0, 'no turn');
+});

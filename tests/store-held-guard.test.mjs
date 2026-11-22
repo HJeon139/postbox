@@ -149,8 +149,9 @@ const PENDING = {
   // the host stops its pause or expiry waits on, which the stop itself just wrote.
   'run-clock-install.mjs': ['installRunClock'],
   'run-clock.mjs': ['clockOf', 'unconfirmedStops', 'clockAction'],
+  // Whether a turn is kept for the resume: its clock may have expired behind a held commit, and then it can never run.
   // The refusal’s words: the agent’s handle, and whether its clock is paused, maybe written behind a held commit.
-  'run-clock-held.mjs': ['refuseWhileHeld', 'refuseWhileHeld'],
+  'run-clock-held.mjs': ['holdForClock', 'refuseWhileHeld', 'refuseWhileHeld'],
   // The session a clock line names, maybe just made, says which conversation the line goes to; and that
   // conversation’s newest clock line, maybe just added, whether a holding clock still needs one.
   'run-clock-notes.mjs': ['clockNote', 'repairClockNote', 'repairClockNote'],
