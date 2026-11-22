@@ -37,11 +37,13 @@ function openStream(/** @type {string} */ query, /** @type {string[]} */ out) {
 
 before(async () => {
   dir = tempDir('pb-prompts-kept-');
+  const was = process.env.POSTBOX_UAT_RECORD;
   process.env.POSTBOX_UAT_RECORD = '1';
   try {
     app = await start({ port: PORT, dataDir: dir, fresh: true, demo: true, quiet: true, claudeHome: dir, listen: false });
   } finally {
-    delete process.env.POSTBOX_UAT_RECORD;
+    if (was === undefined) delete process.env.POSTBOX_UAT_RECORD;
+    else process.env.POSTBOX_UAT_RECORD = was;
   }
   const thread = Object.values(app.store.state.threads)[0];
   const se = arrange.sessionsIn(app.rt, /** @type {any} */ (thread).id)[0];
@@ -87,6 +89,10 @@ test('#1528 /api/state and the event stream’s live and backlog frames carry no
 });
 
 test('#1528 a Postbox started without POSTBOX_UAT_RECORD records nothing: its turns have no ctx.prompt', async () => {
+  // Unset here, whatever this test's own process was given: a UAT run sets it for its Postbox, and its agents' shells
+  // inherit it (tools/uat/run-env.mjs).
+  const was = process.env.POSTBOX_UAT_RECORD;
+  delete process.env.POSTBOX_UAT_RECORD;
   const other = tempDir('pb-prompts-off-');
   const off = await start({ port: PORT + 1, dataDir: other, fresh: true, demo: true, quiet: true, claudeHome: other, listen: false });
   try {
@@ -94,5 +100,6 @@ test('#1528 a Postbox started without POSTBOX_UAT_RECORD records nothing: its tu
     assert.deepEqual(promptHook(off.rt, { id: 'turn_1', sessionId: 'se_1' }), {});
   } finally {
     await off.close();
+    if (was !== undefined) process.env.POSTBOX_UAT_RECORD = was;
   }
 });
