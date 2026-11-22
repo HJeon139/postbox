@@ -2,6 +2,17 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.37.0 (2026-11-22)
+
+### Features
+
+- **uat:** record each turn's exact prompt and guide, only in UAT recording mode
+
+### Fixes
+
+- **uat:** record an Agent SDK query's prompt once, at its first init
+- **uat:** record Antigravity's rules file once agy started, and note a restarted host turn's gap
+
 ## 4.36.7 (2026-11-22)
 
 ### Fixes
