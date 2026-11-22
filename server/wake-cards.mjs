@@ -157,7 +157,9 @@ export function resolveHop(rt, threadId, itemId, allow) {
     rt.threads.addItem(threadId, { kind: 'system', variant: 'joined', to: p.handle });
   }
   // A request stored before #108 kept only the preview.
-  if (allow)
+  // Its agent hears that it went, as it hears of a decline (#517): else it tells the person it’s still waiting.
+  const r =
+    allow &&
     rt.agentWake(it.fromSessionId, it.to, it.text ?? it.reason, {
       confirmed: true,
       replyIn: it.replyIn ?? null,
@@ -165,6 +167,8 @@ export function resolveHop(rt, threadId, itemId, allow) {
       itemId: it.itemId ?? null,
       bounce: it.bounce === true,
     });
+  // A target removed meanwhile is told of by dropHeld, which closes the card first.
+  if (r?.ok && from && !from.retiredFork) rt.sessions.tell(from.id, `The person allowed ${cardName(it)}: your message went to @${it.to}.`);
   settleHeld(rt, it, allow);
   if (allow) return { ok: true };
   if (from && !from.retiredFork) {
@@ -245,8 +249,10 @@ function sendHeld(rt, card, w, confirmed) {
     bounce: w.bounce === true,
   });
   const se = rt.s.sessions[w.fromSessionId];
-  if (!r.ok && !r.waiting && se && !se.retiredFork)
-    rt.sessions.tell(se.id, `Your message to @${w.to} (“${clip(w.text, 120)}”), held on ${cardName(card)}, didn’t go: ${r.message}`);
+  if (!se || se.retiredFork) return;
+  // Told either way (#517): one that went, so its agent stops saying it waits; one that didn’t, with why.
+  if (r.ok) rt.sessions.tell(se.id, `Your message to @${w.to} (“${clip(w.text, 120)}”), held on ${cardName(card)}, went to @${w.to}.`);
+  else if (!r.waiting) rt.sessions.tell(se.id, `Your message to @${w.to} (“${clip(w.text, 120)}”), held on ${cardName(card)}, didn’t go: ${r.message}`);
 }
 
 /**
