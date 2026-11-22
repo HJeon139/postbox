@@ -416,7 +416,7 @@ engineering-practices.md, “Commits and versions”, holds the Conventional Com
 
 ### Before you ask for review
 
-Only 37% of pull requests passed their first review in late November 2026, and most second reviews asked for an item on this list (review-guide.md, “Review rounds”). Check each before you add `ready for integrator`:
+Only 37% of pull requests passed their first review in late November 2026, and most first reviews that led to a second asked for an item on this list (review-guide.md, “Review rounds”). Check each before you add `ready for integrator`:
 - Each guard, clear or branch you add has a mutant: delete it, and a test fails.
 - Each new test or spec fails on main first, for the reason the PR names, and the body shows the command.
 - The class is swept: where else the same defect could be, with the grep you ran in the body.
