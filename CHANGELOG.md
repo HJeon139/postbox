@@ -2,6 +2,14 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.36.5 (2026-11-22)
+
+### Fixes
+
+- **tests:** give each failed commit in store-retry's phase test its own opId
+- **security:** resolve Kiro's folder spellings as the kernel does
+- **security:** resolve link targets as the kernel does when judging a path
+
 ## 4.36.4 (2026-11-22)
 
 ### Fixes
