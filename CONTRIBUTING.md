@@ -45,7 +45,7 @@ Three labels on a pull request say where its review stands. Each one is about th
 |---|---|---|
 | `ready for integrator` | The author | The head is ready for the integrator’s review: it passes the gate (`AGENTS.md`, “The gate”), its body says why, what changed, how it was verified and what’s not done, and you’ve checked it against `designs/review-guide.md`, the guide the integrator reviews by. |
 | `changes requested` | The integrator | The integrator reviewed this head and asked for changes, in a review on the PR. |
-| `integrator approved` | The integrator | The integrator approved this head. The integrator merges it once CI is green. |
+| `integrator approved` | The integrator | The integrator approved this head. The integrator merges it in the next batch, once the batch’s CI is green. |
 
 ```mermaid
 stateDiagram-v2
@@ -54,7 +54,7 @@ stateDiagram-v2
     Ready --> Changes: the integrator asks for changes
     Changes --> Ready: the author pushes fixes, removes changes requested and adds ready for integrator
     Ready --> [*]: the author pushes again and removes the label until the new head is ready
-    Approved --> Merged: CI is green
+    Approved --> Merged: its batch’s CI is green
     Merged --> [*]
 ```
 
@@ -67,7 +67,7 @@ stateDiagram-v2
    ```bash
    gh pr edit <n> --remove-label "changes requested" --add-label "ready for integrator"
    ```
-4. **Leave the merge to the integrator.** An approved pull request is brought up to date with `main` and merged once CI is green. Don’t merge it yourself, and don’t add `integrator approved` to your own PR.
+4. **Leave the merge to the integrator.** The integrator merges approved pull requests in batches: several merge into one branch, CI runs once on it, and the branch merges into `main` once every check is green (`designs/review-guide.md`, “Merging: batches”). Your PR keeps its own merge commit, so its commits and `Fixes #n` land as they would alone. If it conflicts with another, the integrator resolves the conflict and says how in the batch’s PR. Don’t merge it yourself, and don’t add `integrator approved` to your own PR.
 
 If you can’t add labels (GitHub lets only people with triage access or above change them, and outside contributors often don’t have it), comment on the PR that it’s ready for review, or that you’ve answered one, and the maintainer sets the label.
 
