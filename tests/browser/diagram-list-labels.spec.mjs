@@ -30,6 +30,14 @@ const CLASSES = `classDiagram
   Build : +int count
   Build : - String name
   Build --> Test : 1. uses`;
+// A class diagram’s arrows and annotations are syntax, not label starts: each must still draw.
+const CLASS_SYNTAX = `classDiagram
+  Shape --|> Base : Inheritance
+  Circle ..|> Shape
+  Car --* Wheel
+  Fleet "1" --* "many" Car
+  <<interface>> Shape
+  Wheel : - decrement() --`;
 // The other blocks Mermaid can’t draw at a label’s start: a heading, a quote and a rule.
 const BLOCKS = `flowchart TD
   A[# of users] --> B["> quoted"]
@@ -94,6 +102,7 @@ for (const [kind, source, labels, plain = []] of /** @type {[string, string, str
   // A member’s “-” marks it private, so it stays Mermaid’s to read: no joiner goes before it.
   ['a class diagram’s', CLASSES, ['1. Build', '+int count', '- String name', '1. uses'], ['- String name']],
   ['a heading’s, a quote’s and a rule’s', BLOCKS, ['# of users', '> quoted', '---']],
+  ['a class diagram’s arrows and annotations, around its', CLASS_SYNTAX, ['Inheritance', 'interface', '- decrement()'], ['- decrement()']],
 ]))
   test(`#684 ${kind} labels that start like a block show as written`, async ({ page }) => {
     const shown = await drawn(page, source);
