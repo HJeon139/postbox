@@ -16,7 +16,13 @@ const opener = (forClass) => String.raw`(?:[[(|${forClass ? '' : '{:'}]|(?<![-=.
 const listStart = (forClass) => new RegExp(String.raw`(${opener(forClass)})(?=(?:\d{1,9}[.)]|[-*+])[ \t])`, 'g');
 const LIST_START = listStart(false);
 const LIST_START_CLASS = listStart(true);
-const asWritten = (src) => src.replace(/^\s*classDiagram\b/m.test(src) ? LIST_START_CLASS : LIST_START, '$1\u2060');
+// A Markdown string (“`…`” in quotes) can run over lines, and each of its lines can start like a list item too.
+const MARKDOWN_STRING = /"`([^`]*)`"/g;
+const LINE_LIST_START = /(^|\n)([ \t]*)(?=(?:\d{1,9}[.)]|[-*+])[ \t])/g;
+const asWritten = (src) =>
+  src
+    .replace(MARKDOWN_STRING, (_m, body) => '"`' + body.replace(LINE_LIST_START, '$1$2\u2060') + '`"')
+    .replace(/^\s*classDiagram\b/m.test(src) ? LIST_START_CLASS : LIST_START, '$1\u2060');
 
 (function () {
   const out = document.getElementById('out');

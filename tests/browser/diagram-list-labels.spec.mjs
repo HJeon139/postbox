@@ -27,6 +27,12 @@ const CLASSES = `classDiagram
   class Build["1. Build"]
   Build : +int count
   Build : - String name`;
+// A Markdown string can run over lines, each of which can start like a list item, its first one included.
+const MARKDOWN_LINES = `flowchart TD
+  A["\`
+1. Build
+- Lint
+then ship\`"] --> B[Done]`;
 // A space after the arrow’s “+” or “-” is allowed: a joiner there would start a stray participant named “- A”.
 const SEQUENCE = `sequenceDiagram
   A->>+ B: hi
@@ -78,6 +84,7 @@ for (const [kind, source, labels, plain = []] of /** @type {[string, string, str
   ['a flowchart’s node and edge', SOURCE, LABELS],
   ['a state diagram’s', STATES, STATE_LABELS],
   // A member’s “-” marks it private, so it stays Mermaid’s to read: no joiner goes before it.
+  ['a Markdown string’s', MARKDOWN_LINES, ['1. Build', '- Lint', 'then ship']],
   ['a class diagram’s', CLASSES, ['1. Build', '+int count', '- String name'], ['- String name']],
 ]))
   test(`#684 ${kind} labels that start like a list item show as written`, async ({ page }) => {
