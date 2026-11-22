@@ -7,7 +7,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { parseSnapshotText } from '../../server/store-snapshot-lines.mjs';
-import { keepEvent } from './room-events.mjs';
+import { keepEvent, placeOf } from './room-events.mjs';
 
 export { keepEvent };
 
@@ -226,7 +226,7 @@ export function readHistory(dir) {
   const kept = lines(readFileSync(saved, 'utf8'));
   if (kept.some((e) => e.type === 'item.move')) return kept;
   const moves = logged(dir).filter((e) => e.type === 'item.move');
-  return moves.length ? [...kept, ...moves].sort((a, b) => a.seq - b.seq) : kept;
+  return moves.length ? [...kept, ...moves].sort((a, b) => placeOf(a) - placeOf(b)) : kept;
 }
 
 /**

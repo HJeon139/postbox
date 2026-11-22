@@ -8,6 +8,7 @@ import { runChecks } from '../tools/uat/checks.mjs';
 import { addressed, timeAfter } from '../tools/uat/room-delivery.mjs';
 import { blockHistory } from '../tools/uat/room-history.mjs';
 import { hopCards } from '../tools/uat/triggers-hostwakes.mjs';
+import { jobTimeline } from '../tools/uat/triggers-jobs.mjs';
 import { ROUND_TWO, room, T0 } from './delivery-fixture.mjs';
 
 const s = (n) => T0 + n * 1000;
@@ -79,4 +80,18 @@ test('a block answered before a restart and reopened after a turn in the new epo
   assert.deepEqual(blockHistory([block, answer, turn, reopen]).reopened, []);
   // Without the turn, the same reopen is unread.
   assert.equal(blockHistory([block, answer, reopen]).reopened.length, 1);
+});
+
+test('a job Stop asked about before a restart and kept after a Stop in the new epoch was kept from that Stop', () => {
+  // As tools/uat/history.mjs keeps events after Postbox restarted: epoch 1, numbered from 1 again (#1529).
+  const job = (state, kept = false) => [{ id: 'j1', state, ...(kept ? { kept: true } : {}) }];
+  const events = [
+    { seq: 50, type: 'session', data: { id: 'se_a', state: 'tool', stopAsk: true, jobs: job('running') } },
+    { seq: 5, epoch: 1, type: 'session', data: { id: 'se_a', state: 'stopping', stopAsk: false, updatedAt: 9_000, jobs: job('running') } },
+    { seq: 6, epoch: 1, type: 'session', data: { id: 'se_a', state: 'idle', jobs: job('running', true) } },
+  ];
+  const [r] = jobTimeline(events);
+  assert.equal(r.keptAt, 6);
+  assert.equal(r.afterStop, true);
+  assert.equal(r.stopAt, 9_000);
 });
