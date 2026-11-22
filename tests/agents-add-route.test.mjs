@@ -81,6 +81,15 @@ test('#1620 − removing the last agent, as a remove that keeps the conversation
   assert.equal(f.store.state.threads[f.t.id], undefined);
 });
 
+test('#1620 − counts live agents, as the page does: beside only a retired fork, the last live agent stays (critic)', async () => {
+  const f = setup();
+  await sessionRoute(f.rt, `/api/sessions/${f.beta.id}`, 'DELETE', {});
+  f.store.emit('session', { id: 'se_fork', personaId: f.c.id, handle: 'gamma', threadId: f.t.id, retiredFork: true });
+  f.rt.threads.patch(f.t.id, (x) => ({ members: [...x.members, 'se_fork'] }));
+  await assert.rejects(sessionRoute(f.rt, `/api/sessions/${f.alpha.id}/remove`, 'POST', {}), { status: 409 });
+  assert.ok(f.store.state.sessions[f.alpha.id], 'alpha stays');
+});
+
 test('#1620 a retired agent is refused, saying how to bring it back, and a new one with its handle joins once', async () => {
   const f = setup();
   f.rt.updatePersona(f.c.id, { retired: true });

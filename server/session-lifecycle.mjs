@@ -43,7 +43,9 @@ export function deleteSession(rt, sessionId, { keepConversation = false } = {}) 
   const erase = t && !others.length ? erasedWith(rt, t) : null;
   // A remove from the Agents header’s − keeps the conversation (#1620): as the last agent’s, it’s refused, so a remove
   // that raced another doesn’t erase what its dialog said would stay. The conversation’s own Delete still erases it.
-  if (erase && keepConversation)
+  // It counts live agents, as the page’s − does: a retired fork beside it can’t take a message.
+  const lastLive = !others.some((id) => !rt.store.pending.session(id)?.retiredFork);
+  if (t && keepConversation && lastLive)
     throw httpError(409, `@${se.handle} is the last agent here, so removing it would delete the conversation. To end it, delete the conversation.`);
   rt.stop(sessionId, { silent: true });
   // A turn of one on a host, waiting to be attached again or to resume, is neither, as deleting a conversation does.

@@ -86,8 +86,9 @@ export const PENDING = {
   // PATCH sets it on, maybe started there.
   'room-chain-limit.mjs': ['roomChainLimit', 'patchThread'],
   // The members a delete keeps its room for, maybe joined behind a held commit (#796); the session it deletes, and the
-  // threads a conversation’s delete covers, any of them maybe made there too. Every lookup comes before any change.
-  'session-lifecycle.mjs': ['conversationScope', 'conversationScope', 'deleteSession', 'deleteSession', 'deleteSession', 'deleteSession'],
+  // threads a conversation’s delete covers, any of them maybe made there too; and whether each other member is a retired
+  // fork, for −’s last-agent refusal (#1620). Every lookup comes before any change.
+  'session-lifecycle.mjs': ['conversationScope', 'conversationScope', 'deleteSession', 'deleteSession', 'deleteSession', 'deleteSession', 'deleteSession'],
   // An agent changed or deleted, and a deleted agent’s sessions, any of them maybe made behind a held commit.
   'personas.mjs': ['update', 'remove'],
   // pendingIn: a thread's sessions, for a read that decides whether to make one; ensure: the agent it joins, which the
