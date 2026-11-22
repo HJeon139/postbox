@@ -167,3 +167,22 @@ test('a stopped host turn’s end that says its runner outlived its kill voids t
   assert.deepEqual(stopped?.data, { sessionId: id, turn, forced: true, why: 'unkilled', at: T0 + 25_000 });
   assert.equal(clock().voided?.why, 'unkilled');
 });
+
+test('a stop a restart can’t ask again, its host removed meanwhile, voids the run instead of waiting on it forever', () => {
+  // As the store holds it after a restart: the clock paused on a host turn, and that host since removed, so the
+  // turn’s end can never be confirmed (server/remote/turns-restore.mjs).
+  const r = clockedRig();
+  const id = r.se().id;
+  runClock(r.rt, id, { action: 'start', budgetS: 60 }, at(0));
+  r.store.emit('clock.paused', { sessionId: id, stopping: ['host-turn-9'], at: T0 + 10_000 });
+  r.store.emit('session', {
+    ...r.se(),
+    remoteTurn: { hostId: 'host-removed', turn: 'host-turn-9', state: 'stopping', at: 1, stopping: [{ turn: 'host-turn-9', hostId: 'host-removed', at: 1 }] },
+  });
+  mock.timers.setTime(T0 + 30_000);
+  startUp(r);
+  const stopped = clockEvents(r).find((e) => e.type === 'clock.stopped');
+  assert.deepEqual(stopped?.data, { sessionId: id, turn: 'host-turn-9', forced: true, why: 'restart', at: T0 + 30_000 });
+  assert.deepEqual(r.store.state.clocks[id].stopping, []);
+  assert.equal(r.store.state.clocks[id].voided?.why, 'restart');
+});

@@ -3,6 +3,7 @@
 // asked before the restart are asked again; delete and removing the host give up on what waits to attach
 // or to resume.
 
+import { clockStopConfirmed } from '../run-clock.mjs';
 import { needHost, releaseHost } from './turns-need.mjs';
 import { endCard, openCards } from './turns-prompts.mjs';
 import { interrupted, reattach, whenBack } from './turns-resume.mjs';
@@ -20,10 +21,14 @@ export function restore(rts) {
   for (const se of Object.values(rts.rt.s.sessions)) {
     const r = se.remoteTurn;
     if (!r) continue;
-    // Stops asked before the restart and not confirmed: asked again. A host removed since can’t be asked.
+    // Stops asked before the restart and not confirmed: asked again. A host removed since can’t be asked, so no one can
+    // say when its turn ended, if it has: a run clock that waits on it voids its timed run (#1526).
     for (const x of r.stopping ?? []) {
       if (rts.rt.s.hosts?.[x.hostId]) askStop(rts, se.id, x.hostId, x.turn, { unconfirmed: x.unconfirmed === true });
-      else dropStop(rts, se.id, x.turn);
+      else {
+        dropStop(rts, se.id, x.turn);
+        if (rts.rt.runClock) clockStopConfirmed(rts.rt, se.id, x.turn, rts.now(), 'restart');
+      }
     }
     if (r.state === 'stopping' && !rts.stopping.has(r.turn)) updateRemote(rts, se.id, { state: 'done', at: rts.now() });
     if (ON_HOST.has(r.state)) {
