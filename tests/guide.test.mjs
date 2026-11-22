@@ -92,7 +92,7 @@ test('#1478 the guide names postbox.publish, so agents learn an app can share it
 });
 
 test('#855 the guide names postbox.anchors, so an app shown for review names the parts to comment on', () => {
-  assert.match(guideText(), /or appId \(parts: postbox\.anchors\), previous\?/);
+  assert.match(guideText(), /or appId \(parts: postbox\.anchors\(\{ name: el \}\)\), previous\?/);
 });
 
 test('an agent is told which tools are turned off for it, and how to ask for one, not that the computer lacks them (#104)', () => {
