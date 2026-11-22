@@ -15,6 +15,7 @@ import { handleMcp } from '../server/mcp.mjs';
 import { inReadFolder, readFolderOffer } from '../server/read-folders.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
+import { hookEvent, promptCard, showCall } from './agy-calls.mjs';
 import * as arrange from './arrange.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
@@ -99,12 +100,22 @@ test('#1074 the hook’s variables carry the folders it may work in, and no read
   assert.equal(Object.hasOwn(vars, 'POSTBOX_AGY_READ'), false, 'the turn’s start would be stale by the next read');
 });
 
+/**
+ * The hook’s stdin for a read of `file` as step `step`, which the turn’s stream shows first, as a prompt needs (#907).
+ * @param {any} ctx @param {number} step @param {Record<string, unknown>} file
+ */
+function readStep(ctx, step, file) {
+  showCall(ctx, step, 'view_file', file);
+  return hookEvent(step, 'view_file', file);
+}
+
 test('#338 Always allow on the card saves the folder for the conversation, and the next read there has no card', async () => {
   const { home, ws, notes } = aHome();
   const store = new Store(null);
   const adapter = {
     name: 'antigravity-cli',
     capabilities: { promptTool: true, promptHook: true, permissions: 'none' },
+    promptCard,
     next: /** @type {any[]} */ ([]),
     async deliver(_s, _m, ctx) {
       await this.next.shift()?.(ctx);
@@ -124,12 +135,12 @@ test('#338 Always allow on the card saves the folder for the conversation, and t
     status: 200,
     json: async () => handleMcp(rt, se.id, JSON.parse(init.body), rt.turns.get(se.id)?.token ?? null),
   });
-  const read = JSON.stringify({ toolCall: { name: 'view_file', args: { AbsolutePath: join(notes, 'a.md') } } });
+  const file = { AbsolutePath: join(notes, 'a.md') };
   const env = { POSTBOX_MCP_URL: 'http://127.0.0.1:1/mcp', POSTBOX_AGY_MODE: 'ask', POSTBOX_AGY_FOLDERS: JSON.stringify([ws]) };
   /** @type {any[]} */
   const results = [];
-  adapter.next.push(async () => {
-    const asked = runAgyHook(read, { cwd: ws, env, home, fetchImpl: /** @type {any} */ (fetchMcp) });
+  adapter.next.push(async (/** @type {any} */ ctx) => {
+    const asked = runAgyHook(readStep(ctx, 1, file), { cwd: ws, env, home, fetchImpl: /** @type {any} */ (fetchMcp) });
     await sleep(10);
     const card = store.items(t.id).find((i) => i.kind === 'permission' && i.status === 'open');
     assert.equal(card.always?.lines[0].text, `Always allow ${notes} for this agent to read, in this conversation`);
@@ -147,8 +158,8 @@ test('#338 Always allow on the card saves the folder for the conversation, and t
     return fetchMcp(url, init);
   };
   // The next turn’s read, while that turn runs, as its hook asks.
-  adapter.next.push(async () => {
-    results.push(await runAgyHook(read, { cwd: ws, env, home, fetchImpl: /** @type {any} */ (counted) }));
+  adapter.next.push(async (/** @type {any} */ ctx) => {
+    results.push(await runAgyHook(readStep(ctx, 2, file), { cwd: ws, env, home, fetchImpl: /** @type {any} */ (counted) }));
   });
   rt.sendMessage(t.id, { text: 'read them again' });
   for (let i = 0; i < 200 && results.length < 2; i++) await sleep(5);
