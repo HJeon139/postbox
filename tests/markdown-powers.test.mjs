@@ -55,6 +55,9 @@ test('plain text reads a code span of any backtick run as the renderer does, and
   assert.equal(toPlainText('Say `` a`b*c `` then 2*n*k.'), 'Say a`b*c then 2*n*k.');
   // A run with no close of its length is text, all of it, as the renderer leaves it.
   assert.equal(toPlainText('x ``a`b 2*n*k'), 'x ``a`b 2*n*k');
+  // A close inside a longer run leaves the rest to open the next span, as the renderer reads it (pre-review).
+  assert.equal(toPlainText('`a`` b*c` *d*'), 'a b*c d');
+  assert.equal(toPlainText('`a``b*c` 2*n'), 'ab*c 2*n');
   // Every private-use character present: it still finds a placeholder the text doesn’t hold, and ends.
   const every = Array.from({ length: 0xf900 - 0xe000 }, (_, k) => String.fromCharCode(0xe000 + k)).join('');
   assert.equal(toPlainText(`${every} 10**9`), `${every} 10**9`);
