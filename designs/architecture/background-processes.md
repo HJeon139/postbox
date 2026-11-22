@@ -81,21 +81,22 @@ A backend that fails any case stays off, and the result is recorded with the run
 
 `tools/postbox-process.mjs` is a small Node script with no dependencies. It runs its command as an argument array, never through a shell. A command that needs a pipe or `&&` says so itself, as `sh -c '…'`, and the harness then judges it as written.
 
-The launcher is started as `node …/postbox-process.mjs run <id> <output folder> -- <command>`. It forks itself into a new session, whose leader it becomes (`setsid`), and the foreground copy exits at once. So neither a CLI that tracks its children nor Codex’s turn-group stop holds the launcher or ends it. The leader then waits for Postbox’s go-ahead (see “Startup handshake”). After the go-ahead it runs the command as its own child, in the same process group, and it stays the group’s leader until the command ends.
+The launcher is started as `node …/postbox-process.mjs run <id> <output folder> -- <command>`. The foreground copy forks the leader into a new session (`setsid`) and stays until Postbox has bound the leader and sent its go-ahead (see “Identity, bound by process ancestry”). Then it exits, and the shell call returns. After that, neither a CLI that tracks its children nor Codex’s turn-group stop holds the leader or ends it. After the go-ahead it runs the command as its own child, in the same process group, and it stays the group’s leader until the command ends.
 
 **The output folder holds output, and nothing else.** It’s `<the agent’s folder>/.postbox/processes/<id>/`, made by `start_process`, inside the workspace, so a workspace-write sandbox allows writing it. view_app already writes its pictures to `.postbox/` (`server/view-app/view-app.mjs`), and the folder ignores itself in git the same way.
 
-The launcher writes the command’s output in two files that take turns, each cut at 64 KB (the bound of `!` commands, `MAX_COMMAND_OUTPUT`), so a process never holds more than 128 KB on disk. When the command ends, the launcher also writes an `exit` file with the code or signal.
+The launcher writes the command’s output in two files that take turns, truncated in place rather than replaced, each cut at 64 KB (the bound of `!` commands, `MAX_COMMAND_OUTPUT`), so a process never holds more than 128 KB on disk. When the command ends, the launcher also writes an `exit` file with the code or signal.
 
 The command can write to this folder too, so Postbox treats everything in it as the command’s output: data to show, never input to a decision. No file there decides which process Postbox signals, or whether a run has ended.
 
-**Postbox reads and removes only inside that folder, and within its own limits.**
-- **The recorded path.** Postbox records the folder’s real path (`realpath.native`) when `start_process` makes it. Each later read or removal first resolves the folder again, and acts only if it still resolves to that same recorded path. If the workspace has moved, or `.postbox`, `processes` or the folder itself has been replaced by a link, Postbox doesn’t read or remove anything. The item then says the output is no longer available.
-- **Only the files it named.** Postbox opens only `out.0`, `out.1` and `exit`, each with `O_NOFOLLOW`, and checks that each is a regular file.
-- **Its own read limit.** It reads at most the last 64 KB of each output file and 1 KB of `exit`, whatever size the command has made them. The launcher’s 128 KB rotation bounds what the launcher writes, but the command can change the files too.
+**Postbox works on the files it created, by descriptor, and never by path after that.** A path walked again later can pass through a parent that changed in between, and `O_NOFOLLOW` guards only the last name. Node has no `openat` or `unlinkat`, so Postbox can’t anchor a later path walk to a directory it verified. It doesn’t walk the path again:
+- **Creation.** `start_process` makes the folder. It then creates `out.0`, `out.1` and `exit`, each with `O_CREAT | O_EXCL | O_NOFOLLOW`, so each one is a new, empty file that Postbox made, never an existing one. Postbox keeps all three descriptors open for the life of the process. It then checks each descriptor’s `fstat` (device and inode) against the files it finds at the folder’s real path (`realpath.native`, resolved once, at creation). If they don’t match, for example because a parent was swapped between `mkdir` and `open`, the registration is refused and its descriptors are closed. Postbox doesn’t try to remove what it made: at worst, that is three new empty files in a place the agent’s own command chose.
+- **Reads.** Every read, while the process runs and at its end, goes through those descriptors: `fstat`, then a positioned read. Changing a parent, renaming the folder or replacing a name with a link changes nothing that Postbox reads.
+- **Its own read limit.** At most the last 64 KB of each output file and 1 KB of `exit`, whatever size the command has made them. The launcher’s rotation bounds what the launcher writes, but the command can change the files too.
 - **`exit` is parsed strictly.** One JSON object, with a `code` that’s an integer or a `signal` that’s a signal name. Anything else reads as “exit status unknown”.
-- **Removal.** The folder is removed once the process has ended and its last output is in the store, on its item, or at start for a folder whose process the store doesn’t have open. Removal unlinks only those named files and `.gitignore`, then removes the empty folder. Unlinking a link removes the link, never its target. A folder with anything else left in it stays where it is.
-- **While it runs and after.** `read_process` reads from the folder while the process runs, and from the item after it ends.
+- **No removal by Postbox.** Postbox never unlinks or removes anything in the workspace. At the end, once the last output is in the store on the item, it truncates each file through its descriptor (`ftruncate` to 0) and closes them, so a finished process holds no disk. Removing the folder is the launcher’s job, at its own exit, with the agent’s permissions, inside the agent’s sandbox, as any file the agent’s command removes. A new launch sweeps earlier empty folders in `processes/` the same way.
+- **After a restart.** The descriptors are gone, and Postbox doesn’t reopen the files by path. The item keeps the output Postbox last copied: each poll copies the output’s end into the store. The end reads “exit status unknown: Postbox restarted while it ran”. That leaves at most 128 KB in a folder until a later launch sweeps it.
+- **While it runs and after.** `read_process` reads through the descriptors while the process runs, and from the item after it ends.
 
 Postbox gives the agent’s environment no token and no URL: [#54](https://github.com/HJeon139/postbox/issues/54) and [#126](https://github.com/HJeon139/postbox/issues/126) closed that path, and the launcher never calls the server.
 
@@ -210,9 +211,14 @@ On a remote host, the agent’s shell runs on the host. The launcher and its out
 - A launcher killed after the go-ahead has its recorded members stopped.
 - A command that exits with a grandchild still running has the grandchild stopped.
 - The output folder stays at or below 128 KB under a command that writes without end.
-- The output folder is removed after the end commits.
+- After the end commits, Postbox has truncated its files to 0 and closed them. The launcher has removed the folder.
 - **Forged files don’t steer Postbox:** a command that writes a false `exit` file, or files named `claim`, `group` or `stop`, changes neither which group is signaled nor when the end is recorded.
-- **Reads and removal stay inside the folder:** with `out.0` replaced by a link to a file outside it, a 10 MB output file, a malformed `exit`, and the folder moved after registration, Postbox reads at most its limits, never follows the link, and removes nothing outside the folder.
+- **Postbox stays on the files it created,** with a hook in the test build that runs between each check and its use:
+  - a parent (`.postbox`, `processes` or the folder) is swapped for a link to a folder outside, between `mkdir` and the exclusive creates: the registration is refused, and nothing outside gains more than the new empty files;
+  - a parent is swapped after registration, between polls and during a read: every read still returns the original files’ bytes;
+  - `out.0` is replaced by a link to a file outside: the outside file is never read;
+  - a 10 MB output file and a malformed `exit` are read within the limits;
+  - at the end, nothing in or outside the workspace is unlinked by Postbox, and the original files are truncated to 0.
 - **Failing closed:** a leader whose start time doesn’t match, and a group with no leader and no recorded member, are each left unsignaled, and the item says why.
 
 **Unit tests, with a fake process list:**
