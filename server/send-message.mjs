@@ -17,7 +17,8 @@ import { retireStale } from './wake-cards.mjs';
  * @param {{ text?: string, attachments?: any[], sendNow?: boolean, clientId?: unknown }} [message]  as the route has it
  */
 export function sendMessage(rt, threadId, { text = '', attachments = [], sendNow = false, clientId = undefined } = {}) {
-  const t = rt.thread(threadId);
+  // As written: a conversation just started behind a held commit isn’t published yet, and its first message is sent (#1292).
+  const t = rt.threads.toWrite(threadId);
   // First, before whom it goes to is worked out again: with no @-mention that’s the last speaker, who may have changed
   // since the first try (#1418’s review).
   const retryId = typeof clientId === 'string' && clientId ? clientId.slice(0, 100) : undefined;
@@ -67,7 +68,8 @@ export function sendMessage(rt, threadId, { text = '', attachments = [], sendNow
  * @param {any} rt @param {string} threadId @param {string} retryId
  */
 function repeatOf(rt, threadId, retryId) {
-  for (const se of rt.sessions.pendingIn(rt.threads.lineage(threadId).at(-1))) {
+  // The conversation as written: a retry of a first message sent behind a held commit is found, not posted twice (#1292).
+  for (const se of rt.sessions.pendingIn(rt.threads.lineage(threadId, (id) => rt.store.pending.thread(id)).at(-1))) {
     const e = rt.delivery.inbox(se.id).find((/** @type {any} */ x) => x.retryId === retryId);
     if (e) return { item: rt.store.pending.item(e.threadId, e.itemId) };
   }
@@ -118,14 +120,14 @@ function targetsOf(rt, t, mentioned) {
     }
   }
   // Refuse before anything is posted, so a refused message doesn’t also appear in the transcript.
-  const retired = mentioned.map((p) => rt.sessions.in(threadId).find((x) => x.personaId === p.id)).find((x) => x?.retiredFork);
+  const retired = mentioned.map((p) => rt.sessions.pendingIn(threadId).find((x) => x.personaId === p.id)).find((x) => x?.retiredFork);
   if (retired && !away) throw retiredError(retired);
   for (const p of away ? [] : mentioned) {
-    const joined = !rt.sessions.in(threadId).some((x) => x.personaId === p.id);
+    const joined = !rt.sessions.pendingIn(threadId).some((x) => x.personaId === p.id);
     targets.push({ se: rt.ensureSession(threadId, p.id, { brief: joined ? 'You were @-mentioned into this thread.' : null }) });
   }
   if (!targets.length) {
-    const members = rt.sessions.in(threadId).filter((x) => !x.retiredFork);
+    const members = rt.sessions.pendingIn(threadId).filter((x) => !x.retiredFork);
     const last = members.find((x) => x.id === t.lastSpeaker) ?? members[0];
     if (!last) throw httpError(409, 'No agent is in this thread. @-mention one to bring it in.');
     targets.push({ se: last });
