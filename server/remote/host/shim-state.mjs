@@ -29,7 +29,7 @@ export const TIMINGS = timings({
  * A message for the daemon, kept until it’s settled and sent again, in order, after each reconnect.
  * @typedef {{ msg: Record<string, any>, kind: 'queue' | 'ask' | 'permission' | 'notice', rpcId?: any,
  *   started: number, timers: Set<ReturnType<typeof setTimeout>>, progress?: { token: string | number, value: number },
- *   tool?: string, down?: ReturnType<typeof setTimeout> | null, sent?: Record<string, any> }} Pending
+ *   tool?: string, asks?: string, down?: ReturnType<typeof setTimeout> | null, sent?: Record<string, any> }} Pending
  * `sent`: a queued call’s arguments as sent, for its answer’s text (queuedText).
  * @typedef {ReturnType<typeof shimState>} Shim
  */

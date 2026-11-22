@@ -59,9 +59,9 @@ import { overdueStop, runBound, watchRun } from './uat/run-bound.mjs';
 import { endRun } from './uat/run-end.mjs';
 import { runEnv } from './uat/run-env.mjs';
 import { runFacts } from './uat/run-facts.mjs';
-import { keeper, readReceived, readStore, readStreams, readTranscripts, readUi, runPaths } from './uat/run-files.mjs';
+import { keeper, readReceived, readStore, readStreams, readTranscripts, readUi } from './uat/run-files.mjs';
 import { runScenario } from './uat/run-scenario.mjs';
-import { gitInfo, runRecord, runsRoot, writeJsonAtomic } from './uat/runs.mjs';
+import { gitInfo, mainCheckout, runRecord, runsRoot, writeJsonAtomic } from './uat/runs.mjs';
 import { phaseCap, stepCap } from './uat/scenario.mjs';
 import { seedAgents } from './uat/seed.mjs';
 import { stepPrompt } from './uat/step-prompt.mjs';
@@ -71,7 +71,7 @@ import { createTester, systemPrompt, unaddressed } from './uat/tester.mjs';
 import { runTiming } from './uat/timing.mjs';
 import { phaseGoals } from './uat/triggers.mjs';
 import { namedWait, sendThenStop, settle as settleTurns, stopThroughPage, testerWait } from './uat/turns.mjs';
-import { makeWorkspace } from './uat/workspace.mjs';
+import { keepOnExit, makeWorkspace, retainWorkspace, runPaths } from './uat/workspace.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const { values: opt } = parseArgs({
@@ -127,7 +127,8 @@ async function main() {
   const bound = runBound({ turns: opt['max-turns'], minutes: opt['max-minutes'] });
   const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
   const dir = join(runsRoot({ root: ROOT }), `${stamp}-${name}`);
-  const paths = await runPaths(dir);
+  const paths = await runPaths(dir, { root: ROOT, main: mainCheckout({ root: ROOT }) });
+  keepOnExit(paths);
   makeWorkspace(scenario, paths, dir);
   // A phase’s `- fault:` (#508): Postbox starts with the fault launcher in front of the faulted agent’s CLI.
   const faults = faultSetup({ scenario, root: ROOT, dir, env: process.env });
@@ -152,7 +153,7 @@ async function main() {
   if (!(await portFree(port))) throw new Error(`Port ${port} is in use. Pick another with --port.`);
   const { agentModels, agentEffort } = await seedAgents({ scenario, opt, root: ROOT, data: paths.data, log });
   // Ctrl-C cleans the hosts up through the page before anything stops (tools/uat/stop.mjs), with what’s there by then.
-  const run = { log, dir };
+  const run = { log, dir, retain: () => retainWorkspace(paths, log) };
   const stop = runStop(run);
   const signals = onStopSignal(stop, { log });
   const timeline = [];
@@ -542,6 +543,7 @@ async function main() {
         tester,
         facts,
         coverage,
+        workspace: paths.workspace,
       }),
       ...(facts.budget ? { budget: facts.budget } : {}),
     });

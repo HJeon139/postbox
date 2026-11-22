@@ -62,6 +62,7 @@ test('a run’s record keeps every key the live run writes to run.json, as it wr
         bound: { maxTurns: 150, maxMinutes: 45, turns: 3, minutes: 46, stopped: { step: 4, during: true, at: 1, why: 'it ran 46 minutes' } },
       },
       coverage: [{ phase: 1, trigger: 'x', hit: true }],
+      workspace: '/private/tmp/postbox-uat-workspace-abc/workspace',
       now: 120_000,
       git: () => null,
     }),
@@ -70,6 +71,8 @@ test('a run’s record keeps every key the live run writes to run.json, as it wr
   };
   // The bound, written as runRecord takes it from the run’s facts: the loop below checks only the keys written.
   assert.equal(written.bound?.stopped?.why, 'it ran 46 minutes', 'run.json’s bound');
+  // Where the agents worked (#885), which a recheck reads their commands against.
+  assert.equal(written.workspace, '/private/tmp/postbox-uat-workspace-abc/workspace');
   writeFileSync(join(dir, 'run.json'), JSON.stringify(written));
   const record = /** @type {Record<string, unknown>} */ (readRun(dir));
   for (const [key, value] of Object.entries(written)) assert.deepEqual(record[key], value, `run.json’s ${key}`);
