@@ -50,6 +50,8 @@ test('#283: a new agent given a deleted one’s handle is asked for on a card: t
   // The person deletes the persona too, then makes a new one with the same handle.
   f.rt.deletePersona(f.a.id);
   const again = f.rt.createPersona({ handle: 'alpha' });
+  // The line dated a minute later than the new persona, so its date alone would count it: only its persona id doesn’t.
+  for (const it of f.store.items(f.t.id)) if (it.variant === 'left') it.at = (again.createdAt ?? Date.now()) + 60_000;
   assert.notEqual(again.id, f.a.id);
   assert.equal(deletedFrom(f.rt, f.t, again), false, 'the new alpha was never deleted from here');
   const r = f.rt.agentWake(f.beta.id, 'alpha', 'Can you check the 1908 edition?', { itemId: 'it_new', prose: true });
@@ -58,12 +60,15 @@ test('#283: a new agent given a deleted one’s handle is asked for on a card: t
 
 test('#283: a line from before the persona id was recorded still counts by handle', () => {
   const f = setup();
+  const delta = f.rt.createPersona({ handle: 'delta' });
   f.rt.ensureSession(f.t.id, f.c.id);
   const gamma = arrange.sessionsIn(f.rt, f.t.id).find((x) => x.personaId === f.c.id);
   f.rt.deleteSession(gamma.id);
   // As an older Postbox wrote it: the handle only.
   for (const it of f.store.items(f.t.id)) if (it.variant === 'left') delete it.personaId;
   assert.equal(deletedFrom(f.rt, f.t, f.c), true);
+  // It names gamma’s handle only: an agent made earlier under another handle, never here, isn’t deleted by it (#874).
+  assert.equal(deletedFrom(f.rt, f.t, delta), false);
 });
 
 test('#283: a handle-only line doesn’t count against an agent created after it: that one came later', () => {
