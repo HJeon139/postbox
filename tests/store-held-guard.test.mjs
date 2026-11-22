@@ -1,4 +1,4 @@
-// Where server code reads items, work and apps, and which of the two reads it uses (#601, designs/508/601-held-view.md).
+// Where server code reads items, work, apps and schedules, and which of the two reads it uses (#601, designs/508/601-held-view.md).
 // The published reads (store.items(), item(), and store.state directly) show only what was applied. The
 // pending reads (store.pending, and the ledger's entries(), which uses it) show what is held behind a commit too. The
 // rule: a reader whose result decides a write the turn or a sweep makes reads pending; a reader whose result leaves
@@ -7,7 +7,7 @@
 // it is placed (the integrator's review of #611: a guard of pending sites alone let a new published reader through).
 // Production commits are placed too: a commit in front of held emits that touches these lists makes a pending read
 // inexact (§5). Lines the formatter split (`rt.store\n  .items(`) are joined before matching. Forms it can't follow
-// fail outright: destructuring `pending`, `items`, `work` or `apps` out of the store or the state, reaching them by a
+// fail outright: destructuring `pending`, `items`, `work`, `apps` or `schedules` out of the store or the state, reaching them by a
 // string key, binding the store, its pending reads or the ledger to a local, and calling items(), item()
 // or work() on anything but the store or its pending reads (the integrator's second review of #611: `const st =
 // rt.store; st.items(t)` passed), or through call, apply or bind. Optional chaining is read as a plain member. The guard
@@ -69,8 +69,8 @@ const DIRECT = {
   'permission-expiry.mjs': ['expireStalePermissions'], // at startup
   'public-state.mjs': ['publicItems'], // a conversation’s items by range, an HTTP answer to the page (#1155)
   'restart-sweep.mjs': ['foldCutOff', 'stopStreaming'], // at startup: the steps of turns a restart cut off, and their replies marked stopped
-  'sandbox-routes.mjs': ['sandboxRoute'],
-  'scheduled-wakes.mjs': ['rearmWakes'], // at startup or a reload, when nothing is held (#623) // an app version’s sandbox page: an HTTP answer to the page
+  'sandbox-routes.mjs': ['sandboxRoute'], // an app version’s sandbox page: an HTTP answer to the page
+  'scheduled-wakes.mjs': ['rearmWakes'], // at startup or a reload, when nothing is held (#623)
   'shell-runs.mjs': ['expireStaleCommands'], // at startup
   'store-outage.mjs': ['dropsAtReload'], // at a reload, when nothing is held: which held messages a reload drops (#623)
   'thread-headers.mjs': ['itemsOf'], // each thread's header facts, sent to the page (#1155)
@@ -118,7 +118,7 @@ test('every production commit in server/ is placed, with the lists it touches', 
 });
 
 test('no server file reaches the store’s reads through a form the guard can’t follow', () => {
-  const ALIAS = /\{[^}]*\b(pending|items|work|apps)\b[^}]*\}\s*=\s*[\w.]*\b(store|s|state)\b\s*[;,)]|[\w$\])]\s*\[\s*['"`](pending|items|work|apps)['"`]\s*\]/;
+  const ALIAS = /\{[^}]*\b(pending|items|work|apps|schedules)\b[^}]*\}\s*=\s*[\w.]*\b(store|s|state)\b\s*[;,)]|[\w$\])]\s*\[\s*['"`](pending|items|work|apps|schedules)['"`]\s*\]/;
   const found = sources().flatMap(([path, text]) =>
     text
       .split('\n')
