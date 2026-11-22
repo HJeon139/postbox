@@ -95,11 +95,11 @@ Postbox starts every harness process with two variables in its environment: `POS
   - its start time falls inside the turn;
   - its parent is init or the subreaper.
 
-**Case (b) is the owner’s call.** It gives no tie to the harness that Postbox observed: the marker is the process’s own account, and the start time and parent show only timing. The two reviews differ on whether that’s enough:
-- **The integrator:** it is. A forger is a process of the person’s own user, which can already signal these processes, so it gains at most a spurious wake for the agent the marker names.
-- **Critic:** it isn’t. Unix permission to signal a process doesn’t give Postbox authority to wake an agent for it, or to offer its Stop across sessions. So these sightings stay informational until the harness can establish ownership.
+**Why case (b) binds: the owner’s decision.** Case (b) gives no tie to the harness that Postbox observed. The marker is the process’s own account, and the start time and parent show only timing. The owner decided on 22 November 2026, on #1615, that it binds anyway:
+- **The reasoning:** a forged marker can only come from a process of the person’s own user. That process can already signal these processes, so a forger gains at most a spurious wake for the agent the marker names.
+- **The concern weighed against it:** permission to send a Unix signal isn’t, by itself, authority for Postbox to wake an agent or to offer a Stop across sessions.
 
-If case (b) doesn’t bind, a `setsid` job, or the orphan of a tool shell that led its own group, shows in the room with its pid but wakes no one and has no Stop, as on `main`. Case (a) and section 1 are unaffected. A Claude Code task that section 1 handled is left to section 1.
+The owner chose coverage for `setsid` jobs and the orphans of tool shells that led their own groups, on Codex, Kiro and Antigravity, over that concern. A process that binds this way wakes its agent and has a Stop, like any bound job. A Claude Code task that section 1 handled is left to section 1.
 
 **Nothing leaks that `main` reaps, and a kept job isn’t signaled with the rest.** A group signal (`signalPgid`) reaches every member, so it can’t be used on a group that holds a bound job. At a turn’s end that uses pid signals:
 - **A harness group with no bound job** gets that harness’s group signal, as today.
@@ -132,7 +132,7 @@ So on macOS a job is found through any member that isn’t a platform binary, su
 Other ways the marker is lost or misused:
 - **A fresh environment.** A process that execs with a new environment drops the marker and isn’t tracked. That includes `env -i`, `sudo`, `launchctl`, `systemd-run`, and work handed to `docker` or `ssh`. Changing the environment after exec changes nothing, because the scan reads the kernel’s exec-time copy.
 - **Linux, not verified here.** `/proc/<pid>/environ` is readable for the same user’s dumpable processes, but not for setuid processes or under `hidepid`. Each host’s live check confirms it.
-- **A process that drops or forges its marker.** One that drops it isn’t tracked, as a `nohup` process isn’t today. One outside the harness’s group that copies another session’s marker binds only if case (b) binds, which is the owner’s call above. Otherwise it shows as marked but not bound.
+- **A process that drops or forges its marker.** One that drops it isn’t tracked, as a `nohup` process isn’t today. One outside the harness’s group that copies another session’s marker, with a start time inside that session’s turn and init as its parent, binds to that session by case (b). At worst it wakes that session’s agent once, spuriously. It can only come from the person’s own user, which could already signal it.
 
 ### 4. Wake on exit
 
