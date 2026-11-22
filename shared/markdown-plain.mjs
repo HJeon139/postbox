@@ -24,6 +24,8 @@ function freeMark(s) {
  * each line is read without them here.
  */
 export function withoutFences(s) {
+  // A fence needs three backticks or tildes: most messages have none.
+  if (!s.includes('```') && !s.includes('~~~')) return s;
   const out = [];
   let marker = null;
   for (const line of s.split('\n')) {
