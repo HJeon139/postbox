@@ -54,9 +54,10 @@ export class Personas {
    * The persona a session runs with: the persona as it is now. One rule for every setting: a turn takes the persona
    * when it starts (adapterContext, server/turn-context.mjs), so every change applies from the agent’s next turn, in
    * every conversation it’s in, and never to a turn already running. @param {{ personaId: string }} se
+   * @param {(id: string) => any} [read]  how the persona is read: published, or as written for a write it decides (#1292)
    */
-  forSession(se) {
-    const p = this.get(se.personaId);
+  forSession(se, read = (id) => this.get(id)) {
+    const p = read(se.personaId);
     return (
       p && {
         ...p,

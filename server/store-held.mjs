@@ -46,6 +46,8 @@ const ENTITIES = /** @type {const} */ ({
   // A persona just made behind a held commit, which a session joining it reads (POST /api/personas with join, and an
   // attached Claude Code session, #1247’s class).
   personas: { event: 'persona', removed: 'persona', patched: null },
+  // A project changed behind a held commit, whose folder a `!` command runs in (#1292). Projects are never removed.
+  projects: { event: 'project', removed: null, patched: null },
 });
 /**
  * The names of what a held event touches, as the views are named: each list it changes (`items:<threadId>`) and each
@@ -105,12 +107,13 @@ const heldOn = (store, name) => Boolean(store.held) && /** @type {any} */ (store
  *   session: (id: string) => Entry | undefined,
  *   sessions: () => Readonly<Record<string, Entry>>,
  *   persona: (id: string) => Entry | undefined,
+ *   project: (id: string) => Entry | undefined,
  * }} PendingReads
  */
 
 /**
  * The pending reads of a store: one per list in LISTS; for apps and threads, one entity by id and the whole
- * collection; every session, or one by id; and one persona by id.
+ * collection; every session, or one by id; and one persona or project by id.
  * @param {import('./store.mjs').Store} store @returns {PendingReads}
  */
 export function pendingReads(store) {
@@ -124,6 +127,7 @@ export function pendingReads(store) {
   reads.session = (/** @type {string} */ id) => pendingEntity(store, 'sessions', id);
   reads.sessions = () => pendingCollection(store, 'sessions');
   reads.persona = (/** @type {string} */ id) => pendingEntity(store, 'personas', id);
+  reads.project = (/** @type {string} */ id) => pendingEntity(store, 'projects', id);
   return /** @type {PendingReads} */ (reads);
 }
 
