@@ -168,6 +168,40 @@ test('a stopped host turn’s end that says its runner outlived its kill voids t
   assert.equal(clock().voided?.why, 'unkilled');
 });
 
+test('a host turn that ends unkilled with no stop asked, the clock running, voids the run', async () => {
+  // The daemon kills a runner silent past its ceiling (RUNNER_SILENT_MAX_MS) and ends the turn unkilled if it’s still
+  // there (server/remote/host/daemon-running.mjs, #872). Nobody asked it to stop, but it may still be working there.
+  const { r, id, turn, clock } = await cutOff();
+  mock.timers.setTime(T0 + 25_000);
+  onHostMessage(r.rt.remote, r.host.id, { type: 'ended', turn, exit: null, size: 0, unkilled: true });
+  await until(() => clockEvents(r).some((e) => e.type === 'clock.stopped'), 'the void');
+  const stopped = clockEvents(r).find((e) => e.type === 'clock.stopped');
+  assert.deepEqual(stopped.data, { sessionId: id, turn, forced: true, why: 'unkilled', at: T0 + 25_000 });
+  assert.equal(clock().voided?.why, 'unkilled');
+});
+
+test('a host turn the welcome lists as interrupted and unkilled, not attached again, voids the run', async () => {
+  // After a restart the agent was moved off the host, so its turn there isn't attached again, and the welcome lists it
+  // as interrupted with its runner unkilled (#872, server/remote/turns-resume.mjs): it may still be working there.
+  const { store, d } = restarted({ welcome: 'unkilled' });
+  const r = clockedRig({ store, d });
+  // The fake host manager's wait for a welcome, polled on the event loop's turns rather than on its sleep(2).
+  r.hosts.ensureWelcome = async () => {
+    r.hosts.calls.ensure++;
+    await until(() => r.link.connected, 'a welcome from the fake daemon');
+    return r.link.welcome;
+  };
+  const id = r.se().id;
+  r.store.emit('clock.started', { sessionId: id, threadId: r.t.id, budgetMs: 60_000, at: T0 });
+  r.store.emit('persona', { ...r.rt.persona(r.se().personaId), remote: null });
+  mock.timers.setTime(T0 + 30_000);
+  startUp(r);
+  await until(() => clockEvents(r).some((e) => e.type === 'clock.stopped'), 'the void');
+  const stopped = clockEvents(r).find((e) => e.type === 'clock.stopped');
+  assert.deepEqual(stopped.data, { sessionId: id, turn: 'host-turn-1', forced: true, why: 'unkilled', at: T0 + 30_000 });
+  assert.equal(r.store.state.clocks[id].voided?.why, 'unkilled');
+});
+
 test('a stop a restart can’t ask again, its host removed meanwhile, voids the run instead of waiting on it forever', () => {
   // As the store holds it after a restart: the clock paused on a host turn, and that host since removed, so the
   // turn’s end can never be confirmed (server/remote/turns-restore.mjs).
