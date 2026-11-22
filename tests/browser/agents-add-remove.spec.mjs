@@ -80,7 +80,7 @@ test.describe('at 1280 px', () => {
     await page.getByRole('alertdialog', { name: 'Delete indexer’s session?' }).getByRole('button', { name: 'Delete session' }).focus();
     await page.keyboard.press('Enter');
     await expect(section.locator('.agent-rows li', { hasText: 'indexer' })).toHaveCount(0);
-    // The rail redraws − with the rows, so focus goes to the composer, as after an add, not to the page (critic, #1630).
+    // The rail redraws − with the rows, so focus goes to the composer, as after an add, not to the page (#1620).
     await expect(page.locator('#composer-input'), 'focus back in the composer after a remove').toBeFocused();
     await expect(page.locator('#live'), 'announced').toHaveText('Deleted indexer’s session');
     expect(handlesIn(t)).toEqual(['librarian']);
@@ -133,6 +133,7 @@ test.describe('at 375 px', () => {
     await page.getByRole('menu', { name: 'Remove an agent' }).getByRole('menuitem', { name: 'Remove @indexer…' }).click();
     await page.getByRole('alertdialog', { name: 'Delete indexer’s session?' }).getByRole('button', { name: 'Delete session' }).click();
     await expect.poll(() => handlesIn(t)).toEqual(['librarian']);
+    await expect(page.locator('#composer-input'), 'focus in the composer after a remove from the menu').toBeFocused();
     await synced(page, app);
     // One agent left: the menu offers no Remove, as removing it would erase the conversation.
     await actions.click();

@@ -81,7 +81,7 @@ test('#1620 − removing the last agent, as a remove that keeps the conversation
   assert.equal(f.store.state.threads[f.t.id], undefined);
 });
 
-test('#1620 − counts live agents, as the page does: beside only a retired fork, the last live agent stays (critic)', async () => {
+test('#1620 − counts live agents, as the page does: beside only a retired fork, the last live agent stays', async () => {
   const f = setup();
   await sessionRoute(f.rt, `/api/sessions/${f.beta.id}`, 'DELETE', {});
   f.store.emit('session', { id: 'se_fork', personaId: f.c.id, handle: 'gamma', threadId: f.t.id, retiredFork: true });
