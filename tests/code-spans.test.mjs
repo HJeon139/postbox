@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { lintTerms } from '../server/lint.mjs';
 import { renderMarkdown } from '../shared/markdown.mjs';
+import { toPlainText } from '../shared/markdown-plain.mjs';
 import { parseMentions } from '../shared/text.mjs';
 
 test('a handle in code of any backtick run wakes no one, and one in prose still does', () => {
@@ -22,6 +23,12 @@ test('a handle in code of any backtick run wakes no one, and one in prose still 
   // A fence can open on a list item’s own line, as the renderer reads it (pre-review).
   assert.deepEqual(parseMentions('- ```\n  @critic\n  ```\nafter', ['critic']), []);
   assert.deepEqual(parseMentions('1. ```\n   @critic\n   ```', ['critic']), []);
+  // A list marker opens a fence but never closes one: `- ~~~` inside a ~~~ fence is code (critic’s review).
+  const fenced = '~~~\n- ~~~\n@critic Step 7\n~~~\nafter @critic';
+  assert.deepEqual(parseMentions(fenced, ['critic']), ['critic']);
+  assert.deepEqual(parseMentions('~~~\n- ~~~\n@critic\n~~~\nafter', ['critic']), []);
+  assert.deepEqual(lintTerms(fenced, {}), []);
+  assert.equal(toPlainText(fenced), 'after @critic');
 });
 
 test('a </details> in code of any backtick run leaves the disclosure open', () => {

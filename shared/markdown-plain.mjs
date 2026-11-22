@@ -27,12 +27,13 @@ export function withoutFences(s) {
   const out = [];
   let marker = null;
   for (const line of s.split('\n')) {
-    const bare = line.replace(/^(\s*>)*\s*/, '').replace(/^([-*+]|\d+[.)])\s+/, '');
+    const bare = line.replace(/^(\s*>)*\s*/, '');
     if (marker) {
       if (closesFence(marker, bare)) marker = null;
       continue;
     }
-    const open = bare.match(FENCE);
+    // A list item’s marker can open a fence on its line, but a closer is the marker alone.
+    const open = bare.replace(/^([-*+]|\d+[.)])\s+/, '').match(FENCE);
     if (open) marker = open[1];
     else out.push(line);
   }
