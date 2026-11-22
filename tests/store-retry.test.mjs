@@ -222,9 +222,13 @@ test('a reconcile a listener kept from an earlier phase is refused in a later on
   const s = await new Store(dir, { io: logDisk(faults) }).load();
   s.emit('thread', { id: 't1', members: [] });
   await s.flush();
+  let fails = 0;
   const fail = async () => {
+    // Each failed commit takes an opId of its own: a line that landed despite the failed fsync is replayed by the
+    // reload, and a repeat of its opId resolves `duplicate` instead of failing. Date.now() repeats within a millisecond.
+    const id = `x${++fails}`;
     faults.sync = () => Promise.reject(eio('disk sync refused'));
-    await assert.rejects(s.commit([thread(`x${Date.now()}`)], { opId: `x${Date.now()}` }), /EIO/);
+    await assert.rejects(s.commit([thread(id)], { opId: id }), /EIO/);
     faults.sync = null;
   };
   let kept = null;
