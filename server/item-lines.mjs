@@ -137,13 +137,16 @@ function sharedBy(i) {
   return ', by the person';
 }
 
+/** A review’s comments, one `- line 12: …` line each: the block’s own line and an answer line read them alike (#1253). */
+const commentLines = (comments) => lines(comments.map((c) => `${commentAt(c)}: ${c.text}`));
+
 /** The person’s answer to a block, as blockContent gives it. */
 function answerText(b, a) {
   const v = a.values ?? {};
   if (b.type === 'review') {
     const comments = Array.isArray(v.comments) ? v.comments : [];
     const verdict = String(a.voice ?? '').replace(/^Submitted review: /, '');
-    const notes = comments.length ? `\n${lines(comments.map((c) => `${commentAt(c)}: ${c.text}`))}` : '';
+    const notes = comments.length ? `\n${commentLines(comments)}` : '';
     return `The person’s review: ${verdict}${notes}`;
   } else if (b.type === 'form') {
     const shown = (f) => {
@@ -221,7 +224,7 @@ function personLine(memory, i, text, reader) {
  * The person’s answer to a block, as another agent reads it: which block, whose and by its id, so an agent with two
  * open reviews can tell them apart, with a review’s comments, cut as the line is (#1253). The block’s own agent hears
  * it as an event, so it gets no line. A cut in the comments points at this line, which keeps this answer’s whole.
- * @param {any} memory @param {any} i @param {any} se @param {(s: string) => string} text @param {number} n  the line's budget
+ * @param {any} memory @param {any} i @param {any} se @param {(s: string) => string} text @param {number} n  the line’s budget
  */
 function answerLine(memory, i, se, text, n) {
   const block = i.blockItemId && memory.store.item(se?.threadId, i.blockItemId);
@@ -233,7 +236,7 @@ function answerLine(memory, i, se, text, n) {
   const to = i.answerTo ?? (block?.block ? { ...block.block, handle: block.handle } : null);
   const on = to ? ` answered @${to.handle}’s ${to.type}${to.title ? ` “${text(to.title)}”` : ''} (${to.id})` : '';
   const comments = Array.isArray(i.comments) ? i.comments : [];
-  const notes = comments.length ? `\n${clipItem(lines(comments.map((c) => `${commentAt(c)}: ${c.text}`)), n, i.id)}` : '';
+  const notes = comments.length ? `\n${clipItem(commentLines(comments), n, i.id)}` : '';
   return `The person${on}: ${text(i.text)}${notes}${quote}`;
 }
 

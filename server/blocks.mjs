@@ -70,7 +70,7 @@ export function act(rt, threadId, itemId, action, values, revision) {
       ...theirs?.patch,
       ...(dismissed ? { closed: { by: 'person', at: Date.now() } } : {}),
     });
-  rt.threads.addItem(threadId, answerLine(it, r.voice, dismissed ? {} : ev.values));
+  rt.threads.addItem(threadId, answerItem(it, r.voice, ev.values));
   const se = rt.s.sessions[it.sessionId];
   releaseNeed(rt, se, itemId);
   // A question whose call has gone gets its answer as an event, with its question and labels in words (#521).
@@ -88,7 +88,7 @@ export function act(rt, threadId, itemId, action, values, revision) {
  * answer’s review comments, so another agent reads them in any read, and a later answer to the same block, revised,
  * doesn’t change what this one said (#1253). @param {any} it  the block’s item @param {string} voice @param {any} values
  */
-function answerLine(it, voice, values) {
+function answerItem(it, voice, values) {
   const comments = it.block.type === 'review' && Array.isArray(values?.comments) ? values.comments : [];
   const answerTo = { id: it.block.id, type: it.block.type, handle: it.handle, sessionId: it.sessionId, ...(it.block.title ? { title: it.block.title } : {}) };
   return { kind: 'voice', text: voice, blockItemId: it.id, answerTo, ...(comments.length ? { comments } : {}) };
