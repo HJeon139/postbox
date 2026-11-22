@@ -2,6 +2,7 @@
 // stops still fails it, with its own message, now that its default bound is 20 s.
 
 import { setTimeout as pace } from 'node:timers/promises';
+import { stripVTControlCharacters } from 'node:util';
 import { expect, test } from '@playwright/test';
 import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 
@@ -26,15 +27,18 @@ test('synced fails, with its message, for a page whose stream stopped', async ({
     await route.continue();
   });
   const t = app.rt.createThread({ projectId: projectId(), title: 'Held stream', personaIds: [] });
-  const before = app.store.state.seq;
   await page.goto(`${app.origin}/#/t/${t.id}`);
   // The page has loaded its state, so the next event can reach it only over the stream.
-  // page.evaluate awaits the import; waitForFunction wouldn't, and returns on the Promise being truthy.
-  await expect
-    .poll(() => page.evaluate(() => import('/app/js/client.mjs').then(({ client }) => client.seq)), { message: 'the page to load its state' })
-    .toBeGreaterThanOrEqual(before);
+  await synced(page, app);
+  const loaded = app.store.state.seq;
   app.rt.createThread({ projectId: projectId(), title: 'After it', personaIds: [] });
-  const started = Date.now();
-  await expect(synced(page, app, 2_000)).rejects.toThrow(/the page to hear event/);
-  expect(Date.now() - started, 'it waited out its bound').toBeGreaterThanOrEqual(1_500);
+  const error = await synced(page, app, 2_000).then(
+    () => null,
+    (e) => e,
+  );
+  // It ran out waiting, not on an error from the page: the page still held the seq it loaded. Not how long it took,
+  // since Playwright’s poll stops one interval short of its deadline (pollAgainstDeadline), about 1 s into 2 s under load.
+  const words = stripVTControlCharacters(String(error?.message));
+  expect(words).toContain(`the page to hear event ${app.store.state.seq}`);
+  expect(words).toMatch(new RegExp(`Received: +${loaded}\\b`));
 });
