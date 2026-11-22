@@ -8,8 +8,9 @@ import { ASKING, followsConversation, validateBlock } from '../shared/catalog.mj
 import { LIMITS } from '../shared/limits.mjs';
 import { clip, clipText, echoedId } from './helpers.mjs';
 import { stampSteps } from './progress-steps.mjs';
+import { ownedAuthors } from './review-authors.mjs';
 import { revisedFiles } from './review-files.mjs';
-import { ownedAuthors, revisedReview } from './review-person.mjs';
+import { revisedReview } from './review-person.mjs';
 
 export const CATCH_UP_CHARS = 16000;
 
