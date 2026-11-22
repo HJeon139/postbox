@@ -2,7 +2,7 @@
 // server/adapters/process-group.mjs), so a run clock voids its timed run whichever backend the agent runs on (#1526).
 // Each case drives the real adapter’s Stop on a fake CLI that exits on SIGINT while its group stays: the fake `kill`
 // finds the group still there after SIGKILL. No real timer runs: mock timers stand in for setTimeout and setInterval,
-// and each wait is on the event loop’s turns.
+// and each wait is on the event loop’s turns, with real time as its bound (tests/until-turns.mjs).
 
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
@@ -16,15 +16,10 @@ import { CodexAdapter } from '../server/adapters/codex.mjs';
 import { KiroCliAdapter } from '../server/adapters/kiro-cli.mjs';
 import { CODEX_ROOT, fakeAppServer } from './codex-fixture.mjs';
 import { tempDir } from './temp-dirs.mjs';
+import { untilTurns as until } from './until-turns.mjs';
 
 beforeEach(() => mock.timers.enable({ apis: ['setTimeout', 'setInterval'] }));
 afterEach(() => mock.timers.reset());
-
-/** Waits on the event loop’s turns, not on time, until `fn` holds. */
-async function until(fn, label) {
-  for (let i = 0; i < 2000 && !fn(); i++) await new Promise((r) => setImmediate(r));
-  assert.ok(fn(), `Timed out waiting for ${label}`);
-}
 
 /** A CLI that exits on Stop’s SIGINT, as its launcher does, while a process of its group is stuck: never gone. */
 function stuckChild(pid) {

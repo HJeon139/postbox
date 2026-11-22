@@ -3,7 +3,7 @@
 // be working on its host, so the clock lists it as still to stop, and Postbox asks its host to stop it once the
 // attach has made its remote turn; the host’s confirmation records clock.stopped. The host is
 // tests/remote-turns-helpers.mjs’s fake daemon and link. No real timer runs: mock timers stand in for setTimeout,
-// setInterval and Date, and each wait is on the event loop’s turns, never on time.
+// setInterval and Date, and each wait is on the event loop’s turns, with real time as its bound (tests/until-turns.mjs).
 
 import assert from 'node:assert/strict';
 import { afterEach, beforeEach, mock, test } from 'node:test';
@@ -11,15 +11,11 @@ import { installRunClock } from '../server/run-clock-install.mjs';
 import { clockElapsed } from '../shared/run-clock.mjs';
 import { runClock } from './arrange.mjs';
 import { restarted, rig, startUp } from './remote-turns-helpers.mjs';
+import { untilTurns as until } from './until-turns.mjs';
 
 const T0 = 1_800_000_000_000;
 beforeEach(() => mock.timers.enable({ apis: ['setTimeout', 'setInterval', 'Date'], now: T0 }));
 afterEach(() => mock.timers.reset());
-/** Waits on the event loop’s turns, not on time, until `fn` holds. */
-async function until(fn, label) {
-  for (let i = 0; i < 2000 && !fn(); i++) await new Promise((r) => setImmediate(r));
-  assert.ok(fn(), `Timed out waiting for ${label}`);
-}
 
 /** The store a restart finds: a turn on the host from before it, and its agent’s clock started at T0. */
 function clockedBeforeRestart(budgetS) {
