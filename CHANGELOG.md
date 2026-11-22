@@ -2,6 +2,13 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.35.9 (2026-11-22)
+
+### Fixes
+
+- **antigravity:** compare a repeated error by a fingerprint of its whole text
+- **antigravity:** don't show an earlier turn's error again as a failed step
+
 ## 4.35.8 (2026-11-21)
 
 ### Fixes
