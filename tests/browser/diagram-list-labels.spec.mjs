@@ -42,16 +42,21 @@ const CLASS_SYNTAX = `classDiagram
 const CLASS_NOTES = `classDiagram
   class Build
   note for Build "1. note"
-  note "- general"`;
+  note "- general"
+  note for Build"2. tight"`;
 const STATE_NOTE = `stateDiagram-v2
   s1 --> s2
   note right of s1
     1. first
     - second
-  end note`;
+  end note
+  Note left of s2
+    3. capital
+  End note`;
 // Slanted shapes open with “[/” or “[\\”.
 const SLANTED = `flowchart TD
-  A[/1. Plan/] --> B[\\- Check\\]`;
+  A[/1. Plan/] --> B[\\- Check\\]
+  B --> C[/---/]`;
 // The other blocks Mermaid can’t draw at a label’s start: a heading, a quote and a rule.
 const BLOCKS = `flowchart TD
   A[# of users] --> B["> quoted"]
@@ -116,9 +121,9 @@ for (const [kind, source, labels, plain = []] of /** @type {[string, string, str
   // A member’s “-” marks it private, so it stays Mermaid’s to read: no joiner goes before it.
   ['a class diagram’s', CLASSES, ['1. Build', '+int count', '- String name', '1. uses'], ['- String name']],
   ['a heading’s, a quote’s and a rule’s', BLOCKS, ['# of users', '> quoted', '---']],
-  ['a class diagram’s notes', CLASS_NOTES, ['1. note', '- general']],
-  ['a state diagram’s note', STATE_NOTE, ['1. first', '- second']],
-  ['a slanted shape’s', SLANTED, ['1. Plan', '- Check']],
+  ['a class diagram’s notes', CLASS_NOTES, ['1. note', '- general', '2. tight']],
+  ['a state diagram’s note', STATE_NOTE, ['1. first', '- second', '3. capital']],
+  ['a slanted shape’s', SLANTED, ['1. Plan', '- Check', '---']],
   ['a class diagram’s arrows and annotations, around its', CLASS_SYNTAX, ['Inheritance', 'interface', '- decrement()'], ['- decrement()']],
 ]))
   test(`#684 ${kind} labels that start like a block show as written`, async ({ page }) => {

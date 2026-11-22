@@ -8,18 +8,18 @@
 // it opens Mermaid’s slanted shape.
 
 // Where a label starts, each its own piece of the pattern:
-const SHAPE = '[[(]';
-const SLANTED = String.raw`\[[/\\]`; // a slanted shape’s “[/” or “[\” // a shape’s opening bracket or parenthesis
+const SHAPE = '[[(]'; // a shape’s opening bracket or parenthesis
+const SLANTED = String.raw`\[[/\\]`; // a slanted shape’s “[/” or “[\”
 const BRACE = '{'; // a rhombus; in a class diagram, a member list, whose “+” and “-” mark public and private
 const ASYMMETRIC = '(?<![-=.>])>(?!>)'; // an asymmetric shape’s “>”, never an arrow’s head (“->>+ B”) or “>>”
 const EDGE_BAR = String.raw`\|`; // an edge label’s bar
 const EDGE_TEXT = String.raw`(?<![-=.<])(?:--|==|-\.)(?![-=.>])`; // the “--”, “==” or “-.” that opens an edge’s text
 const COLON = ':'; // a state’s or a transition’s label, or a class relation’s
-const STATE_NAME = String.raw`\bstate[ \t]+`; // state "1. Build" as s1
-const NOTE = String.raw`\bnote(?:[ \t]+for[ \t]+[^\s"]+)?[ \t]+`; // a class diagram’s note “1. note”, or note for A “…”
+const STATE_NAME = String.raw`\bstate[ \t]+(?![ \t])`; // state "1. Build" as s1
+const NOTE = String.raw`\bnote(?:[ \t]+for[ \t]+(?:\x60[^\x60\n]*\x60|[^\s"]+))?[ \t]*(?![ \t])`; // a class diagram’s note “1. note”, or note for A “…”
 const QUOTED = String.raw`(?:"\x60|["\x60])?`; // then a quote, or a quote and a backtick for a Markdown string
 // What Mermaid reads as a block there: a list item, a heading or a quote, then a space; or a rule, alone.
-const BLOCK = String.raw`(?:(?:\d{1,9}[.)]|[-*+]|#{1,6}|>)[ \t]|(?:-{3,}|\*{3,}|_{3,})[ \t]*(?=["\x60\])}|\n]|$))`;
+const BLOCK = String.raw`(?:(?:\d{1,9}[.)]|[-*+]|#{1,6}|>)[ \t]|(?:-{3,}|\*{3,}|_{3,})[ \t]*(?=["\x60\])}|/\\\n]|$))`;
 const labelStart = (...openers) => new RegExp(String.raw`((?:${openers.join('|')})${QUOTED}[ \t]*)(?=${BLOCK})`, 'g');
 const LABEL_START = labelStart(SHAPE, SLANTED, BRACE, ASYMMETRIC, EDGE_BAR, EDGE_TEXT, COLON, STATE_NAME);
 // A class diagram has no bar or edge-text labels and no asymmetric shapes, and its arrows (“--|>”, “--*”) and
@@ -33,7 +33,7 @@ const RELATION = /^[^:]*(?:--|\.\.)[^:]*:/;
 const MARKDOWN_STRING = /"`([^`]*)`"/g;
 const LINE_START = new RegExp(String.raw`(^|\n)([ \t]*)(?=${BLOCK})`, 'g');
 // A state diagram’s note over lines, “note right of s1” to “end note”: each line is a label’s start too.
-const NOTE_BLOCK = /(^[ \t]*note[ \t]+(?:left|right)[ \t]+of[ \t]+[^\n:]+\n)([\s\S]*?)(\n[ \t]*end note\b)/gm;
+const NOTE_BLOCK = /(^[ \t]*note[ \t]+(?:left|right)[ \t]+of[ \t]+[^\s:][^\n:]*\n)([\s\S]*?)(end note\b)/gim;
 const JOINED = '$1\u2060';
 /** The source with every label that starts like a block kept as text. @param {string} src */
 function asWritten(src) {
