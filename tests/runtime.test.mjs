@@ -755,7 +755,8 @@ test('the problems of one turn, from the server and the browser, reach the agent
   const item = store.items(t.id).find((i) => i.kind === 'agent');
   // The browser measures the diagram a moment after the turn ends, before the lint turn goes.
   assert.equal(rt.diagramCheck(t.id, item.id, { src: 'graph LR\nA-->B', textPx: 7, width: 728 }).sent, true);
-  await sleep(60);
+  // The lint turn also waits for the server’s Mermaid parse of the two diagrams (#731), which can take a moment to start.
+  for (let i = 0; i < 200 && !lints(adapter).length; i++) await sleep(25);
   await settle(rt);
   assert.equal(lints(adapter).length, 1);
   const m = lints(adapter)[0].message;

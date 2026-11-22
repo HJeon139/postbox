@@ -7,7 +7,7 @@ import { createHash } from 'node:crypto';
 import { COLUMN_PX, MIN_TEXT_PX, mermaidBlocks } from '../shared/diagram-lint.mjs';
 import { syntaxError } from './diagram-parse.mjs';
 import { clipText } from './helpers.mjs';
-import { lint } from './lint-delivery.mjs';
+import { holdLint, lint } from './lint-delivery.mjs';
 
 /** A diagram’s key in the session’s diagramsLinted. @param {string} src */
 const hashOf = (src) => createHash('sha256').update(src.trim()).digest('hex').slice(0, 16);
@@ -82,14 +82,21 @@ function failedProblem(error, scope) {
  */
 export async function syntaxCheck(checks, turn, before) {
   const replies = checks.store.pending.items(turn.threadId).filter((it) => it.kind === 'agent' && it.turnId === turn.id && !it.lintReply);
-  for (const it of replies)
-    for (const block of mermaidBlocks(String(it.text ?? ''))) {
+  const fresh = replies.flatMap((it) => mermaidBlocks(String(it.text ?? ''))).filter((block) => !before.has(hashOf(block.src)));
+  if (!fresh.length) return;
+  // The turn’s lint turn waits for the parser, as it does for an app still being checked, so an error joins it.
+  const release = holdLint(checks, turn.id);
+  try {
+    for (const block of fresh) {
       // Nothing new is parsed once Postbox is closing, so its exit never waits on the parser.
-      if (before.has(hashOf(block.src)) || checks.running.closing) continue;
+      if (checks.running.closing) return;
       const error = await syntaxError(block.src);
       // Postbox may have started closing, or stopped saving, while the parser ran: nothing new is sent or kept then, and
       // the page still reports the diagram when it’s drawn.
       if (!error || checks.running.closing || !checks.store.writable) continue;
       if (lint(checks, turn.sessionId, turn.id, [failedProblem(error, scopeOf(block))])) rememberDiagrams(checks, turn.sessionId, [block.src]);
     }
+  } finally {
+    release();
+  }
 }
