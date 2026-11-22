@@ -19,6 +19,8 @@ import { backTo } from './reply-back.mjs';
  * @property {number} at
  * @property {boolean} [resend]
  * @property {string[]} [postedSince]  ids of the sender’s newer posts while it waited
+ * @property {boolean} [bounce]  a reply that came back on its own (reply-back.mjs)
+ * @property {string[]} [woken]  on an entry the person’s Retry reopened, whom its failed reply already woke (#485)
  */
 
 /** What each source is, said after who it is from. A mention or the person’s message needs no words. */
@@ -96,7 +98,15 @@ function place(/** @type {{ id: string, kind?: string, title?: string }} */ thre
  */
 function replyGoes(entries) {
   const to = backTo(entries);
-  return to.length ? ` and goes back to ${to.map((h) => `@${h}`).join(' and ')}. @-mention another agent to hand off to them instead.` : '.';
+  if (!to.length) return '.';
+  const goes = ` and goes back to ${to.map((h) => `@${h}`).join(' and ')}. @-mention another agent to hand off to them instead.`;
+  // Answering a reply that came back (#1553): a reaction to it ends the exchange. So does ending at once with nothing,
+  // as empty-reply.mjs’s endedExchange allows (#1543): not in the person’s Retry, nor after a step of the turn’s own.
+  const asked = entries.filter((e) => e.source !== 'notice');
+  if (!asked.every((e) => e.bounce === true)) return goes;
+  const react = `${goes} If the exchange is done, react to the reply: then what you write doesn’t go back, so @-mention an agent that must act next.`;
+  // A Retry’s entries carry whom its failed reply woke, as retryMarks (turns.mjs) reads them.
+  return entries.some((e) => Array.isArray(e.woken)) ? react : `${react} If you do nothing else, you can also end without writing anything.`;
 }
 
 /** The first part: the entries, with where the reply posts and goes, and what waits elsewhere. */
