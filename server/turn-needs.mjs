@@ -17,8 +17,9 @@ export function needsAfter(rt, se, turn, items) {
   const open = items.filter(
     (it) => it.kind === 'block' && it.turnId === turn.id && it.sessionId === se.id && it.valid && ASKING.has(it.block.type) && !it.answered,
   );
-  const waiting = se.keptId ? items.find((it) => it.id === se.keptId) : null;
-  if (!open.length && waiting && !waiting.answered) open.push(waiting);
+  const waiting = rt.turnService.asks.keptBlock(se);
+  // It counts as the need wherever it is (#647), but as this thread’s activity only when it’s here (#228).
+  if (!open.length && waiting && !waiting.answered && items.includes(waiting)) open.push(waiting);
   const last = [...items].reverse().find((it) => it.kind === 'agent' && it.sessionId === se.id && it.text);
   const viewing = rt.threads.isViewing(turn.threadId);
   const topic = turn.threadId !== se.threadId && rt.store.pending.thread(turn.threadId)?.kind === 'topic' ? turn.threadId : null;
