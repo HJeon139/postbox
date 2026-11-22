@@ -55,7 +55,12 @@ test('a run’s record keeps every key the live run writes to run.json, as it wr
       startPhase: 2,
       phases: [4],
       tester: { spent: 0.05 },
-      facts: { streams: [], timing: { total: 1 } },
+      // The run’s bound (tools/uat/run-bound.mjs), as a run that stopped at it writes it.
+      facts: {
+        streams: [],
+        timing: { total: 1 },
+        bound: { maxTurns: 150, maxMinutes: 45, turns: 3, minutes: 46, stopped: { step: 4, during: true, at: 1, why: 'it ran 46 minutes' } },
+      },
       coverage: [{ phase: 1, trigger: 'x', hit: true }],
       now: 120_000,
       git: () => null,
@@ -63,6 +68,8 @@ test('a run’s record keeps every key the live run writes to run.json, as it wr
     // What tools/uat-run.mjs adds beside runRecord’s keys.
     budget: { cap: 15 },
   };
+  // The bound, written as runRecord takes it from the run’s facts: the loop below checks only the keys written.
+  assert.equal(written.bound?.stopped?.why, 'it ran 46 minutes', 'run.json’s bound');
   writeFileSync(join(dir, 'run.json'), JSON.stringify(written));
   const record = /** @type {Record<string, unknown>} */ (readRun(dir));
   for (const [key, value] of Object.entries(written)) assert.deepEqual(record[key], value, `run.json’s ${key}`);

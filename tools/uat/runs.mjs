@@ -221,6 +221,8 @@ export function readRun(dir, { scenarios } = {}) {
     findings: Array.isArray(findings.findings) ? findings.findings : [],
     // The run’s budget (tools/uat/budget.mjs), when it had --max-cost.
     budget: saved.budget ?? null,
+    // The run’s bound (tools/uat/run-bound.mjs): where it stopped at it, which a recheck keeps.
+    bound: saved.bound ?? null,
     // Where the run’s time went (tools/uat/timing.mjs): only a live run measures it, so a recheck keeps it.
     timing: saved.timing ?? null,
     // Whether the agent drew first (#983), and its first picture (#995): only a live run

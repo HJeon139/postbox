@@ -69,6 +69,7 @@ export function savedFacts(dir, { state, mainId, saved, logs, hostsRec, record }
     probes: { ...newProbes(), ...(saved.probes ?? {}) },
     samples: saved.samples ?? [],
     budget: saved.budget ?? null,
+    bound: saved.bound ?? null,
     // Where the live run’s time went (tools/uat/timing.mjs): a recheck measures none of its own, so it keeps the run’s.
     timing: record?.timing ?? null,
     // The live run’s first picture (#995), for the report.
