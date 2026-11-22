@@ -80,3 +80,12 @@ test('#1620 − removing the last agent, as a remove that keeps the conversation
   await sessionRoute(f.rt, `/api/sessions/${f.alpha.id}`, 'DELETE', {});
   assert.equal(f.store.state.threads[f.t.id], undefined);
 });
+
+test('#1620 a retired agent is refused, saying how to bring it back, and a new one with its handle joins once', async () => {
+  const f = setup();
+  f.rt.updatePersona(f.c.id, { retired: true });
+  await assert.rejects(add(f, f.t.id, f.c.id), { status: 409, message: '@gamma is retired. Bring it back in Settings › Personas to add it.' });
+  const again = f.rt.createPersona({ handle: 'gamma' });
+  await add(f, f.t.id, again.id);
+  assert.deepEqual(handlesIn(f), ['alpha', 'beta', 'gamma'], 'one gamma, never two');
+});

@@ -8,6 +8,8 @@ import { allowPageError, failOnPageErrors, PHONE, startPostbox, synced } from '.
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
 let app;
 let n = 0;
+/** @type {any} */
+let retiree = null;
 test.beforeAll(async () => {
   app = await startPostbox('agents-add-remove');
 });
@@ -19,6 +21,8 @@ failOnPageErrors(test);
 /** A conversation with @librarian alone, open in the page; @indexer is an agent the person has, not in it. */
 async function opened(page) {
   const { rt } = app;
+  // A retired agent, which + never offers (#1620), made once for the file.
+  if (!retiree) retiree = rt.updatePersona(rt.createPersona({ handle: 'retiree' }).id, { retired: true });
   const projectId = Object.values(rt.store.state.projects)[0].id;
   const t = rt.createThread({ projectId, title: `Shelf ${++n}`, personaIds: [arrange.persona(rt, 'librarian').id] });
   await page.goto(`${app.origin}/#/t/${t.id}`);
@@ -45,12 +49,17 @@ test.describe('at 1280 px', () => {
     expect((m?.x ?? 0) > (p?.x ?? 0), '− after +').toBe(true);
 
     // One agent: removing it would erase the conversation, so − is off and says why.
-    await expect(minus).toBeDisabled();
-    await expect(minus).toHaveAttribute('title', 'The last agent can’t be removed. Delete the conversation instead.');
+    await expect(minus).toHaveAttribute('aria-disabled', 'true');
+    // Off, it still takes focus, and says why.
+    await expect(minus).toHaveAttribute('aria-description', 'The last agent can’t be removed. Delete the conversation instead.');
+    await minus.focus();
+    await page.keyboard.press('Enter');
+    await expect(page.getByRole('menu', { name: 'Remove an agent' }), 'a press does nothing').toHaveCount(0);
     await plus.focus();
     await page.keyboard.press('Enter');
     const menu = page.getByRole('menu', { name: 'Add an agent' });
     await expect(menu.getByRole('menuitem', { name: /@librarian/ }), 'not one already here').toHaveCount(0);
+    await expect(menu.getByRole('menuitem', { name: /@retiree/ }), 'not a retired one').toHaveCount(0);
     await expect(menu.getByRole('menuitem', { name: /New agent/ })).toBeVisible();
     await menu.getByRole('menuitem', { name: /@indexer/ }).focus();
     await page.keyboard.press('Enter');
@@ -60,7 +69,7 @@ test.describe('at 1280 px', () => {
     expect(handlesIn(t)).toEqual(['indexer', 'librarian']);
     await expect(page.locator('.sys-line', { hasText: 'indexer joined' })).toBeVisible();
 
-    await expect(minus, 'two agents: − is on').toBeEnabled();
+    await expect(minus, 'two agents: − is on').toHaveAttribute('aria-disabled', 'false');
     await minus.focus();
     await page.keyboard.press('Enter');
     await page.getByRole('menu', { name: 'Remove an agent' }).getByRole('menuitem', { name: 'Remove @indexer…' }).click();
@@ -68,7 +77,7 @@ test.describe('at 1280 px', () => {
     await expect(section.locator('.agent-rows li', { hasText: 'indexer' })).toHaveCount(0);
     expect(handlesIn(t)).toEqual(['librarian']);
     expect(arrange.persona(app.rt, 'indexer'), 'the persona stays').toBeTruthy();
-    await expect(minus, 'one agent again: − is off').toBeDisabled();
+    await expect(minus, 'one agent again: − is off').toHaveAttribute('aria-disabled', 'true');
   });
 });
 

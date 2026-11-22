@@ -2,7 +2,8 @@
 // about background jobs and a job’s own Stop (#129); and deleting a persona, which deletes its sessions (#208). Moved out of server/index.mjs, whose route() keeps one line that
 // calls this.
 
-import { httpError, retiredError } from './helpers.mjs';
+import { joinConversation } from './conversation-join.mjs';
+import { httpError } from './helpers.mjs';
 
 /** A route’s answer: its status and its JSON body. */
 const done = (status, body) => ({ status, body });
@@ -43,13 +44,5 @@ export async function sessionRoute(rt, path, method, body) {
 function addAgent(rt, threadId, personaId) {
   if (typeof personaId !== 'string' || !personaId) throw httpError(400, 'Pick an agent to add.');
   if (!rt.persona(personaId)) throw httpError(404, 'That agent doesn’t exist. It may have been deleted.');
-  // As written: a conversation just started behind a held commit isn’t published yet (#1292). One that doesn’t exist
-  // is refused where the session is written.
-  const conv = rt.threads.lineage(threadId, (id) => rt.store.pending.thread(id)).at(-1);
-  const here = rt.sessions.pendingIn(conv).find((x) => x.personaId === personaId);
-  if (here?.retiredFork) throw retiredError(here);
-  if (here) return here;
-  const se = rt.ensureSession(conv, personaId, { brief: 'The person added you to this conversation.' });
-  rt.threads.addItem(conv, { kind: 'system', variant: 'joined', to: se.handle });
-  return se;
+  return joinConversation(rt, threadId, personaId, { brief: 'The person added you to this conversation.', line: true });
 }

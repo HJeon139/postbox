@@ -98,8 +98,6 @@ export const PENDING = {
   // The turn’s last reply, which goes back to whom woke it (#1518), maybe settled behind a held commit; and the replies
   // that woke it, whose reactions decide whether it goes back at all (#1553), a reaction maybe behind a held commit too.
   'reply-back.mjs': ['replyBack', 'endedByReaction'],
-  // The conversation the person adds an agent to from the Agents header’s + (#1620), maybe started behind a held commit.
-  'session-routes.mjs': ['addAgent'],
   'sessions.mjs': ['pendingIn', 'pendingIn', 'ensure', 'update', 'needAt', 'remove', 'forgetReported', 'stampNeeds', 'unarchive'],
   // A command’s item, maybe deleted behind a held commit, before its output or its end is written; and the agent and
   // project whose folder it runs in, maybe made or changed behind one (#1292).
