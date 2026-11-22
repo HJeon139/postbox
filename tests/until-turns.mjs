@@ -1,6 +1,8 @@
 // A wait for tests whose timers are mocked (node:test’s mock.timers), so no setTimeout or Date can bound it. It spins
 // the event loop’s turns, and real time ends it: under a parallel `node --test` load, a fixed count of turns ran out
 // before a fake CLI’s file I/O did (#1526, the integrator’s review of #1592). performance.now() isn’t mocked.
+// Don’t add setImmediate to mock.timers in a test that calls it: the await below would never return, and the
+// deadline couldn’t end the wait.
 
 import assert from 'node:assert/strict';
 
