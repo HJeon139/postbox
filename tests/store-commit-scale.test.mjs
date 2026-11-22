@@ -28,7 +28,9 @@ test('close() during the snapshot ahead of 100,000 queued lines writes them all,
       return fs.open(path, flags);
     },
   };
-  const store = await new Store(dir, { io, retryBoundMs: 1000 }).load();
+  // The store’s own bounds, as a real room closes with: a bound shortened to 1 s is a step’s limit too, and a CI
+  // runner’s final sync of these lines once ran past it with the event loop on time (#1314’s slow disk, #1636).
+  const store = await new Store(dir, { io }).load();
   for (let i = 0; i < LINES; i++) store.emit('thread', { id: `th_${i}`, members: [] });
   // The writer’s pass is timed by the longest the event loop goes unanswered, not by close()’s bound, which waits while
   // the disk keeps finishing steps: one shift per line held the loop for seconds here, and close() still ended clean.

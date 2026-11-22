@@ -15,7 +15,7 @@ const SIGNALS = /** @type {const} */ (['SIGINT', 'SIGTERM', 'SIGHUP']);
  * when it’s called, so a signal before the page or the hosts exist stops only what does; the exit then stops
  * Postbox and Chrome in any case.
  * @param {{ hr?: import('./hosts-run.mjs').HostRun | null, history?: { close: () => void }, page?: { close: () => Promise<void> },
- *   postbox?: { kill: () => Promise<void> }, keep?: () => void, log: (line: string) => void }} run
+ *   postbox?: { kill: () => Promise<void> }, keep?: () => void, retain?: () => void, log: (line: string) => void }} run
  * @returns {() => Promise<void>}
  */
 export function runStop(run) {
@@ -39,6 +39,8 @@ export function runStop(run) {
       } catch (e) {
         run.log(`Couldn’t remove the run’s remote: ${/** @type {Error} */ (e).message}`);
       }
+      // The workspace, out of the checkout while the run ran (#885), into the run’s folder once nothing writes there.
+      run.retain?.();
     })();
     return done;
   };

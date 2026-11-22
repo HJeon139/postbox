@@ -10,6 +10,7 @@ import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
 import { AppBrowser } from '../../server/view-app/browser.mjs';
 import { answerIn } from '../../server/view-app/consent.mjs';
+import { viewOf } from '../../server/view-app/view-of.mjs';
 import { SCANS } from '../../tools/uat/doc-query-probe.mjs';
 import * as arrange from '../arrange.mjs';
 import { playwrightBrowsers } from '../fixtures/playwright-browsers.mjs';
@@ -177,9 +178,14 @@ test('the picture is as wide as the app the person sees, beside the rail by defa
     await page.goto(`${app.origin}/#/t/${t.id}${hash}`);
     await synced(page, app);
     const frame = page.locator('.transcript .appframe').first();
-    await expect(frame).toBeVisible();
+    // The app itself, not “Checking the app…”: the check’s outcome mounts the app in a new section, and one landing
+    // between finding the section and measuring it gave no box, so the width read 0.
+    await expect(frame.locator('iframe.app-iframe'), 'the app has passed its check and is drawn').toHaveAttribute('data-sized', '1', { timeout: 30_000 });
     await expect.poll(() => arrange.viewWindow(rt).width, { timeout: 15_000 }).toBe(width);
-    const seen = Math.round((await frame.boundingBox())?.width ?? 0);
+    const box = await frame.boundingBox();
+    // No box is its own failure, not a width of 0 (#1625).
+    expect(box, 'the app’s section has a box').not.toBeNull();
+    const seen = Math.round(box?.width ?? 0);
     const r = await arrange.viewApp(rt, se.id, { appId: shown.appId }, ctx);
     expect(r.ok, r.message).toBe(true);
     return { seen, sent: sizeOf(r.image.data).width };
@@ -257,6 +263,41 @@ test('a person who hasn’t answered sees the download card, and Not now is kept
     const again = await arrange.viewApp(rt, se.id, { appId: shown.appId }, { threadId: () => t.id, endSegment() {}, images: true });
     expect.soft(again.message).toMatch(/chose not to download the browser/);
   } finally {
+    await writeFile(consent, JSON.stringify({ answer: 'allowed', at: Date.now() }));
+  }
+});
+
+test('#954 once the person presses Download, the agent stops saying it needs them while the download runs', async ({ page }) => {
+  test.setTimeout(60_000);
+  const { rt } = app;
+  const consent = join(arrange.viewDir(rt), 'consent.json');
+  await rm(consent, { force: true });
+  // The download runs until the spec ends it, as a real one takes minutes.
+  const { browser } = viewOf(rt);
+  const install = browser.install;
+  /** @type {(r: any) => void} */
+  let finish = () => {};
+  browser.install = () => new Promise((r) => (finish = r));
+  try {
+    const projectId = await project();
+    const t = rt.createThread({ projectId, title: 'Download check', personaIds: [arrange.persona(rt, 'researcher').id] });
+    const se = arrange.agentIn(rt, t.id);
+    const shown = rt.toolsFor(se.id).show_app({ title: 'Asked', code: '<p>Not yet seen.</p>' });
+    await arrange.viewApp(rt, se.id, { appId: shown.appId }, { threadId: () => t.id, endSegment() {}, images: true });
+    const card = rt.store.items(t.id).find((x) => x.kind === 'viewask');
+    // Its turn ended waiting on the card, as the UAT’s events show.
+    arrange.setSession(rt, se.id, { needs: { kind: 'viewask', itemId: card.id, text: '@researcher asks to see its app: download Chromium?' }, state: 'needs' });
+    await page.goto(`${app.origin}/#/t/${t.id}`);
+    await synced(page, app);
+    const state = page.locator(`#agent-row-${se.id} .agent-state`);
+    await expect(state).toHaveText(' · needs you');
+    const shownCard = page.getByRole('group', { name: '@researcher asks to see its app' });
+    await shownCard.getByRole('button', { name: 'Download Chromium' }).click();
+    await expect(shownCard).toContainText('Downloading Chromium. The agent hears when it’s ready.');
+    await expect(state, 'the person answered, so the agent no longer needs them').toHaveText(' · idle');
+  } finally {
+    finish({ ok: true });
+    browser.install = install;
     await writeFile(consent, JSON.stringify({ answer: 'allowed', at: Date.now() }));
   }
 });
