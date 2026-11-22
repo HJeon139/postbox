@@ -130,15 +130,29 @@ async function inPad(frame) {
   return pad ? pad.evaluate(() => ({ id: document.activeElement?.id ?? '', hasFocus: document.hasFocus() })) : { id: '', hasFocus: false };
 }
 
+/**
+ * Tab (or Shift+Tab) from the page into the pad, onto its control. Firefox, entering a frame for the first time, stops
+ * first on the frame’s own document, as it does for any frame, even a plain one on a bare page; that stop is kept, so
+ * there one more press reaches the control (#906). Coming back, it returns to the control focused last, as Chromium
+ * does each time.
+ * @param {boolean} docStop whether this press stops on the pad’s document first
+ */
+async function tabIn(page, frame, docStop, key, what) {
+  await page.keyboard.press(key);
+  await expect(frame, `${what} goes into the frame`).toBeFocused();
+  if (docStop) {
+    await expect.poll(() => inPad(frame).then((p) => p.id), { message: 'Firefox’s stop on the pad’s document' }).toBe('');
+    await page.keyboard.press(key);
+  }
+  await expect.poll(() => inPad(frame).then((p) => p.id), { message: `${what}: focus on the pad’s control` }).toBe('go');
+}
+
 test('#712a: with an app in view, Tab goes into it, out to the next control in document order, and Shift+Tab back', async ({ page, browserName }) => {
-  test.fixme(browserName === 'firefox', 'Firefox leaves the app’s page unfocused every time: #906');
   const { t, frame, appItem } = await room(page, 'Tab past an app in view');
   await holds(page, t, 'with the app at the top');
 
   await appItem.getByRole('button', { name: 'Full screen', exact: true }).focus();
-  await page.keyboard.press('Tab');
-  await expect(frame, 'Tab from Full screen goes into the frame').toBeFocused();
-  await expect.poll(() => inPad(frame).then((p) => p.id), { message: 'focus in the pad' }).toBe('go');
+  await tabIn(page, frame, browserName === 'firefox', 'Tab', 'Tab from Full screen');
 
   const next = await nextAfter(frame);
   const appKey = await appItem.getAttribute('data-key');
@@ -146,13 +160,17 @@ test('#712a: with an app in view, Tab goes into it, out to the next control in d
     .soft(next, 'the next control after the frame is its own message’s first action')
     .toEqual({ key: appKey, name: (await actionsOf(appItem))[0], skipped: false, rects: 1 });
   await page.keyboard.press('Tab');
+  if (browserName === 'firefox') {
+    // Leaving, Firefox stops once more on the frame itself, its document no longer focused, as for a plain frame (#906).
+    await expect.poll(() => inPad(frame).then((p) => p.hasFocus), { message: 'Firefox’s stop on the frame' }).toBe(false);
+    await expect(frame).toBeFocused();
+    await page.keyboard.press('Tab');
+  }
   await expect.poll(() => focused(page), { message: 'Tab out of the app lands on the next control' }).toEqual({ key: next?.key, name: next?.name });
   await still(page);
   await holds(page, t, 'after Tab out of the app');
 
-  await page.keyboard.press('Shift+Tab');
-  await expect(frame, 'Shift+Tab comes back into the frame').toBeFocused();
-  await expect.poll(() => inPad(frame).then((p) => p.id), { message: 'focus back in the pad' }).toBe('go');
+  await tabIn(page, frame, false, 'Shift+Tab', 'Shift+Tab back');
   test.info().annotations.push({ type: 'measured', description: `the pad’s document: ${JSON.stringify(await inPad(frame))}` });
   await still(page);
   await holds(page, t, 'after Shift+Tab back into the app');
@@ -164,8 +182,8 @@ test('#712a: scrolled away from the app, Tab out of it and on into the skipped i
   test.fixme(browserName === 'firefox', 'the next control isn’t skipped in Firefox when checked, and the app’s page stays unfocused: #906');
   const { t, frame, inside, appItem, tallItem } = await room(page, 'Tab past an app scrolled away');
   const appKey = await appItem.getAttribute('data-key');
-  // Retried: in about 4 of 20 plain full runs, the first Tab from Full screen left the pad's document inactive, and the
-  // cause wasn't found in its time box. The retry may cover a defect in the page; the issue named in the PR tracks it.
+  // Retried: in about 4 of 20 plain full Chromium runs, the first Tab from Full screen left the pad's document inactive,
+  // and the cause isn't found yet. The retry may cover a defect in the page; #906 tracks it.
   await expect(async () => {
     await appItem.getByRole('button', { name: 'Full screen', exact: true }).focus();
     await page.keyboard.press('Tab');
