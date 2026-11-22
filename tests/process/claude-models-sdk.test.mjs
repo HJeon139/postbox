@@ -5,11 +5,12 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { sdkModels } from '../../server/adapters/claude-models.mjs';
+import { removeListing } from './listing-folder.mjs';
 
 /** @type {any} */
 let sdk = null;
@@ -17,8 +18,10 @@ try {
   sdk = await import('@anthropic-ai/claude-agent-sdk');
 } catch {} // Not installed (it’s optional): the test is skipped.
 
-test('an Agent SDK listing runs none of the person’s SessionStart hooks', { skip: !sdk && 'the Agent SDK isn’t installed here' }, async () => {
+test('an Agent SDK listing runs none of the person’s SessionStart hooks', { skip: !sdk && 'the Agent SDK isn’t installed here' }, async (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'pb-sdk-hooks-'));
+  /** @type {number | undefined} */
+  let closedAt;
   try {
     const marker = join(dir, 'hook-ran');
     const config = join(dir, 'config');
@@ -38,9 +41,11 @@ test('an Agent SDK listing runs none of the person’s SessionStart hooks', { sk
     const atHome = { query: (/** @type {any} */ q) => sdk.query({ ...q, options: { ...q.options, spawnClaudeCodeProcess } }) };
     const models = await sdkModels(atHome);
     await closed;
+    closedAt = Date.now();
     assert.ok(models.length > 0, 'it listed, so it started');
     assert.equal(existsSync(marker), false, 'the SessionStart hook in its settings didn’t run');
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    // The same folder, and the same race, as the CLI’s own listing’s (#1562).
+    removeListing(t, dir, closedAt);
   }
 });

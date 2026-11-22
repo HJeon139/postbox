@@ -1,0 +1,16 @@
+{
+  "artifactDirectoryPath": "/Users/you/.gemini/antigravity-cli/brain/07ca51cf-88e9-46cf-b70d-7dbc33c27122",
+  "conversationId": "07ca51cf-88e9-46cf-b70d-7dbc33c27122",
+  "cwd": "/work/project",
+  "hookEventName": "PreToolUse",
+  "lastUserInput": "Run the shell command `echo hi` with your run_command tool, once. If it is refused, stop and say so; do not try anything else.",
+  "modelName": "gemini-3.8-flash-low",
+  "stepIdx": 2,
+  "toolCall": {
+    "args": { "CommandLine": "echo hi", "WaitMsBeforeAsync": 5000, "toolSummary": "Echo hi" },
+    "id": "call_13902574559687985070",
+    "name": "run_command"
+  },
+  "transcriptPath": "/Users/you/.gemini/antigravity-cli/brain/07ca51cf-88e9-46cf-b70d-7dbc33c27122/.system_generated/logs/transcript_full.jsonl",
+  "workspacePaths": ["/work/project"]
+}

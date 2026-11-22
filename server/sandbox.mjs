@@ -1,9 +1,9 @@
 // Sandbox pages for agent-written apps and Mermaid diagrams.
 //
 // Each page is served with the policy `sandbox allow-scripts allow-forms` (no allow-same-origin), so it runs in an
-// opaque origin: it can’t read Postbox’s storage, cookies or DOM. Its content-security policy allows
-// inline script and style (the agent’s code), the kit and vendored libraries from /kit/, images from
-// /media/ or data: URLs, and nothing else — no fetch, no websockets, no forms, no nested frames.
+// opaque origin: it can’t read Postbox’s storage, cookies or DOM. Its content-security policy allows inline script
+// and style (the agent’s code, and the kit and stylesheet Postbox inlines), images from /media/ or data: URLs, and
+// nothing else — no fetch, no websockets, no forms, no nested frames. Bundled libraries come by message.
 // The only way out is postMessage to Postbox, which handles it through the bridge. Only Postbox’s own page may frame
 // it (frame-ancestors, #992).
 
