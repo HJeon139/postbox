@@ -56,3 +56,19 @@ test('#647: a silent turn counts no unread on the conversation for a block kept 
   assert.equal(r.needs()?.itemId, b.id, 'the block is still the need');
   assert.equal(r.rt.s.sessions[r.alpha.id].unread ?? 0, before, 'and the conversation counts nothing new');
 });
+
+test('#647: the wake’s end raises no new “needs you” alert for the block it kept, which didn’t change', async () => {
+  // Integrator review of #1598: the person already had this alert when the block first became the need, and a notice
+  // comes when something changes (designs/developing.md, “Design habits”, 12). Another agent’s wake changed nothing.
+  const r = await keptInTopic();
+  /** @type {any[]} */
+  const heard = [];
+  r.rt.store.subscribe((/** @type {any} */ ev) => ev.type === 'notify' && heard.push(ev.data));
+  r.work.release();
+  await settle(r.rt);
+  assert.equal(r.needs()?.itemId, r.b.id, 'still the need');
+  assert.deepEqual(
+    heard.filter((n) => n.level === 'blocking'),
+    [],
+  );
+});
