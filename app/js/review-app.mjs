@@ -6,7 +6,7 @@ import { mountApp } from './apps.mjs';
 import { h } from './dom.mjs';
 import { startComment } from './review-draft.mjs';
 
-/** The anchor of a comment on the whole app, for an app that names no parts: what the agent reads in the answer. */
+/** The anchor of a comment on the app as a whole: what the agent reads in the answer. */
 export const WHOLE_APP = 'the whole app';
 
 /**

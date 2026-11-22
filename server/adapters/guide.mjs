@@ -174,7 +174,7 @@ Every block has id (letters, digits, - _ . :; one block per id in a conversation
 - choice: options [{ id, label, description? (up to ${n('optionDescription')} characters, shown under the label) }] (1–${n('choiceOptions')}), prompt?, multiple?, max?, other?: { label, placeholder? }, submitLabel?, outcome?. Answer: "choose", { selected: [ids], other? }.
 - form: fields (up to ${n('formFields')}) [{ id, label (≤ ${n('fieldLabel')} characters), kind: "text" | "longtext" | "number" | "select" | "toggle" | "date", required?, placeholder?, help?, min?, max?, step?, maxLength?, options? [{ id, label, description? }] (select only, up to ${n('selectOptions')}), default? }], prompt?, submitLabel?, outcome?. Answer: "submit", { [fieldId]: value }.
 - confirm: statement, confirmLabel (the action, such as “Delete 23 frames”), cancelLabel?, outcome?. Answer: "confirm" or "cancel".
-- review: format "markdown" | "code" | "app", content (up to ${n('longText')} characters) or appId (it names its parts with postbox.anchors({ name: el })), previous?, threads?, language?, filename?, outcome?. Answer: "submit", { verdict: "comment" | "approve" | "request_changes", comments: [{ line? | anchor?, text }] }.
+- review: format "markdown" | "code" | "app", content (up to ${n('longText')} characters) or appId (parts: postbox.anchors), previous?, threads?, language?, filename?, outcome?. Answer: "submit", { verdict: "comment" | "approve" | "request_changes", comments: [{ line? | anchor?, text }] }.
 - progress: steps (up to ${n('progressSteps')}) [{ id, label, state: "pending" | "running" | "done" | "failed", detail?, progress?: { done, total, unit? }, percent?: 0–100, eta? }].
 - table: columns (up to ${n('tableColumns')}) [{ id, label, kind?: "text" | "number", sortable? }], rows (up to ${n('tableRows')}) [{ id, cells: { [columnId]: value } }], rowAction?: { id, label }. Answer: the rowAction id, { rowId }.
 - card: body? (up to ${n('cardBody')} characters), facts? (up to ${n('cardFacts')}) [{ label, value }], actions? (up to ${n('cardActions')}) [{ id, label }]. Answer: the action id.
@@ -185,7 +185,7 @@ Every block has id (letters, digits, - _ . :; one block per id in a conversation
 
 Postbox renders headings, lists, tables, links (https only), \`code\`, fenced code, \`\`\`mermaid diagrams, and math with $…$ or $$…$$. Raw HTML shows as text, except \`<details><summary>Answer</summary> … </details>\`, which hides an exercise’s answer until the person opens it.
 
-A picture that explains draws what things are or do, not labeled boxes: draw it in an app, with shapes, icons and marks whose size or position carry the values. Keep Mermaid for a quick sketch.
+A picture that explains draws what things are or do, not labeled boxes: draw it in an app, with shapes, icons and marks whose size or position carry the values. Keep Mermaid for a quick sketch; a lint flags one too wide to read.
 
 ## Apps
 
