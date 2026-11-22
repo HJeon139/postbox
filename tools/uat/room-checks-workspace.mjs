@@ -52,13 +52,15 @@ function wordsOf(command) {
 }
 
 /**
- * A quoted part of a word without its quotes, with what the shell won’t expand there marked by a backslash, so the
- * check reads it as a name, not a place: a ~ in either quotes, and a $ in single quotes. `'$TMPDIR'` names an entry
- * called $TMPDIR here; `"$TMPDIR"` is the temp folder. @param {string | undefined} double @param {string | undefined} single
+ * A quoted part of a word without its quotes, as a name when the shell won’t expand what it starts with: a ~ in
+ * either quotes, and a $ in single quotes. Only a word’s start is expanded, or read by the check, so `./` before it
+ * makes `'$TMPDIR'` the entry called $TMPDIR here, as the shell has it; `"$TMPDIR"` is the temp folder.
+ * @param {string | undefined} double @param {string | undefined} single
  */
 function literal(double, single) {
-  if (single !== undefined) return single.replace(/[$~]/g, '\\$&');
-  return (double ?? '').replace(/^~/, '\\~');
+  if (single !== undefined) return /^[$~]/.test(single) ? `./${single}` : single;
+  const part = double ?? '';
+  return part.startsWith('~') ? `./${part}` : part;
 }
 
 const BETWEEN_COMMANDS = new Set(['&&', '||', ';', '|', '\n']);
