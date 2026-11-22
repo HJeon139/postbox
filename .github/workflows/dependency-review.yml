@@ -5,7 +5,8 @@ name: dependency-review
 
 on:
   pull_request:
-  # Its check is required, so it runs on each merge group of GitHub’s merge queue too (check.yml).
+  # Its check is required, so it would run on each merge group of GitHub’s merge queue too, once the repository moves
+  # to an organization that can use the queue (check.yml).
   merge_group:
 
 permissions:
