@@ -212,10 +212,10 @@ test('#995 the guide gives assets.search’s whole result, as apps filter by it,
   assert.doesNotMatch(guideText(), /corpus\.|add_dataset|\.postbox\/datasets/);
 });
 
-test('#203 the guide asks for option descriptions that start with what the person gets, in the fallback too', () => {
+test('#203 the guide asks for option descriptions that start with what the person gets, each listed in the fallback', () => {
   const choice = guideText()
     .split('\n')
     .find((l) => l.startsWith('- Options to pick from'));
-  assert.match(choice ?? '', /If options make different things, each description starts with what the person gets/);
-  assert.match(choice ?? '', /in the fallback too/);
+  assert.match(choice ?? '', /If options make different things, start each description with what the person gets/);
+  assert.match(choice ?? '', /and list each in the fallback/);
 });
