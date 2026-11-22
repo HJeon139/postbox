@@ -2,7 +2,7 @@
 
 Postbox is a local web app where one person directs two to four AI agents on their own computer: conversations, catalog blocks, sandboxed agent apps, and real backends (Claude Code, the Agent SDK, Kiro, Codex, Antigravity). Node with zero runtime dependencies, plain ES modules, no build step.
 
-Its value is one loop: the person configures an agile team of agents to their vision, walks away while the team builds and holds each other to the definition of done, and comes back to a working implementation. Function comes first; anything that isn’t part of that loop works against Postbox (designs/intent.md, “Purpose” and “Function first”).
+Its value is one loop: the person configures an agile team of agents to their vision, walks away while the team builds and holds each other to the definition of done, and comes back to a working implementation with its evidence: the review record, the test results and the version history. Function comes first; anything that isn’t part of that loop works against Postbox (designs/intent.md, “Purpose” and “Function first”).
 
 These are the rules every change follows, whoever writes it. Each names the design section that explains it. When a rule and its section disagree, fix both in the same change. A rule here is guidance; what CI checks (the gate, below) is what holds.
 

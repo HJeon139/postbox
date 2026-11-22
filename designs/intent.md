@@ -4,7 +4,7 @@ This document records why Postbox looks and behaves the way it does. It’s the 
 
 ## Purpose
 
-Postbox’s value is one loop: you configure an agile team of agents to your vision, walk away while the team builds and holds each other to the definition of done, and come back to a working implementation of what you asked for (the owner’s words, 21 November 2026, [#1604](https://github.com/HJeon139/postbox/issues/1604)). Everything in Postbox serves that loop. Anything that isn’t part of it works against Postbox, because it distracts the agents or degrades what they can do: a card that stops a team while you’re away, a refusal that makes an agent relay data by hand, a check that guards against a risk the agent’s own harness already carries.
+Postbox’s value is one loop: you configure an agile team of agents to your vision, walk away while the team builds and holds each other to the definition of done, and come back to a working implementation of what you asked for (the owner’s words, 21 November 2026, [#1604](https://github.com/HJeon139/postbox/issues/1604)). One request goes in. The team takes it as an agile team would: one agent plans, several build, one reviews and one tests, often at once and on the same change, across harnesses from different vendors. What comes back is working software with its evidence attached: the review record, the test results and the version history, recorded from what the agents did. Postbox’s own sprints ran this way, in rooms of 4 to 12 agents (rooms-at-scale.md, “Why”), and the limit they hit was the person’s attention, not building: in one day the person handled about 258 approvals and confirms, about 165 of them a kind they had already allowed ([#852](https://github.com/HJeon139/postbox/issues/852)). So what Postbox optimizes is the person’s supervision per accepted change. Everything in Postbox serves that loop. Anything that isn’t part of it works against Postbox, because it distracts the agents or degrades what they can do: a card that stops a team while you’re away, a refusal that makes an agent relay data by hand, a check that guards against a risk the agent’s own harness already carries.
 
 Postbox is one place to direct several AI agents at once. You message them, wake them when needed, and each can reply with software it writes on the spot: explainers, data explorers, review surfaces. That software runs live in the conversation, and it’s unloaded when you no longer need it.
 
@@ -24,13 +24,14 @@ At its core, Postbox’s conversations are a way to manage what each agent remem
 Function comes first, and security serves it (decided 21 November 2026, [#1604](https://github.com/HJeon139/postbox/issues/1604)). Security matters, but it doesn’t take a front seat to what agents and their apps can do:
 - **A boundary earns its place by what it keeps out.** Each one says what it protects against (designs/architecture/security-boundaries.md). A measure that costs no function stays: the page’s token, the request gate, agent content as text, the sandboxed frame. One that costs function needs a real risk, seen or measured, that the agent’s own harness doesn’t already carry.
 - **An app gets what its agent could get.** An agent runs as you, with a shell that reads your files and reaches your network. Refusing its app the same reads doesn’t make you safer; it makes the agent the app’s data transport, spending turns and context on relaying data. So an app reads files from disk and calls the network, a server on your own network or this computer included, through Postbox’s server, and Postbox shows where it went.
+- **Evidence instead of approvals.** You trust the team’s work by what comes back with it, the review record, the test results, the version history and what each agent ran, not by approving each step while it runs.
 - **No approval that buys little security.** A card, confirm or consent step that asks you to approve what the harness already judges, or what the agent could do anyway, stops the team while you’re away and teaches you to click through. It’s left out (principle 8). Designs for agent integrations keep reaching for one; review declines it.
 
 ## Who it’s for
 
 One technical person running two to four agents on their own projects. They switch between two modes:
 
-- **Dispatch:** several agents work in the background on long tasks, handing work to each other, on this computer and on hosts. You check progress and answer when one needs a decision only you can make.
+- **Dispatch:** you send one request and step away. Several agents plan, build, review and test it in the background, handing work to each other, on this computer and on hosts, and you come back to working software and its evidence. You answer only when one needs a decision only you can make.
 - **Deep focus:** a long session with one agent, working through its apps.
 
 Density and speed matter more than onboarding. There is no sign-in and there are no other people in rooms.
