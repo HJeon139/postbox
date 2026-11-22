@@ -939,7 +939,7 @@ html.store-down .sidepanel { padding-bottom: 44px; }
 .sidepanel .sp-line { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sidepanel .sp-head { flex-wrap: wrap; justify-content: flex-end; }
 .sidepanel .sp-head > .grow { min-width: 4.5em; }
-.sidepanel .sp-head .btn[data-widest] { display: inline-grid; justify-items: center; }
+.sidepanel .sp-head .btn[data-widest] { display: inline-grid; justify-items: center; align-content: center; row-gap: 0; }
 .sidepanel .sp-head .btn[data-widest]::after { content: attr(data-widest); height: 0; overflow: hidden; visibility: hidden; }
 .sidepanel .sp-body { flex: 1; overflow: auto; padding: 14px; display: flex; flex-direction: column; gap: 14px; }
 /* The composer brings its own padding, the same as the conversation’s, so the two line up (#116). The foot is the

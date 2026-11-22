@@ -68,6 +68,9 @@ export function mountSidePanel(parentId, sideId) {
   };
 }
 
+/** Summarize back’s label while it waits, which its button keeps room for at rest (#551). */
+const REQUESTED = 'Summary requested…';
+
 /**
  * Summarize back (#93, #225): asks an agent of the thread for a short summary, posted in the conversation. In a side
  * thread a menu picks which of its two agents writes it, the one that started it first. One summary at a time: from the
@@ -112,7 +115,7 @@ function summarizeButton(sideId, parent) {
       title: `Ask ${pair ? 'one of its agents' : 'the thread’s agent'} for a short summary, and post it in the conversation`,
       ...(pair ? { 'aria-haspopup': 'menu', 'aria-expanded': 'false' } : {}),
       // Its width is its widest label’s, so “Summary requested…” moves nothing beside it (#551).
-      'data-widest': 'Summary requested…',
+      'data-widest': REQUESTED,
       onclick: () => (pair ? choose() : ask(null)),
     },
     'Summarize back',
@@ -124,7 +127,7 @@ function summarizeButton(sideId, parent) {
     if (waiting && document.activeElement === el)
       (document.getElementById('side-input') ?? el.closest('.sidepanel')?.querySelector('.sp-head button[aria-label^="Close"]'))?.focus();
     el.disabled = waiting || !(S().threads[sideId]?.lastSpeaker || S().threads[sideId]?.woke);
-    const label = waiting ? 'Summary requested…' : 'Summarize back';
+    const label = waiting ? REQUESTED : 'Summarize back';
     if (el.textContent !== label) el.textContent = label;
   };
   paint();

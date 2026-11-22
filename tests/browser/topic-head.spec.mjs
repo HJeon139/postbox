@@ -136,6 +136,25 @@ for (const [width, paneMin] of [
     // Wrapped or not, the buttons are kept right: Close ends at the head’s right edge, inside its padding.
     const edge = await head.evaluate((el) => Math.round(el.getBoundingClientRect().right - parseFloat(getComputedStyle(el).paddingRight)));
     expect(still.closeRight, 'Close kept right').toBe(edge);
+    // Each label sits where it would without the hidden widest label under it, as in every other small button: the
+    // text’s space above it in the button, with and without data-widest, differs by half a pixel at most.
+    const drift = await head.evaluate((el) =>
+      [...el.querySelectorAll('.btn[data-widest]')].map((b) => {
+        const above = () => {
+          const range = document.createRange();
+          range.selectNodeContents(b);
+          return range.getBoundingClientRect().top - b.getBoundingClientRect().top;
+        };
+        const withWidest = above();
+        const widest = /** @type {string} */ (b.getAttribute('data-widest'));
+        b.removeAttribute('data-widest');
+        const plain = above();
+        b.setAttribute('data-widest', widest);
+        return Math.abs(withWidest - plain);
+      }),
+    );
+    expect(drift.length, 'both relabeled buttons').toBe(2);
+    for (const px of drift) expect(px, 'the label where a plain button puts it').toBeLessThanOrEqual(0.5);
     expect(await relabel(head, 'Summarize back', 'Summary requested…')).toBe(true);
     expect(await layout(head), 'with “Summary requested…”').toEqual(still);
     expect(await relabel(head, 'Copy link', 'Copied')).toBe(true);
