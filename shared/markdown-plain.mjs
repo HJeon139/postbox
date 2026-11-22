@@ -20,14 +20,14 @@ function freeMark(s) {
 
 /**
  * The text without its fenced blocks, each opening on a line of its own and running to its closing marker or the end.
- * The renderer finds a fence inside a quote or a list item once it strips the `>` and the item’s indent, so each line is
- * read without them here.
+ * The renderer finds a fence inside a quote or a list item once it strips the `>`, the item’s marker and its indent, so
+ * each line is read without them here.
  */
 export function withoutFences(s) {
   const out = [];
   let marker = null;
   for (const line of s.split('\n')) {
-    const bare = line.replace(/^(\s*>)*\s*/, '');
+    const bare = line.replace(/^(\s*>)*\s*/, '').replace(/^([-*+]|\d+[.)])\s+/, '');
     if (marker) {
       if (closesFence(marker, bare)) marker = null;
       continue;
