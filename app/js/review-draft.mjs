@@ -13,8 +13,8 @@ export const newReviewDraft = (content) => ({
   editing: null,
   editingText: '',
   editingSelection: null,
-  // A new comment’s unfinished text, set aside while an edit is open, and whether its box or Edit was just opened.
-  parked: null,
+  // New comments’ unfinished text, set aside by Edit, one per place, and whether a box or Edit was just opened.
+  parked: [],
   composeFocus: false,
   editFocus: false,
   // Which box last had focus, kept while it’s rebuilt, so a repaint gives focus back only to the box that had it.
@@ -32,20 +32,26 @@ export const newReviewDraft = (content) => ({
 export function startComment(draft, key) {
   // One box at a time: an edit open elsewhere keeps what was typed in it.
   saveEdit(draft);
-  const parked = draft.parked;
-  draft.parked = null;
+  // Only this place’s text comes back; text set aside for another place waits for its own.
+  const at = draft.parked.findIndex((p) => samePlace(p.key, key));
+  const parked = at < 0 ? null : draft.parked[at];
+  if (parked) draft.parked = draft.parked.filter((_p, i) => i !== at);
   draft.composing = key;
-  draft.composingText = parked && JSON.stringify(parked.key) === JSON.stringify(key) ? parked.text : '';
+  draft.composingText = parked ? parked.text : '';
   draft.composingSelection = null;
   draft.composeFocus = true;
 }
 
+/** Whether two comment boxes are on the same line, part or selection. @param {any} a @param {any} b */
+const samePlace = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+
 /**
  * Closes a new comment’s box for an edit (#858), setting aside what was typed in it: reopening the same line, part or
- * selection brings it back. @param {any} draft
+ * selection brings it back, whatever was opened in between. @param {any} draft
  */
 export function parkComment(draft) {
-  if (draft.composing !== null && draft.composingText.trim()) draft.parked = { key: draft.composing, text: draft.composingText };
+  const key = draft.composing;
+  if (key !== null && draft.composingText.trim()) draft.parked = [...draft.parked.filter((p) => !samePlace(p.key, key)), { key, text: draft.composingText }];
   stopComment(draft);
 }
 
@@ -93,5 +99,5 @@ function follow(key, from, to) {
  */
 export function followOpen(draft, from, to) {
   if (draft.composing !== null && typeof draft.composing !== 'string') draft.composing = follow(draft.composing, from, to);
-  if (draft.parked && typeof draft.parked.key !== 'string') draft.parked = { ...draft.parked, key: follow(draft.parked.key, from, to) };
+  draft.parked = draft.parked.map((p) => (typeof p.key === 'string' ? p : { ...p, key: follow(p.key, from, to) }));
 }

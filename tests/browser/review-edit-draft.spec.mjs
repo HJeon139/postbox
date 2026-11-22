@@ -112,6 +112,9 @@ test('#858 opening Edit sets a new comment’s unfinished text aside, and reopen
   await block.locator('.g-mark[data-line="7"]').click();
   await block.getByRole('textbox', { name: 'Comment on line 7' }).fill('half a thought');
   await (await open('on three')).press('Escape');
+  // A detour to another line’s box, opened and closed, doesn’t take it.
+  await block.locator('.g-mark[data-line="6"]').click();
+  await block.getByRole('textbox', { name: 'Comment on line 6' }).press('Escape');
   await block.locator('.g-mark[data-line="7"]').click();
   await expect(block.getByRole('textbox', { name: 'Comment on line 7' }), 'its text is back').toHaveValue('half a thought');
 });
