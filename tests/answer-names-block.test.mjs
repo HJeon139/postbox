@@ -65,7 +65,9 @@ function reviewed(f, content) {
     answered: true,
     answer: { action: 'submit', values, voice },
   });
-  const line = arrange.post(f.rt, f.t.id, { kind: 'voice', text: voice, blockItemId: shown.id });
+  // As server/blocks.mjs writes it: the line keeps the block it answered and this answer’s comments.
+  const answerTo = { id: block.id, type: block.type, handle: 'alpha', title: block.title };
+  const line = arrange.post(f.rt, f.t.id, { kind: 'voice', text: voice, blockItemId: shown.id, answerTo, comments: values.comments });
   return { shown, line };
 }
 
@@ -106,7 +108,9 @@ test('#1253: comments cut on the answer line point at the block, whose reading h
     answered: true,
     answer: { action: 'submit', values: { verdict: 'request_changes', comments: [{ line: 3, text: long }] }, voice },
   });
-  const line = arrange.post(f.rt, f.t.id, { kind: 'voice', text: voice, blockItemId: shown.id });
+  const answerTo = { id: block.id, type: block.type, handle: 'alpha', title: block.title };
+  const comments = [{ line: 3, text: long }];
+  const line = arrange.post(f.rt, f.t.id, { kind: 'voice', text: voice, blockItemId: shown.id, answerTo, comments });
   const read = arrange.describeItem(f.rt, line, f.beta);
   assert.match(read, new RegExp(`read_message \\{ id: "${shown.id}" \\} has the rest`));
 });

@@ -70,7 +70,7 @@ export function act(rt, threadId, itemId, action, values, revision) {
       ...theirs?.patch,
       ...(dismissed ? { closed: { by: 'person', at: Date.now() } } : {}),
     });
-  rt.threads.addItem(threadId, { kind: 'voice', text: r.voice, blockItemId: itemId });
+  rt.threads.addItem(threadId, answerLine(it, r.voice, dismissed ? {} : ev.values));
   const se = rt.s.sessions[it.sessionId];
   releaseNeed(rt, se, itemId);
   // A question whose call has gone gets its answer as an event, with its question and labels in words (#521).
@@ -81,6 +81,17 @@ export function act(rt, threadId, itemId, action, values, revision) {
   // “What an entry is”).
   else if (se) rt.delivery.send({ sessionId: se.id, threadId, source: 'answer', itemId, from: 'you', message: { kind: 'event', event, blockItemId: itemId } });
   return { ok: true, voice: r.voice };
+}
+
+/**
+ * The person’s answer as a line of the conversation, in their voice. It says which block it answered and keeps this
+ * answer’s review comments, so another agent reads them in any read, and a later answer to the same block, revised,
+ * doesn’t change what this one said (#1253). @param {any} it  the block’s item @param {string} voice @param {any} values
+ */
+function answerLine(it, voice, values) {
+  const comments = it.block.type === 'review' && Array.isArray(values?.comments) ? values.comments : [];
+  const answerTo = { id: it.block.id, type: it.block.type, handle: it.handle, sessionId: it.sessionId, ...(it.block.title ? { title: it.block.title } : {}) };
+  return { kind: 'voice', text: voice, blockItemId: it.id, answerTo, ...(comments.length ? { comments } : {}) };
 }
 
 /**

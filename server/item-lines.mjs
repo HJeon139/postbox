@@ -225,13 +225,15 @@ function personLine(memory, i, text, reader) {
  */
 function answerLine(memory, i, se, text, n) {
   const block = i.blockItemId && memory.store.item(se?.threadId, i.blockItemId);
-  if (block && block.sessionId === se?.id) return null;
+  // The block’s own agent hears it as an event; se is the reader, which a read with no session still names.
+  if (se && (i.answerTo?.sessionId ?? block?.sessionId) === se.id) return null;
   // An app’s summary is its own wording, never the person’s (#51).
   const quote = i.quote ? `\nThe app’s own summary, not the person’s words: “${text(i.quote)}”` : '';
-  const b = block?.block;
-  const on = b ? ` answered @${block.handle}’s ${b.type}${b.title ? ` “${text(b.title)}”` : ''} (${b.id})` : '';
-  const comments = b?.type === 'review' && block.answered ? (block.answer?.values?.comments ?? []) : [];
-  const notes = Array.isArray(comments) && comments.length ? `\n${clipItem(lines(comments.map((c) => `${commentAt(c)}: ${c.text}`)), n, block.id)}` : '';
+  // The line’s own record of the block it answered; a line from before it kept one reads the block, when it’s found.
+  const to = i.answerTo ?? (block?.block ? { ...block.block, handle: block.handle } : null);
+  const on = to ? ` answered @${to.handle}’s ${to.type}${to.title ? ` “${text(to.title)}”` : ''} (${to.id})` : '';
+  const comments = Array.isArray(i.comments) ? i.comments : [];
+  const notes = comments.length ? `\n${clipItem(lines(comments.map((c) => `${commentAt(c)}: ${c.text}`)), n, i.blockItemId)}` : '';
   return `The person${on}: ${text(i.text)}${notes}${quote}`;
 }
 
@@ -265,7 +267,7 @@ export function describeItem(memory, i, se, n, reader) {
       return text(`@${i.handle} showed ${what}${titled(title)}${holds}`);
     }
     case 'voice':
-      return answerLine(memory, i, se, text, n);
+      return answerLine(memory, i, se ?? reader, text, n);
     case 'shared': {
       const asked = i.question ? `The person asked: “${text(i.question)}” ` : '';
       return `${i.summary ? 'Summary' : 'Shared'} from the thread “${i.fromTitle}”${sharedBy(i)}: ${asked}${text(i.text)}`;
