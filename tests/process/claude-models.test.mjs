@@ -10,14 +10,17 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { claudeModels } from '../../server/adapters/claude-models.mjs';
+import { removeListing } from './listing-folder.mjs';
 
 const claudeHere = spawnSync('claude', ['--version'], { timeout: 20_000 }).status === 0;
 
-test('a listing runs none of the person’s SessionStart hooks', { skip: !claudeHere && 'Claude Code isn’t installed here' }, async () => {
+test('a listing runs none of the person’s SessionStart hooks', { skip: !claudeHere && 'Claude Code isn’t installed here' }, async (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'pb-claude-hooks-'));
+  const config = join(dir, 'config');
+  /** @type {number | undefined} */
+  let closedAt;
   try {
     const marker = join(dir, 'hook-ran');
-    const config = join(dir, 'config');
     mkdirSync(config);
     const hook = { hooks: { SessionStart: [{ hooks: [{ type: 'command', command: `touch ${JSON.stringify(marker)}` }] }] } };
     writeFileSync(join(config, 'settings.json'), JSON.stringify(hook));
@@ -33,10 +36,11 @@ test('a listing runs none of the person’s SessionStart hooks', { skip: !claude
     };
     const models = await claudeModels('claude', { spawnImpl });
     await closed;
+    closedAt = Date.now();
     assert.ok(models.length > 0, 'it listed, so it started');
     assert.equal(existsSync(marker), false, 'the SessionStart hook in its settings didn’t run');
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    removeListing(t, dir, closedAt);
   }
 });
 
