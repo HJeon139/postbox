@@ -61,7 +61,8 @@ test('#1130 a table refilled by update_block keeps its scroll, sideways and down
   expect(before.top, 'scrolled down').toBeGreaterThan(200);
   tools.update_block({ block: works(12, 41) });
   await expect(page.getByText('41 rows')).toBeVisible();
-  expect(await at(region), 'where the person was').toEqual(before);
+  // The frame’s observer puts it back before the next paint, so the read waits for that frame.
+  await expect.poll(() => at(region), { message: 'where the person was' }).toEqual(before);
 });
 
 test('#1130 a narrower table keeps as much of the scroll as it has, and Sort and Expand keep it too', async ({ page }) => {
@@ -71,15 +72,15 @@ test('#1130 a narrower table keeps as much of the scroll as it has, and Sort and
   });
   tools.update_block({ block: works(9) });
   await expect(page.getByRole('columnheader')).toHaveCount(9);
-  expect(await left(region), 'at the narrower table’s right edge').toBe(await most(region));
+  await expect.poll(async () => (await left(region)) - (await most(region)), { message: 'at the narrower table’s right edge' }).toBe(0);
   await region.evaluate((el) => {
     el.scrollLeft = 200;
   });
   // A column in view there, so the click doesn’t scroll its header into view first.
   await page.getByRole('button', { name: 'Column 2' }).click();
   await expect(page.locator('th[aria-sort="ascending"]')).toHaveCount(1);
-  expect(await left(region), 'after Sort').toBe(200);
+  await expect.poll(() => left(region), { message: 'after Sort' }).toBe(200);
   await page.getByRole('button', { name: 'Expand table' }).click();
   await expect(page.getByRole('button', { name: 'Collapse table' })).toBeVisible();
-  expect(await left(region), 'after Expand').toBe(200);
+  await expect.poll(() => left(region), { message: 'after Expand' }).toBe(200);
 });
