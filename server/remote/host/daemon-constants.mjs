@@ -103,8 +103,8 @@ export const READ_CHUNK = 64 * 1024;
  * One daemon: its options, defaults filled in, and its state, which createDaemon passes to every function in the
  * daemon-*.mjs modules as `d`.
  * - settings: what the driver’s hello sent, over HOST_DEFAULTS. programs: what the last hello found.
- * - loginPath: what the login shell gave (daemon-login.mjs, #672): asked at the first hello (loginProbe), and once
- *   more when a turn’s harness isn’t found (reprobed).
+ * - loginPath: what the login shell gave (daemon-login.mjs, #672): asked at the first hello (loginProbe), and again
+ *   when a turn’s harness isn’t found, at most every REPROBE_AFTER_MS (reprobed, #1084).
  * - conns: Postbox connections, said hello or not. driver: the one that drives the daemon.
  * - acked: per turn, how far Postbox has applied out.jsonl; cleanup.mjs keeps it in `.ack`.
  * - dead: turns whose runner was found not to be the one runner.json names: interrupted, whatever a socket says.
@@ -123,7 +123,7 @@ export const READ_CHUNK = 64 * 1024;
  * - brk: the broker (broker.mjs, or the test’s); shimSeam: what serves a shim’s connection.
  * @typedef {Required<Omit<DaemonOpts, 'broker' | 'shim'>> & { p: ReturnType<typeof import('../../../shared/remote-protocol.mjs').hostPaths>,
  *   settings: Record<string, any>, programs: import('./programs.mjs').Programs | null, loginPath: import('./login-path.mjs').LoginPath | null,
- *   loginProbe: Promise<void> | null, reprobed: Promise<void> | null, conns: Set<Conn>, driver: Conn | null, ids: number,
+ *   loginProbe: Promise<void> | null, reprobed: { at: number, settled: boolean, done: Promise<void> } | null, conns: Set<Conn>, driver: Conn | null, ids: number,
  *   acked: Map<string, number>, dead: Set<string>, silentSince: Map<string, Silence>, looks: number, answeredLook: Map<string, number>, killTimers: Map<string, any>, shells: Map<string, Map<number, import('./proc.mjs').ToolGroup>>,
  *   stoppedFirst: Set<string>, starting: Map<string, Promise<void>>, problems: Map<string, string>, idleTimer: any, lastActive: number,
  *   closed: boolean, removing: boolean, sweepTimer: any, checks: Promise<void>, checking: Set<any>,
