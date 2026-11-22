@@ -12,6 +12,7 @@ import { reviewDraft, startComment, stopComment } from './review-draft.mjs';
 import { keepReviewDraft } from './review-draft-store.mjs';
 import { inlineMd, itemWords, words } from './review-inline.mjs';
 import { focusQuote, renderPreview } from './review-preview.mjs';
+import { answerReceipt } from './review-receipt.mjs';
 import { withDelimiter } from './review-table.mjs';
 import { reviewersOf, threadBox as threadsFor } from './review-threads.mjs';
 import { fullScreen, revisionOf, seg, setView, viewOf } from './review-view.mjs';
@@ -103,7 +104,7 @@ export function renderReview(b, item, ctx, kit) {
   hd.querySelector('.title').classList.add('mono');
   hd.querySelector('.title').style.fontSize = '13px';
   // A review takes the transcript’s width (#179); box is what goes full screen.
-  const box = h('div.rv-box', hd);
+  const box = h('div.rv-box', hd, answerReceipt(item));
   const node = h('div.rv-wide', { 'aria-labelledby': titleId }, box);
   full?.fit(node, box, titleId);
 
