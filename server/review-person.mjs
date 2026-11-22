@@ -59,7 +59,8 @@ export function answerThreads(it) {
 
 /**
  * The update’s threads with every comment it adds in anyone’s name but the block’s agent’s left out (#1143): in a
- * new thread, or added to one it has. A comment already stored keeps its text and author. dropped says how many went, for the agent’s reply.
+ * new thread, or added to one it has. A comment already stored keeps its text and author, under whatever name it was
+ * sent back (#1208). dropped says how many went, for the agent’s reply.
  * @param {any} existing  the block item as it was @param {any} block  the update, validated
  */
 export function ownComments(existing, block) {
@@ -70,14 +71,21 @@ export function ownComments(existing, block) {
   let dropped = 0;
   const threads = [];
   for (const t of block.threads) {
+    const had = stored.get(t.id)?.comments ?? [];
     const said = new Map();
-    for (const c of stored.get(t.id)?.comments ?? []) said.set(key(c), (said.get(key(c)) ?? 0) + 1);
-    const comments = t.comments.filter((c) => {
+    for (const c of had) said.set(key(c), (said.get(key(c)) ?? 0) + 1);
+    const take = (c) => {
       const n = said.get(key(c)) ?? 0;
       if (n) said.set(key(c), n - 1);
-      return n > 0 || c.author === own;
-    });
-    dropped += t.comments.length - comments.length;
+      return n > 0;
+    };
+    const comments = [];
+    for (const c of t.comments) {
+      // A stored comment sent back under another name (#1208) is that stored comment, as it was; any other goes.
+      const echoed = take(c) || c.author === own ? c : had.find((h) => h.text === c.text && take(h));
+      if (echoed) comments.push(echoed);
+      else dropped++;
+    }
     // A thread it has keeps what it held, so its status still changes; a new one with nothing left goes.
     const kept = comments.length ? comments : stored.get(t.id)?.comments;
     if (kept) threads.push({ ...t, comments: kept });

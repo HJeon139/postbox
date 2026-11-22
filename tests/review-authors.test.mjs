@@ -169,3 +169,32 @@ test('#1208 show_block names a comment with no author plainly, and cuts a long o
   });
   assert.ok(long.message.length < 400, long.message);
 });
+
+test('#1208 its own stored comment echoed under a name the rule doesn’t take, with a new reply, keeps both', () => {
+  const s = shown();
+  const own = { id: 'r1', status: 'open', line: 4, comments: [{ author: '@researcher', text: 'Check the date.' }] };
+  assert.equal(s.author.update_block({ block: { ...draft, threads: [own] } }).ok, true);
+  const sent = {
+    ...own,
+    status: 'resolved',
+    comments: [
+      { author: 'researcher', text: 'Check the date.' },
+      { author: '@researcher', text: 'Checked.' },
+    ],
+  };
+  const r = s.author.update_block({ block: { ...draft, threads: [sent] } });
+  assert.equal(r.ok, true, r.message);
+  assert.doesNotMatch(r.message, /wasn’t added/, 'the echo is the stored comment, not a dropped one');
+  assert.deepEqual(
+    s.item().block.threads.map((t) => [t.status, t.comments.map((c) => [c.author, c.text])]),
+    [
+      [
+        'resolved',
+        [
+          ['@researcher', 'Check the date.'],
+          ['@researcher', 'Checked.'],
+        ],
+      ],
+    ],
+  );
+});
