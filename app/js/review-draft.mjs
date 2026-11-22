@@ -12,19 +12,36 @@ export const newReviewDraft = (content) => ({
   editing: null,
   editingText: '',
   editingSelection: null,
+  // A new comment’s unfinished text, set aside while an edit is open, and whether Edit was just pressed.
+  parked: null,
+  editFocus: false,
   verdict: 'request_changes',
   view: 'diff',
   error: null,
   on: content,
 });
 
-/** Opens one empty comment box. @param {any} draft @param {any} key */
+/**
+ * Opens one comment box: empty, or with what was typed there before Edit closed it (parkComment). @param {any} draft
+ * @param {any} key
+ */
 export function startComment(draft, key) {
   // One box at a time: an edit open elsewhere keeps what was typed in it.
   saveEdit(draft);
+  const parked = draft.parked;
+  draft.parked = null;
   draft.composing = key;
-  draft.composingText = '';
+  draft.composingText = parked && JSON.stringify(parked.key) === JSON.stringify(key) ? parked.text : '';
   draft.composingSelection = null;
+}
+
+/**
+ * Closes a new comment’s box for an edit (#858), setting aside what was typed in it: reopening the same line, part or
+ * selection brings it back. @param {any} draft
+ */
+export function parkComment(draft) {
+  if (draft.composing !== null && draft.composingText.trim()) draft.parked = { key: draft.composing, text: draft.composingText };
+  stopComment(draft);
 }
 
 /** Closes the open comment box and forgets its unfinished text. @param {any} draft */

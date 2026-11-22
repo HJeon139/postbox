@@ -5,7 +5,7 @@
 import { renderMarkdown } from '/shared/markdown.mjs';
 import { authorName } from '/shared/review-comments.mjs';
 import { h, icon, plural, trusted } from './dom.mjs';
-import { saveEdit, stopComment } from './review-draft.mjs';
+import { parkComment, saveEdit } from './review-draft.mjs';
 import { revisionOf } from './review-view.mjs';
 
 /** Whether a thread or a comment is on key: an app’s part, or a line. */
@@ -65,8 +65,9 @@ function draftOf(c, env) {
   };
   // One box at a time: a new comment’s box closes, and another edit keeps what was typed in it.
   const edit = () => {
-    stopComment(d);
+    parkComment(d);
     saveEdit(d);
+    d.editFocus = true;
     d.editing = at;
     d.editingText = d.comments[at].text;
     rerender();
@@ -112,6 +113,7 @@ function editorOf(c, at, { d, rerender }) {
   };
   const ta = h('textarea.textarea', {
     'aria-label': 'Edit your draft comment',
+    'data-edit-draft': '',
     style: { minHeight: '56px' },
     value: text,
     oninput: remember,
@@ -130,7 +132,11 @@ function editorOf(c, at, { d, rerender }) {
       }
     },
   });
-  queueMicrotask(() => restoreComposer(ta, saved, text));
+  // Focus goes to it when Edit is pressed, and back to it after a repaint only if it had focus: a repaint while the
+  // person types elsewhere, such as another agent’s comment arriving, leaves their focus where it is.
+  const focused = d.editFocus || document.activeElement?.matches('textarea[data-edit-draft]');
+  d.editFocus = false;
+  if (focused) queueMicrotask(() => restoreComposer(ta, saved, text));
   const quote = quoted(c.quote ?? c.gone);
   return h(
     'div.rv-thread',

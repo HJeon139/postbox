@@ -106,6 +106,30 @@ test('#858 an edit keeps its text, caret and focus when another agent comments',
   expect(await box.evaluate((x) => /** @type {HTMLTextAreaElement} */ (x).selectionStart), 'its caret').toBe(11);
 });
 
+test('#858 opening Edit sets a new comment’s unfinished text aside, and reopening its line brings it back', async ({ page }) => {
+  const { block, open } = await twoDrafts(page, 'Set aside');
+  await block.locator('.g-mark[data-line="7"]').click();
+  await block.getByRole('textbox', { name: 'Comment on line 7' }).fill('half a thought');
+  await (await open('on three')).press('Escape');
+  await block.locator('.g-mark[data-line="7"]').click();
+  await expect(block.getByRole('textbox', { name: 'Comment on line 7' }), 'its text is back').toHaveValue('half a thought');
+});
+
+test('#858 a repaint leaves focus in the message box when the person moved there from an edit', async ({ page }) => {
+  const { rt } = room.app;
+  const { blockId, sessionOf, open } = await twoDrafts(page, 'Focus stays');
+  await (await open('on five')).fill('five, being edited');
+  const message = page.locator('#composer-input');
+  await message.click();
+  await expect(message).toBeFocused();
+  const reviewed = rt.toolsFor(sessionOf('reader').id).review_block({ blockId, verdict: 'comment', comments: [{ line: 4, text: 'Another review.' }] });
+  expect(reviewed.ok, reviewed.message).toBe(true);
+  await synced(page, room.app);
+  await expect(page.locator('.rv-thread', { hasText: 'Another review.' })).toBeVisible();
+  await expect(message, 'the repaint leaves focus in the message box').toBeFocused();
+  await expect(page.getByRole('textbox', { name: 'Edit your draft comment' }), 'and the edit stays open, with its text').toHaveValue('five, being edited');
+});
+
 test('#858 a draft comment on a selection in Preview keeps its quote and columns when edited', async ({ page }) => {
   const { block, blockId } = await room.withReview(page, 'Edit a selection');
   await drawn(block, 'Preview');
