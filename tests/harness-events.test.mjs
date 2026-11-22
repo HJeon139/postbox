@@ -90,8 +90,15 @@ test('a step’s input leaves out what its label already says, such as a command
   assert.equal(activity.at(-1).input, 'command: head *', 'also when the label is the description cut short');
 });
 
-test('a refused Postbox tool’s step names the tool, though its call showed no step of its own', () => {
-  // Postbox’s own tools are quiet (QUIET, server/tool-labels.mjs): a refusal is the only step they show.
+test('a refused Postbox tool’s step names the tool, though its call showed no step of its own', (t) => {
+  // Postbox’s own tools are quiet (QUIET, server/tool-labels.mjs): a refusal is the only step they show. In UAT
+  // recording mode, the mode that names a step’s tool (server/step-text.mjs, toolOf).
+  const was = process.env.POSTBOX_UAT_RECORD;
+  process.env.POSTBOX_UAT_RECORD = '1';
+  t.after(() => {
+    if (was === undefined) delete process.env.POSTBOX_UAT_RECORD;
+    else process.env.POSTBOX_UAT_RECORD = was;
+  });
   for (const after of [false, true]) {
     const { ctx, activity } = fakeCtx();
     const { event } = new HarnessEvents(ctx, { now: () => 0 });

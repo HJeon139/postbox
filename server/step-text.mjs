@@ -58,10 +58,12 @@ export const stepState = (state) => (STEP_STATES.has(/** @type {string} */ (stat
 
 /**
  * A tool call’s step names the tool it ran, by its harness’s name, bounded as a label is, for the ATIF export’s
- * function_name (#1527, #1529). Every place that makes a tool call’s step takes it from here.
- * @param {unknown} name
+ * function_name (#1527, #1529). Only in UAT recording mode (POSTBOX_UAT_RECORD=1), by the owner’s decision on #1527:
+ * only the UAT export reads it, and every room would otherwise carry it on each step update. Every place that makes a
+ * tool call’s step takes it from here.
+ * @param {unknown} name @param {Record<string, string | undefined>} [env]
  */
-export const toolOf = (name) => (typeof name === 'string' && name ? { tool: name.slice(0, 200) } : {});
+export const toolOf = (name, env = process.env) => (env.POSTBOX_UAT_RECORD === '1' && typeof name === 'string' && name ? { tool: name.slice(0, 200) } : {});
 
 /**
  * The step a turn keeps, from what its activity was told: each field bounded, and only the ones it has.

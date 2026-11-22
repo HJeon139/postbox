@@ -1,5 +1,6 @@
 // A Claude Code terminal’s tool calls, mirrored into Postbox (server/claude-mirror.mjs) or brought as its history
-// (server/adapters/terminal-mirror.mjs), name the tool each step ran, as a Postbox turn’s steps do (#1527).
+// (server/adapters/terminal-mirror.mjs), name the tool each step ran, as a Postbox turn’s steps do, in UAT recording
+// mode (#1527).
 
 import assert from 'node:assert/strict';
 import { appendFile, mkdir, writeFile } from 'node:fs/promises';
@@ -10,6 +11,8 @@ import { entriesToItems } from '../server/adapters/terminal-mirror.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
 import { tempDir } from './temp-dirs.mjs';
+
+process.env.POSTBOX_UAT_RECORD = '1'; // the mode that names a step’s tool (server/step-text.mjs, toolOf)
 
 const line = (e) => `${JSON.stringify(e)}\n`;
 const typed = (text) => ({ type: 'user', turnOrigin: 'human', cwd: '/work/site', message: { role: 'user', content: text } });
