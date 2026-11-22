@@ -2,6 +2,7 @@
 // one line of text. Moved out of shared/markdown.mjs, which renders the blocks and calls inline for their text. All
 // text is escaped, as there.
 
+import { codeSpanAt } from './code-spans.mjs';
 import { mathAt } from './math.mjs';
 import { isSafeUrl, LOCAL_HTTP, onPageOrigin } from './urls.mjs';
 
@@ -64,17 +65,13 @@ export function inline(s, ctx, at) {
       continue;
     }
     if (c === '`') {
-      const run = /** @type {RegExpMatchArray} */ (s.slice(i).match(/^`+/))[0];
-      const end = s.indexOf(run, i + run.length);
-      if (end > -1) {
-        const code = s.slice(i + run.length, end).replace(/^ (.*) $/, '$1');
+      const { code, end } = codeSpanAt(s, i);
+      if (code === null) buf += s.slice(i, end);
+      else {
         codes.push(`<code>${escapeHtml(ctx.cell ? code.replace(/\\\|/g, '|') : code)}</code>`);
         buf += '\0';
-        i = end + run.length;
-        continue;
       }
-      buf += run;
-      i += run.length;
+      i = end;
       continue;
     }
 
