@@ -156,7 +156,11 @@ test('#858 one review’s repaint leaves focus in another review’s comment box
   for (const b of [block, second]) {
     await viewRadio(b, 'Lines').click();
     await b.locator('.g-mark[data-line="3"]').click();
+    // Focus leaves the box for nothing in particular, as a click on the page’s background does, so the first review
+    // still holds that its box had focus last.
+    await page.evaluate(() => /** @type {HTMLElement} */ (document.activeElement)?.blur());
   }
+  await second.getByRole('textbox', { name: 'Comment on line 3' }).click();
   const typing = second.getByRole('textbox', { name: 'Comment on line 3' });
   await typing.fill('in the second');
   await expect(block.getByRole('textbox', { name: 'Comment on line 3' }), 'the first review’s box is still open').toBeVisible();
