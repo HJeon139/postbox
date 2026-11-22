@@ -57,6 +57,8 @@ test('the shapes are these, so a field added to one is a decision this test sees
   assert.deepEqual(STEP_FIELDS, [
     'id',
     'label',
+    // The tool a call ran, by its harness’s name, in UAT recording mode: the ATIF export’s function_name (#1529).
+    'tool',
     'state',
     'ms',
     'who',

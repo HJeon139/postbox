@@ -49,9 +49,9 @@ export const POSTBOX_CHANNELS = {
       opt(m.instance, (v) => token(v, 'hello.instance')) ||
       opt(m.takeover, (v) => bool(v, 'hello.takeover')) ||
       opt(m.settings, (v) => checkSettings(v)),
-    /** { turn, harness, folder, argv, env, stdin, files, agentFile?, attachments? } */
+    /** { turn, harness, folder, argv, env, stdin, files, agentFile?, attachments?, claudeCheck? } */
     start: (m) =>
-      fields(m, 'start', ['turn', 'harness', 'folder', 'argv', 'env', 'stdin', 'files'], ['agentFile', 'attachments']) ||
+      fields(m, 'start', ['turn', 'harness', 'folder', 'argv', 'env', 'stdin', 'files'], ['agentFile', 'attachments', 'claudeCheck']) ||
       turnId(m.turn, 'start.turn') ||
       oneOf(m.harness, 'start.harness', HARNESSES) ||
       hostPath(m.folder, 'start.folder') ||
@@ -63,7 +63,13 @@ export const POSTBOX_CHANNELS = {
         ? `A turn that reads its stdin from a file must send ${MESSAGE_FILE} in start.files.`
         : '') ||
       opt(m.agentFile, (v) => (m.harness === 'kiro-cli' ? checkAgentFile(v) : `start.agentFile is only for kiro-cli; this start is for ${m.harness}.`)) ||
-      opt(m.attachments, (v) => checkAttachments(v)),
+      opt(m.attachments, (v) => checkAttachments(v)) ||
+      // The claude version floor a daemon that checks claude holds the turn to (#1084), for claude only.
+      opt(m.claudeCheck, (v) =>
+        m.harness === 'claude-code'
+          ? fields(v, 'start.claudeCheck', ['denyPrompts']) || bool(v.denyPrompts, 'start.claudeCheck.denyPrompts')
+          : `start.claudeCheck is only for claude-code; this start is for ${m.harness}.`,
+      ),
     /** { turn, home, threads: [{ id, items: SnapshotItem[] }] }: the whole snapshot, replacing any before. */
     snapshot: (m) =>
       fields(m, 'snapshot', ['turn', 'home', 'threads']) ||
@@ -122,7 +128,8 @@ export const POSTBOX_CHANNELS = {
   'daemon-to-postbox': {
     /** The reply to a good hello. */
     welcome: (m) =>
-      fields(m, 'welcome', ['version', 'home', 'node', 'harnesses', 'problems', 'turns'], ['loginPath']) ||
+      fields(m, 'welcome', ['version', 'home', 'node', 'harnesses', 'problems', 'turns'], ['loginPath', 'claudeChecks']) ||
+      opt(m.claudeChecks, (v) => bool(v, 'welcome.claudeChecks')) ||
       int(m.version, 'welcome.version', 1, 1_000_000) ||
       hostPath(m.home, 'welcome.home') ||
       fields(m.node, 'welcome.node', ['path', 'version']) ||
