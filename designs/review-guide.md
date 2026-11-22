@@ -11,6 +11,18 @@ The integrator’s guide, written from what its reviews of #508’s pull request
 5. Read for legibility and size. Compare Biome’s counts for main and the head, then read the new modules as a newcomer would.
 6. Write it up and swap the label. Use the format in “The review comment”, below. Every claim cites a command and its exit code. Replace `ready for integrator` with `integrator approved` or `changes requested`. An approved PR then merges in the next batch (“Merging: batches”, below).
 
+## Review rounds
+
+Most rounds after the first were spent on the fixes, not on the original diff. Of 76 PRs reviewed from 20 to 22 November 2026, 28 (37%) were approved on their first review. Of the 56 findings in second and later reviews, 32 (57%) were new defects in the fix commits, often of the class the first review found, and 8 (14%) were base, stack or body churn. About 20 of the 43 first reviews that led to a second found an untested guard, or a spec that didn’t fail on main.
+
+- **Authors check first.** The author’s checklist, and what a request for re-review maps, are in developing.md, “Before you ask for review”. A review that finds an item of it missing says which.
+- **The first review is exhaustive.** List everything, P3s included, and sweep each finding’s class with a grep you list in the review, so the author fixes the class once. #1592 and #1574 each took another round for a case of a first finding’s class that was there at the first review.
+- **A re-review checks the deltas:** each fix commit against the request’s map, the code it adds, and each finding’s class again.
+- **From round 3, approve,** unless the head has a serious regression from main. What remains becomes integrator fixes in the batch (“Integrator fixes”, below) or a follow-up issue the review names.
+- **One list per round.** When others review too (the room, another session), the integrator merges their findings into one numbered list on one head, each marked blocking, should fix or P3. Scope beyond the issue goes to a follow-up issue, as #1610 did. #1605’s author got two lists and worked one, and three should-fixes came back untouched.
+- **Bases and stacks are the integrator’s.** Don’t ask for a rebase or a merge of `main`: the batch merges `main` and resolves conflicts (“Resolve conflicts for the authors”, below). Review a stacked PR for its code and approve it, and the batch takes the stack in order. Before posting, check the open PRs for overlap: #1552 made half of #1540 redundant.
+- **Design PRs get the owner’s direction first.** Before a line-level review, ask the owner whether the direction is right, and check the doc’s decisions and facts against main. #1615 was redirected after its first review, and each rewrite added about four new defects. From round 3, its open questions go to the implementation issue.
+
 ## The checks
 
 ### Is the change tested?
@@ -104,7 +116,8 @@ stateDiagram-v2
     Building --> Checking: npm run check passes on the batch head
     Checking --> Merged: every check is green
     Checking --> Building: red, so drop the PR that broke it, and rebuild the batches on top
-    Merged --> [*]: one release, and the next batch merges main
+    Merged --> Tested: one release, then the batch UAT on main
+    Tested --> [*]: each defect the batch caused gets a fix PR of its own
 ```
 
 ### Build the batch
@@ -119,8 +132,17 @@ stateDiagram-v2
 - When two approved PRs conflict, the integrator resolves it in the later PR’s merge commit. The commit’s body says what each side added and what the result keeps.
 - Never drop a row either side added. The shared tables, such as the held-store site tables from #1578, are where this happens most.
 - A combination can break a rule no single PR did: two PRs together took one function past Biome’s limit. So run `npm run check` on the batch head, and each resolved PR’s own tests.
-- Any code the integrator changes is a pure move or a conflict resolution, and the batch PR’s body names it as not reviewed with the PR. A move, such as one that keeps a combined function under Biome’s limit, is its own commit on the batch branch, right after the merge it follows, never inside a merge commit: a move of code is its own commit (`AGENTS.md`, “Commits, branches and pull requests”). The merge commit holds only the conflict resolution.
+- Any code the integrator changes is a pure move, a conflict resolution or an integrator fix (“Integrator fixes”, below), and the batch PR’s body names each as not reviewed with the PR. A move, such as one that keeps a combined function under Biome’s limit, is its own commit on the batch branch, right after the merge it follows, never inside a merge commit: a move of code is its own commit (`AGENTS.md`, “Commits, branches and pull requests”). The merge commit holds only the conflict resolution.
 - A PR whose conflict only its author can resolve waits for its author: replace `integrator approved` with `changes requested`, with a comment that says what to merge into its branch (`main`, or the PR it conflicts with once that lands).
+
+### Integrator fixes
+
+When a review’s finding is a few lines and the review already spells out the fix (one test, one assert, a line dropped), the integrator makes it on the batch branch instead of asking for another round. In 9 of the 15 rounds past the second on code PRs from 20 to 22 November, the item was that size.
+
+- It’s its own commit, right after that PR’s merge commit, and its body starts “Integrator fix for #n’s review” and names the finding.
+- A test or a mutant fails without it, as for any fix.
+- The batch PR’s body lists the fix commits, and an independent review checks only those before the batch merges.
+- A design decision, or a larger fix, goes back to the author with `changes requested`.
 
 ### The gate
 
@@ -140,3 +162,26 @@ stateDiagram-v2
 - One release covers the batch: release.yml releases the commits the merge brings (engineering-practices.md, “Commits and versions”).
 - Relabel each PR: one merged keeps `integrator approved`. For one dropped for breaking the batch, replace `integrator approved` with `changes requested`, with the failure in a review.
 - A PR left out only because the batch was full keeps its approval and goes in the next batch.
+
+### Batch UAT
+
+Once a batch merges, the integrator tests its changes on `main` with real agents and real clicks, PR by PR. Batch 2’s UAT (#1650) found what its specs didn’t: #1653 and #1654.
+
+**Agentic.**
+- Pick the smallest existing scenarios (`tests/uat/e2e/scenarios/`) whose triggers exercise the batch’s visible changes. Name each PR none of them reaches.
+- Run each on Claude, and on Codex, Kiro and Antigravity as compatibility runs (`--compat`): a compatibility scenario that covers it, or a copy that changes only its `backends:` line. Name the paths a backend can’t reach: only Claude Code asks AskUserQuestion (#1579).
+- Give every run `--max-cost` with `--budget`. The agents get what’s left after the tester’s `--budget` and the verifier’s $1, and their first turn reserves $1 (tests/uat/e2e/README.md, “A run’s budget”). So set `--max-cost` to the `--budget`, plus $1, plus $1 for each agent turn the scenario needs to reach its triggers. In batch 2, `--max-cost 4 --budget 2` left the agents $1 and the run stopped before step 2; `--max-cost 6 --budget 2` passed.
+- Cap the batch at $20 unless the owner sets another. Batch 2 spent $6.35.
+- `--max-cost` counts only dollars, so report each run’s Kiro credits and Antigravity tokens from its report, beside its cost.
+
+**Manual.**
+- Walk the steps of the UAT docs (`tests/uat/`) for each component the batch changed, against Postbox’s mock agent (`POSTBOX_BACKENDS=mock`, with a port and `--data` of your own), in Chromium, Firefox and WebKit, Playwright’s builds. Act with real clicks and key presses, arrange what the demo lacks through `tests/arrange.mjs`’s helpers, and take a screenshot at each step.
+- Skip only the steps that need Chromium’s DevTools protocol. Name them, and run their spec in Chromium.
+- Run the same probe on `main` before the batch. It must fail the lines each PR fixed, or it can’t tell fixed from unfixed. Batch 2’s did.
+
+**Results.**
+- For each PR: what was tested, how (agentic, manual, or neither and why), and the result per backend and engine.
+- A defect found is real until explained, as a CI failure is (“When a batch fails”, above). File each with its evidence (the run’s folder or screenshots, its rate, a repro and the baseline’s result), as #1653 and #1654 did.
+- A finding caught again goes up a priority, as #1591 did in batch 2. A closed one caught again is checked as a regression.
+
+**What passing means.** Every PR’s change does what its UAT doc says on every backend and engine, and no run finds a defect the batch caused. The batch has already merged, so a failure doesn’t undo it: a defect the batch caused is fixed at its cause, in its own PR with an issue, through review and a later batch.

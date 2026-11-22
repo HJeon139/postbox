@@ -69,7 +69,7 @@ If it costs more than it gives back to that intent, decline it. Put it under “
 - **Accepted:** showing what subagents say and think. The person was waiting, the screen looked idle, and a subagent was busy. The evidence was a UAT run, and it’s a gap in the loop.
 - **Declined:** phone-only polish (touch, phone sheets, phone screenshots). Postbox runs on localhost on your own computer, so it doesn’t run on a phone. The 375 px checks stay only because narrow windows and the thread panel squeeze the column the same way. Update the text of the UAT docs your change affects (`tests/uat/`). Don’t refresh their screenshots.
 
-**End-to-end UAT is Claude only.** A scenario that puts an agent on another backend (the Kiro CLI, the Antigravity CLI or Codex) is a compatibility run: `tools/uat-run.mjs` refuses it without `--compat`, and it runs only when a task asks for it, with a model that backend offers (for Kiro, one that `kiro-cli chat --list-models` lists).
+**End-to-end UAT is Claude only, except a batch’s.** A scenario that puts an agent on another backend (the Kiro CLI, the Antigravity CLI or Codex) is a compatibility run: `tools/uat-run.mjs` refuses it without `--compat`, and it runs only when a task asks for it or in a batch UAT, which runs on every backend (review-guide.md, “Batch UAT”), with a model that backend offers (for Kiro, one that `kiro-cli chat --list-models` lists).
 
 **The screenshot tools and the end-to-end UAT** (`tools/shoot-app.mjs`, `tools/shoot-uat.mjs`, `tools/uat-run.mjs`) run only when the task asks for them, or in the reviewing session. That session runs them on the merged UI: the demo screenshots (not committed), with axe over every scene; the UAT doc screenshots; and the end-to-end scenarios. It reports findings per pull request, including accessibility violations, and commits the refreshed UAT doc screenshots (`tests/uat/screenshots/`) and nothing else under `screenshots/` (“Screenshots”).
 
@@ -413,6 +413,24 @@ engineering-practices.md, “Commits and versions”, holds the Conventional Com
 **Branch from `main`, stay based on it, and never push to it.** Every merge to `main` releases once `main`’s checks pass on it (`.github/workflows/release.yml`), so what reaches `main` is what people get.
 
 **Answer review on the same branch, with new commits.** A force-push over commits a reviewer has commented on leaves their comments on code that’s no longer there. Fold fixup commits into the commit they fix before review, not after.
+
+### Before you ask for review
+
+Only 37% of pull requests passed their first review in late November 2026, and most second reviews asked for an item on this list (review-guide.md, “Review rounds”). Check each before you add `ready for integrator`:
+- Each guard, clear or branch you add has a mutant: delete it, and a test fails.
+- Each new test or spec fails on main first, for the reason the PR names, and the body shows the command.
+- The class is swept: where else the same defect could be, with the grep you ran in the body.
+- A change on a hot path is measured against main.
+- The body is written from the head, not from an earlier push.
+- The PR has an issue you’ve claimed, and `Fixes #n` in its body.
+- Each fix is its own commit, and a move of code is alone in its commit.
+- No lines joined or names dropped to fit a limit.
+
+**Fix commits meet the same bar.** 57% of the findings in later reviews were defects in the fixes. When you ask for re-review, map each finding to its fix commit and its evidence:
+- its test fails on the previous head;
+- each guard the fix adds, with its mutant;
+- its new tests pass with `--repeat-each` or under load, since a fix’s own test is where flakes came from (#1592);
+- the review’s probe rows (the widths, paths or inputs it tried) are now tests.
 
 ### The pull request’s body
 

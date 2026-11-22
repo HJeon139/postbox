@@ -43,7 +43,7 @@ Three labels on a pull request say where its review stands. Each one is about th
 
 | Label | Who adds it | What it means |
 |---|---|---|
-| `ready for integrator` | The author | The head is ready for the integrator’s review: it passes the gate (`AGENTS.md`, “The gate”), its body says why, what changed, how it was verified and what’s not done, and you’ve checked it against `designs/review-guide.md`, the guide the integrator reviews by. |
+| `ready for integrator` | The author | The head is ready for the integrator’s review: it passes the gate (`AGENTS.md`, “The gate”), its body says why, what changed, how it was verified and what’s not done, and you’ve gone through the checklist in `designs/developing.md`, “Before you ask for review”, and checked the head against `designs/review-guide.md`, the guide the integrator reviews by. |
 | `changes requested` | The integrator | The integrator reviewed this head and asked for changes, in a review on the PR. |
 | `integrator approved` | The integrator | The integrator approved this head. The integrator merges it in the next batch, once the batch’s CI is green. |
 
@@ -64,7 +64,7 @@ stateDiagram-v2
    gh pr edit <n> --add-label "ready for integrator"
    ```
 2. **Push again, and the label is out of date.** Nothing removes it for you: remove it yourself when you push to a head that’s labeled, and add it again once the new head is ready.
-3. **Answer a review.** The integrator posts the verdict as a GitHub review, with a comment on each line that has to change, and replaces `ready for integrator` with `changes requested` or `integrator approved`. Fix what blocks, push, then swap `changes requested` for `ready for integrator`. Points that don’t block go into new issues, not into this PR.
+3. **Answer a review.** The integrator posts the verdict as a GitHub review, with a comment on each line that has to change, and replaces `ready for integrator` with `changes requested` or `integrator approved`. Fix what blocks, push, and comment with each finding’s fix commit and its evidence (`designs/developing.md`, “Before you ask for review”). Then swap `changes requested` for `ready for integrator`. You won’t be asked to rebase: the integrator’s batch merges `main` and resolves conflicts. A fix of a few lines the review spells out may be made by the integrator in the batch instead. Points that don’t block go into new issues, not into this PR.
    ```bash
    gh pr edit <n> --remove-label "changes requested" --add-label "ready for integrator"
    ```
