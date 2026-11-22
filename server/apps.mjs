@@ -61,8 +61,9 @@ export function appCheck(apps, appId, { version, problems = [] }) {
   const clean = (Array.isArray(problems) ? problems : [])
     .slice(0, 20)
     .map((p) => ({ code: String(p?.code).slice(0, 40), message: String(p?.message).slice(0, 300) }));
+  // The last version the person was shown, which stands in while its agent fixes a later one (#948).
   if (!clean.length) {
-    apps.store.emit('app', { ...app, check: { status: 'passed', attempt: app.check.attempt, problems: [] } });
+    apps.store.emit('app', { ...app, lastShown: version, check: { status: 'passed', attempt: app.check.attempt, problems: [] } });
     return { status: 'passed' };
   }
   // A script error goes back to the agent once, like any blocking problem (#964); after that, or with no agent to
@@ -73,7 +74,8 @@ export function appCheck(apps, appId, { version, problems = [] }) {
   }
   // Problems the agent can’t fix (the frame never answered, or a check of Postbox’s threw) are shown as a note, not
   // sent back. Warnings (marks or dashes too small, an app showing only an error) don’t hold the app back: it’s shown
-  // with notes, and the agent hears of them through the lint pipeline, unless it’s already fixing the app.
+  // with notes. What the agent can fix and isn’t fixing now, warnings or what a fix left, reaches it through the lint
+  // pipeline: the person’s note is plain, so the agent is the only one with the detail (#948, #981).
   const fixable = clean.filter((p) => p.code !== 'no-answer' && p.code !== 'check-error');
   const blocking = fixable.filter((p) => !APP_WARNINGS.has(p.code));
   if (app.check.attempt === 0 && blocking.length && apps.store.state.sessions[app.sessionId]) {
@@ -82,17 +84,22 @@ export function appCheck(apps, appId, { version, problems = [] }) {
     return { status: 'fixing' };
   }
   const notes = clean.every((p) => APP_WARNINGS.has(p.code));
-  apps.store.emit('app', { ...app, check: { status: 'note', attempt: app.check.attempt, problems: clean, ...(notes ? { notes } : {}) } });
-  if (notes) {
-    // The version was made by the agent’s turn that’s running, or else the last one that ended.
-    const turnId = apps.running.all().find((t) => t.sessionId === app.sessionId)?.id ?? apps.store.state.sessions[app.sessionId]?.lastTurnId;
-    const scope = { kind: 'app', id: appId, title: app.title };
-    apps.checks.lint(
+  // The version was made by the agent’s turn that’s running, or else the last one that ended.
+  const turnId = apps.running.all().find((t) => t.sessionId === app.sessionId)?.id ?? apps.store.state.sessions[app.sessionId]?.lastTurnId;
+  const scope = { kind: 'app', id: appId, title: app.title };
+  // Whether the agent will hear of them, so the person’s note says so only when it’s true.
+  const told =
+    fixable.length > 0 &&
+    !!apps.checks.lint(
       app.sessionId,
       turnId,
-      clean.map((p) => ({ ...p, scope })),
+      fixable.map((p) => ({ ...p, scope })),
     );
-  }
+  const check = { status: 'note', attempt: app.check.attempt, problems: clean, ...(notes ? { notes } : {}), ...(told ? { told } : {}) };
+  // Only a version Postbox checked to the end can stand in later: one its check couldn’t finish is shown with its note,
+  // and the last checked version stays the fallback (#948).
+  const checked = fixable.length === clean.length;
+  apps.store.emit('app', { ...app, ...(checked ? { lastShown: version } : {}), check });
   return { status: 'note' };
 }
 
