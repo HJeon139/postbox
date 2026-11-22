@@ -1847,7 +1847,8 @@ test('#153 a long draft is cut with its id, and read_message gives the whole blo
         title: 'Design note',
         format: 'markdown',
         content: draft,
-        threads: [{ id: 'th1', line: 1, status: 'open', comments: [{ author: '@critic', text: 'Which flag?' }] }],
+        // Its own thread: a new review’s comments are its agent’s (#1208).
+        threads: [{ id: 'th1', line: 1, status: 'open', comments: [{ author: '@alpha', text: 'Which flag?' }] }],
         fallback: 'The design note.',
       },
     ],
@@ -1866,7 +1867,7 @@ test('#153 a long draft is cut with its id, and read_message gives the whole blo
     assert.equal(r.ok, true, id);
     assert.ok(
       r.message.includes(
-        `${draft}\n\nComments on line 1 (open, thread th1):\n- @critic: Which flag?\n\nComments on line 3 (open, thread you-1-1):\n- The person: Name the flag.\n\nThe person’s review: Request changes · 1 comment\n- line 3: Name the flag.`,
+        `${draft}\n\nComments on line 1 (open, thread th1):\n- @alpha: Which flag?\n\nComments on line 3 (open, thread you-1-1):\n- The person: Name the flag.\n\nThe person’s review: Request changes · 1 comment\n- line 3: Name the flag.`,
       ),
       r.message,
     );

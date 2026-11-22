@@ -41,7 +41,9 @@ const MAX_LINKS = 40;
  */
 function realOr(p, links) {
   try {
-    return realpathSync(p);
+    // The native call, as the kernel resolves it: JavaScript’s realpathSync reads a link target’s .. lexically, so a
+    // link to sub/../f, with sub a link elsewhere, read as the folder’s own f (#1215). It also gives the case on disk.
+    return realpathSync.native(p);
   } catch {
     let link;
     try {
