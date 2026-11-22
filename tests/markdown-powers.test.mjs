@@ -58,6 +58,14 @@ test('plain text reads a code span of any backtick run as the renderer does, and
   // A close inside a longer run leaves the rest to open the next span, as the renderer reads it (pre-review).
   assert.equal(toPlainText('`a`` b*c` *d*'), 'a b*c d');
   assert.equal(toPlainText('`a``b*c` 2*n'), 'ab*c 2*n');
+  // Three backticks mid-line are a code span, not a fence; a fence opens only on a line of its own (critic’s review).
+  assert.equal(toPlainText('Run ```a**b``` then 10**9.'), 'Run a**b then 10**9.');
+  assert.equal(toPlainText('Before\n```js\nx = 2**3\n```\nafter 2*n'), 'Before after 2*n');
+  assert.equal(toPlainText('Open\n````\n```\nstill code\n````\nshut'), 'Open shut');
+  // A fence in a quote or a nested list item is still a fence, as the renderer reads it once the > and indent go (pre-review).
+  assert.equal(toPlainText('> quote\n> ```\n> x**y*z\n> ```\n> after'), 'quote after');
+  assert.equal(toPlainText('- a\n  - b\n    ```\n    x*y*z\n    ```\n  - c'), 'a b c');
+  assert.equal(toPlainText('1. step\n\n    ```js\n    let a*b*c\n    ```'), 'step');
   // Every private-use character present: it still finds a placeholder the text doesn’t hold, and ends.
   const every = Array.from({ length: 0xf900 - 0xe000 }, (_, k) => String.fromCharCode(0xe000 + k)).join('');
   assert.equal(toPlainText(`${every} 10**9`), `${every} 10**9`);

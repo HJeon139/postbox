@@ -1,5 +1,6 @@
 // Markdown as plain text, apart from rendering it (markdown.mjs).
 
+import { closesFence, FENCE } from './markdown.mjs';
 import { keepMathStars } from './markdown-inline.mjs';
 
 /**
@@ -43,13 +44,34 @@ function keepCodeStars(s, mark) {
   return out + s.slice(i);
 }
 
+/**
+ * The text without its fenced blocks, each opening on a line of its own and running to its closing marker or the end.
+ * The renderer finds a fence inside a quote or a list item once it strips the `>` and the item’s indent, so each line is
+ * read without them here.
+ */
+function withoutFences(s) {
+  const out = [];
+  let marker = null;
+  for (const line of s.split('\n')) {
+    const bare = line.replace(/^(\s*>)*\s*/, '');
+    if (marker) {
+      if (closesFence(marker, bare)) marker = null;
+      continue;
+    }
+    const open = bare.match(FENCE);
+    if (open) marker = open[1];
+    else out.push(line);
+  }
+  return out.join('\n');
+}
+
 /** Strips Markdown to plain text, for screen-reader announcements and short previews. */
 export function toPlainText(src) {
   const text = String(src ?? '');
   // The asterisks of 10**9 or 2*n, and those in a code span, stay as typed while emphasis goes, as rendering keeps them
   // (#793). A code span’s are kept first, so they don’t count as emphasis opened before the math after them.
   const mark = freeMark(text);
-  const kept = text.replace(/```[\s\S]*?(```|$)/g, ' ').replace(/<\/?(details|summary)>/g, ' ');
+  const kept = withoutFences(text).replace(/<\/?(details|summary)>/g, ' ');
   return keepMathStars(keepCodeStars(kept, mark), mark)
     .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
     .replace(/^ {0,3}#{1,6}\s+/gm, '')
