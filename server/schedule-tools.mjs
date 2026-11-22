@@ -9,7 +9,7 @@ import { echoedId } from './helpers.mjs';
 
 /** cancel_wake { id }, the tool, for the session rt.toolsFor made it for. @param {any} rt @param {string} sessionId @param {{ id?: unknown }} args */
 export function cancelWake(rt, sessionId, { id } = {}) {
-  const sc = typeof id === 'string' ? rt.s.schedules[id] : null;
+  const sc = typeof id === 'string' ? rt.store.pending.schedule(id) : null;
   // Another agent's wake reads as one that doesn't exist, so an id says nothing about anyone else's schedule.
   if (!sc || sc.sessionId !== sessionId)
     return { ok: false, message: `You have no pending wake with the id “${echoedId(id)}”: it fired already, was canceled, or isn’t yours.` };
@@ -20,7 +20,7 @@ export function cancelWake(rt, sessionId, { id } = {}) {
 /** schedule_wake { in_minutes, note }, the tool, for the session rt.toolsFor made it for. @param {any} rt @param {string} sessionId @param {{ in_minutes?: any, note?: any }} args */
 export function scheduleWakeTool(rt, sessionId, { in_minutes, note }) {
   // Pending: not yet fired. A running one is its turn, and a fired one is gone from schedules (#362).
-  const pending = Object.values(rt.s.schedules).filter((sc) => sc.sessionId === sessionId && !sc.running).length;
+  const pending = Object.values(rt.store.pending.schedules()).filter((sc) => sc.sessionId === sessionId && !sc.running).length;
   if (pending >= PENDING_WAKES)
     return {
       ok: false,
