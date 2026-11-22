@@ -2,6 +2,12 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.35.13 (2026-11-22)
+
+### Fixes
+
+- **app:** a press on the transcript's work chip isn't lost to a refill
+
 ## 4.35.12 (2026-11-22)
 
 ### Fixes
