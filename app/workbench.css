@@ -1128,7 +1128,7 @@ html.pb-sandbox .label, html.pb-sandbox .tbl th, html.pb-sandbox kbd { font-size
 /* Diagrams render in their own sandbox frame */
 .diagram { border: 1px solid var(--line); border-radius: 8px; background: var(--sunk); overflow: hidden; }
 .diagram .d-bar { display: flex; align-items: center; gap: 8px; padding: 6px 8px 6px 12px; border-bottom: 1px solid var(--line); }
-.diagram iframe { display: block; width: 100%; border: 0; height: 160px; background: var(--sunk); }
+.diagram iframe { display: block; width: 100%; border: 0; min-height: 160px; background: var(--sunk); }
 .diagram pre { margin: 0; padding: 10px 12px; border-top: 1px solid var(--line); overflow: auto; }
 
 /* App frames */
