@@ -142,6 +142,29 @@ test('Antigravity records the rules file agy reads, with its tool and approval n
   );
 });
 
+test('Antigravity records the rules file it rewrote when its approval hook doesn’t check out', async () => {
+  const root = tempDir('pb-prompt-agy-');
+  const seen = [];
+  const lines = readFileSync(new URL('fixtures/antigravity-cli/block.jsonl', import.meta.url), 'utf8')
+    .trim()
+    .split('\n');
+  // An agy that supports hooks (1.4.7), whose hook probe fails: the rules say agy refuses what it would ask about.
+  const adapter = new AntigravityCliAdapter({
+    workRoot: join(root, 'work'),
+    settingsFile: join(root, 'settings.json'),
+    spawnImpl: /** @type {any} */ (agySpawn(lines, seen)),
+    env: {},
+    version: '1.4.7',
+    hookProbe: async () => false,
+  });
+  const recorded = [];
+  await adapter.deliver({}, { kind: 'user', text: 'Tea or coffee?' }, agyCtx(recorded));
+  const guides = recorded.filter((p) => typeof p.guide === 'string');
+  assert.ok(seen[0].rules, 'agy read a rules file');
+  assert.equal(guides.length, 1);
+  assert.equal(guides[0].guide, seen[0].rules, 'the rewritten rules file, as agy read it');
+});
+
 test('Antigravity records neither its rules nor its prompt when agy never started (ENOENT)', async () => {
   const root = tempDir('pb-prompt-agy-');
   const spawnImpl = () => {

@@ -627,15 +627,15 @@ export class AntigravityCliAdapter {
       // A hook that didn’t check out isn’t passed, so agy refuses what it would ask about: the rules say so, not “a card”.
       const unhooked = useHook && !hookConfirmed && !agyBypassWebOff(persona);
       if (unhooked) await writeFile(join(plugin, 'rules', 'AGENTS.md'), rulesWith(false));
-      const guide = unhooked ? rulesWith(false) : rules; // the rules file as agy reads it, recorded with each run’s prompt
+      const rulesRead = unhooked ? rulesWith(false) : rules; // the rules file as agy reads it, recorded with each run’s prompt
       try {
-        let done = await this.run({ ctx, cwd, addDirs, prompt, guide, sessionId: ctx.state.agySessionId ?? null, hookConfirmed });
+        let done = await this.run({ ctx, cwd, addDirs, prompt, guide: rulesRead, sessionId: ctx.state.agySessionId ?? null, hookConfirmed });
         // A conversation agy no longer has (its history was cleared, or the agent’s folder changed) starts over, once.
         if (done.missingSession && !ctx.signal.aborted) {
           ctx.saveState({ agySessionId: null });
           ctx.state.agySessionId = null;
           const note = `[Postbox] ${FRESH_START_TEXT}\n\n`;
-          done = await this.run({ ctx, cwd, addDirs, prompt: note + prompt, guide, sessionId: null, hookConfirmed: await confirmed() });
+          done = await this.run({ ctx, cwd, addDirs, prompt: note + prompt, guide: rulesRead, sessionId: null, hookConfirmed: await confirmed() });
         }
         // agy ends a turn at a refused call, before the agent says anything (the Gemini room UAT’s tester rated that
         // high: the person saw a refused step and silence). So the conversation goes on once, for the agent to say
@@ -648,7 +648,7 @@ export class AntigravityCliAdapter {
             cwd,
             addDirs,
             prompt: followUp,
-            guide,
+            guide: rulesRead,
             sessionId: ctx.state.agySessionId,
             wrote: done.wrote,
             hookConfirmed: await confirmed(),
