@@ -84,7 +84,7 @@ test('warnings show the app with notes, and the agent hears of them in the lint 
   assert.equal(linted[1].turnId, 'tu_live');
 });
 
-test('the last version the person was shown is kept: a pass or a note sets it, a fix or a new version doesn’t (#948)', () => {
+test('the last version the person was shown is kept: a pass or a fully checked note sets it, a fix or a new version doesn’t (#948)', () => {
   const { store, threads, apps } = rig();
   shown(apps, threads);
   const update = (code) =>
@@ -105,6 +105,19 @@ test('the last version the person was shown is kept: a pass or a note sets it, a
   update('<p>Lab 4</p>');
   apps.appCheck('lab', { version: 4, problems: [{ code: 'text-too-small', message: 'Small text.' }] });
   assert.deepEqual([store.state.apps.lab.check.status, store.state.apps.lab.lastShown], ['note', 4], 'shown with a note');
+  // A version Postbox couldn’t check to the end is shown with its note, but never stands in for a later one (#948).
+  update('<p>Lab 5</p>');
+  apps.appCheck('lab', { version: 5, problems: [{ code: 'no-answer', message: 'The frame never answered.' }] });
+  assert.deepEqual([store.state.apps.lab.check.status, store.state.apps.lab.lastShown], ['note', 4], 'v5 unchecked: v4 stays the fallback');
+  update('<p>Lab 6</p>');
+  apps.appCheck('lab', {
+    version: 6,
+    problems: [
+      { code: 'check-error', message: 'No matrix.' },
+      { code: 'marks-too-small', message: 'Tiny.' },
+    ],
+  });
+  assert.equal(store.state.apps.lab.lastShown, 4, 'a check that threw part way: v4 stays the fallback');
 });
 
 test('a problem only Postbox’s own check has goes to no agent, and the note doesn’t say the agent was told (#981)', () => {
@@ -262,4 +275,23 @@ test('an answer is read once its event starts a turn; an update over an unread a
   assert.match(waiting.message, /reaches you when this turn ends/);
   apps.answerDelivered('th_c', { kind: 'event', blockItemId: it.id, event: { revision: 1 } });
   assert.equal(store.item('th_c', it.id).answer.read, true);
+});
+
+test('#948 with v1 checked, v2 unchecked and v3 being fixed, v1 is the version that stands in', () => {
+  const { store, threads, apps } = rig();
+  shown(apps, threads);
+  const update = (code) =>
+    apps.updateApp(
+      'se_1',
+      null,
+      () => 'th_c',
+      () => {},
+      { id: 'lab', code },
+    );
+  apps.appCheck('lab', { version: 1, problems: [] });
+  update('<p>Lab 2</p>');
+  apps.appCheck('lab', { version: 2, problems: [{ code: 'no-answer', message: 'The frame never answered.' }] });
+  update('<p>Lab 3</p>');
+  assert.equal(apps.appCheck('lab', { version: 3, problems: [{ code: 'text-too-small', message: 'Small text.' }] }).status, 'fixing');
+  assert.equal(store.state.apps.lab.lastShown, 1, 'v1, checked, not v2, shown unchecked');
 });

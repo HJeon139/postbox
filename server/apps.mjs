@@ -96,7 +96,10 @@ export function appCheck(apps, appId, { version, problems = [] }) {
       fixable.map((p) => ({ ...p, scope })),
     );
   const check = { status: 'note', attempt: app.check.attempt, problems: clean, ...(notes ? { notes } : {}), ...(told ? { told } : {}) };
-  apps.store.emit('app', { ...app, lastShown: version, check });
+  // Only a version Postbox checked to the end can stand in later: one its check couldn’t finish is shown with its note,
+  // and the last checked version stays the fallback (#948).
+  const checked = fixable.length === clean.length;
+  apps.store.emit('app', { ...app, ...(checked ? { lastShown: version } : {}), check });
   return { status: 'note' };
 }
 
