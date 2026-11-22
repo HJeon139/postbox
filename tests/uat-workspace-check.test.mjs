@@ -209,3 +209,14 @@ test('a word in quoted and unquoted parts is one word, as the shell reads it, so
   assert.deepEqual(pathsOutside(`cat "$HOME"/.ssh/id_rsa`, where), ['$HOME/.ssh/id_rsa'], 'the same for $HOME');
   assert.deepEqual(pathsOutside(`cat '..'/data/x`, where), ['../data/x']);
 });
+
+test('a variable or ~ the shell won’t expand, in single quotes or a quoted ~, names a literal entry, not a place (#885)', () => {
+  const tmp = ['', 'var', 'folders', 'ab', 'xyz', 'T'].join('/');
+  const tmpWhere = { workspace: `/private${tmp}/postbox-uat-workspace-abc/workspace`, home: '/Users/someone' };
+  assert.deepEqual(pathsOutside(`ls '$TMPDIR'`, tmpWhere), [], 'single quotes: a file named $TMPDIR here');
+  assert.deepEqual(pathsOutside('ls "$TMPDIR"', tmpWhere), ['$TMPDIR'], 'double quotes still expand');
+  assert.deepEqual(pathsOutside(`cat '$HOME'/.ssh/id_rsa`, where), []);
+  assert.deepEqual(pathsOutside(`cat "$HOME"/.ssh/id_rsa`, where), ['$HOME/.ssh/id_rsa']);
+  assert.deepEqual(pathsOutside(`cat '~'/.ssh/id_rsa "~/.ssh"`, where), [], 'a quoted ~ is a name');
+  assert.deepEqual(pathsOutside('cat ~/.ssh/id_rsa', where), ['~/.ssh/id_rsa'], 'and a bare one is home');
+});

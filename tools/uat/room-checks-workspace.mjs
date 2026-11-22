@@ -41,14 +41,24 @@ function withoutHeredocs(command) {
 
 /**
  * A command’s words, as the shell reads them: quoted and unquoted parts next to each other are one word, without
- * their quotes, so "$TMPDIR"/x is $TMPDIR/x (#885). What separates one command from the next is kept as words of
+ * their quotes, so "$TMPDIR"/x is $TMPDIR/x (#885), and what the quotes keep the shell from expanding stays literal. What separates one command from the next is kept as words of
  * their own: `&&`, `||`, `;`, `|` and a new line.
  * @param {string} command
  * @returns {string[]}
  */
 function wordsOf(command) {
   const words = withoutHeredocs(command).match(/&&|\|\||[;|\n]|(?:"(?:\\.|[^"\\])*"|'[^']*'|[^\s;|&"'])+/g) ?? [];
-  return words.map((w) => w.replace(/"((?:\\.|[^"\\])*)"|'([^']*)'/g, (_, double, single) => double ?? single));
+  return words.map((w) => w.replace(/"((?:\\.|[^"\\])*)"|'([^']*)'/g, (_, double, single) => literal(double, single)));
+}
+
+/**
+ * A quoted part of a word without its quotes, with what the shell won’t expand there marked by a backslash, so the
+ * check reads it as a name, not a place: a ~ in either quotes, and a $ in single quotes. `'$TMPDIR'` names an entry
+ * called $TMPDIR here; `"$TMPDIR"` is the temp folder. @param {string | undefined} double @param {string | undefined} single
+ */
+function literal(double, single) {
+  if (single !== undefined) return single.replace(/[$~]/g, '\\$&');
+  return (double ?? '').replace(/^~/, '\\~');
 }
 
 const BETWEEN_COMMANDS = new Set(['&&', '||', ';', '|', '\n']);
