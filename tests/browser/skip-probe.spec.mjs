@@ -41,7 +41,8 @@ test('the probe counts the items skipped, and rows-skipped fires only once the r
   await page.evaluate(() => document.querySelector('#main.transcript')?.classList.remove('cv-skip'));
   // Sampled once the page holds still, as 'on' is: after the frames that follow the class removal. On CI those frames
   // sometimes didn't come within the probe's 1 s wait, so the sample read unsettled (#1256). Why they stall there isn't
-  // known; still() waits until two frame pairs see the same layout, so the probe's own two frames come after them.
+  // known; still() returns only once the page's scroll and view hold across two frames, so the probe's own two frames
+  // come after the ones that stalled.
   await still(page);
   const off = { step: 2, at: 2, ...(await sampleSkipped(ev)) };
   expect.soft([off.items, off.skipped, off.gated, off.settled]).toEqual([COUNT, 0, false, true]);
