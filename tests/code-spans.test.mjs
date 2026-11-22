@@ -44,3 +44,18 @@ test('a term link in code of any backtick run isn’t linted, and one in prose s
     ['nope'],
   );
 });
+
+test('a span never crosses a line, as the renderer reads it: a stray run leaves a later mention and term link live', () => {
+  // The integrator’s probe on #1602: each of these shows @critic as a mention on the page, so it must wake critic.
+  for (const text of [
+    'Use ``x here.\n\nThen @critic and ``y``',
+    'Ask ``x here\n\n@critic please review ``this``',
+    'Note `` x\n\n@critic, check ``done``',
+    'Use `x here.\n\nThen @critic and `y`',
+  ]) {
+    assert.match(renderMarkdown(text, { mentions: ['critic'] }), /class="mention"/, text);
+    assert.deepEqual(parseMentions(text, ['critic']), ['critic'], text);
+  }
+  assert.deepEqual(lintTerms('See ``a\n\n[x](term:nope) and ``b``', {}), [{ term: 'x', key: 'nope' }]);
+  assert.equal(toPlainText('Use `x here.\n\nThen *y* and `z`'), 'Use `x here. Then y and z');
+});

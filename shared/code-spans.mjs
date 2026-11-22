@@ -17,27 +17,48 @@ function longestRunFrom(s) {
 }
 
 /**
- * The text with each code span replaced by `fn(code, span)`, read left to right: a run of backticks closes at the next
- * same run, even inside a longer one, and its code drops one space each side; a run with no close is text.
+ * The code span whose run of backticks starts at `at` in a line: its code, less one space each side, and where it ends.
+ * A run closes at the next same run, even inside a longer one, and never past its line. A run with no close is text, so
+ * its code is null and it ends after the run. This is the one rule the renderer (markdown-inline.mjs) and the readers
+ * that set code apart without rendering share (#1602). longest, from longestRunFrom(line), skips a hopeless search.
+ * @param {string} line @param {number} at @param {Int32Array} [longest]
+ * @returns {{ code: string | null, end: number }}
+ */
+export function codeSpanAt(line, at, longest) {
+  let open = at;
+  while (line[open] === '`') open++;
+  const run = line.slice(at, open);
+  const close = longest && longest[open] < run.length ? -1 : line.indexOf(run, open);
+  if (close < 0) return { code: null, end: open };
+  return { code: line.slice(open, close).replace(/^ (.*) $/, '$1'), end: close + run.length };
+}
+
+/**
+ * One line with each code span replaced by `fn(code, span)`, read left to right (codeSpanAt).
+ * @param {string} line @param {(code: string, span: string) => string} fn
+ */
+function mapLine(line, fn) {
+  const longest = longestRunFrom(line);
+  let out = '';
+  let i = 0;
+  for (let at = line.indexOf('`'); at > -1; at = line.indexOf('`', i)) {
+    const { code, end } = codeSpanAt(line, at, longest);
+    out += line.slice(i, at) + (code === null ? line.slice(at, end) : fn(code, line.slice(at, end)));
+    i = end;
+  }
+  return out + line.slice(i);
+}
+
+/**
+ * The text with each code span replaced by `fn(code, span)`. A span never crosses a line, since the renderer reads one
+ * line at a time: a stray run on one line leaves the next one’s prose as prose (#1602).
  * @param {string} s @param {(code: string, span: string) => string} fn
  */
 export function mapCodeSpans(s, fn) {
-  const longest = longestRunFrom(s);
-  let out = '';
-  let i = 0;
-  while (i < s.length) {
-    const at = s.indexOf('`', i);
-    if (at < 0) break;
-    const run = /** @type {RegExpMatchArray} */ (s.slice(at).match(/^`+/))[0];
-    const end = longest[at + run.length] >= run.length ? s.indexOf(run, at + run.length) : -1;
-    out += s.slice(i, at);
-    if (end < 0) {
-      out += run;
-      i = at + run.length;
-      continue;
-    }
-    out += fn(s.slice(at + run.length, end).replace(/^ (.*) $/, '$1'), s.slice(at, end + run.length));
-    i = end + run.length;
-  }
-  return out + s.slice(i);
+  // Most messages have no backticks, and mentions are read on every keystroke and every item in a catch-up.
+  if (!s.includes('`')) return s;
+  return s
+    .split('\n')
+    .map((line) => mapLine(line, fn))
+    .join('\n');
 }
