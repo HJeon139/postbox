@@ -19,14 +19,14 @@
 // (permission_denials) raises no refusal card either.
 
 import { validateBlock } from '../shared/catalog.mjs';
-import { STILL_OPEN } from '../shared/question-words.mjs';
+import { nobodyAnsweredWithin, STILL_OPEN } from '../shared/question-words.mjs';
 import { offerNeed } from './card-needs.mjs';
 import { newId } from './ids.mjs';
 import { CARD_WAIT_MS } from './permission-cards.mjs';
 import { gated } from './store-outage.mjs';
 
 export const DISMISSED = 'The person dismissed the question.';
-const WAITED = `Nobody answered within ${Math.round(CARD_WAIT_MS / 3600000)} hours.`;
+const WAITED = nobodyAnsweredWithin(`${Math.round(CARD_WAIT_MS / 3600000)} hours`);
 const DELIVERED = 'The person answered this question while Postbox restarted, and their answer already reached you as a message.';
 
 /**
@@ -79,15 +79,23 @@ function choiceOf(q) {
 export async function askQuestions(rt, sessionId, req, blocks, shown = []) {
   /** @type {Record<string, string>} */
   const answers = {};
+  /** @type {{ threadId: string, id: string }[]} the blocks whose answers this call took */
+  const taken = [];
   for (const [i, fresh] of blocks.entries()) {
     const prior = shown.find((c) => c.it.remote?.part === i);
     const block = prior?.it.block ?? fresh;
     const got = prior ? await again(rt, sessionId, prior) : await askOne(rt, sessionId, block, req.toolUseId ?? null, req.hostPrompt, i);
+    const at = prior ? { threadId: prior.threadId, id: prior.it.id } : got.shown;
     const unasked = blocks.slice(i + 1);
     // Dismissed, or already delivered as a message (#1059): the question is over, so nothing says it stays open.
     const over = endedBy(got);
     if (over) return { allow: false, message: [over, answeredText(answers), unaskedText(unasked)].filter(Boolean).join(' ') };
-    if (!got.values) return { allow: false, message: stillOpen(got.message, answers, unasked) };
+    if (!got.values) {
+      // On a host the call hears the shim’s own words, not these, so “it stays open” is made true here (#1059).
+      if (req.hostPrompt && at) handOver(rt, sessionId, { ...req, hostPrompt: req.hostPrompt }, taken, at.threadId, unasked, i + 1);
+      return { allow: false, message: stillOpen(got.message, answers, unasked) };
+    }
+    if (at) taken.push(at);
     answers[block.prompt] = answerText(block, got.values);
   }
   return { allow: true, updatedInput: { ...req.input, answers } };
@@ -181,13 +189,51 @@ function askOne(rt, sessionId, block, toolUseId, hostPrompt = null, part = 0) {
   rt.bus.emit('card.opened', { turn });
   offerNeed(rt, se, { kind: 'block', itemId: it.id, text: block.title ?? block.prompt, ...rt.sessions.awayFrom(se, turn.threadId) }, 'needs');
   rt.threads.notify('blocking', se, `@${se.handle} asks you`, block.prompt, turn.threadId);
+  const shown = { threadId: turn.threadId, id: it.id };
   return new Promise((resolve) => {
     // As a card’s (permission-cards.mjs, expireWait), but without its “ask again”: the question stays open. On a host,
     // the host’s permissionWaitMax ends it instead, as it does a host prompt’s card.
     const timer = hostPrompt ? null : setTimeout(() => gated(rt, () => rt.settlePermission(it.id, 'expired', WAITED)), CARD_WAIT_MS);
     timer?.unref?.();
-    rt.permissionWaits.set(it.id, { resolve, threadId: turn.threadId, sessionId, timer, question: true });
+    const done = (/** @type {any} */ got) => resolve({ ...got, shown });
+    rt.permissionWaits.set(it.id, { resolve: done, threadId: turn.threadId, sessionId, timer, question: true });
   });
+}
+
+/**
+ * A host question’s call that ended unanswered (#1059): its shim tells the agent the question stays open, and its
+ * answer comes as a message. So what the call took goes to the agent as late answers do, and each question it never
+ * showed is shown now, with nothing waiting on it: its answer comes as a message too.
+ * @param {any} rt @param {string} sessionId @param {{ toolUseId?: string | null, hostPrompt: HostPrompt }} req
+ * @param {{ threadId: string, id: string }[]} taken @param {string} threadId @param {any[]} unasked @param {number} from
+ */
+function handOver(rt, sessionId, req, taken, threadId, unasked, from) {
+  for (const { threadId: at, id } of taken) {
+    const it = rt.store.pending.items(at).find((/** @type {any} */ x) => x.id === id);
+    if (!it?.answered) continue;
+    const values = it.answer?.values ?? {};
+    const event = { blockId: it.block.id, revision: it.answer.revision, action: it.answer.action, values, question: lateAnswer(it.block, values, false) };
+    rt.delivery.send({ sessionId, threadId: at, source: 'answer', itemId: id, from: 'you', message: { kind: 'event', event, blockItemId: id } });
+  }
+  const se = rt.s.sessions[sessionId];
+  if (!se) return;
+  const hp = req.hostPrompt;
+  for (const [k, block] of unasked.entries()) {
+    const remote = { hostId: hp.hostId, turn: hp.turn, prompt: hp.id, entry: hp.entry ?? null, part: from + k, ended: Date.now() };
+    const it = rt.threads.addItem(threadId, {
+      kind: 'block',
+      sessionId,
+      handle: se.handle,
+      turnId: rt.turns.get(sessionId)?.id ?? null,
+      valid: true,
+      block,
+      answered: false,
+      question: true,
+      toolUseId: req.toolUseId ? String(req.toolUseId) : null,
+      remote,
+    });
+    offerNeed(rt, se, { kind: 'block', itemId: it.id, text: block.title ?? block.prompt, ...rt.sessions.awayFrom(se, threadId) }, 'needs');
+  }
 }
 
 /** Whether a block’s item is an AskUserQuestion whose call still waits for it. @param {any} rt @param {string} itemId */
