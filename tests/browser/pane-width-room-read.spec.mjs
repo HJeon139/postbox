@@ -1,7 +1,7 @@
 // The pane reads the window’s width each time it opens or refits, and each read of the root’s clientWidth lays out
 // whatever is pending: in a long room, the transcript after a change (#619). The width changes only when the window
-// or the root’s box does, so pane-width.mjs keeps it until then. Here the pane opens and closes again without a
-// resize, and the root’s width is read no more; then a narrower window still sends the pane full screen.
+// or the root’s width does, so pane-width.mjs keeps it until then. Here the pane opens and closes again as the room
+// grows taller, and the root’s width is read no more; then a narrower window still sends the pane full screen.
 
 import { expect, test } from '@playwright/test';
 import { fresh, paneRoom, WORK } from './pane.mjs';
@@ -17,7 +17,7 @@ test.afterAll(async () => {
 });
 failOnPageErrors(test);
 
-/** Counts reads of the root’s clientWidth in the page, in window.__rootReads. */
+/** Counts pane-width.mjs’s reads of the root’s clientWidth in the page, in window.__rootReads. */
 const countRootReads = (page) =>
   page.addInitScript(() => {
     const own = Object.getOwnPropertyDescriptor(Element.prototype, 'clientWidth');
@@ -28,7 +28,8 @@ const countRootReads = (page) =>
       ...own,
       get() {
         if (this !== document.documentElement) return read.call(this);
-        window.__rootReads++;
+        // The transcript reads the root’s width too, on its own scrolls and resizes: count the pane’s reads only.
+        if (new Error().stack?.includes('pane-width.mjs')) window.__rootReads++;
         // A stand-in for a classic scroll bar, which headless browsers hide: the second test narrows the root by it.
         return read.call(this) - (window.__scrollBar ?? 0);
       },
@@ -48,11 +49,16 @@ test('#619 opening the pane again in the same window reads the window’s width 
   for (let i = 0; i < 3; i++) {
     await work.click();
     await expect(page.locator(WORK)).toBeHidden();
+    // The room grows taller, as it does with each new item: the root’s height changes, and its width doesn’t.
+    await page.evaluate(() => {
+      document.querySelector('.transcript')?.append(Object.assign(document.createElement('div'), { style: 'height: 900px' }));
+      return new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)));
+    });
     await work.click();
     await expect(page.locator(WORK)).toBeVisible();
   }
   await settled(page);
-  expect(await rootReads(page), 'reads of the root’s clientWidth over three more openings').toBe(first);
+  expect(await rootReads(page), 'reads of the root’s clientWidth over three more openings, as the room grows').toBe(first);
   // A narrower window is a new width: the pane can’t fit beside the column, so Work opens full screen.
   await page.setViewportSize({ width: 800, height: 800 });
   await expect(page.locator('.pane-full')).toHaveCount(1);

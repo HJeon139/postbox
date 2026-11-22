@@ -19,18 +19,25 @@ const RAIL_W = 248;
 const NARROW = 768;
 /**
  * The width the column and the pane share: the window’s, less a classic scroll bar. It’s kept until the window or the
- * root’s box changes size, since reading it lays out whatever is pending, the whole transcript after a change (#619).
+ * root’s width changes, since reading it lays out whatever is pending, the whole transcript after a change (#619).
  * @type {number | null}
  */
-let room = null;
-const roomW = () => (room ??= document.documentElement.clientWidth);
-const forgetRoom = () => {
-  room = null;
-};
+let roomWidth = null;
+const roomW = () => (roomWidth ??= document.documentElement.clientWidth);
 // Registered on import, before any pane’s own resize listener, so that one reads the new width.
-if (typeof addEventListener === 'function') addEventListener('resize', forgetRoom);
-// A classic scroll bar showing or going changes the root’s width without a resize.
-if (typeof ResizeObserver === 'function') new ResizeObserver(forgetRoom).observe(document.documentElement);
+if (typeof addEventListener === 'function')
+  addEventListener('resize', () => {
+    roomWidth = null;
+  });
+// A classic scroll bar showing or going changes the root’s width without a resize. The root grows taller with every
+// new item, so only a change of width forgets it: the root has no padding, so its box is as wide as clientWidth.
+let rootBox = -1;
+if (typeof ResizeObserver === 'function')
+  new ResizeObserver(([entry]) => {
+    if (entry.contentRect.width === rootBox) return;
+    rootBox = entry.contentRect.width;
+    roomWidth = null;
+  }).observe(document.documentElement);
 
 /**
  * How the pane sits in win px when it wants want px: its width, the most it can take, whether the rail hides to make
