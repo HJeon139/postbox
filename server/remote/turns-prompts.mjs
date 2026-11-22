@@ -287,8 +287,12 @@ export function onError(rts, m) {
 export function endCard(rts, card, status, message, at, extra = {}) {
   const rt = rts.rt;
   // A question’s blocks stay asking: its call hears why it ended, and a later answer reaches the agent as an event.
+  // The end goes on each block, so the host prompt no longer counts as open (isOpen).
   if (isQuestion(card.it)) {
-    for (const p of questionParts(rts, card.it.remote.turn, card.it.remote.prompt)) rt.settlePermission(p.it.id, status, message);
+    for (const p of questionParts(rts, card.it.remote.turn, card.it.remote.prompt)) {
+      rt.settlePermission(p.it.id, status, message);
+      rt.threads.patchItem(p.threadId, p.it.id, { remote: { ...p.it.remote, ended: at } });
+    }
     return;
   }
   if (rt.permissionWaits.has(card.it.id)) rt.settlePermission(card.it.id, status, message, {}, { endedAt: at, ...extra });

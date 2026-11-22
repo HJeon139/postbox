@@ -33,6 +33,7 @@ test('#1059 on a host, a question is a choice block, and the pick is the prompt�
   const id = r.d.prompt(turn, request(ONE));
   await until(() => questions(r).length === 1, 'the question’s block');
   assert.equal(r.store.items(r.t.id).filter((i) => i.kind === 'permission').length, 0, 'no permission card');
+  assert.equal(r.rt.permissionWaits.get(questions(r)[0].id).timer, null, 'the host’s permissionWaitMax ends it, not a timer here');
   pick(r, questions(r)[0], 'Green');
   await until(() => r.d.answers.length === 1, 'the answer');
   assert.deepEqual(r.d.answers[0], {
@@ -112,6 +113,7 @@ test('#1059 after a restart, the resent prompt shows no second block, and the an
   const r = restartedAsking(ONE, [{}]);
   await until(() => r.rt.permissionWaits.has(questions(r)[0].id), 'the block to wait again');
   assert.equal(questions(r).length, 1, 'no second block');
+  assert.equal(r.se().needs?.kind, 'block', 'the agent shows as needing the person again');
   pick(r, questions(r)[0], 'Blue');
   await until(() => r.d.answers.length === 1, 'the answer');
   assert.deepEqual(r.d.answers[0].result.updatedInput.answers, { 'Which color do you prefer?': 'Blue' });
@@ -187,5 +189,50 @@ test('#1059 an answer the agent already had as a message after a restart ends th
   assert.match(result.message, /already reached you as a message/);
   assert.doesNotMatch(result.message, /stays open|reaches you as a message, so/, 'no second answer is promised');
   r.d.end('host-turn-1');
+  await settled(r);
+});
+
+test('#1059 a two-question call the host ends while its second block waits leaves nothing waiting, and counts as ended', async () => {
+  const r = rig();
+  const turn = await running(r);
+  r.d.append(turn, callLine(TWO));
+  const id = r.d.prompt(turn, request(TWO));
+  await until(() => questions(r).length === 1, 'the first block');
+  pick(r, questions(r)[0], 'Blue');
+  await until(() => questions(r).length === 2 && r.rt.permissionWaits.has(questions(r)[1].id), 'the second block, waiting');
+  r.d.expire(turn, id);
+  await until(() => !questions(r).some((q) => r.rt.permissionWaits.has(q.id)), 'no wait left');
+  await until(() => r.se().remoteTurn?.state === 'running', 'the turn no longer waiting on the person');
+  assert.ok(
+    questions(r).every((q) => q.remote.ended),
+    'each block records the end, so the prompt no longer counts as open',
+  );
+  r.d.end(turn);
+  await settled(r);
+});
+
+test('#1059 a reconnect’s resend of a question still waiting doesn’t ask it again', async () => {
+  const r = rig();
+  const turn = await running(r);
+  r.d.append(turn, callLine(ONE));
+  r.d.prompt(turn, request(ONE));
+  await until(() => questions(r).length === 1 && r.rt.permissionWaits.has(questions(r)[0].id), 'the block, waiting');
+  let asked = 0;
+  const ask = r.rt.requestPermission.bind(r.rt);
+  r.rt.requestPermission = (/** @type {any[]} */ ...a) => {
+    asked++;
+    return ask(...a);
+  };
+  const resent = () => r.d.sent.filter((m) => m.type === 'prompt').length;
+  const before = resent();
+  r.link.reconnect();
+  await until(() => resent() > before, 'the daemon to send the prompt again');
+  // The resend crosses the link, then onPrompt handles it in the same tick.
+  for (let i = 0; i < 5; i++) await new Promise((done) => setImmediate(done));
+  assert.equal(asked, 0, 'the resend waits on the block already waiting');
+  assert.equal(questions(r).length, 1);
+  pick(r, questions(r)[0], 'Green');
+  await until(() => r.d.answers.length === 1, 'one answer');
+  r.d.end(turn);
   await settled(r);
 });
