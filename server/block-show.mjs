@@ -7,6 +7,7 @@ import { PERSON } from '../shared/review-comments.mjs';
 import { appReceipt } from './app-check-status.mjs';
 import { registerApp, withAppIntent, withIntentNote } from './apps.mjs';
 import { OUTCOME_LATER } from './block-update.mjs';
+import { otherAuthor } from './review-authors.mjs';
 import { newId } from './store.mjs';
 import { wokeOf } from './turn-marks.mjs';
 
@@ -25,12 +26,10 @@ export function showBlock(apps, sessionId, { turn, se, threadId, endSegment, too
   if (block && typeof block === 'object' && Object.hasOwn(block, 'outcome'))
     return { ok: false, message: OUTCOME_LATER(String(block.id ?? 'this block'), 'The block wasn’t shown.') };
   // An app’s intent is never why it’s refused (#995): trimmed and cut as show_app does.
-  // Only the person’s answer writes a comment in their name (#1143), so a review can’t be shown with one.
-  if (block?.type === 'review' && hasPersonComment(block))
-    return {
-      ok: false,
-      message: 'A review can’t be shown with a comment in the person’s name (author “you”): only their answer writes one. The block wasn’t shown.',
-    };
+  // A new review’s comments are its agent’s (#1143, #1208): only the person’s answer writes one in their name, and
+  // review_block one in another agent’s.
+  const other = block?.type === 'review' ? otherAuthor(block, se().handle) : null;
+  if (other !== null) return { ok: false, message: otherAuthorText(other, se().handle) };
   const saidIntent = block?.type === 'app' ? block.intent : undefined;
   block = withAppIntent(block);
   const v = validateBlock(block, { imageOrigins: apps.config.imageOrigins });
@@ -88,8 +87,10 @@ function blockItem(sessionId, se, turn, block, v) {
     : { ...by, valid: false, raw: block, errors: v.errors, reason: v.reason, fallback: v.fallback };
 }
 
-/** Whether a review’s threads hold a comment in the person’s name (#1143). @param {any} block */
-function hasPersonComment(block) {
-  const threads = Array.isArray(block.threads) ? block.threads : [];
-  return threads.some((t) => Array.isArray(t?.comments) && t.comments.some((c) => c?.author === PERSON));
+/** Why show_block refused a review with a comment in another name. @param {string} other @param {string} handle */
+function otherAuthorText(other, handle) {
+  let what = `a comment in another name (author “${other}”)`;
+  if (other === PERSON) what = 'a comment in the person’s name (author “you”): only their answer writes one';
+  if (!other) what = 'a comment with no author';
+  return `A review can’t be shown with ${what}. Its comments are yours, as @${handle}; another agent comments with review_block. The block wasn’t shown.`;
 }

@@ -9,6 +9,7 @@ import { ledgerIndex } from '/shared/work-index.mjs';
 import { retiredApp, turnRows } from '/shared/work-list.mjs';
 import { client } from './client.mjs';
 import { fill, h, icon } from './dom.mjs';
+import { heldFrame } from './held-frame.mjs';
 import { keepFocus, openWork, paneHref } from './ui.mjs';
 
 const SHOWN = 5;
@@ -142,9 +143,10 @@ export function workList(it, conv, folders, withLine = true) {
     );
   };
   paint();
+  // A press on its chip or a row holds the repaint until it ends, so its click lands on what it started on (#1121, #1010).
+  const repaint = heldFrame(list, () => list.isConnected && keepFocus(list, paint));
   // Once it was on the page and isn’t any more, it stops listening, at the next event of any kind.
   let shownOnce = false;
-  let frame = 0;
   const off = client.on((ch) => {
     shownOnce ||= list.isConnected;
     if (shownOnce && !list.isConnected) return off();
@@ -152,8 +154,7 @@ export function workList(it, conv, folders, withLine = true) {
     if (!mine && ch.type !== 'app') return;
     // A patch names its entry by id, found in the ledger’s index rather than by a scan in every list (#618).
     if (mine && (ch.data.entry ?? ledgerIndex(client.state.work?.[conv] ?? []).byId.get(ch.data.id))?.turnId !== turnId) return;
-    cancelAnimationFrame(frame);
-    frame = requestAnimationFrame(() => list.isConnected && keepFocus(list, paint));
+    repaint.soon();
   });
   return list;
 }

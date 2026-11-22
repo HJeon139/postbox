@@ -237,7 +237,8 @@ test('#622: the ring and the words that follow an agent sit on one line, in a tu
 });
 
 for (const mode of ROOM_MODES)
-  test(`#622: a session event in a 1,000-item room rebuilds the rings that show it, not one per reply, ${mode}`, async ({ page }) => {
+  test(`#622: a session event in a 1,000-item room rebuilds the rings that show it, not one per reply, ${mode}`, async ({ page, browserName }) => {
+    test.skip(browserName !== 'chromium', 'the work counts come from Chromium’s DevTools protocol');
     await openAs(page, mode);
     test.setTimeout(180_000);
     const { t, sa } = await seeded(page);
@@ -268,7 +269,8 @@ for (const mode of ROOM_MODES)
   });
 
 for (const mode of ROOM_MODES)
-  test(`#622: a session event in a 1,000-item room looks up the status words that can change, not every one, ${mode}`, async ({ page }) => {
+  test(`#622: a session event in a 1,000-item room looks up the status words that can change, not every one, ${mode}`, async ({ page, browserName }) => {
+    test.skip(browserName !== 'chromium', 'the work counts come from Chromium’s DevTools protocol');
     await openAs(page, mode);
     test.setTimeout(180_000);
     const { t, sa, sb } = await seeded(page);

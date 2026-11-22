@@ -1,5 +1,5 @@
 // Server source as the guards read it: each file's text with the lines the formatter split joined, and each site that
-// matches a pattern placed by file and the function it's in (#601, tests/store-held-sites.mjs).
+// matches a pattern placed by file and the function it's in (#601, tests/store-held-guard.test.mjs).
 import assert from 'node:assert/strict';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';

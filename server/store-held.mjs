@@ -4,7 +4,7 @@
 // whether the commit resolves or fails (store-commit.mjs, store-retry.mjs). The published state (store.state,
 // store.items()) is what the page, the stream, the read tools and every other reader see (design.md, “visible to
 // anything … only after its sync”; T-31). The pending read is for in-process code whose decision would be wrong on a
-// list that held writes have superseded, each call site placed in tests/store-held-sites.mjs.
+// list that held writes have superseded, each call site placed in tests/store-held-guard.test.mjs.
 //
 // It applies held emits without the commit in front of them, whose events don’t exist until the writer runs its
 // builder, so it is exact only while no commit touches the list read. One does: the archive pass’s turn.archive (#305,
@@ -48,6 +48,9 @@ const ENTITIES = /** @type {const} */ ({
   personas: { event: 'persona', removed: 'persona', patched: null },
   // A project changed behind a held commit, whose folder a `!` command runs in (#1292). Projects are never removed.
   projects: { event: 'project', removed: null, patched: null },
+  // A wake just scheduled or changed behind a held commit, which arming its timer, firing it, canceling it and the
+  // per-agent limit read (#623). One is removed by its own event, with `removed: true`, not by `remove`.
+  schedules: { event: 'schedule', removed: null, patched: null, removedFlag: true },
 });
 /**
  * The names of what a held event touches, as the views are named: each list it changes (`items:<threadId>`) and each
@@ -109,12 +112,14 @@ const heldOn = (store, name) => Boolean(store.held) && /** @type {any} */ (store
  *   persona: (id: string) => Entry | undefined,
  *   project: (id: string) => Entry | undefined,
  *   clock: (sessionId: string) => Entry | null,
+ *   schedule: (id: string) => Entry | undefined,
+ *   schedules: () => Readonly<Record<string, Entry>>,
  * }} PendingReads
  */
 
 /**
  * The pending reads of a store: one per list in LISTS; for apps and threads, one entity by id and the whole
- * collection; every session, or one by id; and one persona or project by id.
+ * collection; every session, or one by id; one persona or project by id; and every schedule, or one by id.
  * @param {import('./store.mjs').Store} store @returns {PendingReads}
  */
 export function pendingReads(store) {
@@ -130,6 +135,8 @@ export function pendingReads(store) {
   reads.persona = (/** @type {string} */ id) => pendingEntity(store, 'personas', id);
   reads.project = (/** @type {string} */ id) => pendingEntity(store, 'projects', id);
   reads.clock = (/** @type {string} */ sessionId) => pendingClock(store, sessionId);
+  reads.schedule = (/** @type {string} */ id) => pendingEntity(store, 'schedules', id);
+  reads.schedules = () => pendingCollection(store, 'schedules');
   return /** @type {PendingReads} */ (reads);
 }
 
@@ -206,7 +213,8 @@ function collectionView(store, coll) {
     v.changes++;
     const { type, data } = JSON.parse(json);
     try {
-      if (type === event) v.entries[data.id] = data;
+      if (type === event && ENTITIES[coll].removedFlag && data.removed) delete v.entries[data.id];
+      else if (type === event) v.entries[data.id] = data;
       // As the reducer applies it: a patch for a session that's gone changes nothing.
       else if (type === patched) {
         if (v.entries[data.id]) v.entries[data.id] = patchSession(v.entries[data.id], data);

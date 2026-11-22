@@ -103,7 +103,8 @@ async function measure(page, run) {
   return counts;
 }
 
-test('#564: defining a term used in 2 of 100 replies changes those 2 and reloads no diagram', async ({ page }) => {
+test('#564: defining a term used in 2 of 100 replies changes those 2 and reloads no diagram', async ({ page, browserName }) => {
+  test.skip(browserName !== 'chromium', 'the work counts come from Chromium’s DevTools protocol');
   const { t, define } = await seeded(page, 'counter');
   const work = await measure(page, () => define({ term: 'widget', definition: 'One unit of the thing counted.' }));
   // The two replies that use it show it as a term: the event was drawn, so the counts below aren’t from a page at rest.
@@ -114,7 +115,8 @@ test('#564: defining a term used in 2 of 100 replies changes those 2 and reloads
   expect.soft(work.repliesRemoved, 'no reply node is replaced').toBe(0);
 });
 
-test('#564: a glossary event that leaves every reply’s HTML the same changes no Markdown box', async ({ page }) => {
+test('#564: a glossary event that leaves every reply’s HTML the same changes no Markdown box', async ({ page, browserName }) => {
+  test.skip(browserName !== 'chromium', 'the work counts come from Chromium’s DevTools protocol');
   const { t, define } = await seeded(page, 'same');
   define({ term: 'widget', definition: 'One unit of the thing counted.' });
   await synced(page, app);

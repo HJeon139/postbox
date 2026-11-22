@@ -4,7 +4,7 @@
 // function, and a patch’s change may not read a published thread: directly (rt.s.threads, state.threads, rt.thread(),
 // threads.get(), convOf()), or through a local of its function bound from one, the form the issue's own regex missed. The
 // guard reads source text, so a local bound from a local bound from a published read passes, and review reads for it.
-// Its deciding reads are pending reads, placed in tests/store-held-sites.mjs.
+// Its deciding reads are pending reads, placed in tests/store-held-guard.test.mjs.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { DECL, placed, sites, withProbes } from './server-sources-fixture.mjs';

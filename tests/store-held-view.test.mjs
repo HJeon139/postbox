@@ -1,6 +1,6 @@
 // The store’s pending read (#601, designs/508/601-held-view.md): an emit made while a commit is queued or in flight is held,
 // not yet applied, and every one is released onto memory in order (store-commit.mjs, store-retry.mjs). store.pending
-// reads a list with its held emits applied to a copy, for the in-process readers placed in tests/store-held-sites.mjs.
+// reads a list with its held emits applied to a copy, for the in-process readers placed in store-held-guard.test.mjs.
 // The published reads (store.items(), item(), store.state, which /api/state sends, and the stream) see a
 // held emit only once it is released, as design.md says a commit is visible to anything only after its sync (T-31).
 

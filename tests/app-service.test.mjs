@@ -39,7 +39,7 @@ test('a registered app is v1 and pending; a clean check passes it, and an old ve
 });
 
 test('a blocking problem goes back to the agent once as a fix turn, through send; the next version’s is a note, and a script error then crashes it', () => {
-  const { store, threads, apps, sent } = rig();
+  const { store, threads, apps, sent, linted } = rig();
   const it = shown(apps, threads);
   const problems = [{ code: 'text-too-small', message: 'Small text.' }];
   assert.deepEqual(apps.appCheck('lab', { version: 1, problems }), { status: 'fixing' });
@@ -54,6 +54,13 @@ test('a blocking problem goes back to the agent once as a fix turn, through send
   assert.equal(store.state.apps.lab.current, 2);
   assert.deepEqual(apps.appCheck('lab', { version: 2, problems }), { status: 'note' });
   assert.equal(sent.length, 1, 'no second fix turn');
+  // The person’s note is plain, so what the fix left reaches the agent in a lint turn, and the note says so (#981).
+  assert.deepEqual(
+    linted.at(-1)?.problems.map((p) => p.message),
+    ['Small text.'],
+    'what the fix left goes to the agent',
+  );
+  assert.equal(store.state.apps.lab.check.told, true);
   apps.updateApp(
     'se_1',
     null,
@@ -75,6 +82,49 @@ test('warnings show the app with notes, and the agent hears of them in the lint 
   running.begin({ id: 'tu_live', sessionId: 'se_1' });
   apps.appCheck('lab2', { version: 1, problems: [{ code: 'marks-too-small', message: 'Tiny.' }] });
   assert.equal(linted[1].turnId, 'tu_live');
+});
+
+test('the last version the person was shown is kept: a pass or a fully checked note sets it, a fix or a new version doesn’t (#948)', () => {
+  const { store, threads, apps } = rig();
+  shown(apps, threads);
+  const update = (code) =>
+    apps.updateApp(
+      'se_1',
+      null,
+      () => 'th_c',
+      () => {},
+      { id: 'lab', code },
+    );
+  update('<p>Lab 2</p>');
+  assert.equal(store.state.apps.lab.lastShown, undefined, 'v1 was replaced before any check: never shown');
+  apps.appCheck('lab', { version: 2, problems: [] });
+  assert.equal(store.state.apps.lab.lastShown, 2);
+  update('<p>Lab 3</p>');
+  assert.equal(apps.appCheck('lab', { version: 3, problems: [{ code: 'text-too-small', message: 'Small text.' }] }).status, 'fixing');
+  assert.equal(store.state.apps.lab.lastShown, 2, 'a version being fixed was never shown');
+  update('<p>Lab 4</p>');
+  apps.appCheck('lab', { version: 4, problems: [{ code: 'text-too-small', message: 'Small text.' }] });
+  assert.deepEqual([store.state.apps.lab.check.status, store.state.apps.lab.lastShown], ['note', 4], 'shown with a note');
+  // A version Postbox couldn’t check to the end is shown with its note, but never stands in for a later one (#948).
+  update('<p>Lab 5</p>');
+  apps.appCheck('lab', { version: 5, problems: [{ code: 'no-answer', message: 'The frame never answered.' }] });
+  assert.deepEqual([store.state.apps.lab.check.status, store.state.apps.lab.lastShown], ['note', 4], 'v5 unchecked: v4 stays the fallback');
+  update('<p>Lab 6</p>');
+  apps.appCheck('lab', {
+    version: 6,
+    problems: [
+      { code: 'check-error', message: 'No matrix.' },
+      { code: 'marks-too-small', message: 'Tiny.' },
+    ],
+  });
+  assert.equal(store.state.apps.lab.lastShown, 4, 'a check that threw part way: v4 stays the fallback');
+});
+
+test('a problem only Postbox’s own check has goes to no agent, and the note doesn’t say the agent was told (#981)', () => {
+  const { store, threads, apps, linted, sent } = rig();
+  shown(apps, threads);
+  assert.deepEqual(apps.appCheck('lab', { version: 1, problems: [{ code: 'check-error', message: 'No matrix.' }] }), { status: 'note' });
+  assert.deepEqual([linted.length, sent.length, store.state.apps.lab.check.told], [0, 0, undefined]);
 });
 
 // ── What an app sends, saves and reads ───────────────────────────────────────────────
@@ -225,4 +275,23 @@ test('an answer is read once its event starts a turn; an update over an unread a
   assert.match(waiting.message, /reaches you when this turn ends/);
   apps.answerDelivered('th_c', { kind: 'event', blockItemId: it.id, event: { revision: 1 } });
   assert.equal(store.item('th_c', it.id).answer.read, true);
+});
+
+test('#948 with v1 checked, v2 unchecked and v3 being fixed, v1 is the version that stands in', () => {
+  const { store, threads, apps } = rig();
+  shown(apps, threads);
+  const update = (code) =>
+    apps.updateApp(
+      'se_1',
+      null,
+      () => 'th_c',
+      () => {},
+      { id: 'lab', code },
+    );
+  apps.appCheck('lab', { version: 1, problems: [] });
+  update('<p>Lab 2</p>');
+  apps.appCheck('lab', { version: 2, problems: [{ code: 'no-answer', message: 'The frame never answered.' }] });
+  update('<p>Lab 3</p>');
+  assert.equal(apps.appCheck('lab', { version: 3, problems: [{ code: 'text-too-small', message: 'Small text.' }] }).status, 'fixing');
+  assert.equal(store.state.apps.lab.lastShown, 1, 'v1, checked, not v2, shown unchecked');
 });

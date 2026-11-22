@@ -4,8 +4,9 @@
 // the answer writes the person’s, and only review_block another agent’s.
 
 import { validateBlock } from '../shared/catalog.mjs';
-import { author, PERSON, personNext, threadsError } from '../shared/review-comments.mjs';
+import { PERSON, personNext, threadsError } from '../shared/review-comments.mjs';
 import { httpError } from './helpers.mjs';
+import { ownedAuthors } from './review-authors.mjs';
 import { keepReviewThreads } from './review-comments.mjs';
 
 /**
@@ -58,7 +59,8 @@ export function answerThreads(it) {
 
 /**
  * The update’s threads with every comment it adds in anyone’s name but the block’s agent’s left out (#1143): in a
- * new thread, or added to one it has. A comment already stored keeps its text and author. dropped says how many went, for the agent’s reply.
+ * new thread, or added to one it has. A comment already stored keeps its text and author, under whatever name it was
+ * sent back (#1208). dropped says how many went, for the agent’s reply.
  * @param {any} existing  the block item as it was @param {any} block  the update, validated
  */
 export function ownComments(existing, block) {
@@ -69,14 +71,21 @@ export function ownComments(existing, block) {
   let dropped = 0;
   const threads = [];
   for (const t of block.threads) {
+    const had = stored.get(t.id)?.comments ?? [];
     const said = new Map();
-    for (const c of stored.get(t.id)?.comments ?? []) said.set(key(c), (said.get(key(c)) ?? 0) + 1);
-    const comments = t.comments.filter((c) => {
+    for (const c of had) said.set(key(c), (said.get(key(c)) ?? 0) + 1);
+    const take = (c) => {
       const n = said.get(key(c)) ?? 0;
       if (n) said.set(key(c), n - 1);
-      return n > 0 || c.author === own;
-    });
-    dropped += t.comments.length - comments.length;
+      return n > 0;
+    };
+    const comments = [];
+    for (const c of t.comments) {
+      // A stored comment sent back under another name (#1208) is that stored comment, as it was; any other goes.
+      const echoed = take(c) || c.author === own ? c : had.find((h) => h.text === c.text && take(h));
+      if (echoed) comments.push(echoed);
+      else dropped++;
+    }
     // A thread it has keeps what it held, so its status still changes; a new one with nothing left goes.
     const kept = comments.length ? comments : stored.get(t.id)?.comments;
     if (kept) threads.push({ ...t, comments: kept });
@@ -139,7 +148,8 @@ export function personAnswer(apps, given, event, revision) {
  */
 export function revisedReview(found, block) {
   if (block.type !== 'review') return { existing: found, block, reviews: {}, note: '' };
-  const existing = answerThreads(found);
+  // A review stored before the author rule reads as its agent’s, as review_block and the person’s answer read it (#1208).
+  const existing = answerThreads(ownedAuthors(found));
   const own = ownComments(existing, block);
   return {
     existing,
@@ -147,25 +157,4 @@ export function revisedReview(found, block) {
     reviews: existing === found ? {} : { reviews: existing.reviews },
     note: droppedText(own.dropped, existing.handle),
   };
-}
-
-/**
- * A review stored before the author rule (#1143) may hold a comment whose author isn’t `you` or an @handle, such as
- * the demo’s mock writing “You”. Only the block’s own agent could write one, through show_block or update_block
- * (review_block always wrote its @handle), so each reads as that agent’s: never as the person’s. The item as it is
- * when every author fits, so a review written since costs one pass over its comments.
- * @param {any} it  the block item
- */
-export function ownedAuthors(it) {
-  const fits = (c) => {
-    /** @type {string[]} */
-    const errs = [];
-    author(c.author, 'author', errs);
-    return errs.length === 0;
-  };
-  const threads = it.block.threads ?? [];
-  if (threads.every((t) => t.comments.every(fits))) return it;
-  const own = `@${it.handle}`;
-  const owned = threads.map((t) => ({ ...t, comments: t.comments.map((c) => (fits(c) ? c : { ...c, author: own })) }));
-  return { ...it, block: { ...it.block, threads: owned } };
 }

@@ -23,10 +23,14 @@ export const KIRO_PUBLISHING = [
  */
 export const KIRO_TOOL_RULES = /** @type {Record<string, string[]>} */ ({ shell: ['shell'], 'web.fetch': ['web_fetch', 'web_search'] });
 
-/** A folder as given and as resolved: Kiro matches resolved paths (/tmp is /private/tmp on macOS). */
+/**
+ * A folder as given and as resolved: Kiro matches resolved paths (/tmp is /private/tmp on macOS). Resolved natively,
+ * as the kernel does: JavaScript’s realpathSync reads a link target’s .. lexically, so a folder linked to sub/../d,
+ * with sub a link elsewhere, was allowed as the folder’s lexical sibling d instead (#1215).
+ */
 const spellings = (dir) => {
   try {
-    const real = realpathSync(dir);
+    const real = realpathSync.native(dir);
     return real === dir ? [dir] : [dir, real];
   } catch {
     return [dir];
