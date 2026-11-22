@@ -14,11 +14,13 @@ Status: proposed for [#1614](https://github.com/HJeon139/postbox/issues/1614), n
 
 **Codex, Kiro and Antigravity differ from Claude Code, and from each other.** Each runs in its own process group (#126).
 - **Codex:** Postbox kills that group at each turn’s end (`stopTurn`, `server/adapters/codex.mjs`), so background work dies with the turn.
-- **Kiro and Antigravity:** a turn ends when the CLI exits by itself, and Postbox sends no signal then. `stopTurn` runs only on Stop (`stopOnAbort`, `kiro-cli.mjs`, `antigravity-cli.mjs`). So `cmd &` survives a normal end, untracked: #1606’s orphan, with no wake and no Stop.
+- **Kiro and Antigravity:** a turn ends at the CLI’s `close` (`child.on('close', settle)` in `kiro-cli.mjs` and `antigravity-cli.mjs`), and Postbox sends no signal then. `stopTurn` runs only on Stop (`stopOnAbort`), and Antigravity also stops a turn whose session is missing (`stop.now()` in `antigravity-cli.mjs`). Node fires `close` only once the child’s stdio streams have closed, so it depends on where the background work’s output goes:
+  - **`cmd > log 2>&1 &`:** `close` comes right after the CLI exits, and `cmd` survives a normal end untracked. That’s #1606’s orphan, with no wake and no Stop.
+  - **An unredirected `cmd &`:** `cmd` holds the CLI’s pipes, so `close` waits until it ends. The critic’s probe of a fake harness measured `exit` at 456 ms and `close` at 3,004 ms. The turn stays busy the whole time, which is #1614’s wait on these harnesses too.
 
 Stop kills the group on all three. On a host, the daemon owns that group (`server/remote/host/daemon-kill.mjs`).
 
-**On any harness, some work escapes.** A foreground call can start `cmd &`, `nohup cmd &` or `setsid cmd` and then let its shell exit. The child is reparented to init. It’s no longer under the CLI, so `shellGroups` (`server/adapters/process-group.mjs`) doesn’t find it, Stop doesn’t reach it, and nothing tracks it. That’s #1606’s orphan.
+**On any harness, some work escapes.** A foreground call can start `cmd &`, `nohup cmd &` or `setsid cmd` and then let its shell exit. The child is reparented to init. It’s no longer under the CLI, so `shellGroups` (`server/adapters/process-group.mjs`) doesn’t find it, and nothing tracks it. Stop still reaches it while it stays in the harness’s group. It doesn’t once its shell led a group of its own, or it ran `setsid`. That’s #1606’s orphan.
 
 ## What `main` already has
 
@@ -80,13 +82,20 @@ If any listed task doesn’t bind, Postbox leaves the turn as `main` does: it wa
 
 The strict mode is apart from Send now’s lenient keep, which stays as it is, because the person chose to keep those jobs. Whether Send now should also be strict is a question for its own issue.
 
-**Codex, and Stop on all three: signal by pid, not by group.** Postbox chooses how it signals (`stopPgid`, `signalPgid`). At Codex’s turn end, and at a Stop on Codex, Kiro or Antigravity, the harness is still alive. Postbox can signal it, and the processes it still parents, by pid, and leave the background work that section 3 binds. It turns this on for a harness only once that harness’s live check passes. Until then the group kill stays where `main` sends it, so nothing changes.
+**Stop is `main`’s Stop.** On every harness, Stop kills the turn’s group as `main` does, and binds nothing. The person or the agent asked for the work to stop, and a background job begun in that turn goes with it. Jobs bound at earlier turns’ ends are in other groups, so Stop doesn’t reach them, and each keeps its own Stop. This rule is decided by what Stop means, not by whether the harness is still alive, so it holds between the CLI’s exit and its `close` too. It’s the same locally and on a host.
 
-**Kiro and Antigravity at a normal end: bind and send nothing.** These turns end when the CLI has already exited. By then every member left in its group has init as its parent, so section 3’s foreground test can’t tell the harness’s leftover helpers from `cmd &`. Postbox doesn’t guess, and doesn’t add a kill that `main` doesn’t send. Every member left in the group that started inside the turn binds as background work, by section 3’s other rules (start time, same user), and no signal is sent.
+**The snapshot decides how a turn’s end treats its group.** At the turn’s end, Postbox reads the group in one `ps` snapshot. What it does depends on whether the harness’s pid is in that snapshot with its recorded start time, not on which harness it is.
+- **The harness is still alive, as Codex’s app-server is when Postbox stops it:** case (a)’s foreground test in section 3 applies. A group with no bound job gets the group signal `main` sends there. A group holding a bound job is signaled member by member, as below.
+- **The harness has exited, as a Kiro or Antigravity CLI has at a normal end:** every member left has init as its parent, so the foreground test can’t tell a leftover helper from `cmd &`. Postbox doesn’t guess, and adds no kill that `main` doesn’t send. Every member that passes section 3’s other rules binds, and nothing is signaled. Those rules are a start time inside the turn, the same user, and still alive at the second read.
 
-That strictly improves on `main`, where the same processes survive untracked: they gain a wake and a Stop. A helper of the harness that outlives it shows as a job and wakes its agent once. That’s visible and harmless.
+**Kiro and Antigravity end at `exit`, not at a held `close`.** Waiting for `close` would keep #1614’s wait wherever `cmd &` holds the CLI’s pipes. So once the CLI has exited, and its stream has given its last event, Postbox takes the snapshot, closes its own ends of the CLI’s stdio, and ends the turn. Output that a bound job goes on writing to those pipes is then dropped, like any job whose output wasn’t kept. The wake says so. Whether `close` fires while an unredirected `cmd &` runs is one of these harnesses’ live checks.
 
-**Identity is checked again before every pid signal.** Once Postbox signals by pid, a reused pid is the risk, so no pid is signaled on an old reading. Before each signal, Postbox reads that pid’s start time in a fresh `ps` read and signals only if it still matches the one recorded. That covers the first SIGINT, the SIGKILL `GRACE_MS` later, a Stop, and the restart sweep. A pid whose start time changed, or that is gone, is skipped and recorded as ended. The window left is between that read and the signal itself: milliseconds, and not zero.
+**How many wakes a turn can cause.** A wake counts as no hop, so it needs a bound of its own:
+- **A job must outlive the turn by more than a moment.** It binds only if it’s still alive at a second read, 1 s after the snapshot. A helper that outlives its CLI by milliseconds doesn’t bind.
+- **A session holds at most 4 bound jobs** (`shared/limits.mjs`, as the kept-job limit). A job past that isn’t bound, and runs on as on `main`.
+- **One wake per bound job, when it ends.** So a chain of wakes needs every turn in it to leave new work running for at least a second, which is background work the agent chose to start, as a scheduled wake is. The live check for each harness includes a turn with no background command, which must bind nothing.
+
+**Identity is checked again before every pid signal.** Once Postbox signals by pid, a reused pid is the risk, so no pid is signaled on an old reading. Before each signal, Postbox reads that pid’s start time in a fresh `ps` read and signals only if it still matches the one recorded. That covers the first SIGINT, the SIGKILL `GRACE_MS` later, a job’s own Stop, and the startup reconciliation in section 6. A pid whose start time changed, or that is gone, is skipped and recorded as ended. The window left is between that read and the signal itself: milliseconds, and not zero.
 
 **Group signals get the same check.** On `main` only the host daemon matches a group by its members’ start times. The local `liveGroups` (`server/kept-jobs.mjs`) checks only the leader’s command line. `listProcesses` reads no start time, and `stopTurn`’s group signals don’t go through `liveGroups` at all. `stopPgid` sends its delayed SIGKILL with no second check. So the local `ps` read gains `lstart`. Before each group signal, including the delayed SIGKILL, the kept-job poll and the strict stop check that a member still has its recorded start time, as the daemon does.
 
@@ -97,12 +106,12 @@ Postbox starts every harness process with two variables in its environment: `POS
 **What binds.** A tool shell that backgrounds a command exits within milliseconds, and its child is reparented to init. The integrator measured this with a fake harness running `/bin/sh -c 'node -e … & echo $!'`. The shell lived 4.7 to 4.9 ms. Its child’s parent became pid 1, and its group stayed whichever group the shell had: its own, or the harness’s. A 5-second poll almost never sees such a shell, so ancestry recorded by polling can’t bind it. At a turn’s end, a process is bound as this turn’s background work in two cases:
 - **(a) It’s in the harness’s own process group, and its shell has exited.** Membership in that group is ancestry: only the harness and its descendants are in it. But membership alone doesn’t tell background work from a foreground child, so the parent decides:
   - **Background:** a member whose parent is init or the subreaper. Its shell exited and left it running, which is what `cmd &` and `nohup cmd &` do. It binds when its start time falls inside the turn, with or without a readable marker. On macOS that covers #1614’s own `sleep 90 &`, whose `/bin/sleep` hides its environment.
-  - **Foreground:** a member whose parent chain still reaches the harness, or a tool shell that is still alive. It never binds, and it is stopped at the turn’s end.
+  - **Foreground:** a member whose parent chain still reaches the harness, or a tool shell that is still alive. It never binds, and it is stopped at the turn’s end. This test applies only while the harness is alive at the snapshot, as at Codex’s turn end. Once the harness has exited, section 2’s exited rule applies instead.
 - **(b) It’s outside that group,** after `setsid` or as the orphan of a tool shell that led its own group. It binds when all of these hold:
   - its marker names this session and this turn;
   - its start time falls inside the turn;
   - its parent is init or the subreaper;
-  - it belongs to the user running the harness on that machine (its real uid matches the harness’s).
+  - it belongs to the user running the harness on that machine (its real uid, `ruid`, matches the harness’s).
 
 **Why case (b) binds: the owner’s decision.** Case (b) gives no tie to the harness that Postbox observed. The marker is the process’s own account, and the start time and parent show only timing. The integrator asked for it in the [fourth-round review of #1615](https://github.com/HJeon139/postbox/pull/1615#pullrequestreview-6011596385). Critic disagreed, and the owner decided in the room on 22 November 2026 that it binds:
 - **The reasoning:** a forged marker can only come from a process of the person’s own user. That process can already signal these processes, so a forger gains at most a spurious wake for the agent the marker names.
@@ -111,7 +120,7 @@ Postbox starts every harness process with two variables in its environment: `POS
 The owner chose coverage for `setsid` jobs and the orphans of tool shells that led their own groups, on Codex, Kiro and Antigravity, over that concern. A process that binds this way wakes its agent and has a Stop, like any bound job. A Claude Code task that section 1 handled is left to section 1.
 
 **Nothing leaks that `main` reaps, and a kept job isn’t signaled with the rest.** A group signal (`signalPgid`) reaches every member, so it can’t be used on a group that holds a bound job. At a turn’s end that uses pid signals:
-- **A harness group with no bound job** gets that harness’s group signal, where `main` sends one: at Codex’s turn end and at Stop. At a normal Kiro or Antigravity end, `main` sends none, and neither does this design.
+- **A harness group with no bound job** gets that harness’s group signal where `main` sends one: at Codex’s turn end. At a normal Kiro or Antigravity end, `main` sends none, and neither does this design. Stop is section 2’s `main` Stop.
 - **A harness group that holds a bound job:** the first SIGINT goes to each member that didn’t bind, by its own pid, after the identity check in section 2. It spares the same members the delayed sweep below spares: the bound jobs and their descendants, meaning any member whose parent chain reaches a bound job’s pid with that pid’s recorded start time. The members it signals include the harness, its foreground children, and a marked process inside the turn that fails a rule above.
 - **The delayed SIGKILL sweeps the group again, not the old list.** A foreground process can start a child in the group during `GRACE_MS`, which the first list doesn’t name. So at SIGKILL time, Postbox reads the group’s members again in a fresh `ps` read. It sends SIGKILL to every member, by pid and after its identity check, except two kinds:
   - a bound job;
@@ -122,7 +131,7 @@ The owner chose coverage for `setsid` jobs and the orphans of tool shells that l
 **The poll’s cost.** On `main`, `pollKept` runs `ps` only while a kept job exists (`server/kept-jobs.mjs`). This design adds the marker scan at each turn’s end, and at each 5-second tick only while kept jobs exist. One scan per tick serves every turn and job. The implementation PR measures the scan, `ps -Eww -ax`, whose output is larger than today’s read, against `main`’s poll, and holds it to a budget stated there.
 
 **What the scan reads.** The scan keeps only the two marker variables from its output, and nothing else of any process’s environment. Raw scan output is never logged or stored.
-- **On macOS:** `ps -Eww -ax -o pid=,ppid=,pgid=,uid=,lstart=,command=`.
+- **On macOS:** `ps -Eww -ax -o pid=,ppid=,pgid=,ruid=,lstart=,command=`. In macOS `ps`, `uid` is the effective user id and `ruid` the real one.
 - **On Linux:** `/proc/<pid>/environ`, with the owner from `/proc/<pid>/status` (`Uid:`).
 
 The owner is read so that case (b)’s same-user rule is checked, not assumed. A process of another user never binds, wakes no one and gets no Stop, whatever marker it carries.
@@ -208,7 +217,9 @@ sequenceDiagram
 
 ### 6. Restart
 
-After a Postbox or daemon restart, a kept job is adopted again only if a member of its recorded group still has its recorded start time, so a long run survives an upgrade. A job that doesn’t match is recorded as ended, with “Postbox restarted while it ran: exit status unknown”, and wakes its agent once. Nothing is adopted that wasn’t bound before the restart.
+**A clean shutdown keeps bound jobs.** On `main`, a clean shutdown stops every kept job (`stopKeptJobs` in `server/turn-stop.mjs`). This design changes that for jobs it bound: they keep running, and their records stay in the store, so a long run survives an upgrade, as the owner asked. Send now’s kept jobs keep `main`’s stop at shutdown.
+
+**Startup reconciliation.** After a Postbox restart, whether clean or after a crash, and after a daemon restart, each kept job is adopted again only if a member of its recorded group still has its recorded start time. A job that doesn’t match is recorded as ended, with “Postbox restarted while it ran: exit status unknown”, and wakes its agent once. Nothing is adopted that wasn’t bound before the restart.
 
 ## The guide
 
@@ -221,13 +232,14 @@ After a Postbox or daemon restart, a kept job is adopted again only if a member 
 
 Each check is a local run of up to 3 turns, so the cost is bounded: up to 3 turns per harness, with real agents, as AGENTS.md asks of any run that costs real usage. A harness gets this design only once its check passes. The check goes through the normal turn path and shows three things:
 - the background job survives the turn’s end;
-- an ordinary foreground child the turn left behind is stopped. This applies to Codex, and to Stop on every harness. At a normal Kiro or Antigravity end, where the CLI has exited, the check is that `cmd &` binds and nothing is signaled;
+- an ordinary foreground child the turn left behind is stopped, at Codex’s turn end. At a normal Kiro or Antigravity end, where the CLI has exited, the check is instead that `cmd &` binds and nothing is signaled. Stop on every harness kills the group, as on `main`;
+- a turn with no background command binds nothing;
 - a room message reaches the owner while the job still runs, and the job’s end wakes it once.
 
 What each check answers:
 - **Claude Code:** with `-p` stream-json, does ending the CLI after the `result` keep every task, Monitor included? Does each task’s output file go on filling?
 - **Codex:** does the app-server end a turn while a backgrounded child runs, and what does it do to that child? Does the marker reach its tool shells?
-- **Kiro and Antigravity:** at a normal end, does the CLI exit with `&` and `nohup` work left in its group, and does that work bind and wake once? Does the marker reach their tool shells?
+- **Kiro and Antigravity:** at a normal end, does the CLI exit with `&` and `nohup` work left in its group, and does that work bind and wake once? Does `close` fire while an unredirected `cmd &` runs, or only when it ends? Does the turn end at `exit` either way? Does the marker reach their tool shells?
 - **Each Linux host:** is `/proc/<pid>/environ` readable for the agent’s processes?
 
 ## How it’s tested
@@ -247,11 +259,19 @@ What each check answers:
     - **A mixed group:** a bound background job and a foreground child of a live tool shell in the same harness group. The job survives, and the foreground child stops, each signaled by its own pid;
     - **A child started during the grace period:** the bound job starts its own child before the first SIGINT, and the foreground child starts a new child in the group after it. Neither pass signals the bound job or its child. The delayed sweep reaps the foreground child’s new child;
     - `sh -c 'cmd &'`, with the shell leading its own group: `cmd`, reparented to init, binds by its marker and wakes the agent;
-    - a process in the harness’s group that doesn’t bind is still stopped at the turn’s end;
+    - a process in the harness’s group that doesn’t bind is still stopped at Codex’s turn end;
+    - **A Stop after the CLI has exited, before `close`:** Stop kills the group as `main` does, and nothing binds;
+    - **A helper that outlives its CLI by milliseconds:** it’s gone at the second read, so it doesn’t bind and no wake comes;
+    - **A fifth job in a session** isn’t bound;
+    - **A clean shutdown:** a bound job keeps running and is adopted at the next start;
     - a marked process outside the group that doesn’t bind isn’t signaled, and its exit queues no wake;
     - one whose marker names session B, inside B’s turn, binds to B and never to the session whose turn is ending. It wakes only B’s agent, once;
     - one owned by another user isn’t bound, whatever its marker;
-    - **A harness that exits by itself:** a fake Kiro-style harness starts a helper and runs `cmd &`, then exits. Both are left in its group with init as their parent. Both bind, and nothing is signaled.
+    - **A harness that exits by itself, in both stdio layouts:** a fake Kiro-style harness starts a long-lived helper and runs `cmd &`, then exits.
+      - With `cmd` redirected, `close` follows `exit`.
+      - With `cmd` unredirected, `cmd` holds the pipes, and the turn ends at `exit` anyway.
+
+      Either way both processes bind, nothing is signaled, and the turn ends before `cmd` does.
   - **Codex, Kiro and Antigravity by pid:** the harness and its children stop, and a bound marked process survives.
   - **A reused pid is skipped:** a pid whose start time changes between the first SIGINT and the delayed SIGKILL, or before a Stop, isn’t signaled.
   - **The output file:**
