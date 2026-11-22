@@ -295,7 +295,7 @@ export class ClaudeCodeAdapter {
 
 /**
  * A run’s command line (server/adapters/claude-code-args.mjs), from its turn’s context: on a host, its memory folder
- * and its shim as Postbox’s server there. Moved out of ClaudeCodeAdapter’s run, which is at its length limit.
+ * and its shim as Postbox’s server there.
  * @param {string} workRoot @param {{ ctx: any, id: string, resume: boolean, guide: string, addDirs: string[], fork: any, remote: any }} o
  */
 function runArgs(workRoot, { ctx, id, resume, guide, addDirs, fork, remote }) {
