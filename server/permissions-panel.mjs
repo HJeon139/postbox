@@ -17,6 +17,7 @@ import { httpError } from './helpers.mjs';
 import { changeHostRule, hostRuleList } from './host-rules.mjs';
 import { readHooks } from './permission-hooks.mjs';
 import { BEHAVIORS, changeRule, cleanRule, readRules, settingsFiles } from './permission-rules.mjs';
+import { hostOf } from './remote/placement.mjs';
 
 export { PERMISSION_MODES } from './permission-modes.mjs';
 
@@ -62,7 +63,9 @@ export async function permissionsView(rt, who) {
   const readsRules = !real || rt.readsRules(persona.backend);
   const { usesHostSetup, canPublish, allowRequested } = setupOf(persona);
   const read = { folder, home: rt.home, configDir: rt.configDir, usesHostSetup };
-  const files = real && readsRules && folder ? await readRules(read) : [];
+  // This computer’s files, which an agent on a host never reads: listed, but not changed for it (#404).
+  const onHost = Boolean(hostOf(persona));
+  const files = (real && readsRules && folder ? await readRules(read) : []).map((f) => (onHost ? { ...f, writable: false } : f));
   // The hooks there that can approve a call, which Postbox’s settings turn off in Ask me and Accept edits (#817, #871, #806).
   const hooks = real && readsRules && folder ? await readHooks(read) : [];
   const has = new Set(persona.tools ?? []);
@@ -167,6 +170,14 @@ export async function changePermissionRule(
     rt.sessions.update(se.id, { rules });
     return { ok: true, where, applies: 'next turn' };
   }
+  // An agent on a host reads the settings files there, never this computer’s, which local agents in the same folder
+  // do read (#404): a rule saved here would change them and not it, as Always allow on a host card would (#120).
+  const host = hostOf(persona);
+  if (host)
+    throw httpError(
+      409,
+      `@${persona.handle} runs on ${rt.s.hosts[host]?.name ?? 'a host'}, where Claude Code reads its folder’s settings there, not this computer’s, so Postbox doesn’t change this computer’s for it. Save the rule for this conversation, or use Always allow on its card. To change this computer’s settings files, open the panel on an agent that runs here.`,
+    );
   if (where === 'user' && !setupOf(persona).usesHostSetup)
     throw httpError(
       409,
