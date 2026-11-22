@@ -2,6 +2,33 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.38.0 (2026-11-22)
+
+### Features
+
+- **uat:** stop every run at a cap on agent turns and wall time, on any harness
+- **uat:** a run clock per agent for timed trials, off unless POSTBOX_RUN_CLOCK=1
+
+### Fixes
+
+- **uat:** void a timed run when a host turn ends unkilled though no stop was asked
+- **uat:** poll the state without its items for the run's watch
+- **uat:** keep where a run stopped at its bound through a recheck
+- **uat:** give the runner's own reads of Postbox a limit, so a stalled one unwinds the run
+- **uat:** time a bounded run's grace from Postbox's last answer, not the deadline
+- **uat:** run the cleanup for a run still held in a wait past its wall time
+- **uat:** keep a bounded run's deadline on its own timer, so a hung state read can't hold it
+- **uat:** stop a bounded run on time without the state, and count every turn start
+- **uat:** record no clock.turn for a turn that gets no clock line
+- **uat:** void a timed run when a restart drops a host stop it can't ask again
+- **uat:** word Send now's refusal for a queued message, and say how a timed run resumes
+- **uat:** void a timed run when a host says the turn it stopped outlived its kill
+- **uat:** count a bounded run's minutes to its watch's end, and say when it stopped
+- **uat:** refuse Send now on a queued message while its run clock holds, and drop turns after expiry
+- **uat:** refuse Retry and Send now while a run clock holds the agent, and drop held turns
+- **uat:** a reply a run clock stopped says the clock stopped it
+- **uat:** stop a host turn attached again while its run clock holds the agent
+
 ## 4.37.0 (2026-11-22)
 
 ### Features
