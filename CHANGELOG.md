@@ -2,6 +2,13 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.35.12 (2026-11-22)
+
+### Fixes
+
+- **shell:** keep New room's error row a fixed height, and clear only its own
+- **shell:** clear New room's "pick at least two" once two are picked
+
 ## 4.35.11 (2026-11-22)
 
 ### Fixes
