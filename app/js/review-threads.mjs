@@ -97,58 +97,24 @@ function draftOf(c, env) {
  * @param {any} c @param {number} at  its place in the draft @param {any} env
  */
 function editorOf(c, at, { d, rerender }) {
-  const close = (/** @type {boolean} */ save) => {
-    if (save && !ta.value.trim()) return;
-    if (save) d.editingText = ta.value;
-    else d.editingText = '';
+  const close = (/** @type {string | null} */ value) => {
+    if (value !== null && !value.trim()) return;
+    d.editingText = value ?? '';
     saveEdit(d);
     /** @type {HTMLElement | null} */ (rerender().querySelector(`[data-draft="${at}"]`))?.focus();
   };
-  const text = typeof d.editingText === 'string' ? d.editingText : c.text;
-  const saved = Array.isArray(d.editingSelection) ? d.editingSelection : [text.length, text.length];
-  // Its text and caret are kept, so a repaint while it’s open (another agent’s comment, a revision) leaves both.
-  const remember = () => {
-    d.editingText = ta.value;
-    d.editingSelection = [ta.selectionStart, ta.selectionEnd];
-  };
-  const ta = h('textarea.textarea', {
-    'aria-label': 'Edit your draft comment',
-    ...tracked(d, 'data-edit-draft'),
-    style: { minHeight: '56px' },
-    value: text,
-    oninput: remember,
-    onselect: remember,
-    onkeyup: remember,
-    onmouseup: remember,
-    onkeydown: (e) => {
-      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-        e.preventDefault();
-        close(true);
-      }
-      // Escape closes the box, and only the box: not a full-screen review around it too.
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        close(false);
-      }
-    },
+  return commentBox(d, {
+    label: 'Edit your draft comment',
+    mark: 'data-edit-draft',
+    opened: 'editFocus',
+    fields: ['editingText', 'editingSelection'],
+    text: typeof d.editingText === 'string' ? d.editingText : c.text,
+    quote: quoted(c.quote ?? c.gone),
+    saveLabel: 'Save comment',
+    hint: 'Ctrl+Enter saves it',
+    onSave: (value) => close(value),
+    onCancel: () => close(null),
   });
-  refocus(ta, d, 'editFocus', 'data-edit-draft', saved, text);
-  const quote = quoted(c.quote ?? c.gone);
-  return h(
-    'div.rv-thread',
-    h(
-      'div.reply',
-      { style: { flexDirection: 'column' } },
-      quote ? h('span.small.dim', 'On ', quote) : null,
-      ta,
-      h(
-        'div.row-flex',
-        h('button.btn.sm.send', { type: 'button', onclick: () => close(true) }, 'Save comment'),
-        h('button.btn.sm.ghost', { type: 'button', onclick: () => close(false) }, 'Cancel'),
-        h('span.small.dim', 'Ctrl+Enter saves it'),
-      ),
-    ),
-  );
 }
 
 /** Each comment box’s review draft, so a repaint finds only its own box (refocus). */
