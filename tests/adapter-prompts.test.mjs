@@ -180,9 +180,9 @@ test('Codex records the developer instructions its thread opens with, and the in
   assert.equal(recorded[0].text, seen.find((x) => x.method === 'turn/start').params.input[0].text);
 });
 
-test('the Agent SDK records the system prompt it appends and the prompt it queries with, once its CLI starts', async () => {
-  // A turn recorded on claude 2.1.296 (tests/fixtures/claude-code/block.jsonl): the SDK yields the same messages.
-  const lines = fixtureLines('block');
+/** One Agent SDK turn on a recorded stream: the SDK yields the same messages as the CLI wrote. @param {string} name */
+async function sdkTurn(name) {
+  const lines = fixtureLines(name);
   const queried = [];
   const sdk = {
     query: (q) => {
@@ -210,7 +210,22 @@ test('the Agent SDK records the system prompt it appends and the prompt it queri
     prompt: (p) => recorded.push(p),
   };
   await adapter.deliver({}, { kind: 'user', text: 'Hi' }, ctx);
+  return { recorded, queried };
+}
+
+test('the Agent SDK records the system prompt it appends and the prompt it queries with, once its CLI starts', async () => {
+  // A turn recorded on claude 2.1.296 (tests/fixtures/claude-code/block.jsonl).
+  const { recorded, queried } = await sdkTurn('block');
   assert.equal(recorded.length, 1);
   assert.equal(recorded[0].guide, queried[0].options.systemPrompt.append);
   assert.equal(recorded[0].text, queried[0].prompt);
+});
+
+test('the Agent SDK records a query’s prompt once, though its CLI starts its loop again in the same turn', async () => {
+  // Recorded turns whose CLI emitted system/init again: a background job finishing (2 inits), a monitor’s wakes (6).
+  for (const name of ['background-done', 'monitor']) {
+    const { recorded, queried } = await sdkTurn(name);
+    assert.equal(queried.length, 1, `${name}: one query`);
+    assert.equal(recorded.length, 1, `${name}: recorded ${recorded.length}`);
+  }
 });
