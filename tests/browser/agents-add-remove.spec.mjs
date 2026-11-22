@@ -66,6 +66,7 @@ test.describe('at 1280 px', () => {
     await menu.getByRole('menuitem', { name: /@indexer/ }).focus();
     await page.keyboard.press('Enter');
     await expect(section.locator('.agent-rows li', { hasText: 'indexer' }), 'its row, at once').toBeVisible();
+    await expect(page.locator('#live'), 'announced').toHaveText('Added @indexer to this conversation');
     // Focus goes back to the composer, as after any action (app/AGENTS.md).
     await expect(page.locator('#composer-input'), 'focus back in the composer').toBeFocused();
     expect(handlesIn(t)).toEqual(['indexer', 'librarian']);
@@ -74,9 +75,14 @@ test.describe('at 1280 px', () => {
     await expect(minus, 'two agents: − is on').toHaveAttribute('aria-disabled', 'false');
     await minus.focus();
     await page.keyboard.press('Enter');
-    await page.getByRole('menu', { name: 'Remove an agent' }).getByRole('menuitem', { name: 'Remove @indexer…' }).click();
-    await page.getByRole('alertdialog', { name: 'Delete indexer’s session?' }).getByRole('button', { name: 'Delete session' }).click();
+    await page.getByRole('menu', { name: 'Remove an agent' }).getByRole('menuitem', { name: 'Remove @indexer…' }).focus();
+    await page.keyboard.press('Enter');
+    await page.getByRole('alertdialog', { name: 'Delete indexer’s session?' }).getByRole('button', { name: 'Delete session' }).focus();
+    await page.keyboard.press('Enter');
     await expect(section.locator('.agent-rows li', { hasText: 'indexer' })).toHaveCount(0);
+    // The rail redraws − with the rows, so focus goes to the composer, as after an add, not to the page (critic, #1630).
+    await expect(page.locator('#composer-input'), 'focus back in the composer after a remove').toBeFocused();
+    await expect(page.locator('#live'), 'announced').toHaveText('Deleted indexer’s session');
     expect(handlesIn(t)).toEqual(['librarian']);
     expect(arrange.persona(app.rt, 'indexer'), 'the persona stays').toBeTruthy();
     await expect(minus, 'one agent again: − is off').toHaveAttribute('aria-disabled', 'true');

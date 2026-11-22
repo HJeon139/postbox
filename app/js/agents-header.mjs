@@ -84,7 +84,8 @@ export function openRemove(anchor, threadId, sheets) {
     label: `Remove @${se.handle}…`,
     icon: 'trash',
     danger: true,
-    run: () => sheets.confirmDelete(se, { keepConversation: true }),
+    // The rail redraws − with the rows, so focus goes where the next message is, as after an add.
+    run: () => sheets.confirmDelete(se, { keepConversation: true, removed: focusComposer }),
   }));
   openMenu(anchor, items, { label: 'Remove an agent' });
 }

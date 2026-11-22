@@ -40,7 +40,7 @@ The person needs to see what each agent runs with, from wherever they are. The c
 4. Tab to a row, press Enter, and press Escape: focus is back on the row.
 5. Send `@indexer /compact`, then `@indexer /delete` and Cancel.
 6. Under an agent reply, choose Reply in thread, and ask something there. The conversation’s own agent answers; the thread’s panel names it in a line, and the sidebar lists no new agent.
-7. Press + beside Agents and pick an agent not in the conversation: its row appears at once, and focus is in the composer. Press −, pick it, and confirm: its row goes. With one agent left, Tab to −: it says why it’s off, and Enter does nothing.
+7. Press + beside Agents and pick an agent not in the conversation: its row appears at once, and focus is in the composer. Press −, pick it, and confirm, all by keyboard: its row goes, focus is in the composer, and the page announces the delete. With one agent left, Tab to −: it says why it’s off, and Enter does nothing.
 8. Narrow the window to 375 px and check a topic thread’s panel.
 9. In a room, ask @indexer to wake @researcher with a long task, and while @researcher works in the side thread, have @indexer wake it again: the second wake waits for its turn, with no fork. Check the tree under @researcher, the side-thread line, and `/stop` in the conversation.
 10. With a real agent, ask it to use a subagent that starts its own subagent, and watch the tree under its row while they work. Tab to one’s End and press Enter: it reads “ending”, and the agent stops it.
