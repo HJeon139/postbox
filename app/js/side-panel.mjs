@@ -33,17 +33,16 @@ export function mountSidePanel(parentId, sideId) {
   // Who is in a topic thread, in a line: the conversation’s agents, from their one session there (#228).
   const who = topic ? inThreadLine(sideId) : null;
   const summarize = summarizeButton(sideId, parent);
+  // Each line is cut to one with an ellipsis, so its whole text is its title too (#551).
+  const name = topic ? 'Thread' : side.title;
+  const from = topic ? `in ${parent?.title ?? 'the conversation'}` : `Side thread from ${parent?.title ?? 'this conversation'}`;
   const el = h(
     'aside.sidepanel',
     { 'aria-labelledby': 'sp-title' },
     h(
       'div.sp-head',
       icon('thread', 'dim'),
-      h(
-        'div.grow',
-        h('b', { id: 'sp-title' }, topic ? 'Thread' : side.title),
-        h('div.small.dim', topic ? `in ${parent?.title ?? 'the conversation'}` : `Side thread from ${parent?.title ?? 'this conversation'}`),
-      ),
+      h('div.grow', h('b.sp-line', { id: 'sp-title', title: topic ? null : name }, name), h('div.small.dim.sp-line', { title: from }, from)),
       summarize.el,
       copyLink(sideId, topic),
       h(
@@ -68,6 +67,9 @@ export function mountSidePanel(parentId, sideId) {
     },
   };
 }
+
+/** Summarize back’s label while it waits, which its button keeps room for at rest (#551). */
+const REQUESTED = 'Summary requested…';
 
 /**
  * Summarize back (#93, #225): asks an agent of the thread for a short summary, posted in the conversation. In a side
@@ -112,6 +114,8 @@ function summarizeButton(sideId, parent) {
       type: 'button',
       title: `Ask ${pair ? 'one of its agents' : 'the thread’s agent'} for a short summary, and post it in the conversation`,
       ...(pair ? { 'aria-haspopup': 'menu', 'aria-expanded': 'false' } : {}),
+      // Its width is its widest label’s, so “Summary requested…” moves nothing beside it (#551).
+      'data-widest': REQUESTED,
       onclick: () => (pair ? choose() : ask(null)),
     },
     'Summarize back',
@@ -123,7 +127,7 @@ function summarizeButton(sideId, parent) {
     if (waiting && document.activeElement === el)
       (document.getElementById('side-input') ?? el.closest('.sidepanel')?.querySelector('.sp-head button[aria-label^="Close"]'))?.focus();
     el.disabled = waiting || !(S().threads[sideId]?.lastSpeaker || S().threads[sideId]?.woke);
-    const label = waiting ? 'Summary requested…' : 'Summarize back';
+    const label = waiting ? REQUESTED : 'Summarize back';
     if (el.textContent !== label) el.textContent = label;
   };
   paint();
@@ -154,6 +158,7 @@ function copyLink(threadId, topic) {
         }, 2000);
       },
       'aria-label': topic ? 'Copy link to this topic thread' : 'Copy link to this side thread',
+      'data-widest': 'Copy link',
     },
     'Copy link',
   );

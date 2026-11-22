@@ -8,8 +8,9 @@ import { ASKING, followsConversation, validateBlock } from '../shared/catalog.mj
 import { LIMITS } from '../shared/limits.mjs';
 import { clip, clipText, echoedId } from './helpers.mjs';
 import { stampSteps } from './progress-steps.mjs';
+import { echoedAuthors, ownedAuthors } from './review-authors.mjs';
 import { revisedFiles } from './review-files.mjs';
-import { ownedAuthors, revisedReview } from './review-person.mjs';
+import { revisedReview } from './review-person.mjs';
 
 export const CATCH_UP_CHARS = 16000;
 
@@ -23,6 +24,18 @@ export function answerDelivered(apps, threadId, message) {
   const it = apps.store.item(threadId, message.blockItemId);
   if (it?.answer?.read === false && it.answer.revision === message.event.revision)
     apps.threads.patchItem(threadId, it.id, { answer: { ...it.answer, read: true } });
+}
+
+/**
+ * Reopening an answered review keeps a receipt of that answer: what it was, for which revision, and when, so the person
+ * can see it was for an earlier revision and answer this one (#518). The review hides it once they answer again.
+ * @param {any} existing  the block item being updated
+ */
+function priorAnswerOf(existing) {
+  // Only a review draws it (app/js/review-receipt.mjs), so only a review keeps it.
+  const a = existing.answered && existing.block.type === 'review' ? existing.answer : null;
+  if (!a) return {};
+  return { priorAnswer: { action: a.action, ...(a.values?.verdict ? { verdict: a.values.verdict } : {}), revision: a.revision ?? 1, at: a.at } };
 }
 
 /**
@@ -68,7 +81,7 @@ export function updateBlock(apps, sessionId, { block }, { turn, se, threadId, en
   const kind = updateKind(block);
   if (kind === 'withdraw') return withdraw(apps, sessionId, block, { se, threadId });
   if (kind === 'outcome') return recordOutcome(apps, sessionId, block, { se, threadId });
-  const v = validateBlock(block, { imageOrigins: apps.config.imageOrigins });
+  const v = validateBlock(echoedAuthors(block), { imageOrigins: apps.config.imageOrigins });
   if (!v.ok) return { ok: false, message: `The update was invalid and wasn’t applied: ${withShape(v.errors, block)}` };
   const { where, existing: found } = shownBy(apps, sessionId, v.block.id, threadId(), se());
   if (!found) return notShown(apps, sessionId, v.block.id);
@@ -106,6 +119,7 @@ export function updateBlock(apps, sessionId, { block }, { turn, se, threadId, en
   }
   /** @type {Record<string, any>} */
   const patch = { block: v.block, answered: false, answer: null, closed: null, revision: (existing.revision ?? 1) + 1, updatedAt: now, ...files, ...reviews };
+  Object.assign(patch, priorAnswerOf(existing));
   if (v.block.type === 'progress') Object.assign(patch, stampSteps(existing, v.block, now));
   // Asking again belongs to this turn, so its end shows the person this agent needs them (#69).
   if (ASKING.has(v.block.type) && turn) patch.turnId = turn.id;

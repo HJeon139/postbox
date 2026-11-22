@@ -155,7 +155,8 @@ function answerText(b, a) {
       if (f.kind === 'select') return f.options?.find((o) => o.id === x)?.label ?? x;
       return String(x);
     };
-    const filled = b.fields.filter((f) => v[f.id] !== undefined && v[f.id] !== '');
+    // Own keys only: an unanswered field with an id like “constructor” would read Object’s (#247).
+    const filled = b.fields.filter((f) => Object.hasOwn(v, f.id) && v[f.id] !== undefined && v[f.id] !== '');
     return `The person answered:\n${lines(filled.map((f) => `${f.label}: ${shown(f)}`)) || '- (nothing filled in)'}`;
   } else if (b.type === 'choice') {
     const picked = (v.selected ?? []).map((id) => b.options.find((o) => o.id === id)?.label ?? id);
