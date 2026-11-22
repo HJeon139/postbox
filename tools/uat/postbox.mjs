@@ -75,6 +75,45 @@ async function ready(pb, api, tries = 80, signal) {
 }
 
 /**
+ * How long one of the runner’s reads of its Postbox may take. Each answers in well under a second; a wait the runner
+ * chooses sleeps between reads, never inside one. A read past this is one Postbox took and won’t answer, and giving up
+ * lets the runner reach its own stop (#1621).
+ */
+export const READ_MS = 60_000;
+
+/**
+ * GET a path of Postbox’s, as JSON, giving up after `ms`. @param {string} origin @param {string} path @param {number} [ms]
+ */
+export async function readJson(origin, path, ms = READ_MS) {
+  try {
+    const res = await fetch(origin + path, { signal: AbortSignal.timeout(ms) });
+    return await res.json();
+  } catch (e) {
+    if (/** @type {Error} */ (e).name !== 'TimeoutError') throw e;
+    throw new Error(`Postbox didn’t answer GET ${path} within ${ms / 1000} s.`, { cause: e });
+  }
+}
+
+/**
+ * How the runner reads its Postbox: each read limited by readJson, refused once Postbox has exited, and the state with
+ * its items, which /api/state no longer carries (#1155): the checks and triggers read them there.
+ * @param {{ origin: string, exited: number | null }} pb  the run’s Postbox, read as it is at each call
+ * @param {number} [ms]  each read’s limit
+ * @param {{ items?: boolean }} [o]  items: false reads the state alone, for a watch that needs only its sessions and
+ *   threads: every thread’s items every 1.5 s would cost the Postbox under test more as its rooms grow (#1638)
+ */
+export function postboxReader(pb, ms = READ_MS, { items = true } = {}) {
+  const get = async (/** @type {string} */ p) => {
+    if (pb.exited !== null) throw new Error(`Postbox exited (code ${pb.exited}); see run.log.`);
+    return readJson(pb.origin, p, ms);
+  };
+  return async (/** @type {string} */ p) => {
+    const body = await get(p);
+    return items && p === '/api/state' && body?.state ? { ...body, state: await withItems(body.state, get) } : body;
+  };
+}
+
+/**
  * Starts Postbox and waits until it answers. `api` reads one of its routes, and refuses once it has exited. One that
  * doesn’t answer within `tries` is stopped before the error reaches the caller, which may go on (#782). step says which
  * step of the run is going on, for each line of its output. signal stops it whenever it aborts, while it starts or
@@ -92,15 +131,7 @@ export async function startPostbox({ root, port, data, env, log, tries = 80, ste
   process.once('exit', () => {
     if (pb.exited === null) pb.server?.kill('SIGTERM');
   });
-  const get = async (p) => {
-    if (pb.exited !== null) throw new Error(`Postbox exited (code ${pb.exited}); see run.log.`);
-    return (await fetch(pb.origin + p)).json();
-  };
-  // The state with its items, which /api/state no longer carries (#1155): the checks and triggers read them there.
-  const api = async (p) => {
-    const body = await get(p);
-    return p === '/api/state' && body?.state ? { ...body, state: await withItems(body.state, get) } : body;
-  };
+  const api = postboxReader(pb);
   const stop = async () => {
     pb.stopping = true;
     if (pb.server) await untilGone(pb.server);
@@ -115,6 +146,8 @@ export async function startPostbox({ root, port, data, env, log, tries = 80, ste
   return {
     origin: pb.origin,
     api,
+    /** api without the threads’ items, for the run’s watch, which polls it every 1.5 s (tools/uat/run-bound.mjs). */
+    watchApi: postboxReader(pb, READ_MS, { items: false }),
     /** What it has printed so far, line by line, and when it exited by itself (tools/uat/postbox-output.mjs). */
     output: pb.output.output,
     /** Stops it, and resolves once it has exited, so its port is free. */
