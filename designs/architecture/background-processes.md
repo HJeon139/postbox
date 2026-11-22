@@ -41,15 +41,17 @@ sequenceDiagram
   participant P as The process group
   A->>S: start_process { note, wake }
   S-->>A: id, and the command line to run
-  A->>H: node …/postbox-process.mjs run <spool> -- npm run check
+  A->>H: node …/postbox-process.mjs run <id> <output> -- npm run check
   Note over H: The harness judges this call in the persona's mode
   H->>L: runs
-  L->>P: spawn argv, in a new session (setsid)
-  L-->>H: "started", then exits at once
+  L->>L: forks into a new session it leads (setsid), and the shell call returns
   Note over A: The turn ends: Running.busy() is false, messages arrive
-  P-->>L: output, kept bounded in the spool
-  P-->>L: exit status, written to the spool
-  S->>S: sees the end (poll of the spool and the group)
+  S->>S: sees the launcher in ps, commits its identity
+  S->>L: go-ahead (SIGUSR1)
+  L->>P: runs the command as its child, in its group
+  P-->>L: output, bounded, into the output folder
+  P-->>L: exits; the launcher stops what is left in its group
+  S->>S: sees the leader gone (ps), commits the end and the wake
   S->>A: a wake with the exit status and the output's last lines
 ```
 
@@ -57,7 +59,7 @@ sequenceDiagram
 
 Four MCP tools in `shared/mcp-tools.mjs`. A backend gets them only once its permission parity check passes (see “Permission parity, per harness”). A persona without `shell` doesn’t get them at all: `TOOL_RULES.shell` lists them, so the same deny that removes Bash removes them. `start_process` also refuses on its own when the persona lacks `shell`, so a stale tool list can’t register a launch.
 
-- `start_process { note, wake? }` registers a process the agent is about to start. It returns the process’s `id` and the exact command line to run with the agent’s own shell tool: `node <postbox>/tools/postbox-process.mjs run <spool folder> -- <the command, as words>`. `note` (up to 300 characters) says what it is, and `wake` defaults to true.
+- `start_process { note, wake? }` registers a process the agent is about to start. It returns the process’s `id` and the exact command line to run with the agent’s own shell tool: `node <postbox>/tools/postbox-process.mjs run <id> <output folder> -- <the command, as words>`. `note` (up to 300 characters) says what it is, and `wake` defaults to true.
 - `list_processes` lists the conversation’s processes: the owner, note, state, start time, run time, and the exit status once ended. It only reads, so it joins `READ_TOOLS` (`server/tool-gate.mjs`).
 - `read_process { id, lines? }` returns the end of a process’s output: 50 lines by default, at most 400, and at most 16 KB.
 - `stop_process { id }` stops a process the calling agent started. A process another agent started can be stopped only by the person, on its item. #1606: “Stopping another session’s processes stays a decision only the person can make.”
@@ -69,7 +71,7 @@ The launcher’s command line has to be judged as the command it carries would b
 1. A command the persona’s rules allow runs, and its end wakes the agent.
 2. A command a deny rule names, such as `Bash(rm:*)`, is refused when it comes through the launcher, exactly as it is when run bare.
 3. A persona with `shell` unticked can’t register a launch: the tools are missing, and a direct call to `start_process` is refused.
-4. Writing the spool doesn’t ask for, or need, any approval the bare command didn’t. The spool sits where every workspace sandbox already lets the agent write (see “The launcher”).
+4. Writing the output folder doesn’t ask for, or need, any approval the bare command didn’t. It sits where every workspace sandbox already lets the agent write (see “The launcher”), and Postbox’s go-ahead signal reaches the sandboxed launcher.
 5. The detached child stays under the harness’s sandbox. On Codex in Auto (workspace-write), the launched command can’t write outside the workspace, just as the bare command can’t.
 
 A backend that fails any case stays off, and the result is recorded with the run. Each run is a local recording of up to 3 turns (contract §8), and each backend is a separate run. On Codex, the turn’s process group is stopped when the turn completes (`server/adapters/codex.mjs`), so case 1 also checks that the detached launcher survives that stop.
@@ -78,56 +80,85 @@ A backend that fails any case stays off, and the result is recorded with the run
 
 `tools/postbox-process.mjs` is a small Node script with no dependencies. It runs its command as an argument array, never through a shell. A command that needs a pipe or `&&` says so itself, as `sh -c '…'`, and the harness then judges it as written.
 
-The spool is `<the agent’s folder>/.postbox/processes/<id>/`, made by `start_process`, with a random 128-bit id. It sits inside the workspace, so a workspace-write sandbox allows writing it. It uses the folder view_app already writes its pictures to (`server/view-app/view-app.mjs`), and it ignores itself in git the same way. Postbox gives the agent’s environment no token and no URL: [#54](https://github.com/HJeon139/postbox/issues/54) and [#126](https://github.com/HJeon139/postbox/issues/126) closed that path, and the launcher never calls the server.
+The launcher is started as `node …/postbox-process.mjs run <id> <output folder> -- <command>`. It forks itself into a new session, whose leader it becomes (`setsid`), and the foreground copy exits at once. So neither a CLI that tracks its children nor Codex’s turn-group stop holds the launcher or ends it. The leader then waits for Postbox’s go-ahead (see “Startup handshake”). After the go-ahead it runs the command as its own child, in the same process group, and it stays the group’s leader until the command ends.
+
+**The output folder holds output, and nothing else.** It’s `<the agent’s folder>/.postbox/processes/<id>/`, made by `start_process`, inside the workspace, so a workspace-write sandbox allows writing it. view_app already writes its pictures to `.postbox/` (`server/view-app/view-app.mjs`), and the folder ignores itself in git the same way.
+
+The launcher writes the command’s output in two files that take turns, each cut at 64 KB (the bound of `!` commands, `MAX_COMMAND_OUTPUT`), so a process never holds more than 128 KB on disk. When the command ends, the launcher also writes an `exit` file with the code or signal.
+
+The command can write to this folder too, so Postbox treats everything in it as the command’s output: data to show, never input to a decision. No file there decides which process Postbox signals, or whether a run has ended.
+
+The folder is removed once the process has ended and its last output is in the store, on its item. It’s also removed if it belongs to a process the store doesn’t have open, which Postbox checks at start. `read_process` reads from the folder while the process runs, and from the item after it ends.
+
+Postbox gives the agent’s environment no token and no URL: [#54](https://github.com/HJeon139/postbox/issues/54) and [#126](https://github.com/HJeon139/postbox/issues/126) closed that path, and the launcher never calls the server.
 
 ### One lifecycle, from registration to cleanup
 
+Every decision about a process rests on two things the command can’t forge:
+- **Postbox’s store,** in the person’s data folder, outside every workspace.
+- **What the operating system reports:** `ps`, with the start time (`lstart`) added to `listProcesses` in `server/adapters/process-group.mjs`.
+
 ```mermaid
 stateDiagram-v2
-  [*] --> registered: start_process
-  registered --> canceled: expiry (2 min), Stop or shutdown wins the claim
-  registered --> claimed: launcher wins the claim
-  claimed --> running: group recorded
-  claimed --> ended: launcher died before recording (reconciled)
+  [*] --> registered: start_process (store)
+  registered --> expired: no launcher seen in 2 min, or Stop or shutdown first
+  registered --> seen: a launcher carrying the id leads its own group
+  seen --> running: identity committed, then the go-ahead signal
+  seen --> expired: launcher gone before the go-ahead (the command never ran)
   running --> stopping: Stop, session deleted or shutdown
-  running --> ended: the command exits
+  running --> ended: the leader is gone
   stopping --> ended: the group is gone
   ended --> woken: the end and its wake, in one commit
-  canceled --> [*]
+  expired --> [*]
   woken --> [*]
 ```
 
-**A single-use claim.** The spool has one `claim` file. The first writer to create it, with an exclusive create (`O_EXCL`), owns the registration. The launcher writes `launcher <pid>`. Postbox writes `canceled` when the registration expires, when its agent or the person stops it, or when Postbox shuts down. A second launcher loses the claim, and refuses with “Process p_… already started”. A launcher that finds `canceled` refuses with the cause. Because Postbox and the launcher race for one exclusive create, no Stop can land between a check and a start.
+**Identity.** Postbox finds a launcher by its own command line in `ps`. The line holds the tool’s path, `run` and the process’s 128-bit id. The launcher must lead its group (pid = pgid) and must have started after the registration. Postbox records that identity in the store before the command may start: the pid, which is also the pgid, and the start time.
 
-**Stop during startup.** Stop can arrive after the launcher claims and before it records the group. Postbox then writes a `stop` file. The launcher records the group first (`group`: the pgid, the leader’s pid and start time, and its own pid), then checks for `stop`, and if it’s there, stops the group itself. Postbox stops the group too once `group` appears. Two stops of one group do no harm.
+From then on, a group is this process’s group only if its leader is alive with that pid and the recorded start time. That holds whatever any file says.
 
-**Caps count claims.** At most 4 processes per agent and 12 per conversation, in `shared/limits.mjs`, counting registered, claimed and running ones alike. A `start_process` past a cap is refused, and the refusal says which processes hold the slots.
+Another process on this computer could carry the same id on its command line. That would make Postbox see a second launcher, not take over the first. Postbox takes the first launcher it sees and records it. It sends any later launcher for the same id a plain SIGTERM, after the same identity check for that launcher, and the agent sees “Process p_… already started”.
 
-**Durable state.** The store records each process at registration: the spool path, the owner, the conversation and the turn that called `start_process`, which is the attribution #1606 asks for. Each later step is in the spool (`claim`, `group`, `stop`, `exit`), so state survives a Postbox restart. At start, Postbox reconciles every process its store still has open:
+**Startup handshake.** The launcher doesn’t run the command until Postbox has recorded its identity:
+1. Postbox polls every 500 ms while any registration is waiting.
+2. When it sees the launcher, it commits the identity.
+3. Then it sends the launcher SIGUSR1, after the same identity check.
+4. The launcher starts the command only on that signal. With no signal within 60 s, it exits without running anything.
 
-- **No claim:** the registration is canceled.
-- **A claim, no `group`, and the launcher gone:** the process ended with “didn’t start”.
-- **A claim, no `group`, and the launcher alive:** Postbox writes `stop` and waits for the launcher to record the group, then stops it.
-- **A recorded `group`:** Postbox checks it and stops it, as below.
+So a launcher that dies before the go-ahead never ran the command, and a restart at any point finds either no identity and no command, or an identity it can check.
 
-Nothing Postbox started outlives it unseen.
+Expiry, Stop and shutdown during startup all win the same way: Postbox simply never sends the go-ahead. The single-use claim is Postbox’s commit of one identity per registration, not a file in the workspace.
 
-**Identity before every signal.** A `ps` match is a snapshot, so this design doesn’t promise that a reused pid can never be signaled. What it does instead:
-- The launcher signals its own child’s group while it still holds the child. That is the common case.
-- Postbox signals a group only when the launcher is gone, such as after a crash. Then it signals only if the group exists and either its leader (pid = pgid) is absent or the leader’s start time matches the one recorded in `group`.
-- Postbox runs the check before SIGINT and again before the SIGKILL after `GRACE_MS` (`stopPgid` in `server/adapters/process-group.mjs`).
+**Caps count registrations.** At most 4 processes per agent and 12 per conversation, in `shared/limits.mjs`, counting registered, seen and running processes alike. A `start_process` past a cap is refused, and the refusal says which processes hold the slots.
 
-POSIX doesn’t reuse a process group’s id while the group has members (“Process Group Lifetime”), so the check rules out a reused id once the leader has gone. The remaining window is between the snapshot and the signal, if the group empties in that window and its id is reused at once. That window is a few milliseconds, and the doc doesn’t claim it’s zero.
+**Stopping, and failing closed.** In the usual case, Postbox signals the group only after the leader check passes, and runs the check again before the SIGKILL that follows SIGINT after `GRACE_MS` (`stopPgid`).
 
-**The command exits with descendants still running.** The leader’s exit is the process’s end. The launcher records `exit` with the code or signal, then stops what is left in the group: SIGINT, then SIGKILL after the grace period. The wake says “3 processes it left running were stopped”. A process meant to outlive its leader, such as a server that forks into the background, is out of scope. Its command has to stay in the foreground.
+When the leader is gone, the group id alone proves nothing. Postbox then signals only processes it saw as members of that group at an earlier poll, each one by its own pid, and only while that pid still has the start time recorded for it. Each poll of a running process records its group’s members. A member that appeared after the last poll isn’t signaled.
 
-**Watching.** Postbox polls every 5 s while any process is open, as it watches kept jobs (`server/kept-jobs.mjs`, `KEPT_POLL_MS`). The poll reads each spool’s `exit`. If the group is gone and no `exit` was written, the process ended with an unknown status. `start_process` and `stop_process` write, so `closedTo` refuses them while the store is closed. An end seen then is recorded at the first poll after the store reopens, as `pollKept` does.
+When Postbox can’t establish identity, it signals nothing. The item then says “Postbox couldn’t confirm this process was still its own, so it didn’t stop it”, and lists the pids it last saw. That covers a leader whose start time doesn’t match, and a group with no leader and no recorded member left. This is a fact on the item, with no card and no notification.
+
+A `ps` result is a snapshot, so this design doesn’t promise that a reused pid can never be signaled. The start-time check narrows it to a pid reused between the snapshot and the signal. That is a window of milliseconds, and the design doesn’t claim it is zero.
+
+**The command exits with descendants still running.** The command’s exit is the process’s end. The launcher writes `exit`, then stops what is left in its own group: SIGINT, then SIGKILL after the grace period. It can do that safely, because it still leads the group. It then exits.
+
+If the launcher has died before it could do that, Postbox stops the leftovers it saw as members, as above. The wake says “3 processes it left running were stopped”. A process meant to outlive its command, such as a server that forks into the background, is out of scope: its command has to stay in the foreground.
+
+**Watching, and what decides the end.** Postbox polls every 5 s while any process runs, as it watches kept jobs (`server/kept-jobs.mjs`, `KEPT_POLL_MS`). A process has ended when its recorded leader is gone, and only then. The exit code comes from the `exit` file, and the wake labels it “as its launcher recorded”. A missing or malformed file gives “exit status unknown”.
+
+`start_process` and `stop_process` write, so `closedTo` refuses them while the store is closed. No go-ahead is sent then. An end seen while the store is closed is recorded at the first poll after it reopens, as `pollKept` does.
+
+**Restart.** The store has every open process and its recorded identity. At start, Postbox reconciles each one:
+- A registration with no recorded identity is expired. Any launcher still waiting gets no go-ahead, and exits after its 60 s.
+- A recorded identity whose leader is alive is stopped, after the leader check, so nothing Postbox started outlives it unseen.
+- A recorded identity whose leader is gone has its leftover members stopped, as above.
+
+Each of these ends is committed with its wake, once.
 
 ### Wake on exit
 
 An end wakes the owning agent as its scheduled wake does (`server/scheduled-wakes.mjs`). The agent asked for that wake, so it follows the existing rule that “a scheduled wake … go[es] only where [it] say[s]” ([intent.md](../intent.md), “Attention and wakes”). It reaches no other agent, and it adds no hop to a chain. The message says:
 
-> Your process “npm run check” (`p_…`) ended with exit code 1 after 4 min 12 s. Its last 50 lines: …
+> Your process “npm run check” (`p_…`) ended after 4 min 12 s, with exit code 1 as its launcher recorded.  Its last 50 lines: …
 
 The tail is cut to 50 lines and 8 KB, followed by “read_process for more”. It’s quoted as data, so an @-mention in it wakes no one, as with any copied line. A busy agent gets the wake through its inbox, never as a second session. With `wake: false`, the end is recorded and no one is woken.
 
@@ -145,7 +176,7 @@ For backends with `backgroundProcesses` on, `TURN_ENDS` changes from “never be
 
 ## Remote hosts
 
-On a remote host, the agent’s shell runs on the host. The launcher and spool would live in the host daemon’s folder, and the daemon would report ends over its channel. That is a separate change to the remote protocol, so remote agents have `backgroundProcesses` off for now.
+On a remote host, the agent’s shell runs on the host. The launcher and its output folder would live on the host, the host daemon would hold the identities, and the daemon would report ends over its channel. That is a separate change to the remote protocol, so remote agents have `backgroundProcesses` off for now.
 
 ## How it’s tested
 
@@ -158,14 +189,22 @@ On a remote host, the agent’s shell runs on the host. The launcher and spool w
 **Baseline.** A recorded Claude Code stream that uses native `run_in_background` (`background_tasks_changed` in #1614’s probe) shows the room message waiting until the task ends.
 
 **`tests/process/`, with the real launcher:**
-- The parent shell returns in under a second while `sleep 5` runs.
-- Two launchers race for one registration, and exactly one runs.
-- Stop, expiry and shutdown each land at the moments during startup described in “One lifecycle”, and each leaves no process.
-- A command that exits with a grandchild still running has it stopped.
-- A launcher killed before writing `group` is reconciled at start.
-- The identity check refuses to signal a group whose leader has the wrong start time.
+- The parent shell returns in under a second, and the command doesn’t start until the go-ahead.
+- With no go-ahead, the launcher exits after its wait, and the command never ran.
+- Two launchers for one id: exactly one is recorded and runs, and the other is refused.
+- Stop, expiry and shutdown before the go-ahead each leave no process.
+- A launcher killed after the go-ahead has its recorded members stopped.
+- A command that exits with a grandchild still running has the grandchild stopped.
+- The output folder stays at or below 128 KB under a command that writes without end.
+- The output folder is removed after the end commits.
+- **Forged files don’t steer Postbox:** a command that writes a false `exit` file, or files named `claim`, `group` or `stop`, changes neither which group is signaled nor when the end is recorded.
+- **Failing closed:** a leader whose start time doesn’t match, and a group with no leader and no recorded member, are each left unsignaled, and the item says why.
 
-**Unit tests, with a fake spool:** the caps count claims; `stop_process` on another agent’s process is refused; the store is closed; the tail is bounded and quoted.
+**Unit tests, with a fake process list:**
+- The caps count registrations.
+- `stop_process` on another agent’s process is refused.
+- With the store closed, no go-ahead is sent.
+- The wake’s tail is bounded and quoted.
 
 **A browser spec** for the item and the ring’s count, run plain and with `POSTBOX_STREAM_LAG=300`.
 
