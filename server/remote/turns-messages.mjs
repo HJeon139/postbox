@@ -29,7 +29,7 @@ export function onConnected(rts, hostId, welcome) {
   for (const [turn, s] of [...rts.stopping]) {
     if (s.hostId !== hostId) continue;
     const listed = Array.isArray(w?.turns) ? w.turns.find((/** @type {any} */ t) => t.turn === turn) : undefined;
-    if (Array.isArray(w?.turns) && listed?.state !== 'running' && (listed || !s.unconfirmed)) stopConfirmed(rts, turn);
+    if (Array.isArray(w?.turns) && listed?.state !== 'running' && (listed || !s.unconfirmed)) stopConfirmed(rts, turn, listed?.unkilled === true);
     else sendStop(rts, turn);
   }
 }
@@ -52,7 +52,7 @@ export function onHostMessage(rts, hostId, m) {
       if (m.log !== 'in') sawLine(rts, m);
       return;
     case 'ended':
-      stopConfirmed(rts, m.turn);
+      stopConfirmed(rts, m.turn, m.unkilled === true);
       return sawEnded(rts, m);
     case 'started':
       return sawStarted(rts, m.turn);

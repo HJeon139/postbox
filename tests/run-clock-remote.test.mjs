@@ -7,6 +7,7 @@
 
 import assert from 'node:assert/strict';
 import { afterEach, beforeEach, mock, test } from 'node:test';
+import { onHostMessage } from '../server/remote/turns-messages.mjs';
 import { installRunClock } from '../server/run-clock-install.mjs';
 import { clockElapsed } from '../shared/run-clock.mjs';
 import { clockTimer, runClock } from './arrange.mjs';
@@ -135,4 +136,34 @@ test('a paused clock doesn’t resume until the host confirms the turn its pause
   assert.equal(r.d.turns.get(turn).exit !== null, true, 'the old turn is over on the host');
   runClock(r.rt, id, { action: 'resume' }, at(50_000));
   assert.equal(clock().state, 'running');
+});
+
+test('a host turn whose runner outlived its kill voids the run when the host says so, and the clock can’t resume', async () => {
+  // The daemon lists a turn whose runner wouldn’t stop as interrupted and unkilled (#872): it may still be working
+  // there, so its time can’t be known, as for a CLI here whose group outlived SIGKILL (#1526).
+  const { r, id, turn, clock } = await cutOff();
+  runClock(r.rt, id, { action: 'pause' }, at(10_000));
+  r.d.interrupt(turn, { unkilled: true });
+  mock.timers.setTime(T0 + 40_000);
+  r.link.reconnect();
+  await until(() => clockEvents(r).some((e) => e.type === 'clock.stopped'), 'the host’s word on the stop');
+  const stopped = clockEvents(r).find((e) => e.type === 'clock.stopped');
+  assert.deepEqual(stopped.data, { sessionId: id, turn, forced: true, why: 'unkilled', at: T0 + 40_000 });
+  assert.deepEqual(clock().voided, { why: 'unkilled', at: T0 + 40_000 });
+  assert.equal(clock().state, 'expired');
+  assert.throws(
+    () => runClock(r.rt, id, { action: 'resume' }, at(50_000)),
+    (e) => e.status === 409,
+  );
+});
+
+test('a stopped host turn’s end that says its runner outlived its kill voids the run too', async () => {
+  // The daemon’s `ended` for a turn it couldn’t kill carries unkilled (server/remote/host/daemon-follow.mjs, #872).
+  const { r, id, turn, clock } = await cutOff();
+  runClock(r.rt, id, { action: 'pause' }, at(10_000));
+  mock.timers.setTime(T0 + 25_000);
+  onHostMessage(r.rt.remote, r.host.id, { type: 'ended', turn, exit: null, size: 0, unkilled: true });
+  const stopped = clockEvents(r).find((e) => e.type === 'clock.stopped');
+  assert.deepEqual(stopped?.data, { sessionId: id, turn, forced: true, why: 'unkilled', at: T0 + 25_000 });
+  assert.equal(clock().voided?.why, 'unkilled');
 });

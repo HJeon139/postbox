@@ -58,14 +58,19 @@ export function sendStop(rts, turn) {
   return Boolean(link?.connected) && send(link, 'stop', { turn });
 }
 
-/** The daemon says a turn Postbox asked to stop is over, or isn’t there. @param {RemoteTurns} rts @param {string} turn */
-export function stopConfirmed(rts, turn) {
+/**
+ * The daemon says a turn Postbox asked to stop is over, or isn’t there. unkilled: it said the turn’s runner outlived its
+ * kill (#872), so the turn may still be working there.
+ * @param {RemoteTurns} rts @param {string} turn @param {boolean} [unkilled]
+ */
+export function stopConfirmed(rts, turn, unkilled = false) {
   const s = rts.stopping.get(turn);
   if (!s) return;
   rts.stopping.delete(turn);
   dropStop(rts, s.sessionId, turn);
-  // With run clocks on, a clock that paused or expired while this turn could still run on the host hears it’s over.
-  if (rts.rt.runClock) clockStopConfirmed(rts.rt, s.sessionId, turn, rts.now());
+  // With run clocks on, a clock that paused or expired while this turn could still run on the host hears it’s over. One
+  // whose runner outlived its kill may still be working, so its timed run is void, as for a CLI here (#1526).
+  if (rts.rt.runClock) clockStopConfirmed(rts.rt, s.sessionId, turn, rts.now(), unkilled ? 'unkilled' : undefined);
   releaseHost(rts, s.hostId);
   for (const w of s.waiters) w();
 }
