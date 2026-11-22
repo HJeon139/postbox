@@ -219,7 +219,7 @@ export function presentIn(rt, t) {
  * was made after it, as a new agent given a deleted one’s handle is (#283).
  * @param {any} i @param {{ handle: string, createdAt?: number }} p
  */
-const legacyLeft = (i, p) => i.to === p.handle && !(p.createdAt > i.at);
+const legacyLeft = (i, p) => i.to === p.handle && !((p.createdAt ?? 0) > i.at);
 
 /**
  * Whether an agent was deleted from a thread’s conversation and hasn’t come back: it has no session there, and the
