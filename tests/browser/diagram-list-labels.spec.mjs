@@ -53,6 +53,13 @@ const STATE_NOTE = `stateDiagram-v2
   Note left of s2
     3. capital
   End note`;
+// Members that read like a state note in a class diagram stay members: its “- String field” is private.
+const CLASS_NOTE_LIKE = `classDiagram
+  class Build {
+    note right of s1
+    - String field
+    end note
+  }`;
 // Slanted shapes open with “[/” or “[\\”.
 const SLANTED = `flowchart TD
   A[/1. Plan/] --> B[\\- Check\\]
@@ -123,6 +130,7 @@ for (const [kind, source, labels, plain = []] of /** @type {[string, string, str
   ['a heading’s, a quote’s and a rule’s', BLOCKS, ['# of users', '> quoted', '---']],
   ['a class diagram’s notes', CLASS_NOTES, ['1. note', '- general', '2. tight']],
   ['a state diagram’s note', STATE_NOTE, ['1. first', '- second', '3. capital']],
+  ['a class diagram’s note-like members, around its', CLASS_NOTE_LIKE, ['String field'], ['- String field']],
   ['a slanted shape’s', SLANTED, ['1. Plan', '- Check', '---']],
   ['a class diagram’s arrows and annotations, around its', CLASS_SYNTAX, ['Inheritance', 'interface', '- decrement()'], ['- decrement()']],
 ]))

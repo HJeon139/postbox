@@ -32,14 +32,31 @@ const RELATION = /^[^:]*(?:--|\.\.)[^:]*:/;
 // A Markdown string (“`…`” in quotes) can run over lines, and each of its lines can start like a block too.
 const MARKDOWN_STRING = /"`([^`]*)`"/g;
 const LINE_START = new RegExp(String.raw`(^|\n)([ \t]*)(?=${BLOCK})`, 'g');
-// A state diagram’s note over lines, “note right of s1” to “end note”: each line is a label’s start too.
-const NOTE_BLOCK = /(^[ \t]*note[ \t]+(?:left|right)[ \t]+of[ \t]+[^\s:][^\n:]*\n)([\s\S]*?)(end note\b)/gim;
+// A state diagram’s note over lines, “note right of s1” to the first “end note”, in any case as Mermaid reads it:
+// each line is a label’s start too.
+const NOTE_OPEN = /^[ \t]*note[ \t]+(?:left|right)[ \t]+of[ \t]+[^\s:][^:]*$/i;
+const NOTE_END = /end note\b/i;
+/** A state diagram’s note bodies kept as text, in one pass over its lines. @param {string} text */
+function stateNotes(text) {
+  let inNote = false;
+  return text
+    .split('\n')
+    .map((line) => {
+      if (!inNote) {
+        inNote = NOTE_OPEN.test(line);
+        return line;
+      }
+      if (NOTE_END.test(line)) inNote = false;
+      return line.replace(LINE_START, '$1$2\u2060');
+    })
+    .join('\n');
+}
 const JOINED = '$1\u2060';
 /** The source with every label that starts like a block kept as text. @param {string} src */
 function asWritten(src) {
-  const text = src
-    .replace(MARKDOWN_STRING, (_m, body) => '"`' + body.replace(LINE_START, '$1$2\u2060') + '`"')
-    .replace(NOTE_BLOCK, (_m, open, body, end) => open + body.replace(LINE_START, '$1$2\u2060') + end);
+  const strings = src.replace(MARKDOWN_STRING, (_m, body) => '"`' + body.replace(LINE_START, '$1$2\u2060') + '`"');
+  // Only a state diagram has these notes: in a class diagram, “- field” after such a line is a private member.
+  const text = /^\s*stateDiagram\b/m.test(strings) ? stateNotes(strings) : strings;
   if (!/^\s*classDiagram\b/m.test(text)) return text.replace(LABEL_START, JOINED);
   return text
     .split('\n')
