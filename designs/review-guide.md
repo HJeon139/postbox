@@ -143,7 +143,7 @@ When a review’s finding is a few lines and the review already spells out the f
 - It’s its own commit, right after that PR’s merge commit, and its body starts “Integrator fix for #n’s review” and names the finding.
 - A test or a mutant fails without it, as for any fix.
 - The batch PR’s body lists the fix commits, and an independent review checks only those before the batch merges.
-- A design decision, or a larger fix, goes back to the author with `changes requested`, in any round. It never becomes a follow-up issue when the PR adds the defect.
+- A design decision, or a larger fix, goes back to the author with `changes requested`, in any round.
 
 ### The gate
 
