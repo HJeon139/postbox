@@ -154,6 +154,8 @@ export function runRecord({
     // The phases a --phases run played (tools/uat/phases.mjs), so a recheck reads the scenario as it played it.
     ...(phases ? { phases } : {}),
     minutes: Math.round((now - started) / 60000),
+    // The run’s bound on turns and wall time (tools/uat/run-bound.mjs), and whether it stopped at it.
+    ...(facts.bound ? { bound: facts.bound } : {}),
     // `noCostFrom`: the harnesses the run had turns on whose cost isn’t in `agents`, since they report none.
     cost: {
       agents: Math.round(agents * 100) / 100,
