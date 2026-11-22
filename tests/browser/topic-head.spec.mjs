@@ -157,10 +157,10 @@ test('#551 across head widths, the widest labels move no button across rows', as
       el.style.width = `${px}px`;
     }, w);
     const plain = await layout(head);
-    await relabel(head, 'Summarize back', 'Summary requested…');
-    await relabel(head, 'Copied', 'Copy link');
+    // “Summary requested…” is the widest label; Copy link is already wider than “Copied”.
+    expect(await relabel(head, 'Summarize back', 'Summary requested…')).toBe(true);
     const widest = await layout(head);
-    await relabel(head, 'Summary requested…', 'Summarize back');
+    expect(await relabel(head, 'Summary requested…', 'Summarize back')).toBe(true);
     if (JSON.stringify(plain) !== JSON.stringify(widest)) moved.push(w);
   }
   expect(moved, 'head widths where a label change moved a button').toEqual([]);
