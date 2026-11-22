@@ -91,3 +91,77 @@ for (const [kind, width, work, paneMin] of [
     if (width >= 1280) expect((await head.boundingBox())?.height, 'the head stays the height of one row of buttons').toBeLessThan(80);
   });
 }
+
+/**
+ * The head’s rows: its height, the row each button is on, and where its last button (Close) ends. A label that changes
+ * width moves the buttons beside it along their row, as any label does; it must not move one to another row.
+ */
+const layout = (head) =>
+  head.evaluate((el) => {
+    const buttons = [...el.querySelectorAll('button')].map((b) => b.getBoundingClientRect());
+    return {
+      height: Math.round(el.getBoundingClientRect().height),
+      rows: buttons.map((r) => Math.round(r.top)),
+      closeRight: Math.round(buttons.at(-1)?.right ?? 0),
+    };
+  });
+
+/** Sets a head button’s label, as Summarize back and Copy link do while a summary is asked for or a link is copied. */
+const relabel = (head, from, to) =>
+  head.evaluate(
+    (el, [a, b]) => {
+      const btn = [...el.querySelectorAll('button')].find((x) => x.textContent?.trim() === a);
+      if (btn) btn.textContent = b;
+      return !!btn;
+    },
+    [from, to],
+  );
+
+for (const [width, paneMin] of [
+  [1024, false],
+  [1024, true],
+]) {
+  test(`#551 “Summary requested…” and “Copied” move no button in the head at ${width} px${paneMin ? ', the pane at its narrowest' : ''}`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 768 });
+    const { t, side } = threadIn('topic');
+    await page.goto(`${app.origin}/#/t/${t.id}/side/${side}`);
+    await synced(page, app);
+    if (paneMin) {
+      await page.getByRole('separator', { name: 'Resize the pane' }).focus();
+      await page.keyboard.press('Home');
+    }
+    const head = page.locator('aside.sidepanel .sp-head');
+    await expect(head.locator('#sp-title')).toHaveText('Thread');
+    const still = await layout(head);
+    expect(await relabel(head, 'Summarize back', 'Summary requested…')).toBe(true);
+    expect(await layout(head), 'with “Summary requested…”').toEqual(still);
+    expect(await relabel(head, 'Copy link', 'Copied')).toBe(true);
+    expect(await layout(head), 'and “Copied”').toEqual(still);
+    expect(await relabel(head, 'Summary requested…', 'Summarize back')).toBe(true);
+    expect(await layout(head), 'and back').toEqual(still);
+  });
+}
+
+test('#551 across head widths, the widest labels move no button across rows', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 768 });
+  const { t, side } = threadIn('topic');
+  await page.goto(`${app.origin}/#/t/${t.id}/side/${side}`);
+  await synced(page, app);
+  const head = page.locator('aside.sidepanel .sp-head');
+  await expect(head.locator('#sp-title')).toHaveText('Thread');
+  const moved = [];
+  // Each head width from the narrowest panel, 320 px (PANE_MIN, and the narrowest window), to 480, set on the head itself.
+  for (let w = 320; w <= 480; w += 2) {
+    await head.evaluate((el, px) => {
+      el.style.flex = 'none';
+      el.style.width = `${px}px`;
+    }, w);
+    const plain = await layout(head);
+    await relabel(head, 'Summarize back', 'Summary requested…');
+    await relabel(head, 'Copied', 'Copy link');
+    const widest = await layout(head);
+    await relabel(head, 'Summary requested…', 'Summarize back');
+    if (JSON.stringify(plain) !== JSON.stringify(widest)) moved.push(w);
+  }
+  expect(moved, 'head widths where a label change moved a button').toEqual([]);
+});
