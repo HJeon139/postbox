@@ -5,14 +5,12 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { renderMarkdown } from '../shared/markdown.mjs';
+import { stripTags } from '../shared/markdown-inline.mjs';
 
 /** The rendered text with its tags, without the paragraph around it. */
 const html = (s) => renderMarkdown(s).replace(/^<p[^>]*>|<\/p>\s*$/g, '');
 /** The text a reader sees. */
-const seen = (s) =>
-  html(s)
-    .replace(/<[^>]+>/g, '')
-    .replace(/&#42;/g, '*');
+const seen = (s) => stripTags(html(s)).replace(/&#42;/g, '*');
 
 test('powers and products keep their asterisks, with no emphasis made of them', () => {
   for (const typed of ['range(10**9, 10**10)', 'x**2 + y**2', '2**n and 3*4*5', 'n*2 is 2*n']) {
@@ -41,4 +39,11 @@ test('a screen reader’s plain text keeps them too, and drops emphasis as befor
 test('read-aloud text keeps them, with no entity in it', async () => {
   const { plainText } = await import('../shared/text.mjs');
   assert.equal(plainText('Try range(10**9, 10**10).'), 'Try range(10**9, 10**10).');
+});
+
+test('plain text keeps a character the placeholder could be, and a code span’s asterisks don’t move the count (critic’s review)', async () => {
+  const { toPlainText } = await import('../shared/markdown-plain.mjs');
+  assert.equal(toPlainText('a \uE000 b'), 'a \uE000 b', 'a private-use character stays as it was');
+  assert.equal(toPlainText('Run `a**b`, then 10**9.'), 'Run a**b, then 10**9.');
+  assert.equal(toPlainText('`x*y` and 2*n and *word*'), 'x*y and 2*n and word');
 });
