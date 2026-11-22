@@ -186,3 +186,23 @@ test('two turns of one session between polls both count, from the run’s events
   assert.match(String(bound.stopped?.why), /--max-turns 2/);
   assert.equal(bound.summary().turns, 2);
 });
+
+test('past --max-minutes the run stops while a state read hangs, unanswered', async () => {
+  const t = clock();
+  const bound = runBound({ minutes: '5', now: t.now });
+  // A Postbox that takes the connection and never answers.
+  const api = () => new Promise(() => {});
+  const lines = [];
+  const end = watchRun({ bound, budget: { on: false }, api, threadsUnderTest: () => [], stop: async () => {}, log: (l) => lines.push(l), every: 1 });
+  try {
+    const first = Date.now() + 50;
+    while (Date.now() < first) await new Promise((r) => setTimeout(r, 2));
+    t.pass(6);
+    const until = Date.now() + 2000;
+    while (!bound.stopped && Date.now() < until) await new Promise((r) => setTimeout(r, 2));
+  } finally {
+    end();
+  }
+  assert.match(String(bound.stopped?.why), /past --max-minutes 5/);
+  assert.equal(lines.filter((l) => l.startsWith('Stopped at the run’s bound')).length, 1, 'said once');
+});

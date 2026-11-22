@@ -5,16 +5,33 @@
 // loop between agents takes no steps: the real-q1 run of 8 November had 408 turn streams in 4 steps.
 //
 // Turns are counted where every harness’s turn starts, in Postbox: a session’s lastTurnId (server/turn-run.mjs,
-// atWork), from the run’s events, which keep each start in order, and from the state read every 1.5 s. Once --max-turns turns have started, the run takes no more steps, and any
-// turn that starts after is stopped. Past --max-minutes from the run’s start, it takes no more steps and stops the
-// turns at work. Either way it writes its report, findings.json and run.json as any run does, saying where it stopped.
+// atWork), from the run’s events, which keep each start in order, and from the state read every 1.5 s. Once
+// --max-turns turns have started, the run takes no more steps, and any turn that starts after is stopped. Past
+// --max-minutes from the run’s start, it takes no more steps and stops the turns at work. Either way, with Postbox
+// answering, it writes its report, findings.json and run.json as any run does, saying where it stopped.
 //
-// The wall time is checked on every poll before the state is read, so a Postbox that doesn’t answer can’t keep a run
-// going: the run takes no step after the one out, and its stop ends what’s left. Where the cap can still be passed: a
-// turn that starts within a poll of it runs until that poll. The run’s report and verifier come after the
-// wall time; the verifier is bounded by --max-cost and --budget, not by this.
+// The wall time is checked on a timer of its own, and the bound’s state read gives up after STATE_READ_MS, so a
+// Postbox that refuses or hangs can’t hold the bound back: the run takes no step after the one out. The runner’s own
+// waits read the state with no limit of their own, so a hung Postbox still holds the run until those reads fail, and
+// it ends as an error, its stop ending what’s left. Where the cap can still be passed: a turn that starts within a
+// poll of it runs until that poll, and starts lost while the event stream was down longer than the store keeps its
+// events count only as the state shows them. The run’s report and verifier come after the wall time; the verifier is
+// bounded by --max-cost and --budget, not by this.
 
 import { watchBudget } from './turns.mjs';
+
+/** How long the bound’s watch waits for one read of the state before it tries again on its next poll. */
+const STATE_READ_MS = 10_000;
+
+/** A read that gives up after `ms`. @template T @param {Promise<T>} read @param {number} ms @returns {Promise<T>} */
+function within(read, ms) {
+  /** @type {ReturnType<typeof setTimeout> | undefined} */
+  let timer;
+  const late = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`no answer in ${ms / 1000} s`)), ms);
+  });
+  return Promise.race([read, late]).finally(() => clearTimeout(timer));
+}
 
 /** Above the most turn streams of any recorded run but a looping one: p0 of 6 November had 132 in 28 steps. */
 export const DEFAULT_MAX_TURNS = 150;
@@ -175,16 +192,23 @@ export function watchRun({ bound, budget, api, events = () => [], threadsUnderTe
   let failed = false;
   /** @type {ReturnType<typeof setTimeout> | undefined} */
   let timer;
+  let told = false;
+  const said = () => {
+    if (told || !bound.stopped) return;
+    told = true;
+    log(`Stopped at the run’s bound: ${bound.stopped.why}`);
+  };
+  // The wall time on a timer of its own, so a poll waiting on Postbox can’t hold it back.
+  const clock = setInterval(() => {
+    bound.tick();
+    said();
+  }, every);
   const poll = async () => {
-    const was = bound.stopped;
-    const said = () => {
-      if (!was && bound.stopped) log(`Stopped at the run’s bound: ${bound.stopped.why}`);
-    };
     bound.tick();
     bound.count(events());
     said();
     try {
-      const st = (await api('/api/state')).state;
+      const st = (await within(api('/api/state'), STATE_READ_MS)).state;
       const ids = bound.see(Object.values(st.sessions ?? {}));
       said();
       for (const id of ids) {
@@ -201,6 +225,7 @@ export function watchRun({ bound, budget, api, events = () => [], threadsUnderTe
   return () => {
     ended = true;
     clearTimeout(timer);
+    clearInterval(clock);
     bound.end();
     unbudget();
   };
