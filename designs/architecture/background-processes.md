@@ -78,6 +78,8 @@ The strict mode is apart from Send now’s lenient keep, which stays as it is, b
 
 **Codex, Kiro and Antigravity: signal by pid, not by group.** Postbox chooses how it signals (`stopPgid`, `signalPgid`). At such a turn’s end, it can signal the harness and the processes it still parents by pid, and leave the marked background work that section 3 binds. It turns this on for a harness only once that harness’s live check passes. Until then the group kill stays, so nothing changes for it.
 
+**Identity is checked again before every pid signal.** Once Postbox signals by pid, a reused pid is the risk, so no pid is signaled on an old reading. Before each signal, Postbox reads that pid’s start time in a fresh `ps` read and signals only if it still matches the one recorded. That covers the first SIGINT, the SIGKILL `GRACE_MS` later, a Stop, and the restart sweep. A pid whose start time changed, or that is gone, is skipped and recorded as ended. The window left is between that read and the signal itself: milliseconds, and not zero. The group signals in section 2 already use the same check through `liveGroups`.
+
 ### 3. The marker, for work the harness doesn’t report
 
 Postbox starts every harness process with two variables in its environment: `POSTBOX_SESSION=<session id>` and `POSTBOX_TURN=<turn id>`. Neither is a secret, and the turn’s MCP token never goes into the environment (#54, #126). Every descendant inherits both at exec, including after `setsid`, `nohup` or reparenting to init, which the process group can’t follow.
@@ -89,7 +91,7 @@ Postbox starts every harness process with two variables in its environment: `POS
   - it isn’t the harness, and isn’t still parented by it;
   - it, or a member of its group, was recorded under the harness during the turn, with the same pid and start time;
   - it isn’t a Claude Code task that section 1 handled.
-- **Marked but not bound:** a process with the marker that was never seen under the harness, because it started and detached between two polls. It’s ambiguous. Postbox shows it in the room with its pid and wakes the owner when it ends, but never signals it. It has no Stop, and the person can end it in their terminal.
+- **Marked but not bound:** a process with the marker that was never seen under the harness, because it started and detached between two polls. It’s ambiguous, so it stays informational. Postbox shows it in the room with its pid, as last seen, but it queues no wake when the process ends and never signals it. It has no Stop, and the person can end it in their terminal. Only a bound job wakes an agent automatically.
 
 **What the scan reads.** The scan keeps only the two marker variables from its output, and nothing else of any process’s environment. Raw scan output is never logged or stored.
 - **On macOS:** `ps -Eww -ax -o pid=,ppid=,pgid=,lstart=,command=`.
@@ -211,9 +213,10 @@ What each check answers:
   - **A shell from before its call** doesn’t bind.
   - **The marker:**
     - it survives `nohup` and `setsid` on a non-platform binary, and the scan finds it;
-    - a marked process never seen under the harness isn’t bound or signaled;
+    - a marked process never seen under the harness isn’t bound or signaled, and its exit queues no wake;
     - one with another session’s marker isn’t bound.
   - **Codex, Kiro and Antigravity by pid:** the harness and its children stop, and a bound marked process survives.
+  - **A reused pid is skipped:** a pid whose start time changes between the first SIGINT and the delayed SIGKILL, or before a Stop, isn’t signaled.
   - **The output file:**
     - swapping the path for a link after binding, or replacing the file, changes nothing read;
     - a file outside the folder, a link, or a file with a second link gives no tail;
