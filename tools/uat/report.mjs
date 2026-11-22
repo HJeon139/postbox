@@ -10,6 +10,7 @@ import { agentsSpent, codexTokens, uncosted } from './cost.mjs';
 import { githubSection } from './github-attempts.mjs';
 import { pictureSection } from './picture-choice.mjs';
 import { backendName } from './room-unverified.mjs';
+import { boundNote } from './run-bound.mjs';
 import { writeJsonAtomic } from './runs.mjs';
 import { firstPictureSection } from './side-by-side.mjs';
 import { timingLine } from './timing.mjs';
@@ -40,7 +41,7 @@ function usageLine(facts, tester) {
     .map(([n, unit]) => `${unit === 'Kiro credits' ? Number(n).toFixed(2) : Number(n).toLocaleString('en-US')} ${unit}`);
   const told = reported.length ? `: ${reported.join(', ')}` : '';
   const alone = others.length ? ` on Claude Code alone (${listOf(others)} ${others.length === 1 ? 'reports' : 'report'} no cost${told})` : '';
-  return `Usage: agents $${agentCost.toFixed(2)}${alone}, tester $${tester.spent.toFixed(2)}.${budgetNote(facts.budget)}${timingLine(facts.timing)}${facts.agentModels ? ` Agents: ${facts.agentModels}.` : ''}`;
+  return `Usage: agents $${agentCost.toFixed(2)}${alone}, tester $${tester.spent.toFixed(2)}.${budgetNote(facts.budget)}${boundNote(facts.bound)}${timingLine(facts.timing)}${facts.agentModels ? ` Agents: ${facts.agentModels}.` : ''}`;
 }
 
 /** A new finding: not a known issue, not the harness’s own, and not a check that said it couldn’t check. */
@@ -150,6 +151,7 @@ export async function writeReport({ dir, scenario, issues, findings, timeline, s
     samples: facts.samples,
     coverage,
     ...(facts.budget ? { budget: facts.budget } : {}),
+    ...(facts.bound ? { bound: facts.bound } : {}),
   });
   if (rechecked) await writeFile(join(dir, 'run.log'), `${readFileSync(join(dir, 'run.log'), 'utf8')}${logLines.join('\n')}\n`);
   else await writeFile(join(dir, 'run.log'), `${logLines.join('\n')}\n`);

@@ -70,6 +70,7 @@ let cookie;
 const call = (r) => fakeRequest(app.handle, { host: `127.0.0.1:${PORT}`, ...r });
 
 before(async () => {
+  process.env.POSTBOX_RUN_CLOCK = '1'; // so the run clock’s route is there to try (#1526)
   dir = tempDir('pb-proto-');
   app = await start({ port: PORT, dataDir: join(dir, 'data'), fresh: true, demo: true, quiet: true, claudeHome: dir, listen: false });
   cookie = (await call({ path: '/', headers: NAVIGATION })).headers['set-cookie'].split(';')[0];
@@ -151,6 +152,16 @@ test('#352: the state has only its own records, fresh, reloaded from JSON, and f
     Object.entries(g.glossary.t).map(([k, e]) => [k, e.term]),
     [['__proto__', 'proto']],
   );
+});
+
+test('#352, #1526: a run clock’s map, made by an event and read back from JSON as the page reads /api/state, is a map', () => {
+  // clocks isn’t in an empty state: its first event makes it (LAZY_STATE_KEYS), so ownState makes it a map() again.
+  const saved = emptyState();
+  apply(saved, 'clock.started', { sessionId: 'se_1', threadId: 't', budgetMs: 60_000, at: 1 });
+  const read = ownState(JSON.parse(JSON.stringify(saved)));
+  assert.equal(Object.getPrototypeOf(read.clocks), null);
+  for (const key of KEYS) assert.equal(read.clocks[key], undefined, `clocks[${key}]`);
+  assert.equal(read.clocks.se_1.budgetMs, 60_000, 'its records survive the reload');
 });
 
 test('#352: a form field an agent names constructor or toString reads only the value sent for it', () => {

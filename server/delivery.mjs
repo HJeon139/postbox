@@ -69,6 +69,8 @@ export class Delivery {
     this.heldByFailure = new Map();
     /** @type {Map<string, any>} what an entry carries in memory only, by its id (send’s `carry`) */
     this.carried = new Map();
+    /** @type {((sessionId: string) => boolean) | null} whether a run clock holds the agent, once run clocks are on (server/run-clock-install.mjs) */
+    this.clockHeld = null;
   }
 
   /**
@@ -142,14 +144,15 @@ export class Delivery {
   }
 
   /**
-   * Whether the agent can start a turn from its entries now: free in Running, its session there and not failed, and
-   * with a waiting entry that isn’t a notice and isn’t held at the chain cap.
+   * Whether the agent can start a turn from its entries now: free in Running, its session there and not failed, its run
+   * clock, with run clocks on, not holding it (paused or expired), and with a waiting entry that isn’t a notice and
+   * isn’t held at the chain cap.
    * @param {string} sessionId
    */
   ready(sessionId) {
     if (this.running.busy(sessionId) || this.running.closing) return false;
     const se = this.store.pending.session(sessionId);
-    if (!se || se.retiredFork) return false;
+    if (!se || se.retiredFork || this.clockHeld?.(sessionId)) return false;
     return this.waiting(sessionId).some((e) => this.canStart(e, se));
   }
 

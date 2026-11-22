@@ -7,6 +7,7 @@
 import { hostTool as hostToolOf } from '../server/host-tool.mjs';
 import { liveFields } from '../server/live-buffer.mjs';
 import { expireWait as expireWaitOf } from '../server/permission-cards.mjs';
+import { armClock, clockAction } from '../server/run-clock.mjs';
 import { viewApp as viewAppOf } from '../server/view-app/view-app.mjs';
 import { viewOf } from '../server/view-app/view-of.mjs';
 
@@ -300,3 +301,9 @@ export function forgetViewWindow(rt) {
 
 /** An agent views an app, as its view tool does. @param {Runtime} rt @param {string} sessionId @param {object} args @param {object} ctx */
 export const viewApp = (rt, sessionId, args, ctx) => viewAppOf(rt, sessionId, args, ctx);
+
+/** The person’s action on an agent’s run clock, as its route takes it, at `now`. @param {Runtime} rt @param {string} sessionId @param {object} body @param {() => number} [now] */
+export const runClock = (rt, sessionId, body, now) => clockAction(rt, sessionId, body, now);
+
+/** The clock’s timer firing at `now`: it expires a clock past its budget. @param {Runtime} rt @param {string} sessionId @param {() => number} now */
+export const clockTimer = (rt, sessionId, now) => armClock(rt, sessionId, now);

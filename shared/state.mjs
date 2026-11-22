@@ -3,6 +3,7 @@
 
 import { addNote, dropNote, takeNotes } from './app-notes.mjs';
 import { itemOf, noteReplaced, positionOf } from './item-index.mjs';
+import { CLOCK_EVENTS } from './run-clock.mjs';
 import { applyTurnArchive } from './state-archive.mjs';
 import { ASSET_EVENTS, ownAssetRooms } from './state-assets.mjs';
 import { putHost, putHostStatus } from './state-hosts.mjs';
@@ -76,6 +77,7 @@ const MAPS = Object.entries(emptyState()).flatMap(([k, v]) => (v && typeof v ===
 /** A state read from JSON (a snapshot, /api/state), with its collections and each conversation’s glossary as map()s. */
 export function ownState(s) {
   for (const c of MAPS) s[c] = map(s[c] ?? {});
+  for (const c of LAZY_STATE_KEYS) if (s[c]) s[c] = map(s[c]);
   for (const t of Object.keys(s.glossary)) s.glossary[t] = map(s.glossary[t]);
   ownAssetRooms(s);
   return s;
@@ -112,7 +114,12 @@ export const PUBLIC_STATE_KEYS = Object.freeze([
   // Ids, states and times, and only the own text of an entry with no item (a check, an event, a notice), which reach
   // the page today as items and events: the sender sees each entry's state (designs/rooms-at-scale.md, “Delivery”).
   'inbox',
+  // Each agent’s run clock, by session (shared/run-clock.mjs): budgets and server times. A key only once a clock has
+  // started, which only a Postbox run with POSTBOX_RUN_CLOCK=1 can do (#1526), so no other state carries it.
+  'clocks',
 ]);
+/** The keys a state has only once an event makes them, so a state without one carries nothing for it (#1526). */
+export const LAZY_STATE_KEYS = Object.freeze(['clocks']);
 // What apps published for their agents (#1478): read only by read_app, so no page is sent a copy of each publish.
 // And the notes apps sent them without a click (#1488), read only by read_app too.
 export const PRIVATE_STATE_KEYS = Object.freeze(['published', 'appNotes']);
@@ -190,6 +197,7 @@ export const EVENTS = Object.freeze({
   'host.status': { apply: putHostStatus, public: true },
   quota: { apply: put('quota'), public: true },
   ...ASSET_EVENTS,
+  ...CLOCK_EVENTS,
 });
 
 // Each entry too, so no code can make a type private or public at run time.
@@ -234,6 +242,8 @@ function removeEntity(s, d) {
   if (d.kind === 'app' && s.appNotes) delete s.appNotes[d.id];
   // Deleting a session deletes its entries; the messages they came from stay (designs/rooms-at-scale.md, “What an entry is”).
   if (d.kind === 'session') delete s.inbox[d.id];
+  // And its run clock, where there are any (shared/run-clock.mjs).
+  if (d.kind === 'session') delete s.clocks?.[d.id];
 }
 
 /**

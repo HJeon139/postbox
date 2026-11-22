@@ -164,6 +164,8 @@ export function runRecord({
     // The phases a --phases run played (tools/uat/phases.mjs), so a recheck reads the scenario as it played it.
     ...(phases ? { phases } : {}),
     minutes: Math.round((now - started) / 60000),
+    // The run’s bound on turns and wall time (tools/uat/run-bound.mjs), and whether it stopped at it.
+    ...(facts.bound ? { bound: facts.bound } : {}),
     // Where the agents worked, outside the checkout (#885), which a recheck reads their commands against (workspaceOf).
     ...(workspace ? { workspace } : {}),
     // `noCostFrom`: the harnesses the run had turns on whose cost isn’t in `agents`, since they report none.
@@ -231,6 +233,8 @@ export function readRun(dir, { scenarios } = {}) {
     findings: Array.isArray(findings.findings) ? findings.findings : [],
     // The run’s budget (tools/uat/budget.mjs), when it had --max-cost.
     budget: saved.budget ?? null,
+    // The run’s bound (tools/uat/run-bound.mjs): where it stopped at it, which a recheck keeps.
+    bound: saved.bound ?? null,
     // Where the run’s time went (tools/uat/timing.mjs): only a live run measures it, so a recheck keeps it.
     timing: saved.timing ?? null,
     // Where the agents worked (#885): a recheck reads their commands against it, and keeps it in the run.json it writes.
