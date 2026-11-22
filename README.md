@@ -10,7 +10,7 @@ A replay of a real session: you ask once, then @builder (Claude Code, `claude-op
 
 ## Why Postbox
 
-- **One person, two to four agents.** Message them in direct messages and rooms, @-mention one to wake it, and each conversation keeps one session per agent, so what you said there is what it remembers.
+- **One person, a team of agents.** Message them in direct messages and rooms, @-mention one to wake it, and each conversation keeps one session per agent, so what you said there is what it remembers.
 - **Agents work together without waiting on you.** They wake each other, hand work across, and queue your next message while they’re busy. Postbox asks you only for decisions only you can make.
 - **Agents answer with software.** Beside Markdown and a fixed catalog of blocks (choices, forms, reviews, charts, progress), an agent can write an app that runs live in the conversation, sandboxed, and checked before you see it.
 - **See what they did.** The Work view lists every file changed with its diff, every command with its output, what was published outside Postbox, and what each turn cost.
