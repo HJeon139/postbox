@@ -963,7 +963,8 @@ test('problems from a turn that failed don’t reach the agent', async () => {
 
 test('#46: a diagram the browser couldn’t draw comes back to the agent once, with Mermaid’s message and line', async () => {
   const { rt, store, t, adapter } = setup();
-  const broken = 'graph LR\nA -->> B';
+  // With a label in HTML, which only the page can check: the server reports what Mermaid refuses on its own (#731).
+  const broken = 'graph LR\nA[x<br>y] -->> B';
   adapter.next.push(async (c) => c.text(`Two diagrams.\n\n\`\`\`mermaid\ngraph TD\nX-->Y\n\`\`\`\n\n\`\`\`mermaid\n${broken}\n\`\`\``));
   rt.sendMessage(t.id, { text: 'draw' });
   await settle(rt);

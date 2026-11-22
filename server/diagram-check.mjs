@@ -86,8 +86,9 @@ export async function syntaxCheck(checks, turn, before) {
     for (const block of mermaidBlocks(String(it.text ?? ''))) {
       if (before.has(hashOf(block.src))) continue;
       const error = await syntaxError(block.src);
-      // Postbox may have started closing while the parser ran: nothing new is sent then.
-      if (!error || checks.running.closing) continue;
+      // Postbox may have started closing, or stopped saving, while the parser ran: nothing new is sent or kept then, and
+      // the page still reports the diagram when it’s drawn.
+      if (!error || checks.running.closing || !checks.store.writable) continue;
       if (lint(checks, turn.sessionId, turn.id, [failedProblem(error, scopeOf(block))])) rememberDiagrams(checks, turn.sessionId, [block.src]);
     }
 }
