@@ -97,7 +97,7 @@ export const READ_CHUNK = 64 * 1024;
  *   probeLoginPath?: () => Promise<import('./login-path.mjs').LoginPath>,
  *   kill?: (pid: number, signal: NodeJS.Signals) => void, log?: (line: string) => void, onIdle?: () => void,
  *   onRemoved?: () => void, pollMs?: number, stopGraceMs?: number, removeWaitMs?: number, runnerStartMs?: number, sweepMs?: number,
- *   broker?: Broker, shim?: ShimSeam, uid?: number, env?: Record<string, string | undefined> }} DaemonOpts
+ *   broker?: Broker, shim?: ShimSeam, uid?: number, env?: Record<string, string | undefined>, connectRelay?: typeof import('./relay.mjs').connectSocket, relayCheckMs?: number }} DaemonOpts
  */
 /**
  * One daemon: its options, defaults filled in, and its state, which createDaemon passes to every function in the
@@ -121,11 +121,13 @@ export const READ_CHUNK = 64 * 1024;
  * - checks: the sign-in checks’ queue. checking: the signInCheck and model listing processes running, so close() can
  *   end them.
  * - brk: the broker (broker.mjs, or the test’s); shimSeam: what serves a shim’s connection.
+ * - relays: this driver’s relays to older versions’ daemons (relay.mjs, #759); relayed: each relayed turn’s relay.
  * @typedef {Required<Omit<DaemonOpts, 'broker' | 'shim'>> & { p: ReturnType<typeof import('../../../shared/remote-protocol.mjs').hostPaths>,
  *   settings: Record<string, any>, programs: import('./programs.mjs').Programs | null, loginPath: import('./login-path.mjs').LoginPath | null,
  *   loginProbe: Promise<void> | null, reprobed: { at: number, settled: boolean, done: Promise<void> } | null, conns: Set<Conn>, driver: Conn | null, ids: number,
  *   acked: Map<string, number>, dead: Set<string>, silentSince: Map<string, Silence>, looks: number, answeredLook: Map<string, number>, killTimers: Map<string, any>, shells: Map<string, Map<number, import('./proc.mjs').ToolGroup>>,
  *   stoppedFirst: Set<string>, starting: Map<string, Promise<void>>, problems: Map<string, string>, idleTimer: any, lastActive: number,
  *   closed: boolean, removing: boolean, sweepTimer: any, checks: Promise<void>, checking: Set<any>,
- *   cleanup: ReturnType<typeof import('./cleanup.mjs').createCleanup>, brk: Broker, shimSeam: ShimSeam | undefined }} Daemon
+ *   cleanup: ReturnType<typeof import('./cleanup.mjs').createCleanup>, brk: Broker, shimSeam: ShimSeam | undefined,
+ *   relays: Set<import('./relay.mjs').Relay>, relayed: Map<string, import('./relay.mjs').Relay> }} Daemon
  */

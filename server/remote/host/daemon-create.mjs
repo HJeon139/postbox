@@ -17,6 +17,8 @@ import { probeLoginPath as defaultProbeLoginPath } from './login-path.mjs';
 import { hostVersion } from './paths.mjs';
 import * as defaultProc from './proc.mjs';
 import { findPrograms as defaultFindPrograms } from './programs.mjs';
+import { closeRelays, connectSocket, RELAY_CHECK_MS } from './relay.mjs';
+import { ownTurns } from './relay-turns.mjs';
 import { askRunner as defaultAskRunner, launchRunner as defaultLaunchRunner, logindFacts } from './runner-client.mjs';
 
 /** @typedef {import('./daemon-constants.mjs').Daemon} Daemon @typedef {import('./daemon-constants.mjs').DaemonOpts} DaemonOpts */
@@ -29,7 +31,9 @@ import { askRunner as defaultAskRunner, launchRunner as defaultLaunchRunner, log
  *   uid: this user’s, which the token file must be owned by (-1 where there are no user IDs). onRemoved: `remove` has
  *   deleted ~/.postbox-remote and said `removed`, so the daemon exits. env: the daemon’s environment, which each runner
  *   inherits (read at each start, for KIRO_HOME). mono: a monotonic clock, which setting the time doesn’t move, for how
- *   long a runner has been silent (daemon-running.mjs); now is the wall clock, for everything else.
+ *   long a runner has been silent (daemon-running.mjs); now is the wall clock, for everything else. connectRelay: opens
+ *   a relay’s connection to an older version’s socket (relay.mjs, #759); relayCheckMs: how often a relay looks whether
+ *   its turns still run.
  */
 export function createDaemon(opts) {
   const { broker, shim, ...o } = withDefaults(opts);
@@ -65,6 +69,8 @@ export function createDaemon(opts) {
     cleanup: /** @type {any} */ (null),
     brk: /** @type {any} */ (null),
     shimSeam: undefined,
+    relays: new Set(),
+    relayed: new Map(),
   };
   d.cleanup = daemonCleanup(d);
   d.brk = broker ?? daemonBroker(d);
@@ -100,6 +106,8 @@ function withDefaults({
   shim,
   uid = process.getuid ? process.getuid() : -1,
   env = process.env,
+  connectRelay = connectSocket,
+  relayCheckMs = RELAY_CHECK_MS,
 }) {
   return {
     home,
@@ -128,6 +136,8 @@ function withDefaults({
     shim,
     uid,
     env,
+    connectRelay,
+    relayCheckMs,
   };
 }
 
@@ -200,7 +210,8 @@ async function startDaemon(d) {
   armSweep(d);
   const turns = await scan(d);
   d.log(`Daemon ${d.version} for ${d.home}: ${turns.length} turn folders (${turns.filter((t) => t.state === 'running').length} running).`);
-  await d.brk.load?.(turns);
+  // A turn under another version is that version’s daemon’s: its shim talks only there (relay.mjs, #759).
+  await d.brk.load?.(await ownTurns(d, turns));
   checkIdle(d);
   return turns;
 }
@@ -225,6 +236,7 @@ function closeDaemon(d) {
       child.kill('SIGKILL');
     } catch {}
   }
+  closeRelays(d);
   for (const c of [...d.conns]) c.close();
   return flushed;
 }

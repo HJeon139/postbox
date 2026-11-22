@@ -4,6 +4,7 @@
 
 import { noteBackground } from './turns-background.mjs';
 import { onError, onPrompt, onPromptExpired } from './turns-prompts.mjs';
+import { onRelay } from './turns-relay.mjs';
 import { caughtUp } from './turns-replay.mjs';
 import { EARLY_MESSAGES, sessionOfTurn } from './turns-shared.mjs';
 import { sendSnapshot } from './turns-snapshot.mjs';
@@ -41,7 +42,7 @@ export function onHostMessage(rts, hostId, m) {
   const owner = hostOfTurn(rts, m.turn);
   if (owner && owner !== hostId) return;
   // A turn being attached hears these once its attach has started, in the order they came.
-  if (!rts.byTurn.has(m.turn) && rts.restoring.has(m.turn) && ['tool', 'prompt', 'prompt-expired', 'error'].includes(m.type)) {
+  if (!rts.byTurn.has(m.turn) && rts.restoring.has(m.turn) && ['tool', 'prompt', 'prompt-expired', 'error', 'relay'].includes(m.type)) {
     const list = rts.early.get(m.turn) ?? [];
     if (list.length < EARLY_MESSAGES) list.push(m);
     rts.early.set(m.turn, list);
@@ -64,6 +65,8 @@ export function onHostMessage(rts, hostId, m) {
       return onPrompt(rts, hostId, m);
     case 'prompt-expired':
       return onPromptExpired(rts, m);
+    case 'relay':
+      return onRelay(rts, hostId, m);
     case 'error':
       // A start sent again that was there already: it reached the host.
       if (m.re === 'start' && m.code === 'turn-exists') sawStarted(rts, m.turn);

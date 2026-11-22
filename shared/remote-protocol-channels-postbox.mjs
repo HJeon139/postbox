@@ -21,6 +21,7 @@ import {
   token,
   turnId,
   unique,
+  VERSION_RE,
 } from './remote-protocol-checks.mjs';
 import { HARNESSES, MESSAGE_FILE, REMOTE_LIMITS, STDIN_KINDS, TOOL_ROUTES } from './remote-protocol-constants.mjs';
 import {
@@ -219,6 +220,13 @@ export const POSTBOX_CHANNELS = {
       turnId(m.turn, 'prompt-expired.turn') ||
       int(m.at, 'prompt-expired.at', 0, Number.MAX_SAFE_INTEGER) ||
       opt(m.reason, (v) => oneOf(v, 'prompt-expired.reason', ['expired', 'canceled'])),
+    /** { turn, version, state }: a turn left running under Postbox `version` on this host, which this daemon relays to
+     * that version’s daemon (#759): `off` when it couldn’t, `lost` when the relay ended while the turn ran. */
+    relay: (m) =>
+      fields(m, 'relay', ['turn', 'version', 'state']) ||
+      turnId(m.turn, 'relay.turn') ||
+      (typeof m.version === 'string' && VERSION_RE.test(m.version) ? '' : 'relay.version must be a version such as 0.10.0.') ||
+      oneOf(m.state, 'relay.state', ['off', 'lost']),
     /** {}: everything is stopped and deleted; the daemon exits next. */
     removed: (m) => fields(m, 'removed', []),
     /** { ok, code, at }: how the signInCheck a `check` ran exited; ok exactly when code is 0, at when it ended. */
