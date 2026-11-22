@@ -47,3 +47,15 @@ test('plain text keeps a character the placeholder could be, and a code span’s
   assert.equal(toPlainText('Run `a**b`, then 10**9.'), 'Run a**b, then 10**9.');
   assert.equal(toPlainText('`x*y` and 2*n and *word*'), 'x*y and 2*n and word');
 });
+
+test('plain text reads a code span of any backtick run as the renderer does, and always finds a placeholder (critic’s review)', async () => {
+  const { toPlainText } = await import('../shared/markdown-plain.mjs');
+  assert.equal(toPlainText('Run ``a**b`` then 10**9.'), 'Run a**b then 10**9.');
+  // A run of two holds a single backtick, and drops one space each side, as the renderer’s code span does.
+  assert.equal(toPlainText('Say `` a`b*c `` then 2*n*k.'), 'Say a`b*c then 2*n*k.');
+  // A run with no close of its length is text, all of it, as the renderer leaves it.
+  assert.equal(toPlainText('x ``a`b 2*n*k'), 'x ``a`b 2*n*k');
+  // Every private-use character present: it still finds a placeholder the text doesn’t hold, and ends.
+  const every = Array.from({ length: 0xf900 - 0xe000 }, (_, k) => String.fromCharCode(0xe000 + k)).join('');
+  assert.equal(toPlainText(`${every} 10**9`), `${every} 10**9`);
+});

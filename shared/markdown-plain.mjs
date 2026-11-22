@@ -2,11 +2,18 @@
 
 import { keepMathStars } from './markdown-inline.mjs';
 
-/** A private-use character the text doesn’t hold, to stand for a kept asterisk while emphasis goes. @param {string} s */
+/**
+ * A private-use character the text doesn’t hold, to stand for a kept asterisk while emphasis goes, or a run of them
+ * when the text holds every one. @param {string} s
+ */
 function freeMark(s) {
-  let code = 0xe000;
-  while (s.includes(String.fromCharCode(code))) code++;
-  return String.fromCharCode(code);
+  for (let code = 0xe000; code <= 0xf8ff; code++) {
+    const c = String.fromCharCode(code);
+    if (!s.includes(c)) return c;
+  }
+  let mark = '\ue000\uf8ff';
+  while (s.includes(mark)) mark += '\uf8ff';
+  return mark;
 }
 
 /** Strips Markdown to plain text, for screen-reader announcements and short previews. */
@@ -18,7 +25,8 @@ export function toPlainText(src) {
   const kept = text
     .replace(/```[\s\S]*?(```|$)/g, ' ')
     .replace(/<\/?(details|summary)>/g, ' ')
-    .replace(/`([^`]*)`/g, (_m, code) => code.replaceAll('*', mark));
+    // A run of backticks closes at the next same run, less one space each side, as the renderer’s code span reads it.
+    .replace(/(?<!`)(`+)(?!`)([\s\S]*?)\1/g, (_m, _run, code) => code.replace(/^ (.*) $/, '$1').replaceAll('*', mark));
   return keepMathStars(kept, mark)
     .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
     .replace(/^ {0,3}#{1,6}\s+/gm, '')
