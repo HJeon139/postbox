@@ -30,7 +30,8 @@ export function askToWake(rt, from, parent, p, wake) {
     limit,
   });
   needsCard(rt, from, parent, it, `@${from.handle} wants to wake @${p.handle}`);
-  rt.threads.notify('blocking', from, `Let @${from.handle} wake @${p.handle}?`, `That would be agent wake ${n} since your last message.`);
+  const nth = n.toLocaleString('en-US'); // as a person reads it, 1,001 (#1044)
+  rt.threads.notify('blocking', from, `Let @${from.handle} wake @${p.handle}?`, `That would be agent wake ${nth} since your last message.`);
   return {
     ok: false,
     waiting: true,

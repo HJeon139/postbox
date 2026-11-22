@@ -12,6 +12,10 @@ let app;
 let room;
 /** @type {any} */
 let quiet;
+/** @type {any} */
+let one;
+/** @type {any} */
+let lowered;
 
 test.beforeAll(async () => {
   app = await startPostbox('wake-chain');
@@ -24,6 +28,11 @@ test.beforeAll(async () => {
   arrange.putThread(rt, { ...store.state.threads[room.id], hops: CHAIN_HINT });
   quiet = rt.createThread({ projectId: 'pr_chain', title: 'Quiet', personaIds: personas.map((p) => p.id) });
   arrange.putThread(rt, { ...store.state.threads[quiet.id], hops: CHAIN_HINT - 1 });
+  // #1044: a room set to 1 after its one wake, and a room whose limit was lowered below its count.
+  one = rt.createThread({ projectId: 'pr_chain', title: 'One', personaIds: personas.map((p) => p.id) });
+  arrange.putThread(rt, { ...store.state.threads[one.id], chainLimit: 1, hops: 1 });
+  lowered = rt.createThread({ projectId: 'pr_chain', title: 'Lowered', personaIds: personas.map((p) => p.id) });
+  arrange.putThread(rt, { ...store.state.threads[lowered.id], chainLimit: 3, hops: 5 });
 });
 test.afterAll(async () => {
   await app?.stop();
@@ -50,4 +59,14 @@ test('below the hint’s count the composer says nothing about the chain', async
   await synced(page, app);
   await expect(page.locator('.composer .hint')).toBeVisible();
   await expect(page.locator('.composer .hint .chain')).toHaveCount(0);
+});
+
+test('#1044: one wake reads “once”, and a count past a lowered limit says so', async ({ page }) => {
+  const hint = page.locator('.composer .hint');
+  await page.goto(`${app.origin}/#/t/${one.id}`);
+  await synced(page, app);
+  await expect(hint).toContainText('Agents have woken each other once since your last message, of the room’s limit of 1.');
+  await page.goto(`${app.origin}/#/t/${lowered.id}`);
+  await synced(page, app);
+  await expect(hint).toContainText('Agents have woken each other 5 times since your last message, past the room’s limit of 3.');
 });

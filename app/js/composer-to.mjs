@@ -35,7 +35,7 @@ export function nextSpeaker(threadId) {
  * How many agent wakes have chained since your last message, once that reaches CHAIN_HINT, with a hint to Stop agents
  * going nowhere (#492): there’s no limit between two agents, and the chain limit is further off. The count and the
  * limit are the conversation’s, in its topic and side threads too, and in a room set below CHAIN_HINT the hint shows
- * from its limit, so it never names a count past it (#1035).
+ * from its limit (#1035). A count past the limit, after an Allow on a card or a lowered limit, is named as past it (#1044).
  * @param {string} threadId
  */
 function chainLine(threadId) {
@@ -43,10 +43,9 @@ function chainLine(threadId) {
   const n = (t?.kind === 'topic' || t?.kind === 'side' ? S().threads[t.parentId] : t)?.hops ?? 0;
   const { limit } = roomChainLimit(threadId);
   if (n < chainHintAt(limit)) return null;
-  return h(
-    'span.chain',
-    `Agents have woken each other ${countText(n)} times since your last message, of the room’s limit of ${countText(limit)}. If they’re going nowhere, Stop them.`,
-  );
+  const times = n === 1 ? 'once' : `${countText(n)} times`;
+  const of = n > limit ? 'past the room’s limit of' : 'of the room’s limit of';
+  return h('span.chain', `Agents have woken each other ${times} since your last message, ${of} ${countText(limit)}. If they’re going nowhere, Stop them.`);
 }
 
 /** The agent a draft names without its @ (“critic: …”), when the message wouldn’t reach it: the UAT tester’s rule. */

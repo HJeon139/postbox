@@ -254,8 +254,9 @@ export const isRoomChainLimit = (v) => typeof v === 'number' && Number.isInteger
  */
 export const CHAIN_HINT = 6;
 /**
- * The count the hint shows from in a room with that limit: CHAIN_HINT, or the room’s limit when it’s lower, so the hint
- * never names a count past the limit (#1035). @param {number} limit
+ * The count the hint shows from in a room with that limit: CHAIN_HINT, or the room’s limit when it’s lower, so a room
+ * set low still gets the hint before its limit (#1035). A count past the limit, after an Allow or a lowered limit, is named as past it (#1044).
+ * @param {number} limit
  */
 export const chainHintAt = (limit) => Math.min(CHAIN_HINT, limit);
 /** Wakes held on one waiting wake card, delivered or not as the person answers it (#439); past this, they’re refused. */
