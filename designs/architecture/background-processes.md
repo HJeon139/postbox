@@ -49,7 +49,7 @@ sequenceDiagram
   S->>L: go-ahead (SIGUSR1) to the leader; the shell call returns
   Note over A: The turn ends: Running.busy() is false, messages arrive
   L->>P: runs the command as its child, in its group
-  P-->>L: output, bounded, into the output folder
+  P-->>L: output, which the leader streams to Postbox over its socket
   P-->>L: exits; the launcher stops what is left in its group
   S->>S: sees the leader gone (ps), commits the end and the wake
   S->>A: a wake with the exit status and the output's last lines
@@ -59,7 +59,7 @@ sequenceDiagram
 
 Four MCP tools in `shared/mcp-tools.mjs`. A backend gets them only once its permission parity check passes (see “Permission parity, per harness”). A persona without `shell` doesn’t get them at all: `TOOL_RULES.shell` lists them, so the same deny that removes Bash removes them. `start_process` also refuses on its own when the persona lacks `shell`, so a stale tool list can’t register a launch.
 
-- `start_process { note, wake? }` registers a process the agent is about to start. It returns the process’s `id` and the exact command line to run with the agent’s own shell tool: `node <postbox>/tools/postbox-process.mjs run <id> <output folder> -- <the command, as words>`. `note` (up to 300 characters) says what it is, and `wake` defaults to true.
+- `start_process { note, wake? }` registers a process the agent is about to start. It returns the process’s `id` and the exact command line to run with the agent’s own shell tool: `node <postbox>/tools/postbox-process.mjs run <id> <socket> -- <the command, as words>`. `note` (up to 300 characters) says what it is, and `wake` defaults to true.
 - `list_processes` lists the conversation’s processes: the owner, note, state, start time, run time, and the exit status once ended. It only reads, so it joins `READ_TOOLS` (`server/tool-gate.mjs`).
 - `read_process { id, lines? }` returns the end of a process’s output: 50 lines by default, at most 400, and at most 16 KB.
 - `stop_process { id }` stops a process the calling agent started. A process another agent started can be stopped only by the person, on its item. #1606: “Stopping another session’s processes stays a decision only the person can make.”
@@ -71,7 +71,7 @@ The launcher’s command line has to be judged as the command it carries would b
 1. A command the persona’s rules allow runs, and its end wakes the agent.
 2. A command a deny rule names, such as `Bash(rm:*)`, is refused when it comes through the launcher, exactly as it is when run bare.
 3. A persona with `shell` unticked can’t register a launch: the tools are missing, and a direct call to `start_process` is refused.
-4. Writing the output folder doesn’t ask for, or need, any approval the bare command didn’t. It sits where every workspace sandbox already lets the agent write (see “The launcher”), and Postbox’s go-ahead signal reaches the sandboxed launcher.
+4. The launcher needs no approval the bare command didn’t: it writes no file, and its harness lets it connect to Postbox’s socket (see “Output, over a socket”). Postbox’s go-ahead signal reaches the sandboxed launcher. A harness whose sandbox refuses the socket stays off.
 5. The detached child stays under the harness’s sandbox. On Codex in Auto (workspace-write), the launched command can’t write outside the workspace, just as the bare command can’t.
 6. The shell command descends from the turn’s backend process that Postbox holds, so a launch can be bound by ancestry (see “One lifecycle”).
 
@@ -81,22 +81,20 @@ A backend that fails any case stays off, and the result is recorded with the run
 
 `tools/postbox-process.mjs` is a small Node script with no dependencies. It runs its command as an argument array, never through a shell. A command that needs a pipe or `&&` says so itself, as `sh -c '…'`, and the harness then judges it as written.
 
-The launcher is started as `node …/postbox-process.mjs run <id> <output folder> -- <command>`. The foreground copy forks the leader into a new session (`setsid`) and stays until Postbox has bound the leader and sent its go-ahead (see “Identity, bound by process ancestry”). Then it exits, and the shell call returns. After that, neither a CLI that tracks its children nor Codex’s turn-group stop holds the leader or ends it. After the go-ahead it runs the command as its own child, in the same process group, and it stays the group’s leader until the command ends.
+The launcher is started as `node …/postbox-process.mjs run <id> <socket> -- <command>`. The foreground copy forks the leader into a new session (`setsid`) and stays until Postbox has bound the leader and sent its go-ahead (see “Identity, bound by process ancestry”). Then it exits, and the shell call returns. After that, neither a CLI that tracks its children nor Codex’s turn-group stop holds the leader or ends it. After the go-ahead it runs the command as its own child, in the same process group, and it stays the group’s leader until the command ends.
 
-**The output folder holds output, and nothing else.** It’s `<the agent’s folder>/.postbox/processes/<id>/`, made by `start_process`, inside the workspace, so a workspace-write sandbox allows writing it. view_app already writes its pictures to `.postbox/` (`server/view-app/view-app.mjs`), and the folder ignores itself in git the same way.
+### Output, over a socket
 
-The launcher writes the command’s output in two files that take turns, truncated in place rather than replaced, each cut at 64 KB (the bound of `!` commands, `MAX_COMMAND_OUTPUT`), so a process never holds more than 128 KB on disk. When the command ends, the launcher also writes an `exit` file with the code or signal.
+Postbox creates nothing and reads nothing in the workspace. A file Postbox made or read there would be made or read with the server’s own permissions, at a path the agent’s command can change under it. Node has no `openat` to anchor such a walk to a verified directory. So output doesn’t go through files at all.
 
-The command can write to this folder too, so Postbox treats everything in it as the command’s output: data to show, never input to a decision. No file there decides which process Postbox signals, or whether a run has ended.
-
-**Postbox works on the files it created, by descriptor, and never by path after that.** A path walked again later can pass through a parent that changed in between, and `O_NOFOLLOW` guards only the last name. Node has no `openat` or `unlinkat`, so Postbox can’t anchor a later path walk to a directory it verified. It doesn’t walk the path again:
-- **Creation.** `start_process` makes the folder. It then creates `out.0`, `out.1` and `exit`, each with `O_CREAT | O_EXCL | O_NOFOLLOW`, so each one is a new, empty file that Postbox made, never an existing one. Postbox keeps all three descriptors open for the life of the process. It then checks each descriptor’s `fstat` (device and inode) against the files it finds at the folder’s real path (`realpath.native`, resolved once, at creation). If they don’t match, for example because a parent was swapped between `mkdir` and `open`, the registration is refused and its descriptors are closed. Postbox doesn’t try to remove what it made: at worst, that is three new empty files in a place the agent’s own command chose.
-- **Reads.** Every read, while the process runs and at its end, goes through those descriptors: `fstat`, then a positioned read. Changing a parent, renaming the folder or replacing a name with a link changes nothing that Postbox reads.
-- **Its own read limit.** At most the last 64 KB of each output file and 1 KB of `exit`, whatever size the command has made them. The launcher’s rotation bounds what the launcher writes, but the command can change the files too.
-- **`exit` is parsed strictly.** One JSON object, with a `code` that’s an integer or a `signal` that’s a signal name. Anything else reads as “exit status unknown”.
-- **No removal by Postbox.** Postbox never unlinks or removes anything in the workspace. At the end, once the last output is in the store on the item, it truncates each file through its descriptor (`ftruncate` to 0) and closes them, so a finished process holds no disk. Removing the folder is the launcher’s job, at its own exit, with the agent’s permissions, inside the agent’s sandbox, as any file the agent’s command removes. A new launch sweeps earlier empty folders in `processes/` the same way.
-- **After a restart.** The descriptors are gone, and Postbox doesn’t reopen the files by path. The item keeps the output Postbox last copied: each poll copies the output’s end into the store. The end reads “exit status unknown: Postbox restarted while it ran”. That leaves at most 128 KB in a folder until a later launch sweeps it.
-- **While it runs and after.** `read_process` reads through the descriptors while the process runs, and from the item after it ends.
+- **The socket.** At start, Postbox makes a private folder with `mkdtemp` in the system temp folder: new, unique and mode 0700. It listens on a Unix socket there (`<that folder>/s`), whose short path fits the platform’s socket path limit. It accepts nothing on TCP, so “Postbox listens on 127.0.0.1 only” is unchanged. The socket’s mode and folder limit it to the person’s own user, which is the same boundary as their processes (security-boundaries.md, “This computer alone”). This is a new local listener, so it is reviewed as a security change.
+- **One connection, bound.** After the go-ahead, the leader connects and sends the process’s id first. Postbox accepts it only for a registration that is bound and running, and only once per id. Every later connection for that id is closed unread. Node can’t ask a Unix socket for the peer’s pid. So another process of the agent’s, which can read the id from `ps`, could connect first and claim the stream for its own process’s output.
+- **The real leader’s reaction.** When its connection is refused, the leader stops its command and exits, and the process ends with “its output channel was taken”. The worst a forger achieves is output and an exit code that are wrong for a process of the same agent. Both are labeled as the launcher’s report, and neither decides anything.
+- **Bounded by Postbox.** Postbox keeps the last 64 KB of each process’s output in memory (`MAX_COMMAND_OUTPUT`, the bound of `!` commands). It sends output to the process’s item the way `commandOutput` in `server/shell-runs.mjs` does for a `!` command, and it stops reading a connection that sends faster than it keeps up. One frame per message. A frame over 16 KB closes the connection, and the process’s output then ends with “output cut: its channel misbehaved”.
+- **The exit status** is the last frame: a code that’s an integer, or a signal that’s a signal name. Anything else reads as “exit status unknown”. The status is the launcher’s report, labeled “as its launcher recorded”. Whether and when the process ended is still decided only by `ps` (see “One lifecycle”).
+- **No disk.** Neither Postbox nor the launcher writes the output to a file, so there is nothing to cap on disk and nothing to clean up. A launcher that can’t connect stops its command and exits.
+- **After a restart.** The socket folder is new, so no old connection carries over, and the item keeps the output Postbox last stored. The end reads “exit status unknown: Postbox restarted while it ran”. A leader whose connection drops stops its command and exits, so its process ends at the restart. A restart already stops every process it can confirm (“Restart”).
+- **While it runs and after.** `read_process` reads Postbox’s in-memory end of the output while the process runs, and from the item after it ends.
 
 Postbox gives the agent’s environment no token and no URL: [#54](https://github.com/HJeon139/postbox/issues/54) and [#126](https://github.com/HJeon139/postbox/issues/126) closed that path, and the launcher never calls the server.
 
@@ -152,11 +150,11 @@ When Postbox can’t establish identity, it signals nothing. The item then says 
 
 A `ps` result is a snapshot, so this design doesn’t promise that a reused pid can never be signaled. The start-time check narrows it to a pid reused between the snapshot and the signal. That is a window of milliseconds, and the design doesn’t claim it is zero.
 
-**The command exits with descendants still running.** The command’s exit is the process’s end. The launcher writes `exit`, then stops what is left in its own group: SIGINT, then SIGKILL after the grace period. It can do that safely, because it still leads the group. It then exits.
+**The command exits with descendants still running.** The command’s exit is the process’s end. The launcher sends the exit status, then stops what is left in its own group: SIGINT, then SIGKILL after the grace period. It can do that safely, because it still leads the group. It then exits.
 
 If the launcher has died before it could do that, Postbox stops the leftovers it saw as members, as above. The wake says “3 processes it left running were stopped”. A process meant to outlive its command, such as a server that forks into the background, is out of scope: its command has to stay in the foreground.
 
-**Watching, and what decides the end.** Postbox polls every 5 s while any process runs, as it watches kept jobs (`server/kept-jobs.mjs`, `KEPT_POLL_MS`). A process has ended when its recorded leader is gone, and only then. The exit code comes from the `exit` file, and the wake labels it “as its launcher recorded”. A missing or malformed file gives “exit status unknown”.
+**Watching, and what decides the end.** Postbox polls every 5 s while any process runs, as it watches kept jobs (`server/kept-jobs.mjs`, `KEPT_POLL_MS`). A process has ended when its recorded leader is gone, and only then. The exit code comes from the leader’s last frame, and the wake labels it “as its launcher recorded”. A missing or malformed one gives “exit status unknown”.
 
 `start_process` and `stop_process` write, so `closedTo` refuses them while the store is closed. No go-ahead is sent then. An end seen while the store is closed is recorded at the first poll after it reopens, as `pollKept` does.
 
@@ -189,7 +187,7 @@ For backends with `backgroundProcesses` on, `TURN_ENDS` changes from “never be
 
 ## Remote hosts
 
-On a remote host, the agent’s shell runs on the host. The launcher and its output folder would live on the host, the host daemon would hold the identities, and the daemon would report ends over its channel. That is a separate change to the remote protocol, so remote agents have `backgroundProcesses` off for now.
+On a remote host, the agent’s shell runs on the host. The launcher and its socket would live on the host, the host daemon would hold the identities, and the daemon would report ends over its channel. That is a separate change to the remote protocol, so remote agents have `backgroundProcesses` off for now.
 
 ## How it’s tested
 
@@ -210,15 +208,11 @@ On a remote host, the agent’s shell runs on the host. The launcher and its out
 - Stop, expiry and shutdown before the go-ahead each leave no process.
 - A launcher killed after the go-ahead has its recorded members stopped.
 - A command that exits with a grandchild still running has the grandchild stopped.
-- The output folder stays at or below 128 KB under a command that writes without end.
+- Under a command that writes without end, Postbox’s memory for it stays at 64 KB, and a slow reader doesn’t block the command beyond the socket’s buffer.
 - After the end commits, Postbox has truncated its files to 0 and closed them. The launcher has removed the folder.
-- **Forged files don’t steer Postbox:** a command that writes a false `exit` file, or files named `claim`, `group` or `stop`, changes neither which group is signaled nor when the end is recorded.
-- **Postbox stays on the files it created,** with a hook in the test build that runs between each check and its use:
-  - a parent (`.postbox`, `processes` or the folder) is swapped for a link to a folder outside, between `mkdir` and the exclusive creates: the registration is refused, and nothing outside gains more than the new empty files;
-  - a parent is swapped after registration, between polls and during a read: every read still returns the original files’ bytes;
-  - `out.0` is replaced by a link to a file outside: the outside file is never read;
-  - a 10 MB output file and a malformed `exit` are read within the limits;
-  - at the end, nothing in or outside the workspace is unlinked by Postbox, and the original files are truncated to 0.
+- **A forged connection doesn’t steer Postbox:** a second process that connects with the id first gets the stream, and the real leader stops and exits, but neither changes which group is signaled or when the end is recorded. A connection for an unbound or ended id is closed unread.
+- **Zero changes in the file system outside Postbox’s own socket folder.** A snapshot (paths, inodes, sizes and modification times) is taken of the agent’s folder, its parents and a decoy folder outside, before a whole launch and run and after it. Parents are swapped for links at each step by a hook in the test build. The test’s command writes nothing, so the two snapshots must match exactly.
+- An oversized frame and a malformed exit frame are each handled within the limits.
 - **Failing closed:** a leader whose start time doesn’t match, and a group with no leader and no recorded member, are each left unsignaled, and the item says why.
 
 **Unit tests, with a fake process list:**
