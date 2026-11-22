@@ -15,7 +15,8 @@ import { newId } from './store.mjs';
  * @returns {{ threadId: string, created: boolean }}
  */
 export function startTopic(rt, threadId, itemId) {
-  const parent = rt.thread(threadId);
+  // As written: a conversation just started behind a held commit isn’t published yet (#1292).
+  const parent = rt.threads.toWrite(threadId);
   if (parent.kind === 'topic' || parent.kind === 'side') throw httpError(409, 'A topic thread can’t start another one. Reply in this one instead.');
   const items = rt.store.pending.items(threadId);
   const idx = positionOf(items, itemId);
@@ -41,10 +42,11 @@ export function startTopic(rt, threadId, itemId) {
   rt.threads.patchItem(threadId, itemId, { topicId: topic.id, replies: 0 });
   // Who comes along: the agent that wrote the message, or for yours, the agent that answered it.
   const answer = items.slice(idx + 1).find((x) => x.sessionId && (x.kind === 'agent' || x.kind === 'block'));
-  const members = rt.sessions.in(threadId).filter((x) => !x.retiredFork);
+  // As written, as the parent is: who answers in it decides the topic’s first write (#1292).
+  const members = rt.sessions.pendingIn(threadId).filter((x) => !x.retiredFork);
   const src =
-    (root.sessionId && rt.s.sessions[root.sessionId]) ||
-    (answer && rt.s.sessions[answer.sessionId]) ||
+    (root.sessionId && rt.store.pending.session(root.sessionId)) ||
+    (answer && rt.store.pending.session(answer.sessionId)) ||
     members.find((x) => x.id === parent.lastSpeaker) ||
     members[0];
   if (src) rt.threads.patch(topic.id, { woke: src.handle });
