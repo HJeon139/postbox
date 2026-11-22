@@ -53,15 +53,24 @@ function stateNotes(text) {
 }
 const JOINED = '$1\u2060';
 /**
- * The diagram’s type, as Mermaid reads it: the first word of its first line after any frontmatter, blank lines and
- * “%%” comments. Never a word further down, such as a class member named “stateDiagram”.
+ * The diagram’s type, as Mermaid reads it: the first word of its first line after any frontmatter, directives, blank
+ * lines and “%%” comments. Never a word further down, such as a class member named “stateDiagram”.
  * @param {string} src
  */
 function diagramType(src) {
-  const body = src.replace(/^\s*---\n[\s\S]*?\n---[ \t]*(?:\n|$)/, '');
-  for (const line of body.split('\n')) {
-    const t = line.trim();
-    if (t && !t.startsWith('%%')) return t.split(/[\s{]/)[0];
+  const lines = src.split('\n');
+  let k = 0;
+  // Frontmatter: a first line of “---”, to the next.
+  if (lines[0]?.trim() === '---') {
+    k = lines.findIndex((l, n) => n > 0 && l.trim() === '---') + 1;
+    if (k === 0) return '';
+  }
+  // Then directives (“%%{init: …}%%”, which can run over lines), comments and blank lines, in one pass.
+  let directive = false;
+  for (; k < lines.length; k++) {
+    const t = lines[k].trim();
+    if (directive || t.startsWith('%%{')) directive = !t.includes('}%%');
+    else if (t && !t.startsWith('%%')) return t.split(/[\s{]/)[0];
   }
   return '';
 }

@@ -53,6 +53,13 @@ const STATE_NOTE = `stateDiagram-v2
   Note left of s2
     3. capital
   End note`;
+// A directive over lines before the header (“%%{init: …}%%”) doesn’t hide that it’s a class diagram: its arrow draws.
+const CLASS_DIRECTIVE = `%%{init: {
+  "theme": "base"
+}}%%
+classDiagram
+  Shape --|> Base : Inheritance
+  Build --> Test : 1. uses`;
 // Members that read like a state note in a class diagram stay members: its “- String field” is private. A member named
 // “stateDiagram” doesn’t make it one: the type is the diagram’s first word.
 const CLASS_NOTE_LIKE = `classDiagram
@@ -132,6 +139,7 @@ for (const [kind, source, labels, plain = []] of /** @type {[string, string, str
   ['a heading’s, a quote’s and a rule’s', BLOCKS, ['# of users', '> quoted', '---']],
   ['a class diagram’s notes', CLASS_NOTES, ['1. note', '- general', '2. tight']],
   ['a state diagram’s note', STATE_NOTE, ['1. first', '- second', '3. capital']],
+  ['a class diagram’s, after a directive over lines,', CLASS_DIRECTIVE, ['Inheritance', '1. uses']],
   ['a class diagram’s note-like members, around its', CLASS_NOTE_LIKE, ['String field'], ['- String field']],
   ['a slanted shape’s', SLANTED, ['1. Plan', '- Check', '---']],
   ['a class diagram’s arrows and annotations, around its', CLASS_SYNTAX, ['Inheritance', 'interface', '- decrement()'], ['- decrement()']],
