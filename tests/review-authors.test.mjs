@@ -1,7 +1,8 @@
 // #1208: who a review’s comments are by, as agents send them back. An agent revising its review echoes the person’s
-// comments by the name it read them under: “The person” (read_message, #791) or “You” (when the issue was filed). The
-// echo was refused with the whole update, which wasted the agent’s turn. A review stored before #1143’s rule refused every review_block on it. And #1177 said the author
-// rule kept an agent from showing a review in another agent’s name, which show_block allowed.
+// comments by the name it read them under: “The person” (read_message, #791) or “You” (when filed).
+// The echo was refused with the whole update, which wasted the agent’s turn. A review stored before #1143’s rule
+// refused every review_block on it. And #1177 said the author rule kept an agent from showing a review in another
+// agent’s name, which show_block allowed.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
@@ -195,6 +196,23 @@ test('#1208 its own stored comment echoed under a name the rule doesn’t take, 
           ['@researcher', 'Checked.'],
         ],
       ],
+    ],
+  );
+});
+
+test('#1208 a stored comment echoed twice comes back once, and the second echo is counted as not added', () => {
+  const s = shown();
+  const own = { id: 'r1', status: 'open', line: 4, comments: [{ author: '@researcher', text: 'Check the date.' }] };
+  assert.equal(s.author.update_block({ block: { ...draft, threads: [own] } }).ok, true);
+  const echo = { author: 'you', text: 'Check the date.' };
+  const r = s.author.update_block({ block: { ...draft, threads: [{ ...own, comments: [echo, echo, { author: '@researcher', text: 'Checked.' }] }] } });
+  assert.equal(r.ok, true, r.message);
+  assert.match(r.message, /1 comment in another name wasn’t added/);
+  assert.deepEqual(
+    s.item().block.threads[0].comments.map((c) => [c.author, c.text]),
+    [
+      ['@researcher', 'Check the date.'],
+      ['@researcher', 'Checked.'],
     ],
   );
 });

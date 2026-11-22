@@ -79,8 +79,7 @@ export function updateBlock(apps, sessionId, { block }, { turn, se, threadId, en
   // read (#123): the person would see it vanish, and the agent would never learn what it erased.
   if (found.answered && found.answer?.read === false) return unreadAnswer(apps, sessionId, where, found);
   // The person’s and other agents’ threads stay on a review, and its agent comments only as itself (#133, #1143).
-  // A review stored before the author rule reads as its agent’s here too, as review_block reads it (#1208).
-  const { existing, reviews, note, ...revised } = revisedReview(v.block.type === 'review' ? ownedAuthors(found) : found, v.block);
+  const { existing, reviews, note, ...revised } = revisedReview(found, v.block);
   v.block = revised.block;
   if (v.block.type === 'review') {
     const kept = validateBlock(v.block, { imageOrigins: apps.config.imageOrigins });

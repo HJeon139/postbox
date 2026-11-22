@@ -148,7 +148,8 @@ export function personAnswer(apps, given, event, revision) {
  */
 export function revisedReview(found, block) {
   if (block.type !== 'review') return { existing: found, block, reviews: {}, note: '' };
-  const existing = answerThreads(found);
+  // A review stored before the author rule reads as its agent’s, as review_block and the person’s answer read it (#1208).
+  const existing = answerThreads(ownedAuthors(found));
   const own = ownComments(existing, block);
   return {
     existing,
