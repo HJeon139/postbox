@@ -177,7 +177,9 @@ test('the picture is as wide as the app the person sees, beside the rail by defa
     await page.goto(`${app.origin}/#/t/${t.id}${hash}`);
     await synced(page, app);
     const frame = page.locator('.transcript .appframe').first();
-    await expect(frame).toBeVisible();
+    // The app itself, not “Checking the app…”: the check’s outcome mounts the app in a new section, so a box read on
+    // the old one comes back empty (CI run 44956225170 read 0 px).
+    await expect(frame.locator('iframe.app-iframe'), 'the app has passed its check and is drawn').toHaveAttribute('data-sized', '1', { timeout: 30_000 });
     await expect.poll(() => arrange.viewWindow(rt).width, { timeout: 15_000 }).toBe(width);
     const seen = Math.round((await frame.boundingBox())?.width ?? 0);
     const r = await arrange.viewApp(rt, se.id, { appId: shown.appId }, ctx);
