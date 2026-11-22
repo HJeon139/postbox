@@ -4,7 +4,7 @@
 import { isMock, mockMarker } from './agent-facts.mjs';
 import { agentMenuLines } from './agent-menu-lines.mjs';
 import { agentsSection } from './agents.mjs';
-import { openAdd, openRemove } from './agents-header.mjs';
+import { canRemove, openAdd, openRemove } from './agents-header.mjs';
 import { chainLimitDesc, openChainLimit } from './chain-limit.mjs';
 import { busy, client, needsYou, sessionsOf, threadsOf, topicsOf } from './client.mjs';
 import { fill, h, icon, syncList } from './dom.mjs';
@@ -429,7 +429,8 @@ function conversationMenu(anchor, shown) {
         // The Agents header’s picks, here too where the sidebar is hidden (#1620).
         run: () => openAdd(anchor, t.id, { openNewAgent, confirmDelete }),
       },
-      { label: 'Remove an agent…', icon: 'trash', run: () => openRemove(anchor, t.id, { openNewAgent, confirmDelete }) },
+      // While one agent is left, removing it would erase the conversation: Delete does that, below.
+      ...(canRemove(t.id) ? [{ label: 'Remove an agent…', icon: 'trash', run: () => openRemove(anchor, t.id, { openNewAgent, confirmDelete }) }] : []),
       { label: 'Work', icon: 'file', desc: 'What its agents changed, ran and published', run: () => openWork(t.id) },
       {
         label: 'Permissions…',

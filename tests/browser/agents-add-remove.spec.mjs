@@ -44,6 +44,9 @@ test.describe('at 1280 px', () => {
     expect(Math.abs((p?.y ?? 0) + (p?.height ?? 0) / 2 - ((head?.y ?? 0) + (head?.height ?? 0) / 2)), '+ on the heading’s row').toBeLessThan(6);
     expect((m?.x ?? 0) > (p?.x ?? 0), '− after +').toBe(true);
 
+    // One agent: removing it would erase the conversation, so − is off and says why.
+    await expect(minus).toBeDisabled();
+    await expect(minus).toHaveAttribute('title', 'The last agent can’t be removed. Delete the conversation instead.');
     await plus.focus();
     await page.keyboard.press('Enter');
     const menu = page.getByRole('menu', { name: 'Add an agent' });
@@ -57,6 +60,7 @@ test.describe('at 1280 px', () => {
     expect(handlesIn(t)).toEqual(['indexer', 'librarian']);
     await expect(page.locator('.sys-line', { hasText: 'indexer joined' })).toBeVisible();
 
+    await expect(minus, 'two agents: − is on').toBeEnabled();
     await minus.focus();
     await page.keyboard.press('Enter');
     await page.getByRole('menu', { name: 'Remove an agent' }).getByRole('menuitem', { name: 'Remove @indexer…' }).click();
@@ -64,6 +68,7 @@ test.describe('at 1280 px', () => {
     await expect(section.locator('.agent-rows li', { hasText: 'indexer' })).toHaveCount(0);
     expect(handlesIn(t)).toEqual(['librarian']);
     expect(arrange.persona(app.rt, 'indexer'), 'the persona stays').toBeTruthy();
+    await expect(minus, 'one agent again: − is off').toBeDisabled();
   });
 });
 
@@ -87,5 +92,10 @@ test.describe('at 375 px', () => {
     await page.getByRole('menu', { name: 'Remove an agent' }).getByRole('menuitem', { name: 'Remove @indexer…' }).click();
     await page.getByRole('alertdialog', { name: 'Delete indexer’s session?' }).getByRole('button', { name: 'Delete session' }).click();
     await expect.poll(() => handlesIn(t)).toEqual(['librarian']);
+    await synced(page, app);
+    // One agent left: the menu offers no Remove, as removing it would erase the conversation.
+    await actions.click();
+    await expect(page.getByRole('menuitem', { name: /Add an agent/ })).toBeVisible();
+    await expect(page.getByRole('menuitem', { name: /Remove an agent/ })).toHaveCount(0);
   });
 });

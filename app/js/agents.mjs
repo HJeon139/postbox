@@ -39,14 +39,12 @@ const S = () => client.state;
 export function agentsSection(threadId) {
   const headId = `agents-head-${threadId}`;
   const list = h('ul.agent-rows', { 'aria-labelledby': headId });
-  const el = h(
-    'section.agents-sec',
-    h('div.rail-sec', h('h2.label', { id: headId }, 'Agents'), agentsHeaderButtons(threadId, { openNewAgent, confirmDelete })),
-    list,
-  );
+  const head = agentsHeaderButtons(threadId, { openNewAgent, confirmDelete });
+  const el = h('section.agents-sec', h('div.rail-sec', h('h2.label', { id: headId }, 'Agents'), head.el), list);
   const paint = () => {
     const ses = sessionsOf(threadId).filter((x) => !x.retiredFork);
     el.hidden = !ses.length;
+    head.count(ses.length);
     syncList(
       list,
       ses,

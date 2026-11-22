@@ -57,3 +57,11 @@ test('#1620 an agent or a conversation that doesn’t exist is refused, saying w
   await assert.rejects(sessionRoute(f.rt, `/api/threads/${f.t.id}/agents`, 'POST', {}), { status: 400 });
   assert.deepEqual(handlesIn(f), ['alpha', 'beta']);
 });
+
+test('#1620 an agent whose session here was retired is refused, saying so, with no line', async () => {
+  const f = setup();
+  f.store.emit('session', { id: 'se_fork', personaId: f.c.id, handle: 'gamma', threadId: f.t.id, retiredFork: true });
+  f.rt.threads.patch(f.t.id, (x) => ({ members: [...x.members, 'se_fork'] }));
+  await assert.rejects(add(f, f.t.id, f.c.id), { status: 409 });
+  assert.equal(f.store.items(f.t.id).filter((i) => i.variant === 'joined').length, 0);
+});
