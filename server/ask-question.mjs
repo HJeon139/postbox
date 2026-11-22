@@ -206,7 +206,8 @@ function askOne(rt, sessionId, block, toolUseId, hostPrompt = null, part = 0) {
 /**
  * A host question’s call that ended unanswered (#1059): its shim tells the agent the question stays open, and its
  * answer comes as a message. So what the call took goes to the agent as late answers do, and each question it never
- * showed is shown now, with nothing waiting on it: its answer comes as a message too.
+ * showed is shown now, with nothing waiting on it: its answer comes as a message too. As any asking block, it becomes
+ * the agent’s need once its turn ends (turn-needs.mjs), not before, as settlePermission decides for the part it ended.
  * @param {any} rt @param {string} sessionId @param {{ toolUseId?: string | null, hostPrompt: HostPrompt }} req
  * @param {{ threadId: string, id: string }[]} taken @param {string} threadId @param {any[]} unasked @param {number} from
  */
@@ -223,7 +224,7 @@ function handOver(rt, sessionId, req, taken, threadId, unasked, from) {
   const hp = req.hostPrompt;
   for (const [k, block] of unasked.entries()) {
     const remote = { hostId: hp.hostId, turn: hp.turn, prompt: hp.id, entry: hp.entry ?? null, part: from + k, ended: Date.now() };
-    const it = rt.threads.addItem(threadId, {
+    rt.threads.addItem(threadId, {
       kind: 'block',
       sessionId,
       handle: se.handle,
@@ -235,7 +236,6 @@ function handOver(rt, sessionId, req, taken, threadId, unasked, from) {
       toolUseId: req.toolUseId ? String(req.toolUseId) : null,
       remote,
     });
-    offerNeed(rt, se, { kind: 'block', itemId: it.id, text: block.title ?? block.prompt, ...rt.sessions.awayFrom(se, threadId) }, 'needs');
   }
 }
 

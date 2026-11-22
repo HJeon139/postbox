@@ -60,8 +60,11 @@ test('#1059 a two-question call the host ends before the second was shown: it’
   const second = questions(r)[1];
   assert.equal(second.block.prompt, 'Which fruits?');
   assert.equal(r.rt.permissionWaits.has(second.id), false, 'nothing waits on it: its answer comes as a message');
+  assert.notEqual(r.se().needs?.itemId, second.id, 'no call waits on it, so mid-turn it isn’t what the turn needs');
   r.d.end(turn);
   await settled(r);
+  // As any asking block, it’s what the agent needs once its turn ends, not before: no call waits on it.
+  assert.equal(r.se().needs?.itemId, second.id);
   const before = starts(r.d).length;
   pick(r, second, 'Plum');
   await until(() => starts(r.d).length > before, 'the agent’s next turn');
