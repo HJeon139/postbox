@@ -206,3 +206,35 @@ test('past --max-minutes the run stops while a state read hangs, unanswered', as
   assert.match(String(bound.stopped?.why), /past --max-minutes 5/);
   assert.equal(lines.filter((l) => l.startsWith('Stopped at the run’s bound')).length, 1, 'said once');
 });
+
+test('a run held in a wait past --max-minutes reaches its cleanup after the grace, and one that ends in time doesn’t', async () => {
+  const t = clock();
+  const hung = () => new Promise(() => {});
+  const watch = (/** @type {() => void} */ overdue) => {
+    const bound = runBound({ minutes: '5', now: t.now });
+    const end = watchRun({ bound, budget: { on: false }, api: hung, threadsUnderTest: () => [], stop: async () => {}, every: 1, grace: 30, overdue });
+    return { bound, end };
+  };
+  // The runner sits in settle()’s state read, which never answers: only the grace’s cleanup ends it.
+  let cleaned = 0;
+  const held = watch(() => {
+    cleaned += 1;
+  });
+  t.pass(6);
+  const until = Date.now() + 2000;
+  while (!cleaned && Date.now() < until) await new Promise((r) => setTimeout(r, 2));
+  held.end();
+  assert.equal(cleaned, 1, 'the cleanup ran, once');
+  assert.match(String(held.bound.stopped?.why), /past --max-minutes 5/);
+  // A runner that gets past its waits ends the watch within the grace: no cleanup from here.
+  let early = 0;
+  const done = watch(() => {
+    early += 1;
+  });
+  t.pass(6);
+  const stopped = Date.now() + 2000;
+  while (!done.bound.stopped && Date.now() < stopped) await new Promise((r) => setTimeout(r, 2));
+  done.end();
+  await new Promise((r) => setTimeout(r, 80));
+  assert.equal(early, 0, 'no cleanup for a run that ended in time');
+});
