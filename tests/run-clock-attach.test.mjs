@@ -10,16 +10,12 @@ import { afterEach, beforeEach, mock, test } from 'node:test';
 import { installRunClock } from '../server/run-clock-install.mjs';
 import { clockElapsed } from '../shared/run-clock.mjs';
 import { runClock } from './arrange.mjs';
+import { until } from './event-loop-until.mjs';
 import { restarted, rig, startUp } from './remote-turns-helpers.mjs';
 
 const T0 = 1_800_000_000_000;
 beforeEach(() => mock.timers.enable({ apis: ['setTimeout', 'setInterval', 'Date'], now: T0 }));
 afterEach(() => mock.timers.reset());
-/** Waits on the event loop’s turns, not on time, until `fn` holds. */
-async function until(fn, label) {
-  for (let i = 0; i < 2000 && !fn(); i++) await new Promise((r) => setImmediate(r));
-  assert.ok(fn(), `Timed out waiting for ${label}`);
-}
 
 /** The store a restart finds: a turn on the host from before it, and its agent’s clock started at T0. */
 function clockedBeforeRestart(budgetS) {

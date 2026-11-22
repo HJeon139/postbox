@@ -11,17 +11,13 @@ import { onHostMessage } from '../server/remote/turns-messages.mjs';
 import { installRunClock } from '../server/run-clock-install.mjs';
 import { clockElapsed } from '../shared/run-clock.mjs';
 import { clockTimer, runClock } from './arrange.mjs';
+import { until } from './event-loop-until.mjs';
 import { restarted, rig, starts, startUp } from './remote-turns-helpers.mjs';
 
 const T0 = 1_800_000_000_000;
 beforeEach(() => mock.timers.enable({ apis: ['setTimeout', 'setInterval', 'Date'], now: T0 }));
 afterEach(() => mock.timers.reset());
 const at = (ms) => () => T0 + ms;
-/** Waits on the event loop’s turns, not on time, until `fn` holds. */
-async function until(fn, label) {
-  for (let i = 0; i < 2000 && !fn(); i++) await new Promise((r) => setImmediate(r));
-  assert.ok(fn(), `Timed out waiting for ${label}`);
-}
 /** The remote tests’ rig, with run clocks on (server/run-clock-install.mjs). @param {any} [o] */
 function clockedRig(o) {
   const r = rig(o);

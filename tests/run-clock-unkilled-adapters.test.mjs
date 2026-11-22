@@ -15,16 +15,11 @@ import { ClaudeCodeAdapter } from '../server/adapters/claude-code.mjs';
 import { CodexAdapter } from '../server/adapters/codex.mjs';
 import { KiroCliAdapter } from '../server/adapters/kiro-cli.mjs';
 import { CODEX_ROOT, fakeAppServer } from './codex-fixture.mjs';
+import { until } from './event-loop-until.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
 beforeEach(() => mock.timers.enable({ apis: ['setTimeout', 'setInterval'] }));
 afterEach(() => mock.timers.reset());
-
-/** Waits on the event loop’s turns, not on time, until `fn` holds. */
-async function until(fn, label) {
-  for (let i = 0; i < 2000 && !fn(); i++) await new Promise((r) => setImmediate(r));
-  assert.ok(fn(), `Timed out waiting for ${label}`);
-}
 
 /** A CLI that exits on Stop’s SIGINT, as its launcher does, while a process of its group is stuck: never gone. */
 function stuckChild(pid) {
