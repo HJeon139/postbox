@@ -4,10 +4,9 @@
 // the recorded run in tests/fixtures/atif/dry-run.md.
 
 import assert from 'node:assert/strict';
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { writeTrajectories } from '../tools/atif-export.mjs';
 import { exportTrajectories } from '../tools/uat/run-atif.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
@@ -36,20 +35,14 @@ test('a run’s export writes each agent’s trajectory, with the prompts its da
 
 test('an export that fails is logged and left in the run’s atif folder, and never thrown', () => {
   const dir = runFolder();
-  // An item with no `at`, which a step’s timestamp can’t be made from: the export itself throws on it.
-  const bad = { seq: 999, type: 'item.add', data: { threadId: 'th_9rDc0zBs', item: { id: 'it_bad', kind: 'agent', sessionId: 'se_BW6DwWCC', text: 'x' } } };
-  writeFileSync(join(dir, 'events.jsonl'), `${readFileSync(join(dir, 'events.jsonl'), 'utf8')}${JSON.stringify(bad)}\n`);
-  assert.throws(() => writeTrajectories(join(dir, 'raw'), { events: [bad] }), RangeError);
+  // A folder where a trajectory’s file goes: its write fails as a full or read-only disk’s would, after the report.
+  mkdirSync(join(dir, 'atif', 'dry-se_BW6DwWCC.atif.json'), { recursive: true });
   const said = [];
   assert.deepEqual(
     exportTrajectories(dir, (l) => said.push(l)),
     [],
   );
-  assert.match(
-    said[0],
-    /^The run’s ATIF export failed: Invalid time value\. Its report and findings are written; to try again, run node tools\/atif-export\.mjs /,
-  );
+  assert.match(said[0], /^The run’s ATIF export failed: EISDIR\b.*\. Its report and findings are written; to try again, run node tools\/atif-export\.mjs /);
   const left = readFileSync(join(dir, 'atif', 'export-error.txt'), 'utf8');
   assert.ok(left.startsWith(said[0]));
-  assert.equal(existsSync(join(dir, 'atif', 'dry-se_BW6DwWCC.atif.json')), false);
 });

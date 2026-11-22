@@ -268,3 +268,18 @@ test('a session whose only output was a block still has a trajectory', () => {
   assert.equal(t.steps[1].extra.delivered.length, 1, 'the prompt carried the message to it');
   assert.equal(t.final_metrics.extra.unattached_turns[0].metrics.completion_tokens, 102);
 });
+
+test('a reply with no time keeps its step, with no timestamp, and every trajectory of the run is still made', () => {
+  // One item without `at` used to throw in toISOString and lose every trajectory of the run. ATIF’s timestamp is optional.
+  const reply = rec.events.find((e) => e.type === 'item.add' && e.data.item.kind === 'agent');
+  const events = rec.events.map((e) => (e === reply ? { ...e, data: { ...e.data, item: { ...e.data.item, at: undefined } } } : e));
+  const before = all().map((t) => t.handle);
+  const got = all(events);
+  assert.deepEqual(
+    got.map((t) => t.handle),
+    before,
+  );
+  const step = got.flatMap((t) => t.trajectory.steps).find((s) => s.extra?.item_id === reply.data.item.id);
+  assert.ok(step, 'its step is kept');
+  assert.equal(step.timestamp, undefined);
+});

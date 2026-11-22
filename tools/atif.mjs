@@ -23,7 +23,8 @@ export { NOT_RECORDED, NOT_RECORDED_WITHOUT_PROMPTS } from './atif-prompts.mjs';
 
 /** @typedef {{ seq: number, type: string, data: any }} Event */
 
-const iso = (/** @type {number} */ ms) => new Date(ms).toISOString();
+// A step with no time keeps none, rather than losing every trajectory of the run: ATIF’s timestamp is optional.
+const iso = (/** @type {unknown} */ ms) => (typeof ms === 'number' && Number.isFinite(ms) ? new Date(ms).toISOString() : undefined);
 /** The items an agent session shows: each is one of its steps. */
 const OWN_KINDS = new Set(['agent', 'block', 'app']);
 /** The work ledger’s entries for one call, which keep its arguments (tools/atif-calls.mjs). */
