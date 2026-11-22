@@ -265,6 +265,9 @@ export function stopHeldTurn(rt, turn) {
 export function clockTurn(rt, sessionId, turnId, message, now = Date.now) {
   const clock = clockOf(rt, sessionId);
   if (!clock || clock.state === 'expired') return message;
+  // A slash command and a host turn attached again get no background (formatMessage, server/adapters/guide.mjs), so
+  // they see no line, and clock.turn, which says a turn was told where its clock is, isn’t recorded for them.
+  if (message.slash || typeof message.attach === 'string') return message;
   const at = now();
   rt.store.emit('clock.turn', { sessionId, turnId, elapsedMs: clockElapsed(clock, at), budgetMs: clock.budgetMs, state: clock.state, at });
   return { ...message, context: [...(message.context ?? []), clockLine(clock, at)] };

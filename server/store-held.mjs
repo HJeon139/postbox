@@ -137,7 +137,8 @@ export function pendingReads(store) {
  * An agent’s run clock as memory will hold it once what is held is released (shared/run-clock.mjs): its held events
  * applied in order to a copy, by the reducer, so a clock started, paused or expired behind a held commit holds and
  * times its agent at once (#1526). Only the run clock’s own code reads it, and only with POSTBOX_RUN_CLOCK=1, so no
- * index of held events names clocks: a read walks what is held, and a clock has few events.
+ * index of held events names clocks: a read walks what is held. Delivery.ready asks on every wake while a commit is
+ * held, so each such wake walks the held log once; that’s fine for a timed UAT room, whose held log is short.
  * @param {import('./store.mjs').Store} store @param {string} sessionId @returns {Entry|null}
  */
 function pendingClock(store, sessionId) {

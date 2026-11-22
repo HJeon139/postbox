@@ -273,3 +273,22 @@ test('an agent’s handoff waiting in the inbox when the clock expires still wai
   const handoff = (store.state.inbox[se.id] ?? []).find((e) => e.itemId === 'it_handoff');
   assert.equal(handoff.state, 'waiting', 'not stopped by the expiry');
 });
+
+test('a slash command’s turn and a host turn attached again record no clock.turn, since they get no line', () => {
+  // formatMessage gives neither a background (server/adapters/guide.mjs), so a clock.turn would say a turn was told
+  // where its clock is when it wasn’t.
+  const { rt, store, se } = setup();
+  clockAction(rt, se.id, { action: 'start', budgetS: 60 }, at(0));
+  const slash = { kind: 'user', text: '/review', slash: true };
+  const attach = { kind: 'user', text: '', attach: 'host-turn-1' };
+  assert.equal(clockTurn(rt, se.id, 'turn_s', slash, at(1_000)), slash);
+  assert.equal(clockTurn(rt, se.id, 'turn_a', attach, at(2_000)), attach);
+  assert.deepEqual(
+    clockEvents(store).filter((e) => e.type === 'clock.turn'),
+    [],
+  );
+  // A plain message still carries its line and records clock.turn.
+  const plain = clockTurn(rt, se.id, 'turn_p', { kind: 'user', text: 'go' }, at(3_000));
+  assert.match(plain.context.at(-1), /^\[Postbox\] Run clock: /);
+  assert.equal(clockEvents(store).filter((e) => e.type === 'clock.turn').length, 1);
+});
