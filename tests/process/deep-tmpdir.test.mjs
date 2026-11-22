@@ -65,7 +65,8 @@ test('the socket tests pass, and leave nothing, with TMPDIR as deep as the gateâ
   const args = ['--test', '--test-reporter=spec', '--test-timeout=60000', '--import', './tests/guard.mjs', ...files.map((name) => join('tests', name))];
   const r = spawnSync(process.execPath, args, { cwd: ROOT, env, timeout: 240_000, encoding: 'utf8', maxBuffer: 1 << 28 });
   const ran = Number(/^(?:â„¹|#) tests (\d+)$/m.exec(r.stdout ?? '')?.[1] ?? 0);
-  assert.ok(ran > 100, `ran ${ran} tests (exit ${r.status ?? r.signal})`);
+  // A child killed at its timeout prints no count, so this fails first: it says what failed too.
+  assert.ok(ran > 100, `ran ${ran} tests (exit ${r.status ?? r.signal}), failing:\n${failures(r)}`);
   assert.equal(r.status, 0, `exit ${r.status ?? r.signal}, failing:\n${failures(r)}`);
   const left = fs.readdirSync(dir).filter((name) => !OUT_OF_SCOPE.test(name));
   assert.deepEqual(left, [], 'what the socket tests left in TMPDIR');
