@@ -1,5 +1,7 @@
 // Bringing a persona into a conversation, its pool of agents, one session each (#228): the session it has there, or a
-// new one with a brief. Moved from side-threads.mjs’s sideSession, so every way in decides it in one place.
+// new one with a brief. Moved from side-threads.mjs’s sideSession, so a mention in a side thread and the Agents
+// header’s + decide it in one place. A message, a wake card, a proposal, a new persona and a new conversation still
+// call rt.ensureSession themselves.
 
 import { httpError, retiredError } from './helpers.mjs';
 
