@@ -89,3 +89,18 @@ test('a step’s input leaves out what its label already says, such as a command
   event({ kind: 'tool_call', id: 't2', name: 'Bash', input: { command: 'head *', description: long }, final: true });
   assert.equal(activity.at(-1).input, 'command: head *', 'also when the label is the description cut short');
 });
+
+test('a refused Postbox tool’s step names the tool, though its call showed no step of its own', () => {
+  // Postbox’s own tools are quiet (QUIET, server/tool-labels.mjs): a refusal is the only step they show.
+  for (const after of [false, true]) {
+    const { ctx, activity } = fakeCtx();
+    const { event } = new HarnessEvents(ctx, { now: () => 0 });
+    event({ kind: 'tool_call', id: 'q1', name: 'mcp__postbox__show_block', input: { block: {} }, final: true });
+    // A refusal at its result, or one its harness reports after the call had ended (refusedAfter).
+    if (after) event({ kind: 'tool_result', id: 'q1', text: 'ok' });
+    event({ kind: 'tool_result', id: 'q1', refused: 'Its allow rule is missing.' });
+    const denied = activity.filter((a) => a.state === 'denied');
+    assert.equal(denied.length, 1, `after: ${after}`);
+    assert.equal(denied[0].tool, 'mcp__postbox__show_block', `after: ${after}`);
+  }
+});

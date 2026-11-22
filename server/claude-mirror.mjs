@@ -8,6 +8,7 @@ import { basename } from 'node:path';
 import { contentBlocks, listClaudeSessions, recentHistory, TranscriptTail, typedText } from './adapters/terminal-mirror.mjs';
 import { sessionFolder } from './folder-path.mjs';
 import { httpError } from './helpers.mjs';
+import { toolOf } from './step-text.mjs';
 import { describeTool } from './tool-labels.mjs';
 
 export async function claudeSessions(rt) {
@@ -124,7 +125,7 @@ export function pollMirror(rt, sessionId) {
           rt.sessions.update(sessionId, { state: 'gen', currentStep: 'Writing in a terminal' });
         }
         if (b.type === 'tool_use') {
-          m.steps.push({ id: b.id, label: describeTool(b.name, b.input), state: 'running', ms: null });
+          m.steps.push({ id: b.id, label: describeTool(b.name, b.input), ...toolOf(b.name), state: 'running', ms: null });
           if (!m.agentItem) m.agentItem = mirrorAgentItem(rt, se, '');
           rt.threads.patchItem(se.threadId, m.agentItem, { activity: { steps: [...m.steps] } });
           rt.sessions.update(sessionId, { state: 'tool', currentStep: m.steps.at(-1).label });
