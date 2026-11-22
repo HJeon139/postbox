@@ -130,6 +130,22 @@ test('#858 a repaint leaves focus in the message box when the person moved there
   await expect(page.getByRole('textbox', { name: 'Edit your draft comment' }), 'and the edit stays open, with its text').toHaveValue('five, being edited');
 });
 
+test('#858 a repaint leaves focus in the message box when the person moved there from a new comment’s box', async ({ page }) => {
+  const { rt } = room.app;
+  const { block, blockId, sessionOf } = await room.withReview(page, 'Focus stays, new');
+  await viewRadio(block, 'Lines').click();
+  await block.locator('.g-mark[data-line="3"]').click();
+  await block.getByRole('textbox', { name: 'Comment on line 3' }).fill('half a thought');
+  const message = page.locator('#composer-input');
+  await message.click();
+  const reviewed = rt.toolsFor(sessionOf('reader').id).review_block({ blockId, verdict: 'comment', comments: [{ line: 4, text: 'Another review.' }] });
+  expect(reviewed.ok, reviewed.message).toBe(true);
+  await synced(page, room.app);
+  await expect(block.locator('.rv-thread', { hasText: 'Another review.' })).toBeVisible();
+  await expect(message, 'the repaint leaves focus in the message box').toBeFocused();
+  await expect(block.getByRole('textbox', { name: 'Comment on line 3' })).toHaveValue('half a thought');
+});
+
 test('#858 a draft comment on a selection in Preview keeps its quote and columns when edited', async ({ page }) => {
   const { block, blockId } = await room.withReview(page, 'Edit a selection');
   await drawn(block, 'Preview');

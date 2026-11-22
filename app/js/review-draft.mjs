@@ -12,8 +12,9 @@ export const newReviewDraft = (content) => ({
   editing: null,
   editingText: '',
   editingSelection: null,
-  // A new comment’s unfinished text, set aside while an edit is open, and whether Edit was just pressed.
+  // A new comment’s unfinished text, set aside while an edit is open, and whether its box or Edit was just opened.
   parked: null,
+  composeFocus: false,
   editFocus: false,
   verdict: 'request_changes',
   view: 'diff',
@@ -33,6 +34,7 @@ export function startComment(draft, key) {
   draft.composing = key;
   draft.composingText = parked && JSON.stringify(parked.key) === JSON.stringify(key) ? parked.text : '';
   draft.composingSelection = null;
+  draft.composeFocus = true;
 }
 
 /**

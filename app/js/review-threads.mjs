@@ -132,11 +132,7 @@ function editorOf(c, at, { d, rerender }) {
       }
     },
   });
-  // Focus goes to it when Edit is pressed, and back to it after a repaint only if it had focus: a repaint while the
-  // person types elsewhere, such as another agent’s comment arriving, leaves their focus where it is.
-  const focused = d.editFocus || document.activeElement?.matches('textarea[data-edit-draft]');
-  d.editFocus = false;
-  if (focused) queueMicrotask(() => restoreComposer(ta, saved, text));
+  refocus(ta, d, 'editFocus', 'data-edit-draft', saved, text);
   const quote = quoted(c.quote ?? c.gone);
   return h(
     'div.rv-thread',
@@ -153,6 +149,19 @@ function editorOf(c, at, { d, rerender }) {
       ),
     ),
   );
+}
+
+/**
+ * Gives a comment box focus, with its saved selection, when it was just opened (`d[opened]`), or after a repaint only
+ * if it had focus before (#858): a repaint while the person types elsewhere, such as another agent’s comment arriving,
+ * leaves their focus where it is. The old box is still on the page while the new one is built, so `mark` finds it.
+ * @param {HTMLTextAreaElement} ta @param {any} d @param {string} opened @param {string} mark @param {number[]} saved
+ * @param {string} text
+ */
+function refocus(ta, d, opened, mark, saved, text) {
+  const had = d[opened] || document.activeElement?.matches(`textarea[${mark}]`);
+  d[opened] = false;
+  if (had) queueMicrotask(() => restoreComposer(ta, saved, text));
 }
 
 /** Restores focus and the saved selection after the box is rebuilt. */
@@ -178,6 +187,7 @@ function composer(key, { b, d, closeComposer }) {
   };
   const ta = h('textarea.textarea', {
     'aria-label': label,
+    'data-new-comment': '',
     style: { minHeight: '56px' },
     value: text,
     oninput: remember,
@@ -202,7 +212,7 @@ function composer(key, { b, d, closeComposer }) {
     d.comments.push(typeof key === 'object' ? { ...key, text } : b.format === 'app' ? { anchor: key, text } : { line: key, text });
     closeComposer(key);
   };
-  queueMicrotask(() => restoreComposer(ta, saved, text));
+  refocus(ta, d, 'composeFocus', 'data-new-comment', saved, text);
   return h(
     'div.rv-thread',
     h(
