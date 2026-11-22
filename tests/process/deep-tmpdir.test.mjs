@@ -29,6 +29,29 @@ function deepTmpdir() {
   return dir;
 }
 
+/** The summary after “failing tests:”, or, with none, each failure line as it streamed. @param {string} out */
+function listed(out) {
+  const at = out.search(/^[ℹ✖] failing tests:$/m);
+  if (at >= 0) return out.slice(at).split('\n').slice(0, 80);
+  return out
+    .split('\n')
+    .filter((l) => /^\s*(✖|not ok)/.test(l))
+    .slice(0, 40);
+}
+
+/**
+ * What the child run said failed, with each failure’s own error: node --test lists them after “failing tests:”. Only
+ * the names left a nested remote test’s flake impossible to tell apart from this test’s (#464-b2a, #843). A child
+ * killed at its timeout prints no summary, so then its failure lines as they streamed; and the end of its stderr,
+ * where a crash outside any test shows.
+ * @param {{ stdout?: string | null, stderr?: string | null }} r
+ */
+function failures(r) {
+  const lines = listed(r.stdout ?? '');
+  const err = (r.stderr ?? '').trim();
+  return [lines.length ? lines.join('\n') : '(none listed)', ...(err ? [`stderr:\n${err.split('\n').slice(-20).join('\n')}`] : [])].join('\n');
+}
+
 test('the socket tests pass, and leave nothing, with TMPDIR as deep as the gate’s run folder on macOS', {
   skip: process.platform === 'win32' && 'needs /tmp',
   timeout: 300_000,
@@ -38,19 +61,19 @@ test('the socket tests pass, and leave nothing, with TMPDIR as deep as the gate�
   // Without this, the child node --test reports to this one’s runner instead of running as a run of its own.
   delete env.NODE_TEST_CONTEXT;
   const files = fs.readdirSync(join(ROOT, 'tests')).filter((name) => /^remote-.*\.test\.mjs$/.test(name));
-  const args = ['--test', '--test-timeout=60000', '--import', './tests/guard.mjs', ...files.map((name) => join('tests', name))];
+  // The spec reporter, named: node 22, which CI runs, writes TAP to a pipe, with no “failing tests:” summary.
+  const args = ['--test', '--test-reporter=spec', '--test-timeout=60000', '--import', './tests/guard.mjs', ...files.map((name) => join('tests', name))];
   const r = spawnSync(process.execPath, args, { cwd: ROOT, env, timeout: 240_000, encoding: 'utf8', maxBuffer: 1 << 28 });
   const ran = Number(/^(?:ℹ|#) tests (\d+)$/m.exec(r.stdout ?? '')?.[1] ?? 0);
-  // What failed, with each failure’s own error: node --test lists them after “failing tests:”. Only the names left a
-  // nested remote test’s flake impossible to tell apart from this test’s (#464-b2a, seen once at a load of 11).
-  const out = r.stdout ?? '';
-  const failing = out
-    .slice(out.search(/^ℹ failing tests:$|^✖ failing tests:$/m))
-    .split('\n')
-    .slice(0, 80)
-    .join('\n');
   assert.ok(ran > 100, `ran ${ran} tests (exit ${r.status ?? r.signal})`);
-  assert.equal(r.status, 0, `exit ${r.status ?? r.signal}, failing:\n${out.includes('failing tests:') ? failing : '(none listed)'}`);
+  assert.equal(r.status, 0, `exit ${r.status ?? r.signal}, failing:\n${failures(r)}`);
   const left = fs.readdirSync(dir).filter((name) => !OUT_OF_SCOPE.test(name));
   assert.deepEqual(left, [], 'what the socket tests left in TMPDIR');
+});
+
+test('a child with no summary, as one killed at its timeout, still names its failures, and shows its stderr', () => {
+  // As node 22’s TAP reporter streamed it before a kill: the failure lines, and no “failing tests:” section.
+  const tap = 'ok 1 - #464 one\nnot ok 2 - #464-b2a a 127 doesn’t connect it again\n# Subtest: next\n';
+  assert.match(failures({ stdout: tap, stderr: '' }), /not ok 2 - #464-b2a/);
+  assert.match(failures({ stdout: '', stderr: 'node:internal x\nUnhandled rejection: boom' }), /\(none listed\)\nstderr:\n.*Unhandled rejection: boom/s);
 });
