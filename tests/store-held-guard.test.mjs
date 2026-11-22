@@ -54,7 +54,7 @@ const PUBLISHED = {
   'write-intent.mjs': ['requestOf', 'stopRequested', 'stopRequested'], // the request the person made, and their Stop on a line they see
 };
 
-/** Direct reads of state.items, state.work or state.apps: published reads. */
+/** Direct reads of state.items, state.work, state.apps or state.schedules: published reads. */
 const DIRECT = {
   'app-entries.mjs': ['sendAppMessage'], // the title of an app whose check the page reported, for its entry’s line (#1425)
   'app-links.mjs': ['openLink'], // that the app exists, for the page’s request to open its link (#1480)
@@ -69,8 +69,10 @@ const DIRECT = {
   'permission-expiry.mjs': ['expireStalePermissions'], // at startup
   'public-state.mjs': ['publicItems'], // a conversation’s items by range, an HTTP answer to the page (#1155)
   'restart-sweep.mjs': ['foldCutOff', 'stopStreaming'], // at startup: the steps of turns a restart cut off, and their replies marked stopped
-  'sandbox-routes.mjs': ['sandboxRoute'], // an app version’s sandbox page: an HTTP answer to the page
+  'sandbox-routes.mjs': ['sandboxRoute'],
+  'scheduled-wakes.mjs': ['rearmWakes'], // at startup or a reload, when nothing is held (#623) // an app version’s sandbox page: an HTTP answer to the page
   'shell-runs.mjs': ['expireStaleCommands'], // at startup
+  'store-outage.mjs': ['dropsAtReload'], // at a reload, when nothing is held: which held messages a reload drops (#623)
   'thread-headers.mjs': ['itemsOf'], // each thread's header facts, sent to the page (#1155)
   'thread-search.mjs': ['threadSearch'], // a conversation’s search, an HTTP answer to the page (#1155)
   'tool-ask.mjs': ['settleToolAsks'], // only the thread ids; each thread is read through store.pending
@@ -101,9 +103,9 @@ const COMMITS = {
   'work-archive.mjs': ['commitTurn'],
 };
 
-test('every published read of items, work and apps in server/ is placed, by file and function', () => {
+test('every published read of items, work, apps and schedules in server/ is placed, by file and function', () => {
   placed(/\bstore\.(items|item)\(/, PUBLISHED, 'the published reads');
-  placed(/\.s\.(items|work|apps)\b|state\.(items|work|apps)\b|\.(items|work|apps)\[/, DIRECT, 'the direct reads of state');
+  placed(/\.s\.(items|work|apps|schedules)\b|state\.(items|work|apps|schedules)\b|\.(items|work|apps|schedules)\[/, DIRECT, 'the direct reads of state');
 });
 
 test('every pending read in server/ is placed, by file and function, the ledger’s entries() and entry() included', () => {
