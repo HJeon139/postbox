@@ -118,7 +118,7 @@ export function reportFacts(md) {
  * streams say they ran, or the runner’s --agent-model where there is one; their effort is what they were seeded with
  * (facts.agentEffort: one level, several joined by “/”, or null for the backend’s default), else the runner’s --agent-effort.
  * @param {{ root: string, dir: string, scenario: any, name: string, opt: Record<string, unknown>, started: number, steps: number, cap: number, startPhase?: number, phases?: number[]|null,
- *   tester: { spent: number }, facts: any, coverage: any[], now?: number, git?: (args: string[], cwd: string) => string|null }} r
+ *   tester: { spent: number }, facts: any, coverage: any[], workspace?: string|null, now?: number, git?: (args: string[], cwd: string) => string|null }} r
  */
 export function runRecord({
   root,
@@ -134,6 +134,7 @@ export function runRecord({
   tester,
   facts,
   coverage,
+  workspace = null,
   now = Date.now(),
   git = gitOut,
 }) {
@@ -154,6 +155,8 @@ export function runRecord({
     // The phases a --phases run played (tools/uat/phases.mjs), so a recheck reads the scenario as it played it.
     ...(phases ? { phases } : {}),
     minutes: Math.round((now - started) / 60000),
+    // Where the agents worked, outside the checkout (#885), which a recheck reads their commands against (workspaceOf).
+    ...(workspace ? { workspace } : {}),
     // `noCostFrom`: the harnesses the run had turns on whose cost isn’t in `agents`, since they report none.
     cost: {
       agents: Math.round(agents * 100) / 100,
@@ -221,6 +224,8 @@ export function readRun(dir, { scenarios } = {}) {
     budget: saved.budget ?? null,
     // Where the run’s time went (tools/uat/timing.mjs): only a live run measures it, so a recheck keeps it.
     timing: saved.timing ?? null,
+    // Where the agents worked (#885): a recheck reads their commands against it, and keeps it in the run.json it writes.
+    ...(saved.workspace ? { workspace: saved.workspace } : {}),
     // Whether the agent drew first (#983), and its first picture (#995): only a live run
     // or tools/uat-pairs.mjs records them, so a recheck keeps them.
     ...(saved.picture ? { picture: saved.picture } : {}),

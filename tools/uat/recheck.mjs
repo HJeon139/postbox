@@ -23,6 +23,7 @@ import { isTargeted, parseScenario, phaseCap } from './scenario.mjs';
 import { withItems } from './state-items.mjs';
 import { gapFinding, phaseGoals } from './triggers.mjs';
 import { withoutPreset } from './verdicts.mjs';
+import { workspaceOf } from './workspace.mjs';
 
 // ── Recheck ──────────────────────────────────────────────────────────────────────────────────
 // Runs the checks again over a finished run’s saved data (no agents, no tester), for when the checks or the
@@ -57,7 +58,7 @@ export function savedFacts(dir, { state, mainId, saved, logs, hostsRec, record }
     agyStreams: readStreams(join(dir, 'streams', 'agy')),
     codexStreams: readStreams(join(dir, 'streams', 'codex')),
     // The path the live run’s checks read commands against (#885: a temp folder since then), else where it’s kept.
-    workspace: record?.workspace ?? join(dir, 'workspace'),
+    workspace: workspaceOf(dir, record),
     sdkStreams: readStreams(join(dir, 'streams', 'sdk')),
     events: readHistory(dir),
     live: readLive(dir),
@@ -75,7 +76,7 @@ export function savedFacts(dir, { state, mainId, saved, logs, hostsRec, record }
     // The live run’s first picture (#995), for the report.
     ...(record?.firstPicture ? { firstPicture: record.firstPicture } : {}),
     ui: {},
-    ...userSetup(record?.workspace ?? join(dir, 'workspace')),
+    ...userSetup(workspaceOf(dir, record)),
     ...(hostsRec ? { hosts: hostsRec } : {}),
   };
 }

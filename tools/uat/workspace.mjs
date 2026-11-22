@@ -3,10 +3,10 @@
 // kept in the run’s folder once the run has stopped (retainWorkspace). Moved from run-files.mjs, with the run’s folders.
 
 import { spawnSync } from 'node:child_process';
-import { cpSync, existsSync, rmSync } from 'node:fs';
+import { cpSync, existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { mkdir, mkdtemp, realpath } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join, sep } from 'node:path';
+import { basename, dirname, join, sep } from 'node:path';
 import { seedFakeEnv } from './allowonce-triggers.mjs';
 import { seedFiles } from './fixtures.mjs';
 import { seedGitRemote } from './git-remote.mjs';
@@ -41,11 +41,15 @@ export function makeWorkspace(scenario, paths, dir) {
  */
 export async function runPaths(dir, { root, tmp = tmpdir() }) {
   const base = await realpath(tmp);
-  const checkout = await realpath(root);
-  if (base === checkout || base.startsWith(checkout + sep))
-    throw new Error(
-      `The temp folder ${base} is inside the Postbox checkout, so a run’s agents could read the checkout from their workspace (#885). Set TMPDIR to a folder outside ${checkout}, and run again.`,
-    );
+  // The checkout the run is from, and the one its folder is in: from a worktree, runs go in the main clone’s uat-runs/.
+  const runsIn = basename(dirname(dir)) === 'uat-runs' ? [dirname(dirname(dir))] : [];
+  for (const folder of [root, ...runsIn]) {
+    const checkout = await realpath(folder).catch(() => folder);
+    if (base === checkout || base.startsWith(checkout + sep))
+      throw new Error(
+        `The temp folder ${base} is inside the Postbox checkout, so a run’s agents could read the checkout from their workspace (#885). Set TMPDIR to a folder outside ${checkout}, and run again.`,
+      );
+  }
   const paths = {
     data: join(dir, 'data'),
     streams: join(dir, 'streams'),
@@ -60,11 +64,37 @@ export async function runPaths(dir, { root, tmp = tmpdir() }) {
   const workspace = join(outside, 'workspace');
   try {
     await mkdir(workspace);
+    // Where the agents work, in the run’s folder from the start, so a recheck of a run that ended before its run.json
+    // (Ctrl-C, an error) reads their commands against it (workspaceOf).
+    writeFileSync(join(dir, WORKSPACE_PATH), `${workspace}\n`);
   } catch (e) {
     rmSync(outside, { recursive: true, force: true });
     throw e;
   }
   return { ...paths, workspace, kept: join(dir, 'workspace'), outside };
+}
+
+/** The file in the run’s folder that names where its agents worked. */
+const WORKSPACE_PATH = 'workspace-path';
+
+/**
+ * Where a run’s agents worked, as its checks read their commands: run.json’s record, else the file runPaths wrote
+ * when it made the workspace, else workspace/ in the run’s folder, as for a run from before #885.
+ * @param {string} dir  the run’s folder @param {{ workspace?: string } | null | undefined} record  its run.json
+ */
+export function workspaceOf(dir, record) {
+  if (record?.workspace) return record.workspace;
+  const file = join(dir, WORKSPACE_PATH);
+  const named = existsSync(file) ? readFileSync(file, 'utf8').trim() : '';
+  return named || join(dir, 'workspace');
+}
+
+/**
+ * Keeps the workspace in the run’s folder when the process exits, whatever ends the run, after its stop (#885).
+ * @param {{ workspace: string, kept: string, outside: string }} paths @param {{ once: (event: 'exit', fn: () => void) => unknown }} [on]
+ */
+export function keepOnExit(paths, on = process) {
+  on.once('exit', () => retainWorkspace(paths));
 }
 
 /**

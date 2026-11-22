@@ -61,3 +61,15 @@ test('#885 a run whose folders can’t be made leaves no temp folder behind, and
   await assert.rejects(runPaths(dir, { root: checkout, tmp }), { code: 'EEXIST' });
   assert.deepEqual(readdirSync(tmp), [], 'no workspace folder was made');
 });
+
+test('#885 a temp folder inside the main clone is refused too, where a worktree’s runs go', async () => {
+  // From a worktree, runsRoot puts the run’s folder in the main clone’s uat-runs/, not the worktree’s.
+  const { checkout: main } = layout();
+  const worktree = realpathSync(tempDir('pb-uat-worktree-'));
+  const dir = join(main, 'uat-runs', '2026-11-22T00-00-00-visualskill-bill');
+  mkdirSync(dir, { recursive: true });
+  const inMain = join(main, 'tmp');
+  mkdirSync(inMain);
+  await assert.rejects(runPaths(dir, { root: worktree, tmp: inMain }), /is inside the Postbox checkout/);
+  assert.ok((await runPaths(dir, { root: worktree, tmp: tempDir('pb-uat-tmp-') })).workspace, 'and a temp folder outside both is used');
+});

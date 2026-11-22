@@ -70,7 +70,7 @@ import { createTester, systemPrompt, unaddressed } from './uat/tester.mjs';
 import { runTiming } from './uat/timing.mjs';
 import { phaseGoals } from './uat/triggers.mjs';
 import { namedWait, sendThenStop, settle as settleTurns, stopThroughPage, testerWait, watchBudget } from './uat/turns.mjs';
-import { makeWorkspace, retainWorkspace, runPaths } from './uat/workspace.mjs';
+import { keepOnExit, makeWorkspace, retainWorkspace, runPaths } from './uat/workspace.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const { values: opt } = parseArgs({
@@ -123,8 +123,7 @@ async function main() {
   const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
   const dir = join(runsRoot({ root: ROOT }), `${stamp}-${name}`);
   const paths = await runPaths(dir, { root: ROOT });
-  // Kept in the run’s folder when the process exits, whatever ends the run, after its stop (#885).
-  process.once('exit', () => retainWorkspace(paths));
+  keepOnExit(paths);
   makeWorkspace(scenario, paths, dir);
   // A phase’s `- fault:` (#508): Postbox starts with the fault launcher in front of the faulted agent’s CLI.
   const faults = faultSetup({ scenario, root: ROOT, dir, env: process.env });
@@ -537,10 +536,9 @@ async function main() {
         tester,
         facts,
         coverage,
+        workspace: paths.workspace,
       }),
       ...(facts.budget ? { budget: facts.budget } : {}),
-      // Where the agents worked, outside the checkout (#885), which a recheck reads their commands against.
-      workspace: paths.workspace,
     });
     return all;
   } finally {
