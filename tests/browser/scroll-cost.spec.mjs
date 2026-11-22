@@ -103,7 +103,8 @@ async function traced(page, steps) {
 const COMPOSITING = ['Layerize', 'ProxyImpl::Commit', 'DiscardableImageMap::Generate'];
 
 for (const mode of ROOM_MODES)
-  test(`#572: scrolling 1,000 replies on light costs about what it does on dark to lay out and commit, ${mode}`, async ({ page }) => {
+  test(`#572: scrolling 1,000 replies on light costs about what it does on dark to lay out and commit, ${mode}`, async ({ page, browserName }) => {
+    test.skip(browserName !== 'chromium', 'the trace comes from Chromium’s DevTools protocol');
     await openAs(page, mode);
     test.setTimeout(180_000);
     await seeded(page, mode === 'whole room' ? 'icons-whole' : 'icons');
