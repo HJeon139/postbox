@@ -188,7 +188,7 @@ test('#248 an outcome recorded on an approved review isn’t a revision: it stil
 // drawing held the page, and the new frame’s size came between the press on Submit and its release: a frame that
 // started at the stylesheet’s 160 px grew to the diagram’s height, Submit moved under the pointer, and the release
 // landed beside it, so the browser fired no click and the review never went (review-table.spec.mjs, 375 px). The test
-// holds the frame’s size message and lets it through as the press goes down, then releases the mouse at once.
+// holds the diagrams’ size messages and lets them through as the press goes down, then releases the mouse at once.
 test.describe('at 375 px', () => {
   test.use({ viewport: { width: 375, height: 812 }, ...PHONE });
 
@@ -199,21 +199,23 @@ test.describe('at 375 px', () => {
     await block.getByRole('button', { name: 'Comment on line 9', exact: true }).click();
     await expect(page.getByRole('textbox', { name: 'Comment on line 9' })).toBeFocused();
     await page.keyboard.insertText('Center the cost.');
+    // Every diagram’s size is held, since the review can redraw again after the comment goes in, and the frame on the
+    // page at the press is then a newer one. All of them go through as the press goes down.
     await page.evaluate(() => {
       const w = /** @type {any} */ (window);
-      const again = new WeakSet();
-      w.heldSize = null;
+      /** @type {MessageEvent[]} */
+      const held = [];
       const hold = (/** @type {MessageEvent} */ e) => {
-        if (e.data?.__pbd !== 1 || e.data.type !== 'size' || again.has(e) || w.heldSize) return;
-        w.heldSize = e;
+        if (e.data?.__pbd !== 1 || e.data.type !== 'size') return;
+        held.push(e);
         e.stopImmediatePropagation();
       };
       addEventListener('message', hold, true);
+      const frames = () => [...document.querySelectorAll('figure.diagram iframe')].map((f) => /** @type {HTMLIFrameElement} */ (f).contentWindow);
+      w.heldFromPage = () => held.some((e) => frames().includes(/** @type {Window} */ (e.source)));
       const release = () => {
         removeEventListener('message', hold, true);
-        const e = new MessageEvent('message', { data: w.heldSize.data, origin: w.heldSize.origin, source: w.heldSize.source });
-        again.add(e);
-        dispatchEvent(e);
+        for (const e of held) dispatchEvent(new MessageEvent('message', { data: e.data, origin: e.origin, source: e.source }));
       };
       addEventListener('pointerdown', release, { capture: true, once: true });
     });
@@ -221,9 +223,11 @@ test.describe('at 375 px', () => {
     await expect(block.locator('.g-mark[data-line="9"]'), 'the comment added').toBeFocused();
     // The redrawn frame loads as it nears the view.
     await block.locator('figure.diagram').scrollIntoViewIfNeeded();
-    await expect.poll(() => page.evaluate(() => !!(/** @type {any} */ (window).heldSize)), { message: 'the redrawn frame’s size, held' }).toBe(true);
     const submit = block.getByRole('button', { name: 'Submit review', exact: true });
     await submit.scrollIntoViewIfNeeded();
+    await expect
+      .poll(() => page.evaluate(() => /** @type {any} */ (window).heldFromPage()), { message: 'a size held from the frame on the page now' })
+      .toBe(true);
     const box = /** @type {{ x: number, y: number, width: number, height: number }} */ (await submit.boundingBox());
     const at = { x: box.x + box.width / 2, y: box.y + box.height / 2, button: /** @type {const} */ ('left'), clickCount: 1 };
     // Sent together, so the release comes before the page draws again, as it did on CI’s runner.
