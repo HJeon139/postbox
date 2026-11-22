@@ -85,7 +85,9 @@ export async function askQuestions(rt, sessionId, req, blocks, shown = []) {
     const block = prior?.it.block ?? fresh;
     const got = prior ? await again(rt, sessionId, prior) : await askOne(rt, sessionId, block, req.toolUseId ?? null, req.hostPrompt, i);
     const unasked = blocks.slice(i + 1);
-    if (got.dismissed) return { allow: false, message: [DISMISSED, answeredText(answers), unaskedText(unasked)].filter(Boolean).join(' ') };
+    // Dismissed, or already delivered as a message (#1059): the question is over, so nothing says it stays open.
+    const over = endedBy(got);
+    if (over) return { allow: false, message: [over, answeredText(answers), unaskedText(unasked)].filter(Boolean).join(' ') };
     if (!got.values) return { allow: false, message: stillOpen(got.message, answers, unasked) };
     answers[block.prompt] = answerText(block, got.values);
   }
@@ -101,7 +103,7 @@ export async function askQuestions(rt, sessionId, req, blocks, shown = []) {
  */
 function answeredMeanwhile(rt, sessionId, it) {
   const sent = rt.delivery.entriesFrom(it.id).filter((/** @type {any} */ e) => e.source === 'answer' && e.state !== 'stopped');
-  if (sent.some((/** @type {any} */ e) => e.state !== 'waiting')) return { message: DELIVERED };
+  if (sent.some((/** @type {any} */ e) => e.state !== 'waiting')) return { delivered: true };
   for (const e of sent) rt.delivery.cancel(sessionId, e.id);
   return it.answer?.action === 'dismiss' ? { dismissed: true } : { values: it.answer?.values ?? {} };
 }
@@ -115,6 +117,13 @@ function again(rt, sessionId, { threadId, it }) {
   const se = rt.s.sessions[sessionId];
   if (se) offerNeed(rt, se, { kind: 'block', itemId: it.id, text: it.block.title ?? it.block.prompt, ...rt.sessions.awayFrom(se, threadId) }, 'needs');
   return new Promise((resolve) => rt.permissionWaits.set(it.id, { resolve, threadId, sessionId, timer: null, question: true }));
+}
+
+/** Why a question is over without an answer for its call, or null. @param {{ dismissed?: boolean, delivered?: boolean }} got */
+function endedBy(got) {
+  if (got.dismissed) return DISMISSED;
+  if (got.delivered) return DELIVERED;
+  return null;
 }
 
 /** The chosen labels in the options’ order, then the Other text, joined with “, ” as Claude Code joins several. */

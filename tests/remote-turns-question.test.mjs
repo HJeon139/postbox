@@ -171,3 +171,21 @@ test('#1059 an answer given after a restart, before the prompt comes again, reac
   r.d.end('host-turn-1');
   await settled(r);
 });
+
+test('#1059 an answer the agent already had as a message after a restart ends the call, with no promise of another', async () => {
+  const r = restartedAsking(ONE, [{}], { resend: false });
+  await until(() => r.d.received.some((m) => m.type === 'read' && m.turn === 'host-turn-1'), 'the attach');
+  const [q] = questions(r);
+  pick(r, q, 'Green');
+  await until(() => r.rt.delivery.entriesFrom(q.id).some((e) => e.state === 'waiting'), 'the answer as a message');
+  // The agent’s next turn took it before the prompt came again.
+  for (const e of r.rt.delivery.entriesFrom(q.id)) r.rt.delivery.patch(e, { state: 'delivered' });
+  r.d.prompt('host-turn-1', request(ONE), 'p-1');
+  await until(() => r.d.answers.length === 1, 'the answer');
+  const { result } = r.d.answers[0];
+  assert.equal(result.behavior, 'deny');
+  assert.match(result.message, /already reached you as a message/);
+  assert.doesNotMatch(result.message, /stays open|reaches you as a message, so/, 'no second answer is promised');
+  r.d.end('host-turn-1');
+  await settled(r);
+});
