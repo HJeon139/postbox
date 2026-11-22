@@ -214,7 +214,8 @@ export function spokenSentences(text, spoken, done = false) {
   return { sentences: r.pieces.map(plainText).filter(Boolean), spoken: r.spoken };
 }
 
-const ENTITIES = { '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"', '&#39;': "'" };
+// &#42; is a * the renderer kept as typed, as in 10**9 (#793).
+const ENTITIES = { '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"', '&#39;': "'", '&#42;': '*' };
 /** Markdown as plain text: the text the renderer draws, without code blocks. @param {string} src */
 export function plainText(src) {
   // A table arrives a line at a time: a row is heard as its cells, and its delimiter row not at all.
@@ -229,7 +230,7 @@ export function plainText(src) {
     .join('')
     .replace(/<(br|hr|\/p|\/li|\/h\d|\/blockquote|\/div|\/t[dh])>/g, ' ');
   return stripTags(html)
-    .replace(/&(amp|lt|gt|quot|#39);/g, (e) => ENTITIES[e])
+    .replace(/&(amp|lt|gt|quot|#39|#42);/g, (e) => ENTITIES[e])
     .replace(/\s+/g, ' ')
     .trim();
 }
