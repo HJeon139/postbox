@@ -2,6 +2,28 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.36.0 (2026-11-22)
+
+### Features
+
+- **server:** name a step's tool only in UAT recording mode
+- **server:** name the tool each activity step ran
+
+### Fixes
+
+- **server:** read UAT recording mode once, and test that no mirrored step names its tool when off
+- **threads:** keep a relabeled head button's text where a plain one puts it
+- **apps:** name the version on screen in the app bar, and pin the review exception
+- **threads:** give a thread head's changing labels their widest width
+- **server:** name the tool on every step a tool call makes, refused and mirrored ones too
+- **threads:** set a thread head's rows by its width alone
+- **app:** show times on the browser's own clock
+- **threads:** keep room for a thread head's text at the panel's narrowest
+- **threads:** keep a thread panel's head lines to one line each
+- **apps:** never let a version Postbox couldn’t check stand in for a later one
+- **apps:** stand in only a version the person was shown while its agent fixes the next
+- **apps:** keep the check’s findings for the agent and show the person a plain status
+
 ## 4.35.17 (2026-11-22)
 
 ### Fixes
