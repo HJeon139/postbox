@@ -6,7 +6,7 @@
 
 import { BACKEND_NAMES, codexDefault, sameModel } from '../../shared/agent-facts.mjs';
 
-/** Where each backend’s turns are recorded (tools/uat/run-files.mjs, runPaths), as the run’s facts hold them. */
+/** Where each backend’s turns are recorded (tools/uat/workspace.mjs, runPaths), as the run’s facts hold them. */
 const RECORDED = /** @type {const} */ ([
   ['streams', 'claude-code'],
   ['sdkStreams', 'agent-sdk'],

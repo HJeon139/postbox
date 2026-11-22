@@ -58,7 +58,7 @@ import { reviewFindings } from './uat/review.mjs';
 import { endRun } from './uat/run-end.mjs';
 import { runEnv } from './uat/run-env.mjs';
 import { runFacts } from './uat/run-facts.mjs';
-import { keeper, readReceived, readStore, readStreams, readTranscripts, readUi, retainWorkspace, runPaths } from './uat/run-files.mjs';
+import { keeper, readReceived, readStore, readStreams, readTranscripts, readUi } from './uat/run-files.mjs';
 import { runScenario } from './uat/run-scenario.mjs';
 import { gitInfo, runRecord, runsRoot, writeJsonAtomic } from './uat/runs.mjs';
 import { phaseCap, stepCap } from './uat/scenario.mjs';
@@ -70,7 +70,7 @@ import { createTester, systemPrompt, unaddressed } from './uat/tester.mjs';
 import { runTiming } from './uat/timing.mjs';
 import { phaseGoals } from './uat/triggers.mjs';
 import { namedWait, sendThenStop, settle as settleTurns, stopThroughPage, testerWait, watchBudget } from './uat/turns.mjs';
-import { makeWorkspace } from './uat/workspace.mjs';
+import { makeWorkspace, retainWorkspace, runPaths } from './uat/workspace.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const { values: opt } = parseArgs({

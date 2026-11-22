@@ -8,8 +8,7 @@ import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { savedFacts } from '../../tools/uat/recheck.mjs';
-import { retainWorkspace, runPaths } from '../../tools/uat/run-files.mjs';
-import { makeWorkspace } from '../../tools/uat/workspace.mjs';
+import { makeWorkspace, retainWorkspace, runPaths } from '../../tools/uat/workspace.mjs';
 import { tempDir } from '../temp-dirs.mjs';
 
 /** A run folder inside a made-up checkout, and a temp folder elsewhere. */

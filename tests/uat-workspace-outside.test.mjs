@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { mkdirSync, readdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { dirname, join, sep } from 'node:path';
 import { test } from 'node:test';
-import { runPaths } from '../tools/uat/run-files.mjs';
+import { runPaths } from '../tools/uat/workspace.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
 /** A checkout with a brief in it, a run folder inside it, and a temp folder elsewhere. */
