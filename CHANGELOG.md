@@ -2,6 +2,14 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.35.17 (2026-11-22)
+
+### Fixes
+
+- **app:** cut the kept tail back a page at a time, not on every add
+- **app:** cap the newest items kept for End when they're first kept
+- **app:** keep at most a page of the newest items for End
+
 ## 4.35.16 (2026-11-22)
 
 ### Fixes
