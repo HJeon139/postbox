@@ -35,7 +35,7 @@ const fixture = (name) =>
 function room() {
   const r = setup();
   const dir = tempDir('pb-switch-run-');
-  // Made up front, as the runner makes them (tools/uat/run-files.mjs, runPaths).
+  // Made up front, as the runner makes them (tools/uat/workspace.mjs, runPaths).
   for (const [sub] of Object.values(BACKENDS)) mkdirSync(join(dir, sub), { recursive: true });
   const events = [];
   const sessions = new Map(Object.entries(r.store.state.sessions));

@@ -23,10 +23,14 @@ export const KIRO_PUBLISHING = [
  */
 export const KIRO_TOOL_RULES = /** @type {Record<string, string[]>} */ ({ shell: ['shell'], 'web.fetch': ['web_fetch', 'web_search'] });
 
-/** A folder as given and as resolved: Kiro matches resolved paths (/tmp is /private/tmp on macOS). */
+/**
+ * A folder as given and as resolved: Kiro matches resolved paths (/tmp is /private/tmp on macOS). Resolved natively,
+ * as the kernel does: JavaScript’s realpathSync reads a link target’s .. lexically, so a folder linked to sub/../d,
+ * with sub a link elsewhere, was allowed as the folder’s lexical sibling d instead (#1215).
+ */
 const spellings = (dir) => {
   try {
-    const real = realpathSync(dir);
+    const real = realpathSync.native(dir);
     return real === dir ? [dir] : [dir, real];
   } catch {
     return [dir];
@@ -94,6 +98,10 @@ function autoAllows(has) {
 const HEADLESS_NOTE =
   '## Refused tool calls\n\nPostbox runs you headless, so Kiro can’t ask the person to approve a tool call: one that would need approval is refused, and Kiro reports it as “The user rejected this tool call.” The person didn’t see or decline it. Say which call was refused and that the agent’s permissions in Postbox didn’t allow it, then carry on without it.';
 
+// Kiro’s v3 engine gives the model MCP tools only on demand, through its tool_load and tool_call (“Tool Load”, as
+// recorded in tests/fixtures/kiro-cli/block.jsonl), and an agent never told so may never load Postbox’s (#489).
+const TOOL_LOAD_NOTE = `## Postbox’s tools\n\nKiro loads MCP tools on demand. The first time you use one of Postbox’s in a session, call \`tool_load\` with its id, such as \`${POSTBOX_SERVER}::show_block\` or \`${POSTBOX_SERVER}::read_message\`; then run it with \`tool_call\`, without loading it again. If \`tool_load\` isn’t among your tools, or doesn’t find Postbox’s, check again on your next turn rather than relying on an earlier answer, and say which in your reply.`;
+
 // Kiro still lists a denied server’s tools to the model; it only refuses the call. In the mixed-room UAT, an Isolated
 // agent offered “Manage scoped AWS credentials” from a server a managed install had added, so it’s told.
 const ISOLATED_NOTE =
@@ -111,7 +119,7 @@ export function kiroAgent({ name, persona, mcpUrl = '', shim, guide, folders, re
   return {
     name,
     description: `@${persona.handle} in Postbox`,
-    prompt: `${guide}\n\n${HEADLESS_NOTE}\n\n${SIZE_LIMIT_NOTE}${usesHostSetup ? '' : `\n\n${ISOLATED_NOTE}`}`,
+    prompt: `${guide}\n\n${HEADLESS_NOTE}\n\n${TOOL_LOAD_NOTE}\n\n${SIZE_LIMIT_NOTE}${usesHostSetup ? '' : `\n\n${ISOLATED_NOTE}`}`,
     tools: ['*'],
     // Your global and workspace mcp.json, unless the persona is Isolated.
     includeMcpJson: usesHostSetup,

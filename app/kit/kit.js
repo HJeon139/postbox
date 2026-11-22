@@ -26,6 +26,8 @@
     resolveReady = r;
   });
   let anchorMap = {};
+  // The parts a review hears the app names: the ones still set (#855). Both reports use it, so they agree.
+  const namedParts = () => Object.keys(anchorMap).filter((k) => anchorMap[k]);
   let reviewing = false;
 
   // includeUserActivation: the browser attaches this frame’s own click or key press state to the message, which
@@ -164,8 +166,10 @@
     },
     restoreState: () => ready.then((r) => r.state),
     anchors(map) {
-      anchorMap = Object.assign({}, map);
-      post({ type: 'anchors', names: Object.keys(anchorMap).filter((k) => anchorMap[k]) });
+      // “the whole app” is a review’s comment on the app as a whole, so no part can take that name (#855).
+      const { 'the whole app': _whole, ...parts } = map || {};
+      anchorMap = parts;
+      post({ type: 'anchors', names: namedParts() });
       if (reviewing) paintAnchors();
     },
     on(event, fn) {
@@ -179,6 +183,8 @@
   };
 
   post({ type: 'hello' });
+  // Once the page’s own scripts have run, the parts it names, none included: a review says when there are none (#855).
+  addEventListener('load', () => post({ type: 'anchors', names: namedParts() }));
 
   // The pre-display check is app/kit/check.js, which Postbox adds to a check frame’s page after the kit.
   if (init.check) window.__pbCheck = { ready, errors, post, rgb, lum };
@@ -228,7 +234,9 @@
     for (let v = 0; v <= max + 1e-9; v += s) out.push(+v.toFixed(10));
     return out;
   };
-  // Black or white text on a token color, whichever contrasts more. It parses the token and returns fixed inks.
+  // Black or white text on a token color, whichever contrasts more. It parses the token and returns fixed inks. Pure
+  // black, not a near-black: the better of black and white then reaches at least √21 ≈ 4.58:1 on any fill, over the
+  // 4.5:1 the app check holds apps to (#997). With #0b0b0b, light --s1’s labels fell to 4.46:1 (#1014).
   function inkOn(varName) {
     const c = rgb(
       getComputedStyle(document.documentElement)
@@ -237,10 +245,10 @@
         // lint-allow tokens: converts the token’s value for measuring.
         .replace(/^#(..)(..)(..)$/, (_m, r, g, b) => `rgb(${parseInt(r, 16)}, ${parseInt(g, 16)}, ${parseInt(b, 16)})`),
     );
-    if (!c) return '#ffffff'; // lint-allow tokens: pure white and near-black are the two inks this picks between.
+    if (!c) return '#ffffff'; // lint-allow tokens: pure white and pure black are the two inks this picks between.
     const L = lum(c);
     // lint-allow tokens: as above.
-    return (L + 0.05) / 0.0534 >= 1.05 / (L + 0.05) ? '#0b0b0b' : '#ffffff';
+    return (L + 0.05) / 0.05 >= 1.05 / (L + 0.05) ? '#000000' : '#ffffff';
   }
   const style = document.createElement('style');
   style.textContent = `.pb-chart{position:relative}.pb-chart svg{display:block;overflow:visible}.pb-chart svg text{font:12px system-ui,sans-serif;font-variant-numeric:tabular-nums}

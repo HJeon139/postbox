@@ -122,7 +122,7 @@ This crosses a security boundary ([security-boundaries.md](security-boundaries.m
 
 | Kind | Mirrors | Fields, the only ones sent |
 |---|---|---|
-| `step` | `item.patch` (`activityStep`) | `threadId`, `itemId`, `rev`, and `step`, an object of the step’s `id`, `label`, `state`, `ms`, `who`, `parent`, `detail`, `kind`, `job`, `input`, `output`, `part`, `at`, `added`, `deleted`, `diff` |
+| `step` | `item.patch` (`activityStep`) | `threadId`, `itemId`, `rev`, and `step`, an object of the step’s `id`, `label`, `tool`, `state`, `ms`, `who`, `parent`, `detail`, `kind`, `job`, `input`, `output`, `part`, `at`, `added`, `deleted`, `diff` |
 | `session` | `session.patch` | `sessionId`, `toolCalls`, `toolCount`, `currentStep`, `glimpse`, `subagents`, and the `state`, `ctx` and `updatedAt` of a change stored with them |
 | `snapshot` | the two above | `turnId`, `sessionId`, `threadId`, `itemId`, and the turn’s `steps` and `session`, each as its kind’s fields |
 

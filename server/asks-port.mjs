@@ -3,7 +3,7 @@
 // a refusal, expires its permission cards and reads or releases what the person needs only through these calls.
 // The composition root builds it with the Runtime and hands it to Turns as `asks`.
 
-import { keptTurns, nextNeed, releaseNeed, stateFor, TURN_TIED } from './card-needs.mjs';
+import { keptBlock, keptTurns, nextNeed, releaseNeed, stateFor, TURN_TIED } from './card-needs.mjs';
 
 /** @param {any} rt */
 export function asksPort(rt) {
@@ -19,6 +19,8 @@ export function asksPort(rt) {
     expirePermissions(sessionId, message, patch = {}) {
       for (const [id, w] of rt.permissionWaits) if (w.sessionId === sessionId) rt.settlePermission(id, 'expired', message, {}, patch);
     },
+    /** The block a turn that didn’t move on kept, in whichever of the agent’s threads it is (#647). @param {any} se */
+    keptBlock: (se) => keptBlock(rt, se),
     /** The turns still asking the person something, which a turn that doesn’t move on keeps. @param {any} se */
     keptTurns: (se) => keptTurns(rt, se),
     /** Whether a need is tied to a turn, so the person moving on clears it. @param {string} kind */

@@ -72,7 +72,7 @@ export function agentWake(
   // A card keeps the mention’s message, so Allow wakes from it rather than posting it again.
   // A bounce keeps its mark on the card, so what is held is told as a reply, not a mention (#1518).
   const card = { text, replyIn: at === parent.id ? null : at, fromTurnId, itemId, ...(bounce ? { bounce } : {}) };
-  if (!target) return askToAdd(rt, from, parent, p, card, { prose });
+  if (!target) return wakeAbsent(rt, from, parent, p, card, prose);
   // No limit between two agents (#492): the room shows the chain’s count, with a hint to Stop past CHAIN_HINT.
   if (!confirmed && (parent.hops ?? 0) >= roomChainLimit(rt, parent.id)) return askToWake(rt, from, parent, p, card);
   const hop = (parent.hops ?? 0) + 1;
@@ -156,8 +156,9 @@ export function dropWakes(rt, se, how = 'stopped') {
  * @param {any} side  the side or topic thread @param {string} personaId @param {string} by  the handle that woke it, or 'you'
  */
 export function sideSession(rt, side, personaId, by) {
-  const conv = rt.threads.lineage(side.id).at(-1);
-  const had = rt.sessions.in(conv).find((x) => x.personaId === personaId);
+  // As written: a topic, or its conversation, opened behind a held commit isn’t published yet (#1292).
+  const conv = rt.threads.lineage(side.id, (id) => rt.store.pending.thread(id)).at(-1);
+  const had = rt.sessions.pendingIn(conv).find((x) => x.personaId === personaId);
   if (had?.retiredFork) throw retiredError(had);
   const where = side.kind === 'topic' ? 'a topic thread' : 'a side thread';
   return (
@@ -170,14 +171,68 @@ export function sideSession(rt, side, personaId, by) {
 }
 
 /**
+ * A wake of an agent the conversation doesn’t have. One the person deleted from it isn’t asked for again: their delete
+ * stands, and the waker carries on without it (#283). Their own @-mention brings it back. Any other is asked for, on a
+ * card the person answers (#228).
+ * @param {any} rt @param {any} from @param {any} parent @param {any} p @param {any} card @param {boolean} prose
+ */
+function wakeAbsent(rt, from, parent, p, card, prose) {
+  if (deletedFrom(rt, parent, p))
+    return { ok: false, message: `@${p.handle} was deleted from this conversation, so it didn’t get your message. Carry on without it.` };
+  return askToAdd(rt, from, parent, p, card, { prose });
+}
+
+/**
  * Who answers in a side or topic thread when you write without an @-mention: the agent that spoke there last, else the
  * one it started with, else (a topic thread from before #228, whose fork never spoke) the agent its fork was of.
  * @param {any} rt @param {any} t
  */
 export function threadPersona(rt, t) {
-  const last = rt.s.sessions[t.lastSpeaker];
-  const first = rt.s.sessions[t.members?.[0]];
-  return (last && rt.persona(last.personaId)) ?? rt.personas.byHandle(t.woke ?? t.pair?.split('|')[1] ?? '') ?? (first && rt.persona(first.personaId)) ?? null;
+  const last = t.lastSpeaker && rt.store.pending.session(t.lastSpeaker);
+  const first = t.members?.[0] && rt.store.pending.session(t.members[0]);
+  const picked =
+    (last && rt.persona(last.personaId)) ?? rt.personas.byHandle(t.woke ?? t.pair?.split('|')[1] ?? '') ?? (first && rt.persona(first.personaId)) ?? null;
+  if (!picked || !deletedFrom(rt, t, picked)) return picked;
+  // An agent deleted from the conversation isn’t brought back to answer: another still in it does, or no one (#283).
+  const here = rt.sessions.pendingIn(conversationOf(rt, t)).find((x) => !x.retiredFork);
+  return (here && rt.persona(here.personaId)) ?? null;
+}
+
+/** A thread’s conversation as written: one made behind a held commit isn’t published yet (#796’s class). */
+const conversationOf = (rt, t) => rt.threads.lineage(t.id, (id) => rt.store.pending.thread(id)).at(-1);
+
+/**
+ * The agents in a thread’s conversation as written, by handle, as their sessions have them: those that could write or
+ * answer there without being brought back (#283). @param {any} rt @param {any} t @returns {Map<string, any>}
+ */
+export function presentIn(rt, t) {
+  const here = new Map();
+  for (const se of rt.sessions.pendingIn(conversationOf(rt, t))) {
+    const p = !se.retiredFork && rt.persona(se.personaId);
+    if (p) here.set(p.handle, p);
+  }
+  return here;
+}
+
+/**
+ * A “left” line from before it named the persona, which names the handle only: it’s this persona’s, unless the persona
+ * was made after it, as a new agent given a deleted one’s handle is (#283).
+ * @param {any} i @param {{ handle: string, createdAt?: number }} p
+ */
+const legacyLeft = (i, p) => i.to === p.handle && !((p.createdAt ?? 0) > i.at);
+
+/**
+ * Whether an agent was deleted from a thread’s conversation and hasn’t come back: it has no session there, and the
+ * conversation says it left. An agent that was never in it, as one a topic thread was woken for, can still join (#874).
+ * A line says which persona left, so a new agent given a deleted one’s handle wasn’t deleted; a line from before it
+ * said so names the handle only, and counts by that for a persona made before it.
+ * @param {any} rt @param {any} t  the topic or side thread @param {{ id: string, handle: string }} p  the persona
+ */
+export function deletedFrom(rt, t, p) {
+  if (presentIn(rt, t).has(p.handle)) return false;
+  const conv = conversationOf(rt, t);
+  const left = (i) => i.kind === 'system' && i.variant === 'left' && (i.personaId ? i.personaId === p.id : legacyLeft(i, p));
+  return rt.store.pending.items(conv).some(left);
 }
 
 /**

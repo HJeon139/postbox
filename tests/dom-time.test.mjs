@@ -15,9 +15,13 @@ const TIMES = [
   Date.UTC(2026, 11, 31, 23, 59),
 ];
 
-test('timeOf and dayOf read as the toLocale*String calls they replaced (#866)', () => {
+// The time follows the process’s own locale and clock, as the page follows the browser’s (#535).
+const cycle = new Intl.DateTimeFormat(undefined, { hour: 'numeric' }).resolvedOptions().hourCycle;
+const hour = cycle === 'h23' || cycle === 'h24' ? '2-digit' : 'numeric';
+
+test('timeOf reads as toLocaleTimeString on the locale’s own clock, and dayOf as the call it replaced (#866, #535)', () => {
   for (const ms of TIMES) {
-    assert.equal(timeOf(ms), new Date(ms).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }), String(ms));
+    assert.equal(timeOf(ms), new Date(ms).toLocaleTimeString(undefined, { hour, minute: '2-digit' }), String(ms));
     assert.equal(dayOf(ms), new Date(ms).toLocaleDateString('en-US', { weekday: 'long', day: 'numeric', month: 'long' }), String(ms));
   }
 });

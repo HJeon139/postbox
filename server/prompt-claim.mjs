@@ -1,7 +1,8 @@
-// Which permission prompts count (#353, #665). permission_prompt is how the Claude Code CLI asks before a call
-// (--permission-prompt-tool), but the turn’s token is in the CLI’s arguments, so a command the agent runs can post to
-// /mcp too, with any tool_name and input. A prompt counts only when it’s for a call the turn’s stream showed, the
-// agent’s own or a subagent’s, still waiting for its result, with that call’s name and input, and only once per call.
+// Which permission prompts count (#353, #665, #907). permission_prompt is how the Claude Code CLI asks before a call
+// (--permission-prompt-tool), and how Postbox’s hook asks for Antigravity’s, but the turn’s token is in the CLI’s
+// arguments or the hook’s environment, so a command the agent runs can post to /mcp too, with any tool_name and input.
+// A prompt counts only when it’s for a call the turn’s stream showed, the agent’s own or a subagent’s, still waiting
+// for its result, with that call’s name and input (for the hook’s, agreeing with the card made from it), and only once.
 // Anything else is refused here, before a rule, the write judge or its budget (server/write-intent.mjs) sees it, and
 // before any card. Every prompt lands here: the laptop’s (server/permission-prompt.mjs) and a host’s
 // (server/remote/turns-prompts.mjs), whose stream the laptop reads too.
@@ -30,9 +31,9 @@ export const REFUSED = Object.freeze({
 /**
  * Claims the call a prompt is for. `by` names the prompt: a host sends its prompt again after a reconnect, and that
  * repeat is the same claim, not a second one; on the laptop each prompt is its own. Resolves to the call’s name and
- * input as the stream showed them, which the card draws, never the prompt’s, with the subagent’s call it was made under
- * (agentId: the stream’s, never the prompt’s agent_id, null for the agent’s own); to a refusal with what to answer; or
- * to a repeat, which the first of its kind answers.
+ * input as the stream showed them, which the card draws, never the prompt’s (a hook’s: the card made from that call),
+ * with the subagent’s call it was made under (agentId: the stream’s, never the prompt’s agent_id, null for the agent’s
+ * own); to a refusal with what to answer; or to a repeat, which the first of its kind answers.
  * @param {any} rt @param {string} sessionId @param {any} args  permission_prompt’s arguments
  * `ready`: what the wait for the call’s line waits on before its bound starts, a host stream’s replay
  * (server/remote/turns-replay.mjs), and `readyEnd` the most it waits on it: if that settles first, the prompt is
@@ -43,10 +44,7 @@ export const REFUSED = Object.freeze({
 export async function claimPrompt(rt, sessionId, args, { by = Symbol('prompt'), signal = null, ready = null, readyEnd = null } = {}) {
   const turn = rt.turns.get(sessionId);
   if (!turn) return refusal('ended');
-  if (!asksForOwnCalls(rt, turn)) {
-    const agentId = typeof args?.agent_id === 'string' ? args.agent_id : null;
-    return { ok: true, tool: String(args?.tool_name ?? ''), input: args?.input ?? {}, agentId };
-  }
+  const cardFor = hookCard(rt, turn);
   const id = args?.tool_use_id;
   // Each prompt that waits holds its request open: past PROMPT_HOLDS_MAX waiting in the turn, one more is refused at
   // once, as it would be at the bound.
@@ -58,20 +56,30 @@ export async function claimPrompt(rt, sessionId, args, { by = Symbol('prompt'), 
   if (!call) return refused(rt, turn, 'unseen', id);
   if (call.state === 'claimed') return call.by === by ? { ok: false, why: 'repeat' } : refused(rt, turn, 'again', id, call);
   if (call.state === 'answered') return refused(rt, turn, 'answered', id, call);
-  if (args.tool_name !== call.name || !isDeepStrictEqual(args.input ?? {}, call.input)) return refused(rt, turn, 'differs', id, call, args);
+  // The CLI’s card is the stream’s call itself; a hook’s is the one its adapter makes from that call (hookCard).
+  const shown = cardFor ? cardFor(call, args) : sameCall(call, args);
+  if (!shown) return refused(rt, turn, 'differs', id, call, args);
   call.state = 'claimed';
   call.by = by;
-  return { ok: true, tool: call.name, input: call.input, agentId: call.parent ?? null };
+  return { ok: true, tool: shown.tool, input: shown.input, agentId: call.parent ?? null };
 }
 
+/** The stream’s call as the card, when the prompt is that call’s name and input. @param {any} call @param {any} args */
+const sameCall = (call, args) =>
+  args.tool_name === call.name && isDeepStrictEqual(args.input ?? {}, call.input) ? { tool: call.name, input: call.input } : null;
+
 /**
- * Whether the turn’s prompts are its CLI’s own, for calls its stream shows: every backend that asks through
- * permission_prompt, except one whose prompts come from Postbox’s own hook (capabilities.promptHook, Antigravity’s),
- * by an id of the hook’s. An adapter that declares nothing is held to the stream.
+ * How a hook’s prompt gets its card, or null for the CLI’s own, whose card is the stream’s call (sameCall). A prompt
+ * from Postbox’s own hook (capabilities.promptHook, Antigravity’s) names the call by its id too, but its card is one the
+ * hook makes from it, so the adapter’s promptCard(call, args) builds it from the stream’s call, or returns null when
+ * the prompt doesn’t agree with it (#907). A hook backend without one has every prompt refused.
  * @param {any} rt @param {any} turn
+ * @returns {((call: any, args: any) => { tool: string, input: any } | null) | null}
  */
-function asksForOwnCalls(rt, turn) {
-  return adapterOf(rt, turn.backend)?.capabilities?.promptHook !== true;
+function hookCard(rt, turn) {
+  const adapter = adapterOf(rt, turn.backend);
+  if (adapter?.capabilities?.promptHook !== true) return null;
+  return (call, args) => (typeof adapter.promptCard === 'function' ? (adapter.promptCard(call, args) ?? null) : null);
 }
 
 /** @param {Refusal} why */

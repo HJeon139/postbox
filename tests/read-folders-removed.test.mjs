@@ -13,6 +13,7 @@ import { handleMcp } from '../server/mcp.mjs';
 import { changePermissionFolder } from '../server/permissions-panel.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
+import { hookEvent, promptCard, showCall } from './agy-calls.mjs';
 import * as arrange from './arrange.mjs';
 import { heldStore } from './stop-reply-fixture.mjs';
 import { tempDir } from './temp-dirs.mjs';
@@ -34,6 +35,7 @@ function aRoom(store, { home, ws, notes }) {
   const adapter = {
     name: 'antigravity-cli',
     capabilities: { promptTool: true, promptHook: true, permissions: 'none' },
+    promptCard,
     during: /** @type {any} */ (null),
     async deliver(_s, _m, ctx) {
       await this.during?.(ctx);
@@ -76,7 +78,13 @@ function hookOf(rt, se, ctx, cwd, home) {
     json: async () => handleMcp(rt, se.id, JSON.parse(init.body), rt.turns.get(se.id)?.token ?? null),
   });
   const opts = { cwd, env, home, fetchImpl: /** @type {any} */ (fetchImpl) };
-  return (/** @type {string} */ file) => runAgyHook(JSON.stringify({ toolCall: { name: 'view_file', args: { AbsolutePath: file } } }), opts);
+  // Each read is the turn’s next step, shown in its stream before the hook asks (#907).
+  let step = 0;
+  return (/** @type {string} */ file) => {
+    step += 1;
+    showCall(ctx, step, 'view_file', { AbsolutePath: file });
+    return runAgyHook(hookEvent(step, 'view_file', { AbsolutePath: file }), opts);
+  };
 }
 
 /**

@@ -58,7 +58,8 @@ test.beforeAll(async () => {
 test.afterAll(async () => app?.stop());
 failOnPageErrors(test);
 
-test('four agents’ steps cost the page no more layout a step than main', async ({ page }) => {
+test('four agents’ steps cost the page no more layout a step than main', async ({ page, browserName }) => {
+  test.skip(browserName !== 'chromium', 'the layout count comes from Chromium’s DevTools protocol');
   test.setTimeout(180_000);
   await page.setViewportSize({ width: 1440, height: 900 });
   const ids = AGENTS.map((handle) => app.rt.createPersona({ handle }).id);

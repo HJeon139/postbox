@@ -8,6 +8,7 @@ import { readdir } from 'node:fs/promises';
 import { test } from 'node:test';
 import { Store } from '../server/store.mjs';
 import { run } from '../server/store-commit.mjs';
+import { STORE_WAITS } from '../shared/limits.mjs';
 import { disk, handleWith, logDisk } from './store-jsonl-fixture.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
@@ -177,7 +178,8 @@ test('emits held behind a slow snapshot when close() begins, as a stopping turn�
       });
     },
   });
-  const a = await new Store(dir, { io, retryBoundMs: 400 }).load();
+  // The 400 ms bound is for the writer’s pass; a disk step, such as the final sync, gets the product’s limit (#1636).
+  const a = Object.assign(await new Store(dir, { io, retryBoundMs: 400 }).load(), { stepBoundMs: STORE_WAITS.stepMs });
   for (let i = 0; i < 2000; i++) a.emit('thread', { id: `t${i}`, members: [], title: 'x'.repeat(10_000) }); // ~20 pieces
   await a.flush();
   await assert.rejects(a.snapshot(), /abandoned/);
