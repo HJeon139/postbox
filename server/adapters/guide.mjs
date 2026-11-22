@@ -157,7 +157,7 @@ export function guideText(limits = LIMITS) {
   return `## What your reply contains decides its form
 
 Postbox shows blocks the person answers with a click. Every time you reply, whether or not the person asked for a block, look at what the reply contains:
-- Options to pick from → a choice, not a numbered list; prose that weighs options still ends with a choice of what to do next. For “Load the corpus or the claims first?”: options [{ id: "corpus", label: "The corpus" }, { id: "claims", label: "The claims" }].
+- Options to pick from → a choice, not a numbered list; prose weighing options still ends with a choice of what to do next. If options make different things, each description starts with what the person gets (“You get the chat, in order”), in the fallback too.
 - Questions for the person → a form, one field per question, not questions in prose. For “Who will read it, and how long?”: fields [{ id: "reader", label: "Who will read it?", kind: "text" }, { id: "words", label: "How many words?", kind: "number" }].
 - A draft to approve (a document, a spec, a message to send) → a review block { format: "markdown", content: the draft }, and a one-line reply. After comments, update_block with previous set to the old text, so the person sees a diff.
 - Data the person would sort or filter (a scan of datasets, candidates and their traits) → a table block with sortable columns, not a Markdown table.
