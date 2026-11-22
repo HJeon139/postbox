@@ -137,13 +137,16 @@ function sharedBy(i) {
   return ', by the person';
 }
 
+/** A review’s comments, one `- line 12: …` line each: the block’s own line and an answer line read them alike (#1253). */
+const commentLines = (comments) => lines(comments.map((c) => `${commentAt(c)}: ${c.text}`));
+
 /** The person’s answer to a block, as blockContent gives it. */
 function answerText(b, a) {
   const v = a.values ?? {};
   if (b.type === 'review') {
     const comments = Array.isArray(v.comments) ? v.comments : [];
     const verdict = String(a.voice ?? '').replace(/^Submitted review: /, '');
-    const notes = comments.length ? `\n${lines(comments.map((c) => `${commentAt(c)}: ${c.text}`))}` : '';
+    const notes = comments.length ? `\n${commentLines(comments)}` : '';
     return `The person’s review: ${verdict}${notes}`;
   } else if (b.type === 'form') {
     const shown = (f) => {
@@ -219,6 +222,26 @@ function personLine(memory, i, text, reader) {
 }
 
 /**
+ * The person’s answer to a block, as another agent reads it: which block, whose and by its id, so an agent with two
+ * open reviews can tell them apart, with a review’s comments, cut as the line is (#1253). The block’s own agent hears
+ * it as an event, so it gets no line. A cut in the comments points at this line, which keeps this answer’s whole.
+ * @param {any} memory @param {any} i @param {any} se @param {(s: string) => string} text @param {number} n  the line’s budget
+ */
+function answerLine(memory, i, se, text, n) {
+  const block = i.blockItemId && memory.store.item(se?.threadId, i.blockItemId);
+  // The block’s own agent hears it as an event; se is the reader, which a read with no session still names.
+  if (se && (i.answerTo?.sessionId ?? block?.sessionId) === se.id) return null;
+  // An app’s summary is its own wording, never the person’s (#51).
+  const quote = i.quote ? `\nThe app’s own summary, not the person’s words: “${text(i.quote)}”` : '';
+  // The line’s own record of the block it answered; a line from before it kept one reads the block, when it’s found.
+  const to = i.answerTo ?? (block?.block ? { ...block.block, handle: block.handle } : null);
+  const on = to ? ` answered @${to.handle}’s ${to.type}${to.title ? ` “${text(to.title)}”` : ''} (${to.id})` : '';
+  const comments = Array.isArray(i.comments) ? i.comments : [];
+  const notes = comments.length ? `\n${clipItem(commentLines(comments), n, i.id)}` : '';
+  return `The person${on}: ${text(i.text)}${notes}${quote}`;
+}
+
+/**
  * One conversation item as a line an agent can read, from the point of view of `se`; null to leave it out. Its
  * text is cut at n characters, saying so (#109). `reader` is the session its attachments are given to, or null for
  * none (#671). Runtime’s describeItem decides the defaults: `se` and `n` as given, and the reader as `se`.
@@ -247,17 +270,8 @@ export function describeItem(memory, i, se, n, reader) {
       const holds = body ? `${body.includes('\n') ? ':\n' : ': '}${body}` : '';
       return text(`@${i.handle} showed ${what}${titled(title)}${holds}`);
     }
-    case 'voice': {
-      // The agent hears about its own blocks as events already.
-      const block = i.blockItemId && memory.store.item(se?.threadId, i.blockItemId);
-      if (block && block.sessionId === se?.id) return null;
-      // An app’s summary is its own wording, never the person’s (#51).
-      const quote = i.quote ? `\nThe app’s own summary, not the person’s words: “${text(i.quote)}”` : '';
-      // Which block it answered, whose and by its id, so an agent with two open reviews can tell them apart (#1253).
-      const b = block?.block;
-      const on = b ? ` answered @${block.handle}’s ${b.type}${b.title ? ` “${text(b.title)}”` : ''} (${b.id})` : '';
-      return `The person${on}: ${text(i.text)}${quote}`;
-    }
+    case 'voice':
+      return answerLine(memory, i, se ?? reader, text, n);
     case 'shared': {
       const asked = i.question ? `The person asked: “${text(i.question)}” ` : '';
       return `${i.summary ? 'Summary' : 'Shared'} from the thread “${i.fromTitle}”${sharedBy(i)}: ${asked}${text(i.text)}`;
