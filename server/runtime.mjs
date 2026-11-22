@@ -3,12 +3,13 @@
 // you", and implements the UI tools that agents call (over MCP, or in-process for the mock).
 
 import { homedir } from 'node:os';
+import { QUESTION_TOOL } from '../shared/question-words.mjs';
 import { formatDuration } from '../shared/text.mjs';
 import { listProcesses } from './adapters/process-group.mjs';
 import { runAgentCommand } from './agent-commands.mjs';
 import { sendAppMessage } from './app-entries.mjs';
 import { Apps } from './app-service.mjs';
-import { askQuestions, QUESTION_TOOL, questionBlocks } from './ask-question.mjs';
+import { askQuestions, questionBlocks } from './ask-question.mjs';
 import { asksPort } from './asks-port.mjs';
 import { Assets } from './asset-service.mjs';
 import { act } from './blocks.mjs';
@@ -542,9 +543,10 @@ export class Runtime {
   // ── Permission prompts: server/permission-cards.mjs ──────────────────────────────────
 
   requestPermission(sessionId, req) {
-    // Claude Code’s AskUserQuestion asks as choice blocks, here on this computer: server/ask-question.mjs (#521).
-    const questions = req.tool === QUESTION_TOOL && !req.hostPrompt ? questionBlocks(req.input) : null;
-    return questions ? askQuestions(this, sessionId, req, questions) : requestPermission(this, sessionId, req);
+    // Claude Code’s AskUserQuestion asks as choice blocks, here and on a host: server/ask-question.mjs (#521, #1059).
+    const questions = req.tool === QUESTION_TOOL ? questionBlocks(req.input) : null;
+    // shown: a host prompt’s blocks from before a restart, which the resend carries on from (#1059).
+    return questions ? askQuestions(this, sessionId, req, questions, req.shown ?? []) : requestPermission(this, sessionId, req);
   }
   askPerson(sessionId, req) {
     return askPerson(this, sessionId, req);

@@ -1,30 +1,13 @@
-// The run’s folders (runPaths), and what the UAT runner reads from files after each step: the person’s own Claude Code setup, to spot it leaking into
+// What the UAT runner reads from files after each step: the person’s own Claude Code setup, to spot it leaking into
 // agents (or missing from them), each agent turn’s recorded stream, and the agents’ own Claude Code transcripts.
 
 import { closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, statSync, writeFileSync } from 'node:fs';
-import { mkdir } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { parseSnapshotText } from '../../server/store-snapshot-lines.mjs';
 import { patchSession } from '../../shared/state.mjs';
 import { claudeTranscriptFile } from './claude-transcript-file.mjs';
 import { lines } from './history.mjs';
-
-/** The run’s folders, made: Postbox’s data, the workspace, each backend’s recorded streams, and screenshots. @param {string} dir */
-export async function runPaths(dir) {
-  const paths = {
-    data: join(dir, 'data'),
-    workspace: join(dir, 'workspace'),
-    streams: join(dir, 'streams'),
-    kiroStreams: join(dir, 'streams', 'kiro'),
-    agyStreams: join(dir, 'streams', 'agy'),
-    codexStreams: join(dir, 'streams', 'codex'),
-    sdkStreams: join(dir, 'streams', 'sdk'),
-    shots: join(dir, 'shots'),
-  };
-  for (const p of Object.values(paths)) await mkdir(p, { recursive: true });
-  return paths;
-}
 
 export function userSetup(workspace) {
   const out = { userMcpServers: [], userRulesMarker: null };

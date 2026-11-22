@@ -77,6 +77,21 @@ function turnsOf(rt, se, released = null) {
 }
 
 /**
+ * The block a turn that didn't move on kept (`se.keptId`), in whichever of the agent's threads it is, as nextNeed
+ * counts it mid-turn: the turn's end found it only in the turn's own thread, so a block in a topic thread stopped being
+ * the need once another agent's wake in the conversation ended (#647). Read pending, as the need it decides.
+ * @param {any} rt @param {any} se @returns {any}
+ */
+export function keptBlock(rt, se) {
+  if (!se.keptId) return null;
+  for (const threadId of threadsOf(rt, se)) {
+    const it = rt.store.pending.item(threadId, se.keptId);
+    if (it) return it;
+  }
+  return null;
+}
+
+/**
  * The turns a starting turn that doesn't move on keeps (runtime.mjs, the turn's start, where it already runs): of the
  * last turn and the turns kept before, those with a turn-tied card of the agent's still open, so the list holds only
  * turns still asking you something, however many wakes come between. One pass over the agent's threads' items, as

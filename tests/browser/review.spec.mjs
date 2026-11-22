@@ -7,12 +7,13 @@
 //   a click on text stays in Preview;
 // - full screen opens and closes from the keyboard, with focus kept.
 // - a revised draft’s header shows the revision Postbox counted, not one the agent left out (#248).
+// - a diagram drawn again as the review redraws starts at its height, so a press on Submit as it draws isn’t lost.
 // review-comments.spec.mjs checks comments. Each test has a conversation of its own, where a scripted @drafter shows
 // the draft (tests/browser/review.mjs). Moved from tools/check-review.mjs (#303).
 
 import { expect, test } from '@playwright/test';
 import * as arrange from '../arrange.mjs';
-import { failOnPageErrors, focused, frames, settled, synced, windowWidth } from './postbox.mjs';
+import { failOnPageErrors, focused, frames, PHONE, settled, synced, windowWidth } from './postbox.mjs';
 import { commentOn, drawn, review, reviewRoom, shown, viewRadio } from './review.mjs';
 
 /** @type {Awaited<ReturnType<typeof reviewRoom>>} */
@@ -181,4 +182,62 @@ test('#248 an outcome recorded on an approved review isn’t a revision: it stil
   arrange.setItem(rt, thread.id, itemOf().id, { revision: 2 }); // Older Postbox versions counted the outcome as a revision.
   await synced(page, room.app);
   await expect(block.locator('.block-head .small.dim').filter({ hasText: /^v\d+$/ })).toHaveText('v1');
+});
+
+// A review draws its diagram again each time it redraws, here as the comment box closes. On CI’s runner Mermaid’s
+// drawing held the page, and the new frame’s size came between the press on Submit and its release: a frame that
+// started at the stylesheet’s 160 px grew to the diagram’s height, Submit moved under the pointer, and the release
+// landed beside it, so the browser fired no click and the review never went (review-table.spec.mjs, 375 px). The test
+// holds the diagrams’ size messages and lets them through as the press goes down, then releases the mouse at once.
+test.describe('at 375 px', () => {
+  test.use({ viewport: { width: 375, height: 812 }, ...PHONE });
+
+  test('a press on Submit as the redrawn diagram draws still submits: the frame starts at its diagram’s height', async ({ page }) => {
+    const { block, blockId } = await room.withReview(page, 'Press as it draws');
+    await viewRadio(block, 'Lines').click();
+    await expect(block.locator('figure.diagram iframe[data-sized]'), 'the diagram drawn once').toHaveCount(1);
+    await block.getByRole('button', { name: 'Comment on line 9', exact: true }).click();
+    await expect(page.getByRole('textbox', { name: 'Comment on line 9' })).toBeFocused();
+    await page.keyboard.insertText('Center the cost.');
+    // Every diagram’s size is held, since the review can redraw again after the comment goes in, and the frame on the
+    // page at the press is then a newer one. All of them go through as the press goes down.
+    await page.evaluate(() => {
+      const w = /** @type {any} */ (window);
+      /** @type {MessageEvent[]} */
+      const held = [];
+      const hold = (/** @type {MessageEvent} */ e) => {
+        if (e.data?.__pbd !== 1 || e.data.type !== 'size') return;
+        held.push(e);
+        e.stopImmediatePropagation();
+      };
+      addEventListener('message', hold, true);
+      const frames = () => [...document.querySelectorAll('figure.diagram iframe')].map((f) => /** @type {HTMLIFrameElement} */ (f).contentWindow);
+      w.heldFromPage = () => held.some((e) => frames().includes(/** @type {Window} */ (e.source)));
+      const release = () => {
+        removeEventListener('message', hold, true);
+        for (const e of held) dispatchEvent(new MessageEvent('message', { data: e.data, origin: e.origin, source: e.source }));
+      };
+      addEventListener('pointerdown', release, { capture: true, once: true });
+    });
+    await page.keyboard.press('Control+Enter');
+    await expect(block.locator('.g-mark[data-line="9"]'), 'the comment added').toBeFocused();
+    // The redrawn frame loads as it nears the view.
+    await block.locator('figure.diagram').scrollIntoViewIfNeeded();
+    const submit = block.getByRole('button', { name: 'Submit review', exact: true });
+    await submit.scrollIntoViewIfNeeded();
+    await expect
+      .poll(() => page.evaluate(() => /** @type {any} */ (window).heldFromPage()), { message: 'a size held from the frame on the page now' })
+      .toBe(true);
+    const box = /** @type {{ x: number, y: number, width: number, height: number }} */ (await submit.boundingBox());
+    const at = { x: box.x + box.width / 2, y: box.y + box.height / 2, button: /** @type {const} */ ('left'), clickCount: 1 };
+    // Sent together, so the release comes before the page draws again, as it did on CI’s runner.
+    const cdp = await page.context().newCDPSession(page);
+    await Promise.all([
+      cdp.send('Input.dispatchMouseEvent', { type: 'mousePressed', ...at }),
+      cdp.send('Input.dispatchMouseEvent', { type: 'mouseReleased', ...at }),
+    ]);
+    await expect
+      .poll(() => room.calls.find((m) => m.kind === 'event' && m.event.blockId === blockId)?.event.values.comments, { message: 'the agent gets the comment' })
+      .toEqual([{ line: 9, text: 'Center the cost.', threadId: 'you-1-1' }]);
+  });
 });

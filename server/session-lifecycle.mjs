@@ -61,7 +61,8 @@ export function deleteSession(rt, sessionId, { keepConversation = false } = {}) 
       lastSpeaker: x.lastSpeaker === sessionId ? (others[0] ?? null) : x.lastSpeaker,
     }));
     for (const it of rt.store.pending.items(t.id)) if (it.sessionId === sessionId) rt.threads.patchItem(t.id, it.id, { deletedAgent: true });
-    rt.threads.addItem(t.id, { kind: 'system', variant: 'left', to: se.handle });
+    // Which agent left, by its persona as well as its handle: a new agent given the handle wasn’t deleted (#283).
+    rt.threads.addItem(t.id, { kind: 'system', variant: 'left', to: se.handle, personaId: se.personaId });
   }
   rt.sessions.remove(sessionId);
   return { handle: se.handle };
