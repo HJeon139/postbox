@@ -229,3 +229,15 @@ test('#518: a review revised after the person approved it keeps a receipt of tha
   rt.act(t.id, item.id, 'submit', { verdict: 'request_changes', comments: [{ line: 1, text: 'Shorter, please.' }] }, 3);
   assert.equal(store.item(t.id, item.id).answer.values.verdict, 'request_changes');
 });
+
+test('#518: a choice reopened after its answer keeps no receipt: only a review draws one', async () => {
+  const { rt, store, t, adapter } = setup();
+  await turn(rt, adapter, t, (tools) => tools.show_block({ block: choice }));
+  const item = store.items(t.id).find((i) => i.kind === 'block');
+  rt.act(t.id, item.id, 'choose', { selected: [choice.options[0].id] }, 1);
+  await settle(rt);
+  const said = await turn(rt, adapter, t, (tools) => tools.update_block({ block: { ...choice, title: 'Where now, again?' } }));
+  assert.equal(said.ok, true, said.message);
+  const it = store.item(t.id, item.id);
+  assert.deepEqual([it.answered, it.revision, it.priorAnswer], [false, 2, undefined]);
+});

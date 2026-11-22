@@ -31,7 +31,8 @@ export function answerDelivered(apps, threadId, message) {
  * @param {any} existing  the block item being updated
  */
 function priorAnswerOf(existing) {
-  const a = existing.answered ? existing.answer : null;
+  // Only a review draws it (app/js/review-receipt.mjs), so only a review keeps it.
+  const a = existing.answered && existing.block.type === 'review' ? existing.answer : null;
   if (!a) return {};
   return { priorAnswer: { action: a.action, ...(a.values?.verdict ? { verdict: a.values.verdict } : {}), revision: a.revision ?? 1, at: a.at } };
 }

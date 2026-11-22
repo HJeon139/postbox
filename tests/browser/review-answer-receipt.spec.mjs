@@ -46,17 +46,16 @@ for (const width of [375, 1280])
     await page.goto(`${app.origin}/#/t/${t.id}`);
     await synced(page, app);
     const block = page.locator(`#main [data-key="${item.id}"]`);
-    const approve = async (by) => {
+    const approve = async () => {
       const radio = block.getByRole('radio', { name: 'Approve', exact: true });
-      if (by === 'pointer') await radio.click();
-      else {
-        await radio.focus();
-        await page.keyboard.press('Space');
-      }
+      await radio.click();
       await expect(radio).toHaveAttribute('aria-checked', 'true');
       await block.getByRole('button', { name: 'Submit review', exact: true }).click();
     };
-    await approve('pointer');
+    await approve();
+    // The page has the answer before the agent revises, as it does in real use: the agent revises in the turn the
+    // answer starts, after the page’s act() has settled.
+    await expect(block.locator('.answered-note')).toBeVisible();
     await expect.poll(() => store.item(t.id, item.id).answer?.read, { message: 'the agent read the approval' }).toBe(true);
     const at = store.item(t.id, item.id).answer.at;
     const said = tools.update_block({ block: { ...DRAFT, content: `${DRAFT.content}\n\nA new export button.` } });
@@ -64,12 +63,10 @@ for (const width of [375, 1280])
     await synced(page, app);
     const receipt = block.locator('.rv-receipt');
     const time = await page.evaluate(async (ms) => (await import('/app/js/dom.mjs')).timeOf(ms), at);
-    await expect(receipt).toHaveText(`You approved revision 1 at ${time}. The agent revised it since: answer revision 2.`);
+    await expect(receipt).toHaveText(`You approved revision 1 at ${time}. The agent has revised it since.`);
     await expect(receipt, 'it reports, and asks nothing').toHaveAttribute('role', 'status');
     await expect(block.getByRole('button', { name: 'Submit review', exact: true }), 'revision 2 takes its own answer').toBeEnabled();
-    // By keyboard: right after the revised block moves to the newest point, a pointer’s click there can land on the
-    // verdict beside Approve (1 run in 4 with no stream lag, none with 300 ms). That’s the move’s, filed on its own.
-    await approve('keyboard');
+    await approve();
     await expect(receipt, 'answering revision 2 clears the receipt').toHaveCount(0);
   });
 
@@ -88,7 +85,5 @@ test('#518 a receipt whose saved verdict is a name every object inherits says �
   await page.goto(`${app.origin}/#/t/${t.id}`);
   await synced(page, app);
   const time = await page.evaluate(async (ms) => (await import('/app/js/dom.mjs')).timeOf(ms), at);
-  await expect(page.locator(`#main [data-key="${item.id}"] .rv-receipt`)).toHaveText(
-    `You answered revision 1 at ${time}. The agent revised it since: answer revision 2.`,
-  );
+  await expect(page.locator(`#main [data-key="${item.id}"] .rv-receipt`)).toHaveText(`You answered revision 1 at ${time}. The agent has revised it since.`);
 });

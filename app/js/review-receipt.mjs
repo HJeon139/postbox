@@ -1,5 +1,5 @@
 // The receipt on a review the agent revised after the person answered it (#518): what they answered, for which
-// revision, and when, and that this revision needs its own answer. Without it, an approval of an earlier draft
+// revision, and when, and that the agent has revised it since. Without it, an approval of an earlier draft
 // vanished when the draft changed, and the person couldn’t tell whether it counted.
 
 import { h, timeOf } from './dom.mjs';
@@ -16,11 +16,10 @@ export function answerReceipt(item) {
   const prior = item.priorAnswer;
   if (!prior || item.answered) return null;
   const did = prior.action === 'dismiss' ? 'dismissed' : verdictWord(prior.verdict);
-  const now = item.revision ?? 1;
   return h(
     // Quiet, not an alarm: it reports what happened, and the review below is how to act on it.
     'div.callout.quiet.rv-receipt',
     { role: 'status' },
-    h('span', `You ${did} revision ${prior.revision} at ${timeOf(prior.at)}. The agent revised it since: answer revision ${now}.`),
+    h('span', `You ${did} revision ${prior.revision} at ${timeOf(prior.at)}. The agent has revised it since.`),
   );
 }
