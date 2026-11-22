@@ -51,3 +51,8 @@ test('only `- github: real` hands a scenario the person’s GitHub, and a mistyp
   assert.equal(github('- github: yes'), 'none');
   assert.equal(github('- steps: 4'), 'none');
 });
+
+test('#1528 every run’s Postbox records each turn’s prompt, in its data folder’s prompts.jsonl', () => {
+  assert.equal(env(null).POSTBOX_UAT_RECORD, '1');
+  assert.equal(env('git-remote').POSTBOX_UAT_RECORD, '1');
+});

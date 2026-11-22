@@ -41,3 +41,10 @@ export const SIZE_LIMIT_START_TEXT =
 /** Told to every Kiro agent, so its session doesn’t get there. */
 export const SIZE_LIMIT_NOTE =
   '## Large files and images\n\nWhat you read in a turn goes into each later request, and Kiro refuses one over its request size limit. Read large files and images a few at a time, or make smaller copies first.';
+
+/** A run still over the size limit fails with what Kiro said, and its session isn’t kept to resume (#544). */
+export function failOverLimit(ctx, { tooLarge = null }) {
+  if (!tooLarge) return;
+  ctx.saveState({ kiroSessionId: null });
+  throw kiroError(tooLarge, tooLarge);
+}
