@@ -94,7 +94,14 @@ Postbox creates nothing and reads nothing in the workspace. A file Postbox made 
   3. Until then, Postbox reads nothing from the connection: no frame of it becomes output or an exit status.
 
   Measured on this Mac with lsof 4.91: an accepted connection’s kernel address appears as `->0x…` on the connecting process’s own socket, and on no other. The leader opens its socket close-on-exec, so the command it runs doesn’t inherit it.
-- **Rejection leaves the job alone.** A connection that doesn’t bind within 5 s is closed unread, and Postbox waits for the next one. Any number of unbound connections can be open, so none of them can crowd out the leader’s. The leader retries its own connection, and it never stops its command because of the channel: whether the channel works or not, the command runs to its end. An unverified peer can neither fill the item nor stop the job.
+- **Work before authentication is bounded.** Before a connection is bound, all Postbox does with it is hold it and run `lsof`. Both are capped in `shared/limits.mjs`:
+  - **Who may connect at all.** Postbox accepts connections only while some bound, running process is still waiting for its channel. Otherwise it closes them on arrival, with no lookup.
+  - **Pending connections.** At most 2 per waiting process, and 16 in all. A connection past either cap is closed on arrival, with no lookup.
+  - **Lookups.** One `lsof` runs at a time, each with a 2 s timeout, and at most 4 run per second across the server. Its output is capped at 1 MB, as `listProcesses` caps `ps`.
+  - **Timeout.** A pending connection that isn’t bound within 5 s is closed unread.
+
+  The channel uses none of what turns and process control need. Delivery, the startup handshake, the `ps` poll and Stop don’t wait on a lookup or a connection. So a flood of connections can at worst use up the channel’s own caps. The processes whose channels didn’t bind in time then end with “output and exit status unavailable”, and every turn and every Stop goes on as before.
+- **Rejection leaves the job alone.** The leader retries its own connection up to its own limit (5 tries, 1 s apart). It never stops its command because of the channel: whether the channel works or not, the command runs to its end. An unverified peer can neither fill the item nor stop the job.
 - **When there’s no binding.** If `lsof` fails or isn’t there, or a platform reports no peer address, the process still runs, is watched and is stopped as before. Its end is reported with “output and exit status unavailable: Postbox couldn’t verify the launcher’s channel”. Whether this works on Linux (`ss -xp` reports peers by inode) is checked when that platform is supported. Until then, there it is this unavailable mode.
 - **Bounded by Postbox.** Postbox keeps the last 64 KB of each process’s output in memory (`MAX_COMMAND_OUTPUT`, the bound of `!` commands). It sends output to the process’s item the way `commandOutput` in `server/shell-runs.mjs` does for a `!` command, and it stops reading a connection that sends faster than it keeps up. One frame per message. A frame over 16 KB closes the connection, and the process’s output then ends with “output cut: its channel misbehaved”.
 - **The exit status** is the last frame: a code that’s an integer, or a signal that’s a signal name. Anything else reads as “exit status unknown”. The status is the launcher’s report, labeled “as its launcher recorded”. Whether and when the process ended is still decided only by `ps` (see “One lifecycle”).
@@ -215,7 +222,13 @@ On a remote host, the agent’s shell runs on the host. The launcher and its soc
 - A launcher killed after the go-ahead has its recorded members stopped.
 - A command that exits with a grandchild still running has the grandchild stopped.
 - Under a command that writes without end, Postbox’s memory for it stays at 64 KB, and a slow reader doesn’t block the command beyond the socket’s buffer.
-- After the end commits, the process’s connection is closed. When Postbox shuts down, it closes the socket and removes its private socket folder, and at start it removes any socket folder an earlier run of it left in the temp folder.
+- After the end commits, the process’s connection is closed.
+- **Cleanup touches only this instance’s socket folder.** Several Postbox instances can run as one user, each with its own data folder. Each instance records its socket folder’s path in its own store. At shutdown, an instance removes only the folder it recorded. At start, it removes only the folder its own store recorded from the previous run. It knows that run is gone because the data folder’s writer lock (`store.lock`, [store.md](store.md), “One writer”) refuses a second Postbox on the same data folder. It never scans the temp folder for anyone else’s. A test starts a second instance with another data folder, and the first instance’s socket stays reachable and its folder stays in place.
+- **Under a flood of connections:** 200 same-user connections that never bind, opened during a run. The test checks:
+  - pending connections stay at or below the caps, and lookups stay at or below their rate;
+  - a room message still reaches the owner in a new turn within its usual time;
+  - `stop_process` still stops a process;
+  - a process whose channel couldn’t bind ends with “output and exit status unavailable”.
 - **An unverified peer can neither fill the item nor stop the job:**
   - another process of the same user connects first with the right id, sends output and an exit frame, and holds its connection open. None of it reaches the item. The real leader’s connection binds and its output arrives, and the command runs to its end.
   - with `lsof` made to fail, the process ends with “output and exit status unavailable”, and its command was never stopped by the channel.
