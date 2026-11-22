@@ -18,7 +18,7 @@ Most rounds after the first were spent on the fixes, not on the original diff. O
 - **Authors check first.** The author’s checklist, and what a request for re-review maps, are in developing.md, “Before you ask for review”. A review that finds an item of it missing says which.
 - **The first review is exhaustive.** List everything, P3s included, and sweep each finding’s class with a grep you list in the review, so the author fixes the class once. #1592 and #1574 each took another round for a case of a first finding’s class that was there at the first review.
 - **A re-review checks the deltas:** each fix commit against the request’s map, the code it adds, and each finding’s class again.
-- **From round 3, approve,** unless the head has a serious regression from main. What remains becomes integrator fixes in the batch (“Integrator fixes”, below) or a follow-up issue the review names.
+- **From round 3, approve,** unless the head has a regression from main or a defect of its own that isn’t a few lines. The few-line items become integrator fixes in the batch (“Integrator fixes”, below). A defect the PR adds is never filed instead of fixed: only scope beyond the issue, and P3s, become a follow-up issue the review names.
 - **One list per round.** When others review too (the room, another session), the integrator merges their findings into one numbered list on one head, each marked blocking, should fix or P3. Scope beyond the issue goes to a follow-up issue, as #1610 did. #1605’s author got two lists and worked one, and three should-fixes came back untouched.
 - **Bases and stacks are the integrator’s.** Don’t ask for a rebase or a merge of `main`: the batch merges `main` and resolves conflicts, except one only the author can resolve (“Resolve conflicts for the authors”, below). Review a stacked PR for its code and approve it, and the batch takes the stack in order. Before posting, check the open PRs for overlap: #1552 made half of #1540 redundant.
 - **Design PRs get the owner’s direction first.** Before a line-level review, ask the owner whether the direction is right, and check the doc’s decisions and facts against main. #1615 was redirected after its first review, and each rewrite added about four new defects. From round 3, its open questions go to the implementation issue.
@@ -142,7 +142,7 @@ When a review’s finding is a few lines and the review already spells out the f
 - It’s its own commit, right after that PR’s merge commit, and its body starts “Integrator fix for #n’s review” and names the finding.
 - A test or a mutant fails without it, as for any fix.
 - The batch PR’s body lists the fix commits, and an independent review checks only those before the batch merges.
-- A design decision, or a larger fix, goes back to the author with `changes requested`.
+- A design decision, or a larger fix, goes back to the author with `changes requested`, in any round. It never becomes a follow-up issue when the PR adds the defect.
 
 ### The gate
 
