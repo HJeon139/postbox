@@ -44,10 +44,10 @@ sequenceDiagram
   A->>H: node …/postbox-process.mjs run <id> <output> -- npm run check
   Note over H: The harness judges this call in the persona's mode
   H->>L: runs
-  L->>L: forks into a new session it leads (setsid), and the shell call returns
+  L->>L: forks the leader into a new session (setsid), and waits
+  S->>S: binds the leader by ancestry in ps, commits its identity
+  S->>L: go-ahead (SIGUSR1) to the leader; the shell call returns
   Note over A: The turn ends: Running.busy() is false, messages arrive
-  S->>S: sees the launcher in ps, commits its identity
-  S->>L: go-ahead (SIGUSR1)
   L->>P: runs the command as its child, in its group
   P-->>L: output, bounded, into the output folder
   P-->>L: exits; the launcher stops what is left in its group
@@ -66,13 +66,14 @@ Four MCP tools in `shared/mcp-tools.mjs`. A backend gets them only once its perm
 
 ### Permission parity, per harness
 
-The launcher’s command line has to be judged as the command it carries would be. Seeing the launcher call proves nothing on its own: a harness might judge only `node …/postbox-process.mjs` and wave the real command through, or the detached child might leave the harness’s sandbox. So each backend has a capability, `backgroundProcesses`, which is off until a live check on this computer passes for it. The four tools aren’t offered to a backend with it off. The check runs through the normal turn path, with one persona in Auto and one with `shell` unticked. It has five cases, and all of them must hold:
+The launcher’s command line has to be judged as the command it carries would be. Seeing the launcher call proves nothing on its own: a harness might judge only `node …/postbox-process.mjs` and wave the real command through, or the detached child might leave the harness’s sandbox. So each backend has a capability, `backgroundProcesses`, which is off until a live check on this computer passes for it. The four tools aren’t offered to a backend with it off. The check runs through the normal turn path, with one persona in Auto and one with `shell` unticked. It has six cases, and all of them must hold:
 
 1. A command the persona’s rules allow runs, and its end wakes the agent.
 2. A command a deny rule names, such as `Bash(rm:*)`, is refused when it comes through the launcher, exactly as it is when run bare.
 3. A persona with `shell` unticked can’t register a launch: the tools are missing, and a direct call to `start_process` is refused.
 4. Writing the output folder doesn’t ask for, or need, any approval the bare command didn’t. It sits where every workspace sandbox already lets the agent write (see “The launcher”), and Postbox’s go-ahead signal reaches the sandboxed launcher.
 5. The detached child stays under the harness’s sandbox. On Codex in Auto (workspace-write), the launched command can’t write outside the workspace, just as the bare command can’t.
+6. The shell command descends from the turn’s backend process that Postbox holds, so a launch can be bound by ancestry (see “One lifecycle”).
 
 A backend that fails any case stays off, and the result is recorded with the run. Each run is a local recording of up to 3 turns (contract §8), and each backend is a separate run. On Codex, the turn’s process group is stopped when the turn completes (`server/adapters/codex.mjs`), so case 1 also checks that the detached launcher survives that stop.
 
@@ -88,7 +89,13 @@ The launcher writes the command’s output in two files that take turns, each cu
 
 The command can write to this folder too, so Postbox treats everything in it as the command’s output: data to show, never input to a decision. No file there decides which process Postbox signals, or whether a run has ended.
 
-The folder is removed once the process has ended and its last output is in the store, on its item. It’s also removed if it belongs to a process the store doesn’t have open, which Postbox checks at start. `read_process` reads from the folder while the process runs, and from the item after it ends.
+**Postbox reads and removes only inside that folder, and within its own limits.**
+- **The recorded path.** Postbox records the folder’s real path (`realpath.native`) when `start_process` makes it. Each later read or removal first resolves the folder again, and acts only if it still resolves to that same recorded path. If the workspace has moved, or `.postbox`, `processes` or the folder itself has been replaced by a link, Postbox doesn’t read or remove anything. The item then says the output is no longer available.
+- **Only the files it named.** Postbox opens only `out.0`, `out.1` and `exit`, each with `O_NOFOLLOW`, and checks that each is a regular file.
+- **Its own read limit.** It reads at most the last 64 KB of each output file and 1 KB of `exit`, whatever size the command has made them. The launcher’s 128 KB rotation bounds what the launcher writes, but the command can change the files too.
+- **`exit` is parsed strictly.** One JSON object, with a `code` that’s an integer or a `signal` that’s a signal name. Anything else reads as “exit status unknown”.
+- **Removal.** The folder is removed once the process has ended and its last output is in the store, on its item, or at start for a folder whose process the store doesn’t have open. Removal unlinks only those named files and `.gitignore`, then removes the empty folder. Unlinking a link removes the link, never its target. A folder with anything else left in it stays where it is.
+- **While it runs and after.** `read_process` reads from the folder while the process runs, and from the item after it ends.
 
 Postbox gives the agent’s environment no token and no URL: [#54](https://github.com/HJeon139/postbox/issues/54) and [#126](https://github.com/HJeon139/postbox/issues/126) closed that path, and the launcher never calls the server.
 
@@ -113,21 +120,26 @@ stateDiagram-v2
   woken --> [*]
 ```
 
-**Identity.** Postbox finds a launcher by its own command line in `ps`. The line holds the tool’s path, `run` and the process’s 128-bit id. The launcher must lead its group (pid = pgid) and must have started after the registration. Postbox records that identity in the store before the command may start: the pid, which is also the pgid, and the start time.
+**Identity, bound by process ancestry.** A command line is something a process supplies about itself, so it only names a candidate. What ties a candidate to the registered launch is its ancestry, which the OS reports and a process can’t rewrite. Postbox holds the owning turn’s backend process as its own child, the CLI or app-server that `rt.turns` keeps, so that pid can’t be reused while the turn runs.
 
-From then on, a group is this process’s group only if its leader is alive with that pid and the recorded start time. That holds whatever any file says.
+The launch has two stages, and the shell call doesn’t return until Postbox has bound them:
+1. The **foreground launcher** is what the agent’s shell tool runs. It forks the **leader** into a new session (`setsid`), and then waits. It doesn’t exit.
+2. Postbox polls `ps` every 250 ms while any registration is waiting. It binds a candidate only when a single snapshot shows all of these:
+   - the leader’s parent is the foreground launcher;
+   - the foreground launcher descends, through parent pids, from the backend process of the turn that called `start_process`;
+   - the leader leads its own group (pid = pgid), and both processes started after the registration.
+3. Postbox commits that identity to the store (the leader’s pid, which is also its pgid, and its start time), and only then sends the go-ahead, SIGUSR1, to the leader.
+4. The leader starts the command only on that signal. The foreground launcher exits once the leader has it, and the shell call returns “started”. With no go-ahead within 30 s, both exit and nothing runs, and the agent sees “Postbox couldn’t confirm this launch, so it didn’t start”.
 
-Another process on this computer could carry the same id on its command line. That would make Postbox see a second launcher, not take over the first. Postbox takes the first launcher it sees and records it. It sends any later launcher for the same id a plain SIGTERM, after the same identity check for that launcher, and the agent sees “Process p_… already started”.
+**Candidates that don’t match are never signaled.** A process carrying the id that isn’t bound this way gets no signal at all, not even a SIGTERM. It times out by itself, because without a go-ahead it runs nothing. One registration binds one identity, the first one committed, and a second matching candidate is left to time out the same way.
 
-**Startup handshake.** The launcher doesn’t run the command until Postbox has recorded its identity:
-1. Postbox polls every 500 ms while any registration is waiting.
-2. When it sees the launcher, it commits the identity.
-3. Then it sends the launcher SIGUSR1, after the same identity check.
-4. The launcher starts the command only on that signal. With no signal within 60 s, it exits without running anything.
+The binding ties a launch to the owning agent’s turn, not to one particular shell call in it. Another command in the same turn could start a matching launcher, but that command ran under the same agent’s permissions, which its harness judged.
 
-So a launcher that dies before the go-ahead never ran the command, and a restart at any point finds either no identity and no command, or an identity it can check.
+A backend whose shell commands don’t run under the process Postbox holds can’t give this binding. That covers a harness whose tools run in a separate daemon, and remote hosts. Such a backend keeps `backgroundProcesses` off, and the parity check (“Permission parity, per harness”, case 6) is where that is found.
 
-Expiry, Stop and shutdown during startup all win the same way: Postbox simply never sends the go-ahead. The single-use claim is Postbox’s commit of one identity per registration, not a file in the workspace.
+**Continuity.** From then on, a group is this process’s group only while its leader is alive with the recorded pid and start time, whatever any file says.
+
+So a launcher that dies before the go-ahead never ran the command, and a restart at any point finds either no identity and no command, or an identity it can check. Expiry, Stop and shutdown during startup all win the same way: Postbox never sends the go-ahead. The single-use claim is Postbox’s commit of one identity per registration, not a file in the workspace.
 
 **Caps count registrations.** At most 4 processes per agent and 12 per conversation, in `shared/limits.mjs`, counting registered, seen and running processes alike. A `start_process` past a cap is refused, and the refusal says which processes hold the slots.
 
@@ -191,13 +203,16 @@ On a remote host, the agent’s shell runs on the host. The launcher and its out
 **`tests/process/`, with the real launcher:**
 - The parent shell returns in under a second, and the command doesn’t start until the go-ahead.
 - With no go-ahead, the launcher exits after its wait, and the command never ran.
-- Two launchers for one id: exactly one is recorded and runs, and the other is refused.
+- **Binding by ancestry:**
+  - A launcher started from a process outside the owning turn carries the right id, and gets no signal and runs nothing.
+  - Two launchers in the owning turn: exactly one is bound and runs.
 - Stop, expiry and shutdown before the go-ahead each leave no process.
 - A launcher killed after the go-ahead has its recorded members stopped.
 - A command that exits with a grandchild still running has the grandchild stopped.
 - The output folder stays at or below 128 KB under a command that writes without end.
 - The output folder is removed after the end commits.
 - **Forged files don’t steer Postbox:** a command that writes a false `exit` file, or files named `claim`, `group` or `stop`, changes neither which group is signaled nor when the end is recorded.
+- **Reads and removal stay inside the folder:** with `out.0` replaced by a link to a file outside it, a 10 MB output file, a malformed `exit`, and the folder moved after registration, Postbox reads at most its limits, never follows the link, and removes nothing outside the folder.
 - **Failing closed:** a leader whose start time doesn’t match, and a group with no leader and no recorded member, are each left unsignaled, and the item says why.
 
 **Unit tests, with a fake process list:**
