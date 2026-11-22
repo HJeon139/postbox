@@ -11,14 +11,17 @@ test('#480 each backend’s memory line', () => {
   assert.equal(memoryLine('claude-code'), OWN);
   assert.equal(memoryLine('agent-sdk'), OWN);
   assert.equal(memoryLine('codex'), 'Memory: off. Codex keeps one memory for everything it runs, so Postbox turns it off.');
-  assert.equal(memoryLine('antigravity-cli'), 'Memory: Antigravity’s own, kept for your sign-in and shared with every agent on it.');
+  assert.equal(
+    memoryLine('antigravity-cli'),
+    'Memory: Antigravity’s own, kept for your sign-in and shared with every Antigravity agent and your own sessions.',
+  );
   assert.equal(memoryLine('mock'), null);
 });
 
 test('#480 Claude Code older than the one with a memory per agent shares one, on this computer', () => {
   assert.equal(
     memoryLine('claude-code', {}, { claudeCode: '2.1.70 (Claude Code)' }),
-    'Memory: one for every agent in the project, until Claude Code is 2.1.74 or later.',
+    'Memory: one for every agent in the project and your own sessions there, until Claude Code is 2.1.74 or later.',
   );
   assert.equal(memoryLine('claude-code', {}, { claudeCode: '2.1.74 (Claude Code)' }), OWN);
   // On a host, the host’s version decides, which the sheet doesn’t know; its memory is kept per agent there (#491).

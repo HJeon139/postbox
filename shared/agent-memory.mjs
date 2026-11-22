@@ -28,10 +28,10 @@ function kiroLine(isolated, onHost) {
  */
 export function memoryLine(backend, { usesHostSetup, remote } = {}, { claudeCode } = {}) {
   if (backend === 'claude-code' && !remote && claudeCode && olderThan(claudeCode, MEMORY_CLAUDE_MIN))
-    return `Memory: one for every agent in the project, until Claude Code is ${MEMORY_CLAUDE_MIN} or later.`;
+    return `Memory: one for every agent in the project and your own sessions there, until Claude Code is ${MEMORY_CLAUDE_MIN} or later.`;
   if (backend === 'claude-code' || backend === 'agent-sdk') return OWN;
   if (backend === 'codex') return 'Memory: off. Codex keeps one memory for everything it runs, so Postbox turns it off.';
   if (backend === 'kiro-cli') return kiroLine(usesHostSetup === false, Boolean(remote));
-  if (backend === 'antigravity-cli') return 'Memory: Antigravity’s own, kept for your sign-in and shared with every agent on it.';
+  if (backend === 'antigravity-cli') return 'Memory: Antigravity’s own, kept for your sign-in and shared with every Antigravity agent and your own sessions.';
   return null;
 }

@@ -32,7 +32,7 @@ const CASES = [
   ['codex', {}, 'Memory: off. Codex keeps one memory for everything it runs, so Postbox turns it off.'],
   ['kiro-cli', { usesHostSetup: false }, 'Memory: off. Isolated agents share one Kiro home, so Postbox turns it off there.'],
   ['kiro-cli', { usesHostSetup: true }, 'Memory: yours. With your setup, it reads and adds to your own Kiro memory.'],
-  ['antigravity-cli', {}, 'Memory: Antigravity’s own, kept for your sign-in and shared with every agent on it.'],
+  ['antigravity-cli', {}, 'Memory: Antigravity’s own, kept for your sign-in and shared with every Antigravity agent and your own sessions.'],
 ];
 let n = 0;
 
