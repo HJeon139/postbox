@@ -87,15 +87,23 @@ The strict mode is apart from Send now’s lenient keep, which stays as it is, b
 Postbox starts every harness process with two variables in its environment: `POSTBOX_SESSION=<session id>` and `POSTBOX_TURN=<turn id>`. Neither is a secret, and the turn’s MCP token never goes into the environment (#54, #126). Every descendant inherits both at exec, including after `setsid`, `nohup` or reparenting to init, which the process group can’t follow.
 
 **What binds.** A tool shell that backgrounds a command exits within milliseconds, and its child is reparented to init. The integrator measured this with a fake harness running `/bin/sh -c 'node -e … & echo $!'`. The shell lived 4.7 to 4.9 ms. Its child’s parent became pid 1, and its group stayed whichever group the shell had: its own, or the harness’s. A 5-second poll almost never sees such a shell, so ancestry recorded by polling can’t bind it. At a turn’s end, a process is bound as this turn’s background work in two cases:
-- **(a) It’s in the harness’s own process group.** Membership in that group is ancestry: only the harness and its descendants are in it. Such a process binds when it isn’t the harness and its start time falls inside the turn, with or without a readable marker. On macOS that covers #1614’s own `sleep 90 &`, whose `/bin/sleep` hides its environment.
+- **(a) It’s in the harness’s own process group, and its shell has exited.** Membership in that group is ancestry: only the harness and its descendants are in it. But membership alone doesn’t tell background work from a foreground child, so the parent decides:
+  - **Background:** a member whose parent is init or the subreaper. Its shell exited and left it running, which is what `cmd &` and `nohup cmd &` do. It binds when its start time falls inside the turn, with or without a readable marker. On macOS that covers #1614’s own `sleep 90 &`, whose `/bin/sleep` hides its environment.
+  - **Foreground:** a member whose parent chain still reaches the harness, or a tool shell that is still alive. It never binds, and it is stopped at the turn’s end.
 - **(b) It’s outside that group,** after `setsid` or as the orphan of a tool shell that led its own group. It binds when all of these hold:
   - its marker names this session and this turn;
   - its start time falls inside the turn;
   - its parent is init or the subreaper.
 
-**Why the marker is enough in case (b).** A forged marker can only come from a process of the person’s own user, and that process can already signal any of these processes. So a forger gains at most a spurious wake for the agent the marker names. A Claude Code task that section 1 handled is left to section 1.
+**Case (b) is the owner’s call.** It gives no tie to the harness that Postbox observed: the marker is the process’s own account, and the start time and parent show only timing. The two reviews differ on whether that’s enough:
+- **The integrator:** it is. A forger is a process of the person’s own user, which can already signal these processes, so it gains at most a spurious wake for the agent the marker names.
+- **Critic:** it isn’t. Unix permission to signal a process doesn’t give Postbox authority to wake an agent for it, or to offer its Stop across sessions. So these sightings stay informational until the harness can establish ownership.
 
-**Nothing leaks that `main` reaps.** At a turn’s end that uses pid signals, any process still in the harness’s group that didn’t bind gets that harness’s group signal, as today. That includes a marked process inside the turn that fails a rule above. A process outside the group that carries the marker but doesn’t bind stays informational: shown in the room with its pid as last seen, with no wake, no signal and no Stop. That’s the same as `main`, which never reached it either.
+If case (b) doesn’t bind, a `setsid` job, or the orphan of a tool shell that led its own group, shows in the room with its pid but wakes no one and has no Stop, as on `main`. Case (a) and section 1 are unaffected. A Claude Code task that section 1 handled is left to section 1.
+
+**Nothing leaks that `main` reaps, and a kept job isn’t signaled with the rest.** A group signal (`signalPgid`) reaches every member, so it can’t be used on a group that holds a bound job. At a turn’s end that uses pid signals:
+- **A harness group with no bound job** gets that harness’s group signal, as today.
+- **A harness group that holds a bound job:** each member that didn’t bind is signaled by its own pid, after the identity check in section 2, and the bound jobs are left alone. That covers the harness, its foreground children, and a marked process inside the turn that fails a rule above. The delayed SIGKILL goes the same way, to the same pids, each checked again. A process outside the group that carries the marker but doesn’t bind stays informational: shown in the room with its pid as last seen, with no wake, no signal and no Stop. That’s the same as `main`, which never reached it either.
 
 **The poll’s cost.** On `main`, `pollKept` runs `ps` only while a kept job exists (`server/kept-jobs.mjs`). This design adds the marker scan at each turn’s end, and at each 5-second tick only while kept jobs exist. One scan per tick serves every turn and job. The implementation PR measures the scan, `ps -Eww -ax`, whose output is larger than today’s read, against `main`’s poll, and holds it to a budget stated there.
 
@@ -119,7 +127,7 @@ So on macOS a job is found through any member that isn’t a platform binary, su
 Other ways the marker is lost or misused:
 - **A fresh environment.** A process that execs with a new environment drops the marker and isn’t tracked. That includes `env -i`, `sudo`, `launchctl`, `systemd-run`, and work handed to `docker` or `ssh`. Changing the environment after exec changes nothing, because the scan reads the kernel’s exec-time copy.
 - **Linux, not verified here.** `/proc/<pid>/environ` is readable for the same user’s dumpable processes, but not for setuid processes or under `hidepid`. Each host’s live check confirms it.
-- **A process that drops or forges its marker.** One that drops it isn’t tracked, as a `nohup` process isn’t today. One that copies another session’s marker was never seen under that session’s harness, so it’s never bound or signaled. At most it shows as marked but not bound.
+- **A process that drops or forges its marker.** One that drops it isn’t tracked, as a `nohup` process isn’t today. One outside the harness’s group that copies another session’s marker binds only if case (b) binds, which is the owner’s call above. Otherwise it shows as marked but not bound.
 
 ### 4. Wake on exit
 
@@ -220,6 +228,7 @@ What each check answers:
   - **The marker:**
     - it survives `nohup` and `setsid` on a non-platform binary, and the scan finds it;
     - `sh -c 'cmd &'`, with the shell in the harness’s group: `cmd` binds by group membership and wakes the agent;
+    - **A mixed group:** a bound background job and a foreground child of a live tool shell in the same harness group. The job survives, and the foreground child stops, each signaled by its own pid;
     - `sh -c 'cmd &'`, with the shell leading its own group: `cmd`, reparented to init, binds by its marker and wakes the agent;
     - a process in the harness’s group that doesn’t bind is still stopped at the turn’s end;
     - a marked process outside the group that doesn’t bind isn’t signaled, and its exit queues no wake;
