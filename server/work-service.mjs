@@ -15,7 +15,7 @@ import { restoreWork, workDiff, workGit, workOutput } from './work-view.mjs';
 export class Work {
   /**
    * @param {{ store: import('./store.mjs').Store, threads: import('./threads.mjs').Threads,
-   *           sessions: { in: (threadId: string) => any[] }, personas: { forSession: (se: any) => any },
+   *           sessions: { in: (threadId: string) => any[], pendingIn: (threadId: string) => any[] }, personas: { forSession: (se: any, read?: (id: string) => any) => any },
    *           placement: { requestAdapter: (handle: string, persona: any) => any, hereFolder: (persona: any, project: any, adapter: any) => Promise<{ folder: string|null, host: string|null }> },
    *           running: { all: () => any[] }, ledger: import('./ledger.mjs').Ledger,
    *           spawnShell?: typeof import('node:child_process').spawn, whenWritable: (fn: () => void) => void, archiveTurns?: boolean }} deps
