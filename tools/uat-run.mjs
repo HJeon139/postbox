@@ -299,7 +299,7 @@ async function main() {
     // The bound, and with --max-cost the budget, watch the agents’ turns through the steps and the wait after them.
     // Past the wall time, a run held by a Postbox that answers nothing runs its own stop, as a signal would, and exits.
     const overdue = overdueStop(stop);
-    unwatch = watchRun({ bound, budget, api, events: history.events, threadsUnderTest, stop: stopThroughPage(page), log, overdue });
+    unwatch = watchRun({ bound, budget, api: postbox.watchApi, events: history.events, threadsUnderTest, stop: stopThroughPage(page), log, overdue });
     for (let step = 1; step <= steps; step++) {
       if (signals.stopping) throw new Error('The run was stopped by a signal.');
       const timedOut = await settle(true);

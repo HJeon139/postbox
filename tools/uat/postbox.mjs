@@ -99,15 +99,17 @@ export async function readJson(origin, path, ms = READ_MS) {
  * its items, which /api/state no longer carries (#1155): the checks and triggers read them there.
  * @param {{ origin: string, exited: number | null }} pb  the run’s Postbox, read as it is at each call
  * @param {number} [ms]  each read’s limit
+ * @param {{ items?: boolean }} [o]  items: false reads the state alone, for a watch that needs only its sessions and
+ *   threads: every thread’s items every 1.5 s would cost the Postbox under test more as its rooms grow (#1621)
  */
-export function postboxReader(pb, ms = READ_MS) {
+export function postboxReader(pb, ms = READ_MS, { items = true } = {}) {
   const get = async (/** @type {string} */ p) => {
     if (pb.exited !== null) throw new Error(`Postbox exited (code ${pb.exited}); see run.log.`);
     return readJson(pb.origin, p, ms);
   };
   return async (/** @type {string} */ p) => {
     const body = await get(p);
-    return p === '/api/state' && body?.state ? { ...body, state: await withItems(body.state, get) } : body;
+    return items && p === '/api/state' && body?.state ? { ...body, state: await withItems(body.state, get) } : body;
   };
 }
 
@@ -144,6 +146,8 @@ export async function startPostbox({ root, port, data, env, log, tries = 80, ste
   return {
     origin: pb.origin,
     api,
+    /** api without the threads’ items, for the run’s watch, which polls it every 1.5 s (tools/uat/run-bound.mjs). */
+    watchApi: postboxReader(pb, READ_MS, { items: false }),
     /** What it has printed so far, line by line, and when it exited by itself (tools/uat/postbox-output.mjs). */
     output: pb.output.output,
     /** Stops it, and resolves once it has exited, so its port is free. */

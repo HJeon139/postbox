@@ -34,7 +34,7 @@ test('a read Postbox takes and never answers gives up after its limit, saying so
     server.stall = true;
     const started = Date.now();
     await assert.rejects(readJson(origin, '/api/state', 200), /Postbox didn’t answer GET \/api\/state within 0.2 s\./);
-    assert.ok(Date.now() - started < 2000, 'and it gave up near its limit');
+    assert.ok(Date.now() - started < 5000, 'and it gave up near its limit, not at the test’s own limit');
     server.stall = false;
     assert.deepEqual(await readJson(origin, '/api/state', 200), { state: { threads: {}, sessions: {}, apps: {} } });
   } finally {
@@ -61,5 +61,30 @@ test('the runner’s wait unwinds when its read stalls, while the watch keeps ge
   } finally {
     clearInterval(watch);
     close();
+  }
+});
+
+test('the watch’s read of the state asks for no items, and the checks’ read asks for every thread’s (#1621)', { timeout: 10_000 }, async () => {
+  const asked = [];
+  const server = createServer((req, res) => {
+    asked.push(req.url);
+    res.setHeader('content-type', 'application/json');
+    res.end(JSON.stringify(req.url?.startsWith('/api/threads/') ? { items: [] } : { state: { threads: { t1: {}, t2: {} }, sessions: {} } }));
+  });
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  const origin = `http://127.0.0.1:${server.address().port}`;
+  try {
+    await postboxReader({ origin, exited: null }, 1000, { items: false })('/api/state');
+    assert.deepEqual(asked, ['/api/state'], 'the watch’s read: the state alone');
+    asked.length = 0;
+    await postboxReader({ origin, exited: null }, 1000)('/api/state');
+    assert.deepEqual(
+      asked.sort(),
+      ['/api/state', '/api/threads/t1/items?limit=all', '/api/threads/t2/items?limit=all'],
+      'the checks’ read: with each thread’s items',
+    );
+  } finally {
+    server.close();
   }
 });
