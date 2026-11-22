@@ -123,6 +123,17 @@ const APPS = {
 <table><tr><th>Book</th><th>Passages</th></tr><tr><td>Middlemarch</td><td>812</td></tr></table></main>`,
 };
 
+/**
+ * Whether a page error is one of the two #328 runs on purpose, told by its type and its exact words in each engine
+ * (#1140): `(1;` is a SyntaxError, “Unexpected token ';'” in Chromium and “missing ) in parenthetical” in Firefox, and
+ * `null.missing` is a TypeError, “Cannot read properties of null (reading 'missing')” in Chromium and “property "missing",
+ * value is null” in Firefox: the same read on undefined is still reported.
+ * Any other error naming `missing` is still reported. @param {Error} e
+ */
+const deliberate = (e) =>
+  (e.name === 'SyntaxError' && /Unexpected token ';'|missing \) in parenthetical/.test(e.message)) ||
+  (e.name === 'TypeError' && /Cannot read properties of null \(reading 'missing'\)|property "missing", value is null/.test(e.message));
+
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
 let app;
 /** What the page logged as errors while it checked the apps. */
@@ -146,7 +157,7 @@ test.beforeAll(async ({ browser }) => {
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 }, colorScheme: 'dark' });
   page.on('pageerror', (e) => {
     // #328 deliberately runs these two broken scripts so their check reports can be asserted below.
-    if (!["Unexpected token ';'", "Cannot read properties of null (reading 'missing')"].includes(e.message)) errors.push(`exception: ${e.message}`);
+    if (!deliberate(e)) errors.push(`exception: ${e.message}`);
   });
   page.on('console', (m) => m.type() === 'error' && errors.push(`console.error: ${m.text()}`));
   await page.goto(`${app.origin}/#/t/${t.id}`);
@@ -176,7 +187,8 @@ test('the page threw no exceptions and logged no errors while it checked the app
 
 test('#328 syntax and runtime errors name where they happened', () => {
   expect.soft(says('syntax')).toMatch(/script-error: SyntaxError: Unexpected token ';' \(script 1, line 2, column \d+\)/);
-  expect.soft(says('runtime')).toMatch(/script-error: TypeError: Cannot read properties of null .* \(line \d+, column \d+\)/);
+  // The type, what it names and where, which #328 pins, whatever the engine’s words (#1140).
+  expect.soft(says('runtime')).toMatch(/script-error: TypeError: .*\bmissing\b.* \(line \d+, column \d+\)/);
 });
 
 // ── #194: text out of its box, and text over text ───────────────────────────────────────
