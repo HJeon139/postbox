@@ -192,7 +192,7 @@ test('#672: a harness missing at its start is looked for again with a fresh logi
   }
 });
 
-test('#672: the login shell is asked again at most once per daemon start', async () => {
+test('#672, #1084: the login shell is asked again at most once while a re-probe’s result stands', async () => {
   let probes = 0;
   const s = setup({ probeLoginPath: async () => ({ ok: true, entries: [`/try${++probes}`], ms: 1 }), findPrograms: findsLate([]) });
   try {

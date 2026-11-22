@@ -195,3 +195,69 @@ test('read at the top, an item moved forward leaves its stub on the page and is 
   assert.equal(beyondItem(ranges.get('t'), 't', 'i3')?.text, 'updated');
   assert.equal(ranges.get('t').total, 101);
 });
+
+/** The tail’s ids, as End puts them back, with where they start: the newest, in order, ending at the last. */
+const atEndAfter = (state, ranges, seq) => {
+  assert.equal(placeTail(state, ranges, 't', seq), true, 'End, with no load');
+  const list = state.items.t;
+  const r = ranges.get('t');
+  return { length: list.length, first: list[0].id, last: list.at(-1).id, start: r.start, total: r.total };
+};
+
+test('#1260 at Home, the kept tail holds at most two pages of the newest items, and End puts back the newest, in order', () => {
+  const state = { items: {} };
+  const ranges = new Map();
+  loading(ranges, 't');
+  place(state, ranges, { threadId: 't', seq: 10, start: 95, total: 100, items: items(95, 100), head: items(0, 5) }, 'replace');
+  assert.equal(placeHead(state, ranges, 't', 10), true, 'Home');
+  // A busy room while you read at its top: 700 items arrive, past two pages, so the tail is cut back to one on the way.
+  let most = 0;
+  for (let n = 100; n < 800; n++) {
+    hear(state, ranges, 'item.add', { threadId: 't', item: it(n) }, 11 + n);
+    most = Math.max(most, ranges.get('t').tail.length);
+  }
+  assert.ok(most <= 400, `at most two pages held at once, not every item added: ${most}`);
+  // A patch to the newest still finds it in the tail, however it was cut.
+  hear(state, ranges, 'item.text', { threadId: 't', id: 'i799', text: '+chunk' }, 900);
+  const kept = ranges.get('t').tail.length;
+  assert.ok(kept >= 200 && kept <= 400, `a page or two kept: ${kept}`);
+  assert.deepEqual(atEndAfter(state, ranges, 1000), { length: kept, first: `i${800 - kept}`, last: 'i799', start: 800 - kept, total: 800 });
+  assert.equal(state.items.t.at(-1).text, 'm799+chunk');
+});
+
+/** A range at the end that holds 500 items, more than two pages, with an ask kept at 40. */
+function fullRange() {
+  const state = { items: {} };
+  const ranges = new Map();
+  loading(ranges, 't');
+  place(
+    state,
+    ranges,
+    { threadId: 't', seq: 10, start: 0, total: 500, items: items(0, 500), head: items(0, 5), asks: [{ id: 'i40', start: 38, items: items(38, 43) }] },
+    'replace',
+  );
+  return { state, ranges };
+}
+const newestPage = { length: 200, first: 'i300', last: 'i499', start: 300, total: 500 };
+
+test('#1260 a tail saved by Home from a range past two pages holds the newest page at once, before any event', () => {
+  const { state, ranges } = fullRange();
+  assert.equal(placeHead(state, ranges, 't', 10), true, 'Home');
+  assert.equal(ranges.get('t').tail.length, 200, 'the newest page kept, with no event since');
+  assert.deepEqual(atEndAfter(state, ranges, 10), newestPage);
+});
+
+test('#1260 a tail saved by a jump to an ask from a range past two pages holds the newest page at once', () => {
+  const { state, ranges } = fullRange();
+  assert.equal(placeAround(state, ranges, 't', 'i40', 10), true, 'the jump');
+  assert.equal(ranges.get('t').tail.length, 200, 'the newest page kept, with no event since');
+  assert.deepEqual(atEndAfter(state, ranges, 10), newestPage);
+});
+
+test('#1260 a tail saved by a load around an item (?around=) from a range past two pages holds the newest page at once', () => {
+  const { state, ranges } = fullRange();
+  loading(ranges, 't');
+  place(state, ranges, { threadId: 't', seq: 11, start: 38, total: 500, items: items(38, 43) }, 'replace');
+  assert.equal(ranges.get('t').tail.length, 200, 'the newest page kept, with no event since');
+  assert.deepEqual(atEndAfter(state, ranges, 11), newestPage);
+});
