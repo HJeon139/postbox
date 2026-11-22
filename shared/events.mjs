@@ -90,9 +90,10 @@ const BUILDERS = {
     for (const k of Object.keys(v)) if (!b.fields.some((f) => f.id === k)) return { ok: false, error: `“${k}” isn’t a field in this form.` };
     const n = Object.keys(fieldErrors).length;
     if (n) return { ok: false, error: n === 1 ? '1 field needs fixing.' : `${n} fields need fixing.`, fieldErrors };
+    // Every field that was sent, and only those, so the receipt says what the agent received (#247). Own keys only: an
+    // unanswered field with an id like “constructor” would otherwise read Object’s.
     const shown = b.fields
-      .filter((f) => out[f.id] !== undefined && out[f.id] !== '' && f.kind !== 'longtext')
-      .slice(0, 2)
+      .filter((f) => Object.hasOwn(out, f.id) && out[f.id] !== '')
       .map(
         (f) =>
           `${f.label} ${f.kind === 'toggle' ? (out[f.id] ? 'on' : 'off') : f.kind === 'select' ? f.options.find((o) => o.id === out[f.id])?.label : f.kind === 'number' ? fmtNum(out[f.id]) : quote(out[f.id], 32)}`,
@@ -104,7 +105,8 @@ const BUILDERS = {
     if (!b.rowAction || action !== b.rowAction.id) return { ok: false, error: 'This table has no such row action.' };
     const row = b.rows.find((r) => r.id === v.rowId);
     if (!row) return { ok: false, error: `There’s no row “${v.rowId}”.` };
-    const first = row.cells[b.columns[0].id];
+    // Own keys only: a missing cell under a column with an id like “constructor” would read Object’s (#247).
+    const first = Object.hasOwn(row.cells, b.columns[0].id) ? row.cells[b.columns[0].id] : undefined;
     return { ok: true, values: { rowId: row.id }, voice: `${b.rowAction.label}: ${first ?? row.id}` };
   },
 
@@ -123,7 +125,7 @@ const BUILDERS = {
   review(_b, action, v) {
     if (action !== 'submit') return { ok: false, error: 'A review only accepts the “submit” action.' };
     const verdicts = { comment: 'Comment', approve: 'Approve', request_changes: 'Request changes' };
-    if (!(v.verdict in verdicts)) return { ok: false, error: 'Pick a verdict: comment, approve or request changes.' };
+    if (!Object.hasOwn(verdicts, v.verdict)) return { ok: false, error: 'Pick a verdict: comment, approve or request changes.' };
     const comments = Array.isArray(v.comments) ? v.comments : [];
     for (const c of comments) {
       if (typeof c?.text !== 'string' || !c.text.trim()) return { ok: false, error: 'A comment is empty.' };

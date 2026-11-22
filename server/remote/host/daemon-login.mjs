@@ -1,7 +1,7 @@
 // The daemon’s login PATH (login-path.mjs, #672, #474): the login shell is asked once per daemon start, at the first
-// hello, and the programs are found on its PATH first. A turn whose harness isn’t found asks it once more, since the
-// person may have installed the CLI since: at most one more time per daemon start, so a host without it doesn’t start
-// a login shell for every turn. Each turn runs with the merged PATH, unless the laptop sends one; when the login shell
+// hello, and the programs are found on its PATH first. A turn whose harness isn’t found asks it again, since the
+// person may have installed the CLI since: at most once every REPROBE_AFTER_MS while one is missing (#1084), so a host
+// without it doesn’t start a login shell for every turn. Each turn runs with the merged PATH, unless the laptop sends one; when the login shell
 // failed, a turn’s PATH is the daemon’s own, as before.
 
 import { dirname } from 'node:path';
@@ -25,20 +25,30 @@ export async function findWithLogin(d) {
   d.programs = await d.findPrograms({ home: d.home, settings: d.settings, loginPath });
 }
 
+/** How long a re-probe’s result stands before a turn whose harness is still missing asks again (#1084). */
+export const REPROBE_AFTER_MS = 30_000;
+
 /**
- * Asks the login shell once more and finds the programs again, when a turn’s harness wasn’t found. Only the first
- * call per daemon start asks; a later one, or one meanwhile, waits for that one.
+ * Asks the login shell once more and finds the programs again, when a turn’s harness wasn’t found. One that’s running
+ * is shared, and one that settled stands for REPROBE_AFTER_MS, so a harness installed after it is found by a later
+ * turn without the daemon starting again (#1084).
  * @param {Daemon} d
  */
 export async function reprobe(d) {
-  d.reprobed ??= (async () => {
+  const last = d.reprobed;
+  if (last && (!last.settled || d.mono() - last.at < REPROBE_AFTER_MS)) return last.done;
+  const run = { at: d.mono(), settled: false, done: Promise.resolve() };
+  run.done = (async () => {
     await loginEntries(d);
     // A re-probe that fails keeps the first probe’s PATH: losing it would lose every CLI found there, for good.
     const again = await d.probeLoginPath();
     if (again.ok || !d.loginPath?.ok) d.loginPath = again;
     await findWithLogin(d);
-  })();
-  await d.reprobed;
+  })().finally(() => {
+    run.settled = true;
+  });
+  d.reprobed = run;
+  await run.done;
 }
 
 /** What the welcome says of the login PATH: how many entries and how long, never the entries. @param {Daemon} d */
