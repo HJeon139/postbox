@@ -79,7 +79,8 @@ test('#416 the hook reads the persona’s tools and whether it can publish from 
   const fetchImpl = async () => {
     throw new Error('the hook asked Postbox');
   };
-  const run = (event, env) => runAgyHook(JSON.stringify({ toolCall: event }), { cwd: ws, home, env, fetchImpl: /** @type {any} */ (fetchImpl) });
+  const run = (event, env) =>
+    runAgyHook(JSON.stringify({ conversationId: 'c1', stepIdx: 1, toolCall: event }), { cwd: ws, home, env, fetchImpl: /** @type {any} */ (fetchImpl) });
   const npm = { name: 'run_command', args: { CommandLine: 'npm test' } };
   assert.deepEqual(await run(npm, { ...base, POSTBOX_AGY_TOOLS: JSON.stringify(['shell']) }), { decision: 'allow' });
   assert.equal((await run(npm, base)).decision, 'deny', 'no tools listed: it asks, and the failed ask denies');

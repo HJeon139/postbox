@@ -3,6 +3,10 @@
 // - `@alpha /compact` runs /compact as @alpha’s turn, and nothing goes out as a message;
 // - `@beta /release-notes 2.1` runs @beta’s own command as its turn, with `/release-notes 2.1` as the whole prompt;
 // - `@alpha /mode` opens @alpha’s persona sheet, not the last speaker’s;
+// - `/effort low` says Postbox’s /effort takes no argument, opens the last speaker’s sheet, and sends nothing (#546);
+// - `/stop alpha` says Postbox’s /stop takes no argument, and Enter sends nothing (#546), as does `/effort low` with a file;
+//   typed after a space it says so too, and a screen reader hears it;
+// - `/compact keep the plan`, which @alpha offers, says it runs as @alpha’s turn, not Postbox’s /compact (#546);
 // - `@alpha /release-notes`, which @alpha doesn’t offer, says so before it’s sent, and goes to @alpha as a message;
 // - `@ghost /compact`, a handle no agent here has, says so too, and goes to the last speaker as a message;
 // - `@alpha /stop` with @alpha idle says “@alpha isn’t working.”
@@ -109,6 +113,89 @@ test('#405 @alpha /mode opens @alpha’s persona sheet, not the last speaker’s
   const sheet = page.getByRole('dialog', { name: 'Settings' });
   await expect(sheet.locator('b', { hasText: 'alpha' })).toBeVisible();
   await expect(sheet.locator('b', { hasText: 'beta' })).toHaveCount(0);
+});
+
+// #546: `/effort low`, typed as a CLI takes it, went to the agent as a message and started a turn, unannounced.
+/** Sends a message after the line under test and waits for it, so a message or turn the line started has had time to show. */
+async function sendAfter(page, t) {
+  await page.locator('#composer-input').fill('after');
+  await page.keyboard.press('Enter');
+  await expect.poll(() => sent(t, 'after').length, { message: 'the message sent after' }).toBe(1);
+}
+const turnsFor = (typed) => turns.filter((x) => JSON.stringify(x.message).includes(typed));
+
+test('#546 /effort low, which Postbox’s /effort doesn’t take, says so and opens the reply agent’s sheet, sending nothing', async ({ page }) => {
+  const { t } = await room(page, 'Effort', 'beta');
+  await page.keyboard.type('/effort low');
+  await expect(hint(page)).toContainText('/effort takes no argument here, so Enter runs it for beta without “low”');
+  await page.keyboard.press('Enter');
+  const sheet = page.getByRole('dialog', { name: 'Settings' });
+  await expect(sheet.locator('b', { hasText: 'beta' })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await sendAfter(page, t);
+  expect(sent(t, '/effort low'), 'no message').toEqual([]);
+  expect(turnsFor('/effort'), 'no turn').toEqual([]);
+});
+
+test('#546 /stop alpha, which Postbox’s /stop doesn’t take, says so and sends nothing, keeping the draft', async ({ page }) => {
+  const { t } = await room(page, 'Stop with an argument', 'beta');
+  await page.keyboard.type('/stop alpha');
+  await expect(hint(page)).toContainText('/stop takes no argument here, so Enter sends nothing. Remove “alpha” to run it');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#composer-input'), 'the draft stays').toHaveValue('/stop alpha');
+  await sendAfter(page, t);
+  expect(sent(t, '/stop alpha'), 'no message').toEqual([]);
+  expect(turnsFor('/stop'), 'no turn').toEqual([]);
+});
+
+test('#546 a file attached after /effort low is typed: the hint changes to say Enter sends nothing, and it does', async ({ page }) => {
+  const { t } = await room(page, 'With a file', 'beta');
+  await page.keyboard.type('/effort low');
+  await expect(hint(page)).toContainText('/effort takes no argument here, so Enter runs it for beta without “low”');
+  await page.locator('.composer input[type=file][multiple]').setInputFiles({ name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('Notes') });
+  await expect(page.locator('.composer .attachments .att')).toHaveText(/^notes\.txt · \d/);
+  await expect(hint(page)).toContainText('/effort takes no argument here, so Enter sends nothing. Remove “low” and the attached files to run it');
+  await page.locator('#composer-input').focus();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#composer-input'), 'the draft stays').toHaveValue('/effort low');
+  await expect(page.locator('.composer .attachments .att'), 'and so does the file').toHaveCount(1);
+  await expect(page.getByRole('dialog', { name: 'Settings' }), 'no settings opened').toHaveCount(0);
+  // Without the file, the hint goes back, and the agent’s /compact no longer promises a turn with a file there.
+  await page.locator('#composer-input').fill('/compact keep the plan');
+  await expect(hint(page), 'an agent’s command with a file goes as a message, so no turn is promised').not.toContainText('alpha’s turn');
+  await page.locator('.composer .attachments .att button').first().click();
+  await expect(page.locator('.composer .attachments .att')).toHaveCount(0);
+  await expect(hint(page), 'the file removed, the agent’s command runs as its turn').toContainText('Enter runs /compact as alpha’s turn');
+  // What the hint said to do: without “low” and the file, Enter runs /effort, and nothing is sent.
+  await page.locator('#composer-input').fill('/effort');
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('dialog', { name: 'Settings' }).locator('b', { hasText: 'beta' })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await sendAfter(page, t);
+  expect(sent(t, '/effort low').concat(sent(t, '/effort')), 'no message').toEqual([]);
+  expect(turnsFor('/effort'), 'no turn').toEqual([]);
+});
+
+test('#546 a refused line typed after a space says so too, and a screen reader hears it on Enter', async ({ page }) => {
+  const { t } = await room(page, 'Leading space', 'beta');
+  await page.keyboard.type(' /stop alpha');
+  const said = '/stop takes no argument here, so Enter sends nothing. Remove “alpha” to run it';
+  await expect(hint(page)).toContainText(said);
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#composer-input'), 'the draft stays').toHaveValue(' /stop alpha');
+  await expect(page.locator('#live'), 'announced').toHaveText(said);
+  await page.locator('#composer-input').fill(`/stop ${'a long pasted paragraph '.repeat(10)}`);
+  await expect(hint(page), 'a long argument is cut in the hint').toContainText('Remove “a long pasted paragraph a long pasted p…” to run it');
+  await page.locator('#composer-input').fill('');
+  await sendAfter(page, t);
+  expect(turnsFor('/stop'), 'no turn').toEqual([]);
+});
+
+test('#546 /compact keep the plan, which only @alpha offers, names whose turn it starts, since Postbox has a /compact too', async ({ page }) => {
+  await room(page, 'Shadowed', 'beta');
+  await page.keyboard.type('/compact keep the plan');
+  await expect(hint(page)).toContainText('Enter runs /compact as alpha’s turn');
 });
 
 test('#405 @alpha /release-notes, which @alpha doesn’t offer, says so and goes to @alpha as a message', async ({ page }) => {
