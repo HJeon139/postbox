@@ -1,4 +1,5 @@
-// A press on the Work pane or the Threads page isn’t lost to a refill (#1010), as in an agent’s quick panel (#898).
+// A press on the Work pane, the transcript’s work chip (#1121) or the Threads page isn’t lost to a refill (#1010), as in
+// an agent’s quick panel (#898).
 // Each of the three views rebuilds every button in it when it repaints: the Work pane’s list and a turn’s view on each
 // work.add or work.patch of their conversation, the Threads page on each thread, session or item.patch event. A refill
 // between mousedown and mouseup put a new button under the mouseup, so the browser fired no click. Here the refill
@@ -43,6 +44,19 @@ test.beforeAll(async () => {
   });
   const root = store.items(conv.id).find((i) => i.kind === 'agent') ?? arrange.post(rt, conv.id, { kind: 'agent', handle: se.handle, text: 'Done.' });
   topic = rt.startTopic(conv.id, root.id).threadId;
+  // The turn’s reply, which the transcript heads with the turn’s work chip (#1121).
+  arrange.post(rt, conv.id, {
+    kind: 'agent',
+    sessionId: se.id,
+    personaId: se.personaId,
+    handle: se.handle,
+    text: 'Ran the tests.',
+    status: 'done',
+    turnId: TURN,
+    // Its line, as the turn’s end writes it (server/turn-end-work.mjs).
+    work: 'Ran 1 command',
+    workTurn: TURN,
+  });
 });
 test.afterAll(async () => {
   await app?.stop();
@@ -98,6 +112,20 @@ for (const width of [375, 1280]) {
       await page.mouse.up();
       await expect.soft(page.locator(`.pane-full details.work-item:has(#wsum-${COMMAND})`), 'the command, opened').toHaveAttribute('open', '');
       await expect.soft(page.locator('.pane-full .work-cmd-full'), 'its command line').toHaveText('npm test');
+    });
+
+    // #1121: the transcript’s work chip, under the turn’s reply, refills on the same work events.
+    test(`a press held on the transcript’s work chip while it refills opens the turn’s work, at ${width} px`, async ({ page }) => {
+      await page.goto(`${app.origin}/#/t/${conv.id}`);
+      await synced(page, app);
+      const chip = page.locator(`#main .work-chip[href*="turn=${TURN}"]`);
+      await chip.scrollIntoViewIfNeeded();
+      await chip.hover();
+      await page.mouse.down();
+      const line = await refillWork(page);
+      await page.mouse.up();
+      await expect(page, 'the turn’s work, opened').toHaveURL(new RegExp(`turn=${TURN}`));
+      await expect.soft(chip, 'the refill it held landed').toContainText(line);
     });
 
     test(`a press held on a thread’s card while the Threads page refills opens the thread, at ${width} px`, async ({ page }) => {
