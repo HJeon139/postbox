@@ -55,7 +55,7 @@ import { recheck } from './uat/recheck.mjs';
 import { presetFindings } from './uat/regressions.mjs';
 import { writeReport } from './uat/report.mjs';
 import { reviewFindings } from './uat/review.mjs';
-import { runBound, watchRun } from './uat/run-bound.mjs';
+import { overdueStop, runBound, watchRun } from './uat/run-bound.mjs';
 import { endRun } from './uat/run-end.mjs';
 import { runEnv } from './uat/run-env.mjs';
 import { runFacts } from './uat/run-facts.mjs';
@@ -297,8 +297,8 @@ async function main() {
     const observe = () => observeScreen({ d, labels, keys, seen, paths, timeline, dir, facts });
 
     // The bound, and with --max-cost the budget, watch the agents’ turns through the steps and the wait after them.
-    // Past the wall time and its grace, a run still held in a wait runs its own stop, as a signal would, and exits.
-    const overdue = () => void stop().finally(() => process.exit(process.exitCode || 1));
+    // Past the wall time, a run held by a Postbox that answers nothing runs its own stop, as a signal would, and exits.
+    const overdue = overdueStop(stop);
     unwatch = watchRun({ bound, budget, api, events: history.events, threadsUnderTest, stop: stopThroughPage(page), log, overdue });
     for (let step = 1; step <= steps; step++) {
       if (signals.stopping) throw new Error('The run was stopped by a signal.');

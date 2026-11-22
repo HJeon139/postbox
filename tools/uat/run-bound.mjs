@@ -12,8 +12,9 @@
 //
 // The wall time is checked on a timer of its own, and the bound’s state read gives up after STATE_READ_MS, so a
 // Postbox that refuses or hangs can’t hold the bound back: the run takes no step after the one out. The runner’s own
-// waits read the state with no limit of their own, so a run still in one GRACE_MS past its wall time runs its own
-// stop, as a signal would, and exits 1, with no report. Where the cap can still be passed: a turn that starts within a
+// waits read the state with no limit of their own, so once the wall time is up and Postbox has answered none of the
+// watch’s reads for GRACE_MS, the run runs its own stop, as a signal would, and exits (1, or a signal’s 130) with no
+// report. A run in a long wait it chose, with Postbox answering, finishes it and reports as any run does. Where the cap can still be passed: a turn that starts within a
 // poll of it runs until that poll, and starts lost while the event stream was down longer than the store keeps its
 // events count only as the state shows them. The run’s report and verifier come after the wall time; the verifier is
 // bounded by --max-cost and --budget, not by this.
@@ -21,11 +22,21 @@
 import { watchBudget } from './turns.mjs';
 
 /**
- * How long a run may take, once its wall time is up, to get past its waits to the end of its steps. Past it, the watch
- * runs the run’s cleanup (overdue): its turns were stopped on the first poll after the deadline, so only a wait that
- * hangs, such as a state read Postbox never answers, is still out by then.
+ * How long Postbox may go without answering the watch, once the wall time is up, before the watch runs the run’s
+ * cleanup (overdue). A runner whose waits read a Postbox that answers none of them can’t get back to its own stop; one
+ * in a long wait it chose, a phase’s named wait or a tester step, with Postbox answering, isn’t held, so the grace
+ * runs from Postbox’s last answer, never from the deadline alone.
  */
 export const GRACE_MS = 120_000;
+
+/**
+ * The runner’s cleanup for a run held past its grace: its own stop (tools/uat/stop.mjs, runStop), as a signal would
+ * run it, then an exit that keeps a signal’s 130. @param {() => Promise<void>} stop @param {(code: number) => void} [exit]
+ */
+export const overdueStop =
+  (stop, exit = (code) => process.exit(code)) =>
+  () =>
+    void stop().finally(() => exit(Number(process.exitCode) || 1));
 
 /** How long the bound’s watch waits for one read of the state before it tries again on its next poll. */
 const STATE_READ_MS = 10_000;
@@ -191,7 +202,8 @@ function stoppedWhen({ step, during }) {
 /**
  * The run’s watches, every 1.5 s until ended, whatever the run is doing: the bound’s, on every harness, and the dollar
  * budget’s (tools/uat/turns.mjs, watchBudget), with --max-cost. Returns the function that ends both.
- * Once the wall time is up, a run still in its waits after `grace` runs `overdue`, the runner’s cleanup and exit.
+ * Once the wall time is up, and Postbox has answered none of its reads for `grace`, it runs `overdue`, the runner’s
+ * cleanup and exit (overdueStop).
  * @param {{ bound: RunBound, budget: any, api: (path: string) => Promise<any>, events?: () => any[], threadsUnderTest: (st: any) => string[], stop: (id: string) => Promise<unknown>, log?: (line: string) => void, every?: number, grace?: number, overdue?: () => void }} o
  */
 export function watchRun({
@@ -212,23 +224,26 @@ export function watchRun({
   /** @type {ReturnType<typeof setTimeout> | undefined} */
   let timer;
   let told = false;
-  /** @type {ReturnType<typeof setTimeout> | undefined} */
-  let late;
   const said = () => {
     if (told || !bound.stopped) return;
     told = true;
     log(`Stopped at the run’s bound: ${bound.stopped.why}`);
-    // Only the wall time: a turn cap stops turns, and the runner’s waits then end as they always do.
-    if (!bound.late()) return;
-    late = setTimeout(() => {
-      log(`The run was still waiting ${grace / 1000} s past its wall time, so it’s cleaning up now.`);
-      overdue();
-    }, grace);
+  };
+  // When Postbox last answered the watch, by this process’s clock; and whether the run’s cleanup has been called.
+  let answered = Date.now();
+  let cleaning = false;
+  /** Past the wall time, with no answer from Postbox for the whole grace: the runner can’t get back to its stop. */
+  const held = () => {
+    if (cleaning || !bound.late() || Date.now() - answered < grace) return;
+    cleaning = true;
+    log(`Postbox answered nothing for ${grace / 1000} s past the run’s wall time, so the run is cleaning up and exiting without a report.`);
+    overdue();
   };
   // The wall time on a timer of its own, so a poll waiting on Postbox can’t hold it back.
   const clock = setInterval(() => {
     bound.tick();
     said();
+    held();
   }, every);
   const poll = async () => {
     bound.tick();
@@ -236,6 +251,7 @@ export function watchRun({
     said();
     try {
       const st = (await within(api('/api/state'), STATE_READ_MS)).state;
+      answered = Date.now();
       const ids = bound.see(Object.values(st.sessions ?? {}));
       said();
       for (const id of ids) {
@@ -253,7 +269,6 @@ export function watchRun({
     ended = true;
     clearTimeout(timer);
     clearInterval(clock);
-    clearTimeout(late);
     bound.end();
     unbudget();
   };
