@@ -93,6 +93,27 @@ test('#858 one box at a time, and what was typed in an edit is never dropped', a
   await expect.poll(() => sent(blockId)?.map((c) => c.text)).toEqual(['three, as sent', 'five, edited']);
 });
 
+test('#858 deleting a draft before the one being edited leaves the edit on its own comment', async ({ page }) => {
+  const { block, blockId, open } = await twoDrafts(page, 'Delete before');
+  await block.locator('.g-mark[data-line="7"]').click();
+  await block.getByRole('textbox', { name: 'Comment on line 7' }).fill('on seven');
+  await block.getByRole('button', { name: 'Add draft comment', exact: true }).click();
+  const box = await open('on five');
+  await box.fill('five, edited');
+  await block.locator('.rv-thread', { hasText: 'on three' }).getByRole('button', { name: 'Delete', exact: true }).click();
+  const still = block.getByRole('textbox', { name: 'Edit your draft comment' });
+  await expect(still, 'the edit is still open, with what was typed').toHaveValue('five, edited');
+  await still.press('Control+Enter');
+  await expect(block.locator('.rv-thread', { hasText: 'on seven' }), 'the comment after it is untouched').toHaveCount(1);
+  await block.getByRole('button', { name: 'Submit review', exact: true }).click();
+  await expect
+    .poll(() => sent(blockId)?.map((c) => [c.line, c.text]))
+    .toEqual([
+      [5, 'five, edited'],
+      [7, 'on seven'],
+    ]);
+});
+
 test('#858 an edit keeps its text, caret and focus when another agent comments', async ({ page }) => {
   const { rt } = room.app;
   const { blockId, sessionOf, open } = await twoDrafts(page, 'Keep caret');
