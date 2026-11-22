@@ -75,7 +75,7 @@ test('#693 the issue’s acceptance, which passes on main too: declining a card 
   assert.match(told, /so your message held on it .* didn’t go to @gamma/, told);
 });
 
-test('#693 a later add the person allowed lifts the decline: once that agent is removed, a mention asks again', async () => {
+test('#693 a later add the person allowed, then the agent removed: a mention is told it was deleted, not asked again', async () => {
   const f = await declined();
   // A wake that isn’t a prose mention still asks after a decline.
   f.rt.agentWake(f.alpha.id, 'gamma', 'I really need gamma for this.');
@@ -84,8 +84,7 @@ test('#693 a later add the person allowed lifts the decline: once that agent is 
   await settle(f.rt);
   const gamma = arrange.sessionsIn(f.rt, f.t.id).find((x) => x.handle === 'gamma');
   f.rt.deleteSession(gamma.id);
-  const r = f.rt.agentWake(f.beta.id, 'gamma', 'Back again?', { itemId: 'it_w', prose: true });
-  assert.equal(r.waiting, true, 'the person’s latest answer was yes');
+  toldDeleted(f.rt.agentWake(f.beta.id, 'gamma', 'Back again?', { itemId: 'it_w', prose: true }));
 });
 
 test('#693 a card retiring forks declined isn’t the person’s decline', async () => {
@@ -142,26 +141,37 @@ function removeGamma(f) {
 /** @beta mentions @gamma in prose once it's gone: whether the person is asked. */
 const mentionAsks = (f, rt = f.rt) => rt.agentWake(f.beta.id, 'gamma', 'Back again?', { itemId: 'it_w', prose: true }).waiting === true;
 
-test('#789 the person’s own @-mention lifts a decline: once that agent is removed, a mention asks again', async () => {
+/**
+ * Once the person removed an agent, a wake of it asks them nothing: their delete stands, and the waker is told (#283).
+ * Removing is deleting, so the person's earlier add, which lifted a decline (#789), no longer brings a card back.
+ */
+function toldDeleted(r, handle = 'gamma') {
+  assert.equal(r.waiting, undefined, 'no card asks the person');
+  assert.equal(r.ok, false);
+  assert.match(r.message, new RegExp(`@${handle} was deleted from this conversation`));
+}
+const wakeGamma = (f, rt = f.rt) => rt.agentWake(f.beta.id, 'gamma', 'Back again?', { itemId: 'it_w', prose: true });
+
+test('#789 after the person’s own @-mention adds a declined agent and it’s removed, a mention is told it was deleted', async () => {
   const f = await declined();
   f.rt.sendMessage(f.t.id, { text: '@gamma please join' });
   await settle(f.rt);
   removeGamma(f);
-  assert.equal(mentionAsks(f), true, 'the person’s latest answer was to add it');
-  assert.equal(addCards(f).filter((c) => c.status === 'open').length, 1, 'a card asks the person');
+  toldDeleted(wakeGamma(f));
+  assert.equal(addCards(f).filter((c) => c.status === 'open').length, 0, 'no card asks the person');
 });
 
-test('#789 a mention in a topic thread lifts it too', async () => {
+test('#789 the same after the person’s mention in a topic thread', async () => {
   const f = await declined();
   const reply = f.store.items(f.t.id).find((i) => i.kind === 'agent' && i.handle === 'alpha');
   const topic = f.rt.startTopic(f.t.id, reply.id).threadId;
   f.rt.sendMessage(topic, { text: '@gamma please look' });
   await settle(f.rt);
   removeGamma(f);
-  assert.equal(mentionAsks(f), true);
+  toldDeleted(wakeGamma(f));
 });
 
-test('#789 a new agent created into the conversation lifts a decline of its handle', async () => {
+test('#789 a new agent created into the conversation, then removed: a mention is told it was deleted', async () => {
   const f = setup();
   // A decline of adding an earlier @delta, whose persona is gone, is in the conversation.
   arrange.post(f.rt, f.t.id, { kind: 'hop', join: true, fromSessionId: f.alpha.id, from: 'alpha', to: 'delta', text: 'x', status: 'declined' });
@@ -170,19 +180,15 @@ test('#789 a new agent created into the conversation lifts a decline of its hand
   f.rt.ensureSession(arrange.lineage(f.rt, f.t.id).at(-1), p.id, { brief: 'You were just created and added to this thread.' });
   const delta = arrange.sessionsIn(f.rt, f.t.id).find((x) => x.handle === 'delta');
   f.rt.deleteSession(delta.id);
-  assert.equal(f.rt.agentWake(f.beta.id, 'delta', 'Delta?', { itemId: 'it_d', prose: true }).waiting, true);
+  toldDeleted(f.rt.agentWake(f.beta.id, 'delta', 'Delta?', { itemId: 'it_d', prose: true }), 'delta');
 });
 
-test('#789 a decline after the person’s add holds', async () => {
+test('#789 after the person’s add and a removal, even a wake that isn’t a prose mention asks nothing', async () => {
   const f = await declined();
   f.rt.sendMessage(f.t.id, { text: '@gamma please join' });
   await settle(f.rt);
   removeGamma(f);
-  f.rt.agentWake(f.alpha.id, 'gamma', 'I need gamma again.');
-  const again = addCards(f).find((c) => c.status === 'open');
-  f.rt.resolveHop(f.t.id, again.id, false);
-  await settle(f.rt);
-  assert.equal(mentionAsks(f), false, 'the newest answer is the decline');
+  toldDeleted(f.rt.agentWake(f.alpha.id, 'gamma', 'I need gamma again.'));
   assert.equal(addCards(f).filter((c) => c.status === 'open').length, 0, 'no card');
 });
 
@@ -194,7 +200,7 @@ test('#789 adding an agent whose handle starts another’s doesn’t lift that o
   assert.equal(mentionAsks(f), false, '@gamma’s decline holds');
 });
 
-test('#789 the lift holds after a restart, since the mark is in the store', async () => {
+test('#789 after a restart too, since the removal is in the store', async () => {
   const f = await declined();
   f.rt.sendMessage(f.t.id, { text: '@gamma please join' });
   await settle(f.rt);
@@ -202,10 +208,10 @@ test('#789 the lift holds after a restart, since the mark is in the store', asyn
   const rt = new Runtime({ store: f.store, adapters: f.rt.adapters, config: f.rt.config });
   const gamma = arrange.sessionsIn(rt, f.t.id).find((x) => x.handle === 'gamma');
   rt.deleteSession(gamma.id);
-  assert.equal(mentionAsks(f, rt), true);
+  toldDeleted(wakeGamma(f, rt));
 });
 
-test('#789 the person’s add behind a held commit lifts a decline held with it', async () => {
+test('#789 the person’s add behind a held commit, then a removal: a mention is told it was deleted', async () => {
   const h = await heldStore();
   const f = setup(h.store);
   await says(f, f.alpha, 'Let’s ask @gamma to check the numbers.');
@@ -221,7 +227,7 @@ test('#789 the person’s add behind a held commit lifts a decline held with it'
   await h.store.flush();
   await settle(f.rt);
   removeGamma(f);
-  assert.equal(mentionAsks(f), true, 'the decline and the add were held together: the add is the latest answer');
+  toldDeleted(wakeGamma(f));
   await h.store.close();
 });
 

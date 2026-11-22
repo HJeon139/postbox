@@ -4,7 +4,7 @@
 // stop that; this check says when a command got out. Part of tools/uat/room-checks.mjs’s CHECKS.
 
 import { homedir } from 'node:os';
-import { resolve } from 'node:path';
+import { basename, dirname, resolve } from 'node:path';
 
 const clip = (/** @type {string} */ s, n = 100) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 
@@ -40,14 +40,27 @@ function withoutHeredocs(command) {
 }
 
 /**
- * A command’s words, a quoted string as one word, with what separates one command from the next kept as words of
+ * A command’s words, as the shell reads them: quoted and unquoted parts next to each other are one word, without
+ * their quotes, so "$TMPDIR"/x is $TMPDIR/x (#885), and what the quotes keep the shell from expanding stays literal. What separates one command from the next is kept as words of
  * their own: `&&`, `||`, `;`, `|` and a new line.
  * @param {string} command
  * @returns {string[]}
  */
 function wordsOf(command) {
-  const words = withoutHeredocs(command).match(/&&|\|\||[;|\n]|"(?:\\.|[^"\\])*"|'[^']*'|[^\s;|&"']+/g) ?? [];
-  return words.map((w) => (/^["']/.test(w) ? w.slice(1, -1) : w));
+  const words = withoutHeredocs(command).match(/&&|\|\||[;|\n]|(?:"(?:\\.|[^"\\])*"|'[^']*'|[^\s;|&"'])+/g) ?? [];
+  return words.map((w) => w.replace(/"((?:\\.|[^"\\])*)"|'([^']*)'/g, (_, double, single) => literal(double, single)));
+}
+
+/**
+ * A quoted part of a word without its quotes, as a name when the shell won’t expand what it starts with: a ~ in
+ * either quotes, and a $ in single quotes. Only a word’s start is expanded, or read by the check, so `./` before it
+ * makes `'$TMPDIR'` the entry called $TMPDIR here, as the shell has it; `"$TMPDIR"` is the temp folder.
+ * @param {string | undefined} double @param {string | undefined} single
+ */
+function literal(double, single) {
+  if (single !== undefined) return /^[$~]/.test(single) ? `./${single}` : single;
+  const part = double ?? '';
+  return part.startsWith('~') ? `./${part}` : part;
 }
 
 const BETWEEN_COMMANDS = new Set(['&&', '||', ';', '|', '\n']);
@@ -68,7 +81,7 @@ function segments(/** @type {string[]} */ words) {
 }
 
 /** A word that names a place on disk by more than a name inside the folder the command runs in. */
-const LOOKS_OUT = /^(\/|~(\/|$)|\$HOME(\/|$)|\$\{HOME\}(\/|$)|\.\.(\/|$))|\/\.\.(\/|$)/;
+const LOOKS_OUT = /^(\/|~(\/|$)|\$HOME(\/|$)|\$\{HOME\}(\/|$)|\$TMPDIR(\/|$)|\$\{TMPDIR\}(\/|$)|\.\.(\/|$))|\/\.\.(\/|$)/;
 
 /** The words of one command that may be paths: none of an echo’s, and not the pattern of a search. */
 function pathWords(/** @type {string[]} */ [name, ...args]) {
@@ -78,20 +91,67 @@ function pathWords(/** @type {string[]} */ [name, ...args]) {
   return args.filter((_, i) => i !== pattern);
 }
 
+/** The temp folder’s own name for a run’s workspace folder (tools/uat/workspace.mjs, runPaths). */
+const RUN_FOLDER = /^postbox-uat-workspace-[^/]+$/;
+
+/**
+ * The temp folder a run’s workspace is in (#885), or null for a workspace laid out otherwise: the folder that holds its
+ * postbox-uat-workspace-* folder. @param {string} workspace
+ */
+function tempBase(workspace) {
+  const run = dirname(workspace);
+  return RUN_FOLDER.test(basename(run)) ? dirname(run) : null;
+}
+
+/**
+ * A path as runPaths writes the workspace’s, its temp folder’s real path: on macOS, agents get TMPDIR in its /var
+ * form, which is the same folder under /private/var, and /tmp is /private/tmp. @param {string} path @param {string} base
+ */
+function asReal(path, base) {
+  if (!base.startsWith('/private/')) return path;
+  return /^\/(var|tmp)(\/|$)/.test(path) ? `/private${path}` : path;
+}
+
+/**
+ * Whether a path is where the runs’ workspaces live, when the workspace is in a temp folder of its own (#885): the
+ * temp folder itself, or inside any run’s folder there, its own included. Anywhere else in the temp folder is the
+ * agent’s scratch space. A workspace laid out otherwise has none.
+ * @param {string} workspace @returns {(path: string) => boolean}
+ */
+function runsFolder(workspace) {
+  const base = tempBase(workspace);
+  if (base === null) return () => false;
+  return (path) => {
+    if (path === base) return true;
+    if (!path.startsWith(`${base}/`)) return false;
+    return RUN_FOLDER.test(path.slice(base.length + 1).split('/')[0]);
+  };
+}
+
 /**
  * The paths a command names that lie outside the run’s workspace. Each is resolved from where the command runs, a
  * `cd` before it included, so `cd src && cat ../package.json` stays inside and `cat ../data/x` doesn’t. Only a path
- * in the person’s home folder counts: `/bin/zsh`, `/dev/null` and `/tmp` aren’t the person’s. What an `echo` prints
+ * in the person’s home folder counts, or where the runs’ workspaces live in the temp folder (runsFolder), however it’s
+ * spelled: `$TMPDIR`, or macOS’s /var form of a /private/var folder. `/bin/zsh`,
+ * `/dev/null` and the rest of `/tmp` aren’t the person’s. What an `echo` prints
  * and what a search looks for are text, not paths, and Claude Code’s own folder of long tool results, which it tells
  * the agent to read, isn’t the agent stepping out.
  * @param {string} command @param {{ workspace: string, home: string, cwd?: string }} where
  * @returns {string[]}  the paths, as the command wrote them
  */
 export function pathsOutside(command, { workspace, home, cwd = workspace }) {
-  const full = (/** @type {string} */ word, /** @type {string} */ from) => resolve(from, word.replace(/^(~|\$HOME|\$\{HOME\})(?=\/|$)/, home));
+  // $TMPDIR is the runs’ temp folder, as the runner’s environment names it (#885); with none, it’s left as written. A
+  // scenario that gives agents a TMPDIR of its own (`- seed: git-remote`, its run folder’s tmp/) isn’t told apart.
+  const base = tempBase(workspace);
+  const expand = (/** @type {string} */ word) => {
+    const homed = word.replace(/^(~|\$HOME|\$\{HOME\})(?=\/|$)/, home);
+    return base === null ? homed : homed.replace(/^(\$TMPDIR|\$\{TMPDIR\})(?=\/|$)/, base);
+  };
+  const full = (/** @type {string} */ word, /** @type {string} */ from) => asReal(resolve(from, expand(word)), base ?? '');
   const within = (/** @type {string} */ path, /** @type {string} */ folder) => path === folder || path.startsWith(`${folder}/`);
+  const runs = runsFolder(workspace);
   const outside = (/** @type {string} */ path) =>
-    within(path, home) && !within(path, workspace) && !/\/\.claude\/projects\/[^/]+\/[^/]+\/tool-results(\/|$)/.test(path);
+    (within(path, home) || runs(path)) && !within(path, workspace) && !/\/\.claude\/projects\/[^/]+\/[^/]+\/tool-results(\/|$)/.test(path);
   const found = [];
   let at = cwd;
   for (const segment of segments(wordsOf(unwrapped(String(command ?? ''))))) {

@@ -12,10 +12,12 @@ test('#120: a run’s stop ends only once its page and its Postbox have gone, so
   // Each takes a while to go, as Chrome and Postbox do on a loaded runner after they’re asked to.
   const page = { close: async () => sleep(30).then(() => said.push('page closed')) };
   const postbox = { kill: async () => sleep(60).then(() => said.push('postbox exited')) };
-  const stop = runStop({ page, postbox, log: () => {} });
+  // #885: the workspace is kept in the run’s folder only once Postbox, and so its agents, can write there no more.
+  const retain = () => said.push('workspace kept');
+  const stop = runStop({ page, postbox, retain, log: () => {} });
   await stop();
   said.push('stop done');
-  assert.deepEqual(said, ['page closed', 'postbox exited', 'stop done']);
+  assert.deepEqual(said, ['page closed', 'postbox exited', 'workspace kept', 'stop done']);
   // Once, however often it’s called.
   await stop();
   assert.equal(said.filter((s) => s === 'postbox exited').length, 1);
