@@ -92,8 +92,8 @@ test('#1253: the comments of a review longer than the cut reach the room on the 
   assert.match(read, /line 40: Name the owner\./);
 });
 
-test('#1253: comments cut on the answer line point at the block, whose reading has them whole', () => {
-  // Pre-review: read_message on the answer line has no comments, so a cut must send the agent to the block.
+test('#1253: comments cut on the answer line point at the line, which keeps this answer’s whole', () => {
+  // The block may since hold a newer answer; the line keeps this one’s comments, so a cut points back at it.
   const f = setup();
   const long = 'Rework this section. '.repeat(150);
   const block = { type: 'review', id: 'plan-draft-3', version: 1, title: 'Release plan', content: 'Ship it.', format: 'markdown' };
@@ -112,5 +112,7 @@ test('#1253: comments cut on the answer line point at the block, whose reading h
   const comments = [{ line: 3, text: long }];
   const line = arrange.post(f.rt, f.t.id, { kind: 'voice', text: voice, blockItemId: shown.id, answerTo, comments });
   const read = arrange.describeItem(f.rt, line, f.beta);
-  assert.match(read, new RegExp(`read_message \\{ id: "${shown.id}" \\} has the rest`));
+  assert.match(read, new RegExp(`read_message \\{ id: "${line.id}" \\} has the rest`));
+  // And that reading has the comment whole.
+  assert.ok(arrange.describeItem(f.rt, line, null, 100_000, f.beta).includes(long.trim()));
 });
