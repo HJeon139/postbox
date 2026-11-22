@@ -55,6 +55,7 @@ stateDiagram-v2
     Changes --> Ready: the author pushes fixes, removes changes requested and adds ready for integrator
     Ready --> [*]: the author pushes again and removes the label until the new head is ready
     Approved --> Merged: its batch’s CI is green
+    Approved --> Changes: its batch failed on it, or only its author can resolve its conflict
     Merged --> [*]
 ```
 
@@ -67,7 +68,7 @@ stateDiagram-v2
    ```bash
    gh pr edit <n> --remove-label "changes requested" --add-label "ready for integrator"
    ```
-4. **Leave the merge to the integrator.** The integrator merges approved pull requests in batches: several merge into one branch, CI runs once on it, and the branch merges into `main` once every check is green (`designs/review-guide.md`, “Merging: batches”). Your PR keeps its own merge commit, so its commits and `Fixes #n` land as they would alone. If it conflicts with another, the integrator resolves the conflict and says how in the batch’s PR. Don’t merge it yourself, and don’t add `integrator approved` to your own PR.
+4. **Leave the merge to the integrator.** The integrator merges approved pull requests in batches: several merge into one branch, CI runs once on it, and the branch merges into `main` once every check is green (`designs/review-guide.md`, “Merging: batches”). Your PR keeps its own merge commit, so its commits and `Fixes #n` land as they would alone. If it conflicts with another, the integrator resolves the conflict and says how in the batch’s PR, or, when only you can resolve it, marks it `changes requested` with a comment that says what to merge. Don’t merge it yourself, and don’t add `integrator approved` to your own PR.
 
 If you can’t add labels (GitHub lets only people with triage access or above change them, and outside contributors often don’t have it), comment on the PR that it’s ready for review, or that you’ve answered one, and the maintainer sets the label.
 
