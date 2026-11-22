@@ -8,32 +8,38 @@
 // it opens Mermaid’s slanted shape.
 
 // Where a label starts, each its own piece of the pattern:
-const SHAPE = '[[(]'; // a shape’s opening bracket or parenthesis
+const SHAPE = '[[(]';
+const SLANTED = String.raw`\[[/\\]`; // a slanted shape’s “[/” or “[\” // a shape’s opening bracket or parenthesis
 const BRACE = '{'; // a rhombus; in a class diagram, a member list, whose “+” and “-” mark public and private
 const ASYMMETRIC = '(?<![-=.>])>(?!>)'; // an asymmetric shape’s “>”, never an arrow’s head (“->>+ B”) or “>>”
 const EDGE_BAR = String.raw`\|`; // an edge label’s bar
 const EDGE_TEXT = String.raw`(?<![-=.<])(?:--|==|-\.)(?![-=.>])`; // the “--”, “==” or “-.” that opens an edge’s text
 const COLON = ':'; // a state’s or a transition’s label, or a class relation’s
 const STATE_NAME = String.raw`\bstate[ \t]+`; // state "1. Build" as s1
+const NOTE = String.raw`\bnote(?:[ \t]+for[ \t]+[^\s"]+)?[ \t]+`; // a class diagram’s note “1. note”, or note for A “…”
 const QUOTED = String.raw`(?:"\x60|["\x60])?`; // then a quote, or a quote and a backtick for a Markdown string
 // What Mermaid reads as a block there: a list item, a heading or a quote, then a space; or a rule, alone.
 const BLOCK = String.raw`(?:(?:\d{1,9}[.)]|[-*+]|#{1,6}|>)[ \t]|(?:-{3,}|\*{3,}|_{3,})[ \t]*(?=["\x60\])}|\n]|$))`;
 const labelStart = (...openers) => new RegExp(String.raw`((?:${openers.join('|')})${QUOTED}[ \t]*)(?=${BLOCK})`, 'g');
-const LABEL_START = labelStart(SHAPE, BRACE, ASYMMETRIC, EDGE_BAR, EDGE_TEXT, COLON, STATE_NAME);
+const LABEL_START = labelStart(SHAPE, SLANTED, BRACE, ASYMMETRIC, EDGE_BAR, EDGE_TEXT, COLON, STATE_NAME);
 // A class diagram has no bar or edge-text labels and no asymmetric shapes, and its arrows (“--|>”, “--*”) and
 // annotations (“<<interface>>”) would read as openers. A colon opens a label only after a relation, an arrow before the
 // colon (“A --> B : 1. uses”); after a bare class name (“Build : - String name”), and in braces, the mark sets a
 // member’s visibility.
-const CLASS_START = labelStart(SHAPE, STATE_NAME);
-const RELATION_START = labelStart(SHAPE, COLON, STATE_NAME);
+const CLASS_START = labelStart(SHAPE, STATE_NAME, NOTE);
+const RELATION_START = labelStart(SHAPE, COLON, STATE_NAME, NOTE);
 const RELATION = /^[^:]*(?:--|\.\.)[^:]*:/;
 // A Markdown string (“`…`” in quotes) can run over lines, and each of its lines can start like a block too.
 const MARKDOWN_STRING = /"`([^`]*)`"/g;
 const LINE_START = new RegExp(String.raw`(^|\n)([ \t]*)(?=${BLOCK})`, 'g');
+// A state diagram’s note over lines, “note right of s1” to “end note”: each line is a label’s start too.
+const NOTE_BLOCK = /(^[ \t]*note[ \t]+(?:left|right)[ \t]+of[ \t]+[^\n:]+\n)([\s\S]*?)(\n[ \t]*end note\b)/gm;
 const JOINED = '$1\u2060';
 /** The source with every label that starts like a block kept as text. @param {string} src */
 function asWritten(src) {
-  const text = src.replace(MARKDOWN_STRING, (_m, body) => '"`' + body.replace(LINE_START, '$1$2\u2060') + '`"');
+  const text = src
+    .replace(MARKDOWN_STRING, (_m, body) => '"`' + body.replace(LINE_START, '$1$2\u2060') + '`"')
+    .replace(NOTE_BLOCK, (_m, open, body, end) => open + body.replace(LINE_START, '$1$2\u2060') + end);
   if (!/^\s*classDiagram\b/m.test(text)) return text.replace(LABEL_START, JOINED);
   return text
     .split('\n')
