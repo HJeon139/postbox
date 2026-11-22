@@ -8,7 +8,7 @@ import { ASKING, followsConversation, validateBlock } from '../shared/catalog.mj
 import { LIMITS } from '../shared/limits.mjs';
 import { clip, clipText, echoedId } from './helpers.mjs';
 import { stampSteps } from './progress-steps.mjs';
-import { ownedAuthors } from './review-authors.mjs';
+import { echoedAuthors, ownedAuthors } from './review-authors.mjs';
 import { revisedFiles } from './review-files.mjs';
 import { revisedReview } from './review-person.mjs';
 
@@ -69,7 +69,7 @@ export function updateBlock(apps, sessionId, { block }, { turn, se, threadId, en
   const kind = updateKind(block);
   if (kind === 'withdraw') return withdraw(apps, sessionId, block, { se, threadId });
   if (kind === 'outcome') return recordOutcome(apps, sessionId, block, { se, threadId });
-  const v = validateBlock(block, { imageOrigins: apps.config.imageOrigins });
+  const v = validateBlock(echoedAuthors(block), { imageOrigins: apps.config.imageOrigins });
   if (!v.ok) return { ok: false, message: `The update was invalid and wasn’t applied: ${withShape(v.errors, block)}` };
   const { where, existing: found } = shownBy(apps, sessionId, v.block.id, threadId(), se());
   if (!found) return notShown(apps, sessionId, v.block.id);
@@ -79,7 +79,8 @@ export function updateBlock(apps, sessionId, { block }, { turn, se, threadId, en
   // read (#123): the person would see it vanish, and the agent would never learn what it erased.
   if (found.answered && found.answer?.read === false) return unreadAnswer(apps, sessionId, where, found);
   // The person’s and other agents’ threads stay on a review, and its agent comments only as itself (#133, #1143).
-  const { existing, reviews, note, ...revised } = revisedReview(found, v.block);
+  // A review stored before the author rule reads as its agent’s here too, as review_block reads it (#1208).
+  const { existing, reviews, note, ...revised } = revisedReview(v.block.type === 'review' ? ownedAuthors(found) : found, v.block);
   v.block = revised.block;
   if (v.block.type === 'review') {
     const kept = validateBlock(v.block, { imageOrigins: apps.config.imageOrigins });
