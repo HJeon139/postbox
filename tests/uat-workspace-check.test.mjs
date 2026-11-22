@@ -150,3 +150,24 @@ test('the dashed form of a home with a dot in the user’s name is written as ~ 
   const slug = ['', 'Users', 'pat', 'lee', 'postbox'].join('-');
   assert.equal(withoutHome(`ls ${dotted}/x /tmp/scratch/${slug}/y`, dotted), 'ls ~/x /tmp/scratch/~-postbox/y');
 });
+
+test('with the workspace in a temp folder of its own (#885), a step out of it into that folder or another run’s is outside', () => {
+  // As runPaths makes it: <TMPDIR>/postbox-uat-workspace-XXXXXX/workspace, outside the person’s home.
+  const base = '/tmp/pb-uat-base';
+  const tmpWhere = { workspace: `${base}/postbox-uat-workspace-abc123/workspace`, home: '/Users/someone' };
+  assert.deepEqual(pathsOutside('ls ..', tmpWhere), ['..'], 'its own temp folder');
+  assert.deepEqual(pathsOutside('ls ../..', tmpWhere), ['../..'], 'the temp base, where every run’s folder is');
+  assert.deepEqual(pathsOutside('grep -r answer ../../', tmpWhere), ['../../']);
+  assert.deepEqual(
+    pathsOutside('cat ../../postbox-uat-workspace-def/workspace/notes.md', tmpWhere),
+    ['../../postbox-uat-workspace-def/workspace/notes.md'],
+    'another run’s workspace',
+  );
+  assert.deepEqual(pathsOutside(`cat ${base}/postbox-uat-workspace-def/workspace/notes.md`, tmpWhere), [
+    `${base}/postbox-uat-workspace-def/workspace/notes.md`,
+  ]);
+  // The rest of the temp folder is the agent’s scratch space, not a step out.
+  assert.deepEqual(pathsOutside(`echo hi > ${base}/scratch.txt && cat ${base}/scratch.txt`, tmpWhere), []);
+  assert.deepEqual(pathsOutside('cat /tmp/notes.txt', tmpWhere), []);
+  assert.deepEqual(pathsOutside('cd src && cat ../package.json', tmpWhere), [], 'and inside the workspace is inside');
+});

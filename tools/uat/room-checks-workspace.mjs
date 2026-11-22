@@ -4,7 +4,7 @@
 // stop that; this check says when a command got out. Part of tools/uat/room-checks.mjs’s CHECKS.
 
 import { homedir } from 'node:os';
-import { resolve } from 'node:path';
+import { basename, dirname, resolve } from 'node:path';
 
 const clip = (/** @type {string} */ s, n = 100) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 
@@ -78,10 +78,31 @@ function pathWords(/** @type {string[]} */ [name, ...args]) {
   return args.filter((_, i) => i !== pattern);
 }
 
+/** The temp folder’s own name for a run’s workspace folder (tools/uat/workspace.mjs, runPaths). */
+const RUN_FOLDER = /^postbox-uat-workspace-[^/]+$/;
+
+/**
+ * Whether a path is where the runs’ workspaces live, when the workspace is in a temp folder of its own (#885): the
+ * temp folder itself, or inside any run’s folder there, its own included. Anywhere else in the temp folder is the
+ * agent’s scratch space. A workspace laid out otherwise has none.
+ * @param {string} workspace @returns {(path: string) => boolean}
+ */
+function runsFolder(workspace) {
+  const run = dirname(workspace);
+  if (!RUN_FOLDER.test(basename(run))) return () => false;
+  const base = dirname(run);
+  return (path) => {
+    if (path === base) return true;
+    if (!path.startsWith(`${base}/`)) return false;
+    return RUN_FOLDER.test(path.slice(base.length + 1).split('/')[0]);
+  };
+}
+
 /**
  * The paths a command names that lie outside the run’s workspace. Each is resolved from where the command runs, a
  * `cd` before it included, so `cd src && cat ../package.json` stays inside and `cat ../data/x` doesn’t. Only a path
- * in the person’s home folder counts: `/bin/zsh`, `/dev/null` and `/tmp` aren’t the person’s. What an `echo` prints
+ * in the person’s home folder counts, or where the runs’ workspaces live in the temp folder (runsFolder): `/bin/zsh`,
+ * `/dev/null` and the rest of `/tmp` aren’t the person’s. What an `echo` prints
  * and what a search looks for are text, not paths, and Claude Code’s own folder of long tool results, which it tells
  * the agent to read, isn’t the agent stepping out.
  * @param {string} command @param {{ workspace: string, home: string, cwd?: string }} where
@@ -90,8 +111,9 @@ function pathWords(/** @type {string[]} */ [name, ...args]) {
 export function pathsOutside(command, { workspace, home, cwd = workspace }) {
   const full = (/** @type {string} */ word, /** @type {string} */ from) => resolve(from, word.replace(/^(~|\$HOME|\$\{HOME\})(?=\/|$)/, home));
   const within = (/** @type {string} */ path, /** @type {string} */ folder) => path === folder || path.startsWith(`${folder}/`);
+  const runs = runsFolder(workspace);
   const outside = (/** @type {string} */ path) =>
-    within(path, home) && !within(path, workspace) && !/\/\.claude\/projects\/[^/]+\/[^/]+\/tool-results(\/|$)/.test(path);
+    (within(path, home) || runs(path)) && !within(path, workspace) && !/\/\.claude\/projects\/[^/]+\/[^/]+\/tool-results(\/|$)/.test(path);
   const found = [];
   let at = cwd;
   for (const segment of segments(wordsOf(unwrapped(String(command ?? ''))))) {
